@@ -1,0 +1,67 @@
+#ifndef PAGES_H
+#define PAGES_H
+
+#include "esp_http_server.h"
+
+// -- Implemented this turn (foundation pages) --
+esp_err_t page_root(httpd_req_t *req);          // GET  /
+esp_err_t page_logout(httpd_req_t *req);        // GET  /logout
+esp_err_t page_dashboard(httpd_req_t *req);     // GET  /dashboard
+esp_err_t page_sidebar_info(httpd_req_t *req);  // GET  /sidebarInfo
+esp_err_t page_sysinfo(httpd_req_t *req);       // GET  /sysinfo
+esp_err_t page_igate_traffic(httpd_req_t *req); // GET  /igate_traffic?since=<seq> (JSON)
+esp_err_t page_lastheard(httpd_req_t *req);     // GET  /lastheard (JSON, dashboard LAST HEARD table)
+esp_err_t page_dashinfo(httpd_req_t *req);      // GET  /dashinfo (compact live sysinfo strip for the dashboard)
+esp_err_t page_storage_get(httpd_req_t *req);   // GET  /storage
+esp_err_t page_storage_post(httpd_req_t *req);  // POST /storage (mkdir placeholder)
+esp_err_t page_download(httpd_req_t *req);      // GET  /download?file=...
+esp_err_t page_delete(httpd_req_t *req);        // GET/POST /delete?file=...
+esp_err_t page_format(httpd_req_t *req);        // GET/POST /format
+esp_err_t page_upload(httpd_req_t *req);        // POST /upload (multipart)
+esp_err_t page_wireless_get(httpd_req_t *req);  // GET  /wireless
+esp_err_t page_wireless_post(httpd_req_t *req); // POST /wireless
+esp_err_t page_wifi_scan_get(httpd_req_t *req); // GET  /wifiscan (JSON AP list)
+esp_err_t page_system_get(httpd_req_t *req);    // GET  /system
+esp_err_t page_system_post(httpd_req_t *req);   // POST /system
+esp_err_t page_about_get(httpd_req_t *req);     // GET  /about
+esp_err_t page_default_reset(httpd_req_t *req); // GET/POST /default (factory reset)
+
+// -- Coming in follow-up turns (registered with a "not implemented yet" stub
+//    so the sidebar never 404s while the build-out continues) --
+esp_err_t page_not_yet(httpd_req_t *req);
+
+// -- APRS services --
+esp_err_t page_igate_get(httpd_req_t *req);
+esp_err_t page_igate_post(httpd_req_t *req);
+esp_err_t page_digi_get(httpd_req_t *req);
+esp_err_t page_digi_post(httpd_req_t *req);
+esp_err_t page_tracker_get(httpd_req_t *req);
+esp_err_t page_tracker_post(httpd_req_t *req);
+esp_err_t page_wx_get(httpd_req_t *req);
+esp_err_t page_wx_post(httpd_req_t *req);
+esp_err_t page_tlm_get(httpd_req_t *req);
+esp_err_t page_tlm_post(httpd_req_t *req);
+esp_err_t page_sensor_get(httpd_req_t *req);
+esp_err_t page_sensor_post(httpd_req_t *req);
+
+// -- RF / networking --
+esp_err_t page_radio_get(httpd_req_t *req);
+esp_err_t page_radio_post(httpd_req_t *req);
+esp_err_t page_vpn_get(httpd_req_t *req);
+esp_err_t page_vpn_post(httpd_req_t *req);
+esp_err_t page_mqtt_get(httpd_req_t *req);
+esp_err_t page_mqtt_post(httpd_req_t *req);
+esp_err_t page_msg_get(httpd_req_t *req);
+esp_err_t page_msg_post(httpd_req_t *req);
+esp_err_t page_gnss_get(httpd_req_t *req);
+esp_err_t page_gnss_post(httpd_req_t *req);
+
+// -- GPIO / hardware mapping --
+esp_err_t page_mod_get(httpd_req_t *req);
+esp_err_t page_mod_post(httpd_req_t *req);
+
+// -- Misc --
+esp_err_t page_symbol_get(httpd_req_t *req);
+esp_err_t page_test_get(httpd_req_t *req);
+
+#endif

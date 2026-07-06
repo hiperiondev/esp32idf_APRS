@@ -1,0 +1,5 @@
+dependencies:
+  joltwallet/littlefs: "^1.14"
+  espressif/esp-dsp: "^1.5"
+  idf:
+    version: ">=5.1"

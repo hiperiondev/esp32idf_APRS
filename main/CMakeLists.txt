@@ -1,0 +1,33 @@
+idf_component_register(
+    SRCS
+        "main.c"
+        "app_config.c"
+        "storage.c"
+        "aprs_service.c"
+        "net_state.c"
+        "beacon.c"
+        "time_sync.c"
+        "cpu_freq.c"
+    INCLUDE_DIRS
+        "include"
+    REQUIRES
+        esp_wifi
+        esp_netif
+        esp_event
+        nvs_flash
+        json
+        mbedtls
+        esp_app_format
+        app_update
+        spi_flash
+        esp_timer
+        esp_pm
+        lwip
+        webconfig
+        esp32_IDF_libAPRS
+        digirepeater
+        igate
+        message
+        trafficlog
+        lastheard
+)
