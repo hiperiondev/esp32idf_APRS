@@ -204,6 +204,7 @@
 #define TR_F_PUBLISH_TOPIC                                 "Tema de publicación"
 #define TR_F_PULSE_COUNTERS                                "Contadores de pulsos"
 #define TR_F_PWR_ACTIVE_HIGH                               "PWR activo en alto"
+#define TR_F_PROTOCOL                                      "Protocolo"
 #define TR_F_RADIO_MODEM                                   "Radio / Módem"
 #define TR_F_RESET_ACTIVE_HIGH                             "Reinicio activo en alto"
 #define TR_F_RESET_DELAY_MS                                "Retardo de reinicio (ms)"

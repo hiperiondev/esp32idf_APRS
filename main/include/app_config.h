@@ -31,6 +31,7 @@
 /////// MODULES //////
 #define ENABLE_DASHBOARD
 #define ENABLE_RADIO_MODEM
+//#define ENABLE_RF_MODULE
 //#define ENABLE_VPN
 //#define ENABLE_MQTT
 #define ENABLE_MESSAGE

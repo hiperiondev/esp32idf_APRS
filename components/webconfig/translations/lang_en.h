@@ -203,6 +203,7 @@
 #define TR_F_PUBLISH_TOPIC                                 "Publish topic"
 #define TR_F_PULSE_COUNTERS                                "Pulse Counters"
 #define TR_F_PWR_ACTIVE_HIGH                               "PWR active-high"
+#define TR_F_PROTOCOL                                      "Protocol"
 #define TR_F_RADIO_MODEM                                   "Radio / Modem"
 #define TR_F_RESET_ACTIVE_HIGH                             "Reset active-high"
 #define TR_F_RESET_DELAY_MS                                "Reset delay (ms)"

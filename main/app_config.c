@@ -798,6 +798,9 @@ static void config_from_json(cJSON *d, app_config_t *c) {
 
     c->fx25_mode = (uint8_t)jget_num(d, "fx25Mode", def.fx25_mode);
     c->rf_en = jget_bool(d, "rfEnable", def.rf_en);
+#ifndef ENABLE_RF_MODULE
+    c->rf_en = false;
+#endif
     c->rf_type = (uint8_t)jget_num(d, "rfType", def.rf_type);
     c->rf_power = jget_bool(d, "rfPwr", def.rf_power);
     c->modem_type = (uint8_t)jget_num(d, "rfModem", def.modem_type);

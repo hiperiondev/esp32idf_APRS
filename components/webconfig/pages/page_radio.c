@@ -9,6 +9,11 @@ esp_err_t page_radio_get(httpd_req_t *req) {
     web_send_header(req, TR_F_RADIO_MODEM, "radio");
     httpd_resp_sendstr_chunk(req, "<form method='POST' action='/radio'>");
 
+    web_fieldset_open(req, TR_F_PROTOCOL);
+    web_field_checkbox(req, TR_F_FX_25_FORWARD_ERROR_CORRECTED_AX_25, "fx25Mode", g_config.fx25_mode);
+    web_fieldset_close(req);
+
+#ifdef ENABLE_RF_MODULE
     web_fieldset_open(req, TR_F_RF_MODULE);
     web_field_checkbox(req, TR_F_ENABLE_RF_MODULE, "rfEnable", g_config.rf_en);
     web_select_open(req, TR_F_MODULE_TYPE, "rfType");
@@ -25,15 +30,12 @@ esp_err_t page_radio_get(httpd_req_t *req) {
     web_select_option(req, RF_MODE_GFSK, "GFSK", g_config.modem_type == RF_MODE_GFSK);
     web_select_option(req, RF_MODE_DPRS, "D-PRS", g_config.modem_type == RF_MODE_DPRS);
     web_select_close(req);
-    web_field_checkbox(req, TR_F_FX_25_FORWARD_ERROR_CORRECTED_AX_25, "fx25Mode", g_config.fx25_mode);
-    web_fieldset_close(req);
-
-    web_fieldset_open(req, TR_F_FREQUENCY);
     web_field_float(req, TR_F_RX_FREQUENCY_MHZ, "rfFreqRX", g_config.freq_rx, "0.001");
     web_field_float(req, TR_F_TX_FREQUENCY_MHZ, "rfFreqTX", g_config.freq_tx, "0.001");
     web_field_int(req, TR_F_CTCSS_DCS_RX_TONE, "rfToneRX", g_config.tone_rx);
     web_field_int(req, TR_F_CTCSS_DCS_TX_TONE, "rfToneTX", g_config.tone_tx);
     web_fieldset_close(req);
+#endif
 
     web_fieldset_open(req, TR_F_AUDIO_AFSK);
     web_field_int(req, TR_F_SQUELCH_LEVEL, "rfSql", g_config.sql_level);
@@ -59,15 +61,20 @@ esp_err_t page_radio_post(httpd_req_t *req) {
         return ESP_OK;
     }
 
+    g_config.fx25_mode = web_form_get_bool(body, "fx25Mode") ? 1 : 0;
+
+#ifdef ENABLE_RF_MODULE
     g_config.rf_en = web_form_get_bool(body, "rfEnable");
     g_config.rf_type = (uint8_t)web_form_get_int(body, "rfType", g_config.rf_type);
     g_config.modem_type = (uint8_t)web_form_get_int(body, "rfModem", g_config.modem_type);
-    g_config.fx25_mode = web_form_get_bool(body, "fx25Mode") ? 1 : 0;
 
     g_config.freq_rx = web_form_get_float(body, "rfFreqRX", g_config.freq_rx);
     g_config.freq_tx = web_form_get_float(body, "rfFreqTX", g_config.freq_tx);
     g_config.tone_rx = web_form_get_int(body, "rfToneRX", g_config.tone_rx);
     g_config.tone_tx = web_form_get_int(body, "rfToneTX", g_config.tone_tx);
+#else
+    g_config.rf_en = false;
+#endif
 
     g_config.sql_level = (uint8_t)web_form_get_int(body, "rfSql", g_config.sql_level);
     g_config.volume = (uint8_t)web_form_get_int(body, "rfVolume", g_config.volume);
