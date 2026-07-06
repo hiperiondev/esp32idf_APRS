@@ -32,7 +32,7 @@ esp_err_t page_digi_get(httpd_req_t *req) {
     web_field_float(req, TR_F_LONGITUDE, "digiLON", g_config.digi_lon, "0.0001");
     web_field_float(req, TR_F_ALTITUDE_M, "digiAlt", g_config.digi_alt, "1");
     web_field_int(req, TR_F_BEACON_INTERVAL_S, "digiINV", g_config.digi_interval);
-    web_field_text(req, TR_F_SYMBOL_2_CHARS, "digiSymbol", g_config.digi_symbol, 2);
+    web_field_symbol(req, TR_F_STATION_SYMBOL, "digiSym", g_config.digi_symbol);
     web_field_text(req, TR_F_PHG, "digiPHG", g_config.digi_phg, 7);
     web_field_text(req, TR_F_COMMENT, "digiComment", g_config.digi_comment, COMMENT_SIZE - 1);
     web_fieldset_close(req);
@@ -75,7 +75,11 @@ esp_err_t page_digi_post(httpd_req_t *req) {
     g_config.digi_lon = web_form_get_float(body, "digiLON", g_config.digi_lon);
     g_config.digi_alt = web_form_get_float(body, "digiAlt", g_config.digi_alt);
     g_config.digi_interval = (uint16_t)web_form_get_int(body, "digiINV", g_config.digi_interval);
-    web_form_get(body, "digiSymbol", g_config.digi_symbol, sizeof(g_config.digi_symbol));
+
+    // Station Symbol: Table + Symbol 1-char fields from the shared picker
+    // widget, falling back to a legacy combined 2-char field if present.
+    web_form_get_symbol(body, "digiSym", "digiSymbol", g_config.digi_symbol, sizeof(g_config.digi_symbol));
+
     web_form_get(body, "digiPHG", g_config.digi_phg, sizeof(g_config.digi_phg));
     web_form_get(body, "digiComment", g_config.digi_comment, sizeof(g_config.digi_comment));
 

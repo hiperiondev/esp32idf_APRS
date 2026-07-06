@@ -20,24 +20,11 @@ esp_err_t page_igate_get(httpd_req_t *req) {
     web_field_int(req, TR_F_SSID, "igateSSID", g_config.aprs_ssid);
 
     // Station Symbol: Table char + Symbol char shown as two separate 1-char
-    // inputs (matches the original web UI), backed by the same 2-char
-    // igate_symbol[3] storage ("<table><symbol>").
-    {
-        char table_ch[2] = { g_config.igate_symbol[0] ? g_config.igate_symbol[0] : '/', 0 };
-        char sym_ch[2] = { g_config.igate_symbol[1] ? g_config.igate_symbol[1] : '&', 0 };
-        char buf[700];
-        snprintf(buf, sizeof(buf),
-                 "<label>%s</label>"
-                 "<div style='display:flex;gap:6px;align-items:center'>"
-                 "<span style='font-size:12px;color:var(--sub)'>%s:</span>"
-                 "<input type='text' name='igateSymTable' value='%s' maxlength='1' style='width:3em;text-align:center'>"
-                 "<span style='font-size:12px;color:var(--sub)'>%s:</span>"
-                 "<input type='text' name='igateSymCode' value='%s' maxlength='1' style='width:3em;text-align:center'>"
-                 "<a href='/symbol' target='_blank' title='%s' class='secondary' style='text-decoration:none;padding:4px 8px'>%s</a>"
-                 "</div>",
-                 TR_F_STATION_SYMBOL, TR_F_SYMBOL_TABLE, table_ch, TR_F_SYMBOL_CODE, sym_ch, TR_SYM_PICK_HINT, TR_BTN_PICK_SYMBOL);
-        web_raw(req, buf);
-    }
+    // inputs, plus a live graphical icon of the currently selected symbol
+    // (matches the /symbol reference page), backed by the same 2-char
+    // igate_symbol[3] storage ("<table><symbol>"). Uses the shared picker
+    // widget so Digipeater/Tracker render identically.
+    web_field_symbol(req, TR_F_STATION_SYMBOL, "igateSym", g_config.igate_symbol);
 
     web_field_text(req, TR_F_OBJECT_NAME, "igateObject", g_config.igate_object, 9);
 
@@ -259,20 +246,7 @@ esp_err_t page_igate_post(httpd_req_t *req) {
 
     // Station Symbol: prefer the separate Table+Symbol fields (top of page);
     // fall back to the legacy combined 2-char field if those aren't present.
-    {
-        char t[4] = { 0 }, s[4] = { 0 }, combined2[4] = { 0 };
-        bool got_t = web_form_get(body, "igateSymTable", t, sizeof(t));
-        bool got_s = web_form_get(body, "igateSymCode", s, sizeof(s));
-        if (got_t || got_s) {
-            char combined[3];
-            combined[0] = t[0] ? t[0] : '/';
-            combined[1] = s[0] ? s[0] : '&';
-            combined[2] = 0;
-            memcpy(g_config.igate_symbol, combined, sizeof(combined));
-        } else if (web_form_get(body, "igateSymbol", combined2, sizeof(combined2))) {
-            web_form_get(body, "igateSymbol", g_config.igate_symbol, sizeof(g_config.igate_symbol));
-        }
-    }
+    web_form_get_symbol(body, "igateSym", "igateSymbol", g_config.igate_symbol, sizeof(g_config.igate_symbol));
 
     // Location mode radio -> igate_gps bool
     {

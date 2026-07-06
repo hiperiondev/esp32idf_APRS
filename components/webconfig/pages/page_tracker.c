@@ -42,9 +42,9 @@ esp_err_t page_tracker_get(httpd_req_t *req) {
     web_field_checkbox(req, TR_F_INCLUDE_ALTITUDE, "trkOptAlt", g_config.trk_altitude);
     web_field_checkbox(req, TR_F_INCLUDE_RSSI, "trkOptRSSI", g_config.trk_rssi);
     web_field_checkbox(req, TR_F_LOG_TRACK, "trkLog", g_config.trk_log);
-    web_field_text(req, TR_F_SYMBOL_IDLE, "trkSymbol", g_config.trk_symbol, 2);
-    web_field_text(req, TR_F_SYMBOL_MOVING, "trkSymbolMove", g_config.trk_symmove, 2);
-    web_field_text(req, TR_F_SYMBOL_STOPPED, "trkSymbolStop", g_config.trk_symstop, 2);
+    web_field_symbol(req, TR_F_SYMBOL_IDLE, "trkSymbol", g_config.trk_symbol);
+    web_field_symbol(req, TR_F_SYMBOL_MOVING, "trkSymbolMove", g_config.trk_symmove);
+    web_field_symbol(req, TR_F_SYMBOL_STOPPED, "trkSymbolStop", g_config.trk_symstop);
     web_field_text(req, TR_F_OBJECT_ITEM_NAME, "trkItem", g_config.trk_item, 9);
     web_field_text(req, TR_F_COMMENT, "trkComment", g_config.trk_comment, COMMENT_SIZE - 1);
     web_fieldset_close(req);
@@ -95,9 +95,14 @@ esp_err_t page_tracker_post(httpd_req_t *req) {
     g_config.trk_altitude = web_form_get_bool(body, "trkOptAlt");
     g_config.trk_rssi = web_form_get_bool(body, "trkOptRSSI");
     g_config.trk_log = web_form_get_bool(body, "trkLog");
-    web_form_get(body, "trkSymbol", g_config.trk_symbol, sizeof(g_config.trk_symbol));
-    web_form_get(body, "trkSymbolMove", g_config.trk_symmove, sizeof(g_config.trk_symmove));
-    web_form_get(body, "trkSymbolStop", g_config.trk_symstop, sizeof(g_config.trk_symstop));
+
+    // Station Symbols (idle/moving/stopped): Table + Symbol 1-char fields
+    // from the shared picker widget, each falling back to its legacy
+    // combined 2-char field if present.
+    web_form_get_symbol(body, "trkSymbol", "trkSymbol", g_config.trk_symbol, sizeof(g_config.trk_symbol));
+    web_form_get_symbol(body, "trkSymbolMove", "trkSymbolMove", g_config.trk_symmove, sizeof(g_config.trk_symmove));
+    web_form_get_symbol(body, "trkSymbolStop", "trkSymbolStop", g_config.trk_symstop, sizeof(g_config.trk_symstop));
+
     web_form_get(body, "trkItem", g_config.trk_item, sizeof(g_config.trk_item));
     web_form_get(body, "trkComment", g_config.trk_comment, sizeof(g_config.trk_comment));
 

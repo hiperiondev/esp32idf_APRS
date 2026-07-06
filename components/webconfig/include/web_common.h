@@ -54,4 +54,23 @@ void web_select_option(httpd_req_t *req, int value, const char *label, bool sele
 void web_select_close(httpd_req_t *req);
 void web_raw(httpd_req_t *req, const char *html); // sendstr_chunk passthrough
 
+// ---- APRS symbol picker ------------------------------------------------
+// Renders the same "Station Symbol" control used on the IGate page for any
+// 2-char table+symbol field: a live graphical icon of the symbol currently
+// selected (auto-updates via JS on input), Table + Symbol 1-char inputs, and
+// a link to the /symbol reference page. `sym2` is the 2-byte "<table><code>"
+// value (e.g. g_config.igate_symbol); a NUL / missing byte defaults to '/'
+// and '&'. `name_prefix` is used to build the two input names:
+// "<name_prefix>Table" and "<name_prefix>Code" (e.g. "digiSymbol" ->
+// "digiSymbolTable" / "digiSymbolCode").
+void web_field_symbol(httpd_req_t *req, const char *label, const char *name_prefix, const char *sym2);
+
+// Parses the POST body produced by web_field_symbol back into a 2-char
+// "<table><symbol>" value at out (out_size >= 3). Prefers the split
+// "<name_prefix>Table"/"<name_prefix>Code" fields; falls back to the given
+// legacy combined field name (e.g. "digiSymbol") if neither split field is
+// present, so older/custom form submissions keep working. Leaves *out
+// unchanged if nothing relevant is found in body.
+void web_form_get_symbol(const char *body, const char *name_prefix, const char *legacy_name, char *out, size_t out_size);
+
 #endif

@@ -367,3 +367,74 @@ void web_select_option(httpd_req_t *req, int value, const char *label, bool sele
 void web_select_close(httpd_req_t *req) {
     httpd_resp_sendstr_chunk(req, "</select>");
 }
+
+// ---------------------------------------------------------------- Symbol picker
+void web_field_symbol(httpd_req_t *req, const char *label, const char *name_prefix, const char *sym2) {
+    char table_ch[2] = { (sym2 && sym2[0]) ? sym2[0] : '/', 0 };
+    char sym_ch[2] = { (sym2 && sym2[1]) ? sym2[1] : '&', 0 };
+    int table_num = (table_ch[0] == '\\') ? 2 : 1;
+    int code_num = (int)(unsigned char)sym_ch[0];
+
+    char ids[64];
+    snprintf(ids, sizeof(ids), "%.30sTable", name_prefix);
+    char idc[64];
+    snprintf(idc, sizeof(idc), "%.30sCode", name_prefix);
+
+    char buf[1600];
+    snprintf(buf, sizeof(buf),
+             "<label>%.60s</label>"
+             "<div style='display:flex;gap:6px;align-items:center'>"
+             "<span id='%.30s_icn' style='display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;"
+             "border-radius:6px;background:#dcfce7;overflow:hidden;flex:none'>"
+             "<img id='%.30s_img' src='http://aprs.dprns.com/symbols/icons/%d-%d.png' width=32 height=32 style='display:block' "
+             "onerror=\"this.style.display='none'\">"
+             "</span>"
+             "<span style='font-size:12px;color:var(--sub)'>%.60s:</span>"
+             "<input type='text' id='%.30s' name='%.30s' value='%.4s' maxlength='1' style='width:3em;text-align:center' "
+             "oninput=\"aprsSymUpd('%.30s','%.30s')\">"
+             "<span style='font-size:12px;color:var(--sub)'>%.60s:</span>"
+             "<input type='text' id='%.30s' name='%.30s' value='%.4s' maxlength='1' style='width:3em;text-align:center' "
+             "oninput=\"aprsSymUpd('%.30s','%.30s')\">"
+             "<a href='/symbol' target='_blank' title='%.60s' class='secondary' style='text-decoration:none;padding:4px 8px'>%.60s</a>"
+             "</div>",
+             label, name_prefix, name_prefix, code_num, table_num, TR_F_SYMBOL_TABLE, ids, ids, table_ch, ids, idc,
+             TR_F_SYMBOL_CODE, idc, idc, sym_ch, ids, idc, TR_SYM_PICK_HINT, TR_BTN_PICK_SYMBOL);
+    httpd_resp_sendstr_chunk(req, buf);
+
+    // Tiny helper script: updates the graphical icon live as the user edits
+    // the Table/Code inputs, without waiting for a page reload. Safe to emit
+    // once per field; browsers just redefine the same function identically.
+    static const char *script =
+        "<script>function aprsSymUpd(t,c){"
+        "var tv=(document.getElementById(t).value||'/').charAt(0)||'/';"
+        "var cv=(document.getElementById(c).value||' ').charAt(0)||' ';"
+        "var tn=(tv=='\\\\')?2:1;var cn=cv.charCodeAt(0);"
+        "var pfx=t.slice(0,-5);"
+        "var img=document.getElementById(pfx+'_img');"
+        "if(img){img.style.display='block';img.src='http://aprs.dprns.com/symbols/icons/'+cn+'-'+tn+'.png';}"
+        "}</script>";
+    httpd_resp_sendstr_chunk(req, script);
+}
+
+void web_form_get_symbol(const char *body, const char *name_prefix, const char *legacy_name, char *out, size_t out_size) {
+    if (!out || out_size < 3)
+        return;
+
+    char name_t[40], name_c[40];
+    snprintf(name_t, sizeof(name_t), "%.30sTable", name_prefix);
+    snprintf(name_c, sizeof(name_c), "%.30sCode", name_prefix);
+
+    char t[4] = { 0 }, s[4] = { 0 };
+    bool got_t = web_form_get(body, name_t, t, sizeof(t));
+    bool got_s = web_form_get(body, name_c, s, sizeof(s));
+    if (got_t || got_s) {
+        out[0] = t[0] ? t[0] : '/';
+        out[1] = s[0] ? s[0] : '&';
+        out[2] = 0;
+        return;
+    }
+
+    char legacy[4] = { 0 };
+    if (legacy_name && web_form_get(body, legacy_name, legacy, sizeof(legacy)))
+        web_form_get(body, legacy_name, out, out_size);
+}
