@@ -30,16 +30,23 @@ esp_err_t page_igate_get(httpd_req_t *req) {
 
     // PATH: dropdown - 0 = direct, 1-4 = "-N" shorthand, 5-8 = custom named
     // path presets configured on the System page (g_config.path[0..3]).
+    // Every option carries a short trailing explanation (" - ...") so the
+    // user understands what each choice actually does, not just its code.
     web_select_open(req, TR_F_PATH, "igatePath");
-    web_select_option(req, 0, TR_PATH_DIRECT, g_config.igate_path == 0);
+    {
+        char lbl[160];
+        snprintf(lbl, sizeof(lbl), "%.60s - %.90s", TR_PATH_DIRECT, TR_PATH_DIRECT_HINT);
+        web_select_option(req, 0, lbl, g_config.igate_path == 0);
+    }
     for (int n = 1; n <= 4; n++) {
-        char lbl[16];
-        snprintf(lbl, sizeof(lbl), "-%d", n);
+        char lbl[160];
+        snprintf(lbl, sizeof(lbl), "-%d - %d %.90s", n, n, TR_PATH_HOP_HINT);
         web_select_option(req, n, lbl, g_config.igate_path == n);
     }
     for (int i = 0; i < 4; i++) {
-        char lbl[96];
-        snprintf(lbl, sizeof(lbl), "DST-TRACE %d: %s", i + 1, g_config.path[i][0] ? g_config.path[i] : TR_PATH_CUSTOM_UNSET);
+        char lbl[220];
+        snprintf(lbl, sizeof(lbl), "DST-TRACE %d: %.60s - %.90s", i + 1, g_config.path[i][0] ? g_config.path[i] : TR_PATH_CUSTOM_UNSET,
+                 TR_PATH_CUSTOM_HINT);
         web_select_option(req, 5 + i, lbl, g_config.igate_path == (uint8_t)(5 + i));
     }
     web_select_close(req);

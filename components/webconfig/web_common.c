@@ -359,8 +359,8 @@ void web_select_open(httpd_req_t *req, const char *label, const char *name) {
 }
 
 void web_select_option(httpd_req_t *req, int value, const char *label, bool selected) {
-    char buf[220];
-    snprintf(buf, sizeof(buf), "<option value='%d' %s>%.80s</option>", value, selected ? "selected" : "", label);
+    char buf[400];
+    snprintf(buf, sizeof(buf), "<option value='%d' %s>%.300s</option>", value, selected ? "selected" : "", label);
     httpd_resp_sendstr_chunk(req, buf);
 }
 
