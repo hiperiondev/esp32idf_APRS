@@ -29,7 +29,26 @@ static uint8_t s_dupCacheIndex = 0;
 
 static int s_sock = -1;
 static SemaphoreHandle_t s_sockMutex;
+static portMUX_TYPE s_sockMutexInitLock = portMUX_INITIALIZER_UNLOCKED;
 static TaskHandle_t s_task;
+
+// s_sockMutex used to be created only in igate_start(), i.e. only when the
+// IGate itself is enabled. But sendToAprsIs()/igate_send_raw() is also
+// reachable from the Digipeater beacon task whenever digi_loc2inet is on,
+// independent of igate_en. If the IGate was never started, that path took
+// xSemaphoreTake() on a NULL handle and hit the FreeRTOS "pxQueue" assert.
+// This helper makes mutex creation idempotent and safe to call from any
+// task, the first time any of them needs it - a portMUX critical section
+// (not the mutex itself, which doesn't exist yet) protects the one-time
+// creation against a race between concurrent first callers.
+static void ensureSockMutex(void) {
+    if (s_sockMutex)
+        return;
+    portENTER_CRITICAL(&s_sockMutexInitLock);
+    if (!s_sockMutex)
+        s_sockMutex = xSemaphoreCreateMutex();
+    portEXIT_CRITICAL(&s_sockMutexInitLock);
+}
 static volatile bool s_running;
 
 // Extracts the source callsign (everything before '>') from a TNC2 text
@@ -57,7 +76,8 @@ void igate_reset_stats(void) {
 
 bool igate_is_connected(void) {
     bool connected = false;
-    if (s_sockMutex && xSemaphoreTake(s_sockMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+    ensureSockMutex();
+    if (xSemaphoreTake(s_sockMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
         connected = (s_sock >= 0);
         xSemaphoreGive(s_sockMutex);
     }
@@ -111,6 +131,7 @@ bool isDuplicatePacket(AX25Msg *packet) {
 // ---------------------------------------------------------------------------
 static bool sendToAprsIs(const uint8_t *data, size_t len) {
     bool ok = false;
+    ensureSockMutex();
     xSemaphoreTake(s_sockMutex, portMAX_DELAY);
     if (s_sock >= 0) {
         if (send(s_sock, data, len, 0) == (ssize_t)len && send(s_sock, "\r\n", 2, 0) == 2) {
@@ -255,6 +276,7 @@ void igate_set_inet2rf_handler(void (*handler)(const char *line)) {
 }
 
 static void closeSocket(void) {
+    ensureSockMutex();
     xSemaphoreTake(s_sockMutex, portMAX_DELAY);
     if (s_sock >= 0) {
         close(s_sock);
@@ -302,6 +324,7 @@ static bool connectAprsIs(void) {
         return false;
     }
 
+    ensureSockMutex();
     xSemaphoreTake(s_sockMutex, portMAX_DELAY);
     s_sock = sock;
     xSemaphoreGive(s_sockMutex);
@@ -310,13 +333,28 @@ static bool connectAprsIs(void) {
     return true;
 }
 
+// The APRS-IS TCP uplink is a single shared resource used not only by the
+// IGate itself (rf2inet/inet2rf) but also by the Digipeater's "beacon to
+// internet" option and by outbound messages sent over the internet channel.
+// Previously the uplink task only ran when igate_en was on, and was only
+// ever started once at boot based on whatever igate_en happened to be at
+// that moment - so enabling digi_loc2inet (or msg_inet) with IGate itself
+// left disabled meant this task never existed, the socket was never
+// connected, and every send silently failed forever. Likewise, toggling
+// igate_en via the web UI and saving had no effect until reboot, since
+// nothing re-evaluated it at runtime. Gating on this helper instead makes
+// the uplink come up/go down live, from a task that's always running.
+static bool igateUplinkNeeded(void) {
+    return g_config.igate_en || g_config.digi_loc2inet || g_config.msg_inet;
+}
+
 static void igateTask(void *arg) {
     char line[512];
     size_t linePos = 0;
     bool waitingLogged = false;
 
     while (s_running) {
-        if (!g_config.igate_en) {
+        if (!igateUplinkNeeded()) {
             closeSocket();
             waitingLogged = false;
             vTaskDelay(pdMS_TO_TICKS(2000));
@@ -414,8 +452,7 @@ static void igateTask(void *arg) {
 void igate_start(void) {
     if (s_task != NULL)
         return; // already running
-    if (!s_sockMutex)
-        s_sockMutex = xSemaphoreCreateMutex();
+    ensureSockMutex();
     s_running = true;
     xTaskCreate(igateTask, "igate_task", 6144, NULL, 5, &s_task);
 }

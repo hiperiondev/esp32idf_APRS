@@ -70,6 +70,17 @@
 #define ACTIVATE_STATUS    (1 << 6)
 #define ACTIVATE_WIFI      (1 << 7)
 
+// IGATE [Filter] section bit flags - shared meaning for rf2inetFilter / inet2rfFilter
+#define IGATE_FILT_MESSAGE   (1 << 0)
+#define IGATE_FILT_STATUS    (1 << 1)
+#define IGATE_FILT_TELEMETRY (1 << 2)
+#define IGATE_FILT_WEATHER   (1 << 3)
+#define IGATE_FILT_OBJECT    (1 << 4)
+#define IGATE_FILT_ITEM      (1 << 5)
+#define IGATE_FILT_QUERY     (1 << 6)
+#define IGATE_FILT_BUOY      (1 << 7)
+#define IGATE_FILT_POSITION  (1 << 8)
+
 // RF module types
 #define RF_SX1231 1
 #define RF_SX1233 2
@@ -179,6 +190,13 @@ typedef struct {
     char igate_comment[COMMENT_SIZE];
     uint16_t igate_sts_interval;
     char igate_status[STATUS_SIZE];
+    // PHG sub-fields (Radio TX Power/Antenna Gain/Height/Direction) used to
+    // compute igate_phg client-side; persisted so the web form can redisplay
+    // the same selections/PHG text after a reload.
+    uint16_t igate_phg_power;  // Watts
+    float igate_phg_gain;      // dBi
+    uint16_t igate_phg_height; // Feet
+    uint8_t igate_phg_dir;     // 0=Omni, 1-8 = N,NE,E,SE,S,SW,W,NW
 
     // DIGI REPEATER
     bool digi_en;

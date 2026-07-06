@@ -78,6 +78,13 @@ void app_config_set_defaults(app_config_t *c) {
     c->igate_path = ACTIVATE_IGATE;
     set_str(c->igate_comment, sizeof(c->igate_comment), "ESP32APRS IGate");
     c->igate_sts_interval = 0;
+    c->igate_phg_power = 1;
+    c->igate_phg_gain = 6.0f;
+    c->igate_phg_height = 10;
+    c->igate_phg_dir = 0;
+    c->rf2inetFilter = IGATE_FILT_MESSAGE | IGATE_FILT_STATUS | IGATE_FILT_TELEMETRY | IGATE_FILT_WEATHER | IGATE_FILT_OBJECT | IGATE_FILT_ITEM |
+                       IGATE_FILT_QUERY | IGATE_FILT_BUOY | IGATE_FILT_POSITION;
+    c->inet2rfFilter = IGATE_FILT_MESSAGE;
 
     // DIGI
     c->digi_en = false;
@@ -356,6 +363,11 @@ static cJSON *config_to_json(const app_config_t *c) {
     jadd_str(d, "igateComment", c->igate_comment);
     jadd_num(d, "igateSTSIntv", c->igate_sts_interval);
     jadd_str(d, "igateStatus", c->igate_status);
+    jadd_bool(d, "igateTimestamp", c->igate_timestamp);
+    jadd_num(d, "igatePHGPower", c->igate_phg_power);
+    jadd_num(d, "igatePHGGain", c->igate_phg_gain);
+    jadd_num(d, "igatePHGHeight", c->igate_phg_height);
+    jadd_num(d, "igatePHGDir", c->igate_phg_dir);
     {
         cJSON *a1 = cJSON_CreateArray(), *a2 = cJSON_CreateArray(), *a3 = cJSON_CreateArray(), *a4 = cJSON_CreateArray(), *a5 = cJSON_CreateArray(),
               *a6 = cJSON_CreateArray(), *a7 = cJSON_CreateArray();
@@ -823,6 +835,11 @@ static void config_from_json(cJSON *d, app_config_t *c) {
     set_str(c->igate_phg, sizeof(c->igate_phg), jget_str(d, "igatePHG", def.igate_phg));
     c->igate_path = (uint8_t)jget_num(d, "igatePath", def.igate_path);
     set_str(c->igate_comment, sizeof(c->igate_comment), jget_str(d, "igateComment", def.igate_comment));
+    c->igate_timestamp = jget_bool(d, "igateTimestamp", def.igate_timestamp);
+    c->igate_phg_power = (uint16_t)jget_num(d, "igatePHGPower", def.igate_phg_power);
+    c->igate_phg_gain = (float)jget_num(d, "igatePHGGain", def.igate_phg_gain);
+    c->igate_phg_height = (uint16_t)jget_num(d, "igatePHGHeight", def.igate_phg_height);
+    c->igate_phg_dir = (uint8_t)jget_num(d, "igatePHGDir", def.igate_phg_dir);
     c->igate_sts_interval = (uint16_t)jget_num(d, "igateSTSIntv", def.igate_sts_interval);
     set_str(c->igate_status, sizeof(c->igate_status), jget_str(d, "igateStatus", def.igate_status));
     {

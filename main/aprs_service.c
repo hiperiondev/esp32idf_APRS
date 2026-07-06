@@ -192,8 +192,11 @@ void aprs_service_start(void) {
     message_set_tx_handler(messageTxHandler);
     igate_set_inet2rf_handler(inet2rfHandler);
 
-    if (g_config.igate_en)
-        igate_start();
+    // Always start the uplink task: it now idles itself (socket closed,
+    // fast retry loop) whenever nothing needs APRS-IS, and comes up as soon
+    // as igate_en, digi_loc2inet, or msg_inet is turned on - including via
+    // a runtime web UI save, with no reboot required.
+    igate_start();
 
     beacon_start();
 
