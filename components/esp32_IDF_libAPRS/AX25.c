@@ -1100,17 +1100,30 @@ void Ax25BitParse(uint8_t bit, uint8_t modem, uint16_t mV) {
                 convPath(&frame->header[0], &txt[p2 + 1], j - p2 - 1); // Get callsign dest
 
                 p3 = 0;
-                if ((j > p2) && (j < p)) {       // Check PATH
-                    for (i = j; i < size; i++) { // copy path to origin
-                        if (txt[i] == ':') {
-                            for (; i < size; i++)
-                                txt[p3++] = 0x00;
+                if ((j > p2) && (j < p)) {                 // Check PATH
+                    // NOTE: this used to copy the path substring "to origin"
+                    // - i.e. in place starting at txt[0], destroying the
+                    // caller's original buffer from the very first byte.
+                    // Callers (e.g. beacon.c's trackerBeaconTask) pass their
+                    // own packet buffer here and legitimately keep reading it
+                    // afterward (to log it, or to forward it to APRS-IS via
+                    // igate_send_raw()), so clobbering it here corrupted
+                    // every beacon that actually had a non-empty digipeater
+                    // path - the destination/callsign/info got overwritten
+                    // and only the tail end of the path string survived
+                    // (e.g. "LU3VEA-9>APE32L,WIDE1-1,WIDE2-1:..." came out as
+                    // just ",WIDE1-1" once this ran). Extract into a local
+                    // scratch buffer instead so txt/packet is left untouched.
+                    char pathBuf[128];
+                    p3 = 0;
+                    for (i = j; i < size && p3 < (int)sizeof(pathBuf) - 1; i++) {
+                        if (txt[i] == ':')
                             break;
-                        }
-                        txt[p3++] = txt[i];
+                        pathBuf[p3++] = txt[i];
                     }
-                    // printf("Path:%s\r\n",txt);
-                    token = strtok(txt, ",");
+                    pathBuf[p3] = 0;
+                    // printf("Path:%s\r\n",pathBuf);
+                    token = strtok(pathBuf, ",");
                     j = 0;
                     while (token != NULL) {
                         ptr = token;

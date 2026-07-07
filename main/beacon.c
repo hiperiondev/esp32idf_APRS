@@ -169,6 +169,7 @@ static void trackerBeaconTask(void *arg) {
             if (g_config.trk_loc2inet)
                 igate_send_raw(packet, (size_t)len);
             ESP_LOGI(TAG, "Tracker beacon TX: %s", packet);
+            ESP_LOGD(TAG, "trk_beacon_task stack free: %u bytes", (unsigned)(uxTaskGetStackHighWaterMark(NULL) * sizeof(StackType_t)));
         } else {
             ESP_LOGW(TAG, "Tracker beacon enabled but no callsign configured (set Tracker or APRS callsign) - skipping");
         }
@@ -208,6 +209,7 @@ static void igateBeaconTask(void *arg) {
             if (g_config.igate_loc2inet)
                 igate_send_raw(packet, (size_t)len);
             ESP_LOGI(TAG, "IGate beacon TX: %s", packet);
+            ESP_LOGD(TAG, "igate_beacon_task stack free: %u bytes", (unsigned)(uxTaskGetStackHighWaterMark(NULL) * sizeof(StackType_t)));
         } else {
             ESP_LOGW(TAG, "IGate beacon enabled but no APRS callsign configured - skipping");
         }
@@ -250,6 +252,7 @@ static void digiBeaconTask(void *arg) {
             if (g_config.digi_loc2inet)
                 igate_send_raw(packet, (size_t)len);
             ESP_LOGI(TAG, "Digipeater beacon TX: %s", packet);
+            ESP_LOGD(TAG, "digi_beacon_task stack free: %u bytes", (unsigned)(uxTaskGetStackHighWaterMark(NULL) * sizeof(StackType_t)));
         } else {
             ESP_LOGW(TAG, "Digipeater beacon enabled but no callsign configured (set Digipeater or APRS callsign) - skipping");
         }
@@ -258,16 +261,37 @@ static void digiBeaconTask(void *arg) {
     }
 }
 
+// Stack size note: buildPositionPacket()'s call chain does several
+// snprintf()s, including float formatting in latLonToAprs() (%05.2f).
+// Newlib's float-capable *printf pulls in a noticeably deeper call tree
+// than integer-only formatting, and buildPathSuffix() adds one *more*
+// snprintf on top of that whenever a non-empty path preset is selected
+// (trk_path=1 in this config selects "WIDE1-1,WIDE2-1", while the digi/igate
+// path bits happen to point at empty preset slots and skip that extra
+// call entirely). That's exactly why only the tracker beacon corrupts in
+// practice - it's the one task whose call depth actually reaches that
+// additional snprintf. 6144 bytes was "usually enough" but left too little
+// headroom for that combined call tree, silently overrunning the stack and
+// corrupting/zeroing nearby locals so only a trailing substring (e.g. just
+// the path suffix) of the packet survived - which is exactly the ",WIDE1-1"
+// truncation seen in the field. Bumped up with real margin on all three
+// tasks, since the corruption is a function of *what gets configured*
+// (which path bits are set, comment/altitude present, etc.), not which
+// specific task it is - so all three need the same safety margin, not just
+// tracker. Also logging each task's watermark so a tight stack shows up in
+// the logs instead of as a mysteriously truncated packet.
+#define BEACON_TASK_STACK_WORDS 10240
+
 void beacon_start(void) {
-    xTaskCreate(trackerBeaconTask, "trk_beacon_task", 4096, NULL, 4, NULL);
+    xTaskCreate(trackerBeaconTask, "trk_beacon_task", BEACON_TASK_STACK_WORDS, NULL, 4, NULL);
     ESP_LOGI(TAG, "Tracker beacon task started (en=%d rf=%d inet=%d interval=%us)", g_config.trk_en, g_config.trk_loc2rf,
              g_config.trk_loc2inet, (unsigned)g_config.trk_interval);
 
-    xTaskCreate(igateBeaconTask, "igate_beacon_task", 4096, NULL, 4, NULL);
+    xTaskCreate(igateBeaconTask, "igate_beacon_task", BEACON_TASK_STACK_WORDS, NULL, 4, NULL);
     ESP_LOGI(TAG, "IGate beacon task started (en=%d bcn=%d rf=%d inet=%d interval=%us)", g_config.igate_en, g_config.igate_bcn,
              g_config.igate_loc2rf, g_config.igate_loc2inet, (unsigned)g_config.igate_interval);
 
-    xTaskCreate(digiBeaconTask, "digi_beacon_task", 4096, NULL, 4, NULL);
+    xTaskCreate(digiBeaconTask, "digi_beacon_task", BEACON_TASK_STACK_WORDS, NULL, 4, NULL);
     ESP_LOGI(TAG, "Digipeater beacon task started (en=%d bcn=%d rf=%d inet=%d interval=%us)", g_config.digi_en, g_config.digi_bcn,
              g_config.digi_loc2rf, g_config.digi_loc2inet, (unsigned)g_config.digi_interval);
 }
