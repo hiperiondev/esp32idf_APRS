@@ -38,6 +38,7 @@ esp_err_t page_radio_get(httpd_req_t *req) {
 #endif
 
     web_fieldset_open(req, TR_F_AUDIO_AFSK);
+    web_field_checkbox(req, TR_F_ENABLE_AUDIO_MODEM, "audioModemEn", g_config.audio_modem_en);
     web_field_int(req, TR_F_SQUELCH_LEVEL, "rfSql", g_config.sql_level);
     web_field_int(req, TR_F_VOLUME, "rfVolume", g_config.volume);
     web_field_checkbox(req, TR_F_RF_POWER_BOOST, "rfPwr", g_config.rf_power);
@@ -76,6 +77,7 @@ esp_err_t page_radio_post(httpd_req_t *req) {
     g_config.rf_en = false;
 #endif
 
+    g_config.audio_modem_en = web_form_get_bool(body, "audioModemEn");
     g_config.sql_level = (uint8_t)web_form_get_int(body, "rfSql", g_config.sql_level);
     g_config.volume = (uint8_t)web_form_get_int(body, "rfVolume", g_config.volume);
     g_config.rf_power = web_form_get_bool(body, "rfPwr");

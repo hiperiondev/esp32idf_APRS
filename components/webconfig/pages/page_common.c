@@ -77,22 +77,28 @@ esp_err_t page_dashboard(httpd_req_t *req) {
                       g_config.freq_tx, g_config.freq_rx, g_config.rf_power ? TR_DASH_TX_PWR_HIGH : TR_DASH_TX_PWR_LOW);
     }
     const char *modemName = TR_F_OFF;
-    switch (g_config.modem_type) {
-        case RF_MODE_LoRa:
-            modemName = "LoRa";
-            break;
-        case RF_MODE_G3RUH:
-            modemName = "AFSK/G3RUH";
-            break;
-        case RF_MODE_GFSK:
-            modemName = "GFSK";
-            break;
-        case RF_MODE_DPRS:
-            modemName = "D-PRS";
-            break;
-        default:
-            modemName = TR_F_OFF;
-            break;
+    if (g_config.rf_en) {
+        switch (g_config.modem_type) {
+            case RF_MODE_LoRa:
+                modemName = "LoRa";
+                break;
+            case RF_MODE_G3RUH:
+                modemName = "AFSK/G3RUH";
+                break;
+            case RF_MODE_GFSK:
+                modemName = "GFSK";
+                break;
+            case RF_MODE_DPRS:
+                modemName = "D-PRS";
+                break;
+            default:
+                modemName = TR_F_OFF;
+                break;
+        }
+    } else {
+        // No RF module in use: MODEM status reflects the audio ADC/DAC AFSK
+        // modem enable state set on the Radio / Modem (Audio / AFSK) page.
+        modemName = g_config.audio_modem_en ? "AFSK (Audio)" : TR_F_OFF;
     }
     n += snprintf(buf + n, sizeof(buf) - n,
                   "<tr><td>" TR_DASH_MODEM "</td><td>%s</td></tr>"

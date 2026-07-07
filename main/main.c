@@ -181,7 +181,13 @@ static void app_task(void *arg) {
         .preamble = g_config.preamble,
         .fx25_mode = g_config.fx25_mode,
     };
-    APRS_init(&modem_cfg);
+    // Only bring up the audio ADC/DAC AFSK modem hardware when it's enabled
+    // on the Radio / Modem (Audio / AFSK) webconfig page.
+    if (g_config.audio_modem_en) {
+        APRS_init(&modem_cfg);
+    } else {
+        ESP_LOGI(TAG, "Audio ADC/DAC AFSK modem disabled in config - skipping APRS_init()");
+    }
     APRS_setCallsign(g_config.aprs_mycall, g_config.aprs_ssid);
     aprs_service_start();
 

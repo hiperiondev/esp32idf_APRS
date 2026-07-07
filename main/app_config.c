@@ -147,6 +147,7 @@ void app_config_set_defaults(app_config_t *c) {
     c->disp_brightness = 255;
 
     // AFSK / TNC
+    c->audio_modem_en = true;
     c->audio_hpf = false;
     c->audio_lpf = true;
     c->preamble = 300;
@@ -335,6 +336,7 @@ static cJSON *config_to_json(const app_config_t *c) {
     jadd_num(d, "rfVolume", c->volume);
     jadd_num(d, "rfBand", c->band);
     jadd_bool(d, "rfPwr", c->rf_power);
+    jadd_bool(d, "audioModemEn", c->audio_modem_en);
     jadd_bool(d, "audioLPF", c->audio_lpf);
 
     jadd_bool(d, "igateEn", c->igate_en);
@@ -812,6 +814,7 @@ static void config_from_json(cJSON *d, app_config_t *c) {
     c->sql_level = (uint8_t)jget_num(d, "rfSql", def.sql_level);
     c->volume = (uint8_t)jget_num(d, "rfVolume", def.volume);
     c->band = (uint8_t)jget_num(d, "rfBand", def.band);
+    c->audio_modem_en = jget_bool(d, "audioModemEn", def.audio_modem_en);
     c->audio_lpf = jget_bool(d, "audioLPF", def.audio_lpf);
 
     c->igate_en = jget_bool(d, "igateEn", def.igate_en);

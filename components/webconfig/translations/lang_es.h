@@ -80,6 +80,7 @@
 #define TR_F_APRS_PASSCODE                                  "Código de acceso APRS-IS"
 #define TR_F_APRS_SYMBOLS                                  "Símbolos APRS"
 #define TR_F_AUDIO_AFSK                                    "Audio / AFSK"
+#define TR_F_ENABLE_AUDIO_MODEM                            "Activar módem ADC/DAC de audio"
 #define TR_F_AUDIO_LOW_PASS_FILTER                         "Filtro paso bajo de audio"
 #define TR_F_AUTO_WIDEN_N                                  "Automático (WIDEn-N)"
 #define TR_F_AVERAGE_RATE_S                                "Tasa promedio (s)"

@@ -336,6 +336,7 @@ typedef struct {
     uint8_t disp_brightness;
 
     // AFSK / TNC
+    bool audio_modem_en; // Enable the audio ADC/DAC AFSK modem
     bool audio_hpf;
     bool audio_lpf;
     uint16_t preamble;

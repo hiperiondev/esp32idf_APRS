@@ -79,6 +79,7 @@
 #define TR_F_APRS_PASSCODE                                  "APRS-IS Passcode"
 #define TR_F_APRS_SYMBOLS                                  "APRS Symbols"
 #define TR_F_AUDIO_AFSK                                    "Audio / AFSK"
+#define TR_F_ENABLE_AUDIO_MODEM                            "Enable audio ADC/DAC modem"
 #define TR_F_AUDIO_LOW_PASS_FILTER                         "Audio low-pass filter"
 #define TR_F_AUTO_WIDEN_N                                  "Auto (WIDEn-N)"
 #define TR_F_AVERAGE_RATE_S                                "Average rate (s)"
