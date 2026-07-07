@@ -177,6 +177,17 @@ static void messageTxHandler(const char *packet, size_t len, uint8_t channels) {
         igate_send_raw(packet, len);
 }
 
+// AFSK_Poll() pulls samples out of the ADC ring buffer and feeds them to the
+// demodulator/HDLC bit parser, and also drives the DAC-ISR TX bit clock
+// indirectly. It must be called frequently (every few ms) or RX demodulation
+// and TX framing never execute even though the modem hardware is running.
+static void afskPollTask(void *arg) {
+    while (1) {
+        AFSK_Poll(false, g_config.rf_power);
+        vTaskDelay(pdMS_TO_TICKS(2));
+    }
+}
+
 static void serviceTickTask(void *arg) {
     while (1) {
         if (g_config.msg_enable)
@@ -200,6 +211,9 @@ void aprs_service_start(void) {
 
     beacon_start();
 
+    // Higher priority than the 1s housekeeping tick below: this one is
+    // timing-sensitive (AFSK bit/sample timing depends on it running often).
+    xTaskCreate(afskPollTask, "afsk_poll", 3072, NULL, 6, NULL);
     xTaskCreate(serviceTickTask, "aprs_svc_tick", 3072, NULL, 4, NULL);
 
     ESP_LOGI(TAG, "APRS service started (digi=%d igate=%d msg=%d)", g_config.digi_en, g_config.igate_en, g_config.msg_enable);

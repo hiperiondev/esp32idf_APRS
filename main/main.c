@@ -31,12 +31,34 @@ static const char *TAG = "main";
 #define APP_TASK_STACK_SIZE 8192
 #define APP_TASK_PRIORITY   5
 
+// Consecutive-disconnect counter used to back off reconnect attempts below.
+// Reset to 0 as soon as we get a real IP (see ip_event_handler).
+static uint8_t s_disconnectStreak = 0;
+#define RECONNECT_BACKOFF_STEP_MS 500  // grows by this much per consecutive failure
+#define RECONNECT_BACKOFF_MAX_MS  8000 // ...up to this ceiling
+
 static void wifi_event_handler(void *arg, esp_event_base_t base, int32_t id, void *data) {
     if (base == WIFI_EVENT && id == WIFI_EVENT_STA_DISCONNECTED) {
-        ESP_LOGW(TAG, "STA disconnected, retrying...");
         // No AP link -> definitely no internet route until we reconnect AND
         // get a fresh IP (see ip_event_handler below).
         net_state_set_connected(false);
+
+        // Back off before retrying: an AP that's out of range, has a wrong
+        // password, or is momentarily down otherwise causes an immediate
+        // disconnect -> esp_wifi_connect() -> immediate disconnect loop with
+        // zero delay, which pins whatever core hosts the event-loop task and
+        // starves its idle task (task watchdog trips). Growing the delay a
+        // little on each consecutive failure (capped) keeps retries prompt
+        // on transient blips while giving up CPU time between attempts.
+        uint32_t backoffMs = (uint32_t)s_disconnectStreak * RECONNECT_BACKOFF_STEP_MS;
+        if (backoffMs > RECONNECT_BACKOFF_MAX_MS)
+            backoffMs = RECONNECT_BACKOFF_MAX_MS;
+        if (s_disconnectStreak < 255)
+            s_disconnectStreak++;
+
+        ESP_LOGW(TAG, "STA disconnected, retrying in %u ms...", (unsigned)backoffMs);
+        if (backoffMs > 0)
+            vTaskDelay(pdMS_TO_TICKS(backoffMs));
         esp_wifi_connect();
     } else if (base == WIFI_EVENT && id == WIFI_EVENT_AP_STACONNECTED) {
         ESP_LOGI(TAG, "Client connected to AP");
@@ -52,6 +74,7 @@ static void ip_event_handler(void *arg, esp_event_base_t base, int32_t id, void 
         ip_event_got_ip_t *event = (ip_event_got_ip_t *)data;
         ESP_LOGI(TAG, "STA got IP: " IPSTR " - internet route available", IP2STR(&event->ip_info.ip));
         net_state_set_connected(true);
+        s_disconnectStreak = 0;
     }
 }
 
@@ -133,12 +156,32 @@ static void app_task(void *arg) {
     net_state_init();
 
     wifi_init();
+    // Yield here: wifi_init() leaves association/DHCP settling on this core,
+    // and without a delay app_task can hog the CPU long enough (esp. AP+STA
+    // mode) that IDLE1 never runs and the task watchdog fires a false alarm.
+    vTaskDelay(pdMS_TO_TICKS(10));
     time_sync_start();
     web_server_start();
 
     // Bring up the AFSK/AX.25 modem + callsign/path settings from g_config,
     // then start the digipeater/igate/message application layer (aprs_service.c).
-    APRS_init();
+    aprs_modem_config_t modem_cfg = {
+        .adc_pin = g_config.adc_gpio,
+        .dac_pin = g_config.dac_gpio,
+        .ptt_pin = g_config.rf_ptt_gpio,
+        .sql_pin = g_config.rf_sql_gpio,
+        .pwr_pin = g_config.rf_pwr_gpio,
+        .ptt_active = g_config.rf_ptt_active,
+        .sql_active = g_config.rf_sql_active,
+        .pwr_active = g_config.rf_pwr_active,
+        .adc_atten = g_config.adc_atten,
+        .modem_type = g_config.modem_type,
+        .bpf = g_config.audio_lpf,
+        .tx_timeslot = g_config.tx_timeslot,
+        .preamble = g_config.preamble,
+        .fx25_mode = g_config.fx25_mode,
+    };
+    APRS_init(&modem_cfg);
     APRS_setCallsign(g_config.aprs_mycall, g_config.aprs_ssid);
     aprs_service_start();
 

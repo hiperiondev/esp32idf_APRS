@@ -9,8 +9,22 @@
 #ifdef CONFIG_IDF_TARGET_ESP32
 #include "hal/adc_hal.h"
 #include "hal/adc_hal_common.h"
-#define ADC_SAMPLE
+// NOTE: ADC_SAMPLE (legacy gptimer + adc_oneshot_read_isr() sampling path,
+// further down in this file) is intentionally NOT enabled here anymore.
+// adc_oneshot_read()/adc_oneshot_read_isr()'s internal busy-poll for the
+// ADC1 conversion-done flag has been observed to never return on this
+// board/IDF combo - first as a Guru Meditation "Interrupt wdt timeout on
+// CPU0" (stuck inside the ISR variant with interrupts masked), and again as
+// a silent, non-crashing infinite loop on CPU1 once the same call was tried
+// from task context as a "warm-up". Both are the same underlying hang, just
+// reached via different call sites - the fix is to not use the oneshot ADC
+// polling path at all, not to keep working around its blocking behavior.
+// The adc_continuous (DMA/event-driven) path below already has explicit
+// CONFIG_IDF_TARGET_ESP32 handling (see adc_continue_init() and
+// s_conv_done_cb), so classic ESP32 now shares the same, non-blocking
+// sampling path as every other supported target.
 #endif
+
 // #include "cppQueue.h"
 #include "fir_filter.h"
 
@@ -92,7 +106,7 @@ uint16_t SAMPLERATE = 38400;
 // Resampling configuration
 #define INPUT_RATE  38400
 #define OUTPUT_RATE 9600
-uint16_t RESAMPLE_RATIO = (INPUT_RATE / OUTPUT_RATE); // 38400/9600 = 3
+uint16_t RESAMPLE_RATIO = (INPUT_RATE / OUTPUT_RATE); // 38400/9600 = 4
 uint16_t BLOCK_SIZE = (INPUT_RATE / 50);              // Must be multiple of resample ratio
 float *audio_buffer = NULL;
 
@@ -637,7 +651,7 @@ void IRAM_ATTR sample_adc_isr() {
         fifo.lock = true;
         // digitalWrite(15,HIGH);
         portENTER_CRITICAL_ISR(&timerMux); // ISR start
-        int16_t adc = analogReadMilliVolts(adc_pins[0]);
+        int16_t adc = analogReadMilliVoltsISR(adc_pins[0]);
 
         // RingBuffer_Push(&fifo, adc);
         // if(fifo.head >= BUFFER_SIZE || fifo.head < 0) fifo.head = 0; // Check if head exceeds buffer size
@@ -1132,14 +1146,16 @@ void AFSK_hw_init(void) {
 #else
 
 #ifdef ADC_SAMPLE
+    // Legacy gptimer + adc_oneshot_read_isr() sampling path - no longer
+    // enabled for any target (see the ADC_SAMPLE comment near the top of
+    // this file for why). Left only so this branch still compiles if
+    // something re-defines ADC_SAMPLE in the future; adc_continue_init()
+    // in the #else branch below is the live code path on every target.
     pinMode(15, OUTPUT);
     analogReadResolution(12);
     analogSetPinAttenuation(adc_pins[0], cfg_adc_atten);
     timer_adc = timerBegin(20000000);
-    // Attach onTimer function to our timer.
-    timerAttachInterrupt(timer_adc, &sample_adc_isr); // Attaches the handler function to the timer
-    // Set alarm to call onTimer function every second (value in microseconds).
-    // Repeat the alarm (third parameter) with unlimited count = 0 (fourth parameter).
+    timerAttachInterrupt(timer_adc, &sample_adc_isr);
     timerAlarm(timer_adc, (uint64_t)20000000 / SAMPLERATE, true, 0);
     timerStart(timer_adc);
 
@@ -1346,8 +1362,8 @@ void IRAM_ATTR sample_dac_isr() {
     }
 }
 
-extern int mVrms;
-extern float dBV;
+int mVrms;
+float dBV;
 
 long mVsum = 0;
 int mVsumCount = 0;
@@ -1531,7 +1547,22 @@ void AFSK_Poll(bool SA818, bool RFPower) {
             //               free(resultADC);
             //       }
             // while (adcq.getCount() >= BLOCK_SIZE)
+            // Bounded by BUFFER_SIZE/BLOCK_SIZE in practice, but guard it
+            // explicitly and yield between blocks: this task runs at the
+            // highest priority in the app (see afskPollTask), so draining a
+            // large backlog here with no yield point would starve
+            // lower-priority tasks - including the idle task - long enough
+            // to trip the task watchdog.
+            int drainGuard = 0;
             while (RingBuffer_Size(&fifo) >= BLOCK_SIZE) {
+                if (++drainGuard > 32) {
+                    ESP_LOGW(TAG_AFSK, "AFSK_Poll: fifo backlog exceeds sane bound, deferring rest to next poll");
+                    break;
+                }
+                // taskYIELD() only lets same/higher-priority tasks run;
+                // this task runs at the app's highest priority, so a real
+                // vTaskDelay is needed to actually hand time back to idle.
+                vTaskDelay(1);
                 // digitalWrite(15, HIGH);
 
                 mVsum = 0;

@@ -204,17 +204,29 @@ static int pkgMsgUpdate(const char *call, const char *text, uint16_t msgID, int8
     return i;
 }
 
-// Builds the ",-N" or ",<literal path>" suffix used after the destination.
+// g_config.msg_path is a BITMASK over g_config.path[0..3] (TR_F_PATH_BITMASK
+// on the Message webconfig page) - see beacon.c's buildPathSuffix() for the
+// full rationale. Kept in sync with that implementation.
 static void buildPathSuffix(char *out, size_t outMax) {
     out[0] = 0;
-    if (g_config.msg_path == 0)
+    if (g_config.msg_path == 0 || outMax == 0)
         return;
-    if (g_config.msg_path < 5) {
-        snprintf(out, outMax, "-%d", g_config.msg_path);
-    } else {
-        int pidx = g_config.msg_path - 5;
-        if (pidx >= 0 && pidx < 4 && g_config.path[pidx][0])
-            snprintf(out, outMax, ",%s", g_config.path[pidx]);
+
+    size_t used = 0;
+    for (int bit = 0; bit < 4; bit++) {
+        if (!(g_config.msg_path & (1 << bit)))
+            continue;
+        if (!g_config.path[bit][0])
+            continue;
+
+        int n = snprintf(out + used, outMax - used, ",%s", g_config.path[bit]);
+        if (n < 0)
+            break;
+        if ((size_t)n >= outMax - used) {
+            used = outMax - 1;
+            break;
+        }
+        used += (size_t)n;
     }
 }
 

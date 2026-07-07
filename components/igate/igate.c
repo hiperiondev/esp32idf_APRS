@@ -319,9 +319,31 @@ static bool connectAprsIs(void) {
     char login[160];
     int n = snprintf(login, sizeof(login), "user %s pass %s vers ESP32APRS 1.0 filter %s\r\n", g_config.aprs_mycall, g_config.aprs_passcode,
                      g_config.aprs_filter[0] ? g_config.aprs_filter : "");
+    // Log exactly what we're sending (minus the trailing \r\n) so a bad
+    // filter string (e.g. wrong filter letter, malformed args) is visible
+    // in the logs instead of silently resulting in zero RX traffic.
+    ESP_LOGI(TAG, "APRS-IS login: user %s pass %s vers ESP32APRS 1.0 filter %s", g_config.aprs_mycall, g_config.aprs_passcode,
+             g_config.aprs_filter[0] ? g_config.aprs_filter : "(none - server default, usually nothing)");
     if (send(sock, login, n, 0) != n) {
         close(sock);
         return false;
+    }
+
+    // Read the server's immediate response. javAPRSSrvr/aprsc reply with a
+    // "# ... server ..." banner followed by a "# logresp CALL verified/unverified, server ..."
+    // line right after login. Surfacing this tells the user right away if
+    // their passcode or filter was rejected, rather than them having to
+    // infer it later from a total absence of "APRS-IS RX:" lines.
+    char resp[200];
+    int rlen = recv(sock, resp, sizeof(resp) - 1, 0);
+    if (rlen > 0) {
+        resp[rlen] = 0;
+        ESP_LOGI(TAG, "APRS-IS server banner: %s", resp);
+        if (strstr(resp, "unverified")) {
+            ESP_LOGW(TAG, "APRS-IS login unverified - check aprs_mycall/aprs_passcode");
+        }
+    } else {
+        ESP_LOGW(TAG, "No banner/login response received from APRS-IS server within timeout");
     }
 
     ensureSockMutex();

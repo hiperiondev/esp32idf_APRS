@@ -19,6 +19,7 @@
 
 #include "driver/gpio.h"
 #include "driver/gptimer.h"
+#include "esp_attr.h"
 #include "esp_err.h"
 #include "esp_heap_caps.h"
 #include "esp_random.h"
@@ -87,6 +88,20 @@ void analogSetPinAttenuation(int pin, int attenuation);
 
 /** Perform a one-shot ADC1 read on the given pin, returned already scaled to millivolts. */
 int analogReadMilliVolts(int pin);
+
+/**
+ * @brief ISR-safe millivolt read for the given pin.
+ *
+ * analogReadMilliVolts() goes through adc_oneshot_read()'s generic,
+ * argument-checked, register-polling driver path plus a calibration-curve
+ * call - none of which are meant to run inside a real hardware-timer ISR
+ * firing every ~26us (38.4kHz). This variant calls the IRAM-safe
+ * adc_oneshot_read_isr() and converts to millivolts with a precomputed
+ * linear fit (see analogSetPinAttenuation()) instead of invoking the
+ * calibration API from ISR context. Must only be called for a pin that was
+ * already configured via analogSetPinAttenuation().
+ */
+int analogReadMilliVoltsISR(int pin);
 
 /* ------------------------------------------------------------------ */
 /* hw_timer_t-style periodic timer, implemented with ESP-IDF gptimer   */

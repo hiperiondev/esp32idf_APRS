@@ -6,6 +6,7 @@
 
 #include "AFSK.h"
 #include "AX25.h"
+#include "LibAPRSesp.h"
 #include "board_hal.h"
 
 static const char *TAG_LIBAPRS = "LibAPRS";
@@ -56,10 +57,30 @@ size_t lastMessageLen;
 bool message_autoAck = false;
 /////////////////////////
 
-void APRS_init() {
-    // AFSK_init();
-    // Ax25Init(aprs_msg_callback);
-    // ax25_init(&AX25, aprs_msg_callback);
+// _hook (declared non-static in AX25.c) is the callback ax25_decode_default()
+// invokes for every decoded RX frame. Nothing in this codebase ever assigned
+// it, so RX frames were silently dropped even once the modem itself was
+// running - wire it up here alongside the rest of modem bring-up.
+extern ax25_callback_t _hook;
+
+void APRS_init(const aprs_modem_config_t *cfg) {
+    // Bring up GPIO (PTT/SQL/PWR/ADC/DAC), the sigma-delta channel and both
+    // hardware timers. AFSK_init() calls AFSK_hw_init() internally.
+    AFSK_init(cfg->adc_pin, cfg->dac_pin, cfg->ptt_pin, cfg->sql_pin, cfg->pwr_pin, LED_TX_PIN, LED_RX_PIN, -1, cfg->ptt_active, cfg->sql_active,
+              cfg->pwr_active);
+
+    // Apply the webconfig "Radio"/"Mod" page settings that AFSK_init() alone
+    // doesn't cover.
+    afskSetADCAtten(cfg->adc_atten);
+    afskSetSQL(cfg->sql_pin, cfg->sql_active);
+    afskSetPTT(cfg->ptt_pin, cfg->ptt_active);
+    afskSetPWR(cfg->pwr_pin, cfg->pwr_active);
+
+    // Sets up mark/space frequencies, PLL constants and buffer sizes, then
+    // calls ModemInit()/Ax25Init() internally.
+    afskSetModem(cfg->modem_type, cfg->bpf, cfg->tx_timeslot, cfg->preamble, cfg->fx25_mode);
+
+    _hook = aprs_msg_callback;
 }
 
 void APRS_poll(void) {

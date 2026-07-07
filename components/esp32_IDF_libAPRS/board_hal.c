@@ -8,6 +8,19 @@
 
 #include "board_hal.h"
 
+/*
+ * adc_oneshot_read_isr() is implemented (as a regular, non-static, exported
+ * symbol) inside the esp_adc component specifically to allow an ISR-safe
+ * single-shot read - it skips adc_oneshot_read()'s mutex/lock and does the
+ * clock-tree/calibration-code setup with portENTER_CRITICAL_SAFE() instead of
+ * portENTER_CRITICAL(). As of this IDF version it just isn't declared in the
+ * public esp_adc/adc_oneshot.h header, so we forward-declare it ourselves
+ * rather than reimplementing its register sequence by hand. Requires
+ * CONFIG_ADC_ONESHOT_CTRL_FUNC_IN_IRAM=y (see sdkconfig) so its code is
+ * actually placed in IRAM.
+ */
+extern esp_err_t adc_oneshot_read_isr(adc_oneshot_unit_handle_t handle, adc_channel_t chan, int *out_raw);
+
 /* ------------------------------------------------------------------ */
 /* GPIO                                                                  */
 /* ------------------------------------------------------------------ */
@@ -86,6 +99,16 @@ static adc_cali_handle_t s_adc1_cali_handle = NULL;
 static adc_atten_t s_adc1_atten = ADC_ATTEN_DB_0;
 static adc_bitwidth_t s_adc1_bitwidth = ADC_BITWIDTH_12;
 
+/* Cached channel + linear raw->mV fit for analogReadMilliVoltsISR(), refreshed
+ * whenever analogSetPinAttenuation() (re)configures the channel/calibration.
+ * Computed once outside ISR context so the ISR itself only does a
+ * multiply-add - no driver locking, argument validation, or calibration-curve
+ * lookups. */
+static adc_channel_t s_adc1_isr_channel = (adc_channel_t)-1;
+static bool s_adc1_isr_channel_valid = false;
+static float s_adc1_mv_slope = 1.0f;
+static float s_adc1_mv_offset = 0.0f;
+
 static void adc1_ensure_unit(void) {
     if (s_adc1_handle != NULL)
         return;
@@ -159,6 +182,25 @@ void analogSetPinAttenuation(int pin, int attenuation) {
     };
     adc_cali_create_scheme_curve_fitting(&cali_cfg, &s_adc1_cali_handle);
 #endif
+
+    /* Cache the channel and a linear raw->mV fit for analogReadMilliVoltsISR().
+     * Sampled from the just-(re)created calibration handle here, outside ISR
+     * context, so the ISR path never has to call into the calibration API. */
+    s_adc1_isr_channel_valid = pin_to_adc1_channel(pin, &s_adc1_isr_channel);
+    if (s_adc1_cali_handle != NULL) {
+        int mv_lo = 0, mv_hi = 0;
+        int raw_hi = (1 << (s_adc1_bitwidth == ADC_BITWIDTH_9 ? 9 : (s_adc1_bitwidth == ADC_BITWIDTH_10 ? 10 : (s_adc1_bitwidth == ADC_BITWIDTH_11 ? 11 : 12)))) - 1;
+        if (adc_cali_raw_to_voltage(s_adc1_cali_handle, 0, &mv_lo) == ESP_OK && adc_cali_raw_to_voltage(s_adc1_cali_handle, raw_hi, &mv_hi) == ESP_OK) {
+            s_adc1_mv_offset = (float)mv_lo;
+            s_adc1_mv_slope = (float)(mv_hi - mv_lo) / (float)raw_hi;
+        } else {
+            s_adc1_mv_offset = 0.0f;
+            s_adc1_mv_slope = 1.0f;
+        }
+    } else {
+        s_adc1_mv_offset = 0.0f;
+        s_adc1_mv_slope = 1.0f;
+    }
 }
 
 int analogReadMilliVolts(int pin) {
@@ -178,6 +220,19 @@ int analogReadMilliVolts(int pin) {
             return mv;
     }
     return raw;
+}
+
+int IRAM_ATTR analogReadMilliVoltsISR(int pin) {
+    /* Channel is cached by analogSetPinAttenuation(); no driver lookups here. */
+    if (!s_adc1_isr_channel_valid || s_adc1_handle == NULL)
+        return 0;
+
+    int raw = 0;
+    if (adc_oneshot_read_isr(s_adc1_handle, s_adc1_isr_channel, &raw) != ESP_OK)
+        return 0;
+
+    /* Linear fit computed outside ISR context - no calibration-curve call here. */
+    return (int)(s_adc1_mv_offset + s_adc1_mv_slope * (float)raw);
 }
 
 /* ------------------------------------------------------------------ */
@@ -211,7 +266,6 @@ hw_timer_t *timerBegin(uint32_t resolution_hz) {
         free(t);
         return NULL;
     }
-    gptimer_enable(t->gptimer);
     return t;
 }
 
@@ -223,6 +277,7 @@ void timerAttachInterrupt(hw_timer_t *timer, hw_timer_isr_t fn) {
         .on_alarm = hw_timer_on_alarm,
     };
     gptimer_register_event_callbacks(timer->gptimer, &cbs, timer);
+    gptimer_enable(timer->gptimer);
 }
 
 void timerAlarm(hw_timer_t *timer, uint64_t alarm_value, bool autoreload, uint32_t reload_count) {

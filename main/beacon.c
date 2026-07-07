@@ -21,19 +21,39 @@ static const char *TAG = "beacon";
 #define BEACON_MIN_INTERVAL_S     30   // sanity floor, in case an *_interval is set very low
 #define BEACON_DEFAULT_INTERVAL_S 1800 // 30 min, used when *_interval == 0
 
-// Builds the ",-N" or ",<literal path>" suffix used after the destination,
-// same convention as message.c's buildPathSuffix() but generalized to take
-// any of the trk_path / igate_path / digi_path selectors.
-static void buildPathSuffix(uint8_t pathSel, char *out, size_t outMax) {
+// g_config.trk_path / igate_path / digi_path are a BITMASK over the four
+// user-defined path presets in g_config.path[0..3] (see the "Path (bitmask)"
+// field on the Tracker/IGate/Digipeater webconfig pages, TR_F_PATH_BITMASK).
+// Bit N selects g_config.path[N]; any set bit whose slot is empty simply
+// contributes nothing. Multiple bits => multiple presets, comma-joined.
+//
+// NOTE: this replaces an earlier "-N" / single-index scheme that misread the
+// bitmask as a small integer and appended it directly to the destination
+// call as an SSID (e.g. "APE32L-1"). That's not a path at all - it left
+// beacons with no real digipeater path (or a bogus destination SSID),
+// silently trimmed on-air with no path, so beacons could reach the local
+// IGate but consistently failed to be digipeated/heard further out and
+// looked "broken" from anywhere but direct RF earshot.
+static void buildPathSuffix(uint8_t pathBitmask, char *out, size_t outMax) {
     out[0] = 0;
-    if (pathSel == 0)
+    if (pathBitmask == 0 || outMax == 0)
         return;
-    if (pathSel < 5) {
-        snprintf(out, outMax, "-%d", pathSel);
-    } else {
-        int pidx = pathSel - 5;
-        if (pidx >= 0 && pidx < 4 && g_config.path[pidx][0])
-            snprintf(out, outMax, ",%s", g_config.path[pidx]);
+
+    size_t used = 0;
+    for (int bit = 0; bit < 4; bit++) {
+        if (!(pathBitmask & (1 << bit)))
+            continue;
+        if (!g_config.path[bit][0])
+            continue; // bit selected but that preset slot isn't configured
+
+        int n = snprintf(out + used, outMax - used, ",%s", g_config.path[bit]);
+        if (n < 0)
+            break;
+        if ((size_t)n >= outMax - used) {
+            used = outMax - 1; // truncated - stop here, out is still valid/terminated
+            break;
+        }
+        used += (size_t)n;
     }
 }
 
