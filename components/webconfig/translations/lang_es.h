@@ -38,6 +38,9 @@
 #define TR_BTN_SAVE      "Guardar"
 #define TR_BTN_BACK_DASH "Volver al panel"
 #define TR_BTN_AUTO_GENERATE "Generar automáticamente"
+#define TR_BTN_LOOP_TEST     "PRUEBA DE BUCLE"
+#define TR_LOOPTEST_RUNNING  "Probando..."
+#define TR_LOOPTEST_FAILED   "Fallo en la solicitud"
 #define TR_SHOW_PASSWORD "Mostrar contraseña"
 
 // ---- page_common.c: "coming soon" placeholder --------------------------
@@ -68,7 +71,7 @@
 // ---- Common field/fieldset labels (auto-extracted from pages/*.c) -----
 #define TR_F_1_WIRE                                        "1-Wire"
 #define TR_F_ACTIVE_HIGH                                   "Activo en alto"
-#define TR_F_ADC_ATTENUATION_0_3                           "Atenuación del ADC (0-3)"
+#define TR_F_ADC_ATTENUATION_0_3                           "Atenuación del ADC (0-4; 4 = rango completo 0-3.3V para loopback con el DAC)"
 #define TR_F_ADC_DC_OFFSET                                 "Offset DC del ADC"
 #define TR_F_ADDRESS_REGISTER                              "Dirección/Registro"
 #define TR_F_ADD_TIMESTAMP                                 "Añadir marca de tiempo"
@@ -81,6 +84,7 @@
 #define TR_F_APRS_SYMBOLS                                  "Símbolos APRS"
 #define TR_F_AUDIO_AFSK                                    "Audio / AFSK"
 #define TR_F_ENABLE_AUDIO_MODEM                            "Activar módem ADC/DAC de audio"
+#define TR_F_AFSK_MODULATION                               "Modulación"
 #define TR_F_AUDIO_LOW_PASS_FILTER                         "Filtro paso bajo de audio"
 #define TR_F_AUTO_WIDEN_N                                  "Automático (WIDEn-N)"
 #define TR_F_AVERAGE_RATE_S                                "Tasa promedio (s)"

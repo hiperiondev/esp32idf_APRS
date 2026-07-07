@@ -38,6 +38,9 @@
 #define TR_BTN_SAVE      "Save"
 #define TR_BTN_BACK_DASH "Back to Dashboard"
 #define TR_BTN_AUTO_GENERATE "Auto Generate"
+#define TR_BTN_LOOP_TEST     "LOOP TEST"
+#define TR_LOOPTEST_RUNNING  "Testing..."
+#define TR_LOOPTEST_FAILED   "Request failed"
 #define TR_SHOW_PASSWORD "Show password"
 
 // ---- page_common.c: "coming soon" placeholder --------------------------
@@ -67,7 +70,7 @@
 // ---- Common field/fieldset labels (auto-extracted from pages/*.c) -----
 #define TR_F_1_WIRE                                        "1-Wire"
 #define TR_F_ACTIVE_HIGH                                   "Active-high"
-#define TR_F_ADC_ATTENUATION_0_3                           "ADC attenuation (0-3)"
+#define TR_F_ADC_ATTENUATION_0_3                           "ADC attenuation (0-4, 4 = full 0-3.3V DAC loopback range)"
 #define TR_F_ADC_DC_OFFSET                                 "ADC DC offset"
 #define TR_F_ADDRESS_REGISTER                              "Address/Register"
 #define TR_F_ADD_TIMESTAMP                                 "Add timestamp"
@@ -80,6 +83,7 @@
 #define TR_F_APRS_SYMBOLS                                  "APRS Symbols"
 #define TR_F_AUDIO_AFSK                                    "Audio / AFSK"
 #define TR_F_ENABLE_AUDIO_MODEM                            "Enable audio ADC/DAC modem"
+#define TR_F_AFSK_MODULATION                               "Modulation"
 #define TR_F_AUDIO_LOW_PASS_FILTER                         "Audio low-pass filter"
 #define TR_F_AUTO_WIDEN_N                                  "Auto (WIDEn-N)"
 #define TR_F_AVERAGE_RATE_S                                "Average rate (s)"

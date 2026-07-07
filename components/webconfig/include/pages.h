@@ -47,6 +47,7 @@ esp_err_t page_sensor_post(httpd_req_t *req);
 // -- RF / networking --
 esp_err_t page_radio_get(httpd_req_t *req);
 esp_err_t page_radio_post(httpd_req_t *req);
+esp_err_t page_radio_looptest_get(httpd_req_t *req); // GET /radio/looptest (JSON loop-test result)
 esp_err_t page_vpn_get(httpd_req_t *req);
 esp_err_t page_vpn_post(httpd_req_t *req);
 esp_err_t page_mqtt_get(httpd_req_t *req);

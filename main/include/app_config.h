@@ -340,7 +340,8 @@ typedef struct {
     bool audio_hpf;
     bool audio_lpf;
     uint16_t preamble;
-    uint8_t modem_type;
+    uint8_t modem_type;      // RF module modem mode (RF_MODE_OFF/LoRa/G3RUH/GFSK/DPRS) - only used when ENABLE_RF_MODULE
+    uint8_t afsk_modem_type; // Audio ADC/DAC AFSK modulation (see enum ModemType in modem.h: 0=300Bd,1=1200Bd,2=1200Bd V.23,3=9600Bd), used for both RX and TX on the audio modem
     uint8_t fx25_mode;
     uint16_t tx_timeslot;
     char ntp_host[NTP_HOST_NUM][20];

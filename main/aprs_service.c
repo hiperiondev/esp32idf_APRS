@@ -1,7 +1,9 @@
 #include <string.h>
 
 #include "esp_log.h"
+#include "esp_random.h"
 #include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 #include "freertos/task.h"
 
 #include "AX25.h"
@@ -194,6 +196,146 @@ static void serviceTickTask(void *arg) {
             sendAPRSMessageRetry();
         vTaskDelay(pdMS_TO_TICKS(1000));
     }
+}
+
+// ---------------------------------------------------------------------------
+// Audio ADC/DAC AFSK modem "LOOP TEST" (Radio/Modem webconfig page).
+// ---------------------------------------------------------------------------
+
+// _hook is the AX.25 RX callback esp32_IDF_libAPRS invokes for every decoded
+// frame (normally aprs_msg_callback, wired up in LibAPRS.c). We borrow it for
+// the duration of the test so a self-generated test frame is never mistaken
+// for real RF traffic (digipeated, sent to APRS-IS, etc.), then put it back.
+extern ax25_callback_t _hook;
+
+#define LOOP_TEST_TIMEOUT_MS 4000
+
+static SemaphoreHandle_t s_loopTestSem = NULL;
+static volatile bool s_loopTestActive = false;
+static volatile bool s_loopTestGotFrame = false;
+static char s_loopTestToken[8];
+static char s_loopTestRxInfo[128];
+static uint16_t s_loopTestRxMVrms = 0;
+
+// Set true once main.c has actually called APRS_init() (i.e. the audio
+// modem is enabled in config *and* the hardware has been brought up since
+// boot - toggling the checkbox without rebooting does not re-run APRS_init).
+static volatile bool s_modemReady = false;
+
+void aprs_service_notify_modem_ready(void) {
+    s_modemReady = true;
+}
+
+// AX.25 RX hook installed only while a loop test is in flight.
+static void loopTestRxHook(struct AX25Msg *msg) {
+    size_t n = msg->len < sizeof(s_loopTestRxInfo) - 1 ? msg->len : sizeof(s_loopTestRxInfo) - 1;
+    memcpy(s_loopTestRxInfo, msg->info, n);
+    s_loopTestRxInfo[n] = 0;
+    s_loopTestRxMVrms = msg->mVrms;
+    s_loopTestGotFrame = true;
+    xSemaphoreGive(s_loopTestSem);
+}
+
+bool aprs_loop_test_run(char *msg, size_t msg_len) {
+    if (!s_modemReady || !g_config.audio_modem_en) {
+        snprintf(msg, msg_len,
+                 "Audio ADC/DAC modem is not enabled/initialized. Enable \"Enable audio ADC/DAC modem\" above, save, and reboot the device first.");
+        ESP_LOGW(TAG, "Loop test: %s", msg);
+        return false;
+    }
+
+    if (s_loopTestActive) {
+        snprintf(msg, msg_len, "A loop test is already running - please wait for it to finish.");
+        ESP_LOGW(TAG, "Loop test: %s", msg);
+        return false;
+    }
+    s_loopTestActive = true;
+
+    if (!s_loopTestSem)
+        s_loopTestSem = xSemaphoreCreateBinary();
+    else
+        xSemaphoreTake(s_loopTestSem, 0); // drain any stale/leftover give
+
+    // Unique token per run, so we only accept *this* frame as a pass, not
+    // some coincidental leftover/duplicate packet.
+    uint32_t token = esp_random() & 0xFFFFFF;
+    snprintf(s_loopTestToken, sizeof(s_loopTestToken), "%06lX", (unsigned long)token);
+
+    char tnc2[48];
+    int n = snprintf(tnc2, sizeof(tnc2), "SELFTST>APLT1T:>LOOPTEST %s", s_loopTestToken);
+
+    s_loopTestGotFrame = false;
+    ax25_callback_t savedHook = _hook;
+    _hook = loopTestRxHook;
+
+    AFSK_resetAdcDiag();
+
+    ESP_LOGI(TAG, "Loop test: TX %s", tnc2);
+    APRS_sendTNC2Pkt((const uint8_t *)tnc2, (size_t)n);
+
+    bool signaled = (xSemaphoreTake(s_loopTestSem, pdMS_TO_TICKS(LOOP_TEST_TIMEOUT_MS)) == pdTRUE);
+
+    // Always restore the real RX hook before doing anything else, so a
+    // failed/timed-out test doesn't leave real RX frames stuck being
+    // swallowed by the test hook.
+    _hook = savedHook;
+    s_loopTestActive = false;
+
+    if (!signaled || !s_loopTestGotFrame) {
+        int16_t adcMin, adcMax;
+        AFSK_getAdcDiag(&adcMin, &adcMax);
+        int adcSwing = (int)adcMax - (int)adcMin;
+        if (adcMin > adcMax) {
+            // ISR never ran at all - min/max never updated from their initial
+            // sentinel values.
+            snprintf(msg, msg_len,
+                     "FAIL: no packet was received back within %d ms, and the ADC never captured a single sample. "
+                     "The ADC continuous driver/timer isn't running - this points at an init failure, not a wiring "
+                     "or level problem.",
+                     LOOP_TEST_TIMEOUT_MS);
+        } else if (adcSwing < 50) {
+            // ISR ran, but the raw ADC code barely moved - the ADC is not
+            // seeing the DAC's tone at all (flat/near-DC line). Report the
+            // calibrated voltage, not just the raw code: a reading pinned
+            // near VDD (~3.0-3.3V) points at a miswire/short rather than a
+            // units/scale bug in the demodulator path.
+            int mv = AFSK_adcRawToMv(adcMax);
+            snprintf(msg, msg_len,
+                     "FAIL: no packet was received back within %d ms. The ADC is sampling (raw code stayed within "
+                     "%d-%d, a %d-count swing, ~%d mV), but is not seeing any audio tone - check that GPIO33 (ADC in) "
+                     "and GPIO25 (DAC out) are actually wired together and both grounds are common.",
+                     LOOP_TEST_TIMEOUT_MS, adcMin, adcMax, adcSwing, mv);
+        } else {
+            // ISR ran and saw a real signal swing, but the modem still
+            // couldn't decode its own transmission - level/samplerate/filter
+            // problem rather than a wiring problem.
+            snprintf(msg, msg_len,
+                     "FAIL: no packet was received back within %d ms, even though the ADC did see a signal (raw "
+                     "code swung %d-%d, a %d-count range). The wiring is good; the modem itself isn't "
+                     "demodulating it - check the squelch/volume settings, ADC attenuation, and modem type/baud "
+                     "rate configuration.",
+                     LOOP_TEST_TIMEOUT_MS, adcMin, adcMax, adcSwing);
+        }
+        ESP_LOGW(TAG, "Loop test: %s", msg);
+        return false;
+    }
+
+    char expected[24];
+    snprintf(expected, sizeof(expected), ">LOOPTEST %s", s_loopTestToken);
+
+    if (strstr(s_loopTestRxInfo, expected) != NULL) {
+        snprintf(msg, msg_len, "PASS: sent \"%s\" and correctly decoded it back (RX level %u mV RMS). The AFSK modem works correctly.",
+                 tnc2 + (strchr(tnc2, ':') - tnc2) + 1, (unsigned)s_loopTestRxMVrms);
+        ESP_LOGI(TAG, "Loop test: %s", msg);
+        return true;
+    }
+
+    snprintf(msg, msg_len,
+             "FAIL: a packet was received back, but its content did not match what was sent (got \"%s\"). Check for audio "
+             "distortion, clipping, or an incorrect ADC/DAC loopback wiring.",
+             s_loopTestRxInfo);
+    ESP_LOGW(TAG, "Loop test: %s", msg);
+    return false;
 }
 
 void aprs_service_start(void) {

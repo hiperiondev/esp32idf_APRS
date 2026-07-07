@@ -64,21 +64,49 @@ bool message_autoAck = false;
 extern ax25_callback_t _hook;
 
 void APRS_init(const aprs_modem_config_t *cfg) {
+    // afskSetADCAtten() must run BEFORE AFSK_init(), not after. AFSK_init()
+    // calls AFSK_hw_init() -> adc_continue_init() internally, which reads the
+    // global cfg_adc_atten to build both the ADC continuous driver's channel
+    // pattern (adc_pattern[0].atten) and the calibration scheme right then and
+    // there. Calling afskSetADCAtten() afterwards (as before) only updated
+    // cfg_adc_atten/Vref too late to matter: the ADC hardware had already been
+    // locked in at the compile-time default of ADC_ATTEN_DB_0 (~1.1V full
+    // scale), no matter what the config said. Since the real DAC output
+    // (GPIO25) swings the full 0-3.3V rail, that stuck-at-0dB ADC clipped/
+    // saturated most of the loopback tone, which is why the LOOP TEST failed
+    // ("no packet was received back") even with ADC33/DAC25 wired correctly
+    // and the config's atten set correctly - the setting was simply never
+    // applied to the hardware.
+    afskSetADCAtten(cfg->adc_atten);
+
+    // afskSetModem() must also run BEFORE AFSK_init(), for the same reason as
+    // afskSetADCAtten() above: AFSK_init() -> AFSK_hw_init() ->
+    // adc_continue_init() reads the global SAMPLERATE/BLOCK_SIZE to build the
+    // ADC continuous driver's conv_frame_size and sample_freq_hz right then
+    // and there. Calling afskSetModem() afterwards (as before) only updated
+    // those globals too late to matter: the ADC continuous driver had
+    // already been configured (and started) using whatever stale
+    // file-scope defaults SAMPLERATE/BLOCK_SIZE happened to hold at that
+    // point, not the values for the modem type actually selected. This is
+    // the same "configure the hardware, then change the settings" bug as
+    // the attenuation one, just for the sample rate/frame size instead of
+    // atten - and it's independent of the ADC_OUTPUT_TYPE fix, so it kept
+    // the LOOP TEST failing (ADC never capturing a single sample when the
+    // mismatched frame size/rate caused adc_continuous_config() to reject
+    // the configuration) even after that fix.
+    afskSetModem(cfg->modem_type, cfg->bpf, cfg->tx_timeslot, cfg->preamble, cfg->fx25_mode);
+
     // Bring up GPIO (PTT/SQL/PWR/ADC/DAC), the sigma-delta channel and both
-    // hardware timers. AFSK_init() calls AFSK_hw_init() internally.
+    // hardware timers. AFSK_init() calls AFSK_hw_init() internally, which is
+    // why afskSetADCAtten()/afskSetModem() above must both come first.
     AFSK_init(cfg->adc_pin, cfg->dac_pin, cfg->ptt_pin, cfg->sql_pin, cfg->pwr_pin, LED_TX_PIN, LED_RX_PIN, -1, cfg->ptt_active, cfg->sql_active,
               cfg->pwr_active);
 
-    // Apply the webconfig "Radio"/"Mod" page settings that AFSK_init() alone
-    // doesn't cover.
-    afskSetADCAtten(cfg->adc_atten);
+    // Apply the remaining webconfig "Radio"/"Mod" page settings that
+    // AFSK_init() alone doesn't cover.
     afskSetSQL(cfg->sql_pin, cfg->sql_active);
     afskSetPTT(cfg->ptt_pin, cfg->ptt_active);
     afskSetPWR(cfg->pwr_pin, cfg->pwr_active);
-
-    // Sets up mark/space frequencies, PLL constants and buffer sizes, then
-    // calls ModemInit()/Ax25Init() internally.
-    afskSetModem(cfg->modem_type, cfg->bpf, cfg->tx_timeslot, cfg->preamble, cfg->fx25_mode);
 
     _hook = aprs_msg_callback;
 }

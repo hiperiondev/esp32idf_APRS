@@ -152,6 +152,7 @@ void app_config_set_defaults(app_config_t *c) {
     c->audio_lpf = true;
     c->preamble = 300;
     c->modem_type = 0;
+    c->afsk_modem_type = 1; // default 1200 Bd (AFSK/Bell202) - standard APRS audio modem
     c->fx25_mode = 0;
     c->tx_timeslot = 2000;
     set_str(c->ntp_host[0], sizeof(c->ntp_host[0]), "pool.ntp.org");
@@ -183,10 +184,13 @@ void app_config_set_defaults(app_config_t *c) {
     c->rf_baudrate = 9600;
     c->rf_tx_gpio = 13;
     c->rf_rx_gpio = 14;
-    c->rf_sql_gpio = 33;
-    c->rf_pd_gpio = 27;
+    c->rf_sql_gpio = 27; // GPIO33 is the real (hardwired) ADC audio-input pin and GPIO25 is the real
+                         // (hardwired) DAC audio-output pin - see adc_pins[]/DAC_CHAN_0 in
+                         // esp32_IDF_libAPRS/AFSK.c. Neither SQL nor PTT may be assigned to 25/33,
+                         // since pinMode() on either pad would fight the ADC/DAC's analog use of it.
+    c->rf_pd_gpio = -1; // not currently wired into modem_cfg (see main.c) - left disabled by default
     c->rf_pwr_gpio = 12;
-    c->rf_ptt_gpio = 32;
+    c->rf_ptt_gpio = 26;
     c->rf_sql_active = false;
     c->rf_pd_active = true;
     c->rf_pwr_active = false;
@@ -195,7 +199,15 @@ void app_config_set_defaults(app_config_t *c) {
     c->dac_gpio = 18;
     c->adc_sel_gpio = -1;
     c->dac_sel_gpio = 17;
-    c->adc_atten = 0;
+    // ADC_ATTEN_DB_0 (0) only linearly measures ~0-1.1V, but the real DAC output
+    // (DAC_CHAN_0/GPIO25) swings the full 0-3.3V rail. Wired straight into GPIO33
+    // for the ADC/DAC loopback self-test (or into a radio's discriminator/mic
+    // input), a 0dB atten clips/saturates most of that swing, distorting the tone
+    // enough that the AFSK demodulator can't lock onto it - this is why the LOOP
+    // TEST fails with "no packet was received back" even though ADC33/DAC25 are
+    // correctly wired together. adc_atten=4 (ADC_ATTEN_DB_12, Vref=3300) matches
+    // the DAC's full ~0-3.3V rail-to-rail swing (see afskSetADCAtten() below).
+    c->adc_atten = 4;
 
     c->i2c_enable = false;
     c->i2c_sda_pin = -1;
@@ -327,6 +339,7 @@ static cJSON *config_to_json(const app_config_t *c) {
     jadd_bool(d, "rfEnable", c->rf_en);
     jadd_num(d, "rfType", c->rf_type);
     jadd_num(d, "rfModem", c->modem_type);
+    jadd_num(d, "afskModem", c->afsk_modem_type);
     jadd_num(d, "rfPreamble", c->preamble);
     jadd_num(d, "rfFreqRX", c->freq_rx);
     jadd_num(d, "rfFreqTX", c->freq_tx);
@@ -806,6 +819,7 @@ static void config_from_json(cJSON *d, app_config_t *c) {
     c->rf_type = (uint8_t)jget_num(d, "rfType", def.rf_type);
     c->rf_power = jget_bool(d, "rfPwr", def.rf_power);
     c->modem_type = (uint8_t)jget_num(d, "rfModem", def.modem_type);
+    c->afsk_modem_type = (uint8_t)jget_num(d, "afskModem", def.afsk_modem_type);
     c->preamble = (uint16_t)jget_num(d, "rfPreamble", def.preamble);
     c->freq_rx = (float)jget_num(d, "rfFreqRX", def.freq_rx);
     c->freq_tx = (float)jget_num(d, "rfFreqTX", def.freq_tx);

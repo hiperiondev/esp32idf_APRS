@@ -171,6 +171,12 @@ int igateProcess(AX25Msg *packet) {
     if (!g_config.igate_en || !g_config.rf2inet)
         return 0;
 
+    // Count every packet considered for gatewaying, regardless of the
+    // outcome below (dup/dropped/sent). Without this, s_stats.rxCount stays
+    // permanently at 0 and the dashboard's STATISTICS panel (RF2INET / part
+    // of PACKET RX) never updates.
+    s_stats.rxCount++;
+
     if (isDuplicatePacket(packet)) {
         s_stats.dupCount++;
         return 0;

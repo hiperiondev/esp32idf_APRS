@@ -47,8 +47,8 @@ static inline uint8_t sinSample(uint16_t i) {
 #define CONFIG_AFSK_TRAILER_LEN    50UL
 #define CONFIG_AFSK_DAC_SAMPLERATE 38400
 
-#define SPK_PIN    ADC1_CHANNEL_0 // Read ADC1_0 From PIN 36(VP)
-#define MIC_PIN    26             // Out wave to PIN 26
+#define SPK_PIN    ADC1_CHANNEL_5 // Real ADC1 input, GPIO33 (adc_pins[0] on ESP32)
+#define MIC_PIN    25             // Real DAC1 (DAC_CHAN_0) output, GPIO25
 #define LED_RX_PIN 2
 #define LED_TX_PIN 4
 

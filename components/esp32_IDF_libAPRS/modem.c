@@ -530,14 +530,19 @@ void ModemTransmitStart(void) {
  *
  * Order matters:
  * 1. Stop DAC timer first (no more TX audio)
- * 2. Flush FIFO while hw_afsk_dac_isr is still true (s_conv_done_cb gate blocks
- *    new pushes, so flush is race-free)
+ * 2. AFSK_FlushFifo() — in half-duplex mode this discards stale samples
+ *    accumulated before/during TX (s_conv_done_cb's fifo-fill gate blocks new
+ *    pushes while transmitting in that mode, so the flush is race-free). In
+ *    full-duplex mode (the default) it is a no-op: RX has been running
+ *    throughout TX, and flushing here would throw away the tail of a frame
+ *    still being captured — including, on a wired ADC/DAC loopback, the
+ *    frame just transmitted.
  * 3. Clear hw_afsk_dac_isr to re-enable ADC FIFO filling with fresh RX audio
  * 4. Signal deferred PTT release
  */
 void ModemTransmitStop(void) {
     DAC_TimerEnable(false);
-    AFSK_FlushFifo();        // Discard stale samples accumulated before/during TX
+    AFSK_FlushFifo();        // Half-duplex only: discard stale samples accumulated before/during TX
     hw_afsk_dac_isr = false; // Re-enable ADC FIFO filling (s_conv_done_cb gate)
     AFSK_TimerEnable(true);  // No-op on ESP32-S3, restarts ADC timer on ESP32
     pttOff = true;           // Deferred PTT off — taskAPRS handles within 10ms

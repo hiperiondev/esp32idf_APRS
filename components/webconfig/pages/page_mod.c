@@ -21,7 +21,6 @@ esp_err_t page_mod_get(httpd_req_t *req) {
     web_field_checkbox(req, TR_F_PWR_ACTIVE_HIGH, "rfPWRAct", g_config.rf_pwr_active);
     web_field_int(req, TR_F_PTT_PIN, "rfPTT", g_config.rf_ptt_gpio);
     web_field_checkbox(req, TR_F_PTT_ACTIVE_HIGH, "rfPTTAct", g_config.rf_ptt_active);
-    web_field_int(req, TR_F_ADC_ATTENUATION_0_3, "adcAtten", g_config.adc_atten);
     web_field_int(req, TR_F_ADC_DC_OFFSET, "adcOffset", g_config.adc_dc_offset);
     web_field_int(req, TR_F_SERIAL_BAUDRATE, "rfBaudrate", g_config.rf_baudrate);
     web_fieldset_close(req);
@@ -152,7 +151,6 @@ esp_err_t page_mod_post(httpd_req_t *req) {
     g_config.rf_pwr_active = web_form_get_bool(body, "rfPWRAct");
     g_config.rf_ptt_gpio = (int8_t)web_form_get_int(body, "rfPTT", g_config.rf_ptt_gpio);
     g_config.rf_ptt_active = web_form_get_bool(body, "rfPTTAct");
-    g_config.adc_atten = (uint8_t)web_form_get_int(body, "adcAtten", g_config.adc_atten);
     g_config.adc_dc_offset = (uint16_t)web_form_get_int(body, "adcOffset", g_config.adc_dc_offset);
     g_config.rf_baudrate = (unsigned long)web_form_get_int(body, "rfBaudrate", g_config.rf_baudrate);
 

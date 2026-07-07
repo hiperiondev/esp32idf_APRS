@@ -1,10 +1,20 @@
 #include <math.h>
 
+#include "driver/gpio.h"
 #include "esp_adc/adc_cali.h"
 #include "esp_adc/adc_cali_scheme.h"
 #include "esp_adc/adc_continuous.h"
 #include "esp_adc/adc_oneshot.h"
 #include "esp_log.h"
+
+// Real, silicon DAC hardware (8-bit R-2R ladder) only exists on classic ESP32
+// (DAC_CHAN_0 = GPIO25, DAC_CHAN_1 = GPIO26) and ESP32-S2. Every other target
+// this file supports (S3/C3/C6/H2) has no analog DAC peripheral at all, so
+// those keep using the sigma-delta bitstream approximation further down.
+#if defined(CONFIG_IDF_TARGET_ESP32) || defined(CONFIG_IDF_TARGET_ESP32S2)
+#define AFSK_HAS_REAL_DAC 1
+#include "driver/dac_oneshot.h"
+#endif
 
 #ifdef CONFIG_IDF_TARGET_ESP32
 #include "hal/adc_hal.h"
@@ -201,9 +211,18 @@ int IRAM_ATTR RingBuffer_Size(const RingBuffer *rb) {
 
 RingBuffer fifo; // Declare a ring buffer statically (this will be in DRAM, but functions are in IRAM)
 
-// Flush the ADC FIFO — called from ModemTransmitStop() to discard stale samples
+extern tcb_t tcb; // defined further down this file; forward-declared for the fullDuplex check below
+
+// Flush the ADC FIFO — called from ModemTransmitStop() to discard stale
+// samples accumulated before/during TX. This is only meaningful in
+// half-duplex mode: in full-duplex mode (tcb.fullDuplex, the default) RX
+// keeps running throughout TX (see s_conv_done_cb()/AFSK_Poll()), so
+// wiping the FIFO the instant TX ends would throw away the tail end of a
+// frame that's still legitimately being captured/decoded - including, on
+// a wired ADC/DAC loopback, the frame the modem just transmitted itself.
 void IRAM_ATTR AFSK_FlushFifo(void) {
-    RingBuffer_Init(&fifo);
+    if (!tcb.fullDuplex)
+        RingBuffer_Init(&fifo);
 }
 /******************************************************************** */
 
@@ -403,7 +422,7 @@ extern AX25Ctx AX25;
 #ifdef CONFIG_IDF_TARGET_ESP32
 // #define I2S_INTERNAL 1
 // #include "driver/i2s.h"
-uint8_t adc_pins[] = { 36, 39, 34, 35 }; // some of ADC1 pins for ESP32
+uint8_t adc_pins[] = { 33, 36, 39, 34 }; // GPIO33 (ADC1_CH5) is the real audio-in pin for this board; others are spares
 #elif defined(CONFIG_IDF_TARGET_ESP32S3)
 uint8_t adc_pins[] = { 1, 2, 3, 4 }; // ADC1 common pins for ESP32S3
 #else
@@ -444,6 +463,16 @@ void afskSetADCAtten(uint8_t val) {
     } else if (adc_atten == 4) {
         cfg_adc_atten = ADC_ATTEN_DB_12;
         Vref = 3300;
+    } else {
+        // Out-of-range value (e.g. stale/corrupt config): without this,
+        // cfg_adc_atten/Vref would silently keep whatever they last held -
+        // defaulting to the ADC_ATTEN_DB_0/950mV file-scope initializer at
+        // boot - which saturates the ADC against the DAC's full 0-3.3V
+        // loopback swing exactly like a wiring fault would. Fall back to the
+        // full 0-3.3V range (option 4), the correct setting for this board's
+        // GPIO33/GPIO25 DAC loopback wiring (see app_config.c).
+        cfg_adc_atten = ADC_ATTEN_DB_12;
+        Vref = 3300;
     }
     analogSetPinAttenuation(adc_pins[0], cfg_adc_atten);
 }
@@ -464,6 +493,16 @@ void afskSetADCAtten(uint8_t val) {
         cfg_adc_atten = ADC_ATTEN_DB_12;
         Vref = 2450;
     } else if (adc_atten == 4) {
+        cfg_adc_atten = ADC_ATTEN_DB_12;
+        Vref = 3300;
+    } else {
+        // Out-of-range value (e.g. stale/corrupt config): without this,
+        // cfg_adc_atten/Vref would silently keep whatever they last held -
+        // defaulting to the ADC_ATTEN_DB_0/950mV file-scope initializer at
+        // boot - which saturates the ADC against the DAC's full 0-3.3V
+        // loopback swing exactly like a wiring fault would. Fall back to the
+        // full 0-3.3V range (option 4), the correct setting for this board's
+        // GPIO33/GPIO25 DAC loopback wiring (see app_config.c).
         cfg_adc_atten = ADC_ATTEN_DB_12;
         Vref = 3300;
     }
@@ -644,7 +683,6 @@ portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
 static const char *TAG = "--(TAG ADC DMA)--";
 #endif
 #if defined(ADC_SAMPLE)
-#define ADC_OUTPUT_TYPE ADC_DIGI_OUTPUT_FORMAT_TYPE1
 void IRAM_ATTR sample_adc_isr() {
     adcIsrCount++;
     if (!hw_afsk_dac_isr) {
@@ -663,6 +701,15 @@ void IRAM_ATTR sample_adc_isr() {
         fifo.lock = false;
     }
 }
+#endif
+// Continuous-mode ADC digi output format is a per-SoC hardware property, not
+// something ADC_SAMPLE (the legacy, disabled, single-shot path) has any
+// bearing on. Classic ESP32 only supports TYPE1 in continuous mode; every
+// other supported target (S2/S3/C3/C6/H2) uses TYPE2. This must match the
+// type1/type2 selection in s_conv_done_cb() below exactly, or
+// adc_continuous_config() silently fails and the ADC never starts.
+#if defined(CONFIG_IDF_TARGET_ESP32)
+#define ADC_OUTPUT_TYPE ADC_DIGI_OUTPUT_FORMAT_TYPE1
 #else
 #define ADC_OUTPUT_TYPE ADC_DIGI_OUTPUT_FORMAT_TYPE2
 #endif
@@ -896,14 +943,52 @@ void afskSetPWR(int8_t val, bool act) {
 
 #ifndef I2S_INTERNAL
 int16_t adcPush;
+// Lightweight diagnostic: min/max raw ADC code seen by the ISR since the last
+// reset. Lets callers (e.g. the LOOP TEST) tell "ADC never saw any signal
+// swing at all" (wiring/sampling/DAC problem) apart from "ADC saw a signal
+// but the modem couldn't decode it" (filter/samplerate/level problem) instead
+// of just failing with no data to go on either way.
+static volatile int16_t s_adcDiagMin = 32767;
+static volatile int16_t s_adcDiagMax = -32768;
+void AFSK_resetAdcDiag(void) {
+    s_adcDiagMin = 32767;
+    s_adcDiagMax = -32768;
+}
+void AFSK_getAdcDiag(int16_t *out_min, int16_t *out_max) {
+    *out_min = s_adcDiagMin;
+    *out_max = s_adcDiagMax;
+}
+int AFSK_adcRawToMv(int16_t raw) {
+    int mv = 0;
+    if (AdcCaliHandle != NULL && adc_cali_raw_to_voltage(AdcCaliHandle, raw, &mv) == ESP_OK)
+        return mv;
+    // No calibration eFuses on this chip - Vref (set by afskSetADCAtten(),
+    // matching the atten's approximate full-scale) is the best rough
+    // estimate available: mv = raw/4095 * Vref.
+    return (int)(((int32_t)raw * Vref) / 4095);
+}
 // static TaskHandle_t s_task_handle;
 //  adc_oneshot_unit_handle_t adc1_handle;
 #ifndef ADC_SAMPLE
+// The single ADC channel actually configured in adc_continue_init() (channel
+// 5 for GPIO33 on classic ESP32, adc_pins[0] otherwise). s_conv_done_cb must
+// filter DMA results against *this*, not a hardcoded 0 - see the comment
+// there for why "channel > 0" as a filter was silently dropping every
+// sample on this board.
+static adc_channel_t s_adc_channel = 0;
+
 static bool IRAM_ATTR s_conv_done_cb(adc_continuous_handle_t stAdcHandle, const adc_continuous_evt_data_t *edata, void *user_data) {
-    // Don't fill FIFO during TX — matches sample_adc_isr() gate on original ESP32.
-    // Without this, ~33,000 garbage samples accumulate during TX and corrupt
-    // the demodulator state when drained, causing permanent RX freeze.
-    if (hw_afsk_dac_isr)
+    // In half-duplex mode, don't fill the FIFO during TX - matches
+    // sample_adc_isr() gate on original ESP32. Without this, ~33,000 garbage
+    // samples accumulate during TX and corrupt the demodulator state when
+    // drained all at once, causing permanent RX freeze.
+    // In full-duplex mode (tcb.fullDuplex, the default), RX must keep running
+    // *during* TX - AFSK_Poll() also drains the FIFO concurrently in this
+    // mode (see the matching hw_afsk_dac_isr/fullDuplex check there), so
+    // there is no backlog to build up. This is also what makes the ADC/DAC
+    // hardware loopback self-test possible: it can only decode its own
+    // transmission if RX capture isn't blacked out for the entire TX burst.
+    if (hw_afsk_dac_isr && !tcb.fullDuplex)
         return true;
     portENTER_CRITICAL_ISR(&timerMux);
     fifo.lock = true;
@@ -911,11 +996,22 @@ static bool IRAM_ATTR s_conv_done_cb(adc_continuous_handle_t stAdcHandle, const 
         adc_digi_output_data_t *p = (adc_digi_output_data_t *)&edata->conv_frame_buffer[k];
 
 #if defined(CONFIG_IDF_TARGET_ESP32)
-        if (p->type1.channel > 0)
+        // BUG (was): "if (p->type1.channel > 0) continue;" hardcoded an
+        // assumption that the configured channel is channel 0. That's true
+        // on ESP32-S3 boards (GPIO1 = ADC1_CH0), which is why this went
+        // unnoticed there, but on classic ESP32 the real audio-in pin is
+        // GPIO33 = ADC1_CH5, so "channel > 0" was true for every single
+        // sample and this silently discarded 100% of the DMA results -
+        // fifo never got filled and the ADC min/max diagnostic never moved
+        // from its sentinel value, exactly matching "the ADC never
+        // captured a single sample" even though the driver/DMA was
+        // running correctly the whole time. Compare against the channel
+        // that was actually configured instead.
+        if (p->type1.channel != s_adc_channel)
             continue;
         adcPush = (int16_t)p->type1.data;
 #else
-        if ((p->type2.channel > 0) || (p->type2.unit > 0))
+        if ((p->type2.channel != s_adc_channel) || (p->type2.unit > 0))
             continue;
         adcPush = (int)p->type2.data;
 #endif
@@ -927,6 +1023,10 @@ static bool IRAM_ATTR s_conv_done_cb(adc_continuous_handle_t stAdcHandle, const 
         fifo.head = (fifo.head + 1) % BUFFER_SIZE; // Wrap around using modulo
         fifo.count++;
         // RingBuffer_Push(&fifo, adcPush);
+        if (adcPush < s_adcDiagMin)
+            s_adcDiagMin = adcPush;
+        if (adcPush > s_adcDiagMax)
+            s_adcDiagMax = adcPush;
     }
     fifo.lock = false;
     portEXIT_CRITICAL_ISR(&timerMux);
@@ -954,6 +1054,19 @@ void adc_continue_init(void) {
     if (adc_unit != 0) {
         ESP_LOGE(TAG_AFSK, "Only ADC1 pins are supported in continuous mode!");
     }
+    // Record the real channel (e.g. 5 for GPIO33 on classic ESP32) so
+    // s_conv_done_cb filters DMA results against it instead of an assumed
+    // channel 0 - see the comment in s_conv_done_cb for why that mismatch
+    // was silently discarding every captured sample on this board.
+    s_adc_channel = channel;
+
+    // Defensive: an RTC GPIO pull-up/pull-down left enabled (reset default,
+    // or leftover from some other pinMode() call on this pad earlier in
+    // boot) fights any weak analog source and pins the ADC to a rail - a
+    // constant max-code, zero-swing reading being the classic symptom. The
+    // continuous ADC driver does not touch pull config itself, so clear it
+    // explicitly here rather than relying on it having never been set.
+    gpio_set_pull_mode((gpio_num_t)adc_pins[0], GPIO_FLOATING);
 
     uint32_t conv_frame_size = (uint32_t)(BLOCK_SIZE * SOC_ADC_DIGI_RESULT_BYTES);
     // uint32_t conv_frame_size = ADC_SAMPLES_COUNT;
@@ -967,7 +1080,7 @@ void adc_continue_init(void) {
 #endif
     Err = adc_continuous_new_handle(&AdcHandleConfig, &AdcHandle);
     if (Err != ESP_OK)
-        ESP_LOGD(TAG_AFSK, "AdMeasure : Adc Continuous Init Failed.");
+        ESP_LOGE(TAG_AFSK, "AdMeasure : Adc Continuous Init Failed (err=%d).", Err);
     else {
         /* On configure l'ADC : */
         adc_continuous_config_t AdcConfig = {
@@ -995,7 +1108,7 @@ void adc_continue_init(void) {
         AdcConfig.adc_pattern = adc_pattern;
         Err = adc_continuous_config(AdcHandle, &AdcConfig);
         if (Err != ESP_OK)
-            ESP_LOGI(TAG, "=====> AdMeasure : Adc Continuous Configuration Failed.");
+            ESP_LOGE(TAG, "=====> AdMeasure : Adc Continuous Configuration Failed (err=%d).", Err);
         else {
             // Setup callbacks for complete event
             adc_continuous_evt_cbs_t cbs = {
@@ -1073,29 +1186,42 @@ void adc_continue_init(void) {
             // s_task_handle = xTaskGetCurrentTaskHandle();
 
             if (Err != ESP_OK)
-                ESP_LOGI(TAG, "=====> AdMeasure : Fail to create the Curve Fitting Scheme.");
-            else {
-                // if(_sql_pin < 0){
-                /* On démarre l'ADC : */
-                // SYSCON.saradc_ctrl2.meas_num_limit = 0;
-                adc_continuous_start(AdcHandle);
-                // adc_continuous_stop(AdcHandle);
-                // SYSCON.saradc_ctrl2.meas_num_limit = 0;
-                // HAL_FORCE_MODIFY_U32_REG_FIELD(SYSCON.saradc_ctrl2, meas_num_limit, 0);
-                ESP_LOGD(TAG_AFSK, "ADC Continuous has been start");
-                adcStopFlag = false;
+                ESP_LOGI(TAG, "=====> AdMeasure : Fail to create the Curve Fitting Scheme. Continuing without "
+                              "calibrated mV/RMS reporting - this board likely has no factory ADC calibration "
+                              "eFuses burned. Raw-code AFSK demodulation is unaffected.");
 
-                // }else{
-                //   adc_continuous_stop(AdcHandle);
-                //   adcStopFlag = true; // Stop ADC if SQL pin is set
-                // }
-            }
+            // Start the ADC continuous driver regardless of whether the
+            // calibration scheme above succeeded - AdcCaliHandle is only used
+            // later for cosmetic mV/RMS reporting (adc_cali_raw_to_voltage()),
+            // never for the raw ADC codes the demodulator itself decodes, so a
+            // failed/unsupported calibration scheme must never prevent the
+            // ADC from actually sampling.
+            adc_continuous_start(AdcHandle);
+            ESP_LOGD(TAG_AFSK, "ADC Continuous has been start");
+            adcStopFlag = false;
         }
     }
 }
 #endif
 #endif // I2C
 
+/*
+ * Real DAC output (classic ESP32 / ESP32-S2 only): drives the internal 8-bit
+ * R-2R DAC hardware directly. On classic ESP32, DAC_CHAN_0 = GPIO25 (DAC1).
+ * dac_oneshot_output_voltage() is explicitly documented as ISR-safe, so it can
+ * be called straight from sample_dac_isr() at the modem sample rate.
+ */
+#ifdef AFSK_HAS_REAL_DAC
+static dac_oneshot_handle_t s_dac_chan = NULL;
+
+static void real_dac_init(void) {
+    dac_oneshot_config_t dac_cfg = {
+        .chan_id = DAC_CHAN_0, // GPIO25 (DAC1) on classic ESP32
+    };
+    ESP_ERROR_CHECK(dac_oneshot_new_channel(&dac_cfg, &s_dac_chan));
+    dac_oneshot_output_voltage(s_dac_chan, 127); // idle at mid-scale (silence)
+}
+#else
 /*
  * Configure and initialize the sigma delta modulation
  * on channel 0 to output signal on GPIO4
@@ -1118,6 +1244,7 @@ static void sigmadelta_init(void) {
     ESP_ERROR_CHECK(sdm_channel_set_pulse_density(sdm_chan, 0));
     ESP_ERROR_CHECK(sdm_channel_enable(sdm_chan));
 }
+#endif
 
 void AFSK_hw_init(void) {
     // Set up ADC
@@ -1137,6 +1264,18 @@ void AFSK_hw_init(void) {
 
     if (_pwr_pin > -1)
         digitalWrite(_pwr_pin, !_pwr_active);
+
+    // Drive the PTT pin to its inactive level right away. Without this it is
+    // left as a floating input (default GPIO reset state) until the very
+    // first real TX calls setPtt() from modem.c - and getTransmit() polls
+    // this same pin on every AFSK_Poll() cycle. If the floating pin happens
+    // to read as "active" (very likely with no external pull), getTransmit()
+    // returns true permanently, AFSK_Poll() takes the TX branch forever, and
+    // the RX/demodulator path never runs at all - independent of any
+    // ADC/DAC wiring, this alone can make RX (and the loop test) look
+    // completely dead from boot.
+    if (_ptt_pin > -1)
+        setPtt(false);
 
     RingBuffer_Init(&fifo); // Initialize the ring buffer
 
@@ -1181,8 +1320,13 @@ void AFSK_hw_init(void) {
 // ESP_LOGD(TAG_AFSK, "v_ref routed to 3.3V\n");
 #endif
 
+#ifdef AFSK_HAS_REAL_DAC
+    real_dac_init();
+    ESP_LOGD(TAG_AFSK, "Real DAC initialized (GPIO25 / DAC_CHAN_0)");
+#else
     sigmadelta_init();
     ESP_LOGD(TAG_AFSK, "Sigma Delta Initialized");
+#endif
     // Create semaphore to inform us when the timer has fired
     // timerSemaphore = xSemaphoreCreateBinary();
     // Set timer frequency to 20Mhz
@@ -1285,6 +1429,15 @@ void AFSK_init(int8_t adc_pin, int8_t dac_pin, int8_t ptt_pin, int8_t sql_pin, i
 void AFSK_deinit() {
     ESP_LOGD(TAG_AFSK, "AFSK deinitialization - cleaning up ADC resources");
 
+#ifdef AFSK_HAS_REAL_DAC
+    // Release the real DAC channel so it can be re-registered on the next init
+    if (s_dac_chan != NULL) {
+        dac_oneshot_del_channel(s_dac_chan);
+        s_dac_chan = NULL;
+        ESP_LOGD(TAG_AFSK, "DAC oneshot channel deleted");
+    }
+#endif
+
     // Stop ADC if running
     if (AdcHandle != NULL) {
         adc_continuous_stop(AdcHandle);
@@ -1352,10 +1505,32 @@ void IRAM_ATTR sample_dac_isr() {
     if (hw_afsk_dac_isr) {
         portENTER_CRITICAL_ISR(&timerMux); // ISR start
         sinwave = MODEM_BAUDRATE_TIMER_HANDLER();
+#ifdef AFSK_HAS_REAL_DAC
+        // BUG (was): sinwave was written to the DAC at full 0-255 swing
+        // (0-~3.3V). Espressif's own ADC characteristics put the *real*
+        // linear/measurable ceiling around ~2450mV even at the max
+        // available attenuation (ADC_ATTEN_DB_12) - the top portion of a
+        // full-swing DAC signal is therefore hard-clipped by the ADC no
+        // matter what atten is configured, which is exactly what the LOOP
+        // TEST diagnostics showed (raw code pinned at 4095 on every peak).
+        // A clipped/flat-topped AFSK tone is heavily distorted and the PLL
+        // demodulator can't reliably lock onto it. The sigma-delta path
+        // below already reduces its swing to ~-85..85 (out of -128..127)
+        // for this same reason - apply the same ~75% headroom scaling here
+        // so the real-DAC path stays within the ADC's actual linear range.
+        int16_t dacOut = 127 + (((int16_t)sinwave - 127) * 3) / 4; // ~75% amplitude, centered at 127
+        if (dacOut < 0)
+            dacOut = 0;
+        else if (dacOut > 255)
+            dacOut = 255;
+        // dac_oneshot_output_voltage() is documented as ISR-safe.
+        dac_oneshot_output_voltage(s_dac_chan, (uint8_t)dacOut);
+#else
         // Sigma-delta duty of one channel, the value ranges from -128 to 127, recommended range is -90 ~ 90.The waveform is more like a random one in this
         // range.
         int8_t sine = (int8_t)(((sinwave - 127) * 12) >> 4); // Redue sine = -85 ~ 85
         sdm_channel_set_pulse_density(sdm_chan, sine);
+#endif
         portEXIT_CRITICAL_ISR(&timerMux); // ISR end
                                           // Give a semaphore that we can check in the loop
                                           // xSemaphoreGiveFromISR(timerSemaphore, NULL);
@@ -1407,7 +1582,14 @@ void AFSK_Poll(bool SA818, bool RFPower) {
     }
     sqlActiveOld = sqlActive;
 
-    if (hw_afsk_dac_isr) {
+    // The body of this branch (TX-side I2S/DAC bookkeeping) is legacy,
+    // fully-commented-out dead code from the old I2S_INTERNAL path - it does
+    // nothing on the live (adc_continuous) path this project actually builds.
+    // In full-duplex mode (tcb.fullDuplex, the default), fall through to the
+    // real RX/demodulator branch below even while transmitting, matching the
+    // s_conv_done_cb() fifo-fill gate above - otherwise RX (and the ADC/DAC
+    // loopback self-test, which decodes its own TX) can never work at all.
+    if (hw_afsk_dac_isr && !tcb.fullDuplex) {
 
         // #ifdef I2S_INTERNAL
         //     memset(pcm_out, 0, sizeof(pcm_out));
@@ -1596,7 +1778,10 @@ void AFSK_Poll(bool SA818, bool RFPower) {
 #ifdef ADC_SAMPLE
                         mV = adc;
 #else
-                        adc_cali_raw_to_voltage(AdcCaliHandle, adc, &mV);
+                        if (AdcCaliHandle != NULL)
+                            adc_cali_raw_to_voltage(AdcCaliHandle, adc, &mV);
+                        else
+                            mV = adc; // no calibration available - report raw code instead of mV
 #endif
                         mV -= offset;
                         // mVsum += powl(mV, 2); // VRMS = √(1/n)(V1^2 +V2^2 + … + Vn^2)
@@ -1614,7 +1799,10 @@ void AFSK_Poll(bool SA818, bool RFPower) {
 #ifdef ADC_SAMPLE
                 offset = tp->avg;
 #else
-                adc_cali_raw_to_voltage(AdcCaliHandle, tp->avg, &offset);
+                if (AdcCaliHandle != NULL)
+                    adc_cali_raw_to_voltage(AdcCaliHandle, tp->avg, &offset);
+                else
+                    offset = tp->avg;
 #endif
 
                 if (mVsumCount > 0) {

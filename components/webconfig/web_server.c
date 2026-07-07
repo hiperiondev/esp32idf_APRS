@@ -68,6 +68,7 @@ void web_server_start(void) {
 
     reg(server, "/radio", HTTP_GET, page_radio_get);
     reg(server, "/radio", HTTP_POST, page_radio_post);
+    reg(server, "/radio/looptest", HTTP_GET, page_radio_looptest_get);
     reg(server, "/vpn", HTTP_GET, page_vpn_get);
     reg(server, "/vpn", HTTP_POST, page_vpn_post);
     reg(server, "/mqtt", HTTP_GET, page_mqtt_get);

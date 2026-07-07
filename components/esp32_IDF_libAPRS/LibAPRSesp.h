@@ -27,7 +27,10 @@ typedef struct {
     bool pwr_active; // Power-switch active level (g_config.rf_pwr_active)
 
     uint8_t adc_atten;   // 0-4 attenuation index (g_config.adc_atten)
-    uint8_t modem_type;  // MODEM_300/1200/1200_V23/9600 select (g_config.modem_type)
+    uint8_t modem_type;  // AFSK modulation select: 0=MODEM_300, 1=MODEM_1200, 2=MODEM_1200_V23, 3=MODEM_9600
+                          // (g_config.afsk_modem_type - the "Audio / AFSK" -> "Modulation" webconfig field, used
+                          // for both RX and TX on the audio ADC/DAC modem; NOT g_config.modem_type, which is
+                          // the separate optional RF module's modem mode)
     bool bpf;            // Bandpass/flat-audio-in flag (g_config.audio_lpf)
     uint16_t tx_timeslot; // ms (g_config.tx_timeslot)
     uint16_t preamble;    // ms (g_config.preamble)
@@ -64,5 +67,19 @@ void APRS_printSettings();
 void APRS_sendTNC2Pkt(const uint8_t *raw, size_t length);
 
 int freeMemory();
+
+// Diagnostic helpers (see definitions in AFSK.c): min/max raw ADC code seen
+// by the sampling ISR since the last reset. Used by the "LOOP TEST" to report
+// whether the ADC is seeing any signal swing at all.
+void AFSK_resetAdcDiag(void);
+void AFSK_getAdcDiag(int16_t *out_min, int16_t *out_max);
+// Converts a raw ADC code (as returned by AFSK_getAdcDiag) to calibrated
+// millivolts using the same calibration scheme adc_continue_init() set up,
+// falling back to a rough estimate if no calibration eFuses were burned.
+// Lets callers (e.g. the LOOP TEST failure messages) report an actual
+// voltage instead of an ambiguous raw code, which is the difference between
+// "the pin reads ~3.3V, definitely a HW short/miswire" and "the pin reads
+// some code that only looks wrong because of a units/scale bug".
+int AFSK_adcRawToMv(int16_t raw);
 
 #endif /* LIBAPRS_ESP_H_ */

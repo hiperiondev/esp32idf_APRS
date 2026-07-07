@@ -175,7 +175,13 @@ static void app_task(void *arg) {
         .sql_active = g_config.rf_sql_active,
         .pwr_active = g_config.rf_pwr_active,
         .adc_atten = g_config.adc_atten,
-        .modem_type = g_config.modem_type,
+        // Audio ADC/DAC AFSK modulation (300/1200/1200 V.23/9600 Bd), set on the
+        // Radio / Modem (Audio / AFSK) webconfig page. This is intentionally NOT
+        // g_config.modem_type - that field holds the *optional RF module's* modem
+        // mode (RF_MODE_OFF/LoRa/G3RUH/GFSK/DPRS), a completely different value
+        // space, and feeding it to afskSetModem() here would silently corrupt the
+        // AFSK modem configuration whenever the RF module mode was changed.
+        .modem_type = g_config.afsk_modem_type,
         .bpf = g_config.audio_lpf,
         .tx_timeslot = g_config.tx_timeslot,
         .preamble = g_config.preamble,
@@ -185,6 +191,7 @@ static void app_task(void *arg) {
     // on the Radio / Modem (Audio / AFSK) webconfig page.
     if (g_config.audio_modem_en) {
         APRS_init(&modem_cfg);
+        aprs_service_notify_modem_ready();
     } else {
         ESP_LOGI(TAG, "Audio ADC/DAC AFSK modem disabled in config - skipping APRS_init()");
     }
