@@ -50,9 +50,7 @@ void app_config_set_defaults(app_config_t *c) {
     c->rf_type = RF_SX1278;
     c->freq_rx = 144.800f;
     c->freq_tx = 144.800f;
-    c->band = 0;
     c->sql_level = 40;
-    c->rf_power = false;
     c->volume = 60;
     c->agc_max_gain = 10; // matches AFSK.c's s_agcMaxGain default
     c->mic = 60;
@@ -362,8 +360,6 @@ static cJSON *config_to_json(const app_config_t *c) {
     jadd_num(d, "rfSql", c->sql_level);
     jadd_num(d, "rfVolume", c->volume);
     jadd_num(d, "agcMaxGain", c->agc_max_gain);
-    jadd_num(d, "rfBand", c->band);
-    jadd_bool(d, "rfPwr", c->rf_power);
     jadd_bool(d, "audioModemEn", c->audio_modem_en);
     jadd_bool(d, "audioLPF", c->audio_lpf);
 
@@ -832,7 +828,6 @@ static void config_from_json(cJSON *d, app_config_t *c) {
     c->rf_en = false;
 #endif
     c->rf_type = (uint8_t)jget_num(d, "rfType", def.rf_type);
-    c->rf_power = jget_bool(d, "rfPwr", def.rf_power);
     c->modem_type = (uint8_t)jget_num(d, "rfModem", def.modem_type);
     c->afsk_modem_type = (uint8_t)jget_num(d, "afskModem", def.afsk_modem_type);
     c->preamble = (uint16_t)jget_num(d, "rfPreamble", def.preamble);
@@ -843,7 +838,6 @@ static void config_from_json(cJSON *d, app_config_t *c) {
     c->sql_level = (uint8_t)jget_num(d, "rfSql", def.sql_level);
     c->volume = (uint8_t)jget_num(d, "rfVolume", def.volume);
     c->agc_max_gain = (uint8_t)jget_num(d, "agcMaxGain", def.agc_max_gain);
-    c->band = (uint8_t)jget_num(d, "rfBand", def.band);
     c->audio_modem_en = jget_bool(d, "audioModemEn", def.audio_modem_en);
     c->audio_lpf = jget_bool(d, "audioLPF", def.audio_lpf);
 

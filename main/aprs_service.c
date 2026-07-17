@@ -33,9 +33,15 @@ static const char *TAG = "aprs_service";
 //
 // Deliberately NOT mapped, because the new component takes none of them at
 // runtime:
-//   adc_gpio / dac_gpio / rf_ptt_gpio / rf_ptt_active
-//       -> compile-time MODEM_ADC_GPIO / MODEM_DAC_GPIO / MODEM_PTT_GPIO /
-//          MODEM_PTT_ACTIVE_HIGH, set in the top-level CMakeLists.txt.
+//   adc_gpio / dac_gpio
+//       -> compile-time MODEM_ADC_GPIO / MODEM_DAC_GPIO, set in the
+//          top-level CMakeLists.txt. Changing the audio front-end pins
+//          still requires a rebuild.
+//   rf_ptt_gpio / rf_ptt_active
+//       -> NOW mapped at runtime (below) to modem_config_t.ptt_gpio /
+//          .ptt_active_high, validated by afsk_ptt_gpio_is_valid(). The
+//          MODEM_PTT_GPIO / MODEM_PTT_ACTIVE_HIGH compile-time macros only
+//          supply the fallback default in MODEM_DEFAULT_CONFIG() now.
 //   rf_sql_gpio / rf_sql_active / rf_pwr_gpio / rf_pwr_active
 //       -> no equivalent at all. The component gates RX on the demodulator's
 //          own DCD rather than on a hardware squelch line, and has no RF
@@ -68,6 +74,16 @@ void aprs_service_build_modem_config(modem_config_t *cfg, bool full_duplex) {
     cfg->slot_time_ms = g_config.tx_timeslot;
     cfg->fx25_mode = g_config.fx25_mode;
     cfg->allow_non_aprs = false;
+
+    // PTT pin is now runtime-selectable (Radio/Modem page) instead of the
+    // old compile-time-only MODEM_PTT_GPIO. afsk_ptt_gpio_is_valid() rejects
+    // input-only pins (GPIO34-39), the internal flash/PSRAM pins (GPIO6-11)
+    // and whichever pins are already wired to the ADC/DAC audio path
+    // (MODEM_ADC_GPIO / MODEM_DAC_GPIO), so a stale or hand-edited
+    // config.json can never key up an audio pin or a non-output pin.
+    // -1 always means "PTT disabled" and passes validation unchanged.
+    cfg->ptt_gpio = afsk_ptt_gpio_is_valid(g_config.rf_ptt_gpio) ? g_config.rf_ptt_gpio : -1;
+    cfg->ptt_active_high = g_config.rf_ptt_active;
 
     // Half duplex for real on-air use: MODEM_DEFAULT_CONFIG() ships full
     // duplex (it targets the wire-loopback demo), which would key up over
@@ -317,8 +333,9 @@ static void messageTxHandler(const char *packet, size_t len, uint8_t channels) {
 // AFSK_ServiceTx()/Ax25TransmitCheck() and drains RX frames into the callback.
 // Calling AFSK_Poll() from here would now race that task over the same FIFO.
 // (The old AFSK_Poll(false, g_config.rf_power) also carried the RF power-switch
-// pin; the new component has no such output, so rf_power now only feeds the
-// dashboard's TX-power label in page_common.c.)
+// pin; the new component has no such output, and rf_power/band were dead
+// config with no consumer anywhere in the app, so both were removed - see
+// the Radio/Modem page's Save handler and app_config.c.)
 
 static void serviceTickTask(void *arg) {
     while (1) {

@@ -44,11 +44,56 @@
 #define AX25_FLAG 0x7e
 
 /**
+ * @brief Select the PTT GPIO and its active level at runtime.
+ *
+ * Overrides the compile-time ::MODEM_PTT_GPIO / ::MODEM_PTT_ACTIVE_HIGH
+ * defaults. Must be called before AFSK_init() (i.e. before modem_init())
+ * for the pin to actually be configured as an output; calling it again
+ * later only updates the active level and the pin used by setPtt(), it
+ * does NOT reconfigure GPIO direction on an already-running modem - call
+ * AFSK_deinit()/AFSK_init() (or modem_deinit()/modem_init()) to move PTT
+ * to a different pin while the modem is running.
+ *
+ * @param gpio        GPIO number to drive PTT with, or -1 to disable PTT
+ *                    output entirely. The caller is responsible for
+ *                    ensuring this is a valid output-capable pin that does
+ *                    not collide with ::MODEM_ADC_GPIO / ::MODEM_DAC_GPIO
+ *                    or any other pin already in use -
+ *                    afsk_ptt_gpio_is_valid() can be used to check this.
+ * @param active_high true = PTT output is active-high, false = active-low.
+ */
+void AFSK_setPttGpio(int8_t gpio, bool active_high);
+
+/**
+ * @brief Check whether a GPIO number is usable as the PTT output pin on
+ *        the ESP32.
+ *
+ * Rejects:
+ *  - Input-only pins (GPIO34-39), which cannot drive an output at all.
+ *  - The pins already reserved for the ADC/DAC audio path
+ *    (::MODEM_ADC_GPIO, ::MODEM_DAC_GPIO).
+ *  - Pins outside the 0-39 range.
+ *  - The GPIO6-11 pins wired to the module's internal SPI flash/PSRAM,
+ *    which are not brought out on any standard module and will crash the
+ *    board if driven.
+ *  - -1 (PTT disabled) is treated as valid, since it is an accepted
+ *    "no PTT pin" sentinel rather than an actual pin number.
+ *
+ * @param gpio GPIO number to validate, or -1 for "disabled".
+ * @return true if @p gpio is -1 or a safe, output-capable, non-reserved
+ *         GPIO; false otherwise.
+ */
+bool afsk_ptt_gpio_is_valid(int8_t gpio);
+
+/**
  * @brief Initialize the AFSK hardware layer.
  *
  * Brings up the ADC (continuous/DMA mode), the DAC and the GPTimer used to
  * clock DAC samples. This function is called internally by modem_init()
  * and does not normally need to be called directly by the application.
+ *
+ * Call AFSK_setPttGpio() before this function if a runtime PTT pin (other
+ * than the ::MODEM_PTT_GPIO compile-time default) is needed.
  *
  * @return ESP_OK on success, or an ESP-IDF error code if any peripheral
  *         could not be configured.

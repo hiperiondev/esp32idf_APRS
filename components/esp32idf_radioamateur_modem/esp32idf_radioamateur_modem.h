@@ -29,6 +29,7 @@
 #include "freertos/task.h"
 
 #include "ax25.h"
+#include "esp32idf_radioamateur_modem_config.h" /* MODEM_PTT_GPIO / MODEM_PTT_ACTIVE_HIGH defaults used by MODEM_DEFAULT_CONFIG() */
 
 /**
  * @brief Convert a delay in milliseconds to FreeRTOS ticks, guaranteeing at
@@ -69,6 +70,10 @@ typedef struct {
     uint16_t preamble_ms;  /**< TXDelay (preamble) duration, in milliseconds. */
     uint16_t slot_time_ms; /**< CSMA quiet/slot time, in milliseconds; ignored in full duplex mode. */
     uint8_t fx25_mode;     /**< FX.25 mode: 0 = off, 1 = RX only, 2 = RX+TX (requires -DENABLE_FX25). */
+    int8_t ptt_gpio;       /**< GPIO to drive PTT with, or -1 to disable it. Must be an output-capable
+                                pin distinct from ::MODEM_ADC_GPIO / ::MODEM_DAC_GPIO -
+                                see afsk_ptt_gpio_is_valid(). Applied by modem_init()/modem_set_modem(). */
+    bool ptt_active_high; /**< true = PTT output is active-high, false = active-low. */
 } modem_config_t;
 
 /**
@@ -86,6 +91,8 @@ typedef struct {
         .preamble_ms = 300,                                                                                                                                    \
         .slot_time_ms = 0,                                                                                                                                     \
         .fx25_mode = 0,                                                                                                                                        \
+        .ptt_gpio = MODEM_PTT_GPIO,                                                                                                                            \
+        .ptt_active_high = MODEM_PTT_ACTIVE_HIGH ? true : false,                                                                                              \
     }
 
 /**

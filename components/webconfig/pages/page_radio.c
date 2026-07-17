@@ -12,9 +12,30 @@
 
 #include "esp32idf_radioamateur_modem.h"
 #include "esp32idf_radioamateur_modem_config.h"
+#include "afsk.h"
 #include "pages.h"
 #include "translations.h"
 #include "web_common.h"
+
+// Renders the PTT GPIO field as a <select> restricted to pins that
+// afsk_ptt_gpio_is_valid() actually accepts: output-capable ESP32 GPIOs,
+// excluding whichever pins are wired to the ADC/DAC audio path
+// (MODEM_ADC_GPIO / MODEM_DAC_GPIO), the input-only GPIO34-39 pads, and the
+// internal-flash/PSRAM GPIO6-11 pads. This keeps a colliding or unusable pin
+// from ever being selected in the UI, rather than only catching it on Save.
+static void web_field_ptt_gpio(httpd_req_t *req, int8_t current) {
+    // -1 = PTT disabled, always offered first regardless of validity.
+    web_select_open(req, TR_F_PTT_PIN, "rfPTT");
+    web_select_option(req, -1, TR_DISABLED, current == -1);
+    for (int gpio = 0; gpio <= 39; gpio++) {
+        if (!afsk_ptt_gpio_is_valid((int8_t)gpio))
+            continue;
+        char label[16];
+        snprintf(label, sizeof(label), "GPIO%d", gpio);
+        web_select_option(req, gpio, label, current == gpio);
+    }
+    web_select_close(req);
+}
 
 esp_err_t page_radio_get(httpd_req_t *req) {
     if (!web_check_auth(req))
@@ -90,11 +111,19 @@ esp_err_t page_radio_get(httpd_req_t *req) {
                  MODEM_DAC_GPIO, MODEM_ADC_GPIO, (int)MODEM_ADC_ATTEN, MODEM_ADC_SAMPLERATE, MODEM_DAC_SAMPLERATE);
         httpd_resp_sendstr_chunk(req, buf);
     }
-    web_field_checkbox(req, TR_F_RF_POWER_BOOST, "rfPwr", g_config.rf_power);
+    // Unlike the ADC/DAC pins above, PTT IS applied at runtime:
+    // aprs_service_build_modem_config() maps rfPTT/rfPTTAct into
+    // modem_config_t.ptt_gpio/.ptt_active_high on every boot and on every
+    // live re-apply (Save, below). The dropdown is built from
+    // afsk_ptt_gpio_is_valid(), so it only ever offers output-capable GPIOs
+    // that don't collide with MODEM_ADC_GPIO/MODEM_DAC_GPIO - a bad pin can't
+    // be selected in the first place, rather than merely being rejected on
+    // Save.
+    web_field_ptt_gpio(req, g_config.rf_ptt_gpio);
+    web_field_checkbox(req, TR_F_PTT_ACTIVE_HIGH, "rfPTTAct", g_config.rf_ptt_active);
     web_field_checkbox(req, TR_F_AUDIO_LOW_PASS_FILTER, "audioLPF", g_config.audio_lpf);
     web_field_int(req, TR_F_PREAMBLE_MS, "rfPreamble", g_config.preamble);
     web_field_int(req, TR_F_TX_TIME_SLOT_MS, "txTimeSlot", g_config.tx_timeslot);
-    web_field_int(req, TR_F_BAND_PLAN_INDEX, "rfBand", g_config.band);
     web_fieldset_close(req);
 
     httpd_resp_sendstr_chunk(req, "<script>"
@@ -209,11 +238,15 @@ esp_err_t page_radio_post(httpd_req_t *req) {
     // deliberately left untouched rather than deleted, so an existing
     // config.json round-trips unchanged through app_config_save() below and a
     // future component that can honour them finds the values still there.
-    g_config.rf_power = web_form_get_bool(body, "rfPwr");
     g_config.audio_lpf = web_form_get_bool(body, "audioLPF");
+    // A malicious/hand-crafted POST could still send a value the <select>
+    // never offers (e.g. an ADC/DAC pin or an input-only one), so re-validate
+    // here too instead of trusting the dropdown alone.
+    int8_t ptt_gpio_in = (int8_t)web_form_get_int(body, "rfPTT", g_config.rf_ptt_gpio);
+    g_config.rf_ptt_gpio = afsk_ptt_gpio_is_valid(ptt_gpio_in) ? ptt_gpio_in : -1;
+    g_config.rf_ptt_active = web_form_get_bool(body, "rfPTTAct");
     g_config.preamble = (uint16_t)web_form_get_int(body, "rfPreamble", g_config.preamble);
     g_config.tx_timeslot = (uint16_t)web_form_get_int(body, "txTimeSlot", g_config.tx_timeslot);
-    g_config.band = (uint8_t)web_form_get_int(body, "rfBand", g_config.band);
 
     app_config_save();
 

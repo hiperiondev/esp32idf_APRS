@@ -72,9 +72,8 @@ esp_err_t page_dashboard(httpd_req_t *req) {
     if (g_config.rf_en) {
         n += snprintf(buf + n, sizeof(buf) - n,
                       "<tr><td>" TR_DASH_FREQ_TX "</td><td>%.4f MHz</td></tr>"
-                      "<tr><td>" TR_DASH_FREQ_RX "</td><td>%.4f MHz</td></tr>"
-                      "<tr><td>" TR_DASH_TX_PWR "</td><td>%s</td></tr>",
-                      g_config.freq_tx, g_config.freq_rx, g_config.rf_power ? TR_DASH_TX_PWR_HIGH : TR_DASH_TX_PWR_LOW);
+                      "<tr><td>" TR_DASH_FREQ_RX "</td><td>%.4f MHz</td></tr>",
+                      g_config.freq_tx, g_config.freq_rx);
     }
     const char *modemName = TR_F_OFF;
     if (g_config.rf_en) {

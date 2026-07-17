@@ -105,6 +105,14 @@ void modem_set_rx_callback(modem_rx_cb_t cb, void *ctx) {
 }
 
 void modem_set_modem(const modem_config_t *cfg) {
+    /* Validated defensively here (not just at the config-save boundary in
+     * app_config.c/page_mod.c) so any caller of modem_set_modem()/modem_init()
+     * can't accidentally drive an ADC/DAC or input-only pin as PTT. An
+     * invalid pin falls back to "disabled" rather than being silently
+     * applied. */
+    int8_t ptt_gpio = afsk_ptt_gpio_is_valid(cfg->ptt_gpio) ? cfg->ptt_gpio : -1;
+    AFSK_setPttGpio(ptt_gpio, cfg->ptt_active_high);
+
     afskSetFullDuplex(cfg->full_duplex);
     afskSetModem((uint8_t)cfg->modem, cfg->flat_audio, cfg->slot_time_ms, cfg->preamble_ms, cfg->fx25_mode);
     Ax25Config.allowNonAprs = cfg->allow_non_aprs ? 1 : 0;
@@ -120,6 +128,12 @@ esp_err_t modem_init(const modem_config_t *cfg) {
     /* Set the duplex mode before the hardware comes up so the ADC callback
      * gate and Ax25TransmitCheck() agree from the very first sample. */
     afskSetFullDuplex(cfg->full_duplex);
+
+    /* Must happen before AFSK_init(), since that is what configures the PTT
+     * pin's GPIO direction - AFSK_setPttGpio() only updates the pin number
+     * afsk.c uses, it does not itself touch gpio_config(). Same defensive
+     * fallback-to-disabled as modem_set_modem(). */
+    AFSK_setPttGpio(afsk_ptt_gpio_is_valid(cfg->ptt_gpio) ? cfg->ptt_gpio : -1, cfg->ptt_active_high);
 
     esp_err_t err = AFSK_init();
     if (err != ESP_OK)

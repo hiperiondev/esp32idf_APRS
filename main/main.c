@@ -309,12 +309,14 @@ static void app_task(void *arg) {
     // used here and by the live re-apply on the Radio page (and by the LOOP
     // TEST, which only flips full_duplex on top of it). Everything the old
     // aprs_modem_config_t carried that the new component does not take at
-    // runtime - ADC/DAC/PTT/SQL/PWR pins, ADC attenuation, software squelch
+    // runtime - ADC/DAC/SQL/PWR pins, ADC attenuation, software squelch
     // level, volume and the AGC gain ceiling - is either a compile-time
     // constant (pins/attenuation: see the idf_build_set_property() block in
     // the top-level CMakeLists.txt) or handled internally by the component
     // (its AGC needs no ceiling and it has no software squelch: the AX.25
-    // decoder gates on real DCD instead).
+    // decoder gates on real DCD instead). PTT is the one exception: its GPIO
+    // and active level are now runtime-selectable on the Radio/Modem page
+    // and validated against the ADC/DAC pins by afsk_ptt_gpio_is_valid().
     //
     // aprs_service_start() must run before modem_init(): it installs the RX
     // callback, and the component starts delivering frames from inside

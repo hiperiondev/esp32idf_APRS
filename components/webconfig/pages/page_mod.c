@@ -1,7 +1,29 @@
+#include "afsk.h"
 #include "app_config.h"
 #include "pages.h"
 #include "translations.h"
 #include "web_common.h"
+
+// Renders the PTT GPIO field as a <select> restricted to pins that
+// afsk_ptt_gpio_is_valid() actually accepts: output-capable ESP32 GPIOs,
+// excluding the ones already wired to the ADC/DAC audio path
+// (MODEM_ADC_GPIO / MODEM_DAC_GPIO), the input-only GPIO34-39 pads, and the
+// internal-flash/PSRAM GPIO6-11 pads. This makes it impossible to select a
+// colliding or unusable pin from the web UI in the first place, rather than
+// only catching it on Save.
+static void web_field_ptt_gpio(httpd_req_t *req, int8_t current) {
+    // -1 = PTT disabled, always offered first regardless of validity.
+    web_select_open(req, TR_F_PTT_PIN, "rfPTT");
+    web_select_option(req, -1, TR_DISABLED, current == -1);
+    for (int gpio = 0; gpio <= 39; gpio++) {
+        if (!afsk_ptt_gpio_is_valid((int8_t)gpio))
+            continue;
+        char label[16];
+        snprintf(label, sizeof(label), "GPIO%d", gpio);
+        web_select_option(req, gpio, label, current == gpio);
+    }
+    web_select_close(req);
+}
 
 esp_err_t page_mod_get(httpd_req_t *req) {
     if (!web_check_auth(req))
@@ -13,19 +35,27 @@ esp_err_t page_mod_get(httpd_req_t *req) {
     web_fieldset_open(req, TR_F_RF_MODULE_GPIO);
     web_field_int(req, TR_F_TX_PIN, "rfTx", g_config.rf_tx_gpio);
     web_field_int(req, TR_F_RX_PIN, "rfRx", g_config.rf_rx_gpio);
-    // These pins configure the optional external RF module only. The audio
-    // ADC/DAC modem (esp32idf_radioamateur_modem) takes its own pins as
-    // compile-time constants - MODEM_ADC_GPIO / MODEM_DAC_GPIO /
-    // MODEM_PTT_GPIO in the top-level CMakeLists.txt - and ignores everything
-    // here; the previous component (esp32_IDF_libAPRS) took them at runtime.
-    // See the read-only summary on the Radio / Modem page.
+    // These two pins configure the optional external RF module only. The
+    // audio ADC/DAC modem (esp32idf_radioamateur_modem) still takes its
+    // ADC/DAC pins as compile-time constants - MODEM_ADC_GPIO / MODEM_DAC_GPIO
+    // in the top-level CMakeLists.txt - and ignores rfTx/rfRx above; the
+    // previous component (esp32_IDF_libAPRS) took them at runtime. See the
+    // read-only summary on the Radio / Modem page.
+    //
+    // PTT, however, IS applied at runtime now (aprs_service_build_modem_config()
+    // maps rfPTT/rfPTTAct into modem_config_t.ptt_gpio/.ptt_active_high on
+    // every boot and on every live re-apply). The dropdown below is built
+    // from afsk_ptt_gpio_is_valid(), so it only ever offers output-capable
+    // GPIOs that don't collide with MODEM_ADC_GPIO/MODEM_DAC_GPIO, keeping a
+    // bad pin from being selected in the first place rather than merely
+    // rejecting it on Save.
     web_field_int(req, TR_F_SQUELCH_PIN, "rfSQL", g_config.rf_sql_gpio);
     web_field_checkbox(req, TR_F_SQUELCH_ACTIVE_HIGH, "rfSQLAct", g_config.rf_sql_active);
     web_field_int(req, TR_F_POWER_DOWN_PIN, "rfPD", g_config.rf_pd_gpio);
     web_field_checkbox(req, TR_F_PD_ACTIVE_HIGH, "rfPDAct", g_config.rf_pd_active);
     web_field_int(req, TR_F_RF_POWER_SWITCH_PIN, "rfPWR", g_config.rf_pwr_gpio);
     web_field_checkbox(req, TR_F_PWR_ACTIVE_HIGH, "rfPWRAct", g_config.rf_pwr_active);
-    web_field_int(req, TR_F_PTT_PIN, "rfPTT", g_config.rf_ptt_gpio);
+    web_field_ptt_gpio(req, g_config.rf_ptt_gpio);
     web_field_checkbox(req, TR_F_PTT_ACTIVE_HIGH, "rfPTTAct", g_config.rf_ptt_active);
     web_field_int(req, TR_F_ADC_DC_OFFSET, "adcOffset", g_config.adc_dc_offset);
     web_field_int(req, TR_F_SERIAL_BAUDRATE, "rfBaudrate", g_config.rf_baudrate);
@@ -155,7 +185,11 @@ esp_err_t page_mod_post(httpd_req_t *req) {
     g_config.rf_pd_active = web_form_get_bool(body, "rfPDAct");
     g_config.rf_pwr_gpio = (int8_t)web_form_get_int(body, "rfPWR", g_config.rf_pwr_gpio);
     g_config.rf_pwr_active = web_form_get_bool(body, "rfPWRAct");
-    g_config.rf_ptt_gpio = (int8_t)web_form_get_int(body, "rfPTT", g_config.rf_ptt_gpio);
+    // A malicious/hand-crafted POST could still send a value the <select>
+    // never offers (e.g. an ADC/DAC pin or an input-only one), so re-validate
+    // here too instead of trusting the dropdown alone.
+    int8_t ptt_gpio = (int8_t)web_form_get_int(body, "rfPTT", g_config.rf_ptt_gpio);
+    g_config.rf_ptt_gpio = afsk_ptt_gpio_is_valid(ptt_gpio) ? ptt_gpio : -1;
     g_config.rf_ptt_active = web_form_get_bool(body, "rfPTTAct");
     g_config.adc_dc_offset = (uint16_t)web_form_get_int(body, "adcOffset", g_config.adc_dc_offset);
     g_config.rf_baudrate = (unsigned long)web_form_get_int(body, "rfBaudrate", g_config.rf_baudrate);

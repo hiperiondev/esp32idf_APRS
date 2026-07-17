@@ -364,6 +364,30 @@ static void resample_audio(float *buf) {
 static uint8_t r_old = 0, g_old = 0, b_old = 0;
 static int64_t rgbTimeout = 0;
 
+/* Runtime PTT pin/polarity, defaulting to the compile-time constants so a
+ * build that never calls AFSK_setPttGpio() behaves exactly as before. */
+static int8_t s_pttGpio = MODEM_PTT_GPIO;
+static bool s_pttActiveHigh = MODEM_PTT_ACTIVE_HIGH ? true : false;
+
+bool afsk_ptt_gpio_is_valid(int8_t gpio) {
+    if (gpio == -1)
+        return true; /* "disabled" is always accepted */
+    if (gpio < 0 || gpio > 39)
+        return false;
+    if (gpio >= 34 && gpio <= 39)
+        return false; /* input-only, cannot drive PTT */
+    if (gpio >= 6 && gpio <= 11)
+        return false; /* internal SPI flash/PSRAM, not brought out */
+    if (gpio == MODEM_ADC_GPIO || gpio == MODEM_DAC_GPIO)
+        return false; /* already used by the audio front end */
+    return true;
+}
+
+void AFSK_setPttGpio(int8_t gpio, bool active_high) {
+    s_pttGpio = gpio;
+    s_pttActiveHigh = active_high;
+}
+
 void LED_Status2(uint8_t r, uint8_t g, uint8_t b) {
     int64_t now = esp_timer_get_time() / 1000;
 
@@ -388,9 +412,8 @@ void LED_Status2(uint8_t r, uint8_t g, uint8_t b) {
 }
 
 void setPtt(bool state) {
-#if MODEM_PTT_GPIO >= 0
-    gpio_set_level((gpio_num_t)MODEM_PTT_GPIO, MODEM_PTT_ACTIVE_HIGH ? state : !state);
-#endif
+    if (s_pttGpio >= 0)
+        gpio_set_level((gpio_num_t)s_pttGpio, s_pttActiveHigh ? state : !state);
     if (state)
         LED_Status2(255, 0, 0);
     else
@@ -1310,14 +1333,14 @@ esp_err_t AFSK_init(void) {
 
     rb_init(&s_fifo);
 
-#if MODEM_PTT_GPIO >= 0
-    gpio_config_t pttCfg = {
-        .pin_bit_mask = 1ULL << MODEM_PTT_GPIO,
-        .mode = GPIO_MODE_OUTPUT,
-    };
-    gpio_config(&pttCfg);
-    gpio_set_level((gpio_num_t)MODEM_PTT_GPIO, MODEM_PTT_ACTIVE_HIGH ? 0 : 1);
-#endif
+    if (s_pttGpio >= 0) {
+        gpio_config_t pttCfg = {
+            .pin_bit_mask = 1ULL << s_pttGpio,
+            .mode = GPIO_MODE_OUTPUT,
+        };
+        gpio_config(&pttCfg);
+        gpio_set_level((gpio_num_t)s_pttGpio, s_pttActiveHigh ? 0 : 1);
+    }
 #if MODEM_LED_TX_GPIO >= 0
     gpio_config_t ledTxCfg = { .pin_bit_mask = 1ULL << MODEM_LED_TX_GPIO, .mode = GPIO_MODE_OUTPUT };
     gpio_config(&ledTxCfg);
