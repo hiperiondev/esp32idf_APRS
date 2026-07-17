@@ -4,7 +4,7 @@
  *
  * Periodically builds an APRS position report from the fixed lat/lon/altitude
  * saved by each page (g_config.trk_*, g_config.igate_*, g_config.digi_*) and
- * transmits it on RF (APRS_sendTNC2Pkt) and/or to APRS-IS (igate_send_raw),
+ * transmits it on RF (aprs_service_send_tnc2) and/or to APRS-IS (igate_send_raw),
  * per that page's own loc2rf / loc2inet flags. This is what makes the
  * station itself show up (e.g. on aprs.fi) - the IGate/digipeater alone only
  * relay traffic they already hear, they never announce their own position on

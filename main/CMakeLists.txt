@@ -24,7 +24,7 @@ idf_component_register(
         esp_pm
         lwip
         webconfig
-        esp32_IDF_libAPRS
+        esp32idf_radioamateur_modem
         digirepeater
         igate
         message

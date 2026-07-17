@@ -41,4 +41,5 @@ idf_component_register(
         lastheard
         igate
         digirepeater
+        esp32idf_radioamateur_modem
 )

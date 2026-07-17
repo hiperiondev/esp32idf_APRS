@@ -1,19 +1,19 @@
-/*
-This file is part of LwFEC.
-
-LwFEC is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 3 of the License, or
-(at your option) any later version.
-
-LwFEC is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
-
-You should have received a copy of the GNU General Public License
-along with LwFEC.  If not, see <http://www.gnu.org/licenses/>.
-*/
+/**
+ * @file gf.c
+ *
+ * @author Emiliano Augusto Gonzalez ( lu3vea @ gmail . com)
+ * @date 2026
+ * @copyright GNU General Public License v3
+ * @see https://github.com/hiperiondev/esp32idf_radioamateur_modem
+ *
+ * @note
+ * This is based on other projects:
+ *     VP-Digi: https://github.com/sq8vps/vp-digi
+ *     ESP32APRS: https://github.com/nakhonthai/ESP32APRS_Audio
+ *     LibAPRS: https://github.com/markqvist/LibAPRS
+ *
+ *     please contact their authors for more information.
+ */
 
 #include <string.h>
 
@@ -61,7 +61,7 @@ uint8_t GfPolyAdd(uint8_t *p1, uint8_t o1, uint8_t *p2, uint8_t o2, uint8_t *out
     } else // p2 is longer than p1
     {
         for (uint8_t i = 0; i < o1; i++) {
-            out[i] = p1[i] ^ p2[i];
+            out[i] = p1[i] ^ p2[2];
         }
         return o2;
     }

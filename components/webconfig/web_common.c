@@ -199,6 +199,12 @@ static const struct menu_item MENU[] = {
 
 void web_send_header(httpd_req_t *req, const char *title, const char *active_menu) {
     httpd_resp_set_type(req, "text/html");
+    // Config pages render live g_config values into the form on every GET.
+    // Without this header, browsers (especially after a POST->redirect->GET
+    // save flow) may serve a cached copy of the page instead of re-fetching,
+    // so a value that was just saved appears not to have been saved at all.
+    httpd_resp_set_hdr(req, "Cache-Control", "no-store, no-cache, must-revalidate");
+    httpd_resp_set_hdr(req, "Pragma", "no-cache");
     httpd_resp_sendstr_chunk(req, "<!DOCTYPE html><html><head><meta charset='utf-8'>"
                                   "<meta name='viewport' content='width=device-width,initial-scale=1'>"
                                   "<link rel='stylesheet' href='/style.css'>"
@@ -235,6 +241,8 @@ void web_send_saved_redirect(httpd_req_t *req, const char *location) {
              "<body>" TR_SAVED_REDIRECT "</body></html>",
              location);
     httpd_resp_set_type(req, "text/html");
+    httpd_resp_set_hdr(req, "Cache-Control", "no-store, no-cache, must-revalidate");
+    httpd_resp_set_hdr(req, "Pragma", "no-cache");
     httpd_resp_sendstr(req, buf);
 }
 

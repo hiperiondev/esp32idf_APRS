@@ -16,7 +16,7 @@ void digi_reset_stats(void) {
     memset(&s_stats, 0, sizeof(s_stats));
 }
 
-int digiProcess(AX25Msg *packet) {
+int digiProcess(ax25_msg_t *packet) {
     int idx, j;
     uint8_t ctmp;
 

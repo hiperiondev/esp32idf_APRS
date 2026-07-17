@@ -7,8 +7,8 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
-#include "LibAPRSesp.h"
 #include "app_config.h"
+#include "aprs_service.h"
 #include "beacon.h"
 #include "igate.h"
 
@@ -165,7 +165,7 @@ static void trackerBeaconTask(void *arg) {
         int len = buildPositionPacket(&p, packet, sizeof(packet));
         if (len > 0) {
             if (g_config.trk_loc2rf)
-                APRS_sendTNC2Pkt((const uint8_t *)packet, (size_t)len);
+                aprs_service_send_tnc2(packet, (size_t)len);
             if (g_config.trk_loc2inet)
                 igate_send_raw(packet, (size_t)len);
             ESP_LOGI(TAG, "Tracker beacon TX: %s", packet);
@@ -205,7 +205,7 @@ static void igateBeaconTask(void *arg) {
         int len = buildPositionPacket(&p, packet, sizeof(packet));
         if (len > 0) {
             if (g_config.igate_loc2rf)
-                APRS_sendTNC2Pkt((const uint8_t *)packet, (size_t)len);
+                aprs_service_send_tnc2(packet, (size_t)len);
             if (g_config.igate_loc2inet)
                 igate_send_raw(packet, (size_t)len);
             ESP_LOGI(TAG, "IGate beacon TX: %s", packet);
@@ -248,7 +248,7 @@ static void digiBeaconTask(void *arg) {
         int len = buildPositionPacket(&p, packet, sizeof(packet));
         if (len > 0) {
             if (g_config.digi_loc2rf)
-                APRS_sendTNC2Pkt((const uint8_t *)packet, (size_t)len);
+                aprs_service_send_tnc2(packet, (size_t)len);
             if (g_config.digi_loc2inet)
                 igate_send_raw(packet, (size_t)len);
             ESP_LOGI(TAG, "Digipeater beacon TX: %s", packet);

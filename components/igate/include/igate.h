@@ -9,7 +9,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "AX25.h"
+#include "ax25.h"
 
 #define DUP_PACKET_CACHE_SIZE 10
 #define DUP_PACKET_TIMEOUT_MS 30000 // 30 s
@@ -41,13 +41,13 @@ void igate_stop(void);
  * connected.
  * @return 1 if forwarded, 0 if dropped/duplicate/not connected.
  */
-int igateProcess(AX25Msg *packet);
+int igateProcess(ax25_msg_t *packet);
 
 /**
  * @brief Duplicate-packet check only (exposed for reuse by other components,
  * e.g. digipeater wanting to avoid re-announcing the same frame).
  */
-bool isDuplicatePacket(AX25Msg *packet);
+bool isDuplicatePacket(ax25_msg_t *packet);
 void clearExpiredDuplicates(void);
 
 igate_stats_t igate_get_stats(void);
@@ -64,7 +64,7 @@ bool igate_is_connected(void);
 /**
  * @brief Register the handler invoked for every raw TNC2 text line received
  * from APRS-IS (INET -> RF direction), e.g. to hand it to the message
- * component and/or re-transmit it on RF via APRS_sendTNC2Pkt(). Only called
+ * component and/or re-transmit it on RF via aprs_service_send_tnc2(). Only called
  * when g_config.inet2rf is true.
  */
 void igate_set_inet2rf_handler(void (*handler)(const char *line));

@@ -1,0 +1,109 @@
+/**
+ * @file fx25.c
+ *
+ * @author Emiliano Augusto Gonzalez ( lu3vea @ gmail . com)
+ * @date 2026
+ * @copyright GNU General Public License v3
+ * @see https://github.com/hiperiondev/esp32idf_radioamateur_modem
+ *
+ * @note
+ * This is based on other projects:
+ *     VP-Digi: https://github.com/sq8vps/vp-digi
+ *     ESP32APRS: https://github.com/nakhonthai/ESP32APRS_Audio
+ *     LibAPRS: https://github.com/markqvist/LibAPRS
+ *
+ *     please contact their authors for more information.
+ */
+
+#ifdef ENABLE_FX25
+
+#include <stddef.h>
+
+#include "fx25.h"
+#include "rs.h"
+
+#define FX25_RS_FCR 1
+#define FX25_PREGENERATE_POLYS
+#define FX25_MAX_DISTANCE 10 /* maximum Hamming distance when comparing tags */
+
+const struct Fx25Mode Fx25ModeList[11] = {
+    { .tag = 0xB74DB7DF8A532F3E, .K = 239, .T = 16 }, { .tag = 0x26FF60A600CC8FDE, .K = 128, .T = 16 }, { .tag = 0xC7DC0508F3D9B09E, .K = 64, .T = 16 },
+    { .tag = 0x8F056EB4369660EE, .K = 32, .T = 16 },  { .tag = 0x6E260B1AC5835FAE, .K = 223, .T = 32 }, { .tag = 0xFF94DC634F1CFF4E, .K = 128, .T = 32 },
+    { .tag = 0x1EB7B9CDBC09C00E, .K = 64, .T = 32 },  { .tag = 0xDBF869BD2DBB1776, .K = 32, .T = 32 },  { .tag = 0x3ADB0C13DEAE2836, .K = 191, .T = 64 },
+    { .tag = 0xAB69DB6A543188D6, .K = 128, .T = 64 }, { .tag = 0x4A4ABEC4A724B796, .K = 64, .T = 64 },
+};
+
+const struct Fx25Mode *Fx25GetModeForTag(uint64_t tag) {
+    for (uint8_t i = 0; i < sizeof(Fx25ModeList) / sizeof(*Fx25ModeList); i++) {
+        if (__builtin_popcountll(tag ^ Fx25ModeList[i].tag) <= FX25_MAX_DISTANCE)
+            return &Fx25ModeList[i];
+    }
+    return NULL;
+}
+
+const struct Fx25Mode *Fx25GetModeForSize(uint16_t size) {
+    /* "UZ7HO Soundmodem standard" for choosing the FX.25 mode */
+    if (size <= 32)
+        return &Fx25ModeList[3];
+    else if (size <= 64)
+        return &Fx25ModeList[2];
+    else if (size <= 128)
+        return &Fx25ModeList[5];
+    else if (size <= 191)
+        return &Fx25ModeList[8];
+    else if (size <= 223)
+        return &Fx25ModeList[4];
+    else if (size <= 239)
+        return &Fx25ModeList[0];
+    else
+        return NULL; /* frame too big, do not use FX.25 */
+}
+
+#ifdef FX25_PREGENERATE_POLYS
+static struct LwFecRS rs16, rs32, rs64;
+#else
+static struct LwFecRS rs;
+#endif
+
+#ifdef FX25_PREGENERATE_POLYS
+static struct LwFecRS *rsForMode(const struct Fx25Mode *mode) {
+    switch (mode->T) {
+        case 16:
+            return &rs16;
+        case 32:
+            return &rs32;
+        case 64:
+            return &rs64;
+        default:
+            return &rs16;
+    }
+}
+#endif
+
+void Fx25Encode(uint8_t *buffer, const struct Fx25Mode *mode) {
+#ifdef FX25_PREGENERATE_POLYS
+    RsEncode(rsForMode(mode), buffer, mode->K);
+#else
+    RsInit(&rs, mode->T, FX25_RS_FCR);
+    RsEncode(&rs, buffer, mode->K);
+#endif
+}
+
+bool Fx25Decode(uint8_t *buffer, const struct Fx25Mode *mode, uint8_t *fixed) {
+#ifdef FX25_PREGENERATE_POLYS
+    return RsDecode(rsForMode(mode), buffer, mode->K, fixed);
+#else
+    RsInit(&rs, mode->T, FX25_RS_FCR);
+    return RsDecode(&rs, buffer, mode->K, fixed);
+#endif
+}
+
+void Fx25Init(void) {
+#ifdef FX25_PREGENERATE_POLYS
+    RsInit(&rs16, 16, FX25_RS_FCR);
+    RsInit(&rs32, 32, FX25_RS_FCR);
+    RsInit(&rs64, 64, FX25_RS_FCR);
+#endif
+}
+
+#endif /* ENABLE_FX25 */

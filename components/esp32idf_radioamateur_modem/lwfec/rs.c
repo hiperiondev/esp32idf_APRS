@@ -1,24 +1,24 @@
-/*
-This file is part of LwFEC.
-
-LwFEC is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 3 of the License, or
-(at your option) any later version.
-
-LwFEC is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
-
-You should have received a copy of the GNU General Public License
-along with LwFEC.  If not, see <http://www.gnu.org/licenses/>.
-*/
+/**
+ * @file rs.c
+ *
+ * @author Emiliano Augusto Gonzalez ( lu3vea @ gmail . com)
+ * @date 2026
+ * @copyright GNU General Public License v3
+ * @see https://github.com/hiperiondev/esp32idf_radioamateur_modem
+ *
+ * @note
+ * This is based on other projects:
+ *     VP-Digi: https://github.com/sq8vps/vp-digi
+ *     ESP32APRS: https://github.com/nakhonthai/ESP32APRS_Audio
+ *     LibAPRS: https://github.com/markqvist/LibAPRS
+ *
+ *     please contact their authors for more information.
+ */
 
 #include <string.h>
 
-#include "rs.h"
 #include "gf.h"
+#include "rs.h"
 
 #define RS_USE_ALTERNATIVE_BM // use alternative Berlekamp-Massey implementation. Seems to be a bit faster
 // #define RS_USE_HORNER //use standard polynomial evalution method (Horner scheme) instead of Chien search. A bit slower
@@ -284,10 +284,7 @@ static bool fix(struct LwFecRS *rs, uint8_t *data, uint8_t size, uint8_t *syn, u
     // use "errataEvaluator" as temporary variable
     for (uint8_t i = 0; i < errCount; i++) {
         memcpy(errataEvaluator, locator, rs->T);
-        uint8_t p2[2];
-        p2[1] = 1;
-        p2[0] = GfPow(2, size - 1 - evaluator[i]);
-        GfPolyMul(errataEvaluator, locatorSize, p2, 2, locator);
+        GfPolyMul(errataEvaluator, locatorSize, (uint8_t[2]){ GfPow(2, size - 1 - evaluator[i]), 1 }, 2, locator);
         locatorSize++;
     }
 
@@ -415,10 +412,7 @@ void RsInit(struct LwFecRS *rs, uint8_t T, uint8_t fcr) {
     rs->generator[0] = 1;
     for (uint8_t i = 0; i < T; i++) {
         memcpy(temp, rs->generator, i + 1);
-        uint8_t p2[2];
-        p2[1] = GfPow2(i + fcr);
-        p2[0] = 1;
-        GfPolyMul(temp, i + 1, p2, 2, rs->generator);
+        GfPolyMul(temp, i + 1, (uint8_t[2]){ 1, GfPow2(i + fcr) }, 2, rs->generator);
     }
     rs->T = T;
     rs->fcr = fcr;

@@ -87,7 +87,7 @@ bool igate_is_connected(void) {
 // ---------------------------------------------------------------------------
 // Duplicate detection (unchanged algorithm from the original firmware)
 // ---------------------------------------------------------------------------
-static void packetHash(AX25Msg *packet, char *hash) {
+static void packetHash(ax25_msg_t *packet, char *hash) {
     int n = snprintf(hash, 16, "%s%d%d", packet->src.call, packet->src.ssid, (int)packet->len);
     if (n < 0)
         n = 0;
@@ -106,7 +106,7 @@ void clearExpiredDuplicates(void) {
     }
 }
 
-bool isDuplicatePacket(AX25Msg *packet) {
+bool isDuplicatePacket(ax25_msg_t *packet) {
     char hash[16] = { 0 };
     packetHash(packet, hash);
 
@@ -165,7 +165,7 @@ bool igate_send_raw(const char *line, size_t len) {
     return sendToAprsIs((const uint8_t *)line, len);
 }
 
-int igateProcess(AX25Msg *packet) {
+int igateProcess(ax25_msg_t *packet) {
     int idx;
 
     if (!g_config.igate_en || !g_config.rf2inet)

@@ -7,7 +7,7 @@
 #ifndef DIGIREPEATER_H
 #define DIGIREPEATER_H
 
-#include "AX25.h"
+#include "ax25.h"
 
 typedef struct {
     uint32_t rxPkts; // packets seen
@@ -27,7 +27,7 @@ typedef struct {
  *         2  - repeat with modified path (packet.info + rewritten header must be
  *              re-encoded and transmitted on RF)
  */
-int digiProcess(AX25Msg *packet);
+int digiProcess(ax25_msg_t *packet);
 
 /**
  * @brief Snapshot of digipeater counters (used by the web admin dashboard /

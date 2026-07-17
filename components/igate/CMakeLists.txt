@@ -5,7 +5,7 @@ idf_component_register(
         "include"
         "../../main/include"
     REQUIRES
-        esp32_IDF_libAPRS
+        esp32idf_radioamateur_modem
         lwip
         esp_netif
         trafficlog

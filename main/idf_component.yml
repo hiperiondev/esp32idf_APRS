@@ -1,5 +1,10 @@
 dependencies:
   joltwallet/littlefs: "^1.14"
-  espressif/esp-dsp: "^1.5"
+  # espressif/esp-dsp was pulled in only by the old esp32_IDF_libAPRS component
+  # (its CMakeLists REQUIREd esp-dsp for the filter helpers). The replacement,
+  # esp32idf_radioamateur_modem, implements its own filters and does not depend
+  # on it, and no other component in this project calls dsps_*. Dropping it
+  # here keeps the managed_components tree honest; delete dependencies.lock and
+  # let idf.py regenerate it on the first build after this change.
   idf:
     version: ">=5.1"

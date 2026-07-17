@@ -54,6 +54,7 @@ void app_config_set_defaults(app_config_t *c) {
     c->sql_level = 40;
     c->rf_power = false;
     c->volume = 60;
+    c->agc_max_gain = 10; // matches AFSK.c's s_agcMaxGain default
     c->mic = 60;
 
     // IGATE
@@ -186,15 +187,23 @@ void app_config_set_defaults(app_config_t *c) {
     c->rf_rx_gpio = 14;
     c->rf_sql_gpio = 27; // GPIO33 is the real (hardwired) ADC audio-input pin and GPIO25 is the real
                          // (hardwired) DAC audio-output pin - see adc_pins[]/DAC_CHAN_0 in
-                         // esp32_IDF_libAPRS/AFSK.c. Neither SQL nor PTT may be assigned to 25/33,
+                         // the modem component. Neither SQL nor PTT may be assigned to 25/33,
                          // since pinMode() on either pad would fight the ADC/DAC's analog use of it.
-    c->rf_pd_gpio = -1; // not currently wired into modem_cfg (see main.c) - left disabled by default
+    c->rf_pd_gpio = -1; // never wired into the modem - left disabled by default
     c->rf_pwr_gpio = 12;
     c->rf_ptt_gpio = 26;
     c->rf_sql_active = false;
     c->rf_pd_active = true;
     c->rf_pwr_active = false;
     c->rf_ptt_active = false;
+    // NOTE: since the esp32_IDF_libAPRS -> esp32idf_radioamateur_modem swap, the
+    // audio modem no longer reads ANY of the pin fields above or below. It takes
+    // its ADC/DAC/PTT pins as compile-time constants (MODEM_ADC_GPIO /
+    // MODEM_DAC_GPIO / MODEM_PTT_GPIO, defined in the top-level CMakeLists.txt)
+    // and has no hardware-squelch or RF-power-switch output at all. They are kept
+    // here, and still editable on the "Mod" page, purely so existing config.json
+    // files load unchanged and the values survive for any future component that
+    // can use them. Change the CMakeLists.txt definitions to move the audio pins.
     c->adc_gpio = 1;
     c->dac_gpio = 18;
     c->adc_sel_gpio = -1;
@@ -206,7 +215,12 @@ void app_config_set_defaults(app_config_t *c) {
     // enough that the AFSK demodulator can't lock onto it - this is why the LOOP
     // TEST fails with "no packet was received back" even though ADC33/DAC25 are
     // correctly wired together. adc_atten=4 (ADC_ATTEN_DB_12, Vref=3300) matches
-    // the DAC's full ~0-3.3V rail-to-rail swing (see afskSetADCAtten() below).
+    // the DAC's full ~0-3.3V rail-to-rail swing.
+    //
+    // Also inert now, and for the same reason as the pins above: the modem
+    // component hard-codes MODEM_ADC_ATTEN, which already defaults to
+    // ADC_ATTEN_DB_12 - i.e. the value this field held anyway. Override
+    // MODEM_ADC_ATTEN from the top-level CMakeLists.txt to change it.
     c->adc_atten = 4;
 
     c->i2c_enable = false;
@@ -347,6 +361,7 @@ static cJSON *config_to_json(const app_config_t *c) {
     jadd_num(d, "rfToneTX", c->tone_tx);
     jadd_num(d, "rfSql", c->sql_level);
     jadd_num(d, "rfVolume", c->volume);
+    jadd_num(d, "agcMaxGain", c->agc_max_gain);
     jadd_num(d, "rfBand", c->band);
     jadd_bool(d, "rfPwr", c->rf_power);
     jadd_bool(d, "audioModemEn", c->audio_modem_en);
@@ -359,7 +374,7 @@ static cJSON *config_to_json(const app_config_t *c) {
     jadd_bool(d, "igatePos2rf", c->igate_loc2rf);
     jadd_bool(d, "igatePos2inet", c->igate_loc2inet);
     jadd_num(d, "rf2inetFilter", c->rf2inetFilter);
-    jadd_num(d, "inet2rfFiltger", c->inet2rfFilter);
+    jadd_num(d, "inet2rfFilter", c->inet2rfFilter);
     jadd_num(d, "igateSSID", c->aprs_ssid);
     jadd_num(d, "igatePort", c->aprs_port);
     jadd_str(d, "igateMycall", c->aprs_mycall);
@@ -827,6 +842,7 @@ static void config_from_json(cJSON *d, app_config_t *c) {
     c->tone_tx = (int)jget_num(d, "rfToneTX", def.tone_tx);
     c->sql_level = (uint8_t)jget_num(d, "rfSql", def.sql_level);
     c->volume = (uint8_t)jget_num(d, "rfVolume", def.volume);
+    c->agc_max_gain = (uint8_t)jget_num(d, "agcMaxGain", def.agc_max_gain);
     c->band = (uint8_t)jget_num(d, "rfBand", def.band);
     c->audio_modem_en = jget_bool(d, "audioModemEn", def.audio_modem_en);
     c->audio_lpf = jget_bool(d, "audioLPF", def.audio_lpf);
@@ -838,7 +854,10 @@ static void config_from_json(cJSON *d, app_config_t *c) {
     c->igate_loc2rf = jget_bool(d, "igatePos2rf", def.igate_loc2rf);
     c->igate_loc2inet = jget_bool(d, "igatePos2inet", def.igate_loc2inet);
     c->rf2inetFilter = (uint16_t)jget_num(d, "rf2inetFilter", def.rf2inetFilter);
-    c->inet2rfFilter = (uint16_t)jget_num(d, "inet2rfFiltger", def.inet2rfFilter);
+    // "inet2rfFiltger" was a legacy misspelling of the key used when saving;
+    // fall back to it so configs written by older firmware still load correctly.
+    c->inet2rfFilter =
+        (uint16_t)jget_num(d, "inet2rfFilter", (double)jget_num(d, "inet2rfFiltger", def.inet2rfFilter));
     c->aprs_ssid = (uint8_t)jget_num(d, "igateSSID", def.aprs_ssid);
     c->aprs_port = (uint16_t)jget_num(d, "igatePort", def.aprs_port);
     set_str(c->aprs_mycall, sizeof(c->aprs_mycall), jget_str(d, "igateMycall", def.aprs_mycall));

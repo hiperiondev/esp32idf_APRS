@@ -13,6 +13,12 @@ esp_err_t page_mod_get(httpd_req_t *req) {
     web_fieldset_open(req, TR_F_RF_MODULE_GPIO);
     web_field_int(req, TR_F_TX_PIN, "rfTx", g_config.rf_tx_gpio);
     web_field_int(req, TR_F_RX_PIN, "rfRx", g_config.rf_rx_gpio);
+    // These pins configure the optional external RF module only. The audio
+    // ADC/DAC modem (esp32idf_radioamateur_modem) takes its own pins as
+    // compile-time constants - MODEM_ADC_GPIO / MODEM_DAC_GPIO /
+    // MODEM_PTT_GPIO in the top-level CMakeLists.txt - and ignores everything
+    // here; the previous component (esp32_IDF_libAPRS) took them at runtime.
+    // See the read-only summary on the Radio / Modem page.
     web_field_int(req, TR_F_SQUELCH_PIN, "rfSQL", g_config.rf_sql_gpio);
     web_field_checkbox(req, TR_F_SQUELCH_ACTIVE_HIGH, "rfSQLAct", g_config.rf_sql_active);
     web_field_int(req, TR_F_POWER_DOWN_PIN, "rfPD", g_config.rf_pd_gpio);

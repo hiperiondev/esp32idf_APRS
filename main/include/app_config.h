@@ -160,6 +160,9 @@ typedef struct {
     uint8_t sql_level;
     bool rf_power;
     uint8_t volume;
+    uint8_t agc_max_gain; // software AGC gain ceiling (1-100x). Unused since the modem component swap:
+                          // esp32idf_radioamateur_modem's AGC is self-limiting and exposes no ceiling.
+                          // Kept so existing config.json files round-trip unchanged.
     uint8_t mic;
 
     // IGATE

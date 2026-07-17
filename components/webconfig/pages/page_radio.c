@@ -1,7 +1,17 @@
+#include <stdint.h>
+#include <stdio.h>
 #include <string.h>
 
 #include "app_config.h"
 #include "aprs_service.h"
+// hal/adc_types.h for ADC_ATTEN_DB_12: the component's config header defines
+// MODEM_ADC_ATTEN as that enumerator but does not include its declaration (its
+// own .c files pull in the ADC driver first), so a translation unit that
+// *uses* the macro has to bring the enum in itself.
+#include "hal/adc_types.h"
+
+#include "esp32idf_radioamateur_modem.h"
+#include "esp32idf_radioamateur_modem_config.h"
 #include "pages.h"
 #include "translations.h"
 #include "web_common.h"
@@ -10,7 +20,7 @@ esp_err_t page_radio_get(httpd_req_t *req) {
     if (!web_check_auth(req))
         return ESP_OK;
     web_send_header(req, TR_F_RADIO_MODEM, "radio");
-    httpd_resp_sendstr_chunk(req, "<form method='POST' action='/radio'>");
+    httpd_resp_sendstr_chunk(req, "<form method='POST' action='/radio' id='radioForm'>");
 
     web_fieldset_open(req, TR_F_PROTOCOL);
     web_field_checkbox(req, TR_F_FX_25_FORWARD_ERROR_CORRECTED_AX_25, "fx25Mode", g_config.fx25_mode);
@@ -58,9 +68,28 @@ esp_err_t page_radio_get(httpd_req_t *req) {
     web_select_option(req, 2, "1200 Bd (AFSK/V.23)", g_config.afsk_modem_type == 2);
     web_select_option(req, 3, "9600 Bd (G3RUH/FSK)", g_config.afsk_modem_type == 3);
     web_select_close(req);
-    web_field_int(req, TR_F_SQUELCH_LEVEL, "rfSql", g_config.sql_level);
-    web_field_int(req, TR_F_VOLUME, "rfVolume", g_config.volume);
-    web_field_int(req, TR_F_ADC_ATTENUATION_0_3, "adcAtten", g_config.adc_atten);
+    // Squelch level / Volume / ADC attenuation / AGC max gain used to be
+    // editable here and were pushed into the old esp32_IDF_libAPRS component
+    // at runtime (afskSetSquelchLevel/afskSetVolume/afskSetAgcMaxGain, plus
+    // adc_atten via aprs_modem_config_t). esp32idf_radioamateur_modem has no
+    // equivalent for any of them: it has no software squelch (the AX.25
+    // decoder gates on the demodulator's own DCD), no RX gain trim, a
+    // self-limiting AGC, and it takes the ADC attenuation and both audio pins
+    // as compile-time constants. Leaving the inputs on the page would have
+    // meant four controls that save to flash and change nothing - the exact
+    // failure this page's Save handler was previously fixed to avoid - so
+    // they are shown read-only, sourced from the values actually compiled in.
+    {
+        char buf[420];
+        snprintf(buf, sizeof(buf),
+                 "<p style='opacity:.75'><b>Audio hardware (compile-time)</b>: "
+                 "DAC out GPIO%d, ADC in GPIO%d, ADC attenuation %d, "
+                 "ADC %d Hz / DAC %d Hz.<br>"
+                 "Set these in the top-level CMakeLists.txt (MODEM_* build definitions) and rebuild. "
+                 "The modem's AGC is automatic and it has no software squelch or RX volume control.</p>",
+                 MODEM_DAC_GPIO, MODEM_ADC_GPIO, (int)MODEM_ADC_ATTEN, MODEM_ADC_SAMPLERATE, MODEM_DAC_SAMPLERATE);
+        httpd_resp_sendstr_chunk(req, buf);
+    }
     web_field_checkbox(req, TR_F_RF_POWER_BOOST, "rfPwr", g_config.rf_power);
     web_field_checkbox(req, TR_F_AUDIO_LOW_PASS_FILTER, "audioLPF", g_config.audio_lpf);
     web_field_int(req, TR_F_PREAMBLE_MS, "rfPreamble", g_config.preamble);
@@ -72,8 +101,19 @@ esp_err_t page_radio_get(httpd_req_t *req) {
                                   "function loopTest(){"
                                   "var btn=document.getElementById('loopTestBtn');"
                                   "var status=document.getElementById('loopTestStatus');"
-                                  "btn.disabled=true;status.style.color='';status.textContent=' " TR_LOOPTEST_RUNNING "';"
-                                  "fetch('/radio/looptest').then(function(r){return r.json();}).then(function(data){"
+                                  "btn.disabled=true;status.style.color='';status.textContent=' " TR_LOOPTEST_SAVING "';"
+                                  // Loop test previously ran against whatever was last *saved* to flash,
+                                  // silently ignoring any field the user had just edited but not yet
+                                  // submitted via the page's Save button - e.g. typing a new squelch
+                                  // value and clicking "Run Loop Test" tested the OLD squelch level with
+                                  // no indication anything was stale. Save the current form state first,
+                                  // then run the test, so what's on screen is always what gets tested.
+                                  "var form=document.getElementById('radioForm');"
+                                  "var params=new URLSearchParams(new FormData(form));"
+                                  "fetch('/radio',{method:'POST',body:params}).then(function(){"
+                                  "status.textContent=' " TR_LOOPTEST_RUNNING "';"
+                                  "return fetch('/radio/looptest');"
+                                  "}).then(function(r){return r.json();}).then(function(data){"
                                   "btn.disabled=false;"
                                   "status.style.color=data.ok?'green':'red';"
                                   "status.textContent=' '+data.msg;"
@@ -95,12 +135,17 @@ esp_err_t page_radio_looptest_get(httpd_req_t *req) {
         return ESP_OK;
     httpd_resp_set_type(req, "application/json");
 
-    char result[220];
+    // 900, not 512: aprs_loop_test_run()'s failure messages are long - they
+    // quote raw ADC min/max, RMS, AGC gain, the DCD bitmap and per-demodulator
+    // levels, plus a paragraph of interpretation. (The old raw-bytes hex dump
+    // of a CRC-failed frame is gone with the previous component's
+    // Ax25GetFailedFrame(); the replacement exposes no such buffer.)
+    char result[900];
     bool ok = aprs_loop_test_run(result, sizeof(result));
 
     // JSON-escape the result text: it can echo back raw RX payload bytes on
     // a mismatch, which are not guaranteed to be JSON-safe.
-    char esc[440];
+    char esc[1800];
     size_t o = 0;
     for (size_t i = 0; result[i] != 0 && o + 2 < sizeof(esc); i++) {
         unsigned char c = (unsigned char)result[i];
@@ -118,7 +163,7 @@ esp_err_t page_radio_looptest_get(httpd_req_t *req) {
     }
     esc[o] = 0;
 
-    char out[512];
+    char out[2000];
     snprintf(out, sizeof(out), "{\"ok\":%s,\"msg\":\"%s\"}", ok ? "true" : "false", esc);
     httpd_resp_sendstr(req, out);
     return ESP_OK;
@@ -152,26 +197,18 @@ esp_err_t page_radio_post(httpd_req_t *req) {
     // afskModem selects the AFSK software modem modulation (300/1200/1200 V.23/9600 Bd)
     // used for both RX and TX on the audio ADC/DAC modem. It is independent of the
     // optional RF module's own modem mode (rfModem, above) - clamp defensively since
-    // afskSetModem() only understands values 0-3.
+    // modem_mode_t only defines values 0-3 (AFSK300/BELL202/V23/G3RUH).
     int afsk_modem_in = web_form_get_int(body, "afskModem", g_config.afsk_modem_type);
     if (afsk_modem_in < 0)
         afsk_modem_in = 0;
     else if (afsk_modem_in > 3)
         afsk_modem_in = 3;
     g_config.afsk_modem_type = (uint8_t)afsk_modem_in;
-    g_config.sql_level = (uint8_t)web_form_get_int(body, "rfSql", g_config.sql_level);
-    g_config.volume = (uint8_t)web_form_get_int(body, "rfVolume", g_config.volume);
-    // adcAtten is a free-typed field (not a <select>), and afskSetADCAtten()
-    // in AFSK.c only recognizes 0-4 - anything outside that range falls
-    // through all of its if/else-if branches and would leave
-    // cfg_adc_atten/Vref out of sync with what's saved here. Clamp so an
-    // out-of-range value can never desync the two.
-    int adc_atten_in = web_form_get_int(body, "adcAtten", g_config.adc_atten);
-    if (adc_atten_in < 0)
-        adc_atten_in = 0;
-    else if (adc_atten_in > 4)
-        adc_atten_in = 4;
-    g_config.adc_atten = (uint8_t)adc_atten_in;
+    // rfSql / rfVolume / adcAtten / agcMaxGain are no longer posted by the form
+    // (see the read-only note in page_radio_get()). The g_config fields are
+    // deliberately left untouched rather than deleted, so an existing
+    // config.json round-trips unchanged through app_config_save() below and a
+    // future component that can honour them finds the values still there.
     g_config.rf_power = web_form_get_bool(body, "rfPwr");
     g_config.audio_lpf = web_form_get_bool(body, "audioLPF");
     g_config.preamble = (uint16_t)web_form_get_int(body, "rfPreamble", g_config.preamble);
@@ -179,6 +216,19 @@ esp_err_t page_radio_post(httpd_req_t *req) {
     g_config.band = (uint8_t)web_form_get_int(body, "rfBand", g_config.band);
 
     app_config_save();
+
+    // Push the settings that the new component *can* take at runtime into the
+    // running modem, so Save (and the loop test's auto-save, which POSTs this
+    // form before running) takes effect without a reboot: modulation, preamble,
+    // time slot, flat-audio flag and FX.25 mode all go through
+    // modem_set_modem(). This is the successor to the old
+    // afskSetSquelchLevel()/afskSetVolume()/afskSetAgcMaxGain() block - it
+    // covers strictly more of the page than that did.
+    //
+    // audioModemEn still needs a reboot: modem_init() only runs at boot, from
+    // main.c, and this no-ops until it has.
+    aprs_service_apply_modem_config();
+
     web_send_saved_redirect(req, "/radio");
     return ESP_OK;
 }

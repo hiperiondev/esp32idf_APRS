@@ -1,4 +1,21 @@
-#include "CRC-CCIT.h"
+/**
+ * @file crc_ccit.c
+ *
+ * @author Emiliano Augusto Gonzalez ( lu3vea @ gmail . com)
+ * @date 2026
+ * @copyright GNU General Public License v3
+ * @see https://github.com/hiperiondev/esp32idf_radioamateur_modem
+ *
+ * @note
+ * This is based on other projects:
+ *     VP-Digi: https://github.com/sq8vps/vp-digi
+ *     ESP32APRS: https://github.com/nakhonthai/ESP32APRS_Audio
+ *     LibAPRS: https://github.com/markqvist/LibAPRS
+ *
+ *     please contact their authors for more information.
+ */
+
+#include "crc_ccit.h"
 
 const uint16_t crc_ccit_table[256] = {
     0x0000, 0x1189, 0x2312, 0x329b, 0x4624, 0x57ad, 0x6536, 0x74bf, 0x8c48, 0x9dc1, 0xaf5a, 0xbed3, 0xca6c, 0xdbe5, 0xe97e, 0xf8f7, 0x1081, 0x0108, 0x3393,
@@ -16,3 +33,18 @@ const uint16_t crc_ccit_table[256] = {
     0xa12a, 0xb0a3, 0x8238, 0x93b1, 0x6b46, 0x7acf, 0x4854, 0x59dd, 0x2d62, 0x3ceb, 0x0e70, 0x1ff9, 0xf78f, 0xe606, 0xd49d, 0xc514, 0xb1ab, 0xa022, 0x92b9,
     0x8330, 0x7bc7, 0x6a4e, 0x58d5, 0x495c, 0x3de3, 0x2c6a, 0x1ef1, 0x0f78,
 };
+uint16_t fcs_calc(const uint8_t *data, int len) {
+    uint16_t crc = 0xffff;
+    for (int j = 0; j < len; j++) {
+        crc = (uint16_t)((crc >> 8) ^ crc_ccit_table[(crc ^ data[j]) & 0xff]);
+    }
+    return (uint16_t)(crc ^ 0xffff);
+}
+
+uint16_t crc16_seed(const uint8_t *data, int len, uint16_t seed) {
+    uint16_t crc = seed;
+    for (int j = 0; j < len; j++) {
+        crc = (uint16_t)((crc >> 8) ^ crc_ccit_table[(crc ^ data[j]) & 0xff]);
+    }
+    return (uint16_t)(crc ^ 0xffff);
+}

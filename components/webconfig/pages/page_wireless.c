@@ -37,27 +37,33 @@ esp_err_t page_wireless_get(httpd_req_t *req) {
              g_config.wifi_mode == 3 ? "selected" : "", g_config.wifi_power, g_config.wifi_ap_ssid, g_config.wifi_ap_pass, g_config.wifi_ap_ch);
     httpd_resp_sendstr_chunk(req, buf);
 
+    // One shared datalist, filled in by wifiScan() below. It only ever offers
+    // *suggestions* - see the SSID field's comment.
+    httpd_resp_sendstr_chunk(req, "<datalist id='ssidList'></datalist>");
+
     for (int i = 0; i < WIFI_STA_NUM; i++) {
         char sec[1100];
-        const char *cur_ssid = g_config.wifi_sta[i].wifi_ssid;
-        bool has_cur = (cur_ssid && cur_ssid[0] != 0);
-        char cur_opt[110];
-        cur_opt[0] = 0;
-        if (has_cur) {
-            snprintf(cur_opt, sizeof(cur_opt), "<option value='%s' selected>%s</option>", cur_ssid, cur_ssid);
-        }
         snprintf(sec, sizeof(sec),
                  "<fieldset><legend>" TR_WIFI_CLIENT_LEGEND "</legend>"
                  "<label><input type='checkbox' name='staEn%d' %s> " TR_F_ENABLE "</label>"
-                 "<label>" TR_F_SSID "</label><select name='staSsid%d' id='staSsid%d'>"
-                 "<option value=''>" TR_WIFI_SCAN_NONE "</option>"
-                 "%s"
-                 "</select>"
+                 // SSID used to be a <select> whose only entries were "NONE" and
+                 // whatever was already saved, with everything else supplied by
+                 // the WiFi Scan button. That made a scan MANDATORY before any
+                 // new network could be entered, and left two silent ways to
+                 // save a station that cannot work: leaving the box on "NONE"
+                 // submits an empty SSID, and a hidden/5 GHz/out-of-range AP
+                 // never appears in the list at all. A free-text input with a
+                 // datalist keeps the scan results as suggestions while letting
+                 // the SSID simply be typed.
+                 "<label>" TR_F_SSID "</label>"
+                 "<input type='text' name='staSsid%d' id='staSsid%d' list='ssidList' value='%s' maxlength='32' autocomplete='off' "
+                 "placeholder='" TR_WIFI_SSID_PLACEHOLDER "'>"
                  "<label>" TR_F_PASSWORD "</label><input type='password' name='staPass%d' id='pwd_staPass%d' value='%s' maxlength='63' minlength='8'>"
                  "<label class='pwd-show'><input type='checkbox' onclick=\"togglePwd('pwd_staPass%d',this)\"> " TR_SHOW_PASSWORD "</label>"
                  "</fieldset>",
                  i, /* legend #%d */
-                 i, g_config.wifi_sta[i].enable ? "checked" : "", i, i, cur_opt, i, i, g_config.wifi_sta[i].wifi_pass, i);
+                 i, g_config.wifi_sta[i].enable ? "checked" : "", i, i, g_config.wifi_sta[i].wifi_ssid, i, i,
+                 g_config.wifi_sta[i].wifi_pass, i);
         httpd_resp_sendstr_chunk(req, sec);
     }
 
@@ -71,26 +77,19 @@ esp_err_t page_wireless_get(httpd_req_t *req) {
                                   "if(data.error){status.textContent=' '+data.error;return;}"
                                   "var nets=(data.networks||[]).slice().sort(function(a,b){return b.rssi-a.rssi;});"
                                   "status.textContent=' ('+nets.length+')';"
-                                  "for(var i=0;i<5;i++){"
-                                  "var sel=document.getElementById('staSsid'+i);"
-                                  "if(!sel)continue;"
-                                  "var current=sel.value;"
-                                  "while(sel.options.length>1){sel.remove(1);}"
+                                  // Fill the shared datalist only. The old code rebuilt each <select>'s
+                                  // options and reassigned sel.value, which is what could silently reset a
+                                  // field to '' (empty SSID). Suggestions can no longer touch what is typed.
+                                  "var dl=document.getElementById('ssidList');"
+                                  "while(dl.firstChild){dl.removeChild(dl.firstChild);}"
                                   "var seen={};"
                                   "for(var j=0;j<nets.length;j++){"
                                   "var ssid=nets[j].ssid;"
                                   "if(!ssid||seen[ssid])continue;"
                                   "seen[ssid]=true;"
                                   "var opt=document.createElement('option');"
-                                  "opt.value=ssid;opt.textContent=ssid+' ('+nets[j].rssi+' dBm)';"
-                                  "sel.appendChild(opt);"
-                                  "}"
-                                  "if(current&&seen[current]){sel.value=current;}"
-                                  "else if(current){"
-                                  "var opt2=document.createElement('option');"
-                                  "opt2.value=current;opt2.textContent=current;"
-                                  "sel.appendChild(opt2);sel.value=current;"
-                                  "}else{sel.value='';}"
+                                  "opt.value=ssid;opt.label=ssid+' ('+nets[j].rssi+' dBm)';"
+                                  "dl.appendChild(opt);"
                                   "}"
                                   "}).catch(function(){btn.disabled=false;status.textContent=' " TR_WIFI_SCAN_FAILED "';});"
                                   "}"
@@ -127,6 +126,31 @@ esp_err_t page_wireless_post(httpd_req_t *req) {
     }
 
     app_config_save();
+
+    // Tell the user NOW, in the browser, if what they just saved cannot work.
+    // Selecting Station or AP+STA in the Mode dropdown does nothing on its own:
+    // each WiFi Client block has its own Enable checkbox, and the SSID has to
+    // be non-empty. Getting either wrong used to save happily and then fail in
+    // silence - the only clue was an error on the serial console after the next
+    // reboot, which nobody watching a web UI ever sees.
+    if (g_config.wifi_mode == 1 || g_config.wifi_mode == 3) {
+        bool usable = false;
+        for (int i = 0; i < WIFI_STA_NUM; i++) {
+            if (g_config.wifi_sta[i].enable && g_config.wifi_sta[i].wifi_ssid[0]) {
+                usable = true;
+                break;
+            }
+        }
+        if (!usable) {
+            httpd_resp_set_type(req, "text/html");
+            httpd_resp_sendstr(req, "<!DOCTYPE html><html><head><meta charset='utf-8'></head><body>"
+                                    "<p style='color:#cf222e;font-weight:600'>" TR_WIFI_STA_NEEDS_SSID "</p>"
+                                    "<p><a href='/wireless'>&larr; " TR_F_WIRELESS "</a></p>"
+                                    "</body></html>");
+            return ESP_OK;
+        }
+    }
+
     web_send_saved_redirect(req, "/wireless");
     return ESP_OK;
 }
@@ -151,6 +175,12 @@ esp_err_t page_wifi_scan_get(httpd_req_t *req) {
     // AP-only (the common/default case for this firmware), temporarily add
     // the STA interface for the duration of the scan and switch back to the
     // original mode afterwards so the AP configuration is not disturbed.
+    //
+    // Note this makes the driver post WIFI_EVENT_STA_START, which main.c's
+    // handler answers with esp_wifi_connect(). That is gated on s_staEnabled
+    // there - only true when the *configured* mode includes a station with a
+    // usable SSID - so a scan started from AP-only mode will not have an
+    // association attempt racing it.
     bool mode_switched = false;
     if (mode == WIFI_MODE_AP) {
         if (esp_wifi_set_mode(WIFI_MODE_APSTA) != ESP_OK) {
