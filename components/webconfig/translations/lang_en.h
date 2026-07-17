@@ -351,6 +351,8 @@
 #define TR_DASH_PACKET_TX        "RADIO TX:"
 #define TR_DASH_RF2INET          "RF2INET:"
 #define TR_DASH_INET2RF          "INET2RF:"
+#define TR_DASH_IGATE_RX         "IGATE RX:"
+#define TR_DASH_IGATE_TX         "IGATE TX:"
 #define TR_DASH_DIGI_STAT        "DIGI:"
 #define TR_DASH_DROP_ERR         "DROP/ERR:"
 #define TR_DASH_LAST_HEARD       "LAST HEARD"

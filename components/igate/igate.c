@@ -152,6 +152,11 @@ static bool sendToAprsIs(const uint8_t *data, size_t len) {
     pkt[pktLen] = 0;
 
     if (ok) {
+        // Counts every successful APRS-IS TX regardless of caller (gatewayed
+        // RF frames, outbound messages, digi "beacon to internet"), unlike
+        // s_stats.txCount below which is only bumped by igateProcess() for
+        // the RF->INET gatewaying path specifically.
+        s_stats.isTxCount++;
         ESP_LOGI(TAG, "APRS-IS TX: %.*s", (int)len, (const char *)data);
         trafficlog_add_pkt("TX", dx, pkt, -1, 0, 0);
     } else {
@@ -424,6 +429,12 @@ static void igateTask(void *arg) {
                     if (linePos > 0) {
                         line[linePos] = 0;
                         if (line[0] != '#') { // '#' = server comment/keepalive
+                            // Counts every packet received from APRS-IS,
+                            // regardless of whether inet2rf is enabled or the
+                            // line ends up relayed to RF below - this is the
+                            // total internet RX traffic, not just what was
+                            // actually transmitted on RF.
+                            s_stats.isRxCount++;
                             // Information-level log of every message received
                             // from APRS-IS, regardless of whether inet2rf is
                             // enabled below, so all igate traffic is visible.

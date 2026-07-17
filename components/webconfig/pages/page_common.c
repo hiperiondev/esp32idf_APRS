@@ -307,11 +307,14 @@ esp_err_t page_sidebar_info(httpd_req_t *req) {
                   "<tr><td>" TR_DASH_PACKET_TX "</td><td>%lu</td></tr>"
                   "<tr><td>" TR_DASH_RF2INET "</td><td>%lu</td></tr>"
                   "<tr><td>" TR_DASH_INET2RF "</td><td>%lu</td></tr>"
+                  "<tr><td>" TR_DASH_IGATE_RX "</td><td>%lu</td></tr>"
+                  "<tr><td>" TR_DASH_IGATE_TX "</td><td>%lu</td></tr>"
                   "<tr><td>" TR_DASH_DIGI_STAT "</td><td>%lu</td></tr>"
                   "<tr><td>" TR_DASH_DROP_ERR "</td><td>%lu/%lu</td></tr>"
                   "</table></fieldset>",
                   (unsigned long)svcStats.radio_rx, (unsigned long)svcStats.radio_tx, (unsigned long)svcStats.rf2inet, (unsigned long)svcStats.inet2rf,
-                  (unsigned long)svcStats.digi, (unsigned long)(igs.dropCount + digis.dropRx), (unsigned long)digis.erPkts);
+                  (unsigned long)igs.isRxCount, (unsigned long)igs.isTxCount, (unsigned long)svcStats.digi,
+                  (unsigned long)(igs.dropCount + digis.dropRx), (unsigned long)digis.erPkts);
 
     httpd_resp_set_type(req, "text/html");
     httpd_resp_set_hdr(req, "Cache-Control", "no-store");

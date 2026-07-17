@@ -15,10 +15,19 @@
 #define DUP_PACKET_TIMEOUT_MS 30000 // 30 s
 
 typedef struct {
-    uint32_t rxCount;   // frames considered for gatewaying
-    uint32_t txCount;   // frames actually sent to APRS-IS
+    uint32_t rxCount;   // frames considered for gatewaying (RF->INET direction)
+    uint32_t txCount;   // frames actually sent to APRS-IS as a result of gatewaying (RF->INET direction)
     uint32_t dropCount; // frames dropped (filters, NOGATE, RFONLY, etc.)
     uint32_t dupCount;  // duplicate frames suppressed
+    uint32_t isRxCount; // ALL packets received from APRS-IS/internet (every non-keepalive
+                        // line read off the socket), regardless of inet2rf being enabled
+                        // or the line ending up relayed to RF. Superset of what ends up
+                        // handed to the inet2rf handler.
+    uint32_t isTxCount; // ALL packets sent to APRS-IS/internet over sendToAprsIs(), i.e.
+                        // every successful socket write regardless of caller: gatewayed
+                        // RF frames (also counted in txCount above), outbound messages
+                        // (igate_send_raw() from the message component) and digi
+                        // "beacon to internet" sends alike.
 } igate_stats_t;
 
 /**
