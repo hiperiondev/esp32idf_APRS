@@ -93,6 +93,41 @@ void aprs_service_build_modem_config(modem_config_t *cfg, bool full_duplex) {
     cfg->full_duplex = full_duplex;
 }
 
+// ---------------------------------------------------------------------------
+// Dashboard statistics.
+//
+// These are the counters the web dashboard's STATISTICS panel actually wants
+// (page_common.c's page_sidebar_info()): total RF frames decoded, total RF
+// frames transmitted, frames relayed RF->INET and INET->RF, digipeated
+// frames, and drop/error counts - all independent of whether the digipeater
+// or IGate features are even enabled.
+//
+// This used to be improvised from digi_get_stats()/igate_get_stats(), whose
+// counters only increment from inside digiProcess()/igateProcess() - which
+// are only ever called when g_config.digi_en / g_config.igate_en are true
+// (see aprs_msg_callback() below). With both features off (a very common
+// RX-only/monitor setup), every counter on the dashboard stayed at 0 forever,
+// regardless of how much real RF traffic the modem was decoding. Tracking
+// these directly at the points where frames actually flow (on_rx_frame(),
+// aprs_service_send_tnc2(), inet2rfHandler(), and inside aprs_msg_callback()
+// for the digi/igate/error cases) makes the dashboard reflect reality
+// whether or not either feature is turned on.
+static volatile uint32_t s_statRadioRx = 0;  // frames decoded off RF (every on_rx_frame() call)
+static volatile uint32_t s_statRadioTx = 0;  // frames transmitted on RF (every successful aprs_service_send_tnc2())
+static volatile uint32_t s_statRf2Inet = 0;  // frames relayed from RF to APRS-IS (igateProcess() actually uplinked one)
+static volatile uint32_t s_statInet2Rf = 0;  // lines relayed from APRS-IS to RF (inet2rfHandler() actually transmitted one)
+static volatile uint32_t s_statDigi = 0;     // frames digipeated (path rewritten and re-transmitted)
+
+aprs_service_stats_t aprs_service_get_stats(void) {
+    aprs_service_stats_t s;
+    s.radio_rx = s_statRadioRx;
+    s.radio_tx = s_statRadioTx;
+    s.rf2inet = s_statRf2Inet;
+    s.inet2rf = s_statInet2Rf;
+    s.digi = s_statDigi;
+    return s;
+}
+
 void aprs_service_apply_modem_config(void) {
     if (!aprs_service_modem_ready())
         return;
@@ -148,6 +183,8 @@ void aprs_service_send_tnc2(const char *packet, size_t len) {
     esp_err_t err = modem_send_tnc2(buf);
     if (err != ESP_OK)
         ESP_LOGW(TAG, "modem_send_tnc2() failed: %s (\"%s\")", esp_err_to_name(err), buf);
+    else
+        s_statRadioTx++;
 }
 
 // ---------------------------------------------------------------------------
@@ -217,13 +254,15 @@ static void aprs_msg_callback(ax25_msg_t *msg) {
             // Path was rewritten in place; re-transmit the modified frame on RF.
             int len = ax25ToTnc2(msg, tnc2, sizeof(tnc2));
             aprs_service_send_tnc2(tnc2, (size_t)len);
+            s_statDigi++;
             ESP_LOGD(TAG, "DIGI TX: %s", tnc2);
             trafficlog_add_pkt("DIGI", callsign, tnc2, -1, symTable, symCode);
         }
     }
 
     if (g_config.igate_en && g_config.rf2inet) {
-        igateProcess(msg); // builds its own qAR/qAO header and sends to APRS-IS internally
+        if (igateProcess(msg)) // builds its own qAR/qAO header and sends to APRS-IS internally
+            s_statRf2Inet++;
     }
 
     if (g_config.msg_enable) {
@@ -255,6 +294,8 @@ static volatile aprs_rx_hook_t s_rxHook = aprs_msg_callback;
 static void on_rx_frame(const modem_rx_frame_t *f, void *ctx) {
     (void)ctx;
     ax25_msg_t msg;
+
+    s_statRadioRx++;
 
     memset(&msg, 0, sizeof(msg));
     ax25_decode((uint8_t *)f->frame, f->len, f->mVrms, &msg);
@@ -311,6 +352,7 @@ static void inet2rfHandler(const char *line) {
         // yet applied here; add a filter check before this call if selective
         // gating is required.
         aprs_service_send_tnc2(line, strlen(line));
+        s_statInet2Rf++;
         ESP_LOGD(TAG, "INET2RF TX: %s", line);
         trafficlog_add_pkt("INET2RF", callsign, line, -1, symTable, symCode);
     }

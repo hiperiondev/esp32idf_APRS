@@ -11,6 +11,7 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 
 #include "esp32idf_radioamateur_modem.h"
 
@@ -37,6 +38,27 @@ void aprs_service_start(void);
  * @param len    Length, in bytes, of the packet text.
  */
 void aprs_service_send_tnc2(const char *packet, size_t len);
+
+/**
+ * @brief Application-level counters for the web dashboard's STATISTICS
+ * panel, tracked independently of whether the digipeater or IGate features
+ * are enabled - unlike digi_get_stats()/igate_get_stats(), whose counters
+ * only move while their respective g_config.*_en flag is on, these always
+ * reflect real RF/traffic activity.
+ */
+typedef struct {
+    uint32_t radio_rx; /**< Frames decoded off RF (every frame the modem hands up), regardless of what happened to them after. */
+    uint32_t radio_tx; /**< Frames successfully transmitted on RF (beacons, digipeats, INET2RF relays, messages, etc). */
+    uint32_t rf2inet;  /**< Frames relayed from RF to APRS-IS (IGate actually uplinked them). */
+    uint32_t inet2rf;  /**< Lines relayed from APRS-IS to RF (IGate actually transmitted them). */
+    uint32_t digi;     /**< Frames digipeated (path rewritten and re-transmitted). */
+} aprs_service_stats_t;
+
+/**
+ * @brief Snapshot of the current dashboard statistics counters.
+ * @return Current counter values. Safe to call from any task.
+ */
+aprs_service_stats_t aprs_service_get_stats(void);
 
 /**
  * @brief Build the modem component's runtime configuration from g_config.
