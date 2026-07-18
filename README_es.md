@@ -236,7 +236,7 @@ Eso es toda la interfaz: el TX es una señal de nivel de micrófono hacia la pun
  ── TX ── ESP32 ─────────────────────────────────────────► plug chico del UV-5R ──
 
   GPIO25 ──[R1 2k2]──┬──[R2 2k2]──┬──[C1 10µ]──[R3 10k]──┬─ RV1 extremo
-   (DAC)             │            │      +               │
+   (DAC)             │            │  +                   │
                    [C2 15n]     [C3 15n]              [RV1 1k]  ajuste de nivel
                      │            │                      ├─ cursor ──► PUNTA 2,5 mm (MIC)
                     GND          GND                     │
@@ -246,19 +246,19 @@ Eso es toda la interfaz: el TX es una señal de nivel de micrófono hacia la pun
 
                                        nodo de polarización
   PUNTA 3,5mm (SPKR) ─[RV2 10k]─ cursor ─[C4 10µ]──┬──────[R7 1k]───┬──► GPIO33 (ADC)
-                 │                 +                │                │
-   MANGA 3,5mm ──┘                            [R5 10k]─► 3V3    [D1]─► 3V3   BAT54S
-   (GND, común con la manga del plug chico)         │            [D2]─► GND   (o 2×1N4148)
-                                               [R6 10k]─► GND        │
-                                                    │              [C5 1n]
-                                                   GND                │
-                                                                     GND
+                 │                 +               │                │
+   MANGA 3,5mm ──┘                              [R5 10k]─► 3V3    [D1]─► 3V3   BAT54S
+   (GND, común con la manga del plug chico)        │              [D2]─► GND   (o 2×1N4148)
+                                                [R6 10k]─► GND      │
+                                                   │              [C5 1n]
+                                                  GND               │
+                                                                   GND
 
  ── PTT ── cortocircuita el anillo del plug chico contra su manga — opción A o B, sin cambios ──
 
                       ┌─ PC817 ─┐
-   3V3 ──[R8 470]──[A]│▶      C│──────────► ANILLO 2,5 mm
-   GPIO26 ─────────[K]│        E│──────────► MANGA 2,5 mm (GND)
+   3V3 ──[R8 470]──[A]│▶      C│────► ANILLO 2,5 mm
+   GPIO26 ─────────[K]│        E│────► MANGA 2,5 mm (GND)
                       └─────────┘
    GPIO26 en BAJO → LED encendido → anillo en corto con la manga → transmite.
 ```
