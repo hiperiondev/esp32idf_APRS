@@ -1,11 +1,29 @@
-/*
- * aprs_service.h - wires the digirepeater, igate and message components
- * together: installs the modem RX callback (see on_rx_frame/aprs_msg_callback
- * in aprs_service.c, called by esp32idf_radioamateur_modem for every decoded
- * frame), starts the APRS-IS client task, and runs the periodic message-retry
- * tick. All three components read their settings from g_config; nothing here
- * duplicates configuration state.
+/**
+ * @file aprs_service.h
+ *
+ * @author Emiliano Augusto Gonzalez ( lu3vea @ gmail . com)
+ * @date 2026
+ * @copyright GNU General Public License v3
+ * @see https://github.com/hiperiondev/esp32idf_APRS
+ *
+ * @note
+ * This is based on other projects:
+ *     VP-Digi: https://github.com/sq8vps/vp-digi
+ *     ESP32APRS: https://github.com/nakhonthai/ESP32APRS_Audio
+ *     LibAPRS: https://github.com/markqvist/LibAPRS
+ *
+ *     please contact their authors for more information.
+ *
+ * @brief APRS application layer: wires the digirepeater, igate and message
+ * components together.
+ *
+ * Installs the modem RX callback (see on_rx_frame/aprs_msg_callback in
+ * aprs_service.c, called by esp32idf_radioamateur_modem for every decoded frame),
+ * starts the APRS-IS client task, and runs the periodic message-retry tick. All
+ * three components read their settings from g_config; nothing here duplicates
+ * configuration state.
  */
+
 #ifndef APRS_SERVICE_H
 #define APRS_SERVICE_H
 

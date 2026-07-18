@@ -1,15 +1,31 @@
-/*
- * lastheard.h - small in-RAM ring buffer of decoded RF stations, used to
- * feed the "LAST HEARD" table on the web dashboard.
+/**
+ * @file lastheard.h
  *
- * Every decoded AX.25 frame recorded here also increments a per-callsign
- * packet counter so the dashboard can show how many times each station has
- * been heard, the same way the reference project's "PACKET" column does.
+ * @author Emiliano Augusto Gonzalez ( lu3vea @ gmail . com)
+ * @date 2026
+ * @copyright GNU General Public License v3
+ * @see https://github.com/hiperiondev/esp32idf_APRS
  *
- * Thread-safe: lastheard_add() may be called from any task (radio RX
- * callback). Entries are timestamped with time(NULL) (wall clock, once NTP
- * has synced) so the web client can render a human time-of-day.
+ * @note
+ * This is based on other projects:
+ *     VP-Digi: https://github.com/sq8vps/vp-digi
+ *     ESP32APRS: https://github.com/nakhonthai/ESP32APRS_Audio
+ *     LibAPRS: https://github.com/markqvist/LibAPRS
+ *
+ *     please contact their authors for more information.
+ *
+ * @brief Small in-RAM ring buffer of decoded RF stations, used to feed the "LAST
+ * HEARD" table on the web dashboard.
+ *
+ * Every decoded AX.25 frame recorded here also increments a per-callsign packet
+ * counter so the dashboard can show how many times each station has been heard,
+ * the same way the reference project's "PACKET" column does.
+ *
+ * Thread-safe: lastheard_add() may be called from any task (radio RX callback).
+ * Entries are timestamped with time(NULL) (wall clock, once NTP has synced) so
+ * the web client can render a human time-of-day.
  */
+
 #ifndef LASTHEARD_H
 #define LASTHEARD_H
 

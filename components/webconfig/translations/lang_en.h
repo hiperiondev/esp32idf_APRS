@@ -1,9 +1,26 @@
-/*
- * lang_en.h - English strings.
- * Only ever included by translations.h when LANGUAGE == LANG_EN.
- * Keep this file's TR_xxx macro list identical (same names) across all
- * lang_xx.h files - only the string contents should differ.
+/**
+ * @file lang_en.h
+ *
+ * @author Emiliano Augusto Gonzalez ( lu3vea @ gmail . com)
+ * @date 2026
+ * @copyright GNU General Public License v3
+ * @see https://github.com/hiperiondev/esp32idf_APRS
+ *
+ * @note
+ * This is based on other projects:
+ *     VP-Digi: https://github.com/sq8vps/vp-digi
+ *     ESP32APRS: https://github.com/nakhonthai/ESP32APRS_Audio
+ *     LibAPRS: https://github.com/markqvist/LibAPRS
+ *
+ *     please contact their authors for more information.
+ *
+ * @brief English strings.
+ *
+ * Only ever included by translations.h when LANGUAGE == LANG_EN. Keep this file's
+ * TR_xxx macro list identical (same names) across all lang_xx.h files - only the
+ * string contents should differ.
  */
+
 #ifndef LANG_EN_H
 #define LANG_EN_H
 

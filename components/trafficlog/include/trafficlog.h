@@ -1,25 +1,38 @@
-/*
- * trafficlog.h
+/**
+ * @file trafficlog.h
  *
- * Small in-RAM ring buffer that mirrors the same "traffic" lines the
+ * @author Emiliano Augusto Gonzalez ( lu3vea @ gmail . com)
+ * @date 2026
+ * @copyright GNU General Public License v3
+ * @see https://github.com/hiperiondev/esp32idf_APRS
+ *
+ * @note
+ * This is based on other projects:
+ *     VP-Digi: https://github.com/sq8vps/vp-digi
+ *     ESP32APRS: https://github.com/nakhonthai/ESP32APRS_Audio
+ *     LibAPRS: https://github.com/markqvist/LibAPRS
+ *
+ *     please contact their authors for more information.
+ *
+ * @brief Small in-RAM ring buffer that mirrors the same "traffic" lines the
  * firmware already prints on the serial console (APRS-IS TX/RX, RF RX,
- * digipeated frames, INET->RF frames, ...) so the web UI can show a live
- * feed without needing a serial cable.
+ * digipeated frames, INET->RF frames, ...) so the web UI can show a live feed
+ * without needing a serial cable.
  *
  * Each entry carries both a free-form printf-style message (for backward
- * compatibility / connection-status style log lines) and, when available,
- * the structured fields shown by the reference esp32idf_APRS dashboard's
- * traffic table: DX (the station/callsign the entry is associated with),
- * PACKET (the raw TNC2 packet text) and AUDIO (the demodulated audio level
- * in mV RMS, or -1 when not applicable/available, e.g. for TX-only or
- * APRS-IS-only lines).
+ * compatibility / connection-status style log lines) and, when available, the
+ * structured fields shown by the reference esp32idf_APRS dashboard's traffic
+ * table: DX (the station/callsign the entry is associated with), PACKET (the raw
+ * TNC2 packet text) and AUDIO (the demodulated audio level in mV RMS, or -1 when
+ * not applicable/available, e.g. for TX-only or APRS-IS-only lines).
  *
- * Thread-safe: trafficlog_add() / trafficlog_add_pkt() may be called from
- * any task (radio RX callback, igate task, digi processing, etc). Entries
- * are timestamped with esp_timer_get_time() (microseconds since boot) and
- * tagged with an ever-increasing sequence number so a web client can
- * long-poll only the lines it hasn't seen yet ("?since=<seq>").
+ * Thread-safe: trafficlog_add() / trafficlog_add_pkt() may be called from any
+ * task (radio RX callback, igate task, digi processing, etc). Entries are
+ * timestamped with esp_timer_get_time() (microseconds since boot) and tagged with
+ * an ever-increasing sequence number so a web client can long-poll only the lines
+ * it hasn't seen yet ("?since=<seq>").
  */
+
 #ifndef TRAFFICLOG_H
 #define TRAFFICLOG_H
 

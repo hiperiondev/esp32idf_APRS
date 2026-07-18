@@ -1,9 +1,27 @@
-/*
- * digirepeater.h - APRS digipeater (WIDEn-N / TRACEn-N / RELAY / ECHO / GATE)
- * component. Pure C, ESP-IDF. Reads its callsign/SSID from g_config
+/**
+ * @file digirepeater.h
+ *
+ * @author Emiliano Augusto Gonzalez ( lu3vea @ gmail . com)
+ * @date 2026
+ * @copyright GNU General Public License v3
+ * @see https://github.com/hiperiondev/esp32idf_APRS
+ *
+ * @note
+ * This is based on other projects:
+ *     VP-Digi: https://github.com/sq8vps/vp-digi
+ *     ESP32APRS: https://github.com/nakhonthai/ESP32APRS_Audio
+ *     LibAPRS: https://github.com/markqvist/LibAPRS
+ *
+ *     please contact their authors for more information.
+ *
+ * @brief APRS digipeater (WIDEn-N / TRACEn-N / RELAY / ECHO / GATE) component.
+ *
+ * Pure C, ESP-IDF. Reads its callsign/SSID from g_config
  * (app_config_t, see main/include/app_config.h) so the web admin ("Digi"
  * page) is the single source of truth for configuration.
  */
+
+ 
 #ifndef DIGIREPEATER_H
 #define DIGIREPEATER_H
 

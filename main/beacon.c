@@ -1,3 +1,25 @@
+/**
+ * @file beacon.c
+ *
+ * @author Emiliano Augusto Gonzalez ( lu3vea @ gmail . com)
+ * @date 2026
+ * @copyright GNU General Public License v3
+ * @see https://github.com/hiperiondev/esp32idf_APRS
+ *
+ * @note
+ * This is based on other projects:
+ *     VP-Digi: https://github.com/sq8vps/vp-digi
+ *     ESP32APRS: https://github.com/nakhonthai/ESP32APRS_Audio
+ *     LibAPRS: https://github.com/markqvist/LibAPRS
+ *
+ *     please contact their authors for more information.
+ *
+ * @brief Own-station position beacon tasks: builds APRS position reports from the
+ * saved Tracker/IGate/Digipeater coordinates, resolves the configured path
+ * bitmask into a digipeater path, and transmits them on RF and/or APRS-IS at each
+ * beacon's own interval.
+ */
+
 #include <math.h>
 #include <stdio.h>
 #include <string.h>

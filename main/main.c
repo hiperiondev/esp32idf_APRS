@@ -1,3 +1,25 @@
+/**
+ * @file main.c
+ *
+ * @author Emiliano Augusto Gonzalez ( lu3vea @ gmail . com)
+ * @date 2026
+ * @copyright GNU General Public License v3
+ * @see https://github.com/hiperiondev/esp32idf_APRS
+ *
+ * @note
+ * This is based on other projects:
+ *     VP-Digi: https://github.com/sq8vps/vp-digi
+ *     ESP32APRS: https://github.com/nakhonthai/ESP32APRS_Audio
+ *     LibAPRS: https://github.com/markqvist/LibAPRS
+ *
+ *     please contact their authors for more information.
+ *
+ * @brief Firmware entry point: NVS/LittleFS bring-up, configuration load, WiFi
+ * station/AP setup and event handling, and creation of the application task that
+ * starts the CPU frequency policy, SNTP client, web admin server, APRS services
+ * and the radio modem.
+ */
+
 #include <string.h>
 
 #include "esp_event.h"

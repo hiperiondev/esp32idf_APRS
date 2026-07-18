@@ -1,3 +1,25 @@
+/**
+ * @file aprs_service.c
+ *
+ * @author Emiliano Augusto Gonzalez ( lu3vea @ gmail . com)
+ * @date 2026
+ * @copyright GNU General Public License v3
+ * @see https://github.com/hiperiondev/esp32idf_APRS
+ *
+ * @note
+ * This is based on other projects:
+ *     VP-Digi: https://github.com/sq8vps/vp-digi
+ *     ESP32APRS: https://github.com/nakhonthai/ESP32APRS_Audio
+ *     LibAPRS: https://github.com/markqvist/LibAPRS
+ *
+ *     please contact their authors for more information.
+ *
+ * @brief APRS application layer: maps g_config onto the modem configuration,
+ * installs the modem RX callback that feeds the digipeater, IGate, message,
+ * lastheard and trafficlog components, provides the TNC2 transmit path and runs
+ * the periodic service tick.
+ */
+
 #include <stdio.h>
 #include <string.h>
 

@@ -36,4 +36,4 @@ idf_build_set_property(COMPILE_DEFINITIONS "MODEM_PTT_ACTIVE_HIGH=0" APPEND)
 idf_build_set_property(COMPILE_DEFINITIONS "MODEM_LED_TX_GPIO=-1" APPEND)
 idf_build_set_property(COMPILE_DEFINITIONS "MODEM_LED_RX_GPIO=-1" APPEND)
 
-project(esp32aprs_webadmin)
+project(esp32idf_APRS)

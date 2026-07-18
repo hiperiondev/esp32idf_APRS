@@ -1,8 +1,25 @@
-/*
- * message.h - APRS text messaging (send/ack/retry, optional AES-128-CBC
- * payload encryption). Plain C / ESP-IDF. Configuration comes from g_config
- * (app_config_t, web admin "Message" page).
+/**
+ * @file message.h
+ *
+ * @author Emiliano Augusto Gonzalez ( lu3vea @ gmail . com)
+ * @date 2026
+ * @copyright GNU General Public License v3
+ * @see https://github.com/hiperiondev/esp32idf_APRS
+ *
+ * @note
+ * This is based on other projects:
+ *     VP-Digi: https://github.com/sq8vps/vp-digi
+ *     ESP32APRS: https://github.com/nakhonthai/ESP32APRS_Audio
+ *     LibAPRS: https://github.com/markqvist/LibAPRS
+ *
+ *     please contact their authors for more information.
+ *
+ * @brief APRS text messaging (send/ack/retry, optional AES-128-CBC payload
+ * encryption). Plain C / ESP-IDF.
+ *
+ * Configuration comes from g_config (app_config_t, web admin "Message" page).
  */
+
 #ifndef MESSAGE_H
 #define MESSAGE_H
 

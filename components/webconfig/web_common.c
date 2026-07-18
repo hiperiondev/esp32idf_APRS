@@ -1,3 +1,25 @@
+/**
+ * @file web_common.c
+ *
+ * @author Emiliano Augusto Gonzalez ( lu3vea @ gmail . com)
+ * @date 2026
+ * @copyright GNU General Public License v3
+ * @see https://github.com/hiperiondev/esp32idf_APRS
+ *
+ * @note
+ * This is based on other projects:
+ *     VP-Digi: https://github.com/sq8vps/vp-digi
+ *     ESP32APRS: https://github.com/nakhonthai/ESP32APRS_Audio
+ *     LibAPRS: https://github.com/markqvist/LibAPRS
+ *
+ *     please contact their authors for more information.
+ *
+ * @brief Shared web admin helpers: HTTP Basic authentication, request body
+ * reading, URL-decoded form field extraction, and the common HTML chrome (page
+ * header/footer, fieldsets, form controls) and stylesheet used by every admin
+ * page.
+ */
+
 #include "web_common.h"
 #include <ctype.h>
 #include <stdio.h>

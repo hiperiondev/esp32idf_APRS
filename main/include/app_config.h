@@ -1,9 +1,36 @@
-/*
- * app_config.h
+/**
+ * @file app_config.h
+ *
+ * @author Emiliano Augusto Gonzalez ( lu3vea @ gmail . com)
+ * @date 2026
+ * @copyright GNU General Public License v3
+ * @see https://github.com/hiperiondev/esp32idf_APRS
+ *
+ * @note
+ * This is based on other projects:
+ *     VP-Digi: https://github.com/sq8vps/vp-digi
+ *     ESP32APRS: https://github.com/nakhonthai/ESP32APRS_Audio
+ *     LibAPRS: https://github.com/markqvist/LibAPRS
+ *
+ *     please contact their authors for more information.
+ *
+ * @brief Global application configuration type (app_config_t) and the g_config
+ * instance, plus the compile-time module (ENABLE_*) and UI language (LANGUAGE)
+ * selection macros.
+ *
  * Field names and JSON keys are kept 1:1 with the original include/config.h and
  * src/config.cpp so that every value the web admin shows/edits has a home here
  * and persists to LittleFS as /storage/config.json.
+ *
+ * Exactly one language is built into the firmware image at a time - there is no
+ * runtime language switch and no other language's strings are compiled in. To
+ * change the language, change LANGUAGE below to one of the LANG_* codes (or
+ * override it from the build system, e.g. idf.py build -DLANGUAGE=LANG_ES, or
+ * `set(LANGUAGE LANG_ES)` / target_compile_definitions in CMakeLists.txt) and
+ * rebuild. See translations/translations.h for how the selection works and
+ * translations/lang_en.h / translations/lang_es.h for the string tables.
  */
+
 #ifndef APP_CONFIG_H
 #define APP_CONFIG_H
 

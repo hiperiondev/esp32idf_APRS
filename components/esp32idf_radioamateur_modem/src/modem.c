@@ -4,7 +4,7 @@
  * @author Emiliano Augusto Gonzalez ( lu3vea @ gmail . com)
  * @date 2026
  * @copyright GNU General Public License v3
- * @see https://github.com/hiperiondev/esp32idf_radioamateur_modem
+ * @see https://github.com/hiperiondev/esp32idf_APRS
  *
  * @note
  * This is based on other projects:
@@ -13,6 +13,10 @@
  *     LibAPRS: https://github.com/markqvist/LibAPRS
  *
  *     please contact their authors for more information.
+ *
+ * @brief AFSK/FSK modulator and demodulator core implementation: tone
+ * generation, filtering and correlation demodulation, DCD, bit recovery and the
+ * parallel demodulator instances shared by every supported modem profile.
  */
 
 #include <math.h>

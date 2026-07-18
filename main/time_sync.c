@@ -1,3 +1,24 @@
+/**
+ * @file time_sync.c
+ *
+ * @author Emiliano Augusto Gonzalez ( lu3vea @ gmail . com)
+ * @date 2026
+ * @copyright GNU General Public License v3
+ * @see https://github.com/hiperiondev/esp32idf_APRS
+ *
+ * @note
+ * This is based on other projects:
+ *     VP-Digi: https://github.com/sq8vps/vp-digi
+ *     ESP32APRS: https://github.com/nakhonthai/ESP32APRS_Audio
+ *     LibAPRS: https://github.com/markqvist/LibAPRS
+ *
+ *     please contact their authors for more information.
+ *
+ * @brief SNTP client task: waits for real internet connectivity, registers every
+ * configured NTP host at once, and keeps the system clock synchronized in UTC,
+ * retrying until the first sync succeeds.
+ */
+
 #include <sys/time.h>
 #include <time.h>
 
