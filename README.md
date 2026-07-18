@@ -183,8 +183,8 @@ Passive, ~15 parts, no op-amps. This is the whole thing.
                                           bias node
   SPKR/DISC ─[RV2 10k]─ wiper ─[C4 10µ]──────┬──────[R7 1k]───┬──► GPIO33 (ADC)
                  │                +          │                │
-   rig GND ──────┘                     [R5 10k]─► 3V3       [D1]─► 3V3   BAT54S
-   (omit RV2 for a fixed DATA OUT:          │               [D2]─► GND   (or 2×1N4148)
+   rig GND ──────┘                     [R5 10k]─► 3V3     [D1]─► 3V3   BAT54S
+   (omit RV2 for a fixed DATA OUT:          │             [D2]─► GND   (or 2×1N4148)
     wire straight into C4)              [R6 10k]─► GND        │
                                             │              [C5 1n]
                                            GND                │
@@ -203,7 +203,7 @@ Passive, ~15 parts, no op-amps. This is the whole thing.
                        ┌─ 2N7000 / BS170 ─┐
    GPIO26 ──[R9 1k]────┤ G              D ├───► rig PTT
                        │                S ├───► GND (common)
-          [R10 10k]────┤ G→S              │
+          [R10 10k]────┤G→S               │
                        └──────────────────┘
    GPIO26 HIGH → keyed.   R10 holds it unkeyed through reset and deep sleep.
 ```
@@ -246,31 +246,44 @@ That's the whole interface: TX is a mic-level signal into the small plug's tip, 
 
                                           bias node
   3.5mm TIP (SPKR) ─[RV2 10k]─ wiper ─[C4 10µ]──┬──────[R7 1k]───┬──► GPIO33 (ADC)
-                 │                +             │                │
-   3.5mm SLEEVE ─┘                          [R5 10k]─► 3V3     [D1]─► 3V3   BAT54S
-   (GND, common with small plug sleeve)         │              [D2]─► GND   (or 2×1N4148)
+                 │                +              │                │
+   3.5mm SLEEVE ─┘                        [R5 10k]─► 3V3     [D1]─► 3V3   BAT54S
+   (GND, common with small plug sleeve)        │             [D2]─► GND   (or 2×1N4148)
                                            [R6 10k]─► GND        │
-                                                │             [C5 1n]
-                                               GND               │
-                                                                GND
+                                               │              [C5 1n]
+                                              GND                │
+                                                                 GND
 
- ── PTT ── shorts the small plug's ring to its sleeve — option A or B, unchanged ──
+ ── PTT ── shorts the small plug's ring to its sleeve — option A, B, or C, unchanged ──
 
                       ┌─ PC817 ─┐
-   3V3 ──[R8 470]──[A]│▶      C│────► 2.5 mm RING
-   GPIO26 ─────────[K]│        E│────► 2.5 mm SLEEVE (GND)
+   3V3 ──[R8 470]──[A]│▶      C│──────────► 2.5 mm RING
+   GPIO26 ─────────[K]│        E│──────────► 2.5 mm SLEEVE (GND)
                       └─────────┘
    GPIO26 LOW → LED on → ring shorted to sleeve → keyed.
+
+ ── PTT ── option C: bare NPN transistor, non-isolated, needs ACTIVE_HIGH=1 ──
+
+                       ┌─ 2N2222 / BC547 ─┐
+   GPIO26 ──[R9 1k]────┤ B              C ├───► 2.5 mm RING
+                       │                E ├───► 2.5 mm SLEEVE (GND)
+          [R10 10k]────┤ B→E               │
+                       └──────────────────┘
+   GPIO26 HIGH → base current flows → C-E conducts → ring shorted to sleeve → keyed.
+   R10 holds the base low (unkeyed) through reset and deep sleep — same job R10 does in the MOSFET option.
 ```
 
-Everything left of the plugs — R1–R3, RV1, C1–C4, R5–R7, D1–D2, C5, R8 — is identical to the [parts table](#minimal-functional-schematic) above; only the endpoints move, from "rig MIC/DATA IN" and "rig SPKR/DISC" to the UV-5R's small- and large-plug tips.
+Everything left of the plugs — R1–R3, RV1, C1–C4, R5–R7, D1–D2, C5, R8 (or R9/R10 for option C) — is identical to the [parts table](#minimal-functional-schematic) above; only the endpoints move, from "rig MIC/DATA IN" and "rig SPKR/DISC" to the UV-5R's small- and large-plug tips.
+
+Option C trades the opto's isolation for parts-bin convenience: any small-signal NPN works (2N2222, BC547, PN2200, S8050 — `hFE` ≥ 100 is plenty, since the collector current here is only a few mA through the K-plug's PTT switch contacts), and it's a two-resistor, one-transistor build instead of stocking an optocoupler. Like the MOSFET option, it **does not isolate** the ESP32's ground from the radio's, and it is **active-HIGH** — set `MODEM_PTT_ACTIVE_HIGH=1` (compile-time default or the runtime **Radio** page toggle) to match, exactly as for option B.
 
 A few things specific to this radio:
 
 * **No DATA IN / DATA OUT.** The UV-5R has no discriminator jack, so there is no way to reach the flat, fixed-level path this project's 9600 Bd G3RUH mode needs. Through the stock 2-pin connector, **AFSK 1200 Bd Bell 202 is the realistic ceiling.**
 * **The mic level sits in the generic "Rig MIC IN" band** from the [what-each-end-actually-presents table](#what-each-end-actually-presents) — a few mV to a few tens of mV — so the R3/RV1 pad network is used exactly as specified; start RV1 near mid-rotation and trim for ≈3 kHz deviation per [Bring-up order](#bring-up-order).
 * **Speaker output is volume-knob dependent.** Fix the UV-5R's volume at a low-to-moderate, repeatable setting (mark the knob) and do the level trim with RV2, not the radio's volume control — the AGC has the least headroom at the extremes of its range.
-* **VOX is not used.** PTT is driven directly by the opto/MOSFET, so leave the radio's VOX off; VOX fighting a hard PTT short is a good way to get truncated first characters or a stuck key-up.
+* **VOX is not used.** PTT is driven directly by the opto, MOSFET, or transistor switch, so leave the radio's VOX off; VOX fighting a hard PTT short is a good way to get truncated first characters or a stuck key-up.
+* **Picking A vs. B vs. C:** option A (opto) is the only one of the three that isolates the ESP32 ground from the radio's, and it needs no polarity change from the shipped default — it's the one to reach for first. Options B and C are both non-isolated, active-HIGH low-side switches that differ only in which part you already have on hand (MOSFET vs. small-signal NPN); either is fine on a bench where hum and RF ingress aren't a concern.
 * **Verify the pinout before soldering.** Cheap aftermarket 2-pin K-plug cables are not all wired the same — some third-party cables swap which small-plug contact is mic vs. PTT. Ring the plug out with a multimeter against the table above before committing; a swapped pair either floats the mic (no TX audio) or shorts PTT permanently (radio keys the instant it's plugged in).
 * Ground loop and isolation guidance from [Isolation and ground loops](#isolation-and-ground-loops) applies unchanged — the small- and large-plug sleeves are the same node inside the radio, so treat them as one ground reference.
 
