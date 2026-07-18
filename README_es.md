@@ -1,4 +1,4 @@
-# esp32idf_APRS — `esp32aprs_webadmin`
+# esp32idf_APRS
 
 **IGate / Digipeater / Tracker APRS nativo en ESP-IDF (C, sin Arduino) para el ESP32, con administración web integrada, módem por software AFSK/FSK en el propio chip (ADC + DAC) y enlace a APRS-IS.**
 
@@ -51,7 +51,7 @@
 
 ## Qué es esto
 
-`esp32aprs_webadmin` es un proyecto ESP-IDF **v5.x** que convierte un ESP32 DevKit pelado más una interfaz de audio barata en una estación APRS completa:
+`esp32idf_APRS` es un proyecto ESP-IDF **v5.x** que convierte un ESP32 DevKit pelado más una interfaz de audio barata en una estación APRS completa:
 
 * **demodula** audio AFSK/FSK proveniente de la salida de altavoz/discriminador de un equipo de radio en el **ADC1**,
 * **decodifica** tramas HDLC/AX.25 (opcionalmente con corrección de errores FX.25),
