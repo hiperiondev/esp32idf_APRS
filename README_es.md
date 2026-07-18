@@ -192,18 +192,18 @@ Pasivo, ~15 componentes, sin operacionales. Esto es todo.
  ── PTT ── opción A: opto, aislado, coincide con el default activo en BAJO ──
 
                       ┌─ PC817 ─┐
-   3V3 ──[R8 470]──[A]│▶       C│──────────► PTT del equipo
-   GPIO26 ────────[K]│         E│──────────► GND de PTT del equipo
+   3V3 ──[R8 470]──[A]│▶      C│────► PTT del equipo
+   GPIO26 ─────────[K]│        E│────► GND de PTT del equipo
                       └─────────┘
    GPIO26 en BAJO → LED encendido → transmite.   Flotante en el reset → LED apagado → sin transmitir.
 
  ── PTT ── opción B: MOSFET de lado bajo, sin aislar, requiere ACTIVE_HIGH=1 ──
 
                        ┌─ 2N7000 / BS170 ─┐
-   GPIO26 ──[R9 1k]────┤ G              D ├──────────► PTT del equipo
-                       │                S ├──┬───────► GND (común)
-                  [R10 10k] G→S            │
-                       └────────────────────┘
+   GPIO26 ──[R9 1k]────┤ G              D ├────► PTT del equipo
+                       │                S ├────► GND (común)
+            [R10 10k]──┤ G→S              │
+                       └──────────────────┘
    GPIO26 en ALTO → transmite.   R10 lo mantiene sin transmitir durante el reset y el deep sleep.
 ```
 
