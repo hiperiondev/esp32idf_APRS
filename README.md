@@ -80,7 +80,7 @@ Everything is plain C. There is no Arduino core, no `String`, no PlatformIO. The
 | CSMA / TX time-slot / TXDelay preamble | ✅ | `preamble`, `tx_timeslot` |
 | DCD (data carrier detect) | ✅ | demodulator-derived; no hardware squelch input |
 | APRS-IS IGate RF→INET | ✅ | filters, dedup, `qAR`/`qAO` |
-| APRS-IS IGate INET→RF | 🟡 | works, but the `inet2rfFilter` bitmask is **not applied yet** |
+| APRS-IS IGate INET→RF | ✅ | `inet2rfFilter` payload-type gating (`aprs_filter.c`) |
 | Digipeater | ✅ | WIDEn-N, TRACEn-N, RELAY/ECHO/GATE, dup-suppression |
 | Fixed-position beacons (tracker / igate / digi) | ✅ | three independent FreeRTOS tasks |
 | SmartBeaconing / GPS-driven tracker | ❌ | config fields exist, logic not implemented |
@@ -398,7 +398,7 @@ Built in exactly one place — `aprs_service_build_modem_config()` — shared by
 * **Gated on real connectivity**, not on "Wi-Fi is up": it polls `net_state_is_connected()`, which only becomes true on `IP_EVENT_STA_GOT_IP` and false again on disconnect / AP-only mode.
 * **Login line:** `user <mycall> pass <passcode> vers ESP32APRS 1.0 filter <filter>` — logged verbatim so a malformed filter is visible. The server banner and `# logresp … verified/unverified` line are surfaced; `unverified` raises a warning naming `aprs_mycall`/`aprs_passcode`.
 * **RF→INET** (`igateProcess()`): drops frames whose path contains `RFONLY`, `TCPIP`, `qA*` or `NOGATE`; applies the `rf2inetFilter` bitmask (message/status/telemetry/weather/object/item/query/buoy/position); builds a `,qAR,<mycall>-<ssid>` header — or `,<mycall>-<ssid>*,qAO,<object>` for the object/satellite-gate form; de-duplicates against a 10-entry / 30 s cache.
-* **INET→RF**: every non-`#` line increments `isRxCount`, is handed to `handleIncomingAPRS()` when messaging is on, and re-transmitted if `inet2rf` is set. ⚠ **`inet2rfFilter` is not applied yet** — the hook point is marked with a `NOTE` in `aprs_service.c`.
+* **INET→RF**: every non-`#` line increments `isRxCount`, is handed to `handleIncomingAPRS()` when messaging is on, and re-transmitted if `inet2rf` is set **and** the payload's type bit is set in `inet2rfFilter`. The type is decided by `aprs_filter_classify_tnc2()` (`main/aprs_filter.c`) from the APRS data type identifier plus, for position/object/item reports, the symbol (`_` → weather, `/N` → buoy). Unclassifiable payloads — third-party traffic `}` above all, the classic IGate-loop source — classify as 0 and are never relayed. Filtered lines are logged at `ESP_LOGD` only; the `RX-IS` traffic entry already covers them.
 * **Shared uplink:** the task always runs, because the socket is also used by the message component (`igate_send_raw()`) and by "beacon to internet". It idles cheaply when nothing needs it.
 * **Counters** (`igate_stats_t`): `rxCount`, `txCount`, `dropCount`, `dupCount`, `isRxCount` (all APRS-IS lines), `isTxCount` (all socket writes).
 
@@ -729,7 +729,7 @@ Reconnects use a **growing back-off** (500 ms per consecutive failure, capped at
 
 * **Work in progress.** The upstream README says so, and so does this one.
 * **No OTA** — single `factory` partition; flash over serial.
-* **`inet2rfFilter` is not applied.** Everything APRS-IS sends that matches your server-side filter goes to RF when `inet2rf` is on. The hook point is marked in `aprs_service.c`.
+* **`rf2inetFilter` is not applied.** `igateProcess()` still applies only the RFONLY/TCPIP/qA/NOGATE/satellite rules and dedup, not the payload-type bitmask. `aprs_filter_classify_tnc2()` / `aprs_filter_pass()` are direction-agnostic, so wiring it there is a two-line change.
 * **Only the first enabled Wi-Fi STA slot is used.** Multi-AP failover is noted as "can be added later".
 * **No GPS, no SmartBeaconing.** Config fields exist; beacons are fixed-position only.
 * **No LoRa / RF-module driver.** `ENABLE_RF_MODULE` is commented out; the SX12xx UI and config are scaffolding.

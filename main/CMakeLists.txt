@@ -4,6 +4,7 @@ idf_component_register(
         "app_config.c"
         "storage.c"
         "aprs_service.c"
+        "aprs_filter.c"
         "net_state.c"
         "beacon.c"
         "time_sync.c"

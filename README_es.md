@@ -80,7 +80,7 @@ Todo es C puro. No hay núcleo de Arduino, ni `String`, ni PlatformIO. Toda la c
 | CSMA / TX time-slot / preámbulo TXDelay | ✅ | `preamble`, `tx_timeslot` |
 | DCD (detección de portadora) | ✅ | derivado del demodulador; sin entrada de squelch por hardware |
 | IGate APRS-IS RF→INET | ✅ | filtros, deduplicación, `qAR`/`qAO` |
-| IGate APRS-IS INET→RF | 🟡 | funciona, pero la máscara `inet2rfFilter` **aún no se aplica** |
+| IGate APRS-IS INET→RF | ✅ | filtrado por tipo de paquete con `inet2rfFilter` (`aprs_filter.c`) |
 | Digipeater | ✅ | WIDEn-N, TRACEn-N, RELAY/ECHO/GATE, supresión de duplicados |
 | Beacons de posición fija (tracker / igate / digi) | ✅ | tres tareas FreeRTOS independientes |
 | SmartBeaconing / tracker con GPS | ❌ | los campos de configuración existen, la lógica no |
@@ -398,7 +398,7 @@ Se construye en un único lugar — `aprs_service_build_modem_config()` — comp
 * **Condicionado a conectividad real**, no a "el Wi-Fi está arriba": consulta `net_state_is_connected()`, que solo pasa a true con `IP_EVENT_STA_GOT_IP` y vuelve a false ante una desconexión o en modo solo-AP.
 * **Línea de login:** `user <mycall> pass <passcode> vers ESP32APRS 1.0 filter <filter>` — se loguea textual para que un filtro mal formado sea visible. El banner del servidor y la línea `# logresp … verified/unverified` se muestran; `unverified` levanta una advertencia nombrando `aprs_mycall`/`aprs_passcode`.
 * **RF→INET** (`igateProcess()`): descarta tramas cuyo path contenga `RFONLY`, `TCPIP`, `qA*` o `NOGATE`; aplica la máscara `rf2inetFilter` (mensaje/estado/telemetría/meteorología/objeto/ítem/consulta/boya/posición); construye una cabecera `,qAR,<mycall>-<ssid>` — o la forma de objeto/gate satelital `,<mycall>-<ssid>*,qAO,<object>`; deduplica contra una caché de 10 entradas / 30 s.
-* **INET→RF**: cada línea que no empiece con `#` incrementa `isRxCount`, se pasa a `handleIncomingAPRS()` si la mensajería está activa, y se retransmite si `inet2rf` está puesto. ⚠ **`inet2rfFilter` todavía no se aplica** — el punto de enganche está marcado con un `NOTE` en `aprs_service.c`.
+* **INET→RF**: cada línea que no empiece con `#` incrementa `isRxCount`, se pasa a `handleIncomingAPRS()` si la mensajería está activa, y se retransmite si `inet2rf` está puesto **y** el bit del tipo de paquete está en `inet2rfFilter`. El tipo lo decide `aprs_filter_classify_tnc2()` (`main/aprs_filter.c`) a partir del identificador de tipo de dato APRS y, para posición/objeto/item, del símbolo (`_` → meteorología, `/N` → boya). Los paquetes que no se pueden clasificar —sobre todo el tráfico de terceros `}`, origen clásico de los bucles de IGate— clasifican como 0 y nunca se retransmiten. Las líneas filtradas se registran solo con `ESP_LOGD`; la entrada `RX-IS` del log de tráfico ya las muestra.
 * **Enlace compartido:** la tarea siempre corre, porque el socket también lo usa el componente de mensajería (`igate_send_raw()`) y el "beacon a internet". Queda ociosa a bajo costo cuando nadie la necesita.
 * **Contadores** (`igate_stats_t`): `rxCount`, `txCount`, `dropCount`, `dupCount`, `isRxCount` (todas las líneas de APRS-IS), `isTxCount` (todas las escrituras al socket).
 
@@ -729,7 +729,7 @@ Las reconexiones usan un **back-off creciente** (500 ms por falla consecutiva, c
 
 * **Trabajo en curso.** Lo dice el README original, y lo dice también este.
 * **Sin OTA** — una sola partición `factory`; se graba por serie.
-* **`inet2rfFilter` no se aplica.** Todo lo que APRS-IS envía que coincida con tu filtro del lado del servidor va a RF cuando `inet2rf` está activo. El punto de enganche está marcado en `aprs_service.c`.
+* **`rf2inetFilter` no se aplica.** `igateProcess()` sigue aplicando solo las reglas RFONLY/TCPIP/qA/NOGATE/satélite y el antiduplicados, no la máscara de tipos de paquete. `aprs_filter_classify_tnc2()` / `aprs_filter_pass()` no dependen de la dirección, así que engancharlo ahí son dos líneas.
 * **Solo se usa el primer slot STA habilitado.** El failover multi-AP figura como "se puede agregar más adelante".
 * **Sin GPS, sin SmartBeaconing.** Los campos de configuración existen; los beacons son solo de posición fija.
 * **Sin driver de LoRa / módulo RF.** `ENABLE_RF_MODULE` está comentado; la UI y la configuración de SX12xx son andamiaje.

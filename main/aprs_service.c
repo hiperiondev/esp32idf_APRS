@@ -36,6 +36,7 @@
 #include "modem.h"
 
 #include "app_config.h"
+#include "aprs_filter.h"
 #include "aprs_service.h"
 #include "beacon.h"
 #include "digirepeater.h"
@@ -370,9 +371,22 @@ static void inet2rfHandler(const char *line) {
         handleIncomingAPRS(line);
 
     if (g_config.inet2rf) {
-        // NOTE: g_config.inet2rfFilter (object/item/message/etc bitmask) is not
-        // yet applied here; add a filter check before this call if selective
-        // gating is required.
+        // g_config.inet2rfFilter is a whitelist of payload types (the IGATE
+        // Filter fieldset on the /igate page): classify the line and drop it
+        // unless its bit is set. Unclassifiable payloads - third-party
+        // traffic in particular, which is exactly how an IGate loop starts -
+        // classify as 0 and never pass.
+        //
+        // Dropped lines are logged at debug level only: the RX-IS entry
+        // igate.c already added to the traffic ring covers them, and an
+        // unfiltered APRS-IS feed would otherwise flush the ring with lines
+        // that never went anywhere.
+        uint16_t type = aprs_filter_classify_tnc2(line);
+        if (!aprs_filter_pass(g_config.inet2rfFilter, type)) {
+            ESP_LOGD(TAG, "INET2RF filtered (%s, mask=0x%03X): %s", aprs_filter_type_name(type), (unsigned)g_config.inet2rfFilter, line);
+            return;
+        }
+
         aprs_service_send_tnc2(line, strlen(line));
         s_statInet2Rf++;
         ESP_LOGD(TAG, "INET2RF TX: %s", line);
