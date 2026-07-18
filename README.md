@@ -192,18 +192,18 @@ Passive, ~15 parts, no op-amps. This is the whole thing.
  ── PTT ── option A: opto, isolated, matches the shipped active-LOW default ──
 
                       ┌─ PC817 ─┐
-   3V3 ──[R8 470]──[A]│▶       C│──────────► rig PTT
-   GPIO26 ────────[K]│         E│──────────► rig PTT GND
+   3V3 ──[R8 470]──[A]│▶      C│──────────► rig PTT
+   GPIO26 ─────────[K]│        E│──────────► rig PTT GND
                       └─────────┘
    GPIO26 LOW → LED on → keyed.   Floating at reset → LED off → unkeyed.
 
  ── PTT ── option B: low-side MOSFET, non-isolated, needs ACTIVE_HIGH=1 ──
 
                        ┌─ 2N7000 / BS170 ─┐
-   GPIO26 ──[R9 1k]────┤ G              D ├──────────► rig PTT
-                       │                S ├──┬───────► GND (common)
-                  [R10 10k] G→S            │
-                       └────────────────────┘
+   GPIO26 ──[R9 1k]────┤ G              D ├───► rig PTT
+                       │                S ├───► GND (common)
+          [R10 10k]────┤G→S               │
+                       └──────────────────┘
    GPIO26 HIGH → keyed.   R10 holds it unkeyed through reset and deep sleep.
 ```
 
