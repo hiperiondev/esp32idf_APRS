@@ -16,6 +16,7 @@
   - [Cableado típico a un equipo de radio](#cableado-típico-a-un-equipo-de-radio)
     - [Qué hay realmente en cada extremo](#qué-hay-realmente-en-cada-extremo)
     - [Esquemático mínimo funcional](#esquemático-mínimo-funcional)
+    - [Interfaz funcional completa para un Baofeng UV-5R](#interfaz-funcional-completa-para-un-baofeng-uv-5r)
     - [Por qué el default del PTT es una trampa](#por-qué-el-default-del-ptt-es-una-trampa)
     - [Aislación y lazos de masa](#aislación-y-lazos-de-masa)
     - [Orden de puesta en marcha](#orden-de-puesta-en-marcha)
@@ -219,6 +220,59 @@ Pasivo, ~15 componentes, sin operacionales. Esto es todo.
 | **D1, D2** | BAT54S | Recortan GPIO33 contra los rieles. R7 limita la corriente de falla. Seguro barato contra una perilla de volumen a 3 Vrms | |
 | **R8** | 470 Ω | ≈4,5 mA por el LED del PC817, drenados por GPIO26 — bien dentro del presupuesto de 12 mA cómodos / 20 mA absolutos | |
 | **R10** | 10k | **La pieza que todo el mundo omite.** Sin ella la compuerta del MOSFET queda flotante durante el reset y el equipo puede transmitir al encender | |
+
+#### Interfaz funcional completa para un Baofeng UV-5R
+
+El Baofeng UV-5R (y la mayoría de sus clones de dos pines estilo Kenwood-K1 — UV-82, BF-888, GT-3, RT-5R, etc.) **no** tiene un único jack combinado de mic/parlante/PTT. Tiene dos:
+
+| Conector | Tamaño | Contactos | Señal |
+|---|---|---|---|
+| **Plug grande** | 3,5 mm, TS (mono) | Punta / Manga | Punta = **salida de audio de SPKR**, Manga = **GND** |
+| **Plug chico** | 2,5 mm, TRS | Punta / Anillo / Manga | Punta = **entrada de MIC**, Anillo = **PTT** (corto contra la Manga para transmitir), Manga = **GND** |
+
+Eso es toda la interfaz: el TX es una señal de nivel de micrófono hacia la punta del plug chico, el RX es una señal de nivel de parlante que sale de la punta del plug grande, y el PTT es un **cierre de contacto** entre el anillo y la manga del plug chico — no es un nivel lógico que la radio lea, es solo un corto. Esto calza exacto con el [esquemático mínimo funcional](#esquemático-mínimo-funcional) de arriba; lo único que cambia son los destinos:
+
+```
+ ── TX ── ESP32 ─────────────────────────────────────────► plug chico del UV-5R ──
+
+  GPIO25 ──[R1 2k2]──┬──[R2 2k2]──┬──[C1 10µ]──[R3 10k]──┬─ RV1 extremo
+   (DAC)             │            │      +               │
+                   [C2 15n]     [C3 15n]              [RV1 1k]  ajuste de nivel
+                     │            │                      ├─ cursor ──► PUNTA 2,5 mm (MIC)
+                    GND          GND                     │
+                                                         └─ extremo ─► MANGA 2,5 mm (GND)
+
+ ── RX ── plug grande del UV-5R ────────────────────────────────► ESP32 ──
+
+                                       nodo de polarización
+  PUNTA 3,5mm (SPKR) ─[RV2 10k]─ cursor ─[C4 10µ]──┬──────[R7 1k]───┬──► GPIO33 (ADC)
+                 │                 +                │                │
+   MANGA 3,5mm ──┘                            [R5 10k]─► 3V3    [D1]─► 3V3   BAT54S
+   (GND, común con la manga del plug chico)         │            [D2]─► GND   (o 2×1N4148)
+                                               [R6 10k]─► GND        │
+                                                    │              [C5 1n]
+                                                   GND                │
+                                                                     GND
+
+ ── PTT ── cortocircuita el anillo del plug chico contra su manga — opción A o B, sin cambios ──
+
+                      ┌─ PC817 ─┐
+   3V3 ──[R8 470]──[A]│▶      C│──────────► ANILLO 2,5 mm
+   GPIO26 ─────────[K]│        E│──────────► MANGA 2,5 mm (GND)
+                      └─────────┘
+   GPIO26 en BAJO → LED encendido → anillo en corto con la manga → transmite.
+```
+
+Todo lo que queda a la izquierda de los conectores — R1–R3, RV1, C1–C4, R5–R7, D1–D2, C5, R8 — es idéntico a la [tabla de componentes](#esquemático-mínimo-funcional) de arriba; lo único que se mueve son los destinos, de "MIC/DATA IN" y "SPKR/DISC del equipo" a la punta del plug chico y del plug grande del UV-5R.
+
+Algunas cosas específicas de esta radio:
+
+* **No hay DATA IN / DATA OUT.** El UV-5R no tiene jack de discriminador, así que no hay forma de llegar a la vía plana y de nivel fijo que necesita el modo 9600 Bd G3RUH de este proyecto. A través del conector estándar de 2 pines, **AFSK 1200 Bd Bell 202 es el techo realista.**
+* **El nivel de micrófono cae dentro de la banda genérica "Rig MIC IN"** de la [tabla de qué hay en cada extremo](#qué-hay-realmente-en-cada-extremo) — de pocos mV a unas pocas decenas de mV — así que la red atenuadora R3/RV1 se usa tal cual está especificada; arrancá con RV1 cerca de la media vuelta y ajustá para ≈3 kHz de desviación según el [orden de puesta en marcha](#orden-de-puesta-en-marcha).
+* **La salida de parlante depende de la perilla de volumen.** Fijá el volumen del UV-5R en un valor bajo a moderado y repetible (marcá la perilla) y hacé el ajuste de nivel con RV2, no con el control de volumen de la radio — el AGC tiene menos margen en los extremos de su rango.
+* **No se usa VOX.** El PTT lo maneja directamente el opto/MOSFET, así que dejá el VOX de la radio apagado; el VOX peleando contra un corto de PTT directo es una buena forma de perder los primeros caracteres o de quedarte trabado transmitiendo.
+* **Verificá el pinout antes de soldar.** No todos los cables K-plug de dos pines truchos están cableados igual — algunos cables de terceros invierten cuál contacto del plug chico es mic y cuál es PTT. Medí el plug con un tester contra la tabla de arriba antes de soldar definitivamente; un par invertido deja el micrófono flotando (sin audio de TX) o cortocircuita el PTT de forma permanente (la radio transmite apenas la enchufás).
+* La guía de aislación y lazos de masa de [Aislación y lazos de masa](#aislación-y-lazos-de-masa) aplica sin cambios — las mangas del plug chico y del plug grande son el mismo nodo dentro de la radio, así que tratalas como una sola referencia de masa.
 
 #### Por qué el default del PTT es una trampa
 

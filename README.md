@@ -16,6 +16,7 @@
   - [Typical wiring to a radio](#typical-wiring-to-a-radio)
     - [What each end actually presents](#what-each-end-actually-presents)
     - [Minimal functional schematic](#minimal-functional-schematic)
+    - [A full functional interface for the Baofeng UV-5R](#a-full-functional-interface-for-the-baofeng-uv-5r)
     - [Why the PTT default is a trap](#why-the-ptt-default-is-a-trap)
     - [Isolation and ground loops](#isolation-and-ground-loops)
     - [Bring-up order](#bring-up-order)
@@ -219,6 +220,59 @@ Passive, ~15 parts, no op-amps. This is the whole thing.
 | **D1, D2** | BAT54S | Clamp GPIO33 to the rails. R7 limits the fault current. Cheap insurance against a volume knob at 3 Vrms | |
 | **R8** | 470 Ω | ≈4.5 mA through the PC817 LED, sunk by GPIO26 — well inside the 12 mA comfortable / 20 mA absolute sink budget | |
 | **R10** | 10k | **The one part people leave out.** Without it the MOSFET gate floats during reset and the rig can key on power-up | |
+
+#### A full functional interface for the Baofeng UV-5R
+
+The Baofeng UV-5R (and most of its Kenwood-K1-style two-pin clones — UV-82, BF-888, GT-3, RT-5R, etc.) does **not** expose a single combined mic/speaker/PTT jack. It exposes two:
+
+| Plug | Size | Contacts | Signal |
+|---|---|---|---|
+| **Large plug** | 3.5 mm, TS (mono) | Tip / Sleeve | Tip = **SPKR audio out**, Sleeve = **GND** |
+| **Small plug** | 2.5 mm, TRS | Tip / Ring / Sleeve | Tip = **MIC in**, Ring = **PTT** (short to Sleeve to key), Sleeve = **GND** |
+
+That's the whole interface: TX is a mic-level signal into the small plug's tip, RX is a speaker-level signal out of the large plug's tip, and PTT is a **switch closure** between the small plug's ring and sleeve — not a logic level the radio reads, just a short. This lines up exactly with the [minimal functional schematic](#minimal-functional-schematic) above; only the destination pins change:
+
+```
+ ── TX ── ESP32 ───────────────────────────────────────────────────► UV-5R small plug ──
+
+  GPIO25 ──[R1 2k2]──┬──[R2 2k2]──┬──[C1 10µ]──[R3 10k]──┬─ RV1 top
+   (DAC)             │            │      +               │
+                   [C2 15n]     [C3 15n]              [RV1 1k]  level trim
+                     │            │                      ├─ wiper ──► 2.5 mm TIP  (MIC)
+                    GND          GND                     │
+                                                         └─ bottom ─► 2.5 mm SLEEVE (GND)
+
+ ── RX ── UV-5R large plug ───────────────────────────────────────► ESP32 ──
+
+                                          bias node
+  3.5mm TIP (SPKR) ─[RV2 10k]─ wiper ─[C4 10µ]──┬──────[R7 1k]───┬──► GPIO33 (ADC)
+                 │                +              │                │
+   3.5mm SLEEVE ─┘                        [R5 10k]─► 3V3     [D1]─► 3V3   BAT54S
+   (GND, common with small plug sleeve)        │             [D2]─► GND   (or 2×1N4148)
+                                           [R6 10k]─► GND        │
+                                               │              [C5 1n]
+                                              GND                │
+                                                                 GND
+
+ ── PTT ── shorts the small plug's ring to its sleeve — option A or B, unchanged ──
+
+                      ┌─ PC817 ─┐
+   3V3 ──[R8 470]──[A]│▶      C│──────────► 2.5 mm RING
+   GPIO26 ─────────[K]│        E│──────────► 2.5 mm SLEEVE (GND)
+                      └─────────┘
+   GPIO26 LOW → LED on → ring shorted to sleeve → keyed.
+```
+
+Everything left of the plugs — R1–R3, RV1, C1–C4, R5–R7, D1–D2, C5, R8 — is identical to the [parts table](#minimal-functional-schematic) above; only the endpoints move, from "rig MIC/DATA IN" and "rig SPKR/DISC" to the UV-5R's small- and large-plug tips.
+
+A few things specific to this radio:
+
+* **No DATA IN / DATA OUT.** The UV-5R has no discriminator jack, so there is no way to reach the flat, fixed-level path this project's 9600 Bd G3RUH mode needs. Through the stock 2-pin connector, **AFSK 1200 Bd Bell 202 is the realistic ceiling.**
+* **The mic level sits in the generic "Rig MIC IN" band** from the [what-each-end-actually-presents table](#what-each-end-actually-presents) — a few mV to a few tens of mV — so the R3/RV1 pad network is used exactly as specified; start RV1 near mid-rotation and trim for ≈3 kHz deviation per [Bring-up order](#bring-up-order).
+* **Speaker output is volume-knob dependent.** Fix the UV-5R's volume at a low-to-moderate, repeatable setting (mark the knob) and do the level trim with RV2, not the radio's volume control — the AGC has the least headroom at the extremes of its range.
+* **VOX is not used.** PTT is driven directly by the opto/MOSFET, so leave the radio's VOX off; VOX fighting a hard PTT short is a good way to get truncated first characters or a stuck key-up.
+* **Verify the pinout before soldering.** Cheap aftermarket 2-pin K-plug cables are not all wired the same — some third-party cables swap which small-plug contact is mic vs. PTT. Ring the plug out with a multimeter against the table above before committing; a swapped pair either floats the mic (no TX audio) or shorts PTT permanently (radio keys the instant it's plugged in).
+* Ground loop and isolation guidance from [Isolation and ground loops](#isolation-and-ground-loops) applies unchanged — the small- and large-plug sleeves are the same node inside the radio, so treat them as one ground reference.
 
 #### Why the PTT default is a trap
 
