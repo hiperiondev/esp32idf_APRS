@@ -183,8 +183,8 @@ Passive, ~15 parts, no op-amps. This is the whole thing.
                                           bias node
   SPKR/DISC ─[RV2 10k]─ wiper ─[C4 10µ]──────┬──────[R7 1k]───┬──► GPIO33 (ADC)
                  │                +          │                │
-   rig GND ──────┘                     [R5 10k]─► 3V3     [D1]─► 3V3   BAT54S
-   (omit RV2 for a fixed DATA OUT:          │             [D2]─► GND   (or 2×1N4148)
+   rig GND ──────┘                     [R5 10k]─► 3V3       [D1]─► 3V3   BAT54S
+   (omit RV2 for a fixed DATA OUT:          │               [D2]─► GND   (or 2×1N4148)
     wire straight into C4)              [R6 10k]─► GND        │
                                             │              [C5 1n]
                                            GND                │
@@ -203,7 +203,7 @@ Passive, ~15 parts, no op-amps. This is the whole thing.
                        ┌─ 2N7000 / BS170 ─┐
    GPIO26 ──[R9 1k]────┤ G              D ├───► rig PTT
                        │                S ├───► GND (common)
-          [R10 10k]────┤G→S               │
+          [R10 10k]────┤ G→S              │
                        └──────────────────┘
    GPIO26 HIGH → keyed.   R10 holds it unkeyed through reset and deep sleep.
 ```
@@ -246,19 +246,19 @@ That's the whole interface: TX is a mic-level signal into the small plug's tip, 
 
                                           bias node
   3.5mm TIP (SPKR) ─[RV2 10k]─ wiper ─[C4 10µ]──┬──────[R7 1k]───┬──► GPIO33 (ADC)
-                 │                +              │                │
-   3.5mm SLEEVE ─┘                        [R5 10k]─► 3V3     [D1]─► 3V3   BAT54S
-   (GND, common with small plug sleeve)        │             [D2]─► GND   (or 2×1N4148)
+                 │                +             │                │
+   3.5mm SLEEVE ─┘                          [R5 10k]─► 3V3     [D1]─► 3V3   BAT54S
+   (GND, common with small plug sleeve)         │              [D2]─► GND   (or 2×1N4148)
                                            [R6 10k]─► GND        │
-                                               │              [C5 1n]
-                                              GND                │
-                                                                 GND
+                                                │             [C5 1n]
+                                               GND               │
+                                                                GND
 
  ── PTT ── shorts the small plug's ring to its sleeve — option A or B, unchanged ──
 
                       ┌─ PC817 ─┐
-   3V3 ──[R8 470]──[A]│▶      C│──────────► 2.5 mm RING
-   GPIO26 ─────────[K]│        E│──────────► 2.5 mm SLEEVE (GND)
+   3V3 ──[R8 470]──[A]│▶      C│────► 2.5 mm RING
+   GPIO26 ─────────[K]│        E│────► 2.5 mm SLEEVE (GND)
                       └─────────┘
    GPIO26 LOW → LED on → ring shorted to sleeve → keyed.
 ```
