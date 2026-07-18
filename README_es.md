@@ -14,6 +14,11 @@
   - [Target soportado](#target-soportado)
   - [Pinout / definición de placa](#pinout--definición-de-placa)
   - [Cableado típico a un equipo de radio](#cableado-típico-a-un-equipo-de-radio)
+    - [Qué hay realmente en cada extremo](#qué-hay-realmente-en-cada-extremo)
+    - [Esquemático mínimo funcional](#esquemático-mínimo-funcional)
+    - [Por qué el default del PTT es una trampa](#por-qué-el-default-del-ptt-es-una-trampa)
+    - [Aislación y lazos de masa](#aislación-y-lazos-de-masa)
+    - [Orden de puesta en marcha](#orden-de-puesta-en-marcha)
   - [Cableado de loopback de banco](#cableado-de-loopback-de-banco)
 - [Estructura del repositorio](#estructura-del-repositorio)
 - [Arquitectura](#arquitectura)
@@ -136,25 +141,112 @@ idf_build_set_property(COMPILE_DEFINITIONS "MODEM_LED_RX_GPIO=-1"   APPEND)
 
 ### Cableado típico a un equipo de radio
 
+Ninguno de los dos extremos de este enlace se puede conectar directamente al otro. El lado del ESP32 es una interfaz de datos muestreados, a 3,3 V y con polarización de continua; el lado de la radio es una interfaz analógica de alterna, referida a masa y de nivel de milivoltios. En el medio tienen que pasar tres cosas: **atenuar** (TX), **desplazar y limitar** (RX), y **conmutar** (PTT).
+
+#### Qué hay realmente en cada extremo
+
+Todas las cifras del lado ESP32 salen de las propias constantes de compilación del componente, no de un ideal de hoja de datos — ver [Referencia de configuración en tiempo de compilación](#referencia-de-configuración-en-tiempo-de-compilación).
+
+| Nodo | Qué hay realmente | De dónde sale |
+|---|---|---|
+| **GPIO25 (DAC), transmitiendo** | 1,65 V de continua con una excursión de **≈1,97 Vpp** encima (códigos 52…204 → 0,67–2,64 V) ⇒ **≈0,70 Vrms** para una senoidal, más las **imágenes de reconstrucción alrededor de 38,4 kHz** | `DAC_MID = 128`, `MODEM_DAC_AMPLITUDE_PCT = 60`, `MODEM_DAC_SAMPLERATE = 38400` |
+| **GPIO25 (DAC), en reposo / antes de `modem_init()`** | ~1,65 V una vez inicializado; **indefinido y flotante durante el reset y los primeros ~5 s del arranque** (la calibración del reloj del ADC) | `modem_init()` bloquea ~5 s |
+| **GPIO33 (ADC)** | Ventana **0–3,1 V**, normalizada como `(raw − dc_avg)/2048`, o sea ±1,0 ≙ ±1,55 V. El AGC apunta a **310 mVrms** en el pin, lo alcanza desde apenas **≈39 mVrms** (`AGC_MAX_GAIN = 8`), congela la ganancia por debajo de **≈16 mVrms** (piso de ruido) y **recorta por encima de ≈1,1 Vrms** | `MODEM_ADC_ATTEN = ADC_ATTEN_DB_12`, `AGC_TARGET_RMS = 0.2` |
+| **GPIO26 (PTT)** | Salida CMOS común de 3,3 V, **activa en BAJO con la definición de placa que viene de fábrica**, y **entrada flotante durante el reset** | `MODEM_PTT_GPIO=26`, `MODEM_PTT_ACTIVE_HIGH=0` |
+| **MIC IN** del equipo (jack del micrófono de mano) | 5–20 mVrms, normalmente con preénfasis y una polarización de continua para el electret | necesita ≈30–40 dB de atenuación |
+| **DATA IN** del equipo (mini-DIN-6 pin 1, "PKT IN") | ≈40 mVpp ⇒ **≈14 mVrms**, plano, sin preénfasis | necesita ≈35 dB de atenuación |
+| **SPKR / AF OUT** del equipo | 0,1–3 Vrms, depende de la perilla de volumen, con deénfasis | necesita atenuador + polarización |
+| **DATA OUT / DISC** del equipo (mini-DIN-6 pin 4) | 100–300 mVrms, **nivel fijo, independiente del squelch, plano** | solo necesita polarización — este es el bueno |
+
+Dos consecuencias que conviene tener claras antes de soldar:
+
+* **El DAC está ~35 dB por encima** de lo que acepta cualquier entrada de la radio. Una conexión directa no solo sobredesvía: ensucia todo el canal.
+* **Un puerto `DATA OUT` ya está dentro de la ventana del AGC** (100–300 mVrms contra el rango útil de 39 mVrms–1,1 Vrms). Si tu equipo tiene jack de datos, el lado de RX es una red de polarización y nada más — sin potenciómetro, sin ganancia.
+
+#### Esquemático mínimo funcional
+
+Pasivo, ~15 componentes, sin operacionales. Esto es todo.
+
 ```
-   ESP32                                  Transceptor
- ┌────────┐
- │ GPIO25 │──[ pasabajos R/C + potenciómetro de nivel ]──► MIC / DATA IN
- │  (DAC) │      (el DAC saca ≈1,65 V de continua —
- │        │       acoplá en alterna si el equipo lo espera)
- │        │
- │ GPIO33 │◄─[ divisor / acople en alterna + polarización ]── SPKR / DISC OUT
- │  (ADC) │      mantenerlo dentro de la ventana de 12 dB (~0–3,1 V)
- │        │
- │ GPIO26 │──[ NPN / optoacoplador ]────────────────────────► PTT (activo BAJO por defecto)
- │        │
- │  GND   │────────────────────────────────────────────────► GND
- └────────┘
+ ── TX ── ESP32 ────────────────────────────────────────────────► equipo ──
+
+  GPIO25 ──[R1 2k2]──┬──[R2 2k2]──┬──[C1 10µ]──[R3 10k]──┬─ RV1 extremo
+   (DAC)             │            │      +               │
+                   [C2 15n]     [C3 15n]              [RV1 1k]  ajuste de nivel
+                     │            │                      ├─ cursor ──► MIC / DATA IN
+                    GND          GND                     │
+                                                         └─ extremo ─► GND de audio del equipo
+
+ ── RX ── equipo ───────────────────────────────────────────────► ESP32 ──
+
+                                       nodo de polarización
+  SPKR/DISC ─[RV2 10k]─ cursor ─[C4 10µ]──┬──────[R7 1k]───┬──► GPIO33 (ADC)
+                 │                 +      │                │
+   GND equipo ───┘                   [R5 10k]─► 3V3    [D1]─► 3V3   BAT54S
+   (omitir RV2 con un DATA OUT fijo:      │            [D2]─► GND   (o 2×1N4148)
+    ir directo a C4)                 [R6 10k]─► GND        │
+                                         │              [C5 1n]
+                                        GND                │
+                                                          GND
+
+ ── PTT ── opción A: opto, aislado, coincide con el default activo en BAJO ──
+
+                      ┌─ PC817 ─┐
+   3V3 ──[R8 470]──[A]│▶       C│──────────► PTT del equipo
+   GPIO26 ────────[K]│         E│──────────► GND de PTT del equipo
+                      └─────────┘
+   GPIO26 en BAJO → LED encendido → transmite.   Flotante en el reset → LED apagado → sin transmitir.
+
+ ── PTT ── opción B: MOSFET de lado bajo, sin aislar, requiere ACTIVE_HIGH=1 ──
+
+                       ┌─ 2N7000 / BS170 ─┐
+   GPIO26 ──[R9 1k]────┤ G              D ├──────────► PTT del equipo
+                       │                S ├──┬───────► GND (común)
+                  [R10 10k] G→S            │
+                       └────────────────────┘
+   GPIO26 en ALTO → transmite.   R10 lo mantiene sin transmitir durante el reset y el deep sleep.
 ```
 
-* La **atenuación de 12 dB del ADC** (`MODEM_ADC_ATTEN = ADC_ATTEN_DB_12`) está compilada, dando una ventana de entrada de aproximadamente 0–3,1 V. Los 0 dB (0–950 mV) recortarán cualquier cosa que lleve encima la polarización de reposo de ~1,65 V del DAC, que es exactamente el motivo por el que el loop test fallaba antes.
-* La **excursión de salida del DAC** está limitada al `MODEM_DAC_AMPLITUDE_PCT = 60 %` del riel de 0–3,3 V, deliberadamente, para dejar margen contra el fondo de escala del ADC.
-* Para **9600 Bd G3RUH** necesitás **audio plano/de discriminador**, no audio de altavoz con deénfasis. Ajustá la casilla *Audio low-pass filter* en consecuencia (mapea a `flat_audio`).
+| Ref | Valor | Función | Si lo cambiás |
+|---|---|---|---|
+| **R1, R2 / C2, C3** | 2k2 / **15 nF** | Pasabajos de reconstrucción de dos polos, **fc ≈ 4,8 kHz**. Mata las imágenes del DAC de 38,4 kHz a **≈−36 dB** costando solo −0,3 dB a 1200 Hz y −0,8 dB a 2200 Hz (≈0,5 dB de *twist*) | **22 nF** (fc 3,3 kHz, −43 dB a 38,4 kHz) si solo vas a usar AFSK y querés matar más las imágenes; **10 nF** (fc 7,2 kHz, −29 dB) es **obligatorio para 9600 Bd G3RUH**, que necesita respuesta plana más allá de ~5 kHz |
+| **C1** | 10 µF | Bloqueo de continua. La polarización de reposo de 1,65 V del DAC nunca debe llegar a una entrada de micrófono | Contra R3+RV1 = 11 kΩ da fc ≈ 1,4 Hz — no bajes de 1 µF |
+| **R3 / RV1** | 10k / 1k preset | Atenuador + nivel. El divisor fijo 11:1 hace que el preset trabaje en **0–64 mVrms** con ≈32 mV a media vuelta, en vez de vivir en el 4 % inferior de un potenciómetro de 10k pelado | La impedancia del cursor es ≤250 Ω, así que ataca cualquier entrada de micrófono o de datos sin cargarla más |
+| **RV2** | 10k | Nivel de RX. **Omitilo por completo con un puerto `DATA OUT`** — ya está en el nivel correcto | |
+| **C4** | 10 µF | Bloqueo de continua + pasaaltos. Contra el Thévenin de 5 kΩ de la polarización: fc ≈ 3 Hz | |
+| **R5, R6** | 10k / 10k | Polarización a medio riel, **1,65 V**, justo en el centro de la ventana de 0–3,1 V del ADC. Thévenin 5 kΩ | Bajalas a **4k7/4k7** (2,35 kΩ) si ves errores de nivel — el SAR del ESP32 quiere impedancia de fuente baja |
+| **R7 / C5** | 1k / 1 nF | Amortiguador para la patada de carga del capacitor de muestreo del SAR. **No** es un filtro de audio: fc ≈ 159 kHz | **Nunca** pongas 100 nF acá, el reflejo típico de "desacoplar el ADC" — con R7 eso es un pasabajos de 1,6 kHz y se come el tono de marca de 2200 Hz |
+| **D1, D2** | BAT54S | Recortan GPIO33 contra los rieles. R7 limita la corriente de falla. Seguro barato contra una perilla de volumen a 3 Vrms | |
+| **R8** | 470 Ω | ≈4,5 mA por el LED del PC817, drenados por GPIO26 — bien dentro del presupuesto de 12 mA cómodos / 20 mA absolutos | |
+| **R10** | 10k | **La pieza que todo el mundo omite.** Sin ella la compuerta del MOSFET queda flotante durante el reset y el equipo puede transmitir al encender | |
+
+#### Por qué el default del PTT es una trampa
+
+La definición de placa que viene es `MODEM_PTT_ACTIVE_HIGH=0` — **GPIO26 se pone en BAJO para transmitir**. El circuito reflejo de "NPN con la base al GPIO y el colector al PTT" es un driver **activo en ALTO** y va a dejar el transmisor al aire todo el tiempo en que el ESP32 *no* está transmitiendo, o sea, permanentemente.
+
+Entonces: elegí un driver cuya polaridad coincida con la configuración, o cambiá la configuración para que coincida con tu driver.
+
+* La **opción A (opto)** invierte, así que coincide con el `ACTIVE_HIGH=0` de fábrica tal cual, y de paso regala aislación galvánica.
+* La **opción B (MOSFET)** no invierte. Poné `MODEM_PTT_ACTIVE_HIGH=1` en el `CMakeLists.txt` de nivel superior, o cambiá la polaridad en runtime desde la página **Radio** (el pin y la polaridad son ambos seleccionables en runtime — ver [Pinout / definición de placa](#pinout--definición-de-placa)).
+
+En cualquier caso, **verificá antes de conectar la radio**: alimentá la placa y confirmá con un tester que la línea de PTT queda abierta durante el reset, durante los ~5 s completos del arranque y en reposo. `modem_init()` bloquea unos 5 segundos calibrando el reloj del ADC, y las tareas de beacon transmiten apenas arrancan — un PTT con la polaridad al revés te da cinco segundos de portadora sin modular antes de que el firmware siquiera llegue al módem.
+
+Los equipos portátiles con "K-plug" (Baofeng y compañía) son otra cosa: ahí el PTT es un interruptor entre el anillo y la manga del micrófono, normalmente a través de una resistencia, y el audio de micrófono comparte el mismo conductor. La salida del opto va en paralelo a ese interruptor, y el atenuador de micrófono ataca el mismo nodo.
+
+#### Aislación y lazos de masa
+
+El circuito de arriba comparte masa con la radio, que es la fuente habitual de zumbido, ruido de alternador y del clásico "funciona hasta que transmito". Si escuchás algo de eso:
+
+* **Transformadores de aislación de audio**, 600:600 Ω (Bourns 42TL022, Tamura MET-01, o cualquier transformador 1:1 de telefonía), en lugar de C1 y C4. La red de polarización queda del lado del ESP32 del transformador de RX.
+* **Mantené el opto** (opción A) para que el retorno del PTT no vuelva a crear la masa que acabás de cortar.
+* La **entrada de RF** en TX aparece como PTT trabado o como un módem que solo falla a plena potencia. Cable blindado, puntas cortas, un ferrite de clip en el conector del equipo, y 47–100 pF de cada línea de audio al chasis *del equipo*, en el conector.
+
+#### Orden de puesta en marcha
+
+1. **Primero el loop test, sin radio.** GPIO25 → GPIO33 con un cable pelado (ver [Cableado de loopback de banco](#cableado-de-loopback-de-banco)). Si eso falla, no hay circuitería externa que lo arregle.
+2. **Después RX, todavía sin TX.** Abrí el squelch, metele tráfico real y mirá la columna **AUDIO** de la tabla de tráfico en vivo (es el propio `mVrms` que mide el módem en el pin). Movés RV2 hasta **≈300 mVrms en los paquetes** — es el objetivo del AGC, así que el lazo queda en ganancia unitaria y con el máximo margen para los dos lados. Cualquier cosa entre ~50 mV y ~800 mV decodifica; por debajo de 40 mV te estás quedando sin ganancia de AGC, por encima de 1,1 Vrms estás recortando. En este firmware **no hay entrada de squelch por hardware** — el DCD sale del demodulador — así que dejar el squelch abierto es lo correcto, no un parche.
+3. **TX al final, contra una carga fantasma.** Ajustá RV1 para **≈3,0 kHz de desviación** (2,5–3,5 kHz) con un medidor de desviación, o comparando con el audio de una estación conocida en un segundo receptor. La sobredesviación es la causa número uno de "mi igate escucha a todos pero nadie me escucha a mí".
+4. **9600 Bd G3RUH** necesita el camino plano/de discriminador en los dos extremos: `DATA IN`/`DATA OUT`, 10 nF en C2/C3, y la casilla *Audio low-pass filter* puesta para `flat_audio`. Una salida de altavoz y una entrada de micrófono no lo van a llevar, sin importar cómo ajustes los niveles.
 
 ### Cableado de loopback de banco
 

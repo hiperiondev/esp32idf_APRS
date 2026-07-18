@@ -14,6 +14,11 @@
   - [Supported target](#supported-target)
   - [Pinout / board definition](#pinout--board-definition)
   - [Typical wiring to a radio](#typical-wiring-to-a-radio)
+    - [What each end actually presents](#what-each-end-actually-presents)
+    - [Minimal functional schematic](#minimal-functional-schematic)
+    - [Why the PTT default is a trap](#why-the-ptt-default-is-a-trap)
+    - [Isolation and ground loops](#isolation-and-ground-loops)
+    - [Bring-up order](#bring-up-order)
   - [Loopback bench wiring](#loopback-bench-wiring)
 - [Repository layout](#repository-layout)
 - [Architecture](#architecture)
@@ -136,25 +141,112 @@ idf_build_set_property(COMPILE_DEFINITIONS "MODEM_LED_RX_GPIO=-1"   APPEND)
 
 ### Typical wiring to a radio
 
+Neither end of this link can be connected directly to the other. The ESP32 side is a 3.3 V, DC-biased, sampled-data interface; the radio side is an AC, ground-referenced, millivolt-level analogue interface. Three things have to happen in between: **attenuate** (TX), **shift and clamp** (RX), and **switch** (PTT).
+
+#### What each end actually presents
+
+Every ESP32-side figure below is derived from the component's own compile-time constants, not from a datasheet ideal — see [Compile-time configuration reference](#compile-time-configuration-reference).
+
+| Node | What is really there | Where it comes from |
+|---|---|---|
+| **GPIO25 (DAC), transmitting** | 1.65 V DC with a **≈1.97 Vpp** swing on top (codes 52…204 → 0.67–2.64 V) ⇒ **≈0.70 Vrms** for a sine, plus **reconstruction images around 38.4 kHz** | `DAC_MID = 128`, `MODEM_DAC_AMPLITUDE_PCT = 60`, `MODEM_DAC_SAMPLERATE = 38400` |
+| **GPIO25 (DAC), idle / before `modem_init()`** | ~1.65 V once initialised; **undefined and floating during reset and the first ~5 s of boot** (the ADC clock calibration) | `modem_init()` blocks ~5 s |
+| **GPIO33 (ADC)** | Window **0–3.1 V**, normalised as `(raw − dc_avg)/2048`, i.e. ±1.0 ≙ ±1.55 V. AGC targets **310 mVrms** at the pin, reaches it from as little as **≈39 mVrms** (`AGC_MAX_GAIN = 8`), holds gain below **≈16 mVrms** (noise floor), and **clips above ≈1.1 Vrms** | `MODEM_ADC_ATTEN = ADC_ATTEN_DB_12`, `AGC_TARGET_RMS = 0.2` |
+| **GPIO26 (PTT)** | Plain 3.3 V CMOS output, **active LOW with the shipped board definition**, and a **floating input during reset** | `MODEM_PTT_GPIO=26`, `MODEM_PTT_ACTIVE_HIGH=0` |
+| Rig **MIC IN** (hand-mic jack) | 5–20 mVrms, often with pre-emphasis and a DC bias for the electret | needs ≈30–40 dB of pad |
+| Rig **DATA IN** (mini-DIN-6 pin 1, "PKT IN") | ≈40 mVpp ⇒ **≈14 mVrms**, flat, no pre-emphasis | needs ≈35 dB of pad |
+| Rig **SPKR / AF OUT** | 0.1–3 Vrms, volume-knob dependent, de-emphasised | needs a pad + bias |
+| Rig **DATA OUT / DISC** (mini-DIN-6 pin 4) | 100–300 mVrms, **fixed level, squelch-independent, flat** | needs bias only — this is the good one |
+
+Two consequences worth internalising before soldering:
+
+* **The DAC is ~35 dB too hot** for anything on the radio. Direct connection will not merely over-deviate, it will splatter.
+* **A `DATA OUT` port is already inside the AGC window** (100–300 mVrms vs. the 39 mVrms–1.1 Vrms usable range). If your rig has a data jack, the RX side is a bias network and nothing else — no pot, no gain.
+
+#### Minimal functional schematic
+
+Passive, ~15 parts, no op-amps. This is the whole thing.
+
 ```
-   ESP32                                  Transceiver
- ┌────────┐
- │ GPIO25 │──[ R/C low-pass + level pot ]──► MIC / DATA IN
- │  (DAC) │      (≈1.65 V DC bias out of the DAC —
- │        │       AC-couple if the rig expects it)
- │        │
- │ GPIO33 │◄─[ divider / AC-couple + bias ]── SPKR / DISC OUT
- │  (ADC) │      keep inside the 12 dB window (~0–3.1 V)
- │        │
- │ GPIO26 │──[ NPN / opto ]──────────────────► PTT (active LOW by default)
- │        │
- │  GND   │──────────────────────────────────► GND
- └────────┘
+ ── TX ── ESP32 ─────────────────────────────────────────────────────► rig ──
+
+  GPIO25 ──[R1 2k2]──┬──[R2 2k2]──┬──[C1 10µ]──[R3 10k]──┬─ RV1 top
+   (DAC)             │            │      +               │
+                   [C2 15n]     [C3 15n]              [RV1 1k]  level trim
+                     │            │                      ├─ wiper ──► MIC / DATA IN
+                    GND          GND                     │
+                                                         └─ bottom ─► rig audio GND
+
+ ── RX ── rig ──────────────────────────────────────────────────────► ESP32 ──
+
+                                          bias node
+  SPKR/DISC ─[RV2 10k]─ wiper ─[C4 10µ]──────┬──────[R7 1k]───┬──► GPIO33 (ADC)
+                 │                +          │                │
+   rig GND ──────┘                     [R5 10k]─► 3V3     [D1]─► 3V3   BAT54S
+   (omit RV2 for a fixed DATA OUT:          │             [D2]─► GND   (or 2×1N4148)
+    wire straight into C4)              [R6 10k]─► GND        │
+                                            │              [C5 1n]
+                                           GND                │
+                                                             GND
+
+ ── PTT ── option A: opto, isolated, matches the shipped active-LOW default ──
+
+                      ┌─ PC817 ─┐
+   3V3 ──[R8 470]──[A]│▶       C│──────────► rig PTT
+   GPIO26 ────────[K]│         E│──────────► rig PTT GND
+                      └─────────┘
+   GPIO26 LOW → LED on → keyed.   Floating at reset → LED off → unkeyed.
+
+ ── PTT ── option B: low-side MOSFET, non-isolated, needs ACTIVE_HIGH=1 ──
+
+                       ┌─ 2N7000 / BS170 ─┐
+   GPIO26 ──[R9 1k]────┤ G              D ├──────────► rig PTT
+                       │                S ├──┬───────► GND (common)
+                  [R10 10k] G→S            │
+                       └────────────────────┘
+   GPIO26 HIGH → keyed.   R10 holds it unkeyed through reset and deep sleep.
 ```
 
-* **12 dB ADC attenuation** (`MODEM_ADC_ATTEN = ADC_ATTEN_DB_12`) is compiled in, giving roughly a 0–3.1 V input window. 0 dB (0–950 mV) will clip anything with the DAC's ~1.65 V idle bias on it, which is precisely why the loop test used to fail.
-* **DAC output swing** is limited to `MODEM_DAC_AMPLITUDE_PCT = 60 %` of the 0–3.3 V rail, deliberately, to keep headroom against the ADC full scale.
-* For **9600 Bd G3RUH** you need **flat/discriminator audio**, not de-emphasized speaker audio. Set the *Audio low-pass filter* checkbox accordingly (it maps to `flat_audio`).
+| Ref | Value | Job | If you change it |
+|---|---|---|---|
+| **R1, R2 / C2, C3** | 2k2 / **15 nF** | Two-pole reconstruction low-pass, **fc ≈ 4.8 kHz**. Kills the 38.4 kHz DAC images at **≈−36 dB** while costing only −0.3 dB at 1200 Hz and −0.8 dB at 2200 Hz (≈0.5 dB of twist) | **22 nF** (fc 3.3 kHz, −43 dB at 38.4 kHz) if you only ever run AFSK and want the images gone harder; **10 nF** (fc 7.2 kHz, −29 dB) is **mandatory for 9600 Bd G3RUH**, which needs flat response past ~5 kHz |
+| **C1** | 10 µF | DC block. The DAC's 1.65 V idle bias must never reach a mic input | Into R3+RV1 = 11 kΩ this is fc ≈ 1.4 Hz — do not go below 1 µF |
+| **R3 / RV1** | 10k / 1k trim | Pad + level. Fixed 11:1 divider means the trimmer works across **0–64 mVrms** with mid-rotation ≈32 mV, instead of living in the bottom 4 % of a bare 10k pot | Wiper impedance ≤250 Ω, so it drives any mic or data input without further loading |
+| **RV2** | 10k | RX level. **Omit entirely for a `DATA OUT` port** — it is already at the right level | |
+| **C4** | 10 µF | DC block + high-pass. With the 5 kΩ bias Thévenin: fc ≈ 3 Hz | |
+| **R5, R6** | 10k / 10k | Mid-rail bias, **1.65 V**, dead centre of the 0–3.1 V ADC window. Thévenin 5 kΩ | Drop to **4k7/4k7** (2.35 kΩ) if you see level errors — the ESP32 SAR wants a low source impedance |
+| **R7 / C5** | 1k / 1 nF | Snubber for the SAR sampling-cap charge kick. **Not** an audio filter: fc ≈ 159 kHz | **Never** fit 100 nF here, the usual "ADC decoupling" reflex — with R7 that is a 1.6 kHz low-pass and it eats the 2200 Hz mark tone |
+| **D1, D2** | BAT54S | Clamp GPIO33 to the rails. R7 limits the fault current. Cheap insurance against a volume knob at 3 Vrms | |
+| **R8** | 470 Ω | ≈4.5 mA through the PC817 LED, sunk by GPIO26 — well inside the 12 mA comfortable / 20 mA absolute sink budget | |
+| **R10** | 10k | **The one part people leave out.** Without it the MOSFET gate floats during reset and the rig can key on power-up | |
+
+#### Why the PTT default is a trap
+
+The shipped board definition is `MODEM_PTT_ACTIVE_HIGH=0` — **GPIO26 is driven LOW to key up**. The reflexive "NPN with the base off the GPIO, collector on PTT" circuit is an **active-HIGH** driver and will key your transmitter for as long as the ESP32 is *not* transmitting, i.e. permanently.
+
+So: pick a driver whose polarity matches the config, or change the config to match your driver.
+
+* **Option A (opto)** inverts, so it matches the shipped `ACTIVE_HIGH=0` as-is, and gives galvanic isolation for free.
+* **Option B (MOSFET)** does not invert. Set `MODEM_PTT_ACTIVE_HIGH=1` in the top-level `CMakeLists.txt`, or flip the polarity at runtime on the **Radio** page (the pin and polarity are both runtime-selectable — see [Pinout / board definition](#pinout--board-definition)).
+
+Either way, **verify before connecting the radio**: power the board, and with a meter confirm the PTT line is open through reset, through the whole ~5 s boot, and while idle. `modem_init()` blocks for about 5 seconds calibrating the ADC clock, and the beacon tasks transmit on entry — a wrong-polarity PTT gives you five seconds of unmodulated carrier before the firmware even reaches the modem.
+
+HT "K-plug" rigs (Baofeng et al.) are a different animal: PTT there is a switch from the mic ring to sleeve, usually through a resistor, and mic audio shares the same conductor. The opto output goes across that switch, and the mic pad drives the same node.
+
+#### Isolation and ground loops
+
+The circuit above shares a ground with the radio, which is the normal source of hum, alternator whine and "it works until I transmit". If you hear any of that:
+
+* **Audio isolation transformers**, 600:600 Ω (Bourns 42TL022, Tamura MET-01, or any 1:1 telecom transformer), in place of C1 and C4. The bias network stays on the ESP32 side of the RX transformer.
+* **Keep the opto** (option A) so the PTT return does not re-create the ground you just broke.
+* **RF ingress** on TX shows up as PTT latch-up or a modem that only fails at full power. Shielded cable, short leads, a clamp-on ferrite at the rig connector, and 47–100 pF from each audio line to the *rig's* chassis at the connector.
+
+#### Bring-up order
+
+1. **Loop test first, no radio.** GPIO25 → GPIO33 with a plain wire (see [Loopback bench wiring](#loopback-bench-wiring)). If that fails, no amount of external circuitry will help.
+2. **RX next, still no TX.** Open the squelch, feed real traffic in, and watch the **AUDIO** column of the live traffic table (it is the modem's own `mVrms` at the pin). Turn RV2 for **≈300 mVrms on packets** — that is the AGC's target, so the loop sits at unity and has the most headroom in both directions. Anything from ~50 mV to ~800 mV will decode; below 40 mV you are running out of AGC gain, above 1.1 Vrms you are clipping. There is **no hardware squelch input** in this firmware — DCD comes from the demodulator — so leaving the squelch open is correct, not a workaround.
+3. **TX last, into a dummy load.** Set RV1 for **≈3.0 kHz deviation** (2.5–3.5 kHz) with a deviation meter, or by comparing to a known-good station's audio on a second receiver. Over-deviation is the single most common cause of "my igate hears everyone but nobody hears me".
+4. **9600 Bd G3RUH** needs the flat/discriminator path at both ends: `DATA IN`/`DATA OUT`, 10 nF in C2/C3, and the *Audio low-pass filter* checkbox set for `flat_audio`. A speaker output and a mic input will not carry it, no matter how the levels are set.
 
 ### Loopback bench wiring
 
