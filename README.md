@@ -1,4 +1,4 @@
-# esp32idf_APRS — `esp32aprs_webadmin`
+# esp32idf_APRS
 
 **A native ESP-IDF (C, no Arduino) APRS IGate / Digipeater / Tracker for the ESP32, with a built-in web admin, an on-chip AFSK/FSK soft-modem (ADC + DAC), and APRS-IS uplink.**
 
@@ -51,7 +51,7 @@
 
 ## What this is
 
-`esp32aprs_webadmin` is an ESP-IDF **v5.x** project that turns a bare ESP32 DevKit plus a cheap audio interface into a complete APRS station:
+`esp32idf_APRS` is an ESP-IDF **v5.x** project that turns a bare ESP32 DevKit plus a cheap audio interface into a complete APRS station:
 
 * it **demodulates** AFSK/FSK audio from a radio's speaker/discriminator output on **ADC1**,
 * it **decodes** HDLC/AX.25 (optionally FX.25 forward-error-corrected) frames,
