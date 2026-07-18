@@ -267,7 +267,7 @@ That's the whole interface: TX is a mic-level signal into the small plug's tip, 
                        ┌─ 2N2222 / BC547 ─┐
    GPIO26 ──[R9 1k]────┤ B              C ├───► 2.5 mm RING
                        │                E ├───► 2.5 mm SLEEVE (GND)
-          [R10 10k]────┤ B→E               │
+          [R10 10k]────┤ B→E              │
                        └──────────────────┘
    GPIO26 HIGH → base current flows → C-E conducts → ring shorted to sleeve → keyed.
    R10 holds the base low (unkeyed) through reset and deep sleep — same job R10 does in the MOSFET option.
