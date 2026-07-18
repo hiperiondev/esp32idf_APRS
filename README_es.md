@@ -267,7 +267,7 @@ Eso es toda la interfaz: el TX es una señal de nivel de micrófono hacia la pun
                        ┌─ 2N2222 / BC547 ─┐
    GPIO26 ──[R9 1k]────┤ B              C ├───► ANILLO 2,5 mm
                        │                E ├───► MANGA 2,5 mm (GND)
-          [R10 10k]────┤ B→E               │
+          [R10 10k]────┤ B→E              │
                        └──────────────────┘
    GPIO26 en ALTO → circula corriente de base → C-E conduce → anillo en corto con la manga → transmite.
    R10 mantiene la base en bajo (sin transmitir) durante el reset y el deep sleep — la misma función que cumple R10 en la opción MOSFET.
