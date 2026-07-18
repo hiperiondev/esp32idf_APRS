@@ -32,12 +32,12 @@ void app_config_set_defaults(app_config_t *c) {
     c->wifi_power = 20;
     for (int i = 0; i < WIFI_STA_NUM; i++) {
         c->wifi_sta[i].enable = false;
-        set_str(c->wifi_sta[i].wifi_ssid, sizeof(c->wifi_sta[i].wifi_ssid), "APRSTH");
-        set_str(c->wifi_sta[i].wifi_pass, sizeof(c->wifi_sta[i].wifi_pass), "aprsthnetwork");
+        set_str(c->wifi_sta[i].wifi_ssid, sizeof(c->wifi_sta[i].wifi_ssid), "WIFI_AP");
+        set_str(c->wifi_sta[i].wifi_pass, sizeof(c->wifi_sta[i].wifi_pass), "");
     }
     c->wifi_ap_ch = 1;
-    set_str(c->wifi_ap_ssid, sizeof(c->wifi_ap_ssid), "ESP32APRS_Audio");
-    set_str(c->wifi_ap_pass, sizeof(c->wifi_ap_pass), "aprsthnetwork");
+    set_str(c->wifi_ap_ssid, sizeof(c->wifi_ap_ssid), "esp32idf_APRS");
+    set_str(c->wifi_ap_pass, sizeof(c->wifi_ap_pass), "esp32idf_APRS");
 
     c->bt_slave = false;
     c->bt_master = false;

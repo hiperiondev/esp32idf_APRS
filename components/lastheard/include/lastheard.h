@@ -1,7 +1,6 @@
 /*
  * lastheard.h - small in-RAM ring buffer of decoded RF stations, used to
- * feed the "LAST HEARD" table on the web dashboard (mirrors the LAST HEARD
- * table shown on https://github.com/nakhonthai/ESP32APRS_Audio's dashboard).
+ * feed the "LAST HEARD" table on the web dashboard.
  *
  * Every decoded AX.25 frame recorded here also increments a per-callsign
  * packet counter so the dashboard can show how many times each station has

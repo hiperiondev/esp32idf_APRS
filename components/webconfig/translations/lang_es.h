@@ -8,7 +8,7 @@
 #define LANG_ES_H
 
 // ---- Brand / chrome ---------------------------------------------------
-#define TR_BRAND            "Administración Web ESP32APRS"
+#define TR_BRAND            "Administración Web esp32idf_APRS"
 #define TR_LOGOUT           "Cerrar sesión"
 #define TR_LOGGED_OUT_TITLE "Sesión cerrada"
 #define TR_LOG_IN_AGAIN     "Iniciar sesión de nuevo"
@@ -331,7 +331,7 @@
 #define TR_SYSINFO_IDF_VERSION   "Versión de IDF:"
 #define TR_SYSINFO_CPU_TEMP      "Temp. CPU:"
 
-// ---- page_common.c: paridad de dashboard con ESP32APRS_Audio ---------
+// ---- page_common.c ---------
 #define TR_DASH_RADIO_INFO       "Info de Radio"
 #define TR_DASH_FREQ_TX          "Frec.TX"
 #define TR_DASH_FREQ_RX          "Frec.RX"

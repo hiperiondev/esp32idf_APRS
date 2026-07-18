@@ -139,7 +139,7 @@ esp_err_t page_dashboard(httpd_req_t *req) {
 
     // -- IGate Traffic table: a real (not modal) table at the bottom of the
     //    dashboard, polled from /igate_traffic?since=<seq> and appended to,
-    //    mirroring the reference ESP32APRS_Audio dashboard's traffic monitor
+    //    mirroring the reference esp32idf_APRS dashboard's traffic monitor
     //    with its TIME / TYPE / DX / PACKET / AUDIO columns. AUDIO shows the
     //    demodulated signal level (mV RMS) for RF-received frames, or '-'
     //    for TX/APRS-IS-only entries where no audio level applies. --

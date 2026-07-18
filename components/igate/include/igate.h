@@ -66,7 +66,7 @@ void igate_reset_stats(void);
  * @brief True while the APRS-IS TCP socket is currently open (logged in and
  * pumping the RX line reader). Used by the web dashboard's "Network Status"
  * panel (APRS-IS pill), mirroring aprsClient.connected() on the reference
- * ESP32APRS_Audio dashboard.
+ * esp32idf_APRS dashboard.
  */
 bool igate_is_connected(void);
 

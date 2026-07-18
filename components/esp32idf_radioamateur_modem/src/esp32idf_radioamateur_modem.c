@@ -56,7 +56,7 @@ static void modem_service_task(void *arg) {
     uint8_t level, corrected;
     uint16_t mV;
 
-    uint32_t lastHeartbeat = 0;
+    //uint32_t lastHeartbeat = 0;
 
     for (;;) {
         AFSK_ServiceTx();
@@ -64,11 +64,11 @@ static void modem_service_task(void *arg) {
         /* Throttled proof-of-life: confirms this task loop (and therefore
          * Ax25TransmitCheck() right below) is actually being reached, without
          * flooding the log. Remove once TX is confirmed working end to end. */
-        uint32_t now = (uint32_t)(esp_timer_get_time() / 1000);
-        if (now - lastHeartbeat >= 2000) {
-            lastHeartbeat = now;
-            ESP_LOGI(TAG, "svc task alive, t=%" PRIu32 " ms", now);
-        }
+        //uint32_t now = (uint32_t)(esp_timer_get_time() / 1000);
+        //if (now - lastHeartbeat >= 2000) {
+            //lastHeartbeat = now;
+            //ESP_LOGI(TAG, "svc task alive, t=%" PRIu32 " ms", now);
+        //}
 
         Ax25TransmitCheck();
 

@@ -8,7 +8,7 @@
 #define LANG_EN_H
 
 // ---- Brand / chrome ---------------------------------------------------
-#define TR_BRAND            "ESP32APRS Web Admin"
+#define TR_BRAND            "esp32idf_APRS Web Admin"
 #define TR_LOGOUT           "Logout"
 #define TR_LOGGED_OUT_TITLE "Logged out"
 #define TR_LOG_IN_AGAIN     "Log in again"
@@ -330,7 +330,7 @@
 #define TR_SYSINFO_IDF_VERSION   "IDF version:"
 #define TR_SYSINFO_CPU_TEMP      "CPU Temp:"
 
-// ---- page_common.c: dashboard parity with ESP32APRS_Audio -------------
+// ---- page_common.c -------------
 #define TR_DASH_RADIO_INFO       "Radio Info"
 #define TR_DASH_FREQ_TX          "Freq.TX"
 #define TR_DASH_FREQ_RX          "Freq.RX"

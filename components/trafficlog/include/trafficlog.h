@@ -8,7 +8,7 @@
  *
  * Each entry carries both a free-form printf-style message (for backward
  * compatibility / connection-status style log lines) and, when available,
- * the structured fields shown by the reference ESP32APRS_Audio dashboard's
+ * the structured fields shown by the reference esp32idf_APRS dashboard's
  * traffic table: DX (the station/callsign the entry is associated with),
  * PACKET (the raw TNC2 packet text) and AUDIO (the demodulated audio level
  * in mV RMS, or -1 when not applicable/available, e.g. for TX-only or

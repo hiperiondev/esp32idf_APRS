@@ -476,7 +476,7 @@ typedef struct {
 // Global live configuration instance (loaded at boot, edited by web handlers, saved to flash).
 extern app_config_t g_config;
 
-// Fill g_config with the same defaults ESP32APRS_Audio ships with.
+// Fill g_config with the same defaults esp32idf_APRS ships with.
 void app_config_set_defaults(app_config_t *c);
 
 // Load /storage/config.json into g_config. If missing/corrupt, defaults are applied
