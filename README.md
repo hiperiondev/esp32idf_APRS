@@ -178,7 +178,7 @@ workspace-APRS/esp32_APRS_igate/
 │   ├── storage.c                   ← LittleFS mount/format/usage
 │   ├── aprs_service.c/.h           ← the glue: RX dispatch, TX helper, modem cfg, stats, loop test
 │   ├── beacon.c/.h                 ← 3 independent beacon tasks (trk / igate / digi)
-│   ├── igate-side net_state.c/.h   ← "do we actually have internet?" flag
+│   ├── net_state.c/.h              ← "do we actually have internet?" flag
 │   ├── time_sync.c/.h              ← SNTP (UTC always)
 │   └── cpu_freq.c/.h               ← esp_pm_configure() from the System page
 │
