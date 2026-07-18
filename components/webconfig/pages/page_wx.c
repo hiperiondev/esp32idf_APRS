@@ -92,8 +92,8 @@ esp_err_t page_wx_post(httpd_req_t *req) {
     g_config.wx_2rf = web_form_get_bool(body, "wxTx2rf");
     g_config.wx_2inet = web_form_get_bool(body, "wxTx2inet");
     g_config.wx_timestamp = web_form_get_bool(body, "wxTime");
-    web_form_get(body, "wxMycall", g_config.wx_mycall, sizeof(g_config.wx_mycall));
-    g_config.wx_ssid = (uint8_t)web_form_get_int(body, "wxSSID", g_config.wx_ssid);
+    web_form_get_call(body, "wxMycall", g_config.wx_mycall, sizeof(g_config.wx_mycall));
+    g_config.wx_ssid = web_form_get_ssid(body, "wxSSID", g_config.wx_ssid);
     g_config.wx_path = (uint8_t)web_form_get_int(body, "wxPath", g_config.wx_path);
 
     g_config.wx_gps = web_form_get_bool(body, "wxGPS");

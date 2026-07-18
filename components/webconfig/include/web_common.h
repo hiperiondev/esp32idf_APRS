@@ -23,6 +23,8 @@
 #define WEB_COMMON_H
 
 #include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
 
 #include "esp_http_server.h"
 
@@ -47,6 +49,27 @@ float web_form_get_float(const char *body, const char *key, float def);
 
 // URL-decode in place-ish (dst must be big enough, >= strlen(src)+1).
 void web_urldecode(const char *src, char *dst, size_t dst_size);
+
+// ---- AX.25 field clamps ----------------------------------------------------
+// Reads a callsign form field like web_form_get(), then clamps the result to at
+// most 6 characters (the AX.25 limit) so an over-long value can never later
+// overflow a 7-byte ax25_call_t.call field. `out_size` must be >= 7.
+static inline void web_form_get_call(const char *body, const char *key, char *out, size_t out_size) {
+    web_form_get(body, key, out, out_size);
+    if (out_size > 6)
+        out[6] = '\0';
+}
+
+// Reads an SSID form field like web_form_get_int(), clamped to the valid AX.25
+// range 0..15.
+static inline uint8_t web_form_get_ssid(const char *body, const char *key, uint8_t def) {
+    int v = web_form_get_int(body, key, def);
+    if (v < 0)
+        v = 0;
+    if (v > 15)
+        v = 15;
+    return (uint8_t)v;
+}
 
 // ---- HTML shell -------------------------------------------------------------
 // Sends the common <head>+top bar+sidebar opening HTML (page must close </div></div></body></html>

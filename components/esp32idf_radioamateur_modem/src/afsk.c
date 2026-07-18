@@ -388,8 +388,31 @@ bool afsk_ptt_gpio_is_valid(int8_t gpio) {
 }
 
 void AFSK_setPttGpio(int8_t gpio, bool active_high) {
-    s_pttGpio = gpio;
     s_pttActiveHigh = active_high;
+
+    if (gpio == s_pttGpio) {
+        /* Same pin, polarity may have changed: re-assert the idle level. */
+        if (s_inited && s_pttGpio >= 0)
+            gpio_set_level((gpio_num_t)s_pttGpio, s_pttActiveHigh ? 0 : 1);
+        return;
+    }
+
+    /* Release the previous pin so a stale output isn't left driving. */
+    if (s_inited && s_pttGpio >= 0)
+        gpio_reset_pin((gpio_num_t)s_pttGpio);
+
+    s_pttGpio = gpio;
+
+    /* Only touch hardware once the driver is initialized; before AFSK_init()
+     * this just records the number, and AFSK_init() will configure it. */
+    if (s_inited && s_pttGpio >= 0) {
+        gpio_config_t pttCfg = {
+            .pin_bit_mask = 1ULL << s_pttGpio,
+            .mode = GPIO_MODE_OUTPUT,
+        };
+        gpio_config(&pttCfg);
+        gpio_set_level((gpio_num_t)s_pttGpio, s_pttActiveHigh ? 0 : 1);
+    }
 }
 
 void LED_Status2(uint8_t r, uint8_t g, uint8_t b) {

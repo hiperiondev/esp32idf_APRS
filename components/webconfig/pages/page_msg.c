@@ -60,7 +60,7 @@ esp_err_t page_msg_post(httpd_req_t *req) {
     }
 
     g_config.msg_enable = web_form_get_bool(body, "msgEnable");
-    web_form_get(body, "msgMycall", g_config.msg_mycall, sizeof(g_config.msg_mycall));
+    web_form_get_call(body, "msgMycall", g_config.msg_mycall, sizeof(g_config.msg_mycall));
     g_config.msg_path = (uint8_t)web_form_get_int(body, "msgPath", g_config.msg_path);
     g_config.msg_rf = web_form_get_bool(body, "msgRf");
     g_config.msg_inet = web_form_get_bool(body, "msgInet");

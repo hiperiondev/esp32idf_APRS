@@ -37,6 +37,17 @@ void digi_reset_stats(void) {
     memset(&s_stats, 0, sizeof(s_stats));
 }
 
+/* Bounded copy into an AX.25 callsign field (char[6 + CALL_OVERSPACE] == 7
+ * bytes). AX.25 callsigns are at most 6 chars; anything longer is truncated so
+ * a stale or hand-edited config.json can never overflow the 7-byte destination
+ * (which would otherwise corrupt the adjacent ssid / next rpt_list entry). */
+static inline void copy_call(char dst[7], const char *src) {
+    size_t i = 0;
+    for (; i < 6 && src[i]; i++)
+        dst[i] = src[i];
+    dst[i] = '\0';
+}
+
 int digiProcess(ax25_msg_t *packet) {
     int idx, j;
     uint8_t ctmp;
@@ -101,7 +112,7 @@ int digiProcess(ax25_msg_t *packet) {
                     }
 
                     packet->rpt_count += 1;
-                    strcpy(packet->rpt_list[idx].call, g_config.digi_mycall);
+                    copy_call(packet->rpt_list[idx].call, g_config.digi_mycall);
                     packet->rpt_list[idx].ssid = g_config.digi_ssid;
                     packet->rpt_flags |= (1 << idx);
                     s_stats.txPkts++;
@@ -109,7 +120,7 @@ int digiProcess(ax25_msg_t *packet) {
                 }
             } else {
                 idx = 0;
-                strcpy(packet->rpt_list[idx].call, g_config.digi_mycall);
+                copy_call(packet->rpt_list[idx].call, g_config.digi_mycall);
                 packet->rpt_list[idx].ssid = g_config.digi_ssid;
                 packet->rpt_flags |= (1 << idx);
                 packet->rpt_count += 1;
@@ -149,7 +160,7 @@ int digiProcess(ax25_msg_t *packet) {
                 if (ctmp > 15)
                     ctmp = 0;
                 if (ctmp == 0) {
-                    strcpy(packet->rpt_list[idx].call, g_config.digi_mycall);
+                    copy_call(packet->rpt_list[idx].call, g_config.digi_mycall);
                     packet->rpt_list[idx].ssid = g_config.digi_ssid;
                     packet->rpt_flags |= (1 << idx);
                     j = 2;
@@ -161,7 +172,7 @@ int digiProcess(ax25_msg_t *packet) {
                     break;
                 }
             } else {
-                strcpy(packet->rpt_list[idx].call, g_config.digi_mycall);
+                copy_call(packet->rpt_list[idx].call, g_config.digi_mycall);
                 packet->rpt_list[idx].ssid = g_config.digi_ssid;
                 packet->rpt_flags |= (1 << idx);
                 j = 2;
@@ -174,7 +185,7 @@ int digiProcess(ax25_msg_t *packet) {
             if (ctmp > 15)
                 ctmp = 0;
             if (ctmp == 0) {
-                strcpy(packet->rpt_list[idx].call, g_config.digi_mycall);
+                copy_call(packet->rpt_list[idx].call, g_config.digi_mycall);
                 packet->rpt_list[idx].ssid = g_config.digi_ssid;
                 packet->rpt_flags |= (1 << idx);
                 j = 2;
@@ -200,7 +211,7 @@ int digiProcess(ax25_msg_t *packet) {
                     packet->rpt_list[idx + 1].ssid = ctmp;
 
                 packet->rpt_count += 1;
-                strcpy(packet->rpt_list[idx].call, g_config.digi_mycall);
+                copy_call(packet->rpt_list[idx].call, g_config.digi_mycall);
                 packet->rpt_list[idx].ssid = g_config.digi_ssid;
                 packet->rpt_flags |= (1 << idx);
                 j = 2;
@@ -212,7 +223,7 @@ int digiProcess(ax25_msg_t *packet) {
             break;
         } else if (!strncmp(packet->rpt_list[idx].call, "RELAY", 5) || !strncmp(packet->rpt_list[idx].call, "GATE", 4) ||
                    !strncmp(packet->rpt_list[idx].call, "ECHO", 4)) {
-            strcpy(packet->rpt_list[idx].call, g_config.digi_mycall);
+            copy_call(packet->rpt_list[idx].call, g_config.digi_mycall);
             packet->rpt_list[idx].ssid = g_config.digi_ssid;
             packet->rpt_flags |= (1 << idx);
             j = 2;

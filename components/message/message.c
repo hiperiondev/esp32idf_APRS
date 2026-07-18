@@ -288,8 +288,10 @@ void sendAPRSMessage(const char *toCall, const char *text, bool encrypt) {
     if (encrypt) {
         uint8_t key[16] = { 0 };
         hexStringToBytes(g_config.msg_key, key, sizeof(key));
-        if (aesEncryptBase64WithIV(text, key, s_msgID, myCallUp, payload, sizeof(payload)) == 0)
+        if (aesEncryptBase64WithIV(text, key, s_msgID, myCallUp, payload, sizeof(payload)) == 0) {
             strncpy(payload, text, sizeof(payload) - 1); // fall back unencrypted on failure
+            payload[sizeof(payload) - 1] = 0;
+        }
     } else {
         strncpy(payload, text, sizeof(payload) - 1);
         payload[sizeof(payload) - 1] = 0;
@@ -345,8 +347,10 @@ void sendAPRSMessageRetry(void) {
         if (g_config.msg_encrypt) {
             uint8_t key[16] = { 0 };
             hexStringToBytes(g_config.msg_key, key, sizeof(key));
-            if (aesEncryptBase64WithIV(s_queue[i].text, key, s_queue[i].msgID, g_config.msg_mycall, payload, sizeof(payload)) == 0)
+            if (aesEncryptBase64WithIV(s_queue[i].text, key, s_queue[i].msgID, g_config.msg_mycall, payload, sizeof(payload)) == 0) {
                 strncpy(payload, s_queue[i].text, sizeof(payload) - 1);
+                payload[sizeof(payload) - 1] = 0;
+            }
         } else {
             strncpy(payload, s_queue[i].text, sizeof(payload) - 1);
             payload[sizeof(payload) - 1] = 0;

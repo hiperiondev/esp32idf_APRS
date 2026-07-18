@@ -134,9 +134,9 @@ static void parse_tlm_channel(const char *body, int ch) {
     bool inet = web_form_get_bool(body, n);
     char mycall[10];
     snprintf(n, sizeof(n), "%sMycall", pfx);
-    web_form_get(body, n, mycall, sizeof(mycall));
+    web_form_get_call(body, n, mycall, sizeof(mycall));
     snprintf(n, sizeof(n), "%sSSID", pfx);
-    int ssid = web_form_get_int(body, n, 0);
+    int ssid = (int)web_form_get_ssid(body, n, 0);
     snprintf(n, sizeof(n), "%sPath", pfx);
     int path = web_form_get_int(body, n, 0);
     snprintf(n, sizeof(n), "%sInfoInv", pfx);

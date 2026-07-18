@@ -151,7 +151,16 @@ static int buildPositionPacket(const beacon_params_t *p, char *out, size_t outMa
         snprintf(infoField, sizeof(infoField), "!%s%c%s%c%s%s", latStr, symTable, lonStr, symCode, extra, p->comment);
     }
 
-    return snprintf(out, outMax, "%s>%s%s:%s", callField, BEACON_DEST, path, infoField);
+    int n = snprintf(out, outMax, "%s>%s%s:%s", callField, BEACON_DEST, path, infoField);
+    // snprintf() returns the length it *would* have written; on truncation that
+    // exceeds the buffer. Callers use this value as the memcpy length for the
+    // TNC2 send path, so clamp it to what was actually written (outMax-1, since
+    // snprintf always NUL-terminates when outMax > 0).
+    if (n < 0)
+        return 0;
+    if (outMax > 0 && (size_t)n >= outMax)
+        n = (int)outMax - 1;
+    return n;
 }
 
 static uint32_t clampInterval(uint32_t interval) {
@@ -302,18 +311,18 @@ static void digiBeaconTask(void *arg) {
 // specific task it is - so all three need the same safety margin, not just
 // tracker. Also logging each task's watermark so a tight stack shows up in
 // the logs instead of as a mysteriously truncated packet.
-#define BEACON_TASK_STACK_WORDS 10240
+#define BEACON_TASK_STACK_BYTES 10240
 
 void beacon_start(void) {
-    xTaskCreate(trackerBeaconTask, "trk_beacon_task", BEACON_TASK_STACK_WORDS, NULL, 4, NULL);
+    xTaskCreate(trackerBeaconTask, "trk_beacon_task", BEACON_TASK_STACK_BYTES, NULL, 4, NULL);
     ESP_LOGI(TAG, "Tracker beacon task started (en=%d rf=%d inet=%d interval=%us)", g_config.trk_en, g_config.trk_loc2rf,
              g_config.trk_loc2inet, (unsigned)g_config.trk_interval);
 
-    xTaskCreate(igateBeaconTask, "igate_beacon_task", BEACON_TASK_STACK_WORDS, NULL, 4, NULL);
+    xTaskCreate(igateBeaconTask, "igate_beacon_task", BEACON_TASK_STACK_BYTES, NULL, 4, NULL);
     ESP_LOGI(TAG, "IGate beacon task started (en=%d bcn=%d rf=%d inet=%d interval=%us)", g_config.igate_en, g_config.igate_bcn,
              g_config.igate_loc2rf, g_config.igate_loc2inet, (unsigned)g_config.igate_interval);
 
-    xTaskCreate(digiBeaconTask, "digi_beacon_task", BEACON_TASK_STACK_WORDS, NULL, 4, NULL);
+    xTaskCreate(digiBeaconTask, "digi_beacon_task", BEACON_TASK_STACK_BYTES, NULL, 4, NULL);
     ESP_LOGI(TAG, "Digipeater beacon task started (en=%d bcn=%d rf=%d inet=%d interval=%us)", g_config.digi_en, g_config.digi_bcn,
              g_config.digi_loc2rf, g_config.digi_loc2inet, (unsigned)g_config.digi_interval);
 }

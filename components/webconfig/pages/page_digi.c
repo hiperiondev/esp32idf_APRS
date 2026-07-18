@@ -84,8 +84,8 @@ esp_err_t page_digi_post(httpd_req_t *req) {
     g_config.digi_delay = (uint16_t)web_form_get_int(body, "digiDelay", g_config.digi_delay);
     g_config.digiFilter = (uint16_t)web_form_get_int(body, "digiFilter", g_config.digiFilter);
 
-    web_form_get(body, "digiMycall", g_config.digi_mycall, sizeof(g_config.digi_mycall));
-    g_config.digi_ssid = (uint8_t)web_form_get_int(body, "digiSSID", g_config.digi_ssid);
+    web_form_get_call(body, "digiMycall", g_config.digi_mycall, sizeof(g_config.digi_mycall));
+    g_config.digi_ssid = web_form_get_ssid(body, "digiSSID", g_config.digi_ssid);
     g_config.digi_path = (uint8_t)web_form_get_int(body, "digiPath", g_config.digi_path);
 
     g_config.digi_bcn = web_form_get_bool(body, "digiBcn");

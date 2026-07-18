@@ -422,7 +422,9 @@ void APRS_setGain(int s) {
         s_gain = (uint8_t)s;
 }
 void APRS_setDirectivity(int s) {
-    if (s >= 0 && s < 10)
+    /* PHG directivity digit is spec'd 0-8 (9 = omni is encoded as 0 by the
+     * caller); reject 9 so the setter matches the APRS_sendLoc() guard. */
+    if (s >= 0 && s < 9)
         s_directivity = (uint8_t)s;
 }
 

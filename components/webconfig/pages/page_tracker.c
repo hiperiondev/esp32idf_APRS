@@ -95,8 +95,8 @@ esp_err_t page_tracker_post(httpd_req_t *req) {
     g_config.trk_loc2inet = web_form_get_bool(body, "trkPos2inet");
     g_config.trk_timestamp = web_form_get_bool(body, "trkTime");
 
-    web_form_get(body, "trkMycall", g_config.trk_mycall, sizeof(g_config.trk_mycall));
-    g_config.trk_ssid = (uint8_t)web_form_get_int(body, "trkSSID", g_config.trk_ssid);
+    web_form_get_call(body, "trkMycall", g_config.trk_mycall, sizeof(g_config.trk_mycall));
+    g_config.trk_ssid = web_form_get_ssid(body, "trkSSID", g_config.trk_ssid);
     g_config.trk_path = (uint8_t)web_form_get_int(body, "trkPath", g_config.trk_path);
     g_config.trk_gps = web_form_get_bool(body, "trkGPS");
     g_config.trk_lat = web_form_get_float(body, "trkLAT", g_config.trk_lat);

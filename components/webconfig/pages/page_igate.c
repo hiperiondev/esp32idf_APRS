@@ -265,8 +265,8 @@ esp_err_t page_igate_post(httpd_req_t *req) {
     g_config.igate_loc2inet = web_form_get_bool(body, "igatePos2inet");
     g_config.igate_timestamp = web_form_get_bool(body, "igateTime");
 
-    web_form_get(body, "igateMycall", g_config.aprs_mycall, sizeof(g_config.aprs_mycall));
-    g_config.aprs_ssid = (uint8_t)web_form_get_int(body, "igateSSID", g_config.aprs_ssid);
+    web_form_get_call(body, "igateMycall", g_config.aprs_mycall, sizeof(g_config.aprs_mycall));
+    g_config.aprs_ssid = web_form_get_ssid(body, "igateSSID", g_config.aprs_ssid);
     web_form_get(body, "igatePasscode", g_config.aprs_passcode, sizeof(g_config.aprs_passcode));
     web_form_get(body, "igateHost", g_config.aprs_host, sizeof(g_config.aprs_host));
     g_config.aprs_port = (uint16_t)web_form_get_int(body, "igatePort", g_config.aprs_port);
