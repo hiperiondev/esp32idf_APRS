@@ -245,13 +245,13 @@ That's the whole interface: TX is a mic-level signal into the small plug's tip, 
 
                                           bias node
   3.5mm TIP (SPKR) ─[RV2 10k]─ wiper ─[C4 10µ]──┬──────[R7 1k]───┬──► GPIO33 (ADC)
-                 │                +              │                │
+                 │                    +         │                │
    3.5mm SLEEVE ─┘                        [R5 10k]─► 3V3     [D1]─► 3V3   BAT54S
    (GND, common with small plug sleeve)        │             [D2]─► GND   (or 2×1N4148)
                                            [R6 10k]─► GND        │
                                                │              [C5 1n]
                                               GND                │
-                                                                 GND
+                                                                GND
 
  ── PTT ── shorts the small plug's ring to its sleeve — option A, B, or C, unchanged ──
 
