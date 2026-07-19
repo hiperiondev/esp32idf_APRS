@@ -281,10 +281,6 @@ void app_config_set_defaults(app_config_t *c) {
     c->pwr_gpio = -1;
     c->pwr_active = true;
 
-    for (int i = 0; i < SENSOR_NUMBER; i++) {
-        c->sensor[i].enable = false;
-    }
-
     c->ppp_enable = false;
     c->ppp_rst_gpio = -1;
     c->ppp_tx_gpio = -1;
@@ -733,24 +729,6 @@ static cJSON *config_to_json(const app_config_t *c) {
     jadd_bool(d, "pwrIOAct", c->pwr_active);
 
     jadd_num(d, "logFile", c->log);
-
-    {
-        cJSON *s = cJSON_CreateArray();
-        for (int i = 0; i < SENSOR_NUMBER; i++) {
-            cJSON_AddItemToArray(s, cJSON_CreateBool(c->sensor[i].enable));
-            cJSON_AddItemToArray(s, cJSON_CreateNumber(c->sensor[i].port));
-            cJSON_AddItemToArray(s, cJSON_CreateNumber(c->sensor[i].address));
-            cJSON_AddItemToArray(s, cJSON_CreateNumber(c->sensor[i].samplerate));
-            cJSON_AddItemToArray(s, cJSON_CreateNumber(c->sensor[i].averagerate));
-            cJSON_AddItemToArray(s, cJSON_CreateNumber(c->sensor[i].eqns[0]));
-            cJSON_AddItemToArray(s, cJSON_CreateNumber(c->sensor[i].eqns[1]));
-            cJSON_AddItemToArray(s, cJSON_CreateNumber(c->sensor[i].eqns[2]));
-            cJSON_AddItemToArray(s, cJSON_CreateNumber(c->sensor[i].type));
-            cJSON_AddItemToArray(s, cJSON_CreateString(c->sensor[i].parm));
-            cJSON_AddItemToArray(s, cJSON_CreateString(c->sensor[i].unit));
-        }
-        cJSON_AddItemToObject(d, "Sensor", s);
-    }
 
     jadd_bool(d, "pppEn", c->ppp_enable);
     jadd_str(d, "pppAPN", c->ppp_apn);
@@ -1243,37 +1221,6 @@ static void config_from_json(cJSON *d, app_config_t *c) {
     c->pwr_active = jget_bool(d, "pwrIOAct", def.pwr_active);
 
     c->log = (uint16_t)jget_num(d, "logFile", def.log);
-
-    {
-        cJSON *s = cJSON_GetObjectItemCaseSensitive(d, "Sensor");
-        if (s) {
-            for (int i = 0; i < SENSOR_NUMBER; i++) {
-                cJSON *v;
-                if ((v = cJSON_GetArrayItem(s, i * 11 + 0)))
-                    c->sensor[i].enable = cJSON_IsTrue(v);
-                if ((v = cJSON_GetArrayItem(s, i * 11 + 1)))
-                    c->sensor[i].port = (uint8_t)v->valuedouble;
-                if ((v = cJSON_GetArrayItem(s, i * 11 + 2)))
-                    c->sensor[i].address = (uint16_t)v->valuedouble;
-                if ((v = cJSON_GetArrayItem(s, i * 11 + 3)))
-                    c->sensor[i].samplerate = (uint16_t)v->valuedouble;
-                if ((v = cJSON_GetArrayItem(s, i * 11 + 4)))
-                    c->sensor[i].averagerate = (uint16_t)v->valuedouble;
-                if ((v = cJSON_GetArrayItem(s, i * 11 + 5)))
-                    c->sensor[i].eqns[0] = (float)v->valuedouble;
-                if ((v = cJSON_GetArrayItem(s, i * 11 + 6)))
-                    c->sensor[i].eqns[1] = (float)v->valuedouble;
-                if ((v = cJSON_GetArrayItem(s, i * 11 + 7)))
-                    c->sensor[i].eqns[2] = (float)v->valuedouble;
-                if ((v = cJSON_GetArrayItem(s, i * 11 + 8)))
-                    c->sensor[i].type = (uint16_t)v->valuedouble;
-                if ((v = cJSON_GetArrayItem(s, i * 11 + 9)) && cJSON_IsString(v))
-                    set_str(c->sensor[i].parm, sizeof(c->sensor[i].parm), v->valuestring);
-                if ((v = cJSON_GetArrayItem(s, i * 11 + 10)) && cJSON_IsString(v))
-                    set_str(c->sensor[i].unit, sizeof(c->sensor[i].unit), v->valuestring);
-            }
-        }
-    }
 
     c->ppp_enable = jget_bool(d, "pppEn", def.ppp_enable);
     set_str(c->ppp_apn, sizeof(c->ppp_apn), jget_str(d, "pppAPN", def.ppp_apn));

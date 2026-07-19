@@ -88,8 +88,6 @@ void web_server_start(void) {
     reg(server, "/wx", HTTP_POST, page_wx_post);
     reg(server, "/tlm", HTTP_GET, page_tlm_get);
     reg(server, "/tlm", HTTP_POST, page_tlm_post);
-    reg(server, "/sensor", HTTP_GET, page_sensor_get);
-    reg(server, "/sensor", HTTP_POST, page_sensor_post);
 
     reg(server, "/radio", HTTP_GET, page_radio_get);
     reg(server, "/radio", HTTP_POST, page_radio_post);

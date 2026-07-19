@@ -69,7 +69,6 @@
 //#define ENABLE_SMARTBEACONING 
 #define ENABLE_WEATHER
 #define ENABLE_TELEMETRY
-//#define ENABLE_SENSORS
 #define ENABLE_SYSTEM
 #define ENABLE_WIRELESS
 //#define ENABLE_GNSS
@@ -81,7 +80,6 @@
 #define COMMENT_SIZE       25
 #define STATUS_SIZE        50
 #define WX_SENSOR_NUM      26
-#define SENSOR_NUMBER      10
 #define WIFI_STA_NUM       5
 #define NTP_HOST_NUM       3
 #define NTP_RESYNC_MIN_SEC 30
@@ -137,18 +135,6 @@ typedef struct {
     char wifi_ssid[33]; // 32 chars max (IEEE 802.11 SSID limit) + null terminator
     char wifi_pass[64]; // 63 chars max (WPA/WPA2/WPA3 PSK limit) + null terminator
 } wifi_sta_t;
-
-typedef struct {
-    bool enable;
-    uint16_t type;
-    uint8_t port;
-    uint16_t address;
-    uint16_t samplerate;
-    uint16_t averagerate;
-    float eqns[3];
-    char unit[10];
-    char parm[15];
-} sensor_info_t;
 
 typedef struct {
     float timeZone;
@@ -459,8 +445,6 @@ typedef struct {
     uint8_t pwr_sleep_activate;
     int8_t pwr_gpio;
     bool pwr_active;
-
-    sensor_info_t sensor[SENSOR_NUMBER];
 
     // PPP (GSM modem)
     bool ppp_enable;

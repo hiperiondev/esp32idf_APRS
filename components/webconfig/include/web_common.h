@@ -56,7 +56,6 @@ int web_read_body(httpd_req_t *req, char *buf, size_t buf_size);
 // page starts rejecting legitimate saves with "body too large" after new
 // fields are added, bump the matching constant here.
 #define WEBCONFIG_POST_BUF_MOD    3000 // page_mod.c    - RF/I2C/UART/PPP/power peripheral form
-#define WEBCONFIG_POST_BUF_SENSOR 4000 // page_sensor.c - sensor configuration form
 #define WEBCONFIG_POST_BUF_TLM    6000 // page_tlm.c    - telemetry configuration form
 
 // Finds "key=value" inside an application/x-www-form-urlencoded blob (POST body

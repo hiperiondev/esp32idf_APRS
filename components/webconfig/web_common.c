@@ -514,9 +514,6 @@ static const struct menu_item MENU[] = {
 #ifdef ENABLE_TELEMETRY
     { "/tlm", TR_MENU_TLM, "tlm" },
 #endif
-#ifdef ENABLE_SENSORS
-    { "/sensor", TR_MENU_SENSOR, "sensor" },
-#endif
 #ifdef ENABLE_SYSTEM
     { "/system", TR_MENU_SYSTEM, "system" },
 #endif

@@ -12,7 +12,6 @@ idf_component_register(
         "pages/page_tracker.c"
         "pages/page_wx.c"
         "pages/page_tlm.c"
-        "pages/page_sensor.c"
         "pages/page_radio.c"
         "pages/page_vpn.c"
         "pages/page_mqtt.c"

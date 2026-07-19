@@ -63,8 +63,6 @@ esp_err_t page_wx_get(httpd_req_t *req);
 esp_err_t page_wx_post(httpd_req_t *req);
 esp_err_t page_tlm_get(httpd_req_t *req);
 esp_err_t page_tlm_post(httpd_req_t *req);
-esp_err_t page_sensor_get(httpd_req_t *req);
-esp_err_t page_sensor_post(httpd_req_t *req);
 
 // -- RF / networking --
 esp_err_t page_radio_get(httpd_req_t *req);
