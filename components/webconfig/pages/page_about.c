@@ -97,8 +97,6 @@ esp_err_t page_about_get(httpd_req_t *req) {
              "}</script>"
              "</fieldset>");
 
-    httpd_resp_sendstr_chunk(req, "<fieldset><legend>" TR_ABOUT_SOURCE_LEGEND "</legend>"
-                                  "<p>" TR_ABOUT_SOURCE_BODY " " TR_ABOUT_WEB_ADMIN "</p></fieldset>");
     web_send_footer(req);
     return ESP_OK;
 }

@@ -49,7 +49,7 @@
 #define TR_MENU_WIRELESS  "Wireless"
 #define TR_MENU_GNSS      "GNSS"
 #define TR_MENU_STORAGE   "File Storage"
-#define TR_MENU_ABOUT     "About / Firmware"
+#define TR_MENU_ABOUT     "Firmware"
 
 // ---- Common buttons / widgets ------------------------------------------
 #define TR_BTN_SAVE      "Save"
@@ -69,7 +69,7 @@
     "with fulfilled defaults; only the HTML/handler for this section is pending."
 
 // ---- page_about.c --------------------------------------------------------
-#define TR_ABOUT_TITLE       "About / Firmware"
+#define TR_ABOUT_TITLE       "Firmware"
 #define TR_ABOUT_FW_LEGEND   "Firmware"
 #define TR_ABOUT_PROJECT     "Project:"
 #define TR_ABOUT_VERSION     "Version:"
@@ -96,9 +96,6 @@
 #define TR_OTA_VALIDATE_FAILED   "image validation failed - the file is not a valid firmware image for this board"
 #define TR_OTA_SUCCESS           "Firmware written and verified successfully."
 #define TR_OTA_REBOOTING         "Rebooting into the new firmware now..."
-#define TR_ABOUT_SOURCE_LEGEND "Source"
-#define TR_ABOUT_SOURCE_BODY   "Future source information"
-#define TR_ABOUT_WEB_ADMIN     "web admin."
 
 // ---- Common field/fieldset labels (auto-extracted from pages/*.c) -----
 #define TR_F_1_WIRE                                        "1-Wire"

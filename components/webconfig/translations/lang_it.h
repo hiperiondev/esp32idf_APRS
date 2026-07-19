@@ -49,7 +49,7 @@
 #define TR_MENU_WIRELESS  "Wireless"
 #define TR_MENU_GNSS      "GNSS"
 #define TR_MENU_STORAGE   "Archiviazione file"
-#define TR_MENU_ABOUT     "Informazioni / Firmware"
+#define TR_MENU_ABOUT     "Firmware"
 
 // ---- Common buttons / widgets ------------------------------------------
 #define TR_BTN_SAVE      "Salva"
@@ -69,7 +69,7 @@
     "con valori predefiniti già impostati; manca solo l'HTML/gestore per questa sezione."
 
 // ---- page_about.c --------------------------------------------------------
-#define TR_ABOUT_TITLE       "Informazioni / Firmware"
+#define TR_ABOUT_TITLE       "Firmware"
 #define TR_ABOUT_FW_LEGEND   "Firmware"
 #define TR_ABOUT_PROJECT     "Progetto:"
 #define TR_ABOUT_VERSION     "Versione:"
@@ -96,9 +96,6 @@
 #define TR_OTA_VALIDATE_FAILED   "convalida dell'immagine non riuscita: il file non è un'immagine firmware valida per questa scheda"
 #define TR_OTA_SUCCESS           "Firmware scritto e verificato correttamente."
 #define TR_OTA_REBOOTING         "Riavvio con il nuovo firmware in corso..."
-#define TR_ABOUT_SOURCE_LEGEND "Sorgente"
-#define TR_ABOUT_SOURCE_BODY   "Informazioni sulla sorgente future"
-#define TR_ABOUT_WEB_ADMIN     "amministrazione web."
 
 // ---- Common field/fieldset labels (auto-extracted from pages/*.c) -----
 #define TR_F_1_WIRE                                        "1-Wire"
