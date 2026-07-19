@@ -81,7 +81,6 @@ Todo es C puro. No hay núcleo de Arduino, ni `String`, ni PlatformIO. Toda la c
 | G3RUH FSK 9600 Bd | ✅ | requiere audio plano/discriminador |
 | RX+TX de tramas HDLC / AX.25 UI | ✅ | `AX25_FRAME_MAX_SIZE = 329` |
 | FX.25 (FEC RS sobre AX.25) | ✅ | `-DENABLE_FX25`, modos solo-RX / RX+TX |
-| Tramado KISS | 🟡 | el código está en el componente, **no está conectado a ningún puerto serie en esta app** |
 | Activación de PTT (GPIO y polaridad seleccionables en runtime) | ✅ | validado contra los pines de ADC/DAC/flash |
 | CSMA / TX time-slot / preámbulo TXDelay | ✅ | `preamble`, `tx_timeslot` |
 | DCD (detección de portadora) | ✅ | derivado del demodulador; sin entrada de squelch por hardware |
