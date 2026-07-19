@@ -35,6 +35,7 @@ esp_err_t page_igate_get(httpd_req_t *req) {
 
     web_fieldset_open(req, TR_F_IGATE);
     web_field_checkbox(req, TR_F_ENABLE_IGATE, "igateEn", g_config.igate_en);
+    web_field_use_station_data(req, "igateUseStation", g_config.igate_use_station, "igateMycall", "igateLAT", "igateLON", "igateALT");
     web_field_checkbox(req, TR_F_RF_TO_INTERNET, "rf2inet", g_config.rf2inet);
     web_field_checkbox(req, TR_F_INTERNET_TO_RF, "inet2rf", g_config.inet2rf);
     web_field_text(req, TR_F_MY_CALLSIGN, "igateMycall", g_config.aprs_mycall, 9);
@@ -258,6 +259,7 @@ esp_err_t page_igate_post(httpd_req_t *req) {
     }
 
     g_config.igate_en = web_form_get_bool(body, "igateEn");
+    g_config.igate_use_station = web_form_get_bool(body, "igateUseStation");
     g_config.rf2inet = web_form_get_bool(body, "rf2inet");
     g_config.inet2rf = web_form_get_bool(body, "inet2rf");
     g_config.igate_bcn = web_form_get_bool(body, "igateBcn");
@@ -265,7 +267,12 @@ esp_err_t page_igate_post(httpd_req_t *req) {
     g_config.igate_loc2inet = web_form_get_bool(body, "igatePos2inet");
     g_config.igate_timestamp = web_form_get_bool(body, "igateTime");
 
-    web_form_get_call(body, "igateMycall", g_config.aprs_mycall, sizeof(g_config.aprs_mycall));
+    if (g_config.igate_use_station) {
+        strncpy(g_config.aprs_mycall, g_config.my_callsign, sizeof(g_config.aprs_mycall) - 1);
+        g_config.aprs_mycall[sizeof(g_config.aprs_mycall) - 1] = 0;
+    } else {
+        web_form_get_call(body, "igateMycall", g_config.aprs_mycall, sizeof(g_config.aprs_mycall));
+    }
     g_config.aprs_ssid = web_form_get_ssid(body, "igateSSID", g_config.aprs_ssid);
     web_form_get(body, "igatePasscode", g_config.aprs_passcode, sizeof(g_config.aprs_passcode));
     web_form_get(body, "igateHost", g_config.aprs_host, sizeof(g_config.aprs_host));
@@ -286,9 +293,9 @@ esp_err_t page_igate_post(httpd_req_t *req) {
             g_config.igate_gps = web_form_get_bool(body, "igateGPS");
     }
 
-    g_config.igate_lat = web_form_get_float(body, "igateLAT", g_config.igate_lat);
-    g_config.igate_lon = web_form_get_float(body, "igateLON", g_config.igate_lon);
-    g_config.igate_alt = web_form_get_float(body, "igateALT", g_config.igate_alt);
+    g_config.igate_lat = g_config.igate_use_station ? g_config.my_lat : web_form_get_float(body, "igateLAT", g_config.igate_lat);
+    g_config.igate_lon = g_config.igate_use_station ? g_config.my_lon : web_form_get_float(body, "igateLON", g_config.igate_lon);
+    g_config.igate_alt = g_config.igate_use_station ? g_config.my_alt : web_form_get_float(body, "igateALT", g_config.igate_alt);
     g_config.igate_interval = (uint16_t)web_form_get_int(body, "igateINV", g_config.igate_interval);
     web_form_get(body, "igateObject", g_config.igate_object, sizeof(g_config.igate_object));
     web_form_get(body, "igatePHG", g_config.igate_phg, sizeof(g_config.igate_phg));

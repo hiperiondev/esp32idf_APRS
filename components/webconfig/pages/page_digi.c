@@ -19,6 +19,8 @@
  * g_config.
  */
 
+#include <string.h>
+
 #include "app_config.h"
 #include "pages.h"
 #include "translations.h"
@@ -32,6 +34,7 @@ esp_err_t page_digi_get(httpd_req_t *req) {
 
     web_fieldset_open(req, TR_F_DIGIPEATER);
     web_field_checkbox(req, TR_F_ENABLE_DIGIPEATER, "digiEn", g_config.digi_en);
+    web_field_use_station_data(req, "digiUseStation", g_config.digi_use_station, "digiMycall", "digiLAT", "digiLON", "digiAlt");
     web_field_checkbox(req, TR_F_AUTO_WIDEN_N, "digiAuto", g_config.digi_auto);
     web_field_checkbox(req, TR_F_ADD_TIMESTAMP, "digiTime", g_config.digi_timestamp);
     web_field_int(req, TR_F_DIGI_DELAY_MS, "digiDelay", g_config.digi_delay);
@@ -79,12 +82,26 @@ esp_err_t page_digi_post(httpd_req_t *req) {
     }
 
     g_config.digi_en = web_form_get_bool(body, "digiEn");
+    g_config.digi_use_station = web_form_get_bool(body, "digiUseStation");
     g_config.digi_auto = web_form_get_bool(body, "digiAuto");
     g_config.digi_timestamp = web_form_get_bool(body, "digiTime");
     g_config.digi_delay = (uint16_t)web_form_get_int(body, "digiDelay", g_config.digi_delay);
     g_config.digiFilter = (uint16_t)web_form_get_int(body, "digiFilter", g_config.digiFilter);
 
-    web_form_get_call(body, "digiMycall", g_config.digi_mycall, sizeof(g_config.digi_mycall));
+    if (g_config.digi_use_station) {
+        // Fields are disabled client-side while this is checked, so the
+        // form never submits them - pull from the shared Station data instead.
+        strncpy(g_config.digi_mycall, g_config.my_callsign, sizeof(g_config.digi_mycall) - 1);
+        g_config.digi_mycall[sizeof(g_config.digi_mycall) - 1] = 0;
+        g_config.digi_lat = g_config.my_lat;
+        g_config.digi_lon = g_config.my_lon;
+        g_config.digi_alt = g_config.my_alt;
+    } else {
+        web_form_get_call(body, "digiMycall", g_config.digi_mycall, sizeof(g_config.digi_mycall));
+        g_config.digi_lat = web_form_get_float(body, "digiLAT", g_config.digi_lat);
+        g_config.digi_lon = web_form_get_float(body, "digiLON", g_config.digi_lon);
+        g_config.digi_alt = web_form_get_float(body, "digiAlt", g_config.digi_alt);
+    }
     g_config.digi_ssid = web_form_get_ssid(body, "digiSSID", g_config.digi_ssid);
     g_config.digi_path = (uint8_t)web_form_get_int(body, "digiPath", g_config.digi_path);
 
@@ -92,9 +109,6 @@ esp_err_t page_digi_post(httpd_req_t *req) {
     g_config.digi_loc2rf = web_form_get_bool(body, "digiPos2rf");
     g_config.digi_loc2inet = web_form_get_bool(body, "digiPos2inet");
     g_config.digi_gps = web_form_get_bool(body, "digiGPS");
-    g_config.digi_lat = web_form_get_float(body, "digiLAT", g_config.digi_lat);
-    g_config.digi_lon = web_form_get_float(body, "digiLON", g_config.digi_lon);
-    g_config.digi_alt = web_form_get_float(body, "digiAlt", g_config.digi_alt);
     g_config.digi_interval = (uint16_t)web_form_get_int(body, "digiINV", g_config.digi_interval);
 
     // Station Symbol: Table + Symbol 1-char fields from the shared picker

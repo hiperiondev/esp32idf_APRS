@@ -195,11 +195,24 @@ static void trackerBeaconTask(void *arg) {
         char packet[300];
         int len = buildPositionPacket(&p, packet, sizeof(packet));
         if (len > 0) {
-            if (g_config.trk_loc2rf)
+            // Log the RF and internet legs from what actually happened,
+            // rather than an unconditional "beacon TX" line. igate_send_raw()
+            // returns false (no bytes sent) whenever the APRS-IS uplink isn't
+            // connected yet (e.g. no internet route at boot) - previously the
+            // log line printed regardless, which made it look like an
+            // internet transmission had gone out before the internet
+            // connection was up, when the send was actually silently dropped.
+            if (g_config.trk_loc2rf) {
                 aprs_service_send_tnc2(packet, (size_t)len);
-            if (g_config.trk_loc2inet)
-                igate_send_raw(packet, (size_t)len);
-            ESP_LOGI(TAG, "Tracker beacon TX: %s", packet);
+                ESP_LOGI(TAG, "Tracker beacon TX (RF): %s", packet);
+            }
+            if (g_config.trk_loc2inet) {
+                if (igate_send_raw(packet, (size_t)len))
+                    ESP_LOGI(TAG, "Tracker beacon TX (INET): %s", packet);
+                else
+                    ESP_LOGW(TAG, "Tracker beacon NOT sent over INET - APRS-IS not connected yet: %s", packet);
+            }
+
             ESP_LOGD(TAG, "trk_beacon_task stack free: %u bytes", (unsigned)(uxTaskGetStackHighWaterMark(NULL) * sizeof(StackType_t)));
         } else {
             ESP_LOGW(TAG, "Tracker beacon enabled but no callsign configured (set Tracker or APRS callsign) - skipping");
@@ -235,11 +248,21 @@ static void igateBeaconTask(void *arg) {
         char packet[300];
         int len = buildPositionPacket(&p, packet, sizeof(packet));
         if (len > 0) {
-            if (g_config.igate_loc2rf)
+            // See the identical note in trackerBeaconTask(): log what each
+            // leg actually did instead of an unconditional line, so a
+            // not-yet-connected APRS-IS uplink doesn't look like a
+            // premature internet transmission.
+            if (g_config.igate_loc2rf) {
                 aprs_service_send_tnc2(packet, (size_t)len);
-            if (g_config.igate_loc2inet)
-                igate_send_raw(packet, (size_t)len);
-            ESP_LOGI(TAG, "IGate beacon TX: %s", packet);
+                ESP_LOGI(TAG, "IGate beacon TX (RF): %s", packet);
+            }
+            if (g_config.igate_loc2inet) {
+                if (igate_send_raw(packet, (size_t)len))
+                    ESP_LOGI(TAG, "IGate beacon TX (INET): %s", packet);
+                else
+                    ESP_LOGW(TAG, "IGate beacon NOT sent over INET - APRS-IS not connected yet: %s", packet);
+            }
+
             ESP_LOGD(TAG, "igate_beacon_task stack free: %u bytes", (unsigned)(uxTaskGetStackHighWaterMark(NULL) * sizeof(StackType_t)));
         } else {
             ESP_LOGW(TAG, "IGate beacon enabled but no APRS callsign configured - skipping");
@@ -278,11 +301,21 @@ static void digiBeaconTask(void *arg) {
         char packet[300];
         int len = buildPositionPacket(&p, packet, sizeof(packet));
         if (len > 0) {
-            if (g_config.digi_loc2rf)
+            // See the identical note in trackerBeaconTask(): log what each
+            // leg actually did instead of an unconditional line, so a
+            // not-yet-connected APRS-IS uplink doesn't look like a
+            // premature internet transmission.
+            if (g_config.digi_loc2rf) {
                 aprs_service_send_tnc2(packet, (size_t)len);
-            if (g_config.digi_loc2inet)
-                igate_send_raw(packet, (size_t)len);
-            ESP_LOGI(TAG, "Digipeater beacon TX: %s", packet);
+                ESP_LOGI(TAG, "Digipeater beacon TX (RF): %s", packet);
+            }
+            if (g_config.digi_loc2inet) {
+                if (igate_send_raw(packet, (size_t)len))
+                    ESP_LOGI(TAG, "Digipeater beacon TX (INET): %s", packet);
+                else
+                    ESP_LOGW(TAG, "Digipeater beacon NOT sent over INET - APRS-IS not connected yet: %s", packet);
+            }
+
             ESP_LOGD(TAG, "digi_beacon_task stack free: %u bytes", (unsigned)(uxTaskGetStackHighWaterMark(NULL) * sizeof(StackType_t)));
         } else {
             ESP_LOGW(TAG, "Digipeater beacon enabled but no callsign configured (set Digipeater or APRS callsign) - skipping");

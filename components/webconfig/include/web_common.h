@@ -170,6 +170,20 @@ void web_raw(httpd_req_t *req, const char *html); // sendstr_chunk passthrough
 // "digiSymbolTable" / "digiSymbolCode").
 void web_field_symbol(httpd_req_t *req, const char *label, const char *name_prefix, const char *sym2);
 
+// Renders a "Use My Station Data" checkbox (to be placed right after a page's
+// "enable" checkbox) plus the inline JS that, on load and on every toggle:
+//  - when checked, copies g_config.my_callsign/my_lat/my_lon/my_alt into the
+//    given callsign/latitude/longitude/altitude form fields and disables
+//    them for editing (so the page's own values can't drift from Station);
+//  - when unchecked, re-enables those same fields for normal editing.
+// `checkbox_name` is both the form field name and DOM id for the checkbox
+// itself (e.g. "digiUseStation"). call_name/lat_name/lon_name/alt_name are
+// the `name` attributes of that page's existing callsign/lat/lon/alt inputs
+// (e.g. "digiMycall"/"digiLAT"/"digiLON"/"digiAlt"); pass NULL for any field
+// the page doesn't have.
+void web_field_use_station_data(httpd_req_t *req, const char *checkbox_name, bool checked, const char *call_name, const char *lat_name,
+                                 const char *lon_name, const char *alt_name);
+
 // Parses the POST body produced by web_field_symbol back into a 2-char
 // "<table><symbol>" value at out (out_size >= 3). Prefers the split
 // "<name_prefix>Table"/"<name_prefix>Code" fields; falls back to the given

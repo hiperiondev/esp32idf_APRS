@@ -27,6 +27,8 @@
 esp_err_t page_root(httpd_req_t *req);          // GET  /
 esp_err_t page_logout(httpd_req_t *req);        // GET  /logout
 esp_err_t page_dashboard(httpd_req_t *req);     // GET  /dashboard
+esp_err_t page_station_get(httpd_req_t *req);   // GET  /station (My Station: callsign + lat/lon/alt shared by "Use My Station Data")
+esp_err_t page_station_post(httpd_req_t *req);  // POST /station
 esp_err_t page_sidebar_info(httpd_req_t *req);  // GET  /sidebarInfo
 esp_err_t page_sysinfo(httpd_req_t *req);       // GET  /sysinfo
 esp_err_t page_sysinfo_post(httpd_req_t *req);  // POST /sysinfo (CPU frequency select on the System Information/Chip card)

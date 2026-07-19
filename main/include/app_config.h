@@ -57,6 +57,7 @@
 /////// MODULES //////
 // Disabled modules already not implemented
 #define ENABLE_DASHBOARD
+#define ENABLE_STATION
 #define ENABLE_RADIO_MODEM
 //#define ENABLE_RF_MODULE
 //#define ENABLE_VPN
@@ -170,6 +171,15 @@ typedef struct {
     bool title;
     uint8_t cpuFreq;
 
+    // MY STATION - shared station identity/position, entered once on the
+    // "Station" page and reused (read-only) by every other page's
+    // "Use My Station Data" checkbox instead of retyping the same callsign
+    // and coordinates on every service.
+    char my_callsign[10];
+    float my_lat;
+    float my_lon;
+    float my_alt;
+
     // WiFi / BT / RF
     uint8_t wifi_mode; // 0=off,1=STA,2=AP,3=AP_STA (see WIFI_MODE_* below)
     int8_t wifi_power;
@@ -216,6 +226,7 @@ typedef struct {
     uint8_t aprs_ssid;
     uint16_t aprs_port;
     char aprs_mycall[10];
+    bool igate_use_station; // "Use My Station Data": mirror g_config.my_callsign/my_lat/my_lon/my_alt here (aprs_mycall/igate_lat/igate_lon/igate_alt) and lock those fields for editing
     char aprs_host[20];
     char aprs_passcode[6];
     char aprs_moniCall[10];
@@ -250,6 +261,7 @@ typedef struct {
     bool digi_timestamp;
     uint8_t digi_ssid;
     char digi_mycall[10];
+    bool digi_use_station; // "Use My Station Data": mirror g_config.my_callsign/my_lat/my_lon/my_alt here and lock those fields for editing
     uint8_t digi_path;
     uint16_t digi_delay;
     uint16_t digiFilter;
@@ -272,6 +284,7 @@ typedef struct {
     bool trk_timestamp;
     uint8_t trk_ssid;
     char trk_mycall[10];
+    bool trk_use_station; // "Use My Station Data": mirror g_config.my_callsign/my_lat/my_lon/my_alt here and lock those fields for editing
     uint8_t trk_path;
     bool trk_gps;
     float trk_lat;
@@ -307,6 +320,7 @@ typedef struct {
     bool wx_timestamp;
     uint8_t wx_ssid;
     char wx_mycall[10];
+    bool wx_use_station; // "Use My Station Data": mirror g_config.my_callsign/my_lat/my_lon/my_alt here and lock those fields for editing
     uint8_t wx_path;
     bool wx_gps;
     float wx_lat;

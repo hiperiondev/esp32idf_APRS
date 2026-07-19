@@ -388,18 +388,27 @@ static bool connectAprsIs(void) {
 }
 
 // The APRS-IS TCP uplink is a single shared resource used not only by the
-// IGate itself (rf2inet/inet2rf) but also by the Digipeater's "beacon to
-// internet" option and by outbound messages sent over the internet channel.
-// Previously the uplink task only ran when igate_en was on, and was only
-// ever started once at boot based on whatever igate_en happened to be at
-// that moment - so enabling digi_loc2inet (or msg_inet) with IGate itself
-// left disabled meant this task never existed, the socket was never
-// connected, and every send silently failed forever. Likewise, toggling
-// igate_en via the web UI and saving had no effect until reboot, since
-// nothing re-evaluated it at runtime. Gating on this helper instead makes
-// the uplink come up/go down live, from a task that's always running.
+// IGate itself (rf2inet/inet2rf) but also by the Digipeater's and Tracker's
+// "beacon to internet" options and by outbound messages sent over the
+// internet channel. Previously the uplink task only ran when igate_en was
+// on, and was only ever started once at boot based on whatever igate_en
+// happened to be at that moment - so enabling digi_loc2inet (or msg_inet)
+// with IGate itself left disabled meant this task never existed, the socket
+// was never connected, and every send silently failed forever. Likewise,
+// toggling igate_en via the web UI and saving had no effect until reboot,
+// since nothing re-evaluated it at runtime. Gating on this helper instead
+// makes the uplink come up/go down live, from a task that's always running.
+//
+// trk_loc2inet and igate_loc2inet (Tracker/IGate pages' own "beacon via
+// internet" checkboxes, see beacon.c) used to be missing from this list:
+// each is a standalone setting independent of igate_en, so a user enabling
+// only "beacon via internet" on the Tracker page - without also turning on
+// IGate - had the uplink task never come up at all, and igate_send_raw()
+// for that beacon would fail forever (not connected). Included here so the
+// uplink activates for every case that actually needs to send over
+// APRS-IS, not just the ones that happen to also flip igate_en/msg_inet.
 static bool igateUplinkNeeded(void) {
-    return g_config.igate_en || g_config.digi_loc2inet || g_config.msg_inet;
+    return g_config.igate_en || g_config.digi_loc2inet || g_config.msg_inet || g_config.trk_loc2inet || g_config.igate_loc2inet;
 }
 
 static void igateTask(void *arg) {

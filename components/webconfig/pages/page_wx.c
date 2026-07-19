@@ -20,6 +20,7 @@
  */
 
 #include <stdio.h>
+#include <string.h>
 
 #include "app_config.h"
 #include "pages.h"
@@ -93,6 +94,7 @@ esp_err_t page_wx_get(httpd_req_t *req) {
 
     web_fieldset_open(req, TR_F_WEATHER_STATION);
     web_field_checkbox(req, TR_F_ENABLE_WX, "wxEn", g_config.wx_en);
+    web_field_use_station_data(req, "wxUseStation", g_config.wx_use_station, "wxMycall", "wxLAT", "wxLON", "wxALT");
     web_field_checkbox(req, TR_F_SEND_VIA_RF, "wxTx2rf", g_config.wx_2rf);
     web_field_checkbox(req, TR_F_SEND_VIA_INTERNET, "wxTx2inet", g_config.wx_2inet);
     web_field_checkbox(req, TR_F_ADD_TIMESTAMP, "wxTime", g_config.wx_timestamp);
@@ -143,17 +145,29 @@ esp_err_t page_wx_post(httpd_req_t *req) {
     }
 
     g_config.wx_en = web_form_get_bool(body, "wxEn");
+    g_config.wx_use_station = web_form_get_bool(body, "wxUseStation");
     g_config.wx_2rf = web_form_get_bool(body, "wxTx2rf");
     g_config.wx_2inet = web_form_get_bool(body, "wxTx2inet");
     g_config.wx_timestamp = web_form_get_bool(body, "wxTime");
-    web_form_get_call(body, "wxMycall", g_config.wx_mycall, sizeof(g_config.wx_mycall));
+    if (g_config.wx_use_station) {
+        strncpy(g_config.wx_mycall, g_config.my_callsign, sizeof(g_config.wx_mycall) - 1);
+        g_config.wx_mycall[sizeof(g_config.wx_mycall) - 1] = 0;
+    } else {
+        web_form_get_call(body, "wxMycall", g_config.wx_mycall, sizeof(g_config.wx_mycall));
+    }
     g_config.wx_ssid = web_form_get_ssid(body, "wxSSID", g_config.wx_ssid);
     g_config.wx_path = (uint8_t)web_form_get_int(body, "wxPath", g_config.wx_path);
 
     g_config.wx_gps = web_form_get_bool(body, "wxGPS");
-    g_config.wx_lat = web_form_get_float(body, "wxLAT", g_config.wx_lat);
-    g_config.wx_lon = web_form_get_float(body, "wxLON", g_config.wx_lon);
-    g_config.wx_alt = web_form_get_float(body, "wxALT", g_config.wx_alt);
+    if (g_config.wx_use_station) {
+        g_config.wx_lat = g_config.my_lat;
+        g_config.wx_lon = g_config.my_lon;
+        g_config.wx_alt = g_config.my_alt;
+    } else {
+        g_config.wx_lat = web_form_get_float(body, "wxLAT", g_config.wx_lat);
+        g_config.wx_lon = web_form_get_float(body, "wxLON", g_config.wx_lon);
+        g_config.wx_alt = web_form_get_float(body, "wxALT", g_config.wx_alt);
+    }
     g_config.wx_interval = (uint16_t)web_form_get_int(body, "wxInv", g_config.wx_interval);
     web_form_get(body, "wxObject", g_config.wx_object, sizeof(g_config.wx_object));
     web_form_get(body, "wxComment", g_config.wx_comment, sizeof(g_config.wx_comment));

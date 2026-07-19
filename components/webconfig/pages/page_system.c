@@ -15,14 +15,14 @@
  *     please contact their authors for more information.
  *
  * @brief Web admin "System" page: renders and saves the system configuration
- * (credentials, CPU frequency, time sync and NTP hosts, timezone) and implements
- * the reset-to-defaults action.
+ * (credentials, time sync and NTP hosts, timezone) and implements
+ * the reset-to-defaults action. CPU frequency is configured on the System
+ * Information page (/sysinfo) instead.
  */
 
 #include <stdio.h>
 
 #include "app_config.h"
-#include "cpu_freq.h"
 #include "pages.h"
 #include "translations.h"
 #include "web_common.h"
@@ -48,9 +48,6 @@ esp_err_t page_system_get(httpd_req_t *req) {
              "<label>" TR_SYS_NTP_HOST2 "</label><input type='text' name='ntpHost1' value='%s' maxlength='19'>"
              "<label>" TR_SYS_NTP_HOST3 "</label><input type='text' name='ntpHost2' value='%s' maxlength='19'>"
              "<label>" TR_SYS_NTP_RESYNC "</label><input type='number' name='ntpResync' value='%d' min='30'>"
-             "<label>" TR_SYS_CPU_FREQ "</label><select name='cpuFreq'>"
-             "<option value='80' %s>80</option><option value='160' %s>160</option><option value='240' %s>240</option>"
-             "</select>"
              "<label>" TR_SYS_AUTO_RESET_TIMEOUT "</label><input type='number' name='resetTimeout' value='%d'>"
              "</fieldset>"
              "<fieldset><legend>" TR_SYS_DIGI_PATH_ALIASES "</legend>"
@@ -64,7 +61,6 @@ esp_err_t page_system_get(httpd_req_t *req) {
              "<button class='danger' type='submit'>" TR_SYS_FACTORY_RESET "</button></form>",
              g_config.http_username, g_config.http_password, g_config.host_name, g_config.timeZone, g_config.synctime ? "checked" : "",
              g_config.ntp_host[0], g_config.ntp_host[1], g_config.ntp_host[2], g_config.ntp_resync_sec,
-             g_config.cpuFreq == 80 ? "selected" : "", g_config.cpuFreq == 160 ? "selected" : "", g_config.cpuFreq == 240 ? "selected" : "",
              g_config.reset_timeout, g_config.path[0], g_config.path[1], g_config.path[2], g_config.path[3]);
     httpd_resp_sendstr_chunk(req, buf);
     web_send_footer(req);
@@ -91,7 +87,6 @@ esp_err_t page_system_post(httpd_req_t *req) {
     g_config.ntp_resync_sec = (uint16_t)web_form_get_int(body, "ntpResync", g_config.ntp_resync_sec);
     if (g_config.ntp_resync_sec < NTP_RESYNC_MIN_SEC)
         g_config.ntp_resync_sec = NTP_RESYNC_MIN_SEC;
-    g_config.cpuFreq = (uint8_t)web_form_get_int(body, "cpuFreq", g_config.cpuFreq);
     g_config.reset_timeout = (uint16_t)web_form_get_int(body, "resetTimeout", g_config.reset_timeout);
     web_form_get(body, "path0", g_config.path[0], sizeof(g_config.path[0]));
     web_form_get(body, "path1", g_config.path[1], sizeof(g_config.path[1]));
@@ -99,7 +94,6 @@ esp_err_t page_system_post(httpd_req_t *req) {
     web_form_get(body, "path3", g_config.path[3], sizeof(g_config.path[3]));
 
     app_config_save();
-    cpu_freq_apply();
     web_send_saved_redirect(req, "/system");
     return ESP_OK;
 }

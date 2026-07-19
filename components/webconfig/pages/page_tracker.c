@@ -19,6 +19,8 @@
  * g_config.
  */
 
+#include <string.h>
+
 #include "app_config.h"
 #include "pages.h"
 #include "translations.h"
@@ -32,6 +34,7 @@ esp_err_t page_tracker_get(httpd_req_t *req) {
 
     web_fieldset_open(req, TR_F_TRACKER);
     web_field_checkbox(req, TR_F_ENABLE_TRACKER, "trkEn", g_config.trk_en);
+    web_field_use_station_data(req, "trkUseStation", g_config.trk_use_station, "trkMycall", "trkLAT", "trkLON", "trkALT");
     web_field_checkbox(req, TR_F_BEACON_VIA_RF, "trkPos2rf", g_config.trk_loc2rf);
     web_field_checkbox(req, TR_F_BEACON_VIA_INTERNET, "trkPos2inet", g_config.trk_loc2inet);
     web_field_checkbox(req, TR_F_ADD_TIMESTAMP, "trkTime", g_config.trk_timestamp);
@@ -93,17 +96,26 @@ esp_err_t page_tracker_post(httpd_req_t *req) {
     }
 
     g_config.trk_en = web_form_get_bool(body, "trkEn");
+    g_config.trk_use_station = web_form_get_bool(body, "trkUseStation");
     g_config.trk_loc2rf = web_form_get_bool(body, "trkPos2rf");
     g_config.trk_loc2inet = web_form_get_bool(body, "trkPos2inet");
     g_config.trk_timestamp = web_form_get_bool(body, "trkTime");
 
-    web_form_get_call(body, "trkMycall", g_config.trk_mycall, sizeof(g_config.trk_mycall));
+    if (g_config.trk_use_station) {
+        strncpy(g_config.trk_mycall, g_config.my_callsign, sizeof(g_config.trk_mycall) - 1);
+        g_config.trk_mycall[sizeof(g_config.trk_mycall) - 1] = 0;
+        g_config.trk_lat = g_config.my_lat;
+        g_config.trk_lon = g_config.my_lon;
+        g_config.trk_alt = g_config.my_alt;
+    } else {
+        web_form_get_call(body, "trkMycall", g_config.trk_mycall, sizeof(g_config.trk_mycall));
+        g_config.trk_lat = web_form_get_float(body, "trkLAT", g_config.trk_lat);
+        g_config.trk_lon = web_form_get_float(body, "trkLON", g_config.trk_lon);
+        g_config.trk_alt = web_form_get_float(body, "trkALT", g_config.trk_alt);
+    }
     g_config.trk_ssid = web_form_get_ssid(body, "trkSSID", g_config.trk_ssid);
     g_config.trk_path = (uint8_t)web_form_get_int(body, "trkPath", g_config.trk_path);
     g_config.trk_gps = web_form_get_bool(body, "trkGPS");
-    g_config.trk_lat = web_form_get_float(body, "trkLAT", g_config.trk_lat);
-    g_config.trk_lon = web_form_get_float(body, "trkLON", g_config.trk_lon);
-    g_config.trk_alt = web_form_get_float(body, "trkALT", g_config.trk_alt);
 
 #ifdef ENABLE_SMARTBEACONING
     g_config.trk_smartbeacon = web_form_get_bool(body, "trkSmart");

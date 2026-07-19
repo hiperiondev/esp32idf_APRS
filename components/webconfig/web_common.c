@@ -484,6 +484,9 @@ static const struct menu_item MENU[] = {
 #ifdef ENABLE_DASHBOARD
     { "/dashboard", TR_MENU_DASHBOARD, "dashboard" },
 #endif
+#ifdef ENABLE_STATION
+    { "/station", TR_MENU_STATION, "station" },
+#endif
 #ifdef ENABLE_RADIO_MODEM
     { "/radio", TR_MENU_RADIO, "radio" },
 #endif
@@ -780,4 +783,44 @@ void web_form_get_symbol(const char *body, const char *name_prefix, const char *
     char legacy[4] = { 0 };
     if (legacy_name && web_form_get(body, legacy_name, legacy, sizeof(legacy)))
         web_form_get(body, legacy_name, out, out_size);
+}
+
+void web_field_use_station_data(httpd_req_t *req, const char *checkbox_name, bool checked, const char *call_name, const char *lat_name,
+                                 const char *lon_name, const char *alt_name) {
+    // Build each field's `document.querySelector(...)` expression (or the
+    // literal "null" if the page doesn't have that field), then splice all
+    // four into the script below in one go.
+    char qcall[80] = "null", qlat[80] = "null", qlon[80] = "null", qalt[80] = "null";
+    if (call_name)
+        snprintf(qcall, sizeof(qcall), "document.querySelector(\"[name='%.30s']\")", call_name);
+    if (lat_name)
+        snprintf(qlat, sizeof(qlat), "document.querySelector(\"[name='%.30s']\")", lat_name);
+    if (lon_name)
+        snprintf(qlon, sizeof(qlon), "document.querySelector(\"[name='%.30s']\")", lon_name);
+    if (alt_name)
+        snprintf(qalt, sizeof(qalt), "document.querySelector(\"[name='%.30s']\")", alt_name);
+
+    // Callsigns only ever contain [A-Z0-9-], so a plain copy into a JS
+    // single-quoted string literal is safe here (no escaping needed), unlike
+    // arbitrary free-text user input.
+    char buf[2200];
+    snprintf(buf, sizeof(buf),
+             "<label><input type='checkbox' name='%.30s' id='%.30s' %s> " TR_USE_MY_STATION_DATA "</label>"
+             "<script>(function(){"
+             "function apply(){"
+             "var cb=document.getElementById('%.30s');if(!cb)return;"
+             "var on=cb.checked;"
+             "var call=%s,lat=%s,lon=%s,alt=%s;"
+             "if(call){if(on)call.value='%.9s';call.disabled=on;}"
+             "if(lat){if(on)lat.value='%g';lat.disabled=on;}"
+             "if(lon){if(on)lon.value='%g';lon.disabled=on;}"
+             "if(alt){if(on)alt.value='%g';alt.disabled=on;}"
+             "}"
+             "document.addEventListener('DOMContentLoaded',function(){"
+             "var cb=document.getElementById('%.30s');if(cb){cb.addEventListener('change',apply);apply();}"
+             "});"
+             "})();</script>",
+             checkbox_name, checkbox_name, checked ? "checked" : "", checkbox_name, qcall, qlat, qlon, qalt, g_config.my_callsign,
+             (double)g_config.my_lat, (double)g_config.my_lon, (double)g_config.my_alt, checkbox_name);
+    httpd_resp_sendstr_chunk(req, buf);
 }

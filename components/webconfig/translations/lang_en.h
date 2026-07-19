@@ -34,6 +34,7 @@
 
 // ---- Sidebar menu -------------------------------------------------------
 #define TR_MENU_DASHBOARD "Dashboard"
+#define TR_MENU_STATION   "Station"
 #define TR_MENU_RADIO     "Radio/Modem"
 #define TR_MENU_VPN       "VPN (WireGuard)"
 #define TR_MENU_MQTT      "MQTT"
@@ -200,6 +201,7 @@
 #define TR_F_MQTT                                          "MQTT"
 #define TR_F_MQTT_BROKER                                   "MQTT Broker"
 #define TR_F_MY_CALLSIGN                                   "My Callsign"
+#define TR_USE_MY_STATION_DATA                             "Use My Station Data"
 #define TR_F_NAME                                          "Name"
 #define TR_F_NAT_NAPT_SHARE_DATA_TO_WIFI_CLIENTS           "NAT/NAPT (share data to WiFi clients)"
 #define TR_F_NETMASK                                       "Netmask"

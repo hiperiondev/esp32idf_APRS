@@ -55,6 +55,8 @@ void web_server_start(void) {
     reg(server, "/", HTTP_GET, page_root);
     reg(server, "/logout", HTTP_GET, page_logout);
     reg(server, "/dashboard", HTTP_GET, page_dashboard);
+    reg(server, "/station", HTTP_GET, page_station_get);
+    reg(server, "/station", HTTP_POST, page_station_post);
     reg(server, "/sidebarInfo", HTTP_GET, page_sidebar_info);
     reg(server, "/sysinfo", HTTP_GET, page_sysinfo);
     reg(server, "/sysinfo", HTTP_POST, page_sysinfo_post);

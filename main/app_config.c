@@ -49,6 +49,11 @@ void app_config_set_defaults(app_config_t *c) {
     c->title = true;
     c->cpuFreq = 240;
 
+    set_str(c->my_callsign, sizeof(c->my_callsign), "NOCALL");
+    c->my_lat = 0.0f;
+    c->my_lon = 0.0f;
+    c->my_alt = 0.0f;
+
     c->wifi_mode = 2; // AP_STA equivalent default (matches original shipping as AP)
     c->wifi_power = 20;
     for (int i = 0; i < WIFI_STA_NUM; i++) {
@@ -357,6 +362,10 @@ static bool jget_bool(cJSON *o, const char *k, bool def) {
 static cJSON *config_to_json(const app_config_t *c) {
     cJSON *d = cJSON_CreateObject();
     jadd_num(d, "cpuFreq", c->cpuFreq);
+    jadd_str(d, "myCallsign", c->my_callsign);
+    jadd_num(d, "myLAT", c->my_lat);
+    jadd_num(d, "myLON", c->my_lon);
+    jadd_num(d, "myALT", c->my_alt);
     jadd_num(d, "txTimeSlot", c->tx_timeslot);
     jadd_bool(d, "syncTime", c->synctime);
     jadd_num(d, "timeZone", c->timeZone);
@@ -404,6 +413,7 @@ static cJSON *config_to_json(const app_config_t *c) {
     jadd_num(d, "igateSSID", c->aprs_ssid);
     jadd_num(d, "igatePort", c->aprs_port);
     jadd_str(d, "igateMycall", c->aprs_mycall);
+    jadd_bool(d, "igateUseStation", c->igate_use_station);
     jadd_str(d, "igatePasscode", c->aprs_passcode);
     jadd_str(d, "igateHost", c->aprs_host);
     jadd_str(d, "igateFilter", c->aprs_filter);
@@ -454,6 +464,7 @@ static cJSON *config_to_json(const app_config_t *c) {
     jadd_bool(d, "digiTime", c->digi_timestamp);
     jadd_num(d, "digiSSID", c->digi_ssid);
     jadd_str(d, "digiMycall", c->digi_mycall);
+    jadd_bool(d, "digiUseStation", c->digi_use_station);
     jadd_num(d, "digiPath", c->digi_path);
     jadd_num(d, "digiDelay", c->digi_delay);
     jadd_num(d, "digiFilter", c->digiFilter);
@@ -497,6 +508,7 @@ static cJSON *config_to_json(const app_config_t *c) {
     jadd_bool(d, "trkTime", c->trk_timestamp);
     jadd_num(d, "trkSSID", c->trk_ssid);
     jadd_str(d, "trkMycall", c->trk_mycall);
+    jadd_bool(d, "trkUseStation", c->trk_use_station);
     jadd_num(d, "trkPath", c->trk_path);
     jadd_bool(d, "trkGPS", c->trk_gps);
     jadd_num(d, "trkLAT", c->trk_lat);
@@ -551,6 +563,7 @@ static cJSON *config_to_json(const app_config_t *c) {
     jadd_bool(d, "wxTime", c->wx_timestamp);
     jadd_num(d, "wxSSID", c->wx_ssid);
     jadd_str(d, "wxMycall", c->wx_mycall);
+    jadd_bool(d, "wxUseStation", c->wx_use_station);
     jadd_num(d, "wxPath", c->wx_path);
     jadd_bool(d, "wxGPS", c->wx_gps);
     jadd_num(d, "wxLAT", c->wx_lat);
@@ -806,6 +819,10 @@ static void config_from_json(cJSON *d, app_config_t *c) {
     *c = def;
 
     c->cpuFreq = (uint8_t)jget_num(d, "cpuFreq", def.cpuFreq);
+    set_str(c->my_callsign, sizeof(c->my_callsign), jget_str(d, "myCallsign", def.my_callsign));
+    c->my_lat = (float)jget_num(d, "myLAT", def.my_lat);
+    c->my_lon = (float)jget_num(d, "myLON", def.my_lon);
+    c->my_alt = (float)jget_num(d, "myALT", def.my_alt);
     c->tx_timeslot = (uint16_t)jget_num(d, "txTimeSlot", def.tx_timeslot);
     c->synctime = jget_bool(d, "syncTime", def.synctime);
     c->timeZone = (float)jget_num(d, "timeZone", def.timeZone);
@@ -867,6 +884,7 @@ static void config_from_json(cJSON *d, app_config_t *c) {
     c->aprs_ssid = (uint8_t)jget_num(d, "igateSSID", def.aprs_ssid);
     c->aprs_port = (uint16_t)jget_num(d, "igatePort", def.aprs_port);
     set_str(c->aprs_mycall, sizeof(c->aprs_mycall), jget_str(d, "igateMycall", def.aprs_mycall));
+    c->igate_use_station = jget_bool(d, "igateUseStation", def.igate_use_station);
     set_str(c->aprs_passcode, sizeof(c->aprs_passcode), jget_str(d, "igatePasscode", def.aprs_passcode));
     set_str(c->aprs_host, sizeof(c->aprs_host), jget_str(d, "igateHost", def.aprs_host));
     set_str(c->aprs_filter, sizeof(c->aprs_filter), jget_str(d, "igateFilter", def.aprs_filter));
@@ -925,6 +943,7 @@ static void config_from_json(cJSON *d, app_config_t *c) {
     c->digi_timestamp = jget_bool(d, "digiTime", def.digi_timestamp);
     c->digi_ssid = (uint8_t)jget_num(d, "digiSSID", def.digi_ssid);
     set_str(c->digi_mycall, sizeof(c->digi_mycall), jget_str(d, "digiMycall", def.digi_mycall));
+    c->digi_use_station = jget_bool(d, "digiUseStation", def.digi_use_station);
     c->digi_path = (uint8_t)jget_num(d, "digiPath", def.digi_path);
     c->digi_delay = (uint16_t)jget_num(d, "digiDelay", def.digi_delay);
     c->digiFilter = (uint16_t)jget_num(d, "digiFilter", def.digiFilter);
@@ -976,6 +995,7 @@ static void config_from_json(cJSON *d, app_config_t *c) {
     c->trk_timestamp = jget_bool(d, "trkTime", def.trk_timestamp);
     c->trk_ssid = (uint8_t)jget_num(d, "trkSSID", def.trk_ssid);
     set_str(c->trk_mycall, sizeof(c->trk_mycall), jget_str(d, "trkMycall", def.trk_mycall));
+    c->trk_use_station = jget_bool(d, "trkUseStation", def.trk_use_station);
     c->trk_path = (uint8_t)jget_num(d, "trkPath", def.trk_path);
     c->trk_gps = jget_bool(d, "trkGPS", def.trk_gps);
     c->trk_lat = (float)jget_num(d, "trkLAT", def.trk_lat);
@@ -1038,6 +1058,7 @@ static void config_from_json(cJSON *d, app_config_t *c) {
     c->wx_timestamp = jget_bool(d, "wxTime", def.wx_timestamp);
     c->wx_ssid = (uint8_t)jget_num(d, "wxSSID", def.wx_ssid);
     set_str(c->wx_mycall, sizeof(c->wx_mycall), jget_str(d, "wxMycall", def.wx_mycall));
+    c->wx_use_station = jget_bool(d, "wxUseStation", def.wx_use_station);
     c->wx_path = (uint8_t)jget_num(d, "wxPath", def.wx_path);
     c->wx_gps = jget_bool(d, "wxGPS", def.wx_gps);
     c->wx_lat = (float)jget_num(d, "wxLAT", def.wx_lat);
