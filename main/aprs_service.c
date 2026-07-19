@@ -751,7 +751,13 @@ void aprs_service_start(void) {
     // No afsk_poll task any more - the component runs its own RX DSP and TX
     // service tasks (see the note above serviceTickTask). Only the 1 Hz
     // housekeeping tick is ours.
-    xTaskCreate(serviceTickTask, "aprs_svc_tick", 3072, NULL, 4, NULL);
+    // sendAPRSMessageRetry() walks the same TX chain as the beacon tasks
+    // (aprs_service_send_tnc2 -> modem_send_tnc2 -> modem_build_frame_tnc2 ->
+    // ax25_encode/hdlcFrame), which stacks several ~300-450 byte buffers per
+    // level. Give it the same stack budget as those tasks (see
+    // BEACON_TASK_STACK_BYTES in beacon.c) instead of the old 3072, which was
+    // sized as if this task only did housekeeping.
+    xTaskCreate(serviceTickTask, "aprs_svc_tick", 10240, NULL, 4, NULL);
 
     ESP_LOGI(TAG, "APRS service started (digi=%d igate=%d msg=%d)", g_config.digi_en, g_config.igate_en, g_config.msg_enable);
 }
