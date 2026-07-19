@@ -100,6 +100,9 @@ void web_server_start(void) {
     reg(server, "/mqtt", HTTP_POST, page_mqtt_post);
     reg(server, "/msg", HTTP_GET, page_msg_get);
     reg(server, "/msg", HTTP_POST, page_msg_post);
+    reg(server, "/msgchat", HTTP_GET, page_msgchat_get);
+    reg(server, "/msgchat", HTTP_POST, page_msgchat_post);
+    reg(server, "/msgchat/list", HTTP_GET, page_msgchat_list);
     reg(server, "/gnss", HTTP_GET, page_gnss_get);
     reg(server, "/gnss", HTTP_POST, page_gnss_post);
     reg(server, "/mod", HTTP_GET, page_mod_get);

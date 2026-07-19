@@ -76,6 +76,12 @@ esp_err_t page_mqtt_get(httpd_req_t *req);
 esp_err_t page_mqtt_post(httpd_req_t *req);
 esp_err_t page_msg_get(httpd_req_t *req);
 esp_err_t page_msg_post(httpd_req_t *req);
+
+// -- Snd/Rcv Msg (chat-style message inbox/compose, gated by ENABLE_MSG_CHAT) --
+esp_err_t page_msgchat_get(httpd_req_t *req);  // GET  /msgchat
+esp_err_t page_msgchat_post(httpd_req_t *req); // POST /msgchat (send; JSON {"ok":true|false,"error":...})
+esp_err_t page_msgchat_list(httpd_req_t *req); // GET  /msgchat/list (JSON message history, polled)
+
 esp_err_t page_gnss_get(httpd_req_t *req);
 esp_err_t page_gnss_post(httpd_req_t *req);
 

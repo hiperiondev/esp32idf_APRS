@@ -34,6 +34,7 @@
 
 // ---- Sidebar menu -------------------------------------------------------
 #define TR_MENU_DASHBOARD "Dashboard"
+#define TR_MENU_MSGCHAT   "Snd/Rcv Msg"
 #define TR_MENU_STATION   "Station"
 #define TR_MENU_RADIO     "Radio/Modem"
 #define TR_MENU_VPN       "VPN (WireGuard)"
@@ -398,6 +399,24 @@
 #define TR_NOTE_TLM_TRACKER                                                                                                                                    \
     "Telemetry (EQNS/PARM/UNIT) for Tracker beacons is configured on the "                                                                                     \
     "<a href='/tlm'>Telemetry</a> page."
+
+// ---- page_msgchat.c ("Snd/Rcv Msg") --------------------------------------
+#define TR_F_SND_RCV_MSG           "Snd/Rcv Msg"
+#define TR_MSGCHAT_MY_STATION      "My Station:"
+#define TR_MSGCHAT_DISABLED_NOTE   "APRS Messaging is disabled or no station callsign is configured. Enable it and set a callsign on the Message page first."
+#define TR_MSGCHAT_LOADING         "Loading messages..."
+#define TR_MSGCHAT_EMPTY           "No messages yet."
+#define TR_MSGCHAT_TO              "To (callsign):"
+#define TR_MSGCHAT_TO_PLACEHOLDER  "N0CALL-9"
+#define TR_MSGCHAT_TEXT            "Message:"
+#define TR_MSGCHAT_TEXT_PLACEHOLDER "Type a message..."
+#define TR_MSGCHAT_SEND            "Send"
+#define TR_MSGCHAT_YOU             "You"
+#define TR_MSGCHAT_ERR_EMPTY       "Enter a destination callsign and a message."
+#define TR_MSGCHAT_ERR_DISABLED    "APRS Messaging is disabled on the Message page."
+#define TR_MSGCHAT_ERR_NO_MYCALL   "No station callsign configured."
+#define TR_MSGCHAT_SENT_OK         "Sent."
+#define TR_MSGCHAT_SENT_FAIL       "Send failed."
 
 // ---- page_mod.c ---------------------------------------------------------
 #define TR_MOD_NOTE "All pins are generic/configurable (-1 = unused). Set them to match your board."

@@ -57,6 +57,7 @@
 /////// MODULES //////
 // Disabled modules already not implemented
 #define ENABLE_DASHBOARD
+#define ENABLE_MSG_CHAT
 #define ENABLE_STATION
 #define ENABLE_RADIO_MODEM
 //#define ENABLE_RF_MODULE

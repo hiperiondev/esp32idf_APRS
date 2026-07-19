@@ -34,6 +34,7 @@
 
 // ---- Sidebar menu -------------------------------------------------------
 #define TR_MENU_DASHBOARD "Panel"
+#define TR_MENU_MSGCHAT   "Env/Rec Msj"
 #define TR_MENU_STATION   "Estación"
 #define TR_MENU_RADIO     "Radio/Módem"
 #define TR_MENU_VPN       "VPN (WireGuard)"
@@ -399,6 +400,25 @@
 #define TR_NOTE_TLM_TRACKER                                                                                                                                    \
     "La telemetría (EQNS/PARM/UNIT) para las balizas de Tracker se configura en la "                                                                           \
     "página <a href='/tlm'>Telemetría</a>."
+
+// ---- page_mod.c ---------------------------------------------------------
+// ---- page_msgchat.c ("Snd/Rcv Msg") --------------------------------------
+#define TR_F_SND_RCV_MSG           "Env/Rec Msj"
+#define TR_MSGCHAT_MY_STATION      "Mi Estación:"
+#define TR_MSGCHAT_DISABLED_NOTE   "La Mensajería APRS está deshabilitada o no hay un indicativo configurado. Habilítela y configure un indicativo en la página Message primero."
+#define TR_MSGCHAT_LOADING         "Cargando mensajes..."
+#define TR_MSGCHAT_EMPTY           "Aún no hay mensajes."
+#define TR_MSGCHAT_TO              "Para (indicativo):"
+#define TR_MSGCHAT_TO_PLACEHOLDER  "N0CALL-9"
+#define TR_MSGCHAT_TEXT            "Mensaje:"
+#define TR_MSGCHAT_TEXT_PLACEHOLDER "Escriba un mensaje..."
+#define TR_MSGCHAT_SEND            "Enviar"
+#define TR_MSGCHAT_YOU             "Tú"
+#define TR_MSGCHAT_ERR_EMPTY       "Ingrese un indicativo de destino y un mensaje."
+#define TR_MSGCHAT_ERR_DISABLED    "La Mensajería APRS está deshabilitada en la página Message."
+#define TR_MSGCHAT_ERR_NO_MYCALL   "No hay un indicativo de estación configurado."
+#define TR_MSGCHAT_SENT_OK         "Enviado."
+#define TR_MSGCHAT_SENT_FAIL       "Error al enviar."
 
 // ---- page_mod.c ---------------------------------------------------------
 #define TR_MOD_NOTE "Todos los pines son genéricos/configurables (-1 = sin usar). Ajústelos según su placa."

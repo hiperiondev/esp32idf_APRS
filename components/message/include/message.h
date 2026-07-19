@@ -31,6 +31,16 @@
 #define MSG_QUEUE_SIZE 20
 #define MSG_TEXT_MAX   200
 
+// Maximum APRS message TEXT length per the de-facto protocol convention used
+// by UI-View/Xastir/APRSIS32 and the wider APRS ecosystem: with a 9-char
+// fixed-width addressee field and a "{NN" message-number suffix, capping the
+// text itself at 67 chars keeps the whole ":ADDRESSEE:text{id" information
+// field inside the classic 256-byte TNC2 packet budget. MSG_TEXT_MAX above is
+// the (larger) in-memory storage limit for the RX/TX queue, not the on-air
+// protocol limit - use this constant wherever user-entered message text needs
+// to be validated/truncated before it is transmitted.
+#define APRS_MSG_TEXT_STD_MAX 67
+
 typedef struct {
     time_t time;
     int8_t ack; // >0: retries remaining, -1: RX pending, -2: acked/no-retry
@@ -95,6 +105,19 @@ void handleIncomingAPRS(const char *line);
 
 int pkgMsg_Find(const char *call, uint16_t msgID, bool rxtx);
 msg_entry_t getMsgList(int idx);
+
+/**
+ * @brief Dump the in-memory message queue (both RX and TX entries) as a JSON
+ * array, oldest first, for the "Snd/Rcv Msg" web admin chat page. Each
+ * element is
+ * {"time":<unix seconds>,"dir":"rx"|"tx","call":"<other station>","text":"<message text>","status":"rx"|"pending"|"sent"}
+ * - "status" is only meaningful for "tx" entries ("pending": still awaiting
+ * ack/retries remain, "sent": acked or no-retry) and is always "rx" for
+ * received entries. `out` is always NUL-terminated; the return value is the
+ * number of bytes written not counting that trailing NUL (same convention as
+ * lastheard_dump_json()/trafficlog_dump_json()).
+ */
+size_t message_dump_json(char *out, size_t out_size);
 
 /**
  * @brief Register the function used to actually transmit a built TNC2 packet.

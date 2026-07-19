@@ -17,6 +17,7 @@ idf_component_register(
         "pages/page_vpn.c"
         "pages/page_mqtt.c"
         "pages/page_msg.c"
+        "pages/page_msgchat.c"
         "pages/page_gnss.c"
         "pages/page_mod.c"
         "pages/page_symbol.c"

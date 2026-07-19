@@ -34,6 +34,7 @@
 
 // ---- Sidebar menu -------------------------------------------------------
 #define TR_MENU_DASHBOARD "Pannello"
+#define TR_MENU_MSGCHAT   "Inv/Ric Msg"
 #define TR_MENU_STATION   "Stazione"
 #define TR_MENU_RADIO     "Radio/Modem"
 #define TR_MENU_VPN       "VPN (WireGuard)"
@@ -398,6 +399,25 @@
 #define TR_NOTE_TLM_TRACKER                                                                                                                                    \
     "La telemetria (EQNS/PARM/UNIT) per i beacon Tracker si configura nella pagina "                                                                           \
     "<a href='/tlm'>Telemetria</a>."
+
+// ---- page_mod.c ---------------------------------------------------------
+// ---- page_msgchat.c ("Snd/Rcv Msg") --------------------------------------
+#define TR_F_SND_RCV_MSG           "Inv/Ric Msg"
+#define TR_MSGCHAT_MY_STATION      "La Mia Stazione:"
+#define TR_MSGCHAT_DISABLED_NOTE   "La Messaggistica APRS è disabilitata o non è configurato alcun nominativo. Abilitala e imposta un nominativo nella pagina Message."
+#define TR_MSGCHAT_LOADING         "Caricamento messaggi..."
+#define TR_MSGCHAT_EMPTY           "Ancora nessun messaggio."
+#define TR_MSGCHAT_TO              "A (nominativo):"
+#define TR_MSGCHAT_TO_PLACEHOLDER  "N0CALL-9"
+#define TR_MSGCHAT_TEXT            "Messaggio:"
+#define TR_MSGCHAT_TEXT_PLACEHOLDER "Scrivi un messaggio..."
+#define TR_MSGCHAT_SEND            "Invia"
+#define TR_MSGCHAT_YOU             "Tu"
+#define TR_MSGCHAT_ERR_EMPTY       "Inserisci un nominativo di destinazione e un messaggio."
+#define TR_MSGCHAT_ERR_DISABLED    "La Messaggistica APRS è disabilitata nella pagina Message."
+#define TR_MSGCHAT_ERR_NO_MYCALL   "Nessun nominativo di stazione configurato."
+#define TR_MSGCHAT_SENT_OK         "Inviato."
+#define TR_MSGCHAT_SENT_FAIL       "Invio non riuscito."
 
 // ---- page_mod.c ---------------------------------------------------------
 #define TR_MOD_NOTE "Tutti i pin sono generici/configurabili (-1 = non usato). Impostali in base alla tua scheda."

@@ -341,6 +341,81 @@ static int pkgMsgUpdate(const char *call, const char *text, uint16_t msgID, int8
     return i;
 }
 
+// Escapes ", \ and control chars for safe embedding in a JSON string literal.
+// Mirrors the same small helper duplicated in lastheard.c/trafficlog.c.
+static size_t json_escape(const char *src, char *dst, size_t dst_size) {
+    size_t di = 0;
+    for (const char *p = src; *p && di + 2 < dst_size; p++) {
+        unsigned char c = (unsigned char)*p;
+        if (c == '"' || c == '\\') {
+            dst[di++] = '\\';
+            dst[di++] = (char)c;
+        } else if (c < 0x20) {
+            continue;
+        } else {
+            dst[di++] = (char)c;
+        }
+    }
+    dst[di] = 0;
+    return di;
+}
+
+size_t message_dump_json(char *out, size_t out_size) {
+    if (out == NULL || out_size < 4)
+        return 0;
+
+    // Sort by time, oldest first, so the chat page can just append in
+    // received order. MSG_QUEUE_SIZE is small (20), so a plain selection
+    // sort over an index array is more than fast enough here and avoids
+    // touching s_queue's own layout.
+    int order[MSG_QUEUE_SIZE];
+    int n_used = 0;
+    for (int i = 0; i < MSG_QUEUE_SIZE; i++) {
+        if (s_queue[i].used)
+            order[n_used++] = i;
+    }
+    for (int a = 0; a < n_used - 1; a++) {
+        int best = a;
+        for (int b = a + 1; b < n_used; b++) {
+            if (s_queue[order[b]].time < s_queue[order[best]].time)
+                best = b;
+        }
+        if (best != a) {
+            int tmp = order[a];
+            order[a] = order[best];
+            order[best] = tmp;
+        }
+    }
+
+    size_t pos = 0;
+    out[pos++] = '[';
+    bool first = true;
+
+    for (int k = 0; k < n_used && pos + 4 < out_size; k++) {
+        msg_entry_t *e = &s_queue[order[k]];
+
+        char call_esc[sizeof(e->callsign) * 2];
+        char text_esc[MSG_TEXT_MAX * 2];
+        json_escape(e->callsign, call_esc, sizeof(call_esc));
+        json_escape(e->text, text_esc, sizeof(text_esc));
+
+        const char *status = e->rxtx ? "rx" : (e->ack > 0 ? "pending" : "sent");
+
+        int len = snprintf(out + pos, out_size - pos, "%s{\"time\":%lld,\"dir\":\"%s\",\"call\":\"%s\",\"text\":\"%s\",\"status\":\"%s\"}", first ? "" : ",",
+                            (long long)e->time, e->rxtx ? "rx" : "tx", call_esc, text_esc, status);
+        if (len < 0)
+            break;
+        if (pos + (size_t)len + 2 >= out_size)
+            break; // would overflow on the closing ']' - stop, keep what we have
+        pos += (size_t)len;
+        first = false;
+    }
+
+    out[pos++] = ']';
+    out[pos] = 0;
+    return pos;
+}
+
 // g_config.msg_path is a BITMASK over g_config.path[0..3] (TR_F_PATH_BITMASK
 // on the Message webconfig page) - see beacon.c's buildPathSuffix() for the
 // full rationale. Kept in sync with that implementation.
