@@ -28,7 +28,7 @@
  * override it from the build system, e.g. idf.py build -DLANGUAGE=LANG_ES, or
  * `set(LANGUAGE LANG_ES)` / target_compile_definitions in CMakeLists.txt) and
  * rebuild. See translations/translations.h for how the selection works and
- * translations/lang_en.h / translations/lang_es.h for the string tables.
+ * translations/lang_en.h / translations/lang_es.h / translations/lang_it.h for the string tables.
  */
 
 #ifndef APP_CONFIG_H
@@ -43,16 +43,15 @@
 // Exactly one language is built into the firmware image at a time - there is
 // no runtime language switch and no other language's strings are compiled in.
 // To change the language, change LANGUAGE below to one of the LANG_* codes
-// (or override it from the build system, e.g. idf.py build -DLANGUAGE=LANG_ES,
-// or `set(LANGUAGE LANG_ES)` / target_compile_definitions in CMakeLists.txt)
 // and rebuild. See translations/translations.h for how the selection works
-// and translations/lang_en.h / translations/lang_es.h for the string tables.
+// and translations/lang_en.h / translations/lang_es.h / translations/lang_it.h for the string tables.
 // ---------------------------------------------------------------------------
 #define LANG_EN 0 // English
 #define LANG_ES 1 // Español (Spanish)
+#define LANG_IT 2 // Italiano (Italian)
 
 #ifndef LANGUAGE
-#define LANGUAGE LANG_EN
+#define LANGUAGE LANG_IT
 #endif
 
 /////// MODULES //////

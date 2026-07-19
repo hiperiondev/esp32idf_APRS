@@ -97,7 +97,7 @@ Everything is plain C. There is no Arduino core, no `String`, no PlatformIO. The
 | SNTP time sync (3 hosts) | ✅ | clock always kept in UTC |
 | CPU frequency control (80/160/240 MHz) | ✅ | `esp_pm_configure()` |
 | Wi-Fi AP / STA / AP+STA, scan, TX power | ✅ | 5 STA slots (first enabled one is used) |
-| Localization (EN / ES) | ✅ | compile-time, one language per image |
+| Localization (EN / ES / IT) | ✅ | compile-time, one language per image |
 | OTA update | ❌ | partition table is single-`factory`; About page says so |
 | LoRa / SX127x-SX128x RF module | ❌ | UI + config only, `ENABLE_RF_MODULE` is commented out |
 | WireGuard VPN, MQTT, GNSS, weather, telemetry, sensors | ❌ | pages/config exist; modules disabled in `app_config.h` |
@@ -359,7 +359,7 @@ workspace-APRS/esp32_APRS_igate/
 │       ├── web_server.c            ← route table
 │       ├── web_common.c            ← auth, form parsing, HTML shell, field helpers
 │       ├── pages/*.c               ← one file per admin page
-│       └── translations/           ← translations.h + lang_en.h + lang_es.h
+│       └── translations/           ← translations.h + lang_en.h + lang_es.h + lang_it.h
 │
 └── managed_components/joltwallet__littlefs/   (fetched by the component manager)
 ```
@@ -619,10 +619,11 @@ idf.py build
 idf.py -p /dev/ttyUSB0 flash monitor
 ```
 
-Build in Spanish instead of English:
+Build in Spanish or Italian instead of English:
 
 ```bash
 idf.py build -DLANGUAGE=LANG_ES
+idf.py build -DLANGUAGE=LANG_IT
 ```
 
 > `espressif/esp-dsp` is intentionally **not** a dependency: it was pulled in only by the old `esp32_IDF_libAPRS` component. The current modem implements its own filters and nothing in the project calls `dsps_*`. If you're upgrading from an older checkout, delete `dependencies.lock` and let `idf.py` regenerate it.
@@ -832,7 +833,7 @@ Two distinctions the old diagnostics drew are **gone by design**: there's no sof
 
 **One language per firmware image.** No runtime switch; no other language's strings are compiled in.
 
-* `app_config.h` defines `LANG_EN 0`, `LANG_ES 1` and the active `LANGUAGE` (default `LANG_EN`).
+* `app_config.h` defines `LANG_EN 0`, `LANG_ES 1`, `LANG_IT 2` and the active `LANGUAGE` (default `LANG_EN`).
 * `translations/translations.h` is the *only* place that decides which `lang_xx.h` gets included.
 * Every user-visible string goes through a `TR_xxx` macro.
 

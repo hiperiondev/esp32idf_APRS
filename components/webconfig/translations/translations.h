@@ -52,8 +52,10 @@
 #include "lang_en.h"
 #elif LANGUAGE == LANG_ES
 #include "lang_es.h"
+#elif LANGUAGE == LANG_IT
+#include "lang_it.h"
 #else
-#error "translations.h: unknown LANGUAGE selected. Define LANGUAGE as LANG_EN or LANG_ES in app_config.h (or add a new lang_xx.h + branch here)."
+#error "translations.h: unknown LANGUAGE selected. Define LANGUAGE as LANG_EN, LANG_ES or LANG_IT in app_config.h (or add a new lang_xx.h + branch here)."
 #endif
 
 #endif // TRANSLATIONS_H
