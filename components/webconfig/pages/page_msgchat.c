@@ -121,7 +121,7 @@ esp_err_t page_msgchat_get(httpd_req_t *req) {
         "for(var i=0;i<list.length;i++){"
         "var m=list[i];"
         "var cls='chat-bubble '+(m.dir==='rx'?'rx':'tx')+(m.status==='pending'?' pending':'');"
-        "var who=m.dir==='rx'?msgEsc(m.call):'" TR_MSGCHAT_YOU "';"
+        "var who=m.dir==='rx'?msgEsc(m.call):('" TR_MSGCHAT_YOU " \\u2192 '+msgEsc(m.call));"
         "html+=\"<div class='\"+cls+\"'><span class='chat-meta'>\"+who+' &middot; '+msgChatFmtTime(m.time)+\"</span>\"+msgEsc(m.text)+'</div>';"
         "}"
         "box.innerHTML=html;"

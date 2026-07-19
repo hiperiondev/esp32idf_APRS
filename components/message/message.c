@@ -442,16 +442,39 @@ static void buildPathSuffix(char *out, size_t outMax) {
     }
 }
 
-static void txPacket(const char *packet, size_t len) {
-    uint8_t channels = 0;
-    if (g_config.msg_rf)
-        channels |= MSG_CHANNEL_RF;
-    if (g_config.msg_inet)
-        channels |= MSG_CHANNEL_INET;
-    if (s_txHandler)
-        s_txHandler(packet, len, channels);
-    else
-        ESP_LOGW(TAG, "No TX handler registered, dropping: %.*s", (int)len, packet);
+// Builds and sends one packet per enabled channel from a shared "info"
+// field (":ADDRESSEE:text{id" or ":ADDRESSEE:ackNNN"), rather than one
+// packet reused verbatim on both channels.
+//
+// The RF leg gets the operator-configured digipeater path
+// (g_config.msg_path, via buildPathSuffix()). The APRS-IS leg does NOT:
+// WIDEn-N aliases are RF-only and meaningless (and misleading to other
+// IS clients/servers) once a packet is injected straight into APRS-IS.
+// Per APRS-IS convention, locally-originated traffic sent to the IS
+// network carries a "TCPIP*" q-construct tag in its path instead of an
+// RF unproto path - see aprsc/javAPRSSrvr behavior and the APRS-IS
+// server spec. Previously both legs sent the exact same RF-path packet,
+// so every outgoing/retried message and ack showed up on APRS-IS still
+// wearing e.g. "WIDE1-1,WIDE2-1".
+static void txPacket(const char *myCall, const char *info) {
+    if (!s_txHandler) {
+        ESP_LOGW(TAG, "No TX handler registered, dropping: %s", info);
+        return;
+    }
+    if (g_config.msg_rf) {
+        char path[80];
+        buildPathSuffix(path, sizeof(path));
+        char packet[400];
+        int len = snprintf(packet, sizeof(packet), "%s>APE32L%s:%s", myCall, path, info);
+        if (len > 0)
+            s_txHandler(packet, (size_t)len, MSG_CHANNEL_RF);
+    }
+    if (g_config.msg_inet) {
+        char packet[400];
+        int len = snprintf(packet, sizeof(packet), "%s>APE32L,TCPIP*:%s", myCall, info);
+        if (len > 0)
+            s_txHandler(packet, (size_t)len, MSG_CHANNEL_INET);
+    }
 }
 
 void sendAPRSMessage(const char *toCall, const char *text, bool encrypt) {
@@ -487,14 +510,11 @@ void sendAPRSMessage(const char *toCall, const char *text, bool encrypt) {
         payload[sizeof(payload) - 1] = 0;
     }
 
-    char path[80];
-    buildPathSuffix(path, sizeof(path));
+    char info[320];
+    snprintf(info, sizeof(info), ":%s:%s{%u", toCallFixed, payload, (unsigned)s_msgID);
 
-    char packet[400];
-    int len = snprintf(packet, sizeof(packet), "%s>APE32L%s::%s:%s{%u", myCallUp, path, toCallFixed, payload, (unsigned)s_msgID);
-
-    txPacket(packet, len);
-    ESP_LOGD(TAG, "Send APRS message to %s msgID %u: %s", toCall, (unsigned)s_msgID, packet);
+    txPacket(myCallUp, info);
+    ESP_LOGD(TAG, "Send APRS message to %s msgID %u: %s", toCall, (unsigned)s_msgID, info);
 
     int8_t ackVal = (g_config.msg_retry == 0) ? -2 : (int8_t)g_config.msg_retry;
     pkgMsgUpdate(toCall, text, s_msgID, ackVal, false);
@@ -507,12 +527,9 @@ void sendAPRSAck(const char *toCall, const char *msgNo) {
     size_t n = strlen(toCall);
     memcpy(toCallFixed, toCall, n > 9 ? 9 : n);
 
-    char path[80];
-    buildPathSuffix(path, sizeof(path));
-
-    char packet[160];
-    int len = snprintf(packet, sizeof(packet), "%s>APE32L%s::%s:ack%s", g_config.msg_mycall, path, toCallFixed, msgNo);
-    txPacket(packet, len);
+    char info[160];
+    snprintf(info, sizeof(info), ":%s:ack%s", toCallFixed, msgNo);
+    txPacket(g_config.msg_mycall, info);
     ESP_LOGD(TAG, "Send APRS ACK to %s msgNo %s", toCall, msgNo);
 }
 
@@ -546,12 +563,9 @@ void sendAPRSMessageRetry(void) {
             payload[sizeof(payload) - 1] = 0;
         }
 
-        char path[80];
-        buildPathSuffix(path, sizeof(path));
-
-        char packet[400];
-        int len = snprintf(packet, sizeof(packet), "%s>APE32L%s::%s:%s{%u", g_config.msg_mycall, path, toCallFixed, payload, (unsigned)s_queue[i].msgID);
-        txPacket(packet, len);
+        char info[320];
+        snprintf(info, sizeof(info), ":%s:%s{%u", toCallFixed, payload, (unsigned)s_queue[i].msgID);
+        txPacket(g_config.msg_mycall, info);
         ESP_LOGD(TAG, "Retry APRS message[%d] to %s msgID %u ack left %d", i, s_queue[i].callsign, (unsigned)s_queue[i].msgID, s_queue[i].ack);
     }
 }
