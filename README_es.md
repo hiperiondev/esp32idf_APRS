@@ -38,6 +38,28 @@
   - [`message` — mensajería APRS](#message--mensajería-aprs)
   - [`lastheard` / `trafficlog` — alimentación del dashboard](#lastheard--trafficlog--alimentación-del-dashboard)
   - [`webconfig` — administración web](#webconfig--administración-web)
+- [Sensores](#sensores)
+  - [Por qué un framework de drivers en vez de una lista fija](#por-qué-un-framework-de-drivers-en-vez-de-una-lista-fija)
+  - [Las dos familias de datos](#las-dos-familias-de-datos)
+  - [Anatomía de un driver (`sensor_local_driver_t`)](#anatomía-de-un-driver-sensor_local_driver_t)
+  - [El registro: cómo se encuentra y se llama a un driver](#el-registro-cómo-se-encuentra-y-se-llama-a-un-driver)
+  - [Flujo de datos de punta a punta, del sensor al APRS](#flujo-de-datos-de-punta-a-punta-del-sensor-al-aprs)
+  - [Los dos drivers de ejemplo incluidos](#los-dos-drivers-de-ejemplo-incluidos)
+  - [Añadir un sensor nuevo, paso a paso](#añadir-un-sensor-nuevo-paso-a-paso)
+    - [1. Decida qué produce su driver](#1-decida-qué-produce-su-driver)
+    - [2. Copie un esqueleto y renómbrelo](#2-copie-un-esqueleto-y-renómbrelo)
+    - [3. Complete `init()`](#3-complete-init)
+    - [4. Complete `save()`](#4-complete-save)
+    - [5. Declare el descriptor y auto-regístrelo](#5-declare-el-descriptor-y-auto-regístrelo)
+    - [6. Compile — nada más que conectar](#6-compile--nada-más-que-conectar)
+    - [7. Mapéelo en la página Weather](#7-mapéelo-en-la-página-weather)
+    - [8. Ejemplo trabajado: un BME280 I2C real](#8-ejemplo-trabajado-un-bme280-i2c-real)
+  - [Varias instancias del mismo tipo de sensor](#varias-instancias-del-mismo-tipo-de-sensor)
+  - [Manejo de errores y fallo del driver](#manejo-de-errores-y-fallo-del-driver)
+  - [Seguridad entre tareas (thread safety)](#seguridad-entre-tareas-thread-safety)
+  - [Añadir un tipo (kind) de sensor completamente nuevo](#añadir-un-tipo-kind-de-sensor-completamente-nuevo)
+  - [La página legada `/sensor` — no es lo mismo](#la-página-legada-sensor--no-es-lo-mismo)
+  - [Resumen de referencia de Sensores](#resumen-de-referencia-de-sensores)
 - [Compilación y grabación](#compilación-y-grabación)
 - [Primer arranque y configuración](#primer-arranque-y-configuración)
 - [Referencia de la administración web](#referencia-de-la-administración-web)
@@ -100,7 +122,11 @@ Todo es C puro. No hay núcleo de Arduino, ni `String`, ni PlatformIO. Toda la c
 | Localización (EN / ES / IT) | ✅ | en tiempo de compilación, un idioma por imagen |
 | Actualización OTA | ✅ | página web About / Firmware, ranuras `ota_0`/`ota_1`, rollback automático si falla el arranque |
 | Módulo RF LoRa / SX127x-SX128x | ❌ | solo UI + configuración, `ENABLE_RF_MODULE` está comentado |
-| VPN WireGuard, MQTT, GNSS, meteorología, telemetría, sensores | ❌ | las páginas/configuración existen; los módulos están deshabilitados en `app_config.h` |
+| VPN WireGuard, MQTT, GNSS | ❌ | las páginas/configuración existen; los módulos están deshabilitados en `app_config.h` |
+| Informe meteorológico APRS de la propia estación | ✅ | `weather.c`, refresco de sensores a 1 Hz, promediado opcional por campo, baliza WX real en el aire (RF y/o APRS-IS) — ver [Sensores](#sensores) |
+| Framework de drivers de sensores locales (`sensors_local`) | ✅ | registro dinámico en tiempo de ejecución, drivers auto-registrados, alimenta el selector de canal de la página Weather — ver [Sensores](#sensores) |
+| Codificación/baliza de Telemetría APRS en el aire | 🟡 | `sensors_local` ya puede recolectar valores de canales analógicos/digitales en `weather_telemetry_data_t`; todavía no existe un codificador ni una tarea de baliza `T#nnn`, por lo que la página Telemetría es solo configuración — ver [Sensores](#sensores) |
+| Página legada por-slot `/sensor` (`g_config.sensor[]`) | ❌ | campos de configuración conservados solo por compatibilidad; nada en el firmware los lee — no confundir con el framework de drivers `sensors_local`, ver [Sensores](#sensores) |
 | Bluetooth, PPP/GSM, pantalla OLED, Modbus | ❌ | campos de configuración conservados solo por compatibilidad |
 
 Leyenda: ✅ implementado · 🟡 parcial · ❌ no implementado (solo andamiaje)
@@ -335,7 +361,9 @@ workspace-APRS/esp32_APRS_igate/
 │   ├── app_config.c/.h             ← app_config_t, valores de fábrica, carga/guardado JSON
 │   ├── storage.c                   ← montaje/formateo/uso de LittleFS
 │   ├── aprs_service.c/.h           ← el pegamento: dispatch de RX, helper de TX, config del módem, stats, loop test
+│   ├── aprs_filter.c/.h            ← clasificador de tipo de payload TNC2 (mensaje/estado/telemetría/clima/…)
 │   ├── beacon.c/.h                 ← 3 tareas de beacon independientes (trk / igate / digi)
+│   ├── weather.c/.h                ← informe meteorológico APRS de la propia estación: refresco vía sensors_local + baliza WX (ver Sensores)
 │   ├── net_state.c/.h              ← flag "¿realmente tenemos internet?"
 │   ├── time_sync.c/.h              ← SNTP (siempre UTC)
 │   └── cpu_freq.c/.h               ← esp_pm_configure() desde la página System
@@ -355,10 +383,18 @@ workspace-APRS/esp32_APRS_igate/
 │   ├── message/        ← mensajería APRS, ack/reintentos, AES-128-CBC + base64
 │   ├── lastheard/      ← anillo en RAM de estaciones escuchadas → JSON del dashboard
 │   ├── trafficlog/     ← anillo en RAM de líneas de tráfico → JSON del dashboard (long-poll por seq)
+│   ├── weather_telemetry/  ← solo structs a nivel de protocolo: weather_telemetry_data_t, aprs_weather_report_t,
+│   │                          aprs_telemetry_report_t (definiciones de campos APRS101 WX + Telemetría, sin lógica)
+│   ├── sensors_local/      ← EL framework de drivers de sensores (ver Sensores)
+│   │   ├── include/sensors_local.h        ← API pública: registrar / desregistrar / save / recorrer el registro
+│   │   ├── sensors_local.c                ← el registro dinámico en sí
+│   │   └── drivers/*.c                    ← un archivo por driver de sensor, auto-compilado + auto-registrado
+│   │       ├── sensor_local_weather_example.c    ← esqueleto WEATHER con datos aleatorios para copiar
+│   │       └── sensor_local_telemetry_example.c  ← esqueleto TELEMETRY con datos aleatorios para copiar
 │   └── webconfig/      ← administración con esp_http_server
 │       ├── web_server.c            ← tabla de rutas
 │       ├── web_common.c            ← auth, parseo de formularios, esqueleto HTML, helpers de campos
-│       ├── pages/*.c               ← un archivo por página de administración
+│       ├── pages/*.c               ← un archivo por página de administración (incl. page_wx.c, page_tlm.c, page_sensor.c)
 │       └── translations/           ← translations.h + lang_en.h + lang_es.h + lang_it.h
 │
 └── managed_components/joltwallet__littlefs/   (traído por el gestor de componentes)
@@ -596,6 +632,300 @@ Ambos son thread-safe y se pueden llamar desde cualquier tarea.
 ### `webconfig` — administración web
 
 `esp_http_server`, 64 handlers de URI, coincidencia de URI con comodines, 8 KB de stack por handler, purga LRU. **Autenticación HTTP Basic** contra `g_config.http_username` / `http_password` en cada página. El HTML se emite mediante pequeños helpers por campo (`web_field_text`, `web_field_int`, `web_field_checkbox`, `web_select_*`, `web_field_symbol`, …) en lugar de un `snprintf` gigante — deliberadamente, para evitar `-Werror=format-truncation`.
+
+---
+
+## Sensores
+
+Esta sección cubre el componente **`sensors_local`**: el framework en tiempo de ejecución que permite que sensores de hardware reales (o simulados) alimenten el Informe Meteorológico APRS de la propia estación y, en el futuro, el subsistema de Telemetría, sin que el núcleo necesite jamás una lista fija de "los sensores que soporta esta build". Si llegó aquí para conectar un BME280, un DS18B20, un ADS1115, una sonda de humedad de suelo, un divisor de voltaje de batería, o cualquier otra cosa a este firmware, esta es la sección a leer — explica exactamente cómo funciona el mecanismo y recorre paso a paso cómo agregar un driver nuevo de principio a fin.
+
+### Por qué un framework de drivers en vez de una lista fija
+
+Firmwares APRS anteriores de este linaje (y la página legada `/sensor` que todavía se incluye aquí, ver [más abajo](#la-página-legada-sensor--no-es-lo-mismo)) tomaban el enfoque opuesto: un arreglo de tamaño fijo de "slots de sensor" en `g_config`, cada uno descrito por un `type`/`port`/`address` numérico que algún `switch` central debía interpretar. Cada sensor nuevo implicaba editar ese switch central, recompilar, y esperar que los IDs numéricos no chocaran con los de otra build.
+
+`sensors_local` invierte esto:
+
+* El núcleo (`sensors_local.c`) no sabe **nada** sobre ningún sensor específico. Solo sabe cómo mantener una lista de structs "driver" opacos y llamar a un puñado de punteros a función sobre ellos.
+* Cada sensor real vive en su **propio archivo `.c`** bajo `components/sensors_local/drivers/`, y se agrega a la lista **automáticamente al arrancar**, incluso antes de que `app_main()` corra, usando un atributo constructor de C escondido detrás de la macro `SENSORS_LOCAL_DRIVER_AUTOREGISTER`.
+* El sistema de build (`components/sensors_local/CMakeLists.txt`) compila **todos** los archivos `.c` que encuentra en `drivers/` con un `file(GLOB …)` — no hay ninguna línea por driver que agregar a ningún `CMakeLists.txt`, ni ninguna entrada por driver que agregar a ningún header.
+
+El resultado práctico: **agregar un sensor es "soltar un archivo nuevo en `drivers/`, recompilar"** — nada en `sensors_local.c`, `weather.c`, `sensors_local.h`, ni ningún `CMakeLists.txt` necesita cambiar para un driver nuevo ordinario.
+
+### Las dos familias de datos
+
+Un driver no devuelve un flujo de bytes crudo; llena **campos a nivel de aplicación ya agrupados por tipo de payload APRS**, definidos en el componente separado `weather_telemetry` (`weather_telemetry.h`, una transcripción directa del spec APRS101 más los addenda 1.1/1.2):
+
+| Familia | Bit (`sensor_local_data_kind_t`) | Struct destino | Consumido hoy por |
+|---|---|---|---|
+| **Weather** | `SENSOR_LOCAL_DATA_WEATHER` (`1u << 0`) | `aprs_weather_report_t` (viento, temperatura, humedad, presión, lluvia ×3, nieve, luminosidad, altura de inundación ×2, …) | `weather.c` → baliza APRS WX real en el aire |
+| **Telemetry** | `SENSOR_LOCAL_DATA_TELEMETRY` (`1u << 1`) | `aprs_telemetry_report_t` (5 canales analógicos `A1..A5`, 8 canales digitales `B1..B8`) | `weather.c` llena el contenedor compartido desde `sensors_local`, pero **todavía no hay ningún codificador/baliza que lo lea de vuelta al aire** — ver [limitaciones](#7-mapéelo-en-la-página-weather) |
+| *(reservado para el futuro)* | ej. `SENSOR_LOCAL_DATA_GPS = 1u << 2` | *(nuevo struct, ej. una posición fija)* | aún no definido — ver [Añadir un tipo de sensor completamente nuevo](#añadir-un-tipo-kind-de-sensor-completamente-nuevo) |
+
+`SENSOR_LOCAL_DATA_ALL` es simplemente el OR de cada bit definido actualmente, y es lo que `weather.c` pasa cuando le pide al registro que refresque todo una vez por segundo.
+
+Un único driver es libre de anunciar **una o ambas** banderas en su campo `capabilities` — por ejemplo, una placa combinada con un sensor barométrico *y* un canal ADC libre podría reportar Weather **y** Telemetry desde la misma llamada a `save()`.
+
+### Anatomía de un driver (`sensor_local_driver_t`)
+
+Cada driver es una instancia de este struct (declarado en `components/sensors_local/include/sensors_local.h`):
+
+```c
+struct sensor_local_driver {
+    const char *name;      // id estable, único, legible por humanos, ej. "bme280", "ads1115-batt"
+    uint32_t capabilities; // OR de SENSOR_LOCAL_DATA_WEATHER / _TELEMETRY (no puede ser cero)
+
+    sensor_local_init_fn_t   init;   // puesta en marcha opcional única (puede ser NULL)
+    sensor_local_save_fn_t   save;   // REQUERIDO: la única entrada que realmente lee el sensor
+    sensor_local_deinit_fn_t deinit; // apagado opcional (puede ser NULL)
+
+    void *ctx; // estado privado del driver, opaco para el registro
+
+    // --- propiedad del registro; un driver nunca debe tocar esto por sí mismo ---
+    bool initialized;
+    bool failed;
+};
+```
+
+Tres roles de puntero a función, cada uno con un contrato preciso:
+
+* **`init(self)`** — llamado **a lo sumo una vez**, de forma perezosa, la primera vez que el driver realmente se necesita (o de forma eager, para cada driver, cuando `weather_start()` llama a `sensors_local_init_all()` al arrancar). Aquí es donde se abre un bus I2C/SPI/UART, se sondea el registro de ID del chip, se asignan buffers privados, y se siembra lo que necesite sembrarse (ej. `srand()`). Devolver `ESP_OK` en éxito; cualquier otro valor **marca al driver como `failed` permanentemente** durante toda la vida del registro (hasta que se desregistre y se vuelva a registrar), y se lo salta a partir de entonces.
+* **`save(self, data, kind)`** — LA entrada común, llamada en cada ciclo de refresco (1 Hz, impulsado por `weatherSensorTask` de `weather.c`). `kind` ya viene **enmascarado** a solo los bits que tanto el llamador quiere como el driver anunció, así que un driver solo-Weather nunca tiene que revisar Telemetry por sí mismo. El driver lee su sensor y escribe directamente en el contenedor `data` propiedad del llamador — sin asignación, sin colas. Debe tocar **solo** la familia que anunció en `capabilities`, y debe **tolerar un destino vacío** (ej. `data->weather_qty == 0`) sin hacer nada para esa familia en vez de desreferenciar un arreglo nulo.
+* **`deinit(self)`** — espejo opcional de `init()`, llamado desde `sensors_local_unregister()` o `sensors_local_deinit()`. Cerrar lo que `init()` abrió.
+
+`ctx` es suyo: apúntelo a un struct `static` (como hacen ambos drivers de ejemplo) si el driver no tiene razón para soportar más de una instancia, o a almacenamiento de heap/pool si sí la tiene (ver [Varias instancias](#varias-instancias-del-mismo-tipo-de-sensor)).
+
+### El registro: cómo se encuentra y se llama a un driver
+
+`sensors_local.c` implementa el registro como un pequeño arreglo de **punteros** a driver, protegido por mutex y crecible en heap (nunca copia — el almacenamiento de su struct `static` es lo que realmente vive en la tabla):
+
+```
+sensors_local_init()          // crea el mutex del registro; seguro de llamar más de una vez
+sensors_local_register(drv)   // agrega a la tabla; rechaza save NULL, nombre vacío, nombre
+                               // duplicado, o capabilities == SENSOR_LOCAL_DATA_NONE
+sensors_local_unregister(name)// elimina por nombre, llamando a deinit() si el driver estaba inicializado
+sensors_local_count()         // cuántos drivers están registrados actualmente
+sensors_local_get(index)      // obtiene por posición 0..count-1 (usado por el dropdown de la página Weather)
+sensors_local_find(name)      // obtiene por nombre
+sensors_local_init_all()      // inicializa (init()) eagerly cada driver aún no inicializado
+sensors_local_save(data,kind) // recorre la tabla; para cada driver cuyas capabilities intersecten
+                               // con kind, lo inicializa perezosamente si hace falta, luego llama a su save()
+sensors_local_deinit()        // deinit() + descarta todo; libera el arreglo subyacente
+```
+
+`sensors_local_register()` se puede llamar **incluso antes de que el scheduler de FreeRTOS esté corriendo**, porque `SENSORS_LOCAL_DRIVER_AUTOREGISTER` se dispara desde una función `__attribute__((constructor))`, que el runtime de C invoca durante la inicialización estática, antes de `app_main()`. En ese punto `s_lock` (el mutex del registro) todavía no existe — `registry_lock()`/`registry_unlock()` son no-ops mientras `s_lock == NULL`, lo cual es seguro solo porque toda esa fase es de un único hilo. La primera llamada real a `sensors_local_init()` (desde `weather_start()`, una vez que el scheduler está arriba) crea el mutex y hace que todo acceso posterior al registro sea thread-safe.
+
+Un driver que falla su `init()` o devuelve un error desde `save()` se registra en el log (`ESP_LOGW`) y **se salta**; nunca aborta la pasada para los demás drivers, y nunca hace fallar la baliza Weather.
+
+### Flujo de datos de punta a punta, del sensor al APRS
+
+```
+ arranque (antes de app_main)
+   └─ corre el constructor de cada archivo drivers/*.c
+        └─ SENSORS_LOCAL_DRIVER_AUTOREGISTER → sensors_local_register(&my_driver)
+
+ weather_start()  (llamado desde aprs_service.c, una vez, al arrancar)
+   ├─ conecta weather_telemetry_data.weather/.telemetry_report al almacenamiento estático
+   ├─ sensors_local_init()          ← crea el mutex del registro (thread-safe desde aquí)
+   ├─ sensors_local_init_all()      ← corre init() en cada driver auto-registrado
+   └─ arranca weatherSensorTask (1 Hz) y weatherBeaconTask (cada wx_interval segundos)
+
+ weatherSensorTask   (1 Hz, para siempre)
+   ├─ limpia las banderas "enabled" en weather_telemetry_data (para que un driver que deja
+   │    de reportar un campo este ciclo no deje un valor obsoleto pareciendo válido)
+   ├─ sensors_local_save(&weather_telemetry_data, SENSOR_LOCAL_DATA_ALL)
+   │    └─ para cada driver registrado cuyas capabilities coincidan:
+   │         lo inicializa perezosamente si aún no, luego llama a su save()
+   │         → el driver escribe directo en aprs_weather_report_t / aprs_telemetry_report_t
+   └─ acumula cualquier campo "Promediado" (checkbox de la página Weather) en una suma/cuenta corriente
+
+ weatherBeaconTask   (cada g_config.wx_interval segundos, solo si wx_en)
+   ├─ resolve_fields(): para cada token WX en el aire, lee el valor en vivo directamente de
+   │    weather_telemetry_data, o el valor promediado acumulado arriba, según el
+   │    checkbox "Promediado" por campo — NO directamente del sensor, así que un reportero
+   │    intermitente igual contribuye a un promedio razonable
+   ├─ build_wx_packet(): renderiza la línea TNC2 estándar "!lat/lon_WIND/SPDgGUSTtTTTrRRRhHHbBBBBB…"
+   └─ la transmite por RF (aprs_service_send_tnc2()) y/o APRS-IS (igate_send_raw()), según la config
+
+ Página de administración web Weather (/wx)
+   └─ wx_channel_select() de page_wx.c recorre sensors_local_get(0..count-1) y lista solo
+        los drivers cuyas capabilities incluyen SENSOR_LOCAL_DATA_WEATHER, para que el operador
+        pueda mapear "canal N: <nombre del driver>" a un campo específico en el aire (viento, temperatura, …)
+```
+
+El punto clave para quien agrega un sensor: **nunca llama a nada desde `weather.c` ni desde la administración web usted mismo.** Registrar el driver es toda la integración; el refresco a 1 Hz, el promediado, la codificación WX en el aire y el selector de canal lo descubren todos por sí solos a través del registro.
+
+### Los dos drivers de ejemplo incluidos
+
+Dos drivers vienen compilados por defecto, únicamente para poder ejercitar todo el pipeline (registro → refresco a 1 Hz → codificador/baliza WX → selector de canal de la página Weather) **sin ningún hardware real conectado**:
+
+* **`components/sensors_local/drivers/sensor_local_weather_example.c`** (nombre de driver `wx-example`) — anuncia solo `SENSOR_LOCAL_DATA_WEATHER`. En cada `save()` llena viento (dirección/sostenido/ráfaga), temperatura, humedad, presión barométrica, lluvia de la última hora y luminosidad con valores **aleatorios** plausibles (`rnd(lo, hi)`) y marca la bandera `enabled[...]` de cada campo. Está condicionado por `CONFIG_SENSORS_LOCAL_WEATHER_EXAMPLE_DRIVER`, que el `CMakeLists.txt` del componente define incondicionalmente hoy.
+* **`components/sensors_local/drivers/sensor_local_telemetry_example.c`** (nombre de driver `tlm-example`) — anuncia solo `SENSOR_LOCAL_DATA_TELEMETRY`. En cada `save()` llena cada canal analógico **asignado** con un valor aleatorio entre `0..255` y cada canal digital con un `0`/`1` aleatorio, tocando de nuevo solo los canales que el llamador realmente pidió (`analog_count`/`digital_count`). Condicionado por `CONFIG_SENSORS_LOCAL_TELEMETRY_EXAMPLE_DRIVER`.
+
+Ambos están pensados para ser **copiados, no conservados**: son el esqueleto documentado para un driver real de la familia correspondiente. Bórrelos o póngalos en `#if 0` cuando tenga hardware real, o simplemente déjelos registrados junto a su(s) driver(s) real(es) — el registro no tiene problema en mantener ambos a la vez, y `sensors_local_unregister("wx-example")` elimina uno limpiamente si prefiere no recompilar.
+
+### Añadir un sensor nuevo, paso a paso
+
+#### 1. Decida qué produce su driver
+
+Elija la familia de payload (o ambas): un BME280 o DS18B20 es Weather; un divisor de voltaje de batería en un pin ADC, un interruptor de puerta/reed, o una sonda de humedad de suelo es naturalmente Telemetry (canal analógico o digital); una placa combinada puede ser ambas.
+
+#### 2. Copie un esqueleto y renómbrelo
+
+Copie el driver de ejemplo que corresponda (`sensor_local_weather_example.c` para Weather, `sensor_local_telemetry_example.c` para Telemetry, o parta de ambos si necesita ambas) a un archivo nuevo bajo `components/sensors_local/drivers/`, ej. `sensor_local_bme280.c`. El **glob** de archivos en `CMakeLists.txt` lo recoge automáticamente — no lo agrega a ninguna lista de fuentes.
+
+#### 3. Complete `init()`
+
+Reemplace la puesta en marcha con `srand()` por su configuración real única: configure y sondee el bus I2C/SPI/UART, lea y verifique un registro de chip-ID, asigne cualquier almacenamiento de coeficientes de calibración, y devuelva `ESP_OK` solo cuando esté seguro de que las lecturas siguientes tendrán éxito. Guarde lo que la llamada a `save()` necesitará después (un handle, constantes de calibración, un número de GPIO, …) en `self->ctx`.
+
+#### 4. Complete `save()`
+
+Lea el sensor, convierta a las unidades de ingeniería que `weather_telemetry.h` documenta para cada campo (Fahrenheit para temperatura, mph para viento, décimas de milibar para presión, centésimas de pulgada para lluvia, etc. — el header detalla la unidad y el rango en el aire de cada campo), escriba el/los valor(es), y marque la(s) bandera(s) `enabled[...]` correspondiente(s) — de otro modo el campo se trata como "no reportado este ciclo" sin importar qué valor haya en el struct. Siempre verifique `kind` y que los punteros/`*_qty` de destino no sean NULL/cero antes de escribir, exactamente como hacen ambos ejemplos; un driver invocado con `data->weather_qty == 0` (porque el llamador solo quería Telemetry este ciclo) debe devolver `ESP_OK` sin haber tocado nada.
+
+#### 5. Declare el descriptor y auto-regístrelo
+
+```c
+static sensor_local_driver_t bme280_driver = {
+    .name         = "bme280",
+    .capabilities = SENSOR_LOCAL_DATA_WEATHER,
+    .init         = bme280_init,
+    .save         = bme280_save,
+    .deinit       = bme280_deinit, // o NULL si no hay nada que apagar
+    .ctx          = &s_bme280_ctx,
+};
+SENSORS_LOCAL_DRIVER_AUTOREGISTER(bme280_driver);
+```
+
+`name` debe ser único entre todos los drivers registrados (el registro falla con `ESP_ERR_INVALID_STATE` de lo contrario) — también es lo que aparece, textualmente, en el dropdown de canal de la página Weather ("`0: bme280`"), así que elija algo que un operador de estación reconozca.
+
+#### 6. Compile — nada más que conectar
+
+`idf.py build`. Como `components/sensors_local/CMakeLists.txt` hace un glob de `drivers/*.c` y enlaza todo el componente con `WHOLE_ARCHIVE` (para que el `--gc-sections` del linker no pueda descartar un objeto cuya única referencia es su propio constructor), su archivo nuevo se compila, enlaza, y se auto-registra al arrancar con **cero ediciones** a `sensors_local.c`, `sensors_local.h`, `weather.c`, o cualquier `CMakeLists.txt` fuera del propio archivo del driver.
+
+#### 7. Mapéelo en la página Weather
+
+Grabe, abra la página **Weather** de la administración web, y el nombre de su driver ahora aparece como opción en el dropdown de canal de cada campo (`wx_channel_select()` de `page_wx.c` lo lista automáticamente porque recorre el registro en vivo). Elija qué campo(s) en el aire debería alimentar y guarde. **Los canales de Telemetry todavía no tienen selector equivalente ni codificador en el aire** — los valores de un driver de Telemetry llegan a `weather_telemetry_data.telemetry_report[0]` y quedan ahí, leídos solo por el código futuro que agregue la baliza `T#nnn`; hoy nada los transmite (ver la [matriz de funcionalidades](#matriz-de-funcionalidades)).
+
+#### 8. Ejemplo trabajado: un BME280 I2C real
+
+Un patrón recortado pero completo (el manejo de errores y la aritmética real de registros se dejan al datasheet/biblioteca de driver del sensor — el punto aquí es la forma de integración con `sensors_local`, no un driver de BME280 desde cero):
+
+```c
+#include "esp_log.h"
+#include "sensors_local.h"
+#include "driver/i2c_master.h"   // o su driver I2C preferido
+
+typedef struct {
+    i2c_master_dev_handle_t dev;
+    // ... coeficientes de calibración leídos durante init() ...
+} bme280_ctx_t;
+
+static bme280_ctx_t s_ctx;
+
+static esp_err_t bme280_init(sensor_local_driver_t *self) {
+    bme280_ctx_t *c = (bme280_ctx_t *)self->ctx;
+    // abrir el bus I2C / agregar el dispositivo en su dirección de 7 bits, sondear chip-id (0x60), ...
+    // leer los registros de calibración en c-> ...
+    if (/* sondeo falló */ false)
+        return ESP_FAIL; // -> el driver se marca como fallido y se salta a partir de entonces
+    return ESP_OK;
+}
+
+static esp_err_t bme280_save(sensor_local_driver_t *self, weather_telemetry_data_t *data, sensor_local_data_kind_t kind) {
+    bme280_ctx_t *c = (bme280_ctx_t *)self->ctx;
+
+    if (!(kind & SENSOR_LOCAL_DATA_WEATHER) || data->weather == NULL || data->weather_qty < 1)
+        return ESP_OK; // nada que hacer este ciclo
+
+    aprs_weather_report_t *wx = &data->weather[0];
+
+    float temp_c, pressure_pa, humidity_pct;
+    // ... disparar una medición en modo forzado y leer + compensar los registros crudos en
+    //     temp_c / pressure_pa / humidity_pct usando los coeficientes de calibración de c ...
+
+    wx->temperature_f = (int16_t)lroundf(temp_c * 9.0f / 5.0f + 32.0f);
+    wx->enabled[APRS_WX_SENSOR_TEMPERATURE] = true;
+
+    wx->barometric_pressure_tenths_mb = (uint32_t)lroundf(pressure_pa / 10.0f);
+    wx->enabled[APRS_WX_SENSOR_BAROMETRIC_PRESSURE] = true;
+
+    wx->humidity_percent = (uint8_t)lroundf(humidity_pct);
+    wx->enabled[APRS_WX_SENSOR_HUMIDITY] = true;
+
+    return ESP_OK;
+}
+
+static sensor_local_driver_t bme280_driver = {
+    .name = "bme280",
+    .capabilities = SENSOR_LOCAL_DATA_WEATHER,
+    .init = bme280_init,
+    .save = bme280_save,
+    .deinit = NULL,
+    .ctx = &s_ctx,
+};
+SENSORS_LOCAL_DRIVER_AUTOREGISTER(bme280_driver);
+```
+
+Guarde esto como `components/sensors_local/drivers/sensor_local_bme280.c`, conecte la lectura I2C real donde los comentarios lo indican, `idf.py build`, y la página Weather ofrecerá `"N: bme280"` como fuente para Temperatura, Presión y Humedad.
+
+### Varias instancias del mismo tipo de sensor
+
+Nada impide que coexistan dos sensores físicos del mismo tipo (ej. un BME280 interior y otro exterior): dele a cada uno su propia unidad de traducción (o el mismo archivo `.c` con dos descriptores), un `name` **distinto** (`"bme280-indoor"` / `"bme280-outdoor"`), su propia instancia de struct `ctx`, y su propia dirección I2C / bus / GPIO horneada en ese `ctx`. Cada uno se registra independientemente y aparece como su propia fila en el selector de canal de la página Weather.
+
+### Manejo de errores y fallo del driver
+
+* Un `init()` que devuelve algo distinto de `ESP_OK` marca `failed = true` **permanentemente** para ese registro — el driver se salta en cada `sensors_local_save()` futura, se registra en el log una vez (`ESP_LOGW`) en el momento en que falló, hasta que algo llame explícitamente a `sensors_local_unregister()` seguido de un `sensors_local_register()` nuevo (que resetea tanto `initialized` como `failed`).
+* Un `save()` que devuelve un error se registra en el log (`ESP_LOGW`) y simplemente se salta **para ese único ciclo** — `initialized`/`failed` quedan intactos, así que el próximo tick a 1 Hz lo vuelve a intentar. Esto importa para sensores con un hipo de bus ocasional: una única transacción I2C fallida no deshabilita permanentemente al driver como sí lo hace un `init()` fallido.
+* Cualquiera de los dos tipos de fallo está aislado a ese único driver; `sensors_local_save()` siempre continúa con los drivers restantes en el registro.
+
+### Seguridad entre tareas (thread safety)
+
+`sensors_local_register()`/`unregister()`/`save()`/`get()`/`find()`/`count()` toman todos el mutex interno del registro, así que son seguros de llamar desde cualquier tarea una vez que `sensors_local_init()` ha corrido. La única excepción, por diseño, son los propios constructores de auto-registro: corren antes de que exista el scheduler, de un único hilo, sin que el mutex exista todavía — que es exactamente por qué `registry_lock()`/`registry_unlock()` están escritos como no-ops mientras `s_lock == NULL`.
+
+El propio `init()`/`save()`/`deinit()` de un driver **no** están envueltos en ningún lock por el framework — si el estado privado de su driver (`ctx`) alguna vez se toca desde algo más que el `weatherSensorTask` a 1 Hz (por ejemplo, un ISR actualizando un contador compartido), el propio driver es responsable de la sincronización que eso necesite.
+
+### Añadir un tipo (kind) de sensor completamente nuevo
+
+Weather y Telemetry no son las únicas familias de payload que el framework puede llegar a transportar — `sensors_local.h` documenta exactamente cómo extenderlo, justo al lado del enum:
+
+```c
+/*
+ * To add a new sensor family in the future (e.g. GPS, power/battery, air
+ * quality, ...), append a new bit here:
+ *
+ *     SENSOR_LOCAL_DATA_GPS = 1u << 2,
+ *
+ * and OR it into SENSOR_LOCAL_DATA_ALL. Nothing else in the registry needs to
+ * change - sensors_local_register() only requires that a driver's
+ * capabilities be non-zero, and any UI page (like the Weather "Sensor
+ * Mapping" table) that wants only its own kind of sensor filters the
+ * registry by testing `driver->capabilities & SENSOR_LOCAL_DATA_xxx`.
+ */
+```
+
+Concretamente, agregar por ejemplo un "kind" de GPS significa:
+
+1. Agregar `SENSOR_LOCAL_DATA_GPS = 1u << 2` a `sensor_local_data_kind_t` en `sensors_local.h`, y hacerle OR en `SENSOR_LOCAL_DATA_ALL`.
+2. Agregar el struct destino donde debería aterrizar un fix de GPS (un campo nuevo en `weather_telemetry_data_t`, o un struct completamente nuevo, en `weather_telemetry.h`) — el registro en sí nunca necesita conocer su forma, ya que los drivers escriben directamente en él.
+3. Escribir driver(s) cuyas `capabilities` incluyan el bit nuevo y cuyo `save()` llene el struct nuevo.
+4. Dondequiera que un consumidor necesite el kind nuevo, filtre el registro con `driver->capabilities & SENSOR_LOCAL_DATA_GPS`, exactamente como `wx_channel_select()` de `page_wx.c` filtra hoy sobre `SENSOR_LOCAL_DATA_WEATHER`. El registro, `sensors_local_save()`, y cada driver existente quedan completamente sin afectar.
+
+### La página legada `/sensor` — no es lo mismo
+
+La administración web también tiene una ruta **`/sensor`** (`components/webconfig/pages/page_sensor.c`) con campos por slot — `enable`, `type`, `port`, `address`, `samplerate`, `averagerate`, tres coeficientes de ecuación lineal (`A`/`B`/`C`), un nombre y una unidad — almacenados en `g_config.sensor[0..SENSOR_NUMBER-1]`. **Esto no es el framework `sensors_local`.** Lo precede, no tiene entrada de menú en la barra lateral actual, y — de manera crítica — **nada en el firmware lee jamás `g_config.sensor[]` de vuelta**: no hay ningún camino de código que convierta un slot guardado en una lectura real o un valor en el aire. Se mantiene solo por compatibilidad con `config.json` (ver [Estado y limitaciones conocidas](#estado-y-limitaciones-conocidas)). Si está conectando hardware real, use `sensors_local` (esta sección), no esta página.
+
+### Resumen de referencia de Sensores
+
+| Concepto | Dónde | Propósito |
+|---|---|---|
+| `sensor_local_driver_t` | `components/sensors_local/include/sensors_local.h` | descriptor de un driver: nombre, capabilities, init/save/deinit, ctx |
+| `sensors_local_register()` / `_unregister()` | `sensors_local.h` / `.c` | agregar/quitar un driver del registro en tiempo de ejecución |
+| `SENSORS_LOCAL_DRIVER_AUTOREGISTER(sym)` | `sensors_local.h` | macro constructor de C: auto-registra un driver `static` antes de `app_main()` |
+| `sensors_local_save(data, kind)` | `sensors_local.h` / `.c` | LA entrada agregada: pide a cada driver capaz y saludable que llene `data` |
+| `weather_telemetry_data_t` | `components/weather_telemetry/include/weather_telemetry.h` | el contenedor compartido en el que escriben los drivers (`weather[]` + `telemetry_report[]`) |
+| `weather.c` | `main/weather.c` | posee el contenedor, impulsa el refresco a 1 Hz, codifica y balicea el informe WX APRS real |
+| `page_wx.c` | `components/webconfig/pages/page_wx.c` | página Weather; el selector de canal se llena en vivo desde el registro |
+| `drivers/*.c` | `components/sensors_local/drivers/` | dónde agregar un sensor nuevo — un archivo, ninguna otra edición |
+| página `/sensor` + `g_config.sensor[]` | `components/webconfig/pages/page_sensor.c` | **andamiaje legado no relacionado** — solo configuración, no conectado a nada |
 
 ---
 
