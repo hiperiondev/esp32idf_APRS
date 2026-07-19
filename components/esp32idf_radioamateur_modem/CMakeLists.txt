@@ -4,7 +4,6 @@ idf_component_register(
         "src/modem.c"
         "src/ax25.c"
         "src/crc_ccit.c"
-        "src/kiss.c"
         "src/fx25.c"
         "src/esp32idf_radioamateur_modem.c"
         "lwfec/rs.c"
