@@ -122,13 +122,11 @@ esp_err_t page_radio_get(httpd_req_t *req) {
     // failure this page's Save handler was previously fixed to avoid - so
     // they are shown read-only, sourced from the values actually compiled in.
     {
-        char buf[420];
+        char buf[640];
         snprintf(buf, sizeof(buf),
-                 "<p style='opacity:.75'><b>Audio hardware (compile-time)</b>: "
-                 "DAC out GPIO%d, ADC in GPIO%d, ADC attenuation %d, "
-                 "ADC %d Hz / DAC %d Hz.<br>"
-                 "Set these in the top-level CMakeLists.txt (MODEM_* build definitions) and rebuild. "
-                 "The modem's AGC is automatic and it has no software squelch or RX volume control.</p>",
+                 "<p style='opacity:.75'><b>" TR_RADIO_AUDIO_HW_TITLE "</b>: "
+                 TR_RADIO_AUDIO_HW_INFO "<br>"
+                 TR_RADIO_AUDIO_HW_NOTE "</p>",
                  MODEM_DAC_GPIO, MODEM_ADC_GPIO, (int)MODEM_ADC_ATTEN, MODEM_ADC_SAMPLERATE, MODEM_DAC_SAMPLERATE);
         httpd_resp_sendstr_chunk(req, buf);
     }

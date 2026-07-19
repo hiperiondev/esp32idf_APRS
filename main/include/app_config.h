@@ -51,7 +51,7 @@
 #define LANG_IT 2 // Italiano (Italian)
 
 #ifndef LANGUAGE
-#define LANGUAGE LANG_IT
+#define LANGUAGE LANG_EN
 #endif
 
 /////// MODULES //////

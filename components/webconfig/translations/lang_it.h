@@ -486,6 +486,13 @@
 #define TR_TLM_PREC           "Prec"
 #define TR_TLM_OFFSET         "Offset"
 
+// ---- page_radio.c -------------------------------------------------------
+#define TR_RADIO_AUDIO_HW_TITLE "Hardware audio (in fase di compilazione)"
+#define TR_RADIO_AUDIO_HW_INFO  "DAC uscita GPIO%d, ADC ingresso GPIO%d, attenuazione ADC %d, ADC %d Hz / DAC %d Hz."
+#define TR_RADIO_AUDIO_HW_NOTE                                                                                                                                \
+    "Imposta questi valori nel CMakeLists.txt di livello superiore (definizioni di build MODEM_*) e ricompila. "                                              \
+    "L'AGC del modem è automatico e non dispone di squelch software né di controllo del volume in RX."
+
 // ---- page_wireless.c -------------------------------------------------------
 #define TR_WIFI_MODE_LEGEND   "Modalità WiFi"
 #define TR_WIFI_STATION       "Stazione (STA)"
