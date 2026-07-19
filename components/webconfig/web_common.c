@@ -25,6 +25,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h> // strncasecmp (multipart header parsing)
 
 #include "app_config.h"
 #include "esp_log.h"
@@ -155,6 +156,321 @@ float web_form_get_float(const char *body, const char *key, float def) {
     if (!web_form_get(body, key, v, sizeof(v)) || v[0] == 0)
         return def;
     return strtof(v, NULL);
+}
+
+// ---------------------------------------------------------------- Output-side escaping
+// (web_urldecode above handles the *input* direction, for query strings
+// esp_httpd hands us; these three handle the *output* direction, for
+// user-supplied strings - chiefly filenames - that get echoed back into
+// hrefs/HTML/JS. Skipping this is what let a filename with a space or a
+// quote character in it silently break the Storage page's delete/download
+// links and onclick handlers.)
+
+void web_urlencode(const char *src, char *dst, size_t dst_size) {
+    if (!dst || dst_size == 0)
+        return;
+    static const char hex[] = "0123456789ABCDEF";
+    size_t di = 0;
+    for (const unsigned char *p = (const unsigned char *)src; src && *p && di + 1 < dst_size; p++) {
+        unsigned char c = *p;
+        if (isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~') {
+            dst[di++] = (char)c;
+        } else {
+            if (di + 3 >= dst_size)
+                break;
+            dst[di++] = '%';
+            dst[di++] = hex[(c >> 4) & 0xF];
+            dst[di++] = hex[c & 0xF];
+        }
+    }
+    dst[di] = 0;
+}
+
+void web_html_attr_escape(const char *src, char *dst, size_t dst_size) {
+    if (!dst || dst_size == 0)
+        return;
+    size_t di = 0;
+    for (const char *p = src; src && *p && di + 1 < dst_size; p++) {
+        const char *ent = NULL;
+        switch (*p) {
+            case '&':
+                ent = "&amp;";
+                break;
+            case '<':
+                ent = "&lt;";
+                break;
+            case '>':
+                ent = "&gt;";
+                break;
+            case '"':
+                ent = "&quot;";
+                break;
+            case '\'':
+                ent = "&#39;";
+                break;
+            default:
+                break;
+        }
+        if (ent) {
+            size_t elen = strlen(ent);
+            if (di + elen >= dst_size)
+                break;
+            memcpy(dst + di, ent, elen);
+            di += elen;
+        } else {
+            dst[di++] = *p;
+        }
+    }
+    dst[di] = 0;
+}
+
+void web_sanitize_filename(const char *src, char *dst, size_t dst_size) {
+    if (!dst || dst_size == 0)
+        return;
+    dst[0] = 0;
+    if (!src)
+        return;
+
+    // Some browsers send the full local path for <input type=file>; keep
+    // only whatever follows the last separator.
+    const char *base = src;
+    for (const char *p = src; *p; p++) {
+        if (*p == '/' || *p == '\\')
+            base = p + 1;
+    }
+
+    size_t di = 0;
+    for (const char *p = base; *p && di + 1 < dst_size; p++) {
+        unsigned char c = (unsigned char)*p;
+        dst[di++] = (isalnum(c) || c == '.' || c == '-' || c == '_' || c == ' ') ? (char)c : '_';
+    }
+    dst[di] = 0;
+
+    // Strip leading dots so "..", ".htaccess"-style, or empty-after-dots
+    // names can't happen.
+    size_t lead = 0;
+    while (dst[lead] == '.')
+        lead++;
+    if (lead > 0)
+        memmove(dst, dst + lead, di - lead + 1);
+
+    if (dst[0] == 0)
+        snprintf(dst, dst_size, "upload.bin");
+}
+
+// ---------------------------------------------------------------- Multipart upload (streaming)
+// See web_common.h for the contract. Implementation notes:
+//
+// The parser keeps one heap scratch buffer (MP_BUF_CAP bytes) and never
+// holds more than that much of the request in RAM at once, regardless of
+// how large the uploaded file is - it feeds completed chunks of the file
+// part to `cb` as soon as it's sure they aren't a prefix of the closing
+// boundary marker, then discards them. This is what lets a multi-hundred-KB
+// firmware image stream straight into esp_ota_write() on a device with a
+// few hundred KB of free heap.
+#define MP_BUF_CAP     4096
+#define MP_MAX_HEADER  512
+#define MP_MAX_PARTS   32 // sanity cap against a pathological/adversarial body
+
+static const uint8_t *mp_mem_find(const uint8_t *hay, size_t haylen, const char *needle, size_t needlelen) {
+    if (needlelen == 0 || haylen < needlelen)
+        return NULL;
+    for (size_t i = 0; i + needlelen <= haylen; i++) {
+        if (memcmp(hay + i, needle, needlelen) == 0)
+            return hay + i;
+    }
+    return NULL;
+}
+
+// Case-insensitive substring search (header names/values are case-insensitive).
+static const char *mp_ci_strstr(const char *hay, const char *needle) {
+    size_t nlen = strlen(needle);
+    for (const char *p = hay; *p; p++) {
+        if (strncasecmp(p, needle, nlen) == 0)
+            return p;
+    }
+    return NULL;
+}
+
+esp_err_t web_multipart_receive_file(httpd_req_t *req, web_multipart_data_cb_t cb, void *cb_ctx, char *filename_out, size_t filename_out_size) {
+    if (filename_out && filename_out_size)
+        filename_out[0] = 0;
+
+    char ctype[256];
+    if (httpd_req_get_hdr_value_str(req, "Content-Type", ctype, sizeof(ctype)) != ESP_OK)
+        return ESP_ERR_INVALID_ARG;
+    const char *bmark = mp_ci_strstr(ctype, "boundary=");
+    if (!bmark)
+        return ESP_ERR_INVALID_ARG;
+    bmark += 9;
+
+    char boundary[128];
+    size_t bi = 0;
+    if (*bmark == '"') {
+        bmark++;
+        while (*bmark && *bmark != '"' && bi + 1 < sizeof(boundary))
+            boundary[bi++] = *bmark++;
+    } else {
+        while (*bmark && *bmark != ';' && *bmark != ' ' && *bmark != '\r' && *bmark != '\n' && bi + 1 < sizeof(boundary))
+            boundary[bi++] = *bmark++;
+    }
+    boundary[bi] = 0;
+    if (bi == 0)
+        return ESP_ERR_INVALID_ARG;
+
+    char delim[132];
+    int delim_len = snprintf(delim, sizeof(delim), "--%s", boundary);
+    if (delim_len <= 0 || (size_t)delim_len >= sizeof(delim))
+        return ESP_ERR_INVALID_ARG;
+
+    char close_marker[134];
+    int close_len = snprintf(close_marker, sizeof(close_marker), "\r\n%s", delim);
+    if (close_len <= 0 || (size_t)close_len >= sizeof(close_marker)) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    uint8_t *buf = malloc(MP_BUF_CAP);
+    if (!buf)
+        return ESP_ERR_NO_MEM;
+    size_t buf_len = 0;
+    int remaining = (int)req->content_len;
+    esp_err_t result = ESP_FAIL;
+    bool found_file_part = false;
+
+#define MP_FILL()                                                                                                                                            \
+    do {                                                                                                                                                      \
+        while (buf_len < MP_BUF_CAP && remaining > 0) {                                                                                                       \
+            int want = (int)(MP_BUF_CAP - buf_len);                                                                                                           \
+            if (want > remaining)                                                                                                                             \
+                want = remaining;                                                                                                                             \
+            int r = httpd_req_recv(req, (char *)buf + buf_len, want);                                                                                         \
+            if (r > 0) {                                                                                                                                      \
+                buf_len += (size_t)r;                                                                                                                         \
+                remaining -= r;                                                                                                                               \
+            } else if (r == HTTPD_SOCK_ERR_TIMEOUT) {                                                                                                         \
+                continue;                                                                                                                                     \
+            } else {                                                                                                                                          \
+                goto done;                                                                                                                                    \
+            }                                                                                                                                                 \
+        }                                                                                                                                                     \
+    } while (0)
+
+    MP_FILL();
+
+    // ---- skip preamble up to and including the first boundary delimiter ----
+    {
+        const uint8_t *p = mp_mem_find(buf, buf_len, delim, (size_t)delim_len);
+        if (!p)
+            goto done; // no boundary at all: not a well-formed multipart body
+        size_t skip = (size_t)(p - buf) + (size_t)delim_len;
+        memmove(buf, buf + skip, buf_len - skip);
+        buf_len -= skip;
+    }
+
+    for (int part_idx = 0; part_idx < MP_MAX_PARTS; part_idx++) {
+        // Right after a delimiter: either "--" (terminating boundary, no more
+        // parts) or "\r\n" (a part follows).
+        if (buf_len < 2)
+            MP_FILL();
+        if (buf_len < 2) {
+            // Body ended right at/after the last part's own closing boundary
+            // (no distinguishable final "--" epilogue left to read). If we
+            // already streamed a file part, that's a completed upload, not
+            // an error - only a genuinely empty/truncated body is malformed.
+            result = found_file_part ? ESP_OK : ESP_FAIL;
+            goto done;
+        }
+        if (buf[0] == '-' && buf[1] == '-') {
+            result = found_file_part ? ESP_OK : ESP_ERR_NOT_FOUND;
+            goto done;
+        }
+        if (buf[0] != '\r' || buf[1] != '\n')
+            goto done; // malformed
+        memmove(buf, buf + 2, buf_len - 2);
+        buf_len -= 2;
+
+        // ---- part headers, up to the blank line ----
+        char headers[MP_MAX_HEADER];
+        const uint8_t *hp;
+        for (;;) {
+            hp = mp_mem_find(buf, buf_len, "\r\n\r\n", 4);
+            if (hp)
+                break;
+            if (buf_len >= MP_BUF_CAP || remaining <= 0)
+                goto done; // headers too large or body ended mid-header: malformed
+            MP_FILL();
+        }
+        size_t hdrblock_len = (size_t)(hp - buf);
+        size_t hdrcopy_len = hdrblock_len < sizeof(headers) - 1 ? hdrblock_len : sizeof(headers) - 1;
+        memcpy(headers, buf, hdrcopy_len);
+        headers[hdrcopy_len] = 0;
+        size_t consumed = hdrblock_len + 4;
+        memmove(buf, buf + consumed, buf_len - consumed);
+        buf_len -= consumed;
+
+        // ---- does this part carry filename="..."? ----
+        bool has_filename = false;
+        {
+            const char *cdisp = mp_ci_strstr(headers, "Content-Disposition");
+            if (cdisp) {
+                const char *fn = mp_ci_strstr(cdisp, "filename=\"");
+                if (fn) {
+                    fn += 10;
+                    const char *end = strchr(fn, '"');
+                    if (end && end > fn) {
+                        has_filename = true;
+                        if (filename_out && filename_out_size) {
+                            size_t flen = (size_t)(end - fn);
+                            if (flen >= filename_out_size)
+                                flen = filename_out_size - 1;
+                            memcpy(filename_out, fn, flen);
+                            filename_out[flen] = 0;
+                        }
+                    }
+                }
+            }
+        }
+        bool stream_this = has_filename && !found_file_part;
+
+        // ---- part data, up to the next "\r\n--boundary" ----
+        for (;;) {
+            const uint8_t *cm = mp_mem_find(buf, buf_len, close_marker, (size_t)close_len);
+            if (cm) {
+                size_t data_len = (size_t)(cm - buf);
+                if (stream_this && data_len > 0 && cb(cb_ctx, buf, data_len) != ESP_OK)
+                    goto done;
+                size_t used = data_len + (size_t)close_len;
+                memmove(buf, buf + used, buf_len - used);
+                buf_len -= used;
+                break;
+            }
+            // No full marker in the buffer yet: flush everything except the
+            // tail that could still be a prefix of the marker, then refill.
+            size_t keep = (size_t)close_len - 1;
+            if (buf_len > keep) {
+                size_t flush = buf_len - keep;
+                if (stream_this && cb(cb_ctx, buf, flush) != ESP_OK)
+                    goto done;
+                memmove(buf, buf + flush, buf_len - flush);
+                buf_len -= flush;
+            }
+            if (remaining <= 0)
+                goto done; // ran out of body before finding the closing boundary: truncated/malformed
+            MP_FILL();
+        }
+
+        if (has_filename)
+            found_file_part = true;
+        // loop back: buffer now starts right after this part's boundary
+        // delimiter, exactly the state the top of the loop expects.
+    }
+    // MP_MAX_PARTS exceeded without reaching a terminating boundary.
+    result = ESP_FAIL;
+
+done:
+    free(buf);
+#undef MP_FILL
+    return result;
 }
 
 // ---------------------------------------------------------------- HTML shell

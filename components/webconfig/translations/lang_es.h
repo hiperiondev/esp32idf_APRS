@@ -79,9 +79,24 @@
 #define TR_ABOUT_PARTITION   "Partición en ejecución:"
 #define TR_ABOUT_OTA_LEGEND  "Actualización OTA"
 #define TR_ABOUT_OTA_BODY                                                                                                                                      \
-    "La carga/grabación de la imagen de firmware (mediante esp_https_ota / esp_ota_write) "                                                                    \
-    "está planificada para una iteración posterior, junto con el analizador de carga "                                                                         \
-    "multipart usado en la página de Almacenamiento."
+    "Cargue un nuevo firmware .bin compilado para esta placa. Se escribe en la "                                                                                \
+    "partición OTA inactiva mientras el dispositivo sigue funcionando con la "                                                                                  \
+    "actual; el dispositivo solo cambia y se reinicia una vez que la carga "                                                                                    \
+    "finaliza y se verifica. Si el nuevo firmware no arranca correctamente, "                                                                                   \
+    "se revierte automáticamente en el próximo reinicio."
+#define TR_OTA_TARGET_SLOT       "Partición destino:"
+#define TR_OTA_SELECT_FILE       "Archivo de firmware (.bin):"
+#define TR_OTA_UPLOAD_BTN        "Cargar y grabar"
+#define TR_OTA_CONFIRM           "¿Cargar y grabar este firmware? El dispositivo se reiniciará al finalizar."
+#define TR_OTA_NO_FILE_SELECTED  "Seleccione primero un archivo de firmware .bin."
+#define TR_OTA_UPLOADING         "Cargando y escribiendo en la memoria flash..."
+#define TR_OTA_NO_PARTITION      "No hay una partición OTA disponible en la tabla de particiones de este dispositivo. Vuelva a grabarlo una vez por USB/UART con el partitions.csv actual para habilitar OTA."
+#define TR_OTA_BEGIN_FAILED      "No se pudo iniciar la escritura OTA: "
+#define TR_OTA_NO_FILE_CHOSEN    "no se recibió ningún archivo"
+#define TR_OTA_UPLOAD_FAILED     "La carga del firmware falló"
+#define TR_OTA_VALIDATE_FAILED   "la validación de la imagen falló: el archivo no es una imagen de firmware válida para esta placa"
+#define TR_OTA_SUCCESS           "Firmware escrito y verificado correctamente."
+#define TR_OTA_REBOOTING         "Reiniciando con el nuevo firmware..."
 #define TR_ABOUT_SOURCE_LEGEND "Origen"
 #define TR_ABOUT_SOURCE_BODY   "Futura información del código"
 #define TR_ABOUT_WEB_ADMIN     "administración web."
@@ -407,10 +422,9 @@
 #define TR_STORAGE_DOWNLOAD              "Descargar"
 #define TR_STORAGE_CONFIRM_DELETE_PREFIX "¿Eliminar "
 #define TR_STORAGE_DELETE                "Eliminar"
-#define TR_STORAGE_UPLOAD_NOT_WIRED                                                                                                                            \
-    "El análisis de carga multipart aún no está implementado en este puerto (previsto "                                                                        \
-    "para una futura iteración de OTA/carga). La solicitud se recibió, pero no se "                                                                            \
-    "escribió en LittleFS."
+#define TR_STORAGE_UPLOAD_OK              "Subido:"
+#define TR_STORAGE_UPLOAD_FAILED          "La carga falló. Verifique el archivo y que haya espacio libre suficiente."
+#define TR_STORAGE_NO_FILE_CHOSEN         "Seleccione primero un archivo."
 #define TR_STORAGE_BACK "Volver"
 
 // ---- page_symbol.c -------------------------------------------------------

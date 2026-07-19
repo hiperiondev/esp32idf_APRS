@@ -78,9 +78,24 @@
 #define TR_ABOUT_PARTITION   "Running partition:"
 #define TR_ABOUT_OTA_LEGEND  "OTA Update"
 #define TR_ABOUT_OTA_BODY                                                                                                                                      \
-    "Firmware image upload/flash (esp_https_ota / esp_ota_write pipeline) is "                                                                                 \
-    "planned for a follow-up pass, alongside the multipart upload parser used "                                                                                \
-    "by the Storage page."
+    "Upload a new firmware .bin built for this board. It is written to the "                                                                                   \
+    "inactive OTA slot while the device keeps running from the current one; "                                                                                  \
+    "the device only switches over and reboots once the upload is complete "                                                                                   \
+    "and verified. If the new firmware fails to boot cleanly, it is rolled "                                                                                    \
+    "back automatically on the next restart."
+#define TR_OTA_TARGET_SLOT       "Target slot:"
+#define TR_OTA_SELECT_FILE       "Firmware file (.bin):"
+#define TR_OTA_UPLOAD_BTN        "Upload &amp; Flash"
+#define TR_OTA_CONFIRM           "Upload and flash this firmware? The device will reboot when done."
+#define TR_OTA_NO_FILE_SELECTED  "Choose a firmware .bin file first."
+#define TR_OTA_UPLOADING         "Uploading and writing to flash..."
+#define TR_OTA_NO_PARTITION      "No OTA update slot is available on this device's partition table. Reflash it once over USB/UART with the current partitions.csv to enable OTA."
+#define TR_OTA_BEGIN_FAILED      "Could not start the OTA write: "
+#define TR_OTA_NO_FILE_CHOSEN    "no file was received"
+#define TR_OTA_UPLOAD_FAILED     "Firmware upload failed"
+#define TR_OTA_VALIDATE_FAILED   "image validation failed - the file is not a valid firmware image for this board"
+#define TR_OTA_SUCCESS           "Firmware written and verified successfully."
+#define TR_OTA_REBOOTING         "Rebooting into the new firmware now..."
 #define TR_ABOUT_SOURCE_LEGEND "Source"
 #define TR_ABOUT_SOURCE_BODY   "Future source information"
 #define TR_ABOUT_WEB_ADMIN     "web admin."
@@ -406,9 +421,9 @@
 #define TR_STORAGE_DOWNLOAD              "Download"
 #define TR_STORAGE_CONFIRM_DELETE_PREFIX "Delete "
 #define TR_STORAGE_DELETE                "Delete"
-#define TR_STORAGE_UPLOAD_NOT_WIRED                                                                                                                            \
-    "Multipart file upload parsing is not yet wired up in this port (tracked for "                                                                             \
-    "the OTA/upload follow-up pass). The request was received but not written to LittleFS."
+#define TR_STORAGE_UPLOAD_OK              "Uploaded:"
+#define TR_STORAGE_UPLOAD_FAILED          "Upload failed. Check the file and make sure there is enough free space."
+#define TR_STORAGE_NO_FILE_CHOSEN         "Choose a file first."
 #define TR_STORAGE_BACK "Back"
 
 // ---- page_symbol.c -------------------------------------------------------

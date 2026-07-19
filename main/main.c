@@ -25,6 +25,7 @@
 #include "esp_event.h"
 #include "esp_log.h"
 #include "esp_netif.h"
+#include "esp_ota_ops.h"
 #include "esp_timer.h"
 #include "esp_wifi.h"
 #include "freertos/FreeRTOS.h"
@@ -322,6 +323,27 @@ static void app_task(void *arg) {
     vTaskDelay(pdMS_TO_TICKS(10));
     time_sync_start();
     web_server_start();
+
+    // If this boot is running an image that the web admin's OTA Update
+    // (About / Firmware page) just flashed, CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE
+    // (see partitions.csv) leaves it in "pending verify" state: the bootloader
+    // will silently roll back to the previous OTA slot on the *next* reset
+    // unless something here confirms the image is good first. Reaching this
+    // point means NVS/LittleFS mounted, WiFi came up, and the web admin is
+    // listening - a reasonable bar for "this firmware works" - so confirm it.
+    // On the old single-"factory" partition table (pre-OTA devices) there is
+    // no pending-verify state to find and this is a harmless no-op.
+    {
+        esp_ota_img_states_t ota_state;
+        const esp_partition_t *running = esp_ota_get_running_partition();
+        if (esp_ota_get_state_partition(running, &ota_state) == ESP_OK && ota_state == ESP_OTA_IMG_PENDING_VERIFY) {
+            esp_err_t err = esp_ota_mark_app_valid_cancel_rollback();
+            if (err == ESP_OK)
+                ESP_LOGI(TAG, "OTA image confirmed valid on partition '%s' (rollback cancelled)", running->label);
+            else
+                ESP_LOGW(TAG, "esp_ota_mark_app_valid_cancel_rollback failed: %s", esp_err_to_name(err));
+        }
+    }
 
     // Bring up the AFSK/AX.25 modem + callsign/path settings from g_config,
     // then start the digipeater/igate/message application layer (aprs_service.c).

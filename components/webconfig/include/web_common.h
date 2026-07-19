@@ -63,6 +63,47 @@ int web_read_body(httpd_req_t *req, char *buf, size_t buf_size);
 // or query string), URL-decodes it into out (out_size incl. NUL), returns true if found.
 bool web_form_get(const char *body, const char *key, char *out, size_t out_size);
 
+// Percent-encodes src for safe use as one query-string value (e.g. inside
+// href='/delete?file=...'). Leaves unreserved characters (alnum, - _ . ~)
+// as-is, escapes everything else (including spaces) as %XX.
+void web_urlencode(const char *src, char *dst, size_t dst_size);
+
+// Escapes & < > " ' into HTML entities, so src can be safely embedded in
+// HTML text content or inside a double-quoted HTML attribute without
+// breaking out of either.
+void web_html_attr_escape(const char *src, char *dst, size_t dst_size);
+
+// Reduces an untrusted (e.g. browser-supplied upload) filename to a single
+// safe path component: strips any directory part, drops leading dots (no
+// "." / ".." / hidden-file games), and replaces anything outside
+// [A-Za-z0-9._- ] with '_'. Falls back to "upload.bin" if that leaves
+// nothing usable.
+void web_sanitize_filename(const char *src, char *dst, size_t dst_size);
+
+// ---- Streaming multipart/form-data file receiver ---------------------------
+// Parses a multipart/form-data POST body directly off the socket (never
+// buffers the whole body in RAM), looking for the first part that carries a
+// non-empty filename="..." (i.e. an <input type='file'> the user actually
+// picked a file for). Every raw byte of that part's content is handed to
+// `cb` as it arrives, in order, so the caller can stream it straight into
+// something like esp_ota_write() without ever holding the full upload in
+// memory. Other parts (plain form fields, empty file inputs) are parsed and
+// skipped. filename_out (if non-NULL) receives the uploaded file's original
+// name from the Content-Disposition header.
+//
+// Returns:
+//   ESP_OK           - a file part was found and fully streamed to cb
+//   ESP_ERR_NOT_FOUND - well-formed multipart body, but no file part had a
+//                       filename (e.g. the user submitted with nothing chosen)
+//   ESP_ERR_INVALID_ARG - missing/unparseable Content-Type or boundary
+//   ESP_ERR_NO_MEM    - couldn't allocate the internal scratch buffer
+//   ESP_FAIL          - malformed body, socket error, or cb returned non-OK
+//                       (cb's return value is propagated here so it can abort
+//                       the transfer, e.g. once esp_ota_write() fails)
+typedef esp_err_t (*web_multipart_data_cb_t)(void *cb_ctx, const uint8_t *data, size_t len);
+
+esp_err_t web_multipart_receive_file(httpd_req_t *req, web_multipart_data_cb_t cb, void *cb_ctx, char *filename_out, size_t filename_out_size);
+
 // Convenience wrappers built on web_form_get:
 bool web_form_get_bool(const char *body, const char *key); // "on"/"1"/"true" -> true
 int web_form_get_int(const char *body, const char *key, int def);

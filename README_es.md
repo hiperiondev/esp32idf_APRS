@@ -93,12 +93,12 @@ Todo es C puro. No hay núcleo de Arduino, ni `String`, ni PlatformIO. Toda la c
 | Cifrado AES-128-CBC de mensajes APRS | ✅ | `mbedtls`, IV derivado por MD5, payload en base64 |
 | Administración web (autenticación HTTP Basic) | ✅ | ~25 páginas, dashboard en vivo |
 | Log de tráfico en vivo + tabla de últimos escuchados | ✅ | long-poll JSON (`?since=<seq>`) |
-| Almacenamiento LittleFS: subir/descargar/borrar/formatear | ✅ | partición de 400 KB |
+| Almacenamiento LittleFS: subir/descargar/borrar/formatear | ✅ | partición de 512 KB |
 | Sincronización horaria SNTP (3 hosts) | ✅ | el reloj siempre se mantiene en UTC |
 | Control de frecuencia de CPU (80/160/240 MHz) | ✅ | `esp_pm_configure()` |
 | Wi-Fi AP / STA / AP+STA, escaneo, potencia de TX | ✅ | 5 slots STA (se usa el primero habilitado) |
 | Localización (EN / ES / IT) | ✅ | en tiempo de compilación, un idioma por imagen |
-| Actualización OTA | ❌ | la tabla de particiones tiene un único `factory`; la página About lo aclara |
+| Actualización OTA | ✅ | página web About / Firmware, ranuras `ota_0`/`ota_1`, rollback automático si falla el arranque |
 | Módulo RF LoRa / SX127x-SX128x | ❌ | solo UI + configuración, `ENABLE_RF_MODULE` está comentado |
 | VPN WireGuard, MQTT, GNSS, meteorología, telemetría, sensores | ❌ | las páginas/configuración existen; los módulos están deshabilitados en `app_config.h` |
 | Bluetooth, PPP/GSM, pantalla OLED, Modbus | ❌ | campos de configuración conservados solo por compatibilidad |
@@ -325,7 +325,7 @@ Para el [LOOP TEST](#el-loop-test), simplemente cablea **`GPIO25` → `GPIO33`**
 ```
 workspace-APRS/esp32_APRS_igate/
 ├── CMakeLists.txt                  ← definición de placa (pines ADC/DAC/PTT/LED) + project()
-├── partitions.csv                  ← nvs / phy_init / factory(1500K) / storage(400K, LittleFS)
+├── partitions.csv                  ← nvs / otadata / phy_init / ota_0(1728K) / ota_1(1728K) / storage(512K, LittleFS)
 ├── sdkconfig                       ← target=esp32, flash 4MB, particiones personalizadas
 ├── dependencies.lock               ← idf 5.5.4, joltwallet/littlefs 1.22.1
 ├── LICENSE                         ← GPL-3.0
@@ -633,11 +633,17 @@ idf.py build -DLANGUAGE=LANG_IT
 | Nombre | Tipo | SubTipo | Offset | Tamaño |
 |---|---|---|---|---|
 | `nvs` | data | nvs | 0x9000 | 24 K |
-| `phy_init` | data | phy | 0xF000 | 4 K |
-| `factory` | app | factory | 0x10000 | **1500 K** |
-| `storage` | data | spiffs | (auto) | **400 K** → montada como **LittleFS** en `/storage` |
+| `otadata` | data | ota | 0xF000 | 8 K |
+| `phy_init` | data | phy | 0x11000 | 4 K |
+| `ota_0` | app | ota_0 | 0x20000 | **1728 K** |
+| `ota_1` | app | ota_1 | 0x1D0000 | **1728 K** |
+| `storage` | data | spiffs | 0x380000 | **512 K** → montada como **LittleFS** en `/storage` |
 
-Una sola ranura de aplicación `factory` → **sin OTA**. El `sdkconfig` viene con `CONFIG_COMPILER_OPTIMIZATION_DEBUG=y` (`-Og`) y las aserciones activadas; pasa a `-Os` si andas justo de flash.
+Dos ranuras de aplicación OTA (`ota_0` / `ota_1`) → **la actualización OTA está disponible** desde la página web **About / Firmware**: subís un `.bin`, se escribe en la ranura que no está corriendo, y el dispositivo reinicia hacia ella una vez verificada la escritura. `CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE` está activado, así que una imagen nueva que no logre levantar el admin web vuelve automáticamente a la ranura anterior en el siguiente reinicio (ver `esp_ota_mark_app_valid_cancel_rollback()` en `main.c`).
+
+> **Migrando un dispositivo existente:** esta tabla de particiones reemplaza el esquema anterior de una sola partición `factory`. Un dispositivo que todavía corre la tabla vieja no tiene `ota_0`/`ota_1` a donde actualizar, así que su primer paso a este firmware debe ser una regrabación única por USB/UART (`idf.py -p PUERTO flash`, o un `.bin` combinado). Cada actualización posterior puede hacerse desde el admin web.
+
+El `sdkconfig` viene con `CONFIG_COMPILER_OPTIMIZATION_DEBUG=y` (`-Og`) y las aserciones activadas; pasa a `-Os` si andas justo de flash.
 
 ---
 
@@ -721,7 +727,8 @@ Una sola ranura de aplicación `factory` → **sin OTA**. El `sdkconfig` viene c
 | GET | `/delete?file=…` | borrar un archivo |
 | POST | `/upload` | subida multipart |
 | POST | `/format` | reformatear LittleFS |
-| GET | `/about` | versión de firmware/IDF, partición, nota sobre OTA |
+| GET | `/about` | versión de firmware/IDF, partición, formulario de actualización OTA |
+| POST | `/ota_update` | subida multipart de firmware → grabar ranura OTA inactiva → reiniciar |
 
 ### Página por página
 
@@ -749,7 +756,7 @@ Las estadísticas vienen de `aprs_service_get_stats()`, contabilizadas **con ind
 
 **Storage** — explorador de LittleFS: descargar, borrar, subida multipart, uso, formatear.
 
-**About** — nombre del proyecto, versión, fecha/hora de compilación, versión del IDF, etiqueta/offset/tamaño de la partición en ejecución, y una nota explícita de que OTA no está disponible con esta tabla de particiones.
+**About** — nombre del proyecto, versión, fecha/hora de compilación, versión del IDF, etiqueta/offset/tamaño de la partición en ejecución, y el panel de **Actualización OTA**: elegís un `.bin`, se sube (con barra de progreso, transmitido directo a la ranura `ota_0`/`ota_1` inactiva vía `esp_ota_write()`, sin bufferearlo entero en RAM), y el dispositivo reinicia hacia esa imagen una vez escrita y verificada. Una imagen defectuosa que nunca se confirma (ver `esp_ota_mark_app_valid_cancel_rollback()` en `main.c`) se revierte automáticamente a la ranura anterior en el siguiente reinicio. Si el dispositivo todavía tiene la tabla de particiones vieja de un solo `factory`, este panel lo indica y pide una regrabación manual por USB/UART primero.
 
 ---
 
@@ -886,7 +893,7 @@ Las reconexiones usan un **back-off creciente** (500 ms por falla consecutiva, c
 ## Estado y limitaciones conocidas
 
 * **Trabajo en curso.** Lo dice el README original, y lo dice también este.
-* **Sin OTA** — una sola partición `factory`; se graba por serie.
+* **OTA disponible** — página About / Firmware, ranuras `ota_0`/`ota_1` con rollback automático. Los dispositivos con la tabla de particiones vieja (`factory` única) necesitan una regrabación por serie, una sola vez, para pasar a este esquema.
 * **`rf2inetFilter` no se aplica.** `igateProcess()` sigue aplicando solo las reglas RFONLY/TCPIP/qA/NOGATE/satélite y el antiduplicados, no la máscara de tipos de paquete. `aprs_filter_classify_tnc2()` / `aprs_filter_pass()` no dependen de la dirección, así que engancharlo ahí son dos líneas.
 * **Solo se usa el primer slot STA habilitado.** El failover multi-AP figura como "se puede agregar más adelante".
 * **Sin GPS, sin SmartBeaconing.** Los campos de configuración existen; los beacons son solo de posición fija.

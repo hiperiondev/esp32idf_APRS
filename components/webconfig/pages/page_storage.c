@@ -21,13 +21,49 @@
 
 #include <dirent.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+
+#include "esp_log.h"
 
 #include "pages.h"
 #include "storage.h"
 #include "translations.h"
 #include "web_common.h"
+
+static const char *TAG = "page_storage";
+
+// Filenames land in three different contexts on this page - HTML text, an
+// href query value, and (for delete) a data-* attribute read back by a
+// smidgen of JS - and each context has its own special characters. A name
+// with a space, '&', '"', or similar used to silently mangle the generated
+// markup (breaking the link/button for that row, without any obvious error)
+// once it existed anywhere outside typical config-file names, which is
+// exactly what user-uploaded files can look like. escape for display/attr,
+// encode for the query string.
+static void append_file_row(httpd_req_t *req, const char *name, long size) {
+    char esc[512], enc[512];
+    web_html_attr_escape(name, esc, sizeof(esc));
+    web_urlencode(name, enc, sizeof(enc));
+
+    // esc/enc can each be up to sizeof(esc)-1 long (worst case: every byte
+    // of the name escapes to a multi-char entity/percent-triplet), and esc
+    // appears twice + enc appears twice in the row below, so size the
+    // buffer from their actual lengths rather than guessing a fixed cap.
+    size_t need = strlen(esc) * 2 + strlen(enc) * 2 + 300;
+    char *row = malloc(need);
+    if (!row)
+        return;
+    snprintf(row, need,
+             "<tr><td>%s</td><td>%ld</td>"
+             "<td><a class='btn' href='/download?file=%s'>" TR_STORAGE_DOWNLOAD "</a> "
+             "<a class='btn danger' href='/delete?file=%s' data-fname=\"%s\" "
+             "onclick=\"return confirm('" TR_STORAGE_CONFIRM_DELETE_PREFIX "'+this.dataset.fname+'?');\">" TR_STORAGE_DELETE "</a></td></tr>",
+             esc, size, enc, enc, esc);
+    httpd_resp_sendstr_chunk(req, row);
+    free(row);
+}
 
 esp_err_t page_storage_get(httpd_req_t *req) {
     if (!web_check_auth(req))
@@ -55,14 +91,7 @@ esp_err_t page_storage_get(httpd_req_t *req) {
             snprintf(full, sizeof(full), "%s/%s", STORAGE_BASE_PATH, ent->d_name);
             struct stat st;
             long size = (stat(full, &st) == 0) ? (long)st.st_size : -1;
-            char row[1650];
-            snprintf(row, sizeof(row),
-                     "<tr><td>%s</td><td>%ld</td>"
-                     "<td><a class='btn' href='/download?file=%s'>" TR_STORAGE_DOWNLOAD "</a> "
-                     "<a class='btn danger' href='/delete?file=%s' onclick=\"return confirm('" TR_STORAGE_CONFIRM_DELETE_PREFIX "%s?');\">" TR_STORAGE_DELETE
-                     "</a></td></tr>",
-                     ent->d_name, size, ent->d_name, ent->d_name, ent->d_name);
-            httpd_resp_sendstr_chunk(req, row);
+            append_file_row(req, ent->d_name, size);
         }
         closedir(dir);
     }
@@ -71,11 +100,25 @@ esp_err_t page_storage_get(httpd_req_t *req) {
     return ESP_OK;
 }
 
+// A `file` query value is only ever supposed to be one of the flat names
+// this page itself listed - never a path. Reject anything with a separator
+// or a leading dot so a hand-crafted request can't walk out of /storage.
+static bool safe_flat_filename(const char *fname) {
+    if (!fname || fname[0] == 0 || fname[0] == '.')
+        return false;
+    for (const char *p = fname; *p; p++) {
+        if (*p == '/' || *p == '\\')
+            return false;
+    }
+    return true;
+}
+
 esp_err_t page_download(httpd_req_t *req) {
     if (!web_check_auth(req))
         return ESP_OK;
     char query[128], fname[100];
-    if (httpd_req_get_url_query_str(req, query, sizeof(query)) != ESP_OK || !web_form_get(query, "file", fname, sizeof(fname))) {
+    if (httpd_req_get_url_query_str(req, query, sizeof(query)) != ESP_OK || !web_form_get(query, "file", fname, sizeof(fname)) ||
+        !safe_flat_filename(fname)) {
         httpd_resp_send_404(req);
         return ESP_OK;
     }
@@ -107,10 +150,14 @@ esp_err_t page_delete(httpd_req_t *req) {
     if (!web_check_auth(req))
         return ESP_OK;
     char query[128], fname[100];
-    if (httpd_req_get_url_query_str(req, query, sizeof(query)) == ESP_OK && web_form_get(query, "file", fname, sizeof(fname))) {
+    if (httpd_req_get_url_query_str(req, query, sizeof(query)) == ESP_OK && web_form_get(query, "file", fname, sizeof(fname)) &&
+        safe_flat_filename(fname)) {
         char rel[110];
         snprintf(rel, sizeof(rel), "/%s", fname);
-        storage_delete(rel);
+        if (!storage_delete(rel))
+            ESP_LOGW(TAG, "delete failed for '%s'", fname);
+    } else {
+        ESP_LOGW(TAG, "delete request with missing/unsafe file param");
     }
     httpd_resp_set_status(req, "302 Found");
     httpd_resp_set_hdr(req, "Location", "/storage");
@@ -130,24 +177,85 @@ esp_err_t page_format(httpd_req_t *req) {
     return ESP_OK;
 }
 
-// NOTE: True multipart/form-data parsing (boundary parsing + streaming to file)
-// is planned for a follow-up pass alongside /about firmware-OTA upload, since both
-// share the same multipart reader. For now this endpoint acknowledges the request
-// so the button doesn't dead-end, without silently pretending to store the file.
+// ---------------------------------------------------------------- Upload
+
+typedef struct {
+    FILE *f;
+    const char *raw_name; // -> caller's filename_out buffer; already parsed
+                           // from Content-Disposition by the time cb runs
+    char sanitized[100];
+    bool opened;
+    bool error;
+    size_t total;
+} upload_ctx_t;
+
+static esp_err_t upload_write_cb(void *ctx_v, const uint8_t *data, size_t len) {
+    upload_ctx_t *ctx = (upload_ctx_t *)ctx_v;
+    if (ctx->error)
+        return ESP_FAIL;
+
+    if (!ctx->opened) {
+        ctx->opened = true;
+        web_sanitize_filename(ctx->raw_name, ctx->sanitized, sizeof(ctx->sanitized));
+        char full[300];
+        snprintf(full, sizeof(full), "%s/%s", STORAGE_BASE_PATH, ctx->sanitized);
+        ctx->f = fopen(full, "wb");
+        if (!ctx->f) {
+            ESP_LOGE(TAG, "fopen('%s') failed", full);
+            ctx->error = true;
+            return ESP_FAIL;
+        }
+    }
+
+    if (len > 0 && fwrite(data, 1, len, ctx->f) != len) {
+        ESP_LOGE(TAG, "fwrite failed for '%s' (disk full?)", ctx->sanitized);
+        ctx->error = true;
+        return ESP_FAIL;
+    }
+    ctx->total += len;
+    return ESP_OK;
+}
+
 esp_err_t page_upload(httpd_req_t *req) {
     if (!web_check_auth(req))
         return ESP_OK;
-    // Drain body so the connection doesn't hang.
-    char buf[512];
-    int remaining = req->content_len;
-    while (remaining > 0) {
-        int r = httpd_req_recv(req, buf, remaining > (int)sizeof(buf) ? sizeof(buf) : remaining);
-        if (r <= 0)
-            break;
-        remaining -= r;
+
+    char raw_name[100] = { 0 };
+    upload_ctx_t ctx = { .f = NULL, .raw_name = raw_name, .sanitized = { 0 }, .opened = false, .error = false, .total = 0 };
+
+    esp_err_t perr = web_multipart_receive_file(req, upload_write_cb, &ctx, raw_name, sizeof(raw_name));
+    if (ctx.f)
+        fclose(ctx.f);
+
+    bool ok = (perr == ESP_OK) && !ctx.error && ctx.opened && ctx.total > 0;
+    if (!ok) {
+        ESP_LOGW(TAG, "upload failed: parse=%s opened=%d total=%u", esp_err_to_name(perr), (int)ctx.opened, (unsigned)ctx.total);
+        if (ctx.opened && ctx.sanitized[0]) {
+            // Don't leave a truncated/empty file behind after a failed upload.
+            char full[300];
+            snprintf(full, sizeof(full), "%s/%s", STORAGE_BASE_PATH, ctx.sanitized);
+            remove(full);
+        }
     }
+
     web_send_header(req, TR_F_UPLOAD, "storage");
-    httpd_resp_sendstr_chunk(req, "<p class='msg-err'>" TR_STORAGE_UPLOAD_NOT_WIRED "</p><a class='btn' href='/storage'>" TR_STORAGE_BACK "</a>");
+    if (ok) {
+        char esc[220];
+        web_html_attr_escape(ctx.sanitized, esc, sizeof(esc));
+        size_t need = strlen(esc) + 128;
+        char *msg = malloc(need);
+        if (msg) {
+            snprintf(msg, need, "<p class='msg-ok'>" TR_STORAGE_UPLOAD_OK " %s (%u bytes)</p><a class='btn' href='/storage'>" TR_STORAGE_BACK "</a>", esc,
+                     (unsigned)ctx.total);
+            httpd_resp_sendstr_chunk(req, msg);
+            free(msg);
+        }
+    } else {
+        const char *reason = (perr == ESP_ERR_NOT_FOUND) ? TR_STORAGE_NO_FILE_CHOSEN : TR_STORAGE_UPLOAD_FAILED;
+        httpd_resp_sendstr_chunk(req, "<p class='msg-err'>");
+        httpd_resp_sendstr_chunk(req, reason);
+        httpd_resp_sendstr_chunk(req, "</p><a class='btn' href='/storage'>" TR_STORAGE_BACK "</a>");
+    }
     web_send_footer(req);
     return ESP_OK;
 }

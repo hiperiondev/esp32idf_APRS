@@ -45,6 +45,7 @@ esp_err_t page_wifi_scan_get(httpd_req_t *req); // GET  /wifiscan (JSON AP list)
 esp_err_t page_system_get(httpd_req_t *req);    // GET  /system
 esp_err_t page_system_post(httpd_req_t *req);   // POST /system
 esp_err_t page_about_get(httpd_req_t *req);     // GET  /about
+esp_err_t page_ota_update_post(httpd_req_t *req); // POST /ota_update (multipart firmware upload -> flash + reboot)
 esp_err_t page_default_reset(httpd_req_t *req); // GET/POST /default (factory reset)
 
 // -- Coming in follow-up turns (registered with a "not implemented yet" stub

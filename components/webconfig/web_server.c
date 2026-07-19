@@ -41,7 +41,9 @@ void web_server_start(void) {
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
     config.uri_match_fn = httpd_uri_match_wildcard;
     config.max_uri_handlers = 64;
-    config.stack_size = 8192;
+    // OTA firmware upload (esp_ota_write + esp_ota_end's image-verify sha256
+    // pass) needs a bit more headroom than the rest of the admin pages.
+    config.stack_size = 10240;
     config.lru_purge_enable = true;
 
     if (httpd_start(&server, &config) != ESP_OK) {
@@ -74,6 +76,7 @@ void web_server_start(void) {
     reg(server, "/system", HTTP_POST, page_system_post);
     reg(server, "/default", HTTP_POST, page_default_reset);
     reg(server, "/about", HTTP_GET, page_about_get);
+    reg(server, "/ota_update", HTTP_POST, page_ota_update_post);
 
     reg(server, "/igate", HTTP_GET, page_igate_get);
     reg(server, "/igate", HTTP_POST, page_igate_post);

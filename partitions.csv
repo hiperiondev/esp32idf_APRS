@@ -1,6 +1,26 @@
 # ESP-IDF Partition Table
-# Name,   Type, SubType, Offset,  Size, Flags
-nvs,data,nvs,     0x9000,0x6000,
-phy_init,data,phy,     0xf000,0x1000,
-factory,app,factory, 0x10000,1500K,
-storage,data,spiffs,         ,400K, 
+#
+# OTA-enabled layout (4MB flash). Two app slots (ota_0 / ota_1) let the
+# device boot from whichever slot was NOT just overwritten by a web-admin
+# firmware upload, and roll back automatically if the new image fails the
+# post-OTA self-check (see esp_ota_mark_app_valid_cancel_rollback()).
+#
+# App partition offsets must land on a 0x10000 (64K) boundary, which is why
+# ota_0/ota_1 are sized to a multiple of 0x10000 (1728K each) rather than
+# just filling the space evenly - a size that isn't 64K-aligned pushes the
+# next partition's offset off the required boundary and gen_esp32part.py
+# rejects the table (as it should).
+#
+# NOTE: this replaces the old single "factory" partition. Devices already
+# in the field running the old table must be reflashed once over USB/UART
+# (idf.py -p PORT flash, or a full-image .bin) to pick up this table; after
+# that one-time migration, all further updates can be done from the web
+# admin About / Firmware page.
+#
+# Name,     Type, SubType,  Offset,   Size,  Flags
+nvs,        data, nvs,      0x9000,   0x6000,
+otadata,    data, ota,      0xf000,   0x2000,
+phy_init,   data, phy,      0x11000,  0x1000,
+ota_0,      app,  ota_0,    0x20000,  1728K,
+ota_1,      app,  ota_1,    0x1d0000, 1728K,
+storage,    data, spiffs,   0x380000, 512K,

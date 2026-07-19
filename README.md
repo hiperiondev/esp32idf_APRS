@@ -93,12 +93,12 @@ Everything is plain C. There is no Arduino core, no `String`, no PlatformIO. The
 | APRS message AES-128-CBC encryption | ✅ | `mbedtls`, MD5-derived IV, base64 payload |
 | Web admin (HTTP Basic auth) | ✅ | ~25 pages, live dashboard |
 | Live traffic log + last-heard table | ✅ | JSON long-poll (`?since=<seq>`) |
-| LittleFS storage, upload/download/delete/format | ✅ | 400 KB partition |
+| LittleFS storage, upload/download/delete/format | ✅ | 512 KB partition |
 | SNTP time sync (3 hosts) | ✅ | clock always kept in UTC |
 | CPU frequency control (80/160/240 MHz) | ✅ | `esp_pm_configure()` |
 | Wi-Fi AP / STA / AP+STA, scan, TX power | ✅ | 5 STA slots (first enabled one is used) |
 | Localization (EN / ES / IT) | ✅ | compile-time, one language per image |
-| OTA update | ❌ | partition table is single-`factory`; About page says so |
+| OTA update | ✅ | web admin About / Firmware page, `ota_0`/`ota_1` slots, auto-rollback on boot failure |
 | LoRa / SX127x-SX128x RF module | ❌ | UI + config only, `ENABLE_RF_MODULE` is commented out |
 | WireGuard VPN, MQTT, GNSS, weather, telemetry, sensors | ❌ | pages/config exist; modules disabled in `app_config.h` |
 | Bluetooth, PPP/GSM, OLED display, Modbus | ❌ | config fields kept for compatibility only |
@@ -325,7 +325,7 @@ For the [LOOP TEST](#the-loop-test), simply wire **`GPIO25` → `GPIO33`** (DAC 
 ```
 workspace-APRS/esp32_APRS_igate/
 ├── CMakeLists.txt                  ← board definition (ADC/DAC/PTT/LED pins) + project()
-├── partitions.csv                  ← nvs / phy_init / factory(1500K) / storage(400K, LittleFS)
+├── partitions.csv                  ← nvs / otadata / phy_init / ota_0(1728K) / ota_1(1728K) / storage(512K, LittleFS)
 ├── sdkconfig                       ← target=esp32, 4MB flash, custom partitions
 ├── dependencies.lock               ← idf 5.5.4, joltwallet/littlefs 1.22.1
 ├── LICENSE                         ← GPL-3.0
@@ -633,11 +633,17 @@ idf.py build -DLANGUAGE=LANG_IT
 | Name | Type | SubType | Offset | Size |
 |---|---|---|---|---|
 | `nvs` | data | nvs | 0x9000 | 24 K |
-| `phy_init` | data | phy | 0xF000 | 4 K |
-| `factory` | app | factory | 0x10000 | **1500 K** |
-| `storage` | data | spiffs | (auto) | **400 K** → mounted as **LittleFS** at `/storage` |
+| `otadata` | data | ota | 0xF000 | 8 K |
+| `phy_init` | data | phy | 0x11000 | 4 K |
+| `ota_0` | app | ota_0 | 0x20000 | **1728 K** |
+| `ota_1` | app | ota_1 | 0x1D0000 | **1728 K** |
+| `storage` | data | spiffs | 0x380000 | **512 K** → mounted as **LittleFS** at `/storage` |
 
-Single `factory` app slot → **no OTA**. `sdkconfig` ships with `CONFIG_COMPILER_OPTIMIZATION_DEBUG=y` (`-Og`) and assertions on; switch to `-Os` if you're tight on flash.
+Two OTA app slots (`ota_0` / `ota_1`) → **OTA update is supported** from the web admin **About / Firmware** page: upload a `.bin`, it's written to whichever slot isn't currently running, and the device reboots into it once the write is verified. `CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE` is on, so a new image that fails to bring the web admin back up gets rolled back to the previous slot automatically on the next reset (see `esp_ota_mark_app_valid_cancel_rollback()` in `main.c`).
+
+> **Migrating an existing device:** this partition table replaced the older single-`factory` layout. A device still running the old table has no `ota_0`/`ota_1` to update into, so its first move to this firmware must be a one-time reflash over USB/UART (`idf.py -p PORT flash`, or a full merged `.bin`). Every update after that can go through the web admin.
+
+`sdkconfig` ships with `CONFIG_COMPILER_OPTIMIZATION_DEBUG=y` (`-Og`) and assertions on; switch to `-Os` if you're tight on flash.
 
 ---
 
@@ -721,7 +727,8 @@ Single `factory` app slot → **no OTA**. `sdkconfig` ships with `CONFIG_COMPILE
 | GET | `/delete?file=…` | delete a file |
 | POST | `/upload` | multipart upload |
 | POST | `/format` | reformat LittleFS |
-| GET | `/about` | firmware/IDF version, partition, OTA note |
+| GET | `/about` | firmware/IDF version, partition, OTA update form |
+| POST | `/ota_update` | multipart firmware upload → flash inactive OTA slot → reboot |
 
 ### Page-by-page
 
@@ -749,7 +756,7 @@ The statistics come from `aprs_service_get_stats()`, tracked **independently** o
 
 **Storage** — LittleFS browser: download, delete, multipart upload, usage, format.
 
-**About** — project name, version, build date/time, IDF version, running partition label/offset/size, and an explicit note that OTA is not available with this partition table.
+**About** — project name, version, build date/time, IDF version, running partition label/offset/size, and the **OTA Update** panel: pick a `.bin`, upload it (progress bar, streamed straight into the inactive `ota_0`/`ota_1` slot via `esp_ota_write()` — never buffered whole in RAM), and the device reboots into it once written and verified. A bad image that never gets confirmed (see `esp_ota_mark_app_valid_cancel_rollback()` in `main.c`) is rolled back to the previous slot automatically on the next reset. If the device is still on the old single-`factory` partition table, this panel says so and asks for one manual USB/UART reflash first.
 
 ---
 
@@ -886,7 +893,7 @@ Reconnects use a **growing back-off** (500 ms per consecutive failure, capped at
 ## Status & known limitations
 
 * **Work in progress.** The upstream README says so, and so does this one.
-* **No OTA** — single `factory` partition; flash over serial.
+* **OTA available** — About / Firmware page, `ota_0`/`ota_1` slots with automatic rollback. Devices still on the old single-`factory` partition table need one serial reflash to move onto this layout.
 * **`rf2inetFilter` is not applied.** `igateProcess()` still applies only the RFONLY/TCPIP/qA/NOGATE/satellite rules and dedup, not the payload-type bitmask. `aprs_filter_classify_tnc2()` / `aprs_filter_pass()` are direction-agnostic, so wiring it there is a two-line change.
 * **Only the first enabled Wi-Fi STA slot is used.** Multi-AP failover is noted as "can be added later".
 * **No GPS, no SmartBeaconing.** Config fields exist; beacons are fixed-position only.
