@@ -348,7 +348,6 @@ workspace-APRS/esp32_APRS_igate/
 │   │   ├── src/modem.c   (899 ln)         ← correlators, DPLL, tone tables, DCD, calibration
 │   │   ├── src/ax25.c    (1326 ln)        ← HDLC framer, NRZI, bit-stuffing, AX.25 codec, TX queue
 │   │   ├── src/fx25.c, lwfec/rs.c, gf.c   ← FX.25 Reed–Solomon FEC
-│   │   ├── src/kiss.c                     ← KISS framing (unused by this app)
 │   │   └── src/crc_ccit.c                 ← FCS
 │   │
 │   ├── igate/          ← APRS-IS TCP client, login, filters, dedup, RF→INET / INET→RF
@@ -892,9 +891,7 @@ Reconnects use a **growing back-off** (500 ms per consecutive failure, capped at
 * **No GPS, no SmartBeaconing.** Config fields exist; beacons are fixed-position only.
 * **No LoRa / RF-module driver.** `ENABLE_RF_MODULE` is commented out; the SX12xx UI and config are scaffolding.
 * **VPN / MQTT / GNSS / weather / telemetry / sensors / Bluetooth / PPP / OLED / Modbus**: config fields and (some) pages exist, no implementations.
-* **KISS is compiled but unreachable** — no serial/TCP KISS TNC front-end in this app.
 * **Symbol parsing** only covers the no-timestamp `!` / `=` position formats; `/` and `@` leave the icon blank.
-* **Duplicate file:** `components/webconfig/page_symbol.c` exists alongside `components/webconfig/pages/page_symbol.c`, but only the latter is in `CMakeLists.txt`. The former is dead weight and differs from the live one — worth deleting.
 * **`agc_max_gain`, `sql_level`, `volume`, `adc_gpio`, `dac_gpio`, `rf_sql_*`, `rf_pwr_*`, `adc_atten`** are inert since the modem swap; kept only for `config.json` compatibility.
 * `sdkconfig` ships with `-Og` + assertions, not a release profile.
 

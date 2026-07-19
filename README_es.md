@@ -348,7 +348,6 @@ workspace-APRS/esp32_APRS_igate/
 │   │   ├── src/modem.c   (899 ln)         ← correladores, DPLL, tablas de tonos, DCD, calibración
 │   │   ├── src/ax25.c    (1326 ln)        ← tramador HDLC, NRZI, bit-stuffing, códec AX.25, cola de TX
 │   │   ├── src/fx25.c, lwfec/rs.c, gf.c   ← FEC Reed–Solomon de FX.25
-│   │   ├── src/kiss.c                     ← tramado KISS (sin uso en esta app)
 │   │   └── src/crc_ccit.c                 ← FCS
 │   │
 │   ├── igate/          ← cliente TCP de APRS-IS, login, filtros, dedup, RF→INET / INET→RF
@@ -892,9 +891,7 @@ Las reconexiones usan un **back-off creciente** (500 ms por falla consecutiva, c
 * **Sin GPS, sin SmartBeaconing.** Los campos de configuración existen; los beacons son solo de posición fija.
 * **Sin driver de LoRa / módulo RF.** `ENABLE_RF_MODULE` está comentado; la UI y la configuración de SX12xx son andamiaje.
 * **VPN / MQTT / GNSS / meteorología / telemetría / sensores / Bluetooth / PPP / OLED / Modbus**: existen campos de configuración y (algunas) páginas, sin implementación.
-* **KISS se compila pero es inalcanzable** — no hay front-end de TNC KISS por serie/TCP en esta app.
 * **El parseo de símbolos** solo cubre los formatos de posición sin marca de tiempo `!` / `=`; `/` y `@` dejan el ícono en blanco.
-* **Archivo duplicado:** `components/webconfig/page_symbol.c` existe junto a `components/webconfig/pages/page_symbol.c`, pero solo el segundo está en `CMakeLists.txt`. El primero es peso muerto y además difiere del que está en uso — conviene borrarlo.
 * **`agc_max_gain`, `sql_level`, `volume`, `adc_gpio`, `dac_gpio`, `rf_sql_*`, `rf_pwr_*`, `adc_atten`** están inertes desde el cambio de módem; se conservan solo por compatibilidad de `config.json`.
 * El `sdkconfig` viene con `-Og` + aserciones, no con un perfil de release.
 
