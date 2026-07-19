@@ -1135,6 +1135,6 @@ typedef struct {
      *         @ref weather_qty is nonzero. NULL/0 if unused. */
     aprs_weather_extended_sensor_t *extended_sensors;
     size_t extended_sensor_count;
-} aprs_packet_t;
+} weather_telemetry_data_t;
 
 #endif /* WEATHER_TELEMETRY_H */
