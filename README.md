@@ -81,7 +81,6 @@ Everything is plain C. There is no Arduino core, no `String`, no PlatformIO. The
 | G3RUH FSK 9600 Bd | ✅ | needs flat/discriminator audio |
 | HDLC / AX.25 UI frame RX+TX | ✅ | `AX25_FRAME_MAX_SIZE = 329` |
 | FX.25 (RS FEC over AX.25) | ✅ | `-DENABLE_FX25`, RX-only / RX+TX modes |
-| KISS framing | 🟡 | code present in the component, **not wired to any serial port in this app** |
 | PTT keying (runtime-selectable GPIO + polarity) | ✅ | validated against ADC/DAC/flash pins |
 | CSMA / TX time-slot / TXDelay preamble | ✅ | `preamble`, `tx_timeslot` |
 | DCD (data carrier detect) | ✅ | demodulator-derived; no hardware squelch input |
