@@ -100,6 +100,18 @@ esp_err_t sensors_local_register(sensor_local_driver_t *driver) {
         return ESP_ERR_INVALID_ARG;
     }
 
+    /* Every driver must declare what kind of sensor it is (Weather,
+     * Telemetry, or any future ::sensor_local_data_kind_t bit) so that
+     * consumers of the registry - e.g. the Weather "Sensor Mapping" channel
+     * picker - can filter it by type instead of listing every registered
+     * sensor regardless of what it actually produces. */
+    if (driver->capabilities == SENSOR_LOCAL_DATA_NONE) {
+        ESP_LOGE(TAG, "rejected driver '%s': capabilities not set (must declare SENSOR_LOCAL_DATA_WEATHER and/or "
+                      "SENSOR_LOCAL_DATA_TELEMETRY, or a future sensor kind)",
+                 driver->name);
+        return ESP_ERR_INVALID_ARG;
+    }
+
     registry_lock();
 
     if (registry_index_of(driver->name) != (size_t)-1) {

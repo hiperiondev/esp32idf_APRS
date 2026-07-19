@@ -56,6 +56,14 @@ static const char *WX_FIELD_NAME[WX_SENSOR_NUM] = {
  * sensors_local registry so each option shows the channel *number and name*
  * ("0: bme280", "1: ds18b20", ...). Index 0xFF (255) is the "(none)" choice.
  * If no local sensor driver has registered yet, only "(none)" is offered.
+ *
+ * Only drivers that advertise ::SENSOR_LOCAL_DATA_WEATHER in their
+ * capabilities are listed here: a Weather Report field can only ever be fed
+ * from a weather-capable sensor, so telemetry-only (or any future non-weather
+ * kind of) driver must not show up as a selectable source on this page - it
+ * belongs on the Telemetry page's channel mapping instead. The option value
+ * is still the sensor's real registry index (not a sequential position among
+ * the filtered list), so it round-trips correctly with wx_sensor_ch[].
  */
 static void wx_channel_select(httpd_req_t *req, int field, uint8_t selected) {
     char buf[160];
@@ -68,7 +76,9 @@ static void wx_channel_select(httpd_req_t *req, int field, uint8_t selected) {
     size_t n = sensors_local_count();
     for (size_t ch = 0; ch < n; ch++) {
         sensor_local_driver_t *d = sensors_local_get(ch);
-        const char *nm = (d && d->name) ? d->name : "?";
+        if (d == NULL || !(d->capabilities & SENSOR_LOCAL_DATA_WEATHER))
+            continue; /* not a weather sensor: skip (e.g. telemetry-only drivers) */
+        const char *nm = (d->name) ? d->name : "?";
         snprintf(buf, sizeof(buf), "<option value='%u'%s>%u: %.40s</option>", (unsigned)ch, (selected == ch) ? " selected" : "", (unsigned)ch, nm);
         httpd_resp_sendstr_chunk(req, buf);
     }

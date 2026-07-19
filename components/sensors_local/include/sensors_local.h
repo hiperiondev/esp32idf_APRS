@@ -61,11 +61,25 @@
  *        call. Values are bit flags so a caller can request both at once and a
  *        driver can advertise both in ::sensor_local_driver_t::capabilities.
  */
+/*
+ * To add a new sensor family in the future (e.g. GPS, power/battery, air
+ * quality, ...), append a new bit here:
+ *
+ *     SENSOR_LOCAL_DATA_GPS = 1u << 2,
+ *
+ * and OR it into SENSOR_LOCAL_DATA_ALL. Nothing else in the registry needs to
+ * change - sensors_local_register() only requires that a driver's
+ * capabilities be non-zero, and any UI page (like the Weather "Sensor
+ * Mapping" table) that wants only its own kind of sensor filters the
+ * registry by testing `driver->capabilities & SENSOR_LOCAL_DATA_xxx`.
+ */
 typedef enum {
-    SENSOR_LOCAL_DATA_NONE = 0,                    /**< No payload (used as an "unsupported" sentinel). */
+    SENSOR_LOCAL_DATA_NONE = 0,                    /**< No payload (used as an "unsupported" sentinel). Not a valid value for a registered driver's capabilities. */
     SENSOR_LOCAL_DATA_WEATHER = 1u << 0,           /**< Populate the Weather Report slot(s) of the container. */
     SENSOR_LOCAL_DATA_TELEMETRY = 1u << 1,         /**< Populate the Telemetry Report slot(s) of the container. */
-    SENSOR_LOCAL_DATA_ALL = (1u << 0) | (1u << 1), /**< Convenience: both Weather and Telemetry. */
+    /* -- add future sensor kinds here as additional bits, e.g.:
+     * SENSOR_LOCAL_DATA_GPS = 1u << 2, */
+    SENSOR_LOCAL_DATA_ALL = (1u << 0) | (1u << 1), /**< Convenience: every kind currently defined. Update this when a new kind is added above. */
 } sensor_local_data_kind_t;
 
 /* Forward declaration so the callback typedefs can take the driver itself. */
@@ -123,7 +137,14 @@ typedef void (*sensor_local_deinit_fn_t)(sensor_local_driver_t *self);
  */
 struct sensor_local_driver {
     const char *name;      /**< Stable, unique, human-readable id (e.g. "bme280", "ads1115-batt"). */
-    uint32_t capabilities; /**< OR of ::sensor_local_data_kind_t bits this driver can produce. */
+    uint32_t capabilities; /**< REQUIRED, must be non-zero: OR of ::sensor_local_data_kind_t bits this
+                             *   driver can produce (e.g. ::SENSOR_LOCAL_DATA_WEATHER,
+                             *   ::SENSOR_LOCAL_DATA_TELEMETRY, or both). Every driver must declare at
+                             *   least one kind at registration time so consumers (like the Weather
+                             *   page's channel picker) can tell weather sensors apart from telemetry
+                             *   (or any future kind) instead of listing every registered sensor
+                             *   regardless of type. ::sensors_local_register rejects drivers that leave
+                             *   this at ::SENSOR_LOCAL_DATA_NONE. */
 
     sensor_local_init_fn_t init;     /**< Optional bring-up (may be NULL). */
     sensor_local_save_fn_t save;     /**< REQUIRED common entry that fills ::weather_telemetry_data_t. */
@@ -148,9 +169,14 @@ esp_err_t sensors_local_init(void);
  * @brief Add a driver to the dynamic registry.
  *
  * @param driver  Caller-owned descriptor whose storage must outlive the
- *                registration. Its @c save pointer must be non-NULL and its
- *                @c name unique among currently registered drivers.
- * @return ESP_OK on success; ESP_ERR_INVALID_ARG for a malformed descriptor;
+ *                registration. Its @c save pointer must be non-NULL, its
+ *                @c name unique among currently registered drivers, and its
+ *                @c capabilities non-zero (it must declare at least
+ *                ::SENSOR_LOCAL_DATA_WEATHER and/or ::SENSOR_LOCAL_DATA_TELEMETRY,
+ *                or any future ::sensor_local_data_kind_t bit) so callers can
+ *                later tell what type of sensor it is.
+ * @return ESP_OK on success; ESP_ERR_INVALID_ARG for a malformed descriptor
+ *         (including one with @c capabilities == ::SENSOR_LOCAL_DATA_NONE);
  *         ESP_ERR_INVALID_STATE if @c name is already registered;
  *         ESP_ERR_NO_MEM if the registry could not grow.
  */
