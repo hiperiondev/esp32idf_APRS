@@ -177,8 +177,16 @@ static size_t aesDecryptBase64WithIV(const char *b64, const uint8_t key[16], con
 // Queue management
 // ---------------------------------------------------------------------------
 int pkgMsg_Find(const char *call, uint16_t msgID, bool rxtx) {
+    // Exact match only. s_queue[i].callsign is always NUL-terminated (see
+    // pkgMsgUpdate(), which memset()s the field before strncpy()), so a
+    // plain strcmp() is safe here. This used to be strstr(), which does a
+    // *substring* search: e.g. a stored "N0CALL" would match an incoming
+    // "N0CALL-9" and vice versa, and two unrelated callsigns could
+    // coincidentally overlap. That let an ack/reply from the wrong station
+    // mark another station's queued message as acknowledged, or let a new
+    // outgoing message overwrite an unrelated in-flight queue slot.
     for (int i = 0; i < MSG_QUEUE_SIZE; i++) {
-        if (s_queue[i].used && strstr(s_queue[i].callsign, call) != NULL && s_queue[i].msgID == msgID && s_queue[i].rxtx == rxtx)
+        if (s_queue[i].used && s_queue[i].msgID == msgID && s_queue[i].rxtx == rxtx && strcmp(s_queue[i].callsign, call) == 0)
             return i;
     }
     return -1;

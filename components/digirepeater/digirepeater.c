@@ -95,6 +95,19 @@ int digiProcess(ax25_msg_t *packet) {
                     if (packet->rpt_flags & (1 << idx))
                         continue;
 
+                    // The path is already at the AX.25 maximum of AX25_MAX_RPT
+                    // (8) digipeater addresses, so inserting our own call here
+                    // would push rpt_count to 9 - one past the end of
+                    // rpt_list[AX25_MAX_RPT] - and, since rpt_flags is a
+                    // uint8_t (one bit per entry, 8 bits total), the
+                    // "already repeated" bit for that 9th slot would silently
+                    // be lost (1 << 8 truncates to 0). Treat a full path the
+                    // same as "no usable path" instead of corrupting it.
+                    if (packet->rpt_count >= AX25_MAX_RPT) {
+                        s_stats.dropRx++;
+                        return 0;
+                    }
+
                     for (j = idx; j < packet->rpt_count; j++) {
                         if (packet->rpt_flags & (1 << j))
                             break;
@@ -189,6 +202,17 @@ int digiProcess(ax25_msg_t *packet) {
                 packet->rpt_list[idx].ssid = g_config.digi_ssid;
                 packet->rpt_flags |= (1 << idx);
                 j = 2;
+                break;
+            } else if (packet->rpt_count >= AX25_MAX_RPT) {
+                // Path already has AX25_MAX_RPT (8) digipeater addresses -
+                // the maximum an AX.25 frame can carry. Inserting our own
+                // call here would push rpt_count to 9, one past the end of
+                // rpt_list[AX25_MAX_RPT], and the corresponding bit in the
+                // uint8_t rpt_flags bitmask (1 << 8) would silently be lost.
+                // Drop instead of corrupting the path, same as any other
+                // "no usable path" case below.
+                s_stats.dropRx++;
+                j = 0;
                 break;
             } else {
                 int n;

@@ -38,6 +38,27 @@ bool web_check_auth(httpd_req_t *req);
 // caller-allocated buffer. Returns bytes read, or -1 on error/too large.
 int web_read_body(httpd_req_t *req, char *buf, size_t buf_size);
 
+// ---- POST body buffer sizes -------------------------------------------------
+// Most page _post() handlers read their form into a small stack buffer
+// (char body[N]; web_read_body(req, body, sizeof(body));), which is
+// self-sizing by construction - sizeof(body) can never drift out of sync
+// with the buffer itself.
+//
+// A few pages have forms too large for a comfortable stack allocation on
+// the httpd worker task and instead heap-allocate the buffer with malloc().
+// For those, use ONE named constant below for both the malloc() call and
+// the matching web_read_body() call, instead of repeating the same bare
+// number in two places in the .c file. That way the two can never drift out
+// of sync, and growing a page's form is a single, obvious, grep-able place
+// to update the size rather than a magic number easily missed during a
+// later edit. Each is sized with headroom above that page's form as of this
+// writing (see the page's _post handler for the current field list); if a
+// page starts rejecting legitimate saves with "body too large" after new
+// fields are added, bump the matching constant here.
+#define WEBCONFIG_POST_BUF_MOD    3000 // page_mod.c    - RF/I2C/UART/PPP/power peripheral form
+#define WEBCONFIG_POST_BUF_SENSOR 4000 // page_sensor.c - sensor configuration form
+#define WEBCONFIG_POST_BUF_TLM    6000 // page_tlm.c    - telemetry configuration form
+
 // Finds "key=value" inside an application/x-www-form-urlencoded blob (POST body
 // or query string), URL-decodes it into out (out_size incl. NUL), returns true if found.
 bool web_form_get(const char *body, const char *key, char *out, size_t out_size);

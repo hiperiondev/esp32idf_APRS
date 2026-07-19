@@ -187,12 +187,12 @@ esp_err_t page_mod_get(httpd_req_t *req) {
 esp_err_t page_mod_post(httpd_req_t *req) {
     if (!web_check_auth(req))
         return ESP_OK;
-    char *body = malloc(3000);
+    char *body = malloc(WEBCONFIG_POST_BUF_MOD);
     if (!body) {
         httpd_resp_send_500(req);
         return ESP_OK;
     }
-    if (web_read_body(req, body, 3000) < 0) {
+    if (web_read_body(req, body, WEBCONFIG_POST_BUF_MOD) < 0) {
         free(body);
         httpd_resp_send_500(req);
         return ESP_OK;

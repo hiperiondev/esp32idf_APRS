@@ -195,12 +195,12 @@ static void parse_service_tlm(const char *body, const char *pfx, bool *avg, uint
 esp_err_t page_tlm_post(httpd_req_t *req) {
     if (!web_check_auth(req))
         return ESP_OK;
-    char *body = malloc(6000);
+    char *body = malloc(WEBCONFIG_POST_BUF_TLM);
     if (!body) {
         httpd_resp_send_500(req);
         return ESP_OK;
     }
-    if (web_read_body(req, body, 6000) < 0) {
+    if (web_read_body(req, body, WEBCONFIG_POST_BUF_TLM) < 0) {
         free(body);
         httpd_resp_send_500(req);
         return ESP_OK;

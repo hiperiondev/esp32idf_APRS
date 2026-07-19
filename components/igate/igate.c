@@ -114,7 +114,7 @@ static void packetHash(ax25_msg_t *packet, char *hash) {
         n = 0;
     int mix = packet->len < 16 ? (int)packet->len : 16;
     for (int i = 0; i < mix; i++) {
-        hash[i % 15] ^= packet->info[i];
+        hash[i % 16] ^= packet->info[i];
     }
 }
 
