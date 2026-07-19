@@ -726,6 +726,7 @@ void aprs_service_start(void) {
     trafficlog_init();
     lastheard_init();
     message_init();
+    message_alarm_configure(g_config.msg_alarm_enable, g_config.msg_alarm_gpio);
     message_set_tx_handler(messageTxHandler);
     igate_set_inet2rf_handler(inet2rfHandler);
 

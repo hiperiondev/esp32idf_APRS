@@ -326,6 +326,8 @@ void app_config_set_defaults(app_config_t *c) {
     set_str(c->msg_key, sizeof(c->msg_key), "8EC8233E91D59B0164C24E771BA66307");
     c->msg_retry = 3;
     c->msg_interval = 30;
+    c->msg_alarm_enable = false; // disabled by default
+    c->msg_alarm_gpio = -1;
 }
 
 // ---- small cJSON helpers -------------------------------------------------
@@ -807,6 +809,8 @@ static cJSON *config_to_json(const app_config_t *c) {
     jadd_str(d, "msgAESKey", c->msg_key);
     jadd_num(d, "msgRetry", c->msg_retry);
     jadd_num(d, "msgInterval", c->msg_interval);
+    jadd_bool(d, "msgAlarmEn", c->msg_alarm_enable);
+    jadd_num(d, "msgAlarmGpio", c->msg_alarm_gpio);
 
     return d;
 }
@@ -1321,6 +1325,8 @@ static void config_from_json(cJSON *d, app_config_t *c) {
         set_str(c->msg_mycall, sizeof(c->msg_mycall), jget_str(d, "msgMycall", def.msg_mycall));
         c->msg_use_station = jget_bool(d, "msgUseStation", def.msg_use_station);
     }
+    c->msg_alarm_enable = jget_bool(d, "msgAlarmEn", def.msg_alarm_enable);
+    c->msg_alarm_gpio = (int8_t)jget_num(d, "msgAlarmGpio", def.msg_alarm_gpio);
 }
 
 bool app_config_save(void) {

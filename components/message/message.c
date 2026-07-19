@@ -26,17 +26,21 @@
 #include <string.h>
 #include <time.h>
 
+#include "driver/gpio.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "mbedtls/aes.h"
 #include "mbedtls/base64.h"
 #include "mbedtls/md5.h"
 
+#include "afsk.h" // afsk_ptt_gpio_is_valid(), MODEM_ADC_GPIO / MODEM_DAC_GPIO
 #include "app_config.h"
 #include "message.h"
 
 static const char *TAG = "message";
 
 #define AES_BLOCK_SIZE 16
+#define MSG_ALARM_PULSE_MS 1000
 
 static msg_entry_t s_queue[MSG_QUEUE_SIZE];
 static uint16_t s_msgID = 0;
@@ -48,6 +52,109 @@ void message_set_tx_handler(void (*handler)(const char *packet, size_t len, uint
 
 void message_init(void) {
     memset(s_queue, 0, sizeof(s_queue));
+}
+
+// ---------------------------------------------------------------------------
+// Message Alarm GPIO: driven to 1 for MSG_ALARM_PULSE_MS whenever a direct
+// message addressed to g_config.msg_mycall is received, then back to 0 until
+// the next one. Disabled by default (g_config.msg_alarm_enable == false /
+// g_config.msg_alarm_gpio == -1).
+// ---------------------------------------------------------------------------
+static int8_t s_alarmGpio = -1;
+static esp_timer_handle_t s_alarmTimer = NULL;
+
+bool message_alarm_gpio_is_valid(int8_t gpio) {
+    if (gpio == -1)
+        return true; // "disabled" is always accepted
+
+    // Output-capable, not the input-only pads, not the internal flash/PSRAM
+    // pads, and not colliding with the audio modem's ADC/DAC - same rules
+    // as the PTT pin (see afsk_ptt_gpio_is_valid()).
+    if (!afsk_ptt_gpio_is_valid(gpio))
+        return false;
+
+    // Not already used by the RF module (page_mod.c "RF Module GPIO").
+    if (gpio == g_config.rf_tx_gpio || gpio == g_config.rf_rx_gpio || gpio == g_config.rf_sql_gpio || gpio == g_config.rf_pd_gpio ||
+        gpio == g_config.rf_pwr_gpio || gpio == g_config.rf_ptt_gpio)
+        return false;
+
+    // Not already used by any sensors_local peripheral bus (page_mod.c: I2C
+    // x2, 1-Wire, UART0/1/2, Modbus DE, pulse counters, power switch, PPP
+    // modem, GNSS PPS).
+    const int8_t used[] = {
+        g_config.i2c_sda_pin, g_config.i2c_sck_pin, g_config.i2c1_sda_pin, g_config.i2c1_sck_pin,
+        g_config.onewire_gpio,
+        g_config.uart0_tx_gpio, g_config.uart0_rx_gpio, g_config.uart0_rts_gpio,
+        g_config.uart1_tx_gpio, g_config.uart1_rx_gpio, g_config.uart1_rts_gpio,
+        g_config.uart2_tx_gpio, g_config.uart2_rx_gpio,
+        g_config.modbus_de_gpio,
+        g_config.counter0_gpio, g_config.counter1_gpio,
+        g_config.pwr_gpio,
+        g_config.ppp_rst_gpio, g_config.ppp_tx_gpio, g_config.ppp_rx_gpio, g_config.ppp_rts_gpio,
+        g_config.ppp_cts_gpio, g_config.ppp_dtr_gpio, g_config.ppp_ri_gpio, g_config.ppp_pwr_gpio,
+        g_config.gnss_pps_gpio,
+    };
+    for (size_t i = 0; i < sizeof(used) / sizeof(used[0]); i++) {
+        if (used[i] != -1 && gpio == used[i])
+            return false;
+    }
+
+    return true;
+}
+
+static void alarmTimerCb(void *arg) {
+    (void)arg;
+    if (s_alarmGpio >= 0)
+        gpio_set_level((gpio_num_t)s_alarmGpio, 0);
+}
+
+void message_alarm_configure(bool enable, int8_t gpio) {
+    int8_t new_gpio = (enable && message_alarm_gpio_is_valid(gpio)) ? gpio : -1;
+
+    if (s_alarmTimer)
+        esp_timer_stop(s_alarmTimer); // no-op if not running
+
+    // Release the previous pin (disabling, or switching to a different one)
+    // so a stale output isn't left driving.
+    if (s_alarmGpio >= 0 && s_alarmGpio != new_gpio) {
+        gpio_set_level((gpio_num_t)s_alarmGpio, 0);
+        gpio_set_direction((gpio_num_t)s_alarmGpio, GPIO_MODE_INPUT);
+    }
+
+    s_alarmGpio = new_gpio;
+
+    if (s_alarmGpio < 0)
+        return;
+
+    if (!s_alarmTimer) {
+        const esp_timer_create_args_t args = {
+            .callback = alarmTimerCb,
+            .name = "msg_alarm",
+        };
+        if (esp_timer_create(&args, &s_alarmTimer) != ESP_OK) {
+            ESP_LOGW(TAG, "Message Alarm: failed to create timer, disabling");
+            s_alarmGpio = -1;
+            return;
+        }
+    }
+
+    gpio_reset_pin((gpio_num_t)s_alarmGpio);
+    gpio_set_direction((gpio_num_t)s_alarmGpio, GPIO_MODE_OUTPUT);
+    gpio_set_level((gpio_num_t)s_alarmGpio, 0); // idle low until a message arrives
+    ESP_LOGI(TAG, "Message Alarm: GPIO%d enabled", (int)s_alarmGpio);
+}
+
+// Pulses the alarm pin high for MSG_ALARM_PULSE_MS. Called each time a direct
+// message for g_config.msg_mycall is received. Re-arms the timer on every
+// call, so back-to-back messages keep the pin high without flickering, and it
+// only drops back to 0 once MSG_ALARM_PULSE_MS elapses with no new message.
+static void message_alarm_pulse(void) {
+    if (s_alarmGpio < 0 || !s_alarmTimer)
+        return;
+
+    gpio_set_level((gpio_num_t)s_alarmGpio, 1);
+    esp_timer_stop(s_alarmTimer); // no-op if not currently running
+    esp_timer_start_once(s_alarmTimer, (uint64_t)MSG_ALARM_PULSE_MS * 1000ULL);
 }
 
 // ---------------------------------------------------------------------------
@@ -461,4 +568,5 @@ void handleIncomingAPRS(const char *line) {
 
     pkgMsgUpdate(fromCall, decrypted, (uint16_t)atoi(msgNo), -1, true);
     sendAPRSAck(fromCall, msgNo);
+    message_alarm_pulse();
 }

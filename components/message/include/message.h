@@ -47,6 +47,27 @@ typedef struct {
 void message_init(void);
 
 /**
+ * @brief Returns true if `gpio` is acceptable as the "Message Alarm" pin:
+ * an output-capable ESP32 GPIO that is not already used by the audio modem
+ * (ADC/DAC/PTT), the RF module GPIOs, or any of the sensors_local
+ * peripheral pins configured on the "MOD (GPIO)" page (I2C x2, 1-Wire,
+ * UART0/1/2, Modbus DE, pulse counters, power switch, PPP modem, GNSS PPS).
+ * gpio == -1 ("disabled") is always accepted.
+ */
+bool message_alarm_gpio_is_valid(int8_t gpio);
+
+/**
+ * @brief (Re)configure the Message Alarm GPIO from g_config.msg_alarm_enable
+ * / g_config.msg_alarm_gpio. Releases any previously configured pin first
+ * (leaving it as plain input, not driven), then - if enabled and the pin
+ * passes message_alarm_gpio_is_valid() - sets up the new pin as an output
+ * and drives it low (idle). Safe to call again any time the config changes
+ * (e.g. right after a webconfig save), and safe to call with alarm disabled
+ * or gpio == -1 (no-op besides releasing the previous pin).
+ */
+void message_alarm_configure(bool enable, int8_t gpio);
+
+/**
  * @brief Send an APRS text message to `toCall`, optionally AES-encrypting the
  * payload with g_config.msg_key. Transmits on RF and/or INET per
  * g_config.msg_rf / g_config.msg_inet via the TX-queue callback registered

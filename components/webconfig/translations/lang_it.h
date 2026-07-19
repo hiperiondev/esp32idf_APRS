@@ -190,6 +190,8 @@
 #define TR_F_LOW_SPEED_KM_H                                 "Velocità bassa (km/h)"
 #define TR_F_MAX_INTERVAL_MIN                              "Intervallo massimo (min)"
 #define TR_F_MESSAGE                                       "Messaggio"
+#define TR_F_MESSAGE_ALARM_ENABLE                          "Abilita allarme messaggi"
+#define TR_F_MESSAGE_ALARM_PIN                             "Pin allarme messaggi"
 #define TR_F_MIN_INTERVAL_S                                "Intervallo minimo (s)"
 #define TR_F_MIN_TURN_ANGLE_DEG                            "Angolo di svolta minimo (gradi)"
 #define TR_F_MODBUS                                        "Modbus"

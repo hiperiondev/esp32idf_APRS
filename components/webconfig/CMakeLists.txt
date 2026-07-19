@@ -44,4 +44,5 @@ idf_component_register(
         esp32idf_radioamateur_modem
         sensors_local
         weather_telemetry
+        message
 )

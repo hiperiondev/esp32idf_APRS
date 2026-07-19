@@ -22,9 +22,28 @@
 #include <string.h>
 
 #include "app_config.h"
+#include "message.h"
 #include "pages.h"
 #include "translations.h"
 #include "web_common.h"
+
+// Renders the Message Alarm GPIO field as a <select> restricted to pins that
+// message_alarm_gpio_is_valid() actually accepts: output-capable ESP32
+// GPIOs that don't collide with the audio modem (ADC/DAC/PTT), the RF
+// module GPIOs, or any sensors_local peripheral pin configured on the
+// "MOD (GPIO)" page. Disabled ("-1") is always offered first.
+static void web_field_msg_alarm_gpio(httpd_req_t *req, int8_t current) {
+    web_select_open(req, TR_F_MESSAGE_ALARM_PIN, "msgAlarmGpio");
+    web_select_option(req, -1, TR_DISABLED, current == -1);
+    for (int gpio = 0; gpio <= 39; gpio++) {
+        if (!message_alarm_gpio_is_valid((int8_t)gpio))
+            continue;
+        char label[16];
+        snprintf(label, sizeof(label), "GPIO%d", gpio);
+        web_select_option(req, gpio, label, current == gpio);
+    }
+    web_select_close(req);
+}
 
 esp_err_t page_msg_get(httpd_req_t *req) {
     if (!web_check_auth(req))
@@ -41,6 +60,8 @@ esp_err_t page_msg_get(httpd_req_t *req) {
     web_field_checkbox(req, TR_F_SEND_RECEIVE_VIA_INTERNET, "msgInet", g_config.msg_inet);
     web_field_int(req, TR_F_RETRY_COUNT, "msgRetry", g_config.msg_retry);
     web_field_int(req, TR_F_RETRY_INTERVAL_S, "msgInterval", g_config.msg_interval);
+    web_field_checkbox(req, TR_F_MESSAGE_ALARM_ENABLE, "msgAlarmEn", g_config.msg_alarm_enable);
+    web_field_msg_alarm_gpio(req, g_config.msg_alarm_gpio);
     web_fieldset_close(req);
 
     web_fieldset_open(req, TR_F_ENCRYPTION);
@@ -78,7 +99,16 @@ esp_err_t page_msg_post(httpd_req_t *req) {
     g_config.msg_encrypt = web_form_get_bool(body, "msgEncrypt");
     web_form_get(body, "msgAESKey", g_config.msg_key, sizeof(g_config.msg_key));
 
+    // A malicious/hand-crafted POST could still send a value the <select>
+    // never offers (e.g. a pin already used by the modem or sensors_local),
+    // so re-validate here too instead of trusting the dropdown alone - same
+    // pattern as rf_ptt_gpio in page_mod.c.
+    g_config.msg_alarm_enable = web_form_get_bool(body, "msgAlarmEn");
+    int8_t alarm_gpio_in = (int8_t)web_form_get_int(body, "msgAlarmGpio", g_config.msg_alarm_gpio);
+    g_config.msg_alarm_gpio = message_alarm_gpio_is_valid(alarm_gpio_in) ? alarm_gpio_in : -1;
+
     app_config_save();
+    message_alarm_configure(g_config.msg_alarm_enable, g_config.msg_alarm_gpio);
     web_send_saved_redirect(req, "/msg");
     return ESP_OK;
 }

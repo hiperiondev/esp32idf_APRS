@@ -525,6 +525,8 @@ typedef struct {
     char msg_key[33];
     uint8_t msg_retry;
     uint16_t msg_interval;
+    bool msg_alarm_enable;  // "Message Alarm": disabled by default
+    int8_t msg_alarm_gpio;  // -1 = disabled/unset; see message_alarm_gpio_is_valid()
 
 } app_config_t;
 
