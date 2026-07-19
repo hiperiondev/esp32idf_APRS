@@ -35,6 +35,7 @@
 
 #include "app_config.h"
 #include "aprs_service.h"
+#include "cpu_freq.h"
 #include "digirepeater.h"
 #include "igate.h"
 #include "lastheard.h"
@@ -356,11 +357,19 @@ esp_err_t page_sysinfo(httpd_req_t *req) {
     size_t used = 0, total = 0;
     storage_usage(&used, &total);
 
-    char buf[1400];
+    char buf[2000];
     snprintf(buf, sizeof(buf),
              "<fieldset><legend>" TR_SYSINFO_CHIP "</legend>"
              "<p><b>" TR_SYSINFO_MODEL "</b> %d &nbsp; <b>" TR_SYSINFO_CORES "</b> %d &nbsp; <b>" TR_SYSINFO_REVISION "</b> %d</p>"
              "<p><b>" TR_SYSINFO_CPU_FREQ "</b> %lu MHz</p>"
+             "<form method='POST' action='/sysinfo' style='margin-top:8px'>"
+             "<label>" TR_SYSINFO_CPU_FREQ_SET "</label>"
+             "<select name='cpuFreq'>"
+             "<option value='80' %s>80</option><option value='160' %s>160</option><option value='240' %s>240</option>"
+             "</select> "
+             "<button type='submit'>" TR_BTN_SAVE "</button>"
+             "<p><small>" TR_SYSINFO_CPU_FREQ_NOTE "</small></p>"
+             "</form>"
              "<p><b>" TR_SYSINFO_FLASH_SIZE "</b> %lu bytes</p></fieldset>"
              "<fieldset><legend>" TR_SYSINFO_MEMORY "</legend>"
              "<p><b>" TR_DASH_FREE_HEAP "</b> %lu bytes &nbsp; <b>" TR_SYSINFO_MIN_FREE_HEAP "</b> %lu bytes</p></fieldset>"
@@ -368,10 +377,35 @@ esp_err_t page_sysinfo(httpd_req_t *req) {
              "<p><b>" TR_SYSINFO_USED "</b> %u bytes &nbsp; <b>" TR_SYSINFO_TOTAL "</b> %u bytes</p></fieldset>"
              "<fieldset><legend>" TR_SYSINFO_FIRMWARE "</legend>"
              "<p><b>" TR_SYSINFO_IDF_VERSION "</b> %s</p></fieldset>",
-             (int)chip.model, (int)chip.cores, (int)chip.revision, (unsigned long)cpu_mhz, (unsigned long)flash_size,
+             (int)chip.model, (int)chip.cores, (int)chip.revision, (unsigned long)cpu_mhz,
+             g_config.cpuFreq == 80 ? "selected" : "", g_config.cpuFreq == 160 ? "selected" : "", g_config.cpuFreq == 240 ? "selected" : "",
+             (unsigned long)flash_size,
              (unsigned long)esp_get_free_heap_size(), (unsigned long)esp_get_minimum_free_heap_size(), (unsigned)used, (unsigned)total, IDF_VER);
     httpd_resp_sendstr_chunk(req, buf);
     web_send_footer(req);
+    return ESP_OK;
+}
+
+esp_err_t page_sysinfo_post(httpd_req_t *req) {
+    if (!web_check_auth(req))
+        return ESP_OK;
+    char body[64];
+    if (web_read_body(req, body, sizeof(body)) < 0) {
+        httpd_resp_send_500(req);
+        return ESP_OK;
+    }
+
+    int freq = web_form_get_int(body, "cpuFreq", g_config.cpuFreq);
+    if (freq == 80 || freq == 160 || freq == 240)
+        g_config.cpuFreq = (uint8_t)freq;
+
+    // Persist to flash so the choice survives a reboot, then apply it to the
+    // running system immediately (mirrors what the System page does) -
+    // main.c also calls cpu_freq_apply() right after app_config_load() at
+    // boot, so this selection is re-applied on every subsequent power-up too.
+    app_config_save();
+    cpu_freq_apply();
+    web_send_saved_redirect(req, "/sysinfo");
     return ESP_OK;
 }
 

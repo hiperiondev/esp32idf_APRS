@@ -338,6 +338,8 @@
 #define TR_SYSINFO_CORES         "Núcleos:"
 #define TR_SYSINFO_REVISION      "Revisión:"
 #define TR_SYSINFO_CPU_FREQ      "Velocidad de CPU:"
+#define TR_SYSINFO_CPU_FREQ_SET  "Establecer frecuencia de CPU"
+#define TR_SYSINFO_CPU_FREQ_NOTE "Se guarda en la memoria flash y se vuelve a aplicar automáticamente en cada arranque."
 #define TR_SYSINFO_FLASH_SIZE    "Tamaño de flash:"
 #define TR_SYSINFO_MEMORY        "Memoria"
 #define TR_SYSINFO_MIN_FREE_HEAP "Memoria libre mínima:"

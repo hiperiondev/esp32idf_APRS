@@ -337,6 +337,8 @@
 #define TR_SYSINFO_CORES         "Cores:"
 #define TR_SYSINFO_REVISION      "Revision:"
 #define TR_SYSINFO_CPU_FREQ      "CPU speed:"
+#define TR_SYSINFO_CPU_FREQ_SET  "Set CPU frequency"
+#define TR_SYSINFO_CPU_FREQ_NOTE "Saved to flash and re-applied automatically on every boot."
 #define TR_SYSINFO_FLASH_SIZE    "Flash size:"
 #define TR_SYSINFO_MEMORY        "Memory"
 #define TR_SYSINFO_MIN_FREE_HEAP "Min free heap:"
