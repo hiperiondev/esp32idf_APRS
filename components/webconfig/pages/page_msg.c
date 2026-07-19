@@ -19,6 +19,8 @@
  * send/inbox interface.
  */
 
+#include <string.h>
+
 #include "app_config.h"
 #include "pages.h"
 #include "translations.h"
@@ -32,6 +34,7 @@ esp_err_t page_msg_get(httpd_req_t *req) {
 
     web_fieldset_open(req, TR_F_APRS_MESSAGING);
     web_field_checkbox(req, TR_F_ENABLE_MESSAGING, "msgEnable", g_config.msg_enable);
+    web_field_use_station_data(req, "msgUseStation", g_config.msg_use_station, "msgMycall", NULL, NULL, NULL);
     web_field_text(req, TR_F_MY_CALLSIGN, "msgMycall", g_config.msg_mycall, 9);
     web_field_int(req, TR_F_PATH_BITMASK, "msgPath", g_config.msg_path);
     web_field_checkbox(req, TR_F_SEND_RECEIVE_VIA_RF, "msgRf", g_config.msg_rf);
@@ -60,7 +63,13 @@ esp_err_t page_msg_post(httpd_req_t *req) {
     }
 
     g_config.msg_enable = web_form_get_bool(body, "msgEnable");
-    web_form_get_call(body, "msgMycall", g_config.msg_mycall, sizeof(g_config.msg_mycall));
+    g_config.msg_use_station = web_form_get_bool(body, "msgUseStation");
+    if (g_config.msg_use_station) {
+        strncpy(g_config.msg_mycall, g_config.my_callsign, sizeof(g_config.msg_mycall) - 1);
+        g_config.msg_mycall[sizeof(g_config.msg_mycall) - 1] = 0;
+    } else {
+        web_form_get_call(body, "msgMycall", g_config.msg_mycall, sizeof(g_config.msg_mycall));
+    }
     g_config.msg_path = (uint8_t)web_form_get_int(body, "msgPath", g_config.msg_path);
     g_config.msg_rf = web_form_get_bool(body, "msgRf");
     g_config.msg_inet = web_form_get_bool(body, "msgInet");

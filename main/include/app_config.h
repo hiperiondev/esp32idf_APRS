@@ -517,6 +517,7 @@ typedef struct {
     // Message
     bool msg_enable;
     char msg_mycall[10];
+    bool msg_use_station; // "Use My Station Data": mirror g_config.my_callsign into msg_mycall and lock that field for editing
     uint8_t msg_path;
     bool msg_rf;
     bool msg_inet;

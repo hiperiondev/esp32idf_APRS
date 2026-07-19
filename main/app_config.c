@@ -799,6 +799,7 @@ static cJSON *config_to_json(const app_config_t *c) {
 
     jadd_bool(d, "msgEnable", c->msg_enable);
     jadd_str(d, "msgMycall", c->msg_mycall);
+    jadd_bool(d, "msgUseStation", c->msg_use_station);
     jadd_bool(d, "msgRf", c->msg_rf);
     jadd_bool(d, "msgInet", c->msg_inet);
     jadd_num(d, "msgPath", c->msg_path);
@@ -1318,6 +1319,7 @@ static void config_from_json(cJSON *d, app_config_t *c) {
         c->msg_interval = (uint16_t)jget_num(d, "msgInterval", def.msg_interval);
         set_str(c->msg_key, sizeof(c->msg_key), jget_str(d, "msgAESKey", def.msg_key));
         set_str(c->msg_mycall, sizeof(c->msg_mycall), jget_str(d, "msgMycall", def.msg_mycall));
+        c->msg_use_station = jget_bool(d, "msgUseStation", def.msg_use_station);
     }
 }
 

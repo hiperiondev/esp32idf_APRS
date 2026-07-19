@@ -209,11 +209,12 @@ esp_err_t page_igate_get(httpd_req_t *req) {
     web_field_text(req, TR_F_STATUS_TEXT, "igateStatus", g_config.igate_status, STATUS_SIZE - 1);
     web_fieldset_close(req);
 
-    web_raw(req, "<p style='color:var(--sub);font-size:12px'>" TR_NOTE_TLM_IGATE "</p>"
-                 "<button type='submit'>" TR_BTN_SAVE "</button></form>");
+    web_raw(req, "<p style='color:var(--sub);font-size:12px'>" TR_NOTE_TLM_IGATE "</p>");
 
     // [IGATE] Filter --------------------------------------------------------
-    httpd_resp_sendstr_chunk(req, "<form method='POST' action='/igate'>");
+    // Same <form> as everything above (no separate form/submit here) so the
+    // single Save button at the bottom of the page persists the whole page
+    // - main settings and filters - in one POST.
     web_raw(req, "<h2 style='margin-top:24px'>" TR_F_IGATE_FILTER "</h2>");
     {
         static const struct {
@@ -252,7 +253,10 @@ esp_err_t page_igate_get(httpd_req_t *req) {
 esp_err_t page_igate_post(httpd_req_t *req) {
     if (!web_check_auth(req))
         return ESP_OK;
-    char body[2200];
+    // Sized for the whole page's form data in one POST now that Filters
+    // share the same <form> as the rest of the page (main settings + up to
+    // 18 filter checkboxes), not just the main settings on their own.
+    char body[3000];
     if (web_read_body(req, body, sizeof(body)) < 0) {
         httpd_resp_send_500(req);
         return ESP_OK;
@@ -309,9 +313,10 @@ esp_err_t page_igate_post(httpd_req_t *req) {
     g_config.igate_sts_interval = (uint16_t)web_form_get_int(body, "igateSTSIntv", g_config.igate_sts_interval);
     web_form_get(body, "igateStatus", g_config.igate_status, sizeof(g_config.igate_status));
 
-    // [IGATE] Filter checkboxes -> bitmasks. Only overwrite each mask if its
-    // own fieldset was actually submitted, since both forms POST to /igate
-    // and we don't want one submit to silently clear the other's fields.
+    // [IGATE] Filter checkboxes -> bitmasks. Both fieldsets are now part of
+    // the same single page form (one Save button for the whole page), so the
+    // computed mask always reflects exactly what's currently checked -
+    // including "everything unchecked" correctly clearing the mask to 0.
     {
         static const struct {
             uint16_t bit;
@@ -331,10 +336,8 @@ esp_err_t page_igate_post(httpd_req_t *req) {
             if (web_form_get_bool(body, name))
                 inet2rfF |= filt[i].bit;
         }
-        if (strstr(body, "rf2inetF_") != NULL)
-            g_config.rf2inetFilter = rf2inetF;
-        if (strstr(body, "inet2rfF_") != NULL)
-            g_config.inet2rfFilter = inet2rfF;
+        g_config.rf2inetFilter = rf2inetF;
+        g_config.inet2rfFilter = inet2rfF;
     }
 
     app_config_save();
