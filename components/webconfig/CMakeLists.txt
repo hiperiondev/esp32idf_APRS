@@ -41,4 +41,6 @@ idf_component_register(
         igate
         digirepeater
         esp32idf_radioamateur_modem
+        sensors_local
+        weather_telemetry
 )

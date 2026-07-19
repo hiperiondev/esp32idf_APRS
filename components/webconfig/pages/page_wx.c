@@ -23,15 +23,57 @@
 
 #include "app_config.h"
 #include "pages.h"
+#include "sensors_local.h"
 #include "translations.h"
 #include "web_common.h"
 
-static const char *WX_SLOT_NAME[WX_SENSOR_NUM] = {
-    TR_WX_WIND_SPEED,  TR_WX_WIND_GUST,       TR_WX_WIND_DIRECTION, TR_WX_TEMPERATURE, TR_WX_RAIN_1H,   TR_WX_RAIN_24H,      TR_WX_RAIN_MIDNIGHT,
-    TR_WX_HUMIDITY,    TR_WX_PRESSURE,        TR_WX_LUMINOSITY,     TR_WX_UV,          TR_WX_SOIL_TEMP, TR_WX_SOIL_MOISTURE, TR_WX_WATER_TEMP,
-    TR_WX_WATER_LEVEL, TR_WX_BATTERY_VOLTAGE, TR_WX_SNOW,           TR_WX_SLOT_18,     TR_WX_SLOT_19,   TR_WX_SLOT_20,       TR_WX_SLOT_21,
-    TR_WX_SLOT_22,     TR_WX_SLOT_23,         TR_WX_SLOT_24,        TR_WX_SLOT_25,     TR_WX_SLOT_26
+/*
+ * Human-readable label for every mappable APRS Weather Report field, indexed
+ * by ::wx_field_id_t (declared in app_config.h). This list is exactly the set
+ * of quantities an APRS WX report can carry on-air - one row per field, in the
+ * order weather.c emits them. The old placeholder/extended-sensor rows (UV,
+ * soil, water, battery, "Slot 18..26") are gone: they have no weather-report
+ * token and belong on the Telemetry page instead.
+ */
+static const char *WX_FIELD_NAME[WX_SENSOR_NUM] = {
+    [WX_FIELD_WIND_DIRECTION] = TR_WX_WIND_DIRECTION,
+    [WX_FIELD_WIND_SPEED] = TR_WX_WIND_SPEED,
+    [WX_FIELD_WIND_GUST] = TR_WX_WIND_GUST,
+    [WX_FIELD_TEMPERATURE] = TR_WX_TEMPERATURE,
+    [WX_FIELD_RAIN_1H] = TR_WX_RAIN_1H,
+    [WX_FIELD_RAIN_24H] = TR_WX_RAIN_24H,
+    [WX_FIELD_RAIN_MIDNIGHT] = TR_WX_RAIN_MIDNIGHT,
+    [WX_FIELD_SNOW_24H] = TR_WX_SNOW,
+    [WX_FIELD_HUMIDITY] = TR_WX_HUMIDITY,
+    [WX_FIELD_PRESSURE] = TR_WX_PRESSURE,
+    [WX_FIELD_LUMINOSITY] = TR_WX_LUMINOSITY,
+    [WX_FIELD_FLOOD_HEIGHT_FT] = TR_WX_FLOOD_FT,
+    [WX_FIELD_FLOOD_HEIGHT_M] = TR_WX_FLOOD_M,
 };
+
+/*
+ * Emits the <select> for one field's "source channel", populated from the live
+ * sensors_local registry so each option shows the channel *number and name*
+ * ("0: bme280", "1: ds18b20", ...). Index 0xFF (255) is the "(none)" choice.
+ * If no local sensor driver has registered yet, only "(none)" is offered.
+ */
+static void wx_channel_select(httpd_req_t *req, int field, uint8_t selected) {
+    char buf[160];
+    snprintf(buf, sizeof(buf), "<select name='wxCh%d' style='width:150px'>", field);
+    httpd_resp_sendstr_chunk(req, buf);
+
+    snprintf(buf, sizeof(buf), "<option value='255'%s>%s</option>", (selected == 0xFF) ? " selected" : "", TR_WX_CHANNEL_NONE);
+    httpd_resp_sendstr_chunk(req, buf);
+
+    size_t n = sensors_local_count();
+    for (size_t ch = 0; ch < n; ch++) {
+        sensor_local_driver_t *d = sensors_local_get(ch);
+        const char *nm = (d && d->name) ? d->name : "?";
+        snprintf(buf, sizeof(buf), "<option value='%u'%s>%u: %.40s</option>", (unsigned)ch, (selected == ch) ? " selected" : "", (unsigned)ch, nm);
+        httpd_resp_sendstr_chunk(req, buf);
+    }
+    httpd_resp_sendstr_chunk(req, "</select>");
+}
 
 esp_err_t page_wx_get(httpd_req_t *req) {
     if (!web_check_auth(req))
@@ -62,14 +104,16 @@ esp_err_t page_wx_get(httpd_req_t *req) {
     web_fieldset_open(req, TR_F_SENSOR_MAPPING_ENABLE_AVERAGED_SOURCE_CHANNEL);
     httpd_resp_sendstr_chunk(req, "<table><tr><th>" TR_WX_FIELD "</th><th>" TR_F_ENABLE "</th><th>" TR_TLM_AVG "</th><th>" TR_WX_CHANNEL "</th></tr>");
     for (int i = 0; i < WX_SENSOR_NUM; i++) {
-        char row[400];
+        char row[300];
         snprintf(row, sizeof(row),
                  "<tr><td>%s</td>"
                  "<td><input type='checkbox' name='wxEn%d' %s></td>"
                  "<td><input type='checkbox' name='wxAvg%d' %s></td>"
-                 "<td><input type='number' style='width:70px' name='wxCh%d' value='%d'></td></tr>",
-                 WX_SLOT_NAME[i], i, g_config.wx_sensor_enable[i] ? "checked" : "", i, g_config.wx_sensor_avg[i] ? "checked" : "", i, g_config.wx_sensor_ch[i]);
+                 "<td>",
+                 WX_FIELD_NAME[i], i, g_config.wx_sensor_enable[i] ? "checked" : "", i, g_config.wx_sensor_avg[i] ? "checked" : "");
         httpd_resp_sendstr_chunk(req, row);
+        wx_channel_select(req, i, g_config.wx_sensor_ch[i]);
+        httpd_resp_sendstr_chunk(req, "</td></tr>");
     }
     httpd_resp_sendstr_chunk(req, "</table>");
     web_fieldset_close(req);

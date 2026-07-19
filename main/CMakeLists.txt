@@ -7,6 +7,7 @@ idf_component_register(
         "aprs_filter.c"
         "net_state.c"
         "beacon.c"
+        "weather.c"
         "time_sync.c"
         "cpu_freq.c"
     INCLUDE_DIRS
@@ -31,4 +32,6 @@ idf_component_register(
         message
         trafficlog
         lastheard
+        sensors_local
+        weather_telemetry
 )

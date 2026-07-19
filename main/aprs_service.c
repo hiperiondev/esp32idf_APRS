@@ -44,6 +44,7 @@
 #include "lastheard.h"
 #include "message.h"
 #include "trafficlog.h"
+#include "weather.h"
 
 static const char *TAG = "aprs_service";
 
@@ -740,6 +741,11 @@ void aprs_service_start(void) {
     igate_start();
 
     beacon_start();
+
+    // Own-station weather: creates the shared weather_telemetry_data container,
+    // refreshes it from the local sensor drivers at 1 Hz, and beacons an APRS
+    // Weather Report at wx_interval.
+    weather_start();
 
     // No afsk_poll task any more - the component runs its own RX DSP and TX
     // service tasks (see the note above serviceTickTask). Only the 1 Hz

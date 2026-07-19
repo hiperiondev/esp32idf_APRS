@@ -79,7 +79,35 @@
 
 #define COMMENT_SIZE       25
 #define STATUS_SIZE        50
-#define WX_SENSOR_NUM      26
+
+/*
+ * Weather station "Sensor Mapping" rows.
+ *
+ * This is the canonical, on-air list of every quantity an APRS Weather Report
+ * can actually carry (APRS101 ch.12 + the APRS 1.2 flood proposals), one row
+ * per mappable measurement. The old 26-entry table mixed in extended sensors
+ * that have NO weather-report token on-air (UV, soil, water, battery - those
+ * belong on Telemetry, not a WX report) plus nine empty placeholder slots;
+ * those are gone. Each row here corresponds 1:1 to a field the WX encoder in
+ * weather.c emits, and is indexed by ::wx_field_id_t below.
+ */
+typedef enum {
+    WX_FIELD_WIND_DIRECTION = 0, /**< Wind direction, deg     -> "ddd/" (aprs_wind_t.direction_deg). */
+    WX_FIELD_WIND_SPEED,         /**< Sustained wind, mph     -> "/sss" (aprs_wind_t.sustained_mph). */
+    WX_FIELD_WIND_GUST,          /**< Peak gust, mph          -> "gXXX" (aprs_wind_t.gust_mph). */
+    WX_FIELD_TEMPERATURE,        /**< Air temperature, deg F  -> "tXXX". */
+    WX_FIELD_RAIN_1H,            /**< Rain last hour, 1/100 in-> "rXXX". */
+    WX_FIELD_RAIN_24H,           /**< Rain last 24h, 1/100 in -> "pXXX". */
+    WX_FIELD_RAIN_MIDNIGHT,      /**< Rain since midnight      -> "PXXX". */
+    WX_FIELD_SNOW_24H,           /**< Snow last 24h, 1/10 in  -> "sXXX" (APRS 1.2). */
+    WX_FIELD_HUMIDITY,           /**< Relative humidity, %    -> "hXX". */
+    WX_FIELD_PRESSURE,           /**< Barometric pressure     -> "bXXXXX" (tenths of mb). */
+    WX_FIELD_LUMINOSITY,         /**< Solar luminosity, W/m^2 -> "LXXX"/"lXXX" (APRS 1.2). */
+    WX_FIELD_FLOOD_HEIGHT_FT,    /**< Flood/water gauge, feet -> "FXXXX.X" (APRS 1.2). */
+    WX_FIELD_FLOOD_HEIGHT_M,     /**< Flood/water gauge, m    -> "fXXXX.X" (APRS 1.2). */
+    WX_SENSOR_NUM                /**< Sentinel: number of mappable WX fields. Not a real field. */
+} wx_field_id_t;
+
 #define WIFI_STA_NUM       5
 #define NTP_HOST_NUM       3
 #define NTP_RESYNC_MIN_SEC 30

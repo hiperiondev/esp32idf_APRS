@@ -144,6 +144,19 @@ void app_config_set_defaults(app_config_t *c) {
     c->wx_path = ACTIVATE_WX;
     c->wx_interval = 300;
     set_str(c->wx_comment, sizeof(c->wx_comment), "ESP32APRS WX");
+    // Enable the WX fields a typical station reports; the rest stay off until
+    // the operator maps a sensor channel to them on the Weather page.
+    for (int i = 0; i < WX_SENSOR_NUM; i++) {
+        c->wx_sensor_enable[i] = false;
+        c->wx_sensor_avg[i] = false;
+        c->wx_sensor_ch[i] = 0;
+    }
+    c->wx_sensor_enable[WX_FIELD_WIND_DIRECTION] = true;
+    c->wx_sensor_enable[WX_FIELD_WIND_SPEED] = true;
+    c->wx_sensor_enable[WX_FIELD_WIND_GUST] = true;
+    c->wx_sensor_enable[WX_FIELD_TEMPERATURE] = true;
+    c->wx_sensor_enable[WX_FIELD_HUMIDITY] = true;
+    c->wx_sensor_enable[WX_FIELD_PRESSURE] = true;
 
     // Telemetry defaults
     c->tlm0_data_interval = 600;
