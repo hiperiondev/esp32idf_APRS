@@ -47,6 +47,7 @@ esp_err_t page_tracker_get(httpd_req_t *req) {
     web_field_float(req, TR_F_FIXED_ALTITUDE_M, "trkALT", g_config.trk_alt, "1");
     web_fieldset_close(req);
 
+#ifdef ENABLE_SMARTBEACONING
     web_fieldset_open(req, TR_F_SMARTBEACONING);
     web_field_checkbox(req, TR_F_ENABLE_SMARTBEACONING, "trkSmart", g_config.trk_smartbeacon);
     web_field_int(req, TR_F_FIXED_INTERVAL_S, "trkINV", g_config.trk_interval);
@@ -57,6 +58,7 @@ esp_err_t page_tracker_get(httpd_req_t *req) {
     web_field_int(req, TR_F_MIN_TURN_ANGLE_DEG, "trkMinDir", g_config.trk_minangle);
     web_field_int(req, TR_F_SLOW_RATE_INTERVAL_S, "trkSlowInv", g_config.trk_slowinterval);
     web_fieldset_close(req);
+#endif // ENABLE_SMARTBEACONING
 
     web_fieldset_open(req, TR_F_OPTIONS);
     web_field_checkbox(req, TR_F_COMPRESS_POSITION, "trkCompress", g_config.trk_compress);
@@ -103,6 +105,7 @@ esp_err_t page_tracker_post(httpd_req_t *req) {
     g_config.trk_lon = web_form_get_float(body, "trkLON", g_config.trk_lon);
     g_config.trk_alt = web_form_get_float(body, "trkALT", g_config.trk_alt);
 
+#ifdef ENABLE_SMARTBEACONING
     g_config.trk_smartbeacon = web_form_get_bool(body, "trkSmart");
     g_config.trk_interval = (uint16_t)web_form_get_int(body, "trkINV", g_config.trk_interval);
     g_config.trk_lspeed = (uint8_t)web_form_get_int(body, "trkLSpeed", g_config.trk_lspeed);
@@ -111,6 +114,7 @@ esp_err_t page_tracker_post(httpd_req_t *req) {
     g_config.trk_mininterval = (uint8_t)web_form_get_int(body, "trkMinInv", g_config.trk_mininterval);
     g_config.trk_minangle = (uint8_t)web_form_get_int(body, "trkMinDir", g_config.trk_minangle);
     g_config.trk_slowinterval = (uint16_t)web_form_get_int(body, "trkSlowInv", g_config.trk_slowinterval);
+#endif // ENABLE_SMARTBEACONING
 
     g_config.trk_compress = web_form_get_bool(body, "trkCompress");
     g_config.trk_altitude = web_form_get_bool(body, "trkOptAlt");

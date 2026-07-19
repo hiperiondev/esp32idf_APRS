@@ -44,10 +44,10 @@ static void set_str(char *dst, size_t sz, const char *val) {
 void app_config_set_defaults(app_config_t *c) {
     memset(c, 0, sizeof(*c));
 
-    c->timeZone = 7.0f;
+    c->timeZone = 0.0f;
     c->synctime = true;
     c->title = true;
-    c->cpuFreq = 160;
+    c->cpuFreq = 240;
 
     c->wifi_mode = 2; // AP_STA equivalent default (matches original shipping as AP)
     c->wifi_power = 20;
@@ -63,7 +63,7 @@ void app_config_set_defaults(app_config_t *c) {
     c->bt_slave = false;
     c->bt_master = false;
     c->bt_mode = 0;
-    set_str(c->bt_name, sizeof(c->bt_name), "ESP32APRS");
+    set_str(c->bt_name, sizeof(c->bt_name), "esp32idf_APRS");
     c->bt_pin = 1234;
     c->bt_power = 3;
 
@@ -90,13 +90,13 @@ void app_config_set_defaults(app_config_t *c) {
     set_str(c->aprs_filter, sizeof(c->aprs_filter), "");
     c->igate_bcn = true;
     c->igate_gps = false;
-    c->igate_lat = 13.7563f;
-    c->igate_lon = 100.5018f;
+    c->igate_lat = 0.000f;
+    c->igate_lon = 0.000f;
     c->igate_alt = 0;
     c->igate_interval = 30;
     set_str(c->igate_symbol, sizeof(c->igate_symbol), "N&");
     c->igate_path = ACTIVATE_IGATE;
-    set_str(c->igate_comment, sizeof(c->igate_comment), "ESP32APRS IGate");
+    set_str(c->igate_comment, sizeof(c->igate_comment), "esp32idf_APRS IGate");
     c->igate_sts_interval = 0;
     c->igate_phg_power = 1;
     c->igate_phg_gain = 6.0f;
@@ -115,7 +115,7 @@ void app_config_set_defaults(app_config_t *c) {
     c->digi_bcn = true;
     c->digi_interval = 30;
     set_str(c->digi_symbol, sizeof(c->digi_symbol), "N&");
-    set_str(c->digi_comment, sizeof(c->digi_comment), "ESP32APRS Digi");
+    set_str(c->digi_comment, sizeof(c->digi_comment), "esp32idf_APRS Digi");
 
     // TRACKER
     c->trk_en = false;
@@ -135,7 +135,7 @@ void app_config_set_defaults(app_config_t *c) {
     set_str(c->trk_symbol, sizeof(c->trk_symbol), "\\>");
     set_str(c->trk_symmove, sizeof(c->trk_symmove), "/>");
     set_str(c->trk_symstop, sizeof(c->trk_symstop), "\\>");
-    set_str(c->trk_comment, sizeof(c->trk_comment), "ESP32APRS Tracker");
+    set_str(c->trk_comment, sizeof(c->trk_comment), "esp32idf_APRS Tracker");
 
     // WX
     c->wx_en = false;
@@ -187,7 +187,7 @@ void app_config_set_defaults(app_config_t *c) {
     // System / HTTP auth  (README documented default: admin/admin)
     set_str(c->http_username, sizeof(c->http_username), "admin");
     set_str(c->http_password, sizeof(c->http_password), "admin");
-    set_str(c->host_name, sizeof(c->host_name), "ESP32APRS");
+    set_str(c->host_name, sizeof(c->host_name), "esp32idf_APRS");
     c->reset_timeout = 0;
     for (int i = 0; i < 4; i++)
         set_str(c->path[i], sizeof(c->path[i]), "");

@@ -56,6 +56,7 @@
 #endif
 
 /////// MODULES //////
+// Disabled modules already not implemented
 #define ENABLE_DASHBOARD
 #define ENABLE_RADIO_MODEM
 //#define ENABLE_RF_MODULE
@@ -66,6 +67,7 @@
 #define ENABLE_IGATE
 #define ENABLE_DIGIPEATER
 #define ENABLE_TRACKER
+//#define ENABLE_SMARTBEACONING 
 //#define ENABLE_WEATHER
 //#define ENABLE_TELEMETRY
 //#define ENABLE_SENSORS
