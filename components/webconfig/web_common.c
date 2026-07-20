@@ -484,14 +484,14 @@ static const struct menu_item MENU[] = {
 #ifdef ENABLE_DASHBOARD
     { "/dashboard", TR_MENU_DASHBOARD, "dashboard" },
 #endif
+#ifdef ENABLE_STATION
+    { "/station", TR_MENU_STATION, "station" },
+#endif
 #ifdef ENABLE_MSG_CHAT
     { "/msgchat", TR_MENU_MSGCHAT, "msgchat" },
 #endif
 #ifdef ENABLE_BULLETINS
     { "/bulletins", TR_MENU_BULLETINS, "bulletins" },
-#endif
-#ifdef ENABLE_STATION
-    { "/station", TR_MENU_STATION, "station" },
 #endif
 #ifdef ENABLE_RADIO_MODEM
     { "/radio", TR_MENU_RADIO, "radio" },
