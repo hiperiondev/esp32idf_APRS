@@ -404,6 +404,56 @@ static void on_rx_frame(const modem_rx_frame_t *f, void *ctx) {
         hook(&msg);
 }
 
+// Case-insensitive compare of a TNC2 source base callsign (SSID already
+// stripped, given as ptr+len) against one configured own-station call. An
+// empty configured call never matches, so report callsigns the operator left
+// blank can't accidentally swallow foreign traffic.
+static bool base_call_equals(const char *src, size_t srcLen, const char *cfg) {
+    if (!cfg || cfg[0] == 0)
+        return false;
+    if (strlen(cfg) != srcLen)
+        return false;
+    for (size_t i = 0; i < srcLen; i++) {
+        char a = src[i], b = cfg[i];
+        if (a >= 'a' && a <= 'z')
+            a -= 32;
+        if (b >= 'a' && b <= 'z')
+            b -= 32;
+        if (a != b)
+            return false;
+    }
+    return true;
+}
+
+// True if this APRS-IS line's SOURCE callsign (base call, SSID ignored) is one
+// of THIS station's own report callsigns. Every report we upload to APRS-IS via
+// its *_2inet flag is echoed straight back to us by the server; this lets
+// inet2rfHandler() recognise those echoes so it never re-gates our own reports
+// from INET back to RF. Our reports reach RF exclusively through their own
+// "Send via RF" (*_2rf) flags in weather.c / beacon.c - the IGATE INET->RF
+// filter is for foreign internet traffic only, never our own.
+static bool inet_line_is_own_report(const char *line) {
+    // Source call is everything up to the first '-' (SSID) or '>' (path).
+    size_t srcLen = 0;
+    while (line[srcLen] && line[srcLen] != '-' && line[srcLen] != '>')
+        srcLen++;
+    if (srcLen == 0)
+        return false;
+
+    // Every callsign any local report can transmit under. Blank entries are
+    // skipped inside base_call_equals(), and reports that fall back to
+    // aprs_mycall are covered by that entry.
+    const char *calls[] = {
+        g_config.aprs_mycall, g_config.my_callsign, g_config.trk_mycall,  g_config.digi_mycall,
+        g_config.wx_mycall,   g_config.tlm0_mycall, g_config.tlm1_mycall, g_config.msg_mycall,
+    };
+    for (size_t i = 0; i < sizeof(calls) / sizeof(calls[0]); i++) {
+        if (base_call_equals(line, srcLen, calls[i]))
+            return true;
+    }
+    return false;
+}
+
 // ---------------------------------------------------------------------------
 // INET -> RF: called by igate.c for every non-comment line read from APRS-IS.
 // ---------------------------------------------------------------------------
@@ -447,6 +497,21 @@ static void inet2rfHandler(const char *line) {
         handleIncomingAPRS(line);
 
     if (g_config.inet2rf) {
+        // Never gate our OWN reports from INET back to RF. After we upload a
+        // beacon / weather / telemetry / message report to APRS-IS (via its
+        // *_2inet flag) the server echoes it right back to us; without this
+        // guard the IGATE INET->RF filter below would decide whether our own
+        // report is re-transmitted on RF, so turning a type OFF in that filter
+        // would silence our own report on the air. Our reports must reach RF
+        // ONLY through their own "Send via RF" (*_2rf) flags (weather.c /
+        // beacon.c); this filter governs foreign internet traffic exclusively.
+        // Re-gating our own echo would also double-transmit it (once directly
+        // via *_2rf, once here) and is a classic IGate feedback-loop source.
+        if (inet_line_is_own_report(line)) {
+            ESP_LOGD(TAG, "INET2RF: own report echoed by APRS-IS, not re-gated (its *_2rf flag governs RF): %s", line);
+            return;
+        }
+
         // g_config.inet2rfFilter is a whitelist of payload types (the IGATE
         // Filter fieldset on the /igate page): classify the line and drop it
         // unless its bit is set. Unclassifiable payloads - third-party

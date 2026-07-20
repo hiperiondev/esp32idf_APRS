@@ -434,6 +434,19 @@ static void weatherSensorTask(void *arg) {
     }
 }
 
+// The weather beacon walks the exact same RF TX chain as the tracker/igate/digi
+// beacons (build float-heavy WX tokens + lat_lon_to_aprs + build_path_suffix,
+// then aprs_service_send_tnc2 -> modem_send_tnc2 -> modem_build_frame_tnc2 ->
+// ax25_encode/hdlcFrame), which stacks several ~300-450 byte buffers plus
+// newlib's deep float-*printf call tree. beacon.c already hit this: 6144 bytes
+// was "usually enough" but silently overran the stack once the RF leg was
+// reached, corrupting the packet so it never made it to the modem - which is
+// exactly the "WX with Send-via-RF enabled doesn't go out on the radio" symptom
+// (the INET-only leg is a shallower call tree and stayed fine). Give this task
+// the same proven budget the beacon and aprs_svc_tick tasks use (10240) rather
+// than the old 6144. See BEACON_TASK_STACK_BYTES in beacon.c.
+#define WX_BEACON_TASK_STACK_BYTES 10240
+
 // Emits the APRS weather report at wx_interval when enabled.
 static void weatherBeaconTask(void *arg) {
     for (;;) {
@@ -463,6 +476,10 @@ static void weatherBeaconTask(void *arg) {
         } else {
             ESP_LOGW(TAG, "WX enabled but no callsign configured (set Weather or APRS callsign) - skipping");
         }
+
+        // Same watermark log the beacon tasks emit: a tight stack shows up here
+        // instead of as a truncated or silently dropped RF packet.
+        ESP_LOGD(TAG, "wx_beacon_task stack free: %u bytes", (unsigned)(uxTaskGetStackHighWaterMark(NULL) * sizeof(StackType_t)));
 
         vTaskDelay(pdMS_TO_TICKS(clamp_interval(g_config.wx_interval) * 1000UL));
     }
@@ -495,7 +512,7 @@ void weather_start(void) {
     sensors_local_init_all();
 
     xTaskCreate(weatherSensorTask, "wx_sensor_task", 4096, NULL, 4, NULL);
-    xTaskCreate(weatherBeaconTask, "wx_beacon_task", 6144, NULL, 4, NULL);
+    xTaskCreate(weatherBeaconTask, "wx_beacon_task", WX_BEACON_TASK_STACK_BYTES, NULL, 4, NULL);
     ESP_LOGI(TAG, "Weather subsystem started (en=%d rf=%d inet=%d interval=%us, %u local sensor driver(s))", g_config.wx_en, g_config.wx_2rf, g_config.wx_2inet,
              (unsigned)g_config.wx_interval, (unsigned)sensors_local_count());
 }
