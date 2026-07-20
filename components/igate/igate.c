@@ -181,6 +181,16 @@ static bool sendToAprsIs(const uint8_t *data, size_t len) {
         ESP_LOGI(TAG, "APRS-IS TX: %.*s", (int)len, (const char *)data);
         trafficlog_add_pkt("TX", dx, pkt, -1, 0, 0);
     } else {
+        // Every failed APRS-IS TX (socket not connected, or the write
+        // itself failed) counts as a drop here, at the single choke point
+        // all callers funnel through - igate_send_raw() (beacons, outbound
+        // messages) and igateProcess()'s own RF2INET gatewaying path alike.
+        // Previously this branch only logged/traffic-logged the failure and
+        // never touched any counter, so a beacon or message that silently
+        // never made it to APRS-IS (e.g. "not connected yet") was invisible
+        // on the dashboard's DROP/ERR tally even though igs.dropCount was
+        // already being read there.
+        s_stats.dropCount++;
         ESP_LOGW(TAG, "APRS-IS TX failed (not connected?): %.*s", (int)len, (const char *)data);
         trafficlog_add_pkt("TX-FAIL", dx, pkt, -1, 0, 0);
     }
