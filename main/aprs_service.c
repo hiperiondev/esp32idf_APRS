@@ -148,6 +148,21 @@ static volatile uint32_t s_statRadioTx = 0;  // frames transmitted on RF (every 
 static volatile uint32_t s_statRf2Inet = 0;  // frames relayed from RF to APRS-IS (igateProcess() actually uplinked one)
 static volatile uint32_t s_statInet2Rf = 0;  // lines relayed from APRS-IS to RF (inet2rfHandler() actually transmitted one)
 static volatile uint32_t s_statDigi = 0;     // frames digipeated (path rewritten and re-transmitted)
+// The two below close the gap left by the previous dashboard-statistics fix
+// (see page_common.c's page_sidebar_info()): digi_get_stats()/igate_get_stats()
+// are still the only place any *feature-specific* drop/error accounting
+// exists, but their counters only move while digi_en/igate_en are on. For a
+// monitor/RX-only setup (both features off - very common while
+// characterizing modem decode performance), that left DROP/ERR pinned at 0
+// forever even with plenty of real RF activity. These two are tracked at
+// every point a frame is actually discarded - on the RX side in
+// on_rx_frame()/aprs_msg_callback(), and on the TX side in
+// aprs_service_send_tnc2() (RF TX queue full, oversized packet, modem not
+// ready yet, or modem_send_tnc2() itself failing) - so they move regardless
+// of which higher-level features are enabled and regardless of which
+// direction the discard happens in.
+static volatile uint32_t s_statDrop = 0; // frames discarded before dispatch or on the way out to RF (placeholder/invalid source callsign, modem-not-ready, TX queue full, oversized packet, etc.)
+static volatile uint32_t s_statErr = 0;  // frames that failed to decode as valid APRS (UI, no-layer-3) AX.25, or that the modem itself failed to transmit (modem_send_tnc2() error)
 
 aprs_service_stats_t aprs_service_get_stats(void) {
     aprs_service_stats_t s;
@@ -156,6 +171,8 @@ aprs_service_stats_t aprs_service_get_stats(void) {
     s.rf2inet = s_statRf2Inet;
     s.inet2rf = s_statInet2Rf;
     s.digi = s_statDigi;
+    s.drop = s_statDrop;
+    s.err = s_statErr;
     return s;
 }
 
@@ -201,6 +218,7 @@ bool aprs_service_send_tnc2(const char *packet, size_t len) {
     // clock, so without this a boot-time beacon would reach
     // Ax25WriteTxFrame() before Ax25Init() had run.
     if (!s_modemReady) {
+        s_statDrop++;
         ESP_LOGD(TAG, "modem not up, RF TX dropped: %.*s", (int)len, packet);
         return false;
     }
@@ -218,11 +236,13 @@ bool aprs_service_send_tnc2(const char *packet, size_t len) {
     // packet.
     uint8_t pending = modem_tx_queue_depth();
     if (pending >= RF_TX_QUEUE_LIMIT) {
+        s_statDrop++;
         ESP_LOGW(TAG, "RF TX queue full (%u/%u pending), packet discarded: %.*s", (unsigned)pending, (unsigned)RF_TX_QUEUE_LIMIT, (int)len,
                  packet);
         return false;
     }
     if (len >= sizeof(buf)) {
+        s_statDrop++;
         ESP_LOGW(TAG, "TNC2 packet too long (%u bytes), dropped", (unsigned)len);
         return false;
     }
@@ -231,6 +251,7 @@ bool aprs_service_send_tnc2(const char *packet, size_t len) {
 
     esp_err_t err = modem_send_tnc2(buf);
     if (err != ESP_OK) {
+        s_statErr++;
         ESP_LOGW(TAG, "modem_send_tnc2() failed: %s (\"%s\")", esp_err_to_name(err), buf);
         return false;
     }
@@ -299,6 +320,20 @@ static void aprs_msg_callback(ax25_msg_t *msg) {
         lastheard_add(callsign, path, true, symTable, symCode);
     }
 
+    // Placeholder/invalid source callsign check (NOCALL = radio not
+    // configured, MYCALL = misconfigured/uninitialized digipeater config
+    // sentinel used elsewhere in this codebase). This mirrors the same
+    // check digiProcess() does internally, but runs unconditionally here so
+    // it (and the dashboard's DROP counter) means something even with
+    // digi_en off. A frame from either sentinel is never useful to
+    // digipeat, gate, or otherwise act on, so skip the rest of the
+    // dispatch chain for it.
+    if (!strncmp(msg->src.call, "NOCALL", 6) || !strncmp(msg->src.call, "MYCALL", 6)) {
+        s_statDrop++;
+        ESP_LOGD(TAG, "RX dropped, placeholder source callsign: %s", tnc2);
+        return;
+    }
+
     if (g_config.digi_en) {
         int action = digiProcess(msg);
         if (action == 2) {
@@ -350,7 +385,19 @@ static void on_rx_frame(const modem_rx_frame_t *f, void *ctx) {
     s_statRadioRx++;
 
     memset(&msg, 0, sizeof(msg));
-    ax25_decode((uint8_t *)f->frame, f->len, f->mVrms, &msg);
+    if (!ax25_decode((uint8_t *)f->frame, f->len, f->mVrms, &msg)) {
+        // Not a decodable APRS (UI, no-layer-3) frame - corrupted frame off
+        // RF, or legitimate non-APRS AX.25 traffic. Either way msg.info/len
+        // were never populated, so there is nothing safe to dispatch;
+        // just count it and stop here. This is the only decode-failure
+        // signal available (ax25_decode() itself has no error side
+        // channel besides its return value), and - unlike the
+        // digi/igate-only drop/error counters below it in the dashboard -
+        // it is tracked here unconditionally, regardless of digi_en/igate_en.
+        s_statErr++;
+        ESP_LOGD(TAG, "RX decode error (ctrl/pid not APRS UI), %u bytes, %u mVrms", (unsigned)f->len, (unsigned)f->mVrms);
+        return;
+    }
 
     aprs_rx_hook_t hook = s_rxHook;
     if (hook)

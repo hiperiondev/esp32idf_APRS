@@ -286,7 +286,7 @@ void Ax25ClearReceivedFrameBitmap(void) {
             (msg)->rpt_flags &= ~(1u << (idx));                                                                                                                \
     } while (0)
 
-void ax25_decode(uint8_t *buf, size_t len, uint16_t mVrms, ax25_msg_t *msg) {
+bool ax25_decode(uint8_t *buf, size_t len, uint16_t mVrms, ax25_msg_t *msg) {
     uint8_t *buf_start = buf;
 
     DECODE_CALL(buf, msg->dst.call);
@@ -306,11 +306,11 @@ void ax25_decode(uint8_t *buf, size_t len, uint16_t mVrms, ax25_msg_t *msg) {
 
     msg->ctrl = *buf++;
     if (msg->ctrl != AX25_CTRL_UI)
-        return;
+        return false; // not a UI frame (corrupted, or legitimate non-APRS AX.25 traffic)
 
     msg->pid = *buf++;
     if (msg->pid != AX25_PID_NOLAYER3)
-        return;
+        return false; // UI frame but not "no layer 3" - not an APRS frame
 
     memset(msg->info, 0, sizeof(msg->info));
     int rest = (int)((buf_start + len) - buf);
@@ -324,6 +324,7 @@ void ax25_decode(uint8_t *buf, size_t len, uint16_t mVrms, ax25_msg_t *msg) {
         msg->len = 0;
     }
     msg->mVrms = mVrms;
+    return true;
 }
 
 #ifdef ENABLE_FX25

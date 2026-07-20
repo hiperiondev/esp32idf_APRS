@@ -318,10 +318,18 @@ esp_err_t page_sidebar_info(httpd_req_t *req) {
     // igate_get_stats(), whose internal counters only move while their
     // owning feature is enabled, which is why this panel used to sit at
     // all-zero for any RX-only/monitor setup with both features off.
-    // Drop/error counts have no equivalent lower down (ax25_decode() has no
-    // failure signal), so those two still come from the digipeater/IGate
-    // component stats, which is the only place any drop/error tracking
-    // exists at all.
+    // (digi remains an exception by nature: there is nothing to digipeat
+    // with digi_en off, so it's expected to read 0 in that case.)
+    //
+    // Drop/error counts used to be sourced *only* from the digipeater/IGate
+    // component stats (digis.dropRx/erPkts, igs.dropCount), which - just
+    // like the counters above before the previous fix - only move while
+    // digi_en/igate_en are on, leaving DROP/ERR pinned at 0 forever for any
+    // RX-only/monitor setup regardless of real RF activity. svcStats.drop/
+    // err close that gap the same way radio_rx etc. do: tracked directly
+    // in aprs_service.c's on_rx_frame()/aprs_msg_callback(), unconditionally,
+    // and summed here with the feature-specific counts so nothing enabled
+    // downstream is lost either.
     aprs_service_stats_t svcStats = aprs_service_get_stats();
     n += snprintf(buf + n, sizeof(buf) - n,
                   "<fieldset><legend>" TR_DASH_STATISTICS "</legend><table>"
@@ -336,7 +344,7 @@ esp_err_t page_sidebar_info(httpd_req_t *req) {
                   "</table></fieldset>",
                   (unsigned long)svcStats.radio_rx, (unsigned long)svcStats.radio_tx, (unsigned long)svcStats.rf2inet, (unsigned long)svcStats.inet2rf,
                   (unsigned long)igs.isRxCount, (unsigned long)igs.isTxCount, (unsigned long)svcStats.digi,
-                  (unsigned long)(igs.dropCount + digis.dropRx), (unsigned long)digis.erPkts);
+                  (unsigned long)(svcStats.drop + igs.dropCount + digis.dropRx), (unsigned long)(svcStats.err + digis.erPkts));
 
     httpd_resp_set_type(req, "text/html");
     httpd_resp_set_hdr(req, "Cache-Control", "no-store");

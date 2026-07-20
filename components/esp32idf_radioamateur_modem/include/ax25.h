@@ -328,8 +328,17 @@ bool Ax25NewRxFrames(void);
  * @param mVrms RMS input level measured while this frame was received, in
  *              millivolts.
  * @param msg   Destination structure to fill with the decoded fields.
+ * @return true if the frame was a well-formed UI frame with a "no layer 3"
+ *         PID (i.e. a decodable APRS frame - @p msg is fully populated,
+ *         including @c info / @c len). false if decoding stopped early
+ *         because the control field wasn't UI or the PID wasn't
+ *         AX25_PID_NOLAYER3 (corrupted frame, or legitimate non-APRS AX.25
+ *         traffic) - in that case only @c dst / @c src / @c rpt_list /
+ *         @c ctrl (and @c pid, if reached) are valid; @c info / @c len are
+ *         not touched by this call and must not be relied upon by the
+ *         caller.
  */
-void ax25_decode(uint8_t *buf, size_t len, uint16_t mVrms, ax25_msg_t *msg);
+bool ax25_decode(uint8_t *buf, size_t len, uint16_t mVrms, ax25_msg_t *msg);
 
 /**
  * @brief Parse a TNC2-style monitor string into an ::ax25frame structure.
