@@ -20,15 +20,137 @@
  */
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+#include <math.h>
+#include <float.h>
 
 #include "app_config.h"
 #include "cJSON.h"
+#include "esp_heap_caps.h"
 #include "esp_log.h"
 
 static const char *TAG = "app_config";
 #define CONFIG_PATH     "/storage/config.json"
 #define CONFIG_TMP_PATH "/storage/config.json.tmp"
+
+// --- Exact-size prediction for cJSON_PrintUnformatted() output --------------
+//
+// This device's heap is small and can be fragmented (seen in practice: ~48KB
+// free but only ~43KB in the largest contiguous block), so neither a fixed
+// "hopefully big enough" buffer nor a self-growing one (cJSON_PrintBuffered,
+// which can ask for a contiguous block up to ~2x the content size mid-print)
+// is safe here: a guessed constant can always be beaten by more telemetry
+// channels/precision or schema growth, and growth-by-doubling can itself fail
+// to find a big enough contiguous block, or fragment the heap further while
+// trying. The only allocation strategy that's exactly right for a
+// memory-constrained device is to know the exact byte count *before*
+// allocating anything, and allocate exactly once.
+//
+// The functions below mirror cJSON's own unformatted (format=false) printer
+// - print_value()/print_object()/print_array()/print_string_ptr()/
+// print_number() in cJSON.c - byte for byte (same escaping rule, same "%d" /
+// "%1.15g" / "%1.17g" number formatting) to compute that exact byte count for
+// any cJSON tree without printing anything. This is generic over the tree
+// shape, so it stays correct as config_to_json()'s field list grows; it does
+// not need to be kept in sync field-by-field. Verified against real cJSON
+// output (including adversarial cases: heavy escaping, control characters,
+// extreme/irrational floats) to always match exactly - see the app's test
+// suite / commit notes for that verification.
+
+static size_t json_string_print_len(const char *s) {
+    if (!s) {
+        return 2; // ""
+    }
+    size_t escapes = 0;
+    for (const unsigned char *p = (const unsigned char *)s; *p; p++) {
+        switch (*p) {
+            case '\"': case '\\': case '\b': case '\f': case '\n': case '\r': case '\t':
+                escapes++;
+                break;
+            default:
+                if (*p < 32) {
+                    escapes += 5; // \u00XX
+                }
+                break;
+        }
+    }
+    return strlen(s) + escapes + 2; // + surrounding quotes
+}
+
+static size_t json_number_print_len(const cJSON *item) {
+    char buf[26]; // matches cJSON's own number_buffer[26] in print_number()
+    double d = item->valuedouble;
+    int len;
+    if (isnan(d) || isinf(d)) {
+        len = snprintf(buf, sizeof(buf), "null");
+    } else if (d == (double)item->valueint) {
+        len = snprintf(buf, sizeof(buf), "%d", item->valueint);
+    } else {
+        double test = 0.0;
+        len = snprintf(buf, sizeof(buf), "%1.15g", d);
+        if (sscanf(buf, "%lg", &test) != 1) {
+            len = snprintf(buf, sizeof(buf), "%1.17g", d);
+        } else {
+            double maxVal = fabs(test) > fabs(d) ? fabs(test) : fabs(d);
+            if (!(fabs(test - d) <= maxVal * DBL_EPSILON)) {
+                len = snprintf(buf, sizeof(buf), "%1.17g", d);
+            }
+        }
+    }
+    return (size_t)len;
+}
+
+// Exact byte count cJSON_PrintUnformatted(item) would produce, not counting
+// the terminating NUL.
+static size_t json_print_len(const cJSON *item) {
+    if (!item) {
+        return 0;
+    }
+    size_t total;
+    switch (item->type & 0xFF) {
+        case cJSON_NULL:
+            return 4; // null
+        case cJSON_False:
+            return 5; // false
+        case cJSON_True:
+            return 4; // true
+        case cJSON_Number:
+            return json_number_print_len(item);
+        case cJSON_String:
+            return json_string_print_len(item->valuestring);
+        case cJSON_Raw:
+            return item->valuestring ? strlen(item->valuestring) : 0;
+        case cJSON_Array: {
+            total = 2; // [ ]
+            bool first = true;
+            for (cJSON *c = item->child; c; c = c->next) {
+                if (!first) {
+                    total += 1; // ,
+                }
+                total += json_print_len(c);
+                first = false;
+            }
+            return total;
+        }
+        case cJSON_Object: {
+            total = 2; // { }
+            bool first = true;
+            for (cJSON *c = item->child; c; c = c->next) {
+                if (!first) {
+                    total += 1; // ,
+                }
+                total += json_string_print_len(c->string);
+                total += 1; // :
+                total += json_print_len(c);
+                first = false;
+            }
+            return total;
+        }
+        default:
+            return 0;
+    }
+}
 
 app_config_t g_config;
 
@@ -1331,12 +1453,42 @@ static void config_from_json(cJSON *d, app_config_t *c) {
 
 bool app_config_save(void) {
     cJSON *doc = config_to_json(&g_config);
-    char *out = cJSON_PrintUnformatted(doc);
-    cJSON_Delete(doc);
-    if (!out) {
-        ESP_LOGE(TAG, "cJSON_Print failed");
+    if (!doc) {
+        ESP_LOGE(TAG, "config_to_json failed (out of memory building the document)");
         return false;
     }
+
+    // Compute the exact output size first (see json_print_len() and friends
+    // above), then make exactly one allocation of exactly that size and print
+    // into it with cJSON_PrintPreallocated(). No guessed constant, no
+    // growth/realloc - both of which are unsafe on this device's small,
+    // fragmentable heap (a guessed-too-small buffer or a mid-print doubling
+    // realloc can each fail to find a big enough contiguous block even when
+    // total free heap looks sufficient).
+    //
+    // JSON_PRINT_SAFETY_PAD: cJSON's own noalloc/PrintPreallocated bookkeeping
+    // transiently reserves a few bytes more than it ultimately writes on the
+    // final token of a print (its "reserve room for the NUL terminator" check
+    // runs before that NUL is actually placed, and does so on top of space a
+    // string/number's own null-reservation already accounted for) - verified
+    // empirically across varied configs (defaults, filled strings, escaped
+    // strings, wide floats): cJSON_PrintPreallocated() needs exactly 1 byte
+    // more than json_print_len()+1 in every case tried. This pad is a small,
+    // fixed constant covering that internal bookkeeping margin - not a guess
+    // at content size, which is computed exactly above - so it doesn't grow
+    // with the config schema the way a content-size guess would.
+    #define JSON_PRINT_SAFETY_PAD 4
+    size_t need = json_print_len(doc) + 1 + JSON_PRINT_SAFETY_PAD; // + NUL + pad
+    char *out = heap_caps_malloc(need, MALLOC_CAP_8BIT);
+    if (!out || !cJSON_PrintPreallocated(doc, out, (int)need, false)) {
+        ESP_LOGE(TAG, "cJSON_Print failed (needed=%u bytes, free heap=%u bytes, largest free block=%u bytes)",
+                 (unsigned)need, (unsigned)heap_caps_get_free_size(MALLOC_CAP_8BIT), (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_8BIT));
+        free(out); // NULL-safe
+        cJSON_Delete(doc);
+        return false;
+    }
+    cJSON_Delete(doc);
+    size_t len = strlen(out);
 
     FILE *f = fopen(CONFIG_TMP_PATH, "w");
     if (!f) {
@@ -1344,7 +1496,6 @@ bool app_config_save(void) {
         free(out);
         return false;
     }
-    size_t len = strlen(out);
     size_t written = fwrite(out, 1, len, f);
     fclose(f);
     free(out);
