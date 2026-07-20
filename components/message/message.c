@@ -188,6 +188,21 @@ static void trimUpper(char *s) {
         s[i] = toupper((unsigned char)s[i]);
 }
 
+// Compares two callsigns ignoring any "-SSID" suffix, so a message sent to
+// "N0CALL", "N0CALL-0".."N0CALL-15" (or any other/garbled SSID) is treated
+// as addressed to station "N0CALL". Case-insensitive; SSID digits themselves
+// are not validated, only stripped.
+static bool callsignBaseMatch(const char *a, const char *b) {
+    size_t na = 0, nb = 0;
+    while (a[na] && a[na] != '-')
+        na++;
+    while (b[nb] && b[nb] != '-')
+        nb++;
+    if (na == 0 || na != nb)
+        return false;
+    return strncasecmp(a, b, na) == 0;
+}
+
 static void pkcs7Pad(const uint8_t *in, size_t inLen, uint8_t *out, size_t *outLen) {
     size_t pad = AES_BLOCK_SIZE - (inLen % AES_BLOCK_SIZE);
     memcpy(out, in, inLen);
@@ -628,7 +643,11 @@ void handleIncomingAPRS(const char *line) {
 
     ESP_LOGD(TAG, "Message from %s to %s: %s", fromCall, toCall, message);
 
-    if (strcasecmp(toCall, g_config.msg_mycall) != 0 || msgNo[0] == 0)
+    // Accept the message if the addressee's base callsign matches ours,
+    // regardless of SSID on either side (message to "N0CALL", "N0CALL-7",
+    // etc. is accepted as long as it's configured mycall is "N0CALL", with
+    // or without its own SSID).
+    if (!callsignBaseMatch(toCall, g_config.msg_mycall) || msgNo[0] == 0)
         return;
 
     if (isAck) {

@@ -203,8 +203,10 @@ static void trackerBeaconTask(void *arg) {
             // internet transmission had gone out before the internet
             // connection was up, when the send was actually silently dropped.
             if (g_config.trk_loc2rf) {
-                aprs_service_send_tnc2(packet, (size_t)len);
-                ESP_LOGI(TAG, "Tracker beacon TX (RF): %s", packet);
+                if (aprs_service_send_tnc2(packet, (size_t)len))
+                    ESP_LOGI(TAG, "Tracker beacon TX (RF): %s", packet);
+                else
+                    ESP_LOGW(TAG, "Tracker beacon NOT sent over RF - modem not ready or busy: %s", packet);
             }
             if (g_config.trk_loc2inet) {
                 if (igate_send_raw(packet, (size_t)len))
@@ -253,8 +255,10 @@ static void igateBeaconTask(void *arg) {
             // not-yet-connected APRS-IS uplink doesn't look like a
             // premature internet transmission.
             if (g_config.igate_loc2rf) {
-                aprs_service_send_tnc2(packet, (size_t)len);
-                ESP_LOGI(TAG, "IGate beacon TX (RF): %s", packet);
+                if (aprs_service_send_tnc2(packet, (size_t)len))
+                    ESP_LOGI(TAG, "IGate beacon TX (RF): %s", packet);
+                else
+                    ESP_LOGW(TAG, "IGate beacon NOT sent over RF - modem not ready or busy: %s", packet);
             }
             if (g_config.igate_loc2inet) {
                 if (igate_send_raw(packet, (size_t)len))
@@ -306,8 +310,10 @@ static void digiBeaconTask(void *arg) {
             // not-yet-connected APRS-IS uplink doesn't look like a
             // premature internet transmission.
             if (g_config.digi_loc2rf) {
-                aprs_service_send_tnc2(packet, (size_t)len);
-                ESP_LOGI(TAG, "Digipeater beacon TX (RF): %s", packet);
+                if (aprs_service_send_tnc2(packet, (size_t)len))
+                    ESP_LOGI(TAG, "Digipeater beacon TX (RF): %s", packet);
+                else
+                    ESP_LOGW(TAG, "Digipeater beacon NOT sent over RF - modem not ready or busy: %s", packet);
             }
             if (g_config.digi_loc2inet) {
                 if (igate_send_raw(packet, (size_t)len))

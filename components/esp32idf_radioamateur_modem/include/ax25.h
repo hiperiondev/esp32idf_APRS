@@ -195,6 +195,20 @@ typedef struct ax25frame_struct {
 void *Ax25WriteTxFrame(const uint8_t *data, uint16_t size);
 
 /**
+ * @brief Check whether the TX frame ring currently holds a frame.
+ *
+ * True while a previously queued frame is still waiting to key up (quiet
+ * time / CSMA backoff) or is actively being transmitted; false once it has
+ * been fully sent and the DAC ISR has retired it. Intended for callers that
+ * want to avoid piling more frames into the ring than the RF channel can
+ * actually clear - queuing anyway just delays the drop from here to
+ * Ax25WriteTxFrame() once the ring fills.
+ *
+ * @return true if the ring is non-empty (busy or pending), false if idle.
+ */
+bool Ax25TxBufferPending(void);
+
+/**
  * @brief Get a bitmap indicating which demodulators currently have a
  *        received frame pending.
  * @return Bitmap, one bit per demodulator, set when that demodulator has an

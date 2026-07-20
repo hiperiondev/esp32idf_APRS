@@ -179,11 +179,11 @@ static volatile bool s_modemReady = false;
 // Exported (beacon.c calls it too) so the pointer+length -> NUL-terminated
 // conversion and the length check live in exactly one place.
 // ---------------------------------------------------------------------------
-void aprs_service_send_tnc2(const char *packet, size_t len) {
+bool aprs_service_send_tnc2(const char *packet, size_t len) {
     char buf[AX25_FRAME_MAX_SIZE];
 
     if (len == 0)
-        return;
+        return false;
 
     // Drop rather than queue when the modem was never brought up. Two ways to
     // get here: the audio modem is disabled on the Radio page, or - and this
@@ -195,20 +195,36 @@ void aprs_service_send_tnc2(const char *packet, size_t len) {
     // Ax25WriteTxFrame() before Ax25Init() had run.
     if (!s_modemReady) {
         ESP_LOGD(TAG, "modem not up, RF TX dropped: %.*s", (int)len, packet);
-        return;
+        return false;
+    }
+    // Do not pile another frame into the TX ring on top of one that's still
+    // being transmitted (or waiting out quiet-time/CSMA backoff before it
+    // is). Ax25WriteTxFrame() would just queue it and, under sustained
+    // load (e.g. INET2RF gating faster than the RF channel can clear),
+    // eventually drop it anyway once the ring fills - discarding here
+    // instead avoids building up a backlog of stale packets and makes the
+    // reason visible on the serial console. This only ever touches the RF
+    // TX ring - it has no effect on the separate APRS-IS socket buffer
+    // used by igate_send_raw(), so a busy RF leg never blocks or drops the
+    // IGate leg of the same packet.
+    if (modem_tx_busy()) {
+        ESP_LOGW(TAG, "RF TX busy, packet discarded: %.*s", (int)len, packet);
+        return false;
     }
     if (len >= sizeof(buf)) {
         ESP_LOGW(TAG, "TNC2 packet too long (%u bytes), dropped", (unsigned)len);
-        return;
+        return false;
     }
     memcpy(buf, packet, len);
     buf[len] = 0;
 
     esp_err_t err = modem_send_tnc2(buf);
-    if (err != ESP_OK)
+    if (err != ESP_OK) {
         ESP_LOGW(TAG, "modem_send_tnc2() failed: %s (\"%s\")", esp_err_to_name(err), buf);
-    else
-        s_statRadioTx++;
+        return false;
+    }
+    s_statRadioTx++;
+    return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -277,10 +293,11 @@ static void aprs_msg_callback(ax25_msg_t *msg) {
         if (action == 2) {
             // Path was rewritten in place; re-transmit the modified frame on RF.
             int len = ax25ToTnc2(msg, tnc2, sizeof(tnc2));
-            aprs_service_send_tnc2(tnc2, (size_t)len);
-            s_statDigi++;
-            ESP_LOGD(TAG, "DIGI TX: %s", tnc2);
-            trafficlog_add_pkt("DIGI", callsign, tnc2, -1, symTable, symCode);
+            if (aprs_service_send_tnc2(tnc2, (size_t)len)) {
+                s_statDigi++;
+                ESP_LOGD(TAG, "DIGI TX: %s", tnc2);
+                trafficlog_add_pkt("DIGI", callsign, tnc2, -1, symTable, symCode);
+            }
         }
     }
 
@@ -388,10 +405,11 @@ static void inet2rfHandler(const char *line) {
             return;
         }
 
-        aprs_service_send_tnc2(line, strlen(line));
-        s_statInet2Rf++;
-        ESP_LOGD(TAG, "INET2RF TX: %s", line);
-        trafficlog_add_pkt("INET2RF", callsign, line, -1, symTable, symCode);
+        if (aprs_service_send_tnc2(line, strlen(line))) {
+            s_statInet2Rf++;
+            ESP_LOGD(TAG, "INET2RF TX: %s", line);
+            trafficlog_add_pkt("INET2RF", callsign, line, -1, symTable, symCode);
+        }
     }
 }
 
@@ -603,7 +621,8 @@ bool aprs_loop_test_run(char *msg, size_t msg_len) {
     loopDiagStart();
 
     ESP_LOGI(TAG, "Loop test: TX %s", tnc2);
-    aprs_service_send_tnc2(tnc2, (size_t)n);
+    if (!aprs_service_send_tnc2(tnc2, (size_t)n))
+        ESP_LOGW(TAG, "Loop test: TX frame was discarded, test will time out");
 
     bool signaled = (xSemaphoreTake(s_loopTestSem, pdMS_TO_TICKS(LOOP_TEST_TIMEOUT_MS)) == pdTRUE);
 

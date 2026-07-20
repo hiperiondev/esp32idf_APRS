@@ -221,7 +221,11 @@ void modem_deinit(void) {
 }
 
 bool modem_tx_busy(void) {
-    return getTransmit();
+    /* getTransmit() alone only covers "currently keyed up"; it misses a
+     * frame that's queued but still waiting out quiet-time/CSMA backoff
+     * before Ax25TransmitCheck() keys up, which is exactly the "pending"
+     * half this function's contract promises. */
+    return getTransmit() || Ax25TxBufferPending();
 }
 
 uint32_t modem_measure_adc_rate(uint32_t ms) {

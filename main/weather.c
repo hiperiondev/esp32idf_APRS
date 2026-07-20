@@ -448,11 +448,18 @@ static void weatherBeaconTask(void *arg) {
         char packet[300];
         int len = build_wx_packet(r, packet, sizeof(packet));
         if (len > 0) {
-            if (g_config.wx_2rf)
-                aprs_service_send_tnc2(packet, (size_t)len);
-            if (g_config.wx_2inet)
-                igate_send_raw(packet, (size_t)len);
-            ESP_LOGI(TAG, "WX beacon TX: %s", packet);
+            if (g_config.wx_2rf) {
+                if (aprs_service_send_tnc2(packet, (size_t)len))
+                    ESP_LOGI(TAG, "WX beacon TX (RF): %s", packet);
+                else
+                    ESP_LOGW(TAG, "WX beacon NOT sent over RF - modem not ready or busy: %s", packet);
+            }
+            if (g_config.wx_2inet) {
+                if (igate_send_raw(packet, (size_t)len))
+                    ESP_LOGI(TAG, "WX beacon TX (INET): %s", packet);
+                else
+                    ESP_LOGW(TAG, "WX beacon NOT sent over INET - APRS-IS not connected yet: %s", packet);
+            }
         } else {
             ESP_LOGW(TAG, "WX enabled but no callsign configured (set Weather or APRS callsign) - skipping");
         }

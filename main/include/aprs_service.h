@@ -52,10 +52,18 @@ void aprs_service_start(void);
  * a pointer+length into a larger buffer, so this does that conversion (and the
  * AX25_FRAME_MAX_SIZE bounds check) once, centrally.
  *
+ * This is the RF leg only - it never touches the APRS-IS/IGate socket
+ * (see igate_send_raw()), and a discard here (modem not ready, RF TX
+ * buffer still busy, or packet too long) never affects it either. Callers
+ * that also send the same packet over IGate do so via their own,
+ * independent igate_send_raw() call.
+ *
  * @param packet TNC2 text, not necessarily NUL-terminated at @p len.
  * @param len    Length, in bytes, of the packet text.
+ * @return true if the packet was handed to the modem for transmission,
+ *         false if it was discarded (see log for the reason).
  */
-void aprs_service_send_tnc2(const char *packet, size_t len);
+bool aprs_service_send_tnc2(const char *packet, size_t len);
 
 /**
  * @brief Application-level counters for the web dashboard's STATISTICS

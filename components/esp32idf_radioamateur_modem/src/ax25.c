@@ -605,6 +605,16 @@ void *Ax25WriteTxFrame(const uint8_t *data, uint16_t size) {
     return ret;
 }
 
+bool Ax25TxBufferPending(void) {
+    /* Producer-side read of the same ring Ax25WriteTxFrame() checks: the tail
+     * is only advanced by the DAC ISR's txRetireFrame(), once a queued
+     * frame's transmission (including any quiet-time wait before it started)
+     * is fully done. Non-equal head/tail therefore means "still in the
+     * ring", whether that frame is waiting to key up or is on the air right
+     * now. */
+    return txFrameHead != RING_OBSERVE(txFrameTail);
+}
+
 bool Ax25ReadNextRxFrame(uint8_t **dst, uint16_t *size, int8_t *peak, int8_t *valley, uint8_t *level, uint8_t *corrected, uint16_t *mV) {
     uint8_t tail = rxFrameTail; /* we own this one */
 
