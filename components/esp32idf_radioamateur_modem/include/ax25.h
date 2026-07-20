@@ -209,6 +209,18 @@ void *Ax25WriteTxFrame(const uint8_t *data, uint16_t size);
 bool Ax25TxBufferPending(void);
 
 /**
+ * @brief Count how many frames are currently sitting in the TX ring.
+ *
+ * Same ring as Ax25TxBufferPending(), but as a count rather than a yes/no,
+ * for callers that want to allow a small backlog (e.g. accept up to N
+ * queued frames) rather than treating "one frame in flight" as full.
+ *
+ * @return Number of frames still in the ring (waiting to key up or being
+ *         transmitted right now), from 0 up to FRAME_MAX_COUNT-1.
+ */
+uint8_t Ax25TxFramesPending(void);
+
+/**
  * @brief Get a bitmap indicating which demodulators currently have a
  *        received frame pending.
  * @return Bitmap, one bit per demodulator, set when that demodulator has an

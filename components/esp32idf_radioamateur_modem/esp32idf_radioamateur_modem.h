@@ -191,6 +191,12 @@ void modem_format_tnc2(const ax25_msg_t *msg, char *out, size_t out_len);
 bool modem_tx_busy(void);
 
 /**
+ * @brief Count how many frames are currently queued/in flight on RF TX.
+ * @return Number of frames still pending transmission (0 = idle).
+ */
+uint8_t modem_tx_queue_depth(void);
+
+/**
  * @brief Measure the real ADC sampling rate achieved by the hardware.
  *
  * The ESP32 SAR-ADC in DMA mode does not necessarily run at exactly the

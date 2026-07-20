@@ -48,6 +48,13 @@
 
 static const char *TAG = "aprs_service";
 
+// How many frames aprs_service_send_tnc2() lets pile up in the RF TX ring
+// before it starts discarding new packets instead of queuing them (see the
+// comment inside that function). The ring itself has room for far more
+// (FRAME_MAX_COUNT-1 slots in ax25.c), but a long backlog just means later
+// packets go out stale, so this caps it well below that.
+#define RF_TX_QUEUE_LIMIT 2
+
 // ---------------------------------------------------------------------------
 // Modem configuration
 //
@@ -197,18 +204,22 @@ bool aprs_service_send_tnc2(const char *packet, size_t len) {
         ESP_LOGD(TAG, "modem not up, RF TX dropped: %.*s", (int)len, packet);
         return false;
     }
-    // Do not pile another frame into the TX ring on top of one that's still
-    // being transmitted (or waiting out quiet-time/CSMA backoff before it
-    // is). Ax25WriteTxFrame() would just queue it and, under sustained
-    // load (e.g. INET2RF gating faster than the RF channel can clear),
-    // eventually drop it anyway once the ring fills - discarding here
-    // instead avoids building up a backlog of stale packets and makes the
-    // reason visible on the serial console. This only ever touches the RF
-    // TX ring - it has no effect on the separate APRS-IS socket buffer
-    // used by igate_send_raw(), so a busy RF leg never blocks or drops the
-    // IGate leg of the same packet.
-    if (modem_tx_busy()) {
-        ESP_LOGW(TAG, "RF TX busy, packet discarded: %.*s", (int)len, packet);
+    // Allow a small backlog rather than discarding the moment one frame is
+    // in flight: up to RF_TX_QUEUE_LIMIT frames may sit in the ring
+    // (waiting to key up or on the air right now) before a new packet is
+    // dropped instead of queued. Ax25WriteTxFrame() would otherwise happily
+    // queue far more (FRAME_MAX_COUNT-1 slots) and, under sustained load
+    // (e.g. INET2RF gating faster than the RF channel can clear), eventually
+    // drop it anyway once the ring fills - capping the backlog here instead
+    // keeps queued packets from going stale and makes the reason visible on
+    // the serial console. This only ever touches the RF TX ring - it has no
+    // effect on the separate APRS-IS socket buffer used by igate_send_raw(),
+    // so a busy RF leg never blocks or drops the IGate leg of the same
+    // packet.
+    uint8_t pending = modem_tx_queue_depth();
+    if (pending >= RF_TX_QUEUE_LIMIT) {
+        ESP_LOGW(TAG, "RF TX queue full (%u/%u pending), packet discarded: %.*s", (unsigned)pending, (unsigned)RF_TX_QUEUE_LIMIT, (int)len,
+                 packet);
         return false;
     }
     if (len >= sizeof(buf)) {

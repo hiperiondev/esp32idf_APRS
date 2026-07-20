@@ -228,6 +228,10 @@ bool modem_tx_busy(void) {
     return getTransmit() || Ax25TxBufferPending();
 }
 
+uint8_t modem_tx_queue_depth(void) {
+    return Ax25TxFramesPending();
+}
+
 uint32_t modem_measure_adc_rate(uint32_t ms) {
     uint32_t start = afskGetAdcSampleCount();
     int64_t t0 = esp_timer_get_time();
