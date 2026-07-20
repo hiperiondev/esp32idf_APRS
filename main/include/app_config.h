@@ -80,7 +80,7 @@
 
 //////////////////////
 
-#define COMMENT_SIZE       25
+#define COMMENT_SIZE       129  // 128 bytes of comment text + NUL terminator (IGate/Digipeater/Tracker/Weather)
 #define STATUS_SIZE        50
 
 /*

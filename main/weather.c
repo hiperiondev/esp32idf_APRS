@@ -375,7 +375,7 @@ static int build_wx_packet(const wx_resolved_t r[WX_SENSOR_NUM], char *out, size
     bool is_object = g_config.wx_object[0] != 0;
 
     char wxTokens[160];
-    char info[256];
+    char info[420]; // name(9)+ts(7)+lat(9)+lon(10)+wxTokens(up to 160)+comment(up to 128)+NUL, grown for 128-byte comments
 
     if (is_object) {
         // Object report carrying weather: ";NAME     *DDHHMMz{lat}/{lon}_{wx}{comment}"
@@ -445,7 +445,7 @@ static void weatherSensorTask(void *arg) {
 // (the INET-only leg is a shallower call tree and stayed fine). Give this task
 // the same proven budget the beacon and aprs_svc_tick tasks use (10240) rather
 // than the old 6144. See BEACON_TASK_STACK_BYTES in beacon.c.
-#define WX_BEACON_TASK_STACK_BYTES 10240
+#define WX_BEACON_TASK_STACK_BYTES 14336 // was 10240; info 256->420 and packet 300->500 (128-byte comment support) ate into the existing margin, same class of bug as BEACON_TASK_STACK_BYTES
 
 // Emits the APRS weather report at wx_interval when enabled.
 static void weatherBeaconTask(void *arg) {
@@ -458,7 +458,7 @@ static void weatherBeaconTask(void *arg) {
         wx_resolved_t r[WX_SENSOR_NUM];
         resolve_fields(r);
 
-        char packet[300];
+        char packet[500]; // callField+dest+path+info(up to 420), grown for 128-byte comments
         int len = build_wx_packet(r, packet, sizeof(packet));
         if (len > 0) {
             if (g_config.wx_2rf) {

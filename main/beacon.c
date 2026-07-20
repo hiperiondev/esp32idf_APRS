@@ -139,7 +139,7 @@ static int buildPositionPacket(const beacon_params_t *p, char *out, size_t outMa
         snprintf(extra, sizeof(extra), "/A=%06d", feet);
     }
 
-    char infoField[200];
+    char infoField[256]; // ts(7)+lat(9)+symTable(1)+lon(10)+symCode(1)+extra(40)+comment(up to 128)+NUL
     if (p->timestamp) {
         time_t now = time(NULL);
         struct tm tmv;
@@ -192,7 +192,7 @@ static void trackerBeaconTask(void *arg) {
             .comment = g_config.trk_comment,
         };
 
-        char packet[300];
+        char packet[400]; // callField+dest+path+infoField(up to 256), grown for 128-byte comments
         int len = buildPositionPacket(&p, packet, sizeof(packet));
         if (len > 0) {
             // Log the RF and internet legs from what actually happened,
@@ -247,7 +247,7 @@ static void igateBeaconTask(void *arg) {
             .comment = g_config.igate_comment,
         };
 
-        char packet[300];
+        char packet[400]; // callField+dest+path+infoField(up to 256), grown for 128-byte comments
         int len = buildPositionPacket(&p, packet, sizeof(packet));
         if (len > 0) {
             // See the identical note in trackerBeaconTask(): log what each
@@ -302,7 +302,7 @@ static void digiBeaconTask(void *arg) {
             .comment = g_config.digi_comment,
         };
 
-        char packet[300];
+        char packet[400]; // callField+dest+path+infoField(up to 256), grown for 128-byte comments
         int len = buildPositionPacket(&p, packet, sizeof(packet));
         if (len > 0) {
             // See the identical note in trackerBeaconTask(): log what each
@@ -350,7 +350,7 @@ static void digiBeaconTask(void *arg) {
 // specific task it is - so all three need the same safety margin, not just
 // tracker. Also logging each task's watermark so a tight stack shows up in
 // the logs instead of as a mysteriously truncated packet.
-#define BEACON_TASK_STACK_BYTES 10240
+#define BEACON_TASK_STACK_BYTES 12288 // was 10240; infoField 200->256 and packet 300->400 (128-byte comment support) ate into the existing margin
 
 void beacon_start(void) {
     xTaskCreate(trackerBeaconTask, "trk_beacon_task", BEACON_TASK_STACK_BYTES, NULL, 4, NULL);
