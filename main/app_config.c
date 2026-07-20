@@ -29,128 +29,11 @@
 #include "cJSON.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
+#include "esp_system.h"
 
 static const char *TAG = "app_config";
 #define CONFIG_PATH     "/storage/config.json"
 #define CONFIG_TMP_PATH "/storage/config.json.tmp"
-
-// --- Exact-size prediction for cJSON_PrintUnformatted() output --------------
-//
-// This device's heap is small and can be fragmented (seen in practice: ~48KB
-// free but only ~43KB in the largest contiguous block), so neither a fixed
-// "hopefully big enough" buffer nor a self-growing one (cJSON_PrintBuffered,
-// which can ask for a contiguous block up to ~2x the content size mid-print)
-// is safe here: a guessed constant can always be beaten by more telemetry
-// channels/precision or schema growth, and growth-by-doubling can itself fail
-// to find a big enough contiguous block, or fragment the heap further while
-// trying. The only allocation strategy that's exactly right for a
-// memory-constrained device is to know the exact byte count *before*
-// allocating anything, and allocate exactly once.
-//
-// The functions below mirror cJSON's own unformatted (format=false) printer
-// - print_value()/print_object()/print_array()/print_string_ptr()/
-// print_number() in cJSON.c - byte for byte (same escaping rule, same "%d" /
-// "%1.15g" / "%1.17g" number formatting) to compute that exact byte count for
-// any cJSON tree without printing anything. This is generic over the tree
-// shape, so it stays correct as config_to_json()'s field list grows; it does
-// not need to be kept in sync field-by-field. Verified against real cJSON
-// output (including adversarial cases: heavy escaping, control characters,
-// extreme/irrational floats) to always match exactly - see the app's test
-// suite / commit notes for that verification.
-
-static size_t json_string_print_len(const char *s) {
-    if (!s) {
-        return 2; // ""
-    }
-    size_t escapes = 0;
-    for (const unsigned char *p = (const unsigned char *)s; *p; p++) {
-        switch (*p) {
-            case '\"': case '\\': case '\b': case '\f': case '\n': case '\r': case '\t':
-                escapes++;
-                break;
-            default:
-                if (*p < 32) {
-                    escapes += 5; // \u00XX
-                }
-                break;
-        }
-    }
-    return strlen(s) + escapes + 2; // + surrounding quotes
-}
-
-static size_t json_number_print_len(const cJSON *item) {
-    char buf[26]; // matches cJSON's own number_buffer[26] in print_number()
-    double d = item->valuedouble;
-    int len;
-    if (isnan(d) || isinf(d)) {
-        len = snprintf(buf, sizeof(buf), "null");
-    } else if (d == (double)item->valueint) {
-        len = snprintf(buf, sizeof(buf), "%d", item->valueint);
-    } else {
-        double test = 0.0;
-        len = snprintf(buf, sizeof(buf), "%1.15g", d);
-        if (sscanf(buf, "%lg", &test) != 1) {
-            len = snprintf(buf, sizeof(buf), "%1.17g", d);
-        } else {
-            double maxVal = fabs(test) > fabs(d) ? fabs(test) : fabs(d);
-            if (!(fabs(test - d) <= maxVal * DBL_EPSILON)) {
-                len = snprintf(buf, sizeof(buf), "%1.17g", d);
-            }
-        }
-    }
-    return (size_t)len;
-}
-
-// Exact byte count cJSON_PrintUnformatted(item) would produce, not counting
-// the terminating NUL.
-static size_t json_print_len(const cJSON *item) {
-    if (!item) {
-        return 0;
-    }
-    size_t total;
-    switch (item->type & 0xFF) {
-        case cJSON_NULL:
-            return 4; // null
-        case cJSON_False:
-            return 5; // false
-        case cJSON_True:
-            return 4; // true
-        case cJSON_Number:
-            return json_number_print_len(item);
-        case cJSON_String:
-            return json_string_print_len(item->valuestring);
-        case cJSON_Raw:
-            return item->valuestring ? strlen(item->valuestring) : 0;
-        case cJSON_Array: {
-            total = 2; // [ ]
-            bool first = true;
-            for (cJSON *c = item->child; c; c = c->next) {
-                if (!first) {
-                    total += 1; // ,
-                }
-                total += json_print_len(c);
-                first = false;
-            }
-            return total;
-        }
-        case cJSON_Object: {
-            total = 2; // { }
-            bool first = true;
-            for (cJSON *c = item->child; c; c = c->next) {
-                if (!first) {
-                    total += 1; // ,
-                }
-                total += json_string_print_len(c->string);
-                total += 1; // :
-                total += json_print_len(c);
-                first = false;
-            }
-            return total;
-        }
-        default:
-            return 0;
-    }
-}
 
 app_config_t g_config;
 
@@ -452,15 +335,121 @@ void app_config_set_defaults(app_config_t *c) {
     c->msg_alarm_gpio = -1;
 }
 
-// ---- small cJSON helpers -------------------------------------------------
-static void jadd_str(cJSON *o, const char *k, const char *v) {
-    cJSON_AddStringToObject(o, k, v ? v : "");
+// ---- streaming JSON writer -----------------------------------------------
+// The configuration is serialized by writing tokens straight to the open
+// config file, one field at a time, instead of first building a cJSON tree of
+// the whole config in RAM and then printing that tree into a second full-size
+// string buffer. On this device's small, fragmentable heap that old
+// double-allocation (hundreds of tiny cJSON nodes, ~40+ KB, plus a ~7 KB
+// contiguous print buffer, all live at once) was the single largest memory
+// event in the firmware and was what drove the "minimum free heap" watermark
+// down to a few KB after every save. Streaming keeps the extra RAM used during
+// a save to essentially just littlefs's own write buffer.
+//
+// The schema has only one object level and single-level (scalar) arrays, so a
+// single "need a comma before the next item" flag for each context is enough.
+typedef struct {
+    FILE *f;
+    bool obj_comma; // a member has already been written at object level
+    bool arr_comma; // an element has already been written in the current array
+} jw_t;
+
+// Emit a JSON string literal (quotes + minimal escaping), matching cJSON's
+// unformatted escaping rules so values round-trip through cJSON_Parse on load.
+static void jw_str_val(jw_t *w, const char *v) {
+    fputc('"', w->f);
+    if (v) {
+        for (const unsigned char *p = (const unsigned char *)v; *p; p++) {
+            unsigned char ch = *p;
+            switch (ch) {
+                case '"':  fputs("\\\"", w->f); break;
+                case '\\': fputs("\\\\", w->f); break;
+                case '\b': fputs("\\b", w->f); break;
+                case '\f': fputs("\\f", w->f); break;
+                case '\n': fputs("\\n", w->f); break;
+                case '\r': fputs("\\r", w->f); break;
+                case '\t': fputs("\\t", w->f); break;
+                default:
+                    if (ch < 0x20)
+                        fprintf(w->f, "\\u%04x", ch);
+                    else
+                        fputc(ch, w->f);
+            }
+        }
+    }
+    fputc('"', w->f);
 }
-static void jadd_num(cJSON *o, const char *k, double v) {
-    cJSON_AddNumberToObject(o, k, v);
+
+// Emit a number: integers without a decimal point, non-integers at the
+// shortest precision that still round-trips (mirrors cJSON's number printer
+// closely enough that reload via cJSON_Parse yields the same double).
+static void jw_num_val(jw_t *w, double v) {
+    if (!isfinite(v)) {
+        fputs("0", w->f);
+        return;
+    }
+    if (floor(v) == v && fabs(v) < 1e15) {
+        fprintf(w->f, "%.0f", v);
+        return;
+    }
+    char tmp[32];
+    for (int prec = 7; prec <= 17; prec++) {
+        snprintf(tmp, sizeof(tmp), "%.*g", prec, v);
+        if (strtod(tmp, NULL) == v)
+            break;
+    }
+    fputs(tmp, w->f);
 }
-static void jadd_bool(cJSON *o, const char *k, bool v) {
-    cJSON_AddBoolToObject(o, k, v);
+
+static void jw_key(jw_t *w, const char *k) {
+    if (w->obj_comma)
+        fputc(',', w->f);
+    w->obj_comma = true;
+    jw_str_val(w, k);
+    fputc(':', w->f);
+}
+
+// Object members - identical call signatures to the old cJSON helpers, so the
+// hundreds of jadd_*(d, "key", value) call sites below are unchanged.
+static void jadd_str(jw_t *o, const char *k, const char *v) {
+    jw_key(o, k);
+    jw_str_val(o, v ? v : "");
+}
+static void jadd_num(jw_t *o, const char *k, double v) {
+    jw_key(o, k);
+    jw_num_val(o, v);
+}
+static void jadd_bool(jw_t *o, const char *k, bool v) {
+    jw_key(o, k);
+    fputs(v ? "true" : "false", o->f);
+}
+
+// Scalar arrays.
+static void jarr_begin(jw_t *o, const char *k) {
+    jw_key(o, k);
+    fputc('[', o->f);
+    o->arr_comma = false;
+}
+static void jarr_end(jw_t *o) {
+    fputc(']', o->f);
+}
+static void jarr_num(jw_t *o, double v) {
+    if (o->arr_comma)
+        fputc(',', o->f);
+    o->arr_comma = true;
+    jw_num_val(o, v);
+}
+static void jarr_str(jw_t *o, const char *v) {
+    if (o->arr_comma)
+        fputc(',', o->f);
+    o->arr_comma = true;
+    jw_str_val(o, v ? v : "");
+}
+static void jarr_bool(jw_t *o, bool v) {
+    if (o->arr_comma)
+        fputc(',', o->f);
+    o->arr_comma = true;
+    fputs(v ? "true" : "false", o->f);
 }
 
 static const char *jget_str(cJSON *o, const char *k, const char *def) {
@@ -483,8 +472,8 @@ static bool jget_bool(cJSON *o, const char *k, bool def) {
 }
 
 // ---- serialize ------------------------------------------------------------
-static cJSON *config_to_json(const app_config_t *c) {
-    cJSON *d = cJSON_CreateObject();
+static void config_write_json(jw_t *d, const app_config_t *c) {
+    fputc('{', d->f);
     jadd_num(d, "cpuFreq", c->cpuFreq);
     jadd_str(d, "myCallsign", c->my_callsign);
     jadd_num(d, "myLAT", c->my_lat);
@@ -502,13 +491,13 @@ static cJSON *config_to_json(const app_config_t *c) {
     jadd_num(d, "WiFiAPCH", c->wifi_ap_ch);
     jadd_str(d, "WiFiAP_SSID", c->wifi_ap_ssid);
     jadd_str(d, "WiFiAP_PASS", c->wifi_ap_pass);
-    cJSON *wsta = cJSON_CreateArray();
+    jarr_begin(d, "WiFiSTA");
     for (int i = 0; i < WIFI_STA_NUM; i++) {
-        cJSON_AddItemToArray(wsta, cJSON_CreateBool(c->wifi_sta[i].enable));
-        cJSON_AddItemToArray(wsta, cJSON_CreateString(c->wifi_sta[i].wifi_ssid));
-        cJSON_AddItemToArray(wsta, cJSON_CreateString(c->wifi_sta[i].wifi_pass));
+        jarr_bool(d, c->wifi_sta[i].enable);
+        jarr_str(d, c->wifi_sta[i].wifi_ssid);
+        jarr_str(d, c->wifi_sta[i].wifi_pass);
     }
-    cJSON_AddItemToObject(d, "WiFiSTA", wsta);
+    jarr_end(d);
 
     jadd_num(d, "fx25Mode", c->fx25_mode);
     jadd_bool(d, "rfEnable", c->rf_en);
@@ -558,28 +547,37 @@ static cJSON *config_to_json(const app_config_t *c) {
     jadd_num(d, "igatePHGGain", c->igate_phg_gain);
     jadd_num(d, "igatePHGHeight", c->igate_phg_height);
     jadd_num(d, "igatePHGDir", c->igate_phg_dir);
-    {
-        cJSON *a1 = cJSON_CreateArray(), *a2 = cJSON_CreateArray(), *a3 = cJSON_CreateArray(), *a4 = cJSON_CreateArray(), *a5 = cJSON_CreateArray(),
-              *a6 = cJSON_CreateArray(), *a7 = cJSON_CreateArray();
-        for (int i = 0; i < TLM_CH; i++) {
-            cJSON_AddItemToArray(a1, cJSON_CreateBool(c->igate_tlm_avg[i]));
-            cJSON_AddItemToArray(a2, cJSON_CreateNumber(c->igate_tlm_sensor[i]));
-            cJSON_AddItemToArray(a3, cJSON_CreateNumber(c->igate_tlm_precision[i]));
-            cJSON_AddItemToArray(a4, cJSON_CreateNumber(c->igate_tlm_offset[i]));
-            cJSON_AddItemToArray(a5, cJSON_CreateString(c->igate_tlm_PARM[i]));
-            cJSON_AddItemToArray(a6, cJSON_CreateString(c->igate_tlm_UNIT[i]));
-            cJSON_AddItemToArray(a7, cJSON_CreateNumber(c->igate_tlm_EQNS[i][0]));
-            cJSON_AddItemToArray(a7, cJSON_CreateNumber(c->igate_tlm_EQNS[i][1]));
-            cJSON_AddItemToArray(a7, cJSON_CreateNumber(c->igate_tlm_EQNS[i][2]));
-        }
-        cJSON_AddItemToObject(d, "igateTlmAvg", a1);
-        cJSON_AddItemToObject(d, "igateTlmSen", a2);
-        cJSON_AddItemToObject(d, "igateTlmPrec", a3);
-        cJSON_AddItemToObject(d, "igateTlmOffset", a4);
-        cJSON_AddItemToObject(d, "igateTlmPARM", a5);
-        cJSON_AddItemToObject(d, "igateTlmUNIT", a6);
-        cJSON_AddItemToObject(d, "igateTlmEQNS", a7);
+    jarr_begin(d, "igateTlmAvg");
+    for (int i = 0; i < TLM_CH; i++)
+        jarr_bool(d, c->igate_tlm_avg[i]);
+    jarr_end(d);
+    jarr_begin(d, "igateTlmSen");
+    for (int i = 0; i < TLM_CH; i++)
+        jarr_num(d, c->igate_tlm_sensor[i]);
+    jarr_end(d);
+    jarr_begin(d, "igateTlmPrec");
+    for (int i = 0; i < TLM_CH; i++)
+        jarr_num(d, c->igate_tlm_precision[i]);
+    jarr_end(d);
+    jarr_begin(d, "igateTlmOffset");
+    for (int i = 0; i < TLM_CH; i++)
+        jarr_num(d, c->igate_tlm_offset[i]);
+    jarr_end(d);
+    jarr_begin(d, "igateTlmPARM");
+    for (int i = 0; i < TLM_CH; i++)
+        jarr_str(d, c->igate_tlm_PARM[i]);
+    jarr_end(d);
+    jarr_begin(d, "igateTlmUNIT");
+    for (int i = 0; i < TLM_CH; i++)
+        jarr_str(d, c->igate_tlm_UNIT[i]);
+    jarr_end(d);
+    jarr_begin(d, "igateTlmEQNS");
+    for (int i = 0; i < TLM_CH; i++) {
+        jarr_num(d, c->igate_tlm_EQNS[i][0]);
+        jarr_num(d, c->igate_tlm_EQNS[i][1]);
+        jarr_num(d, c->igate_tlm_EQNS[i][2]);
     }
+    jarr_end(d);
 
     jadd_bool(d, "digiEn", c->digi_en);
     jadd_bool(d, "digiAuto", c->digi_auto);
@@ -603,28 +601,37 @@ static cJSON *config_to_json(const app_config_t *c) {
     jadd_str(d, "digiComment", c->digi_comment);
     jadd_num(d, "digiSTSIntv", c->digi_sts_interval);
     jadd_str(d, "digiStatus", c->digi_status);
-    {
-        cJSON *a1 = cJSON_CreateArray(), *a2 = cJSON_CreateArray(), *a3 = cJSON_CreateArray(), *a4 = cJSON_CreateArray(), *a5 = cJSON_CreateArray(),
-              *a6 = cJSON_CreateArray(), *a7 = cJSON_CreateArray();
-        for (int i = 0; i < TLM_CH; i++) {
-            cJSON_AddItemToArray(a1, cJSON_CreateBool(c->digi_tlm_avg[i]));
-            cJSON_AddItemToArray(a2, cJSON_CreateNumber(c->digi_tlm_sensor[i]));
-            cJSON_AddItemToArray(a3, cJSON_CreateNumber(c->digi_tlm_precision[i]));
-            cJSON_AddItemToArray(a4, cJSON_CreateNumber(c->digi_tlm_offset[i]));
-            cJSON_AddItemToArray(a5, cJSON_CreateString(c->digi_tlm_PARM[i]));
-            cJSON_AddItemToArray(a6, cJSON_CreateString(c->digi_tlm_UNIT[i]));
-            cJSON_AddItemToArray(a7, cJSON_CreateNumber(c->digi_tlm_EQNS[i][0]));
-            cJSON_AddItemToArray(a7, cJSON_CreateNumber(c->digi_tlm_EQNS[i][1]));
-            cJSON_AddItemToArray(a7, cJSON_CreateNumber(c->digi_tlm_EQNS[i][2]));
-        }
-        cJSON_AddItemToObject(d, "digiTlmAvg", a1);
-        cJSON_AddItemToObject(d, "digiTlmSen", a2);
-        cJSON_AddItemToObject(d, "digiTlmPrec", a3);
-        cJSON_AddItemToObject(d, "digiTlmOffset", a4);
-        cJSON_AddItemToObject(d, "digiTlmPARM", a5);
-        cJSON_AddItemToObject(d, "digiTlmUNIT", a6);
-        cJSON_AddItemToObject(d, "digiTlmEQNS", a7);
+    jarr_begin(d, "digiTlmAvg");
+    for (int i = 0; i < TLM_CH; i++)
+        jarr_bool(d, c->digi_tlm_avg[i]);
+    jarr_end(d);
+    jarr_begin(d, "digiTlmSen");
+    for (int i = 0; i < TLM_CH; i++)
+        jarr_num(d, c->digi_tlm_sensor[i]);
+    jarr_end(d);
+    jarr_begin(d, "digiTlmPrec");
+    for (int i = 0; i < TLM_CH; i++)
+        jarr_num(d, c->digi_tlm_precision[i]);
+    jarr_end(d);
+    jarr_begin(d, "digiTlmOffset");
+    for (int i = 0; i < TLM_CH; i++)
+        jarr_num(d, c->digi_tlm_offset[i]);
+    jarr_end(d);
+    jarr_begin(d, "digiTlmPARM");
+    for (int i = 0; i < TLM_CH; i++)
+        jarr_str(d, c->digi_tlm_PARM[i]);
+    jarr_end(d);
+    jarr_begin(d, "digiTlmUNIT");
+    for (int i = 0; i < TLM_CH; i++)
+        jarr_str(d, c->digi_tlm_UNIT[i]);
+    jarr_end(d);
+    jarr_begin(d, "digiTlmEQNS");
+    for (int i = 0; i < TLM_CH; i++) {
+        jarr_num(d, c->digi_tlm_EQNS[i][0]);
+        jarr_num(d, c->digi_tlm_EQNS[i][1]);
+        jarr_num(d, c->digi_tlm_EQNS[i][2]);
     }
+    jarr_end(d);
 
     jadd_bool(d, "trkEn", c->trk_en);
     jadd_bool(d, "trkPos2rf", c->trk_loc2rf);
@@ -658,28 +665,37 @@ static cJSON *config_to_json(const app_config_t *c) {
     jadd_num(d, "trkSTSIntv", c->trk_sts_interval);
     jadd_str(d, "trkStatus", c->trk_status);
     jadd_num(d, "trkMicEType", c->trk_mice_type);
-    {
-        cJSON *a1 = cJSON_CreateArray(), *a2 = cJSON_CreateArray(), *a3 = cJSON_CreateArray(), *a4 = cJSON_CreateArray(), *a5 = cJSON_CreateArray(),
-              *a6 = cJSON_CreateArray(), *a7 = cJSON_CreateArray();
-        for (int i = 0; i < TLM_CH; i++) {
-            cJSON_AddItemToArray(a1, cJSON_CreateBool(c->trk_tlm_avg[i]));
-            cJSON_AddItemToArray(a2, cJSON_CreateNumber(c->trk_tlm_sensor[i]));
-            cJSON_AddItemToArray(a3, cJSON_CreateNumber(c->trk_tlm_precision[i]));
-            cJSON_AddItemToArray(a4, cJSON_CreateNumber(c->trk_tlm_offset[i]));
-            cJSON_AddItemToArray(a5, cJSON_CreateString(c->trk_tlm_PARM[i]));
-            cJSON_AddItemToArray(a6, cJSON_CreateString(c->trk_tlm_UNIT[i]));
-            cJSON_AddItemToArray(a7, cJSON_CreateNumber(c->trk_tlm_EQNS[i][0]));
-            cJSON_AddItemToArray(a7, cJSON_CreateNumber(c->trk_tlm_EQNS[i][1]));
-            cJSON_AddItemToArray(a7, cJSON_CreateNumber(c->trk_tlm_EQNS[i][2]));
-        }
-        cJSON_AddItemToObject(d, "trkTlmAvg", a1);
-        cJSON_AddItemToObject(d, "trkTlmSen", a2);
-        cJSON_AddItemToObject(d, "trkTlmPrec", a3);
-        cJSON_AddItemToObject(d, "trkTlmOffset", a4);
-        cJSON_AddItemToObject(d, "trkTlmPARM", a5);
-        cJSON_AddItemToObject(d, "trkTlmUNIT", a6);
-        cJSON_AddItemToObject(d, "trkTlmEQNS", a7);
+    jarr_begin(d, "trkTlmAvg");
+    for (int i = 0; i < TLM_CH; i++)
+        jarr_bool(d, c->trk_tlm_avg[i]);
+    jarr_end(d);
+    jarr_begin(d, "trkTlmSen");
+    for (int i = 0; i < TLM_CH; i++)
+        jarr_num(d, c->trk_tlm_sensor[i]);
+    jarr_end(d);
+    jarr_begin(d, "trkTlmPrec");
+    for (int i = 0; i < TLM_CH; i++)
+        jarr_num(d, c->trk_tlm_precision[i]);
+    jarr_end(d);
+    jarr_begin(d, "trkTlmOffset");
+    for (int i = 0; i < TLM_CH; i++)
+        jarr_num(d, c->trk_tlm_offset[i]);
+    jarr_end(d);
+    jarr_begin(d, "trkTlmPARM");
+    for (int i = 0; i < TLM_CH; i++)
+        jarr_str(d, c->trk_tlm_PARM[i]);
+    jarr_end(d);
+    jarr_begin(d, "trkTlmUNIT");
+    for (int i = 0; i < TLM_CH; i++)
+        jarr_str(d, c->trk_tlm_UNIT[i]);
+    jarr_end(d);
+    jarr_begin(d, "trkTlmEQNS");
+    for (int i = 0; i < TLM_CH; i++) {
+        jarr_num(d, c->trk_tlm_EQNS[i][0]);
+        jarr_num(d, c->trk_tlm_EQNS[i][1]);
+        jarr_num(d, c->trk_tlm_EQNS[i][2]);
     }
+    jarr_end(d);
 
     jadd_bool(d, "wxEn", c->wx_en);
     jadd_bool(d, "wxTx2rf", c->wx_2rf);
@@ -698,17 +714,18 @@ static cJSON *config_to_json(const app_config_t *c) {
     jadd_str(d, "wxObject", c->wx_object);
     jadd_str(d, "wxComment", c->wx_comment);
     jadd_num(d, "wxTlmInv", c->wx_tlm_interval);
-    {
-        cJSON *a1 = cJSON_CreateArray(), *a2 = cJSON_CreateArray(), *a3 = cJSON_CreateArray();
-        for (int i = 0; i < WX_SENSOR_NUM; i++) {
-            cJSON_AddItemToArray(a1, cJSON_CreateBool(c->wx_sensor_enable[i]));
-            cJSON_AddItemToArray(a2, cJSON_CreateBool(c->wx_sensor_avg[i]));
-            cJSON_AddItemToArray(a3, cJSON_CreateNumber(c->wx_sensor_ch[i]));
-        }
-        cJSON_AddItemToObject(d, "wxSenEn", a1);
-        cJSON_AddItemToObject(d, "wxSenAvg", a2);
-        cJSON_AddItemToObject(d, "wxSenCH", a3);
-    }
+    jarr_begin(d, "wxSenEn");
+    for (int i = 0; i < WX_SENSOR_NUM; i++)
+        jarr_bool(d, c->wx_sensor_enable[i]);
+    jarr_end(d);
+    jarr_begin(d, "wxSenAvg");
+    for (int i = 0; i < WX_SENSOR_NUM; i++)
+        jarr_bool(d, c->wx_sensor_avg[i]);
+    jarr_end(d);
+    jarr_begin(d, "wxSenCH");
+    for (int i = 0; i < WX_SENSOR_NUM; i++)
+        jarr_num(d, c->wx_sensor_ch[i]);
+    jarr_end(d);
 
     // Telemetry ch0/ch1
     for (int ch = 0; ch < 2; ch++) {
@@ -744,32 +761,35 @@ static cJSON *config_to_json(const app_config_t *c) {
         jadd_num(d, key, bits);
         snprintf(key, sizeof(key), "%sComment", pfx);
         jadd_str(d, key, comment);
-        cJSON *eqns = cJSON_CreateArray();
-        cJSON *parm = cJSON_CreateArray();
-        cJSON *unit = cJSON_CreateArray();
-        cJSON *dch = cJSON_CreateArray();
-        for (int i = 0; i < TLM_CH; i++) {
+        {
             const float(*E)[3] = ch == 0 ? c->tlm0_EQNS : c->tlm1_EQNS;
-            cJSON_AddItemToArray(eqns, cJSON_CreateNumber(E[i][0]));
-            cJSON_AddItemToArray(eqns, cJSON_CreateNumber(E[i][1]));
-            cJSON_AddItemToArray(eqns, cJSON_CreateNumber(E[i][2]));
-        }
-        for (int i = 0; i < TLM_PARM_NUM; i++) {
             const char(*P)[10] = ch == 0 ? c->tlm0_PARM : c->tlm1_PARM;
             const char(*U)[8] = ch == 0 ? c->tlm0_UNIT : c->tlm1_UNIT;
             const uint8_t *DC = ch == 0 ? c->tml0_data_channel : c->tml1_data_channel;
-            cJSON_AddItemToArray(parm, cJSON_CreateString(P[i]));
-            cJSON_AddItemToArray(unit, cJSON_CreateString(U[i]));
-            cJSON_AddItemToArray(dch, cJSON_CreateNumber(DC[i]));
+            snprintf(key, sizeof(key), "%sEQNS", pfx);
+            jarr_begin(d, key);
+            for (int i = 0; i < TLM_CH; i++) {
+                jarr_num(d, E[i][0]);
+                jarr_num(d, E[i][1]);
+                jarr_num(d, E[i][2]);
+            }
+            jarr_end(d);
+            snprintf(key, sizeof(key), "%sPARM", pfx);
+            jarr_begin(d, key);
+            for (int i = 0; i < TLM_PARM_NUM; i++)
+                jarr_str(d, P[i]);
+            jarr_end(d);
+            snprintf(key, sizeof(key), "%sUNIT", pfx);
+            jarr_begin(d, key);
+            for (int i = 0; i < TLM_PARM_NUM; i++)
+                jarr_str(d, U[i]);
+            jarr_end(d);
+            snprintf(key, sizeof(key), "%sDataCH", pfx);
+            jarr_begin(d, key);
+            for (int i = 0; i < TLM_PARM_NUM; i++)
+                jarr_num(d, DC[i]);
+            jarr_end(d);
         }
-        snprintf(key, sizeof(key), "%sEQNS", pfx);
-        cJSON_AddItemToObject(d, key, eqns);
-        snprintf(key, sizeof(key), "%sPARM", pfx);
-        cJSON_AddItemToObject(d, key, parm);
-        snprintf(key, sizeof(key), "%sUNIT", pfx);
-        cJSON_AddItemToObject(d, key, unit);
-        snprintf(key, sizeof(key), "%sDataCH", pfx);
-        cJSON_AddItemToObject(d, key, dch);
     }
 
     jadd_bool(d, "dspEn", c->oled_enable);
@@ -799,12 +819,10 @@ static cJSON *config_to_json(const app_config_t *c) {
 
     jadd_str(d, "httpUser", c->http_username);
     jadd_str(d, "httpPass", c->http_password);
-    {
-        cJSON *p = cJSON_CreateArray();
-        for (int i = 0; i < 4; i++)
-            cJSON_AddItemToArray(p, cJSON_CreateString(c->path[i]));
-        cJSON_AddItemToObject(d, "path", p);
-    }
+    jarr_begin(d, "path");
+    for (int i = 0; i < 4; i++)
+        jarr_str(d, c->path[i]);
+    jarr_end(d);
 
     jadd_bool(d, "gnssEn", c->gnss_enable);
     jadd_num(d, "gnssCH", c->gnss_channel);
@@ -934,7 +952,7 @@ static cJSON *config_to_json(const app_config_t *c) {
     jadd_bool(d, "msgAlarmEn", c->msg_alarm_enable);
     jadd_num(d, "msgAlarmGpio", c->msg_alarm_gpio);
 
-    return d;
+    fputc('}', d->f);
 }
 
 // ---- deserialize ------------------------------------------------------------
@@ -1452,55 +1470,34 @@ static void config_from_json(cJSON *d, app_config_t *c) {
 }
 
 bool app_config_save(void) {
-    cJSON *doc = config_to_json(&g_config);
-    if (!doc) {
-        ESP_LOGE(TAG, "config_to_json failed (out of memory building the document)");
-        return false;
-    }
-
-    // Compute the exact output size first (see json_print_len() and friends
-    // above), then make exactly one allocation of exactly that size and print
-    // into it with cJSON_PrintPreallocated(). No guessed constant, no
-    // growth/realloc - both of which are unsafe on this device's small,
-    // fragmentable heap (a guessed-too-small buffer or a mid-print doubling
-    // realloc can each fail to find a big enough contiguous block even when
-    // total free heap looks sufficient).
-    //
-    // JSON_PRINT_SAFETY_PAD: cJSON's own noalloc/PrintPreallocated bookkeeping
-    // transiently reserves a few bytes more than it ultimately writes on the
-    // final token of a print (its "reserve room for the NUL terminator" check
-    // runs before that NUL is actually placed, and does so on top of space a
-    // string/number's own null-reservation already accounted for) - verified
-    // empirically across varied configs (defaults, filled strings, escaped
-    // strings, wide floats): cJSON_PrintPreallocated() needs exactly 1 byte
-    // more than json_print_len()+1 in every case tried. This pad is a small,
-    // fixed constant covering that internal bookkeeping margin - not a guess
-    // at content size, which is computed exactly above - so it doesn't grow
-    // with the config schema the way a content-size guess would.
-    #define JSON_PRINT_SAFETY_PAD 4
-    size_t need = json_print_len(doc) + 1 + JSON_PRINT_SAFETY_PAD; // + NUL + pad
-    char *out = heap_caps_malloc(need, MALLOC_CAP_8BIT);
-    if (!out || !cJSON_PrintPreallocated(doc, out, (int)need, false)) {
-        ESP_LOGE(TAG, "cJSON_Print failed (needed=%u bytes, free heap=%u bytes, largest free block=%u bytes)",
-                 (unsigned)need, (unsigned)heap_caps_get_free_size(MALLOC_CAP_8BIT), (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_8BIT));
-        free(out); // NULL-safe
-        cJSON_Delete(doc);
-        return false;
-    }
-    cJSON_Delete(doc);
-    size_t len = strlen(out);
-
+    // Stream the configuration straight to the file, one field at a time. We
+    // deliberately do NOT build an in-RAM cJSON document of the whole config
+    // and then print it into a second full-size string the way the old path
+    // did: on this device's small, fragmentable heap that transient
+    // double-allocation was the single largest memory event in the firmware's
+    // life, and it was what drove the "minimum free heap" watermark down to a
+    // few KB after every webconfig save. Writing token-by-token through the
+    // FILE keeps the extra RAM needed for a save to essentially just littlefs's
+    // own write buffer.
     FILE *f = fopen(CONFIG_TMP_PATH, "w");
     if (!f) {
         ESP_LOGE(TAG, "open tmp for write failed");
-        free(out);
         return false;
     }
-    size_t written = fwrite(out, 1, len, f);
-    fclose(f);
-    free(out);
-    if (written != len) {
-        ESP_LOGE(TAG, "short write on config");
+
+    jw_t w = { .f = f, .obj_comma = false, .arr_comma = false };
+    config_write_json(&w, &g_config);
+
+    // Catch any deferred stdio/filesystem write error before committing the
+    // temp file over the live one, so a full or failing filesystem can never
+    // leave a truncated config.json in place.
+    bool ok = (fflush(f) == 0) && (ferror(f) == 0);
+    if (fclose(f) != 0)
+        ok = false;
+    if (!ok) {
+        ESP_LOGE(TAG, "write error while saving config (free heap=%u bytes)",
+                 (unsigned)esp_get_free_heap_size());
+        remove(CONFIG_TMP_PATH);
         return false;
     }
 
@@ -1509,7 +1506,7 @@ bool app_config_save(void) {
         ESP_LOGE(TAG, "rename tmp->config failed");
         return false;
     }
-    ESP_LOGI(TAG, "Configuration saved (%d bytes)", (int)len);
+    ESP_LOGI(TAG, "Configuration saved");
     return true;
 }
 
