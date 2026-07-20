@@ -39,6 +39,7 @@
 #include "aprs_filter.h"
 #include "aprs_service.h"
 #include "beacon.h"
+#include "bulletins.h"
 #include "digirepeater.h"
 #include "igate.h"
 #include "lastheard.h"
@@ -889,6 +890,13 @@ void aprs_service_start(void) {
     // refreshes it from the local sensor drivers at 1 Hz, and beacons an APRS
     // Weather Report at wx_interval.
     weather_start();
+
+    // Periodic APRS bulletins (BLN1..BLN5), configured on the "Bulletins" web
+    // admin page and persisted in their own LittleFS file (not g_config). The
+    // task also enforces per-bulletin expiry.
+#ifdef ENABLE_BULLETINS
+    bulletins_start();
+#endif
 
     // No afsk_poll task any more - the component runs its own RX DSP and TX
     // service tasks (see the note above serviceTickTask). Only the 1 Hz

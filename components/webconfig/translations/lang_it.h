@@ -35,6 +35,7 @@
 // ---- Sidebar menu -------------------------------------------------------
 #define TR_MENU_DASHBOARD "Pannello"
 #define TR_MENU_MSGCHAT   "Inv/Ric Msg"
+#define TR_MENU_BULLETINS "Bollettini"
 #define TR_MENU_STATION   "Stazione"
 #define TR_MENU_RADIO     "Radio/Modem"
 #define TR_MENU_VPN       "VPN (WireGuard)"
@@ -274,6 +275,10 @@
 #define TR_F_SSID                                          "SSID"
 #define TR_F_STANDBY_DELAY_S                               "Ritardo standby (s)"
 #define TR_F_STATION                                       "Stazione"
+#define TR_F_BULLETINS                                     "Bollettini"
+#define TR_F_BULLETIN_FMT                                  "Bollettino %d"
+#define TR_F_BULLETIN_MSG                                  "Messaggio (max 67 caratteri)"
+#define TR_F_BULLETIN_EXPIRE                               "Scadenza (ore, 0 = mai)"
 #define TR_F_STATUS_BEACON                                 "Beacon di stato"
 #define TR_F_STATUS_INTERVAL_S_0_OFF                       "Intervallo stato (s, 0=off)"
 #define TR_F_STATUS_TEXT                                   "Testo di stato"

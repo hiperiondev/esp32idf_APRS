@@ -4,6 +4,7 @@ idf_component_register(
         "web_server.c"
         "pages/page_common.c"
         "pages/page_station.c"
+        "pages/page_bulletins.c"
         "pages/page_storage.c"
         "pages/page_wireless.c"
         "pages/page_system.c"
