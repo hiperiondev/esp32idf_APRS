@@ -415,7 +415,12 @@ void AFSK_setPttGpio(int8_t gpio, bool active_high) {
     }
 }
 
-void LED_Status2(uint8_t r, uint8_t g, uint8_t b) {
+/* IRAM_ATTR: reachable from dac_timer_isr() (IRAM ISR) via setPtt(), which
+ * runs setPtt(false) directly from Ax25GetTxBit() at key-down. If this ever
+ * executes while a concurrent flash op (e.g. LittleFS reading bulletins.json)
+ * has cache disabled, a flash-resident function here panics with
+ * "Cache disabled but cached memory region accessed". */
+void IRAM_ATTR LED_Status2(uint8_t r, uint8_t g, uint8_t b) {
     int64_t now = esp_timer_get_time() / 1000;
 
     if (r == r_old && g == g_old && b == b_old) {
@@ -438,7 +443,11 @@ void LED_Status2(uint8_t r, uint8_t g, uint8_t b) {
 #endif
 }
 
-void setPtt(bool state) {
+/* IRAM_ATTR: called from dac_timer_isr() -> MODEM_BAUDRATE_TIMER_HANDLER() ->
+ * Ax25GetTxBit() at key-down (setPtt(false)), same ISR context as the rest of
+ * the TX path. Must stay flash-cache-safe for the same reason as
+ * LED_Status2() above. */
+void IRAM_ATTR setPtt(bool state) {
     if (s_pttGpio >= 0)
         gpio_set_level((gpio_num_t)s_pttGpio, s_pttActiveHigh ? state : !state);
     if (state)
@@ -464,7 +473,7 @@ bool getReceive(void) {
  * the DAC ISR via Ax25GetTxBit() -> ModemTransmitStop(), so it must do nothing
  * more than lower a flag; AFSK_ServiceTx() finishes the job from a task.
  */
-void setTransmit(bool val) {
+void IRAM_ATTR setTransmit(bool val) {
     if (val) {
         if (!s_txActive) {
             s_txStopPending = false;

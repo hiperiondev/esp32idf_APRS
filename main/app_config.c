@@ -30,12 +30,39 @@
 #include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "esp_system.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
+#include "freertos/task.h"
 
 static const char *TAG = "app_config";
 #define CONFIG_PATH     "/storage/config.json"
 #define CONFIG_TMP_PATH "/storage/config.json.tmp"
 
 app_config_t g_config;
+
+// Serializes every save/load of the underlying config.json file. Without
+// this, two overlapping POSTs (e.g. a user clicking Save twice quickly, or a
+// page auto-refresh racing a save) could both end up inside
+// app_config_save() at once: both fopen() the same .tmp file, both
+// remove()/rename() the live config, and both race the littlefs allocator
+// concurrently from two httpd worker task contexts. That races the flash
+// filesystem's internal metadata and was the root cause of crashes ("save
+// too often") - littlefs ends up handed corrupted block-list state, and a
+// bad pointer deref inside memset() takes down the task, which matches the
+// double-exception / corrupted-backtrace panic seen in the field. Created
+// lazily so this file has no init-order dependency.
+static SemaphoreHandle_t s_config_mutex = NULL;
+
+static SemaphoreHandle_t config_mutex(void) {
+    if (!s_config_mutex) {
+        static portMUX_TYPE creation_lock = portMUX_INITIALIZER_UNLOCKED;
+        taskENTER_CRITICAL(&creation_lock);
+        if (!s_config_mutex)
+            s_config_mutex = xSemaphoreCreateMutex();
+        taskEXIT_CRITICAL(&creation_lock);
+    }
+    return s_config_mutex;
+}
 
 static void set_str(char *dst, size_t sz, const char *val) {
     if (!val) {
@@ -1479,9 +1506,15 @@ bool app_config_save(void) {
     // few KB after every webconfig save. Writing token-by-token through the
     // FILE keeps the extra RAM needed for a save to essentially just littlefs's
     // own write buffer.
+    // Serialize the whole save against any other save/load in flight (see
+    // s_config_mutex comment above). Block indefinitely: a save must never
+    // be silently dropped, and the critical section below is short.
+    xSemaphoreTake(config_mutex(), portMAX_DELAY);
+
     FILE *f = fopen(CONFIG_TMP_PATH, "w");
     if (!f) {
         ESP_LOGE(TAG, "open tmp for write failed");
+        xSemaphoreGive(config_mutex());
         return false;
     }
 
@@ -1498,15 +1531,24 @@ bool app_config_save(void) {
         ESP_LOGE(TAG, "write error while saving config (free heap=%u bytes)",
                  (unsigned)esp_get_free_heap_size());
         remove(CONFIG_TMP_PATH);
+        xSemaphoreGive(config_mutex());
         return false;
     }
 
     remove(CONFIG_PATH);
     if (rename(CONFIG_TMP_PATH, CONFIG_PATH) != 0) {
         ESP_LOGE(TAG, "rename tmp->config failed");
+        xSemaphoreGive(config_mutex());
         return false;
     }
     ESP_LOGI(TAG, "Configuration saved");
+    // log how close the calling task (normally the
+    // httpd task) came to overflowing its stack during this save, so the
+    // config.stack_size in web_server.c can be sized from real numbers
+    // instead of another guess. Remove once a safe margin is confirmed.
+    ESP_LOGI(TAG, "Caller stack high-water mark: %u bytes free",
+             (unsigned)(uxTaskGetStackHighWaterMark(NULL) * sizeof(StackType_t)));
+    xSemaphoreGive(config_mutex());
     return true;
 }
 

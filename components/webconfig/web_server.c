@@ -43,7 +43,16 @@ void web_server_start(void) {
     config.max_uri_handlers = 64;
     // OTA firmware upload (esp_ota_write + esp_ota_end's image-verify sha256
     // pass) needs a bit more headroom than the rest of the admin pages.
-    config.stack_size = 10240;
+    // Several POST handlers (e.g. /wireless, /igate, /system, /wx) keep a
+    // 1.2-3KB form-parsing buffer alive on this task's stack for the whole
+    // handler, including through app_config_save()'s fopen/fprintf/rename
+    // chain into LittleFS. 10240 left too little margin for that plus a
+    // FreeRTOS context-save landing mid-write, which showed up as an
+    // intermittent "double exception" Guru Meditation on frequent saves
+    // (stack pointer walking past the end of the task's stack region).
+    // Bumped with headroom; verify actual usage in the field with
+    // uxTaskGetStackHighWaterMark() on the httpd task if tuning further.
+    config.stack_size = 20480;
     config.lru_purge_enable = true;
 
     if (httpd_start(&server, &config) != ESP_OK) {
