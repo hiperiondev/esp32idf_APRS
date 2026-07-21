@@ -68,6 +68,8 @@ void web_server_start(void) {
     reg(server, "/station", HTTP_POST, page_station_post);
     reg(server, "/bulletins", HTTP_GET, page_bulletins_get);
     reg(server, "/bulletins", HTTP_POST, page_bulletins_post);
+    reg(server, "/objects", HTTP_GET, page_objects_get);
+    reg(server, "/objects", HTTP_POST, page_objects_post);
     reg(server, "/sidebarInfo", HTTP_GET, page_sidebar_info);
     reg(server, "/sysinfo", HTTP_GET, page_sysinfo);
     reg(server, "/sysinfo", HTTP_POST, page_sysinfo_post);

@@ -9,6 +9,7 @@ idf_component_register(
         "beacon.c"
         "beacon_scheduler.c"
         "bulletins.c"
+        "objects_items.c"
         "weather.c"
         "time_sync.c"
         "cpu_freq.c"

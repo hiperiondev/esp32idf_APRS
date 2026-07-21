@@ -493,6 +493,9 @@ static const struct menu_item MENU[] = {
 #ifdef ENABLE_BULLETINS
     { "/bulletins", TR_MENU_BULLETINS, "bulletins" },
 #endif
+#ifdef ENABLE_OBJECTS_ITEMS
+    { "/objects", TR_MENU_OBJITEMS, "objects" },
+#endif
 #ifdef ENABLE_RADIO_MODEM
     { "/radio", TR_MENU_RADIO, "radio" },
 #endif

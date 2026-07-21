@@ -41,6 +41,7 @@
 #include "beacon.h"
 #include "beacon_scheduler.h"
 #include "bulletins.h"
+#include "objects_items.h"
 #include "digirepeater.h"
 #include "igate.h"
 #include "lastheard.h"
@@ -903,6 +904,13 @@ void aprs_service_start(void) {
     // task also enforces per-bulletin expiry.
 #ifdef ENABLE_BULLETINS
     bulletins_start();
+#endif
+
+    // Periodic APRS Objects/Items, configured on the "Objects and Items" web
+    // admin page and persisted in their own LittleFS file (not g_config). The
+    // shared scheduler drives their transmission and kill retransmissions.
+#ifdef ENABLE_OBJECTS_ITEMS
+    objitems_start();
 #endif
 
     // Single shared task that drives all of the above periodic transmissions

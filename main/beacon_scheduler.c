@@ -25,10 +25,11 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
-#include "app_config.h" // ENABLE_BULLETINS
+#include "app_config.h" // ENABLE_BULLETINS / ENABLE_OBJECTS_ITEMS
 #include "beacon.h"
 #include "beacon_scheduler.h"
 #include "bulletins.h"
+#include "objects_items.h"
 #include "weather.h"
 
 static const char *TAG = "beacon_sched";
@@ -63,6 +64,9 @@ static void beacon_scheduler_task(void *arg) {
         soonest = min_u32(soonest, weather_beacon_service()); // WX report
 #ifdef ENABLE_BULLETINS
         soonest = min_u32(soonest, bulletins_service());      // BLN1..BLNn
+#endif
+#ifdef ENABLE_OBJECTS_ITEMS
+        soonest = min_u32(soonest, objitems_service());       // APRS Objects/Items
 #endif
 
         if (soonest < 1)
