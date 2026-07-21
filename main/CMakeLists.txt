@@ -7,6 +7,7 @@ idf_component_register(
         "aprs_filter.c"
         "net_state.c"
         "beacon.c"
+        "beacon_scheduler.c"
         "bulletins.c"
         "weather.c"
         "time_sync.c"

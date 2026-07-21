@@ -26,6 +26,7 @@
 #include <time.h>
 
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
@@ -169,16 +170,33 @@ static uint32_t clampInterval(uint32_t interval) {
     return interval;
 }
 
+// Monotonic seconds since boot - used for beacon scheduling so an NTP step of
+// the wall clock never disturbs the transmit cadence (same policy bulletins.c
+// already uses).
+static int64_t mono_seconds(void) {
+    return (int64_t)(esp_timer_get_time() / 1000000);
+}
+
 // ---------------------------------------------------------------------------
 // Tracker beacon (Tracker web admin page: g_config.trk_*)
 // ---------------------------------------------------------------------------
-static void trackerBeaconTask(void *arg) {
-    for (;;) {
-        if (!g_config.trk_en || (!g_config.trk_loc2rf && !g_config.trk_loc2inet)) {
-            vTaskDelay(pdMS_TO_TICKS(5000));
-            continue;
-        }
+// Per-beacon monotonic "next due" timestamp (seconds). 0 = due now, so an
+// enabled beacon transmits once on the first pass after start - exactly like
+// the old per-task loop, which sent immediately then slept the interval.
+static int64_t s_trk_next_due = 0;
 
+// One serviced pass of the tracker beacon. Called by the shared beacon
+// scheduler (beacon_scheduler.c) via beacon_service(); returns the number of
+// seconds until this beacon next wants servicing. The body between the
+// enable-check and the "next due" update is byte-for-byte the old task body.
+static uint32_t trackerBeaconService(void) {
+    if (!g_config.trk_en || (!g_config.trk_loc2rf && !g_config.trk_loc2inet)) {
+        s_trk_next_due = 0; // reset so (re-)enabling fires an immediate TX, as the old 5 s idle loop did
+        return 5;           // idle re-check cadence (was vTaskDelay(5000))
+    }
+
+    int64_t now = mono_seconds();
+    if (now >= s_trk_next_due) {
         beacon_params_t p = {
             .call = g_config.trk_mycall[0] ? g_config.trk_mycall : g_config.aprs_mycall,
             .ssid = g_config.trk_mycall[0] ? g_config.trk_ssid : g_config.aprs_ssid,
@@ -220,20 +238,28 @@ static void trackerBeaconTask(void *arg) {
             ESP_LOGW(TAG, "Tracker beacon enabled but no callsign configured (set Tracker or APRS callsign) - skipping");
         }
 
-        vTaskDelay(pdMS_TO_TICKS(clampInterval(g_config.trk_interval) * 1000UL));
+        s_trk_next_due = now + (int64_t)clampInterval(g_config.trk_interval);
     }
+
+    int64_t rem = s_trk_next_due - mono_seconds();
+    if (rem < 1)
+        rem = 1;
+    return (uint32_t)rem;
 }
 
 // ---------------------------------------------------------------------------
 // IGate beacon (IGate web admin page: g_config.igate_*)
 // ---------------------------------------------------------------------------
-static void igateBeaconTask(void *arg) {
-    for (;;) {
-        if (!g_config.igate_en || !g_config.igate_bcn || (!g_config.igate_loc2rf && !g_config.igate_loc2inet)) {
-            vTaskDelay(pdMS_TO_TICKS(5000));
-            continue;
-        }
+static int64_t s_igate_next_due = 0;
 
+static uint32_t igateBeaconService(void) {
+    if (!g_config.igate_en || !g_config.igate_bcn || (!g_config.igate_loc2rf && !g_config.igate_loc2inet)) {
+        s_igate_next_due = 0;
+        return 5;
+    }
+
+    int64_t now = mono_seconds();
+    if (now >= s_igate_next_due) {
         beacon_params_t p = {
             .call = g_config.aprs_mycall,
             .ssid = g_config.aprs_ssid,
@@ -272,20 +298,28 @@ static void igateBeaconTask(void *arg) {
             ESP_LOGW(TAG, "IGate beacon enabled but no APRS callsign configured - skipping");
         }
 
-        vTaskDelay(pdMS_TO_TICKS(clampInterval(g_config.igate_interval) * 1000UL));
+        s_igate_next_due = now + (int64_t)clampInterval(g_config.igate_interval);
     }
+
+    int64_t rem = s_igate_next_due - mono_seconds();
+    if (rem < 1)
+        rem = 1;
+    return (uint32_t)rem;
 }
 
 // ---------------------------------------------------------------------------
 // Digipeater beacon (Digipeater web admin page: g_config.digi_*)
 // ---------------------------------------------------------------------------
-static void digiBeaconTask(void *arg) {
-    for (;;) {
-        if (!g_config.digi_en || !g_config.digi_bcn || (!g_config.digi_loc2rf && !g_config.digi_loc2inet)) {
-            vTaskDelay(pdMS_TO_TICKS(5000));
-            continue;
-        }
+static int64_t s_digi_next_due = 0;
 
+static uint32_t digiBeaconService(void) {
+    if (!g_config.digi_en || !g_config.digi_bcn || (!g_config.digi_loc2rf && !g_config.digi_loc2inet)) {
+        s_digi_next_due = 0;
+        return 5;
+    }
+
+    int64_t now = mono_seconds();
+    if (now >= s_digi_next_due) {
         const char *call = g_config.digi_mycall[0] ? g_config.digi_mycall : g_config.aprs_mycall;
         uint8_t ssid = g_config.digi_mycall[0] ? g_config.digi_ssid : g_config.aprs_ssid;
 
@@ -327,8 +361,13 @@ static void digiBeaconTask(void *arg) {
             ESP_LOGW(TAG, "Digipeater beacon enabled but no callsign configured (set Digipeater or APRS callsign) - skipping");
         }
 
-        vTaskDelay(pdMS_TO_TICKS(clampInterval(g_config.digi_interval) * 1000UL));
+        s_digi_next_due = now + (int64_t)clampInterval(g_config.digi_interval);
     }
+
+    int64_t rem = s_digi_next_due - mono_seconds();
+    if (rem < 1)
+        rem = 1;
+    return (uint32_t)rem;
 }
 
 // Stack size note: buildPositionPacket()'s call chain does several
@@ -352,16 +391,34 @@ static void digiBeaconTask(void *arg) {
 // the logs instead of as a mysteriously truncated packet.
 #define BEACON_TASK_STACK_BYTES 12288 // was 10240; infoField 200->256 and packet 300->400 (128-byte comment support) ate into the existing margin
 
+// Service all three position beacons in one pass and return the number of
+// seconds until the soonest of them next wants servicing. Called from the
+// shared beacon scheduler task (beacon_scheduler.c) so the tracker/igate/digi
+// beacons no longer each need their own FreeRTOS task and 12 KB stack - they
+// share the scheduler's single stack, run sequentially (the half-duplex modem
+// serialised them anyway), and keep their independent enable flags/intervals
+// via the per-beacon s_*_next_due timers above.
+uint32_t beacon_service(void) {
+    uint32_t soonest = trackerBeaconService();
+    uint32_t s;
+    s = igateBeaconService();
+    if (s < soonest)
+        soonest = s;
+    s = digiBeaconService();
+    if (s < soonest)
+        soonest = s;
+    return soonest;
+}
+
 void beacon_start(void) {
-    xTaskCreate(trackerBeaconTask, "trk_beacon_task", BEACON_TASK_STACK_BYTES, NULL, 4, NULL);
-    ESP_LOGI(TAG, "Tracker beacon task started (en=%d rf=%d inet=%d interval=%us)", g_config.trk_en, g_config.trk_loc2rf,
+    // No task creation here any more: the tracker/igate/digi beacons are
+    // driven by the shared beacon scheduler (beacon_scheduler_start()), which
+    // calls beacon_service() above. This just logs the configured state, as
+    // the three separate task-start log lines used to.
+    ESP_LOGI(TAG, "Tracker beacon configured (en=%d rf=%d inet=%d interval=%us)", g_config.trk_en, g_config.trk_loc2rf,
              g_config.trk_loc2inet, (unsigned)g_config.trk_interval);
-
-    xTaskCreate(igateBeaconTask, "igate_beacon_task", BEACON_TASK_STACK_BYTES, NULL, 4, NULL);
-    ESP_LOGI(TAG, "IGate beacon task started (en=%d bcn=%d rf=%d inet=%d interval=%us)", g_config.igate_en, g_config.igate_bcn,
+    ESP_LOGI(TAG, "IGate beacon configured (en=%d bcn=%d rf=%d inet=%d interval=%us)", g_config.igate_en, g_config.igate_bcn,
              g_config.igate_loc2rf, g_config.igate_loc2inet, (unsigned)g_config.igate_interval);
-
-    xTaskCreate(digiBeaconTask, "digi_beacon_task", BEACON_TASK_STACK_BYTES, NULL, 4, NULL);
-    ESP_LOGI(TAG, "Digipeater beacon task started (en=%d bcn=%d rf=%d inet=%d interval=%us)", g_config.digi_en, g_config.digi_bcn,
+    ESP_LOGI(TAG, "Digipeater beacon configured (en=%d bcn=%d rf=%d inet=%d interval=%us)", g_config.digi_en, g_config.digi_bcn,
              g_config.digi_loc2rf, g_config.digi_loc2inet, (unsigned)g_config.digi_interval);
 }

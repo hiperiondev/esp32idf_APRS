@@ -36,14 +36,26 @@
 #ifndef BEACON_H
 #define BEACON_H
 
+#include <stdint.h>
+
 /**
- * @brief Start the Tracker, IGate, and Digipeater beacon tasks. Each task is
- * a no-op-ish idle loop if its own enable flag (g_config.trk_en /
- * g_config.igate_en + igate_bcn / g_config.digi_en + digi_bcn) is false, or
- * if both its own loc2rf/loc2inet flags are false - it just idles and
- * re-checks periodically, so toggling these on later in the web admin takes
- * effect without a reboot). Safe to call once from app startup.
+ * @brief Log the configured state of the Tracker, IGate, and Digipeater
+ * beacons. The beacons themselves no longer run as three separate tasks: they
+ * are driven by the shared beacon scheduler (beacon_scheduler_start()), which
+ * calls ::beacon_service. Safe to call once from app startup.
  */
 void beacon_start(void);
+
+/**
+ * @brief Service all three position beacons (Tracker / IGate / Digipeater) in
+ * one pass, transmitting any that are due, and return the number of seconds
+ * until the soonest one next needs servicing (always >= 1).
+ *
+ * Each beacon keeps its own enable flags and interval; a disabled beacon is a
+ * cheap no-op that returns a short re-check interval so toggling it on in the
+ * web admin still takes effect without a reboot. Intended to be called only
+ * from the shared beacon scheduler task.
+ */
+uint32_t beacon_service(void);
 
 #endif // BEACON_H

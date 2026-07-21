@@ -123,15 +123,24 @@ void bulletins_arm_expiry(bulletins_t *b);
 bool bulletins_apply_expiry(bulletins_t *b);
 
 /**
- * @brief Start the periodic bulletin transmit task.
- *
- * The task idles cheaply when nothing is enabled, and otherwise transmits
- * each enabled, non-expired bulletin on its configured leg(s) at that
- * bulletin's own "Beacon interval (s)" (bulletin_t.interval_s, clamped to a
- * sane floor; 0 = firmware default). It also enforces expiry: a bulletin
- * whose deadline has passed is disabled and the file rewritten. Safe to call
+ * @brief Prepare the bulletin subsystem (creates the LittleFS lock and logs
+ * the configured state). The bulletins are no longer transmitted from their
+ * own task: they are driven by the shared beacon scheduler
+ * (beacon_scheduler_start()), which calls ::bulletins_service. Safe to call
  * once from app startup.
  */
 void bulletins_start(void);
+
+/**
+ * @brief Service the bulletin transmitter: transmit each enabled, non-expired
+ * bulletin whose per-bulletin interval is due, enforce expiry (disabling and
+ * persisting any bulletin whose deadline has passed), and return the number of
+ * seconds until the transmitter next needs servicing (always >= 1, capped so
+ * web edits and expiry are picked up promptly).
+ *
+ * The first call returns a one-time boot settle delay without transmitting.
+ * Intended to be called only from the shared beacon scheduler task.
+ */
+uint32_t bulletins_service(void);
 
 #endif // BULLETINS_H

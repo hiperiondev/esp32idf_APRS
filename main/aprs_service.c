@@ -39,6 +39,7 @@
 #include "aprs_filter.h"
 #include "aprs_service.h"
 #include "beacon.h"
+#include "beacon_scheduler.h"
 #include "bulletins.h"
 #include "digirepeater.h"
 #include "igate.h"
@@ -897,6 +898,13 @@ void aprs_service_start(void) {
 #ifdef ENABLE_BULLETINS
     bulletins_start();
 #endif
+
+    // Single shared task that drives all of the above periodic transmissions
+    // (tracker/igate/digi beacons, WX report, bulletins). Started last, after
+    // beacon_start()/weather_start()/bulletins_start() have set up the state
+    // its service functions read. This replaces the five separate beacon/
+    // bulletin/WX tasks (~61 KB of stacks) with one (~14 KB), reclaiming heap.
+    beacon_scheduler_start();
 
     // No afsk_poll task any more - the component runs its own RX DSP and TX
     // service tasks (see the note above serviceTickTask). Only the 1 Hz

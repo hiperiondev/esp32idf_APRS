@@ -403,66 +403,80 @@ static int64_t mono_seconds(void) {
     return (int64_t)(esp_timer_get_time() / 1000000);
 }
 
-static void bulletin_task(void *arg) {
-    // Per-bulletin next-due timestamps (monotonic seconds). 0 = due now, so
-    // every enabled bulletin transmits once on the first pass after start.
-    int64_t next_due[BULLETIN_COUNT] = { 0 };
+// Per-bulletin next-due timestamps (monotonic seconds). 0 = due now, so every
+// enabled bulletin transmits once on the first pass after start. File-scope
+// now that the transmitter is a serviced pass (bulletins_service) driven by
+// the shared beacon scheduler instead of its own task loop.
+static int64_t s_bln_next_due[BULLETIN_COUNT] = { 0 };
 
-    vTaskDelay(pdMS_TO_TICKS(BULLETIN_START_DELAY_S * 1000UL));
+// One serviced pass of the bulletin transmitter. Called by the shared beacon
+// scheduler (beacon_scheduler.c); returns the number of seconds until the
+// transmitter next wants servicing (>= 1). Body is the old bulletin_task loop
+// body, with the per-bulletin timers hoisted to file scope and the one-time
+// boot settle delay returned on the first call instead of a blocking sleep.
+uint32_t bulletins_service(void) {
+    // One-time settle delay after boot before the first transmit pass, so
+    // WiFi/APRS-IS association and the modem have a chance to come up first.
+    // The old task slept this once before entering its loop.
+    static bool started = false;
+    if (!started) {
+        started = true;
+        return BULLETIN_START_DELAY_S;
+    }
 
-    for (;;) {
-        bulletins_t set;
-        bulletins_load(&set);
+    bulletins_t set;
+    bulletins_load(&set);
 
-        // Enforce expiry first, and persist the disable so the web UI reflects
-        // it even if nothing is transmitted this pass.
-        if (bulletins_apply_expiry(&set))
-            bulletins_save(&set);
+    // Enforce expiry first, and persist the disable so the web UI reflects
+    // it even if nothing is transmitted this pass.
+    if (bulletins_apply_expiry(&set))
+        bulletins_save(&set);
 
-        char src[16];
-        resolve_source_call(src, sizeof(src));
+    char src[16];
+    resolve_source_call(src, sizeof(src));
 
-        int64_t now = mono_seconds();
-        int64_t soonest = now + BULLETIN_POLL_CAP_S;
+    int64_t now = mono_seconds();
+    int64_t soonest = now + BULLETIN_POLL_CAP_S;
 
-        for (int i = 0; i < BULLETIN_COUNT; i++) {
-            const bulletin_t *b = &set.item[i];
-            bool sendable = b->enable && b->text[0] && (b->send_rf || b->send_inet);
+    for (int i = 0; i < BULLETIN_COUNT; i++) {
+        const bulletin_t *b = &set.item[i];
+        bool sendable = b->enable && b->text[0] && (b->send_rf || b->send_inet);
 
-            if (!sendable || !src[0]) {
-                // Reset so that (re-)enabling or setting a callsign fires an
-                // immediate transmit on the next pass instead of waiting out a
-                // stale timer.
-                next_due[i] = 0;
-                continue;
-            }
-
-            if (now >= next_due[i]) {
-                tx_one(i, b, src);
-                next_due[i] = now + (int64_t)clamp_interval(b->interval_s);
-                vTaskDelay(pdMS_TO_TICKS(BULLETIN_INTER_TX_MS));
-                now = mono_seconds(); // account for the inter-TX gap
-            }
-
-            if (next_due[i] < soonest)
-                soonest = next_due[i];
+        if (!sendable || !src[0]) {
+            // Reset so that (re-)enabling or setting a callsign fires an
+            // immediate transmit on the next pass instead of waiting out a
+            // stale timer.
+            s_bln_next_due[i] = 0;
+            continue;
         }
 
-        ESP_LOGD(TAG, "bulletin_task stack free: %u bytes", (unsigned)(uxTaskGetStackHighWaterMark(NULL) * sizeof(StackType_t)));
+        if (now >= s_bln_next_due[i]) {
+            tx_one(i, b, src);
+            s_bln_next_due[i] = now + (int64_t)clamp_interval(b->interval_s);
+            vTaskDelay(pdMS_TO_TICKS(BULLETIN_INTER_TX_MS));
+            now = mono_seconds(); // account for the inter-TX gap
+        }
 
-        // Sleep until the soonest bulletin is due, capped so config edits and
-        // expiry are still picked up promptly.
-        int64_t sleep_s = soonest - mono_seconds();
-        if (sleep_s < 1)
-            sleep_s = 1;
-        if (sleep_s > BULLETIN_POLL_CAP_S)
-            sleep_s = BULLETIN_POLL_CAP_S;
-        vTaskDelay(pdMS_TO_TICKS((uint32_t)sleep_s * 1000UL));
+        if (s_bln_next_due[i] < soonest)
+            soonest = s_bln_next_due[i];
     }
+
+    ESP_LOGD(TAG, "bulletins_service stack free: %u bytes", (unsigned)(uxTaskGetStackHighWaterMark(NULL) * sizeof(StackType_t)));
+
+    // Sleep until the soonest bulletin is due, capped so config edits and
+    // expiry are still picked up promptly.
+    int64_t sleep_s = soonest - mono_seconds();
+    if (sleep_s < 1)
+        sleep_s = 1;
+    if (sleep_s > BULLETIN_POLL_CAP_S)
+        sleep_s = BULLETIN_POLL_CAP_S;
+    return (uint32_t)sleep_s;
 }
 
 void bulletins_start(void) {
+    // No task creation here any more: the bulletin transmitter is driven by
+    // the shared beacon scheduler (beacon_scheduler_start()) via
+    // bulletins_service(). Just make sure the LittleFS lock exists.
     ensure_lock();
-    xTaskCreate(bulletin_task, "bulletin_task", BULLETIN_TASK_STACK_BYTES, NULL, 4, NULL);
-    ESP_LOGI(TAG, "Bulletin task started (per-bulletin interval, default=%us)", (unsigned)BULLETIN_DEFAULT_INTERVAL_S);
+    ESP_LOGI(TAG, "Bulletins configured (per-bulletin interval, default=%us; driven by beacon scheduler)", (unsigned)BULLETIN_DEFAULT_INTERVAL_S);
 }

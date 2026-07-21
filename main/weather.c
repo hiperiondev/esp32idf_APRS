@@ -26,6 +26,7 @@
 #include <time.h>
 
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
@@ -421,6 +422,12 @@ static uint32_t clamp_interval(uint32_t s) {
     return s;
 }
 
+// Monotonic seconds since boot - used for WX beacon scheduling so an NTP step
+// of the wall clock never disturbs the transmit cadence.
+static int64_t wx_mono_seconds(void) {
+    return (int64_t)(esp_timer_get_time() / 1000000);
+}
+
 /* -------------------------------------------------------------------------
  * Tasks
  * ------------------------------------------------------------------------- */
@@ -447,14 +454,21 @@ static void weatherSensorTask(void *arg) {
 // than the old 6144. See BEACON_TASK_STACK_BYTES in beacon.c.
 #define WX_BEACON_TASK_STACK_BYTES 14336 // was 10240; info 256->420 and packet 300->500 (128-byte comment support) ate into the existing margin, same class of bug as BEACON_TASK_STACK_BYTES
 
-// Emits the APRS weather report at wx_interval when enabled.
-static void weatherBeaconTask(void *arg) {
-    for (;;) {
-        if (!g_config.wx_en || (!g_config.wx_2rf && !g_config.wx_2inet)) {
-            vTaskDelay(pdMS_TO_TICKS(5000));
-            continue;
-        }
+// Monotonic "next due" timestamp (seconds); 0 = due now so an enabled WX
+// beacon transmits once on the first pass, exactly like the old task loop.
+static int64_t s_wx_next_due = 0;
 
+// One serviced pass of the WX beacon. Called by the shared beacon scheduler
+// (beacon_scheduler.c) via the same contract as beacon_service(): transmit if
+// due, return seconds until next due. The body is the old task body verbatim.
+uint32_t weather_beacon_service(void) {
+    if (!g_config.wx_en || (!g_config.wx_2rf && !g_config.wx_2inet)) {
+        s_wx_next_due = 0; // reset so (re-)enabling fires an immediate TX, as the old 5 s idle loop did
+        return 5;          // idle re-check cadence (was vTaskDelay(5000))
+    }
+
+    int64_t now = wx_mono_seconds();
+    if (now >= s_wx_next_due) {
         wx_resolved_t r[WX_SENSOR_NUM];
         resolve_fields(r);
 
@@ -479,10 +493,15 @@ static void weatherBeaconTask(void *arg) {
 
         // Same watermark log the beacon tasks emit: a tight stack shows up here
         // instead of as a truncated or silently dropped RF packet.
-        ESP_LOGD(TAG, "wx_beacon_task stack free: %u bytes", (unsigned)(uxTaskGetStackHighWaterMark(NULL) * sizeof(StackType_t)));
+        ESP_LOGD(TAG, "wx_beacon stack free: %u bytes", (unsigned)(uxTaskGetStackHighWaterMark(NULL) * sizeof(StackType_t)));
 
-        vTaskDelay(pdMS_TO_TICKS(clamp_interval(g_config.wx_interval) * 1000UL));
+        s_wx_next_due = now + (int64_t)clamp_interval(g_config.wx_interval);
     }
+
+    int64_t rem = s_wx_next_due - wx_mono_seconds();
+    if (rem < 1)
+        rem = 1;
+    return (uint32_t)rem;
 }
 
 void weather_start(void) {
@@ -511,8 +530,10 @@ void weather_start(void) {
     sensors_local_init();
     sensors_local_init_all();
 
+    // The 1 Hz sensor-refresh task stays its own task; the WX beacon is now
+    // driven by the shared beacon scheduler (beacon_scheduler_start()) via
+    // weather_beacon_service(), so it no longer needs its own 14 KB-stack task.
     xTaskCreate(weatherSensorTask, "wx_sensor_task", 4096, NULL, 4, NULL);
-    xTaskCreate(weatherBeaconTask, "wx_beacon_task", WX_BEACON_TASK_STACK_BYTES, NULL, 4, NULL);
     ESP_LOGI(TAG, "Weather subsystem started (en=%d rf=%d inet=%d interval=%us, %u local sensor driver(s))", g_config.wx_en, g_config.wx_2rf, g_config.wx_2inet,
              (unsigned)g_config.wx_interval, (unsigned)sensors_local_count());
 }

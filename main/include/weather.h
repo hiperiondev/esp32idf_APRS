@@ -26,6 +26,8 @@
 #ifndef WEATHER_H
 #define WEATHER_H
 
+#include <stdint.h>
+
 #include "weather_telemetry.h"
 
 /**
@@ -55,6 +57,17 @@ extern weather_telemetry_data_t weather_telemetry_data;
  * effect without a reboot.
  */
 void weather_start(void);
+
+/**
+ * @brief Service the WX beacon: transmit an APRS Weather Report if one is due,
+ * and return the number of seconds until it next needs servicing (always >= 1).
+ *
+ * Uses g_config.wx_* for enable/legs/interval, keeping the same behaviour the
+ * old dedicated WX beacon task had. Intended to be called only from the shared
+ * beacon scheduler task (beacon_scheduler.c). The 1 Hz sensor-refresh task set
+ * up by ::weather_start is unaffected and keeps running on its own.
+ */
+uint32_t weather_beacon_service(void);
 
 /** @brief Take/release the lock guarding ::weather_telemetry_data. */
 void weather_lock(void);
