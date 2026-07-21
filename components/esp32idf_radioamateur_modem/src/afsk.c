@@ -369,9 +369,18 @@ static uint8_t r_old = 0, g_old = 0, b_old = 0;
 static int64_t rgbTimeout = 0;
 
 /* Runtime PTT pin/polarity, defaulting to the compile-time constants so a
- * build that never calls AFSK_setPttGpio() behaves exactly as before. */
+ * build that never calls AFSK_setPttGpio() behaves exactly as before.
+ *
+ * s_pttGpio/s_pttActiveHigh are read from setPtt(), which runs from the DAC
+ * timer ISR (IRAM_ATTR, fires continuously during TX) - so any change to
+ * them from task context (AFSK_setPttGpio(), called live from the webconfig
+ * Radio-page Save handler) must be made atomic with respect to that ISR.
+ * s_pttMux guards exactly those two variables; it must never be held around
+ * gpio_config()/gpio_reset_pin(), which are not ISR-safe and can themselves
+ * be interrupted, momentarily disable the flash cache, etc. */
 static int8_t s_pttGpio = MODEM_PTT_GPIO;
 static bool s_pttActiveHigh = MODEM_PTT_ACTIVE_HIGH ? true : false;
+static portMUX_TYPE s_pttMux = portMUX_INITIALIZER_UNLOCKED;
 
 bool afsk_ptt_gpio_is_valid(int8_t gpio) {
     if (gpio == -1)
@@ -388,31 +397,64 @@ bool afsk_ptt_gpio_is_valid(int8_t gpio) {
 }
 
 void AFSK_setPttGpio(int8_t gpio, bool active_high) {
+    /* setPtt() (IRAM ISR, driven by the DAC timer during TX) reads
+     * s_pttGpio/s_pttActiveHigh on every bit and calls gpio_set_level() on
+     * whatever pin it finds there - it does not know a Save is in progress.
+     * The swap below is sequenced so that, at every point the ISR can
+     * observe, s_pttGpio names either the fully-configured old pin or the
+     * fully-configured new one - never a pin mid-gpio_config()/reset, and
+     * never a stale pin number after its hardware has already been reset.
+     *
+     * gpio_reset_pin()/gpio_config() are flash-resident and not IRAM-safe,
+     * so they must never run while the ISR could still be driving the pin
+     * they're about to touch. Forcing the old pin to its idle level first
+     * (under the spinlock, using only the IRAM-safe gpio_set_level()) and
+     * *then* clearing s_pttGpio guarantees setPtt() stops touching that pin
+     * before gpio_reset_pin()/gpio_config() run on it from here. */
+    portENTER_CRITICAL(&s_pttMux);
     s_pttActiveHigh = active_high;
 
     if (gpio == s_pttGpio) {
-        /* Same pin, polarity may have changed: re-assert the idle level. */
+        /* Same pin, polarity may have changed: re-assert the idle level
+         * while still holding the lock so the ISR can't race this with a
+         * key-down using the old polarity. */
         if (s_inited && s_pttGpio >= 0)
             gpio_set_level((gpio_num_t)s_pttGpio, s_pttActiveHigh ? 0 : 1);
+        portEXIT_CRITICAL(&s_pttMux);
         return;
     }
 
-    /* Release the previous pin so a stale output isn't left driving. */
-    if (s_inited && s_pttGpio >= 0)
-        gpio_reset_pin((gpio_num_t)s_pttGpio);
+    int8_t oldGpio = s_pttGpio;
+    if (s_inited && oldGpio >= 0)
+        gpio_set_level((gpio_num_t)oldGpio, s_pttActiveHigh ? 0 : 1); /* idle it first */
 
-    s_pttGpio = gpio;
+    /* Hand the ISR a "disabled" pin for the short window it takes to
+     * reconfigure hardware below, rather than leaving it pointed at a pin
+     * about to be reset out from under it. */
+    s_pttGpio = -1;
+    portEXIT_CRITICAL(&s_pttMux);
+
+    /* Release the previous pin so a stale output isn't left driving. Safe
+     * now: the ISR was idled and unlinked from oldGpio above. */
+    if (s_inited && oldGpio >= 0)
+        gpio_reset_pin((gpio_num_t)oldGpio);
 
     /* Only touch hardware once the driver is initialized; before AFSK_init()
      * this just records the number, and AFSK_init() will configure it. */
-    if (s_inited && s_pttGpio >= 0) {
+    if (s_inited && gpio >= 0) {
         gpio_config_t pttCfg = {
-            .pin_bit_mask = 1ULL << s_pttGpio,
+            .pin_bit_mask = 1ULL << gpio,
             .mode = GPIO_MODE_OUTPUT,
         };
         gpio_config(&pttCfg);
-        gpio_set_level((gpio_num_t)s_pttGpio, s_pttActiveHigh ? 0 : 1);
+        gpio_set_level((gpio_num_t)gpio, s_pttActiveHigh ? 0 : 1);
     }
+
+    /* New pin is fully configured and idle - only now is it safe for the
+     * ISR to start driving it. */
+    portENTER_CRITICAL(&s_pttMux);
+    s_pttGpio = gpio;
+    portEXIT_CRITICAL(&s_pttMux);
 }
 
 /* IRAM_ATTR: reachable from dac_timer_isr() (IRAM ISR) via setPtt(), which
@@ -448,8 +490,18 @@ void IRAM_ATTR LED_Status2(uint8_t r, uint8_t g, uint8_t b) {
  * the TX path. Must stay flash-cache-safe for the same reason as
  * LED_Status2() above. */
 void IRAM_ATTR setPtt(bool state) {
-    if (s_pttGpio >= 0)
-        gpio_set_level((gpio_num_t)s_pttGpio, s_pttActiveHigh ? state : !state);
+    /* Snapshot pin/polarity under the same spinlock AFSK_setPttGpio() uses,
+     * so a pin change from the webconfig Save handler can never be observed
+     * half-applied here (see the long comment in AFSK_setPttGpio()). The
+     * critical section is just two variable reads - short enough to be
+     * fine from IRAM/ISR context. */
+    portENTER_CRITICAL_ISR(&s_pttMux);
+    int8_t gpio = s_pttGpio;
+    bool activeHigh = s_pttActiveHigh;
+    portEXIT_CRITICAL_ISR(&s_pttMux);
+
+    if (gpio >= 0)
+        gpio_set_level((gpio_num_t)gpio, activeHigh ? state : !state);
     if (state)
         LED_Status2(255, 0, 0);
     else
