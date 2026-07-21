@@ -415,24 +415,36 @@ void AFSK_setPttGpio(int8_t gpio, bool active_high) {
     s_pttActiveHigh = active_high;
 
     if (gpio == s_pttGpio) {
-        /* Same pin, polarity may have changed: re-assert the idle level
-         * while still holding the lock so the ISR can't race this with a
-         * key-down using the old polarity. */
-        if (s_inited && s_pttGpio >= 0)
-            gpio_set_level((gpio_num_t)s_pttGpio, s_pttActiveHigh ? 0 : 1);
+        /* Same pin, polarity may have changed: snapshot what's needed and
+         * get out of the critical section before touching the GPIO driver.
+         * gpio_set_level() is not guaranteed safe to call with interrupts
+         * disabled on this target/IDF combination (it can reach
+         * flash-resident code), so it must never run while
+         * portENTER_CRITICAL() is held - doing so caused a double-exception
+         * crash here. The brief gap between unlocking and calling
+         * gpio_set_level() is fine: at worst the ISR uses the old polarity
+         * for one more bit, it can never observe a half-configured pin. */
+        bool activeHigh = s_pttActiveHigh;
+        int8_t pin = s_pttGpio;
         portEXIT_CRITICAL(&s_pttMux);
+        if (s_inited && pin >= 0)
+            gpio_set_level((gpio_num_t)pin, activeHigh ? 0 : 1);
         return;
     }
 
     int8_t oldGpio = s_pttGpio;
-    if (s_inited && oldGpio >= 0)
-        gpio_set_level((gpio_num_t)oldGpio, s_pttActiveHigh ? 0 : 1); /* idle it first */
+    bool activeHighForOld = s_pttActiveHigh;
 
     /* Hand the ISR a "disabled" pin for the short window it takes to
      * reconfigure hardware below, rather than leaving it pointed at a pin
      * about to be reset out from under it. */
     s_pttGpio = -1;
     portEXIT_CRITICAL(&s_pttMux);
+
+    /* Same reasoning as above: gpio_set_level() must run outside the
+     * critical section. */
+    if (s_inited && oldGpio >= 0)
+        gpio_set_level((gpio_num_t)oldGpio, activeHighForOld ? 0 : 1); /* idle it first */
 
     /* Release the previous pin so a stale output isn't left driving. Safe
      * now: the ISR was idled and unlinked from oldGpio above. */

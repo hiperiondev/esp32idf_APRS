@@ -21,6 +21,7 @@
 
 #include "afsk.h"
 #include "app_config.h"
+#include "aprs_service.h"
 #include "pages.h"
 #include "translations.h"
 #include "web_common.h"
@@ -289,6 +290,12 @@ esp_err_t page_mod_post(httpd_req_t *req) {
 
     free(body);
     app_config_save();
+
+    // PTT pin/polarity are applied at runtime (aprs_service_build_modem_config()
+    // + modem_set_modem(), same as the Radio page's Save handler) so a pin
+    // changed here takes effect immediately instead of only after a reboot.
+    aprs_service_apply_modem_config();
+
     web_send_saved_redirect(req, "/mod");
     return ESP_OK;
 }
