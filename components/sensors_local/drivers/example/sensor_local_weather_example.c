@@ -24,10 +24,7 @@
  * page's channel picker) with no real hardware attached. Copy it as the
  * skeleton for a real BME280 / Davis / Ultimeter driver.
  *
- * Enabled with CONFIG_SENSORS_LOCAL_WEATHER_EXAMPLE_DRIVER.
  */
-
-#if defined(CONFIG_SENSORS_LOCAL_WEATHER_EXAMPLE_DRIVER)
 
 #include <stdlib.h>
 #include <time.h>
@@ -109,5 +106,3 @@ static sensor_local_driver_t wx_example_driver = {
 };
 
 SENSORS_LOCAL_DRIVER_AUTOREGISTER(wx_example_driver);
-
-#endif /* CONFIG_SENSORS_LOCAL_WEATHER_EXAMPLE_DRIVER */

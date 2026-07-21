@@ -23,10 +23,7 @@
  * enabled flag. It exists to exercise the telemetry path with no real hardware
  * attached. Copy it as the skeleton for a real ADS1115 / INA219 / GPIO driver.
  *
- * Enabled with CONFIG_SENSORS_LOCAL_TELEMETRY_EXAMPLE_DRIVER.
  */
-
-#if defined(CONFIG_SENSORS_LOCAL_TELEMETRY_EXAMPLE_DRIVER)
 
 #include <stdlib.h>
 #include <time.h>
@@ -91,5 +88,3 @@ static sensor_local_driver_t tlm_example_driver = {
 };
 
 SENSORS_LOCAL_DRIVER_AUTOREGISTER(tlm_example_driver);
-
-#endif /* CONFIG_SENSORS_LOCAL_TELEMETRY_EXAMPLE_DRIVER */

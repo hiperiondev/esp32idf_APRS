@@ -1,0 +1,23 @@
+menu "Sensors Local"
+
+    config SENSORS_LOCAL_WEATHER_EXAMPLE_DRIVER
+        bool "Enable example WEATHER local sensor driver (random values, no hardware)"
+        default y
+        help
+            Registers a fake weather sensor ("wx-example") that feeds random
+            wind/temperature/humidity/pressure/rain/luminosity readings into
+            the pipeline. Useful to exercise the Weather page's channel
+            picker and the WX beacon encoder with no hardware attached.
+            Disable once a real weather sensor driver is in place.
+
+    config SENSORS_LOCAL_TELEMETRY_EXAMPLE_DRIVER
+        bool "Enable example TELEMETRY local sensor driver (random values, no hardware)"
+        default y
+        help
+            Registers a fake telemetry sensor ("tlm-example") that feeds
+            random analog/digital channel values into the pipeline. Useful
+            to exercise the Telemetry page's channel picker with no
+            hardware attached. Disable once real telemetry sensor drivers
+            are in place.
+
+endmenu
