@@ -360,6 +360,7 @@
 #define TR_SYSINFO_FIRMWARE      "Firmware"
 #define TR_SYSINFO_IDF_VERSION   "Versione IDF:"
 #define TR_SYSINFO_CPU_TEMP      "Temp. CPU:"
+#define TR_DASH_REBOOT_REASON    "Motivo riavvio:"
 
 // ---- page_common.c -------------
 #define TR_DASH_RADIO_INFO       "Info Radio"

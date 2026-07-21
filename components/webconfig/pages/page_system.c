@@ -50,18 +50,12 @@ esp_err_t page_system_get(httpd_req_t *req) {
              "<label>" TR_SYS_NTP_RESYNC "</label><input type='number' name='ntpResync' value='%d' min='30'>"
              "<label>" TR_SYS_AUTO_RESET_TIMEOUT "</label><input type='number' name='resetTimeout' value='%d'>"
              "</fieldset>"
-             "<fieldset><legend>" TR_SYS_DIGI_PATH_ALIASES "</legend>"
-             "<label>" TR_SYS_PATH_1 "</label><input type='text' name='path0' value='%s' maxlength='71'>"
-             "<label>" TR_SYS_PATH_2 "</label><input type='text' name='path1' value='%s' maxlength='71'>"
-             "<label>" TR_SYS_PATH_3 "</label><input type='text' name='path2' value='%s' maxlength='71'>"
-             "<label>" TR_SYS_PATH_4 "</label><input type='text' name='path3' value='%s' maxlength='71'>"
-             "</fieldset>"
              "<button type='submit'>" TR_BTN_SAVE "</button></form>"
              "<form method='POST' action='/default' onsubmit=\"return confirm('" TR_SYS_CONFIRM_FACTORY_RESET "');\">"
              "<button class='danger' type='submit'>" TR_SYS_FACTORY_RESET "</button></form>",
              g_config.http_username, g_config.http_password, g_config.host_name, g_config.timeZone, g_config.synctime ? "checked" : "",
              g_config.ntp_host[0], g_config.ntp_host[1], g_config.ntp_host[2], g_config.ntp_resync_sec,
-             g_config.reset_timeout, g_config.path[0], g_config.path[1], g_config.path[2], g_config.path[3]);
+             g_config.reset_timeout);
     httpd_resp_sendstr_chunk(req, buf);
     web_send_footer(req);
     return ESP_OK;
@@ -88,10 +82,6 @@ esp_err_t page_system_post(httpd_req_t *req) {
     if (g_config.ntp_resync_sec < NTP_RESYNC_MIN_SEC)
         g_config.ntp_resync_sec = NTP_RESYNC_MIN_SEC;
     g_config.reset_timeout = (uint16_t)web_form_get_int(body, "resetTimeout", g_config.reset_timeout);
-    web_form_get(body, "path0", g_config.path[0], sizeof(g_config.path[0]));
-    web_form_get(body, "path1", g_config.path[1], sizeof(g_config.path[1]));
-    web_form_get(body, "path2", g_config.path[2], sizeof(g_config.path[2]));
-    web_form_get(body, "path3", g_config.path[3], sizeof(g_config.path[3]));
 
     app_config_save();
     web_send_saved_redirect(req, "/system");

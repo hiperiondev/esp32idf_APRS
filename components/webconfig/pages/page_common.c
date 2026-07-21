@@ -236,9 +236,38 @@ esp_err_t page_dashboard(httpd_req_t *req) {
     return ESP_OK;
 }
 
+// Translates esp_reset_reason() into a short human-readable label for the
+// dashboard's System Info strip.
+static const char *dash_reboot_reason_str(void) {
+    switch (esp_reset_reason()) {
+        case ESP_RST_POWERON:
+            return "Power-on";
+        case ESP_RST_EXT:
+            return "External pin";
+        case ESP_RST_SW:
+            return "Software reset";
+        case ESP_RST_PANIC:
+            return "Panic/exception";
+        case ESP_RST_INT_WDT:
+            return "Interrupt watchdog";
+        case ESP_RST_TASK_WDT:
+            return "Task watchdog";
+        case ESP_RST_WDT:
+            return "Other watchdog";
+        case ESP_RST_DEEPSLEEP:
+            return "Deep sleep wake";
+        case ESP_RST_BROWNOUT:
+            return "Brownout";
+        case ESP_RST_SDIO:
+            return "SDIO";
+        default:
+            return "Unknown";
+    }
+}
+
 // GET /dashinfo -> compact live system-info strip shown at the top of the
 // dashboard, mirroring the reference dashboard's AJAX-refreshed #sysInfo bar
-// (Up Time / RAM / LittleFS / CPU speed / CPU temperature).
+// (Up Time / RAM / LittleFS / CPU speed / CPU temperature / Reboot reason).
 esp_err_t page_dashinfo(httpd_req_t *req) {
     if (!web_check_auth(req))
         return ESP_OK;
@@ -247,15 +276,16 @@ esp_err_t page_dashinfo(httpd_req_t *req) {
     storage_usage(&used, &total);
     uint32_t cpu_mhz = esp_rom_get_cpu_ticks_per_us();
 
-    char buf[600];
+    char buf[700];
     snprintf(buf, sizeof(buf),
              "<fieldset><legend>" TR_DASH_SYSINFO "</legend><table><tr>"
              "<th>" TR_DASH_UPTIME "</th><th>" TR_DASH_FREE_HEAP "</th><th>" TR_DASH_LITTLEFS "</th><th>" TR_SYSINFO_CPU_FREQ "</th><th>" TR_SYSINFO_CPU_TEMP
-             "</th>"
+             "</th><th>" TR_DASH_REBOOT_REASON "</th>"
              "</tr><tr>"
-             "<td>%lld s</td><td>%lu bytes</td><td>%u / %u bytes</td><td>%lu MHz</td><td>N/A</td>"
+             "<td>%lld s</td><td>%lu bytes</td><td>%u / %u bytes</td><td>%lu MHz</td><td>N/A</td><td>%s</td>"
              "</tr></table></fieldset>",
-             esp_timer_get_time() / 1000000LL, (unsigned long)esp_get_free_heap_size(), (unsigned)used, (unsigned)total, (unsigned long)cpu_mhz);
+             esp_timer_get_time() / 1000000LL, (unsigned long)esp_get_free_heap_size(), (unsigned)used, (unsigned)total, (unsigned long)cpu_mhz,
+             dash_reboot_reason_str());
 
     httpd_resp_set_type(req, "text/html");
     httpd_resp_set_hdr(req, "Cache-Control", "no-store");

@@ -66,6 +66,13 @@ esp_err_t page_digi_get(httpd_req_t *req) {
     web_field_text(req, TR_F_STATUS_TEXT, "digiStatus", g_config.digi_status, STATUS_SIZE - 1);
     web_fieldset_close(req);
 
+    web_fieldset_open(req, TR_SYS_DIGI_PATH_ALIASES);
+    web_field_text(req, TR_SYS_PATH_1, "path0", g_config.path[0], 71);
+    web_field_text(req, TR_SYS_PATH_2, "path1", g_config.path[1], 71);
+    web_field_text(req, TR_SYS_PATH_3, "path2", g_config.path[2], 71);
+    web_field_text(req, TR_SYS_PATH_4, "path3", g_config.path[3], 71);
+    web_fieldset_close(req);
+
     web_raw(req, "<p style='color:var(--sub);font-size:12px'>" TR_NOTE_TLM_DIGI "</p>"
                  "<button type='submit'>" TR_BTN_SAVE "</button></form>");
     web_send_footer(req);
@@ -75,7 +82,7 @@ esp_err_t page_digi_get(httpd_req_t *req) {
 esp_err_t page_digi_post(httpd_req_t *req) {
     if (!web_check_auth(req))
         return ESP_OK;
-    char body[1400];
+    char body[1750];
     if (web_read_body(req, body, sizeof(body)) < 0) {
         httpd_resp_send_500(req);
         return ESP_OK;
@@ -120,6 +127,11 @@ esp_err_t page_digi_post(httpd_req_t *req) {
 
     g_config.digi_sts_interval = (uint16_t)web_form_get_int(body, "digiSTSIntv", g_config.digi_sts_interval);
     web_form_get(body, "digiStatus", g_config.digi_status, sizeof(g_config.digi_status));
+
+    web_form_get(body, "path0", g_config.path[0], sizeof(g_config.path[0]));
+    web_form_get(body, "path1", g_config.path[1], sizeof(g_config.path[1]));
+    web_form_get(body, "path2", g_config.path[2], sizeof(g_config.path[2]));
+    web_form_get(body, "path3", g_config.path[3], sizeof(g_config.path[3]));
 
     app_config_save();
     web_send_saved_redirect(req, "/digi");
