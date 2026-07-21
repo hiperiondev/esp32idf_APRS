@@ -432,13 +432,13 @@ static int64_t wx_mono_seconds(void) {
  * Tasks
  * ------------------------------------------------------------------------- */
 
-// Runs at 1 Hz for the whole life of the firmware: keeps the shared container
-// current so any reader (beacon, dashboard, telemetry) sees fresh values.
-static void weatherSensorTask(void *arg) {
-    for (;;) {
-        weather_refresh_now();
-        vTaskDelay(pdMS_TO_TICKS(WX_REFRESH_PERIOD_MS));
-    }
+// Refreshes the shared weather container from the sensors_local registry.
+// Called once per second - now from the APRS service's existing 1 Hz tick
+// (serviceTickTask in aprs_service.c) via weather_service_1hz(), rather than
+// from a dedicated task, so the WX subsystem no longer needs its own 4 KB-stack
+// sensor task. weather_refresh_now() itself is unchanged.
+void weather_service_1hz(void) {
+    weather_refresh_now();
 }
 
 // The weather beacon walks the exact same RF TX chain as the tracker/igate/digi
@@ -530,10 +530,10 @@ void weather_start(void) {
     sensors_local_init();
     sensors_local_init_all();
 
-    // The 1 Hz sensor-refresh task stays its own task; the WX beacon is now
-    // driven by the shared beacon scheduler (beacon_scheduler_start()) via
-    // weather_beacon_service(), so it no longer needs its own 14 KB-stack task.
-    xTaskCreate(weatherSensorTask, "wx_sensor_task", 4096, NULL, 4, NULL);
+    // The WX sensor refresh (1 Hz) and the WX beacon are both driven elsewhere
+    // now, so the weather subsystem creates no task of its own: the beacon runs
+    // in the shared beacon scheduler (via weather_beacon_service()), and the
+    // 1 Hz sensor refresh runs in the APRS service tick (via weather_service_1hz()).
     ESP_LOGI(TAG, "Weather subsystem started (en=%d rf=%d inet=%d interval=%us, %u local sensor driver(s))", g_config.wx_en, g_config.wx_2rf, g_config.wx_2inet,
              (unsigned)g_config.wx_interval, (unsigned)sensors_local_count());
 }

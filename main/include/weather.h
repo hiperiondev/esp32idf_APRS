@@ -69,6 +69,14 @@ void weather_start(void);
  */
 uint32_t weather_beacon_service(void);
 
+/**
+ * @brief Refresh the shared weather container from the local sensor registry.
+ * Must be called at ~1 Hz. Driven by the APRS service's existing 1 Hz tick
+ * (serviceTickTask), so the weather subsystem no longer needs its own
+ * sensor-refresh task. Safe to call before any sensor exists (no-op refresh).
+ */
+void weather_service_1hz(void);
+
 /** @brief Take/release the lock guarding ::weather_telemetry_data. */
 void weather_lock(void);
 void weather_unlock(void);

@@ -390,9 +390,12 @@ static void app_task(void *arg) {
 
     ESP_LOGI(TAG, "ESP32APRS web admin ready. Login: %s / %s", g_config.http_username, g_config.http_password);
 
-    while (1) {
-        vTaskDelay(pdMS_TO_TICKS(1000));
-    }
+    // Initialisation is done and everything above runs in its own tasks now
+    // (WiFi, web server, APRS service + its tick, the beacon scheduler, the
+    // modem RX/service tasks). app_task owns nothing beyond its own stack and
+    // doesn't need to stay resident, so delete it instead of parking it in an
+    // idle loop - this returns its APP_TASK_STACK_SIZE (8 KB) to the heap.
+    vTaskDelete(NULL);
 }
 
 void app_main(void) {

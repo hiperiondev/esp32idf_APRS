@@ -561,6 +561,12 @@ static void messageTxHandler(const char *packet, size_t len, uint8_t channels) {
 
 static void serviceTickTask(void *arg) {
     while (1) {
+        // 1 Hz weather sensor refresh, folded in here instead of running its
+        // own wx_sensor_task (saves that task's stack). weather_start() has
+        // already run by the time this task is created, so the shared container
+        // and sensor registry are ready.
+        weather_service_1hz();
+
         if (g_config.msg_enable)
             sendAPRSMessageRetry();
         vTaskDelay(pdMS_TO_TICKS(1000));
