@@ -15,14 +15,19 @@
  *     please contact their authors for more information.
  *
  * @brief Web admin "System" page: renders and saves the system configuration
- * (credentials, time sync and NTP hosts, timezone) and implements
- * the reset-to-defaults action. CPU frequency is configured on the System
- * Information page (/sysinfo) instead.
+ * (credentials, time sync and NTP hosts, timezone), the chip/CPU frequency
+ * info and control (formerly on the separate System Information page), and
+ * implements the reset-to-defaults action.
  */
 
 #include <stdio.h>
 
+#include "esp_chip_info.h"
+#include "esp_flash.h"
+#include "esp_rom_sys.h"
+
 #include "app_config.h"
+#include "cpu_freq.h"
 #include "pages.h"
 #include "translations.h"
 #include "web_common.h"
@@ -32,9 +37,24 @@ esp_err_t page_system_get(httpd_req_t *req) {
         return ESP_OK;
     web_send_header(req, TR_F_SYSTEM, "system");
 
-    char buf[2850];
+    esp_chip_info_t chip;
+    esp_chip_info(&chip);
+    uint32_t flash_size = 0;
+    esp_flash_get_size(NULL, &flash_size);
+    uint32_t cpu_mhz = esp_rom_get_cpu_ticks_per_us();
+
+    char buf[3200];
     snprintf(buf, sizeof(buf),
              "<form method='POST' action='/system'>"
+             "<fieldset><legend>" TR_SYSINFO_CHIP "</legend>"
+             "<p><b>" TR_SYSINFO_MODEL "</b> %d &nbsp; <b>" TR_SYSINFO_CORES "</b> %d &nbsp; <b>" TR_SYSINFO_REVISION "</b> %d</p>"
+             "<p><b>" TR_SYSINFO_CPU_FREQ "</b> %lu MHz</p>"
+             "<label>" TR_SYSINFO_CPU_FREQ_SET "</label>"
+             "<select name='cpuFreq'>"
+             "<option value='80' %s>80</option><option value='160' %s>160</option><option value='240' %s>240</option>"
+             "</select>"
+             "<p><small>" TR_SYSINFO_CPU_FREQ_NOTE "</small></p>"
+             "<p><b>" TR_SYSINFO_FLASH_SIZE "</b> %lu bytes</p></fieldset>"
              "<fieldset><legend>" TR_SYS_WEB_ADMIN_LOGIN "</legend>"
              "<label>" TR_F_USERNAME "</label><input type='text' name='httpUser' value='%s' maxlength='31'>"
              "<label>" TR_F_PASSWORD "</label><input type='password' name='httpPass' id='pwd_httpPass' value='%s' maxlength='63'>"
@@ -53,6 +73,9 @@ esp_err_t page_system_get(httpd_req_t *req) {
              "<button type='submit'>" TR_BTN_SAVE "</button></form>"
              "<form method='POST' action='/default' onsubmit=\"return confirm('" TR_SYS_CONFIRM_FACTORY_RESET "');\">"
              "<button class='danger' type='submit'>" TR_SYS_FACTORY_RESET "</button></form>",
+             (int)chip.model, (int)chip.cores, (int)chip.revision, (unsigned long)cpu_mhz,
+             g_config.cpuFreq == 80 ? "selected" : "", g_config.cpuFreq == 160 ? "selected" : "", g_config.cpuFreq == 240 ? "selected" : "",
+             (unsigned long)flash_size,
              g_config.http_username, g_config.http_password, g_config.host_name, g_config.timeZone, g_config.synctime ? "checked" : "",
              g_config.ntp_host[0], g_config.ntp_host[1], g_config.ntp_host[2], g_config.ntp_resync_sec,
              g_config.reset_timeout);
@@ -83,7 +106,16 @@ esp_err_t page_system_post(httpd_req_t *req) {
         g_config.ntp_resync_sec = NTP_RESYNC_MIN_SEC;
     g_config.reset_timeout = (uint16_t)web_form_get_int(body, "resetTimeout", g_config.reset_timeout);
 
+    int freq = web_form_get_int(body, "cpuFreq", g_config.cpuFreq);
+    if (freq == 80 || freq == 160 || freq == 240)
+        g_config.cpuFreq = (uint8_t)freq;
+
     app_config_save();
+    // Apply the CPU frequency immediately (mirrors previous /sysinfo
+    // behavior); main.c also calls cpu_freq_apply() right after
+    // app_config_load() at boot, so this selection is re-applied on every
+    // subsequent power-up too.
+    cpu_freq_apply();
     web_send_saved_redirect(req, "/system");
     return ESP_OK;
 }

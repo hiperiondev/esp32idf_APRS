@@ -34,8 +34,6 @@ esp_err_t page_bulletins_post(httpd_req_t *req); // POST /bulletins
 esp_err_t page_objects_get(httpd_req_t *req);    // GET  /objects (APRS Objects/Items, stored in LittleFS, not g_config)
 esp_err_t page_objects_post(httpd_req_t *req);   // POST /objects
 esp_err_t page_sidebar_info(httpd_req_t *req);  // GET  /sidebarInfo
-esp_err_t page_sysinfo(httpd_req_t *req);       // GET  /sysinfo
-esp_err_t page_sysinfo_post(httpd_req_t *req);  // POST /sysinfo (CPU frequency select on the System Information/Chip card)
 esp_err_t page_igate_traffic(httpd_req_t *req); // GET  /igate_traffic?since=<seq> (JSON)
 esp_err_t page_lastheard(httpd_req_t *req);     // GET  /lastheard (JSON, dashboard LAST HEARD table)
 esp_err_t page_dashinfo(httpd_req_t *req);      // GET  /dashinfo (compact live sysinfo strip for the dashboard)

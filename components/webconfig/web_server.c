@@ -71,8 +71,6 @@ void web_server_start(void) {
     reg(server, "/objects", HTTP_GET, page_objects_get);
     reg(server, "/objects", HTTP_POST, page_objects_post);
     reg(server, "/sidebarInfo", HTTP_GET, page_sidebar_info);
-    reg(server, "/sysinfo", HTTP_GET, page_sysinfo);
-    reg(server, "/sysinfo", HTTP_POST, page_sysinfo_post);
     reg(server, "/igate_traffic", HTTP_GET, page_igate_traffic);
     reg(server, "/lastheard", HTTP_GET, page_lastheard);
     reg(server, "/dashinfo", HTTP_GET, page_dashinfo);
