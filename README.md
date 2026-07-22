@@ -124,12 +124,9 @@ Everything is plain C. There is no Arduino core, no `String`, no PlatformIO. The
 | Localization (EN / ES / IT) | ✅ | compile-time, one language per image |
 | OTA update | ✅ | web admin About / Firmware page, `ota_0`/`ota_1` slots, auto-rollback on boot failure |
 | LoRa / SX127x-SX128x RF module | ❌ | UI + config only, `ENABLE_RF_MODULE` is commented out |
-| WireGuard VPN, MQTT, GNSS | ❌ | pages/config exist; modules disabled in `app_config.h` |
 | Own-station APRS Weather Report | ✅ | `weather.c`, 1 Hz sensor refresh, optional per-field averaging, on-air WX beacon (RF and/or APRS-IS) — see [Sensors](#sensors) |
 | Local sensor driver framework (`sensors_local`) | ✅ | dynamic run-time registry, auto-registering drivers, feeds the Weather page's channel picker — see [Sensors](#sensors) |
 | APRS Telemetry on-air encode/beacon | 🟡 | `sensors_local` can already gather analog/digital channel values into `weather_telemetry_data_t`; there is no `T#nnn` encoder or beacon task yet, so the Telemetry page is configuration-only — see [Sensors](#sensors) |
-| Legacy per-slot `/sensor` page (`g_config.sensor[]`) | ❌ | page source (`page_sensor.c`) is orphaned — no longer compiled or routed — and its `g_config.sensor[]` fields were removed; use the `sensors_local` framework instead, see [Sensors](#sensors) |
-| Bluetooth, PPP/GSM, OLED display, Modbus | ❌ | config fields kept for compatibility only |
 
 Legend: ✅ implemented · 🟡 partial · ❌ not implemented (scaffolding only)
 
