@@ -151,20 +151,129 @@ static double wx_field_value(const aprs_weather_report_t *wx, wx_field_id_t f) {
 }
 
 /* -------------------------------------------------------------------------
- * 1 Hz refresh: take a clean snapshot from every capable local driver and,
- * for any field with "Averaged" ticked, fold this sample into its accumulator.
+ * 1 Hz refresh: for EACH weather field independently, read the one local
+ * driver the operator picked in g_config.wx_sensor_ch[field] (Weather page
+ * "Channel" column) and copy only that field's value into the shared
+ * report. For any field with "Averaged" ticked, fold this sample into its
+ * accumulator.
+ *
+ * @note Earlier revisions called sensors_local_save() once and let every
+ *       registered WEATHER-capable driver write straight into the shared
+ *       s_wx report. That ignored wx_sensor_ch[] entirely: with more than
+ *       one weather driver registered (e.g. the real "bmp180" driver and
+ *       the "wx-example" self-test driver both enabled at once), each
+ *       driver's save() overwrote the previous one's fields in registry
+ *       order, so the on-air packet ended up carrying whichever driver
+ *       happened to run last - not the one selected per field in the web
+ *       admin - even though the Weather page's live "Value" preview
+ *       (which does call sensors_local_save_one() for the exact selected
+ *       channel) showed the correct reading. Fixed by resolving each
+ *       field to its own selected driver here, the same way the preview
+ *       does.
  * ------------------------------------------------------------------------- */
 static void weather_refresh_now(void) {
     weather_lock();
 
-    // Clear the enabled flags so only sensors that report *this* cycle count;
-    // values are overwritten by the drivers that do report.
+    // Clear the enabled flags so only fields whose selected driver actually
+    // reports *this* cycle count; values are overwritten field-by-field below.
     memset(s_wx.enabled, 0, sizeof(s_wx.enabled));
     memset(s_tlm_analog_en, 0, sizeof(s_tlm_analog_en));
     memset(s_tlm_digital_en, 0, sizeof(s_tlm_digital_en));
 
-    // Let every capable, healthy driver write straight into the container.
-    sensors_local_save(&weather_telemetry_data, SENSOR_LOCAL_DATA_ALL);
+    // Telemetry channels are not (yet) per-field selectable, so keep the
+    // aggregate call for that family only.
+    sensors_local_save(&weather_telemetry_data, SENSOR_LOCAL_DATA_TELEMETRY);
+
+    // Resolve each weather field independently against its selected driver.
+    // A field is sampled ONLY if it is both (a) enabled by the operator on
+    // the Weather page ("Enabled" checkbox, wx_sensor_enable[f]) and (b) has
+    // an actual source channel picked (wx_sensor_ch[f] != 0xFF/"(none)").
+    // Either condition failing must leave s_wx.enabled[...] cleared (it was
+    // just memset above) so the field is never folded into the averaging
+    // accumulator and never appears in the on-air packet - a disabled field
+    // or a "(none)" channel must not transmit stale/simulated data.
+    for (int f = 0; f < WX_SENSOR_NUM; f++) {
+        if (!g_config.wx_sensor_enable[f])
+            continue; // disabled on the Weather page - do not sample or send
+
+        uint8_t ch = g_config.wx_sensor_ch[f];
+        if (ch == 0xFF) // "(none)" - no source channel picked
+            continue;
+
+        // Scratch container so one driver's save() can't clobber fields
+        // already resolved from a *different* driver earlier in this loop.
+        aprs_weather_report_t scratch = {0};
+        weather_telemetry_data_t scratch_data = {0};
+        scratch_data.weather = &scratch;
+        scratch_data.weather_qty = 1;
+
+        if (sensors_local_save_one((size_t)ch, &scratch_data, SENSOR_LOCAL_DATA_WEATHER) != ESP_OK)
+            continue;
+
+        if (!wx_field_present(&scratch, (wx_field_id_t)f))
+            continue;
+
+        // Copy just this one field's value (and, for wind, its siblings'
+        // shared enable bit) into the live report - never the whole struct.
+        switch ((wx_field_id_t)f) {
+            case WX_FIELD_WIND_DIRECTION:
+                s_wx.wind.direction_deg = scratch.wind.direction_deg;
+                s_wx.wind.direction_unknown = scratch.wind.direction_unknown;
+                s_wx.enabled[APRS_WX_SENSOR_WIND] = true;
+                break;
+            case WX_FIELD_WIND_SPEED:
+                s_wx.wind.sustained_mph = scratch.wind.sustained_mph;
+                s_wx.enabled[APRS_WX_SENSOR_WIND] = true;
+                break;
+            case WX_FIELD_WIND_GUST:
+                s_wx.wind.gust_mph = scratch.wind.gust_mph;
+                s_wx.wind.has_gust = scratch.wind.has_gust;
+                s_wx.enabled[APRS_WX_SENSOR_WIND] = true;
+                break;
+            case WX_FIELD_TEMPERATURE:
+                s_wx.temperature_f = scratch.temperature_f;
+                s_wx.enabled[APRS_WX_SENSOR_TEMPERATURE] = true;
+                break;
+            case WX_FIELD_RAIN_1H:
+                s_wx.rain_last_hour_hundredths_in = scratch.rain_last_hour_hundredths_in;
+                s_wx.enabled[APRS_WX_SENSOR_RAIN_LAST_HOUR] = true;
+                break;
+            case WX_FIELD_RAIN_24H:
+                s_wx.rain_last_24h_hundredths_in = scratch.rain_last_24h_hundredths_in;
+                s_wx.enabled[APRS_WX_SENSOR_RAIN_LAST_24H] = true;
+                break;
+            case WX_FIELD_RAIN_MIDNIGHT:
+                s_wx.rain_since_midnight_hundredths_in = scratch.rain_since_midnight_hundredths_in;
+                s_wx.enabled[APRS_WX_SENSOR_RAIN_SINCE_MIDNIGHT] = true;
+                break;
+            case WX_FIELD_SNOW_24H:
+                s_wx.snow_last_24h_tenths_in = scratch.snow_last_24h_tenths_in;
+                s_wx.enabled[APRS_WX_SENSOR_SNOW_LAST_24H] = true;
+                break;
+            case WX_FIELD_HUMIDITY:
+                s_wx.humidity_percent = scratch.humidity_percent;
+                s_wx.enabled[APRS_WX_SENSOR_HUMIDITY] = true;
+                break;
+            case WX_FIELD_PRESSURE:
+                s_wx.barometric_pressure_tenths_mb = scratch.barometric_pressure_tenths_mb;
+                s_wx.enabled[APRS_WX_SENSOR_BAROMETRIC_PRESSURE] = true;
+                break;
+            case WX_FIELD_LUMINOSITY:
+                s_wx.luminosity_wm2 = scratch.luminosity_wm2;
+                s_wx.enabled[APRS_WX_SENSOR_LUMINOSITY] = true;
+                break;
+            case WX_FIELD_FLOOD_HEIGHT_FT:
+                s_wx.flood_height_ft = scratch.flood_height_ft;
+                s_wx.enabled[APRS_WX_SENSOR_FLOOD_HEIGHT_FT] = true;
+                break;
+            case WX_FIELD_FLOOD_HEIGHT_M:
+                s_wx.flood_height_m = scratch.flood_height_m;
+                s_wx.enabled[APRS_WX_SENSOR_FLOOD_HEIGHT_M] = true;
+                break;
+            default:
+                break;
+        }
+    }
 
     // Fold this fresh sample into the running averages where requested.
     for (int f = 0; f < WX_SENSOR_NUM; f++) {

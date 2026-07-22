@@ -56,7 +56,17 @@ static esp_err_t wx_example_init(sensor_local_driver_t *self) {
     return ESP_OK;
 }
 
-/* The one entry the framework calls. kind is already masked to WEATHER. */
+/* The one entry the framework calls. kind is already masked to WEATHER.
+ *
+ * SI-first policy: every quantity is "measured" here in International
+ * System (SI) units, exactly as a real sensor would report it internally
+ * (m/s, degrees Celsius, hPa, millimeters). Conversion to the legacy
+ * imperial units required by the fixed APRS101/WX.TXT on-air format
+ * (mph, degrees Fahrenheit, tenths of a millibar, hundredths of an inch)
+ * happens only right here, at the boundary where the APRS weather report
+ * struct is filled - never earlier. This mirrors the pattern used by the
+ * real bmp180 driver. Luminosity (W/m^2) is already SI on both sides, so
+ * no conversion is needed there. */
 static esp_err_t wx_example_save(sensor_local_driver_t *self, weather_telemetry_data_t *data, sensor_local_data_kind_t kind) {
     wx_example_ctx_t *c = (wx_example_ctx_t *)self->ctx;
     c->sample_count++;
@@ -66,33 +76,49 @@ static esp_err_t wx_example_save(sensor_local_driver_t *self, weather_telemetry_
 
     aprs_weather_report_t *wx = &data->weather[0];
 
-    // Wind: direction 0-359 deg, sustained 0-25 mph, gust a bit above.
-    wx->wind.direction_deg = (uint16_t)rnd(0, 359);
-    wx->wind.sustained_mph = (uint16_t)rnd(0, 25);
-    wx->wind.gust_mph = (uint16_t)(wx->wind.sustained_mph + rnd(0, 15));
+    // --- "Measured" values in SI units ---
+    uint16_t wind_direction_deg = (uint16_t)rnd(0, 359);        // degrees, SI-compatible angular unit
+    float wind_sustained_ms = (float)rnd(0, 112) / 10.0f;       // 0.0-11.2 m/s (~0-25 mph)
+    float wind_gust_ms = wind_sustained_ms + (float)rnd(0, 67) / 10.0f; // + up to 6.7 m/s gust
+    float temperature_c = (float)rnd(-230, 405) / 10.0f;        // -23.0..+40.5 degC (~-10..+105 degF)
+    uint8_t humidity_pct = (uint8_t)rnd(1, 100);                // percent, dimensionless, no conversion needed
+    float pressure_hpa = (float)rnd(9500, 10500) / 10.0f;       // 950.0-1050.0 hPa (hPa numerically == mb)
+    float rain_last_hour_mm = (float)rnd(0, 127) / 10.0f;       // 0.0-12.7 mm (~0-50 hundredths of an inch)
+    uint16_t luminosity_wm2 = (uint16_t)rnd(0, 1200);           // W/m^2 - already SI, on-air unit matches
+
+    // --- Convert to APRS101/WX.TXT on-air units at the boundary ---
+
+    // Wind: APRS wind fields are fixed by spec to whole mph. m/s -> mph.
+    wx->wind.direction_deg = wind_direction_deg;
+    wx->wind.sustained_mph = (uint16_t)(wind_sustained_ms * 2.23694f + 0.5f);
+    wx->wind.gust_mph = (uint16_t)(wind_gust_ms * 2.23694f + 0.5f);
     wx->wind.has_gust = true;
     wx->wind.direction_unknown = false;
     wx->enabled[APRS_WX_SENSOR_WIND] = true;
 
-    // Temperature -10..+105 F.
-    wx->temperature_f = (int16_t)rnd(-10, 105);
+    // Temperature: APRS carries whole degrees Fahrenheit. C -> F, rounded.
+    float temperature_f = temperature_c * 9.0f / 5.0f + 32.0f;
+    wx->temperature_f = (int16_t)(temperature_f >= 0.0f ? temperature_f + 0.5f : temperature_f - 0.5f);
     wx->enabled[APRS_WX_SENSOR_TEMPERATURE] = true;
 
-    // Humidity 1-100 %RH.
-    wx->humidity_percent = (uint8_t)rnd(1, 100);
+    // Humidity: already a dimensionless percent on both sides, no conversion.
+    wx->humidity_percent = humidity_pct;
     wx->enabled[APRS_WX_SENSOR_HUMIDITY] = true;
 
-    // Barometric pressure ~950.0 - 1050.0 mb, stored in tenths.
-    wx->barometric_pressure_tenths_mb = (uint32_t)rnd(9500, 10500);
+    // Barometric pressure: APRS stores tenths of a millibar/hPa. 1 hPa == 1 mb.
+    wx->barometric_pressure_tenths_mb = (uint32_t)(pressure_hpa * 10.0f + 0.5f);
     wx->enabled[APRS_WX_SENSOR_BAROMETRIC_PRESSURE] = true;
 
-    // Rain last hour 0-50 hundredths of an inch.
-    wx->rain_last_hour_hundredths_in = (uint16_t)rnd(0, 50);
+    // Rain last hour: APRS stores hundredths of an inch. mm -> in (1 in = 25.4 mm).
+    wx->rain_last_hour_hundredths_in = (uint16_t)((rain_last_hour_mm / 25.4f) * 100.0f + 0.5f);
     wx->enabled[APRS_WX_SENSOR_RAIN_LAST_HOUR] = true;
 
-    // Solar luminosity 0-1200 W/m^2.
-    wx->luminosity_wm2 = (uint16_t)rnd(0, 1200);
+    // Solar luminosity: APRS "LXXX"/"lXXX" is already W/m^2 - SI on both sides.
+    wx->luminosity_wm2 = luminosity_wm2;
     wx->enabled[APRS_WX_SENSOR_LUMINOSITY] = true;
+
+    ESP_LOGD(TAG, "wx-example (SI): wind %u deg %.1f m/s (gust %.1f m/s), %.1f degC, %u%%RH, %.1f hPa, %.1f mm/1h, %u W/m^2",
+             wind_direction_deg, wind_sustained_ms, wind_gust_ms, temperature_c, humidity_pct, pressure_hpa, rain_last_hour_mm, luminosity_wm2);
 
     return ESP_OK;
 }
