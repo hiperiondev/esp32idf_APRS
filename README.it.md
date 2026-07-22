@@ -124,12 +124,9 @@ Tutto è scritto in C puro. Non c'è core Arduino, non c'è `String`, non c'è P
 | Localizzazione (EN / ES / IT) | ✅ | a tempo di compilazione, una lingua per immagine |
 | Aggiornamento OTA | ✅ | pagina About / Firmware dell'amministrazione web, slot `ota_0`/`ota_1`, rollback automatico in caso di errore di avvio |
 | Modulo RF LoRa / SX127x-SX128x | ❌ | solo UI + configurazione, `ENABLE_RF_MODULE` è commentato |
-| VPN WireGuard, MQTT, GNSS | ❌ | pagine/configurazione esistono; moduli disabilitati in `app_config.h` |
 | Rapporto meteo APRS della propria stazione | ✅ | `weather.c`, refresh dei sensori a 1 Hz, media opzionale per campo, beacon WX reale via etere (RF e/o APRS-IS) — vedi [Sensori](#sensori) |
 | Framework driver sensori locali (`sensors_local`) | ✅ | registro dinamico a runtime, driver auto-registranti, alimenta il selettore di canale della pagina Weather — vedi [Sensori](#sensori) |
 | Codifica/beacon Telemetria APRS via etere | 🟡 | `sensors_local` può già raccogliere i valori dei canali analogici/digitali in `weather_telemetry_data_t`; non esiste ancora un encoder o un task di beacon `T#nnn`, quindi la pagina Telemetria è solo configurazione — vedi [Sensori](#sensori) |
-| Pagina legacy per-slot `/sensor` (`g_config.sensor[]`) | ❌ | il sorgente della pagina (`page_sensor.c`) è orfano — non viene più compilato né instradato — e i suoi campi `g_config.sensor[]` sono stati rimossi; usare il framework `sensors_local`, vedi [Sensori](#sensori) |
-| Bluetooth, PPP/GSM, display OLED, Modbus | ❌ | campi di configurazione mantenuti solo per compatibilità |
 
 Legenda: ✅ implementato · 🟡 parziale · ❌ non implementato (solo impalcatura)
 
@@ -1140,10 +1137,7 @@ Le statistiche provengono da `aprs_service_get_stats()`, tracciate **indipendent
 #define ENABLE_STATION
 #define ENABLE_RADIO_MODEM
 //#define ENABLE_RF_MODULE
-//#define ENABLE_VPN
-//#define ENABLE_MQTT
 #define ENABLE_MESSAGE
-//#define ENABLE_MOD_GPIO
 #define ENABLE_IGATE
 #define ENABLE_DIGIPEATER
 #define ENABLE_TRACKER
@@ -1152,7 +1146,6 @@ Le statistiche provengono da `aprs_service_get_stats()`, tracciate **indipendent
 //#define ENABLE_TELEMETRY
 #define ENABLE_SYSTEM
 #define ENABLE_WIRELESS
-//#define ENABLE_GNSS
 #define ENABLE_FILE_STORAGE
 #define ENABLE_ABOUT_FIRMWARE
 ```
