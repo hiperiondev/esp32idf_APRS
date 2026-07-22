@@ -22,6 +22,7 @@
 #include <string.h>
 
 #include "app_config.h"
+#include "BMP180.h" // bmp180_gpio_is_reserved(): keep the I2C pins out of the picker
 #include "message.h"
 #include "pages.h"
 #include "translations.h"
@@ -37,6 +38,8 @@ static void web_field_msg_alarm_gpio(httpd_req_t *req, int8_t current) {
     web_select_option(req, -1, TR_DISABLED, current == -1);
     for (int gpio = 0; gpio <= 39; gpio++) {
         if (!message_alarm_gpio_is_valid((int8_t)gpio))
+            continue;
+        if (bmp180_gpio_is_reserved(gpio)) // pins owned by the BMP180 I2C bus
             continue;
         char label[16];
         snprintf(label, sizeof(label), "GPIO%d", gpio);

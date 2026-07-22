@@ -20,4 +20,15 @@ menu "Sensors Local"
             hardware attached. Disable once real telemetry sensor drivers
             are in place.
 
+    config SENSORS_LOCAL_BMP180_DRIVER
+        bool "Enable BMP180 I2C WEATHER sensor driver (temperature + pressure)"
+        default y
+        help
+            Registers a real weather sensor ("bmp180") for the Bosch BMP180
+            digital barometric-pressure / temperature sensor over I2C. The
+            SDA/SCL pins are fixed at build time in BMP180.h (default GPIO21
+            = SDA, GPIO22 = SCL) and are excluded from every GPIO picker in
+            the web admin so they cannot be reassigned to another peripheral.
+            Requires the esp-idf-lib/bmp180 managed component.
+
 endmenu

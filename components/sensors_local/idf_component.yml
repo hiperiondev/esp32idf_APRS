@@ -1,0 +1,10 @@
+## Managed-component dependencies for the sensors_local component.
+##
+## The esp-idf-lib BMP180 driver provides the real weather sensor driver in
+## drivers/bmp180/bmp180.c. It transitively pulls in esp-idf-lib/i2cdev.
+## Delete dependencies.lock and let idf.py regenerate it on the first build
+## after adding this file.
+dependencies:
+  esp-idf-lib/bmp180: "^1.0.7"
+  idf:
+    version: ">=5.1"
