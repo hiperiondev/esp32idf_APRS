@@ -220,6 +220,12 @@ esp_err_t page_wx_values_get(httpd_req_t *req) {
         httpd_resp_sendstr_chunk(req, out);
     }
     httpd_resp_sendstr_chunk(req, "]");
+    // Required to close the chunked response (see the wifi-scan JSON
+    // endpoint in page_wireless.c for the same pattern). Without this final
+    // zero-length chunk the HTTP body is never marked complete, so the
+    // page's fetch('/wx/values') never resolves and the Value column can
+    // never be populated, no matter which channel is selected.
+    httpd_resp_sendstr_chunk(req, NULL);
     return ESP_OK;
 }
 
@@ -277,18 +283,33 @@ esp_err_t page_wx_get(httpd_req_t *req) {
     // firmware for that one channel's live reading of that row's field via
     // GET /wx/values. Does not require Save to have been pressed first, and
     // stops cleanly if the user navigates away (clearInterval on unload).
+    //
+    // wxReqSeq/wxLastApplied guard against a request race: onchange fires an
+    // immediate refresh *in addition to* the running 2s poll, so two fetches
+    // can be in flight at once. Without sequencing, an older poll response
+    // (still carrying the channel selections from *before* the user's edit)
+    // can resolve after the onchange-triggered response and clobber every
+    // Value cell back to the previous sensor's reading - i.e. picking a new
+    // sensor "doesn't actualize" the column until the next lucky tick. Each
+    // call captures its own sequence number and only the highest-numbered
+    // response seen so far is ever allowed to write to the DOM.
     {
-        char script[900];
+        char script[1100];
         snprintf(script, sizeof(script),
                  "<script>"
                  "var WX_N=%d;"
+                 "var wxReqSeq=0;"
+                 "var wxLastApplied=0;"
                  "function wxRefreshValues(){"
+                 "var seq=++wxReqSeq;"
                  "var q=[];"
                  "for(var i=0;i<WX_N;i++){"
                  "var sel=document.getElementById('wxCh'+i);"
                  "q.push('ch'+i+'='+(sel?sel.value:255));"
                  "}"
                  "fetch('/wx/values?'+q.join('&')).then(function(r){return r.json();}).then(function(vals){"
+                 "if(seq<wxLastApplied)return;"
+                 "wxLastApplied=seq;"
                  "for(var i=0;i<WX_N;i++){"
                  "var td=document.getElementById('wxVal'+i);"
                  "if(td)td.textContent=(vals[i]===null||vals[i]===undefined)?'-':vals[i];"
