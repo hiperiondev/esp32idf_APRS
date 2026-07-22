@@ -628,7 +628,7 @@
 #define TR_WX_LUMINOSITY      "Luminosidad"
 #define TR_WX_SNOW            "Nieve"
 #define TR_WX_FLOOD_FT        "Nivel de crecida (ft)"
-#define TR_WX_FLOOD_M         "Nivel de crecida (m)"
+#define TR_WX_FLOOD_M         "Nivel de crecida"
 #define TR_WX_FIELD           "Campo WX"
 #define TR_WX_CHANNEL         "Canal"
 #define TR_WX_CHANNEL_NONE    "(ninguno)"

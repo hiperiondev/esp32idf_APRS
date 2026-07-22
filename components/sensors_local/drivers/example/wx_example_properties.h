@@ -32,10 +32,22 @@
 
 /** @brief wx-example: Wind (dir/speed/gust), Temperature, Humidity, Pressure, Rain 1h, Luminosity. No telemetry capability. */
 static const sensor_local_properties_t wx_example_properties = {
+    .name = "WX Example",
     .wx = (sensor_local_wx_mask_t)(SENSOR_LOCAL_WX_WIND_DIRECTION | SENSOR_LOCAL_WX_WIND_SPEED | SENSOR_LOCAL_WX_WIND_GUST | SENSOR_LOCAL_WX_TEMPERATURE |
                                     SENSOR_LOCAL_WX_HUMIDITY | SENSOR_LOCAL_WX_PRESSURE | SENSOR_LOCAL_WX_RAIN_1H | SENSOR_LOCAL_WX_LUMINOSITY),
     .tlm = SENSOR_LOCAL_TLM_NONE,
     .tlm_meta = SENSOR_LOCAL_TLM_META_NONE,
+    .wx_channel_name = {
+        [0] = "Wind Direction", /* SENSOR_LOCAL_WX_WIND_DIRECTION (bit 0) */
+        [1] = "Wind Speed",     /* SENSOR_LOCAL_WX_WIND_SPEED (bit 1) */
+        [2] = "Wind Gust",      /* SENSOR_LOCAL_WX_WIND_GUST (bit 2) */
+        [3] = "Temperature",    /* SENSOR_LOCAL_WX_TEMPERATURE (bit 3) */
+        [4] = "Rain 1h",        /* SENSOR_LOCAL_WX_RAIN_1H (bit 4) */
+        [8] = "Humidity",       /* SENSOR_LOCAL_WX_HUMIDITY (bit 8) */
+        [9] = "Pressure",       /* SENSOR_LOCAL_WX_PRESSURE (bit 9) */
+        [10] = "Luminosity",    /* SENSOR_LOCAL_WX_LUMINOSITY (bit 10) */
+    },
+    .tlm_channel_name = { 0 },
 };
 
 #endif /* WX_EXAMPLE_PROPERTIES_H_ */

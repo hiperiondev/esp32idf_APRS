@@ -34,9 +34,15 @@
 
 /** @brief bmp180: Temperature + Barometric Pressure only. No telemetry capability. */
 static const sensor_local_properties_t bmp180_properties = {
+    .name = "BMP180",
     .wx = (sensor_local_wx_mask_t)(SENSOR_LOCAL_WX_TEMPERATURE | SENSOR_LOCAL_WX_PRESSURE),
     .tlm = SENSOR_LOCAL_TLM_NONE,
     .tlm_meta = SENSOR_LOCAL_TLM_META_NONE,
+    .wx_channel_name = {
+        [3] = "Temperature",  /* SENSOR_LOCAL_WX_TEMPERATURE (bit 3) */
+        [9] = "Pressure",     /* SENSOR_LOCAL_WX_PRESSURE (bit 9) */
+    },
+    .tlm_channel_name = { 0 },
 };
 
 #endif /* BMP180_PROPERTIES_H_ */

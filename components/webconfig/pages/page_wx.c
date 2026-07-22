@@ -117,7 +117,12 @@ static void wx_channel_select(httpd_req_t *req, int field, uint8_t selected) {
             continue; /* not a weather sensor: skip (e.g. telemetry-only drivers) */
         if (!sensor_local_properties_has_wx(d->properties, field_bit))
             continue; /* weather sensor, but doesn't produce THIS field (e.g. bmp180 on the Wind row) */
-        const char *nm = (d->name) ? d->name : "?";
+        /* Compose "<sensor name> <sensor channel name>" from the driver's
+         * properties (e.g. "BMP180 Temperature"); falls back to just the
+         * sensor name (or "?") if the driver hasn't published a dedicated
+         * channel label for this field. */
+        char nm[80];
+        sensor_local_properties_wx_label(d->properties, field_bit, nm, sizeof(nm));
         snprintf(buf, sizeof(buf), "<option value='%u'%s>%u: %.40s</option>", (unsigned)ch, (selected == ch) ? " selected" : "", (unsigned)ch, nm);
         httpd_resp_sendstr_chunk(req, buf);
     }
@@ -165,45 +170,63 @@ static bool wx_field_present(const aprs_weather_report_t *wx, wx_field_id_t f) {
 }
 
 // Renders "<field's engineering value> <unit>" as a complete, already-quoted
-// JSON string literal (e.g. "\"23 F\""), plain ASCII only so it never needs
+// JSON string literal (e.g. "\"-5 C\""), plain ASCII only so it never needs
 // JSON escaping. out must be at least 40 bytes.
+//
+// The underlying ::aprs_weather_report_t always stores values in the units
+// the APRS Weather Report format itself uses on-air (mph, deg F, inches,
+// feet - see weather_telemetry.h), since that's what ax25/weather.c needs to
+// build the packet. This "Value" preview column is admin-facing UI only, so
+// it converts every field to International System (SI) units before display
+// - km/h, deg C, mm, hPa, meters - and NEVER shows the raw Imperial number.
 static void wx_field_format(const aprs_weather_report_t *wx, wx_field_id_t f, char *out, size_t outsz) {
     switch (f) {
         case WX_FIELD_WIND_DIRECTION:
             snprintf(out, outsz, "\"%u deg\"", (unsigned)wx->wind.direction_deg);
             break;
         case WX_FIELD_WIND_SPEED:
-            snprintf(out, outsz, "\"%u mph\"", (unsigned)wx->wind.sustained_mph);
+            /* mph -> km/h */
+            snprintf(out, outsz, "\"%.1f km/h\"", (double)wx->wind.sustained_mph * 1.609344);
             break;
         case WX_FIELD_WIND_GUST:
-            snprintf(out, outsz, "\"%u mph\"", (unsigned)wx->wind.gust_mph);
+            /* mph -> km/h */
+            snprintf(out, outsz, "\"%.1f km/h\"", (double)wx->wind.gust_mph * 1.609344);
             break;
         case WX_FIELD_TEMPERATURE:
-            snprintf(out, outsz, "\"%d F\"", (int)wx->temperature_f);
+            /* deg F -> deg C */
+            snprintf(out, outsz, "\"%.1f C\"", ((double)wx->temperature_f - 32.0) * 5.0 / 9.0);
             break;
         case WX_FIELD_RAIN_1H:
-            snprintf(out, outsz, "\"%.2f in\"", wx->rain_last_hour_hundredths_in / 100.0);
+            /* 1/100 in -> mm */
+            snprintf(out, outsz, "\"%.1f mm\"", (wx->rain_last_hour_hundredths_in / 100.0) * 25.4);
             break;
         case WX_FIELD_RAIN_24H:
-            snprintf(out, outsz, "\"%.2f in\"", wx->rain_last_24h_hundredths_in / 100.0);
+            /* 1/100 in -> mm */
+            snprintf(out, outsz, "\"%.1f mm\"", (wx->rain_last_24h_hundredths_in / 100.0) * 25.4);
             break;
         case WX_FIELD_RAIN_MIDNIGHT:
-            snprintf(out, outsz, "\"%.2f in\"", wx->rain_since_midnight_hundredths_in / 100.0);
+            /* 1/100 in -> mm */
+            snprintf(out, outsz, "\"%.1f mm\"", (wx->rain_since_midnight_hundredths_in / 100.0) * 25.4);
             break;
         case WX_FIELD_SNOW_24H:
-            snprintf(out, outsz, "\"%.1f in\"", wx->snow_last_24h_tenths_in / 10.0);
+            /* 1/10 in -> mm */
+            snprintf(out, outsz, "\"%.1f mm\"", (wx->snow_last_24h_tenths_in / 10.0) * 25.4);
             break;
         case WX_FIELD_HUMIDITY:
             snprintf(out, outsz, "\"%u %%\"", (unsigned)wx->humidity_percent);
             break;
         case WX_FIELD_PRESSURE:
-            snprintf(out, outsz, "\"%.1f mb\"", wx->barometric_pressure_tenths_mb / 10.0);
+            /* Already SI (tenths of mb == tenths of hPa; 1 mb == 1 hPa) */
+            snprintf(out, outsz, "\"%.1f hPa\"", wx->barometric_pressure_tenths_mb / 10.0);
             break;
         case WX_FIELD_LUMINOSITY:
+            /* Already SI */
             snprintf(out, outsz, "\"%u W/m2\"", (unsigned)wx->luminosity_wm2);
             break;
         case WX_FIELD_FLOOD_HEIGHT_FT:
-            snprintf(out, outsz, "\"%.1f ft\"", (double)wx->flood_height_ft);
+            /* Field is fed by the "feet" APRS token, but display in meters:
+             * use the report's parallel SI field rather than converting. */
+            snprintf(out, outsz, "\"%.1f m\"", (double)wx->flood_height_m);
             break;
         case WX_FIELD_FLOOD_HEIGHT_M:
             snprintf(out, outsz, "\"%.1f m\"", (double)wx->flood_height_m);
@@ -294,6 +317,9 @@ esp_err_t page_wx_get(httpd_req_t *req) {
                               "<table><tr><th>" TR_WX_FIELD "</th><th>" TR_F_ENABLE "</th><th>" TR_TLM_AVG "</th><th>" TR_WX_CHANNEL "</th><th>" TR_WX_VALUE
                               "</th></tr>");
     for (int i = 0; i < WX_SENSOR_NUM; i++) {
+        if (i == WX_FIELD_FLOOD_HEIGHT_FT)
+            continue; /* Value column is SI-only (meters); the feet slot stays configurable
+                       * via WX_FIELD_FLOOD_HEIGHT_M's row/save handling but isn't shown here. */
         char row[300];
         snprintf(row, sizeof(row),
                  "<tr><td>%s</td>"
@@ -401,6 +427,9 @@ esp_err_t page_wx_post(httpd_req_t *req) {
     web_form_get(body, "wxComment", g_config.wx_comment, sizeof(g_config.wx_comment));
 
     for (int i = 0; i < WX_SENSOR_NUM; i++) {
+        if (i == WX_FIELD_FLOOD_HEIGHT_FT)
+            continue; /* not rendered on this page (Value column is SI/meters-only);
+                       * leave its saved config untouched rather than force-disabling it. */
         char key[16];
         snprintf(key, sizeof(key), "wxEn%d", i);
         g_config.wx_sensor_enable[i] = web_form_get_bool(body, key);

@@ -60,6 +60,7 @@
 #define SENSOR_LOCAL_PROPERTIES_H_
 
 #include <stdint.h>
+#include <stdio.h>
 
 #include "weather_telemetry.h"
 
@@ -154,6 +155,24 @@ typedef enum {
 } sensor_local_tlm_meta_mask_t;
 
 /* ======================================================================
+ * Human-readable name tables
+ * ====================================================================== */
+
+/**
+ * @brief Number of ::sensor_local_wx_mask_t field slots, i.e. the highest
+ *        bit position used (::SENSOR_LOCAL_WX_FLOOD_HEIGHT_M, bit 12) plus
+ *        one. Used to size ::sensor_local_properties_t::wx_channel_name.
+ */
+#define SENSOR_LOCAL_WX_FIELD_COUNT 13u
+
+/**
+ * @brief Number of ::sensor_local_tlm_channel_mask_t channel slots (5
+ *        analog + 8 digital = 13). Used to size
+ *        ::sensor_local_properties_t::tlm_channel_name.
+ */
+#define SENSOR_LOCAL_TLM_CHANNEL_COUNT 13u
+
+/* ======================================================================
  * Common per-driver properties descriptor
  * ====================================================================== */
 
@@ -169,12 +188,108 @@ typedef enum {
  *       is the fine-grained, per-field/per-channel selector used by UI
  *       code (the Weather page's "Channel" column) to decide whether a
  *       given driver is a sane choice for a given field.
+ *
+ * @note Every driver's properties descriptor MUST also supply human
+ *       readable text: @c name identifies the sensor itself, and
+ *       @c wx_channel_name / @c tlm_channel_name give a short label for
+ *       every individual Weather field / Telemetry channel the driver
+ *       advertises via @c wx / @c tlm. These text names are what the
+ *       Weather page's per-field "Channel" <select> shows to the user
+ *       (see wx_channel_select() in page_wx.c), instead of just the bare
+ *       driver name repeated on every row. A slot that the driver does
+ *       NOT advertise (its @c wx / @c tlm bit is 0) may leave the
+ *       corresponding name entry NULL; slots that ARE advertised should
+ *       always have a non-NULL, non-empty name.
  */
 typedef struct {
+    const char *name;                      /**< Human-readable sensor name (e.g. "BMP180", "WX Example"). Must not be NULL. */
     sensor_local_wx_mask_t wx;             /**< Weather parameter(s) this driver can produce; ::SENSOR_LOCAL_WX_NONE if not a weather sensor. */
     sensor_local_tlm_channel_mask_t tlm;   /**< Telemetry analog/digital channel(s) this driver drives; ::SENSOR_LOCAL_TLM_NONE if not a telemetry sensor. */
     sensor_local_tlm_meta_mask_t tlm_meta; /**< Telemetry metadata (PARM/UNIT/EQNS/BITS) kinds this driver can supply defaults for. */
+    /**
+     * @brief Human-readable label for every Weather field bit, indexed the
+     *        same way as ::sensor_local_wx_mask_t (bit N -> array index N,
+     *        e.g. [3] labels ::SENSOR_LOCAL_WX_TEMPERATURE). Only indices
+     *        whose bit is set in @c wx need be populated.
+     */
+    const char *wx_channel_name[SENSOR_LOCAL_WX_FIELD_COUNT];
+    /**
+     * @brief Human-readable label for every Telemetry analog/digital
+     *        channel bit, indexed the same way as
+     *        ::sensor_local_tlm_channel_mask_t (bit N -> array index N,
+     *        e.g. [0] labels ::SENSOR_LOCAL_TLM_ANALOG_A1, [5] labels
+     *        ::SENSOR_LOCAL_TLM_DIGITAL_B1). Only indices whose bit is set
+     *        in @c tlm need be populated.
+     */
+    const char *tlm_channel_name[SENSOR_LOCAL_TLM_CHANNEL_COUNT];
 } sensor_local_properties_t;
+
+/**
+ * @brief Format the human-readable label for a given Weather field as
+ *        "<sensor name> <channel name>" into @p out, e.g. "BMP180
+ *        Temperature". If the field has no dedicated channel-name entry,
+ *        @p out is just the sensor name; if @p props itself is NULL,
+ *        @p out is "?".
+ *
+ * @param props      Pointer to the driver's ::sensor_local_properties_t (may be NULL).
+ * @param field_bit  One ::sensor_local_wx_mask_t bit (e.g. ::SENSOR_LOCAL_WX_TEMPERATURE).
+ * @param out        Destination buffer.
+ * @param out_size   Size of @p out in bytes.
+ */
+static inline void sensor_local_properties_wx_label(const sensor_local_properties_t *props, sensor_local_wx_mask_t field_bit, char *out, size_t out_size) {
+    if (out == NULL || out_size == 0)
+        return;
+    if (props == NULL) {
+        snprintf(out, out_size, "?");
+        return;
+    }
+    const char *sensor_name = (props->name != NULL) ? props->name : "?";
+    unsigned idx = 0;
+    unsigned bit = (unsigned)field_bit;
+    while (bit > 1u) {
+        bit >>= 1;
+        idx++;
+    }
+    const char *chan_name = (idx < SENSOR_LOCAL_WX_FIELD_COUNT) ? props->wx_channel_name[idx] : NULL;
+    if (chan_name != NULL)
+        snprintf(out, out_size, "%s %s", sensor_name, chan_name);
+    else
+        snprintf(out, out_size, "%s", sensor_name);
+}
+
+/**
+ * @brief Format the human-readable label for a given Telemetry
+ *        analog/digital channel as "<sensor name> <channel name>" into
+ *        @p out, e.g. "TLM Example A1". If the channel has no dedicated
+ *        channel-name entry, @p out is just the sensor name; if @p props
+ *        itself is NULL, @p out is "?".
+ *
+ * @param props       Pointer to the driver's ::sensor_local_properties_t (may be NULL).
+ * @param channel_bit One ::sensor_local_tlm_channel_mask_t bit (e.g. ::SENSOR_LOCAL_TLM_ANALOG_A1).
+ * @param out         Destination buffer.
+ * @param out_size    Size of @p out in bytes.
+ */
+static inline void sensor_local_properties_tlm_label(const sensor_local_properties_t *props, sensor_local_tlm_channel_mask_t channel_bit, char *out,
+                                                       size_t out_size) {
+    if (out == NULL || out_size == 0)
+        return;
+    if (props == NULL) {
+        snprintf(out, out_size, "?");
+        return;
+    }
+    const char *sensor_name = (props->name != NULL) ? props->name : "?";
+    unsigned idx = 0;
+    unsigned bit = (unsigned)channel_bit;
+    while (bit > 1u) {
+        bit >>= 1;
+        idx++;
+    }
+    const char *chan_name = (idx < SENSOR_LOCAL_TLM_CHANNEL_COUNT) ? props->tlm_channel_name[idx] : NULL;
+    if (chan_name != NULL)
+        snprintf(out, out_size, "%s %s", sensor_name, chan_name);
+    else
+        snprintf(out, out_size, "%s", sensor_name);
+}
 
 /**
  * @brief Test whether a driver's properties advertise a given Weather

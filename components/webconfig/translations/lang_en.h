@@ -625,7 +625,7 @@
 #define TR_WX_LUMINOSITY      "Luminosity"
 #define TR_WX_SNOW            "Snow"
 #define TR_WX_FLOOD_FT        "Flood Height (ft)"
-#define TR_WX_FLOOD_M         "Flood Height (m)"
+#define TR_WX_FLOOD_M         "Flood Height"
 #define TR_WX_FIELD           "WX Field"
 #define TR_WX_CHANNEL         "Channel"
 #define TR_WX_CHANNEL_NONE    "(none)"
