@@ -499,17 +499,8 @@ static const struct menu_item MENU[] = {
 #ifdef ENABLE_RADIO_MODEM
     { "/radio", TR_MENU_RADIO, "radio" },
 #endif
-#ifdef ENABLE_VPN
-    { "/vpn", TR_MENU_VPN, "vpn" },
-#endif
-#ifdef ENABLE_MQTT
-    { "/mqtt", TR_MENU_MQTT, "mqtt" },
-#endif
 #ifdef ENABLE_MESSAGE
     { "/msg", TR_MENU_MSG, "msg" },
-#endif
-#ifdef ENABLE_MOD_GPIO
-    { "/mod", TR_MENU_MOD, "mod" },
 #endif
 #ifdef ENABLE_IGATE
     { "/igate", TR_MENU_IGATE, "igate" },
@@ -531,9 +522,6 @@ static const struct menu_item MENU[] = {
 #endif
 #ifdef ENABLE_WIRELESS
     { "/wireless", TR_MENU_WIRELESS, "wireless" },
-#endif
-#ifdef ENABLE_GNSS
-    { "/gnss", TR_MENU_GNSS, "gnss" },
 #endif
 #ifdef ENABLE_FILE_STORAGE
     { "/storage", TR_MENU_STORAGE, "storage" },

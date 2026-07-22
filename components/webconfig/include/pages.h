@@ -73,10 +73,6 @@ esp_err_t page_tlm_post(httpd_req_t *req);
 esp_err_t page_radio_get(httpd_req_t *req);
 esp_err_t page_radio_post(httpd_req_t *req);
 esp_err_t page_radio_looptest_get(httpd_req_t *req); // GET /radio/looptest (JSON loop-test result)
-esp_err_t page_vpn_get(httpd_req_t *req);
-esp_err_t page_vpn_post(httpd_req_t *req);
-esp_err_t page_mqtt_get(httpd_req_t *req);
-esp_err_t page_mqtt_post(httpd_req_t *req);
 esp_err_t page_msg_get(httpd_req_t *req);
 esp_err_t page_msg_post(httpd_req_t *req);
 
@@ -84,13 +80,6 @@ esp_err_t page_msg_post(httpd_req_t *req);
 esp_err_t page_msgchat_get(httpd_req_t *req);  // GET  /msgchat
 esp_err_t page_msgchat_post(httpd_req_t *req); // POST /msgchat (send; JSON {"ok":true|false,"error":...})
 esp_err_t page_msgchat_list(httpd_req_t *req); // GET  /msgchat/list (JSON message history, polled)
-
-esp_err_t page_gnss_get(httpd_req_t *req);
-esp_err_t page_gnss_post(httpd_req_t *req);
-
-// -- GPIO / hardware mapping --
-esp_err_t page_mod_get(httpd_req_t *req);
-esp_err_t page_mod_post(httpd_req_t *req);
 
 // -- Misc --
 esp_err_t page_symbol_get(httpd_req_t *req);
