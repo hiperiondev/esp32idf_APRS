@@ -108,11 +108,14 @@ Everything is plain C. There is no Arduino core, no `String`, no PlatformIO. The
 | APRS-IS IGate RF→INET | ✅ | filters, dedup, `qAR`/`qAO` |
 | APRS-IS IGate INET→RF | ✅ | `inet2rfFilter` payload-type gating (`aprs_filter.c`) |
 | Digipeater | ✅ | WIDEn-N, TRACEn-N, RELAY/ECHO/GATE, dup-suppression |
-| Fixed-position beacons (tracker / igate / digi) | ✅ | three independent FreeRTOS tasks |
+| Own-station APRS Objects / Items | ✅ | `objects_items.c`, up to 5, RF and/or INET, interval decay + kill-repeats, own `objitems.json` |
+| APRS bulletins (BLN1..BLN5) | ✅ | `bulletins.c`, up to 5, RF and/or INET, per-bulletin expiry, own `bulletins.json` |
+| APRS message chat UI (`/msgchat`) | ✅ | inbox/compose page over the messaging engine (`ENABLE_MSG_CHAT`) |
+| Fixed-position beacons (tracker / igate / digi) | ✅ | driven by one shared beacon-scheduler task (see [Task map](#task-map)) |
 | SmartBeaconing / GPS-driven tracker | ❌ | config fields exist, logic not implemented |
 | APRS messaging + ack/retry | ✅ | RF and/or INET |
 | APRS message AES-128-CBC encryption | ✅ | `mbedtls`, MD5-derived IV, base64 payload |
-| Web admin (HTTP Basic auth) | ✅ | ~25 pages, live dashboard |
+| Web admin (HTTP Basic auth) | ✅ | ~22 pages, live dashboard |
 | Live traffic log + last-heard table | ✅ | JSON long-poll (`?since=<seq>`) |
 | LittleFS storage, upload/download/delete/format | ✅ | 512 KB partition |
 | SNTP time sync (3 hosts) | ✅ | clock always kept in UTC |
@@ -125,7 +128,7 @@ Everything is plain C. There is no Arduino core, no `String`, no PlatformIO. The
 | Own-station APRS Weather Report | ✅ | `weather.c`, 1 Hz sensor refresh, optional per-field averaging, on-air WX beacon (RF and/or APRS-IS) — see [Sensors](#sensors) |
 | Local sensor driver framework (`sensors_local`) | ✅ | dynamic run-time registry, auto-registering drivers, feeds the Weather page's channel picker — see [Sensors](#sensors) |
 | APRS Telemetry on-air encode/beacon | 🟡 | `sensors_local` can already gather analog/digital channel values into `weather_telemetry_data_t`; there is no `T#nnn` encoder or beacon task yet, so the Telemetry page is configuration-only — see [Sensors](#sensors) |
-| Legacy per-slot `/sensor` page (`g_config.sensor[]`) | ❌ | config fields kept for compatibility only; nothing in the firmware reads them — do not confuse with the `sensors_local` driver framework, see [Sensors](#sensors) |
+| Legacy per-slot `/sensor` page (`g_config.sensor[]`) | ❌ | page source (`page_sensor.c`) is orphaned — no longer compiled or routed — and its `g_config.sensor[]` fields were removed; use the `sensors_local` framework instead, see [Sensors](#sensors) |
 | Bluetooth, PPP/GSM, OLED display, Modbus | ❌ | config fields kept for compatibility only |
 
 Legend: ✅ implemented · 🟡 partial · ❌ not implemented (scaffolding only)
@@ -352,7 +355,7 @@ workspace-APRS/esp32_APRS_igate/
 ├── CMakeLists.txt                  ← board definition (ADC/DAC/PTT/LED pins) + project()
 ├── partitions.csv                  ← nvs / otadata / phy_init / ota_0(1728K) / ota_1(1728K) / storage(512K, LittleFS)
 ├── sdkconfig                       ← target=esp32, 4MB flash, custom partitions
-├── dependencies.lock               ← idf 5.5.4, joltwallet/littlefs 1.22.1
+├── dependencies.lock               ← idf 5.5.4, littlefs 1.22.2, esp-idf-lib bmp180/i2cdev/helpers
 ├── LICENSE                         ← GPL-3.0
 │
 ├── main/                                  (the application)
@@ -361,8 +364,11 @@ workspace-APRS/esp32_APRS_igate/
 │   ├── storage.c                   ← LittleFS mount/format/usage
 │   ├── aprs_service.c/.h           ← the glue: RX dispatch, TX helper, modem cfg, stats, loop test
 │   ├── aprs_filter.c/.h            ← TNC2 payload-type classifier (message/status/telemetry/weather/…)
-│   ├── beacon.c/.h                 ← 3 independent beacon tasks (trk / igate / digi)
+│   ├── beacon.c/.h                 ← own-position beacons (trk / igate / digi), run by the shared scheduler
 │   ├── weather.c/.h                ← own-station APRS Weather Report: sensors_local refresh + WX beacon (see Sensors)
+│   ├── beacon_scheduler.c/.h       ← one shared task driving ALL periodic TX (beacons, WX, bulletins, objects)
+│   ├── bulletins.c/.h              ← APRS bulletins BLN1..BLN5 (own bulletins.json, not g_config)
+│   ├── objects_items.c/.h          ← APRS Objects/Items (own objitems.json, not g_config)
 │   ├── net_state.c/.h              ← "do we actually have internet?" flag
 │   ├── time_sync.c/.h              ← SNTP (UTC always)
 │   └── cpu_freq.c/.h               ← esp_pm_configure() from the System page
@@ -371,9 +377,9 @@ workspace-APRS/esp32_APRS_igate/
 │   ├── esp32idf_radioamateur_modem/       (the soft-modem — the heart of the project)
 │   │   ├── esp32idf_radioamateur_modem.h  ← public API + APRS convenience layer
 │   │   ├── include/…_config.h             ← ALL compile-time board/DSP constants
-│   │   ├── src/afsk.c    (1447 ln)        ← ADC DMA ingest, AGC, decimation FIR, DAC ISR, PTT
-│   │   ├── src/modem.c   (899 ln)         ← correlators, DPLL, tone tables, DCD, calibration
-│   │   ├── src/ax25.c    (1326 ln)        ← HDLC framer, NRZI, bit-stuffing, AX.25 codec, TX queue
+│   │   ├── src/afsk.c    (1526 ln)        ← ADC DMA ingest, AGC, decimation FIR, DAC ISR, PTT
+│   │   ├── src/modem.c   (903 ln)         ← correlators, DPLL, tone tables, DCD, calibration
+│   │   ├── src/ax25.c    (1364 ln)        ← HDLC framer, NRZI, bit-stuffing, AX.25 codec, TX queue
 │   │   ├── src/fx25.c, lwfec/rs.c, gf.c   ← FX.25 Reed–Solomon FEC
 │   │   └── src/crc_ccit.c                 ← FCS
 │   │
@@ -387,19 +393,25 @@ workspace-APRS/esp32_APRS_igate/
 │   ├── sensors_local/      ← THE sensor driver framework (see Sensors)
 │   │   ├── include/sensors_local.h        ← public API: register / unregister / save / registry walk
 │   │   ├── sensors_local.c                ← the dynamic registry itself
-│   │   └── drivers/*.c                    ← one file per sensor driver, auto-compiled + auto-registered
-│   │       ├── sensor_local_weather_example.c    ← random-data WEATHER skeleton to copy
-│   │       └── sensor_local_telemetry_example.c  ← random-data TELEMETRY skeleton to copy
+│   │   ├── include/sensor_local_properties.h ← per-driver capability descriptor (which WX fields / TLM channels)
+│   │   └── drivers/<name>/                 ← one folder per driver (<name>.c + <name>_properties.h), auto-registered
+│   │       ├── example/sensor_local_weather_example.c    ← random-data WEATHER skeleton to copy
+│   │       ├── example/sensor_local_telemetry_example.c  ← random-data TELEMETRY skeleton to copy
+│   │       └── bmp180/bmp180.c                           ← real I2C temperature/pressure driver
 │   └── webconfig/      ← esp_http_server admin
 │       ├── web_server.c            ← route table
 │       ├── web_common.c            ← auth, form parsing, HTML shell, field helpers
-│       ├── pages/*.c               ← one file per admin page (incl. page_wx.c, page_tlm.c, page_sensor.c)
+│       ├── pages/*.c               ← one file per admin page (station, bulletins, objects, wx, tlm, msgchat, …)
 │       └── translations/           ← translations.h + lang_en.h + lang_es.h + lang_it.h
 │
-└── managed_components/joltwallet__littlefs/   (fetched by the component manager)
+└── managed_components/                     (fetched by the component manager)
+    ├── joltwallet__littlefs/
+    ├── esp-idf-lib__bmp180/                ← BMP180 I2C driver (for the bmp180 sensors_local driver)
+    ├── esp-idf-lib__i2cdev/
+    └── esp-idf-lib__esp_idf_lib_helpers/
 ```
 
-**Source size:** ~18.2 k lines of first-party C across `main/` + `components/` (excluding `managed_components/`), of which ~4.9 k is the modem DSP core and ~3.4 k is the web admin.
+**Source size:** ~19.7 k lines of first-party C (`.c`, ~28 k including headers) across `main/` + `components/` (excluding `managed_components/`), of which ~5.0 k is the modem DSP core and ~5.9 k is the web admin.
 
 ---
 
@@ -422,14 +434,15 @@ app_task()
  ├─ wifi_init()                        ← AP / STA / AP+STA per g_config.wifi_mode
  ├─ vTaskDelay(10 ms)                  ← yield so IDLE runs; avoids a false TWDT trip
  ├─ time_sync_start()                  ← SNTP, non-blocking
- ├─ web_server_start()                 ← esp_http_server, 64 URI handlers, 8 KB stack
+ ├─ web_server_start()                 ← esp_http_server, 56 URI handlers, 8 KB stack
  ├─ aprs_service_start()               ← ⚠ MUST precede modem_init(): installs the RX callback
  │    ├─ trafficlog_init / lastheard_init / message_init
  │    ├─ message_set_tx_handler / igate_set_inet2rf_handler
  │    ├─ modem_set_rx_callback(on_rx_frame)
  │    ├─ igate_start()                 ← always started; self-idles when nothing needs APRS-IS
- │    ├─ beacon_start()                ← 3 tasks
- │    └─ xTaskCreate(serviceTickTask)  ← 1 Hz message-retry tick
+ │    ├─ beacon_start() / weather_start() / bulletins_start() / objitems_start()  ← set up periodic-TX state
+ │    ├─ beacon_scheduler_start()      ← ONE shared task drives all of the above (~61 KB of stacks → ~14 KB)
+ │    └─ xTaskCreate(serviceTickTask)  ← 1 Hz: weather sensor refresh + message retry
  ├─ if (audio_modem_en) modem_init()   ← ⏳ BLOCKS ~5 s calibrating the real ADC clock (once per boot)
  │      └─ aprs_service_notify_modem_ready()
  └─ APRS_setCallsign(...)
@@ -450,8 +463,8 @@ Two ordering rules are load-bearing and commented as such in the source:
 | ADC DMA ISR | — | — | **0** (`MODEM_ADC_ISR_CORE`) | driver | conversion frames → ring buffer |
 | DAC sample clock (GPTimer, level 3) | — | — | **1** (`MODEM_DAC_TIMER_CORE`) | `AFSK_init()` | one DAC sample every 1/38400 s |
 | `igate_task` | — | — | any | `igate_start()` | APRS-IS socket, login, RX pump, reconnect |
-| `trk_beacon_task` / `igate_beacon_task` / `digi_beacon_task` | `BEACON_TASK_STACK_WORDS` | 4 | any | `beacon_start()` | own-position beacons |
-| `aprs_svc_tick` | 3072 B | 4 | any | `aprs_service_start()` | 1 Hz message retry |
+| `beacon_sched` | 14336 B | 4 | any | `beacon_scheduler_start()` | ONE shared task: tracker/igate/digi beacons + WX report + bulletins + objects/items, run sequentially |
+| `aprs_svc_tick` | 10240 B | 4 | any | `aprs_service_start()` | 1 Hz tick: weather sensor refresh (`weather_service_1hz`) + message retry |
 | `httpd` | 8192 B | — | any | `web_server_start()` | web admin |
 | `esp_timer` | — | — | — | IDF | Wi-Fi reconnect back-off |
 
@@ -630,7 +643,7 @@ Both are thread-safe and callable from any task.
 
 ### `webconfig` — web admin
 
-`esp_http_server`, 64 URI handlers, wildcard URI matching, 8 KB handler stack, LRU purge. **HTTP Basic auth** against `g_config.http_username` / `http_password` on every page. HTML is emitted through small per-field helpers (`web_field_text`, `web_field_int`, `web_field_checkbox`, `web_select_*`, `web_field_symbol`, …) rather than one giant `snprintf` — deliberately, to avoid `-Werror=format-truncation`.
+`esp_http_server`, 56 URI handlers, wildcard URI matching, 8 KB handler stack, LRU purge. **HTTP Basic auth** against `g_config.http_username` / `http_password` on every page. HTML is emitted through small per-field helpers (`web_field_text`, `web_field_int`, `web_field_checkbox`, `web_select_*`, `web_field_symbol`, …) rather than one giant `snprintf` — deliberately, to avoid `-Werror=format-truncation`.
 
 ---
 
@@ -640,7 +653,7 @@ This section covers the **`sensors_local`** component: the run-time framework th
 
 ### Why a driver framework instead of a hard-coded list
 
-Earlier APRS firmwares in this lineage (and the legacy `/sensor` page still shipped here, see [below](#the-legacy-sensor-page--not-the-same-thing)) took the opposite approach: a fixed-size array of "sensor slots" in `g_config`, each described by a numeric `type`/`port`/`address` that some central `switch` statement was supposed to interpret. Every new sensor meant editing that central switch, recompiling, and hoping the numeric IDs didn't collide with someone else's build.
+Earlier APRS firmwares in this lineage (and the legacy `/sensor` page, whose source still lingers in the tree but is no longer built, see [below](#the-legacy-sensor-page--not-the-same-thing)) took the opposite approach: a fixed-size array of "sensor slots" in `g_config`, each described by a numeric `type`/`port`/`address` that some central `switch` statement was supposed to interpret. Every new sensor meant editing that central switch, recompiling, and hoping the numeric IDs didn't collide with someone else's build.
 
 `sensors_local` inverts this:
 
@@ -677,6 +690,8 @@ struct sensor_local_driver {
     sensor_local_save_fn_t   save;   // REQUIRED: the one entry that actually reads the sensor
     sensor_local_deinit_fn_t deinit; // optional tear-down (may be NULL)
 
+    const sensor_local_properties_t *properties; // which WX fields / TLM channels this driver can produce (see sensor_local_properties.h)
+
     void *ctx; // driver-private state, opaque to the registry
 
     // --- owned by the registry; a driver must never touch these itself ---
@@ -688,7 +703,7 @@ struct sensor_local_driver {
 Three function-pointer roles, each with a precise contract:
 
 * **`init(self)`** — called **at most once**, lazily, the first time the driver is actually needed (or eagerly, for every driver, when `weather_start()` calls `sensors_local_init_all()` at boot). This is where you open an I2C/SPI/UART bus, probe the chip's ID register, allocate any private buffers, and seed anything that needs seeding (e.g. `srand()`). Return `ESP_OK` on success; any other value **permanently marks the driver `failed`** for the life of the registry (until it is unregistered and re-registered) and it is skipped from then on.
-* **`save(self, data, kind)`** — THE common entry point, called on every refresh cycle (1 Hz, driven by `weather.c`'s `weatherSensorTask`). `kind` is **already masked** to only the bits both the caller wants *and* the driver advertised, so a Weather-only driver never has to check for Telemetry itself. The driver reads its sensor and writes straight into the caller-owned `data` container — no allocation, no queues. It must **only** touch the family it advertised in `capabilities`, and must **tolerate an empty destination** (e.g. `data->weather_qty == 0`) by doing nothing for that family rather than dereferencing a null array.
+* **`save(self, data, kind)`** — THE common entry point, called on every refresh cycle (1 Hz, driven by the `aprs_svc_tick` task via `weather_service_1hz()`). `kind` is **already masked** to only the bits both the caller wants *and* the driver advertised, so a Weather-only driver never has to check for Telemetry itself. The driver reads its sensor and writes straight into the caller-owned `data` container — no allocation, no queues. It must **only** touch the family it advertised in `capabilities`, and must **tolerate an empty destination** (e.g. `data->weather_qty == 0`) by doing nothing for that family rather than dereferencing a null array.
 * **`deinit(self)`** — optional mirror of `init()`, called from `sensors_local_unregister()` or `sensors_local_deinit()`. Close what `init()` opened.
 
 `ctx` is yours: point it at a `static` struct (as both example drivers do) if the driver has no reason to support more than one instance, or at heap/pool storage if it does (see [Multiple instances](#multiple-instances-of-the-same-sensor-type)).
@@ -726,9 +741,9 @@ One driver failing its `init()` or returning an error from `save()` is logged (`
    ├─ wires weather_telemetry_data.weather/.telemetry_report to static backing storage
    ├─ sensors_local_init()          ← creates the registry mutex (thread-safe from here on)
    ├─ sensors_local_init_all()      ← runs init() on every auto-registered driver
-   └─ starts weatherSensorTask (1 Hz) and weatherBeaconTask (every wx_interval seconds)
+   └─ registers weather_service_1hz() (run at 1 Hz by aprs_svc_tick) and weather_beacon_service() (run by the shared beacon scheduler)
 
- weatherSensorTask   (1 Hz, forever)
+ weather_service_1hz()   (called at 1 Hz from aprs_svc_tick)
    ├─ clears the "enabled" flags in weather_telemetry_data (so a driver that stops
    │    reporting a field this cycle doesn't leave a stale value looking valid)
    ├─ sensors_local_save(&weather_telemetry_data, SENSOR_LOCAL_DATA_ALL)
@@ -737,7 +752,7 @@ One driver failing its `init()` or returning an error from `save()` is logged (`
    │         → the driver writes straight into aprs_weather_report_t / aprs_telemetry_report_t
    └─ folds any "Averaged" field (Weather page checkbox) into a running sum/count
 
- weatherBeaconTask   (every g_config.wx_interval seconds, only if wx_en)
+ weather_beacon_service()   (called by the shared scheduler; transmits every g_config.wx_interval seconds, only if wx_en)
    ├─ resolve_fields(): for each on-air WX token, either read the live value straight from
    │    weather_telemetry_data, or the averaged value accumulated above, depending on the
    │    per-field "Averaged" checkbox — NOT from the sensor directly, so an intermittent
@@ -746,9 +761,10 @@ One driver failing its `init()` or returning an error from `save()` is logged (`
    └─ transmit it on RF (aprs_service_send_tnc2()) and/or APRS-IS (igate_send_raw()), per config
 
  Weather web-admin page (/wx)
-   └─ page_wx.c's wx_channel_select() walks sensors_local_get(0..count-1) and lists only
-        the drivers whose capabilities include SENSOR_LOCAL_DATA_WEATHER, so the operator can
-        map "channel N: <driver name>" to a specific on-air field (wind, temperature, …)
+   └─ page_wx.c's wx_channel_select() walks the registry and, for each on-air field, lists only
+        the drivers whose published properties (sensor_local_properties.h) advertise THAT field, so the
+        operator maps "<sensor> <channel>" to it; the mapping table also shows each channel's live
+        value via /wx/values (sensors_local_save_one())
 ```
 
 The key point for anyone adding a sensor: **you never call anything from `weather.c` or the web admin yourself.** Registering the driver is the entire integration; the 1 Hz refresh, the averaging, the on-air WX encoding and the channel picker all discover it through the registry on their own.
@@ -757,8 +773,8 @@ The key point for anyone adding a sensor: **you never call anything from `weathe
 
 Two drivers ship compiled-in by default, purely so the whole pipeline (registry → 1 Hz refresh → WX encoder/beacon → Weather page channel picker) can be exercised with **no real hardware attached**:
 
-* **`components/sensors_local/drivers/sensor_local_weather_example.c`** (driver name `wx-example`) — advertises `SENSOR_LOCAL_DATA_WEATHER` only. On every `save()` it fills wind (direction/sustained/gust), temperature, humidity, barometric pressure, rain-last-hour and luminosity with plausible **random** values (`rnd(lo, hi)`) and sets each field's `enabled[...]` flag. Gated behind `CONFIG_SENSORS_LOCAL_WEATHER_EXAMPLE_DRIVER`, which the component's `CMakeLists.txt` defines unconditionally today.
-* **`components/sensors_local/drivers/sensor_local_telemetry_example.c`** (driver name `tlm-example`) — advertises `SENSOR_LOCAL_DATA_TELEMETRY` only. On every `save()` it fills every **allocated** analog channel with a random value in `0..255` and every digital channel with a random `0`/`1`, again only touching channels the caller actually asked for (`analog_count`/`digital_count`). Gated behind `CONFIG_SENSORS_LOCAL_TELEMETRY_EXAMPLE_DRIVER`.
+* **`components/sensors_local/drivers/example/sensor_local_weather_example.c`** (driver name `wx-example`) — advertises `SENSOR_LOCAL_DATA_WEATHER` only. On every `save()` it fills wind (direction/sustained/gust), temperature, humidity, barometric pressure, rain-last-hour and luminosity with plausible **random** values (`rnd(lo, hi)`) and sets each field's `enabled[...]` flag. Gated behind `CONFIG_SENSORS_LOCAL_WEATHER_EXAMPLE_DRIVER`, a Kconfig option (`Sensors Local` menu) that defaults to on.
+* **`components/sensors_local/drivers/example/sensor_local_telemetry_example.c`** (driver name `tlm-example`) — advertises `SENSOR_LOCAL_DATA_TELEMETRY` only. On every `save()` it fills every **allocated** analog channel with a random value in `0..255` and every digital channel with a random `0`/`1`, again only touching channels the caller actually asked for (`analog_count`/`digital_count`). Gated behind `CONFIG_SENSORS_LOCAL_TELEMETRY_EXAMPLE_DRIVER`.
 
 Both are meant to be **copied, not kept**: they are the documented skeleton for a real driver of the matching family. Delete or `#if 0` them once you have real hardware, or simply leave them registered alongside your real driver(s) — the registry has no problem holding both at once, and `sensors_local_unregister("wx-example")` removes one cleanly if you'd rather not recompile.
 
@@ -770,7 +786,7 @@ Pick the payload family (or both): a BME280 or DS18B20 is Weather; a battery vol
 
 #### 2. Copy a skeleton and rename it
 
-Copy whichever example driver matches (`sensor_local_weather_example.c` for Weather, `sensor_local_telemetry_example.c` for Telemetry, or start from both if you need both) into a new file under `components/sensors_local/drivers/`, e.g. `sensor_local_bme280.c`. The file **glob** in `CMakeLists.txt` picks it up automatically — you do not add it to any source list.
+Copy whichever example driver matches (`sensor_local_weather_example.c` for Weather, `sensor_local_telemetry_example.c` for Telemetry, or start from both if you need both) into a new folder under `components/sensors_local/drivers/`, e.g. `drivers/bme280/bme280.c` (with its own `bme280_properties.h`). Then add that source to the `SRCS` list in `components/sensors_local/CMakeLists.txt` — the component lists its driver sources explicitly, there is **no** wildcard glob.
 
 #### 3. Fill in `init()`
 
@@ -789,6 +805,7 @@ static sensor_local_driver_t bme280_driver = {
     .init         = bme280_init,
     .save         = bme280_save,
     .deinit       = bme280_deinit, // or NULL if there is nothing to tear down
+    .properties   = &bme280_properties, // from bme280_properties.h: which WX fields this driver can fill
     .ctx          = &s_bme280_ctx,
 };
 SENSORS_LOCAL_DRIVER_AUTOREGISTER(bme280_driver);
@@ -798,7 +815,7 @@ SENSORS_LOCAL_DRIVER_AUTOREGISTER(bme280_driver);
 
 #### 6. Build — nothing else to wire up
 
-`idf.py build`. Because `components/sensors_local/CMakeLists.txt` globs `drivers/*.c` and links the whole component `WHOLE_ARCHIVE` (so the linker's `--gc-sections` can't drop an object whose only reference is its own constructor), your new file is compiled, linked, and self-registers at boot with **zero edits** to `sensors_local.c`, `sensors_local.h`, `weather.c`, or any `CMakeLists.txt` outside the driver's own file.
+`idf.py build`. Because the component links `WHOLE_ARCHIVE` (so the linker's `--gc-sections` can't drop an object whose only reference is its own constructor), once your source is listed in the component's `SRCS` it is compiled, linked, and self-registers at boot with **zero edits** to `sensors_local.c`, `sensors_local.h` or `weather.c` — the only build-file change is adding your source to `components/sensors_local/CMakeLists.txt`.
 
 #### 7. Map it on the Weather page
 
@@ -880,7 +897,7 @@ Nothing stops two physical sensors of the same type from coexisting (e.g. an ind
 
 `sensors_local_register()`/`unregister()`/`save()`/`get()`/`find()`/`count()` all take the registry's internal mutex, so they are safe to call from any task once `sensors_local_init()` has run. The one exception, by design, is the auto-registration constructors themselves: they run before the scheduler exists, single-threaded, with the mutex not yet created — which is exactly why `registry_lock()`/`registry_unlock()` are written as no-ops while `s_lock == NULL`.
 
-A driver's own `init()`/`save()`/`deinit()` are **not** wrapped in any lock by the framework — if your driver's private state (`ctx`) is ever touched from more than the 1 Hz `weatherSensorTask` (for example, an ISR updating a shared counter), the driver itself is responsible for whatever synchronization that needs.
+A driver's own `init()`/`save()`/`deinit()` are **not** wrapped in any lock by the framework — if your driver's private state (`ctx`) is ever touched from more than the 1 Hz weather refresh (`weather_service_1hz`, run from `aprs_svc_tick`) (for example, an ISR updating a shared counter), the driver itself is responsible for whatever synchronization that needs.
 
 ### Adding a whole new sensor *kind*
 
@@ -910,7 +927,7 @@ Concretely, adding e.g. a GPS "kind" means:
 
 ### The legacy `/sensor` page — not the same thing
 
-The web admin also has a **`/sensor`** route (`components/webconfig/pages/page_sensor.c`) with fields per slot — `enable`, `type`, `port`, `address`, `samplerate`, `averagerate`, three linear-equation coefficients (`A`/`B`/`C`), a name and a unit — stored in `g_config.sensor[0..SENSOR_NUMBER-1]`. **This is not the `sensors_local` framework.** It predates it, has no menu entry in the current sidebar, and — critically — **nothing in the firmware ever reads `g_config.sensor[]` back out**: there is no code path that turns a saved slot into an actual reading or an on-air value. It is kept only for `config.json` backward compatibility (see [Status & known limitations](#status--known-limitations)). If you're attaching real hardware, use `sensors_local` (this section), not this page.
+The tree still contains a `page_sensor.c` (`components/webconfig/pages/`) for an old per-slot **`/sensor`** page — fields per slot (`enable`, `type`, `port`, `address`, `samplerate`, `averagerate`, three linear-equation coefficients `A`/`B`/`C`, a name and a unit) stored in a `g_config.sensor[]` array. **This is not the `sensors_local` framework, and it is no longer live:** the file is *not* listed in `webconfig/CMakeLists.txt` (so it isn't compiled), no `/sensor` route is registered, and the `g_config.sensor[]`/`SENSOR_NUMBER` fields it referenced were removed from `app_config.h` — the source would no longer even compile against the current config. It survives only as historical reference. If you're attaching real hardware, use `sensors_local` (this section).
 
 ### Sensors reference summary
 
@@ -922,9 +939,11 @@ The web admin also has a **`/sensor`** route (`components/webconfig/pages/page_s
 | `sensors_local_save(data, kind)` | `sensors_local.h` / `.c` | THE aggregate entry: ask every capable, healthy driver to fill `data` |
 | `weather_telemetry_data_t` | `components/weather_telemetry/include/weather_telemetry.h` | the shared container drivers write into (`weather[]` + `telemetry_report[]`) |
 | `weather.c` | `main/weather.c` | owns the container, drives the 1 Hz refresh, encodes and beacons the real APRS WX report |
-| `page_wx.c` | `components/webconfig/pages/page_wx.c` | Weather page; channel picker is populated live from the registry |
+| `sensor_local_properties_t` | `components/sensors_local/include/sensor_local_properties.h` | per-driver descriptor of which WX fields / TLM channels a driver can produce + their labels |
+| `sensors_local_save_one(index,data,kind)` | `sensors_local.h` / `.c` | read ONE driver by index (live per-channel preview behind `/wx/values`) |
+| `page_wx.c` | `components/webconfig/pages/page_wx.c` | Weather page; per-field channel picker filtered by driver properties, live values via `/wx/values` |
 | `drivers/*.c` | `components/sensors_local/drivers/` | where you add a new sensor — one file, no other edits |
-| `/sensor` page + `g_config.sensor[]` | `components/webconfig/pages/page_sensor.c` | **unrelated legacy scaffolding** — config-only, not wired to anything |
+| `/sensor` page (`page_sensor.c`) | `components/webconfig/pages/` | **orphaned legacy source** — not compiled, not routed; `g_config.sensor[]` fields removed |
 
 ---
 
@@ -934,7 +953,7 @@ The web admin also has a **`/sensor`** route (`components/webconfig/pages/page_s
 
 * **ESP-IDF v5.1 or newer** (locked/tested at **5.5.4** — see `dependencies.lock`).
 * An ESP32 with **≥ 4 MB flash**.
-* The IDF component manager fetches **`joltwallet/littlefs ^1.14`** automatically (locked at 1.22.1).
+* The IDF component manager fetches **`joltwallet/littlefs ^1.14`** (locked at 1.22.2) and, via the `sensors_local` component, **`esp-idf-lib/bmp180`** (which pulls in `i2cdev` + `esp_idf_lib_helpers`) automatically.
 
 ### Build
 
@@ -1026,10 +1045,12 @@ Two OTA app slots (`ota_0` / `ota_1`) → **OTA update is supported** from the w
 | GET | `/` | root / login landing |
 | GET | `/logout` | drop Basic auth |
 | GET | `/dashboard` | live dashboard |
-| GET | `/style.css` | shared stylesheet |
+| GET/POST | `/station` | own-station identity: callsign, lat/lon/alt |
+| GET/POST | `/bulletins` | APRS bulletins BLN1..BLN5 |
+| GET/POST | `/objects` | APRS Objects / Items |
 | GET | `/sidebarInfo` | sidebar stats fragment |
-| GET | `/sysinfo` | system info |
 | GET | `/dashinfo` | compact live info strip (JSON) |
+| GET | `/style.css` | shared stylesheet |
 | GET | `/lastheard` | LAST HEARD table (JSON) |
 | GET | `/igate_traffic?since=<seq>` | traffic log delta (JSON) |
 | GET/POST | `/wireless` | Wi-Fi mode, AP, 5 STA slots, TX power |
@@ -1040,13 +1061,15 @@ Two OTA app slots (`ota_0` / `ota_1`) → **OTA update is supported** from the w
 | GET/POST | `/digi` | digipeater settings |
 | GET/POST | `/tracker` | tracker settings |
 | GET/POST | `/wx` | Weather Report settings — fully implemented, sends real APRS WX beacons, see [Sensors](#sensors) |
-| GET/POST | `/tlm` | telemetry settings (configuration-only; values are gathered via `sensors_local` but not yet encoded/beaconed on-air, see [Sensors](#sensors)) |
-| GET/POST | `/sensor` | legacy per-slot sensor config (scaffolding; superseded by `sensors_local`, see [Sensors](#sensors)) |
+| GET | `/wx/values` | live per-channel sensor values for the Weather mapping table (JSON) |
+| GET/POST | `/tlm` | telemetry settings (configuration-only; values gathered via `sensors_local` but not yet encoded/beaconed on-air, see [Sensors](#sensors)) |
 | GET/POST | `/radio` | RF module + audio AFSK modem |
 | GET | `/radio/looptest` | run the loop test (JSON result) |
 | GET/POST | `/vpn` | WireGuard (scaffolding) |
 | GET/POST | `/mqtt` | MQTT (scaffolding) |
-| GET/POST | `/msg` | messaging |
+| GET/POST | `/msg` | messaging engine config (RF/INET, retry, encryption) |
+| GET/POST | `/msgchat` | chat-style inbox/compose UI |
+| GET | `/msgchat/list` | message list fragment (JSON) |
 | GET/POST | `/gnss` | GNSS (scaffolding) |
 | GET/POST | `/mod` | GPIO / hardware mapping |
 | GET | `/symbol` | APRS symbol reference/picker |
@@ -1079,7 +1102,15 @@ The statistics come from `aprs_service_get_stats()`, tracked **independently** o
 
 **IGate** — enable, RF→INET / INET→RF, both filter bitmasks, callsign/SSID/passcode, host/port, server-side filter string, beacon on/off, lat/lon/alt, interval, symbol picker, object, comment, status, PHG (computed client-side from power/gain/height/direction, persisted so the form redisplays).
 
-**Weather** — enable, send-via-RF/-INET, timestamp toggle, WX callsign/SSID/path, position (fixed lat/lon/alt or GPS flag), object name, comment, per-field "Averaged" checkboxes, and — for every on-air WX field — a **channel dropdown** populated live from the `sensors_local` registry (see [Sensors](#sensors)) so a saved sensor driver can be mapped to Wind / Temperature / Humidity / Pressure / Rain / Luminosity / Flood height.
+**Weather** — enable, send-via-RF/-INET, timestamp toggle, WX callsign/SSID/path, position (fixed lat/lon/alt or GPS flag), object name, comment, per-field "Averaged" checkboxes, and — for every on-air WX field — a **channel dropdown** populated live from the `sensors_local` registry and **filtered by each driver's published capabilities** (`sensor_local_properties.h`), so only drivers that can actually produce a given field (Wind / Temperature / Humidity / Pressure / Rain / Luminosity / Flood height) appear on that field's row, labelled "`<sensor> <channel>`". The mapping table also shows each selected channel's **live value**, fetched on demand from `/wx/values` (backed by `sensors_local_save_one()`). See [Sensors](#sensors).
+
+**Station** — the shared own-station identity read by every beacon, object and message: callsign, latitude, longitude and altitude (`g_config.my_*`). Gated by `ENABLE_STATION`.
+
+**Bulletins** — up to five APRS bulletins (addressee `BLN1`..`BLN5`), each with its own text, RF and/or APRS-IS enable, transmit interval and an optional "expire after N hours" window. Bulletins live in their own `/storage/bulletins.json` (not `g_config`, to keep the resident config small); an expired bulletin auto-clears its enable flag and leaves the air. Gated by `ENABLE_BULLETINS`.
+
+**Objects and Items** — up to five APRS Objects/Items, each with name, position, symbol, course/speed, comment, RF and/or APRS-IS enable, repeat interval and a YAAC-style "permanent" flag (permanent → non-timestamped Item, otherwise timestamped Object) plus optional interval decay. "Killing" one transmits it a few extra times (so listeners drop it) then auto-disables it. Stored in their own `/storage/objitems.json`. Gated by `ENABLE_OBJECTS_ITEMS`.
+
+**Snd/Rcv Msg (message chat)** — the actual APRS inbox/compose UI (`/msgchat`): a scrolling panel of sent/received messages for this station, a destination-callsign field, a message-text box (capped at the APRS message length) and a Send button, refreshed via `/msgchat/list`. Distinct from the **Message** page, which only *configures* the messaging engine (RF/INET enable, retry, encryption). Gated by `ENABLE_MSG_CHAT`.
 
 **Wireless** — mode (off/STA/AP/AP+STA), AP SSID/pass/channel, 5 STA slots each with its own **Enable** checkbox, TX power in dBm (converted ×4 to quarter-dBm for `esp_wifi_set_max_tx_power()`), plus a live scan. The scan temporarily flips an AP-only radio to AP+STA — which is why `s_staEnabled` gates every automatic `esp_wifi_connect()`, so the event handler doesn't fight the scan.
 
@@ -1102,18 +1133,31 @@ The statistics come from `aprs_service_get_stats()`, tracked **independently** o
 ### Compile-time module switches (`main/include/app_config.h`)
 
 ```c
-#define ENABLE_DASHBOARD          #define ENABLE_IGATE
-#define ENABLE_RADIO_MODEM        #define ENABLE_DIGIPEATER
-//#define ENABLE_RF_MODULE        #define ENABLE_TRACKER
-//#define ENABLE_VPN              //#define ENABLE_SMARTBEACONING
-//#define ENABLE_MQTT             #define ENABLE_WEATHER
-#define ENABLE_MESSAGE            //#define ENABLE_TELEMETRY
-//#define ENABLE_MOD_GPIO         #define ENABLE_SYSTEM
-#define ENABLE_WIRELESS           //#define ENABLE_GNSS
-#define ENABLE_FILE_STORAGE       #define ENABLE_ABOUT_FIRMWARE
+#define ENABLE_DASHBOARD
+#define ENABLE_MSG_CHAT
+#define ENABLE_BULLETINS
+#define ENABLE_OBJECTS_ITEMS
+#define ENABLE_STATION
+#define ENABLE_RADIO_MODEM
+//#define ENABLE_RF_MODULE
+//#define ENABLE_VPN
+//#define ENABLE_MQTT
+#define ENABLE_MESSAGE
+//#define ENABLE_MOD_GPIO
+#define ENABLE_IGATE
+#define ENABLE_DIGIPEATER
+#define ENABLE_TRACKER
+//#define ENABLE_SMARTBEACONING
+#define ENABLE_WEATHER
+//#define ENABLE_TELEMETRY
+#define ENABLE_SYSTEM
+#define ENABLE_WIRELESS
+//#define ENABLE_GNSS
+#define ENABLE_FILE_STORAGE
+#define ENABLE_ABOUT_FIRMWARE
 ```
 
-Commenting one out removes its sidebar entry and its page from the image. Note that `ENABLE_WEATHER` is **on** by default: the own-station Weather Report is a fully working feature, not scaffolding — see [Sensors](#sensors). There is no `ENABLE_SENSORS` switch; the `sensors_local` driver framework has no compile-time disable and is always built in (its example drivers are gated individually by their own `CONFIG_SENSORS_LOCAL_*_EXAMPLE_DRIVER` defines in `components/sensors_local/CMakeLists.txt`, not by this list). The legacy `/sensor` page has no `ENABLE_*` switch either; it is always compiled but has no sidebar entry.
+Commenting one out removes its sidebar entry and its page from the image. `ENABLE_WEATHER` is **on** by default — the own-station Weather Report is a fully working feature, not scaffolding (see [Sensors](#sensors)). `ENABLE_MSG_CHAT`, `ENABLE_BULLETINS`, `ENABLE_OBJECTS_ITEMS` and `ENABLE_STATION` gate the message-chat, bulletins, objects/items and station-identity pages respectively. There is **no** `ENABLE_SENSORS` switch: the `sensors_local` driver framework has no compile-time disable and is always built in (its individual drivers are gated by their own `CONFIG_SENSORS_LOCAL_*_DRIVER` defines in `components/sensors_local/CMakeLists.txt`, not by this list). There is likewise no working `/sensor` page any more — `page_sensor.c` is orphaned source that is no longer compiled or routed.
 
 ---
 
@@ -1232,7 +1276,7 @@ Reconnects use a **growing back-off** (500 ms per consecutive failure, capped at
 * **VPN / MQTT / GNSS / Bluetooth / PPP / OLED / Modbus**: config fields and (some) pages exist, no implementations.
 * **Weather is implemented**, not scaffolding: `weather.c` runs a real 1 Hz `sensors_local` refresh and a real on-air WX beacon. See [Sensors](#sensors).
 * **Telemetry gathering works, on-air telemetry does not.** `sensors_local` can already fill `aprs_telemetry_report_t`'s analog/digital channels every second, but nothing encodes or transmits a `T#nnn` telemetry packet yet, and the Telemetry page has no `sensors_local` channel picker (unlike the Weather page). See [Sensors](#sensors).
-* **The legacy `/sensor` page (`g_config.sensor[]`) is inert.** Nothing in the firmware reads it back; it predates the `sensors_local` framework and is kept only for `config.json` compatibility. Do not confuse it with `sensors_local`. See [Sensors](#sensors).
+* **The legacy `/sensor` page has been removed.** `page_sensor.c` is orphaned source — no longer compiled or routed — and the `g_config.sensor[]`/`SENSOR_NUMBER` fields it used were dropped from `app_config.h`. Use the `sensors_local` framework instead. See [Sensors](#sensors).
 * **Symbol parsing** only covers the no-timestamp `!` / `=` position formats; `/` and `@` leave the icon blank.
 * **`agc_max_gain`, `sql_level`, `volume`, `adc_gpio`, `dac_gpio`, `rf_sql_*`, `rf_pwr_*`, `adc_atten`** are inert since the modem swap; kept only for `config.json` compatibility.
 * `sdkconfig` ships with `-Og` + assertions, not a release profile.
