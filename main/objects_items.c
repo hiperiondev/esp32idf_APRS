@@ -135,8 +135,10 @@ static void clamp_str(char *dst, const char *src, size_t max_chars) {
     dst[n] = 0;
 }
 
-static bool load_locked(objitems_t *out) {
+static bool load_locked(objitems_t *out, bool *out_missing) {
     memset(out, 0, sizeof(*out));
+    if (out_missing)
+        *out_missing = false;
     // Sane symbol default for any element the file doesn't fully specify.
     for (int i = 0; i < OBJITEM_COUNT; i++) {
         out->item[i].sym[0] = '/';
@@ -147,6 +149,8 @@ static bool load_locked(objitems_t *out) {
     FILE *f = fopen(OBJITEMS_PATH, "r");
     if (!f) {
         ESP_LOGI(TAG, "%s not present - starting with empty objects/items", OBJITEMS_PATH);
+        if (out_missing)
+            *out_missing = true;
         return false;
     }
 
@@ -320,8 +324,16 @@ bool objitems_load(objitems_t *out) {
     if (!out)
         return false;
     lock();
-    bool ok = load_locked(out);
+    bool missing = false;
+    bool ok = load_locked(out, &missing);
     unlock();
+    if (missing) {
+        // First boot / file lost: persist the empty-default set now so
+        // /storage/objitems.json exists on disk instead of only living
+        // in RAM until something else happens to trigger a save.
+        if (!objitems_save(out))
+            ESP_LOGW(TAG, "Failed to write default %s", OBJITEMS_PATH);
+    }
     return ok;
 }
 

@@ -137,12 +137,16 @@ static void write_json_string(FILE *f, const char *v) {
     fputc('"', f);
 }
 
-static bool load_locked(bulletins_t *out) {
+static bool load_locked(bulletins_t *out, bool *out_missing) {
     memset(out, 0, sizeof(*out));
+    if (out_missing)
+        *out_missing = false;
 
     FILE *f = fopen(BULLETINS_PATH, "r");
     if (!f) {
         ESP_LOGI(TAG, "%s not present - starting with empty bulletins", BULLETINS_PATH);
+        if (out_missing)
+            *out_missing = true;
         return false;
     }
 
@@ -261,8 +265,16 @@ bool bulletins_load(bulletins_t *out) {
     if (!out)
         return false;
     lock();
-    bool ok = load_locked(out);
+    bool missing = false;
+    bool ok = load_locked(out, &missing);
     unlock();
+    if (missing) {
+        // First boot / file lost: persist the empty-default set now so
+        // /storage/bulletins.json exists on disk instead of only living
+        // in RAM until something else happens to trigger a save.
+        if (!bulletins_save(out))
+            ESP_LOGW(TAG, "Failed to write default %s", BULLETINS_PATH);
+    }
     return ok;
 }
 
