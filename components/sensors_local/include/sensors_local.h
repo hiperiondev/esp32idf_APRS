@@ -229,6 +229,32 @@ esp_err_t sensors_local_save(weather_telemetry_data_t *data, sensor_local_data_k
 void sensors_local_deinit(void);
 
 /**
+ * @brief Read exactly ONE driver by registry index, lazily initialising it if
+ *        needed, and let it write straight into @p data - the single-channel
+ *        counterpart of ::sensors_local_save (which asks every capable driver
+ *        at once). Intended for on-demand "live preview" callers such as the
+ *        Weather page's Sensor Mapping table, which needs the current reading
+ *        of whichever one channel is selected in a given row, not an
+ *        aggregate pass over the whole registry.
+ *
+ * @param index  Registry position (0..sensors_local_count()-1), i.e. the same
+ *               index used as a <select> option value on the Weather/Telemetry
+ *               channel pickers.
+ * @param data   Caller-owned container to be filled in place, same contract as
+ *               ::sensors_local_save (arrays/qty must already be set up).
+ * @param kind   Bit mask of payload families requested; only the bits also
+ *               advertised in the driver's @c capabilities are actually asked
+ *               for.
+ * @return ESP_OK if the driver was found, (lazily) initialised and asked to
+ *         save; ESP_ERR_NOT_FOUND if @p index is out of range or the slot is
+ *         NULL; ESP_ERR_INVALID_ARG if @p data is NULL or @p kind is
+ *         ::SENSOR_LOCAL_DATA_NONE; whatever the driver's own init()/save()
+ *         returned otherwise.
+ */
+esp_err_t sensors_local_save_one(size_t index, weather_telemetry_data_t *data, sensor_local_data_kind_t kind);
+
+
+/**
  * @brief Auto-register a statically defined driver descriptor at program
  *        start-up, before app_main, with no edit to the core.
  *

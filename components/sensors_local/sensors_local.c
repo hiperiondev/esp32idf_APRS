@@ -262,6 +262,31 @@ esp_err_t sensors_local_save(weather_telemetry_data_t *data, sensor_local_data_k
     return ESP_OK;
 }
 
+esp_err_t sensors_local_save_one(size_t index, weather_telemetry_data_t *data, sensor_local_data_kind_t kind) {
+    if (data == NULL || kind == SENSOR_LOCAL_DATA_NONE)
+        return ESP_ERR_INVALID_ARG;
+
+    /* Snapshot the single driver pointer under the lock (see the locking note
+     * on sensors_local_save() above), then do the (possibly blocking) init and
+     * read outside it. */
+    registry_lock();
+    sensor_local_driver_t *d = (index < s_count) ? s_registry[index] : NULL;
+    registry_unlock();
+
+    if (d == NULL)
+        return ESP_ERR_NOT_FOUND;
+
+    esp_err_t err = ensure_initialized(d);
+    if (err != ESP_OK)
+        return err;
+
+    sensor_local_data_kind_t ask = (sensor_local_data_kind_t)(d->capabilities & (uint32_t)kind);
+    if (ask == SENSOR_LOCAL_DATA_NONE)
+        return ESP_ERR_INVALID_ARG; /* driver doesn't support any of the requested kinds */
+
+    return d->save(d, data, ask);
+}
+
 void sensors_local_deinit(void) {
     registry_lock();
     for (size_t i = 0; i < s_count; i++) {

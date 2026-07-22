@@ -67,8 +67,13 @@ static const char *WX_FIELD_NAME[WX_SENSOR_NUM] = {
  * the filtered list), so it round-trips correctly with wx_sensor_ch[].
  */
 static void wx_channel_select(httpd_req_t *req, int field, uint8_t selected) {
-    char buf[160];
-    snprintf(buf, sizeof(buf), "<select name='wxCh%d' style='width:150px'>", field);
+    char buf[192];
+    // id='wxCh%d' (matching the name) lets the live-value poller below read
+    // the row's *currently selected* channel straight from the DOM, so the
+    // "Value" column previews whatever channel is picked even before Save is
+    // pressed - not just whatever was last saved to flash. onchange triggers
+    // an immediate refresh instead of waiting for the next 2s tick.
+    snprintf(buf, sizeof(buf), "<select name='wxCh%d' id='wxCh%d' style='width:150px' onchange='wxRefreshValues()'>", field, field);
     httpd_resp_sendstr_chunk(req, buf);
 
     snprintf(buf, sizeof(buf), "<option value='255'%s>%s</option>", (selected == 0xFF) ? " selected" : "", TR_WX_CHANNEL_NONE);
@@ -84,6 +89,138 @@ static void wx_channel_select(httpd_req_t *req, int field, uint8_t selected) {
         httpd_resp_sendstr_chunk(req, buf);
     }
     httpd_resp_sendstr_chunk(req, "</select>");
+}
+
+/*
+ * Field present/format helpers, mirroring weather.c's wx_field_present()/
+ * wx_field_value() (kept private to that file). Duplicated here rather than
+ * shared because this is the only other place that needs to pull a single
+ * engineering-unit value out of an ::aprs_weather_report_t; wx_field_format()
+ * additionally renders it as a ready-to-display, unit-suffixed JSON string
+ * literal (quotes included) for the live-preview endpoint below.
+ */
+static bool wx_field_present(const aprs_weather_report_t *wx, wx_field_id_t f) {
+    switch (f) {
+        case WX_FIELD_WIND_DIRECTION:
+        case WX_FIELD_WIND_SPEED:
+            return wx->enabled[APRS_WX_SENSOR_WIND] && !wx->wind.direction_unknown;
+        case WX_FIELD_WIND_GUST:
+            return wx->enabled[APRS_WX_SENSOR_WIND] && wx->wind.has_gust;
+        case WX_FIELD_TEMPERATURE:
+            return wx->enabled[APRS_WX_SENSOR_TEMPERATURE];
+        case WX_FIELD_RAIN_1H:
+            return wx->enabled[APRS_WX_SENSOR_RAIN_LAST_HOUR];
+        case WX_FIELD_RAIN_24H:
+            return wx->enabled[APRS_WX_SENSOR_RAIN_LAST_24H];
+        case WX_FIELD_RAIN_MIDNIGHT:
+            return wx->enabled[APRS_WX_SENSOR_RAIN_SINCE_MIDNIGHT];
+        case WX_FIELD_SNOW_24H:
+            return wx->enabled[APRS_WX_SENSOR_SNOW_LAST_24H];
+        case WX_FIELD_HUMIDITY:
+            return wx->enabled[APRS_WX_SENSOR_HUMIDITY];
+        case WX_FIELD_PRESSURE:
+            return wx->enabled[APRS_WX_SENSOR_BAROMETRIC_PRESSURE];
+        case WX_FIELD_LUMINOSITY:
+            return wx->enabled[APRS_WX_SENSOR_LUMINOSITY];
+        case WX_FIELD_FLOOD_HEIGHT_FT:
+            return wx->enabled[APRS_WX_SENSOR_FLOOD_HEIGHT_FT];
+        case WX_FIELD_FLOOD_HEIGHT_M:
+            return wx->enabled[APRS_WX_SENSOR_FLOOD_HEIGHT_M];
+        default:
+            return false;
+    }
+}
+
+// Renders "<field's engineering value> <unit>" as a complete, already-quoted
+// JSON string literal (e.g. "\"23 F\""), plain ASCII only so it never needs
+// JSON escaping. out must be at least 40 bytes.
+static void wx_field_format(const aprs_weather_report_t *wx, wx_field_id_t f, char *out, size_t outsz) {
+    switch (f) {
+        case WX_FIELD_WIND_DIRECTION:
+            snprintf(out, outsz, "\"%u deg\"", (unsigned)wx->wind.direction_deg);
+            break;
+        case WX_FIELD_WIND_SPEED:
+            snprintf(out, outsz, "\"%u mph\"", (unsigned)wx->wind.sustained_mph);
+            break;
+        case WX_FIELD_WIND_GUST:
+            snprintf(out, outsz, "\"%u mph\"", (unsigned)wx->wind.gust_mph);
+            break;
+        case WX_FIELD_TEMPERATURE:
+            snprintf(out, outsz, "\"%d F\"", (int)wx->temperature_f);
+            break;
+        case WX_FIELD_RAIN_1H:
+            snprintf(out, outsz, "\"%.2f in\"", wx->rain_last_hour_hundredths_in / 100.0);
+            break;
+        case WX_FIELD_RAIN_24H:
+            snprintf(out, outsz, "\"%.2f in\"", wx->rain_last_24h_hundredths_in / 100.0);
+            break;
+        case WX_FIELD_RAIN_MIDNIGHT:
+            snprintf(out, outsz, "\"%.2f in\"", wx->rain_since_midnight_hundredths_in / 100.0);
+            break;
+        case WX_FIELD_SNOW_24H:
+            snprintf(out, outsz, "\"%.1f in\"", wx->snow_last_24h_tenths_in / 10.0);
+            break;
+        case WX_FIELD_HUMIDITY:
+            snprintf(out, outsz, "\"%u %%\"", (unsigned)wx->humidity_percent);
+            break;
+        case WX_FIELD_PRESSURE:
+            snprintf(out, outsz, "\"%.1f mb\"", wx->barometric_pressure_tenths_mb / 10.0);
+            break;
+        case WX_FIELD_LUMINOSITY:
+            snprintf(out, outsz, "\"%u W/m2\"", (unsigned)wx->luminosity_wm2);
+            break;
+        case WX_FIELD_FLOOD_HEIGHT_FT:
+            snprintf(out, outsz, "\"%.1f ft\"", (double)wx->flood_height_ft);
+            break;
+        case WX_FIELD_FLOOD_HEIGHT_M:
+            snprintf(out, outsz, "\"%.1f m\"", (double)wx->flood_height_m);
+            break;
+        default:
+            snprintf(out, outsz, "null");
+            break;
+    }
+}
+
+// GET /wx/values?ch0=<channel>&ch1=<channel>&... - one "chN" query parameter
+// per WX_SENSOR_NUM row, giving the channel currently selected in that row's
+// <select> (255/absent = "(none)"). Reads that ONE channel's driver fresh
+// (sensors_local_save_one(), no averaging, no dependency on Save having been
+// pressed) and returns a JSON array of the same length, each slot either a
+// quoted "value unit" string or `null` if the row has no channel selected, the
+// channel doesn't exist / isn't a weather sensor, or it has no reading for
+// that particular field this cycle. Polled every 2s by the page's script.
+esp_err_t page_wx_values_get(httpd_req_t *req) {
+    if (!web_check_auth(req))
+        return ESP_OK;
+
+    char query[512];
+    if (httpd_req_get_url_query_str(req, query, sizeof(query)) != ESP_OK)
+        query[0] = 0;
+
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_sendstr_chunk(req, "[");
+    for (int i = 0; i < WX_SENSOR_NUM; i++) {
+        if (i > 0)
+            httpd_resp_sendstr_chunk(req, ",");
+
+        char key[16];
+        snprintf(key, sizeof(key), "ch%d", i);
+        int ch = web_form_get_int(query, key, 255);
+
+        char out[40] = "null";
+        if (ch >= 0 && ch < 255) {
+            aprs_weather_report_t wx = { 0 };
+            weather_telemetry_data_t scratch = { 0 };
+            scratch.weather = &wx;
+            scratch.weather_qty = 1;
+
+            if (sensors_local_save_one((size_t)ch, &scratch, SENSOR_LOCAL_DATA_WEATHER) == ESP_OK && wx_field_present(&wx, (wx_field_id_t)i))
+                wx_field_format(&wx, (wx_field_id_t)i, out, sizeof(out));
+        }
+        httpd_resp_sendstr_chunk(req, out);
+    }
+    httpd_resp_sendstr_chunk(req, "]");
+    return ESP_OK;
 }
 
 esp_err_t page_wx_get(httpd_req_t *req) {
@@ -114,7 +251,9 @@ esp_err_t page_wx_get(httpd_req_t *req) {
     web_fieldset_close(req);
 
     web_fieldset_open(req, TR_F_SENSOR_MAPPING_ENABLE_AVERAGED_SOURCE_CHANNEL);
-    httpd_resp_sendstr_chunk(req, "<table><tr><th>" TR_WX_FIELD "</th><th>" TR_F_ENABLE "</th><th>" TR_TLM_AVG "</th><th>" TR_WX_CHANNEL "</th></tr>");
+    httpd_resp_sendstr_chunk(req,
+                              "<table><tr><th>" TR_WX_FIELD "</th><th>" TR_F_ENABLE "</th><th>" TR_TLM_AVG "</th><th>" TR_WX_CHANNEL "</th><th>" TR_WX_VALUE
+                              "</th></tr>");
     for (int i = 0; i < WX_SENSOR_NUM; i++) {
         char row[300];
         snprintf(row, sizeof(row),
@@ -125,10 +264,44 @@ esp_err_t page_wx_get(httpd_req_t *req) {
                  WX_FIELD_NAME[i], i, g_config.wx_sensor_enable[i] ? "checked" : "", i, g_config.wx_sensor_avg[i] ? "checked" : "");
         httpd_resp_sendstr_chunk(req, row);
         wx_channel_select(req, i, g_config.wx_sensor_ch[i]);
-        httpd_resp_sendstr_chunk(req, "</td></tr>");
+        char val_td[40];
+        snprintf(val_td, sizeof(val_td), "</td><td id='wxVal%d'>-</td></tr>", i);
+        httpd_resp_sendstr_chunk(req, val_td);
     }
     httpd_resp_sendstr_chunk(req, "</table>");
     web_fieldset_close(req);
+
+    // Live "Value" column: every 2s (and immediately on any row's channel
+    // change via wx_channel_select()'s onchange), read whatever channel is
+    // *currently selected* in each row straight from the DOM and ask the
+    // firmware for that one channel's live reading of that row's field via
+    // GET /wx/values. Does not require Save to have been pressed first, and
+    // stops cleanly if the user navigates away (clearInterval on unload).
+    {
+        char script[900];
+        snprintf(script, sizeof(script),
+                 "<script>"
+                 "var WX_N=%d;"
+                 "function wxRefreshValues(){"
+                 "var q=[];"
+                 "for(var i=0;i<WX_N;i++){"
+                 "var sel=document.getElementById('wxCh'+i);"
+                 "q.push('ch'+i+'='+(sel?sel.value:255));"
+                 "}"
+                 "fetch('/wx/values?'+q.join('&')).then(function(r){return r.json();}).then(function(vals){"
+                 "for(var i=0;i<WX_N;i++){"
+                 "var td=document.getElementById('wxVal'+i);"
+                 "if(td)td.textContent=(vals[i]===null||vals[i]===undefined)?'-':vals[i];"
+                 "}"
+                 "}).catch(function(){});"
+                 "}"
+                 "wxRefreshValues();"
+                 "var wxValTimer=setInterval(wxRefreshValues,2000);"
+                 "window.addEventListener('beforeunload',function(){clearInterval(wxValTimer);});"
+                 "</script>",
+                 (int)WX_SENSOR_NUM);
+        httpd_resp_sendstr_chunk(req, script);
+    }
 
     httpd_resp_sendstr_chunk(req, "<button type='submit'>" TR_BTN_SAVE "</button></form>");
     web_send_footer(req);

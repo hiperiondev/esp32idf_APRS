@@ -65,6 +65,7 @@ esp_err_t page_tracker_get(httpd_req_t *req);
 esp_err_t page_tracker_post(httpd_req_t *req);
 esp_err_t page_wx_get(httpd_req_t *req);
 esp_err_t page_wx_post(httpd_req_t *req);
+esp_err_t page_wx_values_get(httpd_req_t *req); // GET /wx/values (JSON live sensor-mapping preview, polled every 2s)
 esp_err_t page_tlm_get(httpd_req_t *req);
 esp_err_t page_tlm_post(httpd_req_t *req);
 

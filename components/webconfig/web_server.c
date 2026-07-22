@@ -99,6 +99,7 @@ void web_server_start(void) {
     reg(server, "/tracker", HTTP_POST, page_tracker_post);
     reg(server, "/wx", HTTP_GET, page_wx_get);
     reg(server, "/wx", HTTP_POST, page_wx_post);
+    reg(server, "/wx/values", HTTP_GET, page_wx_values_get);
     reg(server, "/tlm", HTTP_GET, page_tlm_get);
     reg(server, "/tlm", HTTP_POST, page_tlm_post);
 

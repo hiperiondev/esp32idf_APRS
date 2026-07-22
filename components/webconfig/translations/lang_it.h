@@ -630,6 +630,7 @@
 #define TR_WX_FIELD           "Campo WX"
 #define TR_WX_CHANNEL         "Canale"
 #define TR_WX_CHANNEL_NONE    "(nessuno)"
+#define TR_WX_VALUE           "Valore"
 
 // ---- IGATE page additions (station symbol, path preset, timestamp, PHG, filters) ----
 #define TR_F_STATION_SYMBOL     "Simbolo stazione"
