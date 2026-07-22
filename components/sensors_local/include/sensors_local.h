@@ -55,6 +55,7 @@
 
 #include "esp_err.h"
 #include "weather_telemetry.h"
+#include "sensor_local_properties.h"
 
 /**
  * @brief Which payload family a driver is being asked to populate on a given
@@ -149,6 +150,22 @@ struct sensor_local_driver {
     sensor_local_init_fn_t init;     /**< Optional bring-up (may be NULL). */
     sensor_local_save_fn_t save;     /**< REQUIRED common entry that fills ::weather_telemetry_data_t. */
     sensor_local_deinit_fn_t deinit; /**< Optional tear-down (may be NULL). */
+
+    /**
+     * @brief Pointer to this driver's fine-grained capability descriptor,
+     *        declared in its own "<sensor>_properties.h" (see
+     *        sensor_local_properties.h). Tells consumers of the registry
+     *        (chiefly the Weather page's per-field "Channel" picker)
+     *        exactly which Weather parameters and/or Telemetry channels
+     *        this driver can produce - unlike @c capabilities above,
+     *        which only says the coarse family (Weather/Telemetry).
+     *        May be NULL for a legacy driver that has not been migrated
+     *        to publish a properties descriptor yet; NULL is treated as
+     *        "no fields advertised" (i.e. the driver will not appear as a
+     *        choice on any per-field channel picker that filters by
+     *        properties), so every in-tree driver should set this.
+     */
+    const sensor_local_properties_t *properties;
 
     void *ctx; /**< Driver-private state, opaque to the registry. */
 

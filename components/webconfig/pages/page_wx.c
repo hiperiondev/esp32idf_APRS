@@ -53,18 +53,47 @@ static const char *WX_FIELD_NAME[WX_SENSOR_NUM] = {
 };
 
 /*
+ * Bit position in ::sensor_local_wx_mask_t for each ::wx_field_id_t row of
+ * this page, so a driver's ::sensor_local_properties_t::wx mask can be
+ * tested directly against the field currently being rendered. Kept as an
+ * explicit table (rather than relying on the enum values lining up) so the
+ * mapping is correct even if either enum's declaration order ever changes.
+ */
+static const sensor_local_wx_mask_t WX_FIELD_PROPERTY_BIT[WX_SENSOR_NUM] = {
+    [WX_FIELD_WIND_DIRECTION] = SENSOR_LOCAL_WX_WIND_DIRECTION,
+    [WX_FIELD_WIND_SPEED] = SENSOR_LOCAL_WX_WIND_SPEED,
+    [WX_FIELD_WIND_GUST] = SENSOR_LOCAL_WX_WIND_GUST,
+    [WX_FIELD_TEMPERATURE] = SENSOR_LOCAL_WX_TEMPERATURE,
+    [WX_FIELD_RAIN_1H] = SENSOR_LOCAL_WX_RAIN_1H,
+    [WX_FIELD_RAIN_24H] = SENSOR_LOCAL_WX_RAIN_24H,
+    [WX_FIELD_RAIN_MIDNIGHT] = SENSOR_LOCAL_WX_RAIN_MIDNIGHT,
+    [WX_FIELD_SNOW_24H] = SENSOR_LOCAL_WX_SNOW,
+    [WX_FIELD_HUMIDITY] = SENSOR_LOCAL_WX_HUMIDITY,
+    [WX_FIELD_PRESSURE] = SENSOR_LOCAL_WX_PRESSURE,
+    [WX_FIELD_LUMINOSITY] = SENSOR_LOCAL_WX_LUMINOSITY,
+    [WX_FIELD_FLOOD_HEIGHT_FT] = SENSOR_LOCAL_WX_FLOOD_HEIGHT_FT,
+    [WX_FIELD_FLOOD_HEIGHT_M] = SENSOR_LOCAL_WX_FLOOD_HEIGHT_M,
+};
+
+/*
  * Emits the <select> for one field's "source channel", populated from the live
  * sensors_local registry so each option shows the channel *number and name*
  * ("0: bme280", "1: ds18b20", ...). Index 0xFF (255) is the "(none)" choice.
  * If no local sensor driver has registered yet, only "(none)" is offered.
  *
- * Only drivers that advertise ::SENSOR_LOCAL_DATA_WEATHER in their
- * capabilities are listed here: a Weather Report field can only ever be fed
- * from a weather-capable sensor, so telemetry-only (or any future non-weather
- * kind of) driver must not show up as a selectable source on this page - it
- * belongs on the Telemetry page's channel mapping instead. The option value
- * is still the sensor's real registry index (not a sequential position among
- * the filtered list), so it round-trips correctly with wx_sensor_ch[].
+ * A driver is only listed as a choice for a given row/field if BOTH:
+ *   1) it advertises ::SENSOR_LOCAL_DATA_WEATHER in ::sensor_local_driver_t::capabilities
+ *      (coarse family check - excludes telemetry-only drivers), AND
+ *   2) its ::sensor_local_driver_t::properties (see sensor_local_properties.h)
+ *      sets the bit matching THIS row's field (fine-grained check - e.g. a
+ *      Temperature+Pressure-only sensor such as bmp180 is offered on the
+ *      Temperature and Pressure rows, but not on Wind/Rain/Humidity/etc).
+ * A driver with a NULL @c properties pointer (not yet migrated to publish a
+ * descriptor) is never offered on any row, since its per-field fitness is
+ * unknown.
+ * The option value is still the sensor's real registry index (not a
+ * sequential position among the filtered list), so it round-trips correctly
+ * with wx_sensor_ch[].
  */
 static void wx_channel_select(httpd_req_t *req, int field, uint8_t selected) {
     char buf[192];
@@ -79,11 +108,15 @@ static void wx_channel_select(httpd_req_t *req, int field, uint8_t selected) {
     snprintf(buf, sizeof(buf), "<option value='255'%s>%s</option>", (selected == 0xFF) ? " selected" : "", TR_WX_CHANNEL_NONE);
     httpd_resp_sendstr_chunk(req, buf);
 
+    sensor_local_wx_mask_t field_bit = ((unsigned)field < (unsigned)WX_SENSOR_NUM) ? WX_FIELD_PROPERTY_BIT[field] : SENSOR_LOCAL_WX_NONE;
+
     size_t n = sensors_local_count();
     for (size_t ch = 0; ch < n; ch++) {
         sensor_local_driver_t *d = sensors_local_get(ch);
         if (d == NULL || !(d->capabilities & SENSOR_LOCAL_DATA_WEATHER))
             continue; /* not a weather sensor: skip (e.g. telemetry-only drivers) */
+        if (!sensor_local_properties_has_wx(d->properties, field_bit))
+            continue; /* weather sensor, but doesn't produce THIS field (e.g. bmp180 on the Wind row) */
         const char *nm = (d->name) ? d->name : "?";
         snprintf(buf, sizeof(buf), "<option value='%u'%s>%u: %.40s</option>", (unsigned)ch, (selected == ch) ? " selected" : "", (unsigned)ch, nm);
         httpd_resp_sendstr_chunk(req, buf);

@@ -40,7 +40,8 @@
 #include <i2cdev.h>   /* esp-idf-lib i2cdev, required once before init_desc */
 
 #include "sensors_local.h"
-#include "BMP180.h"   /* our compile-time pin/port config (upper-case)      */
+#include "BMP180.h"             /* our compile-time pin/port config (upper-case)      */
+#include "bmp180_properties.h"  /* fine-grained Weather field capability descriptor   */
 
 #ifdef CONFIG_SENSORS_LOCAL_BMP180_DRIVER
 
@@ -128,6 +129,7 @@ static sensor_local_driver_t bmp180_driver = {
     .init = bmp180_drv_init,
     .save = bmp180_drv_save,
     .deinit = bmp180_drv_deinit,
+    .properties = &bmp180_properties,
     .ctx = &s_ctx,
 };
 

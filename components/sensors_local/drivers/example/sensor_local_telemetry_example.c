@@ -30,6 +30,7 @@
 
 #include "esp_log.h"
 #include "sensors_local.h"
+#include "tlm_example_properties.h" /* fine-grained Telemetry channel capability descriptor */
 
 static const char *TAG = "sensor_tlm_example";
 
@@ -84,6 +85,7 @@ static sensor_local_driver_t tlm_example_driver = {
     .init = tlm_example_init,
     .save = tlm_example_save,
     .deinit = NULL,
+    .properties = &tlm_example_properties,
     .ctx = &s_ctx,
 };
 

@@ -10,6 +10,7 @@ idf_component_register(
         "include"
         "drivers"
         "drivers/bmp180"
+        "drivers/example"
     REQUIRES
         weather_telemetry
     PRIV_REQUIRES

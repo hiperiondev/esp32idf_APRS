@@ -31,6 +31,7 @@
 
 #include "esp_log.h"
 #include "sensors_local.h"
+#include "wx_example_properties.h" /* fine-grained Weather field capability descriptor */
 
 static const char *TAG = "sensor_wx_example";
 
@@ -102,6 +103,7 @@ static sensor_local_driver_t wx_example_driver = {
     .init = wx_example_init,
     .save = wx_example_save,
     .deinit = NULL,
+    .properties = &wx_example_properties,
     .ctx = &s_ctx,
 };
 
