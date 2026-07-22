@@ -57,7 +57,9 @@ static const char *TAG = "beacon";
 // silently trimmed on-air with no path, so beacons could reach the local
 // IGate but consistently failed to be digipeated/heard further out and
 // looked "broken" from anywhere but direct RF earshot.
-static void buildPathSuffix(uint8_t pathBitmask, char *out, size_t outMax) {
+// pathPreset is a snapshot of g_config.path[0..3] taken under app_config_lock()
+// by the caller, so this never touches g_config directly.
+static void buildPathSuffix(uint8_t pathBitmask, const char pathPreset[4][72], char *out, size_t outMax) {
     out[0] = 0;
     if (pathBitmask == 0 || outMax == 0)
         return;
@@ -66,10 +68,10 @@ static void buildPathSuffix(uint8_t pathBitmask, char *out, size_t outMax) {
     for (int bit = 0; bit < 4; bit++) {
         if (!(pathBitmask & (1 << bit)))
             continue;
-        if (!g_config.path[bit][0])
+        if (!pathPreset[bit][0])
             continue; // bit selected but that preset slot isn't configured
 
-        int n = snprintf(out + used, outMax - used, ",%s", g_config.path[bit]);
+        int n = snprintf(out + used, outMax - used, ",%s", pathPreset[bit]);
         if (n < 0)
             break;
         if ((size_t)n >= outMax - used) {
@@ -96,8 +98,14 @@ static void latLonToAprs(float lat, float lon, char *latOut, size_t latMax, char
 // Generic parameters for one station's fixed-position beacon, filled in by
 // each of the small per-service wrappers below (tracker / igate / digi) so
 // the actual packet-building logic only has to be written once.
+// This owns copies of every string it needs (call/symbol/comment) and a
+// snapshot of the four path presets, rather than pointing into g_config. The
+// web task rewrites g_config field-by-field on a settings save, so a builder
+// that dereferenced g_config strings directly could read one mid-strcpy (torn
+// or momentarily unterminated) and run off the end. Each per-service function
+// fills this under app_config_lock() and then builds/transmits from the copy.
 typedef struct {
-    const char *call;
+    char call[10];
     uint8_t ssid;
     uint8_t pathSel;
     bool timestamp;
@@ -105,8 +113,9 @@ typedef struct {
     float lon;
     float alt;
     bool sendAltitude;
-    const char *symbol; // 2 chars: table + code
-    const char *comment;
+    char symbol[3];            // table + code + NUL
+    char comment[COMMENT_SIZE];
+    char pathPreset[4][72];    // snapshot of g_config.path[0..3]
 } beacon_params_t;
 
 // Builds the full TNC2 text line for one beacon transmission. Returns the
@@ -122,7 +131,7 @@ static int buildPositionPacket(const beacon_params_t *p, char *out, size_t outMa
         snprintf(callField, sizeof(callField), "%s", p->call);
 
     char path[80];
-    buildPathSuffix(p->pathSel, path, sizeof(path));
+    buildPathSuffix(p->pathSel, p->pathPreset, path, sizeof(path));
 
     char latStr[10], lonStr[11];
     latLonToAprs(p->lat, p->lon, latStr, sizeof(latStr), lonStr, sizeof(lonStr));
@@ -197,18 +206,23 @@ static uint32_t trackerBeaconService(void) {
 
     int64_t now = mono_seconds();
     if (now >= s_trk_next_due) {
-        beacon_params_t p = {
-            .call = g_config.trk_mycall[0] ? g_config.trk_mycall : g_config.aprs_mycall,
-            .ssid = g_config.trk_mycall[0] ? g_config.trk_ssid : g_config.aprs_ssid,
-            .pathSel = g_config.trk_path,
-            .timestamp = g_config.trk_timestamp,
-            .lat = g_config.trk_lat,
-            .lon = g_config.trk_lon,
-            .alt = g_config.trk_alt,
-            .sendAltitude = g_config.trk_altitude,
-            .symbol = g_config.trk_symbol,
-            .comment = g_config.trk_comment,
-        };
+        beacon_params_t p;
+        app_config_lock();
+        {
+            bool useTrk = g_config.trk_mycall[0] != 0;
+            memcpy(p.call, useTrk ? g_config.trk_mycall : g_config.aprs_mycall, sizeof(p.call));
+            p.ssid = useTrk ? g_config.trk_ssid : g_config.aprs_ssid;
+            p.pathSel = g_config.trk_path;
+            p.timestamp = g_config.trk_timestamp;
+            p.lat = g_config.trk_lat;
+            p.lon = g_config.trk_lon;
+            p.alt = g_config.trk_alt;
+            p.sendAltitude = g_config.trk_altitude;
+            memcpy(p.symbol, g_config.trk_symbol, sizeof(p.symbol));
+            memcpy(p.comment, g_config.trk_comment, sizeof(p.comment));
+            memcpy(p.pathPreset, g_config.path, sizeof(p.pathPreset));
+        }
+        app_config_unlock();
 
         char packet[400]; // callField+dest+path+infoField(up to 256), grown for 128-byte comments
         int len = buildPositionPacket(&p, packet, sizeof(packet));
@@ -260,18 +274,22 @@ static uint32_t igateBeaconService(void) {
 
     int64_t now = mono_seconds();
     if (now >= s_igate_next_due) {
-        beacon_params_t p = {
-            .call = g_config.aprs_mycall,
-            .ssid = g_config.aprs_ssid,
-            .pathSel = g_config.igate_path,
-            .timestamp = g_config.igate_timestamp,
-            .lat = g_config.igate_lat,
-            .lon = g_config.igate_lon,
-            .alt = g_config.igate_alt,
-            .sendAltitude = g_config.igate_alt != 0.0f,
-            .symbol = g_config.igate_symbol,
-            .comment = g_config.igate_comment,
-        };
+        beacon_params_t p;
+        app_config_lock();
+        {
+            memcpy(p.call, g_config.aprs_mycall, sizeof(p.call));
+            p.ssid = g_config.aprs_ssid;
+            p.pathSel = g_config.igate_path;
+            p.timestamp = g_config.igate_timestamp;
+            p.lat = g_config.igate_lat;
+            p.lon = g_config.igate_lon;
+            p.alt = g_config.igate_alt;
+            p.sendAltitude = g_config.igate_alt != 0.0f;
+            memcpy(p.symbol, g_config.igate_symbol, sizeof(p.symbol));
+            memcpy(p.comment, g_config.igate_comment, sizeof(p.comment));
+            memcpy(p.pathPreset, g_config.path, sizeof(p.pathPreset));
+        }
+        app_config_unlock();
 
         char packet[400]; // callField+dest+path+infoField(up to 256), grown for 128-byte comments
         int len = buildPositionPacket(&p, packet, sizeof(packet));
@@ -320,21 +338,23 @@ static uint32_t digiBeaconService(void) {
 
     int64_t now = mono_seconds();
     if (now >= s_digi_next_due) {
-        const char *call = g_config.digi_mycall[0] ? g_config.digi_mycall : g_config.aprs_mycall;
-        uint8_t ssid = g_config.digi_mycall[0] ? g_config.digi_ssid : g_config.aprs_ssid;
-
-        beacon_params_t p = {
-            .call = call,
-            .ssid = ssid,
-            .pathSel = g_config.digi_path,
-            .timestamp = g_config.digi_timestamp,
-            .lat = g_config.digi_lat,
-            .lon = g_config.digi_lon,
-            .alt = g_config.digi_alt,
-            .sendAltitude = g_config.digi_alt != 0.0f,
-            .symbol = g_config.digi_symbol,
-            .comment = g_config.digi_comment,
-        };
+        beacon_params_t p;
+        app_config_lock();
+        {
+            bool useDigi = g_config.digi_mycall[0] != 0;
+            memcpy(p.call, useDigi ? g_config.digi_mycall : g_config.aprs_mycall, sizeof(p.call));
+            p.ssid = useDigi ? g_config.digi_ssid : g_config.aprs_ssid;
+            p.pathSel = g_config.digi_path;
+            p.timestamp = g_config.digi_timestamp;
+            p.lat = g_config.digi_lat;
+            p.lon = g_config.digi_lon;
+            p.alt = g_config.digi_alt;
+            p.sendAltitude = g_config.digi_alt != 0.0f;
+            memcpy(p.symbol, g_config.digi_symbol, sizeof(p.symbol));
+            memcpy(p.comment, g_config.digi_comment, sizeof(p.comment));
+            memcpy(p.pathPreset, g_config.path, sizeof(p.pathPreset));
+        }
+        app_config_unlock();
 
         char packet[400]; // callField+dest+path+infoField(up to 256), grown for 128-byte comments
         int len = buildPositionPacket(&p, packet, sizeof(packet));

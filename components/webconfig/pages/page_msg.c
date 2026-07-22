@@ -86,6 +86,7 @@ esp_err_t page_msg_post(httpd_req_t *req) {
         return ESP_OK;
     }
 
+    app_config_lock();
     g_config.msg_enable = web_form_get_bool(body, "msgEnable");
     g_config.msg_use_station = web_form_get_bool(body, "msgUseStation");
     if (g_config.msg_use_station) {
@@ -109,6 +110,8 @@ esp_err_t page_msg_post(httpd_req_t *req) {
     g_config.msg_alarm_enable = web_form_get_bool(body, "msgAlarmEn");
     int8_t alarm_gpio_in = (int8_t)web_form_get_int(body, "msgAlarmGpio", g_config.msg_alarm_gpio);
     g_config.msg_alarm_gpio = message_alarm_gpio_is_valid(alarm_gpio_in) ? alarm_gpio_in : -1;
+
+    app_config_unlock();
 
     app_config_save();
     message_alarm_configure(g_config.msg_alarm_enable, g_config.msg_alarm_gpio);

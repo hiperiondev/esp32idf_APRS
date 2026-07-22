@@ -202,6 +202,7 @@ esp_err_t page_mod_post(httpd_req_t *req) {
         return ESP_OK;
     }
 
+    app_config_lock();
     g_config.rf_tx_gpio = (int8_t)web_form_get_int(body, "rfTx", g_config.rf_tx_gpio);
     g_config.rf_rx_gpio = (int8_t)web_form_get_int(body, "rfRx", g_config.rf_rx_gpio);
     g_config.rf_sql_gpio = (int8_t)web_form_get_int(body, "rfSQL", g_config.rf_sql_gpio);
@@ -292,6 +293,8 @@ esp_err_t page_mod_post(httpd_req_t *req) {
     g_config.ppp_napt = web_form_get_bool(body, "pppNAPT");
 
     free(body);
+    app_config_unlock();
+
     app_config_save();
 
     // PTT pin/polarity are applied at runtime (aprs_service_build_modem_config()

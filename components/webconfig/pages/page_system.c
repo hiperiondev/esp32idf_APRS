@@ -93,6 +93,7 @@ esp_err_t page_system_post(httpd_req_t *req) {
         return ESP_OK;
     }
 
+    app_config_lock();
     web_form_get(body, "httpUser", g_config.http_username, sizeof(g_config.http_username));
     web_form_get(body, "httpPass", g_config.http_password, sizeof(g_config.http_password));
     web_form_get(body, "hostName", g_config.host_name, sizeof(g_config.host_name));
@@ -109,6 +110,8 @@ esp_err_t page_system_post(httpd_req_t *req) {
     int freq = web_form_get_int(body, "cpuFreq", g_config.cpuFreq);
     if (freq == 80 || freq == 160 || freq == 240)
         g_config.cpuFreq = (uint8_t)freq;
+
+    app_config_unlock();
 
     app_config_save();
     // Apply the CPU frequency immediately (mirrors previous /sysinfo

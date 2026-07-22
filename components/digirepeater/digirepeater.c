@@ -52,6 +52,17 @@ int digiProcess(ax25_msg_t *packet) {
     int idx, j;
     uint8_t ctmp;
 
+    // Snapshot the digipeater's own call/SSID once at entry. This runs on the
+    // modem RX task and compares/copies digi_mycall many times below; a web
+    // save rewriting it mid-run could otherwise cause a torn compare or a
+    // copy of an unterminated callsign into the outgoing path.
+    char digiMyCall[10];
+    uint8_t digiMySsid;
+    app_config_lock();
+    memcpy(digiMyCall, g_config.digi_mycall, sizeof(digiMyCall));
+    digiMySsid = g_config.digi_ssid;
+    app_config_unlock();
+
     s_stats.rxPkts++;
 
     if (packet->len < 5) {
@@ -82,8 +93,8 @@ int digiProcess(ax25_msg_t *packet) {
 
             if (packet->rpt_count > 0) {
                 for (idx = 0; idx < packet->rpt_count; idx++) {
-                    if (!strcmp(packet->rpt_list[idx].call, g_config.digi_mycall)) {
-                        if (packet->rpt_list[idx].ssid == g_config.digi_ssid) {
+                    if (!strcmp(packet->rpt_list[idx].call, digiMyCall)) {
+                        if (packet->rpt_list[idx].ssid == digiMySsid) {
                             if (packet->rpt_flags & (1 << idx)) {
                                 s_stats.dropRx++;
                                 return 0; // already used *
@@ -125,16 +136,16 @@ int digiProcess(ax25_msg_t *packet) {
                     }
 
                     packet->rpt_count += 1;
-                    copy_call(packet->rpt_list[idx].call, g_config.digi_mycall);
-                    packet->rpt_list[idx].ssid = g_config.digi_ssid;
+                    copy_call(packet->rpt_list[idx].call, digiMyCall);
+                    packet->rpt_list[idx].ssid = digiMySsid;
                     packet->rpt_flags |= (1 << idx);
                     s_stats.txPkts++;
                     return 2;
                 }
             } else {
                 idx = 0;
-                copy_call(packet->rpt_list[idx].call, g_config.digi_mycall);
-                packet->rpt_list[idx].ssid = g_config.digi_ssid;
+                copy_call(packet->rpt_list[idx].call, digiMyCall);
+                packet->rpt_list[idx].ssid = digiMySsid;
                 packet->rpt_flags |= (1 << idx);
                 packet->rpt_count += 1;
                 s_stats.txPkts++;
@@ -173,8 +184,8 @@ int digiProcess(ax25_msg_t *packet) {
                 if (ctmp > 15)
                     ctmp = 0;
                 if (ctmp == 0) {
-                    copy_call(packet->rpt_list[idx].call, g_config.digi_mycall);
-                    packet->rpt_list[idx].ssid = g_config.digi_ssid;
+                    copy_call(packet->rpt_list[idx].call, digiMyCall);
+                    packet->rpt_list[idx].ssid = digiMySsid;
                     packet->rpt_flags |= (1 << idx);
                     j = 2;
                     break;
@@ -185,8 +196,8 @@ int digiProcess(ax25_msg_t *packet) {
                     break;
                 }
             } else {
-                copy_call(packet->rpt_list[idx].call, g_config.digi_mycall);
-                packet->rpt_list[idx].ssid = g_config.digi_ssid;
+                copy_call(packet->rpt_list[idx].call, digiMyCall);
+                packet->rpt_list[idx].ssid = digiMySsid;
                 packet->rpt_flags |= (1 << idx);
                 j = 2;
                 break;
@@ -198,8 +209,8 @@ int digiProcess(ax25_msg_t *packet) {
             if (ctmp > 15)
                 ctmp = 0;
             if (ctmp == 0) {
-                copy_call(packet->rpt_list[idx].call, g_config.digi_mycall);
-                packet->rpt_list[idx].ssid = g_config.digi_ssid;
+                copy_call(packet->rpt_list[idx].call, digiMyCall);
+                packet->rpt_list[idx].ssid = digiMySsid;
                 packet->rpt_flags |= (1 << idx);
                 j = 2;
                 break;
@@ -235,8 +246,8 @@ int digiProcess(ax25_msg_t *packet) {
                     packet->rpt_list[idx + 1].ssid = ctmp;
 
                 packet->rpt_count += 1;
-                copy_call(packet->rpt_list[idx].call, g_config.digi_mycall);
-                packet->rpt_list[idx].ssid = g_config.digi_ssid;
+                copy_call(packet->rpt_list[idx].call, digiMyCall);
+                packet->rpt_list[idx].ssid = digiMySsid;
                 packet->rpt_flags |= (1 << idx);
                 j = 2;
                 break;
@@ -247,14 +258,14 @@ int digiProcess(ax25_msg_t *packet) {
             break;
         } else if (!strncmp(packet->rpt_list[idx].call, "RELAY", 5) || !strncmp(packet->rpt_list[idx].call, "GATE", 4) ||
                    !strncmp(packet->rpt_list[idx].call, "ECHO", 4)) {
-            copy_call(packet->rpt_list[idx].call, g_config.digi_mycall);
-            packet->rpt_list[idx].ssid = g_config.digi_ssid;
+            copy_call(packet->rpt_list[idx].call, digiMyCall);
+            packet->rpt_list[idx].ssid = digiMySsid;
             packet->rpt_flags |= (1 << idx);
             j = 2;
             break;
-        } else if (!strcmp(packet->rpt_list[idx].call, g_config.digi_mycall)) {
+        } else if (!strcmp(packet->rpt_list[idx].call, digiMyCall)) {
             ctmp = packet->rpt_list[idx].ssid & 0x1F;
-            if (ctmp == g_config.digi_ssid) {
+            if (ctmp == digiMySsid) {
                 if (packet->rpt_flags & (1 << idx)) {
                     s_stats.dropRx++;
                     j = 0;

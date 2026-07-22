@@ -144,6 +144,7 @@ esp_err_t page_wx_post(httpd_req_t *req) {
         return ESP_OK;
     }
 
+    app_config_lock();
     g_config.wx_en = web_form_get_bool(body, "wxEn");
     g_config.wx_use_station = web_form_get_bool(body, "wxUseStation");
     g_config.wx_2rf = web_form_get_bool(body, "wxTx2rf");
@@ -181,6 +182,8 @@ esp_err_t page_wx_post(httpd_req_t *req) {
         snprintf(key, sizeof(key), "wxCh%d", i);
         g_config.wx_sensor_ch[i] = (uint8_t)web_form_get_int(body, key, g_config.wx_sensor_ch[i]);
     }
+
+    app_config_unlock();
 
     app_config_save();
     web_send_saved_redirect(req, "/wx");

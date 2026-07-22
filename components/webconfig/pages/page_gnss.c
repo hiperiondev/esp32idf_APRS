@@ -55,12 +55,15 @@ esp_err_t page_gnss_post(httpd_req_t *req) {
         return ESP_OK;
     }
 
+    app_config_lock();
     g_config.gnss_enable = web_form_get_bool(body, "gnssEn");
     g_config.gnss_channel = (int8_t)web_form_get_int(body, "gnssCH", g_config.gnss_channel);
     g_config.gnss_pps_gpio = (int8_t)web_form_get_int(body, "gnssPPS", g_config.gnss_pps_gpio);
     web_form_get(body, "gnssAT", g_config.gnss_at_command, sizeof(g_config.gnss_at_command));
     g_config.gnss_tcp_port = (uint16_t)web_form_get_int(body, "gnssTCPPort", g_config.gnss_tcp_port);
     web_form_get(body, "gnssTCPHost", g_config.gnss_tcp_host, sizeof(g_config.gnss_tcp_host));
+
+    app_config_unlock();
 
     app_config_save();
     web_send_saved_redirect(req, "/gnss");

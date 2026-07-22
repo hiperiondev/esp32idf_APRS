@@ -88,6 +88,7 @@ esp_err_t page_digi_post(httpd_req_t *req) {
         return ESP_OK;
     }
 
+    app_config_lock();
     g_config.digi_en = web_form_get_bool(body, "digiEn");
     g_config.digi_use_station = web_form_get_bool(body, "digiUseStation");
     g_config.digi_auto = web_form_get_bool(body, "digiAuto");
@@ -132,6 +133,8 @@ esp_err_t page_digi_post(httpd_req_t *req) {
     web_form_get(body, "path1", g_config.path[1], sizeof(g_config.path[1]));
     web_form_get(body, "path2", g_config.path[2], sizeof(g_config.path[2]));
     web_form_get(body, "path3", g_config.path[3], sizeof(g_config.path[3]));
+
+    app_config_unlock();
 
     app_config_save();
     web_send_saved_redirect(req, "/digi");

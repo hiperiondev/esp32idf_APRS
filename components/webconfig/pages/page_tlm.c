@@ -206,6 +206,7 @@ esp_err_t page_tlm_post(httpd_req_t *req) {
         return ESP_OK;
     }
 
+    app_config_lock();
     parse_tlm_channel(body, 0);
     parse_tlm_channel(body, 1);
     parse_service_tlm(body, "trk", g_config.trk_tlm_avg, g_config.trk_tlm_sensor, g_config.trk_tlm_precision, g_config.trk_tlm_offset, g_config.trk_tlm_PARM,
@@ -215,6 +216,7 @@ esp_err_t page_tlm_post(httpd_req_t *req) {
     parse_service_tlm(body, "igate", g_config.igate_tlm_avg, g_config.igate_tlm_sensor, g_config.igate_tlm_precision, g_config.igate_tlm_offset,
                       g_config.igate_tlm_PARM, g_config.igate_tlm_UNIT);
 
+    app_config_unlock();
     free(body);
     app_config_save();
     web_send_saved_redirect(req, "/tlm");

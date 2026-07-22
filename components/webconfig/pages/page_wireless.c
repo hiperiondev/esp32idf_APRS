@@ -130,6 +130,7 @@ esp_err_t page_wireless_post(httpd_req_t *req) {
         return ESP_OK;
     }
 
+    app_config_lock();
     g_config.wifi_mode = (uint8_t)web_form_get_int(body, "wifiMode", g_config.wifi_mode);
     g_config.wifi_power = (int8_t)web_form_get_int(body, "wifiPwr", g_config.wifi_power);
     web_form_get(body, "apSsid", g_config.wifi_ap_ssid, sizeof(g_config.wifi_ap_ssid));
@@ -145,6 +146,8 @@ esp_err_t page_wireless_post(httpd_req_t *req) {
         snprintf(key, sizeof(key), "staPass%d", i);
         web_form_get(body, key, g_config.wifi_sta[i].wifi_pass, sizeof(g_config.wifi_sta[i].wifi_pass));
     }
+
+    app_config_unlock();
 
     app_config_save();
 

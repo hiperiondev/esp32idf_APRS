@@ -188,11 +188,19 @@ static void build_path_suffix(uint8_t bitmask, char *out, size_t outMax) {
     out[0] = 0;
     if (bitmask == 0 || outMax == 0)
         return;
+
+    // Snapshot the four presets under the config lock so a concurrent web save
+    // can't tear a preset string mid-read.
+    char pathPreset[4][72];
+    app_config_lock();
+    memcpy(pathPreset, g_config.path, sizeof(pathPreset));
+    app_config_unlock();
+
     size_t used = 0;
     for (int bit = 0; bit < 4; bit++) {
-        if (!(bitmask & (1 << bit)) || !g_config.path[bit][0])
+        if (!(bitmask & (1 << bit)) || !pathPreset[bit][0])
             continue;
-        int n = snprintf(out + used, outMax - used, ",%s", g_config.path[bit]);
+        int n = snprintf(out + used, outMax - used, ",%s", pathPreset[bit]);
         if (n < 0)
             break;
         if ((size_t)n >= outMax - used) {
@@ -347,8 +355,31 @@ static int build_wx_tokens(const wx_resolved_t r[WX_SENSOR_NUM], bool positionle
 
 // Builds the full TNC2 line for the weather beacon. Returns length or 0.
 static int build_wx_packet(const wx_resolved_t r[WX_SENSOR_NUM], char *out, size_t outMax) {
-    const char *call = g_config.wx_mycall[0] ? g_config.wx_mycall : g_config.aprs_mycall;
-    uint8_t ssid = g_config.wx_mycall[0] ? g_config.wx_ssid : g_config.aprs_ssid;
+    // Snapshot every g_config field this builder needs up front, under the
+    // config lock, so the web task rewriting them during a save can't tear a
+    // string mid-build (this runs on the 1 Hz weather task, async to saves).
+    char cfg_call[10];
+    char cfg_object[sizeof(g_config.wx_object)];
+    char cfg_comment[COMMENT_SIZE];
+    uint8_t cfg_ssid, cfg_path;
+    float cfg_lat, cfg_lon;
+    bool cfg_timestamp;
+    app_config_lock();
+    {
+        bool useWx = g_config.wx_mycall[0] != 0;
+        memcpy(cfg_call, useWx ? g_config.wx_mycall : g_config.aprs_mycall, sizeof(cfg_call));
+        cfg_ssid = useWx ? g_config.wx_ssid : g_config.aprs_ssid;
+        memcpy(cfg_object, g_config.wx_object, sizeof(cfg_object));
+        memcpy(cfg_comment, g_config.wx_comment, sizeof(cfg_comment));
+        cfg_path = g_config.wx_path;
+        cfg_lat = g_config.wx_lat;
+        cfg_lon = g_config.wx_lon;
+        cfg_timestamp = g_config.wx_timestamp;
+    }
+    app_config_unlock();
+
+    const char *call = cfg_call;
+    uint8_t ssid = cfg_ssid;
     if (!call[0])
         return 0;
 
@@ -359,7 +390,7 @@ static int build_wx_packet(const wx_resolved_t r[WX_SENSOR_NUM], char *out, size
         snprintf(callField, sizeof(callField), "%s", call);
 
     char path[80];
-    build_path_suffix(g_config.wx_path, path, sizeof(path));
+    build_path_suffix(cfg_path, path, sizeof(path));
 
     // Timestamp (DHM zulu for positioned/object, MDHM for positionless).
     // Reduce each field modulo its cycle so the formatter can prove a 2-digit
@@ -372,8 +403,8 @@ static int build_wx_packet(const wx_resolved_t r[WX_SENSOR_NUM], char *out, size
     unsigned t_hour = (unsigned)tmv.tm_hour % 24u;      // 0..23
     unsigned t_min = (unsigned)tmv.tm_min % 60u;        // 0..59
 
-    bool have_pos = !(g_config.wx_lat == 0.0f && g_config.wx_lon == 0.0f);
-    bool is_object = g_config.wx_object[0] != 0;
+    bool have_pos = !(cfg_lat == 0.0f && cfg_lon == 0.0f);
+    bool is_object = cfg_object[0] != 0;
 
     char wxTokens[160];
     char info[420]; // name(9)+ts(7)+lat(9)+lon(10)+wxTokens(up to 160)+comment(up to 128)+NUL, grown for 128-byte comments
@@ -381,29 +412,29 @@ static int build_wx_packet(const wx_resolved_t r[WX_SENSOR_NUM], char *out, size
     if (is_object) {
         // Object report carrying weather: ";NAME     *DDHHMMz{lat}/{lon}_{wx}{comment}"
         char latStr[10], lonStr[11], ts[8], name[10];
-        lat_lon_to_aprs(g_config.wx_lat, g_config.wx_lon, latStr, sizeof(latStr), lonStr, sizeof(lonStr));
+        lat_lon_to_aprs(cfg_lat, cfg_lon, latStr, sizeof(latStr), lonStr, sizeof(lonStr));
         snprintf(ts, sizeof(ts), "%02u%02u%02uz", t_day, t_hour, t_min);
-        snprintf(name, sizeof(name), "%-9.9s", g_config.wx_object); // fixed 9 chars, space padded
+        snprintf(name, sizeof(name), "%-9.9s", cfg_object); // fixed 9 chars, space padded
         build_wx_tokens(r, false, wxTokens, sizeof(wxTokens));
-        snprintf(info, sizeof(info), ";%s*%s%s/%s_%s%s", name, ts, latStr, lonStr, wxTokens, g_config.wx_comment);
+        snprintf(info, sizeof(info), ";%s*%s%s/%s_%s%s", name, ts, latStr, lonStr, wxTokens, cfg_comment);
     } else if (have_pos) {
         // Positioned weather report, with or without a timestamp.
         char latStr[10], lonStr[11];
-        lat_lon_to_aprs(g_config.wx_lat, g_config.wx_lon, latStr, sizeof(latStr), lonStr, sizeof(lonStr));
+        lat_lon_to_aprs(cfg_lat, cfg_lon, latStr, sizeof(latStr), lonStr, sizeof(lonStr));
         build_wx_tokens(r, false, wxTokens, sizeof(wxTokens));
-        if (g_config.wx_timestamp) {
+        if (cfg_timestamp) {
             char ts[8];
             snprintf(ts, sizeof(ts), "%02u%02u%02uz", t_day, t_hour, t_min);
-            snprintf(info, sizeof(info), "@%s%s/%s_%s%s", ts, latStr, lonStr, wxTokens, g_config.wx_comment);
+            snprintf(info, sizeof(info), "@%s%s/%s_%s%s", ts, latStr, lonStr, wxTokens, cfg_comment);
         } else {
-            snprintf(info, sizeof(info), "!%s/%s_%s%s", latStr, lonStr, wxTokens, g_config.wx_comment);
+            snprintf(info, sizeof(info), "!%s/%s_%s%s", latStr, lonStr, wxTokens, cfg_comment);
         }
     } else {
         // Positionless weather report: "_MMDDHHMM" + c/s wind prefix.
         char ts8[9];
         snprintf(ts8, sizeof(ts8), "%02u%02u%02u%02u", t_mon, t_day, t_hour, t_min);
         build_wx_tokens(r, true, wxTokens, sizeof(wxTokens));
-        snprintf(info, sizeof(info), "_%s%s%s", ts8, wxTokens, g_config.wx_comment);
+        snprintf(info, sizeof(info), "_%s%s%s", ts8, wxTokens, cfg_comment);
     }
 
     int n = snprintf(out, outMax, "%s>%s%s:%s", callField, WX_DEST, path, info);

@@ -65,6 +65,33 @@ static SemaphoreHandle_t config_mutex(void) {
     return s_config_mutex;
 }
 
+// Short-held lock guarding concurrent access to the live g_config struct
+// itself. Distinct from s_config_mutex above (which is held across the entire
+// flash serialization in app_config_save() and would stall readers): this one
+// is a strict LEAF lock, only ever held long enough to mutate/copy a few
+// fields. See the app_config_lock() contract in app_config.h. Created lazily
+// with the same one-time-init guard as config_mutex().
+static SemaphoreHandle_t s_data_mutex = NULL;
+
+static SemaphoreHandle_t data_mutex(void) {
+    if (!s_data_mutex) {
+        static portMUX_TYPE creation_lock = portMUX_INITIALIZER_UNLOCKED;
+        taskENTER_CRITICAL(&creation_lock);
+        if (!s_data_mutex)
+            s_data_mutex = xSemaphoreCreateMutex();
+        taskEXIT_CRITICAL(&creation_lock);
+    }
+    return s_data_mutex;
+}
+
+void app_config_lock(void) {
+    xSemaphoreTake(data_mutex(), portMAX_DELAY);
+}
+
+void app_config_unlock(void) {
+    xSemaphoreGive(data_mutex());
+}
+
 static void set_str(char *dst, size_t sz, const char *val) {
     if (!val) {
         dst[0] = 0;
@@ -1608,6 +1635,12 @@ bool app_config_load(void) {
 }
 
 bool app_config_factory_reset(void) {
+    // Web-reachable (/default) at runtime, so it rewrites the whole g_config
+    // out from under the beacon/igate/message tasks. Hold the data lock across
+    // the wholesale rewrite so no reader can sample a half-reset struct; drop
+    // it before the (slow, self-locking) flash save.
+    app_config_lock();
     app_config_set_defaults(&g_config);
+    app_config_unlock();
     return app_config_save();
 }

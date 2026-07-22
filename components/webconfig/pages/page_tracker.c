@@ -95,6 +95,7 @@ esp_err_t page_tracker_post(httpd_req_t *req) {
         return ESP_OK;
     }
 
+    app_config_lock();
     g_config.trk_en = web_form_get_bool(body, "trkEn");
     g_config.trk_use_station = web_form_get_bool(body, "trkUseStation");
     g_config.trk_loc2rf = web_form_get_bool(body, "trkPos2rf");
@@ -145,6 +146,8 @@ esp_err_t page_tracker_post(httpd_req_t *req) {
 
     g_config.trk_sts_interval = (uint16_t)web_form_get_int(body, "trkSTSIntv", g_config.trk_sts_interval);
     web_form_get(body, "trkStatus", g_config.trk_status, sizeof(g_config.trk_status));
+
+    app_config_unlock();
 
     app_config_save();
     web_send_saved_redirect(req, "/tracker");

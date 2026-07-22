@@ -268,17 +268,28 @@ int igateProcess(ax25_msg_t *packet) {
             headerLen += snprintf(&header[headerLen], sizeof(header) - headerLen, "*");
     }
 
-    if (strlen(g_config.igate_object) >= 3) {
-        if (g_config.aprs_ssid > 0)
-            headerLen +=
-                snprintf(&header[headerLen], sizeof(header) - headerLen, ",%s-%d*,qAO,%s", g_config.aprs_mycall, g_config.aprs_ssid, g_config.igate_object);
+    // Snapshot the own-station identity used to build the qAR/qAO header. This
+    // runs on the modem RX task; a concurrent web save could otherwise rewrite
+    // aprs_mycall/igate_object mid-snprintf.
+    char cfg_mycall[10];
+    char cfg_object[10];
+    uint8_t cfg_ssid;
+    app_config_lock();
+    memcpy(cfg_mycall, g_config.aprs_mycall, sizeof(cfg_mycall));
+    memcpy(cfg_object, g_config.igate_object, sizeof(cfg_object));
+    cfg_ssid = g_config.aprs_ssid;
+    app_config_unlock();
+
+    if (strlen(cfg_object) >= 3) {
+        if (cfg_ssid > 0)
+            headerLen += snprintf(&header[headerLen], sizeof(header) - headerLen, ",%s-%d*,qAO,%s", cfg_mycall, cfg_ssid, cfg_object);
         else
-            headerLen += snprintf(&header[headerLen], sizeof(header) - headerLen, ",%s*,qAO,%s", g_config.aprs_mycall, g_config.igate_object);
+            headerLen += snprintf(&header[headerLen], sizeof(header) - headerLen, ",%s*,qAO,%s", cfg_mycall, cfg_object);
     } else {
-        if (g_config.aprs_ssid > 0)
-            headerLen += snprintf(&header[headerLen], sizeof(header) - headerLen, ",qAR,%s-%d", g_config.aprs_mycall, g_config.aprs_ssid);
+        if (cfg_ssid > 0)
+            headerLen += snprintf(&header[headerLen], sizeof(header) - headerLen, ",qAR,%s-%d", cfg_mycall, cfg_ssid);
         else
-            headerLen += snprintf(&header[headerLen], sizeof(header) - headerLen, ",qAR,%s", g_config.aprs_mycall);
+            headerLen += snprintf(&header[headerLen], sizeof(header) - headerLen, ",qAR,%s", cfg_mycall);
     }
 
     headerLen += snprintf(&header[headerLen], sizeof(header) - headerLen, ":");
@@ -328,15 +339,36 @@ static void closeSocket(void) {
 }
 
 static bool connectAprsIs(void) {
+    // Snapshot everything this function needs from g_config up front, under the
+    // config lock, so the web task rewriting these strings during a settings
+    // save can't tear a value out from under the DNS lookup / login below (this
+    // runs on the long-lived igate task, entirely asynchronous to saves). The
+    // lock is released immediately; all network I/O uses these local copies.
+    char cfg_host[20];
+    char cfg_mycall[10];
+    char cfg_passcode[6];
+    char cfg_filter[30];
+    uint16_t cfg_port;
+    uint8_t cfg_ssid;
+    app_config_lock();
+    memcpy(cfg_host, g_config.aprs_host, sizeof(cfg_host));
+    memcpy(cfg_mycall, g_config.aprs_mycall, sizeof(cfg_mycall));
+    memcpy(cfg_passcode, g_config.aprs_passcode, sizeof(cfg_passcode));
+    memcpy(cfg_filter, g_config.aprs_filter, sizeof(cfg_filter));
+    cfg_port = g_config.aprs_port;
+    cfg_ssid = g_config.aprs_ssid;
+    app_config_unlock();
+    (void)cfg_ssid;
+
     struct addrinfo hints = { 0 };
     struct addrinfo *res = NULL;
     char portStr[8];
     hints.ai_family = AF_UNSPEC;
     hints.ai_socktype = SOCK_STREAM;
-    snprintf(portStr, sizeof(portStr), "%u", (unsigned)g_config.aprs_port);
+    snprintf(portStr, sizeof(portStr), "%u", (unsigned)cfg_port);
 
-    if (getaddrinfo(g_config.aprs_host, portStr, &hints, &res) != 0 || res == NULL) {
-        ESP_LOGW(TAG, "DNS lookup failed for %s", g_config.aprs_host);
+    if (getaddrinfo(cfg_host, portStr, &hints, &res) != 0 || res == NULL) {
+        ESP_LOGW(TAG, "DNS lookup failed for %s", cfg_host);
         return false;
     }
 
@@ -346,12 +378,19 @@ static bool connectAprsIs(void) {
         return false;
     }
 
-    struct timeval tv = { .tv_sec = 10, .tv_usec = 0 };
-    setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
-    setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+    // recv() timeout stays at 10 s (the RX loop uses that cadence to re-check
+    // the igate_en toggle). send() gets a tighter 3 s timeout: sendToAprsIs()
+    // holds s_sockMutex across send(), so a stalled uplink would otherwise
+    // block every other sender (digi loc2inet beacon, igate_send_raw) and
+    // igate_is_connected() for the full timeout. APRS-IS frames are tiny, so
+    // 3 s is ample for a healthy link and caps the worst-case stall.
+    struct timeval rcv_tv = { .tv_sec = 10, .tv_usec = 0 };
+    struct timeval snd_tv = { .tv_sec = 3, .tv_usec = 0 };
+    setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &rcv_tv, sizeof(rcv_tv));
+    setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, &snd_tv, sizeof(snd_tv));
 
     if (connect(sock, res->ai_addr, res->ai_addrlen) != 0) {
-        ESP_LOGW(TAG, "Connect to %s:%u failed: errno %d", g_config.aprs_host, (unsigned)g_config.aprs_port, errno);
+        ESP_LOGW(TAG, "Connect to %s:%u failed: errno %d", cfg_host, (unsigned)cfg_port, errno);
         close(sock);
         freeaddrinfo(res);
         return false;
@@ -359,13 +398,13 @@ static bool connectAprsIs(void) {
     freeaddrinfo(res);
 
     char login[160];
-    int n = snprintf(login, sizeof(login), "user %s pass %s vers ESP32APRS 1.0 filter %s\r\n", g_config.aprs_mycall, g_config.aprs_passcode,
-                     g_config.aprs_filter[0] ? g_config.aprs_filter : "");
+    int n = snprintf(login, sizeof(login), "user %s pass %s vers ESP32APRS 1.0 filter %s\r\n", cfg_mycall, cfg_passcode,
+                     cfg_filter[0] ? cfg_filter : "");
     // Log exactly what we're sending (minus the trailing \r\n) so a bad
     // filter string (e.g. wrong filter letter, malformed args) is visible
     // in the logs instead of silently resulting in zero RX traffic.
-    ESP_LOGI(TAG, "APRS-IS login: user %s pass %s vers ESP32APRS 1.0 filter %s", g_config.aprs_mycall, g_config.aprs_passcode,
-             g_config.aprs_filter[0] ? g_config.aprs_filter : "(none - server default, usually nothing)");
+    ESP_LOGI(TAG, "APRS-IS login: user %s pass %s vers ESP32APRS 1.0 filter %s", cfg_mycall, cfg_passcode,
+             cfg_filter[0] ? cfg_filter : "(none - server default, usually nothing)");
     if (send(sock, login, n, 0) != n) {
         close(sock);
         return false;
@@ -392,8 +431,8 @@ static bool connectAprsIs(void) {
     xSemaphoreTake(s_sockMutex, portMAX_DELAY);
     s_sock = sock;
     xSemaphoreGive(s_sockMutex);
-    ESP_LOGI(TAG, "Connected to APRS-IS %s:%u as %s", g_config.aprs_host, (unsigned)g_config.aprs_port, g_config.aprs_mycall);
-    trafficlog_add("Connected to APRS-IS %s:%u as %s", g_config.aprs_host, (unsigned)g_config.aprs_port, g_config.aprs_mycall);
+    ESP_LOGI(TAG, "Connected to APRS-IS %s:%u as %s", cfg_host, (unsigned)cfg_port, cfg_mycall);
+    trafficlog_add("Connected to APRS-IS %s:%u as %s", cfg_host, (unsigned)cfg_port, cfg_mycall);
     return true;
 }
 

@@ -262,6 +262,7 @@ esp_err_t page_igate_post(httpd_req_t *req) {
         return ESP_OK;
     }
 
+    app_config_lock();
     g_config.igate_en = web_form_get_bool(body, "igateEn");
     g_config.igate_use_station = web_form_get_bool(body, "igateUseStation");
     g_config.rf2inet = web_form_get_bool(body, "rf2inet");
@@ -339,6 +340,8 @@ esp_err_t page_igate_post(httpd_req_t *req) {
         g_config.rf2inetFilter = rf2inetF;
         g_config.inet2rfFilter = inet2rfF;
     }
+
+    app_config_unlock();
 
     app_config_save();
     web_send_saved_redirect(req, "/igate");

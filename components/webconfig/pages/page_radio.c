@@ -254,6 +254,7 @@ esp_err_t page_radio_post(httpd_req_t *req) {
         afsk_modem_in = 0;
     else if (afsk_modem_in > 3)
         afsk_modem_in = 3;
+    app_config_lock();
     g_config.afsk_modem_type = (uint8_t)afsk_modem_in;
     // rfSql / rfVolume / adcAtten / agcMaxGain are no longer posted by the form
     // (see the read-only note in page_radio_get()). The g_config fields are
@@ -269,6 +270,8 @@ esp_err_t page_radio_post(httpd_req_t *req) {
     g_config.rf_ptt_active = web_form_get_bool(body, "rfPTTAct");
     g_config.preamble = (uint16_t)web_form_get_int(body, "rfPreamble", g_config.preamble);
     g_config.tx_timeslot = (uint16_t)web_form_get_int(body, "txTimeSlot", g_config.tx_timeslot);
+
+    app_config_unlock();
 
     app_config_save();
 

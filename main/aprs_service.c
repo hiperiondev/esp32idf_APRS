@@ -20,6 +20,7 @@
  * the periodic service tick.
  */
 
+#include <stdatomic.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -146,11 +147,11 @@ void aprs_service_build_modem_config(modem_config_t *cfg, bool full_duplex) {
 // aprs_service_send_tnc2(), inet2rfHandler(), and inside aprs_msg_callback()
 // for the digi/igate/error cases) makes the dashboard reflect reality
 // whether or not either feature is turned on.
-static volatile uint32_t s_statRadioRx = 0;  // frames decoded off RF (every on_rx_frame() call)
-static volatile uint32_t s_statRadioTx = 0;  // frames transmitted on RF (every successful aprs_service_send_tnc2())
-static volatile uint32_t s_statRf2Inet = 0;  // frames relayed from RF to APRS-IS (igateProcess() actually uplinked one)
-static volatile uint32_t s_statInet2Rf = 0;  // lines relayed from APRS-IS to RF (inet2rfHandler() actually transmitted one)
-static volatile uint32_t s_statDigi = 0;     // frames digipeated (path rewritten and re-transmitted)
+static atomic_uint_fast32_t s_statRadioRx = 0;  // frames decoded off RF (every on_rx_frame() call)
+static atomic_uint_fast32_t s_statRadioTx = 0;  // frames transmitted on RF (every successful aprs_service_send_tnc2())
+static atomic_uint_fast32_t s_statRf2Inet = 0;  // frames relayed from RF to APRS-IS (igateProcess() actually uplinked one)
+static atomic_uint_fast32_t s_statInet2Rf = 0;  // lines relayed from APRS-IS to RF (inet2rfHandler() actually transmitted one)
+static atomic_uint_fast32_t s_statDigi = 0;     // frames digipeated (path rewritten and re-transmitted)
 // The two below close the gap left by the previous dashboard-statistics fix
 // (see page_common.c's page_sidebar_info()): digi_get_stats()/igate_get_stats()
 // are still the only place any *feature-specific* drop/error accounting
@@ -164,18 +165,18 @@ static volatile uint32_t s_statDigi = 0;     // frames digipeated (path rewritte
 // ready yet, or modem_send_tnc2() itself failing) - so they move regardless
 // of which higher-level features are enabled and regardless of which
 // direction the discard happens in.
-static volatile uint32_t s_statDrop = 0; // frames discarded before dispatch or on the way out to RF (placeholder/invalid source callsign, modem-not-ready, TX queue full, oversized packet, etc.)
-static volatile uint32_t s_statErr = 0;  // frames that failed to decode as valid APRS (UI, no-layer-3) AX.25, or that the modem itself failed to transmit (modem_send_tnc2() error)
+static atomic_uint_fast32_t s_statDrop = 0; // frames discarded before dispatch or on the way out to RF (placeholder/invalid source callsign, modem-not-ready, TX queue full, oversized packet, etc.)
+static atomic_uint_fast32_t s_statErr = 0;  // frames that failed to decode as valid APRS (UI, no-layer-3) AX.25, or that the modem itself failed to transmit (modem_send_tnc2() error)
 
 aprs_service_stats_t aprs_service_get_stats(void) {
     aprs_service_stats_t s;
-    s.radio_rx = s_statRadioRx;
-    s.radio_tx = s_statRadioTx;
-    s.rf2inet = s_statRf2Inet;
-    s.inet2rf = s_statInet2Rf;
-    s.digi = s_statDigi;
-    s.drop = s_statDrop;
-    s.err = s_statErr;
+    s.radio_rx = (uint32_t)atomic_load_explicit(&s_statRadioRx, memory_order_relaxed);
+    s.radio_tx = (uint32_t)atomic_load_explicit(&s_statRadioTx, memory_order_relaxed);
+    s.rf2inet = (uint32_t)atomic_load_explicit(&s_statRf2Inet, memory_order_relaxed);
+    s.inet2rf = (uint32_t)atomic_load_explicit(&s_statInet2Rf, memory_order_relaxed);
+    s.digi = (uint32_t)atomic_load_explicit(&s_statDigi, memory_order_relaxed);
+    s.drop = (uint32_t)atomic_load_explicit(&s_statDrop, memory_order_relaxed);
+    s.err = (uint32_t)atomic_load_explicit(&s_statErr, memory_order_relaxed);
     return s;
 }
 
@@ -221,7 +222,7 @@ bool aprs_service_send_tnc2(const char *packet, size_t len) {
     // clock, so without this a boot-time beacon would reach
     // Ax25WriteTxFrame() before Ax25Init() had run.
     if (!s_modemReady) {
-        s_statDrop++;
+        atomic_fetch_add_explicit(&s_statDrop, 1, memory_order_relaxed);
         ESP_LOGD(TAG, "modem not up, RF TX dropped: %.*s", (int)len, packet);
         return false;
     }
@@ -239,13 +240,13 @@ bool aprs_service_send_tnc2(const char *packet, size_t len) {
     // packet.
     uint8_t pending = modem_tx_queue_depth();
     if (pending >= RF_TX_QUEUE_LIMIT) {
-        s_statDrop++;
+        atomic_fetch_add_explicit(&s_statDrop, 1, memory_order_relaxed);
         ESP_LOGW(TAG, "RF TX queue full (%u/%u pending), packet discarded: %.*s", (unsigned)pending, (unsigned)RF_TX_QUEUE_LIMIT, (int)len,
                  packet);
         return false;
     }
     if (len >= sizeof(buf)) {
-        s_statDrop++;
+        atomic_fetch_add_explicit(&s_statDrop, 1, memory_order_relaxed);
         ESP_LOGW(TAG, "TNC2 packet too long (%u bytes), dropped", (unsigned)len);
         return false;
     }
@@ -254,11 +255,11 @@ bool aprs_service_send_tnc2(const char *packet, size_t len) {
 
     esp_err_t err = modem_send_tnc2(buf);
     if (err != ESP_OK) {
-        s_statErr++;
+        atomic_fetch_add_explicit(&s_statErr, 1, memory_order_relaxed);
         ESP_LOGW(TAG, "modem_send_tnc2() failed: %s (\"%s\")", esp_err_to_name(err), buf);
         return false;
     }
-    s_statRadioTx++;
+    atomic_fetch_add_explicit(&s_statRadioTx, 1, memory_order_relaxed);
     return true;
 }
 
@@ -332,7 +333,7 @@ static void aprs_msg_callback(ax25_msg_t *msg) {
     // digipeat, gate, or otherwise act on, so skip the rest of the
     // dispatch chain for it.
     if (!strncmp(msg->src.call, "NOCALL", 6) || !strncmp(msg->src.call, "MYCALL", 6)) {
-        s_statDrop++;
+        atomic_fetch_add_explicit(&s_statDrop, 1, memory_order_relaxed);
         ESP_LOGD(TAG, "RX dropped, placeholder source callsign: %s", tnc2);
         return;
     }
@@ -343,7 +344,7 @@ static void aprs_msg_callback(ax25_msg_t *msg) {
             // Path was rewritten in place; re-transmit the modified frame on RF.
             int len = ax25ToTnc2(msg, tnc2, sizeof(tnc2));
             if (aprs_service_send_tnc2(tnc2, (size_t)len)) {
-                s_statDigi++;
+                atomic_fetch_add_explicit(&s_statDigi, 1, memory_order_relaxed);
                 ESP_LOGD(TAG, "DIGI TX: %s", tnc2);
                 trafficlog_add_pkt("DIGI", callsign, tnc2, -1, symTable, symCode);
             }
@@ -352,7 +353,7 @@ static void aprs_msg_callback(ax25_msg_t *msg) {
 
     if (g_config.igate_en && g_config.rf2inet) {
         if (igateProcess(msg)) // builds its own qAR/qAO header and sends to APRS-IS internally
-            s_statRf2Inet++;
+            atomic_fetch_add_explicit(&s_statRf2Inet, 1, memory_order_relaxed);
     }
 
     if (g_config.msg_enable) {
@@ -385,7 +386,7 @@ static void on_rx_frame(const modem_rx_frame_t *f, void *ctx) {
     (void)ctx;
     ax25_msg_t msg;
 
-    s_statRadioRx++;
+    atomic_fetch_add_explicit(&s_statRadioRx, 1, memory_order_relaxed);
 
     memset(&msg, 0, sizeof(msg));
     if (!ax25_decode((uint8_t *)f->frame, f->len, f->mVrms, &msg)) {
@@ -397,7 +398,7 @@ static void on_rx_frame(const modem_rx_frame_t *f, void *ctx) {
         // channel besides its return value), and - unlike the
         // digi/igate-only drop/error counters below it in the dashboard -
         // it is tracked here unconditionally, regardless of digi_en/igate_en.
-        s_statErr++;
+        atomic_fetch_add_explicit(&s_statErr, 1, memory_order_relaxed);
         ESP_LOGD(TAG, "RX decode error (ctrl/pid not APRS UI), %u bytes, %u mVrms", (unsigned)f->len, (unsigned)f->mVrms);
         return;
     }
@@ -532,7 +533,7 @@ static void inet2rfHandler(const char *line) {
         }
 
         if (aprs_service_send_tnc2(line, strlen(line))) {
-            s_statInet2Rf++;
+            atomic_fetch_add_explicit(&s_statInet2Rf, 1, memory_order_relaxed);
             ESP_LOGD(TAG, "INET2RF TX: %s", line);
             trafficlog_add_pkt("INET2RF", callsign, line, -1, symTable, symCode);
         }

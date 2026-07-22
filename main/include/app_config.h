@@ -550,4 +550,32 @@ bool app_config_save(void);
 // Wipe config back to factory defaults and persist.
 bool app_config_factory_reset(void);
 
+// ---------------------------------------------------------------------------
+// g_config concurrency lock
+//
+// g_config is written field-by-field by the web POST handlers (a single
+// settings save rewrites many fields, several of them strings/arrays, one at a
+// time) while long-running tasks (beacon builders, IGate login, digipeater,
+// message, weather) read those same fields. A reader that samples a string
+// mid-strcpy can see a torn or transiently non-NUL-terminated value and walk
+// off the end of the buffer. This lock serializes those two sides.
+//
+// It is DISTINCT from the internal save mutex (which is held across the whole
+// flash serialization and would stall readers): this one is only ever held
+// long enough to copy the needed fields into locals, so it is a strict LEAF
+// lock - never hold it across a blocking call, I/O, transmit, or another lock.
+//
+// Usage:
+//   - Writers (web handlers, factory reset): hold it around the block that
+//     mutates g_config. Release it before app_config_save() / restarts.
+//   - Readers of STRING/ARRAY fields: hold it just long enough to memcpy the
+//     fields into a local snapshot, then release and work from the snapshot.
+//   - Scalar (single-word) fields are word-atomic on this MCU and may be read
+//     lock-free; only strings/arrays and multi-field-consistency need the lock.
+//
+// The lock is created lazily on first use (same one-time-init guard the save
+// mutex uses), so there is no init-order dependency.
+void app_config_lock(void);
+void app_config_unlock(void);
+
 #endif // APP_CONFIG_H

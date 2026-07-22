@@ -33,10 +33,25 @@ static const char *TAG = "sensors_local";
  * The "dynamic functions pointer" table: a heap array of driver pointers that
  * grows on demand. Each slot points at a caller-owned sensor_local_driver_t
  * (a bundle of function pointers), never a copy.
+ *
+ * REGISTRATION LIFETIME CONTRACT: drivers register (via the AUTOREGISTER
+ * constructors) during the single-threaded boot/init phase and are not
+ * unregistered at runtime in this firmware. Callers therefore rely on a
+ * registered driver pointer staying valid and stable for the program's
+ * lifetime: sensors_local_get()/sensors_local_find() may hand back a bare
+ * pointer, and sensors_local_save() may snapshot pointers under the lock and
+ * then use them after releasing it. If runtime unregistration is ever added,
+ * those two assumptions must be revisited (e.g. refcount the driver objects),
+ * because sensors_local_unregister() frees the slot and may deinit the driver.
  * -------------------------------------------------------------------------- */
 static sensor_local_driver_t **s_registry = NULL; /**< Dynamic array of driver pointers. */
 static size_t s_count = 0;                        /**< Number of live entries. */
 static size_t s_capacity = 0;                     /**< Allocated slots in s_registry. */
+
+/* Upper bound on drivers serviced in one sensors_local_save() pass. Sized well
+ * above any realistic local-sensor count; the snapshot lets the (blocking) bus
+ * reads run without the registry lock held. */
+#define SENSORS_LOCAL_MAX_SNAPSHOT 32
 
 /* Guards the registry. Created in sensors_local_init(); NULL means "not yet
  * created", which happens during the C-constructor phase (single threaded,
@@ -63,7 +78,10 @@ static size_t registry_index_of(const char *name) {
     return (size_t)-1;
 }
 
-/* Lazily run a driver's init() exactly once. Caller must hold the lock. */
+/* Lazily run a driver's init() exactly once. Must be called either with the
+ * registry lock held, or on a stable snapshot pointer with no concurrent
+ * (un)registration (see the registration-lifetime contract above); it mutates
+ * only the driver's own initialized/failed flags, not the registry array. */
 static esp_err_t ensure_initialized(sensor_local_driver_t *d) {
     if (d->failed)
         return ESP_FAIL;
@@ -209,13 +227,27 @@ esp_err_t sensors_local_save(weather_telemetry_data_t *data, sensor_local_data_k
     if (kind == SENSOR_LOCAL_DATA_NONE)
         return ESP_OK;
 
-    registry_lock();
-    for (size_t i = 0; i < s_count; i++) {
-        sensor_local_driver_t *d = s_registry[i];
+    /* Snapshot the matching driver pointers under the lock, then release it
+     * BEFORE touching the hardware. ensure_initialized()/d->save() do blocking
+     * bus I/O (e.g. BMP180 I2C conversions take tens of ms); holding the
+     * registry lock across them would stall every other registry caller
+     * (sensors_local_find/count from the web sensor page, etc.) for the whole
+     * transaction. Driver objects are stable for the program's lifetime
+     * (drivers only (un)register during single-threaded boot - see the note at
+     * the top of this file), so the snapshotted pointers stay valid. */
+    sensor_local_driver_t *sel[SENSORS_LOCAL_MAX_SNAPSHOT];
+    size_t sel_n = 0;
 
-        /* Skip drivers that cannot serve any of the requested families. */
-        if ((d->capabilities & (uint32_t)kind) == 0)
-            continue;
+    registry_lock();
+    for (size_t i = 0; i < s_count && sel_n < SENSORS_LOCAL_MAX_SNAPSHOT; i++) {
+        sensor_local_driver_t *d = s_registry[i];
+        if (d != NULL && (d->capabilities & (uint32_t)kind) != 0)
+            sel[sel_n++] = d;
+    }
+    registry_unlock();
+
+    for (size_t i = 0; i < sel_n; i++) {
+        sensor_local_driver_t *d = sel[i];
 
         if (ensure_initialized(d) != ESP_OK)
             continue; /* already logged; keep going */
@@ -227,7 +259,6 @@ esp_err_t sensors_local_save(weather_telemetry_data_t *data, sensor_local_data_k
         if (err != ESP_OK)
             ESP_LOGW(TAG, "driver '%s' save failed: %s", d->name ? d->name : "?", esp_err_to_name(err));
     }
-    registry_unlock();
     return ESP_OK;
 }
 

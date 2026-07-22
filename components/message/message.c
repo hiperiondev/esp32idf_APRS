@@ -436,17 +436,27 @@ size_t message_dump_json(char *out, size_t out_size) {
 // full rationale. Kept in sync with that implementation.
 static void buildPathSuffix(char *out, size_t outMax) {
     out[0] = 0;
-    if (g_config.msg_path == 0 || outMax == 0)
+
+    // Snapshot the path bitmask and the four presets under the config lock, so
+    // a concurrent web save can't tear a preset string mid-read.
+    uint8_t msgPath;
+    char pathPreset[4][72];
+    app_config_lock();
+    msgPath = g_config.msg_path;
+    memcpy(pathPreset, g_config.path, sizeof(pathPreset));
+    app_config_unlock();
+
+    if (msgPath == 0 || outMax == 0)
         return;
 
     size_t used = 0;
     for (int bit = 0; bit < 4; bit++) {
-        if (!(g_config.msg_path & (1 << bit)))
+        if (!(msgPath & (1 << bit)))
             continue;
-        if (!g_config.path[bit][0])
+        if (!pathPreset[bit][0])
             continue;
 
-        int n = snprintf(out + used, outMax - used, ",%s", g_config.path[bit]);
+        int n = snprintf(out + used, outMax - used, ",%s", pathPreset[bit]);
         if (n < 0)
             break;
         if ((size_t)n >= outMax - used) {
@@ -498,7 +508,9 @@ void sendAPRSMessage(const char *toCall, const char *text, bool encrypt) {
     ++s_msgID;
 
     char myCallUp[10];
+    app_config_lock();
     strncpy(myCallUp, g_config.msg_mycall, sizeof(myCallUp) - 1);
+    app_config_unlock();
     myCallUp[sizeof(myCallUp) - 1] = 0;
     trimUpper(myCallUp);
 
@@ -542,14 +554,29 @@ void sendAPRSAck(const char *toCall, const char *msgNo) {
     size_t n = strlen(toCall);
     memcpy(toCallFixed, toCall, n > 9 ? 9 : n);
 
+    char myCall[10];
+    app_config_lock();
+    memcpy(myCall, g_config.msg_mycall, sizeof(myCall));
+    app_config_unlock();
+
     char info[160];
     snprintf(info, sizeof(info), ":%s:ack%s", toCallFixed, msgNo);
-    txPacket(g_config.msg_mycall, info);
+    txPacket(myCall, info);
     ESP_LOGD(TAG, "Send APRS ACK to %s msgNo %s", toCall, msgNo);
 }
 
 void sendAPRSMessageRetry(void) {
     time_t now = time(NULL);
+
+    // Snapshot the own-call and (if used) the encryption key once, so a web
+    // save can't rewrite them mid-loop while frames are being built/signed.
+    char myCall[10];
+    char msgKey[sizeof(g_config.msg_key)];
+    app_config_lock();
+    memcpy(myCall, g_config.msg_mycall, sizeof(myCall));
+    memcpy(msgKey, g_config.msg_key, sizeof(msgKey));
+    app_config_unlock();
+
     for (int i = 0; i < MSG_QUEUE_SIZE; i++) {
         if (!s_queue[i].used || s_queue[i].ack <= 0)
             continue;
@@ -568,8 +595,8 @@ void sendAPRSMessageRetry(void) {
         char payload[300];
         if (g_config.msg_encrypt) {
             uint8_t key[16] = { 0 };
-            hexStringToBytes(g_config.msg_key, key, sizeof(key));
-            if (aesEncryptBase64WithIV(s_queue[i].text, key, s_queue[i].msgID, g_config.msg_mycall, payload, sizeof(payload)) == 0) {
+            hexStringToBytes(msgKey, key, sizeof(key));
+            if (aesEncryptBase64WithIV(s_queue[i].text, key, s_queue[i].msgID, myCall, payload, sizeof(payload)) == 0) {
                 strncpy(payload, s_queue[i].text, sizeof(payload) - 1);
                 payload[sizeof(payload) - 1] = 0;
             }
@@ -580,7 +607,7 @@ void sendAPRSMessageRetry(void) {
 
         char info[320];
         snprintf(info, sizeof(info), ":%s:%s{%u", toCallFixed, payload, (unsigned)s_queue[i].msgID);
-        txPacket(g_config.msg_mycall, info);
+        txPacket(myCall, info);
         ESP_LOGD(TAG, "Retry APRS message[%d] to %s msgID %u ack left %d", i, s_queue[i].callsign, (unsigned)s_queue[i].msgID, s_queue[i].ack);
     }
 }

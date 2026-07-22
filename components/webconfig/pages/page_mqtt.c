@@ -58,6 +58,7 @@ esp_err_t page_mqtt_post(httpd_req_t *req) {
         return ESP_OK;
     }
 
+    app_config_lock();
     g_config.en_mqtt = web_form_get_bool(body, "mqttEnable");
     web_form_get(body, "mqttHost", g_config.mqtt_host, sizeof(g_config.mqtt_host));
     g_config.mqtt_port = (uint16_t)web_form_get_int(body, "mqttPort", g_config.mqtt_port);
@@ -67,6 +68,8 @@ esp_err_t page_mqtt_post(httpd_req_t *req) {
     web_form_get(body, "mqttSub", g_config.mqtt_subscribe, sizeof(g_config.mqtt_subscribe));
     g_config.mqtt_topic_flag = (uint16_t)web_form_get_int(body, "mqttTopicFlag", g_config.mqtt_topic_flag);
     g_config.mqtt_subscribe_flag = (uint16_t)web_form_get_int(body, "mqttSubFlag", g_config.mqtt_subscribe_flag);
+
+    app_config_unlock();
 
     app_config_save();
     web_send_saved_redirect(req, "/mqtt");

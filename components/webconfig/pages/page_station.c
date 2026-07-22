@@ -53,10 +53,12 @@ esp_err_t page_station_post(httpd_req_t *req) {
         return ESP_OK;
     }
 
+    app_config_lock();
     web_form_get_call(body, "myCallsign", g_config.my_callsign, sizeof(g_config.my_callsign));
     g_config.my_lat = web_form_get_float(body, "myLAT", g_config.my_lat);
     g_config.my_lon = web_form_get_float(body, "myLON", g_config.my_lon);
     g_config.my_alt = web_form_get_float(body, "myALT", g_config.my_alt);
+    app_config_unlock();
 
     app_config_save();
     web_send_saved_redirect(req, "/station");

@@ -57,6 +57,7 @@ esp_err_t page_vpn_post(httpd_req_t *req) {
         return ESP_OK;
     }
 
+    app_config_lock();
     g_config.vpn = web_form_get_bool(body, "vpnEn");
     g_config.wg_port = (uint16_t)web_form_get_int(body, "vpnPort", g_config.wg_port);
     web_form_get(body, "vpnLocal", g_config.wg_local_address, sizeof(g_config.wg_local_address));
@@ -65,6 +66,8 @@ esp_err_t page_vpn_post(httpd_req_t *req) {
     web_form_get(body, "vpnPeer", g_config.wg_peer_address, sizeof(g_config.wg_peer_address));
     web_form_get(body, "vpnPriKey", g_config.wg_private_key, sizeof(g_config.wg_private_key));
     web_form_get(body, "vpnPubKey", g_config.wg_public_key, sizeof(g_config.wg_public_key));
+
+    app_config_unlock();
 
     app_config_save();
     web_send_saved_redirect(req, "/vpn");
