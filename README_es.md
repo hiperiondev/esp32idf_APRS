@@ -124,12 +124,9 @@ Todo es C puro. No hay núcleo de Arduino, ni `String`, ni PlatformIO. Toda la c
 | Localización (EN / ES / IT) | ✅ | en tiempo de compilación, un idioma por imagen |
 | Actualización OTA | ✅ | página web About / Firmware, ranuras `ota_0`/`ota_1`, rollback automático si falla el arranque |
 | Módulo RF LoRa / SX127x-SX128x | ❌ | solo UI + configuración, `ENABLE_RF_MODULE` está comentado |
-| VPN WireGuard, MQTT, GNSS | ❌ | las páginas/configuración existen; los módulos están deshabilitados en `app_config.h` |
 | Informe meteorológico APRS de la propia estación | ✅ | `weather.c`, refresco de sensores a 1 Hz, promediado opcional por campo, baliza WX real en el aire (RF y/o APRS-IS) — ver [Sensores](#sensores) |
 | Framework de drivers de sensores locales (`sensors_local`) | ✅ | registro dinámico en tiempo de ejecución, drivers auto-registrados, alimenta el selector de canal de la página Weather — ver [Sensores](#sensores) |
 | Codificación/baliza de Telemetría APRS en el aire | 🟡 | `sensors_local` ya puede recolectar valores de canales analógicos/digitales en `weather_telemetry_data_t`; todavía no existe un codificador ni una tarea de baliza `T#nnn`, por lo que la página Telemetría es solo configuración — ver [Sensores](#sensores) |
-| Página legada por-slot `/sensor` (`g_config.sensor[]`) | ❌ | el código de la página (`page_sensor.c`) quedó huérfano — ya no se compila ni se rutea — y sus campos `g_config.sensor[]` fueron eliminados; usar el framework `sensors_local`, ver [Sensores](#sensores) |
-| Bluetooth, PPP/GSM, pantalla OLED, Modbus | ❌ | campos de configuración conservados solo por compatibilidad |
 
 Leyenda: ✅ implementado · 🟡 parcial · ❌ no implementado (solo andamiaje)
 
@@ -1140,10 +1137,7 @@ Las estadísticas vienen de `aprs_service_get_stats()`, contabilizadas **con ind
 #define ENABLE_STATION
 #define ENABLE_RADIO_MODEM
 //#define ENABLE_RF_MODULE
-//#define ENABLE_VPN
-//#define ENABLE_MQTT
 #define ENABLE_MESSAGE
-//#define ENABLE_MOD_GPIO
 #define ENABLE_IGATE
 #define ENABLE_DIGIPEATER
 #define ENABLE_TRACKER
@@ -1152,7 +1146,6 @@ Las estadísticas vienen de `aprs_service_get_stats()`, contabilizadas **con ind
 //#define ENABLE_TELEMETRY
 #define ENABLE_SYSTEM
 #define ENABLE_WIRELESS
-//#define ENABLE_GNSS
 #define ENABLE_FILE_STORAGE
 #define ENABLE_ABOUT_FIRMWARE
 ```
