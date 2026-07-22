@@ -141,10 +141,10 @@ static int32_t calibratedPllStep(int32_t nominalStep) {
     double step = (double)(uint32_t)nominalStep / (double)sampleRateCorrection;
 
     /* Guard the extremes: a step of 0 would never overflow the PLL counter
-     * (decode() would never sample a symbol, exactly the N9600=1 bug the
+     * (decode() would never sample a symbol, exactly the N9600=1 
      * comment above this block documents), and a step above 2^32-1 cannot be
      * represented at all. Both would require sampleRateCorrection to be
-     * wildly out of range, which ModemCalibrateSampleRate() already rejects,
+     * wildly out of range, which ModemCalibrateSampleRate() rejects,
      * but this keeps the arithmetic itself well-defined regardless. */
     if (step < 1.0)
         step = 1.0;

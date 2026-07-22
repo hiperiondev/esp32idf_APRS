@@ -35,9 +35,6 @@
  * app and the omission never surfaced. Assign any of them a real pin - as this
  * project does for PTT, from the top-level CMakeLists.txt - and the blocks
  * come back with no declarations behind them.
- *
- * The CMakeLists already REQUIREs esp_driver_gpio, so only this line was
- * absent, not the dependency.
  */
 #include "driver/gpio.h"
 #include "driver/gptimer.h"
@@ -115,17 +112,6 @@ static const char *TAG = "afsk";
  * MODEM_BLOCK_SIZE - i.e. the DSP's block size was silently also the
  * modulator's worst-case freeze. It is in IRAM and it is fast; it is just 1536
  * bytes long fifty times a second.
- *
- * Two independent fixes, both applied:
- *   1. conv_frame_size is now MODEM_ADC_CONV_FRAME (128 samples, 256 B), no
- *      longer tied to the DSP block size. The FIFO below reassembles blocks;
- *      that is what it is for. ~11 us -> ~2 us.
- *   2. The DAC timer's interrupt is allocated on a different core from the ADC
- *      interrupt. A spinlock only masks its own core, so the ADC ISR now spins
- *      for the lock instead of silencing the modulator. See dac_timer_create().
- *
- * Keep both. (1) bounds the damage from any future long critical section on
- * the ADC core; (2) removes this one outright.
  *
  * MODEM_RX_FIFO_SIZE must be a power of two so the index is a mask, not a
  * modulo of a wrapping counter.
@@ -879,12 +865,6 @@ static bool IRAM_ATTR adc_conv_done_cb(adc_continuous_handle_t handle, const adc
  * mis-swap: exactly what Stage 3 of the diagnostics now sometimes reports
  * as "N of 6 tones read correctly only after un-swapping" once its
  * frequency estimator (afsk_diag.c) was fixed enough to be trusted.
- *
- * Fix: hold a genuinely unpaired trailing entry here instead of emitting
- * it, and combine it with its true partner - the first entry of the next
- * call - in correct chronological order once that arrives. This keeps
- * pairing correct across any call-boundary chunking the driver does,
- * instead of assuming every call starts on a true word boundary.
  */
 static bool s_havePendingSwap = false;
 static adc_digi_output_data_t s_pendingSwap;
@@ -1295,8 +1275,7 @@ void afskSetModem(uint8_t val, bool flatAudio, uint16_t timeSlot, uint16_t pream
  * esp_intr_alloc() binds an interrupt to whichever core calls it. Both the ADC
  * DMA interrupt and the DAC GPTimer interrupt are allocated inside driver calls
  * (adc_continuous_new_handle() and gptimer_register_event_callbacks()
- * respectively), so "which core" was previously decided by where app_main
- * happened to run - which put both of them on core 0, which is the whole bug.
+ * respectively), which put both of them on core 0.
  *
  * run_on_core() removes the accident. esp_ipc_call_blocking() would be the
  * obvious tool, but CONFIG_ESP_IPC_TASK_STACK_SIZE defaults to 1024 bytes and

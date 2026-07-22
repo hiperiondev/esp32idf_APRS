@@ -23,6 +23,7 @@
  */
 
 #include <math.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -243,9 +244,77 @@ static bool load_locked(objitems_t *out, bool *out_missing) {
             if (cJSON_IsString(v) && v->valuestring)
                 clamp_str(b->comment, v->valuestring, OBJITEM_COMMENT_MAX);
 
+            // -- Area object (YAAC "Area type, color, and offset"). --
+            v = cJSON_GetObjectItem(o, "atype");
+            if (cJSON_IsNumber(v)) {
+                int t = (int)v->valuedouble;
+                if (t < 0)
+                    t = 0;
+                if (t > 9)
+                    t = 9;
+                b->area_type = (uint8_t)t;
+            }
+            v = cJSON_GetObjectItem(o, "acol");
+            if (cJSON_IsNumber(v)) {
+                int c = (int)v->valuedouble;
+                if (c < 0)
+                    c = 0;
+                if (c > 15)
+                    c = 15;
+                b->area_color = (uint8_t)c;
+            }
+            v = cJSON_GetObjectItem(o, "alat");
+            if (cJSON_IsNumber(v) && v->valuedouble >= 0)
+                b->area_lat_off = (float)v->valuedouble;
+            v = cJSON_GetObjectItem(o, "alon");
+            if (cJSON_IsNumber(v) && v->valuedouble >= 0)
+                b->area_lon_off = (float)v->valuedouble;
+
+            // -- Signpost (YAAC "Signpost"). --
+            v = cJSON_GetObjectItem(o, "sign");
+            if (cJSON_IsString(v) && v->valuestring)
+                clamp_str(b->signpost, v->valuestring, OBJITEM_SIGNPOST_MAX);
+
+            // -- Repeater radio parameters (YAAC "Monitor frequency, duplex
+            //    direction, and subaudible tone"). --
+            v = cJSON_GetObjectItem(o, "freq");
+            if (cJSON_IsNumber(v) && v->valuedouble > 0)
+                b->freq_mhz = (float)v->valuedouble;
+            v = cJSON_GetObjectItem(o, "ofs");
+            if (cJSON_IsNumber(v) && v->valuedouble >= 0)
+                b->offset_khz = (uint16_t)v->valuedouble;
+            v = cJSON_GetObjectItem(o, "dup");
+            if (cJSON_IsNumber(v)) {
+                int d = (int)v->valuedouble;
+                b->duplex = (int8_t)(d > 0 ? 1 : (d < 0 ? -1 : 0));
+            }
+            v = cJSON_GetObjectItem(o, "tone");
+            if (cJSON_IsNumber(v) && v->valuedouble >= 0)
+                b->tone_tenths = (uint16_t)v->valuedouble;
+
+            // -- Digipeat paths (YAAC "Digipeat paths"). --
+            v = cJSON_GetObjectItem(o, "pmask");
+            if (cJSON_IsNumber(v)) {
+                int m = (int)v->valuedouble;
+                b->path_mask = (uint8_t)(m & ((1 << OBJITEM_PATH_PRESETS) - 1));
+            }
+
+            // -- QRU group membership (YAAC "QRU group membership"). --
+            v = cJSON_GetObjectItem(o, "qru");
+            if (cJSON_IsString(v) && v->valuestring)
+                clamp_str(b->qru, v->valuestring, OBJITEM_QRU_MAX);
+
             v = cJSON_GetObjectItem(o, "int_s");
             if (cJSON_IsNumber(v) && v->valuedouble > 0)
                 b->interval_s = (uint32_t)v->valuedouble;
+
+            // -- Decay ratio + slow repeat rate (YAAC). --
+            v = cJSON_GetObjectItem(o, "slow_s");
+            if (cJSON_IsNumber(v) && v->valuedouble > 0)
+                b->slow_interval_s = (uint32_t)v->valuedouble;
+            v = cJSON_GetObjectItem(o, "decay");
+            if (cJSON_IsNumber(v) && v->valuedouble > 0)
+                b->decay_x10 = (uint16_t)v->valuedouble;
 
             v = cJSON_GetObjectItem(o, "kill_left");
             if (cJSON_IsNumber(v) && v->valuedouble > 0)
@@ -282,9 +351,13 @@ static bool save_locked(const objitems_t *in) {
         const objitem_t *b = &in->item[i];
         char name[OBJITEM_NAME_MAX + 1];
         char cmt[OBJITEM_COMMENT_MAX + 1];
+        char sign[OBJITEM_SIGNPOST_MAX + 1];
+        char qru[OBJITEM_QRU_MAX + 1];
         char sym[3];
         clamp_str(name, b->name, OBJITEM_NAME_MAX);
         clamp_str(cmt, b->comment, OBJITEM_COMMENT_MAX);
+        clamp_str(sign, b->signpost, OBJITEM_SIGNPOST_MAX);
+        clamp_str(qru, b->qru, OBJITEM_QRU_MAX);
         sym[0] = b->sym[0] ? b->sym[0] : '/';
         sym[1] = b->sym[1] ? b->sym[1] : '-';
         sym[2] = 0;
@@ -306,7 +379,22 @@ static bool save_locked(const objitems_t *in) {
         fprintf(f, ",\"scope\":%d", (int)b->scope);
         fputs(",\"cmt\":", f);
         write_json_string(f, cmt);
+        fprintf(f, ",\"atype\":%u", (unsigned)b->area_type);
+        fprintf(f, ",\"acol\":%u", (unsigned)b->area_color);
+        fprintf(f, ",\"alat\":%.4f", (double)b->area_lat_off);
+        fprintf(f, ",\"alon\":%.4f", (double)b->area_lon_off);
+        fputs(",\"sign\":", f);
+        write_json_string(f, sign);
+        fprintf(f, ",\"freq\":%.4f", (double)b->freq_mhz);
+        fprintf(f, ",\"ofs\":%u", (unsigned)b->offset_khz);
+        fprintf(f, ",\"dup\":%d", (int)b->duplex);
+        fprintf(f, ",\"tone\":%u", (unsigned)b->tone_tenths);
+        fprintf(f, ",\"pmask\":%u", (unsigned)b->path_mask);
+        fputs(",\"qru\":", f);
+        write_json_string(f, qru);
         fprintf(f, ",\"int_s\":%u", (unsigned)b->interval_s);
+        fprintf(f, ",\"slow_s\":%u", (unsigned)b->slow_interval_s);
+        fprintf(f, ",\"decay\":%u", (unsigned)b->decay_x10);
         fprintf(f, ",\"kill_left\":%u", (unsigned)b->kill_left);
         fputc('}', f);
     }
@@ -374,11 +462,76 @@ static void lat_lon_to_aprs(float lat, float lon, char *latOut, size_t latMax, c
     snprintf(lonOut, lonMax, "%03d%05.2f%c", dLon, mLon, lon >= 0 ? 'E' : 'W');
 }
 
+// True when the element's symbol is the APRS Area symbol ('\l') or Signpost
+// symbol ('\m'). Both use the 7-byte data-extension slot (normally CSE/SPD)
+// for their own descriptor, so course/speed is suppressed for them.
+static bool objitem_is_area(const objitem_t *b) {
+    return b->sym[0] == '\\' && b->sym[1] == 'l';
+}
+
+static bool objitem_is_signpost(const objitem_t *b) {
+    return b->sym[0] == '\\' && b->sym[1] == 'm';
+}
+
+// Encode an Area corner offset (degrees, >= 0) into the APRS 2-digit "yy"/"xx"
+// code. Per the APRS symbols spec the code is the square root of the offset
+// expressed in 1/100ths of a degree, so the on-air offset is (code^2)/100
+// degrees. Clamped to 00..99.
+static unsigned area_offset_code(float deg) {
+    if (deg <= 0.0f)
+        return 0;
+    double code = sqrt((double)deg * 100.0);
+    if (code < 0.0)
+        code = 0.0;
+    if (code > 99.0)
+        code = 99.0;
+    return (unsigned)(code + 0.5);
+}
+
+// Build the standard APRS frequency block ("FFF.FFFMHz Tnnn ±nnn") into `out`,
+// or the empty string when no monitor frequency is configured. This is what
+// carries YAAC's monitor frequency, subaudible tone and duplex direction; by
+// convention it must be the first thing in the comment text so other stations'
+// radios can auto-tune from it.
+static void build_freq_block(const objitem_t *b, char *out, size_t out_size) {
+    out[0] = 0;
+    if (b->freq_mhz <= 0.0f || out_size == 0)
+        return;
+
+    int n = snprintf(out, out_size, "%.3fMHz", (double)b->freq_mhz);
+    if (n < 0 || (size_t)n >= out_size) {
+        out[0] = 0;
+        return;
+    }
+    size_t used = (size_t)n;
+
+    // Subaudible tone: "Tnnn" (integer Hz) when set, else "Toff".
+    if (used < out_size) {
+        if (b->tone_tenths > 0)
+            n = snprintf(out + used, out_size - used, " T%03u", (unsigned)(b->tone_tenths / 10u));
+        else
+            n = snprintf(out + used, out_size - used, " Toff");
+        if (n > 0 && (size_t)n < out_size - used)
+            used += (size_t)n;
+    }
+
+    // Duplex direction + shift: "±nnn" in units of 10 kHz (e.g. 600 kHz => 060).
+    if (b->duplex != 0 && used < out_size) {
+        unsigned nnn = (unsigned)(b->offset_khz / 10u);
+        if (nnn > 999)
+            nnn = 999;
+        n = snprintf(out + used, out_size - used, " %c%03u", b->duplex > 0 ? '+' : '-', nnn);
+        if (n > 0 && (size_t)n < out_size - used)
+            used += (size_t)n;
+    }
+}
+
 // Builds the APRS Object or Item info field for one element into `out`.
 //
 // `live` overrides b->active for the transmit-time live/kill decision (so the
 // kill sequence can force a kill report even while the stored element is still
-// nominally "active" pending the user's next edit). `out` should be >= 96.
+// nominally "active" pending the user's next edit). `out` should be >= 160 to
+// hold the frequency block plus a full comment.
 static void objitem_build_info_field(const objitem_t *b, bool live, char *out, size_t out_size) {
     char latStr[10], lonStr[11];
     lat_lon_to_aprs(b->lat, b->lon, latStr, sizeof(latStr), lonStr, sizeof(lonStr));
@@ -386,25 +539,50 @@ static void objitem_build_info_field(const objitem_t *b, bool live, char *out, s
     char sym_table = b->sym[0] ? b->sym[0] : '/';
     char sym_code = b->sym[1] ? b->sym[1] : '-';
 
-    // Course/speed extension: only when speed > 0 (matches YAAC: "If the speed
-    // is set to zero, speed and course will not be included"). APRS CSE/SPD is
-    // "CCC/SSS" with course in degrees (0..359) and speed in knots, both
-    // exactly 3 digits. Both values are clamped so each field is always 3
-    // digits, keeping the fixed "NNN/NNN\0" (8-byte) buffer from truncating -
-    // the ESP-IDF build treats -Wformat-truncation as an error.
-    char cse_spd[8];
-    cse_spd[0] = 0;
-    if (b->speed > 0) {
-        unsigned crs = (unsigned)(b->course % 360);        // 0..359
-        unsigned spd = b->speed > 999 ? 999u : b->speed;   // APRS speed field is 3 digits
-        snprintf(cse_spd, sizeof(cse_spd), "%03u/%03u", crs, spd);
+    // The 7-byte data-extension slot right after the symbol code. Which
+    // descriptor goes here depends on the symbol:
+    //   Area symbol   ("\l") -> "Tyy/Cxx" area descriptor (YAAC Area).
+    //   Signpost      ("\m") -> "{TEXT}"  signpost text (YAAC Signpost).
+    //   anything else        -> CSE/SPD, only when speed > 0 (as before; YAAC:
+    //                           "if the speed is set to zero, speed and course
+    //                           will not be included").
+    // Sized for the longest of these ("{TEXT}" / "NNN/NNN" / "Tyy/Cxx").
+    char ext[16];
+    ext[0] = 0;
+    if (objitem_is_area(b)) {
+        unsigned t = b->area_type > 9 ? 9 : b->area_type;
+        unsigned color = b->area_color > 15 ? 15 : b->area_color;
+        // Colours 0..9 use "/C"; 10..15 replace the '/' with '1' and C = C-10.
+        char sep = color <= 9 ? '/' : '1';
+        unsigned cdig = color <= 9 ? color : color - 10;
+        snprintf(ext, sizeof(ext), "%u%02u%c%u%02u", t, area_offset_code(b->area_lat_off), sep, cdig, area_offset_code(b->area_lon_off));
+    } else if (objitem_is_signpost(b)) {
+        char sp[OBJITEM_SIGNPOST_MAX + 1];
+        clamp_str(sp, b->signpost, OBJITEM_SIGNPOST_MAX);
+        snprintf(ext, sizeof(ext), "{%s}", sp);
+    } else if (b->speed > 0) {
+        unsigned crs = (unsigned)(b->course % 360);       // 0..359
+        unsigned spd = b->speed > 999 ? 999u : b->speed;  // APRS speed field is 3 digits
+        snprintf(ext, sizeof(ext), "%03u/%03u", crs, spd);
     }
+
+    // Comment text: the APRS frequency block (repeater objects) comes first, so
+    // it is the leading token other stations parse; then the free-text comment.
+    char freq[40];
+    build_freq_block(b, freq, sizeof(freq));
+    char text[OBJITEM_COMMENT_MAX + sizeof(freq) + 2];
+    if (freq[0] && b->comment[0])
+        snprintf(text, sizeof(text), "%s %s", freq, b->comment);
+    else if (freq[0])
+        snprintf(text, sizeof(text), "%s", freq);
+    else
+        snprintf(text, sizeof(text), "%s", b->comment);
 
     if (b->is_item) {
         // Item: ) NAME (3..9, variable) then '!'(live)/'_'(kill) then position.
         char name[OBJITEM_NAME_MAX + 1];
         clamp_str(name, b->name, OBJITEM_NAME_MAX);
-        snprintf(out, out_size, ")%s%c%s%c%s%c%s%s", name, live ? '!' : '_', latStr, sym_table, lonStr, sym_code, cse_spd, b->comment);
+        snprintf(out, out_size, ")%s%c%s%c%s%c%s%s", name, live ? '!' : '_', latStr, sym_table, lonStr, sym_code, ext, text);
     } else {
         // Object: ; NAME (exactly 9, space-padded) then '*'(live)/'_'(kill)
         // then DDHHMMz timestamp then position.
@@ -423,8 +601,7 @@ static void objitem_build_info_field(const objitem_t *b, bool live, char *out, s
         gmtime_r(&now, &tmv);
         snprintf(ts, sizeof(ts), "%02d%02d%02dz", tmv.tm_mday, tmv.tm_hour, tmv.tm_min);
 
-        snprintf(out, out_size, ";%s%c%s%s%c%s%c%s%s", name9, live ? '*' : '_', ts, latStr, sym_table, lonStr, sym_code, cse_spd,
-                 b->comment);
+        snprintf(out, out_size, ";%s%c%s%s%c%s%c%s%s", name9, live ? '*' : '_', ts, latStr, sym_table, lonStr, sym_code, ext, text);
     }
 }
 
@@ -493,19 +670,25 @@ static bool objitem_effective_inet(const objitem_t *b) {
     return b->send_inet;
 }
 
-static void tx_one(int idx, const objitem_t *b, const char *src, bool live) {
-    char info[96];
+// `path` is the RF digipeat path to insert (e.g. "WIDE1-1,WIDE2-1"), or NULL/
+// empty to send direct. It applies to the RF copy only; APRS-IS traffic always
+// carries TCPIP* instead of an RF path.
+static void tx_one(int idx, const objitem_t *b, const char *src, bool live, const char *path) {
+    char info[200];
     objitem_build_info_field(b, live, info, sizeof(info));
 
     const char *kind = b->is_item ? "Item" : "Object";
     const char *state = live ? "live" : "KILL";
 
     if (objitem_effective_rf(b)) {
-        // Sent direct (no digipeater path), matching the bulletin transmitter:
-        // the page exposes only enable/RF/Internet/scope/position/symbol/
-        // course-speed/comment/interval, no unproto path.
-        char packet[160];
-        int len = snprintf(packet, sizeof(packet), "%s>%s:%s", src, OBJITEM_DEST, info);
+        // Digipeat path (YAAC "Digipeat paths"): inserted when the element
+        // selects one or more of the shared path presets; otherwise direct.
+        char packet[256];
+        int len;
+        if (path && path[0])
+            len = snprintf(packet, sizeof(packet), "%s>%s,%s:%s", src, OBJITEM_DEST, path, info);
+        else
+            len = snprintf(packet, sizeof(packet), "%s>%s:%s", src, OBJITEM_DEST, info);
         if (len > 0 && len < (int)sizeof(packet)) {
             if (aprs_service_send_tnc2(packet, (size_t)len))
                 ESP_LOGI(TAG, "%s %d TX (RF, %s): %s", kind, idx + 1, state, packet);
@@ -516,7 +699,7 @@ static void tx_one(int idx, const objitem_t *b, const char *src, bool live) {
     if (objitem_effective_inet(b)) {
         // Locally-originated APRS-IS traffic carries the TCPIP* q-construct,
         // never an RF unproto path (same note as message.c / bulletins.c).
-        char packet[160];
+        char packet[256];
         int len = snprintf(packet, sizeof(packet), "%s>%s,TCPIP*:%s", src, OBJITEM_DEST, info);
         if (len > 0 && len < (int)sizeof(packet)) {
             if (igate_send_raw(packet, (size_t)len))
@@ -525,6 +708,63 @@ static void tx_one(int idx, const objitem_t *b, const char *src, bool live) {
                 ESP_LOGW(TAG, "%s %d NOT sent over INET - APRS-IS not connected yet", kind, idx + 1);
         }
     }
+}
+
+// Resolves the element's selected digipeat-path presets (the g_config.path[0..3]
+// slots whose bit is set in path_mask) into `out` in ascending bit order,
+// returning the count. Empty presets are skipped. Snapshotted under the config
+// lock so a concurrent web save can't tear a preset string mid-copy.
+static int objitem_paths(const objitem_t *b, char out[OBJITEM_PATH_PRESETS][72]) {
+    int n = 0;
+    app_config_lock();
+    for (int i = 0; i < OBJITEM_PATH_PRESETS; i++) {
+        if (!(b->path_mask & (1u << i)) || !g_config.path[i][0])
+            continue;
+        size_t k = 0;
+        while (g_config.path[i][k] && k < 71) {
+            out[n][k] = g_config.path[i][k];
+            k++;
+        }
+        out[n][k] = 0;
+        n++;
+    }
+    app_config_unlock();
+    return n;
+}
+
+// One decay step: multiply the current interval by the decay ratio, bounded by
+// the slow repeat rate. No-op unless a ratio >= 1.0 and a slow rate above the
+// initial rate are both configured (YAAC "Decay ratio" + "Slow repeat rate").
+static uint32_t clamp_interval(uint32_t interval); // defined below
+static uint32_t objitem_decay_step(uint32_t cur, const objitem_t *b) {
+    if (b->decay_x10 < 10 || b->slow_interval_s == 0)
+        return cur;
+    uint32_t initial = clamp_interval(b->interval_s);
+    if (b->slow_interval_s <= initial)
+        return cur;
+    uint64_t next = (uint64_t)cur * (uint64_t)b->decay_x10 / 10u;
+    if (next <= cur)
+        next = (uint64_t)cur + 1; // guarantee forward progress
+    if (next > b->slow_interval_s)
+        next = b->slow_interval_s;
+    return (uint32_t)next;
+}
+
+// A change token over an element's user-editable fields (everything up to the
+// runtime kill_left counter). Any edit changes it, which the scheduler uses to
+// restart the decay ramp at the initial rate and transmit promptly - matching
+// YAAC's "edits cause transmission to begin again at the initial rate". The
+// struct is fully zeroed on load (memset in load_locked), so padding bytes are
+// stable and don't cause spurious resets.
+static uint32_t objitem_signature(const objitem_t *b) {
+    const uint8_t *p = (const uint8_t *)b;
+    size_t n = offsetof(objitem_t, kill_left);
+    uint32_t h = 2166136261u; // FNV-1a
+    for (size_t i = 0; i < n; i++) {
+        h ^= p[i];
+        h *= 16777619u;
+    }
+    return h;
 }
 
 // Bound a configured interval into [floor, ...], with 0 meaning "use the
@@ -547,6 +787,18 @@ static int64_t mono_seconds(void) {
 // enabled element transmits once on the first pass after start.
 static int64_t s_next_due[OBJITEM_COUNT] = { 0 };
 
+// Per-element runtime decay/path state (transient; not persisted - a reboot or
+// any edit restarts the decay ramp at the initial rate, like YAAC):
+//   s_cur_interval - the live (possibly decayed) interval; 0 => re-seed from
+//                    the element's initial repeat rate on next use.
+//   s_path_rot     - proportional-pathing rotation index into the element's
+//                    selected path presets.
+//   s_sig          - last-seen change token (see objitem_signature); a change
+//                    means the element was edited and its schedule is reset.
+static uint32_t s_cur_interval[OBJITEM_COUNT] = { 0 };
+static uint8_t s_path_rot[OBJITEM_COUNT] = { 0 };
+static uint32_t s_sig[OBJITEM_COUNT] = { 0 };
+
 uint32_t objitems_service(void) {
     // One-time settle delay after boot before the first transmit pass.
     static bool started = false;
@@ -568,6 +820,16 @@ uint32_t objitems_service(void) {
     for (int i = 0; i < OBJITEM_COUNT; i++) {
         objitem_t *b = &set.item[i];
 
+        // Restart the schedule (and decay ramp) if the element was edited since
+        // the last pass, so an edit transmits promptly at the initial rate.
+        uint32_t sig = objitem_signature(b);
+        if (sig != s_sig[i]) {
+            s_sig[i] = sig;
+            s_cur_interval[i] = 0; // re-seed from the initial rate below
+            s_path_rot[i] = 0;
+            s_next_due[i] = 0; // transmit on this pass
+        }
+
         // An element is transmittable if enabled, named, has some destination,
         // and its scope isn't PRIVATE.
         bool has_dest = objitem_effective_rf(b) || objitem_effective_inet(b);
@@ -576,12 +838,23 @@ uint32_t objitems_service(void) {
         if (!sendable || !src[0]) {
             // Reset so re-enabling / naming / setting a callsign fires an
             // immediate transmit on the next pass instead of waiting a stale
-            // timer.
+            // timer, and so the decay ramp starts fresh.
             s_next_due[i] = 0;
+            s_cur_interval[i] = 0;
+            s_path_rot[i] = 0;
             continue;
         }
 
+        // Seed the live interval from the element's initial repeat rate.
+        if (s_cur_interval[i] == 0)
+            s_cur_interval[i] = clamp_interval(b->interval_s);
+
         if (now >= s_next_due[i]) {
+            // Resolve the proportional-path set and pick this cycle's path.
+            char paths[OBJITEM_PATH_PRESETS][72];
+            int np = objitem_paths(b, paths);
+            const char *path = (np > 0) ? paths[s_path_rot[i] % np] : NULL;
+
             if (!b->active || b->kill_left > 0) {
                 // Kill path: element is being retired. Force a kill report and
                 // count it down. When the last kill report goes out, clear the
@@ -589,7 +862,7 @@ uint32_t objitems_service(void) {
                 // in the UI (mirrors bulletins' expiry auto-disable).
                 if (b->kill_left == 0)
                     b->kill_left = OBJITEM_KILL_REPEATS; // first kill pass arms the repeat count
-                tx_one(i, b, src, false /* kill report */);
+                tx_one(i, b, src, false /* kill report */, path);
                 b->kill_left--;
                 if (b->kill_left == 0) {
                     b->enable = false;
@@ -598,9 +871,21 @@ uint32_t objitems_service(void) {
                 dirty = true;
             } else {
                 // Normal live report.
-                tx_one(i, b, src, true);
+                tx_one(i, b, src, true, path);
             }
-            s_next_due[i] = now + (int64_t)clamp_interval(b->interval_s);
+
+            // Advance proportional pathing; apply one decay step after each
+            // full cycle through the selected paths (YAAC semantics). With one
+            // or no path, every transmission is itself a full cycle.
+            if (np > 1) {
+                s_path_rot[i] = (uint8_t)((s_path_rot[i] + 1) % np);
+                if (s_path_rot[i] == 0)
+                    s_cur_interval[i] = objitem_decay_step(s_cur_interval[i], b);
+            } else {
+                s_cur_interval[i] = objitem_decay_step(s_cur_interval[i], b);
+            }
+
+            s_next_due[i] = now + (int64_t)s_cur_interval[i];
             vTaskDelay(pdMS_TO_TICKS(OBJITEM_INTER_TX_MS));
             now = mono_seconds(); // account for the inter-TX gap
         }

@@ -483,7 +483,7 @@ void weather_service_1hz(void) {
 // (the INET-only leg is a shallower call tree and stayed fine). Give this task
 // the same proven budget the beacon and aprs_svc_tick tasks use (10240) rather
 // than the old 6144. See BEACON_TASK_STACK_BYTES in beacon.c.
-#define WX_BEACON_TASK_STACK_BYTES 14336 // was 10240; info 256->420 and packet 300->500 (128-byte comment support) ate into the existing margin, same class of bug as BEACON_TASK_STACK_BYTES
+#define WX_BEACON_TASK_STACK_BYTES 14336
 
 // Monotonic "next due" timestamp (seconds); 0 = due now so an enabled WX
 // beacon transmits once on the first pass, exactly like the old task loop.

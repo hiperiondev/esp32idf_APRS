@@ -186,11 +186,7 @@ esp_err_t modem_init(const modem_config_t *cfg) {
     /*
      * Pinned, not free-floating. This task is the consumer end of the AX.25 RX
      * ring whose producer (Ax25BitParse(), from afsk_rx_task) is pinned to
-     * MODEM_RX_TASK_CORE. The ring is now correctly ordered and barriered, so
-     * this is no longer required for correctness - but leaving the consumer
-     * unpinned put the two ends on different cores, which is what made the
-     * ordering bug reachable at all. Keeping them on one core also means a
-     * frame is never copied out across a cache-coherency boundary.
+     * MODEM_RX_TASK_CORE.
      */
 #if MODEM_RX_TASK_CORE >= 0
     if (xTaskCreatePinnedToCore(modem_service_task, "modem_svc", 6144, NULL, 5, &s_svcTask, MODEM_RX_TASK_CORE) != pdPASS) {

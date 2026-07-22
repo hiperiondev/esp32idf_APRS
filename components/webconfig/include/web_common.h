@@ -58,7 +58,7 @@ int web_read_body(httpd_req_t *req, char *buf, size_t buf_size);
 #define WEBCONFIG_POST_BUF_MOD    3000 // page_mod.c    - RF/I2C/UART/PPP/power peripheral form
 #define WEBCONFIG_POST_BUF_TLM    6000 // page_tlm.c    - telemetry configuration form
 #define WEBCONFIG_POST_BUF_BULLETINS 2600 // page_bulletins.c - 5 bulletins x (3 checkboxes + up to 67-char msg + expire)
-#define WEBCONFIG_POST_BUF_OBJITEMS  3000 // page_objects.c - 5 objects/items x (3 checkboxes + name + type + active + scope + lat/lon + symbol + course/speed + comment + interval)
+#define WEBCONFIG_POST_BUF_OBJITEMS  6000 // page_objects.c - 5 objects/items x (3 checkboxes + name + type + active + scope + lat/lon + symbol + course/speed + comment + area(type/color/lat/lon) + signpost + freq/duplex/offset/tone + 4 path checkboxes + QRU + initial/slow interval + decay)
 
 // Finds "key=value" inside an application/x-www-form-urlencoded blob (POST body
 // or query string), URL-decodes it into out (out_size incl. NUL), returns true if found.

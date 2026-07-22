@@ -80,6 +80,23 @@
 // repeats so every listener drops the asset.
 #define OBJITEM_KILL_REPEATS 3
 
+// Signpost text length. A Signpost symbol ("\m") carries up to three
+// characters, emitted on air as {TEXT} immediately after the symbol code
+// (APRS101 ch.6). Used only when the element's symbol is the Signpost symbol.
+#define OBJITEM_SIGNPOST_MAX 3
+
+// QRU group-membership name length. Mirrors YAAC's "QRU group membership"
+// field: a short group tag (e.g. "HOSP", "FUEL", "RP2M"). Stored/persisted so
+// a future QRU responder can enumerate group members; see objits_items.h note
+// on the QRU field below.
+#define OBJITEM_QRU_MAX 8
+
+// Number of digipeat-path presets an Object/Item can choose from. Matches the
+// four shared preset slots g_config.path[0..3] that beacon.c / weather.c also
+// select from, so the whole firmware speaks one path vocabulary. An element's
+// `path_mask` is a bitmask over these four presets (bit i => g_config.path[i]).
+#define OBJITEM_PATH_PRESETS 4
+
 /**
  * @brief Scope of transmission (mirrors YAAC's "Scope" choicebox).
  *
@@ -128,7 +145,50 @@ typedef struct {
 
     char comment[OBJITEM_COMMENT_MAX + 1]; /**< Free-text comment, appended last. */
 
-    uint32_t interval_s; /**< Transmit interval in seconds; 0 = firmware default. */
+    // --- Area object (YAAC "Area type, color, and offset"). ------------------
+    // Only emitted when the symbol is the Area symbol ('\\','l'). The on-air
+    // 7-byte extension "Tyy/Cxx" replaces the CSE/SPD slot (APRS symbols spec).
+    uint8_t area_type;   /**< 0..9: 0=circle,1=line,2=ellipse,3=triangle,4=box; +5 selects the colour-filled variant. */
+    uint8_t area_color;  /**< APRS area colour 0..15. */
+    float area_lat_off;  /**< Latitude corner offset in degrees (>=0); quantized to the APRS "yy" code at TX. */
+    float area_lon_off;  /**< Longitude corner offset in degrees (>=0); quantized to the APRS "xx" code at TX. */
+
+    // --- Signpost (YAAC "Signpost"). -----------------------------------------
+    // Only emitted when the symbol is the Signpost symbol ('\\','m'); sent as
+    // "{TEXT}" right after the symbol code.
+    char signpost[OBJITEM_SIGNPOST_MAX + 1]; /**< Up to 3 chars of signpost text. */
+
+    // --- Repeater radio parameters (YAAC "Monitor frequency, duplex direction,
+    // and subaudible tone"). Emitted as the standard APRS frequency block
+    // ("FFF.FFFMHz Tnnn ±nnn") at the very start of the comment text, so it is
+    // only meaningful for the Antenna ('/','r') and repeater symbols. ---------
+    float freq_mhz;      /**< Monitor frequency in MHz; 0 => no frequency block emitted. */
+    uint16_t offset_khz; /**< Duplex shift magnitude in kHz (e.g. 600); used only when duplex != 0. */
+    int8_t duplex;       /**< Duplex direction: 0 = simplex, +1 = "+", -1 = "-". */
+    uint16_t tone_tenths;/**< CTCSS subaudible tone in tenths of Hz (e.g. 1000 = 100.0 Hz); 0 => "Toff". */
+
+    // --- Digipeat paths (YAAC "Digipeat paths"). -----------------------------
+    // Bitmask over the four shared presets g_config.path[0..3]. 0 => transmit
+    // direct (no path). When more than one bit is set, the element uses
+    // proportional pathing: one preset per transmission, in ascending bit
+    // order, and the decay step (below) is applied after each full cycle.
+    uint8_t path_mask;
+
+    // --- QRU group membership (YAAC "QRU group membership"). ------------------
+    // Short group tag this Object/Item belongs to (e.g. "HOSP", "FUEL"). Stored
+    // and persisted here; the QRU *responder* that answers ?QRU? messages is a
+    // separate receive-side feature and is not implemented by this transmitter.
+    char qru[OBJITEM_QRU_MAX + 1];
+
+    uint32_t interval_s; /**< Initial repeat rate in seconds (YAAC "Initial object repeat rate"); 0 = firmware default. */
+
+    // --- Decaying transmission rate (YAAC "Decay ratio" + "Slow repeat rate").
+    // With decay active, the live transmit interval starts at interval_s and is
+    // multiplied by (decay_x10/10) after each proportional-path cycle until it
+    // reaches slow_interval_s, then holds there. Any edit to the element
+    // restarts it at interval_s (see objects_items.c change-token logic).
+    uint32_t slow_interval_s; /**< Longest (slow) interval, seconds; 0 or <= interval_s => no decay. */
+    uint16_t decay_x10;       /**< Decay ratio ×10 (e.g. 20 => 2.0×); < 10 => no decay. */
 
     uint8_t kill_left;   /**< Runtime: remaining kill retransmissions (not user-edited; persisted so a reboot mid-kill still completes). */
 } objitem_t;
