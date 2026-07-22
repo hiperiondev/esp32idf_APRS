@@ -1137,10 +1137,7 @@ The statistics come from `aprs_service_get_stats()`, tracked **independently** o
 #define ENABLE_STATION
 #define ENABLE_RADIO_MODEM
 //#define ENABLE_RF_MODULE
-//#define ENABLE_VPN
-//#define ENABLE_MQTT
 #define ENABLE_MESSAGE
-//#define ENABLE_MOD_GPIO
 #define ENABLE_IGATE
 #define ENABLE_DIGIPEATER
 #define ENABLE_TRACKER
@@ -1149,7 +1146,6 @@ The statistics come from `aprs_service_get_stats()`, tracked **independently** o
 //#define ENABLE_TELEMETRY
 #define ENABLE_SYSTEM
 #define ENABLE_WIRELESS
-//#define ENABLE_GNSS
 #define ENABLE_FILE_STORAGE
 #define ENABLE_ABOUT_FIRMWARE
 ```
