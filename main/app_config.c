@@ -43,13 +43,14 @@ app_config_t g_config;
 // Serializes every save/load of the underlying config.json file. Without
 // this, two overlapping POSTs (e.g. a user clicking Save twice quickly, or a
 // page auto-refresh racing a save) could both end up inside
-// app_config_save() at once: both fopen() the same .tmp file, both
-// remove()/rename() the live config, and both race the littlefs allocator
-// concurrently from two httpd worker task contexts. That races the flash
-// filesystem's internal metadata and was the root cause of crashes ("save
-// too often") - littlefs ends up handed corrupted block-list state, and a
-// bad pointer deref inside memset() takes down the task, which matches the
-// double-exception / corrupted-backtrace panic seen in the field. Created
+// app_config_save() at once, doing redundant work and each rewriting the
+// live config from under the other. (Note: esp_littlefs already takes a
+// per-instance lock around every VFS op, so overlapping saves cannot corrupt
+// the filesystem's own metadata - the intermittent memset/double-exception
+// "save crash" was NOT this race but the stdio buffer allocation on the first
+// write; see the setvbuf() note in app_config_save(). This mutex is kept
+// because serializing saves is still correct, avoids wasted flash writes, and
+// lets app_config_save() safely reuse a single static stdio buffer.) Created
 // lazily so this file has no init-order dependency.
 static SemaphoreHandle_t s_config_mutex = NULL;
 
@@ -1517,6 +1518,22 @@ bool app_config_save(void) {
         xSemaphoreGive(config_mutex());
         return false;
     }
+
+    // Give the stream a fixed, known buffer BEFORE the first byte is written.
+    // If we don't, newlib lazily allocates the stdio buffer on the first
+    // fputc(), and it sizes that buffer from st_blksize - which esp_littlefs
+    // reports as the 4096-byte flash block size. On this device's small,
+    // fragmented heap that transient malloc(4096) is exactly what made saves
+    // crash intermittently: when it can't be satisfied cleanly the stream
+    // falls back to the unbuffered per-byte path (__swbuf_r) and a starved
+    // heap trips a memset with a corrupted length - the double-exception /
+    // corrupted-backtrace panic seen in the field. A small static buffer
+    // removes that allocation entirely and, as a bonus, coalesces the
+    // hundreds of token writes into a handful of block writes. Static (not on
+    // the stack) and safe to reuse: every save is fully serialized by
+    // config_mutex(), held across this whole function.
+    static char s_save_buf[512];
+    setvbuf(f, s_save_buf, _IOFBF, sizeof(s_save_buf));
 
     jw_t w = { .f = f, .obj_comma = false, .arr_comma = false };
     config_write_json(&w, &g_config);

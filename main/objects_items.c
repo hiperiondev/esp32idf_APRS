@@ -264,6 +264,16 @@ static bool save_locked(const objitems_t *in) {
         return false;
     }
 
+    // Pin the stdio buffer before the first write. Otherwise newlib sizes it
+    // from st_blksize (esp_littlefs reports the 4096-byte flash block), so the
+    // first fputs() triggers a transient malloc(4096) that, on this device's
+    // small/fragmented heap, intermittently crashed the save through the
+    // unbuffered per-byte path (__swbuf_r) and a corrupted-length memset. See
+    // the fuller note in app_config_save(). Static + reused safely: every save
+    // runs under this module's lock() held across save_locked().
+    static char s_save_buf[512];
+    setvbuf(f, s_save_buf, _IOFBF, sizeof(s_save_buf));
+
     // Written token-by-token straight to the file (no cJSON tree, no second
     // serialized buffer) - the same low-RAM approach app_config_save() and
     // bulletins_save() use.
