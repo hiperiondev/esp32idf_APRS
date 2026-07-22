@@ -71,7 +71,6 @@
 - [Localización](#localización)
 - [Resolución de problemas](#resolución-de-problemas)
 - [Estado y limitaciones conocidas](#estado-y-limitaciones-conocidas)
-- [Notas de portabilidad](#notas-de-portabilidad)
 - [Créditos](#créditos)
 - [Licencia](#licencia)
 
@@ -1232,24 +1231,6 @@ Las reconexiones usan un **back-off creciente** (500 ms por falla consecutiva, c
 * **El parseo de símbolos** solo cubre los formatos de posición sin marca de tiempo `!` / `=`; `/` y `@` dejan el ícono en blanco.
 * **`agc_max_gain`, `sql_level`, `volume`, `adc_gpio`, `dac_gpio`, `rf_sql_*`, `rf_pwr_*`, `adc_atten`** están inertes desde el cambio de módem; se conservan solo por compatibilidad de `config.json`.
 * El `sdkconfig` viene con `-Og` + aserciones, no con un perfil de release.
-
----
-
-## Notas de portabilidad
-
-Migrar del viejo **`esp32_IDF_libAPRS`** al **`esp32idf_radioamateur_modem`** cambió varios contratos. Si estás trasladando parches:
-
-| Antes | Ahora |
-|---|---|
-| Pines de ADC/DAC/PTT en `aprs_modem_config_t` en **runtime** desde `g_config` | **Tiempo de compilación** `MODEM_*_GPIO` vía `idf_build_set_property()` en el `CMakeLists.txt` de nivel superior (el PTT es la excepción: volvió a runtime, validado) |
-| La app bombeaba `AFSK_Poll()` / `APRS_poll()` desde su propia tarea | El componente es dueño de ambos: `AFSK_init()` arranca una tarea DSP de RX fijada a un núcleo; `modem_init()` arranca `modem_svc`. Llamar `AFSK_Poll()` tú mismo ahora **compite** con esa tarea por el mismo FIFO. |
-| El componente decodificaba tramas y llamaba a un `ax25_callback_t _hook` global con un `AX25Msg` ya armado | El componente devuelve **bytes AX.25 crudos**; la app hace `ax25_decode()` en `on_rx_frame()` y despacha por su propia indirección `s_rxHook` |
-| `APRS_sendTNC2Pkt(raw, len)` | `modem_send_tnc2(const char*)` — terminado en NUL; `aprs_service_send_tnc2()` hace la conversión de puntero+longitud y la verificación de `AX25_FRAME_MAX_SIZE` de forma centralizada |
-| `ax25ToTnc2()` local | envoltorio fino sobre `modem_format_tnc2()` para que las dos representaciones no puedan divergir |
-| Diagnósticos con enganche (`AFSK_getAdcDiag`, `AFSK_getSquelchDiag`, `Ax25GetFrameDiag`, …) | Getters instantáneos (`afskGetRms`, `afskGetAgcGain`, `afskGetDcOffset`, `ModemDcdState`, `Ax25GetRxStage`, `ModemGetSignalLevel`) + una toma pasiva (`afskDiagCaptureRaw`); el enganche ahora lo hace la tarea monitor del loop test de la app |
-| Dependencia de `espressif/esp-dsp` | eliminada — el módem implementa sus propios filtros |
-| Squelch por software, volumen de RX, techo de AGC, conmutador de potencia de RF | **desaparecidos**, sin equivalente. La RX se controla con el DCD real del demodulador. |
-| `MODEM_DEFAULT_CONFIG()` viene con `full_duplex = true` | apunta a la demo de loopback por cable; **el uso real al aire debe poner `full_duplex = false`** o transmitirá encima de alguien que ya esté transmitiendo |
 
 ---
 
