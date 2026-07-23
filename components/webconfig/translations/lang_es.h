@@ -235,6 +235,7 @@
 #define TR_F_PTT_ACTIVE_HIGH                               "PTT activo en alto"
 #define TR_F_PTT_PIN                                       "Pin PTT"
 #define TR_DISABLED                                         "Deshabilitado"
+#define TR_GPIO_USED_BY                                     "GPIO%d (usado: %.30s)"
 #define TR_F_PUBLISH_FLAGS_BITMASK                         "Indicadores de publicación (máscara de bits)"
 #define TR_F_PUBLISH_TOPIC                                 "Tema de publicación"
 #define TR_F_PULSE_COUNTERS                                "Contadores de pulsos"

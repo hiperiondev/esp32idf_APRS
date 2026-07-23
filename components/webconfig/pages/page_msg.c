@@ -46,7 +46,7 @@ static void web_field_msg_alarm_gpio(httpd_req_t *req, int8_t current) {
         const char *owner = web_gpio_owner_tag(gpio, "Message Alarm");
         char label[48];
         if (owner)
-            snprintf(label, sizeof(label), "GPIO%d (used: %.30s)", gpio, owner);
+            snprintf(label, sizeof(label), TR_GPIO_USED_BY, gpio, owner);
         else
             snprintf(label, sizeof(label), "GPIO%d", gpio);
         web_select_option_state(req, gpio, label, current == gpio, owner != NULL);
