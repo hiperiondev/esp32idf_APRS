@@ -29,8 +29,10 @@
  * with its own enable flag and interval, so they operate completely independently
  * of one another.
  *
- * GPS/live-position and SmartBeaconing are not implemented here: these are
- * fixed-station beacons using each page's saved coordinates only.
+ * GPS/live-position beaconing is not implemented here: these are fixed-station
+ * beacons using each page's saved coordinates only, sent at the fixed interval
+ * configured on each page. (SmartBeaconing had config fields and a web fieldset
+ * but never had any logic behind it; both have been removed.)
  */
 
 #ifndef BEACON_H

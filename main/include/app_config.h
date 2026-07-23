@@ -80,9 +80,8 @@
 #define ENABLE_IGATE
 #define ENABLE_DIGIPEATER
 #define ENABLE_TRACKER
-#define ENABLE_SMARTBEACONING 
 #define ENABLE_WEATHER
-#define ENABLE_TELEMETRY
+//#define ENABLE_TELEMETRY
 #define ENABLE_SYSTEM
 #define ENABLE_WIRELESS
 #define ENABLE_FILE_STORAGE
@@ -251,18 +250,11 @@ typedef struct {
     float trk_lat;
     float trk_lon;
     float trk_alt;
-    uint16_t trk_interval;
-    bool trk_smartbeacon;
+    uint16_t trk_interval; // fixed tracker beacon period in seconds (see beacon.c)
     bool trk_compress;
     bool trk_altitude;
     bool trk_log;
     bool trk_rssi;
-    uint16_t trk_hspeed;
-    uint8_t trk_lspeed;
-    uint8_t trk_maxinterval;
-    uint8_t trk_mininterval;
-    uint8_t trk_minangle;
-    uint16_t trk_slowinterval;
     char trk_symbol[3];
     char trk_symmove[3];
     char trk_symstop[3];
