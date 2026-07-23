@@ -1,6 +1,5 @@
 idf_component_register(
-    SRCS
-        "weather_telemetry.c"
+    SRCS        
     INCLUDE_DIRS
         "include"
     REQUIRES

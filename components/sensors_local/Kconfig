@@ -2,23 +2,32 @@ menu "Sensors Local"
 
     config SENSORS_LOCAL_WEATHER_EXAMPLE_DRIVER
         bool "Enable example WEATHER local sensor driver (random values, no hardware)"
-        default y
+        default n
         help
             Registers a fake weather sensor ("wx-example") that feeds random
             wind/temperature/humidity/pressure/rain/luminosity readings into
             the pipeline. Useful to exercise the Weather page's channel
             picker and the WX beacon encoder with no hardware attached.
-            Disable once a real weather sensor driver is in place.
+
+            Off by default: a real weather driver (BMP180) now exists, and
+            these values are indistinguishable from real readings once an
+            operator maps them to a Weather channel - they will be encoded
+            into a WX beacon and transmitted on air. Only turn this on for
+            bench testing, and turn it off again before keying a radio.
 
     config SENSORS_LOCAL_TELEMETRY_EXAMPLE_DRIVER
         bool "Enable example TELEMETRY local sensor driver (random values, no hardware)"
-        default y
+        default n
         help
             Registers a fake telemetry sensor ("tlm-example") that feeds
             random analog/digital channel values into the pipeline. Useful
             to exercise the Telemetry page's channel picker with no
-            hardware attached. Disable once real telemetry sensor drivers
-            are in place.
+            hardware attached.
+
+            Off by default: once an operator maps these channels they are
+            encoded into telemetry beacons and transmitted on air, where
+            they are indistinguishable from real measurements. Only turn
+            this on for bench testing.
 
     config SENSORS_LOCAL_BMP180_DRIVER
         bool "Enable BMP180 I2C WEATHER sensor driver (temperature + pressure)"

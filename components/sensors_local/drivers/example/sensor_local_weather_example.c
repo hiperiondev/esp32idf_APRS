@@ -31,6 +31,18 @@
 
 #include "esp_log.h"
 #include "sensors_local.h"
+
+/* Everything below is compiled only when the driver is enabled in menuconfig
+ * (Component config -> Sensors Local). This mirrors bmp180.c, and it is not
+ * optional: the component is registered WHOLE_ARCHIVE, so without this guard
+ * SENSORS_LOCAL_DRIVER_AUTOREGISTER() below is always linked in and the fake
+ * sensor registers at boot no matter what Kconfig says.
+ *
+ * The properties descriptor is included inside the guard on purpose: it is a
+ * file-scope `static const` object, so leaving it outside would make it an
+ * unused variable (and a -Wunused-const-variable warning) in a disabled build. */
+#ifdef CONFIG_SENSORS_LOCAL_WEATHER_EXAMPLE_DRIVER
+
 #include "wx_example_properties.h" /* fine-grained Weather field capability descriptor */
 
 static const char *TAG = "sensor_wx_example";
@@ -134,3 +146,5 @@ static sensor_local_driver_t wx_example_driver = {
 };
 
 SENSORS_LOCAL_DRIVER_AUTOREGISTER(wx_example_driver);
+
+#endif /* CONFIG_SENSORS_LOCAL_WEATHER_EXAMPLE_DRIVER */
