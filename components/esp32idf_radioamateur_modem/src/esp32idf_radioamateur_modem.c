@@ -204,25 +204,6 @@ esp_err_t modem_init(const modem_config_t *cfg) {
     return ESP_OK;
 }
 
-void modem_deinit(void) {
-    if (!s_running)
-        return;
-    if (s_svcTask) {
-        vTaskDelete(s_svcTask);
-        s_svcTask = NULL;
-    }
-    AFSK_deinit();
-    s_running = false;
-}
-
-bool modem_tx_busy(void) {
-    /* getTransmit() alone only covers "currently keyed up"; it misses a
-     * frame that's queued but still waiting out quiet-time/CSMA backoff
-     * before Ax25TransmitCheck() keys up, which is exactly the "pending"
-     * half this function's contract promises. */
-    return getTransmit() || Ax25TxBufferPending();
-}
-
 uint8_t modem_tx_queue_depth(void) {
     return Ax25TxFramesPending();
 }

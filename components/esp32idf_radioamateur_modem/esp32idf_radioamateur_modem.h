@@ -126,11 +126,6 @@ typedef void (*modem_rx_cb_t)(const modem_rx_frame_t *f, void *ctx);
 esp_err_t modem_init(const modem_config_t *cfg);
 
 /**
- * @brief Stop every internal task and release all hardware resources.
- */
-void modem_deinit(void);
-
-/**
  * @brief Change the active modem profile and related settings at runtime.
  * @param cfg New configuration to apply.
  */
@@ -183,12 +178,6 @@ esp_err_t modem_send_tnc2(const char *tnc2);
  * @param out_len Size, in bytes, of @p out.
  */
 void modem_format_tnc2(const ax25_msg_t *msg, char *out, size_t out_len);
-
-/**
- * @brief Check whether a frame transmission is in progress or pending.
- * @return true while a frame is being modulated or is queued waiting to be.
- */
-bool modem_tx_busy(void);
 
 /**
  * @brief Count how many frames are currently queued/in flight on RF TX.

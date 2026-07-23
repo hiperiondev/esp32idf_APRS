@@ -51,8 +51,8 @@
  * for the pin to actually be configured as an output; calling it again
  * later only updates the active level and the pin used by setPtt(), it
  * does NOT reconfigure GPIO direction on an already-running modem - call
- * AFSK_deinit()/AFSK_init() (or modem_deinit()/modem_init()) to move PTT
- * to a different pin while the modem is running.
+ * AFSK_deinit()/AFSK_init() to move PTT to a different pin while the
+ * modem is running.
  *
  * @param gpio        GPIO number to drive PTT with, or -1 to disable PTT
  *                    output entirely. The caller is responsible for

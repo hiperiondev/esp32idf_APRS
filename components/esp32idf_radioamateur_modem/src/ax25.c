@@ -219,7 +219,6 @@ static enum TxStage txStage;
  * normal task context - polls them and does the actual logging.
  */
 static volatile uint32_t txFramesSentCount = 0; /* bumped once per frame fully clocked out */
-static volatile bool txJustKeyedUp = false;      /* set true when PTT/DAC is (re)started */
 static volatile bool txJustKeyedDown = false;    /* set true when TX tail finishes and PTT drops */
 
 struct RxState {
