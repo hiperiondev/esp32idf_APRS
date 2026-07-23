@@ -22,6 +22,20 @@
  * src/config.cpp so that every value the web admin shows/edits has a home here
  * and persists to LittleFS as /storage/config.json.
  *
+ * EXCEPT for the settings whose subsystems this firmware does not implement.
+ * Bluetooth, the OLED/display, WireGuard, GNSS, MQTT, the PPP/GSM modem, the
+ * I2C/1-Wire/UART/Modbus/pulse-counter/external-TNC/power-management pin sets,
+ * the AT-command routing flags, and the RF-module and audio-front-end pin
+ * fields orphaned by the esp32_IDF_libAPRS -> esp32idf_radioamateur_modem swap
+ * were all carried over verbatim, defaulted, serialized on every save and
+ * parsed on every boot - and then read by nothing. They have been removed.
+ * config.json shrinks accordingly, which matters directly: app_config_save()
+ * runs against a small, fragmented heap (see the streaming writer there), so
+ * every key that changes nothing is pure cost. Unknown keys left in an existing
+ * config.json are simply ignored by config_from_json(), so older files still
+ * load. rf_ptt_gpio / rf_ptt_active survive because the modem really does take
+ * them at runtime.
+ *
  * Exactly one language is built into the firmware image at a time - there is no
  * runtime language switch and no other language's strings are compiled in. To
  * change the language, change LANGUAGE below to one of the LANG_* codes (or
@@ -167,7 +181,6 @@ typedef struct {
 typedef struct {
     float timeZone;
     bool synctime;
-    bool title;
     uint8_t cpuFreq;
 
     // MY STATION - shared station identity/position, entered once on the
@@ -187,32 +200,13 @@ typedef struct {
     char wifi_ap_ssid[33]; // 32 chars max (IEEE 802.11 SSID limit) + null terminator
     char wifi_ap_pass[64]; // 63 chars max (WPA/WPA2/WPA3 PSK limit) + null terminator
 
-    // Bluetooth
-    bool bt_slave;
-    bool bt_master;
-    uint8_t bt_mode;
-    char bt_uuid[37];
-    char bt_uuid_rx[37];
-    char bt_uuid_tx[37];
-    char bt_name[20];
-    uint32_t bt_pin;
-    uint8_t bt_power;
-
     // RF Module
     bool rf_en;
     uint8_t rf_type;
     float freq_rx;
     float freq_tx;
-    int offset_rx;
-    int offset_tx;
     int tone_rx;
     int tone_tx;
-    uint8_t sql_level;
-    uint8_t volume;
-    uint8_t agc_max_gain; // software AGC gain ceiling (1-100x). Unused since the modem component swap:
-                          // esp32idf_radioamateur_modem's AGC is self-limiting and exposes no ceiling.
-                          // Kept so existing config.json files round-trip unchanged.
-    uint8_t mic;
 
     // IGATE
     bool igate_en;
@@ -228,7 +222,6 @@ typedef struct {
     bool igate_use_station; // "Use My Station Data": mirror g_config.my_callsign/my_lat/my_lon/my_alt here (aprs_mycall/igate_lat/igate_lon/igate_alt) and lock those fields for editing
     char aprs_host[20];
     char aprs_passcode[6];
-    char aprs_moniCall[10];
     char aprs_filter[30];
     bool igate_bcn;
     bool igate_gps;
@@ -295,8 +288,6 @@ typedef struct {
     bool trk_altitude;
     bool trk_log;
     bool trk_rssi;
-    bool trk_sat;
-    bool trk_dx;
     uint16_t trk_hspeed;
     uint8_t trk_lspeed;
     uint8_t trk_maxinterval;
@@ -310,7 +301,6 @@ typedef struct {
     char trk_item[10];
     uint16_t trk_sts_interval;
     char trk_status[STATUS_SIZE];
-    uint8_t trk_mice_type;
 
     // WX
     bool wx_en;
@@ -326,13 +316,11 @@ typedef struct {
     float wx_lon;
     float wx_alt;
     uint16_t wx_interval;
-    uint32_t wx_flage;
     char wx_object[10];
     char wx_comment[COMMENT_SIZE];
     bool wx_sensor_enable[WX_SENSOR_NUM];
     bool wx_sensor_avg[WX_SENSOR_NUM];
     uint8_t wx_sensor_ch[WX_SENSOR_NUM];
-    uint8_t wx_tlm_interval;
 
     // Telemetry channel 0 & 1
     bool tlm0_en, tlm1_en;
@@ -345,10 +333,6 @@ typedef struct {
     uint16_t tlm0_info_interval, tlm1_info_interval;
     char tlm0_PARM[TLM_PARM_NUM][10], tlm1_PARM[TLM_PARM_NUM][10];
     char tlm0_UNIT[TLM_PARM_NUM][8], tlm1_UNIT[TLM_PARM_NUM][8];
-    float tlm0_EQNS[TLM_CH][3], tlm1_EQNS[TLM_CH][3];
-    uint8_t tlm0_BITS_Active, tlm1_BITS_Active;
-    char tlm0_comment[COMMENT_SIZE], tlm1_comment[COMMENT_SIZE];
-    uint8_t tml0_data_channel[TLM_PARM_NUM], tml1_data_channel[TLM_PARM_NUM];
 
     // Per-service telemetry (5ch) used on trk/digi/igate beacons
     bool trk_tlm_avg[TLM_CH];
@@ -357,43 +341,21 @@ typedef struct {
     float trk_tlm_offset[TLM_CH];
     char trk_tlm_PARM[TLM_CH][10];
     char trk_tlm_UNIT[TLM_CH][8];
-    float trk_tlm_EQNS[TLM_CH][3];
     bool digi_tlm_avg[TLM_CH];
     uint8_t digi_tlm_sensor[TLM_CH];
     uint8_t digi_tlm_precision[TLM_CH];
     float digi_tlm_offset[TLM_CH];
     char digi_tlm_PARM[TLM_CH][10];
     char digi_tlm_UNIT[TLM_CH][8];
-    float digi_tlm_EQNS[TLM_CH][3];
     bool igate_tlm_avg[TLM_CH];
     uint8_t igate_tlm_sensor[TLM_CH];
     uint8_t igate_tlm_precision[TLM_CH];
     float igate_tlm_offset[TLM_CH];
     char igate_tlm_PARM[TLM_CH][10];
     char igate_tlm_UNIT[TLM_CH][8];
-    float igate_tlm_EQNS[TLM_CH][3];
-    uint8_t digi_tlm_interval, igate_tlm_interval, trk_tlm_interval;
-
-    // OLED / Display
-    bool oled_enable;
-    int oled_timeout;
-    uint8_t dim;
-    uint8_t contrast;
-    uint8_t startup;
-    unsigned int dispDelay;
-    unsigned int filterDistant;
-    bool h_up;
-    bool tx_display;
-    bool rx_display;
-    uint16_t dispFilter;
-    bool dispRF;
-    bool dispINET;
-    bool disp_flip;
-    uint8_t disp_brightness;
 
     // AFSK / TNC
     bool audio_modem_en; // Enable the audio ADC/DAC AFSK modem
-    bool audio_hpf;
     bool audio_lpf;
     uint16_t preamble;
     uint8_t modem_type;      // RF module modem mode (RF_MODE_OFF/LoRa/G3RUH/GFSK/DPRS) - only used when ENABLE_RF_MODULE
@@ -403,115 +365,31 @@ typedef struct {
     char ntp_host[NTP_HOST_NUM][20];
     uint16_t ntp_resync_sec;
 
-    // VPN WireGuard
-    bool vpn;
-    bool modem;
-    uint16_t wg_port;
-    char wg_peer_address[32];
-    char wg_local_address[16];
-    char wg_netmask_address[16];
-    char wg_gw_address[16];
-    char wg_public_key[45];
-    char wg_private_key[45];
-
     // System / HTTP auth
     char http_username[32];
     char http_password[64];
     char path[4][72];
     char host_name[32];
     uint16_t reset_timeout;
-    bool at_cmd_mqtt;
-    bool at_cmd_msg;
-    bool at_cmd_bluetooth;
-    uint8_t at_cmd_uart;
     uint16_t log;
 
-    // GNSS
-    bool gnss_enable;
-    int8_t gnss_pps_gpio;
-    int8_t gnss_channel;
-    uint16_t gnss_tcp_port;
-    char gnss_tcp_host[20];
-    char gnss_at_command[30];
-
-    // RF Module GPIO ("MOD" page)
-    unsigned long rf_baudrate;
-    int8_t rf_tx_gpio, rf_rx_gpio, rf_sql_gpio, rf_pd_gpio, rf_pwr_gpio, rf_ptt_gpio;
-    bool rf_sql_active, rf_pd_active, rf_pwr_active, rf_ptt_active;
-    int8_t adc_gpio, dac_gpio, adc_sel_gpio, dac_sel_gpio;
-    uint8_t adc_atten;
-    uint16_t adc_dc_offset;
-
-    bool i2c_enable;
-    int8_t i2c_sda_pin, i2c_sck_pin, i2c_rst_pin;
-    uint32_t i2c_freq;
-    bool i2c1_enable;
-    int8_t i2c1_sda_pin, i2c1_sck_pin;
-    uint32_t i2c1_freq;
-
-    bool onewire_enable;
-    int8_t onewire_gpio;
-
-    bool uart0_enable;
-    unsigned long uart0_baudrate;
-    int8_t uart0_tx_gpio, uart0_rx_gpio, uart0_rts_gpio;
-    bool uart1_enable;
-    unsigned long uart1_baudrate;
-    int8_t uart1_tx_gpio, uart1_rx_gpio, uart1_rts_gpio;
-    bool uart2_enable;
-    unsigned long uart2_baudrate;
-    int8_t uart2_tx_gpio, uart2_rx_gpio;
-
-    bool modbus_enable;
-    uint8_t modbus_address;
-    int8_t modbus_channel;
-    int8_t modbus_de_gpio;
-
-    bool counter0_enable;
-    bool counter0_active;
-    int8_t counter0_gpio;
-    bool counter1_enable;
-    bool counter1_active;
-    int8_t counter1_gpio;
-
-    bool ext_tnc_enable;
-    int8_t ext_tnc_channel;
-    int8_t ext_tnc_mode;
-
-    // Power
-    bool pwr_en;
-    uint8_t pwr_mode;
-    uint16_t pwr_sleep_interval;
-    uint16_t pwr_stanby_delay;
-    uint8_t pwr_sleep_activate;
-    int8_t pwr_gpio;
-    bool pwr_active;
-
-    // PPP (GSM modem)
-    bool ppp_enable;
-    char ppp_apn[32];
-    char ppp_pin[8];
-    int8_t ppp_rst_gpio, ppp_tx_gpio, ppp_rx_gpio, ppp_rts_gpio, ppp_cts_gpio, ppp_dtr_gpio, ppp_ri_gpio, ppp_pwr_gpio;
-    bool ppp_rst_active;
-    uint16_t ppp_rst_delay;
-    bool ppp_pwr_active;
-    uint8_t ppp_serial;
-    unsigned long ppp_serial_baudrate;
-    uint8_t ppp_model;
-    uint8_t ppp_flow_ctrl;
-    bool ppp_gnss;
-    bool ppp_napt;
-
-    // MQTT
-    bool en_mqtt;
-    char mqtt_host[63];
-    char mqtt_topic[63];
-    char mqtt_subscribe[63];
-    char mqtt_user[32];
-    char mqtt_pass[63];
-    uint16_t mqtt_port;
-    uint16_t mqtt_topic_flag;
-    uint16_t mqtt_subscribe_flag;
+    // Audio modem PTT.
+    //
+    // These two are the ONLY hardware-pin fields left in this struct. Every
+    // other pin the audio modem uses (ADC in, DAC out, optional TX/RX LEDs) is
+    // a compile-time constant supplied by the top-level CMakeLists.txt, and the
+    // long tail of RF-module / I2C / 1-Wire / UART / Modbus / counter / power /
+    // GSM / GNSS pin fields that used to live here was removed: nothing read
+    // them, they only inflated /storage/config.json.
+    //
+    // PTT stays runtime-selectable because aprs_service_build_modem_config()
+    // really does push it into modem_config_t.ptt_gpio/.ptt_active_high on
+    // every boot and on every Radio-page Save. The factory default below is
+    // derived from the same MODEM_PTT_GPIO / MODEM_PTT_ACTIVE_HIGH macros the
+    // component itself defaults to, so the build system stays the single
+    // source of truth for the board wiring (see app_config.c).
+    int8_t rf_ptt_gpio;
+    bool rf_ptt_active;
 
     // Message
     bool msg_enable;

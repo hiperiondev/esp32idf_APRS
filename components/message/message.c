@@ -75,9 +75,10 @@ bool message_alarm_gpio_is_valid(int8_t gpio) {
         return false;
 
     // Not already used by the PTT pin. (rf_tx_gpio/rf_rx_gpio/rf_sql_gpio/
-    // rf_pd_gpio/rf_pwr_gpio used to be checked here too, but those fields are
-    // legacy leftovers from a removed "RF Module GPIO" page - nothing applies
-    // them to a real pin, so they no longer block an otherwise-free GPIO.)
+    // rf_pd_gpio/rf_pwr_gpio used to be checked here too, but those were
+    // legacy leftovers from a removed "RF Module GPIO" page - nothing applied
+    // them to a real pin, so they no longer blocked an otherwise-free GPIO and
+    // have since been deleted from app_config_t.)
     if (gpio == g_config.rf_ptt_gpio)
         return false;
 

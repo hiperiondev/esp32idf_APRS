@@ -27,6 +27,12 @@
 
 #include "app_config.h"
 #include "cJSON.h"
+// MODEM_PTT_GPIO / MODEM_PTT_ACTIVE_HIGH: the board's PTT wiring. Both are
+// #ifndef-guarded in that header and are overridden from the top-level
+// CMakeLists.txt, which is the single source of truth for them - the factory
+// default for g_config.rf_ptt_gpio / .rf_ptt_active is derived from these so
+// the two can never disagree. See app_config_set_defaults().
+#include "esp32idf_radioamateur_modem_config.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "esp_system.h"
@@ -106,7 +112,6 @@ void app_config_set_defaults(app_config_t *c) {
 
     c->timeZone = 0.0f;
     c->synctime = true;
-    c->title = true;
     c->cpuFreq = 240;
 
     set_str(c->my_callsign, sizeof(c->my_callsign), "NOCALL");
@@ -125,21 +130,10 @@ void app_config_set_defaults(app_config_t *c) {
     set_str(c->wifi_ap_ssid, sizeof(c->wifi_ap_ssid), "esp32idf_APRS");
     set_str(c->wifi_ap_pass, sizeof(c->wifi_ap_pass), "esp32idf_APRS");
 
-    c->bt_slave = false;
-    c->bt_master = false;
-    c->bt_mode = 0;
-    set_str(c->bt_name, sizeof(c->bt_name), "esp32idf_APRS");
-    c->bt_pin = 1234;
-    c->bt_power = 3;
-
     c->rf_en = false;
     c->rf_type = RF_SX1278;
     c->freq_rx = 144.800f;
     c->freq_tx = 144.800f;
-    c->sql_level = 40;
-    c->volume = 60;
-    c->agc_max_gain = 10; // matches AFSK.c's s_agcMaxGain default
-    c->mic = 60;
 
     // IGATE
     c->igate_en = true;
@@ -229,24 +223,8 @@ void app_config_set_defaults(app_config_t *c) {
     c->tlm1_data_interval = 600;
     c->tlm1_info_interval = 3600;
 
-    // OLED / display
-    c->oled_enable = true;
-    c->oled_timeout = 30;
-    c->dim = 0;
-    c->contrast = 128;
-    c->startup = 0;
-    c->dispDelay = 3;
-    c->filterDistant = 0;
-    c->h_up = true;
-    c->tx_display = true;
-    c->rx_display = true;
-    c->dispRF = true;
-    c->dispINET = true;
-    c->disp_brightness = 255;
-
     // AFSK / TNC
     c->audio_modem_en = true;
-    c->audio_hpf = false;
     c->audio_lpf = true;
     c->preamble = 300;
     c->modem_type = 0;
@@ -258,10 +236,6 @@ void app_config_set_defaults(app_config_t *c) {
     set_str(c->ntp_host[2], sizeof(c->ntp_host[2]), "time.cloudflare.com");
     c->ntp_resync_sec = 3600;
 
-    // VPN
-    c->vpn = false;
-    c->wg_port = 51820;
-
     // System / HTTP auth  (README documented default: admin/admin)
     set_str(c->http_username, sizeof(c->http_username), "admin");
     set_str(c->http_password, sizeof(c->http_password), "admin");
@@ -271,110 +245,20 @@ void app_config_set_defaults(app_config_t *c) {
         set_str(c->path[i], sizeof(c->path[i]), "");
     set_str(c->path[0], sizeof(c->path[0]), "WIDE1-1,WIDE2-1");
 
-    // GNSS
-    c->gnss_enable = true;
-    c->gnss_pps_gpio = -1;
-    c->gnss_channel = 0;
-    c->gnss_tcp_port = 10110;
-    set_str(c->gnss_tcp_host, sizeof(c->gnss_tcp_host), "");
-
-    // RF module GPIO defaults (as shipped for ESP32 DevKit / ESP32DR board)
-    c->rf_baudrate = 9600;
-    c->rf_tx_gpio = 13;
-    c->rf_rx_gpio = 14;
-    c->rf_sql_gpio = 27; // GPIO33 is the real (hardwired) ADC audio-input pin and GPIO25 is the real
-                         // (hardwired) DAC audio-output pin - see adc_pins[]/DAC_CHAN_0 in
-                         // the modem component. Neither SQL nor PTT may be assigned to 25/33,
-                         // since pinMode() on either pad would fight the ADC/DAC's analog use of it.
-    c->rf_pd_gpio = -1; // never wired into the modem - left disabled by default
-    c->rf_pwr_gpio = 12;
-    c->rf_ptt_gpio = 26;
-    c->rf_sql_active = false;
-    c->rf_pd_active = true;
-    c->rf_pwr_active = false;
-    c->rf_ptt_active = false;
-    // NOTE: since the esp32_IDF_libAPRS -> esp32idf_radioamateur_modem swap, the
-    // audio modem no longer reads ANY of the pin fields above or below. It takes
-    // its ADC/DAC/PTT pins as compile-time constants (MODEM_ADC_GPIO /
-    // MODEM_DAC_GPIO / MODEM_PTT_GPIO, defined in the top-level CMakeLists.txt)
-    // and has no hardware-squelch or RF-power-switch output at all. They are kept
-    // here, and still editable on the "Mod" page, purely so existing config.json
-    // files load unchanged and the values survive for any future component that
-    // can use them. Change the CMakeLists.txt definitions to move the audio pins.
-    c->adc_gpio = 1;
-    c->dac_gpio = 18;
-    c->adc_sel_gpio = -1;
-    c->dac_sel_gpio = 17;
-    // ADC_ATTEN_DB_0 (0) only linearly measures ~0-1.1V, but the real DAC output
-    // (DAC_CHAN_0/GPIO25) swings the full 0-3.3V rail. Wired straight into GPIO33
-    // for the ADC/DAC loopback self-test (or into a radio's discriminator/mic
-    // input), a 0dB atten clips/saturates most of that swing, distorting the tone
-    // enough that the AFSK demodulator can't lock onto it - this is why the LOOP
-    // TEST fails with "no packet was received back" even though ADC33/DAC25 are
-    // correctly wired together. adc_atten=4 (ADC_ATTEN_DB_12, Vref=3300) matches
-    // the DAC's full ~0-3.3V rail-to-rail swing.
+    // Audio modem PTT.
     //
-    // Also inert now, and for the same reason as the pins above: the modem
-    // component hard-codes MODEM_ADC_ATTEN, which already defaults to
-    // ADC_ATTEN_DB_12 - i.e. the value this field held anyway. Override
-    // MODEM_ADC_ATTEN from the top-level CMakeLists.txt to change it.
-    c->adc_atten = 4;
-
-    c->i2c_enable = false;
-    c->i2c_sda_pin = -1;
-    c->i2c_sck_pin = -1;
-    c->i2c_rst_pin = -1;
-    c->i2c_freq = 400000;
-    c->i2c1_enable = false;
-    c->i2c1_sda_pin = -1;
-    c->i2c1_sck_pin = -1;
-    c->i2c1_freq = 100000;
-
-    c->onewire_enable = false;
-    c->onewire_gpio = -1;
-
-    c->uart0_enable = false;
-    c->uart0_tx_gpio = -1;
-    c->uart0_rx_gpio = -1;
-    c->uart0_rts_gpio = -1;
-    c->uart1_enable = false;
-    c->uart1_tx_gpio = -1;
-    c->uart1_rx_gpio = -1;
-    c->uart1_rts_gpio = -1;
-    c->uart2_enable = false;
-    c->uart2_tx_gpio = -1;
-    c->uart2_rx_gpio = -1;
-
-    c->modbus_enable = false;
-    c->modbus_channel = -1;
-    c->modbus_de_gpio = -1;
-
-    c->counter0_gpio = -1;
-    c->counter1_gpio = -1;
-
-    c->ext_tnc_enable = false;
-    c->ext_tnc_channel = 0;
-    c->ext_tnc_mode = 0;
-
-    c->pwr_gpio = -1;
-    c->pwr_active = true;
-
-    c->ppp_enable = false;
-    c->ppp_rst_gpio = -1;
-    c->ppp_tx_gpio = -1;
-    c->ppp_rx_gpio = -1;
-    c->ppp_rts_gpio = -1;
-    c->ppp_cts_gpio = -1;
-    c->ppp_dtr_gpio = -1;
-    c->ppp_ri_gpio = -1;
-    c->ppp_pwr_gpio = -1;
-    c->ppp_rst_delay = 1000;
-    c->ppp_serial = 1;
-    c->ppp_serial_baudrate = 115200;
-    c->ppp_napt = true;
-
-    c->en_mqtt = false;
-    c->mqtt_port = 1883;
+    // The modem component takes its ADC/DAC pins, ADC attenuation and LED pins
+    // as compile-time constants (MODEM_* macros, set in the top-level
+    // CMakeLists.txt). PTT is the one pin it accepts at runtime, so it is the
+    // one pin still stored here - see aprs_service_build_modem_config().
+    //
+    // The factory default is taken straight from the same macros so there is
+    // exactly ONE source of truth for the board's PTT wiring: change it in
+    // CMakeLists.txt and both the component default and this factory default
+    // move together. MODEM_PTT_ACTIVE_HIGH is 0/1; rf_ptt_active is the same
+    // polarity flag (true = active high).
+    c->rf_ptt_gpio = (int8_t)MODEM_PTT_GPIO;
+    c->rf_ptt_active = (MODEM_PTT_ACTIVE_HIGH != 0);
 
     // Message
     c->msg_enable = true;
@@ -564,9 +448,6 @@ static void config_write_json(jw_t *d, const app_config_t *c) {
     jadd_num(d, "rfFreqTX", c->freq_tx);
     jadd_num(d, "rfToneRX", c->tone_rx);
     jadd_num(d, "rfToneTX", c->tone_tx);
-    jadd_num(d, "rfSql", c->sql_level);
-    jadd_num(d, "rfVolume", c->volume);
-    jadd_num(d, "agcMaxGain", c->agc_max_gain);
     jadd_bool(d, "audioModemEn", c->audio_modem_en);
     jadd_bool(d, "audioLPF", c->audio_lpf);
 
@@ -626,13 +507,6 @@ static void config_write_json(jw_t *d, const app_config_t *c) {
     for (int i = 0; i < TLM_CH; i++)
         jarr_str(d, c->igate_tlm_UNIT[i]);
     jarr_end(d);
-    jarr_begin(d, "igateTlmEQNS");
-    for (int i = 0; i < TLM_CH; i++) {
-        jarr_num(d, c->igate_tlm_EQNS[i][0]);
-        jarr_num(d, c->igate_tlm_EQNS[i][1]);
-        jarr_num(d, c->igate_tlm_EQNS[i][2]);
-    }
-    jarr_end(d);
 
     jadd_bool(d, "digiEn", c->digi_en);
     jadd_bool(d, "digiAuto", c->digi_auto);
@@ -680,13 +554,6 @@ static void config_write_json(jw_t *d, const app_config_t *c) {
     for (int i = 0; i < TLM_CH; i++)
         jarr_str(d, c->digi_tlm_UNIT[i]);
     jarr_end(d);
-    jarr_begin(d, "digiTlmEQNS");
-    for (int i = 0; i < TLM_CH; i++) {
-        jarr_num(d, c->digi_tlm_EQNS[i][0]);
-        jarr_num(d, c->digi_tlm_EQNS[i][1]);
-        jarr_num(d, c->digi_tlm_EQNS[i][2]);
-    }
-    jarr_end(d);
 
     jadd_bool(d, "trkEn", c->trk_en);
     jadd_bool(d, "trkPos2rf", c->trk_loc2rf);
@@ -719,7 +586,6 @@ static void config_write_json(jw_t *d, const app_config_t *c) {
     jadd_str(d, "trkComment", c->trk_comment);
     jadd_num(d, "trkSTSIntv", c->trk_sts_interval);
     jadd_str(d, "trkStatus", c->trk_status);
-    jadd_num(d, "trkMicEType", c->trk_mice_type);
     jarr_begin(d, "trkTlmAvg");
     for (int i = 0; i < TLM_CH; i++)
         jarr_bool(d, c->trk_tlm_avg[i]);
@@ -744,13 +610,6 @@ static void config_write_json(jw_t *d, const app_config_t *c) {
     for (int i = 0; i < TLM_CH; i++)
         jarr_str(d, c->trk_tlm_UNIT[i]);
     jarr_end(d);
-    jarr_begin(d, "trkTlmEQNS");
-    for (int i = 0; i < TLM_CH; i++) {
-        jarr_num(d, c->trk_tlm_EQNS[i][0]);
-        jarr_num(d, c->trk_tlm_EQNS[i][1]);
-        jarr_num(d, c->trk_tlm_EQNS[i][2]);
-    }
-    jarr_end(d);
 
     jadd_bool(d, "wxEn", c->wx_en);
     jadd_bool(d, "wxTx2rf", c->wx_2rf);
@@ -765,10 +624,8 @@ static void config_write_json(jw_t *d, const app_config_t *c) {
     jadd_num(d, "wxLON", c->wx_lon);
     jadd_num(d, "wxALT", c->wx_alt);
     jadd_num(d, "wxInv", c->wx_interval);
-    jadd_num(d, "wxFlage", c->wx_flage);
     jadd_str(d, "wxObject", c->wx_object);
     jadd_str(d, "wxComment", c->wx_comment);
-    jadd_num(d, "wxTlmInv", c->wx_tlm_interval);
     jarr_begin(d, "wxSenEn");
     for (int i = 0; i < WX_SENSOR_NUM; i++)
         jarr_bool(d, c->wx_sensor_enable[i]);
@@ -794,8 +651,6 @@ static void config_write_json(jw_t *d, const app_config_t *c) {
         uint8_t path = ch == 0 ? c->tlm0_path : c->tlm1_path;
         uint16_t info_iv = ch == 0 ? c->tlm0_info_interval : c->tlm1_info_interval;
         uint16_t data_iv = ch == 0 ? c->tlm0_data_interval : c->tlm1_data_interval;
-        uint8_t bits = ch == 0 ? c->tlm0_BITS_Active : c->tlm1_BITS_Active;
-        const char *comment = ch == 0 ? c->tlm0_comment : c->tlm1_comment;
         snprintf(key, sizeof(key), "%sEn", pfx);
         jadd_bool(d, key, en);
         snprintf(key, sizeof(key), "%sTx2rf", pfx);
@@ -812,23 +667,9 @@ static void config_write_json(jw_t *d, const app_config_t *c) {
         jadd_num(d, key, info_iv);
         snprintf(key, sizeof(key), "%sDataInv", pfx);
         jadd_num(d, key, data_iv);
-        snprintf(key, sizeof(key), "%sBIT", pfx);
-        jadd_num(d, key, bits);
-        snprintf(key, sizeof(key), "%sComment", pfx);
-        jadd_str(d, key, comment);
         {
-            const float(*E)[3] = ch == 0 ? c->tlm0_EQNS : c->tlm1_EQNS;
             const char(*P)[10] = ch == 0 ? c->tlm0_PARM : c->tlm1_PARM;
             const char(*U)[8] = ch == 0 ? c->tlm0_UNIT : c->tlm1_UNIT;
-            const uint8_t *DC = ch == 0 ? c->tml0_data_channel : c->tml1_data_channel;
-            snprintf(key, sizeof(key), "%sEQNS", pfx);
-            jarr_begin(d, key);
-            for (int i = 0; i < TLM_CH; i++) {
-                jarr_num(d, E[i][0]);
-                jarr_num(d, E[i][1]);
-                jarr_num(d, E[i][2]);
-            }
-            jarr_end(d);
             snprintf(key, sizeof(key), "%sPARM", pfx);
             jarr_begin(d, key);
             for (int i = 0; i < TLM_PARM_NUM; i++)
@@ -839,38 +680,8 @@ static void config_write_json(jw_t *d, const app_config_t *c) {
             for (int i = 0; i < TLM_PARM_NUM; i++)
                 jarr_str(d, U[i]);
             jarr_end(d);
-            snprintf(key, sizeof(key), "%sDataCH", pfx);
-            jarr_begin(d, key);
-            for (int i = 0; i < TLM_PARM_NUM; i++)
-                jarr_num(d, DC[i]);
-            jarr_end(d);
         }
     }
-
-    jadd_bool(d, "dspEn", c->oled_enable);
-    jadd_num(d, "dspTOut", c->oled_timeout);
-    jadd_num(d, "dspDim", c->dim);
-    jadd_num(d, "dspContrast", c->contrast);
-    jadd_num(d, "dspBright", c->disp_brightness);
-    jadd_num(d, "dspStartUp", c->startup);
-    jadd_num(d, "dspDelay", c->dispDelay);
-    jadd_num(d, "dspDxFilter", c->filterDistant);
-    jadd_bool(d, "dspHUp", c->h_up);
-    jadd_bool(d, "dspTX", c->tx_display);
-    jadd_bool(d, "dspRX", c->rx_display);
-    jadd_num(d, "dspFilter", c->dispFilter);
-    jadd_bool(d, "dspRF", c->dispRF);
-    jadd_bool(d, "dspINET", c->dispINET);
-    jadd_bool(d, "dspFlip", c->disp_flip);
-
-    jadd_bool(d, "vpnEn", c->vpn);
-    jadd_num(d, "vpnPort", c->wg_port);
-    jadd_str(d, "vpnPeer", c->wg_peer_address);
-    jadd_str(d, "vpnLocal", c->wg_local_address);
-    jadd_str(d, "vpnNetmark", c->wg_netmask_address);
-    jadd_str(d, "vpnGW", c->wg_gw_address);
-    jadd_str(d, "vpnPubKey", c->wg_public_key);
-    jadd_str(d, "vpnPriKey", c->wg_private_key);
 
     jadd_str(d, "httpUser", c->http_username);
     jadd_str(d, "httpPass", c->http_password);
@@ -879,120 +690,12 @@ static void config_write_json(jw_t *d, const app_config_t *c) {
         jarr_str(d, c->path[i]);
     jarr_end(d);
 
-    jadd_bool(d, "gnssEn", c->gnss_enable);
-    jadd_num(d, "gnssCH", c->gnss_channel);
-    jadd_num(d, "gnssPPS", c->gnss_pps_gpio);
-    jadd_num(d, "gnssTCPPort", c->gnss_tcp_port);
-    jadd_str(d, "gnssTCPHost", c->gnss_tcp_host);
-    jadd_str(d, "gnssAT", c->gnss_at_command);
-
-    jadd_num(d, "rfTx", c->rf_tx_gpio);
-    jadd_num(d, "rfRx", c->rf_rx_gpio);
-    jadd_num(d, "rfSQL", c->rf_sql_gpio);
-    jadd_num(d, "rfPD", c->rf_pd_gpio);
-    jadd_num(d, "rfPWR", c->rf_pwr_gpio);
     jadd_num(d, "rfPTT", c->rf_ptt_gpio);
-    jadd_bool(d, "rfSQLAct", c->rf_sql_active);
-    jadd_bool(d, "rfPDAct", c->rf_pd_active);
-    jadd_bool(d, "rfPWRAct", c->rf_pwr_active);
     jadd_bool(d, "rfPTTAct", c->rf_ptt_active);
-    jadd_num(d, "adcAtten", c->adc_atten);
-    jadd_num(d, "adcOffset", c->adc_dc_offset);
-    jadd_num(d, "rfBaudrate", c->rf_baudrate);
-
-    jadd_bool(d, "i2cEn", c->i2c_enable);
-    jadd_num(d, "i2cSDA", c->i2c_sda_pin);
-    jadd_num(d, "i2cSCK", c->i2c_sck_pin);
-    jadd_num(d, "i2cFreq", c->i2c_freq);
-    jadd_bool(d, "i2c1En", c->i2c1_enable);
-    jadd_num(d, "i2c1SDA", c->i2c1_sda_pin);
-    jadd_num(d, "i2c1SCK", c->i2c1_sck_pin);
-    jadd_num(d, "i2c1Freq", c->i2c1_freq);
-
-    jadd_bool(d, "oneWireEn", c->onewire_enable);
-    jadd_num(d, "oneWireIO", c->onewire_gpio);
-
-    jadd_bool(d, "uart0En", c->uart0_enable);
-    jadd_num(d, "uart0BR", c->uart0_baudrate);
-    jadd_num(d, "uart0TX", c->uart0_tx_gpio);
-    jadd_num(d, "uart0RX", c->uart0_rx_gpio);
-    jadd_num(d, "uart0RTS", c->uart0_rts_gpio);
-    jadd_bool(d, "uart1En", c->uart1_enable);
-    jadd_num(d, "uart1BR", c->uart1_baudrate);
-    jadd_num(d, "uart1TX", c->uart1_tx_gpio);
-    jadd_num(d, "uart1RX", c->uart1_rx_gpio);
-    jadd_num(d, "uart1RTS", c->uart1_rts_gpio);
-    jadd_bool(d, "uart2En", c->uart2_enable);
-    jadd_num(d, "uart2BR", c->uart2_baudrate);
-    jadd_num(d, "uart2TX", c->uart2_tx_gpio);
-    jadd_num(d, "uart2RX", c->uart2_rx_gpio);
-
-    jadd_bool(d, "modbusEn", c->modbus_enable);
-    jadd_num(d, "modbusAddr", c->modbus_address);
-    jadd_num(d, "modbusCh", c->modbus_channel);
-    jadd_num(d, "modbusDE", c->modbus_de_gpio);
-
-    jadd_bool(d, "cnt0En", c->counter0_enable);
-    jadd_bool(d, "cnt0Act", c->counter0_active);
-    jadd_num(d, "cnt0IO", c->counter0_gpio);
-    jadd_bool(d, "cnt1En", c->counter1_enable);
-    jadd_bool(d, "cnt1Act", c->counter1_active);
-    jadd_num(d, "cnt1IO", c->counter1_gpio);
-
-    jadd_bool(d, "extTNCEn", c->ext_tnc_enable);
-    jadd_num(d, "extTNCCh", c->ext_tnc_channel);
-    jadd_num(d, "extTNCMode", c->ext_tnc_mode);
-
-    jadd_bool(d, "pwrEn", c->pwr_en);
-    jadd_num(d, "pwrMode", c->pwr_mode);
-    jadd_num(d, "pwrSleep", c->pwr_sleep_interval);
-    jadd_num(d, "pwrStanby", c->pwr_stanby_delay);
-    jadd_num(d, "pwrSleepAct", c->pwr_sleep_activate);
-    jadd_num(d, "pwrIO", c->pwr_gpio);
-    jadd_bool(d, "pwrIOAct", c->pwr_active);
 
     jadd_num(d, "logFile", c->log);
-
-    jadd_bool(d, "pppEn", c->ppp_enable);
-    jadd_str(d, "pppAPN", c->ppp_apn);
-    jadd_num(d, "pppRST", c->ppp_rst_gpio);
-    jadd_bool(d, "pppRSTAct", c->ppp_rst_active);
-    jadd_num(d, "pppTX", c->ppp_tx_gpio);
-    jadd_num(d, "pppRX", c->ppp_rx_gpio);
-    jadd_num(d, "pppRTS", c->ppp_rts_gpio);
-    jadd_num(d, "pppDTR", c->ppp_dtr_gpio);
-    jadd_num(d, "pppCTS", c->ppp_cts_gpio);
-    jadd_num(d, "pppRI", c->ppp_ri_gpio);
-    jadd_num(d, "pppPWR", c->ppp_pwr_gpio);
-    jadd_bool(d, "pppPWRAct", c->ppp_pwr_active);
-    jadd_num(d, "pppRSTDelay", c->ppp_rst_delay);
-    jadd_str(d, "pppPin", c->ppp_pin);
-    jadd_num(d, "pppSerial", c->ppp_serial);
-    jadd_num(d, "pppSerialBaudrate", c->ppp_serial_baudrate);
-    jadd_num(d, "pppModel", c->ppp_model);
-    jadd_num(d, "pppFlowCtrl", c->ppp_flow_ctrl);
-    jadd_bool(d, "pppGNSS", c->ppp_gnss);
-    jadd_bool(d, "pppNAPT", c->ppp_napt);
-
-    jadd_bool(d, "mqttEnable", c->en_mqtt);
-    jadd_str(d, "mqttHost", c->mqtt_host);
-    jadd_str(d, "mqttTopic", c->mqtt_topic);
-    jadd_str(d, "mqttSub", c->mqtt_subscribe);
-    jadd_num(d, "mqttTopicFlag", c->mqtt_topic_flag);
-    jadd_num(d, "mqttSubFlag", c->mqtt_subscribe_flag);
-    jadd_num(d, "mqttPort", c->mqtt_port);
-    jadd_str(d, "mqttUser", c->mqtt_user);
-    jadd_str(d, "mqttPass", c->mqtt_pass);
-
-    jadd_num(d, "trkTlmInv", c->trk_tlm_interval);
-    jadd_num(d, "digiTlmInv", c->digi_tlm_interval);
-    jadd_num(d, "igateTlmInv", c->igate_tlm_interval);
     jadd_str(d, "hostName", c->host_name);
     jadd_num(d, "resetTimeout", c->reset_timeout);
-    jadd_bool(d, "cmdOnMqtt", c->at_cmd_mqtt);
-    jadd_bool(d, "cmdOnMsg", c->at_cmd_msg);
-    jadd_bool(d, "cmdOnBluetooth", c->at_cmd_bluetooth);
-    jadd_num(d, "cmdOnUart", c->at_cmd_uart);
 
     jadd_bool(d, "msgEnable", c->msg_enable);
     jadd_str(d, "msgMycall", c->msg_mycall);
@@ -1064,9 +767,6 @@ static void config_from_json(cJSON *d, app_config_t *c) {
     c->freq_tx = (float)jget_num(d, "rfFreqTX", def.freq_tx);
     c->tone_rx = (int)jget_num(d, "rfToneRX", def.tone_rx);
     c->tone_tx = (int)jget_num(d, "rfToneTX", def.tone_tx);
-    c->sql_level = (uint8_t)jget_num(d, "rfSql", def.sql_level);
-    c->volume = (uint8_t)jget_num(d, "rfVolume", def.volume);
-    c->agc_max_gain = (uint8_t)jget_num(d, "agcMaxGain", def.agc_max_gain);
     c->audio_modem_en = jget_bool(d, "audioModemEn", def.audio_modem_en);
     c->audio_lpf = jget_bool(d, "audioLPF", def.audio_lpf);
 
@@ -1109,7 +809,6 @@ static void config_from_json(cJSON *d, app_config_t *c) {
         cJSON *a1 = cJSON_GetObjectItemCaseSensitive(d, "igateTlmAvg"), *a2 = cJSON_GetObjectItemCaseSensitive(d, "igateTlmSen");
         cJSON *a3 = cJSON_GetObjectItemCaseSensitive(d, "igateTlmPrec"), *a4 = cJSON_GetObjectItemCaseSensitive(d, "igateTlmOffset");
         cJSON *a5 = cJSON_GetObjectItemCaseSensitive(d, "igateTlmPARM"), *a6 = cJSON_GetObjectItemCaseSensitive(d, "igateTlmUNIT");
-        cJSON *a7 = cJSON_GetObjectItemCaseSensitive(d, "igateTlmEQNS");
         for (int i = 0; i < TLM_CH; i++) {
             cJSON *v;
             if (a1 && (v = cJSON_GetArrayItem(a1, i)))
@@ -1124,15 +823,6 @@ static void config_from_json(cJSON *d, app_config_t *c) {
                 set_str(c->igate_tlm_PARM[i], sizeof(c->igate_tlm_PARM[i]), v->valuestring);
             if (a6 && (v = cJSON_GetArrayItem(a6, i)) && cJSON_IsString(v))
                 set_str(c->igate_tlm_UNIT[i], sizeof(c->igate_tlm_UNIT[i]), v->valuestring);
-            if (a7) {
-                cJSON *e0 = cJSON_GetArrayItem(a7, i * 3), *e1 = cJSON_GetArrayItem(a7, i * 3 + 1), *e2 = cJSON_GetArrayItem(a7, i * 3 + 2);
-                if (e0)
-                    c->igate_tlm_EQNS[i][0] = (float)e0->valuedouble;
-                if (e1)
-                    c->igate_tlm_EQNS[i][1] = (float)e1->valuedouble;
-                if (e2)
-                    c->igate_tlm_EQNS[i][2] = (float)e2->valuedouble;
-            }
         }
     }
 
@@ -1162,7 +852,6 @@ static void config_from_json(cJSON *d, app_config_t *c) {
         cJSON *a1 = cJSON_GetObjectItemCaseSensitive(d, "digiTlmAvg"), *a2 = cJSON_GetObjectItemCaseSensitive(d, "digiTlmSen");
         cJSON *a3 = cJSON_GetObjectItemCaseSensitive(d, "digiTlmPrec"), *a4 = cJSON_GetObjectItemCaseSensitive(d, "digiTlmOffset");
         cJSON *a5 = cJSON_GetObjectItemCaseSensitive(d, "digiTlmPARM"), *a6 = cJSON_GetObjectItemCaseSensitive(d, "digiTlmUNIT");
-        cJSON *a7 = cJSON_GetObjectItemCaseSensitive(d, "digiTlmEQNS");
         for (int i = 0; i < TLM_CH; i++) {
             cJSON *v;
             if (a1 && (v = cJSON_GetArrayItem(a1, i)))
@@ -1177,15 +866,6 @@ static void config_from_json(cJSON *d, app_config_t *c) {
                 set_str(c->digi_tlm_PARM[i], sizeof(c->digi_tlm_PARM[i]), v->valuestring);
             if (a6 && (v = cJSON_GetArrayItem(a6, i)) && cJSON_IsString(v))
                 set_str(c->digi_tlm_UNIT[i], sizeof(c->digi_tlm_UNIT[i]), v->valuestring);
-            if (a7) {
-                cJSON *e0 = cJSON_GetArrayItem(a7, i * 3), *e1 = cJSON_GetArrayItem(a7, i * 3 + 1), *e2 = cJSON_GetArrayItem(a7, i * 3 + 2);
-                if (e0)
-                    c->digi_tlm_EQNS[i][0] = (float)e0->valuedouble;
-                if (e1)
-                    c->digi_tlm_EQNS[i][1] = (float)e1->valuedouble;
-                if (e2)
-                    c->digi_tlm_EQNS[i][2] = (float)e2->valuedouble;
-            }
         }
     }
 
@@ -1220,12 +900,10 @@ static void config_from_json(cJSON *d, app_config_t *c) {
     set_str(c->trk_comment, sizeof(c->trk_comment), jget_str(d, "trkComment", def.trk_comment));
     c->trk_sts_interval = (uint16_t)jget_num(d, "trkSTSIntv", def.trk_sts_interval);
     set_str(c->trk_status, sizeof(c->trk_status), jget_str(d, "trkStatus", def.trk_status));
-    c->trk_mice_type = (uint8_t)jget_num(d, "trkMicEType", def.trk_mice_type);
     {
         cJSON *a1 = cJSON_GetObjectItemCaseSensitive(d, "trkTlmAvg"), *a2 = cJSON_GetObjectItemCaseSensitive(d, "trkTlmSen");
         cJSON *a3 = cJSON_GetObjectItemCaseSensitive(d, "trkTlmPrec"), *a4 = cJSON_GetObjectItemCaseSensitive(d, "trkTlmOffset");
         cJSON *a5 = cJSON_GetObjectItemCaseSensitive(d, "trkTlmPARM"), *a6 = cJSON_GetObjectItemCaseSensitive(d, "trkTlmUNIT");
-        cJSON *a7 = cJSON_GetObjectItemCaseSensitive(d, "trkTlmEQNS");
         for (int i = 0; i < TLM_CH; i++) {
             cJSON *v;
             if (a1 && (v = cJSON_GetArrayItem(a1, i)))
@@ -1240,15 +918,6 @@ static void config_from_json(cJSON *d, app_config_t *c) {
                 set_str(c->trk_tlm_PARM[i], sizeof(c->trk_tlm_PARM[i]), v->valuestring);
             if (a6 && (v = cJSON_GetArrayItem(a6, i)) && cJSON_IsString(v))
                 set_str(c->trk_tlm_UNIT[i], sizeof(c->trk_tlm_UNIT[i]), v->valuestring);
-            if (a7) {
-                cJSON *e0 = cJSON_GetArrayItem(a7, i * 3), *e1 = cJSON_GetArrayItem(a7, i * 3 + 1), *e2 = cJSON_GetArrayItem(a7, i * 3 + 2);
-                if (e0)
-                    c->trk_tlm_EQNS[i][0] = (float)e0->valuedouble;
-                if (e1)
-                    c->trk_tlm_EQNS[i][1] = (float)e1->valuedouble;
-                if (e2)
-                    c->trk_tlm_EQNS[i][2] = (float)e2->valuedouble;
-            }
         }
     }
 
@@ -1265,10 +934,8 @@ static void config_from_json(cJSON *d, app_config_t *c) {
     c->wx_lon = (float)jget_num(d, "wxLON", def.wx_lon);
     c->wx_alt = (float)jget_num(d, "wxALT", def.wx_alt);
     c->wx_interval = (uint16_t)jget_num(d, "wxInv", def.wx_interval);
-    c->wx_flage = (uint32_t)jget_num(d, "wxFlage", def.wx_flage);
     set_str(c->wx_object, sizeof(c->wx_object), jget_str(d, "wxObject", def.wx_object));
     set_str(c->wx_comment, sizeof(c->wx_comment), jget_str(d, "wxComment", def.wx_comment));
-    c->wx_tlm_interval = (uint8_t)jget_num(d, "wxTlmInv", def.wx_tlm_interval);
     {
         cJSON *a1 = cJSON_GetObjectItemCaseSensitive(d, "wxSenEn"), *a2 = cJSON_GetObjectItemCaseSensitive(d, "wxSenAvg"),
               *a3 = cJSON_GetObjectItemCaseSensitive(d, "wxSenCH");
@@ -1294,8 +961,6 @@ static void config_from_json(cJSON *d, app_config_t *c) {
         uint8_t *path = ch == 0 ? &c->tlm0_path : &c->tlm1_path;
         uint16_t *info_iv = ch == 0 ? &c->tlm0_info_interval : &c->tlm1_info_interval;
         uint16_t *data_iv = ch == 0 ? &c->tlm0_data_interval : &c->tlm1_data_interval;
-        uint8_t *bits = ch == 0 ? &c->tlm0_BITS_Active : &c->tlm1_BITS_Active;
-        char *comment = ch == 0 ? c->tlm0_comment : c->tlm1_comment;
         snprintf(key, sizeof(key), "%sEn", pfx);
         *en = jget_bool(d, key, ch == 0 ? def.tlm0_en : def.tlm1_en);
         snprintf(key, sizeof(key), "%sTx2rf", pfx);
@@ -1312,65 +977,20 @@ static void config_from_json(cJSON *d, app_config_t *c) {
         *info_iv = (uint16_t)jget_num(d, key, ch == 0 ? def.tlm0_info_interval : def.tlm1_info_interval);
         snprintf(key, sizeof(key), "%sDataInv", pfx);
         *data_iv = (uint16_t)jget_num(d, key, ch == 0 ? def.tlm0_data_interval : def.tlm1_data_interval);
-        snprintf(key, sizeof(key), "%sBIT", pfx);
-        *bits = (uint8_t)jget_num(d, key, ch == 0 ? def.tlm0_BITS_Active : def.tlm1_BITS_Active);
-        snprintf(key, sizeof(key), "%sComment", pfx);
-        set_str(comment, COMMENT_SIZE, jget_str(d, key, ch == 0 ? def.tlm0_comment : def.tlm1_comment));
-        snprintf(key, sizeof(key), "%sEQNS", pfx);
-        cJSON *eqns = cJSON_GetObjectItemCaseSensitive(d, key);
-        float(*E)[3] = ch == 0 ? c->tlm0_EQNS : c->tlm1_EQNS;
-        for (int i = 0; i < TLM_CH; i++) {
-            if (eqns) {
-                cJSON *e0 = cJSON_GetArrayItem(eqns, i * 3), *e1 = cJSON_GetArrayItem(eqns, i * 3 + 1), *e2 = cJSON_GetArrayItem(eqns, i * 3 + 2);
-                E[i][0] = e0 ? (float)e0->valuedouble : 0;
-                E[i][1] = e1 ? (float)e1->valuedouble : 0;
-                E[i][2] = e2 ? (float)e2->valuedouble : 0;
-            }
-        }
         snprintf(key, sizeof(key), "%sPARM", pfx);
         cJSON *parm = cJSON_GetObjectItemCaseSensitive(d, key);
         char(*P)[10] = ch == 0 ? c->tlm0_PARM : c->tlm1_PARM;
         snprintf(key, sizeof(key), "%sUNIT", pfx);
         cJSON *unit = cJSON_GetObjectItemCaseSensitive(d, key);
         char(*U)[8] = ch == 0 ? c->tlm0_UNIT : c->tlm1_UNIT;
-        snprintf(key, sizeof(key), "%sDataCH", pfx);
-        cJSON *dch = cJSON_GetObjectItemCaseSensitive(d, key);
-        uint8_t *DC = ch == 0 ? c->tml0_data_channel : c->tml1_data_channel;
         for (int i = 0; i < TLM_PARM_NUM; i++) {
             cJSON *v;
             if (parm && (v = cJSON_GetArrayItem(parm, i)) && cJSON_IsString(v))
                 set_str(P[i], 10, v->valuestring);
             if (unit && (v = cJSON_GetArrayItem(unit, i)) && cJSON_IsString(v))
                 set_str(U[i], 8, v->valuestring);
-            if (dch && (v = cJSON_GetArrayItem(dch, i)))
-                DC[i] = (uint8_t)v->valuedouble;
         }
     }
-
-    c->oled_enable = jget_bool(d, "dspEn", def.oled_enable);
-    c->oled_timeout = (int)jget_num(d, "dspTOut", def.oled_timeout);
-    c->dim = (uint8_t)jget_num(d, "dspDim", def.dim);
-    c->contrast = (uint8_t)jget_num(d, "dspContrast", def.contrast);
-    c->disp_brightness = (uint8_t)jget_num(d, "dspBright", def.disp_brightness);
-    c->startup = (uint8_t)jget_num(d, "dspStartUp", def.startup);
-    c->dispDelay = (unsigned int)jget_num(d, "dspDelay", def.dispDelay);
-    c->filterDistant = (unsigned int)jget_num(d, "dspDxFilter", def.filterDistant);
-    c->h_up = jget_bool(d, "dspHUp", def.h_up);
-    c->tx_display = jget_bool(d, "dspTX", def.tx_display);
-    c->rx_display = jget_bool(d, "dspRX", def.rx_display);
-    c->dispFilter = (uint16_t)jget_num(d, "dspFilter", def.dispFilter);
-    c->dispRF = jget_bool(d, "dspRF", def.dispRF);
-    c->dispINET = jget_bool(d, "dspINET", def.dispINET);
-    c->disp_flip = jget_bool(d, "dspFlip", def.disp_flip);
-
-    c->vpn = jget_bool(d, "vpnEn", def.vpn);
-    c->wg_port = (uint16_t)jget_num(d, "vpnPort", def.wg_port);
-    set_str(c->wg_peer_address, sizeof(c->wg_peer_address), jget_str(d, "vpnPeer", def.wg_peer_address));
-    set_str(c->wg_local_address, sizeof(c->wg_local_address), jget_str(d, "vpnLocal", def.wg_local_address));
-    set_str(c->wg_netmask_address, sizeof(c->wg_netmask_address), jget_str(d, "vpnNetmark", def.wg_netmask_address));
-    set_str(c->wg_gw_address, sizeof(c->wg_gw_address), jget_str(d, "vpnGW", def.wg_gw_address));
-    set_str(c->wg_public_key, sizeof(c->wg_public_key), jget_str(d, "vpnPubKey", def.wg_public_key));
-    set_str(c->wg_private_key, sizeof(c->wg_private_key), jget_str(d, "vpnPriKey", def.wg_private_key));
 
     set_str(c->http_username, sizeof(c->http_username), jget_str(d, "httpUser", def.http_username));
     set_str(c->http_password, sizeof(c->http_password), jget_str(d, "httpPass", def.http_password));
@@ -1382,120 +1002,12 @@ static void config_from_json(cJSON *d, app_config_t *c) {
         }
     }
 
-    c->gnss_enable = jget_bool(d, "gnssEn", def.gnss_enable);
-    c->gnss_channel = (int8_t)jget_num(d, "gnssCH", def.gnss_channel);
-    c->gnss_pps_gpio = (int8_t)jget_num(d, "gnssPPS", def.gnss_pps_gpio);
-    c->gnss_tcp_port = (uint16_t)jget_num(d, "gnssTCPPort", def.gnss_tcp_port);
-    set_str(c->gnss_tcp_host, sizeof(c->gnss_tcp_host), jget_str(d, "gnssTCPHost", def.gnss_tcp_host));
-    set_str(c->gnss_at_command, sizeof(c->gnss_at_command), jget_str(d, "gnssAT", def.gnss_at_command));
-
-    c->rf_tx_gpio = (int8_t)jget_num(d, "rfTx", def.rf_tx_gpio);
-    c->rf_rx_gpio = (int8_t)jget_num(d, "rfRx", def.rf_rx_gpio);
-    c->rf_sql_gpio = (int8_t)jget_num(d, "rfSQL", def.rf_sql_gpio);
-    c->rf_pd_gpio = (int8_t)jget_num(d, "rfPD", def.rf_pd_gpio);
-    c->rf_pwr_gpio = (int8_t)jget_num(d, "rfPWR", def.rf_pwr_gpio);
     c->rf_ptt_gpio = (int8_t)jget_num(d, "rfPTT", def.rf_ptt_gpio);
-    c->rf_sql_active = jget_bool(d, "rfSQLAct", def.rf_sql_active);
-    c->rf_pd_active = jget_bool(d, "rfPDAct", def.rf_pd_active);
-    c->rf_pwr_active = jget_bool(d, "rfPWRAct", def.rf_pwr_active);
     c->rf_ptt_active = jget_bool(d, "rfPTTAct", def.rf_ptt_active);
-    c->adc_atten = (uint8_t)jget_num(d, "adcAtten", def.adc_atten);
-    c->adc_dc_offset = (uint16_t)jget_num(d, "adcOffset", def.adc_dc_offset);
-    c->rf_baudrate = (unsigned long)jget_num(d, "rfBaudrate", def.rf_baudrate);
-
-    c->i2c_enable = jget_bool(d, "i2cEn", def.i2c_enable);
-    c->i2c_sda_pin = (int8_t)jget_num(d, "i2cSDA", def.i2c_sda_pin);
-    c->i2c_sck_pin = (int8_t)jget_num(d, "i2cSCK", def.i2c_sck_pin);
-    c->i2c_freq = (uint32_t)jget_num(d, "i2cFreq", def.i2c_freq);
-    c->i2c1_enable = jget_bool(d, "i2c1En", def.i2c1_enable);
-    c->i2c1_sda_pin = (int8_t)jget_num(d, "i2c1SDA", def.i2c1_sda_pin);
-    c->i2c1_sck_pin = (int8_t)jget_num(d, "i2c1SCK", def.i2c1_sck_pin);
-    c->i2c1_freq = (uint32_t)jget_num(d, "i2c1Freq", def.i2c1_freq);
-
-    c->onewire_enable = jget_bool(d, "oneWireEn", def.onewire_enable);
-    c->onewire_gpio = (int8_t)jget_num(d, "oneWireIO", def.onewire_gpio);
-
-    c->uart0_enable = jget_bool(d, "uart0En", def.uart0_enable);
-    c->uart0_baudrate = (unsigned long)jget_num(d, "uart0BR", def.uart0_baudrate);
-    c->uart0_tx_gpio = (int8_t)jget_num(d, "uart0TX", def.uart0_tx_gpio);
-    c->uart0_rx_gpio = (int8_t)jget_num(d, "uart0RX", def.uart0_rx_gpio);
-    c->uart0_rts_gpio = (int8_t)jget_num(d, "uart0RTS", def.uart0_rts_gpio);
-    c->uart1_enable = jget_bool(d, "uart1En", def.uart1_enable);
-    c->uart1_baudrate = (unsigned long)jget_num(d, "uart1BR", def.uart1_baudrate);
-    c->uart1_tx_gpio = (int8_t)jget_num(d, "uart1TX", def.uart1_tx_gpio);
-    c->uart1_rx_gpio = (int8_t)jget_num(d, "uart1RX", def.uart1_rx_gpio);
-    c->uart1_rts_gpio = (int8_t)jget_num(d, "uart1RTS", def.uart1_rts_gpio);
-    c->uart2_enable = jget_bool(d, "uart2En", def.uart2_enable);
-    c->uart2_baudrate = (unsigned long)jget_num(d, "uart2BR", def.uart2_baudrate);
-    c->uart2_tx_gpio = (int8_t)jget_num(d, "uart2TX", def.uart2_tx_gpio);
-    c->uart2_rx_gpio = (int8_t)jget_num(d, "uart2RX", def.uart2_rx_gpio);
-
-    c->modbus_enable = jget_bool(d, "modbusEn", def.modbus_enable);
-    c->modbus_address = (uint8_t)jget_num(d, "modbusAddr", def.modbus_address);
-    c->modbus_channel = (int8_t)jget_num(d, "modbusCh", def.modbus_channel);
-    c->modbus_de_gpio = (int8_t)jget_num(d, "modbusDE", def.modbus_de_gpio);
-
-    c->counter0_enable = jget_bool(d, "cnt0En", def.counter0_enable);
-    c->counter0_active = jget_bool(d, "cnt0Act", def.counter0_active);
-    c->counter0_gpio = (int8_t)jget_num(d, "cnt0IO", def.counter0_gpio);
-    c->counter1_enable = jget_bool(d, "cnt1En", def.counter1_enable);
-    c->counter1_active = jget_bool(d, "cnt1Act", def.counter1_active);
-    c->counter1_gpio = (int8_t)jget_num(d, "cnt1IO", def.counter1_gpio);
-
-    c->ext_tnc_enable = jget_bool(d, "extTNCEn", def.ext_tnc_enable);
-    c->ext_tnc_channel = (int8_t)jget_num(d, "extTNCCh", def.ext_tnc_channel);
-    c->ext_tnc_mode = (int8_t)jget_num(d, "extTNCMode", def.ext_tnc_mode);
-
-    c->pwr_en = jget_bool(d, "pwrEn", def.pwr_en);
-    c->pwr_mode = (uint8_t)jget_num(d, "pwrMode", def.pwr_mode);
-    c->pwr_sleep_interval = (uint16_t)jget_num(d, "pwrSleep", def.pwr_sleep_interval);
-    c->pwr_stanby_delay = (uint16_t)jget_num(d, "pwrStanby", def.pwr_stanby_delay);
-    c->pwr_sleep_activate = (uint8_t)jget_num(d, "pwrSleepAct", def.pwr_sleep_activate);
-    c->pwr_gpio = (int8_t)jget_num(d, "pwrIO", def.pwr_gpio);
-    c->pwr_active = jget_bool(d, "pwrIOAct", def.pwr_active);
 
     c->log = (uint16_t)jget_num(d, "logFile", def.log);
-
-    c->ppp_enable = jget_bool(d, "pppEn", def.ppp_enable);
-    set_str(c->ppp_apn, sizeof(c->ppp_apn), jget_str(d, "pppAPN", def.ppp_apn));
-    c->ppp_rst_gpio = (int8_t)jget_num(d, "pppRST", def.ppp_rst_gpio);
-    c->ppp_rst_active = jget_bool(d, "pppRSTAct", def.ppp_rst_active);
-    c->ppp_tx_gpio = (int8_t)jget_num(d, "pppTX", def.ppp_tx_gpio);
-    c->ppp_rx_gpio = (int8_t)jget_num(d, "pppRX", def.ppp_rx_gpio);
-    c->ppp_rts_gpio = (int8_t)jget_num(d, "pppRTS", def.ppp_rts_gpio);
-    c->ppp_dtr_gpio = (int8_t)jget_num(d, "pppDTR", def.ppp_dtr_gpio);
-    c->ppp_cts_gpio = (int8_t)jget_num(d, "pppCTS", def.ppp_cts_gpio);
-    c->ppp_ri_gpio = (int8_t)jget_num(d, "pppRI", def.ppp_ri_gpio);
-    c->ppp_pwr_gpio = (int8_t)jget_num(d, "pppPWR", def.ppp_pwr_gpio);
-    c->ppp_pwr_active = jget_bool(d, "pppPWRAct", def.ppp_pwr_active);
-    c->ppp_rst_delay = (uint16_t)jget_num(d, "pppRSTDelay", def.ppp_rst_delay);
-    set_str(c->ppp_pin, sizeof(c->ppp_pin), jget_str(d, "pppPin", def.ppp_pin));
-    c->ppp_serial = (uint8_t)jget_num(d, "pppSerial", def.ppp_serial);
-    c->ppp_serial_baudrate = (unsigned long)jget_num(d, "pppSerialBaudrate", def.ppp_serial_baudrate);
-    c->ppp_model = (uint8_t)jget_num(d, "pppModel", def.ppp_model);
-    c->ppp_flow_ctrl = (uint8_t)jget_num(d, "pppFlowCtrl", def.ppp_flow_ctrl);
-    c->ppp_gnss = jget_bool(d, "pppGNSS", def.ppp_gnss);
-    c->ppp_napt = jget_bool(d, "pppNAPT", def.ppp_napt);
-
-    c->en_mqtt = jget_bool(d, "mqttEnable", def.en_mqtt);
-    set_str(c->mqtt_host, sizeof(c->mqtt_host), jget_str(d, "mqttHost", def.mqtt_host));
-    set_str(c->mqtt_topic, sizeof(c->mqtt_topic), jget_str(d, "mqttTopic", def.mqtt_topic));
-    set_str(c->mqtt_subscribe, sizeof(c->mqtt_subscribe), jget_str(d, "mqttSub", def.mqtt_subscribe));
-    c->mqtt_topic_flag = (uint16_t)jget_num(d, "mqttTopicFlag", def.mqtt_topic_flag);
-    c->mqtt_subscribe_flag = (uint16_t)jget_num(d, "mqttSubFlag", def.mqtt_subscribe_flag);
-    c->mqtt_port = (uint16_t)jget_num(d, "mqttPort", def.mqtt_port);
-    set_str(c->mqtt_user, sizeof(c->mqtt_user), jget_str(d, "mqttUser", def.mqtt_user));
-    set_str(c->mqtt_pass, sizeof(c->mqtt_pass), jget_str(d, "mqttPass", def.mqtt_pass));
-
-    c->trk_tlm_interval = (uint8_t)jget_num(d, "trkTlmInv", def.trk_tlm_interval);
-    c->digi_tlm_interval = (uint8_t)jget_num(d, "digiTlmInv", def.digi_tlm_interval);
-    c->igate_tlm_interval = (uint8_t)jget_num(d, "igateTlmInv", def.igate_tlm_interval);
     set_str(c->host_name, sizeof(c->host_name), jget_str(d, "hostName", def.host_name));
     c->reset_timeout = (uint16_t)jget_num(d, "resetTimeout", def.reset_timeout);
-    c->at_cmd_mqtt = jget_bool(d, "cmdOnMqtt", def.at_cmd_mqtt);
-    c->at_cmd_msg = jget_bool(d, "cmdOnMsg", def.at_cmd_msg);
-    c->at_cmd_bluetooth = jget_bool(d, "cmdOnBluetooth", def.at_cmd_bluetooth);
-    c->at_cmd_uart = (uint8_t)jget_num(d, "cmdOnUart", def.at_cmd_uart);
 
     if (!cJSON_GetObjectItemCaseSensitive(d, "msgEnable")) {
         // old-version file compatibility -> keep documented defaults

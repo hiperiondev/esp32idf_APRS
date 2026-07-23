@@ -66,27 +66,29 @@ static const char *TAG = "aprs_service";
 // by main.c at boot, by page_radio.c's Save (live re-apply, no reboot) and by
 // the LOOP TEST below (which only overrides full_duplex).
 //
-// Deliberately NOT mapped, because the new component takes none of them at
-// runtime:
-//   adc_gpio / dac_gpio
-//       -> compile-time MODEM_ADC_GPIO / MODEM_DAC_GPIO, set in the
-//          top-level CMakeLists.txt. Changing the audio front-end pins
-//          still requires a rebuild.
-//   rf_ptt_gpio / rf_ptt_active
-//       -> NOW mapped at runtime (below) to modem_config_t.ptt_gpio /
-//          .ptt_active_high, validated by afsk_ptt_gpio_is_valid(). The
-//          MODEM_PTT_GPIO / MODEM_PTT_ACTIVE_HIGH compile-time macros only
-//          supply the fallback default in MODEM_DEFAULT_CONFIG() now.
-//   rf_sql_gpio / rf_sql_active / rf_pwr_gpio / rf_pwr_active
-//       -> no equivalent at all. The component gates RX on the demodulator's
-//          own DCD rather than on a hardware squelch line, and has no RF
-//          power-switch output.
-//   adc_atten -> compile-time MODEM_ADC_ATTEN (ADC_ATTEN_DB_12).
-//   sql_level / volume / agc_max_gain -> no equivalent. The component's AGC is
-//          self-limiting and there is no software squelch or RX gain trim.
-// Those g_config fields are still loaded/saved so an existing config.json keeps
-// working, and page_mod.c still edits the pin numbers, but nothing in the audio
-// modem path reads them any more.
+// What the new component does NOT take at runtime, and where it went instead:
+//   audio pins        -> compile-time MODEM_ADC_GPIO / MODEM_DAC_GPIO, set in
+//                        the top-level CMakeLists.txt. Changing the audio
+//                        front-end pins still requires a rebuild.
+//   ADC attenuation   -> compile-time MODEM_ADC_ATTEN (ADC_ATTEN_DB_12).
+//   hardware squelch  -> gone. The component gates RX on the demodulator's own
+//                        DCD rather than on a squelch line, and it has no RF
+//                        power-switch output either.
+//   software squelch,
+//   RX volume, AGC
+//   gain ceiling      -> gone. The component's AGC is self-limiting and there
+//                        is no RX gain trim.
+// The g_config fields that used to hold all of the above (adc_gpio, dac_gpio,
+// adc_sel_gpio, dac_sel_gpio, adc_atten, rf_sql_*, rf_pwr_*, rf_pd_*,
+// rf_tx_gpio, rf_rx_gpio, sql_level, volume, agc_max_gain) have been REMOVED:
+// they were written to /storage/config.json on every save and read by nothing.
+//
+// rf_ptt_gpio / rf_ptt_active are the exception and are still mapped at runtime
+// (below) to modem_config_t.ptt_gpio / .ptt_active_high, validated by
+// afsk_ptt_gpio_is_valid(). MODEM_PTT_GPIO / MODEM_PTT_ACTIVE_HIGH now only
+// seed the factory default of those two fields (app_config_set_defaults()), so
+// the CMakeLists.txt board definition stays the single source of truth for the
+// PTT wiring instead of competing with a second default in app_config.c.
 // ---------------------------------------------------------------------------
 void aprs_service_build_modem_config(modem_config_t *cfg, bool full_duplex) {
     modem_config_t base = MODEM_DEFAULT_CONFIG();

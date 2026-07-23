@@ -358,9 +358,11 @@ static void app_task(void *arg) {
     // constant (pins/attenuation: see the idf_build_set_property() block in
     // the top-level CMakeLists.txt) or handled internally by the component
     // (its AGC needs no ceiling and it has no software squelch: the AX.25
-    // decoder gates on real DCD instead). PTT is the one exception: its GPIO
-    // and active level are now runtime-selectable on the Radio/Modem page
-    // and validated against the ADC/DAC pins by afsk_ptt_gpio_is_valid().
+    // decoder gates on real DCD instead). The g_config fields that used to
+    // hold them are gone; nothing read them. PTT is the one exception: its
+    // GPIO and active level are runtime-selectable on the Radio/Modem page,
+    // validated against the ADC/DAC pins by afsk_ptt_gpio_is_valid(), and
+    // default to the MODEM_PTT_* macros from the same CMakeLists.txt block.
     //
     // aprs_service_start() must run before modem_init(): it installs the RX
     // callback, and the component starts delivering frames from inside

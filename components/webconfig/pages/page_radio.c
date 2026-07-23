@@ -119,7 +119,7 @@ esp_err_t page_radio_get(httpd_req_t *req) {
     // Squelch level / Volume / ADC attenuation / AGC max gain used to be
     // editable here and were pushed into the old esp32_IDF_libAPRS component
     // at runtime (afskSetSquelchLevel/afskSetVolume/afskSetAgcMaxGain, plus
-    // adc_atten via aprs_modem_config_t). esp32idf_radioamateur_modem has no
+    // adc_atten). esp32idf_radioamateur_modem has no
     // equivalent for any of them: it has no software squelch (the AX.25
     // decoder gates on the demodulator's own DCD), no RX gain trim, a
     // self-limiting AGC, and it takes the ADC attenuation and both audio pins
@@ -260,10 +260,10 @@ esp_err_t page_radio_post(httpd_req_t *req) {
     app_config_lock();
     g_config.afsk_modem_type = (uint8_t)afsk_modem_in;
     // rfSql / rfVolume / adcAtten / agcMaxGain are no longer posted by the form
-    // (see the read-only note in page_radio_get()). The g_config fields are
-    // deliberately left untouched rather than deleted, so an existing
-    // config.json round-trips unchanged through app_config_save() below and a
-    // future component that can honour them finds the values still there.
+    // (see the read-only note in page_radio_get()), and the g_config fields
+    // behind them no longer exist: keeping them meant four more keys written to
+    // /storage/config.json on every save that nothing ever read back. The
+    // compiled-in values are displayed read-only instead.
     g_config.audio_lpf = web_form_get_bool(body, "audioLPF");
     // A malicious/hand-crafted POST could still send a value the <select>
     // never offers (e.g. an ADC/DAC pin or an input-only one), so re-validate

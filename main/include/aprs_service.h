@@ -95,13 +95,15 @@ aprs_service_stats_t aprs_service_get_stats(void);
  * modem_config_t, shared by the boot-time modem_init() in main.c, the live
  * re-apply on Save (aprs_service_apply_modem_config()) and the LOOP TEST.
  *
- * Note that pins, ADC attenuation and sample rates are NOT part of this: the
- * modem component takes them as compile-time constants (see the
+ * Note that the audio pins, ADC attenuation and sample rates are NOT part of
+ * this: the modem component takes them as compile-time constants (see the
  * idf_build_set_property() block in the top-level CMakeLists.txt), unlike the
  * esp32_IDF_libAPRS component this replaced, which took them at runtime in
- * aprs_modem_config_t. Neither are software squelch (g_config.sql_level), RX
- * volume (g_config.volume) or the AGC ceiling (g_config.agc_max_gain), for
- * which the new component has no equivalent at all.
+ * aprs_modem_config_t. Software squelch, RX volume and the AGC ceiling have no
+ * equivalent at all in the new component; the g_config fields that used to
+ * carry them (sql_level / volume / agc_max_gain) have been removed rather than
+ * left in flash as settings that change nothing. PTT is the one pin still
+ * taken at runtime, from g_config.rf_ptt_gpio / .rf_ptt_active.
  *
  * @param cfg         Destination configuration, filled completely.
  * @param full_duplex true to transmit without waiting for a clear channel.

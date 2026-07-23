@@ -753,12 +753,14 @@ int web_gpio_collect_used(const char *skip_tag, web_gpio_owner_t *out, int max) 
         }                                                                                                                         \
     } while (0)
 
-    // Only GPIOs actually applied to real hardware belong here. rf_tx_gpio/
-    // rf_rx_gpio/rf_sql_gpio/rf_pd_gpio/rf_pwr_gpio/adc_gpio/dac_gpio/
-    // adc_sel_gpio/dac_sel_gpio and the I2C/UART/1-Wire/Modbus/counter/power-
-    // switch/GSM/GNSS-PPS fields are config-struct-only placeholders with no
-    // driver behind them yet, so they're deliberately left out - showing them
-    // as "used" would block pins that are actually free.
+    // Only GPIOs actually applied to real hardware belong here. The old
+    // RF-module / I2C / UART / 1-Wire / Modbus / counter / power-switch /
+    // GSM / GNSS-PPS pin fields were config-struct-only placeholders with no
+    // driver behind them, so listing them here would have blocked pins that
+    // are actually free; they have since been removed from app_config_t
+    // entirely. The audio modem's ADC/DAC pins are compile-time constants
+    // (MODEM_ADC_GPIO / MODEM_DAC_GPIO) and are excluded from the pickers by
+    // afsk_ptt_gpio_is_valid() rather than by this list.
     WEB_GPIO_ADD(g_config.rf_ptt_gpio, "PTT");
     // msg_alarm_gpio can hold a real pin number even while the Message Alarm
     // "Enable" checkbox is off (Save doesn't clear it, so re-enabling later
