@@ -178,40 +178,12 @@ static bool s_dacTimerRunning = false;
 static bool s_inited = false;
 
 static volatile uint32_t s_adcSamples = 0;  /* total samples produced by the ADC */
-static volatile uint32_t s_dacIsrCount = 0; /* total DAC timer ISR invocations */
 static float s_dacAlarmRateHz = 0.0f;       /* rate the alarm really fires at */
 
-/* Longest observed gap between two DAC ISR invocations. This, not the average
- * miss rate, is the number that decides whether AX.25 works: see the notes on
- * the ring buffer above. Measured only while s_dacMeasure is set, so the
- * esp_timer read costs the modulator nothing in normal operation. */
-static volatile bool s_dacMeasure = false;
-static volatile uint32_t s_dacMaxGapUs = 0;
-static int64_t s_dacLastUs = 0;
-
-/* diagnostic tone generator */
-static volatile bool s_diagTone = false;
-static volatile uint32_t s_diagPhaseStep = 0;
-static uint32_t s_diagPhase = 0;
-
-/* diagnostic capture taps */
+/* diagnostic capture tap (raw ADC samples, still used by main/aprs_service.c) */
 static int16_t *volatile s_capRaw = NULL;
 static volatile int s_capRawLen = 0;
 static volatile int s_capRawIdx = 0;
-static int16_t *volatile s_capDem = NULL;
-static volatile int s_capDemLen = 0;
-static volatile int s_capDemIdx = 0;
-
-/* Set while a diagnostic stage is driving demodState[0] directly via
- * ModemDiagDemodulate(). AFSK_Poll() keeps running in that window - it still
- * has to, since it is the only thing that pulls samples off the ADC ring
- * buffer, tracks DCD and fills s_capDem - but it must NOT also call
- * MODEM_DECODE() on the same demodState[0], or the two of them tear
- * struct Filter.samples[] between them. This flag silences only that one
- * call; everything else in AFSK_Poll (ingest, AGC, DCD, capture tap) is left
- * alone, unlike the old vTaskSuspend()-the-whole-task approach which also
- * stopped the capture it was supposed to be feeding. */
-static volatile bool s_diagOwnsDemod = false;
 
 static float s_audio[MODEM_BLOCK_SIZE];
 static float s_agcGain = 1.0f;
@@ -518,11 +490,6 @@ bool getTransmit(void) {
     return s_txActive;
 }
 
-bool getReceive(void) {
-    /* In full duplex the receiver is always live, even while keyed up. */
-    return s_fullDuplex || !s_txActive;
-}
-
 /**
  * @brief Key up / key down.
  *
@@ -552,10 +519,6 @@ void afskSetFullDuplex(bool enable) {
     Ax25Config.fullDuplex = enable ? 1 : 0;
 }
 
-bool afskGetFullDuplex(void) {
-    return s_fullDuplex;
-}
-
 uint16_t afskGetRms(void) {
     return (uint16_t)s_mVrms;
 }
@@ -572,71 +535,14 @@ float afskGetAgcGain(void) {
     return s_agcGain;
 }
 
-uint32_t afskGetDacIsrCount(void) {
-    return s_dacIsrCount;
-}
-
 float afskGetDacAlarmRate(void) {
     return s_dacAlarmRateHz;
 }
 
-void afskDiagDacGapStart(void) {
-    s_dacLastUs = 0;
-    s_dacMaxGapUs = 0;
-    s_dacMeasure = true;
-}
-
-uint32_t afskDiagDacGapStop(void) {
-    s_dacMeasure = false;
-    return s_dacMaxGapUs;
-}
-
-uint32_t afskGetDacSampleRate(void) {
-    return (uint32_t)MODEM_DAC_SAMPLERATE;
-}
-
-uint32_t afskGetAdcSampleRate(void) {
-    return (uint32_t)MODEM_ADC_SAMPLERATE;
-}
-
-uint32_t afskGetDemodSampleRate(void) {
-    /* Profile dependent since G3RUH: it is the one profile fed the undecimated
-     * ADC stream, so anything measuring what the demodulator sees (the
-     * diagnostics do) must ask rather than assume MODEM_DEMOD_SAMPLERATE. */
-    if (ModemConfig.modem == MODEM_9600)
-        return (uint32_t)MODEM_ADC_SAMPLERATE;
-    return (uint32_t)MODEM_DEMOD_SAMPLERATE;
-}
-
 void afskDiagDacWrite(uint8_t code) {
-    if (s_txActive || s_diagTone || !s_dac)
+    if (s_txActive || !s_dac)
         return;
     dac_oneshot_output_voltage(s_dac, code);
-}
-
-void afskDiagToneStart(uint32_t freq_hz) {
-    if (!s_dacTimer)
-        return;
-    s_diagPhase = 0;
-    /* Deliberately derived from the NOMINAL rate the modem assumes. If the ISR
-     * does not really run at MODEM_DAC_SAMPLERATE, the emitted tone is wrong
-     * by the same ratio - which is exactly what we want to expose. */
-    s_diagPhaseStep = (uint32_t)(((uint64_t)freq_hz << 32) / MODEM_DAC_SAMPLERATE);
-    s_diagTone = true;
-    if (!s_dacTimerRunning) {
-        gptimer_start(s_dacTimer);
-        s_dacTimerRunning = true;
-    }
-}
-
-void afskDiagToneStop(void) {
-    s_diagTone = false;
-    if (s_dacTimer && s_dacTimerRunning) {
-        gptimer_stop(s_dacTimer);
-        s_dacTimerRunning = false;
-    }
-    if (s_dac)
-        dac_oneshot_output_voltage(s_dac, DAC_MID);
 }
 
 int afskDiagCaptureRaw(int16_t *dst, int n, uint32_t timeout_ms) {
@@ -653,25 +559,6 @@ int afskDiagCaptureRaw(int16_t *dst, int n, uint32_t timeout_ms) {
     s_capRaw = NULL;
     return got;
 }
-
-int afskDiagCaptureDemodInput(int16_t *dst, int n, uint32_t timeout_ms) {
-    s_capDemIdx = 0;
-    s_capDemLen = n;
-    s_capDem = dst;
-
-    uint32_t waited = 0;
-    while ((s_capDemIdx < n) && (waited < timeout_ms)) {
-        vTaskDelay(pdMS_TO_TICKS(5) ? pdMS_TO_TICKS(5) : 1);
-        waited += 5;
-    }
-    int got = s_capDemIdx;
-    s_capDem = NULL;
-    return got;
-}
-
-/* ------------------------------------------------------------------ */
-/* DAC timer ISR                                                      */
-/* ------------------------------------------------------------------ */
 
 /* ------------------------------------------------------------------ */
 /* DAC timer ISR                                                      */
@@ -719,25 +606,6 @@ static bool IRAM_ATTR dac_timer_isr(gptimer_handle_t timer, const gptimer_alarm_
     (void)timer;
     (void)edata;
     (void)user_ctx;
-
-    s_dacIsrCount++;
-
-    if (s_dacMeasure) {
-        int64_t now = esp_timer_get_time();
-        if (s_dacLastUs != 0) {
-            uint32_t gap = (uint32_t)(now - s_dacLastUs);
-            if (gap > s_dacMaxGapUs)
-                s_dacMaxGapUs = gap;
-        }
-        s_dacLastUs = now;
-    }
-
-    if (s_diagTone) {
-        s_diagPhase += s_diagPhaseStep;
-        uint16_t idx = (uint16_t)(s_diagPhase >> 23) & (MODEM_SIN_LEN - 1);
-        dac_write_isr(dac_scale(ModemSinSample(idx)));
-        return false;
-    }
 
     if (s_txActive) {
         uint8_t sinwave = MODEM_BAUDRATE_TIMER_HANDLER();
@@ -1139,10 +1007,7 @@ void AFSK_Poll(void) {
                     v = 2047.0f;
                 else if (v < -2047.0f)
                     v = -2047.0f;
-                if (s_capDem && (s_capDemIdx < s_capDemLen))
-                    s_capDem[s_capDemIdx++] = (int16_t)v;
-                if (!s_diagOwnsDemod)
-                    MODEM_DECODE((int16_t)v, (uint16_t)s_mVrms);
+                MODEM_DECODE((int16_t)v, (uint16_t)s_mVrms);
             }
         }
     }
@@ -1189,29 +1054,6 @@ static void afsk_rx_task(void *arg) {
 /* ------------------------------------------------------------------ */
 /* Modem profile                                                      */
 /* ------------------------------------------------------------------ */
-
-/*
- * NOTE: despite the name, this no longer suspends afsk_rx_task. It used to
- * (vTaskSuspend()), which does stop AFSK_Poll() from calling MODEM_DECODE()
- * on demodState[0] concurrently with a diag stage's own ModemDiagDemodulate()
- * calls - but AFSK_Poll() is also the only thing driving adc_ingest(),
- * updating DCD, and filling s_capDem. Suspending the task starved the diag's
- * own capture, which is why every Stage 4 profile logged "demodulator saw
- * nothing (0 samples) - the RX gate never opened": the RX task was the gate,
- * and this function held it shut.
- *
- * All the race actually requires is that AFSK_Poll() not call MODEM_DECODE()
- * while a diag stage is driving the same demodState[0] by hand - so that is
- * the only thing suppressed now. Everything else in AFSK_Poll() keeps
- * running.
- */
-void afskDiagRxTaskPause(void) {
-    s_diagOwnsDemod = true;
-}
-
-void afskDiagRxTaskResume(void) {
-    s_diagOwnsDemod = false;
-}
 
 void afskSetModem(uint8_t val, bool flatAudio, uint16_t timeSlot, uint16_t preamble, uint8_t fx25Mode) {
     /*
