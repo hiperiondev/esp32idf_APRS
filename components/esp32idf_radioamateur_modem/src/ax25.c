@@ -177,8 +177,6 @@ static uint8_t txFx25Buffer[FX25_MAX_BLOCK_SIZE];
 static uint8_t txTagByteIdx = 0;
 #endif
 
-static uint8_t frameReceived; /* bitmap of receivers that received a frame */
-
 enum TxStage {
     TX_STAGE_IDLE = 0,
     TX_STAGE_PREAMBLE,
@@ -232,7 +230,6 @@ struct RxState {
     uint8_t receivedBitIdx;
     uint8_t rawData;
     enum Ax25RxStage rx;
-    uint8_t frameReceived;
 #ifdef ENABLE_FX25
     struct Fx25Mode *fx25Mode;
     uint64_t tag;
@@ -268,14 +265,6 @@ static void IRAM_ATTR calculateCRC(uint8_t bit, uint16_t *crc) {
     *crc >>= 1;
     if (xor_result & 0x0001)
         *crc ^= 0x8408;
-}
-
-uint8_t Ax25GetReceivedFrameBitmap(void) {
-    return frameReceived;
-}
-
-void Ax25ClearReceivedFrameBitmap(void) {
-    frameReceived = 0;
 }
 
 #define countof(a) (sizeof(a) / sizeof(a[0]))
@@ -556,24 +545,6 @@ static void publishRxFrame(void) {
 }
 #endif /* ENABLE_FX25 */
 
-uint16_t Ax25GetOnAirSize(uint16_t frameSize) {
-#ifdef ENABLE_FX25
-    if (Ax25Config.fx25 && Ax25Config.fx25Tx) {
-        /* Must stay in step with writeFx25Frame()'s mode selection, hence the
-         * duplicated worst-case bitstuffing estimate. A NULL mode there means
-         * the frame is too big for FX.25 and falls through to plain AX.25, so
-         * fall through here too. */
-        const struct Fx25Mode *fx25Mode = Fx25GetModeForSize(frameSize + 4 + (frameSize / 5) + 1);
-        if (NULL != fx25Mode)
-            return (uint16_t)(8 + fx25Mode->K + fx25Mode->T); /* correlation tag + block */
-    }
-#endif
-    /* Flags either side, the FCS, and worst-case bit stuffing (one stuffed bit
-     * per 5 payload bits, rounded up to whole bytes). */
-    uint16_t payload = (uint16_t)(frameSize + 2);
-    return (uint16_t)(STATIC_HEADER_FLAG_COUNT + payload + (payload / 5) + 1 + STATIC_FOOTER_FLAG_COUNT);
-}
-
 void *Ax25WriteTxFrame(const uint8_t *data, uint16_t size) {
     /* Consumed by Ax25GetTxBit() in the DAC sample-clock ISR, on another core. */
     if (RING_NEXT(txFrameHead) == RING_OBSERVE(txFrameTail)) {
@@ -690,10 +661,6 @@ void Ax25BitParse(uint8_t bit, uint8_t modem, uint16_t mV) {
             /* hold it for a while and wait for the other decoders to receive it */
             lastCrc = 0;
             rxMultiplexDelay = 0;
-            for (uint8_t i = 0; i < MODEM_MAX_DEMODULATOR_COUNT; i++) {
-                frameReceived |= ((rxState[i].frameReceived > 0) << i);
-                rxState[i].frameReceived = 0;
-            }
         }
     }
 
@@ -732,7 +699,6 @@ void Ax25BitParse(uint8_t bit, uint8_t modem, uint16_t mV) {
 
                         /* if non-APRS frames are not allowed, require control=0x03 and PID=0xF0 */
                         if (Ax25Config.allowNonAprs || ((rx->frame[i + 1] == 0x03) && (rx->frame[i + 2] == 0xF0))) {
-                            rx->frameReceived = 1;
                             rx->frameIdx -= 2; /* remove CRC */
                             if (rx->crc != lastCrc) {
                                 /* the other decoder has not received this frame yet */
@@ -826,7 +792,6 @@ void Ax25BitParse(uint8_t bit, uint8_t modem, uint16_t mV) {
             uint16_t crc;
             struct FrameHandle *h = parseFx25Frame(rx->frame, rx->frameIdx, &crc);
             if (h != NULL) {
-                rx->frameReceived = 1;
                 ModemGetSignalLevel(modem, &h->peak, &h->valley, &h->level);
                 if (fecSuccess) {
                     h->corrected = fixed;
@@ -1210,7 +1175,6 @@ void Ax25Init(uint8_t fx25Mode) {
     txBitIdx = 8; /* force a stage evaluation on the very first Ax25GetTxBit() */
     txStage = TX_STAGE_IDLE;
     lastCrc = 0;
-    frameReceived = 0;
 
     /* milliseconds -> byte count */
     txDelay = (uint16_t)((float)Ax25Config.txDelayLength / (8.f * 1000.f / ModemGetBaudrate()));
@@ -1231,10 +1195,6 @@ void Ax25TimeSlot(uint16_t ts) {
     } else {
         txQuiet = 0;
     }
-}
-
-bool Ax25NewRxFrames(void) {
-    return RING_OBSERVE(rxFrameHead) != rxFrameTail;
 }
 
 /* ====================================================================== */

@@ -90,7 +90,6 @@ static void modem_service_task(void *arg) {
                 s_rxCb(&f, s_rxCbCtx);
             }
         }
-        Ax25ClearReceivedFrameBitmap();
 
         /* MODEM_DELAY_TICKS, not pdMS_TO_TICKS: at CONFIG_FREERTOS_HZ=100
          * this rounds up to one tick (10 ms) instead of collapsing to

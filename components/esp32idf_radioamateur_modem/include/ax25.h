@@ -221,20 +221,6 @@ bool Ax25TxBufferPending(void);
 uint8_t Ax25TxFramesPending(void);
 
 /**
- * @brief Get a bitmap indicating which demodulators currently have a
- *        received frame pending.
- * @return Bitmap, one bit per demodulator, set when that demodulator has an
- *         unread received frame.
- */
-uint8_t Ax25GetReceivedFrameBitmap(void);
-
-/**
- * @brief Clear the "frame received" bitmap returned by
- *        Ax25GetReceivedFrameBitmap().
- */
-void Ax25ClearReceivedFrameBitmap(void);
-
-/**
  * @brief Retrieve the next pending received frame, if any is available.
  *
  * @param dst       Set to point at the internal buffer holding the raw
@@ -315,13 +301,6 @@ void Ax25TxDelay(uint16_t delay_ms);
 void Ax25TimeSlot(uint16_t ts);
 
 /**
- * @brief Check whether any new frames have been received since the last
- *        check.
- * @return true if at least one new frame is available to read.
- */
-bool Ax25NewRxFrames(void);
-
-/**
  * @brief Decode a raw AX.25 frame (without FCS) into a structured message.
  * @param buf   Raw frame bytes (address field onwards, no FCS).
  * @param len   Length, in bytes, of @p buf.
@@ -360,23 +339,5 @@ char ax25_encode(ax25_frame_t *frame, char *txt, int size);
  *         negative value on error.
  */
 int hdlcFrame(uint8_t *outbuf, size_t outbuf_len, ax25_ctx_t *ctx, ax25_frame_t *pkg);
-
-/**
- * @brief Number of bytes actually clocked onto the air for a frame of
- *        @p frameSize bytes, under the CURRENT configuration.
- *
- * This is emphatically not @p frameSize. Plain AX.25 adds flags, the FCS and
- * bit stuffing; FX.25 replaces all of that with a fixed-size Reed-Solomon
- * block chosen by Fx25GetModeForSize(), so a 60-byte frame goes out as a
- * K=128/T=32 block plus an 8-byte correlation tag - 168 bytes, nearly three
- * times the payload. Anything sizing a timeout, a duty cycle or a channel
- * occupancy estimate must use this rather than the frame length.
- *
- * Excludes TXDelay and TXTail, which are set independently of frame size.
- *
- * @param frameSize Size of the plain AX.25 frame, without flags or FCS.
- * @return On-air size in bytes.
- */
-uint16_t Ax25GetOnAirSize(uint16_t frameSize);
 
 #endif /* LIB_AX25_H_ */
