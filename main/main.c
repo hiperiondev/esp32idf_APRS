@@ -388,8 +388,6 @@ static void app_task(void *arg) {
         ESP_LOGI(TAG, "Audio ADC/DAC AFSK modem disabled in config - skipping modem_init()");
     }
 
-    APRS_setCallsign(g_config.aprs_mycall, g_config.aprs_ssid);
-
     ESP_LOGI(TAG, "ESP32APRS web admin ready. Login: %s / %s", g_config.http_username, g_config.http_password);
 
     // Initialisation is done and everything above runs in its own tasks now
