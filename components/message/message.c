@@ -319,14 +319,6 @@ static int pkgMsgOldestSlot(void) {
     return ret;
 }
 
-msg_entry_t getMsgList(int idx) {
-    msg_entry_t ret;
-    memset(&ret, 0, sizeof(ret));
-    if (idx >= 0 && idx < MSG_QUEUE_SIZE)
-        ret = s_queue[idx];
-    return ret;
-}
-
 static int pkgMsgUpdate(const char *call, const char *text, uint16_t msgID, int8_t ack, bool rxtx) {
     if (!call[0] || !text[0])
         return -1;

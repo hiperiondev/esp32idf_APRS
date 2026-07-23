@@ -43,17 +43,6 @@ enum ModemType {
 };
 
 /**
- * @brief Transmitter test tone modes, used for on-air alignment and
- *        diagnostics.
- */
-enum ModemTxTestMode {
-    TEST_DISABLED,   /**< No test tone; normal modulation. */
-    TEST_MARK,       /**< Continuously transmit the mark tone. */
-    TEST_SPACE,      /**< Continuously transmit the space tone. */
-    TEST_ALTERNATING, /**< Alternate between mark and space tones. */
-};
-
-/**
  * @brief Runtime configuration of the demodulator.
  */
 struct ModemDemodConfig {
@@ -118,24 +107,6 @@ enum ModemPrefilter ModemGetFilterType(uint8_t modem);
 uint8_t ModemDcdState(void);
 
 /**
- * @brief Check whether a transmitter test tone is currently active.
- * @return Non-zero if a test tone (see ::ModemTxTestMode) is currently being
- *         transmitted.
- */
-uint8_t ModemIsTxTestOngoing(void);
-
-/**
- * @brief Start transmitting a test tone.
- * @param type Test tone mode to start.
- */
-void ModemTxTestStart(enum ModemTxTestMode type);
-
-/**
- * @brief Stop any test tone previously started with ModemTxTestStart().
- */
-void ModemTxTestStop(void);
-
-/**
  * @brief Configure and start a transmission.
  *
  * Used internally by the AX.25 protocol layer when a frame is ready to be
@@ -190,14 +161,6 @@ void ModemInit(void);
  */
 void ModemCalibrateSampleRate(float measuredAdcHz, float measuredDacHz);
 
-/**
- * @brief Get the correction factor applied by ::ModemCalibrateSampleRate().
- * @return Ratio of the real samples-per-symbol count to the nominal one
- *         (1.0 if no calibration has been applied, or the last measurement
- *         was rejected as out of range).
- */
-float ModemGetSampleRateCorrection(void);
-
 /* ---- diagnostics ------------------------------------------------------- */
 
 /**
@@ -214,26 +177,15 @@ float ModemGetSampleRateCorrection(void);
 uint8_t ModemSinSample(uint16_t i);
 
 /**
- * @brief Get the nominal mark and space tone frequencies of the current
- *        modem profile.
- * @param mark  Set to the mark tone frequency, in Hz.
- * @param space Set to the space tone frequency, in Hz.
- */
-void ModemGetTones(float *mark, float *space);
-
-/**
  * @brief Get the mark and space tone frequencies the modulator can
  *        actually emit, in Hz.
  *
- * This is deliberately not the same computation as ModemGetTones(): that
- * function reports what the demodulator's correlator is tuned to expect,
- * while this one reports what the transmitter's phase accumulator actually
- * produces. The two agree to seven decimal places now that the modulator
- * runs from a 32-bit phase accumulator, but they are computed through
- * independent code paths on purpose, so that any future change to the
- * modulator cannot silently drift away from the tone values it claims to
- * implement. Anything measuring the transmitter should compare its
- * readings against this function, not against ModemGetTones().
+ * Deliberately derived from the modulator's own phase-accumulator steps
+ * rather than from the nominal markFreq/spaceFreq constants the profile was
+ * configured with, so that any future change to the modulator cannot
+ * silently drift away from the tone values it claims to implement. Anything
+ * measuring the transmitter should compare its readings against this
+ * function.
  *
  * @param mark  Set to the actual mark tone frequency the modulator emits,
  *              in Hz.
@@ -241,19 +193,6 @@ void ModemGetTones(float *mark, float *space);
  *              in Hz.
  */
 void ModemGetStepTones(float *mark, float *space);
-
-/**
- * @brief Feed one sample into a demodulator and return its raw correlator
- *        output rather than just its sign.
- *
- * @param demod  Index of the demodulator to feed.
- * @param sample Input audio sample.
- * @return Raw, post-low-pass-filter correlator output; positive values
- *         indicate mark, negative values indicate space.
- * @note This mutates the demodulator's internal state and is intended for
- *       diagnostics only, not for normal frame reception.
- */
-int32_t ModemDiagDemodulate(uint8_t demod, int16_t sample);
 
 /**
  * @brief Feed one sample to the demodulator during normal operation.

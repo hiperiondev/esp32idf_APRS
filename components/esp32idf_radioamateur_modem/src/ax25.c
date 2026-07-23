@@ -249,6 +249,13 @@ static uint16_t txTail;
 
 static uint8_t outputFrameBuffer[AX25_FRAME_MAX_SIZE];
 
+/* Scratch buffer used only to linearize the about-to-transmit frame (which
+ * lives in the circular txBuffer) so it can be handed to ax25_decode() for
+ * the "PTT ON" log line. Separate from outputFrameBuffer since that one is
+ * used for RX frames and could otherwise be clobbered if both paths were
+ * ever serviced close together. */
+static uint8_t txLogBuffer[AX25_FRAME_MAX_SIZE];
+
 /**
  * @brief Recalculate the CRC for one bit
  */
@@ -1054,6 +1061,49 @@ void Ax25TransmitBuffer(void) {
 }
 
 /**
+ * @brief Log "PTT ON" together with the actual content of the frame that is
+ * about to key up, decoded back into a readable TNC2 line
+ * ("SRC>DST,PATH:info"), instead of a fixed placeholder string.
+ *
+ * txFrameTail still points at that frame here: transmitStart() runs before
+ * the DAC ISR has clocked out a single bit of it, so txRetireFrame() (which
+ * advances txFrameTail) has not run yet. Skipped entirely when INFO logging
+ * is off for this tag, same as the TX-queued log, so it costs nothing then.
+ */
+static void logPttOn(void) {
+    if (esp_log_level_get(TAG) < ESP_LOG_INFO) {
+        return;
+    }
+
+    const struct FrameHandle *h = &txFrame[txFrameTail];
+
+#ifdef ENABLE_FX25
+    if (NULL != h->fx25Mode) {
+        /* FX.25-encoded bytes (Reed-Solomon block) are not a plain AX.25
+         * frame, so there is nothing meaningful for ax25_decode() to read. */
+        ESP_LOGI(TAG, "PTT ON (keyed up)");
+        return;
+    }
+#endif
+
+    uint16_t len = h->size;
+    if (len > AX25_FRAME_MAX_SIZE) /* cannot happen; do not overrun if it does */
+        len = AX25_FRAME_MAX_SIZE;
+
+    for (uint16_t i = 0; i < len; i++)
+        txLogBuffer[i] = txBuffer[(h->start + i) % FRAME_BUFFER_SIZE];
+
+    ax25_msg_t decoded;
+    if (ax25_decode(txLogBuffer, len, 0, &decoded)) {
+        char tnc2[256];
+        modem_format_tnc2(&decoded, tnc2, sizeof(tnc2));
+        ESP_LOGI(TAG, "PTT ON (keyed up) - %s", tnc2);
+    } else {
+        ESP_LOGI(TAG, "PTT ON (keyed up)");
+    }
+}
+
+/**
  * @brief Start transmission immediately.
  * @warning Transmission must be initialized via Ax25TransmitBuffer().
  */
@@ -1065,7 +1115,7 @@ static void transmitStart(void) {
     txFlagsElapsed = 0;
     txDelayElapsed = 0;
     ModemTransmitStart();
-    ESP_LOGI(TAG, "PTT ON (keyed up)");
+    logPttOn();
 }
 
 /**

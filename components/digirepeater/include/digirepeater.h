@@ -53,9 +53,4 @@ int digiProcess(ax25_msg_t *packet);
  */
 digi_stats_t digi_get_stats(void);
 
-/**
- * @brief Reset digipeater counters (e.g. after a telemetry beacon is sent).
- */
-void digi_reset_stats(void);
-
 #endif // DIGIREPEATER_H

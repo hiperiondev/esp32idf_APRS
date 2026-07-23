@@ -104,7 +104,6 @@ void sendAPRSMessageRetry(void);
 void handleIncomingAPRS(const char *line);
 
 int pkgMsg_Find(const char *call, uint16_t msgID, bool rxtx);
-msg_entry_t getMsgList(int idx);
 
 /**
  * @brief Dump the in-memory message queue (both RX and TX entries) as a JSON

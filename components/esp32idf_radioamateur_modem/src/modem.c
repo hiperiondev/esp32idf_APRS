@@ -195,10 +195,6 @@ void ModemCalibrateSampleRate(float measuredAdcHz, float measuredDacHz) {
      * (mid-run recalibration) nothing in this component actually does. */
 }
 
-float ModemGetSampleRateCorrection(void) {
-    return sampleRateCorrection;
-}
-
 #define PLL1200_LOCKED_TUNE     0.74f
 #define PLL1200_NOT_LOCKED_TUNE 0.50f
 /*
@@ -291,7 +287,6 @@ struct ModemDemodConfig ModemConfig;
  * notes in afsk.c. */
 
 static uint8_t N;                        /* samples per symbol */
-static enum ModemTxTestMode txTestState; /* current TX test mode */
 static uint8_t demodCount;               /* number of parallel demodulators */
 static uint8_t currentSymbol;            /* current symbol for NRZI encoding */
 static uint8_t scrambledSymbol;
@@ -432,10 +427,6 @@ uint8_t ModemGetDemodulatorCount(void) {
 
 uint8_t ModemDcdState(void) {
     return dcd;
-}
-
-uint8_t ModemIsTxTestOngoing(void) {
-    return (txTestState != TEST_DISABLED) ? 1 : 0;
 }
 
 void ModemGetSignalLevel(uint8_t modem, int8_t *peak, int8_t *valley, uint8_t *level) {
@@ -687,22 +678,7 @@ static void decode(uint8_t symbol, uint8_t demod, uint16_t mV) {
     }
 }
 
-void ModemTxTestStart(enum ModemTxTestMode type) {
-    if (txTestState != TEST_DISABLED)
-        ModemTxTestStop();
-
-    setPtt(true);
-    txTestState = type;
-}
-
-void ModemTxTestStop(void) {
-    txTestState = TEST_DISABLED;
-    setTransmit(false);
-    setPtt(false);
-}
-
 void ModemTransmitStart(void) {
-    txTestState = TEST_DISABLED;
     setPtt(true);
     setTransmit(true);
     ESP_LOGD(TAG, "ModemTransmitStart");
@@ -723,13 +699,6 @@ uint8_t IRAM_ATTR ModemSinSample(uint16_t i) {
     return sinSample(i);
 }
 
-void ModemGetTones(float *mark, float *space) {
-    if (mark)
-        *mark = markFreq;
-    if (space)
-        *space = spaceFreq;
-}
-
 void ModemGetStepTones(float *mark, float *space) {
     /* Derived from the steps themselves, so this reports what the modulator is
      * really doing rather than what it was asked to do. */
@@ -737,12 +706,6 @@ void ModemGetStepTones(float *mark, float *space) {
         *mark = (float)(((double)markStep * (double)MODEM_DAC_SAMPLERATE) / 4294967296.0);
     if (space)
         *space = (float)(((double)spaceStep * (double)MODEM_DAC_SAMPLERATE) / 4294967296.0);
-}
-
-int32_t ModemDiagDemodulate(uint8_t demod, int16_t sample) {
-    if (demod >= demodCount)
-        return 0;
-    return demodulate(sample, &demodState[demod]);
 }
 
 void ModemInit(void) {
@@ -844,9 +807,9 @@ void ModemInit(void) {
          * macro whose only remaining use this was, now gone with it), under a
          * comment claiming it was "used as DAC sample rate". Nothing reads it
          * that way - MODEM_DAC_SAMPLERATE is what configures the timer - and
-         * the only effect was that ModemGetTones() reported a 300 Hz mark and a
-         * 0 Hz space for a profile that emits neither, which any diagnostic
-         * driving those tones would then dutifully test. Report the truth.
+         * the only effect was that the tone reporting helpers claimed a 300 Hz
+         * mark and a 0 Hz space for a profile that emits neither. Report the
+         * truth.
          */
         markFreq = 0.f;
         spaceFreq = 0.f;

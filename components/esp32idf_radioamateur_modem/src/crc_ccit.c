@@ -36,18 +36,3 @@ const uint16_t crc_ccit_table[256] = {
     0xa12a, 0xb0a3, 0x8238, 0x93b1, 0x6b46, 0x7acf, 0x4854, 0x59dd, 0x2d62, 0x3ceb, 0x0e70, 0x1ff9, 0xf78f, 0xe606, 0xd49d, 0xc514, 0xb1ab, 0xa022, 0x92b9,
     0x8330, 0x7bc7, 0x6a4e, 0x58d5, 0x495c, 0x3de3, 0x2c6a, 0x1ef1, 0x0f78,
 };
-uint16_t fcs_calc(const uint8_t *data, int len) {
-    uint16_t crc = 0xffff;
-    for (int j = 0; j < len; j++) {
-        crc = (uint16_t)((crc >> 8) ^ crc_ccit_table[(crc ^ data[j]) & 0xff]);
-    }
-    return (uint16_t)(crc ^ 0xffff);
-}
-
-uint16_t crc16_seed(const uint8_t *data, int len, uint16_t seed) {
-    uint16_t crc = seed;
-    for (int j = 0; j < len; j++) {
-        crc = (uint16_t)((crc >> 8) ^ crc_ccit_table[(crc ^ data[j]) & 0xff]);
-    }
-    return (uint16_t)(crc ^ 0xffff);
-}

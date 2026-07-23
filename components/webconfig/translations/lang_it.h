@@ -64,13 +64,6 @@
 #define TR_LOOPTEST_FAILED   "Richiesta non riuscita"
 #define TR_SHOW_PASSWORD "Mostra password"
 
-// ---- page_common.c: "coming soon" placeholder --------------------------
-#define TR_COMING_SOON_TITLE "Prossimamente"
-#define TR_COMING_SOON_BODY                                                                                                                                    \
-    "Questa pagina fa parte del port completo dell'amministrazione web ed è in fase di "                                                                       \
-    "sviluppo in un'iterazione successiva. I relativi campi di configurazione esistono già in <code>config.json</code> "                                       \
-    "con valori predefiniti già impostati; manca solo l'HTML/gestore per questa sezione."
-
 // ---- page_about.c --------------------------------------------------------
 #define TR_ABOUT_TITLE       "Firmware"
 #define TR_ABOUT_FW_LEGEND   "Firmware"

@@ -59,21 +59,6 @@ bool storage_init(void) {
     return true;
 }
 
-bool storage_exists(const char *path) {
-    if (!s_mounted)
-        return false;
-    char full[300];
-    if (path[0] == '/')
-        snprintf(full, sizeof(full), "%s%s", STORAGE_BASE_PATH, path);
-    else
-        snprintf(full, sizeof(full), "%s/%s", STORAGE_BASE_PATH, path);
-    FILE *f = fopen(full, "r");
-    if (!f)
-        return false;
-    fclose(f);
-    return true;
-}
-
 bool storage_delete(const char *path) {
     if (!s_mounted)
         return false;

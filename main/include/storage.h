@@ -35,9 +35,6 @@
 // (fresh partition) so config.json + defaults always end up written.
 bool storage_init(void);
 
-// True if path exists under /storage
-bool storage_exists(const char *path);
-
 // Delete a single file (not directories) under /storage.
 bool storage_delete(const char *path);
 

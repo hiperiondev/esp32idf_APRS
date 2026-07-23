@@ -44,22 +44,4 @@ static inline uint16_t update_crc_ccit(uint8_t c, uint16_t prev_crc) {
     return (uint16_t)((prev_crc >> 8) ^ crc_ccit_table[(prev_crc ^ c) & 0xff]);
 }
 
-/**
- * @brief Compute the AX.25 Frame Check Sequence over a complete frame.
- * @param data Frame bytes to checksum.
- * @param len  Number of bytes in @p data.
- * @return Computed FCS value.
- */
-uint16_t fcs_calc(const uint8_t *data, int len);
-
-/**
- * @brief Compute a CRC-CCITT value over a buffer, starting from an
- *        arbitrary seed instead of ::CRC_CCIT_INIT_VAL.
- * @param data Bytes to checksum.
- * @param len  Number of bytes in @p data.
- * @param seed Initial CRC accumulator value.
- * @return Computed CRC value.
- */
-uint16_t crc16_seed(const uint8_t *data, int len, uint16_t seed);
-
 #endif /* LIB_CRC_CCIT_H_ */

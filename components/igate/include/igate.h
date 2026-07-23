@@ -78,7 +78,6 @@ bool isDuplicatePacket(ax25_msg_t *packet);
 void clearExpiredDuplicates(void);
 
 igate_stats_t igate_get_stats(void);
-void igate_reset_stats(void);
 
 /**
  * @brief True while the APRS-IS TCP socket is currently open (logged in and

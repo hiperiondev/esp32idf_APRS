@@ -63,16 +63,6 @@ esp_err_t page_logout(httpd_req_t *req) {
     return ESP_OK;
 }
 
-esp_err_t page_not_yet(httpd_req_t *req) {
-    if (!web_check_auth(req))
-        return ESP_OK;
-    web_send_header(req, TR_COMING_SOON_TITLE, NULL);
-    httpd_resp_sendstr_chunk(req, "<p>" TR_COMING_SOON_BODY "</p>"
-                                  "<a class='btn' href='/dashboard'>" TR_BTN_BACK_DASH "</a>");
-    web_send_footer(req);
-    return ESP_OK;
-}
-
 esp_err_t page_dashboard(httpd_req_t *req) {
     if (!web_check_auth(req))
         return ESP_OK;

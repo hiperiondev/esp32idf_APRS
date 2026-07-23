@@ -33,10 +33,6 @@ digi_stats_t digi_get_stats(void) {
     return s_stats;
 }
 
-void digi_reset_stats(void) {
-    memset(&s_stats, 0, sizeof(s_stats));
-}
-
 /* Bounded copy into an AX.25 callsign field (char[6 + CALL_OVERSPACE] == 7
  * bytes). AX.25 callsigns are at most 6 chars; anything longer is truncated so
  * a stale or hand-edited config.json can never overflow the 7-byte destination

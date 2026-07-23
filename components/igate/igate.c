@@ -91,10 +91,6 @@ static void tnc2SrcCallsign(const char *data, size_t len, char *out, size_t outM
 igate_stats_t igate_get_stats(void) {
     return s_stats;
 }
-void igate_reset_stats(void) {
-    memset(&s_stats, 0, sizeof(s_stats));
-}
-
 bool igate_is_connected(void) {
     bool connected = false;
     ensureSockMutex();

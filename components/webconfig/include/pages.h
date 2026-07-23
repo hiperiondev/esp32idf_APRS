@@ -38,7 +38,6 @@ esp_err_t page_igate_traffic(httpd_req_t *req); // GET  /igate_traffic?since=<se
 esp_err_t page_lastheard(httpd_req_t *req);     // GET  /lastheard (JSON, dashboard LAST HEARD table)
 esp_err_t page_dashinfo(httpd_req_t *req);      // GET  /dashinfo (compact live sysinfo strip for the dashboard)
 esp_err_t page_storage_get(httpd_req_t *req);   // GET  /storage
-esp_err_t page_storage_post(httpd_req_t *req);  // POST /storage (mkdir placeholder)
 esp_err_t page_download(httpd_req_t *req);      // GET  /download?file=...
 esp_err_t page_delete(httpd_req_t *req);        // GET/POST /delete?file=...
 esp_err_t page_format(httpd_req_t *req);        // GET/POST /format
@@ -51,10 +50,6 @@ esp_err_t page_system_post(httpd_req_t *req);   // POST /system
 esp_err_t page_about_get(httpd_req_t *req);     // GET  /about
 esp_err_t page_ota_update_post(httpd_req_t *req); // POST /ota_update (multipart firmware upload -> flash + reboot)
 esp_err_t page_default_reset(httpd_req_t *req); // GET/POST /default (factory reset)
-
-// -- Coming in follow-up turns (registered with a "not implemented yet" stub
-//    so the sidebar never 404s while the build-out continues) --
-esp_err_t page_not_yet(httpd_req_t *req);
 
 // -- APRS services --
 esp_err_t page_igate_get(httpd_req_t *req);
