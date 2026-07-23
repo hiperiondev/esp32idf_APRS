@@ -25,7 +25,6 @@
 
 #include "app_config.h"
 #include "aprs_service.h"
-#include "BMP180.h" // bmp180_gpio_is_reserved(): keep the I2C pins out of the picker
 // hal/adc_types.h for ADC_ATTEN_DB_12: the component's config header defines
 // MODEM_ADC_ATTEN as that enumerator but does not include its declaration (its
 // own .c files pull in the ADC driver first), so a translation unit that
@@ -39,24 +38,28 @@
 #include "translations.h"
 #include "web_common.h"
 
-// Renders the PTT GPIO field as a <select> restricted to pins that
-// afsk_ptt_gpio_is_valid() actually accepts: output-capable ESP32 GPIOs,
-// excluding whichever pins are wired to the ADC/DAC audio path
-// (MODEM_ADC_GPIO / MODEM_DAC_GPIO), the input-only GPIO34-39 pads, and the
-// internal-flash/PSRAM GPIO6-11 pads. This keeps a colliding or unusable pin
-// from ever being selected in the UI, rather than only catching it on Save.
+// Renders the PTT GPIO field as a <select> listing every pin that's
+// physically able to drive an output (afsk_gpio_is_output_capable(): not the
+// input-only GPIO34-39 pads, not the internal-flash/PSRAM GPIO6-11 pads -
+// those are truly unusable and stay hidden). Pins that ARE physically usable
+// but already claimed by another feature (the audio front-end's ADC/DAC,
+// Message Alarm, BMP180 I2C, ...) are still listed - via the shared GPIO
+// registry, web_gpio_owner_tag() - but shown disabled and labelled with their
+// owner, so the user can see the whole pin map instead of pins just vanishing.
 static void web_field_ptt_gpio(httpd_req_t *req, int8_t current) {
     // -1 = PTT disabled, always offered first regardless of validity.
     web_select_open(req, TR_F_PTT_PIN, "rfPTT");
     web_select_option(req, -1, TR_DISABLED, current == -1);
     for (int gpio = 0; gpio <= 39; gpio++) {
-        if (!afsk_ptt_gpio_is_valid((int8_t)gpio))
+        if (!afsk_gpio_is_output_capable((int8_t)gpio))
             continue;
-        if (bmp180_gpio_is_reserved(gpio)) // pins owned by the BMP180 I2C bus
-            continue;
-        char label[16];
-        snprintf(label, sizeof(label), "GPIO%d", gpio);
-        web_select_option(req, gpio, label, current == gpio);
+        const char *owner = web_gpio_owner_tag(gpio, "PTT");
+        char label[48];
+        if (owner)
+            snprintf(label, sizeof(label), "GPIO%d (used: %.30s)", gpio, owner);
+        else
+            snprintf(label, sizeof(label), "GPIO%d", gpio);
+        web_select_option_state(req, gpio, label, current == gpio, owner != NULL);
     }
     web_select_close(req);
 }

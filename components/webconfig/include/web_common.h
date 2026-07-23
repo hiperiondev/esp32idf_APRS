@@ -158,8 +158,38 @@ void web_field_float(httpd_req_t *req, const char *label, const char *name, floa
 void web_field_checkbox(httpd_req_t *req, const char *label, const char *name, bool checked);
 void web_select_open(httpd_req_t *req, const char *label, const char *name);
 void web_select_option(httpd_req_t *req, int value, const char *label, bool selected);
+// Same as web_select_option(), but also lets the caller mark the <option>
+// disabled (greyed out / unselectable in the browser, e.g. because that GPIO
+// is already claimed elsewhere - see web_gpio_owner_tag() below).
+void web_select_option_state(httpd_req_t *req, int value, const char *label, bool selected, bool disabled);
 void web_select_close(httpd_req_t *req);
 void web_raw(httpd_req_t *req, const char *html); // sendstr_chunk passthrough
+
+// ---- GPIO usage registry -----------------------------------------------
+// Single source of truth for "which GPIO is already assigned to what" across
+// the whole config, so any page's GPIO <select> can show every pin - not just
+// the ones it happens to accept - and grey out the ones another feature is
+// already using, labelled with that feature's name, instead of silently
+// hiding them. Add a line to web_gpio_collect_used()'s implementation
+// whenever a new GPIO field grows a web picker; every existing and future
+// picker then takes it into account automatically.
+#define WEB_GPIO_MAX_OWNERS 48
+
+typedef struct {
+    int8_t gpio;       // pin number (0-39); never -1 (unassigned entries are skipped)
+    const char *tag;   // short human label of what's using it, e.g. "PTT", "BMP180 I2C"
+} web_gpio_owner_t;
+
+// Fills 'out' (caller-provided, at least 'max' entries) with every GPIO
+// currently assigned somewhere in g_config, excluding any entry whose owner
+// tag equals 'skip_tag' (pass the tag of the field you're rendering, so its
+// own current value never blocks itself). Returns the number of entries
+// written (<= max).
+int web_gpio_collect_used(const char *skip_tag, web_gpio_owner_t *out, int max);
+
+// Convenience lookup: returns the short owner tag if 'gpio' is already
+// assigned to something other than 'skip_tag', or NULL if the pin is free.
+const char *web_gpio_owner_tag(int gpio, const char *skip_tag);
 
 // ---- APRS symbol picker ------------------------------------------------
 // Renders the same "Station Symbol" control used on the IGate page for any

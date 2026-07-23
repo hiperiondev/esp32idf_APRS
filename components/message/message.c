@@ -35,6 +35,7 @@
 
 #include "afsk.h" // afsk_ptt_gpio_is_valid(), MODEM_ADC_GPIO / MODEM_DAC_GPIO
 #include "app_config.h"
+#include "BMP180.h" // bmp180_gpio_is_reserved(): keep the I2C pins out of the alarm pin
 #include "message.h"
 
 static const char *TAG = "message";
@@ -73,31 +74,20 @@ bool message_alarm_gpio_is_valid(int8_t gpio) {
     if (!afsk_ptt_gpio_is_valid(gpio))
         return false;
 
-    // Not already used by the RF module (page_mod.c "RF Module GPIO").
-    if (gpio == g_config.rf_tx_gpio || gpio == g_config.rf_rx_gpio || gpio == g_config.rf_sql_gpio || gpio == g_config.rf_pd_gpio ||
-        gpio == g_config.rf_pwr_gpio || gpio == g_config.rf_ptt_gpio)
+    // Not already used by the PTT pin. (rf_tx_gpio/rf_rx_gpio/rf_sql_gpio/
+    // rf_pd_gpio/rf_pwr_gpio used to be checked here too, but those fields are
+    // legacy leftovers from a removed "RF Module GPIO" page - nothing applies
+    // them to a real pin, so they no longer block an otherwise-free GPIO.)
+    if (gpio == g_config.rf_ptt_gpio)
         return false;
 
-    // Not already used by any sensors_local peripheral bus (page_mod.c: I2C
-    // x2, 1-Wire, UART0/1/2, Modbus DE, pulse counters, power switch, PPP
-    // modem, GNSS PPS).
-    const int8_t used[] = {
-        g_config.i2c_sda_pin, g_config.i2c_sck_pin, g_config.i2c1_sda_pin, g_config.i2c1_sck_pin,
-        g_config.onewire_gpio,
-        g_config.uart0_tx_gpio, g_config.uart0_rx_gpio, g_config.uart0_rts_gpio,
-        g_config.uart1_tx_gpio, g_config.uart1_rx_gpio, g_config.uart1_rts_gpio,
-        g_config.uart2_tx_gpio, g_config.uart2_rx_gpio,
-        g_config.modbus_de_gpio,
-        g_config.counter0_gpio, g_config.counter1_gpio,
-        g_config.pwr_gpio,
-        g_config.ppp_rst_gpio, g_config.ppp_tx_gpio, g_config.ppp_rx_gpio, g_config.ppp_rts_gpio,
-        g_config.ppp_cts_gpio, g_config.ppp_dtr_gpio, g_config.ppp_ri_gpio, g_config.ppp_pwr_gpio,
-        g_config.gnss_pps_gpio,
-    };
-    for (size_t i = 0; i < sizeof(used) / sizeof(used[0]); i++) {
-        if (used[i] != -1 && gpio == used[i])
-            return false;
-    }
+    // Not already used by any sensors_local peripheral bus. (These fields are
+    // config-struct-only placeholders with no driver behind them yet - see
+    // the same note in web_gpio_collect_used() - so they're not checked here;
+    // only pins that are genuinely wired to something (PTT above, BMP180 I2C
+    // via bmp180_gpio_is_reserved()) can make a GPIO invalid.)
+    if (bmp180_gpio_is_reserved(gpio))
+        return false;
 
     return true;
 }

@@ -21,29 +21,35 @@
 
 #include <string.h>
 
+#include "afsk.h" // afsk_ptt_gpio_is_valid(): hardware-capable pins for the picker
 #include "app_config.h"
-#include "BMP180.h" // bmp180_gpio_is_reserved(): keep the I2C pins out of the picker
 #include "message.h"
 #include "pages.h"
 #include "translations.h"
 #include "web_common.h"
 
-// Renders the Message Alarm GPIO field as a <select> restricted to pins that
-// message_alarm_gpio_is_valid() actually accepts: output-capable ESP32
-// GPIOs that don't collide with the audio modem (ADC/DAC/PTT), the RF
-// module GPIOs, or any sensors_local peripheral pin configured on the
-// "MOD (GPIO)" page. Disabled ("-1") is always offered first.
+// Renders the Message Alarm GPIO field as a <select>. The pin list itself is
+// restricted to what's physically able to drive an output
+// (afsk_gpio_is_output_capable(): not input-only, not internal flash/PSRAM -
+// those are truly unusable and stay hidden). message_alarm_gpio_is_valid()'s
+// extra "not already used by the audio front-end/PTT/BMP180" rule is still
+// enforced on Save, but here it's surfaced via the shared GPIO registry
+// instead: a pin taken by another feature is still listed, just disabled and
+// labelled with its owner, so the user sees the whole pin map rather than
+// pins vanishing. Disabled ("-1") is always offered first.
 static void web_field_msg_alarm_gpio(httpd_req_t *req, int8_t current) {
     web_select_open(req, TR_F_MESSAGE_ALARM_PIN, "msgAlarmGpio");
     web_select_option(req, -1, TR_DISABLED, current == -1);
     for (int gpio = 0; gpio <= 39; gpio++) {
-        if (!message_alarm_gpio_is_valid((int8_t)gpio))
+        if (!afsk_gpio_is_output_capable((int8_t)gpio))
             continue;
-        if (bmp180_gpio_is_reserved(gpio)) // pins owned by the BMP180 I2C bus
-            continue;
-        char label[16];
-        snprintf(label, sizeof(label), "GPIO%d", gpio);
-        web_select_option(req, gpio, label, current == gpio);
+        const char *owner = web_gpio_owner_tag(gpio, "Message Alarm");
+        char label[48];
+        if (owner)
+            snprintf(label, sizeof(label), "GPIO%d (used: %.30s)", gpio, owner);
+        else
+            snprintf(label, sizeof(label), "GPIO%d", gpio);
+        web_select_option_state(req, gpio, label, current == gpio, owner != NULL);
     }
     web_select_close(req);
 }

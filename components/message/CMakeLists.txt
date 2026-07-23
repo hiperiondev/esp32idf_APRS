@@ -9,4 +9,5 @@ idf_component_register(
         esp_driver_gpio
         esp_timer
         esp32idf_radioamateur_modem
+        sensors_local
 )

@@ -86,6 +86,21 @@ void AFSK_setPttGpio(int8_t gpio, bool active_high);
 bool afsk_ptt_gpio_is_valid(int8_t gpio);
 
 /**
+ * @brief Checks whether @p gpio physically exists and can drive an output at
+ *        all - not input-only (GPIO34-39), not the internal flash/PSRAM pads
+ *        (GPIO6-11). Unlike ::afsk_ptt_gpio_is_valid, this does NOT check
+ *        ::MODEM_ADC_GPIO / ::MODEM_DAC_GPIO or any other already-assigned
+ *        pin: those collisions are meant to be surfaced by the web admin's
+ *        GPIO registry (web_gpio_owner_tag()) as "already used" options
+ *        instead of being hidden outright, so a picker's base pin list should
+ *        use this function, then grey out registry hits.
+ *
+ * @param gpio GPIO number to check, or -1 for "disabled".
+ * @return true if @p gpio is -1 or a real, output-capable pin; false otherwise.
+ */
+bool afsk_gpio_is_output_capable(int8_t gpio);
+
+/**
  * @brief Initialize the AFSK hardware layer.
  *
  * Brings up the ADC (continuous/DMA mode), the DAC and the GPTimer used to

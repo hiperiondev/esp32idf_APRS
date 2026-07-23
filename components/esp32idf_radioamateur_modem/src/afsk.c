@@ -368,15 +368,23 @@ static int8_t s_pttGpio = MODEM_PTT_GPIO;
 static bool s_pttActiveHigh = MODEM_PTT_ACTIVE_HIGH ? true : false;
 static portMUX_TYPE s_pttMux = portMUX_INITIALIZER_UNLOCKED;
 
-bool afsk_ptt_gpio_is_valid(int8_t gpio) {
+bool afsk_gpio_is_output_capable(int8_t gpio) {
     if (gpio == -1)
         return true; /* "disabled" is always accepted */
     if (gpio < 0 || gpio > 39)
         return false;
     if (gpio >= 34 && gpio <= 39)
-        return false; /* input-only, cannot drive PTT */
+        return false; /* input-only, cannot drive an output */
     if (gpio >= 6 && gpio <= 11)
         return false; /* internal SPI flash/PSRAM, not brought out */
+    return true;
+}
+
+bool afsk_ptt_gpio_is_valid(int8_t gpio) {
+    if (gpio == -1)
+        return true; /* "disabled" is always accepted */
+    if (!afsk_gpio_is_output_capable(gpio))
+        return false;
     if (gpio == MODEM_ADC_GPIO || gpio == MODEM_DAC_GPIO)
         return false; /* already used by the audio front end */
     return true;

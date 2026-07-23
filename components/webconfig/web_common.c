@@ -28,6 +28,8 @@
 #include <strings.h> // strncasecmp (multipart header parsing)
 
 #include "app_config.h"
+#include "BMP180.h" // BMP180_I2C_SDA_GPIO/SCL_GPIO: fixed pins for the GPIO registry
+#include "esp32idf_radioamateur_modem_config.h" // MODEM_ADC_GPIO/MODEM_DAC_GPIO: fixed audio front-end pins for the GPIO registry
 #include "esp_log.h"
 #include "mbedtls/base64.h"
 #include "translations.h"
@@ -714,13 +716,78 @@ void web_select_open(httpd_req_t *req, const char *label, const char *name) {
 }
 
 void web_select_option(httpd_req_t *req, int value, const char *label, bool selected) {
+    web_select_option_state(req, value, label, selected, false);
+}
+
+void web_select_option_state(httpd_req_t *req, int value, const char *label, bool selected, bool disabled) {
     char buf[400];
-    snprintf(buf, sizeof(buf), "<option value='%d' %s>%.300s</option>", value, selected ? "selected" : "", label);
+    snprintf(buf, sizeof(buf), "<option value='%d' %s %s>%.300s</option>", value, selected ? "selected" : "", disabled ? "disabled" : "",
+             label);
     httpd_resp_sendstr_chunk(req, buf);
 }
 
 void web_select_close(httpd_req_t *req) {
     httpd_resp_sendstr_chunk(req, "</select>");
+}
+
+// ---------------------------------------------------------------- GPIO registry
+// Every GPIO field g_config currently has, grouped by the feature that owns
+// it. This is the ONLY place that mapping lives - a page's GPIO <select>
+// never has to know about another page's fields directly, it just asks this
+// registry (via web_gpio_owner_tag()) whether a given pin is free.
+//
+// Entries whose feature has an on/off toggle are only reported while that
+// toggle is enabled (a disabled feature doesn't really "hold" its pin); the
+// always-on RF module / audio path / message alarm pins, and the BMP180's
+// compile-time-fixed I2C pins, are reported unconditionally.
+int web_gpio_collect_used(const char *skip_tag, web_gpio_owner_t *out, int max) {
+    int n = 0;
+
+#define WEB_GPIO_ADD(gpio_value, owner_tag)                                                                                       \
+    do {                                                                                                                          \
+        int8_t _g = (int8_t)(gpio_value);                                                                                         \
+        if (n < max && _g >= 0 && (!skip_tag || strcmp((owner_tag), skip_tag) != 0)) {                                            \
+            out[n].gpio = _g;                                                                                                     \
+            out[n].tag = (owner_tag);                                                                                             \
+            n++;                                                                                                                  \
+        }                                                                                                                         \
+    } while (0)
+
+    // Only GPIOs actually applied to real hardware belong here. rf_tx_gpio/
+    // rf_rx_gpio/rf_sql_gpio/rf_pd_gpio/rf_pwr_gpio/adc_gpio/dac_gpio/
+    // adc_sel_gpio/dac_sel_gpio and the I2C/UART/1-Wire/Modbus/counter/power-
+    // switch/GSM/GNSS-PPS fields are config-struct-only placeholders with no
+    // driver behind them yet, so they're deliberately left out - showing them
+    // as "used" would block pins that are actually free.
+    WEB_GPIO_ADD(g_config.rf_ptt_gpio, "PTT");
+    // msg_alarm_gpio can hold a real pin number even while the Message Alarm
+    // "Enable" checkbox is off (Save doesn't clear it, so re-enabling later
+    // keeps the same pin) - only count it as reserved while actually enabled.
+    if (g_config.msg_alarm_enable)
+        WEB_GPIO_ADD(g_config.msg_alarm_gpio, "Message Alarm");
+
+    // Audio front-end: fixed at compile time (esp32idf_radioamateur_modem_config.h),
+    // always reserved - the modem's ADC/DAC pair is hardwired on the board.
+    WEB_GPIO_ADD(MODEM_ADC_GPIO, "Radio Modem");
+    WEB_GPIO_ADD(MODEM_DAC_GPIO, "Radio Modem");
+
+    // BMP180 I2C bus: fixed at compile time (BMP180.h), always reserved
+    // regardless of any run-time enable flag.
+    WEB_GPIO_ADD(BMP180_I2C_SDA_GPIO, "BMP180 I2C");
+    WEB_GPIO_ADD(BMP180_I2C_SCL_GPIO, "BMP180 I2C");
+
+#undef WEB_GPIO_ADD
+    return n;
+}
+
+const char *web_gpio_owner_tag(int gpio, const char *skip_tag) {
+    web_gpio_owner_t used[WEB_GPIO_MAX_OWNERS];
+    int n = web_gpio_collect_used(skip_tag, used, WEB_GPIO_MAX_OWNERS);
+    for (int i = 0; i < n; i++) {
+        if (used[i].gpio == gpio)
+            return used[i].tag;
+    }
+    return NULL;
 }
 
 // ---------------------------------------------------------------- Symbol picker
