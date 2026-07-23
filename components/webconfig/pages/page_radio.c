@@ -74,30 +74,6 @@ esp_err_t page_radio_get(httpd_req_t *req) {
     web_field_checkbox(req, TR_F_FX_25_FORWARD_ERROR_CORRECTED_AX_25, "fx25Mode", g_config.fx25_mode);
     web_fieldset_close(req);
 
-#ifdef ENABLE_RF_MODULE
-    web_fieldset_open(req, TR_F_RF_MODULE);
-    web_field_checkbox(req, TR_F_ENABLE_RF_MODULE, "rfEnable", g_config.rf_en);
-    web_select_open(req, TR_F_MODULE_TYPE, "rfType");
-    web_select_option(req, RF_SX1278, "SX1278", g_config.rf_type == RF_SX1278);
-    web_select_option(req, RF_SX1276, "SX1276", g_config.rf_type == RF_SX1276);
-    web_select_option(req, RF_SX1262, "SX1262", g_config.rf_type == RF_SX1262);
-    web_select_option(req, RF_SX1268, "SX1268", g_config.rf_type == RF_SX1268);
-    web_select_option(req, RF_SX1280, "SX1280", g_config.rf_type == RF_SX1280);
-    web_select_close(req);
-    web_select_open(req, TR_F_MODEM_MODE, "rfModem");
-    web_select_option(req, RF_MODE_OFF, TR_F_OFF, g_config.modem_type == RF_MODE_OFF);
-    web_select_option(req, RF_MODE_LoRa, "LoRa", g_config.modem_type == RF_MODE_LoRa);
-    web_select_option(req, RF_MODE_G3RUH, "AFSK/G3RUH", g_config.modem_type == RF_MODE_G3RUH);
-    web_select_option(req, RF_MODE_GFSK, "GFSK", g_config.modem_type == RF_MODE_GFSK);
-    web_select_option(req, RF_MODE_DPRS, "D-PRS", g_config.modem_type == RF_MODE_DPRS);
-    web_select_close(req);
-    web_field_float(req, TR_F_RX_FREQUENCY_MHZ, "rfFreqRX", g_config.freq_rx, "0.001");
-    web_field_float(req, TR_F_TX_FREQUENCY_MHZ, "rfFreqTX", g_config.freq_tx, "0.001");
-    web_field_int(req, TR_F_CTCSS_DCS_RX_TONE, "rfToneRX", g_config.tone_rx);
-    web_field_int(req, TR_F_CTCSS_DCS_TX_TONE, "rfToneTX", g_config.tone_tx);
-    web_fieldset_close(req);
-#endif
-
     web_fieldset_open(req, TR_F_AUDIO_AFSK);
     {
         char buf[380];
@@ -234,23 +210,9 @@ esp_err_t page_radio_post(httpd_req_t *req) {
 
     g_config.fx25_mode = web_form_get_bool(body, "fx25Mode") ? 1 : 0;
 
-#ifdef ENABLE_RF_MODULE
-    g_config.rf_en = web_form_get_bool(body, "rfEnable");
-    g_config.rf_type = (uint8_t)web_form_get_int(body, "rfType", g_config.rf_type);
-    g_config.modem_type = (uint8_t)web_form_get_int(body, "rfModem", g_config.modem_type);
-
-    g_config.freq_rx = web_form_get_float(body, "rfFreqRX", g_config.freq_rx);
-    g_config.freq_tx = web_form_get_float(body, "rfFreqTX", g_config.freq_tx);
-    g_config.tone_rx = web_form_get_int(body, "rfToneRX", g_config.tone_rx);
-    g_config.tone_tx = web_form_get_int(body, "rfToneTX", g_config.tone_tx);
-#else
-    g_config.rf_en = false;
-#endif
-
     g_config.audio_modem_en = web_form_get_bool(body, "audioModemEn");
     // afskModem selects the AFSK software modem modulation (300/1200/1200 V.23/9600 Bd)
-    // used for both RX and TX on the audio ADC/DAC modem. It is independent of the
-    // optional RF module's own modem mode (rfModem, above) - clamp defensively since
+    // used for both RX and TX on the audio ADC/DAC modem - clamp defensively since
     // modem_mode_t only defines values 0-3 (AFSK300/BELL202/V23/G3RUH).
     int afsk_modem_in = web_form_get_int(body, "afskModem", g_config.afsk_modem_type);
     if (afsk_modem_in < 0)

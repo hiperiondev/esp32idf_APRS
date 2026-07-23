@@ -130,11 +130,6 @@ void app_config_set_defaults(app_config_t *c) {
     set_str(c->wifi_ap_ssid, sizeof(c->wifi_ap_ssid), "esp32idf_APRS");
     set_str(c->wifi_ap_pass, sizeof(c->wifi_ap_pass), "esp32idf_APRS");
 
-    c->rf_en = false;
-    c->rf_type = RF_SX1278;
-    c->freq_rx = 144.800f;
-    c->freq_tx = 144.800f;
-
     // IGATE
     c->igate_en = true;
     c->rf2inet = true;
@@ -227,7 +222,6 @@ void app_config_set_defaults(app_config_t *c) {
     c->audio_modem_en = true;
     c->audio_lpf = true;
     c->preamble = 300;
-    c->modem_type = 0;
     c->afsk_modem_type = 1; // default 1200 Bd (AFSK/Bell202) - standard APRS audio modem
     c->fx25_mode = 0;
     c->tx_timeslot = 2000;
@@ -437,15 +431,8 @@ static void config_write_json(jw_t *d, const app_config_t *c) {
     jarr_end(d);
 
     jadd_num(d, "fx25Mode", c->fx25_mode);
-    jadd_bool(d, "rfEnable", c->rf_en);
-    jadd_num(d, "rfType", c->rf_type);
-    jadd_num(d, "rfModem", c->modem_type);
     jadd_num(d, "afskModem", c->afsk_modem_type);
     jadd_num(d, "rfPreamble", c->preamble);
-    jadd_num(d, "rfFreqRX", c->freq_rx);
-    jadd_num(d, "rfFreqTX", c->freq_tx);
-    jadd_num(d, "rfToneRX", c->tone_rx);
-    jadd_num(d, "rfToneTX", c->tone_tx);
     jadd_bool(d, "audioModemEn", c->audio_modem_en);
     jadd_bool(d, "audioLPF", c->audio_lpf);
 
@@ -751,18 +738,8 @@ static void config_from_json(cJSON *d, app_config_t *c) {
     }
 
     c->fx25_mode = (uint8_t)jget_num(d, "fx25Mode", def.fx25_mode);
-    c->rf_en = jget_bool(d, "rfEnable", def.rf_en);
-#ifndef ENABLE_RF_MODULE
-    c->rf_en = false;
-#endif
-    c->rf_type = (uint8_t)jget_num(d, "rfType", def.rf_type);
-    c->modem_type = (uint8_t)jget_num(d, "rfModem", def.modem_type);
     c->afsk_modem_type = (uint8_t)jget_num(d, "afskModem", def.afsk_modem_type);
     c->preamble = (uint16_t)jget_num(d, "rfPreamble", def.preamble);
-    c->freq_rx = (float)jget_num(d, "rfFreqRX", def.freq_rx);
-    c->freq_tx = (float)jget_num(d, "rfFreqTX", def.freq_tx);
-    c->tone_rx = (int)jget_num(d, "rfToneRX", def.tone_rx);
-    c->tone_tx = (int)jget_num(d, "rfToneTX", def.tone_tx);
     c->audio_modem_en = jget_bool(d, "audioModemEn", def.audio_modem_en);
     c->audio_lpf = jget_bool(d, "audioLPF", def.audio_lpf);
 

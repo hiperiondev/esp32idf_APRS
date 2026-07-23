@@ -76,14 +76,13 @@
 #define ENABLE_OBJECTS_ITEMS
 #define ENABLE_STATION
 #define ENABLE_RADIO_MODEM
-//#define ENABLE_RF_MODULE
 #define ENABLE_MESSAGE
 #define ENABLE_IGATE
 #define ENABLE_DIGIPEATER
 #define ENABLE_TRACKER
-//#define ENABLE_SMARTBEACONING 
+#define ENABLE_SMARTBEACONING 
 #define ENABLE_WEATHER
-//#define ENABLE_TELEMETRY
+#define ENABLE_TELEMETRY
 #define ENABLE_SYSTEM
 #define ENABLE_WIRELESS
 #define ENABLE_FILE_STORAGE
@@ -150,28 +149,6 @@ typedef enum {
 #define IGATE_FILT_BUOY      (1 << 7)
 #define IGATE_FILT_POSITION  (1 << 8)
 
-// RF module types
-#define RF_SX1231 1
-#define RF_SX1233 2
-#define RF_SX1261 3
-#define RF_SX1262 4
-#define RF_SX1268 5
-#define RF_SX1272 6
-#define RF_SX1273 7
-#define RF_SX1276 8
-#define RF_SX1278 9
-#define RF_SX1279 10
-#define RF_SX1280 11
-#define RF_SX1281 12
-#define RF_SX1282 13
-
-#define RF_MODE_OFF   0
-#define RF_MODE_LoRa  1
-#define RF_MODE_G3RUH 2
-#define RF_MODE_AIS   3
-#define RF_MODE_GFSK  4
-#define RF_MODE_DPRS  5
-
 typedef struct {
     bool enable;
     char wifi_ssid[33]; // 32 chars max (IEEE 802.11 SSID limit) + null terminator
@@ -192,21 +169,13 @@ typedef struct {
     float my_lon;
     float my_alt;
 
-    // WiFi / BT / RF
+    // WiFi
     uint8_t wifi_mode; // 0=off,1=STA,2=AP,3=AP_STA (see WIFI_MODE_* below)
     int8_t wifi_power;
     wifi_sta_t wifi_sta[WIFI_STA_NUM];
     uint8_t wifi_ap_ch;
     char wifi_ap_ssid[33]; // 32 chars max (IEEE 802.11 SSID limit) + null terminator
     char wifi_ap_pass[64]; // 63 chars max (WPA/WPA2/WPA3 PSK limit) + null terminator
-
-    // RF Module
-    bool rf_en;
-    uint8_t rf_type;
-    float freq_rx;
-    float freq_tx;
-    int tone_rx;
-    int tone_tx;
 
     // IGATE
     bool igate_en;
@@ -358,7 +327,6 @@ typedef struct {
     bool audio_modem_en; // Enable the audio ADC/DAC AFSK modem
     bool audio_lpf;
     uint16_t preamble;
-    uint8_t modem_type;      // RF module modem mode (RF_MODE_OFF/LoRa/G3RUH/GFSK/DPRS) - only used when ENABLE_RF_MODULE
     uint8_t afsk_modem_type; // Audio ADC/DAC AFSK modulation (see enum ModemType in modem.h: 0=300Bd,1=1200Bd,2=1200Bd V.23,3=9600Bd), used for both RX and TX on the audio modem
     uint8_t fx25_mode;
     uint16_t tx_timeslot;
