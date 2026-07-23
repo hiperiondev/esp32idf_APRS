@@ -16,8 +16,7 @@
  *
  * @brief APRS text messaging implementation: outgoing message and ACK
  * formatting, incoming message parsing and acknowledgement, retry/timeout
- * handling of the in-memory queue, and optional AES-128-CBC payload
- * encryption.
+ * handling of the in-memory queue.
  */
 
 #include <ctype.h>
@@ -29,9 +28,6 @@
 #include "driver/gpio.h"
 #include "esp_log.h"
 #include "esp_timer.h"
-#include "mbedtls/aes.h"
-#include "mbedtls/base64.h"
-#include "mbedtls/md5.h"
 
 #include "afsk.h" // afsk_ptt_gpio_is_valid(), MODEM_ADC_GPIO / MODEM_DAC_GPIO
 #include "app_config.h"
@@ -40,7 +36,6 @@
 
 static const char *TAG = "message";
 
-#define AES_BLOCK_SIZE 16
 #define MSG_ALARM_PULSE_MS 1000
 
 static msg_entry_t s_queue[MSG_QUEUE_SIZE];
@@ -149,22 +144,8 @@ static void message_alarm_pulse(void) {
 }
 
 // ---------------------------------------------------------------------------
-// Helpers: hex <-> bytes, trim, uppercase, PKCS7
+// Helpers: trim, uppercase
 // ---------------------------------------------------------------------------
-static size_t hexStringToBytes(const char *hex, uint8_t *out, size_t maxLen) {
-    size_t len = strlen(hex);
-    size_t n = 0;
-    if (len % 2 != 0)
-        return 0;
-    for (size_t i = 0; i < len && n < maxLen; i += 2) {
-        char c1 = hex[i], c2 = hex[i + 1];
-        uint8_t hi = (c1 >= '0' && c1 <= '9') ? c1 - '0' : (c1 >= 'A' && c1 <= 'F') ? c1 - 'A' + 10 : (c1 >= 'a' && c1 <= 'f') ? c1 - 'a' + 10 : 0;
-        uint8_t lo = (c2 >= '0' && c2 <= '9') ? c2 - '0' : (c2 >= 'A' && c2 <= 'F') ? c2 - 'A' + 10 : (c2 >= 'a' && c2 <= 'f') ? c2 - 'a' + 10 : 0;
-        out[n++] = (hi << 4) | lo;
-    }
-    return n;
-}
-
 static void trimUpper(char *s) {
     // trim
     char *start = s;
@@ -192,98 +173,6 @@ static bool callsignBaseMatch(const char *a, const char *b) {
     if (na == 0 || na != nb)
         return false;
     return strncasecmp(a, b, na) == 0;
-}
-
-static void pkcs7Pad(const uint8_t *in, size_t inLen, uint8_t *out, size_t *outLen) {
-    size_t pad = AES_BLOCK_SIZE - (inLen % AES_BLOCK_SIZE);
-    memcpy(out, in, inLen);
-    memset(out + inLen, (uint8_t)pad, pad);
-    *outLen = inLen + pad;
-}
-
-static bool pkcs7Unpad(uint8_t *buf, size_t bufLen, size_t *outLen) {
-    if (bufLen == 0 || bufLen % AES_BLOCK_SIZE != 0)
-        return false;
-    uint8_t pad = buf[bufLen - 1];
-    if (pad == 0 || pad > AES_BLOCK_SIZE)
-        return false;
-    for (size_t i = 0; i < pad; i++) {
-        if (buf[bufLen - 1 - i] != pad)
-            return false;
-    }
-    *outLen = bufLen - pad;
-    return true;
-}
-
-// IV = MD5("<callsign>_<msgID>"), matching the original firmware's scheme
-// (deterministic per-message IV rather than random, so both ends can derive it).
-static void deriveIv(const char *callsign, uint16_t msgID, uint8_t iv[16]) {
-    char callTrim[16];
-    strncpy(callTrim, callsign, sizeof(callTrim) - 1);
-    callTrim[sizeof(callTrim) - 1] = 0;
-    trimUpper(callTrim);
-
-    char input[32];
-    snprintf(input, sizeof(input), "%s_%u", callTrim, (unsigned)msgID);
-
-    mbedtls_md5((const unsigned char *)input, strlen(input), iv);
-}
-
-// Returns encrypted length written to `out` (base64 text, NUL-terminated), or 0 on failure.
-static size_t aesEncryptBase64WithIV(const char *plain, const uint8_t key[16], uint16_t msgID, const char *myCall, char *out, size_t outMax) {
-    size_t inLen = strlen(plain);
-    size_t paddedLen = inLen + (AES_BLOCK_SIZE - (inLen % AES_BLOCK_SIZE));
-    if (paddedLen > 256)
-        return 0;
-
-    uint8_t padded[256];
-    pkcs7Pad((const uint8_t *)plain, inLen, padded, &paddedLen);
-
-    uint8_t iv[AES_BLOCK_SIZE];
-    deriveIv(myCall, msgID, iv);
-
-    uint8_t cipher[256];
-    mbedtls_aes_context aes;
-    mbedtls_aes_init(&aes);
-    mbedtls_aes_setkey_enc(&aes, key, 128);
-    mbedtls_aes_crypt_cbc(&aes, MBEDTLS_AES_ENCRYPT, paddedLen, iv, padded, cipher);
-    mbedtls_aes_free(&aes);
-
-    size_t olen = 0;
-    mbedtls_base64_encode((unsigned char *)out, outMax, &olen, cipher, paddedLen);
-    if (olen < outMax)
-        out[olen] = 0;
-    return olen;
-}
-
-// Returns plaintext length written to `out` (NUL-terminated), or 0 on failure.
-static size_t aesDecryptBase64WithIV(const char *b64, const uint8_t key[16], const char *fromCall, uint16_t msgID, char *out, size_t outMax) {
-    size_t b64Len = strlen(b64);
-    uint8_t decoded[256];
-    size_t decLen = 0;
-    if (mbedtls_base64_decode(decoded, sizeof(decoded), &decLen, (const unsigned char *)b64, b64Len) != 0)
-        return 0;
-    if (decLen == 0 || decLen % AES_BLOCK_SIZE != 0)
-        return 0;
-
-    uint8_t iv[AES_BLOCK_SIZE];
-    deriveIv(fromCall, msgID, iv);
-
-    uint8_t plainPadded[256];
-    mbedtls_aes_context aes;
-    mbedtls_aes_init(&aes);
-    mbedtls_aes_setkey_dec(&aes, key, 128);
-    mbedtls_aes_crypt_cbc(&aes, MBEDTLS_AES_DECRYPT, decLen, iv, decoded, plainPadded);
-    mbedtls_aes_free(&aes);
-
-    size_t outLen = 0;
-    if (!pkcs7Unpad(plainPadded, decLen, &outLen))
-        return 0;
-    if (outLen >= outMax)
-        outLen = outMax - 1;
-    memcpy(out, plainPadded, outLen);
-    out[outLen] = 0;
-    return outLen;
 }
 
 // ---------------------------------------------------------------------------
@@ -485,7 +374,7 @@ static void txPacket(const char *myCall, const char *info) {
     }
 }
 
-void sendAPRSMessage(const char *toCall, const char *text, bool encrypt) {
+void sendAPRSMessage(const char *toCall, const char *text) {
     if (!toCall[0] || !text[0])
         return;
     ++s_msgID;
@@ -508,17 +397,8 @@ void sendAPRSMessage(const char *toCall, const char *text, bool encrypt) {
     memcpy(toCallFixed, toCallUp, strlen(toCallUp) > 9 ? 9 : strlen(toCallUp));
 
     char payload[300];
-    if (encrypt) {
-        uint8_t key[16] = { 0 };
-        hexStringToBytes(g_config.msg_key, key, sizeof(key));
-        if (aesEncryptBase64WithIV(text, key, s_msgID, myCallUp, payload, sizeof(payload)) == 0) {
-            strncpy(payload, text, sizeof(payload) - 1); // fall back unencrypted on failure
-            payload[sizeof(payload) - 1] = 0;
-        }
-    } else {
-        strncpy(payload, text, sizeof(payload) - 1);
-        payload[sizeof(payload) - 1] = 0;
-    }
+    strncpy(payload, text, sizeof(payload) - 1);
+    payload[sizeof(payload) - 1] = 0;
 
     char info[320];
     snprintf(info, sizeof(info), ":%s:%s{%u", toCallFixed, payload, (unsigned)s_msgID);
@@ -551,13 +431,11 @@ void sendAPRSAck(const char *toCall, const char *msgNo) {
 void sendAPRSMessageRetry(void) {
     time_t now = time(NULL);
 
-    // Snapshot the own-call and (if used) the encryption key once, so a web
-    // save can't rewrite them mid-loop while frames are being built/signed.
+    // Snapshot the own-call once, so a web save can't rewrite it mid-loop
+    // while frames are being built.
     char myCall[10];
-    char msgKey[sizeof(g_config.msg_key)];
     app_config_lock();
     memcpy(myCall, g_config.msg_mycall, sizeof(myCall));
-    memcpy(msgKey, g_config.msg_key, sizeof(msgKey));
     app_config_unlock();
 
     for (int i = 0; i < MSG_QUEUE_SIZE; i++) {
@@ -576,17 +454,8 @@ void sendAPRSMessageRetry(void) {
         memcpy(toCallFixed, s_queue[i].callsign, n > 9 ? 9 : n);
 
         char payload[300];
-        if (g_config.msg_encrypt) {
-            uint8_t key[16] = { 0 };
-            hexStringToBytes(msgKey, key, sizeof(key));
-            if (aesEncryptBase64WithIV(s_queue[i].text, key, s_queue[i].msgID, myCall, payload, sizeof(payload)) == 0) {
-                strncpy(payload, s_queue[i].text, sizeof(payload) - 1);
-                payload[sizeof(payload) - 1] = 0;
-            }
-        } else {
-            strncpy(payload, s_queue[i].text, sizeof(payload) - 1);
-            payload[sizeof(payload) - 1] = 0;
-        }
+        strncpy(payload, s_queue[i].text, sizeof(payload) - 1);
+        payload[sizeof(payload) - 1] = 0;
 
         char info[320];
         snprintf(info, sizeof(info), ":%s:%s{%u", toCallFixed, payload, (unsigned)s_queue[i].msgID);
@@ -667,24 +536,17 @@ void handleIncomingAPRS(const char *line) {
         return;
     }
 
-    char decrypted[300];
-    if (g_config.msg_encrypt) {
-        uint8_t key[16] = { 0 };
-        hexStringToBytes(g_config.msg_key, key, sizeof(key));
-        if (aesDecryptBase64WithIV(message, key, fromCall, (uint16_t)atoi(msgNo), decrypted, sizeof(decrypted)) == 0)
-            return;
-    } else {
-        strncpy(decrypted, message, sizeof(decrypted) - 1);
-        decrypted[sizeof(decrypted) - 1] = 0;
-    }
+    char decoded[300];
+    strncpy(decoded, message, sizeof(decoded) - 1);
+    decoded[sizeof(decoded) - 1] = 0;
 
-    size_t dlen = strlen(decrypted);
-    while (dlen > 0 && isspace((unsigned char)decrypted[dlen - 1]))
-        decrypted[--dlen] = 0;
+    size_t dlen = strlen(decoded);
+    while (dlen > 0 && isspace((unsigned char)decoded[dlen - 1]))
+        decoded[--dlen] = 0;
     if (dlen == 0)
         return;
 
-    pkgMsgUpdate(fromCall, decrypted, (uint16_t)atoi(msgNo), -1, true);
+    pkgMsgUpdate(fromCall, decoded, (uint16_t)atoi(msgNo), -1, true);
     sendAPRSAck(fromCall, msgNo);
     message_alarm_pulse();
 }

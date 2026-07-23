@@ -398,8 +398,6 @@ typedef struct {
     uint8_t msg_path;
     bool msg_rf;
     bool msg_inet;
-    bool msg_encrypt;
-    char msg_key[33];
     uint8_t msg_retry;
     uint16_t msg_interval;
     bool msg_alarm_enable;  // "Message Alarm": disabled by default

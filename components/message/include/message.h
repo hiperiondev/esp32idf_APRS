@@ -14,8 +14,7 @@
  *
  *     please contact their authors for more information.
  *
- * @brief APRS text messaging (send/ack/retry, optional AES-128-CBC payload
- * encryption). Plain C / ESP-IDF.
+ * @brief APRS text messaging (send/ack/retry). Plain C / ESP-IDF.
  *
  * Configuration comes from g_config (app_config_t, web admin "Message" page).
  */
@@ -78,12 +77,11 @@ bool message_alarm_gpio_is_valid(int8_t gpio);
 void message_alarm_configure(bool enable, int8_t gpio);
 
 /**
- * @brief Send an APRS text message to `toCall`, optionally AES-encrypting the
- * payload with g_config.msg_key. Transmits on RF and/or INET per
- * g_config.msg_rf / g_config.msg_inet via the TX-queue callback registered
- * with message_set_tx_handler().
+ * @brief Send an APRS text message to `toCall`. Transmits on RF and/or INET
+ * per g_config.msg_rf / g_config.msg_inet via the TX-queue callback
+ * registered with message_set_tx_handler().
  */
-void sendAPRSMessage(const char *toCall, const char *text, bool encrypt);
+void sendAPRSMessage(const char *toCall, const char *text);
 
 /**
  * @brief Send an APRS message ACK ("ackNN") to `toCall`.
@@ -98,8 +96,8 @@ void sendAPRSMessageRetry(void);
 
 /**
  * @brief Parse one incoming TNC2 text line (from RF or APRS-IS) and, if it is
- * an APRS message addressed to g_config.msg_mycall, decrypt/store it and send
- * an ack. ACK lines update the outbound queue's retry state instead.
+ * an APRS message addressed to g_config.msg_mycall, store it and send an
+ * ack. ACK lines update the outbound queue's retry state instead.
  */
 void handleIncomingAPRS(const char *line);
 

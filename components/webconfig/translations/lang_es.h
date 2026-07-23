@@ -91,7 +91,6 @@
 
 // ---- Common field/fieldset labels (auto-extracted from pages/*.c) -----
 #define TR_F_ADD_TIMESTAMP                                 "Añadir marca de tiempo"
-#define TR_F_AES_KEY_HEX                                   "Clave AES (hex)"
 #define TR_F_ALTITUDE_M                                    "Altitud (m)"
 #define TR_F_APRS_IS_SERVER                                "Servidor APRS-IS"
 #define TR_F_APRS_MESSAGING                                "Mensajería APRS"
@@ -124,8 +123,6 @@
 #define TR_F_ENABLE_SMARTBEACONING                         "Habilitar SmartBeaconing"
 #define TR_F_ENABLE_TRACKER                                "Habilitar Tracker"
 #define TR_F_ENABLE_WX                                     "Habilitar WX"
-#define TR_F_ENCRYPTION                                    "Cifrado"
-#define TR_F_ENCRYPT_MESSAGES_AES                          "Cifrar mensajes (AES)"
 #define TR_F_FILE_STORAGE                                  "Almacenamiento de archivos"
 #define TR_F_FILTER                                        "Filtro"
 #define TR_F_FIXED_ALTITUDE_M                              "Altitud fija (m)"

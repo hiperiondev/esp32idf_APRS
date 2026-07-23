@@ -266,8 +266,6 @@ void app_config_set_defaults(app_config_t *c) {
     c->msg_path = 9;
     c->msg_rf = true;
     c->msg_inet = true;
-    c->msg_encrypt = false;
-    set_str(c->msg_key, sizeof(c->msg_key), "8EC8233E91D59B0164C24E771BA66307");
     c->msg_retry = 3;
     c->msg_interval = 30;
     c->msg_alarm_enable = false; // disabled by default
@@ -703,8 +701,6 @@ static void config_write_json(jw_t *d, const app_config_t *c) {
     jadd_bool(d, "msgRf", c->msg_rf);
     jadd_bool(d, "msgInet", c->msg_inet);
     jadd_num(d, "msgPath", c->msg_path);
-    jadd_bool(d, "msgEncrypt", c->msg_encrypt);
-    jadd_str(d, "msgAESKey", c->msg_key);
     jadd_num(d, "msgRetry", c->msg_retry);
     jadd_num(d, "msgInterval", c->msg_interval);
     jadd_bool(d, "msgAlarmEn", c->msg_alarm_enable);
@@ -1012,23 +1008,19 @@ static void config_from_json(cJSON *d, app_config_t *c) {
     if (!cJSON_GetObjectItemCaseSensitive(d, "msgEnable")) {
         // old-version file compatibility -> keep documented defaults
         c->msg_enable = true;
-        c->msg_encrypt = false;
         c->msg_rf = true;
         c->msg_inet = true;
         c->msg_retry = 3;
         c->msg_interval = 30;
         c->msg_path = 9;
-        set_str(c->msg_key, sizeof(c->msg_key), "8EC8233E91D59B0164C24E771BA66307");
         set_str(c->msg_mycall, sizeof(c->msg_mycall), "NOCALL");
     } else {
         c->msg_enable = jget_bool(d, "msgEnable", def.msg_enable);
         c->msg_path = (uint8_t)jget_num(d, "msgPath", def.msg_path);
         c->msg_rf = jget_bool(d, "msgRf", def.msg_rf);
         c->msg_inet = jget_bool(d, "msgInet", def.msg_inet);
-        c->msg_encrypt = jget_bool(d, "msgEncrypt", def.msg_encrypt);
         c->msg_retry = (uint8_t)jget_num(d, "msgRetry", def.msg_retry);
         c->msg_interval = (uint16_t)jget_num(d, "msgInterval", def.msg_interval);
-        set_str(c->msg_key, sizeof(c->msg_key), jget_str(d, "msgAESKey", def.msg_key));
         set_str(c->msg_mycall, sizeof(c->msg_mycall), jget_str(d, "msgMycall", def.msg_mycall));
         c->msg_use_station = jget_bool(d, "msgUseStation", def.msg_use_station);
     }

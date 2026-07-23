@@ -15,7 +15,7 @@
  *     please contact their authors for more information.
  *
  * @brief Web admin "Message" page: renders and saves the APRS messaging
- * configuration (RF/INET destinations, encryption key) and provides the message
+ * configuration (RF/INET destinations) and provides the message
  * send/inbox interface.
  */
 
@@ -73,11 +73,6 @@ esp_err_t page_msg_get(httpd_req_t *req) {
     web_field_msg_alarm_gpio(req, g_config.msg_alarm_gpio);
     web_fieldset_close(req);
 
-    web_fieldset_open(req, TR_F_ENCRYPTION);
-    web_field_checkbox(req, TR_F_ENCRYPT_MESSAGES_AES, "msgEncrypt", g_config.msg_encrypt);
-    web_field_password(req, TR_F_AES_KEY_HEX, "msgAESKey", g_config.msg_key, 32);
-    web_fieldset_close(req);
-
     httpd_resp_sendstr_chunk(req, "<button type='submit'>" TR_BTN_SAVE "</button></form>");
     web_send_footer(req);
     return ESP_OK;
@@ -106,8 +101,6 @@ esp_err_t page_msg_post(httpd_req_t *req) {
     g_config.msg_inet = web_form_get_bool(body, "msgInet");
     g_config.msg_retry = (uint8_t)web_form_get_int(body, "msgRetry", g_config.msg_retry);
     g_config.msg_interval = (uint16_t)web_form_get_int(body, "msgInterval", g_config.msg_interval);
-    g_config.msg_encrypt = web_form_get_bool(body, "msgEncrypt");
-    web_form_get(body, "msgAESKey", g_config.msg_key, sizeof(g_config.msg_key));
 
     // A malicious/hand-crafted POST could still send a value the <select>
     // never offers (e.g. a pin already used by the modem or sensors_local),

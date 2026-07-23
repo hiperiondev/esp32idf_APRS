@@ -19,7 +19,7 @@
  * on the Station / Message pages), a destination-callsign field, a
  * message-text field capped at the standard APRS message length, and a Send
  * button. Distinct from page_msg.c, which only configures the messaging
- * feature (RF/INET enable, retry, encryption) - this page is the actual
+ * feature (RF/INET enable, retry) - this page is the actual
  * inbox/compose UI built on top of that configuration. Gated from the
  * sidebar by ENABLE_MSG_CHAT in app_config.h's MODULES section.
  */
@@ -209,7 +209,7 @@ esp_err_t page_msgchat_post(httpd_req_t *req) {
     if (error) {
         snprintf(resp, sizeof(resp), "{\"ok\":false,\"error\":\"%s\"}", error);
     } else {
-        sendAPRSMessage(dest, text, g_config.msg_encrypt);
+        sendAPRSMessage(dest, text);
         snprintf(resp, sizeof(resp), "{\"ok\":true}");
     }
 
