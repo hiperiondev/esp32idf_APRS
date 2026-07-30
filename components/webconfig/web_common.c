@@ -168,10 +168,87 @@ static void web_auth_note_success(uint32_t ip) {
     }
 }
 
+// ------------------------------------------------------------- CSRF (Origin/Referer)
+//
+// Every admin route is gated only by HTTP Basic Auth, and browsers attach
+// cached Basic credentials to *any* request sent to this device's origin -
+// regardless of which page's script or hidden auto-submitting form actually
+// triggered it. Without a same-origin check, a page on a completely
+// different site, opened by an already-authenticated admin in another tab,
+// could silently POST to e.g. /system or /format and have it succeed.
+// There's no per-session token to check instead (this server has no
+// cookies/sessions at all - only stateless Basic Auth), so the mitigation
+// here is a same-origin check on state-changing (POST) requests: compare
+// the browser-supplied Origin (or, failing that, Referer) header's host
+// against this request's own Host header. Modern browsers always attach an
+// Origin header to POST requests, same-origin or not, so a legitimate
+// same-site form submission always has one to check; a request with
+// neither header, or one whose host doesn't match, cannot be trusted to be
+// same-origin and is rejected.
+//
+// This only ever needs to run for state-changing requests: GETs are
+// expected to have no side effects, so cross-site GETs (e.g. an <img src>)
+// are out of scope for this check (page_storage.c already discusses why
+// /delete etc. are POST-only forms for exactly this reason).
+
+// Compares the host[:port] authority component of a "<scheme>://host[:port]/..."
+// header value (Origin or Referer) against this request's own Host header
+// value. Only the authority component of hdr_value is considered, so a
+// Referer's path/query can't cause a false match or mismatch.
+static bool web_origin_host_matches(const char *hdr_value, const char *expected_host) {
+    const char *authority = strstr(hdr_value, "://");
+    if (!authority)
+        return false;
+    authority += 3;
+
+    size_t host_len = strlen(expected_host);
+    if (host_len == 0)
+        return false;
+    if (strncasecmp(authority, expected_host, host_len) != 0)
+        return false;
+
+    // The matched prefix must be the *whole* authority component, not just a
+    // prefix of a longer host (e.g. expected "example.com" must not match
+    // "example.com.evil.tld"): what follows has to end the authority, i.e.
+    // be the path/query/fragment separator or the end of the string.
+    char term = authority[host_len];
+    return term == 0 || term == '/' || term == '?' || term == '#';
+}
+
+// Returns true only if this state-changing request can be confirmed
+// same-origin via Origin (preferred) or Referer (fallback). Fails closed:
+// a missing Host header, or a request with neither Origin nor Referer, is
+// treated as not-same-origin rather than silently allowed through.
+static bool web_check_csrf_origin(httpd_req_t *req) {
+    char host[128];
+    if (httpd_req_get_hdr_value_str(req, "Host", host, sizeof(host)) != ESP_OK || host[0] == 0)
+        return false;
+
+    char origin[256];
+    if (httpd_req_get_hdr_value_str(req, "Origin", origin, sizeof(origin)) == ESP_OK && origin[0] != 0)
+        return web_origin_host_matches(origin, host);
+
+    char referer[256];
+    if (httpd_req_get_hdr_value_str(req, "Referer", referer, sizeof(referer)) == ESP_OK && referer[0] != 0)
+        return web_origin_host_matches(referer, host);
+
+    return false; // neither header present: can't confirm same-origin
+}
+
 // ---------------------------------------------------------------- Basic Auth
 bool web_check_auth(httpd_req_t *req) {
     if (g_config.http_username[0] == 0)
         return true; // auth disabled if no user set
+
+    // Same-origin check first, before Basic Auth is even evaluated: a
+    // cross-site request has no business reaching this handler regardless of
+    // whether it happens to carry valid cached credentials.
+    if (req->method == HTTP_POST && !web_check_csrf_origin(req)) {
+        httpd_resp_set_status(req, "403 Forbidden");
+        httpd_resp_set_type(req, "text/html");
+        httpd_resp_sendstr(req, "<h1>" TR_FORBIDDEN_CSRF "</h1>");
+        return false;
+    }
 
     uint32_t client_ip = web_client_ipv4(req);
     int lockout_remaining_s = web_auth_lockout_remaining_s(client_ip);

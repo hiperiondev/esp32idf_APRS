@@ -33,6 +33,7 @@
 #define TR_LOGGED_OUT_TITLE "Sesión cerrada"
 #define TR_LOG_IN_AGAIN     "Iniciar sesión de nuevo"
 #define TR_UNAUTHORIZED     "401 No autorizado"
+#define TR_FORBIDDEN_CSRF   "403 Prohibido: no se pudo verificar el origen de la solicitud"
 #define TR_SAVED_REDIRECT   "Guardado. Redirigiendo..."
 
 /** @} */
@@ -89,7 +90,7 @@
 #define TR_ABOUT_OTA_LEGEND  "Actualización OTA"
 #define TR_ABOUT_OTA_BODY                                                                                                                                      \
     "Cargue un nuevo firmware .bin compilado para esta placa. Se escribe en la "                                                                               \
-    "partición OTA inactiva mientras el dispositivo sigue funcionando con la "                                                                                 \
+    "partición OTA inactiva mientras el dispositivo sigue funcionando con la "                                                                                \
     "actual; el dispositivo solo cambia y se reinicia una vez que la carga "                                                                                   \
     "finaliza y se verifica. Si el nuevo firmware no arranca correctamente, "                                                                                  \
     "se revierte automáticamente en el próximo reinicio."
@@ -370,13 +371,13 @@
  * @{
  */
 #define TR_NOTE_TLM_DIGI                                                                                                                                       \
-    "La telemetría (EQNS/PARM/UNIT) para las balizas de Digi se configura en la "                                                                              \
+    "La telemetría (EQNS/PARM/UNIT) para las balizas de Digi se configura en la "                                                                             \
     "página <a href='/tlm'>Telemetría</a>."
 #define TR_NOTE_TLM_IGATE                                                                                                                                      \
-    "La telemetría (EQNS/PARM/UNIT) para las balizas de IGate se configura en la "                                                                             \
+    "La telemetría (EQNS/PARM/UNIT) para las balizas de IGate se configura en la "                                                                            \
     "página <a href='/tlm'>Telemetría</a>."
 #define TR_NOTE_TLM_TRACKER                                                                                                                                    \
-    "La telemetría (EQNS/PARM/UNIT) para las balizas de Tracker se configura en la "                                                                           \
+    "La telemetría (EQNS/PARM/UNIT) para las balizas de Tracker se configura en la "                                                                          \
     "página <a href='/tlm'>Telemetría</a>."
 
 /** @} */
@@ -463,8 +464,8 @@
 #define TR_SYM_CAR_ALT         "Automóvil (tabla alterna)"
 #define TR_SYM_WX_STATION_ALT  "Estación WX (tabla alterna)"
 #define TR_SYM_INTRO                                                                                                                                           \
-    "Referencia rápida de los códigos de símbolo APRS más comunes. Cada página de "                                                                            \
-    "servicio (IGate / Digi / Tracker) tiene su propio campo de símbolo de texto libre "                                                                       \
+    "Referencia rápida de los códigos de símbolo APRS más comunes. Cada página de "                                                                       \
+    "servicio (IGate / Digi / Tracker) tiene su propio campo de símbolo de texto libre "                                                                      \
     "\u2014 copie el código de 2 caracteres desde aquí a ese campo."
 #define TR_SYM_CODE                 "Código"
 #define TR_SYM_MEANING              "Significado"
@@ -510,9 +511,9 @@
 #define TR_TEST_NO                   "no"
 #define TR_TEST_HARDWARE_TEST        "Prueba de hardware"
 #define TR_TEST_HARDWARE_TEST_BODY                                                                                                                             \
-    "La autoprueba de RF/módem/GPIO (conmutación de PTT, generación de tonos) requiere la "                                                                    \
-    "capa de controladores de hardware, que está fuera del "                                                                                                   \
-    "alcance de este puerto de administración web (ver PROGRESS.md). Esta página añadirá "                                                                     \
+    "La autoprueba de RF/módem/GPIO (conmutación de PTT, generación de tonos) requiere la "                                                                 \
+    "capa de controladores de hardware, que está fuera del "                                                                                                  \
+    "alcance de este puerto de administración web (ver PROGRESS.md). Esta página añadirá "                                                                 \
     "botones de prueba a medida que se porte cada controlador."
 
 /** @} */

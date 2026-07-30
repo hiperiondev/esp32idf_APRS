@@ -33,6 +33,7 @@
 #define TR_LOGGED_OUT_TITLE "Disconnesso"
 #define TR_LOG_IN_AGAIN     "Accedi di nuovo"
 #define TR_UNAUTHORIZED     "401 Non autorizzato"
+#define TR_FORBIDDEN_CSRF   "403 Vietato: impossibile verificare l'origine della richiesta"
 #define TR_SAVED_REDIRECT   "Salvato. Reindirizzamento in corso..."
 
 /** @} */
@@ -463,7 +464,7 @@
 #define TR_SYM_CAR_ALT         "Auto (tabella alternativa)"
 #define TR_SYM_WX_STATION_ALT  "Stazione WX (tabella alternativa)"
 #define TR_SYM_INTRO                                                                                                                                           \
-    "Riferimento rapido per i codici simbolo APRS più comuni. Ogni pagina di servizio "                                                                        \
+    "Riferimento rapido per i codici simbolo APRS più comuni. Ogni pagina di servizio "                                                                       \
     "(IGate / Digi / Tracker) ha il proprio campo simbolo a testo libero \u2014 copia il "                                                                     \
     "codice a 2 caratteri da qui in quel campo."
 #define TR_SYM_CODE                 "Codice"
@@ -511,7 +512,7 @@
 #define TR_TEST_HARDWARE_TEST        "Test hardware"
 #define TR_TEST_HARDWARE_TEST_BODY                                                                                                                             \
     "L'autotest RF/modem/GPIO (commutazione PTT, generazione toni) richiede il "                                                                               \
-    "livello driver hardware, che è fuori dall'ambito di questo port dell'amministrazione web (vedi PROGRESS.md). "                                            \
+    "livello driver hardware, che è fuori dall'ambito di questo port dell'amministrazione web (vedi PROGRESS.md). "                                           \
     "Questa pagina si arricchirà di pulsanti di test man mano che ogni driver viene portato."
 
 /** @} */

@@ -33,6 +33,7 @@
 #define TR_LOGGED_OUT_TITLE "Logged out"
 #define TR_LOG_IN_AGAIN     "Log in again"
 #define TR_UNAUTHORIZED     "401 Unauthorized"
+#define TR_FORBIDDEN_CSRF   "403 Forbidden: request origin could not be verified"
 #define TR_SAVED_REDIRECT   "Saved. Redirecting..."
 
 /** @} */
