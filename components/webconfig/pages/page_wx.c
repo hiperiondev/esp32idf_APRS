@@ -408,7 +408,7 @@ esp_err_t page_wx_post(httpd_req_t *req) {
         web_form_get_call(body, "wxMycall", g_config.wx_mycall, sizeof(g_config.wx_mycall));
     }
     g_config.wx_ssid = web_form_get_ssid(body, "wxSSID", g_config.wx_ssid);
-    g_config.wx_path = web_form_get_path_mask(body, "wxPath");
+    g_config.wx_path = app_config_path_mask_clamp(web_form_get_path_mask(body, "wxPath"), g_config.path);
 
     if (g_config.wx_use_station) {
         g_config.wx_lat = g_config.my_lat;

@@ -627,7 +627,7 @@ esp_err_t page_tlm_get(httpd_req_t *req) {
  * Parse (POST)
  * ------------------------------------------------------------------------ */
 
-static void parse_beacon(const char *body, telemetry_config_t *cfg) {
+static void parse_beacon(const char *body, telemetry_config_t *cfg, const char path_preset[4][72]) {
     cfg->en = web_form_get_bool(body, "tlm0En");
     cfg->use_station = web_form_get_bool(body, "tlm0UseStation");
     cfg->tx2rf = web_form_get_bool(body, "tlm0Tx2rf");
@@ -647,7 +647,7 @@ static void parse_beacon(const char *body, telemetry_config_t *cfg) {
         cfg->mycall[sizeof(cfg->mycall) - 1] = 0;
     }
     cfg->ssid = web_form_get_ssid(body, "tlm0SSID", 0);
-    cfg->path = web_form_get_path_mask(body, "tlm0Path");
+    cfg->path = app_config_path_mask_clamp(web_form_get_path_mask(body, "tlm0Path"), path_preset);
     cfg->data_interval = (uint16_t)web_form_get_int(body, "tlm0DataInv", 0);
     cfg->info_interval = (uint16_t)web_form_get_int(body, "tlm0InfoInv", cfg->info_interval);
 }
@@ -739,7 +739,18 @@ esp_err_t page_tlm_post(httpd_req_t *req) {
     // its value; the form overwrites everything it does carry.
     telemetry_config_load(&cfg);
 
-    parse_beacon(body, &cfg);
+    // Snapshot the shared Digipeater Path Alias presets under the config lock
+    // (see app_config_path_mask_clamp() in parse_beacon()) rather than
+    // touching g_config.path directly while unlocked.
+    char path_preset[4][72];
+    app_config_lock();
+    for (int i = 0; i < 4; i++) {
+        strncpy(path_preset[i], g_config.path[i], sizeof(path_preset[i]) - 1);
+        path_preset[i][sizeof(path_preset[i]) - 1] = 0;
+    }
+    app_config_unlock();
+
+    parse_beacon(body, &cfg, path_preset);
     parse_report_params(body, &cfg);
     parse_analog(body, &cfg);
     parse_digital(body, &cfg);

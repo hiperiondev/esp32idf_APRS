@@ -476,12 +476,20 @@ esp_err_t page_objects_post(httpd_req_t *req) {
     float st_phg_gain;
     uint8_t st_phg_dir;
     char st_phg[8];
+    // Snapshot the shared Digipeater Path Alias presets too (see
+    // app_config_path_mask_clamp() below), for the same "copy it out while
+    // locked, then work on the local copy" reason as the PHG fields above.
+    char path_preset[4][72];
     app_config_lock();
     st_phg_power = g_config.my_phg_power;
     st_phg_gain = g_config.my_phg_gain;
     st_phg_height = g_config.my_phg_height;
     st_phg_dir = g_config.my_phg_dir;
     snprintf(st_phg, sizeof(st_phg), "%.7s", g_config.my_phg);
+    for (int i = 0; i < 4; i++) {
+        strncpy(path_preset[i], g_config.path[i], sizeof(path_preset[i]) - 1);
+        path_preset[i][sizeof(path_preset[i]) - 1] = 0;
+    }
     app_config_unlock();
 
     for (int i = 0; i < OBJITEM_COUNT; i++) {
@@ -607,7 +615,7 @@ esp_err_t page_objects_post(httpd_req_t *req) {
         // -- Path bitmask (one checkbox per shared Digipeater Path Alias). --
         char path_prefix[24];
         snprintf(path_prefix, sizeof(path_prefix), "oPath%d_", i + 1);
-        b->path_mask = web_form_get_path_mask(body, path_prefix);
+        b->path_mask = app_config_path_mask_clamp(web_form_get_path_mask(body, path_prefix), path_preset);
 
         // -- QRU group membership. --
         snprintf(name, sizeof(name), "oQru%d", i + 1);

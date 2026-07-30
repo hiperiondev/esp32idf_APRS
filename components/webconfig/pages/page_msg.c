@@ -96,7 +96,7 @@ esp_err_t page_msg_post(httpd_req_t *req) {
     } else {
         web_form_get_call(body, "msgMycall", g_config.msg_mycall, sizeof(g_config.msg_mycall));
     }
-    g_config.msg_path = web_form_get_path_mask(body, "msgPath");
+    g_config.msg_path = app_config_path_mask_clamp(web_form_get_path_mask(body, "msgPath"), g_config.path);
     g_config.msg_rf = web_form_get_bool(body, "msgRf");
     g_config.msg_inet = web_form_get_bool(body, "msgInet");
     g_config.msg_retry = (uint8_t)web_form_get_int(body, "msgRetry", g_config.msg_retry);

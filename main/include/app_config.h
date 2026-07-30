@@ -455,4 +455,45 @@ void app_config_lock(void);
  */
 void app_config_unlock(void);
 
+/**
+ * @brief Count the AX.25 path hops that @p pathBitmask would produce from
+ * @p pathPreset[0..3].
+ *
+ * Each selected preset slot may itself hold several comma-separated hops
+ * (e.g. "WIDE1-1,WIDE2-1" counts as 2, not 1), so simply counting set bits
+ * undercounts the real on-air path length. Empty/unselected slots contribute
+ * 0. This is the single source of truth for "how many hops does this
+ * bitmask produce", shared by the webconfig POST handlers (which enforce it
+ * at save time via app_config_path_mask_clamp()) and beacon.c's
+ * buildPathSuffix() (which enforces it again at transmit time), so the two
+ * can never drift out of sync.
+ *
+ * @param pathBitmask Bitmask over @p pathPreset (bit N selects pathPreset[N]).
+ * @param pathPreset  The four shared path presets, i.e. a copy of/reference
+ *                    to ::g_config.path[0..3] taken while holding
+ *                    app_config_lock().
+ * @return Total number of comma-separated hops the selection would emit.
+ */
+uint8_t app_config_path_hop_count(uint8_t pathBitmask, const char pathPreset[4][72]);
+
+/**
+ * @brief Clamp @p pathBitmask so the path it produces never exceeds AX.25's
+ * 8-via limit.
+ *
+ * Bits are kept low-to-high (preset 1, then 2, then 3, then 4) only as long
+ * as adding the next preset's hops would not push the running total past 8;
+ * any bit that would exceed the budget, and every bit after it, is dropped.
+ * If @p pathBitmask already produces 8 or fewer hops it is returned
+ * unchanged. A dropped bit is logged as a warning so an over-long save is
+ * visible in the device log even though the web form has no
+ * validation-error plumbing to surface it to the browser.
+ *
+ * @param pathBitmask Raw bitmask read back from the web form (or NVS/restore).
+ * @param pathPreset  The four shared path presets (see
+ *                    app_config_path_hop_count()).
+ * @return @p pathBitmask, with the minimum number of high bits cleared to
+ *         bring the total hop count to 8 or fewer.
+ */
+uint8_t app_config_path_mask_clamp(uint8_t pathBitmask, const char pathPreset[4][72]);
+
 #endif // APP_CONFIG_H

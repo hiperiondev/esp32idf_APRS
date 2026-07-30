@@ -110,7 +110,7 @@ esp_err_t page_digi_post(httpd_req_t *req) {
         g_config.digi_alt = web_form_get_float(body, "digiAlt", g_config.digi_alt);
     }
     g_config.digi_ssid = web_form_get_ssid(body, "digiSSID", g_config.digi_ssid);
-    g_config.digi_path = web_form_get_path_mask(body, "digiPath");
+    g_config.digi_path = app_config_path_mask_clamp(web_form_get_path_mask(body, "digiPath"), g_config.path);
 
     g_config.digi_bcn = web_form_get_bool(body, "digiBcn");
     g_config.digi_loc2rf = web_form_get_bool(body, "digiPos2rf");

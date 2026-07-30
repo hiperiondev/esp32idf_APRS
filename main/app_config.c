@@ -975,3 +975,49 @@ bool app_config_factory_reset(void) {
     app_config_unlock();
     return app_config_save();
 }
+
+uint8_t app_config_path_hop_count(uint8_t pathBitmask, const char pathPreset[4][72]) {
+    uint8_t hops = 0;
+    for (int bit = 0; bit < 4; bit++) {
+        if (!(pathBitmask & (1u << bit)) || !pathPreset[bit][0])
+            continue;
+        hops++; // the alias itself is at least 1 hop
+        for (const char *p = pathPreset[bit]; *p; p++)
+            if (*p == ',')
+                hops++;
+    }
+    return hops;
+}
+
+uint8_t app_config_path_mask_clamp(uint8_t pathBitmask, const char pathPreset[4][72]) {
+    if (app_config_path_hop_count(pathBitmask, pathPreset) <= 8)
+        return pathBitmask; // within budget already - nothing to drop
+
+    // Over AX.25's 8-via limit once every selected preset's own comma-joined
+    // hops are counted (e.g. two 4-hop presets can exceed 8 well before all 4
+    // checkboxes are ticked). Keep presets low-bit-first until the budget is
+    // used up and drop the rest, instead of silently saving a bitmask that
+    // would later be clipped differently (or reach further than intended) at
+    // transmit time - see beacon.c's buildPathSuffix(), which enforces the
+    // same limit again as a belt-and-suspenders check for config loaded from
+    // NVS/restore rather than this form.
+    uint8_t clamped = 0;
+    uint8_t hopsUsed = 0;
+    for (int bit = 0; bit < 4; bit++) {
+        if (!(pathBitmask & (1u << bit)) || !pathPreset[bit][0])
+            continue;
+
+        uint8_t presetHops = 1;
+        for (const char *p = pathPreset[bit]; *p; p++)
+            if (*p == ',')
+                presetHops++;
+
+        if (hopsUsed + presetHops > 8) {
+            ESP_LOGW(TAG, "path bitmask 0x%02X exceeds AX.25 8-hop limit, dropping preset %d and beyond", pathBitmask, bit + 1);
+            break;
+        }
+        clamped |= (uint8_t)(1u << bit);
+        hopsUsed += presetHops;
+    }
+    return clamped;
+}

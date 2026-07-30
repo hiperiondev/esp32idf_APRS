@@ -66,11 +66,30 @@ static void buildPathSuffix(uint8_t pathBitmask, const char pathPreset[4][72], c
         return;
 
     size_t used = 0;
+    uint8_t hopsUsed = 0;
     for (int bit = 0; bit < 4; bit++) {
         if (!(pathBitmask & (1 << bit)))
             continue;
         if (!pathPreset[bit][0])
             continue; // bit selected but that preset slot isn't configured
+
+        // Belt-and-suspenders AX.25 8-via enforcement: the webconfig POST
+        // handlers already clamp pathBitmask at save time (see
+        // app_config_path_mask_clamp()), but config can also arrive here via
+        // a stale NVS load or an imported backup that predates that check, so
+        // refuse to emit more than 8 total hops regardless of how the
+        // bitmask got set. Each preset slot may itself list several
+        // comma-separated hops, so count those too rather than just the
+        // number of set bits.
+        uint8_t presetHops = 1;
+        for (const char *p = pathPreset[bit]; *p; p++)
+            if (*p == ',')
+                presetHops++;
+
+        if (hopsUsed + presetHops > 8) {
+            ESP_LOGW(TAG, "path bitmask 0x%02X exceeds AX.25 8-hop limit, truncating at preset %d", pathBitmask, bit + 1);
+            break; // stop adding more presets, keep what we already built
+        }
 
         int n = snprintf(out + used, outMax - used, ",%s", pathPreset[bit]);
         if (n < 0)
@@ -80,6 +99,7 @@ static void buildPathSuffix(uint8_t pathBitmask, const char pathPreset[4][72], c
             break;
         }
         used += (size_t)n;
+        hopsUsed += presetHops;
     }
 }
 

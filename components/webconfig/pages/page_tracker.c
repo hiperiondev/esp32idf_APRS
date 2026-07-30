@@ -104,7 +104,7 @@ esp_err_t page_tracker_post(httpd_req_t *req) {
         g_config.trk_alt = web_form_get_float(body, "trkALT", g_config.trk_alt);
     }
     g_config.trk_ssid = web_form_get_ssid(body, "trkSSID", g_config.trk_ssid);
-    g_config.trk_path = web_form_get_path_mask(body, "trkPath");
+    g_config.trk_path = app_config_path_mask_clamp(web_form_get_path_mask(body, "trkPath"), g_config.path);
 
     g_config.trk_interval = (uint16_t)web_form_get_int(body, "trkINV", g_config.trk_interval);
 
