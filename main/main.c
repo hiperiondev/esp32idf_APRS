@@ -32,10 +32,10 @@
 #include "freertos/task.h"
 #include "nvs_flash.h"
 
-#include "esp32idf_radioamateur_modem.h"
 #include "app_config.h"
 #include "aprs_service.h"
 #include "cpu_freq.h"
+#include "esp32idf_radioamateur_modem.h"
 #include "net_state.h"
 #include "storage.h"
 #include "time_sync.h"
@@ -133,8 +133,8 @@ static void wifi_event_handler(void *arg, esp_event_base_t base, int32_t id, voi
         // TIMEOUT) or 204 (NOT_AUTHED) means the password is wrong, 201
         // (NO_AP_FOUND) means the SSID isn't visible (wrong name, out of
         // range, or 5 GHz-only), 2/8/200 are ordinary roaming/AP-side drops.
-        ESP_LOGW(TAG, "STA disconnected from '%s', reason %d, retrying in %u ms...", (d && d->ssid_len) ? (const char *)d->ssid : "?",
-                 d ? (int)d->reason : -1, (unsigned)backoffMs);
+        ESP_LOGW(TAG, "STA disconnected from '%s', reason %d, retrying in %u ms...", (d && d->ssid_len) ? (const char *)d->ssid : "?", d ? (int)d->reason : -1,
+                 (unsigned)backoffMs);
 
         if (backoffMs == 0) {
             try_connect("immediate");
@@ -238,9 +238,9 @@ static void wifi_init(void) {
             // single summary line above cannot tell them apart.
             for (int i = 0; i < WIFI_STA_NUM; i++) {
                 ESP_LOGE(TAG, "     slot %d: enable=%s ssid='%s'%s", i, g_config.wifi_sta[i].enable ? "true" : "false", g_config.wifi_sta[i].wifi_ssid,
-                         (g_config.wifi_sta[i].enable && !g_config.wifi_sta[i].wifi_ssid[0]) ? "   <-- enabled, but the SSID is EMPTY"
+                         (g_config.wifi_sta[i].enable && !g_config.wifi_sta[i].wifi_ssid[0])   ? "   <-- enabled, but the SSID is EMPTY"
                          : (!g_config.wifi_sta[i].enable && g_config.wifi_sta[i].wifi_ssid[0]) ? "   <-- has an SSID, but 'Enable' is not ticked"
-                                                                                              : "");
+                                                                                               : "");
             }
             ESP_LOGE(TAG, "  -> On the Wireless page, tick 'Enable' in a WiFi Client block and type an SSID, then Save.");
             if (mode == WIFI_MODE_STA) {
@@ -383,7 +383,10 @@ static void app_task(void *arg) {
         ESP_LOGI(TAG, "Audio ADC/DAC AFSK modem disabled in config - skipping modem_init()");
     }
 
-    ESP_LOGI(TAG, "ESP32APRS web admin ready. Login: %s / %s", g_config.http_username, g_config.http_password);
+    // Do not log the admin password: this line reaches serial console captures
+    // and any future remote-logging feature. Only the username is logged; the
+    // operator already has the configured password.
+    ESP_LOGI(TAG, "ESP32APRS web admin ready. Login user: %s", g_config.http_username);
 
     // Initialisation is done and everything above runs in its own tasks now
     // (WiFi, web server, APRS service + its tick, the beacon scheduler, the

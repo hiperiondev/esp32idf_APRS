@@ -52,7 +52,7 @@
 /**
  * @brief Number of analog channels A1-A5 (APRS101 Ch.13).
  */
-#define TLM_CH       5
+#define TLM_CH 5
 /**
  * @brief Total number of PARM-message fields: 5 analog + 8 digital (APRS101 Ch.13).
  */
@@ -60,7 +60,7 @@
 /**
  * @brief Number of digital bit channels B1-B8 (APRS101 Ch.13).
  */
-#define TLM_BIT_NUM  8
+#define TLM_BIT_NUM 8
 
 /**
  * @brief Own-beacon Telemetry channel 0 configuration, as loaded from /
@@ -78,31 +78,31 @@
  * for a full round-trip but is not yet produced on-air by telemetry.c.
  */
 typedef struct {
-    bool en;                      /**< Master enable for the telemetry subsystem. */
-    bool use_station;             /**< "Use My Station Data": copy mycall from g_config.my_callsign. */
-    bool tx2rf;                   /**< Master enable: transmit the telemetry beacon over RF. */
-    bool tx2inet;                 /**< Master enable: transmit the telemetry beacon over APRS-IS. */
-    uint8_t ssid;                 /**< SSID appended to @c mycall for the telemetry beacon. */
-    char mycall[10];              /**< Telemetry channel-0 callsign (NUL-terminated). */
-    uint8_t path;                 /**< Digipeat-path selection: bitmask over g_config.path[0..3]. */
-    uint16_t data_interval;       /**< Seconds between "T#..." reports; 0 = firmware default. */
-    uint16_t info_interval;       /**< Seconds between PARM/UNIT/BITS metadata messages; 0 = disabled. */
-    char PARM[TLM_PARM_NUM][10];  /**< Analog channel names (A1-A5) + digital bit names (B1-B8). */
-    char UNIT[TLM_PARM_NUM][8];   /**< Analog channel units + digital bit ON-state labels. */
+    bool en;                     /**< Master enable for the telemetry subsystem. */
+    bool use_station;            /**< "Use My Station Data": copy mycall from g_config.my_callsign. */
+    bool tx2rf;                  /**< Master enable: transmit the telemetry beacon over RF. */
+    bool tx2inet;                /**< Master enable: transmit the telemetry beacon over APRS-IS. */
+    uint8_t ssid;                /**< SSID appended to @c mycall for the telemetry beacon. */
+    char mycall[10];             /**< Telemetry channel-0 callsign (NUL-terminated). */
+    uint8_t path;                /**< Digipeat-path selection: bitmask over g_config.path[0..3]. */
+    uint16_t data_interval;      /**< Seconds between "T#..." reports; 0 = firmware default. */
+    uint16_t info_interval;      /**< Seconds between PARM/UNIT/BITS metadata messages; 0 = disabled. */
+    char PARM[TLM_PARM_NUM][10]; /**< Analog channel names (A1-A5) + digital bit names (B1-B8). */
+    char UNIT[TLM_PARM_NUM][8];  /**< Analog channel units + digital bit ON-state labels. */
 
-    char report_path[64];         /**< Free-text digipeater path, e.g. "WIDE1-1,WIDE2-1". */
-    char tocall[7];               /**< APRS Destination / TOCALL (e.g. "APRS"). */
-    bool auto_seq;                /**< Auto-increment the T# sequence number. */
-    uint8_t field_width;          /**< Analog field width: 0 = minimal/auto, 3 = 3-digit zero-padded. */
-    bool omit_trailing;           /**< Omit unused trailing channels (APRS101 Ch.13 shorthand). */
-    char trail_comment[32];       /**< Optional free text appended after the bits. */
-    uint8_t analog_count;         /**< Number of analog channels sent (1..5). */
-    uint8_t digital_count;        /**< Number of digital bits sent (0..8). */
+    char report_path[64];   /**< Free-text digipeater path, e.g. "WIDE1-1,WIDE2-1". */
+    char tocall[7];         /**< APRS Destination / TOCALL (e.g. "APRS"). */
+    bool auto_seq;          /**< Auto-increment the T# sequence number. */
+    uint8_t field_width;    /**< Analog field width: 0 = minimal/auto, 3 = 3-digit zero-padded. */
+    bool omit_trailing;     /**< Omit unused trailing channels (APRS101 Ch.13 shorthand). */
+    char trail_comment[32]; /**< Optional free text appended after the bits. */
+    uint8_t analog_count;   /**< Number of analog channels sent (1..5). */
+    uint8_t digital_count;  /**< Number of digital bits sent (0..8). */
 
-    bool gen_parm;                /**< Emit PARM. (channel & bit names). */
-    bool gen_unit;                /**< Emit UNIT. (units / bit-state labels). */
-    bool gen_eqns;                /**< Emit EQNS. (scaling coefficients A,B,C). */
-    bool gen_bits;                /**< Emit BITS. (bit sense + project title). */
+    bool gen_parm; /**< Emit PARM. (channel & bit names). */
+    bool gen_unit; /**< Emit UNIT. (units / bit-state labels). */
+    bool gen_eqns; /**< Emit EQNS. (scaling coefficients A,B,C). */
+    bool gen_bits; /**< Emit BITS. (bit sense + project title). */
 
     bool analog_tx2rf;               /**< "Analog: Beacon via RF". */
     bool analog_tx2inet;             /**< "Analog: Beacon via Internet". */
@@ -115,16 +115,16 @@ typedef struct {
     int32_t ana_raw_max[TLM_CH];     /**< Expected maximum raw ADC input per analog channel. */
     uint8_t ana_dec[TLM_CH];         /**< Number of decimals shown per analog channel. */
 
-    char tlm_bit_name[TLM_BIT_NUM][21];  /**< Per-bit operator-facing label (used only inside the BITS. message). */
-    uint8_t tlm_bit_channel[TLM_BIT_NUM];/**< Source sensor channel index for each bit (0xFF = "(none)"). */
-    bool tlm_bit_igate[TLM_BIT_NUM];     /**< Per-bit routing: include this bit in the APRS-IS (IGate) beacon. */
-    bool tlm_bit_rf[TLM_BIT_NUM];        /**< Per-bit routing: include this bit in the RF beacon. */
-    bool bit_enable[TLM_BIT_NUM];        /**< Per-bit enable (defaults true; a disabled bit is sent as 0). */
-    bool bit_sense[TLM_BIT_NUM];         /**< true = Normal (raw 1 = asserted), false = Inverted. */
+    char tlm_bit_name[TLM_BIT_NUM][21];   /**< Per-bit operator-facing label (used only inside the BITS. message). */
+    uint8_t tlm_bit_channel[TLM_BIT_NUM]; /**< Source sensor channel index for each bit (0xFF = "(none)"). */
+    bool tlm_bit_igate[TLM_BIT_NUM];      /**< Per-bit routing: include this bit in the APRS-IS (IGate) beacon. */
+    bool tlm_bit_rf[TLM_BIT_NUM];         /**< Per-bit routing: include this bit in the RF beacon. */
+    bool bit_enable[TLM_BIT_NUM];         /**< Per-bit enable (defaults true; a disabled bit is sent as 0). */
+    bool bit_sense[TLM_BIT_NUM];          /**< true = Normal (raw 1 = asserted), false = Inverted. */
 
-    bool digital_tx2rf;           /**< "Digital: Beacon via RF". */
-    bool digital_tx2inet;         /**< "Digital: Beacon via Internet". */
-    char proj_title[24];          /**< BITS. project title / "Name". */
+    bool digital_tx2rf;   /**< "Digital: Beacon via RF". */
+    bool digital_tx2inet; /**< "Digital: Beacon via Internet". */
+    char proj_title[24];  /**< BITS. project title / "Name". */
 } telemetry_config_t;
 
 /**

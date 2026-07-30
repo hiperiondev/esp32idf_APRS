@@ -58,5 +58,5 @@
  * @brief Expand @p x (so a macro value, not its name, is stringized) and then
  * stringize it. Used to build ::FIRMWARE_INFO from the numeric version macros.
  */
-#define APP_VERSION_STR(x)        APP_VERSION_STR_HELPER(x)
-#define FIRMWARE_INFO             APP_VERSION_STR(FIRMWARE_VERSION_MAYOR) "." APP_VERSION_STR(FIRMWARE_VERSION_MINOR) "." APP_VERSION_STR(FIRMWARE_VERSION_PATCH)
+#define APP_VERSION_STR(x) APP_VERSION_STR_HELPER(x)
+#define FIRMWARE_INFO      APP_VERSION_STR(FIRMWARE_VERSION_MAYOR) "." APP_VERSION_STR(FIRMWARE_VERSION_MINOR) "." APP_VERSION_STR(FIRMWARE_VERSION_PATCH)

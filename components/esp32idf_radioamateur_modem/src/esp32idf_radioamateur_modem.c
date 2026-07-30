@@ -30,10 +30,10 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
+#include "afsk.h"
+#include "ax25.h"
 #include "esp32idf_radioamateur_modem.h"
 #include "esp32idf_radioamateur_modem_config.h"
-#include "ax25.h"
-#include "afsk.h"
 #include "modem.h"
 
 static const char *TAG = "radiomodem";
@@ -60,7 +60,7 @@ static void modem_service_task(void *arg) {
     uint8_t level, corrected;
     uint16_t mV;
 
-    //uint32_t lastHeartbeat = 0;
+    // uint32_t lastHeartbeat = 0;
 
     for (;;) {
         AFSK_ServiceTx();
@@ -68,10 +68,10 @@ static void modem_service_task(void *arg) {
         /* Throttled proof-of-life: confirms this task loop (and therefore
          * Ax25TransmitCheck() right below) is actually being reached, without
          * flooding the log. Remove once TX is confirmed working end to end. */
-        //uint32_t now = (uint32_t)(esp_timer_get_time() / 1000);
-        //if (now - lastHeartbeat >= 2000) {
-            //lastHeartbeat = now;
-            //ESP_LOGI(TAG, "svc task alive, t=%" PRIu32 " ms", now);
+        // uint32_t now = (uint32_t)(esp_timer_get_time() / 1000);
+        // if (now - lastHeartbeat >= 2000) {
+        // lastHeartbeat = now;
+        // ESP_LOGI(TAG, "svc task alive, t=%" PRIu32 " ms", now);
         //}
 
         Ax25TransmitCheck();
@@ -191,10 +191,8 @@ esp_err_t modem_init(const modem_config_t *cfg) {
     }
 
     s_running = true;
-    ESP_LOGI(TAG, "started: modem=%d %s duplex, DAC=GPIO%d ADC=GPIO%d", (int)cfg->modem, cfg->full_duplex ? "full" : "half", MODEM_DAC_GPIO,
-             MODEM_ADC_GPIO);
-    ESP_LOGI(TAG, "service task: %" PRIu32 " tick(s) per poll at CONFIG_FREERTOS_HZ=%d", (uint32_t)MODEM_DELAY_TICKS(MODEM_SVC_PERIOD_MS),
-             CONFIG_FREERTOS_HZ);
+    ESP_LOGI(TAG, "started: modem=%d %s duplex, DAC=GPIO%d ADC=GPIO%d", (int)cfg->modem, cfg->full_duplex ? "full" : "half", MODEM_DAC_GPIO, MODEM_ADC_GPIO);
+    ESP_LOGI(TAG, "service task: %" PRIu32 " tick(s) per poll at CONFIG_FREERTOS_HZ=%d", (uint32_t)MODEM_DELAY_TICKS(MODEM_SVC_PERIOD_MS), CONFIG_FREERTOS_HZ);
     return ESP_OK;
 }
 
@@ -314,4 +312,3 @@ void modem_format_tnc2(const ax25_msg_t *msg, char *out, size_t out_len) {
         out[pos++] = (char)msg->info[i];
     out[pos] = 0;
 }
-

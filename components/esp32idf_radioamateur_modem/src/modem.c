@@ -27,9 +27,9 @@
 #include "esp_attr.h"
 #include "esp_log.h"
 
-#include "esp32idf_radioamateur_modem_config.h"
 #include "afsk.h"
 #include "ax25.h"
+#include "esp32idf_radioamateur_modem_config.h"
 #include "modem.h"
 
 static const char *TAG = "modem";
@@ -141,7 +141,7 @@ static int32_t calibratedPllStep(int32_t nominalStep) {
     double step = (double)(uint32_t)nominalStep / (double)sampleRateCorrection;
 
     /* Guard the extremes: a step of 0 would never overflow the PLL counter
-     * (decode() would never sample a symbol, exactly the N9600=1 
+     * (decode() would never sample a symbol, exactly the N9600=1
      * comment above this block documents), and a step above 2^32-1 cannot be
      * represented at all. Both would require sampleRateCorrection to be
      * wildly out of range, which ModemCalibrateSampleRate() rejects,
@@ -281,9 +281,9 @@ struct ModemDemodConfig ModemConfig;
  * clock got starved and every AX.25 frame destroyed - see the ring buffer
  * notes in afsk.c. */
 
-static uint8_t N;                        /* samples per symbol */
-static uint8_t demodCount;               /* number of parallel demodulators */
-static uint8_t currentSymbol;            /* current symbol for NRZI encoding */
+static uint8_t N;             /* samples per symbol */
+static uint8_t demodCount;    /* number of parallel demodulators */
+static uint8_t currentSymbol; /* current symbol for NRZI encoding */
 static uint8_t scrambledSymbol;
 
 float markFreq;

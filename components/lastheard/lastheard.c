@@ -28,9 +28,9 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 
-#define LASTHEARD_CAPACITY  30 // stations kept in RAM, most recent first
-#define LASTHEARD_CALL_LEN  12
-#define LASTHEARD_PATH_LEN  48
+#define LASTHEARD_CAPACITY 30 // stations kept in RAM, most recent first
+#define LASTHEARD_CALL_LEN 12
+#define LASTHEARD_PATH_LEN 48
 
 typedef struct {
     bool used;
@@ -147,7 +147,7 @@ size_t lastheard_dump_json(char *out, size_t out_size) {
         }
 
         int n = snprintf(out + pos, out_size - pos, "%s{\"time\":\"%s\",\"call\":\"%s\",\"path\":\"%s\",\"sym\":\"%s\",\"packets\":%lu}", first ? "" : ",",
-                          strTime, call_esc, path_esc, sym, (unsigned long)e->packets);
+                         strTime, call_esc, path_esc, sym, (unsigned long)e->packets);
         if (n < 0)
             break;
         if (pos + (size_t)n + 2 >= out_size)

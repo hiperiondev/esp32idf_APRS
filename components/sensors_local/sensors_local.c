@@ -124,8 +124,9 @@ esp_err_t sensors_local_register(sensor_local_driver_t *driver) {
      * picker - can filter it by type instead of listing every registered
      * sensor regardless of what it actually produces. */
     if (driver->capabilities == SENSOR_LOCAL_DATA_NONE) {
-        ESP_LOGE(TAG, "rejected driver '%s': capabilities not set (must declare SENSOR_LOCAL_DATA_WEATHER and/or "
-                      "SENSOR_LOCAL_DATA_TELEMETRY, or a future sensor kind)",
+        ESP_LOGE(TAG,
+                 "rejected driver '%s': capabilities not set (must declare SENSOR_LOCAL_DATA_WEATHER and/or "
+                 "SENSOR_LOCAL_DATA_TELEMETRY, or a future sensor kind)",
                  driver->name);
         return ESP_ERR_INVALID_ARG;
     }

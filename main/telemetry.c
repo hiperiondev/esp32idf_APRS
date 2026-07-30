@@ -124,7 +124,7 @@ void telemetry_config_set_defaults(telemetry_config_t *out) {
     for (int i = 0; i < TLM_CH; i++) {
         out->ana_enable[i] = true;
         out->tlm_ana_channel[i] = 0xFF; // "(none)" - unassigned until mapped on the web page
-        out->ana_b[i] = 1.0f;   // identity slope by default
+        out->ana_b[i] = 1.0f;           // identity slope by default
         out->ana_raw_max[i] = 1023;
         out->ana_dec[i] = 0;
     }
@@ -146,13 +146,27 @@ static void write_json_string(FILE *f, const char *v) {
         for (const unsigned char *p = (const unsigned char *)v; *p; p++) {
             unsigned char ch = *p;
             switch (ch) {
-                case '"':  fputs("\\\"", f); break;
-                case '\\': fputs("\\\\", f); break;
-                case '\b': fputs("\\b", f); break;
-                case '\f': fputs("\\f", f); break;
-                case '\n': fputs("\\n", f); break;
-                case '\r': fputs("\\r", f); break;
-                case '\t': fputs("\\t", f); break;
+                case '"':
+                    fputs("\\\"", f);
+                    break;
+                case '\\':
+                    fputs("\\\\", f);
+                    break;
+                case '\b':
+                    fputs("\\b", f);
+                    break;
+                case '\f':
+                    fputs("\\f", f);
+                    break;
+                case '\n':
+                    fputs("\\n", f);
+                    break;
+                case '\r':
+                    fputs("\\r", f);
+                    break;
+                case '\t':
+                    fputs("\\t", f);
+                    break;
                 default:
                     if (ch < 0x20)
                         fprintf(f, "\\u%04x", ch);
@@ -596,14 +610,14 @@ static void telemetry_refresh_now(void) {
 
         uint8_t ch = ch_snapshot[bit];
         if (ch != 0xFF) { // "(none)" - no source channel picked
-            bool digital_enabled[APRS_TELEMETRY_DIGITAL_CHANNELS] = {0};
-            bool digital[APRS_TELEMETRY_DIGITAL_CHANNELS] = {0};
-            aprs_telemetry_report_t scratch_tlm = {0};
+            bool digital_enabled[APRS_TELEMETRY_DIGITAL_CHANNELS] = { 0 };
+            bool digital[APRS_TELEMETRY_DIGITAL_CHANNELS] = { 0 };
+            aprs_telemetry_report_t scratch_tlm = { 0 };
             scratch_tlm.digital_count = APRS_TELEMETRY_DIGITAL_CHANNELS;
             scratch_tlm.digital_enabled = digital_enabled;
             scratch_tlm.digital = digital;
 
-            weather_telemetry_data_t scratch_data = {0};
+            weather_telemetry_data_t scratch_data = { 0 };
             scratch_data.telemetry_report = &scratch_tlm;
             scratch_data.telemetry_report_qty = 1;
 
@@ -639,14 +653,14 @@ static void telemetry_refresh_now(void) {
 
         uint8_t ch = ana_snapshot[a];
         if (ch != 0xFF) { // "(none)" - no source channel picked
-            bool analog_enabled[APRS_TELEMETRY_ANALOG_CHANNELS] = {0};
-            double analog[APRS_TELEMETRY_ANALOG_CHANNELS] = {0};
-            aprs_telemetry_report_t scratch_tlm = {0};
+            bool analog_enabled[APRS_TELEMETRY_ANALOG_CHANNELS] = { 0 };
+            double analog[APRS_TELEMETRY_ANALOG_CHANNELS] = { 0 };
+            aprs_telemetry_report_t scratch_tlm = { 0 };
             scratch_tlm.analog_count = APRS_TELEMETRY_ANALOG_CHANNELS;
             scratch_tlm.analog_enabled = analog_enabled;
             scratch_tlm.analog = analog;
 
-            weather_telemetry_data_t scratch_data = {0};
+            weather_telemetry_data_t scratch_data = { 0 };
             scratch_data.telemetry_report = &scratch_tlm;
             scratch_data.telemetry_report_qty = 1;
 

@@ -159,8 +159,8 @@ typedef struct {
     bool send_rf;   /**< Transmit on RF (gated further by scope). */
     bool send_inet; /**< Transmit to APRS-IS / Internet (gated further by scope). */
 
-    bool is_item;   /**< true => Item (non-timestamped, ')'); false => Object (timestamped, ';'). Mirrors YAAC "Permanent". */
-    bool active;    /**< true => live report; false => kill report (YAAC "Object active"). */
+    bool is_item; /**< true => Item (non-timestamped, ')'); false => Object (timestamped, ';'). Mirrors YAAC "Permanent". */
+    bool active;  /**< true => live report; false => kill report (YAAC "Object active"). */
 
     char name[OBJITEM_NAME_MAX + 1]; /**< Object/Item name (1..9 chars, NUL-terminated). */
 
@@ -176,25 +176,31 @@ typedef struct {
 
     char comment[OBJITEM_COMMENT_MAX + 1]; /**< Free-text comment, appended last. */
 
-    uint8_t area_type;  /**< Area object type 0..9: 0=circle,1=line,2=ellipse,3=triangle,4=box; +5 = colour-filled variant. Emitted only for the Area symbol ('\\','l'); "Tyy/Cxx" replaces the CSE/SPD slot. */
+    uint8_t area_type;  /**< Area object type 0..9: 0=circle,1=line,2=ellipse,3=triangle,4=box; +5 = colour-filled variant. Emitted only for the Area symbol
+                           ('\\','l'); "Tyy/Cxx" replaces the CSE/SPD slot. */
     uint8_t area_color; /**< APRS area colour 0..15 (Area symbol only). */
     float area_lat_off; /**< Latitude corner offset in degrees (>=0); quantized to the APRS "yy" code at TX. */
     float area_lon_off; /**< Longitude corner offset in degrees (>=0); quantized to the APRS "xx" code at TX. */
 
     char signpost[OBJITEM_SIGNPOST_MAX + 1]; /**< Up to 3 chars of signpost text; emitted as "{TEXT}" for the Signpost symbol ('\\','m') only. */
 
-    float freq_mhz;       /**< Repeater monitor frequency in MHz; 0 => no frequency block emitted. Emitted as the APRS frequency block ("FFF.FFFMHz Tnnn +/-nnn") at the start of the comment, for the Antenna/repeater symbols. */
+    float freq_mhz; /**< Repeater monitor frequency in MHz; 0 => no frequency block emitted. Emitted as the APRS frequency block ("FFF.FFFMHz Tnnn +/-nnn") at
+                       the start of the comment, for the Antenna/repeater symbols. */
     uint16_t offset_khz;  /**< Duplex shift magnitude in kHz (e.g. 600); used only when @c duplex != 0. */
     int8_t duplex;        /**< Duplex direction: 0 = simplex, +1 = "+", -1 = "-". */
     uint16_t tone_tenths; /**< CTCSS subaudible tone in tenths of Hz (e.g. 1000 = 100.0 Hz); 0 => "Toff". */
 
-    uint8_t path_mask; /**< Digipeat paths: bitmask over the four shared presets g_config.path[0..3]. 0 => transmit direct (no path). When >1 bit is set, proportional pathing is used (one preset per transmission, ascending bit order), and @c decay_x10 is applied after each full cycle. */
+    uint8_t path_mask; /**< Digipeat paths: bitmask over the four shared presets g_config.path[0..3]. 0 => transmit direct (no path). When >1 bit is set,
+                          proportional pathing is used (one preset per transmission, ascending bit order), and @c decay_x10 is applied after each full cycle. */
 
-    char qru[OBJITEM_QRU_MAX + 1]; /**< QRU group-membership tag (e.g. "HOSP", "FUEL"). Stored/persisted; the QRU responder that answers ?QRU? is a separate receive-side feature, not implemented by this transmitter. */
+    char qru[OBJITEM_QRU_MAX + 1]; /**< QRU group-membership tag (e.g. "HOSP", "FUEL"). Stored/persisted; the QRU responder that answers ?QRU? is a separate
+                                      receive-side feature, not implemented by this transmitter. */
 
     uint32_t interval_s; /**< Initial repeat rate in seconds (YAAC "Initial object repeat rate"); 0 = firmware default. */
 
-    uint32_t slow_interval_s; /**< Decay: longest (slow) interval, seconds; 0 or <= @c interval_s => no decay. With decay active, the live interval starts at @c interval_s and is multiplied by (@c decay_x10 / 10) after each proportional-path cycle until it reaches this, then holds. Any edit restarts it at @c interval_s. */
+    uint32_t slow_interval_s; /**< Decay: longest (slow) interval, seconds; 0 or <= @c interval_s => no decay. With decay active, the live interval starts at @c
+                                 interval_s and is multiplied by (@c decay_x10 / 10) after each proportional-path cycle until it reaches this, then holds. Any
+                                 edit restarts it at @c interval_s. */
     uint16_t decay_x10;       /**< Decay ratio x10 (e.g. 20 => 2.0x); < 10 => no decay. */
 
     // -- PHG (Power-Height-Gain-Directivity) radio-coverage, mirroring the "My

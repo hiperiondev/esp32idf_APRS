@@ -56,8 +56,7 @@ esp_err_t page_about_get(httpd_req_t *req) {
              "<p><b>" TR_ABOUT_IDF_VERSION "</b> %s</p>"
              "<p><b>" TR_ABOUT_PARTITION "</b> %s (offset 0x%lx, size %lu)</p>"
              "</fieldset>",
-             fw_project, fw_version, desc->date, desc->time, desc->idf_ver, running->label, (unsigned long)running->address,
-             (unsigned long)running->size);
+             fw_project, fw_version, desc->date, desc->time, desc->idf_ver, running->label, (unsigned long)running->address, (unsigned long)running->size);
     httpd_resp_sendstr_chunk(req, buf);
 
     // ---- OTA Update ----
@@ -80,26 +79,25 @@ esp_err_t page_about_get(httpd_req_t *req) {
     // progress bar while the .bin streams up - a full-size firmware image
     // can take a while over WiFi and a frozen-looking page invites a second
     // click/tab-close mid-flash, which is exactly what must not happen.
-    httpd_resp_sendstr_chunk(
-        req, "<label>" TR_OTA_SELECT_FILE "</label><input type='file' id='otaFile' accept='.bin'>"
-             "<button type='button' id='otaBtn' onclick='otaUpload()'>" TR_OTA_UPLOAD_BTN "</button>"
-             "<progress id='otaProgress' value='0' max='100' style='width:100%;display:none;margin-top:10px'></progress>"
-             "<p id='otaStatus'></p>"
-             "<script>function otaUpload(){"
-             "var f=document.getElementById('otaFile').files[0];"
-             "if(!f){alert('" TR_OTA_NO_FILE_SELECTED "');return;}"
-             "if(!confirm('" TR_OTA_CONFIRM "'))return;"
-             "var btn=document.getElementById('otaBtn');btn.disabled=true;"
-             "var pr=document.getElementById('otaProgress');pr.style.display='block';pr.value=0;"
-             "var st=document.getElementById('otaStatus');st.className='';st.innerHTML='" TR_OTA_UPLOADING "';"
-             "var fd=new FormData();fd.append('firmware',f,f.name);"
-             "var xhr=new XMLHttpRequest();"
-             "xhr.upload.onprogress=function(e){if(e.lengthComputable){pr.value=Math.round(e.loaded*100/e.total);}};"
-             "xhr.onload=function(){document.open();document.write(xhr.responseText);document.close();};"
-             "xhr.onerror=function(){btn.disabled=false;st.className='msg-err';st.innerHTML='" TR_OTA_UPLOAD_FAILED "';};"
-             "xhr.open('POST','/ota_update',true);xhr.send(fd);"
-             "}</script>"
-             "</fieldset>");
+    httpd_resp_sendstr_chunk(req, "<label>" TR_OTA_SELECT_FILE "</label><input type='file' id='otaFile' accept='.bin'>"
+                                  "<button type='button' id='otaBtn' onclick='otaUpload()'>" TR_OTA_UPLOAD_BTN "</button>"
+                                  "<progress id='otaProgress' value='0' max='100' style='width:100%;display:none;margin-top:10px'></progress>"
+                                  "<p id='otaStatus'></p>"
+                                  "<script>function otaUpload(){"
+                                  "var f=document.getElementById('otaFile').files[0];"
+                                  "if(!f){alert('" TR_OTA_NO_FILE_SELECTED "');return;}"
+                                  "if(!confirm('" TR_OTA_CONFIRM "'))return;"
+                                  "var btn=document.getElementById('otaBtn');btn.disabled=true;"
+                                  "var pr=document.getElementById('otaProgress');pr.style.display='block';pr.value=0;"
+                                  "var st=document.getElementById('otaStatus');st.className='';st.innerHTML='" TR_OTA_UPLOADING "';"
+                                  "var fd=new FormData();fd.append('firmware',f,f.name);"
+                                  "var xhr=new XMLHttpRequest();"
+                                  "xhr.upload.onprogress=function(e){if(e.lengthComputable){pr.value=Math.round(e.loaded*100/e.total);}};"
+                                  "xhr.onload=function(){document.open();document.write(xhr.responseText);document.close();};"
+                                  "xhr.onerror=function(){btn.disabled=false;st.className='msg-err';st.innerHTML='" TR_OTA_UPLOAD_FAILED "';};"
+                                  "xhr.open('POST','/ota_update',true);xhr.send(fd);"
+                                  "}</script>"
+                                  "</fieldset>");
 
     web_send_footer(req);
     return ESP_OK;

@@ -134,8 +134,7 @@ esp_err_t page_download(httpd_req_t *req) {
     if (!web_check_auth(req))
         return ESP_OK;
     char query[128], fname[100];
-    if (httpd_req_get_url_query_str(req, query, sizeof(query)) != ESP_OK || !web_form_get(query, "file", fname, sizeof(fname)) ||
-        !safe_flat_filename(fname)) {
+    if (httpd_req_get_url_query_str(req, query, sizeof(query)) != ESP_OK || !web_form_get(query, "file", fname, sizeof(fname)) || !safe_flat_filename(fname)) {
         httpd_resp_send_404(req);
         return ESP_OK;
     }
@@ -167,8 +166,7 @@ esp_err_t page_delete(httpd_req_t *req) {
     if (!web_check_auth(req))
         return ESP_OK;
     char body[160], fname[100];
-    if (web_read_body(req, body, sizeof(body)) >= 0 && web_form_get(body, "file", fname, sizeof(fname)) &&
-        safe_flat_filename(fname)) {
+    if (web_read_body(req, body, sizeof(body)) >= 0 && web_form_get(body, "file", fname, sizeof(fname)) && safe_flat_filename(fname)) {
         char rel[110];
         snprintf(rel, sizeof(rel), "/%s", fname);
         if (!storage_delete(rel))
@@ -199,7 +197,7 @@ esp_err_t page_format(httpd_req_t *req) {
 typedef struct {
     FILE *f;
     const char *raw_name; // -> caller's filename_out buffer; already parsed
-                           // from Content-Disposition by the time cb runs
+                          // from Content-Disposition by the time cb runs
     char sanitized[100];
     bool opened;
     bool error;

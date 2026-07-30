@@ -114,9 +114,9 @@ typedef struct {
     float lon;
     float alt;
     bool sendAltitude;
-    char symbol[3];            // table + code + NUL
+    char symbol[3]; // table + code + NUL
     char comment[COMMENT_SIZE];
-    char pathPreset[4][72];    // snapshot of g_config.path[0..3]
+    char pathPreset[4][72]; // snapshot of g_config.path[0..3]
     // PHG (Power-Height-Gain-Directivity) data extension, only used by the
     // IGate beacon so far (see igateBeaconService()). Not settable for the
     // Tracker/Digipeater beacons, so phgEnable stays false and the field is
@@ -470,10 +470,10 @@ void beacon_start(void) {
     // No task creation here: the tracker/igate/digi beacons are driven by the
     // shared beacon scheduler (beacon_scheduler_start()), which calls
     // beacon_service() above. This just logs the configured state.
-    ESP_LOGI(TAG, "Tracker beacon configured (en=%d rf=%d inet=%d interval=%us)", g_config.trk_en, g_config.trk_loc2rf,
-             g_config.trk_loc2inet, (unsigned)g_config.trk_interval);
-    ESP_LOGI(TAG, "IGate beacon configured (en=%d bcn=%d rf=%d inet=%d interval=%us)", g_config.igate_en, g_config.igate_bcn,
-             g_config.igate_loc2rf, g_config.igate_loc2inet, (unsigned)g_config.igate_interval);
-    ESP_LOGI(TAG, "Digipeater beacon configured (en=%d bcn=%d rf=%d inet=%d interval=%us)", g_config.digi_en, g_config.digi_bcn,
-             g_config.digi_loc2rf, g_config.digi_loc2inet, (unsigned)g_config.digi_interval);
+    ESP_LOGI(TAG, "Tracker beacon configured (en=%d rf=%d inet=%d interval=%us)", g_config.trk_en, g_config.trk_loc2rf, g_config.trk_loc2inet,
+             (unsigned)g_config.trk_interval);
+    ESP_LOGI(TAG, "IGate beacon configured (en=%d bcn=%d rf=%d inet=%d interval=%us)", g_config.igate_en, g_config.igate_bcn, g_config.igate_loc2rf,
+             g_config.igate_loc2inet, (unsigned)g_config.igate_interval);
+    ESP_LOGI(TAG, "Digipeater beacon configured (en=%d bcn=%d rf=%d inet=%d interval=%us)", g_config.digi_en, g_config.digi_bcn, g_config.digi_loc2rf,
+             g_config.digi_loc2inet, (unsigned)g_config.digi_interval);
 }

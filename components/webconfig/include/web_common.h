@@ -72,10 +72,13 @@ int web_read_body(httpd_req_t *req, char *buf, size_t buf_size);
  * fields are added, bump the matching constant here.
  * @{
  */
-#define WEBCONFIG_POST_BUF_MOD    3000 /**< page_mod.c - RF/I2C/UART/PPP/power peripheral form. */
-#define WEBCONFIG_POST_BUF_TLM    9000 /**< page_tlm.c - telemetry form (Beacon + Report Parameters + Definition Messages + 5 analog channels + 8 digital bits). */
+#define WEBCONFIG_POST_BUF_MOD 3000 /**< page_mod.c - RF/I2C/UART/PPP/power peripheral form. */
+#define WEBCONFIG_POST_BUF_TLM 9000 /**< page_tlm.c - telemetry form (Beacon + Report Parameters + Definition Messages + 5 analog channels + 8 digital bits).  \
+                                     */
 #define WEBCONFIG_POST_BUF_BULLETINS 2600 /**< page_bulletins.c - 5 bulletins x (3 checkboxes + up to 67-char msg + expire). */
-#define WEBCONFIG_POST_BUF_OBJITEMS  6000 /**< page_objects.c - 5 objects/items x (checkboxes + name/type/active/scope + lat/lon + symbol + course/speed + comment + area + signpost + freq/duplex/offset/tone + 4 path checkboxes + QRU + intervals + decay). */
+#define WEBCONFIG_POST_BUF_OBJITEMS                                                                                                                            \
+    6000 /**< page_objects.c - 5 objects/items x (checkboxes + name/type/active/scope + lat/lon + symbol + course/speed + comment + area + signpost +          \
+            freq/duplex/offset/tone + 4 path checkboxes + QRU + intervals + decay). */
 /** @} */
 
 /**
@@ -282,19 +285,23 @@ esp_err_t web_handle_css(httpd_req_t *req);
 void web_fieldset_open(httpd_req_t *req, const char *legend);
 /** @brief Close the fieldset opened by web_fieldset_open(). @param req Request. */
 void web_fieldset_close(httpd_req_t *req);
-/** @brief Render a labelled single-line text input. @param req Request. @param label Field label. @param name Form field name. @param value Current value. @param maxlen HTML maxlength. */
+/** @brief Render a labelled single-line text input. @param req Request. @param label Field label. @param name Form field name. @param value Current value.
+ * @param maxlen HTML maxlength. */
 void web_field_text(httpd_req_t *req, const char *label, const char *name, const char *value, int maxlen);
-/** @brief Render a labelled password input (with a show/hide toggle). @param req Request. @param label Field label. @param name Form field name. @param value Current value. @param maxlen HTML maxlength. */
+/** @brief Render a labelled password input (with a show/hide toggle). @param req Request. @param label Field label. @param name Form field name. @param value
+ * Current value. @param maxlen HTML maxlength. */
 void web_field_password(httpd_req_t *req, const char *label, const char *name, const char *value, int maxlen);
 /** @brief Render a labelled integer input. @param req Request. @param label Field label. @param name Form field name. @param value Current value. */
 void web_field_int(httpd_req_t *req, const char *label, const char *name, long value);
-/** @brief Render a labelled floating-point input. @param req Request. @param label Field label. @param name Form field name. @param value Current value. @param step HTML step attribute (e.g. "0.01"). */
+/** @brief Render a labelled floating-point input. @param req Request. @param label Field label. @param name Form field name. @param value Current value. @param
+ * step HTML step attribute (e.g. "0.01"). */
 void web_field_float(httpd_req_t *req, const char *label, const char *name, float value, const char *step);
 /** @brief Render a labelled checkbox. @param req Request. @param label Field label. @param name Form field name. @param checked Initial checked state. */
 void web_field_checkbox(httpd_req_t *req, const char *label, const char *name, bool checked);
 /** @brief Open a labelled @c <select>. @param req Request. @param label Field label. @param name Form field name. */
 void web_select_open(httpd_req_t *req, const char *label, const char *name);
-/** @brief Emit one @c <option> inside an open @c <select>. @param req Request. @param value Option value. @param label Option text. @param selected Whether this option is currently selected. */
+/** @brief Emit one @c <option> inside an open @c <select>. @param req Request. @param value Option value. @param label Option text. @param selected Whether
+ * this option is currently selected. */
 void web_select_option(httpd_req_t *req, int value, const char *label, bool selected);
 /**
  * @brief Emit one @c <option>, additionally letting the caller mark it
@@ -421,8 +428,8 @@ void web_field_symbol(httpd_req_t *req, const char *label, const char *name_pref
  * @param lon_name      @c name of the page's longitude input (or NULL).
  * @param alt_name      @c name of the page's altitude input (or NULL).
  */
-void web_field_use_station_data(httpd_req_t *req, const char *checkbox_name, bool checked, const char *call_name, const char *lat_name,
-                                 const char *lon_name, const char *alt_name);
+void web_field_use_station_data(httpd_req_t *req, const char *checkbox_name, bool checked, const char *call_name, const char *lat_name, const char *lon_name,
+                                const char *alt_name);
 
 /**
  * @brief Parse the POST body produced by web_field_symbol() back into a 2-char

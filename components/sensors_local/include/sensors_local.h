@@ -54,8 +54,8 @@
 #include <stdint.h>
 
 #include "esp_err.h"
-#include "weather_telemetry.h"
 #include "sensor_local_properties.h"
+#include "weather_telemetry.h"
 
 /**
  * @brief Which payload family a driver is being asked to populate on a given
@@ -70,9 +70,9 @@
  *       registry by testing @c driver->capabilities @c & @c SENSOR_LOCAL_DATA_xxx.
  */
 typedef enum {
-    SENSOR_LOCAL_DATA_NONE = 0,                    /**< No payload (used as an "unsupported" sentinel). Not a valid value for a registered driver's capabilities. */
-    SENSOR_LOCAL_DATA_WEATHER = 1u << 0,           /**< Populate the Weather Report slot(s) of the container. */
-    SENSOR_LOCAL_DATA_TELEMETRY = 1u << 1,         /**< Populate the Telemetry Report slot(s) of the container. */
+    SENSOR_LOCAL_DATA_NONE = 0,            /**< No payload (used as an "unsupported" sentinel). Not a valid value for a registered driver's capabilities. */
+    SENSOR_LOCAL_DATA_WEATHER = 1u << 0,   /**< Populate the Weather Report slot(s) of the container. */
+    SENSOR_LOCAL_DATA_TELEMETRY = 1u << 1, /**< Populate the Telemetry Report slot(s) of the container. */
     SENSOR_LOCAL_DATA_ALL = (1u << 0) | (1u << 1), /**< Convenience: every kind currently defined. Update this when a new kind is added above. */
 } sensor_local_data_kind_t;
 
@@ -132,13 +132,13 @@ typedef void (*sensor_local_deinit_fn_t)(sensor_local_driver_t *self);
 struct sensor_local_driver {
     const char *name;      /**< Stable, unique, human-readable id (e.g. "bme280", "ads1115-batt"). */
     uint32_t capabilities; /**< REQUIRED, must be non-zero: OR of ::sensor_local_data_kind_t bits this
-                             *   driver can produce (e.g. ::SENSOR_LOCAL_DATA_WEATHER,
-                             *   ::SENSOR_LOCAL_DATA_TELEMETRY, or both). Every driver must declare at
-                             *   least one kind at registration time so consumers (like the Weather
-                             *   page's channel picker) can tell weather sensors apart from telemetry
-                             *   (or any future kind) instead of listing every registered sensor
-                             *   regardless of type. ::sensors_local_register rejects drivers that leave
-                             *   this at ::SENSOR_LOCAL_DATA_NONE. */
+                            *   driver can produce (e.g. ::SENSOR_LOCAL_DATA_WEATHER,
+                            *   ::SENSOR_LOCAL_DATA_TELEMETRY, or both). Every driver must declare at
+                            *   least one kind at registration time so consumers (like the Weather
+                            *   page's channel picker) can tell weather sensors apart from telemetry
+                            *   (or any future kind) instead of listing every registered sensor
+                            *   regardless of type. ::sensors_local_register rejects drivers that leave
+                            *   this at ::SENSOR_LOCAL_DATA_NONE. */
 
     sensor_local_init_fn_t init;     /**< Optional bring-up (may be NULL). */
     sensor_local_save_fn_t save;     /**< REQUIRED common entry that fills ::weather_telemetry_data_t. */
@@ -261,7 +261,6 @@ void sensors_local_deinit(void);
  *         returned otherwise.
  */
 esp_err_t sensors_local_save_one(size_t index, weather_telemetry_data_t *data, sensor_local_data_kind_t kind);
-
 
 /**
  * @brief Auto-register a statically defined driver descriptor at program

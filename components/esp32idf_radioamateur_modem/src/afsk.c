@@ -43,7 +43,6 @@
  * IRAM-safe. gpio_set_level() from driver/gpio.h lives in flash, so it must
  * never be called from setPtt()/LED_Status2(), which run in the DAC ISR while
  * the flash cache can be disabled by a concurrent flash read. */
-#include "hal/gpio_ll.h"
 #include "esp_adc/adc_cali.h"
 #include "esp_adc/adc_cali_scheme.h"
 #include "esp_adc/adc_continuous.h"
@@ -53,12 +52,13 @@
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "hal/gpio_ll.h"
 #include "sdkconfig.h"
 #include "soc/soc_caps.h"
 
-#include "esp32idf_radioamateur_modem_config.h"
 #include "afsk.h"
 #include "ax25.h"
+#include "esp32idf_radioamateur_modem_config.h"
 #include "modem.h"
 
 #ifdef ENABLE_FX25
@@ -153,8 +153,8 @@ static volatile bool s_fullDuplex = true;
 static bool s_dacTimerRunning = false;
 static bool s_inited = false;
 
-static volatile uint32_t s_adcSamples = 0;  /* total samples produced by the ADC */
-static float s_dacAlarmRateHz = 0.0f;       /* rate the alarm really fires at */
+static volatile uint32_t s_adcSamples = 0; /* total samples produced by the ADC */
+static float s_dacAlarmRateHz = 0.0f;      /* rate the alarm really fires at */
 
 /* diagnostic capture tap (raw ADC samples, still used by main/aprs_service.c) */
 static int16_t *volatile s_capRaw = NULL;

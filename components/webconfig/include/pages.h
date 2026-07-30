@@ -48,13 +48,16 @@
 esp_err_t page_root(httpd_req_t *req);
 /** @brief GET  /logout - clear HTTP auth and show the "logged out" page. @param req Incoming request. @return ESP_OK or an esp_err_t error. */
 esp_err_t page_logout(httpd_req_t *req);
-/** @brief GET  /dashboard - main status dashboard (live panels are filled by the JSON pollers below). @param req Incoming request. @return ESP_OK or an esp_err_t error. */
+/** @brief GET  /dashboard - main status dashboard (live panels are filled by the JSON pollers below). @param req Incoming request. @return ESP_OK or an
+ * esp_err_t error. */
 esp_err_t page_dashboard(httpd_req_t *req);
-/** @brief GET  /station - "My Station" form (callsign + lat/lon/alt shared by every page's "Use My Station Data"). @param req Incoming request. @return ESP_OK or an esp_err_t error. */
+/** @brief GET  /station - "My Station" form (callsign + lat/lon/alt shared by every page's "Use My Station Data"). @param req Incoming request. @return ESP_OK
+ * or an esp_err_t error. */
 esp_err_t page_station_get(httpd_req_t *req);
 /** @brief POST /station - persist the "My Station" identity/position. @param req Incoming request. @return ESP_OK or an esp_err_t error. */
 esp_err_t page_station_post(httpd_req_t *req);
-/** @brief GET  /bulletins - APRS bulletin editor (BLN1..BLN5, stored in LittleFS, not g_config). @param req Incoming request. @return ESP_OK or an esp_err_t error. */
+/** @brief GET  /bulletins - APRS bulletin editor (BLN1..BLN5, stored in LittleFS, not g_config). @param req Incoming request. @return ESP_OK or an esp_err_t
+ * error. */
 esp_err_t page_bulletins_get(httpd_req_t *req);
 /** @brief POST /bulletins - persist the bulletin set and (re)arm expiry. @param req Incoming request. @return ESP_OK or an esp_err_t error. */
 esp_err_t page_bulletins_post(httpd_req_t *req);
@@ -64,7 +67,8 @@ esp_err_t page_objects_get(httpd_req_t *req);
 esp_err_t page_objects_post(httpd_req_t *req);
 /** @brief GET  /sidebarInfo - JSON summary strip shown in the sidebar. @param req Incoming request. @return ESP_OK or an esp_err_t error. */
 esp_err_t page_sidebar_info(httpd_req_t *req);
-/** @brief GET  /igate_traffic?since=<seq> - JSON incremental traffic-log feed for the dashboard. @param req Incoming request. @return ESP_OK or an esp_err_t error. */
+/** @brief GET  /igate_traffic?since=<seq> - JSON incremental traffic-log feed for the dashboard. @param req Incoming request. @return ESP_OK or an esp_err_t
+ * error. */
 esp_err_t page_igate_traffic(httpd_req_t *req);
 /** @brief GET  /lastheard - JSON feed backing the dashboard LAST HEARD table. @param req Incoming request. @return ESP_OK or an esp_err_t error. */
 esp_err_t page_lastheard(httpd_req_t *req);
@@ -78,7 +82,8 @@ esp_err_t page_storage_get(httpd_req_t *req);
 esp_err_t page_download(httpd_req_t *req);
 /** @brief GET/POST /delete?file=... - delete one stored file. @param req Incoming request. @return ESP_OK or an esp_err_t error. */
 esp_err_t page_delete(httpd_req_t *req);
-/** @brief GET/POST /format - erase and reformat the LittleFS partition ("factory format"). @param req Incoming request. @return ESP_OK or an esp_err_t error. */
+/** @brief GET/POST /format - erase and reformat the LittleFS partition ("factory format"). @param req Incoming request. @return ESP_OK or an esp_err_t error.
+ */
 esp_err_t page_format(httpd_req_t *req);
 /** @brief POST /upload - multipart file upload into LittleFS. @param req Incoming request. @return ESP_OK or an esp_err_t error. */
 esp_err_t page_upload(httpd_req_t *req);
@@ -88,13 +93,16 @@ esp_err_t page_wireless_get(httpd_req_t *req);
 esp_err_t page_wireless_post(httpd_req_t *req);
 /** @brief GET  /wifiscan - JSON list of nearby access points (SSID/RSSI/auth). @param req Incoming request. @return ESP_OK or an esp_err_t error. */
 esp_err_t page_wifi_scan_get(httpd_req_t *req);
-/** @brief GET  /system - System settings (time sync, CPU frequency, HTTP auth, hostname, logging). @param req Incoming request. @return ESP_OK or an esp_err_t error. */
+/** @brief GET  /system - System settings (time sync, CPU frequency, HTTP auth, hostname, logging). @param req Incoming request. @return ESP_OK or an esp_err_t
+ * error. */
 esp_err_t page_system_get(httpd_req_t *req);
-/** @brief POST /system - persist System settings and apply the ones that take effect live. @param req Incoming request. @return ESP_OK or an esp_err_t error. */
+/** @brief POST /system - persist System settings and apply the ones that take effect live. @param req Incoming request. @return ESP_OK or an esp_err_t error.
+ */
 esp_err_t page_system_post(httpd_req_t *req);
 /** @brief GET  /about - firmware/build info and the OTA update form. @param req Incoming request. @return ESP_OK or an esp_err_t error. */
 esp_err_t page_about_get(httpd_req_t *req);
-/** @brief POST /ota_update - multipart firmware upload written to the inactive OTA slot, then reboot. @param req Incoming request. @return ESP_OK or an esp_err_t error. */
+/** @brief POST /ota_update - multipart firmware upload written to the inactive OTA slot, then reboot. @param req Incoming request. @return ESP_OK or an
+ * esp_err_t error. */
 esp_err_t page_ota_update_post(httpd_req_t *req);
 /** @brief GET/POST /default - factory reset (wipe config back to defaults and reboot). @param req Incoming request. @return ESP_OK or an esp_err_t error. */
 esp_err_t page_default_reset(httpd_req_t *req);
@@ -140,7 +148,8 @@ esp_err_t page_tlm_values_get(httpd_req_t *req);
 
 /** @brief GET  /radio - Radiomodem (audio AFSK modem) settings form. @param req Incoming request. @return ESP_OK or an esp_err_t error. */
 esp_err_t page_radio_get(httpd_req_t *req);
-/** @brief POST /radio - persist Radiomodem settings and re-apply them to the running modem. @param req Incoming request. @return ESP_OK or an esp_err_t error. */
+/** @brief POST /radio - persist Radiomodem settings and re-apply them to the running modem. @param req Incoming request. @return ESP_OK or an esp_err_t error.
+ */
 esp_err_t page_radio_post(httpd_req_t *req);
 /** @brief GET  /radio/looptest - JSON result of the ADC->DAC modem loopback self-test. @param req Incoming request. @return ESP_OK or an esp_err_t error. */
 esp_err_t page_radio_looptest_get(httpd_req_t *req);

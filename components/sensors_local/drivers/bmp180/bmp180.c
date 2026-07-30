@@ -30,18 +30,18 @@
 
 #include <string.h>
 
-#include "esp_log.h"
 #include "esp_err.h"
+#include "esp_log.h"
 
 /* Angle brackets on purpose: skip the including file's own directory so the
  * esp-idf-lib "bmp180.h" is picked from the managed component and never clashes
  * with our sibling "BMP180.h" on a case-insensitive host filesystem. */
-#include <bmp180.h>   /* esp-idf-lib managed component driver (lower-case) */
-#include <i2cdev.h>   /* esp-idf-lib i2cdev, required once before init_desc */
+#include <bmp180.h> /* esp-idf-lib managed component driver (lower-case) */
+#include <i2cdev.h> /* esp-idf-lib i2cdev, required once before init_desc */
 
+#include "BMP180.h"            /* our compile-time pin/port config (upper-case)      */
+#include "bmp180_properties.h" /* fine-grained Weather field capability descriptor   */
 #include "sensors_local.h"
-#include "BMP180.h"             /* our compile-time pin/port config (upper-case)      */
-#include "bmp180_properties.h"  /* fine-grained Weather field capability descriptor   */
 
 #ifdef CONFIG_SENSORS_LOCAL_BMP180_DRIVER
 
@@ -91,8 +91,8 @@ static esp_err_t bmp180_drv_save(sensor_local_driver_t *self, weather_telemetry_
     if (!(kind & SENSOR_LOCAL_DATA_WEATHER) || data->weather == NULL || data->weather_qty < 1)
         return ESP_OK;
 
-    float temperature_c = 0.0f;   // degrees Celsius
-    uint32_t pressure_pa = 0;     // pascals
+    float temperature_c = 0.0f; // degrees Celsius
+    uint32_t pressure_pa = 0;   // pascals
 
     esp_err_t err = bmp180_measure(&c->dev, &temperature_c, &pressure_pa, (bmp180_mode_t)BMP180_OVERSAMPLING_MODE);
     if (err != ESP_OK) {

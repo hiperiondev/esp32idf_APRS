@@ -114,13 +114,27 @@ static void write_json_string(FILE *f, const char *v) {
         for (const unsigned char *p = (const unsigned char *)v; *p; p++) {
             unsigned char ch = *p;
             switch (ch) {
-                case '"':  fputs("\\\"", f); break;
-                case '\\': fputs("\\\\", f); break;
-                case '\b': fputs("\\b", f); break;
-                case '\f': fputs("\\f", f); break;
-                case '\n': fputs("\\n", f); break;
-                case '\r': fputs("\\r", f); break;
-                case '\t': fputs("\\t", f); break;
+                case '"':
+                    fputs("\\\"", f);
+                    break;
+                case '\\':
+                    fputs("\\\\", f);
+                    break;
+                case '\b':
+                    fputs("\\b", f);
+                    break;
+                case '\f':
+                    fputs("\\f", f);
+                    break;
+                case '\n':
+                    fputs("\\n", f);
+                    break;
+                case '\r':
+                    fputs("\\r", f);
+                    break;
+                case '\t':
+                    fputs("\\t", f);
+                    break;
                 default:
                     if (ch < 0x20)
                         fprintf(f, "\\u%04x", ch);

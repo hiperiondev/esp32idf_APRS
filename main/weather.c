@@ -58,7 +58,7 @@ static const char *TAG = "weather";
  * ------------------------------------------------------------------------- */
 weather_telemetry_data_t weather_telemetry_data;
 
-static aprs_weather_report_t s_wx;   // backs weather_telemetry_data.weather[0]
+static aprs_weather_report_t s_wx;    // backs weather_telemetry_data.weather[0]
 static aprs_telemetry_report_t s_tlm; // backs weather_telemetry_data.telemetry_report[0]
 static bool s_tlm_analog_en[APRS_TELEMETRY_ANALOG_CHANNELS];
 static double s_tlm_analog[APRS_TELEMETRY_ANALOG_CHANNELS];
@@ -203,8 +203,8 @@ static void weather_refresh_now(void) {
 
         // Scratch container so one driver's save() can't clobber fields
         // already resolved from a *different* driver earlier in this loop.
-        aprs_weather_report_t scratch = {0};
-        weather_telemetry_data_t scratch_data = {0};
+        aprs_weather_report_t scratch = { 0 };
+        weather_telemetry_data_t scratch_data = { 0 };
         scratch_data.weather = &scratch;
         scratch_data.weather_qty = 1;
 

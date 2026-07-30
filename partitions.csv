@@ -11,12 +11,6 @@
 # next partition's offset off the required boundary and gen_esp32part.py
 # rejects the table (as it should).
 #
-# NOTE: this replaces the old single "factory" partition. Devices already
-# in the field running the old table must be reflashed once over USB/UART
-# (idf.py -p PORT flash, or a full-image .bin) to pick up this table; after
-# that one-time migration, all further updates can be done from the web
-# admin About / Firmware page.
-#
 # Name,     Type, SubType,  Offset,   Size,  Flags
 nvs,        data, nvs,      0x9000,   0x6000,
 otadata,    data, ota,      0xf000,   0x2000,

@@ -28,8 +28,8 @@
 #include <stdbool.h>
 #include <stddef.h>
 
-#define STORAGE_BASE_PATH       "/storage"       /**< VFS mount point for the LittleFS storage partition. */
-#define STORAGE_PARTITION_LABEL "storage"        /**< Partition-table label of the LittleFS storage partition. */
+#define STORAGE_BASE_PATH       "/storage" /**< VFS mount point for the LittleFS storage partition. */
+#define STORAGE_PARTITION_LABEL "storage"  /**< Partition-table label of the LittleFS storage partition. */
 
 /**
  * @brief Mount LittleFS at ::STORAGE_BASE_PATH, formatting automatically on

@@ -642,8 +642,7 @@ float aprs_filter_haversine_km(float lat1, float lon1, float lat2, float lon2) {
 
     float dLat = (lat2 - lat1) * DEG2RAD;
     float dLon = (lon2 - lon1) * DEG2RAD;
-    float a = sinf(dLat / 2.0f) * sinf(dLat / 2.0f) +
-              cosf(lat1 * DEG2RAD) * cosf(lat2 * DEG2RAD) * sinf(dLon / 2.0f) * sinf(dLon / 2.0f);
+    float a = sinf(dLat / 2.0f) * sinf(dLat / 2.0f) + cosf(lat1 * DEG2RAD) * cosf(lat2 * DEG2RAD) * sinf(dLon / 2.0f) * sinf(dLon / 2.0f);
     float c = 2.0f * atan2f(sqrtf(a), sqrtf(1.0f - a));
     return EARTH_RADIUS_KM * c;
 }

@@ -84,12 +84,9 @@ esp_err_t page_system_get(httpd_req_t *req) {
              "<button type='submit'>" TR_BTN_SAVE "</button></form>"
              "<form method='POST' action='/default' onsubmit=\"return confirm('" TR_SYS_CONFIRM_FACTORY_RESET "');\">"
              "<button class='danger' type='submit'>" TR_SYS_FACTORY_RESET "</button></form>",
-             (int)chip.model, (int)chip.cores, (int)chip.revision, (unsigned long)cpu_mhz,
-             g_config.cpuFreq == 80 ? "selected" : "", g_config.cpuFreq == 160 ? "selected" : "", g_config.cpuFreq == 240 ? "selected" : "",
-             (unsigned long)flash_size,
-             esc_user, esc_pass, esc_host, g_config.timeZone, g_config.synctime ? "checked" : "",
-             esc_ntp0, esc_ntp1, esc_ntp2, g_config.ntp_resync_sec,
-             g_config.reset_timeout);
+             (int)chip.model, (int)chip.cores, (int)chip.revision, (unsigned long)cpu_mhz, g_config.cpuFreq == 80 ? "selected" : "",
+             g_config.cpuFreq == 160 ? "selected" : "", g_config.cpuFreq == 240 ? "selected" : "", (unsigned long)flash_size, esc_user, esc_pass, esc_host,
+             g_config.timeZone, g_config.synctime ? "checked" : "", esc_ntp0, esc_ntp1, esc_ntp2, g_config.ntp_resync_sec, g_config.reset_timeout);
     httpd_resp_sendstr_chunk(req, buf);
     web_send_footer(req);
     return ESP_OK;

@@ -312,9 +312,8 @@ esp_err_t page_wx_get(httpd_req_t *req) {
     web_fieldset_close(req);
 
     web_fieldset_open(req, TR_F_SENSOR_MAPPING_ENABLE_AVERAGED_SOURCE_CHANNEL);
-    httpd_resp_sendstr_chunk(req,
-                              "<table><tr><th>" TR_WX_FIELD "</th><th>" TR_F_ENABLE "</th><th>" TR_TLM_AVG "</th><th>" TR_WX_CHANNEL "</th><th>" TR_WX_VALUE
-                              "</th></tr>");
+    httpd_resp_sendstr_chunk(req, "<table><tr><th>" TR_WX_FIELD "</th><th>" TR_F_ENABLE "</th><th>" TR_TLM_AVG "</th><th>" TR_WX_CHANNEL "</th><th>" TR_WX_VALUE
+                                  "</th></tr>");
     for (int i = 0; i < WX_SENSOR_NUM; i++) {
         if (i == WX_FIELD_FLOOD_HEIGHT_FT)
             continue; /* Value column is SI-only (meters); the feet slot stays configurable

@@ -89,14 +89,14 @@ static esp_err_t wx_example_save(sensor_local_driver_t *self, weather_telemetry_
     aprs_weather_report_t *wx = &data->weather[0];
 
     // --- "Measured" values in SI units ---
-    uint16_t wind_direction_deg = (uint16_t)rnd(0, 359);        // degrees, SI-compatible angular unit
-    float wind_sustained_ms = (float)rnd(0, 112) / 10.0f;       // 0.0-11.2 m/s (~0-25 mph)
+    uint16_t wind_direction_deg = (uint16_t)rnd(0, 359);                // degrees, SI-compatible angular unit
+    float wind_sustained_ms = (float)rnd(0, 112) / 10.0f;               // 0.0-11.2 m/s (~0-25 mph)
     float wind_gust_ms = wind_sustained_ms + (float)rnd(0, 67) / 10.0f; // + up to 6.7 m/s gust
-    float temperature_c = (float)rnd(-230, 405) / 10.0f;        // -23.0..+40.5 degC (~-10..+105 degF)
-    uint8_t humidity_pct = (uint8_t)rnd(1, 100);                // percent, dimensionless, no conversion needed
-    float pressure_hpa = (float)rnd(9500, 10500) / 10.0f;       // 950.0-1050.0 hPa (hPa numerically == mb)
-    float rain_last_hour_mm = (float)rnd(0, 127) / 10.0f;       // 0.0-12.7 mm (~0-50 hundredths of an inch)
-    uint16_t luminosity_wm2 = (uint16_t)rnd(0, 1200);           // W/m^2 - already SI, on-air unit matches
+    float temperature_c = (float)rnd(-230, 405) / 10.0f;                // -23.0..+40.5 degC (~-10..+105 degF)
+    uint8_t humidity_pct = (uint8_t)rnd(1, 100);                        // percent, dimensionless, no conversion needed
+    float pressure_hpa = (float)rnd(9500, 10500) / 10.0f;               // 950.0-1050.0 hPa (hPa numerically == mb)
+    float rain_last_hour_mm = (float)rnd(0, 127) / 10.0f;               // 0.0-12.7 mm (~0-50 hundredths of an inch)
+    uint16_t luminosity_wm2 = (uint16_t)rnd(0, 1200);                   // W/m^2 - already SI, on-air unit matches
 
     // --- Convert to APRS101/WX.TXT on-air units at the boundary ---
 
@@ -129,8 +129,8 @@ static esp_err_t wx_example_save(sensor_local_driver_t *self, weather_telemetry_
     wx->luminosity_wm2 = luminosity_wm2;
     wx->enabled[APRS_WX_SENSOR_LUMINOSITY] = true;
 
-    ESP_LOGD(TAG, "wx-example (SI): wind %u deg %.1f m/s (gust %.1f m/s), %.1f degC, %u%%RH, %.1f hPa, %.1f mm/1h, %u W/m^2",
-             wind_direction_deg, wind_sustained_ms, wind_gust_ms, temperature_c, humidity_pct, pressure_hpa, rain_last_hour_mm, luminosity_wm2);
+    ESP_LOGD(TAG, "wx-example (SI): wind %u deg %.1f m/s (gust %.1f m/s), %.1f degC, %u%%RH, %.1f hPa, %.1f mm/1h, %u W/m^2", wind_direction_deg,
+             wind_sustained_ms, wind_gust_ms, temperature_c, humidity_pct, pressure_hpa, rain_last_hour_mm, luminosity_wm2);
 
     return ESP_OK;
 }

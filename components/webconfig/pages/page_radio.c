@@ -31,9 +31,9 @@
 // *uses* the macro has to bring the enum in itself.
 #include "hal/adc_types.h"
 
+#include "afsk.h"
 #include "esp32idf_radioamateur_modem.h"
 #include "esp32idf_radioamateur_modem_config.h"
-#include "afsk.h"
 #include "pages.h"
 #include "translations.h"
 #include "web_common.h"
@@ -99,12 +99,9 @@ esp_err_t page_radio_get(httpd_req_t *req) {
             snprintf(ptt_pin_buf, sizeof(ptt_pin_buf), "%s", TR_DISABLED);
 
         char buf[900];
-        snprintf(buf, sizeof(buf),
-                 "<p style='opacity:.75'><b>" TR_RADIO_AUDIO_HW_TITLE "</b>: "
-                 TR_RADIO_AUDIO_HW_INFO
-                 TR_RADIO_AUDIO_HW_NOTE "</p>",
-                 MODEM_DAC_GPIO, MODEM_ADC_GPIO, ptt_pin_buf, MODEM_PTT_ACTIVE_HIGH ? TR_ENABLED : TR_F_OFF,
-                 (int)MODEM_ADC_ATTEN, MODEM_ADC_SAMPLERATE, MODEM_DAC_SAMPLERATE);
+        snprintf(buf, sizeof(buf), "<p style='opacity:.75'><b>" TR_RADIO_AUDIO_HW_TITLE "</b>: " TR_RADIO_AUDIO_HW_INFO TR_RADIO_AUDIO_HW_NOTE "</p>",
+                 MODEM_DAC_GPIO, MODEM_ADC_GPIO, ptt_pin_buf, MODEM_PTT_ACTIVE_HIGH ? TR_ENABLED : TR_F_OFF, (int)MODEM_ADC_ATTEN, MODEM_ADC_SAMPLERATE,
+                 MODEM_DAC_SAMPLERATE);
         httpd_resp_sendstr_chunk(req, buf);
     }
     web_field_checkbox(req, TR_F_AUDIO_LOW_PASS_FILTER, "audioLPF", g_config.audio_lpf);

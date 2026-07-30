@@ -22,7 +22,7 @@
 
 #define RS_MAX_REDUNDANCY_BYTES 64 /**< Maximum number of parity (redundancy) bytes. */
 
-#define RS_BLOCK_SIZE    255 /**< Natural full Reed-Solomon block size, in bytes (N). */
+#define RS_BLOCK_SIZE    255                                       /**< Natural full Reed-Solomon block size, in bytes (N). */
 #define RS_MAX_DATA_SIZE (RS_BLOCK_SIZE - RS_MAX_REDUNDANCY_BYTES) /**< Maximum data payload size, in bytes (K), at maximum parity. */
 
 /**

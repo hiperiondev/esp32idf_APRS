@@ -87,8 +87,7 @@ esp_err_t page_wireless_get(httpd_req_t *req) {
                  "<label class='pwd-show'><input type='checkbox' onclick=\"togglePwd('pwd_staPass%d',this)\"> " TR_SHOW_PASSWORD "</label>"
                  "</fieldset>",
                  i, /* legend #%d */
-                 i, g_config.wifi_sta[i].enable ? "checked" : "", i, i, esc_sta_ssid, i, i,
-                 esc_sta_pass, i);
+                 i, g_config.wifi_sta[i].enable ? "checked" : "", i, i, esc_sta_ssid, i, i, esc_sta_pass, i);
         httpd_resp_sendstr_chunk(req, sec);
     }
 

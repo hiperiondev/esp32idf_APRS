@@ -78,22 +78,22 @@
  *       without an extra lookup table.
  */
 typedef enum {
-    SENSOR_LOCAL_WX_WIND_DIRECTION = 1u << 0,  /**< Wind Direction ("ddd/"). */
-    SENSOR_LOCAL_WX_WIND_SPEED = 1u << 1,      /**< Wind Speed, sustained ("/sss"). */
-    SENSOR_LOCAL_WX_WIND_GUST = 1u << 2,       /**< Wind Gust, peak ("gXXX"). */
-    SENSOR_LOCAL_WX_TEMPERATURE = 1u << 3,     /**< Temperature, deg F ("tXXX"). */
-    SENSOR_LOCAL_WX_RAIN_1H = 1u << 4,         /**< Rain, last 1 hour ("rXXX"). */
-    SENSOR_LOCAL_WX_RAIN_24H = 1u << 5,        /**< Rain, last 24 hours ("pXXX"). */
-    SENSOR_LOCAL_WX_RAIN_MIDNIGHT = 1u << 6,   /**< Rain since local midnight ("PXXX"). */
-    SENSOR_LOCAL_WX_SNOW = 1u << 7,            /**< Snow, last 24 hours ("sXXX", APRS 1.2). */
-    SENSOR_LOCAL_WX_HUMIDITY = 1u << 8,        /**< Relative Humidity ("hXX"). */
-    SENSOR_LOCAL_WX_PRESSURE = 1u << 9,        /**< Barometric Pressure ("bXXXXX"). */
-    SENSOR_LOCAL_WX_LUMINOSITY = 1u << 10,     /**< Luminosity, solar radiation ("LXXX"/"lXXX", APRS 1.2). */
-    SENSOR_LOCAL_WX_FLOOD_HEIGHT_FT = 1u << 11,/**< Flood/water gauge height, feet ("FXXXX.X", APRS 1.2). */
-    SENSOR_LOCAL_WX_FLOOD_HEIGHT_M = 1u << 12, /**< Flood/water gauge height, meters ("fXXXX.X", APRS 1.2). */
+    SENSOR_LOCAL_WX_WIND_DIRECTION = 1u << 0,   /**< Wind Direction ("ddd/"). */
+    SENSOR_LOCAL_WX_WIND_SPEED = 1u << 1,       /**< Wind Speed, sustained ("/sss"). */
+    SENSOR_LOCAL_WX_WIND_GUST = 1u << 2,        /**< Wind Gust, peak ("gXXX"). */
+    SENSOR_LOCAL_WX_TEMPERATURE = 1u << 3,      /**< Temperature, deg F ("tXXX"). */
+    SENSOR_LOCAL_WX_RAIN_1H = 1u << 4,          /**< Rain, last 1 hour ("rXXX"). */
+    SENSOR_LOCAL_WX_RAIN_24H = 1u << 5,         /**< Rain, last 24 hours ("pXXX"). */
+    SENSOR_LOCAL_WX_RAIN_MIDNIGHT = 1u << 6,    /**< Rain since local midnight ("PXXX"). */
+    SENSOR_LOCAL_WX_SNOW = 1u << 7,             /**< Snow, last 24 hours ("sXXX", APRS 1.2). */
+    SENSOR_LOCAL_WX_HUMIDITY = 1u << 8,         /**< Relative Humidity ("hXX"). */
+    SENSOR_LOCAL_WX_PRESSURE = 1u << 9,         /**< Barometric Pressure ("bXXXXX"). */
+    SENSOR_LOCAL_WX_LUMINOSITY = 1u << 10,      /**< Luminosity, solar radiation ("LXXX"/"lXXX", APRS 1.2). */
+    SENSOR_LOCAL_WX_FLOOD_HEIGHT_FT = 1u << 11, /**< Flood/water gauge height, feet ("FXXXX.X", APRS 1.2). */
+    SENSOR_LOCAL_WX_FLOOD_HEIGHT_M = 1u << 12,  /**< Flood/water gauge height, meters ("fXXXX.X", APRS 1.2). */
 
-    SENSOR_LOCAL_WX_NONE = 0,                  /**< No weather parameter (telemetry-only or uninitialised driver). */
-    SENSOR_LOCAL_WX_ALL = (1u << 13) - 1u,     /**< Convenience: every weather bit currently defined. */
+    SENSOR_LOCAL_WX_NONE = 0,              /**< No weather parameter (telemetry-only or uninitialised driver). */
+    SENSOR_LOCAL_WX_ALL = (1u << 13) - 1u, /**< Convenience: every weather bit currently defined. */
 } sensor_local_wx_mask_t;
 
 /**
@@ -104,11 +104,11 @@ typedef enum {
  *        `(mask >> APRS_TLM_ANALOG_Ax) & 1u` / `(mask >> (8 + APRS_TLM_DIGITAL_Bx)) & 1u`.
  */
 typedef enum {
-    SENSOR_LOCAL_TLM_ANALOG_A1 = 1u << 0, /**< Analog channel A1 (bit 0). */
-    SENSOR_LOCAL_TLM_ANALOG_A2 = 1u << 1, /**< Analog channel A2 (bit 1). */
-    SENSOR_LOCAL_TLM_ANALOG_A3 = 1u << 2, /**< Analog channel A3 (bit 2). */
-    SENSOR_LOCAL_TLM_ANALOG_A4 = 1u << 3, /**< Analog channel A4 (bit 3). */
-    SENSOR_LOCAL_TLM_ANALOG_A5 = 1u << 4, /**< Analog channel A5 (bit 4). */
+    SENSOR_LOCAL_TLM_ANALOG_A1 = 1u << 0,                                                    /**< Analog channel A1 (bit 0). */
+    SENSOR_LOCAL_TLM_ANALOG_A2 = 1u << 1,                                                    /**< Analog channel A2 (bit 1). */
+    SENSOR_LOCAL_TLM_ANALOG_A3 = 1u << 2,                                                    /**< Analog channel A3 (bit 2). */
+    SENSOR_LOCAL_TLM_ANALOG_A4 = 1u << 3,                                                    /**< Analog channel A4 (bit 3). */
+    SENSOR_LOCAL_TLM_ANALOG_A5 = 1u << 4,                                                    /**< Analog channel A5 (bit 4). */
     SENSOR_LOCAL_TLM_ANALOG_ALL = (1u << 0) | (1u << 1) | (1u << 2) | (1u << 3) | (1u << 4), /**< All analog channels A1-A5 (bits 0..4). */
 
     SENSOR_LOCAL_TLM_DIGITAL_B1 = 1u << 5,  /**< Digital (binary) channel B1 (bit 5). */
@@ -119,9 +119,10 @@ typedef enum {
     SENSOR_LOCAL_TLM_DIGITAL_B6 = 1u << 10, /**< Digital (binary) channel B6 (bit 10). */
     SENSOR_LOCAL_TLM_DIGITAL_B7 = 1u << 11, /**< Digital (binary) channel B7 (bit 11). */
     SENSOR_LOCAL_TLM_DIGITAL_B8 = 1u << 12, /**< Digital (binary) channel B8 (bit 12). */
-    SENSOR_LOCAL_TLM_DIGITAL_ALL = (1u << 5) | (1u << 6) | (1u << 7) | (1u << 8) | (1u << 9) | (1u << 10) | (1u << 11) | (1u << 12), /**< All digital channels B1-B8 (bits 5..12). */
+    SENSOR_LOCAL_TLM_DIGITAL_ALL =
+        (1u << 5) | (1u << 6) | (1u << 7) | (1u << 8) | (1u << 9) | (1u << 10) | (1u << 11) | (1u << 12), /**< All digital channels B1-B8 (bits 5..12). */
 
-    SENSOR_LOCAL_TLM_NONE = 0, /**< No telemetry channel (weather-only or uninitialised driver). */
+    SENSOR_LOCAL_TLM_NONE = 0,                                                         /**< No telemetry channel (weather-only or uninitialised driver). */
     SENSOR_LOCAL_TLM_ALL = SENSOR_LOCAL_TLM_ANALOG_ALL | SENSOR_LOCAL_TLM_DIGITAL_ALL, /**< Convenience: every analog + digital channel. */
 } sensor_local_tlm_channel_mask_t;
 
@@ -136,11 +137,11 @@ typedef enum {
  *        EQNS/BITS values instead of supplying its own.
  */
 typedef enum {
-    SENSOR_LOCAL_TLM_META_NONE = 0,       /**< Driver supplies no metadata defaults (relies on web-admin values). */
-    SENSOR_LOCAL_TLM_META_PARM = 1u << 0, /**< Driver can supply default PARM. (parameter name) text. */
-    SENSOR_LOCAL_TLM_META_UNIT = 1u << 1, /**< Driver can supply default UNIT. (engineering unit / bit label) text. */
-    SENSOR_LOCAL_TLM_META_EQNS = 1u << 2, /**< Driver can supply default EQNS. (a/b/c scaling coefficients). */
-    SENSOR_LOCAL_TLM_META_BITS = 1u << 3, /**< Driver can supply default BITS. (bit-sense polarity / project name) text. */
+    SENSOR_LOCAL_TLM_META_NONE = 0,                                            /**< Driver supplies no metadata defaults (relies on web-admin values). */
+    SENSOR_LOCAL_TLM_META_PARM = 1u << 0,                                      /**< Driver can supply default PARM. (parameter name) text. */
+    SENSOR_LOCAL_TLM_META_UNIT = 1u << 1,                                      /**< Driver can supply default UNIT. (engineering unit / bit label) text. */
+    SENSOR_LOCAL_TLM_META_EQNS = 1u << 2,                                      /**< Driver can supply default EQNS. (a/b/c scaling coefficients). */
+    SENSOR_LOCAL_TLM_META_BITS = 1u << 3,                                      /**< Driver can supply default BITS. (bit-sense polarity / project name) text. */
     SENSOR_LOCAL_TLM_META_ALL = (1u << 0) | (1u << 1) | (1u << 2) | (1u << 3), /**< Convenience: all four metadata message kinds. */
 } sensor_local_tlm_meta_mask_t;
 
@@ -286,7 +287,7 @@ static inline void sensor_local_properties_wx_label(const sensor_local_propertie
  * @param out_size    Size of @p out in bytes.
  */
 static inline void sensor_local_properties_tlm_label(const sensor_local_properties_t *props, sensor_local_tlm_channel_mask_t channel_bit, char *out,
-                                                       size_t out_size) {
+                                                     size_t out_size) {
     if (out == NULL || out_size == 0)
         return;
     if (props == NULL) {
@@ -346,7 +347,7 @@ static inline bool sensor_local_properties_has_tlm(const sensor_local_properties
  * @return true if @p props has a valid eng_min/eng_max suggestion for @p ana_idx.
  */
 static inline bool sensor_local_properties_tlm_ana_hint(const sensor_local_properties_t *props, unsigned ana_idx, const char **out_unit, float *out_min,
-                                                          float *out_max) {
+                                                        float *out_max) {
     if (out_unit != NULL)
         *out_unit = NULL;
     if (out_min != NULL)

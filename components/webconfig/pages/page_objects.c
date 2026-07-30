@@ -90,16 +90,12 @@ static const struct {
     const char *name;
     const char *meaning;
 } k_qru_groups[] = {
-    { "AMBU", TR_F_QRU_AMBU },         { "CLUB", TR_F_QRU_CLUB }, { "ECHO", TR_F_QRU_ECHO },
-    { "FIRE", TR_F_QRU_FIRE },         { "FOOD", TR_F_QRU_FOOD }, { "FUEL", TR_F_QRU_FUEL },
-    { "HOSP", TR_F_QRU_HOSP },         { "LIFEBOAT", TR_F_QRU_LIFEBOAT }, { "LTHS", TR_F_QRU_LTHS },
-    { "POLI", TR_F_QRU_POLI },         { "POST", TR_F_QRU_POST }, { "RD13", TR_F_QRU_RD13 },
-    { "RD23", TR_F_QRU_RD23 },         { "RD2M", TR_F_QRU_RD2M }, { "RD3C", TR_F_QRU_RD3C },
-    { "RD70", TR_F_QRU_RD70 },         { "RP10", TR_F_QRU_RP10 }, { "RP13", TR_F_QRU_RP13 },
-    { "RP23", TR_F_QRU_RP23 },         { "RP2M", TR_F_QRU_RP2M }, { "RP3C", TR_F_QRU_RP3C },
-    { "RP6M", TR_F_QRU_RP6M },         { "RP70", TR_F_QRU_RP70 }, { "RT13", TR_F_QRU_RT13 },
-    { "RT23", TR_F_QRU_RT23 },         { "RT3C", TR_F_QRU_RT3C }, { "SRAIL", TR_F_QRU_SRAIL },
-    { "STOR", TR_F_QRU_STOR },         { "T2SRV", TR_F_QRU_T2SRV }, { "VETE", TR_F_QRU_VETE },
+    { "AMBU", TR_F_QRU_AMBU }, { "CLUB", TR_F_QRU_CLUB },   { "ECHO", TR_F_QRU_ECHO },         { "FIRE", TR_F_QRU_FIRE },   { "FOOD", TR_F_QRU_FOOD },
+    { "FUEL", TR_F_QRU_FUEL }, { "HOSP", TR_F_QRU_HOSP },   { "LIFEBOAT", TR_F_QRU_LIFEBOAT }, { "LTHS", TR_F_QRU_LTHS },   { "POLI", TR_F_QRU_POLI },
+    { "POST", TR_F_QRU_POST }, { "RD13", TR_F_QRU_RD13 },   { "RD23", TR_F_QRU_RD23 },         { "RD2M", TR_F_QRU_RD2M },   { "RD3C", TR_F_QRU_RD3C },
+    { "RD70", TR_F_QRU_RD70 }, { "RP10", TR_F_QRU_RP10 },   { "RP13", TR_F_QRU_RP13 },         { "RP23", TR_F_QRU_RP23 },   { "RP2M", TR_F_QRU_RP2M },
+    { "RP3C", TR_F_QRU_RP3C }, { "RP6M", TR_F_QRU_RP6M },   { "RP70", TR_F_QRU_RP70 },         { "RT13", TR_F_QRU_RT13 },   { "RT23", TR_F_QRU_RT23 },
+    { "RT3C", TR_F_QRU_RT3C }, { "SRAIL", TR_F_QRU_SRAIL }, { "STOR", TR_F_QRU_STOR },         { "T2SRV", TR_F_QRU_T2SRV }, { "VETE", TR_F_QRU_VETE },
     { "WOTA", TR_F_QRU_WOTA },
 };
 
@@ -125,8 +121,8 @@ static void render_qru_select(httpd_req_t *req, const char *name, const char *cu
             matched = true;
         // Names are safe identifiers and meanings are our own controlled
         // strings (no '<', '>' or '&'), so no HTML escaping is needed here.
-        snprintf(buf, sizeof(buf), "<option value='%s'%s>%s - %s</option>", k_qru_groups[g].name, sel ? " selected" : "",
-                 k_qru_groups[g].name, k_qru_groups[g].meaning);
+        snprintf(buf, sizeof(buf), "<option value='%s'%s>%s - %s</option>", k_qru_groups[g].name, sel ? " selected" : "", k_qru_groups[g].name,
+                 k_qru_groups[g].meaning);
         web_raw(req, buf);
     }
 
@@ -159,11 +155,11 @@ static void render_objitem_phg(httpd_req_t *req, int i, const objitem_t *b) {
 
     // -- The two request-mandated PHG toggles, first (each carries an id so the
     //    page script can find it). --
-    snprintf(buf, sizeof(buf), "<label><input type='checkbox' name='oPhgEn%d' id='oPhgEn%d' %s> %s</label>", i + 1, i + 1,
-             b->phg_enable ? "checked" : "", TR_F_ENABLE_PHG);
+    snprintf(buf, sizeof(buf), "<label><input type='checkbox' name='oPhgEn%d' id='oPhgEn%d' %s> %s</label>", i + 1, i + 1, b->phg_enable ? "checked" : "",
+             TR_F_ENABLE_PHG);
     web_raw(req, buf);
-    snprintf(buf, sizeof(buf), "<label><input type='checkbox' name='oPhgUS%d' id='oPhgUS%d' %s> %s</label>", i + 1, i + 1,
-             b->phg_use_station ? "checked" : "", TR_USE_MY_STATION_DATA);
+    snprintf(buf, sizeof(buf), "<label><input type='checkbox' name='oPhgUS%d' id='oPhgUS%d' %s> %s</label>", i + 1, i + 1, b->phg_use_station ? "checked" : "",
+             TR_USE_MY_STATION_DATA);
     web_raw(req, buf);
 
     // -- Power (Watts, APRS P-digit code table). --

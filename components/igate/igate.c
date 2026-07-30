@@ -188,7 +188,11 @@ bool isDuplicatePacket(ax25_msg_t *packet) {
     clearExpiredDuplicates();
 
     for (uint8_t i = 0; i < DUP_PACKET_CACHE_SIZE; i++) {
-        if (s_dupCache[i].timestamp > 0 && strncmp(s_dupCache[i].hash, hash, 16) == 0) {
+        // hash is fixed-width binary data (post-XOR bytes may legally be NUL
+        // partway through), not a C string, so compare it with memcmp() over
+        // the full 16 bytes rather than strncmp(), which stops at the first
+        // embedded NUL and could otherwise call two different hashes equal.
+        if (s_dupCache[i].timestamp > 0 && memcmp(s_dupCache[i].hash, hash, 16) == 0) {
             ESP_LOGD(TAG, "Duplicate packet detected");
             return true;
         }
@@ -317,8 +321,7 @@ int igateProcess(ax25_msg_t *packet) {
         info[n] = 0;
         uint16_t type = aprs_filter_classify_info(info);
         if (!aprs_filter_pass(g_config.rf2inetFilter, type)) {
-            ESP_LOGD(TAG, "RF2INET filtered (%s, mask=0x%03X): %.*s", aprs_filter_type_name(type), (unsigned)g_config.rf2inetFilter, (int)packet->len,
-                     info);
+            ESP_LOGD(TAG, "RF2INET filtered (%s, mask=0x%03X): %.*s", aprs_filter_type_name(type), (unsigned)g_config.rf2inetFilter, (int)packet->len, info);
             s_stats.dropByReason[DROP_TYPE_FILTER]++;
             return 0;
         }
@@ -557,8 +560,7 @@ static bool connectAprsIs(void) {
     freeaddrinfo(res);
 
     char login[160];
-    int n = snprintf(login, sizeof(login), "user %s pass %s vers ESP32APRS 1.0 filter %s\r\n", cfg_mycall, cfg_passcode,
-                     cfg_filter[0] ? cfg_filter : "");
+    int n = snprintf(login, sizeof(login), "user %s pass %s vers ESP32APRS 1.0 filter %s\r\n", cfg_mycall, cfg_passcode, cfg_filter[0] ? cfg_filter : "");
     // Log exactly what we're sending (minus the trailing \r\n) so a bad
     // filter string (e.g. wrong filter letter, malformed args) is visible
     // in the logs instead of silently resulting in zero RX traffic.

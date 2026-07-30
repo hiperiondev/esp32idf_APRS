@@ -42,15 +42,15 @@
 #include "beacon.h"
 #include "beacon_scheduler.h"
 #include "bulletins.h"
-#include "objects_items.h"
 #include "digirepeater.h"
 #include "igate.h"
 #include "lastheard.h"
 #include "message.h"
-#include "trafficlog.h"
-#include "weather.h"
+#include "objects_items.h"
 #include "telemetry.h"
 #include "time_sync.h"
+#include "trafficlog.h"
+#include "weather.h"
 
 static const char *TAG = "aprs_service";
 
@@ -170,11 +170,11 @@ void aprs_service_build_modem_config(modem_config_t *cfg, bool full_duplex) {
 // would stay at 0 regardless of how much real RF traffic the modem decodes;
 // tracking at the flow points makes the dashboard reflect reality whether or
 // not either feature is turned on.
-static atomic_uint_fast32_t s_statRadioRx = 0;  // frames decoded off RF (every on_rx_frame() call)
-static atomic_uint_fast32_t s_statRadioTx = 0;  // frames transmitted on RF (every successful aprs_service_send_tnc2())
-static atomic_uint_fast32_t s_statRf2Inet = 0;  // frames relayed from RF to APRS-IS (igateProcess() actually uplinked one)
-static atomic_uint_fast32_t s_statInet2Rf = 0;  // lines relayed from APRS-IS to RF (inet2rfHandler() actually transmitted one)
-static atomic_uint_fast32_t s_statDigi = 0;     // frames digipeated (path rewritten and re-transmitted)
+static atomic_uint_fast32_t s_statRadioRx = 0; // frames decoded off RF (every on_rx_frame() call)
+static atomic_uint_fast32_t s_statRadioTx = 0; // frames transmitted on RF (every successful aprs_service_send_tnc2())
+static atomic_uint_fast32_t s_statRf2Inet = 0; // frames relayed from RF to APRS-IS (igateProcess() actually uplinked one)
+static atomic_uint_fast32_t s_statInet2Rf = 0; // lines relayed from APRS-IS to RF (inet2rfHandler() actually transmitted one)
+static atomic_uint_fast32_t s_statDigi = 0;    // frames digipeated (path rewritten and re-transmitted)
 // The two below track drops/errors independently of the feature-specific
 // accounting in digi_get_stats()/igate_get_stats() (see page_common.c's
 // page_sidebar_info()), whose counters only move while digi_en/igate_en are
@@ -188,8 +188,10 @@ static atomic_uint_fast32_t s_statDigi = 0;     // frames digipeated (path rewri
 // ready yet, or modem_send_tnc2() itself failing) - so they move regardless
 // of which higher-level features are enabled and regardless of which
 // direction the discard happens in.
-static atomic_uint_fast32_t s_statDrop = 0; // frames discarded before dispatch or on the way out to RF (placeholder/invalid source callsign, modem-not-ready, TX queue full, oversized packet, etc.)
-static atomic_uint_fast32_t s_statErr = 0;  // frames that failed to decode as valid APRS (UI, no-layer-3) AX.25, or that the modem itself failed to transmit (modem_send_tnc2() error)
+static atomic_uint_fast32_t s_statDrop =
+    0; // frames discarded before dispatch or on the way out to RF (placeholder/invalid source callsign, modem-not-ready, TX queue full, oversized packet, etc.)
+static atomic_uint_fast32_t s_statErr =
+    0; // frames that failed to decode as valid APRS (UI, no-layer-3) AX.25, or that the modem itself failed to transmit (modem_send_tnc2() error)
 
 // Task permitted to briefly block on a full RF TX ring (see the drain-wait in
 // aprs_service_send_tnc2()). Set to the beacon scheduler task via
@@ -322,8 +324,7 @@ bool aprs_service_send_tnc2(const char *packet, size_t len) {
         if (pending >= limit) {
             atomic_fetch_add_explicit(&s_statDrop, 1, memory_order_relaxed);
             igate_note_drop(DROP_TX_QUEUE_FULL);
-            ESP_LOGW(TAG, "RF TX queue full (%u/%u pending), packet discarded: %.*s", (unsigned)pending, (unsigned)limit, (int)len,
-                     packet);
+            ESP_LOGW(TAG, "RF TX queue full (%u/%u pending), packet discarded: %.*s", (unsigned)pending, (unsigned)limit, (int)len, packet);
             return false;
         }
     }
@@ -559,8 +560,7 @@ static bool inet_line_is_own_report(const char *line) {
     // feedback loop / double transmission. grep for "_2inet" across the tree
     // to find every current uplink flag this list needs to cover.
     const char *calls[] = {
-        g_config.aprs_mycall, g_config.my_callsign, g_config.trk_mycall, g_config.digi_mycall,
-        g_config.wx_mycall,   tlm_mycall,           g_config.msg_mycall,
+        g_config.aprs_mycall, g_config.my_callsign, g_config.trk_mycall, g_config.digi_mycall, g_config.wx_mycall, tlm_mycall, g_config.msg_mycall,
     };
     for (size_t i = 0; i < sizeof(calls) / sizeof(calls[0]); i++) {
         if (base_call_equals(line, srcLen, calls[i]))
@@ -682,8 +682,7 @@ static void inet2rfHandler(const char *line) {
 
                     uint16_t innerType = aprs_filter_classify_thirdparty_inner(colon + 1);
 
-                    if (innerSrc[0] && aprs_filter_budlist_pass(BUDLIST_WHITELIST, innerSrc) &&
-                        aprs_filter_pass(g_config.inet2rfFilter, innerType)) {
+                    if (innerSrc[0] && aprs_filter_budlist_pass(BUDLIST_WHITELIST, innerSrc) && aprs_filter_pass(g_config.inet2rfFilter, innerType)) {
                         txLine = inner;
                         txLen = strlen(inner);
                         type = innerType;
@@ -1033,12 +1032,11 @@ bool aprs_loop_test_run(char *msg, size_t msg_len) {
                      "(prefilter=%d, audioLPF/flatAudio=%s) level=%u%%, demod1 level=%u%% (AGC peak gain %.2fx). %s",
                      LOOP_TEST_TIMEOUT_MS, s_diag.rawMin, s_diag.rawMax, adcSwing, (unsigned)s_diag.mVrmsPeak, (int)ModemGetFilterType(0),
                      g_config.audio_lpf ? "on" : "off", (unsigned)level0, (unsigned)level1, (double)s_diag.agcGainPeak,
-                     (s_diag.agcGainPeak <= 1.05f)
-                         ? "The AGC gain never rose above unity, so the correlator saw the same tiny raw signal as "
-                           "the ADC - check the AGC path rather than the baud rate."
-                         : "Check that the AFSK modulation/baud rate on this page matches what was transmitted, and "
-                           "try toggling the audio low-pass filter (a direct DAC->ADC loop never passes through a "
-                           "real radio's deemphasis network).");
+                     (s_diag.agcGainPeak <= 1.05f) ? "The AGC gain never rose above unity, so the correlator saw the same tiny raw signal as "
+                                                     "the ADC - check the AGC path rather than the baud rate."
+                                                   : "Check that the AFSK modulation/baud rate on this page matches what was transmitted, and "
+                                                     "try toggling the audio low-pass filter (a direct DAC->ADC loop never passes through a "
+                                                     "real radio's deemphasis network).");
         } else {
             // A demodulator locked, but no valid AX.25 frame with the expected
             // token came back within the timeout. "Locked" only means enough
@@ -1059,14 +1057,13 @@ bool aprs_loop_test_run(char *msg, size_t msg_len) {
                      "the tones (DCD bitmap 0x%02X, RMS peaked at %u mV, AGC peak gain %.2fx). Furthest HDLC receive "
                      "stage reached: %u (0=idle, 1=flag seen, 2=assembling a frame). %s",
                      LOOP_TEST_TIMEOUT_MS, (unsigned)s_diag.dcdLatch, (unsigned)s_diag.mVrmsPeak, (double)s_diag.agcGainPeak, (unsigned)stageMax,
-                     (stageMax < (uint8_t)RX_STAGE_FRAME)
-                         ? "No HDLC flag ever led into frame data - the bit-sync/framing state machine isn't "
-                           "starting a frame at all, which points at a deeper bit-recovery bug rather than noise on "
-                           "individual bits."
-                         : "The receiver did start assembling frames but none passed the CRC check - the signal is "
-                           "clean enough to fake a brief DCD lock but not clean enough to get an entire ~20-byte "
-                           "frame bit-perfect. Check for a marginal signal level/SNR rather than a "
-                           "baud-rate/modem-type mismatch.");
+                     (stageMax < (uint8_t)RX_STAGE_FRAME) ? "No HDLC flag ever led into frame data - the bit-sync/framing state machine isn't "
+                                                            "starting a frame at all, which points at a deeper bit-recovery bug rather than noise on "
+                                                            "individual bits."
+                                                          : "The receiver did start assembling frames but none passed the CRC check - the signal is "
+                                                            "clean enough to fake a brief DCD lock but not clean enough to get an entire ~20-byte "
+                                                            "frame bit-perfect. Check for a marginal signal level/SNR rather than a "
+                                                            "baud-rate/modem-type mismatch.");
         }
         ESP_LOGW(TAG, "Loop test: %s", msg);
         return false;
@@ -1087,8 +1084,7 @@ bool aprs_loop_test_run(char *msg, size_t msg_len) {
         snprintf(msg, msg_len,
                  "PASS: sent \"%s\" and correctly decoded it back (RX level %u mV RMS, raw ADC swing %d-%d [%d counts, "
                  "rails are 0/4095], AGC peak gain %.2fx). The AFSK modem works correctly.",
-                 tnc2 + (strchr(tnc2, ':') - tnc2) + 1, (unsigned)s_loopTestRxMVrms, s_diag.rawMin, s_diag.rawMax, adcSwing,
-                 (double)s_diag.agcGainPeak);
+                 tnc2 + (strchr(tnc2, ':') - tnc2) + 1, (unsigned)s_loopTestRxMVrms, s_diag.rawMin, s_diag.rawMax, adcSwing, (double)s_diag.agcGainPeak);
         ESP_LOGI(TAG, "Loop test: %s", msg);
         return true;
     }

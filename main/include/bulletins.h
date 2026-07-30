@@ -62,13 +62,13 @@
  * @brief One configured bulletin.
  */
 typedef struct {
-    bool enable;                       /**< Master on/off. Auto-cleared once expired. */
-    bool send_rf;                      /**< Transmit this bulletin on RF. */
-    bool send_inet;                    /**< Transmit this bulletin to APRS-IS (Internet). */
-    char text[BULLETIN_TEXT_MAX + 1];  /**< Bulletin message text (NUL-terminated). */
-    uint32_t interval_s;               /**< Transmit interval in seconds; 0 = firmware default. */
-    uint32_t expire_hours;             /**< Expire window in hours; 0 = never expires. */
-    int64_t expire_at;                 /**< Absolute expiry deadline (epoch seconds); 0 = never. */
+    bool enable;                      /**< Master on/off. Auto-cleared once expired. */
+    bool send_rf;                     /**< Transmit this bulletin on RF. */
+    bool send_inet;                   /**< Transmit this bulletin to APRS-IS (Internet). */
+    char text[BULLETIN_TEXT_MAX + 1]; /**< Bulletin message text (NUL-terminated). */
+    uint32_t interval_s;              /**< Transmit interval in seconds; 0 = firmware default. */
+    uint32_t expire_hours;            /**< Expire window in hours; 0 = never expires. */
+    int64_t expire_at;                /**< Absolute expiry deadline (epoch seconds); 0 = never. */
 } bulletin_t;
 
 /**

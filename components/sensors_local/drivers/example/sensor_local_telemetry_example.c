@@ -98,12 +98,12 @@ static tlm_example_ctx_t s_ctx;
  *        receiver's decoded reading matches what this example "measures".
  */
 typedef struct {
-    const char *label;    /**< Parameter name (PARM.), e.g. "Supply Voltage". */
-    const char *unit;     /**< Engineering unit (UNIT.), e.g. "Volts". */
-    double eng_min;       /**< Lower bound of the simulated realistic value. */
-    double eng_max;       /**< Upper bound of the simulated realistic value. */
-    double eqns_b;        /**< EQNS. linear coefficient b: X = b*raw + c. */
-    double eqns_c;        /**< EQNS. constant offset c. */
+    const char *label; /**< Parameter name (PARM.), e.g. "Supply Voltage". */
+    const char *unit;  /**< Engineering unit (UNIT.), e.g. "Volts". */
+    double eng_min;    /**< Lower bound of the simulated realistic value. */
+    double eng_max;    /**< Upper bound of the simulated realistic value. */
+    double eqns_b;     /**< EQNS. linear coefficient b: X = b*raw + c. */
+    double eqns_c;     /**< EQNS. constant offset c. */
 } tlm_example_analog_channel_t;
 
 /* clang-format off */
@@ -126,20 +126,20 @@ static const tlm_example_analog_channel_t s_analog_channels[APRS_TELEMETRY_ANALO
  *        conditions rather than routine state.
  */
 typedef struct {
-    const char *label;     /**< Bit label (BITS.), e.g. "PTT". */
-    const char *on_label;  /**< UNIT. on-state text, e.g. "TX". */
-    bool alarm_style;      /**< true = simulate mostly-false with rare true (alert-like). */
+    const char *label;    /**< Bit label (BITS.), e.g. "PTT". */
+    const char *on_label; /**< UNIT. on-state text, e.g. "TX". */
+    bool alarm_style;     /**< true = simulate mostly-false with rare true (alert-like). */
 } tlm_example_digital_channel_t;
 
 static const tlm_example_digital_channel_t s_digital_channels[APRS_TELEMETRY_DIGITAL_CHANNELS] = {
-    { "PTT Active",          "TX",    false }, /* B1: transmitter keyed                              */
-    { "GPS Fix Valid",       "FIX",   false }, /* B2: GPS has a current fix                          */
-    { "SD Card Present",     "OK",    false }, /* B3: SD/LittleFS log storage present and mounted    */
-    { "Charge Ctrl Active",  "CHG",   false }, /* B4: solar charge controller is actively charging   */
-    { "Enclosure Door",      "OPEN",  true  }, /* B5: enclosure tamper/door switch (alert-like)      */
-    { "Low Battery Alarm",   "LOW",   true  }, /* B6: supply voltage below low-battery threshold     */
-    { "Over Temp Alarm",     "HOT",   true  }, /* B7: enclosure temperature above safe threshold      */
-    { "Watchdog Reset",      "RST",   true  }, /* B8: last boot was caused by a watchdog reset       */
+    { "PTT Active", "TX", false },          /* B1: transmitter keyed                              */
+    { "GPS Fix Valid", "FIX", false },      /* B2: GPS has a current fix                          */
+    { "SD Card Present", "OK", false },     /* B3: SD/LittleFS log storage present and mounted    */
+    { "Charge Ctrl Active", "CHG", false }, /* B4: solar charge controller is actively charging   */
+    { "Enclosure Door", "OPEN", true },     /* B5: enclosure tamper/door switch (alert-like)      */
+    { "Low Battery Alarm", "LOW", true },   /* B6: supply voltage below low-battery threshold     */
+    { "Over Temp Alarm", "HOT", true },     /* B7: enclosure temperature above safe threshold      */
+    { "Watchdog Reset", "RST", true },      /* B8: last boot was caused by a watchdog reset       */
 };
 
 static esp_err_t tlm_example_init(sensor_local_driver_t *self) {

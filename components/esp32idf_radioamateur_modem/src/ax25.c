@@ -301,7 +301,18 @@ static void IRAM_ATTR calculateCRC(uint8_t bit, uint16_t *crc) {
             (msg)->rpt_flags &= ~(1u << (idx));                                                                                                                \
     } while (0)
 
+// Minimum bytes a legal AX.25 UI frame header can be: destination address (6
+// call + 1 SSID/control byte = 7), source address (7), control byte (1) and
+// PID byte (1) = 16. This is a lower bound with zero repeaters; DECODE_CALL()
+// and the fixed pointer arithmetic below walk exactly this many bytes
+// unconditionally, so anything shorter must be rejected up front rather than
+// read past the logical end of a short/corrupted RF frame.
+#define AX25_MIN_ADDR_LEN (7 + 7 + 1 + 1)
+
 bool ax25_decode(uint8_t *buf, size_t len, uint16_t mVrms, ax25_msg_t *msg) {
+    if (len < AX25_MIN_ADDR_LEN)
+        return false; // too short to hold dst+src+ctrl+pid: reject before any fixed-width field parsing
+
     uint8_t *buf_start = buf;
 
     DECODE_CALL(buf, msg->dst.call);

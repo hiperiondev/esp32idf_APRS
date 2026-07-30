@@ -94,9 +94,9 @@ enum Ax25RxStage {
  * @brief Runtime configuration of the AX.25 protocol layer.
  */
 struct Ax25ProtoConfig {
-    uint16_t txDelayLength;   /**< TXDelay (preamble) length, in milliseconds. */
-    uint16_t txTailLength;    /**< TXTail (postamble) length, in milliseconds. */
-    uint16_t quietTime;       /**< Channel quiet time required before transmitting, in milliseconds. */
+    uint16_t txDelayLength; /**< TXDelay (preamble) length, in milliseconds. */
+    uint16_t txTailLength;  /**< TXTail (postamble) length, in milliseconds. */
+    uint16_t quietTime;     /**< Channel quiet time required before transmitting, in milliseconds. */
     /**
      * Minimum PTT-off (unkeyed) hold time enforced between the end of one
      * transmission and the start of the next, in milliseconds, on top of the

@@ -65,15 +65,19 @@ typedef enum {
  *        modem_set_modem().
  */
 typedef struct {
-    modem_mode_t modem; /**< Modem profile to use. */
+    modem_mode_t modem;    /**< Modem profile to use. */
     bool flat_audio;       /**< true when the audio input is flat/discriminator output, false for de-emphasized audio. */
     bool full_duplex;      /**< true: key up immediately and keep receiving while transmitting. */
     bool allow_non_aprs;   /**< true: accept frames whose Control/PID fields are not 0x03/0xF0. */
     uint16_t preamble_ms;  /**< TXDelay (preamble) duration, in milliseconds. */
     uint16_t slot_time_ms; /**< CSMA quiet/slot time, in milliseconds; ignored in full duplex mode. */
     uint8_t fx25_mode;     /**< FX.25 mode: 0 = off, 1 = RX only, 2 = RX+TX (requires -DENABLE_FX25). */
-    bool ptt_active_high;  /**< true = PTT output active-high, false = active-low. @note There is deliberately no ptt_gpio field: the PTT pin is a fixed compile-time board wiring choice (::MODEM_PTT_GPIO, like ::MODEM_ADC_GPIO / ::MODEM_DAC_GPIO), not runtime/web-admin selectable; only the active level is configurable here. */
-    uint16_t min_unkey_ms; /**< Extra minimum PTT-off (unkeyed) time between transmissions, in milliseconds, ON TOP OF the fixed one-modem-service-tick (~10 ms) release Ax25TransmitCheck() always applies. 0 = no extra hold. For radios/repeaters that need a longer guaranteed unkey gap between frames. */
+    bool ptt_active_high;  /**< true = PTT output active-high, false = active-low. @note There is deliberately no ptt_gpio field: the PTT pin is a fixed
+                              compile-time board wiring choice (::MODEM_PTT_GPIO, like ::MODEM_ADC_GPIO / ::MODEM_DAC_GPIO), not runtime/web-admin selectable;
+                              only the active level is configurable here. */
+    uint16_t min_unkey_ms; /**< Extra minimum PTT-off (unkeyed) time between transmissions, in milliseconds, ON TOP OF the fixed one-modem-service-tick (~10 ms)
+                              release Ax25TransmitCheck() always applies. 0 = no extra hold. For radios/repeaters that need a longer guaranteed unkey gap
+                              between frames. */
 } modem_config_t;
 
 /**
@@ -82,17 +86,17 @@ typedef struct {
  *        duplex enabled, strict APRS frame filtering, 300 ms preamble, no
  *        CSMA slot time and FX.25 disabled.
  */
-#define MODEM_DEFAULT_CONFIG()                                                                                                                               \
+#define MODEM_DEFAULT_CONFIG()                                                                                                                                 \
     {                                                                                                                                                          \
-        .modem = MODEM_MODEM_BELL202,                                                                                                                        \
+        .modem = MODEM_MODEM_BELL202,                                                                                                                          \
         .flat_audio = false,                                                                                                                                   \
         .full_duplex = true,                                                                                                                                   \
         .allow_non_aprs = false,                                                                                                                               \
         .preamble_ms = 300,                                                                                                                                    \
         .slot_time_ms = 0,                                                                                                                                     \
         .fx25_mode = 0,                                                                                                                                        \
-        .ptt_active_high = MODEM_PTT_ACTIVE_HIGH ? true : false,                                                                                              \
-        .min_unkey_ms = 0,                                                                                                                                    \
+        .ptt_active_high = MODEM_PTT_ACTIVE_HIGH ? true : false,                                                                                               \
+        .min_unkey_ms = 0,                                                                                                                                     \
     }
 
 /**

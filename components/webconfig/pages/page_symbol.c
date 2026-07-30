@@ -240,8 +240,8 @@ esp_err_t page_symbol_get(httpd_req_t *req) {
     // Quick-pick shortlist (with icon tiles added).
     {
         char hdr[256];
-        snprintf(hdr, sizeof(hdr), "<fieldset><legend>%s</legend><table><tr><th>%s</th><th>%s</th><th>%s</th></tr>", TR_SYM_QUICK_PICK,
-                 TR_SYM_ICON, TR_SYM_CODE, TR_SYM_MEANING);
+        snprintf(hdr, sizeof(hdr), "<fieldset><legend>%s</legend><table><tr><th>%s</th><th>%s</th><th>%s</th></tr>", TR_SYM_QUICK_PICK, TR_SYM_ICON,
+                 TR_SYM_CODE, TR_SYM_MEANING);
         httpd_resp_sendstr_chunk(req, hdr);
         for (size_t i = 0; i < SYM_COUNT; i++) {
             char table = COMMON_SYMBOLS[i].code[0];
@@ -266,11 +266,8 @@ esp_err_t page_symbol_get(httpd_req_t *req) {
             const char *label;
             const char *sym;
         } cur[] = {
-            { TR_F_IGATE, g_config.igate_symbol },
-            { TR_DASH_DIGI_SHORT, g_config.digi_symbol },
-            { TR_SYM_TRACKER_IDLE, g_config.trk_symbol },
-            { TR_SYM_TRACKER_MOVE, g_config.trk_symmove },
-            { TR_SYM_TRACKER_STOP, g_config.trk_symstop },
+            { TR_F_IGATE, g_config.igate_symbol },         { TR_DASH_DIGI_SHORT, g_config.digi_symbol },  { TR_SYM_TRACKER_IDLE, g_config.trk_symbol },
+            { TR_SYM_TRACKER_MOVE, g_config.trk_symmove }, { TR_SYM_TRACKER_STOP, g_config.trk_symstop },
         };
         for (size_t i = 0; i < sizeof(cur) / sizeof(cur[0]); i++) {
             char t = cur[i].sym[0] ? cur[i].sym[0] : '/';

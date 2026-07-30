@@ -43,17 +43,20 @@
  * igate_stats_t.dropByReason[] and igate_stats_total_drop().
  */
 typedef enum {
-    DROP_DUP = 0,               /**< Reserved: duplicates are tracked separately in igate_stats_t.dupCount and do not currently bump this array (kept for future/other-component use). */
-    DROP_TOO_SHORT,             /**< RF frame's info field shorter than the minimum usable length (IGate RF->INET). */
-    DROP_PATH_TOKEN,            /**< RF frame's path carries RFONLY/TCPIP/qA/NOGATE (IGate RF->INET). */
-    DROP_SAT_NOT_USED,          /**< RF frame repeated via a known satellite gate whose call isn't marked used ('*') (IGate RF->INET). */
-    DROP_TYPE_FILTER,           /**< Payload type not allowed by rf2inetFilter (RF->INET) or inet2rfFilter (INET->RF). */
-    DROP_RANGE_FILTER,          /**< Blocked by the local RF->INET range gate (g_config.rf2inet_range_en/rf2inet_range_km, see aprs_filter_haversine_km()). */
-    DROP_PREFIX_FILTER,         /**< Blocked by the local RF->INET callsign-prefix gate (g_config.rf2inet_prefix_en/rf2inet_prefixes, see aprs_filter_prefix_match()). */
-    DROP_BUDLIST,               /**< Blocked by the local callsign whitelist/blacklist (see aprs_filter_budlist_pass()). */
-    DROP_TX_FAIL,               /**< APRS-IS TX attempted but the socket wasn't connected / the write failed (IGate). */
-    DROP_HEADER_OVERFLOW,       /**< IGate RF->INET header build overflowed its buffer (excessively long repeater path). */
-    DROP_PLACEHOLDER_CALL,      /**< RX frame's source callsign is the NOCALL/MYCALL sentinel (radio not configured / digipeater misconfigured), checked unconditionally at RX regardless of digi_en. */
+    DROP_DUP = 0,         /**< Reserved: duplicates are tracked separately in igate_stats_t.dupCount and do not currently bump this array (kept for
+                             future/other-component use). */
+    DROP_TOO_SHORT,       /**< RF frame's info field shorter than the minimum usable length (IGate RF->INET). */
+    DROP_PATH_TOKEN,      /**< RF frame's path carries RFONLY/TCPIP/qA/NOGATE (IGate RF->INET). */
+    DROP_SAT_NOT_USED,    /**< RF frame repeated via a known satellite gate whose call isn't marked used ('*') (IGate RF->INET). */
+    DROP_TYPE_FILTER,     /**< Payload type not allowed by rf2inetFilter (RF->INET) or inet2rfFilter (INET->RF). */
+    DROP_RANGE_FILTER,    /**< Blocked by the local RF->INET range gate (g_config.rf2inet_range_en/rf2inet_range_km, see aprs_filter_haversine_km()). */
+    DROP_PREFIX_FILTER,   /**< Blocked by the local RF->INET callsign-prefix gate (g_config.rf2inet_prefix_en/rf2inet_prefixes, see aprs_filter_prefix_match()).
+                           */
+    DROP_BUDLIST,         /**< Blocked by the local callsign whitelist/blacklist (see aprs_filter_budlist_pass()). */
+    DROP_TX_FAIL,         /**< APRS-IS TX attempted but the socket wasn't connected / the write failed (IGate). */
+    DROP_HEADER_OVERFLOW, /**< IGate RF->INET header build overflowed its buffer (excessively long repeater path). */
+    DROP_PLACEHOLDER_CALL,      /**< RX frame's source callsign is the NOCALL/MYCALL sentinel (radio not configured / digipeater misconfigured), checked
+                                   unconditionally at RX regardless of digi_en. */
     DROP_MODEM_NOT_READY,       /**< RF TX attempted before the audio modem finished bring-up. */
     DROP_TX_QUEUE_FULL,         /**< RF TX ring already holds "TX buffers" pending frames; new frame discarded instead of queued. */
     DROP_TX_TOO_LONG,           /**< Outgoing TNC2 packet longer than the modem's frame buffer. */
@@ -62,9 +65,9 @@ typedef enum {
     DROP_DIGI_MALFORMED,        /**< Digipeater: frame too short to carry a destination / usable path. */
     DROP_DIGI_PLACEHOLDER_CALL, /**< Digipeater: source callsign is the NOCALL/MYCALL sentinel. */
     DROP_DIGI_ALREADY_USED,     /**< Digipeater: path already carries this digipeater's call marked used ('*'). */
-    DROP_DIGI_PATH_FULL,        /**< Digipeater: path already at the AX.25 maximum (8) repeater addresses; inserting our call would overflow rpt_list/rpt_flags. */
-    DROP_DIGI_NO_PATH,          /**< Digipeater: destination-SSID trace decoded to no usable WIDEn-N path. */
-    DROP_DIGI_PATH_TOKEN,       /**< Digipeater: path carries qA or TCP (already gated, not for RF repeat). */
+    DROP_DIGI_PATH_FULL,  /**< Digipeater: path already at the AX.25 maximum (8) repeater addresses; inserting our call would overflow rpt_list/rpt_flags. */
+    DROP_DIGI_NO_PATH,    /**< Digipeater: destination-SSID trace decoded to no usable WIDEn-N path. */
+    DROP_DIGI_PATH_TOKEN, /**< Digipeater: path carries qA or TCP (already gated, not for RF repeat). */
     DROP_REASON_COUNT
 } drop_reason_t;
 
@@ -72,9 +75,12 @@ typedef struct {
     uint32_t rxCount;   /**< Frames considered for gatewaying (RF->INET direction). */
     uint32_t txCount;   /**< Frames actually sent to APRS-IS as a result of gatewaying (RF->INET). */
     uint32_t dupCount;  /**< Duplicate frames suppressed. */
-    uint32_t isRxCount; /**< ALL packets received from APRS-IS (every non-keepalive line read off the socket), regardless of inet2rf being enabled or the line being relayed. Superset of what reaches the inet2rf handler. */
-    uint32_t isTxCount; /**< ALL packets sent to APRS-IS over sendToAprsIs(): gatewayed RF frames (also in @c txCount), outbound messages (igate_send_raw()) and digi "beacon to internet" sends alike. */
-    uint32_t dropByReason[DROP_REASON_COUNT]; /**< Per-reason drop counters. Replaces the old single aggregate dropCount field - see igate_stats_total_drop() for the equivalent total. */
+    uint32_t isRxCount; /**< ALL packets received from APRS-IS (every non-keepalive line read off the socket), regardless of inet2rf being enabled or the line
+                           being relayed. Superset of what reaches the inet2rf handler. */
+    uint32_t isTxCount; /**< ALL packets sent to APRS-IS over sendToAprsIs(): gatewayed RF frames (also in @c txCount), outbound messages (igate_send_raw()) and
+                           digi "beacon to internet" sends alike. */
+    uint32_t dropByReason[DROP_REASON_COUNT]; /**< Per-reason drop counters. Replaces the old single aggregate dropCount field - see igate_stats_total_drop()
+                                                 for the equivalent total. */
 } igate_stats_t;
 
 /**

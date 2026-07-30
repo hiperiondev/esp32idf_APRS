@@ -119,8 +119,8 @@ static void tlm_channel_options(httpd_req_t *req, sensor_local_tlm_channel_mask_
             char esc_unit[24];
             web_html_attr_escape(hint_unit ? hint_unit : "", esc_unit, sizeof(esc_unit));
             char abuf[256];
-            snprintf(abuf, sizeof(abuf), "<option value='%u'%s data-unit='%s' data-min='%g' data-max='%g' data-hasrange='%d'>%u: %.40s</option>",
-                     (unsigned)ch, (selected == ch) ? " selected" : "", esc_unit, (double)hint_min, (double)hint_max, has_range ? 1 : 0, (unsigned)ch, nm);
+            snprintf(abuf, sizeof(abuf), "<option value='%u'%s data-unit='%s' data-min='%g' data-max='%g' data-hasrange='%d'>%u: %.40s</option>", (unsigned)ch,
+                     (selected == ch) ? " selected" : "", esc_unit, (double)hint_min, (double)hint_max, has_range ? 1 : 0, (unsigned)ch, nm);
             httpd_resp_sendstr_chunk(req, abuf);
             continue;
         }
@@ -370,86 +370,88 @@ static void send_analog_form(httpd_req_t *req, const telemetry_config_t *cfg) {
         snprintf(head, sizeof(head), "<script>var TLM_N=%d;", (int)TLM_CH);
         httpd_resp_sendstr_chunk(req, head);
 
-        httpd_resp_sendstr_chunk(req,
-                                  "var tlmReqSeq=0;"
-                                  "var tlmLastApplied=0;"
-                                  "function tlmFmtNum(v,dec){"
-                                  "if(dec===undefined)dec=2;"
-                                  "if(Math.abs(v)<1e-9)v=0;"
-                                  "return v.toFixed(dec).replace(/\\.0+$/,'').replace(/(\\.\\d*?)0+$/,'$1').replace(/\\.$/,'');"
-                                  "}"
-                                  "function tlmCoefs(i){"
-                                  "function g(id,def){var e=document.getElementsByName(id)[0];var v=e?parseFloat(e.value):NaN;return isNaN(v)?def:v;}"
-                                  "return {a:g('anaA'+i,0),b:g('anaB'+i,0),c:g('anaC'+i,0),dec:Math.max(0,Math.min(6,Math.round(g('anaDec'+i,2)))),"
-                                  "unit:(document.getElementsByName('anaUnit'+i)[0]||{}).value||'',name:(document.getElementsByName('anaName'+i)[0]||{}).value||''};"
-                                  "}"
-                                  // tlmSourceAutofill(i): fired when row i's "Source" <select> (anaCh<i>)
-                                  // changes. Reads the just-selected <option>'s data-unit/data-min/
-                                  // data-max/data-hasrange attributes (emitted server-side by
-                                  // tlm_channel_options() from the driver's sensor_local_properties_t
-                                  // hint, see sensor_local_properties_tlm_ana_hint()) and, if that
-                                  // sensor advertises a suggested engineering range, fills in Unit/
-                                  // Raw Min/Raw Max and derives the standard APRS101 8-bit linear
-                                  // calibration a=0, b=(max-min)/255, c=min - firing input/change on
-                                  // each field so the live preview updates immediately. Fields stay
-                                  // freely editable afterwards; picking "(none)" or a sensor with no
-                                  // hint simply leaves whatever is already typed untouched.
-                                  "function tlmSourceAutofill(i){"
-                                  "var sel=document.getElementsByName('anaCh'+i)[0];"
-                                  "if(!sel)return;"
-                                  "var opt=sel.options[sel.selectedIndex];"
-                                  "if(!opt)return;"
-                                  "function setv(name,v){var e=document.getElementsByName(name)[0];if(!e)return;e.value=v;e.dispatchEvent(new Event('input'));e.dispatchEvent(new Event('change'));}"
-                                  "var unit=opt.getAttribute('data-unit');"
-                                  "if(unit)setv('anaUnit'+i,unit);"
-                                  "if(opt.getAttribute('data-hasrange')==='1'){"
-                                  "var min=parseFloat(opt.getAttribute('data-min'));"
-                                  "var max=parseFloat(opt.getAttribute('data-max'));"
-                                  "if(!isNaN(min)&&!isNaN(max)){"
-                                  "setv('anaRawMin'+i,0);"
-                                  "setv('anaRawMax'+i,255);"
-                                  "setv('anaA'+i,0);"
-                                  "setv('anaB'+i,Math.round(((max-min)/255)*1e6)/1e6);"
-                                  "setv('anaC'+i,Math.round(min*1e6)/1e6);"
-                                  "}"
-                                  "}"
-                                  "}"
-                                  "function tlmAccordionClick(i){"
-                                  "for(var k=0;k<TLM_N;k++){"
-                                  "var c=document.getElementById('achan'+k);"
-                                  "if(!c)continue;"
-                                  "if(k===i)c.classList.toggle('open');"
-                                  "else c.classList.remove('open');"
-                                  "}"
-                                  "}"
-                                  "function tlmRefreshValues(){"
-                                  "var seq=++tlmReqSeq;"
-                                  "var q=[];"
-                                  "for(var i=0;i<TLM_N;i++){"
-                                  "var sel=document.getElementsByName('anaCh'+i)[0];"
-                                  "q.push('ch'+i+'='+(sel?sel.value:255));"
-                                  "}"
-                                  "fetch('/tlm/values?'+q.join('&')).then(function(r){return r.json();}).then(function(raws){"
-                                  "if(seq<tlmLastApplied)return;"
-                                  "tlmLastApplied=seq;"
-                                  "for(var i=0;i<TLM_N;i++){"
-                                  "var raw=raws[i];"
-                                  "var cf=tlmCoefs(i);"
-                                  "var valEl=document.getElementById('achanVal'+i);"
-                                  "var eqnEl=document.getElementById('achanEqn'+i);"
-                                  "var nameEl=document.getElementById('achanName'+i);"
-                                  "if(nameEl)nameEl.innerHTML=(cf.name||'(unnamed)')+' <span class=\\'faint\\'>&mdash; '+(cf.unit||'no unit')+'</span>';"
-                                  "if(raw===null||raw===undefined){"
-                                  "if(valEl)valEl.innerHTML='-';"
-                                  "if(eqnEl)eqnEl.innerHTML='value = <b>'+cf.a+'</b>&middot;x&sup2; + <b>'+cf.b+'</b>&middot;x + <b>'+cf.c+'</b> (no source selected)';"
-                                  "continue;"
-                                  "}"
-                                  "var val=cf.a*raw*raw+cf.b*raw+cf.c;"
-                                  "if(valEl)valEl.innerHTML=tlmFmtNum(val,cf.dec)+' <span class=\\'faint\\'>'+(cf.unit||'')+'</span>';"
-                                  "if(eqnEl)eqnEl.innerHTML='value = <b>'+cf.a+'</b>&middot;x&sup2; + <b>'+cf.b+'</b>&middot;x + <b>'+cf.c+'</b> &nbsp;&rarr;&nbsp; at x='+raw+': <b>'+tlmFmtNum(val,cf.dec)+' '+(cf.unit||'')+'</b>';"
-                                  "}"
-                                  "}).catch(function(){});"
-                                  "}");
+        httpd_resp_sendstr_chunk(
+            req, "var tlmReqSeq=0;"
+                 "var tlmLastApplied=0;"
+                 "function tlmFmtNum(v,dec){"
+                 "if(dec===undefined)dec=2;"
+                 "if(Math.abs(v)<1e-9)v=0;"
+                 "return v.toFixed(dec).replace(/\\.0+$/,'').replace(/(\\.\\d*?)0+$/,'$1').replace(/\\.$/,'');"
+                 "}"
+                 "function tlmCoefs(i){"
+                 "function g(id,def){var e=document.getElementsByName(id)[0];var v=e?parseFloat(e.value):NaN;return isNaN(v)?def:v;}"
+                 "return {a:g('anaA'+i,0),b:g('anaB'+i,0),c:g('anaC'+i,0),dec:Math.max(0,Math.min(6,Math.round(g('anaDec'+i,2)))),"
+                 "unit:(document.getElementsByName('anaUnit'+i)[0]||{}).value||'',name:(document.getElementsByName('anaName'+i)[0]||{}).value||''};"
+                 "}"
+                 // tlmSourceAutofill(i): fired when row i's "Source" <select> (anaCh<i>)
+                 // changes. Reads the just-selected <option>'s data-unit/data-min/
+                 // data-max/data-hasrange attributes (emitted server-side by
+                 // tlm_channel_options() from the driver's sensor_local_properties_t
+                 // hint, see sensor_local_properties_tlm_ana_hint()) and, if that
+                 // sensor advertises a suggested engineering range, fills in Unit/
+                 // Raw Min/Raw Max and derives the standard APRS101 8-bit linear
+                 // calibration a=0, b=(max-min)/255, c=min - firing input/change on
+                 // each field so the live preview updates immediately. Fields stay
+                 // freely editable afterwards; picking "(none)" or a sensor with no
+                 // hint simply leaves whatever is already typed untouched.
+                 "function tlmSourceAutofill(i){"
+                 "var sel=document.getElementsByName('anaCh'+i)[0];"
+                 "if(!sel)return;"
+                 "var opt=sel.options[sel.selectedIndex];"
+                 "if(!opt)return;"
+                 "function setv(name,v){var e=document.getElementsByName(name)[0];if(!e)return;e.value=v;e.dispatchEvent(new "
+                 "Event('input'));e.dispatchEvent(new Event('change'));}"
+                 "var unit=opt.getAttribute('data-unit');"
+                 "if(unit)setv('anaUnit'+i,unit);"
+                 "if(opt.getAttribute('data-hasrange')==='1'){"
+                 "var min=parseFloat(opt.getAttribute('data-min'));"
+                 "var max=parseFloat(opt.getAttribute('data-max'));"
+                 "if(!isNaN(min)&&!isNaN(max)){"
+                 "setv('anaRawMin'+i,0);"
+                 "setv('anaRawMax'+i,255);"
+                 "setv('anaA'+i,0);"
+                 "setv('anaB'+i,Math.round(((max-min)/255)*1e6)/1e6);"
+                 "setv('anaC'+i,Math.round(min*1e6)/1e6);"
+                 "}"
+                 "}"
+                 "}"
+                 "function tlmAccordionClick(i){"
+                 "for(var k=0;k<TLM_N;k++){"
+                 "var c=document.getElementById('achan'+k);"
+                 "if(!c)continue;"
+                 "if(k===i)c.classList.toggle('open');"
+                 "else c.classList.remove('open');"
+                 "}"
+                 "}"
+                 "function tlmRefreshValues(){"
+                 "var seq=++tlmReqSeq;"
+                 "var q=[];"
+                 "for(var i=0;i<TLM_N;i++){"
+                 "var sel=document.getElementsByName('anaCh'+i)[0];"
+                 "q.push('ch'+i+'='+(sel?sel.value:255));"
+                 "}"
+                 "fetch('/tlm/values?'+q.join('&')).then(function(r){return r.json();}).then(function(raws){"
+                 "if(seq<tlmLastApplied)return;"
+                 "tlmLastApplied=seq;"
+                 "for(var i=0;i<TLM_N;i++){"
+                 "var raw=raws[i];"
+                 "var cf=tlmCoefs(i);"
+                 "var valEl=document.getElementById('achanVal'+i);"
+                 "var eqnEl=document.getElementById('achanEqn'+i);"
+                 "var nameEl=document.getElementById('achanName'+i);"
+                 "if(nameEl)nameEl.innerHTML=(cf.name||'(unnamed)')+' <span class=\\'faint\\'>&mdash; '+(cf.unit||'no unit')+'</span>';"
+                 "if(raw===null||raw===undefined){"
+                 "if(valEl)valEl.innerHTML='-';"
+                 "if(eqnEl)eqnEl.innerHTML='value = <b>'+cf.a+'</b>&middot;x&sup2; + <b>'+cf.b+'</b>&middot;x + <b>'+cf.c+'</b> (no source selected)';"
+                 "continue;"
+                 "}"
+                 "var val=cf.a*raw*raw+cf.b*raw+cf.c;"
+                 "if(valEl)valEl.innerHTML=tlmFmtNum(val,cf.dec)+' <span class=\\'faint\\'>'+(cf.unit||'')+'</span>';"
+                 "if(eqnEl)eqnEl.innerHTML='value = <b>'+cf.a+'</b>&middot;x&sup2; + <b>'+cf.b+'</b>&middot;x + <b>'+cf.c+'</b> &nbsp;&rarr;&nbsp; at "
+                 "x='+raw+': <b>'+tlmFmtNum(val,cf.dec)+' '+(cf.unit||'')+'</b>';"
+                 "}"
+                 "}).catch(function(){});"
+                 "}");
 
         // Translated prompt/alert strings for the calibration wizard, kept
         // in their own small snprintf (bounded and easy to verify against
@@ -471,30 +473,30 @@ static void send_analog_form(httpd_req_t *req, const telemetry_config_t *cfg) {
                  "if(x2===x1){alert('%s');return;}"
                  "var b=(y2-y1)/(x2-x1);"
                  "var c=y1-b*x1;"
-                 "function setv(name,v){var e=document.getElementsByName(name)[0];if(!e)return;e.value=v;e.dispatchEvent(new Event('input'));e.dispatchEvent(new Event('change'));}"
+                 "function setv(name,v){var e=document.getElementsByName(name)[0];if(!e)return;e.value=v;e.dispatchEvent(new "
+                 "Event('input'));e.dispatchEvent(new Event('change'));}"
                  "setv('anaA'+i,0);"
                  "setv('anaB'+i,Math.round(b*1e6)/1e6);"
                  "setv('anaC'+i,Math.round(c*1e6)/1e6);"
                  "tlmRefreshValues();"
                  "}",
-                 TR_TLM_CALIB_PROMPT_X1, TR_TLM_CALIB_CANCELLED, TR_TLM_CALIB_PROMPT_Y1, TR_TLM_CALIB_CANCELLED, TR_TLM_CALIB_PROMPT_X2,
-                 TR_TLM_CALIB_CANCELLED, TR_TLM_CALIB_PROMPT_Y2, TR_TLM_CALIB_CANCELLED, TR_TLM_CALIB_SAME_X);
+                 TR_TLM_CALIB_PROMPT_X1, TR_TLM_CALIB_CANCELLED, TR_TLM_CALIB_PROMPT_Y1, TR_TLM_CALIB_CANCELLED, TR_TLM_CALIB_PROMPT_X2, TR_TLM_CALIB_CANCELLED,
+                 TR_TLM_CALIB_PROMPT_Y2, TR_TLM_CALIB_CANCELLED, TR_TLM_CALIB_SAME_X);
         httpd_resp_sendstr_chunk(req, calib);
 
-        httpd_resp_sendstr_chunk(req,
-                                  "document.addEventListener('input',function(e){"
-                                  "var n=e.target.name||'';"
-                                  "if(/^ana(A|B|C|Dec|Name|Unit)\\d+$/.test(n))tlmRefreshValues();"
-                                  "});"
-                                  "document.addEventListener('change',function(e){"
-                                  "var n=e.target.name||'';"
-                                  "var m=/^anaCh(\\d+)$/.exec(n);"
-                                  "if(m){tlmSourceAutofill(parseInt(m[1],10));tlmRefreshValues();}"
-                                  "});"
-                                  "tlmRefreshValues();"
-                                  "var tlmValTimer=setInterval(tlmRefreshValues,2000);"
-                                  "window.addEventListener('beforeunload',function(){clearInterval(tlmValTimer);});"
-                                  "</script>");
+        httpd_resp_sendstr_chunk(req, "document.addEventListener('input',function(e){"
+                                      "var n=e.target.name||'';"
+                                      "if(/^ana(A|B|C|Dec|Name|Unit)\\d+$/.test(n))tlmRefreshValues();"
+                                      "});"
+                                      "document.addEventListener('change',function(e){"
+                                      "var n=e.target.name||'';"
+                                      "var m=/^anaCh(\\d+)$/.exec(n);"
+                                      "if(m){tlmSourceAutofill(parseInt(m[1],10));tlmRefreshValues();}"
+                                      "});"
+                                      "tlmRefreshValues();"
+                                      "var tlmValTimer=setInterval(tlmRefreshValues,2000);"
+                                      "window.addEventListener('beforeunload',function(){clearInterval(tlmValTimer);});"
+                                      "</script>");
     }
 }
 

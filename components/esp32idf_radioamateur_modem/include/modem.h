@@ -47,7 +47,7 @@ enum ModemType {
  * @brief Runtime configuration of the demodulator.
  */
 struct ModemDemodConfig {
-    enum ModemType modem;   /**< Active modem/tone profile. */
+    enum ModemType modem;    /**< Active modem/tone profile. */
     uint8_t usePWM : 1;      /**< 0 = R2R resistor ladder output, 1 = PWM/DAC output. */
     uint8_t flatAudioIn : 1; /**< 0 = de-emphasized audio input, 1 = flat (unfiltered) input. */
 };
@@ -63,7 +63,7 @@ extern struct ModemDemodConfig ModemConfig;
  *        the modem profile and the nature of the input signal.
  */
 enum ModemPrefilter {
-    PREFILTER_NONE = 0,   /**< No pre-filtering applied. */
+    PREFILTER_NONE = 0,    /**< No pre-filtering applied. */
     PREFILTER_PREEMPHASIS, /**< Pre-emphasis filter applied. */
     PREFILTER_DEEMPHASIS,  /**< De-emphasis filter applied. */
     PREFILTER_FLAT,        /**< Input treated as already flat/unfiltered. */

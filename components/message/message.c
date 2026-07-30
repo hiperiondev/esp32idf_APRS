@@ -29,10 +29,10 @@
 #include "esp_log.h"
 #include "esp_timer.h"
 
-#include "afsk.h" // afsk_ptt_gpio_is_valid(), MODEM_ADC_GPIO / MODEM_DAC_GPIO (checked internally by afsk_ptt_gpio_is_valid())
-#include "esp32idf_radioamateur_modem_config.h" // MODEM_PTT_GPIO: the fixed PTT pin, checked directly below
-#include "app_config.h"
 #include "BMP180.h" // bmp180_gpio_is_reserved(): keep the I2C pins out of the alarm pin
+#include "afsk.h"   // afsk_ptt_gpio_is_valid(), MODEM_ADC_GPIO / MODEM_DAC_GPIO (checked internally by afsk_ptt_gpio_is_valid())
+#include "app_config.h"
+#include "esp32idf_radioamateur_modem_config.h" // MODEM_PTT_GPIO: the fixed PTT pin, checked directly below
 #include "message.h"
 
 static const char *TAG = "message";
@@ -287,7 +287,7 @@ size_t message_dump_json(char *out, size_t out_size) {
         const char *status = e->rxtx ? "rx" : (e->ack > 0 ? "pending" : "sent");
 
         int len = snprintf(out + pos, out_size - pos, "%s{\"time\":%lld,\"dir\":\"%s\",\"call\":\"%s\",\"text\":\"%s\",\"status\":\"%s\"}", first ? "" : ",",
-                            (long long)e->time, e->rxtx ? "rx" : "tx", call_esc, text_esc, status);
+                           (long long)e->time, e->rxtx ? "rx" : "tx", call_esc, text_esc, status);
         if (len < 0)
             break;
         if (pos + (size_t)len + 2 >= out_size)

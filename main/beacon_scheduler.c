@@ -26,7 +26,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
-#include "app_config.h" // ENABLE_BULLETINS / ENABLE_OBJECTS_ITEMS
+#include "app_config.h"   // ENABLE_BULLETINS / ENABLE_OBJECTS_ITEMS
 #include "aprs_service.h" // aprs_service_set_beacon_context()
 #include "beacon.h"
 #include "beacon_scheduler.h"
@@ -139,21 +139,21 @@ static void beacon_scheduler_task(void *arg) {
         // Each service transmits whatever is due and returns seconds-until-next.
         uint32_t soonest = BEACON_SCHED_POLL_CAP_S;
 
-        soonest = min_u32(soonest, beacon_service());         // tracker + igate + digi
-        soonest = min_u32(soonest, weather_beacon_service()); // WX report
+        soonest = min_u32(soonest, beacon_service());           // tracker + igate + digi
+        soonest = min_u32(soonest, weather_beacon_service());   // WX report
         soonest = min_u32(soonest, telemetry_beacon_service()); // Telemetry (Binary B1-B8) report
 #ifdef ENABLE_BULLETINS
-        soonest = min_u32(soonest, bulletins_service());      // BLN1..BLNn
+        soonest = min_u32(soonest, bulletins_service()); // BLN1..BLNn
 #endif
 #ifdef ENABLE_OBJECTS_ITEMS
-        soonest = min_u32(soonest, objitems_service());       // APRS Objects/Items
+        soonest = min_u32(soonest, objitems_service()); // APRS Objects/Items
 #endif
 
         if (soonest < 1)
             soonest = 1;
 
-        ESP_LOGD(TAG, "scheduler stack free: %u bytes; next pass in %us",
-                 (unsigned)(uxTaskGetStackHighWaterMark(NULL) * sizeof(StackType_t)), (unsigned)soonest);
+        ESP_LOGD(TAG, "scheduler stack free: %u bytes; next pass in %us", (unsigned)(uxTaskGetStackHighWaterMark(NULL) * sizeof(StackType_t)),
+                 (unsigned)soonest);
 
         vTaskDelay(pdMS_TO_TICKS((uint32_t)soonest * 1000UL));
     }

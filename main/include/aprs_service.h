@@ -95,11 +95,17 @@ typedef struct {
     uint32_t radio_tx; /**< Frames successfully transmitted on RF (beacons, digipeats, INET2RF relays, messages, etc). */
     uint32_t rf2inet;  /**< Frames relayed from RF to APRS-IS (IGate actually uplinked them). */
     uint32_t inet2rf;  /**< Lines relayed from APRS-IS to RF (IGate actually transmitted them). */
-    uint32_t digi;     /**< Frames digipeated (path rewritten and re-transmitted). Only ever moves while digi_en is on - there is nothing to digipeat with it off. */
-    uint32_t drop;     /**< Frames received but discarded at the RX/service level (e.g. placeholder/invalid source callsign) - tracked regardless of digi_en/igate_en, unlike digi_get_stats()/igate_get_stats()'s own drop counters. */
-    uint32_t err;      /**< Frames the modem handed up that failed to decode as a valid APRS (UI, no-layer-3) AX.25 frame - tracked regardless of digi_en/igate_en. */
-    uint32_t tx_queue_depth; /**< Frames currently sitting in the RF TX ring right now (waiting to key up, or on the air). An at-a-glance view of the backlog the "TX buffers" limit caps - a value that stays pinned near tx_queue_limit while drops climb is the visible symptom of a saturated RF leg (see the drain-wait in aprs_service_send_tnc2()). */
-    uint32_t tx_queue_limit; /**< The effective "TX buffers" cap (g_config.rf_tx_buffers, clamped): new frames are dropped once tx_queue_depth reaches this. Shown alongside tx_queue_depth so the dashboard reads like the console's "n/n pending" line. */
+    uint32_t
+        digi; /**< Frames digipeated (path rewritten and re-transmitted). Only ever moves while digi_en is on - there is nothing to digipeat with it off. */
+    uint32_t drop; /**< Frames received but discarded at the RX/service level (e.g. placeholder/invalid source callsign) - tracked regardless of
+                      digi_en/igate_en, unlike digi_get_stats()/igate_get_stats()'s own drop counters. */
+    uint32_t
+        err; /**< Frames the modem handed up that failed to decode as a valid APRS (UI, no-layer-3) AX.25 frame - tracked regardless of digi_en/igate_en. */
+    uint32_t tx_queue_depth; /**< Frames currently sitting in the RF TX ring right now (waiting to key up, or on the air). An at-a-glance view of the backlog
+                                the "TX buffers" limit caps - a value that stays pinned near tx_queue_limit while drops climb is the visible symptom of a
+                                saturated RF leg (see the drain-wait in aprs_service_send_tnc2()). */
+    uint32_t tx_queue_limit; /**< The effective "TX buffers" cap (g_config.rf_tx_buffers, clamped): new frames are dropped once tx_queue_depth reaches this.
+                                Shown alongside tx_queue_depth so the dashboard reads like the console's "n/n pending" line. */
 } aprs_service_stats_t;
 
 /**

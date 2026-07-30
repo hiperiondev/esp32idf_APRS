@@ -27,10 +27,12 @@
 #include <string.h>
 #include <strings.h> // strncasecmp (multipart header parsing)
 
-#include "app_config.h"
 #include "BMP180.h" // BMP180_I2C_SDA_GPIO/SCL_GPIO: fixed pins for the GPIO registry
+#include "app_config.h"
 #include "esp32idf_radioamateur_modem_config.h" // MODEM_ADC_GPIO/MODEM_DAC_GPIO/MODEM_PTT_GPIO: fixed audio front-end + PTT pins for the GPIO registry
 #include "esp_log.h"
+#include "esp_timer.h"    // esp_timer_get_time(): monotonic clock for the login lockout window
+#include "lwip/sockets.h" // getpeername(): client IP for the per-source login lockout
 #include "mbedtls/base64.h"
 #include "translations.h"
 
@@ -52,10 +54,139 @@ static bool web_const_time_streq(const char *a, const char *b) {
     return diff == 0;
 }
 
+// ------------------------------------------------------- Login rate limiting
+//
+// Tracks failed Basic-Auth attempts per client IP so an attacker on the
+// network can't brute-force the admin password at full HTTP round-trip
+// speed. After WEB_AUTH_MAX_ATTEMPTS consecutive failures from the same
+// source, that source is locked out for a backoff window that doubles with
+// every further failure while locked out (capped at WEB_AUTH_LOCKOUT_MAX_S),
+// and resets on a successful login. This is intentionally a small fixed-size
+// in-RAM table (no persistent storage / no dynamic allocation) sized for a
+// handful of concurrent offenders, which is appropriate for a single-board
+// admin UI.
+#define WEB_AUTH_MAX_ATTEMPTS   5   // failures allowed before the first lockout
+#define WEB_AUTH_LOCKOUT_BASE_S 5   // initial lockout duration
+#define WEB_AUTH_LOCKOUT_MAX_S  300 // cap on the backoff (5 minutes)
+#define WEB_AUTH_TRACK_SLOTS    16  // distinct source IPs tracked at once
+
+typedef struct {
+    uint32_t ip;          // source IPv4 address in network byte order; 0 = free slot
+    uint16_t fail_count;  // consecutive failures since the last success/reset
+    int64_t locked_until; // esp_timer_get_time() microseconds; 0 = not locked
+} web_auth_track_t;
+
+static web_auth_track_t s_auth_track[WEB_AUTH_TRACK_SLOTS];
+
+// Best-effort client IPv4 lookup for the connection behind req. Returns 0
+// (never a valid unicast source) if it can't be determined, in which case the
+// caller tracks that request under the shared "unknown" bucket instead of
+// skipping rate limiting altogether. IPv4-only: this project builds with
+// CONFIG_LWIP_IPV6 disabled (see sdkconfig), so the httpd socket is always
+// plain AF_INET.
+static uint32_t web_client_ipv4(httpd_req_t *req) {
+    int sockfd = httpd_req_to_sockfd(req);
+    if (sockfd < 0)
+        return 0;
+
+    struct sockaddr_in addr;
+    socklen_t addr_len = sizeof(addr);
+    if (getpeername(sockfd, (struct sockaddr *)&addr, &addr_len) != 0)
+        return 0;
+    if (addr.sin_family != AF_INET)
+        return 0;
+
+    return addr.sin_addr.s_addr;
+}
+
+// Finds this source's tracking slot, evicting the least-recently-failed
+// entry if the table is full and the source isn't already present. Never
+// returns NULL: worst case every source beyond WEB_AUTH_TRACK_SLOTS shares
+// slot 0's counter, which only makes lockouts trigger sooner, never later.
+static web_auth_track_t *web_auth_track_find(uint32_t ip) {
+    web_auth_track_t *free_slot = NULL;
+    web_auth_track_t *oldest = &s_auth_track[0];
+    for (int i = 0; i < WEB_AUTH_TRACK_SLOTS; i++) {
+        if (s_auth_track[i].ip == ip && s_auth_track[i].fail_count > 0)
+            return &s_auth_track[i];
+        if (!free_slot && s_auth_track[i].ip == 0)
+            free_slot = &s_auth_track[i];
+        if (s_auth_track[i].locked_until < oldest->locked_until)
+            oldest = &s_auth_track[i];
+    }
+    if (free_slot) {
+        free_slot->ip = ip;
+        return free_slot;
+    }
+    oldest->ip = ip;
+    oldest->fail_count = 0;
+    oldest->locked_until = 0;
+    return oldest;
+}
+
+// Returns the seconds remaining in this source's lockout (0 if not locked).
+static int web_auth_lockout_remaining_s(uint32_t ip) {
+    for (int i = 0; i < WEB_AUTH_TRACK_SLOTS; i++) {
+        if (s_auth_track[i].ip == ip && s_auth_track[i].locked_until > 0) {
+            int64_t remaining_us = s_auth_track[i].locked_until - esp_timer_get_time();
+            if (remaining_us > 0)
+                return (int)(remaining_us / 1000000) + 1;
+            return 0;
+        }
+    }
+    return 0;
+}
+
+static void web_auth_note_failure(uint32_t ip) {
+    web_auth_track_t *t = web_auth_track_find(ip);
+    if (t->fail_count < UINT16_MAX)
+        t->fail_count++;
+
+    if (t->fail_count >= WEB_AUTH_MAX_ATTEMPTS) {
+        // Every failure beyond the threshold doubles the lockout, so a
+        // client that keeps hammering the lockout window (rather than
+        // waiting it out) backs off exponentially instead of retrying at a
+        // fixed cadence.
+        uint32_t over = t->fail_count - WEB_AUTH_MAX_ATTEMPTS;
+        uint32_t shift = over > 8 ? 8 : over; // cap the shift so it can't overflow
+        uint32_t lockout_s = WEB_AUTH_LOCKOUT_BASE_S << shift;
+        if (lockout_s > WEB_AUTH_LOCKOUT_MAX_S)
+            lockout_s = WEB_AUTH_LOCKOUT_MAX_S;
+        t->locked_until = esp_timer_get_time() + (int64_t)lockout_s * 1000000;
+        ESP_LOGW(TAG, "Web admin login: %u consecutive failures, locked out for %u s", (unsigned)t->fail_count, (unsigned)lockout_s);
+    }
+}
+
+static void web_auth_note_success(uint32_t ip) {
+    for (int i = 0; i < WEB_AUTH_TRACK_SLOTS; i++) {
+        if (s_auth_track[i].ip == ip) {
+            s_auth_track[i].ip = 0;
+            s_auth_track[i].fail_count = 0;
+            s_auth_track[i].locked_until = 0;
+            return;
+        }
+    }
+}
+
 // ---------------------------------------------------------------- Basic Auth
 bool web_check_auth(httpd_req_t *req) {
     if (g_config.http_username[0] == 0)
         return true; // auth disabled if no user set
+
+    uint32_t client_ip = web_client_ipv4(req);
+    int lockout_remaining_s = web_auth_lockout_remaining_s(client_ip);
+    if (lockout_remaining_s > 0) {
+        // Reject before even looking at the Authorization header: a locked
+        // source doesn't get another guess to spend, and doesn't get any
+        // extra timing signal either.
+        httpd_resp_set_status(req, "429 Too Many Requests");
+        char retry_hdr[16];
+        snprintf(retry_hdr, sizeof(retry_hdr), "%d", lockout_remaining_s);
+        httpd_resp_set_hdr(req, "Retry-After", retry_hdr);
+        httpd_resp_set_type(req, "text/html");
+        httpd_resp_sendstr(req, "<h1>" TR_UNAUTHORIZED "</h1>");
+        return false;
+    }
 
     char hdr[160];
     if (httpd_req_get_hdr_value_str(req, "Authorization", hdr, sizeof(hdr)) != ESP_OK) {
@@ -85,11 +216,13 @@ bool web_check_auth(httpd_req_t *req) {
         // fixed-size buffers in g_config, so comparing the full field width
         // costs nothing here.
         if (web_const_time_streq(user, g_config.http_username) && web_const_time_streq(pass, g_config.http_password)) {
+            web_auth_note_success(client_ip);
             return true;
         }
     }
 
 need_auth:
+    web_auth_note_failure(client_ip);
     httpd_resp_set_status(req, "401 Unauthorized");
     httpd_resp_set_hdr(req, "WWW-Authenticate", "Basic realm=\"ESP32APRS\"");
     httpd_resp_set_type(req, "text/html");
@@ -291,9 +424,9 @@ void web_sanitize_filename(const char *src, char *dst, size_t dst_size) {
 // boundary marker, then discards them. This is what lets a multi-hundred-KB
 // firmware image stream straight into esp_ota_write() on a device with a
 // few hundred KB of free heap.
-#define MP_BUF_CAP     4096
-#define MP_MAX_HEADER  512
-#define MP_MAX_PARTS   32 // sanity cap against a pathological/adversarial body
+#define MP_BUF_CAP    4096
+#define MP_MAX_HEADER 512
+#define MP_MAX_PARTS  32 // sanity cap against a pathological/adversarial body
 
 static const uint8_t *mp_mem_find(const uint8_t *hay, size_t haylen, const char *needle, size_t needlelen) {
     if (needlelen == 0 || haylen < needlelen)
@@ -360,22 +493,22 @@ esp_err_t web_multipart_receive_file(httpd_req_t *req, web_multipart_data_cb_t c
     esp_err_t result = ESP_FAIL;
     bool found_file_part = false;
 
-#define MP_FILL()                                                                                                                                            \
-    do {                                                                                                                                                      \
-        while (buf_len < MP_BUF_CAP && remaining > 0) {                                                                                                       \
-            int want = (int)(MP_BUF_CAP - buf_len);                                                                                                           \
-            if (want > remaining)                                                                                                                             \
-                want = remaining;                                                                                                                             \
-            int r = httpd_req_recv(req, (char *)buf + buf_len, want);                                                                                         \
-            if (r > 0) {                                                                                                                                      \
-                buf_len += (size_t)r;                                                                                                                         \
-                remaining -= r;                                                                                                                               \
-            } else if (r == HTTPD_SOCK_ERR_TIMEOUT) {                                                                                                         \
-                continue;                                                                                                                                     \
-            } else {                                                                                                                                          \
-                goto done;                                                                                                                                    \
-            }                                                                                                                                                 \
-        }                                                                                                                                                     \
+#define MP_FILL()                                                                                                                                              \
+    do {                                                                                                                                                       \
+        while (buf_len < MP_BUF_CAP && remaining > 0) {                                                                                                        \
+            int want = (int)(MP_BUF_CAP - buf_len);                                                                                                            \
+            if (want > remaining)                                                                                                                              \
+                want = remaining;                                                                                                                              \
+            int r = httpd_req_recv(req, (char *)buf + buf_len, want);                                                                                          \
+            if (r > 0) {                                                                                                                                       \
+                buf_len += (size_t)r;                                                                                                                          \
+                remaining -= r;                                                                                                                                \
+            } else if (r == HTTPD_SOCK_ERR_TIMEOUT) {                                                                                                          \
+                continue;                                                                                                                                      \
+            } else {                                                                                                                                           \
+                goto done;                                                                                                                                     \
+            }                                                                                                                                                  \
+        }                                                                                                                                                      \
     } while (0)
 
     MP_FILL();
@@ -594,7 +727,8 @@ void web_send_header(httpd_req_t *req, const char *title, const char *active_men
 }
 
 void web_send_footer(httpd_req_t *req) {
-    httpd_resp_sendstr_chunk(req, "<script>function togglePwd(id,cb){var el=document.getElementById(id);if(el){el.type=(cb&&cb.checked)?'text':'password';}}</script>");
+    httpd_resp_sendstr_chunk(
+        req, "<script>function togglePwd(id,cb){var el=document.getElementById(id);if(el){el.type=(cb&&cb.checked)?'text':'password';}}</script>");
     httpd_resp_sendstr_chunk(req, "</main></div></body></html>");
     httpd_resp_sendstr_chunk(req, NULL); // end chunked response
 }
@@ -822,8 +956,7 @@ void web_select_option(httpd_req_t *req, int value, const char *label, bool sele
 
 void web_select_option_state(httpd_req_t *req, int value, const char *label, bool selected, bool disabled) {
     char buf[400];
-    snprintf(buf, sizeof(buf), "<option value='%d' %s %s>%.300s</option>", value, selected ? "selected" : "", disabled ? "disabled" : "",
-             label);
+    snprintf(buf, sizeof(buf), "<option value='%d' %s %s>%.300s</option>", value, selected ? "selected" : "", disabled ? "disabled" : "", label);
     httpd_resp_sendstr_chunk(req, buf);
 }
 
@@ -844,14 +977,14 @@ void web_select_close(httpd_req_t *req) {
 int web_gpio_collect_used(const char *skip_tag, web_gpio_owner_t *out, int max) {
     int n = 0;
 
-#define WEB_GPIO_ADD(gpio_value, owner_tag)                                                                                       \
-    do {                                                                                                                          \
-        int8_t _g = (int8_t)(gpio_value);                                                                                         \
-        if (n < max && _g >= 0 && (!skip_tag || strcmp((owner_tag), skip_tag) != 0)) {                                            \
-            out[n].gpio = _g;                                                                                                     \
-            out[n].tag = (owner_tag);                                                                                             \
-            n++;                                                                                                                  \
-        }                                                                                                                         \
+#define WEB_GPIO_ADD(gpio_value, owner_tag)                                                                                                                    \
+    do {                                                                                                                                                       \
+        int8_t _g = (int8_t)(gpio_value);                                                                                                                      \
+        if (n < max && _g >= 0 && (!skip_tag || strcmp((owner_tag), skip_tag) != 0)) {                                                                         \
+            out[n].gpio = _g;                                                                                                                                  \
+            out[n].tag = (owner_tag);                                                                                                                          \
+            n++;                                                                                                                                               \
+        }                                                                                                                                                      \
     } while (0)
 
     // msg_alarm_gpio can hold a real pin number even while the Message Alarm
@@ -919,22 +1052,21 @@ void web_field_symbol(httpd_req_t *req, const char *label, const char *name_pref
              "oninput=\"aprsSymUpd('%.30s','%.30s')\">"
              "<a href='/symbol' target='_blank' title='%.60s' class='secondary' style='text-decoration:none;padding:4px 8px'>%.60s</a>"
              "</div>",
-             label, name_prefix, name_prefix, code_num, table_num, TR_F_SYMBOL_TABLE, ids, ids, table_ch, ids, idc,
-             TR_F_SYMBOL_CODE, idc, idc, sym_ch, ids, idc, TR_SYM_PICK_HINT, TR_BTN_PICK_SYMBOL);
+             label, name_prefix, name_prefix, code_num, table_num, TR_F_SYMBOL_TABLE, ids, ids, table_ch, ids, idc, TR_F_SYMBOL_CODE, idc, idc, sym_ch, ids,
+             idc, TR_SYM_PICK_HINT, TR_BTN_PICK_SYMBOL);
     httpd_resp_sendstr_chunk(req, buf);
 
     // Tiny helper script: updates the graphical icon live as the user edits
     // the Table/Code inputs, without waiting for a page reload. Safe to emit
     // once per field; browsers just redefine the same function identically.
-    static const char *script =
-        "<script>function aprsSymUpd(t,c){"
-        "var tv=(document.getElementById(t).value||'/').charAt(0)||'/';"
-        "var cv=(document.getElementById(c).value||' ').charAt(0)||' ';"
-        "var tn=(tv=='\\\\')?2:1;var cn=cv.charCodeAt(0);"
-        "var pfx=t.slice(0,-5);"
-        "var img=document.getElementById(pfx+'_img');"
-        "if(img){img.style.display='block';img.src='http://aprs.dprns.com/symbols/icons/'+cn+'-'+tn+'.png';}"
-        "}</script>";
+    static const char *script = "<script>function aprsSymUpd(t,c){"
+                                "var tv=(document.getElementById(t).value||'/').charAt(0)||'/';"
+                                "var cv=(document.getElementById(c).value||' ').charAt(0)||' ';"
+                                "var tn=(tv=='\\\\')?2:1;var cn=cv.charCodeAt(0);"
+                                "var pfx=t.slice(0,-5);"
+                                "var img=document.getElementById(pfx+'_img');"
+                                "if(img){img.style.display='block';img.src='http://aprs.dprns.com/symbols/icons/'+cn+'-'+tn+'.png';}"
+                                "}</script>";
     httpd_resp_sendstr_chunk(req, script);
 }
 
@@ -961,8 +1093,8 @@ void web_form_get_symbol(const char *body, const char *name_prefix, const char *
         web_form_get(body, legacy_name, out, out_size);
 }
 
-void web_field_use_station_data(httpd_req_t *req, const char *checkbox_name, bool checked, const char *call_name, const char *lat_name,
-                                 const char *lon_name, const char *alt_name) {
+void web_field_use_station_data(httpd_req_t *req, const char *checkbox_name, bool checked, const char *call_name, const char *lat_name, const char *lon_name,
+                                const char *alt_name) {
     // Build each field's `document.querySelector(...)` expression (or the
     // literal "null" if the page doesn't have that field), then splice all
     // four into the script below in one go.
@@ -996,7 +1128,7 @@ void web_field_use_station_data(httpd_req_t *req, const char *checkbox_name, boo
              "var cb=document.getElementById('%.30s');if(cb){cb.addEventListener('change',apply);apply();}"
              "});"
              "})();</script>",
-             checkbox_name, checkbox_name, checked ? "checked" : "", checkbox_name, qcall, qlat, qlon, qalt, g_config.my_callsign,
-             (double)g_config.my_lat, (double)g_config.my_lon, (double)g_config.my_alt, checkbox_name);
+             checkbox_name, checkbox_name, checked ? "checked" : "", checkbox_name, qcall, qlat, qlon, qalt, g_config.my_callsign, (double)g_config.my_lat,
+             (double)g_config.my_lon, (double)g_config.my_alt, checkbox_name);
     httpd_resp_sendstr_chunk(req, buf);
 }

@@ -54,8 +54,8 @@ static const char *TAG = "objitems";
 // 0 (or unset) falls back to the default, and anything below the floor is
 // raised to it - mirroring beacon.c/bulletins.c so an Object/Item can't be
 // configured to hammer RF/APRS-IS.
-#define OBJITEM_MIN_INTERVAL_S     30   // sanity floor
-#define OBJITEM_DEFAULT_INTERVAL_S 600  // 10 min, used when interval_s == 0
+#define OBJITEM_MIN_INTERVAL_S     30  // sanity floor
+#define OBJITEM_DEFAULT_INTERVAL_S 600 // 10 min, used when interval_s == 0
 
 // Upper bound on how long the transmitter asks to sleep between passes. Even
 // when every element's interval is long, config is re-loaded at least this
@@ -104,13 +104,27 @@ static void write_json_string(FILE *f, const char *v) {
         for (const unsigned char *p = (const unsigned char *)v; *p; p++) {
             unsigned char ch = *p;
             switch (ch) {
-                case '"':  fputs("\\\"", f); break;
-                case '\\': fputs("\\\\", f); break;
-                case '\b': fputs("\\b", f); break;
-                case '\f': fputs("\\f", f); break;
-                case '\n': fputs("\\n", f); break;
-                case '\r': fputs("\\r", f); break;
-                case '\t': fputs("\\t", f); break;
+                case '"':
+                    fputs("\\\"", f);
+                    break;
+                case '\\':
+                    fputs("\\\\", f);
+                    break;
+                case '\b':
+                    fputs("\\b", f);
+                    break;
+                case '\f':
+                    fputs("\\f", f);
+                    break;
+                case '\n':
+                    fputs("\\n", f);
+                    break;
+                case '\r':
+                    fputs("\\r", f);
+                    break;
+                case '\t':
+                    fputs("\\t", f);
+                    break;
                 default:
                     if (ch < 0x20)
                         fprintf(f, "\\u%04x", ch);
@@ -642,8 +656,8 @@ static void objitem_build_info_field(const objitem_t *b, bool live, char *out, s
         clamp_str(sp, b->signpost, OBJITEM_SIGNPOST_MAX);
         snprintf(ext, sizeof(ext), "{%s}", sp);
     } else if (b->speed > 0) {
-        unsigned crs = (unsigned)(b->course % 360);       // 0..359
-        unsigned spd = b->speed > 999 ? 999u : b->speed;  // APRS speed field is 3 digits
+        unsigned crs = (unsigned)(b->course % 360);      // 0..359
+        unsigned spd = b->speed > 999 ? 999u : b->speed; // APRS speed field is 3 digits
         snprintf(ext, sizeof(ext), "%03u/%03u", crs, spd);
     } else if (b->phg_enable) {
         // PHG shares the 7-byte data-extension slot with CSE/SPD (they are
@@ -727,7 +741,7 @@ static void resolve_source_call(char *out, size_t out_size) {
             int ssid = (int)g_config.aprs_ssid;
             if (ssid > 15)
                 ssid = 15; // AX.25 SSID is 0..15
-            char suf[4]; // "-15\0" max
+            char suf[4];   // "-15\0" max
             suf[0] = '-';
             if (ssid >= 10) {
                 suf[1] = (char)('0' + ssid / 10);

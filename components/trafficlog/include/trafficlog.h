@@ -83,10 +83,9 @@ void trafficlog_add_pkt(const char *dir, const char *dx, const char *packet, int
  * object.
  *
  * The object has the form
- * @c {"seq":<latest_seq>,"items":[{"t":<ms_since_boot>,"m":"<line>","d":"<dir>","dx":"<callsign>","pkt":"<packet>","au":<audio_mv|-1>,"sym":"<code>-<table>"}, ...]}.
- * "sym" mirrors the encoding used by lastheard_dump_json() ("<symbol_code>-<1_or_2>"),
- * or "" when no symbol is known. The result is NUL-terminated and truncated to
- * fit @p out_size.
+ * @c {"seq":<latest_seq>,"items":[{"t":<ms_since_boot>,"m":"<line>","d":"<dir>","dx":"<callsign>","pkt":"<packet>","au":<audio_mv|-1>,"sym":"<code>-<table>"},
+ * ...]}. "sym" mirrors the encoding used by lastheard_dump_json() ("<symbol_code>-<1_or_2>"), or "" when no symbol is known. The result is NUL-terminated and
+ * truncated to fit @p out_size.
  *
  * @param since_seq Only entries with a sequence number greater than this are emitted.
  * @param out       Destination buffer.

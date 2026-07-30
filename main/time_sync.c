@@ -51,9 +51,9 @@ typedef enum {
 } ts_state_t;
 
 static ts_state_t s_state = TS_DISABLED;
-static volatile bool s_synced = false; // set by the SNTP notification callback (tcpip thread)
-static bool s_sntp_inited = false;     // esp_netif_sntp_init() done exactly once
-static int s_wait_s = 0;               // seconds elapsed in TS_WAITING / TS_COOLDOWN
+static volatile bool s_synced = false;                         // set by the SNTP notification callback (tcpip thread)
+static bool s_sntp_inited = false;                             // esp_netif_sntp_init() done exactly once
+static int s_wait_s = 0;                                       // seconds elapsed in TS_WAITING / TS_COOLDOWN
 static char s_host_list[3 * sizeof(g_config.ntp_host[0]) + 8]; // human-readable, for logs
 
 static void logUtcNow(const char *prefix) {
@@ -138,61 +138,61 @@ static bool sntp_setup(void) {
 // until the first one lands, then let esp_netif_sntp self-maintain.
 void time_sync_1hz(void) {
     switch (s_state) {
-    case TS_DISABLED:
-    case TS_DONE:
-        return;
-
-    case TS_WAIT_NET:
-        // Same net_state gate the IGate uses (see net_state.h); one tick == the
-        // old vTaskDelay(1000) poll.
-        if (!net_state_is_connected())
+        case TS_DISABLED:
+        case TS_DONE:
             return;
-        if (!s_sntp_inited) {
-            if (!sntp_setup()) {
-                s_state = TS_DISABLED; // init failed: give up, exactly like the old vTaskDelete()
+
+        case TS_WAIT_NET:
+            // Same net_state gate the IGate uses (see net_state.h); one tick == the
+            // old vTaskDelay(1000) poll.
+            if (!net_state_is_connected())
+                return;
+            if (!s_sntp_inited) {
+                if (!sntp_setup()) {
+                    s_state = TS_DISABLED; // init failed: give up, exactly like the old vTaskDelete()
+                    return;
+                }
+                s_sntp_inited = true;
+            }
+            s_state = TS_START;
+            // fall through: kick the first request on this same tick
+            __attribute__((fallthrough));
+
+        case TS_START: {
+            s_synced = false;
+            esp_err_t err = esp_netif_sntp_start();
+            if (err != ESP_OK) {
+                ESP_LOGW(TAG, "esp_netif_sntp_start() failed: %s, retrying in 30 s", esp_err_to_name(err));
+                s_wait_s = 0;
+                s_state = TS_COOLDOWN;
                 return;
             }
-            s_sntp_inited = true;
-        }
-        s_state = TS_START;
-        // fall through: kick the first request on this same tick
-        __attribute__((fallthrough));
-
-    case TS_START: {
-        s_synced = false;
-        esp_err_t err = esp_netif_sntp_start();
-        if (err != ESP_OK) {
-            ESP_LOGW(TAG, "esp_netif_sntp_start() failed: %s, retrying in 30 s", esp_err_to_name(err));
+            ESP_LOGI(TAG, "NTP sync requested against '%s', waiting up to 25 s for a reply...", s_host_list);
             s_wait_s = 0;
-            s_state = TS_COOLDOWN;
+            s_state = TS_WAITING;
             return;
         }
-        ESP_LOGI(TAG, "NTP sync requested against '%s', waiting up to 25 s for a reply...", s_host_list);
-        s_wait_s = 0;
-        s_state = TS_WAITING;
-        return;
-    }
 
-    case TS_WAITING:
-        if (s_synced) {
-            logUtcNow("System clock set from NTP");
-            s_state = TS_DONE; // esp_netif_sntp keeps itself in sync from here on its own periodic timer
+        case TS_WAITING:
+            if (s_synced) {
+                logUtcNow("System clock set from NTP");
+                s_state = TS_DONE; // esp_netif_sntp keeps itself in sync from here on its own periodic timer
+                return;
+            }
+            if (++s_wait_s >= 25) {
+                ESP_LOGW(TAG,
+                         "NTP sync did not complete in time. Check that one of '%s' resolves and that outbound UDP/123 "
+                         "is allowed on this network. Retrying in 30 s...",
+                         s_host_list);
+                s_wait_s = 0;
+                s_state = TS_COOLDOWN;
+            }
             return;
-        }
-        if (++s_wait_s >= 25) {
-            ESP_LOGW(TAG,
-                     "NTP sync did not complete in time. Check that one of '%s' resolves and that outbound UDP/123 "
-                     "is allowed on this network. Retrying in 30 s...",
-                     s_host_list);
-            s_wait_s = 0;
-            s_state = TS_COOLDOWN;
-        }
-        return;
 
-    case TS_COOLDOWN:
-        if (++s_wait_s >= 30)
-            s_state = TS_START;
-        return;
+        case TS_COOLDOWN:
+            if (++s_wait_s >= 30)
+                s_state = TS_START;
+            return;
     }
 }
 

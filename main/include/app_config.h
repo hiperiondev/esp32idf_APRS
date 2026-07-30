@@ -77,33 +77,33 @@
  * Modules that are not implemented are simply not defined here.
  * @{
  */
-#define ENABLE_DASHBOARD       /**< Dashboard page. */
-#define ENABLE_MSG_CHAT        /**< "Snd/Rcv Msg" chat page. */
-#define ENABLE_BULLETINS       /**< APRS bulletins page. */
-#define ENABLE_OBJECTS_ITEMS   /**< APRS Objects/Items page. */
-#define ENABLE_STATION         /**< "My Station" page. */
-#define ENABLE_RADIO_MODEM     /**< Radiomodem page. */
-#define ENABLE_MESSAGE         /**< APRS Message service page. */
-#define ENABLE_IGATE           /**< IGate page. */
-#define ENABLE_DIGIPEATER      /**< Digipeater page. */
-#define ENABLE_TRACKER         /**< Tracker page. */
-#define ENABLE_WEATHER         /**< Weather page. */
-#define ENABLE_TELEMETRY       /**< Telemetry page. */
-#define ENABLE_SYSTEM          /**< System page. */
-#define ENABLE_WIRELESS        /**< Wireless page. */
-#define ENABLE_FILE_STORAGE    /**< File Storage page. */
-#define ENABLE_ABOUT_FIRMWARE  /**< About / Firmware page. */
+#define ENABLE_DASHBOARD      /**< Dashboard page. */
+#define ENABLE_MSG_CHAT       /**< "Snd/Rcv Msg" chat page. */
+#define ENABLE_BULLETINS      /**< APRS bulletins page. */
+#define ENABLE_OBJECTS_ITEMS  /**< APRS Objects/Items page. */
+#define ENABLE_STATION        /**< "My Station" page. */
+#define ENABLE_RADIO_MODEM    /**< Radiomodem page. */
+#define ENABLE_MESSAGE        /**< APRS Message service page. */
+#define ENABLE_IGATE          /**< IGate page. */
+#define ENABLE_DIGIPEATER     /**< Digipeater page. */
+#define ENABLE_TRACKER        /**< Tracker page. */
+#define ENABLE_WEATHER        /**< Weather page. */
+#define ENABLE_TELEMETRY      /**< Telemetry page. */
+#define ENABLE_SYSTEM         /**< System page. */
+#define ENABLE_WIRELESS       /**< Wireless page. */
+#define ENABLE_FILE_STORAGE   /**< File Storage page. */
+#define ENABLE_ABOUT_FIRMWARE /**< About / Firmware page. */
 /** @} */
 
 /**
  * @brief Size of the comment buffers (IGate/Digipeater/Tracker/Weather):
  * 128 bytes of comment text + NUL terminator.
  */
-#define COMMENT_SIZE       129
+#define COMMENT_SIZE 129
 /**
  * @brief Size of the status-text buffers.
  */
-#define STATUS_SIZE        50
+#define STATUS_SIZE 50
 
 /**
  * @brief Weather station "Sensor Mapping" rows: the canonical on-air list of
@@ -135,9 +135,9 @@ typedef enum {
 } wx_field_id_t;
 
 /** @brief Number of stored WiFi station (STA) profiles. */
-#define WIFI_STA_NUM       5
+#define WIFI_STA_NUM 5
 /** @brief Number of configurable NTP host slots. */
-#define NTP_HOST_NUM       3
+#define NTP_HOST_NUM 3
 /** @brief Minimum NTP resync interval, in seconds. */
 #define NTP_RESYNC_MIN_SEC 30
 
@@ -219,9 +219,9 @@ typedef struct {
  * user-configurable.
  */
 typedef struct {
-    float timeZone;   /**< Configured local timezone offset (display use only; the system clock stays UTC - see time_sync.h). */
-    bool synctime;    /**< Enable SNTP time sync. */
-    uint8_t cpuFreq;  /**< CPU clock frequency selection (80/160/240 MHz); see cpu_freq.h. */
+    float timeZone;  /**< Configured local timezone offset (display use only; the system clock stays UTC - see time_sync.h). */
+    bool synctime;   /**< Enable SNTP time sync. */
+    uint8_t cpuFreq; /**< CPU clock frequency selection (80/160/240 MHz); see cpu_freq.h. */
 
     char my_callsign[10]; /**< "My Station" callsign, entered once on the Station page and reused by every page's "Use My Station Data". */
     float my_lat;         /**< "My Station" latitude, decimal degrees. */
@@ -230,125 +230,130 @@ typedef struct {
 
     uint16_t my_phg_power;  /**< "My Station" PHG sub-field: radio TX power, Watts (persisted so the form redisplays the selections). */
     float my_phg_gain;      /**< "My Station" PHG sub-field: antenna gain, dBi. */
-    uint16_t my_phg_height; /**< "My Station" PHG sub-field: antenna height. Stored in feet (the unit the APRS PHG code table itself is defined in); the Station page displays/edits this in meters and converts. */
+    uint16_t my_phg_height; /**< "My Station" PHG sub-field: antenna height. Stored in feet (the unit the APRS PHG code table itself is defined in); the Station
+                               page displays/edits this in meters and converts. */
     uint8_t my_phg_dir;     /**< "My Station" PHG sub-field: directivity, 0=Omni, 1-8 = N,NE,E,SE,S,SW,W,NW. */
     char my_phg[8];         /**< "My Station" PHG string (computed from the sub-fields above), e.g. "PHG5132". */
 
-    uint8_t wifi_mode;             /**< WiFi mode: 0=off, 1=STA, 2=AP, 3=AP_STA. */
-    int8_t wifi_power;             /**< WiFi TX power setting. */
+    uint8_t wifi_mode;                 /**< WiFi mode: 0=off, 1=STA, 2=AP, 3=AP_STA. */
+    int8_t wifi_power;                 /**< WiFi TX power setting. */
     wifi_sta_t wifi_sta[WIFI_STA_NUM]; /**< The ::WIFI_STA_NUM stored STA profiles. */
-    uint8_t wifi_ap_ch;            /**< SoftAP channel. */
-    char wifi_ap_ssid[33];         /**< SoftAP SSID: 32 chars max + NUL. */
-    char wifi_ap_pass[64];         /**< SoftAP PSK: 63 chars max + NUL. */
+    uint8_t wifi_ap_ch;                /**< SoftAP channel. */
+    char wifi_ap_ssid[33];             /**< SoftAP SSID: 32 chars max + NUL. */
+    char wifi_ap_pass[64];             /**< SoftAP PSK: 63 chars max + NUL. */
 
-    bool igate_en;             /**< IGate service enabled. */
-    bool rf2inet;              /**< Gateway RF -> APRS-IS. */
-    bool inet2rf;              /**< Gateway APRS-IS -> RF. */
-    bool igate_loc2rf;         /**< Beacon the IGate's own position on RF. */
-    bool igate_loc2inet;       /**< Beacon the IGate's own position to APRS-IS. */
-    uint16_t rf2inetFilter;    /**< RF->INET payload-type filter (IGATE_FILT_* bitmask). */
-    uint16_t inet2rfFilter;    /**< INET->RF payload-type filter (IGATE_FILT_* bitmask). */
+    bool igate_en;                       /**< IGate service enabled. */
+    bool rf2inet;                        /**< Gateway RF -> APRS-IS. */
+    bool inet2rf;                        /**< Gateway APRS-IS -> RF. */
+    bool igate_loc2rf;                   /**< Beacon the IGate's own position on RF. */
+    bool igate_loc2inet;                 /**< Beacon the IGate's own position to APRS-IS. */
+    uint16_t rf2inetFilter;              /**< RF->INET payload-type filter (IGATE_FILT_* bitmask). */
+    uint16_t inet2rfFilter;              /**< INET->RF payload-type filter (IGATE_FILT_* bitmask). */
     budlist_mode_t rf2inet_budlist_mode; /**< RF->INET local callsign whitelist/blacklist mode. */
     budlist_mode_t inet2rf_budlist_mode; /**< INET->RF local callsign whitelist/blacklist mode. */
     char budlist[IGATE_BUDLIST_MAX][10]; /**< Shared callsign list (base call, no SSID) used by both directions' whitelist/blacklist. */
 
-    bool  rf2inet_range_en;      /**< Enable the local RF->INET range gate (see aprs_filter_haversine_km()). Independent of, and composed with (AND semantics), rf2inetFilter/the budlist. */
-    float rf2inet_range_km;      /**< Max allowed distance from "My Station" (my_lat/my_lon), km. 0 = unlimited (gate has no effect even if enabled). Packets whose position can't be decoded are not evaluated (pass this check). */
-    bool  rf2inet_prefix_en;     /**< Enable the local RF->INET callsign-prefix gate. */
-    char  rf2inet_prefixes[40];  /**< Comma-separated callsign-prefix whitelist for rf2inet_prefix_en, e.g. "EA,EB,EC". Case-insensitive. */
+    bool rf2inet_range_en;  /**< Enable the local RF->INET range gate (see aprs_filter_haversine_km()). Independent of, and composed with (AND semantics),
+                               rf2inetFilter/the budlist. */
+    float rf2inet_range_km; /**< Max allowed distance from "My Station" (my_lat/my_lon), km. 0 = unlimited (gate has no effect even if enabled). Packets whose
+                               position can't be decoded are not evaluated (pass this check). */
+    bool rf2inet_prefix_en; /**< Enable the local RF->INET callsign-prefix gate. */
+    char rf2inet_prefixes[40]; /**< Comma-separated callsign-prefix whitelist for rf2inet_prefix_en, e.g. "EA,EB,EC". Case-insensitive. */
 
-    bool inet2rf_3rdparty_unwrap_en; /**< Off by default. Selective INET->RF opt-in: unwrap one level of third-party ('}') traffic and re-classify/relay the inner packet, but ONLY when inet2rf_budlist_mode is BUDLIST_WHITELIST and the inner packet's source callsign is itself on budlist[] - see aprs_filter_classify_thirdparty_inner(). Never a general "relay all third-party" switch; misuse (or use without a whitelist) risks re-introducing an IGate loop. */
-    uint8_t aprs_ssid;         /**< SSID for the IGate callsign. */
-    uint16_t aprs_port;        /**< APRS-IS server TCP port. */
-    char aprs_mycall[10];      /**< IGate callsign. */
-    bool igate_use_station;    /**< "Use My Station Data": mirror My Station identity/position into the IGate fields and lock them. */
-    char aprs_host[20];        /**< APRS-IS server hostname. */
-    char aprs_passcode[6];     /**< APRS-IS login passcode. */
-    char aprs_filter[30];      /**< APRS-IS server-side filter string. */
-    bool igate_bcn;            /**< Enable the IGate position beacon. */
-    bool igate_timestamp;      /**< Include a timestamp in the IGate beacon. */
-    float igate_lat;           /**< IGate beacon latitude. */
-    float igate_lon;           /**< IGate beacon longitude. */
-    float igate_alt;           /**< IGate beacon altitude. */
-    uint16_t igate_interval;   /**< IGate beacon interval, seconds. */
-    char igate_symbol[3];      /**< IGate APRS symbol ("<table><code>" + NUL). */
-    char igate_object[10];     /**< IGate object name (if beaconing as an object). */
-    char igate_phg[8];         /**< IGate PHG string (computed from the sub-fields below). */
-    uint8_t igate_path;        /**< IGate digipeat-path selection (bitmask over g_config.path[0..3]). */
+    bool inet2rf_3rdparty_unwrap_en;  /**< Off by default. Selective INET->RF opt-in: unwrap one level of third-party ('}') traffic and re-classify/relay the
+                                         inner packet, but ONLY when inet2rf_budlist_mode is BUDLIST_WHITELIST and the inner packet's source callsign is itself
+                                         on budlist[] - see aprs_filter_classify_thirdparty_inner(). Never a general "relay all third-party" switch; misuse (or
+                                         use without a whitelist) risks re-introducing an IGate loop. */
+    uint8_t aprs_ssid;                /**< SSID for the IGate callsign. */
+    uint16_t aprs_port;               /**< APRS-IS server TCP port. */
+    char aprs_mycall[10];             /**< IGate callsign. */
+    bool igate_use_station;           /**< "Use My Station Data": mirror My Station identity/position into the IGate fields and lock them. */
+    char aprs_host[20];               /**< APRS-IS server hostname. */
+    char aprs_passcode[6];            /**< APRS-IS login passcode. */
+    char aprs_filter[30];             /**< APRS-IS server-side filter string. */
+    bool igate_bcn;                   /**< Enable the IGate position beacon. */
+    bool igate_timestamp;             /**< Include a timestamp in the IGate beacon. */
+    float igate_lat;                  /**< IGate beacon latitude. */
+    float igate_lon;                  /**< IGate beacon longitude. */
+    float igate_alt;                  /**< IGate beacon altitude. */
+    uint16_t igate_interval;          /**< IGate beacon interval, seconds. */
+    char igate_symbol[3];             /**< IGate APRS symbol ("<table><code>" + NUL). */
+    char igate_object[10];            /**< IGate object name (if beaconing as an object). */
+    char igate_phg[8];                /**< IGate PHG string (computed from the sub-fields below). */
+    uint8_t igate_path;               /**< IGate digipeat-path selection (bitmask over g_config.path[0..3]). */
     char igate_comment[COMMENT_SIZE]; /**< IGate beacon comment. */
-    uint16_t igate_sts_interval; /**< IGate status-beacon interval, seconds. */
-    char igate_status[STATUS_SIZE]; /**< IGate status text. */
-    bool igate_phg_enable;      /**< Enable transmitting the PHG data extension in the IGate position beacon. */
-    bool igate_phg_use_station; /**< "Use My Station Data": mirror the shared "My Station" PHG sub-fields into the IGate PHG fields and lock them. */
-    uint16_t igate_phg_power;  /**< PHG sub-field: radio TX power, Watts (persisted so the form redisplays the selections). */
-    float igate_phg_gain;      /**< PHG sub-field: antenna gain, dBi. */
-    uint16_t igate_phg_height; /**< PHG sub-field: antenna height, feet. */
-    uint8_t igate_phg_dir;     /**< PHG sub-field: directivity, 0=Omni, 1-8 = N,NE,E,SE,S,SW,W,NW. */
+    uint16_t igate_sts_interval;      /**< IGate status-beacon interval, seconds. */
+    char igate_status[STATUS_SIZE];   /**< IGate status text. */
+    bool igate_phg_enable;            /**< Enable transmitting the PHG data extension in the IGate position beacon. */
+    bool igate_phg_use_station;       /**< "Use My Station Data": mirror the shared "My Station" PHG sub-fields into the IGate PHG fields and lock them. */
+    uint16_t igate_phg_power;         /**< PHG sub-field: radio TX power, Watts (persisted so the form redisplays the selections). */
+    float igate_phg_gain;             /**< PHG sub-field: antenna gain, dBi. */
+    uint16_t igate_phg_height;        /**< PHG sub-field: antenna height, feet. */
+    uint8_t igate_phg_dir;            /**< PHG sub-field: directivity, 0=Omni, 1-8 = N,NE,E,SE,S,SW,W,NW. */
 
-    bool digi_en;              /**< Digipeater service enabled. */
-    bool digi_auto;            /**< Automatic (WIDEn-N) digipeating. */
-    bool digi_loc2rf;          /**< Beacon the digipeater's own position on RF. */
-    bool digi_loc2inet;        /**< Beacon the digipeater's own position to APRS-IS. */
-    bool digi_timestamp;       /**< Include a timestamp in the digipeater beacon. */
-    uint8_t digi_ssid;         /**< SSID for the digipeater callsign. */
-    char digi_mycall[10];      /**< Digipeater callsign. */
-    bool digi_use_station;     /**< "Use My Station Data": mirror My Station into the digipeater fields and lock them. */
-    uint8_t digi_path;         /**< Digipeater beacon digipeat-path selection (bitmask over g_config.path[0..3]). */
-    uint16_t digi_delay;       /**< Digipeat delay, ms. */
-    uint16_t digiFilter;       /**< Digipeater payload filter bitmask. */
-    bool digi_bcn;             /**< Enable the digipeater position beacon. */
-    float digi_lat;            /**< Digipeater beacon latitude. */
-    float digi_lon;            /**< Digipeater beacon longitude. */
-    float digi_alt;            /**< Digipeater beacon altitude. */
-    uint16_t digi_interval;    /**< Digipeater beacon interval, seconds. */
-    char digi_symbol[3];       /**< Digipeater APRS symbol. */
-    char digi_phg[8];          /**< Digipeater PHG string. */
+    bool digi_en;                    /**< Digipeater service enabled. */
+    bool digi_auto;                  /**< Automatic (WIDEn-N) digipeating. */
+    bool digi_loc2rf;                /**< Beacon the digipeater's own position on RF. */
+    bool digi_loc2inet;              /**< Beacon the digipeater's own position to APRS-IS. */
+    bool digi_timestamp;             /**< Include a timestamp in the digipeater beacon. */
+    uint8_t digi_ssid;               /**< SSID for the digipeater callsign. */
+    char digi_mycall[10];            /**< Digipeater callsign. */
+    bool digi_use_station;           /**< "Use My Station Data": mirror My Station into the digipeater fields and lock them. */
+    uint8_t digi_path;               /**< Digipeater beacon digipeat-path selection (bitmask over g_config.path[0..3]). */
+    uint16_t digi_delay;             /**< Digipeat delay, ms. */
+    uint16_t digiFilter;             /**< Digipeater payload filter bitmask. */
+    bool digi_bcn;                   /**< Enable the digipeater position beacon. */
+    float digi_lat;                  /**< Digipeater beacon latitude. */
+    float digi_lon;                  /**< Digipeater beacon longitude. */
+    float digi_alt;                  /**< Digipeater beacon altitude. */
+    uint16_t digi_interval;          /**< Digipeater beacon interval, seconds. */
+    char digi_symbol[3];             /**< Digipeater APRS symbol. */
+    char digi_phg[8];                /**< Digipeater PHG string. */
     char digi_comment[COMMENT_SIZE]; /**< Digipeater beacon comment. */
-    uint16_t digi_sts_interval; /**< Digipeater status-beacon interval, seconds. */
-    char digi_status[STATUS_SIZE]; /**< Digipeater status text. */
+    uint16_t digi_sts_interval;      /**< Digipeater status-beacon interval, seconds. */
+    char digi_status[STATUS_SIZE];   /**< Digipeater status text. */
 
-    bool trk_en;               /**< Tracker service enabled. */
-    bool trk_loc2rf;           /**< Beacon the tracker position on RF. */
-    bool trk_loc2inet;         /**< Beacon the tracker position to APRS-IS. */
-    bool trk_timestamp;        /**< Include a timestamp in the tracker beacon. */
-    uint8_t trk_ssid;          /**< SSID for the tracker callsign. */
-    char trk_mycall[10];       /**< Tracker callsign. */
-    bool trk_use_station;      /**< "Use My Station Data": mirror My Station into the tracker fields and lock them. */
-    uint8_t trk_path;          /**< Tracker digipeat-path selection (bitmask over g_config.path[0..3]). */
-    float trk_lat;             /**< Tracker beacon latitude. */
-    float trk_lon;             /**< Tracker beacon longitude. */
-    float trk_alt;             /**< Tracker beacon altitude. */
-    uint16_t trk_interval;     /**< Fixed tracker beacon period in seconds (see beacon.c). */
-    bool trk_compress;         /**< Use APRS compressed position format. */
-    bool trk_altitude;         /**< Include altitude in the beacon. */
-    bool trk_log;              /**< Log tracker beacons. */
-    bool trk_rssi;             /**< Append RSSI info. */
-    char trk_symbol[3];        /**< Tracker APRS symbol. */
-    char trk_symmove[3];       /**< APRS symbol used while moving. */
-    char trk_symstop[3];       /**< APRS symbol used while stopped. */
+    bool trk_en;                    /**< Tracker service enabled. */
+    bool trk_loc2rf;                /**< Beacon the tracker position on RF. */
+    bool trk_loc2inet;              /**< Beacon the tracker position to APRS-IS. */
+    bool trk_timestamp;             /**< Include a timestamp in the tracker beacon. */
+    uint8_t trk_ssid;               /**< SSID for the tracker callsign. */
+    char trk_mycall[10];            /**< Tracker callsign. */
+    bool trk_use_station;           /**< "Use My Station Data": mirror My Station into the tracker fields and lock them. */
+    uint8_t trk_path;               /**< Tracker digipeat-path selection (bitmask over g_config.path[0..3]). */
+    float trk_lat;                  /**< Tracker beacon latitude. */
+    float trk_lon;                  /**< Tracker beacon longitude. */
+    float trk_alt;                  /**< Tracker beacon altitude. */
+    uint16_t trk_interval;          /**< Fixed tracker beacon period in seconds (see beacon.c). */
+    bool trk_compress;              /**< Use APRS compressed position format. */
+    bool trk_altitude;              /**< Include altitude in the beacon. */
+    bool trk_log;                   /**< Log tracker beacons. */
+    bool trk_rssi;                  /**< Append RSSI info. */
+    char trk_symbol[3];             /**< Tracker APRS symbol. */
+    char trk_symmove[3];            /**< APRS symbol used while moving. */
+    char trk_symstop[3];            /**< APRS symbol used while stopped. */
     char trk_comment[COMMENT_SIZE]; /**< Tracker beacon comment. */
-    char trk_item[10];         /**< Tracker item name (if beaconing as an item). */
-    uint16_t trk_sts_interval; /**< Tracker status-beacon interval, seconds. */
-    char trk_status[STATUS_SIZE]; /**< Tracker status text. */
+    char trk_item[10];              /**< Tracker item name (if beaconing as an item). */
+    uint16_t trk_sts_interval;      /**< Tracker status-beacon interval, seconds. */
+    char trk_status[STATUS_SIZE];   /**< Tracker status text. */
 
-    bool wx_en;                /**< Weather service enabled. */
-    bool wx_2rf;               /**< Transmit the WX report on RF. */
-    bool wx_2inet;             /**< Transmit the WX report to APRS-IS. */
-    bool wx_timestamp;         /**< Include a timestamp in the WX report. */
-    uint8_t wx_ssid;           /**< SSID for the WX callsign. */
-    char wx_mycall[10];        /**< WX callsign. */
-    bool wx_use_station;       /**< "Use My Station Data": mirror My Station into the WX fields and lock them. */
-    uint8_t wx_path;           /**< WX digipeat-path selection (bitmask over g_config.path[0..3]). */
-    float wx_lat;              /**< WX report latitude. */
-    float wx_lon;              /**< WX report longitude. */
-    float wx_alt;              /**< WX report altitude. */
-    uint16_t wx_interval;      /**< WX report interval, seconds. */
-    char wx_object[10];        /**< WX object name (if beaconing as an object). */
-    char wx_comment[COMMENT_SIZE]; /**< WX report comment. */
+    bool wx_en;                           /**< Weather service enabled. */
+    bool wx_2rf;                          /**< Transmit the WX report on RF. */
+    bool wx_2inet;                        /**< Transmit the WX report to APRS-IS. */
+    bool wx_timestamp;                    /**< Include a timestamp in the WX report. */
+    uint8_t wx_ssid;                      /**< SSID for the WX callsign. */
+    char wx_mycall[10];                   /**< WX callsign. */
+    bool wx_use_station;                  /**< "Use My Station Data": mirror My Station into the WX fields and lock them. */
+    uint8_t wx_path;                      /**< WX digipeat-path selection (bitmask over g_config.path[0..3]). */
+    float wx_lat;                         /**< WX report latitude. */
+    float wx_lon;                         /**< WX report longitude. */
+    float wx_alt;                         /**< WX report altitude. */
+    uint16_t wx_interval;                 /**< WX report interval, seconds. */
+    char wx_object[10];                   /**< WX object name (if beaconing as an object). */
+    char wx_comment[COMMENT_SIZE];        /**< WX report comment. */
     bool wx_sensor_enable[WX_SENSOR_NUM]; /**< Per-field enable, indexed by ::wx_field_id_t. */
     bool wx_sensor_avg[WX_SENSOR_NUM];    /**< Per-field averaging enable, indexed by ::wx_field_id_t. */
     uint8_t wx_sensor_ch[WX_SENSOR_NUM];  /**< Per-field source sensor channel, indexed by ::wx_field_id_t. */
-
 
     bool audio_modem_en;     /**< Enable the audio ADC/DAC AFSK modem. */
     bool audio_lpf;          /**< Enable the audio low-pass filter. */
@@ -357,30 +362,33 @@ typedef struct {
     uint8_t fx25_mode;       /**< FX.25 mode: 0=off, 1=RX only, 2=RX+TX. */
     uint16_t tx_timeslot;    /**< CSMA time slot (quiet time), ms. */
 
-    uint8_t rf_tx_buffers;   /**< Max frames allowed to sit in the RF TX ring before aprs_service_send_tnc2() starts discarding new packets. Web-configurable and applied live (read on every transmit). Range RF_TX_BUFFERS_MIN..RF_TX_BUFFERS_MAX (aprs_service.h), default 1. */
+    uint8_t rf_tx_buffers; /**< Max frames allowed to sit in the RF TX ring before aprs_service_send_tnc2() starts discarding new packets. Web-configurable and
+                              applied live (read on every transmit). Range RF_TX_BUFFERS_MIN..RF_TX_BUFFERS_MAX (aprs_service.h), default 1. */
 
     char ntp_host[NTP_HOST_NUM][20]; /**< Up to ::NTP_HOST_NUM NTP server hostnames. */
-    uint16_t ntp_resync_sec; /**< NTP resync interval, seconds (floored at ::NTP_RESYNC_MIN_SEC). */
+    uint16_t ntp_resync_sec;         /**< NTP resync interval, seconds (floored at ::NTP_RESYNC_MIN_SEC). */
 
-    char http_username[32];  /**< Web admin HTTP Basic auth username. */
-    char http_password[64];  /**< Web admin HTTP Basic auth password. */
-    char path[4][72];        /**< The four shared digipeat-path presets selected by the per-service path bitmasks. */
-    char host_name[32];      /**< Device hostname (mDNS / DHCP). */
-    uint16_t reset_timeout;  /**< Auto-reset timeout, seconds. */
-    uint16_t log;            /**< Logging level / flags. */
+    char http_username[32]; /**< Web admin HTTP Basic auth username. */
+    char http_password[64]; /**< Web admin HTTP Basic auth password. */
+    char path[4][72];       /**< The four shared digipeat-path presets selected by the per-service path bitmasks. */
+    char host_name[32];     /**< Device hostname (mDNS / DHCP). */
+    uint16_t reset_timeout; /**< Auto-reset timeout, seconds. */
+    uint16_t log;           /**< Logging level / flags. */
 
-    uint16_t ptt_min_unkey_ms; /**< Extra minimum PTT-off (unkeyed) hold time between transmissions, ms, on top of the fixed one-service-tick (~10 ms) release the modem always applies. 0 disables the extra hold. Web-configurable and applied live via aprs_service_apply_modem_config(). Range 0..5000 ms. */
+    uint16_t ptt_min_unkey_ms; /**< Extra minimum PTT-off (unkeyed) hold time between transmissions, ms, on top of the fixed one-service-tick (~10 ms) release
+                                  the modem always applies. 0 disables the extra hold. Web-configurable and applied live via aprs_service_apply_modem_config().
+                                  Range 0..5000 ms. */
 
-    bool msg_enable;         /**< APRS Message service enabled. */
-    char msg_mycall[10];     /**< Message service callsign. */
-    bool msg_use_station;    /**< "Use My Station Data": mirror My Station callsign into @c msg_mycall and lock it. */
-    uint8_t msg_path;        /**< Message digipeat-path selection (bitmask over g_config.path[0..3]). */
-    bool msg_rf;             /**< Send messages on RF. */
-    bool msg_inet;           /**< Send messages to APRS-IS. */
-    uint8_t msg_retry;       /**< Number of message retries before giving up. */
-    uint16_t msg_interval;   /**< Message retry interval, seconds. */
-    bool msg_alarm_enable;   /**< "Message Alarm": drive a GPIO on incoming message (disabled by default). */
-    int8_t msg_alarm_gpio;   /**< Message-alarm GPIO; -1 = disabled/unset (see message_alarm_gpio_is_valid()). */
+    bool msg_enable;       /**< APRS Message service enabled. */
+    char msg_mycall[10];   /**< Message service callsign. */
+    bool msg_use_station;  /**< "Use My Station Data": mirror My Station callsign into @c msg_mycall and lock it. */
+    uint8_t msg_path;      /**< Message digipeat-path selection (bitmask over g_config.path[0..3]). */
+    bool msg_rf;           /**< Send messages on RF. */
+    bool msg_inet;         /**< Send messages to APRS-IS. */
+    uint8_t msg_retry;     /**< Number of message retries before giving up. */
+    uint16_t msg_interval; /**< Message retry interval, seconds. */
+    bool msg_alarm_enable; /**< "Message Alarm": drive a GPIO on incoming message (disabled by default). */
+    int8_t msg_alarm_gpio; /**< Message-alarm GPIO; -1 = disabled/unset (see message_alarm_gpio_is_valid()). */
 
 } app_config_t;
 

@@ -83,8 +83,7 @@ esp_err_t page_igate_get(httpd_req_t *req) {
     }
     for (int i = 0; i < 4; i++) {
         char lbl[220];
-        snprintf(lbl, sizeof(lbl), "DST-TRACE %d: %.60s - %.90s", i + 1, g_config.path[i][0] ? g_config.path[i] : TR_PATH_CUSTOM_UNSET,
-                 TR_PATH_CUSTOM_HINT);
+        snprintf(lbl, sizeof(lbl), "DST-TRACE %d: %.60s - %.90s", i + 1, g_config.path[i][0] ? g_config.path[i] : TR_PATH_CUSTOM_UNSET, TR_PATH_CUSTOM_HINT);
         web_select_option(req, 5 + i, lbl, g_config.igate_path == (uint8_t)(5 + i));
     }
     web_select_close(req);
@@ -152,8 +151,10 @@ esp_err_t page_igate_get(httpd_req_t *req) {
         snprintf(buf, sizeof(buf),
                  "<label>%s</label>"
                  "<div style='display:flex;gap:14px;align-items:center'>"
-                 "<label style='display:inline-flex;align-items:center;margin:0'><input type='checkbox' name='igatePos2rf' style='width:16px;height:16px;margin:0 6px 0 0' %s> RF</label>"
-                 "<label style='display:inline-flex;align-items:center;margin:0'><input type='checkbox' name='igatePos2inet' style='width:16px;height:16px;margin:0 6px 0 0' %s> Internet</label>"
+                 "<label style='display:inline-flex;align-items:center;margin:0'><input type='checkbox' name='igatePos2rf' "
+                 "style='width:16px;height:16px;margin:0 6px 0 0' %s> RF</label>"
+                 "<label style='display:inline-flex;align-items:center;margin:0'><input type='checkbox' name='igatePos2inet' "
+                 "style='width:16px;height:16px;margin:0 6px 0 0' %s> Internet</label>"
                  "</div>",
                  TR_F_TX_CHANNEL, g_config.igate_loc2rf ? "checked" : "", g_config.igate_loc2inet ? "checked" : "");
         web_raw(req, buf);
@@ -252,35 +253,36 @@ esp_err_t page_igate_get(httpd_req_t *req) {
     // Disabled controls don't POST, so the save handler snapshots the
     // station PHG when "Use My Station Data" is on and keeps the stored
     // own-values when PHG is disabled - see page_igate_post().
-    web_raw(req, "<script>(function(){"
-                 "var ST=window.__stnPHG||{p:0,g:0,h:10,d:0,s:''};"
-                 "function q(n){return document.querySelector(\"[name='\"+n+\"']\");}"
-                 "function calc(){"
-                 "var p=parseInt(q('igatePHGPower').value)||0,g=parseInt(q('igatePHGGain').value)||0,"
-                 "h=parseInt(q('igatePHGHeight').value)||10,d=parseInt(q('igatePHGDir').value)||0;"
-                 "var P=Math.min(9,Math.max(0,Math.round(Math.sqrt(p))));"
-                 "var H=Math.min(13,Math.max(0,Math.round(Math.log(h/10)/Math.log(2))));"
-                 "var G=Math.min(9,Math.max(0,g)),D=Math.min(8,Math.max(0,d));"
-                 "var o=q('igatePHG');"
-                 "if(o)o.value='PHG'+P+String.fromCharCode(48+H)+G+D;"
-                 "}"
-                 "function apply(){"
-                 "var en=q('igatePHGEn'),us=q('igatePHGUseStation');"
-                 "if(!en)return;"
-                 "var on=en.checked,useS=us&&us.checked;"
-                 "if(useS){q('igatePHGPower').value=ST.p;q('igatePHGGain').value=ST.g;q('igatePHGHeight').value=ST.h;q('igatePHGDir').value=ST.d;}"
-                 "var dis=(!on)||useS;"
-                 "['igatePHGPower','igatePHGGain','igatePHGHeight','igatePHGDir'].forEach(function(nm){var el=q(nm);if(el)el.disabled=dis;});"
-                 "if(useS){var o=q('igatePHG');if(o)o.value=ST.s;}else{calc();}"
-                 "}"
-                 "document.addEventListener('DOMContentLoaded',function(){"
-                 "var en=q('igatePHGEn'),us=q('igatePHGUseStation');"
-                 "if(en)en.addEventListener('change',apply);"
-                 "if(us)us.addEventListener('change',apply);"
-                 "['igatePHGPower','igatePHGGain','igatePHGHeight','igatePHGDir'].forEach(function(nm){var el=q(nm);if(el)el.addEventListener('change',calc);});"
-                 "apply();"
-                 "});"
-                 "})();</script>");
+    web_raw(req,
+            "<script>(function(){"
+            "var ST=window.__stnPHG||{p:0,g:0,h:10,d:0,s:''};"
+            "function q(n){return document.querySelector(\"[name='\"+n+\"']\");}"
+            "function calc(){"
+            "var p=parseInt(q('igatePHGPower').value)||0,g=parseInt(q('igatePHGGain').value)||0,"
+            "h=parseInt(q('igatePHGHeight').value)||10,d=parseInt(q('igatePHGDir').value)||0;"
+            "var P=Math.min(9,Math.max(0,Math.round(Math.sqrt(p))));"
+            "var H=Math.min(13,Math.max(0,Math.round(Math.log(h/10)/Math.log(2))));"
+            "var G=Math.min(9,Math.max(0,g)),D=Math.min(8,Math.max(0,d));"
+            "var o=q('igatePHG');"
+            "if(o)o.value='PHG'+P+String.fromCharCode(48+H)+G+D;"
+            "}"
+            "function apply(){"
+            "var en=q('igatePHGEn'),us=q('igatePHGUseStation');"
+            "if(!en)return;"
+            "var on=en.checked,useS=us&&us.checked;"
+            "if(useS){q('igatePHGPower').value=ST.p;q('igatePHGGain').value=ST.g;q('igatePHGHeight').value=ST.h;q('igatePHGDir').value=ST.d;}"
+            "var dis=(!on)||useS;"
+            "['igatePHGPower','igatePHGGain','igatePHGHeight','igatePHGDir'].forEach(function(nm){var el=q(nm);if(el)el.disabled=dis;});"
+            "if(useS){var o=q('igatePHG');if(o)o.value=ST.s;}else{calc();}"
+            "}"
+            "document.addEventListener('DOMContentLoaded',function(){"
+            "var en=q('igatePHGEn'),us=q('igatePHGUseStation');"
+            "if(en)en.addEventListener('change',apply);"
+            "if(us)us.addEventListener('change',apply);"
+            "['igatePHGPower','igatePHGGain','igatePHGHeight','igatePHGDir'].forEach(function(nm){var el=q(nm);if(el)el.addEventListener('change',calc);});"
+            "apply();"
+            "});"
+            "})();</script>");
 
     // STATUS BEACON ----------------------------------------------------------
     web_fieldset_open(req, TR_F_STATUS_BEACON);
@@ -301,10 +303,14 @@ esp_err_t page_igate_get(httpd_req_t *req) {
             uint16_t bit;
             const char *name;
         } filt[] = {
-            { TR_FILT_MESSAGE, IGATE_FILT_MESSAGE, "Message" },       { TR_FILT_STATUS, IGATE_FILT_STATUS, "Status" },
-            { TR_FILT_TELEMETRY, IGATE_FILT_TELEMETRY, "Telemetry" }, { TR_FILT_WEATHER, IGATE_FILT_WEATHER, "Weather" },
-            { TR_FILT_OBJECT, IGATE_FILT_OBJECT, "Object" },          { TR_FILT_ITEM, IGATE_FILT_ITEM, "Item" },
-            { TR_FILT_QUERY, IGATE_FILT_QUERY, "Query" },             { TR_FILT_BUOY, IGATE_FILT_BUOY, "Buoy" },
+            { TR_FILT_MESSAGE, IGATE_FILT_MESSAGE, "Message" },
+            { TR_FILT_STATUS, IGATE_FILT_STATUS, "Status" },
+            { TR_FILT_TELEMETRY, IGATE_FILT_TELEMETRY, "Telemetry" },
+            { TR_FILT_WEATHER, IGATE_FILT_WEATHER, "Weather" },
+            { TR_FILT_OBJECT, IGATE_FILT_OBJECT, "Object" },
+            { TR_FILT_ITEM, IGATE_FILT_ITEM, "Item" },
+            { TR_FILT_QUERY, IGATE_FILT_QUERY, "Query" },
+            { TR_FILT_BUOY, IGATE_FILT_BUOY, "Buoy" },
             { TR_FILT_POSITION, IGATE_FILT_POSITION, "Position" },
         };
         web_fieldset_open(req, TR_F_FILTER_RF2INET);
@@ -494,9 +500,9 @@ esp_err_t page_igate_post(httpd_req_t *req) {
             uint16_t bit;
             const char *name;
         } filt[] = {
-            { IGATE_FILT_MESSAGE, "Message" }, { IGATE_FILT_STATUS, "Status" },     { IGATE_FILT_TELEMETRY, "Telemetry" },
-            { IGATE_FILT_WEATHER, "Weather" }, { IGATE_FILT_OBJECT, "Object" },     { IGATE_FILT_ITEM, "Item" },
-            { IGATE_FILT_QUERY, "Query" },     { IGATE_FILT_BUOY, "Buoy" },         { IGATE_FILT_POSITION, "Position" },
+            { IGATE_FILT_MESSAGE, "Message" }, { IGATE_FILT_STATUS, "Status" }, { IGATE_FILT_TELEMETRY, "Telemetry" },
+            { IGATE_FILT_WEATHER, "Weather" }, { IGATE_FILT_OBJECT, "Object" }, { IGATE_FILT_ITEM, "Item" },
+            { IGATE_FILT_QUERY, "Query" },     { IGATE_FILT_BUOY, "Buoy" },     { IGATE_FILT_POSITION, "Position" },
         };
         uint16_t rf2inetF = 0, inet2rfF = 0;
         for (size_t i = 0; i < sizeof(filt) / sizeof(filt[0]); i++) {

@@ -147,59 +147,60 @@ esp_err_t page_dashboard(httpd_req_t *req) {
                                   "<tr><td colspan='6'>" TR_TRAFFIC_WAITING "</td></tr>"
                                   "</tbody></table></div></fieldset>");
 
-    httpd_resp_sendstr_chunk(req,
-        "<script>"
-        "var trafficSince=0,trafficPaused=false,trafficRows=[];"
-        "var TRAFFIC_MAX_ROWS=200;"
-        "function esc(s){return (s==null?'':String(s)).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}"
-        "function trafficTogglePause(){"
-        "trafficPaused=!trafficPaused;"
-        "document.getElementById('trafficPauseBtn').textContent=trafficPaused?'" TR_TRAFFIC_RESUME "':'" TR_TRAFFIC_PAUSE "';"
-        "}"
-        "function trafficClear(){trafficRows=[];renderTraffic();}"
-        "function fmtIcon(sym){"
-        "if(!sym)return '-';"
-        "return '<img src=\"http://aprs.dprns.com/symbols/icons/'+sym+'.png\" width=16 height=16 onerror=\"this.style.display=\\'none\\'\">';"
-        "}"
-        "function renderTraffic(){"
-        "var body=document.getElementById('trafficBody');"
-        "if(!trafficRows.length){body.innerHTML='<tr><td colspan=\"6\">" TR_TRAFFIC_WAITING "</td></tr>';return;}"
-        "var rows='';"
-        "for(var i=trafficRows.length-1;i>=0;i--){"
-        "var it=trafficRows[i];"
-        "var au=(it.au!=null&&it.au>=0)?(it.au+' mV'):'-';"
-        "rows+='<tr><td>'+(it.t/1000).toFixed(1)+'s</td><td>'+esc(it.d)+'</td><td>'+fmtIcon(it.sym)+'</td><td>'+esc(it.dx)+'</td><td>'+esc(it.pkt||it.m)+'</td><td>'+esc(au)+'</td></tr>';"
-        "}"
-        "body.innerHTML=rows;"
-        "}"
-        "function trafficPoll(){"
-        "if(trafficPaused)return;"
-        "fetch('/igate_traffic?since='+trafficSince).then(function(r){return r.json();}).then(function(d){"
-        "trafficSince=d.seq;"
-        "if(d.items&&d.items.length){"
-        "trafficRows=trafficRows.concat(d.items);"
-        "if(trafficRows.length>TRAFFIC_MAX_ROWS)trafficRows=trafficRows.slice(trafficRows.length-TRAFFIC_MAX_ROWS);"
-        "renderTraffic();"
-        "}"
-        "}).catch(function(){}).then(function(){setTimeout(trafficPoll,1500);});"
-        "}"
-        // -- Reference-dashboard-style periodic reloads. System Info and
-        //    STATISTICS (sidebarInfo, which also holds Modes Enabled /
-        //    Network Status) are both refreshed every 1s so every value in
-        //    those two panels stays live, matching the same 1s cadence used
-        //    for Free Heap / Min Free Heap below. --
-        "function reloadDashSysInfo(){"
-        "fetch('/dashinfo').then(function(r){return r.text();}).then(function(t){"
-        "document.getElementById('dashSysInfo').innerHTML=t;"
-        "}).catch(function(){}).then(function(){setTimeout(reloadDashSysInfo,1000);});"
-        "}"
-        "function reloadSidebarInfo(){"
-        "fetch('/sidebarInfo').then(function(r){return r.text();}).then(function(t){"
-        "document.getElementById('sidebarInfo').innerHTML=t;"
-        "}).catch(function(){}).then(function(){setTimeout(reloadSidebarInfo,1000);});"
-        "}"
-        "reloadDashSysInfo();reloadSidebarInfo();trafficPoll();"
-        "</script>");
+    httpd_resp_sendstr_chunk(
+        req, "<script>"
+             "var trafficSince=0,trafficPaused=false,trafficRows=[];"
+             "var TRAFFIC_MAX_ROWS=200;"
+             "function esc(s){return (s==null?'':String(s)).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}"
+             "function trafficTogglePause(){"
+             "trafficPaused=!trafficPaused;"
+             "document.getElementById('trafficPauseBtn').textContent=trafficPaused?'" TR_TRAFFIC_RESUME "':'" TR_TRAFFIC_PAUSE "';"
+             "}"
+             "function trafficClear(){trafficRows=[];renderTraffic();}"
+             "function fmtIcon(sym){"
+             "if(!sym)return '-';"
+             "return '<img src=\"http://aprs.dprns.com/symbols/icons/'+sym+'.png\" width=16 height=16 onerror=\"this.style.display=\\'none\\'\">';"
+             "}"
+             "function renderTraffic(){"
+             "var body=document.getElementById('trafficBody');"
+             "if(!trafficRows.length){body.innerHTML='<tr><td colspan=\"6\">" TR_TRAFFIC_WAITING "</td></tr>';return;}"
+             "var rows='';"
+             "for(var i=trafficRows.length-1;i>=0;i--){"
+             "var it=trafficRows[i];"
+             "var au=(it.au!=null&&it.au>=0)?(it.au+' mV'):'-';"
+             "rows+='<tr><td>'+(it.t/1000).toFixed(1)+'s</td><td>'+esc(it.d)+'</td><td>'+fmtIcon(it.sym)+'</td><td>'+esc(it.dx)+'</"
+             "td><td>'+esc(it.pkt||it.m)+'</td><td>'+esc(au)+'</td></tr>';"
+             "}"
+             "body.innerHTML=rows;"
+             "}"
+             "function trafficPoll(){"
+             "if(trafficPaused)return;"
+             "fetch('/igate_traffic?since='+trafficSince).then(function(r){return r.json();}).then(function(d){"
+             "trafficSince=d.seq;"
+             "if(d.items&&d.items.length){"
+             "trafficRows=trafficRows.concat(d.items);"
+             "if(trafficRows.length>TRAFFIC_MAX_ROWS)trafficRows=trafficRows.slice(trafficRows.length-TRAFFIC_MAX_ROWS);"
+             "renderTraffic();"
+             "}"
+             "}).catch(function(){}).then(function(){setTimeout(trafficPoll,1500);});"
+             "}"
+             // -- Reference-dashboard-style periodic reloads. System Info and
+             //    STATISTICS (sidebarInfo, which also holds Modes Enabled /
+             //    Network Status) are both refreshed every 1s so every value in
+             //    those two panels stays live, matching the same 1s cadence used
+             //    for Free Heap / Min Free Heap below. --
+             "function reloadDashSysInfo(){"
+             "fetch('/dashinfo').then(function(r){return r.text();}).then(function(t){"
+             "document.getElementById('dashSysInfo').innerHTML=t;"
+             "}).catch(function(){}).then(function(){setTimeout(reloadDashSysInfo,1000);});"
+             "}"
+             "function reloadSidebarInfo(){"
+             "fetch('/sidebarInfo').then(function(r){return r.text();}).then(function(t){"
+             "document.getElementById('sidebarInfo').innerHTML=t;"
+             "}).catch(function(){}).then(function(){setTimeout(reloadSidebarInfo,1000);});"
+             "}"
+             "reloadDashSysInfo();reloadSidebarInfo();trafficPoll();"
+             "</script>");
 
     web_send_footer(req);
     return ESP_OK;
@@ -257,14 +258,14 @@ esp_err_t page_dashinfo(httpd_req_t *req) {
     char buf[800];
     snprintf(buf, sizeof(buf),
              "<fieldset><legend>" TR_DASH_SYSINFO "</legend><table><tr>"
-             "<th>" TR_DASH_UPTIME "</th><th>" TR_DASH_FREE_HEAP "</th><th>" TR_SYSINFO_MIN_FREE_HEAP "</th><th>" TR_DASH_LITTLEFS "</th><th>" TR_SYSINFO_CPU_FREQ
-             "</th><th>" TR_DASH_REBOOT_REASON "</th>"
+             "<th>" TR_DASH_UPTIME "</th><th>" TR_DASH_FREE_HEAP "</th><th>" TR_SYSINFO_MIN_FREE_HEAP "</th><th>" TR_DASH_LITTLEFS
+             "</th><th>" TR_SYSINFO_CPU_FREQ "</th><th>" TR_DASH_REBOOT_REASON "</th>"
              "</tr><tr>"
              "<td>%lldd %lldh %lldm %llds</td><td><span id='dashFreeHeap'>%lu</span> bytes</td><td><span id='dashMinFreeHeap'>%lu</span> bytes</td>"
              "<td>%u / %u bytes</td><td>%lu MHz</td><td>%s</td>"
              "</tr></table></fieldset>",
-             uptime_days, uptime_hour, uptime_min, uptime_sec, (unsigned long)esp_get_free_heap_size(), (unsigned long)esp_get_minimum_free_heap_size(), (unsigned)used,
-             (unsigned)total, (unsigned long)cpu_mhz, dash_reboot_reason_str());
+             uptime_days, uptime_hour, uptime_min, uptime_sec, (unsigned long)esp_get_free_heap_size(), (unsigned long)esp_get_minimum_free_heap_size(),
+             (unsigned)used, (unsigned)total, (unsigned long)cpu_mhz, dash_reboot_reason_str());
 
     httpd_resp_set_type(req, "text/html");
     httpd_resp_set_hdr(req, "Cache-Control", "no-store");
@@ -281,7 +282,7 @@ esp_err_t page_heapinfo(httpd_req_t *req) {
 
     char json[80];
     size_t n = snprintf(json, sizeof(json), "{\"free\":%lu,\"minFree\":%lu}", (unsigned long)esp_get_free_heap_size(),
-                         (unsigned long)esp_get_minimum_free_heap_size());
+                        (unsigned long)esp_get_minimum_free_heap_size());
 
     httpd_resp_set_type(req, "application/json");
     httpd_resp_set_hdr(req, "Cache-Control", "no-store");
@@ -342,8 +343,7 @@ esp_err_t page_sidebar_info(httpd_req_t *req) {
                   "<th style='background:%s'>APRS-IS</th>"
                   "<th style='background:%s'>" TR_DASH_FX25 "</th>"
                   "</tr></table></fieldset>",
-                  wifi_connected ? "#0b0" : "#606060",
-                  igate_is_connected() ? "#0b0" : "#606060", (g_config.fx25_mode > 0) ? "#0b0" : "#606060");
+                  wifi_connected ? "#0b0" : "#606060", igate_is_connected() ? "#0b0" : "#606060", (g_config.fx25_mode > 0) ? "#0b0" : "#606060");
 
     // -- STATISTICS -----------------------------------------------------
     // radio_rx/radio_tx/rf2inet/inet2rf/digi come from aprs_service's own
@@ -385,9 +385,8 @@ esp_err_t page_sidebar_info(httpd_req_t *req) {
                   "<tr><td>" TR_DASH_TX_QUEUE "</td><td>%lu/%lu</td></tr>"
                   "</table></fieldset>",
                   (unsigned long)svcStats.radio_rx, (unsigned long)svcStats.radio_tx, (unsigned long)svcStats.rf2inet, (unsigned long)svcStats.inet2rf,
-                  (unsigned long)igs.isRxCount, (unsigned long)igs.isTxCount, (unsigned long)svcStats.digi,
-                  (unsigned long)igate_stats_total_drop(&igs), (unsigned long)igate_stats_total_err(&igs),
-                  (unsigned long)svcStats.tx_queue_depth, (unsigned long)svcStats.tx_queue_limit);
+                  (unsigned long)igs.isRxCount, (unsigned long)igs.isTxCount, (unsigned long)svcStats.digi, (unsigned long)igate_stats_total_drop(&igs),
+                  (unsigned long)igate_stats_total_err(&igs), (unsigned long)svcStats.tx_queue_depth, (unsigned long)svcStats.tx_queue_limit);
 
     // -- Drop breakdown -------------------------------------------------
     // Per-reason detail behind the aggregate DROP/ERR tile above: lets an
@@ -409,8 +408,6 @@ esp_err_t page_sidebar_info(httpd_req_t *req) {
     httpd_resp_sendstr(req, buf);
     return ESP_OK;
 }
-
-
 
 // GET /igate_traffic?since=<seq> -> JSON feed of igate/digi/RF traffic lines,
 // polled by the "IGate Traffic" box on the dashboard. Mirrors the same lines

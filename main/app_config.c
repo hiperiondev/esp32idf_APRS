@@ -19,11 +19,11 @@
  * shared by every component and web admin page.
  */
 
+#include <float.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <math.h>
-#include <float.h>
 
 #include "app_config.h"
 #include "aprs_service.h" // RF_TX_BUFFERS_MIN/MAX - keeps the flash-load clamp for rf_tx_buffers in sync with the TX ring's real capacity, see the comment there
@@ -243,7 +243,7 @@ void app_config_set_defaults(app_config_t *c) {
     c->afsk_modem_type = 1; // default 1200 Bd (AFSK/Bell202) - standard APRS audio modem
     c->fx25_mode = 0;
     c->tx_timeslot = 2000;
-    c->rf_tx_buffers = 1; // see RF_TX_BUFFERS_MIN/MAX in aprs_service.h
+    c->rf_tx_buffers = 1;    // see RF_TX_BUFFERS_MIN/MAX in aprs_service.h
     c->ptt_min_unkey_ms = 0; // see PTT_MIN_UNKEY_MS_MIN/MAX in aprs_service.c
     set_str(c->ntp_host[0], sizeof(c->ntp_host[0]), "pool.ntp.org");
     set_str(c->ntp_host[1], sizeof(c->ntp_host[1]), "time.google.com");
@@ -305,13 +305,27 @@ static void jw_str_val(jw_t *w, const char *v) {
         for (const unsigned char *p = (const unsigned char *)v; *p; p++) {
             unsigned char ch = *p;
             switch (ch) {
-                case '"':  fputs("\\\"", w->f); break;
-                case '\\': fputs("\\\\", w->f); break;
-                case '\b': fputs("\\b", w->f); break;
-                case '\f': fputs("\\f", w->f); break;
-                case '\n': fputs("\\n", w->f); break;
-                case '\r': fputs("\\r", w->f); break;
-                case '\t': fputs("\\t", w->f); break;
+                case '"':
+                    fputs("\\\"", w->f);
+                    break;
+                case '\\':
+                    fputs("\\\\", w->f);
+                    break;
+                case '\b':
+                    fputs("\\b", w->f);
+                    break;
+                case '\f':
+                    fputs("\\f", w->f);
+                    break;
+                case '\n':
+                    fputs("\\n", w->f);
+                    break;
+                case '\r':
+                    fputs("\\r", w->f);
+                    break;
+                case '\t':
+                    fputs("\\t", w->f);
+                    break;
                 default:
                     if (ch < 0x20)
                         fprintf(w->f, "\\u%04x", ch);
@@ -674,8 +688,7 @@ static void config_from_json(cJSON *d, app_config_t *c) {
     c->rf2inetFilter = (uint16_t)jget_num(d, "rf2inetFilter", def.rf2inetFilter);
     // "inet2rfFiltger" was a legacy misspelling of the key used when saving;
     // fall back to it so configs written by older firmware still load correctly.
-    c->inet2rfFilter =
-        (uint16_t)jget_num(d, "inet2rfFilter", (double)jget_num(d, "inet2rfFiltger", def.inet2rfFilter));
+    c->inet2rfFilter = (uint16_t)jget_num(d, "inet2rfFilter", (double)jget_num(d, "inet2rfFiltger", def.inet2rfFilter));
     c->rf2inet_budlist_mode = (budlist_mode_t)jget_num(d, "rf2inetBudlistMode", def.rf2inet_budlist_mode);
     c->inet2rf_budlist_mode = (budlist_mode_t)jget_num(d, "inet2rfBudlistMode", def.inet2rf_budlist_mode);
     {
@@ -892,8 +905,7 @@ bool app_config_save(void) {
     if (fclose(f) != 0)
         ok = false;
     if (!ok) {
-        ESP_LOGE(TAG, "write error while saving config (free heap=%u bytes)",
-                 (unsigned)esp_get_free_heap_size());
+        ESP_LOGE(TAG, "write error while saving config (free heap=%u bytes)", (unsigned)esp_get_free_heap_size());
         remove(CONFIG_TMP_PATH);
         xSemaphoreGive(config_mutex());
         return false;
@@ -910,8 +922,7 @@ bool app_config_save(void) {
     // httpd task) came to overflowing its stack during this save, so the
     // config.stack_size in web_server.c can be sized from real numbers
     // instead of another guess. Remove once a safe margin is confirmed.
-    ESP_LOGI(TAG, "Caller stack high-water mark: %u bytes free",
-             (unsigned)(uxTaskGetStackHighWaterMark(NULL) * sizeof(StackType_t)));
+    ESP_LOGI(TAG, "Caller stack high-water mark: %u bytes free", (unsigned)(uxTaskGetStackHighWaterMark(NULL) * sizeof(StackType_t)));
     xSemaphoreGive(config_mutex());
     return true;
 }
