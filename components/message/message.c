@@ -529,7 +529,13 @@ void handleIncomingAPRS(const char *line) {
     // regardless of SSID on either side (message to "N0CALL", "N0CALL-7",
     // etc. is accepted as long as it's configured mycall is "N0CALL", with
     // or without its own SSID).
-    if (!callsignBaseMatch(toCall, g_config.msg_mycall) || msgNo[0] == 0)
+    if (!callsignBaseMatch(toCall, g_config.msg_mycall))
+        return;
+
+    // An ack always carries a message ID (it's the ID being acknowledged);
+    // without one there is nothing to match against a queued outgoing
+    // message, so it can't be processed.
+    if (isAck && msgNo[0] == 0)
         return;
 
     if (isAck) {
@@ -550,6 +556,9 @@ void handleIncomingAPRS(const char *line) {
         return;
 
     pkgMsgUpdate(fromCall, decoded, (uint16_t)atoi(msgNo), -1, true);
-    sendAPRSAck(fromCall, msgNo);
+    // Per APRS101 the message ID is optional: only send an ack when the
+    // sender actually requested one.
+    if (msgNo[0] != 0)
+        sendAPRSAck(fromCall, msgNo);
     message_alarm_pulse();
 }

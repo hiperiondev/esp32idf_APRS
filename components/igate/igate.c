@@ -103,7 +103,7 @@ const char *igate_drop_reason_name(drop_reason_t reason) {
         case DROP_TOO_SHORT:
             return "too short";
         case DROP_PATH_TOKEN:
-            return "RFONLY/TCPIP/qA/NOGATE";
+            return "RFONLY/TCP/qA/NOGATE";
         case DROP_SAT_NOT_USED:
             return "satellite not used";
         case DROP_TYPE_FILTER:
@@ -279,7 +279,7 @@ int igateProcess(ax25_msg_t *packet) {
     }
 
     for (idx = 0; idx < packet->rpt_count; idx++) {
-        if (!strncmp(packet->rpt_list[idx].call, "RFONLY", 6) || !strncmp(packet->rpt_list[idx].call, "TCPIP", 5) ||
+        if (!strncmp(packet->rpt_list[idx].call, "RFONLY", 6) || !strncmp(packet->rpt_list[idx].call, "TCP", 3) ||
             !strncmp(packet->rpt_list[idx].call, "qA", 2) || !strncmp(packet->rpt_list[idx].call, "NOGATE", 6)) {
             s_stats.dropByReason[DROP_PATH_TOKEN]++;
             return 0;
