@@ -1,0 +1,451 @@
+.. _it-limitations:
+
+========================
+Stato e limitazioni note
+========================
+
+Il firmware è **work in progress**. Il percorso di trasmissione RF, l'IGate, il
+digipeater, i beacon, il meteo, la telemetria, la messaggistica e
+l'amministrazione web sono tutti funzionanti.
+
+Tabella comparativa delle funzionalità
+=========================================
+
+La tabella seguente confronta le funzionalità implementate in questo progetto
+con l'unione delle funzioni presenti nei software APRS più diffusi (client
+desktop/di mappatura come Xastir, APRSIS32 e YAAC; TNC software come Direwolf
+e UZ7HO Soundmodem; e stack iGate/digipeater headless come aprx e VP-Digi).
+Nessun singolo pacchetto di quell'ecosistema implementa tutte le righe — è
+normale e atteso. La legenda è:
+
+* ✅ — Implementato e funzionante
+* ⚠️ — Implementazione parziale / limitata
+* ❌ — Non implementato
+
+Modem / Livello 2
+--------------------
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 24 10 36
+
+   * - Capacità specifica
+     - Tipico nei software APRS diffusi
+     - Qui
+     - Note sull'implementazione di questo progetto
+   * - AFSK 1200 Bd Bell 202 (APRS VHF standard)
+     - ✅ (Direwolf, UZ7HO, VP-Digi, TNC hardware)
+     - ✅
+     - Profilo predefinito; doppio demodulatore in parallelo per aumentare la probabilità di decodifica
+   * - AFSK 1200 Bd V.23
+     - ⚠️ (Direwolf lo supporta; molti client no)
+     - ✅
+     - Profilo modem selezionabile n. 2
+   * - AFSK 300 Bd (APRS HF)
+     - ✅ (Direwolf, UZ7HO)
+     - ✅
+     - Profilo modem selezionabile n. 0
+   * - FSK G3RUH 9600 Bd
+     - ✅ (Direwolf, TNC pacchetto dedicati)
+     - ✅
+     - Profilo modem selezionabile n. 3
+   * - Framing HDLC / codifica-decodifica AX.25 UI
+     - ✅ (universale)
+     - ✅
+     - Percorso TX/RX completo via software, su ADC/DAC
+   * - FEC Reed-Solomon FX.25
+     - ⚠️ (Direwolf sì; la maggior parte dei TNC hardware no)
+     - ✅
+     - Modalità solo RX o RX+TX, retrocompatibile con AX.25 semplice
+   * - IL2P (alternativa a FX.25)
+     - ⚠️ (solo Direwolf)
+     - ❌
+     - Non implementato
+   * - Protocollo KISS (seriale o TCP) per fungere da TNC per software client esterno
+     - ✅ (Direwolf, UZ7HO, praticamente tutti i soundmodem)
+     - ❌
+     - Non implementato. Nessun server KISS/AGWPE seriale o di rete — questo progetto non può fungere da "back end" TNC per Xastir/APRSIS32/YAAC ecc.
+   * - Protocollo AGWPE
+     - ⚠️ (TNC orientati a Windows)
+     - ❌
+     - Non implementato
+   * - CSMA / rilevamento canale occupato prima della TX
+     - ✅
+     - ✅
+     - Slot temporale TX (``tx_timeslot``) + controllo preambolo/TXDelay
+   * - Attivazione PTT (senza VOX, GPIO hardware)
+     - ✅
+     - ✅
+     - GPIO e polarità a tempo di compilazione; tempo minimo di mantenimento dis-attivazione regolabile a runtime
+   * - Strumento integrato di loopback RF/autotest
+     - ⚠️ (raro)
+     - ✅
+     - "LOOP TEST" — trasmette un pacchetto con token e verifica che l'intera catena RX lo decodifichi correttamente, con diagnostica dettagliata per fase
+
+IGate (RF <-> APRS-IS)
+------------------------
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 24 10 36
+
+   * - Capacità specifica
+     - Tipico nei software APRS diffusi
+     - Qui
+     - Note sull'implementazione di questo progetto
+   * - Inoltro RF -> APRS-IS
+     - ✅ (universale)
+     - ✅
+     - Pipeline completa: dedup -> controllo lunghezza minima -> filtro token di percorso -> regola sat-gate -> filtro per tipo di payload -> gate di raggio -> gate di prefisso -> budlist
+   * - Inoltro APRS-IS -> RF (IGate bidirezionale)
+     - ✅ (modalità igate di Direwolf, aprx, VP-Digi)
+     - ✅
+     - Soppressione dell'eco dei report propri, filtro per tipo di payload, unwrap di terze parti ristretto, budlist
+   * - Soppressione dei pacchetti duplicati
+     - ✅
+     - ✅
+     - Cache da 10 voci / 30 s, condivisa con il digipeater
+   * - Inserimento Q-construct ``qAR``/``qAO``
+     - ✅
+     - ✅
+     - ``qAR`` standard; supportata anche la forma ``qAO`` per sat-gate
+   * - Stringa di filtro APRS-IS lato server (``r/``, ``p/``, ``t/``, ``b/``...)
+     - ✅
+     - ✅
+     - Inviata testualmente nella riga di login, con validazione locale della grammatica prima dell'invio
+   * - Gate di raggio locale (distanza ortodromica)
+     - ⚠️ (alcuni, es. ``filter`` di aprx)
+     - ✅
+     - Distanza haversine rispetto a "La mia stazione"; supporta posizioni compresse e non compresse
+   * - Whitelist locale sui prefissi del nominativo
+     - ⚠️ (poco comune come funzione di prima classe)
+     - ✅
+     - Elenco di prefissi separati da virgola (es. ``EA,EB,EC``)
+   * - Budlist di nominativi (whitelist/blacklist)
+     - ✅
+     - ✅
+     - Modalità per direzione: disattivato / whitelist / blacklist
+   * - Filtro per tipo di payload (msg/status/tlm/wx/obj/item/query/buoy/position)
+     - ✅ (principalmente tramite filtri APRS-IS)
+     - ✅
+     - Locale, basato su bitmask, applicato in entrambe le direzioni indipendentemente dal filtro del server
+   * - Gestione pacchetti di terze parti (``}``) / protezione anti-loop
+     - ✅ (critico, spesso manuale)
+     - ✅
+     - Disattivato di default; l'unwrap opzionale è vincolato alla sola modalità whitelist proprio per prevenire i loop di IGate
+   * - Riconnessione automatica ad APRS-IS con backoff
+     - ✅
+     - ✅
+     - Riconnessione TCP automatica, rilegge la configurazione a ogni riconnessione
+   * - Login ad APRS-IS basato su passcode
+     - ✅
+     - ✅
+     - Riga di login standard ``user/pass/vers/filter``; la risposta verified/unverified del server viene mostrata
+   * - Server APRS-IS multipli / failover
+     - ⚠️ (alcuni supportano elenchi di server)
+     - ❌
+     - Solo un host/porta configurato
+   * - Statistiche per motivo di scarto
+     - ⚠️ (poco comune, di solito solo totali)
+     - ✅
+     - Contatori nominati (``DROP_TOO_SHORT``, ``DROP_PATH_TOKEN``, ``DROP_RANGE_FILTER``, ecc.)
+
+Digipeater
+-----------
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 24 10 36
+
+   * - Capacità specifica
+     - Tipico nei software APRS diffusi
+     - Qui
+     - Note sull'implementazione di questo progetto
+   * - Digipeating a inondazione WIDEn-N
+     - ✅ (universale)
+     - ✅
+     - Decremento del conteggio hop + inserimento del proprio nominativo
+   * - Digipeating a traccia esplicita TRACEn-N
+     - ✅
+     - ✅
+     - Ogni hop inserisce il proprio nominativo
+   * - Alias legacy RELAY / ECHO / GATE
+     - ✅
+     - ✅
+     - Tutti sostituiti con il nominativo del digipeater
+   * - Conteggio hop codificato nel SSID di destinazione (legacy)
+     - ⚠️ (TNC più datati)
+     - ✅
+     - Riconosciuto e gestito
+   * - Soppressione duplicati/ping-pong nel digipeating
+     - ✅
+     - ✅
+     - Condivide la cache di deduplica dell'IGate
+   * - Filtro di digipeating per nominativo (ripetere solo certe fonti)
+     - ⚠️ (alcuni, es. VP-Digi)
+     - ❌
+     - Non esposto come filtro specifico del digipeater (la budlist dell'IGate non equivale a un filtro del digi)
+   * - Digipeating viscoso/preventivo
+     - ⚠️ (raro, TNC avanzati)
+     - ❌
+     - Non implementato
+
+Tracciamento / Beaconing
+----------------------------
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 24 10 36
+
+   * - Capacità specifica
+     - Tipico nei software APRS diffusi
+     - Qui
+     - Note sull'implementazione di questo progetto
+   * - Ingresso posizione GPS in tempo reale (NMEA)
+     - ✅ (universale per tracker mobili)
+     - ❌
+     - Non implementato. I beacon sono solo a posizione fissa — non c'è alcun ingresso di posizione in tempo reale né configurazione relativa al GPS
+   * - Beaconing a posizione fissa (stazione base)
+     - ✅
+     - ✅
+     - Posizione/intervallo/simbolo/commento separati per ruolo (tracker, IGate, digi)
+   * - Smart Beaconing (intervallo adattivo su velocità/direzione)
+     - ✅ (client mobili, OpenTracker)
+     - ❌
+     - Nessun GPS, quindi non applicabile
+   * - Rotta/velocità nei report di posizione
+     - ✅
+     - ⚠️
+     - Supportato in Oggetti/Item, ma il beacon tracker della stazione non ha una fonte live di rotta/velocità (nessun GPS)
+   * - Codifica posizione compressa (Base-91)
+     - ✅
+     - ✅
+     - La pagina Tracker offre un'opzione di posizione compressa; anche il decoder la comprende
+   * - Codifica posizione Mic-E (TX)
+     - ⚠️ (soprattutto firmware per tracker mobili)
+     - ❌
+     - Non generata; i frame Mic-E possono essere ricevuti ma la loro posizione non è decodificabile dal campo informazioni ai fini del gate di raggio
+   * - PHG / potenza-altezza-guadagno-direttività
+     - ✅
+     - ✅
+     - Esposto nella pagina beacon dell'IGate
+   * - Altitudine nei beacon
+     - ✅
+     - ✅
+     - Campo altitudine a livello di stazione, usato dai beacon
+
+Messaggistica
+--------------
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 24 10 36
+
+   * - Capacità specifica
+     - Tipico nei software APRS diffusi
+     - Qui
+     - Note sull'implementazione di questo progetto
+   * - Messaggistica APRS indirizzata
+     - ✅ (universale)
+     - ✅
+     - Instradamento RF e/o APRS-IS per messaggio
+   * - Conferma di ricezione messaggio (``ackNNN``)
+     - ✅
+     - ✅
+     - Auto-ack alla ricezione, auto-riprova fino a conferma
+   * - Riprova messaggi con numero/intervallo configurabili
+     - ✅
+     - ✅
+     - ``msg_retry`` / ``msg_interval``, valutato a 1 Hz
+   * - UI di chat/inbox integrata
+     - ✅ (Xastir, YAAC, APRSIS32)
+     - ✅
+     - Pagina ``/msgchat`` nel browser, con polling JSON
+   * - Avviso messaggio ricevuto (suono/visivo/GPIO)
+     - ⚠️ (client desktop: suono/popup)
+     - ✅
+     - Avviso via GPIO (LED/cicalino) invece di un popup desktop, adatto a un dispositivo headless
+   * - Messaggistica broadcast/di gruppo
+     - ⚠️ (alcuni tramite bollettini)
+     - ❌
+     - Usare i Bollettini per il broadcast; la messaggistica diretta è solo 1 a 1
+
+Meteo
+------
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 24 10 36
+
+   * - Capacità specifica
+     - Tipico nei software APRS diffusi
+     - Qui
+     - Note sull'implementazione di questo progetto
+   * - Generazione report meteo APRS proprio
+     - ✅ (Xastir, aprx, molti firmware TNC con kit WX)
+     - ✅
+     - Set completo del cap. 12 + aggiunte APRS 1.2 (neve, luminosità, alluvione)
+   * - Framework di polling sensori live (driver collegabili)
+     - ⚠️ (poco comune come framework generico; di solito fissato a una singola scheda WX)
+     - ✅
+     - Registro dinamico e autoregistrante ``sensors_local``; include driver BMP180, estensibile
+   * - Media per campo sull'intervallo di report
+     - ⚠️
+     - ✅
+     - Casella opzionale "Media" per campo
+   * - Ricezione/registrazione dei report WX di altre stazioni
+     - ✅ (overlay mappa Xastir, aprs.fi)
+     - ⚠️
+     - Decodificato/instradato/digipeated come qualsiasi pacchetto, ma non c'è una vista dedicata di storico WX nell'amministrazione web
+
+Telemetria
+-----------
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 24 10 36
+
+   * - Capacità specifica
+     - Tipico nei software APRS diffusi
+     - Qui
+     - Note sull'implementazione di questo progetto
+   * - Generazione telemetria propria (``T#nnn``)
+     - ✅ (alcuni TNC/client)
+     - ✅
+     - 5 canali analogici + 8 digitali
+   * - Messaggi di metadati PARM/UNIT/EQNS/BITS
+     - ⚠️ (spesso configurati manualmente)
+     - ✅
+     - Generazione attivabile individualmente
+   * - Calibrazione quadratica (EQNS) per canale analogico
+     - ⚠️
+     - ✅
+     - ``valore = a*x^2 + b*x + c`` per canale
+   * - Ricezione/grafico della telemetria altrui
+     - ✅ (grafici Xastir, aprs.fi)
+     - ❌
+     - Non implementato — nessuna vista di grafico/storico per la telemetria ricevuta
+
+Oggetti, Item, Bollettini, Stato
+------------------------------------
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 24 10 36
+
+   * - Capacità specifica
+     - Tipico nei software APRS diffusi
+     - Qui
+     - Note sull'implementazione di questo progetto
+   * - Oggetti propri (con timestamp)
+     - ✅
+     - ✅
+     - Fino a 5, RF e/o INET, con intervallo/decadimento
+   * - Item propri (senza timestamp)
+     - ✅
+     - ✅
+     - Stesso pool di 5 slot; flag "permanente" in stile YAAC sceglie tra Oggetto e Item
+   * - "Uccidere" un oggetto/item
+     - ✅
+     - ✅
+     - Trasmette la rimozione qualche volta in più, poi si autodisattiva
+   * - Bollettini (``BLN1``-``BLNn``)
+     - ✅
+     - ✅
+     - 5 slot, testo/intervallo/scadenza propri, ``BLN1``-``BLN5``
+   * - Report di stato (testo libero della stazione)
+     - ✅
+     - ❌
+     - Non implementato come funzione distinta
+   * - Risposta a query (``?APRS?``, ``?WX?``, ecc.)
+     - ⚠️
+     - ❌
+     - Non implementato
+
+Mappatura / Visualizzazione
+-------------------------------
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 24 10 36
+
+   * - Capacità specifica
+     - Tipico nei software APRS diffusi
+     - Qui
+     - Note sull'implementazione di questo progetto
+   * - Mappa live delle stazioni ricevute
+     - ✅ (Xastir, APRSIS32, YAAC, aprs.fi — centrale nella maggior parte dei client)
+     - ❌
+     - Non implementato. L'amministrazione web ha una tabella Last-Heard, non una mappa
+   * - Rendering di simboli/icone secondo la tabella dei simboli APRS
+     - ✅
+     - ⚠️
+     - Esiste un selettore di simbolo per configurare beacon/oggetti propri; Last-Heard mostra le icone dei simboli, ma solo per i formati senza timestamp ``!``/``=`` — ``/``/``@`` (con timestamp) lasciano l'icona vuota
+   * - Riproduzione dello storico delle tracce
+     - ✅ (client desktop)
+     - ❌
+     - Non implementato
+   * - Grafico di meteo/telemetria nel tempo
+     - ✅ (aprs.fi, plugin Xastir)
+     - ❌
+     - Non implementato
+
+Gestione stazione / Operatività
+-----------------------------------
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 24 10 36
+
+   * - Capacità specifica
+     - Tipico nei software APRS diffusi
+     - Qui
+     - Note sull'implementazione di questo progetto
+   * - UI di configurazione via web
+     - ⚠️ (VP-Digi e alcuni progetti ESP32 ce l'hanno; la maggior parte dei client desktop usa GUI native)
+     - ✅
+     - ~30 pagine, autenticazione HTTP Basic, riapplicazione live della maggior parte delle impostazioni senza riavvio
+   * - Dashboard live (stato, contatori)
+     - ⚠️
+     - ✅
+     - Indicatori di stato rete, pannello statistiche, log di traffico live, tabella last-heard (long-poll JSON)
+   * - Log di traffico/pacchetti con vista del frame grezzo
+     - ✅
+     - ✅
+     - Etichettato per direzione (RX/TX/DIGI/INET2RF/RX-IS), include livello audio RMS
+   * - UI multilingua
+     - ⚠️ (raro; la maggior parte è solo inglese o localizzata dal SO)
+     - ✅
+     - EN/ES/IT, solo a tempo di compilazione — nessun cambio a runtime
+   * - Aggiornamento firmware OTA/remoto
+     - ⚠️ (raro nei TNC embedded; comune nell'IoT consumer)
+     - ✅
+     - Doppia partizione (``ota_0``/``ota_1``) con rollback automatico su immagine difettosa
+   * - Archiviazione configurazione locale persistente e versionata
+     - ✅
+     - ✅
+     - LittleFS, scritture atomiche (``.tmp`` + rinomina), tollerante a chiavi sconosciute/mancanti
+   * - Gestione file (upload/download/esplorazione)
+     - ❌ (non applicabile alla maggior parte del software APRS; rilevante qui trattandosi di un FS embedded)
+     - ✅
+     - Browser LittleFS completo (elenco/download/eliminazione/upload/formattazione)
+   * - Gestione Wi-Fi AP/STA con scansione, potenza TX
+     - N/D (il software desktop non ne ha bisogno)
+     - ✅
+     - AP/STA/AP+STA, 5 profili STA, scansione live, controllo potenza TX
+   * - Sincronizzazione NTP/orario
+     - ⚠️ (il SO desktop se ne occupa; rilevante in ambito embedded)
+     - ✅
+     - 3 host NTP configurabili, fissato a UTC per timestamp zulu corretti
+   * - Regolazione prestazioni/CPU
+     - N/D per software desktop
+     - ✅
+     - Selezione a runtime di 80/160/240 MHz
+   * - Accesso remoto/console seriale per diagnostica
+     - ✅ (la maggior parte dei TNC ha una console seriale)
+     - ⚠️
+     - Nessuna console seriale per l'operatività ordinaria (per progetto); la diagnostica vive nella dashboard web e nel LOOP TEST
+   * - Controllo accessi multiutente / basato su ruoli
+     - ⚠️ (raro)
+     - ❌
+     - Singolo utente/password HTTP Basic, senza ruoli

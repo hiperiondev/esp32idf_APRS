@@ -1,0 +1,2 @@
+sphinx>=8.1,<9
+sphinx-breeze-theme>=0.13,<0.14

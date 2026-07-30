@@ -1,0 +1,479 @@
+/**
+ * @file beacon.c
+ *
+ * @author Emiliano Augusto Gonzalez ( lu3vea @ gmail . com)
+ * @date 2026
+ * @copyright GNU General Public License v3
+ * @see https://github.com/hiperiondev/esp32idf_APRS
+ *
+ * @note
+ * This is based on other projects:
+ *     VP-Digi: https://github.com/sq8vps/vp-digi
+ *     ESP32APRS: https://github.com/nakhonthai/ESP32APRS_Audio
+ *     LibAPRS: https://github.com/markqvist/LibAPRS
+ *
+ *     please contact their authors for more information.
+ *
+ * @brief Own-station position beacon tasks: builds APRS position reports from the
+ * saved Tracker/IGate/Digipeater coordinates, resolves the configured path
+ * bitmask into a digipeater path, and transmits them on RF and/or APRS-IS at each
+ * beacon's own interval.
+ */
+
+#include <math.h>
+#include <stdio.h>
+#include <string.h>
+#include <time.h>
+
+#include "esp_log.h"
+#include "esp_timer.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+
+#include "app_config.h"
+#include "aprs_service.h"
+#include "beacon.h"
+#include "beacon_scheduler.h" // beacon_scheduler_jitter()
+#include "igate.h"
+
+static const char *TAG = "beacon";
+
+// Same software-identifier destination call used by the message component
+// (components/message/message.c) for consistency across the firmware.
+#define BEACON_DEST "APE32L"
+
+#define BEACON_MIN_INTERVAL_S     30   // sanity floor, in case an *_interval is set very low
+#define BEACON_DEFAULT_INTERVAL_S 1800 // 30 min, used when *_interval == 0
+
+// g_config.trk_path / igate_path / digi_path are a BITMASK over the four
+// user-defined path presets in g_config.path[0..3] (see the "Path (bitmask)"
+// field on the Tracker/IGate/Digipeater webconfig pages, TR_F_PATH_BITMASK).
+// Bit N selects g_config.path[N]; any set bit whose slot is empty simply
+// contributes nothing. Multiple bits => multiple presets, comma-joined.
+//
+// NOTE: this replaces an earlier "-N" / single-index scheme that misread the
+// bitmask as a small integer and appended it directly to the destination
+// call as an SSID (e.g. "APE32L-1"). That's not a path at all - it left
+// beacons with no real digipeater path (or a bogus destination SSID),
+// silently trimmed on-air with no path, so beacons could reach the local
+// IGate but consistently failed to be digipeated/heard further out and
+// looked "broken" from anywhere but direct RF earshot.
+// pathPreset is a snapshot of g_config.path[0..3] taken under app_config_lock()
+// by the caller, so this never touches g_config directly.
+static void buildPathSuffix(uint8_t pathBitmask, const char pathPreset[4][72], char *out, size_t outMax) {
+    out[0] = 0;
+    if (pathBitmask == 0 || outMax == 0)
+        return;
+
+    size_t used = 0;
+    for (int bit = 0; bit < 4; bit++) {
+        if (!(pathBitmask & (1 << bit)))
+            continue;
+        if (!pathPreset[bit][0])
+            continue; // bit selected but that preset slot isn't configured
+
+        int n = snprintf(out + used, outMax - used, ",%s", pathPreset[bit]);
+        if (n < 0)
+            break;
+        if ((size_t)n >= outMax - used) {
+            used = outMax - 1; // truncated - stop here, out is still valid/terminated
+            break;
+        }
+        used += (size_t)n;
+    }
+}
+
+// Decimal degrees -> APRS uncompressed "DDMM.mmN" / "DDDMM.mmW" fields.
+static void latLonToAprs(float lat, float lon, char *latOut, size_t latMax, char *lonOut, size_t lonMax) {
+    float alat = fabsf(lat);
+    int dLat = (int)alat;
+    float mLat = (alat - dLat) * 60.0f;
+    snprintf(latOut, latMax, "%02d%05.2f%c", dLat, mLat, lat >= 0 ? 'N' : 'S');
+
+    float alon = fabsf(lon);
+    int dLon = (int)alon;
+    float mLon = (alon - dLon) * 60.0f;
+    snprintf(lonOut, lonMax, "%03d%05.2f%c", dLon, mLon, lon >= 0 ? 'E' : 'W');
+}
+
+// Generic parameters for one station's fixed-position beacon, filled in by
+// each of the small per-service wrappers below (tracker / igate / digi) so
+// the actual packet-building logic only has to be written once.
+// This owns copies of every string it needs (call/symbol/comment) and a
+// snapshot of the four path presets, rather than pointing into g_config. The
+// web task rewrites g_config field-by-field on a settings save, so a builder
+// that dereferenced g_config strings directly could read one mid-strcpy (torn
+// or momentarily unterminated) and run off the end. Each per-service function
+// fills this under app_config_lock() and then builds/transmits from the copy.
+typedef struct {
+    char call[10];
+    uint8_t ssid;
+    uint8_t pathSel;
+    bool timestamp;
+    float lat;
+    float lon;
+    float alt;
+    bool sendAltitude;
+    char symbol[3];            // table + code + NUL
+    char comment[COMMENT_SIZE];
+    char pathPreset[4][72];    // snapshot of g_config.path[0..3]
+    // PHG (Power-Height-Gain-Directivity) data extension, only used by the
+    // IGate beacon so far (see igateBeaconService()). Not settable for the
+    // Tracker/Digipeater beacons, so phgEnable stays false and the field is
+    // never emitted for those. Shares the same 7-byte info-field slot used
+    // for CSE/SPD by moving stations - mutually exclusive with movement,
+    // which is fine here since these are fixed-position beacons.
+    bool phgEnable;
+    uint16_t phgPower;  // Watts
+    float phgGain;      // dB
+    uint16_t phgHeight; // feet (APRS PHG code table's own unit)
+    uint8_t phgDir;     // 0=Omni, 1-8 = N,NE,E,SE,S,SW,W,NW
+} beacon_params_t;
+
+// Builds the 7-byte "PHGphgd" data-extension token from PHG sub-fields, using
+// the same rounding/clamping and single-character-per-digit encoding as the
+// Station/Objects web pages (see objitem_build_phg() in objects_items.c and
+// the calcStationPHG() JS on the Station page). `out` must be >= 8 bytes.
+static void buildPhgExtension(uint16_t power, float gain, uint16_t height, uint8_t dir, char *out, size_t outMax) {
+    int P = (int)lroundf(sqrtf((float)power));
+    if (P < 0)
+        P = 0;
+    if (P > 9)
+        P = 9;
+
+    float hf = (height >= 10) ? (float)height : 10.0f;
+    int H = (int)lroundf(log2f(hf / 10.0f));
+    if (H < 0)
+        H = 0;
+    if (H > 13) // keeps the height character a single printable ASCII byte
+        H = 13;
+
+    int G = (int)lroundf(gain);
+    if (G < 0)
+        G = 0;
+    if (G > 9)
+        G = 9;
+
+    int D = (int)dir;
+    if (D < 0)
+        D = 0;
+    if (D > 8)
+        D = 8;
+
+    snprintf(out, outMax, "PHG%c%c%c%c", '0' + P, '0' + H, '0' + G, '0' + D);
+}
+
+// Builds the full TNC2 text line for one beacon transmission. Returns the
+// packet length, or 0 if nothing usable is configured.
+static int buildPositionPacket(const beacon_params_t *p, char *out, size_t outMax) {
+    if (!p->call[0])
+        return 0;
+
+    char callField[16];
+    if (p->ssid > 0)
+        snprintf(callField, sizeof(callField), "%s-%d", p->call, (int)p->ssid);
+    else
+        snprintf(callField, sizeof(callField), "%s", p->call);
+
+    char path[80];
+    buildPathSuffix(p->pathSel, p->pathPreset, path, sizeof(path));
+
+    char latStr[10], lonStr[11];
+    latLonToAprs(p->lat, p->lon, latStr, sizeof(latStr), lonStr, sizeof(lonStr));
+
+    // symbol = 2 chars: [0] symbol table ('/' primary or '\' alternate), [1] symbol code.
+    // Falls back to a plain "car" symbol on the primary table if unset.
+    char symTable = p->symbol[0] ? p->symbol[0] : '/';
+    char symCode = p->symbol[1] ? p->symbol[1] : '>';
+
+    // PHG data-extension token, when enabled. Emitted right after the symbol
+    // code and before the altitude/comment, matching the Object/Item info
+    // field layout (components/objects/objects_items.c) and the order the
+    // APRS spec defines for this slot.
+    char phg[8] = { 0 };
+    if (p->phgEnable)
+        buildPhgExtension(p->phgPower, p->phgGain, p->phgHeight, p->phgDir, phg, sizeof(phg));
+
+    char extra[40] = { 0 };
+    if (p->sendAltitude) {
+        int feet = (int)(p->alt * 3.28084f);
+        if (feet < 0)
+            feet = 0;
+        snprintf(extra, sizeof(extra), "/A=%06d", feet);
+    }
+
+    char infoField[256]; // ts(7)+lat(9)+symTable(1)+lon(10)+symCode(1)+phg(7)+extra(40)+comment(up to 128)+NUL
+    if (p->timestamp) {
+        time_t now = time(NULL);
+        struct tm tmv;
+        gmtime_r(&now, &tmv);
+        char ts[8];
+        snprintf(ts, sizeof(ts), "%02d%02d%02dz", tmv.tm_mday, tmv.tm_hour, tmv.tm_min);
+        snprintf(infoField, sizeof(infoField), "/%s%s%c%s%c%s%s%s", ts, latStr, symTable, lonStr, symCode, phg, extra, p->comment);
+    } else {
+        snprintf(infoField, sizeof(infoField), "!%s%c%s%c%s%s%s", latStr, symTable, lonStr, symCode, phg, extra, p->comment);
+    }
+
+    int n = snprintf(out, outMax, "%s>%s%s:%s", callField, BEACON_DEST, path, infoField);
+    // snprintf() returns the length it *would* have written; on truncation that
+    // exceeds the buffer. Callers use this value as the memcpy length for the
+    // TNC2 send path, so clamp it to what was actually written (outMax-1, since
+    // snprintf always NUL-terminates when outMax > 0).
+    if (n < 0)
+        return 0;
+    if (outMax > 0 && (size_t)n >= outMax)
+        n = (int)outMax - 1;
+    return n;
+}
+
+static uint32_t clampInterval(uint32_t interval) {
+    if (interval < BEACON_MIN_INTERVAL_S)
+        return interval == 0 ? BEACON_DEFAULT_INTERVAL_S : BEACON_MIN_INTERVAL_S;
+    return interval;
+}
+
+// Monotonic seconds since boot - used for beacon scheduling so an NTP step of
+// the wall clock never disturbs the transmit cadence (same policy bulletins.c
+// already uses).
+static int64_t mono_seconds(void) {
+    return (int64_t)(esp_timer_get_time() / 1000000);
+}
+
+// ---------------------------------------------------------------------------
+// Tracker beacon (Tracker web admin page: g_config.trk_*)
+// ---------------------------------------------------------------------------
+// Per-beacon monotonic "next due" timestamp (seconds). 0 = due now, so an
+// enabled beacon transmits once on the first pass after start - exactly like
+// the old per-task loop, which sent immediately then slept the interval.
+static int64_t s_trk_next_due = 0;
+
+// One serviced pass of the tracker beacon. Called by the shared beacon
+// scheduler (beacon_scheduler.c) via beacon_service(); returns the number of
+// seconds until this beacon next wants servicing. The body between the
+// enable-check and the "next due" update is byte-for-byte the old task body.
+static uint32_t trackerBeaconService(void) {
+    if (!g_config.trk_en || (!g_config.trk_loc2rf && !g_config.trk_loc2inet)) {
+        s_trk_next_due = 0; // reset so (re-)enabling fires an immediate TX, as the old 5 s idle loop did
+        return 5;           // idle re-check cadence (was vTaskDelay(5000))
+    }
+
+    int64_t now = mono_seconds();
+    if (now >= s_trk_next_due) {
+        beacon_params_t p = { 0 }; // zero-init: Tracker never sets phg*, so phgEnable must default false
+        app_config_lock();
+        {
+            bool useTrk = g_config.trk_mycall[0] != 0;
+            memcpy(p.call, useTrk ? g_config.trk_mycall : g_config.aprs_mycall, sizeof(p.call));
+            p.ssid = useTrk ? g_config.trk_ssid : g_config.aprs_ssid;
+            p.pathSel = g_config.trk_path;
+            p.timestamp = g_config.trk_timestamp;
+            p.lat = g_config.trk_lat;
+            p.lon = g_config.trk_lon;
+            p.alt = g_config.trk_alt;
+            p.sendAltitude = g_config.trk_altitude;
+            memcpy(p.symbol, g_config.trk_symbol, sizeof(p.symbol));
+            memcpy(p.comment, g_config.trk_comment, sizeof(p.comment));
+            memcpy(p.pathPreset, g_config.path, sizeof(p.pathPreset));
+        }
+        app_config_unlock();
+
+        char packet[400]; // callField+dest+path+infoField(up to 256), grown for 128-byte comments
+        int len = buildPositionPacket(&p, packet, sizeof(packet));
+        if (len > 0) {
+            // Log the RF and internet legs from what actually happened,
+            // rather than an unconditional "beacon TX" line. igate_send_raw()
+            // returns false (no bytes sent) whenever the APRS-IS uplink isn't
+            // connected yet (e.g. no internet route at boot), so logging per
+            // leg avoids reporting an internet transmission that was actually
+            // dropped because the connection was not up.
+            if (g_config.trk_loc2rf) {
+                if (aprs_service_send_tnc2(packet, (size_t)len))
+                    ESP_LOGI(TAG, "Tracker beacon TX (RF): %s", packet);
+                else
+                    ESP_LOGW(TAG, "Tracker beacon NOT sent over RF - modem not ready or busy: %s", packet);
+            }
+            if (g_config.trk_loc2inet) {
+                if (igate_send_raw(packet, (size_t)len))
+                    ESP_LOGI(TAG, "Tracker beacon TX (INET): %s", packet);
+                else
+                    ESP_LOGW(TAG, "Tracker beacon NOT sent over INET - APRS-IS not connected yet: %s", packet);
+            }
+
+            ESP_LOGD(TAG, "trk_beacon_task stack free: %u bytes", (unsigned)(uxTaskGetStackHighWaterMark(NULL) * sizeof(StackType_t)));
+        } else {
+            ESP_LOGW(TAG, "Tracker beacon enabled but no callsign configured (set Tracker or APRS callsign) - skipping");
+        }
+
+        s_trk_next_due = now + (int64_t)beacon_scheduler_jitter(clampInterval(g_config.trk_interval));
+    }
+
+    int64_t rem = s_trk_next_due - mono_seconds();
+    if (rem < 1)
+        rem = 1;
+    return (uint32_t)rem;
+}
+
+// ---------------------------------------------------------------------------
+// IGate beacon (IGate web admin page: g_config.igate_*)
+// ---------------------------------------------------------------------------
+static int64_t s_igate_next_due = 0;
+
+static uint32_t igateBeaconService(void) {
+    if (!g_config.igate_en || !g_config.igate_bcn || (!g_config.igate_loc2rf && !g_config.igate_loc2inet)) {
+        s_igate_next_due = 0;
+        return 5;
+    }
+
+    int64_t now = mono_seconds();
+    if (now >= s_igate_next_due) {
+        beacon_params_t p = { 0 };
+        app_config_lock();
+        {
+            memcpy(p.call, g_config.aprs_mycall, sizeof(p.call));
+            p.ssid = g_config.aprs_ssid;
+            p.pathSel = g_config.igate_path;
+            p.timestamp = g_config.igate_timestamp;
+            p.lat = g_config.igate_lat;
+            p.lon = g_config.igate_lon;
+            p.alt = g_config.igate_alt;
+            p.sendAltitude = g_config.igate_alt != 0.0f;
+            memcpy(p.symbol, g_config.igate_symbol, sizeof(p.symbol));
+            memcpy(p.comment, g_config.igate_comment, sizeof(p.comment));
+            memcpy(p.pathPreset, g_config.path, sizeof(p.pathPreset));
+            p.phgEnable = g_config.igate_phg_enable;
+            p.phgPower = g_config.igate_phg_power;
+            p.phgGain = g_config.igate_phg_gain;
+            p.phgHeight = g_config.igate_phg_height;
+            p.phgDir = g_config.igate_phg_dir;
+        }
+        app_config_unlock();
+
+        char packet[400]; // callField+dest+path+infoField(up to 256), grown for 128-byte comments
+        int len = buildPositionPacket(&p, packet, sizeof(packet));
+        if (len > 0) {
+            // See the identical note in trackerBeaconTask(): log what each
+            // leg actually did instead of an unconditional line, so a
+            // not-yet-connected APRS-IS uplink doesn't look like a
+            // premature internet transmission.
+            if (g_config.igate_loc2rf) {
+                if (aprs_service_send_tnc2(packet, (size_t)len))
+                    ESP_LOGI(TAG, "IGate beacon TX (RF): %s", packet);
+                else
+                    ESP_LOGW(TAG, "IGate beacon NOT sent over RF - modem not ready or busy: %s", packet);
+            }
+            if (g_config.igate_loc2inet) {
+                if (igate_send_raw(packet, (size_t)len))
+                    ESP_LOGI(TAG, "IGate beacon TX (INET): %s", packet);
+                else
+                    ESP_LOGW(TAG, "IGate beacon NOT sent over INET - APRS-IS not connected yet: %s", packet);
+            }
+
+            ESP_LOGD(TAG, "igate_beacon_task stack free: %u bytes", (unsigned)(uxTaskGetStackHighWaterMark(NULL) * sizeof(StackType_t)));
+        } else {
+            ESP_LOGW(TAG, "IGate beacon enabled but no APRS callsign configured - skipping");
+        }
+
+        s_igate_next_due = now + (int64_t)beacon_scheduler_jitter(clampInterval(g_config.igate_interval));
+    }
+
+    int64_t rem = s_igate_next_due - mono_seconds();
+    if (rem < 1)
+        rem = 1;
+    return (uint32_t)rem;
+}
+
+// ---------------------------------------------------------------------------
+// Digipeater beacon (Digipeater web admin page: g_config.digi_*)
+// ---------------------------------------------------------------------------
+static int64_t s_digi_next_due = 0;
+
+static uint32_t digiBeaconService(void) {
+    if (!g_config.digi_en || !g_config.digi_bcn || (!g_config.digi_loc2rf && !g_config.digi_loc2inet)) {
+        s_digi_next_due = 0;
+        return 5;
+    }
+
+    int64_t now = mono_seconds();
+    if (now >= s_digi_next_due) {
+        beacon_params_t p = { 0 }; // zero-init: Digipeater never sets phg*, so phgEnable must default false
+        app_config_lock();
+        {
+            bool useDigi = g_config.digi_mycall[0] != 0;
+            memcpy(p.call, useDigi ? g_config.digi_mycall : g_config.aprs_mycall, sizeof(p.call));
+            p.ssid = useDigi ? g_config.digi_ssid : g_config.aprs_ssid;
+            p.pathSel = g_config.digi_path;
+            p.timestamp = g_config.digi_timestamp;
+            p.lat = g_config.digi_lat;
+            p.lon = g_config.digi_lon;
+            p.alt = g_config.digi_alt;
+            p.sendAltitude = g_config.digi_alt != 0.0f;
+            memcpy(p.symbol, g_config.digi_symbol, sizeof(p.symbol));
+            memcpy(p.comment, g_config.digi_comment, sizeof(p.comment));
+            memcpy(p.pathPreset, g_config.path, sizeof(p.pathPreset));
+        }
+        app_config_unlock();
+
+        char packet[400]; // callField+dest+path+infoField(up to 256), grown for 128-byte comments
+        int len = buildPositionPacket(&p, packet, sizeof(packet));
+        if (len > 0) {
+            // See the identical note in trackerBeaconTask(): log what each
+            // leg actually did instead of an unconditional line, so a
+            // not-yet-connected APRS-IS uplink doesn't look like a
+            // premature internet transmission.
+            if (g_config.digi_loc2rf) {
+                if (aprs_service_send_tnc2(packet, (size_t)len))
+                    ESP_LOGI(TAG, "Digipeater beacon TX (RF): %s", packet);
+                else
+                    ESP_LOGW(TAG, "Digipeater beacon NOT sent over RF - modem not ready or busy: %s", packet);
+            }
+            if (g_config.digi_loc2inet) {
+                if (igate_send_raw(packet, (size_t)len))
+                    ESP_LOGI(TAG, "Digipeater beacon TX (INET): %s", packet);
+                else
+                    ESP_LOGW(TAG, "Digipeater beacon NOT sent over INET - APRS-IS not connected yet: %s", packet);
+            }
+
+            ESP_LOGD(TAG, "digi_beacon_task stack free: %u bytes", (unsigned)(uxTaskGetStackHighWaterMark(NULL) * sizeof(StackType_t)));
+        } else {
+            ESP_LOGW(TAG, "Digipeater beacon enabled but no callsign configured (set Digipeater or APRS callsign) - skipping");
+        }
+
+        s_digi_next_due = now + (int64_t)beacon_scheduler_jitter(clampInterval(g_config.digi_interval));
+    }
+
+    int64_t rem = s_digi_next_due - mono_seconds();
+    if (rem < 1)
+        rem = 1;
+    return (uint32_t)rem;
+}
+
+// Service all three position beacons in one pass and return the number of
+// seconds until the soonest of them next wants servicing. Called from the
+// shared beacon scheduler task (beacon_scheduler.c) so the tracker/igate/digi
+// beacons do not each need their own FreeRTOS task and 12 KB stack - they
+// share the scheduler's single stack, run sequentially (the half-duplex modem
+// serialises them anyway), and keep their independent enable flags/intervals
+// via the per-beacon s_*_next_due timers above.
+uint32_t beacon_service(void) {
+    uint32_t soonest = trackerBeaconService();
+    uint32_t s;
+    s = igateBeaconService();
+    if (s < soonest)
+        soonest = s;
+    s = digiBeaconService();
+    if (s < soonest)
+        soonest = s;
+    return soonest;
+}
+
+void beacon_start(void) {
+    // No task creation here: the tracker/igate/digi beacons are driven by the
+    // shared beacon scheduler (beacon_scheduler_start()), which calls
+    // beacon_service() above. This just logs the configured state.
+    ESP_LOGI(TAG, "Tracker beacon configured (en=%d rf=%d inet=%d interval=%us)", g_config.trk_en, g_config.trk_loc2rf,
+             g_config.trk_loc2inet, (unsigned)g_config.trk_interval);
+    ESP_LOGI(TAG, "IGate beacon configured (en=%d bcn=%d rf=%d inet=%d interval=%us)", g_config.igate_en, g_config.igate_bcn,
+             g_config.igate_loc2rf, g_config.igate_loc2inet, (unsigned)g_config.igate_interval);
+    ESP_LOGI(TAG, "Digipeater beacon configured (en=%d bcn=%d rf=%d inet=%d interval=%us)", g_config.digi_en, g_config.digi_bcn,
+             g_config.digi_loc2rf, g_config.digi_loc2inet, (unsigned)g_config.digi_interval);
+}

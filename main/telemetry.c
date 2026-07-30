@@ -1,0 +1,1202 @@
+/**
+ * @file telemetry.c
+ *
+ * @author Emiliano Augusto Gonzalez ( lu3vea @ gmail . com)
+ * @date 2026
+ * @copyright GNU General Public License v3
+ * @see https://github.com/hiperiondev/esp32idf_APRS
+ *
+ * @note
+ * This is based on other projects:
+ *     VP-Digi: https://github.com/sq8vps/vp-digi
+ *     ESP32APRS: https://github.com/nakhonthai/ESP32APRS_Audio
+ *     LibAPRS: https://github.com/markqvist/LibAPRS
+ *
+ *     please contact their authors for more information.
+ *
+ * @brief Own-station APRS Telemetry subsystem: resolves the operator's
+ * Binary (digital B1-B8) channel mapping (telemetry_config_t.tlm_bit_channel[],
+ * Telemetry page "Binary" section) from the sensors_local registry once per
+ * second, and encodes/transmits a "T#..." Telemetry Data Report at
+ * data_interval, plus PARM/UNIT/BITS metadata at info_interval.
+ *
+ * Configuration is stored in its own LittleFS file (/storage/telemetry.json),
+ * NOT in g_config/config.json - see the persistence section below and
+ * telemetry.h for the rationale (same pattern bulletins.c uses).
+ */
+
+#include <math.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#include "cJSON.h"
+#include "esp_log.h"
+#include "esp_timer.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
+#include "freertos/task.h"
+
+#include "app_config.h"
+#include "aprs_service.h"
+#include "beacon_scheduler.h" // beacon_scheduler_jitter()
+#include "igate.h"
+#include "sensors_local.h"
+#include "telemetry.h"
+#include "weather_telemetry.h"
+
+static const char *TAG = "telemetry";
+
+// Same software-identifier destination call used by beacon.c / weather.c,
+// for consistency across the firmware.
+#define TLM_DEST "APE32L"
+
+#define TLM_MIN_INTERVAL_S      30  // sanity floor for data_interval
+#define TLM_DEFAULT_INTERVAL_S  600 // used when data_interval == 0
+#define TLM_INFO_MIN_INTERVAL_S 60  // sanity floor for info_interval
+
+#define TELEMETRY_PATH     "/storage/telemetry.json"
+#define TELEMETRY_TMP_PATH "/storage/telemetry.json.tmp"
+
+// Resolved-this-cycle state for both banks, refreshed at 1 Hz by
+// telemetry_refresh_now() from the sensors_local registry channels the
+// operator picked on the Telemetry page ("Source" columns).
+static bool s_bit_val[TLM_BIT_NUM];
+static bool s_bit_present[TLM_BIT_NUM]; // channel mapped ("(none)" excluded) this cycle
+static double s_ana_val[TLM_CH];        // last resolved RAW analog reading (pre-EQNS; see build_tlm_data_packet())
+static bool s_ana_present[TLM_CH];      // channel mapped and resolved this cycle
+
+// In-RAM copy of just the callsign, kept in sync on every load/save so
+// telemetry_get_mycall() (called from aprs_service.c's inet_line_is_own_report(),
+// once per APRS-IS line received - potentially many per second on a busy
+// IGate) never has to hit LittleFS. Everything else about the config is
+// re-read from telemetry.json on demand (telemetry_beacon_service(), the web
+// page) since those run at a much lower, human/scheduler-driven cadence.
+static char s_mycall_cache[10];
+
+static SemaphoreHandle_t s_lock;
+
+// Serializes LittleFS load/save of telemetry.json between the web save
+// handler and the beacon-scheduler service call, and guards s_bit_val[]/
+// s_bit_present[] - same dual role app_config.c's per-module locks split
+// into two mutexes; here one is enough since neither critical section is
+// held across the other.
+static void ensure_lock(void) {
+    // main.c is single-threaded at init time (telemetry_start()/first page
+    // load happen well after the scheduler is up but never concurrently at
+    // the very first call), so a lazy create with no double-init guard is
+    // fine - same reasoning bulletins.c's ensure_lock() uses.
+    if (!s_lock)
+        s_lock = xSemaphoreCreateMutex();
+}
+
+static void telemetry_lock(void) {
+    ensure_lock();
+    if (s_lock)
+        xSemaphoreTake(s_lock, portMAX_DELAY);
+}
+static void telemetry_unlock(void) {
+    if (s_lock)
+        xSemaphoreGive(s_lock);
+}
+
+/* -------------------------------------------------------------------------
+ * Persistence: /storage/telemetry.json (own file, not g_config/config.json)
+ * ------------------------------------------------------------------------- */
+
+void telemetry_config_set_defaults(telemetry_config_t *out) {
+    memset(out, 0, sizeof(*out));
+    out->data_interval = 600;
+    out->info_interval = 3600;
+
+    // Report Parameters / definition-message defaults (match the Telemetry
+    // page's out-of-the-box selections).
+    strncpy(out->tocall, "APRS", sizeof(out->tocall) - 1);
+    out->auto_seq = true;
+    out->field_width = 0; // 0 = minimal/as-needed
+    out->analog_count = TLM_CH;
+    out->digital_count = TLM_BIT_NUM;
+    out->gen_parm = true;
+    out->gen_unit = true;
+    out->gen_eqns = true;
+    out->gen_bits = true;
+
+    for (int i = 0; i < TLM_CH; i++) {
+        out->ana_enable[i] = true;
+        out->tlm_ana_channel[i] = 0xFF; // "(none)" - unassigned until mapped on the web page
+        out->ana_b[i] = 1.0f;   // identity slope by default
+        out->ana_raw_max[i] = 1023;
+        out->ana_dec[i] = 0;
+    }
+    for (int i = 0; i < TLM_BIT_NUM; i++) {
+        out->tlm_bit_channel[i] = 0xFF; // "(none)" - unassigned until mapped on the web page
+        // Default enabled/Normal so that loading an OLDER telemetry.json (which
+        // has none of these keys) leaves every bit transmitting exactly as it
+        // did before these fields existed - i.e. no silent behaviour change.
+        out->bit_enable[i] = true;
+        out->bit_sense[i] = true; // Normal
+    }
+}
+
+// Emit a JSON string literal with the same minimal escaping app_config.c /
+// bulletins.c use, so text round-trips through cJSON_Parse on reload.
+static void write_json_string(FILE *f, const char *v) {
+    fputc('"', f);
+    if (v) {
+        for (const unsigned char *p = (const unsigned char *)v; *p; p++) {
+            unsigned char ch = *p;
+            switch (ch) {
+                case '"':  fputs("\\\"", f); break;
+                case '\\': fputs("\\\\", f); break;
+                case '\b': fputs("\\b", f); break;
+                case '\f': fputs("\\f", f); break;
+                case '\n': fputs("\\n", f); break;
+                case '\r': fputs("\\r", f); break;
+                case '\t': fputs("\\t", f); break;
+                default:
+                    if (ch < 0x20)
+                        fprintf(f, "\\u%04x", ch);
+                    else
+                        fputc(ch, f);
+            }
+        }
+    }
+    fputc('"', f);
+}
+
+static bool load_locked(telemetry_config_t *out, bool *out_missing) {
+    telemetry_config_set_defaults(out);
+    if (out_missing)
+        *out_missing = false;
+
+    FILE *f = fopen(TELEMETRY_PATH, "r");
+    if (!f) {
+        ESP_LOGI(TAG, "%s not present - starting with empty telemetry config", TELEMETRY_PATH);
+        if (out_missing)
+            *out_missing = true;
+        return false;
+    }
+
+    fseek(f, 0, SEEK_END);
+    long sz = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    if (sz <= 0) {
+        fclose(f);
+        if (out_missing)
+            *out_missing = true; // empty file: treat like missing so we (re)write a valid default
+        return false;
+    }
+
+    char *buf = malloc((size_t)sz + 1);
+    if (!buf) {
+        fclose(f);
+        ESP_LOGW(TAG, "OOM reading telemetry config");
+        return false;
+    }
+    size_t rd = fread(buf, 1, (size_t)sz, f);
+    buf[rd] = 0;
+    fclose(f);
+
+    cJSON *doc = cJSON_Parse(buf);
+    free(buf);
+    if (!doc) {
+        ESP_LOGW(TAG, "%s corrupt - using defaults", TELEMETRY_PATH);
+        return false;
+    }
+
+    cJSON *v;
+    v = cJSON_GetObjectItemCaseSensitive(doc, "en");
+    out->en = cJSON_IsTrue(v);
+    v = cJSON_GetObjectItemCaseSensitive(doc, "tx2rf");
+    out->tx2rf = cJSON_IsTrue(v);
+    v = cJSON_GetObjectItemCaseSensitive(doc, "tx2inet");
+    out->tx2inet = cJSON_IsTrue(v);
+    v = cJSON_GetObjectItemCaseSensitive(doc, "ssid");
+    if (cJSON_IsNumber(v))
+        out->ssid = (uint8_t)v->valuedouble;
+    v = cJSON_GetObjectItemCaseSensitive(doc, "mycall");
+    if (cJSON_IsString(v) && v->valuestring) {
+        strncpy(out->mycall, v->valuestring, sizeof(out->mycall) - 1);
+        out->mycall[sizeof(out->mycall) - 1] = 0;
+    }
+    v = cJSON_GetObjectItemCaseSensitive(doc, "path");
+    if (cJSON_IsNumber(v))
+        out->path = (uint8_t)v->valuedouble;
+    v = cJSON_GetObjectItemCaseSensitive(doc, "dataInv");
+    if (cJSON_IsNumber(v))
+        out->data_interval = (uint16_t)v->valuedouble;
+    v = cJSON_GetObjectItemCaseSensitive(doc, "infoInv");
+    if (cJSON_IsNumber(v))
+        out->info_interval = (uint16_t)v->valuedouble;
+
+    cJSON *parm = cJSON_GetObjectItemCaseSensitive(doc, "PARM");
+    cJSON *unit = cJSON_GetObjectItemCaseSensitive(doc, "UNIT");
+    for (int i = 0; i < TLM_PARM_NUM; i++) {
+        cJSON *it;
+        if (parm && (it = cJSON_GetArrayItem(parm, i)) && cJSON_IsString(it)) {
+            strncpy(out->PARM[i], it->valuestring, sizeof(out->PARM[i]) - 1);
+            out->PARM[i][sizeof(out->PARM[i]) - 1] = 0;
+        }
+        if (unit && (it = cJSON_GetArrayItem(unit, i)) && cJSON_IsString(it)) {
+            strncpy(out->UNIT[i], it->valuestring, sizeof(out->UNIT[i]) - 1);
+            out->UNIT[i][sizeof(out->UNIT[i]) - 1] = 0;
+        }
+    }
+
+    cJSON *name = cJSON_GetObjectItemCaseSensitive(doc, "bitName");
+    cJSON *chan = cJSON_GetObjectItemCaseSensitive(doc, "bitCh");
+    cJSON *igate = cJSON_GetObjectItemCaseSensitive(doc, "bitIgate");
+    cJSON *rf = cJSON_GetObjectItemCaseSensitive(doc, "bitRF");
+    for (int i = 0; i < TLM_BIT_NUM; i++) {
+        cJSON *it;
+        if (name && (it = cJSON_GetArrayItem(name, i)) && cJSON_IsString(it)) {
+            strncpy(out->tlm_bit_name[i], it->valuestring, sizeof(out->tlm_bit_name[i]) - 1);
+            out->tlm_bit_name[i][sizeof(out->tlm_bit_name[i]) - 1] = 0;
+        }
+        if (chan && (it = cJSON_GetArrayItem(chan, i)) && cJSON_IsNumber(it))
+            out->tlm_bit_channel[i] = (uint8_t)it->valuedouble;
+        if (igate && (it = cJSON_GetArrayItem(igate, i)))
+            out->tlm_bit_igate[i] = cJSON_IsTrue(it);
+        if (rf && (it = cJSON_GetArrayItem(rf, i)))
+            out->tlm_bit_rf[i] = cJSON_IsTrue(it);
+    }
+
+    // ---- Report Parameters / definition-message toggles ----
+    // Every field below is optional: a telemetry.json written before these
+    // existed simply leaves the default from telemetry_config_set_defaults()
+    // in place (that is why load starts by calling it).
+    v = cJSON_GetObjectItemCaseSensitive(doc, "useStation");
+    if (v)
+        out->use_station = cJSON_IsTrue(v);
+    v = cJSON_GetObjectItemCaseSensitive(doc, "rptPath");
+    if (cJSON_IsString(v) && v->valuestring) {
+        strncpy(out->report_path, v->valuestring, sizeof(out->report_path) - 1);
+        out->report_path[sizeof(out->report_path) - 1] = 0;
+    }
+    v = cJSON_GetObjectItemCaseSensitive(doc, "tocall");
+    if (cJSON_IsString(v) && v->valuestring) {
+        strncpy(out->tocall, v->valuestring, sizeof(out->tocall) - 1);
+        out->tocall[sizeof(out->tocall) - 1] = 0;
+    }
+    v = cJSON_GetObjectItemCaseSensitive(doc, "autoSeq");
+    if (v)
+        out->auto_seq = cJSON_IsTrue(v);
+    v = cJSON_GetObjectItemCaseSensitive(doc, "fieldW");
+    if (cJSON_IsNumber(v))
+        out->field_width = (uint8_t)v->valuedouble;
+    v = cJSON_GetObjectItemCaseSensitive(doc, "omitTrail");
+    if (v)
+        out->omit_trailing = cJSON_IsTrue(v);
+    v = cJSON_GetObjectItemCaseSensitive(doc, "trailCmt");
+    if (cJSON_IsString(v) && v->valuestring) {
+        strncpy(out->trail_comment, v->valuestring, sizeof(out->trail_comment) - 1);
+        out->trail_comment[sizeof(out->trail_comment) - 1] = 0;
+    }
+    v = cJSON_GetObjectItemCaseSensitive(doc, "anaCount");
+    if (cJSON_IsNumber(v))
+        out->analog_count = (uint8_t)v->valuedouble;
+    v = cJSON_GetObjectItemCaseSensitive(doc, "digCount");
+    if (cJSON_IsNumber(v))
+        out->digital_count = (uint8_t)v->valuedouble;
+    v = cJSON_GetObjectItemCaseSensitive(doc, "genPARM");
+    if (v)
+        out->gen_parm = cJSON_IsTrue(v);
+    v = cJSON_GetObjectItemCaseSensitive(doc, "genUNIT");
+    if (v)
+        out->gen_unit = cJSON_IsTrue(v);
+    v = cJSON_GetObjectItemCaseSensitive(doc, "genEQNS");
+    if (v)
+        out->gen_eqns = cJSON_IsTrue(v);
+    v = cJSON_GetObjectItemCaseSensitive(doc, "genBITS");
+    if (v)
+        out->gen_bits = cJSON_IsTrue(v);
+
+    v = cJSON_GetObjectItemCaseSensitive(doc, "anaRF");
+    if (v)
+        out->analog_tx2rf = cJSON_IsTrue(v);
+    v = cJSON_GetObjectItemCaseSensitive(doc, "anaInet");
+    if (v)
+        out->analog_tx2inet = cJSON_IsTrue(v);
+    v = cJSON_GetObjectItemCaseSensitive(doc, "digRF");
+    if (v)
+        out->digital_tx2rf = cJSON_IsTrue(v);
+    v = cJSON_GetObjectItemCaseSensitive(doc, "digInet");
+    if (v)
+        out->digital_tx2inet = cJSON_IsTrue(v);
+    v = cJSON_GetObjectItemCaseSensitive(doc, "projTitle");
+    if (cJSON_IsString(v) && v->valuestring) {
+        strncpy(out->proj_title, v->valuestring, sizeof(out->proj_title) - 1);
+        out->proj_title[sizeof(out->proj_title) - 1] = 0;
+    }
+
+    // ---- Analog channels A1-A5 (parallel arrays) ----
+    cJSON *anaEn = cJSON_GetObjectItemCaseSensitive(doc, "anaEn");
+    cJSON *anaCh = cJSON_GetObjectItemCaseSensitive(doc, "anaCh");
+    cJSON *anaA = cJSON_GetObjectItemCaseSensitive(doc, "anaA");
+    cJSON *anaB = cJSON_GetObjectItemCaseSensitive(doc, "anaB");
+    cJSON *anaC = cJSON_GetObjectItemCaseSensitive(doc, "anaC");
+    cJSON *anaMin = cJSON_GetObjectItemCaseSensitive(doc, "anaRawMin");
+    cJSON *anaMax = cJSON_GetObjectItemCaseSensitive(doc, "anaRawMax");
+    cJSON *anaDec = cJSON_GetObjectItemCaseSensitive(doc, "anaDec");
+    for (int i = 0; i < TLM_CH; i++) {
+        cJSON *it;
+        if (anaEn && (it = cJSON_GetArrayItem(anaEn, i)))
+            out->ana_enable[i] = cJSON_IsTrue(it);
+        if (anaCh && (it = cJSON_GetArrayItem(anaCh, i)) && cJSON_IsNumber(it))
+            out->tlm_ana_channel[i] = (uint8_t)it->valuedouble;
+        if (anaA && (it = cJSON_GetArrayItem(anaA, i)) && cJSON_IsNumber(it))
+            out->ana_a[i] = (float)it->valuedouble;
+        if (anaB && (it = cJSON_GetArrayItem(anaB, i)) && cJSON_IsNumber(it))
+            out->ana_b[i] = (float)it->valuedouble;
+        if (anaC && (it = cJSON_GetArrayItem(anaC, i)) && cJSON_IsNumber(it))
+            out->ana_c[i] = (float)it->valuedouble;
+        if (anaMin && (it = cJSON_GetArrayItem(anaMin, i)) && cJSON_IsNumber(it))
+            out->ana_raw_min[i] = (int32_t)it->valuedouble;
+        if (anaMax && (it = cJSON_GetArrayItem(anaMax, i)) && cJSON_IsNumber(it))
+            out->ana_raw_max[i] = (int32_t)it->valuedouble;
+        if (anaDec && (it = cJSON_GetArrayItem(anaDec, i)) && cJSON_IsNumber(it))
+            out->ana_dec[i] = (uint8_t)it->valuedouble;
+    }
+
+    // ---- Digital bank extras (parallel arrays) ----
+    cJSON *bitEn = cJSON_GetObjectItemCaseSensitive(doc, "bitEn");
+    cJSON *bitSense = cJSON_GetObjectItemCaseSensitive(doc, "bitSense");
+    for (int i = 0; i < TLM_BIT_NUM; i++) {
+        cJSON *it;
+        if (bitEn && (it = cJSON_GetArrayItem(bitEn, i)))
+            out->bit_enable[i] = cJSON_IsTrue(it);
+        if (bitSense && (it = cJSON_GetArrayItem(bitSense, i)))
+            out->bit_sense[i] = cJSON_IsTrue(it);
+    }
+
+    cJSON_Delete(doc);
+    return true;
+}
+
+static bool save_locked(const telemetry_config_t *in) {
+    FILE *f = fopen(TELEMETRY_TMP_PATH, "w");
+    if (!f) {
+        ESP_LOGE(TAG, "open tmp for write failed");
+        return false;
+    }
+
+    // Pin the stdio buffer before the first write - see the fuller note in
+    // app_config_save()/bulletins.c's save_locked(): avoids a transient
+    // malloc(4096) on this device's small, fragmented heap.
+    static char s_save_buf[512];
+    setvbuf(f, s_save_buf, _IOFBF, sizeof(s_save_buf));
+
+    // Written token-by-token straight to the file (no cJSON tree, no second
+    // serialized buffer) - the same low-RAM approach app_config_save() and
+    // bulletins.c's save_locked() use.
+    fputc('{', f);
+    fprintf(f, "\"en\":%s,", in->en ? "true" : "false");
+    fprintf(f, "\"tx2rf\":%s,", in->tx2rf ? "true" : "false");
+    fprintf(f, "\"tx2inet\":%s,", in->tx2inet ? "true" : "false");
+    fprintf(f, "\"ssid\":%u,", (unsigned)in->ssid);
+    fputs("\"mycall\":", f);
+    write_json_string(f, in->mycall);
+    fprintf(f, ",\"path\":%u,", (unsigned)in->path);
+    fprintf(f, "\"dataInv\":%u,", (unsigned)in->data_interval);
+    fprintf(f, "\"infoInv\":%u,", (unsigned)in->info_interval);
+
+    fputs("\"PARM\":[", f);
+    for (int i = 0; i < TLM_PARM_NUM; i++) {
+        if (i)
+            fputc(',', f);
+        write_json_string(f, in->PARM[i]);
+    }
+    fputs("],\"UNIT\":[", f);
+    for (int i = 0; i < TLM_PARM_NUM; i++) {
+        if (i)
+            fputc(',', f);
+        write_json_string(f, in->UNIT[i]);
+    }
+    fputs("],", f);
+
+    fputs("\"bitName\":[", f);
+    for (int i = 0; i < TLM_BIT_NUM; i++) {
+        if (i)
+            fputc(',', f);
+        write_json_string(f, in->tlm_bit_name[i]);
+    }
+    fputs("],\"bitCh\":[", f);
+    for (int i = 0; i < TLM_BIT_NUM; i++)
+        fprintf(f, i ? ",%u" : "%u", (unsigned)in->tlm_bit_channel[i]);
+    fputs("],\"bitIgate\":[", f);
+    for (int i = 0; i < TLM_BIT_NUM; i++)
+        fputs(i ? (in->tlm_bit_igate[i] ? ",true" : ",false") : (in->tlm_bit_igate[i] ? "true" : "false"), f);
+    fputs("],\"bitRF\":[", f);
+    for (int i = 0; i < TLM_BIT_NUM; i++)
+        fputs(i ? (in->tlm_bit_rf[i] ? ",true" : ",false") : (in->tlm_bit_rf[i] ? "true" : "false"), f);
+    fputs("],", f);
+
+    // ---- Report Parameters / definition-message toggles ----
+    fprintf(f, "\"useStation\":%s,", in->use_station ? "true" : "false");
+    fputs("\"rptPath\":", f);
+    write_json_string(f, in->report_path);
+    fputs(",\"tocall\":", f);
+    write_json_string(f, in->tocall);
+    fprintf(f, ",\"autoSeq\":%s,", in->auto_seq ? "true" : "false");
+    fprintf(f, "\"fieldW\":%u,", (unsigned)in->field_width);
+    fprintf(f, "\"omitTrail\":%s,", in->omit_trailing ? "true" : "false");
+    fputs("\"trailCmt\":", f);
+    write_json_string(f, in->trail_comment);
+    fprintf(f, ",\"anaCount\":%u,", (unsigned)in->analog_count);
+    fprintf(f, "\"digCount\":%u,", (unsigned)in->digital_count);
+    fprintf(f, "\"genPARM\":%s,", in->gen_parm ? "true" : "false");
+    fprintf(f, "\"genUNIT\":%s,", in->gen_unit ? "true" : "false");
+    fprintf(f, "\"genEQNS\":%s,", in->gen_eqns ? "true" : "false");
+    fprintf(f, "\"genBITS\":%s,", in->gen_bits ? "true" : "false");
+
+    fprintf(f, "\"anaRF\":%s,", in->analog_tx2rf ? "true" : "false");
+    fprintf(f, "\"anaInet\":%s,", in->analog_tx2inet ? "true" : "false");
+    fprintf(f, "\"digRF\":%s,", in->digital_tx2rf ? "true" : "false");
+    fprintf(f, "\"digInet\":%s,", in->digital_tx2inet ? "true" : "false");
+    fputs("\"projTitle\":", f);
+    write_json_string(f, in->proj_title);
+    fputc(',', f);
+
+    // ---- Analog channels A1-A5 (parallel arrays) ----
+    fputs("\"anaEn\":[", f);
+    for (int i = 0; i < TLM_CH; i++)
+        fputs(i ? (in->ana_enable[i] ? ",true" : ",false") : (in->ana_enable[i] ? "true" : "false"), f);
+    fputs("],\"anaCh\":[", f);
+    for (int i = 0; i < TLM_CH; i++)
+        fprintf(f, i ? ",%u" : "%u", (unsigned)in->tlm_ana_channel[i]);
+    fputs("],\"anaA\":[", f);
+    for (int i = 0; i < TLM_CH; i++)
+        fprintf(f, i ? ",%g" : "%g", (double)in->ana_a[i]);
+    fputs("],\"anaB\":[", f);
+    for (int i = 0; i < TLM_CH; i++)
+        fprintf(f, i ? ",%g" : "%g", (double)in->ana_b[i]);
+    fputs("],\"anaC\":[", f);
+    for (int i = 0; i < TLM_CH; i++)
+        fprintf(f, i ? ",%g" : "%g", (double)in->ana_c[i]);
+    fputs("],\"anaRawMin\":[", f);
+    for (int i = 0; i < TLM_CH; i++)
+        fprintf(f, i ? ",%d" : "%d", (int)in->ana_raw_min[i]);
+    fputs("],\"anaRawMax\":[", f);
+    for (int i = 0; i < TLM_CH; i++)
+        fprintf(f, i ? ",%d" : "%d", (int)in->ana_raw_max[i]);
+    fputs("],\"anaDec\":[", f);
+    for (int i = 0; i < TLM_CH; i++)
+        fprintf(f, i ? ",%u" : "%u", (unsigned)in->ana_dec[i]);
+    fputs("],", f);
+
+    // ---- Digital bank extras (parallel arrays) ----
+    fputs("\"bitEn\":[", f);
+    for (int i = 0; i < TLM_BIT_NUM; i++)
+        fputs(i ? (in->bit_enable[i] ? ",true" : ",false") : (in->bit_enable[i] ? "true" : "false"), f);
+    fputs("],\"bitSense\":[", f);
+    for (int i = 0; i < TLM_BIT_NUM; i++)
+        fputs(i ? (in->bit_sense[i] ? ",true" : ",false") : (in->bit_sense[i] ? "true" : "false"), f);
+    fputs("]}", f);
+
+    bool ok = (fflush(f) == 0) && (ferror(f) == 0);
+    if (fclose(f) != 0)
+        ok = false;
+    if (!ok) {
+        ESP_LOGE(TAG, "write error while saving telemetry config");
+        remove(TELEMETRY_TMP_PATH);
+        return false;
+    }
+
+    remove(TELEMETRY_PATH);
+    if (rename(TELEMETRY_TMP_PATH, TELEMETRY_PATH) != 0) {
+        ESP_LOGE(TAG, "rename tmp->telemetry.json failed");
+        return false;
+    }
+    ESP_LOGI(TAG, "Telemetry configuration saved");
+    return true;
+}
+
+// Refresh the RAM-only mycall cache. Caller must hold s_lock.
+static void update_mycall_cache_locked(const char *mycall) {
+    strncpy(s_mycall_cache, mycall ? mycall : "", sizeof(s_mycall_cache) - 1);
+    s_mycall_cache[sizeof(s_mycall_cache) - 1] = 0;
+}
+
+bool telemetry_config_load(telemetry_config_t *out) {
+    if (!out)
+        return false;
+    telemetry_lock();
+    bool missing = false;
+    bool ok = load_locked(out, &missing);
+    update_mycall_cache_locked(out->mycall);
+    telemetry_unlock();
+    if (missing) {
+        // First boot / file lost: persist the default set now so
+        // /storage/telemetry.json exists on disk instead of only living in
+        // RAM until something else happens to trigger a save.
+        if (!telemetry_config_save(out))
+            ESP_LOGW(TAG, "Failed to write default %s", TELEMETRY_PATH);
+    }
+    return ok;
+}
+
+bool telemetry_config_save(const telemetry_config_t *in) {
+    if (!in)
+        return false;
+    telemetry_lock();
+    bool ok = save_locked(in);
+    if (ok)
+        update_mycall_cache_locked(in->mycall);
+    telemetry_unlock();
+    return ok;
+}
+
+void telemetry_get_mycall(char *out, size_t out_size) {
+    if (!out || out_size == 0)
+        return;
+    telemetry_lock();
+    strncpy(out, s_mycall_cache, out_size - 1);
+    out[out_size - 1] = 0;
+    telemetry_unlock();
+}
+
+/* -------------------------------------------------------------------------
+ * 1 Hz refresh: for EACH Binary bit independently, read the one local
+ * driver the operator picked in cfg.tlm_bit_channel[bit] (Telemetry page
+ * "Binary" section, "Channel" column) and copy only that bit's value.
+ * Mirrors weather.c's per-field resolution against wx_sensor_ch[], and for
+ * the same reason: with more than one telemetry-capable driver registered,
+ * a single aggregate sensors_local_save() call would let whichever driver
+ * runs last silently overwrite bits already resolved from a different,
+ * operator-selected driver.
+ *
+ * Uses the channel mapping cached from the last telemetry_beacon_service()
+ * pass (s_cached_bit_channel[]) instead of reloading telemetry.json here:
+ * this runs at 1 Hz off the APRS service tick, and a LittleFS read every
+ * second is unnecessary flash wear/latency for a mapping that only changes
+ * when the operator saves the web page - the scheduler-driven beacon
+ * service (which does reload every pass) keeps that cache fresh.
+ * ------------------------------------------------------------------------- */
+static uint8_t s_cached_bit_channel[TLM_BIT_NUM];
+static uint8_t s_cached_ana_channel[TLM_CH];
+static bool s_cache_valid = false;
+
+static void telemetry_refresh_now(void) {
+    telemetry_lock();
+
+    if (!s_cache_valid) {
+        telemetry_unlock();
+        return; // no mapping known yet (first tick before the scheduler's first pass)
+    }
+
+    uint8_t ch_snapshot[TLM_BIT_NUM];
+    memcpy(ch_snapshot, s_cached_bit_channel, sizeof(ch_snapshot));
+    uint8_t ana_snapshot[TLM_CH];
+    memcpy(ana_snapshot, s_cached_ana_channel, sizeof(ana_snapshot));
+    telemetry_unlock();
+
+    for (int bit = 0; bit < TLM_BIT_NUM; bit++) {
+        bool present = false;
+        bool val = false;
+
+        uint8_t ch = ch_snapshot[bit];
+        if (ch != 0xFF) { // "(none)" - no source channel picked
+            bool digital_enabled[APRS_TELEMETRY_DIGITAL_CHANNELS] = {0};
+            bool digital[APRS_TELEMETRY_DIGITAL_CHANNELS] = {0};
+            aprs_telemetry_report_t scratch_tlm = {0};
+            scratch_tlm.digital_count = APRS_TELEMETRY_DIGITAL_CHANNELS;
+            scratch_tlm.digital_enabled = digital_enabled;
+            scratch_tlm.digital = digital;
+
+            weather_telemetry_data_t scratch_data = {0};
+            scratch_data.telemetry_report = &scratch_tlm;
+            scratch_data.telemetry_report_qty = 1;
+
+            // bit indexes B1..B8 the same way it indexes cfg.tlm_bit_*; the
+            // selected driver's digital[] array uses the identical B1..B8
+            // layout (sensor_local_properties_has_tlm()/_tlm_label() on the
+            // Telemetry page's Channel picker enforce that a channel only
+            // appears as a choice for a bit row it actually produces).
+            if (sensors_local_save_one((size_t)ch, &scratch_data, SENSOR_LOCAL_DATA_TELEMETRY) == ESP_OK && digital_enabled[bit]) {
+                val = digital[bit];
+                present = true;
+            }
+        }
+
+        telemetry_lock();
+        s_bit_val[bit] = val;
+        s_bit_present[bit] = present;
+        telemetry_unlock();
+    }
+
+    // Analog A1-A5: same per-row resolution as the digital loop above, and
+    // for the same reason (telemetry_refresh_now() note) - each row reads
+    // only the ONE driver channel the operator picked for THAT row, mirroring
+    // page_tlm_values_get()'s live-preview read. The value cached here is the
+    // RAW sensor reading (before the a*x^2+b*x+c calibration): APRS101 defines
+    // the on-air "T#..." analog fields as raw transmitted values, with the
+    // EQNS. metadata message carrying the coefficients so any receiving
+    // station can recover the engineering value itself - see
+    // build_tlm_data_packet()/build_tlm_eqns_packet() below.
+    for (int a = 0; a < TLM_CH; a++) {
+        bool present = false;
+        double val = 0.0;
+
+        uint8_t ch = ana_snapshot[a];
+        if (ch != 0xFF) { // "(none)" - no source channel picked
+            bool analog_enabled[APRS_TELEMETRY_ANALOG_CHANNELS] = {0};
+            double analog[APRS_TELEMETRY_ANALOG_CHANNELS] = {0};
+            aprs_telemetry_report_t scratch_tlm = {0};
+            scratch_tlm.analog_count = APRS_TELEMETRY_ANALOG_CHANNELS;
+            scratch_tlm.analog_enabled = analog_enabled;
+            scratch_tlm.analog = analog;
+
+            weather_telemetry_data_t scratch_data = {0};
+            scratch_data.telemetry_report = &scratch_tlm;
+            scratch_data.telemetry_report_qty = 1;
+
+            // Row a (A1..A5) maps 1:1 onto analog[0..4] - same reasoning as
+            // page_tlm_values_get(): the "Source" <select> for this row only
+            // ever offers drivers whose properties advertise THIS analog slot.
+            if (sensors_local_save_one((size_t)ch, &scratch_data, SENSOR_LOCAL_DATA_TELEMETRY) == ESP_OK && analog_enabled[a]) {
+                val = analog[a];
+                present = true;
+            }
+        }
+
+        telemetry_lock();
+        s_ana_val[a] = val;
+        s_ana_present[a] = present;
+        telemetry_unlock();
+    }
+}
+
+/* -------------------------------------------------------------------------
+ * Encoding helpers
+ * ------------------------------------------------------------------------- */
+
+// tlm0_path is a bitmask over g_config.path[0..3]; identical scheme to
+// weather.c's build_path_suffix() (kept as a private copy rather than a
+// shared helper, matching how beacon.c/bulletins.c/objects_items.c/weather.c
+// each keep their own).
+static void build_path_suffix(uint8_t bitmask, char *out, size_t outMax) {
+    out[0] = 0;
+    if (bitmask == 0 || outMax == 0)
+        return;
+
+    char pathPreset[4][72];
+    app_config_lock();
+    memcpy(pathPreset, g_config.path, sizeof(pathPreset));
+    app_config_unlock();
+
+    size_t used = 0;
+    for (int bit = 0; bit < 4; bit++) {
+        if (!(bitmask & (1 << bit)) || !pathPreset[bit][0])
+            continue;
+        int n = snprintf(out + used, outMax - used, ",%s", pathPreset[bit]);
+        if (n < 0)
+            break;
+        if ((size_t)n >= outMax - used) {
+            used = outMax - 1;
+            break;
+        }
+        used += (size_t)n;
+    }
+}
+
+static void call_field(const telemetry_config_t *s, char *out, size_t outMax) {
+    if (s->ssid > 0)
+        snprintf(out, outMax, "%s-%d", s->mycall, (int)s->ssid);
+    else
+        snprintf(out, outMax, "%s", s->mycall);
+}
+
+// Destination address (TOCALL): honors the operator-configurable "Destination"
+// field from the Report Parameters section (cfg->tocall), falling back to the
+// software-identifier TLM_DEST only if the operator left the field empty.
+static void tlm_dest_field(const telemetry_config_t *s, char *out, size_t outMax) {
+    snprintf(out, outMax, "%s", s->tocall[0] ? s->tocall : TLM_DEST);
+}
+
+// Digipeater path: prefers the free-text "Path (digipeaters)" picker from the
+// Report Parameters section (cfg->report_path, e.g. "WIDE1-1,WIDE2-1" - a
+// literal alias value copied from g_config.path[]). Falls back to the
+// Beacon-section path bitmask (build_path_suffix()) when report_path is empty,
+// so configurations that only set the bitmask keep working.
+static void tlm_path_field(const telemetry_config_t *s, char *out, size_t outMax) {
+    if (s->report_path[0]) {
+        int n = snprintf(out, outMax, ",%s", s->report_path);
+        if (n < 0 || (size_t)n >= outMax)
+            out[0] = 0;
+        return;
+    }
+    build_path_suffix(s->path, out, outMax);
+}
+
+// Formats one analog channel's RAW transmitted value per the "Analog Field
+// Width" Report Parameters option:
+//   - field_width == 3 : classic APRS101 strict encoding - unsigned integer,
+//     0-255, zero-padded to 3 digits (out-of-range raw readings are clamped
+//     rather than silently wrapped, so a mis-set raw_min/max never produces
+//     an on-air value a receiver would reject).
+//   - field_width == 0 (or anything else) : community/extended ("Kenneth's
+//     Proposed") format - plain decimal number with ana_dec[i] fractional
+//     digits, no padding, negative values allowed.
+// Returns the formatted length, or 0 (empty field) if @p present is false -
+// an empty field is valid on-air (APRS101 Ch.13: unused channels are simply
+// blank between the commas).
+static int format_analog_field(const telemetry_config_t *s, int i, double raw, bool present, char *out, size_t outMax) {
+    if (!present || outMax == 0) {
+        if (outMax)
+            out[0] = 0;
+        return 0;
+    }
+    if (s->field_width == 3) {
+        long v = lround(raw);
+        if (v < 0)
+            v = 0;
+        if (v > 255)
+            v = 255;
+        return snprintf(out, outMax, "%03ld", v);
+    }
+    uint8_t dec = s->ana_dec[i];
+    if (dec > 6)
+        dec = 6; // sanity bound - keeps the field short and the buffer maths simple
+    return snprintf(out, outMax, "%.*f", (int)dec, raw);
+}
+
+// Builds one "T#sss,a1,a2,a3,a4,a5,bbbbbbbb" Telemetry Data Report (APRS101
+// Ch.13). `for_rf` selects RF vs INET so both the analog bank, the digital
+// bank, and each individual bit can be routed to one leg, both, or neither
+// (cfg.analog_tx2rf/analog_tx2inet, cfg.digital_tx2rf/digital_tx2inet,
+// cfg.tlm_bit_igate[]/tlm_bit_rf[]).
+//
+// Analog fields carry the RAW resolved sensor reading (see the comment on
+// the analog resolution loop in telemetry_refresh_now()); EQNS. metadata
+// (build_tlm_eqns_packet()) carries the a/b/c coefficients a receiver needs
+// to recover the engineering value - this is the standard APRS101 split
+// between report and metadata, and matches how field_width's "3-digit"
+// strict mode expects values in 0-255 raw units.
+//
+// Trailing fields (rightmost analog channels with no value, and/or the
+// whole digital byte) are omitted together with their separating comma
+// when "Omit Trailing Channels" (cfg->omit_trailing) is enabled, per the
+// APRS101 Ch.13 shorthand ("only trailing channels may be omitted"); the
+// digital byte is additionally cropped to cfg->digital_count characters
+// before that trim is applied. cfg->trail_comment, if set, is appended
+// verbatim after the last field with no separator (conventional free-text
+// telemetry comment).
+//
+// IMPORTANT (on-air naming): this packet intentionally never includes
+// tlm_bit_name[]/PARM[]/UNIT[] or any other channel label - per APRS101
+// Ch.13 the "T#..." report carries only the sequence number and values.
+// Names/units/equations/sense are only ever sent from the PARM/UNIT/EQNS/
+// BITS builders below, inside separate Message packets, at the slower
+// info_interval cadence.
+static int build_tlm_data_packet(const telemetry_config_t *s, uint32_t seq, bool for_rf, char *out, size_t outMax) {
+    if (!s->mycall[0])
+        return 0;
+
+    char callField[16];
+    call_field(s, callField, sizeof(callField));
+    char dest[8];
+    tlm_dest_field(s, dest, sizeof(dest));
+    char path[80];
+    tlm_path_field(s, path, sizeof(path));
+
+    bool ana_bank_on = for_rf ? s->analog_tx2rf : s->analog_tx2inet;
+    bool dig_bank_on = for_rf ? s->digital_tx2rf : s->digital_tx2inet;
+
+    uint8_t ana_count = s->analog_count > TLM_CH ? TLM_CH : s->analog_count;
+    uint8_t dig_count = s->digital_count > TLM_BIT_NUM ? TLM_BIT_NUM : s->digital_count;
+
+    char anaField[TLM_CH][20]; // generous headroom: "-" + up to 6 int digits + "." + up to 6 dec digits still fits well under 20
+    bool anaPresent[TLM_CH];
+    char bits[TLM_BIT_NUM + 1];
+
+    telemetry_lock();
+    for (int i = 0; i < TLM_CH; i++) {
+        bool present = ana_bank_on && (i < ana_count) && s->ana_enable[i] && s_ana_present[i];
+        anaPresent[i] = present;
+        format_analog_field(s, i, present ? s_ana_val[i] : 0.0, present, anaField[i], sizeof(anaField[i]));
+    }
+    for (int i = 0; i < dig_count; i++) {
+        bool routed = for_rf ? s->tlm_bit_rf[i] : s->tlm_bit_igate[i];
+        bool present = dig_bank_on && s->bit_enable[i] && routed && s_bit_present[i];
+        bits[i] = (present && s_bit_val[i]) ? '1' : '0';
+    }
+    telemetry_unlock();
+    bits[dig_count] = '\0';
+
+    // How many of the 6 fields (5 analog + 1 digital) to actually emit:
+    // normally all of them (empty analog fields still hold their comma
+    // placeholder, and an empty/disabled digital bank is sent as all-'0's),
+    // but with omit_trailing, trim from the end - first drop the digital
+    // field entirely if the bank is off/zero-length, then drop any
+    // consecutive not-present analog fields off the right.
+    int fieldsToEmit = ana_count + 1; // + 1 for the digital field slot
+    bool haveDigital = dig_bank_on && dig_count > 0;
+    if (s->omit_trailing) {
+        if (!haveDigital)
+            fieldsToEmit--;
+        while (fieldsToEmit > 0 && fieldsToEmit <= ana_count && !anaPresent[fieldsToEmit - 1])
+            fieldsToEmit--;
+    }
+
+    char fields[TLM_CH * 20 + TLM_BIT_NUM + 8] = "";
+    size_t u = 0;
+    for (int i = 0; i < ana_count && i < fieldsToEmit; i++) {
+        int n = snprintf(fields + u, sizeof(fields) - u, ",%s", anaField[i]);
+        if (n < 0 || (size_t)n >= sizeof(fields) - u)
+            break;
+        u += (size_t)n;
+    }
+    if (haveDigital && fieldsToEmit > ana_count) {
+        int n = snprintf(fields + u, sizeof(fields) - u, ",%s", bits);
+        if (n > 0 && (size_t)n < sizeof(fields) - u)
+            u += (size_t)n;
+    }
+
+    char info[TLM_CH * 20 + TLM_BIT_NUM + 32 + sizeof(s->trail_comment)];
+    if (snprintf(info, sizeof(info), "T#%03u%s%s", (unsigned)(seq % 1000u), fields, s->trail_comment) < 0)
+        return 0;
+
+    int n = snprintf(out, outMax, "%s>%s%s:%s", callField, dest, path, info);
+    if (n < 0)
+        return 0;
+    if (outMax > 0 && (size_t)n >= outMax)
+        n = (int)outMax - 1;
+    return n;
+}
+
+// Shared "addressee" builder for the four telemetry metadata Messages
+// (PARM/UNIT/EQNS/BITS): left-justified, space-padded to 9 chars, as
+// required by APRS101 Ch.13/14 for the Message addressee field.
+static void tlm_addressee(const telemetry_config_t *s, const char *callField, char *out, size_t outMax) {
+    snprintf(out, outMax, "%-9.9s", callField);
+}
+
+// Builds the ":addressee:PARM.name1,...,name13" Parameter Name Message
+// (APRS101 Ch.13): the 5 analog channel names (cfg->PARM[0..4]) followed by
+// the 8 digital bit labels (cfg->tlm_bit_name[0..7], stored at
+// PARM[TLM_CH..TLM_PARM_NUM-1] per telemetry.h's on-air PARM/UNIT layout).
+// Only gen_parm-gated; only analog_count/digital_count channels are
+// considered "active" (channels beyond those counts are sent as empty
+// fields so the trailing-comma trim below can still drop them).
+static int build_tlm_parm_packet(const telemetry_config_t *s, char *out, size_t outMax) {
+    if (!s->mycall[0] || !s->gen_parm)
+        return 0;
+
+    char callField[16];
+    call_field(s, callField, sizeof(callField));
+    char dest[8];
+    tlm_dest_field(s, dest, sizeof(dest));
+    char addressee[APRS_CALLSIGN_SSID_LEN + 1];
+    tlm_addressee(s, callField, addressee, sizeof(addressee));
+
+    uint8_t ana_count = s->analog_count > TLM_CH ? TLM_CH : s->analog_count;
+    uint8_t dig_count = s->digital_count > TLM_BIT_NUM ? TLM_BIT_NUM : s->digital_count;
+
+    char body[16 + TLM_PARM_NUM * 11];
+    size_t u = 0;
+    int n = snprintf(body, sizeof(body), "PARM.");
+    if (n > 0)
+        u = (size_t)n;
+    for (int i = 0; i < TLM_PARM_NUM; i++) {
+        const char *name = "";
+        if (i < ana_count)
+            name = s->PARM[i];
+        else if (i >= TLM_CH && (i - TLM_CH) < dig_count)
+            name = s->tlm_bit_name[i - TLM_CH];
+        n = snprintf(body + u, sizeof(body) - u, "%.10s,", name);
+        if (n < 0 || (size_t)n >= sizeof(body) - u)
+            break;
+        u += (size_t)n;
+    }
+    while (u > 0 && body[u - 1] == ',')
+        body[--u] = '\0';
+
+    int len = snprintf(out, outMax, "%s>%s::%s:%s", callField, dest, addressee, body);
+    if (len < 0)
+        return 0;
+    if (outMax > 0 && (size_t)len >= outMax)
+        len = (int)outMax - 1;
+    return len;
+}
+
+// Builds the ":addressee:UNIT.unit1,...,unit13" Unit/Label Message (APRS101
+// Ch.13): the 5 analog channel units (cfg->UNIT[0..4]) followed by the 8
+// digital ON-state labels (cfg->UNIT[TLM_CH..TLM_PARM_NUM-1]). gen_unit-gated.
+static int build_tlm_unit_packet(const telemetry_config_t *s, char *out, size_t outMax) {
+    if (!s->mycall[0] || !s->gen_unit)
+        return 0;
+
+    char callField[16];
+    call_field(s, callField, sizeof(callField));
+    char dest[8];
+    tlm_dest_field(s, dest, sizeof(dest));
+    char addressee[APRS_CALLSIGN_SSID_LEN + 1];
+    tlm_addressee(s, callField, addressee, sizeof(addressee));
+
+    uint8_t ana_count = s->analog_count > TLM_CH ? TLM_CH : s->analog_count;
+    uint8_t dig_count = s->digital_count > TLM_BIT_NUM ? TLM_BIT_NUM : s->digital_count;
+
+    char body[16 + TLM_PARM_NUM * 9];
+    size_t u = 0;
+    int n = snprintf(body, sizeof(body), "UNIT.");
+    if (n > 0)
+        u = (size_t)n;
+    for (int i = 0; i < TLM_PARM_NUM; i++) {
+        const char *unit = "";
+        if (i < ana_count || (i >= TLM_CH && (i - TLM_CH) < dig_count))
+            unit = s->UNIT[i];
+        n = snprintf(body + u, sizeof(body) - u, "%.8s,", unit);
+        if (n < 0 || (size_t)n >= sizeof(body) - u)
+            break;
+        u += (size_t)n;
+    }
+    while (u > 0 && body[u - 1] == ',')
+        body[--u] = '\0';
+
+    int len = snprintf(out, outMax, "%s>%s::%s:%s", callField, dest, addressee, body);
+    if (len < 0)
+        return 0;
+    if (outMax > 0 && (size_t)len >= outMax)
+        len = (int)outMax - 1;
+    return len;
+}
+
+// Builds the ":addressee:EQNS.a1,b1,c1,...,a5,b5,c5" Equation Coefficients
+// Message (APRS101 Ch.13): one {a,b,c} triplet per analog channel
+// (cfg->ana_a/ana_b/ana_c[0..analog_count-1]), so a receiving station can
+// recover the engineering value from the raw "T#..." field via
+// value = a*raw^2 + b*raw + c. gen_eqns-gated.
+static int build_tlm_eqns_packet(const telemetry_config_t *s, char *out, size_t outMax) {
+    if (!s->mycall[0] || !s->gen_eqns)
+        return 0;
+
+    char callField[16];
+    call_field(s, callField, sizeof(callField));
+    char dest[8];
+    tlm_dest_field(s, dest, sizeof(dest));
+    char addressee[APRS_CALLSIGN_SSID_LEN + 1];
+    tlm_addressee(s, callField, addressee, sizeof(addressee));
+
+    uint8_t ana_count = s->analog_count > TLM_CH ? TLM_CH : s->analog_count;
+
+    char body[16 + TLM_CH * 3 * 16];
+    size_t u = 0;
+    int n = snprintf(body, sizeof(body), "EQNS.");
+    if (n > 0)
+        u = (size_t)n;
+    for (int i = 0; i < ana_count; i++) {
+        n = snprintf(body + u, sizeof(body) - u, "%s%g,%g,%g", i ? "," : "", (double)s->ana_a[i], (double)s->ana_b[i], (double)s->ana_c[i]);
+        if (n < 0 || (size_t)n >= sizeof(body) - u)
+            break;
+        u += (size_t)n;
+    }
+
+    int len = snprintf(out, outMax, "%s>%s::%s:%s", callField, dest, addressee, body);
+    if (len < 0)
+        return 0;
+    if (outMax > 0 && (size_t)len >= outMax)
+        len = (int)outMax - 1;
+    return len;
+}
+
+// Builds the ":addressee:BITS.b1b2...b8,Project Title" Bit Sense / Project
+// Name Message (APRS101 Ch.13). Per spec the 8 characters immediately after
+// "BITS." are '1'/'0' SENSE flags - one per digital channel, true meaning
+// "a transmitted 1 on this bit represents the labeled condition being true"
+// (cfg->bit_sense[i]) - NOT the bit labels (those belong in PARM., built by
+// build_tlm_parm_packet() above; the previous implementation of this
+// function sent tlm_bit_name[] here instead of sense flags, and never sent
+// the project title at all - both fixed here). gen_bits-gated.
+static int build_tlm_bits_packet(const telemetry_config_t *s, char *out, size_t outMax) {
+    if (!s->mycall[0] || !s->gen_bits)
+        return 0;
+
+    char callField[16];
+    call_field(s, callField, sizeof(callField));
+    char dest[8];
+    tlm_dest_field(s, dest, sizeof(dest));
+    char addressee[APRS_CALLSIGN_SSID_LEN + 1];
+    tlm_addressee(s, callField, addressee, sizeof(addressee));
+
+    char sense[TLM_BIT_NUM + 1];
+    for (int i = 0; i < TLM_BIT_NUM; i++)
+        sense[i] = s->bit_sense[i] ? '1' : '0';
+    sense[TLM_BIT_NUM] = '\0';
+
+    char body[8 + TLM_BIT_NUM + 1 + sizeof(s->proj_title)];
+    snprintf(body, sizeof(body), "BITS.%s,%s", sense, s->proj_title);
+
+    int len = snprintf(out, outMax, "%s>%s::%s:%s", callField, dest, addressee, body);
+    if (len < 0)
+        return 0;
+    if (outMax > 0 && (size_t)len >= outMax)
+        len = (int)outMax - 1;
+    return len;
+}
+
+static uint32_t clamp_interval(uint32_t s) {
+    if (s == 0)
+        return TLM_DEFAULT_INTERVAL_S;
+    if (s < TLM_MIN_INTERVAL_S)
+        return TLM_MIN_INTERVAL_S;
+    return s;
+}
+
+static uint32_t clamp_info_interval(uint32_t s) {
+    if (s == 0)
+        return 0; // 0 = metadata sending disabled (data report still sent)
+    if (s < TLM_INFO_MIN_INTERVAL_S)
+        return TLM_INFO_MIN_INTERVAL_S;
+    return s;
+}
+
+// Monotonic seconds since boot - used for beacon scheduling so an NTP step
+// of the wall clock never disturbs the transmit cadence (same rationale as
+// weather.c's wx_mono_seconds()).
+static int64_t tlm_mono_seconds(void) {
+    return (int64_t)(esp_timer_get_time() / 1000000);
+}
+
+/* -------------------------------------------------------------------------
+ * Tasks / scheduler-service entry points
+ * ------------------------------------------------------------------------- */
+
+static uint32_t s_sequence = 0;
+static int64_t s_data_next_due = 0;
+static int64_t s_info_next_due = 0;
+
+void telemetry_service_1hz(void) {
+    telemetry_refresh_now();
+}
+
+static void send_packet(const char *label, bool to_rf_leg, bool to_inet_leg, const char *packet, size_t len) {
+    if (len == 0)
+        return;
+    if (to_rf_leg) {
+        if (aprs_service_send_tnc2(packet, len))
+            ESP_LOGI(TAG, "%s TX (RF): %s", label, packet);
+        else
+            ESP_LOGW(TAG, "%s NOT sent over RF - modem not ready or busy: %s", label, packet);
+    }
+    if (to_inet_leg) {
+        if (igate_send_raw(packet, len))
+            ESP_LOGI(TAG, "%s TX (INET): %s", label, packet);
+        else
+            ESP_LOGW(TAG, "%s NOT sent over INET - APRS-IS not connected yet: %s", label, packet);
+    }
+}
+
+uint32_t telemetry_beacon_service(void) {
+    telemetry_config_t cfg;
+    telemetry_config_load(&cfg);
+
+    // Refresh the 1 Hz refresh's channel-mapping cache from what was just
+    // loaded, so telemetry_refresh_now() picks up mapping changes without
+    // itself touching LittleFS every second (see the comment above it).
+    telemetry_lock();
+    memcpy(s_cached_bit_channel, cfg.tlm_bit_channel, sizeof(s_cached_bit_channel));
+    memcpy(s_cached_ana_channel, cfg.tlm_ana_channel, sizeof(s_cached_ana_channel));
+    s_cache_valid = true;
+    telemetry_unlock();
+
+    if (!cfg.en || (!cfg.tx2rf && !cfg.tx2inet)) {
+        s_data_next_due = 0; // reset so (re-)enabling fires an immediate TX
+        s_info_next_due = 0;
+        return 5; // idle re-check cadence
+    }
+
+    int64_t now = tlm_mono_seconds();
+
+    if (now >= s_data_next_due) {
+        // Build one packet per leg: the Binary section routes each bit to
+        // IGate and/or RF independently (tlm_bit_igate[]/tlm_bit_rf[]), so
+        // the on-air bit pattern can legitimately differ between the two;
+        // the Analog/Digital "Beacon via RF/Internet" toggles further gate
+        // each whole bank per leg (build_tlm_data_packet()).
+        char packet[280];
+        if (cfg.tx2rf) {
+            int len = build_tlm_data_packet(&cfg, s_sequence, true, packet, sizeof(packet));
+            if (len > 0)
+                send_packet("TLM data", true, false, packet, (size_t)len);
+            else
+                ESP_LOGW(TAG, "Telemetry enabled but no callsign configured - skipping RF leg");
+        }
+        if (cfg.tx2inet) {
+            int len = build_tlm_data_packet(&cfg, s_sequence, false, packet, sizeof(packet));
+            if (len > 0)
+                send_packet("TLM data", false, true, packet, (size_t)len);
+            else
+                ESP_LOGW(TAG, "Telemetry enabled but no callsign configured - skipping INET leg");
+        }
+        // "Auto-increment Sequence Number" (cfg.auto_seq): when off, keep
+        // resending the same sequence number - some receiving software uses
+        // a change in T# sequence to detect a genuinely new sample, so a
+        // fixed sequence is the correct behaviour for a station that wants
+        // every report treated as a refresh of the same reading rather than
+        // a new one.
+        if (cfg.auto_seq)
+            s_sequence++;
+
+        ESP_LOGD(TAG, "tlm_beacon stack free: %u bytes", (unsigned)(uxTaskGetStackHighWaterMark(NULL) * sizeof(StackType_t)));
+
+        s_data_next_due = now + (int64_t)beacon_scheduler_jitter(clamp_interval(cfg.data_interval));
+    }
+
+    uint32_t info_iv = clamp_info_interval(cfg.info_interval);
+    if (info_iv > 0 && now >= s_info_next_due) {
+        // Definition Messages: each of PARM./UNIT./EQNS./BITS. is sent as
+        // its own Message packet, independently gated by its "Generate ..."
+        // checkbox (cfg.gen_parm/gen_unit/gen_eqns/gen_bits).
+        char packet[280];
+        int len = build_tlm_parm_packet(&cfg, packet, sizeof(packet));
+        if (len > 0)
+            send_packet("TLM PARM", cfg.tx2rf, cfg.tx2inet, packet, (size_t)len);
+        len = build_tlm_unit_packet(&cfg, packet, sizeof(packet));
+        if (len > 0)
+            send_packet("TLM UNIT", cfg.tx2rf, cfg.tx2inet, packet, (size_t)len);
+        len = build_tlm_eqns_packet(&cfg, packet, sizeof(packet));
+        if (len > 0)
+            send_packet("TLM EQNS", cfg.tx2rf, cfg.tx2inet, packet, (size_t)len);
+        len = build_tlm_bits_packet(&cfg, packet, sizeof(packet));
+        if (len > 0)
+            send_packet("TLM BITS", cfg.tx2rf, cfg.tx2inet, packet, (size_t)len);
+        s_info_next_due = now + (int64_t)info_iv;
+    } else if (info_iv == 0) {
+        s_info_next_due = now; // keep re-checking cheaply in case the operator sets an interval later
+    }
+
+    int64_t next[2];
+    next[0] = s_data_next_due - now;
+    next[1] = (info_iv > 0) ? (s_info_next_due - now) : (int64_t)TLM_MIN_INTERVAL_S;
+    int64_t rem = (next[0] < next[1]) ? next[0] : next[1];
+    if (rem < 1)
+        rem = 1;
+    return (uint32_t)rem;
+}
+
+void telemetry_start(void) {
+    memset(s_bit_val, 0, sizeof(s_bit_val));
+    memset(s_bit_present, 0, sizeof(s_bit_present));
+    memset(s_ana_val, 0, sizeof(s_ana_val));
+    memset(s_ana_present, 0, sizeof(s_ana_present));
+    memset(s_cached_bit_channel, 0xFF, sizeof(s_cached_bit_channel));
+    memset(s_cached_ana_channel, 0xFF, sizeof(s_cached_ana_channel));
+    s_cache_valid = false;
+    s_sequence = 0;
+    s_data_next_due = 0;
+    s_info_next_due = 0;
+
+    ensure_lock();
+
+    // Make sure /storage/telemetry.json exists from the very first boot,
+    // same as bulletins_start() ensures for bulletins.json - the config page
+    // would otherwise only create it the first time someone saves it.
+    telemetry_config_t cfg;
+    telemetry_config_load(&cfg);
+
+    // No sensors_local_init()/sensors_local_init_all() call here: weather_start()
+    // (called before this, from aprs_service.c) already brought the shared
+    // registry up. This subsystem only reads it.
+    ESP_LOGI(TAG, "Telemetry subsystem started (en=%d rf=%d inet=%d data_interval=%us info_interval=%us)", cfg.en, cfg.tx2rf, cfg.tx2inet,
+             (unsigned)cfg.data_interval, (unsigned)cfg.info_interval);
+}

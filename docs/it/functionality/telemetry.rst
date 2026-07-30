@@ -1,0 +1,91 @@
+.. _it-telemetry:
+
+==========
+Telemetria
+==========
+
+Il sottosistema ``telemetry`` (``main/telemetry.c``) raccoglie canali analogici e
+digitali dal registro ``sensors_local`` e trasmette come beacon un report di dati
+di telemetria APRS standard (``T#nnn``) in RF e/o APRS-IS, insieme ai messaggi di
+metadati PARM/UNIT/EQNS/BITS che etichettano quei canali per le stazioni
+riceventi. Rispecchia lo schema usato dal sottosistema meteo, ma per la
+telemetria.
+
+Archiviazione separata
+======================
+
+A differenza della maggior parte delle impostazioni, la configurazione di
+telemetria deliberatamente **non** vive in ``g_config``/``config.json``. Persiste
+nel suo piccolo file LittleFS, ``/storage/telemetry.json``, allo stesso modo in
+cui bollettini e oggetti/item mantengono i propri file. Al primo avvio, o quando
+il file manca, viene creato un insieme vuoto predefinito così che
+``/storage/telemetry.json`` esista sempre una volta che il sottosistema è
+avviato. Lo schema completo è ``telemetry_config_t``
+(``main/include/telemetry.h``).
+
+Canali
+======
+
+Secondo il capitolo 13 di APRS101, un report di telemetria porta:
+
+* **5 canali analogici** ``A1``–``A5`` (``TLM_CH = 5``).
+* **8 bit digitali** ``B1``–``B8`` (``TLM_BIT_NUM = 8``).
+
+Ogni canale analogico ha un flag di abilitazione, un indice di canale di sensore
+di origine (``tlm_ana_channel[]``, ``0xFF`` = nessuno), una calibrazione
+quadratica (``valore = a·x² + b·x + c``), un intervallo di ingresso grezzo
+atteso, e un numero di decimali. Ogni bit digitale ha un flag di abilitazione, un
+canale di origine, un senso (Normale / Invertito), instradamento RF/INET per bit,
+e un'etichetta orientata all'operatore usata nel messaggio BITS.
+
+Cosa va in onda
+===============
+
+``build_tlm_data_packet()`` (in ``telemetry.c``) risolve ogni canale mappato dal
+registro (via ``sensors_local_save_one()``) una volta al secondo e codifica il
+report di dati periodico:
+
+.. code-block:: text
+
+   T#sss,a1,a2,a3,a4,a5,bbbbbbbb
+
+I campi analogici portano i valori calibrati (con la larghezza di campo e i
+decimali per canale applicati), e gli otto caratteri ``b`` sono i bit digitali.
+Il report **non** porta mai nomi di canale — secondo la specifica APRS, nomi,
+unità ed equazioni viaggiano separatamente.
+
+I messaggi di metadati
+======================
+
+A una cadenza più lenta (``info_interval``), il modulo emette i messaggi di
+definizione come messaggi APRS diretti alla propria stazione:
+
+.. code-block:: text
+
+   :MYCALL   :PARM.<nomi analogici>,<nomi dei bit>
+   :MYCALL   :UNIT.<unità analogiche>,<etichette di stato-attivo dei bit>
+   :MYCALL   :EQNS.<a,b,c per canale analogico>
+   :MYCALL   :BITS.<mappa di bit di senso>,<titolo del progetto>
+
+La generazione di ciascuno è commutabile individualmente (``gen_parm``,
+``gen_unit``, ``gen_eqns``, ``gen_bits``).
+
+Parametri del report
+====================
+
+La configurazione porta anche opzioni di incapsulamento del capitolo 13 di
+APRS101: un percorso di digipeater a testo libero (``report_path``), TOCALL di
+destinazione (``tocall``), numero di sequenza auto-incrementante (``auto_seq``),
+larghezza del campo analogico (``field_width``), un'opzione per omettere i canali
+finali non usati (``omit_trailing``), un commento a testo libero in coda
+(``trail_comment``), e il numero di canali analogici/digitali effettivamente
+inviati (``analog_count`` / ``digital_count``).
+
+Selettori della pagina web
+==========================
+
+La pagina *Telemetry* (``page_tlm.c``) riempie un menu a tendina *Source* per
+ogni canale analogico e un menu a tendina *Channel* per ogni bit digitale dal
+registro ``sensors_local`` in tempo reale, filtrato per i canali di telemetria
+annunciati di ogni driver. I valori per canale in tempo reale sono mostrati
+tramite ``/tlm/values``. Vedi :ref:`it-sensor-framework`.

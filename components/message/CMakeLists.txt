@@ -1,0 +1,13 @@
+idf_component_register(
+    SRCS
+        "message.c"
+    INCLUDE_DIRS
+        "include"
+        "../../main/include"
+    REQUIRES
+        mbedtls
+        esp_driver_gpio
+        esp_timer
+        esp32idf_radioamateur_modem
+        sensors_local
+)

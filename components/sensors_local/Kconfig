@@ -1,0 +1,46 @@
+menu "Sensors Local"
+
+    config SENSORS_LOCAL_WEATHER_EXAMPLE_DRIVER
+        bool "Enable example WEATHER local sensor driver (random values, no hardware)"
+        default y
+        help
+            Registers a fake weather sensor ("wx-example") that feeds random
+            wind/temperature/humidity/pressure/rain/luminosity readings into
+            the pipeline. Useful to exercise the Weather page's channel
+            picker and the WX beacon encoder with no hardware attached.
+
+            Off by default: a real weather driver (BMP180) now exists, and
+            these values are indistinguishable from real readings once an
+            operator maps them to a Weather channel - they will be encoded
+            into a WX beacon and transmitted on air. Only turn this on for
+            bench testing, and turn it off again before keying a radio.
+
+    config SENSORS_LOCAL_TELEMETRY_EXAMPLE_DRIVER
+        bool "Enable example TELEMETRY local sensor driver (random values, no hardware)"
+        default y
+        help
+            Registers a fake telemetry sensor ("tlm-example") that feeds
+            random analog/digital channel values into the pipeline. Useful
+            to exercise the Telemetry page's channel picker with no
+            hardware attached.
+
+            Enabled by default so the "tlm-example" channels show up in the
+            Telemetry page "Source" pickers out of the box for bench
+            testing. Note that once an operator maps one of these channels
+            and enables telemetry transmission, the random values are
+            encoded into telemetry beacons and sent on air, where they are
+            indistinguishable from real measurements. Disable this before
+            keying a radio in production.
+
+    config SENSORS_LOCAL_BMP180_DRIVER
+        bool "Enable BMP180 I2C WEATHER sensor driver (temperature + pressure)"
+        default y
+        help
+            Registers a real weather sensor ("bmp180") for the Bosch BMP180
+            digital barometric-pressure / temperature sensor over I2C. The
+            SDA/SCL pins are fixed at build time in BMP180.h (default GPIO21
+            = SDA, GPIO22 = SCL) and are excluded from every GPIO picker in
+            the web admin so they cannot be reassigned to another peripheral.
+            Requires the esp-idf-lib/bmp180 managed component.
+
+endmenu

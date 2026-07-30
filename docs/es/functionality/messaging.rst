@@ -1,0 +1,55 @@
+.. _es-messaging:
+
+===============
+Mensajería APRS
+===============
+
+El componente ``message`` (``components/message/``) implementa la mensajería
+APRS con acuse de recibo y reintento, cifrado AES opcional, y enrutamiento por RF
+y/o APRS-IS. La administración web expone dos páginas distintas: la página
+**Message** *configura* el motor (habilitación RF/INET, reintento, cifrado),
+mientras que la página **Snd/Rcv Msg** (``/msgchat``) es la propia interfaz de
+bandeja/redacción.
+
+El motor de mensajes
+====================
+
+* **Cola en RAM.** Hasta ``MSG_QUEUE_SIZE`` (20) mensajes salientes, cada uno de
+  hasta 200 caracteres de texto, se mantienen en ``s_queue[]``.
+* **Enviar / ack / reintento.** ``sendAPRSMessage()`` encola un mensaje,
+  ``sendAPRSAck()`` responde a uno recibido, y ``sendAPRSMessageRetry()`` —
+  invocada a 1 Hz por la tarea de tick del servicio APRS — reenvía cualquier
+  mensaje cuyo acuse aún no ha llegado, hasta ``msg_retry`` veces cada
+  ``msg_interval`` segundos.
+* **Análisis de entrantes.** ``handleIncomingAPRS()`` analiza cualquier línea
+  TNC2 — de RF *o* de APRS-IS — reconoce los mensajes dirigidos a esta estación,
+  responde con un ack, y reconoce los acks entrantes (``ackNNN``) para limpiar el
+  mensaje encolado correspondiente.
+
+Enrutamiento
+============
+
+Cada mensaje se enruta por una máscara de bits de canal vía un manejador de TX
+registrado:
+
+* ``MSG_CHANNEL_RF`` (``1 << 0``) → ``aprs_service_send_tnc2()`` (pata de RF).
+* ``MSG_CHANNEL_INET`` (``1 << 1``) → ``igate_send_raw()`` (pata de APRS-IS).
+
+``g_config.msg_rf`` y ``g_config.msg_inet`` deciden qué patas están activas.
+
+La interfaz de chat de mensajes (``/msgchat``)
+==============================================
+
+La página ``/msgchat`` presenta un panel desplazable de mensajes enviados y
+recibidos por esta estación, un campo de indicativo de destino, un cuadro de
+texto de mensaje (limitado a la longitud de mensaje APRS) y un botón de envío.
+Refresca su lista de mensajes vía ``/msgchat/list`` (un fragmento JSON). Está
+condicionada por el interruptor de compilación ``ENABLE_MSG_CHAT``.
+
+GPIO de alarma de mensaje
+=========================
+
+Opcionalmente (``msg_alarm_enable``), un mensaje entrante puede accionar un GPIO
+(``msg_alarm_gpio``; ``-1`` = deshabilitado), validado por
+``message_alarm_gpio_is_valid()`` — útil para encender un LED o hacer sonar un
+zumbador al recibir un mensaje.

@@ -1,0 +1,44 @@
+# Read the Docs configuration — MUST live at the ROOT of the repository.
+#
+# This project ships three parallel Sphinx trees (en/, es/, it/) that link to
+# one another as SIBLINGS via the Breeze theme's language switcher, plus a
+# language-chooser landing page (root/index.html) at the very top.
+#
+# Because the switcher links are symmetric (every tree points at ../en/, ../es/,
+# ../it/), all three languages — including English — must live one level down,
+# under /en/, /es/, /it/. The site root holds ONLY the chooser page. This
+# mirrors the local `build_all.py` output exactly.
+#
+# Read the Docs runs every command below from the repository ROOT. The docs
+# sources live in a subdirectory, referenced below as "esp32idf_APRS-docs". If
+# you renamed that folder to plain "docs", change every "esp32idf_APRS-docs"
+# occurrence below to "docs" (marked  # <-- DOCS_DIR ).
+#
+# We give the sphinx: block a throwaway config (the chooser has none of its own,
+# so we point it at en/ just to satisfy Read the Docs), then WIPE and rebuild the
+# html output in post_build so the final layout is en/ es/ it/ + the chooser at
+# the root, with nothing English sitting loose at the top.
+
+version: 2
+
+build:
+  os: ubuntu-24.04
+  tools:
+    python: "3.12"
+  jobs:
+    post_build:
+      # Rebuild all three trees into sibling folders, then place the chooser.
+      # $READTHEDOCS_OUTPUT/html is cleared first so the throwaway English build
+      # from the sphinx: block does not linger at the root.
+      - rm -rf "$READTHEDOCS_OUTPUT/html"
+      - python -m sphinx -b html -W docs/en "$READTHEDOCS_OUTPUT/html/en"   # <-- DOCS_DIR
+      - python -m sphinx -b html -W docs/es "$READTHEDOCS_OUTPUT/html/es"   # <-- DOCS_DIR
+      - python -m sphinx -b html -W docs/it "$READTHEDOCS_OUTPUT/html/it"   # <-- DOCS_DIR
+      - cp docs/root/index.html "$READTHEDOCS_OUTPUT/html/index.html"       # <-- DOCS_DIR
+
+sphinx:
+  configuration: docs/en/conf.py                                            # <-- DOCS_DIR
+
+python:
+  install:
+    - requirements: docs/requirements.txt                                   # <-- DOCS_DIR
