@@ -5,6 +5,7 @@ idf_component_register(
         "storage.c"
         "aprs_service.c"
         "aprs_filter.c"
+        "aprs_coord.c"
         "net_state.c"
         "beacon.c"
         "beacon_scheduler.c"

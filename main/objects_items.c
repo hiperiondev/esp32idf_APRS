@@ -37,6 +37,7 @@
 #include "freertos/task.h"
 
 #include "app_config.h"
+#include "aprs_coord.h"
 #include "aprs_service.h"
 #include "igate.h"
 #include "objects_items.h"
@@ -503,20 +504,6 @@ bool objitems_save(const objitems_t *in) {
 // Wire format
 // ---------------------------------------------------------------------------
 
-// Decimal degrees -> APRS uncompressed "DDMM.mmN" / "DDDMM.mmW" fields,
-// identical to beacon.c's latLonToAprs().
-static void lat_lon_to_aprs(float lat, float lon, char *latOut, size_t latMax, char *lonOut, size_t lonMax) {
-    float alat = fabsf(lat);
-    int dLat = (int)alat;
-    float mLat = (alat - dLat) * 60.0f;
-    snprintf(latOut, latMax, "%02d%05.2f%c", dLat, mLat, lat >= 0 ? 'N' : 'S');
-
-    float alon = fabsf(lon);
-    int dLon = (int)alon;
-    float mLon = (alon - dLon) * 60.0f;
-    snprintf(lonOut, lonMax, "%03d%05.2f%c", dLon, mLon, lon >= 0 ? 'E' : 'W');
-}
-
 // True when the element's symbol is the APRS Area symbol ('\l') or Signpost
 // symbol ('\m'). Both use the 7-byte data-extension slot (normally CSE/SPD)
 // for their own descriptor, so course/speed is suppressed for them.
@@ -629,7 +616,7 @@ static void objitem_build_phg(const objitem_t *b, char *out, size_t out_size) {
 // hold the frequency block plus a full comment.
 static void objitem_build_info_field(const objitem_t *b, bool live, char *out, size_t out_size) {
     char latStr[10], lonStr[11];
-    lat_lon_to_aprs(b->lat, b->lon, latStr, sizeof(latStr), lonStr, sizeof(lonStr));
+    aprs_coord_format(b->lat, b->lon, latStr, sizeof(latStr), lonStr, sizeof(lonStr));
 
     char sym_table = b->sym[0] ? b->sym[0] : '/';
     char sym_code = b->sym[1] ? b->sym[1] : '-';

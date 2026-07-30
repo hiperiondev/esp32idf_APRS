@@ -31,6 +31,7 @@
 #include "freertos/task.h"
 
 #include "app_config.h"
+#include "aprs_coord.h"
 #include "aprs_service.h"
 #include "beacon.h"
 #include "beacon_scheduler.h" // beacon_scheduler_jitter()
@@ -101,19 +102,6 @@ static void buildPathSuffix(uint8_t pathBitmask, const char pathPreset[4][72], c
         used += (size_t)n;
         hopsUsed += presetHops;
     }
-}
-
-// Decimal degrees -> APRS uncompressed "DDMM.mmN" / "DDDMM.mmW" fields.
-static void latLonToAprs(float lat, float lon, char *latOut, size_t latMax, char *lonOut, size_t lonMax) {
-    float alat = fabsf(lat);
-    int dLat = (int)alat;
-    float mLat = (alat - dLat) * 60.0f;
-    snprintf(latOut, latMax, "%02d%05.2f%c", dLat, mLat, lat >= 0 ? 'N' : 'S');
-
-    float alon = fabsf(lon);
-    int dLon = (int)alon;
-    float mLon = (alon - dLon) * 60.0f;
-    snprintf(lonOut, lonMax, "%03d%05.2f%c", dLon, mLon, lon >= 0 ? 'E' : 'W');
 }
 
 // Generic parameters for one station's fixed-position beacon, filled in by
@@ -199,7 +187,7 @@ static int buildPositionPacket(const beacon_params_t *p, char *out, size_t outMa
     buildPathSuffix(p->pathSel, p->pathPreset, path, sizeof(path));
 
     char latStr[10], lonStr[11];
-    latLonToAprs(p->lat, p->lon, latStr, sizeof(latStr), lonStr, sizeof(lonStr));
+    aprs_coord_format(p->lat, p->lon, latStr, sizeof(latStr), lonStr, sizeof(lonStr));
 
     // symbol = 2 chars: [0] symbol table ('/' primary or '\' alternate), [1] symbol code.
     // Falls back to a plain "car" symbol on the primary table if unset.

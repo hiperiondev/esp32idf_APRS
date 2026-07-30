@@ -77,6 +77,13 @@
 #define OBJITEM_NAME_MAX 9
 
 /**
+ * @brief Minimum APRS Item name length (APRS101 Chapter 11). Only applies
+ * when ::objitem_t.is_item is true; Object names are always exactly
+ * ::OBJITEM_NAME_MAX characters, space-padded on air.
+ */
+#define OBJITEM_NAME_MIN 3
+
+/**
  * @brief Maximum free-text comment length, in characters.
  *
  * Kept well under the APRS info-field ceiling so name+timestamp+position+

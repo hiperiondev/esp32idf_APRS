@@ -523,6 +523,10 @@ void handleIncomingAPRS(const char *line) {
     if (isAck)
         strncpy(msgNo, message + 3, sizeof(msgNo) - 1);
 
+    bool isRej = (strncmp(message, "rej", 3) == 0);
+    if (isRej)
+        strncpy(msgNo, message + 3, sizeof(msgNo) - 1);
+
     ESP_LOGD(TAG, "Message from %s to %s: %s", fromCall, toCall, message);
 
     // Accept the message if the addressee's base callsign matches ours,
@@ -532,16 +536,23 @@ void handleIncomingAPRS(const char *line) {
     if (!callsignBaseMatch(toCall, g_config.msg_mycall))
         return;
 
-    // An ack always carries a message ID (it's the ID being acknowledged);
-    // without one there is nothing to match against a queued outgoing
-    // message, so it can't be processed.
-    if (isAck && msgNo[0] == 0)
+    // An ack or rej always carries a message ID (it's the ID of the queued
+    // message being acknowledged/rejected); without one there is nothing to
+    // match against a queued outgoing message, so it can't be processed.
+    if ((isAck || isRej) && msgNo[0] == 0)
         return;
 
     if (isAck) {
         int i = pkgMsg_Find(fromCall, (uint16_t)atoi(msgNo), false);
         if (i >= 0)
             s_queue[i].ack = -2; // acked
+        return;
+    }
+
+    if (isRej) {
+        int i = pkgMsg_Find(fromCall, (uint16_t)atoi(msgNo), false);
+        if (i >= 0)
+            s_queue[i].ack = -3; // rejected by recipient: stop retrying, don't count as delivered
         return;
     }
 

@@ -32,6 +32,7 @@
 #include "freertos/task.h"
 
 #include "app_config.h"
+#include "aprs_coord.h"
 #include "aprs_service.h"
 #include "beacon_scheduler.h" // beacon_scheduler_jitter()
 #include "igate.h"
@@ -321,15 +322,6 @@ static void build_path_suffix(uint8_t bitmask, char *out, size_t outMax) {
     }
 }
 
-static void lat_lon_to_aprs(float lat, float lon, char *latOut, size_t latMax, char *lonOut, size_t lonMax) {
-    float alat = fabsf(lat);
-    int dLat = (int)alat;
-    snprintf(latOut, latMax, "%02d%05.2f%c", dLat, (alat - dLat) * 60.0f, lat >= 0 ? 'N' : 'S');
-    float alon = fabsf(lon);
-    int dLon = (int)alon;
-    snprintf(lonOut, lonMax, "%03d%05.2f%c", dLon, (alon - dLon) * 60.0f, lon >= 0 ? 'E' : 'W');
-}
-
 // Resolved (post-averaging) view of one field for the encoder.
 typedef struct {
     bool present;
@@ -522,7 +514,7 @@ static int build_wx_packet(const wx_resolved_t r[WX_SENSOR_NUM], char *out, size
     if (is_object) {
         // Object report carrying weather: ";NAME     *DDHHMMz{lat}/{lon}_{wx}{comment}"
         char latStr[10], lonStr[11], ts[8], name[10];
-        lat_lon_to_aprs(cfg_lat, cfg_lon, latStr, sizeof(latStr), lonStr, sizeof(lonStr));
+        aprs_coord_format(cfg_lat, cfg_lon, latStr, sizeof(latStr), lonStr, sizeof(lonStr));
         snprintf(ts, sizeof(ts), "%02u%02u%02uz", t_day, t_hour, t_min);
         snprintf(name, sizeof(name), "%-9.9s", cfg_object); // fixed 9 chars, space padded
         build_wx_tokens(r, false, wxTokens, sizeof(wxTokens));
@@ -530,7 +522,7 @@ static int build_wx_packet(const wx_resolved_t r[WX_SENSOR_NUM], char *out, size
     } else if (have_pos) {
         // Positioned weather report, with or without a timestamp.
         char latStr[10], lonStr[11];
-        lat_lon_to_aprs(cfg_lat, cfg_lon, latStr, sizeof(latStr), lonStr, sizeof(lonStr));
+        aprs_coord_format(cfg_lat, cfg_lon, latStr, sizeof(latStr), lonStr, sizeof(lonStr));
         build_wx_tokens(r, false, wxTokens, sizeof(wxTokens));
         if (cfg_timestamp) {
             char ts[8];

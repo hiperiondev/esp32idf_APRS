@@ -509,14 +509,26 @@ esp_err_t page_objects_post(httpd_req_t *req) {
         char nm[OBJITEM_NAME_MAX + 1];
         nm[0] = 0;
         web_form_get(body, name, nm, sizeof(nm)); // URL-decoded, clamped, NUL-terminated
+
+        snprintf(name, sizeof(name), "oType%d", i + 1);
+        b->is_item = (web_form_get_int(body, name, b->is_item ? 1 : 0) != 0);
+
+        // An Item name must be 3..9 characters (APRS101 Ch. 11); an Object
+        // name is always exactly 9, space-padded on air, so it has no
+        // minimum here. Pad a too-short Item name out to the minimum with
+        // trailing spaces rather than rejecting the save outright.
+        if (b->is_item) {
+            size_t nl = strlen(nm);
+            while (nl < OBJITEM_NAME_MIN)
+                nm[nl++] = ' ';
+            nm[nl] = 0;
+        }
+
         // nm is already clamped to OBJITEM_NAME_MAX chars; both buffers are the
         // same size, so a plain copy is safe. memcpy of the full buffer keeps
         // the ESP-IDF build's -Wstringop-truncation happy (unlike strncpy).
         memcpy(b->name, nm, sizeof(b->name));
         b->name[OBJITEM_NAME_MAX] = 0;
-
-        snprintf(name, sizeof(name), "oType%d", i + 1);
-        b->is_item = (web_form_get_int(body, name, b->is_item ? 1 : 0) != 0);
 
         snprintf(name, sizeof(name), "oAct%d", i + 1);
         b->active = web_form_get_bool(body, name);

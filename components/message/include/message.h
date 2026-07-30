@@ -48,7 +48,7 @@
  */
 typedef struct {
     time_t time;             /**< Wall-clock time the entry was created. */
-    int8_t ack;              /**< TX retry state: >0 = retries remaining, -1 = RX pending, -2 = acked/no-retry. */
+    int8_t ack;              /**< TX retry state: >0 = retries remaining, -1 = RX pending, -2 = acked, -3 = rejected by recipient (rej). */
     bool rxtx;               /**< true = received (RX), false = to transmit (TX). */
     uint16_t msgID;          /**< APRS message number. */
     char callsign[11];       /**< The other station's callsign (NUL-terminated). */
