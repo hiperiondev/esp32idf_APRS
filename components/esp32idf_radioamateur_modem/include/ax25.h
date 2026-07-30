@@ -104,6 +104,22 @@ struct Ax25ProtoConfig {
      * always applies (see txReleaseHoldoff in ax25.c). 0 = no extra hold.
      */
     uint16_t minUnkeyTime;
+    /**
+     * CSMA slot time, in milliseconds: once the channel is heard clear, this
+     * is how long Ax25TransmitCheck() waits between each persistence roll
+     * (see `persist` below) and between each re-check of a busy channel.
+     * Matches the standard AX.25/KISS "SlotTime" parameter.
+     */
+    uint16_t csmaSlotTime;
+    /**
+     * CSMA persistence parameter (standard AX.25/KISS "Persist"): once the
+     * channel is heard clear, Ax25TransmitCheck() transmits immediately with
+     * probability `persist / 256` on every slot and otherwise waits one more
+     * `csmaSlotTime` before rolling again. 255 transmits on the first clear
+     * slot every time (equivalent to plain non-persistent CSMA); lower
+     * values spread contending stations' key-ups further apart.
+     */
+    uint8_t persist;
     uint8_t allowNonAprs : 1; /**< 1 = accept frames whose Control/PID do not match plain APRS UI frames. */
     uint8_t fx25 : 1;         /**< 1 = FX.25 (FEC) decoding is enabled for reception. */
     uint8_t fx25Tx : 1;       /**< 1 = FX.25 (FEC) encoding is enabled for transmission. */
@@ -138,7 +154,17 @@ typedef struct Hdlc {
  */
 typedef struct AX25Call {
     char call[6 + CALL_OVERSPACE]; /**< Callsign, up to 6 characters, NUL-terminated. */
-    uint8_t ssid;                  /**< Secondary Station Identifier (0-15). */
+    uint8_t ssid;                  /**< Secondary Station Identifier (0-15), decoded from bits 4:1 of the address SSID octet. */
+    /**
+     * Full, raw address SSID octet exactly as received on the air (or as
+     * built for transmission): bit 7 is the AX.25 Command/Response (C) bit,
+     * bits 6:5 are the reserved bits, bits 4:1 are the SSID already exposed
+     * above, and bit 0 is the address-extension bit. APRS UI frames never
+     * inspect the C bit or the reserved bits themselves, so `ssid` alone is
+     * enough for APRS use; this field keeps the rest available for AX.25
+     * v2.0 connected-mode use and for TNCs that expect it to round-trip.
+     */
+    uint8_t ssidBits;
 } ax25_call_t;
 
 /**

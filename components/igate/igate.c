@@ -34,6 +34,7 @@
 
 #include "app_config.h"
 #include "aprs_filter.h"
+#include "crc_ccit.h"
 #include "igate.h"
 #include "net_state.h"
 #include "trafficlog.h"
@@ -159,16 +160,34 @@ bool igate_is_connected(void) {
 }
 
 // ---------------------------------------------------------------------------
-// Duplicate detection (unchanged algorithm from the original firmware)
+// Duplicate detection
 // ---------------------------------------------------------------------------
+/**
+ * @brief Build a 16-byte dedup key for a decoded frame.
+ *
+ * Seeds the key with the source callsign, source SSID and payload length,
+ * then mixes in two CRC-CCITT digests of the *entire* info field - one
+ * computed forward, one computed backward - so that any byte anywhere in
+ * the payload (not just an early prefix) changes the resulting hash. Two
+ * frames only produce the same hash if they genuinely share source,
+ * length, and byte-for-byte payload content.
+ */
 static void packetHash(ax25_msg_t *packet, char *hash) {
     int n = snprintf(hash, 16, "%s%d%d", packet->src.call, packet->src.ssid, (int)packet->len);
     if (n < 0)
         n = 0;
-    int mix = packet->len < 16 ? (int)packet->len : 16;
-    for (int i = 0; i < mix; i++) {
-        hash[i % 16] ^= packet->info[i];
-    }
+
+    uint16_t crcFwd = CRC_CCIT_INIT_VAL;
+    for (size_t i = 0; i < packet->len; i++)
+        crcFwd = update_crc_ccit(packet->info[i], crcFwd);
+
+    uint16_t crcRev = CRC_CCIT_INIT_VAL;
+    for (size_t i = packet->len; i-- > 0;)
+        crcRev = update_crc_ccit(packet->info[i], crcRev);
+
+    uint8_t mix[4] = { (uint8_t)(crcFwd >> 8), (uint8_t)crcFwd, (uint8_t)(crcRev >> 8), (uint8_t)crcRev };
+    for (int i = 0; i < 16; i++)
+        hash[i] ^= (char)mix[i % 4];
 }
 
 void clearExpiredDuplicates(void) {

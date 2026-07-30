@@ -87,7 +87,7 @@ struct Ax25ProtoConfig Ax25Config;
 #define STATIC_HEADER_FLAG_COUNT 4 /* flags sent before each frame */
 #define STATIC_FOOTER_FLAG_COUNT 1 /* flags sent after each frame */
 
-#define MAX_TRANSMIT_RETRY_COUNT 8 /* max retries if the channel is busy */
+#define MAX_TRANSMIT_RETRY_COUNT 8 /* anti-starvation cap: max busy-channel/missed-persistence slots before forcing a transmission anyway */
 
 #define SYNC_BYTE 0x7E /* preamble/postamble octet */
 
@@ -316,16 +316,19 @@ bool ax25_decode(uint8_t *buf, size_t len, uint16_t mVrms, ax25_msg_t *msg) {
     uint8_t *buf_start = buf;
 
     DECODE_CALL(buf, msg->dst.call);
-    msg->dst.ssid = (*buf++ >> 1) & 0x0F;
+    msg->dst.ssidBits = *buf++;
+    msg->dst.ssid = (msg->dst.ssidBits >> 1) & 0x0F;
     msg->dst.call[6] = 0;
 
     DECODE_CALL(buf, msg->src.call);
-    msg->src.ssid = (*buf >> 1) & 0x0F;
+    msg->src.ssidBits = *buf;
+    msg->src.ssid = (msg->src.ssidBits >> 1) & 0x0F;
     msg->src.call[6] = 0;
 
     for (msg->rpt_count = 0; !(*buf++ & 0x01) && (msg->rpt_count < countof(msg->rpt_list)); msg->rpt_count++) {
         DECODE_CALL(buf, msg->rpt_list[msg->rpt_count].call);
-        msg->rpt_list[msg->rpt_count].ssid = (*buf >> 1) & 0x0F;
+        msg->rpt_list[msg->rpt_count].ssidBits = *buf;
+        msg->rpt_list[msg->rpt_count].ssid = (msg->rpt_list[msg->rpt_count].ssidBits >> 1) & 0x0F;
         AX25_SET_REPEATED(msg, msg->rpt_count, (*buf & 0x80));
         msg->rpt_list[msg->rpt_count].call[6] = 0;
     }
@@ -1239,20 +1242,54 @@ void Ax25TransmitCheck(void) {
      * This is also what makes the GPIO ADC -> GPIO DAC loop work: the DCD is
      * permanently asserted by our own carrier, so a CSMA node would never
      * transmit a second frame. */
-    if (Ax25Config.fullDuplex || !ModemDcdState()) {
+    if (Ax25Config.fullDuplex) {
         txInitStage = TX_INIT_TRANSMITTING;
         txRetries = 0;
         transmitStart();
-    } else { /* channel is busy */
+        return;
+    }
+
+    if (ModemDcdState()) {
+        /* Channel busy: re-poll DCD every slot time rather than transmitting
+         * through it. txRetries counts these busy slots purely as an
+         * anti-starvation floor - a channel that never clears within
+         * MAX_TRANSMIT_RETRY_COUNT slots forces a transmission anyway rather
+         * than holding a queued frame forever. */
         if (txRetries >= MAX_TRANSMIT_RETRY_COUNT) {
-            ESP_LOGI(TAG, "Channel busy after %u retries, transmitting anyway", txRetries);
+            ESP_LOGI(TAG, "Channel busy after %u slots, transmitting anyway", txRetries);
             txInitStage = TX_INIT_TRANSMITTING;
             txRetries = 0;
             transmitStart();
         } else {
-            txQuiet = millis() + randomRange(100, 1000);
+            txQuiet = millis() + Ax25Config.csmaSlotTime;
             txRetries++;
         }
+        return;
+    }
+
+    /* Channel is clear: standard AX.25/KISS p-persistent access. Roll the
+     * dice with probability Ax25Config.persist / 256 of keying up on this
+     * slot; on a miss, wait one more slot time and re-poll DCD before
+     * rolling again, rather than keying up unconditionally the instant DCD
+     * drops. */
+    if (esp_random() % 256 < Ax25Config.persist) {
+        txInitStage = TX_INIT_TRANSMITTING;
+        txRetries = 0;
+        transmitStart();
+        return;
+    }
+
+    txQuiet = millis() + Ax25Config.csmaSlotTime;
+    txRetries++;
+    if (txRetries >= MAX_TRANSMIT_RETRY_COUNT) {
+        /* Anti-starvation floor: the persistence roll keeps missing on an
+         * otherwise-clear channel (bad luck, or Ax25Config.persist tuned very
+         * low) - force the transmission rather than let the frame wait
+         * indefinitely. */
+        ESP_LOGI(TAG, "Persistence check missed %u times on a clear channel, transmitting anyway", txRetries);
+        txInitStage = TX_INIT_TRANSMITTING;
+        txRetries = 0;
+        transmitStart();
     }
 }
 
@@ -1264,6 +1301,8 @@ void Ax25Init(uint8_t fx25Mode) {
     Ax25Config.quietTime = 2000;
     Ax25Config.txDelayLength = 300;
     Ax25Config.txTailLength = 1;
+    Ax25Config.csmaSlotTime = 100; /* 100 ms/slot, the common AX.25 SlotTime default */
+    Ax25Config.persist = 63;       /* ~25% transmit chance per clear slot, the common AX.25 Persist default */
 
     if (fx25Mode == 0) {
         Ax25Config.fx25 = 0;
