@@ -30,15 +30,16 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 
-#define TRAFFICLOG_CAPACITY 64  // number of lines kept in RAM
-#define TRAFFICLOG_TEXT_LEN 144 // shared buffer: holds EITHER the free-form "m" line
-                                // (trafficlog_add) OR the raw TNC2 packet
-                                // (trafficlog_add_pkt) - never both for the same entry,
-                                // so they share one buffer tagged by 'kind'. Was a
-                                // separate line[140] + packet[128] (268 B/entry, ~17 KB
-                                // of BSS across the ring) of which only one was ever used.
-#define TRAFFICLOG_DIR_LEN 12   // max chars for the direction/type tag
-#define TRAFFICLOG_DX_LEN 16    // max chars for the DX (callsign) field
+#define TRAFFICLOG_CAPACITY 64 // number of lines kept in RAM
+#define TRAFFICLOG_TEXT_LEN                                                                                                                                    \
+    144                       // shared buffer: holds EITHER the free-form "m" line
+                              // (trafficlog_add) OR the raw TNC2 packet
+                              // (trafficlog_add_pkt) - never both for the same entry,
+                              // so they share one buffer tagged by 'kind'. Was a
+                              // separate line[140] + packet[128] (268 B/entry, ~17 KB
+                              // of BSS across the ring) of which only one was ever used.
+#define TRAFFICLOG_DIR_LEN 12 // max chars for the direction/type tag
+#define TRAFFICLOG_DX_LEN  16 // max chars for the DX (callsign) field
 
 // Worst-case length of the reconstructed "m" field for a PKT entry,
 // "<dir>: <text>": DIR_LEN + strlen(": ") + TEXT_LEN, all buffers being
@@ -234,9 +235,8 @@ size_t trafficlog_dump_json(uint32_t since_seq, char *out, size_t out_size) {
             snprintf(sym, sizeof(sym), "%d-%d", (int)(unsigned char)e->sym_code, table);
         }
 
-        int n = snprintf(out + pos, out_size - pos,
-                          "%s{\"t\":%lld,\"m\":\"%s\",\"d\":\"%s\",\"dx\":\"%s\",\"pkt\":\"%s\",\"au\":%d,\"sym\":\"%s\"}",
-                          first ? "" : ",", (long long)e->time_ms, escM, escDir, escDx, escPkt, e->audio_mv, sym);
+        int n = snprintf(out + pos, out_size - pos, "%s{\"t\":%lld,\"m\":\"%s\",\"d\":\"%s\",\"dx\":\"%s\",\"pkt\":\"%s\",\"au\":%d,\"sym\":\"%s\"}",
+                         first ? "" : ",", (long long)e->time_ms, escM, escDir, escDx, escPkt, e->audio_mv, sym);
         if (n < 0)
             break;
         if (pos + (size_t)n + 2 >= out_size) // leave room for the closing "]}"
