@@ -116,6 +116,7 @@ void modem_set_modem(const modem_config_t *cfg) {
     afskSetModem((uint8_t)cfg->modem, cfg->flat_audio, cfg->slot_time_ms, cfg->preamble_ms, cfg->fx25_mode, cfg->min_unkey_ms);
     Ax25Config.allowNonAprs = cfg->allow_non_aprs ? 1 : 0;
     Ax25Config.fullDuplex = cfg->full_duplex ? 1 : 0;
+    Ax25Config.persist = cfg->persist;
 }
 
 esp_err_t modem_init(const modem_config_t *cfg) {

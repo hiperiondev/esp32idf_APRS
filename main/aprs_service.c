@@ -127,6 +127,7 @@ void aprs_service_build_modem_config(modem_config_t *cfg, bool full_duplex) {
 
     cfg->preamble_ms = g_config.preamble;
     cfg->slot_time_ms = g_config.tx_timeslot;
+    cfg->persist = g_config.csma_persist;
     cfg->fx25_mode = g_config.fx25_mode;
     cfg->allow_non_aprs = false;
 
@@ -145,7 +146,8 @@ void aprs_service_build_modem_config(modem_config_t *cfg, bool full_duplex) {
 
     // Half duplex for real on-air use: MODEM_DEFAULT_CONFIG() ships full
     // duplex (it targets the wire-loopback demo), which would key up over
-    // anyone already transmitting. CSMA/quiet time comes from txTimeSlot.
+    // anyone already transmitting. CSMA/quiet time comes from txTimeSlot,
+    // and the p-persistent transmit probability comes from csma_persist.
     // The LOOP TEST passes true here because a DAC->ADC wire means the node
     // always hears its own carrier and would never see a clear channel.
     cfg->full_duplex = full_duplex;
@@ -235,8 +237,8 @@ void aprs_service_apply_modem_config(void) {
     modem_config_t cfg;
     aprs_service_build_modem_config(&cfg, false);
     modem_set_modem(&cfg);
-    ESP_LOGI(TAG, "modem re-applied: modem=%u flatAudio=%d preamble=%ums slot=%ums fx25=%u minUnkey=%ums", (unsigned)cfg.modem, (int)cfg.flat_audio,
-             (unsigned)cfg.preamble_ms, (unsigned)cfg.slot_time_ms, (unsigned)cfg.fx25_mode, (unsigned)cfg.min_unkey_ms);
+    ESP_LOGI(TAG, "modem re-applied: modem=%u flatAudio=%d preamble=%ums slot=%ums persist=%u fx25=%u minUnkey=%ums", (unsigned)cfg.modem, (int)cfg.flat_audio,
+             (unsigned)cfg.preamble_ms, (unsigned)cfg.slot_time_ms, (unsigned)cfg.persist, (unsigned)cfg.fx25_mode, (unsigned)cfg.min_unkey_ms);
 }
 
 // Set true once main.c has actually called modem_init() successfully (i.e.

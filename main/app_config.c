@@ -245,6 +245,7 @@ void app_config_set_defaults(app_config_t *c) {
     c->afsk_modem_type = 1; // default 1200 Bd (AFSK/Bell202) - standard APRS audio modem
     c->fx25_mode = 0;
     c->tx_timeslot = 2000;
+    c->csma_persist = 63;    // ~25% transmit chance per clear slot, the standard AX.25/KISS Persist default
     c->rf_tx_buffers = 1;    // see RF_TX_BUFFERS_MIN/MAX in aprs_service.h
     c->ptt_min_unkey_ms = 0; // see PTT_MIN_UNKEY_MS_MIN/MAX in aprs_service.c
     set_str(c->ntp_host[0], sizeof(c->ntp_host[0]), "pool.ntp.org");
@@ -444,6 +445,7 @@ static void config_write_json(jw_t *d, const app_config_t *c) {
     jadd_num(d, "myPHGDir", c->my_phg_dir);
     jadd_str(d, "myPHG", c->my_phg);
     jadd_num(d, "txTimeSlot", c->tx_timeslot);
+    jadd_num(d, "csmaPersist", c->csma_persist);
     jadd_bool(d, "syncTime", c->synctime);
     jadd_num(d, "timeZone", c->timeZone);
     jadd_str(d, "ntpHost0", c->ntp_host[0]);
@@ -642,6 +644,9 @@ static void config_from_json(cJSON *d, app_config_t *c) {
     c->my_phg_dir = (uint8_t)jget_num(d, "myPHGDir", def.my_phg_dir);
     set_str(c->my_phg, sizeof(c->my_phg), jget_str(d, "myPHG", def.my_phg));
     c->tx_timeslot = (uint16_t)jget_num(d, "txTimeSlot", def.tx_timeslot);
+    c->csma_persist = (uint8_t)jget_num(d, "csmaPersist", def.csma_persist);
+    if (c->csma_persist < 1)
+        c->csma_persist = 1;
     c->synctime = jget_bool(d, "syncTime", def.synctime);
     c->timeZone = (float)jget_num(d, "timeZone", def.timeZone);
     set_str(c->ntp_host[0], sizeof(c->ntp_host[0]), jget_str(d, "ntpHost0", jget_str(d, "ntpHost", def.ntp_host[0])));

@@ -129,6 +129,15 @@ esp_err_t page_radio_get(httpd_req_t *req) {
     // next packet keys up). 0 disables the extra hold. Applied live on Save,
     // same as rfPreamble/txTimeSlot above - see g_config.ptt_min_unkey_ms.
     web_field_int(req, TR_F_PTT_MIN_UNKEY_MS, "pttMinUnkeyMs", g_config.ptt_min_unkey_ms);
+    // CSMA/p-persistent channel-access probability (standard AX.25/KISS
+    // "Persist"): once the channel is heard clear, the modem transmits
+    // immediately with probability csmaPersist/256 on every slot and
+    // otherwise waits one more txTimeSlot before rolling again. 255
+    // transmits on the first clear slot every time (equivalent to plain
+    // non-persistent CSMA); lower values spread contending stations'
+    // key-ups further apart. Applied live on Save, same as rfPreamble/
+    // txTimeSlot above - see g_config.csma_persist.
+    web_field_int(req, TR_F_CSMA_PERSISTENCE, "csmaPersist", g_config.csma_persist);
     web_fieldset_close(req);
 
     httpd_resp_sendstr_chunk(req, "<script>"
@@ -257,6 +266,21 @@ esp_err_t page_radio_post(httpd_req_t *req) {
         ptt_min_unkey_in = 5000;
     g_config.ptt_min_unkey_ms = (uint16_t)ptt_min_unkey_in;
 
+    // CSMA/p-persistent transmit probability (1..255, default 63 = ~25%
+    // chance per clear slot) - clamp defensively against a malformed POST,
+    // same reasoning as rf_tx_buffers above. 0 is refused (it would key up
+    // never, i.e. transmission would be permanently suppressed) rather than
+    // silently coerced to a working value, so a bad input floors at 1
+    // (lowest non-zero transmit probability) instead of hiding the mistake.
+    // See g_config.csma_persist and Ax25Config.persist in ax25.c for how
+    // this is enforced.
+    int csma_persist_in = web_form_get_int(body, "csmaPersist", g_config.csma_persist);
+    if (csma_persist_in < 1)
+        csma_persist_in = 1;
+    else if (csma_persist_in > 255)
+        csma_persist_in = 255;
+    g_config.csma_persist = (uint8_t)csma_persist_in;
+
     app_config_unlock();
 
     app_config_save();
@@ -264,10 +288,11 @@ esp_err_t page_radio_post(httpd_req_t *req) {
     // Push the settings that the new component *can* take at runtime into the
     // running modem, so Save (and the loop test's auto-save, which POSTs this
     // form before running) takes effect without a reboot: modulation, preamble,
-    // time slot, flat-audio flag, FX.25 mode, and the PTT minimum unkey time
-    // all go through modem_set_modem(). This is the successor to the old
-    // afskSetSquelchLevel()/afskSetVolume()/afskSetAgcMaxGain() block - it
-    // covers strictly more of the page than that did.
+    // time slot, CSMA persistence, flat-audio flag, FX.25 mode, and the PTT
+    // minimum unkey time all go through modem_set_modem(). This is the
+    // successor to the old afskSetSquelchLevel()/afskSetVolume()/
+    // afskSetAgcMaxGain() block - it covers strictly more of the page than
+    // that did.
     //
     // rfTxBuffers needs no propagation into the modem component at all:
     // aprs_service_send_tnc2() (above modem.c, in this same binary) reads

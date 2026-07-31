@@ -363,6 +363,11 @@ typedef struct {
     uint8_t afsk_modem_type; /**< Audio AFSK modulation (see enum ModemType in modem.h: 0=300Bd,1=1200Bd,2=1200Bd V.23,3=9600Bd); used for both RX and TX. */
     uint8_t fx25_mode;       /**< FX.25 mode: 0=off, 1=RX only, 2=RX+TX. */
     uint16_t tx_timeslot;    /**< CSMA time slot (quiet time), ms. */
+    uint8_t csma_persist;    /**< CSMA/p-persistent channel-access probability (standard AX.25/KISS "Persist"): once the channel is heard clear, the modem
+                                transmits immediately with probability csma_persist/256 on every slot and otherwise waits one more tx_timeslot before
+                                rolling again. 255 transmits on the first clear slot every time (equivalent to plain non-persistent CSMA); lower values
+                                spread contending stations' key-ups further apart. Web-configurable (Radiomodem page, Audio/AFSK section), applied live via
+                                aprs_service_apply_modem_config(). Range 1..255. */
 
     uint8_t rf_tx_buffers; /**< Max frames allowed to sit in the RF TX ring before aprs_service_send_tnc2() starts discarding new packets. Web-configurable and
                               applied live (read on every transmit). Range RF_TX_BUFFERS_MIN..RF_TX_BUFFERS_MAX (aprs_service.h), default 1. */

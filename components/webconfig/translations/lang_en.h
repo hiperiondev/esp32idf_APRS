@@ -183,6 +183,7 @@
 #define TR_F_RF_TO_INTERNET                                "RF to Internet"
 #define TR_F_RF_TX_BUFFERS                                 "TX buffers"
 #define TR_F_PTT_MIN_UNKEY_MS                              "PTT minimum unkey time (ms)"
+#define TR_F_CSMA_PERSISTENCE                              "CSMA persistence (p, 1-255)"
 #define TR_F_SEND_RECEIVE_VIA_INTERNET                     "Send/receive via Internet"
 #define TR_F_SEND_RECEIVE_VIA_RF                           "Send/receive via RF"
 #define TR_F_SEND_VIA_INTERNET                             "Send via Internet"

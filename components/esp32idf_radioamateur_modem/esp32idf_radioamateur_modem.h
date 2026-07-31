@@ -71,6 +71,10 @@ typedef struct {
     bool allow_non_aprs;   /**< true: accept frames whose Control/PID fields are not 0x03/0xF0. */
     uint16_t preamble_ms;  /**< TXDelay (preamble) duration, in milliseconds. */
     uint16_t slot_time_ms; /**< CSMA quiet/slot time, in milliseconds; ignored in full duplex mode. */
+    uint8_t persist;       /**< CSMA/p-persistent channel-access probability (standard AX.25/KISS "Persist"): once the channel is heard clear, the modem
+                              transmits immediately with probability persist/256 on every slot and otherwise waits one more slot_time_ms before rolling
+                              again. 255 transmits on the first clear slot every time (equivalent to plain non-persistent CSMA); lower values spread
+                              contending stations' key-ups further apart. Ignored in full duplex mode. */
     uint8_t fx25_mode;     /**< FX.25 mode: 0 = off, 1 = RX only, 2 = RX+TX (requires -DENABLE_FX25). */
     bool ptt_active_high;  /**< true = PTT output active-high, false = active-low. @note There is deliberately no ptt_gpio field: the PTT pin is a fixed
                               compile-time board wiring choice (::MODEM_PTT_GPIO, like ::MODEM_ADC_GPIO / ::MODEM_DAC_GPIO), not runtime/web-admin selectable;
@@ -84,11 +88,12 @@ typedef struct {
  * @brief Build a ::modem_config_t initializer with sensible default
  *        values: Bell 202 modem, standard (de-emphasized) audio, full
  *        duplex enabled, strict APRS frame filtering, 300 ms preamble, no
- *        CSMA slot time and FX.25 disabled.
+ *        CSMA slot time, the standard AX.25/KISS Persist default (63, ~25%
+ *        transmit chance per clear slot) and FX.25 disabled.
  */
 #define MODEM_DEFAULT_CONFIG()                                                                                                                                 \
     {                                                                                                                                                          \
-        .modem = MODEM_MODEM_BELL202, .flat_audio = false, .full_duplex = true, .allow_non_aprs = false, .preamble_ms = 300, .slot_time_ms = 0,                \
+        .modem = MODEM_MODEM_BELL202, .flat_audio = false, .full_duplex = true, .allow_non_aprs = false, .preamble_ms = 300, .slot_time_ms = 0, .persist = 63, \
         .fx25_mode = 0, .ptt_active_high = MODEM_PTT_ACTIVE_HIGH ? true : false, .min_unkey_ms = 0,                                                            \
     }
 

@@ -184,6 +184,7 @@
 #define TR_F_RF_TO_INTERNET                                "RF a Internet"
 #define TR_F_RF_TX_BUFFERS                                 "Buffers de TX"
 #define TR_F_PTT_MIN_UNKEY_MS                              "Tiempo mínimo de PTT liberado (ms)"
+#define TR_F_CSMA_PERSISTENCE                              "Persistencia CSMA (p, 1-255)"
 #define TR_F_SEND_RECEIVE_VIA_INTERNET                     "Enviar/recibir vía Internet"
 #define TR_F_SEND_RECEIVE_VIA_RF                           "Enviar/recibir vía RF"
 #define TR_F_SEND_VIA_INTERNET                             "Enviar vía Internet"
