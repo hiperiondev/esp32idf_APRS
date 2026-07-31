@@ -51,6 +51,7 @@ esp_err_t page_digi_get(httpd_req_t *req) {
     web_field_checkbox(req, TR_F_BEACON_POSITION_2, "digiBcn", g_config.digi_bcn);
     web_field_checkbox(req, TR_F_BEACON_VIA_RF, "digiPos2rf", g_config.digi_loc2rf);
     web_field_checkbox(req, TR_F_BEACON_VIA_INTERNET, "digiPos2inet", g_config.digi_loc2inet);
+    web_field_checkbox(req, TR_F_COMPRESS_POSITION, "digiCompress", g_config.digi_compress);
     web_field_float(req, TR_F_LATITUDE, "digiLAT", g_config.digi_lat, "0.0001");
     web_field_float(req, TR_F_LONGITUDE, "digiLON", g_config.digi_lon, "0.0001");
     web_field_float(req, TR_F_ALTITUDE_M, "digiAlt", g_config.digi_alt, "1");
@@ -115,6 +116,7 @@ esp_err_t page_digi_post(httpd_req_t *req) {
     g_config.digi_bcn = web_form_get_bool(body, "digiBcn");
     g_config.digi_loc2rf = web_form_get_bool(body, "digiPos2rf");
     g_config.digi_loc2inet = web_form_get_bool(body, "digiPos2inet");
+    g_config.digi_compress = web_form_get_bool(body, "digiCompress");
     g_config.digi_interval = (uint16_t)web_form_get_int(body, "digiINV", g_config.digi_interval);
 
     // Station Symbol: Table + Symbol 1-char fields from the shared picker

@@ -157,6 +157,7 @@ void app_config_set_defaults(app_config_t *c) {
     c->igate_path = ACTIVATE_IGATE;
     set_str(c->igate_comment, sizeof(c->igate_comment), "esp32idf_APRS IGate");
     c->igate_sts_interval = 0;
+    c->igate_compress = false;
     c->igate_phg_enable = false;
     c->igate_phg_use_station = false;
     c->igate_phg_power = 1;
@@ -183,6 +184,7 @@ void app_config_set_defaults(app_config_t *c) {
     c->digi_path = ACTIVATE_DIGI;
     c->digi_delay = 0;
     c->digi_bcn = true;
+    c->digi_compress = false;
     c->digi_interval = 30;
     set_str(c->digi_symbol, sizeof(c->digi_symbol), "N&");
     set_str(c->digi_comment, sizeof(c->digi_comment), "esp32idf_APRS Digi");
@@ -507,6 +509,7 @@ static void config_write_json(jw_t *d, const app_config_t *c) {
     jadd_num(d, "igateSTSIntv", c->igate_sts_interval);
     jadd_str(d, "igateStatus", c->igate_status);
     jadd_bool(d, "igateTimestamp", c->igate_timestamp);
+    jadd_bool(d, "igateCompress", c->igate_compress);
     jadd_bool(d, "igatePHGEn", c->igate_phg_enable);
     jadd_bool(d, "igatePHGUseStation", c->igate_phg_use_station);
     jadd_num(d, "igatePHGPower", c->igate_phg_power);
@@ -526,6 +529,7 @@ static void config_write_json(jw_t *d, const app_config_t *c) {
     jadd_num(d, "digiDelay", c->digi_delay);
     jadd_num(d, "digiFilter", c->digiFilter);
     jadd_bool(d, "digiBcn", c->digi_bcn);
+    jadd_bool(d, "digiCompress", c->digi_compress);
     jadd_num(d, "digiAlt", c->digi_alt);
     jadd_num(d, "digiLAT", c->digi_lat);
     jadd_num(d, "digiLON", c->digi_lon);
@@ -720,6 +724,7 @@ static void config_from_json(cJSON *d, app_config_t *c) {
     c->igate_path = (uint8_t)jget_num(d, "igatePath", def.igate_path);
     set_str(c->igate_comment, sizeof(c->igate_comment), jget_str(d, "igateComment", def.igate_comment));
     c->igate_timestamp = jget_bool(d, "igateTimestamp", def.igate_timestamp);
+    c->igate_compress = jget_bool(d, "igateCompress", def.igate_compress);
     c->igate_phg_enable = jget_bool(d, "igatePHGEn", def.igate_phg_enable);
     c->igate_phg_use_station = jget_bool(d, "igatePHGUseStation", def.igate_phg_use_station);
     c->igate_phg_power = (uint16_t)jget_num(d, "igatePHGPower", def.igate_phg_power);
@@ -741,6 +746,7 @@ static void config_from_json(cJSON *d, app_config_t *c) {
     c->digi_delay = (uint16_t)jget_num(d, "digiDelay", def.digi_delay);
     c->digiFilter = (uint16_t)jget_num(d, "digiFilter", def.digiFilter);
     c->digi_bcn = jget_bool(d, "digiBcn", def.digi_bcn);
+    c->digi_compress = jget_bool(d, "digiCompress", def.digi_compress);
     c->digi_alt = (float)jget_num(d, "digiAlt", def.digi_alt);
     c->digi_lat = (float)jget_num(d, "digiLAT", def.digi_lat);
     c->digi_lon = (float)jget_num(d, "digiLON", def.digi_lon);

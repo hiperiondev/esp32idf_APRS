@@ -125,6 +125,12 @@ typedef struct {
     char symbol[3]; // table + code + NUL
     char comment[COMMENT_SIZE];
     char pathPreset[4][72]; // snapshot of g_config.path[0..3]
+    // When set, buildPositionPacket() emits the APRS base-91 compressed
+    // position field (aprs_coord_format_compressed()) instead of the
+    // uncompressed "DDMM.mmN/DDDMM.mmW" pair, saving airtime at 1200 baud.
+    // Sourced from g_config.{trk,igate,digi}_compress by each per-service
+    // function below.
+    bool compress;
     // PHG (Power-Height-Gain-Directivity) data extension, only used by the
     // IGate beacon so far (see igateBeaconService()). Not settable for the
     // Tracker/Digipeater beacons, so phgEnable stays false and the field is
@@ -186,9 +192,6 @@ static int buildPositionPacket(const beacon_params_t *p, char *out, size_t outMa
     char path[80];
     buildPathSuffix(p->pathSel, p->pathPreset, path, sizeof(path));
 
-    char latStr[10], lonStr[11];
-    aprs_coord_format(p->lat, p->lon, latStr, sizeof(latStr), lonStr, sizeof(lonStr));
-
     // symbol = 2 chars: [0] symbol table ('/' primary or '\' alternate), [1] symbol code.
     // Falls back to a plain "car" symbol on the primary table if unset.
     char symTable = p->symbol[0] ? p->symbol[0] : '/';
@@ -196,11 +199,34 @@ static int buildPositionPacket(const beacon_params_t *p, char *out, size_t outMa
 
     // PHG data-extension token, when enabled. Emitted right after the symbol
     // code and before the altitude/comment, matching the Object/Item info
-    // field layout (components/objects/objects_items.c) and the order the
-    // APRS spec defines for this slot.
+    // field layout (main/objects_items.c) and the order the APRS spec
+    // defines for this slot.
     char phg[8] = { 0 };
     if (p->phgEnable)
         buildPhgExtension(p->phgPower, p->phgGain, p->phgHeight, p->phgDir, phg, sizeof(phg));
+
+    // The compressed position format has no PHG equivalent (APRS101 ch.9:
+    // "this format does not support PHG"), so a PHG-enabled beacon always
+    // falls back to the uncompressed layout regardless of the compress
+    // flag - emitting compressed PHG bytes would just be wrong data, and
+    // dropping PHG silently to keep compression would lose a field the user
+    // explicitly enabled. None of these three fixed-position beacons track
+    // course/speed, so when compression is used the cs/T slot always
+    // carries "no cs/T data" (3 spaces).
+    bool useCompressed = p->compress && !p->phgEnable;
+
+    // Sized for the larger of the two layouts: uncompressed is up to 21
+    // bytes (9-char latStr content + symTable + 10-char lonStr content +
+    // symCode), compressed is a fixed 11 bytes (symTable + 4 lat + 4 lon +
+    // symCode + 2 cs), plus NUL either way.
+    char posField[22];
+    if (useCompressed) {
+        aprs_coord_format_compressed(p->lat, p->lon, symTable, symCode, "   ", posField, sizeof(posField));
+    } else {
+        char latStr[10], lonStr[11];
+        aprs_coord_format(p->lat, p->lon, latStr, sizeof(latStr), lonStr, sizeof(lonStr));
+        snprintf(posField, sizeof(posField), "%s%c%s%c", latStr, symTable, lonStr, symCode);
+    }
 
     char extra[40] = { 0 };
     if (p->sendAltitude) {
@@ -210,16 +236,16 @@ static int buildPositionPacket(const beacon_params_t *p, char *out, size_t outMa
         snprintf(extra, sizeof(extra), "/A=%06d", feet);
     }
 
-    char infoField[256]; // ts(7)+lat(9)+symTable(1)+lon(10)+symCode(1)+phg(7)+extra(40)+comment(up to 128)+NUL
+    char infoField[256]; // ts(7)+posField(up to 21)+phg(7)+extra(40)+comment(up to 128)+NUL
     if (p->timestamp) {
         time_t now = time(NULL);
         struct tm tmv;
         gmtime_r(&now, &tmv);
         char ts[8];
         snprintf(ts, sizeof(ts), "%02d%02d%02dz", tmv.tm_mday, tmv.tm_hour, tmv.tm_min);
-        snprintf(infoField, sizeof(infoField), "/%s%s%c%s%c%s%s%s", ts, latStr, symTable, lonStr, symCode, phg, extra, p->comment);
+        snprintf(infoField, sizeof(infoField), "/%s%s%s%s%s", ts, posField, phg, extra, p->comment);
     } else {
-        snprintf(infoField, sizeof(infoField), "!%s%c%s%c%s%s%s", latStr, symTable, lonStr, symCode, phg, extra, p->comment);
+        snprintf(infoField, sizeof(infoField), "!%s%s%s%s", posField, phg, extra, p->comment);
     }
 
     int n = snprintf(out, outMax, "%s>%s%s:%s", callField, BEACON_DEST, path, infoField);
@@ -279,6 +305,7 @@ static uint32_t trackerBeaconService(void) {
             p.lon = g_config.trk_lon;
             p.alt = g_config.trk_alt;
             p.sendAltitude = g_config.trk_altitude;
+            p.compress = g_config.trk_compress;
             memcpy(p.symbol, g_config.trk_symbol, sizeof(p.symbol));
             memcpy(p.comment, g_config.trk_comment, sizeof(p.comment));
             memcpy(p.pathPreset, g_config.path, sizeof(p.pathPreset));
@@ -345,6 +372,7 @@ static uint32_t igateBeaconService(void) {
             p.lon = g_config.igate_lon;
             p.alt = g_config.igate_alt;
             p.sendAltitude = g_config.igate_alt != 0.0f;
+            p.compress = g_config.igate_compress;
             memcpy(p.symbol, g_config.igate_symbol, sizeof(p.symbol));
             memcpy(p.comment, g_config.igate_comment, sizeof(p.comment));
             memcpy(p.pathPreset, g_config.path, sizeof(p.pathPreset));
@@ -415,6 +443,7 @@ static uint32_t digiBeaconService(void) {
             p.lon = g_config.digi_lon;
             p.alt = g_config.digi_alt;
             p.sendAltitude = g_config.digi_alt != 0.0f;
+            p.compress = g_config.digi_compress;
             memcpy(p.symbol, g_config.digi_symbol, sizeof(p.symbol));
             memcpy(p.comment, g_config.digi_comment, sizeof(p.comment));
             memcpy(p.pathPreset, g_config.path, sizeof(p.pathPreset));

@@ -144,6 +144,7 @@ esp_err_t page_igate_get(httpd_req_t *req) {
     web_field_float(req, TR_F_LATITUDE, "igateLAT", g_config.igate_lat, "0.0001");
     web_field_float(req, TR_F_LONGITUDE, "igateLON", g_config.igate_lon, "0.0001");
     web_field_float(req, TR_F_ALTITUDE_M, "igateALT", g_config.igate_alt, "1");
+    web_field_checkbox(req, TR_F_COMPRESS_POSITION, "igateCompress", g_config.igate_compress);
 
     // TX Channel: RF / Internet (same data as igate_loc2rf/igate_loc2inet).
     {
@@ -462,6 +463,7 @@ esp_err_t page_igate_post(httpd_req_t *req) {
     g_config.igate_lon = g_config.igate_use_station ? g_config.my_lon : web_form_get_float(body, "igateLON", g_config.igate_lon);
     g_config.igate_alt = g_config.igate_use_station ? g_config.my_alt : web_form_get_float(body, "igateALT", g_config.igate_alt);
     g_config.igate_interval = (uint16_t)web_form_get_int(body, "igateINV", g_config.igate_interval);
+    g_config.igate_compress = web_form_get_bool(body, "igateCompress");
     web_form_get(body, "igateObject", g_config.igate_object, sizeof(g_config.igate_object));
 
     // PHG: same convention as the Objects page's per-element PHG blocks.

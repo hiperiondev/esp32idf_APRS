@@ -355,6 +355,9 @@ static bool load_locked(objitems_t *out, bool *out_missing) {
             if (cJSON_IsString(v) && v->valuestring)
                 clamp_str(b->phg, v->valuestring, sizeof(b->phg) - 1);
 
+            v = cJSON_GetObjectItem(o, "compress");
+            b->compress = cJSON_IsTrue(v);
+
             v = cJSON_GetObjectItem(o, "kill_left");
             if (cJSON_IsNumber(v) && v->valuedouble > 0)
                 b->kill_left = (uint8_t)v->valuedouble;
@@ -451,6 +454,7 @@ static bool save_locked(const objitems_t *in) {
             fputs(",\"phg\":", f);
             write_json_string(f, phg);
         }
+        fprintf(f, ",\"compress\":%s", b->compress ? "true" : "false");
         fprintf(f, ",\"kill_left\":%u", (unsigned)b->kill_left);
         fputc('}', f);
     }
@@ -615,9 +619,6 @@ static void objitem_build_phg(const objitem_t *b, char *out, size_t out_size) {
 // nominally "active" pending the user's next edit). `out` should be >= 160 to
 // hold the frequency block plus a full comment.
 static void objitem_build_info_field(const objitem_t *b, bool live, char *out, size_t out_size) {
-    char latStr[10], lonStr[11];
-    aprs_coord_format(b->lat, b->lon, latStr, sizeof(latStr), lonStr, sizeof(lonStr));
-
     char sym_table = b->sym[0] ? b->sym[0] : '/';
     char sym_code = b->sym[1] ? b->sym[1] : '-';
 
@@ -631,14 +632,16 @@ static void objitem_build_info_field(const objitem_t *b, bool live, char *out, s
     // Sized for the longest of these ("{TEXT}" / "NNN/NNN" / "Tyy/Cxx").
     char ext[16];
     ext[0] = 0;
-    if (objitem_is_area(b)) {
+    bool isArea = objitem_is_area(b);
+    bool isSignpost = objitem_is_signpost(b);
+    if (isArea) {
         unsigned t = b->area_type > 9 ? 9 : b->area_type;
         unsigned color = b->area_color > 15 ? 15 : b->area_color;
         // Colours 0..9 use "/C"; 10..15 replace the '/' with '1' and C = C-10.
         char sep = color <= 9 ? '/' : '1';
         unsigned cdig = color <= 9 ? color : color - 10;
         snprintf(ext, sizeof(ext), "%u%02u%c%u%02u", t, area_offset_code(b->area_lat_off), sep, cdig, area_offset_code(b->area_lon_off));
-    } else if (objitem_is_signpost(b)) {
+    } else if (isSignpost) {
         char sp[OBJITEM_SIGNPOST_MAX + 1];
         clamp_str(sp, b->signpost, OBJITEM_SIGNPOST_MAX);
         snprintf(ext, sizeof(ext), "{%s}", sp);
@@ -658,6 +661,36 @@ static void objitem_build_info_field(const objitem_t *b, bool live, char *out, s
         objitem_build_phg(b, ext, sizeof(ext));
     }
 
+    // Compressed position format is used only when requested and the 7-byte
+    // ext[] slot above isn't already carrying an Area/Signpost descriptor -
+    // both of those repurpose that slot for their own encoding, which has no
+    // compressed-format equivalent in the spec, so compression is silently
+    // ignored for them (falls back to uncompressed) rather than dropping the
+    // descriptor. It is likewise ignored whenever ext[] carries a PHG token,
+    // since the compressed format has no PHG equivalent either (APRS101
+    // ch.9: "this format does not support PHG"). Course/speed has a
+    // compressed equivalent and is folded into the compressed field's own
+    // cs/T slot below instead of the uncompressed ext[] one.
+    bool useCompressed = b->compress && !isArea && !isSignpost && !b->phg_enable;
+
+    // Sized for the larger of the two layouts: uncompressed is up to 21
+    // bytes (9-char latStr content + symTable + 10-char lonStr content +
+    // symCode), compressed is a fixed 11 bytes (symTable + 4 lat + 4 lon +
+    // symCode + 2 cs), plus NUL either way.
+    char posField[22];
+    if (useCompressed) {
+        char csT[3] = { ' ', ' ', ' ' };
+        if (b->speed > 0) {
+            aprs_compressed_cs_from_course_speed(b->course, b->speed, csT);
+            ext[0] = 0; // folded into the compressed field's own cs/T slot instead
+        }
+        aprs_coord_format_compressed(b->lat, b->lon, sym_table, sym_code, csT, posField, sizeof(posField));
+    } else {
+        char latStr[10], lonStr[11];
+        aprs_coord_format(b->lat, b->lon, latStr, sizeof(latStr), lonStr, sizeof(lonStr));
+        snprintf(posField, sizeof(posField), "%s%c%s%c", latStr, sym_table, lonStr, sym_code);
+    }
+
     // Comment text: the APRS frequency block (repeater objects) comes first, so
     // it is the leading token other stations parse; then the free-text comment.
     char freq[40];
@@ -674,7 +707,7 @@ static void objitem_build_info_field(const objitem_t *b, bool live, char *out, s
         // Item: ) NAME (3..9, variable) then '!'(live)/'_'(kill) then position.
         char name[OBJITEM_NAME_MAX + 1];
         clamp_str(name, b->name, OBJITEM_NAME_MAX);
-        snprintf(out, out_size, ")%s%c%s%c%s%c%s%s", name, live ? '!' : '_', latStr, sym_table, lonStr, sym_code, ext, text);
+        snprintf(out, out_size, ")%s%c%s%s%s", name, live ? '!' : '_', posField, ext, text);
     } else {
         // Object: ; NAME (exactly 9, space-padded) then '*'(live)/'_'(kill)
         // then DDHHMMz timestamp then position.
@@ -693,7 +726,7 @@ static void objitem_build_info_field(const objitem_t *b, bool live, char *out, s
         gmtime_r(&now, &tmv);
         snprintf(ts, sizeof(ts), "%02d%02d%02dz", tmv.tm_mday, tmv.tm_hour, tmv.tm_min);
 
-        snprintf(out, out_size, ";%s%c%s%s%c%s%c%s%s", name9, live ? '*' : '_', ts, latStr, sym_table, lonStr, sym_code, ext, text);
+        snprintf(out, out_size, ";%s%c%s%s%s%s", name9, live ? '*' : '_', ts, posField, ext, text);
     }
 }
 

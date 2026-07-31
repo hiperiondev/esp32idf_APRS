@@ -284,6 +284,7 @@ typedef struct {
     char igate_comment[COMMENT_SIZE]; /**< IGate beacon comment. */
     uint16_t igate_sts_interval;      /**< IGate status-beacon interval, seconds. */
     char igate_status[STATUS_SIZE];   /**< IGate status text. */
+    bool igate_compress;              /**< Use APRS compressed position format for the IGate position beacon. */
     bool igate_phg_enable;            /**< Enable transmitting the PHG data extension in the IGate position beacon. */
     bool igate_phg_use_station;       /**< "Use My Station Data": mirror the shared "My Station" PHG sub-fields into the IGate PHG fields and lock them. */
     uint16_t igate_phg_power;         /**< PHG sub-field: radio TX power, Watts (persisted so the form redisplays the selections). */
@@ -303,6 +304,7 @@ typedef struct {
     uint16_t digi_delay;             /**< Digipeat delay, ms. */
     uint16_t digiFilter;             /**< Digipeater payload filter bitmask. */
     bool digi_bcn;                   /**< Enable the digipeater position beacon. */
+    bool digi_compress;              /**< Use APRS compressed position format for the digipeater position beacon. */
     float digi_lat;                  /**< Digipeater beacon latitude. */
     float digi_lon;                  /**< Digipeater beacon longitude. */
     float digi_alt;                  /**< Digipeater beacon altitude. */

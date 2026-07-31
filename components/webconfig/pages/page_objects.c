@@ -298,6 +298,14 @@ esp_err_t page_objects_get(httpd_req_t *req) {
         web_field_int(req, TR_F_OBJITEM_COURSE, name, (long)b->course);
         snprintf(name, sizeof(name), "oSpd%d", i + 1);
         web_field_int(req, TR_F_OBJITEM_SPEED, name, (long)b->speed);
+
+        // Compressed position format saves airtime, but shares the 7-byte
+        // data-extension slot with the Area/Signpost descriptors (Group 5/6
+        // below) and has no PHG equivalent (Group 9), so it is silently
+        // ignored at transmit time for those cases regardless of this
+        // checkbox - see objitem_build_info_field() in objects_items.c.
+        snprintf(name, sizeof(name), "oCompress%d", i + 1);
+        web_field_checkbox(req, TR_F_COMPRESS_POSITION, name, b->compress);
         web_fieldset_close(req);
 
         // -- Group 4: Comment. web_field_text() escapes internally now. --
@@ -563,6 +571,9 @@ esp_err_t page_objects_post(httpd_req_t *req) {
         if (spd < 0)
             spd = 0;
         b->speed = (uint16_t)spd;
+
+        snprintf(name, sizeof(name), "oCompress%d", i + 1);
+        b->compress = web_form_get_bool(body, name);
 
         snprintf(name, sizeof(name), "oCmt%d", i + 1);
         char cmt[OBJITEM_COMMENT_MAX + 1];

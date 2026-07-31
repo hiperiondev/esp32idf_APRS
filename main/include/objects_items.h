@@ -224,6 +224,10 @@ typedef struct {
     uint8_t phg_dir;      /**< PHG directivity: 0=Omni, 1-8 = N,NE,E,SE,S,SW,W,NW. */
     char phg[8];          /**< Computed PHG string (e.g. "PHG5132"), for form redisplay/parity with the Station page. */
 
+    bool compress; /**< Use APRS compressed position format for this element. Silently falls back to uncompressed for Area/Signpost objects (which use the
+                      7-byte data-extension slot for their own descriptor, not CSE/SPD - the compressed format has no equivalent for that slot) and whenever
+                      @c phg_enable is set (compressed format has no PHG equivalent, per APRS101 ch.9). */
+
     uint8_t kill_left; /**< Runtime: remaining kill retransmissions (not user-edited; persisted so a reboot mid-kill still completes). */
 } objitem_t;
 
