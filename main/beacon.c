@@ -14,10 +14,12 @@
  *
  *     please contact their authors for more information.
  *
- * @brief Own-station position beacon tasks: builds APRS position reports from the
- * saved Tracker/IGate/Digipeater coordinates, resolves the configured path
- * bitmask into a digipeater path, and transmits them on RF and/or APRS-IS at each
- * beacon's own interval.
+ * @brief Own-station position and status beacon tasks: builds APRS position
+ * reports from the saved Tracker/IGate/Digipeater coordinates, resolves the
+ * configured path bitmask into a digipeater path, and transmits them on RF
+ * and/or APRS-IS at each beacon's own interval. Also builds and transmits
+ * each station's APRS status report (DTI '>', APRS101 ch.16) from that page's
+ * own status text, at its own independent interval.
  */
 
 #include <math.h>
@@ -273,6 +275,199 @@ static int64_t mono_seconds(void) {
     return (int64_t)(esp_timer_get_time() / 1000000);
 }
 
+// Generic parameters for one station's status-report beacon (APRS101 ch.16).
+// Filled in by each per-service wrapper below (tracker / igate / digi) from a
+// snapshot of that page's own status text/interval, following the same
+// copy-under-lock policy as beacon_params_t above.
+typedef struct {
+    char call[10];
+    uint8_t ssid;
+    uint8_t pathSel;
+    char statusText[STATUS_SIZE];
+    char pathPreset[4][72]; // snapshot of g_config.path[0..3]
+} status_params_t;
+
+// Builds the full TNC2 text line for one status-report transmission. The
+// info field is DTI '>' followed by the free-text status (APRS101 ch.16);
+// the status text itself may start with a Maidenhead locator or a beam
+// heading/power token per the spec - this builder does not interpret it,
+// it simply carries whatever the station operator configured on the page.
+// Returns the packet length, or 0 if nothing usable is configured.
+static int buildStatusPacket(const status_params_t *p, char *out, size_t outMax) {
+    if (!p->call[0] || !p->statusText[0])
+        return 0;
+
+    char callField[16];
+    if (p->ssid > 0)
+        snprintf(callField, sizeof(callField), "%s-%d", p->call, (int)p->ssid);
+    else
+        snprintf(callField, sizeof(callField), "%s", p->call);
+
+    char path[80];
+    buildPathSuffix(p->pathSel, p->pathPreset, path, sizeof(path));
+
+    char infoField[STATUS_SIZE + 1]; // '>' + status text + NUL
+    snprintf(infoField, sizeof(infoField), ">%s", p->statusText);
+
+    int n = snprintf(out, outMax, "%s>%s%s:%s", callField, BEACON_DEST, path, infoField);
+    // Same truncation-clamp policy as buildPositionPacket() above.
+    if (n < 0)
+        return 0;
+    if (outMax > 0 && (size_t)n >= outMax)
+        n = (int)outMax - 1;
+    return n;
+}
+
+// ---------------------------------------------------------------------------
+// Status beacons (Tracker / IGate / Digipeater "Status Beacon" fieldset).
+//
+// Each of the three position beacons above has a matching status-report
+// beacon (APRS101 ch.16): its own interval (*_sts_interval, 0 = off) and
+// free-text status (*_status), edited on the same web admin page as the
+// position beacon and sent over the same RF/INET legs (*_loc2rf/*_loc2inet)
+// as that page's position beacon, at its own independent schedule.
+// ---------------------------------------------------------------------------
+static int64_t s_trk_sts_next_due = 0;
+static int64_t s_igate_sts_next_due = 0;
+static int64_t s_digi_sts_next_due = 0;
+
+static uint32_t trackerStatusService(void) {
+    if (!g_config.trk_en || g_config.trk_sts_interval == 0 || (!g_config.trk_loc2rf && !g_config.trk_loc2inet)) {
+        s_trk_sts_next_due = 0;
+        return 5;
+    }
+
+    int64_t now = mono_seconds();
+    if (now >= s_trk_sts_next_due) {
+        status_params_t p = { 0 };
+        app_config_lock();
+        {
+            bool useTrk = g_config.trk_mycall[0] != 0;
+            memcpy(p.call, useTrk ? g_config.trk_mycall : g_config.aprs_mycall, sizeof(p.call));
+            p.ssid = useTrk ? g_config.trk_ssid : g_config.aprs_ssid;
+            p.pathSel = g_config.trk_path;
+            memcpy(p.statusText, g_config.trk_status, sizeof(p.statusText));
+            memcpy(p.pathPreset, g_config.path, sizeof(p.pathPreset));
+        }
+        app_config_unlock();
+
+        char packet[128]; // callField+dest+path+infoField(up to STATUS_SIZE)
+        int len = buildStatusPacket(&p, packet, sizeof(packet));
+        if (len > 0) {
+            if (g_config.trk_loc2rf) {
+                if (aprs_service_send_tnc2(packet, (size_t)len))
+                    ESP_LOGI(TAG, "Tracker status TX (RF): %s", packet);
+                else
+                    ESP_LOGW(TAG, "Tracker status NOT sent over RF - modem not ready or busy: %s", packet);
+            }
+            if (g_config.trk_loc2inet) {
+                if (igate_send_raw(packet, (size_t)len))
+                    ESP_LOGI(TAG, "Tracker status TX (INET): %s", packet);
+                else
+                    ESP_LOGW(TAG, "Tracker status NOT sent over INET - APRS-IS not connected yet: %s", packet);
+            }
+        }
+
+        s_trk_sts_next_due = now + (int64_t)beacon_scheduler_jitter(clampInterval(g_config.trk_sts_interval));
+    }
+
+    int64_t rem = s_trk_sts_next_due - mono_seconds();
+    if (rem < 1)
+        rem = 1;
+    return (uint32_t)rem;
+}
+
+static uint32_t igateStatusService(void) {
+    if (!g_config.igate_en || g_config.igate_sts_interval == 0 || (!g_config.igate_loc2rf && !g_config.igate_loc2inet)) {
+        s_igate_sts_next_due = 0;
+        return 5;
+    }
+
+    int64_t now = mono_seconds();
+    if (now >= s_igate_sts_next_due) {
+        status_params_t p = { 0 };
+        app_config_lock();
+        {
+            memcpy(p.call, g_config.aprs_mycall, sizeof(p.call));
+            p.ssid = g_config.aprs_ssid;
+            p.pathSel = g_config.igate_path;
+            memcpy(p.statusText, g_config.igate_status, sizeof(p.statusText));
+            memcpy(p.pathPreset, g_config.path, sizeof(p.pathPreset));
+        }
+        app_config_unlock();
+
+        char packet[128]; // callField+dest+path+infoField(up to STATUS_SIZE)
+        int len = buildStatusPacket(&p, packet, sizeof(packet));
+        if (len > 0) {
+            if (g_config.igate_loc2rf) {
+                if (aprs_service_send_tnc2(packet, (size_t)len))
+                    ESP_LOGI(TAG, "IGate status TX (RF): %s", packet);
+                else
+                    ESP_LOGW(TAG, "IGate status NOT sent over RF - modem not ready or busy: %s", packet);
+            }
+            if (g_config.igate_loc2inet) {
+                if (igate_send_raw(packet, (size_t)len))
+                    ESP_LOGI(TAG, "IGate status TX (INET): %s", packet);
+                else
+                    ESP_LOGW(TAG, "IGate status NOT sent over INET - APRS-IS not connected yet: %s", packet);
+            }
+        }
+
+        s_igate_sts_next_due = now + (int64_t)beacon_scheduler_jitter(clampInterval(g_config.igate_sts_interval));
+    }
+
+    int64_t rem = s_igate_sts_next_due - mono_seconds();
+    if (rem < 1)
+        rem = 1;
+    return (uint32_t)rem;
+}
+
+static uint32_t digiStatusService(void) {
+    if (!g_config.digi_en || g_config.digi_sts_interval == 0 || (!g_config.digi_loc2rf && !g_config.digi_loc2inet)) {
+        s_digi_sts_next_due = 0;
+        return 5;
+    }
+
+    int64_t now = mono_seconds();
+    if (now >= s_digi_sts_next_due) {
+        status_params_t p = { 0 };
+        app_config_lock();
+        {
+            bool useDigi = g_config.digi_mycall[0] != 0;
+            memcpy(p.call, useDigi ? g_config.digi_mycall : g_config.aprs_mycall, sizeof(p.call));
+            p.ssid = useDigi ? g_config.digi_ssid : g_config.aprs_ssid;
+            p.pathSel = g_config.digi_path;
+            memcpy(p.statusText, g_config.digi_status, sizeof(p.statusText));
+            memcpy(p.pathPreset, g_config.path, sizeof(p.pathPreset));
+        }
+        app_config_unlock();
+
+        char packet[128]; // callField+dest+path+infoField(up to STATUS_SIZE)
+        int len = buildStatusPacket(&p, packet, sizeof(packet));
+        if (len > 0) {
+            if (g_config.digi_loc2rf) {
+                if (aprs_service_send_tnc2(packet, (size_t)len))
+                    ESP_LOGI(TAG, "Digipeater status TX (RF): %s", packet);
+                else
+                    ESP_LOGW(TAG, "Digipeater status NOT sent over RF - modem not ready or busy: %s", packet);
+            }
+            if (g_config.digi_loc2inet) {
+                if (igate_send_raw(packet, (size_t)len))
+                    ESP_LOGI(TAG, "Digipeater status TX (INET): %s", packet);
+                else
+                    ESP_LOGW(TAG, "Digipeater status NOT sent over INET - APRS-IS not connected yet: %s", packet);
+            }
+        }
+
+        s_digi_sts_next_due = now + (int64_t)beacon_scheduler_jitter(clampInterval(g_config.digi_sts_interval));
+    }
+
+    int64_t rem = s_digi_sts_next_due - mono_seconds();
+    if (rem < 1)
+        rem = 1;
+    return (uint32_t)rem;
+}
+
 // ---------------------------------------------------------------------------
 // Tracker beacon (Tracker web admin page: g_config.trk_*)
 // ---------------------------------------------------------------------------
@@ -500,6 +695,15 @@ uint32_t beacon_service(void) {
     s = digiBeaconService();
     if (s < soonest)
         soonest = s;
+    s = trackerStatusService();
+    if (s < soonest)
+        soonest = s;
+    s = igateStatusService();
+    if (s < soonest)
+        soonest = s;
+    s = digiStatusService();
+    if (s < soonest)
+        soonest = s;
     return soonest;
 }
 
@@ -513,4 +717,7 @@ void beacon_start(void) {
              g_config.igate_loc2inet, (unsigned)g_config.igate_interval);
     ESP_LOGI(TAG, "Digipeater beacon configured (en=%d bcn=%d rf=%d inet=%d interval=%us)", g_config.digi_en, g_config.digi_bcn, g_config.digi_loc2rf,
              g_config.digi_loc2inet, (unsigned)g_config.digi_interval);
+    ESP_LOGI(TAG, "Tracker status beacon configured (en=%d interval=%us)", g_config.trk_en, (unsigned)g_config.trk_sts_interval);
+    ESP_LOGI(TAG, "IGate status beacon configured (en=%d interval=%us)", g_config.igate_en, (unsigned)g_config.igate_sts_interval);
+    ESP_LOGI(TAG, "Digipeater status beacon configured (en=%d interval=%us)", g_config.digi_en, (unsigned)g_config.digi_sts_interval);
 }

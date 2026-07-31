@@ -293,6 +293,40 @@ static bool load_locked(objitems_t *out, bool *out_missing) {
             if (cJSON_IsString(v) && v->valuestring)
                 clamp_str(b->signpost, v->valuestring, OBJITEM_SIGNPOST_MAX);
 
+            // -- DF report (APRS101 ch.16 "/BRG/NRQ" extension). --
+            v = cJSON_GetObjectItem(o, "dfEn");
+            b->df_enable = cJSON_IsTrue(v);
+            v = cJSON_GetObjectItem(o, "dfBrg");
+            if (cJSON_IsNumber(v) && v->valuedouble >= 0)
+                b->df_bearing = (uint16_t)((int)v->valuedouble % 360);
+            v = cJSON_GetObjectItem(o, "dfN");
+            if (cJSON_IsNumber(v)) {
+                int n = (int)v->valuedouble;
+                if (n < 0)
+                    n = 0;
+                if (n > 9)
+                    n = 9;
+                b->df_nrq_n = (uint8_t)n;
+            }
+            v = cJSON_GetObjectItem(o, "dfR");
+            if (cJSON_IsNumber(v)) {
+                int r = (int)v->valuedouble;
+                if (r < 0)
+                    r = 0;
+                if (r > 9)
+                    r = 9;
+                b->df_nrq_r = (uint8_t)r;
+            }
+            v = cJSON_GetObjectItem(o, "dfQ");
+            if (cJSON_IsNumber(v)) {
+                int q = (int)v->valuedouble;
+                if (q < 0)
+                    q = 0;
+                if (q > 9)
+                    q = 9;
+                b->df_nrq_q = (uint8_t)q;
+            }
+
             // -- Repeater radio parameters (YAAC "Monitor frequency, duplex
             //    direction, and subaudible tone"). --
             v = cJSON_GetObjectItem(o, "freq");
@@ -432,6 +466,11 @@ static bool save_locked(const objitems_t *in) {
         fprintf(f, ",\"alon\":%.4f", (double)b->area_lon_off);
         fputs(",\"sign\":", f);
         write_json_string(f, sign);
+        fprintf(f, ",\"dfEn\":%s", b->df_enable ? "true" : "false");
+        fprintf(f, ",\"dfBrg\":%u", (unsigned)b->df_bearing);
+        fprintf(f, ",\"dfN\":%u", (unsigned)b->df_nrq_n);
+        fprintf(f, ",\"dfR\":%u", (unsigned)b->df_nrq_r);
+        fprintf(f, ",\"dfQ\":%u", (unsigned)b->df_nrq_q);
         fprintf(f, ",\"freq\":%.4f", (double)b->freq_mhz);
         fprintf(f, ",\"ofs\":%u", (unsigned)b->offset_khz);
         fprintf(f, ",\"dup\":%d", (int)b->duplex);
@@ -628,8 +667,11 @@ static void objitem_build_info_field(const objitem_t *b, bool live, char *out, s
     //   Signpost      ("\m") -> "{TEXT}"  signpost text (YAAC Signpost).
     //   anything else        -> CSE/SPD, only when speed > 0 (YAAC:
     //                           "if the speed is set to zero, speed and course
-    //                           will not be included").
-    // Sized for the longest of these ("{TEXT}" / "NNN/NNN" / "Tyy/Cxx").
+    //                           will not be included"), optionally extended
+    //                           to CSE/SPD/BRG/NRQ when df_enable is set
+    //                           (APRS101 ch.16 DF report).
+    // Sized for the longest of these: "NNN/NNN/NNN/NNN" (DF report, 15 bytes)
+    // is now the longest, so ext[] is grown to fit it plus NUL.
     char ext[16];
     ext[0] = 0;
     bool isArea = objitem_is_area(b);
@@ -648,7 +690,29 @@ static void objitem_build_info_field(const objitem_t *b, bool live, char *out, s
     } else if (b->speed > 0) {
         unsigned crs = (unsigned)(b->course % 360);      // 0..359
         unsigned spd = b->speed > 999 ? 999u : b->speed; // APRS speed field is 3 digits
-        snprintf(ext, sizeof(ext), "%03u/%03u", crs, spd);
+        if (b->df_enable) {
+            // DF report (APRS101 ch.16): CSE/SPD extended with /BRG/NRQ. BRG
+            // is the 3-digit signal bearing; NRQ packs the antenna-type digit
+            // (N), signal-strength digit (R) and bearing-accuracy digit (Q)
+            // into one 3-digit field.
+            unsigned brg = (unsigned)(b->df_bearing % 360);
+            unsigned n = b->df_nrq_n > 9 ? 9 : b->df_nrq_n;
+            unsigned r = b->df_nrq_r > 9 ? 9 : b->df_nrq_r;
+            unsigned q = b->df_nrq_q > 9 ? 9 : b->df_nrq_q;
+            snprintf(ext, sizeof(ext), "%03u/%03u/%03u/%u%u%u", crs, spd, brg, n, r, q);
+        } else {
+            snprintf(ext, sizeof(ext), "%03u/%03u", crs, spd);
+        }
+    } else if (b->df_enable) {
+        // DF report with no course/speed data: CSE/SPD is still required by
+        // the spec to carry the BRG/NRQ extension, so it is emitted as
+        // "000/000" (APRS101 ch.16: course/speed of 000/000 with a DF
+        // extension is valid and means "no course/speed data").
+        unsigned brg = (unsigned)(b->df_bearing % 360);
+        unsigned n = b->df_nrq_n > 9 ? 9 : b->df_nrq_n;
+        unsigned r = b->df_nrq_r > 9 ? 9 : b->df_nrq_r;
+        unsigned q = b->df_nrq_q > 9 ? 9 : b->df_nrq_q;
+        snprintf(ext, sizeof(ext), "000/000/%03u/%u%u%u", brg, n, r, q);
     } else if (b->phg_enable) {
         // PHG shares the 7-byte data-extension slot with CSE/SPD (they are
         // mutually exclusive), so it is emitted only for a normal symbol that
@@ -668,10 +732,13 @@ static void objitem_build_info_field(const objitem_t *b, bool live, char *out, s
     // ignored for them (falls back to uncompressed) rather than dropping the
     // descriptor. It is likewise ignored whenever ext[] carries a PHG token,
     // since the compressed format has no PHG equivalent either (APRS101
-    // ch.9: "this format does not support PHG"). Course/speed has a
-    // compressed equivalent and is folded into the compressed field's own
-    // cs/T slot below instead of the uncompressed ext[] one.
-    bool useCompressed = b->compress && !isArea && !isSignpost && !b->phg_enable;
+    // ch.9: "this format does not support PHG"), and whenever a DF report is
+    // enabled, since the compressed format's cs/T slot has no /BRG/NRQ
+    // equivalent either (APRS101 ch.16 defines DF reports only for the
+    // uncompressed CSE/SPD layout). Course/speed on its own (df_enable off)
+    // has a compressed equivalent and is folded into the compressed field's
+    // own cs/T slot below instead of the uncompressed ext[] one.
+    bool useCompressed = b->compress && !isArea && !isSignpost && !b->phg_enable && !b->df_enable;
 
     // Sized for the larger of the two layouts: uncompressed is up to 21
     // bytes (9-char latStr content + symTable + 10-char lonStr content +
