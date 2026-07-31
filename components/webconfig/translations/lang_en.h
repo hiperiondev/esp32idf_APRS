@@ -669,7 +669,7 @@
 #define TR_DIR_SW              "SW"
 #define TR_DIR_W               "W"
 #define TR_DIR_NW              "NW"
-#define TR_F_IGATE_FILTER      "[IGATE] Filter"
+#define TR_F_IGATE_FILTER      "IGate Filter"
 #define TR_F_FILTER_RF2INET    "Filter RF to Internet"
 #define TR_F_FILTER_INET2RF    "Filter Internet to RF"
 #define TR_FILT_MESSAGE        "Message"

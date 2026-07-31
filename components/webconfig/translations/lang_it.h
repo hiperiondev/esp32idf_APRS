@@ -678,7 +678,7 @@
 #define TR_DIR_SW              "SO"
 #define TR_DIR_W               "O"
 #define TR_DIR_NW              "NO"
-#define TR_F_IGATE_FILTER      "Filtro [IGATE]"
+#define TR_F_IGATE_FILTER      "Filtro IGate"
 #define TR_F_FILTER_RF2INET    "Filtro RF verso Internet"
 #define TR_F_FILTER_INET2RF    "Filtro Internet verso RF"
 #define TR_FILT_MESSAGE        "Messaggio"
