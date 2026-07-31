@@ -27,6 +27,7 @@
 
 #include "app_config.h"
 #include "aprs_filter.h"
+#include "weather_telemetry.h"
 
 // ---------------------------------------------------------------------------
 // Symbol extraction.
@@ -199,14 +200,22 @@ uint16_t aprs_filter_classify_info(const char *info) {
         }
 
         // ------------------------------------------------------------------
-        // Mic-E: the position lives in the AX.25 destination field, so nothing
-        // here can be inspected further - but it is unambiguously a position.
-        // 0x1c/0x1d are the "current/old Mic-E data (Rev 0 beta)" DTIs.
+        // Mic-E: the position itself lives in the AX.25 destination field
+        // (see aprs_mice_decode()), but the display symbol is carried right
+        // here in the info field - byte 8 is the symbol code, byte 9 the
+        // symbol table id (APRS101 Ch.10 "Mic-E Information Field"). 0x1c/
+        // 0x1d are the "current/old Mic-E data (Rev 0 beta)" DTIs.
         // ------------------------------------------------------------------
         case '`':
         case '\'':
         case 0x1c:
         case 0x1d:
+            if (len >= 9) {
+                if (info[7] == '_')
+                    return IGATE_FILT_WEATHER;
+                if (info[7] == 'N' && info[8] == '/')
+                    return IGATE_FILT_BUOY;
+            }
             return IGATE_FILT_POSITION;
 
         // ------------------------------------------------------------------
@@ -590,7 +599,7 @@ static bool decode_pos(const char *pos, float *lat, float *lon) {
     return decode_pos_compressed(pos, lat, lon);
 }
 
-bool aprs_filter_decode_position(const char *info, float *out_lat, float *out_lon) {
+bool aprs_filter_decode_position(const char *info, const char *dst_call, float *out_lat, float *out_lon) {
     if (info == NULL || out_lat == NULL || out_lon == NULL)
         return false;
 
@@ -628,8 +637,23 @@ bool aprs_filter_decode_position(const char *info, float *out_lat, float *out_lo
             }
             return false;
 
-        // Mic-E's position lives in the AX.25 destination field, not here;
-        // every other DTI either has no position or isn't worth the extra
+        // Mic-E's position is split between this info field and the AX.25
+        // destination field; aprs_mice_decode() reassembles both halves.
+        case '`':
+        case '\'':
+        case 0x1c:
+        case 0x1d: {
+            if (dst_call == NULL)
+                return false;
+            aprs_mice_report_t mice;
+            if (!aprs_mice_decode(dst_call, info, len, &mice))
+                return false;
+            *out_lat = (float)mice.position.latitude_deg;
+            *out_lon = (float)mice.position.longitude_deg;
+            return true;
+        }
+
+        // Every other DTI either has no position or isn't worth the extra
         // parsing for a "should we push this to APRS-IS" range check.
         default:
             return false;

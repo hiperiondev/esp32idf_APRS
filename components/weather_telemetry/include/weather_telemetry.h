@@ -964,6 +964,45 @@ typedef struct {
 } aprs_mice_report_t;
 
 /**
+ * @brief Decode a Mic-E position report (APRS101 Chapter 10) into @p out.
+ *
+ * A Mic-E report splits its payload between the AX.25 destination address
+ * field (latitude, message code, N/S and W/E indicators, longitude offset)
+ * and the AX.25 information field (longitude, course, speed, symbol and an
+ * optional status text). Both are required to recover the position, which
+ * is why this decoder - unlike every other payload kind in this header -
+ * takes the destination address as an explicit argument rather than reading
+ * everything from a single information-field buffer.
+ *
+ * @param dst_call 6-character AX.25 destination address field, exactly as
+ *                 decoded off the air (i.e. already shifted right one bit
+ *                 and NUL-terminated) - NOT the generic "APRS"-style
+ *                 destination used by non-Mic-E frames. Only the first 6
+ *                 characters are read; the 7th destination byte (the SSID)
+ *                 carries the APRS digipeater path and plays no part in
+ *                 this decode.
+ * @param info NUL-terminated AX.25 information field, starting at the Mic-E
+ *             Data Type Identifier byte (`` ` ``, `'`, 0x1c or 0x1d).
+ * @param info_len Length of @p info in bytes, not counting the terminating
+ *                 NUL. Per APRS101, a Mic-E information field shorter than
+ *                 9 bytes is malformed and must be rejected.
+ * @param out Populated on success; untouched on failure.
+ * @return true if @p dst_call and @p info together decode to a well-formed
+ *         Mic-E report.
+ *
+ * @note This decoder recovers position, course/speed, symbol and message
+ *       code, and captures any trailing bytes verbatim in @c out->status_text
+ *       (populating @c out->has_status_text). It does not decode the
+ *       separate, legacy Mic-E Telemetry sub-format (APRS101 Chapter 10,
+ *       "Mic-E Telemetry Data"); @c out->has_telemetry is always false, and
+ *       a telemetry-bearing information field is captured as raw status
+ *       text like any other. This matches every mobile/portable Mic-E
+ *       source in current use (Kenwood D7/D700/D710, Yaesu VX-8/FTM-350/
+ *       400D), none of which transmit that sub-format.
+ */
+bool aprs_mice_decode(const char *dst_call, const char *info, size_t info_len, aprs_mice_report_t *out);
+
+/**
  * @brief Discriminator for the top-level decoded-packet union, mirroring
  *        the Data Type Identifier of the underlying AX.25 Information
  *        field, restricted to the packet kinds modeled by this header.

@@ -151,18 +151,20 @@ bool aprs_filter_budlist_pass(budlist_mode_t mode, const char *call);
  * where the position data starts. Supports both position report layouts
  * (uncompressed "DDMM.hhN/DDDMM.hhW" and compressed base-91) for the DTIs
  * that carry a position directly in the info field: '!'/'=' (no timestamp),
- * '/'/'@' (with timestamp), ';' (object) and ')' (item).
- *
- * @note Mic-E position reports carry their position in the AX.25 destination
- *       field, not the info field, and are not decodable from @p info alone;
- *       this returns false for them (and for any other non-position DTI).
+ * '/'/'@' (with timestamp), ';' (object) and ')' (item); and, via
+ * aprs_mice_decode(), Mic-E reports ('`', '\'', 0x1c, 0x1d), whose position
+ * is split between @p info and the AX.25 destination address field.
  *
  * @param info NUL-terminated APRS information field.
+ * @param dst_call 6-character AX.25 destination address field, exactly as
+ *                 decoded off the air (see aprs_mice_decode()). Only
+ *                 consulted for Mic-E DTIs; NULL is fine for every other
+ *                 payload type (and causes Mic-E packets to fail decoding).
  * @param out_lat Set to the decoded latitude, decimal degrees (+N/-S), on success.
  * @param out_lon Set to the decoded longitude, decimal degrees (+E/-W), on success.
  * @return true if a position was found and decoded.
  */
-bool aprs_filter_decode_position(const char *info, float *out_lat, float *out_lon);
+bool aprs_filter_decode_position(const char *info, const char *dst_call, float *out_lat, float *out_lon);
 
 /**
  * @brief Great-circle distance between two lat/lon points (haversine formula).

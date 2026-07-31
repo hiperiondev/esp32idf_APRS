@@ -368,7 +368,7 @@ int igateProcess(ax25_msg_t *packet) {
 
         if (rangeEn && rangeKm > 0.0f) {
             float plat, plon;
-            if (aprs_filter_decode_position(info, &plat, &plon)) {
+            if (aprs_filter_decode_position(info, packet->dst.call, &plat, &plon)) {
                 float d = aprs_filter_haversine_km(ownLat, ownLon, plat, plon);
                 if (d > rangeKm) {
                     ESP_LOGD(TAG, "RF2INET range-filtered (%.1f km > %.1f km): %s", d, rangeKm, packet->src.call);
@@ -376,11 +376,11 @@ int igateProcess(ax25_msg_t *packet) {
                     return 0;
                 }
             }
-            // Position couldn't be decoded (e.g. Mic-E, or a non-position
-            // payload type that still passed the type filter above, like a
-            // message or status report): distance can't be evaluated, so
-            // this gate simply doesn't apply - fall through rather than
-            // guessing/dropping.
+            // Position couldn't be decoded (e.g. a non-position payload
+            // type that still passed the type filter above, like a message
+            // or status report): distance can't be evaluated, so this gate
+            // simply doesn't apply - fall through rather than guessing/
+            // dropping.
         }
 
         if (prefixEn && !aprs_filter_prefix_match(packet->src.call, prefixes)) {
