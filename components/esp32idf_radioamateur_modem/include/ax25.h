@@ -270,6 +270,19 @@ bool Ax25TxBufferPending(void);
 uint8_t Ax25TxFramesPending(void);
 
 /**
+ * @brief Count how many times the CSMA/p-persistent anti-starvation floor
+ *        has forced a transmission.
+ *
+ * Cumulative since boot: bumped every time Ax25TransmitCheck() forces a
+ * transmission after MAX_TRANSMIT_RETRY_COUNT persistence rolls missed in a
+ * row on an otherwise-clear channel.
+ *
+ * @return Total number of forced transmissions caused by missed persistence
+ *         rolls since boot.
+ */
+uint32_t Ax25GetPersistenceMissedCount(void);
+
+/**
  * @brief Retrieve the next pending received frame, if any is available.
  *
  * @param dst       Set to point at the internal buffer holding the raw

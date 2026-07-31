@@ -65,9 +65,11 @@ typedef enum {
     DROP_DIGI_MALFORMED,        /**< Digipeater: frame too short to carry a destination / usable path. */
     DROP_DIGI_PLACEHOLDER_CALL, /**< Digipeater: source callsign is the NOCALL/MYCALL sentinel. */
     DROP_DIGI_ALREADY_USED,     /**< Digipeater: path already carries this digipeater's call marked used ('*'). */
-    DROP_DIGI_PATH_FULL,  /**< Digipeater: path already at the AX.25 maximum (8) repeater addresses; inserting our call would overflow rpt_list/rpt_flags. */
-    DROP_DIGI_NO_PATH,    /**< Digipeater: destination-SSID trace decoded to no usable WIDEn-N path. */
-    DROP_DIGI_PATH_TOKEN, /**< Digipeater: path carries qA or TCP (already gated, not for RF repeat). */
+    DROP_DIGI_PATH_FULL,     /**< Digipeater: path already at the AX.25 maximum (8) repeater addresses; inserting our call would overflow rpt_list/rpt_flags. */
+    DROP_DIGI_NO_PATH,       /**< Digipeater: destination-SSID trace decoded to no usable WIDEn-N path. */
+    DROP_DIGI_PATH_TOKEN,    /**< Digipeater: path carries qA or TCP (already gated, not for RF repeat). */
+    DROP_PERSISTENCE_MISSED, /**< CSMA/p-persistent roll missed MAX_TRANSMIT_RETRY_COUNT times in a row on an otherwise-clear channel; the modem's
+                                anti-starvation floor forced the transmission anyway (see Ax25TransmitCheck() in ax25.c). */
     DROP_REASON_COUNT
 } drop_reason_t;
 

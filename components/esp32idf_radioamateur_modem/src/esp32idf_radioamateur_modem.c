@@ -1,23 +1,21 @@
-/**
- * @file esp32idf_radioamateur_modem.c
- *
- * @author Emiliano Augusto Gonzalez ( lu3vea @ gmail . com)
- * @date 2026
- * @copyright GNU General Public License v3
- * @see https://github.com/hiperiondev/esp32idf_APRS
- *
- * @note
- * This is based on other projects:
- *     VP-Digi: https://github.com/sq8vps/vp-digi
- *     ESP32APRS: https://github.com/nakhonthai/ESP32APRS_Audio
- *     LibAPRS: https://github.com/markqvist/LibAPRS
- *
- *     please contact their authors for more information.
- *
- * @brief Public API implementation: modem lifecycle (init/deinit/reconfigure),
- * TNC2 string transmit path, RX frame callback dispatch and the receive service
- * task.
- */
+// @file esp32idf_radioamateur_modem.c
+//
+// @author Emiliano Augusto Gonzalez ( lu3vea @ gmail . com)
+// @date 2026
+// @copyright GNU General Public License v3
+// @see https://github.com/hiperiondev/esp32idf_APRS
+//
+// @note
+// This is based on other projects:
+//     VP-Digi: https://github.com/sq8vps/vp-digi
+//     ESP32APRS: https://github.com/nakhonthai/ESP32APRS_Audio
+//     LibAPRS: https://github.com/markqvist/LibAPRS
+//
+//     please contact their authors for more information.
+//
+// @brief Public API implementation: modem lifecycle (init/deinit/reconfigure),
+// TNC2 string transmit path, RX frame callback dispatch and the receive service
+// task.
 
 #include <inttypes.h>
 #include <stdio.h>
@@ -38,8 +36,8 @@
 
 static const char *TAG = "radiomodem";
 
-/* How often the service task polls the TX state machine and drains RX frames.
- * The effective period is never shorter than one FreeRTOS tick. */
+// How often the service task polls the TX state machine and drains RX frames.
+// The effective period is never shorter than one FreeRTOS tick.
 #define MODEM_SVC_PERIOD_MS 5
 
 static ax25_ctx_t s_ctx;
@@ -48,9 +46,9 @@ static modem_rx_cb_t s_rxCb = NULL;
 static void *s_rxCbCtx = NULL;
 static bool s_running = false;
 
-/* ------------------------------------------------------------------ */
-/* Service task                                                        */
-/* ------------------------------------------------------------------ */
+// ------------------------------------------------------------------
+// Service task
+// ------------------------------------------------------------------
 
 static void modem_service_task(void *arg) {
     (void)arg;
@@ -65,9 +63,9 @@ static void modem_service_task(void *arg) {
     for (;;) {
         AFSK_ServiceTx();
 
-        /* Throttled proof-of-life: confirms this task loop (and therefore
-         * Ax25TransmitCheck() right below) is actually being reached, without
-         * flooding the log. Remove once TX is confirmed working end to end. */
+        // Throttled proof-of-life: confirms this task loop (and therefore
+        // Ax25TransmitCheck() right below) is actually being reached, without
+        // flooding the log. Remove once TX is confirmed working end to end.
         // uint32_t now = (uint32_t)(esp_timer_get_time() / 1000);
         // if (now - lastHeartbeat >= 2000) {
         // lastHeartbeat = now;
@@ -91,16 +89,16 @@ static void modem_service_task(void *arg) {
             }
         }
 
-        /* MODEM_DELAY_TICKS, not pdMS_TO_TICKS: at CONFIG_FREERTOS_HZ=100
-         * this rounds up to one tick (10 ms) instead of collapsing to
-         * vTaskDelay(0), which would spin and starve IDLE. */
+        // MODEM_DELAY_TICKS, not pdMS_TO_TICKS: at CONFIG_FREERTOS_HZ=100
+        // this rounds up to one tick (10 ms) instead of collapsing to
+        // vTaskDelay(0), which would spin and starve IDLE.
         vTaskDelay(MODEM_DELAY_TICKS(MODEM_SVC_PERIOD_MS));
     }
 }
 
-/* ------------------------------------------------------------------ */
-/* Lifecycle                                                           */
-/* ------------------------------------------------------------------ */
+// ------------------------------------------------------------------
+// Lifecycle
+// ------------------------------------------------------------------
 
 void modem_set_rx_callback(modem_rx_cb_t cb, void *ctx) {
     s_rxCb = cb;
@@ -108,8 +106,8 @@ void modem_set_rx_callback(modem_rx_cb_t cb, void *ctx) {
 }
 
 void modem_set_modem(const modem_config_t *cfg) {
-    /* PTT pin is fixed at compile time (::MODEM_PTT_GPIO); only its active
-     * level is applied here. */
+    // PTT pin is fixed at compile time (::MODEM_PTT_GPIO); only its active
+    // level is applied here.
     AFSK_setPttActiveHigh(cfg->ptt_active_high);
 
     afskSetFullDuplex(cfg->full_duplex);
@@ -125,63 +123,59 @@ esp_err_t modem_init(const modem_config_t *cfg) {
 
     memset(&s_ctx, 0, sizeof(s_ctx));
 
-    /* Set the duplex mode before the hardware comes up so the ADC callback
-     * gate and Ax25TransmitCheck() agree from the very first sample. */
+    // Set the duplex mode before the hardware comes up so the ADC callback
+    // gate and Ax25TransmitCheck() agree from the very first sample.
     afskSetFullDuplex(cfg->full_duplex);
 
-    /* Must happen before AFSK_init(), since that is what configures the PTT
-     * pin's GPIO direction. The pin itself (::MODEM_PTT_GPIO) is fixed at
-     * compile time; only the active level is applied here. */
+    // Must happen before AFSK_init(), since that is what configures the PTT
+    // pin's GPIO direction. The pin itself (::MODEM_PTT_GPIO) is fixed at
+    // compile time; only the active level is applied here.
     AFSK_setPttActiveHigh(cfg->ptt_active_high);
 
     esp_err_t err = AFSK_init();
     if (err != ESP_OK)
         return err;
 
-    /*
-     * Calibrate every profile's DPLL against this board's real ADC/DAC clock
-     * ratio before the first ModemInit() runs (modem_set_modem() below is
-     * what triggers it). See ModemCalibrateSampleRate() for why: nominal
-     * MODEM_ADC_SAMPLERATE/MODEM_DAC_SAMPLERATE assumes both clocks hit
-     * their configured rates exactly, and they don't - the gap is a steady,
-     * repeatable bias, not thermal noise, so one measurement here is enough
-     * for the whole run. This is what turns the "residual DAC/ADC clock
-     * drift" the G3RUH stress test flags into a solved, calibrated-out
-     * quantity instead of something the DPLL has to fight indefinitely.
-     *
-     * The DAC side needs no live measurement - afskGetDacAlarmRate() already
-     * reports the timer's real rate, computed exactly from its configuration.
-     *
-     * The ADC side does need measuring, and the window matters more than it
-     * looks like it should. modem_measure_adc_rate() reads s_adcSamples,
-     * which adc_conv_done_cb() only increments once per completed
-     * MODEM_ADC_CONV_FRAME (128 samples) - see afsk.c. That means every
-     * measurement carries a start/end quantization error of up to one whole
-     * frame, and at 76800 Hz that is:
-     *
-     *      128 samples / (76800 Hz * window_s) = 0.001667 / window_s
-     *
-     * A 200 ms window gives ~0.83% of error, which is *larger* than the
-     * ~0.3-0.4% real ADC/DAC clock gap this exists to correct for. Applying
-     * that as a correction is not "slightly off," it is as likely to have the
-     * wrong sign as the right one, and PLL9600_LOCKED_TUNE=0.97 has just enough
-     * margin for the real ~0.38% bias and none to spare for an extra,
-     * wrong-signed one - a short window can push the G3RUH loss rate well
-     * above the uncorrected baseline. 5000 ms brings the quantization error
-     * down to ~0.033%, an order of magnitude below the signal being measured,
-     * at the cost of 5 extra seconds of boot time paid exactly once.
-     */
+    // Calibrate every profile's DPLL against this board's real ADC/DAC clock
+    // ratio before the first ModemInit() runs (modem_set_modem() below is
+    // what triggers it). See ModemCalibrateSampleRate() for why: nominal
+    // MODEM_ADC_SAMPLERATE/MODEM_DAC_SAMPLERATE assumes both clocks hit
+    // their configured rates exactly, and they don't - the gap is a steady,
+    // repeatable bias, not thermal noise, so one measurement here is enough
+    // for the whole run. This is what turns the "residual DAC/ADC clock
+    // drift" the G3RUH stress test flags into a solved, calibrated-out
+    // quantity instead of something the DPLL has to fight indefinitely.
+    //
+    // The DAC side needs no live measurement - afskGetDacAlarmRate() already
+    // reports the timer's real rate, computed exactly from its configuration.
+    //
+    // The ADC side does need measuring, and the window matters more than it
+    // looks like it should. modem_measure_adc_rate() reads s_adcSamples,
+    // which adc_conv_done_cb() only increments once per completed
+    // MODEM_ADC_CONV_FRAME (128 samples) - see afsk.c. That means every
+    // measurement carries a start/end quantization error of up to one whole
+    // frame, and at 76800 Hz that is:
+    //
+    //      128 samples / (76800 Hz * window_s) = 0.001667 / window_s
+    //
+    // A 200 ms window gives ~0.83% of error, which is *larger* than the
+    // ~0.3-0.4% real ADC/DAC clock gap this exists to correct for. Applying
+    // that as a correction is not "slightly off," it is as likely to have the
+    // wrong sign as the right one, and PLL9600_LOCKED_TUNE=0.97 has just enough
+    // margin for the real ~0.38% bias and none to spare for an extra,
+    // wrong-signed one - a short window can push the G3RUH loss rate well
+    // above the uncorrected baseline. 5000 ms brings the quantization error
+    // down to ~0.033%, an order of magnitude below the signal being measured,
+    // at the cost of 5 extra seconds of boot time paid exactly once.
     ModemCalibrateSampleRate((float)modem_measure_adc_rate(5000), afskGetDacAlarmRate());
 
     modem_set_modem(cfg);
 
-    /* The RX callback decodes into an AX25Msg and renders a TNC2 string, both
-     * of which are a few hundred bytes of stack on top of any printf. */
-    /*
-     * Pinned, not free-floating. This task is the consumer end of the AX.25 RX
-     * ring whose producer (Ax25BitParse(), from afsk_rx_task) is pinned to
-     * MODEM_RX_TASK_CORE.
-     */
+    // The RX callback decodes into an AX25Msg and renders a TNC2 string, both
+    // of which are a few hundred bytes of stack on top of any printf.
+    // Pinned, not free-floating. This task is the consumer end of the AX.25 RX
+    // ring whose producer (Ax25BitParse(), from afsk_rx_task) is pinned to
+    // MODEM_RX_TASK_CORE.
 #if MODEM_RX_TASK_CORE >= 0
     if (xTaskCreatePinnedToCore(modem_service_task, "modem_svc", 6144, NULL, 5, &s_svcTask, MODEM_RX_TASK_CORE) != pdPASS) {
 #else
@@ -201,6 +195,10 @@ uint8_t modem_tx_queue_depth(void) {
     return Ax25TxFramesPending();
 }
 
+uint32_t modem_persistence_missed_count(void) {
+    return Ax25GetPersistenceMissedCount();
+}
+
 uint32_t modem_measure_adc_rate(uint32_t ms) {
     uint32_t start = afskGetAdcSampleCount();
     int64_t t0 = esp_timer_get_time();
@@ -214,13 +212,13 @@ uint32_t modem_measure_adc_rate(uint32_t ms) {
     return (uint32_t)(((uint64_t)(end - start) * 1000000ULL) / (uint64_t)dt);
 }
 
-/* ------------------------------------------------------------------ */
-/* Frame helpers                                                       */
-/* ------------------------------------------------------------------ */
+// ------------------------------------------------------------------
+// Frame helpers
+// ------------------------------------------------------------------
 
 int modem_build_frame_tnc2(const char *tnc2, uint8_t *out, size_t out_len) {
-    /* ax25_encode() writes into the string it is given (it uses strtok on the
-     * digipeater path), so work on a scratch copy. */
+    // ax25_encode() writes into the string it is given (it uses strtok on the
+    // digipeater path), so work on a scratch copy.
     char scratch[AX25_FRAME_MAX_SIZE + 1];
     ax25_frame_t frame;
 

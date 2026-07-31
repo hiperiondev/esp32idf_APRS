@@ -1,23 +1,21 @@
-/**
- * @file igate.c
- *
- * @author Emiliano Augusto Gonzalez ( lu3vea @ gmail . com)
- * @date 2026
- * @copyright GNU General Public License v3
- * @see https://github.com/hiperiondev/esp32idf_APRS
- *
- * @note
- * This is based on other projects:
- *     VP-Digi: https://github.com/sq8vps/vp-digi
- *     ESP32APRS: https://github.com/nakhonthai/ESP32APRS_Audio
- *     LibAPRS: https://github.com/markqvist/LibAPRS
- *
- *     please contact their authors for more information.
- *
- * @brief APRS-IS Internet Gateway implementation: TCP client task with login and
- * auto-reconnect, RF->INET gatewaying with filtering and duplicate suppression,
- * INET->RF relaying, and gateway traffic statistics.
- */
+// @file igate.c
+//
+// @author Emiliano Augusto Gonzalez ( lu3vea @ gmail . com)
+// @date 2026
+// @copyright GNU General Public License v3
+// @see https://github.com/hiperiondev/esp32idf_APRS
+//
+// @note
+// This is based on other projects:
+//     VP-Digi: https://github.com/sq8vps/vp-digi
+//     ESP32APRS: https://github.com/nakhonthai/ESP32APRS_Audio
+//     LibAPRS: https://github.com/markqvist/LibAPRS
+//
+//     please contact their authors for more information.
+//
+// @brief APRS-IS Internet Gateway implementation: TCP client task with login and
+// auto-reconnect, RF->INET gatewaying with filtering and duplicate suppression,
+// INET->RF relaying, and gateway traffic statistics.
 
 #include <errno.h>
 #include <netdb.h>
@@ -143,6 +141,8 @@ const char *igate_drop_reason_name(drop_reason_t reason) {
             return "digi: no usable path";
         case DROP_DIGI_PATH_TOKEN:
             return "digi: qA/TCP path token";
+        case DROP_PERSISTENCE_MISSED:
+            return "persistence check missed";
         case DROP_REASON_COUNT:
             break;
     }
@@ -162,16 +162,14 @@ bool igate_is_connected(void) {
 // ---------------------------------------------------------------------------
 // Duplicate detection
 // ---------------------------------------------------------------------------
-/**
- * @brief Build a 16-byte dedup key for a decoded frame.
- *
- * Seeds the key with the source callsign, source SSID and payload length,
- * then mixes in two CRC-CCITT digests of the *entire* info field - one
- * computed forward, one computed backward - so that any byte anywhere in
- * the payload (not just an early prefix) changes the resulting hash. Two
- * frames only produce the same hash if they genuinely share source,
- * length, and byte-for-byte payload content.
- */
+// @brief Build a 16-byte dedup key for a decoded frame.
+//
+// Seeds the key with the source callsign, source SSID and payload length,
+// then mixes in two CRC-CCITT digests of the *entire* info field - one
+// computed forward, one computed backward - so that any byte anywhere in
+// the payload (not just an early prefix) changes the resulting hash. Two
+// frames only produce the same hash if they genuinely share source,
+// length, and byte-for-byte payload content.
 static void packetHash(ax25_msg_t *packet, char *hash) {
     int n = snprintf(hash, 16, "%s%d%d", packet->src.call, packet->src.ssid, (int)packet->len);
     if (n < 0)

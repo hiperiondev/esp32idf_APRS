@@ -1,24 +1,22 @@
-/**
- * @file aprs_service.c
- *
- * @author Emiliano Augusto Gonzalez ( lu3vea @ gmail . com)
- * @date 2026
- * @copyright GNU General Public License v3
- * @see https://github.com/hiperiondev/esp32idf_APRS
- *
- * @note
- * This is based on other projects:
- *     VP-Digi: https://github.com/sq8vps/vp-digi
- *     ESP32APRS: https://github.com/nakhonthai/ESP32APRS_Audio
- *     LibAPRS: https://github.com/markqvist/LibAPRS
- *
- *     please contact their authors for more information.
- *
- * @brief APRS application layer: maps g_config onto the modem configuration,
- * installs the modem RX callback that feeds the digipeater, IGate, message,
- * lastheard and trafficlog components, provides the TNC2 transmit path and runs
- * the periodic service tick.
- */
+// @file aprs_service.c
+//
+// @author Emiliano Augusto Gonzalez ( lu3vea @ gmail . com)
+// @date 2026
+// @copyright GNU General Public License v3
+// @see https://github.com/hiperiondev/esp32idf_APRS
+//
+// @note
+// This is based on other projects:
+//     VP-Digi: https://github.com/sq8vps/vp-digi
+//     ESP32APRS: https://github.com/nakhonthai/ESP32APRS_Audio
+//     LibAPRS: https://github.com/markqvist/LibAPRS
+//
+//     please contact their authors for more information.
+//
+// @brief APRS application layer: maps g_config onto the modem configuration,
+// installs the modem RX callback that feeds the digipeater, IGate, message,
+// lastheard and trafficlog components, provides the TNC2 transmit path and runs
+// the periodic service tick.
 
 #include <stdatomic.h>
 #include <stdio.h>
@@ -375,10 +373,8 @@ static int ax25ToTnc2(const ax25_msg_t *m, char *out, size_t outMax) {
     return (int)strlen(out);
 }
 
-/**
- * @brief Single dispatch point for digipeater / igate / message, fed by
- * on_rx_frame() below for every decoded RX frame.
- */
+// @brief Single dispatch point for digipeater / igate / message, fed by
+// on_rx_frame() below for every decoded RX frame.
 static void aprs_msg_callback(ax25_msg_t *msg) {
     char tnc2[400];
     ax25ToTnc2(msg, tnc2, sizeof(tnc2));
@@ -744,8 +740,24 @@ static void messageTxHandler(const char *packet, size_t len, uint8_t channels) {
 // The modem component has no RF power-switch output, so there is no
 // rf_power/band config to carry.
 
+// Cumulative modem_persistence_missed_count() value already reported to
+// igate_note_drop(), so serviceTickTask() can forward only the new events on
+// each 1 Hz pass instead of re-reporting the whole running total.
+static uint32_t s_persistenceMissedReported = 0;
+
 static void serviceTickTask(void *arg) {
     while (1) {
+        // Surface every CSMA/p-persistent anti-starvation event (the modem
+        // forcing a transmission after MAX_TRANSMIT_RETRY_COUNT missed
+        // persistence rolls on a clear channel) into the dashboard Drop
+        // Breakdown table. The counter lives in the modem component and only
+        // grows, so report the delta since the last pass.
+        uint32_t persistenceMissedNow = modem_persistence_missed_count();
+        while (s_persistenceMissedReported != persistenceMissedNow) {
+            igate_note_drop(DROP_PERSISTENCE_MISSED);
+            s_persistenceMissedReported++;
+        }
+
         // 1 Hz weather sensor refresh, folded in here instead of running its
         // own wx_sensor_task (saves that task's stack). weather_start() has
         // already run by the time this task is created, so the shared container

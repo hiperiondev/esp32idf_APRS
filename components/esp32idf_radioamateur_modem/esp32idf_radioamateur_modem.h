@@ -188,6 +188,20 @@ void modem_format_tnc2(const ax25_msg_t *msg, char *out, size_t out_len);
 uint8_t modem_tx_queue_depth(void);
 
 /**
+ * @brief Count how many times the CSMA/p-persistent anti-starvation floor
+ *        has forced a transmission since boot.
+ *
+ * Every time the persistence roll misses MAX_TRANSMIT_RETRY_COUNT times in
+ * a row on an otherwise-clear channel, the modem forces the transmission
+ * rather than holding the frame indefinitely; this is the cumulative count
+ * of that event, for callers that want to surface it as a stat (e.g. the
+ * dashboard Drop Breakdown table).
+ * @return Total number of forced transmissions caused by missed persistence
+ *         rolls since boot.
+ */
+uint32_t modem_persistence_missed_count(void);
+
+/**
  * @brief Measure the real ADC sampling rate achieved by the hardware.
  *
  * The ESP32 SAR-ADC in DMA mode does not necessarily run at exactly the
