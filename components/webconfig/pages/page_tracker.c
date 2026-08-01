@@ -38,8 +38,8 @@ esp_err_t page_tracker_get(httpd_req_t *req) {
     web_field_checkbox(req, TR_F_BEACON_VIA_RF, "trkPos2rf", g_config.trk_loc2rf);
     web_field_checkbox(req, TR_F_BEACON_VIA_INTERNET, "trkPos2inet", g_config.trk_loc2inet);
     web_field_checkbox(req, TR_F_ADD_TIMESTAMP, "trkTime", g_config.trk_timestamp);
-    // Fixed beacon period, in seconds: the interval beaconTask() arms the
-    // tracker beacon with (clampInterval(g_config.trk_interval) in beacon.c).
+    // Fixed beacon period, in seconds: the interval the tracker beacon is armed
+    // with in beacon.c, bounded there by sched_clamp_interval().
     web_field_int(req, TR_F_FIXED_INTERVAL_S, "trkINV", g_config.trk_interval);
     web_fieldset_close(req);
 

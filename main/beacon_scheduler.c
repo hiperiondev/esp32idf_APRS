@@ -45,7 +45,7 @@ static const char *TAG = "beacon_sched";
 // tree is the position/WX/telemetry TX path: buildPositionPacket() /
 // build_tlm_data_packet() / the WX token builder each run several snprintf()s
 // including newlib's float-capable *printf (a much deeper call tree than
-// integer formatting), then lat_lon_to_aprs + build_path_suffix ->
+// integer formatting), then lat_lon_to_aprs + aprs_path_build_suffix ->
 // aprs_service_send_tnc2 -> modem_send_tnc2 -> modem_build_frame_tnc2 ->
 // ax25_encode/hdlcFrame, stacking several ~300-450 byte buffers per level. When
 // they had separate tasks these were sized independently (WX 14336, the

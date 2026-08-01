@@ -85,8 +85,11 @@ Presets de ruta y máscaras de bits
 Cada servicio (tracker / igate / digi / wx / …) almacena una **máscara de bits**,
 no una cadena de ruta. El bit *N* selecciona ``g_config.path[N]``, uno de los
 cuatro presets de texto libre editados en la página *System*.
-``buildPathSuffix()`` concatena cada ranura seleccionada no vacía; las ranuras
-seleccionadas-pero-vacías se saltan.
+``aprs_path_build_suffix()`` concatena cada ranura seleccionada no vacía; las
+ranuras seleccionadas-pero-vacías se saltan. Es compartida por todos los
+servicios que originan tráfico y aplica el límite AX.25 de 8 vías en el momento
+de transmitir, de modo que una configuración que llegó al dispositivo sin pasar
+por un formulario web no puede poner una ruta demasiado larga en el aire.
 
 Las banderas de activación hacen doble función como valores de máscara por
 defecto:

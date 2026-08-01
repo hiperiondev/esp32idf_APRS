@@ -28,16 +28,17 @@
 #include <time.h>
 
 #include "esp_log.h"
-#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
 #include "app_config.h"
 #include "aprs_coord.h"
+#include "aprs_path.h" // aprs_path_build_suffix()
 #include "aprs_service.h"
 #include "beacon.h"
 #include "beacon_scheduler.h" // beacon_scheduler_jitter()
 #include "igate.h"
+#include "sched_time.h" // sched_mono_seconds() / sched_clamp_interval()
 
 static const char *TAG = "beacon";
 
@@ -47,64 +48,6 @@ static const char *TAG = "beacon";
 
 #define BEACON_MIN_INTERVAL_S     30   // sanity floor, in case an *_interval is set very low
 #define BEACON_DEFAULT_INTERVAL_S 1800 // 30 min, used when *_interval == 0
-
-// g_config.trk_path / igate_path / digi_path are a BITMASK over the four
-// user-defined path presets in g_config.path[0..3] (see the "Path (bitmask)"
-// field on the Tracker/IGate/Digipeater webconfig pages, TR_F_PATH_BITMASK).
-// Bit N selects g_config.path[N]; any set bit whose slot is empty simply
-// contributes nothing. Multiple bits => multiple presets, comma-joined.
-//
-// NOTE: this replaces an earlier "-N" / single-index scheme that misread the
-// bitmask as a small integer and appended it directly to the destination
-// call as an SSID (e.g. "APE32L-1"). That's not a path at all - it left
-// beacons with no real digipeater path (or a bogus destination SSID),
-// silently trimmed on-air with no path, so beacons could reach the local
-// IGate but consistently failed to be digipeated/heard further out and
-// looked "broken" from anywhere but direct RF earshot.
-// pathPreset is a snapshot of g_config.path[0..3] taken under app_config_lock()
-// by the caller, so this never touches g_config directly.
-static void buildPathSuffix(uint8_t pathBitmask, const char pathPreset[4][72], char *out, size_t outMax) {
-    out[0] = 0;
-    if (pathBitmask == 0 || outMax == 0)
-        return;
-
-    size_t used = 0;
-    uint8_t hopsUsed = 0;
-    for (int bit = 0; bit < 4; bit++) {
-        if (!(pathBitmask & (1 << bit)))
-            continue;
-        if (!pathPreset[bit][0])
-            continue; // bit selected but that preset slot isn't configured
-
-        // Belt-and-suspenders AX.25 8-via enforcement: the webconfig POST
-        // handlers already clamp pathBitmask at save time (see
-        // app_config_path_mask_clamp()), but config can also arrive here via
-        // a stale NVS load or an imported backup that predates that check, so
-        // refuse to emit more than 8 total hops regardless of how the
-        // bitmask got set. Each preset slot may itself list several
-        // comma-separated hops, so count those too rather than just the
-        // number of set bits.
-        uint8_t presetHops = 1;
-        for (const char *p = pathPreset[bit]; *p; p++)
-            if (*p == ',')
-                presetHops++;
-
-        if (hopsUsed + presetHops > 8) {
-            ESP_LOGW(TAG, "path bitmask 0x%02X exceeds AX.25 8-hop limit, truncating at preset %d", pathBitmask, bit + 1);
-            break; // stop adding more presets, keep what we already built
-        }
-
-        int n = snprintf(out + used, outMax - used, ",%s", pathPreset[bit]);
-        if (n < 0)
-            break;
-        if ((size_t)n >= outMax - used) {
-            used = outMax - 1; // truncated - stop here, out is still valid/terminated
-            break;
-        }
-        used += (size_t)n;
-        hopsUsed += presetHops;
-    }
-}
 
 // Generic parameters for one station's fixed-position beacon, filled in by
 // each of the small per-service wrappers below (tracker / igate / digi) so
@@ -192,7 +135,7 @@ static int buildPositionPacket(const beacon_params_t *p, char *out, size_t outMa
         snprintf(callField, sizeof(callField), "%s", p->call);
 
     char path[80];
-    buildPathSuffix(p->pathSel, p->pathPreset, path, sizeof(path));
+    aprs_path_build_suffix(p->pathSel, p->pathPreset, path, sizeof(path));
 
     // symbol = 2 chars: [0] symbol table ('/' primary or '\' alternate), [1] symbol code.
     // Falls back to a plain "car" symbol on the primary table if unset.
@@ -268,19 +211,6 @@ static int buildPositionPacket(const beacon_params_t *p, char *out, size_t outMa
     return n;
 }
 
-static uint32_t clampInterval(uint32_t interval) {
-    if (interval < BEACON_MIN_INTERVAL_S)
-        return interval == 0 ? BEACON_DEFAULT_INTERVAL_S : BEACON_MIN_INTERVAL_S;
-    return interval;
-}
-
-// Monotonic seconds since boot - used for beacon scheduling so an NTP step of
-// the wall clock never disturbs the transmit cadence (same policy bulletins.c
-// already uses).
-static int64_t mono_seconds(void) {
-    return (int64_t)(esp_timer_get_time() / 1000000);
-}
-
 // Generic parameters for one station's status-report beacon (APRS101 ch.16).
 // Filled in by each per-service wrapper below (tracker / igate / digi) from a
 // snapshot of that page's own status text/interval, following the same
@@ -310,7 +240,7 @@ static int buildStatusPacket(const status_params_t *p, char *out, size_t outMax)
         snprintf(callField, sizeof(callField), "%s", p->call);
 
     char path[80];
-    buildPathSuffix(p->pathSel, p->pathPreset, path, sizeof(path));
+    aprs_path_build_suffix(p->pathSel, p->pathPreset, path, sizeof(path));
 
     char infoField[STATUS_SIZE + 1]; // '>' + status text + NUL
     snprintf(infoField, sizeof(infoField), ">%s", p->statusText);
@@ -350,7 +280,7 @@ static uint32_t trackerStatusService(void) {
         return 5;
     }
 
-    int64_t now = mono_seconds();
+    int64_t now = sched_mono_seconds();
     if (now >= s_trk_sts_next_due) {
         status_params_t p = { 0 };
         app_config_lock();
@@ -381,10 +311,11 @@ static uint32_t trackerStatusService(void) {
             }
         }
 
-        s_trk_sts_next_due = now + (int64_t)beacon_scheduler_jitter(clampInterval(g_config.trk_sts_interval));
+        s_trk_sts_next_due =
+            now + (int64_t)beacon_scheduler_jitter(sched_clamp_interval(g_config.trk_sts_interval, BEACON_MIN_INTERVAL_S, BEACON_DEFAULT_INTERVAL_S));
     }
 
-    int64_t rem = s_trk_sts_next_due - mono_seconds();
+    int64_t rem = s_trk_sts_next_due - sched_mono_seconds();
     if (rem < 1)
         rem = 1;
     return (uint32_t)rem;
@@ -396,7 +327,7 @@ static uint32_t igateStatusService(void) {
         return 5;
     }
 
-    int64_t now = mono_seconds();
+    int64_t now = sched_mono_seconds();
     if (now >= s_igate_sts_next_due) {
         status_params_t p = { 0 };
         app_config_lock();
@@ -426,10 +357,11 @@ static uint32_t igateStatusService(void) {
             }
         }
 
-        s_igate_sts_next_due = now + (int64_t)beacon_scheduler_jitter(clampInterval(g_config.igate_sts_interval));
+        s_igate_sts_next_due =
+            now + (int64_t)beacon_scheduler_jitter(sched_clamp_interval(g_config.igate_sts_interval, BEACON_MIN_INTERVAL_S, BEACON_DEFAULT_INTERVAL_S));
     }
 
-    int64_t rem = s_igate_sts_next_due - mono_seconds();
+    int64_t rem = s_igate_sts_next_due - sched_mono_seconds();
     if (rem < 1)
         rem = 1;
     return (uint32_t)rem;
@@ -441,7 +373,7 @@ static uint32_t digiStatusService(void) {
         return 5;
     }
 
-    int64_t now = mono_seconds();
+    int64_t now = sched_mono_seconds();
     if (now >= s_digi_sts_next_due) {
         status_params_t p = { 0 };
         app_config_lock();
@@ -472,10 +404,11 @@ static uint32_t digiStatusService(void) {
             }
         }
 
-        s_digi_sts_next_due = now + (int64_t)beacon_scheduler_jitter(clampInterval(g_config.digi_sts_interval));
+        s_digi_sts_next_due =
+            now + (int64_t)beacon_scheduler_jitter(sched_clamp_interval(g_config.digi_sts_interval, BEACON_MIN_INTERVAL_S, BEACON_DEFAULT_INTERVAL_S));
     }
 
-    int64_t rem = s_digi_sts_next_due - mono_seconds();
+    int64_t rem = s_digi_sts_next_due - sched_mono_seconds();
     if (rem < 1)
         rem = 1;
     return (uint32_t)rem;
@@ -485,21 +418,20 @@ static uint32_t digiStatusService(void) {
 // Tracker beacon (Tracker web admin page: g_config.trk_*)
 // ---------------------------------------------------------------------------
 // Per-beacon monotonic "next due" timestamp (seconds). 0 = due now, so an
-// enabled beacon transmits once on the first pass after start - exactly like
-// the old per-task loop, which sent immediately then slept the interval.
+// enabled beacon transmits once on the first pass after start and only then
+// begins counting out its interval.
 static int64_t s_trk_next_due = 0;
 
 // One serviced pass of the tracker beacon. Called by the shared beacon
 // scheduler (beacon_scheduler.c) via beacon_service(); returns the number of
-// seconds until this beacon next wants servicing. The body between the
-// enable-check and the "next due" update is byte-for-byte the old task body.
+// seconds until this beacon next wants servicing.
 static uint32_t trackerBeaconService(void) {
     if (!g_config.trk_en || (!g_config.trk_loc2rf && !g_config.trk_loc2inet)) {
-        s_trk_next_due = 0; // reset so (re-)enabling fires an immediate TX, as the old 5 s idle loop did
-        return 5;           // idle re-check cadence (was vTaskDelay(5000))
+        s_trk_next_due = 0; // reset so (re-)enabling the beacon fires an immediate TX
+        return 5;           // idle re-check cadence while the beacon is off
     }
 
-    int64_t now = mono_seconds();
+    int64_t now = sched_mono_seconds();
     if (now >= s_trk_next_due) {
         beacon_params_t p = { 0 }; // zero-init: Tracker never sets phg*, so phgEnable must default false
         app_config_lock();
@@ -547,10 +479,10 @@ static uint32_t trackerBeaconService(void) {
             ESP_LOGW(TAG, "Tracker beacon not built - no callsign configured (set Tracker or APRS callsign), or the line did not fit; skipping");
         }
 
-        s_trk_next_due = now + (int64_t)beacon_scheduler_jitter(clampInterval(g_config.trk_interval));
+        s_trk_next_due = now + (int64_t)beacon_scheduler_jitter(sched_clamp_interval(g_config.trk_interval, BEACON_MIN_INTERVAL_S, BEACON_DEFAULT_INTERVAL_S));
     }
 
-    int64_t rem = s_trk_next_due - mono_seconds();
+    int64_t rem = s_trk_next_due - sched_mono_seconds();
     if (rem < 1)
         rem = 1;
     return (uint32_t)rem;
@@ -567,7 +499,7 @@ static uint32_t igateBeaconService(void) {
         return 5;
     }
 
-    int64_t now = mono_seconds();
+    int64_t now = sched_mono_seconds();
     if (now >= s_igate_next_due) {
         beacon_params_t p = { 0 };
         app_config_lock();
@@ -617,10 +549,11 @@ static uint32_t igateBeaconService(void) {
             ESP_LOGW(TAG, "IGate beacon not built - no APRS callsign configured, or the line did not fit; skipping");
         }
 
-        s_igate_next_due = now + (int64_t)beacon_scheduler_jitter(clampInterval(g_config.igate_interval));
+        s_igate_next_due =
+            now + (int64_t)beacon_scheduler_jitter(sched_clamp_interval(g_config.igate_interval, BEACON_MIN_INTERVAL_S, BEACON_DEFAULT_INTERVAL_S));
     }
 
-    int64_t rem = s_igate_next_due - mono_seconds();
+    int64_t rem = s_igate_next_due - sched_mono_seconds();
     if (rem < 1)
         rem = 1;
     return (uint32_t)rem;
@@ -637,7 +570,7 @@ static uint32_t digiBeaconService(void) {
         return 5;
     }
 
-    int64_t now = mono_seconds();
+    int64_t now = sched_mono_seconds();
     if (now >= s_digi_next_due) {
         beacon_params_t p = { 0 }; // zero-init: Digipeater never sets phg*, so phgEnable must default false
         app_config_lock();
@@ -683,10 +616,11 @@ static uint32_t digiBeaconService(void) {
             ESP_LOGW(TAG, "Digipeater beacon not built - no callsign configured (set Digipeater or APRS callsign), or the line did not fit; skipping");
         }
 
-        s_digi_next_due = now + (int64_t)beacon_scheduler_jitter(clampInterval(g_config.digi_interval));
+        s_digi_next_due =
+            now + (int64_t)beacon_scheduler_jitter(sched_clamp_interval(g_config.digi_interval, BEACON_MIN_INTERVAL_S, BEACON_DEFAULT_INTERVAL_S));
     }
 
-    int64_t rem = s_digi_next_due - mono_seconds();
+    int64_t rem = s_digi_next_due - sched_mono_seconds();
     if (rem < 1)
         rem = 1;
     return (uint32_t)rem;

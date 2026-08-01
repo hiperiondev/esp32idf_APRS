@@ -26,16 +26,17 @@
 #include <time.h>
 
 #include "esp_log.h"
-#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
 
 #include "app_config.h"
 #include "aprs_coord.h"
+#include "aprs_path.h" // aprs_path_build_suffix_from_config()
 #include "aprs_service.h"
 #include "beacon_scheduler.h" // beacon_scheduler_jitter()
 #include "igate.h"
+#include "sched_time.h" // sched_mono_seconds() / sched_clamp_interval()
 #include "sensors_local.h"
 #include "weather.h"
 #include "weather_telemetry.h"
@@ -294,34 +295,6 @@ static void weather_refresh_now(void) {
  * Encoding helpers
  * ------------------------------------------------------------------------- */
 
-// wx_path is a bitmask over g_config.path[0..3]; mirror beacon.c's scheme.
-static void build_path_suffix(uint8_t bitmask, char *out, size_t outMax) {
-    out[0] = 0;
-    if (bitmask == 0 || outMax == 0)
-        return;
-
-    // Snapshot the four presets under the config lock so a concurrent web save
-    // can't tear a preset string mid-read.
-    char pathPreset[4][72];
-    app_config_lock();
-    memcpy(pathPreset, g_config.path, sizeof(pathPreset));
-    app_config_unlock();
-
-    size_t used = 0;
-    for (int bit = 0; bit < 4; bit++) {
-        if (!(bitmask & (1 << bit)) || !pathPreset[bit][0])
-            continue;
-        int n = snprintf(out + used, outMax - used, ",%s", pathPreset[bit]);
-        if (n < 0)
-            break;
-        if ((size_t)n >= outMax - used) {
-            used = outMax - 1;
-            break;
-        }
-        used += (size_t)n;
-    }
-}
-
 // Resolved (post-averaging) view of one field for the encoder.
 typedef struct {
     bool present;
@@ -492,7 +465,7 @@ static int build_wx_packet(const wx_resolved_t r[WX_SENSOR_NUM], char *out, size
         snprintf(callField, sizeof(callField), "%s", call);
 
     char path[80];
-    build_path_suffix(cfg_path, path, sizeof(path));
+    aprs_path_build_suffix_from_config(cfg_path, path, sizeof(path));
 
     // Timestamp (DHM zulu for positioned/object, MDHM for positionless).
     // Reduce each field modulo its cycle so the formatter can prove a 2-digit
@@ -555,20 +528,6 @@ static int build_wx_packet(const wx_resolved_t r[WX_SENSOR_NUM], char *out, size
     return n;
 }
 
-static uint32_t clamp_interval(uint32_t s) {
-    if (s == 0)
-        return WX_DEFAULT_INTERVAL_S;
-    if (s < WX_MIN_INTERVAL_S)
-        return WX_MIN_INTERVAL_S;
-    return s;
-}
-
-// Monotonic seconds since boot - used for WX beacon scheduling so an NTP step
-// of the wall clock never disturbs the transmit cadence.
-static int64_t wx_mono_seconds(void) {
-    return (int64_t)(esp_timer_get_time() / 1000000);
-}
-
 /* -------------------------------------------------------------------------
  * Tasks
  * ------------------------------------------------------------------------- */
@@ -582,20 +541,21 @@ void weather_service_1hz(void) {
     weather_refresh_now();
 }
 
-// Monotonic "next due" timestamp (seconds); 0 = due now so an enabled WX
-// beacon transmits once on the first pass, exactly like the old task loop.
+// Monotonic "next due" timestamp (seconds); 0 = due now, so an enabled WX
+// beacon transmits once on the first pass and only then starts counting out
+// its interval.
 static int64_t s_wx_next_due = 0;
 
 // One serviced pass of the WX beacon. Called by the shared beacon scheduler
-// (beacon_scheduler.c) via the same contract as beacon_service(): transmit if
-// due, return seconds until next due. The body is the old task body verbatim.
+// (beacon_scheduler.c) under the same contract as beacon_service(): transmit if
+// due, return seconds until next due.
 uint32_t weather_beacon_service(void) {
     if (!g_config.wx_en || (!g_config.wx_2rf && !g_config.wx_2inet)) {
-        s_wx_next_due = 0; // reset so (re-)enabling fires an immediate TX, as the old 5 s idle loop did
-        return 5;          // idle re-check cadence (was vTaskDelay(5000))
+        s_wx_next_due = 0; // reset so (re-)enabling the beacon fires an immediate TX
+        return 5;          // idle re-check cadence while the beacon is off
     }
 
-    int64_t now = wx_mono_seconds();
+    int64_t now = sched_mono_seconds();
     if (now >= s_wx_next_due) {
         wx_resolved_t r[WX_SENSOR_NUM];
         resolve_fields(r);
@@ -623,10 +583,10 @@ uint32_t weather_beacon_service(void) {
         // instead of as a truncated or silently dropped RF packet.
         ESP_LOGD(TAG, "wx_beacon stack free: %u bytes", (unsigned)(uxTaskGetStackHighWaterMark(NULL) * sizeof(StackType_t)));
 
-        s_wx_next_due = now + (int64_t)beacon_scheduler_jitter(clamp_interval(g_config.wx_interval));
+        s_wx_next_due = now + (int64_t)beacon_scheduler_jitter(sched_clamp_interval(g_config.wx_interval, WX_MIN_INTERVAL_S, WX_DEFAULT_INTERVAL_S));
     }
 
-    int64_t rem = s_wx_next_due - wx_mono_seconds();
+    int64_t rem = s_wx_next_due - sched_mono_seconds();
     if (rem < 1)
         rem = 1;
     return (uint32_t)rem;

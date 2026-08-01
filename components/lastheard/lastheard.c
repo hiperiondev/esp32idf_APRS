@@ -27,6 +27,7 @@
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
+#include "json_escape.h" // json_escape()
 
 #define LASTHEARD_CAPACITY 30 // stations kept in RAM, most recent first
 #define LASTHEARD_CALL_LEN 12
@@ -91,23 +92,6 @@ void lastheard_add(const char *callsign, const char *path, bool via_rf, char sym
         s_count++;
 
     xSemaphoreGive(s_lock);
-}
-
-static size_t json_escape(const char *src, char *dst, size_t dst_size) {
-    size_t di = 0;
-    for (const char *p = src; *p && di + 2 < dst_size; p++) {
-        unsigned char c = (unsigned char)*p;
-        if (c == '"' || c == '\\') {
-            dst[di++] = '\\';
-            dst[di++] = (char)c;
-        } else if (c < 0x20) {
-            continue;
-        } else {
-            dst[di++] = (char)c;
-        }
-    }
-    dst[di] = 0;
-    return di;
 }
 
 size_t lastheard_dump_json(char *out, size_t out_size) {

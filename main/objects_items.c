@@ -25,13 +25,11 @@
 #include <math.h>
 #include <stddef.h>
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 #include <time.h>
 
 #include "cJSON.h"
 #include "esp_log.h"
-#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
@@ -40,8 +38,11 @@
 #include "aprs_coord.h"
 #include "aprs_service.h"
 #include "igate.h"
+#include "json_escape.h" // json_write_escaped()
+#include "json_store.h"  // shared JSON-file store scaffolding
 #include "objects_items.h"
-#include "storage.h" // storage_write_lock() / storage_generation()
+#include "sched_time.h" // sched_mono_seconds() / sched_clamp_interval()
+#include "storage.h"    // storage_write_lock() / storage_generation()
 
 static const char *TAG = "objitems";
 
@@ -75,68 +76,17 @@ static const char *TAG = "objitems";
 // Serializes LittleFS load/save between the web save handler and the TX pass.
 static SemaphoreHandle_t s_lock;
 
-static void ensure_lock(void) {
-    // Init happens single-threaded (objitems_start / first page load run well
-    // after the scheduler is up but never concurrently at the very first
-    // call), so a lazy create with no double-init guard is fine.
-    if (!s_lock)
-        s_lock = xSemaphoreCreateMutex();
-}
-
 static void lock(void) {
-    ensure_lock();
-    if (s_lock)
-        xSemaphoreTake(s_lock, portMAX_DELAY);
+    json_store_lock_take(&s_lock);
 }
 
 static void unlock(void) {
-    if (s_lock)
-        xSemaphoreGive(s_lock);
+    json_store_lock_give(&s_lock);
 }
 
 // ---------------------------------------------------------------------------
 // Persistence
 // ---------------------------------------------------------------------------
-
-// Emit a JSON string literal with the same minimal escaping app_config.c and
-// bulletins.c use, so text round-trips through cJSON_Parse on reload.
-static void write_json_string(FILE *f, const char *v) {
-    fputc('"', f);
-    if (v) {
-        for (const unsigned char *p = (const unsigned char *)v; *p; p++) {
-            unsigned char ch = *p;
-            switch (ch) {
-                case '"':
-                    fputs("\\\"", f);
-                    break;
-                case '\\':
-                    fputs("\\\\", f);
-                    break;
-                case '\b':
-                    fputs("\\b", f);
-                    break;
-                case '\f':
-                    fputs("\\f", f);
-                    break;
-                case '\n':
-                    fputs("\\n", f);
-                    break;
-                case '\r':
-                    fputs("\\r", f);
-                    break;
-                case '\t':
-                    fputs("\\t", f);
-                    break;
-                default:
-                    if (ch < 0x20)
-                        fprintf(f, "\\u%04x", ch);
-                    else
-                        fputc(ch, f);
-            }
-        }
-    }
-    fputc('"', f);
-}
 
 static void clamp_str(char *dst, const char *src, size_t max_chars) {
     if (!src)
@@ -166,36 +116,14 @@ static bool load_locked(objitems_t *out, bool *out_missing) {
         out->item[i].phg_height = 10;
     }
 
-    FILE *f = fopen(OBJITEMS_PATH, "r");
-    if (!f) {
-        ESP_LOGI(TAG, "%s not present - starting with empty objects/items", OBJITEMS_PATH);
-        if (out_missing)
+    cJSON *doc = NULL;
+    json_store_status_t st = json_store_read(OBJITEMS_PATH, TAG, "objects/items", &doc);
+    if (st != JSON_STORE_OK) {
+        // Only an absent file tells the caller to write the defaults out; an
+        // empty or unparseable one leaves the existing file alone so the
+        // operator can see it.
+        if (out_missing && st == JSON_STORE_MISSING)
             *out_missing = true;
-        return false;
-    }
-
-    fseek(f, 0, SEEK_END);
-    long sz = ftell(f);
-    fseek(f, 0, SEEK_SET);
-    if (sz <= 0) {
-        fclose(f);
-        return false;
-    }
-
-    char *buf = malloc((size_t)sz + 1);
-    if (!buf) {
-        fclose(f);
-        ESP_LOGW(TAG, "OOM reading objects/items");
-        return false;
-    }
-    size_t rd = fread(buf, 1, (size_t)sz, f);
-    buf[rd] = 0;
-    fclose(f);
-
-    cJSON *doc = cJSON_Parse(buf);
-    free(buf);
-    if (!doc) {
-        ESP_LOGW(TAG, "%s corrupt - ignoring", OBJITEMS_PATH);
         return false;
     }
 
@@ -404,30 +332,16 @@ static bool load_locked(objitems_t *out, bool *out_missing) {
 }
 
 static bool save_locked(const objitems_t *in) {
-    FILE *f = fopen(OBJITEMS_TMP_PATH, "w");
-    if (!f) {
-        ESP_LOGE(TAG, "open tmp for write failed");
+    // Entered with s_lock held (see objitems_save() below), which is what
+    // json_store_open_tmp() asserts before handing back a stream whose stdio
+    // buffer is already pinned.
+    FILE *f = json_store_open_tmp(OBJITEMS_TMP_PATH, TAG, s_lock);
+    if (!f)
         return false;
-    }
 
-    // Pin the stdio buffer before the first write. Otherwise newlib sizes it
-    // from st_blksize (esp_littlefs reports the 4096-byte flash block), so the
-    // first fputs() triggers a transient malloc(4096) that, on this device's
-    // small/fragmented heap, intermittently crashed the save through the
-    // unbuffered per-byte path (__swbuf_r) and a corrupted-length memset. See
-    // the fuller note in app_config_save(). Static + reused safely: every save
-    // runs under this module's lock() held across save_locked().
-    static char s_save_buf[512];
-    // INVARIANT: reusing this static buffer is only safe because save_locked()
-    // is only ever entered with s_lock held (see objitems_save() below). If
-    // that guarantee is ever weakened, this becomes a re-entrancy hazard -
-    // assert the coupling instead of relying on the comment alone.
-    configASSERT(xSemaphoreGetMutexHolder(s_lock) == xTaskGetCurrentTaskHandle());
-    setvbuf(f, s_save_buf, _IOFBF, sizeof(s_save_buf));
-
-    // Written token-by-token straight to the file (no cJSON tree, no second
-    // serialized buffer) - the same low-RAM approach app_config_save() and
-    // bulletins_save() use.
+    // Written token-by-token straight to the file: no cJSON tree and no second
+    // serialized buffer ever exist, so a save costs essentially only littlefs's
+    // own write buffer on top of the stream buffer above.
     fputs("{\"objitems\":[", f);
     for (int i = 0; i < OBJITEM_COUNT; i++) {
         const objitem_t *b = &in->item[i];
@@ -451,22 +365,22 @@ static bool save_locked(const objitems_t *in) {
         fprintf(f, "\"item\":%s,", b->is_item ? "true" : "false");
         fprintf(f, "\"act\":%s,", b->active ? "true" : "false");
         fputs("\"name\":", f);
-        write_json_string(f, name);
+        json_write_escaped(f, name);
         fprintf(f, ",\"lat\":%.6f", (double)b->lat);
         fprintf(f, ",\"lon\":%.6f", (double)b->lon);
         fputs(",\"sym\":", f);
-        write_json_string(f, sym);
+        json_write_escaped(f, sym);
         fprintf(f, ",\"crs\":%u", (unsigned)b->course);
         fprintf(f, ",\"spd\":%u", (unsigned)b->speed);
         fprintf(f, ",\"scope\":%d", (int)b->scope);
         fputs(",\"cmt\":", f);
-        write_json_string(f, cmt);
+        json_write_escaped(f, cmt);
         fprintf(f, ",\"atype\":%u", (unsigned)b->area_type);
         fprintf(f, ",\"acol\":%u", (unsigned)b->area_color);
         fprintf(f, ",\"alat\":%.4f", (double)b->area_lat_off);
         fprintf(f, ",\"alon\":%.4f", (double)b->area_lon_off);
         fputs(",\"sign\":", f);
-        write_json_string(f, sign);
+        json_write_escaped(f, sign);
         fprintf(f, ",\"dfEn\":%s", b->df_enable ? "true" : "false");
         fprintf(f, ",\"dfBrg\":%u", (unsigned)b->df_bearing);
         fprintf(f, ",\"dfN\":%u", (unsigned)b->df_nrq_n);
@@ -478,7 +392,7 @@ static bool save_locked(const objitems_t *in) {
         fprintf(f, ",\"tone\":%u", (unsigned)b->tone_tenths);
         fprintf(f, ",\"pmask\":%u", (unsigned)b->path_mask);
         fputs(",\"qru\":", f);
-        write_json_string(f, qru);
+        json_write_escaped(f, qru);
         fprintf(f, ",\"int_s\":%u", (unsigned)b->interval_s);
         fprintf(f, ",\"slow_s\":%u", (unsigned)b->slow_interval_s);
         fprintf(f, ",\"decay\":%u", (unsigned)b->decay_x10);
@@ -492,7 +406,7 @@ static bool save_locked(const objitems_t *in) {
             char phg[sizeof(b->phg)];
             clamp_str(phg, b->phg, sizeof(phg) - 1);
             fputs(",\"phg\":", f);
-            write_json_string(f, phg);
+            json_write_escaped(f, phg);
         }
         fprintf(f, ",\"compress\":%s", b->compress ? "true" : "false");
         fprintf(f, ",\"kill_left\":%u", (unsigned)b->kill_left);
@@ -500,28 +414,7 @@ static bool save_locked(const objitems_t *in) {
     }
     fputs("]}", f);
 
-    bool ok = (fflush(f) == 0) && (ferror(f) == 0);
-    if (fclose(f) != 0)
-        ok = false;
-    if (!ok) {
-        ESP_LOGE(TAG, "write error while saving objects/items");
-        remove(OBJITEMS_TMP_PATH);
-        return false;
-    }
-
-    // Single-step commit of the finished temp file over the live one: LittleFS
-    // replaces an existing destination as one metadata update, so objitems.json
-    // is at every instant either the previous file or the new one, never
-    // missing - which is exactly what unlinking the destination first would
-    // break. On failure the temp file is removed so a stale half-written
-    // objitems.json.tmp is not left behind on the filesystem.
-    if (rename(OBJITEMS_TMP_PATH, OBJITEMS_PATH) != 0) {
-        ESP_LOGE(TAG, "rename tmp->objitems failed");
-        remove(OBJITEMS_TMP_PATH);
-        return false;
-    }
-    ESP_LOGI(TAG, "Objects/Items saved");
-    return true;
+    return json_store_commit(f, OBJITEMS_TMP_PATH, OBJITEMS_PATH, TAG, "objects/items");
 }
 
 // Parsed copy of objitems.json, kept in RAM so a scheduler pass costs nothing
@@ -530,7 +423,7 @@ static bool save_locked(const objitems_t *in) {
 // each pass called objitems_load(), i.e. an fopen + fread + a full
 // cJSON_Parse of this file, on the order of ten thousand times a day. That
 // parse builds and tears down a tree of small heap nodes, the exact allocation
-// pattern app_config_save() was rewritten to stop doing; holding the result
+// pattern the streaming writers exist to avoid; holding the result
 // costs ~sizeof(objitems_t) of static RAM once and removes the churn.
 //
 // The cache is only allowed to answer when nothing can have changed underneath
@@ -989,11 +882,10 @@ static int objitem_paths(const objitem_t *b, char out[OBJITEM_PATH_PRESETS][72])
 // One decay step: multiply the current interval by the decay ratio, bounded by
 // the slow repeat rate. No-op unless a ratio >= 1.0 and a slow rate above the
 // initial rate are both configured (YAAC "Decay ratio" + "Slow repeat rate").
-static uint32_t clamp_interval(uint32_t interval); // defined below
 static uint32_t objitem_decay_step(uint32_t cur, const objitem_t *b) {
     if (b->decay_x10 < 10 || b->slow_interval_s == 0)
         return cur;
-    uint32_t initial = clamp_interval(b->interval_s);
+    uint32_t initial = sched_clamp_interval(b->interval_s, OBJITEM_MIN_INTERVAL_S, OBJITEM_DEFAULT_INTERVAL_S);
     if (b->slow_interval_s <= initial)
         return cur;
     uint64_t next = (uint64_t)cur * (uint64_t)b->decay_x10 / 10u;
@@ -1019,22 +911,6 @@ static uint32_t objitem_signature(const objitem_t *b) {
         h *= 16777619u;
     }
     return h;
-}
-
-// Bound a configured interval into [floor, ...], with 0 meaning "use the
-// default" (same policy as beacon.c/bulletins.c).
-static uint32_t clamp_interval(uint32_t interval) {
-    if (interval == 0)
-        return OBJITEM_DEFAULT_INTERVAL_S;
-    if (interval < OBJITEM_MIN_INTERVAL_S)
-        return OBJITEM_MIN_INTERVAL_S;
-    return interval;
-}
-
-// Monotonic seconds since boot - scheduling uses this so an NTP step of the
-// wall clock (used only for the Object timestamp) never disturbs cadence.
-static int64_t mono_seconds(void) {
-    return (int64_t)(esp_timer_get_time() / 1000000);
 }
 
 // Per-element next-due timestamps (monotonic seconds). 0 = due now, so every
@@ -1067,7 +943,7 @@ uint32_t objitems_service(void) {
     char src[16];
     resolve_source_call(src, sizeof(src));
 
-    int64_t now = mono_seconds();
+    int64_t now = sched_mono_seconds();
     int64_t soonest = now + OBJITEM_POLL_CAP_S;
     bool dirty = false; // set true if any kill sequence advanced -> persist once
 
@@ -1101,7 +977,7 @@ uint32_t objitems_service(void) {
 
         // Seed the live interval from the element's initial repeat rate.
         if (s_cur_interval[i] == 0)
-            s_cur_interval[i] = clamp_interval(b->interval_s);
+            s_cur_interval[i] = sched_clamp_interval(b->interval_s, OBJITEM_MIN_INTERVAL_S, OBJITEM_DEFAULT_INTERVAL_S);
 
         if (now >= s_next_due[i]) {
             // Resolve the proportional-path set and pick this cycle's path.
@@ -1141,7 +1017,7 @@ uint32_t objitems_service(void) {
 
             s_next_due[i] = now + (int64_t)s_cur_interval[i];
             vTaskDelay(pdMS_TO_TICKS(OBJITEM_INTER_TX_MS));
-            now = mono_seconds(); // account for the inter-TX gap
+            now = sched_mono_seconds(); // account for the inter-TX gap
         }
 
         if (s_next_due[i] < soonest)
@@ -1153,7 +1029,7 @@ uint32_t objitems_service(void) {
 
     ESP_LOGD(TAG, "objitems_service stack free: %u bytes", (unsigned)(uxTaskGetStackHighWaterMark(NULL) * sizeof(StackType_t)));
 
-    int64_t sleep_s = soonest - mono_seconds();
+    int64_t sleep_s = soonest - sched_mono_seconds();
     if (sleep_s < 1)
         sleep_s = 1;
     if (sleep_s > OBJITEM_POLL_CAP_S)
@@ -1162,9 +1038,9 @@ uint32_t objitems_service(void) {
 }
 
 void objitems_start(void) {
-    // No task creation here: the transmitter is driven by the shared beacon
-    // scheduler (beacon_scheduler_start()) via objitems_service(). Just make
-    // sure the LittleFS lock exists.
-    ensure_lock();
+    // The transmitter is driven by the shared beacon scheduler
+    // (beacon_scheduler_start()) via objitems_service(), so there is no task to
+    // create here - only the LittleFS lock to bring up.
+    json_store_lock_ensure(&s_lock);
     ESP_LOGI(TAG, "Objects/Items configured (per-element interval, default=%us; driven by beacon scheduler)", (unsigned)OBJITEM_DEFAULT_INTERVAL_S);
 }

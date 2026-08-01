@@ -3,6 +3,7 @@ idf_component_register(
         "lastheard.c"
     INCLUDE_DIRS
         "include"
+        "../../main/include"
     REQUIRES
         freertos
 )

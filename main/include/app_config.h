@@ -471,9 +471,10 @@ void app_config_unlock(void);
  * undercounts the real on-air path length. Empty/unselected slots contribute
  * 0. This is the single source of truth for "how many hops does this
  * bitmask produce", shared by the webconfig POST handlers (which enforce it
- * at save time via app_config_path_mask_clamp()) and beacon.c's
- * buildPathSuffix() (which enforces it again at transmit time), so the two
- * can never drift out of sync.
+ * at save time via app_config_path_mask_clamp()) and
+ * aprs_path_build_suffix() (which enforces it again at transmit time, for
+ * every service that originates traffic), so the two can never drift out of
+ * sync.
  *
  * @param pathBitmask Bitmask over @p pathPreset (bit N selects pathPreset[N]).
  * @param pathPreset  The four shared path presets, i.e. a copy of/reference

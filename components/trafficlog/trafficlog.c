@@ -29,17 +29,16 @@
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
+#include "json_escape.h" // json_escape()
 
 #define TRAFFICLOG_CAPACITY 64 // number of lines kept in RAM
-#define TRAFFICLOG_TEXT_LEN                                                                                                                                    \
-    144                       // shared buffer: holds EITHER the free-form "m" line
-                              // (trafficlog_add) OR the raw TNC2 packet
-                              // (trafficlog_add_pkt) - never both for the same entry,
-                              // so they share one buffer tagged by 'kind'. Was a
-                              // separate line[140] + packet[128] (268 B/entry, ~17 KB
-                              // of BSS across the ring) of which only one was ever used.
-#define TRAFFICLOG_DIR_LEN 12 // max chars for the direction/type tag
-#define TRAFFICLOG_DX_LEN  16 // max chars for the DX (callsign) field
+// Shared text buffer: an entry holds EITHER the free-form "m" line
+// (trafficlog_add) OR the raw TNC2 packet (trafficlog_add_pkt), never both, so
+// one buffer tagged by 'kind' serves both and the ring costs half of what two
+// dedicated fields would.
+#define TRAFFICLOG_TEXT_LEN 144
+#define TRAFFICLOG_DIR_LEN  12 // max chars for the direction/type tag
+#define TRAFFICLOG_DX_LEN   16 // max chars for the DX (callsign) field
 
 // Worst-case length of the reconstructed "m" field for a PKT entry,
 // "<dir>: <text>": DIR_LEN + strlen(": ") + TEXT_LEN, all buffers being
@@ -153,30 +152,6 @@ void trafficlog_add_pkt(const char *dir, const char *dx, const char *packet, int
     // the raw packet can share a single buffer.
 
     xSemaphoreGive(s_lock);
-}
-
-// Escapes a string for embedding inside a JSON string literal. Drops raw
-// control characters (except turning '\n' into a literal "\n") since these
-// are single log lines/packets and never need to preserve arbitrary binary
-// data.
-static size_t json_escape(const char *src, char *dst, size_t dst_size) {
-    size_t di = 0;
-    for (const char *p = src; *p && di + 2 < dst_size; p++) {
-        unsigned char c = (unsigned char)*p;
-        if (c == '"' || c == '\\') {
-            dst[di++] = '\\';
-            dst[di++] = (char)c;
-        } else if (c == '\n') {
-            dst[di++] = '\\';
-            dst[di++] = 'n';
-        } else if (c == '\r' || c < 0x20) {
-            continue;
-        } else {
-            dst[di++] = (char)c;
-        }
-    }
-    dst[di] = 0;
-    return di;
 }
 
 size_t trafficlog_dump_json(uint32_t since_seq, char *out, size_t out_size) {

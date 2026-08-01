@@ -27,20 +27,22 @@
 
 #include <math.h>
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 
 #include "cJSON.h"
 #include "esp_log.h"
-#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
 
 #include "app_config.h"
+#include "aprs_path.h" // aprs_path_build_suffix_from_config()
 #include "aprs_service.h"
 #include "beacon_scheduler.h" // beacon_scheduler_jitter()
 #include "igate.h"
+#include "json_escape.h" // json_write_escaped()
+#include "json_store.h"  // shared JSON-file store scaffolding
+#include "sched_time.h"  // sched_mono_seconds() / sched_clamp_interval()
 #include "sensors_local.h"
 #include "storage.h" // storage_write_lock() / storage_generation()
 #include "telemetry.h"
@@ -81,23 +83,12 @@ static SemaphoreHandle_t s_lock;
 // s_bit_present[] - same dual role app_config.c's per-module locks split
 // into two mutexes; here one is enough since neither critical section is
 // held across the other.
-static void ensure_lock(void) {
-    // main.c is single-threaded at init time (telemetry_start()/first page
-    // load happen well after the scheduler is up but never concurrently at
-    // the very first call), so a lazy create with no double-init guard is
-    // fine - same reasoning bulletins.c's ensure_lock() uses.
-    if (!s_lock)
-        s_lock = xSemaphoreCreateMutex();
+static void telemetry_lock(void) {
+    json_store_lock_take(&s_lock);
 }
 
-static void telemetry_lock(void) {
-    ensure_lock();
-    if (s_lock)
-        xSemaphoreTake(s_lock, portMAX_DELAY);
-}
 static void telemetry_unlock(void) {
-    if (s_lock)
-        xSemaphoreGive(s_lock);
+    json_store_lock_give(&s_lock);
 }
 
 /* -------------------------------------------------------------------------
@@ -138,83 +129,20 @@ void telemetry_config_set_defaults(telemetry_config_t *out) {
     }
 }
 
-// Emit a JSON string literal with the same minimal escaping app_config.c /
-// bulletins.c use, so text round-trips through cJSON_Parse on reload.
-static void write_json_string(FILE *f, const char *v) {
-    fputc('"', f);
-    if (v) {
-        for (const unsigned char *p = (const unsigned char *)v; *p; p++) {
-            unsigned char ch = *p;
-            switch (ch) {
-                case '"':
-                    fputs("\\\"", f);
-                    break;
-                case '\\':
-                    fputs("\\\\", f);
-                    break;
-                case '\b':
-                    fputs("\\b", f);
-                    break;
-                case '\f':
-                    fputs("\\f", f);
-                    break;
-                case '\n':
-                    fputs("\\n", f);
-                    break;
-                case '\r':
-                    fputs("\\r", f);
-                    break;
-                case '\t':
-                    fputs("\\t", f);
-                    break;
-                default:
-                    if (ch < 0x20)
-                        fprintf(f, "\\u%04x", ch);
-                    else
-                        fputc(ch, f);
-            }
-        }
-    }
-    fputc('"', f);
-}
-
 static bool load_locked(telemetry_config_t *out, bool *out_missing) {
     telemetry_config_set_defaults(out);
     if (out_missing)
         *out_missing = false;
 
-    FILE *f = fopen(TELEMETRY_PATH, "r");
-    if (!f) {
-        ESP_LOGI(TAG, "%s not present - starting with empty telemetry config", TELEMETRY_PATH);
-        if (out_missing)
+    cJSON *doc = NULL;
+    json_store_status_t st = json_store_read(TELEMETRY_PATH, TAG, "telemetry configuration", &doc);
+    if (st != JSON_STORE_OK) {
+        // An absent file and a zero-length one are both reported as "missing"
+        // so the caller writes a valid default out over either; a corrupt file
+        // is left alone for the operator to look at, and *out stays at the
+        // defaults set above.
+        if (out_missing && (st == JSON_STORE_MISSING || st == JSON_STORE_EMPTY))
             *out_missing = true;
-        return false;
-    }
-
-    fseek(f, 0, SEEK_END);
-    long sz = ftell(f);
-    fseek(f, 0, SEEK_SET);
-    if (sz <= 0) {
-        fclose(f);
-        if (out_missing)
-            *out_missing = true; // empty file: treat like missing so we (re)write a valid default
-        return false;
-    }
-
-    char *buf = malloc((size_t)sz + 1);
-    if (!buf) {
-        fclose(f);
-        ESP_LOGW(TAG, "OOM reading telemetry config");
-        return false;
-    }
-    size_t rd = fread(buf, 1, (size_t)sz, f);
-    buf[rd] = 0;
-    fclose(f);
-
-    cJSON *doc = cJSON_Parse(buf);
-    free(buf);
-    if (!doc) {
-        ESP_LOGW(TAG, "%s corrupt - using defaults", TELEMETRY_PATH);
         return false;
     }
 
@@ -388,28 +316,23 @@ static bool load_locked(telemetry_config_t *out, bool *out_missing) {
 }
 
 static bool save_locked(const telemetry_config_t *in) {
-    FILE *f = fopen(TELEMETRY_TMP_PATH, "w");
-    if (!f) {
-        ESP_LOGE(TAG, "open tmp for write failed");
+    // Entered with s_lock held (see telemetry_config_save() below), which is
+    // what json_store_open_tmp() asserts before handing back a stream whose
+    // stdio buffer is already pinned.
+    FILE *f = json_store_open_tmp(TELEMETRY_TMP_PATH, TAG, s_lock);
+    if (!f)
         return false;
-    }
 
-    // Pin the stdio buffer before the first write - see the fuller note in
-    // app_config_save()/bulletins.c's save_locked(): avoids a transient
-    // malloc(4096) on this device's small, fragmented heap.
-    static char s_save_buf[512];
-    setvbuf(f, s_save_buf, _IOFBF, sizeof(s_save_buf));
-
-    // Written token-by-token straight to the file (no cJSON tree, no second
-    // serialized buffer) - the same low-RAM approach app_config_save() and
-    // bulletins.c's save_locked() use.
+    // Written token-by-token straight to the file: no cJSON tree and no second
+    // serialized buffer ever exist, so a save costs essentially only littlefs's
+    // own write buffer on top of the stream buffer above.
     fputc('{', f);
     fprintf(f, "\"en\":%s,", in->en ? "true" : "false");
     fprintf(f, "\"tx2rf\":%s,", in->tx2rf ? "true" : "false");
     fprintf(f, "\"tx2inet\":%s,", in->tx2inet ? "true" : "false");
     fprintf(f, "\"ssid\":%u,", (unsigned)in->ssid);
     fputs("\"mycall\":", f);
-    write_json_string(f, in->mycall);
+    json_write_escaped(f, in->mycall);
     fprintf(f, ",\"path\":%u,", (unsigned)in->path);
     fprintf(f, "\"dataInv\":%u,", (unsigned)in->data_interval);
     fprintf(f, "\"infoInv\":%u,", (unsigned)in->info_interval);
@@ -418,13 +341,13 @@ static bool save_locked(const telemetry_config_t *in) {
     for (int i = 0; i < TLM_PARM_NUM; i++) {
         if (i)
             fputc(',', f);
-        write_json_string(f, in->PARM[i]);
+        json_write_escaped(f, in->PARM[i]);
     }
     fputs("],\"UNIT\":[", f);
     for (int i = 0; i < TLM_PARM_NUM; i++) {
         if (i)
             fputc(',', f);
-        write_json_string(f, in->UNIT[i]);
+        json_write_escaped(f, in->UNIT[i]);
     }
     fputs("],", f);
 
@@ -432,7 +355,7 @@ static bool save_locked(const telemetry_config_t *in) {
     for (int i = 0; i < TLM_BIT_NUM; i++) {
         if (i)
             fputc(',', f);
-        write_json_string(f, in->tlm_bit_name[i]);
+        json_write_escaped(f, in->tlm_bit_name[i]);
     }
     fputs("],\"bitCh\":[", f);
     for (int i = 0; i < TLM_BIT_NUM; i++)
@@ -448,14 +371,14 @@ static bool save_locked(const telemetry_config_t *in) {
     // ---- Report Parameters / definition-message toggles ----
     fprintf(f, "\"useStation\":%s,", in->use_station ? "true" : "false");
     fputs("\"rptPath\":", f);
-    write_json_string(f, in->report_path);
+    json_write_escaped(f, in->report_path);
     fputs(",\"tocall\":", f);
-    write_json_string(f, in->tocall);
+    json_write_escaped(f, in->tocall);
     fprintf(f, ",\"autoSeq\":%s,", in->auto_seq ? "true" : "false");
     fprintf(f, "\"fieldW\":%u,", (unsigned)in->field_width);
     fprintf(f, "\"omitTrail\":%s,", in->omit_trailing ? "true" : "false");
     fputs("\"trailCmt\":", f);
-    write_json_string(f, in->trail_comment);
+    json_write_escaped(f, in->trail_comment);
     fprintf(f, ",\"anaCount\":%u,", (unsigned)in->analog_count);
     fprintf(f, "\"digCount\":%u,", (unsigned)in->digital_count);
     fprintf(f, "\"genPARM\":%s,", in->gen_parm ? "true" : "false");
@@ -468,7 +391,7 @@ static bool save_locked(const telemetry_config_t *in) {
     fprintf(f, "\"digRF\":%s,", in->digital_tx2rf ? "true" : "false");
     fprintf(f, "\"digInet\":%s,", in->digital_tx2inet ? "true" : "false");
     fputs("\"projTitle\":", f);
-    write_json_string(f, in->proj_title);
+    json_write_escaped(f, in->proj_title);
     fputc(',', f);
 
     // ---- Analog channels A1-A5 (parallel arrays) ----
@@ -507,27 +430,7 @@ static bool save_locked(const telemetry_config_t *in) {
         fputs(i ? (in->bit_sense[i] ? ",true" : ",false") : (in->bit_sense[i] ? "true" : "false"), f);
     fputs("]}", f);
 
-    bool ok = (fflush(f) == 0) && (ferror(f) == 0);
-    if (fclose(f) != 0)
-        ok = false;
-    if (!ok) {
-        ESP_LOGE(TAG, "write error while saving telemetry config");
-        remove(TELEMETRY_TMP_PATH);
-        return false;
-    }
-
-    // Single-step commit of the finished temp file over the live one: LittleFS
-    // replaces an existing destination as one metadata update, so telemetry.json
-    // is at every instant either the previous file or the new one, never
-    // missing - which is exactly what unlinking the destination first would
-    // break. On failure the temp file is removed so a stale half-written
-    // telemetry.json.tmp is not left behind on the filesystem.
-    if (rename(TELEMETRY_TMP_PATH, TELEMETRY_PATH) != 0) {
-        ESP_LOGE(TAG, "rename tmp->telemetry.json failed");
-        remove(TELEMETRY_TMP_PATH);
-        return false;
-    }
-    ESP_LOGI(TAG, "Telemetry configuration saved");
+    return json_store_commit(f, TELEMETRY_TMP_PATH, TELEMETRY_PATH, TAG, "telemetry configuration");
     return true;
 }
 
@@ -543,7 +446,7 @@ static void update_mycall_cache_locked(const char *mycall) {
 // disabled - and each pass called telemetry_config_load(), i.e. an fopen +
 // fread + a full cJSON_Parse of this file, on the order of ten thousand times
 // a day. That parse builds and tears down a tree of small heap nodes, the
-// exact allocation pattern app_config_save() was rewritten to stop doing;
+// exact allocation pattern the streaming writers exist to avoid;
 // holding the result costs ~sizeof(telemetry_config_t) of static RAM once and
 // removes the churn. It is the same reasoning s_mycall_cache above already
 // applies to the callsign, extended to the whole structure.
@@ -734,35 +637,6 @@ static void telemetry_refresh_now(void) {
  * Encoding helpers
  * ------------------------------------------------------------------------- */
 
-// tlm0_path is a bitmask over g_config.path[0..3]; identical scheme to
-// weather.c's build_path_suffix() (kept as a private copy rather than a
-// shared helper, matching how beacon.c/bulletins.c/objects_items.c/weather.c
-// each keep their own).
-static void build_path_suffix(uint8_t bitmask, char *out, size_t outMax) {
-    out[0] = 0;
-    if (bitmask == 0 || outMax == 0)
-        return;
-
-    char pathPreset[4][72];
-    app_config_lock();
-    memcpy(pathPreset, g_config.path, sizeof(pathPreset));
-    app_config_unlock();
-
-    size_t used = 0;
-    for (int bit = 0; bit < 4; bit++) {
-        if (!(bitmask & (1 << bit)) || !pathPreset[bit][0])
-            continue;
-        int n = snprintf(out + used, outMax - used, ",%s", pathPreset[bit]);
-        if (n < 0)
-            break;
-        if ((size_t)n >= outMax - used) {
-            used = outMax - 1;
-            break;
-        }
-        used += (size_t)n;
-    }
-}
-
 static void call_field(const telemetry_config_t *s, char *out, size_t outMax) {
     if (s->ssid > 0)
         snprintf(out, outMax, "%s-%d", s->mycall, (int)s->ssid);
@@ -780,7 +654,8 @@ static void tlm_dest_field(const telemetry_config_t *s, char *out, size_t outMax
 // Digipeater path: prefers the free-text "Path (digipeaters)" picker from the
 // Report Parameters section (cfg->report_path, e.g. "WIDE1-1,WIDE2-1" - a
 // literal alias value copied from g_config.path[]). Falls back to the
-// Beacon-section path bitmask (build_path_suffix()) when report_path is empty,
+// Beacon-section path bitmask (aprs_path_build_suffix_from_config()) when
+// report_path is empty,
 // so configurations that only set the bitmask keep working.
 static void tlm_path_field(const telemetry_config_t *s, char *out, size_t outMax) {
     if (s->report_path[0]) {
@@ -789,7 +664,7 @@ static void tlm_path_field(const telemetry_config_t *s, char *out, size_t outMax
             out[0] = 0;
         return;
     }
-    build_path_suffix(s->path, out, outMax);
+    aprs_path_build_suffix_from_config(s->path, out, outMax);
 }
 
 // Formats one analog channel's RAW transmitted value per the "Analog Field
@@ -1108,27 +983,16 @@ static int build_tlm_bits_packet(const telemetry_config_t *s, char *out, size_t 
     return len;
 }
 
-static uint32_t clamp_interval(uint32_t s) {
-    if (s == 0)
-        return TLM_DEFAULT_INTERVAL_S;
-    if (s < TLM_MIN_INTERVAL_S)
-        return TLM_MIN_INTERVAL_S;
-    return s;
-}
-
+// Metadata (PARM/UNIT/EQNS/BITS) interval. Not sched_clamp_interval(): here 0
+// is a meaningful setting rather than "unset", because switching the metadata
+// reports off while the data reports keep running is a configuration an
+// operator legitimately wants.
 static uint32_t clamp_info_interval(uint32_t s) {
     if (s == 0)
         return 0; // 0 = metadata sending disabled (data report still sent)
     if (s < TLM_INFO_MIN_INTERVAL_S)
         return TLM_INFO_MIN_INTERVAL_S;
     return s;
-}
-
-// Monotonic seconds since boot - used for beacon scheduling so an NTP step
-// of the wall clock never disturbs the transmit cadence (same rationale as
-// weather.c's wx_mono_seconds()).
-static int64_t tlm_mono_seconds(void) {
-    return (int64_t)(esp_timer_get_time() / 1000000);
 }
 
 /* -------------------------------------------------------------------------
@@ -1179,7 +1043,7 @@ uint32_t telemetry_beacon_service(void) {
         return 5; // idle re-check cadence
     }
 
-    int64_t now = tlm_mono_seconds();
+    int64_t now = sched_mono_seconds();
 
     if (now >= s_data_next_due) {
         // Build one packet per leg: the Binary section routes each bit to
@@ -1213,7 +1077,7 @@ uint32_t telemetry_beacon_service(void) {
 
         ESP_LOGD(TAG, "tlm_beacon stack free: %u bytes", (unsigned)(uxTaskGetStackHighWaterMark(NULL) * sizeof(StackType_t)));
 
-        s_data_next_due = now + (int64_t)beacon_scheduler_jitter(clamp_interval(cfg.data_interval));
+        s_data_next_due = now + (int64_t)beacon_scheduler_jitter(sched_clamp_interval(cfg.data_interval, TLM_MIN_INTERVAL_S, TLM_DEFAULT_INTERVAL_S));
     }
 
     uint32_t info_iv = clamp_info_interval(cfg.info_interval);
@@ -1260,7 +1124,7 @@ void telemetry_start(void) {
     s_data_next_due = 0;
     s_info_next_due = 0;
 
-    ensure_lock();
+    json_store_lock_ensure(&s_lock);
 
     // Make sure /storage/telemetry.json exists from the very first boot,
     // same as bulletins_start() ensures for bulletins.json - the config page

@@ -21,13 +21,11 @@
  */
 
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 #include <time.h>
 
 #include "cJSON.h"
 #include "esp_log.h"
-#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
@@ -36,7 +34,10 @@
 #include "aprs_service.h"
 #include "bulletins.h"
 #include "igate.h"
-#include "storage.h" // storage_write_lock() / storage_generation()
+#include "json_escape.h" // json_write_escaped()
+#include "json_store.h"  // shared JSON-file store scaffolding
+#include "sched_time.h"  // sched_mono_seconds() / sched_clamp_interval()
+#include "storage.h"     // storage_write_lock() / storage_generation()
 
 static const char *TAG = "bulletins";
 
@@ -52,17 +53,17 @@ _Static_assert(BULLETIN_COUNT <= 9, "BULLETIN_COUNT must stay a single digit for
 // components, for consistency across the firmware.
 #define BULLETIN_DEST "APE32L"
 
-// Per-bulletin transmit interval. Each bulletin now carries its own
-// "Beacon interval (s)" (bulletin_t.interval_s). These bound it: a 0 (or
-// unset) interval falls back to the default, and anything below the floor is
-// raised to it - mirroring beacon.c's clampInterval() so bulletins can't be
-// configured to hammer RF/APRS-IS.
+// Per-bulletin transmit interval. Each bulletin carries its own "Beacon
+// interval (s)" (bulletin_t.interval_s); these are the bounds
+// sched_clamp_interval() applies to it, so a 0 (or unset) interval falls back
+// to the default and anything below the floor is raised to it, and bulletins
+// cannot be configured to hammer RF/APRS-IS.
 #define BULLETIN_MIN_INTERVAL_S     30   // sanity floor
 #define BULLETIN_DEFAULT_INTERVAL_S 1800 // 30 min, used when interval_s == 0
 
-// Upper bound on how long the task sleeps between wake-ups. Even when every
-// bulletin's interval is long, the task re-loads config at least this often so
-// web edits (interval/enable/text) and expiry are picked up promptly.
+// Upper bound on how long the scheduler waits between passes. Even when every
+// bulletin's interval is long, the config is re-read at least this often so web
+// edits (interval/enable/text) and expiry are picked up promptly.
 #define BULLETIN_POLL_CAP_S 60
 
 // One-time settle delay after boot before the first transmit pass, so WiFi/
@@ -80,23 +81,12 @@ _Static_assert(BULLETIN_COUNT <= 9, "BULLETIN_COUNT must stay a single digit for
 // Serializes LittleFS load/save between the web save handler and the TX task.
 static SemaphoreHandle_t s_lock;
 
-static void ensure_lock(void) {
-    // main.c is single-threaded at init time (bulletins_start / first page
-    // load happen well after the scheduler is up but never concurrently at the
-    // very first call), so a lazy create with no double-init guard is fine.
-    if (!s_lock)
-        s_lock = xSemaphoreCreateMutex();
-}
-
 static void lock(void) {
-    ensure_lock();
-    if (s_lock)
-        xSemaphoreTake(s_lock, portMAX_DELAY);
+    json_store_lock_take(&s_lock);
 }
 
 static void unlock(void) {
-    if (s_lock)
-        xSemaphoreGive(s_lock);
+    json_store_lock_give(&s_lock);
 }
 
 static bool clock_valid(void) {
@@ -107,81 +97,19 @@ static bool clock_valid(void) {
 // Persistence
 // ---------------------------------------------------------------------------
 
-// Emit a JSON string literal with the same minimal escaping app_config.c uses,
-// so text round-trips through cJSON_Parse on reload.
-static void write_json_string(FILE *f, const char *v) {
-    fputc('"', f);
-    if (v) {
-        for (const unsigned char *p = (const unsigned char *)v; *p; p++) {
-            unsigned char ch = *p;
-            switch (ch) {
-                case '"':
-                    fputs("\\\"", f);
-                    break;
-                case '\\':
-                    fputs("\\\\", f);
-                    break;
-                case '\b':
-                    fputs("\\b", f);
-                    break;
-                case '\f':
-                    fputs("\\f", f);
-                    break;
-                case '\n':
-                    fputs("\\n", f);
-                    break;
-                case '\r':
-                    fputs("\\r", f);
-                    break;
-                case '\t':
-                    fputs("\\t", f);
-                    break;
-                default:
-                    if (ch < 0x20)
-                        fprintf(f, "\\u%04x", ch);
-                    else
-                        fputc(ch, f);
-            }
-        }
-    }
-    fputc('"', f);
-}
-
 static bool load_locked(bulletins_t *out, bool *out_missing) {
     memset(out, 0, sizeof(*out));
     if (out_missing)
         *out_missing = false;
 
-    FILE *f = fopen(BULLETINS_PATH, "r");
-    if (!f) {
-        ESP_LOGI(TAG, "%s not present - starting with empty bulletins", BULLETINS_PATH);
-        if (out_missing)
+    cJSON *doc = NULL;
+    json_store_status_t st = json_store_read(BULLETINS_PATH, TAG, "bulletins", &doc);
+    if (st != JSON_STORE_OK) {
+        // Only an absent file tells the caller to write the defaults out; an
+        // empty or unparseable one leaves the existing file alone so the
+        // operator can see it.
+        if (out_missing && st == JSON_STORE_MISSING)
             *out_missing = true;
-        return false;
-    }
-
-    fseek(f, 0, SEEK_END);
-    long sz = ftell(f);
-    fseek(f, 0, SEEK_SET);
-    if (sz <= 0) {
-        fclose(f);
-        return false;
-    }
-
-    char *buf = malloc((size_t)sz + 1);
-    if (!buf) {
-        fclose(f);
-        ESP_LOGW(TAG, "OOM reading bulletins");
-        return false;
-    }
-    size_t rd = fread(buf, 1, (size_t)sz, f);
-    buf[rd] = 0;
-    fclose(f);
-
-    cJSON *doc = cJSON_Parse(buf);
-    free(buf);
-    if (!doc) {
-        ESP_LOGW(TAG, "%s corrupt - ignoring", BULLETINS_PATH);
         return false;
     }
 
@@ -225,29 +153,16 @@ static bool load_locked(bulletins_t *out, bool *out_missing) {
 }
 
 static bool save_locked(const bulletins_t *in) {
-    FILE *f = fopen(BULLETINS_TMP_PATH, "w");
-    if (!f) {
-        ESP_LOGE(TAG, "open tmp for write failed");
+    // Entered with s_lock held (see bulletins_save() below), which is what
+    // json_store_open_tmp() asserts before handing back a stream whose stdio
+    // buffer is already pinned.
+    FILE *f = json_store_open_tmp(BULLETINS_TMP_PATH, TAG, s_lock);
+    if (!f)
         return false;
-    }
 
-    // Pin the stdio buffer before the first write. Otherwise newlib sizes it
-    // from st_blksize (esp_littlefs reports the 4096-byte flash block), so the
-    // first fputs() triggers a transient malloc(4096) that, on this device's
-    // small/fragmented heap, intermittently crashed the save through the
-    // unbuffered per-byte path (__swbuf_r) and a corrupted-length memset. See
-    // the fuller note in app_config_save(). Static + reused safely: every save
-    // runs under this module's lock() held across save_locked().
-    static char s_save_buf[512];
-    // INVARIANT: reusing this static buffer is only safe because save_locked()
-    // is only ever entered with s_lock held (see bulletins_save() below). If
-    // that guarantee is ever weakened, this becomes a re-entrancy hazard -
-    // assert the coupling instead of relying on the comment alone.
-    configASSERT(xSemaphoreGetMutexHolder(s_lock) == xTaskGetCurrentTaskHandle());
-    setvbuf(f, s_save_buf, _IOFBF, sizeof(s_save_buf));
-
-    // Written token-by-token straight to the file (no cJSON tree, no second
-    // serialized buffer) - the same low-RAM approach app_config_save() uses.
+    // Written token-by-token straight to the file: no cJSON tree and no second
+    // serialized buffer ever exist, so a save costs essentially only littlefs's
+    // own write buffer on top of the stream buffer above.
     fputs("{\"bulletins\":[", f);
     for (int i = 0; i < BULLETIN_COUNT; i++) {
         const bulletin_t *b = &in->item[i];
@@ -260,7 +175,7 @@ static bool save_locked(const bulletins_t *in) {
         fprintf(f, "\"rf\":%s,", b->send_rf ? "true" : "false");
         fprintf(f, "\"inet\":%s,", b->send_inet ? "true" : "false");
         fputs("\"text\":", f);
-        write_json_string(f, text);
+        json_write_escaped(f, text);
         fprintf(f, ",\"int_s\":%u", (unsigned)b->interval_s);
         fprintf(f, ",\"exp_h\":%u,", (unsigned)b->expire_hours);
         fprintf(f, "\"exp_at\":%lld", (long long)b->expire_at);
@@ -268,28 +183,7 @@ static bool save_locked(const bulletins_t *in) {
     }
     fputs("]}", f);
 
-    bool ok = (fflush(f) == 0) && (ferror(f) == 0);
-    if (fclose(f) != 0)
-        ok = false;
-    if (!ok) {
-        ESP_LOGE(TAG, "write error while saving bulletins");
-        remove(BULLETINS_TMP_PATH);
-        return false;
-    }
-
-    // Single-step commit of the finished temp file over the live one: LittleFS
-    // replaces an existing destination as one metadata update, so bulletins.json
-    // is at every instant either the previous file or the new one, never
-    // missing - which is exactly what unlinking the destination first would
-    // break. On failure the temp file is removed so a stale half-written
-    // bulletins.json.tmp is not left behind on the filesystem.
-    if (rename(BULLETINS_TMP_PATH, BULLETINS_PATH) != 0) {
-        ESP_LOGE(TAG, "rename tmp->bulletins failed");
-        remove(BULLETINS_TMP_PATH);
-        return false;
-    }
-    ESP_LOGI(TAG, "Bulletins saved");
-    return true;
+    return json_store_commit(f, BULLETINS_TMP_PATH, BULLETINS_PATH, TAG, "bulletins");
 }
 
 // Parsed copy of bulletins.json, kept in RAM so a scheduler pass costs nothing
@@ -298,7 +192,7 @@ static bool save_locked(const bulletins_t *in) {
 // and each pass called bulletins_load(), i.e. an fopen + fread + a full
 // cJSON_Parse of this file, on the order of ten thousand times a day. That
 // parse builds and tears down a tree of small heap nodes, the exact allocation
-// pattern app_config_save() was rewritten to stop doing; holding the result
+// pattern the streaming writers exist to avoid; holding the result
 // costs ~sizeof(bulletins_t) of static RAM once and removes the churn.
 //
 // The cache is only allowed to answer when nothing can have changed underneath
@@ -473,22 +367,6 @@ bool bulletins_apply_expiry(bulletins_t *b) {
     return changed;
 }
 
-// Bound a bulletin's configured interval into [floor, ...], with 0 meaning
-// "use the default" (same policy as beacon.c's clampInterval()).
-static uint32_t clamp_interval(uint32_t interval) {
-    if (interval == 0)
-        return BULLETIN_DEFAULT_INTERVAL_S;
-    if (interval < BULLETIN_MIN_INTERVAL_S)
-        return BULLETIN_MIN_INTERVAL_S;
-    return interval;
-}
-
-// Monotonic seconds since boot - used for scheduling so an NTP step of the
-// wall clock (which expiry uses) never disturbs the transmit cadence.
-static int64_t mono_seconds(void) {
-    return (int64_t)(esp_timer_get_time() / 1000000);
-}
-
 // Per-bulletin next-due timestamps (monotonic seconds). 0 = due now, so every
 // enabled bulletin transmits once on the first pass after start. File-scope
 // now that the transmitter is a serviced pass (bulletins_service) driven by
@@ -497,13 +375,12 @@ static int64_t s_bln_next_due[BULLETIN_COUNT] = { 0 };
 
 // One serviced pass of the bulletin transmitter. Called by the shared beacon
 // scheduler (beacon_scheduler.c); returns the number of seconds until the
-// transmitter next wants servicing (>= 1). Body is the old bulletin_task loop
-// body, with the per-bulletin timers hoisted to file scope and the one-time
-// boot settle delay returned on the first call instead of a blocking sleep.
+// transmitter next wants servicing (>= 1). The per-bulletin timers live at file
+// scope and the one-time boot settle delay is returned from the first call
+// rather than slept through, so a pass never blocks the shared scheduler.
 uint32_t bulletins_service(void) {
     // One-time settle delay after boot before the first transmit pass, so
     // WiFi/APRS-IS association and the modem have a chance to come up first.
-    // The old task slept this once before entering its loop.
     static bool started = false;
     if (!started) {
         started = true;
@@ -521,7 +398,7 @@ uint32_t bulletins_service(void) {
     char src[16];
     resolve_source_call(src, sizeof(src));
 
-    int64_t now = mono_seconds();
+    int64_t now = sched_mono_seconds();
     int64_t soonest = now + BULLETIN_POLL_CAP_S;
 
     for (int i = 0; i < BULLETIN_COUNT; i++) {
@@ -538,9 +415,9 @@ uint32_t bulletins_service(void) {
 
         if (now >= s_bln_next_due[i]) {
             tx_one(i, b, src);
-            s_bln_next_due[i] = now + (int64_t)clamp_interval(b->interval_s);
+            s_bln_next_due[i] = now + (int64_t)sched_clamp_interval(b->interval_s, BULLETIN_MIN_INTERVAL_S, BULLETIN_DEFAULT_INTERVAL_S);
             vTaskDelay(pdMS_TO_TICKS(BULLETIN_INTER_TX_MS));
-            now = mono_seconds(); // account for the inter-TX gap
+            now = sched_mono_seconds(); // account for the inter-TX gap
         }
 
         if (s_bln_next_due[i] < soonest)
@@ -551,7 +428,7 @@ uint32_t bulletins_service(void) {
 
     // Sleep until the soonest bulletin is due, capped so config edits and
     // expiry are still picked up promptly.
-    int64_t sleep_s = soonest - mono_seconds();
+    int64_t sleep_s = soonest - sched_mono_seconds();
     if (sleep_s < 1)
         sleep_s = 1;
     if (sleep_s > BULLETIN_POLL_CAP_S)
@@ -560,9 +437,9 @@ uint32_t bulletins_service(void) {
 }
 
 void bulletins_start(void) {
-    // No task creation here any more: the bulletin transmitter is driven by
-    // the shared beacon scheduler (beacon_scheduler_start()) via
-    // bulletins_service(). Just make sure the LittleFS lock exists.
-    ensure_lock();
+    // The bulletin transmitter is driven by the shared beacon scheduler
+    // (beacon_scheduler_start()) via bulletins_service(), so there is no task
+    // to create here - only the LittleFS lock to bring up.
+    json_store_lock_ensure(&s_lock);
     ESP_LOGI(TAG, "Bulletins configured (per-bulletin interval, default=%us; driven by beacon scheduler)", (unsigned)BULLETIN_DEFAULT_INTERVAL_S);
 }

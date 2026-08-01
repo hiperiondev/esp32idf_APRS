@@ -3,6 +3,7 @@ idf_component_register(
         "trafficlog.c"
     INCLUDE_DIRS
         "include"
+        "../../main/include"
     REQUIRES
         esp_timer
         freertos

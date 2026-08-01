@@ -32,7 +32,9 @@
 #include "BMP180.h" // bmp180_gpio_is_reserved(): keep the I2C pins out of the alarm pin
 #include "afsk.h"   // afsk_ptt_gpio_is_valid(), MODEM_ADC_GPIO / MODEM_DAC_GPIO (checked internally by afsk_ptt_gpio_is_valid())
 #include "app_config.h"
+#include "aprs_path.h"                          // aprs_path_build_suffix_from_config()
 #include "esp32idf_radioamateur_modem_config.h" // MODEM_PTT_GPIO: the fixed PTT pin, checked directly below
+#include "json_escape.h"                        // json_escape()
 #include "message.h"
 #include "str_append.h"
 
@@ -227,25 +229,6 @@ static int pkgMsgUpdate(const char *call, const char *text, uint16_t msgID, int8
     return i;
 }
 
-// Escapes ", \ and control chars for safe embedding in a JSON string literal.
-// Mirrors the same small helper duplicated in lastheard.c/trafficlog.c.
-static size_t json_escape(const char *src, char *dst, size_t dst_size) {
-    size_t di = 0;
-    for (const char *p = src; *p && di + 2 < dst_size; p++) {
-        unsigned char c = (unsigned char)*p;
-        if (c == '"' || c == '\\') {
-            dst[di++] = '\\';
-            dst[di++] = (char)c;
-        } else if (c < 0x20) {
-            continue;
-        } else {
-            dst[di++] = (char)c;
-        }
-    }
-    dst[di] = 0;
-    return di;
-}
-
 size_t message_dump_json(char *out, size_t out_size) {
     if (out == NULL || out_size < 4)
         return 0;
@@ -302,48 +285,18 @@ size_t message_dump_json(char *out, size_t out_size) {
     return pos;
 }
 
-// g_config.msg_path is a BITMASK over g_config.path[0..3] (TR_F_PATH_BITMASK
-// on the Message webconfig page) - see beacon.c's buildPathSuffix() for the
-// full rationale. Kept in sync with that implementation.
-static void buildPathSuffix(char *out, size_t outMax) {
-    out[0] = 0;
-
-    // Snapshot the path bitmask and the four presets under the config lock, so
-    // a concurrent web save can't tear a preset string mid-read.
-    uint8_t msgPath;
-    char pathPreset[4][72];
-    app_config_lock();
-    msgPath = g_config.msg_path;
-    memcpy(pathPreset, g_config.path, sizeof(pathPreset));
-    app_config_unlock();
-
-    if (msgPath == 0 || outMax == 0)
-        return;
-
-    size_t used = 0;
-    for (int bit = 0; bit < 4; bit++) {
-        if (!(msgPath & (1 << bit)))
-            continue;
-        if (!pathPreset[bit][0])
-            continue;
-
-        str_append(out, outMax, &used, ",%s", pathPreset[bit]);
-    }
-}
-
 // Builds and sends one packet per enabled channel from a shared "info"
 // field (":ADDRESSEE:text{id" or ":ADDRESSEE:ackNNN"), rather than one
 // packet reused verbatim on both channels.
 //
-// The RF leg gets the operator-configured digipeater path
-// (g_config.msg_path, via buildPathSuffix()). The APRS-IS leg does NOT:
-// WIDEn-N aliases are RF-only and meaningless (and misleading to other
-// IS clients/servers) once a packet is injected straight into APRS-IS.
-// Per APRS-IS convention, locally-originated traffic sent to the IS
-// network carries a "TCPIP*" q-construct tag in its path instead of an
-// RF unproto path - see aprsc/javAPRSSrvr behavior and the APRS-IS
-// server spec, so the IS leg carries "TCPIP*" rather than the RF unproto
-// path (e.g. "WIDE1-1,WIDE2-1").
+// The RF leg gets the operator-configured digipeater path (g_config.msg_path,
+// resolved by aprs_path_build_suffix_from_config()). The APRS-IS leg does not:
+// WIDEn-N aliases are RF-only and meaningless (and misleading to other IS
+// clients/servers) once a packet is injected straight into APRS-IS. Per
+// APRS-IS convention, locally-originated traffic sent to the IS network
+// carries a "TCPIP*" q-construct tag in its path instead of an RF unproto path
+// - see aprsc/javAPRSSrvr behavior and the APRS-IS server spec - so the IS leg
+// carries "TCPIP*" rather than something like "WIDE1-1,WIDE2-1".
 static void txPacket(const char *myCall, const char *info) {
     if (!s_txHandler) {
         ESP_LOGW(TAG, "No TX handler registered, dropping: %s", info);
@@ -358,8 +311,11 @@ static void txPacket(const char *myCall, const char *info) {
     // because a truncated APRS message loses its trailing "{id" sequence
     // suffix and would never be acked.
     if (g_config.msg_rf) {
+        // The path presets are snapshotted under app_config_lock() inside the
+        // builder; msg_path itself is a single byte, read here the same way the
+        // msg_rf/msg_inet flags around it are.
         char path[80];
-        buildPathSuffix(path, sizeof(path));
+        aprs_path_build_suffix_from_config(g_config.msg_path, path, sizeof(path));
         char packet[400];
         size_t len = 0;
         if (str_append(packet, sizeof(packet), &len, "%s>APE32L%s:%s", myCall, path, info))

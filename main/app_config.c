@@ -22,7 +22,7 @@
 #include <float.h>
 #include <math.h>
 #include <stdio.h>
-#include <stdlib.h>
+#include <stdlib.h> // strtod() - shortest round-tripping precision for the JSON number writer
 #include <string.h>
 
 #include "app_config.h"
@@ -33,13 +33,13 @@
 // MODEM_PTT_GPIO (the PTT pin itself) are fixed compile-time constants with
 // no g_config counterpart - see aprs_service_build_modem_config().
 #include "esp32idf_radioamateur_modem_config.h"
-#include "esp_heap_caps.h"
 #include "esp_log.h"
-#include "esp_system.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
-#include "storage.h" // storage_write_lock() - keeps a save from overlapping a whole-partition format
+#include "json_escape.h" // json_write_escaped()
+#include "json_store.h"  // shared JSON-file store scaffolding
+#include "storage.h"     // storage_write_lock() - keeps a save from overlapping a whole-partition format
 
 static const char *TAG = "app_config";
 #define CONFIG_PATH     "/storage/config.json"
@@ -53,12 +53,12 @@ app_config_t g_config;
 // app_config_save() at once, doing redundant work and each rewriting the
 // live config from under the other. (Note: esp_littlefs already takes a
 // per-instance lock around every VFS op, so overlapping saves cannot corrupt
-// the filesystem's own metadata - the intermittent memset/double-exception
-// "save crash" was NOT this race but the stdio buffer allocation on the first
-// write; see the setvbuf() note in app_config_save(). This mutex is kept
-// because serializing saves is still correct, avoids wasted flash writes, and
-// lets app_config_save() safely reuse a single static stdio buffer.) Created
-// lazily so this file has no init-order dependency.
+// the filesystem's own metadata, and the stdio buffer allocation that a save
+// would otherwise make on its first write is handled separately - see
+// json_store_open_tmp(). This mutex is here because serializing saves is
+// correct on its own terms: it avoids wasted flash writes and it is what lets
+// a save reuse a single static stdio buffer.) Created lazily so this file has
+// no init-order dependency.
 static SemaphoreHandle_t s_config_mutex = NULL;
 
 static SemaphoreHandle_t config_mutex(void) {
@@ -284,14 +284,13 @@ void app_config_set_defaults(app_config_t *c) {
 
 // ---- streaming JSON writer -----------------------------------------------
 // The configuration is serialized by writing tokens straight to the open
-// config file, one field at a time, instead of first building a cJSON tree of
-// the whole config in RAM and then printing that tree into a second full-size
-// string buffer. On this device's small, fragmentable heap that old
-// double-allocation (hundreds of tiny cJSON nodes, ~40+ KB, plus a ~7 KB
-// contiguous print buffer, all live at once) was the single largest memory
-// event in the firmware and was what drove the "minimum free heap" watermark
-// down to a few KB after every save. Streaming keeps the extra RAM used during
-// a save to essentially just littlefs's own write buffer.
+// config file, one field at a time. Building a cJSON tree of the whole config
+// in RAM and printing that tree into a second full-size string buffer would
+// cost hundreds of tiny cJSON nodes (~40+ KB) plus a ~7 KB contiguous print
+// buffer, all live at once - on this device's small, fragmentable heap the
+// single largest memory event in the firmware, enough to drive the "minimum
+// free heap" watermark down to a few KB on every save. Streaming keeps the
+// extra RAM a save needs to essentially just littlefs's own write buffer.
 //
 // The schema has only one object level and single-level (scalar) arrays, so a
 // single "need a comma before the next item" flag for each context is enough.
@@ -300,46 +299,6 @@ typedef struct {
     bool obj_comma; // a member has already been written at object level
     bool arr_comma; // an element has already been written in the current array
 } jw_t;
-
-// Emit a JSON string literal (quotes + minimal escaping), matching cJSON's
-// unformatted escaping rules so values round-trip through cJSON_Parse on load.
-static void jw_str_val(jw_t *w, const char *v) {
-    fputc('"', w->f);
-    if (v) {
-        for (const unsigned char *p = (const unsigned char *)v; *p; p++) {
-            unsigned char ch = *p;
-            switch (ch) {
-                case '"':
-                    fputs("\\\"", w->f);
-                    break;
-                case '\\':
-                    fputs("\\\\", w->f);
-                    break;
-                case '\b':
-                    fputs("\\b", w->f);
-                    break;
-                case '\f':
-                    fputs("\\f", w->f);
-                    break;
-                case '\n':
-                    fputs("\\n", w->f);
-                    break;
-                case '\r':
-                    fputs("\\r", w->f);
-                    break;
-                case '\t':
-                    fputs("\\t", w->f);
-                    break;
-                default:
-                    if (ch < 0x20)
-                        fprintf(w->f, "\\u%04x", ch);
-                    else
-                        fputc(ch, w->f);
-            }
-        }
-    }
-    fputc('"', w->f);
-}
 
 // Emit a number: integers without a decimal point, non-integers at the
 // shortest precision that still round-trips (mirrors cJSON's number printer
@@ -366,15 +325,15 @@ static void jw_key(jw_t *w, const char *k) {
     if (w->obj_comma)
         fputc(',', w->f);
     w->obj_comma = true;
-    jw_str_val(w, k);
+    json_write_escaped(w->f, k);
     fputc(':', w->f);
 }
 
-// Object members - identical call signatures to the old cJSON helpers, so the
-// hundreds of jadd_*(d, "key", value) call sites below are unchanged.
+// Object members. The jadd_*(d, "key", value) call signature is what the
+// hundreds of call sites below are written against.
 static void jadd_str(jw_t *o, const char *k, const char *v) {
     jw_key(o, k);
-    jw_str_val(o, v ? v : "");
+    json_write_escaped(o->f, v ? v : "");
 }
 static void jadd_num(jw_t *o, const char *k, double v) {
     jw_key(o, k);
@@ -404,7 +363,7 @@ static void jarr_str(jw_t *o, const char *v) {
     if (o->arr_comma)
         fputc(',', o->f);
     o->arr_comma = true;
-    jw_str_val(o, v ? v : "");
+    json_write_escaped(o->f, v ? v : "");
 }
 static void jarr_bool(jw_t *o, bool v) {
     if (o->arr_comma)
@@ -864,15 +823,10 @@ static void config_from_json(cJSON *d, app_config_t *c) {
 }
 
 bool app_config_save(void) {
-    // Stream the configuration straight to the file, one field at a time. We
-    // deliberately do NOT build an in-RAM cJSON document of the whole config
-    // and then print it into a second full-size string the way the old path
-    // did: on this device's small, fragmentable heap that transient
-    // double-allocation was the single largest memory event in the firmware's
-    // life, and it was what drove the "minimum free heap" watermark down to a
-    // few KB after every webconfig save. Writing token-by-token through the
-    // FILE keeps the extra RAM needed for a save to essentially just littlefs's
-    // own write buffer.
+    // Streams the configuration straight to the file, one field at a time -
+    // see the note on the JSON writer above for why no in-RAM document is
+    // built.
+    //
     // Serialize the whole save against any other save/load in flight (see
     // s_config_mutex comment above). Block indefinitely: a save must never
     // be silently dropped, and the critical section below is short.
@@ -885,74 +839,29 @@ bool app_config_save(void) {
     // this gate second - the order storage.h's contract requires.
     storage_write_lock();
 
-    FILE *f = fopen(CONFIG_TMP_PATH, "w");
+    // config_mutex() is held across this whole function, which is what
+    // json_store_open_tmp() asserts before handing back a stream whose stdio
+    // buffer is already pinned.
+    FILE *f = json_store_open_tmp(CONFIG_TMP_PATH, TAG, config_mutex());
     if (!f) {
-        ESP_LOGE(TAG, "open tmp for write failed");
         storage_write_unlock();
         xSemaphoreGive(config_mutex());
         return false;
     }
-
-    // Give the stream a fixed, known buffer BEFORE the first byte is written.
-    // If we don't, newlib lazily allocates the stdio buffer on the first
-    // fputc(), and it sizes that buffer from st_blksize - which esp_littlefs
-    // reports as the 4096-byte flash block size. On this device's small,
-    // fragmented heap that transient malloc(4096) is exactly what made saves
-    // crash intermittently: when it can't be satisfied cleanly the stream
-    // falls back to the unbuffered per-byte path (__swbuf_r) and a starved
-    // heap trips a memset with a corrupted length - the double-exception /
-    // corrupted-backtrace panic seen in the field. A small static buffer
-    // removes that allocation entirely and, as a bonus, coalesces the
-    // hundreds of token writes into a handful of block writes. Static (not on
-    // the stack) and safe to reuse: every save is fully serialized by
-    // config_mutex(), held across this whole function.
-    static char s_save_buf[512];
-    // INVARIANT: this static buffer is only safe to reuse because every save
-    // is fully serialized by config_mutex(), held across this whole function.
-    // If a future refactor ever removes/relaxes that mutex, this static
-    // buffer becomes a re-entrancy hazard (concurrent saves would corrupt
-    // each other's output) - assert the coupling holds, don't just comment it.
-    configASSERT(xSemaphoreGetMutexHolder(config_mutex()) == xTaskGetCurrentTaskHandle());
-    setvbuf(f, s_save_buf, _IOFBF, sizeof(s_save_buf));
 
     jw_t w = { .f = f, .obj_comma = false, .arr_comma = false };
     config_write_json(&w, &g_config);
 
-    // Catch any deferred stdio/filesystem write error before committing the
-    // temp file over the live one, so a full or failing filesystem can never
-    // leave a truncated config.json in place.
-    bool ok = (fflush(f) == 0) && (ferror(f) == 0);
-    if (fclose(f) != 0)
-        ok = false;
-    if (!ok) {
-        ESP_LOGE(TAG, "write error while saving config (free heap=%u bytes)", (unsigned)esp_get_free_heap_size());
-        remove(CONFIG_TMP_PATH);
+    if (!json_store_commit(f, CONFIG_TMP_PATH, CONFIG_PATH, TAG, "configuration")) {
         storage_write_unlock();
         xSemaphoreGive(config_mutex());
         return false;
     }
 
-    // Commit the finished temp file over the live one in a single step. The
-    // rename is the whole atomicity guarantee: LittleFS replaces an existing
-    // destination as one metadata update, so at every instant - including
-    // across a power loss - config.json is either the previous file or the new
-    // one, never missing. Unlinking the destination first would open exactly
-    // the window this design exists to avoid: a crash in that window leaves no
-    // config.json at all, and the next boot writes factory defaults over the
-    // whole station configuration. On failure the temp file is removed so a
-    // stale half-written config.json.tmp is not left behind on the filesystem.
-    if (rename(CONFIG_TMP_PATH, CONFIG_PATH) != 0) {
-        ESP_LOGE(TAG, "rename tmp->config failed");
-        remove(CONFIG_TMP_PATH);
-        storage_write_unlock();
-        xSemaphoreGive(config_mutex());
-        return false;
-    }
-    ESP_LOGI(TAG, "Configuration saved");
-    // log how close the calling task (normally the
-    // httpd task) came to overflowing its stack during this save, so the
-    // config.stack_size in web_server.c can be sized from real numbers
-    // instead of another guess. Remove once a safe margin is confirmed.
+    // How close the calling task (normally the httpd task) came to overflowing
+    // its stack during this save, so the config.stack_size in web_server.c can
+    // be sized from real numbers instead of a guess. Remove once a safe margin
+    // is confirmed.
     ESP_LOGI(TAG, "Caller stack high-water mark: %u bytes free", (unsigned)(uxTaskGetStackHighWaterMark(NULL) * sizeof(StackType_t)));
     storage_write_unlock();
     xSemaphoreGive(config_mutex());
@@ -960,37 +869,35 @@ bool app_config_save(void) {
 }
 
 bool app_config_load(void) {
-    FILE *f = fopen(CONFIG_PATH, "r");
-    if (!f) {
-        ESP_LOGW(TAG, "%s not found, writing defaults", CONFIG_PATH);
-        app_config_set_defaults(&g_config);
-        return app_config_save();
-    }
-    fseek(f, 0, SEEK_END);
-    long sz = ftell(f);
-    fseek(f, 0, SEEK_SET);
-    if (sz <= 0) {
-        fclose(f);
-        ESP_LOGW(TAG, "config.json empty, writing defaults");
-        app_config_set_defaults(&g_config);
-        return app_config_save();
-    }
-    char *buf = malloc(sz + 1);
-    if (!buf) {
-        fclose(f);
-        return false;
-    }
-    size_t rd = fread(buf, 1, sz, f);
-    buf[rd] = 0;
-    fclose(f);
+    cJSON *doc = NULL;
+    json_store_status_t st = json_store_read(CONFIG_PATH, TAG, "configuration", &doc);
 
-    cJSON *doc = cJSON_Parse(buf);
-    free(buf);
-    if (!doc) {
-        ESP_LOGW(TAG, "config.json corrupt, resetting to defaults");
-        app_config_set_defaults(&g_config);
-        return app_config_save();
+    switch (st) {
+        case JSON_STORE_OK:
+            break;
+
+        case JSON_STORE_OOM:
+            // The file is very probably intact - there was simply no RAM to
+            // read it into. Leave it exactly as it is and report the failure,
+            // rather than writing defaults over a configuration that a later
+            // attempt would have loaded fine.
+            return false;
+
+        case JSON_STORE_MISSING:
+        case JSON_STORE_EMPTY:
+        case JSON_STORE_CORRUPT:
+        default:
+            // The boot configuration is the one file the device cannot come up
+            // without, so anything unusable here is replaced with the factory
+            // set and written back immediately. That costs an operator a
+            // corrupt config.json they might have wanted to inspect, and buys
+            // a station that always boots into a reachable web admin instead
+            // of one that needs a serial flash to recover.
+            ESP_LOGW(TAG, "%s unusable, writing defaults", CONFIG_PATH);
+            app_config_set_defaults(&g_config);
+            return app_config_save();
     }
+
     config_from_json(doc, &g_config);
     cJSON_Delete(doc);
     ESP_LOGI(TAG, "Configuration loaded");
@@ -1030,9 +937,9 @@ uint8_t app_config_path_mask_clamp(uint8_t pathBitmask, const char pathPreset[4]
     // checkboxes are ticked). Keep presets low-bit-first until the budget is
     // used up and drop the rest, instead of silently saving a bitmask that
     // would later be clipped differently (or reach further than intended) at
-    // transmit time - see beacon.c's buildPathSuffix(), which enforces the
-    // same limit again as a belt-and-suspenders check for config loaded from
-    // NVS/restore rather than this form.
+    // transmit time - see aprs_path_build_suffix(), which enforces the same
+    // limit again as a belt-and-suspenders check for a configuration that
+    // reached the device without passing through this form.
     uint8_t clamped = 0;
     uint8_t hopsUsed = 0;
     for (int bit = 0; bit < 4; bit++) {
