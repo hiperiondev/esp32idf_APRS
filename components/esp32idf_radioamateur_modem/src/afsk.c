@@ -156,9 +156,20 @@ static bool s_inited = false;
 static volatile uint32_t s_adcSamples = 0; /* total samples produced by the ADC */
 static float s_dacAlarmRateHz = 0.0f;      /* rate the alarm really fires at */
 
-/* diagnostic capture tap (raw ADC samples, still used by main/aprs_service.c) */
-static int16_t *volatile s_capRaw = NULL;
-static volatile int s_capRawLen = 0;
+// Diagnostic capture tap (raw ADC samples, still used by main/aprs_service.c).
+//
+// The buffer is owned by this file and never handed out: afskDiagCaptureRaw()
+// copies out of it once the capture window closes. The producer runs in
+// afsk_rx_task (possibly on the other core) and the consumer in the caller's
+// task, so a caller-supplied destination pointer could be revoked in the
+// instructions between the producer's bounds test and its store. With a
+// statically owned buffer there is no pointer to revoke: the only shared state
+// is the arm/disarm length, and a store that slips through after disarming
+// still lands inside s_capBuf.
+#define AFSK_DIAG_CAP_SAMPLES 512
+
+static int16_t s_capBuf[AFSK_DIAG_CAP_SAMPLES];
+static volatile int s_capRawLen = 0; // > 0 arms the tap; also the write bound
 static volatile int s_capRawIdx = 0;
 
 static float s_audio[MODEM_BLOCK_SIZE];
@@ -529,17 +540,31 @@ void afskDiagDacWrite(uint8_t code) {
 }
 
 int afskDiagCaptureRaw(int16_t *dst, int n, uint32_t timeout_ms) {
+    if ((dst == NULL) || (n <= 0))
+        return 0;
+    if (n > AFSK_DIAG_CAP_SAMPLES)
+        n = AFSK_DIAG_CAP_SAMPLES;
+
     s_capRawIdx = 0;
-    s_capRawLen = n;
-    s_capRaw = dst;
+    s_capRawLen = n; // arms the tap
 
     uint32_t waited = 0;
     while ((s_capRawIdx < n) && (waited < timeout_ms)) {
         vTaskDelay(pdMS_TO_TICKS(5) ? pdMS_TO_TICKS(5) : 1);
         waited += 5;
     }
+
+    // Disarm first, then let one FIFO drain pass go by before reading the
+    // sample count, so a producer already past its bounds test has finished
+    // its store and the copy below sees a settled buffer.
+    s_capRawLen = 0;
+    vTaskDelay(pdMS_TO_TICKS(5) ? pdMS_TO_TICKS(5) : 1);
+
     int got = s_capRawIdx;
-    s_capRaw = NULL;
+    if (got > n)
+        got = n;
+    if (got > 0)
+        memcpy(dst, s_capBuf, (size_t)got * sizeof(s_capBuf[0]));
     return got;
 }
 
@@ -727,6 +752,19 @@ static bool s_havePendingSwap = false;
 static adc_digi_output_data_t s_pendingSwap;
 #endif
 
+// Feed one raw sample to the diagnostic tap. The index is read once into a
+// local so the bounds test and the store use the same value, and the bound is
+// s_capRawLen, which never exceeds AFSK_DIAG_CAP_SAMPLES: the store is in range
+// even if the consumer disarms the tap in between.
+static inline void diag_capture_push(int16_t raw) {
+    int idx = s_capRawIdx;
+
+    if (idx < s_capRawLen) {
+        s_capBuf[idx] = raw;
+        s_capRawIdx = idx + 1;
+    }
+}
+
 static void adc_ingest(const uint8_t *buf, uint32_t size) {
     /* Half duplex: do not fill the FIFO while transmitting, otherwise the
      * garbage captured during TX corrupts the demodulator state when drained. */
@@ -749,15 +787,13 @@ static void adc_ingest(const uint8_t *buf, uint32_t size) {
                 int16_t raw = (int16_t)earlier->type1.data;
                 s_fifo.buffer[head & RB_MASK] = raw;
                 s_fifo.head = ++head;
-                if (s_capRaw && (s_capRawIdx < s_capRawLen))
-                    s_capRaw[s_capRawIdx++] = raw;
+                diag_capture_push(raw);
             }
             if (s_pendingSwap.type1.channel == MODEM_ADC_CHANNEL && (head - s_fifo.tail) < MODEM_RX_FIFO_SIZE) {
                 int16_t raw = (int16_t)s_pendingSwap.type1.data;
                 s_fifo.buffer[head & RB_MASK] = raw;
                 s_fifo.head = ++head;
-                if (s_capRaw && (s_capRawIdx < s_capRawLen))
-                    s_capRaw[s_capRawIdx++] = raw;
+                diag_capture_push(raw);
             }
             start = 1; /* buf[0] already consumed above */
         }
@@ -803,8 +839,7 @@ static void adc_ingest(const uint8_t *buf, uint32_t size) {
         s_fifo.buffer[head & RB_MASK] = raw;
         s_fifo.head = ++head;
 
-        if (s_capRaw && (s_capRawIdx < s_capRawLen))
-            s_capRaw[s_capRawIdx++] = raw;
+        diag_capture_push(raw);
     }
 }
 

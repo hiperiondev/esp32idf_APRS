@@ -94,8 +94,14 @@ enum ModemPrefilter ModemGetFilterType(uint8_t modem);
 
 /**
  * @brief Get the current Data Carrier Detect (DCD) state.
- * @return 1 if the channel is currently busy (carrier detected), 0 if it is
- *         free.
+ *
+ * The return value is a bitmap with one bit per parallel demodulator: bit 0
+ * is demodulator 0, bit 1 is demodulator 1, and so on up to
+ * ::MODEM_MAX_DEMODULATOR_COUNT. Callers that only need to know whether the
+ * channel is busy can simply test the result for non-zero.
+ *
+ * @return Bitmap of the demodulators that currently have carrier lock, 0 if
+ *         the channel is free.
  */
 uint8_t ModemDcdState(void);
 

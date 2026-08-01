@@ -310,8 +310,13 @@ void afskDiagDacWrite(uint8_t code);
  * decimation stage; they represent the analog input as seen directly by the
  * ADC hardware.
  *
+ * Samples are collected into a buffer owned by the modem component and copied
+ * into @p dst once the capture window closes, so @p dst is only touched by the
+ * calling task. Requests larger than the internal buffer (512 samples) are
+ * capped to it.
+ *
  * @param dst        Destination buffer for the captured samples.
- * @param n          Maximum number of samples to capture.
+ * @param n          Maximum number of samples to capture, capped at 512.
  * @param timeout_ms Maximum time to wait for the requested number of
  *                   samples, in milliseconds.
  * @return Number of samples actually captured (may be less than @p n if the

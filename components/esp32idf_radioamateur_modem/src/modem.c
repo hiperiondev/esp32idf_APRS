@@ -294,6 +294,11 @@ static uint32_t markStep;  /* Q32 phase increment per DAC sample */
 static uint32_t spaceStep; /* Q32 phase increment per DAC sample */
 static uint16_t baudRateStep;
 static int16_t coeffHiI[NMAX], coeffLoI[NMAX], coeffHiQ[NMAX], coeffLoQ[NMAX];
+// Data Carrier Detect, as a bitmap: bit i is set while demodulator i has its
+// PLL locked. Consumers that only need "is the channel busy" test it for
+// non-zero, which stays correct whatever the demodulator count is; the loop
+// test in main/aprs_service.c reports the bits so an operator can tell which
+// of the parallel demodulators locked.
 static uint8_t dcd = 0;
 
 /*
@@ -470,23 +475,20 @@ static inline uint8_t IRAM_ATTR scramble(uint8_t in) {
 }
 
 void MODEM_DECODE(int16_t sample, uint16_t mVrms) {
-    bool partialDcd = false;
+    uint8_t dcdBits = 0;
 
     for (uint8_t i = 0; i < demodCount; i++) {
         uint8_t symbol = (demodulate(sample, &demodState[i]) > 0);
 
         decode(symbol, i, mVrms);
         if (demodState[i].dcd)
-            partialDcd = true;
+            dcdBits |= (uint8_t)(1u << i);
     }
 
-    if (partialDcd) {
-        setDcd(true);
-        dcd = 1;
-    } else {
-        setDcd(false);
-        dcd = 0;
-    }
+    // The status LED and the busy-channel test both mean "any demodulator
+    // locked", so they key off the bitmap being non-zero.
+    setDcd(dcdBits != 0);
+    dcd = dcdBits;
 }
 
 /**
