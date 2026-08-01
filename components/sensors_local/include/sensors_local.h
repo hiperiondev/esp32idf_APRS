@@ -247,7 +247,8 @@ uint8_t sensors_local_channel_from_name(const char *name);
  * @brief Eagerly run init() on every not-yet-initialised driver. Optional;
  *        ::sensors_local_save also initialises lazily. Drivers whose init()
  *        fails are flagged and skipped, they do not abort the pass.
- * @return ESP_OK if all drivers initialised, ESP_FAIL if at least one failed.
+ * @return ESP_OK if all drivers initialised, ESP_FAIL if at least one failed
+ *         or if more drivers are registered than a single pass can cover.
  */
 esp_err_t sensors_local_init_all(void);
 

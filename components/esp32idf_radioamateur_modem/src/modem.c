@@ -430,12 +430,27 @@ uint8_t ModemDcdState(void) {
 }
 
 void ModemGetSignalLevel(uint8_t modem, int8_t *peak, int8_t *valley, uint8_t *level) {
+    // Public component API: the index is bounded against the demodState array
+    // here rather than trusted, so a caller outside the component cannot read
+    // past it. An out-of-range demodulator reports a flat, silent channel.
+    if (modem >= MODEM_MAX_DEMODULATOR_COUNT) {
+        *peak = 0;
+        *valley = 0;
+        *level = 0;
+        return;
+    }
+
     *peak = (int8_t)((100 * (int32_t)demodState[modem].peak) >> 12);
     *valley = (int8_t)((100 * (int32_t)demodState[modem].valley) >> 12);
     *level = (uint8_t)((100 * (int32_t)(demodState[modem].peak - demodState[modem].valley)) >> 13);
 }
 
 enum ModemPrefilter ModemGetFilterType(uint8_t modem) {
+    // Same bound as ModemGetSignalLevel(): an out-of-range demodulator reports
+    // PREFILTER_NONE, the value that makes the pre-filter path a no-op.
+    if (modem >= MODEM_MAX_DEMODULATOR_COUNT)
+        return PREFILTER_NONE;
+
     return demodState[modem].prefilter;
 }
 

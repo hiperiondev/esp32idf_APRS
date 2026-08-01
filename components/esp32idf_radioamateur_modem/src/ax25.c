@@ -687,6 +687,13 @@ bool Ax25ReadNextRxFrame(uint8_t **dst, uint16_t *size, int8_t *peak, int8_t *va
 }
 
 enum Ax25RxStage Ax25GetRxStage(uint8_t modem) {
+    // Public component API: the index is bounded against the rxState array
+    // here rather than trusted, so a caller outside the component cannot read
+    // past it. An out-of-range demodulator reports RX_STAGE_IDLE, which is
+    // what every consumer already treats as "nothing in progress".
+    if (modem >= MODEM_MAX_DEMODULATOR_COUNT)
+        return RX_STAGE_IDLE;
+
     return rxState[modem].rx;
 }
 

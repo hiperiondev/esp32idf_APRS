@@ -149,7 +149,7 @@ void app_config_set_defaults(app_config_t *c) {
     c->igate_loc2rf = false;
     c->igate_loc2inet = true;
     c->aprs_ssid = 10;
-    c->aprs_port = 14580;
+    c->aprs_port = APRS_PORT_DEFAULT;
     set_str(c->aprs_mycall, sizeof(c->aprs_mycall), "NOCALL");
     set_str(c->aprs_passcode, sizeof(c->aprs_passcode), "-1");
     set_str(c->aprs_host, sizeof(c->aprs_host), "aprs.dprns.com");
@@ -703,6 +703,16 @@ static void config_from_json(cJSON *d, app_config_t *c) {
     c->inet2rf_3rdparty_unwrap_en = jget_bool(d, "inet2rf3rdPartyUnwrapEn", def.inet2rf_3rdparty_unwrap_en);
     c->aprs_ssid = (uint8_t)jget_num(d, "igateSSID", def.aprs_ssid);
     c->aprs_port = (uint16_t)jget_num(d, "igatePort", def.aprs_port);
+    // Same two-layer clamp as the SoftAP channel above: the file on flash is
+    // not a trusted input, and port 0 would send the IGate into a five-second
+    // reconnect loop against an address it can never connect to. Only the low
+    // bound needs testing: APRS_PORT_MAX is the full range of the uint16_t the
+    // value is already narrowed to.
+    if (c->aprs_port < APRS_PORT_MIN) {
+        ESP_LOGW(TAG, "stored APRS-IS port %u outside %u-%u, using %u", (unsigned)c->aprs_port, (unsigned)APRS_PORT_MIN, (unsigned)APRS_PORT_MAX,
+                 (unsigned)APRS_PORT_DEFAULT);
+        c->aprs_port = APRS_PORT_DEFAULT;
+    }
     set_str(c->aprs_mycall, sizeof(c->aprs_mycall), jget_str(d, "igateMycall", def.aprs_mycall));
     c->igate_use_station = jget_bool(d, "igateUseStation", def.igate_use_station);
     set_str(c->aprs_passcode, sizeof(c->aprs_passcode), jget_str(d, "igatePasscode", def.aprs_passcode));

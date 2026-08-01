@@ -39,8 +39,8 @@ static const char *TAG = "sensors_local";
  * unregistered at runtime in this firmware. Callers therefore rely on a
  * registered driver pointer staying valid and stable for the program's
  * lifetime: sensors_local_get()/sensors_local_find() may hand back a bare
- * pointer, and sensors_local_save() may snapshot pointers under the lock and
- * then use them after releasing it. If runtime unregistration is ever added,
+ * pointer, and sensors_local_init_all()/sensors_local_save() snapshot pointers
+ * under the lock and then use them after releasing it. If runtime unregistration is ever added,
  * those two assumptions must be revisited (e.g. refcount the driver objects),
  * because sensors_local_unregister() frees the slot and may deinit the driver.
  * -------------------------------------------------------------------------- */
@@ -48,9 +48,10 @@ static sensor_local_driver_t **s_registry = NULL; /**< Dynamic array of driver p
 static size_t s_count = 0;                        /**< Number of live entries. */
 static size_t s_capacity = 0;                     /**< Allocated slots in s_registry. */
 
-/* Upper bound on drivers serviced in one sensors_local_save() pass. Sized well
- * above any realistic local-sensor count; the snapshot lets the (blocking) bus
- * reads run without the registry lock held. */
+/* Upper bound on drivers serviced in one sensors_local_init_all() or
+ * sensors_local_save() pass. Sized well above any realistic local-sensor
+ * count; the snapshot lets the (blocking) bus I/O run without the registry
+ * lock held. */
 #define SENSORS_LOCAL_MAX_SNAPSHOT 32
 
 /* Guards the registry. Created in sensors_local_init(); NULL means "not yet
@@ -236,13 +237,42 @@ uint8_t sensors_local_channel_from_name(const char *name) {
 }
 
 esp_err_t sensors_local_init_all(void) {
-    esp_err_t result = ESP_OK;
+    // Snapshot the driver pointers under the lock, then release it BEFORE
+    // running any init(), for the same reason as sensors_local_save() below:
+    // a driver's init() does blocking bus I/O (e.g. BMP180 I2C conversions
+    // take tens of ms) and holding the registry lock across the whole sweep
+    // would stall every other registry caller for the sum of them. Driver
+    // objects are stable for the program's lifetime (see the note at the top
+    // of this file), so the snapshotted pointers stay valid.
+    sensor_local_driver_t *sel[SENSORS_LOCAL_MAX_SNAPSHOT];
+    size_t sel_n = 0;
+    bool truncated = false;
+
     registry_lock();
     for (size_t i = 0; i < s_count; i++) {
-        if (ensure_initialized(s_registry[i]) != ESP_OK)
-            result = ESP_FAIL;
+        if (s_registry[i] == NULL)
+            continue;
+        if (sel_n >= SENSORS_LOCAL_MAX_SNAPSHOT) {
+            // More drivers than the snapshot can hold: this pass cannot cover
+            // them all, so the caller must not be told it succeeded.
+            truncated = true;
+            break;
+        }
+        sel[sel_n++] = s_registry[i];
     }
     registry_unlock();
+
+    if (truncated)
+        ESP_LOGE(TAG, "more than %d drivers registered; the rest are not initialised this pass", SENSORS_LOCAL_MAX_SNAPSHOT);
+
+    // A driver that fails is logged and skipped so the others still come up,
+    // but the aggregate return says whether every driver did initialise.
+    esp_err_t result = truncated ? ESP_FAIL : ESP_OK;
+
+    for (size_t i = 0; i < sel_n; i++) {
+        if (ensure_initialized(sel[i]) != ESP_OK)
+            result = ESP_FAIL; // already logged; keep going
+    }
     return result;
 }
 

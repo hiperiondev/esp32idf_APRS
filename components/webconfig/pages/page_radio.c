@@ -230,9 +230,13 @@ esp_err_t page_radio_post(httpd_req_t *req) {
         return ESP_OK;
     }
 
-    g_config.fx25_mode = web_form_get_bool(body, "fx25Mode") ? 1 : 0;
+    // These two are parsed here and stored below, inside app_config_lock(),
+    // together with the rest of the form: every write to g_config on this page
+    // happens under the lock, so the whole page lands as one update as far as
+    // any concurrent reader is concerned.
+    bool fx25_mode_in = web_form_get_bool(body, "fx25Mode");
+    bool audio_modem_en_in = web_form_get_bool(body, "audioModemEn");
 
-    g_config.audio_modem_en = web_form_get_bool(body, "audioModemEn");
     // afskModem selects the AFSK software modem modulation (300/1200/1200 V.23/9600 Bd)
     // used for both RX and TX on the audio ADC/DAC modem - clamp defensively since
     // modem_mode_t only defines values 0-3 (AFSK300/BELL202/V23/G3RUH).
@@ -242,6 +246,8 @@ esp_err_t page_radio_post(httpd_req_t *req) {
     else if (afsk_modem_in > 3)
         afsk_modem_in = 3;
     app_config_lock();
+    g_config.fx25_mode = fx25_mode_in ? 1 : 0;
+    g_config.audio_modem_en = audio_modem_en_in;
     g_config.afsk_modem_type = (uint8_t)afsk_modem_in;
     // rfSql / rfVolume / adcAtten / agcMaxGain are not posted by the form
     // (see the read-only note in page_radio_get()); there are no g_config

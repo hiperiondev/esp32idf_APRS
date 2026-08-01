@@ -303,8 +303,10 @@ bool Ax25ReadNextRxFrame(uint8_t **dst, uint16_t *size, int8_t *peak, int8_t *va
 
 /**
  * @brief Get the current HDLC receive state for a given demodulator.
- * @param modemNo Index of the demodulator to query.
- * @return Current reception stage.
+ * @param modemNo Index of the demodulator to query, 0 ..
+ *                ::MODEM_MAX_DEMODULATOR_COUNT - 1.
+ * @return Current reception stage, or ::RX_STAGE_IDLE if the index is outside
+ *         the valid range.
  */
 enum Ax25RxStage Ax25GetRxStage(uint8_t modemNo);
 

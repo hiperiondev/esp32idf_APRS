@@ -64,7 +64,9 @@ enum ModemPrefilter {
 /**
  * @brief Get the peak/valley/level signal indicators for a given
  *        demodulator.
- * @param modem  Index of the demodulator to query.
+ * @param modem  Index of the demodulator to query, 0 ..
+ *               ::MODEM_MAX_DEMODULATOR_COUNT - 1. An index outside that
+ *               range sets all three outputs to 0.
  * @param peak   Set to the peak signal level.
  * @param valley Set to the valley (minimum) signal level.
  * @param level  Set to the overall signal level indicator.
@@ -87,8 +89,10 @@ uint8_t ModemGetDemodulatorCount(void);
 /**
  * @brief Get the pre-filtering strategy appropriate for a given
  *        demodulator's configuration.
- * @param modem Index of the demodulator to query.
- * @return The pre-filter type that should be applied.
+ * @param modem Index of the demodulator to query, 0 ..
+ *              ::MODEM_MAX_DEMODULATOR_COUNT - 1.
+ * @return The pre-filter type that should be applied, or ::PREFILTER_NONE if
+ *         the index is outside the valid range.
  */
 enum ModemPrefilter ModemGetFilterType(uint8_t modem);
 

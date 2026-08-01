@@ -157,6 +157,22 @@ typedef enum {
 /** @} */
 
 /**
+ * @name APRS-IS server port range
+ * @brief Accepted range and fallback for ::app_config_t::aprs_port.
+ *
+ * Port 0 fits in a uint16_t but is not a connectable TCP port: getaddrinfo()
+ * accepts the service string "0" and the following connect() then fails, so
+ * the IGate would sit in a reconnect loop reporting a destination it could
+ * never have reached. The value is therefore clamped both when the form is
+ * saved and when config.json is loaded.
+ * @{
+ */
+#define APRS_PORT_MIN     1     /**< Lowest connectable TCP port. */
+#define APRS_PORT_MAX     65535 /**< Highest TCP port. */
+#define APRS_PORT_DEFAULT 14580 /**< Fallback APRS-IS port (the filtered-feed port), used whenever the stored one is out of range. */
+/** @} */
+
+/**
  * @name Activate bit flags
  * @brief Bit flags used by path/object activation selectors.
  * @{
@@ -280,7 +296,7 @@ typedef struct {
                                          on budlist[] - see aprs_filter_classify_thirdparty_inner(). Never a general "relay all third-party" switch; misuse (or
                                          use without a whitelist) risks re-introducing an IGate loop. */
     uint8_t aprs_ssid;                /**< SSID for the IGate callsign. */
-    uint16_t aprs_port;               /**< APRS-IS server TCP port. */
+    uint16_t aprs_port;               /**< APRS-IS server TCP port, clamped to ::APRS_PORT_MIN .. ::APRS_PORT_MAX on save and on load. */
     char aprs_mycall[10];             /**< IGate callsign. */
     bool igate_use_station;           /**< "Use My Station Data": mirror My Station identity/position into the IGate fields and lock them. */
     char aprs_host[20];               /**< APRS-IS server hostname. */

@@ -105,7 +105,7 @@ esp_err_t page_igate_get(httpd_req_t *req) {
         web_raw(req, pcbuf);
     }
     web_field_text(req, TR_F_SERVER_HOST, "igateHost", g_config.aprs_host, 19);
-    web_field_int(req, TR_F_SERVER_PORT, "igatePort", g_config.aprs_port, 1, 65535);
+    web_field_int(req, TR_F_SERVER_PORT, "igatePort", g_config.aprs_port, APRS_PORT_MIN, APRS_PORT_MAX);
     web_field_text(req, TR_F_FILTER, "igateFilter", g_config.aprs_filter, 29);
     if (s_filterWarning[0]) {
         char esc_warn[sizeof(s_filterWarning) * 6 + 1];
@@ -422,7 +422,19 @@ esp_err_t page_igate_post(httpd_req_t *req) {
     g_config.aprs_ssid = web_form_get_ssid(body, "igateSSID", g_config.aprs_ssid);
     web_form_get(body, "igatePasscode", g_config.aprs_passcode, sizeof(g_config.aprs_passcode));
     web_form_get(body, "igateHost", g_config.aprs_host, sizeof(g_config.aprs_host));
-    g_config.aprs_port = (uint16_t)web_form_get_int(body, "igatePort", g_config.aprs_port);
+    // APRS-IS server port - clamp defensively against a malformed POST. Port 0
+    // fits in the uint16_t field but is not connectable: getaddrinfo() accepts
+    // the service string "0" and connect() then fails, which shows up as a
+    // five-second reconnect loop naming a port the IGate could never reach.
+    // The intermediate int catches a negative value before the cast. Bounds
+    // come from app_config.h so the form min/max, this clamp and the
+    // flash-load clamp cannot drift apart.
+    int aprs_port_in = web_form_get_int(body, "igatePort", g_config.aprs_port);
+    if (aprs_port_in < APRS_PORT_MIN)
+        aprs_port_in = APRS_PORT_MIN;
+    else if (aprs_port_in > APRS_PORT_MAX)
+        aprs_port_in = APRS_PORT_MAX;
+    g_config.aprs_port = (uint16_t)aprs_port_in;
 
     // Filter field: still saved verbatim (it's the user's to set), but first
     // checked for (a) truncation against the destination buffer and (b)
