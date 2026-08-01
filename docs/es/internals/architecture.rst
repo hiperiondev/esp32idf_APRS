@@ -7,11 +7,11 @@ Arquitectura
 Secuencia de arranque
 =====================
 
-``app_main()`` se ejecuta en la tarea principal del sistema, cuya pila está fija
-en ``CONFIG_ESP_MAIN_TASK_STACK_SIZE`` (3584 B) — demasiado pequeña para
-``esp_netif`` + ``esp_wifi`` + ``esp_http_server`` + cJSON. Así que
-``app_main()`` hace solo las dos cosas que deben preceder a todo, y luego cede el
-control a una tarea dedicada:
+``app_main()`` se ejecuta en la tarea principal del sistema, cuya pila la fija
+``CONFIG_ESP_MAIN_TASK_STACK_SIZE`` y no está pensada para alojar trabajo pesado
+— ``esp_netif`` + ``esp_wifi`` + ``esp_http_server`` + cJSON pueden usar varios
+KB de pila entre ellos. Así que ``app_main()`` hace solo las dos cosas que deben
+preceder a todo, y luego cede el control a una tarea dedicada:
 
 .. code-block:: text
 
@@ -120,7 +120,7 @@ Mapa de tareas
      - ``aprs_service_start()``
      - 1 Hz: refresco de meteo + reintento de mensajes + sincro horaria
    * - ``httpd``
-     - 8192 B
+     - 20480 B
      - —
      - cualquiera
      - ``web_server_start()``

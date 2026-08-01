@@ -75,9 +75,9 @@ Valores de fábrica destacados
    * - Hostname
      - ``esp32idf_APRS``
    * - Frecuencia de CPU
-     - 160 MHz
+     - 240 MHz
    * - Zona horaria
-     - 7.0 (el reloj en sí siempre es UTC)
+     - 0.0 (el reloj en sí siempre es UTC)
    * - Hosts NTP
      - ``pool.ntp.org``, ``time.google.com``, ``time.cloudflare.com``
    * - IGate

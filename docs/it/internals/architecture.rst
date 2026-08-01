@@ -8,10 +8,10 @@ Sequenza di avvio
 =================
 
 ``app_main()`` viene eseguita nel task principale del sistema, il cui stack è
-fissato a ``CONFIG_ESP_MAIN_TASK_STACK_SIZE`` (3584 B) — troppo piccolo per
-``esp_netif`` + ``esp_wifi`` + ``esp_http_server`` + cJSON. Quindi ``app_main()``
-fa solo le due cose che devono precedere tutto, e poi cede il controllo a un task
-dedicato:
+impostato da ``CONFIG_ESP_MAIN_TASK_STACK_SIZE`` e non è pensato per ospitare
+lavoro pesante — ``esp_netif`` + ``esp_wifi`` + ``esp_http_server`` + cJSON
+possono usare diversi KB di stack tra loro. Quindi ``app_main()`` fa solo le due
+cose che devono precedere tutto, e poi cede il controllo a un task dedicato:
 
 .. code-block:: text
 
@@ -121,7 +121,7 @@ Mappa dei task
      - ``aprs_service_start()``
      - 1 Hz: refresh meteo + ritentativo messaggi + sincro oraria
    * - ``httpd``
-     - 8192 B
+     - 20480 B
      - —
      - qualsiasi
      - ``web_server_start()``

@@ -7,10 +7,11 @@ Architecture
 Boot sequence
 =============
 
-``app_main()`` runs on the system main task, whose stack is fixed at
-``CONFIG_ESP_MAIN_TASK_STACK_SIZE`` (3584 B) — far too small for ``esp_netif`` +
-``esp_wifi`` + ``esp_http_server`` + cJSON. So ``app_main()`` does only the two
-things that must precede everything, then hands off to a dedicated task:
+``app_main()`` runs on the system main task, whose stack is set by
+``CONFIG_ESP_MAIN_TASK_STACK_SIZE`` and is not meant to host heavy work —
+``esp_netif`` + ``esp_wifi`` + ``esp_http_server`` + cJSON can use several KB of
+stack between them. So ``app_main()`` does only the two things that must precede
+everything, then hands off to a dedicated task:
 
 .. code-block:: text
 
@@ -119,7 +120,7 @@ Task map
      - ``aprs_service_start()``
      - 1 Hz: weather refresh + message retry + time sync
    * - ``httpd``
-     - 8192 B
+     - 20480 B
      - —
      - any
      - ``web_server_start()``

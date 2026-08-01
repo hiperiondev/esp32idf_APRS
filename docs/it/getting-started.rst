@@ -76,9 +76,9 @@ Valori di fabbrica notevoli
    * - Hostname
      - ``esp32idf_APRS``
    * - Frequenza CPU
-     - 160 MHz
+     - 240 MHz
    * - Fuso orario
-     - 7.0 (l'orologio stesso è sempre UTC)
+     - 0.0 (l'orologio stesso è sempre UTC)
    * - Host NTP
      - ``pool.ntp.org``, ``time.google.com``, ``time.cloudflare.com``
    * - IGate

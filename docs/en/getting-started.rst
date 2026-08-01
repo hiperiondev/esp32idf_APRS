@@ -74,9 +74,9 @@ Notable factory defaults
    * - Hostname
      - ``esp32idf_APRS``
    * - CPU frequency
-     - 160 MHz
+     - 240 MHz
    * - Time zone
-     - 7.0 (clock itself is always UTC)
+     - 0.0 (clock itself is always UTC)
    * - NTP hosts
      - ``pool.ntp.org``, ``time.google.com``, ``time.cloudflare.com``
    * - IGate
