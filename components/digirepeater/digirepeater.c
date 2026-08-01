@@ -79,9 +79,15 @@ int digiProcess(ax25_msg_t *packet) {
         return 0;
     }
 
-    // Destination SSID trace (WIDEn-N encoded in the dest SSID field)
+    // Destination SSID trace (WIDEn-N encoded in the dest SSID field).
+    //
+    // ax25_decode() already shifts the raw address octet down into a plain
+    // 0-15 hop count ((ssidBits >> 1) & 0x0F) and stores it in dst.ssid, so it
+    // is used here as-is; the range checks below then operate on that decoded
+    // domain and the decremented value is written back in the same form,
+    // keeping the retransmitted frame consistent with what was received.
     if (packet->dst.ssid > 0) {
-        ctmp = packet->dst.ssid & 0x1E;
+        ctmp = packet->dst.ssid;
 
         if (ctmp > 15)
             ctmp = 0;

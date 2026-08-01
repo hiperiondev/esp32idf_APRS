@@ -303,7 +303,17 @@ int igateProcess(ax25_msg_t *packet) {
         }
     }
 
-    // Only gate satellite-repeated frames if the satellite's call is marked used ('*')
+    // Only gate frames routed through a satellite digipeater when that
+    // satellite address is actually marked as used, i.e. the AX.25 "has been
+    // repeated" H-bit of the address is set. A frame carrying the satellite in
+    // its path without that bit was merely addressed to the bird, never
+    // relayed by it, so it must not reach APRS-IS.
+    //
+    // The H-bit is decoded by ax25_decode() into the packet->rpt_flags bitmap
+    // (one bit per rpt_list entry) and is read through the AX25_REPEATED()
+    // accessor; rpt_list[].call holds only the bare NUL-terminated callsign.
+    // The '*' marker is a TNC2 text convention and is emitted from rpt_flags
+    // when the header line is rendered further down this function.
     static const struct {
         const char *call;
         size_t len;
@@ -313,7 +323,7 @@ int igateProcess(ax25_msg_t *packet) {
     for (idx = 0; idx < packet->rpt_count; idx++) {
         for (size_t s = 0; s < sizeof(satGates) / sizeof(satGates[0]); s++) {
             if (!strncmp(packet->rpt_list[idx].call, satGates[s].call, satGates[s].len)) {
-                if (strchr(&packet->rpt_list[idx].call[satGates[s].len - 1], '*') == NULL) {
+                if (!AX25_REPEATED(packet, idx)) {
                     s_stats.dropByReason[DROP_SAT_NOT_USED]++;
                     return 0;
                 }

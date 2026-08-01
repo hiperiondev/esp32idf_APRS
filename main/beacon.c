@@ -310,11 +310,17 @@ static int buildStatusPacket(const status_params_t *p, char *out, size_t outMax)
     snprintf(infoField, sizeof(infoField), ">%s", p->statusText);
 
     int n = snprintf(out, outMax, "%s>%s%s:%s", callField, BEACON_DEST, path, infoField);
-    // Same truncation-clamp policy as buildPositionPacket() above.
+    // A status line is at most 152 bytes: call field (up to 15) + '>' +
+    // destination (6) + path (up to 79) + ':' + info field (up to 50). That
+    // fits the 400-byte buffer every caller provides. Should a caller ever
+    // pass a smaller one, refuse the packet instead of returning a clamped
+    // length: a clamped length would put a truncated - and therefore
+    // malformed - status report on the air, while returning 0 makes the
+    // caller skip the transmission entirely.
     if (n < 0)
         return 0;
     if (outMax > 0 && (size_t)n >= outMax)
-        n = (int)outMax - 1;
+        return 0;
     return n;
 }
 
@@ -351,7 +357,7 @@ static uint32_t trackerStatusService(void) {
         }
         app_config_unlock();
 
-        char packet[128]; // callField+dest+path+infoField(up to STATUS_SIZE)
+        char packet[400]; // callField+dest+path+infoField(up to STATUS_SIZE): 152 bytes worst case
         int len = buildStatusPacket(&p, packet, sizeof(packet));
         if (len > 0) {
             if (g_config.trk_loc2rf) {
@@ -396,7 +402,7 @@ static uint32_t igateStatusService(void) {
         }
         app_config_unlock();
 
-        char packet[128]; // callField+dest+path+infoField(up to STATUS_SIZE)
+        char packet[400]; // callField+dest+path+infoField(up to STATUS_SIZE): 152 bytes worst case
         int len = buildStatusPacket(&p, packet, sizeof(packet));
         if (len > 0) {
             if (g_config.igate_loc2rf) {
@@ -442,7 +448,7 @@ static uint32_t digiStatusService(void) {
         }
         app_config_unlock();
 
-        char packet[128]; // callField+dest+path+infoField(up to STATUS_SIZE)
+        char packet[400]; // callField+dest+path+infoField(up to STATUS_SIZE): 152 bytes worst case
         int len = buildStatusPacket(&p, packet, sizeof(packet));
         if (len > 0) {
             if (g_config.digi_loc2rf) {

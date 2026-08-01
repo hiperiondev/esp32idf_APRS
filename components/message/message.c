@@ -447,8 +447,12 @@ void sendAPRSMessageRetry(void) {
         if ((now - s_queue[i].time) <= g_config.msg_interval)
             continue;
 
+        // Stamp the moment this retry is sent. The guard above compares
+        // (now - time) against msg_interval, so the timestamp must be the
+        // instant of the last transmission for the next attempt to fall
+        // exactly one msg_interval later.
         if (--s_queue[i].ack > 0)
-            s_queue[i].time = now + g_config.msg_interval;
+            s_queue[i].time = now;
 
         char toCallFixed[10];
         memset(toCallFixed, ' ', 9);
