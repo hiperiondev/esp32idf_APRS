@@ -53,6 +53,14 @@ static const char *TAG = "beacon_sched";
 // stack overrun on the RF leg was seen to silently corrupt/truncate packets;
 // sizing the one shared stack to that proven maximum keeps every path's
 // headroom while replacing ~61 KB of separate stacks with a single ~14 KB one.
+//
+// One consumer of that headroom is invisible from here and worth naming: at
+// the very bottom of the same call tree, Ax25WriteTxFrame() can decode the
+// frame it just queued back into a TNC2 line for the log, which costs about a
+// kilobyte of stack (an ax25_msg_t plus a 256-byte line buffer). That block is
+// compiled out unless the build's maximum log level admits ESP_LOGD and is
+// only executed when the "ax25" tag is actually raised to debug at run time -
+// so raising it is not free here, it eats into this budget.
 #define BEACON_SCHED_TASK_STACK_BYTES 14336
 
 // Upper bound on how long the scheduler sleeps between passes. Even when every

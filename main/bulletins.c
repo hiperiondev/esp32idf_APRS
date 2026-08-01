@@ -36,6 +36,7 @@
 #include "aprs_service.h"
 #include "bulletins.h"
 #include "igate.h"
+#include "storage.h" // storage_write_lock() / storage_generation()
 
 static const char *TAG = "bulletins";
 
@@ -291,12 +292,45 @@ static bool save_locked(const bulletins_t *in) {
     return true;
 }
 
+// Parsed copy of bulletins.json, kept in RAM so a scheduler pass costs nothing
+// on the filesystem. bulletins_service() runs on every pass of the shared
+// beacon scheduler - as often as every 5 s while the other services are idle -
+// and each pass called bulletins_load(), i.e. an fopen + fread + a full
+// cJSON_Parse of this file, on the order of ten thousand times a day. That
+// parse builds and tears down a tree of small heap nodes, the exact allocation
+// pattern app_config_save() was rewritten to stop doing; holding the result
+// costs ~sizeof(bulletins_t) of static RAM once and removes the churn.
+//
+// The cache is only allowed to answer when nothing can have changed underneath
+// it: bulletins_save() drops it (every web edit and every expiry-driven
+// rewrite goes through there), and s_cache_gen catches the changes made from
+// outside this module - a whole-partition format, a delete, or a file uploaded
+// over this one from the web Storage page (see storage_generation()).
+static bulletins_t s_cache;
+static bool s_cache_valid = false;
+static bool s_cache_ok = false; // what load_locked() reported for the cached content
+static uint32_t s_cache_gen = 0;
+
 bool bulletins_load(bulletins_t *out) {
     if (!out)
         return false;
     lock();
+    if (s_cache_valid && s_cache_gen == storage_generation()) {
+        *out = s_cache;
+        bool cached_ok = s_cache_ok;
+        unlock();
+        return cached_ok;
+    }
     bool missing = false;
     bool ok = load_locked(out, &missing);
+    // Cache the defaults substituted for a missing/corrupt file too: they are
+    // what every caller would get from a re-read anyway, and doing so keeps a
+    // subsystem that is simply not configured from re-reading the filesystem
+    // on every scheduler pass.
+    s_cache = *out;
+    s_cache_ok = ok;
+    s_cache_gen = storage_generation();
+    s_cache_valid = true;
     unlock();
     if (missing) {
         // First boot / file lost: persist the empty-default set now so
@@ -312,7 +346,17 @@ bool bulletins_save(const bulletins_t *in) {
     if (!in)
         return false;
     lock();
+    // Module lock first, filesystem-wide writer gate second (storage.h): the
+    // temp-file + rename sequence inside save_locked() must not overlap the
+    // whole-partition format the web Storage page can start.
+    storage_write_lock();
     bool ok = save_locked(in);
+    storage_write_unlock();
+    // Drop the cache rather than filling it from *in: what lands on disk is
+    // what a later load will parse back, and save_locked() bounds the text it
+    // writes, so the next reader re-reads the file once and caches exactly
+    // what the file says.
+    s_cache_valid = false;
     unlock();
     return ok;
 }

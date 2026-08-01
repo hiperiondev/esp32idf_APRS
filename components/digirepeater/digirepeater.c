@@ -16,19 +16,21 @@
  *
  * @brief APRS digipeater path logic: WIDEn-N / TRACEn-N / RELAY / ECHO / GATE
  * handling, hop decrementing and callsign insertion, duplicate suppression and
- * per-station statistics kept across deep sleep.
+ * per-station statistics.
  */
 
 #include <string.h>
-
-#include "esp_attr.h"
 
 #include "app_config.h"
 #include "digirepeater.h"
 #include "igate.h"
 
-// Preserved across deep-sleep the same way the original firmware did.
-static RTC_DATA_ATTR digi_stats_t s_stats;
+// Ordinary .bss, not RTC slow memory: this firmware never enters deep sleep, so
+// there is nothing for RTC placement to preserve. Keeping the counters here
+// leaves that scarce memory for something that needs it, and makes them reset
+// on esp_restart() - which is what the dashboard should show after an OTA
+// reboot, rather than totals carried over from the previous firmware image.
+static digi_stats_t s_stats;
 
 digi_stats_t digi_get_stats(void) {
     return s_stats;

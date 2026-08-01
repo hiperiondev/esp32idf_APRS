@@ -19,6 +19,7 @@
  * retrying until the first sync succeeds.
  */
 
+#include <string.h>
 #include <sys/time.h>
 #include <time.h>
 
@@ -56,6 +57,14 @@ static bool s_sntp_inited = false;                             // esp_netif_sntp
 static int s_wait_s = 0;                                       // seconds elapsed in TS_WAITING / TS_COOLDOWN
 static char s_host_list[3 * sizeof(g_config.ntp_host[0]) + 8]; // human-readable, for logs
 
+// Module-owned copies of the configured NTP hostnames. esp_netif_sntp_init()
+// keeps the pointers it is handed and lwIP's SNTP module dereferences them
+// asynchronously, on its own timer, for as long as the client runs - so they
+// must not point into g_config, whose strings a System-page save rewrites in
+// place underneath it. These copies are taken once, under the config lock, and
+// never change afterwards.
+static char s_ntp_host[NTP_HOST_NUM][sizeof(g_config.ntp_host[0])];
+
 static void logUtcNow(const char *prefix) {
     time_t now = time(NULL);
     struct tm tmv;
@@ -84,14 +93,27 @@ static bool sntp_setup(void) {
     setenv("TZ", "UTC0", 1);
     tzset();
 
+    // Snapshot the configured hosts into this module's own storage, under the
+    // config lock, and hand esp_netif_sntp_init() pointers to those copies -
+    // see the s_ntp_host note above. The lock is a strict leaf lock, held only
+    // for the copy.
     const char *hosts[NTP_HOST_NUM];
     int hostCount = 0;
+    app_config_lock();
     for (int i = 0; i < NTP_HOST_NUM; i++) {
         if (g_config.ntp_host[i][0]) {
-            hosts[hostCount++] = g_config.ntp_host[i];
+            strncpy(s_ntp_host[hostCount], g_config.ntp_host[i], sizeof(s_ntp_host[hostCount]) - 1);
+            s_ntp_host[hostCount][sizeof(s_ntp_host[hostCount]) - 1] = 0;
+            hosts[hostCount] = s_ntp_host[hostCount];
+            hostCount++;
         }
     }
+    uint32_t resyncSec = g_config.ntp_resync_sec;
+    app_config_unlock();
+
     if (hostCount == 0) {
+        // A string literal has static storage duration, so it is as safe to
+        // hand over as the copies above.
         hosts[0] = "pool.ntp.org";
         hostCount = 1;
     }
@@ -115,7 +137,6 @@ static bool sntp_setup(void) {
     // (SNTP_UPDATE_DELAY) regardless of what's requested here, so an
     // effective interval below 15 s would be silently clamped anyway - see
     // the note in time_sync.h.
-    uint32_t resyncSec = g_config.ntp_resync_sec;
     if (resyncSec < NTP_RESYNC_MIN_SEC)
         resyncSec = NTP_RESYNC_MIN_SEC;
     sntp_set_sync_interval(resyncSec * 1000);

@@ -814,6 +814,12 @@ static void serviceTickTask(void *arg) {
 
 static SemaphoreHandle_t s_loopTestSem = NULL;
 static volatile bool s_loopTestActive = false;
+// Guards the claim of s_loopTestActive. Reading the flag and setting it are one
+// indivisible step - two overlapping requests must not both come away believing
+// they own the test, which a plain read-then-write would allow. A portMUX (not a
+// mutex) because the claim is a handful of instructions and can then be made
+// with no allocation and no init-order dependency.
+static portMUX_TYPE s_loopTestLock = portMUX_INITIALIZER_UNLOCKED;
 static volatile bool s_loopTestGotFrame = false;
 static char s_loopTestToken[8];
 static char s_loopTestRxInfo[128];
@@ -950,17 +956,33 @@ bool aprs_loop_test_run(char *msg, size_t msg_len) {
         return false;
     }
 
-    if (s_loopTestActive) {
+    // Claim the test atomically: whoever wins sets the flag inside the same
+    // critical section that read it, so a second request always sees it set.
+    bool busy;
+    portENTER_CRITICAL(&s_loopTestLock);
+    busy = s_loopTestActive;
+    if (!busy)
+        s_loopTestActive = true;
+    portEXIT_CRITICAL(&s_loopTestLock);
+    if (busy) {
         snprintf(msg, msg_len, "A loop test is already running - please wait for it to finish.");
         ESP_LOGW(TAG, "Loop test: %s", msg);
         return false;
     }
-    s_loopTestActive = true;
 
     if (!s_loopTestSem)
         s_loopTestSem = xSemaphoreCreateBinary();
-    else
-        xSemaphoreTake(s_loopTestSem, 0); // drain any stale/leftover give
+    if (!s_loopTestSem) {
+        // Nothing below can work without it: the RX hook signals completion
+        // through this semaphore and the wait below is what times the test.
+        // Release the claim so a later attempt, on a less exhausted heap, can
+        // still run.
+        s_loopTestActive = false;
+        snprintf(msg, msg_len, "Could not start the loop test: out of memory allocating its completion semaphore. Reboot the device and try again.");
+        ESP_LOGE(TAG, "Loop test: %s", msg);
+        return false;
+    }
+    xSemaphoreTake(s_loopTestSem, 0); // drain any stale/leftover give (a fresh binary semaphore is already empty)
 
     // Unique token per run, so we only accept *this* frame as a pass, not
     // some coincidental leftover/duplicate packet.

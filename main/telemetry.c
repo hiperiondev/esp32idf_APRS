@@ -42,6 +42,7 @@
 #include "beacon_scheduler.h" // beacon_scheduler_jitter()
 #include "igate.h"
 #include "sensors_local.h"
+#include "storage.h" // storage_write_lock() / storage_generation()
 #include "telemetry.h"
 #include "weather_telemetry.h"
 
@@ -69,9 +70,8 @@ static bool s_ana_present[TLM_CH];      // channel mapped and resolved this cycl
 // In-RAM copy of just the callsign, kept in sync on every load/save so
 // telemetry_get_mycall() (called from aprs_service.c's inet_line_is_own_report(),
 // once per APRS-IS line received - potentially many per second on a busy
-// IGate) never has to hit LittleFS. Everything else about the config is
-// re-read from telemetry.json on demand (telemetry_beacon_service(), the web
-// page) since those run at a much lower, human/scheduler-driven cadence.
+// IGate) never has to hit LittleFS, and can answer without copying the whole
+// configuration structure the way telemetry_config_load() does.
 static char s_mycall_cache[10];
 
 static SemaphoreHandle_t s_lock;
@@ -537,13 +537,48 @@ static void update_mycall_cache_locked(const char *mycall) {
     s_mycall_cache[sizeof(s_mycall_cache) - 1] = 0;
 }
 
+// Parsed copy of telemetry.json, kept in RAM so a scheduler pass costs nothing
+// on the filesystem. telemetry_beacon_service() runs on every pass of the
+// shared beacon scheduler - as often as every 5 s while the subsystem is
+// disabled - and each pass called telemetry_config_load(), i.e. an fopen +
+// fread + a full cJSON_Parse of this file, on the order of ten thousand times
+// a day. That parse builds and tears down a tree of small heap nodes, the
+// exact allocation pattern app_config_save() was rewritten to stop doing;
+// holding the result costs ~sizeof(telemetry_config_t) of static RAM once and
+// removes the churn. It is the same reasoning s_mycall_cache above already
+// applies to the callsign, extended to the whole structure.
+//
+// The cache is only allowed to answer when nothing can have changed underneath
+// it: telemetry_config_save() drops it (every web edit goes through there),
+// and s_cfg_cache_gen catches the changes made from outside this module - a
+// whole-partition format, a delete, or a file uploaded over this one from the
+// web Storage page (see storage_generation()).
+static telemetry_config_t s_cfg_cache;
+static bool s_cfg_cache_valid = false;
+static bool s_cfg_cache_ok = false; // what load_locked() reported for the cached content
+static uint32_t s_cfg_cache_gen = 0;
+
 bool telemetry_config_load(telemetry_config_t *out) {
     if (!out)
         return false;
     telemetry_lock();
+    if (s_cfg_cache_valid && s_cfg_cache_gen == storage_generation()) {
+        *out = s_cfg_cache;
+        bool cached_ok = s_cfg_cache_ok;
+        telemetry_unlock();
+        return cached_ok;
+    }
     bool missing = false;
     bool ok = load_locked(out, &missing);
     update_mycall_cache_locked(out->mycall);
+    // Cache the defaults substituted for a missing/corrupt file too: they are
+    // what every caller would get from a re-read anyway, and doing so keeps a
+    // subsystem that is simply not configured from re-reading the filesystem
+    // on every scheduler pass.
+    s_cfg_cache = *out;
+    s_cfg_cache_ok = ok;
+    s_cfg_cache_gen = storage_generation();
+    s_cfg_cache_valid = true;
     telemetry_unlock();
     if (missing) {
         // First boot / file lost: persist the default set now so
@@ -559,9 +594,18 @@ bool telemetry_config_save(const telemetry_config_t *in) {
     if (!in)
         return false;
     telemetry_lock();
+    // Module lock first, filesystem-wide writer gate second (storage.h): the
+    // temp-file + rename sequence inside save_locked() must not overlap the
+    // whole-partition format the web Storage page can start.
+    storage_write_lock();
     bool ok = save_locked(in);
+    storage_write_unlock();
     if (ok)
         update_mycall_cache_locked(in->mycall);
+    // Drop the cache rather than filling it from *in: what lands on disk is
+    // what a later load will parse back, so the next reader re-reads the file
+    // once and caches exactly what the file says.
+    s_cfg_cache_valid = false;
     telemetry_unlock();
     return ok;
 }
@@ -585,12 +629,12 @@ void telemetry_get_mycall(char *out, size_t out_size) {
  * runs last silently overwrite bits already resolved from a different,
  * operator-selected driver.
  *
- * Uses the channel mapping cached from the last telemetry_beacon_service()
- * pass (s_cached_bit_channel[]) instead of reloading telemetry.json here:
- * this runs at 1 Hz off the APRS service tick, and a LittleFS read every
- * second is unnecessary flash wear/latency for a mapping that only changes
- * when the operator saves the web page - the scheduler-driven beacon
- * service (which does reload every pass) keeps that cache fresh.
+ * Uses the channel mapping copied on the last telemetry_beacon_service()
+ * pass (s_cached_bit_channel[]) rather than calling telemetry_config_load()
+ * here: this runs at 1 Hz off the APRS service tick, and the mapping only
+ * changes when the operator saves the web page, so a snapshot of just the two
+ * channel arrays is all this path needs - the scheduler-driven beacon service
+ * refreshes it on every pass.
  * ------------------------------------------------------------------------- */
 static uint8_t s_cached_bit_channel[TLM_BIT_NUM];
 static uint8_t s_cached_ana_channel[TLM_CH];

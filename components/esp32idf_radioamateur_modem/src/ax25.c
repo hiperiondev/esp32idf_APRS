@@ -581,18 +581,30 @@ void *Ax25WriteTxFrame(const uint8_t *data, uint16_t size) {
     // Decode the frame we just queued back into a readable TNC2 line
     // ("SRC>DST,PATH:info") for the serial log. ax25_decode() only reads the
     // buffer (so the const cast is safe) and returns false for non-UI/non-APRS
-    // frames, which we simply don't print. This runs in the caller's task
-    // (beacon / message / service tick / weather), all of which have generous
-    // stacks, and is skipped entirely when INFO logging is off for this tag so
-    // it costs nothing in that case.
-    if (esp_log_level_get(TAG) >= ESP_LOG_INFO) {
+    // frames, which we simply don't print.
+    //
+    // This is a debug-only aid, and it is deliberately kept out of a stock
+    // build: the block needs an ax25_msg_t (info[] alone is AX25_FRAME_MAX_SIZE
+    // bytes, plus the address fields) and a 256-byte line buffer, roughly a
+    // kilobyte of stack, and it sits at the very bottom of the TX call chain
+    // (buildXxxPacket -> aprs_service_send_tnc2 -> modem_send_tnc2 ->
+    // modem_build_frame_tnc2 -> ax25_encode -> here). That is the deepest
+    // point of the path BEACON_SCHED_TASK_STACK_BYTES was sized against, so a
+    // kilobyte spent here is a kilobyte of headroom the caller's task-sizing
+    // comments cannot see. The whole block compiles out unless the build's
+    // maximum log level admits ESP_LOGD (4 == ESP_LOG_DEBUG; the enum name
+    // itself is not usable in a preprocessor test), and even then only runs
+    // when this tag's level is actually raised to debug at run time.
+#if defined(CONFIG_LOG_MAXIMUM_LEVEL) && (CONFIG_LOG_MAXIMUM_LEVEL >= 4)
+    if (esp_log_level_get(TAG) >= ESP_LOG_DEBUG) {
         ax25_msg_t decoded;
         if (ax25_decode((uint8_t *)data, size, 0, &decoded)) {
             char tnc2[256];
             modem_format_tnc2(&decoded, tnc2, sizeof(tnc2));
-            ESP_LOGI(TAG, "TX frame: %s", tnc2);
+            ESP_LOGD(TAG, "TX frame: %s", tnc2);
         }
     }
+#endif
 
     txFrame[txFrameHead].size = size;
     txFrame[txFrameHead].start = txBufferHead;

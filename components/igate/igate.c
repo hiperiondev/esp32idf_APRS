@@ -24,7 +24,6 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
-#include "esp_attr.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
@@ -44,7 +43,12 @@ struct DupPacketCache {
     unsigned long timestamp;
 };
 
-static RTC_DATA_ATTR igate_stats_t s_stats;
+// Ordinary .bss, not RTC slow memory: this firmware never enters deep sleep, so
+// there is nothing for RTC placement to preserve. Keeping the counters here
+// leaves that scarce memory for something that needs it, and makes them reset
+// on esp_restart() - which is what the dashboard should show after an OTA
+// reboot, rather than totals carried over from the previous firmware image.
+static igate_stats_t s_stats;
 static struct DupPacketCache s_dupCache[DUP_PACKET_CACHE_SIZE];
 static uint8_t s_dupCacheIndex = 0;
 
@@ -492,6 +496,22 @@ void igate_set_inet2rf_handler(void (*handler)(const char *line)) {
     s_inet2rfHandler = handler;
 }
 
+// Read the current APRS-IS descriptor under the mutex that guards it, so the
+// uplink task never observes s_sock while closeSocket() or connectAprsIs() is
+// part-way through changing it. The blocking recv() below is then made on the
+// returned copy: holding the mutex across a recv() with a multi-second timeout
+// would block every APRS-IS transmitter for that whole window, so the value is
+// snapshotted instead. A descriptor closed right after the snapshot makes that
+// recv() fail, which the loop already handles by reconnecting.
+static int socketSnapshot(void) {
+    ensureSockMutex();
+    int sock = -1;
+    xSemaphoreTake(s_sockMutex, portMAX_DELAY);
+    sock = s_sock;
+    xSemaphoreGive(s_sockMutex);
+    return sock;
+}
+
 static void closeSocket(void) {
     ensureSockMutex();
     xSemaphoreTake(s_sockMutex, portMAX_DELAY);
@@ -671,16 +691,20 @@ static void igateTask(void *arg) {
             waitingLogged = false;
         }
 
-        if (s_sock < 0) {
+        int sock = socketSnapshot();
+        if (sock < 0) {
             if (!connectAprsIs()) {
                 vTaskDelay(pdMS_TO_TICKS(5000));
                 continue;
             }
             linePos = 0;
+            sock = socketSnapshot();
+            if (sock < 0)
+                continue; // closed again between the connect and this read
         }
 
         char buf[256];
-        int r = recv(s_sock, buf, sizeof(buf), 0);
+        int r = recv(sock, buf, sizeof(buf), 0);
         if (r > 0) {
             for (int i = 0; i < r; i++) {
                 char c = buf[i];

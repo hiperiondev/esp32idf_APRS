@@ -39,6 +39,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
+#include "storage.h" // storage_write_lock() - keeps a save from overlapping a whole-partition format
 
 static const char *TAG = "app_config";
 #define CONFIG_PATH     "/storage/config.json"
@@ -877,9 +878,17 @@ bool app_config_save(void) {
     // be silently dropped, and the critical section below is short.
     xSemaphoreTake(config_mutex(), portMAX_DELAY);
 
+    // Second, filesystem-wide gate (storage.h): config_mutex() only keeps two
+    // config saves apart, while the temp-file + rename sequence below must
+    // also not overlap the whole-partition erase the web Storage page can
+    // trigger, nor a save being made by another subsystem. Module lock first,
+    // this gate second - the order storage.h's contract requires.
+    storage_write_lock();
+
     FILE *f = fopen(CONFIG_TMP_PATH, "w");
     if (!f) {
         ESP_LOGE(TAG, "open tmp for write failed");
+        storage_write_unlock();
         xSemaphoreGive(config_mutex());
         return false;
     }
@@ -918,6 +927,7 @@ bool app_config_save(void) {
     if (!ok) {
         ESP_LOGE(TAG, "write error while saving config (free heap=%u bytes)", (unsigned)esp_get_free_heap_size());
         remove(CONFIG_TMP_PATH);
+        storage_write_unlock();
         xSemaphoreGive(config_mutex());
         return false;
     }
@@ -934,6 +944,7 @@ bool app_config_save(void) {
     if (rename(CONFIG_TMP_PATH, CONFIG_PATH) != 0) {
         ESP_LOGE(TAG, "rename tmp->config failed");
         remove(CONFIG_TMP_PATH);
+        storage_write_unlock();
         xSemaphoreGive(config_mutex());
         return false;
     }
@@ -943,6 +954,7 @@ bool app_config_save(void) {
     // config.stack_size in web_server.c can be sized from real numbers
     // instead of another guess. Remove once a safe margin is confirmed.
     ESP_LOGI(TAG, "Caller stack high-water mark: %u bytes free", (unsigned)(uxTaskGetStackHighWaterMark(NULL) * sizeof(StackType_t)));
+    storage_write_unlock();
     xSemaphoreGive(config_mutex());
     return true;
 }
