@@ -142,6 +142,21 @@ typedef enum {
 #define NTP_RESYNC_MIN_SEC 30
 
 /**
+ * @name SoftAP channel range
+ * @brief Accepted range and fallback for ::app_config_t::wifi_ap_ch.
+ *
+ * esp_wifi_set_config() rejects an AP channel outside this range with
+ * ESP_ERR_INVALID_ARG, so the stored value is clamped both when a form is
+ * saved and when config.json is loaded, and the AP setup in main.c never
+ * treats a driver rejection as fatal.
+ * @{
+ */
+#define WIFI_AP_CH_MIN     1  /**< Lowest usable SoftAP channel. */
+#define WIFI_AP_CH_MAX     13 /**< Highest usable SoftAP channel. */
+#define WIFI_AP_CH_DEFAULT 1  /**< Fallback SoftAP channel, used whenever the stored one is out of range. */
+/** @} */
+
+/**
  * @name Activate bit flags
  * @brief Bit flags used by path/object activation selectors.
  * @{
@@ -238,7 +253,7 @@ typedef struct {
     uint8_t wifi_mode;                 /**< WiFi mode: 0=off, 1=STA, 2=AP, 3=AP_STA. */
     int8_t wifi_power;                 /**< WiFi TX power setting. */
     wifi_sta_t wifi_sta[WIFI_STA_NUM]; /**< The ::WIFI_STA_NUM stored STA profiles. */
-    uint8_t wifi_ap_ch;                /**< SoftAP channel. */
+    uint8_t wifi_ap_ch;                /**< SoftAP channel, clamped to ::WIFI_AP_CH_MIN .. ::WIFI_AP_CH_MAX on save and on load. */
     char wifi_ap_ssid[33];             /**< SoftAP SSID: 32 chars max + NUL. */
     char wifi_ap_pass[64];             /**< SoftAP PSK: 63 chars max + NUL. */
 

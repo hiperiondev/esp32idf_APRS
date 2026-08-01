@@ -54,12 +54,15 @@ esp_err_t page_wireless_get(httpd_req_t *req) {
              "<label>" TR_WIFI_AP_SSID "</label><input type='text' name='apSsid' value='%s' maxlength='32'>"
              "<label>" TR_WIFI_AP_PASSWORD "</label><input type='password' name='apPass' id='pwd_apPass' value='%s' maxlength='63' minlength='8'>"
              "<label class='pwd-show'><input type='checkbox' onclick=\"togglePwd('pwd_apPass',this)\"> " TR_SHOW_PASSWORD "</label>"
-             "<label>" TR_WIFI_AP_CHANNEL "</label><input type='number' name='apCh' value='%d' min='1' max='13'>"
+             // min/max here only stop the browser from submitting an out of
+             // range channel; the value is clamped again in the POST handler,
+             // which is what actually protects the stored configuration.
+             "<label>" TR_WIFI_AP_CHANNEL "</label><input type='number' name='apCh' value='%d' min='%d' max='%d'>"
              "</fieldset>"
              "<button type='button' class='secondary' id='wifiScanBtn' onclick='wifiScan()'>" TR_BTN_WIFI_SCAN "</button> "
              "<span id='wifiScanStatus'></span>",
              g_config.wifi_mode == 0 ? "selected" : "", g_config.wifi_mode == 1 ? "selected" : "", g_config.wifi_mode == 2 ? "selected" : "",
-             g_config.wifi_mode == 3 ? "selected" : "", g_config.wifi_power, esc_ap_ssid, esc_ap_pass, g_config.wifi_ap_ch);
+             g_config.wifi_mode == 3 ? "selected" : "", g_config.wifi_power, esc_ap_ssid, esc_ap_pass, g_config.wifi_ap_ch, WIFI_AP_CH_MIN, WIFI_AP_CH_MAX);
     httpd_resp_sendstr_chunk(req, buf);
 
     // One shared datalist, filled in by wifiScan() below. It only ever offers
@@ -139,7 +142,14 @@ esp_err_t page_wireless_post(httpd_req_t *req) {
     g_config.wifi_power = (int8_t)web_form_get_int(body, "wifiPwr", g_config.wifi_power);
     web_form_get(body, "apSsid", g_config.wifi_ap_ssid, sizeof(g_config.wifi_ap_ssid));
     web_form_get(body, "apPass", g_config.wifi_ap_pass, sizeof(g_config.wifi_ap_pass));
-    g_config.wifi_ap_ch = (uint8_t)web_form_get_int(body, "apCh", g_config.wifi_ap_ch);
+    // The form's min/max attributes are browser side only: a crafted POST can
+    // carry any integer. esp_wifi_set_config() refuses an AP channel outside
+    // the regulatory range, so anything out of bounds is folded back to the
+    // default instead of being written to config.json.
+    int apCh = web_form_get_int(body, "apCh", g_config.wifi_ap_ch);
+    if (apCh < WIFI_AP_CH_MIN || apCh > WIFI_AP_CH_MAX)
+        apCh = WIFI_AP_CH_DEFAULT;
+    g_config.wifi_ap_ch = (uint8_t)apCh;
 
     for (int i = 0; i < WIFI_STA_NUM; i++) {
         char key[16];

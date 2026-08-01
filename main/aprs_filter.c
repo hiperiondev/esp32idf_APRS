@@ -135,7 +135,16 @@ uint16_t aprs_filter_classify_info(const char *info) {
             return IGATE_FILT_QUERY;
 
         // Telemetry report: "T#005,199,000,255,073,123,01101001". Older
-        // encoders omit the '#'; both are telemetry.
+        // encoders omit the '#', and those are telemetry too.
+        //
+        // Heuristic, not spec: APRS101 defines the Data Type Identifier as
+        // "T#", so a bare 'T' with no '#' is not a DTI the standard assigns
+        // to anything. Matching on the first byte alone therefore also claims
+        // any future or vendor payload that happens to start with 'T'. The
+        // trade is deliberate - the alternative is dropping the '#'-less
+        // telemetry that real encoders still emit - but it is the reason a
+        // packet can be classified TELEMETRY without carrying a sequence
+        // number or comma-separated fields.
         case 'T':
             return IGATE_FILT_TELEMETRY;
 

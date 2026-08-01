@@ -161,6 +161,42 @@ static void ip_event_handler(void *arg, esp_event_base_t base, int32_t id, void 
     }
 }
 
+// Applies the SoftAP settings from the running configuration.
+//
+// Nothing in here may abort. The access point is the only way back into the
+// device when no station can associate, so a value the driver refuses has to
+// end as a log line and a fallback, not as a panic: a panic lands before
+// esp_wifi_start(), which leaves the device with no AP and no STA, rebooting
+// into the same panic on every power cycle and recoverable only over serial.
+//
+// The channel is clamped on save and on load, so the retry below is the last
+// line of defence for anything that still reaches the driver out of range.
+static void wifi_apply_ap_config(void) {
+    wifi_config_t ap_cfg = { 0 };
+    strncpy((char *)ap_cfg.ap.ssid, g_config.wifi_ap_ssid, sizeof(ap_cfg.ap.ssid) - 1);
+    ap_cfg.ap.ssid_len = strlen(g_config.wifi_ap_ssid);
+    strncpy((char *)ap_cfg.ap.password, g_config.wifi_ap_pass, sizeof(ap_cfg.ap.password) - 1);
+    ap_cfg.ap.channel = g_config.wifi_ap_ch;
+    ap_cfg.ap.max_connection = 4;
+    ap_cfg.ap.authmode = strlen(g_config.wifi_ap_pass) >= 8 ? WIFI_AUTH_WPA2_PSK : WIFI_AUTH_OPEN;
+
+    if (ap_cfg.ap.channel < WIFI_AP_CH_MIN || ap_cfg.ap.channel > WIFI_AP_CH_MAX) {
+        ESP_LOGW(TAG, "SoftAP channel %u outside %u-%u, using %u", (unsigned)ap_cfg.ap.channel, (unsigned)WIFI_AP_CH_MIN, (unsigned)WIFI_AP_CH_MAX,
+                 (unsigned)WIFI_AP_CH_DEFAULT);
+        ap_cfg.ap.channel = WIFI_AP_CH_DEFAULT;
+    }
+
+    esp_err_t err = esp_wifi_set_config(WIFI_IF_AP, &ap_cfg);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "esp_wifi_set_config(AP) rejected the stored settings: %s - retrying on channel %u", esp_err_to_name(err), (unsigned)WIFI_AP_CH_DEFAULT);
+        ap_cfg.ap.channel = WIFI_AP_CH_DEFAULT;
+        err = esp_wifi_set_config(WIFI_IF_AP, &ap_cfg);
+    }
+    if (err != ESP_OK)
+        ESP_LOGE(TAG, "esp_wifi_set_config(AP) failed: %s - the access point will not come up, fix the Wireless page over a station link or reflash",
+                 esp_err_to_name(err));
+}
+
 static void wifi_init(void) {
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
@@ -190,16 +226,8 @@ static void wifi_init(void) {
     }
     ESP_ERROR_CHECK(esp_wifi_set_mode(mode));
 
-    if (mode == WIFI_MODE_AP || mode == WIFI_MODE_APSTA) {
-        wifi_config_t ap_cfg = { 0 };
-        strncpy((char *)ap_cfg.ap.ssid, g_config.wifi_ap_ssid, sizeof(ap_cfg.ap.ssid) - 1);
-        ap_cfg.ap.ssid_len = strlen(g_config.wifi_ap_ssid);
-        strncpy((char *)ap_cfg.ap.password, g_config.wifi_ap_pass, sizeof(ap_cfg.ap.password) - 1);
-        ap_cfg.ap.channel = g_config.wifi_ap_ch;
-        ap_cfg.ap.max_connection = 4;
-        ap_cfg.ap.authmode = strlen(g_config.wifi_ap_pass) >= 8 ? WIFI_AUTH_WPA2_PSK : WIFI_AUTH_OPEN;
-        ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &ap_cfg));
-    }
+    if (mode == WIFI_MODE_AP || mode == WIFI_MODE_APSTA)
+        wifi_apply_ap_config();
 
     if (mode == WIFI_MODE_STA || mode == WIFI_MODE_APSTA) {
         for (int i = 0; i < WIFI_STA_NUM; i++) {
@@ -217,7 +245,16 @@ static void wifi_init(void) {
                 sta_cfg.sta.pmf_cfg.capable = true;
                 sta_cfg.sta.pmf_cfg.required = false;
 
-                ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &sta_cfg));
+                // Same reasoning as the AP path: the station credentials also
+                // come from stored data, and a set that the driver refuses
+                // must not take the boot down. Log it and try the next slot,
+                // so the access point still comes up either way.
+                esp_err_t serr = esp_wifi_set_config(WIFI_IF_STA, &sta_cfg);
+                if (serr != ESP_OK) {
+                    ESP_LOGE(TAG, "esp_wifi_set_config(STA) rejected slot %d ('%s'): %s - skipping it", i, g_config.wifi_sta[i].wifi_ssid,
+                             esp_err_to_name(serr));
+                    continue;
+                }
                 s_staEnabled = true;
                 ESP_LOGI(TAG, "STA entry %d selected: SSID '%s'", i, g_config.wifi_sta[i].wifi_ssid);
                 break; // first enabled entry; multi-AP failover can be added later
@@ -250,15 +287,7 @@ static void wifi_init(void) {
                 ESP_LOGW(TAG, "  -> Falling back to AP+STA so the web admin stays reachable on '%s'.", g_config.wifi_ap_ssid);
                 mode = WIFI_MODE_APSTA;
                 ESP_ERROR_CHECK(esp_wifi_set_mode(mode));
-
-                wifi_config_t ap_cfg = { 0 };
-                strncpy((char *)ap_cfg.ap.ssid, g_config.wifi_ap_ssid, sizeof(ap_cfg.ap.ssid) - 1);
-                ap_cfg.ap.ssid_len = strlen(g_config.wifi_ap_ssid);
-                strncpy((char *)ap_cfg.ap.password, g_config.wifi_ap_pass, sizeof(ap_cfg.ap.password) - 1);
-                ap_cfg.ap.channel = g_config.wifi_ap_ch;
-                ap_cfg.ap.max_connection = 4;
-                ap_cfg.ap.authmode = strlen(g_config.wifi_ap_pass) >= 8 ? WIFI_AUTH_WPA2_PSK : WIFI_AUTH_OPEN;
-                ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &ap_cfg));
+                wifi_apply_ap_config();
             }
         }
     }

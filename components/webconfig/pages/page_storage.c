@@ -27,6 +27,7 @@
 
 #include "esp_log.h"
 
+#include "app_config.h"
 #include "pages.h"
 #include "storage.h"
 #include "translations.h"
@@ -185,8 +186,9 @@ esp_err_t page_format(httpd_req_t *req) {
         return ESP_OK;
     storage_format();
     // storage_format unmounts nothing; config will be regenerated with defaults
-    // on next boot (or immediately, if caller wants). Trigger it now:
-    extern bool app_config_load(void);
+    // on next boot (or immediately, if caller wants). Trigger it now, through
+    // the prototype in app_config.h so the compiler keeps this call site in
+    // step with the definition.
     app_config_load();
     web_send_saved_redirect(req, "/storage");
     return ESP_OK;

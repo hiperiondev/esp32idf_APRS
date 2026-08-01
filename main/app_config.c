@@ -133,7 +133,7 @@ void app_config_set_defaults(app_config_t *c) {
         set_str(c->wifi_sta[i].wifi_ssid, sizeof(c->wifi_sta[i].wifi_ssid), "WIFI_AP");
         set_str(c->wifi_sta[i].wifi_pass, sizeof(c->wifi_sta[i].wifi_pass), "");
     }
-    c->wifi_ap_ch = 1;
+    c->wifi_ap_ch = WIFI_AP_CH_DEFAULT;
     set_str(c->wifi_ap_ssid, sizeof(c->wifi_ap_ssid), "esp32idf_APRS");
     set_str(c->wifi_ap_pass, sizeof(c->wifi_ap_pass), "esp32idf_APRS");
 
@@ -618,6 +618,17 @@ static void config_from_json(cJSON *d, app_config_t *c) {
     c->wifi_mode = (uint8_t)jget_num(d, "WiFiMode", def.wifi_mode);
     c->wifi_power = (int8_t)jget_num(d, "WiFiPwr", def.wifi_power);
     c->wifi_ap_ch = (uint8_t)jget_num(d, "WiFiAPCH", def.wifi_ap_ch);
+    // The file on flash is not a trusted input: it can arrive from a crafted
+    // POST, a hand edit over the Storage page, or a backup taken from a build
+    // with a different regulatory range. A channel outside WIFI_AP_CH_MIN..MAX
+    // is rejected by esp_wifi_set_config(), which would take the access point
+    // - the only way back into the device - down with it, so it is folded back
+    // to the default here rather than carried into wifi_init().
+    if (c->wifi_ap_ch < WIFI_AP_CH_MIN || c->wifi_ap_ch > WIFI_AP_CH_MAX) {
+        ESP_LOGW(TAG, "stored SoftAP channel %u outside %u-%u, using %u", (unsigned)c->wifi_ap_ch, (unsigned)WIFI_AP_CH_MIN, (unsigned)WIFI_AP_CH_MAX,
+                 (unsigned)WIFI_AP_CH_DEFAULT);
+        c->wifi_ap_ch = WIFI_AP_CH_DEFAULT;
+    }
     set_str(c->wifi_ap_ssid, sizeof(c->wifi_ap_ssid), jget_str(d, "WiFiAP_SSID", def.wifi_ap_ssid));
     set_str(c->wifi_ap_pass, sizeof(c->wifi_ap_pass), jget_str(d, "WiFiAP_PASS", def.wifi_ap_pass));
     {
