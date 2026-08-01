@@ -106,9 +106,6 @@ Basic salvo dove indicato.
      - ``/symbol``
      - riferimento/selettore di simboli APRS
    * - GET
-     - ``/test``
-     - riepilogo di autotest della config
-   * - GET
      - ``/lastheard``
      - tabella LAST HEARD (JSON)
    * - GET

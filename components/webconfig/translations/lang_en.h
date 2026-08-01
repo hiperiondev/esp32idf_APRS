@@ -66,7 +66,6 @@
  * @{
  */
 #define TR_BTN_SAVE          "Save"
-#define TR_BTN_BACK_DASH     "Back to Dashboard"
 #define TR_BTN_AUTO_GENERATE "Auto Generate"
 #define TR_BTN_LOOP_TEST     "LOOP TEST"
 #define TR_LOOPTEST_SAVING   "Saving settings..."
@@ -170,7 +169,6 @@
 #define TR_F_OPTIONS                                       "Options"
 #define TR_F_PARM_UNIT_EQNS_INTERVAL_S                     "PARM/UNIT/EQNS interval (s)"
 #define TR_F_PASSWORD                                      "Password"
-#define TR_F_PATH_BITMASK                                  "Path (bitmask)"
 #define TR_F_PHG                                           "PHG"
 #define TR_F_POSITION                                      "Position"
 #define TR_F_PREAMBLE_MS                                   "Preamble (ms)"
@@ -235,7 +233,6 @@
 #define TR_F_OBJITEM_DUPLEX_MINUS                          "Minus (-)"
 #define TR_F_OBJITEM_OFFSET                                "Duplex offset (kHz)"
 #define TR_F_OBJITEM_TONE                                  "Subaudible tone CTCSS (Hz, 0 = none)"
-#define TR_F_OBJITEM_DIGIPATH                              "Digipeat paths"
 #define TR_F_OBJITEM_PATH_FMT                              "Path %d"
 #define TR_F_OBJITEM_QRU                                   "QRU group membership"
 #define TR_F_OBJITEM_QRU_NONE                              "(none)"
@@ -285,10 +282,8 @@
 #define TR_F_SYSTEM                  "System"
 #define TR_F_TELEMETRY               "Telemetry"
 #define TR_F_BEACON                  "Beacon"
-#define TR_F_TEST                    "Test"
 #define TR_F_TRACKER                 "Tracker"
 #define TR_F_TX_TIME_SLOT_MS         "TX time-slot (ms)"
-#define TR_F_UNIT                    "Unit"
 #define TR_F_UPLOAD                  "Upload"
 #define TR_F_USERNAME                "Username"
 #define TR_F_WEATHER                 "Weather"
@@ -348,7 +343,6 @@
 #define TR_DASH_SSID           "SSID"
 #define TR_DASH_RSSI           "RSSI"
 #define TR_DASH_DISCONNECTED   "Disconnect"
-#define TR_DASH_CONNECTED      "Connected"
 #define TR_DASH_MODES_ENABLED  "Modes Enabled"
 #define TR_DASH_NETWORK_STATUS "Network Status"
 #define TR_DASH_STATISTICS     "STATISTICS"
@@ -491,40 +485,11 @@
 /** @} */
 
 /**
- * @name page_test.c
- * @{
- */
-#define TR_TEST_CONFIG_SELFTEST      "Configuration Self-Test"
-#define TR_TEST_CONFIG_SELFTEST_BODY "This confirms the web admin can read and write live config values."
-#define TR_TEST_IGATE_ENABLED        "IGate enabled"
-#define TR_TEST_DIGI_ENABLED         "Digi enabled"
-#define TR_TEST_TRACKER_ENABLED      "Tracker enabled"
-#define TR_TEST_WX_ENABLED           "WX enabled"
-#define TR_TEST_YES                  "yes"
-#define TR_TEST_NO                   "no"
-#define TR_TEST_HARDWARE_TEST        "Hardware Test"
-#define TR_TEST_HARDWARE_TEST_BODY                                                                                                                             \
-    "RF/modem/GPIO self-test (PTT toggle, tone generation) requires the "                                                                                      \
-    "hardware driver layer, which is out of scope for this web-admin port (see PROGRESS.md). "                                                                 \
-    "This page will grow test buttons as each driver is ported."
-
-/** @} */
-
-/**
  * @name page_tlm.c
  * @{
  */
-#define TR_TLM_CHANNEL_LEGEND "Telemetry Channel %d (own beacon)"
-#define TR_TLM_PARAM_LEGEND   "Ch %d Parameter Names / Units"
-#define TR_TLM_NAME_PARM      "Name (PARM)"
-#define TR_TLM_SERVICE_LEGEND "%s Beacon Telemetry (5 channels)"
-#define TR_TLM_AVG            "Avg"
-#define TR_TLM_SENSOR         "Sensor"
-#define TR_TLM_PREC           "Prec"
-#define TR_TLM_OFFSET         "Offset"
-#define TR_TLM_BINARY_LEGEND  "Binary"
-#define TR_TLM_BIT            "Bit"
-#define TR_TLM_CHANNEL        "Channel"
+#define TR_TLM_AVG "Avg"
+#define TR_TLM_BIT "Bit"
 /** @} */
 
 /**
@@ -553,9 +518,6 @@
 #define TR_TLM_UNIT               "Unit"
 #define TR_TLM_SOURCE             "Source"
 #define TR_TLM_RF                 "RF"
-#define TR_TLM_SRC_SIM            "Sim"
-#define TR_TLM_SRC_MANUAL         "Manual"
-#define TR_TLM_SRC_EXTERNAL       "Ext. (serial/http)"
 #define TR_TLM_RAW_MIN            "Raw min"
 #define TR_TLM_RAW_MAX            "Raw max"
 #define TR_TLM_COEF_A             "A (quadratic)"
@@ -565,7 +527,6 @@
 #define TR_TLM_ON_STATE           "On-state means"
 #define TR_TLM_SENSE              "Sense"
 #define TR_TLM_LABEL              "Label"
-#define TR_TLM_LIVE_VALUE         "Live value"
 #define TR_TLM_CALIB_WIZARD       "2-point calibration wizard"
 #define TR_TLM_CALIB_PROMPT_X1    "Raw reading #1 (x1):"
 #define TR_TLM_CALIB_PROMPT_Y1    "Known real-world value at x1:"
@@ -650,17 +611,13 @@
 #define TR_PATH_CUSTOM_HINT    "custom digipeater path configured on the System page"
 #define TR_F_TIME_STAMP        "Time Stamp"
 #define TR_F_TX_CHANNEL        "TX Channel"
-#define TR_F_LOCATION          "Location"
-#define TR_F_LOC_FIX           "Fix"
 #define TR_F_PHG_SECTION       "PHG"
 #define TR_F_ENABLE_PHG        "Enable PHG"
 #define TR_F_RADIO_TX_POWER    "Radio TX Power"
 #define TR_F_ANTENNA_GAIN      "Antenna Gain"
-#define TR_F_HEIGHT            "Height"
 #define TR_F_HEIGHT_M          "Height (m)"
 #define TR_F_ANTENNA_DIRECTION "Antenna/Direction"
 #define TR_F_PHG_TEXT          "PHG Text"
-#define TR_BTN_CALCULATE_PHG   "Calculate PHG"
 #define TR_DIR_OMNI            "Omni"
 #define TR_DIR_N               "N"
 #define TR_DIR_NE              "NE"

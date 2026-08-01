@@ -263,8 +263,14 @@ esp_err_t sensors_local_init_all(void);
  *              with whichever of @c weather / @c telemetry_report arrays the
  *              caller wants populated already allocated and their @c *_qty set.
  * @param kind  Bit mask of the payload families to gather this cycle.
- * @return ESP_OK if the pass completed (even if some drivers were skipped);
- *         ESP_ERR_INVALID_ARG if @p data is NULL.
+ * @return ESP_OK if every selected driver was (lazily) initialised and saved
+ *         without error, including the no-work cases where @p kind is
+ *         ::SENSOR_LOCAL_DATA_NONE or no registered driver advertises it;
+ *         ESP_FAIL if at least one selected driver failed to initialise or
+ *         returned an error from save(), or if more capable drivers are
+ *         registered than one pass can service; ESP_ERR_INVALID_ARG if @p data
+ *         is NULL. A failure never aborts the pass: the remaining drivers are
+ *         still asked, so a partially filled @p data is the normal outcome.
  */
 esp_err_t sensors_local_save(weather_telemetry_data_t *data, sensor_local_data_kind_t kind);
 

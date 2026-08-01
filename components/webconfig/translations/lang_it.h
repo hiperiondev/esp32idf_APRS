@@ -66,7 +66,6 @@
  * @{
  */
 #define TR_BTN_SAVE          "Salva"
-#define TR_BTN_BACK_DASH     "Torna al pannello"
 #define TR_BTN_AUTO_GENERATE "Genera automaticamente"
 #define TR_BTN_LOOP_TEST     "TEST LOOP"
 #define TR_LOOPTEST_SAVING   "Salvataggio impostazioni..."
@@ -171,7 +170,6 @@
 #define TR_F_OPTIONS                                       "Opzioni"
 #define TR_F_PARM_UNIT_EQNS_INTERVAL_S                     "Intervallo PARM/UNIT/EQNS (s)"
 #define TR_F_PASSWORD                                      "Password"
-#define TR_F_PATH_BITMASK                                  "Percorso (bitmask)"
 #define TR_F_PHG                                           "PHG"
 #define TR_F_POSITION                                      "Posizione"
 #define TR_F_PREAMBLE_MS                                   "Preambolo (ms)"
@@ -236,7 +234,6 @@
 #define TR_F_OBJITEM_DUPLEX_MINUS                          "Negativo (-)"
 #define TR_F_OBJITEM_OFFSET                                "Offset duplex (kHz)"
 #define TR_F_OBJITEM_TONE                                  "Tono subaudio CTCSS (Hz, 0 = nessuno)"
-#define TR_F_OBJITEM_DIGIPATH                              "Percorsi digipeater"
 #define TR_F_OBJITEM_PATH_FMT                              "Percorso %d"
 #define TR_F_OBJITEM_QRU                                   "Appartenenza gruppo QRU"
 #define TR_F_OBJITEM_QRU_NONE                              "(nessuno)"
@@ -286,10 +283,8 @@
 #define TR_F_SYSTEM                  "Sistema"
 #define TR_F_TELEMETRY               "Telemetria"
 #define TR_F_BEACON                  "Beacon"
-#define TR_F_TEST                    "Test"
 #define TR_F_TRACKER                 "Tracker"
 #define TR_F_TX_TIME_SLOT_MS         "Slot temporale TX (ms)"
-#define TR_F_UNIT                    "Unità"
 #define TR_F_UPLOAD                  "Carica"
 #define TR_F_USERNAME                "Nome utente"
 #define TR_F_WEATHER                 "Meteo"
@@ -349,7 +344,6 @@
 #define TR_DASH_SSID           "SSID"
 #define TR_DASH_RSSI           "RSSI"
 #define TR_DASH_DISCONNECTED   "Disconnetti"
-#define TR_DASH_CONNECTED      "Connesso"
 #define TR_DASH_MODES_ENABLED  "Modalità abilitate"
 #define TR_DASH_NETWORK_STATUS "Stato rete"
 #define TR_DASH_STATISTICS     "STATISTICHE"
@@ -465,7 +459,7 @@
 #define TR_SYM_CAR_ALT         "Auto (tabella alternativa)"
 #define TR_SYM_WX_STATION_ALT  "Stazione WX (tabella alternativa)"
 #define TR_SYM_INTRO                                                                                                                                           \
-    "Riferimento rapido per i codici simbolo APRS più comuni. Ogni pagina di servizio "                                                                       \
+    "Riferimento rapido per i codici simbolo APRS più comuni. Ogni pagina di servizio "                                                                        \
     "(IGate / Digi / Tracker) ha il proprio campo simbolo a testo libero \u2014 copia il "                                                                     \
     "codice a 2 caratteri da qui in quel campo."
 #define TR_SYM_CODE                 "Codice"
@@ -499,40 +493,11 @@
 /** @} */
 
 /**
- * @name page_test.c
- * @{
- */
-#define TR_TEST_CONFIG_SELFTEST      "Autotest configurazione"
-#define TR_TEST_CONFIG_SELFTEST_BODY "Conferma che l'amministrazione web possa leggere e scrivere i valori di configurazione live."
-#define TR_TEST_IGATE_ENABLED        "IGate abilitato"
-#define TR_TEST_DIGI_ENABLED         "Digi abilitato"
-#define TR_TEST_TRACKER_ENABLED      "Tracker abilitato"
-#define TR_TEST_WX_ENABLED           "WX abilitato"
-#define TR_TEST_YES                  "sì"
-#define TR_TEST_NO                   "no"
-#define TR_TEST_HARDWARE_TEST        "Test hardware"
-#define TR_TEST_HARDWARE_TEST_BODY                                                                                                                             \
-    "L'autotest RF/modem/GPIO (commutazione PTT, generazione toni) richiede il "                                                                               \
-    "livello driver hardware, che è fuori dall'ambito di questo port dell'amministrazione web (vedi PROGRESS.md). "                                           \
-    "Questa pagina si arricchirà di pulsanti di test man mano che ogni driver viene portato."
-
-/** @} */
-
-/**
  * @name page_tlm.c
  * @{
  */
-#define TR_TLM_CHANNEL_LEGEND "Canale telemetria %d (beacon proprio)"
-#define TR_TLM_PARAM_LEGEND   "Ch %d Nomi/Unità parametri"
-#define TR_TLM_NAME_PARM      "Nome (PARM)"
-#define TR_TLM_SERVICE_LEGEND "Telemetria beacon %s (5 canali)"
-#define TR_TLM_AVG            "Media"
-#define TR_TLM_SENSOR         "Sensore"
-#define TR_TLM_PREC           "Prec"
-#define TR_TLM_OFFSET         "Offset"
-#define TR_TLM_BINARY_LEGEND  "Binario"
-#define TR_TLM_BIT            "Bit"
-#define TR_TLM_CHANNEL        "Canale"
+#define TR_TLM_AVG "Media"
+#define TR_TLM_BIT "Bit"
 /** @} */
 
 /**
@@ -561,9 +526,6 @@
 #define TR_TLM_UNIT               "Unità"
 #define TR_TLM_SOURCE             "Sorgente"
 #define TR_TLM_RF                 "RF"
-#define TR_TLM_SRC_SIM            "Sim"
-#define TR_TLM_SRC_MANUAL         "Manuale"
-#define TR_TLM_SRC_EXTERNAL       "Est. (seriale/http)"
 #define TR_TLM_RAW_MIN            "Grezzo min"
 #define TR_TLM_RAW_MAX            "Grezzo max"
 #define TR_TLM_COEF_A             "A (quadratico)"
@@ -573,7 +535,6 @@
 #define TR_TLM_ON_STATE           "Significato stato attivo"
 #define TR_TLM_SENSE              "Senso"
 #define TR_TLM_LABEL              "Etichetta"
-#define TR_TLM_LIVE_VALUE         "Valore in tempo reale"
 #define TR_TLM_CALIB_WIZARD       "Procedura di calibrazione a 2 punti"
 #define TR_TLM_CALIB_PROMPT_X1    "Lettura grezza #1 (x1):"
 #define TR_TLM_CALIB_PROMPT_Y1    "Valore reale noto a x1:"
@@ -611,7 +572,7 @@
 #define TR_BTN_WIFI_SCAN         "SCANSIONA WIFI"
 #define TR_WIFI_SSID_PLACEHOLDER "Nome rete (digitalo, oppure usa Scansiona WiFi)"
 #define TR_WIFI_STA_NEEDS_SSID                                                                                                                                 \
-    "Salvato, ma questo NON si connetterà: la modalità seleziona una stazione, ma nessun blocco Client WiFi ha sia 'Abilita' selezionato sia un SSID "       \
+    "Salvato, ma questo NON si connetterà: la modalità seleziona una stazione, ma nessun blocco Client WiFi ha sia 'Abilita' selezionato sia un SSID "         \
     "compilato. Correggi e salva di nuovo."
 #define TR_WIFI_SCANNING    "Scansione in corso..."
 #define TR_WIFI_SCAN_FAILED "Scansione non riuscita"
@@ -659,17 +620,13 @@
 #define TR_PATH_CUSTOM_HINT    "percorso digipeater personalizzato configurato nella pagina Sistema"
 #define TR_F_TIME_STAMP        "Timestamp"
 #define TR_F_TX_CHANNEL        "Canale TX"
-#define TR_F_LOCATION          "Posizione"
-#define TR_F_LOC_FIX           "Fix"
 #define TR_F_PHG_SECTION       "PHG"
 #define TR_F_ENABLE_PHG        "Abilita PHG"
 #define TR_F_RADIO_TX_POWER    "Potenza TX radio"
 #define TR_F_ANTENNA_GAIN      "Guadagno antenna"
-#define TR_F_HEIGHT            "Altezza"
 #define TR_F_HEIGHT_M          "Altezza (m)"
 #define TR_F_ANTENNA_DIRECTION "Antenna/Direzione"
 #define TR_F_PHG_TEXT          "Testo PHG"
-#define TR_BTN_CALCULATE_PHG   "Calcola PHG"
 #define TR_DIR_OMNI            "Omni"
 #define TR_DIR_N               "N"
 #define TR_DIR_NE              "NE"
@@ -707,14 +664,14 @@
 #define TR_F_PREFIX_FILTER_EN "Abilita filtro prefisso nominativo"
 #define TR_F_PREFIXES         "Prefissi consentiti (separati da virgola)"
 #define TR_NOTE_RANGE_PREFIX                                                                                                                                   \
-    "Filtro locale applicato solo a RF -> Internet, indipendente dal filtro per tipo di payload sopra. La distanza è misurata dalla posizione della Mia "     \
+    "Filtro locale applicato solo a RF -> Internet, indipendente dal filtro per tipo di payload sopra. La distanza è misurata dalla posizione della Mia "      \
     "Stazione; i pacchetti la cui posizione non può essere decodificata non sono influenzati dal filtro di distanza."
 
 #define TR_F_3RDPARTY_UNWRAP_EN "Inoltra traffico di terze parti (}) in lista bianca"
-#define TR_NOTE_3RDPARTY_UNWRAP                                                                                                                                 \
+#define TR_NOTE_3RDPARTY_UNWRAP                                                                                                                                \
     "Disattivato per impostazione predefinita. Ha effetto solo quando il Filtro Nominativi Internet verso RF sopra è impostato su Lista Bianca: un pacchetto " \
     "incapsulato di terze parti viene decapsulato e inoltrato solo se il nominativo sorgente interno è a sua volta in lista bianca. Abilitare solo se ci si "  \
-    "fida della fonte specifica e questa è stata inserita in lista bianca - ri-filtrare il traffico di terze parti senza questa restrizione è la causa più " \
+    "fida della fonte specifica e questa è stata inserita in lista bianca - ri-filtrare il traffico di terze parti senza questa restrizione è la causa più "   \
     "comune dei loop IGate."
 
 #define TR_SYM_ICON            "Icona"

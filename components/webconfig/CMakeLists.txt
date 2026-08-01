@@ -19,7 +19,6 @@ idf_component_register(
         "pages/page_msg.c"
         "pages/page_msgchat.c"
         "pages/page_symbol.c"
-        "pages/page_test.c"
     INCLUDE_DIRS
         "include"
         "translations"

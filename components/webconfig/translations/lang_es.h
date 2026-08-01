@@ -66,7 +66,6 @@
  * @{
  */
 #define TR_BTN_SAVE          "Guardar"
-#define TR_BTN_BACK_DASH     "Volver al panel"
 #define TR_BTN_AUTO_GENERATE "Generar automáticamente"
 #define TR_BTN_LOOP_TEST     "PRUEBA DE BUCLE"
 #define TR_LOOPTEST_SAVING   "Guardando..."
@@ -90,7 +89,7 @@
 #define TR_ABOUT_OTA_LEGEND  "Actualización OTA"
 #define TR_ABOUT_OTA_BODY                                                                                                                                      \
     "Cargue un nuevo firmware .bin compilado para esta placa. Se escribe en la "                                                                               \
-    "partición OTA inactiva mientras el dispositivo sigue funcionando con la "                                                                                \
+    "partición OTA inactiva mientras el dispositivo sigue funcionando con la "                                                                                 \
     "actual; el dispositivo solo cambia y se reinicia una vez que la carga "                                                                                   \
     "finaliza y se verifica. Si el nuevo firmware no arranca correctamente, "                                                                                  \
     "se revierte automáticamente en el próximo reinicio."
@@ -100,7 +99,7 @@
 #define TR_OTA_CONFIRM          "¿Cargar y grabar este firmware? El dispositivo se reiniciará al finalizar."
 #define TR_OTA_NO_FILE_SELECTED "Seleccione primero un archivo de firmware .bin."
 #define TR_OTA_UPLOADING        "Cargando y escribiendo en la memoria flash..."
-#define TR_OTA_NO_PARTITION                                                                                                                                     \
+#define TR_OTA_NO_PARTITION                                                                                                                                    \
     "No hay una partición OTA disponible en la tabla de particiones de este dispositivo. Vuelva a grabarlo una vez por USB/UART con el partitions.csv actual " \
     "para habilitar OTA."
 #define TR_OTA_BEGIN_FAILED    "No se pudo iniciar la escritura OTA: "
@@ -171,7 +170,6 @@
 #define TR_F_OPTIONS                                       "Opciones"
 #define TR_F_PARM_UNIT_EQNS_INTERVAL_S                     "Intervalo PARM/UNIT/EQNS (s)"
 #define TR_F_PASSWORD                                      "Contraseña"
-#define TR_F_PATH_BITMASK                                  "Ruta (máscara de bits)"
 #define TR_F_PHG                                           "PHG"
 #define TR_F_POSITION                                      "Posición"
 #define TR_F_PREAMBLE_MS                                   "Preámbulo (ms)"
@@ -236,7 +234,6 @@
 #define TR_F_OBJITEM_DUPLEX_MINUS                          "Negativo (-)"
 #define TR_F_OBJITEM_OFFSET                                "Desplazamiento dúplex (kHz)"
 #define TR_F_OBJITEM_TONE                                  "Tono subaudible CTCSS (Hz, 0 = ninguno)"
-#define TR_F_OBJITEM_DIGIPATH                              "Rutas de digipeater"
 #define TR_F_OBJITEM_PATH_FMT                              "Ruta %d"
 #define TR_F_OBJITEM_QRU                                   "Membresía de grupo QRU"
 #define TR_F_OBJITEM_QRU_NONE                              "(ninguno)"
@@ -275,7 +272,7 @@
 #define TR_F_OBJITEM_SLOW_RATE                             "Intervalo lento (s, 0 = sin decaimiento)"
 #define TR_F_OBJITEM_DECAY                                 "Razón de decaimiento (ej. 2.0, <1 = ninguna)"
 #define TR_NOTE_OBJITEM                                                                                                                                        \
-    "Los Objetos llevan marca de tiempo (;NOMBRE); los Ítems son permanentes ()NOMBRE). Al desmarcar Activo se envían reportes de eliminación y luego se "  \
+    "Los Objetos llevan marca de tiempo (;NOMBRE); los Ítems son permanentes ()NOMBRE). Al desmarcar Activo se envían reportes de eliminación y luego se "     \
     "deshabilita automáticamente. El Alcance limita la transmisión independientemente de las casillas RF/Internet."
 #define TR_F_STATUS_BEACON           "Baliza de estado"
 #define TR_F_STATUS_INTERVAL_S_0_OFF "Intervalo de estado (s, 0=desactivado)"
@@ -286,10 +283,8 @@
 #define TR_F_SYSTEM                  "Sistema"
 #define TR_F_TELEMETRY               "Telemetría"
 #define TR_F_BEACON                  "Baliza"
-#define TR_F_TEST                    "Prueba"
 #define TR_F_TRACKER                 "Tracker"
 #define TR_F_TX_TIME_SLOT_MS         "Intervalo de tiempo TX (ms)"
-#define TR_F_UNIT                    "Unidad"
 #define TR_F_UPLOAD                  "Subir"
 #define TR_F_USERNAME                "Usuario"
 #define TR_F_WEATHER                 "Clima"
@@ -349,7 +344,6 @@
 #define TR_DASH_SSID           "SSID"
 #define TR_DASH_RSSI           "RSSI"
 #define TR_DASH_DISCONNECTED   "Desconectado"
-#define TR_DASH_CONNECTED      "Conectado"
 #define TR_DASH_MODES_ENABLED  "Modos Activos"
 #define TR_DASH_NETWORK_STATUS "Estado de Red"
 #define TR_DASH_STATISTICS     "ESTADÍSTICAS"
@@ -372,13 +366,13 @@
  * @{
  */
 #define TR_NOTE_TLM_DIGI                                                                                                                                       \
-    "La telemetría (EQNS/PARM/UNIT) para las balizas de Digi se configura en la "                                                                             \
+    "La telemetría (EQNS/PARM/UNIT) para las balizas de Digi se configura en la "                                                                              \
     "página <a href='/tlm'>Telemetría</a>."
 #define TR_NOTE_TLM_IGATE                                                                                                                                      \
-    "La telemetría (EQNS/PARM/UNIT) para las balizas de IGate se configura en la "                                                                            \
+    "La telemetría (EQNS/PARM/UNIT) para las balizas de IGate se configura en la "                                                                             \
     "página <a href='/tlm'>Telemetría</a>."
 #define TR_NOTE_TLM_TRACKER                                                                                                                                    \
-    "La telemetría (EQNS/PARM/UNIT) para las balizas de Tracker se configura en la "                                                                          \
+    "La telemetría (EQNS/PARM/UNIT) para las balizas de Tracker se configura en la "                                                                           \
     "página <a href='/tlm'>Telemetría</a>."
 
 /** @} */
@@ -465,8 +459,8 @@
 #define TR_SYM_CAR_ALT         "Automóvil (tabla alterna)"
 #define TR_SYM_WX_STATION_ALT  "Estación WX (tabla alterna)"
 #define TR_SYM_INTRO                                                                                                                                           \
-    "Referencia rápida de los códigos de símbolo APRS más comunes. Cada página de "                                                                       \
-    "servicio (IGate / Digi / Tracker) tiene su propio campo de símbolo de texto libre "                                                                      \
+    "Referencia rápida de los códigos de símbolo APRS más comunes. Cada página de "                                                                            \
+    "servicio (IGate / Digi / Tracker) tiene su propio campo de símbolo de texto libre "                                                                       \
     "\u2014 copie el código de 2 caracteres desde aquí a ese campo."
 #define TR_SYM_CODE                 "Código"
 #define TR_SYM_MEANING              "Significado"
@@ -499,41 +493,11 @@
 /** @} */
 
 /**
- * @name page_test.c
- * @{
- */
-#define TR_TEST_CONFIG_SELFTEST      "Autoprueba de configuración"
-#define TR_TEST_CONFIG_SELFTEST_BODY "Esto confirma que el administrador web puede leer y escribir valores de configuración en vivo."
-#define TR_TEST_IGATE_ENABLED        "IGate habilitado"
-#define TR_TEST_DIGI_ENABLED         "Digi habilitado"
-#define TR_TEST_TRACKER_ENABLED      "Tracker habilitado"
-#define TR_TEST_WX_ENABLED           "WX habilitado"
-#define TR_TEST_YES                  "sí"
-#define TR_TEST_NO                   "no"
-#define TR_TEST_HARDWARE_TEST        "Prueba de hardware"
-#define TR_TEST_HARDWARE_TEST_BODY                                                                                                                             \
-    "La autoprueba de RF/módem/GPIO (conmutación de PTT, generación de tonos) requiere la "                                                                 \
-    "capa de controladores de hardware, que está fuera del "                                                                                                  \
-    "alcance de este puerto de administración web (ver PROGRESS.md). Esta página añadirá "                                                                 \
-    "botones de prueba a medida que se porte cada controlador."
-
-/** @} */
-
-/**
  * @name page_tlm.c
  * @{
  */
-#define TR_TLM_CHANNEL_LEGEND "Canal de telemetría %d (baliza propia)"
-#define TR_TLM_PARAM_LEGEND   "Nombres/unidades de parámetro, canal %d"
-#define TR_TLM_NAME_PARM      "Nombre (PARM)"
-#define TR_TLM_SERVICE_LEGEND "Telemetría de baliza de %s (5 canales)"
-#define TR_TLM_AVG            "Prom"
-#define TR_TLM_SENSOR         "Sensor"
-#define TR_TLM_PREC           "Prec"
-#define TR_TLM_OFFSET         "Offset"
-#define TR_TLM_BINARY_LEGEND  "Binario"
-#define TR_TLM_BIT            "Bit"
-#define TR_TLM_CHANNEL        "Canal"
+#define TR_TLM_AVG "Prom"
+#define TR_TLM_BIT "Bit"
 /** @} */
 
 /**
@@ -562,9 +526,6 @@
 #define TR_TLM_UNIT               "Unidad"
 #define TR_TLM_SOURCE             "Fuente"
 #define TR_TLM_RF                 "RF"
-#define TR_TLM_SRC_SIM            "Sim"
-#define TR_TLM_SRC_MANUAL         "Manual"
-#define TR_TLM_SRC_EXTERNAL       "Ext. (serie/http)"
 #define TR_TLM_RAW_MIN            "Bruto mín"
 #define TR_TLM_RAW_MAX            "Bruto máx"
 #define TR_TLM_COEF_A             "A (cuadrático)"
@@ -574,7 +535,6 @@
 #define TR_TLM_ON_STATE           "Significado de estado activo"
 #define TR_TLM_SENSE              "Sentido"
 #define TR_TLM_LABEL              "Etiqueta"
-#define TR_TLM_LIVE_VALUE         "Valor en vivo"
 #define TR_TLM_CALIB_WIZARD       "Asistente de calibracion de 2 puntos"
 #define TR_TLM_CALIB_PROMPT_X1    "Lectura cruda #1 (x1):"
 #define TR_TLM_CALIB_PROMPT_Y1    "Valor real conocido en x1:"
@@ -611,8 +571,8 @@
 #define TR_WIFI_CLIENT_LEGEND    "Cliente WiFi n.º %d"
 #define TR_BTN_WIFI_SCAN         "ESCANEAR WIFI"
 #define TR_WIFI_SSID_PLACEHOLDER "Nombre de la red (escríbalo o use Buscar WiFi)"
-#define TR_WIFI_STA_NEEDS_SSID                                                                                                                                   \
-    "Guardado, pero NO se conectará: el Modo selecciona estación, pero ningún bloque Cliente WiFi tiene 'Habilitar' marcado y un SSID cargado. Corríjalo y " \
+#define TR_WIFI_STA_NEEDS_SSID                                                                                                                                 \
+    "Guardado, pero NO se conectará: el Modo selecciona estación, pero ningún bloque Cliente WiFi tiene 'Habilitar' marcado y un SSID cargado. Corríjalo y "   \
     "guarde de nuevo."
 #define TR_WIFI_SCANNING    "Escaneando..."
 #define TR_WIFI_SCAN_FAILED "Error al escanear"
@@ -660,17 +620,13 @@
 #define TR_PATH_CUSTOM_HINT    "ruta de digipeater personalizada configurada en la página Sistema"
 #define TR_F_TIME_STAMP        "Marca de Tiempo"
 #define TR_F_TX_CHANNEL        "Canal TX"
-#define TR_F_LOCATION          "Ubicación"
-#define TR_F_LOC_FIX           "Fija"
 #define TR_F_PHG_SECTION       "PHG"
 #define TR_F_ENABLE_PHG        "Habilitar PHG"
 #define TR_F_RADIO_TX_POWER    "Potencia TX de Radio"
 #define TR_F_ANTENNA_GAIN      "Ganancia de Antena"
-#define TR_F_HEIGHT            "Altura"
 #define TR_F_HEIGHT_M          "Altura (m)"
 #define TR_F_ANTENNA_DIRECTION "Antena/Dirección"
 #define TR_F_PHG_TEXT          "Texto PHG"
-#define TR_BTN_CALCULATE_PHG   "Calcular PHG"
 #define TR_DIR_OMNI            "Omni"
 #define TR_DIR_N               "N"
 #define TR_DIR_NE              "NE"
@@ -708,13 +664,13 @@
 #define TR_F_PREFIX_FILTER_EN "Activar filtro de prefijo de indicativo"
 #define TR_F_PREFIXES         "Prefijos permitidos (separados por coma)"
 #define TR_NOTE_RANGE_PREFIX                                                                                                                                   \
-    "Filtro local aplicado solo a RF -> Internet, independiente del filtro por tipo de carga anterior. La distancia se mide desde la posición de Mi "         \
+    "Filtro local aplicado solo a RF -> Internet, independiente del filtro por tipo de carga anterior. La distancia se mide desde la posición de Mi "          \
     "Estación; los paquetes cuya posición no se puede decodificar no se ven afectados por el filtro de distancia."
 
 #define TR_F_3RDPARTY_UNWRAP_EN "Retransmitir tráfico de terceros (}) en lista blanca"
 #define TR_NOTE_3RDPARTY_UNWRAP                                                                                                                                \
-    "Desactivado por defecto. Solo tiene efecto cuando el Filtro de Indicativos de Internet a RF anterior está en modo Lista Blanca: un paquete envuelto de " \
-    "terceros solo se desenvuelve y retransmite si su indicativo de origen interno está en la lista blanca. Active esto solo si confía en la fuente "        \
+    "Desactivado por defecto. Solo tiene efecto cuando el Filtro de Indicativos de Internet a RF anterior está en modo Lista Blanca: un paquete envuelto de "  \
+    "terceros solo se desenvuelve y retransmite si su indicativo de origen interno está en la lista blanca. Active esto solo si confía en la fuente "          \
     "específica y la ha incluido en la lista blanca - volver a filtrar tráfico de terceros sin esta restricción es la causa más común de bucles de IGate."
 
 #define TR_SYM_ICON            "Icono"

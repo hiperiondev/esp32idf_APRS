@@ -183,8 +183,6 @@ esp_err_t page_msgchat_list(httpd_req_t *req);
 
 /** @brief GET  /symbol - APRS symbol reference/picker page. @param req Incoming request. @return ESP_OK or an esp_err_t error. */
 esp_err_t page_symbol_get(httpd_req_t *req);
-/** @brief GET  /test - internal test/diagnostics page. @param req Incoming request. @return ESP_OK or an esp_err_t error. */
-esp_err_t page_test_get(httpd_req_t *req);
 
 /** @} */
 

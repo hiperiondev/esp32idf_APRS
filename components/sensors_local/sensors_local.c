@@ -254,39 +254,59 @@ esp_err_t sensors_local_save(weather_telemetry_data_t *data, sensor_local_data_k
     if (kind == SENSOR_LOCAL_DATA_NONE)
         return ESP_OK;
 
-    /* Snapshot the matching driver pointers under the lock, then release it
-     * BEFORE touching the hardware. ensure_initialized()/d->save() do blocking
-     * bus I/O (e.g. BMP180 I2C conversions take tens of ms); holding the
-     * registry lock across them would stall every other registry caller
-     * (sensors_local_find/count from the web sensor page, etc.) for the whole
-     * transaction. Driver objects are stable for the program's lifetime
-     * (drivers only (un)register during single-threaded boot - see the note at
-     * the top of this file), so the snapshotted pointers stay valid. */
+    // Snapshot the matching driver pointers under the lock, then release it
+    // BEFORE touching the hardware. ensure_initialized()/d->save() do blocking
+    // bus I/O (e.g. BMP180 I2C conversions take tens of ms); holding the
+    // registry lock across them would stall every other registry caller
+    // (sensors_local_find/count from the web sensor page, etc.) for the whole
+    // transaction. Driver objects are stable for the program's lifetime
+    // (drivers only (un)register during single-threaded boot - see the note at
+    // the top of this file), so the snapshotted pointers stay valid.
     sensor_local_driver_t *sel[SENSORS_LOCAL_MAX_SNAPSHOT];
     size_t sel_n = 0;
+    bool truncated = false;
 
     registry_lock();
-    for (size_t i = 0; i < s_count && sel_n < SENSORS_LOCAL_MAX_SNAPSHOT; i++) {
+    for (size_t i = 0; i < s_count; i++) {
         sensor_local_driver_t *d = s_registry[i];
-        if (d != NULL && (d->capabilities & (uint32_t)kind) != 0)
-            sel[sel_n++] = d;
+        if (d == NULL || (d->capabilities & (uint32_t)kind) == 0)
+            continue;
+        if (sel_n >= SENSORS_LOCAL_MAX_SNAPSHOT) {
+            // More capable drivers than the snapshot can hold: the pass cannot
+            // cover them all, so the caller must not be told it succeeded.
+            truncated = true;
+            break;
+        }
+        sel[sel_n++] = d;
     }
     registry_unlock();
+
+    if (truncated)
+        ESP_LOGE(TAG, "more than %d capable drivers registered; the rest are not serviced this pass", SENSORS_LOCAL_MAX_SNAPSHOT);
+
+    // Outcome of the whole pass, same convention as sensors_local_init_all():
+    // a driver that fails is logged and skipped so the others still run, but
+    // the aggregate return says whether every selected driver did contribute.
+    esp_err_t result = truncated ? ESP_FAIL : ESP_OK;
 
     for (size_t i = 0; i < sel_n; i++) {
         sensor_local_driver_t *d = sel[i];
 
-        if (ensure_initialized(d) != ESP_OK)
-            continue; /* already logged; keep going */
+        if (ensure_initialized(d) != ESP_OK) {
+            result = ESP_FAIL; // already logged; keep going
+            continue;
+        }
 
-        /* Only ask the driver for the families it actually advertises. */
+        // Only ask the driver for the families it actually advertises.
         sensor_local_data_kind_t ask = (sensor_local_data_kind_t)(d->capabilities & (uint32_t)kind);
 
         esp_err_t err = d->save(d, data, ask);
-        if (err != ESP_OK)
+        if (err != ESP_OK) {
             ESP_LOGW(TAG, "driver '%s' save failed: %s", d->name ? d->name : "?", esp_err_to_name(err));
+            result = ESP_FAIL;
+        }
     }
-    return ESP_OK;
+    return result;
 }
 
 esp_err_t sensors_local_save_one(size_t index, weather_telemetry_data_t *data, sensor_local_data_kind_t kind) {

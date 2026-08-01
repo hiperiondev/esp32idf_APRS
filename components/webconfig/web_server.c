@@ -115,7 +115,6 @@ void web_server_start(void) {
     reg(server, "/msgchat/list", HTTP_GET, page_msgchat_list);
 
     reg(server, "/symbol", HTTP_GET, page_symbol_get);
-    reg(server, "/test", HTTP_GET, page_test_get);
 
     // -- Everything in the original menu now has a real handler. No stubs left. --
 

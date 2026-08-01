@@ -105,9 +105,6 @@ All require HTTP Basic auth except where noted.
      - ``/symbol``
      - APRS symbol reference/picker
    * - GET
-     - ``/test``
-     - config self-test summary
-   * - GET
      - ``/lastheard``
      - LAST HEARD table (JSON)
    * - GET
