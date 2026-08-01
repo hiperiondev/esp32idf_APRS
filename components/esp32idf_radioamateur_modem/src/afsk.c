@@ -293,16 +293,42 @@ static const float resample_coeffs[FILTER_TAPS] = { 1.0f };
 #error "No decimation FIR for this MODEM_RESAMPLE_RATIO. Cut one at 4800 Hz for the new ratio; do not reuse a filter designed for a different one."
 #endif
 
+#if FILTER_TAPS > 1
+// The last FILTER_TAPS - 1 raw samples of the previous block, prepended
+// ahead of this one so the filter has real data to draw on instead of
+// zeros at the join. A decimator fed block-by-block must carry this
+// history between calls.
+static float s_resampleTail[FILTER_TAPS - 1];
+#endif
+
+// Raw copy of the incoming block. resample_audio() overwrites buf[] in
+// place with its (much shorter) decimated output, so the taps still need
+// an untouched copy of the original samples to read from.
+static float s_resampleScratch[MODEM_BLOCK_SIZE];
+
 static void resample_audio(float *buf) {
+    memcpy(s_resampleScratch, buf, sizeof(s_resampleScratch));
+
     for (int i = 0; i < MODEM_BLOCK_SIZE / MODEM_RESAMPLE_RATIO; i++) {
         float sum = 0;
         for (int j = 0; j < FILTER_TAPS; j++) {
-            int index = i * MODEM_RESAMPLE_RATIO + j;
-            if (index < MODEM_BLOCK_SIZE)
-                sum += buf[index] * resample_coeffs[j];
+#if FILTER_TAPS > 1
+            // k indexes the conceptual [ tail ][ scratch ] sequence.
+            int k = i * MODEM_RESAMPLE_RATIO + j;
+            float in = (k < FILTER_TAPS - 1) ? s_resampleTail[k] : s_resampleScratch[k - (FILTER_TAPS - 1)];
+#else
+            float in = s_resampleScratch[i * MODEM_RESAMPLE_RATIO + j]; // MODEM_RESAMPLE_RATIO == 1, index always in range
+#endif
+            sum += in * resample_coeffs[j];
         }
         buf[i] = sum;
     }
+
+#if FILTER_TAPS > 1
+    // Save this block's own tail for the next call.
+    for (int t = 0; t < FILTER_TAPS - 1; t++)
+        s_resampleTail[t] = s_resampleScratch[MODEM_BLOCK_SIZE - (FILTER_TAPS - 1) + t];
+#endif
 }
 
 /* ------------------------------------------------------------------ */

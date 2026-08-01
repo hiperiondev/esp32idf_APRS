@@ -366,6 +366,7 @@ struct Filter {
     const int16_t *coeffs;
     uint8_t taps;
     int32_t samples[FILTER_MAX_TAPS];
+    uint8_t idx; // index of the newest sample in the circular samples[] buffer
     uint8_t gainShift;
 };
 
@@ -405,14 +406,26 @@ static void decode(uint8_t symbol, uint8_t demod, uint16_t mV);
 static int32_t demodulate(int16_t sample, struct DemodState *dem);
 
 static int32_t filterRun(struct Filter *f, int32_t input) {
+    // An unconfigured filter (taps == 0) has no coefficients to run against.
+    // Without this guard, f->taps - 1 wraps to 255 and the code below
+    // indexes far past the end of samples[].
+    if (f->taps == 0)
+        return 0;
+
+    // Circular buffer: the newest sample overwrites the oldest one in place
+    // instead of shifting every other sample down by one on every call.
+    if (f->idx == 0)
+        f->idx = f->taps;
+    f->idx--;
+    f->samples[f->idx] = input;
+
     int32_t out = 0;
-
-    for (uint8_t i = f->taps - 1; i > 0; i--)
-        f->samples[i] = f->samples[i - 1]; /* shift old samples */
-
-    f->samples[0] = input;
-    for (uint8_t i = 0; i < f->taps; i++)
-        out += (int32_t)f->coeffs[i] * f->samples[i];
+    uint8_t idx = f->idx;
+    for (uint8_t i = 0; i < f->taps; i++) {
+        out += (int32_t)f->coeffs[i] * f->samples[idx];
+        if (++idx == f->taps)
+            idx = 0;
+    }
 
     return out >> f->gainShift;
 }
@@ -586,20 +599,29 @@ static int32_t demodulate(int16_t sample, struct DemodState *dem) {
 
     if (ModemConfig.modem != MODEM_MODEM_G3RUH) {
         if (dem->prefilter != PREFILTER_NONE)
-            dem->correlatorSamples[dem->correlatorSamplesIdx++] = (int16_t)filterRun(&dem->bpf, sample);
+            dem->correlatorSamples[dem->correlatorSamplesIdx] = (int16_t)filterRun(&dem->bpf, sample);
         else
-            dem->correlatorSamples[dem->correlatorSamplesIdx++] = sample;
+            dem->correlatorSamples[dem->correlatorSamplesIdx] = sample;
 
-        dem->correlatorSamplesIdx %= N;
+        // N is a runtime value (N1200 / N300 / N9600), so "% N" cannot be
+        // strength-reduced to a mask by the compiler and would otherwise
+        // become a real integer division on every tap. Wrap on compare
+        // instead.
+        if (++dem->correlatorSamplesIdx == N)
+            dem->correlatorSamplesIdx = 0;
 
         int32_t outLoI = 0, outLoQ = 0, outHiI = 0, outHiQ = 0;
+        uint8_t idx = dem->correlatorSamplesIdx;
 
         for (uint8_t i = 0; i < N; i++) {
-            int16_t t = dem->correlatorSamples[(dem->correlatorSamplesIdx + i) % N];
+            int16_t t = dem->correlatorSamples[idx];
             outLoI += t * coeffLoI[i];
             outLoQ += t * coeffLoQ[i];
             outHiI += t * coeffHiI[i];
             outHiQ += t * coeffHiQ[i];
+
+            if (++idx == N)
+                idx = 0;
         }
 
         outHiI >>= 14;
