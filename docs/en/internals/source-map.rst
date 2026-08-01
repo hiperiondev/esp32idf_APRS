@@ -51,7 +51,7 @@ Repository layout
    │   ├── igate/          ← APRS-IS TCP client, login, filters, dedup, RF→INET / INET→RF
    │   ├── digirepeater/   ← WIDEn-N / TRACEn-N / RELAY / ECHO / GATE path logic
    │   ├── message/        ← APRS messaging, ack/retry, AES-128-CBC + base64
-   │   ├── lastheard/      ← in-RAM ring of heard stations → dashboard JSON
+   │   ├── lastheard/      ← in-RAM table of heard stations, one per callsign → dashboard JSON
    │   ├── trafficlog/     ← in-RAM ring of traffic lines → dashboard JSON (seq long-poll)
    │   ├── weather_telemetry/  ← protocol-level structs only (APRS101 WX + Telemetry fields)
    │   ├── sensors_local/      ← THE sensor driver framework

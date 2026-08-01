@@ -190,7 +190,7 @@ static void weather_refresh_now(void) {
     // Resolve each weather field independently against its selected driver.
     // A field is sampled ONLY if it is both (a) enabled by the operator on
     // the Weather page ("Enabled" checkbox, wx_sensor_enable[f]) and (b) has
-    // an actual source channel picked (wx_sensor_ch[f] != 0xFF/"(none)").
+    // an actual source channel picked (wx_sensor_ch[f] != SENSOR_LOCAL_CH_NONE/"(none)").
     // Either condition failing must leave s_wx.enabled[...] cleared (it was
     // just memset above) so the field is never folded into the averaging
     // accumulator and never appears in the on-air packet - a disabled field
@@ -200,7 +200,7 @@ static void weather_refresh_now(void) {
             continue; // disabled on the Weather page - do not sample or send
 
         uint8_t ch = g_config.wx_sensor_ch[f];
-        if (ch == 0xFF) // "(none)" - no source channel picked
+        if (ch == SENSOR_LOCAL_CH_NONE) // "(none)" - no source channel picked
             continue;
 
         // Scratch container so one driver's save() can't clobber fields

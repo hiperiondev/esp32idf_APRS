@@ -52,6 +52,34 @@
 /** @} */
 
 /**
+ * @name Channel-access timing valid ranges
+ *
+ * Inclusive valid ranges for the four channel-access settings on the
+ * Radiomodem page, shared by page_radio.c (which builds the inputs and clamps
+ * the posted form value) and app_config.c (which clamps what it loads from
+ * flash), so a value that reaches aprs_service_build_modem_config() - which
+ * copies all four straight into the modem's runtime configuration - is always
+ * one the radio can sanely transmit with.
+ *
+ * The preamble ceiling is the one that matters most on a shared channel:
+ * Ax25TxDelay() turns g_config.preamble into a flag-byte count, so at 1200 Bd
+ * every extra 1000 ms of TXDelay is another 150 flag bytes of unmodulated
+ * carrier ahead of *every* frame. ::RF_PREAMBLE_MS_MAX keeps that worst case
+ * at two seconds; the floor keeps enough preamble for a receiving
+ * demodulator's PLL and AGC to settle before the first data bit.
+ * @{
+ */
+#define RF_PREAMBLE_MS_MIN    50    /**< Shortest TXDelay, ms: enough preamble for a distant receiver to lock. */
+#define RF_PREAMBLE_MS_MAX    2000  /**< Longest TXDelay, ms: caps the dead carrier sent ahead of every frame. */
+#define RF_TX_TIMESLOT_MS_MIN 0     /**< Shortest CSMA slot, ms (0 = transmit as soon as the channel is heard clear). */
+#define RF_TX_TIMESLOT_MS_MAX 10000 /**< Longest CSMA slot, ms. */
+#define PTT_MIN_UNKEY_MS_MIN  0     /**< Shortest extra PTT-off hold, ms (0 = only the fixed one-tick release holdoff). */
+#define PTT_MIN_UNKEY_MS_MAX  5000  /**< Longest extra PTT-off hold, ms. */
+#define CSMA_PERSIST_MIN      1     /**< Lowest p-persistence: 0 is refused, it would suppress transmission entirely. */
+#define CSMA_PERSIST_MAX      255   /**< Highest p-persistence: transmit on the first clear slot every time. */
+/** @} */
+
+/**
  * @name TNC2 text length limit
  *
  * The RF leg encodes a TNC2 line into an AX.25 frame that has to fit

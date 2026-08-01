@@ -63,6 +63,24 @@
 #define TLM_BIT_NUM 8
 
 /**
+ * @name Analog channel editing ranges
+ *
+ * Bounds the Telemetry page hands to web_field_int()/web_field_float() for the
+ * per-analog-channel calibration inputs, so the browser rejects a value the
+ * stored type could not hold. The raw window is the storage width of
+ * @c ana_raw_min / @c ana_raw_max (@c int32_t, kept one below the type's
+ * extremes so the value stays representable after the form's own signed
+ * parse); the coefficient window is a sanity range on a quadratic whose terms
+ * APRS101 Ch.13 does not itself bound.
+ * @{
+ */
+#define TLM_RAW_RANGE_MIN  (-2147483647L) /**< Lowest raw ADC value accepted for a channel's expected range. */
+#define TLM_RAW_RANGE_MAX  2147483647L    /**< Highest raw ADC value accepted for a channel's expected range. */
+#define TLM_COEF_RANGE_MIN (-1.0e9f)      /**< Lowest accepted EQNS calibration coefficient (a, b or c). */
+#define TLM_COEF_RANGE_MAX 1.0e9f         /**< Highest accepted EQNS calibration coefficient (a, b or c). */
+/** @} */
+
+/**
  * @brief Own-beacon Telemetry channel 0 configuration, as loaded from /
  * saved to /storage/telemetry.json.
  *
@@ -107,7 +125,7 @@ typedef struct {
     bool analog_tx2rf;               /**< "Analog: Beacon via RF". */
     bool analog_tx2inet;             /**< "Analog: Beacon via Internet". */
     bool ana_enable[TLM_CH];         /**< Per-analog-channel enable (A1-A5). */
-    uint8_t tlm_ana_channel[TLM_CH]; /**< Source sensor channel index for each analog channel (0xFF = "(none)"). */
+    uint8_t tlm_ana_channel[TLM_CH]; /**< Source sensor channel for each analog channel (::SENSOR_LOCAL_CH_NONE = "(none)"); persisted by driver name. */
     float ana_a[TLM_CH];             /**< Calibration coefficient a (quadratic term) per analog channel. */
     float ana_b[TLM_CH];             /**< Calibration coefficient b (linear term) per analog channel. */
     float ana_c[TLM_CH];             /**< Calibration coefficient c (constant term) per analog channel. */
@@ -116,7 +134,7 @@ typedef struct {
     uint8_t ana_dec[TLM_CH];         /**< Number of decimals shown per analog channel. */
 
     char tlm_bit_name[TLM_BIT_NUM][21];   /**< Per-bit operator-facing label (used only inside the BITS. message). */
-    uint8_t tlm_bit_channel[TLM_BIT_NUM]; /**< Source sensor channel index for each bit (0xFF = "(none)"). */
+    uint8_t tlm_bit_channel[TLM_BIT_NUM]; /**< Source sensor channel for each bit (::SENSOR_LOCAL_CH_NONE = "(none)"); persisted by driver name. */
     bool tlm_bit_igate[TLM_BIT_NUM];      /**< Per-bit routing: include this bit in the APRS-IS (IGate) beacon. */
     bool tlm_bit_rf[TLM_BIT_NUM];         /**< Per-bit routing: include this bit in the RF beacon. */
     bool bit_enable[TLM_BIT_NUM];         /**< Per-bit enable (defaults true; a disabled bit is sent as 0). */
@@ -132,7 +150,7 @@ typedef struct {
  * @p out.
  *
  * Missing/empty/corrupt file is not an error: @p out is filled with
- * all-disabled, empty defaults (tlm_bit_channel[i] == 0xFF, i.e. "(none)")
+ * all-disabled, empty defaults (tlm_bit_channel[i] == ::SENSOR_LOCAL_CH_NONE, i.e. "(none)")
  * so callers always get a usable structure.
  *
  * @param out Destination (must be non-NULL).

@@ -40,16 +40,16 @@ esp_err_t page_tracker_get(httpd_req_t *req) {
     web_field_checkbox(req, TR_F_ADD_TIMESTAMP, "trkTime", g_config.trk_timestamp);
     // Fixed beacon period, in seconds: the interval the tracker beacon is armed
     // with in beacon.c, bounded there by sched_clamp_interval().
-    web_field_int(req, TR_F_FIXED_INTERVAL_S, "trkINV", g_config.trk_interval);
+    web_field_int(req, TR_F_FIXED_INTERVAL_S, "trkINV", g_config.trk_interval, WEB_RANGE_INTERVAL_S_MIN, WEB_RANGE_INTERVAL_S_MAX);
     web_fieldset_close(req);
 
     web_fieldset_open(req, TR_F_STATION);
     web_field_text(req, TR_F_MY_CALLSIGN, "trkMycall", g_config.trk_mycall, 9);
-    web_field_int(req, TR_F_SSID, "trkSSID", g_config.trk_ssid);
+    web_field_int(req, TR_F_SSID, "trkSSID", g_config.trk_ssid, WEB_RANGE_SSID_MIN, WEB_RANGE_SSID_MAX);
     web_field_path_checkboxes(req, "trkPath", g_config.trk_path);
-    web_field_float(req, TR_F_FIXED_LATITUDE, "trkLAT", g_config.trk_lat, "0.0001");
-    web_field_float(req, TR_F_FIXED_LONGITUDE, "trkLON", g_config.trk_lon, "0.0001");
-    web_field_float(req, TR_F_FIXED_ALTITUDE_M, "trkALT", g_config.trk_alt, "1");
+    web_field_float(req, TR_F_FIXED_LATITUDE, "trkLAT", g_config.trk_lat, "0.0001", WEB_RANGE_LAT_MIN, WEB_RANGE_LAT_MAX);
+    web_field_float(req, TR_F_FIXED_LONGITUDE, "trkLON", g_config.trk_lon, "0.0001", WEB_RANGE_LON_MIN, WEB_RANGE_LON_MAX);
+    web_field_float(req, TR_F_FIXED_ALTITUDE_M, "trkALT", g_config.trk_alt, "1", WEB_RANGE_ALT_M_MIN, WEB_RANGE_ALT_M_MAX);
     web_fieldset_close(req);
 
     web_fieldset_open(req, TR_F_OPTIONS);
@@ -65,7 +65,7 @@ esp_err_t page_tracker_get(httpd_req_t *req) {
     web_fieldset_close(req);
 
     web_fieldset_open(req, TR_F_STATUS_BEACON);
-    web_field_int(req, TR_F_STATUS_INTERVAL_S_0_OFF, "trkSTSIntv", g_config.trk_sts_interval);
+    web_field_int(req, TR_F_STATUS_INTERVAL_S_0_OFF, "trkSTSIntv", g_config.trk_sts_interval, WEB_RANGE_INTERVAL_S_MIN, WEB_RANGE_INTERVAL_S_MAX);
     web_field_text(req, TR_F_STATUS_TEXT, "trkStatus", g_config.trk_status, STATUS_SIZE - 1);
     web_fieldset_close(req);
 

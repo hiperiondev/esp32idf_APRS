@@ -26,7 +26,11 @@
 #include <string.h>
 
 #include "app_config.h"
-#include "aprs_service.h" // RF_TX_BUFFERS_MIN/MAX - keeps the flash-load clamp for rf_tx_buffers in sync with the TX ring's real capacity, see the comment there
+// RF_TX_BUFFERS_MIN/MAX, RF_PREAMBLE_MS_MIN/MAX, RF_TX_TIMESLOT_MS_MAX,
+// PTT_MIN_UNKEY_MS_MAX, CSMA_PERSIST_MIN: the same bounds the Radiomodem form
+// enforces, so what is loaded from flash and what is saved from the web admin
+// can never accept different values.
+#include "aprs_service.h"
 #include "cJSON.h"
 // MODEM_PTT_ACTIVE_HIGH: the board's PTT polarity, #ifndef-guarded in that
 // header and overridden from the top-level CMakeLists.txt. Both it and
@@ -37,9 +41,10 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
-#include "json_escape.h" // json_write_escaped()
-#include "json_store.h"  // shared JSON-file store scaffolding
-#include "storage.h"     // storage_write_lock() - keeps a save from overlapping a whole-partition format
+#include "json_escape.h"   // json_write_escaped()
+#include "json_store.h"    // shared JSON-file store scaffolding
+#include "sensors_local.h" // sensors_local_channel_name() / _from_name() - WX field mappings are stored by driver name, not registry index
+#include "storage.h"       // storage_write_lock() - keeps a save from overlapping a whole-partition format
 
 static const char *TAG = "app_config";
 #define CONFIG_PATH     "/storage/config.json"
@@ -212,9 +217,9 @@ void app_config_set_defaults(app_config_t *c) {
     // Enable the WX fields a typical station reports; the rest stay off until
     // the operator maps a sensor channel to them on the Weather page.
     //
-    // wx_sensor_ch[] defaults to 0xFF ("(none)" - see page_wx.c's
+    // wx_sensor_ch[] defaults to SENSOR_LOCAL_CH_NONE ("(none)" - see page_wx.c's
     // wx_channel_select()/wx_field_present() and weather.c's
-    // weather_refresh_now(), which both treat 0xFF as "no source channel
+    // weather_refresh_now(), which both treat it as "no source channel
     // picked"). Channel 0 is a REAL registry slot (the first registered
     // driver), not a placeholder, so defaulting to 0 here would wire the
     // fields below straight to whatever driver happened to enumerate first -
@@ -223,11 +228,11 @@ void app_config_set_defaults(app_config_t *c) {
     // all be explicitly set by the operator before a field is ever sampled or
     // put on-air; only Channel needs the non-zero default to make that true,
     // since weather_refresh_now() already skips any field whose channel is
-    // 0xFF regardless of its Enable bit.
+    // SENSOR_LOCAL_CH_NONE regardless of its Enable bit.
     for (int i = 0; i < WX_SENSOR_NUM; i++) {
         c->wx_sensor_enable[i] = false;
         c->wx_sensor_avg[i] = false;
-        c->wx_sensor_ch[i] = 0xFF;
+        c->wx_sensor_ch[i] = SENSOR_LOCAL_CH_NONE;
     }
     c->wx_sensor_enable[WX_FIELD_WIND_DIRECTION] = true;
     c->wx_sensor_enable[WX_FIELD_WIND_SPEED] = true;
@@ -248,7 +253,7 @@ void app_config_set_defaults(app_config_t *c) {
     c->tx_timeslot = 2000;
     c->csma_persist = 63;    // ~25% transmit chance per clear slot, the standard AX.25/KISS Persist default
     c->rf_tx_buffers = 1;    // see RF_TX_BUFFERS_MIN/MAX in aprs_service.h
-    c->ptt_min_unkey_ms = 0; // see PTT_MIN_UNKEY_MS_MIN/MAX in aprs_service.c
+    c->ptt_min_unkey_ms = 0; // see PTT_MIN_UNKEY_MS_MIN/MAX in aprs_service.h
     set_str(c->ntp_host[0], sizeof(c->ntp_host[0]), "pool.ntp.org");
     set_str(c->ntp_host[1], sizeof(c->ntp_host[1]), "time.google.com");
     set_str(c->ntp_host[2], sizeof(c->ntp_host[2]), "time.cloudflare.com");
@@ -344,7 +349,8 @@ static void jadd_bool(jw_t *o, const char *k, bool v) {
     fputs(v ? "true" : "false", o->f);
 }
 
-// Scalar arrays.
+// Scalar arrays: every array written by config_write_json() holds strings or
+// booleans, so those are the two element writers this needs.
 static void jarr_begin(jw_t *o, const char *k) {
     jw_key(o, k);
     fputc('[', o->f);
@@ -352,12 +358,6 @@ static void jarr_begin(jw_t *o, const char *k) {
 }
 static void jarr_end(jw_t *o) {
     fputc(']', o->f);
-}
-static void jarr_num(jw_t *o, double v) {
-    if (o->arr_comma)
-        fputc(',', o->f);
-    o->arr_comma = true;
-    jw_num_val(o, v);
 }
 static void jarr_str(jw_t *o, const char *v) {
     if (o->arr_comma)
@@ -548,9 +548,14 @@ static void config_write_json(jw_t *d, const app_config_t *c) {
     for (int i = 0; i < WX_SENSOR_NUM; i++)
         jarr_bool(d, c->wx_sensor_avg[i]);
     jarr_end(d);
+    // Sensor mappings travel as driver NAMES, not registry positions: a
+    // position only means anything within the firmware image that produced it
+    // (see the persistence contract in sensors_local.h), so storing the index
+    // would re-point all 13 WX fields at different sensors the moment a driver
+    // is enabled or disabled in Kconfig. An unmapped field writes "".
     jarr_begin(d, "wxSenCH");
     for (int i = 0; i < WX_SENSOR_NUM; i++)
-        jarr_num(d, c->wx_sensor_ch[i]);
+        jarr_str(d, sensors_local_channel_name(c->wx_sensor_ch[i]));
     jarr_end(d);
 
     // Telemetry configuration (channel 0/1, Binary B1-B8 mapping) is no
@@ -603,10 +608,19 @@ static void config_from_json(cJSON *d, app_config_t *c) {
     c->my_phg_height = (uint16_t)jget_num(d, "myPHGHeight", def.my_phg_height);
     c->my_phg_dir = (uint8_t)jget_num(d, "myPHGDir", def.my_phg_dir);
     set_str(c->my_phg, sizeof(c->my_phg), jget_str(d, "myPHG", def.my_phg));
+    // Channel-access timing: bound every value coming off flash to the same
+    // range the Radiomodem form accepts (aprs_service.h), so a hand-edited or
+    // imported config.json cannot hand aprs_service_build_modem_config() a
+    // setting the radio should never transmit with - see the note there on
+    // what an unbounded preamble does to a shared channel.
     c->tx_timeslot = (uint16_t)jget_num(d, "txTimeSlot", def.tx_timeslot);
+    if (c->tx_timeslot > RF_TX_TIMESLOT_MS_MAX) {
+        ESP_LOGW(TAG, "txTimeSlot %u out of range, clamped to %d ms", (unsigned)c->tx_timeslot, RF_TX_TIMESLOT_MS_MAX);
+        c->tx_timeslot = RF_TX_TIMESLOT_MS_MAX;
+    }
     c->csma_persist = (uint8_t)jget_num(d, "csmaPersist", def.csma_persist);
-    if (c->csma_persist < 1)
-        c->csma_persist = 1;
+    if (c->csma_persist < CSMA_PERSIST_MIN)
+        c->csma_persist = CSMA_PERSIST_MIN;
     c->synctime = jget_bool(d, "syncTime", def.synctime);
     c->timeZone = (float)jget_num(d, "timeZone", def.timeZone);
     set_str(c->ntp_host[0], sizeof(c->ntp_host[0]), jget_str(d, "ntpHost0", jget_str(d, "ntpHost", def.ntp_host[0])));
@@ -648,6 +662,10 @@ static void config_from_json(cJSON *d, app_config_t *c) {
     c->fx25_mode = (uint8_t)jget_num(d, "fx25Mode", def.fx25_mode);
     c->afsk_modem_type = (uint8_t)jget_num(d, "afskModem", def.afsk_modem_type);
     c->preamble = (uint16_t)jget_num(d, "rfPreamble", def.preamble);
+    if (c->preamble < RF_PREAMBLE_MS_MIN || c->preamble > RF_PREAMBLE_MS_MAX) {
+        ESP_LOGW(TAG, "rfPreamble %u out of range, clamped to %d..%d ms", (unsigned)c->preamble, RF_PREAMBLE_MS_MIN, RF_PREAMBLE_MS_MAX);
+        c->preamble = (c->preamble < RF_PREAMBLE_MS_MIN) ? RF_PREAMBLE_MS_MIN : RF_PREAMBLE_MS_MAX;
+    }
     c->audio_modem_en = jget_bool(d, "audioModemEn", def.audio_modem_en);
     c->audio_lpf = jget_bool(d, "audioLPF", def.audio_lpf);
     c->rf_tx_buffers = (uint8_t)jget_num(d, "rfTxBuffers", def.rf_tx_buffers);
@@ -656,8 +674,8 @@ static void config_from_json(cJSON *d, app_config_t *c) {
     else if (c->rf_tx_buffers > RF_TX_BUFFERS_MAX)
         c->rf_tx_buffers = RF_TX_BUFFERS_MAX;
     c->ptt_min_unkey_ms = (uint16_t)jget_num(d, "pttMinUnkeyMs", def.ptt_min_unkey_ms);
-    if (c->ptt_min_unkey_ms > 5000)
-        c->ptt_min_unkey_ms = 5000;
+    if (c->ptt_min_unkey_ms > PTT_MIN_UNKEY_MS_MAX)
+        c->ptt_min_unkey_ms = PTT_MIN_UNKEY_MS_MAX;
 
     c->igate_en = jget_bool(d, "igateEn", def.igate_en);
     c->igate_bcn = jget_bool(d, "igateBcn", def.igate_bcn);
@@ -780,8 +798,28 @@ static void config_from_json(cJSON *d, app_config_t *c) {
                 c->wx_sensor_enable[i] = cJSON_IsTrue(v);
             if (a2 && (v = cJSON_GetArrayItem(a2, i)))
                 c->wx_sensor_avg[i] = cJSON_IsTrue(v);
-            if (a3 && (v = cJSON_GetArrayItem(a3, i)))
-                c->wx_sensor_ch[i] = (uint8_t)v->valuedouble;
+            if (a3 && (v = cJSON_GetArrayItem(a3, i))) {
+                if (cJSON_IsString(v)) {
+                    // Driver name (see the writer above): resolve it against
+                    // the registry this image actually built. A name that is
+                    // no longer registered leaves the field unmapped and says
+                    // so, rather than aiming it at whatever sensor now sits at
+                    // that position.
+                    c->wx_sensor_ch[i] = sensors_local_channel_from_name(v->valuestring);
+                    if (c->wx_sensor_ch[i] == SENSOR_LOCAL_CH_NONE && v->valuestring != NULL && v->valuestring[0] != 0)
+                        ESP_LOGW(TAG, "WX field %d: sensor '%s' is not registered, left unmapped", i, v->valuestring);
+                } else if (cJSON_IsNumber(v)) {
+                    // A config.json that predates name-based mappings: the
+                    // number is a registry position, and it is only meaningful
+                    // if the registry still reaches that far.
+                    unsigned idx = (unsigned)v->valuedouble;
+                    if (idx != SENSOR_LOCAL_CH_NONE && idx >= sensors_local_count()) {
+                        ESP_LOGW(TAG, "WX field %d: stored sensor channel %u no longer exists, left unmapped", i, idx);
+                        idx = SENSOR_LOCAL_CH_NONE;
+                    }
+                    c->wx_sensor_ch[i] = (uint8_t)idx;
+                }
+            }
         }
     }
 

@@ -78,7 +78,8 @@ static const sensor_local_wx_mask_t WX_FIELD_PROPERTY_BIT[WX_SENSOR_NUM] = {
 /*
  * Emits the <select> for one field's "source channel", populated from the live
  * sensors_local registry so each option shows the channel *number and name*
- * ("0: bme280", "1: ds18b20", ...). Index 0xFF (255) is the "(none)" choice.
+ * ("0: bme280", "1: ds18b20", ...). ::SENSOR_LOCAL_CH_NONE (255) is the
+ * "(none)" choice.
  * If no local sensor driver has registered yet, only "(none)" is offered.
  *
  * A driver is only listed as a choice for a given row/field if BOTH:
@@ -105,7 +106,8 @@ static void wx_channel_select(httpd_req_t *req, int field, uint8_t selected) {
     snprintf(buf, sizeof(buf), "<select name='wxCh%d' id='wxCh%d' style='width:150px' onchange='wxRefreshValues()'>", field, field);
     httpd_resp_sendstr_chunk(req, buf);
 
-    snprintf(buf, sizeof(buf), "<option value='255'%s>%s</option>", (selected == 0xFF) ? " selected" : "", TR_WX_CHANNEL_NONE);
+    snprintf(buf, sizeof(buf), "<option value='%u'%s>%s</option>", (unsigned)SENSOR_LOCAL_CH_NONE, (selected == SENSOR_LOCAL_CH_NONE) ? " selected" : "",
+             TR_WX_CHANNEL_NONE);
     httpd_resp_sendstr_chunk(req, buf);
 
     sensor_local_wx_mask_t field_bit = ((unsigned)field < (unsigned)WX_SENSOR_NUM) ? WX_FIELD_PROPERTY_BIT[field] : SENSOR_LOCAL_WX_NONE;
@@ -298,15 +300,15 @@ esp_err_t page_wx_get(httpd_req_t *req) {
     web_field_checkbox(req, TR_F_SEND_VIA_INTERNET, "wxTx2inet", g_config.wx_2inet);
     web_field_checkbox(req, TR_F_ADD_TIMESTAMP, "wxTime", g_config.wx_timestamp);
     web_field_text(req, TR_F_MY_CALLSIGN, "wxMycall", g_config.wx_mycall, 9);
-    web_field_int(req, TR_F_SSID, "wxSSID", g_config.wx_ssid);
+    web_field_int(req, TR_F_SSID, "wxSSID", g_config.wx_ssid, WEB_RANGE_SSID_MIN, WEB_RANGE_SSID_MAX);
     web_field_path_checkboxes(req, "wxPath", g_config.wx_path);
     web_fieldset_close(req);
 
     web_fieldset_open(req, TR_F_POSITION);
-    web_field_float(req, TR_F_LATITUDE, "wxLAT", g_config.wx_lat, "0.0001");
-    web_field_float(req, TR_F_LONGITUDE, "wxLON", g_config.wx_lon, "0.0001");
-    web_field_float(req, TR_F_ALTITUDE_M, "wxALT", g_config.wx_alt, "1");
-    web_field_int(req, TR_F_BEACON_INTERVAL_S, "wxInv", g_config.wx_interval);
+    web_field_float(req, TR_F_LATITUDE, "wxLAT", g_config.wx_lat, "0.0001", WEB_RANGE_LAT_MIN, WEB_RANGE_LAT_MAX);
+    web_field_float(req, TR_F_LONGITUDE, "wxLON", g_config.wx_lon, "0.0001", WEB_RANGE_LON_MIN, WEB_RANGE_LON_MAX);
+    web_field_float(req, TR_F_ALTITUDE_M, "wxALT", g_config.wx_alt, "1", WEB_RANGE_ALT_M_MIN, WEB_RANGE_ALT_M_MAX);
+    web_field_int(req, TR_F_BEACON_INTERVAL_S, "wxInv", g_config.wx_interval, WEB_RANGE_INTERVAL_S_MIN, WEB_RANGE_INTERVAL_S_MAX);
     web_field_text(req, TR_F_OBJECT_NAME, "wxObject", g_config.wx_object, 9);
     web_field_text(req, TR_F_COMMENT, "wxComment", g_config.wx_comment, COMMENT_SIZE - 1);
     web_fieldset_close(req);

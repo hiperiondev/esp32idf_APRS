@@ -14,16 +14,19 @@
  *
  *     please contact their authors for more information.
  *
- * @brief Small in-RAM ring buffer of decoded RF stations, used to feed the "LAST
- * HEARD" table on the web dashboard.
+ * @brief Small in-RAM table of decoded RF stations, used to feed the "LAST
+ * HEARD" panel on the web dashboard.
  *
- * Every decoded AX.25 frame recorded here also increments a per-callsign packet
- * counter so the dashboard can show how many times each station has been heard,
- * the same way the reference project's "PACKET" column does.
+ * The table holds one entry per callsign, ordered most recently heard first.
+ * Every decoded AX.25 frame from a callsign already in the table refreshes that
+ * entry - time, path, symbol - and increments its packet counter, so the
+ * dashboard can show how many times each station has been heard the same way
+ * the reference project's "PACKET" column does, without a talkative station
+ * pushing every other callsign out of the table.
  *
  * Thread-safe: lastheard_add() may be called from any task (radio RX callback).
- * Entries are timestamped with time(NULL) (wall clock, once NTP has synced) so
- * the web client can render a human time-of-day.
+ * Entries are timestamped with time(NULL) (wall clock, once NTP has synced) and
+ * rendered as UTC so the web client can show a human time-of-day.
  */
 
 #ifndef LASTHEARD_H
@@ -38,7 +41,7 @@ extern "C" {
 #endif
 
 /**
- * @brief Initialise the last-heard ring buffer. Must be called once (e.g. from
+ * @brief Initialise the last-heard table. Must be called once (e.g. from
  * aprs_service_start()) before the first lastheard_add(). Safe to call more
  * than once.
  */
@@ -46,6 +49,12 @@ void lastheard_init(void);
 
 /**
  * @brief Record one heard station.
+ *
+ * A callsign already in the table keeps its entry: @p path, @p sym_table,
+ * @p sym_code and the timestamp are refreshed in place, its packet counter is
+ * incremented, and the entry becomes the most recent one. An unknown callsign
+ * takes a new entry at the front, evicting the least recently heard station
+ * once the table is full.
  *
  * @param callsign   Source callsign, e.g. "HS5TQA-7" (already includes SSID
  *                    if non-zero).
@@ -61,11 +70,13 @@ void lastheard_init(void);
 void lastheard_add(const char *callsign, const char *path, bool via_rf, char sym_table, char sym_code);
 
 /**
- * @brief Serialize the buffered stations (most recent first) as a JSON array.
+ * @brief Serialize the table (one element per station, most recent first) as a
+ * JSON array.
  *
  * Each element looks like
- * @c {"time":"HH:MM:SS","call":"HS5TQA-7","path":"RF: WIDE1-1","sym":"91-1","packets":3}.
- * The result is NUL-terminated and truncated to fit @p out_size.
+ * @c {"time":"HH:MM:SSZ","call":"HS5TQA-7","path":"RF: WIDE1-1","sym":"91-1","packets":3}.
+ * The trailing @c Z marks the time as UTC. The result is NUL-terminated and
+ * truncated to fit @p out_size.
  *
  * @param out      Destination buffer.
  * @param out_size Size of @p out, in bytes.

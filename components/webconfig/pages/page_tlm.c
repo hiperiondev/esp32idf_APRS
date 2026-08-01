@@ -93,7 +93,8 @@
  */
 static void tlm_channel_options(httpd_req_t *req, sensor_local_tlm_channel_mask_t chan_mask, uint8_t selected, int ana_idx) {
     char buf[192];
-    snprintf(buf, sizeof(buf), "<option value='255'%s>%s</option>", (selected == 0xFF) ? " selected" : "", TR_WX_CHANNEL_NONE);
+    snprintf(buf, sizeof(buf), "<option value='%u'%s>%s</option>", (unsigned)SENSOR_LOCAL_CH_NONE, (selected == SENSOR_LOCAL_CH_NONE) ? " selected" : "",
+             TR_WX_CHANNEL_NONE);
     httpd_resp_sendstr_chunk(req, buf);
 
     size_t n = sensors_local_count();
@@ -206,9 +207,9 @@ static void send_beacon_form(httpd_req_t *req, const telemetry_config_t *cfg) {
     web_field_checkbox(req, TR_F_SEND_VIA_RF, "tlm0Tx2rf", cfg->tx2rf);
     web_field_checkbox(req, TR_F_SEND_VIA_INTERNET, "tlm0Tx2inet", cfg->tx2inet);
     web_field_text(req, TR_F_MY_CALLSIGN, "tlm0Mycall", cfg->mycall, 9);
-    web_field_int(req, TR_F_SSID, "tlm0SSID", cfg->ssid);
+    web_field_int(req, TR_F_SSID, "tlm0SSID", cfg->ssid, WEB_RANGE_SSID_MIN, WEB_RANGE_SSID_MAX);
     web_field_path_checkboxes(req, "tlm0Path", cfg->path);
-    web_field_int(req, TR_F_DATA_INTERVAL_S, "tlm0DataInv", cfg->data_interval);
+    web_field_int(req, TR_F_DATA_INTERVAL_S, "tlm0DataInv", cfg->data_interval, WEB_RANGE_INTERVAL_S_MIN, WEB_RANGE_INTERVAL_S_MAX);
     web_fieldset_close(req);
 }
 
@@ -250,7 +251,7 @@ static void send_defmsg_form(httpd_req_t *req, const telemetry_config_t *cfg) {
     web_field_checkbox(req, TR_TLM_GEN_UNIT, "genUNIT", cfg->gen_unit);
     web_field_checkbox(req, TR_TLM_GEN_EQNS, "genEQNS", cfg->gen_eqns);
     web_field_checkbox(req, TR_TLM_GEN_BITS, "genBITS", cfg->gen_bits);
-    web_field_int(req, TR_F_PARM_UNIT_EQNS_INTERVAL_S, "tlm0InfoInv", cfg->info_interval);
+    web_field_int(req, TR_F_PARM_UNIT_EQNS_INTERVAL_S, "tlm0InfoInv", cfg->info_interval, WEB_RANGE_INTERVAL_S_MIN, WEB_RANGE_INTERVAL_S_MAX);
     web_fieldset_close(req);
 }
 
@@ -303,22 +304,22 @@ static void send_analog_form(httpd_req_t *req, const telemetry_config_t *cfg) {
         web_field_text(req, TR_TLM_UNIT, name, cfg->UNIT[i], 6);
 
         snprintf(name, sizeof(name), "anaRawMin%d", i);
-        web_field_int(req, TR_TLM_RAW_MIN, name, cfg->ana_raw_min[i]);
+        web_field_int(req, TR_TLM_RAW_MIN, name, cfg->ana_raw_min[i], TLM_RAW_RANGE_MIN, TLM_RAW_RANGE_MAX);
 
         snprintf(name, sizeof(name), "anaRawMax%d", i);
-        web_field_int(req, TR_TLM_RAW_MAX, name, cfg->ana_raw_max[i]);
+        web_field_int(req, TR_TLM_RAW_MAX, name, cfg->ana_raw_max[i], TLM_RAW_RANGE_MIN, TLM_RAW_RANGE_MAX);
 
         snprintf(name, sizeof(name), "anaA%d", i);
-        web_field_float(req, TR_TLM_COEF_A, name, cfg->ana_a[i], "any");
+        web_field_float(req, TR_TLM_COEF_A, name, cfg->ana_a[i], "any", TLM_COEF_RANGE_MIN, TLM_COEF_RANGE_MAX);
 
         snprintf(name, sizeof(name), "anaB%d", i);
-        web_field_float(req, TR_TLM_COEF_B, name, cfg->ana_b[i], "any");
+        web_field_float(req, TR_TLM_COEF_B, name, cfg->ana_b[i], "any", TLM_COEF_RANGE_MIN, TLM_COEF_RANGE_MAX);
 
         snprintf(name, sizeof(name), "anaC%d", i);
-        web_field_float(req, TR_TLM_COEF_C, name, cfg->ana_c[i], "any");
+        web_field_float(req, TR_TLM_COEF_C, name, cfg->ana_c[i], "any", TLM_COEF_RANGE_MIN, TLM_COEF_RANGE_MAX);
 
         snprintf(name, sizeof(name), "anaDec%d", i);
-        web_field_int(req, TR_TLM_DECIMALS, name, cfg->ana_dec[i]);
+        web_field_int(req, TR_TLM_DECIMALS, name, cfg->ana_dec[i], 0, 9);
 
         snprintf(buf, sizeof(buf), "<div class='eqn-preview' id='achanEqn%d'>&hellip;</div>", i);
         httpd_resp_sendstr_chunk(req, buf);

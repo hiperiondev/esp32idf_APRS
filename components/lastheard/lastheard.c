@@ -14,9 +14,10 @@
  *
  *     please contact their authors for more information.
  *
- * @brief In-RAM ring buffer of decoded stations feeding the dashboard "LAST
- * HEARD" table: thread-safe insertion with per-callsign packet counting, wall
- * clock timestamping and JSON serialization.
+ * @brief In-RAM table of decoded stations feeding the dashboard "LAST HEARD"
+ * panel: one entry per callsign, most recently heard first, with thread-safe
+ * insertion, per-callsign packet counting, UTC timestamping and JSON
+ * serialization.
  */
 
 #include "lastheard.h"
@@ -34,7 +35,6 @@
 #define LASTHEARD_PATH_LEN 48
 
 typedef struct {
-    bool used;
     time_t time;
     char callsign[LASTHEARD_CALL_LEN];
     char path[LASTHEARD_PATH_LEN]; // e.g. "RF: WIDE1-1" / "INET: DIRECT"
@@ -43,9 +43,15 @@ typedef struct {
     uint32_t packets; // total times this callsign has been heard
 } lastheard_entry_t;
 
+// One slot per STATION, never per packet: s_buf[0] is the most recently heard
+// callsign and s_count grows to LASTHEARD_CAPACITY, at which point the oldest
+// station falls off the end. Hearing a callsign that already has a slot
+// refreshes that slot and moves it back to the front rather than consuming a
+// new one, so a single chatty neighbour (or this station's own digipeated
+// traffic) cannot evict every other callsign from the table within seconds -
+// which is exactly the information the dashboard panel exists to show.
 static lastheard_entry_t s_buf[LASTHEARD_CAPACITY];
-static size_t s_head = 0; // index the *next* entry will be written to
-static size_t s_count = 0;
+static size_t s_count = 0; // live entries, s_buf[0..s_count-1], most recent first
 static SemaphoreHandle_t s_lock = NULL;
 static bool s_inited = false;
 
@@ -65,31 +71,45 @@ void lastheard_add(const char *callsign, const char *path, bool via_rf, char sym
     if (!s_lock || xSemaphoreTake(s_lock, pdMS_TO_TICKS(50)) != pdTRUE)
         return; // never block the radio/network task indefinitely
 
-    // Carry the running packet count forward if this callsign is already
-    // the most-recently-seen entry (avoids the count resetting to 1 on
-    // every single frame from the same station).
-    uint32_t packets = 1;
+    // Compare against the same truncation that gets stored, so two callsigns
+    // that differ only past LASTHEARD_CALL_LEN still resolve to one slot.
+    char call[LASTHEARD_CALL_LEN];
+    strncpy(call, callsign, sizeof(call) - 1);
+    call[sizeof(call) - 1] = 0;
+
+    size_t found = LASTHEARD_CAPACITY;
     for (size_t i = 0; i < s_count; i++) {
-        size_t idx = (s_head + LASTHEARD_CAPACITY - 1 - i) % LASTHEARD_CAPACITY;
-        if (strncmp(s_buf[idx].callsign, callsign, LASTHEARD_CALL_LEN) == 0) {
-            packets = s_buf[idx].packets + 1;
+        if (strcmp(s_buf[i].callsign, call) == 0) {
+            found = i;
             break;
         }
     }
 
-    lastheard_entry_t *e = &s_buf[s_head];
-    e->used = true;
+    uint32_t packets = 1;
+    size_t shift_from;
+    if (found < LASTHEARD_CAPACITY) {
+        // Known station: carry its running packet count forward and reuse its
+        // slot, closing the gap it leaves behind as it moves to the front.
+        packets = s_buf[found].packets + 1;
+        shift_from = found;
+    } else {
+        // New station: push everything down one slot, dropping the oldest
+        // entry once the table is full.
+        if (s_count < LASTHEARD_CAPACITY)
+            s_count++;
+        shift_from = s_count - 1;
+    }
+    if (shift_from > 0)
+        memmove(&s_buf[1], &s_buf[0], shift_from * sizeof(s_buf[0]));
+
+    lastheard_entry_t *e = &s_buf[0];
     e->time = time(NULL);
-    strncpy(e->callsign, callsign, sizeof(e->callsign) - 1);
+    strncpy(e->callsign, call, sizeof(e->callsign) - 1);
     e->callsign[sizeof(e->callsign) - 1] = 0;
     snprintf(e->path, sizeof(e->path), "%s: %s", via_rf ? "RF" : "INET", (path && path[0]) ? path : "DIRECT");
     e->sym_table = sym_table;
     e->sym_code = sym_code;
     e->packets = packets;
-
-    s_head = (s_head + 1) % LASTHEARD_CAPACITY;
-    if (s_count < LASTHEARD_CAPACITY)
-        s_count++;
 
     xSemaphoreGive(s_lock);
 }
@@ -107,17 +127,17 @@ size_t lastheard_dump_json(char *out, size_t out_size) {
     out[pos++] = '[';
     bool first = true;
 
-    // Most-recently-added first.
+    // s_buf is already ordered most-recently-heard first, one row per station.
     for (size_t i = 0; i < s_count && pos + 4 < out_size; i++) {
-        size_t idx = (s_head + LASTHEARD_CAPACITY - 1 - i) % LASTHEARD_CAPACITY;
-        lastheard_entry_t *e = &s_buf[idx];
-        if (!e->used)
-            continue;
+        lastheard_entry_t *e = &s_buf[i];
 
+        // UTC, and labelled as such: the firmware runs with TZ=UTC0 (see
+        // time_sync.c), so gmtime_r() states the timescale these stamps are
+        // really on instead of leaving it to the process timezone.
         struct tm tmv;
-        localtime_r(&e->time, &tmv);
+        gmtime_r(&e->time, &tmv);
         char strTime[12];
-        snprintf(strTime, sizeof(strTime), "%02d:%02d:%02d", tmv.tm_hour, tmv.tm_min, tmv.tm_sec);
+        snprintf(strTime, sizeof(strTime), "%02d:%02d:%02dZ", tmv.tm_hour, tmv.tm_min, tmv.tm_sec);
 
         char call_esc[LASTHEARD_CALL_LEN * 2];
         char path_esc[LASTHEARD_PATH_LEN * 2];

@@ -153,8 +153,8 @@ esp_err_t page_station_get(httpd_req_t *req) {
 
     web_fieldset_open(req, TR_F_STATION);
     web_field_text(req, TR_F_MY_CALLSIGN, "myCallsign", g_config.my_callsign, 9);
-    web_field_float(req, TR_F_LATITUDE, "myLAT", g_config.my_lat, "0.0001");
-    web_field_float(req, TR_F_LONGITUDE, "myLON", g_config.my_lon, "0.0001");
+    web_field_float(req, TR_F_LATITUDE, "myLAT", g_config.my_lat, "0.0001", WEB_RANGE_LAT_MIN, WEB_RANGE_LAT_MAX);
+    web_field_float(req, TR_F_LONGITUDE, "myLON", g_config.my_lon, "0.0001", WEB_RANGE_LON_MIN, WEB_RANGE_LON_MAX);
     web_fieldset_close(req);
 
     // PHG (Power-Height-Gain-Directivity) ------------------------------------

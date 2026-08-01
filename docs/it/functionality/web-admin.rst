@@ -19,6 +19,16 @@ L'HTML è emesso tramite piccoli helper per campo (``web_field_text``,
 …) invece di un singolo ``snprintf`` gigante — deliberatamente, per evitare
 ``-Werror=format-truncation`` e mantenere leggibile ogni pagina.
 
+Gli helper numerici (``web_field_int``, ``web_field_float``) ricevono
+l'intervallo accettato dal campo e lo emettono sempre come attributi HTML
+``min``/``max`` dell'input, così ogni campo numerico di ogni pagina viene
+validato dal browser prima dell'invio del modulo. Questa è la prima linea di
+difesa contro un errore di battitura; il gestore POST continua a limitare ciò
+che memorizza, ed è quello che regge davanti a una richiesta manipolata. I
+domini ricorrenti (SSID, intervallo di trasmissione, latitudine, longitudine,
+altitudine) provengono dalle costanti ``WEB_RANGE_*`` di ``web_common.h``, così
+un limite è definito una sola volta per tutte le pagine che lo condividono.
+
 Le pagine
 =========
 

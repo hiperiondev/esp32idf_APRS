@@ -114,19 +114,46 @@ void telemetry_config_set_defaults(telemetry_config_t *out) {
 
     for (int i = 0; i < TLM_CH; i++) {
         out->ana_enable[i] = true;
-        out->tlm_ana_channel[i] = 0xFF; // "(none)" - unassigned until mapped on the web page
-        out->ana_b[i] = 1.0f;           // identity slope by default
+        out->tlm_ana_channel[i] = SENSOR_LOCAL_CH_NONE; // "(none)" - unassigned until mapped on the web page
+        out->ana_b[i] = 1.0f;                           // identity slope by default
         out->ana_raw_max[i] = 1023;
         out->ana_dec[i] = 0;
     }
     for (int i = 0; i < TLM_BIT_NUM; i++) {
-        out->tlm_bit_channel[i] = 0xFF; // "(none)" - unassigned until mapped on the web page
+        out->tlm_bit_channel[i] = SENSOR_LOCAL_CH_NONE; // "(none)" - unassigned until mapped on the web page
         // Default enabled/Normal so that loading an OLDER telemetry.json (which
         // has none of these keys) leaves every bit transmitting exactly as it
         // did before these fields existed - i.e. no silent behaviour change.
         out->bit_enable[i] = true;
         out->bit_sense[i] = true; // Normal
     }
+}
+
+// Sensor mappings are stored as driver NAMES, not registry positions: a
+// position only holds within the firmware image that produced it (see the
+// persistence contract in sensors_local.h), so an index would re-point every
+// bit and analog channel at a different sensor as soon as a driver is enabled
+// or disabled in Kconfig. Resolve the name against the registry this image
+// actually built, and report a mapping whose driver is gone as unmapped
+// instead of aiming it at whatever now occupies that slot. A plain number is a
+// telemetry.json that predates name-based mappings and is still read as a
+// position, valid only while the registry reaches that far.
+static uint8_t channel_from_json(const cJSON *it, const char *what, int idx, uint8_t def) {
+    if (cJSON_IsString(it)) {
+        uint8_t ch = sensors_local_channel_from_name(it->valuestring);
+        if (ch == SENSOR_LOCAL_CH_NONE && it->valuestring != NULL && it->valuestring[0] != 0)
+            ESP_LOGW(TAG, "%s%d: sensor '%s' is not registered, left unmapped", what, idx, it->valuestring);
+        return ch;
+    }
+    if (cJSON_IsNumber(it)) {
+        unsigned pos = (unsigned)it->valuedouble;
+        if (pos != SENSOR_LOCAL_CH_NONE && pos >= sensors_local_count()) {
+            ESP_LOGW(TAG, "%s%d: stored sensor channel %u no longer exists, left unmapped", what, idx, pos);
+            return SENSOR_LOCAL_CH_NONE;
+        }
+        return (uint8_t)pos;
+    }
+    return def;
 }
 
 static bool load_locked(telemetry_config_t *out, bool *out_missing) {
@@ -195,8 +222,8 @@ static bool load_locked(telemetry_config_t *out, bool *out_missing) {
             strncpy(out->tlm_bit_name[i], it->valuestring, sizeof(out->tlm_bit_name[i]) - 1);
             out->tlm_bit_name[i][sizeof(out->tlm_bit_name[i]) - 1] = 0;
         }
-        if (chan && (it = cJSON_GetArrayItem(chan, i)) && cJSON_IsNumber(it))
-            out->tlm_bit_channel[i] = (uint8_t)it->valuedouble;
+        if (chan && (it = cJSON_GetArrayItem(chan, i)))
+            out->tlm_bit_channel[i] = channel_from_json(it, "B", i + 1, out->tlm_bit_channel[i]);
         if (igate && (it = cJSON_GetArrayItem(igate, i)))
             out->tlm_bit_igate[i] = cJSON_IsTrue(it);
         if (rf && (it = cJSON_GetArrayItem(rf, i)))
@@ -284,8 +311,8 @@ static bool load_locked(telemetry_config_t *out, bool *out_missing) {
         cJSON *it;
         if (anaEn && (it = cJSON_GetArrayItem(anaEn, i)))
             out->ana_enable[i] = cJSON_IsTrue(it);
-        if (anaCh && (it = cJSON_GetArrayItem(anaCh, i)) && cJSON_IsNumber(it))
-            out->tlm_ana_channel[i] = (uint8_t)it->valuedouble;
+        if (anaCh && (it = cJSON_GetArrayItem(anaCh, i)))
+            out->tlm_ana_channel[i] = channel_from_json(it, "A", i + 1, out->tlm_ana_channel[i]);
         if (anaA && (it = cJSON_GetArrayItem(anaA, i)) && cJSON_IsNumber(it))
             out->ana_a[i] = (float)it->valuedouble;
         if (anaB && (it = cJSON_GetArrayItem(anaB, i)) && cJSON_IsNumber(it))
@@ -358,8 +385,11 @@ static bool save_locked(const telemetry_config_t *in) {
         json_write_escaped(f, in->tlm_bit_name[i]);
     }
     fputs("],\"bitCh\":[", f);
-    for (int i = 0; i < TLM_BIT_NUM; i++)
-        fprintf(f, i ? ",%u" : "%u", (unsigned)in->tlm_bit_channel[i]);
+    for (int i = 0; i < TLM_BIT_NUM; i++) {
+        if (i)
+            fputc(',', f);
+        json_write_escaped(f, sensors_local_channel_name(in->tlm_bit_channel[i]));
+    }
     fputs("],\"bitIgate\":[", f);
     for (int i = 0; i < TLM_BIT_NUM; i++)
         fputs(i ? (in->tlm_bit_igate[i] ? ",true" : ",false") : (in->tlm_bit_igate[i] ? "true" : "false"), f);
@@ -399,8 +429,11 @@ static bool save_locked(const telemetry_config_t *in) {
     for (int i = 0; i < TLM_CH; i++)
         fputs(i ? (in->ana_enable[i] ? ",true" : ",false") : (in->ana_enable[i] ? "true" : "false"), f);
     fputs("],\"anaCh\":[", f);
-    for (int i = 0; i < TLM_CH; i++)
-        fprintf(f, i ? ",%u" : "%u", (unsigned)in->tlm_ana_channel[i]);
+    for (int i = 0; i < TLM_CH; i++) {
+        if (i)
+            fputc(',', f);
+        json_write_escaped(f, sensors_local_channel_name(in->tlm_ana_channel[i]));
+    }
     fputs("],\"anaA\":[", f);
     for (int i = 0; i < TLM_CH; i++)
         fprintf(f, i ? ",%g" : "%g", (double)in->ana_a[i]);
@@ -562,7 +595,7 @@ static void telemetry_refresh_now(void) {
         bool val = false;
 
         uint8_t ch = ch_snapshot[bit];
-        if (ch != 0xFF) { // "(none)" - no source channel picked
+        if (ch != SENSOR_LOCAL_CH_NONE) { // "(none)" - no source channel picked
             bool digital_enabled[APRS_TELEMETRY_DIGITAL_CHANNELS] = { 0 };
             bool digital[APRS_TELEMETRY_DIGITAL_CHANNELS] = { 0 };
             aprs_telemetry_report_t scratch_tlm = { 0 };
@@ -605,7 +638,7 @@ static void telemetry_refresh_now(void) {
         double val = 0.0;
 
         uint8_t ch = ana_snapshot[a];
-        if (ch != 0xFF) { // "(none)" - no source channel picked
+        if (ch != SENSOR_LOCAL_CH_NONE) { // "(none)" - no source channel picked
             bool analog_enabled[APRS_TELEMETRY_ANALOG_CHANNELS] = { 0 };
             double analog[APRS_TELEMETRY_ANALOG_CHANNELS] = { 0 };
             aprs_telemetry_report_t scratch_tlm = { 0 };
@@ -1117,8 +1150,8 @@ void telemetry_start(void) {
     memset(s_bit_present, 0, sizeof(s_bit_present));
     memset(s_ana_val, 0, sizeof(s_ana_val));
     memset(s_ana_present, 0, sizeof(s_ana_present));
-    memset(s_cached_bit_channel, 0xFF, sizeof(s_cached_bit_channel));
-    memset(s_cached_ana_channel, 0xFF, sizeof(s_cached_ana_channel));
+    memset(s_cached_bit_channel, SENSOR_LOCAL_CH_NONE, sizeof(s_cached_bit_channel));
+    memset(s_cached_ana_channel, SENSOR_LOCAL_CH_NONE, sizeof(s_cached_ana_channel));
     s_cache_valid = false;
     s_sequence = 0;
     s_data_next_due = 0;

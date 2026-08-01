@@ -224,18 +224,51 @@ static inline void web_form_get_call(const char *body, const char *key, char *ou
 }
 
 /**
+ * @name Shared numeric input ranges
+ *
+ * Inclusive bounds for the value domains that repeat across several admin
+ * pages. Every numeric field is rendered by web_field_int()/web_field_float(),
+ * which always emit @c min and @c max attributes, so these constants are what
+ * the browser validates against - they are the first line of defence that
+ * stops a typo from ever reaching the POST handler, with the handler's own
+ * clamp (or the service's runtime bound) as the second. Keeping the recurring
+ * domains here means one edit changes every page that shares them.
+ *
+ * The interval ceilings are the storage width of the interval fields they
+ * bound - ::WEB_RANGE_INTERVAL_S_MAX for the @c uint16_t seconds fields
+ * (beacons, status, weather, telemetry), ::WEB_RANGE_INTERVAL_LONG_S_MAX for
+ * the @c uint32_t ones (bulletins, objects/items), where a full day is the
+ * useful limit rather than the type's. The runtime floor and the "0 = use the
+ * service default" convention are applied by sched_clamp_interval() in the
+ * services themselves, so 0 stays a legal input here.
+ * @{
+ */
+#define WEB_RANGE_SSID_MIN            0      /**< Lowest AX.25 SSID. */
+#define WEB_RANGE_SSID_MAX            15     /**< Highest AX.25 SSID. */
+#define WEB_RANGE_INTERVAL_S_MIN      0      /**< Lowest transmit interval, seconds (0 = service default / off). */
+#define WEB_RANGE_INTERVAL_S_MAX      65535  /**< Highest transmit interval for a uint16_t field, seconds. */
+#define WEB_RANGE_INTERVAL_LONG_S_MAX 86400  /**< Highest transmit interval for a uint32_t field, seconds (24 h). */
+#define WEB_RANGE_LAT_MIN             (-90)  /**< Southernmost latitude, decimal degrees. */
+#define WEB_RANGE_LAT_MAX             90     /**< Northernmost latitude, decimal degrees. */
+#define WEB_RANGE_LON_MIN             (-180) /**< Westernmost longitude, decimal degrees. */
+#define WEB_RANGE_LON_MAX             180    /**< Easternmost longitude, decimal degrees. */
+#define WEB_RANGE_ALT_M_MIN           (-500) /**< Lowest altitude, meters (below the Dead Sea shore). */
+#define WEB_RANGE_ALT_M_MAX           10000  /**< Highest altitude, meters (above Everest, below airliner cruise). */
+/** @} */
+
+/**
  * @brief Read an SSID form field, clamped to the valid AX.25 range 0..15.
  * @param body Form/query blob.
  * @param key  Field name.
  * @param def  Value used when the field is absent or non-numeric.
- * @return The SSID, clamped to 0..15.
+ * @return The SSID, clamped to ::WEB_RANGE_SSID_MIN .. ::WEB_RANGE_SSID_MAX.
  */
 static inline uint8_t web_form_get_ssid(const char *body, const char *key, uint8_t def) {
     int v = web_form_get_int(body, key, def);
-    if (v < 0)
-        v = 0;
-    if (v > 15)
-        v = 15;
+    if (v < WEB_RANGE_SSID_MIN)
+        v = WEB_RANGE_SSID_MIN;
+    if (v > WEB_RANGE_SSID_MAX)
+        v = WEB_RANGE_SSID_MAX;
     return (uint8_t)v;
 }
 
@@ -292,11 +325,40 @@ void web_field_text(httpd_req_t *req, const char *label, const char *name, const
 /** @brief Render a labelled password input (with a show/hide toggle). @param req Request. @param label Field label. @param name Form field name. @param value
  * Current value. @param maxlen HTML maxlength. */
 void web_field_password(httpd_req_t *req, const char *label, const char *name, const char *value, int maxlen);
-/** @brief Render a labelled integer input. @param req Request. @param label Field label. @param name Form field name. @param value Current value. */
-void web_field_int(httpd_req_t *req, const char *label, const char *name, long value);
-/** @brief Render a labelled floating-point input. @param req Request. @param label Field label. @param name Form field name. @param value Current value. @param
- * step HTML step attribute (e.g. "0.01"). */
-void web_field_float(httpd_req_t *req, const char *label, const char *name, float value, const char *step);
+/**
+ * @brief Render a labelled integer input, bounded client-side.
+ *
+ * @p min and @p max are emitted as the input's HTML @c min / @c max
+ * attributes, so the browser refuses to submit an out-of-range value and the
+ * spinner arrows stop at the bounds. That is validation, not enforcement - a
+ * crafted POST bypasses it entirely - so the handler consuming the field
+ * still clamps whatever it stores. Feed both from a shared constant
+ * (::WEB_RANGE_SSID_MIN, ::RF_TX_BUFFERS_MAX, ...) wherever one exists, so
+ * the form and the clamp behind it cannot drift apart.
+ *
+ * @param req   Request.
+ * @param label Field label.
+ * @param name  Form field name.
+ * @param value Current value.
+ * @param min   Lowest accepted value (inclusive).
+ * @param max   Highest accepted value (inclusive).
+ */
+void web_field_int(httpd_req_t *req, const char *label, const char *name, long value, long min, long max);
+/**
+ * @brief Render a labelled floating-point input, bounded client-side.
+ *
+ * Same @c min / @c max contract as web_field_int(), with the bounds expressed
+ * in the field's own units (degrees, MHz, km, ...).
+ *
+ * @param req   Request.
+ * @param label Field label.
+ * @param name  Form field name.
+ * @param value Current value.
+ * @param step  HTML step attribute (e.g. "0.01", or "any" to leave the value unquantized).
+ * @param min   Lowest accepted value (inclusive).
+ * @param max   Highest accepted value (inclusive).
+ */
+void web_field_float(httpd_req_t *req, const char *label, const char *name, float value, const char *step, float min, float max);
 /** @brief Render a labelled checkbox. @param req Request. @param label Field label. @param name Form field name. @param checked Initial checked state. */
 void web_field_checkbox(httpd_req_t *req, const char *label, const char *name, bool checked);
 /** @brief Open a labelled @c <select>. @param req Request. @param label Field label. @param name Form field name. */

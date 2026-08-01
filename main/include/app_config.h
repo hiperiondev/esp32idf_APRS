@@ -370,7 +370,8 @@ typedef struct {
     char wx_comment[COMMENT_SIZE];        /**< WX report comment. */
     bool wx_sensor_enable[WX_SENSOR_NUM]; /**< Per-field enable, indexed by ::wx_field_id_t. */
     bool wx_sensor_avg[WX_SENSOR_NUM];    /**< Per-field averaging enable, indexed by ::wx_field_id_t. */
-    uint8_t wx_sensor_ch[WX_SENSOR_NUM];  /**< Per-field source sensor channel, indexed by ::wx_field_id_t. */
+    uint8_t wx_sensor_ch[WX_SENSOR_NUM];  /**< Per-field source sensor channel, indexed by ::wx_field_id_t (::SENSOR_LOCAL_CH_NONE = "(none)"); persisted by
+                                             driver name. */
 
     bool audio_modem_en;     /**< Enable the audio ADC/DAC AFSK modem. */
     bool audio_lpf;          /**< Enable the audio low-pass filter. */

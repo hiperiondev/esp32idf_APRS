@@ -970,16 +970,23 @@ void web_field_password(httpd_req_t *req, const char *label, const char *name, c
     httpd_resp_sendstr_chunk(req, buf);
 }
 
-void web_field_int(httpd_req_t *req, const char *label, const char *name, long value) {
-    char buf[220];
-    snprintf(buf, sizeof(buf), "<label>%.60s</label><input type='number' name='%.30s' value='%ld'>", label, name, value);
+// Both numeric emitters below always render the field's accepted range as HTML
+// min/max attributes, so every numeric input on every page is validated by the
+// browser before the form is submitted. The bounds are supplied by the caller
+// because they belong to the field's own value domain, and the caller is what
+// also clamps the posted value server-side: the browser check is the first
+// line of defence against a typo, the handler's clamp is the one that holds
+// against a crafted POST.
+void web_field_int(httpd_req_t *req, const char *label, const char *name, long value, long min, long max) {
+    char buf[320];
+    snprintf(buf, sizeof(buf), "<label>%.60s</label><input type='number' name='%.30s' value='%ld' min='%ld' max='%ld'>", label, name, value, min, max);
     httpd_resp_sendstr_chunk(req, buf);
 }
 
-void web_field_float(httpd_req_t *req, const char *label, const char *name, float value, const char *step) {
-    char buf[240];
-    snprintf(buf, sizeof(buf), "<label>%.60s</label><input type='number' step='%.10s' name='%.30s' value='%g'>", label, step ? step : "0.01", name,
-             (double)value);
+void web_field_float(httpd_req_t *req, const char *label, const char *name, float value, const char *step, float min, float max) {
+    char buf[320];
+    snprintf(buf, sizeof(buf), "<label>%.60s</label><input type='number' step='%.10s' name='%.30s' value='%g' min='%g' max='%g'>", label, step ? step : "0.01",
+             name, (double)value, (double)min, (double)max);
     httpd_resp_sendstr_chunk(req, buf);
 }
 

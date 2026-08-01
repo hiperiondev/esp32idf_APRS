@@ -55,7 +55,7 @@ esp_err_t page_igate_get(httpd_req_t *req) {
     // STATION ------------------------------------------------------------
     web_fieldset_open(req, TR_F_STATION);
     web_field_text(req, TR_F_MY_CALLSIGN, "igateMycall", g_config.aprs_mycall, 9);
-    web_field_int(req, TR_F_SSID, "igateSSID", g_config.aprs_ssid);
+    web_field_int(req, TR_F_SSID, "igateSSID", g_config.aprs_ssid, WEB_RANGE_SSID_MIN, WEB_RANGE_SSID_MAX);
 
     // Station Symbol: Table char + Symbol char shown as two separate 1-char
     // inputs, plus a live graphical icon of the currently selected symbol
@@ -105,7 +105,7 @@ esp_err_t page_igate_get(httpd_req_t *req) {
         web_raw(req, pcbuf);
     }
     web_field_text(req, TR_F_SERVER_HOST, "igateHost", g_config.aprs_host, 19);
-    web_field_int(req, TR_F_SERVER_PORT, "igatePort", g_config.aprs_port);
+    web_field_int(req, TR_F_SERVER_PORT, "igatePort", g_config.aprs_port, 1, 65535);
     web_field_text(req, TR_F_FILTER, "igateFilter", g_config.aprs_filter, 29);
     if (s_filterWarning[0]) {
         char esc_warn[sizeof(s_filterWarning) * 6 + 1];
@@ -139,11 +139,11 @@ esp_err_t page_igate_get(httpd_req_t *req) {
     // POSITION -----------------------------------------------------------
     web_fieldset_open(req, TR_F_POSITION);
     web_field_checkbox(req, TR_F_BEACON_POSITION_2, "igateBcn", g_config.igate_bcn);
-    web_field_int(req, TR_F_BEACON_INTERVAL_S, "igateINV", g_config.igate_interval);
+    web_field_int(req, TR_F_BEACON_INTERVAL_S, "igateINV", g_config.igate_interval, WEB_RANGE_INTERVAL_S_MIN, WEB_RANGE_INTERVAL_S_MAX);
 
-    web_field_float(req, TR_F_LATITUDE, "igateLAT", g_config.igate_lat, "0.0001");
-    web_field_float(req, TR_F_LONGITUDE, "igateLON", g_config.igate_lon, "0.0001");
-    web_field_float(req, TR_F_ALTITUDE_M, "igateALT", g_config.igate_alt, "1");
+    web_field_float(req, TR_F_LATITUDE, "igateLAT", g_config.igate_lat, "0.0001", WEB_RANGE_LAT_MIN, WEB_RANGE_LAT_MAX);
+    web_field_float(req, TR_F_LONGITUDE, "igateLON", g_config.igate_lon, "0.0001", WEB_RANGE_LON_MIN, WEB_RANGE_LON_MAX);
+    web_field_float(req, TR_F_ALTITUDE_M, "igateALT", g_config.igate_alt, "1", WEB_RANGE_ALT_M_MIN, WEB_RANGE_ALT_M_MAX);
     web_field_checkbox(req, TR_F_COMPRESS_POSITION, "igateCompress", g_config.igate_compress);
 
     // TX Channel: RF / Internet (same data as igate_loc2rf/igate_loc2inet).
@@ -287,7 +287,7 @@ esp_err_t page_igate_get(httpd_req_t *req) {
 
     // STATUS BEACON ----------------------------------------------------------
     web_fieldset_open(req, TR_F_STATUS_BEACON);
-    web_field_int(req, TR_F_STATUS_INTERVAL_S_0_OFF, "igateSTSIntv", g_config.igate_sts_interval);
+    web_field_int(req, TR_F_STATUS_INTERVAL_S_0_OFF, "igateSTSIntv", g_config.igate_sts_interval, WEB_RANGE_INTERVAL_S_MIN, WEB_RANGE_INTERVAL_S_MAX);
     web_field_text(req, TR_F_STATUS_TEXT, "igateStatus", g_config.igate_status, STATUS_SIZE - 1);
     web_fieldset_close(req);
 
@@ -326,7 +326,7 @@ esp_err_t page_igate_get(httpd_req_t *req) {
         // <form>/Save button as the rest of the page.
         web_raw(req, "<p style='color:var(--sub);font-size:12px;margin:10px 0 4px'>" TR_NOTE_RANGE_PREFIX "</p>");
         web_field_checkbox(req, TR_F_RANGE_FILTER_EN, "rf2inetRangeEn", g_config.rf2inet_range_en);
-        web_field_float(req, TR_F_RANGE_KM, "rf2inetRangeKm", g_config.rf2inet_range_km, "0.1");
+        web_field_float(req, TR_F_RANGE_KM, "rf2inetRangeKm", g_config.rf2inet_range_km, "0.1", 0.0f, 20038.0f);
         web_field_checkbox(req, TR_F_PREFIX_FILTER_EN, "rf2inetPrefixEn", g_config.rf2inet_prefix_en);
         web_field_text(req, TR_F_PREFIXES, "rf2inetPrefixes", g_config.rf2inet_prefixes, sizeof(g_config.rf2inet_prefixes) - 1);
         web_fieldset_close(req);

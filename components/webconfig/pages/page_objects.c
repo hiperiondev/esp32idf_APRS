@@ -286,18 +286,18 @@ esp_err_t page_objects_get(httpd_req_t *req) {
         //    course/speed. --
         web_fieldset_open(req, TR_F_OBJITEM_POS_SYMBOL);
         snprintf(name, sizeof(name), "oLat%d", i + 1);
-        web_field_float(req, TR_F_FIXED_LATITUDE, name, b->lat, "0.0001");
+        web_field_float(req, TR_F_FIXED_LATITUDE, name, b->lat, "0.0001", WEB_RANGE_LAT_MIN, WEB_RANGE_LAT_MAX);
         snprintf(name, sizeof(name), "oLon%d", i + 1);
-        web_field_float(req, TR_F_FIXED_LONGITUDE, name, b->lon, "0.0001");
+        web_field_float(req, TR_F_FIXED_LONGITUDE, name, b->lon, "0.0001", WEB_RANGE_LON_MIN, WEB_RANGE_LON_MAX);
 
         char sym2[3] = { b->sym[0] ? b->sym[0] : '/', b->sym[1] ? b->sym[1] : '-', 0 };
         snprintf(name, sizeof(name), "oSym%d", i + 1);
         web_field_symbol(req, TR_F_OBJITEM_SYMBOL, name, sym2);
 
         snprintf(name, sizeof(name), "oCrs%d", i + 1);
-        web_field_int(req, TR_F_OBJITEM_COURSE, name, (long)b->course);
+        web_field_int(req, TR_F_OBJITEM_COURSE, name, (long)b->course, 0, 359);
         snprintf(name, sizeof(name), "oSpd%d", i + 1);
-        web_field_int(req, TR_F_OBJITEM_SPEED, name, (long)b->speed);
+        web_field_int(req, TR_F_OBJITEM_SPEED, name, (long)b->speed, 0, 999);
 
         // Compressed position format saves airtime, but shares the 7-byte
         // data-extension slot with the Area/Signpost descriptors (Group 5/6
@@ -319,11 +319,11 @@ esp_err_t page_objects_get(httpd_req_t *req) {
         snprintf(name, sizeof(name), "oAType%d", i + 1);
         render_area_type_select(req, name, b->area_type);
         snprintf(name, sizeof(name), "oAColor%d", i + 1);
-        web_field_int(req, TR_F_OBJITEM_AREA_COLOR, name, (long)b->area_color);
+        web_field_int(req, TR_F_OBJITEM_AREA_COLOR, name, (long)b->area_color, 0, 15);
         snprintf(name, sizeof(name), "oALat%d", i + 1);
-        web_field_float(req, TR_F_OBJITEM_AREA_LAT_OFF, name, b->area_lat_off, "0.01");
+        web_field_float(req, TR_F_OBJITEM_AREA_LAT_OFF, name, b->area_lat_off, "0.01", 0.0f, (float)WEB_RANGE_LAT_MAX);
         snprintf(name, sizeof(name), "oALon%d", i + 1);
-        web_field_float(req, TR_F_OBJITEM_AREA_LON_OFF, name, b->area_lon_off, "0.01");
+        web_field_float(req, TR_F_OBJITEM_AREA_LON_OFF, name, b->area_lon_off, "0.01", 0.0f, (float)WEB_RANGE_LON_MAX);
         web_fieldset_close(req);
 
         // -- Group 6: Signpost text (used only with the Signpost symbol
@@ -337,13 +337,13 @@ esp_err_t page_objects_get(httpd_req_t *req) {
         //    tone / digipeat path / QRU group). --
         web_fieldset_open(req, TR_F_OBJITEM_REPEATER_SECTION);
         snprintf(name, sizeof(name), "oFreq%d", i + 1);
-        web_field_float(req, TR_F_OBJITEM_FREQ, name, b->freq_mhz, "0.001");
+        web_field_float(req, TR_F_OBJITEM_FREQ, name, b->freq_mhz, "0.001", 0.0f, 999.999f);
         snprintf(name, sizeof(name), "oDup%d", i + 1);
         render_duplex_select(req, name, b->duplex);
         snprintf(name, sizeof(name), "oOfs%d", i + 1);
-        web_field_int(req, TR_F_OBJITEM_OFFSET, name, (long)b->offset_khz);
+        web_field_int(req, TR_F_OBJITEM_OFFSET, name, (long)b->offset_khz, 0, 65535);
         snprintf(name, sizeof(name), "oTone%d", i + 1);
-        web_field_float(req, TR_F_OBJITEM_TONE, name, b->tone_tenths / 10.0f, "0.1");
+        web_field_float(req, TR_F_OBJITEM_TONE, name, b->tone_tenths / 10.0f, "0.1", 0.0f, 254.1f);
 
         // Path: one checkbox per shared Digipeater Path Alias, same control
         // shared with the Digipeater/Tracker/WX/Messaging/Telemetry pages.
@@ -360,11 +360,11 @@ esp_err_t page_objects_get(httpd_req_t *req) {
         //    ramp (slow rate + ratio). --
         web_fieldset_open(req, TR_F_OBJITEM_TIMING_SECTION);
         snprintf(name, sizeof(name), "oInt%d", i + 1);
-        web_field_int(req, TR_F_OBJITEM_INIT_RATE, name, (long)b->interval_s);
+        web_field_int(req, TR_F_OBJITEM_INIT_RATE, name, (long)b->interval_s, WEB_RANGE_INTERVAL_S_MIN, WEB_RANGE_INTERVAL_LONG_S_MAX);
         snprintf(name, sizeof(name), "oSlow%d", i + 1);
-        web_field_int(req, TR_F_OBJITEM_SLOW_RATE, name, (long)b->slow_interval_s);
+        web_field_int(req, TR_F_OBJITEM_SLOW_RATE, name, (long)b->slow_interval_s, WEB_RANGE_INTERVAL_S_MIN, WEB_RANGE_INTERVAL_LONG_S_MAX);
         snprintf(name, sizeof(name), "oDecay%d", i + 1);
-        web_field_float(req, TR_F_OBJITEM_DECAY, name, b->decay_x10 / 10.0f, "0.1");
+        web_field_float(req, TR_F_OBJITEM_DECAY, name, b->decay_x10 / 10.0f, "0.1", 0.0f, 10.0f);
         web_fieldset_close(req);
 
         // -- Group 9: PHG block (same sub-fields as the Station page), its

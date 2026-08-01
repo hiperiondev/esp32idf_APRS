@@ -37,13 +37,13 @@ esp_err_t page_digi_get(httpd_req_t *req) {
     web_field_use_station_data(req, "digiUseStation", g_config.digi_use_station, "digiMycall", "digiLAT", "digiLON", "digiAlt");
     web_field_checkbox(req, TR_F_AUTO_WIDEN_N, "digiAuto", g_config.digi_auto);
     web_field_checkbox(req, TR_F_ADD_TIMESTAMP, "digiTime", g_config.digi_timestamp);
-    web_field_int(req, TR_F_DIGI_DELAY_MS, "digiDelay", g_config.digi_delay);
-    web_field_int(req, TR_F_DUPE_FILTER_WINDOW_S, "digiFilter", g_config.digiFilter);
+    web_field_int(req, TR_F_DIGI_DELAY_MS, "digiDelay", g_config.digi_delay, 0, 65535);
+    web_field_int(req, TR_F_DUPE_FILTER_WINDOW_S, "digiFilter", g_config.digiFilter, 0, 65535);
     web_fieldset_close(req);
 
     web_fieldset_open(req, TR_F_STATION);
     web_field_text(req, TR_F_MY_CALLSIGN, "digiMycall", g_config.digi_mycall, 9);
-    web_field_int(req, TR_F_SSID, "digiSSID", g_config.digi_ssid);
+    web_field_int(req, TR_F_SSID, "digiSSID", g_config.digi_ssid, WEB_RANGE_SSID_MIN, WEB_RANGE_SSID_MAX);
     web_field_path_checkboxes(req, "digiPath", g_config.digi_path);
     web_fieldset_close(req);
 
@@ -52,17 +52,17 @@ esp_err_t page_digi_get(httpd_req_t *req) {
     web_field_checkbox(req, TR_F_BEACON_VIA_RF, "digiPos2rf", g_config.digi_loc2rf);
     web_field_checkbox(req, TR_F_BEACON_VIA_INTERNET, "digiPos2inet", g_config.digi_loc2inet);
     web_field_checkbox(req, TR_F_COMPRESS_POSITION, "digiCompress", g_config.digi_compress);
-    web_field_float(req, TR_F_LATITUDE, "digiLAT", g_config.digi_lat, "0.0001");
-    web_field_float(req, TR_F_LONGITUDE, "digiLON", g_config.digi_lon, "0.0001");
-    web_field_float(req, TR_F_ALTITUDE_M, "digiAlt", g_config.digi_alt, "1");
-    web_field_int(req, TR_F_BEACON_INTERVAL_S, "digiINV", g_config.digi_interval);
+    web_field_float(req, TR_F_LATITUDE, "digiLAT", g_config.digi_lat, "0.0001", WEB_RANGE_LAT_MIN, WEB_RANGE_LAT_MAX);
+    web_field_float(req, TR_F_LONGITUDE, "digiLON", g_config.digi_lon, "0.0001", WEB_RANGE_LON_MIN, WEB_RANGE_LON_MAX);
+    web_field_float(req, TR_F_ALTITUDE_M, "digiAlt", g_config.digi_alt, "1", WEB_RANGE_ALT_M_MIN, WEB_RANGE_ALT_M_MAX);
+    web_field_int(req, TR_F_BEACON_INTERVAL_S, "digiINV", g_config.digi_interval, WEB_RANGE_INTERVAL_S_MIN, WEB_RANGE_INTERVAL_S_MAX);
     web_field_symbol(req, TR_F_STATION_SYMBOL, "digiSym", g_config.digi_symbol);
     web_field_text(req, TR_F_PHG, "digiPHG", g_config.digi_phg, 7);
     web_field_text(req, TR_F_COMMENT, "digiComment", g_config.digi_comment, COMMENT_SIZE - 1);
     web_fieldset_close(req);
 
     web_fieldset_open(req, TR_F_STATUS_BEACON);
-    web_field_int(req, TR_F_STATUS_INTERVAL_S_0_OFF, "digiSTSIntv", g_config.digi_sts_interval);
+    web_field_int(req, TR_F_STATUS_INTERVAL_S_0_OFF, "digiSTSIntv", g_config.digi_sts_interval, WEB_RANGE_INTERVAL_S_MIN, WEB_RANGE_INTERVAL_S_MAX);
     web_field_text(req, TR_F_STATUS_TEXT, "digiStatus", g_config.digi_status, STATUS_SIZE - 1);
     web_fieldset_close(req);
 

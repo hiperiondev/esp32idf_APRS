@@ -67,8 +67,8 @@ esp_err_t page_msg_get(httpd_req_t *req) {
     web_field_path_checkboxes(req, "msgPath", g_config.msg_path);
     web_field_checkbox(req, TR_F_SEND_RECEIVE_VIA_RF, "msgRf", g_config.msg_rf);
     web_field_checkbox(req, TR_F_SEND_RECEIVE_VIA_INTERNET, "msgInet", g_config.msg_inet);
-    web_field_int(req, TR_F_RETRY_COUNT, "msgRetry", g_config.msg_retry);
-    web_field_int(req, TR_F_RETRY_INTERVAL_S, "msgInterval", g_config.msg_interval);
+    web_field_int(req, TR_F_RETRY_COUNT, "msgRetry", g_config.msg_retry, 0, 255);
+    web_field_int(req, TR_F_RETRY_INTERVAL_S, "msgInterval", g_config.msg_interval, WEB_RANGE_INTERVAL_S_MIN, WEB_RANGE_INTERVAL_S_MAX);
     web_field_checkbox(req, TR_F_MESSAGE_ALARM_ENABLE, "msgAlarmEn", g_config.msg_alarm_enable);
     web_field_msg_alarm_gpio(req, g_config.msg_alarm_gpio);
     web_fieldset_close(req);

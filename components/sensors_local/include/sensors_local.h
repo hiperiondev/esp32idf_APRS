@@ -207,6 +207,43 @@ sensor_local_driver_t *sensors_local_get(size_t index);
 sensor_local_driver_t *sensors_local_find(const char *name);
 
 /**
+ * @name Sensor channel persistence
+ *
+ * A "sensor channel" is a registry position: the value behind every Weather /
+ * Telemetry channel picker and the thing ::sensors_local_save_one takes. That
+ * position is assigned in ::SENSORS_LOCAL_DRIVER_AUTOREGISTER order, i.e. link
+ * order, so it is stable for the lifetime of one firmware image and no longer:
+ * enabling or disabling any driver in Kconfig shifts every position above it.
+ *
+ * Stored configuration therefore records the driver's @c name, not its index,
+ * and resolves it back to a position at load time through these two helpers.
+ * A mapping whose driver is no longer in the image resolves to
+ * ::SENSOR_LOCAL_CH_NONE and is reported as unmapped, instead of silently
+ * pointing at whichever different sensor now occupies that slot - which would
+ * keep the station transmitting, just with the wrong data on the wrong field.
+ * @{
+ */
+#define SENSOR_LOCAL_CH_NONE 0xFF /**< "(none)": no sensor channel mapped to this field. */
+
+/**
+ * @brief Name to store for a sensor channel.
+ * @param ch Registry position, or ::SENSOR_LOCAL_CH_NONE.
+ * @return The driver's name, or "" for ::SENSOR_LOCAL_CH_NONE and for a
+ *         position with no driver behind it. Valid for the program's lifetime
+ *         (see the registration-lifetime contract in sensors_local.c).
+ */
+const char *sensors_local_channel_name(uint8_t ch);
+
+/**
+ * @brief Resolve a stored name back to a sensor channel.
+ * @param name Driver name as written by ::sensors_local_channel_name.
+ * @return The driver's current registry position, or ::SENSOR_LOCAL_CH_NONE
+ *         when @p name is NULL, empty, or no longer registered.
+ */
+uint8_t sensors_local_channel_from_name(const char *name);
+/** @} */
+
+/**
  * @brief Eagerly run init() on every not-yet-initialised driver. Optional;
  *        ::sensors_local_save also initialises lazily. Drivers whose init()
  *        fails are flagged and skipped, they do not abort the pass.

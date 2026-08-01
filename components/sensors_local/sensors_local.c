@@ -209,6 +209,32 @@ sensor_local_driver_t *sensors_local_find(const char *name) {
     return d;
 }
 
+// Sensor-channel persistence: config stores driver names, runtime uses registry
+// positions (see the contract in sensors_local.h). Both directions resolve
+// under the registry lock; the returned name is owned by the driver descriptor,
+// which outlives every caller.
+const char *sensors_local_channel_name(uint8_t ch) {
+    if (ch == SENSOR_LOCAL_CH_NONE)
+        return "";
+    registry_lock();
+    const char *name = ((size_t)ch < s_count && s_registry[ch] != NULL && s_registry[ch]->name != NULL) ? s_registry[ch]->name : "";
+    registry_unlock();
+    return name;
+}
+
+uint8_t sensors_local_channel_from_name(const char *name) {
+    if (name == NULL || name[0] == '\0')
+        return SENSOR_LOCAL_CH_NONE;
+    registry_lock();
+    size_t idx = registry_index_of(name);
+    registry_unlock();
+    // A registry big enough to reach the "(none)" sentinel would make the two
+    // indistinguishable, so anything from there up is reported as unmapped.
+    if (idx == (size_t)-1 || idx >= SENSOR_LOCAL_CH_NONE)
+        return SENSOR_LOCAL_CH_NONE;
+    return (uint8_t)idx;
+}
+
 esp_err_t sensors_local_init_all(void) {
     esp_err_t result = ESP_OK;
     registry_lock();

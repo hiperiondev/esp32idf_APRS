@@ -51,7 +51,7 @@ Disposición del repositorio
    │   ├── igate/          ← cliente TCP APRS-IS, login, filtros, dedup, RF→INET / INET→RF
    │   ├── digirepeater/   ← lógica de ruta WIDEn-N / TRACEn-N / RELAY / ECHO / GATE
    │   ├── message/        ← mensajería APRS, ack/reintento, AES-128-CBC + base64
-   │   ├── lastheard/      ← anillo en RAM de estaciones oídas → JSON del panel
+   │   ├── lastheard/      ← tabla en RAM de estaciones oídas, una por indicativo → JSON del panel
    │   ├── trafficlog/     ← anillo en RAM de líneas de tráfico → JSON del panel (long-poll por seq)
    │   ├── weather_telemetry/  ← solo estructuras de nivel de protocolo (campos WX + Telemetría APRS101)
    │   ├── sensors_local/      ← EL marco de controladores de sensores

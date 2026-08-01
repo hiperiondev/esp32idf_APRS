@@ -19,6 +19,16 @@ El HTML se emite a través de pequeños ayudantes por campo (``web_field_text``,
 …) en lugar de un único ``snprintf`` gigante — deliberadamente, para evitar
 ``-Werror=format-truncation`` y mantener cada página legible.
 
+Los ayudantes numéricos (``web_field_int``, ``web_field_float``) reciben el
+rango aceptado del campo y siempre lo emiten como los atributos HTML
+``min``/``max`` del input, de modo que cada campo numérico de cada página queda
+validado por el navegador antes de enviar el formulario. Esa es la primera
+línea de defensa frente a un error de tipeo; el manejador POST sigue acotando
+lo que guarda, que es lo que resiste ante una petición manipulada. Los dominios
+que se repiten (SSID, intervalo de transmisión, latitud, longitud, altitud)
+provienen de las constantes ``WEB_RANGE_*`` de ``web_common.h``, así un límite
+se define una sola vez para todas las páginas que lo comparten.
+
 Las páginas
 ===========
 

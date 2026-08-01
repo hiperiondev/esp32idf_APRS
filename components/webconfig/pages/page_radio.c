@@ -105,8 +105,8 @@ esp_err_t page_radio_get(httpd_req_t *req) {
         httpd_resp_sendstr_chunk(req, buf);
     }
     web_field_checkbox(req, TR_F_AUDIO_LOW_PASS_FILTER, "audioLPF", g_config.audio_lpf);
-    web_field_int(req, TR_F_PREAMBLE_MS, "rfPreamble", g_config.preamble);
-    web_field_int(req, TR_F_TX_TIME_SLOT_MS, "txTimeSlot", g_config.tx_timeslot);
+    web_field_int(req, TR_F_PREAMBLE_MS, "rfPreamble", g_config.preamble, RF_PREAMBLE_MS_MIN, RF_PREAMBLE_MS_MAX);
+    web_field_int(req, TR_F_TX_TIME_SLOT_MS, "txTimeSlot", g_config.tx_timeslot, RF_TX_TIMESLOT_MS_MIN, RF_TX_TIMESLOT_MS_MAX);
     // How many frames may queue in the RF TX ring (waiting to key up or on
     // the air right now) before a new packet is dropped instead of queued -
     // see RF_TX_BUFFERS_MIN/MAX in aprs_service.h and g_config.rf_tx_buffers
@@ -128,7 +128,7 @@ esp_err_t page_radio_get(httpd_req_t *req) {
     // (e.g. to clear a repeater's courtesy tone or squelch tail before the
     // next packet keys up). 0 disables the extra hold. Applied live on Save,
     // same as rfPreamble/txTimeSlot above - see g_config.ptt_min_unkey_ms.
-    web_field_int(req, TR_F_PTT_MIN_UNKEY_MS, "pttMinUnkeyMs", g_config.ptt_min_unkey_ms);
+    web_field_int(req, TR_F_PTT_MIN_UNKEY_MS, "pttMinUnkeyMs", g_config.ptt_min_unkey_ms, PTT_MIN_UNKEY_MS_MIN, PTT_MIN_UNKEY_MS_MAX);
     // CSMA/p-persistent channel-access probability (standard AX.25/KISS
     // "Persist"): once the channel is heard clear, the modem transmits
     // immediately with probability csmaPersist/256 on every slot and
@@ -137,7 +137,7 @@ esp_err_t page_radio_get(httpd_req_t *req) {
     // non-persistent CSMA); lower values spread contending stations'
     // key-ups further apart. Applied live on Save, same as rfPreamble/
     // txTimeSlot above - see g_config.csma_persist.
-    web_field_int(req, TR_F_CSMA_PERSISTENCE, "csmaPersist", g_config.csma_persist);
+    web_field_int(req, TR_F_CSMA_PERSISTENCE, "csmaPersist", g_config.csma_persist, CSMA_PERSIST_MIN, CSMA_PERSIST_MAX);
     web_fieldset_close(req);
 
     httpd_resp_sendstr_chunk(req, "<script>"
@@ -250,8 +250,34 @@ esp_err_t page_radio_post(httpd_req_t *req) {
     // rfPTT (PTT GPIO) and rfPTTAct (PTT active-high) are not posted by the
     // form: both are fixed at compile time (MODEM_PTT_GPIO and
     // MODEM_PTT_ACTIVE_HIGH) and can't be changed from here.
-    g_config.preamble = (uint16_t)web_form_get_int(body, "rfPreamble", g_config.preamble);
-    g_config.tx_timeslot = (uint16_t)web_form_get_int(body, "txTimeSlot", g_config.tx_timeslot);
+    // TXDelay/preamble length (RF_PREAMBLE_MS_MIN..RF_PREAMBLE_MS_MAX ms,
+    // default 300) - clamp defensively, same reasoning as afskModem above,
+    // because an out-of-range value from a malformed POST should never be
+    // stored. Nothing downstream would catch it either:
+    // aprs_service_build_modem_config() copies this straight into the modem
+    // configuration and Ax25TxDelay() turns it into a flag-byte count, so at
+    // 1200 Bd an unclamped 65535 would put roughly a minute of continuous
+    // carrier ahead of every single frame - a station that holds a shared VHF
+    // APRS channel open indefinitely. Bounds come from aprs_service.h so the
+    // form's min/max, this clamp and the flash-load clamp cannot drift apart.
+    int preamble_in = web_form_get_int(body, "rfPreamble", g_config.preamble);
+    if (preamble_in < RF_PREAMBLE_MS_MIN)
+        preamble_in = RF_PREAMBLE_MS_MIN;
+    else if (preamble_in > RF_PREAMBLE_MS_MAX)
+        preamble_in = RF_PREAMBLE_MS_MAX;
+    g_config.preamble = (uint16_t)preamble_in;
+
+    // CSMA slot time (RF_TX_TIMESLOT_MS_MIN..RF_TX_TIMESLOT_MS_MAX ms,
+    // default 2000) - clamp defensively, same reasoning as rfPreamble above.
+    // This is how long the modem waits before rolling the p-persistence dice
+    // again on a busy channel, so an out-of-range value stalls this station's
+    // own transmissions rather than the channel's.
+    int tx_timeslot_in = web_form_get_int(body, "txTimeSlot", g_config.tx_timeslot);
+    if (tx_timeslot_in < RF_TX_TIMESLOT_MS_MIN)
+        tx_timeslot_in = RF_TX_TIMESLOT_MS_MIN;
+    else if (tx_timeslot_in > RF_TX_TIMESLOT_MS_MAX)
+        tx_timeslot_in = RF_TX_TIMESLOT_MS_MAX;
+    g_config.tx_timeslot = (uint16_t)tx_timeslot_in;
 
     // RF TX ring backlog limit (RF_TX_BUFFERS_MIN..RF_TX_BUFFERS_MAX frames,
     // default 1) - clamp defensively, same as afskModem above, since this
@@ -267,30 +293,33 @@ esp_err_t page_radio_post(httpd_req_t *req) {
         rf_tx_buffers_in = RF_TX_BUFFERS_MAX;
     g_config.rf_tx_buffers = (uint8_t)rf_tx_buffers_in;
 
-    // Extra minimum PTT-off hold time between transmissions (0..5000 ms,
-    // default 0 = disabled) - clamp defensively against a malformed POST,
+    // Extra minimum PTT-off hold time between transmissions
+    // (PTT_MIN_UNKEY_MS_MIN..PTT_MIN_UNKEY_MS_MAX ms, default 0 = disabled) -
+    // clamp defensively against a malformed POST,
     // same reasoning as rf_tx_buffers above. See g_config.ptt_min_unkey_ms
     // and Ax25Config.minUnkeyTime in ax25.c for how this is enforced.
     int ptt_min_unkey_in = web_form_get_int(body, "pttMinUnkeyMs", g_config.ptt_min_unkey_ms);
-    if (ptt_min_unkey_in < 0)
-        ptt_min_unkey_in = 0;
-    else if (ptt_min_unkey_in > 5000)
-        ptt_min_unkey_in = 5000;
+    if (ptt_min_unkey_in < PTT_MIN_UNKEY_MS_MIN)
+        ptt_min_unkey_in = PTT_MIN_UNKEY_MS_MIN;
+    else if (ptt_min_unkey_in > PTT_MIN_UNKEY_MS_MAX)
+        ptt_min_unkey_in = PTT_MIN_UNKEY_MS_MAX;
     g_config.ptt_min_unkey_ms = (uint16_t)ptt_min_unkey_in;
 
-    // CSMA/p-persistent transmit probability (1..255, default 63 = ~25%
+    // CSMA/p-persistent transmit probability (CSMA_PERSIST_MIN..
+    // CSMA_PERSIST_MAX, default 63 = ~25%
     // chance per clear slot) - clamp defensively against a malformed POST,
     // same reasoning as rf_tx_buffers above. 0 is refused (it would key up
     // never, i.e. transmission would be permanently suppressed) rather than
-    // silently coerced to a working value, so a bad input floors at 1
-    // (lowest non-zero transmit probability) instead of hiding the mistake.
+    // silently coerced to a working value, so a bad input floors at
+    // CSMA_PERSIST_MIN (lowest non-zero transmit probability) instead of
+    // hiding the mistake.
     // See g_config.csma_persist and Ax25Config.persist in ax25.c for how
     // this is enforced.
     int csma_persist_in = web_form_get_int(body, "csmaPersist", g_config.csma_persist);
-    if (csma_persist_in < 1)
-        csma_persist_in = 1;
-    else if (csma_persist_in > 255)
-        csma_persist_in = 255;
+    if (csma_persist_in < CSMA_PERSIST_MIN)
+        csma_persist_in = CSMA_PERSIST_MIN;
+    else if (csma_persist_in > CSMA_PERSIST_MAX)
+        csma_persist_in = CSMA_PERSIST_MAX;
     g_config.csma_persist = (uint8_t)csma_persist_in;
 
     app_config_unlock();

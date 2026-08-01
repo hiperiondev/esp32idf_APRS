@@ -18,6 +18,15 @@ HTML is emitted through small per-field helpers (``web_field_text``,
 ``web_field_symbol``, …) rather than one giant ``snprintf`` — deliberately, to
 avoid ``-Werror=format-truncation`` and to keep each page readable.
 
+The numeric helpers (``web_field_int``, ``web_field_float``) take the field's
+accepted range and always emit it as the input's HTML ``min``/``max``, so every
+numeric field on every page is validated by the browser before the form is
+submitted. That is the first line of defence against a typo; the POST handler
+still clamps what it stores, which is what holds against a crafted request.
+Recurring domains (SSID, transmit interval, latitude, longitude, altitude) come
+from the ``WEB_RANGE_*`` constants in ``web_common.h`` so a bound is defined
+once for every page that shares it.
+
 The pages
 =========
 

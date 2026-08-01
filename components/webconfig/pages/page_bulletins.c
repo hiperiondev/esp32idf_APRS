@@ -82,10 +82,10 @@ esp_err_t page_bulletins_get(httpd_req_t *req) {
         web_field_text(req, TR_F_BULLETIN_MSG, name, b->text, BULLETIN_TEXT_MAX);
 
         snprintf(name, sizeof(name), "bInt%d", i + 1);
-        web_field_int(req, TR_F_BEACON_INTERVAL_S, name, (long)b->interval_s);
+        web_field_int(req, TR_F_BEACON_INTERVAL_S, name, (long)b->interval_s, WEB_RANGE_INTERVAL_S_MIN, WEB_RANGE_INTERVAL_LONG_S_MAX);
 
         snprintf(name, sizeof(name), "bExp%d", i + 1);
-        web_field_int(req, TR_F_BULLETIN_EXPIRE, name, (long)b->expire_hours);
+        web_field_int(req, TR_F_BULLETIN_EXPIRE, name, (long)b->expire_hours, 0, 8760);
 
         httpd_resp_sendstr_chunk(req, "</div></div>");
     }
