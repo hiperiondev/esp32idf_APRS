@@ -528,6 +528,35 @@ static int build_wx_packet(const wx_resolved_t r[WX_SENSOR_NUM], char *out, size
     return n;
 }
 
+// Same resolution rule as resolve_fields() (operator enable mask, averaged
+// value where averaging is on and has samples) but read-only: does NOT reset
+// s_avg_sum/s_avg_cnt. Used by weather_build_report_packet() so an on-demand
+// reply never steals samples from the periodic beacon's running average -
+// only the beacon's own interval close (resolve_fields()) may consume them.
+static void peek_fields(wx_resolved_t out[WX_SENSOR_NUM]) {
+    weather_lock();
+    for (int f = 0; f < WX_SENSOR_NUM; f++) {
+        bool en = g_config.wx_sensor_enable[f] && wx_field_present(&s_wx, (wx_field_id_t)f);
+        double v = wx_field_value(&s_wx, (wx_field_id_t)f);
+        if (en && g_config.wx_sensor_avg[f] && s_avg_cnt[f] > 0)
+            v = s_avg_sum[f] / (double)s_avg_cnt[f];
+        out[f].present = en;
+        out[f].value = v;
+    }
+    weather_unlock();
+}
+
+// Builds a WX report from the latest cached reading, without touching
+// s_wx_next_due or the running averages, so an on-demand caller (the query
+// responder) never disturbs the periodic beacon's own cadence or its next
+// average window. Shares build_wx_packet() with weather_beacon_service() so
+// the two encodings can never disagree.
+int weather_build_report_packet(char *out, size_t out_max) {
+    wx_resolved_t r[WX_SENSOR_NUM];
+    peek_fields(r);
+    return build_wx_packet(r, out, out_max);
+}
+
 /* -------------------------------------------------------------------------
  * Tasks
  * ------------------------------------------------------------------------- */

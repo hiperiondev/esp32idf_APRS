@@ -26,6 +26,7 @@
 #ifndef WEATHER_H
 #define WEATHER_H
 
+#include <stddef.h>
 #include <stdint.h>
 
 #include "weather_telemetry.h"
@@ -82,5 +83,24 @@ void weather_lock(void);
 
 /** @brief Release the lock guarding ::weather_telemetry_data. */
 void weather_unlock(void);
+
+/**
+ * @brief Build an APRS Weather Report from the latest cached reading, on
+ * demand, without waiting for or disturbing the periodic WX beacon's own
+ * interval. Used by the query responder's "?WX?" reply (components/query).
+ *
+ * Resolves the shared weather container the same way weather_beacon_service()
+ * does (per-field enable mask, averaging where configured) and encodes it
+ * with the same builder the periodic beacon uses, so the reply is
+ * byte-for-byte consistent with a normal WX beacon transmission.
+ *
+ * @param out     Destination buffer for the built TNC2 text line.
+ * @param out_max Size of @p out in bytes; ::APRS_TNC2_BUF_SIZE is the size
+ *                every other packet builder in this codebase uses.
+ * @return Packet length, or 0 if nothing usable is configured (no Weather or
+ *         APRS callsign set) or the built line does not fit @p out_max /
+ *         APRS_TNC2_MAX_LEN.
+ */
+int weather_build_report_packet(char *out, size_t out_max);
 
 #endif // WEATHER_H

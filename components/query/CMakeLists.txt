@@ -1,0 +1,12 @@
+idf_component_register(
+    SRCS
+        "query.c"
+    INCLUDE_DIRS
+        "include"
+        "../../main/include"
+    REQUIRES
+        esp_timer
+        igate
+        message
+        main
+)

@@ -45,6 +45,7 @@
 #include "lastheard.h"
 #include "message.h"
 #include "objects_items.h"
+#include "query.h"
 #include "str_append.h"
 #include "telemetry.h"
 #include "time_sync.h"
@@ -476,9 +477,19 @@ static void aprs_msg_callback(ax25_msg_t *msg) {
             atomic_fetch_add_explicit(&s_statRf2Inet, 1, memory_order_relaxed);
     }
 
-    if (g_config.msg_enable) {
+    // handleIncomingAPRS() is the single ":ADDRESSEE:" parser for both APRS
+    // messages and directed queries ("CALL:?query?") - see the split inside
+    // it - so it must run whenever either feature is enabled, not just
+    // msg_enable, or a directed query would never reach query_process_directed()
+    // while messaging is turned off.
+    if (g_config.msg_enable || (g_config.query_en && g_config.query_directed_en)) {
         ax25ToTnc2(msg, tnc2, sizeof(tnc2));
         handleIncomingAPRS(tnc2);
+    }
+
+    if (g_config.query_en) {
+        ax25ToTnc2(msg, tnc2, sizeof(tnc2));
+        query_process(tnc2);
     }
 }
 
@@ -631,8 +642,13 @@ static void inet2rfHandler(const char *line) {
         }
     }
 
-    if (g_config.msg_enable)
+    // See the identical note at the RF call site above: handleIncomingAPRS()
+    // must run for directed queries even when messaging itself is off.
+    if (g_config.msg_enable || (g_config.query_en && g_config.query_directed_en))
         handleIncomingAPRS(line);
+
+    if (g_config.query_en)
+        query_process(line);
 
     if (g_config.inet2rf) {
         // Never gate our OWN reports from INET back to RF. After we upload a
@@ -1168,6 +1184,9 @@ void aprs_service_start(void) {
     message_alarm_configure(g_config.msg_alarm_enable, g_config.msg_alarm_gpio);
     message_set_tx_handler(messageTxHandler);
     igate_set_inet2rf_handler(inet2rfHandler);
+
+    query_init();
+    query_set_tx_handler(messageTxHandler); // reuse the same RF/INET TX plumbing
 
     // Install the RX callback before main.c calls modem_init(): the component
     // starts its service task inside modem_init() and can deliver a frame the

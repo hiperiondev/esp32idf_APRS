@@ -285,6 +285,16 @@ void app_config_set_defaults(app_config_t *c) {
     c->msg_interval = 30;
     c->msg_alarm_enable = false; // disabled by default
     c->msg_alarm_gpio = -1;
+
+    // Query responder
+    c->query_en = false; // opt-in, like msg_enable
+    c->query_rf = true;
+    c->query_inet = false; // avoid answering into APRS-IS by default
+    c->query_aprs_en = true;
+    c->query_wx_en = true;
+    c->query_igate_en = true;
+    c->query_directed_en = true;
+    c->query_min_interval_sec = 30;
 }
 
 // ---- streaming JSON writer -----------------------------------------------
@@ -587,6 +597,15 @@ static void config_write_json(jw_t *d, const app_config_t *c) {
     jadd_bool(d, "msgAlarmEn", c->msg_alarm_enable);
     jadd_num(d, "msgAlarmGpio", c->msg_alarm_gpio);
 
+    jadd_bool(d, "queryEn", c->query_en);
+    jadd_bool(d, "queryRf", c->query_rf);
+    jadd_bool(d, "queryInet", c->query_inet);
+    jadd_bool(d, "queryAprsEn", c->query_aprs_en);
+    jadd_bool(d, "queryWxEn", c->query_wx_en);
+    jadd_bool(d, "queryIgateEn", c->query_igate_en);
+    jadd_bool(d, "queryDirectedEn", c->query_directed_en);
+    jadd_num(d, "queryMinInterval", c->query_min_interval_sec);
+
     fputc('}', d->f);
 }
 
@@ -879,6 +898,17 @@ static void config_from_json(cJSON *d, app_config_t *c) {
     }
     c->msg_alarm_enable = jget_bool(d, "msgAlarmEn", def.msg_alarm_enable);
     c->msg_alarm_gpio = (int8_t)jget_num(d, "msgAlarmGpio", def.msg_alarm_gpio);
+
+    c->query_en = jget_bool(d, "queryEn", def.query_en);
+    c->query_rf = jget_bool(d, "queryRf", def.query_rf);
+    c->query_inet = jget_bool(d, "queryInet", def.query_inet);
+    c->query_aprs_en = jget_bool(d, "queryAprsEn", def.query_aprs_en);
+    c->query_wx_en = jget_bool(d, "queryWxEn", def.query_wx_en);
+    c->query_igate_en = jget_bool(d, "queryIgateEn", def.query_igate_en);
+    c->query_directed_en = jget_bool(d, "queryDirectedEn", def.query_directed_en);
+    c->query_min_interval_sec = (uint16_t)jget_num(d, "queryMinInterval", def.query_min_interval_sec);
+    if (c->query_min_interval_sec < 5) // floor: airtime/loop safety, matches the webconfig page's own clamp
+        c->query_min_interval_sec = 5;
 }
 
 bool app_config_save(void) {

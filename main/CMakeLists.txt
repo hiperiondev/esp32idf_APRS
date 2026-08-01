@@ -35,6 +35,7 @@ idf_component_register(
         digirepeater
         igate
         message
+        query
         trafficlog
         lastheard
         sensors_local

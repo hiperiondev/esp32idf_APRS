@@ -85,6 +85,7 @@
 #define ENABLE_RADIO_MODEM    /**< Radiomodem page. */
 #define ENABLE_MESSAGE        /**< APRS Message service page. */
 #define ENABLE_IGATE          /**< IGate page. */
+#define ENABLE_QUERY          /**< Query responder page. */
 #define ENABLE_DIGIPEATER     /**< Digipeater page. */
 #define ENABLE_TRACKER        /**< Tracker page. */
 #define ENABLE_WEATHER        /**< Weather page. */
@@ -428,6 +429,15 @@ typedef struct {
     uint16_t msg_interval; /**< Message retry interval, seconds. */
     bool msg_alarm_enable; /**< "Message Alarm": drive a GPIO on incoming message (disabled by default). */
     int8_t msg_alarm_gpio; /**< Message-alarm GPIO; -1 = disabled/unset (see message_alarm_gpio_is_valid()). */
+
+    bool query_en;                   /**< Query responder master enable. */
+    bool query_rf;                   /**< Answer queries heard on RF. */
+    bool query_inet;                 /**< Answer queries heard from APRS-IS. */
+    bool query_aprs_en;              /**< Enable "?APRS?" responses. */
+    bool query_wx_en;                /**< Enable "?WX?" responses. */
+    bool query_igate_en;             /**< Enable "?IGATE?" responses. */
+    bool query_directed_en;          /**< Enable directed "CALL:?query?" responses. */
+    uint16_t query_min_interval_sec; /**< Per-type broadcast query rate limit, seconds (floored at 5). */
 
 } app_config_t;
 

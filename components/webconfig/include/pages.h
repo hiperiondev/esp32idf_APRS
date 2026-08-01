@@ -159,6 +159,10 @@ esp_err_t page_radio_looptest_post(httpd_req_t *req);
 esp_err_t page_msg_get(httpd_req_t *req);
 /** @brief POST /msg - persist APRS Message service settings. @param req Incoming request. @return ESP_OK or an esp_err_t error. */
 esp_err_t page_msg_post(httpd_req_t *req);
+/** @brief GET  /query - Query responder settings form. @param req Incoming request. @return ESP_OK or an esp_err_t error. */
+esp_err_t page_query_get(httpd_req_t *req);
+/** @brief POST /query - persist Query responder settings. @param req Incoming request. @return ESP_OK or an esp_err_t error. */
+esp_err_t page_query_post(httpd_req_t *req);
 
 /** @} */
 

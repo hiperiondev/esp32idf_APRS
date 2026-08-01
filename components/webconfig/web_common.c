@@ -753,6 +753,9 @@ static const struct menu_item MENU[] = {
 #ifdef ENABLE_MESSAGE
     { "/msg", TR_MENU_MSG, "msg" },
 #endif
+#ifdef ENABLE_QUERY
+    { "/query", TR_MENU_QUERY, "query" },
+#endif
 #ifdef ENABLE_IGATE
     { "/igate", TR_MENU_IGATE, "igate" },
 #endif

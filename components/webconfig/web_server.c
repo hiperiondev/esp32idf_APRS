@@ -110,6 +110,8 @@ void web_server_start(void) {
     reg(server, "/radio/looptest", HTTP_POST, page_radio_looptest_post);
     reg(server, "/msg", HTTP_GET, page_msg_get);
     reg(server, "/msg", HTTP_POST, page_msg_post);
+    reg(server, "/query", HTTP_GET, page_query_get);
+    reg(server, "/query", HTTP_POST, page_query_post);
     reg(server, "/msgchat", HTTP_GET, page_msgchat_get);
     reg(server, "/msgchat", HTTP_POST, page_msgchat_post);
     reg(server, "/msgchat/list", HTTP_GET, page_msgchat_list);

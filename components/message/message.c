@@ -36,6 +36,7 @@
 #include "esp32idf_radioamateur_modem_config.h" // MODEM_PTT_GPIO: the fixed PTT pin, checked directly below
 #include "json_escape.h"                        // json_escape()
 #include "message.h"
+#include "query.h" // query_process_directed(): second consumer of the ::ADDRESSEE: payload, for "CALL:?query?"
 #include "str_append.h"
 
 static const char *TAG = "message";
@@ -437,9 +438,6 @@ void sendAPRSMessageRetry(void) {
 // Incoming
 // ---------------------------------------------------------------------------
 void handleIncomingAPRS(const char *line) {
-    if (!g_config.msg_enable)
-        return;
-
     const char *msgMarker = strstr(line, "::");
     if (msgMarker == NULL || msgMarker == line)
         return;
@@ -466,6 +464,20 @@ void handleIncomingAPRS(const char *line) {
 
     const char *colon = strchr(payload + 9, ':');
     if (colon == NULL)
+        return;
+
+    // Directed query ("CALL:?query?") shares this same ":ADDRESSEE:" framing
+    // but is not an APRS message: hand it to the query responder's own
+    // addressee-parsing entry point instead of duplicating it here, and skip
+    // the message-specific logic below entirely. Checked - and dispatched -
+    // regardless of g_config.msg_enable, since the two features are
+    // independently enabled (g_config.query_en gates it inside query.c).
+    if (colon[1] == '?') {
+        query_process_directed(fromCall, toCall, colon + 1);
+        return;
+    }
+
+    if (!g_config.msg_enable)
         return;
 
     char message[300] = { 0 };

@@ -1,0 +1,77 @@
+/**
+ * @file page_query.c
+ *
+ * @author Emiliano Augusto Gonzalez ( lu3vea @ gmail . com)
+ * @date 2026
+ * @copyright GNU General Public License v3
+ * @see https://github.com/hiperiondev/esp32idf_APRS
+ *
+ * @note
+ * This is based on other projects:
+ *     VP-Digi: https://github.com/sq8vps/vp-digi
+ *     ESP32APRS: https://github.com/nakhonthai/ESP32APRS_Audio
+ *     LibAPRS: https://github.com/markqvist/LibAPRS
+ *
+ *     please contact their authors for more information.
+ *
+ * @brief Web admin "Query" page: renders and saves the APRS query responder
+ * configuration ("?APRS?", "?WX?", "?IGATE?", directed queries) in g_config.
+ */
+
+#include "app_config.h"
+#include "pages.h"
+#include "translations.h"
+#include "web_common.h"
+
+esp_err_t page_query_get(httpd_req_t *req) {
+    if (!web_check_auth(req))
+        return ESP_OK;
+    web_send_header(req, TR_F_QUERY, "query");
+    httpd_resp_sendstr_chunk(req, "<form method='POST' action='/query'>");
+
+    web_fieldset_open(req, TR_F_QUERY);
+    web_field_checkbox(req, TR_F_ENABLE_QUERY, "queryEn", g_config.query_en);
+    web_field_checkbox(req, TR_F_QUERY_RF, "queryRf", g_config.query_rf);
+    web_field_checkbox(req, TR_F_QUERY_INET, "queryInet", g_config.query_inet);
+    web_field_checkbox(req, TR_F_QUERY_APRS, "queryAprsEn", g_config.query_aprs_en);
+#ifdef ENABLE_WEATHER
+    web_field_checkbox(req, TR_F_QUERY_WX, "queryWxEn", g_config.query_wx_en);
+#endif
+#ifdef ENABLE_IGATE
+    web_field_checkbox(req, TR_F_QUERY_IGATE, "queryIgateEn", g_config.query_igate_en);
+#endif
+    web_field_checkbox(req, TR_F_QUERY_DIRECTED, "queryDirectedEn", g_config.query_directed_en);
+    web_field_int(req, TR_F_QUERY_MIN_INTERVAL, "queryMinInterval", g_config.query_min_interval_sec, 5, WEB_RANGE_INTERVAL_S_MAX);
+    web_fieldset_close(req);
+
+    httpd_resp_sendstr_chunk(req, "<button type='submit'>" TR_BTN_SAVE "</button></form>");
+    web_send_footer(req);
+    return ESP_OK;
+}
+
+esp_err_t page_query_post(httpd_req_t *req) {
+    if (!web_check_auth(req))
+        return ESP_OK;
+    char body[512];
+    if (web_read_body(req, body, sizeof(body)) < 0) {
+        httpd_resp_send_500(req);
+        return ESP_OK;
+    }
+
+    app_config_lock();
+    g_config.query_en = web_form_get_bool(body, "queryEn");
+    g_config.query_rf = web_form_get_bool(body, "queryRf");
+    g_config.query_inet = web_form_get_bool(body, "queryInet");
+    g_config.query_aprs_en = web_form_get_bool(body, "queryAprsEn");
+    g_config.query_wx_en = web_form_get_bool(body, "queryWxEn");
+    g_config.query_igate_en = web_form_get_bool(body, "queryIgateEn");
+    g_config.query_directed_en = web_form_get_bool(body, "queryDirectedEn");
+    g_config.query_min_interval_sec = (uint16_t)web_form_get_int(body, "queryMinInterval", g_config.query_min_interval_sec);
+    if (g_config.query_min_interval_sec < 5) // floor: airtime/loop safety
+        g_config.query_min_interval_sec = 5;
+    app_config_unlock();
+
+    app_config_save();
+    web_send_saved_redirect(req, "/query");
+    return ESP_OK;
+}

@@ -559,6 +559,41 @@ static uint32_t igateBeaconService(void) {
     return (uint32_t)rem;
 }
 
+// Fills a beacon_params_t from g_config.igate_* under app_config_lock(), the
+// same snapshot igateBeaconService() takes, so both the periodic IGate
+// beacon and any on-demand caller (currently the query responder's "?APRS?"
+// reply) build byte-for-byte the same packet from the same source fields.
+static void fillIgatePositionParams(beacon_params_t *p) {
+    memset(p, 0, sizeof(*p));
+    app_config_lock();
+    {
+        memcpy(p->call, g_config.aprs_mycall, sizeof(p->call));
+        p->ssid = g_config.aprs_ssid;
+        p->pathSel = g_config.igate_path;
+        p->timestamp = g_config.igate_timestamp;
+        p->lat = g_config.igate_lat;
+        p->lon = g_config.igate_lon;
+        p->alt = g_config.igate_alt;
+        p->sendAltitude = g_config.igate_alt != 0.0f;
+        p->compress = g_config.igate_compress;
+        memcpy(p->symbol, g_config.igate_symbol, sizeof(p->symbol));
+        memcpy(p->comment, g_config.igate_comment, sizeof(p->comment));
+        memcpy(p->pathPreset, g_config.path, sizeof(p->pathPreset));
+        p->phgEnable = g_config.igate_phg_enable;
+        p->phgPower = g_config.igate_phg_power;
+        p->phgGain = g_config.igate_phg_gain;
+        p->phgHeight = g_config.igate_phg_height;
+        p->phgDir = g_config.igate_phg_dir;
+    }
+    app_config_unlock();
+}
+
+int beacon_build_igate_position_packet(char *out, size_t out_max) {
+    beacon_params_t p;
+    fillIgatePositionParams(&p);
+    return buildPositionPacket(&p, out, out_max);
+}
+
 // ---------------------------------------------------------------------------
 // Digipeater beacon (Digipeater web admin page: g_config.digi_*)
 // ---------------------------------------------------------------------------

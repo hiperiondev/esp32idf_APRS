@@ -17,6 +17,7 @@ idf_component_register(
         "pages/page_tlm.c"
         "pages/page_radio.c"
         "pages/page_msg.c"
+        "pages/page_query.c"
         "pages/page_msgchat.c"
         "pages/page_symbol.c"
     INCLUDE_DIRS

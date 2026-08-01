@@ -37,6 +37,7 @@
 #ifndef BEACON_H
 #define BEACON_H
 
+#include <stddef.h>
 #include <stdint.h>
 
 /**
@@ -46,6 +47,25 @@
  * calls ::beacon_service. Safe to call once from app startup.
  */
 void beacon_start(void);
+
+/**
+ * @brief Build the same APRS position report the IGate position beacon
+ * transmits (g_config.igate_*), on demand, for reuse by any caller that needs
+ * a byte-for-byte consistent copy of it outside the beacon's own interval -
+ * currently the query responder's "?APRS?" reply (components/query).
+ *
+ * Snapshots every g_config.igate_* field this needs under app_config_lock(),
+ * exactly like igateBeaconService() does internally, so a concurrent web save
+ * cannot be observed mid-write.
+ *
+ * @param out     Destination buffer for the built TNC2 text line.
+ * @param out_max Size of @p out in bytes; ::APRS_TNC2_BUF_SIZE is the size
+ *                every other packet builder in this codebase uses.
+ * @return Packet length, or 0 if nothing usable is configured (no IGate
+ *         callsign set) or the built line does not fit @p out_max /
+ *         APRS_TNC2_MAX_LEN.
+ */
+int beacon_build_igate_position_packet(char *out, size_t out_max);
 
 /**
  * @brief Service all three position beacons (Tracker / IGate / Digipeater) in
