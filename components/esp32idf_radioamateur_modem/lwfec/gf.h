@@ -23,7 +23,16 @@
 
 #include <stdint.h>
 
-extern const uint8_t GfExp[255];
+/**
+ * @brief Antilogarithm table, two full cycles of the field
+ * @note The 255 elements of one cycle are stored twice, so every index in
+ *       0..509 is valid and log sums or differences need no reduction.
+ */
+extern const uint8_t GfExp[510];
+
+/**
+ * @brief Logarithm table
+ */
 extern const uint8_t GfLog[256];
 
 /**
@@ -52,13 +61,14 @@ static inline uint8_t GfSub(uint8_t x, uint8_t y) {
  * @param y Multiplier
  * @return Multiplication result
  * @note Uses the log/antilog tables: since log(x)+log(y)=log(x*y) and
- *       b^log(a)=a, x*y = GfExp[(GfLog[x]+GfLog[y]) mod 255]. Multiplication
- *       by 0 is handled explicitly.
+ *       b^log(a)=a, x*y = GfExp[GfLog[x]+GfLog[y]]. The sum peaks at 508 and
+ *       ::GfExp holds two cycles, so no reduction is needed. Multiplication by
+ *       0 is handled explicitly.
  */
 static inline uint8_t GfMul(uint8_t x, uint8_t y) {
     if ((x == 0) || (y == 0))
         return 0;
-    return GfExp[(GfLog[x] + GfLog[y]) % 255];
+    return GfExp[GfLog[x] + GfLog[y]];
 }
 
 /**
@@ -66,15 +76,15 @@ static inline uint8_t GfMul(uint8_t x, uint8_t y) {
  * @param dividend Dividend
  * @param divisor Divisor
  * @return Division result. 0 is returned when dividing by 0.
- * @note Mirrors ::GfMul via the log tables: x/y = GfExp[(255 + GfLog[x] -
- *       GfLog[y]) mod 255]. Division by 0 returns 0.
+ * @note Mirrors ::GfMul via the log tables: x/y = GfExp[255 + GfLog[x] -
+ *       GfLog[y]]. The index stays within 1..509. Division by 0 returns 0.
  */
 static inline uint8_t GfDiv(uint8_t dividend, uint8_t divisor) {
     if (divisor == 0)
         return 0;
     if (dividend == 0)
         return 0;
-    return GfExp[(255 + GfLog[dividend] - GfLog[divisor]) % 255];
+    return GfExp[255 + GfLog[dividend] - GfLog[divisor]];
 }
 
 /**
@@ -93,6 +103,8 @@ static inline uint8_t GfPow(uint8_t x, uint8_t exponent) {
  * @brief Calculate 2^x in Galois field
  * @param exponent Exponent (x)
  * @return Result
+ * @note Reads ::GfExp directly. Any uint8_t exponent is a valid index because
+ *       the table spans two cycles.
  */
 static inline uint8_t GfPow2(uint8_t exponent) {
     return GfExp[exponent];
@@ -100,8 +112,12 @@ static inline uint8_t GfPow2(uint8_t exponent) {
 
 /**
  * @brief Invert in Galois field
- * @param x Number to calculate the inverse of
+ * @param x Number to calculate the inverse of. Must be non-zero: 0 has no
+ *        inverse in the field and the value returned for it is meaningless
+ *        (the read itself stays in bounds).
  * @return 1/x
+ * @note 1/x = GfExp[255 - GfLog[x]]. The index reaches 255 for x = 1, which the
+ *       second cycle of ::GfExp covers, so GfInv(1) yields 1.
  */
 static inline uint8_t GfInv(uint8_t x) {
     return GfExp[255 - GfLog[x]];
@@ -122,9 +138,9 @@ void GfPolyScale(uint8_t *p, uint8_t o, uint8_t s, uint8_t *out);
  * @param o1 1st polynomial buffer length (degree of a poly + 1)
  * @param *p2 2nd polynomial
  * @param o2 2nd polynomial buffer length (degree of a poly + 1)
- * @param *out Output polynomial buffer
- * @warning This function uses higher degree polynomial buffer as output buffer
- * @return Output polynomial length
+ * @param *out Output polynomial buffer, at least max(o1, o2) bytes long
+ * @return Output polynomial length, that is max(o1, o2). Every coefficient up to
+ *         that length is written.
  */
 uint8_t GfPolyAdd(uint8_t *p1, uint8_t o1, uint8_t *p2, uint8_t o2, uint8_t *out);
 

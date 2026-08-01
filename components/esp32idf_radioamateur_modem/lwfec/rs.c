@@ -24,9 +24,6 @@
 #include "gf.h"
 #include "rs.h"
 
-#define RS_USE_ALTERNATIVE_BM // use alternative Berlekamp-Massey implementation. Seems to be a bit faster
-// #define RS_USE_HORNER //use standard polynomial evalution method (Horner scheme) instead of Chien search. A bit slower
-
 /*
 This implementation aims for:
 1. Minimal RAM usage
@@ -59,33 +56,32 @@ static void syndromes(struct LwFecRS *rs, uint8_t *data, uint8_t size, uint8_t *
  * @return True on success, else the "out" buffer must be invalidated and the block is uncorrectable
  */
 static bool errorEvaluator(uint8_t *locator, uint8_t locatorSize, uint8_t *out) {
-    /*
-     * This function basically looks for error locator polynomial roots.
-     * First implementation uses brute-force polynomial evaluation with GfPolyEval, which uses Horner's method underneath
-     * Seconds implementation uses Chien search
-     */
+    // The roots of the error locator polynomial give the error positions. They are
+    // found with a Chien search: the polynomial is evaluated at 2^i for every
+    // position of the block, which reuses the log tables instead of doing a full
+    // Horner evaluation per position.
+    // A zero coefficient contributes nothing to the sum and is skipped: GfLog[]
+    // has no entry for 0, so feeding it to the log-domain term would add 2^(i*j)
+    // instead.
     uint8_t pos = 0;
     for (uint8_t i = 0; i < RS_BLOCK_SIZE; i++) {
-#ifdef RS_USE_HORNER
-        // standard evalution with Horner's method
-        // evaluate at 2^i. GfPow() can be used, but taking values from exp table directly is faster
-        if (GfPolyEval(locator, locatorSize, GfPow2(i % 255)) == 0) // if 2^i is the root of the locator polynomial, it determines the error position
-        {
-            if (pos < (locatorSize - 1))
-                out[pos] = RS_BLOCK_SIZE - i - 1; // calculate error position
-            else
-                break;
-            pos++;
-        }
-#else
-        // evalution with Chien search
         uint8_t lambda = 0;
         for (uint8_t j = 0; j < locatorSize; j++) {
-            lambda ^= GfPow2((GfLog[locator[locatorSize - j - 1]] + i * j) % 255);
+            uint8_t coeff = locator[locatorSize - j - 1];
+            if (coeff == 0)
+                continue;
+
+            lambda ^= GfPow2((GfLog[coeff] + i * j) % 255);
         }
-        if (lambda == 0)
+        if (lambda == 0) {
+            // more roots than the degree of the locator means the locator is not
+            // a valid error locator, so stop and report the block as uncorrectable
+            if (pos >= (locatorSize - 1)) {
+                pos++;
+                break;
+            }
             out[pos++] = RS_BLOCK_SIZE - i - 1;
-#endif
+        }
     }
 
     if (pos != (locatorSize - 1))
@@ -103,100 +99,11 @@ static bool errorEvaluator(uint8_t *locator, uint8_t locatorSize, uint8_t *out) 
  * @return True if success, else the "out" buffer must be invalidated and the block is uncorrectable
  */
 static bool errorLocator(struct LwFecRS *rs, uint8_t *syndromes, uint8_t *out, uint8_t *outSize) {
-    /*
-     * The error locator polynomial is calculated using Berlekamp-Massey algorithm.
-     * Two implementations are written here:
-     * 1. directly adapted from Wikipedia (https://en.wikipedia.org/wiki/Berlekamp%E2%80%93Massey_algorithm)
-     * 2. adapted/ported from Python from Wikiversity "Reed-Solomon codes for coders"
-     * (https://en.wikiversity.org/wiki/Reed%E2%80%93Solomon_codes_for_coders#Error_correction)
-     * Both implementations work just fine.
-     */
-#ifndef RS_USE_ALTERNATIVE_BM
-    uint8_t L = 0; // number of assumed errors
-    uint8_t m = 1; // number of iterations since L, B and b were updated
-    uint8_t b = 1; // last discrepancy delta
-
-    // 4 variables of RS_MAX_REDUNDANCY_BYTES + 1 each
-    //  static uint8_t B[RS_MAX_REDUNDANCY_BYTES + 1]; //last locator polynomial
-    //  static uint8_t C[RS_MAX_REDUNDANCY_BYTES + 1]; //current locator polynomial
-    //  static uint8_t T[RS_MAX_REDUNDANCY_BYTES + 1]; //temporary polynomial
-    //  static uint8_t T2[RS_MAX_REDUNDANCY_BYTES + 1]; //temporary polynomial
-    uint8_t *B = commonBuffer;
-    uint8_t *C = B + RS_MAX_REDUNDANCY_BYTES + 1;
-    uint8_t *T = C + RS_MAX_REDUNDANCY_BYTES + 1;
-    uint8_t *T2 = T + RS_MAX_REDUNDANCY_BYTES + 1;
-
-    // initialize B and C polynomials with the constant term
-    memset(B, 0, rs->T + 1);
-    B[0] = 1;
-    memset(C, 0, rs->T + 1);
-    C[0] = 1;
-    memset(T, 0, rs->T + 1);
-    memset(T2, 0, rs->T + 1);
-
-    for (uint8_t i = 0; i < rs->T; i++) {
-        uint8_t d = syndromes[i];
-        for (uint8_t j = 1; j <= L; j++) {
-            d = GfAdd(d, GfMul(C[j], syndromes[i - j])); // calculate discrepancy delta
-        }
-        if (d == 0) // no error
-        {
-            m++;
-        } else if ((L << 1) <= i) {
-            memcpy(T, C, rs->T); // store C polynomial in T
-            // in general, C(x)=C(x)-(d/b)*B(x)*x^m
-            // first B(x)=B(x)*x^m
-            // here we store polynomials as the lowest degree term first
-            // multipyling it by x^m shifts the polynomial coefficient by m places right
-            // so swap places starting from the last element and fill first m places with zeros
-            for (uint8_t j = 0; j < (rs->T - m); j++) {
-                B[rs->T - j - 1] = B[rs->T - j - m - 1];
-            }
-            for (uint8_t j = 0; j < m; j++)
-                B[j] = 0;
-
-            // then B(x)*d/b
-            GfPolyScale(B, rs->T, GfMul(d, GfInv(b)), B);
-
-            // then C(x)=C(x)-B(x) (subtraction is the same as addition in GF)
-            GfPolyAdd(T, rs->T, B, rs->T, C);
-
-            // store T polynomial in B (previous C to B)
-            memcpy(B, T, rs->T);
-
-            L = i + 1 - L;
-            b = d;
-            m = 1;
-        } else {
-            // the same as above, but save B in T2 first
-            memcpy(T, C, rs->T);
-            memcpy(T2, B, rs->T);
-            for (uint8_t j = 0; j < (rs->T - m); j++) {
-                B[rs->T - j - 1] = B[rs->T - j - m - 1];
-            }
-            for (uint8_t j = 0; j < m; j++)
-                B[j] = 0;
-            GfPolyScale(B, rs->T, GfMul(d, GfInv(b)), B);
-            GfPolyAdd(T, rs->T, B, rs->T, C);
-            // restore T2 to B
-            memcpy(B, T2, rs->T);
-            m++;
-        }
-    }
-
-    *outSize = L + 1;
-    memcpy(out, C, rs->T);
-
-    if ((L * 2) > rs->T)
-        return false;
-
-    return true;
-#else
-
-    // static uint8_t errLoc[RS_MAX_REDUNDANCY_BYTES + 1];
-    // static uint8_t newLoc[RS_MAX_REDUNDANCY_BYTES + 1];
-    // static uint8_t oldLoc[RS_MAX_REDUNDANCY_BYTES + 1];
-    // static uint8_t tmpLoc[RS_MAX_REDUNDANCY_BYTES + 1];
+    // The error locator polynomial is calculated with the Berlekamp-Massey
+    // algorithm, ported from the Python listing of the Wikiversity article
+    // "Reed-Solomon codes for coders".
+    // The four working polynomials live in the common buffer, one
+    // RS_MAX_REDUNDANCY_BYTES + 1 slot each.
     uint8_t *errLoc = commonBuffer;
     uint8_t *newLoc = errLoc + RS_MAX_REDUNDANCY_BYTES + 1;
     uint8_t *oldLoc = newLoc + RS_MAX_REDUNDANCY_BYTES + 1;
@@ -256,7 +163,6 @@ static bool errorLocator(struct LwFecRS *rs, uint8_t *syndromes, uint8_t *out, u
 
     *outSize = errLocLen;
     return true;
-#endif
 }
 
 /**
