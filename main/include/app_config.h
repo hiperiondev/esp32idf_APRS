@@ -360,7 +360,7 @@ typedef struct {
     bool audio_modem_en;     /**< Enable the audio ADC/DAC AFSK modem. */
     bool audio_lpf;          /**< Enable the audio low-pass filter. */
     uint16_t preamble;       /**< TXDelay (preamble) length, ms. */
-    uint8_t afsk_modem_type; /**< Audio AFSK modulation (see enum ModemType in modem.h: 0=300Bd,1=1200Bd,2=1200Bd V.23,3=9600Bd); used for both RX and TX. */
+    uint8_t afsk_modem_type; /**< Audio AFSK modulation (::modem_mode_t: 0=AFSK300, 1=Bell202, 2=V.23, 3=G3RUH); used for both RX and TX. */
     uint8_t fx25_mode;       /**< FX.25 mode: 0=off, 1=RX only, 2=RX+TX. */
     uint16_t tx_timeslot;    /**< CSMA time slot (quiet time), ms. */
     uint8_t csma_persist;    /**< CSMA/p-persistent channel-access probability (standard AX.25/KISS "Persist"): once the channel is heard clear, the modem

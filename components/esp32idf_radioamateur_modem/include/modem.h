@@ -24,6 +24,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "esp32idf_radioamateur_modem.h"
+
 /**
  * @brief Maximum number of demodulators that can run in parallel.
  *
@@ -34,20 +36,10 @@
 #define MODEM_MAX_DEMODULATOR_COUNT 2
 
 /**
- * @brief Supported modem/tone profiles.
- */
-enum ModemType {
-    MODEM_1200 = 0, /**< Bell 202, 1200 Bd, 1200/2200 Hz (standard APRS). */
-    MODEM_1200_V23, /**< ITU V.23, 1200 Bd, 1300/2100 Hz. */
-    MODEM_300,      /**< AFSK300, 300 Bd, 1600/1800 Hz. */
-    MODEM_9600,     /**< G3RUH FSK, 9600 Bd. */
-};
-
-/**
  * @brief Runtime configuration of the demodulator.
  */
 struct ModemDemodConfig {
-    enum ModemType modem;    /**< Active modem/tone profile. */
+    modem_mode_t modem;      /**< Active modem/tone profile (::modem_mode_t). */
     uint8_t usePWM : 1;      /**< 0 = R2R resistor ladder output, 1 = PWM/DAC output. */
     uint8_t flatAudioIn : 1; /**< 0 = de-emphasized audio input, 1 = flat (unfiltered) input. */
 };
@@ -213,7 +205,7 @@ void ModemGetStepTones(float *mark, float *space);
 /**
  * @brief Feed one sample to the demodulator during normal operation.
  * @param sample Input audio sample, at 9600 Hz (or 38400 Hz when using
- *               ::MODEM_9600).
+ *               ::MODEM_MODEM_G3RUH).
  * @param mVrms  RMS input level associated with this sample, in millivolts.
  */
 void MODEM_DECODE(int16_t sample, uint16_t mVrms);

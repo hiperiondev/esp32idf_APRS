@@ -908,7 +908,7 @@ void AFSK_Poll(void) {
         mVsumCount = 0;
 
         /* The RMS/level measurement only needs a fraction of the samples. */
-        int m = ((MODEM_RESAMPLE_RATIO > 1) || (ModemConfig.modem == MODEM_9600)) ? 4 : 1;
+        int m = ((MODEM_RESAMPLE_RATIO > 1) || (ModemConfig.modem == MODEM_MODEM_G3RUH)) ? 4 : 1;
 
         for (int x = 0; x < MODEM_BLOCK_SIZE; x++) {
             if (!rb_pop(&s_fifo, &adc))
@@ -946,7 +946,7 @@ void AFSK_Poll(void) {
             }
         }
 
-        bool signalPresent = (s_dcdCnt > 3) || (ModemConfig.modem == MODEM_9600);
+        bool signalPresent = (s_dcdCnt > 3) || (ModemConfig.modem == MODEM_MODEM_G3RUH);
 
         /* Track the level only while there is something to track. Adapting on
          * an idle channel is what pinned the gain at maximum and overdrove
@@ -972,7 +972,7 @@ void AFSK_Poll(void) {
              * Hz cutoff is G3RUH's own bandwidth, so it would take the signal
              * with it. lpf9600 does the receive filtering for this profile.
              */
-            const bool decimate = (ModemConfig.modem != MODEM_9600) && (MODEM_RESAMPLE_RATIO > 1);
+            const bool decimate = (ModemConfig.modem != MODEM_MODEM_G3RUH) && (MODEM_RESAMPLE_RATIO > 1);
             const int count = decimate ? (MODEM_BLOCK_SIZE / MODEM_RESAMPLE_RATIO) : MODEM_BLOCK_SIZE;
 
             if (decimate)
@@ -1054,23 +1054,9 @@ void afskSetModem(uint8_t val, bool flatAudio, uint16_t timeSlot, uint16_t pream
     ModemConfig.flatAudioIn = flatAudio ? 1 : 0;
     ModemConfig.usePWM = 1;
 
-    switch (val) {
-        case 0:
-            ModemConfig.modem = MODEM_300;
-            break;
-        case 1:
-            ModemConfig.modem = MODEM_1200;
-            break;
-        case 2:
-            ModemConfig.modem = MODEM_1200_V23;
-            break;
-        case 3:
-            ModemConfig.modem = MODEM_9600;
-            break;
-        default:
-            ModemConfig.modem = MODEM_1200;
-            break;
-    }
+    // val is the modem_mode_t selector (0=AFSK300, 1=Bell202, 2=V.23, 3=G3RUH);
+    // out-of-range values fall back to standard-APRS Bell202.
+    ModemConfig.modem = (val <= MODEM_MODEM_G3RUH) ? (modem_mode_t)val : MODEM_MODEM_BELL202;
 
     ESP_LOGI(TAG, "modem=%d adcRate=%d blockSize=%d resample=%d demodRate=%d", (int)ModemConfig.modem, MODEM_ADC_SAMPLERATE, MODEM_BLOCK_SIZE,
              MODEM_RESAMPLE_RATIO, MODEM_DEMOD_SAMPLERATE);

@@ -453,7 +453,7 @@ static inline uint8_t descramble(uint8_t in) {
 }
 
 /* IRAM_ATTR: called from MODEM_BAUDRATE_TIMER_HANDLER() (DAC GPTimer ISR)
- * whenever ModemConfig.modem == MODEM_9600. Same -Og inlining risk as
+ * whenever ModemConfig.modem == MODEM_MODEM_G3RUH. Same -Og inlining risk as
  * dac_scale()/sinSample() above - "static inline" is not a guarantee, and an
  * un-inlined static function defaults to flash. This one is gated on exactly
  * the G3RUH path, which is why it can look like a 9600-only problem while
@@ -513,11 +513,11 @@ uint8_t IRAM_ATTR MODEM_BAUDRATE_TIMER_HANDLER(void) {
          * descrambler - clocked once per symbol - could never match it. The
          * other profiles are unaffected: they are not scrambled.
          */
-        if (ModemConfig.modem == MODEM_9600)
+        if (ModemConfig.modem == MODEM_MODEM_G3RUH)
             scrambledSymbol = scramble(currentSymbol);
     }
 
-    if (ModemConfig.modem == MODEM_9600) {
+    if (ModemConfig.modem == MODEM_MODEM_G3RUH) {
         sinwave = scrambledSymbol ? 240 : 20;
     } else {
         /*
@@ -567,7 +567,7 @@ static int32_t demodulate(int16_t sample, struct DemodState *dem) {
     else
         dem->valley -= (int16_t)(((int32_t)(AMP_TRACKING_DECAY * 32768.f) * (int32_t)(dem->valley - sample)) >> 15);
 
-    if (ModemConfig.modem != MODEM_9600) {
+    if (ModemConfig.modem != MODEM_MODEM_G3RUH) {
         if (dem->prefilter != PREFILTER_NONE)
             dem->correlatorSamples[dem->correlatorSamplesIdx++] = (int16_t)filterRun(&dem->bpf, sample);
         else
@@ -650,7 +650,7 @@ static void decode(uint8_t symbol, uint8_t demod, uint16_t mV) {
         else
             sym = 0;
 
-        if (ModemConfig.modem == MODEM_9600)
+        if (ModemConfig.modem == MODEM_MODEM_G3RUH)
             sym = descramble(sym);
 
         dem->syncSymbols |= sym;
@@ -707,10 +707,10 @@ void ModemGetStepTones(float *mark, float *space) {
 void ModemInit(void) {
     memset(demodState, 0, sizeof(demodState));
 
-    if (ModemConfig.modem > MODEM_9600)
-        ModemConfig.modem = MODEM_1200;
+    if (ModemConfig.modem > MODEM_MODEM_G3RUH)
+        ModemConfig.modem = MODEM_MODEM_BELL202;
 
-    if ((ModemConfig.modem == MODEM_1200) || (ModemConfig.modem == MODEM_1200_V23)) {
+    if ((ModemConfig.modem == MODEM_MODEM_BELL202) || (ModemConfig.modem == MODEM_MODEM_V23)) {
         demodCount = 2;
         N = N1200;
         baudRate = 1200.f;
@@ -762,14 +762,14 @@ void ModemInit(void) {
             demodState[0].bpf.gainShift = 15;
         }
 
-        if (ModemConfig.modem == MODEM_1200) { /* Bell 202 */
+        if (ModemConfig.modem == MODEM_MODEM_BELL202) { /* Bell 202 */
             markFreq = 1200.f;
             spaceFreq = 2200.f;
         } else { /* V.23 */
             markFreq = 1300.f;
             spaceFreq = 2100.f;
         }
-    } else if (ModemConfig.modem == MODEM_300) {
+    } else if (ModemConfig.modem == MODEM_MODEM_AFSK300) {
         demodCount = 1;
         N = N300;
         baudRate = 300.f;
@@ -792,7 +792,7 @@ void ModemInit(void) {
         demodState[0].lpf.coeffs = lpf300;
         demodState[0].lpf.taps = sizeof(lpf300) / sizeof(*lpf300);
         demodState[0].lpf.gainShift = 15;
-    } else if (ModemConfig.modem == MODEM_9600) {
+    } else if (ModemConfig.modem == MODEM_MODEM_G3RUH) {
         demodCount = 1;
         N = N9600;
         baudRate = 9600.f;
