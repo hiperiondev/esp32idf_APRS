@@ -77,6 +77,12 @@ static const char *TAG = "aprs_service";
 #define RF_TX_DRAIN_WAIT_MS 4000
 #define RF_TX_DRAIN_POLL_MS 20
 
+// Size of the buffer aprs_msg_callback() renders a received frame into. See
+// the derivation of the 365-character worst case there; rounded up to 384 to
+// leave the render immune to a future change in how a callsign is printed,
+// while staying well inside the modem service task's stack.
+#define APRS_RX_TNC2_BUF_SIZE 384
+
 // ---------------------------------------------------------------------------
 // Modem configuration
 //
@@ -376,7 +382,20 @@ static int ax25ToTnc2(const ax25_msg_t *m, char *out, size_t outMax) {
 // @brief Single dispatch point for digipeater / igate / message, fed by
 // on_rx_frame() below for every decoded RX frame.
 static void aprs_msg_callback(ax25_msg_t *msg) {
-    char tnc2[400];
+    // This buffer renders a *received* frame, so it is deliberately larger
+    // than APRS_TNC2_BUF_SIZE (the size every packet *builder* uses, and the
+    // most the RF leg can encode). The TNC2 text of a frame is longer than the
+    // frame itself: each 7-byte address field expands to up to 11 characters
+    // ("," + 6-char call + "-15" + the repeated "*"), so a maximum-length
+    // AX25_FRAME_MAX_SIZE frame renders as at most 365 characters - reached
+    // with the full 10 address fields, since every address added costs 7 frame
+    // bytes of info field but only 11 text characters. Truncating that here
+    // would corrupt the RX console line, the traffic log entry and the message
+    // parser's input, so the render always gets room for the worst case, and
+    // the RF re-transmit below is what applies the shorter transmit limit
+    // (aprs_service_send_tnc2() rejects and logs anything over
+    // APRS_TNC2_MAX_LEN).
+    char tnc2[APRS_RX_TNC2_BUF_SIZE];
     ax25ToTnc2(msg, tnc2, sizeof(tnc2));
 
     // Source callsign (with SSID), used both for the LAST HEARD table and

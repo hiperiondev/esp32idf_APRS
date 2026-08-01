@@ -540,10 +540,18 @@ static int build_wx_packet(const wx_resolved_t r[WX_SENSOR_NUM], char *out, size
     }
 
     int n = snprintf(out, outMax, "%s>%s%s:%s", callField, WX_DEST, path, info);
+    // snprintf() returns the length it *would* have written, so a result at or
+    // past outMax means the line did not fit. Refuse it instead of returning a
+    // clamped length: the RF leg cannot encode more than APRS_TNC2_MAX_LEN
+    // bytes into an AX.25 frame, so a clamped length would only put a truncated
+    // report on the air (or none at all, while the same over-long line still
+    // went out over APRS-IS). Returning 0 makes the caller skip both legs.
     if (n < 0)
         return 0;
-    if (outMax > 0 && (size_t)n >= outMax)
-        n = (int)outMax - 1;
+    if ((size_t)n >= outMax || n > APRS_TNC2_MAX_LEN) {
+        ESP_LOGW(TAG, "WX packet too long (%d bytes, max %d) - shorten the comment or the path", n, APRS_TNC2_MAX_LEN);
+        return 0;
+    }
     return n;
 }
 
@@ -592,7 +600,7 @@ uint32_t weather_beacon_service(void) {
         wx_resolved_t r[WX_SENSOR_NUM];
         resolve_fields(r);
 
-        char packet[500]; // callField+dest+path+info(up to 420), grown for 128-byte comments
+        char packet[APRS_TNC2_BUF_SIZE]; // sized by the RF leg's own limit, so a line that does not fit is refused at build time
         int len = build_wx_packet(r, packet, sizeof(packet));
         if (len > 0) {
             if (g_config.wx_2rf) {
@@ -608,7 +616,7 @@ uint32_t weather_beacon_service(void) {
                     ESP_LOGW(TAG, "WX beacon NOT sent over INET - APRS-IS not connected yet: %s", packet);
             }
         } else {
-            ESP_LOGW(TAG, "WX enabled but no callsign configured (set Weather or APRS callsign) - skipping");
+            ESP_LOGW(TAG, "WX packet not built - no callsign configured (set Weather or APRS callsign), or the line did not fit; skipping");
         }
 
         // Same watermark log the beacon tasks emit: a tight stack shows up here

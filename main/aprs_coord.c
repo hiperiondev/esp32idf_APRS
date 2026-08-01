@@ -88,12 +88,14 @@ void aprs_coord_format_compressed(float lat, float lon, char symTable, char symC
         cs[2] = csT[2];
     }
 
-    // Fixed 12-byte field ("!" table + 4 lat + 4 lon + code + 3 cs/T + NUL),
-    // assembled byte-by-byte and copied out with strlcpy-style truncation
-    // rather than snprintf()'s "%c" chain so a caller-provided outMax
-    // smaller than the full field still copies as much as fits and always
-    // NUL-terminates.
-    char field[12];
+    // The field is a fixed 13 bytes: symbol table + 4 compressed-latitude
+    // digits + 4 compressed-longitude digits + symbol code + the 3-byte cs/T
+    // token, so a caller needs 14 bytes to hold it with its NUL (see the
+    // header). It is assembled byte-by-byte and copied out with strlcpy-style
+    // truncation rather than through an snprintf() "%c" chain, so a
+    // caller-provided outMax smaller than the full field still copies as much
+    // as fits and always terminates.
+    char field[13];
     field[0] = symTable;
     field[1] = latDigits[0];
     field[2] = latDigits[1];
@@ -105,19 +107,15 @@ void aprs_coord_format_compressed(float lat, float lon, char symTable, char symC
     field[8] = lonDigits[3];
     field[9] = symCode;
     field[10] = cs[0];
-    // cs[1] and cs[2] are appended below via memcpy since field[] above only
-    // reserves up to the first cs/T byte within its 11 meaningful bytes.
-    char full[13];
-    memcpy(full, field, 11);
-    full[11] = cs[1];
-    full[12] = cs[2];
+    field[11] = cs[1];
+    field[12] = cs[2];
 
     if (outMax == 0)
         return;
-    size_t n = sizeof(full);
+    size_t n = sizeof(field);
     if (n > outMax - 1)
         n = outMax - 1;
-    memcpy(out, full, n);
+    memcpy(out, field, n);
     out[n] = 0;
 }
 

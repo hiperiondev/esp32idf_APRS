@@ -516,9 +516,15 @@ static bool save_locked(const telemetry_config_t *in) {
         return false;
     }
 
-    remove(TELEMETRY_PATH);
+    // Single-step commit of the finished temp file over the live one: LittleFS
+    // replaces an existing destination as one metadata update, so telemetry.json
+    // is at every instant either the previous file or the new one, never
+    // missing - which is exactly what unlinking the destination first would
+    // break. On failure the temp file is removed so a stale half-written
+    // telemetry.json.tmp is not left behind on the filesystem.
     if (rename(TELEMETRY_TMP_PATH, TELEMETRY_PATH) != 0) {
         ESP_LOGE(TAG, "rename tmp->telemetry.json failed");
+        remove(TELEMETRY_TMP_PATH);
         return false;
     }
     ESP_LOGI(TAG, "Telemetry configuration saved");
@@ -837,12 +843,22 @@ static int build_tlm_data_packet(const telemetry_config_t *s, uint32_t seq, bool
     telemetry_unlock();
     bits[dig_count] = '\0';
 
-    // How many of the 6 fields (5 analog + 1 digital) to actually emit:
-    // normally all of them (empty analog fields still hold their comma
-    // placeholder, and an empty/disabled digital bank is sent as all-'0's),
-    // but with omit_trailing, trim from the end - first drop the digital
-    // field entirely if the bank is off/zero-length, then drop any
-    // consecutive not-present analog fields off the right.
+    // How many of the 6 fields (5 analog + 1 digital) to actually emit.
+    //
+    // The digital field is emitted only when the bank is routed to this leg
+    // and has at least one channel (haveDigital below); a disabled or
+    // zero-length bank contributes nothing at all, rather than a run of '0's.
+    // That is deliberate: an all-'0' bits field is indistinguishable on air
+    // from eight real bits that all read low, so a station whose digital bank
+    // is simply switched off would otherwise keep reporting eight false
+    // readings to anyone plotting them.
+    //
+    // The analog fields are emitted in full, with an empty field still holding
+    // its comma placeholder so channel N always stays in position N. Only
+    // omit_trailing trims them, and only off the right-hand end: consecutive
+    // not-present analog fields are dropped until a present one is reached.
+    // The leading decrement below is what lets that trim reach the analog
+    // fields at all, by first giving up the (already unused) digital slot.
     int fieldsToEmit = ana_count + 1; // + 1 for the digital field slot
     bool haveDigital = dig_bank_on && dig_count > 0;
     if (s->omit_trailing) {

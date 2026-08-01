@@ -508,9 +508,15 @@ static bool save_locked(const objitems_t *in) {
         return false;
     }
 
-    remove(OBJITEMS_PATH);
+    // Single-step commit of the finished temp file over the live one: LittleFS
+    // replaces an existing destination as one metadata update, so objitems.json
+    // is at every instant either the previous file or the new one, never
+    // missing - which is exactly what unlinking the destination first would
+    // break. On failure the temp file is removed so a stale half-written
+    // objitems.json.tmp is not left behind on the filesystem.
     if (rename(OBJITEMS_TMP_PATH, OBJITEMS_PATH) != 0) {
         ESP_LOGE(TAG, "rename tmp->objitems failed");
+        remove(OBJITEMS_TMP_PATH);
         return false;
     }
     ESP_LOGI(TAG, "Objects/Items saved");
@@ -742,8 +748,8 @@ static void objitem_build_info_field(const objitem_t *b, bool live, char *out, s
 
     // Sized for the larger of the two layouts: uncompressed is up to 21
     // bytes (9-char latStr content + symTable + 10-char lonStr content +
-    // symCode), compressed is a fixed 11 bytes (symTable + 4 lat + 4 lon +
-    // symCode + 2 cs), plus NUL either way.
+    // symCode), compressed is a fixed 13 bytes (symTable + 4 lat + 4 lon +
+    // symCode + 3 cs/T), plus NUL either way.
     char posField[22];
     if (useCompressed) {
         char csT[3] = { ' ', ' ', ' ' };
@@ -875,29 +881,41 @@ static void tx_one(int idx, const objitem_t *b, const char *src, bool live, cons
     if (objitem_effective_rf(b)) {
         // Digipeat path (YAAC "Digipeat paths"): inserted when the element
         // selects one or more of the shared path presets; otherwise direct.
-        char packet[256];
+        // Sized by the RF leg's own limit, so the length test below is the
+        // same one aprs_service_send_tnc2() applies: a line that does not fit
+        // an AX.25 frame is refused here, with a reason, instead of being
+        // assembled and then dropped further down the transmit path.
+        char packet[APRS_TNC2_BUF_SIZE];
         int len;
         if (path && path[0])
             len = snprintf(packet, sizeof(packet), "%s>%s,%s:%s", src, OBJITEM_DEST, path, info);
         else
             len = snprintf(packet, sizeof(packet), "%s>%s:%s", src, OBJITEM_DEST, info);
-        if (len > 0 && len < (int)sizeof(packet)) {
+        if (len > 0 && len <= APRS_TNC2_MAX_LEN) {
             if (aprs_service_send_tnc2(packet, (size_t)len))
                 ESP_LOGI(TAG, "%s %d TX (RF, %s): %s", kind, idx + 1, state, packet);
             else
                 ESP_LOGW(TAG, "%s %d NOT sent over RF - modem not ready or busy", kind, idx + 1);
+        } else if (len > APRS_TNC2_MAX_LEN) {
+            ESP_LOGW(TAG, "%s %d NOT sent over RF - line too long (%d bytes, max %d)", kind, idx + 1, len, APRS_TNC2_MAX_LEN);
         }
     }
     if (objitem_effective_inet(b)) {
         // Locally-originated APRS-IS traffic carries the TCPIP* q-construct,
         // never an RF unproto path (same note as message.c / bulletins.c).
-        char packet[256];
+        // Same buffer size as the RF copy above, and the same length test, so
+        // an element that is too long to reach the air is not quietly relayed
+        // to APRS-IS either - the two legs either both carry the element or
+        // both report why they did not.
+        char packet[APRS_TNC2_BUF_SIZE];
         int len = snprintf(packet, sizeof(packet), "%s>%s,TCPIP*:%s", src, OBJITEM_DEST, info);
-        if (len > 0 && len < (int)sizeof(packet)) {
+        if (len > 0 && len <= APRS_TNC2_MAX_LEN) {
             if (igate_send_raw(packet, (size_t)len))
                 ESP_LOGI(TAG, "%s %d TX (INET, %s): %s", kind, idx + 1, state, packet);
             else
                 ESP_LOGW(TAG, "%s %d NOT sent over INET - APRS-IS not connected yet", kind, idx + 1);
+        } else if (len > APRS_TNC2_MAX_LEN) {
+            ESP_LOGW(TAG, "%s %d NOT sent over INET - line too long (%d bytes, max %d)", kind, idx + 1, len, APRS_TNC2_MAX_LEN);
         }
     }
 }

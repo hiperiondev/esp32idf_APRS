@@ -390,14 +390,16 @@ static bool validate_term(const char *term, size_t len, char *err, size_t errSiz
         }
 
         // t/type[/callsign[/hops]] - type filter. type is 1+ chars, each one
-        // of the known type letters (p,o,i,q,s,t,u,w); callsign/hops optional.
+        // of the ten type letters aprsc accepts - p(osition), o(bject),
+        // i(tem), m(essage), q(uery), s(tatus), t(elemetry), u(ser-defined),
+        // n(WS), w(eather); callsign/hops optional.
         case 't': {
             int n = split_args(term, len, args, argLens, 3);
             if (n < 1 || argLens[0] == 0) {
                 set_err(err, errSize, "'t' needs a type spec: t/type[/callsign[/hops]]");
                 return false;
             }
-            static const char *validTypes = "pogsiuw"; // per aprsc filter docs
+            static const char *validTypes = "poimqstunw"; // the ten type letters aprsc's t/ filter defines
             for (size_t i = 0; i < argLens[0]; i++) {
                 if (strchr(validTypes, args[0][i]) == NULL) {
                     char msg[80];

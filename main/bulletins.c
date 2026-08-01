@@ -276,9 +276,15 @@ static bool save_locked(const bulletins_t *in) {
         return false;
     }
 
-    remove(BULLETINS_PATH);
+    // Single-step commit of the finished temp file over the live one: LittleFS
+    // replaces an existing destination as one metadata update, so bulletins.json
+    // is at every instant either the previous file or the new one, never
+    // missing - which is exactly what unlinking the destination first would
+    // break. On failure the temp file is removed so a stale half-written
+    // bulletins.json.tmp is not left behind on the filesystem.
     if (rename(BULLETINS_TMP_PATH, BULLETINS_PATH) != 0) {
         ESP_LOGE(TAG, "rename tmp->bulletins failed");
+        remove(BULLETINS_TMP_PATH);
         return false;
     }
     ESP_LOGI(TAG, "Bulletins saved");

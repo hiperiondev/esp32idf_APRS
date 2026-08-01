@@ -52,6 +52,28 @@
 /** @} */
 
 /**
+ * @name TNC2 text length limit
+ *
+ * The RF leg encodes a TNC2 line into an AX.25 frame that has to fit
+ * ::AX25_FRAME_MAX_SIZE bytes, so aprs_service_send_tnc2() refuses any text
+ * whose length reaches that figure. These two constants publish that single
+ * limit to every packet builder in the firmware (beacon.c, weather.c,
+ * objects_items.c), so each one sizes its output buffer from the same number
+ * the transmit path enforces and reports failure when the assembled line
+ * would not fit - rather than returning a line that is logged as built and
+ * sent over APRS-IS, but dropped on its way to the modem.
+ *
+ * A builder therefore declares `char packet[APRS_TNC2_BUF_SIZE]` and returns
+ * 0 whenever the assembled length exceeds ::APRS_TNC2_MAX_LEN, which for a
+ * buffer of exactly that size is the same condition as snprintf() reporting
+ * truncation.
+ * @{
+ */
+#define APRS_TNC2_MAX_LEN  (AX25_FRAME_MAX_SIZE - 1) /**< Longest TNC2 text, in bytes, that aprs_service_send_tnc2() accepts. */
+#define APRS_TNC2_BUF_SIZE (AX25_FRAME_MAX_SIZE)     /**< Buffer size a builder must use: ::APRS_TNC2_MAX_LEN bytes plus the terminating NUL. */
+/** @} */
+
+/**
  * @brief Start the APRS application layer: message queue init, modem RX
  * callback, IGate APRS-IS client task, and the 1 Hz service tick (message
  * retry). Call once from app_task() after app_config_load()/wifi_init() and
@@ -77,7 +99,9 @@ void aprs_service_start(void);
  * independent igate_send_raw() call.
  *
  * @param packet TNC2 text, not necessarily NUL-terminated at @p len.
- * @param len    Length, in bytes, of the packet text.
+ * @param len    Length, in bytes, of the packet text. Anything longer than
+ *               ::APRS_TNC2_MAX_LEN cannot be encoded into an AX.25 frame and
+ *               is discarded here.
  * @return true if the packet was handed to the modem for transmission,
  *         false if it was discarded (see log for the reason).
  */

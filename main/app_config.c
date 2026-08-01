@@ -922,9 +922,18 @@ bool app_config_save(void) {
         return false;
     }
 
-    remove(CONFIG_PATH);
+    // Commit the finished temp file over the live one in a single step. The
+    // rename is the whole atomicity guarantee: LittleFS replaces an existing
+    // destination as one metadata update, so at every instant - including
+    // across a power loss - config.json is either the previous file or the new
+    // one, never missing. Unlinking the destination first would open exactly
+    // the window this design exists to avoid: a crash in that window leaves no
+    // config.json at all, and the next boot writes factory defaults over the
+    // whole station configuration. On failure the temp file is removed so a
+    // stale half-written config.json.tmp is not left behind on the filesystem.
     if (rename(CONFIG_TMP_PATH, CONFIG_PATH) != 0) {
         ESP_LOGE(TAG, "rename tmp->config failed");
+        remove(CONFIG_TMP_PATH);
         xSemaphoreGive(config_mutex());
         return false;
     }

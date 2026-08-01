@@ -219,8 +219,8 @@ static int buildPositionPacket(const beacon_params_t *p, char *out, size_t outMa
 
     // Sized for the larger of the two layouts: uncompressed is up to 21
     // bytes (9-char latStr content + symTable + 10-char lonStr content +
-    // symCode), compressed is a fixed 11 bytes (symTable + 4 lat + 4 lon +
-    // symCode + 2 cs), plus NUL either way.
+    // symCode), compressed is a fixed 13 bytes (symTable + 4 lat + 4 lon +
+    // symCode + 3 cs/T), plus NUL either way.
     char posField[22];
     if (useCompressed) {
         aprs_coord_format_compressed(p->lat, p->lon, symTable, symCode, "   ", posField, sizeof(posField));
@@ -251,14 +251,20 @@ static int buildPositionPacket(const beacon_params_t *p, char *out, size_t outMa
     }
 
     int n = snprintf(out, outMax, "%s>%s%s:%s", callField, BEACON_DEST, path, infoField);
-    // snprintf() returns the length it *would* have written; on truncation that
-    // exceeds the buffer. Callers use this value as the memcpy length for the
-    // TNC2 send path, so clamp it to what was actually written (outMax-1, since
-    // snprintf always NUL-terminates when outMax > 0).
+    // snprintf() returns the length it *would* have written, so a result at or
+    // past outMax means the line did not fit. Refuse it instead of returning a
+    // clamped length: the RF leg cannot encode more than APRS_TNC2_MAX_LEN
+    // bytes into an AX.25 frame, so a clamped length would only put a truncated
+    // beacon on the air (or none at all, while the same over-long line still
+    // went out over APRS-IS). Returning 0 makes the caller skip both legs and
+    // say so, which is what tells the operator to shorten the comment or the
+    // path.
     if (n < 0)
         return 0;
-    if (outMax > 0 && (size_t)n >= outMax)
-        n = (int)outMax - 1;
+    if ((size_t)n >= outMax || n > APRS_TNC2_MAX_LEN) {
+        ESP_LOGW(TAG, "beacon packet too long (%d bytes, max %d) - shorten the comment or the path", n, APRS_TNC2_MAX_LEN);
+        return 0;
+    }
     return n;
 }
 
@@ -311,16 +317,17 @@ static int buildStatusPacket(const status_params_t *p, char *out, size_t outMax)
 
     int n = snprintf(out, outMax, "%s>%s%s:%s", callField, BEACON_DEST, path, infoField);
     // A status line is at most 152 bytes: call field (up to 15) + '>' +
-    // destination (6) + path (up to 79) + ':' + info field (up to 50). That
-    // fits the 400-byte buffer every caller provides. Should a caller ever
-    // pass a smaller one, refuse the packet instead of returning a clamped
-    // length: a clamped length would put a truncated - and therefore
-    // malformed - status report on the air, while returning 0 makes the
-    // caller skip the transmission entirely.
+    // destination (6) + path (up to 79) + ':' + info field (up to 50), so it
+    // always fits the APRS_TNC2_BUF_SIZE buffer every caller provides. The
+    // check is kept anyway, on the same terms as buildPositionPacket(): refuse
+    // rather than clamp, so neither leg ever carries a truncated - and
+    // therefore malformed - status report.
     if (n < 0)
         return 0;
-    if (outMax > 0 && (size_t)n >= outMax)
+    if ((size_t)n >= outMax || n > APRS_TNC2_MAX_LEN) {
+        ESP_LOGW(TAG, "status packet too long (%d bytes, max %d) - shorten the status text or the path", n, APRS_TNC2_MAX_LEN);
         return 0;
+    }
     return n;
 }
 
@@ -357,7 +364,7 @@ static uint32_t trackerStatusService(void) {
         }
         app_config_unlock();
 
-        char packet[400]; // callField+dest+path+infoField(up to STATUS_SIZE): 152 bytes worst case
+        char packet[APRS_TNC2_BUF_SIZE]; // sized by the RF leg's own limit, so a line that does not fit is refused at build time
         int len = buildStatusPacket(&p, packet, sizeof(packet));
         if (len > 0) {
             if (g_config.trk_loc2rf) {
@@ -402,7 +409,7 @@ static uint32_t igateStatusService(void) {
         }
         app_config_unlock();
 
-        char packet[400]; // callField+dest+path+infoField(up to STATUS_SIZE): 152 bytes worst case
+        char packet[APRS_TNC2_BUF_SIZE]; // sized by the RF leg's own limit, so a line that does not fit is refused at build time
         int len = buildStatusPacket(&p, packet, sizeof(packet));
         if (len > 0) {
             if (g_config.igate_loc2rf) {
@@ -448,7 +455,7 @@ static uint32_t digiStatusService(void) {
         }
         app_config_unlock();
 
-        char packet[400]; // callField+dest+path+infoField(up to STATUS_SIZE): 152 bytes worst case
+        char packet[APRS_TNC2_BUF_SIZE]; // sized by the RF leg's own limit, so a line that does not fit is refused at build time
         int len = buildStatusPacket(&p, packet, sizeof(packet));
         if (len > 0) {
             if (g_config.digi_loc2rf) {
@@ -513,7 +520,7 @@ static uint32_t trackerBeaconService(void) {
         }
         app_config_unlock();
 
-        char packet[400]; // callField+dest+path+infoField(up to 256), grown for 128-byte comments
+        char packet[APRS_TNC2_BUF_SIZE]; // sized by the RF leg's own limit, so a line that does not fit is refused at build time
         int len = buildPositionPacket(&p, packet, sizeof(packet));
         if (len > 0) {
             // Log the RF and internet legs from what actually happened,
@@ -537,7 +544,7 @@ static uint32_t trackerBeaconService(void) {
 
             ESP_LOGD(TAG, "trk_beacon_task stack free: %u bytes", (unsigned)(uxTaskGetStackHighWaterMark(NULL) * sizeof(StackType_t)));
         } else {
-            ESP_LOGW(TAG, "Tracker beacon enabled but no callsign configured (set Tracker or APRS callsign) - skipping");
+            ESP_LOGW(TAG, "Tracker beacon not built - no callsign configured (set Tracker or APRS callsign), or the line did not fit; skipping");
         }
 
         s_trk_next_due = now + (int64_t)beacon_scheduler_jitter(clampInterval(g_config.trk_interval));
@@ -585,7 +592,7 @@ static uint32_t igateBeaconService(void) {
         }
         app_config_unlock();
 
-        char packet[400]; // callField+dest+path+infoField(up to 256), grown for 128-byte comments
+        char packet[APRS_TNC2_BUF_SIZE]; // sized by the RF leg's own limit, so a line that does not fit is refused at build time
         int len = buildPositionPacket(&p, packet, sizeof(packet));
         if (len > 0) {
             // See the identical note in trackerBeaconTask(): log what each
@@ -607,7 +614,7 @@ static uint32_t igateBeaconService(void) {
 
             ESP_LOGD(TAG, "igate_beacon_task stack free: %u bytes", (unsigned)(uxTaskGetStackHighWaterMark(NULL) * sizeof(StackType_t)));
         } else {
-            ESP_LOGW(TAG, "IGate beacon enabled but no APRS callsign configured - skipping");
+            ESP_LOGW(TAG, "IGate beacon not built - no APRS callsign configured, or the line did not fit; skipping");
         }
 
         s_igate_next_due = now + (int64_t)beacon_scheduler_jitter(clampInterval(g_config.igate_interval));
@@ -651,7 +658,7 @@ static uint32_t digiBeaconService(void) {
         }
         app_config_unlock();
 
-        char packet[400]; // callField+dest+path+infoField(up to 256), grown for 128-byte comments
+        char packet[APRS_TNC2_BUF_SIZE]; // sized by the RF leg's own limit, so a line that does not fit is refused at build time
         int len = buildPositionPacket(&p, packet, sizeof(packet));
         if (len > 0) {
             // See the identical note in trackerBeaconTask(): log what each
@@ -673,7 +680,7 @@ static uint32_t digiBeaconService(void) {
 
             ESP_LOGD(TAG, "digi_beacon_task stack free: %u bytes", (unsigned)(uxTaskGetStackHighWaterMark(NULL) * sizeof(StackType_t)));
         } else {
-            ESP_LOGW(TAG, "Digipeater beacon enabled but no callsign configured (set Digipeater or APRS callsign) - skipping");
+            ESP_LOGW(TAG, "Digipeater beacon not built - no callsign configured (set Digipeater or APRS callsign), or the line did not fit; skipping");
         }
 
         s_digi_next_due = now + (int64_t)beacon_scheduler_jitter(clampInterval(g_config.digi_interval));

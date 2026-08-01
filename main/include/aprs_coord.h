@@ -58,9 +58,13 @@ void aprs_coord_format(float lat, float lon, char *latOut, size_t latMax, char *
  * @param csT The 3-byte course/speed-or-PHG-or-radio-range token described
  *        by aprs_compressed_cs_from_course_speed(), or "   " (3 spaces) to
  *        emit "no cs/T data" per spec.
- * @param out Destination buffer for the compressed position field
- *        ("!" + 4 lat digits + 4 lon digits + symbol code + 3-byte csT).
- * @param outMax Size of out; must be >= 11 to hold the full field plus NUL.
+ * @param out Destination buffer for the compressed position field (symbol
+ *        table byte + 4 lat digits + 4 lon digits + symbol code + 3-byte csT).
+ * @param outMax Size of out; must be >= 14 to hold the full 13-byte field plus
+ *        its NUL. A smaller buffer is not an error - the field is copied as
+ *        far as it fits and always terminated - but a truncated compressed
+ *        position still decodes, as a *different* coordinate, so any caller
+ *        that cannot guarantee 14 bytes here puts wrong positions on the air.
  */
 void aprs_coord_format_compressed(float lat, float lon, char symTable, char symCode, const char csT[3], char *out, size_t outMax);
 
