@@ -66,13 +66,13 @@ salvo donde se indica.
    * - GET/POST
      - ``/radio``
      - módem AFSK de audio (FX.25, modulación, retención PTT, loop test)
-   * - GET
+   * - POST
      - ``/radio/looptest``
      - ejecutar el loop test (resultado JSON)
    * - GET/POST
      - ``/wireless``
      - modo Wi-Fi, AP, 5 ranuras STA, potencia TX
-   * - GET
+   * - POST
      - ``/wifiscan``
      - resultados del escaneo de AP (JSON)
    * - GET/POST

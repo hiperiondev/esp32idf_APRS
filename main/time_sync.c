@@ -32,6 +32,7 @@
 
 #include "app_config.h"
 #include "net_state.h"
+#include "str_append.h"
 #include "time_sync.h"
 
 static const char *TAG = "time_sync";
@@ -141,11 +142,16 @@ static bool sntp_setup(void) {
         resyncSec = NTP_RESYNC_MIN_SEC;
     sntp_set_sync_interval(resyncSec * 1000);
 
-    // Human-readable list of configured hosts, for logging only.
-    int n = 0;
+    // Human-readable list of configured hosts, for logging only. Built with
+    // str_append() so the running offset stays clamped: the buffer is sized
+    // for NTP_HOST_NUM full-width hostnames plus separators, but that sizing
+    // is an assumption about the config field widths rather than something
+    // this loop can enforce, and the only cost of getting it wrong should be
+    // a shortened log line.
+    size_t n = 0;
     s_host_list[0] = 0;
     for (int i = 0; i < hostCount; i++) {
-        n += snprintf(&s_host_list[n], sizeof(s_host_list) - n, "%s%s", hosts[i], (i + 1 < hostCount) ? ", " : "");
+        str_append(s_host_list, sizeof(s_host_list), &n, "%s%s", hosts[i], (i + 1 < hostCount) ? ", " : "");
     }
     return true;
 }

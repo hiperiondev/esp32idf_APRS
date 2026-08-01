@@ -91,8 +91,9 @@ esp_err_t page_upload(httpd_req_t *req);
 esp_err_t page_wireless_get(httpd_req_t *req);
 /** @brief POST /wireless - persist WiFi configuration. @param req Incoming request. @return ESP_OK or an esp_err_t error. */
 esp_err_t page_wireless_post(httpd_req_t *req);
-/** @brief GET  /wifiscan - JSON list of nearby access points (SSID/RSSI/auth). @param req Incoming request. @return ESP_OK or an esp_err_t error. */
-esp_err_t page_wifi_scan_get(httpd_req_t *req);
+/** @brief POST /wifiscan - JSON list of nearby access points (SSID/RSSI/auth). POST, not GET: the scan flips an AP-only radio to AP+STA, so it is a
+ * state-changing request and has to go through the same-origin check in web_check_auth(). @param req Incoming request. @return ESP_OK or an esp_err_t error. */
+esp_err_t page_wifi_scan_post(httpd_req_t *req);
 /** @brief GET  /system - System settings (time sync, CPU frequency, HTTP auth, hostname, logging). @param req Incoming request. @return ESP_OK or an esp_err_t
  * error. */
 esp_err_t page_system_get(httpd_req_t *req);
@@ -151,8 +152,9 @@ esp_err_t page_radio_get(httpd_req_t *req);
 /** @brief POST /radio - persist Radiomodem settings and re-apply them to the running modem. @param req Incoming request. @return ESP_OK or an esp_err_t error.
  */
 esp_err_t page_radio_post(httpd_req_t *req);
-/** @brief GET  /radio/looptest - JSON result of the ADC->DAC modem loopback self-test. @param req Incoming request. @return ESP_OK or an esp_err_t error. */
-esp_err_t page_radio_looptest_get(httpd_req_t *req);
+/** @brief POST /radio/looptest - JSON result of the ADC->DAC modem loopback self-test. POST, not GET: the test keys the transmitter, so it is a
+ * state-changing request and has to go through the same-origin check in web_check_auth(). @param req Incoming request. @return ESP_OK or an esp_err_t error. */
+esp_err_t page_radio_looptest_post(httpd_req_t *req);
 /** @brief GET  /msg - APRS Message service settings form. @param req Incoming request. @return ESP_OK or an esp_err_t error. */
 esp_err_t page_msg_get(httpd_req_t *req);
 /** @brief POST /msg - persist APRS Message service settings. @param req Incoming request. @return ESP_OK or an esp_err_t error. */

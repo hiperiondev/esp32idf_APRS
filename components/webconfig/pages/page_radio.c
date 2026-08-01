@@ -152,7 +152,9 @@ esp_err_t page_radio_get(httpd_req_t *req) {
                                   "var params=new URLSearchParams(new FormData(form));"
                                   "fetch('/radio',{method:'POST',body:params}).then(function(){"
                                   "status.textContent=' " TR_LOOPTEST_RUNNING "';"
-                                  "return fetch('/radio/looptest');"
+                                  // POST, not GET: this route keys the transmitter, so it is
+                                  // registered POST-only and goes through the same-origin check.
+                                  "return fetch('/radio/looptest',{method:'POST'});"
                                   "}).then(function(r){return r.json();}).then(function(data){"
                                   "btn.disabled=false;"
                                   "status.style.color=data.ok?'green':'red';"
@@ -166,11 +168,21 @@ esp_err_t page_radio_get(httpd_req_t *req) {
     return ESP_OK;
 }
 
-// GET /radio/looptest - runs the audio ADC/DAC AFSK modem self-test (see
+// POST /radio/looptest - runs the audio ADC/DAC AFSK modem self-test (see
 // aprs_loop_test_run()) and returns the result as JSON:
 // {"ok":true/false,"msg":"..."}. Requires the ADC/DAC GPIOs to be wired
 // together as a physical audio loopback.
-esp_err_t page_radio_looptest_get(httpd_req_t *req) {
+//
+// POST rather than GET, even though it reads like a query: the test keys the
+// transmitter and puts a self-test frame on the air, which makes it a
+// state-changing request. web_check_auth() runs its same-origin check on those
+// only, so a GET route here would be reachable cross-origin - any page an
+// authenticated admin happened to have open could key this station's radio
+// with an <img src> pointing at it, because the browser attaches cached Basic
+// credentials to such a request. POST also puts the route out of reach of the
+// other ways a browser fetches a URL on its own (script/stylesheet loads,
+// prefetch, link prerender, address-bar navigation).
+esp_err_t page_radio_looptest_post(httpd_req_t *req) {
     if (!web_check_auth(req))
         return ESP_OK;
     httpd_resp_set_type(req, "application/json");

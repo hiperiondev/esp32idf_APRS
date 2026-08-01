@@ -24,6 +24,7 @@
 
 #include "esp_chip_info.h"
 #include "esp_flash.h"
+#include "esp_log.h"
 #include "esp_rom_sys.h"
 #include "esp_system.h"
 #include "esp_timer.h"
@@ -41,9 +42,12 @@
 #include "lastheard.h"
 #include "pages.h"
 #include "storage.h"
+#include "str_append.h"
 #include "trafficlog.h"
 #include "translations.h"
 #include "web_common.h"
+
+static const char *TAG = "page_common";
 
 esp_err_t page_root(httpd_req_t *req) {
     if (!web_check_auth(req))
@@ -312,24 +316,31 @@ esp_err_t page_sidebar_info(httpd_req_t *req) {
 
     igate_stats_t igs = igate_get_stats();
 
-    // Sized generously: worst case is every counter at its uint32 max
-    // (10 digits) across Modes/Network/Statistics plus a full 22-row Drop
-    // Breakdown table (the longest reason strings run ~40-45 chars each).
+    // This buffer lives on the httpd task stack and is filled by a sequence of
+    // appends whose combined length depends on the active translation, on the
+    // width of every counter (each can reach uint32 max, 10 digits) and on the
+    // number of Drop Breakdown rows (DROP_REASON_COUNT, longest reason strings
+    // ~40-45 chars). None of that is fixed by this file, so the size of the
+    // buffer is not what keeps the build safe: every append below goes through
+    // str_append(), which clamps the running offset at each step, so the
+    // buffer cannot be overrun however far the translations or the drop-reason
+    // table grow. Outgrowing it costs content off the end and nothing more,
+    // and that is reported once, after the build.
     char buf[3600];
     size_t n = 0;
 
     // -- Modes Enabled ------------------------------------------------------
     // Wrapped in the same <fieldset><legend> card used by Radio Info /
     // APRS-IS SERVER / WiFi so all dashboard boxes share one look and feel.
-    n += snprintf(buf + n, sizeof(buf) - n,
-                  "<fieldset><legend>" TR_DASH_MODES_ENABLED "</legend><table><tr>"
-                  "<th style='background:%s'>" TR_F_IGATE "</th>"
-                  "<th style='background:%s'>" TR_DASH_DIGI_SHORT "</th>"
-                  "<th style='background:%s'>" TR_F_TRACKER "</th>"
-                  "<th style='background:%s'>" TR_DASH_WX_SHORT "</th>"
-                  "</tr></table></fieldset>",
-                  g_config.igate_en ? "#0b0" : "#606060", g_config.digi_en ? "#0b0" : "#606060", g_config.trk_en ? "#0b0" : "#606060",
-                  g_config.wx_en ? "#0b0" : "#606060");
+    str_append(buf, sizeof(buf), &n,
+               "<fieldset><legend>" TR_DASH_MODES_ENABLED "</legend><table><tr>"
+               "<th style='background:%s'>" TR_F_IGATE "</th>"
+               "<th style='background:%s'>" TR_DASH_DIGI_SHORT "</th>"
+               "<th style='background:%s'>" TR_F_TRACKER "</th>"
+               "<th style='background:%s'>" TR_DASH_WX_SHORT "</th>"
+               "</tr></table></fieldset>",
+               g_config.igate_en ? "#0b0" : "#606060", g_config.digi_en ? "#0b0" : "#606060", g_config.trk_en ? "#0b0" : "#606060",
+               g_config.wx_en ? "#0b0" : "#606060");
 
     // -- Network Status -------------------------------------------------------
     // WIFI reflects the STA link state (connected to an AP), the same check
@@ -337,13 +348,13 @@ esp_err_t page_sidebar_info(httpd_req_t *req) {
     // radio link rather than just whether STA/AP+STA mode is configured.
     wifi_ap_record_t sidebar_ap_info;
     bool wifi_connected = (esp_wifi_sta_get_ap_info(&sidebar_ap_info) == ESP_OK);
-    n += snprintf(buf + n, sizeof(buf) - n,
-                  "<fieldset><legend>" TR_DASH_NETWORK_STATUS "</legend><table><tr>"
-                  "<th style='background:%s'>" TR_DASH_WIFI "</th>"
-                  "<th style='background:%s'>APRS-IS</th>"
-                  "<th style='background:%s'>" TR_DASH_FX25 "</th>"
-                  "</tr></table></fieldset>",
-                  wifi_connected ? "#0b0" : "#606060", igate_is_connected() ? "#0b0" : "#606060", (g_config.fx25_mode > 0) ? "#0b0" : "#606060");
+    str_append(buf, sizeof(buf), &n,
+               "<fieldset><legend>" TR_DASH_NETWORK_STATUS "</legend><table><tr>"
+               "<th style='background:%s'>" TR_DASH_WIFI "</th>"
+               "<th style='background:%s'>APRS-IS</th>"
+               "<th style='background:%s'>" TR_DASH_FX25 "</th>"
+               "</tr></table></fieldset>",
+               wifi_connected ? "#0b0" : "#606060", igate_is_connected() ? "#0b0" : "#606060", (g_config.fx25_mode > 0) ? "#0b0" : "#606060");
 
     // -- STATISTICS -----------------------------------------------------
     // radio_rx/radio_tx/rf2inet/inet2rf/digi come from aprs_service's own
@@ -367,26 +378,26 @@ esp_err_t page_sidebar_info(httpd_req_t *req) {
     // total ahead of the Drop Breakdown table's sum. igate_stats_total_drop(&igs)
     // alone is the complete, correct total.
     aprs_service_stats_t svcStats = aprs_service_get_stats();
-    n += snprintf(buf + n, sizeof(buf) - n,
-                  "<fieldset><legend>" TR_DASH_STATISTICS "</legend><table>"
-                  "<tr><td>" TR_DASH_RADIO_RX "</td><td>%lu</td></tr>"
-                  "<tr><td>" TR_DASH_PACKET_TX "</td><td>%lu</td></tr>"
-                  "<tr><td>" TR_DASH_RF2INET "</td><td>%lu</td></tr>"
-                  "<tr><td>" TR_DASH_INET2RF "</td><td>%lu</td></tr>"
-                  "<tr><td>" TR_DASH_IGATE_RX "</td><td>%lu</td></tr>"
-                  "<tr><td>" TR_DASH_IGATE_TX "</td><td>%lu</td></tr>"
-                  "<tr><td>" TR_DASH_DIGI_STAT "</td><td>%lu</td></tr>"
-                  "<tr><td>" TR_DASH_DROP_ERR "</td><td>%lu/%lu</td></tr>"
-                  // Current RF TX ring backlog vs the "TX buffers" cap, so an
-                  // operator can see beacons queueing up (and, read together
-                  // with DROP above, being lost when the leg saturates) without
-                  // a serial cable - the visible counterpart to the drain-wait
-                  // that now staggers simultaneously-due beacons.
-                  "<tr><td>" TR_DASH_TX_QUEUE "</td><td>%lu/%lu</td></tr>"
-                  "</table></fieldset>",
-                  (unsigned long)svcStats.radio_rx, (unsigned long)svcStats.radio_tx, (unsigned long)svcStats.rf2inet, (unsigned long)svcStats.inet2rf,
-                  (unsigned long)igs.isRxCount, (unsigned long)igs.isTxCount, (unsigned long)svcStats.digi, (unsigned long)igate_stats_total_drop(&igs),
-                  (unsigned long)igate_stats_total_err(&igs), (unsigned long)svcStats.tx_queue_depth, (unsigned long)svcStats.tx_queue_limit);
+    str_append(buf, sizeof(buf), &n,
+               "<fieldset><legend>" TR_DASH_STATISTICS "</legend><table>"
+               "<tr><td>" TR_DASH_RADIO_RX "</td><td>%lu</td></tr>"
+               "<tr><td>" TR_DASH_PACKET_TX "</td><td>%lu</td></tr>"
+               "<tr><td>" TR_DASH_RF2INET "</td><td>%lu</td></tr>"
+               "<tr><td>" TR_DASH_INET2RF "</td><td>%lu</td></tr>"
+               "<tr><td>" TR_DASH_IGATE_RX "</td><td>%lu</td></tr>"
+               "<tr><td>" TR_DASH_IGATE_TX "</td><td>%lu</td></tr>"
+               "<tr><td>" TR_DASH_DIGI_STAT "</td><td>%lu</td></tr>"
+               "<tr><td>" TR_DASH_DROP_ERR "</td><td>%lu/%lu</td></tr>"
+               // Current RF TX ring backlog vs the "TX buffers" cap, so an
+               // operator can see beacons queueing up (and, read together
+               // with DROP above, being lost when the leg saturates) without
+               // a serial cable - the visible counterpart to the drain-wait
+               // that now staggers simultaneously-due beacons.
+               "<tr><td>" TR_DASH_TX_QUEUE "</td><td>%lu/%lu</td></tr>"
+               "</table></fieldset>",
+               (unsigned long)svcStats.radio_rx, (unsigned long)svcStats.radio_tx, (unsigned long)svcStats.rf2inet, (unsigned long)svcStats.inet2rf,
+               (unsigned long)igs.isRxCount, (unsigned long)igs.isTxCount, (unsigned long)svcStats.digi, (unsigned long)igate_stats_total_drop(&igs),
+               (unsigned long)igate_stats_total_err(&igs), (unsigned long)svcStats.tx_queue_depth, (unsigned long)svcStats.tx_queue_limit);
 
     // -- Drop breakdown -------------------------------------------------
     // Per-reason detail behind the aggregate DROP/ERR tile above: lets an
@@ -396,12 +407,21 @@ esp_err_t page_sidebar_info(httpd_req_t *req) {
     // and the RX/TX service level) reports through igate_note_drop() with
     // its own drop_reason_t, so every row here is an explicit, named reason
     // - there is no generic/"other" catch-all bucket.
-    n += snprintf(buf + n, sizeof(buf) - n, "<fieldset><legend>" TR_DASH_DROP_BREAKDOWN "</legend><table>");
+    str_append(buf, sizeof(buf), &n, "<fieldset><legend>" TR_DASH_DROP_BREAKDOWN "</legend><table>");
     for (int i = 0; i < DROP_REASON_COUNT; i++) {
-        n += snprintf(buf + n, sizeof(buf) - n, "<tr><td>%s</td><td>%lu</td></tr>", igate_drop_reason_name((drop_reason_t)i),
-                      (unsigned long)igs.dropByReason[i]);
+        str_append(buf, sizeof(buf), &n, "<tr><td>%s</td><td>%lu</td></tr>", igate_drop_reason_name((drop_reason_t)i), (unsigned long)igs.dropByReason[i]);
     }
-    n += snprintf(buf + n, sizeof(buf) - n, "</table></fieldset>");
+    str_append(buf, sizeof(buf), &n, "</table></fieldset>");
+
+    // Running out of room is a cosmetic, self-reporting condition: the panel
+    // comes back with its last rows missing and its tags unclosed, which is
+    // worth a log line but not worth failing the request over. The dashboard
+    // polls this route once a second, so the warning is rate-limited to one
+    // line per poll and appears only if a translation or an added statistics
+    // row has actually outgrown buf.
+    if (str_append_truncated(n, sizeof(buf))) {
+        ESP_LOGW(TAG, "sidebar info truncated at %u bytes - enlarge buf[] in page_sidebar_info()", (unsigned)sizeof(buf));
+    }
 
     httpd_resp_set_type(req, "text/html");
     httpd_resp_set_hdr(req, "Cache-Control", "no-store");

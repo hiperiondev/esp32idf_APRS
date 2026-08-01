@@ -45,6 +45,7 @@
 #include "lastheard.h"
 #include "message.h"
 #include "objects_items.h"
+#include "str_append.h"
 #include "telemetry.h"
 #include "time_sync.h"
 #include "trafficlog.h"
@@ -426,12 +427,17 @@ static void aprs_msg_callback(ax25_msg_t *msg) {
 
     // Feed the web dashboard's "LAST HEARD" table (see components/lastheard).
     {
+        // str_append() clamps the running offset itself, so the loop needs no
+        // per-iteration room check of its own to stay inside path[]: a frame
+        // carrying the AX.25 maximum of 8 repeaters fills the buffer and any
+        // remaining entries are simply left out of the display string. This is
+        // a LAST HEARD label, so losing the tail of a long path is cosmetic.
         char path[48] = "";
         size_t plen = 0;
-        for (int i = 0; i < msg->rpt_count && plen + 1 < sizeof(path); i++) {
-            plen += snprintf(&path[plen], sizeof(path) - plen, "%s%s", (i == 0) ? "" : ",", msg->rpt_list[i].call);
-            if (msg->rpt_list[i].ssid > 0 && plen + 1 < sizeof(path))
-                plen += snprintf(&path[plen], sizeof(path) - plen, "-%d", msg->rpt_list[i].ssid);
+        for (int i = 0; i < msg->rpt_count; i++) {
+            str_append(path, sizeof(path), &plen, "%s%s", (i == 0) ? "" : ",", msg->rpt_list[i].call);
+            if (msg->rpt_list[i].ssid > 0)
+                str_append(path, sizeof(path), &plen, "-%d", msg->rpt_list[i].ssid);
         }
 
         lastheard_add(callsign, path, true, symTable, symCode);

@@ -65,13 +65,13 @@ All require HTTP Basic auth except where noted.
    * - GET/POST
      - ``/radio``
      - audio AFSK modem (FX.25, modulation, PTT hold, loop test)
-   * - GET
+   * - POST
      - ``/radio/looptest``
      - run the loop test (JSON result)
    * - GET/POST
      - ``/wireless``
      - Wi-Fi mode, AP, 5 STA slots, TX power
-   * - GET
+   * - POST
      - ``/wifiscan``
      - AP scan results (JSON)
    * - GET/POST

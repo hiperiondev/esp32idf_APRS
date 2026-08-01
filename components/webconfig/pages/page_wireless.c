@@ -96,7 +96,9 @@ esp_err_t page_wireless_get(httpd_req_t *req) {
                                   "var btn=document.getElementById('wifiScanBtn');"
                                   "var status=document.getElementById('wifiScanStatus');"
                                   "btn.disabled=true;status.textContent=' " TR_WIFI_SCANNING "';"
-                                  "fetch('/wifiscan').then(function(r){return r.json();}).then(function(data){"
+                                  // POST, not GET: this route reconfigures the radio to scan, so
+                                  // it is registered POST-only and goes through the same-origin check.
+                                  "fetch('/wifiscan',{method:'POST'}).then(function(r){return r.json();}).then(function(data){"
                                   "btn.disabled=false;"
                                   "if(data.error){status.textContent=' '+data.error;return;}"
                                   "var nets=(data.networks||[]).slice().sort(function(a,b){return b.rssi-a.rssi;});"
@@ -182,11 +184,22 @@ esp_err_t page_wireless_post(httpd_req_t *req) {
 }
 
 // ---------------------------------------------------------------- WiFi scan
-// GET /wifiscan - triggers a blocking active scan for nearby access points and
+// POST /wifiscan - triggers a blocking active scan for nearby access points and
 // returns the results as JSON: {"networks":[{"ssid":"...","rssi":-55},...]}
 // Requires the radio to currently be in STA or AP+STA mode (a scan cannot run
 // while the radio is AP-only or powered off).
-esp_err_t page_wifi_scan_get(httpd_req_t *req) {
+//
+// POST rather than GET, even though it only reports back: the scan
+// reconfigures the radio, flipping an AP-only interface to AP+STA for the
+// duration and back again (see below), and blocks the httpd task while it
+// runs, which makes it a state-changing request. web_check_auth() runs its
+// same-origin check on those only, so a GET route here would be reachable
+// cross-origin from any page an authenticated admin had open, because the
+// browser attaches cached Basic credentials to such a request. POST also puts
+// the route out of reach of the other ways a browser fetches a URL on its own
+// (script/stylesheet loads, prefetch, link prerender, address-bar
+// navigation).
+esp_err_t page_wifi_scan_post(httpd_req_t *req) {
     if (!web_check_auth(req))
         return ESP_OK;
     httpd_resp_set_type(req, "application/json");

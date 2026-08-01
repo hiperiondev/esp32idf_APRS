@@ -34,6 +34,7 @@
 #include "app_config.h"
 #include "esp32idf_radioamateur_modem_config.h" // MODEM_PTT_GPIO: the fixed PTT pin, checked directly below
 #include "message.h"
+#include "str_append.h"
 
 static const char *TAG = "message";
 
@@ -326,14 +327,7 @@ static void buildPathSuffix(char *out, size_t outMax) {
         if (!pathPreset[bit][0])
             continue;
 
-        int n = snprintf(out + used, outMax - used, ",%s", pathPreset[bit]);
-        if (n < 0)
-            break;
-        if ((size_t)n >= outMax - used) {
-            used = outMax - 1;
-            break;
-        }
-        used += (size_t)n;
+        str_append(out, outMax, &used, ",%s", pathPreset[bit]);
     }
 }
 
@@ -355,19 +349,31 @@ static void txPacket(const char *myCall, const char *info) {
         ESP_LOGW(TAG, "No TX handler registered, dropping: %s", info);
         return;
     }
+    // str_append() reports whether the whole frame fit and leaves len at the
+    // number of characters actually written. Both matter here: len is handed
+    // straight to the TX handler, which memcpy()s and send()s exactly that
+    // many bytes from packet[], so it has to be a count of what is really in
+    // the buffer. A frame that does not fit is dropped with a warning rather
+    // than sent short - the same discipline the beacon builders follow -
+    // because a truncated APRS message loses its trailing "{id" sequence
+    // suffix and would never be acked.
     if (g_config.msg_rf) {
         char path[80];
         buildPathSuffix(path, sizeof(path));
         char packet[400];
-        int len = snprintf(packet, sizeof(packet), "%s>APE32L%s:%s", myCall, path, info);
-        if (len > 0)
-            s_txHandler(packet, (size_t)len, MSG_CHANNEL_RF);
+        size_t len = 0;
+        if (str_append(packet, sizeof(packet), &len, "%s>APE32L%s:%s", myCall, path, info))
+            s_txHandler(packet, len, MSG_CHANNEL_RF);
+        else
+            ESP_LOGW(TAG, "RF message too long for a %u byte frame, dropped: %s", (unsigned)sizeof(packet), info);
     }
     if (g_config.msg_inet) {
         char packet[400];
-        int len = snprintf(packet, sizeof(packet), "%s>APE32L,TCPIP*:%s", myCall, info);
-        if (len > 0)
-            s_txHandler(packet, (size_t)len, MSG_CHANNEL_INET);
+        size_t len = 0;
+        if (str_append(packet, sizeof(packet), &len, "%s>APE32L,TCPIP*:%s", myCall, info))
+            s_txHandler(packet, len, MSG_CHANNEL_INET);
+        else
+            ESP_LOGW(TAG, "INET message too long for a %u byte frame, dropped: %s", (unsigned)sizeof(packet), info);
     }
 }
 

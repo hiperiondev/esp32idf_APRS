@@ -34,6 +34,7 @@
 #include "crc_ccit.h"
 #include "igate.h"
 #include "net_state.h"
+#include "str_append.h"
 #include "trafficlog.h"
 
 static const char *TAG = "igate";
@@ -414,23 +415,29 @@ int igateProcess(ax25_msg_t *packet) {
         return 0;
     }
 
+    // Every append below is clamped by str_append(), so headerLen can never
+    // walk past the end of header[] however long the decoded repeater path is.
+    // That matters because the overflow verdict is only usable once the whole
+    // header has been assembled (the q-construct suffix is appended last), so
+    // the check has to be able to run safely *after* the writes rather than
+    // gate each one.
     char header[300];
-    int headerLen;
+    size_t headerLen = 0;
 
     if (packet->src.ssid > 0)
-        headerLen = snprintf(header, sizeof(header), "%s-%d>%s", packet->src.call, packet->src.ssid, packet->dst.call);
+        str_append(header, sizeof(header), &headerLen, "%s-%d>%s", packet->src.call, packet->src.ssid, packet->dst.call);
     else
-        headerLen = snprintf(header, sizeof(header), "%s>%s", packet->src.call, packet->dst.call);
+        str_append(header, sizeof(header), &headerLen, "%s>%s", packet->src.call, packet->dst.call);
 
     if (packet->dst.ssid > 0)
-        headerLen += snprintf(&header[headerLen], sizeof(header) - headerLen, "-%d", packet->dst.ssid);
+        str_append(header, sizeof(header), &headerLen, "-%d", packet->dst.ssid);
 
     for (int i = 0; i < packet->rpt_count; i++) {
-        headerLen += snprintf(&header[headerLen], sizeof(header) - headerLen, ",%s", packet->rpt_list[i].call);
+        str_append(header, sizeof(header), &headerLen, ",%s", packet->rpt_list[i].call);
         if (packet->rpt_list[i].ssid > 0)
-            headerLen += snprintf(&header[headerLen], sizeof(header) - headerLen, "-%d", packet->rpt_list[i].ssid);
+            str_append(header, sizeof(header), &headerLen, "-%d", packet->rpt_list[i].ssid);
         if (packet->rpt_flags & (1 << i))
-            headerLen += snprintf(&header[headerLen], sizeof(header) - headerLen, "*");
+            str_append(header, sizeof(header), &headerLen, "*");
     }
 
     // Snapshot the own-station identity used to build the qAR/qAO header. This
@@ -447,21 +454,23 @@ int igateProcess(ax25_msg_t *packet) {
 
     if (strlen(cfg_object) >= 3) {
         if (cfg_ssid > 0)
-            headerLen += snprintf(&header[headerLen], sizeof(header) - headerLen, ",%s-%d*,qAO,%s", cfg_mycall, cfg_ssid, cfg_object);
+            str_append(header, sizeof(header), &headerLen, ",%s-%d*,qAO,%s", cfg_mycall, cfg_ssid, cfg_object);
         else
-            headerLen += snprintf(&header[headerLen], sizeof(header) - headerLen, ",%s*,qAO,%s", cfg_mycall, cfg_object);
+            str_append(header, sizeof(header), &headerLen, ",%s*,qAO,%s", cfg_mycall, cfg_object);
     } else {
         if (cfg_ssid > 0)
-            headerLen += snprintf(&header[headerLen], sizeof(header) - headerLen, ",qAR,%s-%d", cfg_mycall, cfg_ssid);
+            str_append(header, sizeof(header), &headerLen, ",qAR,%s-%d", cfg_mycall, cfg_ssid);
         else
-            headerLen += snprintf(&header[headerLen], sizeof(header) - headerLen, ",qAR,%s", cfg_mycall);
+            str_append(header, sizeof(header), &headerLen, ",qAR,%s", cfg_mycall);
     }
 
-    headerLen += snprintf(&header[headerLen], sizeof(header) - headerLen, ":");
-    if (headerLen < 0 || (size_t)headerLen >= sizeof(header)) {
-        // Header buffer overflow (an excessively long repeater path) - a rare
-        // formatting edge case, now tracked under its own explicit reason
-        // rather than a generic/opaque "other" bucket.
+    if (!str_append(header, sizeof(header), &headerLen, ":")) {
+        // Header buffer exhausted (an excessively long repeater path) - a rare
+        // formatting edge case, tracked under its own explicit reason rather
+        // than a generic/opaque "other" bucket. A header that lost even one
+        // character is unusable: the q-construct and the ":" separator are the
+        // last things written, so a truncated one would be gated to APRS-IS
+        // with a mangled path. Drop it instead.
         s_stats.dropByReason[DROP_HEADER_OVERFLOW]++;
         return 0;
     }
@@ -544,16 +553,34 @@ static bool connectAprsIs(void) {
     app_config_unlock();
     (void)cfg_ssid;
 
-    // The filter string is free-form user input (web "IGate" page, aprs_filter
-    // field) that lands verbatim in the raw "user ... filter <this>\r\n" login
-    // line below. Without sanitizing it, an embedded CR/LF (reachable via the
-    // form's percent-encoding, e.g. "%0D%0A") would inject additional
-    // attacker-controlled lines into the APRS-IS session right after login -
-    // a classic protocol/command-injection gap. Strip any CR/LF defensively;
-    // a legitimate APRS-IS server-side filter spec never needs one.
-    for (char *p = cfg_filter; *p; p++) {
-        if (*p == '\r' || *p == '\n')
-            *p = ' ';
+    // Each memcpy above copies the full field width, so termination depends on
+    // what the config loader stored. Force it here: everything below - the
+    // sanitizing loop, the "%s" conversions in the login line, getaddrinfo() -
+    // treats these as C strings, and a field filled edge to edge would send
+    // all of them reading past the end of the local buffer.
+    cfg_host[sizeof(cfg_host) - 1] = 0;
+    cfg_mycall[sizeof(cfg_mycall) - 1] = 0;
+    cfg_passcode[sizeof(cfg_passcode) - 1] = 0;
+    cfg_filter[sizeof(cfg_filter) - 1] = 0;
+
+    // APRS-IS is a line-oriented protocol: the login below is a single raw
+    // "user <call> pass <code> vers ... filter <spec>\r\n" line, and every one
+    // of those three fields is free-form user input (web "IGate" page) that
+    // lands in it verbatim. An embedded CR/LF in any of them - reachable via
+    // the form's percent-encoding, e.g. "%0D%0A", or via a config.json written
+    // outside the web UI - would inject additional attacker-controlled lines
+    // into the session right after login, a classic protocol/command-injection
+    // gap. Sanitizing all three here, at the single point where the login line
+    // is built, is cheaper and more durable than reasoning about which field
+    // validators each entry path happens to pass through: none of a callsign,
+    // a numeric passcode or a server-side filter spec can legitimately contain
+    // a line break, so replacing one with a space costs nothing.
+    char *const login_fields[] = { cfg_mycall, cfg_passcode, cfg_filter };
+    for (size_t f = 0; f < sizeof(login_fields) / sizeof(login_fields[0]); f++) {
+        for (char *p = login_fields[f]; *p; p++) {
+            if (*p == '\r' || *p == '\n')
+                *p = ' ';
+        }
     }
 
     // The web UI (page_igate.c) validates this string's grammar at save

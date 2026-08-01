@@ -186,10 +186,20 @@ static void web_auth_note_success(uint32_t ip) {
 // neither header, or one whose host doesn't match, cannot be trusted to be
 // same-origin and is rejected.
 //
-// This only ever needs to run for state-changing requests: GETs are
-// expected to have no side effects, so cross-site GETs (e.g. an <img src>)
-// are out of scope for this check (page_storage.c already discusses why
-// /delete etc. are POST-only forms for exactly this reason).
+// This only ever needs to run for state-changing requests, and that rests
+// on one invariant the route table has to keep: no registered GET route may
+// have a side effect. It cannot be enforced by extending the check to GETs
+// instead - a browser sends neither Origin nor Referer when a URL is typed
+// into the address bar or opened from a bookmark, so a same-origin check on
+// GET would fail closed on ordinary navigation and lock the admin UI out
+// entirely. The obligation therefore sits on whoever adds a route: anything
+// that changes state, keys the radio, reconfigures an interface or writes
+// flash is registered HTTP_POST, which both brings it under this check and
+// puts it out of reach of the ways a browser fetches a URL by itself
+// (<img src>, script/stylesheet loads, prefetch, link prerender). See
+// page_radio.c's /radio/looptest and page_wireless.c's /wifiscan for two
+// endpoints that read like queries but are POST for exactly this reason,
+// and page_storage.c for why /delete etc. are POST-only forms.
 
 // Compares the host[:port] authority component of a "<scheme>://host[:port]/..."
 // header value (Origin or Referer) against this request's own Host header

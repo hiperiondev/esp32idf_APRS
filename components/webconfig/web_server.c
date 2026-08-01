@@ -85,7 +85,7 @@ void web_server_start(void) {
 
     reg(server, "/wireless", HTTP_GET, page_wireless_get);
     reg(server, "/wireless", HTTP_POST, page_wireless_post);
-    reg(server, "/wifiscan", HTTP_GET, page_wifi_scan_get);
+    reg(server, "/wifiscan", HTTP_POST, page_wifi_scan_post);
     reg(server, "/system", HTTP_GET, page_system_get);
     reg(server, "/system", HTTP_POST, page_system_post);
     reg(server, "/default", HTTP_POST, page_default_reset);
@@ -107,7 +107,7 @@ void web_server_start(void) {
 
     reg(server, "/radio", HTTP_GET, page_radio_get);
     reg(server, "/radio", HTTP_POST, page_radio_post);
-    reg(server, "/radio/looptest", HTTP_GET, page_radio_looptest_get);
+    reg(server, "/radio/looptest", HTTP_POST, page_radio_looptest_post);
     reg(server, "/msg", HTTP_GET, page_msg_get);
     reg(server, "/msg", HTTP_POST, page_msg_post);
     reg(server, "/msgchat", HTTP_GET, page_msgchat_get);

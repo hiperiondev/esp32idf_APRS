@@ -66,13 +66,13 @@ Basic salvo dove indicato.
    * - GET/POST
      - ``/radio``
      - modem AFSK audio (FX.25, modulazione, ritenzione PTT, loop test)
-   * - GET
+   * - POST
      - ``/radio/looptest``
      - esegui il loop test (risultato JSON)
    * - GET/POST
      - ``/wireless``
      - modalità Wi-Fi, AP, 5 slot STA, potenza TX
-   * - GET
+   * - POST
      - ``/wifiscan``
      - risultati della scansione AP (JSON)
    * - GET/POST
