@@ -1,23 +1,21 @@
-/**
- * @file page_radio.c
- *
- * @author Emiliano Augusto Gonzalez ( lu3vea @ gmail . com)
- * @date 2026
- * @copyright GNU General Public License v3
- * @see https://github.com/hiperiondev/esp32idf_APRS
- *
- * @note
- * This is based on other projects:
- *     VP-Digi: https://github.com/sq8vps/vp-digi
- *     ESP32APRS: https://github.com/nakhonthai/ESP32APRS_Audio
- *     LibAPRS: https://github.com/markqvist/LibAPRS
- *
- *     please contact their authors for more information.
- *
- * @brief Web admin "Radiomodem" page: renders and saves the modem configuration,
- * re-applying it live without a reboot, and runs the DAC-to-ADC loopback self
- * test.
- */
+// @file page_radio.c
+//
+// @author Emiliano Augusto Gonzalez ( lu3vea @ gmail . com)
+// @date 2026
+// @copyright GNU General Public License v3
+// @see https://github.com/hiperiondev/esp32idf_APRS
+//
+// @note
+// This is based on other projects:
+//     VP-Digi: https://github.com/sq8vps/vp-digi
+//     ESP32APRS: https://github.com/nakhonthai/ESP32APRS_Audio
+//     LibAPRS: https://github.com/markqvist/LibAPRS
+//
+//     please contact their authors for more information.
+//
+// @brief Web admin "Radiomodem" page: renders and saves the modem configuration,
+// re-applying it live without a reboot, and runs the DAC-to-ADC loopback self
+// test.
 
 #include <stdint.h>
 #include <stdio.h>
@@ -189,9 +187,8 @@ esp_err_t page_radio_looptest_post(httpd_req_t *req) {
 
     // 900, not 512: aprs_loop_test_run()'s failure messages are long - they
     // quote raw ADC min/max, RMS, AGC gain, the DCD bitmap and per-demodulator
-    // levels, plus a paragraph of interpretation. (The old raw-bytes hex dump
-    // of a CRC-failed frame is gone with the previous component's
-    // Ax25GetFailedFrame(); the replacement exposes no such buffer.)
+    // levels, plus a paragraph of interpretation. They are plain prose: the
+    // modem exposes no failed-frame buffer, so nothing here dumps raw bytes.
     char result[900];
     bool ok = aprs_loop_test_run(result, sizeof(result));
 
@@ -332,14 +329,11 @@ esp_err_t page_radio_post(httpd_req_t *req) {
 
     app_config_save();
 
-    // Push the settings that the new component *can* take at runtime into the
-    // running modem, so Save (and the loop test's auto-save, which POSTs this
-    // form before running) takes effect without a reboot: modulation, preamble,
-    // time slot, CSMA persistence, flat-audio flag, FX.25 mode, and the PTT
-    // minimum unkey time all go through modem_set_modem(). This is the
-    // successor to the old afskSetSquelchLevel()/afskSetVolume()/
-    // afskSetAgcMaxGain() block - it covers strictly more of the page than
-    // that did.
+    // Push every setting the modem accepts at runtime into the running modem,
+    // so Save (and the loop test's auto-save, which POSTs this form before
+    // running) takes effect without a reboot: modulation, preamble, time slot,
+    // CSMA persistence, flat-audio flag, FX.25 mode and the PTT minimum unkey
+    // time all go through modem_set_modem().
     //
     // rfTxBuffers needs no propagation into the modem component at all:
     // aprs_service_send_tnc2() (above modem.c, in this same binary) reads

@@ -1,31 +1,29 @@
-/**
- * @file page_station.c
- *
- * @author Emiliano Augusto Gonzalez ( lu3vea @ gmail . com)
- * @date 2026
- * @copyright GNU General Public License v3
- * @see https://github.com/hiperiondev/esp32idf_APRS
- *
- * @note
- * This is based on other projects:
- *     VP-Digi: https://github.com/sq8vps/vp-digi
- *     ESP32APRS: https://github.com/nakhonthai/ESP32APRS_Audio
- *     LibAPRS: https://github.com/markqvist/LibAPRS
- *
- *     please contact their authors for more information.
- *
- * @brief Web admin "Station" page: renders and saves the single shared "My
- * Station" identity (callsign, latitude, longitude) and its PHG
- * (Power-Height-Gain-Directivity) radio-coverage parameters in g_config.
- * This is the data every other page's "Use My Station Data" checkbox pulls
- * from instead of having the same callsign/position retyped on every
- * IGate/Digipeater/Tracker/Weather page.
- *
- * The PHG height selector is stored internally in feet (the unit the APRS
- * PHG code table is itself defined in - power^2 Watts, 10*2^n feet, dB gain,
- * 45 degrees-per-step directivity) but is displayed/edited on this page in
- * meters, the SI unit, converting to/from feet only for the underlying code.
- */
+// @file page_station.c
+//
+// @author Emiliano Augusto Gonzalez ( lu3vea @ gmail . com)
+// @date 2026
+// @copyright GNU General Public License v3
+// @see https://github.com/hiperiondev/esp32idf_APRS
+//
+// @note
+// This is based on other projects:
+//     VP-Digi: https://github.com/sq8vps/vp-digi
+//     ESP32APRS: https://github.com/nakhonthai/ESP32APRS_Audio
+//     LibAPRS: https://github.com/markqvist/LibAPRS
+//
+//     please contact their authors for more information.
+//
+// @brief Web admin "Station" page: renders and saves the single shared "My
+// Station" identity (callsign, latitude, longitude) and its PHG
+// (Power-Height-Gain-Directivity) radio-coverage parameters in g_config.
+// This is the data every other page's "Use My Station Data" checkbox pulls
+// from instead of having the same callsign/position retyped on every
+// IGate/Digipeater/Tracker/Weather page.
+//
+// The PHG height selector is stored internally in feet (the unit the APRS
+// PHG code table is itself defined in - power^2 Watts, 10*2^n feet, dB gain,
+// 45 degrees-per-step directivity) but is displayed/edited on this page in
+// meters, the SI unit, converting to/from feet only for the underlying code.
 
 #include <math.h>
 #include <stdint.h>
@@ -39,24 +37,22 @@
 #include "translations.h"
 #include "web_common.h"
 
-/**
- * @brief Re-mirror the just-saved "My Station" identity/position/PHG into
- * every other page's fields whose "Use My Station Data" (or "Use My Station
- * Data" PHG variant) is currently enabled.
- *
- * Every consumer page (IGate/Digipeater/Tracker/WX/Message/Telemetry/Objects)
- * only takes its snapshot of g_config.my_* at the moment *that* page itself is
- * saved, since the fields are disabled client-side and never POST while
- * "Use My Station Data" is checked. That means saving the Station page alone
- * left every other page's stored snapshot stale until the user happened to
- * re-save that other page too. This function is called right after the
- * Station page persists g_config.my_*, so all dependent snapshots are
- * refreshed in the same action and nothing goes stale.
- *
- * @note Must be called with app_config_lock() already held (all g_config
- * fields touched here belong to that same lock), and BEFORE app_config_save()
- * so the refreshed values are part of the same config.json write.
- */
+// @brief Re-mirror the just-saved "My Station" identity/position/PHG into
+// every other page's fields whose "Use My Station Data" (or "Use My Station
+// Data" PHG variant) is currently enabled.
+//
+// Every consumer page (IGate/Digipeater/Tracker/WX/Message/Telemetry/Objects)
+// only takes its snapshot of g_config.my_* at the moment *that* page itself is
+// saved, since the fields are disabled client-side and never POST while
+// "Use My Station Data" is checked. That means saving the Station page alone
+// left every other page's stored snapshot stale until the user happened to
+// re-save that other page too. This function is called right after the
+// Station page persists g_config.my_*, so all dependent snapshots are
+// refreshed in the same action and nothing goes stale.
+//
+// @note Must be called with app_config_lock() already held (all g_config
+// fields touched here belong to that same lock), and BEFORE app_config_save()
+// so the refreshed values are part of the same config.json write.
 static void station_resync_dependents(void) {
     // -- IGate ---------------------------------------------------------------
     if (g_config.igate_use_station) {

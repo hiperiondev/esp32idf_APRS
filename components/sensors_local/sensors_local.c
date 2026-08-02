@@ -1,22 +1,20 @@
-/**
- * @file sensors_local.c
- *
- * @author Emiliano Augusto Gonzalez ( lu3vea @ gmail . com)
- * @date 2026
- * @copyright GNU General Public License v3
- * @see https://github.com/hiperiondev/esp32idf_APRS
- *
- * @note
- * This is based on other projects:
- *     VP-Digi: https://github.com/sq8vps/vp-digi
- *     ESP32APRS: https://github.com/nakhonthai/ESP32APRS_Audio
- *     LibAPRS: https://github.com/markqvist/LibAPRS
- *
- *     please contact their authors for more information.
- *
- * @brief Run-time registry of dynamically loaded local sensor drivers and the
- *        common ::sensors_local_save aggregation entry. See sensors_local.h.
- */
+// @file sensors_local.c
+//
+// @author Emiliano Augusto Gonzalez ( lu3vea @ gmail . com)
+// @date 2026
+// @copyright GNU General Public License v3
+// @see https://github.com/hiperiondev/esp32idf_APRS
+//
+// @note
+// This is based on other projects:
+//     VP-Digi: https://github.com/sq8vps/vp-digi
+//     ESP32APRS: https://github.com/nakhonthai/ESP32APRS_Audio
+//     LibAPRS: https://github.com/markqvist/LibAPRS
+//
+//     please contact their authors for more information.
+//
+// @brief Run-time registry of dynamically loaded local sensor drivers and the
+//        common ::sensors_local_save aggregation entry. See sensors_local.h.
 
 #include "sensors_local.h"
 
@@ -29,34 +27,34 @@
 
 static const char *TAG = "sensors_local";
 
-/* --------------------------------------------------------------------------
- * The "dynamic functions pointer" table: a heap array of driver pointers that
- * grows on demand. Each slot points at a caller-owned sensor_local_driver_t
- * (a bundle of function pointers), never a copy.
- *
- * REGISTRATION LIFETIME CONTRACT: drivers register (via the AUTOREGISTER
- * constructors) during the single-threaded boot/init phase and are not
- * unregistered at runtime in this firmware. Callers therefore rely on a
- * registered driver pointer staying valid and stable for the program's
- * lifetime: sensors_local_get()/sensors_local_find() may hand back a bare
- * pointer, and sensors_local_init_all()/sensors_local_save() snapshot pointers
- * under the lock and then use them after releasing it. If runtime unregistration is ever added,
- * those two assumptions must be revisited (e.g. refcount the driver objects),
- * because sensors_local_unregister() frees the slot and may deinit the driver.
- * -------------------------------------------------------------------------- */
-static sensor_local_driver_t **s_registry = NULL; /**< Dynamic array of driver pointers. */
-static size_t s_count = 0;                        /**< Number of live entries. */
-static size_t s_capacity = 0;                     /**< Allocated slots in s_registry. */
+// --------------------------------------------------------------------------
+// The "dynamic functions pointer" table: a heap array of driver pointers that
+// grows on demand. Each slot points at a caller-owned sensor_local_driver_t
+// (a bundle of function pointers), never a copy.
+//
+// REGISTRATION LIFETIME CONTRACT: drivers register (via the AUTOREGISTER
+// constructors) during the single-threaded boot/init phase and are not
+// unregistered at runtime in this firmware. Callers therefore rely on a
+// registered driver pointer staying valid and stable for the program's
+// lifetime: sensors_local_get()/sensors_local_find() may hand back a bare
+// pointer, and sensors_local_init_all()/sensors_local_save() snapshot pointers
+// under the lock and then use them after releasing it. If runtime unregistration is ever added,
+// those two assumptions must be revisited (e.g. refcount the driver objects),
+// because sensors_local_unregister() frees the slot and may deinit the driver.
+// --------------------------------------------------------------------------
+static sensor_local_driver_t **s_registry = NULL; // < Dynamic array of driver pointers.
+static size_t s_count = 0;                        // < Number of live entries.
+static size_t s_capacity = 0;                     // < Allocated slots in s_registry.
 
-/* Upper bound on drivers serviced in one sensors_local_init_all() or
- * sensors_local_save() pass. Sized well above any realistic local-sensor
- * count; the snapshot lets the (blocking) bus I/O run without the registry
- * lock held. */
+// Upper bound on drivers serviced in one sensors_local_init_all() or
+// sensors_local_save() pass. Sized well above any realistic local-sensor
+// count; the snapshot lets the (blocking) bus I/O run without the registry
+// lock held.
 #define SENSORS_LOCAL_MAX_SNAPSHOT 32
 
-/* Guards the registry. Created in sensors_local_init(); NULL means "not yet
- * created", which happens during the C-constructor phase (single threaded,
- * scheduler not running) where locking is neither possible nor needed. */
+// Guards the registry. Created in sensors_local_init(); NULL means "not yet
+// created", which happens during the C-constructor phase (single threaded,
+// scheduler not running) where locking is neither possible nor needed.
 static SemaphoreHandle_t s_lock = NULL;
 
 static inline void registry_lock(void) {
@@ -69,8 +67,8 @@ static inline void registry_unlock(void) {
         xSemaphoreGive(s_lock);
 }
 
-/* Find index of a driver by name. Caller must hold the lock. Returns SIZE_MAX
- * when not present. */
+// Find index of a driver by name. Caller must hold the lock. Returns SIZE_MAX
+// when not present.
 static size_t registry_index_of(const char *name) {
     for (size_t i = 0; i < s_count; i++) {
         if (s_registry[i] != NULL && s_registry[i]->name != NULL && strcmp(s_registry[i]->name, name) == 0)
@@ -79,10 +77,10 @@ static size_t registry_index_of(const char *name) {
     return (size_t)-1;
 }
 
-/* Lazily run a driver's init() exactly once. Must be called either with the
- * registry lock held, or on a stable snapshot pointer with no concurrent
- * (un)registration (see the registration-lifetime contract above); it mutates
- * only the driver's own initialized/failed flags, not the registry array. */
+// Lazily run a driver's init() exactly once. Must be called either with the
+// registry lock held, or on a stable snapshot pointer with no concurrent
+// (un)registration (see the registration-lifetime contract above); it mutates
+// only the driver's own initialized/failed flags, not the registry array.
 static esp_err_t ensure_initialized(sensor_local_driver_t *d) {
     if (d->failed)
         return ESP_FAIL;
@@ -119,11 +117,11 @@ esp_err_t sensors_local_register(sensor_local_driver_t *driver) {
         return ESP_ERR_INVALID_ARG;
     }
 
-    /* Every driver must declare what kind of sensor it is (Weather,
-     * Telemetry, or any future ::sensor_local_data_kind_t bit) so that
-     * consumers of the registry - e.g. the Weather "Sensor Mapping" channel
-     * picker - can filter it by type instead of listing every registered
-     * sensor regardless of what it actually produces. */
+    // Every driver must declare what kind of sensor it is (Weather,
+    // Telemetry, or any future ::sensor_local_data_kind_t bit) so that
+    // consumers of the registry - e.g. the Weather "Sensor Mapping" channel
+    // picker - can filter it by type instead of listing every registered
+    // sensor regardless of what it actually produces.
     if (driver->capabilities == SENSOR_LOCAL_DATA_NONE) {
         ESP_LOGE(TAG,
                  "rejected driver '%s': capabilities not set (must declare SENSOR_LOCAL_DATA_WEATHER and/or "
@@ -173,7 +171,7 @@ esp_err_t sensors_local_unregister(const char *name) {
     }
 
     sensor_local_driver_t *d = s_registry[idx];
-    /* Compact the array so positions stay contiguous. */
+    // Compact the array so positions stay contiguous.
     memmove(&s_registry[idx], &s_registry[idx + 1], (s_count - idx - 1) * sizeof(*s_registry));
     s_count--;
     registry_unlock();
@@ -343,9 +341,9 @@ esp_err_t sensors_local_save_one(size_t index, weather_telemetry_data_t *data, s
     if (data == NULL || kind == SENSOR_LOCAL_DATA_NONE)
         return ESP_ERR_INVALID_ARG;
 
-    /* Snapshot the single driver pointer under the lock (see the locking note
-     * on sensors_local_save() above), then do the (possibly blocking) init and
-     * read outside it. */
+    // Snapshot the single driver pointer under the lock (see the locking note
+    // on sensors_local_save() above), then do the (possibly blocking) init and
+    // read outside it.
     registry_lock();
     sensor_local_driver_t *d = (index < s_count) ? s_registry[index] : NULL;
     registry_unlock();
@@ -359,7 +357,7 @@ esp_err_t sensors_local_save_one(size_t index, weather_telemetry_data_t *data, s
 
     sensor_local_data_kind_t ask = (sensor_local_data_kind_t)(d->capabilities & (uint32_t)kind);
     if (ask == SENSOR_LOCAL_DATA_NONE)
-        return ESP_ERR_INVALID_ARG; /* driver doesn't support any of the requested kinds */
+        return ESP_ERR_INVALID_ARG; // driver doesn't support any of the requested kinds
 
     return d->save(d, data, ask);
 }

@@ -99,7 +99,7 @@ typedef struct {
  * @brief The whole set of bulletins, as loaded from / saved to LittleFS.
  */
 typedef struct {
-    bulletin_t item[BULLETIN_COUNT];
+    bulletin_t item[BULLETIN_COUNT]; /**< Fixed-size slot array; a slot is inactive when its @c enable flag is clear, so indices stay stable across saves. */
 } bulletins_t;
 
 /**

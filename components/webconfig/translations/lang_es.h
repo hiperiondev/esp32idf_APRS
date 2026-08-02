@@ -515,7 +515,7 @@
 /** @} */
 
 /**
- * @name Configurador de telemetría (página nueva)
+ * @name page_tlm.c: telemetry configurator
  * @{
  */
 #define TR_TLM_ENABLE_TELEMETRY   "Habilitar telemetría"
@@ -618,7 +618,7 @@
 /** @} */
 
 /**
- * @name Adiciones a la página IGATE (símbolo, ruta, timestamp, PHG, filtros)
+ * @name IGATE page additions (station symbol, path preset, timestamp, PHG, filters)
  * @{
  */
 #define TR_F_STATION_SYMBOL    "Símbolo de Estación"
@@ -704,15 +704,15 @@
 
 #define TR_F_SATGATE      "Lista de Satélites Digipetidores"
 #define TR_F_SATGATE_CALL "Indicativo de Satélite"
-#define TR_NOTE_SATGATE                                                                                                                                       \
-    "Indicativos de satélites/ISS digipetidores (p. ej. ISS, PSAT). Un paquete enrutado por uno de estos solo se retransmite a APRS-IS si la entrada de "     \
+#define TR_NOTE_SATGATE                                                                                                                                        \
+    "Indicativos de satélites/ISS digipetidores (p. ej. ISS, PSAT). Un paquete enrutado por uno de estos solo se retransmite a APRS-IS si la entrada de "      \
     "trayectoria del digipetidor está realmente marcada como usada. Hasta 8 entradas; deje una entrada vacía para desactivarla."
 
 #define TR_F_DUP_CACHE            "Supresión de Duplicados"
 #define TR_F_DUP_CACHE_SIZE       "Tamaño de Caché (entradas)"
 #define TR_F_DUP_CACHE_TIMEOUT_MS "Ventana de Supresión (ms)"
-#define TR_NOTE_DUP_CACHE                                                                                                                                     \
-    "Compartido por el IGate y el Digipetidor para suprimir copias repetidas del mismo paquete. Un digipetidor ocupado en una frecuencia congestionada "     \
+#define TR_NOTE_DUP_CACHE                                                                                                                                      \
+    "Compartido por el IGate y el Digipetidor para suprimir copias repetidas del mismo paquete. Un digipetidor ocupado en una frecuencia congestionada "       \
     "puede necesitar una caché más grande; un IGate rural con poco tráfico puede preferir una ventana más corta."
 
 #define TR_SYM_ICON            "Icono"

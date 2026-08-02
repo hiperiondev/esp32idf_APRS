@@ -1,23 +1,21 @@
-/**
- * @file fx25.c
- *
- * @author Emiliano Augusto Gonzalez ( lu3vea @ gmail . com)
- * @date 2026
- * @copyright GNU General Public License v3
- * @see https://github.com/hiperiondev/esp32idf_APRS
- *
- * @note
- * This is based on other projects:
- *     VP-Digi: https://github.com/sq8vps/vp-digi
- *     ESP32APRS: https://github.com/nakhonthai/ESP32APRS_Audio
- *     LibAPRS: https://github.com/markqvist/LibAPRS
- *
- *     please contact their authors for more information.
- *
- * @brief FX.25 forward-error-correction framing implementation: correlation tag
- * matching, coding mode selection, and Reed-Solomon encoding/decoding of AX.25
- * frames.
- */
+// @file fx25.c
+//
+// @author Emiliano Augusto Gonzalez ( lu3vea @ gmail . com)
+// @date 2026
+// @copyright GNU General Public License v3
+// @see https://github.com/hiperiondev/esp32idf_APRS
+//
+// @note
+// This is based on other projects:
+//     VP-Digi: https://github.com/sq8vps/vp-digi
+//     ESP32APRS: https://github.com/nakhonthai/ESP32APRS_Audio
+//     LibAPRS: https://github.com/markqvist/LibAPRS
+//
+//     please contact their authors for more information.
+//
+// @brief FX.25 forward-error-correction framing implementation: correlation tag
+// matching, coding mode selection, and Reed-Solomon encoding/decoding of AX.25
+// frames.
 
 #ifdef ENABLE_FX25
 
@@ -28,7 +26,7 @@
 
 #define FX25_RS_FCR 1
 #define FX25_PREGENERATE_POLYS
-#define FX25_MAX_DISTANCE 10 /* maximum Hamming distance when comparing tags */
+#define FX25_MAX_DISTANCE 10 // maximum Hamming distance when comparing tags
 
 const struct Fx25Mode Fx25ModeList[11] = {
     { .tag = 0xB74DB7DF8A532F3E, .K = 239, .T = 16 }, { .tag = 0x26FF60A600CC8FDE, .K = 128, .T = 16 }, { .tag = 0xC7DC0508F3D9B09E, .K = 64, .T = 16 },
@@ -46,7 +44,7 @@ const struct Fx25Mode *Fx25GetModeForTag(uint64_t tag) {
 }
 
 const struct Fx25Mode *Fx25GetModeForSize(uint16_t size) {
-    /* "UZ7HO Soundmodem standard" for choosing the FX.25 mode */
+    // "UZ7HO Soundmodem standard" for choosing the FX.25 mode
     if (size <= 32)
         return &Fx25ModeList[3];
     else if (size <= 64)
@@ -60,7 +58,7 @@ const struct Fx25Mode *Fx25GetModeForSize(uint16_t size) {
     else if (size <= 239)
         return &Fx25ModeList[0];
     else
-        return NULL; /* frame too big, do not use FX.25 */
+        return NULL; // frame too big, do not use FX.25
 }
 
 #ifdef FX25_PREGENERATE_POLYS
@@ -110,4 +108,4 @@ void Fx25Init(void) {
 #endif
 }
 
-#endif /* ENABLE_FX25 */
+#endif // ENABLE_FX25

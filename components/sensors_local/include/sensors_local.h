@@ -78,6 +78,11 @@ typedef enum {
 
 /** @brief Forward declaration so the callback typedefs below can reference the driver type. */
 struct sensor_local_driver;
+
+/**
+ * @brief Convenience alias for ::sensor_local_driver, the descriptor a sensor
+ *        driver registers with and the type every callback below receives.
+ */
 typedef struct sensor_local_driver sensor_local_driver_t;
 
 /**

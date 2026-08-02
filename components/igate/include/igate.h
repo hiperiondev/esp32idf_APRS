@@ -50,7 +50,7 @@
 typedef enum {
     DUP_SCOPE_IGATE = 0, /**< IGate RF->INET gating window. */
     DUP_SCOPE_DIGI,      /**< Digipeater RF->RF repeat window. */
-    DUP_SCOPE_COUNT
+    DUP_SCOPE_COUNT      /**< Number of scopes; sizes the per-scope state, never used as a scope itself. */
 } dup_scope_t;
 
 /**
@@ -93,7 +93,7 @@ typedef enum {
                                isDuplicatePacketScoped()). */
     DROP_PERSISTENCE_MISSED, /**< CSMA/p-persistent roll missed MAX_TRANSMIT_RETRY_COUNT times in a row on an otherwise-clear channel; the modem's
                                 anti-starvation floor forced the transmission anyway (see Ax25TransmitCheck() in ax25.c). */
-    DROP_REASON_COUNT
+    DROP_REASON_COUNT        /**< Number of reasons; sizes ::igate_stats_t::dropByReason, never used as a reason itself. */
 } drop_reason_t;
 
 typedef struct {
@@ -104,8 +104,8 @@ typedef struct {
                            being relayed. Superset of what reaches the inet2rf handler. */
     uint32_t isTxCount; /**< ALL packets sent to APRS-IS over sendToAprsIs(): gatewayed RF frames (also in @c txCount), outbound messages (igate_send_raw()) and
                            digi "beacon to internet" sends alike. */
-    uint32_t dropByReason[DROP_REASON_COUNT]; /**< Per-reason drop counters. Replaces the old single aggregate dropCount field - see igate_stats_total_drop()
-                                                 for the equivalent total. */
+    uint32_t dropByReason[DROP_REASON_COUNT]; /**< Per-reason drop counters, indexed by ::drop_reason_t. igate_stats_total_drop() sums the DROP half and
+                                                 igate_stats_total_err() the ERR half. */
 } igate_stats_t;
 
 /**

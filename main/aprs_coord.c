@@ -1,23 +1,21 @@
-/**
- * @file aprs_coord.c
- *
- * @author Emiliano Augusto Gonzalez ( lu3vea @ gmail . com)
- * @date 2026
- * @copyright GNU General Public License v3
- * @see https://github.com/hiperiondev/esp32idf_APRS
- *
- * @note
- * This is based on other projects:
- *     VP-Digi: https://github.com/sq8vps/vp-digi
- *     ESP32APRS: https://github.com/nakhonthai/ESP32APRS_Audio
- *     LibAPRS: https://github.com/markqvist/LibAPRS
- *
- *     please contact their authors for more information.
- *
- * @brief Shared decimal-degrees -> APRS position field conversion:
- * uncompressed (with optional position ambiguity), base-91 compressed, and
- * Maidenhead grid locator. See aprs_coord.h.
- */
+// @file aprs_coord.c
+//
+// @author Emiliano Augusto Gonzalez ( lu3vea @ gmail . com)
+// @date 2026
+// @copyright GNU General Public License v3
+// @see https://github.com/hiperiondev/esp32idf_APRS
+//
+// @note
+// This is based on other projects:
+//     VP-Digi: https://github.com/sq8vps/vp-digi
+//     ESP32APRS: https://github.com/nakhonthai/ESP32APRS_Audio
+//     LibAPRS: https://github.com/markqvist/LibAPRS
+//
+//     please contact their authors for more information.
+//
+// @brief Shared decimal-degrees -> APRS position field conversion:
+// uncompressed (with optional position ambiguity), base-91 compressed, and
+// Maidenhead grid locator. See aprs_coord.h.
 
 #include "aprs_coord.h"
 
@@ -248,8 +246,7 @@ void aprs_compressed_cs_from_course_speed(unsigned course_deg, unsigned speed_kn
 // expected to gate, matching the heuristic used by other open-source APRS
 // decoders. Compressed reports using a digit/letter overlay character in
 // place of '/' or '\' are not distinguishable from an uncompressed field by
-// this byte alone and are left unrecognized, same as before this function
-// supported compressed positions at all.
+// this byte alone, so they are left unrecognized rather than guessed at.
 static bool aprsExtractPositionSymbol(const char *info, size_t infoLen, size_t posStart, char *symTable, char *symCode) {
     if (posStart >= infoLen)
         return false;

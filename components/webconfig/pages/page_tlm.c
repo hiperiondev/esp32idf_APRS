@@ -1,62 +1,60 @@
-/**
- * @file page_tlm.c
- *
- * @author Emiliano Augusto Gonzalez ( lu3vea @ gmail . com)
- * @date 2026
- * @copyright GNU General Public License v3
- * @see https://github.com/hiperiondev/esp32idf_APRS
- *
- * @note
- * This is based on other projects:
- *     VP-Digi: https://github.com/sq8vps/vp-digi
- *     ESP32APRS: https://github.com/nakhonthai/ESP32APRS_Audio
- *     LibAPRS: https://github.com/markqvist/LibAPRS
- *
- *     please contact their authors for more information.
- *
- * @brief Web admin "Telemetry" page: renders and saves the own-beacon
- * telemetry channel 0 configuration.
- *
- * This page mirrors the aprs-telemetry-configurator layout, grouped into:
- *   - Beacon            : enable, station-data reuse, RF/INET master enables,
- *                         callsign/SSID, path bitmask, data interval.
- *   - Report Parameters : digipeater path, destination (TOCALL), sequence
- *                         auto-increment, analog field width, trailing-channel
- *                         omission, trailing comment, and how many analog /
- *                         digital channels are transmitted.
- *   - Definition Messages : which PARM/UNIT/EQNS/BITS metadata messages are
- *                         generated, and their interval.
- *   - Analog Channels (A1-A5) : one collapsible accordion card per channel
- *                         (only one open at a time) with per-channel
- *                         name/unit, calibration quadratic (a,b,c), raw
- *                         input range, displayed decimals, enable and
- *                         source (the source sensor is chosen from the
- *                         sensors_local registry - drivers advertising the
- *                         matching analog channel). Each card's header
- *                         shows a live "real value" box (raw sensor
- *                         reading run through a*x^2+b*x+c, refreshed via
- *                         GET /tlm/values every 2s - see
- *                         page_tlm_values_get()) and the card body offers
- *                         a "2-point calibration wizard" button that
- *                         derives b/c (forcing a=0) from two
- *                         raw-reading/known-value pairs.
- *   - Digital Channels (B1-B8) : per-bit enable, sense, label, ON-state label,
- *                         source (the live sensor from the sensors_local
- *                         registry driving that bit), and per-bit IGate/RF
- *                         routing.
- *
- * Telemetry configuration lives in its own LittleFS file
- * (/storage/telemetry.json), NOT in g_config - see telemetry.h. This page
- * therefore loads/saves it through the telemetry_config_* API rather than
- * touching g_config or app_config_save() (mirrors page_bulletins.c). The one
- * exception is "Use My Station Data", which - exactly like page_wx.c - copies
- * the callsign out of g_config.my_callsign when ticked.
- *
- * Analog channel names/units are stored in telemetry_config_t.PARM[0..4] /
- * UNIT[0..4]; each digital bit's label lives in tlm_bit_name[i] and its
- * ON-state label in UNIT[TLM_CH + i], matching the on-air PARM/UNIT layout
- * documented in telemetry.h.
- */
+// @file page_tlm.c
+//
+// @author Emiliano Augusto Gonzalez ( lu3vea @ gmail . com)
+// @date 2026
+// @copyright GNU General Public License v3
+// @see https://github.com/hiperiondev/esp32idf_APRS
+//
+// @note
+// This is based on other projects:
+//     VP-Digi: https://github.com/sq8vps/vp-digi
+//     ESP32APRS: https://github.com/nakhonthai/ESP32APRS_Audio
+//     LibAPRS: https://github.com/markqvist/LibAPRS
+//
+//     please contact their authors for more information.
+//
+// @brief Web admin "Telemetry" page: renders and saves the own-beacon
+// telemetry channel 0 configuration.
+//
+// This page mirrors the aprs-telemetry-configurator layout, grouped into:
+//   - Beacon            : enable, station-data reuse, RF/INET master enables,
+//                         callsign/SSID, path bitmask, data interval.
+//   - Report Parameters : digipeater path, destination (TOCALL), sequence
+//                         auto-increment, analog field width, trailing-channel
+//                         omission, trailing comment, and how many analog /
+//                         digital channels are transmitted.
+//   - Definition Messages : which PARM/UNIT/EQNS/BITS metadata messages are
+//                         generated, and their interval.
+//   - Analog Channels (A1-A5) : one collapsible accordion card per channel
+//                         (only one open at a time) with per-channel
+//                         name/unit, calibration quadratic (a,b,c), raw
+//                         input range, displayed decimals, enable and
+//                         source (the source sensor is chosen from the
+//                         sensors_local registry - drivers advertising the
+//                         matching analog channel). Each card's header
+//                         shows a live "real value" box (raw sensor
+//                         reading run through a*x^2+b*x+c, refreshed via
+//                         GET /tlm/values every 2s - see
+//                         page_tlm_values_get()) and the card body offers
+//                         a "2-point calibration wizard" button that
+//                         derives b/c (forcing a=0) from two
+//                         raw-reading/known-value pairs.
+//   - Digital Channels (B1-B8) : per-bit enable, sense, label, ON-state label,
+//                         source (the live sensor from the sensors_local
+//                         registry driving that bit), and per-bit IGate/RF
+//                         routing.
+//
+// Telemetry configuration lives in its own LittleFS file
+// (/storage/telemetry.json), NOT in g_config - see telemetry.h. This page
+// therefore loads/saves it through the telemetry_config_* API rather than
+// touching g_config or app_config_save() (mirrors page_bulletins.c). The one
+// exception is "Use My Station Data", which - exactly like page_wx.c - copies
+// the callsign out of g_config.my_callsign when ticked.
+//
+// Analog channel names/units are stored in telemetry_config_t.PARM[0..4] /
+// UNIT[0..4]; each digital bit's label lives in tlm_bit_name[i] and its
+// ON-state label in UNIT[TLM_CH + i], matching the on-air PARM/UNIT layout
+// documented in telemetry.h.
 
 #include <stdio.h>
 #include <string.h>
@@ -69,28 +67,26 @@
 #include "weather_telemetry.h" // aprs_telemetry_report_t / APRS_TELEMETRY_ANALOG_CHANNELS - GET /tlm/values raw analog read
 #include "web_common.h"
 
-/* ------------------------------------------------------------------------
- * Small shared render helpers
- * ------------------------------------------------------------------------ */
+// ------------------------------------------------------------------------
+// Small shared render helpers
+// ------------------------------------------------------------------------
 
-/*
- * Emits the <option> list (including the "(none)" = 255 entry) for a telemetry
- * "Source" <select>, populated from the live sensors_local registry: every
- * registered driver that advertises ::SENSOR_LOCAL_DATA_TELEMETRY *and* drives
- * the channel identified by @p chan_mask is offered, each option showing the
- * channel *number and name* ("0: bme280 A1", ...). The caller has already
- * emitted the enclosing <select ...> and closes it afterwards. Mirrors the
- * channel picker in page_wx.c.
- *
- * @param ana_idx For an ANALOG (A1-A5) picker, the 0-based analog channel
- *                index (0..4), used to look up that driver's suggested
- *                Unit/eng_min/eng_max via ::sensor_local_properties_tlm_ana_hint
- *                and emit them as `data-unit`/`data-min`/`data-max`
- *                attributes on the option (consumed by the page's
- *                tlmSourceAutofill() script to auto-fill the row's Unit/Raw
- *                Min/Raw Max/B/C fields). Pass -1 for a DIGITAL (B1-B8)
- *                picker, where no such hint applies.
- */
+// Emits the <option> list (including the "(none)" = 255 entry) for a telemetry
+// "Source" <select>, populated from the live sensors_local registry: every
+// registered driver that advertises ::SENSOR_LOCAL_DATA_TELEMETRY *and* drives
+// the channel identified by @p chan_mask is offered, each option showing the
+// channel *number and name* ("0: bme280 A1", ...). The caller has already
+// emitted the enclosing <select ...> and closes it afterwards. Mirrors the
+// channel picker in page_wx.c.
+//
+// @param ana_idx For an ANALOG (A1-A5) picker, the 0-based analog channel
+//                index (0..4), used to look up that driver's suggested
+//                Unit/eng_min/eng_max via ::sensor_local_properties_tlm_ana_hint
+//                and emit them as `data-unit`/`data-min`/`data-max`
+//                attributes on the option (consumed by the page's
+//                tlmSourceAutofill() script to auto-fill the row's Unit/Raw
+//                Min/Raw Max/B/C fields). Pass -1 for a DIGITAL (B1-B8)
+//                picker, where no such hint applies.
 static void tlm_channel_options(httpd_req_t *req, sensor_local_tlm_channel_mask_t chan_mask, uint8_t selected, int ana_idx) {
     char buf[192];
     snprintf(buf, sizeof(buf), "<option value='%u'%s>%s</option>", (unsigned)SENSOR_LOCAL_CH_NONE, (selected == SENSOR_LOCAL_CH_NONE) ? " selected" : "",
@@ -101,9 +97,9 @@ static void tlm_channel_options(httpd_req_t *req, sensor_local_tlm_channel_mask_
     for (size_t ch = 0; ch < n; ch++) {
         sensor_local_driver_t *d = sensors_local_get(ch);
         if (d == NULL || !(d->capabilities & SENSOR_LOCAL_DATA_TELEMETRY))
-            continue; /* not a telemetry sensor: skip */
+            continue; // not a telemetry sensor: skip
         if (!sensor_local_properties_has_tlm(d->properties, chan_mask))
-            continue; /* telemetry sensor, but doesn't drive THIS channel */
+            continue; // telemetry sensor, but doesn't drive THIS channel
         char nm[80];
         sensor_local_properties_tlm_label(d->properties, chan_mask, nm, sizeof(nm));
 
@@ -150,13 +146,11 @@ static void tlm_ana_channel_select(httpd_req_t *req, int idx, uint8_t selected) 
     web_select_close(req);
 }
 
-/*
- * Report "Path (digipeaters)" picker: a <select name='rptPath'> whose choices
- * are the Digipeater Path Aliases (g_config.path[0..3]); the value stored is
- * the alias string itself. The currently-stored path is pre-selected and, if
- * it no longer matches any alias, preserved as an extra selected option so a
- * previously hand-entered value is never silently dropped.
- */
+// Report "Path (digipeaters)" picker: a <select name='rptPath'> whose choices
+// are the Digipeater Path Aliases (g_config.path[0..3]); the value stored is
+// the alias string itself. The currently-stored path is pre-selected and, if
+// it matches none of the aliases, preserved as an extra selected option so a
+// hand-entered value is never silently dropped.
 static void tlm_path_select(httpd_req_t *req, const char *current) {
     char aliases[4][72];
     app_config_lock();
@@ -194,9 +188,9 @@ static void tlm_path_select(httpd_req_t *req, const char *current) {
     web_select_close(req);
 }
 
-/* ------------------------------------------------------------------------
- * Sections (GET)
- * ------------------------------------------------------------------------ */
+// ------------------------------------------------------------------------
+// Sections (GET)
+// ------------------------------------------------------------------------
 
 static void send_beacon_form(httpd_req_t *req, const telemetry_config_t *cfg) {
     web_fieldset_open(req, TR_F_BEACON);
@@ -255,20 +249,18 @@ static void send_defmsg_form(httpd_req_t *req, const telemetry_config_t *cfg) {
     web_fieldset_close(req);
 }
 
-/*
- * One collapsible accordion card per analog channel (A1-A5): a
- * always-visible header (tag, name, live calibrated value, caret) plus a
- * body - hidden unless this is the open channel - holding every editable
- * field. Only channel 0 starts open; tlmAccordionClick() (see the injected
- * script in page_tlm_get()) closes any other open card whenever one is
- * clicked, so at most one channel is expanded at a time.
- *
- * The header's live value and the body's equation-preview line are filled
- * in/refreshed by tlmRefreshValues() (polls GET /tlm/values every 2s and
- * on any relevant input's change/input event) rather than at render time,
- * since the calibrated value depends on live sensor data, not just the
- * stored config.
- */
+// One collapsible accordion card per analog channel (A1-A5): a
+// always-visible header (tag, name, live calibrated value, caret) plus a
+// body - hidden unless this is the open channel - holding every editable
+// field. Only channel 0 starts open; tlmAccordionClick() (see the injected
+// script in page_tlm_get()) closes any other open card whenever one is
+// clicked, so at most one channel is expanded at a time.
+//
+// The header's live value and the body's equation-preview line are filled
+// in/refreshed by tlmRefreshValues() (polls GET /tlm/values every 2s and
+// on any relevant input's change/input event) rather than at render time,
+// since the calibrated value depends on live sensor data, not just the
+// stored config.
 static void send_analog_form(httpd_req_t *req, const telemetry_config_t *cfg) {
     web_fieldset_open(req, TR_TLM_ANALOG_LEGEND);
     web_field_checkbox(req, TR_F_BEACON_VIA_RF, "anaRF", cfg->analog_tx2rf);
@@ -539,20 +531,18 @@ static void send_digital_form(httpd_req_t *req, const telemetry_config_t *cfg) {
     web_fieldset_close(req);
 }
 
-/*
- * GET /tlm/values?ch0=<channel>&ch1=<channel>&... - one "chN" query
- * parameter per analog channel row (A1-A5), giving the sensors_local
- * channel index currently selected in that row's "Source" <select>
- * (255/absent = "(none)"). Reads that ONE channel's driver fresh
- * (sensors_local_save_one(), same as page_wx_values_get() and
- * telemetry_refresh_now()'s per-bit digital read) and returns a JSON array
- * of RAW analog values (before the quadratic a/b/c scaling - the browser
- * applies that itself from whatever coefficients are currently typed in
- * the form, so edits preview live without a round trip). Each slot is
- * either a plain number or `null` if the row has no channel selected, the
- * channel doesn't exist, isn't a telemetry sensor, or didn't mark that
- * channel index enabled this cycle. Polled every 2s by the page's script.
- */
+// GET /tlm/values?ch0=<channel>&ch1=<channel>&... - one "chN" query
+// parameter per analog channel row (A1-A5), giving the sensors_local
+// channel index currently selected in that row's "Source" <select>
+// (255/absent = "(none)"). Reads that ONE channel's driver fresh
+// (sensors_local_save_one(), same as page_wx_values_get() and
+// telemetry_refresh_now()'s per-bit digital read) and returns a JSON array
+// of RAW analog values (before the quadratic a/b/c scaling - the browser
+// applies that itself from whatever coefficients are currently typed in
+// the form, so edits preview live without a round trip). Each slot is
+// either a plain number or `null` if the row has no channel selected, the
+// channel doesn't exist, isn't a telemetry sensor, or didn't mark that
+// channel index enabled this cycle. Polled every 2s by the page's script.
 esp_err_t page_tlm_values_get(httpd_req_t *req) {
     if (!web_check_auth(req))
         return ESP_OK;
@@ -624,9 +614,9 @@ esp_err_t page_tlm_get(httpd_req_t *req) {
     return ESP_OK;
 }
 
-/* ------------------------------------------------------------------------
- * Parse (POST)
- * ------------------------------------------------------------------------ */
+// ------------------------------------------------------------------------
+// Parse (POST)
+// ------------------------------------------------------------------------
 
 static void parse_beacon(const char *body, telemetry_config_t *cfg, const char path_preset[4][72]) {
     cfg->en = web_form_get_bool(body, "tlm0En");

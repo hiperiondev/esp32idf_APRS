@@ -114,9 +114,12 @@
  * @details This is the on-air list defined by APRS101 ch.12 plus the APRS 1.2
  * flood proposals. Each row corresponds 1:1 to a field the WX encoder in
  * weather.c emits and is used to index the per-field mapping arrays
- * (@c wx_sensor_* in ::app_config_t). The old 26-entry table mixed in extended
- * sensors that have no weather-report token on-air (UV, soil, water, battery -
- * those belong on Telemetry) plus nine empty placeholders; those are gone.
+ * (@c wx_sensor_* in ::app_config_t).
+ *
+ * The list is limited to quantities that have a Weather Report token on-air.
+ * Extended measurements such as UV, soil moisture, water level or battery
+ * voltage have no such token and are carried as Telemetry instead, so they are
+ * deliberately absent here.
  */
 typedef enum {
     WX_FIELD_WIND_DIRECTION = 0, /**< Wind direction, deg     -> "ddd/" (aprs_wind_t.direction_deg). */
@@ -233,10 +236,10 @@ typedef enum {
  */
 #define DUP_CACHE_SIZE_MAX           40     /**< Compile-time capacity of the duplicate cache array (igate.c). */
 #define DUP_CACHE_SIZE_MIN           4      /**< Lowest g_config.dup_cache_size accepted from the web form / config.json. */
-#define DUP_CACHE_SIZE_DEFAULT       20     /**< Default g_config.dup_cache_size, matching the firmware's previous fixed behavior. */
+#define DUP_CACHE_SIZE_DEFAULT       20     /**< Factory default for g_config.dup_cache_size. */
 #define DUP_CACHE_TIMEOUT_MS_MIN     1000   /**< Lowest g_config.dup_cache_timeout_ms accepted from the web form / config.json. */
 #define DUP_CACHE_TIMEOUT_MS_MAX     120000 /**< Highest g_config.dup_cache_timeout_ms accepted from the web form / config.json. */
-#define DUP_CACHE_TIMEOUT_MS_DEFAULT 30000  /**< Default g_config.dup_cache_timeout_ms, matching the firmware's previous fixed behavior. */
+#define DUP_CACHE_TIMEOUT_MS_DEFAULT 30000  /**< Factory default for g_config.dup_cache_timeout_ms, in milliseconds. */
 /** @} */
 
 /**
@@ -345,12 +348,12 @@ typedef struct {
     char budlist[IGATE_BUDLIST_MAX][10]; /**< Shared callsign list (base call, no SSID) used by both directions' whitelist/blacklist. */
 
     char satgate[IGATE_SATGATE_MAX][10]; /**< Satellite/ISS digipeater gate-call list (base call, no SSID) checked against the repeater path in igateProcess();
-                                            an empty slot is simply skipped. Web-configurable (IGate page, parallel to budlist), defaults to the firmware's
-                                            previous fixed 6-entry set. */
-    uint8_t dup_cache_size;          /**< Number of recent frames kept for duplicate suppression (shared by every ::dup_scope_t). Clamped to
-                                        DUP_CACHE_SIZE_MIN..DUP_CACHE_SIZE_MAX; see igate.c. */
-    uint16_t dup_cache_timeout_ms;   /**< Duplicate-suppression window, in milliseconds. Clamped to DUP_CACHE_TIMEOUT_MS_MIN..DUP_CACHE_TIMEOUT_MS_MAX;
-                                        see igate.c. */
+                                            an empty slot is simply skipped. Web-configurable (IGate page, parallel to budlist); the factory default fills
+                                            the first six slots with the common amateur satellite digipeater calls. */
+    uint8_t dup_cache_size;              /**< Number of recent frames kept for duplicate suppression (shared by every ::dup_scope_t). Clamped to
+                                            DUP_CACHE_SIZE_MIN..DUP_CACHE_SIZE_MAX; see igate.c. */
+    uint32_t dup_cache_timeout_ms;       /**< Duplicate-suppression window, in milliseconds. Clamped to DUP_CACHE_TIMEOUT_MS_MIN..DUP_CACHE_TIMEOUT_MS_MAX;
+                                            see igate.c. */
 
     bool rf2inet_range_en;  /**< Enable the local RF->INET range gate (see aprs_filter_haversine_km()). Independent of, and composed with (AND semantics),
                                rf2inetFilter/the budlist. */

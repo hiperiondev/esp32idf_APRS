@@ -1,30 +1,28 @@
-/**
- * @file page_objects.c
- *
- * @author Emiliano Augusto Gonzalez ( lu3vea @ gmail . com)
- * @date 2026
- * @copyright GNU General Public License v3
- * @see https://github.com/hiperiondev/esp32idf_APRS
- *
- * @note
- * This is based on other projects:
- *     VP-Digi: https://github.com/sq8vps/vp-digi
- *     ESP32APRS: https://github.com/nakhonthai/ESP32APRS_Audio
- *     LibAPRS: https://github.com/markqvist/LibAPRS
- *
- *     please contact their authors for more information.
- *
- * @brief Web admin "Objects and Items" page: edits the OBJITEM_COUNT APRS
- * Objects/Items. Each block has the three request-mandated toggles (Enable /
- * Send via RF / Send via Internet), plus the on-air parameters drawn from the
- * YAAC object editor (name, active/kill, Object-vs-Item, scope, latitude/
- * longitude, symbol+overlay, course/speed, comment, interval).
- *   https://www.ka2ddo.org/ka2ddo/YAACdocs/objecteditor.html
- *
- * Objects/Items live in their own LittleFS file (/storage/objitems.json), NOT
- * in g_config - see objects_items.h. This page loads/saves them through the
- * objitems_* API rather than touching g_config or app_config_save().
- */
+// @file page_objects.c
+//
+// @author Emiliano Augusto Gonzalez ( lu3vea @ gmail . com)
+// @date 2026
+// @copyright GNU General Public License v3
+// @see https://github.com/hiperiondev/esp32idf_APRS
+//
+// @note
+// This is based on other projects:
+//     VP-Digi: https://github.com/sq8vps/vp-digi
+//     ESP32APRS: https://github.com/nakhonthai/ESP32APRS_Audio
+//     LibAPRS: https://github.com/markqvist/LibAPRS
+//
+//     please contact their authors for more information.
+//
+// @brief Web admin "Objects and Items" page: edits the OBJITEM_COUNT APRS
+// Objects/Items. Each block has the three request-mandated toggles (Enable /
+// Send via RF / Send via Internet), plus the on-air parameters drawn from the
+// YAAC object editor (name, active/kill, Object-vs-Item, scope, latitude/
+// longitude, symbol+overlay, course/speed, comment, interval).
+//   https://www.ka2ddo.org/ka2ddo/YAACdocs/objecteditor.html
+//
+// Objects/Items live in their own LittleFS file (/storage/objitems.json), NOT
+// in g_config - see objects_items.h. This page loads/saves them through the
+// objitems_* API rather than touching g_config or app_config_save().
 
 #include <math.h>
 #include <stdio.h>

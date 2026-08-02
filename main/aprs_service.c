@@ -125,11 +125,10 @@ void aprs_service_build_modem_config(modem_config_t *cfg, bool full_duplex) {
     // plain cast; page_radio.c already clamps the field to 0-3.
     cfg->modem = (modem_mode_t)g_config.afsk_modem_type;
 
-    // audioLPF fed the old afskSetModem()'s bpf argument, which that function
-    // assigned straight to ModemConfig.flatAudioIn - i.e. despite the name it
-    // always was the flat-audio-input flag, and modem_config_t.flat_audio is
-    // the same bit. Kept as a direct mapping so the saved setting keeps its
-    // existing meaning.
+    // audioLPF on the Radio page is the flat-audio-input flag despite its
+    // name: it tells the demodulator that the receiver feeds it discriminator
+    // (unfiltered) audio rather than speaker audio, which is exactly what
+    // modem_config_t.flat_audio selects. Direct one-to-one mapping.
     cfg->flat_audio = g_config.audio_lpf;
 
     cfg->preamble_ms = g_config.preamble;
@@ -256,11 +255,11 @@ static volatile bool s_modemReady = false;
 // ---------------------------------------------------------------------------
 // TX helper
 //
-// The old APRS_sendTNC2Pkt(raw, len) took a pointer+length; the component's
-// modem_send_tnc2() takes a NUL-terminated string (it copies into a scratch
-// buffer for ax25_encode(), which uses strtok on the digipeater path). Callers
-// here hand us slices of larger buffers that are not always NUL-terminated at
-// exactly `len`, so terminate explicitly rather than trusting the caller.
+// Callers build TNC2 text into larger scratch buffers and pass a pointer plus a
+// length, so the text is not necessarily NUL-terminated at exactly `len`. The
+// modem's modem_send_tnc2() needs a NUL-terminated string (it copies into a
+// scratch buffer for ax25_encode(), which runs strtok over the digipeater
+// path), so the terminator is applied here rather than trusted from the caller.
 //
 // Exported (beacon.c calls it too) so the pointer+length -> NUL-terminated
 // conversion and the length check live in exactly one place.
@@ -272,13 +271,13 @@ bool aprs_service_send_tnc2(const char *packet, size_t len) {
         return false;
 
     // Drop rather than queue when the modem was never brought up. Two ways to
-    // get here: the audio modem is disabled on the Radio page, or - and this
-    // is the one that bites - aprs_service_start() now runs BEFORE
-    // modem_init() (it has to: it installs the RX callback), and it starts the
-    // beacon tasks, which transmit immediately on entry rather than after
-    // their first interval. modem_init() blocks for ~5 s measuring the ADC
-    // clock, so without this a boot-time beacon would reach
-    // Ax25WriteTxFrame() before Ax25Init() had run.
+    // get here: the audio modem is disabled on the Radio page, or the frame is
+    // offered during the boot window. aprs_service_start() has to run BEFORE
+    // modem_init() because it installs the RX callback, and it starts the
+    // beacon tasks, which transmit on entry rather than after their first
+    // interval; modem_init() then blocks for ~5 s measuring the ADC clock.
+    // Without this gate a boot-time beacon would reach Ax25WriteTxFrame()
+    // before Ax25Init() had run.
     if (!s_modemReady) {
         atomic_fetch_add_explicit(&s_statDrop, 1, memory_order_relaxed);
         igate_note_drop(DROP_MODEM_NOT_READY);
@@ -510,10 +509,10 @@ static void aprs_msg_callback(ax25_msg_t *msg) {
 // 6144 bytes - enough for the ax25_msg_t below (~700 B) plus the rest of the
 // dispatch chain, but worth remembering before adding anything large here.
 //
-// s_rxHook replaces the old `extern ax25_callback_t _hook` the LOOP TEST used
-// to reach into the component and swap out. The indirection is ours now: the
-// component's callback stays installed for the life of the process and only
-// this pointer moves.
+// s_rxHook is the indirection the LOOP TEST uses to divert received frames to
+// itself. It is owned here, not in the modem: the component's callback stays
+// installed for the life of the process and only this pointer moves, so the
+// diversion cannot disturb the component's own state.
 // ---------------------------------------------------------------------------
 typedef void (*aprs_rx_hook_t)(ax25_msg_t *msg);
 static volatile aprs_rx_hook_t s_rxHook = aprs_msg_callback;
@@ -596,9 +595,9 @@ static bool inet_line_is_own_report(const char *line) {
     // its matching *_2inet flag on (beacon.c, weather.c, telemetry.c,
     // trk_*.c, digi.c, message handling). Any new report source that gains
     // its own callsign field - or its own INET-upload flag - must be added
-    // here too, or its APRS-IS echo will no longer be recognised as "own
-    // report" and inet2rfHandler() will re-gate it back to RF, causing a
-    // feedback loop / double transmission. grep for "_2inet" across the tree
+    // here too. An omitted callsign means the APRS-IS echo of our own report is
+    // not recognised as such, and inet2rfHandler() re-gates it back to RF,
+    // causing a feedback loop / double transmission. grep for "_2inet" across the tree
     // to find every current uplink flag this list needs to cover.
     const char *calls[] = {
         g_config.aprs_mycall, g_config.my_callsign, g_config.trk_mycall, g_config.digi_mycall, g_config.wx_mycall, tlm_mycall, g_config.msg_mycall,
@@ -778,11 +777,10 @@ static void messageTxHandler(const char *packet, size_t len, uint8_t channels) {
         igate_send_raw(packet, len);
 }
 
-// The old afskPollTask() is gone: AFSK_Poll()/APRS_poll() were the previous
-// component's "the application must pump the DSP and drain the frame queue"
-// contract. esp32idf_radioamateur_modem owns both - AFSK_init() starts its own
-// pinned RX DSP task, and modem_init() starts the "modem_svc" task that drives
-// AFSK_ServiceTx()/Ax25TransmitCheck() and drains RX frames into the callback.
+// The application does not pump the DSP or drain the frame queue: the modem
+// component owns both. AFSK_init() starts its own pinned RX DSP task, and
+// modem_init() starts the "modem_svc" task that drives
+// AFSK_ServiceTx()/Ax25TransmitCheck() and delivers RX frames to the callback.
 // Calling AFSK_Poll() from here would race that task over the same FIFO.
 // The modem component has no RF power-switch output, so there is no
 // rf_power/band config to carry.
@@ -864,22 +862,20 @@ bool aprs_service_modem_ready(void) {
 // ---------------------------------------------------------------------------
 // Loop-test diagnostics.
 //
-// The old component exposed purpose-built latching diagnostics for this
-// (AFSK_getAdcDiag/AFSK_getSquelchDiag/AFSK_getAgcDiag/Modem_getDcdDiag*/
-// Ax25GetFrameDiag/Ax25GetFailedFrame). The new one exposes instantaneous
-// getters instead - afskGetRms(), afskGetAgcGain(), afskGetDcOffset(),
-// ModemDcdState(), Ax25GetRxStage(), ModemGetSignalLevel() - plus a passive
-// raw-sample tap, afskDiagCaptureRaw(), that snapshots the samples the modem's
-// own ingest path sees, without disturbing the live RX task.
+// The modem exposes instantaneous getters - afskGetRms(), afskGetAgcGain(),
+// afskGetDcOffset(), ModemDcdState(), Ax25GetRxStage(), ModemGetSignalLevel() -
+// plus a passive raw-sample tap, afskDiagCaptureRaw(), that snapshots the
+// samples the modem's own ingest path sees without disturbing the live RX task.
+// None of them latch.
 //
-// So the latching is done here instead: a monitor task samples those getters
-// throughout the test window and records the peaks/high-water marks the
-// failure messages need. This keeps every distinction the old diagnostics drew
-// (ADC dead vs. no tone vs. tone but no lock vs. lock but no frame) with two
-// exceptions, noted where they are reported:
-//   - there is no software squelch, so no "squelch never opened" case;
+// The latching the test needs is therefore done here: a monitor task samples
+// those getters throughout the test window and records the peaks and
+// high-water marks the failure messages are built from. That is enough to tell
+// the four failure classes apart (ADC dead vs. no tone vs. tone but no lock vs.
+// lock but no frame), with two limits noted where they are reported:
+//   - there is no software squelch, so there is no "squelch never opened" case;
 //   - there are no CRC-failure counters, so the furthest HDLC RX stage reached
-//     stands in for the old "N frame attempts seen, all failed CRC".
+//     is what distinguishes "frames were attempted" from "nothing started".
 // ---------------------------------------------------------------------------
 #define LOOP_DIAG_RAW_SAMPLES 512
 
@@ -1086,8 +1082,8 @@ bool aprs_loop_test_run(char *msg, size_t msg_len) {
             // The ADC is sampling, but the raw code barely moved - it is not
             // seeing the DAC's tone at all (flat/near-DC line). Report the DC
             // offset the component tracks (already in mV) alongside the raw
-            // codes: a line pinned near VDD points at a miswire/short rather
-            // than a units/scale bug in the demodulator path.
+            // codes: a line pinned near VDD points at a miswire or a short
+            // rather than at the demodulator's units and scaling.
             snprintf(msg, msg_len,
                      "FAIL: no packet was received back within %d ms. The ADC is sampling (raw code stayed within "
                      "%d-%d, a %d-count swing; DC offset ~%d mV), but is not seeing any audio tone - check that "
@@ -1097,13 +1093,10 @@ bool aprs_loop_test_run(char *msg, size_t msg_len) {
             // A real signal swing reached the ADC but no demodulator's PLL
             // ever asserted DCD, i.e. none of them locked onto the tones.
             //
-            // Note: there is no "software squelch never opened" case to
-            // separate out any more. The old component gated MODEM_DECODE()
-            // behind an mVrms squelch (rfSql) and this branch had to tell
-            // "squelch shut the decoder out" apart from "decoder ran but
-            // didn't lock". This component has no such gate - every sample
-            // reaches the demodulator and DCD is the only lock indicator - so
-            // the rfSql-related failure text is gone with it.
+            // There is no separate "software squelch never opened" case: the
+            // modem has no squelch gate ahead of MODEM_DECODE(), so every
+            // sample reaches the demodulator and DCD is the only lock
+            // indicator.
             int8_t peak0 = 0, valley0 = 0, peak1 = 0, valley1 = 0;
             uint8_t level0 = 0, level1 = 0;
             ModemGetSignalLevel(0, &peak0, &valley0, &level0);
@@ -1129,8 +1122,7 @@ bool aprs_loop_test_run(char *msg, size_t msg_len) {
             // than "every bit in a ~20-byte frame was clean". Report how far
             // the HDLC state machine got: reaching RX_STAGE_FRAME means flags
             // were found and bytes were being assembled, so the framing works
-            // and the bits themselves are dirty (the old component's
-            // "attempts seen, all failed CRC"); never getting past
+            // and the bits themselves are dirty; never getting past
             // RX_STAGE_FLAG/IDLE means bit-sync never produced a frame at all.
             uint8_t stageMax = 0;
             for (int i = 0; i < MODEM_MAX_DEMODULATOR_COUNT; i++)
@@ -1144,7 +1136,7 @@ bool aprs_loop_test_run(char *msg, size_t msg_len) {
                      "stage reached: %u (0=idle, 1=flag seen, 2=assembling a frame). %s",
                      LOOP_TEST_TIMEOUT_MS, (unsigned)s_diag.dcdLatch, (unsigned)s_diag.mVrmsPeak, (double)s_diag.agcGainPeak, (unsigned)stageMax,
                      (stageMax < (uint8_t)RX_STAGE_FRAME) ? "No HDLC flag ever led into frame data - the bit-sync/framing state machine isn't "
-                                                            "starting a frame at all, which points at a deeper bit-recovery bug rather than noise on "
+                                                            "starting a frame at all, which points at bit recovery rather than at noise on "
                                                             "individual bits."
                                                           : "The receiver did start assembling frames but none passed the CRC check - the signal is "
                                                             "clean enough to fake a brief DCD lock but not clean enough to get an entire ~20-byte "
@@ -1199,7 +1191,7 @@ void aprs_service_start(void) {
     // moment it does.
     modem_set_rx_callback(on_rx_frame, NULL);
 
-    // Always start the uplink task: it now idles itself (socket closed,
+    // Always start the uplink task: it idles itself (socket closed,
     // fast retry loop) whenever nothing needs APRS-IS, and comes up as soon
     // as igate_en, digi_loc2inet, or msg_inet is turned on - including via
     // a runtime web UI save, with no reboot required.
@@ -1216,7 +1208,7 @@ void aprs_service_start(void) {
     // operator's per-bit channel mapping from the same sensors_local registry
     // weather_start() just brought up, and beacons a "T#..." Telemetry Data
     // Report at its configured data interval (plus BITS metadata at its
-    // configured info interval) - both now stored in their own
+    // configured info interval) - both stored in their own
     // /storage/telemetry.json, not g_config; see telemetry.h.
     telemetry_start();
 
@@ -1237,13 +1229,15 @@ void aprs_service_start(void) {
     // Single shared task that drives all of the above periodic transmissions
     // (tracker/igate/digi beacons, WX report, bulletins). Started last, after
     // beacon_start()/weather_start()/bulletins_start() have set up the state
-    // its service functions read. This replaces the five separate beacon/
-    // bulletin/WX tasks (~61 KB of stacks) with one (~14 KB), reclaiming heap.
+    // its service functions read. Driving every periodic transmitter from one
+    // ~14 KB task instead of one task per transmitter is what keeps the total
+    // stack footprint of the beacon layer small enough for this heap.
     beacon_scheduler_start();
 
-    // No afsk_poll task any more - the component runs its own RX DSP and TX
-    // service tasks (see the note above serviceTickTask). Only the 1 Hz
-    // housekeeping tick is ours.
+    // The modem runs its own RX DSP and TX service tasks (see the note above
+    // serviceTickTask); the only task this layer needs for itself is the 1 Hz
+    // housekeeping tick below.
+    //
     // sendAPRSMessageRetry() walks the same TX chain as the beacon services
     // (aprs_service_send_tnc2 -> modem_send_tnc2 -> modem_build_frame_tnc2 ->
     // ax25_encode/hdlcFrame), which stacks several ~300-450 byte buffers per

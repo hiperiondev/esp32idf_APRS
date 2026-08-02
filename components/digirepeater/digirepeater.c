@@ -1,23 +1,21 @@
-/**
- * @file digirepeater.c
- *
- * @author Emiliano Augusto Gonzalez ( lu3vea @ gmail . com)
- * @date 2026
- * @copyright GNU General Public License v3
- * @see https://github.com/hiperiondev/esp32idf_APRS
- *
- * @note
- * This is based on other projects:
- *     VP-Digi: https://github.com/sq8vps/vp-digi
- *     ESP32APRS: https://github.com/nakhonthai/ESP32APRS_Audio
- *     LibAPRS: https://github.com/markqvist/LibAPRS
- *
- *     please contact their authors for more information.
- *
- * @brief APRS digipeater path logic: WIDEn-N / TRACEn-N / RELAY / ECHO / GATE
- * handling, hop decrementing and callsign insertion, duplicate suppression and
- * per-station statistics.
- */
+// @file digirepeater.c
+//
+// @author Emiliano Augusto Gonzalez ( lu3vea @ gmail . com)
+// @date 2026
+// @copyright GNU General Public License v3
+// @see https://github.com/hiperiondev/esp32idf_APRS
+//
+// @note
+// This is based on other projects:
+//     VP-Digi: https://github.com/sq8vps/vp-digi
+//     ESP32APRS: https://github.com/nakhonthai/ESP32APRS_Audio
+//     LibAPRS: https://github.com/markqvist/LibAPRS
+//
+//     please contact their authors for more information.
+//
+// @brief APRS digipeater path logic: WIDEn-N / TRACEn-N / RELAY / ECHO / GATE
+// handling, hop decrementing and callsign insertion, duplicate suppression and
+// per-station statistics.
 
 #include <string.h>
 
@@ -36,10 +34,10 @@ digi_stats_t digi_get_stats(void) {
     return s_stats;
 }
 
-/* Bounded copy into an AX.25 callsign field (char[6 + CALL_OVERSPACE] == 7
- * bytes). AX.25 callsigns are at most 6 chars; anything longer is truncated so
- * a stale or hand-edited config.json can never overflow the 7-byte destination
- * (which would otherwise corrupt the adjacent ssid / next rpt_list entry). */
+// Bounded copy into an AX.25 callsign field (char[6 + CALL_OVERSPACE] == 7
+// bytes). AX.25 callsigns are at most 6 chars; anything longer is truncated so
+// a stale or hand-edited config.json can never overflow the 7-byte destination
+// (which would otherwise corrupt the adjacent ssid / next rpt_list entry).
 static inline void copy_call(char dst[7], const char *src) {
     size_t i = 0;
     for (; i < 6 && src[i]; i++)

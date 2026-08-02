@@ -1,23 +1,21 @@
-/**
- * @file page_wx.c
- *
- * @author Emiliano Augusto Gonzalez ( lu3vea @ gmail . com)
- * @date 2026
- * @copyright GNU General Public License v3
- * @see https://github.com/hiperiondev/esp32idf_APRS
- *
- * @note
- * This is based on other projects:
- *     VP-Digi: https://github.com/sq8vps/vp-digi
- *     ESP32APRS: https://github.com/nakhonthai/ESP32APRS_Audio
- *     LibAPRS: https://github.com/markqvist/LibAPRS
- *
- *     please contact their authors for more information.
- *
- * @brief Web admin "Weather" page: renders and saves the weather station slot
- * configuration (wind, temperature, rain, humidity, pressure and the remaining
- * measurement slots) in g_config.
- */
+// @file page_wx.c
+//
+// @author Emiliano Augusto Gonzalez ( lu3vea @ gmail . com)
+// @date 2026
+// @copyright GNU General Public License v3
+// @see https://github.com/hiperiondev/esp32idf_APRS
+//
+// @note
+// This is based on other projects:
+//     VP-Digi: https://github.com/sq8vps/vp-digi
+//     ESP32APRS: https://github.com/nakhonthai/ESP32APRS_Audio
+//     LibAPRS: https://github.com/markqvist/LibAPRS
+//
+//     please contact their authors for more information.
+//
+// @brief Web admin "Weather" page: renders and saves the weather station slot
+// configuration (wind, temperature, rain, humidity, pressure and the remaining
+// measurement slots) in g_config.
 
 #include <stdio.h>
 #include <string.h>
@@ -28,14 +26,12 @@
 #include "translations.h"
 #include "web_common.h"
 
-/*
- * Human-readable label for every mappable APRS Weather Report field, indexed
- * by ::wx_field_id_t (declared in app_config.h). This list is exactly the set
- * of quantities an APRS WX report can carry on-air - one row per field, in the
- * order weather.c emits them. The old placeholder/extended-sensor rows (UV,
- * soil, water, battery, "Slot 18..26") are gone: they have no weather-report
- * token and belong on the Telemetry page instead.
- */
+// Human-readable label for every mappable APRS Weather Report field, indexed
+// by ::wx_field_id_t (declared in app_config.h). This list is exactly the set
+// of quantities an APRS WX report can carry on-air - one row per field, in the
+// order weather.c emits them. Extended measurements such as UV, soil, water or
+// battery are absent by design: they have no weather-report token on-air and
+// are configured on the Telemetry page instead.
 static const char *WX_FIELD_NAME[WX_SENSOR_NUM] = {
     [WX_FIELD_WIND_DIRECTION] = TR_WX_WIND_DIRECTION,
     [WX_FIELD_WIND_SPEED] = TR_WX_WIND_SPEED,
@@ -52,13 +48,11 @@ static const char *WX_FIELD_NAME[WX_SENSOR_NUM] = {
     [WX_FIELD_FLOOD_HEIGHT_M] = TR_WX_FLOOD_M,
 };
 
-/*
- * Bit position in ::sensor_local_wx_mask_t for each ::wx_field_id_t row of
- * this page, so a driver's ::sensor_local_properties_t::wx mask can be
- * tested directly against the field currently being rendered. Kept as an
- * explicit table (rather than relying on the enum values lining up) so the
- * mapping is correct even if either enum's declaration order ever changes.
- */
+// Bit position in ::sensor_local_wx_mask_t for each ::wx_field_id_t row of
+// this page, so a driver's ::sensor_local_properties_t::wx mask can be
+// tested directly against the field currently being rendered. Kept as an
+// explicit table (rather than relying on the enum values lining up) so the
+// mapping is correct even if either enum's declaration order ever changes.
 static const sensor_local_wx_mask_t WX_FIELD_PROPERTY_BIT[WX_SENSOR_NUM] = {
     [WX_FIELD_WIND_DIRECTION] = SENSOR_LOCAL_WX_WIND_DIRECTION,
     [WX_FIELD_WIND_SPEED] = SENSOR_LOCAL_WX_WIND_SPEED,
@@ -75,27 +69,25 @@ static const sensor_local_wx_mask_t WX_FIELD_PROPERTY_BIT[WX_SENSOR_NUM] = {
     [WX_FIELD_FLOOD_HEIGHT_M] = SENSOR_LOCAL_WX_FLOOD_HEIGHT_M,
 };
 
-/*
- * Emits the <select> for one field's "source channel", populated from the live
- * sensors_local registry so each option shows the channel *number and name*
- * ("0: bme280", "1: ds18b20", ...). ::SENSOR_LOCAL_CH_NONE (255) is the
- * "(none)" choice.
- * If no local sensor driver has registered yet, only "(none)" is offered.
- *
- * A driver is only listed as a choice for a given row/field if BOTH:
- *   1) it advertises ::SENSOR_LOCAL_DATA_WEATHER in ::sensor_local_driver_t::capabilities
- *      (coarse family check - excludes telemetry-only drivers), AND
- *   2) its ::sensor_local_driver_t::properties (see sensor_local_properties.h)
- *      sets the bit matching THIS row's field (fine-grained check - e.g. a
- *      Temperature+Pressure-only sensor such as bmp180 is offered on the
- *      Temperature and Pressure rows, but not on Wind/Rain/Humidity/etc).
- * A driver with a NULL @c properties pointer (not yet migrated to publish a
- * descriptor) is never offered on any row, since its per-field fitness is
- * unknown.
- * The option value is still the sensor's real registry index (not a
- * sequential position among the filtered list), so it round-trips correctly
- * with wx_sensor_ch[].
- */
+// Emits the <select> for one field's "source channel", populated from the live
+// sensors_local registry so each option shows the channel *number and name*
+// ("0: bme280", "1: ds18b20", ...). ::SENSOR_LOCAL_CH_NONE (255) is the
+// "(none)" choice.
+// If no local sensor driver has registered yet, only "(none)" is offered.
+//
+// A driver is only listed as a choice for a given row/field if BOTH:
+//   1) it advertises ::SENSOR_LOCAL_DATA_WEATHER in ::sensor_local_driver_t::capabilities
+//      (coarse family check - excludes telemetry-only drivers), AND
+//   2) its ::sensor_local_driver_t::properties (see sensor_local_properties.h)
+//      sets the bit matching THIS row's field (fine-grained check - e.g. a
+//      Temperature+Pressure-only sensor such as bmp180 is offered on the
+//      Temperature and Pressure rows, but not on Wind/Rain/Humidity/etc).
+// A driver with a NULL @c properties pointer (not yet migrated to publish a
+// descriptor) is never offered on any row, since its per-field fitness is
+// unknown.
+// The option value is still the sensor's real registry index (not a
+// sequential position among the filtered list), so it round-trips correctly
+// with wx_sensor_ch[].
 static void wx_channel_select(httpd_req_t *req, int field, uint8_t selected) {
     char buf[192];
     // id='wxCh%d' (matching the name) lets the live-value poller below read
@@ -116,13 +108,13 @@ static void wx_channel_select(httpd_req_t *req, int field, uint8_t selected) {
     for (size_t ch = 0; ch < n; ch++) {
         sensor_local_driver_t *d = sensors_local_get(ch);
         if (d == NULL || !(d->capabilities & SENSOR_LOCAL_DATA_WEATHER))
-            continue; /* not a weather sensor: skip (e.g. telemetry-only drivers) */
+            continue; // not a weather sensor: skip (e.g. telemetry-only drivers)
         if (!sensor_local_properties_has_wx(d->properties, field_bit))
-            continue; /* weather sensor, but doesn't produce THIS field (e.g. bmp180 on the Wind row) */
-        /* Compose "<sensor name> <sensor channel name>" from the driver's
-         * properties (e.g. "BMP180 Temperature"); falls back to just the
-         * sensor name (or "?") if the driver hasn't published a dedicated
-         * channel label for this field. */
+            continue; // weather sensor, but doesn't produce THIS field (e.g. bmp180 on the Wind row)
+        // Compose "<sensor name> <sensor channel name>" from the driver's
+        // properties (e.g. "BMP180 Temperature"); falls back to just the
+        // sensor name (or "?") if the driver hasn't published a dedicated
+        // channel label for this field.
         char nm[80];
         sensor_local_properties_wx_label(d->properties, field_bit, nm, sizeof(nm));
         snprintf(buf, sizeof(buf), "<option value='%u'%s>%u: %.40s</option>", (unsigned)ch, (selected == ch) ? " selected" : "", (unsigned)ch, nm);
@@ -131,14 +123,12 @@ static void wx_channel_select(httpd_req_t *req, int field, uint8_t selected) {
     httpd_resp_sendstr_chunk(req, "</select>");
 }
 
-/*
- * Field present/format helpers, mirroring weather.c's wx_field_present()/
- * wx_field_value() (kept private to that file). Duplicated here rather than
- * shared because this is the only other place that needs to pull a single
- * engineering-unit value out of an ::aprs_weather_report_t; wx_field_format()
- * additionally renders it as a ready-to-display, unit-suffixed JSON string
- * literal (quotes included) for the live-preview endpoint below.
- */
+// Field present/format helpers, mirroring weather.c's wx_field_present()/
+// wx_field_value() (kept private to that file). Duplicated here rather than
+// shared because this is the only other place that needs to pull a single
+// engineering-unit value out of an ::aprs_weather_report_t; wx_field_format()
+// additionally renders it as a ready-to-display, unit-suffixed JSON string
+// literal (quotes included) for the live-preview endpoint below.
 static bool wx_field_present(const aprs_weather_report_t *wx, wx_field_id_t f) {
     switch (f) {
         case WX_FIELD_WIND_DIRECTION:
@@ -187,47 +177,47 @@ static void wx_field_format(const aprs_weather_report_t *wx, wx_field_id_t f, ch
             snprintf(out, outsz, "\"%u deg\"", (unsigned)wx->wind.direction_deg);
             break;
         case WX_FIELD_WIND_SPEED:
-            /* mph -> km/h */
+            // mph -> km/h
             snprintf(out, outsz, "\"%.1f km/h\"", (double)wx->wind.sustained_mph * 1.609344);
             break;
         case WX_FIELD_WIND_GUST:
-            /* mph -> km/h */
+            // mph -> km/h
             snprintf(out, outsz, "\"%.1f km/h\"", (double)wx->wind.gust_mph * 1.609344);
             break;
         case WX_FIELD_TEMPERATURE:
-            /* deg F -> deg C */
+            // deg F -> deg C
             snprintf(out, outsz, "\"%.1f C\"", ((double)wx->temperature_f - 32.0) * 5.0 / 9.0);
             break;
         case WX_FIELD_RAIN_1H:
-            /* 1/100 in -> mm */
+            // 1/100 in -> mm
             snprintf(out, outsz, "\"%.1f mm\"", (wx->rain_last_hour_hundredths_in / 100.0) * 25.4);
             break;
         case WX_FIELD_RAIN_24H:
-            /* 1/100 in -> mm */
+            // 1/100 in -> mm
             snprintf(out, outsz, "\"%.1f mm\"", (wx->rain_last_24h_hundredths_in / 100.0) * 25.4);
             break;
         case WX_FIELD_RAIN_MIDNIGHT:
-            /* 1/100 in -> mm */
+            // 1/100 in -> mm
             snprintf(out, outsz, "\"%.1f mm\"", (wx->rain_since_midnight_hundredths_in / 100.0) * 25.4);
             break;
         case WX_FIELD_SNOW_24H:
-            /* 1/10 in -> mm */
+            // 1/10 in -> mm
             snprintf(out, outsz, "\"%.1f mm\"", (wx->snow_last_24h_tenths_in / 10.0) * 25.4);
             break;
         case WX_FIELD_HUMIDITY:
             snprintf(out, outsz, "\"%u %%\"", (unsigned)wx->humidity_percent);
             break;
         case WX_FIELD_PRESSURE:
-            /* Already SI (tenths of mb == tenths of hPa; 1 mb == 1 hPa) */
+            // Already SI (tenths of mb == tenths of hPa; 1 mb == 1 hPa)
             snprintf(out, outsz, "\"%.1f hPa\"", wx->barometric_pressure_tenths_mb / 10.0);
             break;
         case WX_FIELD_LUMINOSITY:
-            /* Already SI */
+            // Already SI
             snprintf(out, outsz, "\"%u W/m2\"", (unsigned)wx->luminosity_wm2);
             break;
         case WX_FIELD_FLOOD_HEIGHT_FT:
-            /* Field is fed by the "feet" APRS token, but display in meters:
-             * use the report's parallel SI field rather than converting. */
+            // Field is fed by the "feet" APRS token, but display in meters:
+            // use the report's parallel SI field rather than converting.
             snprintf(out, outsz, "\"%.1f m\"", (double)wx->flood_height_m);
             break;
         case WX_FIELD_FLOOD_HEIGHT_M:
@@ -318,8 +308,8 @@ esp_err_t page_wx_get(httpd_req_t *req) {
                                   "</th></tr>");
     for (int i = 0; i < WX_SENSOR_NUM; i++) {
         if (i == WX_FIELD_FLOOD_HEIGHT_FT)
-            continue; /* Value column is SI-only (meters); the feet slot stays configurable
-                       * via WX_FIELD_FLOOD_HEIGHT_M's row/save handling but isn't shown here. */
+            continue; // Value column is SI-only (meters); the feet slot stays configurable via WX_FIELD_FLOOD_HEIGHT_M's row/save handling but isn't shown
+                      // here.
         char row[300];
         snprintf(row, sizeof(row),
                  "<tr><td>%s</td>"
@@ -427,8 +417,7 @@ esp_err_t page_wx_post(httpd_req_t *req) {
 
     for (int i = 0; i < WX_SENSOR_NUM; i++) {
         if (i == WX_FIELD_FLOOD_HEIGHT_FT)
-            continue; /* not rendered on this page (Value column is SI/meters-only);
-                       * leave its saved config untouched rather than force-disabling it. */
+            continue; // not rendered on this page (Value column is SI/meters-only); leave its saved config untouched rather than force-disabling it.
         char key[16];
         snprintf(key, sizeof(key), "wxEn%d", i);
         g_config.wx_sensor_enable[i] = web_form_get_bool(body, key);

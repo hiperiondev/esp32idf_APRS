@@ -1,23 +1,21 @@
-/**
- * @file web_server.c
- *
- * @author Emiliano Augusto Gonzalez ( lu3vea @ gmail . com)
- * @date 2026
- * @copyright GNU General Public License v3
- * @see https://github.com/hiperiondev/esp32idf_APRS
- *
- * @note
- * This is based on other projects:
- *     VP-Digi: https://github.com/sq8vps/vp-digi
- *     ESP32APRS: https://github.com/nakhonthai/ESP32APRS_Audio
- *     LibAPRS: https://github.com/markqvist/LibAPRS
- *
- *     please contact their authors for more information.
- *
- * @brief Web admin HTTP server bring-up: starts esp_http_server and registers
- * every admin route (dashboard, configuration pages, JSON endpoints and static
- * assets) onto its handlers.
- */
+// @file web_server.c
+//
+// @author Emiliano Augusto Gonzalez ( lu3vea @ gmail . com)
+// @date 2026
+// @copyright GNU General Public License v3
+// @see https://github.com/hiperiondev/esp32idf_APRS
+//
+// @note
+// This is based on other projects:
+//     VP-Digi: https://github.com/sq8vps/vp-digi
+//     ESP32APRS: https://github.com/nakhonthai/ESP32APRS_Audio
+//     LibAPRS: https://github.com/markqvist/LibAPRS
+//
+//     please contact their authors for more information.
+//
+// @brief Web admin HTTP server bring-up: starts esp_http_server and registers
+// every admin route (dashboard, configuration pages, JSON endpoints and static
+// assets) onto its handlers.
 
 #include "web_server.h"
 #include "esp_http_server.h"
@@ -46,12 +44,10 @@ void web_server_start(void) {
     // Several POST handlers (e.g. /wireless, /igate, /system, /wx) keep a
     // 1.2-3KB form-parsing buffer alive on this task's stack for the whole
     // handler, including through app_config_save()'s fopen/fprintf/rename
-    // chain into LittleFS. 10240 left too little margin for that plus a
-    // FreeRTOS context-save landing mid-write, which showed up as an
-    // intermittent "double exception" Guru Meditation on frequent saves
-    // (stack pointer walking past the end of the task's stack region).
-    // Bumped with headroom; verify actual usage in the field with
-    // uxTaskGetStackHighWaterMark() on the httpd task if tuning further.
+    // chain into LittleFS. On top of that peak the stack must still absorb a
+    // FreeRTOS context save landing mid-write, so the budget is set with
+    // deliberate headroom rather than trimmed to the measured maximum. Use
+    // uxTaskGetStackHighWaterMark() on the httpd task before changing it.
     config.stack_size = 20480;
     config.lru_purge_enable = true;
 

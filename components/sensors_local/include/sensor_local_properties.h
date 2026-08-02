@@ -229,6 +229,13 @@ typedef struct {
      *        for "no suggestion".
      */
     float tlm_ana_eng_min[SENSOR_LOCAL_TLM_CHANNEL_COUNT];
+    /**
+     * @brief Suggested engineering value corresponding to a raw reading of 255
+     *        on each analog channel, in that channel's own unit. Paired with
+     *        ::tlm_ana_eng_min to derive the APRS101 8-bit linear calibration;
+     *        both are ignored unless the matching ::tlm_ana_eng_valid bit is
+     *        set.
+     */
     float tlm_ana_eng_max[SENSOR_LOCAL_TLM_CHANNEL_COUNT];
     /**
      * @brief Bitmask (same bit layout as ::sensor_local_tlm_channel_mask_t's

@@ -162,6 +162,16 @@
 #define MODEM_ADC_SAMPLERATE 76800
 #endif
 
+/**
+ * @brief Numerator of the fudge factor applied to the requested ADC rate.
+ *
+ * The rate handed to the ADC driver is multiplied by
+ * ::MODEM_ADC_RATE_NUM / ::MODEM_ADC_RATE_DEN before the driver rounds it to
+ * something its clock divider can produce. It exists so a board whose measured
+ * sample rate sits consistently off the requested one can be nudged back
+ * without touching ::MODEM_ADC_SAMPLERATE, which the DSP filter design depends
+ * on. The default 1/1 requests exactly ::MODEM_ADC_SAMPLERATE.
+ */
 #ifndef MODEM_ADC_RATE_NUM
 #define MODEM_ADC_RATE_NUM 1
 #endif
@@ -201,11 +211,11 @@
  * @brief Size, in samples, of the RX sample ring buffer (FIFO) between
  *        adc_ingest() and AFSK_Poll(). Must be a power of two.
  *
- * Sized in SAMPLES, so it shrank in TIME when ::MODEM_ADC_SAMPLERATE doubled:
- * 2048 samples was 53 ms at 38400 Hz but only 26.7 ms at 76800, i.e. barely one
- * 20 ms block. 4096 restores the old margin. The check below enforces the part
- * that actually matters - AFSK_Poll() drains in whole blocks, so a FIFO that
- * cannot hold one has nothing to give it.
+ * The size is expressed in SAMPLES, so the buffering it provides in TIME scales
+ * inversely with ::MODEM_ADC_SAMPLERATE: 4096 samples is 53 ms at 76800 Hz,
+ * roughly two and a half 20 ms DSP blocks of slack for the consumer. The static
+ * assertion below enforces the part that actually matters - AFSK_Poll() drains
+ * in whole blocks, so a FIFO that cannot hold one has nothing to give it.
  */
 #ifndef MODEM_RX_FIFO_SIZE
 #define MODEM_RX_FIFO_SIZE 4096
@@ -340,8 +350,14 @@
 #define MODEM_DAC_TIMER_INTR_PRIO 3
 #endif
 
+/**
+ * @brief DAC channel corresponding to ::MODEM_DAC_GPIO, derived automatically.
+ *
+ * The ESP32 DAC is not routable through the GPIO matrix, so the channel is
+ * fixed by the pin: GPIO25 is DAC channel 0 and GPIO26 is DAC channel 1. Any
+ * other pin is a compile error rather than a silent fallback.
+ */
 #if MODEM_DAC_GPIO == 25
-/** @brief DAC channel corresponding to ::MODEM_DAC_GPIO, derived automatically. */
 #define MODEM_DAC_CHANNEL DAC_CHAN_0
 #elif MODEM_DAC_GPIO == 26
 #define MODEM_DAC_CHANNEL DAC_CHAN_1
@@ -349,8 +365,15 @@
 #error "MODEM_DAC_GPIO must be 25 (DAC1) or 26 (DAC2): the ESP32 DAC is not routable."
 #endif
 
+/**
+ * @brief ADC1 channel corresponding to ::MODEM_ADC_GPIO, derived automatically.
+ *
+ * Continuous (DMA) mode only works on ADC1, whose eight channels are wired to
+ * GPIO36..39 and GPIO32..35 in that order. The mapping is fixed in silicon, so
+ * it is derived here instead of being configured, and any pin outside that set
+ * is a compile error.
+ */
 #if MODEM_ADC_GPIO == 36
-/** @brief ADC1 channel corresponding to ::MODEM_ADC_GPIO, derived automatically. */
 #define MODEM_ADC_CHANNEL ADC_CHANNEL_0
 #elif MODEM_ADC_GPIO == 37
 #define MODEM_ADC_CHANNEL ADC_CHANNEL_1

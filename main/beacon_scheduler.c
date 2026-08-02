@@ -1,23 +1,21 @@
-/**
- * @file beacon_scheduler.c
- *
- * @author Emiliano Augusto Gonzalez ( lu3vea @ gmail . com)
- * @date 2026
- * @copyright GNU General Public License v3
- * @see https://github.com/hiperiondev/esp32idf_APRS
- *
- * @note
- * This is based on other projects:
- *     VP-Digi: https://github.com/sq8vps/vp-digi
- *     ESP32APRS: https://github.com/nakhonthai/ESP32APRS_Audio
- *     LibAPRS: https://github.com/markqvist/LibAPRS
- *
- *     please contact their authors for more information.
- *
- * @brief Single task that services all periodic own-station transmissions.
- *        See beacon_scheduler.h for the rationale (five big-stack tasks folded
- *        into one to reclaim internal heap).
- */
+// @file beacon_scheduler.c
+//
+// @author Emiliano Augusto Gonzalez ( lu3vea @ gmail . com)
+// @date 2026
+// @copyright GNU General Public License v3
+// @see https://github.com/hiperiondev/esp32idf_APRS
+//
+// @note
+// This is based on other projects:
+//     VP-Digi: https://github.com/sq8vps/vp-digi
+//     ESP32APRS: https://github.com/nakhonthai/ESP32APRS_Audio
+//     LibAPRS: https://github.com/markqvist/LibAPRS
+//
+//     please contact their authors for more information.
+//
+// @brief Single task that services all periodic own-station transmissions.
+//        See beacon_scheduler.h for the rationale (five big-stack tasks folded
+//        into one to reclaim internal heap).
 
 #include <stdint.h>
 
@@ -37,10 +35,10 @@
 
 static const char *TAG = "beacon_sched";
 
-// Stack budget for the shared task. This is the single source of truth for the
-// beacon/bulletin stack size now that the per-service tasks (and their
-// individual *_TASK_STACK_BYTES defines in beacon.c/bulletins.c/weather.c) are
-// gone. The five services run sequentially within a pass, so the stack is
+// Stack budget for the shared task, and the single source of truth for the
+// beacon/bulletin stack size: every periodic transmitter runs on this one task,
+// so no service declares a stack size of its own. The five services run
+// sequentially within a pass, so the stack is
 // reused between them and only the DEEPEST single call tree matters. That call
 // tree is the position/WX/telemetry TX path: buildPositionPacket() /
 // build_tlm_data_packet() / the WX token builder each run several snprintf()s
@@ -134,7 +132,7 @@ static void beacon_scheduler_task(void *arg) {
     // aprs_service_notify_modem_ready() in either case). This does not touch
     // the INET leg: igate.c already backs off internally on
     // net_state_is_connected() and reports "not connected" until the STA link
-    // is actually up, which is expected/transient, not a bug to fix here.
+    // is actually up - an expected, transient condition rather than an error.
     uint32_t waited_ms = 0;
     while (!aprs_service_modem_ready() && waited_ms < BEACON_SCHED_MODEM_WAIT_CAP_MS) {
         vTaskDelay(pdMS_TO_TICKS(BEACON_SCHED_MODEM_POLL_MS));

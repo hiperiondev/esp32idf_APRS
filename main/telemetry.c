@@ -1,29 +1,27 @@
-/**
- * @file telemetry.c
- *
- * @author Emiliano Augusto Gonzalez ( lu3vea @ gmail . com)
- * @date 2026
- * @copyright GNU General Public License v3
- * @see https://github.com/hiperiondev/esp32idf_APRS
- *
- * @note
- * This is based on other projects:
- *     VP-Digi: https://github.com/sq8vps/vp-digi
- *     ESP32APRS: https://github.com/nakhonthai/ESP32APRS_Audio
- *     LibAPRS: https://github.com/markqvist/LibAPRS
- *
- *     please contact their authors for more information.
- *
- * @brief Own-station APRS Telemetry subsystem: resolves the operator's
- * Binary (digital B1-B8) channel mapping (telemetry_config_t.tlm_bit_channel[],
- * Telemetry page "Binary" section) from the sensors_local registry once per
- * second, and encodes/transmits a "T#..." Telemetry Data Report at
- * data_interval, plus PARM/UNIT/BITS metadata at info_interval.
- *
- * Configuration is stored in its own LittleFS file (/storage/telemetry.json),
- * NOT in g_config/config.json - see the persistence section below and
- * telemetry.h for the rationale (same pattern bulletins.c uses).
- */
+// @file telemetry.c
+//
+// @author Emiliano Augusto Gonzalez ( lu3vea @ gmail . com)
+// @date 2026
+// @copyright GNU General Public License v3
+// @see https://github.com/hiperiondev/esp32idf_APRS
+//
+// @note
+// This is based on other projects:
+//     VP-Digi: https://github.com/sq8vps/vp-digi
+//     ESP32APRS: https://github.com/nakhonthai/ESP32APRS_Audio
+//     LibAPRS: https://github.com/markqvist/LibAPRS
+//
+//     please contact their authors for more information.
+//
+// @brief Own-station APRS Telemetry subsystem: resolves the operator's
+// Binary (digital B1-B8) channel mapping (telemetry_config_t.tlm_bit_channel[],
+// Telemetry page "Binary" section) from the sensors_local registry once per
+// second, and encodes/transmits a "T#..." Telemetry Data Report at
+// data_interval, plus PARM/UNIT/BITS metadata at info_interval.
+//
+// Configuration is stored in its own LittleFS file (/storage/telemetry.json),
+// NOT in g_config/config.json - see the persistence section below and
+// telemetry.h for the rationale (same pattern bulletins.c uses).
 
 #include <math.h>
 #include <stdio.h>
@@ -91,9 +89,9 @@ static void telemetry_unlock(void) {
     json_store_lock_give(&s_lock);
 }
 
-/* -------------------------------------------------------------------------
- * Persistence: /storage/telemetry.json (own file, not g_config/config.json)
- * ------------------------------------------------------------------------- */
+// -------------------------------------------------------------------------
+// Persistence: /storage/telemetry.json (own file, not g_config/config.json)
+// -------------------------------------------------------------------------
 
 void telemetry_config_set_defaults(telemetry_config_t *out) {
     memset(out, 0, sizeof(*out));
@@ -555,23 +553,23 @@ void telemetry_get_mycall(char *out, size_t out_size) {
     telemetry_unlock();
 }
 
-/* -------------------------------------------------------------------------
- * 1 Hz refresh: for EACH Binary bit independently, read the one local
- * driver the operator picked in cfg.tlm_bit_channel[bit] (Telemetry page
- * "Binary" section, "Channel" column) and copy only that bit's value.
- * Mirrors weather.c's per-field resolution against wx_sensor_ch[], and for
- * the same reason: with more than one telemetry-capable driver registered,
- * a single aggregate sensors_local_save() call would let whichever driver
- * runs last silently overwrite bits already resolved from a different,
- * operator-selected driver.
- *
- * Uses the channel mapping copied on the last telemetry_beacon_service()
- * pass (s_cached_bit_channel[]) rather than calling telemetry_config_load()
- * here: this runs at 1 Hz off the APRS service tick, and the mapping only
- * changes when the operator saves the web page, so a snapshot of just the two
- * channel arrays is all this path needs - the scheduler-driven beacon service
- * refreshes it on every pass.
- * ------------------------------------------------------------------------- */
+// -------------------------------------------------------------------------
+// 1 Hz refresh: for EACH Binary bit independently, read the one local
+// driver the operator picked in cfg.tlm_bit_channel[bit] (Telemetry page
+// "Binary" section, "Channel" column) and copy only that bit's value.
+// Mirrors weather.c's per-field resolution against wx_sensor_ch[], and for
+// the same reason: with more than one telemetry-capable driver registered,
+// a single aggregate sensors_local_save() call would let whichever driver
+// runs last silently overwrite bits already resolved from a different,
+// operator-selected driver.
+//
+// Uses the channel mapping copied on the last telemetry_beacon_service()
+// pass (s_cached_bit_channel[]) rather than calling telemetry_config_load()
+// here: this runs at 1 Hz off the APRS service tick, and the mapping only
+// changes when the operator saves the web page, so a snapshot of just the two
+// channel arrays is all this path needs - the scheduler-driven beacon service
+// refreshes it on every pass.
+// -------------------------------------------------------------------------
 static uint8_t s_cached_bit_channel[TLM_BIT_NUM];
 static uint8_t s_cached_ana_channel[TLM_CH];
 static bool s_cache_valid = false;
@@ -666,9 +664,9 @@ static void telemetry_refresh_now(void) {
     }
 }
 
-/* -------------------------------------------------------------------------
- * Encoding helpers
- * ------------------------------------------------------------------------- */
+// -------------------------------------------------------------------------
+// Encoding helpers
+// -------------------------------------------------------------------------
 
 static void call_field(const telemetry_config_t *s, char *out, size_t outMax) {
     if (s->ssid > 0)
@@ -1028,9 +1026,9 @@ static uint32_t clamp_info_interval(uint32_t s) {
     return s;
 }
 
-/* -------------------------------------------------------------------------
- * Tasks / scheduler-service entry points
- * ------------------------------------------------------------------------- */
+// -------------------------------------------------------------------------
+// Tasks / scheduler-service entry points
+// -------------------------------------------------------------------------
 
 static uint32_t s_sequence = 0;
 static int64_t s_data_next_due = 0;

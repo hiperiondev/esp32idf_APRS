@@ -1,24 +1,22 @@
-/**
- * @file lastheard.c
- *
- * @author Emiliano Augusto Gonzalez ( lu3vea @ gmail . com)
- * @date 2026
- * @copyright GNU General Public License v3
- * @see https://github.com/hiperiondev/esp32idf_APRS
- *
- * @note
- * This is based on other projects:
- *     VP-Digi: https://github.com/sq8vps/vp-digi
- *     ESP32APRS: https://github.com/nakhonthai/ESP32APRS_Audio
- *     LibAPRS: https://github.com/markqvist/LibAPRS
- *
- *     please contact their authors for more information.
- *
- * @brief In-RAM table of decoded stations feeding the dashboard "LAST HEARD"
- * panel: one entry per callsign, most recently heard first, with thread-safe
- * insertion, per-callsign packet counting, an 18-hour heard histogram for the
- * "?APRSH" query, UTC timestamping and JSON serialization.
- */
+// @file lastheard.c
+//
+// @author Emiliano Augusto Gonzalez ( lu3vea @ gmail . com)
+// @date 2026
+// @copyright GNU General Public License v3
+// @see https://github.com/hiperiondev/esp32idf_APRS
+//
+// @note
+// This is based on other projects:
+//     VP-Digi: https://github.com/sq8vps/vp-digi
+//     ESP32APRS: https://github.com/nakhonthai/ESP32APRS_Audio
+//     LibAPRS: https://github.com/markqvist/LibAPRS
+//
+//     please contact their authors for more information.
+//
+// @brief In-RAM table of decoded stations feeding the dashboard "LAST HEARD"
+// panel: one entry per callsign, most recently heard first, with thread-safe
+// insertion, per-callsign packet counting, an 18-hour heard histogram for the
+// "?APRSH" query, UTC timestamping and JSON serialization.
 
 #include "lastheard.h"
 

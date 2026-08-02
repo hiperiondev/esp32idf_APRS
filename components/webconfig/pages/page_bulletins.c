@@ -1,35 +1,33 @@
-/**
- * @file page_bulletins.c
- *
- * @author Emiliano Augusto Gonzalez ( lu3vea @ gmail . com)
- * @date 2026
- * @copyright GNU General Public License v3
- * @see https://github.com/hiperiondev/esp32idf_APRS
- *
- * @note
- * This is based on other projects:
- *     VP-Digi: https://github.com/sq8vps/vp-digi
- *     ESP32APRS: https://github.com/nakhonthai/ESP32APRS_Audio
- *     LibAPRS: https://github.com/markqvist/LibAPRS
- *
- *     please contact their authors for more information.
- *
- * @brief Web admin "Bulletins" page: edits the BULLETIN_COUNT APRS bulletins.
- * Each bulletin has enable / Send via RF / Send via Internet toggles, an
- * addressee identifier and group name, a length-limited message, and an
- * "expire after N hours" window that auto-disables the bulletin once it
- * elapses.
- *
- * The identifier and group together select which of the three APRS101
- * chapter 14 addressee forms goes on the air - general bulletin ("BLN1"),
- * group bulletin ("BLN1WX") or announcement ("BLNQ"). Both are normalized at
- * transmit time by bulletins_build_addressee(), so anything typed here that
- * the addressee field cannot carry is dropped rather than transmitted.
- *
- * Bulletins live in their own LittleFS file (/storage/bulletins.json), NOT in
- * g_config - see bulletins.h. This page therefore loads/saves them through the
- * bulletins_* API rather than touching g_config or app_config_save().
- */
+// @file page_bulletins.c
+//
+// @author Emiliano Augusto Gonzalez ( lu3vea @ gmail . com)
+// @date 2026
+// @copyright GNU General Public License v3
+// @see https://github.com/hiperiondev/esp32idf_APRS
+//
+// @note
+// This is based on other projects:
+//     VP-Digi: https://github.com/sq8vps/vp-digi
+//     ESP32APRS: https://github.com/nakhonthai/ESP32APRS_Audio
+//     LibAPRS: https://github.com/markqvist/LibAPRS
+//
+//     please contact their authors for more information.
+//
+// @brief Web admin "Bulletins" page: edits the BULLETIN_COUNT APRS bulletins.
+// Each bulletin has enable / Send via RF / Send via Internet toggles, an
+// addressee identifier and group name, a length-limited message, and an
+// "expire after N hours" window that auto-disables the bulletin once it
+// elapses.
+//
+// The identifier and group together select which of the three APRS101
+// chapter 14 addressee forms goes on the air - general bulletin ("BLN1"),
+// group bulletin ("BLN1WX") or announcement ("BLNQ"). Both are normalized at
+// transmit time by bulletins_build_addressee(), so anything typed here that
+// the addressee field cannot carry is dropped rather than transmitted.
+//
+// Bulletins live in their own LittleFS file (/storage/bulletins.json), NOT in
+// g_config - see bulletins.h. This page therefore loads/saves them through the
+// bulletins_* API rather than touching g_config or app_config_save().
 
 #include <stdio.h>
 #include <stdlib.h>

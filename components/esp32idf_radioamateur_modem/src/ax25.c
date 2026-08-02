@@ -1213,12 +1213,11 @@ void Ax25TransmitCheck(void) {
 
     if (txInitStage == TX_INIT_OFF) {
         // Nothing keyed up right now. There may still be one or more frames
-        // left in the ring though: since each frame now runs its own
-        // complete preamble/data/CRC/footer/PTT-off cycle (frames are no
-        // longer chained together inside a single key-up - see the
-        // TX_STAGE_FOOTER_FLAGS and FX.25 TX_STAGE_DATA-retirement paths in
-        // Ax25GetTxBit()), nothing else re-arms txInitStage for the next
-        // queued frame on its own. Ax25TransmitBuffer() is a no-op unless
+        // left in the ring though: each frame runs its own complete
+        // preamble/data/CRC/footer/PTT-off cycle and frames are never chained
+        // together inside a single key-up (see the TX_STAGE_FOOTER_FLAGS and
+        // FX.25 TX_STAGE_DATA retirement paths in Ax25GetTxBit()), so nothing
+        // re-arms txInitStage for the next queued frame on its own. Ax25TransmitBuffer() is a no-op unless
         // txInitStage is TX_INIT_OFF and the ring is non-empty, so it is
         // always safe to call from here every tick.
         Ax25TransmitBuffer();

@@ -1,46 +1,44 @@
-/**
- * @file bmp180.c
- *
- * @author Emiliano Augusto Gonzalez ( lu3vea @ gmail . com)
- * @date 2026
- * @copyright GNU General Public License v3
- * @see https://github.com/hiperiondev/esp32idf_APRS
- *
- * @note
- * This is based on other projects:
- *     VP-Digi: https://github.com/sq8vps/vp-digi
- *     ESP32APRS: https://github.com/nakhonthai/ESP32APRS_Audio
- *     LibAPRS: https://github.com/markqvist/LibAPRS
- *
- *     please contact their authors for more information.
- *
- * @brief Real WEATHER ::sensor_local_driver_t for the Bosch BMP180 digital
- *        barometric-pressure / temperature sensor over I2C.
- *
- * Advertises only ::SENSOR_LOCAL_DATA_WEATHER and, on every call, reads the
- * BMP180 and writes ambient temperature and barometric pressure straight into
- * ::weather_telemetry_data_t::weather[0], setting the matching
- * ::aprs_weather_sensor_id_t enabled flags. The I2C pins are fixed at build
- * time in BMP180.h (default GPIO21=SDA, GPIO22=SCL) and are excluded from every
- * web-admin GPIO picker via bmp180_gpio_is_reserved().
- *
- * Uses the esp-idf-lib BMP180 driver:
- *     https://components.espressif.com/components/esp-idf-lib/bmp180/
- */
+// @file bmp180.c
+//
+// @author Emiliano Augusto Gonzalez ( lu3vea @ gmail . com)
+// @date 2026
+// @copyright GNU General Public License v3
+// @see https://github.com/hiperiondev/esp32idf_APRS
+//
+// @note
+// This is based on other projects:
+//     VP-Digi: https://github.com/sq8vps/vp-digi
+//     ESP32APRS: https://github.com/nakhonthai/ESP32APRS_Audio
+//     LibAPRS: https://github.com/markqvist/LibAPRS
+//
+//     please contact their authors for more information.
+//
+// @brief Real WEATHER ::sensor_local_driver_t for the Bosch BMP180 digital
+//        barometric-pressure / temperature sensor over I2C.
+//
+// Advertises only ::SENSOR_LOCAL_DATA_WEATHER and, on every call, reads the
+// BMP180 and writes ambient temperature and barometric pressure straight into
+// ::weather_telemetry_data_t::weather[0], setting the matching
+// ::aprs_weather_sensor_id_t enabled flags. The I2C pins are fixed at build
+// time in BMP180.h (default GPIO21=SDA, GPIO22=SCL) and are excluded from every
+// web-admin GPIO picker via bmp180_gpio_is_reserved().
+//
+// Uses the esp-idf-lib BMP180 driver:
+//     https://components.espressif.com/components/esp-idf-lib/bmp180/
 
 #include <string.h>
 
 #include "esp_err.h"
 #include "esp_log.h"
 
-/* Angle brackets on purpose: skip the including file's own directory so the
- * esp-idf-lib "bmp180.h" is picked from the managed component and never clashes
- * with our sibling "BMP180.h" on a case-insensitive host filesystem. */
-#include <bmp180.h> /* esp-idf-lib managed component driver (lower-case) */
-#include <i2cdev.h> /* esp-idf-lib i2cdev, required once before init_desc */
+// Angle brackets on purpose: skip the including file's own directory so the
+// esp-idf-lib "bmp180.h" is picked from the managed component and never clashes
+// with our sibling "BMP180.h" on a case-insensitive host filesystem.
+#include <bmp180.h> // esp-idf-lib managed component driver (lower-case)
+#include <i2cdev.h> // esp-idf-lib i2cdev, required once before init_desc
 
-#include "BMP180.h"            /* our compile-time pin/port config (upper-case)      */
-#include "bmp180_properties.h" /* fine-grained Weather field capability descriptor   */
+#include "BMP180.h"            // our compile-time pin/port config (upper-case)
+#include "bmp180_properties.h" // fine-grained Weather field capability descriptor
 #include "sensors_local.h"
 
 #ifdef CONFIG_SENSORS_LOCAL_BMP180_DRIVER
@@ -48,8 +46,8 @@
 static const char *TAG = "sensor_bmp180";
 
 typedef struct {
-    bmp180_dev_t dev; /**< esp-idf-lib device descriptor. */
-    bool i2cdev_up;   /**< i2cdev_init() has been done. */
+    bmp180_dev_t dev; // < esp-idf-lib device descriptor.
+    bool i2cdev_up;   // < i2cdev_init() has been done.
 } bmp180_ctx_t;
 
 static bmp180_ctx_t s_ctx;
@@ -84,7 +82,7 @@ static esp_err_t bmp180_drv_init(sensor_local_driver_t *self) {
     return ESP_OK;
 }
 
-/* The one entry the framework calls. kind is already masked to WEATHER. */
+// The one entry the framework calls. kind is already masked to WEATHER.
 static esp_err_t bmp180_drv_save(sensor_local_driver_t *self, weather_telemetry_data_t *data, sensor_local_data_kind_t kind) {
     bmp180_ctx_t *c = (bmp180_ctx_t *)self->ctx;
 
@@ -135,4 +133,4 @@ static sensor_local_driver_t bmp180_driver = {
 
 SENSORS_LOCAL_DRIVER_AUTOREGISTER(bmp180_driver);
 
-#endif /* CONFIG_SENSORS_LOCAL_BMP180_DRIVER */
+#endif // CONFIG_SENSORS_LOCAL_BMP180_DRIVER

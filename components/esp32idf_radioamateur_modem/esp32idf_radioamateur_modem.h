@@ -93,8 +93,16 @@ typedef struct {
  */
 #define MODEM_DEFAULT_CONFIG()                                                                                                                                 \
     {                                                                                                                                                          \
-        .modem = MODEM_MODEM_BELL202, .flat_audio = false, .full_duplex = true, .allow_non_aprs = false, .preamble_ms = 300, .slot_time_ms = 0, .persist = 63, \
-        .fx25_mode = 0, .ptt_active_high = MODEM_PTT_ACTIVE_HIGH ? true : false, .min_unkey_ms = 0,                                                            \
+        .modem = MODEM_MODEM_BELL202,                                                                                                                          \
+        .flat_audio = false,                                                                                                                                   \
+        .full_duplex = true,                                                                                                                                   \
+        .allow_non_aprs = false,                                                                                                                               \
+        .preamble_ms = 300,                                                                                                                                    \
+        .slot_time_ms = 0,                                                                                                                                     \
+        .persist = 63,                                                                                                                                         \
+        .fx25_mode = 0,                                                                                                                                        \
+        .ptt_active_high = MODEM_PTT_ACTIVE_HIGH ? true : false,                                                                                               \
+        .min_unkey_ms = 0,                                                                                                                                     \
     }
 
 /**

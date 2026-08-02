@@ -1,24 +1,22 @@
-/**
- * @file weather.c
- *
- * @author Emiliano Augusto Gonzalez ( lu3vea @ gmail . com)
- * @date 2026
- * @copyright GNU General Public License v3
- * @see https://github.com/hiperiondev/esp32idf_APRS
- *
- * @note
- * This is based on other projects:
- *     VP-Digi: https://github.com/sq8vps/vp-digi
- *     ESP32APRS: https://github.com/nakhonthai/ESP32APRS_Audio
- *     LibAPRS: https://github.com/markqvist/LibAPRS
- *
- *     please contact their authors for more information.
- *
- * @brief Own-station APRS Weather Report subsystem: owns the shared
- * ::weather_telemetry_data container, refreshes it from the sensors_local
- * registry once per second (with optional per-field averaging), and encodes
- * and transmits a standard APRS Weather Report at g_config.wx_interval.
- */
+// @file weather.c
+//
+// @author Emiliano Augusto Gonzalez ( lu3vea @ gmail . com)
+// @date 2026
+// @copyright GNU General Public License v3
+// @see https://github.com/hiperiondev/esp32idf_APRS
+//
+// @note
+// This is based on other projects:
+//     VP-Digi: https://github.com/sq8vps/vp-digi
+//     ESP32APRS: https://github.com/nakhonthai/ESP32APRS_Audio
+//     LibAPRS: https://github.com/markqvist/LibAPRS
+//
+//     please contact their authors for more information.
+//
+// @brief Own-station APRS Weather Report subsystem: owns the shared
+// ::weather_telemetry_data container, refreshes it from the sensors_local
+// registry once per second (with optional per-field averaging), and encodes
+// and transmits a standard APRS Weather Report at g_config.wx_interval.
 
 #include <math.h>
 #include <stdio.h>
@@ -51,13 +49,13 @@ static const char *TAG = "weather";
 #define WX_DEFAULT_INTERVAL_S 600  // used when wx_interval == 0
 #define WX_REFRESH_PERIOD_MS  1000 // sensors_local sampling cadence (1 Hz)
 
-/* -------------------------------------------------------------------------
- * The one shared container and its backing storage.
- *
- * weather[0] receives the decoded weather fields; telemetry_report[0] is kept
- * allocated so telemetry-capable local drivers can also write without special
- * casing, and so a future telemetry sender can read the same snapshot.
- * ------------------------------------------------------------------------- */
+// -------------------------------------------------------------------------
+// The one shared container and its backing storage.
+//
+// weather[0] receives the decoded weather fields; telemetry_report[0] is kept
+// allocated so telemetry-capable local drivers can also write without special
+// casing, and so a future telemetry sender can read the same snapshot.
+// -------------------------------------------------------------------------
 weather_telemetry_data_t weather_telemetry_data;
 
 static aprs_weather_report_t s_wx;    // backs weather_telemetry_data.weather[0]
@@ -83,11 +81,11 @@ void weather_unlock(void) {
         xSemaphoreGive(s_lock);
 }
 
-/* -------------------------------------------------------------------------
- * Field accessors: map one wx_field_id_t to (is it present in this report?)
- * and (its engineering-unit value). Wind is the one enum slot that carries
- * three physical values, so it is spread over three rows here.
- * ------------------------------------------------------------------------- */
+// -------------------------------------------------------------------------
+// Field accessors: map one wx_field_id_t to (is it present in this report?)
+// and (its engineering-unit value). Wind is the one enum slot that carries
+// three physical values, so it is spread over three rows here.
+// -------------------------------------------------------------------------
 static bool wx_field_present(const aprs_weather_report_t *wx, wx_field_id_t f) {
     switch (f) {
         case WX_FIELD_WIND_DIRECTION:
@@ -153,27 +151,27 @@ static double wx_field_value(const aprs_weather_report_t *wx, wx_field_id_t f) {
     }
 }
 
-/* -------------------------------------------------------------------------
- * 1 Hz refresh: for EACH weather field independently, read the one local
- * driver the operator picked in g_config.wx_sensor_ch[field] (Weather page
- * "Channel" column) and copy only that field's value into the shared
- * report. For any field with "Averaged" ticked, fold this sample into its
- * accumulator.
- *
- * @note Earlier revisions called sensors_local_save() once and let every
- *       registered WEATHER-capable driver write straight into the shared
- *       s_wx report. That ignored wx_sensor_ch[] entirely: with more than
- *       one weather driver registered (e.g. the real "bmp180" driver and
- *       the "wx-example" self-test driver both enabled at once), each
- *       driver's save() overwrote the previous one's fields in registry
- *       order, so the on-air packet ended up carrying whichever driver
- *       happened to run last - not the one selected per field in the web
- *       admin - even though the Weather page's live "Value" preview
- *       (which does call sensors_local_save_one() for the exact selected
- *       channel) showed the correct reading. Fixed by resolving each
- *       field to its own selected driver here, the same way the preview
- *       does.
- * ------------------------------------------------------------------------- */
+// -------------------------------------------------------------------------
+// 1 Hz refresh: for EACH weather field independently, read the one local
+// driver the operator picked in g_config.wx_sensor_ch[field] (Weather page
+// "Channel" column) and copy only that field's value into the shared
+// report. For any field with "Averaged" ticked, fold this sample into its
+// accumulator.
+//
+// @note Earlier revisions called sensors_local_save() once and let every
+//       registered WEATHER-capable driver write straight into the shared
+//       s_wx report. That ignored wx_sensor_ch[] entirely: with more than
+//       one weather driver registered (e.g. the real "bmp180" driver and
+//       the "wx-example" self-test driver both enabled at once), each
+//       driver's save() overwrote the previous one's fields in registry
+//       order, so the on-air packet ended up carrying whichever driver
+//       happened to run last - not the one selected per field in the web
+//       admin - even though the Weather page's live "Value" preview
+//       (which does call sensors_local_save_one() for the exact selected
+//       channel) showed the correct reading. Fixed by resolving each
+//       field to its own selected driver here, the same way the preview
+//       does.
+// -------------------------------------------------------------------------
 static void weather_refresh_now(void) {
     weather_lock();
 
@@ -291,9 +289,9 @@ static void weather_refresh_now(void) {
     weather_unlock();
 }
 
-/* -------------------------------------------------------------------------
- * Encoding helpers
- * ------------------------------------------------------------------------- */
+// -------------------------------------------------------------------------
+// Encoding helpers
+// -------------------------------------------------------------------------
 
 // Resolved (post-averaging) view of one field for the encoder.
 typedef struct {
@@ -557,9 +555,9 @@ int weather_build_report_packet(char *out, size_t out_max) {
     return build_wx_packet(r, out, out_max);
 }
 
-/* -------------------------------------------------------------------------
- * Tasks
- * ------------------------------------------------------------------------- */
+// -------------------------------------------------------------------------
+// Tasks
+// -------------------------------------------------------------------------
 
 // Refreshes the shared weather container from the sensors_local registry.
 // Called once per second from the APRS service's existing 1 Hz tick
@@ -641,8 +639,8 @@ void weather_start(void) {
 
     s_lock = xSemaphoreCreateMutex();
 
-    // Make the registry lock thread-safe now that the scheduler is up, then
-    // eagerly bring up any auto-registered drivers so the first sample and the
+    // Arm the registry's own lock before any other task can reach it, then
+    // eagerly bring up the auto-registered drivers so the first sample and the
     // Weather page's channel list are populated.
     sensors_local_init();
     sensors_local_init_all();

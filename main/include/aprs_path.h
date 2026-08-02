@@ -56,6 +56,7 @@
 #define APRS_PATH_PRESET_SIZE  72 /**< Size of one preset slot, including the NUL. */
 #define APRS_PATH_MAX_HOPS     8  /**< AX.25 limit on via (digipeater) addresses in one frame. */
 
+/** @brief ESP-IDF log tag used by the warning this header emits when a bitmask exceeds the AX.25 hop limit. */
 #define APRS_PATH_LOG_TAG "aprs_path"
 
 /**

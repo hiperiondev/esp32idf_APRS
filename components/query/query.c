@@ -1,33 +1,31 @@
-/**
- * @file query.c
- *
- * @author Emiliano Augusto Gonzalez ( lu3vea @ gmail . com)
- * @date 2026
- * @copyright GNU General Public License v3
- * @see https://github.com/hiperiondev/esp32idf_APRS
- *
- * @note
- * This is based on other projects:
- *     VP-Digi: https://github.com/sq8vps/vp-digi
- *     ESP32APRS: https://github.com/nakhonthai/ESP32APRS_Audio
- *     LibAPRS: https://github.com/markqvist/LibAPRS
- *
- *     please contact their authors for more information.
- *
- * @brief APRS query responder implementation.
- *
- * Recognizes the three general queries APRS101 chapter 15 defines - "?APRS?",
- * "?WX?" and "?IGATE?" - in broadcast traffic, and the full directed set
- * ("?APRSD", "?APRSH", "?APRSM", "?APRSO", "?APRSP", "?APRSS", "?APRST" and
- * its "?PING?" alias) when addressed to this station, then transmits the
- * matching response.
- *
- * Position, status and weather answers reuse the existing beacon builders, so
- * a reply is byte-for-byte consistent with what the periodic beacons would
- * send. The list-style answers (directs, heard, traceroute) are returned as
- * APRS text messages addressed back to the querying station, which is the
- * form chapter 15 specifies for a directed query.
- */
+// @file query.c
+//
+// @author Emiliano Augusto Gonzalez ( lu3vea @ gmail . com)
+// @date 2026
+// @copyright GNU General Public License v3
+// @see https://github.com/hiperiondev/esp32idf_APRS
+//
+// @note
+// This is based on other projects:
+//     VP-Digi: https://github.com/sq8vps/vp-digi
+//     ESP32APRS: https://github.com/nakhonthai/ESP32APRS_Audio
+//     LibAPRS: https://github.com/markqvist/LibAPRS
+//
+//     please contact their authors for more information.
+//
+// @brief APRS query responder implementation.
+//
+// Recognizes the three general queries APRS101 chapter 15 defines - "?APRS?",
+// "?WX?" and "?IGATE?" - in broadcast traffic, and the full directed set
+// ("?APRSD", "?APRSH", "?APRSM", "?APRSO", "?APRSP", "?APRSS", "?APRST" and
+// its "?PING?" alias) when addressed to this station, then transmits the
+// matching response.
+//
+// Position, status and weather answers reuse the existing beacon builders, so
+// a reply is byte-for-byte consistent with what the periodic beacons would
+// send. The list-style answers (directs, heard, traceroute) are returned as
+// APRS text messages addressed back to the querying station, which is the
+// form chapter 15 specifies for a directed query.
 
 #include <stdbool.h>
 #include <stdio.h>

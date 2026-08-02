@@ -1,23 +1,21 @@
-/**
- * @file app_config.c
- *
- * @author Emiliano Augusto Gonzalez ( lu3vea @ gmail . com)
- * @date 2026
- * @copyright GNU General Public License v3
- * @see https://github.com/hiperiondev/esp32idf_APRS
- *
- * @note
- * This is based on other projects:
- *     VP-Digi: https://github.com/sq8vps/vp-digi
- *     ESP32APRS: https://github.com/nakhonthai/ESP32APRS_Audio
- *     LibAPRS: https://github.com/markqvist/LibAPRS
- *
- *     please contact their authors for more information.
- *
- * @brief Persistent application configuration: defaults, load/save of
- * /storage/config.json on LittleFS (via cJSON) and the global g_config instance
- * shared by every component and web admin page.
- */
+// @file app_config.c
+//
+// @author Emiliano Augusto Gonzalez ( lu3vea @ gmail . com)
+// @date 2026
+// @copyright GNU General Public License v3
+// @see https://github.com/hiperiondev/esp32idf_APRS
+//
+// @note
+// This is based on other projects:
+//     VP-Digi: https://github.com/sq8vps/vp-digi
+//     ESP32APRS: https://github.com/nakhonthai/ESP32APRS_Audio
+//     LibAPRS: https://github.com/markqvist/LibAPRS
+//
+//     please contact their authors for more information.
+//
+// @brief Persistent application configuration: defaults, load/save of
+// /storage/config.json on LittleFS (via cJSON) and the global g_config instance
+// shared by every component and web admin page.
 
 #include <float.h>
 #include <math.h>
@@ -766,7 +764,7 @@ static void config_from_json(cJSON *d, app_config_t *c) {
         ESP_LOGW(TAG, "dupCacheSize %u out of range, clamped to %d..%d", (unsigned)c->dup_cache_size, DUP_CACHE_SIZE_MIN, DUP_CACHE_SIZE_MAX);
         c->dup_cache_size = (c->dup_cache_size < DUP_CACHE_SIZE_MIN) ? DUP_CACHE_SIZE_MIN : DUP_CACHE_SIZE_MAX;
     }
-    c->dup_cache_timeout_ms = (uint16_t)jget_num(d, "dupCacheTimeoutMs", def.dup_cache_timeout_ms);
+    c->dup_cache_timeout_ms = (uint32_t)jget_num(d, "dupCacheTimeoutMs", def.dup_cache_timeout_ms);
     if (c->dup_cache_timeout_ms < DUP_CACHE_TIMEOUT_MS_MIN || c->dup_cache_timeout_ms > DUP_CACHE_TIMEOUT_MS_MAX) {
         ESP_LOGW(TAG, "dupCacheTimeoutMs %u out of range, clamped to %d..%d ms", (unsigned)c->dup_cache_timeout_ms, DUP_CACHE_TIMEOUT_MS_MIN,
                  DUP_CACHE_TIMEOUT_MS_MAX);

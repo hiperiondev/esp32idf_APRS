@@ -507,7 +507,7 @@
 /** @} */
 
 /**
- * @name Telemetry configurator (new page)
+ * @name page_tlm.c: telemetry configurator
  * @{
  */
 #define TR_TLM_ENABLE_TELEMETRY   "Enable Telemetry"
@@ -694,15 +694,15 @@
 
 #define TR_F_SATGATE      "Satellite Gate List"
 #define TR_F_SATGATE_CALL "Satellite Callsign"
-#define TR_NOTE_SATGATE                                                                                                                                       \
-    "Callsigns of satellite/ISS digipeaters (e.g. ISS, PSAT). A frame routed through one of these is only gated to APRS-IS if the digipeater's path entry "   \
+#define TR_NOTE_SATGATE                                                                                                                                        \
+    "Callsigns of satellite/ISS digipeaters (e.g. ISS, PSAT). A frame routed through one of these is only gated to APRS-IS if the digipeater's path entry "    \
     "is actually marked used. Up to 8 entries; leave a slot blank to disable it."
 
 #define TR_F_DUP_CACHE            "Duplicate Suppression"
 #define TR_F_DUP_CACHE_SIZE       "Cache Size (entries)"
 #define TR_F_DUP_CACHE_TIMEOUT_MS "Suppression Window (ms)"
-#define TR_NOTE_DUP_CACHE                                                                                                                                     \
-    "Shared by the IGate and the Digipeater to suppress repeated copies of the same frame. A busy digipeater on a congested frequency may need a larger "    \
+#define TR_NOTE_DUP_CACHE                                                                                                                                      \
+    "Shared by the IGate and the Digipeater to suppress repeated copies of the same frame. A busy digipeater on a congested frequency may need a larger "      \
     "cache; a sparse rural IGate may prefer a shorter window."
 
 #define TR_SYM_ICON            "Icon"

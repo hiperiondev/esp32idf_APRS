@@ -64,13 +64,13 @@
  *        the AX.25 Information field (see APRS101 chapter 5 and 8).
  * @{
  */
-#define APRS_MAX_INFO_FIELD_LEN          256 /**< Max AX.25 Information field length (protocol id + data), bytes. */
-#define APRS_MAX_COMMENT_LEN             43  /**< Max comment length for a position report without data extension. */
-#define APRS_MAX_COMMENT_WITH_EXT_LEN    36  /**< Max comment length when a 7-byte Data Extension is present. */
-#define APRS_CALLSIGN_LEN                6   /**< Callsign field length, excluding SSID. */
-#define APRS_CALLSIGN_SSID_LEN           9 /**< Callsign left-justified, space-padded to 9 chars, as required in the addressee field of Messages/PARM/UNIT/EQNS/BITS. */
-#define APRS_MAX_STATUS_TEXT_LEN         62 /**< Max status text length. */
-#define APRS_MAX_OBJECT_NAME_LEN         9  /**< Fixed object/item name length. */
+#define APRS_MAX_INFO_FIELD_LEN       256 /**< Max AX.25 Information field length (protocol id + data), bytes. */
+#define APRS_MAX_COMMENT_LEN          43  /**< Max comment length for a position report without data extension. */
+#define APRS_MAX_COMMENT_WITH_EXT_LEN 36  /**< Max comment length when a 7-byte Data Extension is present. */
+#define APRS_CALLSIGN_LEN             6   /**< Callsign field length, excluding SSID. */
+#define APRS_CALLSIGN_SSID_LEN   9 /**< Callsign left-justified, space-padded to 9 chars, as required in the addressee field of Messages/PARM/UNIT/EQNS/BITS. */
+#define APRS_MAX_STATUS_TEXT_LEN 62         /**< Max status text length. */
+#define APRS_MAX_OBJECT_NAME_LEN 9          /**< Fixed object/item name length. */
 #define APRS_MAX_MESSAGE_TEXT_LEN        67 /**< Max message text length (excluding message number). */
 #define APRS_MESSAGE_NUMBER_LEN          5  /**< Message number field length "{mm}" incl. braces, up to 5 chars. */
 #define APRS_TELEMETRY_PARAM_NAME_MAXLEN 24 /**< Max length of a single PARM/UNIT/BITS project title text. */
@@ -280,11 +280,11 @@ typedef struct {
  *        triangles, boxes, etc. (APRS101 Chapter 11).
  */
 typedef enum {
-    APRS_AREA_TYPE_CIRCLE = 1,
-    APRS_AREA_TYPE_LINE = 2,
-    APRS_AREA_TYPE_TRIANGLE = 6,
+    APRS_AREA_TYPE_CIRCLE = 1,                   /**< Open circle centred on the Object position, radius taken from the {www} width field. */
+    APRS_AREA_TYPE_LINE = 2,                     /**< Open line drawn through the Object position. */
+    APRS_AREA_TYPE_TRIANGLE = 6,                 /**< Open triangle centred on the Object position. */
     APRS_AREA_TYPE_BOX_FILLED_RECT_TRIANGLE = 3, /**< Filled variants offset by +3/+6 per spec table; application decodes per full table. */
-    APRS_AREA_TYPE_RECTANGLE = 5
+    APRS_AREA_TYPE_RECTANGLE = 5                 /**< Open rectangle (box) centred on the Object position. */
 } aprs_area_object_type_t;
 
 typedef struct {
@@ -311,7 +311,7 @@ typedef struct {
  *        "FORMATS" section and APRS101 "APRS Software Type".
  */
 typedef enum {
-    APRS_WX_UNIT_UNKNOWN = 0,
+    APRS_WX_UNIT_UNKNOWN = 0,                /**< Hardware not identified, or the report carries no software-type byte. */
     APRS_WX_UNIT_PEET_ULTIMETER_2000,        /**< "U2k": Peet Bros Ultimeter 2000, PC-attached. */
     APRS_WX_UNIT_PEET_ULTIMETER_2000_REMOTE, /**< "U2r" / "UII": remote Ultimeter, no PC, raw serial passthrough. */
     APRS_WX_UNIT_PEET_ULTIMETER_500,         /**< "U5": Peet Bros Ultimeter 500. */
@@ -833,6 +833,7 @@ typedef enum {
     APRS_NWS_BULLETIN_CANCL  /**< Cancellation of a previously issued bulletin. */
 } aprs_nws_bulletin_kind_t;
 
+/** @brief Maximum number of county/zone identifiers carried in one NWS bulletin. */
 #define APRS_NWS_MAX_COUNTIES 5
 
 typedef struct {
@@ -866,7 +867,7 @@ typedef enum {
  * bytes, space-padded).
  */
 typedef struct {
-    aprs_message_kind_t kind;
+    aprs_message_kind_t kind;                     /**< Whether this is a directed message, a bulletin, an announcement, an ACK or a REJ. */
     char addressee[APRS_CALLSIGN_SSID_LEN + 1];   /**< 9-byte space-padded addressee (callsign, BLNn, BLNnID, NWS-xxxxx, NTSstn, etc.). */
     char text[APRS_MAX_MESSAGE_TEXT_LEN + 1];     /**< Message/bulletin/announcement free text. */
     bool has_message_id;                          /**< true if a "{mm}" message number is present (enables ACK/REJ handshake). */
@@ -906,7 +907,7 @@ typedef enum {
 } aprs_query_type_t;
 
 typedef struct {
-    aprs_query_type_t type;
+    aprs_query_type_t type;                           /**< General (broadcast) or directed query. */
     char footprint[8];                                /**< Optional query target footprint (Maidenhead-based area restriction), if present. */
     bool is_directed;                                 /**< true if this query was addressed to a specific station rather than broadcast. */
     char target_callsign[APRS_CALLSIGN_SSID_LEN + 1]; /**< Target station callsign, valid only if is_directed == true. */
@@ -1050,18 +1051,18 @@ bool aprs_mice_encode(const aprs_mice_report_t *report, char *dst_call_out, char
  *        field, restricted to the packet kinds modeled by this header.
  */
 typedef enum {
-    APRS_PACKET_WEATHER,
-    APRS_PACKET_TELEMETRY_REPORT,
-    APRS_PACKET_TELEMETRY_METADATA,
-    APRS_PACKET_STORM_DATA,
-    APRS_PACKET_NWS_BULLETIN,
-    APRS_PACKET_MESSAGE,
-    APRS_PACKET_STATUS,
-    APRS_PACKET_QUERY,
-    APRS_PACKET_OBJECT,
-    APRS_PACKET_ITEM,
-    APRS_PACKET_MICE,
-    APRS_PACKET_POSITION_ONLY /**< Plain position report carrying none of the above payloads. */
+    APRS_PACKET_WEATHER,            /**< Weather Report; read the @c weather member. */
+    APRS_PACKET_TELEMETRY_REPORT,   /**< Telemetry Data Report ("T#"); read the @c telemetry member. */
+    APRS_PACKET_TELEMETRY_METADATA, /**< Telemetry PARM/UNIT/EQNS/BITS definition message; read the @c telemetry_metadata member. */
+    APRS_PACKET_STORM_DATA,         /**< Hurricane/tropical storm data; read the @c storm member. */
+    APRS_PACKET_NWS_BULLETIN,       /**< National Weather Service bulletin; read the @c nws_bulletin member. */
+    APRS_PACKET_MESSAGE,            /**< Message, bulletin, announcement, ACK or REJ; read the @c message member. */
+    APRS_PACKET_STATUS,             /**< Status report; read the @c status member. */
+    APRS_PACKET_QUERY,              /**< General or directed query; read the @c query member. */
+    APRS_PACKET_OBJECT,             /**< Object report; read the @c object member. */
+    APRS_PACKET_ITEM,               /**< Item report; read the @c item member. */
+    APRS_PACKET_MICE,               /**< Mic-E position report; read the @c mice member. */
+    APRS_PACKET_POSITION_ONLY       /**< Plain position report carrying none of the above payloads. */
 } aprs_packet_kind_t;
 
 /**
@@ -1075,7 +1076,7 @@ typedef enum {
  *        should wrap this structure in a production implementation.
  */
 typedef struct {
-    aprs_packet_kind_t kind;
+    aprs_packet_kind_t kind;         /**< Discriminator: selects which payload member below is valid. */
     aprs_data_type_identifier_t dti; /**< Raw Data Type Identifier byte actually observed/to be transmitted. */
 
     /**
@@ -1107,15 +1108,15 @@ typedef struct {
     size_t telemetry_metadata_qty;
 
     union {
-        aprs_storm_data_t storm;
-        aprs_nws_bulletin_t nws_bulletin;
-        aprs_message_t message;
-        aprs_status_report_t status;
-        aprs_query_t query;
-        aprs_object_report_t object;
-        aprs_item_report_t item;
-        aprs_mice_report_t mice;
-        aprs_position_t position;
+        aprs_storm_data_t storm;          /**< Valid when kind == ::APRS_PACKET_STORM_DATA. */
+        aprs_nws_bulletin_t nws_bulletin; /**< Valid when kind == ::APRS_PACKET_NWS_BULLETIN. */
+        aprs_message_t message;           /**< Valid when kind == ::APRS_PACKET_MESSAGE. */
+        aprs_status_report_t status;      /**< Valid when kind == ::APRS_PACKET_STATUS. */
+        aprs_query_t query;               /**< Valid when kind == ::APRS_PACKET_QUERY. */
+        aprs_object_report_t object;      /**< Valid when kind == ::APRS_PACKET_OBJECT. */
+        aprs_item_report_t item;          /**< Valid when kind == ::APRS_PACKET_ITEM. */
+        aprs_mice_report_t mice;          /**< Valid when kind == ::APRS_PACKET_MICE. */
+        aprs_position_t position;         /**< Valid when kind == ::APRS_PACKET_POSITION_ONLY. */
     } payload; /**< Active member selected by @c kind, for the remaining packet kinds that are genuinely mutually exclusive (a frame cannot simultaneously be,
                  e.g., both a Status report and an Object report). Not used for APRS_PACKET_WEATHER, APRS_PACKET_TELEMETRY_REPORT or
                  APRS_PACKET_TELEMETRY_METADATA - see @ref weather, @ref telemetry_report and @ref telemetry_metadata instead. */
@@ -1125,6 +1126,8 @@ typedef struct {
      *         ::aprs_weather_extended_sensor_t). Only meaningful when
      *         @ref weather_qty is nonzero. NULL/0 if unused. */
     aprs_weather_extended_sensor_t *extended_sensors;
+    /** @brief Number of entries populated in @ref extended_sensors; 0 when the
+     *         pointer is NULL or no extended readings are attached. */
     size_t extended_sensor_count;
 } weather_telemetry_data_t;
 

@@ -115,10 +115,9 @@ void aprs_service_start(void);
  * @brief Queue a TNC2-format packet ("SRC-N>DST,PATH:info") for transmission
  * on RF.
  *
- * Replaces the old component's APRS_sendTNC2Pkt(raw, len). The modem's
- * modem_send_tnc2() takes a NUL-terminated string, while every caller here has
- * a pointer+length into a larger buffer, so this does that conversion (and the
- * AX25_FRAME_MAX_SIZE bounds check) once, centrally.
+ * The modem's modem_send_tnc2() takes a NUL-terminated string, while every
+ * caller here has a pointer+length into a larger buffer, so this performs that
+ * conversion, and the AX25_FRAME_MAX_SIZE bounds check, once and centrally.
  *
  * This is the RF leg only - it never touches the APRS-IS/IGate socket
  * (see igate_send_raw()), and a discard here (modem not ready, RF TX

@@ -1,23 +1,21 @@
-/**
- * @file page_wireless.c
- *
- * @author Emiliano Augusto Gonzalez ( lu3vea @ gmail . com)
- * @date 2026
- * @copyright GNU General Public License v3
- * @see https://github.com/hiperiondev/esp32idf_APRS
- *
- * @note
- * This is based on other projects:
- *     VP-Digi: https://github.com/sq8vps/vp-digi
- *     ESP32APRS: https://github.com/nakhonthai/ESP32APRS_Audio
- *     LibAPRS: https://github.com/markqvist/LibAPRS
- *
- *     please contact their authors for more information.
- *
- * @brief Web admin "Wireless" page: renders and saves the WiFi configuration
- * (mode, TX power, station profiles and access point settings) and serves the
- * JSON access point scan.
- */
+// @file page_wireless.c
+//
+// @author Emiliano Augusto Gonzalez ( lu3vea @ gmail . com)
+// @date 2026
+// @copyright GNU General Public License v3
+// @see https://github.com/hiperiondev/esp32idf_APRS
+//
+// @note
+// This is based on other projects:
+//     VP-Digi: https://github.com/sq8vps/vp-digi
+//     ESP32APRS: https://github.com/nakhonthai/ESP32APRS_Audio
+//     LibAPRS: https://github.com/markqvist/LibAPRS
+//
+//     please contact their authors for more information.
+//
+// @brief Web admin "Wireless" page: renders and saves the WiFi configuration
+// (mode, TX power, station profiles and access point settings) and serves the
+// JSON access point scan.
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -89,7 +87,7 @@ esp_err_t page_wireless_get(httpd_req_t *req) {
                  "<label>" TR_F_PASSWORD "</label><input type='password' name='staPass%d' id='pwd_staPass%d' value='%s' maxlength='63' minlength='8'>"
                  "<label class='pwd-show'><input type='checkbox' onclick=\"togglePwd('pwd_staPass%d',this)\"> " TR_SHOW_PASSWORD "</label>"
                  "</fieldset>",
-                 i, /* legend #%d */
+                 i, // legend #%d
                  i, g_config.wifi_sta[i].enable ? "checked" : "", i, i, esc_sta_ssid, i, i, esc_sta_pass, i);
         httpd_resp_sendstr_chunk(req, sec);
     }

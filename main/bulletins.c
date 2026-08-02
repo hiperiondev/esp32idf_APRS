@@ -1,24 +1,22 @@
-/**
- * @file bulletins.c
- *
- * @author Emiliano Augusto Gonzalez ( lu3vea @ gmail . com)
- * @date 2026
- * @copyright GNU General Public License v3
- * @see https://github.com/hiperiondev/esp32idf_APRS
- *
- * @note
- * This is based on other projects:
- *     VP-Digi: https://github.com/sq8vps/vp-digi
- *     ESP32APRS: https://github.com/nakhonthai/ESP32APRS_Audio
- *     LibAPRS: https://github.com/markqvist/LibAPRS
- *
- *     please contact their authors for more information.
- *
- * @brief APRS bulletin store (LittleFS-backed) and periodic transmitter.
- *
- * See bulletins.h for the design rationale (why bulletins live in their own
- * /storage/bulletins.json file instead of g_config, and how expiry works).
- */
+// @file bulletins.c
+//
+// @author Emiliano Augusto Gonzalez ( lu3vea @ gmail . com)
+// @date 2026
+// @copyright GNU General Public License v3
+// @see https://github.com/hiperiondev/esp32idf_APRS
+//
+// @note
+// This is based on other projects:
+//     VP-Digi: https://github.com/sq8vps/vp-digi
+//     ESP32APRS: https://github.com/nakhonthai/ESP32APRS_Audio
+//     LibAPRS: https://github.com/markqvist/LibAPRS
+//
+//     please contact their authors for more information.
+//
+// @brief APRS bulletin store (LittleFS-backed) and periodic transmitter.
+//
+// See bulletins.h for the design rationale (why bulletins live in their own
+// /storage/bulletins.json file instead of g_config, and how expiry works).
 
 #include <stdio.h>
 #include <string.h>
@@ -415,9 +413,10 @@ bool bulletins_apply_expiry(bulletins_t *b) {
 }
 
 // Per-bulletin next-due timestamps (monotonic seconds). 0 = due now, so every
-// enabled bulletin transmits once on the first pass after start. File-scope
-// now that the transmitter is a serviced pass (bulletins_service) driven by
-// the shared beacon scheduler instead of its own task loop.
+// enabled bulletin transmits once on the first pass after start. These live at
+// file scope because the transmitter is a serviced pass (bulletins_service)
+// driven by the shared beacon scheduler rather than a task loop of its own, so
+// the deadlines must survive between calls.
 static int64_t s_bln_next_due[BULLETIN_COUNT] = { 0 };
 
 // One serviced pass of the bulletin transmitter. Called by the shared beacon

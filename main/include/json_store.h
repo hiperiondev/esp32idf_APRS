@@ -176,20 +176,19 @@ static inline json_store_status_t json_store_read(const char *path, const char *
  * whole point of this call. Left alone, newlib allocates the stdio buffer
  * lazily on the first fputc() and sizes it from st_blksize - which esp_littlefs
  * reports as the 4096-byte flash block. On this device's small, fragmented heap
- * that transient malloc(4096) is what made saves fail intermittently: when it
- * cannot be satisfied cleanly the stream falls back to the unbuffered per-byte
- * path (__swbuf_r), and a starved heap then trips a memset with a corrupted
- * length - the double-exception panic seen in the field. A fixed buffer removes
- * that allocation entirely and, as a bonus, coalesces the hundreds of token
- * writes a save performs into a handful of block writes.
+ * that transient malloc(4096) is not reliably satisfiable, and a stream that
+ * cannot get its buffer falls back to the unbuffered per-byte path
+ * (__swbuf_r), which makes a save far slower and far more sensitive to heap
+ * exhaustion. Pinning a buffer removes the allocation entirely and coalesces
+ * the hundreds of token writes a save performs into a handful of block writes.
  *
  * The buffer is static rather than a local, so it does not add half a kilobyte
  * to the stack of whichever task is saving (usually the HTTP server task, whose
  * stack this firmware sizes tightly). Each translation unit that includes this
  * header gets its own instance, and reuse within one is safe only because the
- * caller holds @p owner_lock across the whole save - which is asserted here
- * rather than left to a comment, so a future refactor that relaxes the locking
- * fails loudly instead of corrupting one save with another's output.
+ * caller holds @p owner_lock across the whole save. That requirement is
+ * asserted here rather than merely documented, so any relaxation of the
+ * locking fails loudly instead of letting one save corrupt another's output.
  *
  * @param tmp_path   Path of the temp file to create.
  * @param tag        Caller's log tag.

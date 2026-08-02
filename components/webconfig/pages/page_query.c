@@ -1,25 +1,23 @@
-/**
- * @file page_query.c
- *
- * @author Emiliano Augusto Gonzalez ( lu3vea @ gmail . com)
- * @date 2026
- * @copyright GNU General Public License v3
- * @see https://github.com/hiperiondev/esp32idf_APRS
- *
- * @note
- * This is based on other projects:
- *     VP-Digi: https://github.com/sq8vps/vp-digi
- *     ESP32APRS: https://github.com/nakhonthai/ESP32APRS_Audio
- *     LibAPRS: https://github.com/markqvist/LibAPRS
- *
- *     please contact their authors for more information.
- *
- * @brief Web admin "Query" page: renders and saves the APRS query responder
- * configuration in g_config - the three general queries ("?APRS?", "?WX?",
- * "?IGATE?"), whether directed ("CALL:?query?") queries are answered at all,
- * and whether the extended directed set (?APRSD/?APRSH/?APRSM/?APRSO/?APRSP/
- * ?APRSS/?APRST) is answered along with them.
- */
+// @file page_query.c
+//
+// @author Emiliano Augusto Gonzalez ( lu3vea @ gmail . com)
+// @date 2026
+// @copyright GNU General Public License v3
+// @see https://github.com/hiperiondev/esp32idf_APRS
+//
+// @note
+// This is based on other projects:
+//     VP-Digi: https://github.com/sq8vps/vp-digi
+//     ESP32APRS: https://github.com/nakhonthai/ESP32APRS_Audio
+//     LibAPRS: https://github.com/markqvist/LibAPRS
+//
+//     please contact their authors for more information.
+//
+// @brief Web admin "Query" page: renders and saves the APRS query responder
+// configuration in g_config - the three general queries ("?APRS?", "?WX?",
+// "?IGATE?"), whether directed ("CALL:?query?") queries are answered at all,
+// and whether the extended directed set (?APRSD/?APRSH/?APRSM/?APRSO/?APRSP/
+// ?APRSS/?APRST) is answered along with them.
 
 #include "app_config.h"
 #include "pages.h"

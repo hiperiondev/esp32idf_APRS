@@ -1,28 +1,26 @@
-/**
- * @file page_msgchat.c
- *
- * @author Emiliano Augusto Gonzalez ( lu3vea @ gmail . com)
- * @date 2026
- * @copyright GNU General Public License v3
- * @see https://github.com/hiperiondev/esp32idf_APRS
- *
- * @note
- * This is based on other projects:
- *     VP-Digi: https://github.com/sq8vps/vp-digi
- *     ESP32APRS: https://github.com/nakhonthai/ESP32APRS_Audio
- *     LibAPRS: https://github.com/markqvist/LibAPRS
- *
- *     please contact their authors for more information.
- *
- * @brief Web admin "Snd/Rcv Msg" page: a chat-style APRS messaging UI - a
- * scrolling panel of received/sent messages for this station (as configured
- * on the Station / Message pages), a destination-callsign field, a
- * message-text field capped at the standard APRS message length, and a Send
- * button. Distinct from page_msg.c, which only configures the messaging
- * feature (RF/INET enable, retry) - this page is the actual
- * inbox/compose UI built on top of that configuration. Gated from the
- * sidebar by ENABLE_MSG_CHAT in app_config.h's MODULES section.
- */
+// @file page_msgchat.c
+//
+// @author Emiliano Augusto Gonzalez ( lu3vea @ gmail . com)
+// @date 2026
+// @copyright GNU General Public License v3
+// @see https://github.com/hiperiondev/esp32idf_APRS
+//
+// @note
+// This is based on other projects:
+//     VP-Digi: https://github.com/sq8vps/vp-digi
+//     ESP32APRS: https://github.com/nakhonthai/ESP32APRS_Audio
+//     LibAPRS: https://github.com/markqvist/LibAPRS
+//
+//     please contact their authors for more information.
+//
+// @brief Web admin "Snd/Rcv Msg" page: a chat-style APRS messaging UI - a
+// scrolling panel of received/sent messages for this station (as configured
+// on the Station / Message pages), a destination-callsign field, a
+// message-text field capped at the standard APRS message length, and a Send
+// button. Distinct from page_msg.c, which only configures the messaging
+// feature (RF/INET enable, retry) - this page is the actual
+// inbox/compose UI built on top of that configuration. Gated from the
+// sidebar by ENABLE_MSG_CHAT in app_config.h's MODULES section.
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -94,8 +92,10 @@ esp_err_t page_msgchat_get(httpd_req_t *req) {
     // -- Inline JS: poll the history, send on click/Enter. Mirrors the
     //    dashboard's trafficPoll()/esc() pattern (short-poll + reschedule in
     //    a .catch().then() so a fetch error doesn't kill the loop). --
+    // The assignment is left open here and closed by the numeric literal
+    // chunk that follows.
     httpd_resp_sendstr_chunk(req, "<script>"
-                                  "var MSG_MAX=" /* opened below with the numeric literal */);
+                                  "var MSG_MAX=");
     httpd_resp_sendstr_chunk(req, composeMax);
     httpd_resp_sendstr_chunk(
         req, ";"

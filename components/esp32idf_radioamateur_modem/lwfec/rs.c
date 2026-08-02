@@ -1,60 +1,52 @@
-/**
- * @file rs.c
- *
- * @author Emiliano Augusto Gonzalez ( lu3vea @ gmail . com)
- * @date 2026
- * @copyright GNU General Public License v3
- * @see https://github.com/hiperiondev/esp32idf_APRS
- *
- * @note
- * This is based on other projects:
- *     VP-Digi: https://github.com/sq8vps/vp-digi
- *     ESP32APRS: https://github.com/nakhonthai/ESP32APRS_Audio
- *     LibAPRS: https://github.com/markqvist/LibAPRS
- *
- *     please contact their authors for more information.
- *
- * @brief Reed-Solomon FEC codec implementation: syndrome calculation,
- * Berlekamp-Massey error locator search, Chien search and Forney error
- * correction, written to avoid heap and large stack allocations.
- */
+// @file rs.c
+//
+// @author Emiliano Augusto Gonzalez ( lu3vea @ gmail . com)
+// @date 2026
+// @copyright GNU General Public License v3
+// @see https://github.com/hiperiondev/esp32idf_APRS
+//
+// @note
+// This is based on other projects:
+//     VP-Digi: https://github.com/sq8vps/vp-digi
+//     ESP32APRS: https://github.com/nakhonthai/ESP32APRS_Audio
+//     LibAPRS: https://github.com/markqvist/LibAPRS
+//
+//     please contact their authors for more information.
+//
+// @brief Reed-Solomon FEC codec implementation: syndrome calculation,
+// Berlekamp-Massey error locator search, Chien search and Forney error
+// correction, written to avoid heap and large stack allocations.
 
 #include <string.h>
 
 #include "gf.h"
 #include "rs.h"
 
-/*
-This implementation aims for:
-1. Minimal RAM usage
-2. No malloc() (no heap usage)
-3. No big stack allocated arrays
-All arrays used internally by functions are either declared as static
-or they use the common buffer declared below. This buffer must be used with caution.
-All functions that use this buffer can only use it to store function-scope data.
-*/
+// This implementation aims for:
+// 1. Minimal RAM usage
+// 2. No malloc() (no heap usage)
+// 3. No big stack allocated arrays
+// All arrays used internally by functions are either declared as static
+// or they use the common buffer declared below. This buffer must be used with caution.
+// All functions that use this buffer can only use it to store function-scope data.
 static uint8_t commonBuffer[4 * RS_MAX_REDUNDANCY_BYTES + 4];
 
-/**
- * @brief Calculates message syndromes
- * @param *rs RS instance
- * @param data Input block (length = N)
- * @param size Block size = N
- * @param out Output syndromes (length = T)
- */
+// @brief Calculates message syndromes
+// @param *rs RS instance
+// @param data Input block (length = N)
+// @param size Block size = N
+// @param out Output syndromes (length = T)
 static void syndromes(struct LwFecRS *rs, uint8_t *data, uint8_t size, uint8_t *out) {
     for (uint8_t i = 0; i < rs->T; i++) {
         out[i] = GfPolyEval(data, size, GfPow2(i + rs->fcr));
     }
 }
 
-/**
- * @brief Calculate the error evaulator (list of erroneous positions)
- * @param *locator Error locator polynomial
- * @param locatorSize Error locator polynomial length <= T
- * @param out List of erroneous positions (error evaulator) (length = locatorSize - 1)
- * @return True on success, else the "out" buffer must be invalidated and the block is uncorrectable
- */
+// @brief Calculate the error evaulator (list of erroneous positions)
+// @param *locator Error locator polynomial
+// @param locatorSize Error locator polynomial length <= T
+// @param out List of erroneous positions (error evaulator) (length = locatorSize - 1)
+// @return True on success, else the "out" buffer must be invalidated and the block is uncorrectable
 static bool errorEvaluator(uint8_t *locator, uint8_t locatorSize, uint8_t *out) {
     // The roots of the error locator polynomial give the error positions. They are
     // found with a Chien search: the polynomial is evaluated at 2^i for every
@@ -90,14 +82,12 @@ static bool errorEvaluator(uint8_t *locator, uint8_t locatorSize, uint8_t *out) 
     return true;
 }
 
-/**
- * @brief Calculates the error locator polynomial
- * @param *rs RS instance
- * @param *syndromes Syndrome polynomial (length = T)
- * @param *out Output error locator buffer
- * @param outSize Error locator polynomial buffer length <= T
- * @return True if success, else the "out" buffer must be invalidated and the block is uncorrectable
- */
+// @brief Calculates the error locator polynomial
+// @param *rs RS instance
+// @param *syndromes Syndrome polynomial (length = T)
+// @param *out Output error locator buffer
+// @param outSize Error locator polynomial buffer length <= T
+// @return True if success, else the "out" buffer must be invalidated and the block is uncorrectable
 static bool errorLocator(struct LwFecRS *rs, uint8_t *syndromes, uint8_t *out, uint8_t *outSize) {
     // The error locator polynomial is calculated with the Berlekamp-Massey
     // algorithm, ported from the Python listing of the Wikiversity article
@@ -165,20 +155,16 @@ static bool errorLocator(struct LwFecRS *rs, uint8_t *syndromes, uint8_t *out, u
     return true;
 }
 
-/**
- * @brief Calculates error magnitude (errata) polynomial and fix data
- * @param *rs RS instance
- * @param *data Input data block
- * @param size Block size = N
- * @param *syn Syndrome polynomial
- * @param *evaluator Error evaluator polynomial
- * @param errCount Number of errors (error evaulator size)
- * @return True on success, false on failure
- */
+// @brief Calculates error magnitude (errata) polynomial and fix data
+// @param *rs RS instance
+// @param *data Input data block
+// @param size Block size = N
+// @param *syn Syndrome polynomial
+// @param *evaluator Error evaluator polynomial
+// @param errCount Number of errors (error evaulator size)
+// @return True on success, false on failure
 static bool fix(struct LwFecRS *rs, uint8_t *data, uint8_t size, uint8_t *syn, uint8_t *evaluator, uint8_t errCount) {
-    /*
-     * This is based on Forney's algorithm.
-     */
+    // This is based on Forney's algorithm.
     // variables of size 3 * RS_MAX_REDUNDANCY_BYTES + 3
     // static uint8_t locator[RS_MAX_REDUNDANCY_BYTES + 1];
     // static uint8_t errataEvaluator[2 * RS_MAX_REDUNDANCY_BYTES + 2];
@@ -244,12 +230,10 @@ static bool fix(struct LwFecRS *rs, uint8_t *data, uint8_t size, uint8_t *syn, u
     return true;
 }
 
-/**
- * @brief Check if syndromes are all zero, that is if the message is correct
- * @param *syndromes Syndrome polynomial
- * @param size Syndrome polynomial size (buffer length)
- * @return True if all zero
- */
+// @brief Check if syndromes are all zero, that is if the message is correct
+// @param *syndromes Syndrome polynomial
+// @param size Syndrome polynomial size (buffer length)
+// @return True if all zero
 static bool checkSyndromes(uint8_t *syndromes, uint8_t size) {
     bool err = false;
 

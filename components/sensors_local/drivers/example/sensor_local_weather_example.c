@@ -1,30 +1,27 @@
-/**
- * @file sensor_local_weather_example.c
- *
- * @author Emiliano Augusto Gonzalez ( lu3vea @ gmail . com)
- * @date 2026
- * @copyright GNU General Public License v3
- * @see https://github.com/hiperiondev/esp32idf_APRS
- *
- * @note
- * This is based on other projects:
- *     VP-Digi: https://github.com/sq8vps/vp-digi
- *     ESP32APRS: https://github.com/nakhonthai/ESP32APRS_Audio
- *     LibAPRS: https://github.com/markqvist/LibAPRS
- *
- *     please contact their authors for more information.
- *
- * @brief Example WEATHER ::sensor_local_driver_t.
- *
- * Advertises only ::SENSOR_LOCAL_DATA_WEATHER and, on every call, writes a
- * fresh set of *random* weather readings straight into
- * ::weather_telemetry_data_t::weather[0], setting the matching
- * ::aprs_weather_sensor_id_t enabled flags. It exists to exercise the whole
- * pipeline (registry -> 1 Hz refresh -> WX encoder/beacon and the Weather
- * page's channel picker) with no real hardware attached. Copy it as the
- * skeleton for a real BME280 / Davis / Ultimeter driver.
- *
- */
+// @file sensor_local_weather_example.c
+//
+// @author Emiliano Augusto Gonzalez ( lu3vea @ gmail . com)
+// @date 2026
+// @copyright GNU General Public License v3
+// @see https://github.com/hiperiondev/esp32idf_APRS
+//
+// @note
+// This is based on other projects:
+//     VP-Digi: https://github.com/sq8vps/vp-digi
+//     ESP32APRS: https://github.com/nakhonthai/ESP32APRS_Audio
+//     LibAPRS: https://github.com/markqvist/LibAPRS
+//
+//     please contact their authors for more information.
+//
+// @brief Example WEATHER ::sensor_local_driver_t.
+//
+// Advertises only ::SENSOR_LOCAL_DATA_WEATHER and, on every call, writes a
+// fresh set of *random* weather readings straight into
+// ::weather_telemetry_data_t::weather[0], setting the matching
+// ::aprs_weather_sensor_id_t enabled flags. It exists to exercise the whole
+// pipeline (registry -> 1 Hz refresh -> WX encoder/beacon and the Weather
+// page's channel picker) with no real hardware attached. Copy it as the
+// skeleton for a real BME280 / Davis / Ultimeter driver.
 
 #include <stdlib.h>
 #include <time.h>
@@ -32,18 +29,18 @@
 #include "esp_log.h"
 #include "sensors_local.h"
 
-/* Everything below is compiled only when the driver is enabled in menuconfig
- * (Component config -> Sensors Local). This mirrors bmp180.c, and it is not
- * optional: the component is registered WHOLE_ARCHIVE, so without this guard
- * SENSORS_LOCAL_DRIVER_AUTOREGISTER() below is always linked in and the fake
- * sensor registers at boot no matter what Kconfig says.
- *
- * The properties descriptor is included inside the guard on purpose: it is a
- * file-scope `static const` object, so leaving it outside would make it an
- * unused variable (and a -Wunused-const-variable warning) in a disabled build. */
+// Everything below is compiled only when the driver is enabled in menuconfig
+// (Component config -> Sensors Local). This mirrors bmp180.c, and it is not
+// optional: the component is registered WHOLE_ARCHIVE, so without this guard
+// SENSORS_LOCAL_DRIVER_AUTOREGISTER() below is always linked in and the fake
+// sensor registers at boot no matter what Kconfig says.
+//
+// The properties descriptor is included inside the guard on purpose: it is a
+// file-scope `static const` object, so leaving it outside would make it an
+// unused variable (and a -Wunused-const-variable warning) in a disabled build.
 #ifdef CONFIG_SENSORS_LOCAL_WEATHER_EXAMPLE_DRIVER
 
-#include "wx_example_properties.h" /* fine-grained Weather field capability descriptor */
+#include "wx_example_properties.h" // fine-grained Weather field capability descriptor
 
 static const char *TAG = "sensor_wx_example";
 
@@ -68,17 +65,17 @@ static esp_err_t wx_example_init(sensor_local_driver_t *self) {
     return ESP_OK;
 }
 
-/* The one entry the framework calls. kind is already masked to WEATHER.
- *
- * SI-first policy: every quantity is "measured" here in International
- * System (SI) units, exactly as a real sensor would report it internally
- * (m/s, degrees Celsius, hPa, millimeters). Conversion to the legacy
- * imperial units required by the fixed APRS101/WX.TXT on-air format
- * (mph, degrees Fahrenheit, tenths of a millibar, hundredths of an inch)
- * happens only right here, at the boundary where the APRS weather report
- * struct is filled - never earlier. This mirrors the pattern used by the
- * real bmp180 driver. Luminosity (W/m^2) is already SI on both sides, so
- * no conversion is needed there. */
+// The one entry the framework calls. kind is already masked to WEATHER.
+//
+// SI-first policy: every quantity is "measured" here in International
+// System (SI) units, exactly as a real sensor would report it internally
+// (m/s, degrees Celsius, hPa, millimeters). Conversion to the legacy
+// imperial units required by the fixed APRS101/WX.TXT on-air format
+// (mph, degrees Fahrenheit, tenths of a millibar, hundredths of an inch)
+// happens only right here, at the boundary where the APRS weather report
+// struct is filled - never earlier. This mirrors the pattern used by the
+// real bmp180 driver. Luminosity (W/m^2) is already SI on both sides, so
+// no conversion is needed there.
 static esp_err_t wx_example_save(sensor_local_driver_t *self, weather_telemetry_data_t *data, sensor_local_data_kind_t kind) {
     wx_example_ctx_t *c = (wx_example_ctx_t *)self->ctx;
     c->sample_count++;
@@ -147,4 +144,4 @@ static sensor_local_driver_t wx_example_driver = {
 
 SENSORS_LOCAL_DRIVER_AUTOREGISTER(wx_example_driver);
 
-#endif /* CONFIG_SENSORS_LOCAL_WEATHER_EXAMPLE_DRIVER */
+#endif // CONFIG_SENSORS_LOCAL_WEATHER_EXAMPLE_DRIVER

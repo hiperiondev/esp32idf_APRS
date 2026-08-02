@@ -1,23 +1,21 @@
-/**
- * @file time_sync.c
- *
- * @author Emiliano Augusto Gonzalez ( lu3vea @ gmail . com)
- * @date 2026
- * @copyright GNU General Public License v3
- * @see https://github.com/hiperiondev/esp32idf_APRS
- *
- * @note
- * This is based on other projects:
- *     VP-Digi: https://github.com/sq8vps/vp-digi
- *     ESP32APRS: https://github.com/nakhonthai/ESP32APRS_Audio
- *     LibAPRS: https://github.com/markqvist/LibAPRS
- *
- *     please contact their authors for more information.
- *
- * @brief SNTP client task: waits for real internet connectivity, registers every
- * configured NTP host at once, and keeps the system clock synchronized in UTC,
- * retrying until the first sync succeeds.
- */
+// @file time_sync.c
+//
+// @author Emiliano Augusto Gonzalez ( lu3vea @ gmail . com)
+// @date 2026
+// @copyright GNU General Public License v3
+// @see https://github.com/hiperiondev/esp32idf_APRS
+//
+// @note
+// This is based on other projects:
+//     VP-Digi: https://github.com/sq8vps/vp-digi
+//     ESP32APRS: https://github.com/nakhonthai/ESP32APRS_Audio
+//     LibAPRS: https://github.com/markqvist/LibAPRS
+//
+//     please contact their authors for more information.
+//
+// @brief SNTP client task: waits for real internet connectivity, registers every
+// configured NTP host at once, and keeps the system clock synchronized in UTC,
+// retrying until the first sync succeeds.
 
 #include <string.h>
 #include <sys/time.h>
@@ -158,11 +156,11 @@ static bool sntp_setup(void) {
 
 // One step of the SNTP bootstrap, called once per second from the APRS service's
 // 1 Hz tick (serviceTickTask). Non-blocking: it only ever advances the state
-// machine and returns, so it never stalls that shared tick. Replaces the old
-// dedicated 4 KB-stack timeSyncTask - the per-second connectivity poll and the
-// 25 s/30 s wait+retry timing map naturally onto 1 Hz ticks. Behavior is
-// otherwise identical: wait for connectivity, request a sync, retry every 30 s
-// until the first one lands, then let esp_netif_sntp self-maintain.
+// machine and returns, so it never stalls that shared tick. The whole bootstrap
+// therefore costs no task and no stack of its own - the per-second connectivity
+// poll and the 25 s/30 s wait+retry budgets map naturally onto 1 Hz ticks. The
+// sequence is: wait for connectivity, request a sync, retry every 30 s until the
+// first one lands, then let esp_netif_sntp self-maintain.
 void time_sync_1hz(void) {
     switch (s_state) {
         case TS_DISABLED:
@@ -170,13 +168,13 @@ void time_sync_1hz(void) {
             return;
 
         case TS_WAIT_NET:
-            // Same net_state gate the IGate uses (see net_state.h); one tick == the
-            // old vTaskDelay(1000) poll.
+            // Same net_state gate the IGate uses (see net_state.h); one tick is
+            // one second of polling.
             if (!net_state_is_connected())
                 return;
             if (!s_sntp_inited) {
                 if (!sntp_setup()) {
-                    s_state = TS_DISABLED; // init failed: give up, exactly like the old vTaskDelete()
+                    s_state = TS_DISABLED; // init failed: give up for this boot
                     return;
                 }
                 s_sntp_inited = true;

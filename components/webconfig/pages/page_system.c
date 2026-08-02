@@ -1,24 +1,21 @@
-/**
- * @file page_system.c
- *
- * @author Emiliano Augusto Gonzalez ( lu3vea @ gmail . com)
- * @date 2026
- * @copyright GNU General Public License v3
- * @see https://github.com/hiperiondev/esp32idf_APRS
- *
- * @note
- * This is based on other projects:
- *     VP-Digi: https://github.com/sq8vps/vp-digi
- *     ESP32APRS: https://github.com/nakhonthai/ESP32APRS_Audio
- *     LibAPRS: https://github.com/markqvist/LibAPRS
- *
- *     please contact their authors for more information.
- *
- * @brief Web admin "System" page: renders and saves the system configuration
- * (credentials, time sync and NTP hosts, timezone), the chip/CPU frequency
- * info and control (formerly on the separate System Information page), and
- * implements the reset-to-defaults action.
- */
+// @file page_system.c
+//
+// @author Emiliano Augusto Gonzalez ( lu3vea @ gmail . com)
+// @date 2026
+// @copyright GNU General Public License v3
+// @see https://github.com/hiperiondev/esp32idf_APRS
+//
+// @note
+// This is based on other projects:
+//     VP-Digi: https://github.com/sq8vps/vp-digi
+//     ESP32APRS: https://github.com/nakhonthai/ESP32APRS_Audio
+//     LibAPRS: https://github.com/markqvist/LibAPRS
+//
+//     please contact their authors for more information.
+//
+// @brief Web admin "System" page: renders and saves the system configuration
+// (credentials, time sync and NTP hosts, timezone), the chip and CPU frequency
+// information and control, and the reset-to-defaults action.
 
 #include <stdio.h>
 

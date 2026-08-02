@@ -1,26 +1,24 @@
-/**
- * @file beacon.c
- *
- * @author Emiliano Augusto Gonzalez ( lu3vea @ gmail . com)
- * @date 2026
- * @copyright GNU General Public License v3
- * @see https://github.com/hiperiondev/esp32idf_APRS
- *
- * @note
- * This is based on other projects:
- *     VP-Digi: https://github.com/sq8vps/vp-digi
- *     ESP32APRS: https://github.com/nakhonthai/ESP32APRS_Audio
- *     LibAPRS: https://github.com/markqvist/LibAPRS
- *
- *     please contact their authors for more information.
- *
- * @brief Own-station position and status beacon tasks: builds APRS position
- * reports from the saved Tracker/IGate/Digipeater coordinates, resolves the
- * configured path bitmask into a digipeater path, and transmits them on RF
- * and/or APRS-IS at each beacon's own interval. Also builds and transmits
- * each station's APRS status report (DTI '>', APRS101 ch.16) from that page's
- * own status text, at its own independent interval.
- */
+// @file beacon.c
+//
+// @author Emiliano Augusto Gonzalez ( lu3vea @ gmail . com)
+// @date 2026
+// @copyright GNU General Public License v3
+// @see https://github.com/hiperiondev/esp32idf_APRS
+//
+// @note
+// This is based on other projects:
+//     VP-Digi: https://github.com/sq8vps/vp-digi
+//     ESP32APRS: https://github.com/nakhonthai/ESP32APRS_Audio
+//     LibAPRS: https://github.com/markqvist/LibAPRS
+//
+//     please contact their authors for more information.
+//
+// @brief Own-station position and status beacon tasks: builds APRS position
+// reports from the saved Tracker/IGate/Digipeater coordinates, resolves the
+// configured path bitmask into a digipeater path, and transmits them on RF
+// and/or APRS-IS at each beacon's own interval. Also builds and transmits
+// each station's APRS status report (DTI '>', APRS101 ch.16) from that page's
+// own status text, at its own independent interval.
 
 #include <math.h>
 #include <stdio.h>
@@ -476,7 +474,7 @@ static int buildStatusPacket(const status_params_t *p, char *out, size_t outMax)
 // Each of the three position beacons above has a matching status-report
 // beacon (APRS101 ch.16): its own interval (*_sts_interval, 0 = off) and
 // free-text status (*_status), edited on the same web admin page as the
-// position beacon and sent over the same RF/INET legs (*_loc2rf/*_loc2inet)
+// position beacon and sent over the same RF/INET legs (_loc2rf, _loc2inet)
 // as that page's position beacon, at its own independent schedule.
 // ---------------------------------------------------------------------------
 static int64_t s_trk_sts_next_due = 0;

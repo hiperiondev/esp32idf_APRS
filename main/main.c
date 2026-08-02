@@ -1,24 +1,22 @@
-/**
- * @file main.c
- *
- * @author Emiliano Augusto Gonzalez ( lu3vea @ gmail . com)
- * @date 2026
- * @copyright GNU General Public License v3
- * @see https://github.com/hiperiondev/esp32idf_APRS
- *
- * @note
- * This is based on other projects:
- *     VP-Digi: https://github.com/sq8vps/vp-digi
- *     ESP32APRS: https://github.com/nakhonthai/ESP32APRS_Audio
- *     LibAPRS: https://github.com/markqvist/LibAPRS
- *
- *     please contact their authors for more information.
- *
- * @brief Firmware entry point: NVS/LittleFS bring-up, configuration load, WiFi
- * station/AP setup and event handling, and creation of the application task that
- * starts the CPU frequency policy, SNTP client, web admin server, APRS services
- * and the radio modem.
- */
+// @file main.c
+//
+// @author Emiliano Augusto Gonzalez ( lu3vea @ gmail . com)
+// @date 2026
+// @copyright GNU General Public License v3
+// @see https://github.com/hiperiondev/esp32idf_APRS
+//
+// @note
+// This is based on other projects:
+//     VP-Digi: https://github.com/sq8vps/vp-digi
+//     ESP32APRS: https://github.com/nakhonthai/ESP32APRS_Audio
+//     LibAPRS: https://github.com/markqvist/LibAPRS
+//
+//     please contact their authors for more information.
+//
+// @brief Firmware entry point: NVS/LittleFS bring-up, configuration load, WiFi
+// station/AP setup and event handling, and creation of the application task that
+// starts the CPU frequency policy, SNTP client, web admin server, APRS services
+// and the radio modem.
 
 #include <string.h>
 
@@ -43,15 +41,13 @@
 
 static const char *TAG = "main";
 
-/*
- * app_main() runs on the system "main" task, whose stack size is fixed by
- * CONFIG_ESP_MAIN_TASK_STACK_SIZE (3584 bytes by default) and is not meant
- * to host heavy work. wifi_init()/web_server_start() (esp_netif, esp_wifi,
- * esp_http_server, cJSON, etc.) can easily use several KB of stack between
- * them, which overflowed that task. To fix this properly (rather than just
- * growing the shared main-task stack), all of that work now runs in its own
- * task created with an explicit, generous stack size below.
- */
+// app_main() runs on the system "main" task, whose stack size is fixed by
+// CONFIG_ESP_MAIN_TASK_STACK_SIZE (3584 bytes by default) and is not meant to
+// host heavy work. wifi_init()/web_server_start() (esp_netif, esp_wifi,
+// esp_http_server, cJSON, etc.) can easily use several KB of stack between
+// them, which does not fit there. Rather than grow a stack shared with the
+// system, all of that work runs on the dedicated task created below, with an
+// explicit and generous stack size of its own.
 #define APP_TASK_STACK_SIZE 8192
 #define APP_TASK_PRIORITY   5
 
@@ -322,17 +318,15 @@ static void wifi_init(void) {
     ESP_LOGI(TAG, "WiFi started in mode %d (AP SSID '%s', STA %s)", (int)mode, g_config.wifi_ap_ssid, s_staEnabled ? "enabled" : "disabled");
 }
 
-/*
- * All of the actual application work happens here, on a task created with
- * its own APP_TASK_STACK_SIZE stack, isolated from the system main task.
- */
+// All of the actual application work happens here, on a task created with
+// its own APP_TASK_STACK_SIZE stack, isolated from the system main task.
 static void app_task(void *arg) {
     // Loads config.json, or writes+loads factory defaults if missing/corrupt.
     app_config_load();
 
     // Apply the user-configured CPU frequency (System page) to the running
-    // system - without this the setting was only stored/displayed and never
-    // actually changed the clock speed.
+    // system, so the saved setting takes effect on the real clock and not only
+    // in the UI.
     cpu_freq_apply();
 
     // Reset the "do we have internet" flag before bringing WiFi up; igate_start()
@@ -355,8 +349,8 @@ static void app_task(void *arg) {
     // unless something here confirms the image is good first. Reaching this
     // point means NVS/LittleFS mounted, WiFi came up, and the web admin is
     // listening - a reasonable bar for "this firmware works" - so confirm it.
-    // On the old single-"factory" partition table (pre-OTA devices) there is
-    // no pending-verify state to find and this is a harmless no-op.
+    // On a single-"factory" partition table there is no pending-verify state
+    // to find and this is a harmless no-op.
     {
         esp_ota_img_states_t ota_state;
         const esp_partition_t *running = esp_ota_get_running_partition();
@@ -372,21 +366,18 @@ static void app_task(void *arg) {
     // Bring up the AFSK/AX.25 modem + callsign/path settings from g_config,
     // then start the digipeater/igate/message application layer (aprs_service.c).
     //
-    // The modem's runtime settings now live in a modem_config_t, built from
-    // g_config by aprs_service_build_modem_config() so the same mapping is
-    // used here and by the live re-apply on the Radio page (and by the LOOP
-    // TEST, which only flips full_duplex on top of it). Everything the old
-    // aprs_modem_config_t carried that the new component does not take at
-    // runtime - ADC/DAC/SQL/PWR pins, ADC attenuation, software squelch
-    // level, volume and the AGC gain ceiling - is either a compile-time
-    // constant (pins/attenuation: see the idf_build_set_property() block in
-    // the top-level CMakeLists.txt) or handled internally by the component
-    // (its AGC needs no ceiling and it has no software squelch: the AX.25
-    // decoder gates on real DCD instead). There are no g_config fields for
-    // any of them. PTT's GPIO and its active level are likewise fixed
-    // compile-time constants (MODEM_PTT_GPIO / MODEM_PTT_ACTIVE_HIGH, same
-    // CMakeLists.txt block as the ADC/DAC pins) - neither is runtime-selectable
-    // on the Radio/Modem page.
+    // The modem's runtime settings live in a modem_config_t, built from
+    // g_config by aprs_service_build_modem_config() so the same mapping serves
+    // here, the live re-apply on the Radio page, and the LOOP TEST (which only
+    // flips full_duplex on top of it).
+    //
+    // What is deliberately NOT in that struct: the ADC, DAC and PTT pins and
+    // the ADC attenuation are compile-time constants (see the
+    // idf_build_set_property() block in the top-level CMakeLists.txt), and the
+    // AGC gain ceiling and squelch threshold do not exist as settings at all -
+    // the modem's AGC needs no ceiling and there is no software squelch, since
+    // the AX.25 decoder gates on real DCD instead. None of them have g_config
+    // fields, and none are selectable on the Radio/Modem page.
     //
     // aprs_service_start() must run before modem_init(): it installs the RX
     // callback, and the component starts delivering frames from inside

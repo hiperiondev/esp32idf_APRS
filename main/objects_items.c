@@ -1,26 +1,24 @@
-/**
- * @file objects_items.c
- *
- * @author Emiliano Augusto Gonzalez ( lu3vea @ gmail . com)
- * @date 2026
- * @copyright GNU General Public License v3
- * @see https://github.com/hiperiondev/esp32idf_APRS
- *
- * @note
- * This is based on other projects:
- *     VP-Digi: https://github.com/sq8vps/vp-digi
- *     ESP32APRS: https://github.com/nakhonthai/ESP32APRS_Audio
- *     LibAPRS: https://github.com/markqvist/LibAPRS
- *
- *     please contact their authors for more information.
- *
- * @brief APRS Object/Item store (LittleFS-backed) and periodic transmitter.
- *
- * See objects_items.h for the design rationale (why these live in their own
- * /storage/objitems.json file instead of g_config, the on-air wire format, and
- * how kill reports work). The persistence and scheduling structure deliberately
- * mirrors bulletins.c so the two subsystems stay easy to reason about together.
- */
+// @file objects_items.c
+//
+// @author Emiliano Augusto Gonzalez ( lu3vea @ gmail . com)
+// @date 2026
+// @copyright GNU General Public License v3
+// @see https://github.com/hiperiondev/esp32idf_APRS
+//
+// @note
+// This is based on other projects:
+//     VP-Digi: https://github.com/sq8vps/vp-digi
+//     ESP32APRS: https://github.com/nakhonthai/ESP32APRS_Audio
+//     LibAPRS: https://github.com/markqvist/LibAPRS
+//
+//     please contact their authors for more information.
+//
+// @brief APRS Object/Item store (LittleFS-backed) and periodic transmitter.
+//
+// See objects_items.h for the design rationale (why these live in their own
+// /storage/objitems.json file instead of g_config, the on-air wire format, and
+// how kill reports work). The persistence and scheduling structure deliberately
+// mirrors bulletins.c so the two subsystems stay easy to reason about together.
 
 #include <math.h>
 #include <stddef.h>
@@ -1014,7 +1012,9 @@ uint32_t objitems_service(void) {
                 // in the UI (mirrors bulletins' expiry auto-disable).
                 if (b->kill_left == 0)
                     b->kill_left = OBJITEM_KILL_REPEATS; // first kill pass arms the repeat count
-                tx_one(i, b, src, false /* kill report */, path);
+                // A kill report is a normal element report with the "_" timestamp, so
+                // the builder is called with is_status = false.
+                tx_one(i, b, src, false, path);
                 b->kill_left--;
                 if (b->kill_left == 0) {
                     b->enable = false;

@@ -76,8 +76,9 @@ int web_read_body(httpd_req_t *req, char *buf, size_t buf_size);
 #define WEBCONFIG_POST_BUF_TLM                                                                                                                                 \
     9000 /**< page_tlm.c - telemetry form (Beacon + Report Parameters + Definition Messages + 5 analog channels + 8 digital bits).                             \
           */
-#define WEBCONFIG_POST_BUF_BULLETINS 2800 /**< page_bulletins.c - 5 bulletins x (3 checkboxes + identifier + group + up to 67-char msg + interval + expire).   \
-                                           */
+#define WEBCONFIG_POST_BUF_BULLETINS                                                                                                                           \
+    2800 /**< page_bulletins.c - 5 bulletins x (3 checkboxes + identifier + group + up to 67-char msg + interval + expire).                                    \
+          */
 #define WEBCONFIG_POST_BUF_OBJITEMS                                                                                                                            \
     6000 /**< page_objects.c - 5 objects/items x (checkboxes + name/type/active/scope + lat/lon + symbol + course/speed + compress + comment + area +          \
             signpost + freq/duplex/offset/tone + 4 path checkboxes + QRU + intervals + decay). */

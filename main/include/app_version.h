@@ -59,4 +59,12 @@
  * stringize it. Used to build ::FIRMWARE_INFO from the numeric version macros.
  */
 #define APP_VERSION_STR(x) APP_VERSION_STR_HELPER(x)
-#define FIRMWARE_INFO      APP_VERSION_STR(FIRMWARE_VERSION_MAYOR) "." APP_VERSION_STR(FIRMWARE_VERSION_MINOR) "." APP_VERSION_STR(FIRMWARE_VERSION_PATCH)
+/**
+ * @def FIRMWARE_INFO
+ * @brief Full firmware version as a compile-time string literal,
+ * "MAYOR.MINOR.PATCH", assembled from the three numeric version macros.
+ *
+ * Being a literal rather than a runtime concatenation, it can be embedded
+ * directly in log lines, HTTP responses and APRS status text.
+ */
+#define FIRMWARE_INFO APP_VERSION_STR(FIRMWARE_VERSION_MAYOR) "." APP_VERSION_STR(FIRMWARE_VERSION_MINOR) "." APP_VERSION_STR(FIRMWARE_VERSION_PATCH)
