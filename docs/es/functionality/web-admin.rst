@@ -94,11 +94,11 @@ Las páginas
        mínimo de respuesta (límite de seguridad frente a bucles/uso del
        canal).
    * - **Radio / Modem**
-     - Conmutador FX.25; habilitar módem de audio, modulación (300 / 1200 Bell202
-       / 1200 V.23 / 9600 G3RUH), LPF de audio (audio plano), ms de preámbulo, ms
-       de ranura de tiempo TX, buffers TX, retención extra de des-activación de
-       PTT; y el botón **LOOP TEST**. Guardar reaplica el módem en vivo — sin
-       reinicio.
+     - Modo FX.25 (apagado / solo RX / RX+TX); habilitar módem de audio,
+       modulación (300 / 1200 Bell202 / 1200 V.23 / 9600 G3RUH), LPF de audio
+       (audio plano), ms de preámbulo, ms de ranura de tiempo TX, buffers TX,
+       retención extra de des-activación de PTT, persistencia CSMA; y el botón
+       **LOOP TEST**. Guardar reaplica el módem en vivo — sin reinicio.
    * - **Wireless**
      - Modo (off/STA/AP/AP+STA), SSID/pass/canal del AP, 5 ranuras STA cada una
        con su propia casilla Enable, potencia TX en dBm, más un escaneo en vivo.

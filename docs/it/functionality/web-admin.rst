@@ -92,11 +92,11 @@ Le pagine
        abilitazione query dirette, insieme esteso di query dirette, intervallo
        minimo di risposta (soglia di sicurezza contro loop/uso del canale).
    * - **Radio / Modem**
-     - Interruttore FX.25; abilita modem audio, modulazione (300 / 1200 Bell202 /
-       1200 V.23 / 9600 G3RUH), LPF audio (audio piatto), ms di preambolo, ms di
-       slot temporale TX, buffer TX, ritenzione extra di dis-attivazione PTT; e il
-       pulsante **LOOP TEST**. Salva riapplica il modem in tempo reale — nessun
-       riavvio.
+     - Modalità FX.25 (spento / solo RX / RX+TX); abilita modem audio, modulazione
+       (300 / 1200 Bell202 / 1200 V.23 / 9600 G3RUH), LPF audio (audio piatto), ms
+       di preambolo, ms di slot temporale TX, buffer TX, ritenzione extra di
+       dis-attivazione PTT, persistenza CSMA; e il pulsante **LOOP TEST**. Salva
+       riapplica il modem in tempo reale — nessun riavvio.
    * - **Wireless**
      - Modalità (off/STA/AP/AP+STA), SSID/pass/canale dell'AP, 5 slot STA ciascuno
        con la propria casella Enable, potenza TX in dBm, più una scansione in

@@ -308,12 +308,52 @@ void web_send_saved_redirect(httpd_req_t *req, const char *location);
 esp_err_t web_handle_css(httpd_req_t *req);
 
 /**
+ * @brief Longest label or fieldset legend, in BYTES, that the form-field
+ * emitters below render in full.
+ *
+ * Every emitter renders its label into a fixed-size stack buffer, so the label
+ * has to carry a length bound the compiler can see; this constant is that
+ * bound, shared by all of them so no single helper can silently clip a label
+ * the others render whole. It is sized against the longest label in any
+ * shipped translation - currently @c TR_F_QUERY_EXT, which lists the whole
+ * extended directed-query set - with room for a translation to grow.
+ *
+ * The unit is bytes, not characters: the tables are UTF-8, so an accented
+ * Spanish or Italian label spends two bytes on some characters. Clipping is
+ * done on a character boundary, never mid-sequence, so a label that ever does
+ * exceed this bound still renders as valid UTF-8.
+ */
+#define WEB_LABEL_MAX_BYTES 128
+
+/** @cond INTERNAL */
+#define WEB_STRINGIFY_(x) #x
+#define WEB_STRINGIFY(x)  WEB_STRINGIFY_(x)
+/** @endcond */
+
+/**
+ * @brief Conversion specifier for a label slot: a @c %s bounded by
+ * ::WEB_LABEL_MAX_BYTES, spliced into an emitter's format string.
+ *
+ * The bound has to reach the compiler as a literal precision. Writing the
+ * precision as a runtime @c "%.*s" argument instead makes GCC assume the slot
+ * can emit up to @c INT_MAX bytes, which loses every @c -Wformat-truncation
+ * guarantee these emitters are built to keep - and this project compiles that
+ * warning as an error. Stringifying the constant keeps one definition of the
+ * bound while still handing the compiler a literal it can reason about.
+ */
+#define WEB_LABEL_FMT "%." WEB_STRINGIFY(WEB_LABEL_MAX_BYTES) "s"
+
+/**
  * @name Safe small-buffer form-field emitters
  *
  * Each helper uses its own small, generously-sized internal buffer, so no page
  * needs one giant @c snprintf that risks @c -Werror=format-truncation like the
  * earlier hand-rolled pages did. Together they render one field/control per
  * call inside a fieldset.
+ *
+ * Labels and legends are bounded at ::WEB_LABEL_MAX_BYTES bytes and each
+ * helper's buffer is sized to hold a label of that length plus the widest
+ * markup it can emit, so no in-tree label is ever clipped.
  * @{
  */
 

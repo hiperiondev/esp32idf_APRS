@@ -933,9 +933,34 @@ void web_raw(httpd_req_t *req, const char *html) {
     httpd_resp_sendstr_chunk(req, html);
 }
 
+// Copy a label or legend into `dst` for rendering, keeping at most
+// WEB_LABEL_MAX_BYTES bytes of it. The translation tables are UTF-8, so an
+// accented Spanish or Italian character spends two bytes; cutting at a fixed
+// byte count could leave a dangling lead or continuation byte that renders as
+// a replacement glyph. Backing up over any trailing continuation bytes
+// (0b10xxxxxx) and then over their lead byte keeps the copy valid text.
+// Every emitter below routes its label through this, so one over-long label
+// cannot render differently depending on which control it lands in.
+static void label_clamp(char dst[WEB_LABEL_MAX_BYTES + 1], const char *src) {
+    if (!src) {
+        dst[0] = 0;
+        return;
+    }
+    size_t n = strlen(src);
+    if (n > WEB_LABEL_MAX_BYTES) {
+        n = WEB_LABEL_MAX_BYTES;
+        while (n > 0 && ((unsigned char)src[n] & 0xC0) == 0x80)
+            n--;
+    }
+    memcpy(dst, src, n);
+    dst[n] = 0;
+}
+
 void web_fieldset_open(httpd_req_t *req, const char *legend) {
-    char buf[160];
-    snprintf(buf, sizeof(buf), "<fieldset><legend>%.100s</legend>", legend);
+    char leg[WEB_LABEL_MAX_BYTES + 1];
+    label_clamp(leg, legend);
+    char buf[WEB_LABEL_MAX_BYTES + 64];
+    snprintf(buf, sizeof(buf), "<fieldset><legend>" WEB_LABEL_FMT "</legend>", leg);
     httpd_resp_sendstr_chunk(req, buf);
 }
 
@@ -954,20 +979,24 @@ void web_fieldset_close(httpd_req_t *req) {
 void web_field_text(httpd_req_t *req, const char *label, const char *name, const char *value, int maxlen) {
     char esc[512];
     web_html_attr_escape(value ? value : "", esc, sizeof(esc));
-    char buf[600];
-    snprintf(buf, sizeof(buf), "<label>%.60s</label><input type='text' name='%.30s' value='%.400s' maxlength='%d'>", label, name, esc, maxlen);
+    char lbl[WEB_LABEL_MAX_BYTES + 1];
+    label_clamp(lbl, label);
+    char buf[WEB_LABEL_MAX_BYTES + 576];
+    snprintf(buf, sizeof(buf), "<label>" WEB_LABEL_FMT "</label><input type='text' name='%.30s' value='%.400s' maxlength='%d'>", lbl, name, esc, maxlen);
     httpd_resp_sendstr_chunk(req, buf);
 }
 
 void web_field_password(httpd_req_t *req, const char *label, const char *name, const char *value, int maxlen) {
     char esc[512];
     web_html_attr_escape(value ? value : "", esc, sizeof(esc));
-    char buf[900];
+    char lbl[WEB_LABEL_MAX_BYTES + 1];
+    label_clamp(lbl, label);
+    char buf[WEB_LABEL_MAX_BYTES + 768];
     snprintf(buf, sizeof(buf),
-             "<label>%.60s</label>"
+             "<label>" WEB_LABEL_FMT "</label>"
              "<input type='password' name='%.30s' id='pwd_%.30s' value='%.400s' maxlength='%d'>"
              "<label class='pwd-show'><input type='checkbox' onclick=\"togglePwd('pwd_%.30s',this)\"> " TR_SHOW_PASSWORD "</label>",
-             label, name, name, esc, maxlen, name);
+             lbl, name, name, esc, maxlen, name);
     httpd_resp_sendstr_chunk(req, buf);
 }
 
@@ -979,21 +1008,28 @@ void web_field_password(httpd_req_t *req, const char *label, const char *name, c
 // line of defence against a typo, the handler's clamp is the one that holds
 // against a crafted POST.
 void web_field_int(httpd_req_t *req, const char *label, const char *name, long value, long min, long max) {
-    char buf[320];
-    snprintf(buf, sizeof(buf), "<label>%.60s</label><input type='number' name='%.30s' value='%ld' min='%ld' max='%ld'>", label, name, value, min, max);
+    char lbl[WEB_LABEL_MAX_BYTES + 1];
+    label_clamp(lbl, label);
+    char buf[WEB_LABEL_MAX_BYTES + 192];
+    snprintf(buf, sizeof(buf), "<label>" WEB_LABEL_FMT "</label><input type='number' name='%.30s' value='%ld' min='%ld' max='%ld'>", lbl, name, value, min,
+             max);
     httpd_resp_sendstr_chunk(req, buf);
 }
 
 void web_field_float(httpd_req_t *req, const char *label, const char *name, float value, const char *step, float min, float max) {
-    char buf[320];
-    snprintf(buf, sizeof(buf), "<label>%.60s</label><input type='number' step='%.10s' name='%.30s' value='%g' min='%g' max='%g'>", label, step ? step : "0.01",
-             name, (double)value, (double)min, (double)max);
+    char lbl[WEB_LABEL_MAX_BYTES + 1];
+    label_clamp(lbl, label);
+    char buf[WEB_LABEL_MAX_BYTES + 192];
+    snprintf(buf, sizeof(buf), "<label>" WEB_LABEL_FMT "</label><input type='number' step='%.10s' name='%.30s' value='%g' min='%g' max='%g'>", lbl,
+             step ? step : "0.01", name, (double)value, (double)min, (double)max);
     httpd_resp_sendstr_chunk(req, buf);
 }
 
 void web_field_checkbox(httpd_req_t *req, const char *label, const char *name, bool checked) {
-    char buf[220];
-    snprintf(buf, sizeof(buf), "<label><input type='checkbox' name='%.30s' %s> %.60s</label>", name, checked ? "checked" : "", label);
+    char lbl[WEB_LABEL_MAX_BYTES + 1];
+    label_clamp(lbl, label);
+    char buf[WEB_LABEL_MAX_BYTES + 128];
+    snprintf(buf, sizeof(buf), "<label><input type='checkbox' name='%.30s' %s> " WEB_LABEL_FMT "</label>", name, checked ? "checked" : "", lbl);
     httpd_resp_sendstr_chunk(req, buf);
 }
 
@@ -1040,8 +1076,10 @@ uint8_t web_form_get_path_mask(const char *body, const char *name_prefix) {
 }
 
 void web_select_open(httpd_req_t *req, const char *label, const char *name) {
-    char buf[160];
-    snprintf(buf, sizeof(buf), "<label>%.60s</label><select name='%.30s'>", label, name);
+    char lbl[WEB_LABEL_MAX_BYTES + 1];
+    label_clamp(lbl, label);
+    char buf[WEB_LABEL_MAX_BYTES + 128];
+    snprintf(buf, sizeof(buf), "<label>" WEB_LABEL_FMT "</label><select name='%.30s'>", lbl, name);
     httpd_resp_sendstr_chunk(req, buf);
 }
 
@@ -1130,9 +1168,12 @@ void web_field_symbol(httpd_req_t *req, const char *label, const char *name_pref
     char idc[64];
     snprintf(idc, sizeof(idc), "%.30sCode", name_prefix);
 
-    char buf[1600];
+    char lbl[WEB_LABEL_MAX_BYTES + 1];
+    label_clamp(lbl, label);
+
+    char buf[WEB_LABEL_MAX_BYTES + 1536];
     snprintf(buf, sizeof(buf),
-             "<label>%.60s</label>"
+             "<label>" WEB_LABEL_FMT "</label>"
              "<div style='display:flex;gap:6px;align-items:center'>"
              "<span id='%.30s_icn' style='display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;"
              "border-radius:6px;background:#dcfce7;overflow:hidden;flex:none'>"
@@ -1147,8 +1188,8 @@ void web_field_symbol(httpd_req_t *req, const char *label, const char *name_pref
              "oninput=\"aprsSymUpd('%.30s','%.30s')\">"
              "<a href='/symbol' target='_blank' title='%.60s' class='secondary' style='text-decoration:none;padding:4px 8px'>%.60s</a>"
              "</div>",
-             label, name_prefix, name_prefix, code_num, table_num, TR_F_SYMBOL_TABLE, ids, ids, table_ch, ids, idc, TR_F_SYMBOL_CODE, idc, idc, sym_ch, ids,
-             idc, TR_SYM_PICK_HINT, TR_BTN_PICK_SYMBOL);
+             lbl, name_prefix, name_prefix, code_num, table_num, TR_F_SYMBOL_TABLE, ids, ids, table_ch, ids, idc, TR_F_SYMBOL_CODE, idc, idc, sym_ch, ids, idc,
+             TR_SYM_PICK_HINT, TR_BTN_PICK_SYMBOL);
     httpd_resp_sendstr_chunk(req, buf);
 
     // Tiny helper script: updates the graphical icon live as the user edits

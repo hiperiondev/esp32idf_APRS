@@ -40,7 +40,8 @@ Modem / Livello 2
    * - AFSK 1200 Bd V.23
      - ⚠️ (Direwolf lo supporta; molti client no)
      - ✅
-     - Profilo modem selezionabile n. 2
+     - Profilo modem selezionabile n. 2; come Bell 202 esegue due demodulatori
+       in parallelo
    * - AFSK 300 Bd (APRS HF)
      - ✅ (Direwolf, UZ7HO)
      - ✅
@@ -56,7 +57,10 @@ Modem / Livello 2
    * - FEC Reed-Solomon FX.25
      - ⚠️ (Direwolf sì; la maggior parte dei TNC hardware no)
      - ✅
-     - Modalità solo RX o RX+TX, retrocompatibile con AX.25 semplice
+     - Tre modalità nella pagina Radiomodem: spento, solo RX (decodifica FX.25 e
+       trasmette AX.25 semplice) e RX+TX. I blocchi trasmessi restano
+       retrocompatibili — un ricevitore AX.25 semplice ignora il tag di
+       correlazione e i byte di parità e decodifica il frame contenuto
    * - IL2P (alternativa a FX.25)
      - ⚠️ (solo Direwolf)
      - ❌
@@ -72,7 +76,10 @@ Modem / Livello 2
    * - CSMA / rilevamento canale occupato prima della TX
      - ✅
      - ✅
-     - Slot temporale TX (``tx_timeslot``) + controllo preambolo/TXDelay
+     - Accesso p-persistente condizionato dal DCD: persistenza configurabile
+       (``csma_persist``, 1-255), slot temporale (``tx_timeslot``) e
+       preambolo/TXDelay, più un limite anti-starvation di otto slot perché un
+       canale che non si libera mai non trattenga per sempre un frame in coda
    * - Attivazione PTT (senza VOX, GPIO hardware)
      - ✅
      - ✅
@@ -81,6 +88,23 @@ Modem / Livello 2
      - ⚠️ (raro)
      - ✅
      - "LOOP TEST" — trasmette un pacchetto con token e verifica che l'intera catena RX lo decodifichi correttamente, con diagnostica dettagliata per fase
+   * - Ingresso audio piatto/discriminatore rispetto ad audio de-enfatizzato
+     - ✅ (Direwolf, UZ7HO)
+     - ✅
+     - Indica al demodulatore se riceve audio da altoparlante o audio non
+       filtrato dal discriminatore; applicato in tempo reale al salvataggio
+   * - Controllo della profondità della coda di TX
+     - ⚠️ (di solito una coda interna fissa)
+     - ✅
+     - ``rf_tx_buffers``: quanti frame possono attendere nell'anello di TX RF
+       prima che i nuovi pacchetti vengano scartati anziché accodati; letto a
+       ogni trasmissione, quindi ha effetto senza riavvio
+   * - Tempo minimo di PTT rilasciato tra i frame
+     - ⚠️ (TXTAIL su alcuni TNC)
+     - ✅
+     - ``ptt_min_unkey_ms``, 0-5000 ms oltre al rilascio fisso di un tick che il
+       modem applica sempre — per radio o ripetitori che richiedono un
+       intervallo garantito più lungo tra le trasmissioni
 
 IGate (RF <-> APRS-IS)
 ------------------------
@@ -137,8 +161,11 @@ IGate (RF <-> APRS-IS)
      - Disattivato di default; l'unwrap opzionale è vincolato alla sola modalità whitelist proprio per prevenire i loop di IGate
    * - Riconnessione automatica ad APRS-IS con backoff
      - ✅
-     - ✅
-     - Riconnessione TCP automatica, rilegge la configurazione a ogni riconnessione
+     - ⚠️
+     - Riconnessione TCP automatica, rilegge la configurazione a ogni
+       riconnessione, ma con un intervallo di ritentativo fisso (5 s dopo una
+       connessione fallita, 1 s finché il dispositivo non ha una rotta verso
+       internet) e non con un backoff esponenziale
    * - Login ad APRS-IS basato su passcode
      - ✅
      - ✅
@@ -151,6 +178,12 @@ IGate (RF <-> APRS-IS)
      - ⚠️ (poco comune, di solito solo totali)
      - ✅
      - Contatori nominati (``DROP_TOO_SHORT``, ``DROP_PATH_TOKEN``, ``DROP_RANGE_FILTER``, ecc.)
+   * - Elenco dei nominativi dei gate satellitari/ISS
+     - ⚠️ (aprx e alcuni satgate dedicati)
+     - ✅
+     - Fino a 8 nominativi di digipeater satellitari; un frame effettivamente
+       ripetuto da uno di essi viene inoltrato con il costrutto ``qAO`` invece
+       di ``qAR``
 
 Digipeater
 -----------
@@ -224,7 +257,11 @@ Tracciamento / Beaconing
    * - Codifica posizione compressa (Base-91)
      - ✅
      - ✅
-     - La pagina Tracker offre un'opzione di posizione compressa; anche il decoder la comprende
+     - Opzione per servizio nelle pagine Tracker, IGate, Digipeater e
+       Oggetti/Item; anche il decoder la comprende. Viene saltata
+       automaticamente quando l'ambiguità di posizione non è zero o è in uso
+       un'estensione dati, perché il formato compresso non ha spazio per
+       nessuna delle due
    * - Codifica posizione Mic-E (TX)
      - ⚠️ (soprattutto firmware per tracker mobili)
      - ✅
@@ -260,7 +297,15 @@ Tracciamento / Beaconing
    * - Altitudine nei beacon
      - ✅
      - ✅
-     - Campo altitudine a livello di stazione, usato dai beacon
+     - Altitudine per ruolo (tracker, IGate, digipeater), ciascuna copiata dal
+       valore di "La mia stazione" quando è spuntato *Usa i dati de La mia
+       stazione*. I report meteo non contengono alcun campo di altitudine
+   * - Percorso di digipeating configurabile per servizio
+     - ✅
+     - ✅
+     - Quattro preset di percorso condivisi; ogni servizio che trasmette
+       (tracker, IGate, digipeater, meteo, telemetria, messaggi, oggetti,
+       bollettini) sceglie tra questi con la propria maschera di bit
 
 Messaggistica
 --------------
@@ -348,7 +393,18 @@ Telemetria
    * - Calibrazione quadratica (EQNS) per canale analogico
      - ⚠️
      - ✅
-     - ``valore = a*x^2 + b*x + c`` per canale
+     - Coefficienti a/b/c per canale trasmessi nel messaggio ``EQNS.``. Il
+       report dati porta la lettura grezza del sensore ed è il ricevitore ad
+       applicare la conversione — la divisione standard di APRS101 tra report e
+       metadati. I campi di intervallo grezzo per canale vengono salvati e
+       mostrati, ma non scalano il valore trasmesso
+   * - Mappatura dei sensori in tempo reale per canale di telemetria
+     - ⚠️ (di solito fissa nel codice, o alimentata da uno script esterno)
+     - ✅
+     - Ogni canale analogico A1-A5 e digitale B1-B8 sceglie la sorgente dal
+       registro ``sensors_local``, salvata per nome del driver, così abilitare o
+       disabilitare un driver non ripunta mai silenziosamente un canale su un
+       altro sensore
    * - Ricezione/grafico della telemetria altrui
      - ✅ (grafici Xastir, aprs.fi)
      - ❌
@@ -464,6 +520,17 @@ Gestione stazione / Operatività
      - ✅
      - ✅
      - Etichettato per direzione (RX/TX/DIGI/INET2RF/RX-IS), include livello audio RMS
+   * - Tabella delle ultime stazioni ascoltate
+     - ✅
+     - ✅
+     - Una riga per stazione anziché per pacchetto, la più recente per prima e
+       con sfratto LRU, più l'istogramma orario di 18 ore che risponde a
+       ``?APRSH``
+   * - Ripristino ai valori di fabbrica compilati
+     - ⚠️
+     - ✅
+     - Un pulsante nella pagina Sistema riscrive ``config.json`` con i valori di
+       fabbrica
    * - UI multilingua
      - ⚠️ (raro; la maggior parte è solo inglese o localizzata dal SO)
      - ✅

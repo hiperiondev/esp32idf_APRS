@@ -86,10 +86,10 @@ The pages
        and where built, ``?WX?``/``?IGATE?``), directed-query enable, extended
        directed query set, minimum reply interval (airtime/loop safety floor).
    * - **Radio / Modem**
-     - FX.25 toggle; audio modem enable, modulation (300 / 1200 Bell202 / 1200
-       V.23 / 9600 G3RUH), audio LPF (flat audio), preamble ms, TX time slot ms,
-       TX buffers, extra PTT unkey hold; and the **LOOP TEST** button. Save
-       re-applies the modem live — no reboot.
+     - FX.25 mode (off / RX only / RX+TX); audio modem enable, modulation (300 /
+       1200 Bell202 / 1200 V.23 / 9600 G3RUH), audio LPF (flat audio), preamble
+       ms, TX time slot ms, TX buffers, extra PTT unkey hold, CSMA persistence;
+       and the **LOOP TEST** button. Save re-applies the modem live — no reboot.
    * - **Wireless**
      - Mode (off/STA/AP/AP+STA), AP SSID/pass/channel, 5 STA slots each with its
        own Enable checkbox, TX power in dBm, plus a live scan.

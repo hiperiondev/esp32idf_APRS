@@ -39,7 +39,7 @@ Modem / Layer-2
    * - AFSK 1200 Bd V.23
      - ⚠️ (Direwolf supports it; many clients don't)
      - ✅
-     - Selectable modem profile #2
+     - Selectable modem profile #2; like Bell 202 it runs two demodulators in parallel
    * - AFSK 300 Bd (HF APRS)
      - ✅ (Direwolf, UZ7HO)
      - ✅
@@ -55,7 +55,10 @@ Modem / Layer-2
    * - FX.25 Reed-Solomon FEC
      - ⚠️ (Direwolf yes; most hardware TNCs no)
      - ✅
-     - RX-only or RX+TX modes, backward compatible with plain AX.25
+     - Three modes on the Radiomodem page: off, RX only (decode FX.25, transmit
+       plain AX.25) and RX+TX. Transmitted codeblocks stay backward compatible —
+       a plain AX.25 receiver ignores the correlation tag and parity bytes and
+       decodes the frame carried inside
    * - IL2P (alternative to FX.25)
      - ⚠️ (Direwolf only)
      - ❌
@@ -71,7 +74,10 @@ Modem / Layer-2
    * - CSMA / channel-busy detection before TX
      - ✅
      - ✅
-     - TX time-slot (``tx_timeslot``) + preamble/TXDelay control
+     - DCD-gated p-persistent access: configurable Persist (``csma_persist``,
+       1-255), slot time (``tx_timeslot``) and preamble/TXDelay, plus an
+       eight-slot anti-starvation floor so a channel that never clears cannot
+       hold a queued frame forever
    * - PTT keying (VOX-free, hardware GPIO)
      - ✅
      - ✅
@@ -80,6 +86,23 @@ Modem / Layer-2
      - ⚠️ (rare)
      - ✅
      - "LOOP TEST" — transmits a token packet and verifies the full RX chain decodes it back, with detailed stage-by-stage diagnostics
+   * - Flat/discriminator vs. de-emphasized audio input
+     - ✅ (Direwolf, UZ7HO)
+     - ✅
+     - Tells the demodulator whether it is fed speaker audio or unfiltered
+       discriminator audio; applied live on save
+   * - TX queue depth control
+     - ⚠️ (usually a fixed internal queue)
+     - ✅
+     - ``rf_tx_buffers``: how many frames may wait in the RF TX ring before new
+       packets are discarded rather than queued; read on every transmit, so it
+       takes effect without a reboot
+   * - Minimum PTT unkey hold between frames
+     - ⚠️ (TXTAIL on some TNCs)
+     - ✅
+     - ``ptt_min_unkey_ms``, 0-5000 ms on top of the fixed one-tick release the
+       modem always applies — for radios or repeaters that need a longer
+       guaranteed gap between transmissions
 
 IGate (RF <-> APRS-IS)
 ------------------------
@@ -135,8 +158,10 @@ IGate (RF <-> APRS-IS)
      - Off by default; opt-in unwrap gated behind whitelist-only mode specifically to prevent IGate loops
    * - Auto-reconnect to APRS-IS with backoff
      - ✅
-     - ✅
-     - TCP auto-reconnect, re-reads config on every reconnect
+     - ⚠️
+     - TCP auto-reconnect, re-reads config on every reconnect, but on a fixed
+       retry interval (5 s after a failed connect, 1 s while the device has no
+       internet route) rather than an exponential backoff
    * - Passcode-based APRS-IS login
      - ✅
      - ✅
@@ -149,6 +174,12 @@ IGate (RF <-> APRS-IS)
      - ⚠️ (uncommon, usually just totals)
      - ✅
      - Named counters (``DROP_TOO_SHORT``, ``DROP_PATH_TOKEN``, ``DROP_RANGE_FILTER``, etc.)
+   * - Satellite/ISS gate-call list
+     - ⚠️ (aprx and some dedicated satgates)
+     - ✅
+     - Up to 8 satellite digipeater callsigns; a frame that was actually
+       repeated through one of them is gated with the ``qAO`` construct instead
+       of ``qAR``
 
 Digipeater
 -----------
@@ -222,7 +253,10 @@ Tracking / Beaconing
    * - Compressed (Base-91) position encoding
      - ✅
      - ✅
-     - Tracker page offers a compressed-position option; decoder also understands it
+     - Per-service option on the Tracker, IGate, Digipeater and Objects/Items
+       pages; the decoder understands it too. Skipped automatically when
+       position ambiguity is non-zero or a data extension is in use, since the
+       compressed layout has room for neither
    * - Mic-E position encoding (TX)
      - ⚠️ (mostly mobile-tracker firmware)
      - ✅
@@ -255,7 +289,15 @@ Tracking / Beaconing
    * - Altitude in beacons
      - ✅
      - ✅
-     - Station-wide altitude field, used by beacons
+     - Per-role altitude (tracker, IGate, digipeater), each mirrored from the
+       "My Station" value when *Use My Station Data* is ticked. Weather reports
+       carry no altitude field
+   * - Configurable digipeat path per service
+     - ✅
+     - ✅
+     - Four shared path presets; every transmitting service (tracker, IGate,
+       digipeater, weather, telemetry, messages, objects, bulletins) selects
+       from them with its own bitmask
 
 Messaging
 ----------
@@ -343,7 +385,17 @@ Telemetry
    * - Quadratic calibration (EQNS) per analog channel
      - ⚠️
      - ✅
-     - ``value = a*x^2 + b*x + c`` per channel
+     - Per-channel a/b/c coefficients transmitted in the ``EQNS.`` message. The
+       data report carries the raw sensor reading and the receiver applies the
+       conversion — the standard APRS101 split between report and metadata. The
+       per-channel raw range fields are stored and displayed but do not scale
+       the transmitted value
+   * - Live sensor mapping per telemetry channel
+     - ⚠️ (usually hardcoded, or fed from an external script)
+     - ✅
+     - Every analog A1-A5 and digital B1-B8 channel picks its source from the
+       ``sensors_local`` registry, stored by driver name so enabling or
+       disabling a driver never silently re-points a channel at another sensor
    * - Receiving/graphing others' telemetry
      - ✅ (Xastir, aprs.fi graphs)
      - ❌
@@ -459,6 +511,16 @@ Station Management / Ops
      - ✅
      - ✅
      - Direction-tagged (RX/TX/DIGI/INET2RF/RX-IS), includes audio-level RMS
+   * - Last-heard station table
+     - ✅
+     - ✅
+     - One row per station rather than per packet, most-recent-first with LRU
+       eviction, plus the 18-hour hourly histogram that answers ``?APRSH``
+   * - Factory reset to compiled-in defaults
+     - ⚠️
+     - ✅
+     - One button on the System page rewrites ``config.json`` with the factory
+       defaults
    * - Multi-language UI
      - ⚠️ (rare; most are English-only or OS-localized)
      - ✅
