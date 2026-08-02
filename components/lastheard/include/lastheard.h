@@ -17,7 +17,9 @@
  * @brief Small in-RAM table of decoded RF stations, used to feed the "LAST
  * HEARD" panel on the web dashboard.
  *
- * The table holds one entry per callsign, ordered most recently heard first.
+ * The table holds one entry per callsign, ordered most recently heard first,
+ * and remembers whether each station's latest frame arrived without passing
+ * through a digipeater - which is what the "?APRSD" query responder reports.
  * Every decoded AX.25 frame from a callsign already in the table refreshes that
  * entry - time, path, symbol - and increments its packet counter, so the
  * dashboard can show how many times each station has been heard the same way
@@ -35,6 +37,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <time.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -63,11 +66,50 @@ void lastheard_init(void);
  * @param via_rf     true if heard on RF, false if it only arrived via
  *                    APRS-IS (INET). Rendered as the "RF:"/"INET:" prefix on
  *                    the path column, matching the reference dashboard.
+ * @param direct     true if the frame reached this station without having
+ *                    been repeated by any digipeater. Recorded per station
+ *                    (from its most recent frame) and reported by
+ *                    lastheard_directs(); an INET frame is never direct.
  * @param sym_table  APRS symbol table byte ('/' or '\' or overlay char), 0 if
  *                    unknown/not a position packet.
  * @param sym_code   APRS symbol code byte, 0 if unknown/not a position packet.
  */
-void lastheard_add(const char *callsign, const char *path, bool via_rf, char sym_table, char sym_code);
+void lastheard_add(const char *callsign, const char *path, bool via_rf, bool direct, char sym_table, char sym_code);
+
+/**
+ * @brief Build the space-separated list of stations most recently heard
+ * without any digipeater in between, most recent first.
+ *
+ * This is the station list an APRS "?APRSD" directed query asks for
+ * (APRS101 chapter 15). Callsigns are appended whole - a callsign that would
+ * not fit the remaining room ends the list rather than being truncated, so
+ * the result never contains a partial callsign.
+ *
+ * @param out      Destination buffer, NUL-terminated on return (empty if no
+ *                 station has been heard directly).
+ * @param out_size Size of @p out, in bytes.
+ * @return Number of callsigns written.
+ */
+int lastheard_directs(char *out, size_t out_size);
+
+/**
+ * @brief Look one station up in the table.
+ *
+ * Answers the APRS "?APRSH" directed query (APRS101 chapter 15), which asks
+ * whether - and how much - a given station has been heard here.
+ *
+ * @param callsign Station to look up, matched exactly against the stored
+ *                 (SSID-bearing) callsign.
+ * @param packets  Out: how many frames from that station have been counted.
+ *                 Untouched when the station is unknown. May be NULL.
+ * @param last     Out: wall-clock time of its most recent frame. Untouched
+ *                 when the station is unknown. May be NULL.
+ * @param direct   Out: true if its most recent frame arrived without any
+ *                 digipeater. Untouched when the station is unknown. May be
+ *                 NULL.
+ * @return true if the station is in the table.
+ */
+bool lastheard_lookup(const char *callsign, uint32_t *packets, time_t *last, bool *direct);
 
 /**
  * @brief Serialize the table (one element per station, most recent first) as a

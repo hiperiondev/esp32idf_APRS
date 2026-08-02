@@ -42,7 +42,9 @@ The pages
        traffic table (DX / PACKET / AUDIO) fed by sequence-based long polling.
    * - **Station**
      - The shared own-station identity read by every beacon, object and
-       message: callsign, latitude, longitude, altitude (``g_config.my_*``).
+       message: callsign, latitude, longitude, altitude (``g_config.my_*``),
+       plus the two station-wide on-air precision options - position ambiguity
+       and the Maidenhead locator prefix for status reports.
    * - **IGate**
      - Enable, RF→INET / INET→RF, both filter bitmasks, budlist and range/prefix
        gates, callsign/SSID/passcode, host/port, server-side filter string,
@@ -66,7 +68,8 @@ The pages
        source pickers and calibration, digital B1–B8 with source pickers and
        sense. Live values via ``/tlm/values``.
    * - **Bulletins**
-     - Up to five bulletins (text, RF/INET, interval, expiry).
+     - Up to five bulletins (addressee identifier and group, text, RF/INET,
+       interval, expiry).
    * - **Objects and Items**
      - Up to five objects/items (name, position, symbol, course/speed, comment,
        RF/INET, interval, permanent flag, kill).
@@ -76,9 +79,9 @@ The pages
      - Configures the messaging engine (RF/INET enable, retry, encryption,
        alarm GPIO).
    * - **Query**
-     - APRS query responder enable, RF/INET, broadcast query types
-       (``?APRS?``, and where built, ``?WX?``/``?IGATE?``), directed-query
-       enable, minimum reply interval (airtime/loop safety floor).
+     - APRS query responder enable, RF/INET, general query types (``?APRS?``,
+       and where built, ``?WX?``/``?IGATE?``), directed-query enable, extended
+       directed query set, minimum reply interval (airtime/loop safety floor).
    * - **Radio / Modem**
      - FX.25 toggle; audio modem enable, modulation (300 / 1200 Bell202 / 1200
        V.23 / 9600 G3RUH), audio LPF (flat audio), preamble ms, TX time slot ms,

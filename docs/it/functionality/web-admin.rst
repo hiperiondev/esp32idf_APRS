@@ -46,7 +46,9 @@ Le pagine
    * - **Station**
      - L'identità condivisa della propria stazione che ogni beacon, oggetto e
        messaggio legge: indicativo, latitudine, longitudine, altitudine
-       (``g_config.my_*``).
+       (``g_config.my_*``), più le due opzioni di precisione in onda valide per
+       tutta la stazione: ambiguità di posizione e prefisso del localizzatore
+       Maidenhead nei rapporti di stato.
    * - **IGate**
      - Abilita, RF→INET / INET→RF, entrambe le maschere di filtro, budlist e gate
        di portata/prefisso, indicativo/SSID/passcode, host/porta, stringa di
@@ -70,7 +72,8 @@ Le pagine
        analogici A1–A5 con selettori di origine e calibrazione, digitali B1–B8 con
        selettori di origine e senso. Valori in tempo reale via ``/tlm/values``.
    * - **Bulletins**
-     - Fino a cinque bollettini (testo, RF/INET, intervallo, scadenza).
+     - Fino a cinque bollettini (identificatore e gruppo del destinatario,
+       testo, RF/INET, intervallo, scadenza).
    * - **Objects and Items**
      - Fino a cinque oggetti/item (nome, posizione, simbolo, rotta/velocità,
        commento, RF/INET, intervallo, flag permanente, kill).
@@ -81,9 +84,9 @@ Le pagine
        cifratura, GPIO di allarme).
    * - **Query**
      - Abilitazione del risponditore di query APRS, RF/INET, tipi di query
-       broadcast (``?APRS?``, e dove compilati, ``?WX?``/``?IGATE?``),
-       abilitazione query dirette, intervallo minimo di risposta (soglia di
-       sicurezza contro loop/uso del canale).
+       generali (``?APRS?``, e dove compilati, ``?WX?``/``?IGATE?``),
+       abilitazione query dirette, insieme esteso di query dirette, intervallo
+       minimo di risposta (soglia di sicurezza contro loop/uso del canale).
    * - **Radio / Modem**
      - Interruttore FX.25; abilita modem audio, modulazione (300 / 1200 Bell202 /
        1200 V.23 / 9600 G3RUH), LPF audio (audio piatto), ms di preambolo, ms di

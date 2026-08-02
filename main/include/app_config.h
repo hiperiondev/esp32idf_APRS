@@ -250,6 +250,34 @@ typedef struct {
  * (MODEM_PTT_GPIO / MODEM_PTT_ACTIVE_HIGH); only @c ptt_min_unkey_ms is
  * user-configurable.
  */
+/**
+ * @brief Which 7-byte APRS Data Extension a fixed-position beacon carries in
+ * the slot immediately after the symbol code (APRS101 chapter 7).
+ *
+ * The three are mutually exclusive on air - they all occupy the same slot, the
+ * one a moving station uses for CSE/SPD - so the beacon carries at most one of
+ * them, selected here and gated by the beacon's own "enable data extension"
+ * flag (@c app_config_t.igate_phg_enable).
+ */
+typedef enum {
+    APRS_EXT_PHG = 0, /**< "PHGphgd": transmitter power, antenna height/gain and directivity. */
+    APRS_EXT_RNG = 1, /**< "RNGrrrr": pre-calculated omnidirectional radio range, statute miles. */
+    APRS_EXT_DFS = 2, /**< "DFSshgd": Omni-DF signal strength, with the same height/gain/directivity codes as PHG. */
+} aprs_ext_type_t;
+
+#define APRS_EXT_RANGE_MILES_MIN  0    /**< Lowest "RNGrrrr" pre-calculated radio range, statute miles. */
+#define APRS_EXT_RANGE_MILES_MAX  9999 /**< Highest "RNGrrrr" pre-calculated radio range: the field is 4 digits wide. */
+#define APRS_EXT_DFS_STRENGTH_MIN 0    /**< Lowest "DFSshgd" signal-strength code (0 = this station does NOT hear the signal). */
+#define APRS_EXT_DFS_STRENGTH_MAX 9    /**< Highest "DFSshgd" signal-strength code, in S-points. */
+
+/**
+ * @brief Highest position-ambiguity level selectable on the Station page
+ * (0 = full precision, 4 = nearest degree). Mirrors
+ * ::APRS_COORD_AMBIGUITY_MAX, kept here so the web page and the JSON clamp
+ * do not have to pull in aprs_coord.h.
+ */
+#define POS_AMBIGUITY_MAX 4
+
 typedef struct {
     float timeZone;  /**< Configured local timezone offset (display use only; the system clock stays UTC - see time_sync.h). */
     bool synctime;   /**< Enable SNTP time sync. */
@@ -266,6 +294,10 @@ typedef struct {
                                page displays/edits this in meters and converts. */
     uint8_t my_phg_dir;     /**< "My Station" PHG sub-field: directivity, 0=Omni, 1-8 = N,NE,E,SE,S,SW,W,NW. */
     char my_phg[8];         /**< "My Station" PHG string (computed from the sub-fields above), e.g. "PHG5132". */
+
+    uint8_t pos_ambiguity; /**< Position ambiguity applied to every uncompressed own-station position report, 0 (full precision) to ::POS_AMBIGUITY_MAX
+                              (nearest degree). See aprs_coord_format_ambiguous(). */
+    bool status_grid_en;   /**< Prefix every own-station status report with the Maidenhead grid locator of the beacon's position (APRS101 chapter 16). */
 
     uint8_t wifi_mode;                 /**< WiFi mode: 0=off, 1=STA, 2=AP, 3=AP_STA. */
     int8_t wifi_power;                 /**< WiFi TX power setting. */
@@ -323,6 +355,9 @@ typedef struct {
     float igate_phg_gain;             /**< PHG sub-field: antenna gain, dBi. */
     uint16_t igate_phg_height;        /**< PHG sub-field: antenna height, feet. */
     uint8_t igate_phg_dir;            /**< PHG sub-field: directivity, 0=Omni, 1-8 = N,NE,E,SE,S,SW,W,NW. */
+    uint8_t igate_ext_type;           /**< Which ::aprs_ext_type_t the IGate position beacon carries when @c igate_phg_enable is set. */
+    uint16_t igate_range_miles;       /**< "RNGrrrr" pre-calculated radio range, statute miles (::APRS_EXT_RNG only). */
+    uint8_t igate_dfs_strength;       /**< "DFSshgd" signal-strength code 0-9 (::APRS_EXT_DFS only; height/gain/directivity come from the PHG sub-fields). */
 
     bool digi_en;                    /**< Digipeater service enabled. */
     bool digi_auto;                  /**< Automatic (WIDEn-N) digipeating. */
@@ -438,6 +473,7 @@ typedef struct {
     bool query_wx_en;                /**< Enable "?WX?" responses. */
     bool query_igate_en;             /**< Enable "?IGATE?" responses. */
     bool query_directed_en;          /**< Enable directed "CALL:?query?" responses. */
+    bool query_ext_en;               /**< Enable the extended directed query set (?APRSD/?APRSH/?APRSM/?APRSO/?APRSP/?APRSS/?APRST/?PING?). */
     uint16_t query_min_interval_sec; /**< Per-type broadcast query rate limit, seconds (floored at 5). */
 
 } app_config_t;

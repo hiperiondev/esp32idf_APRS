@@ -83,6 +83,117 @@ radio, mientras todos los demás llamadores (RX/digipeat, INET→RF, TX de
 mensajes) mantienen el comportamiento no bloqueante de descartar-si-lleno y una
 pata de RF ocupada nunca detiene la decodificación de RX ni el socket de APRS-IS.
 
+Extensiones de datos (PHG / RNG / DFS)
+======================================
+
+La baliza de posición del IGate puede llevar una de las tres extensiones de
+datos APRS de estación fija en la ranura de 7 bytes que sigue al código de
+símbolo — la misma ranura que una estación en movimiento usa para rumbo y
+velocidad, y por eso solo se emite una de ellas. *Habilitar extensión de datos*
+en la página IGate abre la ranura, y *Tipo de extensión* elige cuál de las tres
+la llena:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 12 18 70
+
+   * - Tipo
+     - Al aire
+     - Significado
+   * - PHG
+     - ``PHG5132``
+     - Potencia de transmisión, altura de antena sobre el terreno promedio,
+       ganancia y directividad. El software receptor dibuja la cobertura
+       estimada resultante como un círculo (o un lóbulo, con antena
+       direccional).
+   * - RNG
+     - ``RNG0025``
+     - Un único alcance de radio omnidireccional precalculado en millas
+       terrestres, para un operador que ya conoce su radio de cobertura real y
+       prefiere declararlo antes que dejar que se infiera del PHG.
+   * - DFS
+     - ``DFS3364``
+     - Intensidad de señal omni-DF: los mismos códigos de altura/ganancia/
+       directividad que PHG, pero informando la intensidad de señal *recibida*
+       en puntos S en lugar de la potencia transmitida. Una intensidad de 0
+       significa que esta estación **no** oye la señal, y el software de
+       graficado lo representa como un círculo de exclusión en vez de uno de
+       cobertura.
+
+PHG usa los cuatro subcampos, DFS todos menos la potencia de transmisión, y RNG
+ninguno; la página deshabilita las entradas que el tipo seleccionado no usa.
+Como un control deshabilitado no se envía en el POST, los valores guardados del
+*otro* tipo sobreviven al ir y volver entre ellos.
+
+Habilitar cualquier extensión fuerza el formato de posición sin comprimir. El
+formato comprimido no tiene sitio para la ranura de 7 bytes (APRS101 cap.9 dice
+que no admite PHG), así que emitir esos bytes dentro de un reporte comprimido
+sería simplemente dato erróneo, y descartar la extensión para conservar la
+compresión perdería en silencio un campo que el operador habilitó
+explícitamente.
+
+Ambigüedad de posición
+======================
+
+*Ambigüedad de posición*, en la página Estación, es de toda la estación: se
+aplica a las tres balizas de posición, porque con cuánta precisión una estación
+está dispuesta a decir dónde está es una propiedad de la estación y no de una
+baliza concreta. Los niveles 0–4 blanquean los dígitos de minuto menos
+significativos al aire (APRS101 cap.6) — el punto decimal, el carácter de
+hemisferio y los anchos de campo nunca cambian, que es lo que mantiene el
+reporte analizable:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 10 25 25 40
+
+   * - Nivel
+     - Latitud
+     - Longitud
+     - Precisión
+   * - 0
+     - ``4903.50N``
+     - ``07201.75W``
+     - Centésimas de minuto (total).
+   * - 1
+     - ``4903.5 N``
+     - ``07201.7 W``
+     - Al 1/10 de minuto.
+   * - 2
+     - ``4903.  N``
+     - ``07201.  W``
+     - Al minuto.
+   * - 3
+     - ``490 .  N``
+     - ``0720 .  W``
+     - A los 10 minutos.
+   * - 4
+     - ``49  .  N``
+     - ``072  .  W``
+     - Al grado.
+
+Los dígitos se blanquean, nunca se redondean fuera, igual que los decodificadores
+de referencia que leen un dígito blanqueado como "desconocido". El acarreo de
+redondeo se aplica primero, así que una coordenada que redondea al grado
+siguiente se informa en ese grado y no en el anterior.
+
+Un nivel distinto de cero también fuerza el formato sin comprimir, por el mismo
+tipo de razón que una extensión de datos: el formato comprimido no tiene dígitos
+decimales que blanquear, así que respetar una marca de *comprimido* junto con la
+ambigüedad transmitiría la posición exacta que el operador pidió ocultar. Mic-E,
+en cambio, lleva la ambigüedad de forma nativa y no necesita ese repliegue.
+
+Localizador Maidenhead en los reportes de estado
+================================================
+
+*Localizador Maidenhead en los reportes de estado*, también de toda la estación
+en la página Estación, antepone a cada reporte de estado el localizador de la
+posición propia de esa baliza, su byte de tabla de símbolo y su código de
+símbolo — la forma ``>IO91SX/G`` de APRS101 cap.16 — seguido de un espacio y el
+texto de estado configurado. Los receptores que entienden la forma sitúan la
+estación solo con el localizador; el resto muestran todo como texto de estado. El
+texto configurado nunca se interpreta.
+
 Las marcas de tiempo son UTC
 ============================
 

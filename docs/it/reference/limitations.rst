@@ -180,7 +180,9 @@ Digipeater
    * - Soppressione duplicati/ping-pong nel digipeating
      - ✅
      - ✅
-     - Condivide la cache di deduplica dell'IGate
+     - Finestra propria di 30 s nella cache di deduplica condivisa
+       (``DUP_SCOPE_DIGI``), con chiave di sola origine e payload, verificata
+       prima di qualsiasi lavoro sul percorso
    * - Filtro di digipeating per nominativo (ripetere solo certe fonti)
      - ⚠️ (alcuni, es. VP-Digi)
      - ❌
@@ -229,6 +231,30 @@ Tracciamento / Beaconing
      - ✅
      - ✅
      - Esposto nella pagina beacon dell'IGate
+   * - RNG / portata radio precalcolata
+     - ⚠️
+     - ✅
+     - Selezionabile come estensione dati del beacon dell'IGate (``RNGrrrr``)
+   * - DFS / intensità del segnale omni-DF
+     - ⚠️ (software specifico per DF)
+     - ✅
+     - Selezionabile come estensione dati del beacon dell'IGate (``DFSshgd``)
+   * - Ambiguità di posizione nei rapporti trasmessi
+     - ⚠️
+     - ✅
+     - Livello 0-4 a livello di stazione nella pagina Stazione; si applica ai
+       formati non compresso e Mic-E, e forza il formato non compresso quando è
+       diverso da zero
+   * - Localizzatore Maidenhead nei rapporti di stato
+     - ⚠️
+     - ✅
+     - Opzione a livello di stazione; emette la forma ``>IO91SX/G`` di APRS101
+       cap.16
+   * - Localizzatore Maidenhead nella destinazione AX.25 (``[IO91SX]``,
+       obsoleto)
+     - ⚠️ (software legacy)
+     - ❌
+     - Contrassegnato come obsoleto dalla specifica stessa; non prodotto
    * - Altitudine nei beacon
      - ✅
      - ✅
@@ -362,9 +388,29 @@ Oggetti, Item, Bollettini, Stato
    * - Risposta a query (``?APRS?``, ``?WX?``, ecc.)
      - ⚠️
      - ✅
-     - Query broadcast (``?APRS?``/``?WX?``/``?IGATE?``) e dirette
-       (``CALL:?query?``), con limitazione di frequenza; vedere il componente
-       ``query`` e la pagina *Query* del pannello web
+     - Query generali (``?APRS?``/``?WX?``/``?IGATE?``) e dirette, ciascuna con
+       il proprio limitatore di frequenza; vedere il componente ``query`` e la
+       pagina *Query* del pannello web
+   * - Insieme di query dirette (``?APRSD``/``?APRSH``/``?APRSM``/``?APRSO``/
+       ``?APRSP``/``?APRSS``/``?APRST``/``?PING?``)
+     - ⚠️ (APRSISCE/32, YAAC)
+     - ✅
+     - Risposte fornite quando *Interrogazioni dirette estese* è abilitato. Le
+       risposte in forma di elenco tornano come messaggi APRS alla stazione
+       richiedente; ``?APRSO`` accoda gli Oggetti/Item al pianificatore di
+       beacon invece di trasmettere dal task RX
+   * - Grafico della cronologia di ascolto di ``?APRSH``
+     - ⚠️
+     - ⚠️
+     - La stazione tiene una riga per nominativo, non una cronologia per
+       periodo, quindi la risposta riporta ciò che quella riga contiene
+       (conteggio, ora dell'ultimo frame, se diretto) invece del grafico a 8
+       slot descritto dalla specifica
+   * - Capacità di stazione (DTI ``<``)
+     - ✅
+     - ✅
+     - Emesse come risposta a ``?IGATE?``
+       (``<IGATE,MSG_CNT=n,LOC_CNT=n>``)
 
 Mappatura / Visualizzazione
 -------------------------------

@@ -162,17 +162,38 @@ esp_err_t page_igate_get(httpd_req_t *req) {
     }
     web_fieldset_close(req);
 
-    // PHG ------------------------------------------------------------------
-    // Mirrors the "My Station" PHG section on the Station page field-for-field
-    // (same power/gain/height/direction code tables), plus two toggles ahead
-    // of the fields: "Enable PHG" gates whether the PHG data extension is
-    // transmitted in the IGate position beacon at all, and "Use My Station
-    // Data" reuses the shared Station PHG values and locks the sub-fields,
-    // exactly like the Object/Item PHG blocks on the Objects page. There is
-    // no manual "Calculate PHG" button - the computed PHG text is read-only
-    // and kept in sync automatically by the script below.
-    web_fieldset_open(req, TR_F_PHG_SECTION);
-    web_field_checkbox(req, TR_F_ENABLE_PHG, "igatePHGEn", g_config.igate_phg_enable);
+    // DATA EXTENSION ---------------------------------------------------------
+    // The IGate position beacon can carry one of the three fixed-station APRS
+    // data extensions in the 7-byte slot after the symbol code (APRS101 ch.7).
+    // "Enable data extension" gates whether any of them is transmitted, and
+    // "Extension type" picks which:
+    //
+    //   PHG - power/height/gain/directivity, the classic coverage estimate.
+    //   RNG - a single pre-calculated radio range in statute miles, for an
+    //         operator who already knows their real coverage radius.
+    //   DFS - the same height/gain/directivity codes as PHG, but reporting
+    //         received signal strength instead of transmitted power, which is
+    //         what a direction-finding station transmits.
+    //
+    // The power/gain/height/direction fields below mirror the "My Station" PHG
+    // section on the Station page field-for-field (same code tables); DFS
+    // reuses the gain/height/direction three and adds its own strength code,
+    // and RNG uses none of them. "Use My Station Data" reuses the shared
+    // Station PHG values and locks the sub-fields, exactly like the
+    // Object/Item PHG blocks on the Objects page. There is no manual
+    // "Calculate PHG" button - the computed PHG text is read-only and kept in
+    // sync automatically by the script below.
+    web_fieldset_open(req, TR_F_EXT_SECTION);
+    web_field_checkbox(req, TR_F_ENABLE_EXT, "igatePHGEn", g_config.igate_phg_enable);
+    web_select_open(req, TR_F_EXT_TYPE, "igateExtType");
+    {
+        static const char *extNames[] = { TR_EXT_PHG, TR_EXT_RNG, TR_EXT_DFS };
+        for (int i = 0; i < 3; i++)
+            web_select_option(req, i, extNames[i], g_config.igate_ext_type == (uint8_t)i);
+    }
+    web_select_close(req);
+    web_field_int(req, TR_F_EXT_RANGE_MI, "igateRng", g_config.igate_range_miles, APRS_EXT_RANGE_MILES_MIN, APRS_EXT_RANGE_MILES_MAX);
+    web_field_int(req, TR_F_EXT_DFS_STRENGTH, "igateDfsS", g_config.igate_dfs_strength, APRS_EXT_DFS_STRENGTH_MIN, APRS_EXT_DFS_STRENGTH_MAX);
     web_field_checkbox(req, TR_USE_MY_STATION_DATA, "igatePHGUseStation", g_config.igate_phg_use_station);
     web_select_open(req, TR_F_RADIO_TX_POWER, "igatePHGPower");
     {
@@ -268,18 +289,28 @@ esp_err_t page_igate_get(httpd_req_t *req) {
             "if(o)o.value='PHG'+P+String.fromCharCode(48+H)+G+D;"
             "}"
             "function apply(){"
-            "var en=q('igatePHGEn'),us=q('igatePHGUseStation');"
+            "var en=q('igatePHGEn'),us=q('igatePHGUseStation'),ty=q('igateExtType');"
             "if(!en)return;"
-            "var on=en.checked,useS=us&&us.checked;"
+            "var on=en.checked,useS=us&&us.checked,t=ty?parseInt(ty.value):0;"
             "if(useS){q('igatePHGPower').value=ST.p;q('igatePHGGain').value=ST.g;q('igatePHGHeight').value=ST.h;q('igatePHGDir').value=ST.d;}"
+            "if(ty)ty.disabled=!on;"
+            // PHG uses all four sub-fields, DFS every one but the transmit
+            // power, RNG none of them; the strength and range inputs each
+            // belong to exactly one type. Disabling rather than hiding keeps
+            // the layout stable and, since a disabled control does not POST,
+            // matches what the save handler below actually stores.
             "var dis=(!on)||useS;"
-            "['igatePHGPower','igatePHGGain','igatePHGHeight','igatePHGDir'].forEach(function(nm){var el=q(nm);if(el)el.disabled=dis;});"
+            "q('igatePHGPower').disabled=dis||t!==0;"
+            "['igatePHGGain','igatePHGHeight','igatePHGDir'].forEach(function(nm){var el=q(nm);if(el)el.disabled=dis||t===1;});"
+            "var r=q('igateRng');if(r)r.disabled=(!on)||t!==1;"
+            "var sg=q('igateDfsS');if(sg)sg.disabled=(!on)||t!==2;"
             "if(useS){var o=q('igatePHG');if(o)o.value=ST.s;}else{calc();}"
             "}"
             "document.addEventListener('DOMContentLoaded',function(){"
-            "var en=q('igatePHGEn'),us=q('igatePHGUseStation');"
+            "var en=q('igatePHGEn'),us=q('igatePHGUseStation'),ty=q('igateExtType');"
             "if(en)en.addEventListener('change',apply);"
             "if(us)us.addEventListener('change',apply);"
+            "if(ty)ty.addEventListener('change',apply);"
             "['igatePHGPower','igatePHGGain','igatePHGHeight','igatePHGDir'].forEach(function(nm){var el=q(nm);if(el)el.addEventListener('change',calc);});"
             "apply();"
             "});"
@@ -483,6 +514,32 @@ esp_err_t page_igate_post(httpd_req_t *req) {
     // so they don't POST - snapshot the shared station PHG under the config
     // lock (already held here) and use that instead of the form in that case.
     g_config.igate_phg_enable = web_form_get_bool(body, "igatePHGEn");
+    // The type select and the two type-specific numbers are disabled in the
+    // browser for whichever extension is not selected, so they do not POST;
+    // web_form_get_int() therefore keeps the stored value for those, which is
+    // what lets an operator switch types back and forth without losing the
+    // settings of the other one. Both are clamped here as well as in
+    // config_from_json(), the two-layer pattern the rest of the pages use.
+    {
+        int extType = web_form_get_int(body, "igateExtType", (int)g_config.igate_ext_type);
+        if (extType < APRS_EXT_PHG || extType > APRS_EXT_DFS)
+            extType = APRS_EXT_PHG;
+        g_config.igate_ext_type = (uint8_t)extType;
+
+        int rng = web_form_get_int(body, "igateRng", (int)g_config.igate_range_miles);
+        if (rng < APRS_EXT_RANGE_MILES_MIN)
+            rng = APRS_EXT_RANGE_MILES_MIN;
+        if (rng > APRS_EXT_RANGE_MILES_MAX)
+            rng = APRS_EXT_RANGE_MILES_MAX;
+        g_config.igate_range_miles = (uint16_t)rng;
+
+        int dfs = web_form_get_int(body, "igateDfsS", (int)g_config.igate_dfs_strength);
+        if (dfs < APRS_EXT_DFS_STRENGTH_MIN)
+            dfs = APRS_EXT_DFS_STRENGTH_MIN;
+        if (dfs > APRS_EXT_DFS_STRENGTH_MAX)
+            dfs = APRS_EXT_DFS_STRENGTH_MAX;
+        g_config.igate_dfs_strength = (uint8_t)dfs;
+    }
     g_config.igate_phg_use_station = web_form_get_bool(body, "igatePHGUseStation");
     if (g_config.igate_phg_use_station) {
         g_config.igate_phg_power = g_config.my_phg_power;

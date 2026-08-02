@@ -14,10 +14,17 @@
  *
  *     please contact their authors for more information.
  *
- * @brief Web admin "Bulletins" page: edits the BULLETIN_COUNT APRS bulletins
- * (BLN1..BLN5). Each bulletin has enable / Send via RF / Send via Internet
- * toggles, a length-limited message, and an "expire after N hours" window that
- * auto-disables the bulletin once it elapses.
+ * @brief Web admin "Bulletins" page: edits the BULLETIN_COUNT APRS bulletins.
+ * Each bulletin has enable / Send via RF / Send via Internet toggles, an
+ * addressee identifier and group name, a length-limited message, and an
+ * "expire after N hours" window that auto-disables the bulletin once it
+ * elapses.
+ *
+ * The identifier and group together select which of the three APRS101
+ * chapter 14 addressee forms goes on the air - general bulletin ("BLN1"),
+ * group bulletin ("BLN1WX") or announcement ("BLNQ"). Both are normalized at
+ * transmit time by bulletins_build_addressee(), so anything typed here that
+ * the addressee field cannot carry is dropped rather than transmitted.
  *
  * Bulletins live in their own LittleFS file (/storage/bulletins.json), NOT in
  * g_config - see bulletins.h. This page therefore loads/saves them through the
@@ -75,6 +82,16 @@ esp_err_t page_bulletins_get(httpd_req_t *req) {
         web_field_checkbox(req, TR_F_SEND_VIA_RF, name, b->send_rf);
         snprintf(name, sizeof(name), "bInet%d", i + 1);
         web_field_checkbox(req, TR_F_SEND_VIA_INTERNET, name, b->send_inet);
+
+        // The identifier is one character wide on air. An empty field is
+        // legal and means "use this slot's own digit", which is what a
+        // bulletin saved before this field existed does.
+        char ident[2] = { b->ident, 0 };
+        snprintf(name, sizeof(name), "bId%d", i + 1);
+        web_field_text(req, TR_F_BULLETIN_ID, name, ident, 1);
+
+        snprintf(name, sizeof(name), "bGrp%d", i + 1);
+        web_field_text(req, TR_F_BULLETIN_GROUP, name, b->group, BULLETIN_GROUP_MAX);
 
         // web_field_text() HTML-escapes value internally, so the free-form
         // bulletin text is passed straight through here.
@@ -140,6 +157,19 @@ esp_err_t page_bulletins_post(httpd_req_t *req) {
         b->send_rf = web_form_get_bool(body, name);
         snprintf(name, sizeof(name), "bInet%d", i + 1);
         b->send_inet = web_form_get_bool(body, name);
+
+        snprintf(name, sizeof(name), "bId%d", i + 1);
+        char ident[4];
+        ident[0] = 0;
+        web_form_get(body, name, ident, sizeof(ident));
+        b->ident = ident[0]; // 0 (empty field) means "this slot's default digit"
+
+        snprintf(name, sizeof(name), "bGrp%d", i + 1);
+        char group[BULLETIN_GROUP_MAX + 1];
+        group[0] = 0;
+        web_form_get(body, name, group, sizeof(group));
+        strncpy(b->group, group, BULLETIN_GROUP_MAX);
+        b->group[BULLETIN_GROUP_MAX] = 0;
 
         snprintf(name, sizeof(name), "bMsg%d", i + 1);
         char text[BULLETIN_TEXT_MAX + 1];

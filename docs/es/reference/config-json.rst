@@ -37,7 +37,8 @@ Otros archivos persistentes
        digitales B1–B8, parámetros del informe, conmutadores de mensajes de
        definición.
    * - ``/storage/bulletins.json``
-     - Los cinco boletines APRS (texto, RF/INET, intervalo, caducidad).
+     - Los cinco boletines APRS (identificador y grupo de destinatario, texto,
+       RF/INET, intervalo, caducidad).
    * - ``/storage/objitems.json``
      - Los cinco objetos/ítems APRS (nombre, posición, símbolo, rumbo/velocidad,
        comentario, intervalo, bandera permanente).

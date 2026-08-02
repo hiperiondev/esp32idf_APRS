@@ -46,7 +46,9 @@ Las páginas
    * - **Station**
      - La identidad compartida de la propia estación que leen cada baliza,
        objeto y mensaje: indicativo, latitud, longitud, altitud
-       (``g_config.my_*``).
+       (``g_config.my_*``), más las dos opciones de precisión al aire de toda la
+       estación: ambigüedad de posición y prefijo de localizador Maidenhead en
+       los reportes de estado.
    * - **IGate**
      - Habilitar, RF→INET / INET→RF, ambas máscaras de filtro, budlist y guardas
        de rango/prefijo, indicativo/SSID/passcode, host/puerto, cadena de filtro
@@ -70,7 +72,8 @@ Las páginas
        analógicos A1–A5 con selectores de origen y calibración, digitales B1–B8
        con selectores de origen y sentido. Valores en vivo vía ``/tlm/values``.
    * - **Bulletins**
-     - Hasta cinco boletines (texto, RF/INET, intervalo, caducidad).
+     - Hasta cinco boletines (identificador y grupo de destinatario, texto,
+       RF/INET, intervalo, caducidad).
    * - **Objects and Items**
      - Hasta cinco objetos/ítems (nombre, posición, símbolo, rumbo/velocidad,
        comentario, RF/INET, intervalo, bandera permanente, kill).
@@ -81,8 +84,9 @@ Las páginas
        cifrado, GPIO de alarma).
    * - **Query**
      - Habilitación del respondedor de consultas APRS, RF/INET, tipos de
-       consulta broadcast (``?APRS?``, y donde estén compilados,
-       ``?WX?``/``?IGATE?``), habilitación de consultas dirigidas, intervalo
+       consulta general (``?APRS?``, y donde estén compilados,
+       ``?WX?``/``?IGATE?``), habilitación de consultas dirigidas, conjunto
+       extendido de consultas dirigidas, intervalo
        mínimo de respuesta (límite de seguridad frente a bucles/uso del
        canal).
    * - **Radio / Modem**

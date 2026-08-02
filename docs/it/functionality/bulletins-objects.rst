@@ -10,20 +10,61 @@ LittleFS dedicati invece che in ``g_config``, per mantenere piccola la
 configurazione residente, ed entrambi sono azionati dal pianificatore di beacon
 condiviso.
 
-Bollettini (BLN1..BLN5)
-=======================
+Bollettini
+==========
 
-``main/bulletins.c`` trasmette fino a cinque bollettini APRS, indirizzati da
-``BLN1`` a ``BLN5``. Ogni bollettino ha:
+``main/bulletins.c`` trasmette fino a cinque bollettini APRS. Ogni bollettino
+ha:
 
 * il proprio testo,
+* un **identificatore** e un nome di **gruppo** del destinatario,
 * un'abilitazione **RF** e/o **APRS-IS**,
 * un **intervallo** di trasmissione,
 * una finestra opzionale di **"scadi dopo N ore"**.
 
+Identificatore e gruppo insieme selezionano quale delle tre forme di
+destinatario definite dal capitolo 14 di APRS101 va in onda:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 25 20 55
+
+   * - Forma
+     - Destinatario
+     - Quando
+   * - Bollettino generale
+     - ``BLN1``
+     - Identificatore ``0``–``9``, senza nome di gruppo. I bollettini che
+       condividono l'identificatore si sostituiscono a vicenda sul ricevitore,
+       quindi l'identificatore funge anche da numero di slot per un bollettino
+       su più righe.
+   * - Bollettino di gruppo
+     - ``BLN1WX``
+     - Identificatore ``0``–``9`` più un nome di gruppo fino a cinque caratteri.
+       Solo le stazioni iscritte a quel gruppo lo visualizzano.
+   * - Annuncio
+     - ``BLNQ``
+     - Identificatore ``A``–``Z`` e nessun nome di gruppo. La maggior parte del
+       software client conserva e ripropone gli annunci molto più a lungo dei
+       bollettini, ed è per questo che la specifica dà loro uno spazio di
+       identificatori proprio.
+
+``bulletins_build_addressee()`` normalizza mentre costruisce, così nulla che il
+campo destinatario di 9 caratteri non possa portare arriva in onda: un
+identificatore fuori da ``0``–``9``/``A``–``Z`` ricade sulla cifra dello slot
+stesso, il nome del gruppo viene reso maiuscolo e privato di tutto ciò che non è
+``A``–``Z``/``0``–``9``, e un identificatore di annuncio sopprime del tutto il
+gruppo.
+
 Un bollettino scaduto pulisce automaticamente il suo flag di abilitazione ed esce
 dall'onda. I bollettini persistono nel proprio ``/storage/bulletins.json``. La
 pagina è condizionata dall'interruttore di compilazione ``ENABLE_BULLETINS``.
+
+.. note::
+
+   I radiogrammi NTS, descritti anch'essi nel capitolo 14, sono un formato di
+   messaggio per il traffico e non una forma di destinatario di bollettino, e
+   non vengono prodotti qui.
 
 Oggetti e Item
 ==============

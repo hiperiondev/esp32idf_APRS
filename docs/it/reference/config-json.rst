@@ -37,7 +37,8 @@ Altri file persistenti
        digitali B1–B8, parametri del report, interruttori dei messaggi di
        definizione.
    * - ``/storage/bulletins.json``
-     - I cinque bollettini APRS (testo, RF/INET, intervallo, scadenza).
+     - I cinque bollettini APRS (identificatore e gruppo del destinatario,
+       testo, RF/INET, intervallo, scadenza).
    * - ``/storage/objitems.json``
      - I cinque oggetti/item APRS (nome, posizione, simbolo, rotta/velocità,
        commento, intervallo, flag permanente).

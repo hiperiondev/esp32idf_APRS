@@ -155,6 +155,28 @@ esp_err_t page_station_get(httpd_req_t *req) {
     web_field_text(req, TR_F_MY_CALLSIGN, "myCallsign", g_config.my_callsign, 9);
     web_field_float(req, TR_F_LATITUDE, "myLAT", g_config.my_lat, "0.0001", WEB_RANGE_LAT_MIN, WEB_RANGE_LAT_MAX);
     web_field_float(req, TR_F_LONGITUDE, "myLON", g_config.my_lon, "0.0001", WEB_RANGE_LON_MIN, WEB_RANGE_LON_MAX);
+
+    // Position ambiguity and the Maidenhead status prefix are station-wide:
+    // both describe how precisely this station is willing to state where it
+    // is, which is a property of the station rather than of any one beacon, so
+    // all three position beacons (Tracker / IGate / Digipeater) and all three
+    // status reports pick them up from here.
+    //
+    // Ambiguity blanks the least significant minute digits on air (APRS101
+    // ch.6). It is what a fixed station uses to publish an approximate
+    // location instead of its exact address. Because the compressed position
+    // format has no digits to blank, enabling ambiguity makes those beacons
+    // fall back to the uncompressed format even if "compressed" is ticked on
+    // their own page - the alternative would be silently transmitting the
+    // exact position the operator asked to hide.
+    web_select_open(req, TR_F_POS_AMBIGUITY, "myAmbiguity");
+    {
+        static const char *levels[] = { TR_AMB_NONE, TR_AMB_TENTH, TR_AMB_MINUTE, TR_AMB_TEN_MINUTES, TR_AMB_DEGREE };
+        for (int i = 0; i <= POS_AMBIGUITY_MAX; i++)
+            web_select_option(req, i, levels[i], g_config.pos_ambiguity == (uint8_t)i);
+    }
+    web_select_close(req);
+    web_field_checkbox(req, TR_F_STATUS_GRID, "myStatusGrid", g_config.status_grid_en);
     web_fieldset_close(req);
 
     // PHG (Power-Height-Gain-Directivity) ------------------------------------
@@ -256,7 +278,7 @@ esp_err_t page_station_get(httpd_req_t *req) {
 esp_err_t page_station_post(httpd_req_t *req) {
     if (!web_check_auth(req))
         return ESP_OK;
-    char body[400];
+    char body[480];
     if (web_read_body(req, body, sizeof(body)) < 0) {
         httpd_resp_send_500(req);
         return ESP_OK;
@@ -266,6 +288,15 @@ esp_err_t page_station_post(httpd_req_t *req) {
     web_form_get_call(body, "myCallsign", g_config.my_callsign, sizeof(g_config.my_callsign));
     g_config.my_lat = web_form_get_float(body, "myLAT", g_config.my_lat);
     g_config.my_lon = web_form_get_float(body, "myLON", g_config.my_lon);
+    {
+        int amb = web_form_get_int(body, "myAmbiguity", (int)g_config.pos_ambiguity);
+        if (amb < 0)
+            amb = 0;
+        if (amb > POS_AMBIGUITY_MAX)
+            amb = POS_AMBIGUITY_MAX;
+        g_config.pos_ambiguity = (uint8_t)amb;
+    }
+    g_config.status_grid_en = web_form_get_bool(body, "myStatusGrid");
     web_form_get(body, "myPHG", g_config.my_phg, sizeof(g_config.my_phg));
     g_config.my_phg_power = (uint16_t)web_form_get_int(body, "myPHGPower", g_config.my_phg_power);
     g_config.my_phg_gain = (float)web_form_get_int(body, "myPHGGain", (int)lroundf(g_config.my_phg_gain));

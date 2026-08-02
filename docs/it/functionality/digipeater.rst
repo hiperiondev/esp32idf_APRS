@@ -54,10 +54,20 @@ Schemi di percorso supportati
 Soppressione duplicati
 ======================
 
-Prima di ripetere, il digipeater controlla il frame contro la stessa cache di
-rilevamento duplicati usata dall'IGate (``isDuplicatePacket()``), così che un
-frame già digipetato entro la finestra di soppressione non venga ritrasmesso — la
-classica difesa contro il ping-pong tra digipeater.
+Prima di qualsiasi lavoro sul percorso, il digipeater controlla il frame con
+``isDuplicatePacketScoped(packet, DUP_SCOPE_DIGI)``. La chiave è costruita solo
+dall'indirizzo di origine e dal campo informativo — mai dal percorso — quindi
+ogni copia di una stessa trasmissione produce lo stesso hash comunque sia
+arrivata. Un frame che corrisponde a uno ripetuto entro
+``DUP_PACKET_TIMEOUT_MS`` (30 s) viene scartato: è questo che impedisce a due
+digipeater nella copertura reciproca di rimbalzarsi lo stesso frame, e che
+assorbe un'eco RF di un frame appena ripetuto da questa stazione.
+
+La cache è condivisa con l'IGate ma le finestre no: ogni voce porta l'ambito che
+l'ha inserita e corrisponde solo a ricerche dello stesso ambito. Entrambi i
+consumatori vedono gli stessi frame dallo stesso dispatch RX, e il digipeater
+gira per primo, quindi un'unica finestra condivisa gli farebbe consumare tutti i
+frame e l'IGate li tratterebbe tutti come duplicati.
 
 Contatori
 =========
@@ -78,6 +88,8 @@ Contatori
    * - ``dropRx``
      - Pacchetti scartati (duplicato, percorso filtrato, non per noi, già
        ritrasmesso).
+   * - ``dupPkts``
+     - Pacchetti scartati come duplicati (contati anche in ``dropRx``).
    * - ``erPkts``
      - Pacchetti malformati (troppo corti / senza percorso).
 

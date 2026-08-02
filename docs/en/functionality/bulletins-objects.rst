@@ -9,20 +9,56 @@ points of its own. Both keep their state in dedicated LittleFS files rather than
 in ``g_config``, to keep the resident configuration small, and both are driven
 by the shared beacon scheduler.
 
-Bulletins (BLN1..BLN5)
-======================
+Bulletins
+=========
 
-``main/bulletins.c`` transmits up to five APRS bulletins, addressed ``BLN1``
-through ``BLN5``. Each bulletin has:
+``main/bulletins.c`` transmits up to five APRS bulletins. Each bulletin has:
 
 * its own text,
+* an addressee **identifier** and **group** name,
 * an **RF** and/or **APRS-IS** enable,
 * a transmit **interval**,
 * an optional **"expire after N hours"** window.
 
+The identifier and group together select which of the three addressee forms
+APRS101 chapter 14 defines goes on the air:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 25 20 55
+
+   * - Form
+     - Addressee
+     - When
+   * - General bulletin
+     - ``BLN1``
+     - Identifier ``0``–``9``, no group name. Bulletins sharing an identifier
+       replace one another on the receiver, so the identifier doubles as a slot
+       number for a multi-line bulletin.
+   * - Group bulletin
+     - ``BLN1WX``
+     - Identifier ``0``–``9`` plus a group name of up to five characters. Only
+       stations subscribed to that group display it.
+   * - Announcement
+     - ``BLNQ``
+     - Identifier ``A``–``Z`` and no group name. Most client software keeps and
+       re-displays announcements far longer than bulletins, which is why the
+       spec gives them their own identifier space.
+
+``bulletins_build_addressee()`` normalizes as it builds, so nothing the 9-char
+addressee field cannot carry ever reaches the air: an identifier outside
+``0``–``9``/``A``–``Z`` falls back to the slot's own digit, the group name is
+uppercased and stripped of anything outside ``A``–``Z``/``0``–``9``, and an
+announcement identifier suppresses the group name entirely.
+
 An expired bulletin auto-clears its enable flag and leaves the air. Bulletins
 persist to their own ``/storage/bulletins.json``. The page is gated by the
 ``ENABLE_BULLETINS`` compile-time switch.
+
+.. note::
+
+   NTS Radiograms, also described in chapter 14, are a traffic-handling message
+   format rather than a bulletin addressee form, and are not produced here.
 
 Objects and Items
 =================

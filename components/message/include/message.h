@@ -101,6 +101,21 @@ void sendAPRSAck(const char *toCall, const char *msgNo);
 void sendAPRSMessageRetry(void);
 
 /**
+ * @brief Re-transmit every still-unacknowledged outbound message addressed to
+ * @p toCall, without consuming any of that message's remaining retries or
+ * disturbing its retry schedule.
+ *
+ * This is what an APRS "?APRSM" directed query asks for (APRS101 chapter 15):
+ * "send me the messages you are holding for me". Callsigns are matched on
+ * their base form, ignoring any "-SSID" suffix on either side, the same rule
+ * handleIncomingAPRS() applies to an incoming addressee.
+ *
+ * @param toCall Callsign of the station asking for its messages.
+ * @return Number of messages re-transmitted (0 if none are pending).
+ */
+int message_send_pending_to(const char *toCall);
+
+/**
  * @brief Parse one incoming TNC2 text line (from RF or APRS-IS) and, if it is
  * an APRS message addressed to g_config.msg_mycall, store it and send an
  * ack. ACK lines update the outbound queue's retry state instead.

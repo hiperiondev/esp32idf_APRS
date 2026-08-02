@@ -35,7 +35,8 @@ Other persistent files
      - Telemetry channel-0 config (``telemetry_config_t``): analog A1–A5,
        digital B1–B8, report parameters, definition-message toggles.
    * - ``/storage/bulletins.json``
-     - The five APRS bulletins (text, RF/INET, interval, expiry).
+     - The five APRS bulletins (addressee identifier and group, text, RF/INET,
+       interval, expiry).
    * - ``/storage/objitems.json``
      - The five APRS objects/items (name, position, symbol, course/speed,
        comment, interval, permanent flag).

@@ -179,7 +179,8 @@ Digipeater
    * - Digipeat duplicate/ping-pong suppression
      - ✅
      - ✅
-     - Shares the IGate's dedup cache
+     - Own 30 s window in the shared dedup cache (``DUP_SCOPE_DIGI``), keyed on
+       source and payload only, tested before any path work
    * - Callsign-based digipeat filtering (only digipeat certain sources)
      - ⚠️ (some, e.g. VP-Digi)
      - ❌
@@ -228,6 +229,27 @@ Tracking / Beaconing
      - ✅
      - ✅
      - Exposed on the IGate beacon page
+   * - RNG / pre-calculated radio range
+     - ⚠️
+     - ✅
+     - Selectable as the IGate beacon's data extension (``RNGrrrr``)
+   * - DFS / omni-DF signal strength
+     - ⚠️ (DF-specific software)
+     - ✅
+     - Selectable as the IGate beacon's data extension (``DFSshgd``)
+   * - Position ambiguity in transmitted reports
+     - ⚠️
+     - ✅
+     - Station-wide level 0-4 on the Station page; applies to the uncompressed
+       and Mic-E layouts, and forces the uncompressed layout when non-zero
+   * - Maidenhead locator in status reports
+     - ⚠️
+     - ✅
+     - Station-wide option; emits the ``>IO91SX/G`` form of APRS101 ch.16
+   * - Maidenhead locator in the AX.25 destination (``[IO91SX]``, obsolete)
+     - ⚠️ (legacy software)
+     - ❌
+     - Marked obsolete by the spec itself; not produced
    * - Altitude in beacons
      - ✅
      - ✅
@@ -361,9 +383,28 @@ Objects, Items, Bulletins, Status
    * - Query response (``?APRS?``, ``?WX?``, etc.)
      - ⚠️
      - ✅
-     - Broadcast (``?APRS?``/``?WX?``/``?IGATE?``) and directed
-       (``CALL:?query?``) queries, rate-limited; see the ``query`` component
-       and the web admin's *Query* page
+     - General (``?APRS?``/``?WX?``/``?IGATE?``) and directed queries, each with
+       its own rate limiter; see the ``query`` component and the web admin's
+       *Query* page
+   * - Directed query set (``?APRSD``/``?APRSH``/``?APRSM``/``?APRSO``/
+       ``?APRSP``/``?APRSS``/``?APRST``/``?PING?``)
+     - ⚠️ (APRSISCE/32, YAAC)
+     - ✅
+     - Answered when *Extended directed queries* is enabled. List-style answers
+       come back as APRS messages to the querying station; ``?APRSO`` queues the
+       Objects/Items for the beacon scheduler rather than transmitting from the
+       RX task
+   * - ``?APRSH`` heard-history graph
+     - ⚠️
+     - ⚠️
+     - The station keeps one row per callsign, not a per-period history, so the
+       answer reports what that row holds (count, time of the last frame,
+       whether it was direct) instead of the 8-slot graph the spec describes
+   * - Station Capabilities (``<`` DTI)
+     - ✅
+     - ✅
+     - Emitted as the ``?IGATE?`` response
+       (``<IGATE,MSG_CNT=n,LOC_CNT=n>``)
 
 Mapping / Visualization
 --------------------------

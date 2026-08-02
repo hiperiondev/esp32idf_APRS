@@ -317,4 +317,21 @@ void objitems_start(void);
  */
 uint32_t objitems_service(void);
 
+/**
+ * @brief Ask the transmitter to send every enabled Object/Item once more, as
+ * soon as it next runs.
+ *
+ * This is what an APRS "?APRSO" directed query asks for (APRS101 chapter 15):
+ * a re-announcement of the objects this station originates. The request only
+ * raises a flag - the elements are transmitted from the shared beacon
+ * scheduler task on its next pass, spaced by the usual inter-element gap, so
+ * a query arriving on the radio RX task never blocks that task for the
+ * duration of a burst of transmissions. Each element's own schedule then
+ * resumes from that transmission.
+ *
+ * Safe to call from any task. Repeated calls before the next pass collapse
+ * into one round of transmissions.
+ */
+void objitems_request_transmit_all(void);
+
 #endif // OBJECTS_ITEMS_H

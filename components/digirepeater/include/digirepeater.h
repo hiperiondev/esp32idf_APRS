@@ -30,10 +30,11 @@
  * @brief Digipeater packet counters (snapshot by digi_get_stats()).
  */
 typedef struct {
-    uint32_t rxPkts; /**< Packets seen. */
-    uint32_t txPkts; /**< Packets digipeated (path modified, digiProcess() returned 2). */
-    uint32_t dropRx; /**< Packets dropped (duplicate insert, filtered path, etc.). */
-    uint32_t erPkts; /**< Malformed packets (too short / no path). */
+    uint32_t rxPkts;  /**< Packets seen. */
+    uint32_t txPkts;  /**< Packets digipeated (path modified, digiProcess() returned 2). */
+    uint32_t dropRx;  /**< Packets dropped (duplicate, filtered path, etc.). */
+    uint32_t erPkts;  /**< Malformed packets (too short / no path). */
+    uint32_t dupPkts; /**< Packets dropped because another copy was already repeated inside the duplicate-suppression window (also counted in dropRx). */
 } digi_stats_t;
 
 /**
@@ -42,7 +43,13 @@ typedef struct {
  * @param packet Decoded frame (as produced by ax25_decode()). Modified in place
  *               when the path needs to be rewritten (new-N decrement, callsign
  *               insertion, etc).
- * @return 0  - do not repeat (drop / not for us / already relayed)
+ * A frame whose source address and information field match one this
+ * digipeater already repeated inside the duplicate-suppression window
+ * (::DUP_PACKET_TIMEOUT_MS, see isDuplicatePacketScoped()) is dropped before
+ * any path work is done, so two digipeaters within earshot of each other do
+ * not keep re-repeating each other's copies of the same frame.
+ *
+ * @return 0  - do not repeat (drop / duplicate / not for us / already relayed)
  *         1  - repeat as-is (path already carries our used call, e.g. bypass "*")
  *         2  - repeat with modified path (packet.info + rewritten header must be
  *              re-encoded and transmitted on RF)

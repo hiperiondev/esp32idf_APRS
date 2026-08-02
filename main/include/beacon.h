@@ -68,6 +68,24 @@ void beacon_start(void);
 int beacon_build_igate_position_packet(char *out, size_t out_max);
 
 /**
+ * @brief Build the same APRS status report the IGate status beacon transmits
+ * (g_config.igate_status, plus the Maidenhead locator block when
+ * g_config.status_grid_en is set), on demand - currently for the query
+ * responder's "?APRSS" reply (components/query).
+ *
+ * Snapshots every g_config field it needs under app_config_lock(), exactly
+ * like igateStatusService() does internally.
+ *
+ * @param out     Destination buffer for the built TNC2 text line.
+ * @param out_max Size of @p out in bytes; ::APRS_TNC2_BUF_SIZE is the size
+ *                every other packet builder in this codebase uses.
+ * @return Packet length, or 0 if no IGate callsign or no status text is
+ *         configured, or the built line does not fit @p out_max /
+ *         APRS_TNC2_MAX_LEN.
+ */
+int beacon_build_igate_status_packet(char *out, size_t out_max);
+
+/**
  * @brief Service all three position beacons (Tracker / IGate / Digipeater) in
  * one pass, transmitting any that are due, and return the number of seconds
  * until the soonest one next needs servicing (always >= 1).

@@ -74,6 +74,112 @@ up, while every other caller (RX/digipeat, INET→RF, message TX) keeps the
 non-blocking drop-if-full behaviour and a busy RF leg never stalls RX decode or
 the APRS-IS socket.
 
+Data extensions (PHG / RNG / DFS)
+=================================
+
+The IGate position beacon can carry one of the three fixed-station APRS data
+extensions in the 7-byte slot that follows the symbol code — the same slot a
+moving station uses for course/speed, which is why exactly one of them is ever
+emitted. *Enable data extension* on the IGate page gates the slot, and
+*Extension type* picks which of the three fills it:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 12 18 70
+
+   * - Type
+     - On air
+     - Meaning
+   * - PHG
+     - ``PHG5132``
+     - Transmitter power, antenna height above average terrain, gain and
+       directivity. Receiving software draws the resulting coverage estimate as
+       a circle (or a lobe, for a directional antenna).
+   * - RNG
+     - ``RNG0025``
+     - A single pre-calculated omnidirectional radio range in statute miles, for
+       an operator who already knows their real coverage radius and would rather
+       state it than have it inferred from PHG.
+   * - DFS
+     - ``DFS3364``
+     - Omni-DF signal strength: the same height/gain/directivity codes as PHG,
+       but reporting *received* signal strength in S-points instead of
+       transmitted power. A strength of 0 means this station does **not** hear
+       the signal, which plotting software renders as an exclusion circle rather
+       than a coverage circle.
+
+PHG uses all four sub-fields, DFS every one but transmit power, and RNG none of
+them; the page disables whichever inputs the selected type does not use. Since a
+disabled control does not POST, the stored values of the *other* type survive
+switching back and forth.
+
+Enabling any extension forces the uncompressed position layout. The compressed
+format has no room for the 7-byte slot (APRS101 ch.9 states it does not support
+PHG), so emitting those bytes inside a compressed report would simply be wrong
+data, and dropping the extension to keep compression would silently lose a field
+the operator explicitly enabled.
+
+Position ambiguity
+==================
+
+*Position ambiguity* on the Station page is station-wide: it applies to all
+three position beacons, because how precisely a station is willing to state
+where it is, is a property of the station rather than of any one beacon. Levels
+0–4 blank the least significant minute digits on air (APRS101 ch.6) — the
+decimal point, the hemisphere character and the field widths never change, which
+is what keeps the report parseable:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 10 25 25 40
+
+   * - Level
+     - Latitude
+     - Longitude
+     - Precision
+   * - 0
+     - ``4903.50N``
+     - ``07201.75W``
+     - Hundredths of a minute (full).
+   * - 1
+     - ``4903.5 N``
+     - ``07201.7 W``
+     - Nearest 1/10 minute.
+   * - 2
+     - ``4903.  N``
+     - ``07201.  W``
+     - Nearest minute.
+   * - 3
+     - ``490 .  N``
+     - ``0720 .  W``
+     - Nearest 10 minutes.
+   * - 4
+     - ``49  .  N``
+     - ``072  .  W``
+     - Nearest degree.
+
+Digits are blanked, never rounded away, matching the reference decoders that
+read a blanked digit as "unknown". The rounding carry still applies first, so a
+coordinate that rounds up to the next degree is reported in that degree rather
+than the one below it.
+
+A non-zero level also forces the uncompressed layout, for the same class of
+reason as a data extension: the compressed format has no decimal digits to
+blank, so honouring a *compressed* tick alongside ambiguity would transmit the
+exact position the operator asked to obscure. Mic-E, by contrast, carries
+ambiguity natively and needs no such fallback.
+
+Maidenhead locator in status reports
+====================================
+
+*Maidenhead locator in status reports*, also station-wide on the Station page,
+prefixes every status report with the grid locator of that beacon's own
+position, its symbol table byte and its symbol code — the ``>IO91SX/G`` form of
+APRS101 ch.16 — followed by a space and the configured status text. Receivers
+that understand the form plot the station from the locator alone; the rest show
+the whole thing as status text. The configured text itself is never
+interpreted.
+
 Timestamps are UTC
 ==================
 

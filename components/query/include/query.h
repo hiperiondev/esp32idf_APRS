@@ -14,9 +14,15 @@
  *
  *     please contact their authors for more information.
  *
- * @brief APRS query responder (APRS101 ch.15): recognizes broadcast
+ * @brief APRS query responder (APRS101 ch.15): recognizes the general
  * ("?APRS?", "?WX?", "?IGATE?") and directed ("CALL:?query?") queries in
  * received traffic and transmits the matching response.
+ *
+ * The directed set additionally covers "?APRSD" (stations heard direct),
+ * "?APRSH" (what is known about hearing one station), "?APRSM" (re-send this
+ * station's pending messages for the querying operator), "?APRSO"
+ * (re-announce the Objects/Items originated here), "?APRSP" (position),
+ * "?APRSS" (status) and "?APRST" / "?PING?" (the route the query took).
  *
  * Configuration comes from g_config (app_config_t, web admin "Query" page).
  */
@@ -68,8 +74,13 @@ void query_process(const char *tnc2Line);
  *
  * @param fromCall Source callsign of the querying station.
  * @param toCall   Addressee field of the directed query (already trimmed).
- * @param text     Query text after the addressee, starting with '?'.
+ * @param text     Query text after the addressee, starting with '?'. Any
+ *                 argument (e.g. the callsign a "?APRSH" asks about) follows
+ *                 the keyword in this same string.
+ * @param tnc2Line The whole received TNC2 line the query arrived on, used to
+ *                 report the route back for "?APRST" / "?PING?". May be NULL,
+ *                 in which case a traceroute answers with an unknown route.
  */
-void query_process_directed(const char *fromCall, const char *toCall, const char *text);
+void query_process_directed(const char *fromCall, const char *toCall, const char *text, const char *tnc2Line);
 
 #endif // QUERY_H

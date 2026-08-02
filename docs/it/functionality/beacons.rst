@@ -82,6 +82,118 @@ attivare la radio, mentre tutti gli altri chiamanti (RX/digipeat, INET→RF, TX 
 messaggi) mantengono il comportamento non bloccante di scarta-se-pieno e un ramo
 RF occupato non ferma mai la decodifica RX né il socket APRS-IS.
 
+Estensioni dati (PHG / RNG / DFS)
+=================================
+
+Il beacon di posizione dell'IGate può portare una delle tre estensioni dati APRS
+da stazione fissa nello slot di 7 byte che segue il codice del simbolo — lo
+stesso slot che una stazione in movimento usa per rotta e velocità, ed è per
+questo che ne viene emessa sempre una sola. *Abilita estensione dati* nella
+pagina IGate apre lo slot, e *Tipo di estensione* sceglie quale delle tre lo
+riempie:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 12 18 70
+
+   * - Tipo
+     - In onda
+     - Significato
+   * - PHG
+     - ``PHG5132``
+     - Potenza di trasmissione, altezza dell'antenna sul terreno medio, guadagno
+       e direttività. Il software ricevente disegna la copertura stimata
+       risultante come un cerchio (o un lobo, con antenna direttiva).
+   * - RNG
+     - ``RNG0025``
+     - Una singola portata radio omnidirezionale precalcolata in miglia
+       terrestri, per un operatore che conosce già il proprio raggio di
+       copertura reale e preferisce dichiararlo anziché farlo dedurre dal PHG.
+   * - DFS
+     - ``DFS3364``
+     - Intensità del segnale omni-DF: gli stessi codici di altezza/guadagno/
+       direttività del PHG, ma riportando l'intensità del segnale *ricevuto* in
+       punti S invece della potenza trasmessa. Un'intensità di 0 significa che
+       questa stazione **non** riceve il segnale, e il software di tracciamento
+       lo rappresenta come un cerchio di esclusione anziché di copertura.
+
+PHG usa tutti e quattro i sottocampi, DFS tutti tranne la potenza di
+trasmissione, e RNG nessuno; la pagina disabilita gli input che il tipo
+selezionato non usa. Poiché un controllo disabilitato non viene inviato nel
+POST, i valori memorizzati dell'*altro* tipo sopravvivono al passaggio avanti e
+indietro.
+
+Abilitare una qualsiasi estensione forza il formato di posizione non compresso.
+Il formato compresso non ha spazio per lo slot di 7 byte (APRS101 cap.9 afferma
+che non supporta il PHG), quindi emettere quei byte dentro un rapporto compresso
+sarebbe semplicemente un dato sbagliato, e scartare l'estensione per mantenere la
+compressione perderebbe in silenzio un campo che l'operatore ha abilitato
+esplicitamente.
+
+Ambiguità di posizione
+======================
+
+*Ambiguità di posizione*, nella pagina Stazione, vale per tutta la stazione: si
+applica a tutti e tre i beacon di posizione, perché con quanta precisione una
+stazione è disposta a dire dove si trova è una proprietà della stazione e non di
+un singolo beacon. I livelli 0–4 svuotano le cifre di minuto meno significative
+in onda (APRS101 cap.6) — il punto decimale, il carattere di emisfero e le
+larghezze dei campi non cambiano mai, ed è questo che mantiene il rapporto
+analizzabile:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 10 25 25 40
+
+   * - Livello
+     - Latitudine
+     - Longitudine
+     - Precisione
+   * - 0
+     - ``4903.50N``
+     - ``07201.75W``
+     - Centesimi di minuto (piena).
+   * - 1
+     - ``4903.5 N``
+     - ``07201.7 W``
+     - Al 1/10 di minuto.
+   * - 2
+     - ``4903.  N``
+     - ``07201.  W``
+     - Al minuto.
+   * - 3
+     - ``490 .  N``
+     - ``0720 .  W``
+     - Ai 10 minuti.
+   * - 4
+     - ``49  .  N``
+     - ``072  .  W``
+     - Al grado.
+
+Le cifre vengono svuotate, mai arrotondate via, come fanno i decodificatori di
+riferimento che leggono una cifra svuotata come "sconosciuta". Il riporto di
+arrotondamento si applica prima, quindi una coordinata che arrotonda al grado
+successivo viene riportata in quel grado e non in quello precedente.
+
+Un livello diverso da zero forza anche il formato non compresso, per lo stesso
+tipo di motivo di un'estensione dati: il formato compresso non ha cifre decimali
+da svuotare, quindi rispettare una spunta di *compresso* insieme all'ambiguità
+trasmetterebbe la posizione esatta che l'operatore ha chiesto di nascondere.
+Mic-E, invece, porta l'ambiguità in modo nativo e non ha bisogno di questo
+ripiego.
+
+Localizzatore Maidenhead nei rapporti di stato
+==============================================
+
+*Localizzatore Maidenhead nei rapporti di stato*, anch'esso valido per tutta la
+stazione nella pagina Stazione, antepone a ogni rapporto di stato il
+localizzatore della posizione propria di quel beacon, il byte della tabella dei
+simboli e il codice del simbolo — la forma ``>IO91SX/G`` di APRS101 cap.16 —
+seguito da uno spazio e dal testo di stato configurato. I ricevitori che
+comprendono la forma posizionano la stazione con il solo localizzatore; gli
+altri mostrano il tutto come testo di stato. Il testo configurato non viene mai
+interpretato.
+
 I timestamp sono UTC
 ====================
 

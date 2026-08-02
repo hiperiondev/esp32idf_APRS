@@ -40,6 +40,7 @@ typedef struct {
     char path[LASTHEARD_PATH_LEN]; // e.g. "RF: WIDE1-1" / "INET: DIRECT"
     char sym_table;
     char sym_code;
+    bool direct;      // latest frame from this station carried no used digipeater
     uint32_t packets; // total times this callsign has been heard
 } lastheard_entry_t;
 
@@ -63,7 +64,7 @@ void lastheard_init(void) {
     s_inited = true;
 }
 
-void lastheard_add(const char *callsign, const char *path, bool via_rf, char sym_table, char sym_code) {
+void lastheard_add(const char *callsign, const char *path, bool via_rf, bool direct, char sym_table, char sym_code) {
     if (!s_inited)
         lastheard_init();
     if (!callsign || !callsign[0])
@@ -109,9 +110,74 @@ void lastheard_add(const char *callsign, const char *path, bool via_rf, char sym
     snprintf(e->path, sizeof(e->path), "%s: %s", via_rf ? "RF" : "INET", (path && path[0]) ? path : "DIRECT");
     e->sym_table = sym_table;
     e->sym_code = sym_code;
+    // Whether the station is reachable without a digipeater is a property of
+    // the path this frame took, so the newest frame always wins: a station
+    // that has moved out of direct range stops being listed as direct as soon
+    // as its first digipeated frame arrives.
+    e->direct = via_rf && direct;
     e->packets = packets;
 
     xSemaphoreGive(s_lock);
+}
+
+int lastheard_directs(char *out, size_t out_size) {
+    if (out == NULL || out_size == 0)
+        return 0;
+    out[0] = 0;
+    if (!s_inited)
+        return 0;
+    if (!s_lock || xSemaphoreTake(s_lock, pdMS_TO_TICKS(100)) != pdTRUE)
+        return 0;
+
+    size_t pos = 0;
+    int count = 0;
+    for (size_t i = 0; i < s_count; i++) {
+        if (!s_buf[i].direct || !s_buf[i].callsign[0])
+            continue;
+        size_t need = strlen(s_buf[i].callsign) + (count > 0 ? 1u : 0u);
+        if (pos + need >= out_size)
+            break; // stop on the first callsign that does not fit whole
+        if (count > 0)
+            out[pos++] = ' ';
+        size_t n = strlen(s_buf[i].callsign);
+        memcpy(out + pos, s_buf[i].callsign, n);
+        pos += n;
+        count++;
+    }
+    out[pos] = 0;
+
+    xSemaphoreGive(s_lock);
+    return count;
+}
+
+bool lastheard_lookup(const char *callsign, uint32_t *packets, time_t *last, bool *direct) {
+    if (callsign == NULL || callsign[0] == 0 || !s_inited)
+        return false;
+    if (!s_lock || xSemaphoreTake(s_lock, pdMS_TO_TICKS(100)) != pdTRUE)
+        return false;
+
+    // Compare against the same truncation lastheard_add() stores, so a long
+    // callsign is looked up under the name the table actually holds.
+    char call[LASTHEARD_CALL_LEN];
+    strncpy(call, callsign, sizeof(call) - 1);
+    call[sizeof(call) - 1] = 0;
+
+    bool found = false;
+    for (size_t i = 0; i < s_count; i++) {
+        if (strcasecmp(s_buf[i].callsign, call) != 0)
+            continue;
+        if (packets)
+            *packets = s_buf[i].packets;
+        if (last)
+            *last = s_buf[i].time;
+        if (direct)
+            *direct = s_buf[i].direct;
+        found = true;
+        break;
+    }
+
+    xSemaphoreGive(s_lock);
+    return found;
 }
 
 size_t lastheard_dump_json(char *out, size_t out_size) {

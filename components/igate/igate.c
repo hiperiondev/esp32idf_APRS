@@ -43,6 +43,7 @@ static const char *TAG = "igate";
 struct DupPacketCache {
     char hash[16];
     unsigned long timestamp;
+    uint8_t scope; // dup_scope_t that inserted this entry; a lookup only matches its own scope
 };
 
 // Ordinary .bss, not RTC slow memory: this firmware never enters deep sleep, so
@@ -147,6 +148,8 @@ const char *igate_drop_reason_name(drop_reason_t reason) {
             return "digi: no usable path";
         case DROP_DIGI_PATH_TOKEN:
             return "digi: qA/TCP path token";
+        case DROP_DIGI_DUPLICATE:
+            return "digi: duplicate";
         case DROP_PERSISTENCE_MISSED:
             return "persistence check missed";
         case DROP_REASON_COUNT:
@@ -203,7 +206,10 @@ void clearExpiredDuplicates(void) {
     }
 }
 
-bool isDuplicatePacket(ax25_msg_t *packet) {
+bool isDuplicatePacketScoped(ax25_msg_t *packet, dup_scope_t scope) {
+    if ((unsigned)scope >= DUP_SCOPE_COUNT)
+        return false;
+
     char hash[16] = { 0 };
     packetHash(packet, hash);
 
@@ -215,16 +221,24 @@ bool isDuplicatePacket(ax25_msg_t *packet) {
         // partway through), not a C string, so compare it with memcmp() over
         // the full 16 bytes rather than strncmp(), which stops at the first
         // embedded NUL and could otherwise call two different hashes equal.
-        if (s_dupCache[i].timestamp > 0 && memcmp(s_dupCache[i].hash, hash, 16) == 0) {
-            ESP_LOGD(TAG, "Duplicate packet detected");
+        // The scope test keeps the IGate and digipeater windows independent:
+        // both see the same frame, and matching across scopes would let the
+        // first one to run hide it from the second.
+        if (s_dupCache[i].timestamp > 0 && s_dupCache[i].scope == (uint8_t)scope && memcmp(s_dupCache[i].hash, hash, 16) == 0) {
+            ESP_LOGD(TAG, "Duplicate packet detected (scope %d)", (int)scope);
             return true;
         }
     }
 
     memcpy(s_dupCache[s_dupCacheIndex].hash, hash, 16);
     s_dupCache[s_dupCacheIndex].timestamp = now;
+    s_dupCache[s_dupCacheIndex].scope = (uint8_t)scope;
     s_dupCacheIndex = (s_dupCacheIndex + 1) % DUP_PACKET_CACHE_SIZE;
     return false;
+}
+
+bool isDuplicatePacket(ax25_msg_t *packet) {
+    return isDuplicatePacketScoped(packet, DUP_SCOPE_IGATE);
 }
 
 // ---------------------------------------------------------------------------

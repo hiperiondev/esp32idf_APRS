@@ -394,6 +394,50 @@ void sendAPRSAck(const char *toCall, const char *msgNo) {
     ESP_LOGD(TAG, "Send APRS ACK to %s msgNo %s", toCall, msgNo);
 }
 
+int message_send_pending_to(const char *toCall) {
+    if (toCall == NULL || toCall[0] == 0)
+        return 0;
+
+    char myCall[10];
+    app_config_lock();
+    memcpy(myCall, g_config.msg_mycall, sizeof(myCall));
+    app_config_unlock();
+
+    int sent = 0;
+    for (int i = 0; i < MSG_QUEUE_SIZE; i++) {
+        // ack > 0 is the "outbound and still waiting for an ack" state; an
+        // acked (-2), rejected (-3) or received (-1) entry is not something
+        // this station is holding for the querying operator.
+        if (!s_queue[i].used || s_queue[i].rxtx || s_queue[i].ack <= 0)
+            continue;
+        if (!callsignBaseMatch(s_queue[i].callsign, toCall))
+            continue;
+
+        // The retry counter and timestamp are deliberately left alone: this
+        // transmission answers a query, so it must not spend one of the
+        // message's own delivery attempts nor push the next scheduled retry
+        // out by one interval.
+        char toCallFixed[10];
+        memset(toCallFixed, ' ', 9);
+        toCallFixed[9] = 0;
+        size_t n = strlen(s_queue[i].callsign);
+        memcpy(toCallFixed, s_queue[i].callsign, n > 9 ? 9 : n);
+
+        char payload[300];
+        strncpy(payload, s_queue[i].text, sizeof(payload) - 1);
+        payload[sizeof(payload) - 1] = 0;
+
+        char info[320];
+        snprintf(info, sizeof(info), ":%s:%s{%u", toCallFixed, payload, (unsigned)s_queue[i].msgID);
+        txPacket(myCall, info);
+        sent++;
+    }
+
+    if (sent > 0)
+        ESP_LOGI(TAG, "?APRSM from %s answered with %d pending message(s)", toCall, sent);
+    return sent;
+}
+
 void sendAPRSMessageRetry(void) {
     time_t now = time(NULL);
 
@@ -473,7 +517,10 @@ void handleIncomingAPRS(const char *line) {
     // regardless of g_config.msg_enable, since the two features are
     // independently enabled (g_config.query_en gates it inside query.c).
     if (colon[1] == '?') {
-        query_process_directed(fromCall, toCall, colon + 1);
+        // The whole line goes along with the split-out fields: a "?APRST" /
+        // "?PING?" answer reports the route the query travelled, which only
+        // the unparsed line still carries.
+        query_process_directed(fromCall, toCall, colon + 1, line);
         return;
     }
 

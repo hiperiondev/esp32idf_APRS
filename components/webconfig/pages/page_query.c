@@ -15,7 +15,10 @@
  *     please contact their authors for more information.
  *
  * @brief Web admin "Query" page: renders and saves the APRS query responder
- * configuration ("?APRS?", "?WX?", "?IGATE?", directed queries) in g_config.
+ * configuration in g_config - the three general queries ("?APRS?", "?WX?",
+ * "?IGATE?"), whether directed ("CALL:?query?") queries are answered at all,
+ * and whether the extended directed set (?APRSD/?APRSH/?APRSM/?APRSO/?APRSP/
+ * ?APRSS/?APRST) is answered along with them.
  */
 
 #include "app_config.h"
@@ -41,6 +44,7 @@ esp_err_t page_query_get(httpd_req_t *req) {
     web_field_checkbox(req, TR_F_QUERY_IGATE, "queryIgateEn", g_config.query_igate_en);
 #endif
     web_field_checkbox(req, TR_F_QUERY_DIRECTED, "queryDirectedEn", g_config.query_directed_en);
+    web_field_checkbox(req, TR_F_QUERY_EXT, "queryExtEn", g_config.query_ext_en);
     web_field_int(req, TR_F_QUERY_MIN_INTERVAL, "queryMinInterval", g_config.query_min_interval_sec, 5, WEB_RANGE_INTERVAL_S_MAX);
     web_fieldset_close(req);
 
@@ -66,6 +70,7 @@ esp_err_t page_query_post(httpd_req_t *req) {
     g_config.query_wx_en = web_form_get_bool(body, "queryWxEn");
     g_config.query_igate_en = web_form_get_bool(body, "queryIgateEn");
     g_config.query_directed_en = web_form_get_bool(body, "queryDirectedEn");
+    g_config.query_ext_en = web_form_get_bool(body, "queryExtEn");
     g_config.query_min_interval_sec = (uint16_t)web_form_get_int(body, "queryMinInterval", g_config.query_min_interval_sec);
     if (g_config.query_min_interval_sec < 5) // floor: airtime/loop safety
         g_config.query_min_interval_sec = 5;

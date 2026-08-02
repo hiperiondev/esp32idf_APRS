@@ -55,10 +55,20 @@ Esquemas de ruta soportados
 Supresión de duplicados
 =======================
 
-Antes de repetir, el digipeater comprueba la trama contra la misma caché de
-detección de duplicados que usa el IGate (``isDuplicatePacket()``), de modo que
-una trama ya digipeteada dentro de la ventana de supresión no se retransmite —
-la defensa clásica contra el ping-pong entre digipeaters.
+Antes de cualquier trabajo sobre la ruta, el digipeater comprueba la trama con
+``isDuplicatePacketScoped(packet, DUP_SCOPE_DIGI)``. La clave se construye solo
+con la dirección de origen y el campo de información — nunca con la ruta — así
+que todas las copias de una misma transmisión producen el mismo hash sin
+importar por dónde llegaron. Una trama que coincide con otra repetida dentro de
+``DUP_PACKET_TIMEOUT_MS`` (30 s) se descarta, que es lo que evita que dos
+digipeaters dentro de la cobertura mutua se reboten la misma trama, y lo que
+absorbe un eco de RF de una trama que esta estación acaba de repetir.
+
+La caché se comparte con el IGate pero las ventanas no: cada entrada lleva el
+ámbito que la insertó y solo coincide con búsquedas de ese mismo ámbito. Ambos
+consumidores ven las mismas tramas desde el mismo despacho de RX, y el
+digipeater corre primero, así que una única ventana compartida haría que
+consumiera todas las tramas y el IGate las tratara a todas como duplicadas.
 
 Contadores
 ==========
@@ -78,6 +88,8 @@ Contadores
    * - ``dropRx``
      - Paquetes descartados (duplicado, ruta filtrada, no para nosotros, ya
        retransmitido).
+   * - ``dupPkts``
+     - Paquetes descartados por duplicados (también contados en ``dropRx``).
    * - ``erPkts``
      - Paquetes mal formados (demasiado cortos / sin ruta).
 

@@ -180,7 +180,9 @@ Digipeater
    * - Supresión de duplicados / ping-pong de digipeating
      - ✅
      - ✅
-     - Comparte la caché de duplicados del IGate
+     - Ventana propia de 30 s en la caché de duplicados compartida
+       (``DUP_SCOPE_DIGI``), con clave de origen y payload solamente, probada
+       antes de cualquier trabajo sobre la ruta
    * - Filtrado de digipeating por indicativo (solo repetir ciertas fuentes)
      - ⚠️ (algunos, p. ej. VP-Digi)
      - ❌
@@ -229,6 +231,31 @@ Seguimiento / Balizamiento
      - ✅
      - ✅
      - Expuesto en la página de baliza del IGate
+   * - RNG / alcance de radio precalculado
+     - ⚠️
+     - ✅
+     - Seleccionable como extensión de datos de la baliza del IGate
+       (``RNGrrrr``)
+   * - DFS / intensidad de señal omni-DF
+     - ⚠️ (software específico de DF)
+     - ✅
+     - Seleccionable como extensión de datos de la baliza del IGate
+       (``DFSshgd``)
+   * - Ambigüedad de posición en los reportes transmitidos
+     - ⚠️
+     - ✅
+     - Nivel 0-4 a nivel de estación en la página Estación; se aplica a los
+       formatos sin comprimir y Mic-E, y fuerza el formato sin comprimir cuando
+       es distinto de cero
+   * - Localizador Maidenhead en los reportes de estado
+     - ⚠️
+     - ✅
+     - Opción a nivel de estación; emite la forma ``>IO91SX/G`` de APRS101
+       cap.16
+   * - Localizador Maidenhead en el destino AX.25 (``[IO91SX]``, obsoleto)
+     - ⚠️ (software antiguo)
+     - ❌
+     - La propia especificación lo marca como obsoleto; no se produce
    * - Altitud en balizas
      - ✅
      - ✅
@@ -362,9 +389,29 @@ Objetos, Items, Boletines, Estado
    * - Respuesta a consultas (``?APRS?``, ``?WX?``, etc.)
      - ⚠️
      - ✅
-     - Consultas broadcast (``?APRS?``/``?WX?``/``?IGATE?``) y dirigidas
-       (``CALL:?query?``), con limitación de tasa; ver el componente ``query``
-       y la página *Query* del panel web
+     - Consultas generales (``?APRS?``/``?WX?``/``?IGATE?``) y dirigidas, cada
+       una con su propio limitador de tasa; ver el componente ``query`` y la
+       página *Query* del panel web
+   * - Conjunto de consultas dirigidas (``?APRSD``/``?APRSH``/``?APRSM``/
+       ``?APRSO``/``?APRSP``/``?APRSS``/``?APRST``/``?PING?``)
+     - ⚠️ (APRSISCE/32, YAAC)
+     - ✅
+     - Se responden cuando *Consultas dirigidas extendidas* está habilitado. Las
+       respuestas tipo lista vuelven como mensajes APRS a la estación que
+       consulta; ``?APRSO`` encola los Objetos/Ítems para el planificador de
+       balizas en vez de transmitir desde la tarea de RX
+   * - Gráfico de historial de escucha de ``?APRSH``
+     - ⚠️
+     - ⚠️
+     - La estación guarda una fila por indicativo, no un historial por período,
+       así que la respuesta informa lo que esa fila contiene (conteo, hora de la
+       última trama, si fue directa) en lugar del gráfico de 8 ranuras que
+       describe la especificación
+   * - Capacidades de estación (DTI ``<``)
+     - ✅
+     - ✅
+     - Se emite como respuesta a ``?IGATE?``
+       (``<IGATE,MSG_CNT=n,LOC_CNT=n>``)
 
 Mapeo / Visualización
 ------------------------

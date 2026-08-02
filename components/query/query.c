@@ -14,27 +14,41 @@
  *
  *     please contact their authors for more information.
  *
- * @brief APRS query responder implementation: recognizes "?APRS?", "?WX?",
- * "?IGATE?" (broadcast and directed) and transmits the matching response,
- * reusing the existing IGate position / weather report builders so a reply
- * is byte-for-byte consistent with what the periodic beacons would send.
+ * @brief APRS query responder implementation.
+ *
+ * Recognizes the three general queries APRS101 chapter 15 defines - "?APRS?",
+ * "?WX?" and "?IGATE?" - in broadcast traffic, and the full directed set
+ * ("?APRSD", "?APRSH", "?APRSM", "?APRSO", "?APRSP", "?APRSS", "?APRST" and
+ * its "?PING?" alias) when addressed to this station, then transmits the
+ * matching response.
+ *
+ * Position, status and weather answers reuse the existing beacon builders, so
+ * a reply is byte-for-byte consistent with what the periodic beacons would
+ * send. The list-style answers (directs, heard, traceroute) are returned as
+ * APRS text messages addressed back to the querying station, which is the
+ * form chapter 15 specifies for a directed query.
  */
 
 #include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
+#include <time.h>
 
 #include "esp_log.h"
 
 #include "app_config.h"
 #include "aprs_path.h"    // aprs_path_build_suffix_from_config()
 #include "aprs_service.h" // APRS_TNC2_BUF_SIZE / APRS_TNC2_MAX_LEN
-#include "beacon.h"       // beacon_build_igate_position_packet()
+#include "beacon.h"       // beacon_build_igate_position_packet() / beacon_build_igate_status_packet()
 #include "igate.h"        // igate_get_stats()
-#include "message.h"      // MSG_CHANNEL_RF / MSG_CHANNEL_INET
+#include "lastheard.h"    // lastheard_directs() / lastheard_lookup()
+#include "message.h"      // MSG_CHANNEL_RF / MSG_CHANNEL_INET / message_send_pending_to()
 #include "query.h"
 #include "sched_time.h" // sched_mono_seconds()
 #include "weather.h"    // weather_build_report_packet()
+#ifdef ENABLE_OBJECTS_ITEMS
+#include "objects_items.h" // objitems_request_transmit_all()
+#endif
 
 static const char *TAG = "query";
 
@@ -48,7 +62,23 @@ static void (*s_txHandler)(const char *packet, size_t len, uint8_t channels) = N
 // misbehaving network flooding "?APRS?" broadcasts cannot make this station
 // answer more than once per g_config.query_min_interval_sec - both to save
 // airtime and to avoid a feedback loop with other auto-responders.
-typedef enum { QUERY_TYPE_APRS = 0, QUERY_TYPE_WX, QUERY_TYPE_IGATE, QUERY_TYPE_COUNT } query_type_t;
+// The first three are the general (broadcast) queries and also answerable
+// when directed; everything after QUERY_TYPE_IGATE is directed-only, which is
+// how APRS101 chapter 15 splits them - a station only answers those on behalf
+// of the operator who addressed it.
+typedef enum {
+    QUERY_TYPE_APRS = 0,
+    QUERY_TYPE_WX,
+    QUERY_TYPE_IGATE,
+    QUERY_TYPE_POSITION, // ?APRSP
+    QUERY_TYPE_STATUS,   // ?APRSS
+    QUERY_TYPE_DIRECTS,  // ?APRSD
+    QUERY_TYPE_HEARD,    // ?APRSH
+    QUERY_TYPE_MESSAGES, // ?APRSM
+    QUERY_TYPE_OBJECTS,  // ?APRSO
+    QUERY_TYPE_TRACE,    // ?APRST / ?PING?
+    QUERY_TYPE_COUNT
+} query_type_t;
 
 static int64_t s_lastBroadcastRespondSec[QUERY_TYPE_COUNT];
 
@@ -161,6 +191,56 @@ static void txPacket(const char *packet, size_t len) {
     s_txHandler(packet, len, channels);
 }
 
+// Resolves the callsign this station answers under: the IGate APRS callsign
+// plus its SSID, the same identity the position/status/capability replies are
+// built from. Returns false when none is configured.
+static bool resolveOwnCall(char *out, size_t out_size) {
+    out[0] = 0;
+    app_config_lock();
+    {
+        if (g_config.aprs_mycall[0]) {
+            if (g_config.aprs_ssid > 0)
+                snprintf(out, out_size, "%s-%d", g_config.aprs_mycall, (int)g_config.aprs_ssid);
+            else
+                snprintf(out, out_size, "%s", g_config.aprs_mycall);
+        }
+    }
+    app_config_unlock();
+    return out[0] != 0;
+}
+
+// Builds and transmits an APRS text message carrying a query answer back to
+// the station that asked. The addressee field is the fixed 9 characters the
+// message format requires, space-padded; no message number is appended, so no
+// ack is solicited - a query answer is informational and the querying station
+// has nothing to acknowledge.
+static void txMessageTo(const char *toCall, const char *text) {
+    char myCall[16];
+    if (!resolveOwnCall(myCall, sizeof(myCall))) {
+        ESP_LOGW(TAG, "Query answer not sent - no IGate callsign configured");
+        return;
+    }
+
+    char addr[10];
+    memset(addr, ' ', 9);
+    addr[9] = 0;
+    size_t n = strlen(toCall);
+    memcpy(addr, toCall, n > 9 ? 9 : n);
+
+    char path[80];
+    aprs_path_build_suffix_from_config(g_config.igate_path, path, sizeof(path));
+
+    char packet[APRS_TNC2_BUF_SIZE];
+    int len = snprintf(packet, sizeof(packet), "%s>%s%s::%s:%s", myCall, QUERY_DEST, path, addr, text);
+    if (len < 0 || (size_t)len >= sizeof(packet) || len > APRS_TNC2_MAX_LEN) {
+        ESP_LOGW(TAG, "Query answer to %s not sent - built line too long", toCall);
+        return;
+    }
+
+    txPacket(packet, (size_t)len);
+    ESP_LOGI(TAG, "Query answered to %s: %s", toCall, packet);
+}
+
 // ---------------------------------------------------------------------------
 // Response builders
 // ---------------------------------------------------------------------------
@@ -238,62 +318,227 @@ static void respondIGate(void) {
     ESP_LOGI(TAG, "?IGATE? query answered: %s", packet);
 }
 
+// "?APRSS" -> the station's own status report, byte-for-byte the same the
+// IGate status beacon would send (including the Maidenhead locator block when
+// that option is on).
+static void respondStatus(void) {
+    char packet[APRS_TNC2_BUF_SIZE];
+    int len = beacon_build_igate_status_packet(packet, sizeof(packet));
+    if (len <= 0) {
+        ESP_LOGW(TAG, "?APRSS query not answered - no IGate callsign/status text configured, or the line did not fit");
+        return;
+    }
+    txPacket(packet, (size_t)len);
+    ESP_LOGI(TAG, "?APRSS query answered: %s", packet);
+}
+
+// "?APRSD" -> the list of stations heard here without a digipeater in
+// between, as the "Directs=" message APRS101 ch.15 defines. An empty list is
+// still answered: "heard nobody directly" is the true state of a station that
+// has just booted or sits in a quiet area, and silence would be
+// indistinguishable from the query never arriving.
+static void respondDirects(const char *fromCall) {
+    // Sized so the whole answer stays inside one standard message text
+    // (APRS_MSG_TEXT_STD_MAX); lastheard_directs() drops whole callsigns
+    // rather than truncating one, so a busy station simply reports the most
+    // recent ones.
+    char list[APRS_MSG_TEXT_STD_MAX - 8];
+    int n = lastheard_directs(list, sizeof(list));
+
+    char text[APRS_MSG_TEXT_STD_MAX + 1];
+    if (n > 0)
+        snprintf(text, sizeof(text), "Directs=%s", list);
+    else
+        snprintf(text, sizeof(text), "Directs=");
+
+    txMessageTo(fromCall, text);
+}
+
+// "?APRSH <call>" -> what this station knows about hearing <call>.
+//
+// APRS101 describes the answer as a per-period heard graph. This station keeps
+// one row per callsign rather than a history of time slots (see
+// components/lastheard), so the answer states what that row actually holds -
+// how many frames have been counted, when the last one arrived, and whether it
+// came in direct - instead of fabricating a graph from data that was never
+// recorded. A station that is not in the table is reported as not heard.
+static void respondHeard(const char *fromCall, const char *arg) {
+    char target[12] = { 0 };
+    size_t n = 0;
+    while (arg[n] && arg[n] != ' ' && n < sizeof(target) - 1) {
+        target[n] = arg[n];
+        n++;
+    }
+
+    char text[APRS_MSG_TEXT_STD_MAX + 1];
+    if (target[0] == 0) {
+        // No callsign given: the query is meaningless without one, so say so
+        // rather than answering about an empty callsign.
+        snprintf(text, sizeof(text), "?APRSH needs a callsign");
+        txMessageTo(fromCall, text);
+        return;
+    }
+
+    uint32_t packets = 0;
+    time_t last = 0;
+    bool direct = false;
+    if (!lastheard_lookup(target, &packets, &last, &direct)) {
+        snprintf(text, sizeof(text), "%s not heard", target);
+        txMessageTo(fromCall, text);
+        return;
+    }
+
+    // UTC, and labelled as such: the firmware runs with TZ=UTC0, the same
+    // timescale the LAST HEARD panel and every own-station timestamp use.
+    struct tm tmv;
+    gmtime_r(&last, &tmv);
+    snprintf(text, sizeof(text), "%s heard %lu, last %02d:%02d:%02dZ%s", target, (unsigned long)packets, tmv.tm_hour, tmv.tm_min, tmv.tm_sec,
+             direct ? " direct" : "");
+    txMessageTo(fromCall, text);
+}
+
+// "?APRSM" -> re-send any messages this station is still holding for the
+// querying operator. Nothing pending is reported explicitly, for the same
+// reason an empty "Directs=" is sent: the operator asked a question and an
+// answer of "none" is information.
+static void respondMessages(const char *fromCall) {
+    int sent = message_send_pending_to(fromCall);
+    if (sent == 0)
+        txMessageTo(fromCall, "No messages pending");
+}
+
+// "?APRSO" -> re-announce the Objects/Items this station originates. The
+// elements go out from the beacon scheduler task (see
+// objitems_request_transmit_all()), not from here, so answering a query never
+// occupies the radio RX task for the length of a transmission burst.
+static void respondObjects(const char *fromCall) {
+#ifdef ENABLE_OBJECTS_ITEMS
+    objitems_request_transmit_all();
+    ESP_LOGI(TAG, "?APRSO query from %s: all Objects/Items queued for transmission", fromCall);
+#else
+    txMessageTo(fromCall, "No objects");
+#endif
+}
+
+// "?APRST" / "?PING?" -> report the route the query itself took to get here,
+// which is what lets the querying operator see which digipeaters are in play
+// between the two stations. The path is read straight off the received TNC2
+// line: everything between the destination call and the ':' that starts the
+// information field, '*' markers included, so a repeater that actually
+// handled the frame is distinguishable from one that was merely requested.
+static void respondTrace(const char *fromCall, const char *tnc2Line) {
+    char text[APRS_MSG_TEXT_STD_MAX + 1];
+
+    const char *gt = (tnc2Line != NULL) ? strchr(tnc2Line, '>') : NULL;
+    const char *colon = (gt != NULL) ? strchr(gt, ':') : NULL;
+    if (gt == NULL || colon == NULL || colon <= gt + 1) {
+        snprintf(text, sizeof(text), "%s via ?", fromCall);
+        txMessageTo(fromCall, text);
+        return;
+    }
+
+    char route[APRS_MSG_TEXT_STD_MAX];
+    size_t n = (size_t)(colon - gt - 1);
+    if (n >= sizeof(route))
+        n = sizeof(route) - 1;
+    memcpy(route, gt + 1, n);
+    route[n] = 0;
+
+    snprintf(text, sizeof(text), "%s>%s", fromCall, route);
+    txMessageTo(fromCall, text);
+}
+
 // ---------------------------------------------------------------------------
 // Parsing
 // ---------------------------------------------------------------------------
 
-// Dispatches one recognized broadcast query type to its builder, gated by
-// its own enable flag and the shared broadcast rate limiter.
-static void dispatchBroadcast(query_type_t type) {
+// Matches a query keyword at the start of `info` (already known to start with
+// '?') against the table this responder implements, and reports where the
+// keyword's argument begins.
+//
+// `directed` selects the table: a general query is one of the three APRS101
+// chapter 15 defines as broadcast, while a directed query may additionally be
+// any of the per-station ones. Keywords are matched whole, so "?APRS?" and
+// "?APRSP" cannot be confused with one another, and the longest-matching
+// entry wins for the two that share a prefix ("?APRST" and its "?PING?"
+// alias are distinct strings, but "?APRS?" is a prefix of nothing else here).
+static bool matchQueryType(const char *info, bool directed, query_type_t *type, const char **arg) {
+    static const struct {
+        const char *keyword;
+        query_type_t type;
+        bool directedOnly;
+    } table[] = {
+        { "?APRS?", QUERY_TYPE_APRS, false },   { "?IGATE?", QUERY_TYPE_IGATE, false },  { "?WX?", QUERY_TYPE_WX, false },
+        { "?APRSD", QUERY_TYPE_DIRECTS, true }, { "?APRSH", QUERY_TYPE_HEARD, true },    { "?APRSM", QUERY_TYPE_MESSAGES, true },
+        { "?APRSO", QUERY_TYPE_OBJECTS, true }, { "?APRSP", QUERY_TYPE_POSITION, true }, { "?APRSS", QUERY_TYPE_STATUS, true },
+        { "?APRST", QUERY_TYPE_TRACE, true },   { "?PING?", QUERY_TYPE_TRACE, true },
+    };
+
+    for (size_t i = 0; i < sizeof(table) / sizeof(table[0]); i++) {
+        if (table[i].directedOnly && !directed)
+            continue;
+        size_t kwLen = strlen(table[i].keyword);
+        if (strncasecmp(info, table[i].keyword, kwLen) != 0)
+            continue;
+        *type = table[i].type;
+        if (arg) {
+            const char *p = info + kwLen;
+            while (*p == ' ')
+                p++;
+            *arg = p;
+        }
+        return true;
+    }
+    return false;
+}
+
+// True if the query type is enabled by the operator. The three general types
+// keep their own per-type switches; the directed-only set shares
+// g_config.query_ext_en, since they are all answers about this station's own
+// traffic and an operator either wants the station answering that class of
+// question or not.
+static bool queryTypeEnabled(query_type_t type) {
     switch (type) {
         case QUERY_TYPE_APRS:
-            if (!g_config.query_aprs_en)
-                return;
-            if (!broadcastRateLimitPass(QUERY_TYPE_APRS))
-                return;
+            return g_config.query_aprs_en;
+        case QUERY_TYPE_WX:
+            return g_config.query_wx_en;
+        case QUERY_TYPE_IGATE:
+            return g_config.query_igate_en;
+        case QUERY_TYPE_POSITION:
+        case QUERY_TYPE_STATUS:
+        case QUERY_TYPE_DIRECTS:
+        case QUERY_TYPE_HEARD:
+        case QUERY_TYPE_MESSAGES:
+        case QUERY_TYPE_OBJECTS:
+        case QUERY_TYPE_TRACE:
+            return g_config.query_ext_en;
+        default:
+            return false;
+    }
+}
+
+// Dispatches one recognized broadcast query type to its builder, gated by its
+// own enable flag and the shared broadcast rate limiter.
+static void dispatchBroadcast(query_type_t type) {
+    if (!queryTypeEnabled(type))
+        return;
+    if (!broadcastRateLimitPass(type))
+        return;
+
+    switch (type) {
+        case QUERY_TYPE_APRS:
             respondAPRS();
             return;
         case QUERY_TYPE_WX:
-            if (!g_config.query_wx_en)
-                return;
-            if (!broadcastRateLimitPass(QUERY_TYPE_WX))
-                return;
             respondWX();
             return;
         case QUERY_TYPE_IGATE:
-            if (!g_config.query_igate_en)
-                return;
-            if (!broadcastRateLimitPass(QUERY_TYPE_IGATE))
-                return;
             respondIGate();
             return;
         default:
             return;
     }
-}
-
-// Matches the broadcast query keyword at the start of `info` (already known
-// to start with '?') against the small set this responder implements.
-// Longest-prefix keywords first so "?APRS?" is not confused with a bare
-// "?APRS" prefix of some other, unrecognized query string.
-static bool matchBroadcastType(const char *info, query_type_t *type) {
-    static const struct {
-        const char *keyword;
-        query_type_t type;
-    } table[] = {
-        { "?APRS?", QUERY_TYPE_APRS },
-        { "?IGATE?", QUERY_TYPE_IGATE },
-        { "?WX?", QUERY_TYPE_WX },
-    };
-
-    for (size_t i = 0; i < sizeof(table) / sizeof(table[0]); i++) {
-        size_t kwLen = strlen(table[i].keyword);
-        if (strncasecmp(info, table[i].keyword, kwLen) == 0) {
-            *type = table[i].type;
-            return true;
-        }
-    }
-    return false;
 }
 
 void query_process(const char *tnc2Line) {
@@ -311,13 +556,13 @@ void query_process(const char *tnc2Line) {
         return;
 
     query_type_t type;
-    if (!matchBroadcastType(info, &type))
+    if (!matchQueryType(info, false, &type, NULL))
         return;
 
     dispatchBroadcast(type);
 }
 
-void query_process_directed(const char *fromCall, const char *toCall, const char *text) {
+void query_process_directed(const char *fromCall, const char *toCall, const char *text, const char *tnc2Line) {
     if (!g_config.query_en || !g_config.query_directed_en)
         return;
     if (fromCall == NULL || toCall == NULL || text == NULL || text[0] != '?')
@@ -327,30 +572,51 @@ void query_process_directed(const char *fromCall, const char *toCall, const char
         return;
 
     query_type_t type;
-    if (!matchBroadcastType(text, &type))
+    const char *arg = NULL;
+    if (!matchQueryType(text, true, &type, &arg))
+        return;
+
+    if (!queryTypeEnabled(type))
         return;
 
     if (!directedRateLimitPass(fromCall))
         return;
 
-    // Per the Must-have scope, directed replies are sent the same way
-    // broadcast ones are (see the note in the design proposal: most
-    // deployed IGates just re-broadcast the reply, since the querying
-    // station is listening either way). Reuse the same enable-flag-gated
-    // dispatch, without re-applying the broadcast rate limiter - the
-    // directed limiter above already governs this response.
+    // Directed replies are sent the same way broadcast ones are, without
+    // re-applying the broadcast rate limiter - the per-source directed limiter
+    // above already governs this response. The position/status/weather/
+    // capability answers go out as ordinary reports, which is what the
+    // querying station is listening for anyway; the list-style answers are
+    // addressed messages, since they only mean anything to the operator who
+    // asked.
     switch (type) {
         case QUERY_TYPE_APRS:
-            if (g_config.query_aprs_en)
-                respondAPRS();
+        case QUERY_TYPE_POSITION:
+            respondAPRS();
             return;
         case QUERY_TYPE_WX:
-            if (g_config.query_wx_en)
-                respondWX();
+            respondWX();
             return;
         case QUERY_TYPE_IGATE:
-            if (g_config.query_igate_en)
-                respondIGate();
+            respondIGate();
+            return;
+        case QUERY_TYPE_STATUS:
+            respondStatus();
+            return;
+        case QUERY_TYPE_DIRECTS:
+            respondDirects(fromCall);
+            return;
+        case QUERY_TYPE_HEARD:
+            respondHeard(fromCall, arg ? arg : "");
+            return;
+        case QUERY_TYPE_MESSAGES:
+            respondMessages(fromCall);
+            return;
+        case QUERY_TYPE_OBJECTS:
+            respondObjects(fromCall);
+            return;
+        case QUERY_TYPE_TRACE:
+            respondTrace(fromCall, tnc2Line);
             return;
         default:
             return;

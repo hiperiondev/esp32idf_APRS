@@ -16,8 +16,10 @@
  *
  * @brief Shared decimal-degrees -> APRS position field conversion, used by
  * every module that builds a position report (station beacons, Objects/Items,
- * weather reports). Covers both the uncompressed "DDMM.mmN/DDDMM.mmW" field
- * pair and the base-91 compressed position format (APRS101 chapter 9).
+ * weather reports). Covers the uncompressed "DDMM.mmN/DDDMM.mmW" field pair
+ * (with optional position ambiguity, APRS101 chapter 6), the base-91
+ * compressed position format (APRS101 chapter 9), and the Maidenhead grid
+ * locator used by status reports (APRS101 chapter 16).
  */
 
 #ifndef APRS_COORD_H
@@ -25,6 +27,25 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
+
+/**
+ * @brief Length of the Maidenhead grid locator aprs_maidenhead_locator()
+ * writes, not counting its NUL terminator ("IO91SX" - field, square and
+ * subsquare).
+ */
+#define APRS_MAIDENHEAD_LEN 6
+
+/**
+ * @brief Buffer size a caller must provide for aprs_maidenhead_locator().
+ */
+#define APRS_MAIDENHEAD_BUF_SIZE (APRS_MAIDENHEAD_LEN + 1)
+
+/**
+ * @brief Highest position-ambiguity level accepted by
+ * aprs_coord_format_ambiguous() (0 = full precision, 4 = nearest degree).
+ */
+#define APRS_COORD_AMBIGUITY_MAX 4
 
 /**
  * @brief Format a decimal-degrees latitude/longitude pair as the APRS
@@ -44,6 +65,57 @@
  * @param lonMax Size of lonOut.
  */
 void aprs_coord_format(float lat, float lon, char *latOut, size_t latMax, char *lonOut, size_t lonMax);
+
+/**
+ * @brief Format a decimal-degrees latitude/longitude pair as the APRS
+ * uncompressed position fields with position ambiguity applied (APRS101
+ * chapter 6).
+ *
+ * Ambiguity is expressed on air by replacing the least significant digits of
+ * the minutes with spaces, so a receiver knows the position is deliberately
+ * imprecise instead of merely rounded:
+ *
+ *   0 - "4903.50N" / "07201.75W"  full precision (hundredths of a minute)
+ *   1 - "4903.5 N" / "07201.7 W"  nearest 1/10 minute
+ *   2 - "4903.  N" / "07201.  W"  nearest minute
+ *   3 - "490 .  N" / "0720 .  W"  nearest 10 minutes
+ *   4 - "49  .  N" / "072  .  W"  nearest degree
+ *
+ * The decimal point, the hemisphere character and the overall field widths are
+ * unchanged at every level, which is what keeps the report parseable. Digits
+ * are blanked, never rounded away, matching the reference decoders that read
+ * the blanked field as "unknown digit".
+ *
+ * @param lat Latitude in decimal degrees (positive = N, negative = S).
+ * @param lon Longitude in decimal degrees (positive = E, negative = W).
+ * @param ambiguity Ambiguity level 0..::APRS_COORD_AMBIGUITY_MAX; values above
+ *        the maximum are clamped to it.
+ * @param latOut Destination buffer for the latitude field.
+ * @param latMax Size of latOut.
+ * @param lonOut Destination buffer for the longitude field.
+ * @param lonMax Size of lonOut.
+ */
+void aprs_coord_format_ambiguous(float lat, float lon, uint8_t ambiguity, char *latOut, size_t latMax, char *lonOut, size_t lonMax);
+
+/**
+ * @brief Build the 6-character Maidenhead grid locator ("IO91SX") for a
+ * decimal-degrees position.
+ *
+ * Field letters are uppercase ('A'..'R'), square digits are '0'..'9' and
+ * subsquare letters are uppercase ('A'..'X') - the case convention APRS
+ * status reports use on air (APRS101 chapter 16). Latitude and longitude are
+ * clamped to the poles and the antimeridian first, so an out-of-range input
+ * still yields a valid locator rather than running off the end of the
+ * alphabet.
+ *
+ * @param lat Latitude in decimal degrees (positive = N, negative = S).
+ * @param lon Longitude in decimal degrees (positive = E, negative = W).
+ * @param out Destination buffer, NUL-terminated on return.
+ * @param outMax Size of @p out; must be at least
+ *        ::APRS_MAIDENHEAD_BUF_SIZE for the full locator. A smaller buffer
+ *        receives as much of the locator as fits, still terminated.
+ */
+void aprs_maidenhead_locator(float lat, float lon, char *out, size_t outMax);
 
 /**
  * @brief Format a decimal-degrees latitude/longitude pair as the APRS

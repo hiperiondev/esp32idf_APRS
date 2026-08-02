@@ -432,13 +432,23 @@ static void aprs_msg_callback(ax25_msg_t *msg) {
         // a LAST HEARD label, so losing the tail of a long path is cosmetic.
         char path[48] = "";
         size_t plen = 0;
+        // "Direct" means no digipeater actually relayed this frame. A path
+        // entry only counts once its AX.25 "has been repeated" H-bit is set
+        // (AX25_REPEATED); an unused WIDEn-N still in the path is a request
+        // for a repeat that has not happened yet, so a frame carrying one is
+        // still direct from this receiver's point of view. This is what the
+        // "?APRSD" query reports, so it has to mean heard-off-the-air rather
+        // than merely path-looks-empty.
+        bool direct = true;
         for (int i = 0; i < msg->rpt_count; i++) {
             str_append(path, sizeof(path), &plen, "%s%s", (i == 0) ? "" : ",", msg->rpt_list[i].call);
             if (msg->rpt_list[i].ssid > 0)
                 str_append(path, sizeof(path), &plen, "-%d", msg->rpt_list[i].ssid);
+            if (AX25_REPEATED(msg, i))
+                direct = false;
         }
 
-        lastheard_add(callsign, path, true, symTable, symCode);
+        lastheard_add(callsign, path, true, direct, symTable, symCode);
     }
 
     // Placeholder/invalid source callsign check (NOCALL = radio not
@@ -632,7 +642,9 @@ static void inet2rfHandler(const char *line) {
             size_t infoLen = strlen(info);
             aprs_extract_symbol(info, infoLen, &symTable, &symCode);
 
-            lastheard_add(callsign, path, false, symTable, symCode);
+            // A frame that arrived over APRS-IS was never heard off the air
+            // here, so it is never direct.
+            lastheard_add(callsign, path, false, false, symTable, symCode);
         }
     }
 

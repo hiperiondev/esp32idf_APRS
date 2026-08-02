@@ -131,6 +131,9 @@ void app_config_set_defaults(app_config_t *c) {
     c->my_phg_dir = 0;
     set_str(c->my_phg, sizeof(c->my_phg), "");
 
+    c->pos_ambiguity = 0;
+    c->status_grid_en = false;
+
     c->wifi_mode = 2; // AP_STA equivalent default (matches original shipping as AP)
     c->wifi_power = 20;
     for (int i = 0; i < WIFI_STA_NUM; i++) {
@@ -170,6 +173,9 @@ void app_config_set_defaults(app_config_t *c) {
     c->igate_phg_gain = 6.0f;
     c->igate_phg_height = 10;
     c->igate_phg_dir = 0;
+    c->igate_ext_type = APRS_EXT_PHG;
+    c->igate_range_miles = 0;
+    c->igate_dfs_strength = 0;
     c->rf2inetFilter = IGATE_FILT_MESSAGE | IGATE_FILT_STATUS | IGATE_FILT_TELEMETRY | IGATE_FILT_WEATHER | IGATE_FILT_OBJECT | IGATE_FILT_ITEM |
                        IGATE_FILT_QUERY | IGATE_FILT_BUOY | IGATE_FILT_POSITION;
     c->inet2rfFilter = IGATE_FILT_MESSAGE;
@@ -295,6 +301,7 @@ void app_config_set_defaults(app_config_t *c) {
     c->query_wx_en = true;
     c->query_igate_en = true;
     c->query_directed_en = true;
+    c->query_ext_en = true;
     c->query_min_interval_sec = 30;
 }
 
@@ -415,6 +422,8 @@ static void config_write_json(jw_t *d, const app_config_t *c) {
     jadd_num(d, "myPHGHeight", c->my_phg_height);
     jadd_num(d, "myPHGDir", c->my_phg_dir);
     jadd_str(d, "myPHG", c->my_phg);
+    jadd_num(d, "myAmbiguity", c->pos_ambiguity);
+    jadd_bool(d, "myStatusGrid", c->status_grid_en);
     jadd_num(d, "txTimeSlot", c->tx_timeslot);
     jadd_num(d, "csmaPersist", c->csma_persist);
     jadd_bool(d, "syncTime", c->synctime);
@@ -489,6 +498,9 @@ static void config_write_json(jw_t *d, const app_config_t *c) {
     jadd_num(d, "igatePHGGain", c->igate_phg_gain);
     jadd_num(d, "igatePHGHeight", c->igate_phg_height);
     jadd_num(d, "igatePHGDir", c->igate_phg_dir);
+    jadd_num(d, "igateExtType", c->igate_ext_type);
+    jadd_num(d, "igateRng", c->igate_range_miles);
+    jadd_num(d, "igateDfsS", c->igate_dfs_strength);
 
     jadd_bool(d, "digiEn", c->digi_en);
     jadd_bool(d, "digiAuto", c->digi_auto);
@@ -606,6 +618,7 @@ static void config_write_json(jw_t *d, const app_config_t *c) {
     jadd_bool(d, "queryWxEn", c->query_wx_en);
     jadd_bool(d, "queryIgateEn", c->query_igate_en);
     jadd_bool(d, "queryDirectedEn", c->query_directed_en);
+    jadd_bool(d, "queryExtEn", c->query_ext_en);
     jadd_num(d, "queryMinInterval", c->query_min_interval_sec);
 
     fputc('}', d->f);
@@ -629,6 +642,12 @@ static void config_from_json(cJSON *d, app_config_t *c) {
     c->my_phg_height = (uint16_t)jget_num(d, "myPHGHeight", def.my_phg_height);
     c->my_phg_dir = (uint8_t)jget_num(d, "myPHGDir", def.my_phg_dir);
     set_str(c->my_phg, sizeof(c->my_phg), jget_str(d, "myPHG", def.my_phg));
+    c->pos_ambiguity = (uint8_t)jget_num(d, "myAmbiguity", def.pos_ambiguity);
+    if (c->pos_ambiguity > POS_AMBIGUITY_MAX) {
+        ESP_LOGW(TAG, "myAmbiguity %u out of range, clamped to %d", (unsigned)c->pos_ambiguity, POS_AMBIGUITY_MAX);
+        c->pos_ambiguity = POS_AMBIGUITY_MAX;
+    }
+    c->status_grid_en = jget_bool(d, "myStatusGrid", def.status_grid_en);
     // Channel-access timing: bound every value coming off flash to the same
     // range the Radiomodem form accepts (aprs_service.h), so a hand-edited or
     // imported config.json cannot hand aprs_service_build_modem_config() a
@@ -756,6 +775,21 @@ static void config_from_json(cJSON *d, app_config_t *c) {
     c->igate_phg_gain = (float)jget_num(d, "igatePHGGain", def.igate_phg_gain);
     c->igate_phg_height = (uint16_t)jget_num(d, "igatePHGHeight", def.igate_phg_height);
     c->igate_phg_dir = (uint8_t)jget_num(d, "igatePHGDir", def.igate_phg_dir);
+    c->igate_ext_type = (uint8_t)jget_num(d, "igateExtType", def.igate_ext_type);
+    if (c->igate_ext_type > APRS_EXT_DFS) {
+        ESP_LOGW(TAG, "igateExtType %u unknown, using PHG", (unsigned)c->igate_ext_type);
+        c->igate_ext_type = APRS_EXT_PHG;
+    }
+    c->igate_range_miles = (uint16_t)jget_num(d, "igateRng", def.igate_range_miles);
+    if (c->igate_range_miles > APRS_EXT_RANGE_MILES_MAX) {
+        ESP_LOGW(TAG, "igateRng %u out of range, clamped to %d", (unsigned)c->igate_range_miles, APRS_EXT_RANGE_MILES_MAX);
+        c->igate_range_miles = APRS_EXT_RANGE_MILES_MAX;
+    }
+    c->igate_dfs_strength = (uint8_t)jget_num(d, "igateDfsS", def.igate_dfs_strength);
+    if (c->igate_dfs_strength > APRS_EXT_DFS_STRENGTH_MAX) {
+        ESP_LOGW(TAG, "igateDfsS %u out of range, clamped to %d", (unsigned)c->igate_dfs_strength, APRS_EXT_DFS_STRENGTH_MAX);
+        c->igate_dfs_strength = APRS_EXT_DFS_STRENGTH_MAX;
+    }
     c->igate_sts_interval = (uint16_t)jget_num(d, "igateSTSIntv", def.igate_sts_interval);
     set_str(c->igate_status, sizeof(c->igate_status), jget_str(d, "igateStatus", def.igate_status));
 
@@ -909,6 +943,7 @@ static void config_from_json(cJSON *d, app_config_t *c) {
     c->query_wx_en = jget_bool(d, "queryWxEn", def.query_wx_en);
     c->query_igate_en = jget_bool(d, "queryIgateEn", def.query_igate_en);
     c->query_directed_en = jget_bool(d, "queryDirectedEn", def.query_directed_en);
+    c->query_ext_en = jget_bool(d, "queryExtEn", def.query_ext_en);
     c->query_min_interval_sec = (uint16_t)jget_num(d, "queryMinInterval", def.query_min_interval_sec);
     if (c->query_min_interval_sec < 5) // floor: airtime/loop safety, matches the webconfig page's own clamp
         c->query_min_interval_sec = 5;

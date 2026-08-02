@@ -77,22 +77,30 @@ typedef struct {
     // Sourced from g_config.{trk,igate,digi}_compress by each per-service
     // function below.
     bool compress;
-    // PHG (Power-Height-Gain-Directivity) data extension, only used by the
-    // IGate beacon so far (see igateBeaconService()). Not settable for the
-    // Tracker/Digipeater beacons, so phgEnable stays false and the field is
-    // never emitted for those. Shares the same 7-byte info-field slot used
-    // for CSE/SPD by moving stations - mutually exclusive with movement,
-    // which is fine here since these are fixed-position beacons.
-    bool phgEnable;
-    uint16_t phgPower;  // Watts
-    float phgGain;      // dB
-    uint16_t phgHeight; // feet (APRS PHG code table's own unit)
-    uint8_t phgDir;     // 0=Omni, 1-8 = N,NE,E,SE,S,SW,W,NW
+    // Position ambiguity (APRS101 ch.6), 0 = full precision through 4 =
+    // nearest degree. Station-wide (g_config.pos_ambiguity), so all three
+    // beacons carry the same precision. A non-zero level forces the
+    // uncompressed layout, which is the only one with digits to blank.
+    uint8_t ambiguity;
+    // APRS Data Extension (APRS101 ch.7), only used by the IGate beacon so
+    // far (see igateBeaconService()). Not settable for the Tracker/Digipeater
+    // beacons, so extEnable stays false and the slot is never emitted for
+    // those. All three extension types share the same 7-byte info-field slot
+    // that moving stations use for CSE/SPD - mutually exclusive with
+    // movement, which is fine here since these are fixed-position beacons.
+    bool extEnable;
+    uint8_t extType;     // aprs_ext_type_t: PHG, RNG or DFS
+    uint16_t phgPower;   // Watts (PHG)
+    float phgGain;       // dB (PHG and DFS)
+    uint16_t phgHeight;  // feet (PHG and DFS; the APRS code table's own unit)
+    uint8_t phgDir;      // 0=Omni, 1-8 = N,NE,E,SE,S,SW,W,NW (PHG and DFS)
+    uint16_t rangeMiles; // statute miles (RNG)
+    uint8_t dfsStrength; // 0-9 S-points (DFS)
     // When set, buildPositionPacket() emits a Mic-E position report
     // (APRS101 ch.10) instead of the uncompressed/compressed layout above,
     // via aprs_mice_encode() (components/weather_telemetry/mice.c). Mic-E
-    // has its own fixed on-air layout: no timestamp, no PHG, and no
-    // compression, so this takes priority over p->timestamp/phgEnable/
+    // has its own fixed on-air layout: no timestamp, no data extension, and
+    // no compression, so this takes priority over p->timestamp/extEnable/
     // compress when set - see the mutual-exclusion note in
     // buildPositionPacket() itself. Sourced from g_config.trk_mice; only
     // the Tracker beacon exposes it (Mic-E is the mobile-tracker format
@@ -133,6 +141,87 @@ static void buildPhgExtension(uint16_t power, float gain, uint16_t height, uint8
     snprintf(out, outMax, "PHG%c%c%c%c", '0' + P, '0' + H, '0' + G, '0' + D);
 }
 
+// Encodes the antenna height, gain and directivity sub-fields shared by the
+// "PHGphgd" and "DFSshgd" data extensions into their single-character codes.
+// Height is the APRS code table's 10 * 2^h feet, gain is the dB value itself,
+// and directivity is 0 (omni) through 8. `out` must be >= 4 bytes; it receives
+// the three characters and a NUL.
+static void buildHgdCodes(float gain, uint16_t height, uint8_t dir, char *out, size_t outMax) {
+    float hf = (height >= 10) ? (float)height : 10.0f;
+    int H = (int)lroundf(log2f(hf / 10.0f));
+    if (H < 0)
+        H = 0;
+    if (H > 13) // keeps the height character a single printable ASCII byte
+        H = 13;
+
+    int G = (int)lroundf(gain);
+    if (G < 0)
+        G = 0;
+    if (G > 9)
+        G = 9;
+
+    int D = (int)dir;
+    if (D < 0)
+        D = 0;
+    if (D > 8)
+        D = 8;
+
+    snprintf(out, outMax, "%c%c%c", '0' + H, '0' + G, '0' + D);
+}
+
+// Builds the 7-byte "RNGrrrr" Pre-Calculated Radio Range data extension
+// (APRS101 ch.7): four decimal digits of omnidirectional range in statute
+// miles, zero-padded. `out` must be >= 8 bytes. A range of 0 is a legal
+// on-air value ("RNG0000"); the caller decides whether an unset range is
+// worth transmitting.
+static void buildRangeExtension(uint16_t rangeMiles, char *out, size_t outMax) {
+    unsigned r = rangeMiles;
+    if (r > APRS_EXT_RANGE_MILES_MAX)
+        r = APRS_EXT_RANGE_MILES_MAX;
+    snprintf(out, outMax, "RNG%04u", r);
+}
+
+// Builds the 7-byte "DFSshgd" Omni-DF Signal Strength data extension
+// (APRS101 ch.7). It has the same shape as PHG with the transmitter-power
+// digit replaced by a received signal strength in S-points, where 0 means
+// this station does NOT hear the signal at all - which receiving software
+// draws as an exclusion circle rather than a coverage circle. `out` must be
+// >= 8 bytes.
+static void buildDfsExtension(uint8_t strength, float gain, uint16_t height, uint8_t dir, char *out, size_t outMax) {
+    int S = (int)strength;
+    if (S < 0)
+        S = 0;
+    if (S > APRS_EXT_DFS_STRENGTH_MAX)
+        S = APRS_EXT_DFS_STRENGTH_MAX;
+
+    char hgd[4];
+    buildHgdCodes(gain, height, dir, hgd, sizeof(hgd));
+    snprintf(out, outMax, "DFS%c%s", '0' + S, hgd);
+}
+
+// Selects and builds the beacon's data extension into `out` (>= 8 bytes),
+// which is left as an empty string when no extension is enabled. Exactly one
+// extension is ever emitted: they all occupy the same 7-byte slot after the
+// symbol code.
+static void buildDataExtension(const beacon_params_t *p, char *out, size_t outMax) {
+    out[0] = 0;
+    if (!p->extEnable)
+        return;
+
+    switch ((aprs_ext_type_t)p->extType) {
+        case APRS_EXT_RNG:
+            buildRangeExtension(p->rangeMiles, out, outMax);
+            return;
+        case APRS_EXT_DFS:
+            buildDfsExtension(p->dfsStrength, p->phgGain, p->phgHeight, p->phgDir, out, outMax);
+            return;
+        case APRS_EXT_PHG:
+        default:
+            buildPhgExtension(p->phgPower, p->phgGain, p->phgHeight, p->phgDir, out, outMax);
+            return;
+    }
+}
+
 // Builds a Mic-E-format beacon line (APRS101 ch.10) into `out`, in place of
 // the uncompressed/compressed layout buildPositionPacket() otherwise emits.
 // Mic-E splits its payload between the AX.25 destination address (encoded
@@ -162,7 +251,10 @@ static int buildMicePositionPacket(const beacon_params_t *p, char *out, size_t o
     memset(&report, 0, sizeof(report));
     report.position.latitude_deg = (double)p->lat;
     report.position.longitude_deg = (double)p->lon;
-    report.position.ambiguity = APRS_AMBIGUITY_NONE;
+    // Mic-E carries position ambiguity natively (APRS101 ch.10), by blanking
+    // the same least significant digits the uncompressed format spaces out,
+    // so the station-wide setting applies here unchanged.
+    report.position.ambiguity = (aprs_position_ambiguity_t)p->ambiguity;
     report.position.symbol.table = (p->symbol[0] == '\\') ? APRS_SYMBOL_TABLE_ALTERNATE : APRS_SYMBOL_TABLE_PRIMARY;
     report.position.symbol.code = p->symbol[1] ? p->symbol[1] : '>';
     report.message_code = APRS_MICE_MSG_OFF_DUTY;
@@ -205,8 +297,8 @@ static int buildPositionPacket(const beacon_params_t *p, char *out, size_t outMa
     if (!p->call[0])
         return 0;
 
-    // Mic-E has its own fixed on-air layout (no timestamp, no PHG, no
-    // compression - see the mice field's own comment in beacon_params_t),
+    // Mic-E has its own fixed on-air layout (no timestamp, no data extension,
+    // no compression - see the mice field's own comment in beacon_params_t),
     // so it is handled by a dedicated builder and takes priority over every
     // other layout choice below.
     if (p->mice)
@@ -226,23 +318,30 @@ static int buildPositionPacket(const beacon_params_t *p, char *out, size_t outMa
     char symTable = p->symbol[0] ? p->symbol[0] : '/';
     char symCode = p->symbol[1] ? p->symbol[1] : '>';
 
-    // PHG data-extension token, when enabled. Emitted right after the symbol
-    // code and before the altitude/comment, matching the Object/Item info
-    // field layout (main/objects_items.c) and the order the APRS spec
-    // defines for this slot.
-    char phg[8] = { 0 };
-    if (p->phgEnable)
-        buildPhgExtension(p->phgPower, p->phgGain, p->phgHeight, p->phgDir, phg, sizeof(phg));
+    // Data-extension token (PHG / RNG / DFS), when enabled. Emitted right
+    // after the symbol code and before the altitude/comment, matching the
+    // Object/Item info field layout (main/objects_items.c) and the order the
+    // APRS spec defines for this slot.
+    char ext[8] = { 0 };
+    buildDataExtension(p, ext, sizeof(ext));
 
-    // The compressed position format has no PHG equivalent (APRS101 ch.9:
-    // "this format does not support PHG"), so a PHG-enabled beacon always
-    // falls back to the uncompressed layout regardless of the compress
-    // flag - emitting compressed PHG bytes would just be wrong data, and
-    // dropping PHG silently to keep compression would lose a field the user
-    // explicitly enabled. None of these three fixed-position beacons track
-    // course/speed, so when compression is used the cs/T slot always
-    // carries "no cs/T data" (3 spaces).
-    bool useCompressed = p->compress && !p->phgEnable;
+    // Two things force the uncompressed layout:
+    //
+    //   * A data extension. The compressed format has no room for the 7-byte
+    //     slot (APRS101 ch.9 states it does not support PHG); emitting those
+    //     bytes inside a compressed report would just be wrong data, and
+    //     dropping the extension silently to keep compression would lose a
+    //     field the operator explicitly enabled.
+    //   * Position ambiguity. Ambiguity is expressed by blanking decimal
+    //     digits, and the compressed format has no decimal digits to blank -
+    //     a compressed report always states a position to full resolution, so
+    //     honouring the compress flag here would transmit the exact position
+    //     the operator asked to obscure.
+    //
+    // None of these three fixed-position beacons track course/speed, so when
+    // compression is used the cs/T slot always carries "no cs/T data"
+    // (3 spaces).
+    bool useCompressed = p->compress && !p->extEnable && p->ambiguity == 0;
 
     // Sized for the larger of the two layouts: uncompressed is up to 21
     // bytes (9-char latStr content + symTable + 10-char lonStr content +
@@ -253,7 +352,7 @@ static int buildPositionPacket(const beacon_params_t *p, char *out, size_t outMa
         aprs_coord_format_compressed(p->lat, p->lon, symTable, symCode, "   ", posField, sizeof(posField));
     } else {
         char latStr[10], lonStr[11];
-        aprs_coord_format(p->lat, p->lon, latStr, sizeof(latStr), lonStr, sizeof(lonStr));
+        aprs_coord_format_ambiguous(p->lat, p->lon, p->ambiguity, latStr, sizeof(latStr), lonStr, sizeof(lonStr));
         snprintf(posField, sizeof(posField), "%s%c%s%c", latStr, symTable, lonStr, symCode);
     }
 
@@ -265,16 +364,16 @@ static int buildPositionPacket(const beacon_params_t *p, char *out, size_t outMa
         snprintf(extra, sizeof(extra), "/A=%06d", feet);
     }
 
-    char infoField[256]; // ts(7)+posField(up to 21)+phg(7)+extra(40)+comment(up to 128)+NUL
+    char infoField[256]; // ts(7)+posField(up to 21)+ext(7)+extra(40)+comment(up to 128)+NUL
     if (p->timestamp) {
         time_t now = time(NULL);
         struct tm tmv;
         gmtime_r(&now, &tmv);
         char ts[8];
         snprintf(ts, sizeof(ts), "%02d%02d%02dz", tmv.tm_mday, tmv.tm_hour, tmv.tm_min);
-        snprintf(infoField, sizeof(infoField), "/%s%s%s%s%s", ts, posField, phg, extra, p->comment);
+        snprintf(infoField, sizeof(infoField), "/%s%s%s%s%s", ts, posField, ext, extra, p->comment);
     } else {
-        snprintf(infoField, sizeof(infoField), "!%s%s%s%s", posField, phg, extra, p->comment);
+        snprintf(infoField, sizeof(infoField), "!%s%s%s%s", posField, ext, extra, p->comment);
     }
 
     int n = snprintf(out, outMax, "%s>%s%s:%s", callField, BEACON_DEST, path, infoField);
@@ -305,13 +404,28 @@ typedef struct {
     uint8_t pathSel;
     char statusText[STATUS_SIZE];
     char pathPreset[4][72]; // snapshot of g_config.path[0..3]
+    // Maidenhead grid locator prefix (APRS101 ch.16), station-wide
+    // (g_config.status_grid_en). The locator is derived from this beacon's own
+    // configured position and carries this beacon's own symbol, so the three
+    // status reports stay individually addressable even though the option is
+    // set once.
+    bool gridEnable;
+    float lat;
+    float lon;
+    char symbol[3]; // table + code + NUL
 } status_params_t;
 
 // Builds the full TNC2 text line for one status-report transmission. The
-// info field is DTI '>' followed by the free-text status (APRS101 ch.16);
-// the status text itself may start with a Maidenhead locator or a beam
-// heading/power token per the spec - this builder does not interpret it,
-// it simply carries whatever the station operator configured on the page.
+// info field is DTI '>' followed by the free-text status (APRS101 ch.16).
+//
+// With the Maidenhead option on, the status text is preceded by the 6-char
+// grid locator of this beacon's position, the symbol table byte and the symbol
+// code - the ">IO91SX/G" form the spec defines - and a single space separating
+// that block from the free text. Receivers that understand the form plot the
+// station from the locator alone; the rest simply show the whole thing as
+// status text. The configured text itself is never interpreted: whatever the
+// operator typed is carried verbatim after the locator block.
+//
 // Returns the packet length, or 0 if nothing usable is configured.
 static int buildStatusPacket(const status_params_t *p, char *out, size_t outMax) {
     if (!p->call[0] || !p->statusText[0])
@@ -326,13 +440,24 @@ static int buildStatusPacket(const status_params_t *p, char *out, size_t outMax)
     char path[80];
     aprs_path_build_suffix(p->pathSel, p->pathPreset, path, sizeof(path));
 
-    char infoField[STATUS_SIZE + 1]; // '>' + status text + NUL
-    snprintf(infoField, sizeof(infoField), ">%s", p->statusText);
+    // '>' + optional locator block ("IO91SX" + symbol table + symbol code +
+    // separating space = 9) + status text + NUL.
+    char infoField[STATUS_SIZE + 11];
+    if (p->gridEnable) {
+        char grid[APRS_MAIDENHEAD_BUF_SIZE];
+        aprs_maidenhead_locator(p->lat, p->lon, grid, sizeof(grid));
+        char symTable = p->symbol[0] ? p->symbol[0] : '/';
+        char symCode = p->symbol[1] ? p->symbol[1] : '>';
+        snprintf(infoField, sizeof(infoField), ">%s%c%c %s", grid, symTable, symCode, p->statusText);
+    } else {
+        snprintf(infoField, sizeof(infoField), ">%s", p->statusText);
+    }
 
     int n = snprintf(out, outMax, "%s>%s%s:%s", callField, BEACON_DEST, path, infoField);
-    // A status line is at most 152 bytes: call field (up to 15) + '>' +
-    // destination (6) + path (up to 79) + ':' + info field (up to 50), so it
-    // always fits the APRS_TNC2_BUF_SIZE buffer every caller provides. The
+    // A status line is at most 161 bytes: call field (up to 15) + '>' +
+    // destination (6) + path (up to 79) + ':' + info field (up to 59, i.e. the
+    // 50-byte '>'-plus-text form plus the 9-byte Maidenhead locator block), so
+    // it always fits the APRS_TNC2_BUF_SIZE buffer every caller provides. The
     // check is kept anyway, on the same terms as buildPositionPacket(): refuse
     // rather than clamp, so neither leg ever carries a truncated - and
     // therefore malformed - status report.
@@ -375,6 +500,10 @@ static uint32_t trackerStatusService(void) {
             p.pathSel = g_config.trk_path;
             memcpy(p.statusText, g_config.trk_status, sizeof(p.statusText));
             memcpy(p.pathPreset, g_config.path, sizeof(p.pathPreset));
+            p.gridEnable = g_config.status_grid_en;
+            p.lat = g_config.trk_lat;
+            p.lon = g_config.trk_lon;
+            memcpy(p.symbol, g_config.trk_symbol, sizeof(p.symbol));
         }
         app_config_unlock();
 
@@ -421,6 +550,10 @@ static uint32_t igateStatusService(void) {
             p.pathSel = g_config.igate_path;
             memcpy(p.statusText, g_config.igate_status, sizeof(p.statusText));
             memcpy(p.pathPreset, g_config.path, sizeof(p.pathPreset));
+            p.gridEnable = g_config.status_grid_en;
+            p.lat = g_config.igate_lat;
+            p.lon = g_config.igate_lon;
+            memcpy(p.symbol, g_config.igate_symbol, sizeof(p.symbol));
         }
         app_config_unlock();
 
@@ -468,6 +601,10 @@ static uint32_t digiStatusService(void) {
             p.pathSel = g_config.digi_path;
             memcpy(p.statusText, g_config.digi_status, sizeof(p.statusText));
             memcpy(p.pathPreset, g_config.path, sizeof(p.pathPreset));
+            p.gridEnable = g_config.status_grid_en;
+            p.lat = g_config.digi_lat;
+            p.lon = g_config.digi_lon;
+            memcpy(p.symbol, g_config.digi_symbol, sizeof(p.symbol));
         }
         app_config_unlock();
 
@@ -517,7 +654,7 @@ static uint32_t trackerBeaconService(void) {
 
     int64_t now = sched_mono_seconds();
     if (now >= s_trk_next_due) {
-        beacon_params_t p = { 0 }; // zero-init: Tracker never sets phg*, so phgEnable must default false
+        beacon_params_t p = { 0 }; // zero-init: Tracker carries no data extension, so extEnable must default false
         app_config_lock();
         {
             bool useTrk = g_config.trk_mycall[0] != 0;
@@ -531,6 +668,7 @@ static uint32_t trackerBeaconService(void) {
             p.sendAltitude = g_config.trk_altitude;
             p.compress = g_config.trk_compress;
             p.mice = g_config.trk_mice;
+            p.ambiguity = g_config.pos_ambiguity;
             memcpy(p.symbol, g_config.trk_symbol, sizeof(p.symbol));
             memcpy(p.comment, g_config.trk_comment, sizeof(p.comment));
             memcpy(p.pathPreset, g_config.path, sizeof(p.pathPreset));
@@ -598,14 +736,18 @@ static uint32_t igateBeaconService(void) {
             p.alt = g_config.igate_alt;
             p.sendAltitude = g_config.igate_alt != 0.0f;
             p.compress = g_config.igate_compress;
+            p.ambiguity = g_config.pos_ambiguity;
             memcpy(p.symbol, g_config.igate_symbol, sizeof(p.symbol));
             memcpy(p.comment, g_config.igate_comment, sizeof(p.comment));
             memcpy(p.pathPreset, g_config.path, sizeof(p.pathPreset));
-            p.phgEnable = g_config.igate_phg_enable;
+            p.extEnable = g_config.igate_phg_enable;
+            p.extType = g_config.igate_ext_type;
             p.phgPower = g_config.igate_phg_power;
             p.phgGain = g_config.igate_phg_gain;
             p.phgHeight = g_config.igate_phg_height;
             p.phgDir = g_config.igate_phg_dir;
+            p.rangeMiles = g_config.igate_range_miles;
+            p.dfsStrength = g_config.igate_dfs_strength;
         }
         app_config_unlock();
 
@@ -664,11 +806,15 @@ static void fillIgatePositionParams(beacon_params_t *p) {
         memcpy(p->symbol, g_config.igate_symbol, sizeof(p->symbol));
         memcpy(p->comment, g_config.igate_comment, sizeof(p->comment));
         memcpy(p->pathPreset, g_config.path, sizeof(p->pathPreset));
-        p->phgEnable = g_config.igate_phg_enable;
+        p->extEnable = g_config.igate_phg_enable;
+        p->extType = g_config.igate_ext_type;
         p->phgPower = g_config.igate_phg_power;
         p->phgGain = g_config.igate_phg_gain;
         p->phgHeight = g_config.igate_phg_height;
         p->phgDir = g_config.igate_phg_dir;
+        p->rangeMiles = g_config.igate_range_miles;
+        p->dfsStrength = g_config.igate_dfs_strength;
+        p->ambiguity = g_config.pos_ambiguity;
     }
     app_config_unlock();
 }
@@ -677,6 +823,26 @@ int beacon_build_igate_position_packet(char *out, size_t out_max) {
     beacon_params_t p;
     fillIgatePositionParams(&p);
     return buildPositionPacket(&p, out, out_max);
+}
+
+int beacon_build_igate_status_packet(char *out, size_t out_max) {
+    // Same snapshot igateStatusService() takes, so the on-demand copy and the
+    // periodic status beacon are byte-for-byte identical.
+    status_params_t p = { 0 };
+    app_config_lock();
+    {
+        memcpy(p.call, g_config.aprs_mycall, sizeof(p.call));
+        p.ssid = g_config.aprs_ssid;
+        p.pathSel = g_config.igate_path;
+        memcpy(p.statusText, g_config.igate_status, sizeof(p.statusText));
+        memcpy(p.pathPreset, g_config.path, sizeof(p.pathPreset));
+        p.gridEnable = g_config.status_grid_en;
+        p.lat = g_config.igate_lat;
+        p.lon = g_config.igate_lon;
+        memcpy(p.symbol, g_config.igate_symbol, sizeof(p.symbol));
+    }
+    app_config_unlock();
+    return buildStatusPacket(&p, out, out_max);
 }
 
 // ---------------------------------------------------------------------------
@@ -692,7 +858,7 @@ static uint32_t digiBeaconService(void) {
 
     int64_t now = sched_mono_seconds();
     if (now >= s_digi_next_due) {
-        beacon_params_t p = { 0 }; // zero-init: Digipeater never sets phg*, so phgEnable must default false
+        beacon_params_t p = { 0 }; // zero-init: Digipeater carries no data extension, so extEnable must default false
         app_config_lock();
         {
             bool useDigi = g_config.digi_mycall[0] != 0;
@@ -705,6 +871,7 @@ static uint32_t digiBeaconService(void) {
             p.alt = g_config.digi_alt;
             p.sendAltitude = g_config.digi_alt != 0.0f;
             p.compress = g_config.digi_compress;
+            p.ambiguity = g_config.pos_ambiguity;
             memcpy(p.symbol, g_config.digi_symbol, sizeof(p.symbol));
             memcpy(p.comment, g_config.digi_comment, sizeof(p.comment));
             memcpy(p.pathPreset, g_config.path, sizeof(p.pathPreset));

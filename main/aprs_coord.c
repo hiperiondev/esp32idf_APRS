@@ -14,8 +14,9 @@
  *
  *     please contact their authors for more information.
  *
- * @brief Shared decimal-degrees -> APRS position field conversion, both
- * uncompressed and base-91 compressed. See aprs_coord.h.
+ * @brief Shared decimal-degrees -> APRS position field conversion:
+ * uncompressed (with optional position ambiguity), base-91 compressed, and
+ * Maidenhead grid locator. See aprs_coord.h.
  */
 
 #include "aprs_coord.h"
@@ -41,15 +42,103 @@ static void splitDegMin(float absVal, int *deg, float *min) {
 }
 
 void aprs_coord_format(float lat, float lon, char *latOut, size_t latMax, char *lonOut, size_t lonMax) {
+    aprs_coord_format_ambiguous(lat, lon, 0, latOut, latMax, lonOut, lonMax);
+}
+
+// Overwrites the `count` least significant minute digits of an already
+// formatted position field with spaces, skipping the decimal point that sits
+// between the whole minutes and their fraction. `digits` lists the field's
+// digit offsets from least to most significant (hundredths, tenths, units of
+// minutes, tens of minutes), which differ between the 8-byte latitude field
+// and the 9-byte longitude field. The field is written in place and its width
+// never changes - blanking a digit is exactly how APRS101 chapter 6 signals
+// reduced precision.
+static void blankMinuteDigits(char *field, size_t fieldLen, const uint8_t *digits, int count) {
+    for (int i = 0; i < count; i++) {
+        size_t pos = digits[i];
+        if (pos < fieldLen)
+            field[pos] = ' ';
+    }
+}
+
+void aprs_coord_format_ambiguous(float lat, float lon, uint8_t ambiguity, char *latOut, size_t latMax, char *lonOut, size_t lonMax) {
+    if (ambiguity > APRS_COORD_AMBIGUITY_MAX)
+        ambiguity = APRS_COORD_AMBIGUITY_MAX;
+
+    // Build both fields at full precision first, then blank digits. The
+    // rounding carry in splitDegMin() therefore still applies at every
+    // ambiguity level, so a coordinate that rounds up to the next degree is
+    // reported in that degree rather than in the one below it.
     int dLat;
     float mLat;
     splitDegMin(fabsf(lat), &dLat, &mLat);
-    snprintf(latOut, latMax, "%02d%05.2f%c", dLat, mLat, lat >= 0 ? 'N' : 'S');
 
     int dLon;
     float mLon;
     splitDegMin(fabsf(lon), &dLon, &mLon);
-    snprintf(lonOut, lonMax, "%03d%05.2f%c", dLon, mLon, lon >= 0 ? 'E' : 'W');
+
+    // "DDMM.mmN" and "DDDMM.mmE": assembled in local buffers of the exact
+    // on-air width so the digit offsets below are fixed regardless of what
+    // the caller's buffers can hold.
+    char latField[9];
+    char lonField[10];
+    snprintf(latField, sizeof(latField), "%02d%05.2f%c", dLat, mLat, lat >= 0 ? 'N' : 'S');
+    snprintf(lonField, sizeof(lonField), "%03d%05.2f%c", dLon, mLon, lon >= 0 ? 'E' : 'W');
+
+    if (ambiguity > 0) {
+        static const uint8_t latDigits[APRS_COORD_AMBIGUITY_MAX] = { 6, 5, 3, 2 };
+        static const uint8_t lonDigits[APRS_COORD_AMBIGUITY_MAX] = { 7, 6, 4, 3 };
+        blankMinuteDigits(latField, sizeof(latField) - 1, latDigits, ambiguity);
+        blankMinuteDigits(lonField, sizeof(lonField) - 1, lonDigits, ambiguity);
+    }
+
+    snprintf(latOut, latMax, "%s", latField);
+    snprintf(lonOut, lonMax, "%s", lonField);
+}
+
+void aprs_maidenhead_locator(float lat, float lon, char *out, size_t outMax) {
+    if (out == NULL || outMax == 0)
+        return;
+
+    // Shift into the all-positive Maidenhead domain: 0..180 degrees of
+    // latitude from the south pole, 0..360 degrees of longitude from the
+    // antimeridian. Clamping just inside the upper edge keeps a position
+    // exactly at the north pole or the antimeridian inside the last field
+    // ('R') instead of stepping one letter past the end of the alphabet.
+    double la = (double)lat + 90.0;
+    double lo = (double)lon + 180.0;
+    if (la < 0.0)
+        la = 0.0;
+    if (la > 179.999999)
+        la = 179.999999;
+    if (lo < 0.0)
+        lo = 0.0;
+    if (lo > 359.999999)
+        lo = 359.999999;
+
+    char field[APRS_MAIDENHEAD_BUF_SIZE];
+    // Field: 20 degrees of longitude / 10 degrees of latitude per letter.
+    field[0] = (char)('A' + (int)(lo / 20.0));
+    field[1] = (char)('A' + (int)(la / 10.0));
+    // Square: one tenth of a field, i.e. 2 degrees of longitude / 1 degree of
+    // latitude per digit.
+    lo -= 20.0 * (int)(lo / 20.0);
+    la -= 10.0 * (int)(la / 10.0);
+    field[2] = (char)('0' + (int)(lo / 2.0));
+    field[3] = (char)('0' + (int)la);
+    // Subsquare: one twenty-fourth of a square, i.e. 5 minutes of longitude /
+    // 2.5 minutes of latitude per letter.
+    lo -= 2.0 * (int)(lo / 2.0);
+    la -= (double)(int)la;
+    field[4] = (char)('A' + (int)(lo * 12.0));
+    field[5] = (char)('A' + (int)(la * 24.0));
+    field[6] = 0;
+
+    size_t n = APRS_MAIDENHEAD_LEN;
+    if (n > outMax - 1)
+        n = outMax - 1;
+    memcpy(out, field, n);
+    out[n] = 0;
 }
 
 // Encodes a non-negative integer as 4 base-91 digits (most significant

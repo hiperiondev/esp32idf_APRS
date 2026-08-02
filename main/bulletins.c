@@ -41,10 +41,11 @@
 
 static const char *TAG = "bulletins";
 
-// The APRS bulletin group id is a single character (BLN1..BLNn), and
-// build_info_field() emits it as one digit ('0' + n). Keep the count within a
-// single decimal digit so that assumption holds.
-_Static_assert(BULLETIN_COUNT <= 9, "BULLETIN_COUNT must stay a single digit for the BLNn addressee");
+// A bulletin slot with no identifier configured falls back to the digit of its
+// own slot number ('1' + index), which bulletins_build_addressee() emits as a
+// single character. Keep the count within a single decimal digit so that
+// fallback stays one character wide.
+_Static_assert(BULLETIN_COUNT <= 9, "BULLETIN_COUNT must stay a single digit for the default BLNn addressee");
 
 #define BULLETINS_PATH     "/storage/bulletins.json"
 #define BULLETINS_TMP_PATH "/storage/bulletins.json.tmp"
@@ -131,6 +132,14 @@ static bool load_locked(bulletins_t *out, bool *out_missing) {
             b->send_rf = cJSON_IsTrue(v);
             v = cJSON_GetObjectItem(o, "inet");
             b->send_inet = cJSON_IsTrue(v);
+            v = cJSON_GetObjectItem(o, "id");
+            if (cJSON_IsString(v) && v->valuestring && v->valuestring[0])
+                b->ident = v->valuestring[0];
+            v = cJSON_GetObjectItem(o, "grp");
+            if (cJSON_IsString(v) && v->valuestring) {
+                strncpy(b->group, v->valuestring, BULLETIN_GROUP_MAX);
+                b->group[BULLETIN_GROUP_MAX] = 0;
+            }
             v = cJSON_GetObjectItem(o, "text");
             if (cJSON_IsString(v) && v->valuestring) {
                 strncpy(b->text, v->valuestring, BULLETIN_TEXT_MAX);
@@ -174,6 +183,15 @@ static bool save_locked(const bulletins_t *in) {
         fprintf(f, "\"en\":%s,", b->enable ? "true" : "false");
         fprintf(f, "\"rf\":%s,", b->send_rf ? "true" : "false");
         fprintf(f, "\"inet\":%s,", b->send_inet ? "true" : "false");
+        char ident[2] = { b->ident, 0 };
+        char group[BULLETIN_GROUP_MAX + 1];
+        strncpy(group, b->group, BULLETIN_GROUP_MAX);
+        group[BULLETIN_GROUP_MAX] = 0;
+        fputs("\"id\":", f);
+        json_write_escaped(f, ident);
+        fputs(",\"grp\":", f);
+        json_write_escaped(f, group);
+        fputc(',', f);
         fputs("\"text\":", f);
         json_write_escaped(f, text);
         fprintf(f, ",\"int_s\":%u", (unsigned)b->interval_s);
@@ -295,31 +313,60 @@ static void resolve_source_call(char *out, size_t out_size) {
             *p -= 32;
 }
 
-// Builds the ":BLNx     :text" APRS message info field for bulletin index i.
-static void build_info_field(int idx, const char *text, char *out, size_t out_size) {
-    // APRS message addressee is exactly 9 chars, space-padded. Bulletin groups
-    // are BLN1..BLN5 here; no message number/ack is appended (bulletins never
-    // carry one). Built char-by-char rather than snprintf("BLN%d") so the
-    // group digit stays a single character (BULLETIN_COUNT <= 9) and the
-    // compiler's -Werror=format-truncation can't flag a worst-case %d.
+void bulletins_build_addressee(const bulletin_t *b, int idx, char *out, size_t out_size) {
+    if (out == NULL || out_size == 0)
+        return;
+
+    // APRS message addressee is exactly 9 chars, space-padded. Built
+    // char-by-char rather than through a format string so the identifier
+    // stays a single character whatever is stored, and the compiler's
+    // -Werror=format-truncation has no worst-case width to complain about.
     char addr[10];
     addr[0] = 'B';
     addr[1] = 'L';
     addr[2] = 'N';
-    addr[3] = (char)('0' + (idx + 1)); // idx 0..4 -> '1'..'5'
-    addr[4] = ' ';
-    addr[5] = ' ';
-    addr[6] = ' ';
-    addr[7] = ' ';
-    addr[8] = ' ';
+
+    char id = b->ident;
+    if (id >= 'a' && id <= 'z')
+        id = (char)(id - 32);
+    bool announcement = (id >= 'A' && id <= 'Z');
+    bool bulletin = (id >= '0' && id <= '9');
+    if (!announcement && !bulletin) {
+        id = (char)('0' + (idx + 1)); // idx 0..8 -> '1'..'9'
+        bulletin = true;
+    }
+    addr[3] = id;
+
+    size_t n = 4;
+    // Only numbered bulletins carry a group name: an announcement's identifier
+    // letter already occupies the whole discriminator field in APRS101.
+    if (bulletin) {
+        for (size_t i = 0; i < BULLETIN_GROUP_MAX && b->group[i] && n < 9; i++) {
+            char c = b->group[i];
+            if (c >= 'a' && c <= 'z')
+                c = (char)(c - 32);
+            if ((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9'))
+                addr[n++] = c;
+        }
+    }
+    while (n < 9)
+        addr[n++] = ' ';
     addr[9] = 0;
 
+    snprintf(out, out_size, "%s", addr);
+}
+
+// Builds the ":BLNx     :text" APRS message info field for bulletin index i.
+static void build_info_field(int idx, const bulletin_t *b, const char *text, char *out, size_t out_size) {
+    // No message number/ack is appended: bulletins never carry one.
+    char addr[10];
+    bulletins_build_addressee(b, idx, addr, sizeof(addr));
     snprintf(out, out_size, ":%s:%s", addr, text);
 }
 
 static void tx_one(int idx, const bulletin_t *b, const char *src) {
     char info[128];
-    build_info_field(idx, b->text, info, sizeof(info));
+    build_info_field(idx, b, b->text, info, sizeof(info));
 
     if (b->send_rf) {
         // Sent direct (no digipeater path). Bulletins here intentionally carry

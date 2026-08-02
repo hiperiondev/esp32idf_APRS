@@ -7,6 +7,7 @@ idf_component_register(
     REQUIRES
         esp_timer
         igate
+        lastheard
         message
         main
 )

@@ -929,12 +929,34 @@ static uint32_t s_cur_interval[OBJITEM_COUNT] = { 0 };
 static uint8_t s_path_rot[OBJITEM_COUNT] = { 0 };
 static uint32_t s_sig[OBJITEM_COUNT] = { 0 };
 
+// Raised by objitems_request_transmit_all() from whichever task handled the
+// query, consumed by the scheduler task below. A plain flag is enough: the
+// only transition another task performs is false -> true, and the worst
+// outcome of the two racing is one extra round of transmissions.
+static volatile bool s_tx_all_requested = false;
+
+void objitems_request_transmit_all(void) {
+    s_tx_all_requested = true;
+}
+
 uint32_t objitems_service(void) {
     // One-time settle delay after boot before the first transmit pass.
     static bool started = false;
     if (!started) {
         started = true;
         return OBJITEM_START_DELAY_S;
+    }
+
+    // An on-demand re-announcement makes every element due right now; the
+    // per-element loop below then transmits and re-schedules them exactly as
+    // it does for a normally-due element, so the elements' own intervals pick
+    // up again from this transmission.
+    bool txAll = s_tx_all_requested;
+    if (txAll) {
+        s_tx_all_requested = false;
+        for (int i = 0; i < OBJITEM_COUNT; i++)
+            s_next_due[i] = 0;
+        ESP_LOGI(TAG, "On-demand transmission of all Objects/Items requested");
     }
 
     objitems_t set;

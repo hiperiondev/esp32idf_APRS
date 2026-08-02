@@ -81,6 +81,26 @@ int digiProcess(ax25_msg_t *packet) {
         return 0;
     }
 
+    // Duplicate suppression (APRS101: a digipeater ignores a frame it has
+    // already seen within roughly the last 30 seconds). The window is keyed on
+    // the source address and the information field only - never on the path -
+    // so every copy of one transmission looks the same here no matter which
+    // route it arrived by. That is what stops a pair of digipeaters inside
+    // each other's coverage from bouncing the same frame back and forth, and
+    // what absorbs an RF echo of a frame this station has just repeated
+    // itself.
+    //
+    // The test runs before any path work so that a duplicate costs nothing and
+    // leaves the caller's frame untouched. DUP_SCOPE_DIGI keeps this window
+    // separate from the IGate's own RF->INET window, which sees the very same
+    // frames from the same RX dispatch.
+    if (isDuplicatePacketScoped(packet, DUP_SCOPE_DIGI)) {
+        s_stats.dupPkts++;
+        s_stats.dropRx++;
+        igate_note_drop(DROP_DIGI_DUPLICATE);
+        return 0;
+    }
+
     // Destination SSID trace (WIDEn-N encoded in the dest SSID field).
     //
     // ax25_decode() already shifts the raw address octet down into a plain

@@ -29,8 +29,25 @@
 
 #include "ax25.h"
 
-#define DUP_PACKET_CACHE_SIZE 10    /**< Number of recent frames kept for duplicate suppression. */
+#define DUP_PACKET_CACHE_SIZE 20    /**< Number of recent frames kept for duplicate suppression, shared by every ::dup_scope_t. */
 #define DUP_PACKET_TIMEOUT_MS 30000 /**< Duplicate-suppression window, in milliseconds (30 s). */
+
+/**
+ * @brief Which consumer a duplicate-suppression lookup belongs to.
+ *
+ * The IGate (RF->INET) and the digipeater (RF->RF) both need their own 30 s
+ * view of "have I already handled this frame", and they see the same frames:
+ * a single shared window would let whichever ran first consume the frame and
+ * make the other one treat it as a duplicate. Entries therefore carry the
+ * scope that inserted them and only ever match a lookup from that same scope,
+ * so the two windows are independent while still sharing one table and one
+ * expiry sweep.
+ */
+typedef enum {
+    DUP_SCOPE_IGATE = 0, /**< IGate RF->INET gating window. */
+    DUP_SCOPE_DIGI,      /**< Digipeater RF->RF repeat window. */
+    DUP_SCOPE_COUNT
+} dup_scope_t;
 
 /**
  * @brief IGate traffic counters (snapshot by igate_get_stats()).
@@ -68,6 +85,7 @@ typedef enum {
     DROP_DIGI_PATH_FULL,     /**< Digipeater: path already at the AX.25 maximum (8) repeater addresses; inserting our call would overflow rpt_list/rpt_flags. */
     DROP_DIGI_NO_PATH,       /**< Digipeater: destination-SSID trace decoded to no usable WIDEn-N path. */
     DROP_DIGI_PATH_TOKEN,    /**< Digipeater: path carries qA or TCP (already gated, not for RF repeat). */
+    DROP_DIGI_DUPLICATE,     /**< Digipeater: another copy of this frame was already repeated within ::DUP_PACKET_TIMEOUT_MS (see isDuplicatePacketScoped()). */
     DROP_PERSISTENCE_MISSED, /**< CSMA/p-persistent roll missed MAX_TRANSMIT_RETRY_COUNT times in a row on an otherwise-clear channel; the modem's
                                 anti-starvation floor forced the transmission anyway (see Ax25TransmitCheck() in ax25.c). */
     DROP_REASON_COUNT
@@ -156,8 +174,26 @@ void igate_stop(void);
 int igateProcess(ax25_msg_t *packet);
 
 /**
- * @brief Duplicate-packet check only (exposed for reuse by other components,
- * e.g. digipeater wanting to avoid re-announcing the same frame).
+ * @brief Duplicate-packet check within one ::dup_scope_t window.
+ *
+ * Hashes @p packet (source callsign+SSID, payload length and a bidirectional
+ * CRC-CCITT of the whole info field) and looks that hash up among the entries
+ * inserted by the same scope inside the last ::DUP_PACKET_TIMEOUT_MS. A miss
+ * inserts the hash, so the next copy of the same frame reaching the same scope
+ * is reported as a duplicate.
+ *
+ * The lookup only reads the source address and the info field, both of which
+ * are untouched by digipeat path rewriting, so a frame stays recognizable as
+ * the same frame no matter which route the copies took to get here.
+ *
+ * @param packet Decoded frame to test.
+ * @param scope  Which consumer's window to test and insert into.
+ * @return true if @p packet matches a frame that scope has recently seen.
+ */
+bool isDuplicatePacketScoped(ax25_msg_t *packet, dup_scope_t scope);
+
+/**
+ * @brief Duplicate-packet check in the ::DUP_SCOPE_IGATE window.
  * @param packet Decoded frame to test.
  * @return true if @p packet matches a recently seen frame (a duplicate).
  */
