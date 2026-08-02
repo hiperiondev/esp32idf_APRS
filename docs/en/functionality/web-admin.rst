@@ -74,6 +74,10 @@ The pages
    * - **Message**
      - Configures the messaging engine (RF/INET enable, retry, encryption,
        alarm GPIO).
+   * - **Query**
+     - APRS query responder enable, RF/INET, broadcast query types
+       (``?APRS?``, and where built, ``?WX?``/``?IGATE?``), directed-query
+       enable, minimum reply interval (airtime/loop safety floor).
    * - **Radio / Modem**
      - FX.25 toggle; audio modem enable, modulation (300 / 1200 Bell202 / 1200
        V.23 / 9600 G3RUH), audio LPF (flat audio), preamble ms, TX time slot ms,

@@ -78,6 +78,11 @@ Le pagine
    * - **Message**
      - Configura il motore di messaggistica (abilitazione RF/INET, ritentativo,
        cifratura, GPIO di allarme).
+   * - **Query**
+     - Abilitazione del risponditore di query APRS, RF/INET, tipi di query
+       broadcast (``?APRS?``, e dove compilati, ``?WX?``/``?IGATE?``),
+       abilitazione query dirette, intervallo minimo di risposta (soglia di
+       sicurezza contro loop/uso del canale).
    * - **Radio / Modem**
      - Interruttore FX.25; abilita modem audio, modulazione (300 / 1200 Bell202 /
        1200 V.23 / 9600 G3RUH), LPF audio (audio piatto), ms di preambolo, ms di

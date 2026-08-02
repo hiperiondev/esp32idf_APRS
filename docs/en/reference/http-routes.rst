@@ -57,6 +57,10 @@ All require HTTP Basic auth except where noted.
      - ``/msg``
      - messaging engine config (RF/INET, retry, encryption)
    * - GET/POST
+     - ``/query``
+     - APRS query responder (``?APRS?``/``?WX?``/``?IGATE?``, directed
+       queries), rate-limit interval
+   * - GET/POST
      - ``/msgchat``
      - chat-style inbox/compose UI
    * - GET

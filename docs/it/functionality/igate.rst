@@ -128,10 +128,18 @@ Lo snapshot ``igate_stats_t`` (``igate_get_stats()``) porta:
      - **Tutte** le scritture sul socket: frame inoltrati, messaggi in uscita e
        invii "beacon a internet" del digi allo stesso modo.
    * - ``dropByReason[]``
-     - Contatori di scarto per-ragione (``DROP_TOO_SHORT``, ``DROP_PATH_TOKEN``,
+     - Contatori di scarto per-ragione, indicizzati da ``drop_reason_t``. Le
+       fasi RF→INET sopra coprono ``DROP_TOO_SHORT``, ``DROP_PATH_TOKEN``,
        ``DROP_SAT_NOT_USED``, ``DROP_TYPE_FILTER``, ``DROP_RANGE_FILTER``,
-       ``DROP_PREFIX_FILTER``, ``DROP_BUDLIST``, ``DROP_TX_FAIL``,
-       ``DROP_OTHER``). ``igate_stats_total_drop()`` li somma.
+       ``DROP_PREFIX_FILTER``, ``DROP_BUDLIST`` e ``DROP_TX_FAIL``; l'array
+       porta anche ragioni incrementate altrove nel firmware (percorso TX RF,
+       digipeater, decodifica AX.25) — vedere ``drop_reason_t`` in
+       ``components/igate/include/igate.h`` per l'elenco completo e
+       autorevole. Non esiste una ragione generica/opaca di "altro": ogni
+       scarto è attribuito a una causa specifica e nominata.
+       ``igate_stats_total_drop()`` somma le ragioni non di errore;
+       ``igate_stats_total_err()`` somma separatamente le due ragioni di
+       errore di decodifica/invio.
 
 ``igate_note_drop()`` è esposto così che altri componenti che condividono gli
 stessi concetti di filtraggio — attualmente il gestore INET→RF di

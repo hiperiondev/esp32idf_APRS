@@ -355,12 +355,16 @@ Oggetti, Item, Bollettini, Stato
      - 5 slot, testo/intervallo/scadenza propri, ``BLN1``-``BLN5``
    * - Report di stato (testo libero della stazione)
      - ✅
-     - ❌
-     - Non implementato come funzione distinta
+     - ✅
+     - Beacon di stato in testo libero per ruolo (DTI ``>``, APRS101 cap.16)
+       per tracker, IGate e digi, ciascuno con il proprio intervallo
+       (``*_sts_interval``) e testo (``*_status``); vedere ``main/beacon.c``
    * - Risposta a query (``?APRS?``, ``?WX?``, ecc.)
      - ⚠️
-     - ❌
-     - Non implementato
+     - ✅
+     - Query broadcast (``?APRS?``/``?WX?``/``?IGATE?``) e dirette
+       (``CALL:?query?``), con limitazione di frequenza; vedere il componente
+       ``query`` e la pagina *Query* del pannello web
 
 Mappatura / Visualizzazione
 -------------------------------

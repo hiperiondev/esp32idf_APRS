@@ -354,12 +354,16 @@ Objects, Items, Bulletins, Status
      - 5 slots, own text/interval/expiry, ``BLN1``-``BLN5``
    * - Status reports (own-station free text)
      - ✅
-     - ❌
-     - Not implemented as a distinct feature
+     - ✅
+     - Per-role free-text status beacon (DTI ``>``, APRS101 ch.16) for tracker,
+       IGate and digi, each with its own interval (``*_sts_interval``) and text
+       (``*_status``); see ``main/beacon.c``
    * - Query response (``?APRS?``, ``?WX?``, etc.)
      - ⚠️
-     - ❌
-     - Not implemented
+     - ✅
+     - Broadcast (``?APRS?``/``?WX?``/``?IGATE?``) and directed
+       (``CALL:?query?``) queries, rate-limited; see the ``query`` component
+       and the web admin's *Query* page
 
 Mapping / Visualization
 --------------------------

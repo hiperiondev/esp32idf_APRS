@@ -123,10 +123,17 @@ The ``igate_stats_t`` snapshot (``igate_get_stats()``) carries:
      - **All** socket writes: gatewayed frames, outbound messages, and digi
        "beacon to internet" sends alike.
    * - ``dropByReason[]``
-     - Per-reason drop counters (``DROP_TOO_SHORT``, ``DROP_PATH_TOKEN``,
+     - Per-reason drop counters, indexed by ``drop_reason_t``. The RF→INET
+       stages above cover ``DROP_TOO_SHORT``, ``DROP_PATH_TOKEN``,
        ``DROP_SAT_NOT_USED``, ``DROP_TYPE_FILTER``, ``DROP_RANGE_FILTER``,
-       ``DROP_PREFIX_FILTER``, ``DROP_BUDLIST``, ``DROP_TX_FAIL``,
-       ``DROP_OTHER``). ``igate_stats_total_drop()`` sums them.
+       ``DROP_PREFIX_FILTER``, ``DROP_BUDLIST`` and ``DROP_TX_FAIL``; the
+       array also carries reasons bumped elsewhere in the firmware (RF TX
+       path, digipeater, AX.25 decode) — see ``drop_reason_t`` in
+       ``components/igate/include/igate.h`` for the complete, authoritative
+       list. There is no generic/opaque catch-all reason: every drop is
+       attributed to a specific named cause. ``igate_stats_total_drop()`` sums
+       the non-error reasons; ``igate_stats_total_err()`` sums the two
+       decode/send error reasons separately.
 
 ``igate_note_drop()`` is exposed so other components sharing the same filtering
 concepts — currently ``aprs_service.c``'s INET→RF handler, for its type-filter

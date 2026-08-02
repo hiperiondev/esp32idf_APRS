@@ -12,7 +12,7 @@ Una única instancia ``app_config_t g_config`` (``main/app_config.c`` /
 y se edita campo a campo por los manejadores POST de la web. Sus campos se
 agrupan por página de la administración web: sistema/hora, identidad "My Station",
 Wi-Fi, IGate, Digipeater, Tracker, Weather, el módem AFSK, System/autenticación
-HTTP, y Message.
+HTTP, Message y Query.
 
 Los nombres de campo y las claves JSON se mantienen **1:1** con el ``config.h``/
 ``config.cpp`` del proyecto de referencia original, de modo que cada valor que
@@ -73,6 +73,7 @@ su entrada de barra lateral y su página de la imagen:
    ENABLE_STATION      ENABLE_RADIO_MODEM  ENABLE_MESSAGE      ENABLE_IGATE
    ENABLE_DIGIPEATER   ENABLE_TRACKER      ENABLE_WEATHER      ENABLE_TELEMETRY
    ENABLE_SYSTEM       ENABLE_WIRELESS     ENABLE_FILE_STORAGE ENABLE_ABOUT_FIRMWARE
+   ENABLE_QUERY
 
 **No** hay interruptor ``ENABLE_SENSORS``: el marco ``sensors_local`` no tiene
 deshabilitación en compilación y siempre se compila (sus controladores

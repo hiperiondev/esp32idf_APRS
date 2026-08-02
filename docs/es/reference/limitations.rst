@@ -355,12 +355,16 @@ Objetos, Items, Boletines, Estado
      - 5 ranuras, texto/intervalo/caducidad propios, ``BLN1``-``BLN5``
    * - Informes de estado (texto libre de la propia estación)
      - ✅
-     - ❌
-     - No implementado como función independiente
+     - ✅
+     - Baliza de estado en texto libre por rol (DTI ``>``, APRS101 cap.16) para
+       tracker, IGate y digi, cada una con su propio intervalo
+       (``*_sts_interval``) y texto (``*_status``); ver ``main/beacon.c``
    * - Respuesta a consultas (``?APRS?``, ``?WX?``, etc.)
      - ⚠️
-     - ❌
-     - No implementado
+     - ✅
+     - Consultas broadcast (``?APRS?``/``?WX?``/``?IGATE?``) y dirigidas
+       (``CALL:?query?``), con limitación de tasa; ver el componente ``query``
+       y la página *Query* del panel web
 
 Mapeo / Visualización
 ------------------------

@@ -58,6 +58,10 @@ salvo donde se indica.
      - ``/msg``
      - config del motor de mensajería (RF/INET, reintento, cifrado)
    * - GET/POST
+     - ``/query``
+     - respondedor de consultas APRS (``?APRS?``/``?WX?``/``?IGATE?``,
+       consultas dirigidas), intervalo de limitación de tasa
+   * - GET/POST
      - ``/msgchat``
      - interfaz de bandeja/redacción estilo chat
    * - GET

@@ -11,7 +11,7 @@ A single ``app_config_t g_config`` instance (``main/app_config.c`` /
 ``app_config.h``) is the live copy every subsystem reads. It is loaded at boot
 and edited field-by-field by the web POST handlers. Its fields are grouped by
 web-admin page: system/time, "My Station" identity, Wi-Fi, IGate, Digipeater,
-Tracker, Weather, the AFSK modem, System/HTTP auth, and Message.
+Tracker, Weather, the AFSK modem, System/HTTP auth, Message and Query.
 
 Field names and JSON keys are kept **1:1** with the original reference project's
 ``config.h``/``config.cpp``, so every value the web admin shows has a home and
@@ -70,6 +70,7 @@ removes its sidebar entry and its page from the image:
    ENABLE_STATION      ENABLE_RADIO_MODEM  ENABLE_MESSAGE      ENABLE_IGATE
    ENABLE_DIGIPEATER   ENABLE_TRACKER      ENABLE_WEATHER      ENABLE_TELEMETRY
    ENABLE_SYSTEM       ENABLE_WIRELESS     ENABLE_FILE_STORAGE ENABLE_ABOUT_FIRMWARE
+   ENABLE_QUERY
 
 There is **no** ``ENABLE_SENSORS`` switch: the ``sensors_local`` framework has no
 compile-time disable and is always built in (its individual drivers are gated by
