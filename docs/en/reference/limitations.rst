@@ -383,7 +383,7 @@ Mapping / Visualization
    * - Symbol/icon rendering per APRS symbol table
      - ✅
      - ⚠️
-     - Symbol picker exists for configuring own beacons/objects; Last-Heard shows symbol icons, but only for non-timestamped ``!``/``=`` formats — ``/``/``@`` (timestamped) positions leave the icon blank
+     - Symbol picker exists for configuring own beacons/objects; Last-Heard and the Traffic Log show symbol icons for all four uncompressed position formats (``!``/``=`` and timestamped ``/``/``@``, see ``aprs_extract_symbol()`` in ``main/aprs_coord.c``). Base-91 compressed position format and Object/Item (``;``/``)``) reports are not yet parsed for their symbol, so those still show a blank icon
    * - Track/history playback
      - ✅ (desktop clients)
      - ❌

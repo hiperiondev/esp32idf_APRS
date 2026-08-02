@@ -30,6 +30,7 @@
 #include "freertos/task.h"
 
 #include "app_config.h"
+#include "aprs_coord.h"
 #include "aprs_filter.h"
 #include "crc_ccit.h"
 #include "igate.h"
@@ -755,18 +756,16 @@ static void igateTask(void *arg) {
 
                                 // Position/object/item reports start their info
                                 // field (right after the first ':') with one of
-                                // !=/@; the next two bytes are the symbol table
-                                // and symbol code. Only the no-timestamp formats
-                                // ('!'/'=') are handled here, same as elsewhere.
+                                // !=/@; the symbol table and symbol code follow
+                                // the latitude/longitude fields. Handles both
+                                // no-timestamp ('!'/'=') and timestamped
+                                // ('/'/'@') formats - see aprs_extract_symbol().
                                 char symTable = 0, symCode = 0;
                                 const char *colon = strchr(line, ':');
                                 if (colon) {
                                     const char *info = colon + 1;
                                     size_t infoLen = strlen(info);
-                                    if ((info[0] == '!' || info[0] == '=') && infoLen >= 20) {
-                                        symTable = info[9];
-                                        symCode = info[19];
-                                    }
+                                    aprs_extract_symbol(info, infoLen, &symTable, &symCode);
                                 }
 
                                 trafficlog_add_pkt("RX-IS", dx, line, -1, symTable, symCode);

@@ -145,3 +145,26 @@ void aprs_compressed_cs_from_course_speed(unsigned course_deg, unsigned speed_kn
     out[1] = (char)('!' + sDigit);
     out[2] = 'C'; // compression type: compressed Course/Speed, current GPS fix, no NMEA source, no compression origin flag
 }
+
+bool aprs_extract_symbol(const char *info, size_t infoLen, char *symTable, char *symCode) {
+    if (!info || !symTable || !symCode || infoLen == 0)
+        return false;
+
+    // Position reports start with one of !=/@; '/' and '@' additionally
+    // carry a fixed 7-byte DHM/HMS timestamp between the DTI and the
+    // 8-byte latitude field, shifting every following offset by 7 bytes
+    // relative to the no-timestamp forms. See APRS101 chapters 5 and 8.
+    bool hasTimestamp = (info[0] == '/' || info[0] == '@');
+    bool isPosition = (info[0] == '!' || info[0] == '=' || hasTimestamp);
+    if (!isPosition)
+        return false;
+
+    size_t tsShift = hasTimestamp ? 7 : 0;
+    size_t minLen = 20 + tsShift; // DTI[1] + [timestamp[7]] + lat[8] + symtable[1] + lon[9] + symcode[1]
+    if (infoLen < minLen)
+        return false;
+
+    *symTable = info[9 + tsShift];
+    *symCode = info[19 + tsShift];
+    return true;
+}

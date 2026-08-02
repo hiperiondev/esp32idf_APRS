@@ -384,7 +384,7 @@ Mappatura / Visualizzazione
    * - Rendering di simboli/icone secondo la tabella dei simboli APRS
      - ✅
      - ⚠️
-     - Esiste un selettore di simbolo per configurare beacon/oggetti propri; Last-Heard mostra le icone dei simboli, ma solo per i formati senza timestamp ``!``/``=`` — ``/``/``@`` (con timestamp) lasciano l'icona vuota
+     - Esiste un selettore di simbolo per configurare beacon/oggetti propri; Last-Heard e il Traffic Log mostrano le icone dei simboli per tutti e quattro i formati di posizione non compressi (``!``/``=`` e, con timestamp, ``/``/``@``; vedere ``aprs_extract_symbol()`` in ``main/aprs_coord.c``). Il formato di posizione compresso Base-91 e i report Object/Item (``;``/``)``) non vengono ancora analizzati per il simbolo, quindi in questi casi l'icona resta vuota
    * - Riproduzione dello storico delle tracce
      - ✅ (client desktop)
      - ❌

@@ -384,7 +384,7 @@ Mapeo / Visualización
    * - Renderizado de símbolos/iconos según la tabla de símbolos APRS
      - ✅
      - ⚠️
-     - Existe un selector de símbolo para configurar balizas/objetos propios; Last-Heard muestra iconos de símbolo, pero solo para formatos sin marca de tiempo ``!``/``=`` — ``/``/``@`` (con marca de tiempo) dejan el icono en blanco
+     - Existe un selector de símbolo para configurar balizas/objetos propios; Last-Heard y el Traffic Log muestran iconos de símbolo para los cuatro formatos de posición sin comprimir (``!``/``=`` y, con marca de tiempo, ``/``/``@``; ver ``aprs_extract_symbol()`` en ``main/aprs_coord.c``). El formato de posición comprimido Base-91 y los reportes de Objeto/Ítem (``;``/``)``) aún no se analizan para su símbolo, por lo que en esos casos el icono sigue en blanco
    * - Reproducción de historial de trazas
      - ✅ (clientes de escritorio)
      - ❌

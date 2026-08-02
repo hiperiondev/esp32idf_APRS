@@ -35,6 +35,7 @@
 #include "modem.h"
 
 #include "app_config.h"
+#include "aprs_coord.h"
 #include "aprs_filter.h"
 #include "aprs_service.h"
 #include "beacon.h"
@@ -409,15 +410,11 @@ static void aprs_msg_callback(ax25_msg_t *msg) {
         snprintf(callsign, sizeof(callsign), "%s", msg->src.call);
 
     // Position/object/item reports start their info field with one of
-    // !=/@; the next two bytes are the symbol table and symbol code.
-    // Only handle the no-timestamp position formats ('!' / '=') here;
-    // '/' and '@' carry a 7-byte timestamp before the position and are
-    // left unparsed (icon stays blank for those).
+    // !=/@; the symbol table and symbol code follow the latitude/longitude
+    // fields. Handles both no-timestamp ('!'/'=') and timestamped ('/'/'@')
+    // position formats - see aprs_extract_symbol() for the offset math.
     char symTable = 0, symCode = 0;
-    if ((msg->info[0] == '!' || msg->info[0] == '=') && msg->len >= 20) {
-        symTable = msg->info[9];
-        symCode = msg->info[19];
-    }
+    aprs_extract_symbol((const char *)msg->info, msg->len, &symTable, &symCode);
 
     // Log every decoded RF frame so the web traffic viewer mirrors what the
     // serial console shows for RF activity, regardless of which
@@ -633,10 +630,7 @@ static void inet2rfHandler(const char *line) {
 
             const char *info = colon + 1;
             size_t infoLen = strlen(info);
-            if ((info[0] == '!' || info[0] == '=') && infoLen >= 20) {
-                symTable = info[9];
-                symCode = info[19];
-            }
+            aprs_extract_symbol(info, infoLen, &symTable, &symCode);
 
             lastheard_add(callsign, path, false, symTable, symCode);
         }
