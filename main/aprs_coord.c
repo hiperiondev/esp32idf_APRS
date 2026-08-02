@@ -235,25 +235,83 @@ void aprs_compressed_cs_from_course_speed(unsigned course_deg, unsigned speed_kn
     out[2] = 'C'; // compression type: compressed Course/Speed, current GPS fix, no NMEA source, no compression origin flag
 }
 
+// Reads the symbol table byte and symbol code out of a position field that
+// starts at offset `posStart` within info, handling both position layouts
+// defined by APRS101 chapter 9: the base-91 compressed field (symbol table
+// byte immediately followed by 4 compressed-latitude digits, 4
+// compressed-longitude digits, then the symbol code) and the uncompressed
+// field (8-byte latitude, symbol table byte, 9-byte longitude, symbol code).
+// The two are told apart by the byte at posStart: an uncompressed latitude
+// always starts with a decimal digit, while a compressed field always starts
+// with the symbol table byte itself, which is '/' (primary table) or '\'
+// (alternate table) in every compressed report this project transmits or is
+// expected to gate, matching the heuristic used by other open-source APRS
+// decoders. Compressed reports using a digit/letter overlay character in
+// place of '/' or '\' are not distinguishable from an uncompressed field by
+// this byte alone and are left unrecognized, same as before this function
+// supported compressed positions at all.
+static bool aprsExtractPositionSymbol(const char *info, size_t infoLen, size_t posStart, char *symTable, char *symCode) {
+    if (posStart >= infoLen)
+        return false;
+
+    char first = info[posStart];
+    if (first == '/' || first == '\\') {
+        size_t symCodePos = posStart + 9; // symtable[1] + lat[4] + lon[4]
+        if (symCodePos >= infoLen)
+            return false;
+        *symTable = first;
+        *symCode = info[symCodePos];
+        return true;
+    }
+
+    size_t minLen = posStart + 19; // lat[8] + symtable[1] + lon[9] + symcode[1]
+    if (infoLen < minLen)
+        return false;
+
+    *symTable = info[posStart + 8];
+    *symCode = info[posStart + 18];
+    return true;
+}
+
 bool aprs_extract_symbol(const char *info, size_t infoLen, char *symTable, char *symCode) {
     if (!info || !symTable || !symCode || infoLen == 0)
         return false;
 
+    char dti = info[0];
+
     // Position reports start with one of !=/@; '/' and '@' additionally
     // carry a fixed 7-byte DHM/HMS timestamp between the DTI and the
-    // 8-byte latitude field, shifting every following offset by 7 bytes
-    // relative to the no-timestamp forms. See APRS101 chapters 5 and 8.
-    bool hasTimestamp = (info[0] == '/' || info[0] == '@');
-    bool isPosition = (info[0] == '!' || info[0] == '=' || hasTimestamp);
-    if (!isPosition)
-        return false;
+    // position field, shifting the position's start offset by 7 bytes
+    // relative to the no-timestamp forms. See APRS101 chapters 5, 8 and 9.
+    if (dti == '!' || dti == '=' || dti == '/' || dti == '@') {
+        bool hasTimestamp = (dti == '/' || dti == '@');
+        size_t posStart = hasTimestamp ? 8 : 1;
+        return aprsExtractPositionSymbol(info, infoLen, posStart, symTable, symCode);
+    }
 
-    size_t tsShift = hasTimestamp ? 7 : 0;
-    size_t minLen = 20 + tsShift; // DTI[1] + [timestamp[7]] + lat[8] + symtable[1] + lon[9] + symcode[1]
-    if (infoLen < minLen)
-        return false;
+    // Object report (APRS101 chapter 11): ';' + 9-byte name + 1-byte
+    // live('*')/killed('_') flag + 7-byte DHM timestamp + position field.
+    // The name and flag are fixed width, so the position always starts at a
+    // fixed offset regardless of the object's actual name.
+    if (dti == ';') {
+        size_t posStart = 1 + 9 + 1 + 7;
+        return aprsExtractPositionSymbol(info, infoLen, posStart, symTable, symCode);
+    }
 
-    *symTable = info[9 + tsShift];
-    *symCode = info[19 + tsShift];
-    return true;
+    // Item report (APRS101 chapter 11): ')' + a 3-9 byte name + 1-byte
+    // live('!')/killed('_') flag + position field. The name has no fixed
+    // width, so its end is found by scanning for the flag byte instead.
+    if (dti == ')') {
+        for (size_t nameLen = 3; nameLen <= 9; nameLen++) {
+            size_t flagPos = 1 + nameLen;
+            if (flagPos >= infoLen)
+                return false;
+            char flag = info[flagPos];
+            if (flag == '!' || flag == '_')
+                return aprsExtractPositionSymbol(info, infoLen, flagPos + 1, symTable, symCode);
+        }
+        return false;
+    }
+
+    return false;
 }

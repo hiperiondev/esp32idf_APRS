@@ -423,8 +423,8 @@ Mapping / Visualization
      - Not implemented. The web admin has a Last-Heard table, not a map
    * - Symbol/icon rendering per APRS symbol table
      - ✅
-     - ⚠️
-     - Symbol picker exists for configuring own beacons/objects; Last-Heard and the Traffic Log show symbol icons for all four uncompressed position formats (``!``/``=`` and timestamped ``/``/``@``, see ``aprs_extract_symbol()`` in ``main/aprs_coord.c``). Base-91 compressed position format and Object/Item (``;``/``)``) reports are not yet parsed for their symbol, so those still show a blank icon
+     - ✅
+     - Symbol picker exists for configuring own beacons/objects; Last-Heard and the Traffic Log show symbol icons for position reports in both the uncompressed (``!``/``=`` and timestamped ``/``/``@``) and Base-91 compressed formats, and for Object (``;``) and Item (``)``) reports carrying either position layout (see ``aprs_extract_symbol()`` in ``main/aprs_coord.c``)
    * - Track/history playback
      - ✅ (desktop clients)
      - ❌

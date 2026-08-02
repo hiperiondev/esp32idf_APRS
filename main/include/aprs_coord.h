@@ -161,18 +161,23 @@ void aprs_compressed_cs_from_course_speed(unsigned course_deg, unsigned speed_kn
 
 /**
  * @brief Extract the symbol table identifier and symbol code from a
- * standard (uncompressed, non-Mic-E) APRS position/object/item info field,
- * for any of the four position Data Type Identifiers: '!' and '=' (no
- * timestamp) or '/' and '@' (7-byte DHM/HMS timestamp between the DTI and
- * the latitude). Per APRS101, the symbol table byte always follows the
- * 8-byte latitude field and the symbol code always follows the 9-byte
- * longitude field, regardless of whether a timestamp is present - a
- * timestamped DTI just shifts both offsets 7 bytes to the right.
+ * (non-Mic-E) APRS position/object/item info field, covering:
  *
- * Does not handle Base-91 compressed position format (where the symbol
- * table byte comes immediately after the DTI/timestamp instead) or
- * Object/Item reports (';'/')' DTIs, which carry a fixed-width name field
- * before the timestamp+position).
+ *   - Position reports: '!' and '=' (no timestamp) or '/' and '@' (7-byte
+ *     DHM/HMS timestamp between the DTI and the position field).
+ *   - Object reports (';' DTI, APRS101 chapter 11): 9-byte name, 1-byte
+ *     live('*')/killed('_') flag, 7-byte DHM timestamp, then the position
+ *     field.
+ *   - Item reports (')' DTI, APRS101 chapter 11): 3-9 byte name terminated
+ *     by a 1-byte live('!')/killed('_') flag, then the position field.
+ *
+ * Each of those ends in a position field in either of the two layouts
+ * defined by APRS101 chapter 9: the uncompressed "DDMM.mmN/DDDMM.mmW" pair
+ * (symbol table byte after the 8-byte latitude, symbol code after the
+ * 9-byte longitude) or the base-91 compressed field (symbol table byte
+ * immediately at the start of the field, symbol code 9 bytes later). The
+ * two position layouts are told apart by the first byte of the field: a
+ * decimal digit means uncompressed, '/' or '\\' means compressed.
  *
  * @param info Pointer to the start of the AX.25/TNC2 Information field
  *        (i.e. starting at the DTI byte itself).
@@ -183,10 +188,11 @@ void aprs_compressed_cs_from_course_speed(unsigned course_deg, unsigned speed_kn
  *        untouched on failure.
  * @param symCode Out param: set to the symbol code byte on success, left
  *        untouched on failure.
- * @return true if info is a recognized non-timestamped or timestamped
- *         uncompressed position DTI and long enough to contain the symbol
- *         pair; false otherwise (symTable/symCode are left untouched, so
- *         callers should zero-initialize them before calling).
+ * @return true if info is a recognized position/object/item DTI, in either
+ *         the compressed or uncompressed position layout, and long enough
+ *         to contain the symbol pair; false otherwise (symTable/symCode are
+ *         left untouched, so callers should zero-initialize them before
+ *         calling).
  */
 bool aprs_extract_symbol(const char *info, size_t infoLen, char *symTable, char *symCode);
 

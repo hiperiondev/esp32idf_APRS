@@ -429,8 +429,8 @@ Mappatura / Visualizzazione
      - Non implementato. L'amministrazione web ha una tabella Last-Heard, non una mappa
    * - Rendering di simboli/icone secondo la tabella dei simboli APRS
      - ✅
-     - ⚠️
-     - Esiste un selettore di simbolo per configurare beacon/oggetti propri; Last-Heard e il Traffic Log mostrano le icone dei simboli per tutti e quattro i formati di posizione non compressi (``!``/``=`` e, con timestamp, ``/``/``@``; vedere ``aprs_extract_symbol()`` in ``main/aprs_coord.c``). Il formato di posizione compresso Base-91 e i report Object/Item (``;``/``)``) non vengono ancora analizzati per il simbolo, quindi in questi casi l'icona resta vuota
+     - ✅
+     - Esiste un selettore di simbolo per configurare beacon/oggetti propri; Last-Heard e il Traffic Log mostrano le icone dei simboli sia per i report di posizione non compressi (``!``/``=`` e, con timestamp, ``/``/``@``) sia per il formato compresso Base-91, e anche per i report Object (``;``) e Item (``)``) con entrambi i formati di posizione (vedere ``aprs_extract_symbol()`` in ``main/aprs_coord.c``)
    * - Riproduzione dello storico delle tracce
      - ✅ (client desktop)
      - ❌
