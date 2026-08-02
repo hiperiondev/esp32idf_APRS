@@ -57,8 +57,8 @@ Las páginas
        baliza, retardo, filtro.
    * - **Tracker**
      - Habilitar tracker, indicativo/SSID, intervalo fijo, posición, símbolo
-       (en movimiento/parado), comentario, opciones de posición comprimida y
-       altitud.
+       (en movimiento/parado), comentario, opciones de posición comprimida,
+       posición Mic-E y altitud.
    * - **Weather**
      - Habilitar, enviar-por-RF/-INET, marca de tiempo, indicativo/SSID/ruta WX,
        posición, nombre de objeto, comentario, casillas *Averaged* por campo, y

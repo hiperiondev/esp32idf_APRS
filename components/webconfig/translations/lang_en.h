@@ -161,6 +161,7 @@
 #define TR_F_MESSAGE                                       "Message"
 #define TR_F_MESSAGE_ALARM_ENABLE                          "Enable Message Alarm"
 #define TR_F_MESSAGE_ALARM_PIN                             "Message Alarm pin"
+#define TR_F_MICE_POSITION                                 "Mic-E position encoding"
 #define TR_F_MODE                                          "Mode"
 #define TR_F_MY_CALLSIGN                                   "My Callsign"
 #define TR_USE_MY_STATION_DATA                             "Use My Station Data"

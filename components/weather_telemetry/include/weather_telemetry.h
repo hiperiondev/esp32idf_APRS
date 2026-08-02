@@ -1003,6 +1003,48 @@ typedef struct {
 bool aprs_mice_decode(const char *dst_call, const char *info, size_t info_len, aprs_mice_report_t *out);
 
 /**
+ * @brief Encode a Mic-E position report (APRS101 Chapter 10) from @p report,
+ *        the inverse of ::aprs_mice_decode.
+ *
+ * As with decoding, the Mic-E payload is split across two outputs: the
+ * 6-character AX.25 destination address field (latitude, message code,
+ * N/S, longitude-offset and W/E flag bits) and the AX.25 information field
+ * (Data Type Identifier, longitude, course, speed, symbol and an optional
+ * status text). The caller is responsible for placing @p dst_call_out where
+ * the destination address of the outgoing AX.25/TNC2 frame is built, and
+ * @p info_out where the frame's information field is built.
+ *
+ * @param report Report to encode. @c report->course_speed.is_unknown selects
+ *               the on-air "unknown" course/speed pattern (0/0) regardless
+ *               of the numeric fields; @c report->position.has_altitude
+ *               takes priority over @c report->has_status_text when both
+ *               are set, matching the field's on-air layout, which can
+ *               carry only one of the two.
+ * @param dst_call_out Buffer for the 6-character destination address field,
+ *                      NUL-terminated on success; must be at least 7 bytes.
+ * @param info_out Buffer for the NUL-terminated information field, starting
+ *                  at the Mic-E Data Type Identifier byte (`` ` `` if no
+ *                  status text is emitted, `'` otherwise, matching the two
+ *                  DTIs current mobile/portable Mic-E sources use).
+ * @param info_out_max Size of @p info_out in bytes; must be at least 10 to
+ *                      hold the fixed 9-byte report plus its NUL terminator.
+ * @return true if @p report encodes to a well-formed Mic-E report; false on
+ *         invalid input (out-of-range position, undersized output buffer)
+ *         without writing partial data to either output.
+ *
+ * @note Only the Standard message alphabet is ever emitted (never the
+ *       Custom alphabet), matching every current mobile/portable Mic-E
+ *       source (Kenwood D7/D700/D710, Yaesu VX-8/FTM-350/400D).
+ *       @c report->is_custom_message is therefore ignored;
+ *       ::APRS_MICE_MSG_UNKNOWN, which has no on-air representation of its
+ *       own, encodes as ::APRS_MICE_MSG_OFF_DUTY. This encoder does not
+ *       generate the separate, legacy Mic-E Telemetry sub-format (APRS101
+ *       Chapter 10, "Mic-E Telemetry Data"); @c report->has_telemetry is
+ *       ignored.
+ */
+bool aprs_mice_encode(const aprs_mice_report_t *report, char *dst_call_out, char *info_out, size_t info_out_max);
+
+/**
  * @brief Discriminator for the top-level decoded-packet union, mirroring
  *        the Data Type Identifier of the underlying AX.25 Information
  *        field, restricted to the packet kinds modeled by this header.

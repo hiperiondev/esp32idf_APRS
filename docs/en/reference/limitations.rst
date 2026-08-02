@@ -222,8 +222,8 @@ Tracking / Beaconing
      - Tracker page offers a compressed-position option; decoder also understands it
    * - Mic-E position encoding (TX)
      - ⚠️ (mostly mobile-tracker firmware)
-     - ❌
-     - Not generated; Mic-E frames can be received but their position isn't decodable from the info field for range-gating purposes
+     - ✅
+     - Tracker beacon page offers a Mic-E option (``aprs_mice_encode()``); fixed-position only, so course/speed is always sent as "unknown" and the message code is fixed at Off Duty
    * - PHG / power-height-gain-directivity
      - ✅
      - ✅

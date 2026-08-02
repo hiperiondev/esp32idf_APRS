@@ -79,10 +79,12 @@ position decodes to more than that many kilometres from "My Station"
 (``my_lat``/``my_lon``) is dropped. Distance is the great-circle
 (``aprs_filter_haversine_km()``) between the two points. Packets whose position
 cannot be decoded pass this check. ``aprs_filter_decode_position()`` supports
-both uncompressed (``DDMM.hhN/DDDMM.hhW``) and compressed base-91 layouts for
-the DTIs that carry a position in the info field (``!``/``=``, ``/``/``@``,
-``;`` object, ``)`` item). Mic-E reports carry position in the AX.25
-destination field and are not decodable from the info field alone.
+uncompressed (``DDMM.hhN/DDDMM.hhW``) and compressed base-91 layouts for the
+DTIs that carry a position in the info field alone (``!``/``=``, ``/``/``@``,
+``;`` object, ``)`` item), and Mic-E reports (`` ` ``/``'``/0x1c/0x1d), whose
+position is split between the info field and the AX.25 destination address
+field and is reassembled by ``aprs_mice_decode()`` before the same range
+check is applied.
 
 Local prefix gate (RF→INET)
 ===========================

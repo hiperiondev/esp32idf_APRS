@@ -202,6 +202,7 @@ void app_config_set_defaults(app_config_t *c) {
     c->trk_path = ACTIVATE_TRACKER;
     c->trk_interval = 60;
     c->trk_compress = false;
+    c->trk_mice = false;
     set_str(c->trk_symbol, sizeof(c->trk_symbol), "\\>");
     set_str(c->trk_symmove, sizeof(c->trk_symmove), "/>");
     set_str(c->trk_symstop, sizeof(c->trk_symstop), "\\>");
@@ -525,6 +526,7 @@ static void config_write_json(jw_t *d, const app_config_t *c) {
     jadd_num(d, "trkALT", c->trk_alt);
     jadd_num(d, "trkINV", c->trk_interval);
     jadd_bool(d, "trkCompress", c->trk_compress);
+    jadd_bool(d, "trkMice", c->trk_mice);
     jadd_bool(d, "trkOptAlt", c->trk_altitude);
     jadd_bool(d, "trkLog", c->trk_log);
     jadd_bool(d, "trkOptRSSI", c->trk_rssi);
@@ -793,6 +795,7 @@ static void config_from_json(cJSON *d, app_config_t *c) {
     c->trk_alt = (float)jget_num(d, "trkALT", def.trk_alt);
     c->trk_interval = (uint16_t)jget_num(d, "trkINV", def.trk_interval);
     c->trk_compress = jget_bool(d, "trkCompress", def.trk_compress);
+    c->trk_mice = jget_bool(d, "trkMice", def.trk_mice);
     c->trk_altitude = jget_bool(d, "trkOptAlt", def.trk_altitude);
     c->trk_log = jget_bool(d, "trkLog", def.trk_log);
     c->trk_rssi = jget_bool(d, "trkOptRSSI", def.trk_rssi);

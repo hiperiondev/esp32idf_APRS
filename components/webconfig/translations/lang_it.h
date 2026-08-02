@@ -162,6 +162,7 @@
 #define TR_F_MESSAGE                                       "Messaggio"
 #define TR_F_MESSAGE_ALARM_ENABLE                          "Abilita allarme messaggi"
 #define TR_F_MESSAGE_ALARM_PIN                             "Pin allarme messaggi"
+#define TR_F_MICE_POSITION                                 "Codifica posizione Mic-E"
 #define TR_F_MODE                                          "Modalità"
 #define TR_F_MY_CALLSIGN                                   "Mio nominativo"
 #define TR_USE_MY_STATION_DATA                             "Usa i dati della mia stazione"

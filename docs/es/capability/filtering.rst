@@ -80,11 +80,12 @@ cuya posición decodifica a más de esos kilómetros de "My Station"
 (``my_lat``/``my_lon``) se descarta. La distancia es el círculo máximo
 (``aprs_filter_haversine_km()``) entre los dos puntos. Los paquetes cuya posición
 no se puede decodificar pasan esta comprobación. ``aprs_filter_decode_position()``
-soporta tanto disposiciones sin comprimir (``DDMM.hhN/DDDMM.hhW``) como
-comprimidas base-91 para los DTIs que llevan una posición en el campo de
-información (``!``/``=``, ``/``/``@``, ``;`` objeto, ``)`` ítem). Los informes
-Mic-E llevan la posición en el campo de destino AX.25 y no son decodificables
-solo desde el campo de información.
+soporta disposiciones sin comprimir (``DDMM.hhN/DDDMM.hhW``) y comprimidas
+base-91 para los DTIs que llevan una posición únicamente en el campo de
+información (``!``/``=``, ``/``/``@``, ``;`` objeto, ``)`` ítem), además de los
+informes Mic-E (`` ` ``/``'``/0x1c/0x1d), cuya posición se reparte entre el
+campo de información y el campo de destino AX.25 y es reconstruida por
+``aprs_mice_decode()`` antes de aplicar la misma comprobación de rango.
 
 Guarda de prefijo local (RF→INET)
 =================================

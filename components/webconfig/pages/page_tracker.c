@@ -54,6 +54,7 @@ esp_err_t page_tracker_get(httpd_req_t *req) {
 
     web_fieldset_open(req, TR_F_OPTIONS);
     web_field_checkbox(req, TR_F_COMPRESS_POSITION, "trkCompress", g_config.trk_compress);
+    web_field_checkbox(req, TR_F_MICE_POSITION, "trkMice", g_config.trk_mice);
     web_field_checkbox(req, TR_F_INCLUDE_ALTITUDE, "trkOptAlt", g_config.trk_altitude);
     web_field_checkbox(req, TR_F_INCLUDE_RSSI, "trkOptRSSI", g_config.trk_rssi);
     web_field_checkbox(req, TR_F_LOG_TRACK, "trkLog", g_config.trk_log);
@@ -109,6 +110,7 @@ esp_err_t page_tracker_post(httpd_req_t *req) {
     g_config.trk_interval = (uint16_t)web_form_get_int(body, "trkINV", g_config.trk_interval);
 
     g_config.trk_compress = web_form_get_bool(body, "trkCompress");
+    g_config.trk_mice = web_form_get_bool(body, "trkMice");
     g_config.trk_altitude = web_form_get_bool(body, "trkOptAlt");
     g_config.trk_rssi = web_form_get_bool(body, "trkOptRSSI");
     g_config.trk_log = web_form_get_bool(body, "trkLog");

@@ -57,7 +57,8 @@ Le pagine
        beacon, ritardo, filtro.
    * - **Tracker**
      - Abilita tracker, indicativo/SSID, intervallo fisso, posizione, simbolo (in
-       movimento/fermo), commento, opzioni di posizione compressa e altitudine.
+       movimento/fermo), commento, opzioni di posizione compressa, posizione
+       Mic-E e altitudine.
    * - **Weather**
      - Abilita, invia-in-RF/-INET, timestamp, indicativo/SSID/percorso WX,
        posizione, nome oggetto, commento, caselle *Averaged* per campo, e — per

@@ -12,13 +12,14 @@
 //
 //     please contact their authors for more information.
 //
-// Decodes the Mic-E position report format (APRS101 Chapter 10): the AX.25
-// destination address field encodes latitude, the 3-bit message code and
-// the N/S, longitude-offset and W/E flag bits; the AX.25 information field
-// completes the report with longitude, course, speed, symbol and an
-// optional status text.
+// Decodes and encodes the Mic-E position report format (APRS101 Chapter 10):
+// the AX.25 destination address field encodes latitude, the 3-bit message
+// code and the N/S, longitude-offset and W/E flag bits; the AX.25
+// information field completes the report with longitude, course, speed,
+// symbol and an optional status text.
 
 #include <ctype.h>
+#include <math.h>
 #include <string.h>
 
 #include "weather_telemetry.h"
@@ -263,6 +264,244 @@ bool aprs_mice_decode(const char *dst_call, const char *info, size_t info_len, a
             out->position.has_altitude = true;
             out->position.altitude_ft = alt_ft;
         }
+    }
+
+    return true;
+}
+
+// Encodes one digit (0-9) or a blanked/space position (digit < 0) of a
+// Mic-E destination address byte, using the Standard alphabet ('P'-'Y',
+// 'Z' for space) when flag_bit is set, or the plain digit / 'L' (space,
+// flag bit 0) otherwise. This is the exact inverse of
+// mice_decode_dest_byte() restricted to the Standard alphabet, which is
+// what every current Mic-E encoder (Kenwood D7/D700/D710, Yaesu VX-8/
+// FTM-350/400D) uses for its own beacons; the Custom alphabet only ever
+// appears on receive, decoded for compatibility, and is never generated
+// here.
+static char mice_encode_dest_byte(int digit, bool flag_bit) {
+    if (digit < 0)
+        return flag_bit ? 'Z' : 'L';
+    return flag_bit ? (char)('P' + digit) : (char)('0' + digit);
+}
+
+// APRS101 Ch.10 "Mic-E Messages": inverse of mice_message_from_bits() for
+// the Standard alphabet. idx = 7 - message_code for the six Standard/
+// Custom codes (0-6); Emergency (7) always encodes as idx = 0 (all three
+// bits clear). aprs_mice_message_code_t's APRS_MICE_MSG_UNKNOWN has no
+// on-air representation of its own, so a caller passing it gets Off Duty
+// (idx = 7, the all-flag-bits-set pattern) instead of emitting an
+// undefined bit combination.
+static void mice_message_to_bits(aprs_mice_message_code_t code, bool *out_bitA, bool *out_bitB, bool *out_bitC) {
+    int idx;
+    if (code == APRS_MICE_MSG_EMERGENCY)
+        idx = 0;
+    else if (code >= APRS_MICE_MSG_OFF_DUTY && code <= APRS_MICE_MSG_PRIORITY)
+        idx = 7 - (int)code;
+    else
+        idx = 7; // APRS_MICE_MSG_UNKNOWN or any out-of-range value: fall back to Off Duty.
+
+    *out_bitA = (idx & 4) != 0;
+    *out_bitB = (idx & 2) != 0;
+    *out_bitC = (idx & 1) != 0;
+}
+
+// Altitude in the Mic-E Status Text Field (APRS101 Ch.10): inverse of
+// mice_status_altitude_ft(). Appends 3 base-91 digits plus a literal '}'
+// to the caller's status text buffer, encoding altitude in meters as
+// (c0*91*91 + c1*91 + c2) + 10000, each digit offset by '!' (33).
+// alt_ft is clamped to the representable range so an out-of-range
+// altitude never overflows the 3-digit field.
+static void mice_encode_status_altitude(int32_t alt_ft, char *out, size_t outMax) {
+    double meters = (double)alt_ft / 3.28084;
+    long val = (long)lround(meters) + 10000L;
+    if (val < 0)
+        val = 0;
+    const long maxVal = 91L * 91L * 91L - 1L;
+    if (val > maxVal)
+        val = maxVal;
+
+    char digits[4];
+    digits[0] = (char)(33 + (val / (91 * 91)) % 91);
+    digits[1] = (char)(33 + (val / 91) % 91);
+    digits[2] = (char)(33 + val % 91);
+    digits[3] = '}';
+
+    size_t len = strlen(out);
+    if (len + 4 < outMax) {
+        memcpy(out + len, digits, 4);
+        out[len + 4] = 0;
+    }
+}
+
+bool aprs_mice_encode(const aprs_mice_report_t *report, char *dst_call_out, char *info_out, size_t info_out_max) {
+    if (report == NULL || dst_call_out == NULL || info_out == NULL)
+        return false;
+
+    if (info_out_max < 10)
+        return false;
+
+    double lat = report->position.latitude_deg;
+    if (lat < -90.0 || lat > 90.0)
+        return false;
+    double lon = report->position.longitude_deg;
+    if (lon < -180.0 || lon > 180.0)
+        return false;
+    // Exactly +/-180 degrees (the antimeridian) has no valid destination-
+    // address byte under the Mic-E longitude encoding (APRS101 Ch.10): the
+    // 180-189 and 190-199 correction ranges only ever map back to 0-179
+    // degrees. Rejected explicitly rather than silently emitting a byte
+    // that decodes to a different longitude.
+    if (lon == 180.0 || lon == -180.0)
+        return false;
+
+    bool north = lat >= 0.0;
+    double lat_abs = north ? lat : -lat;
+    int lat_deg = (int)lat_abs;
+    double lat_min = (lat_abs - lat_deg) * 60.0;
+
+    // Round to hundredths of a minute first, same resolution as the on-air
+    // field, then split into the four destination-address digit pairs
+    // (minutes tens/units, hundredths tens/units) decoded by
+    // aprs_mice_decode(). A minutes value that rounds up to 60.00 carries
+    // into the next whole degree, keeping the encoded position valid.
+    int lat_hun_total = (int)lround(lat_min * 100.0);
+    if (lat_hun_total >= 6000) {
+        lat_hun_total -= 6000;
+        lat_deg += 1;
+    }
+    if (lat_deg > 90)
+        lat_deg = 90;
+
+    int lat_min_int = lat_hun_total / 100;
+    int lat_hun = lat_hun_total % 100;
+
+    int dig[6];
+    dig[0] = (lat_deg / 10) % 10;
+    dig[1] = lat_deg % 10;
+    dig[2] = (lat_min_int / 10) % 10;
+    dig[3] = lat_min_int % 10;
+    dig[4] = (lat_hun / 10) % 10;
+    dig[5] = lat_hun % 10;
+
+    // Position ambiguity (APRS101 Ch.10 "Mic-E Position Ambiguity"): blank
+    // out digits from the hundredths-of-a-minute byte (byte 6) backward,
+    // the same convention aprs_mice_decode() reads them with.
+    int blank_from = 6; // no blanking by default
+    switch (report->position.ambiguity) {
+        case APRS_AMBIGUITY_TENTH_MINUTE:
+            blank_from = 5;
+            break;
+        case APRS_AMBIGUITY_MINUTE:
+            blank_from = 4;
+            break;
+        case APRS_AMBIGUITY_TEN_MINUTES:
+            blank_from = 3;
+            break;
+        case APRS_AMBIGUITY_DEGREE:
+            blank_from = 2;
+            break;
+        case APRS_AMBIGUITY_NONE:
+        default:
+            blank_from = 6;
+            break;
+    }
+    for (int i = blank_from; i < 6; i++)
+        dig[i] = -1;
+
+    bool msgA, msgB, msgC;
+    mice_message_to_bits(report->message_code, &msgA, &msgB, &msgC);
+
+    bool west = lon < 0.0;
+    double lon_abs = west ? -lon : lon;
+    int lon_deg_full = (int)lon_abs;
+    double lon_min = (lon_abs - lon_deg_full) * 60.0;
+    int lon_hun_total = (int)lround(lon_min * 100.0);
+    if (lon_hun_total >= 6000) {
+        lon_hun_total -= 6000;
+        lon_deg_full += 1;
+    }
+    int lon_min_int = lon_hun_total / 100;
+    int lon_hun = lon_hun_total % 100;
+
+    if (lon_deg_full > 179)
+        return false; // rounding carried into the unencodable +/-180 antimeridian
+
+    // Longitude offset flag (byte 5 of the destination address): set
+    // whenever the (unsigned) longitude is 100 degrees or more, matching
+    // the offset range aprs_mice_decode() expects for the d1_val encoding
+    // just below.
+    bool long_offset_100 = lon_deg_full >= 100;
+
+    char d[6];
+    d[0] = mice_encode_dest_byte(dig[0], msgA);
+    d[1] = mice_encode_dest_byte(dig[1], msgB);
+    d[2] = mice_encode_dest_byte(dig[2], msgC);
+    d[3] = mice_encode_dest_byte(dig[3], north);
+    d[4] = mice_encode_dest_byte(dig[4], long_offset_100);
+    d[5] = mice_encode_dest_byte(dig[5], west);
+    memcpy(dst_call_out, d, 6);
+    dst_call_out[6] = 0;
+
+    // Longitude degrees/minutes/hundredths (APRS101 Ch.10 "Longitude Degrees/
+    // Minutes/Hundredths of Minutes Encoding"): inverse of the decode in
+    // aprs_mice_decode(). Below 100 degrees the offset flag is clear and
+    // byte = deg + 28 covers the range directly; at or above 100 degrees
+    // the offset flag is set and the decoder's own 180-189 correction range
+    // makes byte = deg - 72 (i.e. deg - 100 + 28) land back on the same
+    // value once decoded. Verified by brute-force round-trip against
+    // aprs_mice_decode() for the full 0-180 degree range.
+    int d1_val = long_offset_100 ? lon_deg_full - 72 : lon_deg_full + 28;
+
+    int d2_val = lon_min_int + 28;
+    int d3_val = lon_hun + 28;
+
+    // Course and speed (APRS101 Ch.10 "Decoding the Speed and Course"),
+    // inverse of the split used in aprs_mice_decode(). An "unknown"
+    // course/speed report (report->course_speed.is_unknown) is sent as
+    // 0/0, the same convention aprs_mice_decode() recognizes on receive.
+    int speed = report->course_speed.is_unknown ? 0 : (int)report->course_speed.speed_knots;
+    int course = report->course_speed.is_unknown ? 0 : (int)report->course_speed.course_deg;
+    if (speed < 0)
+        speed = 0;
+    if (speed > 799)
+        speed = 799;
+    if (course < 0)
+        course = 0;
+    if (course > 399)
+        course = 399;
+
+    int sp_val = (speed / 10) + 28;
+    int dc_val = ((speed % 10) * 10 + (course / 100)) + 28;
+    int se_val = (course % 100) + 28;
+
+    char info[10];
+    info[0] = report->has_status_text ? '\'' : '`'; // '`': current Mic-E Data; '\'': old Mic-E/D700, used whenever a status text follows.
+    info[1] = (char)d1_val;
+    info[2] = (char)d2_val;
+    info[3] = (char)d3_val;
+    info[4] = (char)sp_val;
+    info[5] = (char)dc_val;
+    info[6] = (char)se_val;
+    info[7] = report->position.symbol.code ? report->position.symbol.code : '>';
+    info[8] = (char)(report->position.symbol.table == APRS_SYMBOL_TABLE_ALTERNATE ? APRS_SYMBOL_TABLE_ALTERNATE : APRS_SYMBOL_TABLE_PRIMARY);
+
+    size_t len = 9;
+    memcpy(info_out, info, 9);
+    info_out[9] = 0;
+
+    // Optional trailing status text / altitude (APRS101 Ch.10 "Mic-E Status
+    // Text"): altitude takes priority when both are requested, matching the
+    // decoder's own priority of reading the last 4 status bytes as altitude
+    // whenever they parse as such.
+    if (report->position.has_altitude) {
+        if (len < info_out_max)
+            mice_encode_status_altitude(report->position.altitude_ft, info_out, info_out_max);
+    } else if (report->has_status_text && report->status_text[0]) {
+        size_t text_len = strlen(report->status_text);
+        size_t room = (info_out_max > len + 1) ? info_out_max - len - 1 : 0;
+        size_t copy_len = text_len < room ? text_len : room;
+        memcpy(info_out + len, report->status_text, copy_len);
+        info_out[len + copy_len] = 0;
     }
 
     return true;

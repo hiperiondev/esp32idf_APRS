@@ -80,11 +80,12 @@ cui posizione decodifica a più di quei chilometri da "My Station"
 (``my_lat``/``my_lon``) viene scartato. La distanza è il cerchio massimo
 (``aprs_filter_haversine_km()``) tra i due punti. I pacchetti la cui posizione
 non può essere decodificata passano questo controllo.
-``aprs_filter_decode_position()`` supporta sia layout non compressi
-(``DDMM.hhN/DDDMM.hhW``) sia compressi base-91 per i DTI che portano una posizione
-nel campo info (``!``/``=``, ``/``/``@``, ``;`` oggetto, ``)`` item). I report
-Mic-E portano la posizione nel campo di destinazione AX.25 e non sono
-decodificabili dal solo campo info.
+``aprs_filter_decode_position()`` supporta layout non compressi
+(``DDMM.hhN/DDDMM.hhW``) e compressi base-91 per i DTI che portano una posizione
+nel solo campo info (``!``/``=``, ``/``/``@``, ``;`` oggetto, ``)`` item), oltre
+ai report Mic-E (`` ` ``/``'``/0x1c/0x1d), la cui posizione è divisa tra il
+campo info e il campo di destinazione AX.25 e viene ricostruita da
+``aprs_mice_decode()`` prima di applicare lo stesso controllo di raggio.
 
 Gate di prefisso locale (RF→INET)
 =================================

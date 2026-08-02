@@ -38,7 +38,8 @@
 #include "beacon.h"
 #include "beacon_scheduler.h" // beacon_scheduler_jitter()
 #include "igate.h"
-#include "sched_time.h" // sched_mono_seconds() / sched_clamp_interval()
+#include "sched_time.h"        // sched_mono_seconds() / sched_clamp_interval()
+#include "weather_telemetry.h" // aprs_mice_encode()
 
 static const char *TAG = "beacon";
 
@@ -87,6 +88,16 @@ typedef struct {
     float phgGain;      // dB
     uint16_t phgHeight; // feet (APRS PHG code table's own unit)
     uint8_t phgDir;     // 0=Omni, 1-8 = N,NE,E,SE,S,SW,W,NW
+    // When set, buildPositionPacket() emits a Mic-E position report
+    // (APRS101 ch.10) instead of the uncompressed/compressed layout above,
+    // via aprs_mice_encode() (components/weather_telemetry/mice.c). Mic-E
+    // has its own fixed on-air layout: no timestamp, no PHG, and no
+    // compression, so this takes priority over p->timestamp/phgEnable/
+    // compress when set - see the mutual-exclusion note in
+    // buildPositionPacket() itself. Sourced from g_config.trk_mice; only
+    // the Tracker beacon exposes it (Mic-E is the mobile-tracker format
+    // this project's other two fixed beacons have no need to originate).
+    bool mice;
 } beacon_params_t;
 
 // Builds the 7-byte "PHGphgd" data-extension token from PHG sub-fields, using
@@ -122,11 +133,84 @@ static void buildPhgExtension(uint16_t power, float gain, uint16_t height, uint8
     snprintf(out, outMax, "PHG%c%c%c%c", '0' + P, '0' + H, '0' + G, '0' + D);
 }
 
+// Builds a Mic-E-format beacon line (APRS101 ch.10) into `out`, in place of
+// the uncompressed/compressed layout buildPositionPacket() otherwise emits.
+// Mic-E splits its payload between the AX.25 destination address (encoded
+// here via aprs_mice_encode(), which returns 6 raw bytes - not necessarily
+// printable ASCII) and the information field, so this builds the "call>dst"
+// portion of the TNC2 line itself instead of reusing BEACON_DEST. This
+// project's beacons are fixed-position with no live course/speed source
+// (see docs/reference/limitations.rst), so the report always carries the
+// on-air "unknown" course/speed pattern (000/000); the message code is
+// fixed at Off Duty (M0), the conventional default for a fixed/base station.
+// Returns the packet length, or 0 if nothing usable is configured or the
+// position/line does not fit the Mic-E format.
+static int buildMicePositionPacket(const beacon_params_t *p, char *out, size_t outMax) {
+    if (!p->call[0])
+        return 0;
+
+    char callField[16];
+    if (p->ssid > 0)
+        snprintf(callField, sizeof(callField), "%s-%d", p->call, (int)p->ssid);
+    else
+        snprintf(callField, sizeof(callField), "%s", p->call);
+
+    char path[80];
+    aprs_path_build_suffix(p->pathSel, p->pathPreset, path, sizeof(path));
+
+    aprs_mice_report_t report;
+    memset(&report, 0, sizeof(report));
+    report.position.latitude_deg = (double)p->lat;
+    report.position.longitude_deg = (double)p->lon;
+    report.position.ambiguity = APRS_AMBIGUITY_NONE;
+    report.position.symbol.table = (p->symbol[0] == '\\') ? APRS_SYMBOL_TABLE_ALTERNATE : APRS_SYMBOL_TABLE_PRIMARY;
+    report.position.symbol.code = p->symbol[1] ? p->symbol[1] : '>';
+    report.message_code = APRS_MICE_MSG_OFF_DUTY;
+    report.course_speed.is_unknown = true;
+
+    if (p->sendAltitude) {
+        int feet = (int)(p->alt * 3.28084f);
+        if (feet < 0)
+            feet = 0;
+        report.position.has_altitude = true;
+        report.position.altitude_ft = feet;
+    } else if (p->comment[0]) {
+        // No altitude requested: carry the beacon comment as Mic-E status
+        // text instead, the only free-text slot the format has room for.
+        strncpy(report.status_text, p->comment, APRS_MAX_STATUS_TEXT_LEN);
+        report.status_text[APRS_MAX_STATUS_TEXT_LEN] = 0;
+        report.has_status_text = true;
+    }
+
+    char dstCall[8];
+    char infoField[APRS_MAX_STATUS_TEXT_LEN + 16];
+    if (!aprs_mice_encode(&report, dstCall, infoField, sizeof(infoField))) {
+        ESP_LOGW(TAG, "Mic-E beacon not built - position out of range for Mic-E encoding");
+        return 0;
+    }
+
+    int n = snprintf(out, outMax, "%s>%s%s:%s", callField, dstCall, path, infoField);
+    if (n < 0)
+        return 0;
+    if ((size_t)n >= outMax || n > APRS_TNC2_MAX_LEN) {
+        ESP_LOGW(TAG, "Mic-E beacon packet too long (%d bytes, max %d) - shorten the comment or the path", n, APRS_TNC2_MAX_LEN);
+        return 0;
+    }
+    return n;
+}
+
 // Builds the full TNC2 text line for one beacon transmission. Returns the
 // packet length, or 0 if nothing usable is configured.
 static int buildPositionPacket(const beacon_params_t *p, char *out, size_t outMax) {
     if (!p->call[0])
         return 0;
+
+    // Mic-E has its own fixed on-air layout (no timestamp, no PHG, no
+    // compression - see the mice field's own comment in beacon_params_t),
+    // so it is handled by a dedicated builder and takes priority over every
+    // other layout choice below.
+    if (p->mice)
+        return buildMicePositionPacket(p, out, outMax);
 
     char callField[16];
     if (p->ssid > 0)
@@ -446,6 +530,7 @@ static uint32_t trackerBeaconService(void) {
             p.alt = g_config.trk_alt;
             p.sendAltitude = g_config.trk_altitude;
             p.compress = g_config.trk_compress;
+            p.mice = g_config.trk_mice;
             memcpy(p.symbol, g_config.trk_symbol, sizeof(p.symbol));
             memcpy(p.comment, g_config.trk_comment, sizeof(p.comment));
             memcpy(p.pathPreset, g_config.path, sizeof(p.pathPreset));

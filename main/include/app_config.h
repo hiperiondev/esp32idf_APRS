@@ -361,6 +361,7 @@ typedef struct {
     uint16_t trk_interval;          /**< Fixed tracker beacon period in seconds (see beacon.c). */
     bool trk_compress;              /**< Use APRS compressed position format. */
     bool trk_altitude;              /**< Include altitude in the beacon. */
+    bool trk_mice;                  /**< Use Mic-E position encoding (APRS101 ch.10) instead of uncompressed/compressed; excludes trk_timestamp. */
     bool trk_log;                   /**< Log tracker beacons. */
     bool trk_rssi;                  /**< Append RSSI info. */
     char trk_symbol[3];             /**< Tracker APRS symbol. */

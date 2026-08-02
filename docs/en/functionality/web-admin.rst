@@ -53,7 +53,8 @@ The pages
        delay, filter.
    * - **Tracker**
      - Tracker enable, callsign/SSID, fixed interval, position, symbol
-       (moving/stopped), comment, compressed-position and altitude options.
+       (moving/stopped), comment, compressed-position, Mic-E-position and
+       altitude options.
    * - **Weather**
      - Enable, send-via-RF/-INET, timestamp, WX callsign/SSID/path, position,
        object name, comment, per-field *Averaged* checkboxes, and — for every

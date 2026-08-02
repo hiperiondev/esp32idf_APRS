@@ -223,8 +223,8 @@ Tracciamento / Beaconing
      - La pagina Tracker offre un'opzione di posizione compressa; anche il decoder la comprende
    * - Codifica posizione Mic-E (TX)
      - ⚠️ (soprattutto firmware per tracker mobili)
-     - ❌
-     - Non generata; i frame Mic-E possono essere ricevuti ma la loro posizione non è decodificabile dal campo informazioni ai fini del gate di raggio
+     - ✅
+     - La pagina beacon Tracker offre un'opzione Mic-E (``aprs_mice_encode()``); solo posizione fissa, quindi rotta/velocità vengono sempre inviate come "sconosciute" e il codice messaggio è fisso su Off Duty
    * - PHG / potenza-altezza-guadagno-direttività
      - ✅
      - ✅
