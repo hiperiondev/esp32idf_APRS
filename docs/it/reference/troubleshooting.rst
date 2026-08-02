@@ -86,9 +86,13 @@ ripristinali. Conferma anche di alimentare audio **piatto/di discriminatore**.
 "Il LED del PTT resta acceso in riposo."
 ========================================
 
-La logica del PTT è corretta ma la sua polarità è una costante di compilazione. Con
-cablaggio attivo-basso, riposo/non-attivato aziona il pin **alto** (LED acceso) e
-attivato lo aziona basso. Se il tuo hardware è attivo-alto, imposta
-``MODEM_PTT_ACTIVE_HIGH=1`` nel ``CMakeLists.txt`` di livello superiore e fai una
-ricompilazione pulita completa — il valore è una costante di compilazione
-incorporata in ``afsk.c``.
+La logica del PTT è corretta; la sua polarità è una costante di compilazione, e la
+definizione di scheda distribuita è ``MODEM_PTT_ACTIVE_HIGH=1`` (attivo-alto) nel
+``CMakeLists.txt`` di livello superiore. Attivo-alto significa che
+riposo/non-attivato aziona il pin **basso** e attivato lo aziona alto;
+attivo-basso è l'immagine speculare, quindi a riposo il pin resta alto e un LED su
+quel pin resta acceso. Se il LED segue l'opposto di quanto ti aspetti, il tuo
+stadio di pilotaggio inverte (un optoisolatore sì; un semplice NPN low-side no):
+porta la macro all'altro valore e fai una ricompilazione pulita completa — il
+valore è incorporato in ``afsk.c``, quindi una compilazione incrementale non lo
+recepirà.

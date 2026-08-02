@@ -126,6 +126,12 @@ Mappa dei task
      - qualsiasi
      - ``web_server_start()``
      - amministrazione web
+   * - ``loop_diag``
+     - 3072 B
+     - 7
+     - qualsiasi
+     - ``aprs_loop_test_run()``
+     - transitorio: aggancia le diagnostiche del modem per la durata di un LOOP TEST
    * - ``esp_timer``
      - —
      - —

@@ -35,10 +35,20 @@ El refresco a 1 Hz
 #. Limpia las banderas "habilitado" del contenedor, para que un controlador que
    deje de reportar un campo este ciclo no deje un valor obsoleto pareciendo
    válido.
-#. Llama a ``sensors_local_save(&weather_telemetry_data, SENSOR_LOCAL_DATA_ALL)``,
-   que recorre el registro y, por cada controlador capaz, lo inicializa
-   perezosamente si hace falta y llama a su ``save()`` — el controlador escribe
-   directamente en ``aprs_weather_report_t`` / ``aprs_telemetry_report_t``.
+#. Refresca la familia de telemetría con una sola llamada agregada,
+   ``sensors_local_save(&weather_telemetry_data, SENSOR_LOCAL_DATA_TELEMETRY)``:
+   los canales de telemetría no son seleccionables por campo, así que
+   contribuye cada controlador con capacidad TELEMETRY.
+#. Resuelve **cada campo meteorológico de forma independiente** contra el único
+   controlador que el operador eligió para él. Un campo se muestrea solo si está
+   tildado (``g_config.wx_sensor_enable[f]``) y tiene un canal de origen
+   asignado (``g_config.wx_sensor_ch[f] != SENSOR_LOCAL_CH_NONE``); la lectura
+   se toma con ``sensors_local_save_one(ch, &scratch, SENSOR_LOCAL_DATA_WEATHER)``
+   sobre un contenedor temporal, y solo el valor de ese campo se copia al
+   reporte vivo. Usar un contenedor temporal por campo es lo que evita que un
+   segundo controlador WEATHER registrado pise un campo ya resuelto desde otro,
+   y es por eso que el paquete al aire siempre coincide con la columna *Channel*
+   de cada campo y con la vista previa *Value* en vivo de la página.
 #. Acumula cualquier campo marcado como *Averaged* (una casilla por campo en la
    página Weather) en una suma/cuenta corriente.
 

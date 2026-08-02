@@ -39,9 +39,15 @@ Every RF-decoded frame that the application dispatches (with ``igate_en`` and
 stage is dropped, and the *reason* is recorded against a per-reason counter so
 the dashboard can show "N dropped because X" rather than one opaque aggregate.
 
-#. **Duplicate suppression.** The frame is checked against a 10-entry / 30 s
-   cache (``isDuplicatePacket()``). Duplicates are counted separately in
-   ``dupCount``.
+#. **Duplicate suppression.** The frame is checked against the shared
+   duplicate cache (``isDuplicatePacket()``). Both its depth
+   (``g_config.dup_cache_size``, ``DUP_CACHE_SIZE_MIN``..``DUP_CACHE_SIZE_MAX``
+   = 4..40, default 20) and its window (``g_config.dup_cache_timeout_ms``,
+   1000..120000 ms, default 30000) are editable on the *IGate* page and are
+   re-read on every lookup, so a change applies without a reboot. The array is
+   always allocated at the compile-time capacity ``DUP_CACHE_SIZE_MAX``;
+   ``dup_cache_size`` only selects how much of it is used. Duplicates are
+   counted separately in ``dupCount``.
 #. **Too-short guard.** Frames whose info field is below the minimum usable
    length are dropped (``DROP_TOO_SHORT``).
 #. **Path-token filter.** Frames whose path carries ``RFONLY``, ``TCPIP``,

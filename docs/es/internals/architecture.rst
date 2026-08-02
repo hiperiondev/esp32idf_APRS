@@ -125,6 +125,12 @@ Mapa de tareas
      - cualquiera
      - ``web_server_start()``
      - administración web
+   * - ``loop_diag``
+     - 3072 B
+     - 7
+     - cualquiera
+     - ``aprs_loop_test_run()``
+     - transitoria: engancha los diagnósticos del módem mientras dura un LOOP TEST
    * - ``esp_timer``
      - —
      - —

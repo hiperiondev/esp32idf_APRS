@@ -73,8 +73,6 @@ La cabecera pública del componente (``esp32idf_radioamateur_modem.h``) expone:
    * - ``modem_init(cfg)``
      - Levanta el hardware y arranca las tareas de servicio internas. Se bloquea
        ~5 s una vez por arranque calibrando el reloj real del ADC.
-   * - ``modem_deinit()``
-     - Desmontar.
    * - ``modem_set_modem(cfg)``
      - Cambiar el perfil activo y ajustes relacionados en ejecución.
    * - ``modem_set_rx_callback(cb, ctx)``
@@ -88,15 +86,22 @@ La cabecera pública del componente (``esp32idf_radioamateur_modem.h``) expone:
      - Construir + encolar en una sola llamada.
    * - ``modem_format_tnc2(msg, out, out_len)``
      - Renderizar una trama decodificada de vuelta a una cadena TNC2.
-   * - ``modem_tx_busy()`` / ``modem_tx_queue_depth()``
-     - Estado del anillo de TX, usado por el tope de backlog de TX de RF.
-   * - ``modem_measure_adc_rate()``
-     - Medir la tasa real de muestreo del ADC.
+   * - ``modem_tx_queue_depth()``
+     - Número de tramas todavía encoladas/en vuelo en TX de RF (0 = inactivo).
+       Es el estado del anillo de TX que lee el tope de backlog de TX de RF.
+   * - ``modem_persistence_missed_count()``
+     - Cuántas veces el piso anti-inanición de la persistencia CSMA forzó una
+       transmisión desde el arranque, para quien quiera exponerlo como
+       estadística.
+   * - ``modem_measure_adc_rate(ms)``
+     - Medir la tasa real de muestreo del ADC; se bloquea durante la ventana
+       pedida.
 
-También se proporciona una capa de conveniencia estilo LibAPRS
-(``APRS_setCallsign``, ``APRS_setPath1/2``, ``APRS_setSymbol``,
-``APRS_setPower/Height/Gain/Directivity``, ``APRS_sendLoc``, ``APRS_sendMsg``,
-``APRS_sendPkt``, ``APRS_printSettings``) por compatibilidad.
+La cabecera lleva además ``MODEM_DEFAULT_CONFIG()`` (un inicializador de
+``modem_config_t``), el ayudante ``MODEM_DELAY_TICKS(ms)``, ``modem_rx_frame_t``
+y el tipo de callback ``modem_rx_cb_t``. Nótese que **no** hay punto de entrada
+de desmontaje: el módem se levanta una vez por arranque y se reconfigura en su
+sitio con ``modem_set_modem()``.
 
 Configuración en ejecución (``modem_config_t``)
 ===============================================
@@ -130,7 +135,14 @@ sin reinicio) y el test de bucle:
      - TXDelay
    * - ``slot_time_ms``
      - ``tx_timeslot`` (2000)
-     - tiempo de silencio CSMA
+     - tiempo de silencio CSMA; ignorado en full duplex
+   * - ``persist``
+     - ``csma_persist`` (63)
+     - p-persistencia CSMA (el *Persist* estándar de AX.25/KISS): una vez que el
+       canal se oye libre, el módem transmite con probabilidad ``persist``/256
+       por ranura y si no espera otro ``slot_time_ms`` antes de volver a tirar.
+       255 = transmitir siempre en la primera ranura libre; valores más bajos
+       separan a las estaciones que compiten. Ignorado en full duplex.
    * - ``fx25_mode``
      - ``fx25_mode``
      - 0=off, 1=solo RX, 2=RX+TX

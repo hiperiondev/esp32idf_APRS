@@ -62,8 +62,12 @@ carga útil APRS, definidos en el componente separado ``weather_telemetry``:
 
 Un solo controlador puede anunciar **uno u otro o ambos** bits en sus
 ``capabilities``. ``SENSOR_LOCAL_DATA_ALL`` es el OR de cada bit actualmente
-definido, y es lo que ``weather.c`` pasa cuando pide al registro refrescar todo
-una vez por segundo.
+definido; está disponible para un consumidor que realmente quiera todas las
+familias a la vez. ``weather.c`` **no** lo usa en su pasada a 1 Hz: refresca la
+telemetría con una llamada agregada ``SENSOR_LOCAL_DATA_TELEMETRY`` y luego lee
+cada campo meteorológico por separado con
+``sensors_local_save_one(..., SENSOR_LOCAL_DATA_WEATHER)``, para que cada campo
+WX respete el controlador elegido para él en la página Weather.
 
 Anatomía de un controlador
 ==========================
@@ -151,8 +155,11 @@ Flujo de datos de extremo a extremo
 
    weather_service_1hz()   (1 Hz)
      ├─ limpia las banderas "enabled" del contenedor
-     ├─ sensors_local_save(&data, SENSOR_LOCAL_DATA_ALL)
-     │    └─ cada controlador capaz: init() perezoso, luego save() → escribe la estructura
+     ├─ sensors_local_save(&data, SENSOR_LOCAL_DATA_TELEMETRY)
+     │    └─ cada controlador con capacidad TELEMETRY: init() perezoso, luego save()
+     ├─ por cada campo WX f con wx_sensor_enable[f] y canal asignado:
+     │    └─ sensors_local_save_one(wx_sensor_ch[f], &scratch, ..._WEATHER)
+     │         └─ copia solo ese campo al reporte vivo
      └─ acumula cualquier campo "Averaged" en una suma/cuenta corriente
 
    weather_beacon_service()   (cada wx_interval s, si wx_en)

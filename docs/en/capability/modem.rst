@@ -72,8 +72,6 @@ The component's public header (``esp32idf_radioamateur_modem.h``) exposes:
    * - ``modem_init(cfg)``
      - Bring up the hardware and start the internal service tasks. Blocks ~5 s
        once per boot calibrating the real ADC clock.
-   * - ``modem_deinit()``
-     - Tear down.
    * - ``modem_set_modem(cfg)``
      - Change the active profile and related settings at runtime.
    * - ``modem_set_rx_callback(cb, ctx)``
@@ -87,15 +85,20 @@ The component's public header (``esp32idf_radioamateur_modem.h``) exposes:
      - Build + queue in one call.
    * - ``modem_format_tnc2(msg, out, out_len)``
      - Render a decoded frame back to a TNC2 string.
-   * - ``modem_tx_busy()`` / ``modem_tx_queue_depth()``
-     - TX-ring status, used by the RF TX backlog cap.
-   * - ``modem_measure_adc_rate()``
-     - Measure the real ADC sample rate.
+   * - ``modem_tx_queue_depth()``
+     - Number of frames still queued/in flight on RF TX (0 = idle). This is the
+       TX-ring status the RF TX backlog cap reads.
+   * - ``modem_persistence_missed_count()``
+     - How many times the CSMA p-persistence anti-starvation floor has forced a
+       transmission since boot, for callers that want to surface it as a stat.
+   * - ``modem_measure_adc_rate(ms)``
+     - Measure the real ADC sample rate; blocks for the requested window.
 
-A LibAPRS-style convenience layer (``APRS_setCallsign``, ``APRS_setPath1/2``,
-``APRS_setSymbol``, ``APRS_setPower/Height/Gain/Directivity``, ``APRS_sendLoc``,
-``APRS_sendMsg``, ``APRS_sendPkt``, ``APRS_printSettings``) is also provided for
-compatibility.
+The header also carries ``MODEM_DEFAULT_CONFIG()`` (a ``modem_config_t``
+initialiser), the ``MODEM_DELAY_TICKS(ms)`` helper, ``modem_rx_frame_t`` and the
+``modem_rx_cb_t`` callback type. Note that there is **no** teardown entry point:
+the modem is brought up once per boot and reconfigured in place with
+``modem_set_modem()``.
 
 Runtime configuration (``modem_config_t``)
 ==========================================
@@ -128,7 +131,14 @@ boot, the Radio page's Save (live re-apply, no reboot) and the loop test:
      - TXDelay
    * - ``slot_time_ms``
      - ``tx_timeslot`` (2000)
-     - CSMA quiet time
+     - CSMA quiet time; ignored in full duplex
+   * - ``persist``
+     - ``csma_persist`` (63)
+     - CSMA p-persistence (standard AX.25/KISS *Persist*): once the channel is
+       heard clear, the modem transmits with probability ``persist``/256 per
+       slot and otherwise waits another ``slot_time_ms`` before rolling again.
+       255 = transmit on the first clear slot every time; lower values spread
+       contending stations apart. Ignored in full duplex.
    * - ``fx25_mode``
      - ``fx25_mode``
      - 0=off, 1=RX only, 2=RX+TX

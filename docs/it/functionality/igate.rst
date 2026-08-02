@@ -42,8 +42,15 @@ qualsiasi fase viene scartato, e la *ragione* è registrata su un contatore
 per-ragione così che la dashboard possa mostrare "N scartati per X" invece di un
 singolo aggregato opaco.
 
-#. **Soppressione duplicati.** Il frame è controllato contro una cache di
-   10 voci / 30 s (``isDuplicatePacket()``). I duplicati sono contati a parte in
+#. **Soppressione duplicati.** Il frame è controllato contro la cache dei
+   duplicati condivisa (``isDuplicatePacket()``). Sia la sua profondità
+   (``g_config.dup_cache_size``, ``DUP_CACHE_SIZE_MIN``..``DUP_CACHE_SIZE_MAX``
+   = 4..40, predefinito 20) sia la sua finestra
+   (``g_config.dup_cache_timeout_ms``, 1000..120000 ms, predefinito 30000) sono
+   modificabili nella pagina *IGate* e vengono rilette a ogni ricerca, quindi
+   una modifica si applica senza riavvio. L'array è sempre allocato alla
+   capacità di compilazione ``DUP_CACHE_SIZE_MAX``; ``dup_cache_size`` sceglie
+   solo quanta parte usarne. I duplicati sono contati a parte in
    ``dupCount``.
 #. **Guardia di frame troppo corto.** I frame il cui campo info è sotto la
    lunghezza minima utilizzabile vengono scartati (``DROP_TOO_SHORT``).

@@ -62,9 +62,9 @@ Feature matrix
    * - PTT keying (compile-time GPIO + polarity)
      - ✅
      - validated GPIO; runtime **minimum-unkey** hold time
-   * - CSMA / TX time-slot / TXDelay preamble
+   * - CSMA / TX time-slot / p-persistence / TXDelay preamble
      - ✅
-     - ``preamble``, ``tx_timeslot``
+     - ``preamble``, ``tx_timeslot``, ``csma_persist``
    * - DCD (data carrier detect)
      - ✅
      - demodulator-derived; no hardware squelch input
@@ -98,6 +98,11 @@ Feature matrix
    * - APRS message chat UI (``/msgchat``)
      - ✅
      - inbox/compose page over the messaging engine
+   * - APRS query responder (APRS101 ch.15)
+     - ✅
+     - general ``?APRS?``/``?WX?``/``?IGATE?`` + the directed set
+       (``?APRSD``/``?APRSH``/``?APRSM``/``?APRSO``/``?APRSP``/``?APRSS``/
+       ``?APRST``/``?PING?``), per-type and per-source rate limits
    * - Fixed-position beacons (tracker / igate / digi)
      - ✅
      - one shared beacon-scheduler task
@@ -109,7 +114,7 @@ Feature matrix
      - ``mbedtls``, MD5-derived IV, base64 payload
    * - Web admin (HTTP Basic auth)
      - ✅
-     - ~30 pages, live dashboard
+     - 17 sidebar pages + symbol picker, live dashboard
    * - Live traffic log + last-heard table
      - ✅
      - JSON long-poll (``?since=<seq>``)

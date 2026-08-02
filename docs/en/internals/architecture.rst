@@ -125,6 +125,12 @@ Task map
      - any
      - ``web_server_start()``
      - web admin
+   * - ``loop_diag``
+     - 3072 B
+     - 7
+     - any
+     - ``aprs_loop_test_run()``
+     - transient: latches modem diagnostics for the duration of a LOOP TEST
    * - ``esp_timer``
      - —
      - —

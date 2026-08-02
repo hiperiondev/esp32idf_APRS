@@ -99,6 +99,12 @@ Notable factory defaults
      - enabled, 1200 Bd Bell 202
    * - Preamble / TX slot
      - 300 ms / 2000 ms
+   * - CSMA persistence
+     - 63 (~25 % transmit chance per clear slot)
+   * - RF TX buffers
+     - 1
+   * - Query responder
+     - disabled; RF on, Internet off, minimum reply interval 30 s
    * - FX.25
      - off
    * - PTT

@@ -64,9 +64,9 @@ Matrice delle funzionalità
    * - Attivazione PTT (GPIO + polarità in compilazione)
      - ✅
      - GPIO validato; tempo minimo di **dis-attivazione** a runtime
-   * - CSMA / slot temporale TX / preambolo TXDelay
+   * - CSMA / slot temporale TX / p-persistenza / preambolo TXDelay
      - ✅
-     - ``preamble``, ``tx_timeslot``
+     - ``preamble``, ``tx_timeslot``, ``csma_persist``
    * - DCD (rilevamento portante dati)
      - ✅
      - derivato dal demodulatore; nessun ingresso squelch hardware
@@ -100,6 +100,11 @@ Matrice delle funzionalità
    * - Interfaccia chat messaggi APRS (``/msgchat``)
      - ✅
      - pagina inbox/composizione sul motore di messaggistica
+   * - Risponditore di query APRS (APRS101 cap.15)
+     - ✅
+     - generali ``?APRS?``/``?WX?``/``?IGATE?`` + l'insieme diretto
+       (``?APRSD``/``?APRSH``/``?APRSM``/``?APRSO``/``?APRSP``/``?APRSS``/
+       ``?APRST``/``?PING?``), con limiti di frequenza per tipo e per sorgente
    * - Beacon a posizione fissa (tracker / igate / digi)
      - ✅
      - un singolo task pianificatore di beacon condiviso
@@ -111,7 +116,8 @@ Matrice delle funzionalità
      - ``mbedtls``, IV derivato da MD5, payload in base64
    * - Amministrazione web (autenticazione HTTP Basic)
      - ✅
-     - ~30 pagine, dashboard in tempo reale
+     - 17 pagine nella barra laterale + selettore di simbolo, dashboard in
+       tempo reale
    * - Log traffico in tempo reale + tabella last-heard
      - ✅
      - long-poll JSON (``?since=<seq>``)

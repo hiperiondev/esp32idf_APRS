@@ -100,6 +100,13 @@ Valores de fábrica destacados
      - habilitado, 1200 Bd Bell 202
    * - Preámbulo / ranura TX
      - 300 ms / 2000 ms
+   * - Persistencia CSMA
+     - 63 (~25 % de probabilidad de transmitir por ranura libre)
+   * - Búferes de TX de RF
+     - 1
+   * - Respondedor de consultas
+     - deshabilitado; RF activo, Internet apagado, intervalo mínimo de
+       respuesta 30 s
    * - FX.25
      - desactivado
    * - PTT

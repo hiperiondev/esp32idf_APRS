@@ -62,8 +62,12 @@ payload APRS, definiti nel componente separato ``weather_telemetry``:
 
 Un singolo driver può annunciare **l'uno o l'altro o entrambi** i bit nelle sue
 ``capabilities``. ``SENSOR_LOCAL_DATA_ALL`` è l'OR di ogni bit attualmente
-definito, ed è ciò che ``weather.c`` passa quando chiede al registro di aggiornare
-tutto una volta al secondo.
+definito; è disponibile per un consumatore che voglia davvero tutte le famiglie
+insieme. ``weather.c`` **non** lo usa nella sua passata a 1 Hz: aggiorna la
+telemetria con una chiamata aggregata ``SENSOR_LOCAL_DATA_TELEMETRY`` e poi legge
+ogni campo meteorologico separatamente con
+``sensors_local_save_one(..., SENSOR_LOCAL_DATA_WEATHER)``, così che ogni campo
+WX rispetti il driver scelto per esso nella pagina Weather.
 
 Anatomia di un driver
 =====================
@@ -151,8 +155,11 @@ Flusso dei dati end-to-end
 
    weather_service_1hz()   (1 Hz)
      ├─ pulisce i flag "enabled" del contenitore
-     ├─ sensors_local_save(&data, SENSOR_LOCAL_DATA_ALL)
-     │    └─ ogni driver capace: init() pigro, poi save() → scrive la struttura
+     ├─ sensors_local_save(&data, SENSOR_LOCAL_DATA_TELEMETRY)
+     │    └─ ogni driver con capacità TELEMETRY: init() pigro, poi save()
+     ├─ per ogni campo WX f con wx_sensor_enable[f] e canale assegnato:
+     │    └─ sensors_local_save_one(wx_sensor_ch[f], &scratch, ..._WEATHER)
+     │         └─ copia solo quel campo nel report vivo
      └─ accumula ogni campo "Averaged" in una somma/conteggio correnti
 
    weather_beacon_service()   (ogni wx_interval s, se wx_en)

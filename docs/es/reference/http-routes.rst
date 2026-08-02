@@ -5,8 +5,11 @@ Rutas HTTP
 ==========
 
 La administración web registra las siguientes rutas
-(``components/webconfig/web_server.c``). Todas requieren autenticación HTTP Basic
-salvo donde se indica.
+(``components/webconfig/web_server.c``). Cada manejador llama a
+``web_check_auth()`` y por lo tanto requiere autenticación HTTP Basic, con una
+excepción: ``GET /style.css`` se sirve sin autenticar, porque es una hoja de
+estilos estática que no lleva datos de configuración ni de tráfico y el navegador
+la pide mientras dibuja el propio desafío de login.
 
 .. list-table::
    :header-rows: 1

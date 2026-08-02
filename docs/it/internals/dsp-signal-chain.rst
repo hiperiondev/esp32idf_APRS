@@ -128,8 +128,10 @@ sovrascriverla.
      - 33
      - ingresso audio; solo 32–39
    * - ``MODEM_PTT_GPIO``
-     - 26
-     - pin di PTT (cablaggio di scheda)
+     - −1
+     - pin di PTT (cablaggio di scheda). Il valore predefinito dell'header è −1
+       (disabilitato); il ``CMakeLists.txt`` di livello superiore di questo
+       progetto lo sovrascrive a 26.
    * - ``MODEM_PTT_ACTIVE_HIGH``
      - 1
      - polarità di PTT

@@ -5,7 +5,10 @@ HTTP Routes
 ===========
 
 The web admin registers the following routes (``components/webconfig/web_server.c``).
-All require HTTP Basic auth except where noted.
+Every handler calls ``web_check_auth()`` and therefore requires HTTP Basic auth,
+with one exception: ``GET /style.css`` is served unauthenticated, because it is a
+static stylesheet carrying no configuration or traffic data and the browser
+requests it while rendering the login challenge itself.
 
 .. list-table::
    :header-rows: 1

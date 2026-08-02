@@ -59,7 +59,8 @@ Prima di qualsiasi lavoro sul percorso, il digipeater controlla il frame con
 dall'indirizzo di origine e dal campo informativo — mai dal percorso — quindi
 ogni copia di una stessa trasmissione produce lo stesso hash comunque sia
 arrivata. Un frame che corrisponde a uno ripetuto entro
-``DUP_PACKET_TIMEOUT_MS`` (30 s) viene scartato: è questo che impedisce a due
+``g_config.dup_cache_timeout_ms`` (30 s predefiniti, modificabile nella pagina
+*IGate*) viene scartato: è questo che impedisce a due
 digipeater nella copertura reciproca di rimbalzarsi lo stesso frame, e che
 assorbe un'eco RF di un frame appena ripetuto da questa stazione.
 

@@ -18,7 +18,8 @@ file the firmware writes:
 * ``/storage/objitems.json`` — the five objects/items.
 
 The *Storage* web page is a full LittleFS browser: it lists files with sizes,
-downloads (``/download?file=…``), deletes (``/delete?file=…``), accepts
+downloads (``GET /download?file=…``), deletes (``POST /delete`` with the
+filename in the form body), accepts
 multipart uploads (``/upload``), reports usage and can reformat the volume
 (``/format``).
 

@@ -14,8 +14,14 @@ bandeja/redacción.
 El motor de mensajes
 ====================
 
-* **Cola en RAM.** Hasta ``MSG_QUEUE_SIZE`` (20) mensajes salientes, cada uno de
-  hasta 200 caracteres de texto, se mantienen en ``s_queue[]``.
+* **Cola en RAM.** ``s_queue[]`` guarda hasta ``MSG_QUEUE_SIZE`` (20) entradas,
+  compartidas por los mensajes **recibidos y salientes** por igual — cada
+  entrada lleva una bandera ``rxtx`` que dice cuál es. ``MSG_TEXT_MAX`` (200) es
+  el tope de almacenamiento en memoria del texto de una entrada; el límite de
+  protocolo al aire es el ``APRS_MSG_TEXT_STD_MAX`` (67 caracteres) aparte, que
+  es contra el que validan el cuadro de composición y el respondedor de
+  consultas, de modo que un campo de información ``":ADDRESSEE:texto{id"``
+  completo queda dentro del presupuesto TNC2 clásico de 256 bytes.
 * **Enviar / ack / reintento.** ``sendAPRSMessage()`` encola un mensaje,
   ``sendAPRSAck()`` responde a uno recibido, y ``sendAPRSMessageRetry()`` —
   invocada a 1 Hz por la tarea de tick del servicio APRS — reenvía cualquier
@@ -45,6 +51,12 @@ recibidos por esta estación, un campo de indicativo de destino, un cuadro de
 texto de mensaje (limitado a la longitud de mensaje APRS) y un botón de envío.
 Refresca su lista de mensajes vía ``/msgchat/list`` (un fragmento JSON). Está
 condicionada por el interruptor de compilación ``ENABLE_MSG_CHAT``.
+
+.. seealso::
+
+   :ref:`es-query` — el respondedor de consultas comparte el manejador de TX de
+   este componente y se alcanza desde ``handleIncomingAPRS()`` cuando el texto de
+   un mensaje dirigido empieza con ``?``.
 
 GPIO de alarma de mensaje
 =========================

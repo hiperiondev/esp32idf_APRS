@@ -101,6 +101,13 @@ Valori di fabbrica notevoli
      - abilitato, 1200 Bd Bell 202
    * - Preambolo / slot TX
      - 300 ms / 2000 ms
+   * - Persistenza CSMA
+     - 63 (~25 % di probabilità di trasmettere per slot libero)
+   * - Buffer di TX RF
+     - 1
+   * - Risponditore di query
+     - disabilitato; RF attivo, Internet spento, intervallo minimo di
+       risposta 30 s
    * - FX.25
      - disattivato
    * - PTT

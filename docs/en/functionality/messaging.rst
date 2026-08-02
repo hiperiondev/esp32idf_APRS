@@ -13,8 +13,13 @@ and/or APRS-IS. The web admin exposes two distinct pages: the **Message** page
 The message engine
 ==================
 
-* **In-RAM queue.** Up to ``MSG_QUEUE_SIZE`` (20) outbound messages, each up to
-  200 characters of text, are held in ``s_queue[]``.
+* **In-RAM queue.** ``s_queue[]`` holds up to ``MSG_QUEUE_SIZE`` (20) entries,
+  shared by **received and outbound** messages alike — each entry carries an
+  ``rxtx`` flag saying which it is. ``MSG_TEXT_MAX`` (200) is the in-memory
+  storage cap for an entry's text; the on-air protocol limit is the separate
+  ``APRS_MSG_TEXT_STD_MAX`` (67 characters), which is what the compose box and
+  the query responder validate against, so a full ``":ADDRESSEE:text{id"``
+  information field stays inside the classic 256-byte TNC2 budget.
 * **Send / ack / retry.** ``sendAPRSMessage()`` queues a message,
   ``sendAPRSAck()`` replies to a received one, and ``sendAPRSMessageRetry()`` —
   ticked at 1 Hz by the APRS service's tick task — re-sends any message whose
@@ -43,6 +48,12 @@ for this station, a destination-callsign field, a message-text box (capped at
 the APRS message length) and a Send button. It refreshes its message list via
 ``/msgchat/list`` (a JSON fragment). It is gated by the ``ENABLE_MSG_CHAT``
 compile-time switch.
+
+.. seealso::
+
+   :ref:`en-query` — the query responder shares this component's TX handler and
+   is reached from ``handleIncomingAPRS()`` whenever an addressed message's text
+   starts with ``?``.
 
 Message alarm GPIO
 ==================

@@ -57,9 +57,10 @@ Before any path work is done, the digipeater checks the frame with
 ``isDuplicatePacketScoped(packet, DUP_SCOPE_DIGI)``. The key is built from the
 source address and the information field only — never from the path — so every
 copy of one transmission hashes the same however it arrived. A frame matching
-one repeated within ``DUP_PACKET_TIMEOUT_MS`` (30 s) is dropped, which is what
-stops two digipeaters inside each other's coverage from bouncing a frame back
-and forth, and what absorbs an RF echo of a frame this station just repeated.
+one repeated within ``g_config.dup_cache_timeout_ms`` (default 30 s, editable on
+the *IGate* page) is dropped, which is what stops two digipeaters inside each
+other's coverage from bouncing a frame back and forth, and what absorbs an RF
+echo of a frame this station just repeated.
 
 The cache is shared with the IGate but the windows are not: entries carry the
 scope that inserted them and only match lookups from that same scope. Both

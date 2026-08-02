@@ -60,7 +60,8 @@ Antes de cualquier trabajo sobre la ruta, el digipeater comprueba la trama con
 con la dirección de origen y el campo de información — nunca con la ruta — así
 que todas las copias de una misma transmisión producen el mismo hash sin
 importar por dónde llegaron. Una trama que coincide con otra repetida dentro de
-``DUP_PACKET_TIMEOUT_MS`` (30 s) se descarta, que es lo que evita que dos
+``g_config.dup_cache_timeout_ms`` (30 s por defecto, editable en la página
+*IGate*) se descarta, que es lo que evita que dos
 digipeaters dentro de la cobertura mutua se reboten la misma trama, y lo que
 absorbe un eco de RF de una trama que esta estación acaba de repetir.
 

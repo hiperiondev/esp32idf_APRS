@@ -123,8 +123,9 @@ every macro ``#ifndef``-guarded so the build system can override it.
      - 33
      - audio in; 32–39 only
    * - ``MODEM_PTT_GPIO``
-     - 26
-     - PTT pin (board wiring)
+     - −1
+     - PTT pin (board wiring). The header default is −1 (disabled); this
+       project's top-level ``CMakeLists.txt`` overrides it to 26.
    * - ``MODEM_PTT_ACTIVE_HIGH``
      - 1
      - PTT polarity

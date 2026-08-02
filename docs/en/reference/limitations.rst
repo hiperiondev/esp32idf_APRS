@@ -103,7 +103,8 @@ IGate (RF <-> APRS-IS)
    * - Duplicate-packet suppression
      - ✅
      - ✅
-     - 10-entry / 30 s cache, shared with the digipeater
+     - Shared cache, depth and window both web-configurable on the IGate page
+       (4-40 entries, default 20; 1-120 s window, default 30 s)
    * - ``qAR``/``qAO`` Q-construct insertion
      - ✅
      - ✅
@@ -179,8 +180,9 @@ Digipeater
    * - Digipeat duplicate/ping-pong suppression
      - ✅
      - ✅
-     - Own 30 s window in the shared dedup cache (``DUP_SCOPE_DIGI``), keyed on
-       source and payload only, tested before any path work
+     - Own window in the shared dedup cache (``DUP_SCOPE_DIGI``), keyed on
+       source and payload only, tested before any path work; the window is
+       ``g_config.dup_cache_timeout_ms`` (default 30 s)
    * - Callsign-based digipeat filtering (only digipeat certain sources)
      - ⚠️ (some, e.g. VP-Digi)
      - ❌
@@ -384,8 +386,7 @@ Objects, Items, Bulletins, Status
      - ⚠️
      - ✅
      - General (``?APRS?``/``?WX?``/``?IGATE?``) and directed queries, each with
-       its own rate limiter; see the ``query`` component and the web admin's
-       *Query* page
+       its own rate limiter; see :ref:`en-query`
    * - Directed query set (``?APRSD``/``?APRSH``/``?APRSM``/``?APRSO``/
        ``?APRSP``/``?APRSS``/``?APRST``/``?PING?``)
      - ⚠️ (APRSISCE/32, YAAC)
@@ -449,7 +450,7 @@ Station Management / Ops
    * - Web-based configuration UI
      - ⚠️ (VP-Digi and some ESP32 projects have one; most desktop clients use native GUIs instead)
      - ✅
-     - ~30 pages, HTTP Basic auth, live re-apply for most settings without reboot
+     - 17 sidebar pages + symbol picker, HTTP Basic auth, live re-apply for most settings without reboot
    * - Live dashboard (status, counters)
      - ⚠️
      - ✅

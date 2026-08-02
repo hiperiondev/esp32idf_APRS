@@ -8,7 +8,9 @@ The ``webconfig`` component (``components/webconfig/``) is an ``esp_http_server`
 admin built from one file per page (``pages/*.c``), a route table
 (``web_server.c``) and a set of shared helpers (``web_common.c``). It uses
 **HTTP Basic auth** against ``g_config.http_username`` / ``http_password`` on
-every page, wildcard URI matching, a 20 KB handler stack and LRU purge.
+every page — the single exception being the static ``/style.css``, which carries
+no configuration or traffic data — plus wildcard URI matching, a 20 KB handler
+stack and LRU purge.
 
 Why per-field helpers
 =====================
@@ -51,8 +53,9 @@ The pages
        beacon on/off, position, interval, symbol picker, object, comment,
        status, PHG.
    * - **Digi**
-     - Digipeater enable, callsign/SSID, auto (WIDEn-N) mode, beacon settings,
-       delay, filter.
+     - Digipeater enable, callsign/SSID and beacon settings (position, symbol,
+       interval, comment, status, path). It also carries *Auto (WIDEn-N)*,
+       *Digipeat delay* and *Dupe filter window* — see the note below.
    * - **Tracker**
      - Tracker enable, callsign/SSID, fixed interval, position, symbol
        (moving/stopped), comment, compressed-position, Mic-E-position and
@@ -98,6 +101,16 @@ The pages
    * - **About / Firmware**
      - Project name, version, build date/time, IDF version, running partition,
        and the **OTA Update** panel.
+
+.. note::
+
+   Three controls on the *Digi* page — *Auto (WIDEn-N)* (``digiAuto``),
+   *Digipeat delay* (``digiDelay``) and *Dupe filter window* (``digiFilter``) —
+   are accepted, validated and persisted to ``config.json``, but no runtime code
+   reads them today. The digipeater always handles WIDEn-N, repeats without an
+   added delay, and takes its duplicate window from the shared
+   ``dup_cache_timeout_ms`` on the *IGate* page. They are documented here so the
+   behaviour is not mistaken for a bug.
 
 The dashboard statistics
 ========================

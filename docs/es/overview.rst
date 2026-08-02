@@ -66,9 +66,9 @@ Matriz de funciones
    * - Activación de PTT (GPIO y polaridad en compilación)
      - ✅
      - GPIO validado; tiempo mínimo de **des-activación** en ejecución
-   * - CSMA / ranura de tiempo TX / preámbulo TXDelay
+   * - CSMA / ranura de tiempo TX / p-persistencia / preámbulo TXDelay
      - ✅
-     - ``preamble``, ``tx_timeslot``
+     - ``preamble``, ``tx_timeslot``, ``csma_persist``
    * - DCD (detección de portadora de datos)
      - ✅
      - derivado del demodulador; sin entrada de squelch por hardware
@@ -102,6 +102,11 @@ Matriz de funciones
    * - UI de chat de mensajes APRS (``/msgchat``)
      - ✅
      - página de bandeja/redacción sobre el motor de mensajería
+   * - Respondedor de consultas APRS (APRS101 cap.15)
+     - ✅
+     - generales ``?APRS?``/``?WX?``/``?IGATE?`` + el conjunto dirigido
+       (``?APRSD``/``?APRSH``/``?APRSM``/``?APRSO``/``?APRSP``/``?APRSS``/
+       ``?APRST``/``?PING?``), con límites de tasa por tipo y por origen
    * - Balizas de posición fija (tracker / igate / digi)
      - ✅
      - una tarea planificadora de balizas compartida
@@ -113,7 +118,7 @@ Matriz de funciones
      - ``mbedtls``, IV derivado por MD5, carga útil en base64
    * - Administración web (autenticación HTTP Basic)
      - ✅
-     - ~30 páginas, panel en vivo
+     - 17 páginas de la barra lateral + selector de símbolo, panel en vivo
    * - Registro de tráfico en vivo + tabla de últimos escuchados
      - ✅
      - long-poll JSON (``?since=<seq>``)

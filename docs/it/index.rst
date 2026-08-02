@@ -140,6 +140,7 @@ insieme di capitoli:
    functionality/digipeater
    functionality/beacons
    functionality/messaging
+   functionality/query
    functionality/weather
    functionality/telemetry
    functionality/bulletins-objects

@@ -5,9 +5,9 @@ Mappa del codice sorgente
 =========================
 
 Un percorso attraverso il repository, così che tu sappia dove guardare. Le
-dimensioni sono approssimative. Il C di prima parte somma ~31 k righe tra
-``main/`` + ``components/`` (esclusi i ``managed_components/``), di cui ~5 k sono
-il nucleo DSP del modem e ~6 k l'amministrazione web.
+dimensioni sono approssimative. Il C di prima parte somma ~37 k righe tra
+``main/`` + ``components/`` (esclusi i ``managed_components/``), di cui ~6,8 k
+sono il componente del modem e ~10 k l'amministrazione web.
 
 Disposizione del repository
 ===========================
@@ -28,6 +28,11 @@ Disposizione del repository
    │   ├── storage.c           ← montaggio/formato/uso LittleFS
    │   ├── aprs_service.c/.h   ← la colla: smistamento RX, helper TX, cfg modem, stats, loop test
    │   ├── aprs_filter.c/.h    ← classificatore payload + filtri portata/prefisso/budlist/terze-parti
+   │   ├── aprs_coord.c/.h     ← lat/lon ↔ testo APRS, ambiguità, estrazione simbolo
+   │   ├── include/aprs_path.h ← bitmask dei preset di percorso → suffisso ",WIDE1-1,WIDE2-1"
+   │   ├── include/str_append.h ← helper di append snprintf limitato, condiviso dai costruttori
+   │   ├── include/json_store.h / json_escape.h ← scrittore JSON in streaming + escaping
+   │   ├── include/sched_time.h ← secondi monotonici usati da ogni scheduler
    │   ├── beacon.c/.h         ← beacon posizione propria (trk / igate / digi)
    │   ├── weather.c/.h        ← report WX proprio: refresh sensors_local + beacon WX
    │   ├── telemetry.c/.h      ← telemetria propria: A1–A5 + B1–B8, beacon T#nnn + metadati
@@ -40,7 +45,7 @@ Disposizione del repository
    │
    ├── components/
    │   ├── esp32idf_radioamateur_modem/    (il modem software — il cuore del progetto)
-   │   │   ├── esp32idf_radioamateur_modem.h  ← API pubblica + livello di comodità APRS
+   │   │   ├── esp32idf_radioamateur_modem.h  ← API pubblica (config, callback RX, helper TX)
    │   │   ├── include/…_config.h             ← TUTTE le costanti di scheda/DSP in compilazione
    │   │   ├── src/afsk.c                      ← ingest DMA ADC, AGC, FIR decimazione, ISR DAC, PTT
    │   │   ├── src/modem.c                     ← correlatori, DPLL, tabelle toni, DCD, calibrazione
@@ -51,6 +56,7 @@ Disposizione del repository
    │   ├── igate/          ← client TCP APRS-IS, login, filtri, dedup, RF→INET / INET→RF
    │   ├── digirepeater/   ← logica percorso WIDEn-N / TRACEn-N / RELAY / ECHO / GATE
    │   ├── message/        ← messaggistica APRS, ack/ritentativo, AES-128-CBC + base64
+   │   ├── query/          ← risponditore di query APRS (?APRS?/?WX?/?IGATE? + dirette)
    │   ├── lastheard/      ← tabella in RAM di stazioni sentite, una per nominativo → JSON dashboard
    │   ├── trafficlog/     ← anello in RAM di righe di traffico → JSON dashboard (long-poll per seq)
    │   ├── weather_telemetry/  ← solo strutture di livello protocollo (campi WX + Telemetria APRS101)

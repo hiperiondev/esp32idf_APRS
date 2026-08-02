@@ -5,9 +5,9 @@ Source Map
 ==========
 
 A tour of the repository, so you know where to look. Sizes are approximate.
-First-party C totals ~31 k lines across ``main/`` + ``components/`` (excluding
-``managed_components/``), of which ~5 k is the modem DSP core and ~6 k is the web
-admin.
+First-party C totals ~37 k lines across ``main/`` + ``components/`` (excluding
+``managed_components/``), of which ~6.8 k is the modem component and ~10 k is the
+web admin.
 
 Repository layout
 =================
@@ -28,6 +28,11 @@ Repository layout
    │   ├── storage.c           ← LittleFS mount/format/usage
    │   ├── aprs_service.c/.h   ← the glue: RX dispatch, TX helper, modem cfg, stats, loop test
    │   ├── aprs_filter.c/.h    ← payload classifier + range/prefix/budlist/3rd-party filters
+   │   ├── aprs_coord.c/.h     ← lat/lon ↔ APRS text, ambiguity, symbol extraction
+   │   ├── include/aprs_path.h ← path-preset bitmask → ",WIDE1-1,WIDE2-1" suffix builder
+   │   ├── include/str_append.h ← bounded snprintf-append helper shared by the builders
+   │   ├── include/json_store.h / json_escape.h ← streaming JSON writer + escaping
+   │   ├── include/sched_time.h ← monotonic seconds used by every scheduler
    │   ├── beacon.c/.h         ← own-position beacons (trk / igate / digi)
    │   ├── weather.c/.h        ← own-station WX report: sensors_local refresh + WX beacon
    │   ├── telemetry.c/.h      ← own-station telemetry: A1–A5 + B1–B8, T#nnn beacon + metadata
@@ -40,7 +45,7 @@ Repository layout
    │
    ├── components/
    │   ├── esp32idf_radioamateur_modem/    (the soft-modem — the heart of the project)
-   │   │   ├── esp32idf_radioamateur_modem.h  ← public API + APRS convenience layer
+   │   │   ├── esp32idf_radioamateur_modem.h  ← public API (config, RX callback, TX helpers)
    │   │   ├── include/…_config.h             ← ALL compile-time board/DSP constants
    │   │   ├── src/afsk.c                      ← ADC DMA ingest, AGC, decimation FIR, DAC ISR, PTT
    │   │   ├── src/modem.c                     ← correlators, DPLL, tone tables, DCD, calibration
@@ -51,6 +56,7 @@ Repository layout
    │   ├── igate/          ← APRS-IS TCP client, login, filters, dedup, RF→INET / INET→RF
    │   ├── digirepeater/   ← WIDEn-N / TRACEn-N / RELAY / ECHO / GATE path logic
    │   ├── message/        ← APRS messaging, ack/retry, AES-128-CBC + base64
+   │   ├── query/          ← APRS query responder (?APRS?/?WX?/?IGATE? + directed set)
    │   ├── lastheard/      ← in-RAM table of heard stations, one per callsign → dashboard JSON
    │   ├── trafficlog/     ← in-RAM ring of traffic lines → dashboard JSON (seq long-poll)
    │   ├── weather_telemetry/  ← protocol-level structs only (APRS101 WX + Telemetry fields)

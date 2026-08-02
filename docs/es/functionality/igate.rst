@@ -40,9 +40,15 @@ cualquier etapa se descarta, y la *razón* se registra en un contador por-razón
 para que el panel pueda mostrar "N descartadas por X" en lugar de un único
 agregado opaco.
 
-#. **Supresión de duplicados.** La trama se comprueba contra una caché de
-   10 entradas / 30 s (``isDuplicatePacket()``). Los duplicados se cuentan aparte
-   en ``dupCount``.
+#. **Supresión de duplicados.** La trama se comprueba contra la caché de
+   duplicados compartida (``isDuplicatePacket()``). Tanto su profundidad
+   (``g_config.dup_cache_size``, ``DUP_CACHE_SIZE_MIN``..``DUP_CACHE_SIZE_MAX``
+   = 4..40, por defecto 20) como su ventana (``g_config.dup_cache_timeout_ms``,
+   1000..120000 ms, por defecto 30000) se editan en la página *IGate* y se
+   releen en cada consulta, así que un cambio se aplica sin reiniciar. El
+   arreglo siempre se reserva con la capacidad de compilación
+   ``DUP_CACHE_SIZE_MAX``; ``dup_cache_size`` solo elige cuánto de ella se usa.
+   Los duplicados se cuentan aparte en ``dupCount``.
 #. **Guarda de trama demasiado corta.** Las tramas cuyo campo de información está
    por debajo de la longitud mínima utilizable se descartan (``DROP_TOO_SHORT``).
 #. **Filtro de token de ruta.** Las tramas cuya ruta lleva ``RFONLY``, ``TCPIP``,

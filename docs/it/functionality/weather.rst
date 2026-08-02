@@ -34,10 +34,21 @@ L'aggiornamento a 1 Hz
 
 #. Pulisce i flag "abilitato" del contenitore, così che un driver che smetta di
    riportare un campo questo ciclo non lasci un valore obsoleto che sembra valido.
-#. Chiama ``sensors_local_save(&weather_telemetry_data, SENSOR_LOCAL_DATA_ALL)``,
-   che percorre il registro e, per ogni driver capace, lo inizializza pigramente
-   se serve e chiama il suo ``save()`` — il driver scrive direttamente in
-   ``aprs_weather_report_t`` / ``aprs_telemetry_report_t``.
+#. Aggiorna la famiglia telemetria con una sola chiamata aggregata,
+   ``sensors_local_save(&weather_telemetry_data, SENSOR_LOCAL_DATA_TELEMETRY)``:
+   i canali di telemetria non sono selezionabili per campo, quindi contribuisce
+   ogni driver con capacità TELEMETRY.
+#. Risolve **ogni campo meteorologico in modo indipendente** contro l'unico
+   driver che l'operatore ha scelto per esso. Un campo viene campionato solo se
+   è spuntato (``g_config.wx_sensor_enable[f]``) e ha un canale sorgente
+   assegnato (``g_config.wx_sensor_ch[f] != SENSOR_LOCAL_CH_NONE``); la lettura
+   è presa con ``sensors_local_save_one(ch, &scratch, SENSOR_LOCAL_DATA_WEATHER)``
+   su un contenitore temporaneo, e solo il valore di quel campo viene copiato
+   nel report vivo. Usare un contenitore temporaneo per campo è ciò che impedisce
+   a un secondo driver WEATHER registrato di sovrascrivere un campo già risolto
+   da un altro, ed è il motivo per cui il pacchetto in onda corrisponde sempre
+   alla colonna *Channel* di ogni campo e all'anteprima *Value* live della
+   pagina.
 #. Accumula ogni campo marcato come *Averaged* (una casella per campo nella pagina
    Weather) in una somma/conteggio correnti.
 

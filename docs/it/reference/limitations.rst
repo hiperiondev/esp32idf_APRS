@@ -104,7 +104,9 @@ IGate (RF <-> APRS-IS)
    * - Soppressione dei pacchetti duplicati
      - ✅
      - ✅
-     - Cache da 10 voci / 30 s, condivisa con il digipeater
+     - Cache condivisa; profondità e finestra configurabili via web nella
+       pagina IGate (4-40 voci, predefinito 20; finestra 1-120 s, predefinito
+       30 s)
    * - Inserimento Q-construct ``qAR``/``qAO``
      - ✅
      - ✅
@@ -389,8 +391,7 @@ Oggetti, Item, Bollettini, Stato
      - ⚠️
      - ✅
      - Query generali (``?APRS?``/``?WX?``/``?IGATE?``) e dirette, ciascuna con
-       il proprio limitatore di frequenza; vedere il componente ``query`` e la
-       pagina *Query* del pannello web
+       il proprio limitatore di frequenza; vedi :ref:`it-query`
    * - Insieme di query dirette (``?APRSD``/``?APRSH``/``?APRSM``/``?APRSO``/
        ``?APRSP``/``?APRSS``/``?APRST``/``?PING?``)
      - ⚠️ (APRSISCE/32, YAAC)
@@ -454,7 +455,7 @@ Gestione stazione / Operatività
    * - UI di configurazione via web
      - ⚠️ (VP-Digi e alcuni progetti ESP32 ce l'hanno; la maggior parte dei client desktop usa GUI native)
      - ✅
-     - ~30 pagine, autenticazione HTTP Basic, riapplicazione live della maggior parte delle impostazioni senza riavvio
+     - 17 pagine nella barra laterale + selettore di simbolo, autenticazione HTTP Basic, riapplicazione live della maggior parte delle impostazioni senza riavvio
    * - Dashboard live (stato, contatori)
      - ⚠️
      - ✅

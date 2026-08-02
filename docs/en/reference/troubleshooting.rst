@@ -84,8 +84,12 @@ changed to fix (see :ref:`en-dsp-signal-chain`). If you overrode
 "The PTT LED stays on when idle."
 =================================
 
-The PTT logic is correct but its polarity is a compile-time constant. With
-active-low wiring, idle/unkeyed drives the pin **high** (LED on) and keyed drives
-it low. If your hardware is active-high, set ``MODEM_PTT_ACTIVE_HIGH=1`` in the
-top-level ``CMakeLists.txt`` and do a full clean rebuild — the value is a
-compile-time constant baked into ``afsk.c``.
+The PTT logic is correct; its polarity is a compile-time constant, and the
+shipped board definition is ``MODEM_PTT_ACTIVE_HIGH=1`` (active-high) in the
+top-level ``CMakeLists.txt``. Active-high means idle/unkeyed drives the pin
+**low** and keyed drives it high; active-low is the mirror image, so idle leaves
+the pin high and an LED on that pin stays lit. If the LED tracks the opposite of
+what you expect, your driver stage inverts (an optocoupler does; a plain NPN
+low-side switch does not): flip the macro to the other value and do a full clean
+rebuild — the value is baked into ``afsk.c``, so an incremental build will not
+pick it up.

@@ -86,9 +86,13 @@ estás alimentando audio **plano/de discriminador**.
 "El LED de PTT se queda encendido en reposo."
 =============================================
 
-La lógica de PTT es correcta pero su polaridad es una constante de compilación. Con
-cableado activo-bajo, reposo/sin-activar acciona el pin **alto** (LED encendido) y
-activado lo acciona bajo. Si tu hardware es activo-alto, pon
-``MODEM_PTT_ACTIVE_HIGH=1`` en el ``CMakeLists.txt`` de nivel superior y haz una
-recompilación limpia completa — el valor es una constante de compilación horneada
-en ``afsk.c``.
+La lógica de PTT es correcta; su polaridad es una constante de compilación, y la
+definición de placa que se distribuye es ``MODEM_PTT_ACTIVE_HIGH=1``
+(activo-alto) en el ``CMakeLists.txt`` de nivel superior. Activo-alto significa
+que reposo/sin-activar acciona el pin **bajo** y activado lo acciona alto;
+activo-bajo es la imagen espejo, así que en reposo el pin queda alto y un LED en
+ese pin se queda encendido. Si el LED sigue lo contrario de lo que esperas, tu
+etapa de excitación invierte (un optoacoplador sí; un simple NPN de lado bajo
+no): cambia la macro al otro valor y haz una recompilación limpia completa — el
+valor queda horneado en ``afsk.c``, así que una compilación incremental no lo
+tomará.

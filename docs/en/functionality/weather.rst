@@ -33,10 +33,20 @@ The 1 Hz refresh
 
 #. Clears the "enabled" flags in the container, so a driver that stops reporting
    a field this cycle does not leave a stale value looking valid.
-#. Calls ``sensors_local_save(&weather_telemetry_data, SENSOR_LOCAL_DATA_ALL)``,
-   which walks the registry and, for each capable driver, lazily initialises it
-   if needed and calls its ``save()`` — the driver writes straight into
-   ``aprs_weather_report_t`` / ``aprs_telemetry_report_t``.
+#. Refreshes the telemetry family with one aggregate call,
+   ``sensors_local_save(&weather_telemetry_data, SENSOR_LOCAL_DATA_TELEMETRY)``:
+   telemetry channels are not per-field selectable, so every TELEMETRY-capable
+   driver contributes.
+#. Resolves **each weather field independently** against the one driver the
+   operator picked for it. A field is sampled only when it is both ticked
+   (``g_config.wx_sensor_enable[f]``) and has a source channel assigned
+   (``g_config.wx_sensor_ch[f] != SENSOR_LOCAL_CH_NONE``); the reading is taken
+   with ``sensors_local_save_one(ch, &scratch, SENSOR_LOCAL_DATA_WEATHER)`` into
+   a scratch container, and only that one field's value is copied into the live
+   report. Using a scratch container per field is what stops a second registered
+   WEATHER driver from overwriting a field already resolved from a different
+   one, and is why the on-air packet always matches the per-field *Channel*
+   column and the page's live *Value* preview.
 #. Folds any field marked *Averaged* (a per-field checkbox on the Weather page)
    into a running sum/count.
 

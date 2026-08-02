@@ -14,8 +14,14 @@ casella/composizione vera e propria.
 Il motore dei messaggi
 ======================
 
-* **Coda in RAM.** Fino a ``MSG_QUEUE_SIZE`` (20) messaggi in uscita, ciascuno
-  fino a 200 caratteri di testo, sono mantenuti in ``s_queue[]``.
+* **Coda in RAM.** ``s_queue[]`` contiene fino a ``MSG_QUEUE_SIZE`` (20) voci,
+  condivise dai messaggi **ricevuti e in uscita** allo stesso modo — ogni voce
+  porta un flag ``rxtx`` che dice quale sia. ``MSG_TEXT_MAX`` (200) è il tetto di
+  memorizzazione in memoria del testo di una voce; il limite di protocollo in
+  onda è il separato ``APRS_MSG_TEXT_STD_MAX`` (67 caratteri), contro cui
+  validano la casella di composizione e il risponditore di query, così che un
+  campo informativo ``":ADDRESSEE:testo{id"`` completo resti entro il classico
+  budget TNC2 di 256 byte.
 * **Invia / ack / ritentativo.** ``sendAPRSMessage()`` accoda un messaggio,
   ``sendAPRSAck()`` risponde a uno ricevuto, e ``sendAPRSMessageRetry()`` —
   invocata a 1 Hz dal task di tick del servizio APRS — reinvia qualsiasi
@@ -46,6 +52,12 @@ di testo del messaggio (limitata alla lunghezza del messaggio APRS) e un pulsant
 di invio. Aggiorna la sua lista di messaggi tramite ``/msgchat/list`` (un
 frammento JSON). È condizionata dall'interruttore di compilazione
 ``ENABLE_MSG_CHAT``.
+
+.. seealso::
+
+   :ref:`it-query` — il risponditore di query condivide il gestore di TX di questo
+   componente ed è raggiunto da ``handleIncomingAPRS()`` quando il testo di un
+   messaggio indirizzato inizia con ``?``.
 
 GPIO di allarme messaggio
 =========================

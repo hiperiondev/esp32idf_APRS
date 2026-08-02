@@ -8,8 +8,10 @@ El componente ``webconfig`` (``components/webconfig/``) es una administración
 basada en ``esp_http_server`` construida con un archivo por página
 (``pages/*.c``), una tabla de rutas (``web_server.c``) y un conjunto de ayudantes
 compartidos (``web_common.c``). Usa **autenticación HTTP Basic** contra
-``g_config.http_username`` / ``http_password`` en cada página, coincidencia de
-URI con comodines, una pila de manejador de 20 KB y purga LRU.
+``g_config.http_username`` / ``http_password`` en cada página — con la única
+excepción del ``/style.css`` estático, que no lleva datos de configuración ni de
+tráfico —, además de coincidencia de URI con comodines, una pila de manejador de
+20 KB y purga LRU.
 
 Por qué ayudantes por campo
 ===========================
@@ -55,8 +57,10 @@ Las páginas
        de servidor, baliza on/off, posición, intervalo, selector de símbolo,
        objeto, comentario, estado, PHG.
    * - **Digi**
-     - Habilitar digipeater, indicativo/SSID, modo auto (WIDEn-N), ajustes de
-       baliza, retardo, filtro.
+     - Habilitar digipeater, indicativo/SSID y ajustes de baliza (posición,
+       símbolo, intervalo, comentario, estado, ruta). También lleva *Auto
+       (WIDEn-N)*, *Retardo de digipeteo* y *Ventana de filtro de duplicados* —
+       véase la nota más abajo.
    * - **Tracker**
      - Habilitar tracker, indicativo/SSID, intervalo fijo, posición, símbolo
        (en movimiento/parado), comentario, opciones de posición comprimida,
@@ -107,6 +111,16 @@ Las páginas
    * - **About / Firmware**
      - Nombre del proyecto, versión, fecha/hora de compilación, versión de IDF,
        partición en ejecución, y el panel de **OTA Update**.
+
+.. note::
+
+   Tres controles de la página *Digi* — *Auto (WIDEn-N)* (``digiAuto``),
+   *Retardo de digipeteo* (``digiDelay``) y *Ventana de filtro de duplicados*
+   (``digiFilter``) — se aceptan, validan y persisten en ``config.json``, pero
+   hoy ningún código en ejecución los lee. El digipeater siempre maneja WIDEn-N,
+   repite sin retardo añadido, y toma su ventana de duplicados del
+   ``dup_cache_timeout_ms`` compartido de la página *IGate*. Se documentan aquí
+   para que la conducta no se confunda con un fallo.
 
 Las estadísticas del panel
 ==========================

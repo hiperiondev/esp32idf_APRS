@@ -8,8 +8,10 @@ Il componente ``webconfig`` (``components/webconfig/``) è un'amministrazione
 basata su ``esp_http_server`` costruita con un file per pagina (``pages/*.c``),
 una tabella di route (``web_server.c``) e un insieme di helper condivisi
 (``web_common.c``). Usa **autenticazione HTTP Basic** contro
-``g_config.http_username`` / ``http_password`` su ogni pagina, corrispondenza URI
-con wildcard, uno stack di gestore da 20 KB e purga LRU.
+``g_config.http_username`` / ``http_password`` su ogni pagina — con l'unica
+eccezione dello ``/style.css`` statico, che non porta dati di configurazione o di
+traffico — oltre a corrispondenza URI con wildcard, uno stack di gestore da 20 KB
+e purga LRU.
 
 Perché helper per campo
 =======================
@@ -55,8 +57,10 @@ Le pagine
        filtro server, beacon on/off, posizione, intervallo, selettore di simbolo,
        oggetto, commento, stato, PHG.
    * - **Digi**
-     - Abilita digipeater, indicativo/SSID, modalità auto (WIDEn-N), impostazioni
-       beacon, ritardo, filtro.
+     - Abilita digipeater, indicativo/SSID e impostazioni beacon (posizione,
+       simbolo, intervallo, commento, stato, percorso). Porta anche *Auto
+       (WIDEn-N)*, *Ritardo di digipeatura* e *Finestra filtro duplicati* — vedi
+       la nota più sotto.
    * - **Tracker**
      - Abilita tracker, indicativo/SSID, intervallo fisso, posizione, simbolo (in
        movimento/fermo), commento, opzioni di posizione compressa, posizione
@@ -106,6 +110,16 @@ Le pagine
    * - **About / Firmware**
      - Nome del progetto, versione, data/ora di compilazione, versione di IDF,
        partizione in esecuzione, e il pannello di **OTA Update**.
+
+.. note::
+
+   Tre controlli della pagina *Digi* — *Auto (WIDEn-N)* (``digiAuto``), *Ritardo
+   di digipeatura* (``digiDelay``) e *Finestra filtro duplicati*
+   (``digiFilter``) — sono accettati, validati e persistiti in ``config.json``,
+   ma oggi nessun codice a runtime li legge. Il digipeater gestisce sempre
+   WIDEn-N, ripete senza ritardo aggiunto, e prende la sua finestra di duplicati
+   dal ``dup_cache_timeout_ms`` condiviso della pagina *IGate*. Sono documentati
+   qui perché il comportamento non sia scambiato per un difetto.
 
 Le statistiche della dashboard
 ==============================

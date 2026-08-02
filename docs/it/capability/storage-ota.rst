@@ -18,7 +18,8 @@ persistente che il firmware scrive:
 * ``/storage/objitems.json`` — i cinque oggetti/item.
 
 La pagina web *Storage* è un navigatore LittleFS completo: elenca i file con le
-dimensioni, scarica (``/download?file=…``), elimina (``/delete?file=…``), accetta
+dimensioni, scarica (``GET /download?file=…``), elimina (``POST /delete`` con
+il nome file nel corpo del form), accetta
 upload multipart (``/upload``), riporta l'uso e può riformattare il volume
 (``/format``).
 

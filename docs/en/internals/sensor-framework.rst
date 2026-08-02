@@ -59,9 +59,12 @@ defined in the separate ``weather_telemetry`` component:
      - a future struct — see below
 
 A single driver may advertise **either or both** bits in its ``capabilities``.
-``SENSOR_LOCAL_DATA_ALL`` is the OR of every bit currently defined, and is what
-``weather.c`` passes when it asks the registry to refresh everything once per
-second.
+``SENSOR_LOCAL_DATA_ALL`` is the OR of every bit currently defined; it is
+available for a consumer that genuinely wants every family at once. ``weather.c``
+does **not** use it on its 1 Hz pass: it refreshes telemetry with an aggregate
+``SENSOR_LOCAL_DATA_TELEMETRY`` call and then reads each weather field
+individually with ``sensors_local_save_one(..., SENSOR_LOCAL_DATA_WEATHER)``, so
+that every WX field honours the driver selected for it on the Weather page.
 
 Anatomy of a driver
 ===================
@@ -148,8 +151,11 @@ End-to-end data flow
 
    weather_service_1hz()   (1 Hz)
      ├─ clears the container's "enabled" flags
-     ├─ sensors_local_save(&data, SENSOR_LOCAL_DATA_ALL)
-     │    └─ each capable driver: init() lazily, then save() → writes the struct
+     ├─ sensors_local_save(&data, SENSOR_LOCAL_DATA_TELEMETRY)
+     │    └─ each TELEMETRY-capable driver: init() lazily, then save()
+     ├─ for each WX field f with wx_sensor_enable[f] and a channel assigned:
+     │    └─ sensors_local_save_one(wx_sensor_ch[f], &scratch, ..._WEATHER)
+     │         └─ copy just that field into the live report
      └─ folds any "Averaged" field into a running sum/count
 
    weather_beacon_service()   (every wx_interval s, if wx_en)
