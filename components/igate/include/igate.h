@@ -29,8 +29,12 @@
 
 #include "ax25.h"
 
-#define DUP_PACKET_CACHE_SIZE 20    /**< Number of recent frames kept for duplicate suppression, shared by every ::dup_scope_t. */
-#define DUP_PACKET_TIMEOUT_MS 30000 /**< Duplicate-suppression window, in milliseconds (30 s). */
+// Duplicate-suppression cache size and timeout are runtime-configurable, see
+// g_config.dup_cache_size / g_config.dup_cache_timeout_ms and the
+// DUP_CACHE_SIZE_*/DUP_CACHE_TIMEOUT_MS_* bounds in app_config.h. The cache
+// array itself is still allocated at the fixed compile-time capacity
+// DUP_CACHE_SIZE_MAX (see igate.c); dup_cache_size only selects how much of
+// that capacity is actually used at runtime.
 
 /**
  * @brief Which consumer a duplicate-suppression lookup belongs to.
@@ -85,7 +89,8 @@ typedef enum {
     DROP_DIGI_PATH_FULL,     /**< Digipeater: path already at the AX.25 maximum (8) repeater addresses; inserting our call would overflow rpt_list/rpt_flags. */
     DROP_DIGI_NO_PATH,       /**< Digipeater: destination-SSID trace decoded to no usable WIDEn-N path. */
     DROP_DIGI_PATH_TOKEN,    /**< Digipeater: path carries qA or TCP (already gated, not for RF repeat). */
-    DROP_DIGI_DUPLICATE,     /**< Digipeater: another copy of this frame was already repeated within ::DUP_PACKET_TIMEOUT_MS (see isDuplicatePacketScoped()). */
+    DROP_DIGI_DUPLICATE,     /**< Digipeater: another copy of this frame was already repeated within g_config.dup_cache_timeout_ms (see
+                               isDuplicatePacketScoped()). */
     DROP_PERSISTENCE_MISSED, /**< CSMA/p-persistent roll missed MAX_TRANSMIT_RETRY_COUNT times in a row on an otherwise-clear channel; the modem's
                                 anti-starvation floor forced the transmission anyway (see Ax25TransmitCheck() in ax25.c). */
     DROP_REASON_COUNT
@@ -178,7 +183,7 @@ int igateProcess(ax25_msg_t *packet);
  *
  * Hashes @p packet (source callsign+SSID, payload length and a bidirectional
  * CRC-CCITT of the whole info field) and looks that hash up among the entries
- * inserted by the same scope inside the last ::DUP_PACKET_TIMEOUT_MS. A miss
+ * inserted by the same scope inside the last g_config.dup_cache_timeout_ms. A miss
  * inserts the hash, so the next copy of the same frame reaching the same scope
  * is reported as a duplicate.
  *
@@ -200,7 +205,7 @@ bool isDuplicatePacketScoped(ax25_msg_t *packet, dup_scope_t scope);
 bool isDuplicatePacket(ax25_msg_t *packet);
 
 /**
- * @brief Drop entries older than ::DUP_PACKET_TIMEOUT_MS from the
+ * @brief Drop entries older than g_config.dup_cache_timeout_ms from the
  * duplicate-suppression cache. Call periodically.
  */
 void clearExpiredDuplicates(void);

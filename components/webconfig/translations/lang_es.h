@@ -702,6 +702,19 @@
     "terceros solo se desenvuelve y retransmite si su indicativo de origen interno está en la lista blanca. Active esto solo si confía en la fuente "          \
     "específica y la ha incluido en la lista blanca - volver a filtrar tráfico de terceros sin esta restricción es la causa más común de bucles de IGate."
 
+#define TR_F_SATGATE      "Lista de Satélites Digipetidores"
+#define TR_F_SATGATE_CALL "Indicativo de Satélite"
+#define TR_NOTE_SATGATE                                                                                                                                       \
+    "Indicativos de satélites/ISS digipetidores (p. ej. ISS, PSAT). Un paquete enrutado por uno de estos solo se retransmite a APRS-IS si la entrada de "     \
+    "trayectoria del digipetidor está realmente marcada como usada. Hasta 8 entradas; deje una entrada vacía para desactivarla."
+
+#define TR_F_DUP_CACHE            "Supresión de Duplicados"
+#define TR_F_DUP_CACHE_SIZE       "Tamaño de Caché (entradas)"
+#define TR_F_DUP_CACHE_TIMEOUT_MS "Ventana de Supresión (ms)"
+#define TR_NOTE_DUP_CACHE                                                                                                                                     \
+    "Compartido por el IGate y el Digipetidor para suprimir copias repetidas del mismo paquete. Un digipetidor ocupado en una frecuencia congestionada "     \
+    "puede necesitar una caché más grande; un IGate rural con poco tráfico puede preferir una ventana más corta."
+
 #define TR_SYM_ICON            "Icono"
 #define TR_SYM_QUICK_PICK      "Selección Rápida"
 #define TR_SYM_PRIMARY_TABLE   "Tabla Primaria ( / )"

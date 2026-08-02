@@ -86,6 +86,10 @@ Valores de fábrica destacados
      - ``NOCALL`` / 10, passcode ``-1``
    * - Host / puerto de APRS-IS
      - ``aprs.dprns.com`` : 14580
+   * - Lista de satélites digipetidores
+     - ``RS0ISS``, ``YBOX``, ``YBSAT``, ``PSAT``, ``W3ADO``, ``BJ1SI`` (hasta 8, configurable desde la web)
+   * - Caché / ventana de supresión de duplicados
+     - 20 entradas / 30000 ms (configurable desde la web)
    * - Preset de ruta 0
      - ``WIDE1-1,WIDE2-1``
    * - Digipeater

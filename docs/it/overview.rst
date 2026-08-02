@@ -82,6 +82,12 @@ Matrice delle funzionalità
    * - Whitelist / blacklist indicativi (budlist)
      - ✅
      - per direzione, si compone (AND) con i filtri di tipo
+   * - Elenco digipeater satellitari (ISS)
+     - ✅
+     - fino a 8 voci, configurabile dal web (pagina IGate), senza ricompilare
+   * - Dimensione e finestra della cache soppressione duplicati
+     - ✅
+     - configurabile dal web (pagina IGate), condiviso da IGate e Digipeater
    * - Digipeater
      - ✅
      - WIDEn-N, TRACEn-N, RELAY/ECHO/GATE, soppressione duplicati

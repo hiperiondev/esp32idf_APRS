@@ -692,6 +692,19 @@
     "unwrapped and relayed if its inner source callsign is itself on the whitelist. Only enable if you trust and have whitelisted the specific source - "      \
     "re-gating third-party traffic without this restriction is the most common cause of IGate loops."
 
+#define TR_F_SATGATE      "Satellite Gate List"
+#define TR_F_SATGATE_CALL "Satellite Callsign"
+#define TR_NOTE_SATGATE                                                                                                                                       \
+    "Callsigns of satellite/ISS digipeaters (e.g. ISS, PSAT). A frame routed through one of these is only gated to APRS-IS if the digipeater's path entry "   \
+    "is actually marked used. Up to 8 entries; leave a slot blank to disable it."
+
+#define TR_F_DUP_CACHE            "Duplicate Suppression"
+#define TR_F_DUP_CACHE_SIZE       "Cache Size (entries)"
+#define TR_F_DUP_CACHE_TIMEOUT_MS "Suppression Window (ms)"
+#define TR_NOTE_DUP_CACHE                                                                                                                                     \
+    "Shared by the IGate and the Digipeater to suppress repeated copies of the same frame. A busy digipeater on a congested frequency may need a larger "    \
+    "cache; a sparse rural IGate may prefer a shorter window."
+
 #define TR_SYM_ICON            "Icon"
 #define TR_SYM_QUICK_PICK      "Quick Pick"
 #define TR_SYM_PRIMARY_TABLE   "Primary Table ( / )"

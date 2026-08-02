@@ -52,7 +52,7 @@ struct DupPacketCache {
 // on esp_restart() - which is what the dashboard should show after an OTA
 // reboot, rather than totals carried over from the previous firmware image.
 static igate_stats_t s_stats;
-static struct DupPacketCache s_dupCache[DUP_PACKET_CACHE_SIZE];
+static struct DupPacketCache s_dupCache[DUP_CACHE_SIZE_MAX];
 static uint8_t s_dupCacheIndex = 0;
 
 static int s_sock = -1;
@@ -76,6 +76,34 @@ static void ensureSockMutex(void) {
     portEXIT_CRITICAL(&s_sockMutexInitLock);
 }
 static volatile bool s_running;
+
+// Web-configured duplicate-cache size (g_config.dup_cache_size), clamped to
+// DUP_CACHE_SIZE_MIN..DUP_CACHE_SIZE_MAX. Read fresh on every call rather than
+// cached, so a web-admin save takes effect on the very next check without
+// requiring a reconnect or reboot; clamped here (not just at load/save time)
+// so an out-of-range value read back from a hand-edited config.json can never
+// index past s_dupCache[].
+static uint8_t dupCacheSize(void) {
+    uint8_t n = g_config.dup_cache_size;
+    if (n < DUP_CACHE_SIZE_MIN)
+        n = DUP_CACHE_SIZE_MIN;
+    else if (n > DUP_CACHE_SIZE_MAX)
+        n = DUP_CACHE_SIZE_MAX;
+    return n;
+}
+
+// Web-configured duplicate-suppression window, in milliseconds
+// (g_config.dup_cache_timeout_ms), clamped to DUP_CACHE_TIMEOUT_MS_MIN..
+// DUP_CACHE_TIMEOUT_MS_MAX. Read fresh on every call for the same live-update
+// reason as dupCacheSize().
+static uint32_t dupCacheTimeoutMs(void) {
+    uint32_t ms = g_config.dup_cache_timeout_ms;
+    if (ms < DUP_CACHE_TIMEOUT_MS_MIN)
+        ms = DUP_CACHE_TIMEOUT_MS_MIN;
+    else if (ms > DUP_CACHE_TIMEOUT_MS_MAX)
+        ms = DUP_CACHE_TIMEOUT_MS_MAX;
+    return ms;
+}
 
 // Extracts the source callsign (everything before '>') from a TNC2 text
 // line into out, for use as the DX field of a trafficlog entry. Leaves out
@@ -199,8 +227,9 @@ static void packetHash(ax25_msg_t *packet, char *hash) {
 
 void clearExpiredDuplicates(void) {
     unsigned long now = (unsigned long)(xTaskGetTickCount() * portTICK_PERIOD_MS);
-    for (uint8_t i = 0; i < DUP_PACKET_CACHE_SIZE; i++) {
-        if (s_dupCache[i].timestamp > 0 && (now - s_dupCache[i].timestamp) > DUP_PACKET_TIMEOUT_MS) {
+    uint32_t timeoutMs = dupCacheTimeoutMs();
+    for (uint8_t i = 0; i < dupCacheSize(); i++) {
+        if (s_dupCache[i].timestamp > 0 && (now - s_dupCache[i].timestamp) > timeoutMs) {
             s_dupCache[i].timestamp = 0;
         }
     }
@@ -216,7 +245,8 @@ bool isDuplicatePacketScoped(ax25_msg_t *packet, dup_scope_t scope) {
     unsigned long now = (unsigned long)(xTaskGetTickCount() * portTICK_PERIOD_MS);
     clearExpiredDuplicates();
 
-    for (uint8_t i = 0; i < DUP_PACKET_CACHE_SIZE; i++) {
+    uint8_t cacheSize = dupCacheSize();
+    for (uint8_t i = 0; i < cacheSize; i++) {
         // hash is fixed-width binary data (post-XOR bytes may legally be NUL
         // partway through), not a C string, so compare it with memcmp() over
         // the full 16 bytes rather than strncmp(), which stops at the first
@@ -230,10 +260,15 @@ bool isDuplicatePacketScoped(ax25_msg_t *packet, dup_scope_t scope) {
         }
     }
 
+    // Clamp the insertion index too: a runtime shrink of dup_cache_size
+    // (web-admin save) could otherwise leave s_dupCacheIndex pointing past
+    // the now-smaller window, walking indices the lookup above never scans.
+    if (s_dupCacheIndex >= cacheSize)
+        s_dupCacheIndex = 0;
     memcpy(s_dupCache[s_dupCacheIndex].hash, hash, 16);
     s_dupCache[s_dupCacheIndex].timestamp = now;
     s_dupCache[s_dupCacheIndex].scope = (uint8_t)scope;
-    s_dupCacheIndex = (s_dupCacheIndex + 1) % DUP_PACKET_CACHE_SIZE;
+    s_dupCacheIndex = (s_dupCacheIndex + 1) % cacheSize;
     return false;
 }
 
@@ -334,15 +369,23 @@ int igateProcess(ax25_msg_t *packet) {
     // accessor; rpt_list[].call holds only the bare NUL-terminated callsign.
     // The '*' marker is a TNC2 text convention and is emitted from rpt_flags
     // when the header line is rendered further down this function.
-    static const struct {
-        const char *call;
-        size_t len;
-    } satGates[] = {
-        { "RS0ISS", 6 }, { "YBOX", 4 }, { "YBSAT", 5 }, { "PSAT", 4 }, { "W3ADO", 5 }, { "BJ1SI", 5 },
-    };
+    // Satellite/ISS digipeater gate-call list: web-configurable (IGate page,
+    // parallel to the callsign whitelist/blacklist), defaults to the
+    // firmware's previous fixed 6-entry set. Snapshotted under the config
+    // lock, same as rf2inet_prefixes/rf2inet_range_* below - this runs on the
+    // modem RX task, and a concurrent web save could otherwise rewrite the
+    // list mid-check.
+    char satGates[IGATE_SATGATE_MAX][10];
+    app_config_lock();
+    memcpy(satGates, g_config.satgate, sizeof(satGates));
+    app_config_unlock();
+
     for (idx = 0; idx < packet->rpt_count; idx++) {
-        for (size_t s = 0; s < sizeof(satGates) / sizeof(satGates[0]); s++) {
-            if (!strncmp(packet->rpt_list[idx].call, satGates[s].call, satGates[s].len)) {
+        for (size_t s = 0; s < IGATE_SATGATE_MAX; s++) {
+            size_t satLen = strlen(satGates[s]);
+            if (satLen == 0)
+                continue; // empty slot: skip
+            if (!strncmp(packet->rpt_list[idx].call, satGates[s], satLen)) {
                 if (!AX25_REPEATED(packet, idx)) {
                     s_stats.dropByReason[DROP_SAT_NOT_USED]++;
                     return 0;

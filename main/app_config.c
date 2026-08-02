@@ -183,6 +183,18 @@ void app_config_set_defaults(app_config_t *c) {
     c->inet2rf_budlist_mode = BUDLIST_OFF;
     for (int i = 0; i < IGATE_BUDLIST_MAX; i++)
         set_str(c->budlist[i], sizeof(c->budlist[i]), "");
+
+    // Satellite/ISS digipeater gate-call list: the same 6 calls this firmware
+    // always used before this list became web-configurable. Remaining slots
+    // (if IGATE_SATGATE_MAX ever grows past 6) default to empty/unused.
+    {
+        static const char *satGateDefaults[] = { "RS0ISS", "YBOX", "YBSAT", "PSAT", "W3ADO", "BJ1SI" };
+        for (int i = 0; i < IGATE_SATGATE_MAX; i++)
+            set_str(c->satgate[i], sizeof(c->satgate[i]), (i < (int)(sizeof(satGateDefaults) / sizeof(satGateDefaults[0]))) ? satGateDefaults[i] : "");
+    }
+    c->dup_cache_size = DUP_CACHE_SIZE_DEFAULT;
+    c->dup_cache_timeout_ms = DUP_CACHE_TIMEOUT_MS_DEFAULT;
+
     c->rf2inet_range_en = false;
     c->rf2inet_range_km = 0.0f;
     c->rf2inet_prefix_en = false;
@@ -467,6 +479,12 @@ static void config_write_json(jw_t *d, const app_config_t *c) {
     for (int i = 0; i < IGATE_BUDLIST_MAX; i++)
         jarr_str(d, c->budlist[i]);
     jarr_end(d);
+    jarr_begin(d, "satgate");
+    for (int i = 0; i < IGATE_SATGATE_MAX; i++)
+        jarr_str(d, c->satgate[i]);
+    jarr_end(d);
+    jadd_num(d, "dupCacheSize", c->dup_cache_size);
+    jadd_num(d, "dupCacheTimeoutMs", c->dup_cache_timeout_ms);
     jadd_bool(d, "rf2inetRangeEn", c->rf2inet_range_en);
     jadd_num(d, "rf2inetRangeKm", c->rf2inet_range_km);
     jadd_bool(d, "rf2inetPrefixEn", c->rf2inet_prefix_en);
@@ -735,6 +753,24 @@ static void config_from_json(cJSON *d, app_config_t *c) {
             cJSON *v = bl ? cJSON_GetArrayItem(bl, i) : NULL;
             set_str(c->budlist[i], sizeof(c->budlist[i]), (v && cJSON_IsString(v)) ? v->valuestring : def.budlist[i]);
         }
+    }
+    {
+        cJSON *sg = cJSON_GetObjectItemCaseSensitive(d, "satgate");
+        for (int i = 0; i < IGATE_SATGATE_MAX; i++) {
+            cJSON *v = sg ? cJSON_GetArrayItem(sg, i) : NULL;
+            set_str(c->satgate[i], sizeof(c->satgate[i]), (v && cJSON_IsString(v)) ? v->valuestring : def.satgate[i]);
+        }
+    }
+    c->dup_cache_size = (uint8_t)jget_num(d, "dupCacheSize", def.dup_cache_size);
+    if (c->dup_cache_size < DUP_CACHE_SIZE_MIN || c->dup_cache_size > DUP_CACHE_SIZE_MAX) {
+        ESP_LOGW(TAG, "dupCacheSize %u out of range, clamped to %d..%d", (unsigned)c->dup_cache_size, DUP_CACHE_SIZE_MIN, DUP_CACHE_SIZE_MAX);
+        c->dup_cache_size = (c->dup_cache_size < DUP_CACHE_SIZE_MIN) ? DUP_CACHE_SIZE_MIN : DUP_CACHE_SIZE_MAX;
+    }
+    c->dup_cache_timeout_ms = (uint16_t)jget_num(d, "dupCacheTimeoutMs", def.dup_cache_timeout_ms);
+    if (c->dup_cache_timeout_ms < DUP_CACHE_TIMEOUT_MS_MIN || c->dup_cache_timeout_ms > DUP_CACHE_TIMEOUT_MS_MAX) {
+        ESP_LOGW(TAG, "dupCacheTimeoutMs %u out of range, clamped to %d..%d ms", (unsigned)c->dup_cache_timeout_ms, DUP_CACHE_TIMEOUT_MS_MIN,
+                 DUP_CACHE_TIMEOUT_MS_MAX);
+        c->dup_cache_timeout_ms = (c->dup_cache_timeout_ms < DUP_CACHE_TIMEOUT_MS_MIN) ? DUP_CACHE_TIMEOUT_MS_MIN : DUP_CACHE_TIMEOUT_MS_MAX;
     }
     c->rf2inet_range_en = jget_bool(d, "rf2inetRangeEn", def.rf2inet_range_en);
     c->rf2inet_range_km = (float)jget_num(d, "rf2inetRangeKm", def.rf2inet_range_km);

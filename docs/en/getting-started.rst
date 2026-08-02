@@ -85,6 +85,10 @@ Notable factory defaults
      - ``NOCALL`` / 10, passcode ``-1``
    * - APRS-IS host / port
      - ``aprs.dprns.com`` : 14580
+   * - Satellite gate-call list
+     - ``RS0ISS``, ``YBOX``, ``YBSAT``, ``PSAT``, ``W3ADO``, ``BJ1SI`` (up to 8, web-configurable)
+   * - Duplicate-suppression cache / window
+     - 20 entries / 30000 ms (web-configurable)
    * - Path preset 0
      - ``WIDE1-1,WIDE2-1``
    * - Digipeater

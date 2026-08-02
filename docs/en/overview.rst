@@ -80,6 +80,12 @@ Feature matrix
    * - Callsign whitelist / blacklist (budlist)
      - ✅
      - per-direction, composes (AND) with the type filters
+   * - Satellite/ISS digipeater gate-call list
+     - ✅
+     - up to 8 entries, web-configurable (IGate page), no rebuild needed
+   * - Duplicate-suppression cache size & window
+     - ✅
+     - web-configurable (IGate page), shared by IGate and Digipeater
    * - Digipeater
      - ✅
      - WIDEn-N, TRACEn-N, RELAY/ECHO/GATE, dup-suppression

@@ -703,6 +703,19 @@
     "fida della fonte specifica e questa è stata inserita in lista bianca - ri-filtrare il traffico di terze parti senza questa restrizione è la causa più "   \
     "comune dei loop IGate."
 
+#define TR_F_SATGATE      "Elenco Digipeater Satellitari"
+#define TR_F_SATGATE_CALL "Nominativo Satellite"
+#define TR_NOTE_SATGATE                                                                                                                                       \
+    "Nominativi dei digipeater satellitari/ISS (es. ISS, PSAT). Un pacchetto instradato tramite uno di questi viene inoltrato ad APRS-IS solo se la voce di " \
+    "percorso del digipeater è effettivamente contrassegnata come usata. Fino a 8 voci; lasciare vuota una voce per disattivarla."
+
+#define TR_F_DUP_CACHE            "Soppressione Duplicati"
+#define TR_F_DUP_CACHE_SIZE       "Dimensione Cache (voci)"
+#define TR_F_DUP_CACHE_TIMEOUT_MS "Finestra di Soppressione (ms)"
+#define TR_NOTE_DUP_CACHE                                                                                                                                     \
+    "Condiviso da IGate e Digipeater per sopprimere copie ripetute dello stesso pacchetto. Un digipeater molto attivo su una frequenza congestionata "        \
+    "potrebbe richiedere una cache più grande; un IGate rurale con poco traffico potrebbe preferire una finestra più breve."
+
 #define TR_SYM_ICON            "Icona"
 #define TR_SYM_QUICK_PICK      "Selezione rapida"
 #define TR_SYM_PRIMARY_TABLE   "Tabella primaria ( / )"

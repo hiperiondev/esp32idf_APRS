@@ -84,6 +84,12 @@ Matriz de funciones
    * - Lista blanca / negra de indicativos (budlist)
      - ✅
      - por dirección, se compone (AND) con los filtros por tipo
+   * - Lista de satélites digipetidores (ISS)
+     - ✅
+     - hasta 8 entradas, configurable desde la web (página IGate), sin recompilar
+   * - Tamaño y ventana de la caché de supresión de duplicados
+     - ✅
+     - configurable desde la web (página IGate), compartido por IGate y Digipeater
    * - Digipeater
      - ✅
      - WIDEn-N, TRACEn-N, RELAY/ECHO/GATE, supresión de duplicados

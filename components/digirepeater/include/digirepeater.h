@@ -45,7 +45,7 @@ typedef struct {
  *               insertion, etc).
  * A frame whose source address and information field match one this
  * digipeater already repeated inside the duplicate-suppression window
- * (::DUP_PACKET_TIMEOUT_MS, see isDuplicatePacketScoped()) is dropped before
+ * (g_config.dup_cache_timeout_ms, see isDuplicatePacketScoped()) is dropped before
  * any path work is done, so two digipeaters within earshot of each other do
  * not keep re-repeating each other's copies of the same frame.
  *

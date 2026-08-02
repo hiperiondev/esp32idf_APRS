@@ -213,6 +213,33 @@ typedef enum {
 #define IGATE_BUDLIST_MAX 8
 
 /**
+ * @brief Maximum number of entries in the satellite/ISS digipeater gate-call
+ * list (see g_config.satgate / igateProcess()'s satellite-gate check).
+ */
+#define IGATE_SATGATE_MAX 8
+
+/**
+ * @brief Duplicate-suppression cache bounds shared by the IGate and
+ * digipeater ::dup_scope_t windows (see igate.h).
+ *
+ * @c DUP_CACHE_SIZE_MIN/MAX bound @c app_config_t.dup_cache_size (the number
+ * of recent frames kept) and @c DUP_CACHE_TIMEOUT_MS_MIN/MAX bound
+ * @c app_config_t.dup_cache_timeout_ms (the window, in milliseconds, after
+ * which an entry stops counting as a duplicate). The cache array itself is
+ * still allocated at the fixed compile-time capacity DUP_CACHE_SIZE_MAX (see
+ * igate.c); dup_cache_size only selects how much of that capacity is
+ * actually used at runtime.
+ * @{
+ */
+#define DUP_CACHE_SIZE_MAX           40     /**< Compile-time capacity of the duplicate cache array (igate.c). */
+#define DUP_CACHE_SIZE_MIN           4      /**< Lowest g_config.dup_cache_size accepted from the web form / config.json. */
+#define DUP_CACHE_SIZE_DEFAULT       20     /**< Default g_config.dup_cache_size, matching the firmware's previous fixed behavior. */
+#define DUP_CACHE_TIMEOUT_MS_MIN     1000   /**< Lowest g_config.dup_cache_timeout_ms accepted from the web form / config.json. */
+#define DUP_CACHE_TIMEOUT_MS_MAX     120000 /**< Highest g_config.dup_cache_timeout_ms accepted from the web form / config.json. */
+#define DUP_CACHE_TIMEOUT_MS_DEFAULT 30000  /**< Default g_config.dup_cache_timeout_ms, matching the firmware's previous fixed behavior. */
+/** @} */
+
+/**
  * @brief Per-direction mode for the local callsign whitelist/blacklist
  * (g_config.rf2inet_budlist_mode / g_config.inet2rf_budlist_mode). Composes
  * with (ANDs against) the existing rf2inetFilter/inet2rfFilter payload-type
@@ -316,6 +343,14 @@ typedef struct {
     budlist_mode_t rf2inet_budlist_mode; /**< RF->INET local callsign whitelist/blacklist mode. */
     budlist_mode_t inet2rf_budlist_mode; /**< INET->RF local callsign whitelist/blacklist mode. */
     char budlist[IGATE_BUDLIST_MAX][10]; /**< Shared callsign list (base call, no SSID) used by both directions' whitelist/blacklist. */
+
+    char satgate[IGATE_SATGATE_MAX][10]; /**< Satellite/ISS digipeater gate-call list (base call, no SSID) checked against the repeater path in igateProcess();
+                                            an empty slot is simply skipped. Web-configurable (IGate page, parallel to budlist), defaults to the firmware's
+                                            previous fixed 6-entry set. */
+    uint8_t dup_cache_size;          /**< Number of recent frames kept for duplicate suppression (shared by every ::dup_scope_t). Clamped to
+                                        DUP_CACHE_SIZE_MIN..DUP_CACHE_SIZE_MAX; see igate.c. */
+    uint16_t dup_cache_timeout_ms;   /**< Duplicate-suppression window, in milliseconds. Clamped to DUP_CACHE_TIMEOUT_MS_MIN..DUP_CACHE_TIMEOUT_MS_MAX;
+                                        see igate.c. */
 
     bool rf2inet_range_en;  /**< Enable the local RF->INET range gate (see aprs_filter_haversine_km()). Independent of, and composed with (AND semantics),
                                rf2inetFilter/the budlist. */

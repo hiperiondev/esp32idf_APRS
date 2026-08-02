@@ -414,6 +414,44 @@ esp_err_t page_igate_get(httpd_req_t *req) {
         web_fieldset_close(req);
     }
 
+    // Satellite Gate List ----------------------------------------------------
+    // Callsigns of known satellite/ISS digipeaters (RS0ISS, PSAT, etc): a
+    // frame routed through one of these is only gated to APRS-IS if that
+    // digipeater's path entry is actually marked used (see igateProcess()'s
+    // satellite-gate check). Active birds change over time, so this list is
+    // editable here instead of requiring a firmware rebuild - same single
+    // <form>/Save button as the rest of the page.
+    web_raw(req, "<h2 style='margin-top:24px'>" TR_F_SATGATE "</h2>");
+    {
+        web_fieldset_open(req, TR_F_SATGATE);
+        web_raw(req, "<p style='color:var(--sub);font-size:12px;margin:4px 0'>" TR_NOTE_SATGATE "</p>");
+
+        for (int i = 0; i < IGATE_SATGATE_MAX; i++) {
+            char name[16];
+            char label[48];
+            snprintf(name, sizeof(name), "satgate%d", i);
+            snprintf(label, sizeof(label), "%.40s %d", TR_F_SATGATE_CALL, i + 1);
+            web_field_text(req, label, name, g_config.satgate[i], 9);
+        }
+
+        web_fieldset_close(req);
+    }
+
+    // Duplicate Suppression ---------------------------------------------------
+    // Shared by the IGate RF->INET gate and the digipeater RF->RF repeat
+    // window (see ::dup_scope_t). A busy digipeater on a congested frequency
+    // or a very sparse rural IGate are different regimes, so both the cache
+    // size and the window are web-configurable rather than fixed at compile
+    // time.
+    web_raw(req, "<h2 style='margin-top:24px'>" TR_F_DUP_CACHE "</h2>");
+    {
+        web_fieldset_open(req, TR_F_DUP_CACHE);
+        web_raw(req, "<p style='color:var(--sub);font-size:12px;margin:4px 0'>" TR_NOTE_DUP_CACHE "</p>");
+        web_field_int(req, TR_F_DUP_CACHE_SIZE, "dupCacheSize", g_config.dup_cache_size, DUP_CACHE_SIZE_MIN, DUP_CACHE_SIZE_MAX);
+        web_field_int(req, TR_F_DUP_CACHE_TIMEOUT_MS, "dupCacheTimeoutMs", g_config.dup_cache_timeout_ms, DUP_CACHE_TIMEOUT_MS_MIN, DUP_CACHE_TIMEOUT_MS_MAX);
+        web_fieldset_close(req);
+    }
+
     web_raw(req, "<button type='submit'>" TR_BTN_SAVE "</button></form>");
 
     web_send_footer(req);
@@ -427,8 +465,10 @@ esp_err_t page_igate_post(httpd_req_t *req) {
     // share the same <form> as the rest of the page (main settings + up to
     // 18 filter checkboxes + the Callsign Filter fieldset: 2 mode selects
     // and 8 callsign inputs, plus the range/prefix gate and third-party
-    // unwrap fields), not just the main settings on their own.
-    char body[3400];
+    // unwrap fields, plus the Satellite Gate List's 8 callsign inputs and
+    // the Duplicate Suppression fieldset's 2 numeric fields), not just the
+    // main settings on their own.
+    char body[3800];
     if (web_read_body(req, body, sizeof(body)) < 0) {
         httpd_resp_send_500(req);
         return ESP_OK;
@@ -614,6 +654,34 @@ esp_err_t page_igate_post(httpd_req_t *req) {
             snprintf(name, sizeof(name), "budlist%d", i);
             web_form_get_call(body, name, g_config.budlist[i], sizeof(g_config.budlist[i]));
         }
+    }
+
+    // Satellite Gate List: same single-form POST as everything else on this
+    // page. An empty slot is valid (skipped by igateProcess()).
+    for (int i = 0; i < IGATE_SATGATE_MAX; i++) {
+        char name[16];
+        snprintf(name, sizeof(name), "satgate%d", i);
+        web_form_get_call(body, name, g_config.satgate[i], sizeof(g_config.satgate[i]));
+    }
+
+    // Duplicate Suppression: cache size and window, clamped to the same
+    // DUP_CACHE_SIZE_*/DUP_CACHE_TIMEOUT_MS_* bounds the web form itself
+    // advertises, so a malformed POST can never push either value out of
+    // range.
+    {
+        int cacheSize = web_form_get_int(body, "dupCacheSize", g_config.dup_cache_size);
+        if (cacheSize < DUP_CACHE_SIZE_MIN)
+            cacheSize = DUP_CACHE_SIZE_MIN;
+        else if (cacheSize > DUP_CACHE_SIZE_MAX)
+            cacheSize = DUP_CACHE_SIZE_MAX;
+        g_config.dup_cache_size = (uint8_t)cacheSize;
+
+        int cacheTimeoutMs = web_form_get_int(body, "dupCacheTimeoutMs", g_config.dup_cache_timeout_ms);
+        if (cacheTimeoutMs < DUP_CACHE_TIMEOUT_MS_MIN)
+            cacheTimeoutMs = DUP_CACHE_TIMEOUT_MS_MIN;
+        else if (cacheTimeoutMs > DUP_CACHE_TIMEOUT_MS_MAX)
+            cacheTimeoutMs = DUP_CACHE_TIMEOUT_MS_MAX;
+        g_config.dup_cache_timeout_ms = (uint16_t)cacheTimeoutMs;
     }
 
     app_config_unlock();
