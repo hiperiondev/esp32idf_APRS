@@ -19,7 +19,7 @@
  * received traffic and transmits the matching response.
  *
  * The directed set additionally covers "?APRSD" (stations heard direct),
- * "?APRSH" (what is known about hearing one station), "?APRSM" (re-send this
+ * "?APRSH" (18-hour heard graph for one station), "?APRSM" (re-send this
  * station's pending messages for the querying operator), "?APRSO"
  * (re-announce the Objects/Items originated here), "?APRSP" (position),
  * "?APRSS" (status) and "?APRST" / "?PING?" (the route the query took).

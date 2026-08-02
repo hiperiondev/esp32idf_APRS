@@ -396,10 +396,11 @@ Objects, Items, Bulletins, Status
        RX task
    * - ``?APRSH`` heard-history graph
      - ⚠️
-     - ⚠️
-     - The station keeps one row per callsign, not a per-period history, so the
-       answer reports what that row holds (count, time of the last frame,
-       whether it was direct) instead of the 8-slot graph the spec describes
+     - ✅
+     - The station keeps an 18-hour heard histogram per callsign (see
+       ``components/lastheard``), so the answer is the ``Hrd: h0 h1 ... h17``
+       graph APRS101 ch.15 defines, six counts per period separated by ``.``,
+       hour 0 being the current clock hour
    * - Station Capabilities (``<`` DTI)
      - ✅
      - ✅

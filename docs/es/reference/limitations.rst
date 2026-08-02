@@ -402,11 +402,11 @@ Objetos, Items, Boletines, Estado
        balizas en vez de transmitir desde la tarea de RX
    * - Gráfico de historial de escucha de ``?APRSH``
      - ⚠️
-     - ⚠️
-     - La estación guarda una fila por indicativo, no un historial por período,
-       así que la respuesta informa lo que esa fila contiene (conteo, hora de la
-       última trama, si fue directa) en lugar del gráfico de 8 ranuras que
-       describe la especificación
+     - ✅
+     - La estación guarda un histograma de escucha de 18 horas por indicativo
+       (ver ``components/lastheard``), así que la respuesta es el gráfico
+       ``Hrd: h0 h1 ... h17`` que define APRS101 cap.15, seis conteos por
+       período separados por ``.``, siendo la hora 0 la hora reloj actual
    * - Capacidades de estación (DTI ``<``)
      - ✅
      - ✅

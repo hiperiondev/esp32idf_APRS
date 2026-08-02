@@ -16,8 +16,8 @@
  *
  * @brief In-RAM table of decoded stations feeding the dashboard "LAST HEARD"
  * panel: one entry per callsign, most recently heard first, with thread-safe
- * insertion, per-callsign packet counting, UTC timestamping and JSON
- * serialization.
+ * insertion, per-callsign packet counting, an 18-hour heard histogram for the
+ * "?APRSH" query, UTC timestamping and JSON serialization.
  */
 
 #include "lastheard.h"
@@ -42,6 +42,13 @@ typedef struct {
     char sym_code;
     bool direct;      // latest frame from this station carried no used digipeater
     uint32_t packets; // total times this callsign has been heard
+    // Hourly heard histogram for the "?APRSH" query (APRS101 ch.15): hourly[0]
+    // is the current clock hour, hourly[LASTHEARD_HEARD_HOURS - 1] the oldest.
+    // hour_slot is the epoch hour number hourly[0] belongs to, so lastheard_add()
+    // can tell how many whole hours to roll the histogram forward on the next
+    // frame from this station.
+    uint16_t hourly[LASTHEARD_HEARD_HOURS];
+    time_t hour_slot;
 } lastheard_entry_t;
 
 // One slot per STATION, never per packet: s_buf[0] is the most recently heard
@@ -55,6 +62,41 @@ static lastheard_entry_t s_buf[LASTHEARD_CAPACITY];
 static size_t s_count = 0; // live entries, s_buf[0..s_count-1], most recent first
 static SemaphoreHandle_t s_lock = NULL;
 static bool s_inited = false;
+
+// Roll one entry's hourly histogram forward to the current clock hour, then
+// count one packet into it. A brand-new entry (hour_slot == 0) starts with a
+// histogram of all zero except the current hour. A station heard again inside
+// the same clock hour it was last heard in just adds to hourly[0]. A station
+// heard again after N whole hours have passed shifts the histogram right by N
+// slots (zero-filling the hours that had no traffic) before counting this
+// packet, so a station that goes briefly silent still reads as silent for
+// those hours rather than skipping straight to "last heard" and hiding the gap.
+static void rollHourlyHistogram(lastheard_entry_t *e, time_t now) {
+    time_t nowHour = now / 3600;
+
+    if (e->hour_slot == 0) {
+        // First frame ever recorded for this entry.
+        memset(e->hourly, 0, sizeof(e->hourly));
+        e->hour_slot = nowHour;
+    } else if (nowHour > e->hour_slot) {
+        time_t elapsed = nowHour - e->hour_slot;
+        if (elapsed >= LASTHEARD_HEARD_HOURS) {
+            // More than a full graph's worth of hours passed: every slot is
+            // stale, so start clean rather than shifting in zeros one at a
+            // time for no visible effect.
+            memset(e->hourly, 0, sizeof(e->hourly));
+        } else {
+            memmove(&e->hourly[elapsed], &e->hourly[0], (LASTHEARD_HEARD_HOURS - elapsed) * sizeof(e->hourly[0]));
+            memset(e->hourly, 0, elapsed * sizeof(e->hourly[0]));
+        }
+        e->hour_slot = nowHour;
+    }
+    // nowHour < e->hour_slot only if the wall clock stepped backwards (e.g. an
+    // NTP correction); the histogram is left as-is rather than guessed at.
+
+    if (e->hourly[0] < UINT16_MAX)
+        e->hourly[0]++;
+}
 
 void lastheard_init(void) {
     if (s_inited)
@@ -104,7 +146,16 @@ void lastheard_add(const char *callsign, const char *path, bool via_rf, bool dir
         memmove(&s_buf[1], &s_buf[0], shift_from * sizeof(s_buf[0]));
 
     lastheard_entry_t *e = &s_buf[0];
-    e->time = time(NULL);
+    time_t now = time(NULL);
+
+    if (found >= LASTHEARD_CAPACITY) {
+        // New station: the slot now at s_buf[0] holds whatever the memmove
+        // shifted out of the way, so its histogram must not be reused.
+        e->hour_slot = 0;
+    }
+    rollHourlyHistogram(e, now);
+
+    e->time = now;
     strncpy(e->callsign, call, sizeof(e->callsign) - 1);
     e->callsign[sizeof(e->callsign) - 1] = 0;
     snprintf(e->path, sizeof(e->path), "%s: %s", via_rf ? "RF" : "INET", (path && path[0]) ? path : "DIRECT");
@@ -172,6 +223,36 @@ bool lastheard_lookup(const char *callsign, uint32_t *packets, time_t *last, boo
             *last = s_buf[i].time;
         if (direct)
             *direct = s_buf[i].direct;
+        found = true;
+        break;
+    }
+
+    xSemaphoreGive(s_lock);
+    return found;
+}
+
+bool lastheard_heard_history(const char *callsign, uint16_t out[LASTHEARD_HEARD_HOURS]) {
+    if (callsign == NULL || callsign[0] == 0 || out == NULL || !s_inited)
+        return false;
+    if (!s_lock || xSemaphoreTake(s_lock, pdMS_TO_TICKS(100)) != pdTRUE)
+        return false;
+
+    // Compare against the same truncation lastheard_add() stores, so a long
+    // callsign is looked up under the name the table actually holds.
+    char call[LASTHEARD_CALL_LEN];
+    strncpy(call, callsign, sizeof(call) - 1);
+    call[sizeof(call) - 1] = 0;
+
+    bool found = false;
+    for (size_t i = 0; i < s_count; i++) {
+        if (strcasecmp(s_buf[i].callsign, call) != 0)
+            continue;
+        // Bring the histogram up to the current wall-clock hour before handing
+        // it out, so a station that has gone quiet reports the real gap
+        // instead of stale counts from its last frame's hour.
+        rollHourlyHistogram(&s_buf[i], time(NULL));
+        s_buf[i].hourly[0]--; // undo the "one packet heard" bump rollHourlyHistogram() just added
+        memcpy(out, s_buf[i].hourly, sizeof(s_buf[i].hourly));
         found = true;
         break;
     }

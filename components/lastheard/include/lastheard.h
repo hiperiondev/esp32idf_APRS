@@ -26,6 +26,10 @@
  * the reference project's "PACKET" column does, without a talkative station
  * pushing every other callsign out of the table.
  *
+ * Each entry also keeps an 18-slot hourly histogram of packets heard from that
+ * station, most recent clock hour first, which is what APRS101 chapter 15
+ * defines as the answer to the "?APRSH" query.
+ *
  * Thread-safe: lastheard_add() may be called from any task (radio RX callback).
  * Entries are timestamped with time(NULL) (wall clock, once NTP has synced) and
  * rendered as UTC so the web client can show a human time-of-day.
@@ -44,6 +48,12 @@ extern "C" {
 #endif
 
 /**
+ * @brief Number of hourly slots kept per station for the "?APRSH" heard
+ * history, matching the 18-hour graph APRS101 chapter 15 defines.
+ */
+#define LASTHEARD_HEARD_HOURS 18
+
+/**
  * @brief Initialise the last-heard table. Must be called once (e.g. from
  * aprs_service_start()) before the first lastheard_add(). Safe to call more
  * than once.
@@ -58,6 +68,12 @@ void lastheard_init(void);
  * incremented, and the entry becomes the most recent one. An unknown callsign
  * takes a new entry at the front, evicting the least recently heard station
  * once the table is full.
+ *
+ * Every call also advances that station's hourly histogram: any clock hour
+ * that has elapsed since the entry was last touched is rolled into the
+ * histogram as a zero count, then the current hour's slot is incremented, so
+ * ::lastheard_heard_history always reflects real elapsed wall-clock hours
+ * rather than just call counts.
  *
  * @param callsign   Source callsign, e.g. "HS5TQA-7" (already includes SSID
  *                    if non-zero).
@@ -110,6 +126,24 @@ int lastheard_directs(char *out, size_t out_size);
  * @return true if the station is in the table.
  */
 bool lastheard_lookup(const char *callsign, uint32_t *packets, time_t *last, bool *direct);
+
+/**
+ * @brief Fetch one station's hourly heard histogram.
+ *
+ * Answers the graph part of the APRS "?APRSH" directed query (APRS101 ch.15):
+ * "Hrd: <packets in hour 0> <hour 1> ... <hour 17>", where hour 0 is the
+ * current (most recent) clock hour and hour 17 is 17 hours before it. Hours
+ * with no traffic from the station read as 0, including any hour that
+ * elapsed while the table held no entry for it yet.
+ *
+ * @param callsign Station to look up, matched exactly against the stored
+ *                 (SSID-bearing) callsign.
+ * @param out      Out: @c LASTHEARD_HEARD_HOURS counts, index 0 = current
+ *                 hour. Untouched when the station is unknown. Must not be
+ *                 NULL.
+ * @return true if the station is in the table.
+ */
+bool lastheard_heard_history(const char *callsign, uint16_t out[LASTHEARD_HEARD_HOURS]);
 
 /**
  * @brief Serialize the table (one element per station, most recent first) as a

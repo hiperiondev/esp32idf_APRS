@@ -401,11 +401,11 @@ Oggetti, Item, Bollettini, Stato
        beacon invece di trasmettere dal task RX
    * - Grafico della cronologia di ascolto di ``?APRSH``
      - ⚠️
-     - ⚠️
-     - La stazione tiene una riga per nominativo, non una cronologia per
-       periodo, quindi la risposta riporta ciò che quella riga contiene
-       (conteggio, ora dell'ultimo frame, se diretto) invece del grafico a 8
-       slot descritto dalla specifica
+     - ✅
+     - La stazione tiene un istogramma di ascolto di 18 ore per nominativo
+       (vedi ``components/lastheard``), quindi la risposta è il grafico
+       ``Hrd: h0 h1 ... h17`` definito da APRS101 cap.15, sei conteggi per
+       periodo separati da ``.``, con l'ora 0 pari all'ora corrente
    * - Capacità di stazione (DTI ``<``)
      - ✅
      - ✅

@@ -32,7 +32,6 @@
 #include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
-#include <time.h>
 
 #include "esp_log.h"
 
@@ -41,7 +40,7 @@
 #include "aprs_service.h" // APRS_TNC2_BUF_SIZE / APRS_TNC2_MAX_LEN
 #include "beacon.h"       // beacon_build_igate_position_packet() / beacon_build_igate_status_packet()
 #include "igate.h"        // igate_get_stats()
-#include "lastheard.h"    // lastheard_directs() / lastheard_lookup()
+#include "lastheard.h"    // lastheard_directs() / lastheard_heard_history()
 #include "message.h"      // MSG_CHANNEL_RF / MSG_CHANNEL_INET / message_send_pending_to()
 #include "query.h"
 #include "sched_time.h" // sched_mono_seconds()
@@ -356,12 +355,14 @@ static void respondDirects(const char *fromCall) {
 
 // "?APRSH <call>" -> what this station knows about hearing <call>.
 //
-// APRS101 describes the answer as a per-period heard graph. This station keeps
-// one row per callsign rather than a history of time slots (see
-// components/lastheard), so the answer states what that row actually holds -
-// how many frames have been counted, when the last one arrived, and whether it
-// came in direct - instead of fabricating a graph from data that was never
-// recorded. A station that is not in the table is reported as not heard.
+// APRS101 ch.15 defines the answer as a single-line message "Hrd: " followed
+// by the packet count for each of the last LASTHEARD_HEARD_HOURS clock hours,
+// grouped six-per-period with "." between groups (matching the worked example
+// in the spec: "Hrd: 14 15 4 . 10 6 7 ."). The first count is the current
+// clock hour and each one after it is one hour further back, taken straight
+// from that station's row in components/lastheard, whose hourly histogram
+// exists for exactly this query. A station that is not in the table is
+// reported as not heard.
 static void respondHeard(const char *fromCall, const char *arg) {
     char target[12] = { 0 };
     size_t n = 0;
@@ -379,21 +380,31 @@ static void respondHeard(const char *fromCall, const char *arg) {
         return;
     }
 
-    uint32_t packets = 0;
-    time_t last = 0;
-    bool direct = false;
-    if (!lastheard_lookup(target, &packets, &last, &direct)) {
+    uint16_t hourly[LASTHEARD_HEARD_HOURS];
+    if (!lastheard_heard_history(target, hourly)) {
         snprintf(text, sizeof(text), "%s not heard", target);
         txMessageTo(fromCall, text);
         return;
     }
 
-    // UTC, and labelled as such: the firmware runs with TZ=UTC0, the same
-    // timescale the LAST HEARD panel and every own-station timestamp use.
-    struct tm tmv;
-    gmtime_r(&last, &tmv);
-    snprintf(text, sizeof(text), "%s heard %lu, last %02d:%02d:%02dZ%s", target, (unsigned long)packets, tmv.tm_hour, tmv.tm_min, tmv.tm_sec,
-             direct ? " direct" : "");
+    // Build "Hrd: h0 h1 h2 h3 h4 h5 . h6 h7 h8 h9 h10 h11 . h12 ... h17 ."
+    // one hour at a time so a too-long callsign or a bigger LASTHEARD_HEARD_HOURS
+    // can never overflow the message text - the format simply gets cut at the
+    // last hour that still fits, the same "whole units only" rule the other
+    // list-style responses in this file already follow.
+    int pos = snprintf(text, sizeof(text), "Hrd:");
+    for (size_t i = 0; i < LASTHEARD_HEARD_HOURS && pos > 0 && (size_t)pos < sizeof(text); i++) {
+        int n2 = snprintf(text + pos, sizeof(text) - (size_t)pos, " %u", (unsigned int)hourly[i]);
+        if (n2 < 0 || (size_t)pos + (size_t)n2 >= sizeof(text))
+            break;
+        pos += n2;
+        if ((i + 1) % 6 == 0) {
+            n2 = snprintf(text + pos, sizeof(text) - (size_t)pos, " .");
+            if (n2 < 0 || (size_t)pos + (size_t)n2 >= sizeof(text))
+                break;
+            pos += n2;
+        }
+    }
     txMessageTo(fromCall, text);
 }
 
