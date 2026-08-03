@@ -39,6 +39,20 @@ The chain, stage by stage
      - **38 400 Hz**
      - ``ax25.c`` / ``modem.c`` / ``afsk.c``
 
+What the frame decoder trusts
+=============================
+
+``ax25_decode()`` is a public entry point of the modem component, so it validates
+its own input instead of relying on the producer that fills the buffer. Beyond
+the minimum header length (destination + source + control + PID = 16 bytes) it
+reads nothing without first measuring it against ``len``: the address field is
+walked one address at a time, and both the extension octet and the seven bytes
+of the repeater it promises must still be inside the frame. A truncated or
+corrupted reception whose extension bits never terminate is rejected, rather
+than decoding bytes that lie past the frame — in the RX path those bytes are the
+tail of the previously received frame, which would otherwise turn into
+plausible-looking repeater callsigns in an otherwise valid decode.
+
 Why the numbers are what they are
 =================================
 

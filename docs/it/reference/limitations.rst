@@ -53,7 +53,12 @@ Modem / Livello 2
    * - Framing HDLC / codifica-decodifica AX.25 UI
      - ✅ (universale)
      - ✅
-     - Percorso TX/RX completo via software, su ADC/DAC
+     - Percorso TX/RX completo via software, su ADC/DAC. ``ax25_decode()`` legge
+       solo i byte della trama che riceve: il campo indirizzi viene percorso un
+       indirizzo alla volta rispetto alla lunghezza della trama, quindi
+       un'intestazione i cui bit di estensione dichiarano più ripetitori di
+       quanti la trama ne porti viene respinta invece di decodificare ciò che la
+       segue in memoria
    * - FEC Reed-Solomon FX.25
      - ⚠️ (Direwolf sì; la maggior parte dei TNC hardware no)
      - ✅

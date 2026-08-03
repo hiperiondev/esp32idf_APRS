@@ -39,6 +39,21 @@ La cadena, etapa por etapa
      - **38 400 Hz**
      - ``ax25.c`` / ``modem.c`` / ``afsk.c``
 
+Qué da por bueno el decodificador de tramas
+===========================================
+
+``ax25_decode()`` es un punto de entrada público del componente del módem, así
+que valida su propia entrada en vez de confiar en el productor que llena el
+búfer. Más allá del largo mínimo de cabecera (destino + origen + control + PID =
+16 bytes) no lee nada sin medirlo antes contra ``len``: el campo de direcciones
+se recorre de a una dirección, y tanto el octeto de extensión como los siete
+bytes de la repetidora que promete tienen que seguir dentro de la trama. Una
+recepción truncada o corrupta cuyos bits de extensión nunca terminan se rechaza,
+en vez de decodificar bytes que quedan más allá de la trama — en la ruta de RX
+esos bytes son la cola de la trama recibida anteriormente, que si no se
+convertirían en indicativos de repetidora verosímiles dentro de una
+decodificación por lo demás válida.
+
 Por qué los números son los que son
 ===================================
 

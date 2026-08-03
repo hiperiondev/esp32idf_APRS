@@ -53,7 +53,11 @@ Módem / Capa 2
    * - Encuadre HDLC / codificación-decodificación AX.25 UI
      - ✅ (universal)
      - ✅
-     - Ruta TX/RX completa por software, sobre ADC/DAC
+     - Ruta TX/RX completa por software, sobre ADC/DAC. ``ax25_decode()`` lee
+       solo los bytes de la trama que recibe: el campo de direcciones se recorre
+       de a una dirección contra el largo de la trama, así que una cabecera cuyos
+       bits de extensión reclaman más repetidoras de las que la trama transporta
+       se rechaza en vez de decodificar lo que la siga en memoria
    * - FEC Reed-Solomon FX.25
      - ⚠️ (Direwolf sí; la mayoría de TNC de hardware no)
      - ✅

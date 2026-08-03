@@ -51,7 +51,11 @@ Modem / Layer-2
    * - HDLC framing / AX.25 UI encode-decode
      - ✅ (universal)
      - ✅
-     - Full soft-modem TX/RX, in software, on ADC/DAC
+     - Full soft-modem TX/RX, in software, on ADC/DAC. ``ax25_decode()`` reads
+       only the bytes of the frame it is handed: the address field is walked one
+       address at a time against the frame length, so a header whose extension
+       bits claim more repeaters than the frame carries is rejected instead of
+       decoding whatever follows it in memory
    * - FX.25 Reed-Solomon FEC
      - ⚠️ (Direwolf yes; most hardware TNCs no)
      - ✅

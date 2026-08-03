@@ -39,6 +39,21 @@ La catena, fase per fase
      - **38 400 Hz**
      - ``ax25.c`` / ``modem.c`` / ``afsk.c``
 
+Cosa dà per buono il decodificatore di trame
+============================================
+
+``ax25_decode()`` è un punto di ingresso pubblico del componente modem, quindi
+convalida il proprio input invece di fidarsi del produttore che riempie il
+buffer. Oltre alla lunghezza minima dell'intestazione (destinazione + sorgente +
+controllo + PID = 16 byte) non legge nulla senza prima misurarlo rispetto a
+``len``: il campo indirizzi viene percorso un indirizzo alla volta, e sia
+l'ottetto di estensione sia i sette byte del ripetitore che dichiara devono
+essere ancora dentro la trama. Una ricezione troncata o corrotta i cui bit di
+estensione non terminano mai viene respinta, invece di decodificare byte che
+stanno oltre la trama — nel percorso RX quei byte sono la coda della trama
+ricevuta in precedenza, che altrimenti diventerebbero nominativi di ripetitore
+del tutto plausibili in una decodifica per il resto valida.
+
 Perché i numeri sono quelli che sono
 ====================================
 

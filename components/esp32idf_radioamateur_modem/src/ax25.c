@@ -286,17 +286,32 @@ static void IRAM_ATTR calculateCRC(uint8_t bit, uint16_t *crc) {
 
 // Minimum bytes a legal AX.25 UI frame header can be: destination address (6
 // call + 1 SSID/control byte = 7), source address (7), control byte (1) and
-// PID byte (1) = 16. This is a lower bound with zero repeaters; DECODE_CALL()
-// and the fixed pointer arithmetic below walk exactly this many bytes
-// unconditionally, so anything shorter must be rejected up front rather than
-// read past the logical end of a short/corrupted RF frame.
+// PID byte (1) = 16. This is a lower bound with zero repeaters. The
+// destination and source addresses are the one stretch DECODE_CALL() walks
+// with no further test, so anything shorter is rejected up front rather than
+// read past the logical end of a short/corrupted RF frame; everything after
+// them is measured against the frame length as it is reached.
 #define AX25_MIN_ADDR_LEN (7 + 7 + 1 + 1)
+
+// Size of one AX.25 address: 6 shifted callsign characters plus the SSID
+// octet whose bit 0 is the address-extension bit. Each repeater the address
+// field carries costs exactly this much, so it is what the walk below requires
+// to still be inside the frame before decoding one more of them.
+#define AX25_ADDR_LEN 7
+
+// Bytes the control and PID fields take together, right after the last
+// address. Both are read as fixed-width fields, so both have to fit.
+#define AX25_CTRL_PID_LEN 2
 
 bool ax25_decode(uint8_t *buf, size_t len, uint16_t mVrms, ax25_msg_t *msg) {
     if (len < AX25_MIN_ADDR_LEN)
         return false; // too short to hold dst+src+ctrl+pid: reject before any fixed-width field parsing
 
-    uint8_t *buf_start = buf;
+    // One past the last byte the caller vouches for. Every read beyond the
+    // fixed dst/src pair the length check above already covers is measured
+    // against this, so the decoder's own safety does not depend on whoever
+    // produced the buffer having stopped the address field at the right place.
+    const uint8_t *end = buf + len;
 
     DECODE_CALL(buf, msg->dst.call);
     msg->dst.ssidBits = *buf++;
@@ -308,13 +323,35 @@ bool ax25_decode(uint8_t *buf, size_t len, uint16_t mVrms, ax25_msg_t *msg) {
     msg->src.ssid = (msg->src.ssidBits >> 1) & 0x0F;
     msg->src.call[6] = 0;
 
-    for (msg->rpt_count = 0; !(*buf++ & 0x01) && (msg->rpt_count < countof(msg->rpt_list)); msg->rpt_count++) {
+    // Repeater walk. On entry to each pass buf points at the SSID octet of the
+    // address just decoded, whose bit 0 is the extension bit: clear means one
+    // more address follows. That byte and the seven bytes the promised address
+    // needs are both demanded to be inside the frame before they are read, so a
+    // header whose extension bits claim more addresses than its length can hold
+    // is rejected here instead of decoding whatever bytes happen to follow it
+    // in the caller's buffer.
+    msg->rpt_count = 0;
+    while (true) {
+        if (buf >= end)
+            return false; // extension bit claims another address past the end of the frame
+
+        bool more = ((*buf++ & 0x01) == 0);
+        if (!more || msg->rpt_count >= countof(msg->rpt_list))
+            break;
+
+        if ((size_t)(end - buf) < AX25_ADDR_LEN)
+            return false; // not enough bytes left for the repeater address the extension bit promised
+
         DECODE_CALL(buf, msg->rpt_list[msg->rpt_count].call);
         msg->rpt_list[msg->rpt_count].ssidBits = *buf;
         msg->rpt_list[msg->rpt_count].ssid = (msg->rpt_list[msg->rpt_count].ssidBits >> 1) & 0x0F;
         AX25_SET_REPEATED(msg, msg->rpt_count, (*buf & 0x80));
         msg->rpt_list[msg->rpt_count].call[6] = 0;
+        msg->rpt_count++;
     }
+
+    if ((size_t)(end - buf) < AX25_CTRL_PID_LEN)
+        return false; // address field consumed the frame, leaving no control and PID fields
 
     msg->ctrl = *buf++;
     if (msg->ctrl != AX25_CTRL_UI)
@@ -325,7 +362,7 @@ bool ax25_decode(uint8_t *buf, size_t len, uint16_t mVrms, ax25_msg_t *msg) {
         return false; // UI frame but not "no layer 3" - not an APRS frame
 
     memset(msg->info, 0, sizeof(msg->info));
-    int rest = (int)((buf_start + len) - buf);
+    int rest = (int)(end - buf);
     if (rest > 0) {
         if (rest > (int)sizeof(msg->info) - 1)
             rest = (int)sizeof(msg->info) - 1;

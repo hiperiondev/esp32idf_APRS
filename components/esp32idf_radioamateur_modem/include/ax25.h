@@ -375,20 +375,30 @@ void Ax25MinUnkeyTime(uint16_t ms);
 
 /**
  * @brief Decode a raw AX.25 frame (without FCS) into a structured message.
+ *
+ * Reads nothing outside the @p len bytes it is given. The address field is
+ * walked one address at a time and each step is checked against the end of
+ * the frame first, so a header whose address-extension bits claim more
+ * repeaters than the frame can hold - a truncated or corrupted reception -
+ * is rejected instead of decoding bytes that lie past the frame in the
+ * caller's buffer. The same applies to the control and PID fields: they are
+ * only read once the frame is known to still hold them.
+ *
  * @param buf   Raw frame bytes (address field onwards, no FCS).
- * @param len   Length, in bytes, of @p buf.
+ * @param len   Length, in bytes, of @p buf. Only these bytes are read.
  * @param mVrms RMS input level measured while this frame was received, in
  *              millivolts.
  * @param msg   Destination structure to fill with the decoded fields.
  * @return true if the frame was a well-formed UI frame with a "no layer 3"
  *         PID (i.e. a decodable APRS frame - @p msg is fully populated,
- *         including @c info / @c len). false if decoding stopped early
- *         because the control field wasn't UI or the PID wasn't
- *         AX25_PID_NOLAYER3 (corrupted frame, or legitimate non-APRS AX.25
- *         traffic) - in that case only @c dst / @c src / @c rpt_list /
- *         @c ctrl (and @c pid, if reached) are valid; @c info / @c len are
- *         not touched by this call and must not be relied upon by the
- *         caller.
+ *         including @c info / @c len). false if the frame is shorter than a
+ *         minimal UI header, if its address field runs past @p len, or if
+ *         decoding stopped early because the control field wasn't UI or the
+ *         PID wasn't AX25_PID_NOLAYER3 (corrupted frame, or legitimate
+ *         non-APRS AX.25 traffic) - in that case only @c dst / @c src /
+ *         @c rpt_list / @c rpt_count / @c ctrl (and @c pid, if reached) are
+ *         valid; @c info / @c len are not touched by this call and must not
+ *         be relied upon by the caller.
  */
 bool ax25_decode(uint8_t *buf, size_t len, uint16_t mVrms, ax25_msg_t *msg);
 
