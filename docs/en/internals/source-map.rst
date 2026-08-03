@@ -36,7 +36,7 @@ Repository layout
    │   ├── beacon.c/.h         ← own-position beacons (trk / igate / digi)
    │   ├── weather.c/.h        ← own-station WX report: sensors_local refresh + WX beacon
    │   ├── telemetry.c/.h      ← own-station telemetry: A1–A5 + B1–B8, T#nnn beacon + metadata
-   │   ├── beacon_scheduler.c/.h ← ONE shared task driving ALL periodic TX
+   │   ├── beacon_scheduler.c/.h ← ONE shared task driving ALL periodic TX + query answers
    │   ├── bulletins.c/.h      ← APRS bulletins BLN1..BLN5 (own bulletins.json)
    │   ├── objects_items.c/.h  ← APRS Objects/Items (own objitems.json)
    │   ├── net_state.c/.h      ← "do we actually have internet?" flag
@@ -56,7 +56,7 @@ Repository layout
    │   ├── igate/          ← APRS-IS TCP client, login, filters, dedup, RF→INET / INET→RF
    │   ├── digirepeater/   ← WIDEn-N / TRACEn-N / RELAY / ECHO / GATE path logic
    │   ├── message/        ← APRS messaging, ack/retry, AES-128-CBC + base64
-   │   ├── query/          ← APRS query responder (?APRS?/?WX?/?IGATE? + directed set)
+   │   ├── query/          ← APRS query responder (?APRS?/?WX?/?IGATE? + directed set), answered from the scheduler task
    │   ├── lastheard/      ← in-RAM table of heard stations, one per callsign → dashboard JSON
    │   ├── trafficlog/     ← in-RAM ring of traffic lines → dashboard JSON (seq long-poll)
    │   ├── weather_telemetry/  ← protocol-level structs only (APRS101 WX + Telemetry fields)

@@ -32,6 +32,25 @@ enable flags and intervals — only the task (and its stack) is shared.
 Net effect: five stacks (~61 KB total) become one (~14 KB), freeing ~46 KB of
 internal heap on this no-PSRAM build.
 
+Query answers ride the same task
+================================
+
+An APRS query answer is a beacon in everything but its trigger: ``?APRS?`` and
+``?APRSP`` run the position builder, ``?APRSS`` the status builder, ``?WX?`` the
+weather one, and all of them end in the same float-heavy TNC2/AX.25 TX chain. So
+they are answered here too. ``query_process()`` and ``query_process_directed()``,
+which run on the tasks that receive traffic, only queue the request; the
+scheduler calls ``query_service()`` at the start of every pass and does the
+building and the transmitting on the stack sized for that call tree (see
+:ref:`en-query`).
+
+Because a query is not periodic, waiting for the next beacon to fall due would
+show up as a late reply. Queuing a request therefore calls
+``beacon_scheduler_wake()``, which cuts the scheduler's sleep short — the sleep
+is an ``ulTaskNotifyTake()`` with the soonest due time as its timeout rather than
+a plain delay. A wake raised while the task is mid-pass is latched by FreeRTOS
+and taken by the next sleep, so nothing queued is slept through.
+
 Service functions
 =================
 

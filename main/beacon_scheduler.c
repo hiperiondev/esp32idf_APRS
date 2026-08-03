@@ -13,9 +13,10 @@
 //
 //     please contact their authors for more information.
 //
-// @brief Single task that services all periodic own-station transmissions.
-//        See beacon_scheduler.h for the rationale (five big-stack tasks folded
-//        into one to reclaim internal heap).
+// @brief Single task that services all periodic own-station transmissions and
+//        the APRS query answers deferred to it. See beacon_scheduler.h for the
+//        rationale (five big-stack tasks folded into one to reclaim internal
+//        heap).
 
 #include <stdint.h>
 
@@ -30,6 +31,7 @@
 #include "beacon_scheduler.h"
 #include "bulletins.h"
 #include "objects_items.h"
+#include "query.h"
 #include "telemetry.h"
 #include "weather.h"
 
@@ -59,6 +61,13 @@ static const char *TAG = "beacon_sched";
 // compiled out unless the build's maximum log level admits ESP_LOGD and is
 // only executed when the "ax25" tag is actually raised to debug at run time -
 // so raising it is not free here, it eats into this budget.
+//
+// The APRS query responder enters the very same tree - a "?APRS?", "?APRSP" or
+// "?APRSS" answer is a beacon builder, a "?WX?" answer the weather one - so it
+// answers from this task too (query_service() below) rather than from the
+// radio RX and APRS-IS tasks the queries arrive on, whose stacks are a
+// fraction of this one. Those tasks only parse and queue; this budget is what
+// covers the build and the transmission.
 #define BEACON_SCHED_TASK_STACK_BYTES 14336
 
 // Upper bound on how long the scheduler sleeps between passes. Even when every
@@ -111,6 +120,17 @@ static uint32_t min_u32(uint32_t a, uint32_t b) {
 #define BEACON_SCHED_MODEM_WAIT_CAP_MS 6000
 #define BEACON_SCHED_MODEM_POLL_MS     100
 
+// Handle of the one scheduler task, kept so beacon_scheduler_wake() can cut a
+// sleep short. NULL until beacon_scheduler_start() has run, which is what
+// makes a wake request before start-up a no-op rather than a fault.
+static TaskHandle_t s_task = NULL;
+
+void beacon_scheduler_wake(void) {
+    TaskHandle_t task = s_task;
+    if (task != NULL)
+        xTaskNotifyGive(task);
+}
+
 static void beacon_scheduler_task(void *arg) {
     (void)arg;
 
@@ -142,6 +162,12 @@ static void beacon_scheduler_task(void *arg) {
         ESP_LOGW(TAG, "Starting beacon schedule without RF modem ready (disabled or failed to init)");
 
     for (;;) {
+        // Answers to APRS queries first: an operator is waiting on those, and
+        // a "?APRSO" answer works by asking objitems_service() - further down
+        // this same pass - to re-announce every element, so serving the queue
+        // here is what puts those on the air without a pass of latency.
+        query_service();
+
         // Each service transmits whatever is due and returns seconds-until-next.
         uint32_t soonest = BEACON_SCHED_POLL_CAP_S;
 
@@ -161,11 +187,17 @@ static void beacon_scheduler_task(void *arg) {
         ESP_LOGD(TAG, "scheduler stack free: %u bytes; next pass in %us", (unsigned)(uxTaskGetStackHighWaterMark(NULL) * sizeof(StackType_t)),
                  (unsigned)soonest);
 
-        vTaskDelay(pdMS_TO_TICKS((uint32_t)soonest * 1000UL));
+        // Sleep until the soonest beacon is due, or until something asks for a
+        // pass right now - a received query queuing its answer. The
+        // notification counter is cleared on exit, and one raised while this
+        // task is still working (rather than blocked here) is latched by
+        // FreeRTOS and returns from the next take immediately, so a request
+        // can never be slept through.
+        ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS((uint32_t)soonest * 1000UL));
     }
 }
 
 void beacon_scheduler_start(void) {
-    xTaskCreate(beacon_scheduler_task, "beacon_sched", BEACON_SCHED_TASK_STACK_BYTES, NULL, 4, NULL);
-    ESP_LOGI(TAG, "Beacon scheduler started (one task drives tracker/igate/digi beacons, WX, and bulletins)");
+    xTaskCreate(beacon_scheduler_task, "beacon_sched", BEACON_SCHED_TASK_STACK_BYTES, NULL, 4, &s_task);
+    ESP_LOGI(TAG, "Beacon scheduler started (one task drives tracker/igate/digi beacons, WX, bulletins, and query answers)");
 }

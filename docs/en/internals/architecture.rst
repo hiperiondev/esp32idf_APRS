@@ -55,7 +55,7 @@ Inside ``aprs_service_start()``
     ├─ modem_set_rx_callback(on_rx_frame)
     ├─ igate_start()                 ← always started; self-idles when nothing needs APRS-IS
     ├─ beacon_start() / weather_start() / bulletins_start() / objitems_start() / telemetry_start()
-    ├─ beacon_scheduler_start()      ← ONE shared task drives all periodic TX
+    ├─ beacon_scheduler_start()      ← ONE shared task drives all periodic TX and query answers
     └─ xTaskCreate(serviceTickTask)  ← 1 Hz: weather refresh + message retry + time-sync SM
 
 Task map
@@ -112,7 +112,8 @@ Task map
      - 4
      - any
      - ``beacon_scheduler_start()``
-     - ONE shared task: all periodic own-station TX
+     - ONE shared task: all periodic own-station TX, plus the APRS query answers
+       deferred to it
    * - ``aprs_svc_tick``
      - 10240 B
      - 4

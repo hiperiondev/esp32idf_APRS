@@ -36,6 +36,27 @@ condiviso.
 Effetto netto: cinque stack (~61 KB in totale) diventano uno (~14 KB),
 liberando ~46 KB di heap interno in questa build senza PSRAM.
 
+Le risposte alle query viaggiano sullo stesso task
+==================================================
+
+Una risposta a una query APRS è un beacon in tutto tranne che nel suo innesco:
+``?APRS?`` e ``?APRSP`` eseguono il costruttore di posizione, ``?APRSS`` quello
+di stato, ``?WX?`` quello meteo, e tutte finiscono nella stessa catena di TX
+TNC2/AX.25 carica di virgola mobile. Per questo vengono servite anche qui.
+``query_process()`` e ``query_process_directed()``, che girano sui task che
+ricevono traffico, si limitano ad accodare la richiesta; lo scheduler chiama
+``query_service()`` all'inizio di ogni passata e svolge la costruzione e la
+trasmissione sullo stack dimensionato per quell'albero di chiamate (vedi
+:ref:`it-query`).
+
+Poiché una query non è periodica, attendere la scadenza del beacon successivo si
+noterebbe come una risposta tardiva. Accodare una richiesta chiama quindi
+``beacon_scheduler_wake()``, che accorcia il sonno dello scheduler — quel sonno è
+un ``ulTaskNotifyTake()`` con la prossima scadenza come timeout e non un semplice
+ritardo. Un risveglio sollevato mentre il task è nel mezzo di una passata viene
+trattenuto da FreeRTOS e raccolto dal sonno successivo, così nulla di accodato
+viene dormito.
+
 Funzioni di servizio
 ====================
 

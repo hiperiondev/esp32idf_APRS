@@ -17,7 +17,9 @@ Due punti di ingresso
 
 * ``query_process(tnc2Line)`` — riceve ogni riga TNC2 decodificata. Non fa nulla
   a meno che ``query_en`` sia attivo e il campo informativo inizi con ``?``, che è
-  ciò che rende una riga una query **generale**.
+  ciò che rende una riga una query **generale**. Riconoscere la parola chiave,
+  applicare la limitazione di frequenza e accodare la richiesta è tutto ciò che
+  fa.
 * ``query_process_directed(fromCall, toCall, text, tnc2Line)`` — chiamata da
   ``handleIncomingAPRS()`` di ``message.c`` quando il testo di un messaggio
   indirizzato inizia con ``?``, così l'analisi di ``:ADDRESSEE:`` non viene
@@ -30,6 +32,45 @@ Le risposte sono trasmesse tramite il gestore installato con
 ``messageTxHandler()`` che fornisce al motore di messaggistica, quindi i bit di
 instradamento sono la nota coppia ``MSG_CHANNEL_RF`` / ``MSG_CHANNEL_INET``,
 selezionata da ``g_config.query_rf`` / ``query_inet``.
+
+Dove viene costruita la risposta
+================================
+
+Nessuno dei due punti di ingresso costruisce o trasmette qualcosa. Entrambi
+riconoscono la parola chiave, applicano la limitazione di frequenza e
+**registrano** la richiesta: il suo tipo, la stazione che interroga e al massimo
+un testo — il nominativo su cui chiede un ``?APRSH``, oppure il percorso da cui è
+arrivata una ``?APRST``, letto lì per lì mentre la riga ricevuta è ancora a
+disposizione. La risposta vera e propria viene costruita e messa in aria da
+``query_service()``, che il task dello **scheduler dei beacon** chiama all'inizio
+di ogni passata; accodare una richiesta chiama anche
+``beacon_scheduler_wake()``, così quella passata avviene subito e non quando
+scade il beacon successivo.
+
+Il motivo è lo stack. Una risposta a ``?APRS?`` *è* un beacon: esegue
+``beacon_build_igate_position_packet()``, diversi ``snprintf()`` di newlib con
+supporto in virgola mobile, ``lat_lon_to_aprs()``, il costruttore del path e poi
+l'intera catena ``aprs_service_send_tnc2()`` → ``modem_send_tnc2()`` →
+``ax25_encode()``, con ogni livello che impila il proprio buffer da 300–450 byte
+— esattamente l'albero di chiamate per cui ``beacon_scheduler.c`` dimensiona il
+suo stack da 14336 byte. Le query, però, arrivano su ``modem_svc`` (RF) e
+``igate_task`` (APRS-IS), i cui stack sono una frazione di quello. Il lavoro gira
+quindi sul task il cui budget lo copre e non su quello che ha ricevuto la
+domanda, e i costruttori possono crescere senza obbligare a riverificare quei
+due percorsi.
+
+Da dove gira discendono due cose. Rispondere non occupa mai un task RX per la
+durata di una raffica di trasmissione — la proprietà che ``?APRSO`` ha sempre
+avuto — e la risposta eredita il contesto beacon dello scheduler, quindi
+``aprs_service_send_tnc2()`` attende un istante se l'anello di TX RF è pieno
+invece di scartare la risposta (vedi :ref:`it-beacons`).
+
+La coda contiene ``QUERY_PENDING_MAX`` (8) richieste, servite dalla più vecchia.
+Una richiesta identica a una già in attesa viene fusa con essa — ogni risposta
+riporta lo stato vivo nel momento in cui viene inviata, quindi un duplicato
+metterebbe in aria due volte la stessa informazione — e a coda piena le
+richieste successive vengono scartate con un avviso anziché soppiantare una
+risposta già dovuta a qualcuno.
 
 Query generali
 ==============
@@ -98,13 +139,14 @@ inoltre *Query dirette estese* (``query_ext_en``).
        interroga.
    * - ``?APRSO``
      - Riannuncia gli Oggetti/Item originati qui. Chiama
-       ``objitems_request_transmit_all()``, quindi gli elementi escono dal task
-       dello **scheduler dei beacon** e non dal task RX — rispondere a una query
-       non occupa mai l'RX per la durata di una raffica di trasmissione. Compilato
-       senza ``ENABLE_OBJECTS_ITEMS``, risponde ``No objects``.
+       ``objitems_request_transmit_all()`` e, poiché viene servita all'interno
+       della passata dello scheduler, gli elementi escono più avanti nella stessa
+       passata. Compilato senza ``ENABLE_OBJECTS_ITEMS``, risponde
+       ``No objects``.
    * - ``?APRST`` / ``?PING?``
-     - Il percorso preso dalla query stessa, ricostruito dalla riga TNC2 ricevuta.
-       Senza riga disponibile risponde con percorso sconosciuto.
+     - Il percorso preso dalla query stessa, letto dalla riga TNC2 ricevuta al
+       momento di accodare la richiesta. Senza riga disponibile risponde con
+       percorso sconosciuto.
 
 Le risposte di tipo elenco escono come messaggi di testo APRS indirizzati alla
 stazione che interroga, con il campo destinatario fisso di 9 caratteri riempito

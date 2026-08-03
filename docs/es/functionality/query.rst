@@ -17,7 +17,9 @@ Dos puntos de entrada
 
 * ``query_process(tnc2Line)`` — recibe cada línea TNC2 decodificada. No hace nada
   salvo que ``query_en`` esté activo y el campo de información empiece con ``?``,
-  que es lo que convierte a una línea en consulta **general**.
+  que es lo que convierte a una línea en consulta **general**. Reconocer la
+  palabra clave, aplicar el límite de frecuencia y encolar el pedido es todo lo
+  que hace.
 * ``query_process_directed(fromCall, toCall, text, tnc2Line)`` — la llama
   ``handleIncomingAPRS()`` de ``message.c`` cuando el texto de un mensaje
   dirigido empieza con ``?``, así no se duplica aquí el análisis de
@@ -30,6 +32,44 @@ Las respuestas se transmiten por el manejador instalado con
 ``messageTxHandler()`` que le da al motor de mensajería, así que los bits de
 enrutado son el par conocido ``MSG_CHANNEL_RF`` / ``MSG_CHANNEL_INET``,
 seleccionado por ``g_config.query_rf`` / ``query_inet``.
+
+Dónde se construye la respuesta
+===============================
+
+Ninguno de los dos puntos de entrada construye ni transmite nada. Ambos
+reconocen la palabra clave, aplican el límite de frecuencia y **registran** el
+pedido: su tipo, la estación que consulta y, a lo sumo, un texto — el indicativo
+por el que pregunta un ``?APRSH``, o la ruta por la que llegó un ``?APRST``,
+leída ahí mismo mientras la línea recibida todavía está a mano. La respuesta la
+construye y la pone al aire ``query_service()``, que la tarea del
+**planificador de balizas** llama al comienzo de cada pasada; encolar un pedido
+también llama a ``beacon_scheduler_wake()``, así que esa pasada ocurre enseguida
+y no cuando vence la próxima baliza.
+
+El motivo es el stack. Una respuesta a ``?APRS?`` *es* una baliza: ejecuta
+``beacon_build_igate_position_packet()``, varios ``snprintf()`` de newlib con
+soporte de punto flotante, ``lat_lon_to_aprs()``, el constructor de path y luego
+toda la cadena ``aprs_service_send_tnc2()`` → ``modem_send_tnc2()`` →
+``ax25_encode()``, apilando en cada nivel su propio buffer de 300–450 bytes —
+justamente el árbol de llamadas para el que ``beacon_scheduler.c`` dimensiona su
+stack de 14336 bytes. Las consultas, en cambio, llegan por ``modem_svc`` (RF) e
+``igate_task`` (APRS-IS), cuyos stacks son una fracción de aquel. Por eso el
+trabajo corre en la tarea cuyo presupuesto lo cubre y no en la que haya recibido
+la pregunta, y los constructores pueden crecer sin obligar a revisar de nuevo
+esos dos caminos.
+
+De dónde corre se desprenden dos cosas. Responder nunca ocupa una tarea de RX
+durante toda una ráfaga de transmisión — la propiedad que ``?APRSO`` siempre
+tuvo — y la respuesta hereda el contexto de baliza del planificador, así que
+``aprs_service_send_tnc2()`` espera un instante si el anillo de TX de RF está
+lleno en vez de descartar la respuesta (ver :ref:`es-beacons`).
+
+La cola guarda ``QUERY_PENDING_MAX`` (8) pedidos y se atiende del más viejo al
+más nuevo. Un pedido idéntico a otro que ya está esperando se funde con él —
+cada respuesta informa el estado vivo en el momento de enviarse, así que un
+duplicado solo pondría dos veces la misma información al aire — y con la cola
+llena los pedidos siguientes se descartan con una advertencia en lugar de
+desplazar una respuesta que ya se le debe a alguien.
 
 Consultas generales
 ===================
@@ -97,14 +137,13 @@ además *Consultas dirigidas extendidas* (``query_ext_en``).
        consulta.
    * - ``?APRSO``
      - Reanuncia los Objetos/Ítems originados aquí. Llama a
-       ``objitems_request_transmit_all()``, así que los elementos salen desde la
-       tarea del **planificador de balizas** y no desde la tarea de RX —
-       responder una consulta nunca ocupa RX durante toda una ráfaga de
-       transmisión. Compilado sin ``ENABLE_OBJECTS_ITEMS``, responde
-       ``No objects``.
+       ``objitems_request_transmit_all()`` y, como se atiende dentro de la
+       pasada del planificador, los elementos salen más adelante en esa misma
+       pasada. Compilado sin ``ENABLE_OBJECTS_ITEMS``, responde ``No objects``.
    * - ``?APRST`` / ``?PING?``
-     - La ruta que tomó la propia consulta, reconstruida desde la línea TNC2
-       recibida. Sin línea disponible responde con ruta desconocida.
+     - La ruta que tomó la propia consulta, leída de la línea TNC2 recibida en
+       el momento de encolar el pedido. Sin línea disponible responde con ruta
+       desconocida.
 
 Las respuestas de tipo lista salen como mensajes de texto APRS dirigidos de vuelta
 a la estación que consulta, con el campo de destinatario fijo de 9 caracteres

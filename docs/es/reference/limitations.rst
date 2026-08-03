@@ -448,22 +448,26 @@ Objetos, Items, Boletines, Estado
      - ⚠️
      - ✅
      - Consultas generales (``?APRS?``/``?WX?``/``?IGATE?``) y dirigidas, cada
-       una con su propio limitador de tasa; véase :ref:`es-query`
+       una con su propio limitador de tasa. Se reciben en las tareas de RF/APRS-IS
+       y se responden desde la tarea del planificador de balizas; véase
+       :ref:`es-query`
    * - Conjunto de consultas dirigidas (``?APRSD``/``?APRSH``/``?APRSM``/
        ``?APRSO``/``?APRSP``/``?APRSS``/``?APRST``/``?PING?``)
      - ⚠️ (APRSISCE/32, YAAC)
      - ✅
      - Se responden cuando *Consultas dirigidas extendidas* está habilitado. Las
        respuestas tipo lista vuelven como mensajes APRS a la estación que
-       consulta; ``?APRSO`` encola los Objetos/Ítems para el planificador de
-       balizas en vez de transmitir desde la tarea de RX
+       consulta; ``?APRSO`` reanuncia los Objetos/Ítems más adelante en esa misma
+       pasada del planificador
    * - Gráfico de historial de escucha de ``?APRSH``
      - ⚠️
      - ✅
      - La estación guarda un histograma de escucha de 18 horas por indicativo
        (ver ``components/lastheard``), así que la respuesta es el gráfico
        ``Hrd: h0 h1 ... h17`` que define APRS101 cap.15, seis conteos por
-       período separados por ``.``, siendo la hora 0 la hora reloj actual
+       período separados por ``.``, siendo la hora 0 la hora reloj actual. El
+       histograma pertenece a la fila de la estación y viaja con ella cuando la
+       fila pasa al frente de la tabla
    * - Capacidades de estación (DTI ``<``)
      - ✅
      - ✅

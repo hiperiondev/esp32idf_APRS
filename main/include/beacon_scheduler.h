@@ -32,6 +32,14 @@
  *
  * Net effect: five stacks (~61 KB total) become one (~14 KB), freeing ~46 KB of
  * internal heap on this no-PSRAM build.
+ *
+ * The same task also answers APRS queries (::query_service). A query answer is
+ * a beacon: it runs the same builders and the same TNC2/AX.25 encode chain, so
+ * it belongs on the stack sized for that tree rather than on the far smaller
+ * radio RX and APRS-IS task stacks the queries themselves arrive on. Those
+ * tasks queue the request and call ::beacon_scheduler_wake, which cuts this
+ * task's sleep short so the answer does not wait for the next beacon to fall
+ * due.
  */
 
 #ifndef BEACON_SCHEDULER_H
@@ -47,6 +55,20 @@
  * service functions read. Safe to call once.
  */
 void beacon_scheduler_start(void);
+
+/**
+ * @brief Cut the scheduler's current sleep short and run a pass now.
+ *
+ * For work that is handed to the scheduler task because of its stack rather
+ * than because it is periodic - answering an APRS query - where waiting up to
+ * a full poll period would show up as a late reply. Safe to call from any
+ * task, and from before ::beacon_scheduler_start (a no-op then, since the
+ * scheduler's first pass is still ahead of it).
+ *
+ * Requests raised while the task is running rather than sleeping are latched,
+ * so the pass after the current one still happens: nothing queued is missed.
+ */
+void beacon_scheduler_wake(void);
 
 /**
  * @brief Apply a small pseudo-random jitter to a beacon interval.

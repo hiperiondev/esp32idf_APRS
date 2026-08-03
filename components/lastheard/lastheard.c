@@ -126,45 +126,52 @@ void lastheard_add(const char *callsign, const char *path, bool via_rf, bool dir
         }
     }
 
-    uint32_t packets = 1;
+    // The row is assembled in a local and written to the front of the table
+    // once, rather than being edited in place at s_buf[0] after the shift:
+    // that slot still holds the station that was most recently heard before
+    // this frame (the memmove moves rows down into the gap, it does not clear
+    // the front), so every field carried over from a known station - its
+    // packet count and its hourly histogram alike - travels with the row here
+    // instead of having to be saved and restored one at a time.
+    lastheard_entry_t entry;
     size_t shift_from;
     if (found < LASTHEARD_CAPACITY) {
-        // Known station: carry its running packet count forward and reuse its
-        // slot, closing the gap it leaves behind as it moves to the front.
-        packets = s_buf[found].packets + 1;
+        // Known station: its whole accumulated row moves to the front, and the
+        // gap it leaves behind is closed by the shift below.
+        entry = s_buf[found];
+        if (entry.packets < UINT32_MAX)
+            entry.packets++;
         shift_from = found;
     } else {
-        // New station: push everything down one slot, dropping the oldest
-        // entry once the table is full.
+        // New station: a cleared row, which is also what tells
+        // rollHourlyHistogram() to start a fresh histogram (hour_slot == 0).
+        // Everything moves down one slot, dropping the oldest station once the
+        // table is full.
+        memset(&entry, 0, sizeof(entry));
+        entry.packets = 1;
         if (s_count < LASTHEARD_CAPACITY)
             s_count++;
         shift_from = s_count - 1;
     }
-    if (shift_from > 0)
-        memmove(&s_buf[1], &s_buf[0], shift_from * sizeof(s_buf[0]));
 
-    lastheard_entry_t *e = &s_buf[0];
     time_t now = time(NULL);
+    rollHourlyHistogram(&entry, now);
 
-    if (found >= LASTHEARD_CAPACITY) {
-        // New station: the slot now at s_buf[0] holds whatever the memmove
-        // shifted out of the way, so its histogram must not be reused.
-        e->hour_slot = 0;
-    }
-    rollHourlyHistogram(e, now);
-
-    e->time = now;
-    strncpy(e->callsign, call, sizeof(e->callsign) - 1);
-    e->callsign[sizeof(e->callsign) - 1] = 0;
-    snprintf(e->path, sizeof(e->path), "%s: %s", via_rf ? "RF" : "INET", (path && path[0]) ? path : "DIRECT");
-    e->sym_table = sym_table;
-    e->sym_code = sym_code;
+    entry.time = now;
+    strncpy(entry.callsign, call, sizeof(entry.callsign) - 1);
+    entry.callsign[sizeof(entry.callsign) - 1] = 0;
+    snprintf(entry.path, sizeof(entry.path), "%s: %s", via_rf ? "RF" : "INET", (path && path[0]) ? path : "DIRECT");
+    entry.sym_table = sym_table;
+    entry.sym_code = sym_code;
     // Whether the station is reachable without a digipeater is a property of
     // the path this frame took, so the newest frame always wins: a station
     // that has moved out of direct range stops being listed as direct as soon
     // as its first digipeated frame arrives.
-    e->direct = via_rf && direct;
-    e->packets = packets;
+    entry.direct = via_rf && direct;
+
+    if (shift_from > 0)
+        memmove(&s_buf[1], &s_buf[0], shift_from * sizeof(s_buf[0]));
+    s_buf[0] = entry;
 
     xSemaphoreGive(s_lock);
 }

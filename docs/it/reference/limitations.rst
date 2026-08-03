@@ -447,22 +447,25 @@ Oggetti, Item, Bollettini, Stato
      - ⚠️
      - ✅
      - Query generali (``?APRS?``/``?WX?``/``?IGATE?``) e dirette, ciascuna con
-       il proprio limitatore di frequenza; vedi :ref:`it-query`
+       il proprio limitatore di frequenza. Ricevute sui task RF/APRS-IS, servite
+       dal task dello scheduler dei beacon; vedi :ref:`it-query`
    * - Insieme di query dirette (``?APRSD``/``?APRSH``/``?APRSM``/``?APRSO``/
        ``?APRSP``/``?APRSS``/``?APRST``/``?PING?``)
      - ⚠️ (APRSISCE/32, YAAC)
      - ✅
      - Risposte fornite quando *Interrogazioni dirette estese* è abilitato. Le
        risposte in forma di elenco tornano come messaggi APRS alla stazione
-       richiedente; ``?APRSO`` accoda gli Oggetti/Item al pianificatore di
-       beacon invece di trasmettere dal task RX
+       richiedente; ``?APRSO`` riannuncia gli Oggetti/Item più avanti nella stessa
+       passata dello scheduler
    * - Grafico della cronologia di ascolto di ``?APRSH``
      - ⚠️
      - ✅
      - La stazione tiene un istogramma di ascolto di 18 ore per nominativo
        (vedi ``components/lastheard``), quindi la risposta è il grafico
        ``Hrd: h0 h1 ... h17`` definito da APRS101 cap.15, sei conteggi per
-       periodo separati da ``.``, con l'ora 0 pari all'ora corrente
+       periodo separati da ``.``, con l'ora 0 pari all'ora corrente.
+       L'istogramma appartiene alla riga della stazione e viaggia con essa quando
+       la riga passa in testa alla tabella
    * - Capacità di stazione (DTI ``<``)
      - ✅
      - ✅

@@ -55,7 +55,7 @@ Dentro de ``aprs_service_start()``
     ├─ modem_set_rx_callback(on_rx_frame)
     ├─ igate_start()                 ← siempre arrancado; queda en reposo cuando nada necesita APRS-IS
     ├─ beacon_start() / weather_start() / bulletins_start() / objitems_start() / telemetry_start()
-    ├─ beacon_scheduler_start()      ← UNA tarea compartida acciona todo el TX periódico
+    ├─ beacon_scheduler_start()      ← UNA tarea compartida acciona todo el TX periódico y las respuestas a consultas
     └─ xTaskCreate(serviceTickTask)  ← 1 Hz: refresco de meteo + reintento de mensajes + MdE de sincro horaria
 
 Mapa de tareas
@@ -112,7 +112,8 @@ Mapa de tareas
      - 4
      - cualquiera
      - ``beacon_scheduler_start()``
-     - UNA tarea compartida: todo el TX periódico de la propia estación
+     - UNA tarea compartida: todo el TX periódico de la propia estación, más las
+       respuestas a consultas APRS que se le difieren
    * - ``aprs_svc_tick``
      - 10240 B
      - 4

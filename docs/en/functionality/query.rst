@@ -16,7 +16,8 @@ Two entry points
 
 * ``query_process(tnc2Line)`` — fed every decoded TNC2 line. It no-ops unless
   ``query_en`` is set and the information field starts with ``?``, which is what
-  makes a line a **general** query.
+  makes a line a **general** query. Matching the keyword, applying the rate
+  limit and queuing the request is all it does.
 * ``query_process_directed(fromCall, toCall, text, tnc2Line)`` — called by
   ``message.c``'s ``handleIncomingAPRS()`` when an addressed message's text
   starts with ``?``, so the ``:ADDRESSEE:`` parsing is not duplicated here. It
@@ -28,6 +29,42 @@ Responses are transmitted through the handler installed with
 ``messageTxHandler()`` it gives the messaging engine, so the routing bits are the
 familiar ``MSG_CHANNEL_RF`` / ``MSG_CHANNEL_INET`` pair, selected by
 ``g_config.query_rf`` / ``query_inet``.
+
+Where the answer is built
+=========================
+
+Neither entry point builds or transmits anything. Both match the keyword, apply
+the rate limit and **record** the request: its type, the querying station, and
+at most one piece of text — the callsign a ``?APRSH`` asks about, or the route a
+``?APRST`` arrived by, read there and then while the received line is still in
+hand. The answer itself is built and put on the air by ``query_service()``,
+which the **beacon scheduler** task calls at the start of every pass; queuing a
+request also calls ``beacon_scheduler_wake()``, so that pass happens right away
+rather than whenever the next beacon falls due.
+
+The reason is stack. A ``?APRS?`` answer *is* a beacon: it runs
+``beacon_build_igate_position_packet()``, several of newlib's float-capable
+``snprintf()``\ s, ``lat_lon_to_aprs()``, the path builder and then the whole
+``aprs_service_send_tnc2()`` → ``modem_send_tnc2()`` → ``ax25_encode()`` chain,
+each level stacking its own 300–450 byte buffer — precisely the call tree
+``beacon_scheduler.c`` sizes its 14336-byte stack for. Queries, though, arrive
+on ``modem_svc`` (RF) and ``igate_task`` (APRS-IS), whose stacks are a fraction
+of that. The work therefore runs on the task whose budget covers it, not on
+whichever task happened to receive the question, and the builders can grow
+without those two paths needing to be re-checked.
+
+Two things follow from where it runs. Answering never occupies an RX task for
+the length of a transmission burst — the property ``?APRSO`` has always had —
+and a query answer inherits the scheduler's beacon context, so
+``aprs_service_send_tnc2()`` waits briefly for a full RF TX ring instead of
+dropping the reply (see :ref:`en-beacons`).
+
+The queue holds ``QUERY_PENDING_MAX`` (8) requests, oldest answered first. A
+request identical to one already waiting is folded into it — every answer
+reports live state at the moment it is sent, so a duplicate would only put the
+same information on the air twice — and once the queue is full, further requests
+are dropped with a warning rather than displacing an answer already owed to
+someone.
 
 General queries
 ===============
@@ -92,13 +129,13 @@ available in that set; the remaining, list-style ones additionally require
      - Re-sends this station's pending messages for the querying operator.
    * - ``?APRSO``
      - Re-announces the Objects/Items originated here. It calls
-       ``objitems_request_transmit_all()``, so the elements go out from the
-       **beacon scheduler** task rather than from the RX task — answering a query
-       never occupies RX for the length of a transmission burst. Built without
-       ``ENABLE_OBJECTS_ITEMS``, it replies ``No objects``.
+       ``objitems_request_transmit_all()``, and since it is served from the
+       scheduler pass itself the elements go out later in that same pass. Built
+       without ``ENABLE_OBJECTS_ITEMS``, it replies ``No objects``.
    * - ``?APRST`` / ``?PING?``
-     - The route the query itself took, reconstructed from the received TNC2
-       line. With no line available it answers with an unknown route.
+     - The route the query itself took, read off the received TNC2 line when the
+       request is queued. With no line available it answers with an unknown
+       route.
 
 Answers of the list kind go out as APRS text messages addressed back to the
 querying station, with the fixed 9-character space-padded addressee field and

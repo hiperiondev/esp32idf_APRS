@@ -36,6 +36,27 @@ comparte la tarea (y su pila).
 Efecto neto: cinco pilas (~61 KB en total) pasan a ser una (~14 KB), liberando
 ~46 KB de heap interno en esta compilación sin PSRAM.
 
+Las respuestas a consultas viajan en la misma tarea
+===================================================
+
+Una respuesta a una consulta APRS es una baliza en todo salvo en su disparador:
+``?APRS?`` y ``?APRSP`` ejecutan el constructor de posición, ``?APRSS`` el de
+estado, ``?WX?`` el de meteorología, y todas terminan en la misma cadena de TX
+TNC2/AX.25 cargada de punto flotante. Por eso también se responden aquí.
+``query_process()`` y ``query_process_directed()``, que corren en las tareas que
+reciben tráfico, solo encolan el pedido; el planificador llama a
+``query_service()`` al comienzo de cada pasada y hace la construcción y la
+transmisión sobre la pila dimensionada para ese árbol de llamadas (ver
+:ref:`es-query`).
+
+Como una consulta no es periódica, esperar a que venza la próxima baliza se
+notaría como una respuesta tardía. Por eso encolar un pedido llama a
+``beacon_scheduler_wake()``, que acorta el sueño del planificador — ese sueño es
+un ``ulTaskNotifyTake()`` con el próximo vencimiento como timeout y no un retardo
+simple. Un despertar levantado mientras la tarea está en plena pasada queda
+retenido por FreeRTOS y lo toma el siguiente sueño, así que nada encolado se
+duerme sin atender.
+
 Funciones de servicio
 =====================
 

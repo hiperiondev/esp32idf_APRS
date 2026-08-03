@@ -26,20 +26,36 @@
 // send. The list-style answers (directs, heard, traceroute) are returned as
 // APRS text messages addressed back to the querying station, which is the
 // form chapter 15 specifies for a directed query.
+//
+// Answers are built and transmitted from the beacon scheduler task, never from
+// the task a query arrives on: query_process() and query_process_directed()
+// parse, rate-limit and record a request, and query_service() drains those
+// requests on the scheduler's next pass. Building an answer walks the same
+// deep call tree the periodic beacons do - a beacon builder, several of
+// newlib's float-capable snprintf()s, the coordinate and path builders, then
+// the TNC2/AX.25 encode chain - which is exactly the tree beacon_scheduler.c
+// sizes its stack for; the radio RX and APRS-IS tasks that receive queries run
+// on a fraction of that stack. Deferring also keeps the receiving task free
+// for the length of a transmission burst, which is the reason the "?APRSO"
+// answer has always gone out through objitems_request_transmit_all().
 
 #include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
 
 #include "esp_log.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
+#include "freertos/task.h"
 
 #include "app_config.h"
-#include "aprs_path.h"    // aprs_path_build_suffix_from_config()
-#include "aprs_service.h" // APRS_TNC2_BUF_SIZE / APRS_TNC2_MAX_LEN
-#include "beacon.h"       // beacon_build_igate_position_packet() / beacon_build_igate_status_packet()
-#include "igate.h"        // igate_get_stats()
-#include "lastheard.h"    // lastheard_directs() / lastheard_heard_history()
-#include "message.h"      // MSG_CHANNEL_RF / MSG_CHANNEL_INET / message_send_pending_to()
+#include "aprs_path.h"        // aprs_path_build_suffix_from_config()
+#include "aprs_service.h"     // APRS_TNC2_BUF_SIZE / APRS_TNC2_MAX_LEN
+#include "beacon.h"           // beacon_build_igate_position_packet() / beacon_build_igate_status_packet()
+#include "beacon_scheduler.h" // beacon_scheduler_wake()
+#include "igate.h"            // igate_get_stats()
+#include "lastheard.h"        // lastheard_directs() / lastheard_heard_history()
+#include "message.h"          // MSG_CHANNEL_RF / MSG_CHANNEL_INET / message_send_pending_to()
 #include "query.h"
 #include "sched_time.h" // sched_mono_seconds()
 #include "weather.h"    // weather_build_report_packet()
@@ -94,9 +110,47 @@ typedef struct {
 
 static query_directed_track_t s_directedTrack[QUERY_DIRECTED_TRACK_MAX];
 
+// ---------------------------------------------------------------------------
+// Deferred response queue
+// ---------------------------------------------------------------------------
+
+// Depth of the request queue drained by query_service(). Both rate limiters
+// run before a request reaches it, so this depth only has to absorb the
+// handful of distinct questions that can legitimately arrive between two
+// scheduler passes; anything beyond it is dropped with a warning rather than
+// growing the queue at the expense of a real answer.
+#define QUERY_PENDING_MAX 8
+
+// Room for the one piece of per-request text a query can carry: the callsign a
+// "?APRSH" asks about, or the route a "?APRST" arrived by. No query carries
+// both, so a single field serves either. A route longer than this is cut here
+// instead of when the message text is built - the same "as much as fits" rule
+// the answer itself would apply.
+#define QUERY_DETAIL_LEN 64
+
+typedef struct {
+    query_type_t type;
+    char fromCall[12];             // querying station; empty for a broadcast query
+    char detail[QUERY_DETAIL_LEN]; // "?APRSH" target callsign or "?APRST" route, empty otherwise
+} query_request_t;
+
+// Ring of requests waiting to be answered: s_pending[s_pendingHead] is the
+// oldest, and the queue holds s_pendingCount entries from there, wrapping at
+// QUERY_PENDING_MAX. Producers are the tasks that receive traffic, the single
+// consumer is the beacon scheduler task, and s_pendingLock covers both.
+static query_request_t s_pending[QUERY_PENDING_MAX];
+static uint8_t s_pendingHead = 0;
+static uint8_t s_pendingCount = 0;
+static SemaphoreHandle_t s_pendingLock = NULL;
+
 void query_init(void) {
     memset(s_lastBroadcastRespondSec, 0, sizeof(s_lastBroadcastRespondSec));
     memset(s_directedTrack, 0, sizeof(s_directedTrack));
+    memset(s_pending, 0, sizeof(s_pending));
+    s_pendingHead = 0;
+    s_pendingCount = 0;
+    if (s_pendingLock == NULL)
+        s_pendingLock = xSemaphoreCreateMutex();
 }
 
 void query_set_tx_handler(void (*handler)(const char *packet, size_t len, uint8_t channels)) {
@@ -168,6 +222,79 @@ static bool directedRateLimitPass(const char *fromCall) {
     s_directedTrack[slot].call[sizeof(s_directedTrack[slot].call) - 1] = 0;
     s_directedTrack[slot].lastRespondSec = now;
     return true;
+}
+
+// Copies the path a received line travelled - the text between the '>' that
+// closes the source call and the ':' that opens the information field, '*'
+// markers included - into @p out. This has to be read while the received line
+// is still in hand, so a traceroute answer built later still reports the route
+// its query actually took. Leaves @p out empty when there is no line or it
+// carries no path, which is what makes the answer report an unknown route.
+static void extractRoute(const char *tnc2Line, char *out, size_t out_size) {
+    out[0] = 0;
+
+    const char *gt = (tnc2Line != NULL) ? strchr(tnc2Line, '>') : NULL;
+    const char *colon = (gt != NULL) ? strchr(gt, ':') : NULL;
+    if (gt == NULL || colon == NULL || colon <= gt + 1)
+        return;
+
+    size_t n = (size_t)(colon - gt - 1);
+    if (n >= out_size)
+        n = out_size - 1;
+    memcpy(out, gt + 1, n);
+    out[n] = 0;
+}
+
+// Records one answer for query_service() to build and transmit from the beacon
+// scheduler task, and wakes that task so the answer goes out on its next pass
+// rather than whenever the periodic beacons happen to need servicing.
+//
+// A request identical to one already waiting is collapsed into it: every
+// answer is built from live state (position, traffic counters, the heard
+// table) at the moment it is sent, so a second copy would put the same
+// information on the air twice for one operator's benefit.
+static void queueResponse(query_type_t type, const char *fromCall, const char *detail) {
+    if (s_pendingLock == NULL)
+        return;
+    if (xSemaphoreTake(s_pendingLock, pdMS_TO_TICKS(20)) != pdTRUE) {
+        ESP_LOGW(TAG, "Query answer dropped - response queue busy");
+        return;
+    }
+
+    const char *call = (fromCall != NULL) ? fromCall : "";
+    const char *arg = (detail != NULL) ? detail : "";
+
+    bool duplicate = false;
+    for (uint8_t i = 0; i < s_pendingCount; i++) {
+        const query_request_t *r = &s_pending[(s_pendingHead + i) % QUERY_PENDING_MAX];
+        if (r->type == type && strcasecmp(r->fromCall, call) == 0 && strcmp(r->detail, arg) == 0) {
+            duplicate = true;
+            break;
+        }
+    }
+
+    bool queued = false;
+    bool full = false;
+    if (!duplicate) {
+        if (s_pendingCount < QUERY_PENDING_MAX) {
+            query_request_t *r = &s_pending[(s_pendingHead + s_pendingCount) % QUERY_PENDING_MAX];
+            memset(r, 0, sizeof(*r));
+            r->type = type;
+            strncpy(r->fromCall, call, sizeof(r->fromCall) - 1);
+            strncpy(r->detail, arg, sizeof(r->detail) - 1);
+            s_pendingCount++;
+            queued = true;
+        } else {
+            full = true;
+        }
+    }
+
+    xSemaphoreGive(s_pendingLock);
+
+    if (queued)
+        beacon_scheduler_wake();
+    else if (full)
+        ESP_LOGW(TAG, "Query answer dropped - %d responses already queued", QUERY_PENDING_MAX);
 }
 
 // Transmits an already-built TNC2 line on RF and/or INET per
@@ -431,30 +558,86 @@ static void respondObjects(const char *fromCall) {
 
 // "?APRST" / "?PING?" -> report the route the query itself took to get here,
 // which is what lets the querying operator see which digipeaters are in play
-// between the two stations. The path is read straight off the received TNC2
-// line: everything between the destination call and the ':' that starts the
-// information field, '*' markers included, so a repeater that actually
-// handled the frame is distinguishable from one that was merely requested.
-static void respondTrace(const char *fromCall, const char *tnc2Line) {
+// between the two stations. The route is the one extractRoute() read off the
+// received line, '*' markers included, so a repeater that actually handled the
+// frame is distinguishable from one that was merely requested.
+static void respondTrace(const char *fromCall, const char *route) {
     char text[APRS_MSG_TEXT_STD_MAX + 1];
 
-    const char *gt = (tnc2Line != NULL) ? strchr(tnc2Line, '>') : NULL;
-    const char *colon = (gt != NULL) ? strchr(gt, ':') : NULL;
-    if (gt == NULL || colon == NULL || colon <= gt + 1) {
+    if (route == NULL || route[0] == 0)
         snprintf(text, sizeof(text), "%s via ?", fromCall);
-        txMessageTo(fromCall, text);
-        return;
-    }
+    else
+        snprintf(text, sizeof(text), "%s>%s", fromCall, route);
 
-    char route[APRS_MSG_TEXT_STD_MAX];
-    size_t n = (size_t)(colon - gt - 1);
-    if (n >= sizeof(route))
-        n = sizeof(route) - 1;
-    memcpy(route, gt + 1, n);
-    route[n] = 0;
-
-    snprintf(text, sizeof(text), "%s>%s", fromCall, route);
     txMessageTo(fromCall, text);
+}
+
+// ---------------------------------------------------------------------------
+// Deferred execution
+// ---------------------------------------------------------------------------
+
+// Runs one queued request: this is where the answer is actually built and put
+// on the air, and it only ever executes on the beacon scheduler task.
+static void runRequest(const query_request_t *req) {
+    switch (req->type) {
+        case QUERY_TYPE_APRS:
+        case QUERY_TYPE_POSITION:
+            respondAPRS();
+            return;
+        case QUERY_TYPE_WX:
+            respondWX();
+            return;
+        case QUERY_TYPE_IGATE:
+            respondIGate();
+            return;
+        case QUERY_TYPE_STATUS:
+            respondStatus();
+            return;
+        case QUERY_TYPE_DIRECTS:
+            respondDirects(req->fromCall);
+            return;
+        case QUERY_TYPE_HEARD:
+            respondHeard(req->fromCall, req->detail);
+            return;
+        case QUERY_TYPE_MESSAGES:
+            respondMessages(req->fromCall);
+            return;
+        case QUERY_TYPE_OBJECTS:
+            respondObjects(req->fromCall);
+            return;
+        case QUERY_TYPE_TRACE:
+            respondTrace(req->fromCall, req->detail);
+            return;
+        default:
+            return;
+    }
+}
+
+void query_service(void) {
+    if (s_pendingLock == NULL)
+        return;
+
+    for (;;) {
+        query_request_t req;
+
+        if (xSemaphoreTake(s_pendingLock, pdMS_TO_TICKS(50)) != pdTRUE)
+            return;
+        if (s_pendingCount == 0) {
+            xSemaphoreGive(s_pendingLock);
+            return;
+        }
+        req = s_pending[s_pendingHead];
+        s_pendingHead = (uint8_t)((s_pendingHead + 1) % QUERY_PENDING_MAX);
+        s_pendingCount--;
+        xSemaphoreGive(s_pendingLock);
+
+        // The lock is released across the build and the transmission, which
+        // together can occupy the radio for the length of a burst: a task
+        // receiving traffic must be able to queue the next request throughout.
+        runRequest(&req);
+
+        ESP_LOGD(TAG, "Query answered from the scheduler task, stack free: %u bytes", (unsigned)(uxTaskGetStackHighWaterMark(NULL) * sizeof(StackType_t)));
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -527,8 +710,10 @@ static bool queryTypeEnabled(query_type_t type) {
     }
 }
 
-// Dispatches one recognized broadcast query type to its builder, gated by its
-// own enable flag and the shared broadcast rate limiter.
+// Queues one recognized broadcast query type for answering, gated by its own
+// enable flag and the shared broadcast rate limiter. Both gates run here, on
+// the receiving task, so a flooded channel costs a string compare and a
+// timestamp check rather than a queue slot.
 static void dispatchBroadcast(query_type_t type) {
     if (!queryTypeEnabled(type))
         return;
@@ -537,13 +722,9 @@ static void dispatchBroadcast(query_type_t type) {
 
     switch (type) {
         case QUERY_TYPE_APRS:
-            respondAPRS();
-            return;
         case QUERY_TYPE_WX:
-            respondWX();
-            return;
         case QUERY_TYPE_IGATE:
-            respondIGate();
+            queueResponse(type, "", "");
             return;
         default:
             return;
@@ -591,43 +772,27 @@ void query_process_directed(const char *fromCall, const char *toCall, const char
     if (!directedRateLimitPass(fromCall))
         return;
 
-    // Directed replies are sent the same way broadcast ones are, without
+    // Directed replies are queued the same way broadcast ones are, without
     // re-applying the broadcast rate limiter - the per-source directed limiter
     // above already governs this response. The position/status/weather/
     // capability answers go out as ordinary reports, which is what the
     // querying station is listening for anyway; the list-style answers are
     // addressed messages, since they only mean anything to the operator who
-    // asked.
-    switch (type) {
-        case QUERY_TYPE_APRS:
-        case QUERY_TYPE_POSITION:
-            respondAPRS();
-            return;
-        case QUERY_TYPE_WX:
-            respondWX();
-            return;
-        case QUERY_TYPE_IGATE:
-            respondIGate();
-            return;
-        case QUERY_TYPE_STATUS:
-            respondStatus();
-            return;
-        case QUERY_TYPE_DIRECTS:
-            respondDirects(fromCall);
-            return;
-        case QUERY_TYPE_HEARD:
-            respondHeard(fromCall, arg ? arg : "");
-            return;
-        case QUERY_TYPE_MESSAGES:
-            respondMessages(fromCall);
-            return;
-        case QUERY_TYPE_OBJECTS:
-            respondObjects(fromCall);
-            return;
-        case QUERY_TYPE_TRACE:
-            respondTrace(fromCall, tnc2Line);
-            return;
-        default:
-            return;
+    // asked. Which of the two a type produces is decided in runRequest().
+    //
+    // Everything the answer needs beyond the type and the asker is carried in
+    // one text field, captured now while the received line and the parsed
+    // argument are still in scope.
+    char detail[QUERY_DETAIL_LEN];
+    detail[0] = 0;
+    if (type == QUERY_TYPE_HEARD) {
+        if (arg != NULL) {
+            strncpy(detail, arg, sizeof(detail) - 1);
+            detail[sizeof(detail) - 1] = 0;
+        }
+    } else if (type == QUERY_TYPE_TRACE) {
+        extractRoute(tnc2Line, detail, sizeof(detail));
     }
+
+    queueResponse(type, fromCall, detail);
 }

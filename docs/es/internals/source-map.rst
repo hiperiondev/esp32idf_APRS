@@ -36,7 +36,7 @@ Disposición del repositorio
    │   ├── beacon.c/.h         ← balizas de posición propia (trk / igate / digi)
    │   ├── weather.c/.h        ← informe WX propio: refresco sensors_local + baliza WX
    │   ├── telemetry.c/.h      ← telemetría propia: A1–A5 + B1–B8, baliza T#nnn + metadatos
-   │   ├── beacon_scheduler.c/.h ← UNA tarea compartida que acciona TODO el TX periódico
+   │   ├── beacon_scheduler.c/.h ← UNA tarea compartida que acciona TODO el TX periódico + respuestas a consultas
    │   ├── bulletins.c/.h      ← boletines APRS BLN1..BLN5 (bulletins.json propio)
    │   ├── objects_items.c/.h  ← Objetos/Ítems APRS (objitems.json propio)
    │   ├── net_state.c/.h      ← bandera "¿tenemos internet de verdad?"
@@ -56,7 +56,7 @@ Disposición del repositorio
    │   ├── igate/          ← cliente TCP APRS-IS, login, filtros, dedup, RF→INET / INET→RF
    │   ├── digirepeater/   ← lógica de ruta WIDEn-N / TRACEn-N / RELAY / ECHO / GATE
    │   ├── message/        ← mensajería APRS, ack/reintento, AES-128-CBC + base64
-   │   ├── query/          ← respondedor de consultas APRS (?APRS?/?WX?/?IGATE? + dirigidas)
+   │   ├── query/          ← respondedor de consultas APRS (?APRS?/?WX?/?IGATE? + dirigidas), respondidas desde la tarea del planificador
    │   ├── lastheard/      ← tabla en RAM de estaciones oídas, una por indicativo → JSON del panel
    │   ├── trafficlog/     ← anillo en RAM de líneas de tráfico → JSON del panel (long-poll por seq)
    │   ├── weather_telemetry/  ← solo estructuras de nivel de protocolo (campos WX + Telemetría APRS101)

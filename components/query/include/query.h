@@ -25,6 +25,15 @@
  * "?APRSS" (status) and "?APRST" / "?PING?" (the route the query took).
  *
  * Configuration comes from g_config (app_config_t, web admin "Query" page).
+ *
+ * Receiving a query and answering it are split across two tasks. The entry
+ * points below only parse, rate-limit and record what to answer; the answer
+ * itself is built and transmitted later by ::query_service, which the beacon
+ * scheduler task calls on each pass. Building an answer walks the same deep
+ * (float-formatting, TNC2/AX.25 encoding) call tree the periodic beacons do,
+ * and that task is the one whose stack is budgeted for it - see
+ * beacon_scheduler.h. A queued request also wakes the scheduler, so deferring
+ * costs a task switch rather than a wait for its next scheduled pass.
  */
 
 #ifndef QUERY_H
@@ -56,6 +65,10 @@ void query_set_tx_handler(void (*handler)(const char *packet, size_t len, uint8_
  * the query responder. No-ops immediately unless g_config.query_en is set
  * and the info field is a recognized broadcast query (info[0] == '?').
  *
+ * Cheap enough for the task that decoded the frame: it matches the keyword,
+ * applies the per-type rate limit and, if an answer is due, queues it for
+ * ::query_service. Nothing is built or transmitted here.
+ *
  * Directed queries ("CALL:?query?") are NOT reached through this entry
  * point: they arrive already split out by message.c's own addressee parsing.
  * See query_process_directed().
@@ -78,9 +91,28 @@ void query_process(const char *tnc2Line);
  *                 argument (e.g. the callsign a "?APRSH" asks about) follows
  *                 the keyword in this same string.
  * @param tnc2Line The whole received TNC2 line the query arrived on, used to
- *                 report the route back for "?APRST" / "?PING?". May be NULL,
- *                 in which case a traceroute answers with an unknown route.
+ *                 report the route back for "?APRST" / "?PING?". Read here,
+ *                 while it is still in scope, and only the route is kept. May
+ *                 be NULL, in which case a traceroute answers with an unknown
+ *                 route.
  */
 void query_process_directed(const char *fromCall, const char *toCall, const char *text, const char *tnc2Line);
+
+/**
+ * @brief Build and transmit every answer queued by the entry points above,
+ * then return.
+ *
+ * Called by the beacon scheduler task at the start of each pass - and that
+ * task only, since this is where the beacon builders, the float formatting and
+ * the TNC2/AX.25 encode chain run and its stack is the one sized for them.
+ * Returns immediately when nothing is queued, so it is free to call every
+ * pass.
+ *
+ * Requests are answered oldest first, with the queue unlocked across each
+ * build and transmission so incoming traffic can keep queuing meanwhile. A
+ * question already waiting to be answered is not queued twice: every answer
+ * reports live state at the moment it is sent.
+ */
+void query_service(void);
 
 #endif // QUERY_H

@@ -438,22 +438,24 @@ Objects, Items, Bulletins, Status
      - ⚠️
      - ✅
      - General (``?APRS?``/``?WX?``/``?IGATE?``) and directed queries, each with
-       its own rate limiter; see :ref:`en-query`
+       its own rate limiter. Received on the RF/APRS-IS tasks, answered from the
+       beacon scheduler task; see :ref:`en-query`
    * - Directed query set (``?APRSD``/``?APRSH``/``?APRSM``/``?APRSO``/
        ``?APRSP``/``?APRSS``/``?APRST``/``?PING?``)
      - ⚠️ (APRSISCE/32, YAAC)
      - ✅
      - Answered when *Extended directed queries* is enabled. List-style answers
-       come back as APRS messages to the querying station; ``?APRSO`` queues the
-       Objects/Items for the beacon scheduler rather than transmitting from the
-       RX task
+       come back as APRS messages to the querying station; ``?APRSO``
+       re-announces the Objects/Items later in the same scheduler pass
    * - ``?APRSH`` heard-history graph
      - ⚠️
      - ✅
      - The station keeps an 18-hour heard histogram per callsign (see
        ``components/lastheard``), so the answer is the ``Hrd: h0 h1 ... h17``
        graph APRS101 ch.15 defines, six counts per period separated by ``.``,
-       hour 0 being the current clock hour
+       hour 0 being the current clock hour. The histogram belongs to the
+       station's row and travels with it as the row moves to the front of the
+       table
    * - Station Capabilities (``<`` DTI)
      - ✅
      - ✅
