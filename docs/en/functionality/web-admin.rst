@@ -82,7 +82,9 @@ The pages
      - Configures the messaging engine (RF/INET enable, retry, encryption,
        alarm GPIO).
    * - **Query**
-     - APRS query responder enable, RF/INET, general query types (``?APRS?``,
+     - APRS query responder enable, which source is answered (RF / APRS-IS —
+       an answer always goes back on the channel the question arrived on),
+       general query types (``?APRS?``,
        and where built, ``?WX?``/``?IGATE?``), directed-query enable, extended
        directed query set, minimum reply interval (airtime/loop safety floor).
    * - **Radio / Modem**

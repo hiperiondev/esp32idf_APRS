@@ -26,6 +26,14 @@
  *
  * Configuration comes from g_config (app_config_t, web admin "Query" page).
  *
+ * Every query carries the ::query_source_t it was received on, and that source
+ * decides two things: whether the query is answered at all
+ * (@c g_config.query_rf for RF, @c g_config.query_inet for APRS-IS) and where
+ * the answer goes - an RF question is answered on RF, an APRS-IS question is
+ * answered to APRS-IS. A broadcast query relayed by the APRS-IS backbone
+ * therefore cannot key the transmitter of a station whose APRS-IS source
+ * switch is off, which is the factory setting.
+ *
  * Receiving a query and answering it are split across two tasks. The entry
  * points below only parse, rate-limit and record what to answer; the answer
  * itself is built and transmitted later by ::query_service, which the beacon
@@ -43,6 +51,24 @@
 #include <stdint.h>
 
 /**
+ * @brief Where a query reached this station, passed to both entry points
+ * below.
+ *
+ * The source is what the operator's two source switches select on
+ * (@c g_config.query_rf / @c g_config.query_inet), and it is also the channel
+ * the answer is transmitted on: a question heard off the air is answered on
+ * the air, a question read from the APRS-IS feed is answered to APRS-IS.
+ * Keeping the two together is what makes internet traffic unable to key the
+ * transmitter on its own - a general query such as "?APRS?" is ordinary
+ * backbone traffic, and an IGate sees a steady stream of it.
+ */
+typedef enum {
+    QUERY_SRC_RF = 0, /**< Heard off the air, decoded by the local radio. */
+    QUERY_SRC_INET,   /**< Read from the APRS-IS feed. */
+    QUERY_SRC_COUNT   /**< Number of sources; sizes the per-source rate-limit table, never used as a source itself. */
+} query_source_t;
+
+/**
  * @brief Initialize the query responder (rate-limit timers). Call once at
  * startup, after message_init()/igate_start(), before aprs_service_start()
  * finishes wiring the RX dispatch chain.
@@ -55,6 +81,9 @@ void query_init(void);
  * reuse the same messageTxHandler() RF+INET plumbing (see ::MSG_CHANNEL_RF /
  * ::MSG_CHANNEL_INET in message.h).
  *
+ * The bitmask handed to the callback always carries exactly one channel, the
+ * one matching the ::query_source_t the query arrived on.
+ *
  * @param handler Callback invoked with the built packet, its length and the
  *                channel bitmask.
  */
@@ -62,8 +91,9 @@ void query_set_tx_handler(void (*handler)(const char *packet, size_t len, uint8_
 
 /**
  * @brief Feed a received, already-decoded TNC2 line ("SRC>DST,PATH:INFO") to
- * the query responder. No-ops immediately unless g_config.query_en is set
- * and the info field is a recognized broadcast query (info[0] == '?').
+ * the query responder. No-ops immediately unless g_config.query_en is set, the
+ * switch for @p source is on, and the info field is a recognized broadcast
+ * query (info[0] == '?').
  *
  * Cheap enough for the task that decoded the frame: it matches the keyword,
  * applies the per-type rate limit and, if an answer is due, queues it for
@@ -74,16 +104,19 @@ void query_set_tx_handler(void (*handler)(const char *packet, size_t len, uint8_
  * See query_process_directed().
  *
  * @param tnc2Line Decoded TNC2 text line, as handed to handleIncomingAPRS().
+ * @param source   Where the line was received; gates the answer and selects
+ *                 the channel it is transmitted on.
  */
-void query_process(const char *tnc2Line);
+void query_process(const char *tnc2Line, query_source_t source);
 
 /**
  * @brief Handle one directed query ("CALL:?query?"), called by
  * message.c's handleIncomingAPRS() when the addressed text starts with '?'
  * (rather than duplicating its own ":ADDRESSEE:" parsing here).
  *
- * No-ops unless g_config.query_en and g_config.query_directed_en are set and
- * @p toCall matches g_config.aprs_mycall (base callsign, SSID-insensitive).
+ * No-ops unless g_config.query_en and g_config.query_directed_en are set, the
+ * switch for @p source is on, and @p toCall matches g_config.aprs_mycall (base
+ * callsign, SSID-insensitive).
  *
  * @param fromCall Source callsign of the querying station.
  * @param toCall   Addressee field of the directed query (already trimmed).
@@ -95,8 +128,10 @@ void query_process(const char *tnc2Line);
  *                 while it is still in scope, and only the route is kept. May
  *                 be NULL, in which case a traceroute answers with an unknown
  *                 route.
+ * @param source   Where the query was received; gates the answer and selects
+ *                 the channel it is transmitted on.
  */
-void query_process_directed(const char *fromCall, const char *toCall, const char *text, const char *tnc2Line);
+void query_process_directed(const char *fromCall, const char *toCall, const char *text, const char *tnc2Line, query_source_t source);
 
 /**
  * @brief Build and transmit every answer queued by the entry points above,

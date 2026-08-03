@@ -448,7 +448,11 @@ Oggetti, Item, Bollettini, Stato
      - ✅
      - Query generali (``?APRS?``/``?WX?``/``?IGATE?``) e dirette, ciascuna con
        il proprio limitatore di frequenza. Ricevute sui task RF/APRS-IS, servite
-       dal task dello scheduler dei beacon; vedi :ref:`it-query`
+       dal task dello scheduler dei beacon. Ogni sorgente ha il proprio
+       interruttore e le sue risposte tornano sul canale da cui è arrivata la
+       domanda, con la sorgente APRS-IS spenta per impostazione predefinita così
+       il traffico di dorsale non può attivare il trasmettitore; vedi
+       :ref:`it-query`
    * - Insieme di query dirette (``?APRSD``/``?APRSH``/``?APRSM``/``?APRSO``/
        ``?APRSP``/``?APRSS``/``?APRST``/``?PING?``)
      - ⚠️ (APRSISCE/32, YAAC)
@@ -470,7 +474,10 @@ Oggetti, Item, Bollettini, Stato
      - ✅
      - ✅
      - Emesse come risposta a ``?IGATE?``
-       (``<IGATE,MSG_CNT=n,LOC_CNT=n>``)
+       (``<IGATE,MSG_CNT=n,LOC_CNT=n>``), dove ``MSG_CNT`` è il conteggio
+       cumulativo dei pacchetti di messaggio APRS inoltrati in entrambe le
+       direzioni e ``LOC_CNT`` il numero vivo di stazioni presenti nell'elenco
+       delle ascoltate locali (in RF)
 
 Mappatura / Visualizzazione
 -------------------------------

@@ -38,6 +38,7 @@ typedef struct {
     char path[LASTHEARD_PATH_LEN]; // e.g. "RF: WIDE1-1" / "INET: DIRECT"
     char sym_table;
     char sym_code;
+    bool via_rf;      // latest frame from this station was heard off the air
     bool direct;      // latest frame from this station carried no used digipeater
     uint32_t packets; // total times this callsign has been heard
     // Hourly heard histogram for the "?APRSH" query (APRS101 ch.15): hourly[0]
@@ -163,10 +164,11 @@ void lastheard_add(const char *callsign, const char *path, bool via_rf, bool dir
     snprintf(entry.path, sizeof(entry.path), "%s: %s", via_rf ? "RF" : "INET", (path && path[0]) ? path : "DIRECT");
     entry.sym_table = sym_table;
     entry.sym_code = sym_code;
-    // Whether the station is reachable without a digipeater is a property of
-    // the path this frame took, so the newest frame always wins: a station
-    // that has moved out of direct range stops being listed as direct as soon
-    // as its first digipeated frame arrives.
+    // Both of these describe the path this frame took, so the newest frame
+    // always wins: a station that has moved out of direct range stops being
+    // listed as direct as soon as its first digipeated frame arrives, and a
+    // station last seen on the APRS-IS feed stops counting as locally heard.
+    entry.via_rf = via_rf;
     entry.direct = via_rf && direct;
 
     if (shift_from > 0)
@@ -174,6 +176,25 @@ void lastheard_add(const char *callsign, const char *path, bool via_rf, bool dir
     s_buf[0] = entry;
 
     xSemaphoreGive(s_lock);
+}
+
+size_t lastheard_station_count(bool rf_only) {
+    if (!s_inited)
+        return 0;
+    if (!s_lock || xSemaphoreTake(s_lock, pdMS_TO_TICKS(100)) != pdTRUE)
+        return 0;
+
+    size_t count = 0;
+    for (size_t i = 0; i < s_count; i++) {
+        if (!s_buf[i].callsign[0])
+            continue;
+        if (rf_only && !s_buf[i].via_rf)
+            continue;
+        count++;
+    }
+
+    xSemaphoreGive(s_lock);
+    return count;
 }
 
 int lastheard_directs(char *out, size_t out_size) {

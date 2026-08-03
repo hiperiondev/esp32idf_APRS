@@ -130,6 +130,10 @@ void igate_note_drop(drop_reason_t reason) {
         s_stats.dropByReason[reason]++;
 }
 
+void igate_note_message_gated(void) {
+    s_stats.msgCount++;
+}
+
 const char *igate_drop_reason_name(drop_reason_t reason) {
     switch (reason) {
         case DROP_DUP:
@@ -548,6 +552,10 @@ int igateProcess(ax25_msg_t *packet) {
 
     if (sendToAprsIs(frame, fpos)) {
         s_stats.txCount++;
+        // An APRS message carries the ':' data type identifier in the first
+        // byte of the information field, and messages are what MSG_CNT counts.
+        if (packet->info[0] == ':')
+            s_stats.msgCount++;
         return 1;
     }
     return 0;

@@ -449,7 +449,10 @@ Objetos, Items, Boletines, Estado
      - ✅
      - Consultas generales (``?APRS?``/``?WX?``/``?IGATE?``) y dirigidas, cada
        una con su propio limitador de tasa. Se reciben en las tareas de RF/APRS-IS
-       y se responden desde la tarea del planificador de balizas; véase
+       y se responden desde la tarea del planificador de balizas. Cada origen
+       tiene su propio interruptor y sus respuestas vuelven por el canal por el
+       que llegó la pregunta, con el origen APRS-IS apagado por defecto para que
+       el tráfico de la red troncal no pueda activar el transmisor; véase
        :ref:`es-query`
    * - Conjunto de consultas dirigidas (``?APRSD``/``?APRSH``/``?APRSM``/
        ``?APRSO``/``?APRSP``/``?APRSS``/``?APRST``/``?PING?``)
@@ -472,7 +475,10 @@ Objetos, Items, Boletines, Estado
      - ✅
      - ✅
      - Se emite como respuesta a ``?IGATE?``
-       (``<IGATE,MSG_CNT=n,LOC_CNT=n>``)
+       (``<IGATE,MSG_CNT=n,LOC_CNT=n>``), donde ``MSG_CNT`` es la cuenta
+       acumulada de paquetes de mensaje APRS enrutados en cualquiera de los dos
+       sentidos y ``LOC_CNT`` la cantidad viva de estaciones que hay en la lista
+       de escuchadas locales (por RF)
 
 Mapeo / Visualización
 ------------------------

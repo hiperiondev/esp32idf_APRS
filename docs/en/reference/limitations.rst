@@ -439,7 +439,10 @@ Objects, Items, Bulletins, Status
      - ✅
      - General (``?APRS?``/``?WX?``/``?IGATE?``) and directed queries, each with
        its own rate limiter. Received on the RF/APRS-IS tasks, answered from the
-       beacon scheduler task; see :ref:`en-query`
+       beacon scheduler task. Each source has its own switch and its answers go
+       back on the channel the question arrived on, with the APRS-IS source off
+       by default so backbone traffic cannot key the transmitter; see
+       :ref:`en-query`
    * - Directed query set (``?APRSD``/``?APRSH``/``?APRSM``/``?APRSO``/
        ``?APRSP``/``?APRSS``/``?APRST``/``?PING?``)
      - ⚠️ (APRSISCE/32, YAAC)
@@ -460,7 +463,9 @@ Objects, Items, Bulletins, Status
      - ✅
      - ✅
      - Emitted as the ``?IGATE?`` response
-       (``<IGATE,MSG_CNT=n,LOC_CNT=n>``)
+       (``<IGATE,MSG_CNT=n,LOC_CNT=n>``), where ``MSG_CNT`` is the running count
+       of APRS message packets gated in either direction and ``LOC_CNT`` the
+       live number of stations currently in the local (RF-heard) list
 
 Mapping / Visualization
 --------------------------

@@ -123,6 +123,12 @@ La instantánea ``igate_stats_t`` (``igate_get_stats()``) lleva:
      - Tramas consideradas para enrutamiento (RF→INET).
    * - ``txCount``
      - Tramas realmente enviadas a APRS-IS como resultado del enrutamiento.
+   * - ``msgCount``
+     - Paquetes de mensaje APRS (identificador de tipo de dato ``:``) enrutados
+       en cualquiera de los dos sentidos — RF→INET por ``igateProcess()``,
+       INET→RF por ``igate_note_message_gated()`` desde ``aprs_service.c``. Es la
+       cifra ``MSG_CNT`` que informa la respuesta a ``?IGATE?``, así que cuenta
+       solo mensajes y no el resto del tráfico enrutado.
    * - ``dupCount``
      - Tramas duplicadas suprimidas.
    * - ``isRxCount``

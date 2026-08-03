@@ -306,7 +306,7 @@ void app_config_set_defaults(app_config_t *c) {
     // Query responder
     c->query_en = false; // opt-in, like msg_enable
     c->query_rf = true;
-    c->query_inet = false; // avoid answering into APRS-IS by default
+    c->query_inet = false; // a question read off the APRS-IS feed is ignored, so it can never key the transmitter
     c->query_aprs_en = true;
     c->query_wx_en = true;
     c->query_igate_en = true;

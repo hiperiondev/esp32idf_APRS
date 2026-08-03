@@ -87,8 +87,10 @@ Le pagine
      - Configura il motore di messaggistica (abilitazione RF/INET, ritentativo,
        cifratura, GPIO di allarme).
    * - **Query**
-     - Abilitazione del risponditore di query APRS, RF/INET, tipi di query
-       generali (``?APRS?``, e dove compilati, ``?WX?``/``?IGATE?``),
+     - Abilitazione del risponditore di query APRS, quale sorgente viene
+       risposta (RF / APRS-IS — la risposta torna sempre sul canale da cui è
+       arrivata la domanda), tipi di query generali (``?APRS?``, e dove
+       compilati, ``?WX?``/``?IGATE?``),
        abilitazione query dirette, insieme esteso di query dirette, intervallo
        minimo di risposta (soglia di sicurezza contro loop/uso del canale).
    * - **Radio / Modem**

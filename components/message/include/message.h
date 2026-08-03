@@ -27,6 +27,8 @@
 #include <stdint.h>
 #include <time.h>
 
+#include "query.h" // ::query_source_t, carried through to query_process_directed()
+
 #define MSG_QUEUE_SIZE 20  /**< Number of RX+TX message slots in the in-memory queue. */
 #define MSG_TEXT_MAX   200 /**< In-memory storage limit for a queued message's text, in bytes (NOT the on-air limit; see ::APRS_MSG_TEXT_STD_MAX). */
 
@@ -119,8 +121,17 @@ int message_send_pending_to(const char *toCall);
  * @brief Parse one incoming TNC2 text line (from RF or APRS-IS) and, if it is
  * an APRS message addressed to g_config.msg_mycall, store it and send an
  * ack. ACK lines update the outbound queue's retry state instead.
+ *
+ * A line whose addressed text starts with '?' is a directed query rather than
+ * a message and is handed to query_process_directed() together with @p source,
+ * which is the only reason this function needs to know where the line came
+ * from: the messaging engine itself routes by its own "send via" flags.
+ *
+ * @param line   Decoded TNC2 text line.
+ * @param source Where the line was received (::QUERY_SRC_RF for the radio,
+ *               ::QUERY_SRC_INET for the APRS-IS feed).
  */
-void handleIncomingAPRS(const char *line);
+void handleIncomingAPRS(const char *line, query_source_t source);
 
 /**
  * @brief Find a message queue slot by callsign, message number and direction.

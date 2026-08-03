@@ -505,8 +505,8 @@ typedef struct {
     int8_t msg_alarm_gpio; /**< Message-alarm GPIO; -1 = disabled/unset (see message_alarm_gpio_is_valid()). */
 
     bool query_en;                   /**< Query responder master enable. */
-    bool query_rf;                   /**< Answer queries heard on RF. */
-    bool query_inet;                 /**< Answer queries heard from APRS-IS. */
+    bool query_rf;                   /**< Answer queries heard on RF; the answer goes back out on RF. */
+    bool query_inet;                 /**< Answer queries read from the APRS-IS feed; the answer goes back to APRS-IS. */
     bool query_aprs_en;              /**< Enable "?APRS?" responses. */
     bool query_wx_en;                /**< Enable "?WX?" responses. */
     bool query_igate_en;             /**< Enable "?IGATE?" responses. */

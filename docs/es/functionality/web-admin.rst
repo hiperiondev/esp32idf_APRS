@@ -87,8 +87,10 @@ Las páginas
      - Configura el motor de mensajería (habilitación RF/INET, reintento,
        cifrado, GPIO de alarma).
    * - **Query**
-     - Habilitación del respondedor de consultas APRS, RF/INET, tipos de
-       consulta general (``?APRS?``, y donde estén compilados,
+     - Habilitación del respondedor de consultas APRS, qué origen se responde
+       (RF / APRS-IS — la respuesta siempre vuelve por el canal por el que llegó
+       la pregunta), tipos de consulta general (``?APRS?``, y donde estén
+       compilados,
        ``?WX?``/``?IGATE?``), habilitación de consultas dirigidas, conjunto
        extendido de consultas dirigidas, intervalo
        mínimo de respuesta (límite de seguridad frente a bucles/uso del

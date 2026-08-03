@@ -15,23 +15,46 @@ y el resto de la página *Query* de la administración web.
 Dos puntos de entrada
 =====================
 
-* ``query_process(tnc2Line)`` — recibe cada línea TNC2 decodificada. No hace nada
-  salvo que ``query_en`` esté activo y el campo de información empiece con ``?``,
-  que es lo que convierte a una línea en consulta **general**. Reconocer la
-  palabra clave, aplicar el límite de frecuencia y encolar el pedido es todo lo
-  que hace.
-* ``query_process_directed(fromCall, toCall, text, tnc2Line)`` — la llama
+* ``query_process(tnc2Line, source)`` — recibe cada línea TNC2 decodificada. No
+  hace nada salvo que ``query_en`` esté activo, el interruptor de ``source`` esté
+  encendido y el campo de información empiece con ``?``, que es lo que convierte
+  a una línea en consulta **general**. Reconocer la palabra clave, aplicar el
+  límite de frecuencia y encolar el pedido es todo lo que hace.
+* ``query_process_directed(fromCall, toCall, text, tnc2Line, source)`` — la llama
   ``handleIncomingAPRS()`` de ``message.c`` cuando el texto de un mensaje
   dirigido empieza con ``?``, así no se duplica aquí el análisis de
   ``:ADDRESSEE:``. No hace nada salvo que ``query_en`` **y** ``query_directed_en``
-  estén activos y ``toCall`` coincida con ``g_config.aprs_mycall`` (indicativo
-  base, sin distinguir SSID).
+  estén activos, el interruptor de ``source`` esté encendido y ``toCall`` coincida
+  con ``g_config.aprs_mycall`` (indicativo base, sin distinguir SSID).
 
-Las respuestas se transmiten por el manejador instalado con
-``query_set_tx_handler()``. ``aprs_service.c`` reutiliza exactamente el mismo
-``messageTxHandler()`` que le da al motor de mensajería, así que los bits de
-enrutado son el par conocido ``MSG_CHANNEL_RF`` / ``MSG_CHANNEL_INET``,
-seleccionado por ``g_config.query_rf`` / ``query_inet``.
+Origen y canal
+==============
+
+A los dos puntos de entrada se les dice de dónde llegó la consulta —
+``QUERY_SRC_RF`` para la radio, ``QUERY_SRC_INET`` para el flujo de APRS-IS — y
+ese origen decide dos cosas.
+
+Decide **si la consulta se responde**: ``g_config.query_rf`` y ``query_inet``
+nombran un origen, no un destino. Y decide **adónde va la respuesta**: una
+pregunta escuchada al aire se responde al aire, una pregunta leída del flujo se
+responde hacia APRS-IS. Las respuestas se transmiten por el manejador instalado
+con ``query_set_tx_handler()`` — ``aprs_service.c`` reutiliza exactamente el
+mismo ``messageTxHandler()`` que le da al motor de mensajería — y la máscara que
+recibe lleva siempre exactamente uno de ``MSG_CHANNEL_RF`` /
+``MSG_CHANNEL_INET``, el que corresponde al origen.
+
+Que las dos cosas vayan juntas es lo que mantiene al flujo de APRS-IS lejos del
+transmisor. ``?APRS?`` es tráfico normal de la red troncal y un IGate ve un
+goteo constante; con el interruptor de origen APRS-IS apagado — el valor de
+fábrica — nada de eso llega al respondedor, y con el interruptor encendido las
+respuestas vuelven hacia APRS-IS en vez de salir al aire.
+
+Hay dos excepciones deliberadas, porque ese tráfico no es la respuesta en sí.
+``?APRSM`` reenvía mensajes que esta estación ya le debe al operador que
+consulta, enrutados por los propios indicadores de "enviar por" de la página
+Message; ``?APRSO`` vuelve a anunciar los Objetos/Ítems, cada uno enrutado por su
+propia configuración. Solo la respuesta de "no hay mensajes pendientes" y la de
+``No objects`` siguen el origen de la consulta.
 
 Dónde se construye la respuesta
 ===============================
@@ -94,9 +117,14 @@ Consultas generales
    * - ``?IGATE?``
      - ``query_igate_en``
      - La línea de Capacidades de Estación que define APRS101,
-       ``<IGATE,MSG_CNT=n,LOC_CNT=n>``, construida con los mismos contadores de
-       ``igate_get_stats()`` que lee el panel (``MSG_CNT`` = ``txCount``,
-       ``LOC_CNT`` = ``rxCount``). Se ignora en silencio mientras ``igate_en``
+       ``<IGATE,MSG_CNT=n,LOC_CNT=n>``, con las dos cifras que el capítulo 15 les
+       asigna. ``MSG_CNT`` es la cuenta acumulada de paquetes de mensaje APRS que
+       esta pasarela pasó en cualquiera de los dos sentidos
+       (``igate_stats_t::msgCount``, no un total de todo el tráfico enrutado).
+       ``LOC_CNT`` es una cifra viva y no un acumulado: la cantidad de estaciones
+       distintas en la lista de escuchadas locales, de
+       ``lastheard_station_count(true)``, contando solo las filas cuya trama más
+       reciente se escuchó al aire. Se ignora en silencio mientras ``igate_en``
        esté apagado.
 
 Como las respuestas de posición, estado y meteorología reutilizan los
@@ -159,10 +187,12 @@ Dos limitadores independientes evitan que el respondedor se vuelva un problema d
 tiempo al aire o la mitad de un bucle de realimentación con otro
 auto-respondedor:
 
-* **Limitador de difusión** — por *tipo* de consulta, como máximo una respuesta
-  cada ``g_config.query_min_interval_sec`` (30 s por defecto; el mínimo de la
-  página *Query* es 5 s). Al ser por tipo, un canal ocupado preguntando
-  ``?APRS?`` no puede suprimir una respuesta a ``?WX?``.
+* **Limitador de difusión** — por *tipo* de consulta **y origen**, como máximo
+  una respuesta cada ``g_config.query_min_interval_sec`` (30 s por defecto; el
+  mínimo de la página *Query* es 5 s). Al ser por tipo, un canal ocupado
+  preguntando ``?APRS?`` no puede suprimir una respuesta a ``?WX?``; al ser
+  además por origen, un flujo de APRS-IS hablador no puede gastar el cupo que
+  necesita una pregunta escuchada al aire.
 * **Limitador de dirigidas** — las consultas dirigidas se saltan el limitador de
   difusión (están explícitamente dirigidas a esta estación) pero tienen su propio
   límite **por origen**, más estricto, de ``QUERY_DIRECTED_MIN_INTERVAL_SEC``
@@ -173,8 +203,9 @@ auto-respondedor:
 Configuración
 =============
 
-La página *Query* (``page_query.c``) expone, en orden: **Habilitar**, **Enviar
-por RF**, **Enviar por Internet**, los tres interruptores de consulta general
+La página *Query* (``page_query.c``) expone, en orden: **Habilitar**,
+**Responder consultas escuchadas en RF**, **Responder consultas recibidas de
+APRS-IS**, los tres interruptores de consulta general
 (``?APRS?``, ``?WX?``, ``?IGATE?`` — los dos últimos solo aparecen en
 compilaciones que incluyen las funciones de meteorología e IGate), **Habilitar
 consultas dirigidas**, **Consultas dirigidas extendidas**, y el **Intervalo
@@ -192,8 +223,9 @@ mínimo de respuesta** en segundos.
      - habilitación maestra (opt-in, como la mensajería)
    * - ``queryRf`` / ``queryInet``
      - ``true`` / ``false``
-     - responder por RF / hacia APRS-IS. La pata de Internet está apagada por
-       defecto para que la estación no responda hacia APRS-IS sin pedirlo.
+     - qué origen se responde: consultas escuchadas en RF / leídas del flujo de
+       APRS-IS. El origen APRS-IS está apagado por defecto, así que el tráfico
+       de la red troncal no puede activar el transmisor tal como viene.
    * - ``queryAprsEn`` / ``queryWxEn`` / ``queryIgateEn``
      - ``true``
      - habilitaciones por consulta general

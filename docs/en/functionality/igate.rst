@@ -120,6 +120,12 @@ The ``igate_stats_t`` snapshot (``igate_get_stats()``) carries:
      - Frames considered for gatewaying (RF→INET).
    * - ``txCount``
      - Frames actually sent to APRS-IS as a result of gatewaying.
+   * - ``msgCount``
+     - APRS message packets (``:`` data type identifier) gated in either
+       direction — RF→INET by ``igateProcess()``, INET→RF by
+       ``igate_note_message_gated()`` from ``aprs_service.c``. This is the
+       ``MSG_CNT`` figure the ``?IGATE?`` answer reports, so it counts messages
+       only and not the rest of the gated traffic.
    * - ``dupCount``
      - Duplicate frames suppressed.
    * - ``isRxCount``

@@ -479,7 +479,7 @@ void sendAPRSMessageRetry(void) {
 // ---------------------------------------------------------------------------
 // Incoming
 // ---------------------------------------------------------------------------
-void handleIncomingAPRS(const char *line) {
+void handleIncomingAPRS(const char *line, query_source_t source) {
     const char *msgMarker = strstr(line, "::");
     if (msgMarker == NULL || msgMarker == line)
         return;
@@ -517,8 +517,10 @@ void handleIncomingAPRS(const char *line) {
     if (colon[1] == '?') {
         // The whole line goes along with the split-out fields: a "?APRST" /
         // "?PING?" answer reports the route the query travelled, which only
-        // the unparsed line still carries.
-        query_process_directed(fromCall, toCall, colon + 1, line);
+        // the unparsed line still carries. The source travels with it too,
+        // since it decides both whether the query is answered and where the
+        // answer goes.
+        query_process_directed(fromCall, toCall, colon + 1, line, source);
         return;
     }
 

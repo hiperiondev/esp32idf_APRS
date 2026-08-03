@@ -126,6 +126,12 @@ Lo snapshot ``igate_stats_t`` (``igate_get_stats()``) porta:
      - Frame considerati per l'inoltro (RF→INET).
    * - ``txCount``
      - Frame effettivamente inviati ad APRS-IS come risultato dell'inoltro.
+   * - ``msgCount``
+     - Pacchetti di messaggio APRS (identificatore di tipo dato ``:``) inoltrati
+       in entrambe le direzioni — RF→INET da ``igateProcess()``, INET→RF da
+       ``igate_note_message_gated()`` da ``aprs_service.c``. È la cifra
+       ``MSG_CNT`` riportata dalla risposta a ``?IGATE?``, quindi conta solo i
+       messaggi e non il resto del traffico inoltrato.
    * - ``dupCount``
      - Frame duplicati soppressi.
    * - ``isRxCount``

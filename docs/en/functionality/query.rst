@@ -14,21 +14,45 @@ RF/APRS-IS TX plumbing the messaging engine uses. Everything it does is gated by
 Two entry points
 ================
 
-* ``query_process(tnc2Line)`` — fed every decoded TNC2 line. It no-ops unless
-  ``query_en`` is set and the information field starts with ``?``, which is what
-  makes a line a **general** query. Matching the keyword, applying the rate
-  limit and queuing the request is all it does.
-* ``query_process_directed(fromCall, toCall, text, tnc2Line)`` — called by
-  ``message.c``'s ``handleIncomingAPRS()`` when an addressed message's text
+* ``query_process(tnc2Line, source)`` — fed every decoded TNC2 line. It no-ops
+  unless ``query_en`` is set, the switch for ``source`` is on, and the
+  information field starts with ``?``, which is what makes a line a **general**
+  query. Matching the keyword, applying the rate limit and queuing the request
+  is all it does.
+* ``query_process_directed(fromCall, toCall, text, tnc2Line, source)`` — called
+  by ``message.c``'s ``handleIncomingAPRS()`` when an addressed message's text
   starts with ``?``, so the ``:ADDRESSEE:`` parsing is not duplicated here. It
-  no-ops unless ``query_en`` **and** ``query_directed_en`` are set and
-  ``toCall`` matches ``g_config.aprs_mycall`` (base callsign, SSID-insensitive).
+  no-ops unless ``query_en`` **and** ``query_directed_en`` are set, the switch
+  for ``source`` is on, and ``toCall`` matches ``g_config.aprs_mycall`` (base
+  callsign, SSID-insensitive).
 
-Responses are transmitted through the handler installed with
-``query_set_tx_handler()``. ``aprs_service.c`` reuses the very same
-``messageTxHandler()`` it gives the messaging engine, so the routing bits are the
-familiar ``MSG_CHANNEL_RF`` / ``MSG_CHANNEL_INET`` pair, selected by
-``g_config.query_rf`` / ``query_inet``.
+Source and channel
+==================
+
+Both entry points are told where the query came from — ``QUERY_SRC_RF`` for the
+radio, ``QUERY_SRC_INET`` for the APRS-IS feed — and that source decides two
+things.
+
+It decides **whether the query is answered at all**: ``g_config.query_rf`` and
+``query_inet`` name a source, not a destination. It also decides **where the
+answer goes**: a question heard on the air is answered on the air, a question
+read from the feed is answered to APRS-IS. Responses are transmitted through the
+handler installed with ``query_set_tx_handler()`` — ``aprs_service.c`` reuses the
+very same ``messageTxHandler()`` it gives the messaging engine — and the bitmask
+handed to it always carries exactly one of ``MSG_CHANNEL_RF`` /
+``MSG_CHANNEL_INET``, the one matching the source.
+
+Pairing the two is what keeps the APRS-IS feed away from the transmitter.
+``?APRS?`` is ordinary backbone traffic and an IGate sees a steady stream of it;
+with the APRS-IS source switch off — the factory setting — none of it reaches
+the responder, and with the switch on the answers go back to APRS-IS rather than
+on the air.
+
+Two exceptions are deliberate, because the traffic is not the answer itself.
+``?APRSM`` re-sends messages this station already owes the querying operator,
+routed by the Message page's own "send via" flags; ``?APRSO`` re-announces
+Objects/Items, each routed by its own configuration. Only the "nothing pending"
+reply and the ``No objects`` reply follow the query's source.
 
 Where the answer is built
 =========================
@@ -89,9 +113,14 @@ General queries
    * - ``?IGATE?``
      - ``query_igate_en``
      - The Station Capabilities line APRS101 defines,
-       ``<IGATE,MSG_CNT=n,LOC_CNT=n>``, built from the same ``igate_get_stats()``
-       counters the dashboard reads (``MSG_CNT`` = ``txCount``, ``LOC_CNT`` =
-       ``rxCount``). Silently ignored while ``igate_en`` is off.
+       ``<IGATE,MSG_CNT=n,LOC_CNT=n>``, carrying the two figures chapter 15
+       gives them. ``MSG_CNT`` is the running count of APRS message packets this
+       gateway has passed in either direction (``igate_stats_t::msgCount``, not
+       a tally of all gated traffic). ``LOC_CNT`` is a live figure rather than a
+       running total: the number of distinct stations in the local heard list,
+       from ``lastheard_station_count(true)``, counting only the rows whose most
+       recent frame was heard off the air. Silently ignored while ``igate_en`` is
+       off.
 
 Because position, status and weather answers reuse the existing beacon builders,
 a reply can never drift from what the periodic beacons transmit.
@@ -149,10 +178,11 @@ Rate limiting
 Two independent limiters keep the responder from becoming an airtime problem or
 half of a feedback loop with another auto-responder:
 
-* **Broadcast limiter** — per query *type*, at most one answer per
-  ``g_config.query_min_interval_sec`` (default 30 s; the *Query* page's minimum
-  is 5 s). Because it is per type, a busy channel asking ``?APRS?`` cannot
-  suppress a ``?WX?`` answer.
+* **Broadcast limiter** — per query *type* **and source**, at most one answer
+  per ``g_config.query_min_interval_sec`` (default 30 s; the *Query* page's
+  minimum is 5 s). Because it is per type, a busy channel asking ``?APRS?``
+  cannot suppress a ``?WX?`` answer; because it is also per source, a talkative
+  APRS-IS feed cannot spend the allowance a question heard on the air needs.
 * **Directed limiter** — directed queries bypass the broadcast limiter (they are
   explicitly addressed to this station) but get their own, tighter **per-source**
   limit of ``QUERY_DIRECTED_MIN_INTERVAL_SEC`` (5 s), tracked in a fixed
@@ -162,8 +192,9 @@ half of a feedback loop with another auto-responder:
 Configuration
 =============
 
-The *Query* page (``page_query.c``) exposes, in order: **Enable**, **Send via
-RF**, **Send via Internet**, the three general-query toggles (``?APRS?``,
+The *Query* page (``page_query.c``) exposes, in order: **Enable**, **Answer
+queries heard on RF**, **Answer queries heard from APRS-IS**, the three
+general-query toggles (``?APRS?``,
 ``?WX?``, ``?IGATE?`` — the last two only appear in builds that include the
 weather and IGate features), **Enable directed queries**, **Extended directed
 queries**, and the **Minimum reply interval** in seconds.
@@ -180,8 +211,9 @@ queries**, and the **Minimum reply interval** in seconds.
      - master enable (opt-in, like messaging)
    * - ``queryRf`` / ``queryInet``
      - ``true`` / ``false``
-     - answer on RF / to APRS-IS. The Internet leg is off by default so the
-       station does not answer into APRS-IS unless asked to.
+     - which source is answered: queries heard on RF / read from the APRS-IS
+       feed. The APRS-IS source is off by default, so backbone traffic cannot
+       key the transmitter out of the box.
    * - ``queryAprsEn`` / ``queryWxEn`` / ``queryIgateEn``
      - ``true``
      - per-general-query enables

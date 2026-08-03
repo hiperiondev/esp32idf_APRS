@@ -27,6 +27,15 @@
 // APRS text messages addressed back to the querying station, which is the
 // form chapter 15 specifies for a directed query.
 //
+// Every query is handled together with the source it arrived on. The source
+// selects the operator switch that says whether that source is answered at all
+// (g_config.query_rf / g_config.query_inet) and it selects the channel the
+// answer is transmitted on, so a question heard on the air is answered on the
+// air and a question read from the APRS-IS feed is answered to APRS-IS. That
+// pairing is what keeps internet traffic away from the transmitter: general
+// queries are ordinary backbone traffic, and an IGate's feed carries a steady
+// stream of them.
+//
 // Answers are built and transmitted from the beacon scheduler task, never from
 // the task a query arrives on: query_process() and query_process_directed()
 // parse, rate-limit and record a request, and query_service() drains those
@@ -54,7 +63,7 @@
 #include "beacon.h"           // beacon_build_igate_position_packet() / beacon_build_igate_status_packet()
 #include "beacon_scheduler.h" // beacon_scheduler_wake()
 #include "igate.h"            // igate_get_stats()
-#include "lastheard.h"        // lastheard_directs() / lastheard_heard_history()
+#include "lastheard.h"        // lastheard_directs() / lastheard_heard_history() / lastheard_station_count()
 #include "message.h"          // MSG_CHANNEL_RF / MSG_CHANNEL_INET / message_send_pending_to()
 #include "query.h"
 #include "sched_time.h" // sched_mono_seconds()
@@ -71,10 +80,13 @@ static const char *TAG = "query";
 
 static void (*s_txHandler)(const char *packet, size_t len, uint8_t channels) = NULL;
 
-// One "last responded" monotonic timestamp per broadcast query type, so a
-// misbehaving network flooding "?APRS?" broadcasts cannot make this station
-// answer more than once per g_config.query_min_interval_sec - both to save
-// airtime and to avoid a feedback loop with other auto-responders.
+// One "last responded" monotonic timestamp per broadcast query type and
+// source, so a misbehaving network flooding "?APRS?" broadcasts cannot make
+// this station answer more than once per g_config.query_min_interval_sec -
+// both to save airtime and to avoid a feedback loop with other
+// auto-responders. The source is part of the key so that a talkative APRS-IS
+// feed cannot spend the allowance a question heard on the air needs: the two
+// answers go to different places and neither costs the other any airtime.
 // The first three are the general (broadcast) queries and also answerable
 // when directed; everything after QUERY_TYPE_IGATE is directed-only, which is
 // how APRS101 chapter 15 splits them - a station only answers those on behalf
@@ -93,7 +105,7 @@ typedef enum {
     QUERY_TYPE_COUNT
 } query_type_t;
 
-static int64_t s_lastBroadcastRespondSec[QUERY_TYPE_COUNT];
+static int64_t s_lastBroadcastRespondSec[QUERY_TYPE_COUNT][QUERY_SRC_COUNT];
 
 // Directed queries bypass the broadcast-type limiter above (they are
 // explicitly addressed to this station) but get their own, tighter
@@ -130,6 +142,7 @@ static query_directed_track_t s_directedTrack[QUERY_DIRECTED_TRACK_MAX];
 
 typedef struct {
     query_type_t type;
+    query_source_t source;         // where the query came from, and where its answer goes
     char fromCall[12];             // querying station; empty for a broadcast query
     char detail[QUERY_DETAIL_LEN]; // "?APRSH" target callsign or "?APRST" route, empty otherwise
 } query_request_t;
@@ -175,19 +188,40 @@ static bool baseCallMatch(const char *a, const char *b) {
     return strncasecmp(a, b, na) == 0;
 }
 
+// True if the operator wants queries received on this source answered. The
+// two switches name a source, not a destination: an answer always goes back
+// the way its question came, so turning a source off is what guarantees that
+// traffic from there cannot make this station transmit.
+static bool querySourceEnabled(query_source_t source) {
+    switch (source) {
+        case QUERY_SRC_RF:
+            return g_config.query_rf;
+        case QUERY_SRC_INET:
+            return g_config.query_inet;
+        default:
+            return false;
+    }
+}
+
+// The one TX channel an answer to a query from this source is sent on, in the
+// bitmask form message_set_tx_handler() defines.
+static uint8_t querySourceChannel(query_source_t source) {
+    return (source == QUERY_SRC_INET) ? (uint8_t)MSG_CHANNEL_INET : (uint8_t)MSG_CHANNEL_RF;
+}
+
 // Rate-limit gate for broadcast queries: true if it is fine to respond now
 // (and, as a side effect, stamps the current time so the next check within
 // g_config.query_min_interval_sec fails).
-static bool broadcastRateLimitPass(query_type_t type) {
+static bool broadcastRateLimitPass(query_type_t type, query_source_t source) {
     int64_t now = sched_mono_seconds();
     uint16_t minInterval = g_config.query_min_interval_sec;
     if (minInterval == 0)
         minInterval = 30; // sanity floor, matches the webconfig page's own default
 
-    if (now - s_lastBroadcastRespondSec[type] < (int64_t)minInterval)
+    if (now - s_lastBroadcastRespondSec[type][source] < (int64_t)minInterval)
         return false;
 
-    s_lastBroadcastRespondSec[type] = now;
+    s_lastBroadcastRespondSec[type][source] = now;
     return true;
 }
 
@@ -252,8 +286,10 @@ static void extractRoute(const char *tnc2Line, char *out, size_t out_size) {
 // A request identical to one already waiting is collapsed into it: every
 // answer is built from live state (position, traffic counters, the heard
 // table) at the moment it is sent, so a second copy would put the same
-// information on the air twice for one operator's benefit.
-static void queueResponse(query_type_t type, const char *fromCall, const char *detail) {
+// information on the air twice for one operator's benefit. The source is part
+// of what makes two requests identical, since two answers to the same question
+// received on both channels go to two different places.
+static void queueResponse(query_type_t type, query_source_t source, const char *fromCall, const char *detail) {
     if (s_pendingLock == NULL)
         return;
     if (xSemaphoreTake(s_pendingLock, pdMS_TO_TICKS(20)) != pdTRUE) {
@@ -267,7 +303,7 @@ static void queueResponse(query_type_t type, const char *fromCall, const char *d
     bool duplicate = false;
     for (uint8_t i = 0; i < s_pendingCount; i++) {
         const query_request_t *r = &s_pending[(s_pendingHead + i) % QUERY_PENDING_MAX];
-        if (r->type == type && strcasecmp(r->fromCall, call) == 0 && strcmp(r->detail, arg) == 0) {
+        if (r->type == type && r->source == source && strcasecmp(r->fromCall, call) == 0 && strcmp(r->detail, arg) == 0) {
             duplicate = true;
             break;
         }
@@ -280,6 +316,7 @@ static void queueResponse(query_type_t type, const char *fromCall, const char *d
             query_request_t *r = &s_pending[(s_pendingHead + s_pendingCount) % QUERY_PENDING_MAX];
             memset(r, 0, sizeof(*r));
             r->type = type;
+            r->source = source;
             strncpy(r->fromCall, call, sizeof(r->fromCall) - 1);
             strncpy(r->detail, arg, sizeof(r->detail) - 1);
             s_pendingCount++;
@@ -297,22 +334,16 @@ static void queueResponse(query_type_t type, const char *fromCall, const char *d
         ESP_LOGW(TAG, "Query answer dropped - %d responses already queued", QUERY_PENDING_MAX);
 }
 
-// Transmits an already-built TNC2 line on RF and/or INET per
-// g_config.query_rf / g_config.query_inet, via the same channel-bitmask
-// contract message_set_tx_handler() defines.
-static void txPacket(const char *packet, size_t len) {
+// Transmits an already-built TNC2 line back the way its question came, via the
+// same channel-bitmask contract message_set_tx_handler() defines. The source
+// switches were already applied when the request was accepted, so everything
+// that reaches here has a channel to go out on.
+static void txPacket(const char *packet, size_t len, query_source_t source) {
     if (!s_txHandler) {
         ESP_LOGW(TAG, "No TX handler registered, dropping: %s", packet);
         return;
     }
-    uint8_t channels = 0;
-    if (g_config.query_rf)
-        channels |= MSG_CHANNEL_RF;
-    if (g_config.query_inet)
-        channels |= MSG_CHANNEL_INET;
-    if (channels == 0)
-        return;
-    s_txHandler(packet, len, channels);
+    s_txHandler(packet, len, querySourceChannel(source));
 }
 
 // Resolves the callsign this station answers under: the IGate APRS callsign
@@ -337,8 +368,9 @@ static bool resolveOwnCall(char *out, size_t out_size) {
 // the station that asked. The addressee field is the fixed 9 characters the
 // message format requires, space-padded; no message number is appended, so no
 // ack is solicited - a query answer is informational and the querying station
-// has nothing to acknowledge.
-static void txMessageTo(const char *toCall, const char *text) {
+// has nothing to acknowledge. The message goes back on the channel the query
+// was received on, so an operator who asked over APRS-IS is answered there.
+static void txMessageTo(const char *toCall, const char *text, query_source_t source) {
     char myCall[16];
     if (!resolveOwnCall(myCall, sizeof(myCall))) {
         ESP_LOGW(TAG, "Query answer not sent - no IGate callsign configured");
@@ -361,7 +393,7 @@ static void txMessageTo(const char *toCall, const char *text) {
         return;
     }
 
-    txPacket(packet, (size_t)len);
+    txPacket(packet, (size_t)len, source);
     ESP_LOGI(TAG, "Query answered to %s: %s", toCall, packet);
 }
 
@@ -371,65 +403,60 @@ static void txMessageTo(const char *toCall, const char *text) {
 
 // "?APRS?" -> the station's own position/status packet, byte-for-byte the
 // same the IGate position beacon would send.
-static void respondAPRS(void) {
+static void respondAPRS(query_source_t source) {
     char packet[APRS_TNC2_BUF_SIZE];
     int len = beacon_build_igate_position_packet(packet, sizeof(packet));
     if (len <= 0) {
         ESP_LOGW(TAG, "?APRS? query not answered - no IGate callsign/position configured, or the line did not fit");
         return;
     }
-    txPacket(packet, (size_t)len);
+    txPacket(packet, (size_t)len, source);
     ESP_LOGI(TAG, "?APRS? query answered: %s", packet);
 }
 
 // "?WX?" -> the latest cached weather report, if ENABLE_WEATHER and a
 // report exists.
-static void respondWX(void) {
+static void respondWX(query_source_t source) {
     char packet[APRS_TNC2_BUF_SIZE];
     int len = weather_build_report_packet(packet, sizeof(packet));
     if (len <= 0) {
         ESP_LOGW(TAG, "?WX? query not answered - no Weather/APRS callsign configured, no reading cached yet, or the line did not fit");
         return;
     }
-    txPacket(packet, (size_t)len);
+    txPacket(packet, (size_t)len, source);
     ESP_LOGI(TAG, "?WX? query answered: %s", packet);
 }
 
 // "?IGATE?" -> the "<IGATE,MSG_CNT=n,LOC_CNT=n>" capability/status line
-// APRS101 ch.15 defines, built from the same traffic counters the dashboard
-// reads (igate_get_stats()). MSG_CNT is the count of messages gatewayed
-// RF->INET this session (the closest existing counter to "messages this
-// IGate has handled"); LOC_CNT is the count of stations this IGate has
-// heard locally and gatewayed (txCount), matching how reference
-// implementations (aprsc, javAPRSSrvr) report their own local heard-count.
-static void respondIGate(void) {
+// APRS101 ch.15 defines, carrying the two figures that chapter gives them.
+//
+// MSG_CNT is the running count of APRS message packets this gateway has
+// passed in either direction (igate_stats_t::msgCount, bumped wherever a ':'
+// data type identifier is gated), not a tally of all gated traffic.
+//
+// LOC_CNT is a live figure rather than a running total: the number of distinct
+// stations currently in the local heard list, which components/lastheard keeps
+// as one row per callsign. Only the stations heard off the air count as local,
+// so the rows the APRS-IS feed contributed are left out.
+static void respondIGate(query_source_t source) {
     if (!g_config.igate_en) {
         ESP_LOGD(TAG, "?IGATE? query ignored - IGate service is disabled");
         return;
     }
 
-    igate_stats_t stats = igate_get_stats();
-
     char callField[16];
-    app_config_lock();
-    {
-        if (g_config.aprs_ssid > 0)
-            snprintf(callField, sizeof(callField), "%s-%d", g_config.aprs_mycall, (int)g_config.aprs_ssid);
-        else
-            snprintf(callField, sizeof(callField), "%s", g_config.aprs_mycall);
-    }
-    app_config_unlock();
-
-    if (!callField[0]) {
+    if (!resolveOwnCall(callField, sizeof(callField))) {
         ESP_LOGW(TAG, "?IGATE? query not answered - no IGate callsign configured");
         return;
     }
+
+    igate_stats_t stats = igate_get_stats();
 
     char path[80];
     aprs_path_build_suffix_from_config(g_config.igate_path, path, sizeof(path));
 
     char info[64];
-    snprintf(info, sizeof(info), "<IGATE,MSG_CNT=%u,LOC_CNT=%u>", (unsigned)stats.txCount, (unsigned)stats.rxCount);
+    snprintf(info, sizeof(info), "<IGATE,MSG_CNT=%u,LOC_CNT=%u>", (unsigned)stats.msgCount, (unsigned)lastheard_station_count(true));
 
     char packet[APRS_TNC2_BUF_SIZE];
     int n = snprintf(packet, sizeof(packet), "%s>%s%s:%s", callField, QUERY_DEST, path, info);
@@ -438,21 +465,21 @@ static void respondIGate(void) {
         return;
     }
 
-    txPacket(packet, (size_t)n);
+    txPacket(packet, (size_t)n, source);
     ESP_LOGI(TAG, "?IGATE? query answered: %s", packet);
 }
 
 // "?APRSS" -> the station's own status report, byte-for-byte the same the
 // IGate status beacon would send (including the Maidenhead locator block when
 // that option is on).
-static void respondStatus(void) {
+static void respondStatus(query_source_t source) {
     char packet[APRS_TNC2_BUF_SIZE];
     int len = beacon_build_igate_status_packet(packet, sizeof(packet));
     if (len <= 0) {
         ESP_LOGW(TAG, "?APRSS query not answered - no IGate callsign/status text configured, or the line did not fit");
         return;
     }
-    txPacket(packet, (size_t)len);
+    txPacket(packet, (size_t)len, source);
     ESP_LOGI(TAG, "?APRSS query answered: %s", packet);
 }
 
@@ -461,7 +488,7 @@ static void respondStatus(void) {
 // still answered: "heard nobody directly" is the true state of a station that
 // has just booted or sits in a quiet area, and silence would be
 // indistinguishable from the query never arriving.
-static void respondDirects(const char *fromCall) {
+static void respondDirects(const char *fromCall, query_source_t source) {
     // Sized so the whole answer stays inside one standard message text
     // (APRS_MSG_TEXT_STD_MAX); lastheard_directs() drops whole callsigns
     // rather than truncating one, so a busy station simply reports the most
@@ -475,7 +502,7 @@ static void respondDirects(const char *fromCall) {
     else
         snprintf(text, sizeof(text), "Directs=");
 
-    txMessageTo(fromCall, text);
+    txMessageTo(fromCall, text, source);
 }
 
 // "?APRSH <call>" -> what this station knows about hearing <call>.
@@ -488,7 +515,7 @@ static void respondDirects(const char *fromCall) {
 // from that station's row in components/lastheard, whose hourly histogram
 // exists for exactly this query. A station that is not in the table is
 // reported as not heard.
-static void respondHeard(const char *fromCall, const char *arg) {
+static void respondHeard(const char *fromCall, const char *arg, query_source_t source) {
     char target[12] = { 0 };
     size_t n = 0;
     while (arg[n] && arg[n] != ' ' && n < sizeof(target) - 1) {
@@ -501,14 +528,14 @@ static void respondHeard(const char *fromCall, const char *arg) {
         // No callsign given: the query is meaningless without one, so say so
         // rather than answering about an empty callsign.
         snprintf(text, sizeof(text), "?APRSH needs a callsign");
-        txMessageTo(fromCall, text);
+        txMessageTo(fromCall, text, source);
         return;
     }
 
     uint16_t hourly[LASTHEARD_HEARD_HOURS];
     if (!lastheard_heard_history(target, hourly)) {
         snprintf(text, sizeof(text), "%s not heard", target);
-        txMessageTo(fromCall, text);
+        txMessageTo(fromCall, text, source);
         return;
     }
 
@@ -530,29 +557,34 @@ static void respondHeard(const char *fromCall, const char *arg) {
             pos += n2;
         }
     }
-    txMessageTo(fromCall, text);
+    txMessageTo(fromCall, text, source);
 }
 
 // "?APRSM" -> re-send any messages this station is still holding for the
 // querying operator. Nothing pending is reported explicitly, for the same
 // reason an empty "Directs=" is sent: the operator asked a question and an
-// answer of "none" is information.
-static void respondMessages(const char *fromCall) {
+// answer of "none" is information. The messages themselves are real traffic
+// this station owes the operator, so they go out on the channels the Message
+// page selects; only the "nothing pending" reply follows the query's source.
+static void respondMessages(const char *fromCall, query_source_t source) {
     int sent = message_send_pending_to(fromCall);
     if (sent == 0)
-        txMessageTo(fromCall, "No messages pending");
+        txMessageTo(fromCall, "No messages pending", source);
 }
 
 // "?APRSO" -> re-announce the Objects/Items this station originates. The
 // elements go out from the beacon scheduler task (see
 // objitems_request_transmit_all()), not from here, so answering a query never
-// occupies the radio RX task for the length of a transmission burst.
-static void respondObjects(const char *fromCall) {
+// occupies the radio RX task for the length of a transmission burst. They are
+// this station's own announcements, so each one is routed by its own "send via"
+// configuration; the query's source only governs the reply built here.
+static void respondObjects(const char *fromCall, query_source_t source) {
 #ifdef ENABLE_OBJECTS_ITEMS
+    (void)source;
     objitems_request_transmit_all();
     ESP_LOGI(TAG, "?APRSO query from %s: all Objects/Items queued for transmission", fromCall);
 #else
-    txMessageTo(fromCall, "No objects");
+    txMessageTo(fromCall, "No objects", source);
 #endif
 }
 
@@ -561,7 +593,7 @@ static void respondObjects(const char *fromCall) {
 // between the two stations. The route is the one extractRoute() read off the
 // received line, '*' markers included, so a repeater that actually handled the
 // frame is distinguishable from one that was merely requested.
-static void respondTrace(const char *fromCall, const char *route) {
+static void respondTrace(const char *fromCall, const char *route, query_source_t source) {
     char text[APRS_MSG_TEXT_STD_MAX + 1];
 
     if (route == NULL || route[0] == 0)
@@ -569,7 +601,7 @@ static void respondTrace(const char *fromCall, const char *route) {
     else
         snprintf(text, sizeof(text), "%s>%s", fromCall, route);
 
-    txMessageTo(fromCall, text);
+    txMessageTo(fromCall, text, source);
 }
 
 // ---------------------------------------------------------------------------
@@ -582,31 +614,31 @@ static void runRequest(const query_request_t *req) {
     switch (req->type) {
         case QUERY_TYPE_APRS:
         case QUERY_TYPE_POSITION:
-            respondAPRS();
+            respondAPRS(req->source);
             return;
         case QUERY_TYPE_WX:
-            respondWX();
+            respondWX(req->source);
             return;
         case QUERY_TYPE_IGATE:
-            respondIGate();
+            respondIGate(req->source);
             return;
         case QUERY_TYPE_STATUS:
-            respondStatus();
+            respondStatus(req->source);
             return;
         case QUERY_TYPE_DIRECTS:
-            respondDirects(req->fromCall);
+            respondDirects(req->fromCall, req->source);
             return;
         case QUERY_TYPE_HEARD:
-            respondHeard(req->fromCall, req->detail);
+            respondHeard(req->fromCall, req->detail, req->source);
             return;
         case QUERY_TYPE_MESSAGES:
-            respondMessages(req->fromCall);
+            respondMessages(req->fromCall, req->source);
             return;
         case QUERY_TYPE_OBJECTS:
-            respondObjects(req->fromCall);
+            respondObjects(req->fromCall, req->source);
             return;
         case QUERY_TYPE_TRACE:
-            respondTrace(req->fromCall, req->detail);
+            respondTrace(req->fromCall, req->detail, req->source);
             return;
         default:
             return;
@@ -711,28 +743,33 @@ static bool queryTypeEnabled(query_type_t type) {
 }
 
 // Queues one recognized broadcast query type for answering, gated by its own
-// enable flag and the shared broadcast rate limiter. Both gates run here, on
-// the receiving task, so a flooded channel costs a string compare and a
-// timestamp check rather than a queue slot.
-static void dispatchBroadcast(query_type_t type) {
+// enable flag and the broadcast rate limiter for this type and source. Both
+// gates run here, on the receiving task, so a flooded channel costs a string
+// compare and a timestamp check rather than a queue slot.
+static void dispatchBroadcast(query_type_t type, query_source_t source) {
     if (!queryTypeEnabled(type))
         return;
-    if (!broadcastRateLimitPass(type))
+    if (!broadcastRateLimitPass(type, source))
         return;
 
     switch (type) {
         case QUERY_TYPE_APRS:
         case QUERY_TYPE_WX:
         case QUERY_TYPE_IGATE:
-            queueResponse(type, "", "");
+            queueResponse(type, source, "", "");
             return;
         default:
             return;
     }
 }
 
-void query_process(const char *tnc2Line) {
+void query_process(const char *tnc2Line, query_source_t source) {
     if (!g_config.query_en)
+        return;
+    // A general query is broadcast traffic: the same "?APRS?" is heard on the
+    // air and carried by the APRS-IS backbone, and only the operator's switch
+    // for the source it arrived on decides whether this station answers it.
+    if (!querySourceEnabled(source))
         return;
     if (tnc2Line == NULL)
         return;
@@ -749,11 +786,13 @@ void query_process(const char *tnc2Line) {
     if (!matchQueryType(info, false, &type, NULL))
         return;
 
-    dispatchBroadcast(type);
+    dispatchBroadcast(type, source);
 }
 
-void query_process_directed(const char *fromCall, const char *toCall, const char *text, const char *tnc2Line) {
+void query_process_directed(const char *fromCall, const char *toCall, const char *text, const char *tnc2Line, query_source_t source) {
     if (!g_config.query_en || !g_config.query_directed_en)
+        return;
+    if (!querySourceEnabled(source))
         return;
     if (fromCall == NULL || toCall == NULL || text == NULL || text[0] != '?')
         return;
@@ -794,5 +833,5 @@ void query_process_directed(const char *fromCall, const char *toCall, const char
         extractRoute(tnc2Line, detail, sizeof(detail));
     }
 
-    queueResponse(type, fromCall, detail);
+    queueResponse(type, source, fromCall, detail);
 }

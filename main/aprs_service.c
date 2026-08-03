@@ -490,12 +490,12 @@ static void aprs_msg_callback(ax25_msg_t *msg) {
     // while messaging is turned off.
     if (g_config.msg_enable || (g_config.query_en && g_config.query_directed_en)) {
         ax25ToTnc2(msg, tnc2, sizeof(tnc2));
-        handleIncomingAPRS(tnc2);
+        handleIncomingAPRS(tnc2, QUERY_SRC_RF);
     }
 
     if (g_config.query_en) {
         ax25ToTnc2(msg, tnc2, sizeof(tnc2));
-        query_process(tnc2);
+        query_process(tnc2, QUERY_SRC_RF);
     }
 }
 
@@ -648,12 +648,16 @@ static void inet2rfHandler(const char *line) {
     }
 
     // See the identical note at the RF call site above: handleIncomingAPRS()
-    // must run for directed queries even when messaging itself is off.
+    // must run for directed queries even when messaging itself is off. Both
+    // entry points are told the line came from the APRS-IS feed, which is what
+    // lets the query responder keep internet traffic off the transmitter: a
+    // general query such as "?APRS?" is ordinary backbone traffic, and the
+    // answer to one belongs on the channel the question arrived on.
     if (g_config.msg_enable || (g_config.query_en && g_config.query_directed_en))
-        handleIncomingAPRS(line);
+        handleIncomingAPRS(line, QUERY_SRC_INET);
 
     if (g_config.query_en)
-        query_process(line);
+        query_process(line, QUERY_SRC_INET);
 
     if (g_config.inet2rf) {
         // Never gate our OWN reports from INET back to RF. After we upload a
@@ -763,6 +767,15 @@ static void inet2rfHandler(const char *line) {
             atomic_fetch_add_explicit(&s_statInet2Rf, 1, memory_order_relaxed);
             ESP_LOGD(TAG, "INET2RF TX: %.*s", (int)txLen, txLine);
             trafficlog_add_pkt("INET2RF", budlistCall, txLine, -1, symTable, symCode);
+
+            // MSG_CNT in the "?IGATE?" answer counts APRS messages this
+            // gateway has passed, in both directions. The header's ':' ends
+            // the TNC2 address block, so the information field starts right
+            // after it and a message is the payload whose first byte is the
+            // ':' data type identifier.
+            const char *infoSep = strchr(txLine, ':');
+            if (infoSep != NULL && infoSep[1] == ':')
+                igate_note_message_gated();
         }
     }
 }

@@ -14,10 +14,16 @@
 //     please contact their authors for more information.
 //
 // @brief Web admin "Query" page: renders and saves the APRS query responder
-// configuration in g_config - the three general queries ("?APRS?", "?WX?",
+// configuration in g_config - which of the two sources a query may arrive on
+// is answered (RF, APRS-IS), the three general queries ("?APRS?", "?WX?",
 // "?IGATE?"), whether directed ("CALL:?query?") queries are answered at all,
 // and whether the extended directed set (?APRSD/?APRSH/?APRSM/?APRSO/?APRSP/
 // ?APRSS/?APRST) is answered along with them.
+//
+// The two source switches select where a question is listened for, not where
+// the answer is sent: an answer always goes back on the channel its question
+// arrived on. Leaving the APRS-IS source off therefore means backbone traffic
+// can never key the transmitter.
 
 #include "app_config.h"
 #include "pages.h"

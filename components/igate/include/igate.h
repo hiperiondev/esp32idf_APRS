@@ -99,6 +99,8 @@ typedef enum {
 typedef struct {
     uint32_t rxCount;   /**< Frames considered for gatewaying (RF->INET direction). */
     uint32_t txCount;   /**< Frames actually sent to APRS-IS as a result of gatewaying (RF->INET). */
+    uint32_t msgCount;  /**< APRS message packets (':' data type identifier) gated by this station, RF->INET and INET->RF alike. This is the figure the
+                           "?IGATE?" Station Capabilities answer reports as MSG_CNT, so it counts messages only and not the rest of the gated traffic. */
     uint32_t dupCount;  /**< Duplicate frames suppressed. */
     uint32_t isRxCount; /**< ALL packets received from APRS-IS (every non-keepalive line read off the socket), regardless of inet2rf being enabled or the line
                            being relayed. Superset of what reaches the inet2rf handler. */
@@ -154,6 +156,15 @@ const char *igate_drop_reason_name(drop_reason_t reason);
  * @param reason Reason code (out-of-range values are ignored).
  */
 void igate_note_drop(drop_reason_t reason);
+
+/**
+ * @brief Record one APRS message packet gated toward RF, bumping the MSG_CNT
+ * figure the "?IGATE?" answer reports. Exposed for the same reason
+ * igate_note_drop() is: the INET->RF half of the gateway lives in
+ * aprs_service.c, and both halves feed one set of counters. The RF->INET half
+ * is counted by igateProcess() itself.
+ */
+void igate_note_message_gated(void);
 
 /**
  * @brief Start the IGate service task (APRS-IS TCP client with auto-reconnect,

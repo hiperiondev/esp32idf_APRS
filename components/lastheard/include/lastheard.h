@@ -81,7 +81,10 @@ void lastheard_init(void);
  *                    "WIDE1-1" or "DIRECT" (no leading/trailing comma).
  * @param via_rf     true if heard on RF, false if it only arrived via
  *                    APRS-IS (INET). Rendered as the "RF:"/"INET:" prefix on
- *                    the path column, matching the reference dashboard.
+ *                    the path column, matching the reference dashboard, and
+ *                    recorded per station (from its most recent frame) so
+ *                    lastheard_station_count() can tell the locally heard
+ *                    stations from the ones the APRS-IS feed contributed.
  * @param direct     true if the frame reached this station without having
  *                    been repeated by any digipeater. Recorded per station
  *                    (from its most recent frame) and reported by
@@ -91,6 +94,23 @@ void lastheard_init(void);
  * @param sym_code   APRS symbol code byte, 0 if unknown/not a position packet.
  */
 void lastheard_add(const char *callsign, const char *path, bool via_rf, bool direct, char sym_table, char sym_code);
+
+/**
+ * @brief How many stations the table currently holds.
+ *
+ * This is a live figure, not a running total: it is the size of the heard
+ * list at the moment of the call, and it stops growing once the table is full
+ * (a new station then evicts the least recently heard one). It answers the
+ * @c LOC_CNT half of the "?IGATE?" Station Capabilities line APRS101
+ * chapter 15 defines.
+ *
+ * @param rf_only true to count only the stations whose most recent frame was
+ *                heard off the air, which is what "local" means for an IGate;
+ *                false to count every row, including the ones fed in from
+ *                APRS-IS.
+ * @return Number of stations, 0 to @c LASTHEARD_CAPACITY.
+ */
+size_t lastheard_station_count(bool rf_only);
 
 /**
  * @brief Build the space-separated list of stations most recently heard
