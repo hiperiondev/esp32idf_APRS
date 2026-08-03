@@ -51,7 +51,8 @@ l'interruttore acceso le risposte tornano verso APRS-IS invece di andare in onda
 
 Due eccezioni sono deliberate, perché quel traffico non è la risposta in sé.
 ``?APRSM`` ritrasmette messaggi che questa stazione già deve all'operatore che
-interroga, instradati dagli indicatori "invia via" della pagina Message;
+interroga — un numero limitato di essi, vedi la tabella più sotto — instradati
+dagli indicatori "invia via" della pagina Message;
 ``?APRSO`` riannuncia gli Oggetti/Elementi, ciascuno instradato dalla propria
 configurazione. Solo la risposta "nessun messaggio in sospeso" e quella
 ``No objects`` seguono la sorgente della query.
@@ -164,7 +165,10 @@ inoltre *Query dirette estese* (``query_ext_en``).
        l'argomento nominativo, il risponditore lo segnala.
    * - ``?APRSM``
      - Reinvia i messaggi pendenti di questa stazione per l'operatore che
-       interroga.
+       interroga, fino a ``MSG_QUERY_BURST_MAX`` (3) trame per query. Ciò che
+       resta in coda mantiene il proprio stato di ritentativo ed esce secondo la
+       pianificazione del motore di messaggistica, così una sola domanda non può
+       tenere il trasmettitore attivo per un'intera coda.
    * - ``?APRSO``
      - Riannuncia gli Oggetti/Item originati qui. Chiama
        ``objitems_request_transmit_all()`` e, poiché viene servita all'interno

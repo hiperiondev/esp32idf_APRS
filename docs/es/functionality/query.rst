@@ -51,8 +51,8 @@ respuestas vuelven hacia APRS-IS en vez de salir al aire.
 
 Hay dos excepciones deliberadas, porque ese tráfico no es la respuesta en sí.
 ``?APRSM`` reenvía mensajes que esta estación ya le debe al operador que
-consulta, enrutados por los propios indicadores de "enviar por" de la página
-Message; ``?APRSO`` vuelve a anunciar los Objetos/Ítems, cada uno enrutado por su
+consulta —un puñado acotado de ellos, véase la tabla más abajo—, enrutados por
+los propios indicadores de "enviar por" de la página Message; ``?APRSO`` vuelve a anunciar los Objetos/Ítems, cada uno enrutado por su
 propia configuración. Solo la respuesta de "no hay mensajes pendientes" y la de
 ``No objects`` siguen el origen de la consulta.
 
@@ -162,7 +162,10 @@ además *Consultas dirigidas extendidas* (``query_ext_en``).
        de indicativo, el respondedor lo indica.
    * - ``?APRSM``
      - Reenvía los mensajes pendientes de esta estación para el operador que
-       consulta.
+       consulta, hasta ``MSG_QUERY_BURST_MAX`` (3) tramas por consulta. Lo que
+       quede en cola conserva su estado de reintento y sale según la
+       planificación propia del motor de mensajería, de modo que una sola
+       pregunta no puede mantener el transmisor activo durante toda la cola.
    * - ``?APRSO``
      - Reanuncia los Objetos/Ítems originados aquí. Llama a
        ``objitems_request_transmit_all()`` y, como se atiende dentro de la

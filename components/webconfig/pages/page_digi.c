@@ -36,7 +36,6 @@ esp_err_t page_digi_get(httpd_req_t *req) {
     web_field_checkbox(req, TR_F_AUTO_WIDEN_N, "digiAuto", g_config.digi_auto);
     web_field_checkbox(req, TR_F_ADD_TIMESTAMP, "digiTime", g_config.digi_timestamp);
     web_field_int(req, TR_F_DIGI_DELAY_MS, "digiDelay", g_config.digi_delay, 0, 65535);
-    web_field_int(req, TR_F_DUPE_FILTER_WINDOW_S, "digiFilter", g_config.digiFilter, 0, 65535);
     web_fieldset_close(req);
 
     web_fieldset_open(req, TR_F_STATION);
@@ -92,7 +91,6 @@ esp_err_t page_digi_post(httpd_req_t *req) {
     g_config.digi_auto = web_form_get_bool(body, "digiAuto");
     g_config.digi_timestamp = web_form_get_bool(body, "digiTime");
     g_config.digi_delay = (uint16_t)web_form_get_int(body, "digiDelay", g_config.digi_delay);
-    g_config.digiFilter = (uint16_t)web_form_get_int(body, "digiFilter", g_config.digiFilter);
 
     if (g_config.digi_use_station) {
         // Fields are disabled client-side while this is checked, so the

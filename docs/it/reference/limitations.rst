@@ -465,7 +465,9 @@ Oggetti, Item, Bollettini, Stato
      - Risposte fornite quando *Interrogazioni dirette estese* è abilitato. Le
        risposte in forma di elenco tornano come messaggi APRS alla stazione
        richiedente; ``?APRSO`` riannuncia gli Oggetti/Item più avanti nella stessa
-       passata dello scheduler
+       passata dello scheduler, e ``?APRSM`` ritrasmette al massimo
+       ``MSG_QUERY_BURST_MAX`` (3) messaggi trattenuti per query, lasciando il
+       resto alla pianificazione dei ritentativi di messaggistica
    * - Grafico della cronologia di ascolto di ``?APRSH``
      - ⚠️
      - ✅
@@ -540,7 +542,10 @@ Gestione stazione / Operatività
      - ✅
      - Una riga per stazione anziché per pacchetto, la più recente per prima e
        con sfratto LRU, più l'istogramma orario di 18 ore che risponde a
-       ``?APRSH``
+       ``?APRSH``. Gli indicativi sono memorizzati in maiuscolo e confrontati
+       senza distinzione tra maiuscole e minuscole, così le due sorgenti che
+       riempiono la tabella — indirizzi AX.25 grezzi dall'aria e testo TNC2
+       grezzo da APRS-IS — non possono dare due righe alla stessa stazione
    * - Ripristino ai valori di fabbrica compilati
      - ⚠️
      - ✅

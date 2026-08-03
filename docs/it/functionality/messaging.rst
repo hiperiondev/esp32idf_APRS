@@ -27,6 +27,13 @@ Il motore dei messaggi
   invocata a 1 Hz dal task di tick del servizio APRS — reinvia qualsiasi
   messaggio la cui conferma non è ancora arrivata, fino a ``msg_retry`` volte ogni
   ``msg_interval`` secondi.
+* **Risposta a ``?APRSM``.** ``message_send_pending_to()`` ritrasmette ciò che
+  questa stazione trattiene per l'operatore che interroga, senza consumare
+  nessuno dei ritentativi propri del messaggio né spostarne il successivo, e si
+  ferma dopo ``MSG_QUERY_BURST_MAX`` (3) trame: una query diretta vale una
+  manciata di trame, non un'intera coda con il trasmettitore attivo. Ciò che il
+  limite lascia fuori resta pendente, quindi la passata di ritentativi qui sopra
+  continua a consegnarlo a distanza di un ``msg_interval``.
 * **Analisi degli entranti.** ``handleIncomingAPRS()`` analizza qualsiasi riga
   TNC2 — da RF *o* da APRS-IS — riconosce i messaggi diretti a questa stazione,
   risponde con un ack, e riconosce gli ack entranti (``ackNNN``) per pulire il

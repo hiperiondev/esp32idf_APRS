@@ -138,7 +138,6 @@
 #define TR_F_DATA_INTERVAL_S                               "Intervalo de datos (s)"
 #define TR_F_DIGIPEATER                                    "Digipeater"
 #define TR_F_DIGI_DELAY_MS                                 "Retardo del digi (ms)"
-#define TR_F_DUPE_FILTER_WINDOW_S                          "Ventana del filtro de duplicados (s)"
 #define TR_F_ENABLE                                        "Habilitar"
 #define TR_F_ENABLE_DIGIPEATER                             "Habilitar Digipeater"
 #define TR_F_ENABLE_IGATE                                  "Habilitar IGate"

@@ -17,8 +17,9 @@
  * @brief Small in-RAM table of decoded RF stations, used to feed the "LAST
  * HEARD" panel on the web dashboard.
  *
- * The table holds one entry per callsign, ordered most recently heard first,
- * and remembers whether each station's latest frame arrived without passing
+ * The table holds one entry per callsign - upper-cased on the way in, so case
+ * alone never splits a station across entries - ordered most recently heard
+ * first, and remembers whether each station's latest frame arrived without passing
  * through a digipeater - which is what the "?APRSD" query responder reports.
  * Every decoded AX.25 frame from a callsign already in the table refreshes that
  * entry - time, path, symbol - and increments its packet counter, so the
@@ -76,7 +77,9 @@ void lastheard_init(void);
  * rather than just call counts.
  *
  * @param callsign   Source callsign, e.g. "HS5TQA-7" (already includes SSID
- *                    if non-zero).
+ *                    if non-zero). Stored upper-cased and matched without
+ *                    regard to case, so a station whose frames arrive with
+ *                    different spellings occupies one entry.
  * @param path       Digipeat path as shown after the source call, e.g.
  *                    "WIDE1-1" or "DIRECT" (no leading/trailing comma).
  * @param via_rf     true if heard on RF, false if it only arrived via
@@ -134,8 +137,8 @@ int lastheard_directs(char *out, size_t out_size);
  * Answers the APRS "?APRSH" directed query (APRS101 chapter 15), which asks
  * whether - and how much - a given station has been heard here.
  *
- * @param callsign Station to look up, matched exactly against the stored
- *                 (SSID-bearing) callsign.
+ * @param callsign Station to look up, matched without regard to case against
+ *                 the stored (SSID-bearing) callsign.
  * @param packets  Out: how many frames from that station have been counted.
  *                 Untouched when the station is unknown. May be NULL.
  * @param last     Out: wall-clock time of its most recent frame. Untouched
@@ -156,8 +159,8 @@ bool lastheard_lookup(const char *callsign, uint32_t *packets, time_t *last, boo
  * with no traffic from the station read as 0, including any hour that
  * elapsed while the table held no entry for it yet.
  *
- * @param callsign Station to look up, matched exactly against the stored
- *                 (SSID-bearing) callsign.
+ * @param callsign Station to look up, matched without regard to case against
+ *                 the stored (SSID-bearing) callsign.
  * @param out      Out: @c LASTHEARD_HEARD_HOURS counts, index 0 = current
  *                 hour. Untouched when the station is unknown. Must not be
  *                 NULL.

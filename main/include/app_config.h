@@ -407,7 +407,6 @@ typedef struct {
     bool digi_use_station;           /**< "Use My Station Data": mirror My Station into the digipeater fields and lock them. */
     uint8_t digi_path;               /**< Digipeater beacon digipeat-path selection (bitmask over g_config.path[0..3]). */
     uint16_t digi_delay;             /**< Digipeat delay, ms. */
-    uint16_t digiFilter;             /**< Digipeater payload filter bitmask. */
     bool digi_bcn;                   /**< Enable the digipeater position beacon. */
     bool digi_compress;              /**< Use APRS compressed position format for the digipeater position beacon. */
     float digi_lat;                  /**< Digipeater beacon latitude. */

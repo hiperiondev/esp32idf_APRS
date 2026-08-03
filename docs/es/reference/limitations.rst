@@ -465,7 +465,9 @@ Objetos, Items, Boletines, Estado
      - Se responden cuando *Consultas dirigidas extendidas* está habilitado. Las
        respuestas tipo lista vuelven como mensajes APRS a la estación que
        consulta; ``?APRSO`` reanuncia los Objetos/Ítems más adelante en esa misma
-       pasada del planificador
+       pasada del planificador, y ``?APRSM`` reenvía como mucho
+       ``MSG_QUERY_BURST_MAX`` (3) mensajes retenidos por consulta, dejando el
+       resto a la planificación de reintentos de mensajería
    * - Gráfico de historial de escucha de ``?APRSH``
      - ⚠️
      - ✅
@@ -540,7 +542,10 @@ Gestión de estación / Operación
      - ✅
      - Una fila por estación en vez de por paquete, la más reciente primero y
        con desalojo LRU, más el histograma horario de 18 horas que responde
-       ``?APRSH``
+       ``?APRSH``. Los indicativos se guardan en mayúsculas y se comparan sin
+       distinguir mayúsculas de minúsculas, así las dos fuentes que alimentan la
+       tabla —direcciones AX.25 crudas del aire y texto TNC2 crudo de APRS-IS—
+       no pueden darle dos filas a una misma estación
    * - Restauración a los valores de fábrica compilados
      - ⚠️
      - ✅

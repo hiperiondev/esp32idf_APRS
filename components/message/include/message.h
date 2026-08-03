@@ -46,6 +46,21 @@
 #define APRS_MSG_TEXT_STD_MAX 67
 
 /**
+ * @brief Maximum number of pending messages message_send_pending_to() puts on
+ * the air in answer to a single "?APRSM" directed query.
+ *
+ * The query asks for the traffic this station is holding, and a handful of
+ * frames is what makes that useful. Answering with the whole queue would mean
+ * up to ::MSG_QUEUE_SIZE frames built and keyed back to back with no gap
+ * between them, from one query that the responder's own rate limiter admits
+ * once every few seconds - a long uninterrupted transmission on a shared
+ * channel. Whatever the cap leaves behind is still queued and unacknowledged,
+ * so sendAPRSMessageRetry() keeps delivering it on its normal schedule, paced
+ * one retry interval apart.
+ */
+#define MSG_QUERY_BURST_MAX 3
+
+/**
  * @brief One entry of the in-memory message queue (an RX or TX message).
  */
 typedef struct {
@@ -112,8 +127,14 @@ void sendAPRSMessageRetry(void);
  * their base form, ignoring any "-SSID" suffix on either side, the same rule
  * handleIncomingAPRS() applies to an incoming addressee.
  *
+ * At most ::MSG_QUERY_BURST_MAX messages go out per call, oldest queue slot
+ * first; any further pending message for @p toCall is left to
+ * sendAPRSMessageRetry(), which keeps delivering it at the configured retry
+ * interval.
+ *
  * @param toCall Callsign of the station asking for its messages.
- * @return Number of messages re-transmitted (0 if none are pending).
+ * @return Number of messages re-transmitted, 0 to ::MSG_QUERY_BURST_MAX (0 if
+ *         none are pending).
  */
 int message_send_pending_to(const char *toCall);
 

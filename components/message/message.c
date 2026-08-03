@@ -402,6 +402,7 @@ int message_send_pending_to(const char *toCall) {
     app_config_unlock();
 
     int sent = 0;
+    int held = 0;
     for (int i = 0; i < MSG_QUEUE_SIZE; i++) {
         // ack > 0 is the "outbound and still waiting for an ack" state; an
         // acked (-2), rejected (-3) or received (-1) entry is not something
@@ -410,6 +411,17 @@ int message_send_pending_to(const char *toCall) {
             continue;
         if (!callsignBaseMatch(s_queue[i].callsign, toCall))
             continue;
+
+        // One query answers with a handful of frames, not with the whole
+        // queue: MSG_QUERY_BURST_MAX bounds how long the transmitter can stay
+        // keyed on behalf of a single question. The rest of the loop only
+        // counts what is left over - those slots keep their retry state, so
+        // sendAPRSMessageRetry() carries them at the configured interval,
+        // which is the paced path this traffic already has.
+        if (sent >= MSG_QUERY_BURST_MAX) {
+            held++;
+            continue;
+        }
 
         // The retry counter and timestamp are deliberately left alone: this
         // transmission answers a query, so it must not spend one of the
@@ -431,8 +443,12 @@ int message_send_pending_to(const char *toCall) {
         sent++;
     }
 
-    if (sent > 0)
-        ESP_LOGI(TAG, "?APRSM from %s answered with %d pending message(s)", toCall, sent);
+    if (sent > 0) {
+        if (held > 0)
+            ESP_LOGI(TAG, "?APRSM from %s answered with %d pending message(s), %d left to the retry timer", toCall, sent, held);
+        else
+            ESP_LOGI(TAG, "?APRSM from %s answered with %d pending message(s)", toCall, sent);
+    }
     return sent;
 }
 

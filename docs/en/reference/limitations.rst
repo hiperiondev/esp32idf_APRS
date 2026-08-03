@@ -453,7 +453,9 @@ Objects, Items, Bulletins, Status
      - ✅
      - Answered when *Extended directed queries* is enabled. List-style answers
        come back as APRS messages to the querying station; ``?APRSO``
-       re-announces the Objects/Items later in the same scheduler pass
+       re-announces the Objects/Items later in the same scheduler pass, and
+       ``?APRSM`` re-sends at most ``MSG_QUERY_BURST_MAX`` (3) held messages per
+       query, leaving the rest to the message retry schedule
    * - ``?APRSH`` heard-history graph
      - ⚠️
      - ✅
@@ -526,7 +528,10 @@ Station Management / Ops
      - ✅
      - ✅
      - One row per station rather than per packet, most-recent-first with LRU
-       eviction, plus the 18-hour hourly histogram that answers ``?APRSH``
+       eviction, plus the 18-hour hourly histogram that answers ``?APRSH``.
+       Callsigns are stored upper-cased and matched without regard to case, so
+       the two feeds that fill the table — raw AX.25 addresses off the air and
+       raw TNC2 text off APRS-IS — cannot give one station two rows
    * - Factory reset to compiled-in defaults
      - ⚠️
      - ✅

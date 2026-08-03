@@ -20,6 +20,7 @@
 
 #include "lastheard.h"
 
+#include <ctype.h>
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
@@ -97,6 +98,27 @@ static void rollHourlyHistogram(lastheard_entry_t *e, time_t now) {
         e->hourly[0]++;
 }
 
+// Build the lookup key for one callsign: truncated to the width the table
+// stores and upper-cased. Every entry point in this file goes through it, so
+// insertion and both readers agree on what "the same station" means.
+//
+// The two feeds that reach lastheard_add() hand over the callsign exactly as
+// it arrived - the RF path decodes the shifted AX.25 address bytes, the
+// APRS-IS path takes the raw TNC2 text - and neither guarantees the upper case
+// callsigns are conventionally written in. Folding the case here is what keeps
+// one station to one slot out of the LASTHEARD_CAPACITY available, so its
+// packet count and its hourly histogram accumulate in a single row instead of
+// being split between spellings, and the text the dashboard shows is uniform.
+//
+// dst is LASTHEARD_CALL_LEN bytes and always comes back NUL-terminated; src may
+// be longer than the stored width, in which case it is cut to fit.
+static void makeCallKey(char *dst, const char *src) {
+    size_t i = 0;
+    for (; src[i] != 0 && i < LASTHEARD_CALL_LEN - 1; i++)
+        dst[i] = (char)toupper((unsigned char)src[i]);
+    dst[i] = 0;
+}
+
 void lastheard_init(void) {
     if (s_inited)
         return;
@@ -113,15 +135,14 @@ void lastheard_add(const char *callsign, const char *path, bool via_rf, bool dir
     if (!s_lock || xSemaphoreTake(s_lock, pdMS_TO_TICKS(50)) != pdTRUE)
         return; // never block the radio/network task indefinitely
 
-    // Compare against the same truncation that gets stored, so two callsigns
-    // that differ only past LASTHEARD_CALL_LEN still resolve to one slot.
+    // Match on the same key the readers use, so two callsigns that differ only
+    // past LASTHEARD_CALL_LEN or only in case still resolve to one slot.
     char call[LASTHEARD_CALL_LEN];
-    strncpy(call, callsign, sizeof(call) - 1);
-    call[sizeof(call) - 1] = 0;
+    makeCallKey(call, callsign);
 
     size_t found = LASTHEARD_CAPACITY;
     for (size_t i = 0; i < s_count; i++) {
-        if (strcmp(s_buf[i].callsign, call) == 0) {
+        if (strcasecmp(s_buf[i].callsign, call) == 0) {
             found = i;
             break;
         }
@@ -233,11 +254,10 @@ bool lastheard_lookup(const char *callsign, uint32_t *packets, time_t *last, boo
     if (!s_lock || xSemaphoreTake(s_lock, pdMS_TO_TICKS(100)) != pdTRUE)
         return false;
 
-    // Compare against the same truncation lastheard_add() stores, so a long
-    // callsign is looked up under the name the table actually holds.
+    // Look the station up under the same key lastheard_add() stores it by, so
+    // a long or lower-case callsign still finds the row the table holds.
     char call[LASTHEARD_CALL_LEN];
-    strncpy(call, callsign, sizeof(call) - 1);
-    call[sizeof(call) - 1] = 0;
+    makeCallKey(call, callsign);
 
     bool found = false;
     for (size_t i = 0; i < s_count; i++) {
@@ -263,11 +283,10 @@ bool lastheard_heard_history(const char *callsign, uint16_t out[LASTHEARD_HEARD_
     if (!s_lock || xSemaphoreTake(s_lock, pdMS_TO_TICKS(100)) != pdTRUE)
         return false;
 
-    // Compare against the same truncation lastheard_add() stores, so a long
-    // callsign is looked up under the name the table actually holds.
+    // Look the station up under the same key lastheard_add() stores it by, so
+    // a long or lower-case callsign still finds the row the table holds.
     char call[LASTHEARD_CALL_LEN];
-    strncpy(call, callsign, sizeof(call) - 1);
-    call[sizeof(call) - 1] = 0;
+    makeCallKey(call, callsign);
 
     bool found = false;
     for (size_t i = 0; i < s_count; i++) {

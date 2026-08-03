@@ -59,8 +59,9 @@ Le pagine
    * - **Digi**
      - Abilita digipeater, indicativo/SSID e impostazioni beacon (posizione,
        simbolo, intervallo, commento, stato, percorso). Porta anche *Auto
-       (WIDEn-N)*, *Ritardo di digipeatura* e *Finestra filtro duplicati* — vedi
-       la nota più sotto.
+       (WIDEn-N)* e *Ritardo di digipeatura* — vedi la nota più sotto. La
+       finestra di soppressione dei duplicati è un unico controllo, sulla pagina
+       *IGate*.
    * - **Tracker**
      - Abilita tracker, indicativo/SSID, intervallo fisso, posizione, simbolo (in
        movimento/fermo), commento, opzioni di posizione compressa, posizione
@@ -115,13 +116,17 @@ Le pagine
 
 .. note::
 
-   Tre controlli della pagina *Digi* — *Auto (WIDEn-N)* (``digiAuto``), *Ritardo
-   di digipeatura* (``digiDelay``) e *Finestra filtro duplicati*
-   (``digiFilter``) — sono accettati, validati e persistiti in ``config.json``,
-   ma oggi nessun codice a runtime li legge. Il digipeater gestisce sempre
-   WIDEn-N, ripete senza ritardo aggiunto, e prende la sua finestra di duplicati
-   dal ``dup_cache_timeout_ms`` condiviso della pagina *IGate*. Sono documentati
-   qui perché il comportamento non sia scambiato per un difetto.
+   Due controlli della pagina *Digi* — *Auto (WIDEn-N)* (``digiAuto``) e
+   *Ritardo di digipeatura* (``digiDelay``) — sono accettati, validati e
+   persistiti in ``config.json``, ma oggi nessun codice a runtime li legge. Il
+   digipeater gestisce sempre WIDEn-N e ripete senza ritardo aggiunto. Sono
+   documentati qui perché il comportamento non sia scambiato per un difetto.
+
+   La soppressione dei duplicati ha esattamente una coppia di controlli, *Dup
+   cache size* (``dupCacheSize``) e *Dup cache timeout* (``dupCacheTimeoutMs``)
+   sulla pagina *IGate*, e governano tanto il digipeater quanto l'IGate:
+   entrambi i servizi condividono l'unica cache di ``components/igate``,
+   ciascuno con il proprio ambito.
 
 Le statistiche della dashboard
 ==============================

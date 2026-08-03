@@ -560,9 +560,11 @@ static void respondHeard(const char *fromCall, const char *arg, query_source_t s
     txMessageTo(fromCall, text, source);
 }
 
-// "?APRSM" -> re-send any messages this station is still holding for the
-// querying operator. Nothing pending is reported explicitly, for the same
-// reason an empty "Directs=" is sent: the operator asked a question and an
+// "?APRSM" -> re-send the messages this station is still holding for the
+// querying operator, up to the MSG_QUERY_BURST_MAX frames one query is worth;
+// anything beyond that stays queued and keeps going out on the messaging
+// engine's own retry schedule. Nothing pending is reported explicitly, for the
+// same reason an empty "Directs=" is sent: the operator asked a question and an
 // answer of "none" is information. The messages themselves are real traffic
 // this station owes the operator, so they go out on the channels the Message
 // page selects; only the "nothing pending" reply follows the query's source.

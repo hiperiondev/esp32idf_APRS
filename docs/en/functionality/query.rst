@@ -49,8 +49,9 @@ the responder, and with the switch on the answers go back to APRS-IS rather than
 on the air.
 
 Two exceptions are deliberate, because the traffic is not the answer itself.
-``?APRSM`` re-sends messages this station already owes the querying operator,
-routed by the Message page's own "send via" flags; ``?APRSO`` re-announces
+``?APRSM`` re-sends messages this station already owes the querying operator —
+a bounded handful of them, see the table below — routed by the Message page's
+own "send via" flags; ``?APRSO`` re-announces
 Objects/Items, each routed by its own configuration. Only the "nothing pending"
 reply and the ``No objects`` reply follow the query's source.
 
@@ -155,7 +156,11 @@ available in that set; the remaining, list-style ones additionally require
        ``lastheard_heard_history()`` and ``LASTHEARD_HEARD_HOURS``). Without a
        callsign argument the responder says so.
    * - ``?APRSM``
-     - Re-sends this station's pending messages for the querying operator.
+     - Re-sends this station's pending messages for the querying operator, up to
+       ``MSG_QUERY_BURST_MAX`` (3) frames per query. Anything still queued
+       beyond that keeps its retry state and goes out on the messaging engine's
+       own schedule, so one question cannot key the transmitter for a whole
+       queue.
    * - ``?APRSO``
      - Re-announces the Objects/Items originated here. It calls
        ``objitems_request_transmit_all()``, and since it is served from the

@@ -528,7 +528,6 @@ static void config_write_json(jw_t *d, const app_config_t *c) {
     jadd_bool(d, "digiUseStation", c->digi_use_station);
     jadd_num(d, "digiPath", c->digi_path);
     jadd_num(d, "digiDelay", c->digi_delay);
-    jadd_num(d, "digiFilter", c->digiFilter);
     jadd_bool(d, "digiBcn", c->digi_bcn);
     jadd_bool(d, "digiCompress", c->digi_compress);
     jadd_num(d, "digiAlt", c->digi_alt);
@@ -837,7 +836,6 @@ static void config_from_json(cJSON *d, app_config_t *c) {
     c->digi_use_station = jget_bool(d, "digiUseStation", def.digi_use_station);
     c->digi_path = (uint8_t)jget_num(d, "digiPath", def.digi_path);
     c->digi_delay = (uint16_t)jget_num(d, "digiDelay", def.digi_delay);
-    c->digiFilter = (uint16_t)jget_num(d, "digiFilter", def.digiFilter);
     c->digi_bcn = jget_bool(d, "digiBcn", def.digi_bcn);
     c->digi_compress = jget_bool(d, "digiCompress", def.digi_compress);
     c->digi_alt = (float)jget_num(d, "digiAlt", def.digi_alt);

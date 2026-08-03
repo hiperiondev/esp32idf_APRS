@@ -25,6 +25,13 @@ The message engine
   ticked at 1 Hz by the APRS service's tick task — re-sends any message whose
   acknowledgement has not yet arrived, up to ``msg_retry`` times at
   ``msg_interval`` seconds.
+* **Answering ``?APRSM``.** ``message_send_pending_to()`` re-sends what this
+  station is holding for the querying operator without spending any of a
+  message's own retries or moving its next retry, and stops after
+  ``MSG_QUERY_BURST_MAX`` (3) frames — one directed query is worth a handful of
+  frames, not a whole keyed-up queue. Whatever the cap leaves behind is still
+  pending, so the retry pass above keeps delivering it one ``msg_interval``
+  apart.
 * **Incoming parse.** ``handleIncomingAPRS()`` parses any TNC2 line — from RF
   *or* from APRS-IS — recognises messages addressed to this station, replies
   with an ack, and recognises inbound acks (``ackNNN``) to clear the matching

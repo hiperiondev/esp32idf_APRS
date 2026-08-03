@@ -54,8 +54,9 @@ The pages
        status, PHG.
    * - **Digi**
      - Digipeater enable, callsign/SSID and beacon settings (position, symbol,
-       interval, comment, status, path). It also carries *Auto (WIDEn-N)*,
-       *Digipeat delay* and *Dupe filter window* — see the note below.
+       interval, comment, status, path). It also carries *Auto (WIDEn-N)* and
+       *Digipeat delay* — see the note below. The duplicate-suppression window
+       is a single control, on the *IGate* page.
    * - **Tracker**
      - Tracker enable, callsign/SSID, fixed interval, position, symbol
        (moving/stopped), comment, compressed-position, Mic-E-position and
@@ -106,13 +107,17 @@ The pages
 
 .. note::
 
-   Three controls on the *Digi* page — *Auto (WIDEn-N)* (``digiAuto``),
-   *Digipeat delay* (``digiDelay``) and *Dupe filter window* (``digiFilter``) —
-   are accepted, validated and persisted to ``config.json``, but no runtime code
-   reads them today. The digipeater always handles WIDEn-N, repeats without an
-   added delay, and takes its duplicate window from the shared
-   ``dup_cache_timeout_ms`` on the *IGate* page. They are documented here so the
-   behaviour is not mistaken for a bug.
+   Two controls on the *Digi* page — *Auto (WIDEn-N)* (``digiAuto``) and
+   *Digipeat delay* (``digiDelay``) — are accepted, validated and persisted to
+   ``config.json``, but no runtime code reads them today. The digipeater always
+   handles WIDEn-N and repeats without an added delay. They are documented here
+   so the behaviour is not mistaken for a bug.
+
+   Duplicate suppression has exactly one pair of controls, *Dup cache size*
+   (``dupCacheSize``) and *Dup cache timeout* (``dupCacheTimeoutMs``) on the
+   *IGate* page, and they govern the digipeater as well as the IGate: both
+   services share the one cache in ``components/igate``, each with its own
+   scope.
 
 The dashboard statistics
 ========================
