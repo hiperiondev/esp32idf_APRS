@@ -181,8 +181,6 @@ const char *igate_drop_reason_name(drop_reason_t reason) {
             return "digi: qA/TCP path token";
         case DROP_DIGI_DUPLICATE:
             return "digi: duplicate";
-        case DROP_PERSISTENCE_MISSED:
-            return "persistence check missed";
         case DROP_REASON_COUNT:
             break;
     }

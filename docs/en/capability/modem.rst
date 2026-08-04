@@ -90,8 +90,18 @@ The component's public header (``esp32idf_radioamateur_modem.h``) exposes:
      - Number of frames still queued/in flight on RF TX (0 = idle). This is the
        TX-ring status the RF TX backlog cap reads.
    * - ``modem_persistence_missed_count()``
-     - How many times the CSMA p-persistence anti-starvation floor has forced a
-       transmission since boot, for callers that want to surface it as a stat.
+     - How many times the CSMA anti-starvation floor has forced a transmission
+       after a backoff run that found the channel clear in every slot and missed
+       the persistence roll every time. This measures the configured
+       ``persist`` alone: at the default of 63 roughly one key-up in ten ends
+       this way. Nothing is discarded, so it is a channel-access statistic and
+       not a drop.
+   * - ``modem_channel_busy_count()``
+     - How many times the same floor has forced a transmission after a backoff
+       run in which at least one slot found the carrier detect asserted. This is
+       a congestion report about the frequency: the frame goes out on top of the
+       traffic already there. Runs are charged to exactly one of the two
+       counters, so a busy channel can never inflate the persistence figure.
    * - ``modem_measure_adc_rate(ms)``
      - Measure the real ADC sample rate; blocks for the requested window.
 
@@ -132,14 +142,18 @@ boot, the Radio page's Save (live re-apply, no reboot) and the loop test:
      - TXDelay
    * - ``slot_time_ms``
      - ``tx_timeslot`` (2000)
-     - CSMA quiet time; ignored in full duplex
+     - CSMA quiet time - how long a queued frame waits before channel access
+       begins at all. The interval between the persistence rolls that follow is
+       the fixed AX.25 *SlotTime* the modem keeps internally, not this value.
+       Ignored in full duplex.
    * - ``persist``
      - ``csma_persist`` (63)
      - CSMA p-persistence (standard AX.25/KISS *Persist*): once the channel is
        heard clear, the modem transmits with probability ``persist``/256 per
-       slot and otherwise waits another ``slot_time_ms`` before rolling again.
-       255 = transmit on the first clear slot every time; lower values spread
-       contending stations apart. Ignored in full duplex.
+       slot and otherwise waits another slot time before rolling again. 255 =
+       transmit on the first clear slot every time; lower values spread
+       contending stations apart. Eight missed rolls transmit anyway so a frame
+       is never held indefinitely. Ignored in full duplex.
    * - ``fx25_mode``
      - ``fx25_mode``
      - 0=off, 1=RX only, 2=RX+TX

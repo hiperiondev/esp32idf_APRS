@@ -82,10 +82,12 @@ Módem / Capa 2
      - ✅
      - ✅
      - Acceso p-persistente condicionado por DCD: persistencia configurable
-       (``csma_persist``, 1-255), ranura de tiempo (``tx_timeslot``) y
-       preámbulo/TXDelay, más un piso anti-inanición de ocho ranuras para que
-       un canal que nunca se libera no retenga indefinidamente una trama en
-       cola
+       (``csma_persist``, 1-255), tiempo de silencio previo al acceso
+       (``tx_timeslot``) y preámbulo/TXDelay, más un piso anti-inanición de ocho
+       ranuras para que un canal que nunca se libera no retenga indefinidamente
+       una trama en cola. El panel informa cuántas veces actuó ese piso,
+       separando canal ocupado de canal libre, como *CSMA FORZADO
+       (OCUP./PERSIST.)*
    * - Activación de PTT (sin VOX, GPIO de hardware)
      - ✅
      - ✅

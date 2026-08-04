@@ -151,11 +151,18 @@ typedef struct {
                       digi_en/igate_en, unlike igate_get_stats()'s own drop counters. */
     uint32_t
         err; /**< Frames the modem handed up that failed to decode as a valid APRS (UI, no-layer-3) AX.25 frame - tracked regardless of digi_en/igate_en. */
-    uint32_t tx_queue_depth; /**< Frames currently sitting in the RF TX ring right now (waiting to key up, or on the air). An at-a-glance view of the backlog
-                                the "TX buffers" limit caps - a value that stays pinned near tx_queue_limit while drops climb is the visible symptom of a
-                                saturated RF leg (see the drain-wait in aprs_service_send_tnc2()). */
-    uint32_t tx_queue_limit; /**< The effective "TX buffers" cap (g_config.rf_tx_buffers, clamped): new frames are dropped once tx_queue_depth reaches this.
-                                Shown alongside tx_queue_depth so the dashboard reads like the console's "n/n pending" line. */
+    uint32_t tx_queue_depth;   /**< Frames currently sitting in the RF TX ring right now (waiting to key up, or on the air). An at-a-glance view of the backlog
+                                  the "TX buffers" limit caps - a value that stays pinned near tx_queue_limit while drops climb is the visible symptom of a
+                                  saturated RF leg (see the drain-wait in aprs_service_send_tnc2()). */
+    uint32_t tx_queue_limit;   /**< The effective "TX buffers" cap (g_config.rf_tx_buffers, clamped): new frames are dropped once tx_queue_depth reaches this.
+                                  Shown alongside tx_queue_depth so the dashboard reads like the console's "n/n pending" line. */
+    uint32_t csma_busy_forced; /**< Key-ups in which the CSMA anti-starvation floor transmitted over a channel that was still busy after the whole backoff
+                                  run. A congestion figure about the frequency: the frame was sent, nothing was lost. Read live from
+                                  modem_channel_busy_count(). */
+    uint32_t csma_persist_forced; /**< Key-ups in which the CSMA anti-starvation floor transmitted after a backoff run that found the channel clear every
+                                     slot and missed the persistence roll every time. This one measures only the configured CSMA persistence: with the
+                                     standard value of 63 about one key-up in ten lands here, so a figure near a tenth of PACKET TX is normal and a much
+                                     larger share means persistence is set too low. Read live from modem_persistence_missed_count(). */
 } aprs_service_stats_t;
 
 /**

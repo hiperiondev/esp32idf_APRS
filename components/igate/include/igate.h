@@ -62,6 +62,12 @@ typedef enum {
  * dashboard's Drop Breakdown table can show "N dropped because X" for every
  * single reason with none left bucketed into a generic/opaque catch-all. See
  * igate_stats_t.dropByReason[] and igate_stats_total_drop().
+ *
+ * Every reason below stands for a packet that did not reach its destination.
+ * Events that merely describe how a packet got there - the CSMA channel-access
+ * statistics in aprs_service_stats_t, for instance - do not belong in this
+ * table: counting them here would inflate the dashboard's DROP total with
+ * traffic that was in fact transmitted.
  */
 typedef enum {
     DROP_DUP = 0,         /**< Reserved: duplicates are tracked separately in igate_stats_t.dupCount and do not currently bump this array (kept for
@@ -86,14 +92,12 @@ typedef enum {
     DROP_DIGI_MALFORMED,        /**< Digipeater: frame too short to carry a destination / usable path. */
     DROP_DIGI_PLACEHOLDER_CALL, /**< Digipeater: source callsign is the NOCALL/MYCALL sentinel. */
     DROP_DIGI_ALREADY_USED,     /**< Digipeater: path already carries this digipeater's call marked used ('*'). */
-    DROP_DIGI_PATH_FULL,     /**< Digipeater: path already at the AX.25 maximum (8) repeater addresses; inserting our call would overflow rpt_list/rpt_flags. */
-    DROP_DIGI_NO_PATH,       /**< Digipeater: destination-SSID trace decoded to no usable WIDEn-N path. */
-    DROP_DIGI_PATH_TOKEN,    /**< Digipeater: path carries qA or TCP (already gated, not for RF repeat). */
-    DROP_DIGI_DUPLICATE,     /**< Digipeater: another copy of this frame was already repeated within g_config.dup_cache_timeout_ms (see
-                               isDuplicatePacketScoped()). */
-    DROP_PERSISTENCE_MISSED, /**< CSMA/p-persistent roll missed MAX_TRANSMIT_RETRY_COUNT times in a row on an otherwise-clear channel; the modem's
-                                anti-starvation floor forced the transmission anyway (see Ax25TransmitCheck() in ax25.c). */
-    DROP_REASON_COUNT        /**< Number of reasons; sizes ::igate_stats_t::dropByReason, never used as a reason itself. */
+    DROP_DIGI_PATH_FULL,  /**< Digipeater: path already at the AX.25 maximum (8) repeater addresses; inserting our call would overflow rpt_list/rpt_flags. */
+    DROP_DIGI_NO_PATH,    /**< Digipeater: destination-SSID trace decoded to no usable WIDEn-N path. */
+    DROP_DIGI_PATH_TOKEN, /**< Digipeater: path carries qA or TCP (already gated, not for RF repeat). */
+    DROP_DIGI_DUPLICATE,  /**< Digipeater: another copy of this frame was already repeated within g_config.dup_cache_timeout_ms (see
+                            isDuplicatePacketScoped()). */
+    DROP_REASON_COUNT     /**< Number of reasons; sizes ::igate_stats_t::dropByReason, never used as a reason itself. */
 } drop_reason_t;
 
 typedef struct {

@@ -79,9 +79,11 @@ Modem / Layer-2
      - ✅
      - ✅
      - DCD-gated p-persistent access: configurable Persist (``csma_persist``,
-       1-255), slot time (``tx_timeslot``) and preamble/TXDelay, plus an
-       eight-slot anti-starvation floor so a channel that never clears cannot
-       hold a queued frame forever
+       1-255), quiet time before access begins (``tx_timeslot``) and
+       preamble/TXDelay, plus an eight-slot anti-starvation floor so a channel
+       that never clears cannot hold a queued frame forever. The dashboard
+       reports how often that floor fired, split between a busy channel and a
+       clear one, as *CSMA FORCED (BUSY/PERSIST)*
    * - PTT keying (VOX-free, hardware GPIO)
      - ✅
      - ✅

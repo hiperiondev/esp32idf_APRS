@@ -82,9 +82,12 @@ Modem / Livello 2
      - ✅
      - ✅
      - Accesso p-persistente condizionato dal DCD: persistenza configurabile
-       (``csma_persist``, 1-255), slot temporale (``tx_timeslot``) e
-       preambolo/TXDelay, più un limite anti-starvation di otto slot perché un
-       canale che non si libera mai non trattenga per sempre un frame in coda
+       (``csma_persist``, 1-255), tempo di silenzio prima dell'accesso
+       (``tx_timeslot``) e preambolo/TXDelay, più un limite anti-starvation di
+       otto slot perché un canale che non si libera mai non trattenga per sempre
+       un frame in coda. La dashboard riporta quante volte è intervenuto quel
+       limite, distinguendo canale occupato da canale libero, come *CSMA FORZATO
+       (OCCUP./PERSIST.)*
    * - Attivazione PTT (senza VOX, GPIO hardware)
      - ✅
      - ✅

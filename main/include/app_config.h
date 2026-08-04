@@ -458,11 +458,14 @@ typedef struct {
     uint16_t preamble;       /**< TXDelay (preamble) length, ms. */
     uint8_t afsk_modem_type; /**< Audio AFSK modulation (::modem_mode_t: 0=AFSK300, 1=Bell202, 2=V.23, 3=G3RUH); used for both RX and TX. */
     uint8_t fx25_mode;       /**< FX.25 mode: 0=off, 1=RX only, 2=RX+TX. */
-    uint16_t tx_timeslot;    /**< CSMA time slot (quiet time), ms. */
-    uint8_t csma_persist;    /**< CSMA/p-persistent channel-access probability (standard AX.25/KISS "Persist"): once the channel is heard clear, the modem
-                                transmits immediately with probability csma_persist/256 on every slot and otherwise waits one more tx_timeslot before
-                                rolling again. 255 transmits on the first clear slot every time (equivalent to plain non-persistent CSMA); lower values
-                                spread contending stations' key-ups further apart. Web-configurable (Radiomodem page, Audio/AFSK section), applied live via
+    uint16_t tx_timeslot;    /**< CSMA quiet time, ms: how long a queued frame waits before channel access begins at all. The interval between the individual
+                                persistence rolls that follow is the fixed AX.25 "SlotTime" the modem keeps internally, not this value. */
+    uint8_t csma_persist;    /**< CSMA/p-persistent channel-access probability (standard AX.25/KISS "Persist"): once the quiet time has elapsed and the
+                                channel is heard clear, the modem transmits immediately with probability csma_persist/256 on every slot and otherwise waits
+                                one more slot time before rolling again. 255 transmits on the first clear slot every time (equivalent to plain
+                                non-persistent CSMA); lower values spread contending stations' key-ups further apart. A run of eight missed rolls transmits
+                                anyway so a frame is never held indefinitely, which at the default of 63 happens on roughly one key-up in ten and is
+                                reported as the second CSMA figure on the dashboard. Web-configurable (Radiomodem page, Audio/AFSK section), applied live via
                                 aprs_service_apply_modem_config(). Range 1..255. */
 
     uint8_t rf_tx_buffers; /**< Max frames allowed to sit in the RF TX ring before aprs_service_send_tnc2() starts discarding new packets. Web-configurable and

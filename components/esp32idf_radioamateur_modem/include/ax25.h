@@ -260,16 +260,39 @@ uint8_t Ax25TxFramesPending(void);
 
 /**
  * @brief Count how many times the CSMA/p-persistent anti-starvation floor
- *        has forced a transmission.
+ *        has forced a transmission on a channel that was clear throughout.
  *
- * Cumulative since boot: bumped every time Ax25TransmitCheck() forces a
- * transmission after MAX_TRANSMIT_RETRY_COUNT persistence rolls missed in a
- * row on an otherwise-clear channel.
+ * Cumulative since boot: bumped every time Ax25TransmitCheck() reaches
+ * MAX_TRANSMIT_RETRY_COUNT backoff slots in which DCD never asserted once and
+ * every persistence roll missed, and transmits anyway. Because the channel was
+ * free the whole time, this figure measures only the transmit probability:
+ * with the standard `persist` of 63 roughly one key-up in ten ends this way,
+ * and a markedly higher share points at `persist` being set too low for the
+ * amount of traffic this station originates.
+ *
+ * Runs that included even one busy slot are reported by
+ * Ax25GetChannelBusyCount() instead, so the two never double-count and a
+ * congested channel cannot inflate this one.
  *
  * @return Total number of forced transmissions caused by missed persistence
- *         rolls since boot.
+ *         rolls on a clear channel since boot.
  */
 uint32_t Ax25GetPersistenceMissedCount(void);
+
+/**
+ * @brief Count how many times the CSMA/p-persistent anti-starvation floor
+ *        has forced a transmission over a channel that was in use.
+ *
+ * Cumulative since boot: bumped every time Ax25TransmitCheck() reaches
+ * MAX_TRANSMIT_RETRY_COUNT backoff slots of which at least one found DCD
+ * asserted, and transmits anyway rather than holding the frame indefinitely.
+ * This is a congestion figure - the frame goes out on top of whatever else was
+ * on the air - and it climbing means the channel is busy for longer than
+ * MAX_TRANSMIT_RETRY_COUNT slot times at a stretch.
+ *
+ * @return Total number of forced transmissions over a busy channel since boot.
+ */
+uint32_t Ax25GetChannelBusyCount(void);
 
 /**
  * @brief Retrieve the next pending received frame, if any is available.

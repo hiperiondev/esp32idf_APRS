@@ -363,6 +363,7 @@
 #define TR_DASH_DROP_ERR       "DESCARTE/ERR:"
 #define TR_DASH_DROP_BREAKDOWN "Detalle de Descartes"
 #define TR_DASH_TX_QUEUE       "COLA TX RF:"
+#define TR_DASH_CSMA_FORCED    "CSMA FORZADO (OCUP./PERSIST.):"
 #define TR_DASH_LH_ICON        "ICONO"
 
 /** @} */

@@ -199,6 +199,10 @@ uint32_t modem_persistence_missed_count(void) {
     return Ax25GetPersistenceMissedCount();
 }
 
+uint32_t modem_channel_busy_count(void) {
+    return Ax25GetChannelBusyCount();
+}
+
 uint32_t modem_measure_adc_rate(uint32_t ms) {
     uint32_t start = afskGetAdcSampleCount();
     int64_t t0 = esp_timer_get_time();

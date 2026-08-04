@@ -193,8 +193,16 @@ static uint8_t txBitstuff = 0;
 static uint16_t txTailElapsed;
 static uint16_t txCrc = 0xFFFF;
 static uint32_t txQuiet = 0;
+// Slots the frame currently waiting to key up has already spent in the CSMA
+// backoff, and how many of them found the channel busy. txRetries bounds the
+// total wait (MAX_TRANSMIT_RETRY_COUNT); txBusySlots is what tells the two
+// reasons a forced transmission can happen apart from each other, since a run
+// mixes busy slots and missed persistence rolls freely. Both are cleared the
+// moment the frame keys up.
 static uint8_t txRetries = 0;
-static volatile uint32_t txPersistenceMissedCount = 0; // bumped once per forced TX after MAX_TRANSMIT_RETRY_COUNT missed persistence rolls on a clear channel
+static uint8_t txBusySlots = 0;
+static volatile uint32_t txPersistenceMissedCount = 0; // bumped once per forced TX after a run of clear-channel slots that all missed the persistence roll
+static volatile uint32_t txChannelBusyCount = 0;       // bumped once per forced TX after a run that included at least one busy-channel slot
 static volatile enum TxInitStage txInitStage;
 static enum TxStage txStage;
 
@@ -684,6 +692,11 @@ uint8_t Ax25TxFramesPending(void) {
 uint32_t Ax25GetPersistenceMissedCount(void) {
     // Single writer (Ax25TransmitCheck(), the modem service task); safe plain read here, same pattern as txFramesSentCount
     return txPersistenceMissedCount;
+}
+
+uint32_t Ax25GetChannelBusyCount(void) {
+    // Single writer (Ax25TransmitCheck(), the modem service task); safe plain read here, same pattern as txFramesSentCount
+    return txChannelBusyCount;
 }
 
 bool Ax25ReadNextRxFrame(uint8_t **dst, uint16_t *size, int8_t *peak, int8_t *valley, uint8_t *level, uint8_t *corrected, uint16_t *mV) {
@@ -1205,6 +1218,30 @@ static void pollTxEvents(void) {
     }
 }
 
+// Anti-starvation floor: MAX_TRANSMIT_RETRY_COUNT slots have gone by without
+// the queued frame keying up, so transmit it now rather than let it wait
+// indefinitely. The run is attributed to whichever condition actually held it
+// back: a single busy slot anywhere in the run means the channel was occupied
+// and the frame is going out on top of somebody else's traffic, which is a
+// congestion report; a run made up entirely of clear slots means every
+// persistence roll missed, which says nothing about the channel and only that
+// Ax25Config.persist is low (or luck was bad). Separating them keeps the
+// clear-channel figure the operator sees from absorbing every congested
+// key-up as well.
+static void forceTransmit(void) {
+    if (txBusySlots > 0) {
+        ESP_LOGI(TAG, "Channel busy for %u of %u slots, transmitting anyway", txBusySlots, txRetries);
+        txChannelBusyCount++;
+    } else {
+        ESP_LOGI(TAG, "Persistence check missed %u times on a clear channel, transmitting anyway", txRetries);
+        txPersistenceMissedCount++;
+    }
+    txInitStage = TX_INIT_TRANSMITTING;
+    txRetries = 0;
+    txBusySlots = 0;
+    transmitStart();
+}
+
 void Ax25TransmitCheck(void) {
     pollTxEvents();
 
@@ -1270,24 +1307,24 @@ void Ax25TransmitCheck(void) {
     if (Ax25Config.fullDuplex) {
         txInitStage = TX_INIT_TRANSMITTING;
         txRetries = 0;
+        txBusySlots = 0;
         transmitStart();
         return;
     }
 
     if (ModemDcdState()) {
         // Channel busy: re-poll DCD every slot time rather than transmitting
-        // through it. txRetries counts these busy slots purely as an
-        // anti-starvation floor - a channel that never clears within
-        // MAX_TRANSMIT_RETRY_COUNT slots forces a transmission anyway rather
-        // than holding a queued frame forever.
+        // through it. txRetries bounds the total wait as an anti-starvation
+        // floor - a channel that never clears within MAX_TRANSMIT_RETRY_COUNT
+        // slots forces a transmission anyway rather than holding a queued
+        // frame forever - while txBusySlots records that the channel, and not
+        // the persistence roll, is what this frame is waiting on.
         if (txRetries >= MAX_TRANSMIT_RETRY_COUNT) {
-            ESP_LOGI(TAG, "Channel busy after %u slots, transmitting anyway", txRetries);
-            txInitStage = TX_INIT_TRANSMITTING;
-            txRetries = 0;
-            transmitStart();
+            forceTransmit();
         } else {
             txQuiet = millis() + Ax25Config.csmaSlotTime;
             txRetries++;
+            txBusySlots++;
         }
         return;
     }
@@ -1300,23 +1337,15 @@ void Ax25TransmitCheck(void) {
     if (esp_random() % 256 < Ax25Config.persist) {
         txInitStage = TX_INIT_TRANSMITTING;
         txRetries = 0;
+        txBusySlots = 0;
         transmitStart();
         return;
     }
 
     txQuiet = millis() + Ax25Config.csmaSlotTime;
     txRetries++;
-    if (txRetries >= MAX_TRANSMIT_RETRY_COUNT) {
-        // Anti-starvation floor: the persistence roll keeps missing on an
-        // otherwise-clear channel (bad luck, or Ax25Config.persist tuned very
-        // low) - force the transmission rather than let the frame wait
-        // indefinitely.
-        ESP_LOGI(TAG, "Persistence check missed %u times on a clear channel, transmitting anyway", txRetries);
-        txPersistenceMissedCount++;
-        txInitStage = TX_INIT_TRANSMITTING;
-        txRetries = 0;
-        transmitStart();
-    }
+    if (txRetries >= MAX_TRANSMIT_RETRY_COUNT)
+        forceTransmit();
 }
 
 void Ax25Init(uint8_t fx25Mode) {
@@ -1327,7 +1356,7 @@ void Ax25Init(uint8_t fx25Mode) {
     Ax25Config.quietTime = 2000;
     Ax25Config.txDelayLength = 300;
     Ax25Config.txTailLength = 1;
-    Ax25Config.csmaSlotTime = 100; // 100 ms/slot, the common AX.25 SlotTime default
+    Ax25Config.csmaSlotTime = 100; // 100 ms/slot, the common AX.25 SlotTime default; the interval between persistence rolls, distinct from quietTime
     Ax25Config.persist = 63;       // ~25% transmit chance per clear slot, the common AX.25 Persist default
 
     if (fx25Mode == 0) {
@@ -1362,6 +1391,8 @@ void Ax25Init(uint8_t fx25Mode) {
     txDelay = (uint16_t)((float)Ax25Config.txDelayLength / (8.f * 1000.f / ModemGetBaudrate()));
     txTail = (uint16_t)((float)Ax25Config.txTailLength / (8.f * 1000.f / ModemGetBaudrate()));
     txInitStage = TX_INIT_OFF;
+    txRetries = 0;
+    txBusySlots = 0;
     txQuiet = millis() + Ax25Config.quietTime + randomRange(10, 200);
 }
 

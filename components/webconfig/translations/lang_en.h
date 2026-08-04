@@ -362,6 +362,7 @@
 #define TR_DASH_DROP_ERR       "DROP/ERR:"
 #define TR_DASH_DROP_BREAKDOWN "Drop Breakdown"
 #define TR_DASH_TX_QUEUE       "RF TX QUEUE:"
+#define TR_DASH_CSMA_FORCED    "CSMA FORCED (BUSY/PERSIST):"
 #define TR_DASH_LH_ICON        "ICON"
 
 /** @} */

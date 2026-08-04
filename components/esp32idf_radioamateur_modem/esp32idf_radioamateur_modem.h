@@ -70,11 +70,14 @@ typedef struct {
     bool full_duplex;      /**< true: key up immediately and keep receiving while transmitting. */
     bool allow_non_aprs;   /**< true: accept frames whose Control/PID fields are not 0x03/0xF0. */
     uint16_t preamble_ms;  /**< TXDelay (preamble) duration, in milliseconds. */
-    uint16_t slot_time_ms; /**< CSMA quiet/slot time, in milliseconds; ignored in full duplex mode. */
-    uint8_t persist;       /**< CSMA/p-persistent channel-access probability (standard AX.25/KISS "Persist"): once the channel is heard clear, the modem
-                              transmits immediately with probability persist/256 on every slot and otherwise waits one more slot_time_ms before rolling
-                              again. 255 transmits on the first clear slot every time (equivalent to plain non-persistent CSMA); lower values spread
-                              contending stations' key-ups further apart. Ignored in full duplex mode. */
+    uint16_t slot_time_ms; /**< CSMA quiet time, in milliseconds: how long a queued frame waits before channel access begins. The interval between the
+                              persistence rolls that follow is the fixed AX.25 "SlotTime" held in ax25_config_t.csmaSlotTime, not this value. Ignored in
+                              full duplex mode. */
+    uint8_t persist;       /**< CSMA/p-persistent channel-access probability (standard AX.25/KISS "Persist"): once the quiet time has elapsed and the
+                              channel is heard clear, the modem transmits immediately with probability persist/256 on every slot and otherwise waits one
+                              more slot time before rolling again. 255 transmits on the first clear slot every time (equivalent to plain non-persistent
+                              CSMA); lower values spread contending stations' key-ups further apart. See modem_persistence_missed_count() for the
+                              anti-starvation floor that bounds how long a frame can be held this way. Ignored in full duplex mode. */
     uint8_t fx25_mode;     /**< FX.25 mode: 0 = off, 1 = RX only, 2 = RX+TX (requires -DENABLE_FX25). */
     bool ptt_active_high;  /**< true = PTT output active-high, false = active-low. @note There is deliberately no ptt_gpio field: the PTT pin is a fixed
                               compile-time board wiring choice (::MODEM_PTT_GPIO, like ::MODEM_ADC_GPIO / ::MODEM_DAC_GPIO), not runtime/web-admin selectable;
@@ -197,17 +200,31 @@ uint8_t modem_tx_queue_depth(void);
 
 /**
  * @brief Count how many times the CSMA/p-persistent anti-starvation floor
- *        has forced a transmission since boot.
+ *        has forced a transmission on a clear channel since boot.
  *
- * Every time the persistence roll misses MAX_TRANSMIT_RETRY_COUNT times in
- * a row on an otherwise-clear channel, the modem forces the transmission
- * rather than holding the frame indefinitely; this is the cumulative count
- * of that event, for callers that want to surface it as a stat (e.g. the
- * dashboard Drop Breakdown table).
+ * Counts only the runs in which the channel stayed free for every backoff
+ * slot and the persistence roll missed each time; the modem then transmits
+ * rather than holding the frame indefinitely. Nothing is discarded, so this
+ * is a channel-access statistic and not a drop: it reflects the configured
+ * `persist` probability, and with the standard value of 63 roughly one
+ * key-up in ten is expected to end this way.
  * @return Total number of forced transmissions caused by missed persistence
- *         rolls since boot.
+ *         rolls on a clear channel since boot.
  */
 uint32_t modem_persistence_missed_count(void);
+
+/**
+ * @brief Count how many times the CSMA/p-persistent anti-starvation floor
+ *        has forced a transmission over a busy channel since boot.
+ *
+ * Counts the runs in which at least one backoff slot found the carrier
+ * detect asserted and the channel still had not cleared by the end of the
+ * run; the frame is then transmitted on top of the traffic already there.
+ * A climbing figure here is a congestion report about the frequency, not a
+ * fault in this station.
+ * @return Total number of forced transmissions over a busy channel since boot.
+ */
+uint32_t modem_channel_busy_count(void);
 
 /**
  * @brief Measure the real ADC sampling rate achieved by the hardware.

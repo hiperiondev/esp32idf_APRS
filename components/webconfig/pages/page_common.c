@@ -390,10 +390,19 @@ esp_err_t page_sidebar_info(httpd_req_t *req) {
                // a serial cable - the visible counterpart to the drain-wait
                // that now staggers simultaneously-due beacons.
                "<tr><td>" TR_DASH_TX_QUEUE "</td><td>%lu/%lu</td></tr>"
+               // CSMA anti-starvation key-ups, busy channel first and clear
+               // channel second. These belong here rather than in the Drop
+               // Breakdown below because the frame was transmitted in both
+               // cases: the first number describes how congested the
+               // frequency is, the second only how low the configured CSMA
+               // persistence is (with the standard 63, about a tenth of
+               // PACKET TX above).
+               "<tr><td>" TR_DASH_CSMA_FORCED "</td><td>%lu/%lu</td></tr>"
                "</table></fieldset>",
                (unsigned long)svcStats.radio_rx, (unsigned long)svcStats.radio_tx, (unsigned long)svcStats.rf2inet, (unsigned long)svcStats.inet2rf,
                (unsigned long)igs.isRxCount, (unsigned long)igs.isTxCount, (unsigned long)svcStats.digi, (unsigned long)igate_stats_total_drop(&igs),
-               (unsigned long)igate_stats_total_err(&igs), (unsigned long)svcStats.tx_queue_depth, (unsigned long)svcStats.tx_queue_limit);
+               (unsigned long)igate_stats_total_err(&igs), (unsigned long)svcStats.tx_queue_depth, (unsigned long)svcStats.tx_queue_limit,
+               (unsigned long)svcStats.csma_busy_forced, (unsigned long)svcStats.csma_persist_forced);
 
     // -- Drop breakdown -------------------------------------------------
     // Per-reason detail behind the aggregate DROP/ERR tile above: lets an

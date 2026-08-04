@@ -227,6 +227,16 @@ aprs_service_stats_t aprs_service_get_stats(void) {
     // from the modem ring and the same clamped g_config.rf_tx_buffers value
     // aprs_service_send_tnc2() enforces, so the two always agree.
     s.tx_queue_depth = (uint32_t)modem_tx_queue_depth();
+
+    // CSMA anti-starvation events, read live from the modem rather than
+    // mirrored into a local counter: both are free-running totals since boot,
+    // so the snapshot is always current and there is no forwarding pass to
+    // fall behind or double-count. Neither is a drop - the frame goes out in
+    // both cases - which is why they are reported here and not through
+    // igate_note_drop().
+    s.csma_busy_forced = modem_channel_busy_count();
+    s.csma_persist_forced = modem_persistence_missed_count();
+
     uint8_t lim = g_config.rf_tx_buffers;
     if (lim < RF_TX_BUFFERS_MIN)
         lim = RF_TX_BUFFERS_MIN;
@@ -797,24 +807,8 @@ static void messageTxHandler(const char *packet, size_t len, uint8_t channels) {
 // The modem component has no RF power-switch output, so there is no
 // rf_power/band config to carry.
 
-// Cumulative modem_persistence_missed_count() value already reported to
-// igate_note_drop(), so serviceTickTask() can forward only the new events on
-// each 1 Hz pass instead of re-reporting the whole running total.
-static uint32_t s_persistenceMissedReported = 0;
-
 static void serviceTickTask(void *arg) {
     while (1) {
-        // Surface every CSMA/p-persistent anti-starvation event (the modem
-        // forcing a transmission after MAX_TRANSMIT_RETRY_COUNT missed
-        // persistence rolls on a clear channel) into the dashboard Drop
-        // Breakdown table. The counter lives in the modem component and only
-        // grows, so report the delta since the last pass.
-        uint32_t persistenceMissedNow = modem_persistence_missed_count();
-        while (s_persistenceMissedReported != persistenceMissedNow) {
-            igate_note_drop(DROP_PERSISTENCE_MISSED);
-            s_persistenceMissedReported++;
-        }
-
         // 1 Hz weather sensor refresh, folded in here instead of running its
         // own wx_sensor_task (saves that task's stack). weather_start() has
         // already run by the time this task is created, so the shared container

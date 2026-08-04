@@ -92,9 +92,19 @@ L'header pubblico del componente (``esp32idf_radioamateur_modem.h``) espone:
      - Numero di frame ancora in coda/in volo su TX RF (0 = inattivo). È lo stato
        dell'anello TX che legge il tetto di arretrato TX RF.
    * - ``modem_persistence_missed_count()``
-     - Quante volte il pavimento anti-starvation della persistenza CSMA ha
-       forzato una trasmissione dall'avvio, per chi voglia esporlo come
-       statistica.
+     - Quante volte il pavimento anti-starvation di CSMA ha forzato una
+       trasmissione dopo una tornata di attesa che ha trovato il canale libero
+       in ogni slot e ha mancato il sorteggio di persistenza ogni volta. Misura
+       soltanto il ``persist`` configurato: con il valore predefinito di 63
+       circa una portante su dieci finisce così. Nulla viene scartato, quindi è
+       una statistica di accesso al canale e non uno scarto.
+   * - ``modem_channel_busy_count()``
+     - Quante volte lo stesso pavimento ha forzato una trasmissione dopo una
+       tornata in cui almeno uno slot ha trovato il rilevamento di portante
+       attivo. È un rapporto di congestione sulla frequenza: il frame esce sopra
+       al traffico già presente. Ogni tornata viene addebitata a esattamente uno
+       dei due contatori, quindi un canale occupato non può mai gonfiare la
+       cifra di persistenza.
    * - ``modem_measure_adc_rate(ms)``
      - Misurare la frequenza reale di campionamento dell'ADC; si blocca per la
        finestra richiesta.
@@ -137,14 +147,19 @@ reale, nessun riavvio) e dal test di loop:
      - TXDelay
    * - ``slot_time_ms``
      - ``tx_timeslot`` (2000)
-     - tempo di silenzio CSMA; ignorato in full duplex
+     - tempo di silenzio CSMA: quanto attende un frame accodato prima che
+       l'accesso al canale cominci del tutto. L'intervallo fra i sorteggi di
+       persistenza che seguono è lo *SlotTime* fisso di AX.25 che il modem
+       mantiene internamente, non questo valore. Ignorato in full duplex.
    * - ``persist``
      - ``csma_persist`` (63)
      - p-persistenza CSMA (il *Persist* standard AX.25/KISS): una volta che il
        canale è sentito libero, il modem trasmette con probabilità
-       ``persist``/256 per slot e altrimenti attende un altro ``slot_time_ms``
-       prima di rilanciare. 255 = trasmette sempre al primo slot libero; valori
-       più bassi distanziano le stazioni in contesa. Ignorato in full duplex.
+       ``persist``/256 per slot e altrimenti attende un altro slot prima di
+       rilanciare. 255 = trasmette sempre al primo slot libero; valori più bassi
+       distanziano le stazioni in contesa. Otto sorteggi mancati trasmettono
+       comunque, così un frame non resta mai trattenuto indefinitamente.
+       Ignorato in full duplex.
    * - ``fx25_mode``
      - ``fx25_mode``
      - 0=off, 1=solo RX, 2=RX+TX

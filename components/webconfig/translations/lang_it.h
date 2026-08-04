@@ -363,6 +363,7 @@
 #define TR_DASH_DROP_ERR       "SCARTI/ERR:"
 #define TR_DASH_DROP_BREAKDOWN "Dettaglio Scarti"
 #define TR_DASH_TX_QUEUE       "CODA TX RF:"
+#define TR_DASH_CSMA_FORCED    "CSMA FORZATO (OCCUP./PERSIST.):"
 #define TR_DASH_LH_ICON        "ICONA"
 
 /** @} */
