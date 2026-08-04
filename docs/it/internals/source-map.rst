@@ -55,7 +55,7 @@ Disposizione del repository
    │   │
    │   ├── igate/          ← client TCP APRS-IS, login, filtri, dedup, RF→INET / INET→RF
    │   ├── digirepeater/   ← logica percorso WIDEn-N / TRACEn-N / RELAY / ECHO / GATE
-   │   ├── message/        ← messaggistica APRS, ack/ritentativo, AES-128-CBC + base64
+   │   ├── message/        ← messaggistica APRS, ack/ritentativo, la coda di conversazione RX/TX condivisa
    │   ├── query/          ← risponditore di query APRS (?APRS?/?WX?/?IGATE? + dirette), risposte dal task dello scheduler
    │   ├── lastheard/      ← tabella in RAM di stazioni sentite, una per nominativo → JSON dashboard
    │   ├── trafficlog/     ← anello in RAM di righe di traffico → JSON dashboard (long-poll per seq)

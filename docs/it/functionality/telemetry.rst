@@ -34,7 +34,7 @@ Secondo il capitolo 13 di APRS101, un report di telemetria porta:
 Ogni canale analogico ha un flag di abilitazione, un indice di canale di sensore
 di origine (``tlm_ana_channel[]``, ``0xFF`` = nessuno), una calibrazione
 quadratica (``valore = a·x² + b·x + c``), un intervallo di ingresso grezzo
-atteso, e un numero di decimali. Ogni bit digitale ha un flag di abilitazione, un
+atteso che limita il valore trasmesso, e un numero di decimali. Ogni bit digitale ha un flag di abilitazione, un
 canale di origine, un senso (Normale / Invertito), instradamento RF/INET per bit,
 e un'etichetta orientata all'operatore usata nel messaggio BITS.
 
@@ -49,10 +49,14 @@ report di dati periodico:
 
    T#sss,a1,a2,a3,a4,a5,bbbbbbbb
 
-I campi analogici portano i valori calibrati (con la larghezza di campo e i
-decimali per canale applicati), e gli otto caratteri ``b`` sono i bit digitali.
-Il report **non** porta mai nomi di canale — secondo la specifica APRS, nomi,
-unità ed equazioni viaggiano separatamente.
+I campi analogici portano la lettura **grezza** del sensore, limitata
+all'intervallo grezzo dichiarato del canale e scritta con la larghezza di campo
+e i decimali per canale; gli otto caratteri ``b`` sono i bit digitali. La
+calibrazione *non* viene applicata qui: APRS101 separa il report dai metadati,
+quindi il messaggio ``EQNS.`` porta i coefficienti a/b/c e ogni stazione
+ricevente ricava da sé il valore ingegneristico. Il report **non** porta mai
+nomi di canale — secondo la specifica APRS, nomi, unità ed equazioni viaggiano
+separatamente.
 
 I messaggi di metadati
 ======================

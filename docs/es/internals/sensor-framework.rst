@@ -206,8 +206,9 @@ Múltiples instancias, manejo de errores, seguridad de hilos
 * **Múltiples instancias** del mismo tipo de sensor coexisten: da a cada una un
   ``name`` distinto (``bme280-indoor`` / ``bme280-outdoor``), su propio ``ctx``, y
   su propia dirección/bus/GPIO horneada en ese ``ctx``.
-* Un error de ``init()`` marca el controlador como fallido **permanentemente**
-  (hasta desregistrar+registrar). Un error de ``save()`` se registra y se salta
+* Un error de ``init()`` marca el controlador como fallido **permanentemente**:
+  el registro no tiene punto de entrada para desregistrar, así que la marca dura
+  hasta el próximo reinicio. Un error de ``save()`` se registra y se salta
   **solo para ese ciclo** — el siguiente tick lo reintenta, así que un hipo
   ocasional del bus no deshabilita el controlador.
 * Las llamadas al registro están todas protegidas por mutex. El

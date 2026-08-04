@@ -87,10 +87,19 @@ Cada servicio (tracker / igate / digi / wx / …) almacena una **máscara de bit
 no una cadena de ruta. El bit *N* selecciona ``g_config.path[N]``, uno de los
 cuatro presets de texto libre editados en la página *System*.
 ``aprs_path_build_suffix()`` concatena cada ranura seleccionada no vacía; las
-ranuras seleccionadas-pero-vacías se saltan. Es compartida por todos los
-servicios que originan tráfico y aplica el límite AX.25 de 8 vías en el momento
-de transmitir, de modo que una configuración que llegó al dispositivo sin pasar
-por un formulario web no puede poner una ruta demasiado larga en el aire.
+ranuras seleccionadas-pero-vacías se saltan. Es compartida por las balizas, el
+tiempo, la telemetría, los mensajes y las respuestas a consultas, y aplica el
+límite AX.25 de 8 vías en el momento de transmitir, de modo que una configuración
+que llegó al dispositivo sin pasar por un formulario web no puede poner una ruta
+demasiado larga en el aire.
+
+Los Objetos/Ítems son el único servicio que no une las ranuras entre sí: su ruteo
+proporcional envía **un** preset por transmisión y rota por la selección, así que
+``objitem_paths()`` arma la lista por su cuenta. Allí el límite de saltos rige
+por preset y no sobre la selección completa, y se cuenta con la misma
+``app_config_path_hop_count()`` que usan el constructor compartido y el recorte
+del guardado: un preset que por sí solo supera el límite queda fuera de la
+rotación.
 
 Las banderas de activación hacen doble función como valores de máscara por
 defecto:

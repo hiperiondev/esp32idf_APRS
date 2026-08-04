@@ -6,10 +6,13 @@ Rutas HTTP
 
 La administración web registra las siguientes rutas
 (``components/webconfig/web_server.c``). Cada manejador llama a
-``web_check_auth()`` y por lo tanto requiere autenticación HTTP Basic, con una
-excepción: ``GET /style.css`` se sirve sin autenticar, porque es una hoja de
-estilos estática que no lleva datos de configuración ni de tráfico y el navegador
-la pide mientras dibuja el propio desafío de login.
+``web_check_auth()`` y por lo tanto requiere autenticación HTTP Basic todo
+manejador que sirva datos de configuración o de tráfico. Dos rutas no lo hacen, y
+ninguna expone nada: ``GET /style.css`` es una hoja de estilos estática que no
+lleva datos de configuración ni de tráfico, y el navegador la pide mientras
+dibuja el propio desafío de login; ``GET /logout`` responde a toda petición con
+el ``401`` que hace al navegador descartar sus credenciales guardadas, así que no
+hay nada que una comprobación de autenticación pueda proteger.
 
 .. list-table::
    :header-rows: 1

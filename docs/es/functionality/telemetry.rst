@@ -33,8 +33,8 @@ Según el capítulo 13 de APRS101, un informe de telemetría lleva:
 
 Cada canal analógico tiene una bandera de habilitación, un índice de canal de
 sensor de origen (``tlm_ana_channel[]``, ``0xFF`` = ninguno), una calibración
-cuadrática (``valor = a·x² + b·x + c``), un rango de entrada bruta esperado, y un
-número de decimales. Cada bit digital tiene una bandera de habilitación, un canal
+cuadrática (``valor = a·x² + b·x + c``), un rango de entrada bruta esperado que
+acota el valor transmitido, y un número de decimales. Cada bit digital tiene una bandera de habilitación, un canal
 de origen, un sentido (Normal / Invertido), enrutamiento RF/INET por bit, y una
 etiqueta orientada al operador usada en el mensaje BITS.
 
@@ -49,10 +49,14 @@ informe de datos periódico:
 
    T#sss,a1,a2,a3,a4,a5,bbbbbbbb
 
-Los campos analógicos llevan los valores calibrados (con el ancho de campo y los
-decimales por canal aplicados), y los ocho caracteres ``b`` son los bits
-digitales. El informe **nunca** lleva nombres de canal — según la especificación
-APRS, nombres, unidades y ecuaciones viajan por separado.
+Los campos analógicos llevan la lectura **cruda** del sensor, acotada al rango
+crudo declarado del canal y escrita con el ancho de campo y los decimales por
+canal; los ocho caracteres ``b`` son los bits digitales. La calibración *no* se
+aplica aquí: APRS101 separa el informe de los metadatos, así que el mensaje
+``EQNS.`` lleva los coeficientes a/b/c y cada estación receptora recupera por sí
+misma el valor de ingeniería. El informe **nunca** lleva nombres de canal —
+según la especificación APRS, nombres, unidades y ecuaciones viajan por
+separado.
 
 Los mensajes de metadatos
 =========================

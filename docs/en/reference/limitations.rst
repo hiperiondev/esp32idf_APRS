@@ -392,8 +392,10 @@ Telemetry
      - Per-channel a/b/c coefficients transmitted in the ``EQNS.`` message. The
        data report carries the raw sensor reading and the receiver applies the
        conversion — the standard APRS101 split between report and metadata. The
-       per-channel raw range fields are stored and displayed but do not scale
-       the transmitted value
+       per-channel raw range bounds the value put on the air, so a probe reading
+       past its own scale reports the edge of its declared span instead of a
+       figure no receiver can plot; an inverted or empty range declares nothing
+       and is ignored
    * - Live sensor mapping per telemetry channel
      - ⚠️ (usually hardcoded, or fed from an external script)
      - ✅

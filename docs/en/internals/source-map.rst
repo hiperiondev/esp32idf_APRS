@@ -55,7 +55,7 @@ Repository layout
    │   │
    │   ├── igate/          ← APRS-IS TCP client, login, filters, dedup, RF→INET / INET→RF
    │   ├── digirepeater/   ← WIDEn-N / TRACEn-N / RELAY / ECHO / GATE path logic
-   │   ├── message/        ← APRS messaging, ack/retry, AES-128-CBC + base64
+   │   ├── message/        ← APRS messaging, ack/retry, the shared RX/TX conversation queue
    │   ├── query/          ← APRS query responder (?APRS?/?WX?/?IGATE? + directed set), answered from the scheduler task
    │   ├── lastheard/      ← in-RAM table of heard stations, one per callsign → dashboard JSON
    │   ├── trafficlog/     ← in-RAM ring of traffic lines → dashboard JSON (seq long-poll)

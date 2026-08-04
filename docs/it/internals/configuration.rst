@@ -86,10 +86,19 @@ Ogni servizio (tracker / igate / digi / wx / …) memorizza una **maschera di
 bit**, non una stringa di percorso. Il bit *N* seleziona ``g_config.path[N]``,
 uno dei quattro preset a testo libero modificati nella pagina *System*.
 ``aprs_path_build_suffix()`` concatena ogni slot selezionato non vuoto; gli slot
-selezionati-ma-vuoti sono saltati. È condivisa da tutti i servizi che originano
-traffico e applica il limite AX.25 di 8 vie al momento della trasmissione, così
-una configurazione arrivata al dispositivo senza passare da un modulo web non
-può mettere in onda un percorso troppo lungo.
+selezionati-ma-vuoti sono saltati. È condivisa dai beacon, dal meteo, dalla
+telemetria, dai messaggi e dalle risposte alle query, e applica il limite AX.25
+di 8 vie al momento della trasmissione, così una configurazione arrivata al
+dispositivo senza passare da un modulo web non può mettere in onda un percorso
+troppo lungo.
+
+Gli Oggetti/Elementi sono l'unico servizio che non unisce gli slot tra loro: il
+loro instradamento proporzionale invia **un** preset per trasmissione e ruota
+sulla selezione, quindi ``objitem_paths()`` costruisce la lista da sé. Lì il
+limite di salti vale per preset e non sull'intera selezione, ed è contato con la
+stessa ``app_config_path_hop_count()`` usata dal costruttore condiviso e dal
+taglio al salvataggio: un preset che da solo supera il limite viene escluso dalla
+rotazione.
 
 I flag di attivazione fanno doppia funzione come valori di maschera predefiniti:
 

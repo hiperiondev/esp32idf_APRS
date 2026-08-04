@@ -83,9 +83,16 @@ Each service (tracker / igate / digi / wx / …) stores a **bitmask**, not a pat
 string. Bit *N* selects ``g_config.path[N]``, one of the four free-text presets
 edited on the *System* page. ``aprs_path_build_suffix()`` concatenates every
 selected non-empty slot; selected-but-empty slots are skipped. It is shared by
-every service that originates traffic and enforces the AX.25 8-via limit at
-transmit time, so a configuration that reached the device without passing
-through a web form cannot put an over-long path on the air.
+the beacons, weather, telemetry, messages and query answers, and enforces the
+AX.25 8-via limit at transmit time, so a configuration that reached the device
+without passing through a web form cannot put an over-long path on the air.
+
+Objects/Items are the one service that does not join the slots together: their
+proportional pathing sends **one** preset per transmission and rotates through
+the selection, so ``objitem_paths()`` builds the list itself. The hop limit binds
+per preset there rather than across the selection, and it is counted with the
+same ``app_config_path_hop_count()`` the shared builder and the save-time clamp
+use — a preset that is over the limit on its own is dropped from the rotation.
 
 The activation flags double as default bitmask values:
 

@@ -55,8 +55,9 @@ FX.25 wraps AX.25 in a Reed–Solomon code, letting the receiver correct bit
 errors that would otherwise fail the CRC. It is fully backward compatible: an
 FX.25 frame carries a normal AX.25 frame inside a correlation-tagged RS block,
 so plain-AX.25 receivers still decode the inner frame. The mode is selectable:
-``0`` = off, ``1`` = RX only, ``2`` = RX+TX (requires ``-DENABLE_FX25`` at
-build time). The RS implementation lives in ``lwfec/`` (``rs.c``, ``gf.c``).
+``0`` = off, ``1`` = RX only, ``2`` = RX+TX. The codec itself is always built in
+— the component's own ``CMakeLists.txt`` defines ``ENABLE_FX25`` publicly — so
+switching modes needs no rebuild. The RS implementation lives in ``lwfec/`` (``rs.c``, ``gf.c``).
 
 Public API
 ==========

@@ -197,8 +197,8 @@ Multiple instances, error handling, thread safety
 * **Multiple instances** of the same sensor type coexist: give each a distinct
   ``name`` (``bme280-indoor`` / ``bme280-outdoor``), its own ``ctx``, and its own
   address/bus/GPIO baked into that ``ctx``.
-* An ``init()`` error marks the driver failed **permanently** (until
-  unregister+register). A ``save()`` error is logged and skipped **for that one
+* An ``init()`` error marks the driver failed **permanently**: the registry has
+  no unregister entry point, so the flag lasts until the next reboot. A ``save()`` error is logged and skipped **for that one
   cycle only** — the next tick tries again, so an occasional bus hiccup does not
   disable the driver.
 * The registry calls are all mutex-protected. A driver's own

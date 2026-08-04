@@ -401,8 +401,11 @@ Telemetria
      - Coefficienti a/b/c per canale trasmessi nel messaggio ``EQNS.``. Il
        report dati porta la lettura grezza del sensore ed è il ricevitore ad
        applicare la conversione — la divisione standard di APRS101 tra report e
-       metadati. I campi di intervallo grezzo per canale vengono salvati e
-       mostrati, ma non scalano il valore trasmesso
+       metadati. L'intervallo grezzo per canale limita il valore che va in onda,
+       così una sonda che legge oltre la propria scala riporta l'estremo
+       dell'intervallo dichiarato invece di una cifra che nessun ricevitore può
+       tracciare; un intervallo invertito o vuoto non dichiara nulla e viene
+       ignorato
    * - Mappatura dei sensori in tempo reale per canale di telemetria
      - ⚠️ (di solito fissa nel codice, o alimentata da uno script esterno)
      - ✅

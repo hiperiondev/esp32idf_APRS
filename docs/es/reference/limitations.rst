@@ -402,8 +402,10 @@ Telemetría
      - Coeficientes a/b/c por canal transmitidos en el mensaje ``EQNS.``. El
        reporte de datos lleva la lectura cruda del sensor y es el receptor quien
        aplica la conversión — la división estándar de APRS101 entre reporte y
-       metadatos. Los campos de rango crudo por canal se guardan y se muestran,
-       pero no escalan el valor transmitido
+       metadatos. El rango crudo por canal acota el valor que sale al aire, así
+       que una sonda que lee más allá de su propia escala informa el extremo del
+       rango declarado en vez de una cifra que ningún receptor puede graficar;
+       un rango invertido o vacío no declara nada y se ignora
    * - Mapeo de sensores en vivo por canal de telemetría
      - ⚠️ (habitualmente fijo en código, o alimentado por un script externo)
      - ✅

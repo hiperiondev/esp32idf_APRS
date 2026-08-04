@@ -56,8 +56,10 @@ errores de bit que de otro modo fallarían el CRC. Es totalmente retrocompatible
 una trama FX.25 lleva una trama AX.25 normal dentro de un bloque RS con etiqueta
 de correlación, así que los receptores de AX.25 puro siguen decodificando la
 trama interior. El modo es seleccionable: ``0`` = desactivado, ``1`` = solo RX,
-``2`` = RX+TX (requiere ``-DENABLE_FX25`` en compilación). La implementación RS
-vive en ``lwfec/`` (``rs.c``, ``gf.c``).
+``2`` = RX+TX. El códec siempre se compila — el propio ``CMakeLists.txt`` del
+componente define ``ENABLE_FX25`` de forma pública — así que cambiar de modo no
+requiere recompilar. La implementación RS vive en ``lwfec/`` (``rs.c``,
+``gf.c``).
 
 API pública
 ===========

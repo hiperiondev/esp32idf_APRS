@@ -205,8 +205,9 @@ Istanze multiple, gestione errori, thread safety
 * **Istanze multiple** dello stesso tipo di sensore coesistono: dai a ciascuna un
   ``name`` distinto (``bme280-indoor`` / ``bme280-outdoor``), il proprio ``ctx``,
   e il proprio indirizzo/bus/GPIO incorporato in quel ``ctx``.
-* Un errore di ``init()`` marca il driver come fallito **permanentemente** (fino a
-  disregistra+registra). Un errore di ``save()`` è registrato e saltato **solo per
+* Un errore di ``init()`` marca il driver come fallito **permanentemente**: il
+  registro non ha un punto di ingresso per disregistrare, quindi il contrassegno
+  dura fino al riavvio successivo. Un errore di ``save()`` è registrato e saltato **solo per
   quel ciclo** — il tick successivo lo riprova, così che un singhiozzo occasionale
   del bus non disabiliti il driver.
 * Le chiamate al registro sono tutte protette da mutex.

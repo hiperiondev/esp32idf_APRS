@@ -56,8 +56,10 @@ correggere errori di bit che altrimenti fallirebbero il CRC. È totalmente
 retrocompatibile: un frame FX.25 porta un normale frame AX.25 dentro un blocco RS
 con tag di correlazione, quindi i ricevitori di puro AX.25 decodificano comunque
 il frame interno. La modalità è selezionabile: ``0`` = disattivato, ``1`` =
-solo RX, ``2`` = RX+TX (richiede ``-DENABLE_FX25`` in compilazione).
-L'implementazione RS vive in ``lwfec/`` (``rs.c``, ``gf.c``).
+solo RX, ``2`` = RX+TX. Il codec viene sempre compilato — il ``CMakeLists.txt``
+del componente stesso definisce ``ENABLE_FX25`` pubblicamente — quindi cambiare
+modalità non richiede una ricompilazione. L'implementazione RS vive in
+``lwfec/`` (``rs.c``, ``gf.c``).
 
 API pubblica
 ============

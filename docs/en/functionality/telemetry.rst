@@ -31,8 +31,8 @@ Per APRS101 chapter 13, a telemetry report carries:
 
 Each analog channel has an enable flag, a source sensor-channel index
 (``tlm_ana_channel[]``, ``0xFF`` = none), a quadratic calibration
-(``value = a·x² + b·x + c``), an expected raw-input range, and a decimal-place
-count. Each digital bit has an enable flag, a source channel, a sense
+(``value = a·x² + b·x + c``), an expected raw-input range that bounds the
+transmitted value, and a decimal-place count. Each digital bit has an enable flag, a source channel, a sense
 (Normal / Inverted), per-bit RF/INET routing, and an operator-facing label used
 in the BITS message.
 
@@ -47,10 +47,13 @@ encodes the periodic data report:
 
    T#sss,a1,a2,a3,a4,a5,bbbbbbbb
 
-The analog fields carry the calibrated values (with the per-channel field width
-and decimals applied), and the eight ``b`` characters are the digital bits. The
-report **never** carries channel names — per the APRS spec, names, units and
-equations travel separately.
+The analog fields carry the **raw** sensor reading, clamped to the channel's
+declared raw range and written with the per-channel field width and decimals;
+the eight ``b`` characters are the digital bits. The calibration is *not*
+applied here — APRS101 splits report from metadata, so the ``EQNS.`` message
+carries the a/b/c coefficients and each receiving station recovers the
+engineering value itself. The report **never** carries channel names — per the
+APRS spec, names, units and equations travel separately.
 
 The metadata messages
 =====================
