@@ -398,16 +398,17 @@ int igateProcess(ax25_msg_t *packet) {
         }
     }
 
-    // [IGATE] Filter (RF->INET): payload-type whitelist configured on the web
-    // IGATE Filter page ("RF -> INET" fieldset). g_config.rf2inetFilter was
-    // computed from the checkboxes and persisted (page_igate.c) but nothing
-    // ever consulted it here, so every checkbox combination - including
-    // "everything unchecked" - gated identically (all payload types passed
-    // through, unfiltered). Only the INET->RF half of this same feature
-    // (aprs_service.c, g_config.inet2rfFilter) was actually enforced. Apply
-    // the same classify+whitelist check symmetrically on this side, using the
-    // AX.25 info field directly (NUL-terminated copy; packet->info is not
-    // itself NUL-terminated).
+    // [IGATE] Filter (RF->INET): g_config.rf2inetFilter is a whitelist of
+    // payload types, one bit per type, built from the checkboxes in the
+    // "RF -> INET" fieldset of the web IGate page. Classify the frame's info
+    // field and drop it unless its bit is set. This is the RF side of the pair
+    // aprs_service.c applies to g_config.inet2rfFilter for INET->RF traffic:
+    // both halves classify with the same aprs_filter helpers and test with the
+    // same aprs_filter_pass(), so a type turned off gates identically whichever
+    // direction it travels in.
+    //
+    // The classifier takes a C string while packet->info is a raw AX.25 field
+    // with no terminator of its own, hence the bounded copy into a local.
     char info[AX25_FRAME_MAX_SIZE + 1];
     {
         size_t n = packet->len < AX25_FRAME_MAX_SIZE ? packet->len : AX25_FRAME_MAX_SIZE;

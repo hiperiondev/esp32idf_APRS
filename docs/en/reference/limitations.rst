@@ -464,7 +464,9 @@ Objects, Items, Bulletins, Status
        graph APRS101 ch.15 defines, six counts per period separated by ``.``,
        hour 0 being the current clock hour. The histogram belongs to the
        station's row and travels with it as the row moves to the front of the
-       table
+       table, and only a received frame ever counts into it — answering the
+       query rolls the graph forward to the current hour but leaves the stored
+       counts alone, so a station can be asked about as often as one likes
    * - Station Capabilities (``<`` DTI)
      - ✅
      - ✅

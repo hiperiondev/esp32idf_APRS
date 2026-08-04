@@ -527,7 +527,14 @@ static void respondHeard(const char *fromCall, const char *arg, query_source_t s
     if (target[0] == 0) {
         // No callsign given: the query is meaningless without one, so say so
         // rather than answering about an empty callsign.
-        snprintf(text, sizeof(text), "?APRSH needs a callsign");
+        //
+        // The wording deliberately keeps the keyword away from the first
+        // character. Every answer here leaves as an APRS text message, and a
+        // message payload that opens with '?' is itself a directed query by
+        // APRS101 ch.15: a peer running a responder would parse this reply as
+        // a fresh "?APRSH" and answer about whatever word followed it. Any
+        // phrasing works as long as it does not start with '?'.
+        snprintf(text, sizeof(text), "Usage: ?APRSH <call>");
         txMessageTo(fromCall, text, source);
         return;
     }
@@ -684,10 +691,16 @@ void query_service(void) {
 //
 // `directed` selects the table: a general query is one of the three APRS101
 // chapter 15 defines as broadcast, while a directed query may additionally be
-// any of the per-station ones. Keywords are matched whole, so "?APRS?" and
-// "?APRSP" cannot be confused with one another, and the longest-matching
-// entry wins for the two that share a prefix ("?APRST" and its "?PING?"
-// alias are distinct strings, but "?APRS?" is a prefix of nothing else here).
+// any of the per-station ones.
+//
+// Matching is whole-keyword and first-hit-wins: the table is walked in order
+// and the first entry whose full keyword matches the head of `info` is
+// returned, with no attempt to prefer a longer entry further down. That rule
+// constrains what may be added here - no keyword may be a prefix of another
+// one, or the shorter of the pair would shadow the longer for every query.
+// The set below satisfies it: no keyword is a prefix of any other, the eight
+// that share the "?APRS" stem being told apart by their sixth character
+// ("?APRS?" against "?APRSP", "?APRST" against its "?PING?" alias).
 static bool matchQueryType(const char *info, bool directed, query_type_t *type, const char **arg) {
     static const struct {
         const char *keyword;

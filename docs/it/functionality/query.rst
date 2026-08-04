@@ -161,8 +161,16 @@ inoltre *Query dirette estese* (``query_ext_en``).
      - Il grafico di 18 ore di ascolto di una stazione: ``Hrd: h0 h1 … h17``, sei
        conteggi per periodo separati da ``.``, con l'ora 0 corrispondente all'ora
        di orologio corrente. L'istogramma vive in ``components/lastheard`` (vedi
-       ``lastheard_heard_history()`` e ``LASTHEARD_HEARD_HOURS``). Senza
-       l'argomento nominativo, il risponditore lo segnala.
+       ``lastheard_heard_history()`` e ``LASTHEARD_HEARD_HOURS``). Leggere il
+       grafico non è traffico: la risposta porta avanti l'istogramma fino all'ora
+       di orologio corrente, così un silenzio trascorso appare come il vuoto che
+       è, ma nessuna ora viene conteggiata, e la stessa stazione interrogata più
+       volte riporta le stesse cifre. Senza l'argomento nominativo il
+       risponditore risponde ``Usage: ?APRSH <call>`` — la formulazione tiene di
+       proposito la parola chiave lontana dal primo carattere, poiché un
+       messaggio il cui testo inizia con ``?`` è a sua volta una query diretta e
+       un peer che esegua un risponditore leggerebbe la risposta come una nuova
+       domanda.
    * - ``?APRSM``
      - Reinvia i messaggi pendenti di questa stazione per l'operatore che
        interroga, fino a ``MSG_QUERY_BURST_MAX`` (3) trame per query. Ciò che

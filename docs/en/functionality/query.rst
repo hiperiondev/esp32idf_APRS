@@ -153,8 +153,15 @@ available in that set; the remaining, list-style ones additionally require
      - The 18-hour heard graph for one station: ``Hrd: h0 h1 … h17``, six counts
        per period separated by ``.``, hour 0 being the current clock hour. The
        histogram itself lives in ``components/lastheard`` (see
-       ``lastheard_heard_history()`` and ``LASTHEARD_HEARD_HOURS``). Without a
-       callsign argument the responder says so.
+       ``lastheard_heard_history()`` and ``LASTHEARD_HEARD_HOURS``). Reading the
+       graph is not itself traffic: the answer rolls the histogram forward to
+       the current clock hour so an elapsed silence shows as the gap it is, but
+       no hour is counted into, and the same station queried repeatedly reports
+       the same figures. Without a callsign argument the responder answers
+       ``Usage: ?APRSH <call>`` — the wording keeps the keyword off the first
+       character on purpose, since a message payload opening with ``?`` is a
+       directed query in its own right and a peer running a responder would
+       read the reply as a fresh question.
    * - ``?APRSM``
      - Re-sends this station's pending messages for the querying operator, up to
        ``MSG_QUERY_BURST_MAX`` (3) frames per query. Anything still queued

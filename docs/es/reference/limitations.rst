@@ -476,7 +476,10 @@ Objetos, Items, Boletines, Estado
        ``Hrd: h0 h1 ... h17`` que define APRS101 cap.15, seis conteos por
        período separados por ``.``, siendo la hora 0 la hora reloj actual. El
        histograma pertenece a la fila de la estación y viaja con ella cuando la
-       fila pasa al frente de la tabla
+       fila pasa al frente de la tabla, y sólo una trama recibida cuenta en él
+       —responder la consulta adelanta el gráfico hasta la hora actual pero deja
+       intactos los conteos guardados, así que se puede preguntar por una
+       estación tantas veces como se quiera
    * - Capacidades de estación (DTI ``<``)
      - ✅
      - ✅

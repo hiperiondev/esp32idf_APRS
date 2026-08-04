@@ -158,8 +158,16 @@ además *Consultas dirigidas extendidas* (``query_ext_en``).
      - El gráfico de 18 horas de escucha de una estación: ``Hrd: h0 h1 … h17``,
        seis conteos por período separados por ``.``, siendo la hora 0 la hora de
        reloj actual. El histograma vive en ``components/lastheard`` (véanse
-       ``lastheard_heard_history()`` y ``LASTHEARD_HEARD_HOURS``). Sin argumento
-       de indicativo, el respondedor lo indica.
+       ``lastheard_heard_history()`` y ``LASTHEARD_HEARD_HOURS``). Leer el
+       gráfico no es tráfico: la respuesta adelanta el histograma hasta la hora
+       de reloj actual, de modo que un silencio transcurrido se ve como el hueco
+       que es, pero no se cuenta ninguna hora, y la misma estación consultada
+       repetidas veces informa las mismas cifras. Sin argumento de indicativo el
+       respondedor contesta ``Usage: ?APRSH <call>`` — la redacción mantiene la
+       palabra clave fuera del primer carácter a propósito, ya que un mensaje
+       cuyo texto empieza con ``?`` es en sí mismo una consulta dirigida y un
+       par que corra un respondedor leería la respuesta como una pregunta
+       nueva.
    * - ``?APRSM``
      - Reenvía los mensajes pendientes de esta estación para el operador que
        consulta, hasta ``MSG_QUERY_BURST_MAX`` (3) tramas por consulta. Lo que

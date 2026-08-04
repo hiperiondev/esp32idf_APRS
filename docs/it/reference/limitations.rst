@@ -476,7 +476,10 @@ Oggetti, Item, Bollettini, Stato
        ``Hrd: h0 h1 ... h17`` definito da APRS101 cap.15, sei conteggi per
        periodo separati da ``.``, con l'ora 0 pari all'ora corrente.
        L'istogramma appartiene alla riga della stazione e viaggia con essa quando
-       la riga passa in testa alla tabella
+       la riga passa in testa alla tabella, e solo una trama ricevuta viene
+       conteggiata al suo interno — rispondere alla query porta avanti il grafico
+       fino all'ora corrente ma lascia intatti i conteggi memorizzati, quindi si
+       può chiedere di una stazione quante volte si vuole
    * - Capacità di stazione (DTI ``<``)
      - ✅
      - ✅

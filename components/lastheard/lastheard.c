@@ -63,15 +63,24 @@ static size_t s_count = 0; // live entries, s_buf[0..s_count-1], most recent fir
 static SemaphoreHandle_t s_lock = NULL;
 static bool s_inited = false;
 
-// Roll one entry's hourly histogram forward to the current clock hour, then
-// count one packet into it. A brand-new entry (hour_slot == 0) starts with a
-// histogram of all zero except the current hour. A station heard again inside
-// the same clock hour it was last heard in just adds to hourly[0]. A station
-// heard again after N whole hours have passed shifts the histogram right by N
-// slots (zero-filling the hours that had no traffic) before counting this
-// packet, so a station that goes briefly silent still reads as silent for
+// Roll one entry's hourly histogram forward to the current clock hour, and
+// optionally count one packet into it. A brand-new entry (hour_slot == 0)
+// starts with a histogram of all zero except the current hour. A station heard
+// again inside the same clock hour it was last heard in just adds to hourly[0].
+// A station heard again after N whole hours have passed shifts the histogram
+// right by N slots (zero-filling the hours that had no traffic) before counting
+// this packet, so a station that goes briefly silent still reads as silent for
 // those hours rather than skipping straight to "last heard" and hiding the gap.
-static void rollHourlyHistogram(lastheard_entry_t *e, time_t now) {
+//
+// count_packet separates the two callers this has. The insertion path passes
+// true: a frame just arrived and belongs in the current hour. The reader path
+// passes false: it rolls the histogram only so the answer reflects the hours
+// that have elapsed since the last frame, and reading the graph is not itself
+// traffic. Keeping the two apart means the counter is only ever bumped by a
+// real packet, so a station sitting at UINT16_MAX for the current hour - where
+// the saturation guard below stops counting - is not silently drained by every
+// query that reads it.
+static void rollHourlyHistogram(lastheard_entry_t *e, time_t now, bool count_packet) {
     time_t nowHour = now / 3600;
 
     if (e->hour_slot == 0) {
@@ -94,7 +103,7 @@ static void rollHourlyHistogram(lastheard_entry_t *e, time_t now) {
     // nowHour < e->hour_slot only if the wall clock stepped backwards (e.g. an
     // NTP correction); the histogram is left as-is rather than guessed at.
 
-    if (e->hourly[0] < UINT16_MAX)
+    if (count_packet && e->hourly[0] < UINT16_MAX)
         e->hourly[0]++;
 }
 
@@ -177,7 +186,7 @@ void lastheard_add(const char *callsign, const char *path, bool via_rf, bool dir
     }
 
     time_t now = time(NULL);
-    rollHourlyHistogram(&entry, now);
+    rollHourlyHistogram(&entry, now, true);
 
     entry.time = now;
     strncpy(entry.callsign, call, sizeof(entry.callsign) - 1);
@@ -294,9 +303,10 @@ bool lastheard_heard_history(const char *callsign, uint16_t out[LASTHEARD_HEARD_
             continue;
         // Bring the histogram up to the current wall-clock hour before handing
         // it out, so a station that has gone quiet reports the real gap
-        // instead of stale counts from its last frame's hour.
-        rollHourlyHistogram(&s_buf[i], time(NULL));
-        s_buf[i].hourly[0]--; // undo the "one packet heard" bump rollHourlyHistogram() just added
+        // instead of stale counts from its last frame's hour. Rolling is all
+        // this does: reading the graph is not traffic, so no hour is counted
+        // into and the stored row reads the same however often it is queried.
+        rollHourlyHistogram(&s_buf[i], time(NULL), false);
         memcpy(out, s_buf[i].hourly, sizeof(s_buf[i].hourly));
         found = true;
         break;

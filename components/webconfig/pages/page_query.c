@@ -71,8 +71,18 @@ esp_err_t page_query_post(httpd_req_t *req) {
     g_config.query_rf = web_form_get_bool(body, "queryRf");
     g_config.query_inet = web_form_get_bool(body, "queryInet");
     g_config.query_aprs_en = web_form_get_bool(body, "queryAprsEn");
+    // These two mirror the feature gates the GET renders them under. A form
+    // only carries the controls that were drawn, and an absent checkbox reads
+    // as false, so a build without the feature would otherwise clear the
+    // stored value on every save of this page - discarding a setting the
+    // operator never saw and cannot restore until the feature is compiled
+    // back in.
+#ifdef ENABLE_WEATHER
     g_config.query_wx_en = web_form_get_bool(body, "queryWxEn");
+#endif
+#ifdef ENABLE_IGATE
     g_config.query_igate_en = web_form_get_bool(body, "queryIgateEn");
+#endif
     g_config.query_directed_en = web_form_get_bool(body, "queryDirectedEn");
     g_config.query_ext_en = web_form_get_bool(body, "queryExtEn");
     g_config.query_min_interval_sec = (uint16_t)web_form_get_int(body, "queryMinInterval", g_config.query_min_interval_sec);

@@ -385,6 +385,11 @@ void sendAPRSAck(const char *toCall, const char *msgNo) {
     app_config_lock();
     memcpy(myCall, g_config.msg_mycall, sizeof(myCall));
     app_config_unlock();
+    // The copy above takes the full field width, so termination depends on
+    // what the config loader stored. Force it: everything downstream treats
+    // this as a C string, and a field filled edge to edge would send it
+    // reading past the end of the local buffer.
+    myCall[sizeof(myCall) - 1] = 0;
 
     char info[160];
     snprintf(info, sizeof(info), ":%s:ack%s", toCallFixed, msgNo);
@@ -400,6 +405,11 @@ int message_send_pending_to(const char *toCall) {
     app_config_lock();
     memcpy(myCall, g_config.msg_mycall, sizeof(myCall));
     app_config_unlock();
+    // The copy above takes the full field width, so termination depends on
+    // what the config loader stored. Force it: everything downstream treats
+    // this as a C string, and a field filled edge to edge would send it
+    // reading past the end of the local buffer.
+    myCall[sizeof(myCall) - 1] = 0;
 
     int sent = 0;
     int held = 0;
@@ -461,6 +471,11 @@ void sendAPRSMessageRetry(void) {
     app_config_lock();
     memcpy(myCall, g_config.msg_mycall, sizeof(myCall));
     app_config_unlock();
+    // The copy above takes the full field width, so termination depends on
+    // what the config loader stored. Force it: everything downstream treats
+    // this as a C string, and a field filled edge to edge would send it
+    // reading past the end of the local buffer.
+    myCall[sizeof(myCall) - 1] = 0;
 
     for (int i = 0; i < MSG_QUEUE_SIZE; i++) {
         if (!s_queue[i].used || s_queue[i].ack <= 0)
