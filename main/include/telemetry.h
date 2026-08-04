@@ -49,6 +49,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "must_check.h" // APRS_MUST_CHECK: the persistence entry points below may not have their result discarded
+
 /**
  * @brief Number of analog channels A1-A5 (APRS101 Ch.13).
  */
@@ -163,8 +165,12 @@ bool telemetry_config_load(telemetry_config_t *out);
  *
  * @param in Source configuration (must be non-NULL).
  * @return true on success.
+ *
+ * @note Declared ::APRS_MUST_CHECK: a call site that discards the result
+ * reports success to the user for a write that may never have reached
+ * flash, so ignoring it fails the build.
  */
-bool telemetry_config_save(const telemetry_config_t *in);
+bool telemetry_config_save(const telemetry_config_t *in) APRS_MUST_CHECK;
 
 /**
  * @brief Fill @p out with the factory-default telemetry configuration

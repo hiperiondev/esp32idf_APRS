@@ -31,11 +31,14 @@
 #include <string.h>
 
 #include "app_config.h"
+#include "esp_log.h"
 #include "objects_items.h"
 #include "pages.h"
 #include "telemetry.h"
 #include "translations.h"
 #include "web_common.h"
+
+static const char *TAG = "page_station";
 
 // @brief Re-mirror the just-saved "My Station" identity/position/PHG into
 // every other page's fields whose "Use My Station Data" (or "Use My Station
@@ -44,16 +47,22 @@
 // Every consumer page (IGate/Digipeater/Tracker/WX/Message/Telemetry/Objects)
 // only takes its snapshot of g_config.my_* at the moment *that* page itself is
 // saved, since the fields are disabled client-side and never POST while
-// "Use My Station Data" is checked. That means saving the Station page alone
-// left every other page's stored snapshot stale until the user happened to
-// re-save that other page too. This function is called right after the
-// Station page persists g_config.my_*, so all dependent snapshots are
-// refreshed in the same action and nothing goes stale.
+// "Use My Station Data" is checked. Calling this right after the Station page
+// updates g_config.my_* refreshes every dependent snapshot in the same action,
+// so none of them is left holding a superseded callsign or position.
+//
+// Two of those consumers keep their data in their own LittleFS file rather
+// than in g_config (telemetry.json and objitems.json), so refreshing them is a
+// write of its own that can fail independently of the config.json write the
+// caller goes on to make.
 //
 // @note Must be called with app_config_lock() already held (all g_config
 // fields touched here belong to that same lock), and BEFORE app_config_save()
 // so the refreshed values are part of the same config.json write.
-static void station_resync_dependents(void) {
+//
+// @return true if every dependent store that needed rewriting was written.
+// The g_config mirrors above cannot fail and are always applied.
+static bool station_resync_dependents(void) {
     // -- IGate ---------------------------------------------------------------
     if (g_config.igate_use_station) {
         strncpy(g_config.aprs_mycall, g_config.my_callsign, sizeof(g_config.aprs_mycall) - 1);
@@ -101,6 +110,10 @@ static void station_resync_dependents(void) {
         g_config.msg_mycall[sizeof(g_config.msg_mycall) - 1] = 0;
     }
 
+    // Tracks the two dependent stores below. The g_config mirrors above are
+    // in-memory field copies and have nothing that can fail.
+    bool ok = true;
+
     // -- Telemetry (own JSON store, /storage/telemetry.json) -----------------
     // Loaded/saved independently of g_config, so it needs its own
     // read-modify-write here rather than a direct g_config field touch.
@@ -110,7 +123,10 @@ static void station_resync_dependents(void) {
             if (tcfg.use_station) {
                 strncpy(tcfg.mycall, g_config.my_callsign, sizeof(tcfg.mycall) - 1);
                 tcfg.mycall[sizeof(tcfg.mycall) - 1] = 0;
-                telemetry_config_save(&tcfg);
+                if (!telemetry_config_save(&tcfg)) {
+                    ESP_LOGE(TAG, "telemetry callsign mirror could not be written to flash");
+                    ok = false;
+                }
             }
         }
     }
@@ -130,10 +146,14 @@ static void station_resync_dependents(void) {
                     changed = true;
                 }
             }
-            if (changed)
-                objitems_save(&set);
+            if (changed && !objitems_save(&set)) {
+                ESP_LOGE(TAG, "objects/items PHG mirror could not be written to flash");
+                ok = false;
+            }
         }
     }
+
+    return ok;
 }
 
 esp_err_t page_station_get(httpd_req_t *req) {
@@ -299,11 +319,18 @@ esp_err_t page_station_post(httpd_req_t *req) {
     // disabled client-side and never POST while the checkbox is on). Refresh
     // all of those stored snapshots now, in the same action, so they don't go
     // stale until the user happens to revisit and re-save each page.
-    station_resync_dependents();
+    bool deps_ok = station_resync_dependents();
 
     app_config_unlock();
 
-    app_config_save();
-    web_send_saved_redirect(req, "/station");
+    // Saving this page writes three separate LittleFS files: the two dependent
+    // stores above and config.json here. Every one of them is attempted, and
+    // the page reports success only if all three landed - a partial save leaves
+    // the station's identity split across stores that no longer agree.
+    bool cfg_ok = app_config_save();
+    if (!cfg_ok)
+        ESP_LOGE(TAG, "station settings could not be written to flash");
+
+    web_send_save_result(req, deps_ok && cfg_ok, "/station");
     return ESP_OK;
 }

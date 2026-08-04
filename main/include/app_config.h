@@ -51,6 +51,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "must_check.h" // APRS_MUST_CHECK: the persistence entry points below may not have their result discarded
+
 /**
  * @name Firmware UI language selection
  *
@@ -526,8 +528,12 @@ bool app_config_load(void);
  * @brief Serialize ::g_config to /storage/config.json (atomic: write tmp then
  * rename).
  * @return true on success.
+ *
+ * @note Declared ::APRS_MUST_CHECK: a call site that discards the result
+ * reports success to the user for a write that may never have reached
+ * flash, so ignoring it fails the build.
  */
-bool app_config_save(void);
+bool app_config_save(void) APRS_MUST_CHECK;
 
 /**
  * @brief Wipe the configuration back to factory defaults and persist.

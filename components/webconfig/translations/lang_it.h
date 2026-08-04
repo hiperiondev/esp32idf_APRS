@@ -35,6 +35,7 @@
 #define TR_UNAUTHORIZED     "401 Non autorizzato"
 #define TR_FORBIDDEN_CSRF   "403 Vietato: impossibile verificare l'origine della richiesta"
 #define TR_SAVED_REDIRECT   "Salvato. Reindirizzamento in corso..."
+#define TR_SAVE_FAILED "Salvataggio non riuscito: non è stato possibile scrivere le impostazioni nella memoria flash. Restano attive fino al prossimo riavvio."
 
 /** @} */
 

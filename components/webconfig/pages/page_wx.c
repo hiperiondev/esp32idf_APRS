@@ -21,10 +21,13 @@
 #include <string.h>
 
 #include "app_config.h"
+#include "esp_log.h"
 #include "pages.h"
 #include "sensors_local.h"
 #include "translations.h"
 #include "web_common.h"
+
+static const char *TAG = "page_wx";
 
 // Human-readable label for every mappable APRS Weather Report field, indexed
 // by ::wx_field_id_t (declared in app_config.h). This list is exactly the set
@@ -426,7 +429,11 @@ esp_err_t page_wx_post(httpd_req_t *req) {
 
     app_config_unlock();
 
-    app_config_save();
-    web_send_saved_redirect(req, "/wx");
+    // The page rendered next is built from the live settings, so the save
+    // result is what decides whether the operator is told this reached flash.
+    bool ok = app_config_save();
+    if (!ok)
+        ESP_LOGE(TAG, "weather settings could not be written to flash");
+    web_send_save_result(req, ok, "/wx");
     return ESP_OK;
 }

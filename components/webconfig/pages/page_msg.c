@@ -21,10 +21,13 @@
 
 #include "afsk.h" // afsk_ptt_gpio_is_valid(): hardware-capable pins for the picker
 #include "app_config.h"
+#include "esp_log.h"
 #include "message.h"
 #include "pages.h"
 #include "translations.h"
 #include "web_common.h"
+
+static const char *TAG = "page_msg";
 
 // Renders the Message Alarm GPIO field as a <select>. The pin list itself is
 // restricted to what's physically able to drive an output
@@ -109,8 +112,15 @@ esp_err_t page_msg_post(httpd_req_t *req) {
 
     app_config_unlock();
 
-    app_config_save();
+    // The page rendered next is built from the live settings, so the save
+    // result is what decides whether the operator is told this reached flash.
+    bool ok = app_config_save();
+    if (!ok)
+        ESP_LOGE(TAG, "message settings could not be written to flash");
+
+    // Applied either way: the values are already live in g_config, and the
+    // alarm pin must follow them even when only the flash copy is stale.
     message_alarm_configure(g_config.msg_alarm_enable, g_config.msg_alarm_gpio);
-    web_send_saved_redirect(req, "/msg");
+    web_send_save_result(req, ok, "/msg");
     return ESP_OK;
 }

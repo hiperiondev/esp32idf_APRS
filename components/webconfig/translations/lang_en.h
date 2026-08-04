@@ -35,6 +35,7 @@
 #define TR_UNAUTHORIZED     "401 Unauthorized"
 #define TR_FORBIDDEN_CSRF   "403 Forbidden: request origin could not be verified"
 #define TR_SAVED_REDIRECT   "Saved. Redirecting..."
+#define TR_SAVE_FAILED      "Save failed: the settings could not be written to flash. They are still in effect until the next restart."
 
 /** @} */
 

@@ -51,6 +51,12 @@ static const char *TAG = "main";
 #define APP_TASK_STACK_SIZE 8192
 #define APP_TASK_PRIORITY   5
 
+// Pause between the two boot attempts at reading config.json. The failure
+// app_config_load() reports is a read that could not be completed at all
+// (typically no contiguous heap for the parse), so the retry is worth making
+// only after the allocations made during early startup have settled.
+#define CONFIG_LOAD_RETRY_DELAY_MS 250
+
 // Consecutive-disconnect counter used to back off reconnect attempts below.
 // Reset to 0 as soon as we get a real IP (see ip_event_handler).
 static uint8_t s_disconnectStreak = 0;
@@ -322,7 +328,25 @@ static void wifi_init(void) {
 // its own APP_TASK_STACK_SIZE stack, isolated from the system main task.
 static void app_task(void *arg) {
     // Loads config.json, or writes+loads factory defaults if missing/corrupt.
-    app_config_load();
+    // A false return is the one case that leaves g_config untouched - the file
+    // is believed intact but could not be read - so the whole station would
+    // otherwise run from a zero-initialized struct: no callsign, no beacon
+    // intervals, and an AP whose SSID is an empty string. Retry once, then put
+    // the factory set in place so the device always comes up on a reachable
+    // web admin the operator can correct it from.
+    if (!app_config_load()) {
+        ESP_LOGW(TAG, "Configuration load failed, retrying in %d ms", CONFIG_LOAD_RETRY_DELAY_MS);
+        vTaskDelay(pdMS_TO_TICKS(CONFIG_LOAD_RETRY_DELAY_MS));
+        if (!app_config_load()) {
+            ESP_LOGE(TAG, "Configuration could not be loaded, applying factory defaults");
+            app_config_set_defaults(&g_config);
+            // Persisting them is what makes the fallback survive the next
+            // reset. Failing to do so is worth reporting but not worth
+            // stopping the boot for: the defaults are already live in RAM.
+            if (!app_config_save())
+                ESP_LOGE(TAG, "Factory defaults could not be written, this boot runs from RAM only");
+        }
+    }
 
     // Apply the user-configured CPU frequency (System page) to the running
     // system, so the saved setting takes effect on the real clock and not only

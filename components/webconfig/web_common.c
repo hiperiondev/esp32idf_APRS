@@ -821,17 +821,37 @@ void web_send_footer(httpd_req_t *req) {
     httpd_resp_sendstr_chunk(req, NULL); // end chunked response
 }
 
-void web_send_saved_redirect(httpd_req_t *req, const char *location) {
-    char buf[256];
-    snprintf(buf, sizeof(buf),
-             "<!DOCTYPE html><html><head><meta charset='utf-8'>"
-             "<meta http-equiv='refresh' content='1;url=%s'></head>"
-             "<body>" TR_SAVED_REDIRECT "</body></html>",
-             location);
+void web_send_save_result(httpd_req_t *req, bool ok, const char *location) {
+    // Sized for the longest translation of either body plus two copies of the
+    // location, so neither branch can be truncated by snprintf().
+    char buf[512];
+
+    if (ok) {
+        snprintf(buf, sizeof(buf),
+                 "<!DOCTYPE html><html><head><meta charset='utf-8'>"
+                 "<meta http-equiv='refresh' content='1;url=%s'></head>"
+                 "<body>" TR_SAVED_REDIRECT "</body></html>",
+                 location);
+    } else {
+        // No meta refresh on this branch: the page the user came from is
+        // rendered from the live settings, so bouncing straight back to it
+        // would redisplay exactly what was typed and read as a success. The
+        // failure stays on screen until the operator follows the link.
+        snprintf(buf, sizeof(buf),
+                 "<!DOCTYPE html><html><head><meta charset='utf-8'></head>"
+                 "<body><p style='color:#cf222e;font-weight:600'>" TR_SAVE_FAILED "</p>"
+                 "<p><a href='%s'>&larr; %s</a></p></body></html>",
+                 location, location);
+    }
+
     httpd_resp_set_type(req, "text/html");
     httpd_resp_set_hdr(req, "Cache-Control", "no-store, no-cache, must-revalidate");
     httpd_resp_set_hdr(req, "Pragma", "no-cache");
     httpd_resp_sendstr(req, buf);
+}
+
+void web_send_saved_redirect(httpd_req_t *req, const char *location) {
+    web_send_save_result(req, true, location);
 }
 
 esp_err_t web_handle_css(httpd_req_t *req) {

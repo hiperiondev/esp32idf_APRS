@@ -29,6 +29,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "must_check.h" // APRS_MUST_CHECK: the persistence entry points below may not have their result discarded
+
 #define STORAGE_BASE_PATH       "/storage" /**< VFS mount point for the LittleFS storage partition. */
 #define STORAGE_PARTITION_LABEL "storage"  /**< Partition-table label of the LittleFS storage partition. */
 
@@ -48,8 +50,12 @@ bool storage_init(void);
  *
  * @param path Path of the file to remove.
  * @return true if the file was deleted.
+ *
+ * @note Declared ::APRS_MUST_CHECK: a call site that discards the result
+ * reports success to the user for a write that may never have reached
+ * flash, so ignoring it fails the build.
  */
-bool storage_delete(const char *path);
+bool storage_delete(const char *path) APRS_MUST_CHECK;
 
 /**
  * @brief Erase and reformat the whole LittleFS partition (the factory
@@ -62,8 +68,12 @@ bool storage_delete(const char *path);
  * copy no longer reflects the filesystem.
  *
  * @return true on success.
+ *
+ * @note Declared ::APRS_MUST_CHECK: a call site that discards the result
+ * reports success to the user for a write that may never have reached
+ * flash, so ignoring it fails the build.
  */
-bool storage_format(void);
+bool storage_format(void) APRS_MUST_CHECK;
 
 /**
  * @brief Take the filesystem-wide writer gate.

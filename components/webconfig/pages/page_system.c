@@ -25,9 +25,12 @@
 
 #include "app_config.h"
 #include "cpu_freq.h"
+#include "esp_log.h"
 #include "pages.h"
 #include "translations.h"
 #include "web_common.h"
+
+static const char *TAG = "page_system";
 
 esp_err_t page_system_get(httpd_req_t *req) {
     if (!web_check_auth(req))
@@ -111,19 +114,28 @@ esp_err_t page_system_post(httpd_req_t *req) {
 
     app_config_unlock();
 
-    app_config_save();
+    // The page rendered next is built from the live settings, so the save
+    // result is what decides whether the operator is told this reached flash.
+    bool ok = app_config_save();
+    if (!ok)
+        ESP_LOGE(TAG, "system settings could not be written to flash");
+
     // Apply the CPU frequency immediately; main.c also calls cpu_freq_apply()
     // right after app_config_load() at boot, so this selection is re-applied
     // on every subsequent power-up too.
     cpu_freq_apply();
-    web_send_saved_redirect(req, "/system");
+    web_send_save_result(req, ok, "/system");
     return ESP_OK;
 }
 
 esp_err_t page_default_reset(httpd_req_t *req) {
     if (!web_check_auth(req))
         return ESP_OK;
-    app_config_factory_reset();
-    web_send_saved_redirect(req, "/system");
+    // Same reasoning as the save handler: the defaults are live in RAM the
+    // moment this returns, so only the result tells the two cases apart.
+    bool ok = app_config_factory_reset();
+    if (!ok)
+        ESP_LOGE(TAG, "factory defaults could not be written to flash");
+    web_send_save_result(req, ok, "/system");
     return ESP_OK;
 }

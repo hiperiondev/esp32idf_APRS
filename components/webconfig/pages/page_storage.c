@@ -182,13 +182,23 @@ esp_err_t page_delete(httpd_req_t *req) {
 esp_err_t page_format(httpd_req_t *req) {
     if (!web_check_auth(req))
         return ESP_OK;
-    storage_format();
-    // storage_format unmounts nothing; config will be regenerated with defaults
-    // on next boot (or immediately, if caller wants). Trigger it now, through
-    // the prototype in app_config.h so the compiler keeps this call site in
-    // step with the definition.
-    app_config_load();
-    web_send_saved_redirect(req, "/storage");
+    bool ok = storage_format();
+    if (ok) {
+        // The format unmounts nothing, so config.json can be regenerated with
+        // defaults right now instead of waiting for the next boot. Called
+        // through the prototype in app_config.h so the compiler keeps this
+        // call site in step with the definition.
+        //
+        // Reached only when the erase actually succeeded: on a failed format
+        // the partition still holds the operator's files, and reloading would
+        // be the one action able to overwrite the configuration that the
+        // format did not manage to remove.
+        if (!app_config_load())
+            ESP_LOGW(TAG, "configuration could not be reloaded after format");
+    } else {
+        ESP_LOGE(TAG, "storage format failed, partition left as it was");
+    }
+    web_send_save_result(req, ok, "/storage");
     return ESP_OK;
 }
 

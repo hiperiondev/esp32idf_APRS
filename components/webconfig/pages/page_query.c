@@ -26,9 +26,12 @@
 // can never key the transmitter.
 
 #include "app_config.h"
+#include "esp_log.h"
 #include "pages.h"
 #include "translations.h"
 #include "web_common.h"
+
+static const char *TAG = "page_query";
 
 esp_err_t page_query_get(httpd_req_t *req) {
     if (!web_check_auth(req))
@@ -90,7 +93,11 @@ esp_err_t page_query_post(httpd_req_t *req) {
         g_config.query_min_interval_sec = 5;
     app_config_unlock();
 
-    app_config_save();
-    web_send_saved_redirect(req, "/query");
+    // The page rendered next is built from the live settings, so the save
+    // result is what decides whether the operator is told this reached flash.
+    bool ok = app_config_save();
+    if (!ok)
+        ESP_LOGE(TAG, "query settings could not be written to flash");
+    web_send_save_result(req, ok, "/query");
     return ESP_OK;
 }

@@ -948,8 +948,16 @@ uint32_t objitems_service(void) {
         ESP_LOGI(TAG, "On-demand transmission of all Objects/Items requested");
     }
 
+    // A false load means the file was missing or unusable and empty defaults
+    // were substituted; the pass runs on those either way. The result is
+    // cached until the next write, so the report is made on the transition
+    // rather than on every pass, which at this cadence would be a log flood.
+    static bool warned_load = false;
     objitems_t set;
-    objitems_load(&set);
+    bool loaded = objitems_load(&set);
+    if (!loaded && !warned_load)
+        ESP_LOGW(TAG, "%s unusable, transmitting from substituted defaults", OBJITEMS_PATH);
+    warned_load = !loaded;
 
     char src[16];
     resolve_source_call(src, sizeof(src));
@@ -1037,8 +1045,10 @@ uint32_t objitems_service(void) {
             soonest = s_next_due[i];
     }
 
-    if (dirty)
-        objitems_save(&set);
+    if (dirty) {
+        if (!objitems_save(&set))
+            ESP_LOGE(TAG, "kill sequence state could not be written to %s", OBJITEMS_PATH);
+    }
 
     ESP_LOGD(TAG, "objitems_service stack free: %u bytes", (unsigned)(uxTaskGetStackHighWaterMark(NULL) * sizeof(StackType_t)));
 

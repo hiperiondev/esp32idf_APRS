@@ -35,6 +35,7 @@
 #define TR_UNAUTHORIZED     "401 No autorizado"
 #define TR_FORBIDDEN_CSRF   "403 Prohibido: no se pudo verificar el origen de la solicitud"
 #define TR_SAVED_REDIRECT   "Guardado. Redirigiendo..."
+#define TR_SAVE_FAILED      "Error al guardar: no se pudieron escribir los ajustes en la memoria flash. Siguen activos hasta el próximo reinicio."
 
 /** @} */
 

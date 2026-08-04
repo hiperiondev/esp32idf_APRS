@@ -433,13 +433,23 @@ uint32_t bulletins_service(void) {
         return BULLETIN_START_DELAY_S;
     }
 
+    // A false load means the file was missing or unusable and empty defaults
+    // were substituted; the pass runs on those either way. The result is
+    // cached until the next write, so the report is made on the transition
+    // rather than on every pass, which at this cadence would be a log flood.
+    static bool warned_load = false;
     bulletins_t set;
-    bulletins_load(&set);
+    bool loaded = bulletins_load(&set);
+    if (!loaded && !warned_load)
+        ESP_LOGW(TAG, "%s unusable, transmitting from substituted defaults", BULLETINS_PATH);
+    warned_load = !loaded;
 
     // Enforce expiry first, and persist the disable so the web UI reflects
     // it even if nothing is transmitted this pass.
-    if (bulletins_apply_expiry(&set))
-        bulletins_save(&set);
+    if (bulletins_apply_expiry(&set)) {
+        if (!bulletins_save(&set))
+            ESP_LOGE(TAG, "expired bulletins could not be written to %s", BULLETINS_PATH);
+    }
 
     char src[16];
     resolve_source_call(src, sizeof(src));

@@ -293,8 +293,31 @@ void web_send_header(httpd_req_t *req, const char *title, const char *active_men
 void web_send_footer(httpd_req_t *req);
 
 /**
- * @brief Send a small "saved, redirecting..." response used after POST
- * handlers.
+ * @brief Send the outcome of a settings save as the response to a POST
+ * handler.
+ *
+ * On success this is the small "saved, redirecting..." page that bounces the
+ * browser back to @p location after a second. On failure it is an error body
+ * carrying ::TR_SAVE_FAILED and a plain link back to @p location, with no
+ * automatic redirect, so the operator sees that the values now on screen are
+ * the ones in RAM and not the ones on flash.
+ *
+ * This is the only correct response for handlers that persist anything: the
+ * page they render afterwards is built from the live settings and would look
+ * identical whether or not the write reached flash.
+ *
+ * @param req      Incoming request.
+ * @param ok       Result reported by the save/format call being answered for.
+ * @param location URL the browser is sent back to.
+ */
+void web_send_save_result(httpd_req_t *req, bool ok, const char *location);
+
+/**
+ * @brief Send the "saved, redirecting..." response.
+ *
+ * Equivalent to web_send_save_result() with @p ok true, for handlers that have
+ * nothing to persist and therefore nothing that can fail.
+ *
  * @param req      Incoming request.
  * @param location URL the browser is redirected to.
  */

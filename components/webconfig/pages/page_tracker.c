@@ -20,9 +20,12 @@
 #include <string.h>
 
 #include "app_config.h"
+#include "esp_log.h"
 #include "pages.h"
 #include "translations.h"
 #include "web_common.h"
+
+static const char *TAG = "page_tracker";
 
 esp_err_t page_tracker_get(httpd_req_t *req) {
     if (!web_check_auth(req))
@@ -117,7 +120,11 @@ esp_err_t page_tracker_post(httpd_req_t *req) {
 
     app_config_unlock();
 
-    app_config_save();
-    web_send_saved_redirect(req, "/tracker");
+    // The page rendered next is built from the live settings, so the save
+    // result is what decides whether the operator is told this reached flash.
+    bool ok = app_config_save();
+    if (!ok)
+        ESP_LOGE(TAG, "tracker settings could not be written to flash");
+    web_send_save_result(req, ok, "/tracker");
     return ESP_OK;
 }

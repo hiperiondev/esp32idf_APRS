@@ -45,3 +45,12 @@ idf_component_register(
         weather_telemetry
         message
 )
+
+# A discarded persistence result is a silent data-loss bug, not a style issue:
+# every save entry point declared APRS_MUST_CHECK (see main/include/must_check.h)
+# reports a write that may never have reached flash, and the page or task that
+# ignores it goes on to tell the operator the settings are stored. Promote the
+# warning to an error for this component's own sources only, so the guarantee
+# holds where those call sites live without reaching the IDF or managed
+# component trees.
+target_compile_options(${COMPONENT_LIB} PRIVATE -Werror=unused-result)

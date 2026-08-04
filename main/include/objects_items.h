@@ -68,6 +68,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "must_check.h" // APRS_MUST_CHECK: the persistence entry points below may not have their result discarded
+
 /**
  * @brief Number of independently configurable Objects/Items ("5 blocks").
  */
@@ -290,8 +292,12 @@ bool objitems_load(objitems_t *out);
  *
  * @param in Source set (must be non-NULL).
  * @return true on success.
+ *
+ * @note Declared ::APRS_MUST_CHECK: a call site that discards the result
+ * reports success to the user for a write that may never have reached
+ * flash, so ignoring it fails the build.
  */
-bool objitems_save(const objitems_t *in);
+bool objitems_save(const objitems_t *in) APRS_MUST_CHECK;
 
 /**
  * @brief Prepare the subsystem (creates the LittleFS lock and logs state).

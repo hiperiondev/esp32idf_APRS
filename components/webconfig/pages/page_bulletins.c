@@ -34,9 +34,12 @@
 #include <string.h>
 
 #include "bulletins.h"
+#include "esp_log.h"
 #include "pages.h"
 #include "translations.h"
 #include "web_common.h"
+
+static const char *TAG = "page_bulletins";
 
 esp_err_t page_bulletins_get(httpd_req_t *req) {
     if (!web_check_auth(req))
@@ -46,8 +49,10 @@ esp_err_t page_bulletins_get(httpd_req_t *req) {
     bulletins_load(&set);
     // Reflect expiry in the UI: a bulletin whose deadline has passed shows up
     // unchecked (and the change is persisted so it stays that way).
-    if (bulletins_apply_expiry(&set))
-        bulletins_save(&set);
+    if (bulletins_apply_expiry(&set)) {
+        if (!bulletins_save(&set))
+            ESP_LOGW(TAG, "expired bulletins could not be written to flash");
+    }
 
     web_send_header(req, TR_F_BULLETINS, "bulletins");
     httpd_resp_sendstr_chunk(req, "<form method='POST' action='/bulletins'>");
@@ -194,8 +199,13 @@ esp_err_t page_bulletins_post(httpd_req_t *req) {
     // (Re)arm expiry deadlines from the moment of save, then persist to
     // LittleFS. Saving is what restarts each bulletin's expiry window.
     bulletins_arm_expiry(&set);
-    bulletins_save(&set);
 
-    web_send_saved_redirect(req, "/bulletins");
+    // The page rendered next is built from the live settings, so the save
+    // result is what decides whether the operator is told this reached flash.
+    bool ok = bulletins_save(&set);
+    if (!ok)
+        ESP_LOGE(TAG, "bulletins could not be written to flash");
+
+    web_send_save_result(req, ok, "/bulletins");
     return ESP_OK;
 }

@@ -62,6 +62,10 @@ app_config_t g_config;
 // correct on its own terms: it avoids wasted flash writes and it is what lets
 // a save reuse a single static stdio buffer.) Created lazily so this file has
 // no init-order dependency.
+//
+// Returns NULL when the heap had no room for the mutex: every caller tests
+// the handle before using it, so an out-of-memory device reports a failed save
+// instead of taking a NULL handle, which aborts the calling task.
 static SemaphoreHandle_t s_config_mutex = NULL;
 
 static SemaphoreHandle_t config_mutex(void) {
@@ -80,7 +84,8 @@ static SemaphoreHandle_t config_mutex(void) {
 // flash serialization in app_config_save() and would stall readers): this one
 // is a strict LEAF lock, only ever held long enough to mutate/copy a few
 // fields. See the app_config_lock() contract in app_config.h. Created lazily
-// with the same one-time-init guard as config_mutex().
+// with the same one-time-init guard as config_mutex(), and NULL under the same
+// out-of-memory condition.
 static SemaphoreHandle_t s_data_mutex = NULL;
 
 static SemaphoreHandle_t data_mutex(void) {
@@ -95,11 +100,17 @@ static SemaphoreHandle_t data_mutex(void) {
 }
 
 void app_config_lock(void) {
-    xSemaphoreTake(data_mutex(), portMAX_DELAY);
+    // A device that could not allocate the mutex runs unserialized rather than
+    // aborting on a NULL handle: the same trade storage.c's writer gate makes,
+    // and the only alternative on a heap too small to hold one semaphore.
+    SemaphoreHandle_t m = data_mutex();
+    if (m)
+        xSemaphoreTake(m, portMAX_DELAY);
 }
 
 void app_config_unlock(void) {
-    xSemaphoreGive(data_mutex());
+    if (s_data_mutex)
+        xSemaphoreGive(s_data_mutex);
 }
 
 static void set_str(char *dst, size_t sz, const char *val) {
@@ -950,7 +961,16 @@ bool app_config_save(void) {
     // Serialize the whole save against any other save/load in flight (see
     // s_config_mutex comment above). Block indefinitely: a save must never
     // be silently dropped, and the critical section below is short.
-    xSemaphoreTake(config_mutex(), portMAX_DELAY);
+    //
+    // The handle is taken once and reused for the rest of the function, so the
+    // stream handed out by json_store_open_tmp() is checked against the very
+    // mutex this task holds.
+    SemaphoreHandle_t lock = config_mutex();
+    if (!lock) {
+        ESP_LOGE(TAG, "save mutex unavailable (out of memory), configuration not written");
+        return false;
+    }
+    xSemaphoreTake(lock, portMAX_DELAY);
 
     // Second, filesystem-wide gate (storage.h): config_mutex() only keeps two
     // config saves apart, while the temp-file + rename sequence below must
@@ -959,13 +979,13 @@ bool app_config_save(void) {
     // this gate second - the order storage.h's contract requires.
     storage_write_lock();
 
-    // config_mutex() is held across this whole function, which is what
+    // The save mutex is held across this whole function, which is what
     // json_store_open_tmp() asserts before handing back a stream whose stdio
     // buffer is already pinned.
-    FILE *f = json_store_open_tmp(CONFIG_TMP_PATH, TAG, config_mutex());
+    FILE *f = json_store_open_tmp(CONFIG_TMP_PATH, TAG, lock);
     if (!f) {
         storage_write_unlock();
-        xSemaphoreGive(config_mutex());
+        xSemaphoreGive(lock);
         return false;
     }
 
@@ -974,7 +994,7 @@ bool app_config_save(void) {
 
     if (!json_store_commit(f, CONFIG_TMP_PATH, CONFIG_PATH, TAG, "configuration")) {
         storage_write_unlock();
-        xSemaphoreGive(config_mutex());
+        xSemaphoreGive(lock);
         return false;
     }
 
@@ -984,7 +1004,7 @@ bool app_config_save(void) {
     // is confirmed.
     ESP_LOGI(TAG, "Caller stack high-water mark: %u bytes free", (unsigned)(uxTaskGetStackHighWaterMark(NULL) * sizeof(StackType_t)));
     storage_write_unlock();
-    xSemaphoreGive(config_mutex());
+    xSemaphoreGive(lock);
     return true;
 }
 

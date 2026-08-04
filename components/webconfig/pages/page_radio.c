@@ -32,9 +32,12 @@
 #include "afsk.h"
 #include "esp32idf_radioamateur_modem.h"
 #include "esp32idf_radioamateur_modem_config.h"
+#include "esp_log.h"
 #include "pages.h"
 #include "translations.h"
 #include "web_common.h"
+
+static const char *TAG = "page_radio";
 
 // PTT GPIO is a fixed, compile-time-only board wiring choice (MODEM_PTT_GPIO,
 // an internal radiomodem feature - like the audio ADC/DAC pins above, it is
@@ -327,7 +330,11 @@ esp_err_t page_radio_post(httpd_req_t *req) {
 
     app_config_unlock();
 
-    app_config_save();
+    // The page rendered next is built from the live settings, so the save
+    // result is what decides whether the operator is told this reached flash.
+    bool ok = app_config_save();
+    if (!ok)
+        ESP_LOGE(TAG, "radio/modem settings could not be written to flash");
 
     // Push every setting the modem accepts at runtime into the running modem,
     // so Save (and the loop test's auto-save, which POSTs this form before
@@ -345,6 +352,6 @@ esp_err_t page_radio_post(httpd_req_t *req) {
     // main.c, and this no-ops until it has.
     aprs_service_apply_modem_config();
 
-    web_send_saved_redirect(req, "/radio");
+    web_send_save_result(req, ok, "/radio");
     return ESP_OK;
 }

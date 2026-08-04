@@ -30,10 +30,13 @@
 #include <string.h>
 
 #include "app_config.h"
+#include "esp_log.h"
 #include "objects_items.h"
 #include "pages.h"
 #include "translations.h"
 #include "web_common.h"
+
+static const char *TAG = "page_objects";
 
 // Scope <select> for one element. Values match objitem_scope_t.
 static void render_scope_select(httpd_req_t *req, const char *name, objitem_scope_t cur) {
@@ -716,8 +719,12 @@ esp_err_t page_objects_post(httpd_req_t *req) {
 
     free(body);
 
-    objitems_save(&set);
+    // The page rendered next is built from the live settings, so the save
+    // result is what decides whether the operator is told this reached flash.
+    bool ok = objitems_save(&set);
+    if (!ok)
+        ESP_LOGE(TAG, "objects/items could not be written to flash");
 
-    web_send_saved_redirect(req, "/objects");
+    web_send_save_result(req, ok, "/objects");
     return ESP_OK;
 }

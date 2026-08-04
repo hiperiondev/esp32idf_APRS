@@ -22,10 +22,13 @@
 #include <string.h>
 
 #include "app_config.h"
+#include "esp_log.h"
 #include "esp_wifi.h"
 #include "pages.h"
 #include "translations.h"
 #include "web_common.h"
+
+static const char *TAG = "page_wireless";
 
 esp_err_t page_wireless_get(httpd_req_t *req) {
     if (!web_check_auth(req))
@@ -161,7 +164,15 @@ esp_err_t page_wireless_post(httpd_req_t *req) {
 
     app_config_unlock();
 
-    app_config_save();
+    // The page rendered next is built from the live settings, so the save
+    // result is what decides whether the operator is told this reached flash.
+    // Reported before the usability check below, because a write that never
+    // reached flash is the more fundamental of the two problems.
+    if (!app_config_save()) {
+        ESP_LOGE(TAG, "wireless settings could not be written to flash");
+        web_send_save_result(req, false, "/wireless");
+        return ESP_OK;
+    }
 
     // Tell the user NOW, in the browser, if what they just saved cannot work.
     // Selecting Station or AP+STA in the Mode dropdown does nothing on its own:
@@ -187,7 +198,7 @@ esp_err_t page_wireless_post(httpd_req_t *req) {
         }
     }
 
-    web_send_saved_redirect(req, "/wireless");
+    web_send_save_result(req, true, "/wireless");
     return ESP_OK;
 }
 

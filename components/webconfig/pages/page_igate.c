@@ -23,9 +23,12 @@
 
 #include "app_config.h"
 #include "aprs_filter.h"
+#include "esp_log.h"
 #include "pages.h"
 #include "translations.h"
 #include "web_common.h"
+
+static const char *TAG = "page_igate";
 
 // Warning banner for the APRS-IS filter field, set at save time (grammar
 // error and/or truncation) and shown once on the next GET of this page.
@@ -680,7 +683,11 @@ esp_err_t page_igate_post(httpd_req_t *req) {
 
     app_config_unlock();
 
-    app_config_save();
-    web_send_saved_redirect(req, "/igate");
+    // The page rendered next is built from the live settings, so the save
+    // result is what decides whether the operator is told this reached flash.
+    bool ok = app_config_save();
+    if (!ok)
+        ESP_LOGE(TAG, "IGate settings could not be written to flash");
+    web_send_save_result(req, ok, "/igate");
     return ESP_OK;
 }
