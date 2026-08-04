@@ -81,10 +81,12 @@ Le pagine
      - Fino a cinque oggetti/item (nome, posizione, simbolo, rotta/velocità,
        commento, RF/INET, intervallo, flag permanente, kill).
    * - **Snd/Rcv Msg**
-     - L'interfaccia di casella/composizione APRS (``/msgchat``).
+     - L'interfaccia di casella/composizione APRS (``/msgchat``): un unico filo
+       di messaggi inviati e ricevuti, cinque visibili per volta e dieci
+       conservati.
    * - **Message**
      - Configura il motore di messaggistica (abilitazione RF/INET, ritentativo,
-       cifratura, GPIO di allarme).
+       percorso di digipeating, GPIO di allarme).
    * - **Query**
      - Abilitazione del risponditore di query APRS, quale sorgente viene
        risposta (RF / APRS-IS — la risposta torna sempre sul canale da cui è

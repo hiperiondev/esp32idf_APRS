@@ -339,7 +339,7 @@ Mensajería
    * - UI de chat/bandeja de entrada integrada
      - ✅ (Xastir, YAAC, APRSIS32)
      - ✅
-     - Página ``/msgchat`` en el navegador, sondeada vía JSON
+     - Página ``/msgchat`` en el navegador, sondeada vía JSON; un solo hilo de mensajes enviados y recibidos, 5 visibles, se guardan los últimos 10
    * - Alerta de mensaje recibido (sonido/visual/GPIO)
      - ⚠️ (clientes de escritorio: sonido/popup)
      - ✅

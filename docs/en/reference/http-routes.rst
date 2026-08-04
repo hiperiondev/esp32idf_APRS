@@ -58,7 +58,7 @@ requests it while rendering the login challenge itself.
      - APRS Objects / Items
    * - GET/POST
      - ``/msg``
-     - messaging engine config (RF/INET, retry, encryption)
+     - messaging engine config (RF/INET, retry, alarm GPIO)
    * - GET/POST
      - ``/query``
      - APRS query responder (``?APRS?``/``?WX?``/``?IGATE?``, directed

@@ -5,21 +5,32 @@ APRS Messaging
 ==============
 
 The ``message`` component (``components/message/``) implements APRS messaging
-with acknowledgement and retry, optional AES encryption, and routing over RF
-and/or APRS-IS. The web admin exposes two distinct pages: the **Message** page
-*configures* the engine (RF/INET enable, retry, encryption), while the
+with acknowledgement and retry, and routing over RF and/or APRS-IS. The web
+admin exposes two distinct pages: the **Message** page *configures* the engine
+(RF/INET enable, retry, alarm GPIO), while the
 **Snd/Rcv Msg** page (``/msgchat``) is the actual inbox/compose UI.
 
 The message engine
 ==================
 
-* **In-RAM queue.** ``s_queue[]`` holds up to ``MSG_QUEUE_SIZE`` (20) entries,
+* **In-RAM queue.** ``s_queue[]`` holds up to ``MSG_QUEUE_SIZE`` (10) entries,
   shared by **received and outbound** messages alike — each entry carries an
-  ``rxtx`` flag saying which it is. ``MSG_TEXT_MAX`` (200) is the in-memory
-  storage cap for an entry's text; the on-air protocol limit is the separate
-  ``APRS_MSG_TEXT_STD_MAX`` (67 characters), which is what the compose box and
-  the query responder validate against, so a full ``":ADDRESSEE:text{id"``
-  information field stays inside the classic 256-byte TNC2 budget.
+  ``rxtx`` flag saying which it is. The queue *is* the conversation: a message
+  sent and a message received each take a slot of their own and keep it until
+  newer traffic pushes them out, and once all ten slots are taken, storing the
+  next message discards the oldest entry of the thread, RX or TX alike.
+  ``MSG_TEXT_MAX`` (200) is the in-memory storage cap for an entry's text; the
+  on-air protocol limit is the separate ``APRS_MSG_TEXT_STD_MAX`` (67
+  characters), which is what the compose box and the query responder validate
+  against, so a full ``":ADDRESSEE:text{id"`` information field stays inside the
+  classic 256-byte TNC2 budget.
+* **Conversation order.** Each stored message is stamped with an insertion
+  counter (``msg_entry_t::seq``) that is assigned once and never changes, and
+  that counter — not the wall clock — is what orders the thread and picks the
+  entry to discard. An outbound message therefore keeps the place it was written
+  in for as long as it is retried (``last_tx`` carries the retry schedule,
+  ``time`` stays the moment the message was created), and the order survives a
+  system-clock step such as the first NTP sync after boot.
 * **Send / ack / retry.** ``sendAPRSMessage()`` queues a message,
   ``sendAPRSAck()`` replies to a received one, and ``sendAPRSMessageRetry()`` —
   ticked at 1 Hz by the APRS service's tick task — re-sends any message whose
@@ -35,7 +46,16 @@ The message engine
 * **Incoming parse.** ``handleIncomingAPRS()`` parses any TNC2 line — from RF
   *or* from APRS-IS — recognises messages addressed to this station, replies
   with an ack, and recognises inbound acks (``ackNNN``) to clear the matching
-  queued message.
+  queued message. Each accepted message is a new line of the conversation and
+  gets its own slot, including messages that carry no ``{id`` at all and
+  messages whose number the sending station has already used before (numbering
+  restarts when that station reboots). The one line that does not take a slot is
+  a retransmission the queue already holds — same sender, same message number,
+  identical text — which is answered with a fresh ack, since a repeat means the
+  sender never heard the first one, without appearing twice in the history.
+  Sender callsigns are normalised to upper case as they are parsed, so one
+  station occupies one name in the thread and an ack pairs with the outbound
+  message it acknowledges.
 
 Routing
 =======
@@ -53,8 +73,23 @@ The message-chat UI (``/msgchat``)
 The ``/msgchat`` page presents a scrolling panel of sent and received messages
 for this station, a destination-callsign field, a message-text box (capped at
 the APRS message length) and a Send button. It refreshes its message list via
-``/msgchat/list`` (a JSON fragment). It is gated by the ``ENABLE_MSG_CHAT``
-compile-time switch.
+``/msgchat/list`` (a JSON fragment), which returns the whole stored thread,
+oldest first. It is gated by the ``ENABLE_MSG_CHAT`` compile-time switch.
+
+The panel reads as one conversation, sent and received messages interleaved in
+the order they happened with the newest at the bottom. Its script measures the
+message bubbles once they are laid out and sizes the panel to the newest
+``MSGCHAT_VISIBLE_MESSAGES`` (5) of them, so five messages are visible without
+scrolling and the rest of the stored thread — up to ``MSG_QUEUE_SIZE`` (10)
+messages — is one scroll back. The measurement is repeated when the window is
+resized, because narrower text wraps over more lines and makes the bubbles
+taller. Scrolling follows the conversation only while the operator is already at
+the bottom of it, so an arriving message never yanks the panel away from older
+lines being read.
+
+Both numbers are compile-time constants: ``MSGCHAT_VISIBLE_MESSAGES`` in
+``page_msgchat.c`` decides only how tall the panel is, while ``MSG_QUEUE_SIZE``
+in ``message.h`` decides how much conversation the firmware keeps.
 
 .. seealso::
 

@@ -59,7 +59,7 @@ richiesta di login.
      - Oggetti / Item APRS
    * - GET/POST
      - ``/msg``
-     - config del motore di messaggistica (RF/INET, ritentativo, cifratura)
+     - config del motore di messaggistica (RF/INET, ritentativo, GPIO di allarme)
    * - GET/POST
      - ``/query``
      - risponditore di query APRS (``?APRS?``/``?WX?``/``?IGATE?``, query

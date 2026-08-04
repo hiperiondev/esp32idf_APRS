@@ -29,8 +29,20 @@
 
 #include "query.h" // ::query_source_t, carried through to query_process_directed()
 
-#define MSG_QUEUE_SIZE 20  /**< Number of RX+TX message slots in the in-memory queue. */
-#define MSG_TEXT_MAX   200 /**< In-memory storage limit for a queued message's text, in bytes (NOT the on-air limit; see ::APRS_MSG_TEXT_STD_MAX). */
+/**
+ * @brief Number of message slots in the in-memory queue, shared by received and
+ * outbound messages.
+ *
+ * The queue is the conversation history the "Snd/Rcv Msg" web page shows: every
+ * message this station sends and every message it receives takes one slot, and
+ * an entry stays there until it is pushed out by newer traffic. Once all
+ * ::MSG_QUEUE_SIZE slots hold a message, storing the next one discards the
+ * oldest entry in the queue, RX or TX alike - exactly the way a chat window
+ * keeps the last few lines of a conversation and lets the older ones go.
+ */
+#define MSG_QUEUE_SIZE 10
+
+#define MSG_TEXT_MAX 200 /**< In-memory storage limit for a queued message's text, in bytes (NOT the on-air limit; see ::APRS_MSG_TEXT_STD_MAX). */
 
 /**
  * @brief Maximum APRS message TEXT length per the de-facto protocol convention
@@ -62,13 +74,21 @@
 
 /**
  * @brief One entry of the in-memory message queue (an RX or TX message).
+ *
+ * @p seq orders the conversation and @p time dates it: @p seq is assigned once,
+ * when the message enters the queue, and never changes, so the chat history
+ * keeps the order in which messages were actually sent and received even when
+ * an outbound entry is transmitted again later, and even across a system-clock
+ * step (an NTP sync early after boot moves @p time, never @p seq).
  */
 typedef struct {
-    time_t time;             /**< Wall-clock time the entry was created. */
+    uint32_t seq;            /**< Position in the conversation: the value of a counter incremented once per stored message. Higher means newer. */
+    time_t time;             /**< Wall-clock time the entry was created, shown next to the message. */
+    time_t last_tx;          /**< Wall-clock time of this entry's last transmission; the retry timer measures its interval from here. TX entries only. */
     int8_t ack;              /**< TX retry state: >0 = retries remaining, -1 = RX pending, -2 = acked, -3 = rejected by recipient (rej). */
     bool rxtx;               /**< true = received (RX), false = to transmit (TX). */
     uint16_t msgID;          /**< APRS message number. */
-    char callsign[11];       /**< The other station's callsign (NUL-terminated). */
+    char callsign[11];       /**< The other station's callsign, upper case (NUL-terminated). */
     char text[MSG_TEXT_MAX]; /**< Message text. */
     bool used;               /**< true if this slot holds a valid entry. */
 } msg_entry_t;
@@ -143,6 +163,13 @@ int message_send_pending_to(const char *toCall);
  * an APRS message addressed to g_config.msg_mycall, store it and send an
  * ack. ACK lines update the outbound queue's retry state instead.
  *
+ * A stored message takes its own queue slot next to everything else in the
+ * conversation and is only ever displaced by newer traffic. The one line that
+ * does not take a slot is a retransmission the queue already holds - same
+ * sender, same message number and identical text - which is answered with a
+ * fresh ack (the sender is asking for one) without appearing twice in the
+ * history.
+ *
  * A line whose addressed text starts with '?' is a directed query rather than
  * a message and is handed to query_process_directed() together with @p source,
  * which is the only reason this function needs to know where the line came
@@ -165,8 +192,12 @@ int pkgMsg_Find(const char *call, uint16_t msgID, bool rxtx);
 
 /**
  * @brief Dump the in-memory message queue (both RX and TX entries) as a JSON
- * array, oldest first, for the "Snd/Rcv Msg" web admin chat page. Each
- * element is
+ * array for the "Snd/Rcv Msg" web admin chat page.
+ *
+ * Elements come out in conversation order, oldest first (by ::msg_entry_t::seq),
+ * so the page can append them top to bottom as they are read, and an outbound
+ * message keeps its place in the thread for as long as it is retried. The array
+ * holds at most ::MSG_QUEUE_SIZE elements. Each element is
  * {"time":<unix seconds>,"dir":"rx"|"tx","call":"<other station>","text":"<message text>","status":"rx"|"pending"|"sent"}
  * - "status" is only meaningful for "tx" entries ("pending": still awaiting
  * ack/retries remain, "sent": acked or no-retry) and is always "rx" for

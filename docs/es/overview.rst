@@ -113,9 +113,6 @@ Matriz de funciones
    * - Mensajería APRS + ack/reintento
      - ✅
      - RF y/o INET
-   * - Cifrado AES-128-CBC de mensajes APRS
-     - ✅
-     - ``mbedtls``, IV derivado por MD5, carga útil en base64
    * - Administración web (autenticación HTTP Basic)
      - ✅
      - 17 páginas de la barra lateral + selector de símbolo, panel en vivo
@@ -342,14 +339,6 @@ placa única.
      - ✅
      - ✅
      -
-   * - Cifrado de mensajes
-     - ✅ (AES-128-CBC)
-     - ❌
-     - ❌
-     - ❌
-     - ❌
-     - No forma parte del estándar APRS; es una extensión propia de este
-       proyecto.
    * - Boletines / anuncios
      - ✅
      - ➖ (retransmite, no compone)
@@ -415,7 +404,7 @@ otro programa en la cadena · ❌ no implementado / no aplicable.
 **Lo que este proyecto sí implementa deliberadamente**, igualando el núcleo
 de lo que ofrece una estación APRS de escritorio completa: el módem en sí,
 el encuadre AX.25/FX.25, el IGate bidireccional, el digipeating, las
-balizas, la mensajería con cifrado, los boletines, los objetos, la
+balizas, la mensajería, los boletines, los objetos, la
 meteorología y la telemetría, todo accesible desde una interfaz web
 autoalojada sin software complementario en una PC.
 

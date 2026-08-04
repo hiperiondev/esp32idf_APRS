@@ -76,9 +76,10 @@ The pages
      - Up to five objects/items (name, position, symbol, course/speed, comment,
        RF/INET, interval, permanent flag, kill).
    * - **Snd/Rcv Msg**
-     - The APRS inbox/compose UI (``/msgchat``).
+     - The APRS inbox/compose UI (``/msgchat``): one thread of sent and
+       received messages, five visible at a time and ten kept.
    * - **Message**
-     - Configures the messaging engine (RF/INET enable, retry, encryption,
+     - Configures the messaging engine (RF/INET enable, retry, digipeat path,
        alarm GPIO).
    * - **Query**
      - APRS query responder enable, which source is answered (RF / APRS-IS —

@@ -81,10 +81,12 @@ Las páginas
      - Hasta cinco objetos/ítems (nombre, posición, símbolo, rumbo/velocidad,
        comentario, RF/INET, intervalo, bandera permanente, kill).
    * - **Snd/Rcv Msg**
-     - La interfaz de bandeja/redacción APRS (``/msgchat``).
+     - La interfaz de bandeja/redacción APRS (``/msgchat``): un solo hilo de
+       mensajes enviados y recibidos, cinco visibles a la vez y diez
+       guardados.
    * - **Message**
-     - Configura el motor de mensajería (habilitación RF/INET, reintento,
-       cifrado, GPIO de alarma).
+     - Configura el motor de mensajería (habilitación RF/INET, reintento, ruta
+       de digipeteo, GPIO de alarma).
    * - **Query**
      - Habilitación del respondedor de consultas APRS, qué origen se responde
        (RF / APRS-IS — la respuesta siempre vuelve por el canal por el que llegó

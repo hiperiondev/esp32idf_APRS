@@ -111,7 +111,7 @@ Valori di fabbrica notevoli
    * - PTT
      - GPIO26 (la polarità è di compilazione)
    * - Messaggistica
-     - abilitata, RF + INET, cifratura disattivata
+     - abilitata, RF + INET, GPIO di allarme disabilitato
 
 .. danger::
 

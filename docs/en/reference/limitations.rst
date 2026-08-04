@@ -329,7 +329,7 @@ Messaging
    * - In-app chat/inbox UI
      - ✅ (Xastir, YAAC, APRSIS32)
      - ✅
-     - Browser-based ``/msgchat`` page, JSON-polled
+     - Browser-based ``/msgchat`` page, JSON-polled; one thread of sent and received messages, 5 visible, last 10 kept
    * - Message-received alert (sound/visual/GPIO)
      - ⚠️ (desktop clients: sound/popup)
      - ✅

@@ -42,6 +42,7 @@ static const char *TAG = "message";
 #define MSG_ALARM_PULSE_MS 1000
 
 static msg_entry_t s_queue[MSG_QUEUE_SIZE];
+static uint32_t s_seq = 0;
 static uint16_t s_msgID = 0;
 static void (*s_txHandler)(const char *packet, size_t len, uint8_t channels) = NULL;
 
@@ -51,6 +52,7 @@ void message_set_tx_handler(void (*handler)(const char *packet, size_t len, uint
 
 void message_init(void) {
     memset(s_queue, 0, sizeof(s_queue));
+    s_seq = 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -180,13 +182,13 @@ static bool callsignBaseMatch(const char *a, const char *b) {
 // ---------------------------------------------------------------------------
 int pkgMsg_Find(const char *call, uint16_t msgID, bool rxtx) {
     // Exact match only. s_queue[i].callsign is always NUL-terminated (see
-    // pkgMsgUpdate(), which memset()s the field before strncpy()), so a
-    // plain strcmp() is safe here. A substring search would be wrong: a stored
+    // pkgMsgStore(), which memset()s the field before strncpy()) and always
+    // upper case, as is every callsign reaching this function, so a plain
+    // strcmp() is safe here. A substring search would be wrong: a stored
     // "N0CALL" would match an incoming "N0CALL-9" and vice versa, and two
     // unrelated callsigns could coincidentally overlap, letting an ack/reply
     // from the wrong station mark another station's queued message as
-    // acknowledged, or a new outgoing message overwrite an unrelated in-flight
-    // queue slot.
+    // acknowledged.
     for (int i = 0; i < MSG_QUEUE_SIZE; i++) {
         if (s_queue[i].used && s_queue[i].msgID == msgID && s_queue[i].rxtx == rxtx && strcmp(s_queue[i].callsign, call) == 0)
             return i;
@@ -194,48 +196,79 @@ int pkgMsg_Find(const char *call, uint16_t msgID, bool rxtx) {
     return -1;
 }
 
-static int pkgMsgOldestSlot(void) {
+// Picks the slot the next message goes into: a free one while the queue is
+// filling up, otherwise the slot holding the oldest message of the whole
+// conversation, received or outbound. Age is taken from the insertion counter
+// rather than from the wall clock, so the choice stays right while the system
+// clock is still unset and when NTP steps it.
+static int pkgMsgEvictSlot(void) {
     int ret = 0;
-    time_t minimum = time(NULL) + 86400;
+    uint32_t oldest = 0;
     for (int i = 0; i < MSG_QUEUE_SIZE; i++) {
         if (!s_queue[i].used)
             return i;
-        if (s_queue[i].time < minimum) {
-            minimum = s_queue[i].time;
+        if (i == 0 || s_queue[i].seq < oldest) {
+            oldest = s_queue[i].seq;
             ret = i;
         }
     }
     return ret;
 }
 
-static int pkgMsgUpdate(const char *call, const char *text, uint16_t msgID, int8_t ack, bool rxtx) {
+// Appends one message to the conversation. Every call takes a slot of its own,
+// so a received message sits in the history next to the ones this station sent
+// and stays there until MSG_QUEUE_SIZE newer messages have pushed it out.
+static int pkgMsgStore(const char *call, const char *text, uint16_t msgID, int8_t ack, bool rxtx) {
     if (!call[0] || !text[0])
         return -1;
 
-    int i = pkgMsg_Find(call, msgID, rxtx);
-    if (i < 0)
-        i = pkgMsgOldestSlot();
+    int i = pkgMsgEvictSlot();
 
     s_queue[i].used = true;
+    s_queue[i].seq = ++s_seq;
     s_queue[i].time = time(NULL);
+    s_queue[i].last_tx = s_queue[i].time;
     s_queue[i].msgID = msgID;
     s_queue[i].ack = ack;
     s_queue[i].rxtx = rxtx;
     memset(s_queue[i].callsign, 0, sizeof(s_queue[i].callsign));
     strncpy(s_queue[i].callsign, call, sizeof(s_queue[i].callsign) - 1);
+    memset(s_queue[i].text, 0, sizeof(s_queue[i].text));
     strncpy(s_queue[i].text, text, sizeof(s_queue[i].text) - 1);
-    s_queue[i].text[sizeof(s_queue[i].text) - 1] = 0;
     return i;
+}
+
+// Tells a retransmission from a new message. A sender that gets no ack sends
+// the very same message again - same station, same APRS message number, same
+// text - and that repeat belongs in the history once, not once per copy heard.
+// Anything else is a new line of the conversation, including a second message
+// carrying the number the sender used before (numbering restarts when the
+// sending station reboots) and a message with no number at all, which arrives
+// with number 0 the way every other unnumbered message does. Text is compared
+// as stored, i.e. after the truncation to MSG_TEXT_MAX bytes.
+static int pkgMsgFindRepeat(const char *call, const char *text, uint16_t msgID, bool rxtx) {
+    for (int i = 0; i < MSG_QUEUE_SIZE; i++) {
+        if (!s_queue[i].used || s_queue[i].rxtx != rxtx || s_queue[i].msgID != msgID)
+            continue;
+        if (strcmp(s_queue[i].callsign, call) != 0)
+            continue;
+        if (strncmp(s_queue[i].text, text, sizeof(s_queue[i].text) - 1) == 0)
+            return i;
+    }
+    return -1;
 }
 
 size_t message_dump_json(char *out, size_t out_size) {
     if (out == NULL || out_size < 4)
         return 0;
 
-    // Sort by time, oldest first, so the chat page can just append in
-    // received order. MSG_QUEUE_SIZE is small (20), so a plain selection
-    // sort over an index array is more than fast enough here and avoids
-    // touching s_queue's own layout.
+    // Sort by insertion counter, oldest first, so the chat page can just append
+    // in conversation order: an entry keeps the position it was given when it
+    // entered the queue, which is what makes a message that is still being
+    // retried stay where the operator wrote it instead of climbing back to the
+    // bottom of the panel on every attempt. MSG_QUEUE_SIZE is small, so a plain
+    // selection sort over an index array is more than fast enough here and
+    // avoids touching s_queue's own layout.
     int order[MSG_QUEUE_SIZE];
     int n_used = 0;
     for (int i = 0; i < MSG_QUEUE_SIZE; i++) {
@@ -245,7 +278,7 @@ size_t message_dump_json(char *out, size_t out_size) {
     for (int a = 0; a < n_used - 1; a++) {
         int best = a;
         for (int b = a + 1; b < n_used; b++) {
-            if (s_queue[order[b]].time < s_queue[order[best]].time)
+            if (s_queue[order[b]].seq < s_queue[order[best]].seq)
                 best = b;
         }
         if (best != a) {
@@ -371,7 +404,11 @@ void sendAPRSMessage(const char *toCall, const char *text) {
     ESP_LOGD(TAG, "Send APRS message to %s msgID %u: %s", toCall, (unsigned)s_msgID, info);
 
     int8_t ackVal = (g_config.msg_retry == 0) ? -2 : (int8_t)g_config.msg_retry;
-    pkgMsgUpdate(toCall, text, s_msgID, ackVal, false);
+    // The trimmed upper-case addressee is what goes in the queue, matching the
+    // form the callsign takes on the air. An incoming ack is matched against
+    // this field by exact comparison, and it is also the name the chat page
+    // shows next to the message.
+    pkgMsgStore(toCallUp, text, s_msgID, ackVal, false);
 }
 
 void sendAPRSAck(const char *toCall, const char *msgNo) {
@@ -480,15 +517,17 @@ void sendAPRSMessageRetry(void) {
     for (int i = 0; i < MSG_QUEUE_SIZE; i++) {
         if (!s_queue[i].used || s_queue[i].ack <= 0)
             continue;
-        if ((now - s_queue[i].time) <= g_config.msg_interval)
+        if ((now - s_queue[i].last_tx) <= g_config.msg_interval)
             continue;
 
         // Stamp the moment this retry is sent. The guard above compares
-        // (now - time) against msg_interval, so the timestamp must be the
+        // (now - last_tx) against msg_interval, so the timestamp must be the
         // instant of the last transmission for the next attempt to fall
-        // exactly one msg_interval later.
+        // exactly one msg_interval later. It is a separate field from the
+        // creation time the chat page displays, which stays put: a message is
+        // dated when it was written, not when it was last put on the air.
         if (--s_queue[i].ack > 0)
-            s_queue[i].time = now;
+            s_queue[i].last_tx = now;
 
         char toCallFixed[10];
         memset(toCallFixed, ' ', 9);
@@ -523,6 +562,11 @@ void handleIncomingAPRS(const char *line, query_source_t source) {
             n = sizeof(fromCall) - 1;
         memcpy(fromCall, line, n);
     }
+    // Callsigns travel upper case on the air; normalising the sender here keeps
+    // one spelling for the whole path it feeds - the queue entry the chat page
+    // shows, the exact match that pairs an incoming ack with the outbound
+    // message it acknowledges, and the addressee of the ack sent back.
+    trimUpper(fromCall);
 
     const char *payload = msgMarker + 2;
     if (strlen(payload) < 10)
@@ -622,7 +666,13 @@ void handleIncomingAPRS(const char *line, query_source_t source) {
     if (dlen == 0)
         return;
 
-    pkgMsgUpdate(fromCall, decoded, (uint16_t)atoi(msgNo), -1, true);
+    // Every received message is a new line of the conversation and gets a queue
+    // slot of its own; only a copy of one already in the history is left out,
+    // and even then the ack below still goes back out, since a repeat means the
+    // sender never heard the first one.
+    uint16_t rxID = (uint16_t)atoi(msgNo);
+    if (pkgMsgFindRepeat(fromCall, decoded, rxID, true) < 0)
+        pkgMsgStore(fromCall, decoded, rxID, -1, true);
     // Per APRS101 the message ID is optional: only send an ack when the
     // sender actually requested one.
     if (msgNo[0] != 0)

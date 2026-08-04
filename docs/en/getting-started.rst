@@ -108,7 +108,7 @@ Notable factory defaults
    * - PTT
      - GPIO26 (polarity is compile-time)
    * - Messaging
-     - enabled, RF + INET, encryption off
+     - enabled, RF + INET, alarm GPIO disabled
 
 .. danger::
 

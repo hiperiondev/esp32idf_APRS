@@ -894,7 +894,14 @@ esp_err_t web_handle_css(httpd_req_t *req) {
         "#trafficTable td{font-family:'Consolas','Courier New',monospace;font-size:.95em;"
         "white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:340px;}"
         "#trafficTable th:nth-child(4),#trafficTable td:nth-child(4){max-width:420px;}"
-        ".chat-box{max-height:440px;min-height:200px;overflow-y:auto;display:flex;flex-direction:column;"
+        // Chat panel (Snd/Rcv Msg page): its height is set from the page's own
+        // script, to the exact height of the last few message bubbles, so the
+        // panel shows that many messages and scrolls through the rest of the
+        // stored conversation. The bounds here only frame that: min-height
+        // keeps the panel a readable size while the conversation is empty or
+        // one line long, max-height keeps tall messages from pushing the
+        // compose row off a short screen.
+        ".chat-box{min-height:120px;max-height:70vh;overflow-y:auto;display:flex;flex-direction:column;"
         "gap:8px;padding:10px;background:var(--bg);border:1px solid var(--border);border-radius:8px;}"
         ".chat-empty{color:var(--sub);font-size:.85em;text-align:center;padding:20px 0;}"
         ".chat-bubble{max-width:78%;padding:8px 12px;border-radius:12px;font-size:.85em;word-break:break-word;}"

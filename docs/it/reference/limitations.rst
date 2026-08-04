@@ -338,7 +338,7 @@ Messaggistica
    * - UI di chat/inbox integrata
      - ✅ (Xastir, YAAC, APRSIS32)
      - ✅
-     - Pagina ``/msgchat`` nel browser, con polling JSON
+     - Pagina ``/msgchat`` nel browser, con polling JSON; un unico filo di messaggi inviati e ricevuti, 5 visibili, ultimi 10 conservati
    * - Avviso messaggio ricevuto (suono/visivo/GPIO)
      - ⚠️ (client desktop: suono/popup)
      - ✅

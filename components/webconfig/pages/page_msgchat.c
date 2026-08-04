@@ -21,6 +21,12 @@
 // feature (RF/INET enable, retry) - this page is the actual
 // inbox/compose UI built on top of that configuration. Gated from the
 // sidebar by ENABLE_MSG_CHAT in app_config.h's MODULES section.
+//
+// The panel reads as one conversation: messages sent and messages received
+// share a single thread in the order they happened, the newest at the bottom.
+// It is as tall as MSGCHAT_VISIBLE_MESSAGES message bubbles and scrolls back
+// through the rest of what the messaging engine keeps, which is the last
+// MSG_QUEUE_SIZE messages of the conversation.
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -31,6 +37,12 @@
 #include "pages.h"
 #include "translations.h"
 #include "web_common.h"
+
+// How many message bubbles the chat panel shows at once. The panel is sized to
+// this many of the newest messages and everything older is one scroll away, up
+// to the MSG_QUEUE_SIZE messages the engine keeps. Purely presentational: it
+// changes the height of one <div> and nothing about what is stored or sent.
+#define MSGCHAT_VISIBLE_MESSAGES 5
 
 // GET /msgchat -> renders the chat page shell; the message list itself is
 // filled in by JS polling GET /msgchat/list, same live-refresh pattern as
@@ -92,14 +104,11 @@ esp_err_t page_msgchat_get(httpd_req_t *req) {
     // -- Inline JS: poll the history, send on click/Enter. Mirrors the
     //    dashboard's trafficPoll()/esc() pattern (short-poll + reschedule in
     //    a .catch().then() so a fetch error doesn't kill the loop). --
-    // The assignment is left open here and closed by the numeric literal
-    // chunk that follows.
-    httpd_resp_sendstr_chunk(req, "<script>"
-                                  "var MSG_MAX=");
-    httpd_resp_sendstr_chunk(req, composeMax);
+    char chatConsts[80];
+    snprintf(chatConsts, sizeof(chatConsts), "<script>var MSG_MAX=%d;var MSG_VISIBLE=%d;", APRS_MSG_TEXT_STD_MAX, MSGCHAT_VISIBLE_MESSAGES);
+    httpd_resp_sendstr_chunk(req, chatConsts);
     httpd_resp_sendstr_chunk(
-        req, ";"
-             "function msgEsc(s){return (s==null?'':String(s)).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}"
+        req, "function msgEsc(s){return (s==null?'':String(s)).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}"
              "function msgChatUpdateCounter(){"
              "var t=document.getElementById('msgTextInput').value;"
              "document.getElementById('msgChatCounter').textContent=t.length+'/'+MSG_MAX;"
@@ -109,9 +118,18 @@ esp_err_t page_msgchat_get(httpd_req_t *req) {
              "function p(n){return (n<10?'0':'')+n;}"
              "return p(d.getHours())+':'+p(d.getMinutes())+':'+p(d.getSeconds());"
              "}"
+             "function msgChatFit(box){"
+             "var b=box.getElementsByClassName('chat-bubble');"
+             "if(!b.length){box.style.height='';return;}"
+             "var n=b.length<MSG_VISIBLE?b.length:MSG_VISIBLE;"
+             "var first=b[b.length-n],last=b[b.length-1];"
+             "var cs=getComputedStyle(box);"
+             "var frame=parseFloat(cs.paddingTop)+parseFloat(cs.paddingBottom)+parseFloat(cs.borderTopWidth)+parseFloat(cs.borderBottomWidth);"
+             "box.style.height=Math.ceil(last.offsetTop+last.offsetHeight-first.offsetTop+frame)+'px';"
+             "}"
              "function msgChatRender(list){"
              "var box=document.getElementById('msgChatBox');"
-             "if(!list||!list.length){box.innerHTML=\"<div class='chat-empty'>" TR_MSGCHAT_EMPTY "</div>\";return;}"
+             "if(!list||!list.length){box.innerHTML=\"<div class='chat-empty'>" TR_MSGCHAT_EMPTY "</div>\";msgChatFit(box);return;}"
              "var nearBottom=(box.scrollTop+box.clientHeight)>=(box.scrollHeight-40);"
              "var html='';"
              "for(var i=0;i<list.length;i++){"
@@ -121,6 +139,12 @@ esp_err_t page_msgchat_get(httpd_req_t *req) {
              "html+=\"<div class='\"+cls+\"'><span class='chat-meta'>\"+who+' &middot; '+msgChatFmtTime(m.time)+\"</span>\"+msgEsc(m.text)+'</div>';"
              "}"
              "box.innerHTML=html;"
+             // Measure after the bubbles are in the document: their height
+             // depends on how the text wraps at the current window width.
+             "msgChatFit(box);"
+             // Follow the conversation only when the operator is already at the
+             // bottom of it, so a new message doesn't yank the panel away from
+             // older lines being read.
              "if(nearBottom)box.scrollTop=box.scrollHeight;"
              "}"
              "function msgChatPoll(){"
@@ -150,6 +174,10 @@ esp_err_t page_msgchat_get(httpd_req_t *req) {
              "function msgChatPollOnce(){"
              "fetch('/msgchat/list').then(function(r){return r.json();}).then(msgChatRender).catch(function(){});"
              "}"
+             // A narrower window wraps message text over more lines, which
+             // makes the bubbles taller: measure them again so the panel keeps
+             // showing the same number of messages.
+             "window.addEventListener('resize',function(){msgChatFit(document.getElementById('msgChatBox'));});"
              "msgChatUpdateCounter();msgChatPoll();"
              "</script>");
 

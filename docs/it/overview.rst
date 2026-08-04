@@ -111,9 +111,6 @@ Matrice delle funzionalità
    * - Messaggistica APRS + ack/ritentativo
      - ✅
      - RF e/o INET
-   * - Cifratura messaggi APRS AES-128-CBC
-     - ✅
-     - ``mbedtls``, IV derivato da MD5, payload in base64
    * - Amministrazione web (autenticazione HTTP Basic)
      - ✅
      - 17 pagine nella barra laterale + selettore di simbolo, dashboard in
@@ -344,14 +341,6 @@ scheda singola.
      - ✅
      - ✅
      -
-   * - Cifratura dei messaggi
-     - ✅ (AES-128-CBC)
-     - ❌
-     - ❌
-     - ❌
-     - ❌
-     - Non fa parte dello standard APRS; è un'estensione propria di questo
-       progetto.
    * - Bollettini / annunci
      - ✅
      - ➖ (ritrasmette, non compone)
@@ -417,7 +406,7 @@ un altro programma della catena · ❌ non implementato / non applicabile.
 **Ciò che questo progetto implementa deliberatamente**, eguagliando il
 nucleo di ciò che offre una stazione APRS desktop completa: il modem
 stesso, il framing AX.25/FX.25, l'IGate bidirezionale, il digipeating, i
-beacon, la messaggistica con cifratura, i bollettini, gli oggetti, il meteo
+beacon, la messaggistica, i bollettini, gli oggetti, il meteo
 e la telemetria, tutto raggiungibile da un'interfaccia web self-hosted
 senza software companion su PC.
 

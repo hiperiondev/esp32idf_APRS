@@ -59,7 +59,7 @@ la pide mientras dibuja el propio desafío de login.
      - Objetos / Ítems APRS
    * - GET/POST
      - ``/msg``
-     - config del motor de mensajería (RF/INET, reintento, cifrado)
+     - config del motor de mensajería (RF/INET, reintento, GPIO de alarma)
    * - GET/POST
      - ``/query``
      - respondedor de consultas APRS (``?APRS?``/``?WX?``/``?IGATE?``,

@@ -110,7 +110,7 @@ Valores de fábrica destacados
    * - PTT
      - GPIO26 (la polaridad es de compilación)
    * - Mensajería
-     - habilitada, RF + INET, cifrado desactivado
+     - habilitada, RF + INET, GPIO de alarma deshabilitado
 
 .. danger::
 

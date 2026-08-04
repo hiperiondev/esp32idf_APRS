@@ -109,9 +109,6 @@ Feature matrix
    * - APRS messaging + ack/retry
      - ✅
      - RF and/or INET
-   * - APRS message AES-128-CBC encryption
-     - ✅
-     - ``mbedtls``, MD5-derived IV, base64 payload
    * - Web admin (HTTP Basic auth)
      - ✅
      - 17 sidebar pages + symbol picker, live dashboard
@@ -329,13 +326,6 @@ firmware image.
      - ✅
      - ✅
      - 
-   * - Message encryption
-     - ✅ (AES-128-CBC)
-     - ❌
-     - ❌
-     - ❌
-     - ❌
-     - Not part of the standard APRS spec; an extension specific to this project.
    * - Bulletins / announcements
      - ✅
      - ➖ (relays, doesn't compose)
@@ -398,7 +388,7 @@ program in the chain · ❌ not implemented / not applicable.
 
 **What this project deliberately does implement**, matching the core of what
 a full desktop APRS station provides: the modem itself, AX.25/FX.25 framing,
-two-way IGate, digipeating, beacons, messaging with encryption, bulletins,
+two-way IGate, digipeating, beacons, messaging, bulletins,
 objects, weather and telemetry, all reachable from a self-hosted web UI with
 no companion PC software.
 
