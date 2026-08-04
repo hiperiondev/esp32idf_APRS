@@ -71,12 +71,10 @@ Notable factory defaults
      - ``esp32idf_APRS`` / ``esp32idf_APRS``
    * - Web login
      - ``admin`` / ``admin``
-   * - Hostname
-     - ``esp32idf_APRS``
    * - CPU frequency
      - 240 MHz
-   * - Time zone
-     - 0.0 (clock itself is always UTC)
+   * - System clock
+     - always UTC (TZ=UTC0); no local-time offset is applied
    * - NTP hosts
      - ``pool.ntp.org``, ``time.google.com``, ``time.cloudflare.com``
    * - IGate

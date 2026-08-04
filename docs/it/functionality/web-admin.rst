@@ -58,14 +58,12 @@ Le pagine
        oggetto, commento, stato, PHG.
    * - **Digi**
      - Abilita digipeater, indicativo/SSID e impostazioni beacon (posizione,
-       simbolo, intervallo, commento, stato, percorso). Porta anche *Auto
-       (WIDEn-N)* e *Ritardo di digipeatura* — vedi la nota più sotto. La
-       finestra di soppressione dei duplicati è un unico controllo, sulla pagina
-       *IGate*.
+       simbolo, intervallo, commento, stato, percorso). La finestra di
+       soppressione dei duplicati è un unico controllo, sulla pagina *IGate*.
    * - **Tracker**
-     - Abilita tracker, indicativo/SSID, intervallo fisso, posizione, simbolo (in
-       movimento/fermo), commento, opzioni di posizione compressa, posizione
-       Mic-E e altitudine.
+     - Abilita tracker, indicativo/SSID, intervallo fisso, posizione, simbolo di
+       stazione, commento, opzioni di posizione compressa, posizione Mic-E e
+       altitudine.
    * - **Weather**
      - Abilita, invia-in-RF/-INET, timestamp, indicativo/SSID/percorso WX,
        posizione, nome oggetto, commento, caselle *Averaged* per campo, e — per
@@ -105,9 +103,9 @@ Le pagine
        con la propria casella Enable, potenza TX in dBm, più una scansione in
        tempo reale.
    * - **System**
-     - Login web, hostname, frequenza CPU (applicata in tempo reale), host NTP ×3,
-       intervallo di risincronizzazione, timeout di reset, e i quattro preset di
-       percorso condivisi ``path[0..3]``.
+     - Login web, frequenza CPU (applicata in tempo reale), host NTP ×3,
+       intervallo di risincronizzazione, e i quattro preset di percorso
+       condivisi ``path[0..3]``.
    * - **Storage**
      - Navigatore LittleFS: scarica, elimina, upload multipart, uso, formatta.
    * - **About / Firmware**
@@ -116,11 +114,10 @@ Le pagine
 
 .. note::
 
-   Due controlli della pagina *Digi* — *Auto (WIDEn-N)* (``digiAuto``) e
-   *Ritardo di digipeatura* (``digiDelay``) — sono accettati, validati e
-   persistiti in ``config.json``, ma oggi nessun codice a runtime li legge. Il
-   digipeater gestisce sempre WIDEn-N e ripete senza ritardo aggiunto. Sono
-   documentati qui perché il comportamento non sia scambiato per un difetto.
+   Ogni controllo di queste pagine governa comportamento reale: un'impostazione
+   che arriva in ``config.json`` viene letta dal servizio che la possiede. Il
+   digipeater gestisce sempre WIDEn-N e ripete senza ritardo aggiunto, quindi
+   nessuno dei due viene offerto come opzione.
 
    La soppressione dei duplicati ha esattamente una coppia di controlli, *Dup
    cache size* (``dupCacheSize``) e *Dup cache timeout* (``dupCacheTimeoutMs``)

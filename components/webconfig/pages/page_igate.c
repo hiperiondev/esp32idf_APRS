@@ -238,26 +238,25 @@ esp_err_t page_igate_get(httpd_req_t *req) {
     web_select_close(req);
 
     // Computed PHG value --------------------------------------------------
-    // Read-only; automatically recalculated by JS whenever any PHG section
-    // value changes (no manual "calculate" button), exactly like Station.
+    // Read-only and display-only: it carries no name attribute, so it is never
+    // submitted and never stored. The script below fills it on load and on
+    // every change of the four PHG sub-fields, which are the values the beacon
+    // encoder reads. Same convention as the Station page.
     {
         char buf[550];
-        snprintf(buf, sizeof(buf),
-                 "<label>%s</label>"
-                 "<input type='text' name='igatePHG' id='igatePHG' value='%s' maxlength='7' readonly>",
-                 TR_F_PHG_TEXT, g_config.igate_phg);
+        snprintf(buf, sizeof(buf), "<label>%s</label><input type='text' id='igatePHG' maxlength='7' readonly>", TR_F_PHG_TEXT);
         web_raw(req, buf);
     }
     web_fieldset_close(req);
 
     // Shared "My Station" PHG snapshot, exposed to the script below so
-    // "Use My Station Data" can mirror the Station page's values live.
-    // my_phg only ever contains [A-Z0-9] (a computed "PHGxxxx" string), so it
-    // is safe inside a single-quoted JS string literal as-is.
+    // "Use My Station Data" can mirror the Station page's values live. Only
+    // the four sub-fields travel: the displayed PHG string is always derived
+    // from them by the same formula on every page.
     {
         char sbuf[256];
-        snprintf(sbuf, sizeof(sbuf), "<script>window.__stnPHG={p:%u,g:%d,h:%u,d:%u,s:'%.7s'};</script>", (unsigned)g_config.my_phg_power,
-                 (int)lroundf(g_config.my_phg_gain), (unsigned)g_config.my_phg_height, (unsigned)g_config.my_phg_dir, g_config.my_phg);
+        snprintf(sbuf, sizeof(sbuf), "<script>window.__stnPHG={p:%u,g:%d,h:%u,d:%u};</script>", (unsigned)g_config.my_phg_power,
+                 (int)lroundf(g_config.my_phg_gain), (unsigned)g_config.my_phg_height, (unsigned)g_config.my_phg_dir);
         web_raw(req, sbuf);
     }
 
@@ -266,8 +265,8 @@ esp_err_t page_igate_get(httpd_req_t *req) {
     //   * "Enable PHG" off -> the four PHG sub-fields are disabled (and PHG
     //     is not transmitted - enforced server-side too, see beacon.c).
     //   * "Use My Station Data" on -> the sub-fields are filled from the
-    //     shared station PHG and disabled (locked), and the computed text
-    //     shows the station PHG string.
+    //     shared station PHG and disabled (locked), and the computed text is
+    //     recalculated from those mirrored values.
     //   * otherwise the sub-fields are editable and the computed PHG text is
     //     recalculated live from them (same formula as the Station page).
     // Disabled controls don't POST, so the save handler snapshots the
@@ -275,7 +274,7 @@ esp_err_t page_igate_get(httpd_req_t *req) {
     // own-values when PHG is disabled - see page_igate_post().
     web_raw(req,
             "<script>(function(){"
-            "var ST=window.__stnPHG||{p:0,g:0,h:10,d:0,s:''};"
+            "var ST=window.__stnPHG||{p:0,g:0,h:10,d:0};"
             "function q(n){return document.querySelector(\"[name='\"+n+\"']\");}"
             "function calc(){"
             "var p=parseInt(q('igatePHGPower').value)||0,g=parseInt(q('igatePHGGain').value)||0,"
@@ -283,7 +282,7 @@ esp_err_t page_igate_get(httpd_req_t *req) {
             "var P=Math.min(9,Math.max(0,Math.round(Math.sqrt(p))));"
             "var H=Math.min(13,Math.max(0,Math.round(Math.log(h/10)/Math.log(2))));"
             "var G=Math.min(9,Math.max(0,g)),D=Math.min(8,Math.max(0,d));"
-            "var o=q('igatePHG');"
+            "var o=document.getElementById('igatePHG');"
             "if(o)o.value='PHG'+P+String.fromCharCode(48+H)+G+D;"
             "}"
             "function apply(){"
@@ -302,7 +301,7 @@ esp_err_t page_igate_get(httpd_req_t *req) {
             "['igatePHGGain','igatePHGHeight','igatePHGDir'].forEach(function(nm){var el=q(nm);if(el)el.disabled=dis||t===1;});"
             "var r=q('igateRng');if(r)r.disabled=(!on)||t!==1;"
             "var sg=q('igateDfsS');if(sg)sg.disabled=(!on)||t!==2;"
-            "if(useS){var o=q('igatePHG');if(o)o.value=ST.s;}else{calc();}"
+            "calc();"
             "}"
             "document.addEventListener('DOMContentLoaded',function(){"
             "var en=q('igatePHGEn'),us=q('igatePHGUseStation'),ty=q('igateExtType');"
@@ -584,10 +583,7 @@ esp_err_t page_igate_post(httpd_req_t *req) {
         g_config.igate_phg_gain = g_config.my_phg_gain;
         g_config.igate_phg_height = g_config.my_phg_height;
         g_config.igate_phg_dir = g_config.my_phg_dir;
-        strncpy(g_config.igate_phg, g_config.my_phg, sizeof(g_config.igate_phg) - 1);
-        g_config.igate_phg[sizeof(g_config.igate_phg) - 1] = 0;
     } else {
-        web_form_get(body, "igatePHG", g_config.igate_phg, sizeof(g_config.igate_phg));
         g_config.igate_phg_power = (uint16_t)web_form_get_int(body, "igatePHGPower", g_config.igate_phg_power);
         g_config.igate_phg_gain = (float)web_form_get_int(body, "igatePHGGain", (int)lroundf(g_config.igate_phg_gain));
         g_config.igate_phg_height = (uint16_t)web_form_get_int(body, "igatePHGHeight", g_config.igate_phg_height);

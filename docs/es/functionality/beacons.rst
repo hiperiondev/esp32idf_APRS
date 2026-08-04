@@ -220,5 +220,4 @@ Las marcas de tiempo son UTC
 
 Las marcas de tiempo de las balizas son zulú/UTC (``051200z``) según la
 especificación APRS — por lo que ``time_sync.c`` fija el reloj del sistema a
-``TZ=UTC0`` independientemente de ``g_config.timeZone`` (la zona configurada es
-solo para visualización).
+``TZ=UTC0``. No existe ningún desfase de hora local en el firmware.

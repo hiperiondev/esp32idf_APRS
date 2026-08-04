@@ -96,10 +96,9 @@ Sincronización horaria
 ======================
 
 ``time_sync.c`` ejecuta SNTP contra tres hosts. Ahora es una máquina de estados
-no bloqueante plegada en el tick de servicio de 1 Hz (en lugar de una tarea
-bloqueante dedicada), y fija el reloj del sistema a UTC (``TZ=UTC0``)
-independientemente de la zona horaria de visualización configurada — las marcas
-de tiempo zulú de la especificación APRS lo requieren.
+no bloqueante plegada en el tick de servicio de 1 Hz, y fija el reloj del
+sistema a UTC (``TZ=UTC0``) — las marcas de tiempo zulú de la especificación
+APRS lo requieren.
 
 Frecuencia de CPU
 =================

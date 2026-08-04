@@ -264,8 +264,9 @@ esp_err_t page_symbol_get(httpd_req_t *req) {
             const char *label;
             const char *sym;
         } cur[] = {
-            { TR_F_IGATE, g_config.igate_symbol },         { TR_DASH_DIGI_SHORT, g_config.digi_symbol },  { TR_SYM_TRACKER_IDLE, g_config.trk_symbol },
-            { TR_SYM_TRACKER_MOVE, g_config.trk_symmove }, { TR_SYM_TRACKER_STOP, g_config.trk_symstop },
+            { TR_F_IGATE, g_config.igate_symbol },
+            { TR_DASH_DIGI_SHORT, g_config.digi_symbol },
+            { TR_SYM_TRACKER, g_config.trk_symbol },
         };
         for (size_t i = 0; i < sizeof(cur) / sizeof(cur[0]); i++) {
             char t = cur[i].sym[0] ? cur[i].sym[0] : '/';

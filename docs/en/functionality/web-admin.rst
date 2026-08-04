@@ -54,13 +54,11 @@ The pages
        status, PHG.
    * - **Digi**
      - Digipeater enable, callsign/SSID and beacon settings (position, symbol,
-       interval, comment, status, path). It also carries *Auto (WIDEn-N)* and
-       *Digipeat delay* — see the note below. The duplicate-suppression window
-       is a single control, on the *IGate* page.
+       interval, comment, status, path). The duplicate-suppression window is a
+       single control, on the *IGate* page.
    * - **Tracker**
-     - Tracker enable, callsign/SSID, fixed interval, position, symbol
-       (moving/stopped), comment, compressed-position, Mic-E-position and
-       altitude options.
+     - Tracker enable, callsign/SSID, fixed interval, position, station symbol,
+       comment, compressed-position, Mic-E-position and altitude options.
    * - **Weather**
      - Enable, send-via-RF/-INET, timestamp, WX callsign/SSID/path, position,
        object name, comment, per-field *Averaged* checkboxes, and — for every
@@ -97,8 +95,8 @@ The pages
      - Mode (off/STA/AP/AP+STA), AP SSID/pass/channel, 5 STA slots each with its
        own Enable checkbox, TX power in dBm, plus a live scan.
    * - **System**
-     - Web login, hostname, CPU frequency (applied live), NTP hosts ×3, resync
-       interval, reset timeout, and the four shared path presets ``path[0..3]``.
+     - Web login, CPU frequency (applied live), NTP hosts ×3, resync interval,
+       and the four shared path presets ``path[0..3]``.
    * - **Storage**
      - LittleFS browser: download, delete, multipart upload, usage, format.
    * - **About / Firmware**
@@ -107,11 +105,10 @@ The pages
 
 .. note::
 
-   Two controls on the *Digi* page — *Auto (WIDEn-N)* (``digiAuto``) and
-   *Digipeat delay* (``digiDelay``) — are accepted, validated and persisted to
-   ``config.json``, but no runtime code reads them today. The digipeater always
-   handles WIDEn-N and repeats without an added delay. They are documented here
-   so the behaviour is not mistaken for a bug.
+   Every control on these pages drives runtime behaviour: a setting that reaches
+   ``config.json`` is read by the service that owns it. The digipeater always
+   handles WIDEn-N and repeats without an added delay, so neither is offered as
+   an option.
 
    Duplicate suppression has exactly one pair of controls, *Dup cache size*
    (``dupCacheSize``) and *Dup cache timeout* (``dupCacheTimeoutMs``) on the

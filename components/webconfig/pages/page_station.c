@@ -67,8 +67,6 @@ static void station_resync_dependents(void) {
         g_config.igate_phg_gain = g_config.my_phg_gain;
         g_config.igate_phg_height = g_config.my_phg_height;
         g_config.igate_phg_dir = g_config.my_phg_dir;
-        strncpy(g_config.igate_phg, g_config.my_phg, sizeof(g_config.igate_phg) - 1);
-        g_config.igate_phg[sizeof(g_config.igate_phg) - 1] = 0;
     }
 
     // -- Digipeater ------------------------------------------------------------
@@ -95,7 +93,6 @@ static void station_resync_dependents(void) {
         g_config.wx_mycall[sizeof(g_config.wx_mycall) - 1] = 0;
         g_config.wx_lat = g_config.my_lat;
         g_config.wx_lon = g_config.my_lon;
-        g_config.wx_alt = g_config.my_alt;
     }
 
     // -- Messaging -----------------------------------------------------------
@@ -130,8 +127,6 @@ static void station_resync_dependents(void) {
                     b->phg_gain = g_config.my_phg_gain;
                     b->phg_height = g_config.my_phg_height;
                     b->phg_dir = g_config.my_phg_dir;
-                    memcpy(b->phg, g_config.my_phg, sizeof(b->phg));
-                    b->phg[sizeof(b->phg) - 1] = 0;
                     changed = true;
                 }
             }
@@ -227,15 +222,14 @@ esp_err_t page_station_get(httpd_req_t *req) {
     web_select_close(req);
 
     // Computed PHG value --------------------------------------------------
-    // Read-only; automatically recalculated by JS whenever any PHG section
-    // value changes (no manual "calculate" button). Kept inside the PHG
-    // fieldset since it's derived directly from the fields above it.
+    // Read-only and display-only: it carries no name attribute, so it is never
+    // submitted and never stored. The script below fills it on load and on
+    // every change of the four PHG sub-fields, which are the values the beacon
+    // encoder reads. Kept inside the PHG fieldset since it is derived directly
+    // from the fields above it.
     {
         char buf[550];
-        snprintf(buf, sizeof(buf),
-                 "<label>%s</label>"
-                 "<input type='text' name='myPHG' id='myPHG' value='%s' maxlength='7' readonly>",
-                 TR_F_PHG_TEXT, g_config.my_phg);
+        snprintf(buf, sizeof(buf), "<label>%s</label><input type='text' id='myPHG' maxlength='7' readonly>", TR_F_PHG_TEXT);
         web_raw(req, buf);
     }
     web_fieldset_close(req);
@@ -293,7 +287,6 @@ esp_err_t page_station_post(httpd_req_t *req) {
         g_config.pos_ambiguity = (uint8_t)amb;
     }
     g_config.status_grid_en = web_form_get_bool(body, "myStatusGrid");
-    web_form_get(body, "myPHG", g_config.my_phg, sizeof(g_config.my_phg));
     g_config.my_phg_power = (uint16_t)web_form_get_int(body, "myPHGPower", g_config.my_phg_power);
     g_config.my_phg_gain = (float)web_form_get_int(body, "myPHGGain", (int)lroundf(g_config.my_phg_gain));
     // Select value is the underlying feet code (see the GET handler); saved

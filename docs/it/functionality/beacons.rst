@@ -219,6 +219,5 @@ I timestamp sono UTC
 ====================
 
 I timestamp dei beacon sono zulu/UTC (``051200z``) secondo la specifica APRS —
-per cui ``time_sync.c`` imposta l'orologio di sistema su ``TZ=UTC0``
-indipendentemente da ``g_config.timeZone`` (il fuso configurato è solo per la
-visualizzazione).
+per cui ``time_sync.c`` imposta l'orologio di sistema su ``TZ=UTC0``. Nel
+firmware non esiste alcun offset di ora locale.

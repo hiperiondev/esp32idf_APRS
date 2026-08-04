@@ -17,11 +17,9 @@
  * @brief SNTP time sync, configured entirely from the persisted System web admin
  * settings (g_config.synctime / g_config.ntp_host[0..2]).
  *
- * The system clock is always kept in UTC (TZ=UTC0) regardless of any timezone the
- * user has configured elsewhere, because APRS beacon timestamps ("051200z" in
- * beacon.c) must be zulu/UTC per the APRS spec - g_config.timeZone is left
- * untouched here for any future local-time display use, it is simply not applied
- * to the system clock.
+ * The system clock is always kept in UTC (TZ=UTC0), because APRS beacon
+ * timestamps ("051200z" in beacon.c) must be zulu/UTC per the APRS spec. No
+ * local-time offset is applied anywhere in the firmware.
  */
 
 #ifndef TIME_SYNC_H

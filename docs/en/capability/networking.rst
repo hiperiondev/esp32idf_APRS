@@ -93,9 +93,8 @@ Time sync
 =========
 
 ``time_sync.c`` runs SNTP against three hosts. It is now a non-blocking state
-machine folded into the 1 Hz service tick (rather than a dedicated blocking
-task), and it pins the system clock to UTC (``TZ=UTC0``) regardless of the
-configured display time zone — the APRS spec's zulu timestamps require it.
+machine folded into the 1 Hz service tick, and it pins the system clock to UTC
+(``TZ=UTC0``) — the APRS spec's zulu timestamps require it.
 
 CPU frequency
 =============

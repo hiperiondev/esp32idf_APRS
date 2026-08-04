@@ -209,11 +209,11 @@ static void render_objitem_phg(httpd_req_t *req, int i, const objitem_t *b) {
     }
     web_select_close(req);
 
-    // -- Computed PHG string (read-only; kept in sync by the page script). --
-    snprintf(buf, sizeof(buf),
-             "<label>%s</label>"
-             "<input type='text' name='oPhg%d' id='oPhg%d' value='%.7s' maxlength='7' readonly>",
-             TR_F_PHG_TEXT, i + 1, i + 1, b->phg);
+    // -- Computed PHG string: read-only and display-only, so it carries no
+    //    name attribute and is never submitted or stored. The page script
+    //    fills it from the four sub-fields above, which are the values the
+    //    object encoder reads. --
+    snprintf(buf, sizeof(buf), "<label>%s</label><input type='text' id='oPhg%d' maxlength='7' readonly>", TR_F_PHG_TEXT, i + 1);
     web_raw(req, buf);
 
     web_fieldset_close(req);
@@ -389,20 +389,20 @@ esp_err_t page_objects_get(httpd_req_t *req) {
 
     // Shared "My Station" PHG snapshot, exposed to the PHG script below so an
     // element with "Use My Station Data" ticked can mirror the Station page's
-    // values live. my_phg only ever contains [A-Z0-9] (a computed "PHGxxxx"
-    // string), so it is safe inside a single-quoted JS string literal as-is.
+    // values live. Only the four sub-fields travel: the displayed PHG string is
+    // always derived from them by the same formula on every page.
     {
         char sbuf[256];
-        snprintf(sbuf, sizeof(sbuf), "<script>window.__stnPHG={p:%u,g:%d,h:%u,d:%u,s:'%.7s'};</script>", (unsigned)g_config.my_phg_power,
-                 (int)lroundf(g_config.my_phg_gain), (unsigned)g_config.my_phg_height, (unsigned)g_config.my_phg_dir, g_config.my_phg);
+        snprintf(sbuf, sizeof(sbuf), "<script>window.__stnPHG={p:%u,g:%d,h:%u,d:%u};</script>", (unsigned)g_config.my_phg_power,
+                 (int)lroundf(g_config.my_phg_gain), (unsigned)g_config.my_phg_height, (unsigned)g_config.my_phg_dir);
         httpd_resp_sendstr_chunk(req, sbuf);
     }
 
     // Per-element PHG behaviour, shared across all OBJITEM_COUNT blocks:
     //   * "Enable PHG" off  -> the four PHG sub-fields are disabled.
     //   * "Use My Station Data" on -> the sub-fields are filled from the shared
-    //     station PHG and disabled (locked), and the computed text shows the
-    //     station PHG string.
+    //     station PHG and disabled (locked), and the computed text is
+    //     recalculated from those mirrored values.
     //   * otherwise the sub-fields are editable and the computed PHG text is
     //     recalculated live from them (same formula as the Station page).
     // Disabled controls don't POST, so the save handler snapshots the station
@@ -412,7 +412,7 @@ esp_err_t page_objects_get(httpd_req_t *req) {
         char js[1700];
         snprintf(js, sizeof(js),
                  "<script>(function(){"
-                 "var ST=window.__stnPHG||{p:0,g:0,h:10,d:0,s:''};"
+                 "var ST=window.__stnPHG||{p:0,g:0,h:10,d:0};"
                  "function q(n){return document.querySelector(\"[name='\"+n+\"']\");}"
                  "function calc(n){"
                  "var p=parseInt(q('oPhgP'+n).value)||0,g=parseInt(q('oPhgG'+n).value)||0,"
@@ -430,7 +430,7 @@ esp_err_t page_objects_get(httpd_req_t *req) {
                  "if(useS){q('oPhgP'+n).value=ST.p;q('oPhgG'+n).value=ST.g;q('oPhgH'+n).value=ST.h;q('oPhgD'+n).value=ST.d;}"
                  "var dis=(!on)||useS;"
                  "['oPhgP'+n,'oPhgG'+n,'oPhgH'+n,'oPhgD'+n].forEach(function(nm){var el=q(nm);if(el)el.disabled=dis;});"
-                 "if(useS){var o=document.getElementById('oPhg'+n);if(o)o.value=ST.s;}else{calc(n);}"
+                 "calc(n);"
                  "}"
                  "document.addEventListener('DOMContentLoaded',function(){"
                  "for(var n=1;n<=%d;n++){(function(n){"
@@ -481,7 +481,6 @@ esp_err_t page_objects_post(httpd_req_t *req) {
     uint16_t st_phg_power, st_phg_height;
     float st_phg_gain;
     uint8_t st_phg_dir;
-    char st_phg[8];
     // Snapshot the shared Digipeater Path Alias presets too (see
     // app_config_path_mask_clamp() below), for the same "copy it out while
     // locked, then work on the local copy" reason as the PHG fields above.
@@ -491,7 +490,6 @@ esp_err_t page_objects_post(httpd_req_t *req) {
     st_phg_gain = g_config.my_phg_gain;
     st_phg_height = g_config.my_phg_height;
     st_phg_dir = g_config.my_phg_dir;
-    snprintf(st_phg, sizeof(st_phg), "%.7s", g_config.my_phg);
     for (int i = 0; i < 4; i++) {
         strncpy(path_preset[i], g_config.path[i], sizeof(path_preset[i]) - 1);
         path_preset[i][sizeof(path_preset[i]) - 1] = 0;
@@ -679,8 +677,6 @@ esp_err_t page_objects_post(httpd_req_t *req) {
             b->phg_gain = st_phg_gain;
             b->phg_height = st_phg_height;
             b->phg_dir = st_phg_dir;
-            memcpy(b->phg, st_phg, sizeof(b->phg));
-            b->phg[sizeof(b->phg) - 1] = 0;
         } else {
             snprintf(name, sizeof(name), "oPhgP%d", i + 1);
             int pw = web_form_get_int(body, name, (int)b->phg_power);
@@ -706,12 +702,6 @@ esp_err_t page_objects_post(httpd_req_t *req) {
             if (dr > 8)
                 dr = 8;
             b->phg_dir = (uint8_t)dr;
-            snprintf(name, sizeof(name), "oPhg%d", i + 1);
-            char phg[8];
-            phg[0] = 0;
-            web_form_get(body, name, phg, sizeof(phg));
-            memcpy(b->phg, phg, sizeof(b->phg));
-            b->phg[sizeof(b->phg) - 1] = 0;
         }
 
         // If the user just switched this element from active to killed while

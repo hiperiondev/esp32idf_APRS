@@ -285,7 +285,7 @@ esp_err_t page_wx_get(httpd_req_t *req) {
 
     web_fieldset_open(req, TR_F_WEATHER_STATION);
     web_field_checkbox(req, TR_F_ENABLE_WX, "wxEn", g_config.wx_en);
-    web_field_use_station_data(req, "wxUseStation", g_config.wx_use_station, "wxMycall", "wxLAT", "wxLON", "wxALT");
+    web_field_use_station_data(req, "wxUseStation", g_config.wx_use_station, "wxMycall", "wxLAT", "wxLON", NULL);
     web_field_checkbox(req, TR_F_SEND_VIA_RF, "wxTx2rf", g_config.wx_2rf);
     web_field_checkbox(req, TR_F_SEND_VIA_INTERNET, "wxTx2inet", g_config.wx_2inet);
     web_field_checkbox(req, TR_F_ADD_TIMESTAMP, "wxTime", g_config.wx_timestamp);
@@ -297,7 +297,6 @@ esp_err_t page_wx_get(httpd_req_t *req) {
     web_fieldset_open(req, TR_F_POSITION);
     web_field_float(req, TR_F_LATITUDE, "wxLAT", g_config.wx_lat, "0.0001", WEB_RANGE_LAT_MIN, WEB_RANGE_LAT_MAX);
     web_field_float(req, TR_F_LONGITUDE, "wxLON", g_config.wx_lon, "0.0001", WEB_RANGE_LON_MIN, WEB_RANGE_LON_MAX);
-    web_field_float(req, TR_F_ALTITUDE_M, "wxALT", g_config.wx_alt, "1", WEB_RANGE_ALT_M_MIN, WEB_RANGE_ALT_M_MAX);
     web_field_int(req, TR_F_BEACON_INTERVAL_S, "wxInv", g_config.wx_interval, WEB_RANGE_INTERVAL_S_MIN, WEB_RANGE_INTERVAL_S_MAX);
     web_field_text(req, TR_F_OBJECT_NAME, "wxObject", g_config.wx_object, 9);
     web_field_text(req, TR_F_COMMENT, "wxComment", g_config.wx_comment, COMMENT_SIZE - 1);
@@ -405,11 +404,9 @@ esp_err_t page_wx_post(httpd_req_t *req) {
     if (g_config.wx_use_station) {
         g_config.wx_lat = g_config.my_lat;
         g_config.wx_lon = g_config.my_lon;
-        g_config.wx_alt = g_config.my_alt;
     } else {
         g_config.wx_lat = web_form_get_float(body, "wxLAT", g_config.wx_lat);
         g_config.wx_lon = web_form_get_float(body, "wxLON", g_config.wx_lon);
-        g_config.wx_alt = web_form_get_float(body, "wxALT", g_config.wx_alt);
     }
     g_config.wx_interval = (uint16_t)web_form_get_int(body, "wxInv", g_config.wx_interval);
     web_form_get(body, "wxObject", g_config.wx_object, sizeof(g_config.wx_object));

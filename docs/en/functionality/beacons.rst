@@ -203,5 +203,5 @@ Timestamps are UTC
 ==================
 
 Beacon timestamps are zulu/UTC (``051200z``) per the APRS spec — which is why
-``time_sync.c`` pins the system clock to ``TZ=UTC0`` regardless of
-``g_config.timeZone`` (the configured zone is display-only).
+``time_sync.c`` pins the system clock to ``TZ=UTC0``. No local-time offset
+exists anywhere in the firmware.

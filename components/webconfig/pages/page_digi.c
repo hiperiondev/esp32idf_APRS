@@ -33,9 +33,7 @@ esp_err_t page_digi_get(httpd_req_t *req) {
     web_fieldset_open(req, TR_F_DIGIPEATER);
     web_field_checkbox(req, TR_F_ENABLE_DIGIPEATER, "digiEn", g_config.digi_en);
     web_field_use_station_data(req, "digiUseStation", g_config.digi_use_station, "digiMycall", "digiLAT", "digiLON", "digiAlt");
-    web_field_checkbox(req, TR_F_AUTO_WIDEN_N, "digiAuto", g_config.digi_auto);
     web_field_checkbox(req, TR_F_ADD_TIMESTAMP, "digiTime", g_config.digi_timestamp);
-    web_field_int(req, TR_F_DIGI_DELAY_MS, "digiDelay", g_config.digi_delay, 0, 65535);
     web_fieldset_close(req);
 
     web_fieldset_open(req, TR_F_STATION);
@@ -54,7 +52,6 @@ esp_err_t page_digi_get(httpd_req_t *req) {
     web_field_float(req, TR_F_ALTITUDE_M, "digiAlt", g_config.digi_alt, "1", WEB_RANGE_ALT_M_MIN, WEB_RANGE_ALT_M_MAX);
     web_field_int(req, TR_F_BEACON_INTERVAL_S, "digiINV", g_config.digi_interval, WEB_RANGE_INTERVAL_S_MIN, WEB_RANGE_INTERVAL_S_MAX);
     web_field_symbol(req, TR_F_STATION_SYMBOL, "digiSym", g_config.digi_symbol);
-    web_field_text(req, TR_F_PHG, "digiPHG", g_config.digi_phg, 7);
     web_field_text(req, TR_F_COMMENT, "digiComment", g_config.digi_comment, COMMENT_SIZE - 1);
     web_fieldset_close(req);
 
@@ -88,9 +85,7 @@ esp_err_t page_digi_post(httpd_req_t *req) {
     app_config_lock();
     g_config.digi_en = web_form_get_bool(body, "digiEn");
     g_config.digi_use_station = web_form_get_bool(body, "digiUseStation");
-    g_config.digi_auto = web_form_get_bool(body, "digiAuto");
     g_config.digi_timestamp = web_form_get_bool(body, "digiTime");
-    g_config.digi_delay = (uint16_t)web_form_get_int(body, "digiDelay", g_config.digi_delay);
 
     if (g_config.digi_use_station) {
         // Fields are disabled client-side while this is checked, so the
@@ -119,7 +114,6 @@ esp_err_t page_digi_post(httpd_req_t *req) {
     // widget, falling back to a legacy combined 2-char field if present.
     web_form_get_symbol(body, "digiSym", "digiSymbol", g_config.digi_symbol, sizeof(g_config.digi_symbol));
 
-    web_form_get(body, "digiPHG", g_config.digi_phg, sizeof(g_config.digi_phg));
     web_form_get(body, "digiComment", g_config.digi_comment, sizeof(g_config.digi_comment));
 
     g_config.digi_sts_interval = (uint16_t)web_form_get_int(body, "digiSTSIntv", g_config.digi_sts_interval);

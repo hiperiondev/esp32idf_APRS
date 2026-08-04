@@ -73,12 +73,10 @@ Valori di fabbrica notevoli
      - ``esp32idf_APRS`` / ``esp32idf_APRS``
    * - Login web
      - ``admin`` / ``admin``
-   * - Hostname
-     - ``esp32idf_APRS``
    * - Frequenza CPU
      - 240 MHz
-   * - Fuso orario
-     - 0.0 (l'orologio stesso è sempre UTC)
+   * - Orologio di sistema
+     - sempre UTC (TZ=UTC0); nessun offset di ora locale viene applicato
    * - Host NTP
      - ``pool.ntp.org``, ``time.google.com``, ``time.cloudflare.com``
    * - IGate

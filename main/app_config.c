@@ -114,7 +114,6 @@ static void set_str(char *dst, size_t sz, const char *val) {
 void app_config_set_defaults(app_config_t *c) {
     memset(c, 0, sizeof(*c));
 
-    c->timeZone = 0.0f;
     c->synctime = true;
     c->cpuFreq = 240;
 
@@ -127,7 +126,6 @@ void app_config_set_defaults(app_config_t *c) {
     c->my_phg_gain = 6.0f;
     c->my_phg_height = 10;
     c->my_phg_dir = 0;
-    set_str(c->my_phg, sizeof(c->my_phg), "");
 
     c->pos_ambiguity = 0;
     c->status_grid_en = false;
@@ -204,7 +202,6 @@ void app_config_set_defaults(app_config_t *c) {
     c->digi_ssid = 1;
     set_str(c->digi_mycall, sizeof(c->digi_mycall), "NOCALL");
     c->digi_path = ACTIVATE_DIGI;
-    c->digi_delay = 0;
     c->digi_bcn = true;
     c->digi_compress = false;
     c->digi_interval = 30;
@@ -220,8 +217,6 @@ void app_config_set_defaults(app_config_t *c) {
     c->trk_compress = false;
     c->trk_mice = false;
     set_str(c->trk_symbol, sizeof(c->trk_symbol), "\\>");
-    set_str(c->trk_symmove, sizeof(c->trk_symmove), "/>");
-    set_str(c->trk_symstop, sizeof(c->trk_symstop), "\\>");
     set_str(c->trk_comment, sizeof(c->trk_comment), "esp32idf_APRS Tracker");
 
     // WX
@@ -279,8 +274,6 @@ void app_config_set_defaults(app_config_t *c) {
     // System / HTTP auth  (README documented default: admin/admin)
     set_str(c->http_username, sizeof(c->http_username), "admin");
     set_str(c->http_password, sizeof(c->http_password), "admin");
-    set_str(c->host_name, sizeof(c->host_name), "esp32idf_APRS");
-    c->reset_timeout = 0;
     for (int i = 0; i < 4; i++)
         set_str(c->path[i], sizeof(c->path[i]), "");
     set_str(c->path[0], sizeof(c->path[0]), "WIDE1-1,WIDE2-1");
@@ -431,13 +424,11 @@ static void config_write_json(jw_t *d, const app_config_t *c) {
     jadd_num(d, "myPHGGain", c->my_phg_gain);
     jadd_num(d, "myPHGHeight", c->my_phg_height);
     jadd_num(d, "myPHGDir", c->my_phg_dir);
-    jadd_str(d, "myPHG", c->my_phg);
     jadd_num(d, "myAmbiguity", c->pos_ambiguity);
     jadd_bool(d, "myStatusGrid", c->status_grid_en);
     jadd_num(d, "txTimeSlot", c->tx_timeslot);
     jadd_num(d, "csmaPersist", c->csma_persist);
     jadd_bool(d, "syncTime", c->synctime);
-    jadd_num(d, "timeZone", c->timeZone);
     jadd_str(d, "ntpHost0", c->ntp_host[0]);
     jadd_str(d, "ntpHost1", c->ntp_host[1]);
     jadd_str(d, "ntpHost2", c->ntp_host[2]);
@@ -501,7 +492,6 @@ static void config_write_json(jw_t *d, const app_config_t *c) {
     jadd_num(d, "igateINV", c->igate_interval);
     jadd_str(d, "igateSymbol", c->igate_symbol);
     jadd_str(d, "igateObject", c->igate_object);
-    jadd_str(d, "igatePHG", c->igate_phg);
     jadd_num(d, "igatePath", c->igate_path);
     jadd_str(d, "igateComment", c->igate_comment);
     jadd_num(d, "igateSTSIntv", c->igate_sts_interval);
@@ -519,7 +509,6 @@ static void config_write_json(jw_t *d, const app_config_t *c) {
     jadd_num(d, "igateDfsS", c->igate_dfs_strength);
 
     jadd_bool(d, "digiEn", c->digi_en);
-    jadd_bool(d, "digiAuto", c->digi_auto);
     jadd_bool(d, "digiPos2rf", c->digi_loc2rf);
     jadd_bool(d, "digiPos2inet", c->digi_loc2inet);
     jadd_bool(d, "digiTime", c->digi_timestamp);
@@ -527,7 +516,6 @@ static void config_write_json(jw_t *d, const app_config_t *c) {
     jadd_str(d, "digiMycall", c->digi_mycall);
     jadd_bool(d, "digiUseStation", c->digi_use_station);
     jadd_num(d, "digiPath", c->digi_path);
-    jadd_num(d, "digiDelay", c->digi_delay);
     jadd_bool(d, "digiBcn", c->digi_bcn);
     jadd_bool(d, "digiCompress", c->digi_compress);
     jadd_num(d, "digiAlt", c->digi_alt);
@@ -535,7 +523,6 @@ static void config_write_json(jw_t *d, const app_config_t *c) {
     jadd_num(d, "digiLON", c->digi_lon);
     jadd_num(d, "digiINV", c->digi_interval);
     jadd_str(d, "digiSymbol", c->digi_symbol);
-    jadd_str(d, "digiPHG", c->digi_phg);
     jadd_str(d, "digiComment", c->digi_comment);
     jadd_num(d, "digiSTSIntv", c->digi_sts_interval);
     jadd_str(d, "digiStatus", c->digi_status);
@@ -555,12 +542,7 @@ static void config_write_json(jw_t *d, const app_config_t *c) {
     jadd_bool(d, "trkCompress", c->trk_compress);
     jadd_bool(d, "trkMice", c->trk_mice);
     jadd_bool(d, "trkOptAlt", c->trk_altitude);
-    jadd_bool(d, "trkLog", c->trk_log);
-    jadd_bool(d, "trkOptRSSI", c->trk_rssi);
     jadd_str(d, "trkSymbol", c->trk_symbol);
-    jadd_str(d, "trkSymbolMove", c->trk_symmove);
-    jadd_str(d, "trkSymbolStop", c->trk_symstop);
-    jadd_str(d, "trkItem", c->trk_item);
     jadd_str(d, "trkComment", c->trk_comment);
     jadd_num(d, "trkSTSIntv", c->trk_sts_interval);
     jadd_str(d, "trkStatus", c->trk_status);
@@ -575,7 +557,6 @@ static void config_write_json(jw_t *d, const app_config_t *c) {
     jadd_num(d, "wxPath", c->wx_path);
     jadd_num(d, "wxLAT", c->wx_lat);
     jadd_num(d, "wxLON", c->wx_lon);
-    jadd_num(d, "wxALT", c->wx_alt);
     jadd_num(d, "wxInv", c->wx_interval);
     jadd_str(d, "wxObject", c->wx_object);
     jadd_str(d, "wxComment", c->wx_comment);
@@ -610,10 +591,6 @@ static void config_write_json(jw_t *d, const app_config_t *c) {
     // rfPTT (PTT GPIO) and rfPTTAct (PTT active-high) are not serialized:
     // both are fixed compile-time constants (MODEM_PTT_GPIO /
     // MODEM_PTT_ACTIVE_HIGH), not stored settings.
-
-    jadd_num(d, "logFile", c->log);
-    jadd_str(d, "hostName", c->host_name);
-    jadd_num(d, "resetTimeout", c->reset_timeout);
 
     jadd_bool(d, "msgEnable", c->msg_enable);
     jadd_str(d, "msgMycall", c->msg_mycall);
@@ -656,7 +633,6 @@ static void config_from_json(cJSON *d, app_config_t *c) {
     c->my_phg_gain = (float)jget_num(d, "myPHGGain", def.my_phg_gain);
     c->my_phg_height = (uint16_t)jget_num(d, "myPHGHeight", def.my_phg_height);
     c->my_phg_dir = (uint8_t)jget_num(d, "myPHGDir", def.my_phg_dir);
-    set_str(c->my_phg, sizeof(c->my_phg), jget_str(d, "myPHG", def.my_phg));
     c->pos_ambiguity = (uint8_t)jget_num(d, "myAmbiguity", def.pos_ambiguity);
     if (c->pos_ambiguity > POS_AMBIGUITY_MAX) {
         ESP_LOGW(TAG, "myAmbiguity %u out of range, clamped to %d", (unsigned)c->pos_ambiguity, POS_AMBIGUITY_MAX);
@@ -677,7 +653,6 @@ static void config_from_json(cJSON *d, app_config_t *c) {
     if (c->csma_persist < CSMA_PERSIST_MIN)
         c->csma_persist = CSMA_PERSIST_MIN;
     c->synctime = jget_bool(d, "syncTime", def.synctime);
-    c->timeZone = (float)jget_num(d, "timeZone", def.timeZone);
     set_str(c->ntp_host[0], sizeof(c->ntp_host[0]), jget_str(d, "ntpHost0", jget_str(d, "ntpHost", def.ntp_host[0])));
     set_str(c->ntp_host[1], sizeof(c->ntp_host[1]), jget_str(d, "ntpHost1", def.ntp_host[1]));
     set_str(c->ntp_host[2], sizeof(c->ntp_host[2]), jget_str(d, "ntpHost2", def.ntp_host[2]));
@@ -797,7 +772,6 @@ static void config_from_json(cJSON *d, app_config_t *c) {
     c->igate_interval = (uint16_t)jget_num(d, "igateINV", def.igate_interval);
     set_str(c->igate_symbol, sizeof(c->igate_symbol), jget_str(d, "igateSymbol", def.igate_symbol));
     set_str(c->igate_object, sizeof(c->igate_object), jget_str(d, "igateObject", def.igate_object));
-    set_str(c->igate_phg, sizeof(c->igate_phg), jget_str(d, "igatePHG", def.igate_phg));
     c->igate_path = (uint8_t)jget_num(d, "igatePath", def.igate_path);
     set_str(c->igate_comment, sizeof(c->igate_comment), jget_str(d, "igateComment", def.igate_comment));
     c->igate_timestamp = jget_bool(d, "igateTimestamp", def.igate_timestamp);
@@ -827,7 +801,6 @@ static void config_from_json(cJSON *d, app_config_t *c) {
     set_str(c->igate_status, sizeof(c->igate_status), jget_str(d, "igateStatus", def.igate_status));
 
     c->digi_en = jget_bool(d, "digiEn", def.digi_en);
-    c->digi_auto = jget_bool(d, "digiAuto", def.digi_auto);
     c->digi_loc2rf = jget_bool(d, "digiPos2rf", def.digi_loc2rf);
     c->digi_loc2inet = jget_bool(d, "digiPos2inet", def.digi_loc2inet);
     c->digi_timestamp = jget_bool(d, "digiTime", def.digi_timestamp);
@@ -835,7 +808,6 @@ static void config_from_json(cJSON *d, app_config_t *c) {
     set_str(c->digi_mycall, sizeof(c->digi_mycall), jget_str(d, "digiMycall", def.digi_mycall));
     c->digi_use_station = jget_bool(d, "digiUseStation", def.digi_use_station);
     c->digi_path = (uint8_t)jget_num(d, "digiPath", def.digi_path);
-    c->digi_delay = (uint16_t)jget_num(d, "digiDelay", def.digi_delay);
     c->digi_bcn = jget_bool(d, "digiBcn", def.digi_bcn);
     c->digi_compress = jget_bool(d, "digiCompress", def.digi_compress);
     c->digi_alt = (float)jget_num(d, "digiAlt", def.digi_alt);
@@ -843,7 +815,6 @@ static void config_from_json(cJSON *d, app_config_t *c) {
     c->digi_lon = (float)jget_num(d, "digiLON", def.digi_lon);
     c->digi_interval = (uint16_t)jget_num(d, "digiINV", def.digi_interval);
     set_str(c->digi_symbol, sizeof(c->digi_symbol), jget_str(d, "digiSymbol", def.digi_symbol));
-    set_str(c->digi_phg, sizeof(c->digi_phg), jget_str(d, "digiPHG", def.digi_phg));
     set_str(c->digi_comment, sizeof(c->digi_comment), jget_str(d, "digiComment", def.digi_comment));
     c->digi_sts_interval = (uint16_t)jget_num(d, "digiSTSIntv", def.digi_sts_interval);
     set_str(c->digi_status, sizeof(c->digi_status), jget_str(d, "digiStatus", def.digi_status));
@@ -863,12 +834,7 @@ static void config_from_json(cJSON *d, app_config_t *c) {
     c->trk_compress = jget_bool(d, "trkCompress", def.trk_compress);
     c->trk_mice = jget_bool(d, "trkMice", def.trk_mice);
     c->trk_altitude = jget_bool(d, "trkOptAlt", def.trk_altitude);
-    c->trk_log = jget_bool(d, "trkLog", def.trk_log);
-    c->trk_rssi = jget_bool(d, "trkOptRSSI", def.trk_rssi);
     set_str(c->trk_symbol, sizeof(c->trk_symbol), jget_str(d, "trkSymbol", def.trk_symbol));
-    set_str(c->trk_symmove, sizeof(c->trk_symmove), jget_str(d, "trkSymbolMove", def.trk_symmove));
-    set_str(c->trk_symstop, sizeof(c->trk_symstop), jget_str(d, "trkSymbolStop", def.trk_symstop));
-    set_str(c->trk_item, sizeof(c->trk_item), jget_str(d, "trkItem", def.trk_item));
     set_str(c->trk_comment, sizeof(c->trk_comment), jget_str(d, "trkComment", def.trk_comment));
     c->trk_sts_interval = (uint16_t)jget_num(d, "trkSTSIntv", def.trk_sts_interval);
     set_str(c->trk_status, sizeof(c->trk_status), jget_str(d, "trkStatus", def.trk_status));
@@ -883,7 +849,6 @@ static void config_from_json(cJSON *d, app_config_t *c) {
     c->wx_path = (uint8_t)jget_num(d, "wxPath", def.wx_path);
     c->wx_lat = (float)jget_num(d, "wxLAT", def.wx_lat);
     c->wx_lon = (float)jget_num(d, "wxLON", def.wx_lon);
-    c->wx_alt = (float)jget_num(d, "wxALT", def.wx_alt);
     c->wx_interval = (uint16_t)jget_num(d, "wxInv", def.wx_interval);
     set_str(c->wx_object, sizeof(c->wx_object), jget_str(d, "wxObject", def.wx_object));
     set_str(c->wx_comment, sizeof(c->wx_comment), jget_str(d, "wxComment", def.wx_comment));
@@ -941,10 +906,6 @@ static void config_from_json(cJSON *d, app_config_t *c) {
     // a config.json may still contain either key, but config_from_json()
     // ignores unknown keys, so both are simply skipped - the values come
     // from MODEM_PTT_GPIO / MODEM_PTT_ACTIVE_HIGH instead.
-
-    c->log = (uint16_t)jget_num(d, "logFile", def.log);
-    set_str(c->host_name, sizeof(c->host_name), jget_str(d, "hostName", def.host_name));
-    c->reset_timeout = (uint16_t)jget_num(d, "resetTimeout", def.reset_timeout);
 
     if (!cJSON_GetObjectItemCaseSensitive(d, "msgEnable")) {
         // old-version file compatibility -> keep documented defaults

@@ -309,7 +309,6 @@ typedef enum {
 #define POS_AMBIGUITY_MAX 4
 
 typedef struct {
-    float timeZone;  /**< Configured local timezone offset (display use only; the system clock stays UTC - see time_sync.h). */
     bool synctime;   /**< Enable SNTP time sync. */
     uint8_t cpuFreq; /**< CPU clock frequency selection (80/160/240 MHz); see cpu_freq.h. */
 
@@ -323,7 +322,6 @@ typedef struct {
     uint16_t my_phg_height; /**< "My Station" PHG sub-field: antenna height. Stored in feet (the unit the APRS PHG code table itself is defined in); the Station
                                page displays/edits this in meters and converts. */
     uint8_t my_phg_dir;     /**< "My Station" PHG sub-field: directivity, 0=Omni, 1-8 = N,NE,E,SE,S,SW,W,NW. */
-    char my_phg[8];         /**< "My Station" PHG string (computed from the sub-fields above), e.g. "PHG5132". */
 
     uint8_t pos_ambiguity; /**< Position ambiguity applied to every uncompressed own-station position report, 0 (full precision) to ::POS_AMBIGUITY_MAX
                               (nearest degree). See aprs_coord_format_ambiguous(). */
@@ -381,7 +379,6 @@ typedef struct {
     uint16_t igate_interval;          /**< IGate beacon interval, seconds. */
     char igate_symbol[3];             /**< IGate APRS symbol ("<table><code>" + NUL). */
     char igate_object[10];            /**< IGate object name (if beaconing as an object). */
-    char igate_phg[8];                /**< IGate PHG string (computed from the sub-fields below). */
     uint8_t igate_path;               /**< IGate digipeat-path selection (bitmask over g_config.path[0..3]). */
     char igate_comment[COMMENT_SIZE]; /**< IGate beacon comment. */
     uint16_t igate_sts_interval;      /**< IGate status-beacon interval, seconds. */
@@ -398,7 +395,6 @@ typedef struct {
     uint8_t igate_dfs_strength;       /**< "DFSshgd" signal-strength code 0-9 (::APRS_EXT_DFS only; height/gain/directivity come from the PHG sub-fields). */
 
     bool digi_en;                    /**< Digipeater service enabled. */
-    bool digi_auto;                  /**< Automatic (WIDEn-N) digipeating. */
     bool digi_loc2rf;                /**< Beacon the digipeater's own position on RF. */
     bool digi_loc2inet;              /**< Beacon the digipeater's own position to APRS-IS. */
     bool digi_timestamp;             /**< Include a timestamp in the digipeater beacon. */
@@ -406,7 +402,6 @@ typedef struct {
     char digi_mycall[10];            /**< Digipeater callsign. */
     bool digi_use_station;           /**< "Use My Station Data": mirror My Station into the digipeater fields and lock them. */
     uint8_t digi_path;               /**< Digipeater beacon digipeat-path selection (bitmask over g_config.path[0..3]). */
-    uint16_t digi_delay;             /**< Digipeat delay, ms. */
     bool digi_bcn;                   /**< Enable the digipeater position beacon. */
     bool digi_compress;              /**< Use APRS compressed position format for the digipeater position beacon. */
     float digi_lat;                  /**< Digipeater beacon latitude. */
@@ -414,7 +409,6 @@ typedef struct {
     float digi_alt;                  /**< Digipeater beacon altitude. */
     uint16_t digi_interval;          /**< Digipeater beacon interval, seconds. */
     char digi_symbol[3];             /**< Digipeater APRS symbol. */
-    char digi_phg[8];                /**< Digipeater PHG string. */
     char digi_comment[COMMENT_SIZE]; /**< Digipeater beacon comment. */
     uint16_t digi_sts_interval;      /**< Digipeater status-beacon interval, seconds. */
     char digi_status[STATUS_SIZE];   /**< Digipeater status text. */
@@ -434,13 +428,8 @@ typedef struct {
     bool trk_compress;              /**< Use APRS compressed position format. */
     bool trk_altitude;              /**< Include altitude in the beacon. */
     bool trk_mice;                  /**< Use Mic-E position encoding (APRS101 ch.10) instead of uncompressed/compressed; excludes trk_timestamp. */
-    bool trk_log;                   /**< Log tracker beacons. */
-    bool trk_rssi;                  /**< Append RSSI info. */
     char trk_symbol[3];             /**< Tracker APRS symbol. */
-    char trk_symmove[3];            /**< APRS symbol used while moving. */
-    char trk_symstop[3];            /**< APRS symbol used while stopped. */
     char trk_comment[COMMENT_SIZE]; /**< Tracker beacon comment. */
-    char trk_item[10];              /**< Tracker item name (if beaconing as an item). */
     uint16_t trk_sts_interval;      /**< Tracker status-beacon interval, seconds. */
     char trk_status[STATUS_SIZE];   /**< Tracker status text. */
 
@@ -454,7 +443,6 @@ typedef struct {
     uint8_t wx_path;                      /**< WX digipeat-path selection (bitmask over g_config.path[0..3]). */
     float wx_lat;                         /**< WX report latitude. */
     float wx_lon;                         /**< WX report longitude. */
-    float wx_alt;                         /**< WX report altitude. */
     uint16_t wx_interval;                 /**< WX report interval, seconds. */
     char wx_object[10];                   /**< WX object name (if beaconing as an object). */
     char wx_comment[COMMENT_SIZE];        /**< WX report comment. */
@@ -484,9 +472,6 @@ typedef struct {
     char http_username[32]; /**< Web admin HTTP Basic auth username. */
     char http_password[64]; /**< Web admin HTTP Basic auth password. */
     char path[4][72];       /**< The four shared digipeat-path presets selected by the per-service path bitmasks. */
-    char host_name[32];     /**< Device hostname (mDNS / DHCP). */
-    uint16_t reset_timeout; /**< Auto-reset timeout, seconds. */
-    uint16_t log;           /**< Logging level / flags. */
 
     uint16_t ptt_min_unkey_ms; /**< Extra minimum PTT-off (unkeyed) hold time between transmissions, ms, on top of the fixed one-service-tick (~10 ms) release
                                   the modem always applies. 0 disables the extra hold. Web-configurable and applied live via aprs_service_apply_modem_config().

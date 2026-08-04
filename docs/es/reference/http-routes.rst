@@ -84,7 +84,7 @@ la pide mientras dibuja el propio desafío de login.
      - resultados del escaneo de AP (JSON)
    * - GET/POST
      - ``/system``
-     - login, hostname, frec. CPU, NTP, presets de ruta, timeout de reset
+     - login, frec. CPU, NTP, presets de ruta
    * - POST
      - ``/default``
      - reset de fábrica

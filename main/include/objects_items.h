@@ -255,7 +255,6 @@ typedef struct {
     float phg_gain;       /**< PHG antenna gain, dB. */
     uint16_t phg_height;  /**< PHG antenna height, stored in feet (the APRS code-table unit); the page displays/edits it in meters. */
     uint8_t phg_dir;      /**< PHG directivity: 0=Omni, 1-8 = N,NE,E,SE,S,SW,W,NW. */
-    char phg[8];          /**< Computed PHG string (e.g. "PHG5132"), for form redisplay/parity with the Station page. */
 
     bool compress; /**< Use APRS compressed position format for this element. Silently falls back to uncompressed for Area/Signpost objects (which use the
                       7-byte data-extension slot for their own descriptor, not CSE/SPD - the compressed format has no equivalent for that slot) and whenever

@@ -84,7 +84,7 @@ richiesta di login.
      - risultati della scansione AP (JSON)
    * - GET/POST
      - ``/system``
-     - login, hostname, freq. CPU, NTP, preset di percorso, timeout di reset
+     - login, freq. CPU, NTP, preset di percorso
    * - POST
      - ``/default``
      - reset di fabbrica

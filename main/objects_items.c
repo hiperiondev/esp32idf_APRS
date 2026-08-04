@@ -312,9 +312,6 @@ static bool load_locked(objitems_t *out, bool *out_missing) {
             v = cJSON_GetObjectItem(o, "phgD");
             if (cJSON_IsNumber(v) && v->valuedouble >= 0)
                 b->phg_dir = (uint8_t)v->valuedouble;
-            v = cJSON_GetObjectItem(o, "phg");
-            if (cJSON_IsString(v) && v->valuestring)
-                clamp_str(b->phg, v->valuestring, sizeof(b->phg) - 1);
 
             v = cJSON_GetObjectItem(o, "compress");
             b->compress = cJSON_IsTrue(v);
@@ -400,12 +397,6 @@ static bool save_locked(const objitems_t *in) {
         fprintf(f, ",\"phgG\":%.1f", (double)b->phg_gain);
         fprintf(f, ",\"phgH\":%u", (unsigned)b->phg_height);
         fprintf(f, ",\"phgD\":%u", (unsigned)b->phg_dir);
-        {
-            char phg[sizeof(b->phg)];
-            clamp_str(phg, b->phg, sizeof(phg) - 1);
-            fputs(",\"phg\":", f);
-            json_write_escaped(f, phg);
-        }
         fprintf(f, ",\"compress\":%s", b->compress ? "true" : "false");
         fprintf(f, ",\"kill_left\":%u", (unsigned)b->kill_left);
         fputc('}', f);
@@ -560,8 +551,8 @@ static void build_freq_block(const objitem_t *b, char *out, size_t out_size) {
 //   D = directivity     -> digit (0=omni, 1..8 = 45*D degrees) (0..8)
 // Each field is a single character '0'+digit. Per APRS101/APRSdos the Height
 // character may extend past '9' for very tall sites (balloons/aircraft), so it
-// is not capped at 9 (only kept in a sane range). This mirrors exactly the
-// PHG string the Station/Objects web pages compute and display. `out` must be
+// is not capped at 9 (only kept in a sane range). This is the same formula the
+// Station/Objects web pages use for their read-only PHG display. `out` must be
 // at least 8 bytes.
 static void objitem_build_phg(const objitem_t *b, char *out, size_t out_size) {
     int P = (int)lroundf(sqrtf((float)b->phg_power));

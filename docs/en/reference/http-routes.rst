@@ -83,7 +83,7 @@ requests it while rendering the login challenge itself.
      - AP scan results (JSON)
    * - GET/POST
      - ``/system``
-     - login, hostname, CPU freq, NTP, path presets, reset timeout
+     - login, CPU freq, NTP, path presets
    * - POST
      - ``/default``
      - factory reset
