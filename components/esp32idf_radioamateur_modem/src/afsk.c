@@ -460,31 +460,6 @@ bool getTransmit(void) {
     return s_txActive;
 }
 
-// Diagnostic-only: reads back the ACTUAL physical level currently on the PTT
-// pin, straight from the GPIO input register - not the logical s_txActive/
-// setPtt() state that everything else in this file trusts. Used by
-// pollTxEvents() in ax25.c so the "PTT OFF (unkeyed)" / "PTT ON (keyed up)"
-// log lines report ground truth from the pin itself instead of only the
-// software's belief about it, which is what every other log in this path
-// already does. Returns -1 if no PTT pin is configured. Safe to call from
-// task context (this is not IRAM/ISR code).
-int afskGetPttGpioLevel(void) {
-    if (s_pttGpio < 0)
-        return -1;
-    return gpio_get_level((gpio_num_t)s_pttGpio);
-}
-
-// Diagnostic-only: the currently configured PTT polarity, so a log line can
-// say what pin level actually means ("idle" vs "asserted") instead of
-// leaving that to be looked up in CMakeLists.txt. Mirrors s_pttActiveHigh
-// under the same spinlock setPtt() uses.
-bool afskGetPttActiveHigh(void) {
-    portENTER_CRITICAL(&s_pttMux);
-    bool activeHigh = s_pttActiveHigh;
-    portEXIT_CRITICAL(&s_pttMux);
-    return activeHigh;
-}
-
 bool AFSK_TxTeardownPending(void) {
     return s_txStopPending;
 }
@@ -555,12 +530,6 @@ float afskGetDacAlarmRate(void) {
     return s_dacAlarmRateHz;
 }
 
-void afskDiagDacWrite(uint8_t code) {
-    if (s_txActive || !s_dac)
-        return;
-    dac_oneshot_output_voltage(s_dac, code);
-}
-
 int afskDiagCaptureRaw(int16_t *dst, int n, uint32_t timeout_ms) {
     if ((dst == NULL) || (n <= 0))
         return 0;
@@ -614,9 +583,9 @@ int afskDiagCaptureRaw(int16_t *dst, int n, uint32_t timeout_ms) {
 //
 // dac_ll_update_output_value() is a static inline in a HAL header, so it
 // compiles into this IRAM_ATTR ISR and the flash round trip disappears. Only
-// this ISR touches the DAC while the timer is running - AFSK_ServiceTx() and
-// afskDiagDacWrite() both check that TX is stopped first - so dropping the
-// driver's critical section here does not race anything.
+// this ISR touches the DAC while the timer is running - AFSK_ServiceTx() writes
+// the idle code only after TX has stopped - so dropping the driver's critical
+// section here does not race anything.
 #if CONFIG_IDF_TARGET_ESP32
 #include "hal/dac_ll.h"
 #define MODEM_DAC_WRITE_IRAM 1
@@ -1268,12 +1237,11 @@ esp_err_t AFSK_init(void) {
     // GPIO_MODE_INPUT_OUTPUT, not GPIO_MODE_OUTPUT: on ESP32 the input path
     // (pad input buffer / FUN_IE) is a separate enable from the output
     // driver, and gpio_config(GPIO_MODE_OUTPUT) does not turn it on. With
-    // only GPIO_MODE_OUTPUT, gpio_get_level() on this pin does not read the
-    // real pad voltage - it reads a disabled input buffer, which reads back
-    // 0 regardless of what is actually being driven, making
-    // afskGetPttGpioLevel() (used for the "PTT OFF (unkeyed) [pin level=N]"
-    // diagnostic in ax25.c) meaningless. INPUT_OUTPUT keeps the pin driven
-    // (setPtt() still writes it) while making the level readable for real.
+    // only GPIO_MODE_OUTPUT the pad reads back as 0 no matter what level is
+    // actually being driven, so the keying line cannot be observed on-chip at
+    // all. INPUT_OUTPUT keeps the pin driven by setPtt() while leaving the
+    // real pad voltage readable, which is what makes a keying fault
+    // diagnosable from a debugger without a scope on the PTT line.
     if (s_pttGpio >= 0) {
         gpio_config_t pttCfg = {
             .pin_bit_mask = 1ULL << s_pttGpio,

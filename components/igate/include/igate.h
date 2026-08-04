@@ -168,16 +168,13 @@ void igate_note_message_gated(void);
 
 /**
  * @brief Start the IGate service task (APRS-IS TCP client with auto-reconnect,
- * login, RX line pump). No-op if g_config.igate_en is false. Safe to call once
- * from app startup; re-reads g_config each reconnect so web-admin changes take
- * effect after the next reconnect cycle.
+ * login, RX line pump). Call once from app startup: the task then runs for the
+ * lifetime of the firmware and has no stop entry point. It re-reads g_config on
+ * every pass, so turning any of the settings that need APRS-IS on or off simply
+ * makes the task open or close the uplink, with no reboot and no restart of the
+ * task itself. A second call while the task exists is a no-op.
  */
 void igate_start(void);
-
-/**
- * @brief Stop the IGate service task and close the APRS-IS connection.
- */
-void igate_stop(void);
 
 /**
  * @brief Feed one RF-decoded AX.25 frame to the gateway (RF -> INET direction).

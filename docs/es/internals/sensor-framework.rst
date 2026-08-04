@@ -80,9 +80,8 @@ Cada controlador es una instancia de ``sensor_local_driver_t``:
        const char *name;      // id estable, único, legible por humanos
        uint32_t capabilities; // OR de WEATHER / TELEMETRY (debe ser no-cero)
 
-       sensor_local_init_fn_t   init;   // puesta en marcha única opcional (puede ser NULL)
-       sensor_local_save_fn_t   save;   // OBLIGATORIO: lee el sensor
-       sensor_local_deinit_fn_t deinit; // desmontaje opcional (puede ser NULL)
+       sensor_local_init_fn_t init; // puesta en marcha única opcional (puede ser NULL)
+       sensor_local_save_fn_t save; // OBLIGATORIO: lee el sensor
 
        const sensor_local_properties_t *properties; // qué campos WX / canales TLM
 
@@ -92,7 +91,7 @@ Cada controlador es una instancia de ``sensor_local_driver_t``:
        bool failed;       // propiedad del registro
    };
 
-Los tres roles de puntero a función:
+Los dos roles de puntero a función:
 
 * **``init(self)``** — llamado como mucho una vez, perezosamente, la primera vez
   que se necesita el controlador (o ansiosamente al arrancar). Abre el bus, sondea
@@ -105,7 +104,10 @@ Los tres roles de puntero a función:
   sensor y escribe directamente en el contenedor ``data`` propiedad del llamador,
   activando la bandera ``enabled[…]`` de cada campo. Debe tolerar un destino
   vacío (``data->weather_qty == 0``) no haciendo nada para esa familia.
-* **``deinit(self)``** — espejo opcional de ``init()``.
+
+Deliberadamente no hay callback de desmontaje: el firmware nunca quita un
+controlador, así que una ranura de limpieza solo prometería trabajo que jamás
+podría ejecutarse.
 
 El registro
 ===========
@@ -119,14 +121,11 @@ almacenamiento de tu estructura ``static`` es lo que vive en la tabla):
    sensors_local_init()          // crea el mutex del registro
    sensors_local_register(drv)   // añade; rechaza save NULL, nombre vacío,
                                  //   nombre duplicado, o capabilities == NONE
-   sensors_local_unregister(name)// elimina por nombre, llamando a deinit()
    sensors_local_count()         // cuántos controladores registrados
    sensors_local_get(index)      // obtener por posición (desplegable página Weather)
-   sensors_local_find(name)      // obtener por nombre
    sensors_local_init_all()      // init() ansiosamente cada controlador
    sensors_local_save(data,kind) // recorre la tabla; init() perezoso, luego save()
    sensors_local_save_one(i,...) // lee UN controlador por índice (vista previa en vivo)
-   sensors_local_deinit()        // deinit() + suelta todo
 
 ``sensors_local_register()`` puede ejecutarse **antes de que exista el
 planificador de FreeRTOS**, porque ``SENSORS_LOCAL_DRIVER_AUTOREGISTER`` dispara
@@ -212,7 +211,7 @@ Múltiples instancias, manejo de errores, seguridad de hilos
   **solo para ese ciclo** — el siguiente tick lo reintenta, así que un hipo
   ocasional del bus no deshabilita el controlador.
 * Las llamadas al registro están todas protegidas por mutex. El
-  ``init()``/``save()``/``deinit()`` propio de un controlador **no** los envuelve
+  ``init()``/``save()`` propio de un controlador **no** los envuelve
   el marco en ningún cerrojo — si el ``ctx`` de un controlador se toca desde algo
   más que el refresco a 1 Hz (p. ej. una ISR), el controlador es responsable de su
   propia sincronización.

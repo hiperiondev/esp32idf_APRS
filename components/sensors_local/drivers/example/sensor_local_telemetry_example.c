@@ -216,7 +216,6 @@ static sensor_local_driver_t tlm_example_driver = {
     .capabilities = SENSOR_LOCAL_DATA_TELEMETRY,
     .init = tlm_example_init,
     .save = tlm_example_save,
-    .deinit = NULL,
     .properties = &tlm_example_properties,
     .ctx = &s_ctx,
 };

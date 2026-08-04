@@ -33,14 +33,13 @@ static const char *TAG = "sensors_local";
 // (a bundle of function pointers), never a copy.
 //
 // REGISTRATION LIFETIME CONTRACT: drivers register (via the AUTOREGISTER
-// constructors) during the single-threaded boot/init phase and are not
-// unregistered at runtime in this firmware. Callers therefore rely on a
-// registered driver pointer staying valid and stable for the program's
-// lifetime: sensors_local_get()/sensors_local_find() may hand back a bare
-// pointer, and sensors_local_init_all()/sensors_local_save() snapshot pointers
-// under the lock and then use them after releasing it. If runtime unregistration is ever added,
-// those two assumptions must be revisited (e.g. refcount the driver objects),
-// because sensors_local_unregister() frees the slot and may deinit the driver.
+// constructors) during the single-threaded boot/init phase, and the registry
+// only ever grows. Callers therefore rely on a registered driver pointer
+// staying valid and stable for the program's lifetime: sensors_local_get()
+// hands back a bare pointer, and sensors_local_init_all()/sensors_local_save()
+// snapshot pointers under the lock and then use them after releasing it. Both
+// assumptions would have to be revisited (e.g. refcounting the driver objects)
+// before any removal path could be added.
 // --------------------------------------------------------------------------
 static sensor_local_driver_t **s_registry = NULL; // < Dynamic array of driver pointers.
 static size_t s_count = 0;                        // < Number of live entries.
@@ -159,31 +158,6 @@ esp_err_t sensors_local_register(sensor_local_driver_t *driver) {
     return ESP_OK;
 }
 
-esp_err_t sensors_local_unregister(const char *name) {
-    if (name == NULL)
-        return ESP_ERR_INVALID_ARG;
-
-    registry_lock();
-    size_t idx = registry_index_of(name);
-    if (idx == (size_t)-1) {
-        registry_unlock();
-        return ESP_ERR_NOT_FOUND;
-    }
-
-    sensor_local_driver_t *d = s_registry[idx];
-    // Compact the array so positions stay contiguous.
-    memmove(&s_registry[idx], &s_registry[idx + 1], (s_count - idx - 1) * sizeof(*s_registry));
-    s_count--;
-    registry_unlock();
-
-    if (d->deinit != NULL && d->initialized)
-        d->deinit(d);
-    d->initialized = false;
-
-    ESP_LOGI(TAG, "unregistered driver '%s'", name);
-    return ESP_OK;
-}
-
 size_t sensors_local_count(void) {
     registry_lock();
     size_t n = s_count;
@@ -194,16 +168,6 @@ size_t sensors_local_count(void) {
 sensor_local_driver_t *sensors_local_get(size_t index) {
     registry_lock();
     sensor_local_driver_t *d = (index < s_count) ? s_registry[index] : NULL;
-    registry_unlock();
-    return d;
-}
-
-sensor_local_driver_t *sensors_local_find(const char *name) {
-    if (name == NULL)
-        return NULL;
-    registry_lock();
-    size_t idx = registry_index_of(name);
-    sensor_local_driver_t *d = (idx == (size_t)-1) ? NULL : s_registry[idx];
     registry_unlock();
     return d;
 }
@@ -286,7 +250,7 @@ esp_err_t sensors_local_save(weather_telemetry_data_t *data, sensor_local_data_k
     // BEFORE touching the hardware. ensure_initialized()/d->save() do blocking
     // bus I/O (e.g. BMP180 I2C conversions take tens of ms); holding the
     // registry lock across them would stall every other registry caller
-    // (sensors_local_find/count from the web sensor page, etc.) for the whole
+    // (sensors_local_count/get from the web sensor page, etc.) for the whole
     // transaction. Driver objects are stable for the program's lifetime
     // (drivers only (un)register during single-threaded boot - see the note at
     // the top of this file), so the snapshotted pointers stay valid.
@@ -360,21 +324,4 @@ esp_err_t sensors_local_save_one(size_t index, weather_telemetry_data_t *data, s
         return ESP_ERR_INVALID_ARG; // driver doesn't support any of the requested kinds
 
     return d->save(d, data, ask);
-}
-
-void sensors_local_deinit(void) {
-    registry_lock();
-    for (size_t i = 0; i < s_count; i++) {
-        sensor_local_driver_t *d = s_registry[i];
-        if (d != NULL && d->deinit != NULL && d->initialized)
-            d->deinit(d);
-        if (d != NULL)
-            d->initialized = false;
-    }
-    free(s_registry);
-    s_registry = NULL;
-    s_count = 0;
-    s_capacity = 0;
-    registry_unlock();
-    ESP_LOGI(TAG, "registry cleared");
 }

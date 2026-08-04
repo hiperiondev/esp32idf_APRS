@@ -75,7 +75,6 @@ static void ensureSockMutex(void) {
         s_sockMutex = xSemaphoreCreateMutex();
     portEXIT_CRITICAL(&s_sockMutexInitLock);
 }
-static volatile bool s_running;
 
 // Web-configured duplicate-cache size (g_config.dup_cache_size), clamped to
 // DUP_CACHE_SIZE_MIN..DUP_CACHE_SIZE_MAX. Read fresh on every call rather than
@@ -759,7 +758,7 @@ static void igateTask(void *arg) {
     size_t linePos = 0;
     bool waitingLogged = false;
 
-    while (s_running) {
+    for (;;) {
         if (!igateUplinkNeeded()) {
             closeSocket();
             waitingLogged = false;
@@ -857,21 +856,16 @@ static void igateTask(void *arg) {
         }
         // EAGAIN/timeout: just loop, gives the "igate_en toggled off" check a chance to run.
     }
-
-    closeSocket();
-    s_task = NULL;
-    vTaskDelete(NULL);
 }
 
+// The uplink task is started once and runs for the lifetime of the firmware.
+// Enabling or disabling any of the settings that need APRS-IS does not stop
+// it: igateUplinkNeeded() is re-evaluated on every pass, so the task simply
+// closes the socket and idles until one of them is turned back on. s_task is
+// therefore only ever set, and guards against a second task being created.
 void igate_start(void) {
     if (s_task != NULL)
         return; // already running
     ensureSockMutex();
-    s_running = true;
     xTaskCreate(igateTask, "igate_task", 6144, NULL, 5, &s_task);
-}
-
-void igate_stop(void) {
-    s_running = false;
-    closeSocket();
 }

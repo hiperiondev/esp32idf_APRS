@@ -116,17 +116,11 @@ static esp_err_t bmp180_drv_save(sensor_local_driver_t *self, weather_telemetry_
     return ESP_OK;
 }
 
-static void bmp180_drv_deinit(sensor_local_driver_t *self) {
-    bmp180_ctx_t *c = (bmp180_ctx_t *)self->ctx;
-    bmp180_free_desc(&c->dev);
-}
-
 static sensor_local_driver_t bmp180_driver = {
     .name = "bmp180",
     .capabilities = SENSOR_LOCAL_DATA_WEATHER,
     .init = bmp180_drv_init,
     .save = bmp180_drv_save,
-    .deinit = bmp180_drv_deinit,
     .properties = &bmp180_properties,
     .ctx = &s_ctx,
 };

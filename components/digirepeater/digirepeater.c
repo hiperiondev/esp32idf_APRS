@@ -14,8 +14,7 @@
 //     please contact their authors for more information.
 //
 // @brief APRS digipeater path logic: WIDEn-N / TRACEn-N / RELAY / ECHO / GATE
-// handling, hop decrementing and callsign insertion, duplicate suppression and
-// per-station statistics.
+// handling, hop decrementing and callsign insertion, and duplicate suppression.
 
 #include <string.h>
 
@@ -23,16 +22,11 @@
 #include "digirepeater.h"
 #include "igate.h"
 
-// Ordinary .bss, not RTC slow memory: this firmware never enters deep sleep, so
-// there is nothing for RTC placement to preserve. Keeping the counters here
-// leaves that scarce memory for something that needs it, and makes them reset
-// on esp_restart() - which is what the dashboard should show after an OTA
-// reboot, rather than totals carried over from the previous firmware image.
-static digi_stats_t s_stats;
-
-digi_stats_t digi_get_stats(void) {
-    return s_stats;
-}
+// Every frame this file discards is reported through igate_note_drop(), whose
+// per-reason table is what the web dashboard's Drop Breakdown renders, and the
+// headline rx/tx/digi figures are counted in aprs_service.c at the points where
+// frames actually flow. Both sets move regardless of whether digi_en/igate_en
+// are on, so the digipeater keeps no counters of its own.
 
 // Bounded copy into an AX.25 callsign field (char[6 + CALL_OVERSPACE] == 7
 // bytes). AX.25 callsigns are at most 6 chars; anything longer is truncated so
@@ -60,21 +54,16 @@ int digiProcess(ax25_msg_t *packet) {
     digiMySsid = g_config.digi_ssid;
     app_config_unlock();
 
-    s_stats.rxPkts++;
-
     if (packet->len < 5) {
-        s_stats.erPkts++;
         igate_note_drop(DROP_DIGI_MALFORMED);
         return 0; // no destination / malformed
     }
 
     if (!strncmp(packet->src.call, "NOCALL", 6)) {
-        s_stats.dropRx++;
         igate_note_drop(DROP_DIGI_PLACEHOLDER_CALL);
         return 0;
     }
     if (!strncmp(packet->src.call, "MYCALL", 6)) {
-        s_stats.dropRx++;
         igate_note_drop(DROP_DIGI_PLACEHOLDER_CALL);
         return 0;
     }
@@ -93,8 +82,6 @@ int digiProcess(ax25_msg_t *packet) {
     // separate from the IGate's own RF->INET window, which sees the very same
     // frames from the same RX dispatch.
     if (isDuplicatePacketScoped(packet, DUP_SCOPE_DIGI)) {
-        s_stats.dupPkts++;
-        s_stats.dropRx++;
         igate_note_drop(DROP_DIGI_DUPLICATE);
         return 0;
     }
@@ -122,7 +109,6 @@ int digiProcess(ax25_msg_t *packet) {
                     if (!strcmp(packet->rpt_list[idx].call, digiMyCall)) {
                         if (packet->rpt_list[idx].ssid == digiMySsid) {
                             if (packet->rpt_flags & (1 << idx)) {
-                                s_stats.dropRx++;
                                 igate_note_drop(DROP_DIGI_ALREADY_USED);
                                 return 0; // already used *
                             }
@@ -142,7 +128,6 @@ int digiProcess(ax25_msg_t *packet) {
                     // be lost (1 << 8 truncates to 0). Treat a full path the
                     // same as "no usable path" instead of corrupting it.
                     if (packet->rpt_count >= AX25_MAX_RPT) {
-                        s_stats.dropRx++;
                         igate_note_drop(DROP_DIGI_PATH_FULL);
                         return 0;
                     }
@@ -167,7 +152,6 @@ int digiProcess(ax25_msg_t *packet) {
                     copy_call(packet->rpt_list[idx].call, digiMyCall);
                     packet->rpt_list[idx].ssid = digiMySsid;
                     packet->rpt_flags |= (1 << idx);
-                    s_stats.txPkts++;
                     return 2;
                 }
             } else {
@@ -176,11 +160,9 @@ int digiProcess(ax25_msg_t *packet) {
                 packet->rpt_list[idx].ssid = digiMySsid;
                 packet->rpt_flags |= (1 << idx);
                 packet->rpt_count += 1;
-                s_stats.txPkts++;
                 return 2;
             }
         } else {
-            s_stats.dropRx++;
             igate_note_drop(DROP_DIGI_NO_PATH);
             return 0; // no usable path
         }
@@ -188,14 +170,12 @@ int digiProcess(ax25_msg_t *packet) {
 
     for (idx = 0; idx < packet->rpt_count; idx++) {
         if (!strncmp(packet->rpt_list[idx].call, "qA", 2)) {
-            s_stats.dropRx++;
             igate_note_drop(DROP_DIGI_PATH_TOKEN);
             return 0;
         }
     }
     for (idx = 0; idx < packet->rpt_count; idx++) {
         if (!strncmp(packet->rpt_list[idx].call, "TCP", 3)) {
-            s_stats.dropRx++;
             igate_note_drop(DROP_DIGI_PATH_TOKEN);
             return 0;
         }
@@ -253,7 +233,6 @@ int digiProcess(ax25_msg_t *packet) {
                 // uint8_t rpt_flags bitmask (1 << 8) would silently be lost.
                 // Drop instead of corrupting the path, same as any other
                 // "no usable path" case below.
-                s_stats.dropRx++;
                 igate_note_drop(DROP_DIGI_PATH_FULL);
                 j = 0;
                 break;
@@ -299,7 +278,6 @@ int digiProcess(ax25_msg_t *packet) {
             ctmp = packet->rpt_list[idx].ssid & 0x1F;
             if (ctmp == digiMySsid) {
                 if (packet->rpt_flags & (1 << idx)) {
-                    s_stats.dropRx++;
                     igate_note_drop(DROP_DIGI_ALREADY_USED);
                     j = 0;
                     break;
@@ -316,9 +294,6 @@ int digiProcess(ax25_msg_t *packet) {
             break;
         }
     }
-
-    if (j == 2)
-        s_stats.txPkts++;
 
     return j;
 }

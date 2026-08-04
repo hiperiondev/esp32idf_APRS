@@ -257,35 +257,6 @@ int lastheard_directs(char *out, size_t out_size) {
     return count;
 }
 
-bool lastheard_lookup(const char *callsign, uint32_t *packets, time_t *last, bool *direct) {
-    if (callsign == NULL || callsign[0] == 0 || !s_inited)
-        return false;
-    if (!s_lock || xSemaphoreTake(s_lock, pdMS_TO_TICKS(100)) != pdTRUE)
-        return false;
-
-    // Look the station up under the same key lastheard_add() stores it by, so
-    // a long or lower-case callsign still finds the row the table holds.
-    char call[LASTHEARD_CALL_LEN];
-    makeCallKey(call, callsign);
-
-    bool found = false;
-    for (size_t i = 0; i < s_count; i++) {
-        if (strcasecmp(s_buf[i].callsign, call) != 0)
-            continue;
-        if (packets)
-            *packets = s_buf[i].packets;
-        if (last)
-            *last = s_buf[i].time;
-        if (direct)
-            *direct = s_buf[i].direct;
-        found = true;
-        break;
-    }
-
-    xSemaphoreGive(s_lock);
-    return found;
-}
-
 bool lastheard_heard_history(const char *callsign, uint16_t out[LASTHEARD_HEARD_HOURS]) {
     if (callsign == NULL || callsign[0] == 0 || out == NULL || !s_inited)
         return false;

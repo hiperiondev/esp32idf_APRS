@@ -27,7 +27,7 @@
 #include "esp_random.h"
 #include "esp_timer.h"
 
-#include "afsk.h" // afskGetPttGpioLevel(): diagnostic pin readback for pollTxEvents()
+#include "afsk.h" // setPtt()/setTransmit()/AFSK_ServiceTx(): the keying and TX-teardown primitives this file drives
 #include "ax25.h"
 #include "crc_ccit.h"
 #include "esp32idf_radioamateur_modem.h" // modem_format_tnc2() for the readable TX log line
@@ -679,10 +679,6 @@ uint8_t Ax25TxFramesPending(void) {
     uint8_t head = RING_OBSERVE(txFrameHead);
     uint8_t tail = RING_OBSERVE(txFrameTail);
     return (uint8_t)((head + FRAME_MAX_COUNT - tail) % FRAME_MAX_COUNT);
-}
-
-bool Ax25TxBufferPending(void) {
-    return Ax25TxFramesPending() != 0;
 }
 
 uint32_t Ax25GetPersistenceMissedCount(void) {

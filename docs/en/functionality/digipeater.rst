@@ -71,28 +71,29 @@ the IGate treat all of them as duplicates.
 Counters
 ========
 
-``digi_get_stats()`` returns a ``digi_stats_t``:
+The digipeater keeps no counters of its own. Everything an operator can see
+about it comes from two places that both move regardless of whether
+``digi_en`` or ``igate_en`` is on:
 
 .. list-table::
    :header-rows: 1
-   :widths: 20 80
+   :widths: 30 70
 
-   * - Counter
-     - Meaning
-   * - ``rxPkts``
-     - Packets seen by the digipeater.
-   * - ``txPkts``
-     - Packets digipeated (path modified, ``digiProcess()`` returned ``2``).
-   * - ``dropRx``
-     - Packets dropped (duplicate, filtered path, not for us, already relayed).
-   * - ``dupPkts``
-     - Packets dropped as duplicates (also counted in ``dropRx``).
-   * - ``erPkts``
-     - Malformed packets (too short / no path).
+   * - Figure
+     - Where it comes from
+   * - Headline ``digi`` count
+     - ``aprs_service.c``, incremented at the point the rewritten frame is
+       actually transmitted. It only moves while ``digi_en`` is on, because
+       there is nothing to digipeat with it off.
+   * - Every drop and malformed frame
+     - ``igate_note_drop(DROP_DIGI_…)``, which feeds the per-reason table the
+       dashboard renders as *Drop Breakdown*. Each reason is a separate row,
+       so a duplicate, a full path and a placeholder callsign are told apart
+       instead of being merged into one total.
 
 .. note::
 
-   These per-feature counters only move while ``digi_en`` is on. The dashboard's
-   headline ``digi`` counter is tracked separately in ``aprs_service.c`` at the
-   point the rewritten frame is actually transmitted, so it reflects reality
-   whether or not other features are enabled.
+   The ``DROP_DIGI_*`` reasons are counted inside ``digiProcess()``, so they
+   only move while the digipeater is running. Frames discarded before dispatch,
+   or on the way out to RF, are counted at the service level in
+   ``aprs_service.c`` and appear whether or not any feature is enabled.

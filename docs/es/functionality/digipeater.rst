@@ -74,29 +74,29 @@ consumiera todas las tramas y el IGate las tratara a todas como duplicadas.
 Contadores
 ==========
 
-``digi_get_stats()`` devuelve un ``digi_stats_t``:
+El digipeater no lleva contadores propios. Todo lo que el operador puede ver
+sobre él viene de dos lugares que avanzan estén o no activos ``digi_en`` e
+``igate_en``:
 
 .. list-table::
    :header-rows: 1
-   :widths: 20 80
+   :widths: 30 70
 
-   * - Contador
-     - Significado
-   * - ``rxPkts``
-     - Paquetes vistos por el digipeater.
-   * - ``txPkts``
-     - Paquetes digipeteados (ruta modificada, ``digiProcess()`` devolvió ``2``).
-   * - ``dropRx``
-     - Paquetes descartados (duplicado, ruta filtrada, no para nosotros, ya
-       retransmitido).
-   * - ``dupPkts``
-     - Paquetes descartados por duplicados (también contados en ``dropRx``).
-   * - ``erPkts``
-     - Paquetes mal formados (demasiado cortos / sin ruta).
+   * - Cifra
+     - De dónde sale
+   * - Contador ``digi`` de titular
+     - ``aprs_service.c``, incrementado en el punto en que la trama reescrita
+       se transmite realmente. Solo avanza mientras ``digi_en`` está activo,
+       porque con él apagado no hay nada que digipetear.
+   * - Cada descarte y trama mal formada
+     - ``igate_note_drop(DROP_DIGI_…)``, que alimenta la tabla por motivo que
+       el panel muestra como *Drop Breakdown*. Cada motivo es una fila
+       distinta, así que un duplicado, una ruta llena y un indicativo de
+       relleno se distinguen en vez de fundirse en un único total.
 
 .. note::
 
-   Estos contadores por-función solo avanzan mientras ``digi_en`` está activo. El
-   contador ``digi`` de titular del panel se rastrea por separado en
-   ``aprs_service.c`` en el punto en que la trama reescrita se transmite
-   realmente, así que refleja la realidad estén o no habilitadas otras funciones.
+   Los motivos ``DROP_DIGI_*`` se cuentan dentro de ``digiProcess()``, así que
+   solo avanzan mientras el digipeater corre. Las tramas descartadas antes del
+   despacho, o de salida hacia RF, se cuentan a nivel de servicio en
+   ``aprs_service.c`` y aparecen esté o no habilitada cualquier función.

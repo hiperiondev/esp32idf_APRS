@@ -35,7 +35,6 @@
 #include "app_config.h"
 #include "aprs_service.h"
 #include "cpu_freq.h"
-#include "digirepeater.h"
 #include "igate.h"
 #include "lastheard.h"
 #include "pages.h"
@@ -357,24 +356,23 @@ esp_err_t page_sidebar_info(httpd_req_t *req) {
     // -- STATISTICS -----------------------------------------------------
     // radio_rx/radio_tx/rf2inet/inet2rf/digi come from aprs_service's own
     // counters, tracked at the actual RX/TX/relay points regardless of
-    // whether digi_en/igate_en are on - unlike digi_get_stats()/
-    // igate_get_stats(), whose internal counters only move while their
-    // owning feature is enabled. This keeps the panel populated even for an
-    // RX-only/monitor setup with both features off. (digi remains an
-    // exception by nature: there is nothing to digipeat with digi_en off, so
-    // it's expected to read 0 in that case.)
+    // whether digi_en/igate_en are on - unlike igate_get_stats(), whose
+    // internal counters only move while the IGate is enabled. This keeps the
+    // panel populated even for an RX-only/monitor setup with both features
+    // off. (digi remains an exception by nature: there is nothing to
+    // digipeat with digi_en off, so it's expected to read 0 in that case.)
     //
     // Drop/error counts: every drop/error site in the firmware - IGate
     // RF->INET/INET->RF, the digipeater, and the RX/TX service level in
     // aprs_service.c - reports through igate_note_drop() into
     // igs.dropByReason[], regardless of whether digi_en/igate_en are on, so
     // the RX-only/monitor setup is covered at that single point.
-    // svcStats.drop/err and digis.dropRx/erPkts are the *same* events counted
-    // a second time by their owning component's own counter, so they must not
-    // be added on top of igate_stats_total_drop(&igs) - that would
-    // double-count every digi and service-level drop and push the DROP/ERR
-    // total ahead of the Drop Breakdown table's sum. igate_stats_total_drop(&igs)
-    // alone is the complete, correct total.
+    // svcStats.drop/err are the *same* events counted a second time by
+    // aprs_service's own counters, so they must not be added on top of
+    // igate_stats_total_drop(&igs) - that would double-count every
+    // service-level drop and push the DROP/ERR total ahead of the Drop
+    // Breakdown table's sum. igate_stats_total_drop(&igs) alone is the
+    // complete, correct total.
     aprs_service_stats_t svcStats = aprs_service_get_stats();
     str_append(buf, sizeof(buf), &n,
                "<fieldset><legend>" TR_DASH_STATISTICS "</legend><table>"

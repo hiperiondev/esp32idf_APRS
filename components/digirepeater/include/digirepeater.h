@@ -27,17 +27,6 @@
 #include "ax25.h"
 
 /**
- * @brief Digipeater packet counters (snapshot by digi_get_stats()).
- */
-typedef struct {
-    uint32_t rxPkts;  /**< Packets seen. */
-    uint32_t txPkts;  /**< Packets digipeated (path modified, digiProcess() returned 2). */
-    uint32_t dropRx;  /**< Packets dropped (duplicate, filtered path, etc.). */
-    uint32_t erPkts;  /**< Malformed packets (too short / no path). */
-    uint32_t dupPkts; /**< Packets dropped because another copy was already repeated inside the duplicate-suppression window (also counted in dropRx). */
-} digi_stats_t;
-
-/**
  * @brief Process one received AX.25 frame through the digipeater path logic.
  *
  * @param packet Decoded frame (as produced by ax25_decode()). Modified in place
@@ -55,11 +44,5 @@ typedef struct {
  *              re-encoded and transmitted on RF)
  */
 int digiProcess(ax25_msg_t *packet);
-
-/**
- * @brief Snapshot of digipeater counters (used by the web admin dashboard /
- * telemetry beacon).
- */
-digi_stats_t digi_get_stats(void);
 
 #endif // DIGIREPEATER_H

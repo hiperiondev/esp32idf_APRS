@@ -22,8 +22,8 @@
  * the core never needs a hard-coded list of the sensors that happen to be
  * compiled in. A driver can attach itself at start-up with
  * ::SENSORS_LOCAL_DRIVER_AUTOREGISTER (a C constructor that runs before
- * app_main) or be added/removed at run time with ::sensors_local_register /
- * ::sensors_local_unregister.
+ * app_main) or be added at run time with ::sensors_local_register. The
+ * registry only ever grows: drivers are never removed once registered.
  *
  * Each driver exposes ONE common entry point, ::sensor_local_driver_t::save,
  * that receives a pointer to the shared ::weather_telemetry_data_t container so
@@ -120,12 +120,6 @@ typedef esp_err_t (*sensor_local_init_fn_t)(sensor_local_driver_t *self);
 typedef esp_err_t (*sensor_local_save_fn_t)(sensor_local_driver_t *self, weather_telemetry_data_t *data, sensor_local_data_kind_t kind);
 
 /**
- * @brief Optional tear-down, mirroring ::sensor_local_init_fn_t. Called from
- *        ::sensors_local_unregister and ::sensors_local_deinit.
- */
-typedef void (*sensor_local_deinit_fn_t)(sensor_local_driver_t *self);
-
-/**
  * @brief A single sensor driver: a named bundle of function pointers plus a
  *        private context. Instances are what live in the dynamic registry.
  *
@@ -145,9 +139,8 @@ struct sensor_local_driver {
                             *   regardless of type. ::sensors_local_register rejects drivers that leave
                             *   this at ::SENSOR_LOCAL_DATA_NONE. */
 
-    sensor_local_init_fn_t init;     /**< Optional bring-up (may be NULL). */
-    sensor_local_save_fn_t save;     /**< REQUIRED common entry that fills ::weather_telemetry_data_t. */
-    sensor_local_deinit_fn_t deinit; /**< Optional tear-down (may be NULL). */
+    sensor_local_init_fn_t init; /**< Optional bring-up (may be NULL). */
+    sensor_local_save_fn_t save; /**< REQUIRED common entry that fills ::weather_telemetry_data_t. */
 
     /**
      * @brief Pointer to this driver's fine-grained capability descriptor,
@@ -196,20 +189,11 @@ esp_err_t sensors_local_init(void);
  */
 esp_err_t sensors_local_register(sensor_local_driver_t *driver);
 
-/**
- * @brief Remove a driver by name, calling its deinit() if present.
- * @return ESP_OK on success; ESP_ERR_NOT_FOUND if no such driver.
- */
-esp_err_t sensors_local_unregister(const char *name);
-
 /** @brief Number of drivers currently in the registry. */
 size_t sensors_local_count(void);
 
 /** @brief Fetch a driver by position (0..count-1), or NULL if out of range. */
 sensor_local_driver_t *sensors_local_get(size_t index);
-
-/** @brief Fetch a driver by name, or NULL if not found. */
-sensor_local_driver_t *sensors_local_find(const char *name);
 
 /**
  * @name Sensor channel persistence
@@ -279,12 +263,6 @@ esp_err_t sensors_local_init_all(void);
  *         still asked, so a partially filled @p data is the normal outcome.
  */
 esp_err_t sensors_local_save(weather_telemetry_data_t *data, sensor_local_data_kind_t kind);
-
-/**
- * @brief Empty the registry, calling deinit() on each driver. Does not free the
- *        driver descriptors themselves (the registry never owned them).
- */
-void sensors_local_deinit(void);
 
 /**
  * @brief Read exactly ONE driver by registry index, lazily initialising it if

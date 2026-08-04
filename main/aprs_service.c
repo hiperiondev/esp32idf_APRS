@@ -171,22 +171,21 @@ void aprs_service_build_modem_config(modem_config_t *cfg, bool full_duplex) {
 // These are tracked directly at the points where frames actually flow
 // (on_rx_frame(), aprs_service_send_tnc2(), inet2rfHandler(), and inside
 // aprs_msg_callback() for the digi/igate/error cases), rather than derived
-// from digi_get_stats()/igate_get_stats() - whose counters only increment
-// from inside digiProcess()/igateProcess(), and only when g_config.digi_en /
-// g_config.igate_en are true (see aprs_msg_callback() below). With both
-// features off (a very common RX-only/monitor setup), feature-derived counters
-// would stay at 0 regardless of how much real RF traffic the modem decodes;
-// tracking at the flow points makes the dashboard reflect reality whether or
-// not either feature is turned on.
+// from igate_get_stats() - whose counters only increment from inside
+// igateProcess(), and only when g_config.igate_en is true (see
+// aprs_msg_callback() below). With the feature off (a very common RX-only/
+// monitor setup), feature-derived counters would stay at 0 regardless of how
+// much real RF traffic the modem decodes; tracking at the flow points makes
+// the dashboard reflect reality whether or not either feature is turned on.
 static atomic_uint_fast32_t s_statRadioRx = 0; // frames decoded off RF (every on_rx_frame() call)
 static atomic_uint_fast32_t s_statRadioTx = 0; // frames transmitted on RF (every successful aprs_service_send_tnc2())
 static atomic_uint_fast32_t s_statRf2Inet = 0; // frames relayed from RF to APRS-IS (igateProcess() actually uplinked one)
 static atomic_uint_fast32_t s_statInet2Rf = 0; // lines relayed from APRS-IS to RF (inet2rfHandler() actually transmitted one)
 static atomic_uint_fast32_t s_statDigi = 0;    // frames digipeated (path rewritten and re-transmitted)
 // The two below track drops/errors independently of the feature-specific
-// accounting in digi_get_stats()/igate_get_stats() (see page_common.c's
-// page_sidebar_info()), whose counters only move while digi_en/igate_en are
-// on. For a monitor/RX-only setup (both features off - very common while
+// accounting in igate_get_stats() (see page_common.c's page_sidebar_info()),
+// whose counters only move while igate_en is on. For a monitor/RX-only setup
+// (both features off - very common while
 // characterizing modem decode performance), feature-derived DROP/ERR would
 // stay pinned at 0 even with plenty of real RF activity. These two are
 // tracked at

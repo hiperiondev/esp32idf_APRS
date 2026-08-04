@@ -188,24 +188,6 @@ void AFSK_ServiceTx(void);
 bool getTransmit(void);
 
 /**
- * @brief Diagnostic: read back the actual physical level on the PTT GPIO.
- *
- * Unlike getTransmit() (the software's belief about TX state), this reads
- * the pin itself. Returns 0 or 1 (the raw electrical level, before active-
- * high/low interpretation), or -1 if no PTT GPIO is configured.
- */
-int afskGetPttGpioLevel(void);
-
-/**
- * @brief Diagnostic: currently configured PTT polarity.
- *
- * true = active-high (idle low, asserted high), false = active-low (idle
- * high, asserted low). Lets a log line state plainly what the pin level
- * from afskGetPttGpioLevel() actually means.
- */
-bool afskGetPttActiveHigh(void);
-
-/**
  * @brief Check whether a deferred TX teardown (releasing PTT, parking the
  *        DAC) is still waiting to run in AFSK_ServiceTx().
  *
@@ -292,16 +274,6 @@ float afskGetAgcGain(void);
  *         configured the timer.
  */
 float afskGetDacAlarmRate(void);
-
-/**
- * @brief Force the DAC output to a fixed, arbitrary code.
- *
- * Intended for hardware diagnostics such as measuring the DAC transfer
- * curve. The call is ignored while a transmission is in progress.
- *
- * @param code Raw 8-bit DAC code to output.
- */
-void afskDiagDacWrite(uint8_t code);
 
 /**
  * @brief Capture raw ADC samples straight out of the conversion ISR.

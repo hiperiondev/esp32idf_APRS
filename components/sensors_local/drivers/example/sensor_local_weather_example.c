@@ -137,7 +137,6 @@ static sensor_local_driver_t wx_example_driver = {
     .capabilities = SENSOR_LOCAL_DATA_WEATHER,
     .init = wx_example_init,
     .save = wx_example_save,
-    .deinit = NULL,
     .properties = &wx_example_properties,
     .ctx = &s_ctx,
 };

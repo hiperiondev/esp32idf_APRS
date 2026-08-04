@@ -73,31 +73,30 @@ frame e l'IGate li tratterebbe tutti come duplicati.
 Contatori
 =========
 
-``digi_get_stats()`` restituisce un ``digi_stats_t``:
+Il digipeater non tiene contatori propri. Tutto ciò che l'operatore può vedere
+su di esso proviene da due punti che avanzano indipendentemente dal fatto che
+``digi_en`` o ``igate_en`` siano attivi:
 
 .. list-table::
    :header-rows: 1
-   :widths: 20 80
+   :widths: 30 70
 
-   * - Contatore
-     - Significato
-   * - ``rxPkts``
-     - Pacchetti visti dal digipeater.
-   * - ``txPkts``
-     - Pacchetti digipetati (percorso modificato, ``digiProcess()`` ha
-       restituito ``2``).
-   * - ``dropRx``
-     - Pacchetti scartati (duplicato, percorso filtrato, non per noi, già
-       ritrasmesso).
-   * - ``dupPkts``
-     - Pacchetti scartati come duplicati (contati anche in ``dropRx``).
-   * - ``erPkts``
-     - Pacchetti malformati (troppo corti / senza percorso).
+   * - Valore
+     - Da dove proviene
+   * - Contatore ``digi`` di testata
+     - ``aprs_service.c``, incrementato nel punto in cui il frame riscritto
+       viene effettivamente trasmesso. Avanza solo mentre ``digi_en`` è
+       attivo, perché con esso spento non c'è nulla da digipetare.
+   * - Ogni scarto e frame malformato
+     - ``igate_note_drop(DROP_DIGI_…)``, che alimenta la tabella per motivo che
+       la dashboard mostra come *Drop Breakdown*. Ogni motivo è una riga
+       distinta, quindi un duplicato, un percorso pieno e un nominativo
+       segnaposto si distinguono invece di fondersi in un unico totale.
 
 .. note::
 
-   Questi contatori per-funzione avanzano solo mentre ``digi_en`` è attivo. Il
-   contatore ``digi`` di testata della dashboard è tracciato separatamente in
-   ``aprs_service.c`` nel punto in cui il frame riscritto viene effettivamente
-   trasmesso, quindi riflette la realtà indipendentemente dal fatto che altre
-   funzioni siano abilitate.
+   I motivi ``DROP_DIGI_*`` sono contati dentro ``digiProcess()``, quindi
+   avanzano solo mentre il digipeater è in funzione. I frame scartati prima del
+   dispatch, o in uscita verso RF, sono contati a livello di servizio in
+   ``aprs_service.c`` e compaiono indipendentemente da quali funzioni siano
+   abilitate.

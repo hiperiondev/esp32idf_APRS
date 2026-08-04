@@ -132,25 +132,6 @@ size_t lastheard_station_count(bool rf_only);
 int lastheard_directs(char *out, size_t out_size);
 
 /**
- * @brief Look one station up in the table.
- *
- * Answers the APRS "?APRSH" directed query (APRS101 chapter 15), which asks
- * whether - and how much - a given station has been heard here.
- *
- * @param callsign Station to look up, matched without regard to case against
- *                 the stored (SSID-bearing) callsign.
- * @param packets  Out: how many frames from that station have been counted.
- *                 Untouched when the station is unknown. May be NULL.
- * @param last     Out: wall-clock time of its most recent frame. Untouched
- *                 when the station is unknown. May be NULL.
- * @param direct   Out: true if its most recent frame arrived without any
- *                 digipeater. Untouched when the station is unknown. May be
- *                 NULL.
- * @return true if the station is in the table.
- */
-bool lastheard_lookup(const char *callsign, uint32_t *packets, time_t *last, bool *direct);
-
-/**
  * @brief Fetch one station's hourly heard histogram.
  *
  * Answers the graph part of the APRS "?APRSH" directed query (APRS101 ch.15):

@@ -244,25 +244,14 @@ typedef struct ax25frame_struct {
 void *Ax25WriteTxFrame(const uint8_t *data, uint16_t size);
 
 /**
- * @brief Check whether the TX frame ring currently holds a frame.
- *
- * True while a previously queued frame is still waiting to key up (quiet
- * time / CSMA backoff) or is actively being transmitted; false once it has
- * been fully sent and the DAC ISR has retired it. Intended for callers that
- * want to avoid piling more frames into the ring than the RF channel can
- * actually clear - queuing anyway just delays the drop from here to
- * Ax25WriteTxFrame() once the ring fills.
- *
- * @return true if the ring is non-empty (busy or pending), false if idle.
- */
-bool Ax25TxBufferPending(void);
-
-/**
  * @brief Count how many frames are currently sitting in the TX ring.
  *
- * Same ring as Ax25TxBufferPending(), but as a count rather than a yes/no,
- * for callers that want to allow a small backlog (e.g. accept up to N
- * queued frames) rather than treating "one frame in flight" as full.
+ * A frame is counted from the moment Ax25WriteTxFrame() accepts it until the
+ * DAC ISR has fully sent it and retired it, so the count covers both frames
+ * still waiting to key up (quiet time / CSMA backoff) and the one on the air
+ * right now. Callers use it to allow a bounded backlog rather than pushing
+ * more frames into the ring than the RF channel can clear - queuing anyway
+ * just moves the drop to Ax25WriteTxFrame() once the ring fills.
  *
  * @return Number of frames still in the ring (waiting to key up or being
  *         transmitted right now), from 0 up to FRAME_MAX_COUNT-1.

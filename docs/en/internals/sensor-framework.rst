@@ -77,9 +77,8 @@ Every driver is one instance of ``sensor_local_driver_t``:
        const char *name;      // stable, unique, human-readable id
        uint32_t capabilities; // OR of WEATHER / TELEMETRY (must be non-zero)
 
-       sensor_local_init_fn_t   init;   // optional one-time bring-up (may be NULL)
-       sensor_local_save_fn_t   save;   // REQUIRED: reads the sensor
-       sensor_local_deinit_fn_t deinit; // optional tear-down (may be NULL)
+       sensor_local_init_fn_t init; // optional one-time bring-up (may be NULL)
+       sensor_local_save_fn_t save; // REQUIRED: reads the sensor
 
        const sensor_local_properties_t *properties; // which WX fields / TLM channels
 
@@ -89,7 +88,7 @@ Every driver is one instance of ``sensor_local_driver_t``:
        bool failed;       // registry-owned
    };
 
-The three function-pointer roles:
+The two function-pointer roles:
 
 * **``init(self)``** — called at most once, lazily, the first time the driver is
   needed (or eagerly at boot). Open the bus, probe the chip, allocate private
@@ -101,7 +100,9 @@ The three function-pointer roles:
   writes straight into the caller-owned ``data`` container, setting each field's
   ``enabled[…]`` flag. It must tolerate an empty destination
   (``data->weather_qty == 0``) by doing nothing for that family.
-* **``deinit(self)``** — optional mirror of ``init()``.
+
+There is deliberately no tear-down callback: the firmware never removes a
+driver, so a slot for cleanup would only promise work that could never run.
 
 The registry
 ============
@@ -115,14 +116,11 @@ struct's storage is what lives in the table):
    sensors_local_init()          // create the registry mutex
    sensors_local_register(drv)   // append; rejects NULL save, empty name,
                                  //   duplicate name, or capabilities == NONE
-   sensors_local_unregister(name)// remove by name, calling deinit()
    sensors_local_count()         // how many drivers are registered
    sensors_local_get(index)      // fetch by position (Weather page dropdown)
-   sensors_local_find(name)      // fetch by name
    sensors_local_init_all()      // eagerly init() every driver
    sensors_local_save(data,kind) // walk the table; init() lazily, then save()
    sensors_local_save_one(i,...) // read ONE driver by index (live preview)
-   sensors_local_deinit()        // deinit() + drop everything
 
 ``sensors_local_register()`` can run **before the FreeRTOS scheduler exists**,
 because ``SENSORS_LOCAL_DRIVER_AUTOREGISTER`` fires from a
@@ -204,7 +202,7 @@ Multiple instances, error handling, thread safety
   cycle only** — the next tick tries again, so an occasional bus hiccup does not
   disable the driver.
 * The registry calls are all mutex-protected. A driver's own
-  ``init()``/``save()``/``deinit()`` are **not** wrapped in any lock by the
+  ``init()``/``save()`` are **not** wrapped in any lock by the
   framework — if a driver's ``ctx`` is touched from more than the 1 Hz refresh
   (e.g. an ISR), the driver is responsible for its own synchronisation.
 
