@@ -761,6 +761,22 @@ static void inet2rfHandler(const char *line) {
         query_process(line, QUERY_SRC_INET);
 
     if (g_config.inet2rf) {
+        // Generic queries ("?APRS?", "?WX?", "?IGATE?", ...) are never gated
+        // onto RF: transmitting one over the air would let a single APRS-IS
+        // client trigger a query responder reply from every RF station that
+        // implements one within earshot. This check is unconditional and
+        // independent of g_config.inet2rfFilter, so it cannot be defeated by
+        // any checkbox state. A directed query (":CALLSIGN :?APRSD", data
+        // type ':') is unaffected: only a payload whose first byte is '?' is
+        // dropped here.
+        {
+            const char *colon = strchr(line, ':');
+            if (colon && colon[1] == '?') {
+                igate_note_drop(DROP_GENERIC_QUERY);
+                return;
+            }
+        }
+
         // Never gate our OWN reports from INET back to RF. After we upload a
         // beacon / weather / telemetry / message report to APRS-IS (via its
         // *_2inet flag) the server echoes it right back to us; without this

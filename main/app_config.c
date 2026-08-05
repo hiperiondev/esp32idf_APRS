@@ -184,7 +184,7 @@ void app_config_set_defaults(app_config_t *c) {
     c->igate_range_miles = 0;
     c->igate_dfs_strength = 0;
     c->rf2inetFilter = IGATE_FILT_MESSAGE | IGATE_FILT_STATUS | IGATE_FILT_TELEMETRY | IGATE_FILT_WEATHER | IGATE_FILT_OBJECT | IGATE_FILT_ITEM |
-                       IGATE_FILT_QUERY | IGATE_FILT_BUOY | IGATE_FILT_POSITION;
+                       IGATE_FILT_BUOY | IGATE_FILT_POSITION;
     c->inet2rfFilter = IGATE_FILT_MESSAGE;
     c->rf2inet_budlist_mode = BUDLIST_OFF;
     c->inet2rf_budlist_mode = BUDLIST_OFF;

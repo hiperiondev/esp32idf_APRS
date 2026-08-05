@@ -71,6 +71,30 @@ Both directions use the same classifier and the same bits
 (``g_config.rf2inetFilter`` for RF→INET, ``g_config.inet2rfFilter`` for
 INET→RF), so the two can never drift apart.
 
+Generic query gate (mandatory, both directions)
+================================================
+
+A payload whose first byte is ``?`` — a generic query such as ``?APRS?``,
+``?WX?`` or ``?IGATE?`` — is never gated, in either direction
+(``DROP_GENERIC_QUERY``). This check runs before the payload-type filter and
+is **not** one of the composable ``IGATE_FILT_*`` bits: it cannot be turned
+off, and no state of ``rf2inetFilter``/``inet2rfFilter`` lets a generic query
+through. Relaying one would let a single RF station trigger a query-responder
+reply from every APRS-IS-connected station that implements one, crediting
+this station's callsign for the resulting flood via the ``qAR`` construct —
+the same is true in reverse for a generic query relayed onto RF.
+
+A **directed** query (``:CALLSIGN :?APRSD``, data type identifier ``:``) does
+not start with ``?`` and is unaffected by this gate; it classifies as
+``IGATE_FILT_MESSAGE`` and is subject only to the ordinary payload-type
+filter below, same as any other message.
+
+``IGATE_FILT_QUERY`` itself still exists as an ``aprs_filter_classify_info()``
+/ ``aprs_filter_classify_tnc2()`` output and in ``aprs_filter_type_name()``,
+for the local query responder's own accounting — but no web checkbox maps to
+it, since a query that reaches the type filter has, by construction, already
+survived the mandatory gate above.
+
 Local range gate (RF→INET)
 ==========================
 

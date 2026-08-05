@@ -145,6 +145,8 @@ const char *igate_drop_reason_name(drop_reason_t reason) {
             return "3rd-party loop (TCPIP/TCPXX)";
         case DROP_SAT_NOT_USED:
             return "satellite not used";
+        case DROP_GENERIC_QUERY:
+            return "generic query (RF/INET)";
         case DROP_TYPE_FILTER:
             return "type filter";
         case DROP_RANGE_FILTER:
@@ -504,6 +506,20 @@ int igateProcess(ax25_msg_t *packet) {
         effInfo = innerInfo;
         effInfoLen = innerInfoLen;
         thirdParty = true;
+    }
+
+    // Generic queries ("?APRS?", "?WX?", "?IGATE?", ...) are never gated to
+    // APRS-IS: a single RF station sending one can otherwise trigger a query
+    // responder reply from every APRS-IS-connected station that implements
+    // one, flooding the network with this station's callsign attributed as
+    // the source via the qAR construct. This check is unconditional and
+    // independent of g_config.rf2inetFilter, so it cannot be defeated by any
+    // checkbox state. A directed query (":CALLSIGN :?APRSD", data type ':')
+    // does not start with '?' and is unaffected; it is still subject to the
+    // ordinary type filter below.
+    if (effInfoLen > 0 && effInfo[0] == '?') {
+        s_stats.dropByReason[DROP_GENERIC_QUERY]++;
+        return 0;
     }
 
     // [IGATE] Filter (RF->INET): g_config.rf2inetFilter is a whitelist of

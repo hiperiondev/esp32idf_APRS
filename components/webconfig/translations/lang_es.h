@@ -664,7 +664,6 @@
 #define TR_FILT_WEATHER        "Clima"
 #define TR_FILT_OBJECT         "Objeto"
 #define TR_FILT_ITEM           "Ítem"
-#define TR_FILT_QUERY          "Consulta"
 #define TR_FILT_BUOY           "Boya"
 #define TR_FILT_POSITION       "Posición"
 

@@ -77,6 +77,9 @@ typedef enum {
     DROP_3RDPARTY_LOOP,   /**< RF frame is third-party ('}') traffic whose inner header already carries TCPIP/TCPXX, i.e. it already reached APRS-IS once
                              (IGate RF->INET). */
     DROP_SAT_NOT_USED,    /**< RF frame repeated via a known satellite gate whose call isn't marked used ('*') (IGate RF->INET). */
+    DROP_GENERIC_QUERY,   /**< Frame/line is a generic query (info field starts with '?', e.g. "?APRS?", "?WX?") - dropped unconditionally in both
+                             directions regardless of rf2inetFilter/inet2rfFilter, since relaying one lets a single RF station trigger a flood of
+                             responses across the whole APRS-IS network. A directed query (":CALLSIGN :?APRSD", data type ':') is unaffected. */
     DROP_TYPE_FILTER,     /**< Payload type not allowed by rf2inetFilter (RF->INET) or inet2rfFilter (INET->RF). */
     DROP_RANGE_FILTER,    /**< Blocked by the local RF->INET range gate (g_config.rf2inet_range_en/rf2inet_range_km, see aprs_filter_haversine_km()). */
     DROP_PREFIX_FILTER,   /**< Blocked by the local RF->INET callsign-prefix gate (g_config.rf2inet_prefix_en/rf2inet_prefixes, see aprs_filter_prefix_match()).

@@ -72,6 +72,33 @@ Ambas direcciones usan el mismo clasificador y los mismos bits
 (``g_config.rf2inetFilter`` para RF→INET, ``g_config.inet2rfFilter`` para
 INET→RF), así que las dos nunca pueden divergir.
 
+Guarda de consulta genérica (obligatoria, ambas direcciones)
+=============================================================
+
+Una carga útil cuyo primer byte es ``?`` — una consulta genérica como
+``?APRS?``, ``?WX?`` o ``?IGATE?`` — nunca se enruta, en ninguna dirección
+(``DROP_GENERIC_QUERY``). Esta comprobación se ejecuta antes del filtro por
+tipo de carga útil y **no** es uno de los bits componibles ``IGATE_FILT_*``:
+no se puede desactivar, y ningún estado de
+``rf2inetFilter``/``inet2rfFilter`` deja pasar una consulta genérica. Enrutar
+una permitiría que una sola estación de RF desencadenara una respuesta de
+respondedor de consultas de cada estación conectada a APRS-IS que implemente
+uno, atribuyendo el indicativo de esta estación a la inundación resultante a
+través del constructo ``qAR`` — lo mismo ocurre a la inversa para una
+consulta genérica enrutada hacia RF.
+
+Una consulta **dirigida** (``:CALLSIGN :?APRSD``, identificador de tipo de
+dato ``:``) no empieza por ``?`` y no se ve afectada por esta guarda; se
+clasifica como ``IGATE_FILT_MESSAGE`` y solo está sujeta al filtro ordinario
+por tipo de carga útil de abajo, igual que cualquier otro mensaje.
+
+``IGATE_FILT_QUERY`` en sí sigue existiendo como salida de
+``aprs_filter_classify_info()`` / ``aprs_filter_classify_tnc2()`` y en
+``aprs_filter_type_name()``, para la contabilidad propia del respondedor de
+consultas local — pero ninguna casilla web se corresponde con él, ya que una
+consulta que llega al filtro por tipo ya ha sobrevivido, por construcción, a
+la guarda obligatoria de arriba.
+
 Guarda de rango local (RF→INET)
 ===============================
 

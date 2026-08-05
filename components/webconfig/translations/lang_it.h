@@ -664,7 +664,6 @@
 #define TR_FILT_WEATHER        "Meteo"
 #define TR_FILT_OBJECT         "Oggetto"
 #define TR_FILT_ITEM           "Item"
-#define TR_FILT_QUERY          "Interrogazione"
 #define TR_FILT_BUOY           "Boa"
 #define TR_FILT_POSITION       "Posizione"
 

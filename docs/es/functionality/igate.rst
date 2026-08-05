@@ -67,6 +67,10 @@ agregado opaco.
    hubiera escuchado directamente. Esto es lo que permite que una pasarela
    cruzada de banda o HF reenrute una estación que no tiene otra ruta a
    Internet.
+#. **Guarda de consulta genérica.** Una carga útil cuyo primer byte es ``?``
+   (``?APRS?``, ``?WX?``, ``?IGATE?``, …) se descarta incondicionalmente
+   (``DROP_GENERIC_QUERY``), sin importar ``g_config.rf2inetFilter`` ni
+   ninguna otra casilla. Véase :ref:`es-filtering`.
 #. **Filtro por tipo de carga útil.** La carga útil (posiblemente
    desempaquetada) se clasifica con ``aprs_filter_classify_info()`` y se
    prueba contra ``g_config.rf2inetFilter`` (``DROP_TYPE_FILTER``). Véase
@@ -95,6 +99,12 @@ entrega al motor de mensajería (``handleIncomingAPRS()``) cuando la mensajería
 está activa. Luego se considera para retransmisión por RF solo si ``inet2rf``
 está activo, y solo tras pasar:
 
+#. **Guarda de consulta genérica.** Una línea cuya carga útil empieza por
+   ``?`` se descarta incondicionalmente (``DROP_GENERIC_QUERY``), sin
+   importar ``g_config.inet2rfFilter`` ni ninguna otra casilla — la imagen
+   especular de la guarda de consulta genérica RF→INET de arriba, y se
+   comprueba antes que cualquier otra etapa siguiente. Véase
+   :ref:`es-filtering`.
 #. **Supresión de eco de informes propios.** Cada informe que esta estación sube
    con su bandera ``*_2inet`` es devuelto como eco directamente por el servidor
    APRS-IS. ``inet_line_is_own_report()`` reconoce esos ecos (comparando el
@@ -163,9 +173,9 @@ La instantánea ``igate_stats_t`` (``igate_get_stats()``) lleva:
    * - ``dropByReason[]``
      - Contadores de descarte por-razón, indexados por ``drop_reason_t``. Las
        etapas RF→INET anteriores cubren ``DROP_TOO_SHORT``, ``DROP_PATH_TOKEN``,
-       ``DROP_SAT_NOT_USED``, ``DROP_3RDPARTY_LOOP``, ``DROP_TYPE_FILTER``,
-       ``DROP_RANGE_FILTER``, ``DROP_PREFIX_FILTER``, ``DROP_BUDLIST`` y
-       ``DROP_TX_FAIL``; el arreglo
+       ``DROP_SAT_NOT_USED``, ``DROP_3RDPARTY_LOOP``, ``DROP_GENERIC_QUERY``,
+       ``DROP_TYPE_FILTER``, ``DROP_RANGE_FILTER``, ``DROP_PREFIX_FILTER``,
+       ``DROP_BUDLIST`` y ``DROP_TX_FAIL``; el arreglo
        también lleva razones incrementadas en otras partes del firmware (ruta
        de TX de RF, digipeater, decodificación AX.25) — ver ``drop_reason_t``
        en ``components/igate/include/igate.h`` para la lista completa y

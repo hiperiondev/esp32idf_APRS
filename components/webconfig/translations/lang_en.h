@@ -655,7 +655,6 @@
 #define TR_FILT_WEATHER        "Weather"
 #define TR_FILT_OBJECT         "Object"
 #define TR_FILT_ITEM           "Item"
-#define TR_FILT_QUERY          "Query"
 #define TR_FILT_BUOY           "Buoy"
 #define TR_FILT_POSITION       "Position"
 
