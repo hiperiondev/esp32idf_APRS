@@ -105,6 +105,17 @@ messaggistica è attiva. È poi considerata per la ritrasmissione in RF solo se
 #. **Budlist.** L'indicativo di origine (che qui può portare un ``-SSID``) è
    testato contro ``g_config.inet2rf_budlist_mode``.
 
+Una riga che supera tutte le fasi non viene mai trasmessa in RF con la sua
+intestazione APRS-IS intatta. ``build_thirdparty_frame()`` scarta del tutto
+quell'intestazione e avvolge l'originale ``SRC>DST`` e il campo informativo,
+inalterati, dietro un ``}`` come payload dell'intestazione propria di questa
+stazione (``MYCALL[-SSID]>APE32L,<percorso igate>:}SRC>DST,TCPIP,
+MYCALL[-SSID]*:info``) — la forma di terze parti richiesta dalla
+specifica APRS per il traffico ritrasmesso. Questo mantiene i costrutti
+``qA`` e un ``TCPIP`` non incapsulato fuori dall'etere, e permette a
+qualsiasi altro IGate che ascolti il pacchetto di riconoscerlo come già
+ritrasmesso invece di rimandarlo indietro.
+
 .. warning::
 
    Reinoltrare il traffico di terze parti senza restrizioni è la causa numero uno

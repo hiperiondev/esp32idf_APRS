@@ -37,6 +37,7 @@
 #include "app_config.h"
 #include "aprs_coord.h"
 #include "aprs_filter.h"
+#include "aprs_path.h"
 #include "aprs_service.h"
 #include "beacon.h"
 #include "beacon_scheduler.h"
@@ -54,6 +55,11 @@
 #include "weather.h"
 
 static const char *TAG = "aprs_service";
+
+// Destination call this station's own INET->RF third-party frames key up
+// under, matching the destination every other own-originated packet type
+// (beacon, weather, telemetry, bulletins, objects/items) uses.
+#define IGATE_THIRDPARTY_DEST "APE32L"
 
 // How many frames aprs_service_send_tnc2() lets pile up in the RF TX ring
 // before it starts discarding new packets instead of queuing them (see the
@@ -619,6 +625,92 @@ static bool inet_line_is_own_report(const char *line) {
 }
 
 // ---------------------------------------------------------------------------
+// Wrap a plain (non-third-party) APRS-IS line into the third-party frame this
+// station transmits on RF for it, per the APRS third-party-traffic spec: our
+// own header carries the frame, and the original station's data is preserved
+// verbatim behind a '}' as the payload of that header, with its own path
+// replaced by "TCPIP,<us>*" so a receiver can tell at a glance that the
+// packet arrived over the Internet and was not heard locally. This is what
+// keeps qAR/qAO/TCPIP and any other APRS-IS-only path token off the air, and
+// is what lets every other IGate that hears the frame recognise it as already
+// gated and avoid gating it back - the two together are the loop protection
+// third-party wrapping exists to provide.
+//
+// The original path is discarded in full rather than filtered: only the
+// inner source and destination calls (the header up to the first ',') are
+// kept, everything from there to the first ':' is dropped, and this
+// station's own configured IGate path takes its place. The information
+// field after that first ':' is carried through unmodified.
+//
+// Returns the frame length on success, or 0 (after logging a warning) if
+// the input line has no usable "SRC>DST...:" header or the built frame does
+// not fit APRS_TNC2_BUF_SIZE - never a truncated frame.
+static int build_thirdparty_frame(const char *inetLine, char *out, size_t outMax) {
+    const char *gt = strchr(inetLine, '>');
+    const char *colon = strchr(inetLine, ':');
+    if (!gt || !colon || colon <= gt) {
+        ESP_LOGW(TAG, "INET2RF: line has no usable header, not gated: %s", inetLine);
+        return 0;
+    }
+
+    char innerSrc[12];
+    size_t srcLen = (size_t)(gt - inetLine);
+    if (srcLen >= sizeof(innerSrc))
+        srcLen = sizeof(innerSrc) - 1;
+    memcpy(innerSrc, inetLine, srcLen);
+    innerSrc[srcLen] = 0;
+
+    const char *dstStart = gt + 1;
+    const char *dstEnd = dstStart;
+    while (dstEnd < colon && *dstEnd != ',')
+        dstEnd++;
+    char innerDst[12];
+    size_t dstLen = (size_t)(dstEnd - dstStart);
+    if (dstLen >= sizeof(innerDst))
+        dstLen = sizeof(innerDst) - 1;
+    memcpy(innerDst, dstStart, dstLen);
+    innerDst[dstLen] = 0;
+
+    if (innerSrc[0] == 0 || innerDst[0] == 0) {
+        ESP_LOGW(TAG, "INET2RF: line has an empty source or destination call, not gated: %s", inetLine);
+        return 0;
+    }
+
+    const char *info = colon + 1;
+
+    // Snapshot the own-station identity and path selection used to build the
+    // frame header, under the same lock a concurrent web save writes them
+    // with, so nothing here observes aprs_mycall/aprs_ssid/igate_path
+    // mid-update.
+    char cfgMycall[10];
+    uint8_t cfgSsid;
+    uint8_t cfgPathSel;
+    app_config_lock();
+    memcpy(cfgMycall, g_config.aprs_mycall, sizeof(cfgMycall));
+    cfgSsid = g_config.aprs_ssid;
+    cfgPathSel = g_config.igate_path;
+    app_config_unlock();
+
+    char callField[16];
+    if (cfgSsid > 0)
+        snprintf(callField, sizeof(callField), "%s-%d", cfgMycall, (int)cfgSsid);
+    else
+        snprintf(callField, sizeof(callField), "%s", cfgMycall);
+
+    char gatePath[80];
+    aprs_path_build_suffix_from_config(cfgPathSel, gatePath, sizeof(gatePath));
+
+    int n = snprintf(out, outMax, "%s>" IGATE_THIRDPARTY_DEST "%s:}%s>%s,TCPIP,%s*:%s", callField, gatePath, innerSrc, innerDst, callField, info);
+    if (n < 0)
+        return 0;
+    if ((size_t)n >= outMax || n > APRS_TNC2_MAX_LEN) {
+        ESP_LOGW(TAG, "INET2RF third-party frame too long (%d bytes, max %d), not gated: %s", n, APRS_TNC2_MAX_LEN, inetLine);
+        return 0;
+    }
+    return n;
+}
+
+// ---------------------------------------------------------------------------
 // INET -> RF: called by igate.c for every non-comment line read from APRS-IS.
 // ---------------------------------------------------------------------------
 static void inet2rfHandler(const char *line) {
@@ -696,13 +788,13 @@ static void inet2rfHandler(const char *line) {
         // that never went anywhere.
         uint16_t type = aprs_filter_classify_tnc2(line);
 
-        // What actually gets transmitted and which callsign the budlist
-        // check below is keyed on. Normally both are just the line/callsign
-        // as received; the selective third-party unwrap below (only ever
-        // reachable for an explicitly whitelisted inner source) may swap
-        // both to the unwrapped inner packet instead.
-        const char *txLine = line;
-        size_t txLen = strlen(line);
+        // The plain (non-third-party) TNC2 line that build_thirdparty_frame()
+        // below wraps for RF, and the callsign the budlist check is keyed on.
+        // Normally both are just the line/callsign as received; the selective
+        // third-party unwrap below (only ever reachable for an explicitly
+        // whitelisted inner source) may swap both to the unwrapped inner
+        // packet instead.
+        const char *srcLine = line;
         char budlistCall[12];
         strncpy(budlistCall, callsign, sizeof(budlistCall) - 1);
         budlistCall[sizeof(budlistCall) - 1] = 0;
@@ -740,8 +832,7 @@ static void inet2rfHandler(const char *line) {
                     uint16_t innerType = aprs_filter_classify_thirdparty_inner(colon + 1);
 
                     if (innerSrc[0] && aprs_filter_budlist_pass(BUDLIST_WHITELIST, innerSrc) && aprs_filter_pass(g_config.inet2rfFilter, innerType)) {
-                        txLine = inner;
-                        txLen = strlen(inner);
+                        srcLine = inner;
                         type = innerType;
                         strncpy(budlistCall, innerSrc, sizeof(budlistCall) - 1);
                         budlistCall[sizeof(budlistCall) - 1] = 0;
@@ -772,17 +863,32 @@ static void inet2rfHandler(const char *line) {
             return;
         }
 
-        if (aprs_service_send_tnc2(txLine, txLen)) {
+        // Gated traffic is never keyed onto RF with its APRS-IS header
+        // intact: build_thirdparty_frame() replaces that header with this
+        // station's own call and path and wraps the original SRC>DST plus
+        // its information field, unmodified, behind a '}' as the payload -
+        // the mandatory third-party form that keeps qA constructs and TCPIP
+        // off the air and lets other IGates recognise the frame as already
+        // gated. It already logs a warning on failure (an unusable header or
+        // a frame that would not fit), on the same terms as every other
+        // packet builder in this firmware, so nothing more is done here than
+        // declining to transmit.
+        char thirdPartyFrame[APRS_TNC2_BUF_SIZE];
+        int txLen = build_thirdparty_frame(srcLine, thirdPartyFrame, sizeof(thirdPartyFrame));
+        if (txLen <= 0)
+            return;
+
+        if (aprs_service_send_tnc2(thirdPartyFrame, (size_t)txLen)) {
             atomic_fetch_add_explicit(&s_statInet2Rf, 1, memory_order_relaxed);
-            ESP_LOGD(TAG, "INET2RF TX: %.*s", (int)txLen, txLine);
-            trafficlog_add_pkt("INET2RF", budlistCall, txLine, -1, symTable, symCode);
+            ESP_LOGD(TAG, "INET2RF TX: %.*s", txLen, thirdPartyFrame);
+            trafficlog_add_pkt("INET2RF", budlistCall, thirdPartyFrame, -1, symTable, symCode);
 
             // MSG_CNT in the "?IGATE?" answer counts APRS messages this
-            // gateway has passed, in both directions. The header's ':' ends
-            // the TNC2 address block, so the information field starts right
+            // gateway has passed, in both directions. srcLine's ':' ends
+            // its TNC2 address block, so its information field starts right
             // after it and a message is the payload whose first byte is the
             // ':' data type identifier.
-            const char *infoSep = strchr(txLine, ':');
+            const char *infoSep = strchr(srcLine, ':');
             if (infoSep != NULL && infoSep[1] == ':')
                 igate_note_message_gated();
         }

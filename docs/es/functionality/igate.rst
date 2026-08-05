@@ -101,6 +101,17 @@ está activo, y solo tras pasar:
 #. **Budlist.** El indicativo de origen (que aquí puede llevar un ``-SSID``) se
    prueba contra ``g_config.inet2rf_budlist_mode``.
 
+Una línea que supera todas las etapas nunca se transmite por RF con su
+cabecera de APRS-IS intacta. ``build_thirdparty_frame()`` descarta esa
+cabecera por completo y envuelve el ``SRC>DST`` original y el campo de
+información, sin modificar, tras un ``}`` como carga útil de la cabecera
+propia de esta estación (``MYCALL[-SSID]>APE32L,<ruta igate>:}SRC>DST,TCPIP,
+MYCALL[-SSID]*:info``) — la forma de terceros que exige la especificación
+APRS para el tráfico reenrutado. Esto mantiene los constructos ``qA`` y un
+``TCPIP`` sin envolver fuera del aire, y permite que cualquier otro IGate que
+escuche el paquete lo reconozca como ya reenrutado en lugar de reenviarlo de
+vuelta.
+
 .. warning::
 
    Reenrutar tráfico de terceros sin restricción es la causa número uno de
