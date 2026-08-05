@@ -212,6 +212,36 @@ typedef enum {
 /** @} */
 
 /**
+ * @name INET->RF message gating window
+ * @brief Accepted range and factory default for
+ * ::app_config_t::igate_local_window_sec.
+ *
+ * The window is how far back the IGate looks in the last-heard table when it
+ * decides whether a station counts as "heard locally": an APRS message read
+ * from APRS-IS is only put on the air when its addressee was heard on RF
+ * inside this many seconds. One hour is the upper bound the APRS-IS IGate
+ * design notes recommend, and is also the factory default; shortening it makes
+ * the gateway more conservative on a busy channel.
+ * @{
+ */
+#define IGATE_LOCAL_WINDOW_SEC_MIN     60   /**< Shortest accepted "heard locally" window, seconds. */
+#define IGATE_LOCAL_WINDOW_SEC_MAX     3600 /**< Longest accepted "heard locally" window, seconds. */
+#define IGATE_LOCAL_WINDOW_SEC_DEFAULT 3600 /**< Factory default "heard locally" window, seconds. */
+/** @} */
+
+/**
+ * @brief Number of addressees remembered for the associated-position rule
+ * (see the message gate in aprs_service.c's inet2rfHandler()).
+ *
+ * Every station this gateway puts a message on the air for takes one slot; the
+ * next position report seen for that station on the APRS-IS feed is gated once
+ * so the local operator has something to plot, and the slot is released. The
+ * ring is deliberately small: it is a courtesy follow-up for conversations
+ * happening right now, not a station database.
+ */
+#define IGATE_MSG_ASSOC_MAX 8
+
+/**
  * @brief Maximum number of entries in the local callsign whitelist/blacklist
  * (see g_config.budlist / aprs_filter_budlist_pass()).
  */
@@ -255,6 +285,56 @@ typedef enum {
     BUDLIST_WHITELIST, /**< Only callsigns in g_config.budlist[] are allowed through. */
     BUDLIST_BLACKLIST, /**< Callsigns in g_config.budlist[] are blocked; everyone else passes. */
 } budlist_mode_t;
+
+/**
+ * @name Digipeater alias table
+ * @brief Bounds and text conventions for ::app_config_t::digi_alias.
+ *
+ * The digipeater recognises no path aliases of its own: every alias it honours
+ * is a row of this table, which is what makes the New n-N Paradigm's local
+ * conventions (a fill-in ``WIDE1-1``, a two-hop ``WIDE2-2``, a regional
+ * ``SSn-N``) an operator setting rather than a firmware constant.
+ *
+ * An alias is written as the repeater callsign without its SSID - the SSID is
+ * the hop count @c N and is handled separately - and may contain
+ * ::DIGI_ALIAS_WILDCARD in any position, which matches exactly one decimal
+ * digit. That is how one row covers a whole family: @c "WIDE#" matches
+ * @c WIDE1 through @c WIDE9 but never @c WIDE, @c WIDEN or @c WIDE12, because
+ * the match also requires equal length. Rows are consulted in order and the
+ * first one that matches wins, so a specific row placed above a wildcard row
+ * gives that one alias its own hop limit.
+ * @{
+ */
+#define DIGI_ALIAS_MAX 4 /**< Rows in the digipeater alias table. */
+#define DIGI_ALIAS_LEN 7 /**< Storage for one alias: 6 AX.25 callsign characters + NUL. */
+#define DIGI_ALIAS_WILDCARD                                                                                                                                    \
+    '#'                    /**< Alias character matching exactly one decimal digit. Not a legal AX.25 callsign character, so it can never be ambiguous.        \
+                            */
+#define DIGI_ALIAS_MAX_N 7 /**< Highest hop limit selectable for one alias row. */
+/** @} */
+
+/**
+ * @brief How one ::digi_alias_t row is repeated.
+ *
+ * The distinction is the one the New n-N Paradigm was introduced to make: a
+ * traced hop is identifiable afterwards, a flooded hop is not.
+ */
+typedef enum {
+    DIGI_ALIAS_OFF = 0, /**< Row unused: the alias is ignored, exactly as if it were not listed. */
+    DIGI_ALIAS_TRACE, /**< Tracing: this station's callsign is inserted ahead of the remaining alias and marked used, so every hop of the path is identifiable.
+                         This is what @c WIDEn-N is required to do. */
+    DIGI_ALIAS_FLOOD, /**< Flooding: the hop count is decremented without inserting a callsign, so the route cannot be reconstructed. Only appropriate for a
+                         regional @c SSn-N alias an operator deliberately runs untraced. */
+} digi_alias_mode_t;
+
+/**
+ * @brief One digipeater path alias and the rules for repeating it.
+ */
+typedef struct {
+    char alias[DIGI_ALIAS_LEN]; /**< Repeater callsign without SSID, ::DIGI_ALIAS_WILDCARD allowed. Empty disables the row. */
+    uint8_t max_n;              /**< Highest hop count honoured for this alias, 1 to ::DIGI_ALIAS_MAX_N. A larger @c N received on air is trapped. */
+    uint8_t mode;               /**< ::digi_alias_mode_t for this row. */
+} digi_alias_t;
 
 /**
  * @brief One stored WiFi station (STA) profile.
@@ -362,6 +442,11 @@ typedef struct {
     bool rf2inet_prefix_en; /**< Enable the local RF->INET callsign-prefix gate. */
     char rf2inet_prefixes[40]; /**< Comma-separated callsign-prefix whitelist for rf2inet_prefix_en, e.g. "EA,EB,EC". Case-insensitive. */
 
+    bool igate_msg_gate_en;           /**< On by default. Apply the APRS-IS message-gating criteria before putting a message read from APRS-IS on the air: the
+                                         addressee must have been heard on RF inside @c igate_local_window_sec, the sender must not have been, the sender's
+                                         header must carry no TCPXX/NOGATE/RFONLY, and the addressee must not be Internet-connected. */
+    uint16_t igate_local_window_sec;  /**< How far back the message gate looks in the last-heard table, seconds. Clamped to ::IGATE_LOCAL_WINDOW_SEC_MIN ..
+                                         ::IGATE_LOCAL_WINDOW_SEC_MAX on save and on load. */
     bool inet2rf_3rdparty_unwrap_en;  /**< Off by default. Selective INET->RF opt-in: unwrap one level of third-party ('}') traffic and re-classify/relay the
                                          inner packet, but ONLY when inet2rf_budlist_mode is BUDLIST_WHITELIST and the inner packet's source callsign is itself
                                          on budlist[] - see aprs_filter_classify_thirdparty_inner(). Never a general "relay all third-party" switch; misuse (or
@@ -395,24 +480,29 @@ typedef struct {
     uint16_t igate_range_miles;       /**< "RNGrrrr" pre-calculated radio range, statute miles (::APRS_EXT_RNG only). */
     uint8_t igate_dfs_strength;       /**< "DFSshgd" signal-strength code 0-9 (::APRS_EXT_DFS only; height/gain/directivity come from the PHG sub-fields). */
 
-    bool digi_en;                    /**< Digipeater service enabled. */
-    bool digi_loc2rf;                /**< Beacon the digipeater's own position on RF. */
-    bool digi_loc2inet;              /**< Beacon the digipeater's own position to APRS-IS. */
-    bool digi_timestamp;             /**< Include a timestamp in the digipeater beacon. */
-    uint8_t digi_ssid;               /**< SSID for the digipeater callsign. */
-    char digi_mycall[10];            /**< Digipeater callsign. */
-    bool digi_use_station;           /**< "Use My Station Data": mirror My Station into the digipeater fields and lock them. */
-    uint8_t digi_path;               /**< Digipeater beacon digipeat-path selection (bitmask over g_config.path[0..3]). */
-    bool digi_bcn;                   /**< Enable the digipeater position beacon. */
-    bool digi_compress;              /**< Use APRS compressed position format for the digipeater position beacon. */
-    float digi_lat;                  /**< Digipeater beacon latitude. */
-    float digi_lon;                  /**< Digipeater beacon longitude. */
-    float digi_alt;                  /**< Digipeater beacon altitude. */
-    uint16_t digi_interval;          /**< Digipeater beacon interval, seconds. */
-    char digi_symbol[3];             /**< Digipeater APRS symbol. */
-    char digi_comment[COMMENT_SIZE]; /**< Digipeater beacon comment. */
-    uint16_t digi_sts_interval;      /**< Digipeater status-beacon interval, seconds. */
-    char digi_status[STATUS_SIZE];   /**< Digipeater status text. */
+    bool digi_en;                            /**< Digipeater service enabled. */
+    bool digi_loc2rf;                        /**< Beacon the digipeater's own position on RF. */
+    bool digi_loc2inet;                      /**< Beacon the digipeater's own position to APRS-IS. */
+    bool digi_timestamp;                     /**< Include a timestamp in the digipeater beacon. */
+    uint8_t digi_ssid;                       /**< SSID for the digipeater callsign. */
+    char digi_mycall[10];                    /**< Digipeater callsign. */
+    bool digi_use_station;                   /**< "Use My Station Data": mirror My Station into the digipeater fields and lock them. */
+    uint8_t digi_path;                       /**< Digipeater beacon digipeat-path selection (bitmask over g_config.path[0..3]). */
+    digi_alias_t digi_alias[DIGI_ALIAS_MAX]; /**< The only path aliases this digipeater honours; see ::digi_alias_t. */
+    bool digi_fillin_only;                   /**< Fill-in (home) digipeater role: honour only single-hop rows, so the station serves stations that cannot reach
+                                                the backbone directly and leaves multi-hop traffic to the wide digipeaters. */
+    bool digi_trap_n_clamp;                  /**< What to do with a hop count above the matched row's @c max_n: true clamps it down to @c max_n and repeats,
+                                                false drops the frame (@c DROP_DIGI_N_TRAPPED). */
+    bool digi_bcn;                           /**< Enable the digipeater position beacon. */
+    bool digi_compress;                      /**< Use APRS compressed position format for the digipeater position beacon. */
+    float digi_lat;                          /**< Digipeater beacon latitude. */
+    float digi_lon;                          /**< Digipeater beacon longitude. */
+    float digi_alt;                          /**< Digipeater beacon altitude. */
+    uint16_t digi_interval;                  /**< Digipeater beacon interval, seconds. */
+    char digi_symbol[3];                     /**< Digipeater APRS symbol. */
+    char digi_comment[COMMENT_SIZE];         /**< Digipeater beacon comment. */
+    uint16_t digi_sts_interval;              /**< Digipeater status-beacon interval, seconds. */
+    char digi_status[STATUS_SIZE];           /**< Digipeater status text. */
 
     bool trk_en;                    /**< Tracker service enabled. */
     bool trk_loc2rf;                /**< Beacon the tracker position on RF. */

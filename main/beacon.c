@@ -104,6 +104,13 @@ typedef struct {
     // the Tracker beacon exposes it (Mic-E is the mobile-tracker format
     // this project's other two fixed beacons have no need to originate).
     bool mice;
+    // Whether this station accepts APRS messages, which the position report's
+    // own data type identifier has to state: '!' and '/' mean it does not,
+    // '=' and '@' mean it does (APRS101 ch.6). Receiving clients read that bit
+    // to decide whether to offer their operator a reply path, so it is not
+    // decorative. Sourced from g_config.msg_enable by each per-service
+    // function below, in the same snapshot as every other field here.
+    bool msgCapable;
 } beacon_params_t;
 
 // Builds the 7-byte "PHGphgd" data-extension token from PHG sub-fields, using
@@ -362,6 +369,16 @@ static int buildPositionPacket(const beacon_params_t *p, char *out, size_t outMa
         snprintf(extra, sizeof(extra), "/A=%06d", feet);
     }
 
+    // The data type identifier encodes both whether a timestamp follows and
+    // whether this station can accept APRS messages (APRS101 ch.6):
+    //
+    //   no timestamp, no messaging  '!'      no timestamp, messaging  '='
+    //   timestamp,    no messaging  '/'      timestamp,    messaging  '@'
+    //
+    // This station runs a full messaging engine, answers directed queries and
+    // acknowledges what it receives, so with messaging on it says so - a
+    // beacon that claims otherwise is displayed by Kenwood radios, APRSISCE/32,
+    // Xastir, YAAC and aprs.fi alike as a station nobody can reply to.
     char infoField[256]; // ts(7)+posField(up to 21)+ext(7)+extra(40)+comment(up to 128)+NUL
     if (p->timestamp) {
         time_t now = time(NULL);
@@ -369,9 +386,9 @@ static int buildPositionPacket(const beacon_params_t *p, char *out, size_t outMa
         gmtime_r(&now, &tmv);
         char ts[8];
         snprintf(ts, sizeof(ts), "%02d%02d%02dz", tmv.tm_mday, tmv.tm_hour, tmv.tm_min);
-        snprintf(infoField, sizeof(infoField), "/%s%s%s%s%s", ts, posField, ext, extra, p->comment);
+        snprintf(infoField, sizeof(infoField), "%c%s%s%s%s%s", p->msgCapable ? '@' : '/', ts, posField, ext, extra, p->comment);
     } else {
-        snprintf(infoField, sizeof(infoField), "!%s%s%s%s", posField, ext, extra, p->comment);
+        snprintf(infoField, sizeof(infoField), "%c%s%s%s%s", p->msgCapable ? '=' : '!', posField, ext, extra, p->comment);
     }
 
     int n = snprintf(out, outMax, "%s>%s%s:%s", callField, BEACON_DEST, path, infoField);
@@ -666,6 +683,7 @@ static uint32_t trackerBeaconService(void) {
             p.sendAltitude = g_config.trk_altitude;
             p.compress = g_config.trk_compress;
             p.mice = g_config.trk_mice;
+            p.msgCapable = g_config.msg_enable;
             p.ambiguity = g_config.pos_ambiguity;
             memcpy(p.symbol, g_config.trk_symbol, sizeof(p.symbol));
             memcpy(p.comment, g_config.trk_comment, sizeof(p.comment));
@@ -734,6 +752,7 @@ static uint32_t igateBeaconService(void) {
             p.alt = g_config.igate_alt;
             p.sendAltitude = g_config.igate_alt != 0.0f;
             p.compress = g_config.igate_compress;
+            p.msgCapable = g_config.msg_enable;
             p.ambiguity = g_config.pos_ambiguity;
             memcpy(p.symbol, g_config.igate_symbol, sizeof(p.symbol));
             memcpy(p.comment, g_config.igate_comment, sizeof(p.comment));
@@ -801,6 +820,7 @@ static void fillIgatePositionParams(beacon_params_t *p) {
         p->alt = g_config.igate_alt;
         p->sendAltitude = g_config.igate_alt != 0.0f;
         p->compress = g_config.igate_compress;
+        p->msgCapable = g_config.msg_enable;
         memcpy(p->symbol, g_config.igate_symbol, sizeof(p->symbol));
         memcpy(p->comment, g_config.igate_comment, sizeof(p->comment));
         memcpy(p->pathPreset, g_config.path, sizeof(p->pathPreset));
@@ -869,6 +889,7 @@ static uint32_t digiBeaconService(void) {
             p.alt = g_config.digi_alt;
             p.sendAltitude = g_config.digi_alt != 0.0f;
             p.compress = g_config.digi_compress;
+            p.msgCapable = g_config.msg_enable;
             p.ambiguity = g_config.pos_ambiguity;
             memcpy(p.symbol, g_config.digi_symbol, sizeof(p.symbol));
             memcpy(p.comment, g_config.digi_comment, sizeof(p.comment));

@@ -194,6 +194,25 @@ IGate (RF <-> APRS-IS)
        di essi senza il flag di ripetuto (``*``) impostato viene scartato
        prima di raggiungere APRS-IS
 
+   * - Criteri di filtraggio messaggi (località di destinatario/mittente)
+     - ✅ (richiesto a un IGate conforme)
+     - ✅
+     - Tutte e quattro le condizioni sono applicate prima che un messaggio letto
+       da APRS-IS raggiunga la RF: destinatario ascoltato localmente entro la
+       finestra, mittente non ascoltato in RF, nessun ``TCPXX``/``NOGATE``/
+       ``RFONLY`` nell'intestazione del mittente, destinatario non connesso a
+       Internet. Ogni fallimento ha il proprio motivo di scarto
+   * - Finestra di ascolto locale configurabile
+     - ⚠️ (spesso fissa)
+     - ✅
+     - ``igate_local_window_sec``, 60-3600 s, un'ora per impostazione predefinita
+   * - Posizione associata dopo un messaggio ritrasmesso
+     - ⚠️ (poco comune)
+     - ✅
+     - Anello di otto destinatari; il primo rapporto di posizione o di boa visto
+       per uno di essi viene ritrasmesso una volta, in sostituzione della pratica
+       obsoleta di ripetere le posizioni storiche
+
 Digipeater
 -----------
 
@@ -205,18 +224,46 @@ Digipeater
      - Tipico nei software APRS diffusi
      - Qui
      - Note sull'implementazione di questo progetto
-   * - Digipeating a inondazione WIDEn-N
+   * - Digipeating WIDEn-N, Nuovo Paradigma n-N (tracciato)
      - ✅ (universale)
      - ✅
-     - Decremento del conteggio hop + inserimento del proprio nominativo
-   * - Digipeating a traccia esplicita TRACEn-N
+     - Decremento del conteggio hop **e** inserimento del proprio nominativo
+       marcato come usato, così ogni hop di un percorso ripetuto è
+       identificabile
+   * - Tabella di alias configurabile
+     - ⚠️ (variabile; spesso un elenco fisso)
+     - ✅
+     - Quattro righe di {alias, N massimo, modalità} nella pagina Digi; ``#`` in
+       un alias corrisponde a una cifra, quindi una riga copre un'intera
+       famiglia (``WIDE#``). Tabella di fabbrica: ``WIDE1`` 1 hop, ``WIDE2``
+       2 hop, ``WIDE#`` 2 hop, tutte tracciate
+   * - Intrappolamento di N grande
+     - ✅ (atteso da ogni digipeater moderno)
+     - ✅
+     - ``N massimo`` per alias; un conteggio hop maggiore viene limitato al tetto
+       (predefinito) o scartato (``DROP_DIGI_N_TRAPPED``), a scelta
+       dell'operatore
+   * - Ruolo di digipeater di riempimento (solo ``WIDE1-1``)
      - ✅
      - ✅
-     - Ogni hop inserisce il proprio nominativo
-   * - Alias legacy RELAY / ECHO / GATE
+     - Una sola casella; limita la stazione alle righe di alias a un solo hop
+   * - Instradamento regionale ``SSn-N``
+     - ⚠️ (convenzione regionale)
      - ✅
-     - ✅
-     - Tutti sostituiti con il nominativo del digipeater
+     - Una normale riga di alias, tipicamente in modalità Inondazione con il
+       limite di hop della regione
+   * - Inondazione ``WIDEn-N`` non rintracciabile (NOID)
+     - ⚠️ (comportamento datato)
+     - ❌
+     - Non prodotta per ``WIDEn-N``: il paradigma l'ha spostato sul meccanismo di
+       tracciamento. La modalità Inondazione esiste, ma solo per una riga di
+       alias che l'operatore decida di usare senza traccia
+   * - Alias datati ``TRACEn-N`` / ``RELAY`` / ``ECHO`` / ``GATE``
+     - ⚠️ (obsoleti)
+     - ❌
+     - Abbandonati come percorsi e non incorporati. Un operatore che ne abbia
+       ancora bisogno per un vicino datato lo aggiunge come una normale riga di
+       alias
    * - Conteggio hop codificato nel SSID di destinazione (legacy)
      - ⚠️ (TNC più datati)
      - ✅
@@ -315,6 +362,13 @@ Tracciamento / Beaconing
      - Quattro preset di percorso condivisi; ogni servizio che trasmette
        (tracker, IGate, digipeater, meteo, telemetria, messaggi, oggetti,
        bollettini) sceglie tra questi con la propria maschera di bit
+
+   * - Identificatore di tipo dati con capacità di messaggistica (``=`` / ``@``)
+     - ✅ (universale)
+     - ✅
+     - Scelto in base ad *Abilita messaggistica*: ``!``/``/`` con la
+       messaggistica spenta, ``=``/``@`` con essa accesa, così i client riceventi
+       offrono una via di risposta
 
 Messaggistica
 --------------

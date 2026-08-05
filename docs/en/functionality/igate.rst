@@ -118,6 +118,9 @@ after passing:
    third-party" switch.
 #. **Budlist.** The source callsign (which may carry a ``-SSID`` here) is tested
    against ``g_config.inet2rf_budlist_mode``.
+#. **Message gating.** Applies to the ``MESSAGE`` type only; the other types
+   are relayed at the sysop's discretion, which the type filter and the budlist
+   above already express. See below.
 
 A line that survives all stages is never keyed onto RF with its APRS-IS
 header intact. ``build_thirdparty_frame()`` discards that header entirely and
@@ -133,6 +136,58 @@ recognise it as already gated instead of gating it back.
    Re-gating third-party traffic without restriction is the number-one cause of
    IGate loops. The third-party unwrap is deliberately gated behind an explicit
    opt-in *and* a whitelist for exactly this reason.
+
+Message gating
+==============
+
+An IGate sits on a very large data stream and must not gate indiscriminately.
+With ``igate_msg_gate_en`` on (the factory default), an APRS message read from
+APRS-IS is put on the air only when **all four** conditions hold at once:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 46 54
+
+   * - Condition
+     - Drop reason when it fails
+   * - The sender's header carries none of ``TCPXX``, ``NOGATE``, ``RFONLY``
+     - ``DROP_MSG_NOGATE``
+   * - The addressee was heard on RF inside ``igate_local_window_sec``
+     - ``DROP_MSG_NOT_LOCAL``
+   * - The addressee is not itself Internet-connected
+     - ``DROP_MSG_ADDRESSEE_INET``
+   * - The sender was **not** heard on RF inside the same window
+     - ``DROP_MSG_SENDER_LOCAL``
+
+Each failure has its own reason so the dashboard's *Drop Breakdown* says which
+condition stopped a message — the single most-asked IGate support question.
+Only the header is searched for the ``TCPXX``/``NOGATE``/``RFONLY`` tokens, so
+a message whose *text* mentions one is not mistaken for one routed with it.
+
+The locality tests read ``lastheard_heard_rf_within()`` and
+``lastheard_heard_inet_within()``, which keep a separate stamp per channel: a
+station can be both locally audible and Internet-connected, and each condition
+tests its own. A frame heard off the air also counts as an Internet sighting
+when its path carries ``TCPIP`` or ``TCPXX`` — the on-air signature of a packet
+that has already passed through a gateway.
+
+*Heard-locally window (s)* is ``igate_local_window_sec``, 60–3600 s, one hour by
+default, which is the upper bound the APRS-IS IGate design notes recommend.
+
+Turning message gating off transmits **every** message the type filter allows,
+to addressees anywhere in the world, whether or not anything on the local
+channel can hear them.
+
+Associated position
+===================
+
+Rather than replaying a station's historical position reports, the gateway
+notes the stations it has gated a message **to** — an eight-entry ring — and
+forwards the next plain position or buoy report it sees for each of them,
+whatever the type filter says, so the local operator has something to plot for
+the far end of the conversation. The slot is released by that one report, which
+is what makes it a follow-up rather than a subscription; a weather or object
+report is gated under its own type bit, on its own merits.
 
 Counters and drop reasons
 =========================

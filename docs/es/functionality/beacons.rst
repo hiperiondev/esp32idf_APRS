@@ -153,6 +153,44 @@ sería simplemente dato erróneo, y descartar la extensión para conservar la
 compresión perdería en silencio un campo que el operador habilitó
 explícitamente.
 
+La capacidad de mensajería va en el identificador de tipo de datos
+==================================================================
+
+El primer byte del campo de información de un reporte de posición declara dos
+cosas a la vez (APRS101 cap.6): si sigue una marca de tiempo, y si la estación
+puede aceptar mensajes APRS.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 25 25 25 25
+
+   * - Marca de tiempo
+     - ``msg_enable`` apagado
+     - ``msg_enable`` encendido
+     - Significado
+   * - No
+     - ``!``
+     - ``=``
+     - Posición, sin marca de tiempo
+   * - Sí
+     - ``/``
+     - ``@``
+     - Posición con marca de tiempo
+
+La distinción no es decorativa: es como un cliente receptor decide si le ofrece
+a su operador la acción *enviar mensaje* para esa estación. Las radios Kenwood
+TH-D7/D700/D710, APRSISCE/32, Xastir, YAAC y aprs.fi leen todas este bit, y una
+estación que declara no aceptar mensajes se muestra sin ninguna vía de
+respuesta.
+
+Esta estación corre un motor de mensajería completo, responde consultas
+dirigidas y acusa recibo de los mensajes que recibe, así que con *Habilitar
+mensajería* activo las tres balizas de posición lo declaran. El identificador se
+elige en ``buildPositionPacket()`` desde la misma copia bajo lock de la que
+salen los demás campos de la baliza. Los objetos e ítems no se ven afectados —
+llevan sus propios identificadores ``;`` y ``)`` — y Mic-E tiene su propio
+formato fijo.
+
 Ambigüedad de posición
 ======================
 

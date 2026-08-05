@@ -377,6 +377,20 @@ esp_err_t page_igate_get(httpd_req_t *req) {
         web_fieldset_close(req);
     }
 
+    // Message Gating (INET->RF) --------------------------------------------
+    // Separate from the payload-type filter above: that decides which KINDS of
+    // traffic may reach RF, this decides whether a given message has anyone
+    // local to reach. Both have to agree before a message is transmitted.
+    web_raw(req, "<h2 style='margin-top:24px'>" TR_F_MSG_GATING "</h2>");
+    {
+        web_fieldset_open(req, TR_F_MSG_GATING);
+        web_raw(req, "<p style='color:var(--sub);font-size:12px;margin:4px 0'>" TR_NOTE_MSG_GATING "</p>");
+        web_field_checkbox(req, TR_F_MSG_GATE_EN, "igateMsgGateEn", g_config.igate_msg_gate_en);
+        web_field_int(req, TR_F_MSG_LOCAL_WINDOW_S, "igateLocalWindowSec", g_config.igate_local_window_sec, IGATE_LOCAL_WINDOW_SEC_MIN,
+                      IGATE_LOCAL_WINDOW_SEC_MAX);
+        web_fieldset_close(req);
+    }
+
     // Callsign Filter (budlist) --------------------------------------------
     // Local whitelist/blacklist, independent of - and composed with (AND
     // semantics) - the payload-type filters just above. One shared 8-entry
@@ -462,10 +476,11 @@ esp_err_t page_igate_post(httpd_req_t *req) {
     // share the same <form> as the rest of the page (main settings + up to
     // 18 filter checkboxes + the Callsign Filter fieldset: 2 mode selects
     // and 8 callsign inputs, plus the range/prefix gate and third-party
-    // unwrap fields, plus the Satellite Gate List's 8 callsign inputs and
-    // the Duplicate Suppression fieldset's 2 numeric fields), not just the
-    // main settings on their own.
-    char body[3800];
+    // unwrap fields, plus the Satellite Gate List's 8 callsign inputs, the
+    // Message Gating fieldset's switch and window, and the Duplicate
+    // Suppression fieldset's 2 numeric fields), not just the main settings on
+    // their own.
+    char body[4000];
     if (web_read_body(req, body, sizeof(body)) < 0) {
         httpd_resp_send_500(req);
         return ESP_OK;
@@ -632,6 +647,18 @@ esp_err_t page_igate_post(httpd_req_t *req) {
     // actually takes effect when inet2rf_budlist_mode is BUDLIST_WHITELIST
     // (enforced in aprs_service.c's inet2rfHandler(), not here).
     g_config.inet2rf_3rdparty_unwrap_en = web_form_get_bool(body, "inet2rf3rdPartyUnwrapEn");
+
+    // Message gating: same two-layer clamp as every other bounded field, so a
+    // crafted POST cannot widen the window past what the form advertises.
+    g_config.igate_msg_gate_en = web_form_get_bool(body, "igateMsgGateEn");
+    {
+        int windowSec = web_form_get_int(body, "igateLocalWindowSec", g_config.igate_local_window_sec);
+        if (windowSec < IGATE_LOCAL_WINDOW_SEC_MIN)
+            windowSec = IGATE_LOCAL_WINDOW_SEC_MIN;
+        else if (windowSec > IGATE_LOCAL_WINDOW_SEC_MAX)
+            windowSec = IGATE_LOCAL_WINDOW_SEC_MAX;
+        g_config.igate_local_window_sec = (uint16_t)windowSec;
+    }
 
     // Callsign Filter (budlist): mode selects + shared callsign list. Same
     // single-form POST as everything else on this page.

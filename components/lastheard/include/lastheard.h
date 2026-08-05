@@ -116,6 +116,46 @@ void lastheard_add(const char *callsign, const char *path, bool via_rf, bool dir
 size_t lastheard_station_count(bool rf_only);
 
 /**
+ * @brief Was this station heard on the local RF channel within the last
+ * @p seconds?
+ *
+ * One half of the locality test an IGate applies before putting a message read
+ * from APRS-IS on the air: the message is only worth transmitting if its
+ * addressee is reachable on the local channel, and reachable means decoded off
+ * the air recently. The stamp this reads is refreshed by every RF frame from
+ * the station, independently of the Internet stamp
+ * ::lastheard_heard_inet_within reads, so a station that is both audible
+ * locally and present on the APRS-IS feed answers true to both.
+ *
+ * @param callsign Station to look up, matched without regard to case against
+ *                 the stored (SSID-bearing) callsign.
+ * @param seconds  Width of the window, counted back from now.
+ * @return true if the station is in the table and its most recent RF frame
+ *         falls inside the window. A station the table does not hold, or one
+ *         only ever seen via APRS-IS, answers false.
+ */
+bool lastheard_heard_rf_within(const char *callsign, uint32_t seconds);
+
+/**
+ * @brief Was this station seen on the Internet side within the last
+ * @p seconds?
+ *
+ * The other half of the same test: a station that is itself Internet-connected
+ * already has anything addressed to it, so gating a message to it onto RF only
+ * duplicates what it has. A station counts as seen on the Internet when its
+ * frame arrived over the APRS-IS feed, and also when a frame heard off the air
+ * carries @c TCPIP or @c TCPXX in its path - the on-air signature of a packet
+ * that has already passed through a gateway.
+ *
+ * @param callsign Station to look up, matched without regard to case against
+ *                 the stored (SSID-bearing) callsign.
+ * @param seconds  Width of the window, counted back from now.
+ * @return true if the station is in the table and its most recent Internet
+ *         sighting falls inside the window.
+ */
+bool lastheard_heard_inet_within(const char *callsign, uint32_t seconds);
+
+/**
  * @brief Build the space-separated list of stations most recently heard
  * without any digipeater in between, most recent first.
  *

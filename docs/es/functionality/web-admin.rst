@@ -55,11 +55,16 @@ Las páginas
      - Habilitar, RF→INET / INET→RF, ambas máscaras de filtro, budlist y guardas
        de rango/prefijo, indicativo/SSID/passcode, host/puerto, cadena de filtro
        de servidor, baliza on/off, posición, intervalo, selector de símbolo,
-       objeto, comentario, estado, PHG.
+       objeto, comentario, estado, PHG. *Filtrado de Mensajes* lleva el
+       interruptor de criterios de mensajes INET→RF y la ventana de escucha
+       local.
    * - **Digi**
      - Habilitar digipeater, indicativo/SSID y ajustes de baliza (posición,
-       símbolo, intervalo, comentario, estado, ruta). La ventana de supresión de
-       duplicados es un único control, en la página *IGate*.
+       símbolo, intervalo, comentario, estado, ruta). *Alias de Ruta n-N* lleva
+       las cuatro filas de {alias, N máximo, modo} con las que repite el
+       digipeater, el interruptor de solo relleno y la elección de qué hacer con
+       un contador de saltos atrapado. La ventana de supresión de duplicados es
+       un único control, en la página *IGate*.
    * - **Tracker**
      - Habilitar tracker, indicativo/SSID, intervalo fijo, posición, símbolo de
        estación, comentario, opciones de posición comprimida, posición Mic-E y

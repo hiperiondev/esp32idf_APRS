@@ -694,6 +694,30 @@
     "Shared by the IGate and the Digipeater to suppress repeated copies of the same frame. A busy digipeater on a congested frequency may need a larger "      \
     "cache; a sparse rural IGate may prefer a shorter window."
 
+#define TR_F_MSG_GATING         "Message Gating (Internet to RF)"
+#define TR_F_MSG_GATE_EN        "Apply message gating criteria"
+#define TR_F_MSG_LOCAL_WINDOW_S "Heard-locally window (s)"
+#define TR_NOTE_MSG_GATING                                                                                                                                     \
+    "A message read from APRS-IS is put on the air only when its addressee was heard on RF inside the window, its sender was not, the sender's header "        \
+    "carries no TCPXX/NOGATE/RFONLY, and the addressee is not itself on the Internet. The next position report seen for that addressee is gated once too, "    \
+    "so it can be plotted. Switching this off transmits every message the type filter allows, to addressees anywhere in the world."
+
+#define TR_F_DIGI_ALIASES     "n-N Path Aliases"
+#define TR_F_DIGI_ALIAS       "Alias"
+#define TR_F_DIGI_MAX_N       "Max N"
+#define TR_F_DIGI_ALIAS_MODE  "Mode"
+#define TR_F_DIGI_FILLIN_ONLY "Fill-in digipeater (single hop only)"
+#define TR_F_DIGI_TRAP_ACTION "Hop count above Max N"
+#define TR_DIGI_TRAP_CLAMP    "Clamp to Max N"
+#define TR_DIGI_TRAP_DROP     "Drop the frame"
+#define TR_DIGI_MODE_OFF      "Off"
+#define TR_DIGI_MODE_TRACE    "Trace (insert callsign)"
+#define TR_DIGI_MODE_FLOOD    "Flood (no callsign)"
+#define TR_NOTE_DIGI_ALIASES                                                                                                                                   \
+    "The only aliases this digipeater honours. Write each one without its SSID; '#' matches a single digit, so 'WIDE#' covers the whole WIDEn family. Rows "   \
+    "are tried in order and the first match wins. Trace inserts this station's callsign so every hop can be identified afterwards, which is what WIDEn-N "     \
+    "requires; flood leaves no trace and suits only a regional alias run that way on purpose."
+
 #define TR_SYM_ICON            "Icon"
 #define TR_SYM_QUICK_PICK      "Quick Pick"
 #define TR_SYM_PRIMARY_TABLE   "Primary Table ( / )"

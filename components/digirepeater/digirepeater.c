@@ -13,9 +13,11 @@
 //
 //     please contact their authors for more information.
 //
-// @brief APRS digipeater path logic: WIDEn-N / TRACEn-N / RELAY / ECHO / GATE
-// handling, hop decrementing and callsign insertion, and duplicate suppression.
+// @brief APRS digipeater path logic: New n-N Paradigm alias handling driven by
+// the operator's alias table, hop-count trapping, callsign insertion and
+// duplicate suppression.
 
+#include <ctype.h>
 #include <string.h>
 
 #include "app_config.h"
@@ -39,6 +41,75 @@ static inline void copy_call(char dst[7], const char *src) {
     dst[i] = '\0';
 }
 
+// Does one received repeater callsign match one alias row? The comparison is
+// case-insensitive and requires equal length, and DIGI_ALIAS_WILDCARD in the
+// row matches exactly one decimal digit. Equal length is what keeps "WIDE#"
+// from claiming a station calling itself WIDEN or WIDE12, and what keeps a row
+// of "WIDE1" from matching anything but that alias.
+static bool alias_matches(const char *row, const char *call) {
+    size_t n = strlen(row);
+    if (n == 0 || n != strlen(call))
+        return false;
+
+    for (size_t i = 0; i < n; i++) {
+        if (row[i] == DIGI_ALIAS_WILDCARD) {
+            if (call[i] < '0' || call[i] > '9')
+                return false;
+        } else if (toupper((unsigned char)row[i]) != toupper((unsigned char)call[i])) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// First alias row that claims this callsign, or NULL if none does. Rows are
+// consulted in table order and the first hit wins, so a specific alias placed
+// above a wildcard row keeps its own hop limit.
+//
+// In fill-in mode only single-hop rows are considered. That is the whole of
+// the fill-in role: the station lifts traffic from neighbours who cannot reach
+// the backbone directly and leaves everything routed for more hops to the wide
+// digipeaters, which is what stops a home station in a valley from adding a
+// redundant copy of every packet in the region.
+static const digi_alias_t *find_alias(const digi_alias_t *table, const char *call, bool fillin_only) {
+    for (int i = 0; i < DIGI_ALIAS_MAX; i++) {
+        if (table[i].mode == DIGI_ALIAS_OFF)
+            continue;
+        if (fillin_only && table[i].max_n != 1)
+            continue;
+        if (alias_matches(table[i].alias, call))
+            return &table[i];
+    }
+    return NULL;
+}
+
+// Insert this station's callsign at rpt_list[idx], marked used, pushing the
+// entry that was there (and every unused entry after it) one slot down. The
+// caller has already made room by checking rpt_count against AX25_MAX_RPT.
+static void insert_own_call(ax25_msg_t *packet, int idx, const char *myCall, uint8_t mySsid) {
+    int j;
+    for (j = idx; j < packet->rpt_count; j++) {
+        if (packet->rpt_flags & (1 << j))
+            break;
+    }
+    for (; j >= idx; j--) {
+        int n = j + 1;
+        if (n >= AX25_MAX_RPT)
+            break;
+        strcpy(packet->rpt_list[n].call, packet->rpt_list[j].call);
+        packet->rpt_list[n].ssid = packet->rpt_list[j].ssid;
+        if (packet->rpt_flags & (1 << j))
+            packet->rpt_flags |= (1 << n);
+        else
+            packet->rpt_flags &= ~(1 << n);
+    }
+
+    packet->rpt_count += 1;
+    copy_call(packet->rpt_list[idx].call, myCall);
+    packet->rpt_list[idx].ssid = mySsid;
+    packet->rpt_flags |= (1 << idx);
+}
+
 int digiProcess(ax25_msg_t *packet) {
     int idx, j;
     uint8_t ctmp;
@@ -49,9 +120,15 @@ int digiProcess(ax25_msg_t *packet) {
     // copy of an unterminated callsign into the outgoing path.
     char digiMyCall[10];
     uint8_t digiMySsid;
+    digi_alias_t digiAlias[DIGI_ALIAS_MAX];
+    bool digiFillinOnly;
+    bool digiTrapClamp;
     app_config_lock();
     memcpy(digiMyCall, g_config.digi_mycall, sizeof(digiMyCall));
     digiMySsid = g_config.digi_ssid;
+    memcpy(digiAlias, g_config.digi_alias, sizeof(digiAlias));
+    digiFillinOnly = g_config.digi_fillin_only;
+    digiTrapClamp = g_config.digi_trap_n_clamp;
     app_config_unlock();
 
     if (packet->len < 5) {
@@ -181,118 +258,123 @@ int digiProcess(ax25_msg_t *packet) {
         }
     }
 
+    // A frame that already carries this station's callsign marked used has
+    // been through here before. Repeating it again would put a second copy of
+    // the same transmission on the air however many hops its path still has
+    // left, so it stops here regardless of what follows.
+    for (idx = 0; idx < packet->rpt_count; idx++) {
+        if ((packet->rpt_flags & (1 << idx)) && !strcmp(packet->rpt_list[idx].call, digiMyCall) && packet->rpt_list[idx].ssid == digiMySsid) {
+            igate_note_drop(DROP_DIGI_ALREADY_USED);
+            return 0;
+        }
+    }
+
     j = 0;
     for (idx = 0; idx < packet->rpt_count; idx++) {
         if (packet->rpt_flags & (1 << idx)) {
             continue; // already relayed, bypass
         }
 
-        if (!strncmp(packet->rpt_list[idx].call, "WIDE", 4)) {
-            if (packet->rpt_list[idx].ssid > 0) {
-                ctmp = packet->rpt_list[idx].ssid & 0x1F;
-                if (ctmp > 0)
-                    ctmp--;
-                if (ctmp > 15)
-                    ctmp = 0;
-                if (ctmp == 0) {
-                    copy_call(packet->rpt_list[idx].call, digiMyCall);
-                    packet->rpt_list[idx].ssid = digiMySsid;
-                    packet->rpt_flags |= (1 << idx);
-                    j = 2;
-                    break;
-                } else {
-                    packet->rpt_list[idx].ssid = ctmp;
-                    packet->rpt_flags &= ~(1 << idx);
-                    j = 2;
-                    break;
-                }
-            } else {
+        // ax25_decode() hands over the hop count already shifted out of the
+        // raw address octet, so the SSID field reads as a plain 0-15 here and
+        // the decremented value is written back in the same form.
+        uint8_t hops = packet->rpt_list[idx].ssid;
+        const digi_alias_t *alias = find_alias(digiAlias, packet->rpt_list[idx].call, digiFillinOnly);
+
+        if (alias != NULL) {
+            if (hops == 0) {
+                // An alias with no hops left is spent: it is replaced by this
+                // station's callsign, marked used, which both consumes the
+                // entry and records who made the final hop.
                 copy_call(packet->rpt_list[idx].call, digiMyCall);
                 packet->rpt_list[idx].ssid = digiMySsid;
                 packet->rpt_flags |= (1 << idx);
                 j = 2;
                 break;
             }
-        } else if (!strncmp(packet->rpt_list[idx].call, "TRACE", 5)) {
-            ctmp = packet->rpt_list[idx].ssid & 0x1F;
-            if (ctmp > 0)
-                ctmp--;
-            if (ctmp > 15)
-                ctmp = 0;
-            if (ctmp == 0) {
+
+            if (hops > alias->max_n) {
+                // Trapping: a hop count above what the operator allows for
+                // this alias is either brought down to the limit or refused
+                // outright. Clamping keeps the frame moving while still
+                // stopping it from flooding further than local conditions
+                // allow, which is why it is the default; every extra hop
+                // multiplies the load a frame puts on the network.
+                if (!digiTrapClamp) {
+                    igate_note_drop(DROP_DIGI_N_TRAPPED);
+                    j = 0;
+                    break;
+                }
+                hops = alias->max_n;
+            }
+
+            hops--;
+
+            if (hops == 0) {
                 copy_call(packet->rpt_list[idx].call, digiMyCall);
                 packet->rpt_list[idx].ssid = digiMySsid;
                 packet->rpt_flags |= (1 << idx);
                 j = 2;
                 break;
-            } else if (packet->rpt_count >= AX25_MAX_RPT) {
+            }
+
+            if (alias->mode == DIGI_ALIAS_FLOOD) {
+                // Flooding leaves the alias in place with one hop taken off
+                // and no record of who took it.
+                packet->rpt_list[idx].ssid = hops;
+                packet->rpt_flags &= ~(1 << idx);
+                j = 2;
+                break;
+            }
+
+            // Tracing: this station's callsign goes in ahead of the remaining
+            // alias and is marked used, so every hop of the path can be
+            // attributed afterwards. This is what n-N routing is required to
+            // do - it is the whole reason the paradigm moved WIDEn-N onto the
+            // tracing mechanism.
+            if (packet->rpt_count >= AX25_MAX_RPT) {
                 // Path already has AX25_MAX_RPT (8) digipeater addresses -
                 // the maximum an AX.25 frame can carry. Inserting our own
                 // call here would push rpt_count to 9, one past the end of
                 // rpt_list[AX25_MAX_RPT], and the corresponding bit in the
                 // uint8_t rpt_flags bitmask (1 << 8) would silently be lost.
-                // Drop instead of corrupting the path, same as any other
-                // "no usable path" case below.
+                // Drop instead of corrupting the path.
                 igate_note_drop(DROP_DIGI_PATH_FULL);
                 j = 0;
                 break;
-            } else {
-                int n;
-                for (j = idx; j < packet->rpt_count; j++) {
-                    if (packet->rpt_flags & (1 << j))
-                        break;
-                }
-                for (; j >= idx; j--) {
-                    n = j + 1;
-                    if (n >= AX25_MAX_RPT)
-                        break;
-                    strcpy(packet->rpt_list[n].call, packet->rpt_list[j].call);
-                    packet->rpt_list[n].ssid = packet->rpt_list[j].ssid;
-                    if (packet->rpt_flags & (1 << j))
-                        packet->rpt_flags |= (1 << n);
-                    else
-                        packet->rpt_flags &= ~(1 << n);
-                }
-                if (idx + 1 < AX25_MAX_RPT)
-                    packet->rpt_list[idx + 1].ssid = ctmp;
-
-                packet->rpt_count += 1;
-                copy_call(packet->rpt_list[idx].call, digiMyCall);
-                packet->rpt_list[idx].ssid = digiMySsid;
-                packet->rpt_flags |= (1 << idx);
-                j = 2;
-                break;
             }
-        } else if (!strncmp(packet->rpt_list[idx].call, "RFONLY", 6)) {
+
+            insert_own_call(packet, idx, digiMyCall, digiMySsid);
+            if (idx + 1 < AX25_MAX_RPT)
+                packet->rpt_list[idx + 1].ssid = hops;
+            j = 2;
+            break;
+        }
+
+        if (!strncmp(packet->rpt_list[idx].call, "RFONLY", 6)) {
+            // Not an alias: a routing token that forbids the frame reaching
+            // the Internet. It is consumed here so the rest of the path can
+            // still be followed on RF.
             packet->rpt_flags |= (1 << idx);
             j = 2;
             break;
-        } else if (!strncmp(packet->rpt_list[idx].call, "RELAY", 5) || !strncmp(packet->rpt_list[idx].call, "GATE", 4) ||
-                   !strncmp(packet->rpt_list[idx].call, "ECHO", 4)) {
-            copy_call(packet->rpt_list[idx].call, digiMyCall);
-            packet->rpt_list[idx].ssid = digiMySsid;
-            packet->rpt_flags |= (1 << idx);
-            j = 2;
-            break;
-        } else if (!strcmp(packet->rpt_list[idx].call, digiMyCall)) {
-            ctmp = packet->rpt_list[idx].ssid & 0x1F;
-            if (ctmp == digiMySsid) {
-                if (packet->rpt_flags & (1 << idx)) {
-                    igate_note_drop(DROP_DIGI_ALREADY_USED);
-                    j = 0;
-                    break;
-                }
+        }
+
+        if (!strcmp(packet->rpt_list[idx].call, digiMyCall)) {
+            if (packet->rpt_list[idx].ssid == digiMySsid) {
                 packet->rpt_flags |= (1 << idx);
                 j = 1;
                 break;
-            } else {
-                j = 0;
-                break;
             }
-        } else {
             j = 0;
             break;
         }
+
+        // The next unused entry names neither an alias this station honours
+        // nor this station itself, so the frame is addressed onward to
+        // somebody else.
+        j = 0;
+        break;
     }
 
     return j;

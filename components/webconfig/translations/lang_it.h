@@ -705,6 +705,31 @@
     "Condiviso da IGate e Digipeater per sopprimere copie ripetute dello stesso pacchetto. Un digipeater molto attivo su una frequenza congestionata "         \
     "potrebbe richiedere una cache più grande; un IGate rurale con poco traffico potrebbe preferire una finestra più breve."
 
+#define TR_F_MSG_GATING         "Filtraggio Messaggi (Internet verso RF)"
+#define TR_F_MSG_GATE_EN        "Applica i criteri di filtraggio dei messaggi"
+#define TR_F_MSG_LOCAL_WINDOW_S "Finestra di ascolto locale (s)"
+#define TR_NOTE_MSG_GATING                                                                                                                                     \
+    "Un messaggio letto da APRS-IS viene trasmesso solo se il destinatario è stato ascoltato in RF entro la finestra, il mittente no, l'intestazione del "     \
+    "mittente non contiene TCPXX/NOGATE/RFONLY e il destinatario non è a sua volta su Internet. Anche il primo rapporto di posizione di quel destinatario "    \
+    "viene ritrasmesso una volta, per poterlo localizzare. Disattivandolo si trasmette ogni messaggio consentito dal filtro dei tipi, verso destinatari in "   \
+    "qualsiasi parte del mondo."
+
+#define TR_F_DIGI_ALIASES     "Alias di Percorso n-N"
+#define TR_F_DIGI_ALIAS       "Alias"
+#define TR_F_DIGI_MAX_N       "N massimo"
+#define TR_F_DIGI_ALIAS_MODE  "Modalità"
+#define TR_F_DIGI_FILLIN_ONLY "Digipeater di riempimento (un solo salto)"
+#define TR_F_DIGI_TRAP_ACTION "Salti oltre il N massimo"
+#define TR_DIGI_TRAP_CLAMP    "Limita al N massimo"
+#define TR_DIGI_TRAP_DROP     "Scarta la trama"
+#define TR_DIGI_MODE_OFF      "Spento"
+#define TR_DIGI_MODE_TRACE    "Traccia (inserisce nominativo)"
+#define TR_DIGI_MODE_FLOOD    "Inondazione (senza nominativo)"
+#define TR_NOTE_DIGI_ALIASES                                                                                                                                   \
+    "Gli unici alias che questo digipeater onora. Scrivere ciascuno senza SSID; '#' corrisponde a una sola cifra, quindi 'WIDE#' copre l'intera famiglia "     \
+    "WIDEn. Le righe vengono provate in ordine e vince la prima corrispondenza. Traccia inserisce il nominativo di questa stazione affinché ogni salto sia "   \
+    "identificabile in seguito, come richiede WIDEn-N; inondazione non lascia traccia e conviene solo a un alias regionale usato di proposito così."
+
 #define TR_SYM_ICON            "Icona"
 #define TR_SYM_QUICK_PICK      "Selezione rapida"
 #define TR_SYM_PRIMARY_TABLE   "Tabella primaria ( / )"

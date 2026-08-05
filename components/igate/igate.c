@@ -156,6 +156,14 @@ const char *igate_drop_reason_name(drop_reason_t reason) {
             return "prefix filter";
         case DROP_BUDLIST:
             return "callsign filter";
+        case DROP_MSG_NOT_LOCAL:
+            return "msg: addressee not heard locally";
+        case DROP_MSG_SENDER_LOCAL:
+            return "msg: sender heard on RF";
+        case DROP_MSG_NOGATE:
+            return "msg: TCPXX/NOGATE/RFONLY";
+        case DROP_MSG_ADDRESSEE_INET:
+            return "msg: addressee on the Internet";
         case DROP_TX_FAIL:
             return "TX failed";
         case DROP_HEADER_OVERFLOW:
@@ -182,6 +190,8 @@ const char *igate_drop_reason_name(drop_reason_t reason) {
             return "digi: path full";
         case DROP_DIGI_NO_PATH:
             return "digi: no usable path";
+        case DROP_DIGI_N_TRAPPED:
+            return "digi: hop count trapped";
         case DROP_DIGI_PATH_TOKEN:
             return "digi: qA/TCP path token";
         case DROP_DIGI_DUPLICATE:

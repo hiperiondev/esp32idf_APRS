@@ -151,6 +151,44 @@ sarebbe semplicemente un dato sbagliato, e scartare l'estensione per mantenere l
 compressione perderebbe in silenzio un campo che l'operatore ha abilitato
 esplicitamente.
 
+La capacità di messaggistica sta nell'identificatore di tipo dati
+=================================================================
+
+Il primo byte del campo informativo di un rapporto di posizione dichiara due
+cose insieme (APRS101 cap.6): se segue una marca temporale, e se la stazione può
+accettare messaggi APRS.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 25 25 25 25
+
+   * - Marca temporale
+     - ``msg_enable`` spento
+     - ``msg_enable`` acceso
+     - Significato
+   * - No
+     - ``!``
+     - ``=``
+     - Posizione, senza marca temporale
+   * - Sì
+     - ``/``
+     - ``@``
+     - Posizione con marca temporale
+
+La distinzione non è decorativa: è così che un client ricevente decide se
+offrire al proprio operatore l'azione *invia messaggio* per quella stazione. Le
+radio Kenwood TH-D7/D700/D710, APRSISCE/32, Xastir, YAAC e aprs.fi leggono tutte
+questo bit, e una stazione che dichiara di non accettare messaggi viene mostrata
+senza alcuna via di risposta.
+
+Questa stazione esegue un motore di messaggistica completo, risponde alle query
+dirette e conferma i messaggi che riceve, quindi con *Abilita messaggistica*
+attivo tutte e tre le balise di posizione lo dichiarano. L'identificatore viene
+scelto in ``buildPositionPacket()`` dalla stessa copia sotto lock da cui
+provengono tutti gli altri campi della balise. Oggetti e item non sono toccati —
+portano i propri identificatori ``;`` e ``)`` — e Mic-E ha il proprio formato
+fisso.
+
 Ambiguità di posizione
 ======================
 

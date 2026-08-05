@@ -187,6 +187,24 @@ IGate (RF <-> APRS-IS)
        them without the repeated (``*``) flag set is dropped before reaching
        APRS-IS
 
+   * - Message gating criteria (addressee/sender locality)
+     - ✅ (required of a conformant IGate)
+     - ✅
+     - All four conditions enforced before a message read from APRS-IS reaches
+       RF: addressee heard locally inside the window, sender not heard on RF,
+       no ``TCPXX``/``NOGATE``/``RFONLY`` in the sender's header, addressee not
+       Internet-connected. Each failure has its own drop reason
+   * - Configurable heard-locally window
+     - ⚠️ (often fixed)
+     - ✅
+     - ``igate_local_window_sec``, 60-3600 s, one hour by default
+   * - Associated position after a gated message
+     - ⚠️ (uncommon)
+     - ✅
+     - Eight-entry ring of gated-to addressees; the next position or buoy report
+       seen for one of them is gated once, replacing the deprecated practice of
+       replaying historical positions
+
 Digipeater
 -----------
 
@@ -198,18 +216,42 @@ Digipeater
      - Typical in popular APRS software
      - Here
      - Notes on this project's implementation
-   * - WIDEn-N flood digipeating
+   * - WIDEn-N digipeating, New n-N Paradigm (traced)
      - ✅ (universal)
      - ✅
-     - Hop-count decrement + own-call insertion
-   * - TRACEn-N explicit-trace digipeating
+     - Hop-count decrement **and** own-call insertion marked used, so every hop
+       of a repeated path is identifiable
+   * - Configurable alias table
+     - ⚠️ (varies; often a fixed list)
+     - ✅
+     - Four rows of {alias, max N, mode} on the Digi page; ``#`` in an alias
+       matches one digit, so one row covers a family (``WIDE#``). Factory table:
+       ``WIDE1`` 1 hop, ``WIDE2`` 2 hops, ``WIDE#`` 2 hops, all tracing
+   * - Large-N trapping
+     - ✅ (expected of every modern digipeater)
+     - ✅
+     - Per-alias ``Max N``; a larger hop count is clamped down to the limit
+       (default) or dropped (``DROP_DIGI_N_TRAPPED``), operator's choice
+   * - Fill-in (``WIDE1-1``-only) digipeater role
      - ✅
      - ✅
-     - Every hop inserts its callsign
-   * - RELAY / ECHO / GATE legacy aliases
+     - Single checkbox; restricts the station to single-hop alias rows
+   * - ``SSn-N`` regional routing
+     - ⚠️ (regional convention)
      - ✅
-     - ✅
-     - All substituted with digi's own callsign
+     - An ordinary alias row, typically in Flood mode with the region's own
+       hop limit
+   * - Untraceable (NOID) ``WIDEn-N`` flooding
+     - ⚠️ (legacy behaviour)
+     - ❌
+     - Not produced for ``WIDEn-N``: the paradigm moved it onto the tracing
+       mechanism. Flood mode exists, but only for an alias row an operator
+       deliberately runs untraced
+   * - ``TRACEn-N`` / ``RELAY`` / ``ECHO`` / ``GATE`` legacy aliases
+     - ⚠️ (obsolete)
+     - ❌
+     - Abandoned as paths and not built in. An operator who still needs one for
+       a legacy neighbour adds it as an ordinary alias row
    * - Destination-SSID-encoded hop count (legacy)
      - ⚠️ (older TNCs)
      - ✅
@@ -304,6 +346,12 @@ Tracking / Beaconing
      - Four shared path presets; every transmitting service (tracker, IGate,
        digipeater, weather, telemetry, messages, objects, bulletins) selects
        from them with its own bitmask
+
+   * - Messaging-capable data type identifier (``=`` / ``@``)
+     - ✅ (universal)
+     - ✅
+     - Picked from *Enable messaging*: ``!``/``/`` when messaging is off,
+       ``=``/``@`` when it is on, so receiving clients offer a reply path
 
 Messaging
 ----------

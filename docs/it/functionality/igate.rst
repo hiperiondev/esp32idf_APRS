@@ -126,6 +126,9 @@ messaggistica è attiva. È poi considerata per la ritrasmissione in RF solo se
    traffico di terze parti".
 #. **Budlist.** L'indicativo di origine (che qui può portare un ``-SSID``) è
    testato contro ``g_config.inet2rf_budlist_mode``.
+#. **Filtraggio dei messaggi.** Si applica al solo tipo ``MESSAGE``; gli altri
+   tipi sono ritrasmessi a discrezione del sysop, che è ciò che il filtro dei
+   tipi e la budlist qui sopra già esprimono. Vedi sotto.
 
 Una riga che supera tutte le fasi non viene mai trasmessa in RF con la sua
 intestazione APRS-IS intatta. ``build_thirdparty_frame()`` scarta del tutto
@@ -143,6 +146,62 @@ ritrasmesso invece di rimandarlo indietro.
    Reinoltrare il traffico di terze parti senza restrizioni è la causa numero uno
    di loop IGate. L'unwrap di terze parti è deliberatamente condizionato a
    un'opzione esplicita *e* a una whitelist proprio per questa ragione.
+
+Filtraggio dei messaggi
+=======================
+
+Un IGate è affacciato su un flusso di dati enorme e non deve ritrasmettere in
+modo indiscriminato. Con ``igate_msg_gate_en`` attivo (il valore di fabbrica),
+un messaggio APRS letto da APRS-IS viene trasmesso solo se valgono **tutte e
+quattro** le condizioni insieme:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 46 54
+
+   * - Condizione
+     - Motivo di scarto quando fallisce
+   * - L'intestazione del mittente non contiene ``TCPXX``, ``NOGATE``, ``RFONLY``
+     - ``DROP_MSG_NOGATE``
+   * - Il destinatario è stato ascoltato in RF entro ``igate_local_window_sec``
+     - ``DROP_MSG_NOT_LOCAL``
+   * - Il destinatario non è a sua volta connesso a Internet
+     - ``DROP_MSG_ADDRESSEE_INET``
+   * - Il mittente **non** è stato ascoltato in RF entro la stessa finestra
+     - ``DROP_MSG_SENDER_LOCAL``
+
+Ogni fallimento ha il proprio motivo, così il *Drop Breakdown* del cruscotto
+dice quale condizione ha fermato un messaggio — la domanda di assistenza più
+frequente su un IGate. I token ``TCPXX``/``NOGATE``/``RFONLY`` sono cercati solo
+nell'intestazione, quindi un messaggio il cui *testo* ne menzioni uno non viene
+scambiato per uno instradato con esso.
+
+Le prove di località leggono ``lastheard_heard_rf_within()`` e
+``lastheard_heard_inet_within()``, che tengono una marca temporale per canale:
+una stazione può essere udibile localmente e connessa a Internet allo stesso
+tempo, e ogni condizione prova la propria. Una trama ascoltata via radio conta
+anche come avvistamento Internet quando il suo percorso porta ``TCPIP`` o
+``TCPXX`` — la firma via radio di un pacchetto già passato per un gateway.
+
+*Finestra di ascolto locale (s)* è ``igate_local_window_sec``, 60–3600 s, un'ora
+per impostazione predefinita, che è il limite superiore raccomandato dalle note
+di progetto degli IGate APRS-IS.
+
+Disattivare il filtraggio dei messaggi trasmette **ogni** messaggio consentito
+dal filtro dei tipi, verso destinatari in qualsiasi parte del mondo, che sul
+canale locale ci sia o meno qualcuno in grado di sentirli.
+
+Posizione associata
+===================
+
+Invece di ritrasmettere i rapporti di posizione storici di una stazione, il
+gateway annota le stazioni **a cui** ha ritrasmesso un messaggio — un anello di
+otto voci — e inoltra il primo rapporto di posizione semplice o di boa che vede
+per ciascuna di esse, qualunque cosa dica il filtro dei tipi, così l'operatore
+locale ha qualcosa da posizionare per l'altro capo della conversazione. Quel
+singolo rapporto libera la voce, ed è questo a renderlo un seguito e non un
+abbonamento; un rapporto meteo o un oggetto viene ritrasmesso sotto il proprio
+bit di tipo, per meriti propri.
 
 Contatori e ragioni di scarto
 =============================

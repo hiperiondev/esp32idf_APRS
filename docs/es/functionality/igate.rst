@@ -124,6 +124,9 @@ está activo, y solo tras pasar:
    Nunca es un interruptor general de "reenviar todo lo de terceros".
 #. **Budlist.** El indicativo de origen (que aquí puede llevar un ``-SSID``) se
    prueba contra ``g_config.inet2rf_budlist_mode``.
+#. **Filtrado de mensajes.** Se aplica solo al tipo ``MESSAGE``; los demás tipos
+   se retransmiten a criterio del sysop, que es lo que ya expresan el filtro de
+   tipos y la budlist de arriba. Ver abajo.
 
 Una línea que supera todas las etapas nunca se transmite por RF con su
 cabecera de APRS-IS intacta. ``build_thirdparty_frame()`` descarta esa
@@ -142,6 +145,62 @@ vuelta.
    bucles de IGate. El desempaquetado de terceros está deliberadamente
    condicionado a una opción explícita *y* a una lista blanca por exactamente
    esta razón.
+
+Filtrado de mensajes
+====================
+
+Un IGate está sentado sobre un flujo de datos enorme y no debe retransmitir de
+forma indiscriminada. Con ``igate_msg_gate_en`` activo (el valor de fábrica), un
+mensaje APRS leído de APRS-IS sale al aire solo si se cumplen **las cuatro**
+condiciones a la vez:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 46 54
+
+   * - Condición
+     - Motivo de descarte cuando falla
+   * - La cabecera del remitente no lleva ``TCPXX``, ``NOGATE`` ni ``RFONLY``
+     - ``DROP_MSG_NOGATE``
+   * - El destinatario fue escuchado por RF dentro de ``igate_local_window_sec``
+     - ``DROP_MSG_NOT_LOCAL``
+   * - El destinatario no está a su vez conectado a Internet
+     - ``DROP_MSG_ADDRESSEE_INET``
+   * - El remitente **no** fue escuchado por RF dentro de la misma ventana
+     - ``DROP_MSG_SENDER_LOCAL``
+
+Cada fallo tiene su propio motivo, así el *Drop Breakdown* del panel dice qué
+condición detuvo un mensaje — la pregunta de soporte más frecuente sobre un
+IGate. Solo se busca en la cabecera los tokens ``TCPXX``/``NOGATE``/``RFONLY``,
+de modo que un mensaje cuyo *texto* mencione alguno no se confunde con uno
+ruteado con él.
+
+Las pruebas de localidad leen ``lastheard_heard_rf_within()`` y
+``lastheard_heard_inet_within()``, que guardan una marca de tiempo por canal:
+una estación puede ser audible localmente y estar conectada a Internet a la vez,
+y cada condición prueba la suya. Una trama escuchada al aire también cuenta como
+avistamiento por Internet cuando su ruta lleva ``TCPIP`` o ``TCPXX`` — la firma
+al aire de un paquete que ya pasó por una pasarela.
+
+*Ventana de escucha local (s)* es ``igate_local_window_sec``, 60–3600 s, una hora
+por omisión, que es la cota superior que recomiendan las notas de diseño de
+IGate de APRS-IS.
+
+Desactivar el filtrado de mensajes transmite **todo** mensaje que permita el
+filtro de tipos, a destinatarios de cualquier parte del mundo, haya o no en el
+canal local alguien capaz de escucharlos.
+
+Posición asociada
+=================
+
+En vez de repetir los reportes de posición históricos de una estación, la
+pasarela anota las estaciones a las que **le** retransmitió un mensaje — un
+anillo de ocho entradas — y reenvía el siguiente reporte de posición simple o de
+boya que ve para cada una, diga lo que diga el filtro de tipos, para que el
+operador local tenga algo que ubicar del otro extremo de la conversación. Ese
+único reporte libera la ranura, que es lo que lo hace un seguimiento y no una
+suscripción; un reporte de clima u objeto se retransmite bajo su propio bit de
+tipo, por sus propios méritos.
 
 Contadores y razones de descarte
 ================================

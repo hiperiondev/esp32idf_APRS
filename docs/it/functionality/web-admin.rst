@@ -55,11 +55,16 @@ Le pagine
      - Abilita, RF→INET / INET→RF, entrambe le maschere di filtro, budlist e gate
        di portata/prefisso, indicativo/SSID/passcode, host/porta, stringa di
        filtro server, beacon on/off, posizione, intervallo, selettore di simbolo,
-       oggetto, commento, stato, PHG.
+       oggetto, commento, stato, PHG. *Filtraggio Messaggi* contiene
+       l'interruttore dei criteri per i messaggi INET→RF e la finestra di
+       ascolto locale.
    * - **Digi**
      - Abilita digipeater, indicativo/SSID e impostazioni beacon (posizione,
-       simbolo, intervallo, commento, stato, percorso). La finestra di
-       soppressione dei duplicati è un unico controllo, sulla pagina *IGate*.
+       simbolo, intervallo, commento, stato, percorso). *Alias di Percorso n-N*
+       contiene le quattro righe di {alias, N massimo, modalità} con cui il
+       digipeater ripete, l'interruttore di solo riempimento e la scelta di cosa
+       fare con un conteggio hop intrappolato. La finestra di soppressione dei
+       duplicati è un unico controllo, sulla pagina *IGate*.
    * - **Tracker**
      - Abilita tracker, indicativo/SSID, intervallo fisso, posizione, simbolo di
        stazione, commento, opzioni di posizione compressa, posizione Mic-E e

@@ -38,19 +38,82 @@ re-renderiza la trama a TNC2, llama a ``aprs_service_send_tnc2()`` y, si tiene
 éxito, incrementa el contador ``digi`` del panel y registra una entrada de
 tráfico ``DIGI``.
 
-Esquemas de ruta soportados
-===========================
+La tabla de alias
+=================
 
-* **WIDEn-N** — el alias de inundación estándar. El contador de saltos *N* se
-  decrementa y se inserta el propio indicativo del digipeater (marcado como
-  usado con ``*``) cuando se consume el alias.
-* **TRACEn-N** — como WIDEn-N pero cada salto inserta su indicativo, construyendo
-  una traza explícita de la ruta seguida.
-* **RELAY / GATE / ECHO** — los alias genéricos heredados, cada uno sustituido
-  por el indicativo del digipeater.
+El digipeater no reconoce alias propios. Cada alias que atiende es una fila de
+``g_config.digi_alias``, editada en *Alias de Ruta n-N* de la página *Digi*, y
+la fila dice cómo se repite ese alias. Eso es lo que convierte las convenciones
+locales del Nuevo Paradigma n-N — un ``WIDE1-1`` de relleno, un ``WIDE2-2`` de
+dos saltos, un ``SSn-N`` regional — en un ajuste del operador y no en una
+constante del firmware.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 16 12 72
+
+   * - Campo
+     - Rango
+     - Significado
+   * - Alias
+     - 6 caracteres
+     - El indicativo del repetidor **sin** su SSID; el SSID es el contador de
+       saltos *N* y se maneja aparte. ``#`` equivale exactamente a un dígito
+       decimal, así una fila cubre toda una familia: ``WIDE#`` reclama
+       ``WIDE1`` hasta ``WIDE9``, pero nunca ``WIDE``, ``WIDEN`` ni
+       ``WIDE12``, porque la coincidencia también exige igual longitud. Un
+       alias vacío deshabilita la fila.
+   * - N máximo
+     - 1–7
+     - El mayor contador de saltos que se atiende para este alias. Un *N* mayor
+       recibido al aire queda *atrapado*.
+   * - Modo
+     - Apagado / Traza / Inundación
+     - **Traza** inserta el indicativo de esta estación delante del alias
+       restante y lo marca como usado, de modo que cada salto de la ruta puede
+       atribuirse después. **Inundación** decrementa el contador de saltos y no
+       deja constancia de quién lo hizo. **Apagado** ignora la fila por
+       completo.
+
+Las filas se consultan en orden de tabla y gana la primera coincidencia, así
+que un alias específico colocado encima de una fila comodín conserva su propio
+límite de saltos. La tabla de fábrica es ``WIDE1`` (1 salto), ``WIDE2``
+(2 saltos) y ``WIDE#`` (2 saltos), todas en modo traza, con la cuarta fila
+libre para un alias regional.
+
+``WIDEn-N`` está obligado a trazar. El paradigma lo movió del mecanismo de
+inundación no rastreable al de trazado precisamente para que cada salto de cada
+ruta ``WIDEn-N`` sea identificable — por eso *Inundación* solo es apropiado
+para un alias regional que el operador decida usar sin traza.
+
+``RELAY``, ``GATE``, ``ECHO`` y ``TRACEn-N`` no están incorporados: fueron
+abandonados como rutas y ya no están en el firmware. Un operador que aún
+necesite alguno para un vecino heredado lo agrega como una fila más.
+
+Atrapado y el rol de relleno
+============================
+
+Un contador de saltos por encima del *N máximo* de la fila coincidente queda
+atrapado, y *Saltos por encima del N máximo* elige cómo: **Limitar al N máximo**
+(el valor por omisión) lo baja al límite y repite la trama, **Descartar la
+trama** la rechaza de plano y cuenta ``DROP_DIGI_N_TRAPPED``. Limitar mantiene
+la trama en movimiento y a la vez impide que inunde más allá de lo que permiten
+las condiciones locales, y por eso es el valor por omisión; cada salto adicional
+multiplica por unas tres veces la carga que una trama impone a la red.
+
+*Digipetidor de relleno (un solo salto)* restringe la estación a las filas cuyo
+límite de saltos es 1. Ese es todo el rol de relleno: levanta el tráfico de los
+vecinos que no alcanzan la red troncal directamente y deja todo lo ruteado para
+más saltos a los digipeaters amplios, que es lo que evita que una estación
+doméstica en un valle agregue una copia redundante de cada paquete de la región.
+
+Dos tramas se rechazan antes de consultar la tabla: la que ya lleva el
+indicativo de esta estación marcado como usado, sin importar lo que aún tenga su
+ruta, y la que coincide con la ventana de supresión de duplicados de abajo.
+
 * **WIDEn-N codificado en el campo SSID de destino** — la convención más antigua
   donde el contador de saltos vive en el nibble SSID de la dirección de destino
-  AX.25 también se reconoce y maneja.
+  AX.25 también se reconoce y maneja, antes que la tabla de alias.
 
 Supresión de duplicados
 =======================

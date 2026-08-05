@@ -207,6 +207,8 @@ void app_config_set_defaults(app_config_t *c) {
     c->rf2inet_prefix_en = false;
     set_str(c->rf2inet_prefixes, sizeof(c->rf2inet_prefixes), "");
     c->inet2rf_3rdparty_unwrap_en = false;
+    c->igate_msg_gate_en = true;
+    c->igate_local_window_sec = IGATE_LOCAL_WINDOW_SEC_DEFAULT;
 
     // DIGI
     c->digi_en = false;
@@ -218,6 +220,32 @@ void app_config_set_defaults(app_config_t *c) {
     c->digi_interval = 30;
     set_str(c->digi_symbol, sizeof(c->digi_symbol), "N&");
     set_str(c->digi_comment, sizeof(c->digi_comment), "esp32idf_APRS Digi");
+
+    // Factory alias table: the New n-N Paradigm's two standard aliases get a
+    // row each so their hop limits can differ, and a wildcard row catches the
+    // rest of the WIDEn family and traps it down to two hops. Every row traces
+    // (inserts this station's callsign), which is what makes each hop of a
+    // repeated path identifiable. The fourth row is free for a regional
+    // SSn-N alias.
+    {
+        static const digi_alias_t aliasDefaults[] = {
+            { "WIDE1", 1, DIGI_ALIAS_TRACE },
+            { "WIDE2", 2, DIGI_ALIAS_TRACE },
+            { "WIDE#", 2, DIGI_ALIAS_TRACE },
+            { "", 1, DIGI_ALIAS_OFF },
+        };
+        for (int i = 0; i < DIGI_ALIAS_MAX; i++) {
+            if (i < (int)(sizeof(aliasDefaults) / sizeof(aliasDefaults[0]))) {
+                c->digi_alias[i] = aliasDefaults[i];
+            } else {
+                set_str(c->digi_alias[i].alias, sizeof(c->digi_alias[i].alias), "");
+                c->digi_alias[i].max_n = 1;
+                c->digi_alias[i].mode = DIGI_ALIAS_OFF;
+            }
+        }
+    }
+    c->digi_fillin_only = false;
+    c->digi_trap_n_clamp = true;
 
     // TRACKER
     c->trk_en = false;
@@ -381,8 +409,8 @@ static void jadd_bool(jw_t *o, const char *k, bool v) {
     fputs(v ? "true" : "false", o->f);
 }
 
-// Scalar arrays: every array written by config_write_json() holds strings or
-// booleans, so those are the two element writers this needs.
+// Scalar arrays: every array written by config_write_json() holds strings,
+// numbers or booleans, so those are the three element writers this needs.
 static void jarr_begin(jw_t *o, const char *k) {
     jw_key(o, k);
     fputc('[', o->f);
@@ -396,6 +424,12 @@ static void jarr_str(jw_t *o, const char *v) {
         fputc(',', o->f);
     o->arr_comma = true;
     json_write_escaped(o->f, v ? v : "");
+}
+static void jarr_num(jw_t *o, double v) {
+    if (o->arr_comma)
+        fputc(',', o->f);
+    o->arr_comma = true;
+    jw_num_val(o, v);
 }
 static void jarr_bool(jw_t *o, bool v) {
     if (o->arr_comma)
@@ -490,6 +524,8 @@ static void config_write_json(jw_t *d, const app_config_t *c) {
     jadd_bool(d, "rf2inetPrefixEn", c->rf2inet_prefix_en);
     jadd_str(d, "rf2inetPrefixes", c->rf2inet_prefixes);
     jadd_bool(d, "inet2rf3rdPartyUnwrapEn", c->inet2rf_3rdparty_unwrap_en);
+    jadd_bool(d, "igateMsgGateEn", c->igate_msg_gate_en);
+    jadd_num(d, "igateLocalWindowSec", c->igate_local_window_sec);
     jadd_num(d, "igateSSID", c->aprs_ssid);
     jadd_num(d, "igatePort", c->aprs_port);
     jadd_str(d, "igateMycall", c->aprs_mycall);
@@ -526,6 +562,20 @@ static void config_write_json(jw_t *d, const app_config_t *c) {
     jadd_str(d, "digiMycall", c->digi_mycall);
     jadd_bool(d, "digiUseStation", c->digi_use_station);
     jadd_num(d, "digiPath", c->digi_path);
+    jarr_begin(d, "digiAlias");
+    for (int i = 0; i < DIGI_ALIAS_MAX; i++)
+        jarr_str(d, c->digi_alias[i].alias);
+    jarr_end(d);
+    jarr_begin(d, "digiAliasMaxN");
+    for (int i = 0; i < DIGI_ALIAS_MAX; i++)
+        jarr_num(d, c->digi_alias[i].max_n);
+    jarr_end(d);
+    jarr_begin(d, "digiAliasMode");
+    for (int i = 0; i < DIGI_ALIAS_MAX; i++)
+        jarr_num(d, c->digi_alias[i].mode);
+    jarr_end(d);
+    jadd_bool(d, "digiFillinOnly", c->digi_fillin_only);
+    jadd_bool(d, "digiTrapNClamp", c->digi_trap_n_clamp);
     jadd_bool(d, "digiBcn", c->digi_bcn);
     jadd_bool(d, "digiCompress", c->digi_compress);
     jadd_num(d, "digiAlt", c->digi_alt);
@@ -759,6 +809,17 @@ static void config_from_json(cJSON *d, app_config_t *c) {
     c->rf2inet_prefix_en = jget_bool(d, "rf2inetPrefixEn", def.rf2inet_prefix_en);
     set_str(c->rf2inet_prefixes, sizeof(c->rf2inet_prefixes), jget_str(d, "rf2inetPrefixes", def.rf2inet_prefixes));
     c->inet2rf_3rdparty_unwrap_en = jget_bool(d, "inet2rf3rdPartyUnwrapEn", def.inet2rf_3rdparty_unwrap_en);
+    c->igate_msg_gate_en = jget_bool(d, "igateMsgGateEn", def.igate_msg_gate_en);
+    // Same two-layer clamp the rest of the bounded fields use: the file on
+    // flash is not a trusted input, and a window of zero would stop the
+    // gateway putting any message on the air while a window of days would
+    // keep transmitting to stations that left the area hours ago.
+    c->igate_local_window_sec = (uint16_t)jget_num(d, "igateLocalWindowSec", def.igate_local_window_sec);
+    if (c->igate_local_window_sec < IGATE_LOCAL_WINDOW_SEC_MIN || c->igate_local_window_sec > IGATE_LOCAL_WINDOW_SEC_MAX) {
+        ESP_LOGW(TAG, "igateLocalWindowSec %u out of range, clamped to %d..%d s", (unsigned)c->igate_local_window_sec, IGATE_LOCAL_WINDOW_SEC_MIN,
+                 IGATE_LOCAL_WINDOW_SEC_MAX);
+        c->igate_local_window_sec = (c->igate_local_window_sec < IGATE_LOCAL_WINDOW_SEC_MIN) ? IGATE_LOCAL_WINDOW_SEC_MIN : IGATE_LOCAL_WINDOW_SEC_MAX;
+    }
     c->aprs_ssid = (uint8_t)jget_num(d, "igateSSID", def.aprs_ssid);
     c->aprs_port = (uint16_t)jget_num(d, "igatePort", def.aprs_port);
     // Same two-layer clamp as the SoftAP channel above: the file on flash is
@@ -817,6 +878,35 @@ static void config_from_json(cJSON *d, app_config_t *c) {
     set_str(c->digi_mycall, sizeof(c->digi_mycall), jget_str(d, "digiMycall", def.digi_mycall));
     c->digi_use_station = jget_bool(d, "digiUseStation", def.digi_use_station);
     c->digi_path = (uint8_t)jget_num(d, "digiPath", def.digi_path);
+    // Alias table: three parallel arrays, one row per index, following the
+    // same shape as the budlist/satgate lists above. A row is validated on the
+    // way in rather than trusted: an out-of-range hop limit or an unknown mode
+    // would otherwise decide how this station repeats other people's traffic.
+    {
+        cJSON *al = cJSON_GetObjectItemCaseSensitive(d, "digiAlias");
+        cJSON *an = cJSON_GetObjectItemCaseSensitive(d, "digiAliasMaxN");
+        cJSON *am = cJSON_GetObjectItemCaseSensitive(d, "digiAliasMode");
+        for (int i = 0; i < DIGI_ALIAS_MAX; i++) {
+            cJSON *v = al ? cJSON_GetArrayItem(al, i) : NULL;
+            set_str(c->digi_alias[i].alias, sizeof(c->digi_alias[i].alias), (v && cJSON_IsString(v)) ? v->valuestring : def.digi_alias[i].alias);
+
+            cJSON *n = an ? cJSON_GetArrayItem(an, i) : NULL;
+            c->digi_alias[i].max_n = (uint8_t)((n && cJSON_IsNumber(n)) ? n->valuedouble : def.digi_alias[i].max_n);
+            if (c->digi_alias[i].max_n < 1 || c->digi_alias[i].max_n > DIGI_ALIAS_MAX_N) {
+                ESP_LOGW(TAG, "digiAliasMaxN[%d] %u out of range, clamped to 1..%d", i, (unsigned)c->digi_alias[i].max_n, DIGI_ALIAS_MAX_N);
+                c->digi_alias[i].max_n = (c->digi_alias[i].max_n < 1) ? 1 : DIGI_ALIAS_MAX_N;
+            }
+
+            cJSON *m = am ? cJSON_GetArrayItem(am, i) : NULL;
+            c->digi_alias[i].mode = (uint8_t)((m && cJSON_IsNumber(m)) ? m->valuedouble : def.digi_alias[i].mode);
+            if (c->digi_alias[i].mode != DIGI_ALIAS_OFF && c->digi_alias[i].mode != DIGI_ALIAS_TRACE && c->digi_alias[i].mode != DIGI_ALIAS_FLOOD) {
+                ESP_LOGW(TAG, "digiAliasMode[%d] %u unknown, row disabled", i, (unsigned)c->digi_alias[i].mode);
+                c->digi_alias[i].mode = DIGI_ALIAS_OFF;
+            }
+        }
+    }
+    c->digi_fillin_only = jget_bool(d, "digiFillinOnly", def.digi_fillin_only);
+    c->digi_trap_n_clamp = jget_bool(d, "digiTrapNClamp", def.digi_trap_n_clamp);
     c->digi_bcn = jget_bool(d, "digiBcn", def.digi_bcn);
     c->digi_compress = jget_bool(d, "digiCompress", def.digi_compress);
     c->digi_alt = (float)jget_num(d, "digiAlt", def.digi_alt);

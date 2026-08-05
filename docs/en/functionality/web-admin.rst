@@ -51,11 +51,14 @@ The pages
      - Enable, RF→INET / INET→RF, both filter bitmasks, budlist and range/prefix
        gates, callsign/SSID/passcode, host/port, server-side filter string,
        beacon on/off, position, interval, symbol picker, object, comment,
-       status, PHG.
+       status, PHG. *Message Gating* holds the INET→RF message criteria switch
+       and the heard-locally window.
    * - **Digi**
      - Digipeater enable, callsign/SSID and beacon settings (position, symbol,
-       interval, comment, status, path). The duplicate-suppression window is a
-       single control, on the *IGate* page.
+       interval, comment, status, path). *n-N Path Aliases* holds the four
+       {alias, max N, mode} rows the digipeater repeats by, the fill-in-only
+       switch and the choice of what to do with a trapped hop count. The
+       duplicate-suppression window is a single control, on the *IGate* page.
    * - **Tracker**
      - Tracker enable, callsign/SSID, fixed interval, position, station symbol,
        comment, compressed-position, Mic-E-position and altitude options.

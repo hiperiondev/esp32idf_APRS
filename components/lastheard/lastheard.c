@@ -42,6 +42,14 @@ typedef struct {
     bool via_rf;      // latest frame from this station was heard off the air
     bool direct;      // latest frame from this station carried no used digipeater
     uint32_t packets; // total times this callsign has been heard
+    // Per-channel last-heard stamps, kept alongside the whole-entry time above
+    // because the two answer different questions. time is when the station was
+    // last heard at all, which is what the dashboard shows; these two are when
+    // it was last heard on each channel, which is what the INET->RF message
+    // gate needs - a station can be locally audible and Internet-connected at
+    // once, and the gate tests each independently. 0 means never heard that way.
+    time_t rf_time;
+    time_t inet_time;
     // Hourly heard histogram for the "?APRSH" query (APRS101 ch.15): hourly[0]
     // is the current clock hour, hourly[LASTHEARD_HEARD_HOURS - 1] the oldest.
     // hour_slot is the epoch hour number hourly[0] belongs to, so lastheard_add()
@@ -201,6 +209,22 @@ void lastheard_add(const char *callsign, const char *path, bool via_rf, bool dir
     entry.via_rf = via_rf;
     entry.direct = via_rf && direct;
 
+    // The per-channel stamps accumulate rather than replace each other, so a
+    // station present on both channels keeps both times and each one ages out
+    // on its own.
+    //
+    // A frame heard off the air also counts as an Internet sighting when its
+    // path carries TCPIP or TCPXX: that is what an already-gated packet looks
+    // like on RF, and it is the signature the IGate specification defines as
+    // "heard via the Internet". Everything the APRS-IS feed contributes is an
+    // Internet sighting by construction, whatever its path reads.
+    if (via_rf)
+        entry.rf_time = now;
+    else
+        entry.inet_time = now;
+    if (path != NULL && (strstr(path, "TCPIP") != NULL || strstr(path, "TCPXX") != NULL))
+        entry.inet_time = now;
+
     if (shift_from > 0)
         memmove(&s_buf[1], &s_buf[0], shift_from * sizeof(s_buf[0]));
     s_buf[0] = entry;
@@ -225,6 +249,46 @@ size_t lastheard_station_count(bool rf_only) {
 
     xSemaphoreGive(s_lock);
     return count;
+}
+
+// Shared body of the two window queries: look the station up under the stored
+// key and test one of its per-channel stamps against the window. A station the
+// table does not hold answers false, which is the safe answer for every caller
+// - the message gate reads "not heard" as "do not transmit".
+//
+// The test is a difference against the current wall clock, so a stamp taken
+// before the clock was set, or one left in the future by a backwards NTP
+// correction, reads as outside the window instead of as arbitrarily recent.
+static bool heardWithin(const char *callsign, uint32_t seconds, bool rf) {
+    if (callsign == NULL || callsign[0] == 0 || !s_inited)
+        return false;
+    if (!s_lock || xSemaphoreTake(s_lock, pdMS_TO_TICKS(100)) != pdTRUE)
+        return false;
+
+    char call[LASTHEARD_CALL_LEN];
+    makeCallKey(call, callsign);
+
+    bool within = false;
+    time_t now = time(NULL);
+    for (size_t i = 0; i < s_count; i++) {
+        if (strcasecmp(s_buf[i].callsign, call) != 0)
+            continue;
+        time_t stamp = rf ? s_buf[i].rf_time : s_buf[i].inet_time;
+        if (stamp != 0 && now >= stamp && (uint64_t)(now - stamp) <= (uint64_t)seconds)
+            within = true;
+        break;
+    }
+
+    xSemaphoreGive(s_lock);
+    return within;
+}
+
+bool lastheard_heard_rf_within(const char *callsign, uint32_t seconds) {
+    return heardWithin(callsign, seconds, true);
+}
+
+bool lastheard_heard_inet_within(const char *callsign, uint32_t seconds) {
+    return heardWithin(callsign, seconds, false);
 }
 
 int lastheard_directs(char *out, size_t out_size) {

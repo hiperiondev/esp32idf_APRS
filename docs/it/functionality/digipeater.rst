@@ -37,19 +37,87 @@ ri-rende il frame in TNC2, chiama ``aprs_service_send_tnc2()`` e, se ha successo
 incrementa il contatore ``digi`` della dashboard e registra una voce di traffico
 ``DIGI``.
 
-Schemi di percorso supportati
-=============================
+La tabella degli alias
+======================
 
-* **WIDEn-N** — l'alias di inondazione standard. Il contatore di hop *N* viene
-  decrementato e l'indicativo del digipeater viene inserito (marcato come usato
-  con ``*``) quando l'alias è consumato.
-* **TRACEn-N** — come WIDEn-N ma ogni hop inserisce il proprio indicativo,
-  costruendo una traccia esplicita del percorso seguito.
-* **RELAY / GATE / ECHO** — gli alias generici ereditati, ciascuno sostituito
-  dall'indicativo del digipeater.
+Il digipeater non riconosce alias propri. Ogni alias che onora è una riga di
+``g_config.digi_alias``, modificata in *Alias di Percorso n-N* della pagina
+*Digi*, e la riga dice come quell'alias viene ripetuto. È questo che rende le
+convenzioni locali del Nuovo Paradigma n-N — un ``WIDE1-1`` di riempimento, un
+``WIDE2-2`` a due hop, un ``SSn-N`` regionale — un'impostazione dell'operatore
+e non una costante del firmware.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 16 12 72
+
+   * - Campo
+     - Intervallo
+     - Significato
+   * - Alias
+     - 6 caratteri
+     - L'indicativo del ripetitore **senza** il suo SSID; l'SSID è il contatore
+       di hop *N* ed è gestito a parte. ``#`` corrisponde esattamente a una
+       cifra decimale, quindi una riga copre un'intera famiglia: ``WIDE#``
+       reclama da ``WIDE1`` a ``WIDE9``, ma mai ``WIDE``, ``WIDEN`` o
+       ``WIDE12``, perché la corrispondenza richiede anche pari lunghezza. Un
+       alias vuoto disabilita la riga.
+   * - N massimo
+     - 1–7
+     - Il massimo contatore di hop onorato per questo alias. Un *N* maggiore
+       ricevuto via radio viene *intrappolato*.
+   * - Modalità
+     - Spento / Traccia / Inondazione
+     - **Traccia** inserisce l'indicativo di questa stazione davanti all'alias
+       rimanente e lo marca come usato, così ogni hop del percorso può essere
+       attribuito in seguito. **Inondazione** decrementa il contatore di hop e
+       non lascia traccia di chi lo ha fatto. **Spento** ignora del tutto la
+       riga.
+
+Le righe vengono consultate nell'ordine della tabella e vince la prima
+corrispondenza, quindi un alias specifico posto sopra una riga jolly conserva
+il proprio limite di hop. La tabella di fabbrica è ``WIDE1`` (1 hop), ``WIDE2``
+(2 hop) e ``WIDE#`` (2 hop), tutte in modalità traccia, con la quarta riga
+libera per un alias regionale.
+
+``WIDEn-N`` è tenuto a tracciare. Il paradigma lo ha spostato dal meccanismo di
+inondazione non rintracciabile a quello di tracciamento proprio perché ogni hop
+di ogni percorso ``WIDEn-N`` sia identificabile — ed è per questo che
+*Inondazione* è appropriata solo per un alias regionale che l'operatore decida
+di usare senza traccia.
+
+``RELAY``, ``GATE``, ``ECHO`` e ``TRACEn-N`` non sono incorporati: sono stati
+abbandonati come percorsi e non sono più nel firmware. Un operatore che ne abbia
+ancora bisogno per un vicino datato lo aggiunge come una riga qualsiasi.
+
+Intrappolamento e ruolo di riempimento
+======================================
+
+Un contatore di hop superiore al *N massimo* della riga corrispondente viene
+intrappolato, e *Salti oltre il N massimo* sceglie come: **Limita al N massimo**
+(l'impostazione predefinita) lo riporta al limite e ripete la trama, **Scarta la
+trama** la rifiuta del tutto e conta ``DROP_DIGI_N_TRAPPED``. Limitare tiene la
+trama in movimento e allo stesso tempo le impedisce di inondare oltre quanto le
+condizioni locali consentano, ed è per questo che è l'impostazione predefinita;
+ogni hop aggiuntivo moltiplica per circa tre il carico che una trama impone alla
+rete.
+
+*Digipeater di riempimento (un solo salto)* limita la stazione alle righe il cui
+limite di hop è 1. È tutto il ruolo di riempimento: solleva il traffico dei
+vicini che non raggiungono direttamente la dorsale e lascia tutto ciò che è
+instradato per più hop ai digipeater ampi, che è ciò che impedisce a una
+stazione domestica in una valle di aggiungere una copia ridondante di ogni
+pacchetto della regione.
+
+Due trame vengono rifiutate prima ancora di consultare la tabella: quella che
+porta già l'indicativo di questa stazione marcato come usato, qualunque cosa
+contenga ancora il suo percorso, e quella che ricade nella finestra di
+soppressione duplicati qui sotto.
+
 * **WIDEn-N codificato nel campo SSID di destinazione** — la convenzione più
   vecchia in cui il contatore di hop vive nel nibble SSID dell'indirizzo di
-  destinazione AX.25 è anch'essa riconosciuta e gestita.
+  destinazione AX.25 è anch'essa riconosciuta e gestita, prima della tabella
+  degli alias.
 
 Soppressione duplicati
 ======================

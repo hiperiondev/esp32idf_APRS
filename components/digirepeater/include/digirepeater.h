@@ -14,11 +14,21 @@
  *
  *     please contact their authors for more information.
  *
- * @brief APRS digipeater (WIDEn-N / TRACEn-N / RELAY / ECHO / GATE) component.
+ * @brief APRS digipeater component, implementing the New n-N Paradigm.
  *
- * Pure C, ESP-IDF. Reads its callsign/SSID from g_config
- * (app_config_t, see main/include/app_config.h) so the web admin ("Digi"
- * page) is the single source of truth for configuration.
+ * Pure C, ESP-IDF. Reads its callsign/SSID, its alias table
+ * (::app_config_t::digi_alias) and its two policy flags - fill-in-only and
+ * what to do with a trapped hop count - from g_config (app_config_t, see
+ * main/include/app_config.h), so the web admin's "Digi" page is the single
+ * source of truth for configuration.
+ *
+ * The component recognises no aliases of its own. Every alias it honours is a
+ * row of the operator's table, and a row says how that alias is repeated:
+ * ::DIGI_ALIAS_TRACE inserts this station's callsign so the hop is
+ * identifiable afterwards, ::DIGI_ALIAS_FLOOD decrements the hop count without
+ * saying who did it. The factory table traces @c WIDE1-1, @c WIDE2-2 and the
+ * rest of the @c WIDEn family, and traps anything asking for more than two
+ * hops.
  */
 
 #ifndef DIGIREPEATER_H
@@ -29,14 +39,20 @@
 /**
  * @brief Process one received AX.25 frame through the digipeater path logic.
  *
+ * The first unused address in the path decides everything: it is matched
+ * against the alias table, and only if it names an alias this station honours
+ * is the frame repeated. A hop count larger than that alias row's @c max_n is
+ * trapped - clamped down to the limit, or refused outright, per
+ * @c g_config.digi_trap_n_clamp. A frame that already carries this station's
+ * callsign marked used is refused whatever its path still holds, and so is one
+ * whose source address and information field match a frame repeated inside the
+ * duplicate-suppression window (g_config.dup_cache_timeout_ms, see
+ * isDuplicatePacketScoped()) - the two together are what stop digipeaters
+ * within earshot of each other from re-repeating the same transmission.
+ *
  * @param packet Decoded frame (as produced by ax25_decode()). Modified in place
- *               when the path needs to be rewritten (new-N decrement, callsign
- *               insertion, etc).
- * A frame whose source address and information field match one this
- * digipeater already repeated inside the duplicate-suppression window
- * (g_config.dup_cache_timeout_ms, see isDuplicatePacketScoped()) is dropped before
- * any path work is done, so two digipeaters within earshot of each other do
- * not keep re-repeating each other's copies of the same frame.
+ *               when the path needs to be rewritten (hop-count decrement,
+ *               callsign insertion, etc).
  *
  * @return 0  - do not repeat (drop / duplicate / not for us / already relayed)
  *         1  - repeat as-is (path already carries our used call, e.g. bypass "*")

@@ -704,6 +704,31 @@
     "Compartido por el IGate y el Digipetidor para suprimir copias repetidas del mismo paquete. Un digipetidor ocupado en una frecuencia congestionada "       \
     "puede necesitar una caché más grande; un IGate rural con poco tráfico puede preferir una ventana más corta."
 
+#define TR_F_MSG_GATING         "Filtrado de Mensajes (Internet a RF)"
+#define TR_F_MSG_GATE_EN        "Aplicar criterios de filtrado de mensajes"
+#define TR_F_MSG_LOCAL_WINDOW_S "Ventana de escucha local (s)"
+#define TR_NOTE_MSG_GATING                                                                                                                                     \
+    "Un mensaje leído de APRS-IS sale al aire solo si su destinatario fue escuchado por RF dentro de la ventana, su remitente no lo fue, la cabecera del "     \
+    "remitente no lleva TCPXX/NOGATE/RFONLY y el destinatario no está a su vez en Internet. El siguiente reporte de posición de ese destinatario también se "  \
+    "retransmite una vez, para poder ubicarlo. Si se desactiva, se transmite todo mensaje que permita el filtro de tipos, a destinatarios de cualquier parte " \
+    "del mundo."
+
+#define TR_F_DIGI_ALIASES     "Alias de Ruta n-N"
+#define TR_F_DIGI_ALIAS       "Alias"
+#define TR_F_DIGI_MAX_N       "N máximo"
+#define TR_F_DIGI_ALIAS_MODE  "Modo"
+#define TR_F_DIGI_FILLIN_ONLY "Digipetidor de relleno (un solo salto)"
+#define TR_F_DIGI_TRAP_ACTION "Saltos por encima del N máximo"
+#define TR_DIGI_TRAP_CLAMP    "Limitar al N máximo"
+#define TR_DIGI_TRAP_DROP     "Descartar la trama"
+#define TR_DIGI_MODE_OFF      "Apagado"
+#define TR_DIGI_MODE_TRACE    "Traza (inserta indicativo)"
+#define TR_DIGI_MODE_FLOOD    "Inundación (sin indicativo)"
+#define TR_NOTE_DIGI_ALIASES                                                                                                                                   \
+    "Los únicos alias que este digipetidor atiende. Escriba cada uno sin su SSID; '#' equivale a un solo dígito, así 'WIDE#' cubre toda la familia WIDEn. "    \
+    "Las filas se prueban en orden y gana la primera coincidencia. Traza inserta el indicativo de esta estación para que cada salto sea identificable "        \
+    "después, que es lo que exige WIDEn-N; inundación no deja rastro y solo conviene en un alias regional que se decida usar así."
+
 #define TR_SYM_ICON            "Icono"
 #define TR_SYM_QUICK_PICK      "Selección Rápida"
 #define TR_SYM_PRIMARY_TABLE   "Tabla Primaria ( / )"

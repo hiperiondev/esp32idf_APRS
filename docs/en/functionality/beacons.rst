@@ -138,6 +138,43 @@ PHG), so emitting those bytes inside a compressed report would simply be wrong
 data, and dropping the extension to keep compression would silently lose a field
 the operator explicitly enabled.
 
+Messaging capability is in the data type identifier
+===================================================
+
+The first byte of a position report's information field states two things at
+once (APRS101 ch.6): whether a timestamp follows, and whether the station can
+accept APRS messages.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 25 25 25 25
+
+   * - Timestamp
+     - ``msg_enable`` off
+     - ``msg_enable`` on
+     - Meaning
+   * - No
+     - ``!``
+     - ``=``
+     - Position, no timestamp
+   * - Yes
+     - ``/``
+     - ``@``
+     - Position with timestamp
+
+The distinction is not decorative: it is how a receiving client decides whether
+to offer its operator a *send message* action for the station. Kenwood
+TH-D7/D700/D710 radios, APRSISCE/32, Xastir, YAAC and aprs.fi all read this bit,
+and a station that says it cannot accept messages is displayed with no reply
+path at all.
+
+This station runs a complete messaging engine, answers directed queries and
+acknowledges the messages it receives, so with *Enable messaging* on all three
+position beacons say so. The identifier is picked in ``buildPositionPacket()``
+from the same locked snapshot every other beacon field comes from. Objects and
+items are unaffected — they carry their own ``;`` and ``)`` identifiers — and
+Mic-E has its own fixed layout.
+
 Position ambiguity
 ==================
 

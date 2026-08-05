@@ -194,6 +194,25 @@ IGate (RF <-> APRS-IS)
        de ellos sin la marca de repetido (``*``) se descarta antes de llegar a
        APRS-IS
 
+   * - Criterios de filtrado de mensajes (localidad de destinatario/remitente)
+     - ✅ (exigido a un IGate conforme)
+     - ✅
+     - Las cuatro condiciones se aplican antes de que un mensaje leído de
+       APRS-IS llegue a RF: destinatario escuchado localmente dentro de la
+       ventana, remitente no escuchado por RF, sin ``TCPXX``/``NOGATE``/
+       ``RFONLY`` en la cabecera del remitente, destinatario no conectado a
+       Internet. Cada fallo tiene su propio motivo de descarte
+   * - Ventana de escucha local configurable
+     - ⚠️ (a menudo fija)
+     - ✅
+     - ``igate_local_window_sec``, 60-3600 s, una hora por omisión
+   * - Posición asociada tras un mensaje retransmitido
+     - ⚠️ (poco común)
+     - ✅
+     - Anillo de ocho destinatarios; el siguiente reporte de posición o de boya
+       que se vea de uno de ellos se retransmite una vez, en reemplazo de la
+       práctica obsoleta de repetir posiciones históricas
+
 Digipeater
 -----------
 
@@ -205,18 +224,44 @@ Digipeater
      - Habitual en software APRS popular
      - Aquí
      - Notas sobre la implementación de este proyecto
-   * - Digipeating de inundación WIDEn-N
+   * - Digipeating WIDEn-N, Nuevo Paradigma n-N (con traza)
      - ✅ (universal)
      - ✅
-     - Decremento del contador de saltos + inserción del propio indicativo
-   * - Digipeating de traza explícita TRACEn-N
+     - Decremento del contador de saltos **e** inserción del propio indicativo
+       marcado como usado, así cada salto de una ruta repetida es identificable
+   * - Tabla de alias configurable
+     - ⚠️ (varía; a menudo una lista fija)
+     - ✅
+     - Cuatro filas de {alias, N máximo, modo} en la página Digi; ``#`` en un
+       alias equivale a un dígito, así una fila cubre toda una familia
+       (``WIDE#``). Tabla de fábrica: ``WIDE1`` 1 salto, ``WIDE2`` 2 saltos,
+       ``WIDE#`` 2 saltos, todas con traza
+   * - Atrapado de N grande
+     - ✅ (se espera de todo digipeater moderno)
+     - ✅
+     - ``N máximo`` por alias; un contador de saltos mayor se limita al tope
+       (por omisión) o se descarta (``DROP_DIGI_N_TRAPPED``), a elección del
+       operador
+   * - Rol de digipeater de relleno (solo ``WIDE1-1``)
      - ✅
      - ✅
-     - Cada salto inserta su indicativo
-   * - Alias heredados RELAY / ECHO / GATE
+     - Una sola casilla; restringe la estación a las filas de alias de un salto
+   * - Ruteo regional ``SSn-N``
+     - ⚠️ (convención regional)
      - ✅
-     - ✅
-     - Todos sustituidos por el indicativo propio del digipeater
+     - Una fila de alias más, típicamente en modo Inundación con el límite de
+       saltos propio de la región
+   * - Inundación ``WIDEn-N`` no rastreable (NOID)
+     - ⚠️ (conducta heredada)
+     - ❌
+     - No se produce para ``WIDEn-N``: el paradigma lo movió al mecanismo de
+       trazado. El modo Inundación existe, pero solo para una fila de alias que
+       el operador decida usar sin traza
+   * - Alias heredados ``TRACEn-N`` / ``RELAY`` / ``ECHO`` / ``GATE``
+     - ⚠️ (obsoletos)
+     - ❌
+     - Abandonados como rutas y no incorporados. Un operador que aún necesite
+       alguno para un vecino heredado lo agrega como una fila de alias más
    * - Contador de saltos codificado en el SSID de destino (heredado)
      - ⚠️ (TNC más antiguos)
      - ✅
@@ -316,6 +361,13 @@ Seguimiento / Balizamiento
      - Cuatro presets de ruta compartidos; cada servicio que transmite (tracker,
        IGate, digipeater, meteorología, telemetría, mensajes, objetos,
        boletines) elige entre ellos con su propia máscara de bits
+
+   * - Identificador de tipo de datos con capacidad de mensajería (``=`` / ``@``)
+     - ✅ (universal)
+     - ✅
+     - Se elige según *Habilitar mensajería*: ``!``/``/`` con la mensajería
+       apagada, ``=``/``@`` con ella encendida, así los clientes receptores
+       ofrecen una vía de respuesta
 
 Mensajería
 -----------

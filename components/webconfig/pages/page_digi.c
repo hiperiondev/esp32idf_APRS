@@ -14,9 +14,10 @@
 //     please contact their authors for more information.
 //
 // @brief Web admin "Digipeater" page: renders and saves the digipeater
-// configuration (callsign/SSID, path handling, filters and beacon settings) in
-// g_config.
+// configuration (callsign/SSID, the n-N alias table and its trapping policy,
+// and beacon settings) in g_config.
 
+#include <stdio.h>
 #include <string.h>
 
 #include "app_config.h"
@@ -43,6 +44,40 @@ esp_err_t page_digi_get(httpd_req_t *req) {
     web_field_text(req, TR_F_MY_CALLSIGN, "digiMycall", g_config.digi_mycall, 9);
     web_field_int(req, TR_F_SSID, "digiSSID", g_config.digi_ssid, WEB_RANGE_SSID_MIN, WEB_RANGE_SSID_MAX);
     web_field_path_checkboxes(req, "digiPath", g_config.digi_path);
+    web_fieldset_close(req);
+
+    // n-N Path Aliases. This table is the whole of what the digipeater
+    // repeats: an alias absent from it is not honoured, whatever it is called.
+    // Each row carries its own hop limit so a fill-in WIDE1-1 and a two-hop
+    // WIDE2-2 can coexist, and its own mode so a regional alias can be run
+    // untraced if the operator wants it that way.
+    web_fieldset_open(req, TR_F_DIGI_ALIASES);
+    web_raw(req, "<p style='color:var(--sub);font-size:12px;margin:4px 0'>" TR_NOTE_DIGI_ALIASES "</p>");
+    web_field_checkbox(req, TR_F_DIGI_FILLIN_ONLY, "digiFillinOnly", g_config.digi_fillin_only);
+    web_select_open(req, TR_F_DIGI_TRAP_ACTION, "digiTrapNClamp");
+    web_select_option(req, 1, TR_DIGI_TRAP_CLAMP, g_config.digi_trap_n_clamp);
+    web_select_option(req, 0, TR_DIGI_TRAP_DROP, !g_config.digi_trap_n_clamp);
+    web_select_close(req);
+    for (int i = 0; i < DIGI_ALIAS_MAX; i++) {
+        char name[20];
+        char label[64];
+
+        snprintf(label, sizeof(label), "%s %d", TR_F_DIGI_ALIAS, i + 1);
+        snprintf(name, sizeof(name), "digiAlias%d", i);
+        web_field_text(req, label, name, g_config.digi_alias[i].alias, DIGI_ALIAS_LEN - 1);
+
+        snprintf(label, sizeof(label), "%s %d", TR_F_DIGI_MAX_N, i + 1);
+        snprintf(name, sizeof(name), "digiAliasN%d", i);
+        web_field_int(req, label, name, g_config.digi_alias[i].max_n, 1, DIGI_ALIAS_MAX_N);
+
+        snprintf(label, sizeof(label), "%s %d", TR_F_DIGI_ALIAS_MODE, i + 1);
+        snprintf(name, sizeof(name), "digiAliasM%d", i);
+        web_select_open(req, label, name);
+        web_select_option(req, DIGI_ALIAS_OFF, TR_DIGI_MODE_OFF, g_config.digi_alias[i].mode == DIGI_ALIAS_OFF);
+        web_select_option(req, DIGI_ALIAS_TRACE, TR_DIGI_MODE_TRACE, g_config.digi_alias[i].mode == DIGI_ALIAS_TRACE);
+        web_select_option(req, DIGI_ALIAS_FLOOD, TR_DIGI_MODE_FLOOD, g_config.digi_alias[i].mode == DIGI_ALIAS_FLOOD);
+        web_select_close(req);
+    }
     web_fieldset_close(req);
 
     web_fieldset_open(req, TR_F_BEACON_POSITION);
@@ -79,7 +114,10 @@ esp_err_t page_digi_get(httpd_req_t *req) {
 esp_err_t page_digi_post(httpd_req_t *req) {
     if (!web_check_auth(req))
         return ESP_OK;
-    char body[1750];
+    // Sized for the whole page in one POST: the main settings and the beacon
+    // fieldsets, the four path presets, and the alias table's four rows of
+    // {alias, hop limit, mode} plus its two policy controls.
+    char body[2400];
     if (web_read_body(req, body, sizeof(body)) < 0) {
         httpd_resp_send_500(req);
         return ESP_OK;
@@ -106,6 +144,30 @@ esp_err_t page_digi_post(httpd_req_t *req) {
     }
     g_config.digi_ssid = web_form_get_ssid(body, "digiSSID", g_config.digi_ssid);
     g_config.digi_path = app_config_path_mask_clamp(web_form_get_path_mask(body, "digiPath"), g_config.path);
+
+    // n-N alias table. Every row is validated here as well as in the browser:
+    // the form's own min/max is only advice, and these values decide how this
+    // station repeats other people's traffic.
+    g_config.digi_fillin_only = web_form_get_bool(body, "digiFillinOnly");
+    g_config.digi_trap_n_clamp = web_form_get_int(body, "digiTrapNClamp", g_config.digi_trap_n_clamp ? 1 : 0) != 0;
+    for (int i = 0; i < DIGI_ALIAS_MAX; i++) {
+        char name[20];
+
+        snprintf(name, sizeof(name), "digiAlias%d", i);
+        web_form_get_call(body, name, g_config.digi_alias[i].alias, sizeof(g_config.digi_alias[i].alias));
+
+        snprintf(name, sizeof(name), "digiAliasN%d", i);
+        int maxN = web_form_get_int(body, name, g_config.digi_alias[i].max_n);
+        if (maxN < 1)
+            maxN = 1;
+        else if (maxN > DIGI_ALIAS_MAX_N)
+            maxN = DIGI_ALIAS_MAX_N;
+        g_config.digi_alias[i].max_n = (uint8_t)maxN;
+
+        snprintf(name, sizeof(name), "digiAliasM%d", i);
+        int mode = web_form_get_int(body, name, g_config.digi_alias[i].mode);
+        g_config.digi_alias[i].mode = (mode == DIGI_ALIAS_TRACE || mode == DIGI_ALIAS_FLOOD) ? (uint8_t)mode : (uint8_t)DIGI_ALIAS_OFF;
+    }
 
     g_config.digi_bcn = web_form_get_bool(body, "digiBcn");
     g_config.digi_loc2rf = web_form_get_bool(body, "digiPos2rf");

@@ -21,6 +21,7 @@
 #include <stdatomic.h>
 #include <stdio.h>
 #include <string.h>
+#include <strings.h>
 
 #include "esp_log.h"
 #include "esp_random.h"
@@ -625,6 +626,145 @@ static bool inet_line_is_own_report(const char *line) {
 }
 
 // ---------------------------------------------------------------------------
+// INET -> RF message gating.
+//
+// An IGate sits on a very large data stream and must not put messages on the
+// air indiscriminately. A message read from APRS-IS is transmitted only when
+// all four of the conditions the APRS-IS IGate design notes lay down hold at
+// once: the addressee was heard on the local RF channel inside the configured
+// window, the sender was NOT heard on RF inside that window, the sender's
+// header carries none of TCPXX / NOGATE / RFONLY, and the addressee is not
+// itself Internet-connected. Each failure has its own drop reason so the
+// dashboard's Drop Breakdown says which condition stopped a message, which is
+// the question an operator actually asks.
+//
+// Alongside that runs the associated-position rule: rather than replaying a
+// station's historical position reports, the gateway notes the stations it has
+// gated a message TO and forwards the next position report it sees for each of
+// them, so the local operator has something to plot for the far end of the
+// conversation.
+//
+// The ring below is touched only from inet2rfHandler(), which runs on the
+// single igate task, so it needs no lock of its own.
+// ---------------------------------------------------------------------------
+
+static char s_msgAssoc[IGATE_MSG_ASSOC_MAX][12];
+
+// Note one addressee as awaiting its position follow-up. A callsign already
+// waiting keeps its slot instead of taking a second one; otherwise the oldest
+// entry is overwritten, which at this ring size means the follow-up is offered
+// for the most recent conversations and quietly forgotten for older ones.
+static void msgAssocRemember(const char *call) {
+    if (call == NULL || call[0] == 0)
+        return;
+
+    for (int i = 0; i < IGATE_MSG_ASSOC_MAX; i++) {
+        if (strcasecmp(s_msgAssoc[i], call) == 0)
+            return;
+    }
+    for (int i = 0; i < IGATE_MSG_ASSOC_MAX; i++) {
+        if (s_msgAssoc[i][0] == 0) {
+            strncpy(s_msgAssoc[i], call, sizeof(s_msgAssoc[i]) - 1);
+            s_msgAssoc[i][sizeof(s_msgAssoc[i]) - 1] = 0;
+            return;
+        }
+    }
+
+    memmove(&s_msgAssoc[0], &s_msgAssoc[1], (IGATE_MSG_ASSOC_MAX - 1) * sizeof(s_msgAssoc[0]));
+    strncpy(s_msgAssoc[IGATE_MSG_ASSOC_MAX - 1], call, sizeof(s_msgAssoc[0]) - 1);
+    s_msgAssoc[IGATE_MSG_ASSOC_MAX - 1][sizeof(s_msgAssoc[0]) - 1] = 0;
+}
+
+// Claim the position follow-up owed to one station, if any. The slot is
+// released by the claim, so exactly one position report is ever gated per
+// message sent - what makes this a follow-up rather than a subscription.
+static bool msgAssocTake(const char *call) {
+    if (call == NULL || call[0] == 0)
+        return false;
+
+    for (int i = 0; i < IGATE_MSG_ASSOC_MAX; i++) {
+        if (strcasecmp(s_msgAssoc[i], call) != 0)
+            continue;
+        memmove(&s_msgAssoc[i], &s_msgAssoc[i + 1], (size_t)(IGATE_MSG_ASSOC_MAX - 1 - i) * sizeof(s_msgAssoc[0]));
+        s_msgAssoc[IGATE_MSG_ASSOC_MAX - 1][0] = 0;
+        return true;
+    }
+    return false;
+}
+
+// Copy the addressee out of an APRS message payload. The information field is
+// ":ADDRESSEE:text" with the addressee fixed at nine characters, space-padded
+// on the right, so the second ':' always sits at info[10]; the padding is
+// stripped here so the callsign matches the last-heard table's own key.
+// Returns false for anything that is not shaped like a message.
+static bool messageAddressee(const char *info, char *out, size_t outMax) {
+    if (info == NULL || out == NULL || outMax < 10)
+        return false;
+    if (info[0] != ':' || strlen(info) < 11 || info[10] != ':')
+        return false;
+
+    size_t n = 9;
+    while (n > 0 && info[n] == ' ')
+        n--;
+    memcpy(out, info + 1, n);
+    out[n] = 0;
+    return n > 0;
+}
+
+// True if the address block of a TNC2 line carries a token that forbids the
+// packet reaching RF. Only the header is searched - everything up to the first
+// ':' - so a message whose TEXT happens to mention one of these words is not
+// mistaken for one routed with it.
+static bool headerForbidsRf(const char *line) {
+    const char *colon = strchr(line, ':');
+    size_t headerLen = (colon != NULL) ? (size_t)(colon - line) : strlen(line);
+
+    static const char *const tokens[] = { "TCPXX", "NOGATE", "RFONLY" };
+    for (size_t t = 0; t < sizeof(tokens) / sizeof(tokens[0]); t++) {
+        const char *hit = strstr(line, tokens[t]);
+        if (hit != NULL && (size_t)(hit - line) < headerLen)
+            return true;
+    }
+    return false;
+}
+
+// Apply the four gating conditions to one message. Returns true to transmit;
+// every false return has already counted the reason it refused.
+static bool messageGatePass(const char *srcLine, const char *srcCall, const char *info) {
+    char addressee[12];
+    if (!messageAddressee(info, addressee, sizeof(addressee))) {
+        // Not shaped like a message after all: nothing to reason about, so
+        // this is left to the type filter and the budlist that already ran.
+        return true;
+    }
+
+    uint32_t window = g_config.igate_local_window_sec;
+
+    if (headerForbidsRf(srcLine)) {
+        ESP_LOGD(TAG, "INET2RF message not gated - header forbids RF: %s", srcLine);
+        igate_note_drop(DROP_MSG_NOGATE);
+        return false;
+    }
+    if (!lastheard_heard_rf_within(addressee, window)) {
+        ESP_LOGD(TAG, "INET2RF message not gated - %s not heard on RF in the last %u s", addressee, (unsigned)window);
+        igate_note_drop(DROP_MSG_NOT_LOCAL);
+        return false;
+    }
+    if (lastheard_heard_inet_within(addressee, window)) {
+        ESP_LOGD(TAG, "INET2RF message not gated - %s is Internet-connected", addressee);
+        igate_note_drop(DROP_MSG_ADDRESSEE_INET);
+        return false;
+    }
+    if (lastheard_heard_rf_within(srcCall, window)) {
+        ESP_LOGD(TAG, "INET2RF message not gated - sender %s was heard on RF: %s", srcCall, srcLine);
+        igate_note_drop(DROP_MSG_SENDER_LOCAL);
+        return false;
+    }
+
+    return true;
+}
+
+// ---------------------------------------------------------------------------
 // Wrap a plain (non-third-party) APRS-IS line into the third-party frame this
 // station transmits on RF for it, per the APRS third-party-traffic spec: our
 // own header carries the frame, and the original station's data is preserved
@@ -815,7 +955,21 @@ static void inet2rfHandler(const char *line) {
         strncpy(budlistCall, callsign, sizeof(budlistCall) - 1);
         budlistCall[sizeof(budlistCall) - 1] = 0;
 
-        if (!aprs_filter_pass(g_config.inet2rfFilter, type)) {
+        // Associated position: a station this gateway has just put a message
+        // on the air for gets exactly one of its position reports gated too,
+        // whatever the type filter says, so the local operator can plot the
+        // far end of the conversation. The claim is taken here rather than
+        // after the budlist, so a station the operator has since blacklisted
+        // spends its follow-up instead of holding a slot forever. Only plain
+        // position and buoy reports qualify - a weather or object report is
+        // gated under its own type bit, on its own merits.
+        bool assocPosition = false;
+        if ((type & (IGATE_FILT_POSITION | IGATE_FILT_BUOY)) != 0 && msgAssocTake(budlistCall)) {
+            assocPosition = true;
+            ESP_LOGD(TAG, "INET2RF: gating the position follow-up owed to %s", budlistCall);
+        }
+
+        if (!assocPosition && !aprs_filter_pass(g_config.inet2rfFilter, type)) {
             // Selective third-party ('}') unwrap: off by default
             // (inet2rf_3rdparty_unwrap_en), and even when enabled only ever
             // fires for a payload that (a) is third-party-wrapped and (b)
@@ -879,6 +1033,15 @@ static void inet2rfHandler(const char *line) {
             return;
         }
 
+        // Message gating policy. Only the MESSAGE type is subject to it: the
+        // remaining types are gated at the sysop's discretion, which is what
+        // the type filter and the budlist above already express.
+        if (g_config.igate_msg_gate_en && type == IGATE_FILT_MESSAGE) {
+            const char *infoSep = strchr(srcLine, ':');
+            if (infoSep == NULL || !messageGatePass(srcLine, budlistCall, infoSep + 1))
+                return;
+        }
+
         // Gated traffic is never keyed onto RF with its APRS-IS header
         // intact: build_thirdparty_frame() replaces that header with this
         // station's own call and path and wraps the original SRC>DST plus
@@ -905,8 +1068,15 @@ static void inet2rfHandler(const char *line) {
             // after it and a message is the payload whose first byte is the
             // ':' data type identifier.
             const char *infoSep = strchr(srcLine, ':');
-            if (infoSep != NULL && infoSep[1] == ':')
+            if (infoSep != NULL && infoSep[1] == ':') {
                 igate_note_message_gated();
+
+                // Note the addressee so the next position report seen for it
+                // on the APRS-IS feed is gated as well.
+                char addressee[12];
+                if (messageAddressee(infoSep + 1, addressee, sizeof(addressee)))
+                    msgAssocRemember(addressee);
+            }
         }
     }
 }
