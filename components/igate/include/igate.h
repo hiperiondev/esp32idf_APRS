@@ -74,6 +74,8 @@ typedef enum {
                              future/other-component use). */
     DROP_TOO_SHORT,       /**< RF frame's info field shorter than the minimum usable length (IGate RF->INET). */
     DROP_PATH_TOKEN,      /**< RF frame's path carries RFONLY/TCPIP/qA/NOGATE (IGate RF->INET). */
+    DROP_3RDPARTY_LOOP,   /**< RF frame is third-party ('}') traffic whose inner header already carries TCPIP/TCPXX, i.e. it already reached APRS-IS once
+                             (IGate RF->INET). */
     DROP_SAT_NOT_USED,    /**< RF frame repeated via a known satellite gate whose call isn't marked used ('*') (IGate RF->INET). */
     DROP_TYPE_FILTER,     /**< Payload type not allowed by rf2inetFilter (RF->INET) or inet2rfFilter (INET->RF). */
     DROP_RANGE_FILTER,    /**< Blocked by the local RF->INET range gate (g_config.rf2inet_range_en/rf2inet_range_km, see aprs_filter_haversine_km()). */

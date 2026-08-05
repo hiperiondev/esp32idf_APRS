@@ -54,7 +54,16 @@ the dashboard can show "N dropped because X" rather than one opaque aggregate.
    ``qA*`` or ``NOGATE`` are never gated (``DROP_PATH_TOKEN``).
 #. **Satellite-gate rule.** A frame repeated via a known satellite gate whose
    call is not marked used (``*``) is dropped (``DROP_SAT_NOT_USED``).
-#. **Payload-type filter.** The payload is classified by
+#. **Third-party (``}``) unwrap.** A frame whose information field starts
+   with ``}`` carries a complete inner ``SRC>DST,PATH:payload`` line of its
+   own. If that inner path already carries ``TCPIP`` or ``TCPXX``, the frame
+   already reached APRS-IS once and is dropped as a loop
+   (``DROP_3RDPARTY_LOOP``). Otherwise the outer RF header is discarded and
+   every remaining stage — payload-type filter onward — runs against the
+   inner packet: its own source, destination, path and payload, exactly as
+   if that station had been heard directly. This is what lets a cross-band or
+   HF gateway relay a station that has no other route to the Internet.
+#. **Payload-type filter.** The (possibly unwrapped) payload is classified by
    ``aprs_filter_classify_info()`` and tested against
    ``g_config.rf2inetFilter`` (``DROP_TYPE_FILTER``). See :ref:`en-filtering`.
 #. **Local range gate.** If enabled, the packet's position is decoded and its
@@ -146,8 +155,9 @@ The ``igate_stats_t`` snapshot (``igate_get_stats()``) carries:
    * - ``dropByReason[]``
      - Per-reason drop counters, indexed by ``drop_reason_t``. The RF→INET
        stages above cover ``DROP_TOO_SHORT``, ``DROP_PATH_TOKEN``,
-       ``DROP_SAT_NOT_USED``, ``DROP_TYPE_FILTER``, ``DROP_RANGE_FILTER``,
-       ``DROP_PREFIX_FILTER``, ``DROP_BUDLIST`` and ``DROP_TX_FAIL``; the
+       ``DROP_SAT_NOT_USED``, ``DROP_3RDPARTY_LOOP``, ``DROP_TYPE_FILTER``,
+       ``DROP_RANGE_FILTER``, ``DROP_PREFIX_FILTER``, ``DROP_BUDLIST`` and
+       ``DROP_TX_FAIL``; the
        array also carries reasons bumped elsewhere in the firmware (RF TX
        path, digipeater, AX.25 decode) — see ``drop_reason_t`` in
        ``components/igate/include/igate.h`` for the complete, authoritative

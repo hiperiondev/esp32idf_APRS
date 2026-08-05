@@ -59,9 +59,20 @@ singolo aggregato opaco.
 #. **Regola di gate satellitare.** Un frame ripetuto tramite un gateway
    satellitare noto il cui indicativo non è marcato come usato (``*``) viene
    scartato (``DROP_SAT_NOT_USED``).
-#. **Filtro per tipo di payload.** Il payload è classificato da
-   ``aprs_filter_classify_info()`` e testato contro ``g_config.rf2inetFilter``
-   (``DROP_TYPE_FILTER``). Vedi :ref:`it-filtering`.
+#. **Unwrap di terze parti (``}``).** Un frame il cui campo informativo inizia
+   con ``}`` porta una propria riga interna completa
+   ``SRC>DST,PATH:payload``. Se quel percorso interno porta già ``TCPIP`` o
+   ``TCPXX``, il frame ha già raggiunto APRS-IS una volta e viene scartato
+   come loop (``DROP_3RDPARTY_LOOP``). Altrimenti l'intestazione RF esterna
+   viene scartata del tutto e tutte le fasi restanti — dal filtro per tipo di
+   payload in poi — vengono eseguite contro il pacchetto interno: la sua
+   propria origine, destinazione, percorso e payload, esattamente come se
+   quella stazione fosse stata ascoltata direttamente. Questo è ciò che
+   permette a un gateway cross-band o HF di ritrasmettere una stazione che
+   non ha altra via verso Internet.
+#. **Filtro per tipo di payload.** Il payload (eventualmente spacchettato) è
+   classificato da ``aprs_filter_classify_info()`` e testato contro
+   ``g_config.rf2inetFilter`` (``DROP_TYPE_FILTER``). Vedi :ref:`it-filtering`.
 #. **Gate di portata locale.** Se abilitato, la posizione del pacchetto è
    decodificata e la sua distanza sul cerchio massimo (haversine) da "My Station"
    è confrontata con ``g_config.rf2inet_range_km``; i pacchetti troppo distanti
@@ -154,8 +165,9 @@ Lo snapshot ``igate_stats_t`` (``igate_get_stats()``) porta:
    * - ``dropByReason[]``
      - Contatori di scarto per-ragione, indicizzati da ``drop_reason_t``. Le
        fasi RF→INET sopra coprono ``DROP_TOO_SHORT``, ``DROP_PATH_TOKEN``,
-       ``DROP_SAT_NOT_USED``, ``DROP_TYPE_FILTER``, ``DROP_RANGE_FILTER``,
-       ``DROP_PREFIX_FILTER``, ``DROP_BUDLIST`` e ``DROP_TX_FAIL``; l'array
+       ``DROP_SAT_NOT_USED``, ``DROP_3RDPARTY_LOOP``, ``DROP_TYPE_FILTER``,
+       ``DROP_RANGE_FILTER``, ``DROP_PREFIX_FILTER``, ``DROP_BUDLIST`` e
+       ``DROP_TX_FAIL``; l'array
        porta anche ragioni incrementate altrove nel firmware (percorso TX RF,
        digipeater, decodifica AX.25) — vedere ``drop_reason_t`` in
        ``components/igate/include/igate.h`` per l'elenco completo e

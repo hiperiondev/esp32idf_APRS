@@ -141,6 +141,8 @@ const char *igate_drop_reason_name(drop_reason_t reason) {
             return "too short";
         case DROP_PATH_TOKEN:
             return "RFONLY/TCP/qA/NOGATE";
+        case DROP_3RDPARTY_LOOP:
+            return "3rd-party loop (TCPIP/TCPXX)";
         case DROP_SAT_NOT_USED:
             return "satellite not used";
         case DROP_TYPE_FILTER:
@@ -329,6 +331,70 @@ bool igate_send_raw(const char *line, size_t len) {
     return sendToAprsIs((const uint8_t *)line, len);
 }
 
+// Third-party ('}') unwrap for the RF->INET direction.
+//
+// A third-party payload is itself a complete TNC2-style line prefixed with
+// '}': "}SRC>DST,PATH:payload". A station relaying such a frame on RF (a
+// cross-band or HF gateway with no other route to the Internet, for
+// instance) is asking for the wrapped station to be gated under its own
+// identity, not under the relaying station's.
+//
+// If the inner header already carries a TCPIP/TCPXX q-construct token, the
+// packet has already been on APRS-IS once; gating it again is how IGate
+// loops are made, so the caller must drop it instead. Otherwise this parses
+// the inner "SRC>DST,PATH:" header up to (and excluding) the outer '}' and
+// the trailing ':', so the caller can gate the wrapped packet under its own
+// source/destination/path exactly as if it had been heard directly.
+//
+// info must be NUL-terminated and start with '}'. On success, *innerInfo
+// points at the first byte of the inner payload (still inside info, not a
+// copy) and *innerInfoLen is its length up to the terminating NUL.
+static bool thirdPartyUnwrap(const char *info, char *outSrc, size_t outSrcMax, char *outDst, size_t outDstMax, char *outPath, size_t outPathMax,
+                             const char **innerInfo, size_t *innerInfoLen, bool *isLoop) {
+    const char *gt = strchr(info + 1, '>');
+    const char *colon = strchr(info + 1, ':');
+    if (!gt || !colon || colon <= gt)
+        return false;
+
+    size_t srcLen = (size_t)(gt - (info + 1));
+    if (srcLen >= outSrcMax)
+        srcLen = outSrcMax - 1;
+    memcpy(outSrc, info + 1, srcLen);
+    outSrc[srcLen] = 0;
+
+    const char *dstStart = gt + 1;
+    const char *pathStart = dstStart;
+    while (pathStart < colon && *pathStart != ',')
+        pathStart++;
+    size_t dstLen = (size_t)(pathStart - dstStart);
+    if (dstLen >= outDstMax)
+        dstLen = outDstMax - 1;
+    memcpy(outDst, dstStart, dstLen);
+    outDst[dstLen] = 0;
+
+    if (outSrc[0] == 0 || outDst[0] == 0)
+        return false;
+
+    outPath[0] = 0;
+    size_t pathLen = 0;
+    if (pathStart < colon && *pathStart == ',') {
+        pathLen = (size_t)(colon - (pathStart + 1));
+        if (pathLen >= outPathMax)
+            pathLen = outPathMax - 1;
+        memcpy(outPath, pathStart + 1, pathLen);
+        outPath[pathLen] = 0;
+    }
+
+    // The loop guard: an inner header that already carries TCPIP/TCPXX means
+    // this frame already reached APRS-IS once, via whichever station wrapped
+    // it. Gating it again would feed it back to the server a second time.
+    *isLoop = (strstr(outPath, "TCPIP") != NULL) || (strstr(outPath, "TCPXX") != NULL);
+
+    *innerInfo = colon + 1;
+    *innerInfoLen = strlen(colon + 1);
+    return true;
+}
+
 int igateProcess(ax25_msg_t *packet) {
     int idx;
 
@@ -395,25 +461,63 @@ int igateProcess(ax25_msg_t *packet) {
         }
     }
 
-    // [IGATE] Filter (RF->INET): g_config.rf2inetFilter is a whitelist of
-    // payload types, one bit per type, built from the checkboxes in the
-    // "RF -> INET" fieldset of the web IGate page. Classify the frame's info
-    // field and drop it unless its bit is set. This is the RF side of the pair
-    // aprs_service.c applies to g_config.inet2rfFilter for INET->RF traffic:
-    // both halves classify with the same aprs_filter helpers and test with the
-    // same aprs_filter_pass(), so a type turned off gates identically whichever
-    // direction it travels in.
-    //
-    // The classifier takes a C string while packet->info is a raw AX.25 field
-    // with no terminator of its own, hence the bounded copy into a local.
+    // The classifier and the third-party unwrap below both take a C string
+    // while packet->info is a raw AX.25 field with no terminator of its own,
+    // hence the bounded copy into a local.
     char info[AX25_FRAME_MAX_SIZE + 1];
     {
         size_t n = packet->len < AX25_FRAME_MAX_SIZE ? packet->len : AX25_FRAME_MAX_SIZE;
         memcpy(info, packet->info, n);
         info[n] = 0;
-        uint16_t type = aprs_filter_classify_info(info);
+    }
+
+    // Third-party ('}') traffic heard on RF: unwrap it here, before the type
+    // filter, so the wrapped station is gated under its own identity rather
+    // than being dropped outright (the type filter classifies '}' as 0,
+    // which never passes aprs_filter_pass()) or gated under the relaying
+    // station's callsign. A frame whose inner header already shows TCPIP/
+    // TCPXX has already reached APRS-IS once and is dropped as a loop
+    // instead of being gated a second time. Everything below this block
+    // (type filter, range/prefix filter, budlist, header build, payload
+    // copy) then runs against the effective src/dst/path/info - the inner
+    // packet's own, if unwrapping applied, or the frame's own otherwise -
+    // so a single code path handles both cases.
+    char effSrc[12] = { 0 };
+    char effDst[12] = { 0 };
+    char effPath[200] = { 0 };
+    const char *effInfo = info;
+    size_t effInfoLen = packet->len < AX25_FRAME_MAX_SIZE ? packet->len : AX25_FRAME_MAX_SIZE;
+    bool thirdParty = false;
+
+    if (info[0] == '}') {
+        const char *innerInfo;
+        size_t innerInfoLen;
+        bool isLoop;
+        if (!thirdPartyUnwrap(info, effSrc, sizeof(effSrc), effDst, sizeof(effDst), effPath, sizeof(effPath), &innerInfo, &innerInfoLen, &isLoop)) {
+            s_stats.dropByReason[DROP_TOO_SHORT]++;
+            return 0;
+        }
+        if (isLoop) {
+            s_stats.dropByReason[DROP_3RDPARTY_LOOP]++;
+            return 0;
+        }
+        effInfo = innerInfo;
+        effInfoLen = innerInfoLen;
+        thirdParty = true;
+    }
+
+    // [IGATE] Filter (RF->INET): g_config.rf2inetFilter is a whitelist of
+    // payload types, one bit per type, built from the checkboxes in the
+    // "RF -> INET" fieldset of the web IGate page. Classify the effective
+    // info field and drop it unless its bit is set. This is the RF side of
+    // the pair aprs_service.c applies to g_config.inet2rfFilter for INET->RF
+    // traffic: both halves classify with the same aprs_filter helpers and
+    // test with the same aprs_filter_pass(), so a type turned off gates
+    // identically whichever direction it travels in.
+    {
+        uint16_t type = aprs_filter_classify_info(effInfo);
         if (!aprs_filter_pass(g_config.rf2inetFilter, type)) {
-            ESP_LOGD(TAG, "RF2INET filtered (%s, mask=0x%03X): %.*s", aprs_filter_type_name(type), (unsigned)g_config.rf2inetFilter, (int)packet->len, info);
+            ESP_LOGD(TAG, "RF2INET filtered (%s, mask=0x%03X): %.*s", aprs_filter_type_name(type), (unsigned)g_config.rf2inetFilter, (int)effInfoLen, effInfo);
             s_stats.dropByReason[DROP_TYPE_FILTER]++;
             return 0;
         }
@@ -441,12 +545,18 @@ int igateProcess(ax25_msg_t *packet) {
         memcpy(prefixes, g_config.rf2inet_prefixes, sizeof(prefixes));
         app_config_unlock();
 
+        // The effective destination call feeds the Mic-E decode path inside
+        // aprs_filter_decode_position() (the position lives in the AX.25
+        // destination field for that payload type); a third-party inner
+        // packet never carries Mic-E in its unwrapped text form, so this is
+        // only exact for the non-unwrapped case and simply doesn't decode
+        // for the other, same as any other undecodable position above.
         if (rangeEn && rangeKm > 0.0f) {
             float plat, plon;
-            if (aprs_filter_decode_position(info, packet->dst.call, &plat, &plon)) {
+            if (aprs_filter_decode_position(effInfo, thirdParty ? effDst : packet->dst.call, &plat, &plon)) {
                 float d = aprs_filter_haversine_km(ownLat, ownLon, plat, plon);
                 if (d > rangeKm) {
-                    ESP_LOGD(TAG, "RF2INET range-filtered (%.1f km > %.1f km): %s", d, rangeKm, packet->src.call);
+                    ESP_LOGD(TAG, "RF2INET range-filtered (%.1f km > %.1f km): %s", d, rangeKm, thirdParty ? effSrc : packet->src.call);
                     s_stats.dropByReason[DROP_RANGE_FILTER]++;
                     return 0;
                 }
@@ -458,8 +568,8 @@ int igateProcess(ax25_msg_t *packet) {
             // dropping.
         }
 
-        if (prefixEn && !aprs_filter_prefix_match(packet->src.call, prefixes)) {
-            ESP_LOGD(TAG, "RF2INET prefix-filtered (%s not in \"%s\")", packet->src.call, prefixes);
+        if (prefixEn && !aprs_filter_prefix_match(thirdParty ? effSrc : packet->src.call, prefixes)) {
+            ESP_LOGD(TAG, "RF2INET prefix-filtered (%s not in \"%s\")", thirdParty ? effSrc : packet->src.call, prefixes);
             s_stats.dropByReason[DROP_PREFIX_FILTER]++;
             return 0;
         }
@@ -467,10 +577,11 @@ int igateProcess(ax25_msg_t *packet) {
 
     // Local callsign whitelist/blacklist (RF->INET direction): independent of
     // - and composes with (AND semantics) - the type filter just above. Keyed
-    // on the source callsign only (SSID stripped inside the helper), same as
-    // aprs_service.c's INET->RF handler below applies it on its own side.
-    if (!aprs_filter_budlist_pass(g_config.rf2inet_budlist_mode, packet->src.call)) {
-        ESP_LOGD(TAG, "RF2INET budlist-filtered (mode=%d): %s", (int)g_config.rf2inet_budlist_mode, packet->src.call);
+    // on the effective source callsign only (SSID stripped inside the
+    // helper), same as aprs_service.c's INET->RF handler below applies it on
+    // its own side.
+    if (!aprs_filter_budlist_pass(g_config.rf2inet_budlist_mode, thirdParty ? effSrc : packet->src.call)) {
+        ESP_LOGD(TAG, "RF2INET budlist-filtered (mode=%d): %s", (int)g_config.rf2inet_budlist_mode, thirdParty ? effSrc : packet->src.call);
         s_stats.dropByReason[DROP_BUDLIST]++;
         return 0;
     }
@@ -484,20 +595,29 @@ int igateProcess(ax25_msg_t *packet) {
     char header[300];
     size_t headerLen = 0;
 
-    if (packet->src.ssid > 0)
-        str_append(header, sizeof(header), &headerLen, "%s-%d>%s", packet->src.call, packet->src.ssid, packet->dst.call);
-    else
-        str_append(header, sizeof(header), &headerLen, "%s>%s", packet->src.call, packet->dst.call);
+    if (thirdParty) {
+        // The outer RF header is discarded entirely: the gated frame is
+        // built from the inner packet's own source, destination and path,
+        // exactly as if the wrapped station had been heard directly.
+        str_append(header, sizeof(header), &headerLen, "%s>%s", effSrc, effDst);
+        if (effPath[0])
+            str_append(header, sizeof(header), &headerLen, ",%s", effPath);
+    } else {
+        if (packet->src.ssid > 0)
+            str_append(header, sizeof(header), &headerLen, "%s-%d>%s", packet->src.call, packet->src.ssid, packet->dst.call);
+        else
+            str_append(header, sizeof(header), &headerLen, "%s>%s", packet->src.call, packet->dst.call);
 
-    if (packet->dst.ssid > 0)
-        str_append(header, sizeof(header), &headerLen, "-%d", packet->dst.ssid);
+        if (packet->dst.ssid > 0)
+            str_append(header, sizeof(header), &headerLen, "-%d", packet->dst.ssid);
 
-    for (int i = 0; i < packet->rpt_count; i++) {
-        str_append(header, sizeof(header), &headerLen, ",%s", packet->rpt_list[i].call);
-        if (packet->rpt_list[i].ssid > 0)
-            str_append(header, sizeof(header), &headerLen, "-%d", packet->rpt_list[i].ssid);
-        if (packet->rpt_flags & (1 << i))
-            str_append(header, sizeof(header), &headerLen, "*");
+        for (int i = 0; i < packet->rpt_count; i++) {
+            str_append(header, sizeof(header), &headerLen, ",%s", packet->rpt_list[i].call);
+            if (packet->rpt_list[i].ssid > 0)
+                str_append(header, sizeof(header), &headerLen, "-%d", packet->rpt_list[i].ssid);
+            if (packet->rpt_flags & (1 << i))
+                str_append(header, sizeof(header), &headerLen, "*");
+        }
     }
 
     // Snapshot the own-station identity used to build the qAR/qAO header. This
@@ -540,9 +660,12 @@ int igateProcess(ax25_msg_t *packet) {
     memcpy(&frame[fpos], header, headerLen);
     fpos += headerLen;
 
-    // copy info field, stripping CR/LF, bounded to the frame buffer
-    for (size_t i = 0; i < packet->len && fpos < sizeof(frame); i++) {
-        uint8_t c = packet->info[i];
+    // copy the effective info field, stripping CR/LF, bounded to the frame
+    // buffer - the inner payload for an unwrapped third-party frame (the
+    // outer '}' data type identifier is left behind with the discarded outer
+    // header), or the frame's own info field otherwise.
+    for (size_t i = 0; i < effInfoLen && fpos < sizeof(frame); i++) {
+        uint8_t c = (uint8_t)effInfo[i];
         if (c == '\r' || c == '\n')
             continue;
         frame[fpos++] = c;
@@ -552,7 +675,7 @@ int igateProcess(ax25_msg_t *packet) {
         s_stats.txCount++;
         // An APRS message carries the ':' data type identifier in the first
         // byte of the information field, and messages are what MSG_CNT counts.
-        if (packet->info[0] == ':')
+        if (effInfoLen > 0 && effInfo[0] == ':')
             s_stats.msgCount++;
         return 1;
     }
