@@ -987,6 +987,10 @@ bool aprs_service_modem_ready(void) {
     return s_modemReady;
 }
 
+bool aprs_service_can_transmit(void) {
+    return s_modemReady && g_config.audio_modem_en;
+}
+
 // ---------------------------------------------------------------------------
 // Loop-test diagnostics.
 //
@@ -1103,7 +1107,7 @@ static void loopTestRxHook(ax25_msg_t *msg) {
 }
 
 bool aprs_loop_test_run(char *msg, size_t msg_len) {
-    if (!s_modemReady || !g_config.audio_modem_en) {
+    if (!aprs_service_can_transmit()) {
         snprintf(msg, msg_len,
                  "Audio ADC/DAC modem is not enabled/initialized. Enable \"Enable audio ADC/DAC modem\" above, save, and reboot the device first.");
         ESP_LOGW(TAG, "Loop test: %s", msg);

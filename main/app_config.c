@@ -502,7 +502,6 @@ static void config_write_json(jw_t *d, const app_config_t *c) {
     jadd_num(d, "igateALT", c->igate_alt);
     jadd_num(d, "igateINV", c->igate_interval);
     jadd_str(d, "igateSymbol", c->igate_symbol);
-    jadd_str(d, "igateObject", c->igate_object);
     jadd_num(d, "igatePath", c->igate_path);
     jadd_str(d, "igateComment", c->igate_comment);
     jadd_num(d, "igateSTSIntv", c->igate_sts_interval);
@@ -782,7 +781,6 @@ static void config_from_json(cJSON *d, app_config_t *c) {
     c->igate_alt = (float)jget_num(d, "igateALT", def.igate_alt);
     c->igate_interval = (uint16_t)jget_num(d, "igateINV", def.igate_interval);
     set_str(c->igate_symbol, sizeof(c->igate_symbol), jget_str(d, "igateSymbol", def.igate_symbol));
-    set_str(c->igate_object, sizeof(c->igate_object), jget_str(d, "igateObject", def.igate_object));
     c->igate_path = (uint8_t)jget_num(d, "igatePath", def.igate_path);
     set_str(c->igate_comment, sizeof(c->igate_comment), jget_str(d, "igateComment", def.igate_comment));
     c->igate_timestamp = jget_bool(d, "igateTimestamp", def.igate_timestamp);

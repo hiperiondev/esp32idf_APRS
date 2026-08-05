@@ -380,7 +380,6 @@ typedef struct {
     float igate_alt;                  /**< IGate beacon altitude. */
     uint16_t igate_interval;          /**< IGate beacon interval, seconds. */
     char igate_symbol[3];             /**< IGate APRS symbol ("<table><code>" + NUL). */
-    char igate_object[10];            /**< IGate object name (if beaconing as an object). */
     uint8_t igate_path;               /**< IGate digipeat-path selection (bitmask over g_config.path[0..3]). */
     char igate_comment[COMMENT_SIZE]; /**< IGate beacon comment. */
     uint16_t igate_sts_interval;      /**< IGate status-beacon interval, seconds. */

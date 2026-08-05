@@ -137,7 +137,7 @@ IGate (RF <-> APRS-IS)
    * - ``qAR``/``qAO`` Q-construct insertion
      - ✅
      - ✅
-     - Standard ``qAR``; satellite-gate ``qAO`` form supported
+     - ``qAR`` when this station can transmit; ``qAO`` for receive-only IGates
    * - Server-side APRS-IS filter string (``r/``, ``p/``, ``t/``, ``b/``...)
      - ✅
      - ✅
@@ -183,9 +183,9 @@ IGate (RF <-> APRS-IS)
    * - Satellite/ISS gate-call list
      - ⚠️ (aprx and some dedicated satgates)
      - ✅
-     - Up to 8 satellite digipeater callsigns; a frame that was actually
-       repeated through one of them is gated with the ``qAO`` construct instead
-       of ``qAR``
+     - Up to 8 satellite digipeater callsigns; a frame repeated through one of
+       them without the repeated (``*``) flag set is dropped before reaching
+       APRS-IS
 
 Digipeater
 -----------

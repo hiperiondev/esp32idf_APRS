@@ -90,8 +90,10 @@ singolo aggregato opaco.
    locale in ``g_config.rf2inet_budlist_mode`` (``DROP_BUDLIST``).
 
 Un frame che sopravvive a tutte le fasi riceve un'intestazione
-``,qAR,<mycall>-<ssid>`` — o la forma di gate satellitare
-``,<mycall>-<ssid>*,qAO,<object>`` — ed è scritto su APRS-IS.
+``,qAR,<mycall>-<ssid>`` — o ``,qAO,<mycall>-<ssid>`` quando questa stazione
+non può trasmettere (``aprs_service_can_transmit()``) — ed è scritto su
+APRS-IS. Il nominativo-SSID che segue il q construct è sempre l'identità di
+login di questa stazione, secondo QCON.
 
 INET → RF (``inet2rfHandler()``)
 ================================

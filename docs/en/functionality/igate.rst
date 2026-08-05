@@ -81,9 +81,11 @@ the dashboard can show "N dropped because X" rather than one opaque aggregate.
 #. **Budlist.** The source callsign is tested against the local
    whitelist/blacklist in ``g_config.rf2inet_budlist_mode`` (``DROP_BUDLIST``).
 
-A frame that survives all stages gets a ``,qAR,<mycall>-<ssid>`` header — or the
-``,<mycall>-<ssid>*,qAO,<object>`` satellite-gate form — and is written to
-APRS-IS.
+A frame that survives all stages gets a ``,qAR,<mycall>-<ssid>`` header — or
+``,qAO,<mycall>-<ssid>`` when this station cannot transmit
+(``aprs_service_can_transmit()``) — and is written to APRS-IS. The callsign-SSID
+following the q construct is always this station's own login identity, per
+QCON.
 
 INET → RF (``inet2rfHandler()``)
 ================================

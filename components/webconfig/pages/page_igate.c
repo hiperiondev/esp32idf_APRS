@@ -65,8 +65,6 @@ esp_err_t page_igate_get(httpd_req_t *req) {
     // widget so Digipeater/Tracker render identically.
     web_field_symbol(req, TR_F_STATION_SYMBOL, "igateSym", g_config.igate_symbol);
 
-    web_field_text(req, TR_F_OBJECT_NAME, "igateObject", g_config.igate_object, 9);
-
     // PATH: dropdown - 0 = direct, 1-4 = "-N" shorthand, 5-8 = custom named
     // path presets configured on the System page (g_config.path[0..3]).
     // Every option carries a short trailing explanation (" - ...") so the
@@ -546,7 +544,6 @@ esp_err_t page_igate_post(httpd_req_t *req) {
     g_config.igate_alt = g_config.igate_use_station ? g_config.my_alt : web_form_get_float(body, "igateALT", g_config.igate_alt);
     g_config.igate_interval = (uint16_t)web_form_get_int(body, "igateINV", g_config.igate_interval);
     g_config.igate_compress = web_form_get_bool(body, "igateCompress");
-    web_form_get(body, "igateObject", g_config.igate_object, sizeof(g_config.igate_object));
 
     // PHG: same convention as the Objects page's per-element PHG blocks.
     // "Use My Station Data" locks (disables) the sub-fields in the browser,

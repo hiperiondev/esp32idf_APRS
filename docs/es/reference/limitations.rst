@@ -142,7 +142,8 @@ IGate (RF <-> APRS-IS)
    * - Inserción de Q-construct ``qAR``/``qAO``
      - ✅
      - ✅
-     - ``qAR`` estándar; también soportada la forma ``qAO`` de sat-gate
+     - ``qAR`` cuando esta estación puede transmitir; ``qAO`` para IGates de
+       solo recepción
    * - Cadena de filtro APRS-IS del lado servidor (``r/``, ``p/``, ``t/``, ``b/``...)
      - ✅
      - ✅
@@ -189,8 +190,9 @@ IGate (RF <-> APRS-IS)
    * - Lista de indicativos de puerta satelital/ISS
      - ⚠️ (aprx y algunas puertas satelitales dedicadas)
      - ✅
-     - Hasta 8 indicativos de digipeater satelital; una trama realmente repetida
-       por uno de ellos se envía con el constructo ``qAO`` en lugar de ``qAR``
+     - Hasta 8 indicativos de digipeater satelital; una trama repetida por uno
+       de ellos sin la marca de repetido (``*``) se descarta antes de llegar a
+       APRS-IS
 
 Digipeater
 -----------

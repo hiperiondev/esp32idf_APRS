@@ -32,6 +32,7 @@
 #include "app_config.h"
 #include "aprs_coord.h"
 #include "aprs_filter.h"
+#include "aprs_service.h"
 #include "crc_ccit.h"
 #include "igate.h"
 #include "net_state.h"
@@ -638,27 +639,24 @@ int igateProcess(ax25_msg_t *packet) {
 
     // Snapshot the own-station identity used to build the qAR/qAO header. This
     // runs on the modem RX task; a concurrent web save could otherwise rewrite
-    // aprs_mycall/igate_object mid-snprintf.
+    // aprs_mycall mid-snprintf.
     char cfg_mycall[10];
-    char cfg_object[10];
     uint8_t cfg_ssid;
     app_config_lock();
     memcpy(cfg_mycall, g_config.aprs_mycall, sizeof(cfg_mycall));
-    memcpy(cfg_object, g_config.igate_object, sizeof(cfg_object));
     cfg_ssid = g_config.aprs_ssid;
     app_config_unlock();
 
-    if (strlen(cfg_object) >= 3) {
-        if (cfg_ssid > 0)
-            str_append(header, sizeof(header), &headerLen, ",%s-%d*,qAO,%s", cfg_mycall, cfg_ssid, cfg_object);
-        else
-            str_append(header, sizeof(header), &headerLen, ",%s*,qAO,%s", cfg_mycall, cfg_object);
-    } else {
-        if (cfg_ssid > 0)
-            str_append(header, sizeof(header), &headerLen, ",qAR,%s-%d", cfg_mycall, cfg_ssid);
-        else
-            str_append(header, sizeof(header), &headerLen, ",qAR,%s", cfg_mycall);
-    }
+    // Per QCON, the q construct identifies this IGate: qAR when it placed the
+    // packet on APRS-IS having heard it on RF and can also transmit, qAO for
+    // the same case on a receive-only IGate. The callsign-SSID that follows
+    // is always this station's own login identity - never a cosmetic label -
+    // and no other part of the path is touched.
+    const char *qConstruct = aprs_service_can_transmit() ? "qAR" : "qAO";
+    if (cfg_ssid > 0)
+        str_append(header, sizeof(header), &headerLen, ",%s,%s-%d", qConstruct, cfg_mycall, cfg_ssid);
+    else
+        str_append(header, sizeof(header), &headerLen, ",%s,%s", qConstruct, cfg_mycall);
 
     if (!str_append(header, sizeof(header), &headerLen, ":")) {
         // Header buffer exhausted (an excessively long repeater path) - a rare

@@ -236,6 +236,21 @@ void aprs_service_notify_modem_ready(void);
 bool aprs_service_modem_ready(void);
 
 /**
+ * @brief Whether this station is currently able to transmit on RF.
+ *
+ * True only when the audio ADC/DAC AFSK modem hardware has been brought up
+ * this boot (see aprs_service_modem_ready()) and the "Enable audio ADC/DAC
+ * modem" setting (g_config.audio_modem_en) is on. This is the single source
+ * of truth for transmit capability, used both by the LOOP TEST availability
+ * check and by the IGate to choose between the qAR and qAO q constructs (see
+ * QCON): qAR when this returns true, qAO - the receive-only IGate form - when
+ * it returns false.
+ *
+ * @return true if this station can currently transmit, false otherwise.
+ */
+bool aprs_service_can_transmit(void);
+
+/**
  * @brief Audio ADC/DAC AFSK modem self-test ("LOOP TEST" button on the
  * Radio/Modem webconfig page). Requires the ADC and DAC GPIOs (MODEM_ADC_GPIO
  * and MODEM_DAC_GPIO, set in the top-level CMakeLists.txt) to be wired

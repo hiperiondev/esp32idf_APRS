@@ -88,8 +88,10 @@ agregado opaco.
    blanca/negra local en ``g_config.rf2inet_budlist_mode`` (``DROP_BUDLIST``).
 
 Una trama que sobrevive a todas las etapas recibe una cabecera
-``,qAR,<mycall>-<ssid>`` — o la forma de gate satelital
-``,<mycall>-<ssid>*,qAO,<object>`` — y se escribe en APRS-IS.
+``,qAR,<mycall>-<ssid>`` — o ``,qAO,<mycall>-<ssid>`` cuando esta estación no
+puede transmitir (``aprs_service_can_transmit()``) — y se escribe en APRS-IS.
+El indicativo-SSID que sigue al q construct es siempre la propia identidad de
+login de esta estación, según QCON.
 
 INET → RF (``inet2rfHandler()``)
 ================================
