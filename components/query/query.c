@@ -15,17 +15,20 @@
 //
 // @brief APRS query responder implementation.
 //
-// Recognizes the three general queries APRS101 chapter 15 defines - "?APRS?",
-// "?WX?" and "?IGATE?" - in broadcast traffic, and the full directed set
-// ("?APRSD", "?APRSH", "?APRSM", "?APRSO", "?APRSP", "?APRSS", "?APRST" and
-// its "?PING?" alias) when addressed to this station, then transmits the
+// Recognizes the four general queries APRS101 chapter 15 defines - "?APRS?",
+// "?WX?", "?IGATE?" and "?QRU?" - in broadcast traffic, and the full directed
+// set ("?APRSD", "?APRSH", "?APRSM", "?APRSO", "?APRSP", "?APRSS", "?APRST"
+// and its "?PING?" alias) when addressed to this station, then transmits the
 // matching response.
 //
 // Position, status and weather answers reuse the existing beacon builders, so
 // a reply is byte-for-byte consistent with what the periodic beacons would
-// send. The list-style answers (directs, heard, traceroute) are returned as
-// APRS text messages addressed back to the querying station, which is the
-// form chapter 15 specifies for a directed query.
+// send. The QRU group roll-call is a status packet built the same way, since
+// like the other general queries it is broadcast to everyone listening rather
+// than addressed to one station. The list-style directed answers (directs,
+// heard, traceroute) are returned as APRS text messages addressed back to the
+// querying station, which is the form chapter 15 specifies for a directed
+// query.
 //
 // Every query is handled together with the source it arrived on. The source
 // selects the operator switch that says whether that source is answered at all
@@ -69,7 +72,7 @@
 #include "sched_time.h" // sched_mono_seconds()
 #include "weather.h"    // weather_build_report_packet()
 #ifdef ENABLE_OBJECTS_ITEMS
-#include "objects_items.h" // objitems_request_transmit_all()
+#include "objects_items.h" // objitems_load() / objitems_request_transmit_all() / OBJITEM_COUNT
 #endif
 
 static const char *TAG = "query";
@@ -87,14 +90,15 @@ static void (*s_txHandler)(const char *packet, size_t len, uint8_t channels) = N
 // auto-responders. The source is part of the key so that a talkative APRS-IS
 // feed cannot spend the allowance a question heard on the air needs: the two
 // answers go to different places and neither costs the other any airtime.
-// The first three are the general (broadcast) queries and also answerable
-// when directed; everything after QUERY_TYPE_IGATE is directed-only, which is
+// The first four are the general (broadcast) queries and also answerable
+// when directed; everything after QUERY_TYPE_QRU is directed-only, which is
 // how APRS101 chapter 15 splits them - a station only answers those on behalf
 // of the operator who addressed it.
 typedef enum {
     QUERY_TYPE_APRS = 0,
     QUERY_TYPE_WX,
     QUERY_TYPE_IGATE,
+    QUERY_TYPE_QRU,      // ?QRU?
     QUERY_TYPE_POSITION, // ?APRSP
     QUERY_TYPE_STATUS,   // ?APRSS
     QUERY_TYPE_DIRECTS,  // ?APRSD
@@ -427,7 +431,7 @@ static void respondWX(query_source_t source) {
     ESP_LOGI(TAG, "?WX? query answered: %s", packet);
 }
 
-// "?IGATE?" -> the "<IGATE,MSG_CNT=n,LOC_CNT=n" capability/status line
+// "?IGATE?" -> the "<IGATE,MSG_CNT=n,LOC_CNT=n>" capability/status line
 // APRS101 ch.15 defines, carrying the two figures that chapter gives them.
 //
 // MSG_CNT is the running count of APRS message packets this gateway has
@@ -456,7 +460,7 @@ static void respondIGate(query_source_t source) {
     aprs_path_build_suffix_from_config(g_config.igate_path, path, sizeof(path));
 
     char info[64];
-    snprintf(info, sizeof(info), "<IGATE,MSG_CNT=%u,LOC_CNT=%u", (unsigned)stats.msgCount, (unsigned)lastheard_station_count(true));
+    snprintf(info, sizeof(info), "<IGATE,MSG_CNT=%u,LOC_CNT=%u>", (unsigned)stats.msgCount, (unsigned)lastheard_station_count(true));
 
     char packet[APRS_TNC2_BUF_SIZE];
     int n = snprintf(packet, sizeof(packet), "%s>%s%s:%s", callField, QUERY_DEST, path, info);
@@ -597,6 +601,67 @@ static void respondObjects(const char *fromCall, query_source_t source) {
 #endif
 }
 
+// "?QRU?" -> the group-membership roll call APRS101 ch.15 defines: which of
+// this station's own Objects/Items carry a non-empty QRU tag (see
+// objects_items.h), reported as "<tag>:<name>" pairs in a status packet so
+// every station listening for the roll call sees the answer, not just the one
+// that asked - "?QRU?" is a general query, like "?APRS?"/"?WX?"/"?IGATE?"
+// above, and general queries have no fromCall to address a reply to.
+// Objects/Items are read straight from storage via objitems_load() - the same
+// on-demand read objitems_service() itself does - rather than through
+// objitems_request_transmit_all(), since this answer only ever reports the
+// QRU tag, never a full position/status report for each element.
+//
+// An empty result is still answered, for the same reason "?APRSD" answers an
+// empty "Directs=": "no group members configured" is the true state of a
+// station with no tagged Objects/Items, and silence would be indistinguishable
+// from the query never arriving.
+static void respondQRU(query_source_t source) {
+    char myCall[16];
+    if (!resolveOwnCall(myCall, sizeof(myCall))) {
+        ESP_LOGW(TAG, "?QRU? query not answered - no IGate callsign configured");
+        return;
+    }
+
+    char info[64];
+    int pos = snprintf(info, sizeof(info), ">QRU:");
+#ifdef ENABLE_OBJECTS_ITEMS
+    objitems_t set;
+    objitems_load(&set); // missing/corrupt file already yields all-disabled defaults
+
+    bool any = false;
+    for (int i = 0; i < OBJITEM_COUNT && pos > 0 && (size_t)pos < sizeof(info); i++) {
+        const objitem_t *b = &set.item[i];
+        if (!b->enable || !b->name[0] || !b->qru[0])
+            continue;
+
+        int n = snprintf(info + pos, sizeof(info) - (size_t)pos, "%s%s:%s", any ? "," : "", b->qru, b->name);
+        if (n < 0 || (size_t)pos + (size_t)n >= sizeof(info))
+            break;
+        pos += n;
+        any = true;
+    }
+    if (!any && pos > 0 && (size_t)pos < sizeof(info))
+        snprintf(info + pos, sizeof(info) - (size_t)pos, "none");
+#else
+    if (pos > 0 && (size_t)pos < sizeof(info))
+        snprintf(info + pos, sizeof(info) - (size_t)pos, "none");
+#endif
+
+    char path[80];
+    aprs_path_build_suffix_from_config(g_config.igate_path, path, sizeof(path));
+
+    char packet[APRS_TNC2_BUF_SIZE];
+    int len = snprintf(packet, sizeof(packet), "%s>%s%s:%s", myCall, QUERY_DEST, path, info);
+    if (len < 0 || (size_t)len >= sizeof(packet) || len > APRS_TNC2_MAX_LEN) {
+        ESP_LOGW(TAG, "?QRU? query not answered - built line too long");
+        return;
+    }
+
+    txPacket(packet, (size_t)len, source);
+    ESP_LOGI(TAG, "?QRU? query answered: %s", packet);
+}
+
 // "?APRST" / "?PING?" -> report the route the query itself took to get here,
 // which is what lets the querying operator see which digipeaters are in play
 // between the two stations. The route is the one extractRoute() read off the
@@ -630,6 +695,9 @@ static void runRequest(const query_request_t *req) {
             return;
         case QUERY_TYPE_IGATE:
             respondIGate(req->source);
+            return;
+        case QUERY_TYPE_QRU:
+            respondQRU(req->source);
             return;
         case QUERY_TYPE_STATUS:
             respondStatus(req->source);
@@ -689,7 +757,7 @@ void query_service(void) {
 // '?') against the table this responder implements, and reports where the
 // keyword's argument begins.
 //
-// `directed` selects the table: a general query is one of the three APRS101
+// `directed` selects the table: a general query is one of the four APRS101
 // chapter 15 defines as broadcast, while a directed query may additionally be
 // any of the per-station ones.
 //
@@ -707,10 +775,10 @@ static bool matchQueryType(const char *info, bool directed, query_type_t *type, 
         query_type_t type;
         bool directedOnly;
     } table[] = {
-        { "?APRS?", QUERY_TYPE_APRS, false },   { "?IGATE?", QUERY_TYPE_IGATE, false },  { "?WX?", QUERY_TYPE_WX, false },
-        { "?APRSD", QUERY_TYPE_DIRECTS, true }, { "?APRSH", QUERY_TYPE_HEARD, true },    { "?APRSM", QUERY_TYPE_MESSAGES, true },
-        { "?APRSO", QUERY_TYPE_OBJECTS, true }, { "?APRSP", QUERY_TYPE_POSITION, true }, { "?APRSS", QUERY_TYPE_STATUS, true },
-        { "?APRST", QUERY_TYPE_TRACE, true },   { "?PING?", QUERY_TYPE_TRACE, true },
+        { "?APRS?", QUERY_TYPE_APRS, false },    { "?IGATE?", QUERY_TYPE_IGATE, false }, { "?WX?", QUERY_TYPE_WX, false },
+        { "?QRU?", QUERY_TYPE_QRU, false },      { "?APRSD", QUERY_TYPE_DIRECTS, true }, { "?APRSH", QUERY_TYPE_HEARD, true },
+        { "?APRSM", QUERY_TYPE_MESSAGES, true }, { "?APRSO", QUERY_TYPE_OBJECTS, true }, { "?APRSP", QUERY_TYPE_POSITION, true },
+        { "?APRSS", QUERY_TYPE_STATUS, true },   { "?APRST", QUERY_TYPE_TRACE, true },   { "?PING?", QUERY_TYPE_TRACE, true },
     };
 
     for (size_t i = 0; i < sizeof(table) / sizeof(table[0]); i++) {
@@ -731,11 +799,12 @@ static bool matchQueryType(const char *info, bool directed, query_type_t *type, 
     return false;
 }
 
-// True if the query type is enabled by the operator. The three general types
-// keep their own per-type switches; the directed-only set shares
-// g_config.query_ext_en, since they are all answers about this station's own
-// traffic and an operator either wants the station answering that class of
-// question or not.
+// True if the query type is enabled by the operator. The three original
+// general types keep their own per-type switches; "?QRU?" and the
+// directed-only set share g_config.query_ext_en, since they are all answers
+// about this station's own configuration (Objects/Items membership, traffic,
+// heard history) and an operator either wants the station answering that
+// class of question or not.
 static bool queryTypeEnabled(query_type_t type) {
     switch (type) {
         case QUERY_TYPE_APRS:
@@ -744,6 +813,7 @@ static bool queryTypeEnabled(query_type_t type) {
             return g_config.query_wx_en;
         case QUERY_TYPE_IGATE:
             return g_config.query_igate_en;
+        case QUERY_TYPE_QRU:
         case QUERY_TYPE_POSITION:
         case QUERY_TYPE_STATUS:
         case QUERY_TYPE_DIRECTS:
@@ -771,6 +841,7 @@ static void dispatchBroadcast(query_type_t type, query_source_t source) {
         case QUERY_TYPE_APRS:
         case QUERY_TYPE_WX:
         case QUERY_TYPE_IGATE:
+        case QUERY_TYPE_QRU:
             queueResponse(type, source, "", "");
             return;
         default:

@@ -132,8 +132,8 @@
  * @brief QRU group-membership name length.
  *
  * Mirrors YAAC's "QRU group membership" field: a short group tag (e.g. "HOSP",
- * "FUEL", "RP2M"). Stored/persisted so a future QRU responder can enumerate
- * group members.
+ * "FUEL", "RP2M"). Stored/persisted and enumerated by the "?QRU?" group-query
+ * responder in components/query/query.c.
  */
 #define OBJITEM_QRU_MAX 8
 
@@ -235,8 +235,8 @@ typedef struct {
     uint8_t path_mask; /**< Digipeat paths: bitmask over the four shared presets g_config.path[0..3]. 0 => transmit direct (no path). When >1 bit is set,
                           proportional pathing is used (one preset per transmission, ascending bit order), and @c decay_x10 is applied after each full cycle. */
 
-    char qru[OBJITEM_QRU_MAX + 1]; /**< QRU group-membership tag (e.g. "HOSP", "FUEL"). Stored/persisted; the QRU responder that answers ?QRU? is a separate
-                                      receive-side feature, not implemented by this transmitter. */
+    char qru[OBJITEM_QRU_MAX + 1]; /**< QRU group-membership tag (e.g. "HOSP", "FUEL"). Stored/persisted; a non-empty tag makes the element a member of that
+                                      group for the "?QRU?" group-query responder in components/query/query.c. */
 
     uint32_t interval_s; /**< Initial repeat rate in seconds (YAAC "Initial object repeat rate"); 0 = firmware default. */
 

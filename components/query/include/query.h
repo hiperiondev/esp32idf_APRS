@@ -15,8 +15,12 @@
  *     please contact their authors for more information.
  *
  * @brief APRS query responder (APRS101 ch.15): recognizes the general
- * ("?APRS?", "?WX?", "?IGATE?") and directed ("CALL:?query?") queries in
- * received traffic and transmits the matching response.
+ * ("?APRS?", "?WX?", "?IGATE?", "?QRU?") and directed ("CALL:?query?")
+ * queries in received traffic and transmits the matching response.
+ *
+ * "?QRU?" answers with the QRU group-membership roll call: the tag/name of
+ * each locally-configured Object/Item (objects_items.h) that carries a
+ * non-empty QRU tag.
  *
  * The directed set additionally covers "?APRSD" (stations heard direct),
  * "?APRSH" (18-hour heard graph for one station), "?APRSM" (re-send this
