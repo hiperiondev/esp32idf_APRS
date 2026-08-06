@@ -144,6 +144,8 @@ const char *igate_drop_reason_name(drop_reason_t reason) {
             return "RFONLY/TCP/qA/NOGATE";
         case DROP_3RDPARTY_LOOP:
             return "3rd-party loop (TCPIP/TCPXX)";
+        case DROP_3RDPARTY_NESTED:
+            return "3rd-party nested (INET->RF)";
         case DROP_SAT_NOT_USED:
             return "satellite not used";
         case DROP_GENERIC_QUERY:

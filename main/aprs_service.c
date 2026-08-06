@@ -999,15 +999,33 @@ static void inet2rfHandler(const char *line) {
                         innerSrc[n] = 0;
                     }
 
-                    uint16_t innerType = aprs_filter_classify_thirdparty_inner(colon + 1);
+                    // Reject a payload that is itself third-party-wrapped
+                    // more than one level deep outright, rather than
+                    // unwrapping it again or letting it fall through to the
+                    // generic type filter: aprs_filter_classify_thirdparty_inner()
+                    // already classifies a nested '}' payload as
+                    // unclassifiable (type 0, never passes), but a dedicated
+                    // check here makes the one-level limit explicit and
+                    // auditable and gives it its own drop counter instead of
+                    // being folded into DROP_TYPE_FILTER. A frame nested this
+                    // way has been wrapped more than once already; unwrapping
+                    // it here would let it re-enter as a fresh single-wrap
+                    // frame and grow without bound on every further hop.
+                    const char *innerColon = strchr(inner, ':');
+                    if (innerColon && innerColon[1] == '}') {
+                        ESP_LOGD(TAG, "INET2RF: third-party payload nested more than one level, not unwrapped: %s", line);
+                        igate_note_drop(DROP_3RDPARTY_NESTED);
+                    } else {
+                        uint16_t innerType = aprs_filter_classify_thirdparty_inner(colon + 1);
 
-                    if (innerSrc[0] && aprs_filter_budlist_pass(BUDLIST_WHITELIST, innerSrc) && aprs_filter_pass(g_config.inet2rfFilter, innerType)) {
-                        srcLine = inner;
-                        type = innerType;
-                        strncpy(budlistCall, innerSrc, sizeof(budlistCall) - 1);
-                        budlistCall[sizeof(budlistCall) - 1] = 0;
-                        unwrapped = true;
-                        ESP_LOGI(TAG, "INET2RF: relaying whitelisted third-party packet from %s (unwrapped): %s", innerSrc, inner);
+                        if (innerSrc[0] && aprs_filter_budlist_pass(BUDLIST_WHITELIST, innerSrc) && aprs_filter_pass(g_config.inet2rfFilter, innerType)) {
+                            srcLine = inner;
+                            type = innerType;
+                            strncpy(budlistCall, innerSrc, sizeof(budlistCall) - 1);
+                            budlistCall[sizeof(budlistCall) - 1] = 0;
+                            unwrapped = true;
+                            ESP_LOGI(TAG, "INET2RF: relaying whitelisted third-party packet from %s (unwrapped): %s", innerSrc, inner);
+                        }
                     }
                 }
             }
