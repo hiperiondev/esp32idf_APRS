@@ -427,7 +427,7 @@ static void respondWX(query_source_t source) {
     ESP_LOGI(TAG, "?WX? query answered: %s", packet);
 }
 
-// "?IGATE?" -> the "<IGATE,MSG_CNT=n,LOC_CNT=n>" capability/status line
+// "?IGATE?" -> the "<IGATE,MSG_CNT=n,LOC_CNT=n" capability/status line
 // APRS101 ch.15 defines, carrying the two figures that chapter gives them.
 //
 // MSG_CNT is the running count of APRS message packets this gateway has
@@ -456,7 +456,7 @@ static void respondIGate(query_source_t source) {
     aprs_path_build_suffix_from_config(g_config.igate_path, path, sizeof(path));
 
     char info[64];
-    snprintf(info, sizeof(info), "<IGATE,MSG_CNT=%u,LOC_CNT=%u>", (unsigned)stats.msgCount, (unsigned)lastheard_station_count(true));
+    snprintf(info, sizeof(info), "<IGATE,MSG_CNT=%u,LOC_CNT=%u", (unsigned)stats.msgCount, (unsigned)lastheard_station_count(true));
 
     char packet[APRS_TNC2_BUF_SIZE];
     int n = snprintf(packet, sizeof(packet), "%s>%s%s:%s", callField, QUERY_DEST, path, info);
