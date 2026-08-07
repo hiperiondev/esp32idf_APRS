@@ -462,7 +462,6 @@ static bool save_locked(const telemetry_config_t *in) {
     fputs("]}", f);
 
     return json_store_commit(f, TELEMETRY_TMP_PATH, TELEMETRY_PATH, TAG, "telemetry configuration");
-    return true;
 }
 
 // Refresh the RAM-only mycall cache. Caller must hold s_lock.

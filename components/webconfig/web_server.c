@@ -18,6 +18,7 @@
 // assets) onto its handlers.
 
 #include "web_server.h"
+#include "esp_err.h"
 #include "esp_http_server.h"
 #include "esp_log.h"
 #include "pages.h"
@@ -29,9 +30,17 @@ static esp_err_t css_handler(httpd_req_t *req) {
     return web_handle_css(req);
 }
 
+// Registers one route and reports any failure to the log, naming the URI
+// that did not register. httpd_register_uri_handler() fails closed - the
+// route simply never answers, with no other indication - once
+// config.max_uri_handlers routes are already registered, so this is what
+// makes an exhausted handler table (or any other registration failure)
+// visible at boot instead of showing up later as an unexplained 404.
 static void reg(httpd_handle_t s, const char *uri, httpd_method_t m, esp_err_t (*h)(httpd_req_t *)) {
     httpd_uri_t u = { .uri = uri, .method = m, .handler = h, .user_ctx = NULL };
-    httpd_register_uri_handler(s, &u);
+    esp_err_t err = httpd_register_uri_handler(s, &u);
+    if (err != ESP_OK)
+        ESP_LOGE(TAG, "Failed to register URI '%s': %s", uri, esp_err_to_name(err));
 }
 
 void web_server_start(void) {
