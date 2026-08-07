@@ -57,11 +57,8 @@ static const char *TAG = "main";
 // only after the allocations made during early startup have settled.
 #define CONFIG_LOAD_RETRY_DELAY_MS 250
 
-// Consecutive-disconnect counter used to back off reconnect attempts below.
-// Reset to 0 as soon as we get a real IP (see ip_event_handler).
-static uint8_t s_disconnectStreak = 0;
-#define RECONNECT_BACKOFF_STEP_MS 500  // grows by this much per consecutive failure
-#define RECONNECT_BACKOFF_MAX_MS  8000 // ...up to this ceiling
+// Fixed delay applied before every reconnect attempt after a STA disconnect.
+#define RECONNECT_INTERVAL_MS 5000
 
 // True when the configured wifi_mode includes a station interface AND a usable
 // STA entry was actually found and pushed to the driver. Gates every automatic
@@ -117,33 +114,20 @@ static void wifi_event_handler(void *arg, esp_event_base_t base, int32_t id, voi
         // get a fresh IP (see ip_event_handler below).
         net_state_set_connected(false);
 
-        // Back off before retrying: an AP that's out of range, has a wrong
-        // password, or is momentarily down otherwise causes an immediate
-        // disconnect -> esp_wifi_connect() -> immediate disconnect loop with
-        // zero delay, which pins whatever core hosts the event-loop task and
-        // starves its idle task (task watchdog trips). Growing the delay a
-        // little on each consecutive failure (capped) keeps retries prompt
-        // on transient blips while giving up CPU time between attempts.
-        uint32_t backoffMs = (uint32_t)s_disconnectStreak * RECONNECT_BACKOFF_STEP_MS;
-        if (backoffMs > RECONNECT_BACKOFF_MAX_MS)
-            backoffMs = RECONNECT_BACKOFF_MAX_MS;
-        if (s_disconnectStreak < 255)
-            s_disconnectStreak++;
-
         // The reason code is the single most useful number when a station
-        // won't associate, and it was being thrown away: 15 (4WAY_HANDSHAKE_
-        // TIMEOUT) or 204 (NOT_AUTHED) means the password is wrong, 201
-        // (NO_AP_FOUND) means the SSID isn't visible (wrong name, out of
-        // range, or 5 GHz-only), 2/8/200 are ordinary roaming/AP-side drops.
+        // won't associate: 15 (4WAY_HANDSHAKE_TIMEOUT) or 204 (NOT_AUTHED)
+        // means the password is wrong, 201 (NO_AP_FOUND) means the SSID
+        // isn't visible (wrong name, out of range, or 5 GHz-only), 2/8/200
+        // are ordinary roaming/AP-side drops.
         ESP_LOGW(TAG, "STA disconnected from '%s', reason %d, retrying in %u ms...", (d && d->ssid_len) ? (const char *)d->ssid : "?", d ? (int)d->reason : -1,
-                 (unsigned)backoffMs);
+                 (unsigned)RECONNECT_INTERVAL_MS);
 
-        if (backoffMs == 0) {
-            try_connect("immediate");
-        } else if (s_reconnectTimer) {
-            // Deferred, not slept: see the note on s_reconnectTimer.
+        // Deferred, not slept: see the note on s_reconnectTimer. Every
+        // disconnect - whether transient or persistent - waits the same
+        // fixed interval before the next esp_wifi_connect() attempt.
+        if (s_reconnectTimer) {
             esp_timer_stop(s_reconnectTimer); // no-op if not armed
-            esp_timer_start_once(s_reconnectTimer, (uint64_t)backoffMs * 1000ULL);
+            esp_timer_start_once(s_reconnectTimer, (uint64_t)RECONNECT_INTERVAL_MS * 1000ULL);
         }
     } else if (id == WIFI_EVENT_AP_STACONNECTED) {
         ESP_LOGI(TAG, "Client connected to AP");
@@ -159,7 +143,6 @@ static void ip_event_handler(void *arg, esp_event_base_t base, int32_t id, void 
         ip_event_got_ip_t *event = (ip_event_got_ip_t *)data;
         ESP_LOGI(TAG, "STA got IP: " IPSTR " - internet route available", IP2STR(&event->ip_info.ip));
         net_state_set_connected(true);
-        s_disconnectStreak = 0;
     }
 }
 
