@@ -25,6 +25,10 @@
 #ifndef TIME_SYNC_H
 #define TIME_SYNC_H
 
+#include <stddef.h>
+#include <stdint.h>
+#include <time.h>
+
 /**
  * @brief Start (or skip, per g_config.synctime) the SNTP client against
  * all 3 configured hosts in g_config.ntp_host[0..2] (empty slots are
@@ -58,5 +62,57 @@ void time_sync_start(void);
  * when time sync is disabled or already done.
  */
 void time_sync_1hz(void);
+
+/**
+ * @brief One entry of the built-in timezone table: a display name and its
+ * POSIX TZ rule string.
+ */
+typedef struct {
+    const char *name;     /**< Display name for the System page's timezone select, leading with the signed UTC offset followed by the country (or, for
+                            countries spanning more than one offset, the standard zone name), e.g. "UTC-5 Eastern Time (USA, Canada)". */
+    const char *posix_tz; /**< POSIX TZ rule string, as consumed by setenv("TZ", ...) / tzset(). */
+} time_sync_tz_t;
+
+/**
+ * @brief Number of entries in the built-in timezone table (see
+ * time_sync_tz_name() / time_sync_format_local()).
+ *
+ * @return Entry count. Valid indices are 0 .. time_sync_tz_count()-1.
+ */
+uint8_t time_sync_tz_count(void);
+
+/**
+ * @brief Display name of one entry of the built-in timezone table, for
+ * populating the System page's timezone @c <select>.
+ *
+ * @param idx Table index, 0 .. time_sync_tz_count()-1. Any other value is
+ *            treated as 0 (UTC).
+ * @return Short, human-readable zone label (e.g. "UTC-5 Eastern Time (USA,
+ *         Canada)"). Static storage; never NULL.
+ */
+const char *time_sync_tz_name(uint8_t idx);
+
+/**
+ * @brief Render @p utc as a local date/time string for timezone table entry
+ * @p idx, e.g. "2026-08-06 08:42:07".
+ *
+ * @details The system clock stays UTC everywhere else in the firmware (see
+ * the file-level note above) - this only converts a UTC timestamp to local
+ * civil time for display, without touching how any other part of the
+ * firmware reads or stores time. The rendered string carries no timezone
+ * name or abbreviation, only the resulting date and time, since the table
+ * entry the caller selected is the sole source of the offset applied. The
+ * process-wide @c TZ environment variable is borrowed for the duration of
+ * the call and restored to @c UTC0 immediately afterwards, under an internal
+ * lock, so a concurrent caller (or the SNTP client) never observes an
+ * unexpected @c TZ value.
+ *
+ * @param utc      UTC timestamp to convert (as from @c time(NULL)).
+ * @param idx      Timezone table index, 0 .. time_sync_tz_count()-1. Any
+ *                 other value is treated as 0 (UTC).
+ * @param out      Destination buffer for the formatted string.
+ * @param out_size Size of @p out, in bytes.
+ */
+void time_sync_format_local(time_t utc, uint8_t idx, char *out, size_t out_size);
 
 #endif // TIME_SYNC_H

@@ -309,6 +309,7 @@
 #define TR_ENABLED               "enabled"
 #define TR_DASH_DIGI_SHORT       "Digi"
 #define TR_DASH_WX_SHORT         "WX:"
+#define TR_DASH_DATETIME         "Date/Time:"
 #define TR_DASH_UPTIME           "Uptime:"
 #define TR_DASH_FREE_HEAP        "Free heap:"
 #define TR_DASH_LITTLEFS         "LittleFS:"
@@ -475,12 +476,13 @@
  * @{
  */
 #define TR_SYS_WEB_ADMIN_LOGIN       "Web Admin Login"
-#define TR_SYS_DEVICE                "Device"
+#define TR_SYS_TIME                  "Time"
 #define TR_SYS_SYNC_NTP              "Sync time via NTP"
 #define TR_SYS_NTP_HOST              "NTP host (primary)"
 #define TR_SYS_NTP_HOST2             "NTP host (fallback 2)"
 #define TR_SYS_NTP_HOST3             "NTP host (fallback 3)"
 #define TR_SYS_NTP_RESYNC            "NTP resync interval (s, min 30)"
+#define TR_SYS_TIMEZONE              "Time zone (dashboard display only)"
 #define TR_SYS_DIGI_PATH_ALIASES     "Digipeater Path Aliases"
 #define TR_SYS_PATH_1                "Path 1"
 #define TR_SYS_PATH_2                "Path 2"

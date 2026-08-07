@@ -391,8 +391,11 @@ typedef enum {
 #define POS_AMBIGUITY_MAX 4
 
 typedef struct {
-    bool synctime;   /**< Enable SNTP time sync. */
-    uint8_t cpuFreq; /**< CPU clock frequency selection (80/160/240 MHz); see cpu_freq.h. */
+    bool synctime;        /**< Enable SNTP time sync. */
+    uint8_t cpuFreq;      /**< CPU clock frequency selection (80/160/240 MHz); see cpu_freq.h. */
+    uint8_t timezone_idx; /**< Selected entry in the built-in timezone table (see ::time_sync_tz_t / time_sync_tz_count() in time_sync.h), used only to
+                             render local date/time in the web admin (System page select, dashboard). The system clock itself (time(NULL)/gmtime_r())
+                             stays UTC everywhere else in the firmware; see time_sync.h. */
 
     char my_callsign[10]; /**< "My Station" callsign, entered once on the Station page and reused by every page's "Use My Station Data". */
     float my_lat;         /**< "My Station" latitude, decimal degrees. */

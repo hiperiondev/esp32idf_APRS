@@ -27,6 +27,7 @@
 #include "cpu_freq.h"
 #include "esp_log.h"
 #include "pages.h"
+#include "time_sync.h" // time_sync_tz_count() / time_sync_tz_name() - "Time" section timezone select
 #include "translations.h"
 #include "web_common.h"
 
@@ -70,20 +71,31 @@ esp_err_t page_system_get(httpd_req_t *req) {
              "<label>" TR_F_PASSWORD "</label><input type='password' name='httpPass' id='pwd_httpPass' value='%s' maxlength='63'>"
              "<label class='pwd-show'><input type='checkbox' onclick=\"togglePwd('pwd_httpPass',this)\"> " TR_SHOW_PASSWORD "</label>"
              "</fieldset>"
-             "<fieldset><legend>" TR_SYS_DEVICE "</legend>"
+             "<fieldset><legend>" TR_SYS_TIME "</legend>"
              "<label><input type='checkbox' name='syncTime' %s> " TR_SYS_SYNC_NTP "</label>"
              "<label>" TR_SYS_NTP_HOST "</label><input type='text' name='ntpHost0' value='%s' maxlength='19'>"
              "<label>" TR_SYS_NTP_HOST2 "</label><input type='text' name='ntpHost1' value='%s' maxlength='19'>"
              "<label>" TR_SYS_NTP_HOST3 "</label><input type='text' name='ntpHost2' value='%s' maxlength='19'>"
-             "<label>" TR_SYS_NTP_RESYNC "</label><input type='number' name='ntpResync' value='%d' min='30'>"
-             "</fieldset>"
-             "<button type='submit'>" TR_BTN_SAVE "</button></form>"
-             "<form method='POST' action='/default' onsubmit=\"return confirm('" TR_SYS_CONFIRM_FACTORY_RESET "');\">"
-             "<button class='danger' type='submit'>" TR_SYS_FACTORY_RESET "</button></form>",
+             "<label>" TR_SYS_NTP_RESYNC "</label><input type='number' name='ntpResync' value='%d' min='30'>",
              (int)chip.model, (int)chip.cores, (int)chip.revision, (unsigned long)cpu_mhz, g_config.cpuFreq == 80 ? "selected" : "",
              g_config.cpuFreq == 160 ? "selected" : "", g_config.cpuFreq == 240 ? "selected" : "", (unsigned long)flash_size, esc_user, esc_pass,
              g_config.synctime ? "checked" : "", esc_ntp0, esc_ntp1, esc_ntp2, g_config.ntp_resync_sec);
     httpd_resp_sendstr_chunk(req, buf);
+
+    // Time zone select, appended at the end of the "Time" section: this only
+    // affects how the dashboard renders local date/time (see page_common.c
+    // page_dashinfo()) - the system clock itself and every APRS timestamp
+    // stay UTC regardless of this selection (see time_sync.h).
+    web_select_open(req, TR_SYS_TIMEZONE, "timeZone");
+    uint8_t tzCount = time_sync_tz_count();
+    for (uint8_t i = 0; i < tzCount; i++)
+        web_select_option(req, i, time_sync_tz_name(i), i == g_config.timezone_idx);
+    web_select_close(req);
+
+    httpd_resp_sendstr_chunk(req, "</fieldset>"
+                                  "<button type='submit'>" TR_BTN_SAVE "</button></form>"
+                                  "<form method='POST' action='/default' onsubmit=\"return confirm('" TR_SYS_CONFIRM_FACTORY_RESET "');\">"
+                                  "<button class='danger' type='submit'>" TR_SYS_FACTORY_RESET "</button></form>");
     web_send_footer(req);
     return ESP_OK;
 }
@@ -107,6 +119,11 @@ esp_err_t page_system_post(httpd_req_t *req) {
     g_config.ntp_resync_sec = (uint16_t)web_form_get_int(body, "ntpResync", g_config.ntp_resync_sec);
     if (g_config.ntp_resync_sec < NTP_RESYNC_MIN_SEC)
         g_config.ntp_resync_sec = NTP_RESYNC_MIN_SEC;
+
+    int tz = web_form_get_int(body, "timeZone", g_config.timezone_idx);
+    if (tz < 0 || tz >= time_sync_tz_count())
+        tz = 0;
+    g_config.timezone_idx = (uint8_t)tz;
 
     int freq = web_form_get_int(body, "cpuFreq", g_config.cpuFreq);
     if (freq == 80 || freq == 160 || freq == 240)

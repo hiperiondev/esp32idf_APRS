@@ -19,6 +19,7 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <time.h>
 
 #include "esp_chip_info.h"
 #include "esp_flash.h"
@@ -40,6 +41,7 @@
 #include "pages.h"
 #include "storage.h"
 #include "str_append.h"
+#include "time_sync.h" // time_sync_format_local() - dashboard local date/time (System page "Time" section)
 #include "trafficlog.h"
 #include "translations.h"
 #include "web_common.h"
@@ -248,6 +250,15 @@ esp_err_t page_dashinfo(httpd_req_t *req) {
     storage_usage(&used, &total);
     uint32_t cpu_mhz = esp_rom_get_cpu_ticks_per_us();
 
+    // Local civil date/time for the configured timezone (System page "Time"
+    // section select), rendered from the current UTC clock. The system clock
+    // and every APRS timestamp elsewhere in the firmware stay UTC regardless
+    // of this selection - see time_sync.h.
+    char localTime[40];
+    time_sync_format_local(time(NULL), g_config.timezone_idx, localTime, sizeof(localTime));
+    char localTimeEsc[40 * 6 + 1];
+    web_html_attr_escape(localTime, localTimeEsc, sizeof(localTimeEsc));
+
     // Break the raw uptime seconds down into days / hours / minutes / seconds
     // for display (e.g. "2d 3h 43m 7s") instead of a single raw seconds count.
     int64_t uptime_s = esp_timer_get_time() / 1000000LL;
@@ -256,17 +267,17 @@ esp_err_t page_dashinfo(httpd_req_t *req) {
     int64_t uptime_min = (uptime_s % 3600) / 60;
     int64_t uptime_sec = uptime_s % 60;
 
-    char buf[800];
+    char buf[900];
     snprintf(buf, sizeof(buf),
              "<fieldset><legend>" TR_DASH_SYSINFO "</legend><table><tr>"
-             "<th>" TR_DASH_UPTIME "</th><th>" TR_DASH_FREE_HEAP "</th><th>" TR_SYSINFO_MIN_FREE_HEAP "</th><th>" TR_DASH_LITTLEFS
+             "<th>" TR_DASH_DATETIME "</th><th>" TR_DASH_UPTIME "</th><th>" TR_DASH_FREE_HEAP "</th><th>" TR_SYSINFO_MIN_FREE_HEAP "</th><th>" TR_DASH_LITTLEFS
              "</th><th>" TR_SYSINFO_CPU_FREQ "</th><th>" TR_DASH_REBOOT_REASON "</th>"
              "</tr><tr>"
-             "<td>%lldd %lldh %lldm %llds</td><td><span id='dashFreeHeap'>%lu</span> bytes</td><td><span id='dashMinFreeHeap'>%lu</span> bytes</td>"
+             "<td>%s</td><td>%lldd %lldh %lldm %llds</td><td><span id='dashFreeHeap'>%lu</span> bytes</td><td><span id='dashMinFreeHeap'>%lu</span> bytes</td>"
              "<td>%u / %u bytes</td><td>%lu MHz</td><td>%s</td>"
              "</tr></table></fieldset>",
-             uptime_days, uptime_hour, uptime_min, uptime_sec, (unsigned long)esp_get_free_heap_size(), (unsigned long)esp_get_minimum_free_heap_size(),
-             (unsigned)used, (unsigned)total, (unsigned long)cpu_mhz, dash_reboot_reason_str());
+             localTimeEsc, uptime_days, uptime_hour, uptime_min, uptime_sec, (unsigned long)esp_get_free_heap_size(),
+             (unsigned long)esp_get_minimum_free_heap_size(), (unsigned)used, (unsigned)total, (unsigned long)cpu_mhz, dash_reboot_reason_str());
 
     httpd_resp_set_type(req, "text/html");
     httpd_resp_set_hdr(req, "Cache-Control", "no-store");

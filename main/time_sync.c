@@ -26,6 +26,7 @@
 #include "esp_netif_sntp.h"
 #include "esp_sntp.h"
 #include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 #include "freertos/task.h"
 
 #include "app_config.h"
@@ -63,6 +64,203 @@ static char s_host_list[3 * sizeof(g_config.ntp_host[0]) + 8]; // human-readable
 // place underneath it. These copies are taken once, under the config lock, and
 // never change afterwards.
 static char s_ntp_host[NTP_HOST_NUM][sizeof(g_config.ntp_host[0])];
+
+// Built-in timezone table backing the System page's "Time zone" select and
+// the dashboard's local date/time display. Every entry is a fixed UTC offset
+// (no DST rule), so the displayed civil time is always exactly "UTC plus the
+// signed hour count printed in the entry's own name" - matching the number
+// the operator picked on the System page. Each label leads with that signed
+// offset (e.g. "UTC-3") followed by the country name for countries that use
+// a single, nationwide offset, or the offset's standard zone name for
+// countries that span more than one offset (e.g. "UTC-5 Eastern Time (USA,
+// Canada)"), so the select lists every country regardless of how many
+// offsets it spans. Index 0 is plain "UTC" (the default - see
+// app_config_defaults() / app_config_load() clamp); the remaining entries
+// are ordered west to east, UTC-12 .. UTC+14.
+static const time_sync_tz_t TZ_TABLE[] = {
+    { "UTC", "UTC0" },
+    { "UTC-12 Baker Island, Howland Island", "<-12>12" },
+    { "UTC-11 American Samoa, Niue", "<-11>11" },
+    { "UTC-10 Hawaii", "<-10>10" },
+    { "UTC-10 Cook Islands", "<-10>10" },
+    { "UTC-9:30 Marquesas Islands", "<-0930>9:30" },
+    { "UTC-9 Alaska", "<-09>9" },
+    { "UTC-9 French Polynesia (Tahiti)", "<-09>9" },
+    { "UTC-8 Pacific Time (USA, Canada)", "<-08>8" },
+    { "UTC-7 Mountain Time (USA, Canada)", "<-07>7" },
+    { "UTC-7 Mexico (Sonora, Chihuahua)", "<-07>7" },
+    { "UTC-6 Central Time (USA, Canada)", "<-06>6" },
+    { "UTC-6 Mexico (Mexico City)", "<-06>6" },
+    { "UTC-6 Guatemala", "<-06>6" },
+    { "UTC-6 Costa Rica", "<-06>6" },
+    { "UTC-6 El Salvador", "<-06>6" },
+    { "UTC-6 Honduras", "<-06>6" },
+    { "UTC-6 Nicaragua", "<-06>6" },
+    { "UTC-5 Eastern Time (USA, Canada)", "<-05>5" },
+    { "UTC-5 Colombia", "<-05>5" },
+    { "UTC-5 Peru", "<-05>5" },
+    { "UTC-5 Ecuador", "<-05>5" },
+    { "UTC-5 Panama", "<-05>5" },
+    { "UTC-5 Cuba", "<-05>5" },
+    { "UTC-4 Atlantic Time (Canada)", "<-04>4" },
+    { "UTC-4 Venezuela", "<-04>4" },
+    { "UTC-4 Bolivia", "<-04>4" },
+    { "UTC-4 Paraguay", "<-04>4" },
+    { "UTC-4 Chile", "<-04>4" },
+    { "UTC-4 Dominican Republic", "<-04>4" },
+    { "UTC-4 Puerto Rico", "<-04>4" },
+    { "UTC-3:30 Newfoundland (Canada)", "<-0330>3:30" },
+    { "UTC-3 Argentina", "<-03>3" },
+    { "UTC-3 Brazil (Brasilia)", "<-03>3" },
+    { "UTC-3 Uruguay", "<-03>3" },
+    { "UTC-3 Suriname", "<-03>3" },
+    { "UTC-3 Greenland", "<-03>3" },
+    { "UTC-3 French Guiana", "<-03>3" },
+    { "UTC-2 South Georgia and the South Sandwich Islands", "<-02>2" },
+    { "UTC-1 Cape Verde", "<-01>1" },
+    { "UTC-1 Azores (Portugal)", "<-01>1" },
+    { "UTC+0 United Kingdom", "<+00>0" },
+    { "UTC+0 Ireland", "<+00>0" },
+    { "UTC+0 Portugal", "<+00>0" },
+    { "UTC+0 Iceland", "<+00>0" },
+    { "UTC+0 Morocco", "<+00>0" },
+    { "UTC+0 Senegal", "<+00>0" },
+    { "UTC+0 Ghana", "<+00>0" },
+    { "UTC+1 Spain", "<+01>-1" },
+    { "UTC+1 France", "<+01>-1" },
+    { "UTC+1 Germany", "<+01>-1" },
+    { "UTC+1 Italy", "<+01>-1" },
+    { "UTC+1 Netherlands", "<+01>-1" },
+    { "UTC+1 Belgium", "<+01>-1" },
+    { "UTC+1 Switzerland", "<+01>-1" },
+    { "UTC+1 Austria", "<+01>-1" },
+    { "UTC+1 Poland", "<+01>-1" },
+    { "UTC+1 Nigeria", "<+01>-1" },
+    { "UTC+1 Algeria", "<+01>-1" },
+    { "UTC+1 Tunisia", "<+01>-1" },
+    { "UTC+2 Greece", "<+02>-2" },
+    { "UTC+2 Finland", "<+02>-2" },
+    { "UTC+2 Romania", "<+02>-2" },
+    { "UTC+2 Ukraine", "<+02>-2" },
+    { "UTC+2 Egypt", "<+02>-2" },
+    { "UTC+2 South Africa", "<+02>-2" },
+    { "UTC+2 Israel", "<+02>-2" },
+    { "UTC+2 Libya", "<+02>-2" },
+    { "UTC+3 Russia (Moscow)", "<+03>-3" },
+    { "UTC+3 Turkey", "<+03>-3" },
+    { "UTC+3 Saudi Arabia", "<+03>-3" },
+    { "UTC+3 Iraq", "<+03>-3" },
+    { "UTC+3 Kenya", "<+03>-3" },
+    { "UTC+3 Ethiopia", "<+03>-3" },
+    { "UTC+3:30 Iran", "<+0330>-3:30" },
+    { "UTC+4 United Arab Emirates", "<+04>-4" },
+    { "UTC+4 Oman", "<+04>-4" },
+    { "UTC+4 Azerbaijan", "<+04>-4" },
+    { "UTC+4 Armenia", "<+04>-4" },
+    { "UTC+4 Georgia", "<+04>-4" },
+    { "UTC+4:30 Afghanistan", "<+0430>-4:30" },
+    { "UTC+5 Pakistan", "<+05>-5" },
+    { "UTC+5 Uzbekistan", "<+05>-5" },
+    { "UTC+5 Kazakhstan (Aktobe)", "<+05>-5" },
+    { "UTC+5:30 India", "<+0530>-5:30" },
+    { "UTC+5:30 Sri Lanka", "<+0530>-5:30" },
+    { "UTC+5:45 Nepal", "<+0545>-5:45" },
+    { "UTC+6 Bangladesh", "<+06>-6" },
+    { "UTC+6 Kazakhstan (Astana)", "<+06>-6" },
+    { "UTC+6 Kyrgyzstan", "<+06>-6" },
+    { "UTC+6:30 Myanmar", "<+0630>-6:30" },
+    { "UTC+7 Thailand", "<+07>-7" },
+    { "UTC+7 Vietnam", "<+07>-7" },
+    { "UTC+7 Indonesia (Jakarta)", "<+07>-7" },
+    { "UTC+7 Cambodia", "<+07>-7" },
+    { "UTC+7 Laos", "<+07>-7" },
+    { "UTC+8 China", "<+08>-8" },
+    { "UTC+8 Singapore", "<+08>-8" },
+    { "UTC+8 Malaysia", "<+08>-8" },
+    { "UTC+8 Philippines", "<+08>-8" },
+    { "UTC+8 Taiwan", "<+08>-8" },
+    { "UTC+8 Indonesia (Bali)", "<+08>-8" },
+    { "UTC+8 Western Australia", "<+08>-8" },
+    { "UTC+9 Japan", "<+09>-9" },
+    { "UTC+9 South Korea", "<+09>-9" },
+    { "UTC+9 Indonesia (Papua)", "<+09>-9" },
+    { "UTC+9:30 Central Australia", "<+0930>-9:30" },
+    { "UTC+10 Eastern Australia", "<+10>-10" },
+    { "UTC+10 Papua New Guinea", "<+10>-10" },
+    { "UTC+10:30 Lord Howe Island (Australia)", "<+1030>-10:30" },
+    { "UTC+11 New Caledonia", "<+11>-11" },
+    { "UTC+11 Solomon Islands", "<+11>-11" },
+    { "UTC+11 Vanuatu", "<+11>-11" },
+    { "UTC+12 New Zealand", "<+12>-12" },
+    { "UTC+12 Fiji", "<+12>-12" },
+    { "UTC+12 Marshall Islands", "<+12>-12" },
+    { "UTC+13 Tonga", "<+13>-13" },
+    { "UTC+13 Samoa", "<+13>-13" },
+    { "UTC+14 Kiribati (Line Islands)", "<+14>-14" },
+};
+#define TZ_TABLE_COUNT (sizeof(TZ_TABLE) / sizeof(TZ_TABLE[0]))
+
+// Serializes the brief window below that borrows the process-wide TZ
+// environment variable to render one local timestamp. Every other TZ-
+// sensitive read in the firmware uses gmtime_r() (see beacon.c, weather.c,
+// objects_items.c, lastheard.c, logUtcNow() below), which is TZ-independent,
+// so this lock only has to protect against two local-time renders (e.g. two
+// concurrent dashboard requests) overlapping each other; it never blocks the
+// rest of the firmware. Created lazily so this file keeps no init-order
+// dependency, matching app_config.c's data_mutex()/config_mutex() pattern.
+static SemaphoreHandle_t s_tz_mutex = NULL;
+
+static SemaphoreHandle_t tz_mutex(void) {
+    if (!s_tz_mutex) {
+        static portMUX_TYPE creation_lock = portMUX_INITIALIZER_UNLOCKED;
+        taskENTER_CRITICAL(&creation_lock);
+        if (!s_tz_mutex)
+            s_tz_mutex = xSemaphoreCreateMutex();
+        taskEXIT_CRITICAL(&creation_lock);
+    }
+    return s_tz_mutex;
+}
+
+uint8_t time_sync_tz_count(void) {
+    return (uint8_t)TZ_TABLE_COUNT;
+}
+
+const char *time_sync_tz_name(uint8_t idx) {
+    if (idx >= TZ_TABLE_COUNT)
+        idx = 0;
+    return TZ_TABLE[idx].name;
+}
+
+void time_sync_format_local(time_t utc, uint8_t idx, char *out, size_t out_size) {
+    if (idx >= TZ_TABLE_COUNT)
+        idx = 0;
+    if (!out || out_size == 0)
+        return;
+
+    // A device that could not allocate the mutex renders unserialized rather
+    // than aborting on a NULL handle - the same trade app_config_lock() makes
+    // for the same out-of-memory condition.
+    SemaphoreHandle_t m = tz_mutex();
+    if (m)
+        xSemaphoreTake(m, portMAX_DELAY);
+
+    setenv("TZ", TZ_TABLE[idx].posix_tz, 1);
+    tzset();
+    struct tm tmv;
+    localtime_r(&utc, &tmv);
+    // No zone name/abbreviation in the output: the table entry the caller
+    // selected already fixes the offset, so the dashboard only ever needs
+    // the resulting date and time.
+    strftime(out, out_size, "%Y-%m-%d %H:%M:%S", &tmv);
+
+    // Restore the fixed UTC0 environment sntp_setup() (and every gmtime_r()
+    // call elsewhere in the firmware) expects to find in place.
+    setenv("TZ", "UTC0", 1);
+    tzset();
+
+    if (m)
+        xSemaphoreGive(m);
+}
 
 static void logUtcNow(const char *prefix) {
     time_t now = time(NULL);

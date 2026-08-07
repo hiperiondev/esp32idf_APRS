@@ -43,6 +43,7 @@
 #include "json_store.h"    // shared JSON-file store scaffolding
 #include "sensors_local.h" // sensors_local_channel_name() / _from_name() - WX field mappings are stored by driver name, not registry index
 #include "storage.h"       // storage_write_lock() - keeps a save from overlapping a whole-partition format
+#include "time_sync.h"     // time_sync_tz_count() - bounds g_config.timezone_idx on load
 
 static const char *TAG = "app_config";
 #define CONFIG_PATH     "/storage/config.json"
@@ -127,6 +128,7 @@ void app_config_set_defaults(app_config_t *c) {
 
     c->synctime = true;
     c->cpuFreq = 240;
+    c->timezone_idx = 0; // UTC
 
     set_str(c->my_callsign, sizeof(c->my_callsign), "NOCALL");
     c->my_lat = 0.0f;
@@ -480,6 +482,7 @@ static void config_write_json(jw_t *d, const app_config_t *c) {
     jadd_str(d, "ntpHost1", c->ntp_host[1]);
     jadd_str(d, "ntpHost2", c->ntp_host[2]);
     jadd_num(d, "ntpResync", c->ntp_resync_sec);
+    jadd_num(d, "timeZone", c->timezone_idx);
     jadd_num(d, "WiFiMode", c->wifi_mode);
     jadd_num(d, "WiFiPwr", c->wifi_power);
     jadd_num(d, "WiFiAPCH", c->wifi_ap_ch);
@@ -723,6 +726,11 @@ static void config_from_json(cJSON *d, app_config_t *c) {
     c->ntp_resync_sec = (uint16_t)jget_num(d, "ntpResync", def.ntp_resync_sec);
     if (c->ntp_resync_sec < NTP_RESYNC_MIN_SEC)
         c->ntp_resync_sec = NTP_RESYNC_MIN_SEC;
+    c->timezone_idx = (uint8_t)jget_num(d, "timeZone", def.timezone_idx);
+    if (c->timezone_idx >= time_sync_tz_count()) {
+        ESP_LOGW(TAG, "timeZone %u out of range, clamped to 0 (UTC)", (unsigned)c->timezone_idx);
+        c->timezone_idx = 0;
+    }
     c->wifi_mode = (uint8_t)jget_num(d, "WiFiMode", def.wifi_mode);
     c->wifi_power = (int8_t)jget_num(d, "WiFiPwr", def.wifi_power);
     c->wifi_ap_ch = (uint8_t)jget_num(d, "WiFiAPCH", def.wifi_ap_ch);

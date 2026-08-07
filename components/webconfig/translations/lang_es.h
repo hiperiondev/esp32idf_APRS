@@ -310,6 +310,7 @@
 #define TR_ENABLED               "activado"
 #define TR_DASH_DIGI_SHORT       "Digi"
 #define TR_DASH_WX_SHORT         "WX:"
+#define TR_DASH_DATETIME         "Fecha/Hora:"
 #define TR_DASH_UPTIME           "Tiempo activo:"
 #define TR_DASH_FREE_HEAP        "Memoria libre:"
 #define TR_DASH_LITTLEFS         "LittleFS:"
@@ -483,12 +484,13 @@
  * @{
  */
 #define TR_SYS_WEB_ADMIN_LOGIN       "Acceso al administrador web"
-#define TR_SYS_DEVICE                "Dispositivo"
+#define TR_SYS_TIME                  "Hora"
 #define TR_SYS_SYNC_NTP              "Sincronizar hora vía NTP"
 #define TR_SYS_NTP_HOST              "Host NTP (primario)"
 #define TR_SYS_NTP_HOST2             "Host NTP (alternativo 2)"
 #define TR_SYS_NTP_HOST3             "Host NTP (alternativo 3)"
 #define TR_SYS_NTP_RESYNC            "Intervalo de resincronización NTP (s, mín 30)"
+#define TR_SYS_TIMEZONE              "Zona horaria (solo para el panel)"
 #define TR_SYS_DIGI_PATH_ALIASES     "Alias de ruta del Digipeater"
 #define TR_SYS_PATH_1                "Ruta 1"
 #define TR_SYS_PATH_2                "Ruta 2"
