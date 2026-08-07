@@ -187,6 +187,8 @@
 #define TR_F_RETRY_INTERVAL_S                              "Retry interval (s)"
 #define TR_F_RF_TO_INTERNET                                "RF to Internet"
 #define TR_F_RF_TX_BUFFERS                                 "TX buffers"
+#define TR_F_DUTY_CYCLE_EN                                 "Duty-cycle limiter"
+#define TR_F_DUTY_CYCLE_PCT                                "Duty-cycle limit (%)"
 #define TR_F_PTT_MIN_UNKEY_MS                              "PTT minimum unkey time (ms)"
 #define TR_F_CSMA_PERSISTENCE                              "CSMA persistence (p, 1-255)"
 #define TR_F_SEND_RECEIVE_VIA_INTERNET                     "Send/receive via Internet"
@@ -363,6 +365,7 @@
 #define TR_DASH_DROP_BREAKDOWN "Drop Breakdown"
 #define TR_DASH_TX_QUEUE       "RF TX QUEUE:"
 #define TR_DASH_CSMA_FORCED    "CSMA FORCED (BUSY/PERSIST):"
+#define TR_DASH_TX_DUTY_CYCLE  "TX DUTY CYCLE:"
 #define TR_DASH_LH_ICON        "ICON"
 
 /** @} */

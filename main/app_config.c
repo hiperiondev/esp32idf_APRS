@@ -302,9 +302,11 @@ void app_config_set_defaults(app_config_t *c) {
     c->afsk_modem_type = 1; // default 1200 Bd (AFSK/Bell202) - standard APRS audio modem
     c->fx25_mode = 0;
     c->tx_timeslot = 2000;
-    c->csma_persist = 63;    // ~25% transmit chance per clear slot, the standard AX.25/KISS Persist default
-    c->rf_tx_buffers = 1;    // see RF_TX_BUFFERS_MIN/MAX in aprs_service.h
-    c->ptt_min_unkey_ms = 0; // see PTT_MIN_UNKEY_MS_MIN/MAX in aprs_service.h
+    c->csma_persist = 63;     // ~25% transmit chance per clear slot, the standard AX.25/KISS Persist default
+    c->rf_tx_buffers = 1;     // see RF_TX_BUFFERS_MIN/MAX in aprs_service.h
+    c->duty_cycle_en = false; // long-term duty-cycle limiter off by default (opt-in) - see DUTY_CYCLE_PCT_MIN/MAX in aprs_service.h
+    c->duty_cycle_pct = 25;   // ceiling once enabled: 25% of the rolling window aprs_service.c measures it over
+    c->ptt_min_unkey_ms = 0;  // see PTT_MIN_UNKEY_MS_MIN/MAX in aprs_service.h
     set_str(c->ntp_host[0], sizeof(c->ntp_host[0]), "pool.ntp.org");
     set_str(c->ntp_host[1], sizeof(c->ntp_host[1]), "time.google.com");
     set_str(c->ntp_host[2], sizeof(c->ntp_host[2]), "time.cloudflare.com");
@@ -497,6 +499,8 @@ static void config_write_json(jw_t *d, const app_config_t *c) {
     jadd_bool(d, "audioModemEn", c->audio_modem_en);
     jadd_bool(d, "audioLPF", c->audio_lpf);
     jadd_num(d, "rfTxBuffers", c->rf_tx_buffers);
+    jadd_bool(d, "dutyCycleEn", c->duty_cycle_en);
+    jadd_num(d, "dutyCyclePct", c->duty_cycle_pct);
     jadd_num(d, "pttMinUnkeyMs", c->ptt_min_unkey_ms);
 
     jadd_bool(d, "igateEn", c->igate_en);
@@ -763,6 +767,12 @@ static void config_from_json(cJSON *d, app_config_t *c) {
         c->rf_tx_buffers = RF_TX_BUFFERS_MIN;
     else if (c->rf_tx_buffers > RF_TX_BUFFERS_MAX)
         c->rf_tx_buffers = RF_TX_BUFFERS_MAX;
+    c->duty_cycle_en = jget_bool(d, "dutyCycleEn", def.duty_cycle_en);
+    c->duty_cycle_pct = (uint8_t)jget_num(d, "dutyCyclePct", def.duty_cycle_pct);
+    if (c->duty_cycle_pct < DUTY_CYCLE_PCT_MIN)
+        c->duty_cycle_pct = DUTY_CYCLE_PCT_MIN;
+    else if (c->duty_cycle_pct > DUTY_CYCLE_PCT_MAX)
+        c->duty_cycle_pct = DUTY_CYCLE_PCT_MAX;
     c->ptt_min_unkey_ms = (uint16_t)jget_num(d, "pttMinUnkeyMs", def.ptt_min_unkey_ms);
     if (c->ptt_min_unkey_ms > PTT_MIN_UNKEY_MS_MAX)
         c->ptt_min_unkey_ms = PTT_MIN_UNKEY_MS_MAX;

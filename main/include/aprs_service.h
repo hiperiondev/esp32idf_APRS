@@ -80,6 +80,28 @@
 /** @} */
 
 /**
+ * @name Long-term TX duty-cycle ceiling valid range
+ *
+ * Inclusive valid range for g_config.duty_cycle_pct - the "Duty cycle limit"
+ * field on the Radiomodem page's Audio/AFSK section - shared by page_radio.c
+ * (which clamps the posted form value) and app_config.c (which clamps the
+ * value loaded from flash).
+ *
+ * Unlike ::CSMA_PERSIST_MIN/MAX above, which only prevent two stations from
+ * transmitting over each other, this bounds this station's OWN cumulative
+ * transmit airtime over the rolling window aprs_service.c measures it
+ * against (see DUTY_CYCLE_WINDOW_MS there), independent of how often the
+ * channel is otherwise clear. It exists so a scheduler pass in which every
+ * periodic report (beacon, objects/items, weather, telemetry, bulletins)
+ * falls due together cannot key the transmitter indefinitely just because
+ * each individual frame passed CSMA - see g_config.duty_cycle_en.
+ * @{
+ */
+#define DUTY_CYCLE_PCT_MIN 1   /**< Lowest duty-cycle ceiling, percent of the rolling window: 0 is refused, it would suppress every non-critical TX. */
+#define DUTY_CYCLE_PCT_MAX 100 /**< Highest duty-cycle ceiling, percent of the rolling window: effectively unlimited (never holds non-critical TX back). */
+/** @} */
+
+/**
  * @name TNC2 text length limit
  *
  * The RF leg encodes a TNC2 line into an AX.25 frame that has to fit
@@ -159,10 +181,19 @@ typedef struct {
     uint32_t csma_busy_forced; /**< Key-ups in which the CSMA anti-starvation floor transmitted over a channel that was still busy after the whole backoff
                                   run. A congestion figure about the frequency: the frame was sent, nothing was lost. Read live from
                                   modem_channel_busy_count(). */
-    uint32_t csma_persist_forced; /**< Key-ups in which the CSMA anti-starvation floor transmitted after a backoff run that found the channel clear every
-                                     slot and missed the persistence roll every time. This one measures only the configured CSMA persistence: with the
-                                     standard value of 63 about one key-up in ten lands here, so a figure near a tenth of PACKET TX is normal and a much
-                                     larger share means persistence is set too low. Read live from modem_persistence_missed_count(). */
+    uint32_t csma_persist_forced;  /**< Key-ups in which the CSMA anti-starvation floor transmitted after a backoff run that found the channel clear every
+                                      slot and missed the persistence roll every time. This one measures only the configured CSMA persistence: with the
+                                      standard value of 63 about one key-up in ten lands here, so a figure near a tenth of PACKET TX is normal and a much
+                                      larger share means persistence is set too low. Read live from modem_persistence_missed_count(). */
+    uint32_t tx_duty_cycle_pct;    /**< This station's own estimated transmit airtime right now, as a percentage of the rolling window
+                                      aprs_service.c measures it over (see DUTY_CYCLE_WINDOW_MS there) - independent of channel congestion, unlike the two
+                                      CSMA figures above. Kept live even while duty_cycle_limit_pct reads 0 (limiter disabled), so the dashboard can show
+                                      the figure an operator would be capping if they turned the limiter on. */
+    uint32_t duty_cycle_limit_pct; /**< The configured duty-cycle ceiling (g_config.duty_cycle_pct, clamped to DUTY_CYCLE_PCT_MIN..MAX) that
+                                      tx_duty_cycle_pct is measured against, or 0 if g_config.duty_cycle_en is off (no ceiling enforced). Once
+                                      tx_duty_cycle_pct reaches this value, non-critical RF TX (beacons, objects/items, weather, telemetry, bulk IGate
+                                      INET->RF relay) is held back - see DROP_TX_DUTY_CYCLE in igate.h - while message traffic and digipeat repeats keep
+                                      transmitting. */
 } aprs_service_stats_t;
 
 /**

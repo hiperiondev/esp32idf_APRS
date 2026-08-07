@@ -25,6 +25,7 @@
 
 #include "esp_log.h"
 #include "esp_random.h"
+#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
@@ -86,6 +87,45 @@ static const char *TAG = "aprs_service";
 // (see aprs_service_set_beacon_context()); every other caller drops rather than waits.
 #define RF_TX_DRAIN_WAIT_MS 4000
 #define RF_TX_DRAIN_POLL_MS 20
+
+// ---------------------------------------------------------------------------
+// Long-term TX duty-cycle limiter
+//
+// The CSMA/p-persistent gear above (tx_timeslot, csma_persist) and the RF TX
+// ring backlog cap (rf_tx_buffers) only ever look at the instant a frame is
+// offered for transmission: whether the channel is clear right now, and
+// whether the ring has room right now. Neither one bounds how much of a
+// rolling window this station itself spends transmitting - a scheduler pass
+// in which several independently-scheduled periodic reports (beacon,
+// objects/items, weather, telemetry, bulletins) fall due together clears
+// CSMA individually, one after another, with no ceiling on the cumulative
+// airtime that run adds up to.
+// This accumulator gives that ceiling, tracked independently of channel
+// contention, as standard practice (and in several band plans a hard
+// regulatory requirement) for an unattended/automatic station.
+//
+// The window is a fixed-size ring of DUTY_CYCLE_BUCKET_COUNT buckets, each
+// covering DUTY_CYCLE_BUCKET_MS of wall-clock time and holding the
+// milliseconds of estimated airtime transmitted during it. Advancing the
+// window (duty_cycle_advance_locked()) zeroes every bucket the clock has
+// moved past since the last touch, so the sum of all buckets is always the
+// airtime transmitted within the last DUTY_CYCLE_WINDOW_MS, no separate
+// timer or task required to age entries out.
+#define DUTY_CYCLE_WINDOW_MS    (10U * 60U * 1000U)                           // rolling window the ceiling is measured over: 10 minutes
+#define DUTY_CYCLE_BUCKET_MS    (15U * 1000U)                                 // width of one accumulator bucket
+#define DUTY_CYCLE_BUCKET_COUNT (DUTY_CYCLE_WINDOW_MS / DUTY_CYCLE_BUCKET_MS) // number of buckets the ring holds (40 at the defaults above)
+
+// Fixed per-frame overhead, in bytes, folded into estimate_tx_airtime_ms()'s
+// airtime estimate on top of the TNC2 text length: the opening/closing HDLC
+// flag bytes and the 2-byte FCS that the encoded AX.25 frame carries and the
+// TNC2 text does not.
+#define DUTY_CYCLE_FRAME_OVERHEAD_BYTES 8
+
+// Worst-case HDLC bit-stuffing allowance, percent, added to the raw bit count
+// in estimate_tx_airtime_ms(): one stuffed bit is inserted per five
+// consecutive 1 bits, so this over-estimates rather than under-estimates the
+// airtime a frame actually spends on the air.
+#define DUTY_CYCLE_BITSTUFF_PCT 20
 
 // Size of the buffer aprs_msg_callback() renders a received frame into. See
 // the derivation of the 365-character worst case there; rounded up to 384 to
@@ -214,6 +254,11 @@ static atomic_uint_fast32_t s_statErr =
 // busy RF leg never stalls RX decode or the APRS-IS socket task.
 static volatile TaskHandle_t s_beaconCtxTask = NULL;
 
+// Forward declaration: the duty-cycle accumulator (state and the rest of its
+// helpers) is defined further down, right before the TX helper that feeds it,
+// but aprs_service_get_stats() below needs the live percentage too.
+static uint8_t duty_cycle_pct(void);
+
 void aprs_service_set_beacon_context(void) {
     s_beaconCtxTask = xTaskGetCurrentTaskHandle();
 }
@@ -244,6 +289,22 @@ aprs_service_stats_t aprs_service_get_stats(void) {
     s.csma_busy_forced = modem_channel_busy_count();
     s.csma_persist_forced = modem_persistence_missed_count();
 
+    // Duty-cycle figures: the live measured percentage is always populated
+    // (see duty_cycle_pct()'s forward declaration below), independent of
+    // whether the limiter is enabled, so the dashboard can show what an
+    // operator would be capping before they turn it on. duty_cycle_limit_pct
+    // reads 0 - "no ceiling enforced" - whenever g_config.duty_cycle_en is off.
+    s.tx_duty_cycle_pct = duty_cycle_pct();
+    s.duty_cycle_limit_pct = 0;
+    if (g_config.duty_cycle_en) {
+        uint8_t ceiling = g_config.duty_cycle_pct;
+        if (ceiling < DUTY_CYCLE_PCT_MIN)
+            ceiling = DUTY_CYCLE_PCT_MIN;
+        else if (ceiling > DUTY_CYCLE_PCT_MAX)
+            ceiling = DUTY_CYCLE_PCT_MAX;
+        s.duty_cycle_limit_pct = ceiling;
+    }
+
     uint8_t lim = g_config.rf_tx_buffers;
     if (lim < RF_TX_BUFFERS_MIN)
         lim = RF_TX_BUFFERS_MIN;
@@ -269,6 +330,119 @@ void aprs_service_apply_modem_config(void) {
 static volatile bool s_modemReady = false;
 
 // ---------------------------------------------------------------------------
+// Duty-cycle accumulator state (see the block comment above DUTY_CYCLE_WINDOW_MS).
+//
+// s_dutyBucketMs[] is a ring of DUTY_CYCLE_BUCKET_COUNT buckets; s_dutyBucketIndex
+// names the bucket currently being written. s_dutyBucketBaseUs is the esp_timer
+// time that bucket started at, 0 meaning "never transmitted yet" (nothing to
+// slide forward). Touched from whichever task happens to be transmitting -
+// RX/digipeat, INET2RF, message TX and every own-station beacon task alike -
+// so access is protected by a short spinlock rather than assumed
+// single-threaded.
+static uint32_t s_dutyBucketMs[DUTY_CYCLE_BUCKET_COUNT];
+static uint32_t s_dutyBucketIndex = 0;
+static int64_t s_dutyBucketBaseUs = 0;
+static portMUX_TYPE s_dutyLock = portMUX_INITIALIZER_UNLOCKED;
+
+// Slides the accumulator ring forward to `now_us`, zeroing every bucket the
+// clock has moved past since the last call. Must be called with s_dutyLock held.
+static void duty_cycle_advance_locked(int64_t now_us) {
+    if (s_dutyBucketBaseUs == 0) {
+        // First transmission this boot: open the window here rather than
+        // treating the whole idle time since startup as part of it.
+        s_dutyBucketBaseUs = now_us;
+        return;
+    }
+    int64_t elapsed_ms = (now_us - s_dutyBucketBaseUs) / 1000;
+    if (elapsed_ms < (int64_t)DUTY_CYCLE_BUCKET_MS)
+        return; // still inside the current bucket, nothing to slide
+    uint32_t buckets_elapsed = (uint32_t)(elapsed_ms / DUTY_CYCLE_BUCKET_MS);
+    if (buckets_elapsed >= DUTY_CYCLE_BUCKET_COUNT) {
+        // The whole window is stale (nothing transmitted for a full
+        // DUTY_CYCLE_WINDOW_MS): clear it all in one pass instead of
+        // stepping through DUTY_CYCLE_BUCKET_COUNT no-op writes.
+        memset(s_dutyBucketMs, 0, sizeof(s_dutyBucketMs));
+    } else {
+        for (uint32_t i = 0; i < buckets_elapsed; i++) {
+            s_dutyBucketIndex = (s_dutyBucketIndex + 1) % DUTY_CYCLE_BUCKET_COUNT;
+            s_dutyBucketMs[s_dutyBucketIndex] = 0;
+        }
+    }
+    s_dutyBucketBaseUs += (int64_t)buckets_elapsed * DUTY_CYCLE_BUCKET_MS * 1000;
+}
+
+// Sum of every bucket in the ring: the airtime transmitted within the last
+// DUTY_CYCLE_WINDOW_MS as of the last duty_cycle_advance_locked() call. Must
+// be called with s_dutyLock held.
+static uint32_t duty_cycle_used_ms_locked(void) {
+    uint32_t total = 0;
+    for (uint32_t i = 0; i < DUTY_CYCLE_BUCKET_COUNT; i++)
+        total += s_dutyBucketMs[i];
+    return total;
+}
+
+// Current measured duty cycle, as a percentage of DUTY_CYCLE_WINDOW_MS,
+// capped at 100. Safe to call from any task; used both by the TX gate below
+// and by aprs_service_get_stats() for the dashboard.
+static uint8_t duty_cycle_pct(void) {
+    int64_t now = esp_timer_get_time();
+    uint32_t used;
+    portENTER_CRITICAL(&s_dutyLock);
+    duty_cycle_advance_locked(now);
+    used = duty_cycle_used_ms_locked();
+    portEXIT_CRITICAL(&s_dutyLock);
+    uint32_t pct = (used * 100u) / DUTY_CYCLE_WINDOW_MS;
+    return (pct > 100u) ? 100 : (uint8_t)pct;
+}
+
+// Adds `ms` of estimated airtime to the bucket the current moment falls into.
+// Called once per successful RF transmit, critical or not: the ceiling only
+// gates non-critical traffic, but message and digipeat traffic still counts
+// against the window, since it is real airtime either way.
+static void duty_cycle_add_ms(uint32_t ms) {
+    int64_t now = esp_timer_get_time();
+    portENTER_CRITICAL(&s_dutyLock);
+    duty_cycle_advance_locked(now);
+    s_dutyBucketMs[s_dutyBucketIndex] += ms;
+    portEXIT_CRITICAL(&s_dutyLock);
+}
+
+// Baud rate, in bits/second, of the currently configured audio AFSK
+// modulation (see g_config.afsk_modem_type / aprs_service_build_modem_config()),
+// used only to turn a frame's byte count into an estimated on-air duration
+// for the duty-cycle accumulator below.
+static uint32_t duty_cycle_baud_rate(void) {
+    switch (g_config.afsk_modem_type) {
+        case 0:
+            return 300; // AFSK300
+        case 3:
+            return 9600; // G3RUH/FSK
+        default:
+            return 1200; // Bell202 or V.23 (both 1200 Bd)
+    }
+}
+
+// Estimated on-air time, in milliseconds, of transmitting a TNC2 line of
+// `tnc2_len` bytes at the current modem settings: the configured TXDelay
+// preamble plus the encoded frame at the configured baud rate.
+//
+// tnc2_len stands in for the actual encoded AX.25 frame's byte count, which
+// is not available at this layer - modem_send_tnc2() does its own
+// ax25_encode() internally. The two are not identical (binary AX.25 address
+// fields are 7 bytes each versus their longer ASCII TNC2 rendering), but
+// DUTY_CYCLE_FRAME_OVERHEAD_BYTES and DUTY_CYCLE_BITSTUFF_PCT keep the
+// estimate on the conservative side, which is all a duty-cycle *budget*
+// needs: it only has to bound cumulative airtime, not time an individual
+// frame to the bit.
+static uint32_t estimate_tx_airtime_ms(size_t tnc2_len) {
+    uint32_t baud = duty_cycle_baud_rate();
+    uint32_t frame_bits = ((uint32_t)tnc2_len + DUTY_CYCLE_FRAME_OVERHEAD_BYTES) * 8;
+    frame_bits += frame_bits * DUTY_CYCLE_BITSTUFF_PCT / 100;
+    uint32_t data_ms = (frame_bits * 1000u) / baud;
+    return (uint32_t)g_config.preamble + data_ms;
+}
+
+// ---------------------------------------------------------------------------
 // TX helper
 //
 // Callers build TNC2 text into larger scratch buffers and pass a pointer plus a
@@ -277,10 +451,16 @@ static volatile bool s_modemReady = false;
 // scratch buffer for ax25_encode(), which runs strtok over the digipeater
 // path), so the terminator is applied here rather than trusted from the caller.
 //
-// Exported (beacon.c calls it too) so the pointer+length -> NUL-terminated
-// conversion and the length check live in exactly one place.
+// `critical` exempts message traffic and digipeat repeats from the duty-cycle
+// ceiling below (see the DUTY_CYCLE_WINDOW_MS block comment): every other
+// caller - every own-station beacon (through the public aprs_service_send_tnc2()
+// wrapper) and the bulk IGate INET->RF relay - is held back once this
+// station's own measured airtime reaches the configured ceiling. Every
+// transmit still counts toward the window regardless of `critical`, since
+// message and digipeat traffic is real airtime too; only the gate itself is
+// skipped for it.
 // ---------------------------------------------------------------------------
-bool aprs_service_send_tnc2(const char *packet, size_t len) {
+static bool send_tnc2_impl(const char *packet, size_t len, bool critical) {
     char buf[AX25_FRAME_MAX_SIZE];
 
     if (len == 0)
@@ -300,6 +480,34 @@ bool aprs_service_send_tnc2(const char *packet, size_t len) {
         ESP_LOGD(TAG, "modem not up, RF TX dropped: %.*s", (int)len, packet);
         return false;
     }
+
+    // Long-term duty-cycle ceiling: bounds this station's OWN cumulative
+    // transmit airtime over the rolling DUTY_CYCLE_WINDOW_MS window,
+    // independent of the CSMA channel-access checks (tx_timeslot/csma_persist)
+    // and the RF TX ring backlog check below, neither of which look further
+    // back than the current instant. Off by default (g_config.duty_cycle_en);
+    // when on, only non-critical traffic is held back here - message traffic
+    // and digipeat repeats (critical == true) always transmit. A held-back
+    // frame is not lost: every non-critical caller is a periodic task that
+    // re-offers the same report on its own next interval, so this is a defer
+    // rather than a drop, even though it is counted alongside the other
+    // reasons in DROP_TX_DUTY_CYCLE for visibility on the dashboard.
+    if (!critical && g_config.duty_cycle_en) {
+        uint8_t ceiling = g_config.duty_cycle_pct;
+        if (ceiling < DUTY_CYCLE_PCT_MIN)
+            ceiling = DUTY_CYCLE_PCT_MIN;
+        else if (ceiling > DUTY_CYCLE_PCT_MAX)
+            ceiling = DUTY_CYCLE_PCT_MAX;
+        uint8_t used = duty_cycle_pct();
+        if (used >= ceiling) {
+            atomic_fetch_add_explicit(&s_statDrop, 1, memory_order_relaxed);
+            igate_note_drop(DROP_TX_DUTY_CYCLE);
+            ESP_LOGW(TAG, "duty-cycle ceiling reached (%u%%/%u%% of %u min), non-critical TX deferred: %.*s", (unsigned)used, (unsigned)ceiling,
+                     (unsigned)(DUTY_CYCLE_WINDOW_MS / 60000U), (int)len, packet);
+            return false;
+        }
+    }
+
     // Allow a small backlog rather than discarding the moment one frame is
     // in flight: up to g_config.rf_tx_buffers frames may sit in the ring
     // (waiting to key up or on the air right now) before a new packet is
@@ -369,6 +577,11 @@ bool aprs_service_send_tnc2(const char *packet, size_t len) {
         return false;
     }
     atomic_fetch_add_explicit(&s_statRadioTx, 1, memory_order_relaxed);
+    // Count this frame's estimated airtime toward the duty-cycle window,
+    // whether or not the ceiling above is even enabled, so the dashboard's
+    // live figure (see aprs_service_get_stats()) is meaningful the moment an
+    // operator turns the limiter on rather than starting from a cold window.
+    duty_cycle_add_ms(estimate_tx_airtime_ms(len));
     // Report the backlog right as it stands, not just once the ring finally
     // drains (see ax25.c's "PTT OFF" log). A packet transmits fast enough,
     // relative to how often most of these callers fire, that by the time
@@ -381,6 +594,17 @@ bool aprs_service_send_tnc2(const char *packet, size_t len) {
     // it in the same uninterrupted key-up) has already gone out.
     ESP_LOGI(TAG, "queued for RF TX (%u/%u buffer(s) now pending)", (unsigned)modem_tx_queue_depth(), (unsigned)limit);
     return true;
+}
+
+// Public, non-critical entry point: every own-station periodic report
+// (beacon.c, weather.c, telemetry.c, objects_items.c, bulletins.c) reaches RF
+// through this one function, so this is exactly the traffic the duty-cycle
+// ceiling in send_tnc2_impl() is meant to hold back first. Message traffic
+// and digipeat repeats go through send_tnc2_impl() directly with
+// critical == true instead (see aprs_msg_callback(), messageTxHandler() and
+// inet2rfHandler() below).
+bool aprs_service_send_tnc2(const char *packet, size_t len) {
+    return send_tnc2_impl(packet, len, false);
 }
 
 // ---------------------------------------------------------------------------
@@ -486,7 +710,7 @@ static void aprs_msg_callback(ax25_msg_t *msg) {
         if (action == 2) {
             // Path was rewritten in place; re-transmit the modified frame on RF.
             int len = ax25ToTnc2(msg, tnc2, sizeof(tnc2));
-            if (aprs_service_send_tnc2(tnc2, (size_t)len)) {
+            if (send_tnc2_impl(tnc2, (size_t)len, true)) {
                 atomic_fetch_add_explicit(&s_statDigi, 1, memory_order_relaxed);
                 ESP_LOGD(TAG, "DIGI TX: %s", tnc2);
                 trafficlog_add_pkt("DIGI", callsign, tnc2, -1, symTable, symCode);
@@ -1088,7 +1312,14 @@ static void inet2rfHandler(const char *line) {
         if (txLen <= 0)
             return;
 
-        if (aprs_service_send_tnc2(thirdPartyFrame, (size_t)txLen)) {
+        // Only an actual APRS message (including the ack sent back for one)
+        // is exempt from the duty-cycle ceiling here - the rest of the
+        // INET->RF relay (position/object/weather/telemetry/bulletins picked
+        // up from APRS-IS) is exactly the bulk, non-critical traffic that
+        // ceiling exists to hold back. `type` reflects the unwrapped inner
+        // payload when the selective third-party unwrap above fired, so this
+        // always tests the type actually being transmitted.
+        if (send_tnc2_impl(thirdPartyFrame, (size_t)txLen, (type & IGATE_FILT_MESSAGE) != 0)) {
             atomic_fetch_add_explicit(&s_statInet2Rf, 1, memory_order_relaxed);
             ESP_LOGD(TAG, "INET2RF TX: %.*s", txLen, thirdPartyFrame);
             trafficlog_add_pkt("INET2RF", budlistCall, thirdPartyFrame, -1, symTable, symCode);
@@ -1116,8 +1347,10 @@ static void inet2rfHandler(const char *line) {
 // Outbound message TX: message.c hands us a built TNC2 packet + channel mask.
 // ---------------------------------------------------------------------------
 static void messageTxHandler(const char *packet, size_t len, uint8_t channels) {
+    // Critical: APRS messages (and their acks/retries) are exempt from the
+    // duty-cycle ceiling in send_tnc2_impl() - see the block comment there.
     if (channels & MSG_CHANNEL_RF)
-        aprs_service_send_tnc2(packet, len);
+        send_tnc2_impl(packet, len, true);
     if (channels & MSG_CHANNEL_INET)
         igate_send_raw(packet, len);
 }

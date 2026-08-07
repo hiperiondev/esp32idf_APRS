@@ -398,11 +398,19 @@ esp_err_t page_sidebar_info(httpd_req_t *req) {
                // persistence is (with the standard 63, about a tenth of
                // PACKET TX above).
                "<tr><td>" TR_DASH_CSMA_FORCED "</td><td>%lu/%lu</td></tr>"
+               // Live measured transmit duty cycle vs the configured ceiling
+               // (0 = limiter disabled, no ceiling enforced) - see
+               // g_config.duty_cycle_en/duty_cycle_pct and the accumulator in
+               // aprs_service.c. Populated even while disabled, so an
+               // operator can see what they would be capping before turning
+               // the limiter on.
+               "<tr><td>" TR_DASH_TX_DUTY_CYCLE "</td><td>%lu%%/%lu%%</td></tr>"
                "</table></fieldset>",
                (unsigned long)svcStats.radio_rx, (unsigned long)svcStats.radio_tx, (unsigned long)svcStats.rf2inet, (unsigned long)svcStats.inet2rf,
                (unsigned long)igs.isRxCount, (unsigned long)igs.isTxCount, (unsigned long)svcStats.digi, (unsigned long)igate_stats_total_drop(&igs),
                (unsigned long)igate_stats_total_err(&igs), (unsigned long)svcStats.tx_queue_depth, (unsigned long)svcStats.tx_queue_limit,
-               (unsigned long)svcStats.csma_busy_forced, (unsigned long)svcStats.csma_persist_forced);
+               (unsigned long)svcStats.csma_busy_forced, (unsigned long)svcStats.csma_persist_forced, (unsigned long)svcStats.tx_duty_cycle_pct,
+               (unsigned long)svcStats.duty_cycle_limit_pct);
 
     // -- Drop breakdown -------------------------------------------------
     // Per-reason detail behind the aggregate DROP/ERR tile above: lets an

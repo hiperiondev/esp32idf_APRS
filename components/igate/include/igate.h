@@ -102,6 +102,10 @@ typedef enum {
     DROP_MODEM_NOT_READY,    /**< RF TX attempted before the audio modem finished bring-up. */
     DROP_TX_QUEUE_FULL,      /**< RF TX ring already holds "TX buffers" pending frames; new frame discarded instead of queued. */
     DROP_TX_TOO_LONG,        /**< Outgoing TNC2 packet longer than the modem's frame buffer. */
+    DROP_TX_DUTY_CYCLE,      /**< Non-critical RF TX (beacon, object/item, weather, telemetry, or bulk IGate INET->RF relay) held back because the
+                                station's measured transmit airtime over the rolling duty-cycle window has reached the configured ceiling
+                                (g_config.duty_cycle_en/duty_cycle_pct). Message traffic and digipeat repeats are exempt and always transmit; the deferred
+                                frame is simply re-offered on its own next scheduled attempt, so this is a hold-back rather than a permanent loss. */
     ERR_MODEM_SEND_FAIL,     /**< modem_send_tnc2() itself returned an error transmitting an RF frame. */
     ERR_AX25_DECODE,         /**< RX frame too short or with an address field running past the frame end: a malformed/corrupted reception, not a
                                 well-formed non-APRS frame (see ERR_AX25_NOT_APRS for that case). */

@@ -560,6 +560,15 @@ typedef struct {
     uint8_t rf_tx_buffers; /**< Max frames allowed to sit in the RF TX ring before aprs_service_send_tnc2() starts discarding new packets. Web-configurable and
                               applied live (read on every transmit). Range RF_TX_BUFFERS_MIN..RF_TX_BUFFERS_MAX (aprs_service.h), default 1. */
 
+    bool duty_cycle_en;     /**< Long-term TX duty-cycle limiter enabled. Off by default. When on, aprs_service.c holds back non-critical RF TX (own-station
+                                beacons, objects/items, weather, telemetry, bulletins, and the bulk IGate INET->RF relay) once this station's own measured
+                                transmit airtime over its rolling window reaches duty_cycle_pct; APRS messages/acks and digipeat repeats are always exempt.
+                                Independent of, and in addition to, the CSMA channel-access checks (tx_timeslot/csma_persist above), which only prevent
+                                collisions and have no memory of this station's own past transmissions. */
+    uint8_t duty_cycle_pct; /**< Duty-cycle ceiling, as a percentage of the rolling window aprs_service.c measures it over, enforced only while
+                                duty_cycle_en is on. Web-configurable and applied live (read on every non-critical transmit, no reboot needed). Range
+                                DUTY_CYCLE_PCT_MIN..DUTY_CYCLE_PCT_MAX (aprs_service.h), default 25. */
+
     char ntp_host[NTP_HOST_NUM][20]; /**< Up to ::NTP_HOST_NUM NTP server hostnames. */
     uint16_t ntp_resync_sec;         /**< NTP resync interval, seconds (floored at ::NTP_RESYNC_MIN_SEC). */
 

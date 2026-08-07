@@ -122,6 +122,17 @@ esp_err_t page_radio_get(httpd_req_t *req) {
         web_select_option(req, i, label, g_config.rf_tx_buffers == i);
     }
     web_select_close(req);
+    // Long-term TX duty-cycle ceiling: bounds this station's own cumulative
+    // transmit airtime over the rolling window aprs_service.c measures it
+    // over, independent of the CSMA channel-access settings above (which
+    // only prevent collisions and have no memory of past transmissions).
+    // Off by default; when enabled, non-critical RF TX (own-station beacons,
+    // objects/items, weather, telemetry, bulletins, bulk IGate INET->RF
+    // relay) is held back once the ceiling is reached, while APRS messages/
+    // acks and digipeat repeats keep transmitting. Applied live on Save, same
+    // as rfPreamble/txTimeSlot above - see g_config.duty_cycle_en/duty_cycle_pct.
+    web_field_checkbox(req, TR_F_DUTY_CYCLE_EN, "dutyCycleEn", g_config.duty_cycle_en);
+    web_field_int(req, TR_F_DUTY_CYCLE_PCT, "dutyCyclePct", g_config.duty_cycle_pct, DUTY_CYCLE_PCT_MIN, DUTY_CYCLE_PCT_MAX);
     // Extra minimum PTT-off (unkeyed) hold time between transmissions, in
     // milliseconds, on top of the fixed one-service-tick release holdoff the
     // modem always applies (~10 ms). Useful for radios/repeaters that need a
@@ -299,6 +310,19 @@ esp_err_t page_radio_post(httpd_req_t *req) {
         rf_tx_buffers_in = RF_TX_BUFFERS_MAX;
     g_config.rf_tx_buffers = (uint8_t)rf_tx_buffers_in;
 
+    // Long-term TX duty-cycle ceiling (DUTY_CYCLE_PCT_MIN..DUTY_CYCLE_PCT_MAX,
+    // default 25, enforced only while dutyCycleEn is on) - clamp defensively
+    // against a malformed POST, same reasoning as rf_tx_buffers above. See
+    // g_config.duty_cycle_en/duty_cycle_pct and the accumulator in
+    // aprs_service.c for how this is enforced.
+    g_config.duty_cycle_en = web_form_get_bool(body, "dutyCycleEn");
+    int duty_cycle_pct_in = web_form_get_int(body, "dutyCyclePct", g_config.duty_cycle_pct);
+    if (duty_cycle_pct_in < DUTY_CYCLE_PCT_MIN)
+        duty_cycle_pct_in = DUTY_CYCLE_PCT_MIN;
+    else if (duty_cycle_pct_in > DUTY_CYCLE_PCT_MAX)
+        duty_cycle_pct_in = DUTY_CYCLE_PCT_MAX;
+    g_config.duty_cycle_pct = (uint8_t)duty_cycle_pct_in;
+
     // Extra minimum PTT-off hold time between transmissions
     // (PTT_MIN_UNKEY_MS_MIN..PTT_MIN_UNKEY_MS_MAX ms, default 0 = disabled) -
     // clamp defensively against a malformed POST,
@@ -342,11 +366,12 @@ esp_err_t page_radio_post(httpd_req_t *req) {
     // CSMA persistence, flat-audio flag, FX.25 mode and the PTT minimum unkey
     // time all go through modem_set_modem().
     //
-    // rfTxBuffers needs no propagation into the modem component at all:
-    // aprs_service_send_tnc2() (above modem.c, in this same binary) reads
-    // g_config.rf_tx_buffers straight off g_config on every call, so it is
-    // already live the instant app_config_unlock() runs, before this
-    // function is even reached.
+    // rfTxBuffers and the duty-cycle settings need no propagation into the
+    // modem component at all: aprs_service_send_tnc2()/send_tnc2_impl()
+    // (above modem.c, in this same binary) read g_config.rf_tx_buffers and
+    // g_config.duty_cycle_en/duty_cycle_pct straight off g_config on every
+    // call, so they are already live the instant app_config_unlock() runs,
+    // before this function is even reached.
     //
     // audioModemEn still needs a reboot: modem_init() only runs at boot, from
     // main.c, and this no-ops until it has.

@@ -178,6 +178,8 @@ const char *igate_drop_reason_name(drop_reason_t reason) {
             return "RF TX queue full";
         case DROP_TX_TOO_LONG:
             return "TX packet too long";
+        case DROP_TX_DUTY_CYCLE:
+            return "duty-cycle ceiling reached";
         case ERR_MODEM_SEND_FAIL:
             return "modem send failed";
         case ERR_AX25_DECODE:
