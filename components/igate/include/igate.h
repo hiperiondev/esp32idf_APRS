@@ -103,7 +103,11 @@ typedef enum {
     DROP_TX_QUEUE_FULL,      /**< RF TX ring already holds "TX buffers" pending frames; new frame discarded instead of queued. */
     DROP_TX_TOO_LONG,        /**< Outgoing TNC2 packet longer than the modem's frame buffer. */
     ERR_MODEM_SEND_FAIL,     /**< modem_send_tnc2() itself returned an error transmitting an RF frame. */
-    ERR_AX25_DECODE,         /**< RX frame failed to decode as a valid APRS (UI, no-layer-3) AX.25 frame. */
+    ERR_AX25_DECODE,         /**< RX frame too short or with an address field running past the frame end: a malformed/corrupted reception, not a
+                                well-formed non-APRS frame (see ERR_AX25_NOT_APRS for that case). */
+    ERR_AX25_NOT_APRS,       /**< RX frame decoded as a well-formed AX.25 frame but is not APRS: Control field not UI, or UI with a PID other than
+                                "no layer 3". Expected, benign traffic on a channel shared with legacy connected-mode packet stations - distinguished
+                                from ERR_AX25_DECODE so the dashboard can tell "channel has non-APRS traffic on it" apart from "my decoder is broken". */
     DROP_DIGI_MALFORMED,     /**< Digipeater: frame too short to carry a destination / usable path. */
     DROP_DIGI_PLACEHOLDER_CALL, /**< Digipeater: source callsign is the NOCALL/MYCALL sentinel. */
     DROP_DIGI_ALREADY_USED,     /**< Digipeater: path already carries this digipeater's call marked used ('*'). */
@@ -132,17 +136,17 @@ typedef struct {
 
 /**
  * @brief Sum of every "drop" (not "err") dropByReason[] bucket - the DROP
- * half of the dashboard's DROP/ERR tile. Excludes ERR_MODEM_SEND_FAIL and
- * ERR_AX25_DECODE, which igate_stats_total_err() covers instead, so the two
- * numbers the tile shows add up to exactly the Drop Breakdown table's sum
- * with nothing counted twice.
+ * half of the dashboard's DROP/ERR tile. Excludes ERR_MODEM_SEND_FAIL,
+ * ERR_AX25_DECODE and ERR_AX25_NOT_APRS, which igate_stats_total_err()
+ * covers instead, so the two numbers the tile shows add up to exactly the
+ * Drop Breakdown table's sum with nothing counted twice.
  * @param s Stats snapshot (e.g. from igate_get_stats()).
  * @return Total number of drops across all non-err reasons.
  */
 static inline uint32_t igate_stats_total_drop(const igate_stats_t *s) {
     uint32_t total = 0;
     for (int i = 0; i < DROP_REASON_COUNT; i++) {
-        if (i == ERR_MODEM_SEND_FAIL || i == ERR_AX25_DECODE)
+        if (i == ERR_MODEM_SEND_FAIL || i == ERR_AX25_DECODE || i == ERR_AX25_NOT_APRS)
             continue;
         total += s->dropByReason[i];
     }
@@ -151,12 +155,13 @@ static inline uint32_t igate_stats_total_drop(const igate_stats_t *s) {
 
 /**
  * @brief Sum of every "err" dropByReason[] bucket (ERR_MODEM_SEND_FAIL,
- * ERR_AX25_DECODE) - the ERR half of the dashboard's DROP/ERR tile.
+ * ERR_AX25_DECODE, ERR_AX25_NOT_APRS) - the ERR half of the dashboard's
+ * DROP/ERR tile.
  * @param s Stats snapshot (e.g. from igate_get_stats()).
- * @return Total number of errors across both err reasons.
+ * @return Total number of errors across all err reasons.
  */
 static inline uint32_t igate_stats_total_err(const igate_stats_t *s) {
-    return s->dropByReason[ERR_MODEM_SEND_FAIL] + s->dropByReason[ERR_AX25_DECODE];
+    return s->dropByReason[ERR_MODEM_SEND_FAIL] + s->dropByReason[ERR_AX25_DECODE] + s->dropByReason[ERR_AX25_NOT_APRS];
 }
 
 /**

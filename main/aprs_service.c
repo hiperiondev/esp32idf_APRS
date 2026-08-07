@@ -540,18 +540,31 @@ static void on_rx_frame(const modem_rx_frame_t *f, void *ctx) {
     atomic_fetch_add_explicit(&s_statRadioRx, 1, memory_order_relaxed);
 
     memset(&msg, 0, sizeof(msg));
-    if (!ax25_decode((uint8_t *)f->frame, f->len, f->mVrms, &msg)) {
-        // Not a decodable APRS (UI, no-layer-3) frame - corrupted frame off
-        // RF, or legitimate non-APRS AX.25 traffic. Either way msg.info/len
-        // were never populated, so there is nothing safe to dispatch;
-        // just count it and stop here. This is the only decode-failure
-        // signal available (ax25_decode() itself has no error side
-        // channel besides its return value), and - unlike the
-        // digi/igate-only drop/error counters below it in the dashboard -
-        // it is tracked here unconditionally, regardless of digi_en/igate_en.
+    enum Ax25DecodeReason reason;
+    if (!ax25_decode((uint8_t *)f->frame, f->len, f->mVrms, &msg, &reason)) {
+        // Not a decodable APRS (UI, no-layer-3) frame: msg.info/len were
+        // never populated, so there is nothing safe to dispatch; just count
+        // it and stop here. This is tracked here unconditionally, regardless
+        // of digi_en/igate_en, unlike the digi/igate-only drop/error
+        // counters below it in the dashboard.
+        //
+        // ax25_decode()'s reason splits this into a malformed/corrupted
+        // reception (ERR_AX25_DECODE) versus a well-formed frame that is
+        // simply not APRS (ERR_AX25_NOT_APRS) - legacy connected-mode AX.25
+        // traffic or a non-APRS PID sharing the channel, both expected and
+        // benign on a shared frequency. Keeping the two counters and log
+        // lines separate lets an operator tell "channel has non-APRS
+        // traffic on it" apart from "my decoder is broken" from the
+        // dashboard alone.
         atomic_fetch_add_explicit(&s_statErr, 1, memory_order_relaxed);
-        igate_note_drop(ERR_AX25_DECODE);
-        ESP_LOGD(TAG, "RX decode error (ctrl/pid not APRS UI), %u bytes, %u mVrms", (unsigned)f->len, (unsigned)f->mVrms);
+        if (reason == AX25_DECODE_NOT_UI || reason == AX25_DECODE_NOT_NOLAYER3) {
+            igate_note_drop(ERR_AX25_NOT_APRS);
+            ESP_LOGD(TAG, "RX non-APRS AX.25 frame (%s), %u bytes, %u mVrms", reason == AX25_DECODE_NOT_UI ? "not UI" : "not no-layer-3 PID", (unsigned)f->len,
+                     (unsigned)f->mVrms);
+        } else {
+            igate_note_drop(ERR_AX25_DECODE);
+            ESP_LOGD(TAG, "RX decode error (malformed frame), %u bytes, %u mVrms", (unsigned)f->len, (unsigned)f->mVrms);
+        }
         return;
     }
 

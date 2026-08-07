@@ -67,6 +67,30 @@
 #define AX25_PID_NOLAYER3 0xF0
 
 /**
+ * @brief Why ax25_decode() rejected a frame, distinguishing a malformed
+ *        reception from a well-formed frame that simply is not APRS.
+ *
+ * A shared radio channel routinely carries legacy connected-mode AX.25
+ * packet traffic (I-frames, S-frames) alongside APRS, and occasionally a
+ * UI frame with a PID other than ::AX25_PID_NOLAYER3. Those frames are
+ * intact and correctly decoded up to the point where their Control/PID
+ * marks them as non-APRS; they are expected, benign channel activity, not
+ * a decoder problem. A frame that is simply too short or whose address
+ * field runs past the end of the buffer is different: it points at RF
+ * corruption, a bit-slip in the HDLC decoder, or another genuine fault.
+ * Callers use this distinction to keep those two cases in separate
+ * counters/log lines so an operator sharing a channel with legacy packet
+ * stations can tell "channel has non-APRS traffic on it" apart from
+ * "my decoder is broken" from the dashboard alone.
+ */
+enum Ax25DecodeReason {
+    AX25_DECODE_OK = 0,       /**< Frame decoded successfully; msg is fully populated. */
+    AX25_DECODE_MALFORMED,    /**< Frame too short, or its address field ran past the end of the buffer: corrupted or truncated reception. */
+    AX25_DECODE_NOT_UI,       /**< Well-formed frame whose Control field is not ::AX25_CTRL_UI: legacy connected-mode AX.25 traffic on the channel. */
+    AX25_DECODE_NOT_NOLAYER3, /**< Well-formed UI frame whose PID is not ::AX25_PID_NOLAYER3: non-APRS UI traffic on the channel. */
+};
+
+/**
  * @brief Maximum number of digipeater (repeater) address fields supported
  *        in a single AX.25 frame.
  */
@@ -396,11 +420,17 @@ void Ax25MinUnkeyTime(uint16_t ms);
  * caller's buffer. The same applies to the control and PID fields: they are
  * only read once the frame is known to still hold them.
  *
- * @param buf   Raw frame bytes (address field onwards, no FCS).
- * @param len   Length, in bytes, of @p buf. Only these bytes are read.
- * @param mVrms RMS input level measured while this frame was received, in
- *              millivolts.
- * @param msg   Destination structure to fill with the decoded fields.
+ * @param buf    Raw frame bytes (address field onwards, no FCS).
+ * @param len    Length, in bytes, of @p buf. Only these bytes are read.
+ * @param mVrms  RMS input level measured while this frame was received, in
+ *               millivolts.
+ * @param msg    Destination structure to fill with the decoded fields.
+ * @param reason Optional (may be NULL). Set to the specific ::Ax25DecodeReason
+ *               for the result: ::AX25_DECODE_OK on success, or the precise
+ *               rejection cause on failure - letting the caller separate a
+ *               malformed/corrupted reception from a well-formed frame that
+ *               is simply not APRS (legacy connected-mode traffic or a
+ *               non-APRS PID sharing the channel).
  * @return true if the frame was a well-formed UI frame with a "no layer 3"
  *         PID (i.e. a decodable APRS frame - @p msg is fully populated,
  *         including @c info / @c len). false if the frame is shorter than a
@@ -412,7 +442,7 @@ void Ax25MinUnkeyTime(uint16_t ms);
  *         valid; @c info / @c len are not touched by this call and must not
  *         be relied upon by the caller.
  */
-bool ax25_decode(uint8_t *buf, size_t len, uint16_t mVrms, ax25_msg_t *msg);
+bool ax25_decode(uint8_t *buf, size_t len, uint16_t mVrms, ax25_msg_t *msg, enum Ax25DecodeReason *reason);
 
 /**
  * @brief Parse a TNC2-style monitor string into an ::ax25frame structure.

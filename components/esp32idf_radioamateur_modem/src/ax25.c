@@ -311,7 +311,10 @@ static void IRAM_ATTR calculateCRC(uint8_t bit, uint16_t *crc) {
 // address. Both are read as fixed-width fields, so both have to fit.
 #define AX25_CTRL_PID_LEN 2
 
-bool ax25_decode(uint8_t *buf, size_t len, uint16_t mVrms, ax25_msg_t *msg) {
+bool ax25_decode(uint8_t *buf, size_t len, uint16_t mVrms, ax25_msg_t *msg, enum Ax25DecodeReason *reason) {
+    if (reason)
+        *reason = AX25_DECODE_MALFORMED; // default for every early return below; overwritten on the two well-formed-but-non-APRS paths and on success
+
     if (len < AX25_MIN_ADDR_LEN)
         return false; // too short to hold dst+src+ctrl+pid: reject before any fixed-width field parsing
 
@@ -362,12 +365,21 @@ bool ax25_decode(uint8_t *buf, size_t len, uint16_t mVrms, ax25_msg_t *msg) {
         return false; // address field consumed the frame, leaving no control and PID fields
 
     msg->ctrl = *buf++;
-    if (msg->ctrl != AX25_CTRL_UI)
-        return false; // not a UI frame (corrupted, or legitimate non-APRS AX.25 traffic)
+    if (msg->ctrl != AX25_CTRL_UI) {
+        if (reason)
+            *reason = AX25_DECODE_NOT_UI; // well-formed frame, just not UI: legacy connected-mode AX.25 traffic on the channel
+        return false;
+    }
 
     msg->pid = *buf++;
-    if (msg->pid != AX25_PID_NOLAYER3)
-        return false; // UI frame but not "no layer 3" - not an APRS frame
+    if (msg->pid != AX25_PID_NOLAYER3) {
+        if (reason)
+            *reason = AX25_DECODE_NOT_NOLAYER3; // well-formed UI frame, just not an APRS PID: non-APRS UI traffic on the channel
+        return false;
+    }
+
+    if (reason)
+        *reason = AX25_DECODE_OK;
 
     memset(msg->info, 0, sizeof(msg->info));
     int rest = (int)(end - buf);
@@ -643,7 +655,7 @@ void *Ax25WriteTxFrame(const uint8_t *data, uint16_t size) {
 #if defined(CONFIG_LOG_MAXIMUM_LEVEL) && (CONFIG_LOG_MAXIMUM_LEVEL >= 4)
     if (esp_log_level_get(TAG) >= ESP_LOG_DEBUG) {
         ax25_msg_t decoded;
-        if (ax25_decode((uint8_t *)data, size, 0, &decoded)) {
+        if (ax25_decode((uint8_t *)data, size, 0, &decoded, NULL)) {
             char tnc2[256];
             modem_format_tnc2(&decoded, tnc2, sizeof(tnc2));
             ESP_LOGD(TAG, "TX frame: %s", tnc2);
@@ -1151,7 +1163,7 @@ static void logPttOn(void) {
         txLogBuffer[i] = txBuffer[(h->start + i) % FRAME_BUFFER_SIZE];
 
     ax25_msg_t decoded;
-    if (ax25_decode(txLogBuffer, len, 0, &decoded)) {
+    if (ax25_decode(txLogBuffer, len, 0, &decoded, NULL)) {
         char tnc2[256];
         modem_format_tnc2(&decoded, tnc2, sizeof(tnc2));
         ESP_LOGI(TAG, "PTT ON (keyed up) - %s", tnc2);

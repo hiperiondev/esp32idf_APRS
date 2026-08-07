@@ -182,6 +182,8 @@ const char *igate_drop_reason_name(drop_reason_t reason) {
             return "modem send failed";
         case ERR_AX25_DECODE:
             return "AX.25 decode error";
+        case ERR_AX25_NOT_APRS:
+            return "non-APRS AX.25 traffic";
         case DROP_DIGI_MALFORMED:
             return "digi: malformed packet";
         case DROP_DIGI_PLACEHOLDER_CALL:
