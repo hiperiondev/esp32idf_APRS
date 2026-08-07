@@ -13,9 +13,9 @@
 //
 //     please contact their authors for more information.
 //
-// @brief APRS-IS Internet Gateway implementation: TCP client task with login and
-// auto-reconnect, RF->INET gatewaying with filtering and duplicate suppression,
-// INET->RF relaying, and gateway traffic statistics.
+// @brief APRS-IS Internet Gateway implementation: TCP client task with login,
+// multiserver failover and auto-reconnect, RF->INET gatewaying with filtering
+// and duplicate suppression, INET->RF relaying, and gateway traffic statistics.
 
 #include <errno.h>
 #include <netdb.h>
@@ -748,6 +748,44 @@ static void closeSocket(void) {
     xSemaphoreGive(s_sockMutex);
 }
 
+// Index into g_config.aprs_server of the slot the next connectAprsIs() call
+// will try. Advanced by advanceServer() every time a connection attempt
+// fails, so the rotation keeps moving forward across calls instead of
+// hammering the same failed server; wraps back to the first enabled slot
+// after the last one, giving the failover an endless round-robin.
+static uint8_t s_serverIdx = 0;
+
+// Moves s_serverIdx to the next enabled slot, wrapping circularly through
+// g_config.aprs_server. Disabled slots are skipped entirely rather than
+// pausing the rotation on them. If every slot is disabled, s_serverIdx is
+// simply left where it was: currentServer() below falls back to slot 0 in
+// that case so the IGate still has a destination to attempt and log.
+static void advanceServer(void) {
+    app_config_lock();
+    for (uint8_t step = 0; step < APRS_SERVER_NUM; step++) {
+        s_serverIdx = (uint8_t)((s_serverIdx + 1) % APRS_SERVER_NUM);
+        if (g_config.aprs_server[s_serverIdx].enable)
+            break;
+    }
+    app_config_unlock();
+}
+
+// Copies the server slot connectAprsIs() should try right now into *host/
+// *port, under the config lock. Falls back to slot 0 whenever s_serverIdx
+// itself is disabled (e.g. every slot got disabled from the web UI after the
+// rotation had already selected one of them), so the IGate always has a
+// concrete destination to dial instead of silently doing nothing. host is
+// always left NUL-terminated within hostSize, regardless of whether the
+// stored field fills every byte.
+static void currentServer(char *host, size_t hostSize, uint16_t *port) {
+    app_config_lock();
+    uint8_t idx = g_config.aprs_server[s_serverIdx].enable ? s_serverIdx : 0;
+    memcpy(host, g_config.aprs_server[idx].host, hostSize);
+    *port = g_config.aprs_server[idx].port;
+    app_config_unlock();
+    host[hostSize - 1] = 0;
+}
+
 static bool connectAprsIs(void) {
     // Snapshot everything this function needs from g_config up front, under the
     // config lock, so the web task rewriting these strings during a settings
@@ -760,21 +798,22 @@ static bool connectAprsIs(void) {
     char cfg_filter[30];
     uint16_t cfg_port;
     uint8_t cfg_ssid;
+    currentServer(cfg_host, sizeof(cfg_host), &cfg_port);
     app_config_lock();
-    memcpy(cfg_host, g_config.aprs_host, sizeof(cfg_host));
     memcpy(cfg_mycall, g_config.aprs_mycall, sizeof(cfg_mycall));
     memcpy(cfg_passcode, g_config.aprs_passcode, sizeof(cfg_passcode));
     memcpy(cfg_filter, g_config.aprs_filter, sizeof(cfg_filter));
-    cfg_port = g_config.aprs_port;
     cfg_ssid = g_config.aprs_ssid;
     app_config_unlock();
     (void)cfg_ssid;
 
-    // Each memcpy above copies the full field width, so termination depends on
-    // what the config loader stored. Force it here: everything below - the
-    // sanitizing loop, the "%s" conversions in the login line, getaddrinfo() -
-    // treats these as C strings, and a field filled edge to edge would send
-    // all of them reading past the end of the local buffer.
+    // cfg_host is already NUL-terminated by currentServer(). The three
+    // memcpy() calls above copy the full field width, so termination for
+    // those depends on what the config loader stored. Force it here for all
+    // of them: everything below - the sanitizing loop, the "%s" conversions
+    // in the login line, getaddrinfo() - treats these as C strings, and a
+    // field filled edge to edge would send all of them reading past the end
+    // of the local buffer.
     cfg_host[sizeof(cfg_host) - 1] = 0;
     cfg_mycall[sizeof(cfg_mycall) - 1] = 0;
     cfg_passcode[sizeof(cfg_passcode) - 1] = 0;
@@ -821,13 +860,15 @@ static bool connectAprsIs(void) {
     snprintf(portStr, sizeof(portStr), "%u", (unsigned)cfg_port);
 
     if (getaddrinfo(cfg_host, portStr, &hints, &res) != 0 || res == NULL) {
-        ESP_LOGW(TAG, "DNS lookup failed for %s", cfg_host);
+        ESP_LOGW(TAG, "DNS lookup failed for %s, failing over to next APRS-IS server", cfg_host);
+        advanceServer();
         return false;
     }
 
     int sock = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
     if (sock < 0) {
         freeaddrinfo(res);
+        advanceServer();
         return false;
     }
 
@@ -843,9 +884,10 @@ static bool connectAprsIs(void) {
     setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, &snd_tv, sizeof(snd_tv));
 
     if (connect(sock, res->ai_addr, res->ai_addrlen) != 0) {
-        ESP_LOGW(TAG, "Connect to %s:%u failed: errno %d", cfg_host, (unsigned)cfg_port, errno);
+        ESP_LOGW(TAG, "Connect to %s:%u failed: errno %d, failing over to next APRS-IS server", cfg_host, (unsigned)cfg_port, errno);
         close(sock);
         freeaddrinfo(res);
+        advanceServer();
         return false;
     }
     freeaddrinfo(res);
@@ -859,6 +901,7 @@ static bool connectAprsIs(void) {
              cfg_filter[0] ? cfg_filter : "(none - server default, usually nothing)");
     if (send(sock, login, n, 0) != n) {
         close(sock);
+        advanceServer();
         return false;
     }
 
@@ -938,7 +981,13 @@ static void igateTask(void *arg) {
         int sock = socketSnapshot();
         if (sock < 0) {
             if (!connectAprsIs()) {
-                vTaskDelay(pdMS_TO_TICKS(5000));
+                // Failover: connectAprsIs() has already advanced s_serverIdx
+                // to the next server in the rotation on failure, so this
+                // fixed 1 s wait is the interval between successive attempts
+                // against that circular list of servers, not a single-server
+                // backoff - the retry keeps cycling through every enabled
+                // slot forever until one of them accepts the connection.
+                vTaskDelay(pdMS_TO_TICKS(1000));
                 continue;
             }
             linePos = 0;
@@ -1007,6 +1056,10 @@ static void igateTask(void *arg) {
         }
         // EAGAIN/timeout: just loop, gives the "igate_en toggled off" check a chance to run.
     }
+}
+
+void igate_get_current_server(char *host, size_t hostLen, uint16_t *port) {
+    currentServer(host, hostLen, port);
 }
 
 // The uplink task is started once and runs for the lifetime of the firmware.

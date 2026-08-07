@@ -161,10 +161,19 @@ void app_config_set_defaults(app_config_t *c) {
     c->igate_loc2rf = false;
     c->igate_loc2inet = true;
     c->aprs_ssid = 10;
-    c->aprs_port = APRS_PORT_DEFAULT;
     set_str(c->aprs_mycall, sizeof(c->aprs_mycall), "NOCALL");
     set_str(c->aprs_passcode, sizeof(c->aprs_passcode), "-1");
-    set_str(c->aprs_host, sizeof(c->aprs_host), "aprs.dprns.com");
+    // Slot 0 keeps the original single-server default; the remaining slots
+    // start disabled so an upgraded device connects exactly as before until
+    // the operator opts into the extra failover servers.
+    c->aprs_server[0].enable = true;
+    set_str(c->aprs_server[0].host, sizeof(c->aprs_server[0].host), "aprs.dprns.com");
+    c->aprs_server[0].port = APRS_PORT_DEFAULT;
+    for (int i = 1; i < APRS_SERVER_NUM; i++) {
+        c->aprs_server[i].enable = false;
+        set_str(c->aprs_server[i].host, sizeof(c->aprs_server[i].host), "aprs.dprns.com");
+        c->aprs_server[i].port = APRS_PORT_DEFAULT;
+    }
     set_str(c->aprs_filter, sizeof(c->aprs_filter), "");
     c->igate_bcn = true;
     c->igate_lat = 0.000f;
@@ -534,11 +543,16 @@ static void config_write_json(jw_t *d, const app_config_t *c) {
     jadd_bool(d, "igateMsgGateEn", c->igate_msg_gate_en);
     jadd_num(d, "igateLocalWindowSec", c->igate_local_window_sec);
     jadd_num(d, "igateSSID", c->aprs_ssid);
-    jadd_num(d, "igatePort", c->aprs_port);
+    jarr_begin(d, "igateServers");
+    for (int i = 0; i < APRS_SERVER_NUM; i++) {
+        jarr_bool(d, c->aprs_server[i].enable);
+        jarr_str(d, c->aprs_server[i].host);
+        jarr_num(d, c->aprs_server[i].port);
+    }
+    jarr_end(d);
     jadd_str(d, "igateMycall", c->aprs_mycall);
     jadd_bool(d, "igateUseStation", c->igate_use_station);
     jadd_str(d, "igatePasscode", c->aprs_passcode);
-    jadd_str(d, "igateHost", c->aprs_host);
     jadd_str(d, "igateFilter", c->aprs_filter);
     jadd_num(d, "igateLAT", c->igate_lat);
     jadd_num(d, "igateLON", c->igate_lon);
@@ -839,21 +853,47 @@ static void config_from_json(cJSON *d, app_config_t *c) {
         c->igate_local_window_sec = (c->igate_local_window_sec < IGATE_LOCAL_WINDOW_SEC_MIN) ? IGATE_LOCAL_WINDOW_SEC_MIN : IGATE_LOCAL_WINDOW_SEC_MAX;
     }
     c->aprs_ssid = (uint8_t)jget_num(d, "igateSSID", def.aprs_ssid);
-    c->aprs_port = (uint16_t)jget_num(d, "igatePort", def.aprs_port);
-    // Same two-layer clamp as the SoftAP channel above: the file on flash is
-    // not a trusted input, and port 0 would send the IGate into a five-second
-    // reconnect loop against an address it can never connect to. Only the low
-    // bound needs testing: APRS_PORT_MAX is the full range of the uint16_t the
-    // value is already narrowed to.
-    if (c->aprs_port < APRS_PORT_MIN) {
-        ESP_LOGW(TAG, "stored APRS-IS port %u outside %u-%u, using %u", (unsigned)c->aprs_port, (unsigned)APRS_PORT_MIN, (unsigned)APRS_PORT_MAX,
-                 (unsigned)APRS_PORT_DEFAULT);
-        c->aprs_port = APRS_PORT_DEFAULT;
+    {
+        cJSON *arr = cJSON_GetObjectItemCaseSensitive(d, "igateServers");
+        if (arr && cJSON_IsArray(arr)) {
+            for (int i = 0; i < APRS_SERVER_NUM; i++) {
+                cJSON *e = cJSON_GetArrayItem(arr, i * 3);
+                cJSON *h = cJSON_GetArrayItem(arr, i * 3 + 1);
+                cJSON *p = cJSON_GetArrayItem(arr, i * 3 + 2);
+                c->aprs_server[i].enable = e ? cJSON_IsTrue(e) : def.aprs_server[i].enable;
+                set_str(c->aprs_server[i].host, sizeof(c->aprs_server[i].host), (h && cJSON_IsString(h)) ? h->valuestring : def.aprs_server[i].host);
+                c->aprs_server[i].port = (uint16_t)((p && cJSON_IsNumber(p)) ? p->valuedouble : def.aprs_server[i].port);
+                // Same two-layer clamp as the SoftAP channel above: the file
+                // on flash is not a trusted input, and port 0 would send the
+                // IGate into a reconnect loop against an address it can
+                // never connect to. Only the low bound needs testing:
+                // APRS_PORT_MAX is the full range of the uint16_t the value
+                // is already narrowed to.
+                if (c->aprs_server[i].port < APRS_PORT_MIN) {
+                    ESP_LOGW(TAG, "stored APRS-IS server %d port %u outside %u-%u, using %u", i, (unsigned)c->aprs_server[i].port, (unsigned)APRS_PORT_MIN,
+                             (unsigned)APRS_PORT_MAX, (unsigned)APRS_PORT_DEFAULT);
+                    c->aprs_server[i].port = APRS_PORT_DEFAULT;
+                }
+            }
+        } else {
+            // Pre-failover config.json: migrate the single legacy "igateHost"
+            // / "igatePort" pair into slot 0 so an upgraded device keeps
+            // connecting to the same server it already had configured.
+            for (int i = 0; i < APRS_SERVER_NUM; i++)
+                c->aprs_server[i] = def.aprs_server[i];
+            set_str(c->aprs_server[0].host, sizeof(c->aprs_server[0].host), jget_str(d, "igateHost", def.aprs_server[0].host));
+            c->aprs_server[0].port = (uint16_t)jget_num(d, "igatePort", def.aprs_server[0].port);
+            if (c->aprs_server[0].port < APRS_PORT_MIN) {
+                ESP_LOGW(TAG, "stored APRS-IS port %u outside %u-%u, using %u", (unsigned)c->aprs_server[0].port, (unsigned)APRS_PORT_MIN,
+                         (unsigned)APRS_PORT_MAX, (unsigned)APRS_PORT_DEFAULT);
+                c->aprs_server[0].port = APRS_PORT_DEFAULT;
+            }
+            c->aprs_server[0].enable = true;
+        }
     }
     set_str(c->aprs_mycall, sizeof(c->aprs_mycall), jget_str(d, "igateMycall", def.aprs_mycall));
     c->igate_use_station = jget_bool(d, "igateUseStation", def.igate_use_station);
     set_str(c->aprs_passcode, sizeof(c->aprs_passcode), jget_str(d, "igatePasscode", def.aprs_passcode));
-    set_str(c->aprs_host, sizeof(c->aprs_host), jget_str(d, "igateHost", def.aprs_host));
     set_str(c->aprs_filter, sizeof(c->aprs_filter), jget_str(d, "igateFilter", def.aprs_filter));
     c->igate_lat = (float)jget_num(d, "igateLAT", def.igate_lat);
     c->igate_lon = (float)jget_num(d, "igateLON", def.igate_lon);

@@ -96,11 +96,14 @@ esp_err_t page_dashboard(httpd_req_t *req) {
 
     // -- APRS-IS SERVER ---------------------------------------------------
     if (g_config.igate_en) {
+        char host[20];
+        uint16_t port;
+        igate_get_current_server(host, sizeof(host), &port);
         n = snprintf(buf, sizeof(buf),
                      "<fieldset><legend>" TR_DASH_APRS_IS_SERVER "</legend><table>"
                      "<tr><td>" TR_DASH_HOST "</td><td>%s</td></tr>"
                      "<tr><td>" TR_DASH_PORT "</td><td>%d</td></tr></table></fieldset>",
-                     g_config.aprs_host, g_config.aprs_port);
+                     host, port);
         httpd_resp_sendstr_chunk(req, buf);
     }
 

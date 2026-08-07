@@ -196,12 +196,21 @@ void igate_note_drop(drop_reason_t reason);
 void igate_note_message_gated(void);
 
 /**
- * @brief Start the IGate service task (APRS-IS TCP client with auto-reconnect,
- * login, RX line pump). Call once from app startup: the task then runs for the
- * lifetime of the firmware and has no stop entry point. It re-reads g_config on
- * every pass, so turning any of the settings that need APRS-IS on or off simply
- * makes the task open or close the uplink, with no reboot and no restart of the
- * task itself. A second call while the task exists is a no-op.
+ * @brief Start the IGate service task (APRS-IS TCP client with multiserver
+ * failover, login, RX line pump). Call once from app startup: the task then
+ * runs for the lifetime of the firmware and has no stop entry point. It
+ * re-reads g_config on every pass, so turning any of the settings that need
+ * APRS-IS on or off simply makes the task open or close the uplink, with no
+ * reboot and no restart of the task itself. A second call while the task
+ * exists is a no-op.
+ *
+ * The task connects to one of the ::APRS_SERVER_NUM configured APRS-IS
+ * servers (g_config.aprs_server). Whenever a connection attempt to the
+ * currently selected server fails - DNS lookup, socket connect, or login -
+ * the task advances to the next enabled server in the list, wrapping back to
+ * the first one after the last, and waits 1 second before the next attempt.
+ * This failover keeps cycling through every enabled server indefinitely
+ * until one of them accepts the connection.
  */
 void igate_start(void);
 
@@ -275,5 +284,17 @@ void igate_set_inet2rf_handler(void (*handler)(const char *line));
  * (returns false) if not currently connected.
  */
 bool igate_send_raw(const char *line, size_t len);
+
+/**
+ * @brief Snapshot of the APRS-IS server slot the IGate task is currently
+ * connected to or about to attempt, for the web dashboard's "APRS-IS Server"
+ * panel. Reflects the failover rotation driven by g_config.aprs_server: it
+ * changes as igate_start()'s task advances to the next enabled server after
+ * a connection failure.
+ * @param host    Buffer to receive the hostname (NUL-terminated).
+ * @param hostLen Size of @p host in bytes.
+ * @param port    Receives the TCP port.
+ */
+void igate_get_current_server(char *host, size_t hostLen, uint16_t *port);
 
 #endif // IGATE_H

@@ -14,8 +14,8 @@
 //     please contact their authors for more information.
 //
 // @brief Web admin "IGate" page: renders and saves the APRS-IS gateway
-// configuration (server, port, callsign, passcode, filters, RF/INET direction and
-// beacon settings) in g_config.
+// configuration (failover servers, callsign, passcode, filters, RF/INET direction
+// and beacon settings) in g_config.
 
 #include <math.h>
 #include <stdio.h>
@@ -103,8 +103,6 @@ esp_err_t page_igate_get(httpd_req_t *req) {
                  TR_F_APRS_PASSCODE, esc_pc, TR_BTN_AUTO_GENERATE);
         web_raw(req, pcbuf);
     }
-    web_field_text(req, TR_F_SERVER_HOST, "igateHost", g_config.aprs_host, 19);
-    web_field_int(req, TR_F_SERVER_PORT, "igatePort", g_config.aprs_port, APRS_PORT_MIN, APRS_PORT_MAX);
     web_field_text(req, TR_F_FILTER, "igateFilter", g_config.aprs_filter, 29);
     if (s_filterWarning[0]) {
         char esc_warn[sizeof(s_filterWarning) * 6 + 1];
@@ -117,6 +115,27 @@ esp_err_t page_igate_get(httpd_req_t *req) {
     web_field_text(req, TR_F_COMMENT, "igateComment", g_config.igate_comment, COMMENT_SIZE - 1);
     web_field_checkbox(req, TR_F_TIME_STAMP, "igateTime", g_config.igate_timestamp);
     web_fieldset_close(req);
+
+    // APRS-IS SERVERS ----------------------------------------------------
+    // One fieldset per failover slot: an enable checkbox plus host/port, so
+    // the operator can list up to APRS_SERVER_NUM alternative APRS-IS
+    // servers. The IGate task cycles through the enabled slots in order and
+    // retries the next one every second on a connection failure.
+    for (int i = 0; i < APRS_SERVER_NUM; i++) {
+        char legend[40];
+        snprintf(legend, sizeof(legend), "%s %d", TR_F_APRS_IS_SERVER, i + 1);
+        web_fieldset_open(req, legend);
+        {
+            char nameEn[16], nameHost[16], namePort[16];
+            snprintf(nameEn, sizeof(nameEn), "srvEn%d", i);
+            snprintf(nameHost, sizeof(nameHost), "srvHost%d", i);
+            snprintf(namePort, sizeof(namePort), "srvPort%d", i);
+            web_field_checkbox(req, TR_F_ENABLE, nameEn, g_config.aprs_server[i].enable);
+            web_field_text(req, TR_F_SERVER_HOST, nameHost, g_config.aprs_server[i].host, 19);
+            web_field_int(req, TR_F_SERVER_PORT, namePort, g_config.aprs_server[i].port, APRS_PORT_MIN, APRS_PORT_MAX);
+        }
+        web_fieldset_close(req);
+    }
 
     web_raw(req, "<script>"
                  "function aprsAutoGenPasscode(){"
@@ -504,20 +523,27 @@ esp_err_t page_igate_post(httpd_req_t *req) {
     }
     g_config.aprs_ssid = web_form_get_ssid(body, "igateSSID", g_config.aprs_ssid);
     web_form_get(body, "igatePasscode", g_config.aprs_passcode, sizeof(g_config.aprs_passcode));
-    web_form_get(body, "igateHost", g_config.aprs_host, sizeof(g_config.aprs_host));
-    // APRS-IS server port - clamp defensively against a malformed POST. Port 0
-    // fits in the uint16_t field but is not connectable: getaddrinfo() accepts
-    // the service string "0" and connect() then fails, which shows up as a
-    // five-second reconnect loop naming a port the IGate could never reach.
-    // The intermediate int catches a negative value before the cast. Bounds
-    // come from app_config.h so the form min/max, this clamp and the
-    // flash-load clamp cannot drift apart.
-    int aprs_port_in = web_form_get_int(body, "igatePort", g_config.aprs_port);
-    if (aprs_port_in < APRS_PORT_MIN)
-        aprs_port_in = APRS_PORT_MIN;
-    else if (aprs_port_in > APRS_PORT_MAX)
-        aprs_port_in = APRS_PORT_MAX;
-    g_config.aprs_port = (uint16_t)aprs_port_in;
+    // APRS-IS failover server slots - clamp each port defensively against a
+    // malformed POST. Port 0 fits in the uint16_t field but is not
+    // connectable: getaddrinfo() accepts the service string "0" and
+    // connect() then fails, which shows up as a reconnect loop naming a port
+    // the IGate could never reach. The intermediate int catches a negative
+    // value before the cast. Bounds come from app_config.h so the form
+    // min/max, this clamp and the flash-load clamp cannot drift apart.
+    for (int i = 0; i < APRS_SERVER_NUM; i++) {
+        char nameEn[16], nameHost[16], namePort[16];
+        snprintf(nameEn, sizeof(nameEn), "srvEn%d", i);
+        snprintf(nameHost, sizeof(nameHost), "srvHost%d", i);
+        snprintf(namePort, sizeof(namePort), "srvPort%d", i);
+        g_config.aprs_server[i].enable = web_form_get_bool(body, nameEn);
+        web_form_get(body, nameHost, g_config.aprs_server[i].host, sizeof(g_config.aprs_server[i].host));
+        int srv_port_in = web_form_get_int(body, namePort, g_config.aprs_server[i].port);
+        if (srv_port_in < APRS_PORT_MIN)
+            srv_port_in = APRS_PORT_MIN;
+        else if (srv_port_in > APRS_PORT_MAX)
+            srv_port_in = APRS_PORT_MAX;
+        g_config.aprs_server[i].port = (uint16_t)srv_port_in;
+    }
 
     // Filter field: still saved verbatim (it's the user's to set), but first
     // checked for (a) truncation against the destination buffer and (b)

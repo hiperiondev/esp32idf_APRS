@@ -179,6 +179,15 @@ typedef enum {
 /** @} */
 
 /**
+ * @brief Number of stored APRS-IS server slots (see ::app_config_t::aprs_server).
+ *
+ * The IGate task cycles through the enabled slots in order and wraps back to
+ * the first one, so any slot left disabled is simply skipped rather than
+ * shortening the rotation to fewer than ::APRS_SERVER_NUM entries.
+ */
+#define APRS_SERVER_NUM 4
+
+/**
  * @name Activate bit flags
  * @brief Bit flags used by path/object activation selectors.
  * @{
@@ -346,6 +355,20 @@ typedef struct {
 } wifi_sta_t;
 
 /**
+ * @brief One stored APRS-IS server slot for IGate failover (see
+ * ::app_config_t::aprs_server and ::APRS_SERVER_NUM).
+ *
+ * All slots share the login identity (aprs_mycall/aprs_ssid/aprs_passcode/
+ * aprs_filter) - only the destination host/port differs between them, since
+ * they represent the same station connecting to alternative APRS-IS servers.
+ */
+typedef struct {
+    bool enable;   /**< Whether this server slot takes part in the failover rotation. A disabled slot is skipped. */
+    char host[20]; /**< APRS-IS server hostname or IP address for this slot. */
+    uint16_t port; /**< APRS-IS server TCP port for this slot, clamped to ::APRS_PORT_MIN .. ::APRS_PORT_MAX on save and on load. */
+} aprs_server_t;
+
+/**
  * @brief The resident application configuration, loaded at boot and edited by
  * the web POST handlers.
  *
@@ -445,43 +468,42 @@ typedef struct {
     bool rf2inet_prefix_en; /**< Enable the local RF->INET callsign-prefix gate. */
     char rf2inet_prefixes[40]; /**< Comma-separated callsign-prefix whitelist for rf2inet_prefix_en, e.g. "EA,EB,EC". Case-insensitive. */
 
-    bool igate_msg_gate_en;           /**< On by default. Apply the APRS-IS message-gating criteria before putting a message read from APRS-IS on the air: the
-                                         addressee must have been heard on RF inside @c igate_local_window_sec, the sender must not have been, the sender's
-                                         header must carry no TCPXX/NOGATE/RFONLY, and the addressee must not be Internet-connected. */
-    uint16_t igate_local_window_sec;  /**< How far back the message gate looks in the last-heard table, seconds. Clamped to ::IGATE_LOCAL_WINDOW_SEC_MIN ..
-                                         ::IGATE_LOCAL_WINDOW_SEC_MAX on save and on load. */
-    bool inet2rf_3rdparty_unwrap_en;  /**< Off by default. Selective INET->RF opt-in: unwrap one level of third-party ('}') traffic and re-classify/relay the
-                                         inner packet, but ONLY when inet2rf_budlist_mode is BUDLIST_WHITELIST and the inner packet's source callsign is itself
-                                         on budlist[] - see aprs_filter_classify_thirdparty_inner(). Never a general "relay all third-party" switch; misuse (or
-                                         use without a whitelist) risks re-introducing an IGate loop. */
-    uint8_t aprs_ssid;                /**< SSID for the IGate callsign. */
-    uint16_t aprs_port;               /**< APRS-IS server TCP port, clamped to ::APRS_PORT_MIN .. ::APRS_PORT_MAX on save and on load. */
-    char aprs_mycall[10];             /**< IGate callsign. */
-    bool igate_use_station;           /**< "Use My Station Data": mirror My Station identity/position into the IGate fields and lock them. */
-    char aprs_host[20];               /**< APRS-IS server hostname. */
-    char aprs_passcode[6];            /**< APRS-IS login passcode. */
-    char aprs_filter[30];             /**< APRS-IS server-side filter string. */
-    bool igate_bcn;                   /**< Enable the IGate position beacon. */
-    bool igate_timestamp;             /**< Include a timestamp in the IGate beacon. */
-    float igate_lat;                  /**< IGate beacon latitude. */
-    float igate_lon;                  /**< IGate beacon longitude. */
-    float igate_alt;                  /**< IGate beacon altitude. */
-    uint16_t igate_interval;          /**< IGate beacon interval, seconds. */
-    char igate_symbol[3];             /**< IGate APRS symbol ("<table><code>" + NUL). */
-    uint8_t igate_path;               /**< IGate digipeat-path selection (bitmask over g_config.path[0..3]). */
-    char igate_comment[COMMENT_SIZE]; /**< IGate beacon comment. */
-    uint16_t igate_sts_interval;      /**< IGate status-beacon interval, seconds. */
-    char igate_status[STATUS_SIZE];   /**< IGate status text. */
-    bool igate_compress;              /**< Use APRS compressed position format for the IGate position beacon. */
-    bool igate_phg_enable;            /**< Enable transmitting the PHG data extension in the IGate position beacon. */
-    bool igate_phg_use_station;       /**< "Use My Station Data": mirror the shared "My Station" PHG sub-fields into the IGate PHG fields and lock them. */
-    uint16_t igate_phg_power;         /**< PHG sub-field: radio TX power, Watts (persisted so the form redisplays the selections). */
-    float igate_phg_gain;             /**< PHG sub-field: antenna gain, dBi. */
-    uint16_t igate_phg_height;        /**< PHG sub-field: antenna height, feet. */
-    uint8_t igate_phg_dir;            /**< PHG sub-field: directivity, 0=Omni, 1-8 = N,NE,E,SE,S,SW,W,NW. */
-    uint8_t igate_ext_type;           /**< Which ::aprs_ext_type_t the IGate position beacon carries when @c igate_phg_enable is set. */
-    uint16_t igate_range_miles;       /**< "RNGrrrr" pre-calculated radio range, statute miles (::APRS_EXT_RNG only). */
-    uint8_t igate_dfs_strength;       /**< "DFSshgd" signal-strength code 0-9 (::APRS_EXT_DFS only; height/gain/directivity come from the PHG sub-fields). */
+    bool igate_msg_gate_en;          /**< On by default. Apply the APRS-IS message-gating criteria before putting a message read from APRS-IS on the air: the
+                                        addressee must have been heard on RF inside @c igate_local_window_sec, the sender must not have been, the sender's
+                                        header must carry no TCPXX/NOGATE/RFONLY, and the addressee must not be Internet-connected. */
+    uint16_t igate_local_window_sec; /**< How far back the message gate looks in the last-heard table, seconds. Clamped to ::IGATE_LOCAL_WINDOW_SEC_MIN ..
+                                        ::IGATE_LOCAL_WINDOW_SEC_MAX on save and on load. */
+    bool inet2rf_3rdparty_unwrap_en; /**< Off by default. Selective INET->RF opt-in: unwrap one level of third-party ('}') traffic and re-classify/relay the
+                                        inner packet, but ONLY when inet2rf_budlist_mode is BUDLIST_WHITELIST and the inner packet's source callsign is itself
+                                        on budlist[] - see aprs_filter_classify_thirdparty_inner(). Never a general "relay all third-party" switch; misuse (or
+                                        use without a whitelist) risks re-introducing an IGate loop. */
+    uint8_t aprs_ssid;               /**< SSID for the IGate callsign. */
+    char aprs_mycall[10];            /**< IGate callsign. */
+    bool igate_use_station;          /**< "Use My Station Data": mirror My Station identity/position into the IGate fields and lock them. */
+    aprs_server_t aprs_server[APRS_SERVER_NUM]; /**< The ::APRS_SERVER_NUM stored APRS-IS server slots the IGate task fails over between; see igate.c. */
+    char aprs_passcode[6];                      /**< APRS-IS login passcode. */
+    char aprs_filter[30];                       /**< APRS-IS server-side filter string. */
+    bool igate_bcn;                             /**< Enable the IGate position beacon. */
+    bool igate_timestamp;                       /**< Include a timestamp in the IGate beacon. */
+    float igate_lat;                            /**< IGate beacon latitude. */
+    float igate_lon;                            /**< IGate beacon longitude. */
+    float igate_alt;                            /**< IGate beacon altitude. */
+    uint16_t igate_interval;                    /**< IGate beacon interval, seconds. */
+    char igate_symbol[3];                       /**< IGate APRS symbol ("<table><code>" + NUL). */
+    uint8_t igate_path;                         /**< IGate digipeat-path selection (bitmask over g_config.path[0..3]). */
+    char igate_comment[COMMENT_SIZE];           /**< IGate beacon comment. */
+    uint16_t igate_sts_interval;                /**< IGate status-beacon interval, seconds. */
+    char igate_status[STATUS_SIZE];             /**< IGate status text. */
+    bool igate_compress;                        /**< Use APRS compressed position format for the IGate position beacon. */
+    bool igate_phg_enable;                      /**< Enable transmitting the PHG data extension in the IGate position beacon. */
+    bool igate_phg_use_station; /**< "Use My Station Data": mirror the shared "My Station" PHG sub-fields into the IGate PHG fields and lock them. */
+    uint16_t igate_phg_power;   /**< PHG sub-field: radio TX power, Watts (persisted so the form redisplays the selections). */
+    float igate_phg_gain;       /**< PHG sub-field: antenna gain, dBi. */
+    uint16_t igate_phg_height;  /**< PHG sub-field: antenna height, feet. */
+    uint8_t igate_phg_dir;      /**< PHG sub-field: directivity, 0=Omni, 1-8 = N,NE,E,SE,S,SW,W,NW. */
+    uint8_t igate_ext_type;     /**< Which ::aprs_ext_type_t the IGate position beacon carries when @c igate_phg_enable is set. */
+    uint16_t igate_range_miles; /**< "RNGrrrr" pre-calculated radio range, statute miles (::APRS_EXT_RNG only). */
+    uint8_t igate_dfs_strength; /**< "DFSshgd" signal-strength code 0-9 (::APRS_EXT_DFS only; height/gain/directivity come from the PHG sub-fields). */
 
     bool digi_en;                            /**< Digipeater service enabled. */
     bool digi_loc2rf;                        /**< Beacon the digipeater's own position on RF. */
