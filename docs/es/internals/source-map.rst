@@ -40,7 +40,7 @@ Disposición del repositorio
    │   ├── bulletins.c/.h      ← boletines APRS BLN1..BLN5 (bulletins.json propio)
    │   ├── objects_items.c/.h  ← Objetos/Ítems APRS (objitems.json propio)
    │   ├── net_state.c/.h      ← bandera "¿tenemos internet de verdad?"
-   │   ├── time_sync.c/.h      ← SNTP (siempre UTC), máquina de estados no bloqueante
+   │   ├── time_sync.c/.h      ← SNTP (siempre UTC), máquina de estados no bloqueante, tabla de zonas horarias (solo visualización)
    │   └── cpu_freq.c/.h       ← esp_pm_configure() de la página System
    │
    ├── components/

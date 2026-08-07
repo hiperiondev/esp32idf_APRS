@@ -53,7 +53,9 @@ Le pagine
        Maidenhead nei rapporti di stato.
    * - **IGate**
      - Abilita, RF→INET / INET→RF, entrambe le maschere di filtro, budlist e gate
-       di portata/prefisso, indicativo/SSID/passcode, host/porta, stringa di
+       di portata/prefisso, indicativo/SSID/passcode, quattro riquadri *APRS-IS
+       Server* (ciascuno con casella Abilita più host e porta, usati come
+       rotazione di failover), stringa di
        filtro server, beacon on/off, posizione, intervallo, selettore di simbolo,
        oggetto, commento, stato, PHG. *Filtraggio Messaggi* contiene
        l'interruttore dei criteri per i messaggi INET→RF e la finestra di
@@ -63,8 +65,10 @@ Le pagine
        simbolo, intervallo, commento, stato, percorso). *Alias di Percorso n-N*
        contiene le quattro righe di {alias, N massimo, modalità} con cui il
        digipeater ripete, l'interruttore di solo riempimento e la scelta di cosa
-       fare con un conteggio hop intrappolato. La finestra di soppressione dei
-       duplicati è un unico controllo, sulla pagina *IGate*.
+       fare con un conteggio hop intrappolato. Contiene anche i quattro preset
+       di percorso condivisi ``path[0..3]`` tra cui sceglie ogni servizio che
+       trasmette. La finestra di soppressione dei duplicati è un unico
+       controllo, sulla pagina *IGate*.
    * - **Tracker**
      - Abilita tracker, indicativo/SSID, intervallo fisso, posizione, simbolo di
        stazione, commento, opzioni di posizione compressa, posizione Mic-E e
@@ -103,16 +107,19 @@ Le pagine
      - Modalità FX.25 (spento / solo RX / RX+TX); abilita modem audio, modulazione
        (300 / 1200 Bell202 / 1200 V.23 / 9600 G3RUH), LPF audio (audio piatto), ms
        di preambolo, ms di slot temporale TX, buffer TX, ritenzione extra di
-       dis-attivazione PTT, persistenza CSMA; e il pulsante **LOOP TEST**. Salva
-       riapplica il modem in tempo reale — nessun riavvio.
+       dis-attivazione PTT, persistenza CSMA, e il limitatore di duty cycle a
+       lungo termine (abilitazione più percentuale di tetto); e il pulsante
+       **LOOP TEST**. Salva riapplica il modem in tempo reale — nessun riavvio.
    * - **Wireless**
      - Modalità (off/STA/AP/AP+STA), SSID/pass/canale dell'AP, 5 slot STA ciascuno
        con la propria casella Enable, potenza TX in dBm, più una scansione in
        tempo reale.
    * - **System**
-     - Login web, frequenza CPU (applicata in tempo reale), host NTP ×3,
-       intervallo di risincronizzazione, e i quattro preset di percorso
-       condivisi ``path[0..3]``.
+     - Login web, frequenza CPU (applicata in tempo reale) e una sezione
+       *Time*: abilitazione NTP, host NTP ×3, intervallo di risincronizzazione,
+       e un selettore di fuso orario che imposta la data/ora locale mostrata
+       nella dashboard (l'orologio stesso resta UTC). Inoltre il pulsante di
+       reset di fabbrica.
    * - **Storage**
      - Navigatore LittleFS: scarica, elimina, upload multipart, uso, formatta.
    * - **About / Firmware**
@@ -160,6 +167,16 @@ Le statistiche vengono da ``aprs_service_get_stats()``, tracciate in modo
    * - ``tx_queue_depth`` / ``tx_queue_limit``
      - L'arretrato attuale dell'anello TX RF e il tetto effettivo di *TX buffers*,
        così che la dashboard si legga come la riga "n/n in attesa" della console.
+   * - ``csma_busy_forced`` / ``csma_persist_forced``
+     - Quante volte il limite anti-starvation di otto slot ha forzato una
+       trasmissione, distinguendo se qualche slot ha visto il canale occupato o
+       se tutti lo hanno trovato libero. Mostrato come *CSMA FORZATO
+       (OCCUP./PERSIST.)*. Sono trasmissioni, non scarti.
+   * - ``tx_duty_cycle_pct`` / ``duty_cycle_limit_pct``
+     - Duty cycle di trasmissione misurato sulla finestra scorrevole di 10
+       minuti rispetto al tetto configurato, come *CICLO DI LAVORO TX*. Il
+       limite vale ``0`` quando il limitatore è spento, mentre la misura è
+       popolata in ogni caso.
 
 Questo è deliberato. Con entrambe le funzioni disattivate (una configurazione
 comune di solo-RX/monitor) la dashboard resterebbe inchiodata a zero per quanto

@@ -81,7 +81,7 @@ Path presets and bitmasks
 
 Each service (tracker / igate / digi / wx / …) stores a **bitmask**, not a path
 string. Bit *N* selects ``g_config.path[N]``, one of the four free-text presets
-edited on the *System* page. ``aprs_path_build_suffix()`` concatenates every
+edited on the *Digi* page. ``aprs_path_build_suffix()`` concatenates every
 selected non-empty slot; selected-but-empty slots are skipped. It is shared by
 the beacons, weather, telemetry, messages and query answers, and enforces the
 AX.25 8-via limit at transmit time, so a configuration that reached the device

@@ -84,6 +84,19 @@ Modem / Layer-2
        that never clears cannot hold a queued frame forever. The dashboard
        reports how often that floor fired, split between a busy channel and a
        clear one, as *CSMA FORCED (BUSY/PERSIST)*
+   * - Long-term transmit duty-cycle ceiling
+     - ⚠️ (rare outside commercial/regulated gear)
+     - ✅
+     - Optional (``duty_cycle_en``, off by default) ceiling of
+       ``duty_cycle_pct`` percent (1-100, default 25) measured over a rolling
+       10-minute window, accumulated from the estimated on-air time of every
+       frame actually transmitted at the configured baud rate. Only
+       non-critical traffic is held back: message traffic and digipeat repeats
+       always go out. A held-back beacon is deferred, not lost - the owning
+       periodic task re-offers it on its next interval - though it is counted
+       as ``DROP_TX_DUTY_CYCLE`` for visibility. The dashboard shows measured
+       against configured percentage as *TX DUTY CYCLE*, populated even while
+       the limiter is off so the ceiling can be judged before enabling it
    * - PTT keying (VOX-free, hardware GPIO)
      - ✅
      - ✅
@@ -166,16 +179,22 @@ IGate (RF <-> APRS-IS)
      - ✅
      - ⚠️
      - TCP auto-reconnect, re-reads config on every reconnect, but on a fixed
-       retry interval (5 s after a failed connect, 1 s while the device has no
-       internet route) rather than an exponential backoff
+       1 s retry interval (also 1 s while the device has no internet route)
+       rather than an exponential backoff. Each failed attempt moves on to the
+       next configured server rather than repeating the same one
    * - Passcode-based APRS-IS login
      - ✅
      - ✅
      - Standard ``user/pass/vers/filter`` login line; server verified/unverified response surfaced
    * - Multiple/failover APRS-IS servers
      - ⚠️ (some support server lists)
-     - ❌
-     - Single configured host/port only
+     - ✅
+     - Four server slots (``APRS_SERVER_NUM``), each with its own Enable
+       checkbox, host and port. A failed DNS lookup, connect or login advances
+       to the next enabled slot and wraps circularly, retrying every second
+       until one accepts; disabled slots are skipped, including on the first
+       attempt after boot. All slots share the one login identity
+       (callsign/SSID/passcode/filter). The dashboard names the slot in use
    * - Per-drop-reason statistics
      - ⚠️ (uncommon, usually just totals)
      - ✅

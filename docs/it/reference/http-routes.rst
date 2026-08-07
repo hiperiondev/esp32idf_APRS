@@ -87,7 +87,7 @@ controllo di autenticazione possa proteggere.
      - risultati della scansione AP (JSON)
    * - GET/POST
      - ``/system``
-     - login, freq. CPU, NTP, preset di percorso
+     - login, freq. CPU, host/risincronizzazione NTP, selezione fuso orario
    * - POST
      - ``/default``
      - reset di fabbrica

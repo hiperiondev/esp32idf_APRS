@@ -38,9 +38,10 @@ Varias correcciones deliberadas hacen fiable la ruta de estación:
   ``ESP_ERR_WIFI_NOT_STARTED`` — sin asociación, sin evento de desconexión, sin
   reintento. La conexión se emite desde el manejador de STA_START y cada intento
   registra su resultado.
-* **Retroceso de reconexión creciente, armado en un temporizador.** Las
-  reconexiones usan un retroceso que crece 500 ms por fallo consecutivo, topado a
-  8 s, armado en un ``esp_timer`` — **no** un ``vTaskDelay()`` dentro del
+* **Intervalo de reconexión fijo, armado en un temporizador.** Cada desconexión
+  espera el mismo ``RECONNECT_INTERVAL_MS`` (5 s) antes del siguiente
+  ``esp_wifi_connect()``, armado en un ``esp_timer`` — **no** un
+  ``vTaskDelay()`` dentro del
   manejador de eventos, que detendría el bucle de eventos compartido (incluido el
   propio ``STA_GOT_IP`` que espera) y, en un bucle de desconexión ajustado,
   mataría de hambre a la tarea idle hasta que saltara el watchdog de tareas.
@@ -99,6 +100,16 @@ Sincronización horaria
 no bloqueante plegada en el tick de servicio de 1 Hz, y fija el reloj del
 sistema a UTC (``TZ=UTC0``) — las marcas de tiempo zulú de la especificación
 APRS lo requieren.
+
+El mismo archivo lleva además una tabla incorporada de desfases UTC fijos (sin
+reglas de horario de verano), seleccionada por ``g_config.timezone_idx`` desde
+la sección *Time* de la página System. Es **solo una comodidad de
+visualización**: ``time_sync_format_local()`` toma prestada la variable ``TZ``
+del proceso bajo un cerrojo interno para representar una fecha/hora local en el
+panel, y restaura ``UTC0`` inmediatamente. El reloj del sistema, todas las
+marcas de tiempo APRS y el resto de llamadas de formato horario del firmware
+(todas ellas con ``gmtime_r()``) siguen en UTC con independencia de la
+selección.
 
 Frecuencia de CPU
 =================

@@ -74,19 +74,24 @@ Notable factory defaults
    * - CPU frequency
      - 240 MHz
    * - System clock
-     - always UTC (TZ=UTC0); no local-time offset is applied
+     - always UTC (TZ=UTC0). The System page's timezone selector (default
+       ``UTC``) only changes the local date/time shown on the dashboard; on-air
+       timestamps stay zulu
    * - NTP hosts
      - ``pool.ntp.org``, ``time.google.com``, ``time.cloudflare.com``
    * - IGate
      - enabled, ``rf2inet`` on, ``inet2rf`` off
    * - Callsign / SSID
      - ``NOCALL`` / 10, passcode ``-1``
-   * - APRS-IS host / port
-     - ``aprs.dprns.com`` : 14580
+   * - APRS-IS servers
+     - four failover slots, all preset to ``aprs.dprns.com`` : 14580, with only
+       slot 1 enabled
    * - Satellite gate-call list
      - ``RS0ISS``, ``YBOX``, ``YBSAT``, ``PSAT``, ``W3ADO``, ``BJ1SI`` (up to 8, web-configurable)
    * - Duplicate-suppression cache / window
      - 20 entries / 30000 ms (web-configurable)
+   * - Transmit duty-cycle limiter
+     - disabled; ceiling 25 % of a rolling 10-minute window when enabled
    * - Path preset 0
      - ``WIDE1-1,WIDE2-1``
    * - Digipeater

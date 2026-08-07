@@ -88,6 +88,20 @@ Modem / Livello 2
        un frame in coda. La dashboard riporta quante volte è intervenuto quel
        limite, distinguendo canale occupato da canale libero, come *CSMA FORZATO
        (OCCUP./PERSIST.)*
+   * - Tetto di duty cycle di trasmissione a lungo termine
+     - ⚠️ (raro al di fuori di apparati commerciali/regolamentati)
+     - ✅
+     - Tetto opzionale (``duty_cycle_en``, disattivato di default) di
+       ``duty_cycle_pct`` per cento (1-100, default 25) misurato su una
+       finestra scorrevole di 10 minuti, accumulato dal tempo in onda stimato
+       di ogni frame effettivamente trasmesso alla velocità configurata. Viene
+       trattenuto solo il traffico non critico: i messaggi e le ripetizioni del
+       digipeater partono sempre. Un beacon trattenuto viene differito, non
+       perso - il task periodico che lo genera lo ripropone al suo intervallo
+       successivo -, anche se viene conteggiato come ``DROP_TX_DUTY_CYCLE`` per
+       renderlo visibile. La dashboard mostra la percentuale misurata rispetto
+       a quella configurata come *CICLO DI LAVORO TX*, ed è popolata anche con
+       il limitatore spento per poter valutare il tetto prima di attivarlo
    * - Attivazione PTT (senza VOX, GPIO hardware)
      - ✅
      - ✅
@@ -172,17 +186,24 @@ IGate (RF <-> APRS-IS)
      - ✅
      - ⚠️
      - Riconnessione TCP automatica, rilegge la configurazione a ogni
-       riconnessione, ma con un intervallo di ritentativo fisso (5 s dopo una
-       connessione fallita, 1 s finché il dispositivo non ha una rotta verso
-       internet) e non con un backoff esponenziale
+       riconnessione, ma con un intervallo di ritentativo fisso di 1 s (anche
+       1 s finché il dispositivo non ha una rotta verso internet) e non con un
+       backoff esponenziale. Ogni tentativo fallito passa al server configurato
+       successivo invece di ripetere lo stesso
    * - Login ad APRS-IS basato su passcode
      - ✅
      - ✅
      - Riga di login standard ``user/pass/vers/filter``; la risposta verified/unverified del server viene mostrata
    * - Server APRS-IS multipli / failover
      - ⚠️ (alcuni supportano elenchi di server)
-     - ❌
-     - Solo un host/porta configurato
+     - ✅
+     - Quattro slot server (``APRS_SERVER_NUM``), ognuno con la propria casella
+       Abilita, host e porta. Un fallimento di DNS, connessione o login passa
+       allo slot abilitato successivo e riparte circolarmente, ritentando ogni
+       secondo finché uno accetta; gli slot disabilitati vengono saltati, anche
+       al primo tentativo dopo l'avvio. Tutti gli slot condividono la stessa
+       identità di login (nominativo/SSID/passcode/filtro). Il pannello indica
+       lo slot in uso
    * - Statistiche per motivo di scarto
      - ⚠️ (poco comune, di solito solo totali)
      - ✅

@@ -12,9 +12,9 @@ quindi l'amministrazione web è l'unica fonte di verità.
 Il task client APRS-IS
 ======================
 
-* **Client TCP** con riconnessione automatica. Rilegge ``g_config`` a ogni
-  riconnessione, quindi la maggior parte delle modifiche dal web ha effetto dopo
-  il ciclo di riconnessione successivo, senza riavvio.
+* **Client TCP** con failover multiserver e riconnessione automatica. Rilegge
+  ``g_config`` a ogni riconnessione, quindi la maggior parte delle modifiche dal
+  web ha effetto dopo il ciclo di riconnessione successivo, senza riavvio.
 * **Condizionato alla connettività reale**, non solo al fatto che "il Wi-Fi è
   attivo": interroga ``net_state_is_connected()``, che diventa vero solo con
   ``IP_EVENT_STA_GOT_IP`` e falso di nuovo alla disconnessione o in modalità
@@ -32,6 +32,35 @@ Il task client APRS-IS
 * **Uplink condiviso.** Il task è sempre in esecuzione, perché lo stesso socket è
   usato dal componente di messaggistica (``igate_send_raw()``) e dal "beacon a
   internet". Resta inattivo a basso costo quando niente lo richiede.
+
+Server failover
+===============
+
+La pagina IGate memorizza ``APRS_SERVER_NUM`` (quattro) slot server in
+``g_config.aprs_server[]``, ciascuno con la propria casella Abilita, host e
+porta. Tutti gli slot condividono la stessa identità di login — indicativo, SSID,
+passcode e stringa di filtro sono uno solo — perché rappresentano la stessa
+stazione che si connette a server APRS-IS alternativi.
+
+``connectAprsIs()`` prova lo slot selezionato in quel momento. Qualsiasi
+fallimento — lookup DNS, ``socket()``, ``connect()`` o l'invio della riga di
+login — chiama ``advanceServer()``, che sposta la selezione allo slot
+**abilitato** successivo con avvolgimento circolare, e il task attende 1 secondo
+prima del tentativo seguente. La rotazione non si ferma mai: continua a
+percorrere tutti gli slot abilitati finché uno accetta la connessione.
+
+Gli slot disabilitati vengono saltati anche alla **prima** selezione dopo
+l'avvio, non solo dopo un fallimento: togliere la spunta a uno slot lo mette
+fuori servizio immediatamente. Se nessuno slot è abilitato il task ripiega sullo
+slot 1, così ha sempre una destinazione concreta da tentare e registrare.
+
+Una connessione già stabilita non fa ruotare la selezione: se il server chiude
+il collegamento, il task riprova prima lo stesso slot, e passa al successivo
+solo quando anche quel nuovo tentativo fallisce.
+
+La dashboard mostra host e porta dello slot in uso in quel momento
+(``igate_get_current_server()``), quindi si vede subito su quale server si è
+finiti dopo un failover.
 
 RF → INET (``igateProcess()``)
 ==============================

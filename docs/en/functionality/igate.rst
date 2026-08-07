@@ -12,9 +12,9 @@ source of truth.
 The APRS-IS client task
 =======================
 
-* **TCP client** with auto-reconnect. It re-reads ``g_config`` on every
-  reconnect, so most web-admin changes land after the next reconnect cycle
-  without a reboot.
+* **TCP client** with multiserver failover and auto-reconnect. It re-reads
+  ``g_config`` on every reconnect, so most web-admin changes land after the
+  next reconnect cycle without a reboot.
 * **Gated on real connectivity**, not merely on "Wi-Fi is up": it polls
   ``net_state_is_connected()``, which becomes true only on
   ``IP_EVENT_STA_GOT_IP`` and false again on disconnect or AP-only mode.
@@ -30,6 +30,35 @@ The APRS-IS client task
 * **Shared uplink.** The task always runs, because the same socket is used by
   the message component (``igate_send_raw()``) and by "beacon to internet". It
   idles cheaply when nothing needs it.
+
+Server failover
+===============
+
+The IGate page stores ``APRS_SERVER_NUM`` (four) server slots in
+``g_config.aprs_server[]``, each with its own Enable checkbox, host and port.
+All slots share one login identity — callsign, SSID, passcode and filter string
+are single-valued — because they represent the same station connecting to
+alternative APRS-IS servers.
+
+``connectAprsIs()`` dials the currently selected slot. Any failure — DNS
+lookup, ``socket()``, ``connect()`` or sending the login line — calls
+``advanceServer()``, which moves the selection to the next **enabled** slot
+with circular wrap-around, and the task waits 1 second before the next attempt.
+The rotation never stops: it keeps cycling through every enabled slot until one
+accepts the connection.
+
+Disabled slots are skipped on the **first** selection after boot as well, not
+only after a failure: clearing a slot's checkbox takes it out of service
+immediately. If no slot at all is enabled the task falls back to slot 1, so it
+always has a concrete destination to attempt and log.
+
+An established connection does not rotate the selection: if the server closes
+the link, the task retries the same slot first, and only moves on when that
+fresh attempt also fails.
+
+The dashboard shows the host and port of the slot in use at that moment
+(``igate_get_current_server()``), so which server a failover landed on is
+visible at a glance.
 
 RF → INET (``igateProcess()``)
 ==============================

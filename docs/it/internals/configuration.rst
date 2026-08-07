@@ -84,7 +84,7 @@ Preset di percorso e maschere di bit
 
 Ogni servizio (tracker / igate / digi / wx / …) memorizza una **maschera di
 bit**, non una stringa di percorso. Il bit *N* seleziona ``g_config.path[N]``,
-uno dei quattro preset a testo libero modificati nella pagina *System*.
+uno dei quattro preset a testo libero modificati nella pagina *Digi*.
 ``aprs_path_build_suffix()`` concatena ogni slot selezionato non vuoto; gli slot
 selezionati-ma-vuoti sono saltati. È condivisa dai beacon, dal meteo, dalla
 telemetria, dai messaggi e dalle risposte alle query, e applica il limite AX.25

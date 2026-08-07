@@ -12,9 +12,9 @@ modo que la administración web es la única fuente de verdad.
 La tarea cliente de APRS-IS
 ===========================
 
-* **Cliente TCP** con reconexión automática. Relee ``g_config`` en cada
-  reconexión, así que la mayoría de los cambios de la web surten efecto tras el
-  siguiente ciclo de reconexión, sin reiniciar.
+* **Cliente TCP** con failover multiservidor y reconexión automática. Relee
+  ``g_config`` en cada reconexión, así que la mayoría de los cambios de la web
+  surten efecto tras el siguiente ciclo de reconexión, sin reiniciar.
 * **Condicionado a conectividad real**, no simplemente a que "el Wi-Fi está
   arriba": sondea ``net_state_is_connected()``, que solo se vuelve verdadero con
   ``IP_EVENT_STA_GOT_IP`` y falso de nuevo al desconectarse o en modo solo-AP.
@@ -30,6 +30,36 @@ La tarea cliente de APRS-IS
 * **Enlace de subida compartido.** La tarea siempre se ejecuta, porque el mismo
   socket lo usan el componente de mensajería (``igate_send_raw()``) y la "baliza
   a internet". Queda en reposo de forma barata cuando nada lo necesita.
+
+Failover de servidores
+======================
+
+La página IGate almacena ``APRS_SERVER_NUM`` (cuatro) ranuras de servidor en
+``g_config.aprs_server[]``, cada una con su propia casilla Habilitar, host y
+puerto. Todas las ranuras comparten una única identidad de login — indicativo,
+SSID, passcode y cadena de filtro son un solo valor — porque representan la
+misma estación conectándose a servidores APRS-IS alternativos.
+
+``connectAprsIs()`` marca la ranura seleccionada en ese momento. Cualquier fallo
+— resolución DNS, ``socket()``, ``connect()`` o el envío de la línea de login —
+llama a ``advanceServer()``, que mueve la selección a la siguiente ranura
+**habilitada** con vuelta circular, y la tarea espera 1 segundo antes del
+siguiente intento. La rotación no se detiene nunca: sigue recorriendo todas las
+ranuras habilitadas hasta que una acepte la conexión.
+
+Las ranuras deshabilitadas se saltan también en la **primera** selección tras el
+arranque, no solo después de un fallo: desmarcar la casilla de una ranura la
+retira del servicio de inmediato. Si no hay ninguna ranura habilitada, la tarea
+recae en la ranura 1, de modo que siempre tiene un destino concreto que intentar
+y registrar.
+
+Una conexión ya establecida no hace rotar la selección: si el servidor cierra el
+enlace, la tarea reintenta primero la misma ranura, y solo pasa a la siguiente
+cuando ese nuevo intento también falla.
+
+El panel muestra el host y el puerto de la ranura en uso en ese momento
+(``igate_get_current_server()``), así que se ve de un vistazo en qué servidor se
+acabó tras un failover.
 
 RF → INET (``igateProcess()``)
 ==============================

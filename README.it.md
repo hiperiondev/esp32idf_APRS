@@ -35,8 +35,8 @@ In una frase, il firmware **demodula** l'audio AFSK/FSK dall'altoparlante o dall
 
 - **Soft-modem sul chip.** AFSK 1200 Bd Bell 202 (APRS standard) con demodulatore doppio, più AFSK 1200 Bd V.23, AFSK 300 Bd e **G3RUH 9600 Bd FSK** — tutto in C puro sull'ADC/DAC dell'ESP32 stesso.
 - **Correzione d'errore FX.25.** FEC Reed–Solomon su AX.25, solo RX o RX+TX, per decodifiche affidabili in condizioni di segnale debole.
-- **IGate APRS-IS completo.** Gating bidirezionale **RF→INET** e **INET→RF** con soppressione dei duplicati, costruzione `qAR`/`qAO`, filtraggio per tipo di payload, budlist di nominativi, un range gate locale (distanza haversine) e whitelist per prefisso.
-- **Digipeater.** WIDEn-N, TRACEn-N, RELAY/ECHO/GATE con soppressione dei duplicati.
+- **IGate APRS-IS completo.** Gating bidirezionale **RF→INET** e **INET→RF** con soppressione dei duplicati, costruzione `qAR`/`qAO`, filtraggio per tipo di payload, budlist di nominativi, un range gate locale (distanza haversine) e whitelist per prefisso. Si possono elencare fino a quattro server APRS-IS, con failover automatico tra quelli abilitati.
+- **Digipeater.** Una tabella di alias n-N di quattro righe (WIDE1-1 / WIDE2-2 / WIDE#-2 di default), ogni riga con il proprio limite di hop e modalità trace/flood, più trappola per il conteggio hop, funzionamento solo fill-in e soppressione dei duplicati.
 - **Beacon, messaggistica e chat.** Beacon a posizione fissa per tracker/igate/digi, messaggistica di testo APRS con ack/ritrasmissione (RF e/o INET) e un'interfaccia chat dei messaggi nel browser.
 - **Meteo e telemetria.** Rapporti meteo APRS in onda con refresh dei sensori a 1 Hz e media per campo, più telemetria APRS (analogica A1–A5 + digitale B1–B8) con rapporti `T#nnn` e metadati.
 - **Oggetti, item e bollettini.** Fino a cinque Oggetti/Item APRS della stazione e cinque bollettini (BLN1–BLN5), ciascuno via RF e/o INET con controllo di scadenza/decadimento.
@@ -57,9 +57,11 @@ In una frase, il firmware **demodula** l'audio AFSK/FSK dall'altoparlante o dall
 | FX.25 (FEC Reed–Solomon su AX.25) | Modalità solo RX / RX+TX |
 | Comando PTT | GPIO e polarità a compile-time, tempo minimo di rilascio |
 | CSMA / time-slot di TX / preambolo TXDelay | `preamble`, `tx_timeslot` |
+| Limitatore di duty cycle di TX | Tetto opzionale su una finestra scorrevole di 10 minuti |
 | IGate APRS-IS RF→INET e INET→RF | Filtri, dedup, budlist, unwrap third-party opzionale |
+| Failover multiserver APRS-IS | 4 slot server, ritentativo circolare sugli slot abilitati |
 | Range gate e prefix gate locali | Distanza haversine + whitelist per prefisso di nominativo |
-| Digipeater | WIDEn-N, TRACEn-N, RELAY/ECHO/GATE, soppressione duplicati |
+| Digipeater | Tabella di alias n-N configurabile (trace/flood), trappola per gli hop, soppressione duplicati |
 | Oggetti / Item · Bollettini | Fino a 5 ciascuno, RF e/o INET, scadenza/decadimento |
 | Messaggistica + ack/ritrasmissione · Chat | RF e/o INET |
 | Rapporto meteo | Refresh dei sensori a 1 Hz, media opzionale |
@@ -67,7 +69,7 @@ In una frase, il firmware **demodula** l'audio AFSK/FSK dall'altoparlante o dall
 | Framework di driver per sensori | Registro dinamico, driver BMP180 incluso |
 | Pannello web | ~30 pagine, dashboard live, traffico + ultimi ascoltati |
 | Archiviazione | LittleFS 512 KB, upload/download/eliminazione/formattazione |
-| Rete | Wi-Fi AP/STA/AP+STA, scansione, potenza TX, SNTP (UTC) |
+| Rete | Wi-Fi AP/STA/AP+STA, scansione, potenza TX, SNTP (orologio UTC, fuso orario selezionabile per la visualizzazione) |
 | Controllo frequenza CPU | 80 / 160 / 240 MHz |
 | Aggiornamento OTA | Slot `ota_0`/`ota_1`, auto-rollback |
 | Localizzazione | EN / ES / IT, a compile-time |

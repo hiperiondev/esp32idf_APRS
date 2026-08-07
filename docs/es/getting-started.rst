@@ -75,19 +75,25 @@ Valores de fábrica destacados
    * - Frecuencia de CPU
      - 240 MHz
    * - Reloj del sistema
-     - siempre UTC (TZ=UTC0); no se aplica ningún desfase de hora local
+     - siempre UTC (TZ=UTC0). El selector de zona horaria de la página System
+       (por defecto ``UTC``) solo cambia la fecha/hora local mostrada en el
+       panel; las marcas de tiempo al aire siguen siendo zulú
    * - Hosts NTP
      - ``pool.ntp.org``, ``time.google.com``, ``time.cloudflare.com``
    * - IGate
      - habilitado, ``rf2inet`` activo, ``inet2rf`` inactivo
    * - Indicativo / SSID
      - ``NOCALL`` / 10, passcode ``-1``
-   * - Host / puerto de APRS-IS
-     - ``aprs.dprns.com`` : 14580
+   * - Servidores APRS-IS
+     - cuatro ranuras de failover, todas preconfiguradas a ``aprs.dprns.com`` :
+       14580, con solo la ranura 1 habilitada
    * - Lista de satélites digipetidores
      - ``RS0ISS``, ``YBOX``, ``YBSAT``, ``PSAT``, ``W3ADO``, ``BJ1SI`` (hasta 8, configurable desde la web)
    * - Caché / ventana de supresión de duplicados
      - 20 entradas / 30000 ms (configurable desde la web)
+   * - Limitador de ciclo de trabajo de transmisión
+     - deshabilitado; techo del 25 % de una ventana deslizante de 10 minutos
+       cuando se habilita
    * - Preset de ruta 0
      - ``WIDE1-1,WIDE2-1``
    * - Digipeater

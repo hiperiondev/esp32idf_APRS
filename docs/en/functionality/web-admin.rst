@@ -49,7 +49,9 @@ The pages
        and the Maidenhead locator prefix for status reports.
    * - **IGate**
      - Enable, RF→INET / INET→RF, both filter bitmasks, budlist and range/prefix
-       gates, callsign/SSID/passcode, host/port, server-side filter string,
+       gates, callsign/SSID/passcode, four *APRS-IS Server* fieldsets (each an
+       Enable checkbox plus host and port, used as a failover rotation),
+       server-side filter string,
        beacon on/off, position, interval, symbol picker, object, comment,
        status, PHG. *Message Gating* holds the INET→RF message criteria switch
        and the heard-locally window.
@@ -57,8 +59,10 @@ The pages
      - Digipeater enable, callsign/SSID and beacon settings (position, symbol,
        interval, comment, status, path). *n-N Path Aliases* holds the four
        {alias, max N, mode} rows the digipeater repeats by, the fill-in-only
-       switch and the choice of what to do with a trapped hop count. The
-       duplicate-suppression window is a single control, on the *IGate* page.
+       switch and the choice of what to do with a trapped hop count. It also
+       carries the four shared path presets ``path[0..3]`` that every
+       transmitting service selects from. The duplicate-suppression window is a
+       single control, on the *IGate* page.
    * - **Tracker**
      - Tracker enable, callsign/SSID, fixed interval, position, station symbol,
        comment, compressed-position, Mic-E-position and altitude options.
@@ -93,14 +97,17 @@ The pages
    * - **Radio / Modem**
      - FX.25 mode (off / RX only / RX+TX); audio modem enable, modulation (300 /
        1200 Bell202 / 1200 V.23 / 9600 G3RUH), audio LPF (flat audio), preamble
-       ms, TX time slot ms, TX buffers, extra PTT unkey hold, CSMA persistence;
+       ms, TX time slot ms, TX buffers, extra PTT unkey hold, CSMA persistence,
+       and the long-term duty-cycle limiter (enable plus ceiling percentage);
        and the **LOOP TEST** button. Save re-applies the modem live — no reboot.
    * - **Wireless**
      - Mode (off/STA/AP/AP+STA), AP SSID/pass/channel, 5 STA slots each with its
        own Enable checkbox, TX power in dBm, plus a live scan.
    * - **System**
-     - Web login, CPU frequency (applied live), NTP hosts ×3, resync interval,
-       and the four shared path presets ``path[0..3]``.
+     - Web login, CPU frequency (applied live) and a *Time* section: NTP
+       enable, NTP hosts ×3, resync interval, and a timezone selector that sets
+       the local date/time shown on the dashboard (the clock itself stays UTC).
+       Also the factory-reset button.
    * - **Storage**
      - LittleFS browser: download, delete, multipart upload, usage, format.
    * - **About / Firmware**
@@ -147,6 +154,15 @@ of ``igate_en``/``digi_en``:
    * - ``tx_queue_depth`` / ``tx_queue_limit``
      - The current RF TX ring backlog and the effective *TX buffers* cap, so the
        dashboard reads like the console's "n/n pending" line.
+   * - ``csma_busy_forced`` / ``csma_persist_forced``
+     - How often the eight-slot anti-starvation floor forced a transmission,
+       split by whether any slot saw the channel busy or every slot found it
+       clear. Shown as *CSMA FORCED (BUSY/PERSIST)*. These are transmissions,
+       not drops.
+   * - ``tx_duty_cycle_pct`` / ``duty_cycle_limit_pct``
+     - Measured transmit duty cycle over the rolling 10-minute window against
+       the configured ceiling, as *TX DUTY CYCLE*. The limit reads ``0`` when
+       the limiter is off, while the measured figure is populated either way.
 
 This is deliberate. With both features off (a common RX-only/monitor setup) the
 dashboard would otherwise stay pinned at zero no matter how much traffic was

@@ -88,6 +88,20 @@ Módem / Capa 2
        una trama en cola. El panel informa cuántas veces actuó ese piso,
        separando canal ocupado de canal libre, como *CSMA FORZADO
        (OCUP./PERSIST.)*
+   * - Techo de ciclo de trabajo de transmisión a largo plazo
+     - ⚠️ (poco común fuera de equipos comerciales/regulados)
+     - ✅
+     - Techo opcional (``duty_cycle_en``, desactivado por defecto) de
+       ``duty_cycle_pct`` por ciento (1-100, por defecto 25) medido sobre una
+       ventana deslizante de 10 minutos, acumulado a partir del tiempo al aire
+       estimado de cada trama realmente transmitida a la velocidad configurada.
+       Solo se retiene el tráfico no crítico: los mensajes y las repeticiones
+       del digipeater siempre salen. Una baliza retenida se difiere, no se
+       pierde - la tarea periódica que la genera vuelve a ofrecerla en su
+       siguiente intervalo -, aunque se contabiliza como ``DROP_TX_DUTY_CYCLE``
+       para que sea visible. El panel muestra el porcentaje medido frente al
+       configurado como *CICLO DE TRABAJO TX*, y se rellena incluso con el
+       limitador apagado para poder valorar el techo antes de activarlo
    * - Activación de PTT (sin VOX, GPIO de hardware)
      - ✅
      - ✅
@@ -172,17 +186,24 @@ IGate (RF <-> APRS-IS)
      - ✅
      - ⚠️
      - Reconexión TCP automática, relee la configuración en cada reconexión,
-       pero con un intervalo de reintento fijo (5 s tras una conexión fallida,
-       1 s mientras el equipo no tiene ruta a internet), no un backoff
-       exponencial
+       pero con un intervalo de reintento fijo de 1 s (también 1 s mientras el
+       equipo no tiene ruta a internet), no un backoff exponencial. Cada
+       intento fallido pasa al siguiente servidor configurado en vez de repetir
+       el mismo
    * - Login a APRS-IS basado en passcode
      - ✅
      - ✅
      - Línea de login estándar ``user/pass/vers/filter``; se muestra la respuesta verified/unverified del servidor
    * - Múltiples servidores APRS-IS / failover
      - ⚠️ (algunos soportan listas de servidores)
-     - ❌
-     - Solo un host/puerto configurado
+     - ✅
+     - Cuatro ranuras de servidor (``APRS_SERVER_NUM``), cada una con su propia
+       casilla Habilitar, host y puerto. Un fallo de DNS, de conexión o de login
+       pasa a la siguiente ranura habilitada y da la vuelta circularmente,
+       reintentando cada segundo hasta que una acepte; las ranuras
+       deshabilitadas se saltan, incluso en el primer intento tras el arranque.
+       Todas las ranuras comparten la misma identidad de login
+       (indicativo/SSID/passcode/filtro). El panel indica la ranura en uso
    * - Estadísticas por motivo de descarte
      - ⚠️ (poco común, normalmente solo totales)
      - ✅

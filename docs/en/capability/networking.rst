@@ -36,9 +36,9 @@ Several deliberate fixes make the station path reliable:
   ``ESP_ERR_WIFI_NOT_STARTED`` — no association, no disconnect event, no retry.
   The connect is issued from the STA_START handler and every attempt logs its
   result.
-* **Growing reconnect back-off, armed on a timer.** Reconnects use a back-off
-  that grows 500 ms per consecutive failure, capped at 8 s, armed on an
-  ``esp_timer`` — **not** a ``vTaskDelay()`` inside the event handler, which
+* **Fixed reconnect interval, armed on a timer.** Every disconnect waits the
+  same ``RECONNECT_INTERVAL_MS`` (5 s) before the next ``esp_wifi_connect()``,
+  armed on an ``esp_timer`` — **not** a ``vTaskDelay()`` inside the event handler, which
   would stall the shared event loop (including the very ``STA_GOT_IP`` it is
   waiting for) and, in a tight disconnect loop, starve the idle task until the
   task watchdog fired.
@@ -95,6 +95,15 @@ Time sync
 ``time_sync.c`` runs SNTP against three hosts. It is now a non-blocking state
 machine folded into the 1 Hz service tick, and it pins the system clock to UTC
 (``TZ=UTC0``) — the APRS spec's zulu timestamps require it.
+
+The same file also carries a built-in table of fixed UTC offsets (no DST rules),
+selected by ``g_config.timezone_idx`` from the *Time* section of the System
+page. This is a **display convenience only**: ``time_sync_format_local()``
+borrows the process-wide ``TZ`` under an internal lock to render one local
+date/time for the dashboard, then restores ``UTC0`` immediately. The system
+clock, every APRS timestamp and every other time-formatting call in the
+firmware (all of which use ``gmtime_r()``) remain UTC regardless of the
+selection.
 
 CPU frequency
 =============

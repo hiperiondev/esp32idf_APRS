@@ -87,7 +87,7 @@ hay nada que una comprobación de autenticación pueda proteger.
      - resultados del escaneo de AP (JSON)
    * - GET/POST
      - ``/system``
-     - login, frec. CPU, NTP, presets de ruta
+     - login, frec. CPU, hosts/resincronización NTP, selección de zona horaria
    * - POST
      - ``/default``
      - reset de fábrica

@@ -85,7 +85,7 @@ Presets de ruta y máscaras de bits
 
 Cada servicio (tracker / igate / digi / wx / …) almacena una **máscara de bits**,
 no una cadena de ruta. El bit *N* selecciona ``g_config.path[N]``, uno de los
-cuatro presets de texto libre editados en la página *System*.
+cuatro presets de texto libre editados en la página *Digi*.
 ``aprs_path_build_suffix()`` concatena cada ranura seleccionada no vacía; las
 ranuras seleccionadas-pero-vacías se saltan. Es compartida por las balizas, el
 tiempo, la telemetría, los mensajes y las respuestas a consultas, y aplica el

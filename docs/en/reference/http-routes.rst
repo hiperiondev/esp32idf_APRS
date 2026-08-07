@@ -86,7 +86,7 @@ auth check to guard.
      - AP scan results (JSON)
    * - GET/POST
      - ``/system``
-     - login, CPU freq, NTP, path presets
+     - login, CPU freq, NTP hosts/resync, timezone selection
    * - POST
      - ``/default``
      - factory reset

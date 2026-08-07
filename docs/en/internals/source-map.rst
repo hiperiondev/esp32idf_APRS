@@ -40,7 +40,7 @@ Repository layout
    │   ├── bulletins.c/.h      ← APRS bulletins BLN1..BLN5 (own bulletins.json)
    │   ├── objects_items.c/.h  ← APRS Objects/Items (own objitems.json)
    │   ├── net_state.c/.h      ← "do we actually have internet?" flag
-   │   ├── time_sync.c/.h      ← SNTP (UTC always), non-blocking state machine
+   │   ├── time_sync.c/.h      ← SNTP (UTC always), non-blocking state machine, timezone table (display only)
    │   └── cpu_freq.c/.h       ← esp_pm_configure() from the System page
    │
    ├── components/

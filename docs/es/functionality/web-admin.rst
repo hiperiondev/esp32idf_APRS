@@ -53,7 +53,9 @@ Las páginas
        los reportes de estado.
    * - **IGate**
      - Habilitar, RF→INET / INET→RF, ambas máscaras de filtro, budlist y guardas
-       de rango/prefijo, indicativo/SSID/passcode, host/puerto, cadena de filtro
+       de rango/prefijo, indicativo/SSID/passcode, cuatro recuadros *APRS-IS
+       Server* (cada uno con casilla Habilitar más host y puerto, usados como
+       rotación de failover), cadena de filtro
        de servidor, baliza on/off, posición, intervalo, selector de símbolo,
        objeto, comentario, estado, PHG. *Filtrado de Mensajes* lleva el
        interruptor de criterios de mensajes INET→RF y la ventana de escucha
@@ -63,8 +65,10 @@ Las páginas
        símbolo, intervalo, comentario, estado, ruta). *Alias de Ruta n-N* lleva
        las cuatro filas de {alias, N máximo, modo} con las que repite el
        digipeater, el interruptor de solo relleno y la elección de qué hacer con
-       un contador de saltos atrapado. La ventana de supresión de duplicados es
-       un único control, en la página *IGate*.
+       un contador de saltos atrapado. Lleva también los cuatro presets de ruta
+       compartidos ``path[0..3]`` entre los que elige cada servicio que
+       transmite. La ventana de supresión de duplicados es un único control, en
+       la página *IGate*.
    * - **Tracker**
      - Habilitar tracker, indicativo/SSID, intervalo fijo, posición, símbolo de
        estación, comentario, opciones de posición comprimida, posición Mic-E y
@@ -105,15 +109,19 @@ Las páginas
      - Modo FX.25 (apagado / solo RX / RX+TX); habilitar módem de audio,
        modulación (300 / 1200 Bell202 / 1200 V.23 / 9600 G3RUH), LPF de audio
        (audio plano), ms de preámbulo, ms de ranura de tiempo TX, buffers TX,
-       retención extra de des-activación de PTT, persistencia CSMA; y el botón
+       retención extra de des-activación de PTT, persistencia CSMA, y el
+       limitador de ciclo de trabajo a largo plazo (habilitación más porcentaje
+       de techo); y el botón
        **LOOP TEST**. Guardar reaplica el módem en vivo — sin reinicio.
    * - **Wireless**
      - Modo (off/STA/AP/AP+STA), SSID/pass/canal del AP, 5 ranuras STA cada una
        con su propia casilla Enable, potencia TX en dBm, más un escaneo en vivo.
    * - **System**
-     - Login web, frecuencia de CPU (aplicada en vivo), hosts NTP ×3, intervalo
-       de resincronización, y los cuatro presets de ruta compartidos
-       ``path[0..3]``.
+     - Login web, frecuencia de CPU (aplicada en vivo) y una sección *Time*:
+       habilitación de NTP, hosts NTP ×3, intervalo de resincronización, y un
+       selector de zona horaria que fija la fecha/hora local mostrada en el
+       panel (el reloj en sí sigue en UTC). También el botón de reset de
+       fábrica.
    * - **Storage**
      - Navegador LittleFS: descargar, borrar, subida multipart, uso, formatear.
    * - **About / Firmware**
@@ -161,6 +169,16 @@ Las estadísticas vienen de ``aprs_service_get_stats()``, rastreadas de forma
      - El backlog actual del anillo de TX de RF y el tope efectivo de *TX
        buffers*, para que el panel se lea como la línea "n/n pendientes" de la
        consola.
+   * - ``csma_busy_forced`` / ``csma_persist_forced``
+     - Cuántas veces el piso anti-inanición de ocho ranuras forzó una
+       transmisión, separando si alguna ranura vio el canal ocupado o si todas
+       lo encontraron libre. Se muestra como *CSMA FORZADO (OCUP./PERSIST.)*.
+       Son transmisiones, no descartes.
+   * - ``tx_duty_cycle_pct`` / ``duty_cycle_limit_pct``
+     - Ciclo de trabajo de transmisión medido sobre la ventana deslizante de 10
+       minutos frente al techo configurado, como *CICLO DE TRABAJO TX*. El
+       límite vale ``0`` cuando el limitador está apagado, mientras que la
+       medición se rellena en cualquier caso.
 
 Esto es deliberado. Con ambas funciones desactivadas (una configuración común de
 solo-RX/monitor) el panel se quedaría clavado en cero por mucho tráfico que se
