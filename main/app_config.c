@@ -142,6 +142,8 @@ void app_config_set_defaults(app_config_t *c) {
 
     c->pos_ambiguity = 0;
     c->status_grid_en = false;
+    c->status_timestamp_en = false;
+    c->pos_dao_en = false;
 
     c->wifi_mode = 2; // AP_STA equivalent default (matches original shipping as AP)
     c->wifi_power = 20;
@@ -194,6 +196,10 @@ void app_config_set_defaults(app_config_t *c) {
     c->igate_ext_type = APRS_EXT_PHG;
     c->igate_range_miles = 0;
     c->igate_dfs_strength = 0;
+    c->igate_freq_mhz = 0.0f;
+    c->igate_tone_tenths = 0;
+    c->igate_duplex = 0;
+    c->igate_offset_khz = 0;
     c->rf2inetFilter = IGATE_FILT_MESSAGE | IGATE_FILT_STATUS | IGATE_FILT_TELEMETRY | IGATE_FILT_WEATHER | IGATE_FILT_OBJECT | IGATE_FILT_ITEM |
                        IGATE_FILT_BUOY | IGATE_FILT_POSITION;
     c->inet2rfFilter = IGATE_FILT_MESSAGE;
@@ -231,6 +237,10 @@ void app_config_set_defaults(app_config_t *c) {
     c->digi_interval = 30;
     set_str(c->digi_symbol, sizeof(c->digi_symbol), "N&");
     set_str(c->digi_comment, sizeof(c->digi_comment), "esp32idf_APRS Digi");
+    c->digi_freq_mhz = 0.0f;
+    c->digi_tone_tenths = 0;
+    c->digi_duplex = 0;
+    c->digi_offset_khz = 0;
 
     // Factory alias table: the New n-N Paradigm's two standard aliases get a
     // row each so their hop limits can differ, and a wildcard row catches the
@@ -272,6 +282,10 @@ void app_config_set_defaults(app_config_t *c) {
     c->trk_mice = false;
     set_str(c->trk_symbol, sizeof(c->trk_symbol), "\\>");
     set_str(c->trk_comment, sizeof(c->trk_comment), "esp32idf_APRS Tracker");
+    c->trk_freq_mhz = 0.0f;
+    c->trk_tone_tenths = 0;
+    c->trk_duplex = 0;
+    c->trk_offset_khz = 0;
 
     // WX
     c->wx_en = false;
@@ -488,6 +502,8 @@ static void config_write_json(jw_t *d, const app_config_t *c) {
     jadd_num(d, "myPHGDir", c->my_phg_dir);
     jadd_num(d, "myAmbiguity", c->pos_ambiguity);
     jadd_bool(d, "myStatusGrid", c->status_grid_en);
+    jadd_bool(d, "myStatusTS", c->status_timestamp_en);
+    jadd_bool(d, "myPosDao", c->pos_dao_en);
     jadd_num(d, "txTimeSlot", c->tx_timeslot);
     jadd_num(d, "csmaPersist", c->csma_persist);
     jadd_bool(d, "syncTime", c->synctime);
@@ -578,6 +594,10 @@ static void config_write_json(jw_t *d, const app_config_t *c) {
     jadd_num(d, "igateExtType", c->igate_ext_type);
     jadd_num(d, "igateRng", c->igate_range_miles);
     jadd_num(d, "igateDfsS", c->igate_dfs_strength);
+    jadd_num(d, "igateFreqMHz", c->igate_freq_mhz);
+    jadd_num(d, "igateFreqTone", c->igate_tone_tenths);
+    jadd_num(d, "igateFreqDup", c->igate_duplex);
+    jadd_num(d, "igateFreqOff", c->igate_offset_khz);
 
     jadd_bool(d, "digiEn", c->digi_en);
     jadd_bool(d, "digiPos2rf", c->digi_loc2rf);
@@ -612,6 +632,10 @@ static void config_write_json(jw_t *d, const app_config_t *c) {
     jadd_str(d, "digiComment", c->digi_comment);
     jadd_num(d, "digiSTSIntv", c->digi_sts_interval);
     jadd_str(d, "digiStatus", c->digi_status);
+    jadd_num(d, "digiFreqMHz", c->digi_freq_mhz);
+    jadd_num(d, "digiFreqTone", c->digi_tone_tenths);
+    jadd_num(d, "digiFreqDup", c->digi_duplex);
+    jadd_num(d, "digiFreqOff", c->digi_offset_khz);
 
     jadd_bool(d, "trkEn", c->trk_en);
     jadd_bool(d, "trkPos2rf", c->trk_loc2rf);
@@ -632,6 +656,10 @@ static void config_write_json(jw_t *d, const app_config_t *c) {
     jadd_str(d, "trkComment", c->trk_comment);
     jadd_num(d, "trkSTSIntv", c->trk_sts_interval);
     jadd_str(d, "trkStatus", c->trk_status);
+    jadd_num(d, "trkFreqMHz", c->trk_freq_mhz);
+    jadd_num(d, "trkFreqTone", c->trk_tone_tenths);
+    jadd_num(d, "trkFreqDup", c->trk_duplex);
+    jadd_num(d, "trkFreqOff", c->trk_offset_khz);
 
     jadd_bool(d, "wxEn", c->wx_en);
     jadd_bool(d, "wxTx2rf", c->wx_2rf);
@@ -725,6 +753,8 @@ static void config_from_json(cJSON *d, app_config_t *c) {
         c->pos_ambiguity = POS_AMBIGUITY_MAX;
     }
     c->status_grid_en = jget_bool(d, "myStatusGrid", def.status_grid_en);
+    c->status_timestamp_en = jget_bool(d, "myStatusTS", def.status_timestamp_en);
+    c->pos_dao_en = jget_bool(d, "myPosDao", def.pos_dao_en);
     // Channel-access timing: bound every value coming off flash to the same
     // range the Radiomodem form accepts (aprs_service.h), so a hand-edited or
     // imported config.json cannot hand aprs_service_build_modem_config() a
@@ -930,6 +960,10 @@ static void config_from_json(cJSON *d, app_config_t *c) {
         ESP_LOGW(TAG, "igateDfsS %u out of range, clamped to %d", (unsigned)c->igate_dfs_strength, APRS_EXT_DFS_STRENGTH_MAX);
         c->igate_dfs_strength = APRS_EXT_DFS_STRENGTH_MAX;
     }
+    c->igate_freq_mhz = (float)jget_num(d, "igateFreqMHz", def.igate_freq_mhz);
+    c->igate_tone_tenths = (uint16_t)jget_num(d, "igateFreqTone", def.igate_tone_tenths);
+    c->igate_duplex = (int8_t)jget_num(d, "igateFreqDup", def.igate_duplex);
+    c->igate_offset_khz = (uint16_t)jget_num(d, "igateFreqOff", def.igate_offset_khz);
     c->igate_sts_interval = (uint16_t)jget_num(d, "igateSTSIntv", def.igate_sts_interval);
     set_str(c->igate_status, sizeof(c->igate_status), jget_str(d, "igateStatus", def.igate_status));
 
@@ -981,6 +1015,10 @@ static void config_from_json(cJSON *d, app_config_t *c) {
     set_str(c->digi_comment, sizeof(c->digi_comment), jget_str(d, "digiComment", def.digi_comment));
     c->digi_sts_interval = (uint16_t)jget_num(d, "digiSTSIntv", def.digi_sts_interval);
     set_str(c->digi_status, sizeof(c->digi_status), jget_str(d, "digiStatus", def.digi_status));
+    c->digi_freq_mhz = (float)jget_num(d, "digiFreqMHz", def.digi_freq_mhz);
+    c->digi_tone_tenths = (uint16_t)jget_num(d, "digiFreqTone", def.digi_tone_tenths);
+    c->digi_duplex = (int8_t)jget_num(d, "digiFreqDup", def.digi_duplex);
+    c->digi_offset_khz = (uint16_t)jget_num(d, "digiFreqOff", def.digi_offset_khz);
 
     c->trk_en = jget_bool(d, "trkEn", def.trk_en);
     c->trk_loc2rf = jget_bool(d, "trkPos2rf", def.trk_loc2rf);
@@ -1001,6 +1039,10 @@ static void config_from_json(cJSON *d, app_config_t *c) {
     set_str(c->trk_comment, sizeof(c->trk_comment), jget_str(d, "trkComment", def.trk_comment));
     c->trk_sts_interval = (uint16_t)jget_num(d, "trkSTSIntv", def.trk_sts_interval);
     set_str(c->trk_status, sizeof(c->trk_status), jget_str(d, "trkStatus", def.trk_status));
+    c->trk_freq_mhz = (float)jget_num(d, "trkFreqMHz", def.trk_freq_mhz);
+    c->trk_tone_tenths = (uint16_t)jget_num(d, "trkFreqTone", def.trk_tone_tenths);
+    c->trk_duplex = (int8_t)jget_num(d, "trkFreqDup", def.trk_duplex);
+    c->trk_offset_khz = (uint16_t)jget_num(d, "trkFreqOff", def.trk_offset_khz);
 
     c->wx_en = jget_bool(d, "wxEn", def.wx_en);
     c->wx_2rf = jget_bool(d, "wxTx2rf", def.wx_2rf);

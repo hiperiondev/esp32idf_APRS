@@ -82,6 +82,12 @@ auto-incrementing sequence number (``auto_seq``), analog field width
 number of analog/digital channels actually sent (``analog_count`` /
 ``digital_count``).
 
+Setting ``field_width`` to 3 zero-pads each analog value to three digits,
+000-999 - the range APRS 1.2 allows for this field, extended from the
+original APRS101 000-255 window. A channel whose receiving station still
+expects the older 0-255 range can be kept inside it by setting that channel's
+``ana_raw_min``/``ana_raw_max`` accordingly.
+
 Web page pickers
 ================
 

@@ -431,9 +431,15 @@ typedef struct {
                                page displays/edits this in meters and converts. */
     uint8_t my_phg_dir;     /**< "My Station" PHG sub-field: directivity, 0=Omni, 1-8 = N,NE,E,SE,S,SW,W,NW. */
 
-    uint8_t pos_ambiguity; /**< Position ambiguity applied to every uncompressed own-station position report, 0 (full precision) to ::POS_AMBIGUITY_MAX
-                              (nearest degree). See aprs_coord_format_ambiguous(). */
-    bool status_grid_en;   /**< Prefix every own-station status report with the Maidenhead grid locator of the beacon's position (APRS101 chapter 16). */
+    uint8_t pos_ambiguity;    /**< Position ambiguity applied to every uncompressed own-station position report, 0 (full precision) to ::POS_AMBIGUITY_MAX
+                                 (nearest degree). See aprs_coord_format_ambiguous(). */
+    bool status_grid_en;      /**< Prefix every own-station status report with the Maidenhead grid locator of the beacon's position (APRS101 chapter 16). */
+    bool status_timestamp_en; /**< Prefix every own-station status report with the optional "DDHHMMz" zulu timestamp (APRS101 chapter 16), immediately
+                                 after the '>' data type identifier and before any Maidenhead locator block. */
+    bool pos_dao_en; /**< Append the WGS-84 human-readable "!DAO!" precision/datum extension (aprs12/datum.txt) to every uncompressed own-station position
+                        report, recovering the third decimal minute digit of latitude/longitude that the plain "DDMM.mmN"/"DDDMM.mmW" fields round away. See
+                        aprs_dao_build(). Only applied when pos_ambiguity is 0: a station deliberately obscuring its position must not have that precision
+                        handed back via the extension. Never applied to the compressed layout (already full resolution) or to Mic-E. */
 
     uint8_t wifi_mode;                 /**< WiFi mode: 0=off, 1=STA, 2=AP, 3=AP_STA. */
     int8_t wifi_power;                 /**< WiFi TX power setting. */
@@ -505,6 +511,14 @@ typedef struct {
     uint16_t igate_range_miles; /**< "RNGrrrr" pre-calculated radio range, statute miles (::APRS_EXT_RNG only). */
     uint8_t igate_dfs_strength; /**< "DFSshgd" signal-strength code 0-9 (::APRS_EXT_DFS only; height/gain/directivity come from the PHG sub-fields). */
 
+    float igate_freq_mhz;       /**< Recommended travelers' voice repeater frequency this digipeater advertises, MHz; 0 => no frequency block emitted. Built
+                                   with objitem_build_freq_block() and prepended as the first 10 bytes of the IGate beacon comment (freqspec.txt); the same
+                                   block is also carried in the IGate status report, the spec's documented fallback for radios that decode neither the
+                                   frequency Object form nor a position comment. */
+    uint16_t igate_tone_tenths; /**< Repeater CTCSS subaudible tone, tenths of Hz (e.g. 1000 = 100.0 Hz); 0 => "Toff". */
+    int8_t igate_duplex;        /**< Repeater duplex direction: 0 = simplex (offset omitted), +1 = "+", -1 = "-". */
+    uint16_t igate_offset_khz;  /**< Repeater duplex shift magnitude, kHz (e.g. 600); used only when igate_duplex != 0. */
+
     bool digi_en;                            /**< Digipeater service enabled. */
     bool digi_loc2rf;                        /**< Beacon the digipeater's own position on RF. */
     bool digi_loc2inet;                      /**< Beacon the digipeater's own position to APRS-IS. */
@@ -532,6 +546,12 @@ typedef struct {
     uint16_t digi_sts_interval;              /**< Digipeater status-beacon interval, seconds. */
     char digi_status[STATUS_SIZE];           /**< Digipeater status text. */
 
+    float digi_freq_mhz;       /**< Recommended travelers' voice repeater frequency this digipeater advertises, MHz; 0 => no frequency block emitted. See
+                                  igate_freq_mhz; freqspec.txt calls this out as specifically the digipeater's responsibility. */
+    uint16_t digi_tone_tenths; /**< Repeater CTCSS subaudible tone, tenths of Hz; 0 => "Toff". */
+    int8_t digi_duplex;        /**< Repeater duplex direction: 0 = simplex, +1 = "+", -1 = "-". */
+    uint16_t digi_offset_khz;  /**< Repeater duplex shift magnitude, kHz; used only when digi_duplex != 0. */
+
     bool trk_en;                    /**< Tracker service enabled. */
     bool trk_loc2rf;                /**< Beacon the tracker position on RF. */
     bool trk_loc2inet;              /**< Beacon the tracker position to APRS-IS. */
@@ -551,6 +571,12 @@ typedef struct {
     char trk_comment[COMMENT_SIZE]; /**< Tracker beacon comment. */
     uint16_t trk_sts_interval;      /**< Tracker status-beacon interval, seconds. */
     char trk_status[STATUS_SIZE];   /**< Tracker status text. */
+
+    float trk_freq_mhz;       /**< Recommended travelers' voice repeater frequency this station advertises, MHz; 0 => no frequency block emitted. See
+                                 igate_freq_mhz. */
+    uint16_t trk_tone_tenths; /**< Repeater CTCSS subaudible tone, tenths of Hz; 0 => "Toff". */
+    int8_t trk_duplex;        /**< Repeater duplex direction: 0 = simplex, +1 = "+", -1 = "-". */
+    uint16_t trk_offset_khz;  /**< Repeater duplex shift magnitude, kHz; used only when trk_duplex != 0. */
 
     bool wx_en;                           /**< Weather service enabled. */
     bool wx_2rf;                          /**< Transmit the WX report on RF. */

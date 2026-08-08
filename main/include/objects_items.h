@@ -339,4 +339,27 @@ uint32_t objitems_service(void);
  */
 void objitems_request_transmit_all(void);
 
+/**
+ * @brief Build the standard APRS repeater frequency block ("FFF.FFFMHz Tnnn
+ * +/-nnn") into @p out, or the empty string when @p freq_mhz is not positive.
+ *
+ * This is the exact wire format freqspec.txt defines and objitem_t's
+ * @c freq_mhz/@c tone_tenths/@c duplex/@c offset_khz fields already build for
+ * the Objects/Items Antenna/repeater symbols; it is exposed here so any other
+ * beacon (own-station position/status reports, main/beacon.c) can prepend or
+ * append the identical block instead of re-deriving the format.
+ *
+ * @param freq_mhz Repeater monitor frequency in MHz; <= 0 => nothing is
+ *        written and @p out is left as an empty string.
+ * @param tone_tenths CTCSS subaudible tone, tenths of Hz (e.g. 1000 = 100.0
+ *        Hz); 0 => "Toff".
+ * @param duplex Duplex direction: 0 = simplex (offset omitted), +1 = "+",
+ *        -1 = "-".
+ * @param offset_khz Duplex shift magnitude, kHz (e.g. 600); used only when
+ *        @p duplex != 0.
+ * @param out Destination buffer, always left NUL-terminated.
+ * @param out_size Size of @p out in bytes.
+ */
+void objitem_build_freq_block(float freq_mhz, uint16_t tone_tenths, int8_t duplex, uint16_t offset_khz, char *out, size_t out_size);
+
 #endif // OBJECTS_ITEMS_H

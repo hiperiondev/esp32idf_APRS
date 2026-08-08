@@ -85,6 +85,12 @@ analógico (``field_width``), una opción para omitir los canales finales no usa
 el número de canales analógicos/digitales realmente enviados (``analog_count`` /
 ``digital_count``).
 
+Poner ``field_width`` en 3 rellena con ceros cada valor analógico a tres
+dígitos, 000-999 - el rango que permite APRS 1.2 para este campo, ampliado
+respecto a la ventana original 000-255 de APRS101. Un canal cuya estación
+receptora aún espere el rango 0-255 anterior puede mantenerse dentro de él
+ajustando ``ana_raw_min``/``ana_raw_max`` de ese canal.
+
 Selectores de la página web
 ===========================
 

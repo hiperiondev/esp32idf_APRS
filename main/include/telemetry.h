@@ -113,7 +113,7 @@ typedef struct {
     char report_path[64];   /**< Free-text digipeater path, e.g. "WIDE1-1,WIDE2-1". */
     char tocall[7];         /**< APRS Destination / TOCALL (e.g. "APRS"). */
     bool auto_seq;          /**< Auto-increment the T# sequence number. */
-    uint8_t field_width;    /**< Analog field width: 0 = minimal/auto, 3 = 3-digit zero-padded. */
+    uint8_t field_width;    /**< Analog field width: 0 = minimal/auto, 3 = 3-digit zero-padded, 000-999 (APRS 1.2). */
     bool omit_trailing;     /**< Omit unused trailing channels (APRS101 Ch.13 shorthand). */
     char trail_comment[32]; /**< Optional free text appended after the bits. */
     uint8_t analog_count;   /**< Number of analog channels sent (1..5). */

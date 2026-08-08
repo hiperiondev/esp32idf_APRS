@@ -6,6 +6,7 @@ idf_component_register(
         "aprs_service.c"
         "aprs_filter.c"
         "aprs_coord.c"
+        "aprs_dao.c"
         "net_state.c"
         "beacon.c"
         "beacon_scheduler.c"

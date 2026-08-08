@@ -85,6 +85,13 @@ finali non usati (``omit_trailing``), un commento a testo libero in coda
 (``trail_comment``), e il numero di canali analogici/digitali effettivamente
 inviati (``analog_count`` / ``digital_count``).
 
+Impostare ``field_width`` a 3 riempie con zeri ogni valore analogico a tre
+cifre, 000-999 - l'intervallo che APRS 1.2 consente per questo campo, esteso
+rispetto alla finestra originale 000-255 di APRS101. Un canale la cui
+stazione ricevente si aspetti ancora il vecchio intervallo 0-255 può essere
+mantenuto al suo interno impostando di conseguenza ``ana_raw_min``/
+``ana_raw_max`` di quel canale.
+
 Selettori della pagina web
 ==========================
 

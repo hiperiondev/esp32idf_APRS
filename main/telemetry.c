@@ -699,10 +699,12 @@ static void tlm_path_field(const telemetry_config_t *s, char *out, size_t outMax
 
 // Formats one analog channel's RAW transmitted value per the "Analog Field
 // Width" Report Parameters option:
-//   - field_width == 3 : classic APRS101 strict encoding - unsigned integer,
-//     0-255, zero-padded to 3 digits (out-of-range raw readings are clamped
-//     rather than silently wrapped, so a mis-set raw_min/max never produces
-//     an on-air value a receiver would reject).
+//   - field_width == 3 : 3-digit zero-padded encoding, unsigned integer,
+//     000-999 per APRS 1.2 (out-of-range raw readings are clamped rather
+//     than silently wrapped, so a mis-set raw_min/max never produces an
+//     on-air value a receiver would reject). An operator whose receiver only
+//     understands the original APRS101 000-255 window can restore it
+//     explicitly with that channel's ana_raw_min/ana_raw_max.
 //   - field_width == 0 (or anything else) : community/extended ("Kenneth's
 //     Proposed") format - plain decimal number with ana_dec[i] fractional
 //     digits, no padding, negative values allowed.
@@ -719,8 +721,8 @@ static int format_analog_field(const telemetry_config_t *s, int i, double raw, b
         long v = lround(raw);
         if (v < 0)
             v = 0;
-        if (v > 255)
-            v = 255;
+        if (v > 999)
+            v = 999;
         return snprintf(out, outMax, "%03ld", v);
     }
     uint8_t dec = s->ana_dec[i];

@@ -31,12 +31,15 @@
 
 #include "app_config.h"
 #include "aprs_coord.h"
+#include "aprs_dao.h"  // aprs_dao_build()
 #include "aprs_path.h" // aprs_path_build_suffix()
 #include "aprs_service.h"
 #include "beacon.h"
 #include "beacon_scheduler.h" // beacon_scheduler_jitter()
 #include "igate.h"
+#include "objects_items.h"     // objitem_build_freq_block()
 #include "sched_time.h"        // sched_mono_seconds() / sched_clamp_interval()
+#include "str_append.h"        // str_append()
 #include "weather_telemetry.h" // aprs_mice_encode()
 
 static const char *TAG = "beacon";
@@ -111,6 +114,26 @@ typedef struct {
     // decorative. Sourced from g_config.msg_enable by each per-service
     // function below, in the same snapshot as every other field here.
     bool msgCapable;
+    // When set, buildPositionPacket() appends the WGS-84 human-readable
+    // "!DAO!" precision/datum extension (aprs_dao_build(), aprs12/datum.txt)
+    // after the comment. Sourced from the station-wide g_config.pos_dao_en,
+    // like ambiguity above, and only actually applied when ambiguity == 0 and
+    // the uncompressed layout is used - see buildPositionPacket() itself for
+    // why (a station deliberately obscuring its position, or already sending
+    // full-resolution compressed coordinates, must not have that precision
+    // handed back through this extension).
+    bool daoEnable;
+    // Recommended travelers' voice repeater this station advertises
+    // (freqspec.txt), built into the standard "FFF.FFFMHz Tnnn +/-nnn" block
+    // by objitem_build_freq_block() and prepended to the comment as its first
+    // 10 bytes - the fixed-field form some radios (e.g. Yaesu) require to
+    // auto-tune, since they do not decode the frequency Object form. Sourced
+    // from each service's own *_freq_mhz/_tone_tenths/_duplex/_offset_khz
+    // fields; freqMhz <= 0 means no block is emitted.
+    float freqMhz;
+    uint16_t freqToneTenths;
+    int8_t freqDuplex;
+    uint16_t freqOffsetKhz;
 } beacon_params_t;
 
 // Builds the 7-byte "PHGphgd" data-extension token from PHG sub-fields, using
@@ -369,6 +392,44 @@ static int buildPositionPacket(const beacon_params_t *p, char *out, size_t outMa
         snprintf(extra, sizeof(extra), "/A=%06d", feet);
     }
 
+    // Frequency block (freqspec.txt): built once here and prepended to the
+    // comment as its first bytes, ahead of anything the operator typed. For a
+    // 3-digit-MHz amateur repeater frequency (all VHF/UHF ham bands) the
+    // "FFF.FFFMHz" token itself is exactly 10 bytes, satisfying the spec's
+    // fixed-field requirement for radios (e.g. Yaesu) that only look at the
+    // first 10 bytes of the comment and do not decode the frequency Object
+    // form. A single space separates it from the rest of the comment. Comment
+    // text that would push the combined field past COMMENT_SIZE - 1 is
+    // truncated, same as an over-long operator-entered comment always was.
+    char comment[COMMENT_SIZE];
+    {
+        char freqBlock[24];
+        objitem_build_freq_block(p->freqMhz, p->freqToneTenths, p->freqDuplex, p->freqOffsetKhz, freqBlock, sizeof(freqBlock));
+        if (freqBlock[0]) {
+            // Precision on %s bounds the operator-entered part explicitly to
+            // whatever room is left after freqBlock and the separating space,
+            // so the combined write is provably within sizeof(comment) - the
+            // same truncation the plain "%s %s" form already produced, just
+            // in a shape the compiler can verify statically.
+            int room = (int)sizeof(comment) - (int)strlen(freqBlock) - 1;
+            if (room < 0)
+                room = 0;
+            snprintf(comment, sizeof(comment), "%s %.*s", freqBlock, room, p->comment);
+        } else {
+            snprintf(comment, sizeof(comment), "%.*s", (int)sizeof(comment) - 1, p->comment);
+        }
+    }
+
+    // !DAO! precision/datum extension (aprs12/datum.txt), appended after the
+    // comment. Only meaningful, and only applied, alongside the uncompressed
+    // layout at full precision: the compressed format already carries full
+    // resolution, and a station that asked for a coarser-than-full-precision
+    // report (ambiguity > 0) must not have that precision handed straight
+    // back through this extension.
+    char dao[APRS_DAO_BUF_SIZE] = { 0 };
+    if (p->daoEnable && p->ambiguity == 0 && !useCompressed)
+        aprs_dao_build(p->lat, p->lon, dao);
+
     // The data type identifier encodes both whether a timestamp follows and
     // whether this station can accept APRS messages (APRS101 ch.6):
     //
@@ -379,16 +440,16 @@ static int buildPositionPacket(const beacon_params_t *p, char *out, size_t outMa
     // acknowledges what it receives, so with messaging on it says so - a
     // beacon that claims otherwise is displayed by Kenwood radios, APRSISCE/32,
     // Xastir, YAAC and aprs.fi alike as a station nobody can reply to.
-    char infoField[256]; // ts(7)+posField(up to 21)+ext(7)+extra(40)+comment(up to 128)+NUL
+    char infoField[256]; // ts(7)+posField(up to 21)+ext(7)+extra(40)+comment(up to 128)+dao(5)+NUL
     if (p->timestamp) {
         time_t now = time(NULL);
         struct tm tmv;
         gmtime_r(&now, &tmv);
         char ts[8];
         snprintf(ts, sizeof(ts), "%02d%02d%02dz", tmv.tm_mday, tmv.tm_hour, tmv.tm_min);
-        snprintf(infoField, sizeof(infoField), "%c%s%s%s%s%s", p->msgCapable ? '@' : '/', ts, posField, ext, extra, p->comment);
+        snprintf(infoField, sizeof(infoField), "%c%s%s%s%s%s%s", p->msgCapable ? '@' : '/', ts, posField, ext, extra, comment, dao);
     } else {
-        snprintf(infoField, sizeof(infoField), "%c%s%s%s%s", p->msgCapable ? '=' : '!', posField, ext, extra, p->comment);
+        snprintf(infoField, sizeof(infoField), "%c%s%s%s%s%s", p->msgCapable ? '=' : '!', posField, ext, extra, comment, dao);
     }
 
     int n = snprintf(out, outMax, "%s>%s%s:%s", callField, BEACON_DEST, path, infoField);
@@ -428,18 +489,40 @@ typedef struct {
     float lat;
     float lon;
     char symbol[3]; // table + code + NUL
+    // Same frequency block as beacon_params_t.freqMhz and friends, prepended
+    // to the status text instead of a position comment - the freqspec.txt
+    // fallback for radios that decode neither the frequency Object form nor a
+    // position comment's leading bytes (chiefly Mic-E-encoded trackers, whose
+    // own info field has no room left for it). freqMhz <= 0 means no block is
+    // emitted.
+    float freqMhz;
+    uint16_t freqToneTenths;
+    int8_t freqDuplex;
+    uint16_t freqOffsetKhz;
 } status_params_t;
 
 // Builds the full TNC2 text line for one status-report transmission. The
 // info field is DTI '>' followed by the free-text status (APRS101 ch.16).
 //
-// With the Maidenhead option on, the status text is preceded by the 6-char
-// grid locator of this beacon's position, the symbol table byte and the symbol
-// code - the ">IO91SX/G" form the spec defines - and a single space separating
-// that block from the free text. Receivers that understand the form plot the
-// station from the locator alone; the rest simply show the whole thing as
-// status text. The configured text itself is never interpreted: whatever the
-// operator typed is carried verbatim after the locator block.
+// After the '>', up to three optional blocks precede the operator's own
+// status text, in the fixed order the spec and this project's conventions
+// put them in:
+//
+//   1. The optional "DDHHMMz" zulu timestamp (APRS101 ch.16), immediately
+//      after '>', when g_config.status_timestamp_en is set.
+//   2. The "FFF.FFFMHz Tnnn +/-nnn" frequency block (freqspec.txt), when this
+//      beacon has a monitor frequency configured - the fallback for radios
+//      that decode neither the frequency Object form nor a position
+//      comment's leading bytes, chiefly Mic-E-encoded trackers.
+//   3. With the Maidenhead option on, the 6-char grid locator of this
+//      beacon's position, the symbol table byte and the symbol code - the
+//      ">IO91SX/G" form the spec defines.
+//
+// Each present block is followed by a single space separating it from what
+// comes next. Receivers that understand a given form read it out on its own;
+// the rest simply show the whole thing as status text. The configured status
+// text itself is never interpreted: whatever the operator typed is carried
+// verbatim at the end.
 //
 // Returns the packet length, or 0 if nothing usable is configured.
 static int buildStatusPacket(const status_params_t *p, char *out, size_t outMax) {
@@ -455,26 +538,44 @@ static int buildStatusPacket(const status_params_t *p, char *out, size_t outMax)
     char path[80];
     aprs_path_build_suffix(p->pathSel, p->pathPreset, path, sizeof(path));
 
-    // '>' + optional locator block ("IO91SX" + symbol table + symbol code +
-    // separating space = 9) + status text + NUL.
-    char infoField[STATUS_SIZE + 11];
+    char freqBlock[24];
+    objitem_build_freq_block(p->freqMhz, p->freqToneTenths, p->freqDuplex, p->freqOffsetKhz, freqBlock, sizeof(freqBlock));
+
+    char ts[8] = { 0 };
+    if (g_config.status_timestamp_en) {
+        time_t now = time(NULL);
+        struct tm tmv;
+        gmtime_r(&now, &tmv);
+        snprintf(ts, sizeof(ts), "%02d%02d%02dz", tmv.tm_mday, tmv.tm_hour, tmv.tm_min);
+    }
+
+    // '>' + timestamp (7) + freq block (up to 23, space-separated) + optional
+    // locator block ("IO91SX" + symbol table + symbol code + separating
+    // space = 9) + status text + NUL. Built with str_append() so a would-be
+    // negative/oversize snprintf() result from any one piece saturates the
+    // buffer instead of underflowing the running offset.
+    char infoField[STATUS_SIZE + 40];
+    size_t used = 0;
+    str_append(infoField, sizeof(infoField), &used, ">%s", ts);
+    if (freqBlock[0])
+        str_append(infoField, sizeof(infoField), &used, "%s ", freqBlock);
     if (p->gridEnable) {
         char grid[APRS_MAIDENHEAD_BUF_SIZE];
         aprs_maidenhead_locator(p->lat, p->lon, grid, sizeof(grid));
         char symTable = p->symbol[0] ? p->symbol[0] : '/';
         char symCode = p->symbol[1] ? p->symbol[1] : '>';
-        snprintf(infoField, sizeof(infoField), ">%s%c%c %s", grid, symTable, symCode, p->statusText);
-    } else {
-        snprintf(infoField, sizeof(infoField), ">%s", p->statusText);
+        str_append(infoField, sizeof(infoField), &used, "%s%c%c ", grid, symTable, symCode);
     }
+    str_append(infoField, sizeof(infoField), &used, "%s", p->statusText);
 
     int n = snprintf(out, outMax, "%s>%s%s:%s", callField, BEACON_DEST, path, infoField);
-    // A status line is at most 161 bytes: call field (up to 15) + '>' +
-    // destination (6) + path (up to 79) + ':' + info field (up to 59, i.e. the
-    // 50-byte '>'-plus-text form plus the 9-byte Maidenhead locator block), so
-    // it always fits the APRS_TNC2_BUF_SIZE buffer every caller provides. The
-    // check is kept anyway, on the same terms as buildPositionPacket(): refuse
-    // rather than clamp, so neither leg ever carries a truncated - and
+    // A status line is at most 201 bytes: call field (up to 15) + '>' +
+    // destination (6) + path (up to 79) + ':' + info field (up to 99, i.e.
+    // the 50-byte '>'-plus-text form plus the 7-byte timestamp, the up to
+    // 23-byte frequency block and the 9-byte Maidenhead locator block), so it
+    // always fits the APRS_TNC2_BUF_SIZE buffer every caller provides. The
+    // check is kept anyway, on the same terms as buildPositionPacket():
+    // refuse rather than clamp, so neither leg ever carries a truncated - and
     // therefore malformed - status report.
     if (n < 0)
         return 0;
@@ -519,6 +620,10 @@ static uint32_t trackerStatusService(void) {
             p.lat = g_config.trk_lat;
             p.lon = g_config.trk_lon;
             memcpy(p.symbol, g_config.trk_symbol, sizeof(p.symbol));
+            p.freqMhz = g_config.trk_freq_mhz;
+            p.freqToneTenths = g_config.trk_tone_tenths;
+            p.freqDuplex = g_config.trk_duplex;
+            p.freqOffsetKhz = g_config.trk_offset_khz;
         }
         app_config_unlock();
 
@@ -569,6 +674,10 @@ static uint32_t igateStatusService(void) {
             p.lat = g_config.igate_lat;
             p.lon = g_config.igate_lon;
             memcpy(p.symbol, g_config.igate_symbol, sizeof(p.symbol));
+            p.freqMhz = g_config.igate_freq_mhz;
+            p.freqToneTenths = g_config.igate_tone_tenths;
+            p.freqDuplex = g_config.igate_duplex;
+            p.freqOffsetKhz = g_config.igate_offset_khz;
         }
         app_config_unlock();
 
@@ -620,6 +729,10 @@ static uint32_t digiStatusService(void) {
             p.lat = g_config.digi_lat;
             p.lon = g_config.digi_lon;
             memcpy(p.symbol, g_config.digi_symbol, sizeof(p.symbol));
+            p.freqMhz = g_config.digi_freq_mhz;
+            p.freqToneTenths = g_config.digi_tone_tenths;
+            p.freqDuplex = g_config.digi_duplex;
+            p.freqOffsetKhz = g_config.digi_offset_khz;
         }
         app_config_unlock();
 
@@ -685,9 +798,14 @@ static uint32_t trackerBeaconService(void) {
             p.mice = g_config.trk_mice;
             p.msgCapable = g_config.msg_enable;
             p.ambiguity = g_config.pos_ambiguity;
+            p.daoEnable = g_config.pos_dao_en;
             memcpy(p.symbol, g_config.trk_symbol, sizeof(p.symbol));
             memcpy(p.comment, g_config.trk_comment, sizeof(p.comment));
             memcpy(p.pathPreset, g_config.path, sizeof(p.pathPreset));
+            p.freqMhz = g_config.trk_freq_mhz;
+            p.freqToneTenths = g_config.trk_tone_tenths;
+            p.freqDuplex = g_config.trk_duplex;
+            p.freqOffsetKhz = g_config.trk_offset_khz;
         }
         app_config_unlock();
 
@@ -754,6 +872,7 @@ static uint32_t igateBeaconService(void) {
             p.compress = g_config.igate_compress;
             p.msgCapable = g_config.msg_enable;
             p.ambiguity = g_config.pos_ambiguity;
+            p.daoEnable = g_config.pos_dao_en;
             memcpy(p.symbol, g_config.igate_symbol, sizeof(p.symbol));
             memcpy(p.comment, g_config.igate_comment, sizeof(p.comment));
             memcpy(p.pathPreset, g_config.path, sizeof(p.pathPreset));
@@ -765,6 +884,10 @@ static uint32_t igateBeaconService(void) {
             p.phgDir = g_config.igate_phg_dir;
             p.rangeMiles = g_config.igate_range_miles;
             p.dfsStrength = g_config.igate_dfs_strength;
+            p.freqMhz = g_config.igate_freq_mhz;
+            p.freqToneTenths = g_config.igate_tone_tenths;
+            p.freqDuplex = g_config.igate_duplex;
+            p.freqOffsetKhz = g_config.igate_offset_khz;
         }
         app_config_unlock();
 
@@ -833,6 +956,11 @@ static void fillIgatePositionParams(beacon_params_t *p) {
         p->rangeMiles = g_config.igate_range_miles;
         p->dfsStrength = g_config.igate_dfs_strength;
         p->ambiguity = g_config.pos_ambiguity;
+        p->daoEnable = g_config.pos_dao_en;
+        p->freqMhz = g_config.igate_freq_mhz;
+        p->freqToneTenths = g_config.igate_tone_tenths;
+        p->freqDuplex = g_config.igate_duplex;
+        p->freqOffsetKhz = g_config.igate_offset_khz;
     }
     app_config_unlock();
 }
@@ -858,6 +986,10 @@ int beacon_build_igate_status_packet(char *out, size_t out_max) {
         p.lat = g_config.igate_lat;
         p.lon = g_config.igate_lon;
         memcpy(p.symbol, g_config.igate_symbol, sizeof(p.symbol));
+        p.freqMhz = g_config.igate_freq_mhz;
+        p.freqToneTenths = g_config.igate_tone_tenths;
+        p.freqDuplex = g_config.igate_duplex;
+        p.freqOffsetKhz = g_config.igate_offset_khz;
     }
     app_config_unlock();
     return buildStatusPacket(&p, out, out_max);
@@ -891,9 +1023,14 @@ static uint32_t digiBeaconService(void) {
             p.compress = g_config.digi_compress;
             p.msgCapable = g_config.msg_enable;
             p.ambiguity = g_config.pos_ambiguity;
+            p.daoEnable = g_config.pos_dao_en;
             memcpy(p.symbol, g_config.digi_symbol, sizeof(p.symbol));
             memcpy(p.comment, g_config.digi_comment, sizeof(p.comment));
             memcpy(p.pathPreset, g_config.path, sizeof(p.pathPreset));
+            p.freqMhz = g_config.digi_freq_mhz;
+            p.freqToneTenths = g_config.digi_tone_tenths;
+            p.freqDuplex = g_config.digi_duplex;
+            p.freqOffsetKhz = g_config.digi_offset_khz;
         }
         app_config_unlock();
 

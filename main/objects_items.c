@@ -505,17 +505,14 @@ static unsigned area_offset_code(float deg) {
     return (unsigned)(code + 0.5);
 }
 
-// Build the standard APRS frequency block ("FFF.FFFMHz Tnnn ±nnn") into `out`,
-// or the empty string when no monitor frequency is configured. This is what
-// carries YAAC's monitor frequency, subaudible tone and duplex direction; by
-// convention it must be the first thing in the comment text so other stations'
-// radios can auto-tune from it.
-static void build_freq_block(const objitem_t *b, char *out, size_t out_size) {
+void objitem_build_freq_block(float freq_mhz, uint16_t tone_tenths, int8_t duplex, uint16_t offset_khz, char *out, size_t out_size) {
+    if (out_size == 0)
+        return;
     out[0] = 0;
-    if (b->freq_mhz <= 0.0f || out_size == 0)
+    if (freq_mhz <= 0.0f)
         return;
 
-    int n = snprintf(out, out_size, "%.3fMHz", (double)b->freq_mhz);
+    int n = snprintf(out, out_size, "%.3fMHz", (double)freq_mhz);
     if (n < 0 || (size_t)n >= out_size) {
         out[0] = 0;
         return;
@@ -524,8 +521,8 @@ static void build_freq_block(const objitem_t *b, char *out, size_t out_size) {
 
     // Subaudible tone: "Tnnn" (integer Hz) when set, else "Toff".
     if (used < out_size) {
-        if (b->tone_tenths > 0)
-            n = snprintf(out + used, out_size - used, " T%03u", (unsigned)(b->tone_tenths / 10u));
+        if (tone_tenths > 0)
+            n = snprintf(out + used, out_size - used, " T%03u", (unsigned)(tone_tenths / 10u));
         else
             n = snprintf(out + used, out_size - used, " Toff");
         if (n > 0 && (size_t)n < out_size - used)
@@ -533,14 +530,24 @@ static void build_freq_block(const objitem_t *b, char *out, size_t out_size) {
     }
 
     // Duplex direction + shift: "±nnn" in units of 10 kHz (e.g. 600 kHz => 060).
-    if (b->duplex != 0 && used < out_size) {
-        unsigned nnn = (unsigned)(b->offset_khz / 10u);
+    if (duplex != 0 && used < out_size) {
+        unsigned nnn = (unsigned)(offset_khz / 10u);
         if (nnn > 999)
             nnn = 999;
-        n = snprintf(out + used, out_size - used, " %c%03u", b->duplex > 0 ? '+' : '-', nnn);
+        n = snprintf(out + used, out_size - used, " %c%03u", duplex > 0 ? '+' : '-', nnn);
         if (n > 0 && (size_t)n < out_size - used)
             used += (size_t)n;
     }
+}
+
+// Build the standard APRS frequency block ("FFF.FFFMHz Tnnn ±nnn") into `out`,
+// or the empty string when no monitor frequency is configured. This is what
+// carries YAAC's monitor frequency, subaudible tone and duplex direction; by
+// convention it must be the first thing in the comment text so other stations'
+// radios can auto-tune from it. Thin wrapper over objitem_build_freq_block()
+// so the element's own stored sub-fields feed the shared builder.
+static void build_freq_block(const objitem_t *b, char *out, size_t out_size) {
+    objitem_build_freq_block(b->freq_mhz, b->tone_tenths, b->duplex, b->offset_khz, out, out_size);
 }
 
 // Build the 7-character APRS "PHGphgd" Data Extension from the element's stored

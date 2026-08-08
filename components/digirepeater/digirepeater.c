@@ -338,13 +338,14 @@ int digiProcess(ax25_msg_t *packet) {
             break;
         }
 
-        if (!strncmp(packet->rpt_list[idx].call, "RFONLY", 6)) {
-            // Not an alias: a routing token that forbids the frame reaching
-            // the Internet. It is consumed here so the rest of the path can
-            // still be followed on RF.
-            packet->rpt_flags |= (1 << idx);
-            j = 2;
-            break;
+        if (!strncmp(packet->rpt_list[idx].call, "RFONLY", 6) || !strncmp(packet->rpt_list[idx].call, "NOGATE", 6)) {
+            // Neither is a digipeat alias - APRS 1.1 defines both purely as
+            // IGate-suppression tokens (igate.c is what acts on them, on the
+            // RF->INET leg). Left as-is here and skipped without being marked
+            // used, so digipeating falls through to whatever routing
+            // instruction the path carries next, exactly as if this token
+            // were not present at all.
+            continue;
         }
 
         if (!strcmp(packet->rpt_list[idx].call, digiMyCall)) {
