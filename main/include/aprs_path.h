@@ -22,7 +22,8 @@
  * the four shared presets in ::g_config.path[0..3], where bit N selects preset
  * N and a selected-but-empty slot contributes nothing. The resulting suffix is
  * ",PRESET" per selected slot, in ascending bit order, appended straight after
- * the destination call ("MYCALL>APE32L,WIDE1-1,WIDE2-1:...").
+ * the destination call ("MYCALL>APZ32L,WIDE1-1,WIDE2-1:...", where the
+ * destination is this station's own TOCALL, ::APRS_TOCALL in aprs_service.h).
  *
  * The AX.25 8-via limit is enforced here, on the transmit side. The webconfig
  * POST handlers already clamp the bitmask at save time

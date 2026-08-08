@@ -73,6 +73,10 @@ typedef enum {
     DROP_DUP = 0,         /**< Reserved: duplicates are tracked separately in igate_stats_t.dupCount and do not currently bump this array (kept for
                              future/other-component use). */
     DROP_TOO_SHORT,       /**< RF frame's info field shorter than the minimum usable length (IGate RF->INET). */
+    DROP_SRC_PLACEHOLDER, /**< RF frame's source callsign matches one of the APRS-IS basic RX-IGate blacklist prefixes - NOCALL, N0CALL, WIDE, TRACE, TCP -
+                             which never identifies a real originating station and must never be gated onto APRS-IS (IGate RF->INET). */
+    DROP_NOT_APRS,        /**< RF frame is not a valid AX.25 UI frame with PID 0xF0 (no layer 3) - IGating.aspx requires exactly that shape of every frame
+                             gated onto APRS-IS, checked here independently of the modem's own allowNonAprs RX setting (IGate RF->INET). */
     DROP_PATH_TOKEN,      /**< RF frame's path carries RFONLY/TCPIP/qA/NOGATE (IGate RF->INET). */
     DROP_3RDPARTY_LOOP,   /**< RF frame is third-party ('}') traffic whose inner header already carries TCPIP/TCPXX, i.e. it already reached APRS-IS once
                              (IGate RF->INET). */
@@ -92,8 +96,8 @@ typedef enum {
                              nobody in earshot to transmit it to. */
     DROP_MSG_SENDER_LOCAL,   /**< INET->RF message whose sender was itself heard on RF inside the same window: both ends of the conversation are local, so the
                                 original transmission was already on the air and gating the copy back would echo it. */
-    DROP_MSG_NOGATE,         /**< INET->RF message whose header carries TCPXX, NOGATE or RFONLY - tokens whose whole purpose is to forbid this packet reaching
-                                RF. */
+    DROP_HEADER_FORBIDS_RF,  /**< INET->RF line whose header carries TCPXX, NOGATE, RFONLY, qAX or qAZ - tokens/q-constructs whose whole purpose is to forbid
+                                this packet reaching RF. Checked for every line inet2rfHandler() considers, not just messages. */
     DROP_MSG_ADDRESSEE_INET, /**< INET->RF message whose addressee is itself Internet-connected and therefore already has it. */
     DROP_TX_FAIL,            /**< APRS-IS TX attempted but the socket wasn't connected / the write failed (IGate). */
     DROP_HEADER_OVERFLOW,    /**< IGate RF->INET header build overflowed its buffer (excessively long repeater path). */
@@ -215,10 +219,13 @@ void igate_start(void);
 
 /**
  * @brief Feed one RF-decoded AX.25 frame to the gateway (RF -> INET direction).
- * Applies the RFONLY/TCPIP/qA/NOGATE/satellite-gate filters and the
- * g_config.rf2inetFilter payload-type whitelist (see aprs_filter.h), builds
- * the TNC2 text line with qAR/qAO path, de-duplicates, and forwards it to
- * APRS-IS if connected.
+ * Applies the APRS-IS basic RX-IGate source-callsign blacklist (NOCALL,
+ * N0CALL, WIDE, TRACE, TCP prefixes), the AX25_CTRL_UI/AX25_PID_NOLAYER3
+ * check IGating.aspx requires of every gated frame (independent of the
+ * modem's own allowNonAprs RX setting), the RFONLY/TCPIP/qA/NOGATE/
+ * satellite-gate path filters and the g_config.rf2inetFilter payload-type
+ * whitelist (see aprs_filter.h), builds the TNC2 text line with qAR/qAO
+ * path, de-duplicates, and forwards it to APRS-IS if connected.
  * @return 1 if forwarded, 0 if dropped/duplicate/not connected.
  */
 int igateProcess(ax25_msg_t *packet);

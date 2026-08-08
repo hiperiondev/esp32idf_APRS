@@ -61,7 +61,7 @@ static const char *TAG = "aprs_service";
 // Destination call this station's own INET->RF third-party frames key up
 // under, matching the destination every other own-originated packet type
 // (beacon, weather, telemetry, bulletins, objects/items) uses.
-#define IGATE_THIRDPARTY_DEST "APE32L"
+#define IGATE_THIRDPARTY_DEST APRS_TOCALL
 
 // How many frames aprs_service_send_tnc2() lets pile up in the RF TX ring
 // before it starts discarding new packets instead of queuing them (see the
@@ -867,13 +867,16 @@ static bool inet_line_is_own_report(const char *line) {
 //
 // An IGate sits on a very large data stream and must not put messages on the
 // air indiscriminately. A message read from APRS-IS is transmitted only when
-// all four of the conditions the APRS-IS IGate design notes lay down hold at
-// once: the addressee was heard on the local RF channel inside the configured
-// window, the sender was NOT heard on RF inside that window, the sender's
-// header carries none of TCPXX / NOGATE / RFONLY, and the addressee is not
-// itself Internet-connected. Each failure has its own drop reason so the
-// dashboard's Drop Breakdown says which condition stopped a message, which is
-// the question an operator actually asks.
+// all three of the message-specific conditions the APRS-IS IGate design notes
+// lay down hold at once: the addressee was heard on the local RF channel
+// inside the configured window, the sender was NOT heard on RF inside that
+// window, and the addressee is not itself Internet-connected. Each failure
+// has its own drop reason so the dashboard's Drop Breakdown says which
+// condition stopped a message, which is the question an operator actually
+// asks. The header-token/q-construct check (TCPXX / NOGATE / RFONLY / qAX /
+// qAZ) applies to every line considered for INET->RF, message or not, so it
+// runs once in inet2rfHandler() ahead of this message-specific gating rather
+// than being repeated here.
 //
 // Alongside that runs the associated-position rule: rather than replaying a
 // station's historical position reports, the gateway notes the stations it has
@@ -948,15 +951,22 @@ static bool messageAddressee(const char *info, char *out, size_t outMax) {
     return n > 0;
 }
 
-// True if the address block of a TNC2 line carries a token that forbids the
-// packet reaching RF. Only the header is searched - everything up to the first
-// ':' - so a message whose TEXT happens to mention one of these words is not
-// mistaken for one routed with it.
+// True if the address block of a TNC2 line carries a token or q-construct
+// that forbids the packet reaching RF. Only the header is searched -
+// everything up to the first ':' - so a message whose TEXT happens to mention
+// one of these words is not mistaken for one routed with it. TCPXX, NOGATE
+// and RFONLY are the classic path tokens APRS 1.1 says must not be
+// forwarded; qAX marks a packet from an unverified APRS-IS login (FROMCALL
+// equals the login, no valid passcode) and qAZ marks a packet its own igate
+// has flagged as one that should not be propagated further - both are
+// exactly as forbidden on RF as the path tokens. Checked against every line
+// considered for INET->RF, not just messages, since none of these five apply
+// to messages specifically.
 static bool headerForbidsRf(const char *line) {
     const char *colon = strchr(line, ':');
     size_t headerLen = (colon != NULL) ? (size_t)(colon - line) : strlen(line);
 
-    static const char *const tokens[] = { "TCPXX", "NOGATE", "RFONLY" };
+    static const char *const tokens[] = { "TCPXX", "NOGATE", "RFONLY", "qAX", "qAZ" };
     for (size_t t = 0; t < sizeof(tokens) / sizeof(tokens[0]); t++) {
         const char *hit = strstr(line, tokens[t]);
         if (hit != NULL && (size_t)(hit - line) < headerLen)
@@ -965,8 +975,10 @@ static bool headerForbidsRf(const char *line) {
     return false;
 }
 
-// Apply the four gating conditions to one message. Returns true to transmit;
-// every false return has already counted the reason it refused.
+// Apply the three message-specific gating conditions to one message (the
+// header-forbids-RF check has already run for the line in inet2rfHandler()).
+// Returns true to transmit; every false return has already counted the
+// reason it refused.
 static bool messageGatePass(const char *srcLine, const char *srcCall, const char *info) {
     char addressee[12];
     if (!messageAddressee(info, addressee, sizeof(addressee))) {
@@ -977,11 +989,6 @@ static bool messageGatePass(const char *srcLine, const char *srcCall, const char
 
     uint32_t window = g_config.igate_local_window_sec;
 
-    if (headerForbidsRf(srcLine)) {
-        ESP_LOGD(TAG, "INET2RF message not gated - header forbids RF: %s", srcLine);
-        igate_note_drop(DROP_MSG_NOGATE);
-        return false;
-    }
     if (!lastheard_heard_rf_within(addressee, window)) {
         ESP_LOGD(TAG, "INET2RF message not gated - %s not heard on RF in the last %u s", addressee, (unsigned)window);
         igate_note_drop(DROP_MSG_NOT_LOCAL);
@@ -1166,6 +1173,17 @@ static void inet2rfHandler(const char *line) {
         // via *_2rf, once here) and is a classic IGate feedback-loop source.
         if (inet_line_is_own_report(line)) {
             ESP_LOGD(TAG, "INET2RF: own report echoed by APRS-IS, not re-gated (its *_2rf flag governs RF): %s", line);
+            return;
+        }
+
+        // TCPXX / NOGATE / RFONLY / qAX / qAZ in the header all mean the same
+        // thing: this packet must not reach RF. Checked here, ahead of the
+        // type filter and budlist, so it applies to every line INET->RF
+        // considers - positions and objects included, not just messages -
+        // and independently of g_config.igate_msg_gate_en.
+        if (headerForbidsRf(line)) {
+            ESP_LOGD(TAG, "INET2RF: not gated, header forbids RF: %s", line);
+            igate_note_drop(DROP_HEADER_FORBIDS_RF);
             return;
         }
 

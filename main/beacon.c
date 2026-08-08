@@ -43,7 +43,7 @@ static const char *TAG = "beacon";
 
 // Same software-identifier destination call used by the message component
 // (components/message/message.c) for consistency across the firmware.
-#define BEACON_DEST "APE32L"
+#define BEACON_DEST APRS_TOCALL
 
 #define BEACON_MIN_INTERVAL_S     30   // sanity floor, in case an *_interval is set very low
 #define BEACON_DEFAULT_INTERVAL_S 1800 // 30 min, used when *_interval == 0

@@ -30,6 +30,7 @@
 #include "afsk.h"   // afsk_ptt_gpio_is_valid(), MODEM_ADC_GPIO / MODEM_DAC_GPIO (checked internally by afsk_ptt_gpio_is_valid())
 #include "app_config.h"
 #include "aprs_path.h"                          // aprs_path_build_suffix_from_config()
+#include "aprs_service.h"                       // APRS_TOCALL: this station's destination call, same one every other packet type uses
 #include "esp32idf_radioamateur_modem_config.h" // MODEM_PTT_GPIO: the fixed PTT pin, checked directly below
 #include "json_escape.h"                        // json_escape()
 #include "message.h"
@@ -234,6 +235,31 @@ static bool parseMsgNumber(const char *s, uint16_t *out) {
 
     *out = (uint16_t)v;
     return true;
+}
+
+// Checks whether s is a valid message-number field as APRS101 chapter 14
+// defines it for an "ack"/"rej": 1-5 alphanumeric characters, optionally
+// followed by a single '}' and up to two more characters (the Reply-ACK free
+// acknowledgement), with nothing else before the end of the string. Ordinary
+// message text that merely happens to start with "ack"/"rej" - "acknowledged,
+// thanks", "rejoining net" - fails this check and is left as plain text.
+static bool isValidMsgNoField(const char *s) {
+    if (s == NULL || s[0] == 0)
+        return false;
+
+    size_t i = 0;
+    while (i < 5 && isalnum((unsigned char)s[i]))
+        i++;
+    if (i == 0)
+        return false;
+
+    if (s[i] == 0)
+        return true; // plain "MM", 1-5 alphanumeric characters, nothing else
+
+    if (s[i] != '}')
+        return false; // more than 5 characters before any '}', or other junk
+
+    return strlen(s + i + 1) <= 2; // "MM}" or "MM}AA"
 }
 
 // Splits a received message identifier into the sender's own number and the
@@ -466,7 +492,7 @@ static void txPacket(const char *myCall, const char *info) {
         aprs_path_build_suffix_from_config(g_config.msg_path, path, sizeof(path));
         char packet[400];
         size_t len = 0;
-        if (str_append(packet, sizeof(packet), &len, "%s>APE32L%s:%s", myCall, path, info))
+        if (str_append(packet, sizeof(packet), &len, "%s>" APRS_TOCALL "%s:%s", myCall, path, info))
             s_txHandler(packet, len, MSG_CHANNEL_RF);
         else
             ESP_LOGW(TAG, "RF message too long for a %u byte frame, dropped: %s", (unsigned)sizeof(packet), info);
@@ -474,11 +500,27 @@ static void txPacket(const char *myCall, const char *info) {
     if (g_config.msg_inet) {
         char packet[400];
         size_t len = 0;
-        if (str_append(packet, sizeof(packet), &len, "%s>APE32L,TCPIP*:%s", myCall, info))
+        if (str_append(packet, sizeof(packet), &len, "%s>" APRS_TOCALL ",TCPIP*:%s", myCall, info))
             s_txHandler(packet, len, MSG_CHANNEL_INET);
         else
             ESP_LOGW(TAG, "INET message too long for a %u byte frame, dropped: %s", (unsigned)sizeof(packet), info);
     }
+}
+
+// Copies as much of src into dst as fits in APRS_MSG_TEXT_STD_MAX bytes,
+// dropping any '|', '~' and '{' along the way: APRS101 chapter 14 reserves
+// those characters for telemetry and the message-number delimiter, so none of
+// them may appear inside ordinary message text regardless of what the caller
+// passed in. dst is always NUL-terminated; dst_size must be at least 1.
+static void sanitizeOutgoingText(const char *src, char *dst, size_t dst_size) {
+    size_t out = 0;
+    for (size_t i = 0; src[i] && out < dst_size - 1 && out < APRS_MSG_TEXT_STD_MAX; i++) {
+        char c = src[i];
+        if (c == '|' || c == '~' || c == '{')
+            continue;
+        dst[out++] = c;
+    }
+    dst[out] = 0;
 }
 
 void sendAPRSMessage(const char *toCall, const char *text) {
@@ -510,9 +552,13 @@ void sendAPRSMessage(const char *toCall, const char *text) {
     toCallFixed[9] = 0;
     memcpy(toCallFixed, toCallUp, strlen(toCallUp) > 9 ? 9 : strlen(toCallUp));
 
-    char payload[300];
-    strncpy(payload, text, sizeof(payload) - 1);
-    payload[sizeof(payload) - 1] = 0;
+    // Enforced here rather than trusted to the caller, so the on-air text
+    // length and character set stay correct regardless of where the call
+    // came from: truncated to the standard APRS message text length and
+    // stripped of the characters APRS101 reserves for telemetry and the
+    // message-number delimiter.
+    char payload[APRS_MSG_TEXT_STD_MAX + 1];
+    sanitizeOutgoingText(text, payload, sizeof(payload));
 
     char suffix[8];
     buildMsgNumberSuffix(toCallUp, s_msgID, suffix, sizeof(suffix));
@@ -527,8 +573,10 @@ void sendAPRSMessage(const char *toCall, const char *text) {
     // The trimmed upper-case addressee is what goes in the queue, matching the
     // form the callsign takes on the air. An incoming ack is matched against
     // this field by exact comparison, and it is also the name the chat page
-    // shows next to the message.
-    pkgMsgStore(toCallUp, text, s_msgID, ackVal, false);
+    // shows next to the message. The sanitized payload is stored rather than
+    // the caller's raw text, so a retry re-sends exactly what was already put
+    // on the air instead of re-deriving it.
+    pkgMsgStore(toCallUp, payload, s_msgID, ackVal, false);
 }
 
 void sendAPRSAck(const char *toCall, const char *msgNo) {
@@ -745,13 +793,22 @@ void handleIncomingAPRS(const char *line, query_source_t source) {
             message[--mlen] = 0;
     }
 
-    bool isAck = (strncmp(message, "ack", 3) == 0);
-    if (isAck)
+    // A message text starting with "ack"/"rej" is only classified as such when
+    // the remainder is a valid message-number field, exactly as APRS101 defines
+    // the literal "ack"/"rej" followed by the message number and nothing else;
+    // otherwise it is ordinary text ("acknowledged, thanks", "rejoining net")
+    // and falls through to the message-storing path below.
+    bool isAck = (strncmp(message, "ack", 3) == 0) && isValidMsgNoField(message + 3);
+    if (isAck) {
         strncpy(msgNo, message + 3, sizeof(msgNo) - 1);
+        msgNo[sizeof(msgNo) - 1] = 0;
+    }
 
-    bool isRej = (strncmp(message, "rej", 3) == 0);
-    if (isRej)
+    bool isRej = (strncmp(message, "rej", 3) == 0) && isValidMsgNoField(message + 3);
+    if (isRej) {
         strncpy(msgNo, message + 3, sizeof(msgNo) - 1);
+        msgNo[sizeof(msgNo) - 1] = 0;
+    }
 
     // Reply-ACK split. msgNo keeps the identifier whole, because an ack has to
     // quote it back exactly as it arrived; ownNo is the sender's own number and

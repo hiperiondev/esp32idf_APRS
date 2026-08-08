@@ -144,9 +144,16 @@ struct Ax25ProtoConfig {
      * values spread contending stations' key-ups further apart.
      */
     uint8_t persist;
-    uint8_t allowNonAprs : 1; /**< 1 = accept frames whose Control/PID do not match plain APRS UI frames. */
-    uint8_t fx25 : 1;         /**< 1 = FX.25 (FEC) decoding is enabled for reception. */
-    uint8_t fx25Tx : 1;       /**< 1 = FX.25 (FEC) encoding is enabled for transmission. */
+    /**
+     * 1 = accept frames whose Control/PID do not match plain APRS UI frames.
+     * Affects local RX/monitor handling only (what the modem decodes and
+     * hands up as a received frame): it never reaches the APRS-IS gateway,
+     * which enforces AX25_CTRL_UI/AX25_PID_NOLAYER3 itself, independently of
+     * this setting, before gating anything (see igateProcess()).
+     */
+    uint8_t allowNonAprs : 1;
+    uint8_t fx25 : 1;   /**< 1 = FX.25 (FEC) decoding is enabled for reception. */
+    uint8_t fx25Tx : 1; /**< 1 = FX.25 (FEC) encoding is enabled for transmission. */
     /**
      * 1 = full duplex operation: transmit immediately without waiting for
      * the channel to go idle (no DCD check, no CSMA backoff). Required for

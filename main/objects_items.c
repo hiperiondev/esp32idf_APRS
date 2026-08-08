@@ -49,7 +49,7 @@ static const char *TAG = "objitems";
 
 // Same software-identifier destination call used by the beacon, message and
 // bulletin components, for consistency across the firmware.
-#define OBJITEM_DEST "APE32L"
+#define OBJITEM_DEST APRS_TOCALL
 
 // Per-element transmit interval bounds. Each element carries its own interval;
 // 0 (or unset) falls back to the default, and anything below the floor is

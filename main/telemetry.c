@@ -50,7 +50,7 @@ static const char *TAG = "telemetry";
 
 // Same software-identifier destination call used by beacon.c / weather.c,
 // for consistency across the firmware.
-#define TLM_DEST "APE32L"
+#define TLM_DEST APRS_TOCALL
 
 #define TLM_MIN_INTERVAL_S      30  // sanity floor for data_interval
 #define TLM_DEFAULT_INTERVAL_S  600 // used when data_interval == 0

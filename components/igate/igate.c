@@ -140,6 +140,10 @@ const char *igate_drop_reason_name(drop_reason_t reason) {
             return "duplicate";
         case DROP_TOO_SHORT:
             return "too short";
+        case DROP_SRC_PLACEHOLDER:
+            return "src: NOCALL/N0CALL/WIDE/TRACE/TCP";
+        case DROP_NOT_APRS:
+            return "not a valid APRS UI/PID 0xF0 frame";
         case DROP_PATH_TOKEN:
             return "RFONLY/TCP/qA/NOGATE";
         case DROP_3RDPARTY_LOOP:
@@ -162,8 +166,8 @@ const char *igate_drop_reason_name(drop_reason_t reason) {
             return "msg: addressee not heard locally";
         case DROP_MSG_SENDER_LOCAL:
             return "msg: sender heard on RF";
-        case DROP_MSG_NOGATE:
-            return "msg: TCPXX/NOGATE/RFONLY";
+        case DROP_HEADER_FORBIDS_RF:
+            return "header: TCPXX/NOGATE/RFONLY/qAX/qAZ";
         case DROP_MSG_ADDRESSEE_INET:
             return "msg: addressee on the Internet";
         case DROP_TX_FAIL:
@@ -412,6 +416,21 @@ static bool thirdPartyUnwrap(const char *info, char *outSrc, size_t outSrcMax, c
     return true;
 }
 
+// APRS-IS basic RX-IGate source-callsign blacklist (aprx "PROTOCOLS",
+// derived from IGateDetails.aspx): none of these prefixes ever identifies a
+// real originating station, so a frame carrying one as its source must never
+// be gated onto APRS-IS under this station's qAR, however it got onto RF.
+static const char *const kSrcPlaceholderPrefixes[] = { "NOCALL", "N0CALL", "WIDE", "TRACE", "TCP" };
+
+static bool isSrcPlaceholder(const char *call) {
+    for (size_t i = 0; i < sizeof(kSrcPlaceholderPrefixes) / sizeof(kSrcPlaceholderPrefixes[0]); i++) {
+        size_t n = strlen(kSrcPlaceholderPrefixes[i]);
+        if (!strncmp(call, kSrcPlaceholderPrefixes[i], n))
+            return true;
+    }
+    return false;
+}
+
 int igateProcess(ax25_msg_t *packet) {
     int idx;
 
@@ -423,6 +442,21 @@ int igateProcess(ax25_msg_t *packet) {
     // permanently at 0 and the dashboard's STATISTICS panel (RF2INET / part
     // of PACKET RX) never updates.
     s_stats.rxCount++;
+
+    if (isSrcPlaceholder(packet->src.call)) {
+        s_stats.dropByReason[DROP_SRC_PLACEHOLDER]++;
+        return 0;
+    }
+
+    // IGating.aspx requires every frame gated onto APRS-IS to be a valid
+    // AX.25 UI frame with PID 0xF0 (no layer 3), regardless of what the
+    // modem's own allowNonAprs RX setting let through to get here: that
+    // setting only controls local RX/monitor handling and must never leak
+    // non-APRS traffic onto APRS-IS.
+    if (packet->ctrl != AX25_CTRL_UI || packet->pid != AX25_PID_NOLAYER3) {
+        s_stats.dropByReason[DROP_NOT_APRS]++;
+        return 0;
+    }
 
     if (isDuplicatePacket(packet)) {
         s_stats.dupCount++;

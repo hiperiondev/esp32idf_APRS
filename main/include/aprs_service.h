@@ -124,6 +124,31 @@
 /** @} */
 
 /**
+ * @name APRS destination callsign (TOCALL)
+ *
+ * The AX.25 destination address every packet this firmware builds carries in
+ * its header, per APRS 1.1 (page 14) and the aprsorg/aprs-deviceid tocalls.yaml
+ * registry. Single source of truth for beacon.c, bulletins.c, objects_items.c,
+ * telemetry.c, weather.c, message.c, query.c and aprs_service.c's own
+ * third-party wrapping, so every packet type this station transmits identifies
+ * itself the same way and a future allocation only needs to change this one
+ * definition.
+ *
+ * "APE32L" is not an allocated TOCALL: it falls under the generic "APE???"
+ * wildcard (model: Telemetry devices, no vendor, no class), so device-ID
+ * consumers (aprs.fi, findu, YAAC) show this station as an anonymous
+ * telemetry device rather than identifying it as this firmware. Until a
+ * proper allocation is requested and granted at
+ * github.com/aprsorg/aprs-deviceid, this uses the "APZ" + 3 characters space
+ * the registry reserves for exactly this - software that has not yet been
+ * allocated a TOCALL - rather than squatting on an "APE" code that belongs to
+ * someone else's wildcard.
+ * @{
+ */
+#define APRS_TOCALL "APZ32L" /**< Experimental (unallocated) TOCALL for this firmware; see the allocation note above. */
+/** @} */
+
+/**
  * @brief Start the APRS application layer: message queue init, modem RX
  * callback, IGate APRS-IS client task, and the 1 Hz service tick (message
  * retry). Call once from app_task() after app_config_load()/wifi_init() and

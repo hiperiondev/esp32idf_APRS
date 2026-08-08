@@ -43,7 +43,7 @@ static const char *TAG = "weather";
 
 // Same software-identifier destination call used by beacon.c / the message
 // component, for consistency across the firmware.
-#define WX_DEST "APE32L"
+#define WX_DEST APRS_TOCALL
 
 #define WX_MIN_INTERVAL_S     30   // sanity floor for wx_interval
 #define WX_DEFAULT_INTERVAL_S 600  // used when wx_interval == 0

@@ -50,7 +50,7 @@ _Static_assert(BULLETIN_COUNT <= 9, "BULLETIN_COUNT must stay a single digit for
 
 // Same software-identifier destination call used by the beacon and message
 // components, for consistency across the firmware.
-#define BULLETIN_DEST "APE32L"
+#define BULLETIN_DEST APRS_TOCALL
 
 // Per-bulletin transmit interval. Each bulletin carries its own "Beacon
 // interval (s)" (bulletin_t.interval_s); these are the bounds

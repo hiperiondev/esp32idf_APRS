@@ -79,7 +79,7 @@ static const char *TAG = "query";
 
 // Same software-identifier destination call used by the message and beacon
 // components, for consistency across the firmware's own-originated traffic.
-#define QUERY_DEST "APE32L"
+#define QUERY_DEST APRS_TOCALL
 
 static void (*s_txHandler)(const char *packet, size_t len, uint8_t channels) = NULL;
 
