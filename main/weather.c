@@ -45,6 +45,13 @@ static const char *TAG = "weather";
 // component, for consistency across the firmware.
 #define WX_DEST APRS_TOCALL
 
+// APRS101 ch.12 software-type / weather-unit suffix, emitted as the very
+// last token of every outgoing WX report: one software-type letter followed
+// by a 2-4 byte instrument/family string. 'x' is a locally-chosen letter
+// pending an official allocation alongside APRS_TOCALL; "ESP" identifies
+// this firmware's ESP32-based sensor family.
+#define WX_SW_SUFFIX "xESP"
+
 #define WX_MIN_INTERVAL_S     30   // sanity floor for wx_interval
 #define WX_DEFAULT_INTERVAL_S 600  // used when wx_interval == 0
 #define WX_REFRESH_PERIOD_MS  1000 // sensors_local sampling cadence (1 Hz)
@@ -384,13 +391,35 @@ static int build_wx_tokens(const wx_resolved_t r[WX_SENSOR_NUM], bool positionle
         WX_APP("t...");
     }
 
-    // Optional tokens - emitted only when actually present.
-    if (r[WX_FIELD_RAIN_1H].present)
-        WX_APP("r%03d", (int)lround(r[WX_FIELD_RAIN_1H].value) % 1000);
-    if (r[WX_FIELD_RAIN_24H].present)
-        WX_APP("p%03d", (int)lround(r[WX_FIELD_RAIN_24H].value) % 1000);
-    if (r[WX_FIELD_RAIN_MIDNIGHT].present)
-        WX_APP("P%03d", (int)lround(r[WX_FIELD_RAIN_MIDNIGHT].value) % 1000);
+    // Optional tokens - emitted only when actually present. Rain fields
+    // clamp to the 3-digit field width instead of wrapping, matching every
+    // other field in this function: a wrapped value would read back as
+    // *less* rain than actually fell, which is worse than a saturated
+    // "999" that at least reads as "very heavy".
+    if (r[WX_FIELD_RAIN_1H].present) {
+        long rr = lround(r[WX_FIELD_RAIN_1H].value);
+        if (rr < 0)
+            rr = 0;
+        if (rr > 999)
+            rr = 999;
+        WX_APP("r%03ld", rr);
+    }
+    if (r[WX_FIELD_RAIN_24H].present) {
+        long rp = lround(r[WX_FIELD_RAIN_24H].value);
+        if (rp < 0)
+            rp = 0;
+        if (rp > 999)
+            rp = 999;
+        WX_APP("p%03ld", rp);
+    }
+    if (r[WX_FIELD_RAIN_MIDNIGHT].present) {
+        long rP = lround(r[WX_FIELD_RAIN_MIDNIGHT].value);
+        if (rP < 0)
+            rP = 0;
+        if (rP > 999)
+            rP = 999;
+        WX_APP("P%03ld", rP);
+    }
     if (r[WX_FIELD_HUMIDITY].present) {
         int h = (int)lround(r[WX_FIELD_HUMIDITY].value);
         if (h >= 100)
@@ -435,10 +464,30 @@ static int build_wx_tokens(const wx_resolved_t r[WX_SENSOR_NUM], bool positionle
         else
             WX_APP("s%03d", (int)lround(snowIn));
     }
-    if (r[WX_FIELD_FLOOD_HEIGHT_FT].present)
-        WX_APP("F%06.1f", r[WX_FIELD_FLOOD_HEIGHT_FT].value);
-    if (r[WX_FIELD_FLOOD_HEIGHT_M].present)
-        WX_APP("f%06.1f", r[WX_FIELD_FLOOD_HEIGHT_M].value);
+    // Flood/water-gauge height, tenth-foot (or tenth-metre) resolution,
+    // unpadded per the aprs12/watergage.txt "Fxxxx" example ("F20.1"), not
+    // the zero-padded six-character width used by the other numeric fields.
+    if (r[WX_FIELD_FLOOD_HEIGHT_FT].present) {
+        double ft = r[WX_FIELD_FLOOD_HEIGHT_FT].value;
+        if (ft < 0)
+            ft = 0;
+        if (ft > 999.9)
+            ft = 999.9;
+        WX_APP("F%.1f", ft);
+    }
+    if (r[WX_FIELD_FLOOD_HEIGHT_M].present) {
+        double m = r[WX_FIELD_FLOOD_HEIGHT_M].value;
+        if (m < 0)
+            m = 0;
+        if (m > 999.9)
+            m = 999.9;
+        WX_APP("f%.1f", m);
+    }
+
+    // Software-type / weather-unit indicator (APRS101 ch.12): fixed,
+    // firmware-identifying suffix, emitted last, after every optional
+    // token above.
+    WX_APP("%s", WX_SW_SUFFIX);
 
 #undef WX_APP
     return (int)u;
@@ -455,6 +504,7 @@ static int build_wx_packet(const wx_resolved_t r[WX_SENSOR_NUM], char *out, size
     uint8_t cfg_ssid, cfg_path;
     float cfg_lat, cfg_lon;
     bool cfg_timestamp;
+    bool cfg_msg_capable;
     app_config_lock();
     {
         bool useWx = g_config.wx_mycall[0] != 0;
@@ -466,6 +516,7 @@ static int build_wx_packet(const wx_resolved_t r[WX_SENSOR_NUM], char *out, size
         cfg_lat = g_config.wx_lat;
         cfg_lon = g_config.wx_lon;
         cfg_timestamp = g_config.wx_timestamp;
+        cfg_msg_capable = g_config.msg_enable;
     }
     app_config_unlock();
 
@@ -513,12 +564,14 @@ static int build_wx_packet(const wx_resolved_t r[WX_SENSOR_NUM], char *out, size
         char latStr[10], lonStr[11];
         aprs_coord_format(cfg_lat, cfg_lon, latStr, sizeof(latStr), lonStr, sizeof(lonStr));
         build_wx_tokens(r, false, wxTokens, sizeof(wxTokens));
+        // Same message-capable/not-capable DTI choice buildPositionPacket()
+        // makes in beacon.c, rather than always tying it to the timestamp.
         if (cfg_timestamp) {
             char ts[8];
             snprintf(ts, sizeof(ts), "%02u%02u%02uz", t_day, t_hour, t_min);
-            snprintf(info, sizeof(info), "@%s%s/%s_%s%s", ts, latStr, lonStr, wxTokens, cfg_comment);
+            snprintf(info, sizeof(info), "%c%s%s/%s_%s%s", cfg_msg_capable ? '@' : '/', ts, latStr, lonStr, wxTokens, cfg_comment);
         } else {
-            snprintf(info, sizeof(info), "!%s/%s_%s%s", latStr, lonStr, wxTokens, cfg_comment);
+            snprintf(info, sizeof(info), "%c%s/%s_%s%s", cfg_msg_capable ? '=' : '!', latStr, lonStr, wxTokens, cfg_comment);
         }
     } else {
         // Positionless weather report: "_MMDDHHMM" + c/s wind prefix.
