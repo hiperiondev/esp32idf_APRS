@@ -321,7 +321,8 @@ static void resolve_fields(wx_resolved_t out[WX_SENSOR_NUM]) {
 // Appends the weather data tokens (wind + gust + temp always, the rest only
 // when present) to `out`. `positionless` selects the "cddd sSSS" wind prefix
 // used by positionless reports instead of the "ddd/sss" used by positioned
-// reports. Returns bytes written.
+// reports, and also suppresses the snow token, which has no encoding in that
+// format. Returns bytes written.
 static int build_wx_tokens(const wx_resolved_t r[WX_SENSOR_NUM], bool positionless, char *out, size_t outMax) {
     size_t u = 0;
 #define WX_APP(...)                                                                                                                                            \
@@ -415,8 +416,25 @@ static int build_wx_tokens(const wx_resolved_t r[WX_SENSOR_NUM], bool positionle
         else
             WX_APP("l%03d", (l - 1000) % 1000);
     }
-    if (r[WX_FIELD_SNOW_24H].present)
-        WX_APP("s%03d", (int)lround(r[WX_FIELD_SNOW_24H].value) % 1000);
+    // Snow has no positionless encoding: the WinAPRS verbose format assigns
+    // 's' to wind speed instead, so a snow token there would read back as a
+    // second wind reading. The field is skipped for that format; the caller
+    // logs when this drops a configured reading.
+    if (r[WX_FIELD_SNOW_24H].present && !positionless) {
+        // On-air unit is whole/fractional inches, three bytes: the fractional
+        // form ("s1.5") below 10 inches keeps the nearest-tenth resolution the
+        // struct stores in that width, the zero-padded integer form ("s012")
+        // above it, matching the field's defined range.
+        double snowIn = r[WX_FIELD_SNOW_24H].value / 10.0;
+        if (snowIn < 0)
+            snowIn = 0;
+        if (snowIn > 999)
+            snowIn = 999;
+        if (snowIn < 10.0)
+            WX_APP("s%.1f", snowIn);
+        else
+            WX_APP("s%03d", (int)lround(snowIn));
+    }
     if (r[WX_FIELD_FLOOD_HEIGHT_FT].present)
         WX_APP("F%06.1f", r[WX_FIELD_FLOOD_HEIGHT_FT].value);
     if (r[WX_FIELD_FLOOD_HEIGHT_M].present)
@@ -504,6 +522,13 @@ static int build_wx_packet(const wx_resolved_t r[WX_SENSOR_NUM], char *out, size
         }
     } else {
         // Positionless weather report: "_MMDDHHMM" + c/s wind prefix.
+        // The positionless format has no free letter for snow ('s' is
+        // already wind speed there), so a station with no position
+        // configured cannot put a snow reading on the air; log once per
+        // report so the operator can see why the field is missing rather
+        // than a silently truncated packet.
+        if (r[WX_FIELD_SNOW_24H].present)
+            ESP_LOGW(TAG, "snow field enabled but station has no position - omitted from positionless WX report");
         char ts8[9];
         snprintf(ts8, sizeof(ts8), "%02u%02u%02u%02u", t_mon, t_day, t_hour, t_min);
         build_wx_tokens(r, true, wxTokens, sizeof(wxTokens));

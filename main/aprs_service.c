@@ -677,17 +677,23 @@ static void aprs_msg_callback(ax25_msg_t *msg) {
         // for a repeat that has not happened yet, so a frame carrying one is
         // still direct from this receiver's point of view. This is what the
         // "?APRSD" query reports, so it has to mean heard-off-the-air rather
-        // than merely path-looks-empty.
+        // than merely path-looks-empty. usedHops counts the same repeated
+        // entries, giving lastheard_station_count() the hop distance this
+        // frame actually travelled, as opposed to the full (possibly still
+        // unused) path string kept for display.
         bool direct = true;
+        uint8_t usedHops = 0;
         for (int i = 0; i < msg->rpt_count; i++) {
             str_append(path, sizeof(path), &plen, "%s%s", (i == 0) ? "" : ",", msg->rpt_list[i].call);
             if (msg->rpt_list[i].ssid > 0)
                 str_append(path, sizeof(path), &plen, "-%d", msg->rpt_list[i].ssid);
-            if (AX25_REPEATED(msg, i))
+            if (AX25_REPEATED(msg, i)) {
                 direct = false;
+                usedHops++;
+            }
         }
 
-        lastheard_add(callsign, path, true, direct, symTable, symCode);
+        lastheard_add(callsign, path, true, direct, usedHops, symTable, symCode);
     }
 
     // Placeholder/invalid source callsign check (NOCALL = radio not
@@ -1127,8 +1133,8 @@ static void inet2rfHandler(const char *line) {
             aprs_extract_symbol(info, infoLen, &symTable, &symCode);
 
             // A frame that arrived over APRS-IS was never heard off the air
-            // here, so it is never direct.
-            lastheard_add(callsign, path, false, false, symTable, symCode);
+            // here, so it is never direct and has no RF hop count.
+            lastheard_add(callsign, path, false, false, 0, symTable, symCode);
         }
     }
 

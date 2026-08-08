@@ -438,10 +438,15 @@ static void respondWX(query_source_t source) {
 // passed in either direction (igate_stats_t::msgCount, bumped wherever a ':'
 // data type identifier is gated), not a tally of all gated traffic.
 //
-// LOC_CNT is a live figure rather than a running total: the number of distinct
-// stations currently in the local heard list, which components/lastheard keeps
-// as one row per callsign. Only the stations heard off the air count as local,
-// so the rows the APRS-IS feed contributed are left out.
+// LOC_CNT is a live figure rather than a running total: the number of
+// distinct stations currently in the local heard list whose used-hop count is
+// within reach of this IGate's own TX path, which is what APRS101 ch.15
+// defines it as - "the number of stations heard with this number of used
+// digipeater addresses or fewer". A station heard through more hops than the
+// configured igate_path would use is left out, since an IS->RF message for it
+// would never reach it. Only the stations heard off the air count as local at
+// all, so the rows the APRS-IS feed contributed are excluded regardless of
+// hop count.
 static void respondIGate(query_source_t source) {
     if (!g_config.igate_en) {
         ESP_LOGD(TAG, "?IGATE? query ignored - IGate service is disabled");
@@ -459,8 +464,10 @@ static void respondIGate(query_source_t source) {
     char path[80];
     aprs_path_build_suffix_from_config(g_config.igate_path, path, sizeof(path));
 
+    uint8_t txHops = app_config_path_hop_count(g_config.igate_path, g_config.path);
+
     char info[64];
-    snprintf(info, sizeof(info), "<IGATE,MSG_CNT=%u,LOC_CNT=%u>", (unsigned)stats.msgCount, (unsigned)lastheard_station_count(true));
+    snprintf(info, sizeof(info), "<IGATE,MSG_CNT=%u,LOC_CNT=%u>", (unsigned)stats.msgCount, (unsigned)lastheard_station_count(true, txHops));
 
     char packet[APRS_TNC2_BUF_SIZE];
     int n = snprintf(packet, sizeof(packet), "%s>%s%s:%s", callField, QUERY_DEST, path, info);

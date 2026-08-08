@@ -64,13 +64,13 @@
  *        the AX.25 Information field (see APRS101 chapter 5 and 8).
  * @{
  */
-#define APRS_MAX_INFO_FIELD_LEN       256 /**< Max AX.25 Information field length (protocol id + data), bytes. */
-#define APRS_MAX_COMMENT_LEN          43  /**< Max comment length for a position report without data extension. */
-#define APRS_MAX_COMMENT_WITH_EXT_LEN 36  /**< Max comment length when a 7-byte Data Extension is present. */
-#define APRS_CALLSIGN_LEN             6   /**< Callsign field length, excluding SSID. */
-#define APRS_CALLSIGN_SSID_LEN   9 /**< Callsign left-justified, space-padded to 9 chars, as required in the addressee field of Messages/PARM/UNIT/EQNS/BITS. */
-#define APRS_MAX_STATUS_TEXT_LEN 62         /**< Max status text length. */
-#define APRS_MAX_OBJECT_NAME_LEN 9          /**< Fixed object/item name length. */
+#define APRS_MAX_INFO_FIELD_LEN          256 /**< Max AX.25 Information field length (protocol id + data), bytes. */
+#define APRS_MAX_COMMENT_LEN             43  /**< Max comment length for a position report without data extension. */
+#define APRS_MAX_COMMENT_WITH_EXT_LEN    36  /**< Max comment length when a 7-byte Data Extension is present. */
+#define APRS_CALLSIGN_LEN                6   /**< Callsign field length, excluding SSID. */
+#define APRS_CALLSIGN_SSID_LEN           9 /**< Callsign left-justified, space-padded to 9 chars, as required in the addressee field of Messages/PARM/UNIT/EQNS/BITS. */
+#define APRS_MAX_STATUS_TEXT_LEN         62 /**< Max status text length. */
+#define APRS_MAX_OBJECT_NAME_LEN         9  /**< Fixed object/item name length. */
 #define APRS_MAX_MESSAGE_TEXT_LEN        67 /**< Max message text length (excluding message number). */
 #define APRS_MESSAGE_NUMBER_LEN          5  /**< Message number field length "{mm}" incl. braces, up to 5 chars. */
 #define APRS_TELEMETRY_PARAM_NAME_MAXLEN 24 /**< Max length of a single PARM/UNIT/BITS project title text. */
@@ -347,8 +347,12 @@ typedef enum { APRS_SW_TYPE_DOS = 'd', APRS_SW_TYPE_MAC = 'm', APRS_SW_TYPE_WIND
  *   - rain_since_midnight: "PXXX" (hundredths of an inch, since local
  *                           midnight; upper-case P used specifically by
  *                           remote/unattended Ultimeter stations)
- *   - snow_last_24h_in:    "sXXX" (inches, to the nearest tenth, in the
- *                           last 24 hours) - APRS 1.2 proposal
+ *   - snow_last_24h_in:    "sXXX" (whole/fractional inches, in the last 24
+ *                           hours - "s1.5" below 10 in keeps the nearest-tenth
+ *                           resolution the field is stored at, "s012" at or
+ *                           above 10 in; not available in the positionless
+ *                           report format, which uses the 's' letter for wind
+ *                           speed instead) - APRS 1.2 proposal
  *   - humidity_percent:    "hXX" (relative humidity, percent; "00" means
  *                           100%)
  *   - barometric_pressure_dmb: "bXXXXX" (barometric pressure, tenths of
@@ -440,7 +444,8 @@ typedef struct {
     uint16_t rain_last_hour_hundredths_in;      /**< Rainfall in the last 60 minutes, hundredths of an inch. */
     uint16_t rain_last_24h_hundredths_in;       /**< Rainfall in the last 24 hours (sliding window), hundredths of an inch. */
     uint16_t rain_since_midnight_hundredths_in; /**< Rainfall since local midnight, hundredths of an inch. */
-    uint16_t snow_last_24h_tenths_in;           /**< Snowfall in the last 24 hours, tenths of an inch. */
+    uint16_t snow_last_24h_tenths_in;           /**< Snowfall in the last 24 hours, tenths of an inch (matches sensor
+                                                      resolution; converted to whole/fractional inches on air). */
     uint8_t humidity_percent;                   /**< Relative humidity, 1-100 percent (on-air "00" decodes to 100). */
     uint32_t barometric_pressure_tenths_mb;     /**< Barometric pressure, tenths of a millibar/hPa (e.g. 10132 = 1013.2 mb). */
     uint16_t luminosity_wm2;                    /**< Solar luminosity, watts per square meter (0-1999+). */

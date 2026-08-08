@@ -434,7 +434,7 @@ Weather
    * - Own-station APRS Weather Report generation
      - ✅ (Xastir, aprx, many TNC firmwares w/ WX kits)
      - ✅
-     - Full ch.12 field set + APRS 1.2 additions (snow, luminosity, flood)
+     - Full ch.12 field set + APRS 1.2 additions (snow, luminosity, flood); snow has no positionless-format encoding, so it is only sent on positioned/object reports
    * - Live sensor polling framework (pluggable drivers)
      - ⚠️ (uncommon as a generic framework; usually hardcoded to one WX board)
      - ✅

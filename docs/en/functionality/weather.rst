@@ -85,8 +85,8 @@ flood proposals, enumerated by ``wx_field_id_t``:
      - ``PXXX``
      - 1/100 in
    * - Snow last 24 h
-     - ``sXXX``
-     - 1/10 in (APRS 1.2)
+     - ``sX.X`` / ``sXXX``
+     - in, positioned/object reports only (APRS 1.2)
    * - Humidity
      - ``hXX``
      - %
@@ -102,6 +102,13 @@ flood proposals, enumerated by ``wx_field_id_t``:
    * - Flood height (metres)
      - ``fXXXX.X``
      - metres (APRS 1.2)
+
+A station with no position configured (``g_config.wx_lat``/``wx_lon`` both
+zero, and no object name set) sends the positionless report format instead,
+which reuses the ``s`` letter for wind speed and therefore has no slot for
+snow. The snow token is left out of that report even when the field is
+enabled and a reading is available; the firmware logs a warning each time
+this happens so the gap is traceable to its cause.
 
 The WX beacon
 =============

@@ -39,9 +39,10 @@ typedef struct {
     char path[LASTHEARD_PATH_LEN]; // e.g. "RF: WIDE1-1" / "INET: DIRECT"
     char sym_table;
     char sym_code;
-    bool via_rf;      // latest frame from this station was heard off the air
-    bool direct;      // latest frame from this station carried no used digipeater
-    uint32_t packets; // total times this callsign has been heard
+    bool via_rf;       // latest frame from this station was heard off the air
+    bool direct;       // latest frame from this station carried no used digipeater
+    uint8_t used_hops; // digipeater addresses actually repeated in the latest RF frame
+    uint32_t packets;  // total times this callsign has been heard
     // Per-channel last-heard stamps, kept alongside the whole-entry time above
     // because the two answer different questions. time is when the station was
     // last heard at all, which is what the dashboard shows; these two are when
@@ -144,7 +145,7 @@ void lastheard_init(void) {
     s_inited = true;
 }
 
-void lastheard_add(const char *callsign, const char *path, bool via_rf, bool direct, char sym_table, char sym_code) {
+void lastheard_add(const char *callsign, const char *path, bool via_rf, bool direct, uint8_t used_hops, char sym_table, char sym_code) {
     if (!s_inited)
         lastheard_init();
     if (!callsign || !callsign[0])
@@ -208,6 +209,7 @@ void lastheard_add(const char *callsign, const char *path, bool via_rf, bool dir
     // station last seen on the APRS-IS feed stops counting as locally heard.
     entry.via_rf = via_rf;
     entry.direct = via_rf && direct;
+    entry.used_hops = via_rf ? used_hops : 0;
 
     // The per-channel stamps accumulate rather than replace each other, so a
     // station present on both channels keeps both times and each one ages out
@@ -232,7 +234,7 @@ void lastheard_add(const char *callsign, const char *path, bool via_rf, bool dir
     xSemaphoreGive(s_lock);
 }
 
-size_t lastheard_station_count(bool rf_only) {
+size_t lastheard_station_count(bool rf_only, uint8_t max_used_hops) {
     if (!s_inited)
         return 0;
     if (!s_lock || xSemaphoreTake(s_lock, pdMS_TO_TICKS(100)) != pdTRUE)
@@ -243,6 +245,8 @@ size_t lastheard_station_count(bool rf_only) {
         if (!s_buf[i].callsign[0])
             continue;
         if (rf_only && !s_buf[i].via_rf)
+            continue;
+        if (rf_only && s_buf[i].used_hops > max_used_hops)
             continue;
         count++;
     }

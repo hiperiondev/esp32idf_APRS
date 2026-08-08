@@ -92,11 +92,17 @@ void lastheard_init(void);
  *                    been repeated by any digipeater. Recorded per station
  *                    (from its most recent frame) and reported by
  *                    lastheard_directs(); an INET frame is never direct.
+ * @param used_hops  Number of digipeater addresses in the frame's path whose
+ *                    AX.25 "has been repeated" bit was set, i.e. how many
+ *                    hops the frame actually took to reach this receiver. 0
+ *                    for a direct frame or one heard via APRS-IS. Recorded
+ *                    per station (from its most recent frame) and used by
+ *                    lastheard_station_count() to test path reachability.
  * @param sym_table  APRS symbol table byte ('/' or '\' or overlay char), 0 if
  *                    unknown/not a position packet.
  * @param sym_code   APRS symbol code byte, 0 if unknown/not a position packet.
  */
-void lastheard_add(const char *callsign, const char *path, bool via_rf, bool direct, char sym_table, char sym_code);
+void lastheard_add(const char *callsign, const char *path, bool via_rf, bool direct, uint8_t used_hops, char sym_table, char sym_code);
 
 /**
  * @brief How many stations the table currently holds.
@@ -105,15 +111,24 @@ void lastheard_add(const char *callsign, const char *path, bool via_rf, bool dir
  * list at the moment of the call, and it stops growing once the table is full
  * (a new station then evicts the least recently heard one). It answers the
  * @c LOC_CNT half of the "?IGATE?" Station Capabilities line APRS101
- * chapter 15 defines.
+ * chapter 15 defines: "the number of stations heard with this number of used
+ * digipeater addresses or fewer", i.e. stations within the IGate's own
+ * transmit path in hops, not merely everything decoded off the air.
  *
- * @param rf_only true to count only the stations whose most recent frame was
- *                heard off the air, which is what "local" means for an IGate;
- *                false to count every row, including the ones fed in from
- *                APRS-IS.
+ * @param rf_only  true to count only the stations whose most recent frame was
+ *                 heard off the air, which is what "local" means for an
+ *                 IGate; false to count every row, including the ones fed in
+ *                 from APRS-IS (in which case @p max_used_hops is ignored,
+ *                 since an APRS-IS-sourced row carries no RF hop count).
+ * @param max_used_hops When @p rf_only is true, a station counts only if the
+ *                 used-hop count of its most recent RF frame (see
+ *                 lastheard_add()'s @c used_hops) is at or below this value -
+ *                 the reach, in hops, of the configured IGate TX path. Pass
+ *                 @c UINT8_MAX to count every RF station regardless of path
+ *                 length.
  * @return Number of stations, 0 to @c LASTHEARD_CAPACITY.
  */
-size_t lastheard_station_count(bool rf_only);
+size_t lastheard_station_count(bool rf_only, uint8_t max_used_hops);
 
 /**
  * @brief Was this station heard on the local RF channel within the last
