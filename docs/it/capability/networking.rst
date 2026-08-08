@@ -104,9 +104,13 @@ richiedono.
 Lo stesso file contiene anche una tabella incorporata di offset UTC fissi (senza
 regole di ora legale), selezionata da ``g_config.timezone_idx`` dalla sezione
 *Time* della pagina System. È **solo una comodità di visualizzazione**:
-``time_sync_format_local()`` prende in prestito la variabile ``TZ`` di processo
-sotto un lock interno per rappresentare una data/ora locale nella dashboard, e
-ripristina ``UTC0`` immediatamente. L'orologio di sistema, tutti i timestamp
+``time_sync_format_local()`` somma l'``utc_offset_s`` della voce selezionata
+all'istante UTC e rilegge il risultato tramite ``gmtime_r()``. La conversione è
+pura aritmetica: non prende alcun lock, non alloca nulla e non scrive mai la
+variabile ``TZ`` di processo, che viene impostata a ``UTC0`` una sola volta
+durante l'avvio SNTP e non viene più riscritta. Questo conta perché la
+dashboard interroga la data/ora rappresentata una volta al secondo per tutto il
+tempo di accensione del dispositivo. L'orologio di sistema, tutti i timestamp
 APRS e ogni altra chiamata di formattazione oraria del firmware (tutte con
 ``gmtime_r()``) restano in UTC indipendentemente dalla selezione.
 

@@ -64,13 +64,15 @@ void time_sync_start(void);
 void time_sync_1hz(void);
 
 /**
- * @brief One entry of the built-in timezone table: a display name and its
- * POSIX TZ rule string.
+ * @brief One entry of the built-in timezone table: a display name and the
+ * fixed offset from UTC that the name advertises.
  */
 typedef struct {
     const char *name;     /**< Display name for the System page's timezone select, leading with the signed UTC offset followed by the country (or, for
                             countries spanning more than one offset, the standard zone name), e.g. "UTC-5 Eastern Time (USA, Canada)". */
-    const char *posix_tz; /**< POSIX TZ rule string, as consumed by setenv("TZ", ...) / tzset(). */
+    int32_t utc_offset_s; /**< Seconds to add to a UTC timestamp to obtain local civil time in this zone; negative west of Greenwich. A fixed offset with
+                            no daylight-saving rule, so it always matches the signed offset printed at the start of @c name (e.g. -3 * 3600 for "UTC-3
+                            Argentina", 5 * 3600 + 45 * 60 for "UTC+5:45 Nepal"). */
 } time_sync_tz_t;
 
 /**
@@ -101,11 +103,15 @@ const char *time_sync_tz_name(uint8_t idx);
  * civil time for display, without touching how any other part of the
  * firmware reads or stores time. The rendered string carries no timezone
  * name or abbreviation, only the resulting date and time, since the table
- * entry the caller selected is the sole source of the offset applied. The
- * process-wide @c TZ environment variable is borrowed for the duration of
- * the call and restored to @c UTC0 immediately afterwards, under an internal
- * lock, so a concurrent caller (or the SNTP client) never observes an
- * unexpected @c TZ value.
+ * entry the caller selected is the sole source of the offset applied.
+ *
+ * The conversion is pure arithmetic on the entry's ::time_sync_tz_t
+ * utc_offset_s, read back through @c gmtime_r(): the function reads no
+ * process-wide state, writes none (in particular it never touches the @c TZ
+ * environment variable), takes no lock and allocates nothing. It is therefore
+ * reentrant, safe to call from several httpd worker tasks at once, and safe to
+ * call on a fixed schedule indefinitely - the dashboard polls it once per
+ * second for the whole uptime of the device.
  *
  * @param utc      UTC timestamp to convert (as from @c time(NULL)).
  * @param idx      Timezone table index, 0 .. time_sync_tz_count()-1. Any

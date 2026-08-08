@@ -104,11 +104,15 @@ APRS lo requieren.
 El mismo archivo lleva además una tabla incorporada de desfases UTC fijos (sin
 reglas de horario de verano), seleccionada por ``g_config.timezone_idx`` desde
 la sección *Time* de la página System. Es **solo una comodidad de
-visualización**: ``time_sync_format_local()`` toma prestada la variable ``TZ``
-del proceso bajo un cerrojo interno para representar una fecha/hora local en el
-panel, y restaura ``UTC0`` inmediatamente. El reloj del sistema, todas las
-marcas de tiempo APRS y el resto de llamadas de formato horario del firmware
-(todas ellas con ``gmtime_r()``) siguen en UTC con independencia de la
+visualización**: ``time_sync_format_local()`` suma el ``utc_offset_s`` de la
+entrada seleccionada al instante UTC y lee el resultado con ``gmtime_r()``. La
+conversión es aritmética pura: no toma ningún cerrojo, no asigna memoria y
+nunca escribe la variable ``TZ`` del proceso, que se fija a ``UTC0`` una sola
+vez durante la puesta en marcha de SNTP y no se vuelve a reescribir. Esto
+importa porque el panel consulta la fecha/hora representada una vez por segundo
+durante todo el tiempo que el equipo esté encendido. El reloj del sistema,
+todas las marcas de tiempo APRS y el resto de llamadas de formato horario del
+firmware (todas ellas con ``gmtime_r()``) siguen en UTC con independencia de la
 selección.
 
 Frecuencia de CPU

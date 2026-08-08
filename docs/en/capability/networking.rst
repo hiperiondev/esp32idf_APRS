@@ -98,12 +98,15 @@ machine folded into the 1 Hz service tick, and it pins the system clock to UTC
 
 The same file also carries a built-in table of fixed UTC offsets (no DST rules),
 selected by ``g_config.timezone_idx`` from the *Time* section of the System
-page. This is a **display convenience only**: ``time_sync_format_local()``
-borrows the process-wide ``TZ`` under an internal lock to render one local
-date/time for the dashboard, then restores ``UTC0`` immediately. The system
-clock, every APRS timestamp and every other time-formatting call in the
-firmware (all of which use ``gmtime_r()``) remain UTC regardless of the
-selection.
+page. This is a **display convenience only**: ``time_sync_format_local()`` adds
+the selected entry's ``utc_offset_s`` to the UTC instant and reads the result
+back through ``gmtime_r()``. The conversion is pure arithmetic — it takes no
+lock, allocates nothing and never writes the process-wide ``TZ``, which is set
+to ``UTC0`` once during SNTP setup and never rewritten afterwards. That matters
+because the dashboard polls the rendered date/time once per second for the whole
+uptime of the device. The system clock, every APRS timestamp and every other
+time-formatting call in the firmware (all of which use ``gmtime_r()``) remain
+UTC regardless of the selection.
 
 CPU frequency
 =============
