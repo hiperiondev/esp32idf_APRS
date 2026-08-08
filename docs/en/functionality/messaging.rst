@@ -57,6 +57,47 @@ The message engine
   station occupies one name in the thread and an ack pairs with the outbound
   message it acknowledges.
 
+Reply-ACK
+=========
+
+The Reply-ACK algorithm (APRS 1.1, ``aprs11/replyacks.txt``) embeds an
+acknowledgement in the line number of an ordinary message, so a reply doubles as
+the ack for what it replies to. It is what the addendum calls the single largest
+reliability win available in APRS messaging: end-to-end acks have to survive the
+return path, and over two hops a 70 % channel gives a message only about a 25 %
+chance of being acknowledged.
+
+* **Outgoing.** Every message is numbered ``{MM}`` or ``{MM}AA``, where ``MM``
+  is this station's own number and ``AA`` the acknowledgement owed to the
+  addressee. The suffix is built by ``buildMsgNumberSuffix()`` at the instant a
+  frame is assembled — not when the message is queued — so a retry carries
+  whatever is owed by then rather than what was owed when the operator wrote it.
+  With nothing owed the number is ``{MM}``, whose trailing brace is what tells
+  the other end that a Reply-ACK can be sent back.
+* **Incoming.** A number written ``MM}AA`` is split in two. ``AA`` is matched
+  against the outbound queue and marks that message acknowledged, without any
+  separate ``ackNN`` ever having to arrive. ``MM`` identifies the received
+  message — so the same message heard twice with two different free
+  acknowledgements is still one line of the conversation — and is remembered as
+  the acknowledgement now owed to that station, ready to ride out on the next
+  message sent to it.
+* **The ordinary ack still goes back**, quoting the identifier exactly as it
+  arrived: a message numbered ``MM}AA`` is acknowledged with ``ackMM}AA``.
+  Conversely, an incoming ``ackMM}AA`` is matched on ``MM`` alone, because the
+  part after the brace is this station's own free acknowledgement quoted back
+  and acknowledges nothing.
+* **Numbering.** Outgoing numbers run 1 to ``MSG_ID_MAX`` (99) and wrap, never
+  reaching 0. Two digits are what keeps a full ``{MM}AA`` identifier inside the
+  five characters APRS101 chapter 14 allows, and only ``MSG_QUEUE_SIZE``
+  messages are ever outstanding at once.
+* **State.** The acknowledgement owed is kept per correspondent, for
+  ``MSG_REPLY_ACK_STATIONS`` (5) stations, the least recently updated entry being
+  reused beyond that. A station that loses its entry simply loses the free ride:
+  the ordinary ack was already sent to it when its message arrived.
+
+The whole mechanism is transparent to software that does not implement it, which
+reads ``{MM}AA`` as an ordinary message identifier and acknowledges it whole.
+
 Routing
 =======
 

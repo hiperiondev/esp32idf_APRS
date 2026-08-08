@@ -257,6 +257,10 @@ void app_config_set_defaults(app_config_t *c) {
     }
     c->digi_fillin_only = false;
     c->digi_trap_n_clamp = true;
+    // Routing on the destination SSID alone is pre-New-N behaviour that
+    // bypasses the alias table entirely, so it stays off until an operator who
+    // still has a legacy neighbour asks for it.
+    c->digi_dest_ssid_en = false;
 
     // TRACKER
     c->trk_en = false;
@@ -597,6 +601,7 @@ static void config_write_json(jw_t *d, const app_config_t *c) {
     jarr_end(d);
     jadd_bool(d, "digiFillinOnly", c->digi_fillin_only);
     jadd_bool(d, "digiTrapNClamp", c->digi_trap_n_clamp);
+    jadd_bool(d, "digiDestSsidEn", c->digi_dest_ssid_en);
     jadd_bool(d, "digiBcn", c->digi_bcn);
     jadd_bool(d, "digiCompress", c->digi_compress);
     jadd_num(d, "digiAlt", c->digi_alt);
@@ -965,6 +970,7 @@ static void config_from_json(cJSON *d, app_config_t *c) {
     }
     c->digi_fillin_only = jget_bool(d, "digiFillinOnly", def.digi_fillin_only);
     c->digi_trap_n_clamp = jget_bool(d, "digiTrapNClamp", def.digi_trap_n_clamp);
+    c->digi_dest_ssid_en = jget_bool(d, "digiDestSsidEn", def.digi_dest_ssid_en);
     c->digi_bcn = jget_bool(d, "digiBcn", def.digi_bcn);
     c->digi_compress = jget_bool(d, "digiCompress", def.digi_compress);
     c->digi_alt = (float)jget_num(d, "digiAlt", def.digi_alt);

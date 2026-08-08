@@ -59,7 +59,8 @@ The pages
      - Digipeater enable, callsign/SSID and beacon settings (position, symbol,
        interval, comment, status, path). *n-N Path Aliases* holds the four
        {alias, max N, mode} rows the digipeater repeats by, the fill-in-only
-       switch and the choice of what to do with a trapped hop count. It also
+       switch, the choice of what to do with a trapped hop count and the
+       *Digipeat by destination SSID (legacy)* switch, off by default. It also
        carries the four shared path presets ``path[0..3]`` that every
        transmitting service selects from. The duplicate-suppression window is a
        single control, on the *IGate* page.

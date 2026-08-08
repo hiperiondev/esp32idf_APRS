@@ -114,10 +114,29 @@ porta già l'indicativo di questa stazione marcato come usato, qualunque cosa
 contenga ancora il suo percorso, e quella che ricade nella finestra di
 soppressione duplicati qui sotto.
 
-* **WIDEn-N codificato nel campo SSID di destinazione** — la convenzione più
-  vecchia in cui il contatore di hop vive nel nibble SSID dell'indirizzo di
-  destinazione AX.25 è anch'essa riconosciuta e gestita, prima della tabella
-  degli alias.
+Instradamento legacy tramite SSID di destinazione
+=================================================
+
+Prima del Nuovo Paradigma n-N alcuni TNC portavano il conteggio degli hop nel
+nibble SSID dell'indirizzo di destinazione AX.25 e non nel percorso.
+*Ripetizione tramite SSID di destinazione (legacy)* nella pagina *Digi*
+(``digi_dest_ssid_en``) abilita quella convenzione, ed è **disattivata per
+impostazione predefinita**.
+
+Attiva, una trama il cui SSID di destinazione sia da 1 a 7 viene ripetuta in
+base a quel solo SSID: il conteggio viene decrementato e l'indicativo di questa
+stazione viene inserito nel percorso marcato come usato, così l'hop resta
+attribuibile in seguito. Quella decisione è presa *prima* della tabella degli
+alias, ed è proprio per questo che non è l'impostazione predefinita: una trama
+che porti sia un SSID di destinazione sia un percorso ``WIDEn-N`` esplicito
+verrebbe ripetuta in base all'SSID e il percorso richiesto dalla stazione di
+origine non verrebbe mai letto.
+
+Disattivata, o quando la convenzione non instrada una trama in particolare (un
+SSID di destinazione pari a 0, oppure da 8 a 15, che appartiene all'indirizzo di
+destinazione stesso; un percorso che porta già l'indicativo di questa stazione
+marcato come usato; un percorso già pieno), la trama raggiunge la tabella degli
+alias esattamente come è stata ricevuta, SSID di destinazione incluso.
 
 Soppressione duplicati
 ======================

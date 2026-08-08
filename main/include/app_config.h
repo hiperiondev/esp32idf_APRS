@@ -518,6 +518,9 @@ typedef struct {
                                                 the backbone directly and leaves multi-hop traffic to the wide digipeaters. */
     bool digi_trap_n_clamp;                  /**< What to do with a hop count above the matched row's @c max_n: true clamps it down to @c max_n and repeats,
                                                 false drops the frame (@c DROP_DIGI_N_TRAPPED). */
+    bool digi_dest_ssid_en;                  /**< Honour the pre-New-N convention that carries the hop count in the AX.25 destination SSID (1-7) instead of in
+                                                the path. Off by default: it repeats on the strength of that SSID alone, ahead of and instead of the operator's
+                                                alias table, so it is only appropriate where a legacy neighbour still needs it. */
     bool digi_bcn;                           /**< Enable the digipeater position beacon. */
     bool digi_compress;                      /**< Use APRS compressed position format for the digipeater position beacon. */
     float digi_lat;                          /**< Digipeater beacon latitude. */

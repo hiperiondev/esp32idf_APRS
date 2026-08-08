@@ -116,7 +116,6 @@ typedef enum {
     DROP_DIGI_PLACEHOLDER_CALL, /**< Digipeater: source callsign is the NOCALL/MYCALL sentinel. */
     DROP_DIGI_ALREADY_USED,     /**< Digipeater: path already carries this digipeater's call marked used ('*'). */
     DROP_DIGI_PATH_FULL,  /**< Digipeater: path already at the AX.25 maximum (8) repeater addresses; inserting our call would overflow rpt_list/rpt_flags. */
-    DROP_DIGI_NO_PATH,    /**< Digipeater: destination-SSID trace decoded to no usable WIDEn-N path. */
     DROP_DIGI_N_TRAPPED,  /**< Digipeater: hop count above the matched alias row's max_n, with the trap set to drop rather than clamp. */
     DROP_DIGI_PATH_TOKEN, /**< Digipeater: path carries qA or TCP (already gated, not for RF repeat). */
     DROP_DIGI_DUPLICATE,  /**< Digipeater: another copy of this frame was already repeated within g_config.dup_cache_timeout_ms (see

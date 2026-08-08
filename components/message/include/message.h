@@ -58,6 +58,36 @@
 #define APRS_MSG_TEXT_STD_MAX 67
 
 /**
+ * @brief Highest APRS message number this station puts on the air, after which
+ * numbering wraps back to 1.
+ *
+ * @details APRS101 chapter 14 gives the message identifier up to five
+ * characters, and the Reply-ACK algorithm (APRS 1.1) spends three of them on
+ * the @c "}AA" free acknowledgement it appends, so an outgoing number of at
+ * most two digits is what keeps a full @c "{MM}AA" identifier inside the
+ * protocol's budget. Two digits are ample: only ::MSG_QUEUE_SIZE messages are
+ * ever outstanding at once, so numbers are reused long after the message that
+ * carried them has left the queue. Zero is never used - many APRS clients read
+ * a @c "{0" suffix as "no message number" and would never acknowledge it.
+ */
+#define MSG_ID_MAX 99
+
+/**
+ * @brief Number of correspondents for which the latest acknowledgement owed is
+ * remembered, for the Reply-ACK algorithm.
+ *
+ * @details Rule 5 of the algorithm says that the number of the last message
+ * received from a station becomes the free acknowledgement carried by the next
+ * message sent to it, so one entry is needed per station this one is holding a
+ * conversation with. Beyond that many, the least recently updated entry is
+ * reused: the station it belonged to simply loses the free ride and falls back
+ * on the ordinary @c "ackNN" that was already sent to it when its message
+ * arrived, which is the pre-Reply-ACK behaviour and costs nothing but the
+ * redundancy.
+ */
+#define MSG_REPLY_ACK_STATIONS 5
+
+/**
  * @brief Maximum number of pending messages message_send_pending_to() puts on
  * the air in answer to a single "?APRSM" directed query.
  *
@@ -123,11 +153,25 @@ void message_alarm_configure(bool enable, int8_t gpio);
  * @brief Send an APRS text message to `toCall`. Transmits on RF and/or INET
  * per g_config.msg_rf / g_config.msg_inet via the TX-queue callback
  * registered with message_set_tx_handler().
+ *
+ * @details The message is numbered @c "{MM}AA" per the Reply-ACK algorithm:
+ * @c MM is this station's own number for the message and @c AA the
+ * acknowledgement owed to @p toCall, appended at the instant of transmission so
+ * that every retry carries the most recent one. With nothing owed the number is
+ * @c "{MM}", whose trailing brace is what tells the other end that a Reply-ACK
+ * can be sent back. Both forms are read as an ordinary message identifier by
+ * software that does not implement the algorithm.
  */
 void sendAPRSMessage(const char *toCall, const char *text);
 
 /**
  * @brief Send an APRS message ACK ("ackNN") to `toCall`.
+ *
+ * @param toCall Callsign to acknowledge.
+ * @param msgNo  Message number exactly as it was received, Reply-ACK suffix
+ *               included: a message numbered @c "MM}AA" is acknowledged with
+ *               @c "ackMM}AA", because the sender matches the whole identifier
+ *               it issued rather than any part of it.
  */
 void sendAPRSAck(const char *toCall, const char *msgNo);
 
@@ -169,6 +213,17 @@ int message_send_pending_to(const char *toCall);
  * sender, same message number and identical text - which is answered with a
  * fresh ack (the sender is asking for one) without appearing twice in the
  * history.
+ *
+ * A message number written @c "MM}AA" is a Reply-ACK (APRS 1.1): @c MM is the
+ * sender's own number and @c AA a free acknowledgement of one of this station's
+ * outbound messages, which is matched against the queue and marks that message
+ * acknowledged without any @c "ackNN" of its own ever having to arrive. @c MM
+ * is remembered as the acknowledgement now owed to that station, to ride out on
+ * the next message sent to it, and is what identifies the received message for
+ * duplicate detection - so the same message arriving twice with two different
+ * free acknowledgements is still one line of the conversation. The ordinary
+ * @c "ackMM}AA" reply goes back regardless, quoting the number exactly as it
+ * arrived.
  *
  * A line whose addressed text starts with '?' is a directed query rather than
  * a message and is handed to query_process_directed() together with @p source,

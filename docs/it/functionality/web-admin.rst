@@ -64,8 +64,10 @@ Le pagine
      - Abilita digipeater, indicativo/SSID e impostazioni beacon (posizione,
        simbolo, intervallo, commento, stato, percorso). *Alias di Percorso n-N*
        contiene le quattro righe di {alias, N massimo, modalità} con cui il
-       digipeater ripete, l'interruttore di solo riempimento e la scelta di cosa
-       fare con un conteggio hop intrappolato. Contiene anche i quattro preset
+       digipeater ripete, l'interruttore di solo riempimento, la scelta di cosa
+       fare con un conteggio hop intrappolato e l'interruttore *Ripetizione
+       tramite SSID di destinazione (legacy)*, disattivato per impostazione
+       predefinita. Contiene anche i quattro preset
        di percorso condivisi ``path[0..3]`` tra cui sceglie ogni servizio che
        trasmette. La finestra di soppressione dei duplicati è un unico
        controllo, sulla pagina *IGate*.

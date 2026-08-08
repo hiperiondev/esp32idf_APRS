@@ -61,6 +61,52 @@ Il motore dei messaggi
   una stazione occupa un solo nome nel filo e un ack si abbina al messaggio in
   uscita che conferma.
 
+Reply-ACK
+=========
+
+L'algoritmo Reply-ACK (APRS 1.1, ``aprs11/replyacks.txt``) incorpora una
+conferma nel numero di riga di un messaggio ordinario, così che una risposta
+funga anche da ack di ciò a cui risponde. È quella che l'addendum chiama la
+maggiore vincita di affidabilità disponibile nella messaggistica APRS: gli ack
+da estremo a estremo devono sopravvivere al percorso di ritorno, e su due hop un
+canale al 70 % dà a un messaggio solo circa il 25 % di probabilità di essere
+confermato.
+
+* **In uscita.** Ogni messaggio è numerato ``{MM}`` o ``{MM}AA``, dove ``MM`` è
+  il numero proprio di questa stazione e ``AA`` la conferma dovuta al
+  destinatario. Il suffisso è costruito da ``buildMsgNumberSuffix()`` nell'istante
+  in cui la trama viene composta — non quando il messaggio viene accodato —
+  quindi una riprova porta ciò che è dovuto in quel momento e non ciò che era
+  dovuto quando l'operatore l'ha scritto. Senza nulla da confermare il numero è
+  ``{MM}``, e la sua parentesi finale è ciò che dice all'altro capo che può
+  rispondere con un Reply-ACK.
+* **In arrivo.** Un numero scritto ``MM}AA`` viene diviso in due. ``AA`` viene
+  confrontato con la coda in uscita e marca quel messaggio come confermato, senza
+  che debba arrivare alcun ``ackNN`` separato. ``MM`` identifica il messaggio
+  ricevuto — così lo stesso messaggio sentito due volte con due conferme gratuite
+  diverse resta una sola riga della conversazione — ed è memorizzato come la
+  conferma ora dovuta a quella stazione, pronta a partire con il prossimo
+  messaggio inviato ad essa.
+* **L'ack ordinario torna comunque indietro**, citando l'identificatore esattamente
+  come è arrivato: un messaggio numerato ``MM}AA`` è confermato con ``ackMM}AA``.
+  Al contrario, un ``ackMM}AA`` in arrivo è abbinato solo su ``MM``, perché la
+  parte dopo la parentesi è la conferma gratuita di questa stessa stazione
+  rimandata indietro e non conferma nulla.
+* **Numerazione.** I numeri in uscita vanno da 1 a ``MSG_ID_MAX`` (99) e
+  ricominciano, senza mai passare per 0. Due cifre sono ciò che mantiene un
+  identificatore ``{MM}AA`` completo entro i cinque caratteri ammessi dal
+  capitolo 14 di APRS101, e non ci sono mai più di ``MSG_QUEUE_SIZE`` messaggi
+  pendenti alla volta.
+* **Stato.** La conferma dovuta è tenuta per corrispondente, per
+  ``MSG_REPLY_ACK_STATIONS`` (5) stazioni, riutilizzando oltre quel numero la voce
+  aggiornata meno di recente. Una stazione che perde la sua voce perde soltanto
+  il passaggio gratuito: l'ack ordinario le è già stato inviato quando è arrivato
+  il suo messaggio.
+
+L'intero meccanismo è trasparente per il software che non lo implementa, che
+legge ``{MM}AA`` come un identificatore di messaggio ordinario e lo conferma per
+intero.
+
 Instradamento
 =============
 

@@ -14,12 +14,11 @@
 //     please contact their authors for more information.
 //
 // @brief APRS text messaging implementation: outgoing message and ACK
-// formatting, incoming message parsing and acknowledgement, retry/timeout
-// handling of the in-memory queue.
+// formatting, incoming message parsing and acknowledgement, the Reply-ACK
+// algorithm of APRS 1.1, and retry/timeout handling of the in-memory queue.
 
 #include <ctype.h>
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 #include <time.h>
 
@@ -59,6 +58,26 @@ static uint32_t s_seq = 0;
 static uint16_t s_msgID = 0;
 static void (*s_txHandler)(const char *packet, size_t len, uint8_t channels) = NULL;
 
+// ---------------------------------------------------------------------------
+// Reply-ACK (APRS 1.1): the acknowledgement owed to each correspondent
+//
+// The number of the last message received from a station is remembered here
+// and rides out as the "}AA" free acknowledgement on the next message sent to
+// that station, which is what saves the round trip a separate "ackNN" would
+// need. It stays owed until that station sends a newer numbered message: the
+// algorithm asks for the latest outstanding acknowledgement on every
+// transmission, retries included, and repeating it costs two characters while
+// giving the acknowledgement another chance to arrive.
+// ---------------------------------------------------------------------------
+typedef struct {
+    char callsign[11]; // correspondent, upper case (empty slot when NUL at [0])
+    char mm[3];        // that station's latest message number, as received
+    uint32_t seq;      // update order, for reuse of the least recently written slot
+} reply_ack_t;
+
+static reply_ack_t s_replyAck[MSG_REPLY_ACK_STATIONS];
+static uint32_t s_replyAckSeq = 0;
+
 void message_set_tx_handler(void (*handler)(const char *packet, size_t len, uint8_t channels)) {
     s_txHandler = handler;
 }
@@ -66,6 +85,8 @@ void message_set_tx_handler(void (*handler)(const char *packet, size_t len, uint
 void message_init(void) {
     memset(s_queue, 0, sizeof(s_queue));
     s_seq = 0;
+    memset(s_replyAck, 0, sizeof(s_replyAck));
+    s_replyAckSeq = 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -188,6 +209,104 @@ static bool callsignBaseMatch(const char *a, const char *b) {
     if (na == 0 || na != nb)
         return false;
     return strncasecmp(a, b, na) == 0;
+}
+
+// ---------------------------------------------------------------------------
+// Reply-ACK: reading a received identifier and building an outgoing one
+// ---------------------------------------------------------------------------
+
+// Reads a message number written as plain decimal digits. Anything else - an
+// empty field, an alphanumeric identifier another client may have issued, a
+// value past the width of the field - is refused, because the only numbers
+// matched against the outbound queue are the ones this station issued itself.
+static bool parseMsgNumber(const char *s, uint16_t *out) {
+    if (s == NULL || s[0] == 0)
+        return false;
+
+    unsigned long v = 0;
+    for (size_t i = 0; s[i]; i++) {
+        if (i >= 5 || s[i] < '0' || s[i] > '9')
+            return false;
+        v = v * 10 + (unsigned long)(s[i] - '0');
+    }
+    if (v > UINT16_MAX)
+        return false;
+
+    *out = (uint16_t)v;
+    return true;
+}
+
+// Splits a received message identifier into the sender's own number and the
+// free acknowledgement it carries: "MM}AA" gives both, "MM}" gives the number
+// and an empty acknowledgement, and a plain "MM" gives the number alone. Both
+// outputs are always NUL-terminated.
+static void splitReplyAck(const char *msgNo, char *own, size_t own_size, char *ack, size_t ack_size) {
+    own[0] = 0;
+    ack[0] = 0;
+
+    const char *sep = strchr(msgNo, '}');
+    size_t n = sep ? (size_t)(sep - msgNo) : strlen(msgNo);
+    if (n > own_size - 1)
+        n = own_size - 1;
+    memcpy(own, msgNo, n);
+    own[n] = 0;
+
+    if (sep) {
+        strncpy(ack, sep + 1, ack_size - 1);
+        ack[ack_size - 1] = 0;
+    }
+}
+
+// Records the acknowledgement now owed to a station. A station already in the
+// table keeps its slot and has its number replaced, so only the latest one is
+// ever owed; a new station takes a free slot, or the one written longest ago.
+static void replyAckRemember(const char *call, const char *mm) {
+    if (call[0] == 0 || mm[0] == 0)
+        return;
+
+    int slot = -1;
+    uint32_t oldest = 0;
+    for (int i = 0; i < MSG_REPLY_ACK_STATIONS; i++) {
+        if (strcmp(s_replyAck[i].callsign, call) == 0) {
+            slot = i;
+            break;
+        }
+        if (s_replyAck[i].callsign[0] == 0) {
+            slot = i;
+            break;
+        }
+        if (slot < 0 || s_replyAck[i].seq < oldest) {
+            oldest = s_replyAck[i].seq;
+            slot = i;
+        }
+    }
+
+    memset(s_replyAck[slot].callsign, 0, sizeof(s_replyAck[slot].callsign));
+    strncpy(s_replyAck[slot].callsign, call, sizeof(s_replyAck[slot].callsign) - 1);
+    memset(s_replyAck[slot].mm, 0, sizeof(s_replyAck[slot].mm));
+    strncpy(s_replyAck[slot].mm, mm, sizeof(s_replyAck[slot].mm) - 1);
+    s_replyAck[slot].seq = ++s_replyAckSeq;
+}
+
+// Builds the message-number suffix of an outgoing message: "{MM}" on its own,
+// or "{MM}AA" when this station owes that correspondent an acknowledgement.
+// Called at the moment a frame is built rather than when the message is queued,
+// so a retry carries whatever is owed by then and not what was owed when the
+// operator wrote the message. The trailing brace is present either way: it is
+// what tells the other end that a Reply-ACK can be sent back.
+//
+// Callsigns are matched exactly, the same rule pkgMsg_Find() applies to an
+// incoming ack, so an acknowledgement owed to one SSID of a station is never
+// attached to a message addressed to another.
+static void buildMsgNumberSuffix(const char *call, uint16_t msgID, char *out, size_t out_size) {
+    const char *owed = "";
+    for (int i = 0; i < MSG_REPLY_ACK_STATIONS; i++) {
+        if (s_replyAck[i].callsign[0] && strcmp(s_replyAck[i].callsign, call) == 0) {
+            owed = s_replyAck[i].mm;
+            break;
+        }
+    }
+    snprintf(out, out_size, "{%02u}%s", (unsigned)msgID, owed);
 }
 
 // ---------------------------------------------------------------------------
@@ -365,12 +484,13 @@ static void txPacket(const char *myCall, const char *info) {
 void sendAPRSMessage(const char *toCall, const char *text) {
     if (!toCall[0] || !text[0])
         return;
-    // Bump the outbound APRS message number used in the "{NN" suffix. The
-    // number must always increment and must never come out as 0: a "{0"
-    // suffix is read by many APRS clients (UI-View / APRSIS32 / Xastir) as
-    // "no message number", so the message would never get acked. On the
-    // uint16_t wrap (65535 -> 0) skip straight back to 1 instead of 0.
-    if (++s_msgID == 0)
+    // Bump the outbound APRS message number. It must always increment and must
+    // never come out as 0: a "{0" suffix is read by many APRS clients (UI-View
+    // / APRSIS32 / Xastir) as "no message number", so the message would never
+    // get acked. Past MSG_ID_MAX it wraps back to 1, which keeps the number two
+    // digits wide and leaves room for the Reply-ACK suffix inside the five
+    // characters APRS101 allows a message identifier.
+    if (++s_msgID > MSG_ID_MAX)
         s_msgID = 1;
 
     char myCallUp[10];
@@ -394,8 +514,11 @@ void sendAPRSMessage(const char *toCall, const char *text) {
     strncpy(payload, text, sizeof(payload) - 1);
     payload[sizeof(payload) - 1] = 0;
 
+    char suffix[8];
+    buildMsgNumberSuffix(toCallUp, s_msgID, suffix, sizeof(suffix));
+
     char info[320];
-    snprintf(info, sizeof(info), ":%s:%s{%u", toCallFixed, payload, (unsigned)s_msgID);
+    snprintf(info, sizeof(info), ":%s:%s%s", toCallFixed, payload, suffix);
 
     txPacket(myCallUp, info);
     ESP_LOGD(TAG, "Send APRS message to %s msgID %u: %s", toCall, (unsigned)s_msgID, info);
@@ -481,8 +604,11 @@ int message_send_pending_to(const char *toCall) {
         strncpy(payload, s_queue[i].text, sizeof(payload) - 1);
         payload[sizeof(payload) - 1] = 0;
 
+        char suffix[8];
+        buildMsgNumberSuffix(s_queue[i].callsign, s_queue[i].msgID, suffix, sizeof(suffix));
+
         char info[320];
-        snprintf(info, sizeof(info), ":%s:%s{%u", toCallFixed, payload, (unsigned)s_queue[i].msgID);
+        snprintf(info, sizeof(info), ":%s:%s%s", toCallFixed, payload, suffix);
         txPacket(myCall, info);
         sent++;
     }
@@ -536,8 +662,11 @@ void sendAPRSMessageRetry(void) {
         strncpy(payload, s_queue[i].text, sizeof(payload) - 1);
         payload[sizeof(payload) - 1] = 0;
 
+        char suffix[8];
+        buildMsgNumberSuffix(s_queue[i].callsign, s_queue[i].msgID, suffix, sizeof(suffix));
+
         char info[320];
-        snprintf(info, sizeof(info), ":%s:%s{%u", toCallFixed, payload, (unsigned)s_queue[i].msgID);
+        snprintf(info, sizeof(info), ":%s:%s%s", toCallFixed, payload, suffix);
         txPacket(myCall, info);
         ESP_LOGD(TAG, "Retry APRS message[%d] to %s msgID %u ack left %d", i, s_queue[i].callsign, (unsigned)s_queue[i].msgID, s_queue[i].ack);
     }
@@ -624,6 +753,16 @@ void handleIncomingAPRS(const char *line, query_source_t source) {
     if (isRej)
         strncpy(msgNo, message + 3, sizeof(msgNo) - 1);
 
+    // Reply-ACK split. msgNo keeps the identifier whole, because an ack has to
+    // quote it back exactly as it arrived; ownNo is the sender's own number and
+    // replyAck the free acknowledgement riding with it, empty when the sender
+    // sent none. On an "ackMM}AA" line the trailing part is this station's own
+    // free acknowledgement quoted back, not an acknowledgement of anything, so
+    // only ownNo is used there.
+    char ownNo[8];
+    char replyAck[8];
+    splitReplyAck(msgNo, ownNo, sizeof(ownNo), replyAck, sizeof(replyAck));
+
     ESP_LOGD(TAG, "Message from %s to %s: %s", fromCall, toCall, message);
 
     // Accept the message if the addressee's base callsign matches ours,
@@ -639,15 +778,17 @@ void handleIncomingAPRS(const char *line, query_source_t source) {
     if ((isAck || isRej) && msgNo[0] == 0)
         return;
 
+    uint16_t number;
+
     if (isAck) {
-        int i = pkgMsg_Find(fromCall, (uint16_t)atoi(msgNo), false);
+        int i = parseMsgNumber(ownNo, &number) ? pkgMsg_Find(fromCall, number, false) : -1;
         if (i >= 0)
             s_queue[i].ack = -2; // acked
         return;
     }
 
     if (isRej) {
-        int i = pkgMsg_Find(fromCall, (uint16_t)atoi(msgNo), false);
+        int i = parseMsgNumber(ownNo, &number) ? pkgMsg_Find(fromCall, number, false) : -1;
         if (i >= 0)
             s_queue[i].ack = -3; // rejected by recipient: stop retrying, don't count as delivered
         return;
@@ -663,16 +804,33 @@ void handleIncomingAPRS(const char *line, query_source_t source) {
     if (dlen == 0)
         return;
 
+    // A free acknowledgement riding with the message clears the outbound
+    // message it names, so a reply doubles as the ack for what it replies to
+    // and no separate "ackNN" has to survive the return path.
+    if (parseMsgNumber(replyAck, &number)) {
+        int i = pkgMsg_Find(fromCall, number, false);
+        if (i >= 0)
+            s_queue[i].ack = -2;
+    }
+
     // Every received message is a new line of the conversation and gets a queue
     // slot of its own; only a copy of one already in the history is left out,
     // and even then the ack below still goes back out, since a repeat means the
-    // sender never heard the first one.
-    uint16_t rxID = (uint16_t)atoi(msgNo);
+    // sender never heard the first one. The message is identified by the
+    // sender's own number alone, so two copies carrying different free
+    // acknowledgements are still one message.
+    uint16_t rxID = 0;
+    parseMsgNumber(ownNo, &rxID);
     if (pkgMsgFindRepeat(fromCall, decoded, rxID, true) < 0)
         pkgMsgStore(fromCall, decoded, rxID, -1, true);
+
     // Per APRS101 the message ID is optional: only send an ack when the
-    // sender actually requested one.
-    if (msgNo[0] != 0)
+    // sender actually requested one. That ack quotes the identifier whole,
+    // Reply-ACK suffix included, and the sender's own number becomes the
+    // acknowledgement owed back to that station.
+    if (msgNo[0] != 0) {
         sendAPRSAck(fromCall, msgNo);
+        replyAckRemember(fromCall, ownNo);
+    }
     message_alarm_pulse();
 }

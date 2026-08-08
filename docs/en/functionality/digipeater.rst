@@ -106,9 +106,27 @@ Two frames are refused before the table is consulted at all: one that already
 carries this station's callsign marked used, whatever its path still holds, and
 one matching the duplicate-suppression window below.
 
-* **WIDEn-N encoded in the destination SSID field** — the older convention
-  where the hop count lives in the AX.25 destination address's SSID nibble is
-  also recognised and handled, ahead of the alias table.
+Legacy destination-SSID routing
+===============================
+
+Before the New n-N Paradigm, some TNCs carried the hop count in the SSID nibble
+of the AX.25 destination address rather than in the path. *Digipeat by
+destination SSID (legacy)* on the *Digi* page (``digi_dest_ssid_en``) enables
+that convention, and it is **off by default**.
+
+Switched on, a frame whose destination SSID is 1 to 7 is repeated on the
+strength of that SSID alone: the count is decremented and this station's
+callsign is inserted into the path marked used, so the hop can still be
+attributed afterwards. That decision is taken *ahead of* the alias table, which
+is exactly why it is not the default — a frame that carries both a destination
+SSID and an explicit ``WIDEn-N`` path would be repeated on the SSID and the
+path the originating station asked for would never be read.
+
+Switched off, or when the convention does not route a particular frame (a
+destination SSID of 0, or of 8 to 15, which belongs to the destination address
+itself; a path already carrying this station's callsign marked used; a path
+already full), the frame reaches the alias table exactly as it was received,
+destination SSID included.
 
 Duplicate suppression
 =====================

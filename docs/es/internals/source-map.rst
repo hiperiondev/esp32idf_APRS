@@ -54,7 +54,7 @@ Disposición del repositorio
    │   │   └── src/crc_ccit.c                  ← FCS
    │   │
    │   ├── igate/          ← cliente TCP APRS-IS, login, filtros, dedup, RF→INET / INET→RF
-   │   ├── digirepeater/   ← lógica de ruta WIDEn-N / TRACEn-N / RELAY / ECHO / GATE
+   │   ├── digirepeater/   ← lógica de ruta n-N guiada por la tabla de alias del operador, más el ruteo heredado por SSID de destino, opcional
    │   ├── message/        ← mensajería APRS, ack/reintento, la cola de conversación RX/TX compartida
    │   ├── query/          ← respondedor de consultas APRS (?APRS?/?WX?/?IGATE? + dirigidas), respondidas desde la tarea del planificador
    │   ├── lastheard/      ← tabla en RAM de estaciones oídas, una por indicativo → JSON del panel

@@ -78,6 +78,8 @@ esp_err_t page_digi_get(httpd_req_t *req) {
         web_select_option(req, DIGI_ALIAS_FLOOD, TR_DIGI_MODE_FLOOD, g_config.digi_alias[i].mode == DIGI_ALIAS_FLOOD);
         web_select_close(req);
     }
+    web_field_checkbox(req, TR_F_DIGI_DEST_SSID, "digiDestSsidEn", g_config.digi_dest_ssid_en);
+    web_raw(req, "<p style='color:var(--sub);font-size:12px;margin:4px 0'>" TR_NOTE_DIGI_DEST_SSID "</p>");
     web_fieldset_close(req);
 
     web_fieldset_open(req, TR_F_BEACON_POSITION);
@@ -116,7 +118,7 @@ esp_err_t page_digi_post(httpd_req_t *req) {
         return ESP_OK;
     // Sized for the whole page in one POST: the main settings and the beacon
     // fieldsets, the four path presets, and the alias table's four rows of
-    // {alias, hop limit, mode} plus its two policy controls.
+    // {alias, hop limit, mode} plus its three policy controls.
     char body[2400];
     if (web_read_body(req, body, sizeof(body)) < 0) {
         httpd_resp_send_500(req);
@@ -168,6 +170,7 @@ esp_err_t page_digi_post(httpd_req_t *req) {
         int mode = web_form_get_int(body, name, g_config.digi_alias[i].mode);
         g_config.digi_alias[i].mode = (mode == DIGI_ALIAS_TRACE || mode == DIGI_ALIAS_FLOOD) ? (uint8_t)mode : (uint8_t)DIGI_ALIAS_OFF;
     }
+    g_config.digi_dest_ssid_en = web_form_get_bool(body, "digiDestSsidEn");
 
     g_config.digi_bcn = web_form_get_bool(body, "digiBcn");
     g_config.digi_loc2rf = web_form_get_bool(body, "digiPos2rf");

@@ -35,7 +35,7 @@
 #define TR_UNAUTHORIZED     "401 Non autorizzato"
 #define TR_FORBIDDEN_CSRF   "403 Vietato: impossibile verificare l'origine della richiesta"
 #define TR_SAVED_REDIRECT   "Salvato. Reindirizzamento in corso..."
-#define TR_SAVE_FAILED      "Salvataggio non riuscito: non è stato possibile scrivere le impostazioni nella memoria flash. Restano attive fino al prossimo riavvio."
+#define TR_SAVE_FAILED "Salvataggio non riuscito: non è stato possibile scrivere le impostazioni nella memoria flash. Restano attive fino al prossimo riavvio."
 
 /** @} */
 
@@ -470,7 +470,7 @@
 #define TR_SYM_CAR_ALT         "Auto (tabella alternativa)"
 #define TR_SYM_WX_STATION_ALT  "Stazione WX (tabella alternativa)"
 #define TR_SYM_INTRO                                                                                                                                           \
-    "Riferimento rapido per i codici simbolo APRS più comuni. Ogni pagina di servizio "                                                                       \
+    "Riferimento rapido per i codici simbolo APRS più comuni. Ogni pagina di servizio "                                                                        \
     "(IGate / Digi / Tracker) ha il proprio campo simbolo a testo libero \u2014 copia il "                                                                     \
     "codice a 2 caratteri da qui in quel campo."
 #define TR_SYM_CODE                 "Codice"
@@ -581,7 +581,7 @@
 #define TR_BTN_WIFI_SCAN         "SCANSIONA WIFI"
 #define TR_WIFI_SSID_PLACEHOLDER "Nome rete (digitalo, oppure usa Scansiona WiFi)"
 #define TR_WIFI_STA_NEEDS_SSID                                                                                                                                 \
-    "Salvato, ma questo NON si connetterà: la modalità seleziona una stazione, ma nessun blocco Client WiFi ha sia 'Abilita' selezionato sia un SSID "       \
+    "Salvato, ma questo NON si connetterà: la modalità seleziona una stazione, ma nessun blocco Client WiFi ha sia 'Abilita' selezionato sia un SSID "         \
     "compilato. Correggi e salva di nuovo."
 #define TR_WIFI_SCANNING    "Scansione in corso..."
 #define TR_WIFI_SCAN_FAILED "Scansione non riuscita"
@@ -687,14 +687,14 @@
 #define TR_F_PREFIX_FILTER_EN "Abilita filtro prefisso nominativo"
 #define TR_F_PREFIXES         "Prefissi consentiti (separati da virgola)"
 #define TR_NOTE_RANGE_PREFIX                                                                                                                                   \
-    "Filtro locale applicato solo a RF -> Internet, indipendente dal filtro per tipo di payload sopra. La distanza è misurata dalla posizione della Mia "     \
+    "Filtro locale applicato solo a RF -> Internet, indipendente dal filtro per tipo di payload sopra. La distanza è misurata dalla posizione della Mia "      \
     "Stazione; i pacchetti la cui posizione non può essere decodificata non sono influenzati dal filtro di distanza."
 
 #define TR_F_3RDPARTY_UNWRAP_EN "Inoltra traffico di terze parti (}) in lista bianca"
-#define TR_NOTE_3RDPARTY_UNWRAP                                                                                                                                 \
+#define TR_NOTE_3RDPARTY_UNWRAP                                                                                                                                \
     "Disattivato per impostazione predefinita. Ha effetto solo quando il Filtro Nominativi Internet verso RF sopra è impostato su Lista Bianca: un pacchetto " \
     "incapsulato di terze parti viene decapsulato e inoltrato solo se il nominativo sorgente interno è a sua volta in lista bianca. Abilitare solo se ci si "  \
-    "fida della fonte specifica e questa è stata inserita in lista bianca - ri-filtrare il traffico di terze parti senza questa restrizione è la causa più " \
+    "fida della fonte specifica e questa è stata inserita in lista bianca - ri-filtrare il traffico di terze parti senza questa restrizione è la causa più "   \
     "comune dei loop IGate."
 
 #define TR_F_SATGATE      "Elenco Digipeater Satellitari"
@@ -714,8 +714,8 @@
 #define TR_F_MSG_GATE_EN        "Applica i criteri di filtraggio dei messaggi"
 #define TR_F_MSG_LOCAL_WINDOW_S "Finestra di ascolto locale (s)"
 #define TR_NOTE_MSG_GATING                                                                                                                                     \
-    "Un messaggio letto da APRS-IS viene trasmesso solo se il destinatario è stato ascoltato in RF entro la finestra, il mittente no, l'intestazione del "    \
-    "mittente non contiene TCPXX/NOGATE/RFONLY e il destinatario non è a sua volta su Internet. Anche il primo rapporto di posizione di quel destinatario "   \
+    "Un messaggio letto da APRS-IS viene trasmesso solo se il destinatario è stato ascoltato in RF entro la finestra, il mittente no, l'intestazione del "     \
+    "mittente non contiene TCPXX/NOGATE/RFONLY e il destinatario non è a sua volta su Internet. Anche il primo rapporto di posizione di quel destinatario "    \
     "viene ritrasmesso una volta, per poterlo localizzare. Disattivandolo si trasmette ogni messaggio consentito dal filtro dei tipi, verso destinatari in "   \
     "qualsiasi parte del mondo."
 
@@ -730,10 +730,16 @@
 #define TR_DIGI_MODE_OFF      "Spento"
 #define TR_DIGI_MODE_TRACE    "Traccia (inserisce nominativo)"
 #define TR_DIGI_MODE_FLOOD    "Inondazione (senza nominativo)"
+#define TR_F_DIGI_DEST_SSID   "Ripetizione tramite SSID di destinazione (legacy)"
 #define TR_NOTE_DIGI_ALIASES                                                                                                                                   \
     "Gli unici alias che questo digipeater onora. Scrivere ciascuno senza SSID; '#' corrisponde a una sola cifra, quindi 'WIDE#' copre l'intera famiglia "     \
-    "WIDEn. Le righe vengono provate in ordine e vince la prima corrispondenza. Traccia inserisce il nominativo di questa stazione affinché ogni salto sia "  \
+    "WIDEn. Le righe vengono provate in ordine e vince la prima corrispondenza. Traccia inserisce il nominativo di questa stazione affinché ogni salto sia "   \
     "identificabile in seguito, come richiede WIDEn-N; inondazione non lascia traccia e conviene solo a un alias regionale usato di proposito così."
+
+#define TR_NOTE_DIGI_DEST_SSID                                                                                                                                 \
+    "Disattivato per impostazione predefinita. Quando è attivo, una trama il cui SSID di destinazione AX.25 sia da 1 a 7 viene ripetuta in base a quel "       \
+    "solo SSID, prima di consultare la tabella degli alias qui sopra, quindi il percorso richiesto dalla stazione di origine viene ignorato. Attivarlo "       \
+    "solo per un vicino datato che instrada ancora in questo modo."
 
 #define TR_SYM_ICON            "Icona"
 #define TR_SYM_QUICK_PICK      "Selezione rapida"

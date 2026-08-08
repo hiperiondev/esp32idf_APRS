@@ -194,8 +194,6 @@ const char *igate_drop_reason_name(drop_reason_t reason) {
             return "digi: already used";
         case DROP_DIGI_PATH_FULL:
             return "digi: path full";
-        case DROP_DIGI_NO_PATH:
-            return "digi: no usable path";
         case DROP_DIGI_N_TRAPPED:
             return "digi: hop count trapped";
         case DROP_DIGI_PATH_TOKEN:

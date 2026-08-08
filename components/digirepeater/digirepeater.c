@@ -110,9 +110,65 @@ static void insert_own_call(ax25_msg_t *packet, int idx, const char *myCall, uin
     packet->rpt_flags |= (1 << idx);
 }
 
+// Pre-New-N routing on the AX.25 destination SSID, where a hop count of 1 to 7
+// in the destination address stands in for a WIDEn-N path entry. A frame that
+// carries one is repeated on the strength of that SSID alone: the count is
+// decremented and this station's callsign goes into the path marked used, so
+// the hop can still be attributed afterwards. A destination SSID of 8 to 15
+// belongs to the destination address itself and means nothing here.
+//
+// Returns the caller's own routing code - 1 when an entry naming this station
+// was simply marked used, 2 when the callsign was inserted - or 0 when this
+// convention does not route the frame, in which case the frame is left exactly
+// as it arrived and the operator's alias table decides what happens to it.
+// That is why the decremented destination SSID is written back only on the two
+// paths that do repeat: a frame handed on to the alias table must still carry
+// the hop count it was received with.
+static int digipeat_by_dest_ssid(ax25_msg_t *packet, const char *myCall, uint8_t mySsid) {
+    uint8_t hops = packet->dst.ssid;
+
+    if (hops == 0 || hops >= 8)
+        return 0;
+
+    if (packet->rpt_count == 0) {
+        // Nothing to shift and no entry to scan, so the callsign is written
+        // straight into the first slot rather than through insert_own_call(),
+        // whose scan starts by reading the entry it is asked to displace.
+        packet->dst.ssid = hops - 1;
+        copy_call(packet->rpt_list[0].call, myCall);
+        packet->rpt_list[0].ssid = mySsid;
+        packet->rpt_flags |= (1 << 0);
+        packet->rpt_count += 1;
+        return 2;
+    }
+
+    for (int idx = 0; idx < packet->rpt_count; idx++) {
+        if (!strcmp(packet->rpt_list[idx].call, myCall) && packet->rpt_list[idx].ssid == mySsid) {
+            if (packet->rpt_flags & (1 << idx))
+                return 0;
+            packet->dst.ssid = hops - 1;
+            packet->rpt_flags |= (1 << idx);
+            return 1;
+        }
+        if (packet->rpt_flags & (1 << idx))
+            continue;
+
+        // Inserting here would push rpt_count past AX25_MAX_RPT (8), one entry
+        // beyond what rpt_list holds and beyond the last bit of the uint8_t
+        // rpt_flags bitmask.
+        if (packet->rpt_count >= AX25_MAX_RPT)
+            return 0;
+
+        packet->dst.ssid = hops - 1;
+        insert_own_call(packet, idx, myCall, mySsid);
+        return 2;
+    }
+
+    return 0;
+}
+
 int digiProcess(ax25_msg_t *packet) {
     int idx, j;
-    uint8_t ctmp;
 
     // Snapshot the digipeater's own call/SSID once at entry. This runs on the
     // modem RX task and compares/copies digi_mycall many times below; a web
@@ -123,12 +179,14 @@ int digiProcess(ax25_msg_t *packet) {
     digi_alias_t digiAlias[DIGI_ALIAS_MAX];
     bool digiFillinOnly;
     bool digiTrapClamp;
+    bool digiDestSsidEn;
     app_config_lock();
     memcpy(digiMyCall, g_config.digi_mycall, sizeof(digiMyCall));
     digiMySsid = g_config.digi_ssid;
     memcpy(digiAlias, g_config.digi_alias, sizeof(digiAlias));
     digiFillinOnly = g_config.digi_fillin_only;
     digiTrapClamp = g_config.digi_trap_n_clamp;
+    digiDestSsidEn = g_config.digi_dest_ssid_en;
     app_config_unlock();
 
     if (packet->len < 5) {
@@ -163,86 +221,15 @@ int digiProcess(ax25_msg_t *packet) {
         return 0;
     }
 
-    // Destination SSID trace (WIDEn-N encoded in the dest SSID field).
-    //
-    // ax25_decode() already shifts the raw address octet down into a plain
-    // 0-15 hop count ((ssidBits >> 1) & 0x0F) and stores it in dst.ssid, so it
-    // is used here as-is; the range checks below then operate on that decoded
-    // domain and the decremented value is written back in the same form,
-    // keeping the retransmitted frame consistent with what was received.
-    if (packet->dst.ssid > 0) {
-        ctmp = packet->dst.ssid;
-
-        if (ctmp > 15)
-            ctmp = 0;
-
-        if (ctmp < 8) {
-            if (ctmp > 0)
-                ctmp--;
-            packet->dst.ssid = ctmp;
-
-            if (packet->rpt_count > 0) {
-                for (idx = 0; idx < packet->rpt_count; idx++) {
-                    if (!strcmp(packet->rpt_list[idx].call, digiMyCall)) {
-                        if (packet->rpt_list[idx].ssid == digiMySsid) {
-                            if (packet->rpt_flags & (1 << idx)) {
-                                igate_note_drop(DROP_DIGI_ALREADY_USED);
-                                return 0; // already used *
-                            }
-                            packet->rpt_flags |= (1 << idx);
-                            return 1;
-                        }
-                    }
-                    if (packet->rpt_flags & (1 << idx))
-                        continue;
-
-                    // The path is already at the AX.25 maximum of AX25_MAX_RPT
-                    // (8) digipeater addresses, so inserting our own call here
-                    // would push rpt_count to 9 - one past the end of
-                    // rpt_list[AX25_MAX_RPT] - and, since rpt_flags is a
-                    // uint8_t (one bit per entry, 8 bits total), the
-                    // "already repeated" bit for that 9th slot would silently
-                    // be lost (1 << 8 truncates to 0). Treat a full path the
-                    // same as "no usable path" instead of corrupting it.
-                    if (packet->rpt_count >= AX25_MAX_RPT) {
-                        igate_note_drop(DROP_DIGI_PATH_FULL);
-                        return 0;
-                    }
-
-                    for (j = idx; j < packet->rpt_count; j++) {
-                        if (packet->rpt_flags & (1 << j))
-                            break;
-                    }
-                    for (; j >= idx; j--) {
-                        int n = j + 1;
-                        if (n >= AX25_MAX_RPT)
-                            break;
-                        strcpy(packet->rpt_list[n].call, packet->rpt_list[j].call);
-                        packet->rpt_list[n].ssid = packet->rpt_list[j].ssid;
-                        if (packet->rpt_flags & (1 << j))
-                            packet->rpt_flags |= (1 << n);
-                        else
-                            packet->rpt_flags &= ~(1 << n);
-                    }
-
-                    packet->rpt_count += 1;
-                    copy_call(packet->rpt_list[idx].call, digiMyCall);
-                    packet->rpt_list[idx].ssid = digiMySsid;
-                    packet->rpt_flags |= (1 << idx);
-                    return 2;
-                }
-            } else {
-                idx = 0;
-                copy_call(packet->rpt_list[idx].call, digiMyCall);
-                packet->rpt_list[idx].ssid = digiMySsid;
-                packet->rpt_flags |= (1 << idx);
-                packet->rpt_count += 1;
-                return 2;
-            }
-        } else {
-            igate_note_drop(DROP_DIGI_NO_PATH);
-            return 0; // no usable path
-        }
+    // Routing on the destination SSID is off unless the operator turns it on:
+    // it repeats a frame ahead of the alias table and on the strength of a
+    // single SSID nibble, so the explicit path an originating station wrote
+    // would never be consulted. When it declines the frame, or when it is
+    // switched off, the alias table below is what decides.
+    if (digiDestSsidEn) {
+        int routed = digipeat_by_dest_ssid(packet, digiMyCall, digiMySsid);
+        if (routed != 0)
+            return routed;
     }
 
     for (idx = 0; idx < packet->rpt_count; idx++) {

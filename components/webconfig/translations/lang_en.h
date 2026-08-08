@@ -718,10 +718,15 @@
 #define TR_DIGI_MODE_OFF      "Off"
 #define TR_DIGI_MODE_TRACE    "Trace (insert callsign)"
 #define TR_DIGI_MODE_FLOOD    "Flood (no callsign)"
+#define TR_F_DIGI_DEST_SSID   "Digipeat by destination SSID (legacy)"
 #define TR_NOTE_DIGI_ALIASES                                                                                                                                   \
     "The only aliases this digipeater honours. Write each one without its SSID; '#' matches a single digit, so 'WIDE#' covers the whole WIDEn family. Rows "   \
     "are tried in order and the first match wins. Trace inserts this station's callsign so every hop can be identified afterwards, which is what WIDEn-N "     \
     "requires; flood leaves no trace and suits only a regional alias run that way on purpose."
+
+#define TR_NOTE_DIGI_DEST_SSID                                                                                                                                 \
+    "Off by default. When on, a frame whose AX.25 destination SSID is 1 to 7 is repeated on the strength of that SSID alone, before the alias table above is " \
+    "consulted, so the path the originating station asked for is ignored. Turn it on only for a legacy neighbour that still routes this way."
 
 #define TR_SYM_ICON            "Icon"
 #define TR_SYM_QUICK_PICK      "Quick Pick"

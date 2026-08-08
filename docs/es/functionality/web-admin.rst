@@ -64,8 +64,9 @@ Las páginas
      - Habilitar digipeater, indicativo/SSID y ajustes de baliza (posición,
        símbolo, intervalo, comentario, estado, ruta). *Alias de Ruta n-N* lleva
        las cuatro filas de {alias, N máximo, modo} con las que repite el
-       digipeater, el interruptor de solo relleno y la elección de qué hacer con
-       un contador de saltos atrapado. Lleva también los cuatro presets de ruta
+       digipeater, el interruptor de solo relleno, la elección de qué hacer con
+       un contador de saltos atrapado y el interruptor *Digipetir por SSID de
+       destino (heredado)*, apagado por omisión. Lleva también los cuatro presets de ruta
        compartidos ``path[0..3]`` entre los que elige cada servicio que
        transmite. La ventana de supresión de duplicados es un único control, en
        la página *IGate*.

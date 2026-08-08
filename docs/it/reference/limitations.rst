@@ -288,7 +288,11 @@ Digipeater
    * - Conteggio hop codificato nel SSID di destinazione (legacy)
      - ⚠️ (TNC più datati)
      - ✅
-     - Riconosciuto e gestito
+     - Disattivato per impostazione predefinita (*Ripetizione tramite SSID di
+       destinazione*). Instrada prima della tabella degli alias e in base a quel
+       solo SSID, quindi un percorso esplicito non verrebbe mai letto;
+       disattivato, l'SSID di destinazione resta intatto e decide la tabella
+       degli alias
    * - Soppressione duplicati/ping-pong nel digipeating
      - ✅
      - ✅
@@ -410,6 +414,15 @@ Messaggistica
      - ✅
      - ✅
      - Auto-ack alla ricezione, auto-riprova fino a conferma
+   * - Reply-ACK (APRS 1.1, ``{MM}AA``)
+     - ⚠️ (APRSdos, APRS+SA, Xastir, APRSIS32)
+     - ✅
+     - In entrambe le direzioni. I numeri in uscita sono ``{MM}`` o ``{MM}AA``,
+       con la conferma gratuita aggiunta nell'istante della trasmissione, così
+       una riprova porta l'ultima dovuta; un ``AA`` in arrivo chiude il
+       messaggio in uscita che nomina, e l'``MM`` del mittente diventa ciò che
+       si deve a quella stazione. La numerazione è limitata a due cifre perché
+       l'identificatore completo resti nei cinque caratteri ammessi da APRS101
    * - Riprova messaggi con numero/intervallo configurabili
      - ✅
      - ✅

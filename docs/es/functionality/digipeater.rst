@@ -111,9 +111,27 @@ Dos tramas se rechazan antes de consultar la tabla: la que ya lleva el
 indicativo de esta estación marcado como usado, sin importar lo que aún tenga su
 ruta, y la que coincide con la ventana de supresión de duplicados de abajo.
 
-* **WIDEn-N codificado en el campo SSID de destino** — la convención más antigua
-  donde el contador de saltos vive en el nibble SSID de la dirección de destino
-  AX.25 también se reconoce y maneja, antes que la tabla de alias.
+Ruteo heredado por SSID de destino
+==================================
+
+Antes del Nuevo Paradigma n-N, algunos TNC llevaban el contador de saltos en el
+nibble SSID de la dirección de destino AX.25 y no en la ruta. *Digipetir por
+SSID de destino (heredado)* en la página *Digi* (``digi_dest_ssid_en``) habilita
+esa convención, y viene **apagado por omisión**.
+
+Encendido, una trama cuyo SSID de destino sea de 1 a 7 se repite por ese solo
+SSID: el contador se decrementa y el indicativo de esta estación se inserta en
+la ruta marcado como usado, así el salto sigue siendo atribuible después. Esa
+decisión se toma *antes* que la tabla de alias, que es justamente por lo que no
+es el valor por omisión: una trama que lleve a la vez un SSID de destino y una
+ruta ``WIDEn-N`` explícita se repetiría por el SSID y la ruta que pidió la
+estación de origen nunca se leería.
+
+Apagado, o cuando la convención no rutea una trama en particular (un SSID de
+destino de 0, o de 8 a 15, que pertenece a la dirección de destino misma; una
+ruta que ya lleva el indicativo de esta estación marcado como usado; una ruta
+ya llena), la trama llega a la tabla de alias tal como se recibió, SSID de
+destino incluido.
 
 Supresión de duplicados
 =======================

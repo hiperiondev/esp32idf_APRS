@@ -286,7 +286,10 @@ Digipeater
    * - Contador de saltos codificado en el SSID de destino (heredado)
      - ⚠️ (TNC más antiguos)
      - ✅
-     - Reconocido y manejado
+     - Apagado por omisión (*Digipetir por SSID de destino*). Rutea antes que la
+       tabla de alias y por ese solo SSID, así que una ruta explícita nunca se
+       leería; apagado, el SSID de destino queda intacto y decide la tabla de
+       alias
    * - Supresión de duplicados / ping-pong de digipeating
      - ✅
      - ✅
@@ -409,6 +412,15 @@ Mensajería
      - ✅
      - ✅
      - Auto-ack al recibir, auto-reintento hasta confirmar
+   * - Reply-ACK (APRS 1.1, ``{MM}AA``)
+     - ⚠️ (APRSdos, APRS+SA, Xastir, APRSIS32)
+     - ✅
+     - En ambos sentidos. Los números salientes son ``{MM}`` o ``{MM}AA``, con
+       la confirmación gratuita agregada en el instante de la transmisión, así
+       que un reintento lleva la última adeudada; un ``AA`` entrante cierra el
+       mensaje saliente que nombra, y el ``MM`` del remitente pasa a ser lo que
+       se le adeuda. La numeración se limita a dos dígitos para que el
+       identificador completo entre en los cinco caracteres que permite APRS101
    * - Reintento de mensajes con cantidad/intervalo configurables
      - ✅
      - ✅

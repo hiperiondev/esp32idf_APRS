@@ -54,7 +54,7 @@ Repository layout
    │   │   └── src/crc_ccit.c                  ← FCS
    │   │
    │   ├── igate/          ← APRS-IS TCP client, login, filters, dedup, RF→INET / INET→RF
-   │   ├── digirepeater/   ← WIDEn-N / TRACEn-N / RELAY / ECHO / GATE path logic
+   │   ├── digirepeater/   ← n-N path logic driven by the operator's alias table, plus optional legacy destination-SSID routing
    │   ├── message/        ← APRS messaging, ack/retry, the shared RX/TX conversation queue
    │   ├── query/          ← APRS query responder (?APRS?/?WX?/?IGATE? + directed set), answered from the scheduler task
    │   ├── lastheard/      ← in-RAM table of heard stations, one per callsign → dashboard JSON

@@ -274,7 +274,10 @@ Digipeater
    * - Destination-SSID-encoded hop count (legacy)
      - ⚠️ (older TNCs)
      - ✅
-     - Recognised and handled
+     - Off by default (*Digipeat by destination SSID*). It routes ahead of the
+       alias table and on that SSID alone, so an explicit path would never be
+       read; switched off, the destination SSID is left untouched and the alias
+       table decides
    * - Digipeat duplicate/ping-pong suppression
      - ✅
      - ✅
@@ -391,6 +394,15 @@ Messaging
      - ✅
      - ✅
      - Auto-ack on receipt, auto-retry until acked
+   * - Reply-ACK (APRS 1.1, ``{MM}AA``)
+     - ⚠️ (APRSdos, APRS+SA, Xastir, APRSIS32)
+     - ✅
+     - Both directions. Outgoing numbers are ``{MM}`` or ``{MM}AA``, the free
+       acknowledgement being attached at the instant of transmission so a retry
+       carries the latest one owed; an incoming ``AA`` clears the outbound
+       message it names, and the sender's ``MM`` becomes what is owed back.
+       Numbering is capped at two digits so a full identifier stays inside the
+       five characters APRS101 allows
    * - Message retry with configurable count/interval
      - ✅
      - ✅
