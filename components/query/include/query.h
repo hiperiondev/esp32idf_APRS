@@ -103,6 +103,14 @@ void query_set_tx_handler(void (*handler)(const char *packet, size_t len, uint8_
  * applies the per-type rate limit and, if an answer is due, queues it for
  * ::query_service. Nothing is built or transmitted here.
  *
+ * "?APRS?" additionally recognizes APRS101 ch.15's area-restricted form,
+ * "?APRS?LLLLLL,OOOOOO,RRRR" (signed lat/lon in hundredths of a degree, range
+ * in miles): when that suffix is present and this station's own position is
+ * configured (g_config.my_lat/my_lon), the query is answered only if this
+ * station falls within the named circle. A plain "?APRS?", or an area query
+ * received before this station's own position is known, is answered as
+ * before.
+ *
  * Directed queries ("CALL:?query?") are NOT reached through this entry
  * point: they arrive already split out by message.c's own addressee parsing.
  * See query_process_directed().

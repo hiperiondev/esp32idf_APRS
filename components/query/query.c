@@ -61,6 +61,7 @@
 #include "freertos/task.h"
 
 #include "app_config.h"
+#include "aprs_filter.h"      // aprs_filter_haversine_km()
 #include "aprs_path.h"        // aprs_path_build_suffix_from_config()
 #include "aprs_service.h"     // APRS_TNC2_BUF_SIZE / APRS_TNC2_MAX_LEN
 #include "beacon.h"           // beacon_build_igate_position_packet() / beacon_build_igate_status_packet()
@@ -281,6 +282,96 @@ static void extractRoute(const char *tnc2Line, char *out, size_t out_size) {
         n = out_size - 1;
     memcpy(out, gt + 1, n);
     out[n] = 0;
+}
+
+// Parses the area-restricted form of the general "?APRS?" query, APRS101
+// ch.15's "?APRS?LLLLLL,OOOOOO,RRRR": a signed six-digit latitude and a
+// signed six-digit longitude, each in hundredths of a degree with no decimal
+// point, followed by a range in miles of up to four digits, comma-separated
+// and immediately following the keyword with no intervening space. Rejects
+// anything that does not fit that fixed layout exactly, which is what makes a
+// plain "?APRS?" - whose argument is empty - fall through as a non-area
+// query rather than being coerced into one.
+static bool parseAreaQuery(const char *arg, float *outLat, float *outLon, float *outRangeMiles) {
+    if (arg == NULL)
+        return false;
+
+    const char *p = arg;
+    bool neg = false;
+    if (*p == '+' || *p == '-') {
+        neg = (*p == '-');
+        p++;
+    }
+    long latHundredths = 0;
+    for (int i = 0; i < 6; i++, p++) {
+        if (*p < '0' || *p > '9')
+            return false;
+        latHundredths = latHundredths * 10 + (*p - '0');
+    }
+    if (*p != ',')
+        return false;
+    p++;
+
+    bool lonNeg = false;
+    if (*p == '+' || *p == '-') {
+        lonNeg = (*p == '-');
+        p++;
+    }
+    long lonHundredths = 0;
+    for (int i = 0; i < 6; i++, p++) {
+        if (*p < '0' || *p > '9')
+            return false;
+        lonHundredths = lonHundredths * 10 + (*p - '0');
+    }
+    if (*p != ',')
+        return false;
+    p++;
+
+    if (*p < '0' || *p > '9')
+        return false;
+    long rangeMiles = 0;
+    int rangeDigits = 0;
+    while (*p >= '0' && *p <= '9' && rangeDigits < 4) {
+        rangeMiles = rangeMiles * 10 + (*p - '0');
+        p++;
+        rangeDigits++;
+    }
+    // The field ends the query: anything beyond the range digits (other than
+    // the end of the info field) means this was not the fixed-width form
+    // above, and is left unrecognized rather than guessed at.
+    if (*p != 0 && *p != ' ')
+        return false;
+
+    *outLat = (neg ? -1.0f : 1.0f) * (float)latHundredths / 100.0f;
+    *outLon = (lonNeg ? -1.0f : 1.0f) * (float)lonHundredths / 100.0f;
+    *outRangeMiles = (float)rangeMiles;
+    return true;
+}
+
+// True if an area-restricted "?APRS?LLLLLL,OOOOOO,RRRR" query's circle
+// covers this station, so it should answer; also true for the plain,
+// non-area form of the query, which every station answers regardless of
+// distance. g_config.my_lat/my_lon must be configured for the area form to
+// be evaluated - without a known position of our own, distance can't be
+// judged, so the query is answered rather than silently dropped.
+static bool areaQueryInRange(const char *arg) {
+    float qLat, qLon, rangeMiles;
+    if (!parseAreaQuery(arg, &qLat, &qLon, &rangeMiles))
+        return true;
+
+    float ownLat, ownLon;
+    app_config_lock();
+    ownLat = g_config.my_lat;
+    ownLon = g_config.my_lon;
+    app_config_unlock();
+    if (ownLat == 0.0f && ownLon == 0.0f)
+        return true;
+
+    // RRRR is in miles per APRS101 ch.15; the shared helper works in km.
+    static const float KM_PER_MILE = 1.609344f;
+    float rangeKm = rangeMiles * KM_PER_MILE;
+    float distKm = aprs_filter_haversine_km(ownLat, ownLon, qLat, qLon);
+    return distKm <= rangeKm;
 }
 
 // Records one answer for query_service() to build and transmit from the beacon
@@ -838,7 +929,12 @@ static bool queryTypeEnabled(query_type_t type) {
 // enable flag and the broadcast rate limiter for this type and source. Both
 // gates run here, on the receiving task, so a flooded channel costs a string
 // compare and a timestamp check rather than a queue slot.
-static void dispatchBroadcast(query_type_t type, query_source_t source) {
+//
+// @p arg is the text following the keyword, as matchQueryType() reports it;
+// only QUERY_TYPE_APRS inspects it, to recognize APRS101 ch.15's
+// area-restricted form and stay silent when this station falls outside the
+// circle it names.
+static void dispatchBroadcast(query_type_t type, query_source_t source, const char *arg) {
     if (!queryTypeEnabled(type))
         return;
     if (!broadcastRateLimitPass(type, source))
@@ -846,6 +942,10 @@ static void dispatchBroadcast(query_type_t type, query_source_t source) {
 
     switch (type) {
         case QUERY_TYPE_APRS:
+            if (!areaQueryInRange(arg))
+                return;
+            queueResponse(type, source, "", "");
+            return;
         case QUERY_TYPE_WX:
         case QUERY_TYPE_IGATE:
         case QUERY_TYPE_QRU:
@@ -876,10 +976,11 @@ void query_process(const char *tnc2Line, query_source_t source) {
         return;
 
     query_type_t type;
-    if (!matchQueryType(info, false, &type, NULL))
+    const char *arg = NULL;
+    if (!matchQueryType(info, false, &type, &arg))
         return;
 
-    dispatchBroadcast(type, source);
+    dispatchBroadcast(type, source, arg);
 }
 
 void query_process_directed(const char *fromCall, const char *toCall, const char *text, const char *tnc2Line, query_source_t source) {
