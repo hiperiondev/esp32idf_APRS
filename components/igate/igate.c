@@ -696,11 +696,13 @@ int igateProcess(ax25_msg_t *packet) {
     app_config_unlock();
 
     // Per QCON, the q construct identifies this IGate: qAR when it placed the
-    // packet on APRS-IS having heard it on RF and can also transmit, qAO for
-    // the same case on a receive-only IGate. The callsign-SSID that follows
-    // is always this station's own login identity - never a cosmetic label -
-    // and no other part of the path is touched.
-    const char *qConstruct = aprs_service_can_transmit() ? "qAR" : "qAO";
+    // packet on APRS-IS having heard it on RF and can also gate messages back
+    // to RF for the station being gated, qAO when it cannot - which covers a
+    // receive-only IGate as well as a bidirectional one with INET->RF relay
+    // disabled. The callsign-SSID that follows is always this station's own
+    // login identity - never a cosmetic label - and no other part of the path
+    // is touched.
+    const char *qConstruct = aprs_service_can_gate_to_rf() ? "qAR" : "qAO";
     if (cfg_ssid > 0)
         str_append(header, sizeof(header), &headerLen, ",%s,%s-%d", qConstruct, cfg_mycall, cfg_ssid);
     else

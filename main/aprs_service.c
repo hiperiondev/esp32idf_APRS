@@ -1449,6 +1449,10 @@ bool aprs_service_can_transmit(void) {
     return s_modemReady && g_config.audio_modem_en;
 }
 
+bool aprs_service_can_gate_to_rf(void) {
+    return aprs_service_can_transmit() && g_config.igate_en && g_config.inet2rf;
+}
+
 // ---------------------------------------------------------------------------
 // Loop-test diagnostics.
 //

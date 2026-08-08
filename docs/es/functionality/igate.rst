@@ -118,10 +118,12 @@ agregado opaco.
    blanca/negra local en ``g_config.rf2inet_budlist_mode`` (``DROP_BUDLIST``).
 
 Una trama que sobrevive a todas las etapas recibe una cabecera
-``,qAR,<mycall>-<ssid>`` — o ``,qAO,<mycall>-<ssid>`` cuando esta estación no
-puede transmitir (``aprs_service_can_transmit()``) — y se escribe en APRS-IS.
-El indicativo-SSID que sigue al q construct es siempre la propia identidad de
-login de esta estación, según QCON.
+``,qAR,<mycall>-<ssid>`` — o ``,qAO,<mycall>-<ssid>`` cuando esta IGate no
+puede pasar mensajes de vuelta a RF para la estación que se está pasando a
+APRS-IS (``aprs_service_can_gate_to_rf()``, es decir, no se puede transmitir,
+``igate_en`` está desactivado, o ``inet2rf`` está desactivado) — y se escribe
+en APRS-IS. El indicativo-SSID que sigue al q construct es siempre la propia
+identidad de login de esta estación, según QCON.
 
 INET → RF (``inet2rfHandler()``)
 ================================

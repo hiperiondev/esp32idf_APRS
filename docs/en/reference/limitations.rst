@@ -150,7 +150,9 @@ IGate (RF <-> APRS-IS)
    * - ``qAR``/``qAO`` Q-construct insertion
      - ✅
      - ✅
-     - ``qAR`` when this station can transmit; ``qAO`` for receive-only IGates
+     - ``qAR`` when this IGate can gate messages back to RF for the station
+       being gated; ``qAO`` otherwise (receive-only IGates, or a bidirectional
+       IGate with INET→RF relay disabled)
    * - Server-side APRS-IS filter string (``r/``, ``p/``, ``t/``, ``b/``...)
      - ✅
      - ✅

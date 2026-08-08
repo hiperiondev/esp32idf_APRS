@@ -292,19 +292,38 @@ void aprs_service_notify_modem_ready(void);
 bool aprs_service_modem_ready(void);
 
 /**
- * @brief Whether this station is currently able to transmit on RF.
+ * @brief Whether this station is currently able to transmit on RF at all.
  *
  * True only when the audio ADC/DAC AFSK modem hardware has been brought up
  * this boot (see aprs_service_modem_ready()) and the "Enable audio ADC/DAC
  * modem" setting (g_config.audio_modem_en) is on. This is the single source
- * of truth for transmit capability, used both by the LOOP TEST availability
- * check and by the IGate to choose between the qAR and qAO q constructs (see
- * QCON): qAR when this returns true, qAO - the receive-only IGate form - when
- * it returns false.
+ * of truth for raw hardware/config transmit capability, used by the LOOP TEST
+ * availability check. It says nothing about whether the IGate is actually
+ * configured to relay APRS-IS traffic back to RF for a given station - see
+ * aprs_service_can_gate_to_rf() for that.
  *
  * @return true if this station can currently transmit, false otherwise.
  */
 bool aprs_service_can_transmit(void);
+
+/**
+ * @brief Whether this IGate can currently gate messages from APRS-IS to RF.
+ *
+ * True only when the station can transmit at all (see
+ * aprs_service_can_transmit()), the IGate service is enabled
+ * (g_config.igate_en) and the APRS-IS -> RF gateway direction is enabled
+ * (g_config.inet2rf). This is the criterion QCON actually asks for when
+ * choosing between the qAR and qAO q constructs on a frame gated from RF:
+ * qAR marks an IGate that can gate messages to RF for the station being
+ * gated, qAO marks one that cannot - which is a stronger condition than
+ * merely having a working transmitter, since a station with a working
+ * transmitter but INET->RF relaying turned off can never actually deliver a
+ * message to RF.
+ *
+ * @return true if this IGate can currently gate messages to RF, false
+ *         otherwise.
+ */
+bool aprs_service_can_gate_to_rf(void);
 
 /**
  * @brief Audio ADC/DAC AFSK modem self-test ("LOOP TEST" button on the

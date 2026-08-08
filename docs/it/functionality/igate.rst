@@ -119,8 +119,10 @@ singolo aggregato opaco.
    locale in ``g_config.rf2inet_budlist_mode`` (``DROP_BUDLIST``).
 
 Un frame che sopravvive a tutte le fasi riceve un'intestazione
-``,qAR,<mycall>-<ssid>`` — o ``,qAO,<mycall>-<ssid>`` quando questa stazione
-non può trasmettere (``aprs_service_can_transmit()``) — ed è scritto su
+``,qAR,<mycall>-<ssid>`` — o ``,qAO,<mycall>-<ssid>`` quando questo IGate non
+può inoltrare messaggi verso RF per la stazione che viene inoltrata
+(``aprs_service_can_gate_to_rf()``, ossia trasmissione non disponibile,
+``igate_en`` disattivato, oppure ``inet2rf`` disattivato) — ed è scritto su
 APRS-IS. Il nominativo-SSID che segue il q construct è sempre l'identità di
 login di questa stazione, secondo QCON.
 

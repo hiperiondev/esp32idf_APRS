@@ -111,10 +111,11 @@ the dashboard can show "N dropped because X" rather than one opaque aggregate.
    whitelist/blacklist in ``g_config.rf2inet_budlist_mode`` (``DROP_BUDLIST``).
 
 A frame that survives all stages gets a ``,qAR,<mycall>-<ssid>`` header — or
-``,qAO,<mycall>-<ssid>`` when this station cannot transmit
-(``aprs_service_can_transmit()``) — and is written to APRS-IS. The callsign-SSID
-following the q construct is always this station's own login identity, per
-QCON.
+``,qAO,<mycall>-<ssid>`` when this IGate cannot gate messages back to RF for
+the station being gated (``aprs_service_can_gate_to_rf()``, i.e. transmit is
+unavailable, ``igate_en`` is off, or ``inet2rf`` is off) — and is written to
+APRS-IS. The callsign-SSID following the q construct is always this station's
+own login identity, per QCON.
 
 INET → RF (``inet2rfHandler()``)
 ================================
