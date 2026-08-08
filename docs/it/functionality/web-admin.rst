@@ -189,7 +189,15 @@ Feed in tempo reale
   APRS-IS.
 * ``/igate_traffic?since=<seq>`` — il delta del log di traffico (JSON). Ogni voce
   porta un'etichetta di direzione (``RX``/``TX``/``DIGI``/``INET2RF``/``RX-IS``),
-  l'indicativo DX, il pacchetto grezzo, e il livello audio in mV RMS (o −1).
+  l'indicativo DX, il pacchetto grezzo, e il livello audio in mV RMS (o −1). Il
+  corpo viene trasmesso una voce per chunk HTTP, così un client molto arretrato
+  riceve comunque tutte le righe memorizzate: la risposta non ha un tetto di
+  dimensione e il firmware non assembla mai l'intero documento in RAM. Il
+  ``seq`` restituito è il numero di sequenza dell'ultima voce effettivamente
+  consegnata, quindi il cursore può avanzare solo oltre le righe che il client
+  ha ricevuto; un cursore davanti al ring — il dispositivo si è riavviato e la
+  numerazione è ripartita da 1 — rinvia dalla voce più vecchia ancora
+  memorizzata.
 * ``/dashinfo``, ``/sidebarInfo``, ``/heapinfo`` — frammenti compatti di info in
   tempo reale.
 

@@ -42,6 +42,19 @@ static const char *TAG = "message";
 #define MSG_ALARM_PULSE_MS 1000
 
 static msg_entry_t s_queue[MSG_QUEUE_SIZE];
+
+// Pieces of one serialized queue entry that are not one of the two escaped text
+// fields, used to check MSG_JSON_ENTRY_MAX against the field widths of
+// msg_entry_t. Both escaped fields are bounded by their own destination buffer
+// in message_next_json(), which json_escape() never overruns, so those two
+// widths doubled plus these three numbers bound the whole object.
+#define MSG_JSON_TEMPLATE_LEN 50 // punctuation and key names of the object template
+#define MSG_JSON_TIME_LEN     20 // widest "time" value: int64 seconds, sign included
+#define MSG_JSON_STATUS_LEN   7  // longest "dir"/"status" word ("pending")
+
+_Static_assert(MSG_JSON_ENTRY_MAX >= MSG_JSON_TEMPLATE_LEN + MSG_JSON_TIME_LEN + 2 * MSG_JSON_STATUS_LEN + (sizeof(((msg_entry_t *)0)->callsign) * 2 - 1) +
+                                         (MSG_TEXT_MAX * 2 - 1) + 1,
+               "MSG_JSON_ENTRY_MAX is too small for the message field widths");
 static uint32_t s_seq = 0;
 static uint16_t s_msgID = 0;
 static void (*s_txHandler)(const char *packet, size_t len, uint8_t channels) = NULL;
@@ -258,63 +271,47 @@ static int pkgMsgFindRepeat(const char *call, const char *text, uint16_t msgID, 
     return -1;
 }
 
-size_t message_dump_json(char *out, size_t out_size) {
-    if (out == NULL || out_size < 4)
+size_t message_next_json(uint32_t after_seq, char *out, size_t out_size, uint32_t *out_seq) {
+    if (out_seq)
+        *out_seq = after_seq;
+    if (out == NULL || out_size < MSG_JSON_ENTRY_MAX)
         return 0;
 
-    // Sort by insertion counter, oldest first, so the chat page can just append
-    // in conversation order: an entry keeps the position it was given when it
-    // entered the queue, which is what makes a message that is still being
-    // retried stay where the operator wrote it instead of climbing back to the
-    // bottom of the panel on every attempt. MSG_QUEUE_SIZE is small, so a plain
-    // selection sort over an index array is more than fast enough here and
-    // avoids touching s_queue's own layout.
-    int order[MSG_QUEUE_SIZE];
-    int n_used = 0;
+    // Walking by the insertion counter is what puts the thread in conversation
+    // order: an entry keeps the position it was given when it entered the queue,
+    // which is what makes a message that is still being retried stay where the
+    // operator wrote it instead of climbing back to the bottom of the panel on
+    // every attempt. Driving the walk off the counter rather than off slot order
+    // also means a message evicted part-way through a response is skipped
+    // instead of repeated or misplaced.
+    const msg_entry_t *e = NULL;
     for (int i = 0; i < MSG_QUEUE_SIZE; i++) {
-        if (s_queue[i].used)
-            order[n_used++] = i;
+        const msg_entry_t *c = &s_queue[i];
+        if (!c->used || c->seq <= after_seq)
+            continue;
+        if (!e || c->seq < e->seq)
+            e = c;
     }
-    for (int a = 0; a < n_used - 1; a++) {
-        int best = a;
-        for (int b = a + 1; b < n_used; b++) {
-            if (s_queue[order[b]].seq < s_queue[order[best]].seq)
-                best = b;
-        }
-        if (best != a) {
-            int tmp = order[a];
-            order[a] = order[best];
-            order[best] = tmp;
-        }
-    }
+    if (!e)
+        return 0;
 
-    size_t pos = 0;
-    out[pos++] = '[';
-    bool first = true;
+    char call_esc[sizeof(e->callsign) * 2];
+    char text_esc[MSG_TEXT_MAX * 2];
+    json_escape(e->callsign, call_esc, sizeof(call_esc));
+    json_escape(e->text, text_esc, sizeof(text_esc));
 
-    for (int k = 0; k < n_used && pos + 4 < out_size; k++) {
-        msg_entry_t *e = &s_queue[order[k]];
+    const char *status = e->rxtx ? "rx" : (e->ack > 0 ? "pending" : "sent");
 
-        char call_esc[sizeof(e->callsign) * 2];
-        char text_esc[MSG_TEXT_MAX * 2];
-        json_escape(e->callsign, call_esc, sizeof(call_esc));
-        json_escape(e->text, text_esc, sizeof(text_esc));
+    // out_size is at least MSG_JSON_ENTRY_MAX, which the static assertion above
+    // ties to these field widths, so this cannot truncate.
+    int len = snprintf(out, out_size, "{\"time\":%lld,\"dir\":\"%s\",\"call\":\"%s\",\"text\":\"%s\",\"status\":\"%s\"}", (long long)e->time,
+                       e->rxtx ? "rx" : "tx", call_esc, text_esc, status);
+    if (len < 0)
+        return 0;
 
-        const char *status = e->rxtx ? "rx" : (e->ack > 0 ? "pending" : "sent");
-
-        int len = snprintf(out + pos, out_size - pos, "%s{\"time\":%lld,\"dir\":\"%s\",\"call\":\"%s\",\"text\":\"%s\",\"status\":\"%s\"}", first ? "" : ",",
-                           (long long)e->time, e->rxtx ? "rx" : "tx", call_esc, text_esc, status);
-        if (len < 0)
-            break;
-        if (pos + (size_t)len + 2 >= out_size)
-            break; // would overflow on the closing ']' - stop, keep what we have
-        pos += (size_t)len;
-        first = false;
-    }
-
-    out[pos++] = ']';
-    out[pos] = 0;
-    return pos;
+    if (out_seq)
+        *out_seq = e->seq;
+    return (size_t)len;
 }
 
 // Builds and sends one packet per enabled channel from a shared "info"

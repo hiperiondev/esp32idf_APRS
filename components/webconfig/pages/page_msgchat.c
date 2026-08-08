@@ -29,7 +29,6 @@
 // MSG_QUEUE_SIZE messages of the conversation.
 
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 
 #include "app_config.h"
@@ -241,21 +240,33 @@ esp_err_t page_msgchat_post(httpd_req_t *req) {
 
 // GET /msgchat/list -> JSON array of the in-memory message queue (RX + TX,
 // oldest first), polled by the chat panel above.
+//
+// The array is streamed one message per chunk, so the whole thread never exists
+// in RAM at once: the peak cost is the single-entry buffer below, whatever the
+// queue holds. That keeps a route polled every few seconds free of any heap
+// allocation.
 esp_err_t page_msgchat_list(httpd_req_t *req) {
     if (!web_check_auth(req))
         return ESP_OK;
 
-    const size_t json_size = 8192;
-    char *json = malloc(json_size);
-    if (!json) {
-        httpd_resp_send_500(req);
-        return ESP_OK;
-    }
-    size_t n = message_dump_json(json, json_size);
-
     httpd_resp_set_type(req, "application/json");
     httpd_resp_set_hdr(req, "Cache-Control", "no-store");
-    httpd_resp_send(req, json, (ssize_t)n);
-    free(json);
+    httpd_resp_sendstr_chunk(req, "[");
+
+    // One byte of headroom in front of the entry so the separating comma and the
+    // object it precedes travel as a single chunk.
+    char chunk[1 + MSG_JSON_ENTRY_MAX];
+    chunk[0] = ',';
+
+    uint32_t cursor = 0;
+    bool first = true;
+    size_t n;
+    while ((n = message_next_json(cursor, chunk + 1, sizeof(chunk) - 1, &cursor)) > 0) {
+        httpd_resp_send_chunk(req, first ? chunk + 1 : chunk, (ssize_t)(first ? n : n + 1));
+        first = false;
+    }
+
+    httpd_resp_sendstr_chunk(req, "]");
+    httpd_resp_send_chunk(req, NULL, 0);
     return ESP_OK;
 }

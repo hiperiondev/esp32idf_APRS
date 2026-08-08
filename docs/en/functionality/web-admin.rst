@@ -174,7 +174,14 @@ Live feeds
 * ``/lastheard`` — the LAST HEARD table (JSON), fed from both RF and APRS-IS.
 * ``/igate_traffic?since=<seq>`` — the traffic log delta (JSON). Each entry
   carries a direction tag (``RX``/``TX``/``DIGI``/``INET2RF``/``RX-IS``), the DX
-  callsign, the raw packet, and the audio level in mV RMS (or −1).
+  callsign, the raw packet, and the audio level in mV RMS (or −1). The body is
+  streamed one entry per HTTP chunk, so a client that is far behind still gets
+  every buffered line: the response has no size cap and the firmware never
+  assembles the whole document in RAM. The ``seq`` it reports back is the
+  sequence number of the last entry actually delivered, so the cursor can only
+  advance past lines the client has received; a cursor ahead of the ring — the
+  device rebooted, and numbering restarted at 1 — resends from the oldest entry
+  still buffered.
 * ``/dashinfo``, ``/sidebarInfo``, ``/heapinfo`` — compact live info fragments.
 
 See :ref:`en-http-routes` for the full route table.

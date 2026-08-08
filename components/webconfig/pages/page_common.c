@@ -459,6 +459,17 @@ esp_err_t page_sidebar_info(httpd_req_t *req) {
 // GET /igate_traffic?since=<seq> -> JSON feed of igate/digi/RF traffic lines,
 // polled by the "IGate Traffic" box on the dashboard. Mirrors the same lines
 // the firmware already prints on the serial console (see trafficlog.h).
+//
+// The body is streamed one ring entry per chunk, so the whole document never
+// exists in RAM at once: the peak cost is the single-entry buffer below, no
+// matter how many entries the client is behind or how long each packet is. That
+// is what lets a route polled every 1.5 s for the lifetime of the device carry
+// the full backlog without either a heap allocation on every poll or a size cap
+// that would silently discard the entries past it.
+//
+// The reported "seq" is the sequence number of the last entry actually written,
+// not the newest one buffered, so a client can only ever advance past lines it
+// has really received.
 esp_err_t page_igate_traffic(httpd_req_t *req) {
     if (!web_check_auth(req))
         return ESP_OK;
@@ -472,17 +483,33 @@ esp_err_t page_igate_traffic(httpd_req_t *req) {
         }
     }
 
-    const size_t json_size = 6144;
-    char *json = malloc(json_size);
-    if (!json) {
-        httpd_resp_send_500(req);
-        return ESP_OK;
-    }
-    size_t n = trafficlog_dump_json(since, json, json_size);
+    // A cursor ahead of the ring means the device rebooted since the client last
+    // polled (sequence numbering restarts at 1), so start again from the oldest
+    // entry still buffered instead of waiting for the counter to catch up.
+    uint32_t latest = trafficlog_latest_seq();
+    if (since > latest)
+        since = 0;
 
     httpd_resp_set_type(req, "application/json");
     httpd_resp_set_hdr(req, "Cache-Control", "no-store");
-    httpd_resp_send(req, json, (ssize_t)n);
-    free(json);
+    httpd_resp_sendstr_chunk(req, "{\"items\":[");
+
+    // One byte of headroom in front of the entry so the separating comma and the
+    // object it precedes travel as a single chunk.
+    char chunk[1 + TRAFFICLOG_JSON_ENTRY_MAX];
+    chunk[0] = ',';
+
+    uint32_t cursor = since;
+    bool first = true;
+    size_t n;
+    while ((n = trafficlog_next_json(cursor, latest, chunk + 1, sizeof(chunk) - 1, &cursor)) > 0) {
+        httpd_resp_send_chunk(req, first ? chunk + 1 : chunk, (ssize_t)(first ? n : n + 1));
+        first = false;
+    }
+
+    char tail[40];
+    int t = snprintf(tail, sizeof(tail), "],\"seq\":%lu}", (unsigned long)cursor);
+    httpd_resp_send_chunk(req, tail, t);
+    httpd_resp_send_chunk(req, NULL, 0);
     return ESP_OK;
 }

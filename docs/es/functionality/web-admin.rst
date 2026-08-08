@@ -191,7 +191,15 @@ Feeds en vivo
   APRS-IS.
 * ``/igate_traffic?since=<seq>`` — el delta del registro de tráfico (JSON). Cada
   entrada lleva una etiqueta de dirección (``RX``/``TX``/``DIGI``/``INET2RF``/``RX-IS``),
-  el indicativo DX, el paquete crudo, y el nivel de audio en mV RMS (o −1).
+  el indicativo DX, el paquete crudo, y el nivel de audio en mV RMS (o −1). El
+  cuerpo se transmite una entrada por fragmento HTTP, así que un cliente muy
+  atrasado recibe igual todas las líneas guardadas: la respuesta no tiene tope
+  de tamaño y el firmware nunca arma el documento completo en RAM. El ``seq``
+  que devuelve es el número de secuencia de la última entrada realmente
+  entregada, de modo que el cursor solo puede avanzar más allá de lo que el
+  cliente recibió; un cursor por delante del anillo — el equipo se reinició y la
+  numeración volvió a 1 — reenvía desde la entrada más antigua todavía
+  guardada.
 * ``/dashinfo``, ``/sidebarInfo``, ``/heapinfo`` — fragmentos compactos de info
   en vivo.
 

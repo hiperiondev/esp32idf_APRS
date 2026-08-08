@@ -191,21 +191,53 @@ void handleIncomingAPRS(const char *line, query_source_t source);
 int pkgMsg_Find(const char *call, uint16_t msgID, bool rxtx);
 
 /**
- * @brief Dump the in-memory message queue (both RX and TX entries) as a JSON
- * array for the "Snd/Rcv Msg" web admin chat page.
+ * @brief Upper bound, in bytes, on what message_next_json() writes for a single
+ * queue entry, terminating NUL included.
  *
- * Elements come out in conversation order, oldest first (by ::msg_entry_t::seq),
- * so the page can append them top to bottom as they are read, and an outbound
- * message keeps its place in the thread for as long as it is retried. The array
- * holds at most ::MSG_QUEUE_SIZE elements. Each element is
- * {"time":<unix seconds>,"dir":"rx"|"tx","call":"<other station>","text":"<message text>","status":"rx"|"pending"|"sent"}
- * - "status" is only meaningful for "tx" entries ("pending": still awaiting
- * ack/retries remain, "sent": acked or no-retry) and is always "rx" for
- * received entries. `out` is always NUL-terminated; the return value is the
- * number of bytes written not counting that trailing NUL (same convention as
- * lastheard_dump_json()/trafficlog_dump_json()).
+ * @details A caller streaming the thread sizes its per-entry buffer with this
+ * constant and is then guaranteed that no message is ever cut short or dropped
+ * for want of room, however long its text is and however many of its characters
+ * need escaping. The value is derived from ::MSG_TEXT_MAX and the callsign field
+ * width and is checked against them by a static assertion in message.c, so it
+ * cannot fall behind if either changes.
  */
-size_t message_dump_json(char *out, size_t out_size);
+#define MSG_JSON_ENTRY_MAX 512
+
+/**
+ * @brief Serialize the oldest queue entry (RX or TX) whose conversation
+ * position is past @p after_seq as one JSON object, for a caller streaming the
+ * thread one entry per chunk.
+ *
+ * @details The object is
+ * {"time":<unix seconds>,"dir":"rx"|"tx","call":"<other station>","text":"<message text>","status":"rx"|"pending"|"sent"},
+ * with no leading or trailing separator - the caller supplies the commas and the
+ * enclosing array. "status" is only meaningful for "tx" entries ("pending":
+ * still awaiting ack/retries remain, "sent": acked or no-retry) and is always
+ * "rx" for received entries. @p out is always NUL-terminated; the return value
+ * is the number of bytes written not counting that trailing NUL (same
+ * convention as lastheard_dump_json()).
+ *
+ * Call it in a loop, starting with @p after_seq at 0 and feeding the value
+ * returned through @p out_seq back in on the next iteration, until it returns 0.
+ * Entries then come out in conversation order, oldest first (by
+ * ::msg_entry_t::seq), so the page can append them top to bottom as they
+ * arrive, and an outbound message keeps its place in the thread for as long as
+ * it is retried. Because a returned entry always has a strictly greater
+ * sequence number than @p after_seq, the loop is guaranteed to terminate after
+ * at most ::MSG_QUEUE_SIZE iterations that produce output.
+ *
+ * @param after_seq Exclusive lower bound on ::msg_entry_t::seq. Pass 0 to start
+ *                  at the oldest message in the queue.
+ * @param out       Destination buffer.
+ * @param out_size  Size of @p out, in bytes. Must be at least
+ *                  ::MSG_JSON_ENTRY_MAX; anything smaller writes nothing and
+ *                  returns 0, rather than emitting a truncated object.
+ * @param out_seq   Receives the sequence number of the entry that was written,
+ *                  or @p after_seq unchanged when none was. May be NULL.
+ * @return Number of bytes written (excluding the NUL), or 0 when no entry is
+ *         left past @p after_seq or the arguments are unusable.
+ */
+size_t message_next_json(uint32_t after_seq, char *out, size_t out_size, uint32_t *out_seq);
 
 #define MSG_CHANNEL_RF   (1 << 0) /**< TX-handler channel bit: transmit on RF. */
 #define MSG_CHANNEL_INET (1 << 1) /**< TX-handler channel bit: transmit to APRS-IS (Internet). */
