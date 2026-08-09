@@ -793,13 +793,20 @@ void Ax25BitParse(uint8_t bit, uint8_t modem, uint16_t mV) {
                     rx->crc ^= 0xFFFF;
                     if ((rx->frame[rx->frameIdx - 2] == (rx->crc & 0xFF)) && (rx->frame[rx->frameIdx - 1] == ((rx->crc >> 8) & 0xFF))) {
                         uint16_t i = 13; // start at the SSID of the source
+                        bool pathEndFound = false;
                         for (; i < (rx->frameIdx - 2); i++) {
-                            if (rx->frame[i] & 1) // path end bit
+                            if (rx->frame[i] & 1) { // path end bit
+                                pathEndFound = true;
                                 break;
+                            }
                         }
 
+                        // a frame with no path-end bit before the CRC has no valid
+                        // control/PID field to inspect and is treated as invalid
+                        //
                         // if non-APRS frames are not allowed, require control=0x03 and PID=0xF0
-                        if (Ax25Config.allowNonAprs || ((rx->frame[i + 1] == 0x03) && (rx->frame[i + 2] == 0xF0))) {
+                        if (pathEndFound && (uint16_t)(i + 2) < rx->frameIdx &&
+                            (Ax25Config.allowNonAprs || ((rx->frame[i + 1] == 0x03) && (rx->frame[i + 2] == 0xF0)))) {
                             rx->frameIdx -= 2; // remove CRC
                             if (rx->crc != lastCrc) {
                                 // the other decoder has not received this frame yet
