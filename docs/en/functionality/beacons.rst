@@ -172,8 +172,13 @@ This station runs a complete messaging engine, answers directed queries and
 acknowledges the messages it receives, so with *Enable messaging* on all three
 position beacons say so. The identifier is picked in ``buildPositionPacket()``
 from the same locked snapshot every other beacon field comes from. Objects and
-items are unaffected — they carry their own ``;`` and ``)`` identifiers — and
-Mic-E has its own fixed layout.
+items are unaffected — they carry their own ``;`` and ``)`` identifiers. Mic-E
+states the same thing in a different place: its position lives in the AX.25
+destination address, so it has no data type identifier to spare, and the
+message-capable flag is carried by the TYPE byte (`` ` `` message capable,
+``'`` one-way tracker) that follows the symbol table byte. Both layouts read
+the same *Enable messaging* tick, so they cannot disagree about what this
+station claims.
 
 Position ambiguity
 ==================

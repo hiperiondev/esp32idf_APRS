@@ -186,8 +186,13 @@ dirette e conferma i messaggi che riceve, quindi con *Abilita messaggistica*
 attivo tutte e tre le balise di posizione lo dichiarano. L'identificatore viene
 scelto in ``buildPositionPacket()`` dalla stessa copia sotto lock da cui
 provengono tutti gli altri campi della balise. Oggetti e item non sono toccati —
-portano i propri identificatori ``;`` e ``)`` — e Mic-E ha il proprio formato
-fisso.
+portano i propri identificatori ``;`` e ``)``. Mic-E dichiara la stessa cosa in
+un altro punto: la sua posizione viaggia nell'indirizzo di destinazione AX.25,
+quindi non gli avanza un identificatore di tipo di dato, e il flag di capacità
+di messaggistica è portato dal byte TYPE (`` ` `` capace di messaggi, ``'``
+tracker a senso unico) che segue il byte della tabella dei simboli. Entrambi i
+formati leggono la stessa spunta *Abilita messaggistica*, quindi non possono
+contraddirsi su ciò che questa stazione dichiara.
 
 Ambiguità di posizione
 ======================

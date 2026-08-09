@@ -15,8 +15,10 @@
 // Decodes and encodes the Mic-E position report format (APRS101 Chapter 10):
 // the AX.25 destination address field encodes latitude, the 3-bit message
 // code and the N/S, longitude-offset and W/E flag bits; the AX.25
-// information field completes the report with longitude, course, speed,
-// symbol and an optional status text.
+// information field completes the report with longitude, course, speed and
+// symbol, followed by the TYPE byte, an optional altitude field, an optional
+// free text and the Manufacturer/Version pair that identifies the sending
+// device (aprs12/mic-e-types.txt, aprs12/mic-e-examples.txt).
 
 #include <ctype.h>
 #include <math.h>
@@ -106,21 +108,41 @@ static aprs_mice_message_code_t mice_message_from_bits(bool bitA, bool bitB, boo
     return (aprs_mice_message_code_t)(7 - idx);
 }
 
-// Altitude in the Mic-E Status Text Field (APRS101 Ch.10): the last 4 bytes
-// of the status text, if present, are 3 base-91 digits ('!'..'{') followed
-// by a literal '}', encoding altitude in meters as
-// (c0-33)*91*91 + (c1-33)*91 + (c2-33) - 10000.
-static bool mice_status_altitude_ft(const char *text, size_t len, int32_t *out_ft) {
-    if (len < 4 || text[len - 1] != '}')
+// Mic-E TYPE byte (aprs12/mic-e-types.txt): the byte that follows the symbol
+// table byte, telling receivers which family of equipment sent the report and
+// whether it can accept messages. '`' marks a message-capable unit and '\''
+// a one-way tracker; ' ', '>' and ']' are the legacy identifiers of the
+// original Mic-E, the Kenwood D7 family and the Kenwood D700 family. A report
+// whose text starts with any other byte carries no TYPE byte at all, and the
+// text begins immediately.
+static bool mice_is_type_byte(char c) {
+    return c == '`' || c == '\'' || c == ' ' || c == '>' || c == ']';
+}
+
+// The three TYPE bytes that mark a station able to receive APRS messages
+// (aprs12/mic-e-types.txt): the message-capable '`' and the two Kenwood
+// families, both of which are full messaging radios. The one-way-tracker
+// '\'' and the original Mic-E ' ' are not.
+static bool mice_type_is_msg_capable(char c) {
+    return c == '`' || c == '>' || c == ']';
+}
+
+// Altitude field of the Mic-E text (APRS101 Ch.10, aprs12/mic-e-examples.txt):
+// exactly 4 bytes, 3 base-91 digits ('!'..'{') followed by a literal '}',
+// encoding altitude in meters as
+// (c0-33)*91*91 + (c1-33)*91 + (c2-33) - 10000. `text` must have at least 4
+// readable bytes.
+static bool mice_parse_altitude_ft(const char *text, int32_t *out_ft) {
+    if (text[3] != '}')
         return false;
 
     for (int i = 0; i < 3; i++) {
-        unsigned char c = (unsigned char)text[len - 4 + i];
+        unsigned char c = (unsigned char)text[i];
         if (c < '!' || c > '{')
             return false;
     }
 
-    long meters = (text[len - 4] - 33) * 91L * 91L + (text[len - 3] - 33) * 91L + (text[len - 2] - 33) - 10000L;
+    long meters = (text[0] - 33) * 91L * 91L + (text[1] - 33) * 91L + (text[2] - 33) - 10000L;
     *out_ft = (int32_t)((double)meters * 3.28084);
     return true;
 }
@@ -246,23 +268,57 @@ bool aprs_mice_decode(const char *dst_call, const char *info, size_t info_len, a
     out->position.symbol.table = (aprs_symbol_table_id_t)info[8];
     out->position.symbol.overlay = 0;
 
-    // Optional trailing status text (APRS101 Ch.10 "Mic-E Status Text");
-    // may itself embed an altitude ("xxx}", base-91 - see
-    // mice_status_altitude_ft()) or a Maidenhead locator ("AA99AA/x"),
-    // captured here verbatim for the caller to inspect further.
+    // Everything past the fixed 9 bytes, peeled apart in the order
+    // aprs12/mic-e-examples.txt lays it out: TYPE byte, altitude, free text,
+    // Mv pair. What survives all four steps is the operator-visible status
+    // text (APRS101 Ch.10 "Mic-E Status Text"), which may still embed a
+    // frequency block, a Maidenhead locator ("AA99AA/x") or a trailing
+    // "!DAO!" for the caller to inspect further.
     if (info_len > 9) {
         const char *tail = &info[9];
         size_t tail_len = info_len - 9;
-        size_t copy_len = tail_len < APRS_MAX_STATUS_TEXT_LEN ? tail_len : APRS_MAX_STATUS_TEXT_LEN;
 
-        memcpy(out->status_text, tail, copy_len);
-        out->status_text[copy_len] = 0;
-        out->has_status_text = true;
+        // TYPE byte, when the report carries one. This is the only statement
+        // a Mic-E report makes about messaging capability, so it is read even
+        // though the byte itself is not part of the text.
+        if (mice_is_type_byte(tail[0])) {
+            out->msg_capable = mice_type_is_msg_capable(tail[0]);
+            tail++;
+            tail_len--;
+        }
 
+        // Mv pair, taken only in the space-delimited form the spec
+        // recommends. Two bytes at the end of a text that has no separator
+        // are indistinguishable from the last two characters of the text
+        // itself, and cutting them off unconditionally would eat a letter and
+        // a half from every station that sends no Mv pair at all.
+        if (tail_len >= 3 && tail[tail_len - 3] == ' ' && tail[tail_len - 2] != ' ' && tail[tail_len - 1] != ' ') {
+            out->device_id[0] = tail[tail_len - 2];
+            out->device_id[1] = tail[tail_len - 1];
+            tail_len -= 3;
+        }
+
+        // Altitude field. mic-e-examples.txt puts it first, right after the
+        // TYPE byte; encoders that place it at the very end instead are read
+        // as well, so the text handed to the caller is free of it either way.
         int32_t alt_ft;
-        if (mice_status_altitude_ft(tail, tail_len, &alt_ft)) {
+        if (tail_len >= 4 && mice_parse_altitude_ft(tail, &alt_ft)) {
             out->position.has_altitude = true;
             out->position.altitude_ft = alt_ft;
+            tail += 4;
+            tail_len -= 4;
+        } else if (tail_len >= 4 && mice_parse_altitude_ft(tail + tail_len - 4, &alt_ft)) {
+            out->position.has_altitude = true;
+            out->position.altitude_ft = alt_ft;
+            tail_len -= 4;
+        }
+
+        if (tail_len > 0) {
+            size_t copy_len = tail_len < APRS_MAX_STATUS_TEXT_LEN ? tail_len : APRS_MAX_STATUS_TEXT_LEN;
+
+            memcpy(out->status_text, tail, copy_len);
+            out->status_text[copy_len] = 0;
+            out->has_status_text = true;
         }
     }
 
@@ -305,13 +361,30 @@ static void mice_message_to_bits(aprs_mice_message_code_t code, bool *out_bitA, 
     *out_bitC = (idx & 1) != 0;
 }
 
-// Altitude in the Mic-E Status Text Field (APRS101 Ch.10): inverse of
-// mice_status_altitude_ft(). Appends 3 base-91 digits plus a literal '}'
-// to the caller's status text buffer, encoding altitude in meters as
-// (c0*91*91 + c1*91 + c2) + 10000, each digit offset by '!' (33).
-// alt_ft is clamped to the representable range so an out-of-range
-// altitude never overflows the 3-digit field.
-static void mice_encode_status_altitude(int32_t alt_ft, char *out, size_t outMax) {
+// Appends up to `len` bytes of `text` to the NUL-terminated string in `out`,
+// writing only what fits in `outMax` bytes including the terminator, and
+// returns the number of bytes actually appended. Every optional block of the
+// Mic-E information field goes through here, so a buffer that runs out simply
+// stops growing instead of overrunning.
+static size_t mice_append(char *out, size_t outMax, const char *text, size_t len) {
+    size_t used = strlen(out);
+    size_t room = (outMax > used + 1) ? outMax - used - 1 : 0;
+    if (len > room)
+        len = room;
+
+    memcpy(out + used, text, len);
+    out[used + len] = 0;
+    return len;
+}
+
+// Altitude field of the Mic-E text (APRS101 Ch.10): inverse of
+// mice_parse_altitude_ft(). Appends 3 base-91 digits plus a literal '}' to
+// the caller's information-field buffer, encoding altitude in meters as
+// (c0*91*91 + c1*91 + c2) + 10000, each digit offset by '!' (33). alt_ft is
+// clamped to the representable range so an out-of-range altitude never
+// overflows the 3-digit field. The field is written before the free text,
+// which is what lets a receiver tell the two apart.
+static void mice_encode_altitude(int32_t alt_ft, char *out, size_t outMax) {
     double meters = (double)alt_ft / 3.28084;
     long val = (long)lround(meters) + 10000L;
     if (val < 0)
@@ -327,17 +400,17 @@ static void mice_encode_status_altitude(int32_t alt_ft, char *out, size_t outMax
     digits[3] = '}';
 
     size_t len = strlen(out);
-    if (len + 4 < outMax) {
-        memcpy(out + len, digits, 4);
-        out[len + 4] = 0;
-    }
+    if (len + 4 < outMax)
+        mice_append(out, outMax, digits, 4);
 }
 
 bool aprs_mice_encode(const aprs_mice_report_t *report, char *dst_call_out, char *info_out, size_t info_out_max) {
     if (report == NULL || dst_call_out == NULL || info_out == NULL)
         return false;
 
-    if (info_out_max < 10)
+    // Fixed 9-byte report plus the TYPE byte plus the NUL terminator; every
+    // field past that is optional and simply omitted when it does not fit.
+    if (info_out_max < 11)
         return false;
 
     double lat = report->position.latitude_deg;
@@ -474,8 +547,14 @@ bool aprs_mice_encode(const aprs_mice_report_t *report, char *dst_call_out, char
     int dc_val = ((speed % 10) * 10 + (course / 100)) + 28;
     int se_val = (course % 100) + 28;
 
-    char info[10];
-    info[0] = report->has_status_text ? '\'' : '`'; // '`': current Mic-E Data; '\'': old Mic-E/D700, used whenever a status text follows.
+    // The Data Type Identifier states how fresh the position is, not what
+    // follows it: '`' is "current Mic-E data", the only thing a report built
+    // from this station's own live position can be. ('\'' means old/stale
+    // data and is what makes APRSdos and the Kenwood radios label a station
+    // "OLD FIX".) Messaging capability is stated separately, by the TYPE
+    // byte at info[9].
+    char info[11];
+    info[0] = '`';
     info[1] = (char)d1_val;
     info[2] = (char)d2_val;
     info[3] = (char)d3_val;
@@ -485,23 +564,38 @@ bool aprs_mice_encode(const aprs_mice_report_t *report, char *dst_call_out, char
     info[7] = report->position.symbol.code ? report->position.symbol.code : '>';
     info[8] = (char)(report->position.symbol.table == APRS_SYMBOL_TABLE_ALTERNATE ? APRS_SYMBOL_TABLE_ALTERNATE : APRS_SYMBOL_TABLE_PRIMARY);
 
-    size_t len = 9;
-    memcpy(info_out, info, 9);
-    info_out[9] = 0;
+    // TYPE byte (aprs12/mic-e-types.txt), always emitted: '`' for a
+    // message-capable station, '\'' for a one-way tracker. Mic-E puts the
+    // position in the destination address, so this byte and the Mv pair below
+    // are the only identification the format has room for.
+    info[9] = report->msg_capable ? '`' : '\'';
 
-    // Optional trailing status text / altitude (APRS101 Ch.10 "Mic-E Status
-    // Text"): altitude takes priority when both are requested, matching the
-    // decoder's own priority of reading the last 4 status bytes as altitude
-    // whenever they parse as such.
-    if (report->position.has_altitude) {
-        if (len < info_out_max)
-            mice_encode_status_altitude(report->position.altitude_ft, info_out, info_out_max);
-    } else if (report->has_status_text && report->status_text[0]) {
-        size_t text_len = strlen(report->status_text);
-        size_t room = (info_out_max > len + 1) ? info_out_max - len - 1 : 0;
-        size_t copy_len = text_len < room ? text_len : room;
-        memcpy(info_out + len, report->status_text, copy_len);
-        info_out[len + copy_len] = 0;
+    memcpy(info_out, info, 10);
+    info_out[10] = 0;
+
+    // Optional altitude field, then the free text (APRS101 Ch.10 "Mic-E
+    // Status Text"). Both are emitted when both are present: the altitude is
+    // a fixed 4-byte prefix that shifts the text along, so a receiver reads
+    // the altitude and still sees the whole comment.
+    if (report->position.has_altitude)
+        mice_encode_altitude(report->position.altitude_ft, info_out, info_out_max);
+
+    if (report->has_status_text && report->status_text[0])
+        mice_append(info_out, info_out_max, report->status_text, strlen(report->status_text));
+
+    // Manufacturer and Version bytes, closing the information field after the
+    // text and after any "!DAO!" the caller put at its end. The spec's
+    // recommended single-space delimiter is included so the pair cannot be
+    // mistaken for the last two characters of the text. All three bytes are
+    // written together or not at all, so a full buffer never leaves a
+    // dangling separator or half an identifier on the air.
+    if (report->device_id[0] && report->device_id[1]) {
+        char mv[3];
+        mv[0] = ' ';
+        mv[1] = report->device_id[0];
+        mv[2] = report->device_id[1];
+        if (strlen(info_out) + 3 < info_out_max)
+            mice_append(info_out, info_out_max, mv, 3);
     }
 
     return true;

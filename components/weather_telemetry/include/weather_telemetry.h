@@ -964,10 +964,59 @@ typedef struct {
     bool has_telemetry;                /**< true if a Mic-E Telemetry payload (2 or 5 analog bytes + optional digital byte) follows. */
     aprs_telemetry_report_t telemetry; /**< Valid only if has_telemetry == true; sequence field unused (Mic-E telemetry has no sequence number). */
 
-    bool has_status_text; /**< true if a Mic-E status text string follows instead of telemetry. */
-    char
-        status_text[APRS_MAX_STATUS_TEXT_LEN + 1]; /**< Free-text Mic-E status; may itself embed a Maidenhead locator ("IO91SX/G") or altitude ("/A=001234"). */
+    /**
+     * @brief Messaging capability, carried on air by the Mic-E TYPE byte
+     *        that follows the symbol table byte (aprs12/mic-e-types.txt).
+     *
+     * The TYPE byte is `` ` `` for a message-capable station and `'` for a
+     * one-way tracker. Mic-E hides the position in the AX.25 destination
+     * address, so the data type identifier cannot state this the way the
+     * `!`/`=`/`/`/`@` identifiers do in a plain position report - the TYPE
+     * byte is the only place a Mic-E station says whether anybody can reply
+     * to it.
+     *
+     * On encode this selects the TYPE byte to emit; on decode it reports the
+     * TYPE byte that was found, and stays false for a legacy report that
+     * carries none.
+     */
+    bool msg_capable;
+
+    /**
+     * @brief Manufacturer and Version bytes (the "Mv" pair) that close the
+     *        information field (aprs12/mic-e-types.txt).
+     *
+     * @c device_id[0] is the manufacturer byte, @c device_id[1] the version
+     * byte, and the pair is transmitted at the very end of the information
+     * field, after the status text and after any `!DAO!`, separated from the
+     * text by a single space. Because the destination address of a Mic-E
+     * frame carries position data, the APxxxx TOCALL cannot identify the
+     * sending device; this pair is what device-identification consumers
+     * (aprs.fi, findu, YAAC) read instead.
+     *
+     * On encode, both bytes must be non-NUL for the pair to be emitted; a
+     * report that leaves them zero produces no Mv suffix at all rather than
+     * a half-written one. On decode they hold the pair that was stripped
+     * from the status text, or two NULs when the report carried none.
+     */
+    char device_id[2];
+
+    bool has_status_text;                           /**< true if a Mic-E status text string follows the fixed fields. */
+    char status_text[APRS_MAX_STATUS_TEXT_LEN + 1]; /**< Free-text Mic-E status, with the TYPE byte, the altitude field and the Mv pair already removed. */
 } aprs_mice_report_t;
+
+/**
+ * @brief Size of the information-field buffer ::aprs_mice_encode requires to
+ *        emit a full Mic-E report without truncating any of its fields.
+ *
+ * Worst case, in on-air order: the fixed 9-byte report (data type identifier,
+ * 3 longitude bytes, 3 course/speed bytes, symbol code, symbol table byte),
+ * the 1-byte TYPE byte, the 4-byte altitude field ("aaa}"), up to
+ * ::APRS_MAX_STATUS_TEXT_LEN bytes of status text, the 1-byte separator plus
+ * the 2-byte Mv pair, and the terminating NUL: 80 bytes for a 62-byte status
+ * text. The extra headroom keeps the constant valid if the status-text limit
+ * is ever raised by a byte or two.
+ */
+#define APRS_MICE_INFO_BUF_SIZE (APRS_MAX_STATUS_TEXT_LEN + 20)
 
 /**
  * @brief Decode a Mic-E position report (APRS101 Chapter 10) into @p out.
@@ -997,14 +1046,20 @@ typedef struct {
  *         Mic-E report.
  *
  * @note This decoder recovers position, course/speed, symbol and message
- *       code, and captures any trailing bytes verbatim in @c out->status_text
- *       (populating @c out->has_status_text). It does not decode the
- *       separate, legacy Mic-E Telemetry sub-format (APRS101 Chapter 10,
- *       "Mic-E Telemetry Data"); @c out->has_telemetry is always false, and
- *       a telemetry-bearing information field is captured as raw status
- *       text like any other. This matches every mobile/portable Mic-E
- *       source in current use (Kenwood D7/D700/D710, Yaesu VX-8/FTM-350/
- *       400D), none of which transmit that sub-format.
+ *       code. The bytes after the fixed 9-byte report are split into the
+ *       structured fields aprs12/mic-e-types.txt defines around the free
+ *       text - the leading TYPE byte into @c out->msg_capable, the "aaa}"
+ *       altitude field into @c out->position.has_altitude /
+ *       @c out->position.altitude_ft, the trailing space-delimited Mv pair
+ *       into @c out->device_id - and whatever free text is left goes into
+ *       @c out->status_text (populating @c out->has_status_text). It does
+ *       not decode the separate, legacy Mic-E Telemetry sub-format
+ *       (APRS101 Chapter 10, "Mic-E Telemetry Data");
+ *       @c out->has_telemetry is always false, and a telemetry-bearing
+ *       information field is captured as raw status text like any other.
+ *       This matches every mobile/portable Mic-E source in current use
+ *       (Kenwood D7/D700/D710, Yaesu VX-8/FTM-350/400D), none of which
+ *       transmit that sub-format.
  */
 bool aprs_mice_decode(const char *dst_call, const char *info, size_t info_len, aprs_mice_report_t *out);
 
@@ -1014,26 +1069,41 @@ bool aprs_mice_decode(const char *dst_call, const char *info, size_t info_len, a
  *
  * As with decoding, the Mic-E payload is split across two outputs: the
  * 6-character AX.25 destination address field (latitude, message code,
- * N/S, longitude-offset and W/E flag bits) and the AX.25 information field
- * (Data Type Identifier, longitude, course, speed, symbol and an optional
- * status text). The caller is responsible for placing @p dst_call_out where
- * the destination address of the outgoing AX.25/TNC2 frame is built, and
+ * N/S, longitude-offset and W/E flag bits) and the AX.25 information field.
+ * The caller is responsible for placing @p dst_call_out where the
+ * destination address of the outgoing AX.25/TNC2 frame is built, and
  * @p info_out where the frame's information field is built.
+ *
+ * The information field is emitted in the canonical order of
+ * aprs12/mic-e-examples.txt:
+ *
+ *     `d1d2d3 sp dc se S T T aaa} text Mv
+ *
+ * that is, the Data Type Identifier, 3 longitude bytes, 3 course/speed
+ * bytes, the symbol code, the symbol table byte, the TYPE byte, the optional
+ * 4-byte altitude field, the free text, and finally a space plus the 2-byte
+ * Mv pair. Altitude and text are additive, not alternatives: the altitude
+ * field simply shifts the text along, which is the only order in which a
+ * receiver can tell the two apart.
  *
  * @param report Report to encode. @c report->course_speed.is_unknown selects
  *               the on-air "unknown" course/speed pattern (0/0) regardless
- *               of the numeric fields; @c report->position.has_altitude
- *               takes priority over @c report->has_status_text when both
- *               are set, matching the field's on-air layout, which can
- *               carry only one of the two.
+ *               of the numeric fields; @c report->msg_capable selects the
+ *               TYPE byte; @c report->device_id supplies the trailing Mv
+ *               pair. Anything the caller wants placed inside the free-text
+ *               slot - a frequency block, a comment, a trailing `!DAO!` -
+ *               is passed ready-assembled in @c report->status_text, since
+ *               the on-air order of those blocks is a property of the text
+ *               itself, not of the Mic-E framing.
  * @param dst_call_out Buffer for the 6-character destination address field,
  *                      NUL-terminated on success; must be at least 7 bytes.
  * @param info_out Buffer for the NUL-terminated information field, starting
- *                  at the Mic-E Data Type Identifier byte (`` ` `` if no
- *                  status text is emitted, `'` otherwise, matching the two
- *                  DTIs current mobile/portable Mic-E sources use).
- * @param info_out_max Size of @p info_out in bytes; must be at least 10 to
- *                      hold the fixed 9-byte report plus its NUL terminator.
+ *                  at the Mic-E Data Type Identifier byte (`` ` ``, the
+ *                  "current Mic-E data" identifier).
+ * @param info_out_max Size of @p info_out in bytes; must be at least 11 to
+ *                      hold the fixed 9-byte report, the TYPE byte and the
+ *                      NUL terminator. Use ::APRS_MICE_INFO_BUF_SIZE for a
+ *                      buffer that holds every optional field as well.
  * @return true if @p report encodes to a well-formed Mic-E report; false on
  *         invalid input (out-of-range position, undersized output buffer)
  *         without writing partial data to either output.

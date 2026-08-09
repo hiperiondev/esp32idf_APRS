@@ -348,7 +348,14 @@ Tracciamento / Beaconing
    * - Codifica posizione Mic-E (TX)
      - ⚠️ (soprattutto firmware per tracker mobili)
      - ✅
-     - La pagina beacon Tracker offre un'opzione Mic-E (``aprs_mice_encode()``); solo posizione fissa, quindi rotta/velocità vengono sempre inviate come "sconosciute" e il codice messaggio è fisso su Off Duty
+     - La pagina beacon Tracker offre un'opzione Mic-E
+       (``aprs_mice_encode()``); solo posizione fissa, quindi rotta/velocità
+       vengono sempre inviate come "sconosciute" e il codice messaggio è fisso
+       su Off Duty. Il campo informativo segue l'ordine canonico di
+       ``mic-e-examples.txt``: byte TYPE, altitudine, blocco di frequenza,
+       commento, ``!DAO!`` e la coppia Produttore/Versione che identifica il
+       firmware (l'indirizzo di destinazione porta dati di posizione, quindi il
+       TOCALL ``APxxxx`` non può)
    * - PHG / potenza-altezza-guadagno-direttività
      - ✅
      - ✅
@@ -395,7 +402,9 @@ Tracciamento / Beaconing
      - ✅
      - Scelto in base ad *Abilita messaggistica*: ``!``/``/`` con la
        messaggistica spenta, ``=``/``@`` con essa accesa, così i client riceventi
-       offrono una via di risposta
+       offrono una via di risposta. Al formato Mic-E non avanza un
+       identificatore e dichiara la stessa cosa con il suo byte TYPE
+       (`` ` `` / ``'``), letto dalla stessa spunta
 
 Messaggistica
 --------------

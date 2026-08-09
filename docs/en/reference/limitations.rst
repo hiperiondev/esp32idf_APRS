@@ -332,7 +332,13 @@ Tracking / Beaconing
    * - Mic-E position encoding (TX)
      - ⚠️ (mostly mobile-tracker firmware)
      - ✅
-     - Tracker beacon page offers a Mic-E option (``aprs_mice_encode()``); fixed-position only, so course/speed is always sent as "unknown" and the message code is fixed at Off Duty
+     - Tracker beacon page offers a Mic-E option (``aprs_mice_encode()``);
+       fixed-position only, so course/speed is always sent as "unknown" and the
+       message code is fixed at Off Duty. The information field follows the
+       canonical order of ``mic-e-examples.txt``: TYPE byte, altitude,
+       frequency block, comment, ``!DAO!``, and the Manufacturer/Version pair
+       that identifies the firmware (the destination address carries position
+       data, so the ``APxxxx`` TOCALL cannot)
    * - PHG / power-height-gain-directivity
      - ✅
      - ✅
@@ -375,7 +381,9 @@ Tracking / Beaconing
      - ✅ (universal)
      - ✅
      - Picked from *Enable messaging*: ``!``/``/`` when messaging is off,
-       ``=``/``@`` when it is on, so receiving clients offer a reply path
+       ``=``/``@`` when it is on, so receiving clients offer a reply path. The
+       Mic-E layout has no identifier to spare and states the same thing with
+       its TYPE byte (`` ` `` / ``'``), read from the same tick
 
 Messaging
 ----------

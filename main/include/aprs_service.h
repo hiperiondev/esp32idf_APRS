@@ -149,6 +149,35 @@
 /** @} */
 
 /**
+ * @name Mic-E device identifier (Manufacturer + Version)
+ *
+ * The two bytes every Mic-E report this firmware transmits carries at the end
+ * of its information field, per aprs12/mic-e-types.txt: the manufacturer byte
+ * followed by the version byte, separated from the free text by a single
+ * space. Single source of truth for beacon.c, in the same role ::APRS_TOCALL
+ * plays for every other packet type.
+ *
+ * A Mic-E frame puts position data in its AX.25 destination address, so the
+ * APxxxx TOCALL cannot identify the sending device the way it does elsewhere,
+ * and this pair is the only channel left: without it a station is anonymous
+ * to aprs.fi, findu and YAAC, and indistinguishable from a one-way tracker.
+ *
+ * "T1" is not an allocated identifier. The aprsorg/aprs-deviceid registry
+ * (tocalls.yaml, `mice:` section - the master database for these allocations
+ * since 2022-02-19) hands out the manufacturer byte, and no allocation there
+ * uses 'T': the allocated manufacturer bytes are '_' (Yaesu), '(' (Anytone),
+ * '|' (Byonics), '^' (HinzTec), '*' (KissOZ, NOR), ':' (SQ8L, SCS), '['
+ * (APRSdroid), ' ' (SainSonic) and the legacy Kenwood '>' and ']' prefixes.
+ * This uses the free 'T' space for the same reason ::APRS_TOCALL uses "APZ"
+ * - an unallocated identifier that collides with nobody - pending a proper
+ * allocation request at github.com/aprsorg/aprs-deviceid, after which only
+ * this one definition changes.
+ * @{
+ */
+#define APRS_MICE_DEVICE_ID "T1" /**< Experimental (unallocated) Mic-E Manufacturer/Version pair; see the allocation note above. */
+/** @} */
+
+/**
  * @brief Start the APRS application layer: message queue init, modem RX
  * callback, IGate APRS-IS client task, and the 1 Hz service tick (message
  * retry). Call once from app_task() after app_config_load()/wifi_init() and

@@ -114,22 +114,25 @@ typedef struct {
     // decorative. Sourced from g_config.msg_enable by each per-service
     // function below, in the same snapshot as every other field here.
     bool msgCapable;
-    // When set, buildPositionPacket() appends the WGS-84 human-readable
-    // "!DAO!" precision/datum extension (aprs_dao_build(), aprs12/datum.txt)
-    // after the comment. Sourced from the station-wide g_config.pos_dao_en,
-    // like ambiguity above, and only actually applied when ambiguity == 0 and
-    // the uncompressed layout is used - see buildPositionPacket() itself for
-    // why (a station deliberately obscuring its position, or already sending
+    // When set, the WGS-84 human-readable "!DAO!" precision/datum extension
+    // (aprs_dao_build(), aprs12/datum.txt) closes the comment - in the
+    // uncompressed layout and in Mic-E alike, where the spec asks for it at
+    // the end of the text field too. Sourced from the station-wide
+    // g_config.pos_dao_en, like ambiguity above, and only actually applied
+    // when ambiguity == 0 and the layout is not the compressed one: a station
+    // deliberately obscuring its position, or already sending
     // full-resolution compressed coordinates, must not have that precision
-    // handed back through this extension).
+    // handed back through this extension.
     bool daoEnable;
     // Recommended travelers' voice repeater this station advertises
     // (freqspec.txt), built into the standard "FFF.FFFMHz Tnnn +/-nnn" block
     // by objitem_build_freq_block() and prepended to the comment as its first
     // 10 bytes - the fixed-field form some radios (e.g. Yaesu) require to
-    // auto-tune, since they do not decode the frequency Object form. Sourced
-    // from each service's own *_freq_mhz/_tone_tenths/_duplex/_offset_khz
-    // fields; freqMhz <= 0 means no block is emitted.
+    // auto-tune, since they do not decode the frequency Object form. The same
+    // block leads the Mic-E text field, where the spec reserves the same
+    // first-in-the-text position for it. Sourced from each service's own
+    // *_freq_mhz/_tone_tenths/_duplex/_offset_khz fields; freqMhz <= 0 means
+    // no block is emitted.
     float freqMhz;
     uint16_t freqToneTenths;
     int8_t freqDuplex;
@@ -260,6 +263,14 @@ static void buildDataExtension(const beacon_params_t *p, char *out, size_t outMa
 // (see docs/reference/limitations.rst), so the report always carries the
 // on-air "unknown" course/speed pattern (000/000); the message code is
 // fixed at Off Duty (M0), the conventional default for a fixed/base station.
+//
+// Mic-E has one free-text slot, and aprs12/mic-e-examples.txt fixes the order
+// of what may go in it: the frequency block first (radios auto-tune from the
+// leading bytes and stop looking after them), then the operator's comment,
+// then "!DAO!" last. The altitude field and the Manufacturer/Version pair sit
+// outside that text, before and after it respectively, and are added by
+// aprs_mice_encode() itself.
+//
 // Returns the packet length, or 0 if nothing usable is configured or the
 // position/line does not fit the Mic-E format.
 static int buildMicePositionPacket(const beacon_params_t *p, char *out, size_t outMax) {
@@ -287,6 +298,12 @@ static int buildMicePositionPacket(const beacon_params_t *p, char *out, size_t o
     report.position.symbol.code = p->symbol[1] ? p->symbol[1] : '>';
     report.message_code = APRS_MICE_MSG_OFF_DUTY;
     report.course_speed.is_unknown = true;
+    // Messaging capability, taken from the same flag that picks '='/'@' over
+    // '!'/'/' in buildPositionPacket(), so the two layouts state the same
+    // thing about this station whichever one the operator selects.
+    report.msg_capable = p->msgCapable;
+    report.device_id[0] = APRS_MICE_DEVICE_ID[0];
+    report.device_id[1] = APRS_MICE_DEVICE_ID[1];
 
     if (p->sendAltitude) {
         int feet = (int)(p->alt * 3.28084f);
@@ -294,16 +311,36 @@ static int buildMicePositionPacket(const beacon_params_t *p, char *out, size_t o
             feet = 0;
         report.position.has_altitude = true;
         report.position.altitude_ft = feet;
-    } else if (p->comment[0]) {
-        // No altitude requested: carry the beacon comment as Mic-E status
-        // text instead, the only free-text slot the format has room for.
-        strncpy(report.status_text, p->comment, APRS_MAX_STATUS_TEXT_LEN);
-        report.status_text[APRS_MAX_STATUS_TEXT_LEN] = 0;
-        report.has_status_text = true;
     }
 
+    // !DAO! precision/datum extension (aprs12/datum.txt). Mic-E blanks
+    // destination-address digits to express position ambiguity exactly as the
+    // uncompressed layout blanks minute digits, so the same rule applies: a
+    // station that asked for a coarser report must not have the precision it
+    // hid handed straight back through this extension. Built first because it
+    // has to survive to the end of the text field, so its bytes are reserved
+    // before the comment is allowed to fill the rest.
+    char dao[APRS_DAO_BUF_SIZE] = { 0 };
+    if (p->daoEnable && p->ambiguity == 0)
+        aprs_dao_build(p->lat, p->lon, dao);
+
+    char freqBlock[24];
+    objitem_build_freq_block(p->freqMhz, p->freqToneTenths, p->freqDuplex, p->freqOffsetKhz, freqBlock, sizeof(freqBlock));
+
+    size_t daoLen = strlen(dao);
+    size_t textMax = sizeof(report.status_text);
+    size_t bodyMax = (textMax > daoLen) ? textMax - daoLen : 1;
+    size_t used = 0;
+    if (freqBlock[0])
+        str_append(report.status_text, bodyMax, &used, "%s ", freqBlock);
+    if (p->comment[0])
+        str_append(report.status_text, bodyMax, &used, "%s", p->comment);
+    if (daoLen > 0)
+        str_append(report.status_text, textMax, &used, "%s", dao);
+    report.has_status_text = (report.status_text[0] != 0);
+
     char dstCall[8];
-    char infoField[APRS_MAX_STATUS_TEXT_LEN + 16];
+    char infoField[APRS_MICE_INFO_BUF_SIZE];
     if (!aprs_mice_encode(&report, dstCall, infoField, sizeof(infoField))) {
         ESP_LOGW(TAG, "Mic-E beacon not built - position out of range for Mic-E encoding");
         return 0;
@@ -490,11 +527,10 @@ typedef struct {
     float lon;
     char symbol[3]; // table + code + NUL
     // Same frequency block as beacon_params_t.freqMhz and friends, prepended
-    // to the status text instead of a position comment - the freqspec.txt
-    // fallback for radios that decode neither the frequency Object form nor a
-    // position comment's leading bytes (chiefly Mic-E-encoded trackers, whose
-    // own info field has no room left for it). freqMhz <= 0 means no block is
-    // emitted.
+    // to the status text instead of a position comment - the second
+    // advertisement freqspec.txt explicitly endorses, for radios that decode
+    // neither the frequency Object form nor the leading bytes of a position
+    // report's comment. freqMhz <= 0 means no block is emitted.
     float freqMhz;
     uint16_t freqToneTenths;
     int8_t freqDuplex;
@@ -511,9 +547,9 @@ typedef struct {
 //   1. The optional "DDHHMMz" zulu timestamp (APRS101 ch.16), immediately
 //      after '>', when g_config.status_timestamp_en is set.
 //   2. The "FFF.FFFMHz Tnnn +/-nnn" frequency block (freqspec.txt), when this
-//      beacon has a monitor frequency configured - the fallback for radios
-//      that decode neither the frequency Object form nor a position
-//      comment's leading bytes, chiefly Mic-E-encoded trackers.
+//      beacon has a monitor frequency configured - the second advertisement
+//      the spec endorses, for radios that decode neither the frequency
+//      Object form nor the leading bytes of a position report's comment.
 //   3. With the Maidenhead option on, the 6-char grid locator of this
 //      beacon's position, the symbol table byte and the symbol code - the
 //      ">IO91SX/G" form the spec defines.

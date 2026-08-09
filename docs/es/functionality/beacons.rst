@@ -188,8 +188,13 @@ dirigidas y acusa recibo de los mensajes que recibe, así que con *Habilitar
 mensajería* activo las tres balizas de posición lo declaran. El identificador se
 elige en ``buildPositionPacket()`` desde la misma copia bajo lock de la que
 salen los demás campos de la baliza. Los objetos e ítems no se ven afectados —
-llevan sus propios identificadores ``;`` y ``)`` — y Mic-E tiene su propio
-formato fijo.
+llevan sus propios identificadores ``;`` y ``)``. Mic-E declara lo mismo en
+otro lugar: su posición viaja en la dirección de destino AX.25, así que no le
+sobra identificador de tipo de dato, y el indicador de capacidad de mensajería
+lo lleva el byte TYPE (`` ` `` capaz de mensajes, ``'`` rastreador de una sola
+vía) que sigue al byte de tabla de símbolos. Ambos formatos leen la misma marca
+*Habilitar mensajería*, así que no pueden contradecirse sobre lo que esta
+estación declara.
 
 Ambigüedad de posición
 ======================

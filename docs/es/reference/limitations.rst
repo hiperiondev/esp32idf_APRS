@@ -345,7 +345,14 @@ Seguimiento / Balizamiento
    * - Codificación de posición Mic-E (TX)
      - ⚠️ (sobre todo firmware de tracker móvil)
      - ✅
-     - La página del beacon Tracker ofrece una opción Mic-E (``aprs_mice_encode()``); solo posición fija, por lo que el curso/velocidad se envía siempre como "desconocido" y el código de mensaje queda fijo en Off Duty
+     - La página del beacon Tracker ofrece una opción Mic-E
+       (``aprs_mice_encode()``); solo posición fija, por lo que el
+       curso/velocidad se envía siempre como "desconocido" y el código de
+       mensaje queda fijo en Off Duty. El campo de información sigue el orden
+       canónico de ``mic-e-examples.txt``: byte TYPE, altitud, bloque de
+       frecuencia, comentario, ``!DAO!`` y el par Fabricante/Versión que
+       identifica al firmware (la dirección de destino lleva datos de posición,
+       así que el TOCALL ``APxxxx`` no puede)
    * - PHG / potencia-altura-ganancia-directividad
      - ✅
      - ✅
@@ -393,7 +400,9 @@ Seguimiento / Balizamiento
      - ✅
      - Se elige según *Habilitar mensajería*: ``!``/``/`` con la mensajería
        apagada, ``=``/``@`` con ella encendida, así los clientes receptores
-       ofrecen una vía de respuesta
+       ofrecen una vía de respuesta. Al formato Mic-E no le sobra identificador
+       y declara lo mismo con su byte TYPE (`` ` `` / ``'``), leído de la misma
+       marca
 
 Mensajería
 -----------
