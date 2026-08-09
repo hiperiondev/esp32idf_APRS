@@ -131,8 +131,13 @@ static void rollHourlyHistogram(lastheard_entry_t *e, time_t now, bool count_pac
 // dst is LASTHEARD_CALL_LEN bytes and always comes back NUL-terminated; src may
 // be longer than the stored width, in which case it is cut to fit.
 static void makeCallKey(char *dst, const char *src) {
+    // Bound checked ahead of the dereference so the loop stays safe even if a
+    // future caller ever hands in a src that is not NUL-terminated; both
+    // current callers (AX.25 decode and APRS-IS text) already guarantee
+    // termination, so this ordering costs nothing today and removes any
+    // reliance on that guarantee holding forever.
     size_t i = 0;
-    for (; src[i] != 0 && i < LASTHEARD_CALL_LEN - 1; i++)
+    for (; i < LASTHEARD_CALL_LEN - 1 && src[i] != 0; i++)
         dst[i] = (char)toupper((unsigned char)src[i]);
     dst[i] = 0;
 }
