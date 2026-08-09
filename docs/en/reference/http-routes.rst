@@ -132,3 +132,18 @@ auth check to guard.
    * - GET
      - ``/style.css``
      - shared stylesheet
+
+Login lockout policy
+=====================
+
+Requests with no ``Authorization`` header, or a non-``Basic`` one, receive the
+``401`` challenge without being counted as a login failure — this is the
+credential-less half of the Basic Auth handshake every browser performs on
+its own. Only a request that presented credentials and was rejected counts.
+After 5 such rejections from the same source IPv4 address, further requests
+get ``429 Too Many Requests`` (with ``Retry-After``) for a window starting at
+5 s and doubling on each further rejection while locked out, capped at 300 s;
+a window that elapses without a successful login rearms one failure below the
+threshold, so repeated stale credentials re-trigger only the base 5 s window
+each time rather than climbing back to the cap. See :ref:`en-web-admin` for
+details.

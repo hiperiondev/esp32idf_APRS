@@ -897,10 +897,16 @@ size_t telemetry_build_comment_tlm(char *out, size_t out_max) {
     // sequence number is base-91 encoded whole (0-8280 window, matching the
     // "T#..." field's own 0-999 modulo window in spirit but with more
     // headroom), and each enabled, currently resolved analog channel is
-    // base-91 encoded from the identical raw reading. A channel that is
-    // disabled or not currently resolved is skipped entirely - the base-91
-    // form has no placeholder-comma shorthand to hold its place with, unlike
-    // the "T#..." report, so the group simply carries fewer pairs.
+    // base-91 encoded from the identical raw reading.
+    //
+    // The APRS 1.2 comment-telemetry group is positional: the n-th value pair
+    // after the sequence pair is channel An, with no per-pair channel
+    // identifier and no placeholder-comma shorthand like the "T#..." report
+    // has. A pair may therefore be emitted for An only once pairs have been
+    // emitted for A1..An-1: the encoder walks the channels in order and stops
+    // at the first one that is disabled or not currently resolved, so the
+    // group always carries an unambiguous, contiguous prefix of channels
+    // rather than a gap that would shift every later channel one slot left.
     telemetry_lock();
     long seqVal = (long)(s_sequence % (91u * 91u));
     long anaVal[TLM_CH];
@@ -911,17 +917,21 @@ size_t telemetry_build_comment_tlm(char *out, size_t out_max) {
     }
     telemetry_unlock();
 
-    char group[2 + 2 + TLM_CH * 2 + 1 + 1]; // '|' + seq pair + up to 5 value pairs + '|' + NUL
+    char group[1 + 2 + TLM_CH * 2 + 1 + 1]; // '|' + seq pair + up to 5 value pairs + '|' + NUL
     size_t u = 0;
     group[u++] = '|';
     encode_base91_pair(seqVal, group + u);
     u += 2;
+    int anaEmitted = 0;
     for (int i = 0; i < TLM_CH; i++) {
         if (!anaPresent[i])
-            continue;
+            break;
         encode_base91_pair(anaVal[i], group + u);
         u += 2;
+        anaEmitted++;
     }
+    if (anaEmitted < ana_count)
+        ESP_LOGD(TAG, "comment telemetry group truncated at channel A%d (not enabled or not resolved)", anaEmitted + 1);
     group[u++] = '|';
     group[u] = 0;
 

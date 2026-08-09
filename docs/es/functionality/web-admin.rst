@@ -205,3 +205,29 @@ Feeds en vivo
   en vivo.
 
 Véase :ref:`es-http-routes` para la tabla completa de rutas.
+
+Política de bloqueo de inicio de sesión
+========================================
+
+``web_check_auth()`` lleva la cuenta de los intentos fallidos de Basic Auth por
+dirección IPv4 de origen en una tabla pequeña de tamaño fijo
+(``components/webconfig/web_common.c``). Solo cuenta como fallo una petición
+que realmente presentó credenciales y fue rechazada — un payload Basic
+malformado, o un usuario/contraseña incorrectos. Una petición sin cabecera
+``Authorization``, o con una que no es ``Basic``, es la mitad del handshake de
+Basic Auth que todo navegador realiza por sí solo, y se responde con ``401``
+sin cargarse contra el presupuesto; esto es lo que permite que los pollers
+autenticados del panel (``/dashinfo``, ``/sidebarInfo``, ``/heapinfo``,
+``/lastheard``, ``/igate_traffic``) queden frente a una página de login nueva
+sin disparar nunca un bloqueo por sí mismos.
+
+Tras 5 credenciales rechazadas consecutivas desde el mismo origen, ese origen
+queda bloqueado y toda petición posterior recibe ``429 Too Many Requests`` con
+una cabecera ``Retry-After`` en lugar de un ``401``, durante una ventana que
+empieza en 5 s y se duplica con cada nuevo intento rechazado mientras sigue
+bloqueado, con un tope de 300 s. Una ventana que expira sin un login exitoso
+se rearma un fallo por debajo del umbral en lugar de retomar el recuento
+acumulado, de modo que un cliente que sigue reintentando las mismas
+credenciales caducadas tras cada expiración solo vuelve a disparar el bloqueo
+base de 5 s cada vez, en lugar de escalar directamente hasta el tope de 300 s.
+Un login exitoso limpia por completo la entrada del origen.

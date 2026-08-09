@@ -133,3 +133,18 @@ hay nada que una comprobación de autenticación pueda proteger.
    * - GET
      - ``/style.css``
      - hoja de estilos compartida
+
+Política de bloqueo de inicio de sesión
+========================================
+
+Las peticiones sin cabecera ``Authorization``, o con una que no sea
+``Basic``, reciben el desafío ``401`` sin contarse como fallo de login — es la
+mitad sin credenciales del handshake de Basic Auth que todo navegador realiza
+por sí solo. Solo cuenta una petición que presentó credenciales y fue
+rechazada. Tras 5 rechazos así desde el mismo origen IPv4, las peticiones
+siguientes reciben ``429 Too Many Requests`` (con ``Retry-After``) durante una
+ventana que empieza en 5 s y se duplica con cada rechazo mientras sigue
+bloqueado, con tope de 300 s; una ventana que expira sin login exitoso se
+rearma un fallo por debajo del umbral, de modo que credenciales caducadas
+repetidas solo disparan el bloqueo base de 5 s cada vez en lugar de escalar
+hasta el tope. Véase :ref:`es-web-admin` para más detalles.

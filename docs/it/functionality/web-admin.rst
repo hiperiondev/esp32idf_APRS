@@ -204,3 +204,30 @@ Feed in tempo reale
   tempo reale.
 
 Vedi :ref:`it-http-routes` per la tabella completa delle route.
+
+Politica di blocco del login
+=============================
+
+``web_check_auth()`` tiene traccia dei tentativi di Basic Auth falliti per
+indirizzo IPv4 di origine in una piccola tabella di dimensione fissa
+(``components/webconfig/web_common.c``). Conta come fallimento solo una
+richiesta che ha effettivamente presentato credenziali e che è stata
+rifiutata — un payload Basic malformato, oppure una coppia utente/password
+errata. Una richiesta senza intestazione ``Authorization``, o con
+un'intestazione che non è ``Basic``, è la metà senza credenziali dell'handshake
+Basic Auth che ogni browser esegue da sé, e riceve una risposta ``401`` senza
+essere addebitata sul budget; è questo che permette ai poller autenticati
+della dashboard (``/dashinfo``, ``/sidebarInfo``, ``/heapinfo``,
+``/lastheard``, ``/igate_traffic``) di trovarsi davanti a una nuova pagina di
+login senza mai far scattare da soli un blocco.
+
+Dopo 5 credenziali rifiutate consecutive dalla stessa origine, quell'origine
+viene bloccata e ogni richiesta successiva riceve ``429 Too Many Requests``
+con un'intestazione ``Retry-After`` invece di un ``401``, per una finestra che
+parte da 5 s e raddoppia a ogni ulteriore tentativo rifiutato mentre il blocco
+è ancora attivo, con un tetto di 300 s. Una finestra che scade senza un login
+riuscito viene riarmata un fallimento sotto la soglia invece di riprendere dal
+conteggio accumulato, così un client che continua a riprovare le stesse
+credenziali scadute dopo ogni scadenza fa scattare di nuovo solo il blocco
+base di 5 s ogni volta, invece di risalire direttamente al tetto di 300 s. Un
+login riuscito azzera completamente la voce di quell'origine.

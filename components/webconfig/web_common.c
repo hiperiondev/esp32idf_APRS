@@ -124,12 +124,20 @@ static web_auth_track_t *web_auth_track_find(uint32_t ip) {
 }
 
 // Returns the seconds remaining in this source's lockout (0 if not locked).
+// A lockout whose window has just elapsed is rearmed here at one failure
+// below the threshold rather than left at its accumulated fail_count: a
+// source that keeps presenting the same stale credentials after every
+// window expires this way re-triggers only the base lockout duration each
+// time, instead of resuming the exponential backoff from wherever it left
+// off and ratcheting straight to the cap.
 static int web_auth_lockout_remaining_s(uint32_t ip) {
     for (int i = 0; i < WEB_AUTH_TRACK_SLOTS; i++) {
         if (s_auth_track[i].ip == ip && s_auth_track[i].locked_until > 0) {
             int64_t remaining_us = s_auth_track[i].locked_until - esp_timer_get_time();
             if (remaining_us > 0)
                 return (int)(remaining_us / 1000000) + 1;
+            s_auth_track[i].locked_until = 0;
+            s_auth_track[i].fail_count = WEB_AUTH_MAX_ATTEMPTS - 1;
             return 0;
         }
     }
@@ -276,10 +284,10 @@ bool web_check_auth(httpd_req_t *req) {
 
     char hdr[160];
     if (httpd_req_get_hdr_value_str(req, "Authorization", hdr, sizeof(hdr)) != ESP_OK) {
-        goto need_auth;
+        goto challenge; // no Authorization header: first half of the Basic handshake, not a guess
     }
     if (strncmp(hdr, "Basic ", 6) != 0)
-        goto need_auth;
+        goto challenge; // not a Basic credential: same as no header for counting purposes
 
     {
         unsigned char decoded[128];
@@ -308,7 +316,16 @@ bool web_check_auth(httpd_req_t *req) {
     }
 
 need_auth:
+    // Reached only when credentials were actually presented and rejected:
+    // a malformed Basic payload, or a user/password mismatch. This is the
+    // one case that counts as a guess against the lockout budget.
     web_auth_note_failure(client_ip);
+
+challenge:
+    // Sends the 401 challenge without touching the lockout counter: every
+    // browser reaches this on the first, credential-less half of the Basic
+    // Auth handshake, so it must never be charged against the budget that
+    // protects the real guesses handled above.
     httpd_resp_set_status(req, "401 Unauthorized");
     httpd_resp_set_hdr(req, "WWW-Authenticate", "Basic realm=\"" APRS_SOFTWARE_NAME "\"");
     httpd_resp_set_type(req, "text/html");

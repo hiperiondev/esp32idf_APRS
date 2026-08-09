@@ -186,3 +186,28 @@ Live feeds
 * ``/dashinfo``, ``/sidebarInfo``, ``/heapinfo`` — compact live info fragments.
 
 See :ref:`en-http-routes` for the full route table.
+
+Login lockout policy
+=====================
+
+``web_check_auth()`` tracks failed Basic Auth attempts per source IPv4 address
+in a small fixed-size table (``components/webconfig/web_common.c``). Only a
+request that actually presented credentials and was rejected — a malformed
+Basic payload, or a wrong username/password — counts as a failure. A request
+with no ``Authorization`` header at all, or one that isn't ``Basic``, is the
+challenge half of the HTTP Basic handshake that every browser performs on its
+own, and is answered with a ``401`` without being charged against the budget;
+this is what lets the dashboard's authenticated pollers (``/dashinfo``,
+``/sidebarInfo``, ``/heapinfo``, ``/lastheard``, ``/igate_traffic``) sit behind
+a fresh login page without ever tripping a lockout on their own.
+
+After 5 consecutive rejected credentials from the same source, that source is
+locked out and every further request gets ``429 Too Many Requests`` with a
+``Retry-After`` header instead of a ``401``, for a window that starts at 5 s
+and doubles on each further rejected attempt while still locked out, capped at
+300 s. A window that elapses without a successful login rearms one failure
+below the threshold rather than resuming from the accumulated count, so a
+client that keeps retrying the same stale credentials after every window
+expires re-triggers only the base 5 s lockout each time, instead of ratcheting
+straight back to the 300 s cap. A successful login clears the source's slot
+entirely.

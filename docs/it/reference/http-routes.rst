@@ -133,3 +133,18 @@ controllo di autenticazione possa proteggere.
    * - GET
      - ``/style.css``
      - foglio di stile condiviso
+
+Politica di blocco del login
+=============================
+
+Le richieste senza intestazione ``Authorization``, o con una che non è
+``Basic``, ricevono la sfida ``401`` senza essere contate come fallimento di
+login — è la metà senza credenziali dell'handshake Basic Auth che ogni
+browser esegue da sé. Conta solo una richiesta che ha presentato credenziali
+ed è stata rifiutata. Dopo 5 rifiuti così dalla stessa origine IPv4, le
+richieste successive ricevono ``429 Too Many Requests`` (con
+``Retry-After``) per una finestra che parte da 5 s e raddoppia a ogni rifiuto
+mentre il blocco è attivo, con tetto a 300 s; una finestra che scade senza
+login riuscito viene riarmata un fallimento sotto la soglia, così credenziali
+scadute ripetute fanno scattare solo il blocco base di 5 s ogni volta invece
+di risalire fino al tetto. Vedi :ref:`it-web-admin` per i dettagli.
