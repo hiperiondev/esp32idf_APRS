@@ -70,30 +70,34 @@ typedef enum {
  * traffic that was in fact transmitted.
  */
 typedef enum {
-    DROP_DUP = 0,         /**< Reserved: duplicates are tracked separately in igate_stats_t.dupCount and do not currently bump this array (kept for
-                             future/other-component use). */
-    DROP_TOO_SHORT,       /**< RF frame's info field shorter than the minimum usable length (IGate RF->INET). */
-    DROP_SRC_PLACEHOLDER, /**< RF frame's source callsign matches one of the APRS-IS basic RX-IGate blacklist prefixes - NOCALL, N0CALL, WIDE, TRACE, TCP -
-                             which never identifies a real originating station and must never be gated onto APRS-IS (IGate RF->INET). */
-    DROP_NOT_APRS,        /**< RF frame is not a valid AX.25 UI frame with PID 0xF0 (no layer 3) - IGating.aspx requires exactly that shape of every frame
-                             gated onto APRS-IS, checked here independently of the modem's own allowNonAprs RX setting (IGate RF->INET). */
-    DROP_PATH_TOKEN,      /**< RF frame's path carries RFONLY/TCPIP/qA/NOGATE (IGate RF->INET). */
-    DROP_3RDPARTY_LOOP,   /**< RF frame is third-party ('}') traffic whose inner header already carries TCPIP/TCPXX, i.e. it already reached APRS-IS once
-                             (IGate RF->INET). */
-    DROP_3RDPARTY_NESTED, /**< INET->RF selective third-party unwrap: the whitelisted station's payload is itself third-party-wrapped (a second '}'
-                             immediately after the unwrapped inner header's ':'), so unwrapping it further would re-gate an already multiply-wrapped frame.
-                             Rejected outright rather than unwrapped again or truncated (see aprs_service.c's inet2rfHandler()). */
-    DROP_SAT_NOT_USED,    /**< RF frame repeated via a known satellite gate whose call isn't marked used ('*') (IGate RF->INET). */
-    DROP_GENERIC_QUERY,   /**< Frame/line is a generic query (info field starts with '?', e.g. "?APRS?", "?WX?") - dropped unconditionally in both
-                             directions regardless of rf2inetFilter/inet2rfFilter, since relaying one lets a single RF station trigger a flood of
-                             responses across the whole APRS-IS network. A directed query (":CALLSIGN :?APRSD", data type ':') is unaffected. */
-    DROP_TYPE_FILTER,     /**< Payload type not allowed by rf2inetFilter (RF->INET) or inet2rfFilter (INET->RF). */
-    DROP_RANGE_FILTER,    /**< Blocked by the local RF->INET range gate (g_config.rf2inet_range_en/rf2inet_range_km, see aprs_filter_haversine_km()). */
-    DROP_PREFIX_FILTER,   /**< Blocked by the local RF->INET callsign-prefix gate (g_config.rf2inet_prefix_en/rf2inet_prefixes, see aprs_filter_prefix_match()).
-                           */
-    DROP_BUDLIST,         /**< Blocked by the local callsign whitelist/blacklist (see aprs_filter_budlist_pass()). */
-    DROP_MSG_NOT_LOCAL,   /**< INET->RF message whose addressee has not been heard on the local RF channel inside g_config.igate_local_window_sec, so there is
-                             nobody in earshot to transmit it to. */
+    DROP_DUP = 0,            /**< Reserved: duplicates are tracked separately in igate_stats_t.dupCount and do not currently bump this array (kept for
+                                future/other-component use). */
+    DROP_TOO_SHORT,          /**< RF frame's info field shorter than the minimum usable length (IGate RF->INET). */
+    DROP_SRC_PLACEHOLDER,    /**< RF frame's source callsign matches one of the APRS-IS basic RX-IGate blacklist prefixes - NOCALL, N0CALL, WIDE, TRACE, TCP -
+                                which never identifies a real originating station and must never be gated onto APRS-IS (IGate RF->INET). */
+    DROP_NOT_APRS,           /**< RF frame is not a valid AX.25 UI frame with PID 0xF0 (no layer 3) - IGating.aspx requires exactly that shape of every frame
+                                gated onto APRS-IS, checked here independently of the modem's own allowNonAprs RX setting (IGate RF->INET). */
+    DROP_PATH_TOKEN,         /**< RF frame's path carries RFONLY/TCPIP/qA/NOGATE (IGate RF->INET). */
+    DROP_3RDPARTY_LOOP,      /**< RF frame is third-party ('}') traffic whose inner header already carries TCPIP/TCPXX, i.e. it already reached APRS-IS once
+                                (IGate RF->INET). */
+    DROP_3RDPARTY_NESTED,    /**< INET->RF selective third-party unwrap: the whitelisted station's payload is itself third-party-wrapped (a second '}'
+                                immediately after the unwrapped inner header's ':'), so unwrapping it further would re-gate an already multiply-wrapped frame.
+                                Rejected outright rather than unwrapped again or truncated (see aprs_service.c's inet2rfHandler()). */
+    DROP_3RDPARTY_NESTED_RF, /**< RF frame is third-party ('}') traffic whose payload, once unwrapped, is itself third-party-wrapped (a second '}'
+                                immediately after the unwrapped inner header's ':'). Rejected outright instead of being unwrapped only once and passed on,
+                                which would otherwise leave a still-'}'-prefixed payload for the type filter to catch incidentally rather than by design
+                                (see igate.c's thirdPartyUnwrap()). */
+    DROP_SAT_NOT_USED,       /**< RF frame repeated via a known satellite gate whose call isn't marked used ('*') (IGate RF->INET). */
+    DROP_GENERIC_QUERY,      /**< Frame/line is a generic query (info field starts with '?', e.g. "?APRS?", "?WX?") - dropped unconditionally in both
+                                directions regardless of rf2inetFilter/inet2rfFilter, since relaying one lets a single RF station trigger a flood of
+                                responses across the whole APRS-IS network. A directed query (":CALLSIGN :?APRSD", data type ':') is unaffected. */
+    DROP_TYPE_FILTER,        /**< Payload type not allowed by rf2inetFilter (RF->INET) or inet2rfFilter (INET->RF). */
+    DROP_RANGE_FILTER,       /**< Blocked by the local RF->INET range gate (g_config.rf2inet_range_en/rf2inet_range_km, see aprs_filter_haversine_km()). */
+    DROP_PREFIX_FILTER, /**< Blocked by the local RF->INET callsign-prefix gate (g_config.rf2inet_prefix_en/rf2inet_prefixes, see aprs_filter_prefix_match()).
+                         */
+    DROP_BUDLIST,       /**< Blocked by the local callsign whitelist/blacklist (see aprs_filter_budlist_pass()). */
+    DROP_MSG_NOT_LOCAL, /**< INET->RF message whose addressee has not been heard on the local RF channel inside g_config.igate_local_window_sec, so there is
+                           nobody in earshot to transmit it to. */
     DROP_MSG_SENDER_LOCAL,   /**< INET->RF message whose sender was itself heard on RF inside the same window: both ends of the conversation are local, so the
                                 original transmission was already on the air and gating the copy back would echo it. */
     DROP_HEADER_FORBIDS_RF,  /**< INET->RF line whose header carries TCPXX, NOGATE, RFONLY, qAX or qAZ - tokens/q-constructs whose whole purpose is to forbid

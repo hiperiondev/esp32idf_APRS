@@ -164,6 +164,8 @@ const char *igate_drop_reason_name(drop_reason_t reason) {
             return "3rd-party loop (TCPIP/TCPXX)";
         case DROP_3RDPARTY_NESTED:
             return "3rd-party nested (INET->RF)";
+        case DROP_3RDPARTY_NESTED_RF:
+            return "3rd-party nested (RF->INET)";
         case DROP_SAT_NOT_USED:
             return "satellite not used";
         case DROP_GENERIC_QUERY:
@@ -376,16 +378,21 @@ bool igate_send_raw(const char *line, size_t len) {
 //
 // If the inner header already carries a TCPIP/TCPXX q-construct token, the
 // packet has already been on APRS-IS once; gating it again is how IGate
-// loops are made, so the caller must drop it instead. Otherwise this parses
-// the inner "SRC>DST,PATH:" header up to (and excluding) the outer '}' and
-// the trailing ':', so the caller can gate the wrapped packet under its own
-// source/destination/path exactly as if it had been heard directly.
+// loops are made, so the caller must drop it instead. If the inner payload
+// is itself third-party-wrapped (a second '}' immediately after the inner
+// header's ':'), unwrapping only one layer would hand the caller a payload
+// that still starts with '}' and gate it under the wrong identity, so the
+// caller must reject it outright instead of unwrapping it further or
+// passing it on for the type filter to catch incidentally. Otherwise this
+// parses the inner "SRC>DST,PATH:" header up to (and excluding) the outer
+// '}' and the trailing ':', so the caller can gate the wrapped packet under
+// its own source/destination/path exactly as if it had been heard directly.
 //
 // info must be NUL-terminated and start with '}'. On success, *innerInfo
 // points at the first byte of the inner payload (still inside info, not a
 // copy) and *innerInfoLen is its length up to the terminating NUL.
 static bool thirdPartyUnwrap(const char *info, char *outSrc, size_t outSrcMax, char *outDst, size_t outDstMax, char *outPath, size_t outPathMax,
-                             const char **innerInfo, size_t *innerInfoLen, bool *isLoop) {
+                             const char **innerInfo, size_t *innerInfoLen, bool *isLoop, bool *isNested) {
     const char *gt = strchr(info + 1, '>');
     const char *colon = strchr(info + 1, ':');
     if (!gt || !colon || colon <= gt)
@@ -424,6 +431,14 @@ static bool thirdPartyUnwrap(const char *info, char *outSrc, size_t outSrcMax, c
     // this frame already reached APRS-IS once, via whichever station wrapped
     // it. Gating it again would feed it back to the server a second time.
     *isLoop = (strstr(outPath, "TCPIP") != NULL) || (strstr(outPath, "TCPXX") != NULL);
+
+    // The nesting guard: a payload that starts with another '}' right after
+    // the inner header's ':' is wrapped more than one level deep. Unwrapping
+    // only this outer layer would leave a still-'}'-prefixed payload for the
+    // caller to gate under this layer's source/destination/path, which is
+    // wrong, so nesting is rejected here rather than relying on a still-
+    // wrapped payload being unclassifiable further downstream.
+    *isNested = (colon[1] == '}');
 
     *innerInfo = colon + 1;
     *innerInfoLen = strlen(colon + 1);
@@ -576,11 +591,13 @@ int igateProcess(ax25_msg_t *packet) {
     // which never passes aprs_filter_pass()) or gated under the relaying
     // station's callsign. A frame whose inner header already shows TCPIP/
     // TCPXX has already reached APRS-IS once and is dropped as a loop
-    // instead of being gated a second time. Everything below this block
-    // (type filter, range/prefix filter, budlist, header build, payload
-    // copy) then runs against the effective src/dst/path/info - the inner
-    // packet's own, if unwrapping applied, or the frame's own otherwise -
-    // so a single code path handles both cases.
+    // instead of being gated a second time. A frame whose unwrapped payload
+    // is itself third-party-wrapped is dropped as nested rather than gated
+    // under this layer's identity or passed on still '}'-prefixed. Everything
+    // below this block (type filter, range/prefix filter, budlist, header
+    // build, payload copy) then runs against the effective src/dst/path/info
+    // - the inner packet's own, if unwrapping applied, or the frame's own
+    // otherwise - so a single code path handles both cases.
     char effSrc[12] = { 0 };
     char effDst[12] = { 0 };
     char effPath[200] = { 0 };
@@ -592,12 +609,17 @@ int igateProcess(ax25_msg_t *packet) {
         const char *innerInfo;
         size_t innerInfoLen;
         bool isLoop;
-        if (!thirdPartyUnwrap(info, effSrc, sizeof(effSrc), effDst, sizeof(effDst), effPath, sizeof(effPath), &innerInfo, &innerInfoLen, &isLoop)) {
+        bool isNested;
+        if (!thirdPartyUnwrap(info, effSrc, sizeof(effSrc), effDst, sizeof(effDst), effPath, sizeof(effPath), &innerInfo, &innerInfoLen, &isLoop, &isNested)) {
             s_stats.dropByReason[DROP_TOO_SHORT]++;
             return 0;
         }
         if (isLoop) {
             s_stats.dropByReason[DROP_3RDPARTY_LOOP]++;
+            return 0;
+        }
+        if (isNested) {
+            s_stats.dropByReason[DROP_3RDPARTY_NESTED_RF]++;
             return 0;
         }
         effInfo = innerInfo;
