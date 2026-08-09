@@ -148,6 +148,13 @@ static void render_qru_select(httpd_req_t *req, const char *name, const char *cu
 // Height keeps feet as its underlying <select> value (the APRS PHG code table's
 // own unit) while every visible label is shown in meters, identical to the
 // Station page.
+//
+// This block shares the transmitted info field's 7-byte data-extension slot
+// with the element's own course/speed (Group 3 above): a non-zero Speed there
+// always wins that slot on-air, so PHG is only actually transmitted while
+// Speed is 0, regardless of the "Enable PHG" checkbox below - see the
+// Group 3 course/speed comment and objitem_build_info_field() in
+// objects_items.c.
 static void render_objitem_phg(httpd_req_t *req, int i, const objitem_t *b) {
     char name[20];
     char buf[256];
@@ -307,6 +314,13 @@ esp_err_t page_objects_get(httpd_req_t *req) {
         snprintf(name, sizeof(name), "oSym%d", i + 1);
         web_field_symbol(req, TR_F_OBJITEM_SYMBOL, name, sym2);
 
+        // Course/speed and the PHG block (Group 9 below) share the same
+        // 7-byte data-extension slot in the transmitted info field (APRS101
+        // ch.7/ch.11), so the two are mutually exclusive on-air. A non-zero
+        // speed here always takes that slot, silently omitting PHG from the
+        // packet even if the Group 9 "Enable PHG" checkbox is also checked -
+        // see objitem_build_info_field() in objects_items.c. To transmit PHG
+        // for this element, leave Speed at 0.
         snprintf(name, sizeof(name), "oCrs%d", i + 1);
         web_field_int(req, TR_F_OBJITEM_COURSE, name, (long)b->course, 0, 359);
         snprintf(name, sizeof(name), "oSpd%d", i + 1);
