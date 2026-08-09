@@ -145,6 +145,8 @@ static bool load_locked(objitems_t *out, bool *out_missing) {
             b->send_inet = cJSON_IsTrue(v);
             v = cJSON_GetObjectItem(o, "item");
             b->is_item = cJSON_IsTrue(v);
+            v = cJSON_GetObjectItem(o, "perm");
+            b->permanent = cJSON_IsTrue(v);
             v = cJSON_GetObjectItem(o, "act");
             // Default to active(=live) when the key is absent.
             b->active = v ? cJSON_IsTrue(v) : true;
@@ -358,6 +360,7 @@ static bool save_locked(const objitems_t *in) {
         fprintf(f, "\"rf\":%s,", b->send_rf ? "true" : "false");
         fprintf(f, "\"inet\":%s,", b->send_inet ? "true" : "false");
         fprintf(f, "\"item\":%s,", b->is_item ? "true" : "false");
+        fprintf(f, "\"perm\":%s,", b->permanent ? "true" : "false");
         fprintf(f, "\"act\":%s,", b->active ? "true" : "false");
         fputs("\"name\":", f);
         json_write_escaped(f, name);
@@ -806,11 +809,19 @@ static void objitem_build_info_field(const objitem_t *b, bool live, char *out, s
         memcpy(name9, b->name, nl);
         name9[OBJITEM_NAME_MAX] = 0;
 
+        // A permanent Object carries the fixed "111111z" pseudo-timestamp
+        // (freqspec.txt) instead of the live UTC day/hour/minute, marking it
+        // as replaceable only by another Object from the same originating
+        // station.
         char ts[8];
-        time_t now = time(NULL);
-        struct tm tmv;
-        gmtime_r(&now, &tmv);
-        snprintf(ts, sizeof(ts), "%02d%02d%02dz", tmv.tm_mday, tmv.tm_hour, tmv.tm_min);
+        if (b->permanent) {
+            snprintf(ts, sizeof(ts), "111111z");
+        } else {
+            time_t now = time(NULL);
+            struct tm tmv;
+            gmtime_r(&now, &tmv);
+            snprintf(ts, sizeof(ts), "%02d%02d%02dz", tmv.tm_mday, tmv.tm_hour, tmv.tm_min);
+        }
 
         snprintf(out, out_size, ";%s%c%s%s%s%s", name9, live ? '*' : '_', ts, posField, ext, text);
     }

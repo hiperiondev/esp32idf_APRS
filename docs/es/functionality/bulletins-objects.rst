@@ -73,13 +73,28 @@ Objetos e Ítems
 * **rumbo/velocidad** y **comentario** opcionales,
 * una habilitación **RF** y/o **APRS-IS**,
 * un **intervalo de repetición** con decaimiento de intervalo opcional,
-* una bandera **"permanente"** al estilo YAAC: permanente → un Ítem sin marca de
-  tiempo, en caso contrario un Objeto con marca de tiempo.
+* un control de **Tipo**: Objeto (con marca de tiempo, ``;``) o Ítem (sin
+  marca de tiempo, ``)``).
 
 **Matar** un objeto lo transmite unas cuantas veces extra (para que los oyentes
 lo eliminen de sus mapas), luego lo deshabilita automáticamente. Los
 objetos/ítems persisten en su propio ``/storage/objitems.json``. La página está
 condicionada por el interruptor de compilación ``ENABLE_OBJECTS_ITEMS``.
+
+Objetos permanentes
+--------------------
+
+Un Objeto también puede marcarse como **permanente**. Un Objeto permanente se
+transmite con la marca de tiempo ficticia fija ``111111z`` que define
+``freqspec.txt``, en lugar de la hora ``DDHHMMz`` en vivo. Esta es la
+convención recomendada para objetos de frecuencia de repetidores de voz y
+anuncios recurrentes similares propios de la estación: una estación receptora
+interpreta la marca ``111111z`` como indicación de que el Objeto no debe ser
+reemplazado por ningún Objeto homónimo de otra estación, y que solo la propia
+estación de origen puede actualizarlo o moverlo.
+
+La casilla Permanente solo se aplica a un Objeto; no tiene ningún efecto sobre
+un Ítem, que nunca lleva marca de tiempo de ningún tipo.
 
 Por qué archivos JSON separados
 ===============================

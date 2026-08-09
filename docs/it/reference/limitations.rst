@@ -541,7 +541,12 @@ Oggetti, Item, Bollettini, Stato
    * - Item propri (senza timestamp)
      - ✅
      - ✅
-     - Stesso pool di 5 slot; flag "permanente" in stile YAAC sceglie tra Oggetto e Item
+     - Stesso pool di 5 slot; un controllo di Tipo sceglie tra Oggetto e Item
+   * - Oggetti permanenti (``111111z``)
+     - ✅
+     - ✅
+     - Casella esclusiva dell'Oggetto; emette il timestamp fittizio fisso
+       ``111111z`` di freqspec.txt invece di quello in tempo reale
    * - "Uccidere" un oggetto/item
      - ✅
      - ✅

@@ -27,9 +27,10 @@
  *     ;NAMExxxxx*DDHHMMz<lat>/<lon><sym>CSE/SPD<comment>
  *     - name is EXACTLY 9 chars, space-padded
  *     - '*' = live, '_' = killed
- *     - DDHHMMz = zulu day/hour/minute timestamp
+ *     - DDHHMMz = zulu day/hour/minute timestamp, or the fixed `111111z`
+ *       pseudo-timestamp when ::objitem_t.permanent is set (freqspec.txt)
  *
- *   Item (permanent / non-timestamped):
+ *   Item (non-timestamped):
  *     )NAME!<lat>/<lon><sym>CSE/SPD<comment>
  *     - name is 3..9 chars, variable length
  *     - '!' = live, '_' = killed  (the char right after the name)
@@ -40,9 +41,12 @@
  *   quality code - e.g. "088/036/270/729" for a station moving at course 088
  *   speed 036 with a bearing of 270 and NRQ 729.
  *
- * The choice between Object and Item mirrors YAAC's "Permanent" flag: a
- * permanent asset is sent as a (non-timestamped) Item, a time-relevant asset
- * as a (timestamped) Object. See the YAAC object editor documentation:
+ * The choice between Object and Item is independent of permanence: an Item
+ * (::objitem_t.is_item) never carries a timestamp at all, while an Object may
+ * be either live-timestamped or marked permanent (::objitem_t.permanent), in
+ * which case it carries the fixed `111111z` pseudo-timestamp defined by
+ * freqspec.txt for recommended-frequency objects instead of the current UTC
+ * `DDHHMMz`. See the YAAC object editor documentation:
  *   https://www.ka2ddo.org/ka2ddo/YAACdocs/objecteditor.html
  *
  * RAM policy (identical to bulletins.h): Objects/Items deliberately do NOT
@@ -189,8 +193,12 @@ typedef struct {
     bool send_rf;   /**< Transmit on RF (gated further by scope). */
     bool send_inet; /**< Transmit to APRS-IS / Internet (gated further by scope). */
 
-    bool is_item; /**< true => Item (non-timestamped, ')'); false => Object (timestamped, ';'). Mirrors YAAC "Permanent". */
+    bool is_item; /**< true => Item (non-timestamped, ')'); false => Object (timestamped, ';'). */
     bool active;  /**< true => live report; false => kill report (YAAC "Object active"). */
+
+    bool permanent; /**< Object only (ignored for an Item): when true, the timestamp field carries the fixed `111111z` pseudo-timestamp instead of the
+                        current UTC `DDHHMMz` (freqspec.txt). This is YAAC's "Permanent" flag: it declares the Object must not be replaced by any other
+                        station's similarly-named Object, only updated or moved by the same originating station. */
 
     char name[OBJITEM_NAME_MAX + 1]; /**< Object/Item name (1..9 chars, NUL-terminated). */
 

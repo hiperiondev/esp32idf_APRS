@@ -218,7 +218,11 @@
 #define TR_F_OBJITEM_TIMING_SECTION                        "Temporizzazione Beacon"
 #define TR_F_OBJITEM_TYPE                                  "Tipo"
 #define TR_F_OBJITEM_TYPE_OBJECT                           "Oggetto (con timestamp)"
-#define TR_F_OBJITEM_TYPE_ITEM                             "Item (permanente)"
+#define TR_F_OBJITEM_TYPE_ITEM                             "Item (senza timestamp)"
+#define TR_F_OBJITEM_PERMANENT                             "Permanente (solo Oggetto, 111111z)"
+#define TR_F_OBJITEM_PERMANENT_NOTE                                                                                                                            \
+    "Un Oggetto permanente viene inviato con il timestamp fisso 111111z invece dell'ora corrente, cosi non viene mai sostituito da un Oggetto omonimo di "    \
+    "un'altra stazione - solo la stazione di origine puo aggiornarlo o spostarlo. Non ha effetto su un Item."
 #define TR_F_OBJITEM_ACTIVE                                "Attivo (deseleziona = elimina)"
 #define TR_F_OBJITEM_SCOPE                                 "Ambito"
 #define TR_F_OBJITEM_SCOPE_PRIVATE                         "Privato (non trasmesso)"
@@ -283,7 +287,7 @@
 #define TR_F_OBJITEM_SLOW_RATE                             "Intervallo lento (s, 0 = nessun decadimento)"
 #define TR_F_OBJITEM_DECAY                                 "Rapporto di decadimento (es. 2.0, <1 = nessuno)"
 #define TR_NOTE_OBJITEM                                                                                                                                        \
-    "Gli Oggetti hanno un timestamp (;NOME); gli Item sono permanenti ()NOME). Deselezionando Attivo si inviano report di eliminazione, poi si disabilita "    \
+    "Gli Oggetti hanno un timestamp (;NOME); gli Item non lo hanno mai ()NOME). Deselezionando Attivo si inviano report di eliminazione, poi si disabilita "   \
     "automaticamente. L'Ambito limita la trasmissione indipendentemente dalle caselle RF/Internet."
 #define TR_F_STATUS_BEACON           "Beacon di stato"
 #define TR_F_STATUS_INTERVAL_S_0_OFF "Intervallo stato (s, 0=off)"

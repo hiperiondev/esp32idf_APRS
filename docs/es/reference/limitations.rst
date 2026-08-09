@@ -536,7 +536,12 @@ Objetos, Items, Boletines, Estado
    * - Items propios (sin marca de tiempo)
      - ✅
      - ✅
-     - Mismo pool de 5 ranuras; bandera "permanente" al estilo YAAC elige Objeto vs. Item
+     - Mismo pool de 5 ranuras; un control de Tipo elige Objeto vs. Item
+   * - Objetos permanentes (``111111z``)
+     - ✅
+     - ✅
+     - Casilla exclusiva de Objeto; emite la marca de tiempo ficticia fija
+       ``111111z`` de freqspec.txt en vez de la marca en vivo
    * - "Matar" un objeto/item
      - ✅
      - ✅

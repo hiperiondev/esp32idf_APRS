@@ -75,13 +75,28 @@ Oggetti e Item
 * **rotta/velocità** e **commento** opzionali,
 * un'abilitazione **RF** e/o **APRS-IS**,
 * un **intervallo di ripetizione** con decadimento dell'intervallo opzionale,
-* un flag **"permanente"** in stile YAAC: permanente → un Item senza timestamp,
-  altrimenti un Oggetto con timestamp.
+* un controllo di **Tipo**: Oggetto (con timestamp, ``;``) oppure Item (senza
+  timestamp, ``)``).
 
 **Uccidere** un oggetto lo trasmette qualche volta in più (così che gli
 ascoltatori lo rimuovano dalle loro mappe), poi lo disabilita automaticamente.
 Gli oggetti/item persistono nel proprio ``/storage/objitems.json``. La pagina è
 condizionata dall'interruttore di compilazione ``ENABLE_OBJECTS_ITEMS``.
+
+Oggetti permanenti
+-------------------
+
+Un Oggetto puo anche essere marcato come **permanente**. Un Oggetto permanente
+viene trasmesso con il timestamp fittizio fisso ``111111z`` definito da
+``freqspec.txt``, invece dell'ora corrente ``DDHHMMz``. Questa e la convenzione
+raccomandata per gli oggetti di frequenza dei ripetitori voce e per annunci
+ricorrenti simili di proprieta della stazione: una stazione ricevente
+interpreta il timestamp ``111111z`` come indicazione che l'Oggetto non deve
+essere sostituito da un Oggetto omonimo di un'altra stazione, e che solo la
+stazione di origine puo aggiornarlo o spostarlo.
+
+La casella Permanente si applica solo a un Oggetto; non ha alcun effetto su un
+Item, che non porta mai un timestamp di alcun tipo.
 
 Perché file JSON separati
 =========================

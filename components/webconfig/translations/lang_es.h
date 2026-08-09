@@ -218,7 +218,11 @@
 #define TR_F_OBJITEM_TIMING_SECTION                        "Temporización de Baliza"
 #define TR_F_OBJITEM_TYPE                                  "Tipo"
 #define TR_F_OBJITEM_TYPE_OBJECT                           "Objeto (con marca de tiempo)"
-#define TR_F_OBJITEM_TYPE_ITEM                             "Ítem (permanente)"
+#define TR_F_OBJITEM_TYPE_ITEM                             "Ítem (sin marca de tiempo)"
+#define TR_F_OBJITEM_PERMANENT                             "Permanente (solo Objeto, 111111z)"
+#define TR_F_OBJITEM_PERMANENT_NOTE                                                                                                                            \
+    "Un Objeto permanente se envía con la marca de tiempo fija 111111z en lugar de la hora actual, de modo que nunca es reemplazado por un Objeto homónimo "  \
+    "de otra estación - solo la estación de origen puede actualizarlo o moverlo. No tiene efecto en un Ítem."
 #define TR_F_OBJITEM_ACTIVE                                "Activo (desmarcar = eliminar)"
 #define TR_F_OBJITEM_SCOPE                                 "Alcance"
 #define TR_F_OBJITEM_SCOPE_PRIVATE                         "Privado (no se transmite)"
@@ -283,7 +287,7 @@
 #define TR_F_OBJITEM_SLOW_RATE                             "Intervalo lento (s, 0 = sin decaimiento)"
 #define TR_F_OBJITEM_DECAY                                 "Razón de decaimiento (ej. 2.0, <1 = ninguna)"
 #define TR_NOTE_OBJITEM                                                                                                                                        \
-    "Los Objetos llevan marca de tiempo (;NOMBRE); los Ítems son permanentes ()NOMBRE). Al desmarcar Activo se envían reportes de eliminación y luego se "     \
+    "Los Objetos llevan marca de tiempo (;NOMBRE); los Ítems nunca la llevan ()NOMBRE). Al desmarcar Activo se envían reportes de eliminación y luego se "     \
     "deshabilita automáticamente. El Alcance limita la transmisión independientemente de las casillas RF/Internet."
 #define TR_F_STATUS_BEACON           "Baliza de estado"
 #define TR_F_STATUS_INTERVAL_S_0_OFF "Intervalo de estado (s, 0=desactivado)"

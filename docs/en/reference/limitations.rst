@@ -518,7 +518,12 @@ Objects, Items, Bulletins, Status
    * - Own-station Items (non-timestamped)
      - ✅
      - ✅
-     - Same 5-slot pool, YAAC-style "permanent" flag chooses Object vs. Item
+     - Same 5-slot pool, a Type control chooses Object vs. Item
+   * - Permanent Objects (``111111z``)
+     - ✅
+     - ✅
+     - Object-only checkbox; emits the fixed freqspec.txt ``111111z``
+       pseudo-timestamp instead of the live one
    * - "Kill" an object/item
      - ✅
      - ✅

@@ -217,7 +217,11 @@
 #define TR_F_OBJITEM_TIMING_SECTION                        "Beacon Timing"
 #define TR_F_OBJITEM_TYPE                                  "Type"
 #define TR_F_OBJITEM_TYPE_OBJECT                           "Object (timestamped)"
-#define TR_F_OBJITEM_TYPE_ITEM                             "Item (permanent)"
+#define TR_F_OBJITEM_TYPE_ITEM                             "Item (non-timestamped)"
+#define TR_F_OBJITEM_PERMANENT                             "Permanent (Object only, 111111z)"
+#define TR_F_OBJITEM_PERMANENT_NOTE                                                                                                                           \
+    "A permanent Object is sent with the fixed 111111z timestamp instead of the live time, so it is never replaced by anyone else's similarly named "        \
+    "Object - only the originating station may update or move it. Has no effect on an Item."
 #define TR_F_OBJITEM_ACTIVE                                "Active (uncheck = kill)"
 #define TR_F_OBJITEM_SCOPE                                 "Scope"
 #define TR_F_OBJITEM_SCOPE_PRIVATE                         "Private (not transmitted)"
@@ -282,8 +286,8 @@
 #define TR_F_OBJITEM_SLOW_RATE                             "Slow repeat rate (s, 0 = no decay)"
 #define TR_F_OBJITEM_DECAY                                 "Decay ratio (e.g. 2.0, <1 = none)"
 #define TR_NOTE_OBJITEM                                                                                                                                        \
-    "Objects are timestamped (;NAME); Items are permanent ()NAME). Unchecking Active sends kill reports, then auto-disables. Scope limits transmission "       \
-    "regardless of the RF/Internet checks."
+    "Objects are timestamped (;NAME); Items are never timestamped ()NAME). Unchecking Active sends kill reports, then auto-disables. Scope limits "            \
+    "transmission regardless of the RF/Internet checks."
 #define TR_F_STATUS_BEACON           "Status Beacon"
 #define TR_F_STATUS_INTERVAL_S_0_OFF "Status interval (s, 0=off)"
 #define TR_F_STATUS_TEXT             "Status text"

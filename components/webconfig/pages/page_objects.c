@@ -276,6 +276,18 @@ esp_err_t page_objects_get(httpd_req_t *req) {
         snprintf(name, sizeof(name), "oType%d", i + 1);
         render_type_select(req, name, b->is_item);
 
+        // Permanent (Object only): fixed "111111z" pseudo-timestamp instead
+        // of the live UTC one (freqspec.txt). Carries its own id so the page
+        // script can grey it out while an Item is selected, since it has no
+        // effect there.
+        {
+            char buf[256];
+            snprintf(buf, sizeof(buf), "<label id='oPermLbl%d'><input type='checkbox' name='oPerm%d' id='oPerm%d' %s%s> %s</label>", i + 1, i + 1, i + 1,
+                     b->permanent ? "checked " : "", b->is_item ? "disabled" : "", TR_F_OBJITEM_PERMANENT);
+            web_raw(req, buf);
+        }
+        web_raw(req, "<p style='color:var(--sub);font-size:11px'>" TR_F_OBJITEM_PERMANENT_NOTE "</p>");
+
         snprintf(name, sizeof(name), "oAct%d", i + 1);
         web_field_checkbox(req, TR_F_OBJITEM_ACTIVE, name, b->active);
 
@@ -389,6 +401,29 @@ esp_err_t page_objects_get(httpd_req_t *req) {
                                   "}"
                                   "}"
                                   "</script>");
+
+    // Permanent-checkbox gating: "Permanent" only applies to an Object, so it
+    // is greyed out whenever the matching Type <select> is switched to Item.
+    {
+        char js[512];
+        snprintf(js, sizeof(js),
+                 "<script>(function(){"
+                 "function applyPerm(n){"
+                 "var t=document.querySelector(\"[name='oType\"+n+\"']\"),p=document.getElementById('oPerm'+n);"
+                 "if(!t||!p)return;"
+                 "p.disabled=(t.value==='1');"
+                 "}"
+                 "document.addEventListener('DOMContentLoaded',function(){"
+                 "for(var n=1;n<=%d;n++){(function(n){"
+                 "var t=document.querySelector(\"[name='oType\"+n+\"']\");"
+                 "if(t)t.addEventListener('change',function(){applyPerm(n);});"
+                 "applyPerm(n);"
+                 "})(n);}"
+                 "});"
+                 "})();</script>",
+                 OBJITEM_COUNT);
+        httpd_resp_sendstr_chunk(req, js);
+    }
 
     // Shared "My Station" PHG snapshot, exposed to the PHG script below so an
     // element with "Use My Station Data" ticked can mirror the Station page's
@@ -519,6 +554,14 @@ esp_err_t page_objects_post(httpd_req_t *req) {
 
         snprintf(name, sizeof(name), "oType%d", i + 1);
         b->is_item = (web_form_get_int(body, name, b->is_item ? 1 : 0) != 0);
+
+        // Permanent only applies to an Object; the page script disables the
+        // checkbox while Item is selected, so a disabled control never POSTs
+        // and saving an Item element clears it here. It has no effect on the
+        // wire either way for an Item - see objitem_build_info_field() in
+        // objects_items.c.
+        snprintf(name, sizeof(name), "oPerm%d", i + 1);
+        b->permanent = web_form_get_bool(body, name);
 
         // An Item name must be 3..9 characters (APRS101 Ch. 11); an Object
         // name is always exactly 9, space-padded on air, so it has no

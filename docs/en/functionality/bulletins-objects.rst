@@ -69,13 +69,27 @@ Objects and Items
 * optional **course/speed** and **comment**,
 * an **RF** and/or **APRS-IS** enable,
 * a **repeat interval** with optional interval decay,
-* a YAAC-style **"permanent"** flag: permanent → a non-timestamped Item,
-  otherwise a timestamped Object.
+* a **Type** control: Object (timestamped, ``;``) or Item (non-timestamped,
+  ``)``).
 
 **Killing** an object transmits it a few extra times (so listeners drop it from
 their maps), then auto-disables it. Objects/Items persist to their own
 ``/storage/objitems.json``. The page is gated by the ``ENABLE_OBJECTS_ITEMS``
 compile-time switch.
+
+Permanent objects
+------------------
+
+An Object may also be marked **permanent**. A permanent Object is transmitted
+with the fixed ``111111z`` pseudo-timestamp defined by ``freqspec.txt``
+instead of the live ``DDHHMMz`` time. This is the recommended convention for
+voice-repeater frequency objects and similar recurring, station-owned
+announcements: a receiving station treats the ``111111z`` stamp as a marker
+that the Object must not be replaced by any other station's similarly named
+Object, only updated or moved by the same originating station.
+
+The Permanent checkbox only applies to an Object; it has no effect on an Item,
+which never carries a timestamp of any kind.
 
 Why separate JSON files
 =======================
