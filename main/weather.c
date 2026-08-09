@@ -45,11 +45,20 @@ static const char *TAG = "weather";
 // component, for consistency across the firmware.
 #define WX_DEST APRS_TOCALL
 
-// APRS101 ch.12 software-type / weather-unit suffix, emitted as the very
-// last token of every outgoing WX report: one software-type letter followed
-// by a 2-4 byte instrument/family string. 'x' is a locally-chosen letter
-// pending an official allocation alongside APRS_TOCALL; "ESP" identifies
-// this firmware's ESP32-based sensor family.
+// APRS101 ch.12 software-type / weather-unit suffix: one software-type letter
+// followed by a 2-4 byte instrument/family string. 'x' is a locally-chosen
+// letter pending an official allocation alongside APRS_TOCALL; "ESP"
+// identifies this firmware's ESP32-based sensor family.
+//
+// The spec defines this as the token that terminates the weather data, and it
+// is the last thing every report this firmware transmits carries - after the
+// operator's comment, not before it. A free-text comment is not an element
+// the weather format defines at all, so the two cannot both be in their
+// nominal place; putting the identifier last keeps a decoder that reads the
+// unit string to end-of-line from swallowing the comment into it, and a
+// decoder scanning back from the end still finds the identifier where it
+// expects. This is why build_wx_tokens() does not emit it: it belongs to the
+// information field as a whole, not to the weather data block.
 #define WX_SW_SUFFIX "xESP"
 
 #define WX_MIN_INTERVAL_S     30   // sanity floor for wx_interval
@@ -329,7 +338,10 @@ static void resolve_fields(wx_resolved_t out[WX_SENSOR_NUM]) {
 // when present) to `out`. `positionless` selects the "cddd sSSS" wind prefix
 // used by positionless reports instead of the "ddd/sss" used by positioned
 // reports, and also suppresses the snow token, which has no encoding in that
-// format. Returns bytes written.
+// format. The software-type / weather-unit indicator that closes the report
+// is not part of this block - each layout in build_wx_packet() appends
+// WX_SW_SUFFIX itself, as the last token of the whole information field.
+// Returns bytes written.
 static int build_wx_tokens(const wx_resolved_t r[WX_SENSOR_NUM], bool positionless, char *out, size_t outMax) {
     size_t u = 0;
 #define WX_APP(...)                                                                                                                                            \
@@ -484,11 +496,6 @@ static int build_wx_tokens(const wx_resolved_t r[WX_SENSOR_NUM], bool positionle
         WX_APP("f%.1f", m);
     }
 
-    // Software-type / weather-unit indicator (APRS101 ch.12): fixed,
-    // firmware-identifying suffix, emitted last, after every optional
-    // token above.
-    WX_APP("%s", WX_SW_SUFFIX);
-
 #undef WX_APP
     return (int)u;
 }
@@ -549,7 +556,7 @@ static int build_wx_packet(const wx_resolved_t r[WX_SENSOR_NUM], char *out, size
     bool is_object = cfg_object[0] != 0;
 
     char wxTokens[160];
-    char info[420]; // name(9)+ts(7)+lat(9)+lon(10)+wxTokens(up to 160)+comment(up to 128)+NUL, grown for 128-byte comments
+    char info[420]; // DTI(1)+name(9)+ts(8)+lat(9)+lon(10)+wxTokens(up to 160)+comment(up to 128)+WX_SW_SUFFIX(4)+NUL
 
     if (is_object) {
         // Object report carrying weather: ";NAME     *DDHHMMz{lat}/{lon}_{wx}{comment}"
@@ -558,7 +565,7 @@ static int build_wx_packet(const wx_resolved_t r[WX_SENSOR_NUM], char *out, size
         snprintf(ts, sizeof(ts), "%02u%02u%02uz", t_day, t_hour, t_min);
         snprintf(name, sizeof(name), "%-9.9s", cfg_object); // fixed 9 chars, space padded
         build_wx_tokens(r, false, wxTokens, sizeof(wxTokens));
-        snprintf(info, sizeof(info), ";%s*%s%s/%s_%s%s", name, ts, latStr, lonStr, wxTokens, cfg_comment);
+        snprintf(info, sizeof(info), ";%s*%s%s/%s_%s%s%s", name, ts, latStr, lonStr, wxTokens, cfg_comment, WX_SW_SUFFIX);
     } else if (have_pos) {
         // Positioned weather report, with or without a timestamp.
         char latStr[10], lonStr[11];
@@ -569,9 +576,9 @@ static int build_wx_packet(const wx_resolved_t r[WX_SENSOR_NUM], char *out, size
         if (cfg_timestamp) {
             char ts[8];
             snprintf(ts, sizeof(ts), "%02u%02u%02uz", t_day, t_hour, t_min);
-            snprintf(info, sizeof(info), "%c%s%s/%s_%s%s", cfg_msg_capable ? '@' : '/', ts, latStr, lonStr, wxTokens, cfg_comment);
+            snprintf(info, sizeof(info), "%c%s%s/%s_%s%s%s", cfg_msg_capable ? '@' : '/', ts, latStr, lonStr, wxTokens, cfg_comment, WX_SW_SUFFIX);
         } else {
-            snprintf(info, sizeof(info), "%c%s/%s_%s%s", cfg_msg_capable ? '=' : '!', latStr, lonStr, wxTokens, cfg_comment);
+            snprintf(info, sizeof(info), "%c%s/%s_%s%s%s", cfg_msg_capable ? '=' : '!', latStr, lonStr, wxTokens, cfg_comment, WX_SW_SUFFIX);
         }
     } else {
         // Positionless weather report: "_MMDDHHMM" + c/s wind prefix.
@@ -585,7 +592,7 @@ static int build_wx_packet(const wx_resolved_t r[WX_SENSOR_NUM], char *out, size
         char ts8[9];
         snprintf(ts8, sizeof(ts8), "%02u%02u%02u%02u", t_mon, t_day, t_hour, t_min);
         build_wx_tokens(r, true, wxTokens, sizeof(wxTokens));
-        snprintf(info, sizeof(info), "_%s%s%s", ts8, wxTokens, cfg_comment);
+        snprintf(info, sizeof(info), "_%s%s%s%s", ts8, wxTokens, cfg_comment, WX_SW_SUFFIX);
     }
 
     int n = snprintf(out, outMax, "%s>%s%s:%s", callField, WX_DEST, path, info);

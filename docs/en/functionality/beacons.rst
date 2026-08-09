@@ -241,6 +241,61 @@ that understand the form plot the station from the locator alone; the rest show
 the whole thing as status text. The configured text itself is never
 interpreted.
 
+Status report length budget
+===========================
+
+APRS101 ch.16 caps a status report's information field at 70 bytes: the ``>``
+DTI, an optional 7-character DHM timestamp and at most 62 characters of status
+text. Everything the report can carry beyond the operator's own words is spent
+out of that same budget — the timestamp, the frequency block and the Maidenhead
+locator — and a full 49-character status text plus both optional blocks asks for
+more than fits.
+
+When that happens the optional blocks are dropped, in this order, until the
+field fits:
+
+#. the Maidenhead locator, which only restates a position this station already
+   beacons;
+#. the frequency block, the one part of the report a receiving radio can act on.
+
+The configured status text is never shortened: it is what the report exists to
+carry. If it does not fit even on its own, the whole report is refused and the
+reason logged, rather than a truncated — and therefore malformed — status line
+going on the air.
+
+Frequency block
+===============
+
+When a beacon has a monitor frequency configured, its position comment and its
+status report both start with the fixed 10-byte frequency field of
+``freqspec.txt``, followed by the tone (``Tnnn``/``Toff``) and, for a duplex
+repeater, the shift in units of 10 kHz. Which of the three forms the spec
+defines is used follows from the frequency alone:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 26 24 50
+
+   * - Frequency
+     - Emitted
+     - Form
+   * - Below 100 MHz
+     - ``  50.62 MHz``
+     - 10 kHz form ``FFF.FF MHz``, right-justified against its space
+   * - 100.000-999.999 MHz
+     - ``146.520MHz``
+     - 1 kHz form ``FFF.FFFMHz``
+   * - Above 999.999 MHz
+     - ``A96.000MHz``
+     - Microwave letter designation, one letter per 100 MHz block
+
+The letter table covers only the bands ``freqspec.txt`` enumerates: A (1200),
+B (2300), C (2400), D (3400), E (5600), F (5700), G (5800), H (10100),
+I (10200), J (10300), K (10400), L (10500), M (24000), N (24100) and O (24200),
+each spanning its base plus 99 MHz. A frequency above 999.999 MHz outside all of
+them has no 10-byte form at all, so no block is emitted and the omission is
+logged — an 11-byte field would shift every byte a receiver reads after it.
+
 Timestamps are UTC
 ==================
 

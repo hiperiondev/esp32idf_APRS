@@ -124,6 +124,29 @@ The WX beacon
    ``!lat/lon_WIND/SPDgGUSTtTTTrRRRhHHbBBBBB…`` TNC2 line.
 #. **Transmit** it on RF and/or APRS-IS per ``wx_2rf`` / ``wx_2inet``.
 
+Comment and software identifier
+===============================
+
+Every report ends with the APRS101 ch.12 software-type / weather-unit
+identifier, ``xESP``: the software-type letter followed by the string that names
+this firmware's ESP32-based sensor family.
+
+The spec defines that identifier as the token terminating the weather data, and
+does not define a free-text comment for a weather report at all, so the two
+cannot both sit in their nominal place. This firmware puts the operator's
+comment (``g_config.wx_comment``) between the weather data and the identifier,
+so the on-air order is:
+
+.. code-block:: text
+
+   =DDMM.mmN/DDDMM.mmW_<weather tokens><comment>xESP
+
+That way a decoder reading the unit string to end-of-line cannot swallow the
+comment into it, and one scanning back from the end still finds the identifier
+where it expects. The same order is used by all four report layouts (object,
+timestamped position, untimestamped position and positionless), and the
+identifier appears exactly once per report.
+
 Locking
 =======
 

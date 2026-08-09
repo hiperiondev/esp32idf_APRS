@@ -124,6 +124,27 @@
 /** @} */
 
 /**
+ * @name Status report length limits
+ *
+ * APRS101 chapter 16 defines a status report as the DTI @c '>', an optional
+ * seven-character DHM zulu timestamp and status text of at most 62
+ * characters, so the whole information field is at most 1 + 7 + 62 bytes.
+ *
+ * This is a much tighter ceiling than ::APRS_TNC2_MAX_LEN, which only bounds
+ * what the AX.25 frame can carry, and it is the one that decides whether
+ * receivers show the report the way it was meant: everything the status
+ * report can carry beyond the operator's own text - the timestamp, the
+ * frequency block and the Maidenhead locator - is spent out of the same 62
+ * characters. buildStatusPacket() in beacon.c is the single consumer, and it
+ * drops its optional blocks in a defined order rather than let the assembled
+ * field pass ::APRS_STATUS_INFO_MAX.
+ * @{
+ */
+#define APRS_STATUS_TEXT_MAX 62                             /**< Longest status text, in characters, APRS101 ch.16 allows after the DTI and the timestamp. */
+#define APRS_STATUS_INFO_MAX (1 + 7 + APRS_STATUS_TEXT_MAX) /**< Longest status information field: DTI, DHM timestamp and ::APRS_STATUS_TEXT_MAX of text. */
+/** @} */
+
+/**
  * @name APRS destination callsign (TOCALL)
  *
  * The AX.25 destination address every packet this firmware builds carries in

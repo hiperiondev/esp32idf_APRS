@@ -258,6 +258,64 @@ comprendono la forma posizionano la stazione con il solo localizzatore; gli
 altri mostrano il tutto come testo di stato. Il testo configurato non viene mai
 interpretato.
 
+Budget di lunghezza del rapporto di stato
+=========================================
+
+APRS101 cap.16 limita il campo informativo di un rapporto di stato a 70 byte: il
+DTI ``>``, un timestamp DHM opzionale di 7 caratteri e al massimo 62 caratteri
+di testo di stato. Tutto ciò che il rapporto può portare oltre alle parole
+dell'operatore viene preso dallo stesso budget — il timestamp, il blocco di
+frequenza e il localizzatore Maidenhead — e un testo di stato completo di 49
+caratteri più entrambi i blocchi opzionali chiede più di quanto entri.
+
+Quando questo accade i blocchi opzionali vengono scartati, in quest'ordine, fino
+a che il campo entra:
+
+#. il localizzatore Maidenhead, che si limita a ripetere una posizione che
+   questa stazione già trasmette;
+#. il blocco di frequenza, l'unica parte del rapporto su cui una radio ricevente
+   può agire.
+
+Il testo di stato configurato non viene mai accorciato: è ciò per cui il
+rapporto esiste. Se non entra nemmeno da solo, l'intero rapporto viene rifiutato
+e il motivo registrato, invece di mettere in aria una riga di stato troncata — e
+quindi malformata.
+
+Blocco di frequenza
+===================
+
+Quando un beacon ha una frequenza di monitoraggio configurata, sia il suo
+commento di posizione sia il suo rapporto di stato iniziano con il campo fisso
+di 10 byte della frequenza di ``freqspec.txt``, seguito dal tono
+(``Tnnn``/``Toff``) e, per un ripetitore duplex, dallo shift in unità di 10 kHz.
+Quale delle tre forme definite dalla specifica venga usata dipende solo dalla
+frequenza:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 26 24 50
+
+   * - Frequenza
+     - Emesso
+     - Forma
+   * - Sotto i 100 MHz
+     - ``  50.62 MHz``
+     - Forma da 10 kHz ``FFF.FF MHz``, allineata a destra contro il suo spazio
+   * - 100.000-999.999 MHz
+     - ``146.520MHz``
+     - Forma da 1 kHz ``FFF.FFFMHz``
+   * - Sopra i 999.999 MHz
+     - ``A96.000MHz``
+     - Designazione a lettera per le microonde, una lettera per blocco da 100 MHz
+
+La tabella delle lettere copre solo le bande che ``freqspec.txt`` enumera:
+A (1200), B (2300), C (2400), D (3400), E (5600), F (5700), G (5800), H (10100),
+I (10200), J (10300), K (10400), L (10500), M (24000), N (24100) e O (24200),
+ciascuna estesa dalla sua base più 99 MHz. Una frequenza sopra i 999.999 MHz
+fuori da tutte queste non ha alcuna forma da 10 byte, quindi nessun blocco viene
+emesso e l'omissione viene registrata — un campo da 11 byte sposterebbe ogni
+byte che un ricevitore legge dopo di esso.
+
 I timestamp sono UTC
 ====================
 

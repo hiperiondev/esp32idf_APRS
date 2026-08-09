@@ -132,6 +132,12 @@ static bool mice_type_is_msg_capable(char c) {
 // encoding altitude in meters as
 // (c0-33)*91*91 + (c1-33)*91 + (c2-33) - 10000. `text` must have at least 4
 // readable bytes.
+//
+// The on-air unit is the meter, so the value handed back is the whole foot
+// nearest the transmitted altitude - the same rounding mice_encode_altitude()
+// applies in the other direction. One meter is 3.28 ft, so a value that made
+// the round trip through this format lands within 2 ft of where it started,
+// above or below it with equal likelihood.
 static bool mice_parse_altitude_ft(const char *text, int32_t *out_ft) {
     if (text[3] != '}')
         return false;
@@ -143,7 +149,7 @@ static bool mice_parse_altitude_ft(const char *text, int32_t *out_ft) {
     }
 
     long meters = (text[0] - 33) * 91L * 91L + (text[1] - 33) * 91L + (text[2] - 33) - 10000L;
-    *out_ft = (int32_t)((double)meters * 3.28084);
+    *out_ft = (int32_t)lround((double)meters * 3.28084);
     return true;
 }
 

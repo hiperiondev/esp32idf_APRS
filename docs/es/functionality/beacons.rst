@@ -258,6 +258,65 @@ texto de estado configurado. Los receptores que entienden la forma sitúan la
 estación solo con el localizador; el resto muestran todo como texto de estado. El
 texto configurado nunca se interpreta.
 
+Presupuesto de longitud del reporte de estado
+=============================================
+
+APRS101 cap.16 limita el campo de información de un reporte de estado a 70
+bytes: el DTI ``>``, una marca de tiempo DHM opcional de 7 caracteres y como
+máximo 62 caracteres de texto de estado. Todo lo que el reporte puede llevar
+además de las palabras del operador sale de ese mismo presupuesto — la marca de
+tiempo, el bloque de frecuencia y el localizador Maidenhead — y un texto de
+estado completo de 49 caracteres más los dos bloques opcionales pide más de lo
+que entra.
+
+Cuando eso ocurre se descartan los bloques opcionales, en este orden, hasta que
+el campo entra:
+
+#. el localizador Maidenhead, que solo repite una posición que esta estación ya
+   baliza;
+#. el bloque de frecuencia, la única parte del reporte sobre la que una radio
+   receptora puede actuar.
+
+El texto de estado configurado nunca se recorta: es lo que el reporte existe
+para llevar. Si no entra ni siquiera por sí solo, se rechaza el reporte completo
+y se registra el motivo, en vez de poner al aire una línea de estado truncada —
+y por lo tanto malformada.
+
+Bloque de frecuencia
+====================
+
+Cuando una baliza tiene configurada una frecuencia de monitoreo, tanto su
+comentario de posición como su reporte de estado empiezan con el campo fijo de
+10 bytes de frecuencia de ``freqspec.txt``, seguido del tono
+(``Tnnn``/``Toff``) y, para un repetidor dúplex, del desplazamiento en unidades
+de 10 kHz. Cuál de las tres formas que define la especificación se usa depende
+solo de la frecuencia:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 26 24 50
+
+   * - Frecuencia
+     - Emitido
+     - Forma
+   * - Menor a 100 MHz
+     - ``  50.62 MHz``
+     - Forma de 10 kHz ``FFF.FF MHz``, justificada a la derecha contra su espacio
+   * - 100.000-999.999 MHz
+     - ``146.520MHz``
+     - Forma de 1 kHz ``FFF.FFFMHz``
+   * - Mayor a 999.999 MHz
+     - ``A96.000MHz``
+     - Designación de letra de microondas, una letra por bloque de 100 MHz
+
+La tabla de letras cubre solo las bandas que enumera ``freqspec.txt``: A (1200),
+B (2300), C (2400), D (3400), E (5600), F (5700), G (5800), H (10100),
+I (10200), J (10300), K (10400), L (10500), M (24000), N (24100) y O (24200),
+cada una abarcando su base más 99 MHz. Una frecuencia por encima de 999.999 MHz
+fuera de todas ellas no tiene ninguna forma de 10 bytes, así que no se emite
+bloque y se registra la omisión — un campo de 11 bytes correría todos los bytes
+que un receptor lee después de él.
+
 Las marcas de tiempo son UTC
 ============================
 

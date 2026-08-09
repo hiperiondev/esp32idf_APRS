@@ -553,7 +553,11 @@ Oggetti, Item, Bollettini, Stato
      - ✅
      - Beacon di stato in testo libero per ruolo (DTI ``>``, APRS101 cap.16)
        per tracker, IGate e digi, ciascuno con il proprio intervallo
-       (``*_sts_interval``) e testo (``*_status``); vedere ``main/beacon.c``
+       (``*_sts_interval``) e testo (``*_status``); vedere ``main/beacon.c``. Il
+       campo informativo resta entro il tetto di 70 byte del cap.16 (``>`` +
+       timestamp da 7 byte + 62 caratteri di testo): quando i blocchi opzionali
+       non entrano, viene scartato prima il localizzatore Maidenhead e poi il
+       blocco di frequenza, e il testo dell'operatore non viene mai accorciato
    * - Risposta a query (``?APRS?``, ``?WX?``, ecc.)
      - ⚠️
      - ✅

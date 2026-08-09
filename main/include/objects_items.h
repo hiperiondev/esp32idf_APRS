@@ -226,8 +226,8 @@ typedef struct {
     uint8_t df_nrq_r;    /**< NRQ "R" digit: 0 = received signal strength not usable, 1..9 = signal strength code (S-meter reading). */
     uint8_t df_nrq_q;    /**< NRQ "Q" digit: 0 = bearing not accurate, 1..9 = bearing accuracy code (1 = best, per the APRS101 DF quality table). */
 
-    float freq_mhz; /**< Repeater monitor frequency in MHz; 0 => no frequency block emitted. Emitted as the APRS frequency block ("FFF.FFFMHz Tnnn +/-nnn") at
-                       the start of the comment, for the Antenna/repeater symbols. */
+    float freq_mhz;       /**< Repeater monitor frequency in MHz; 0 => no frequency block emitted. Emitted as the APRS frequency block (see
+                             ::objitem_build_freq_block) at the start of the comment, for the Antenna/repeater symbols. */
     uint16_t offset_khz;  /**< Duplex shift magnitude in kHz (e.g. 600); used only when @c duplex != 0. */
     int8_t duplex;        /**< Duplex direction: 0 = simplex, +1 = "+", -1 = "-". */
     uint16_t tone_tenths; /**< CTCSS subaudible tone in tenths of Hz (e.g. 1000 = 100.0 Hz); 0 => "Toff". */
@@ -341,13 +341,40 @@ void objitems_request_transmit_all(void);
 
 /**
  * @brief Build the standard APRS repeater frequency block ("FFF.FFFMHz Tnnn
- * +/-nnn") into @p out, or the empty string when @p freq_mhz is not positive.
+ * +/-nnn") into @p out, or the empty string when @p freq_mhz is not positive
+ * or has no representation in the fixed field.
  *
  * This is the exact wire format freqspec.txt defines and objitem_t's
  * @c freq_mhz/@c tone_tenths/@c duplex/@c offset_khz fields already build for
  * the Objects/Items Antenna/repeater symbols; it is exposed here so any other
  * beacon (own-station position/status reports, main/beacon.c) can prepend or
  * append the identical block instead of re-deriving the format.
+ *
+ * The frequency itself always occupies exactly ten bytes, because receivers
+ * read it as a fixed-position field: the block is what a radio auto-tunes
+ * from, and what the 10x10 character displays of the D7/D700/HamHUD family
+ * lay out by column. Which of the three forms freqspec.txt defines is used
+ * follows from the magnitude alone:
+ *
+ * - below 100 MHz: the 10 kHz form @c "FFF.FF MHz", the number right-justified
+ *   against its separating space (50.620 MHz becomes @c " 50.62 MHz");
+ * - 100.000 to 999.999 MHz: the 1 kHz form @c "FFF.FFFMHz" (146.520 MHz
+ *   becomes @c "146.520MHz");
+ * - above 999.999 MHz: the microwave letter designation, one letter standing
+ *   for a 100 MHz block plus the two low MHz digits (1296.000 MHz becomes
+ *   @c "A96.000MHz").
+ *
+ * The letter table covers only the bands freqspec.txt enumerates - A (1200),
+ * B (2300), C (2400), D (3400), E (5600), F (5700), G (5800), H (10100),
+ * I (10200), J (10300), K (10400), L (10500), M (24000), N (24100) and
+ * O (24200), each spanning its base plus 99 MHz. A frequency above
+ * 999.999 MHz that falls in none of them has no ten-byte form at all, so
+ * nothing is written and the omission is logged: an eleven-byte field would
+ * shift every byte a receiver reads after it, which is worse than a comment
+ * that simply starts with the operator's own text.
+ *
+ * The optional tone and duplex sub-fields follow the frequency, each with its
+ * own leading space, in the order the spec shows them.
  *
  * @param freq_mhz Repeater monitor frequency in MHz; <= 0 => nothing is
  *        written and @p out is left as an empty string.
@@ -357,7 +384,9 @@ void objitems_request_transmit_all(void);
  *        -1 = "-".
  * @param offset_khz Duplex shift magnitude, kHz (e.g. 600); used only when
  *        @p duplex != 0.
- * @param out Destination buffer, always left NUL-terminated.
+ * @param out Destination buffer, always left NUL-terminated. 21 bytes hold
+ *        the longest block (ten-byte frequency, five-byte tone, five-byte
+ *        duplex shift and the terminator).
  * @param out_size Size of @p out in bytes.
  */
 void objitem_build_freq_block(float freq_mhz, uint16_t tone_tenths, int8_t duplex, uint16_t offset_khz, char *out, size_t out_size);

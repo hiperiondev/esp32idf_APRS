@@ -505,6 +505,73 @@ static unsigned area_offset_code(float deg) {
     return (unsigned)(code + 0.5);
 }
 
+// Width, in bytes, of the frequency field itself. freqspec.txt defines it as
+// a fixed 10-byte field so that it lands in a known column on the 10x10
+// character displays of the radios that auto-tune from it, which is why every
+// form below is padded or letter-coded to exactly this many bytes.
+#define FREQ_FIELD_BYTES 10
+
+// Microwave letter designations (freqspec.txt): the plain "FFF.FFFMHz" form
+// only reaches 999.999 MHz, so above that the three MHz digits are replaced
+// by one letter standing for a fixed 100 MHz block plus the two low MHz
+// digits - "A96.000MHz" is 1296.000 MHz. This is the table the spec
+// enumerates, one entry per band it names; the ranges between entries have no
+// designation at all.
+static const struct {
+    char letter;
+    uint16_t base_mhz;
+} k_freq_letters[] = {
+    { 'A', 1200 },  { 'B', 2300 },  { 'C', 2400 },  { 'D', 3400 },  { 'E', 5600 },  { 'F', 5700 },  { 'G', 5800 },  { 'H', 10100 },
+    { 'I', 10200 }, { 'J', 10300 }, { 'K', 10400 }, { 'L', 10500 }, { 'M', 24000 }, { 'N', 24100 }, { 'O', 24200 },
+};
+
+// Format the fixed 10-byte frequency field for `khz` into `out`, which must
+// hold FREQ_FIELD_BYTES + 1 bytes. Returns false, leaving `out` empty, for a
+// frequency that has no 10-byte representation - above 999.999 MHz that is
+// any frequency outside the letter table's blocks. Emitting such a frequency
+// in one of the two decimal forms would produce an 11-byte field and shift
+// every byte a receiver reads after it, so no block at all is the safer
+// answer and the caller's comment simply starts with its own text.
+static bool freq_field_format(long khz, char *out) {
+    int n;
+    if (khz < 100000L) {
+        // Below 100 MHz the three MHz digits do not fill their width, so the
+        // 10 kHz form "FFF.FF MHz" is used: it is one of the two widths the
+        // spec names and it keeps the field ten bytes with the number
+        // right-justified against the separating space.
+        long centi = (khz + 5) / 10;
+        n = snprintf(out, FREQ_FIELD_BYTES + 1, "%3ld.%02ld MHz", centi / 100, centi % 100);
+    } else if (khz <= 999999L) {
+        // 100.000 to 999.999 MHz: the 1 kHz form, the field every VHF/UHF
+        // repeater block uses.
+        n = snprintf(out, FREQ_FIELD_BYTES + 1, "%3ld.%03ldMHz", khz / 1000, khz % 1000);
+    } else {
+        long mhz = khz / 1000;
+        char letter = 0;
+        for (size_t i = 0; i < sizeof(k_freq_letters) / sizeof(k_freq_letters[0]); i++) {
+            long base = (long)k_freq_letters[i].base_mhz;
+            if (mhz >= base && mhz < base + 100) {
+                letter = k_freq_letters[i].letter;
+                mhz -= base;
+                break;
+            }
+        }
+        if (letter == 0) {
+            ESP_LOGW(TAG, "%ld.%03ld MHz has no frequency-block designation - block omitted", khz / 1000, khz % 1000);
+            out[0] = 0;
+            return false;
+        }
+        n = snprintf(out, FREQ_FIELD_BYTES + 1, "%c%02ld.%03ldMHz", letter, mhz, khz % 1000);
+    }
+    // Every branch is built to fill the field exactly; anything else would put
+    // a misaligned block on the air, so it is refused rather than shipped.
+    if (n != FREQ_FIELD_BYTES) {
+        out[0] = 0;
+        return false;
+    }
+    return true;
+}
+
 void objitem_build_freq_block(float freq_mhz, uint16_t tone_tenths, int8_t duplex, uint16_t offset_khz, char *out, size_t out_size) {
     if (out_size == 0)
         return;
@@ -512,7 +579,19 @@ void objitem_build_freq_block(float freq_mhz, uint16_t tone_tenths, int8_t duple
     if (freq_mhz <= 0.0f)
         return;
 
-    int n = snprintf(out, out_size, "%.3fMHz", (double)freq_mhz);
+    // Whole kHz is the finest resolution any of the field's forms carries, so
+    // the value is rounded to it once here and every digit below is derived
+    // with integer arithmetic - the float can neither round a digit away nor
+    // leak an extra one into the fixed width.
+    long khz = lroundf(freq_mhz * 1000.0f);
+    if (khz <= 0)
+        return;
+
+    char field[FREQ_FIELD_BYTES + 1];
+    if (!freq_field_format(khz, field))
+        return;
+
+    int n = snprintf(out, out_size, "%s", field);
     if (n < 0 || (size_t)n >= out_size) {
         out[0] = 0;
         return;
@@ -540,12 +619,13 @@ void objitem_build_freq_block(float freq_mhz, uint16_t tone_tenths, int8_t duple
     }
 }
 
-// Build the standard APRS frequency block ("FFF.FFFMHz Tnnn ±nnn") into `out`,
-// or the empty string when no monitor frequency is configured. This is what
-// carries YAAC's monitor frequency, subaudible tone and duplex direction; by
-// convention it must be the first thing in the comment text so other stations'
-// radios can auto-tune from it. Thin wrapper over objitem_build_freq_block()
-// so the element's own stored sub-fields feed the shared builder.
+// Build the standard APRS frequency block (the fixed ten-byte frequency field
+// followed by "Tnnn" and the duplex shift) into `out`, or the empty string
+// when no monitor frequency is configured. This is what carries YAAC's
+// monitor frequency, subaudible tone and duplex direction; by convention it
+// must be the first thing in the comment text so other stations' radios can
+// auto-tune from it. Thin wrapper over objitem_build_freq_block() so the
+// element's own stored sub-fields feed the shared builder.
 static void build_freq_block(const objitem_t *b, char *out, size_t out_size) {
     objitem_build_freq_block(b->freq_mhz, b->tone_tenths, b->duplex, b->offset_khz, out, out_size);
 }

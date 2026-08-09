@@ -125,8 +125,8 @@ typedef struct {
     // handed back through this extension.
     bool daoEnable;
     // Recommended travelers' voice repeater this station advertises
-    // (freqspec.txt), built into the standard "FFF.FFFMHz Tnnn +/-nnn" block
-    // by objitem_build_freq_block() and prepended to the comment as its first
+    // (freqspec.txt), built into the standard frequency block by
+    // objitem_build_freq_block() and prepended to the comment as its first
     // 10 bytes - the fixed-field form some radios (e.g. Yaesu) require to
     // auto-tune, since they do not decode the frequency Object form. The same
     // block leads the Mic-E text field, where the spec reserves the same
@@ -430,9 +430,9 @@ static int buildPositionPacket(const beacon_params_t *p, char *out, size_t outMa
     }
 
     // Frequency block (freqspec.txt): built once here and prepended to the
-    // comment as its first bytes, ahead of anything the operator typed. For a
-    // 3-digit-MHz amateur repeater frequency (all VHF/UHF ham bands) the
-    // "FFF.FFFMHz" token itself is exactly 10 bytes, satisfying the spec's
+    // comment as its first bytes, ahead of anything the operator typed. The
+    // frequency token itself is exactly 10 bytes whichever of the spec's
+    // three forms the configured frequency selects, satisfying the
     // fixed-field requirement for radios (e.g. Yaesu) that only look at the
     // first 10 bytes of the comment and do not decode the frequency Object
     // form. A single space separates it from the rest of the comment. Comment
@@ -546,8 +546,9 @@ typedef struct {
 //
 //   1. The optional "DDHHMMz" zulu timestamp (APRS101 ch.16), immediately
 //      after '>', when g_config.status_timestamp_en is set.
-//   2. The "FFF.FFFMHz Tnnn +/-nnn" frequency block (freqspec.txt), when this
-//      beacon has a monitor frequency configured - the second advertisement
+//   2. The frequency block (freqspec.txt) - the fixed 10-byte frequency
+//      field, its tone and its duplex shift - when this beacon has a monitor
+//      frequency configured - the second advertisement
 //      the spec endorses, for radios that decode neither the frequency
 //      Object form nor the leading bytes of a position report's comment.
 //   3. With the Maidenhead option on, the 6-char grid locator of this
@@ -559,6 +560,14 @@ typedef struct {
 // the rest simply show the whole thing as status text. The configured status
 // text itself is never interpreted: whatever the operator typed is carried
 // verbatim at the end.
+//
+// All four pieces share the APRS_STATUS_INFO_MAX budget APRS101 ch.16 sets
+// for the information field, and a full status text plus both optional blocks
+// asks for more than that, so the blocks are dropped in a defined order until
+// the field fits: the locator first, then the frequency block. The operator's
+// text is what the report exists to carry, so it is never the thing that
+// gives way - if it does not fit on its own the report is refused outright,
+// on the same terms buildPositionPacket() refuses an over-long position.
 //
 // Returns the packet length, or 0 if nothing usable is configured.
 static int buildStatusPacket(const status_params_t *p, char *out, size_t outMax) {
@@ -585,32 +594,60 @@ static int buildStatusPacket(const status_params_t *p, char *out, size_t outMax)
         snprintf(ts, sizeof(ts), "%02d%02d%02dz", tmv.tm_mday, tmv.tm_hour, tmv.tm_min);
     }
 
-    // '>' + timestamp (7) + freq block (up to 23, space-separated) + optional
-    // locator block ("IO91SX" + symbol table + symbol code + separating
-    // space = 9) + status text + NUL. Built with str_append() so a would-be
-    // negative/oversize snprintf() result from any one piece saturates the
-    // buffer instead of underflowing the running offset.
-    char infoField[STATUS_SIZE + 40];
-    size_t used = 0;
-    str_append(infoField, sizeof(infoField), &used, ">%s", ts);
-    if (freqBlock[0])
-        str_append(infoField, sizeof(infoField), &used, "%s ", freqBlock);
+    char grid[APRS_MAIDENHEAD_BUF_SIZE] = { 0 };
+    char symTable = 0, symCode = 0;
     if (p->gridEnable) {
-        char grid[APRS_MAIDENHEAD_BUF_SIZE];
         aprs_maidenhead_locator(p->lat, p->lon, grid, sizeof(grid));
-        char symTable = p->symbol[0] ? p->symbol[0] : '/';
-        char symCode = p->symbol[1] ? p->symbol[1] : '>';
-        str_append(infoField, sizeof(infoField), &used, "%s%c%c ", grid, symTable, symCode);
+        symTable = p->symbol[0] ? p->symbol[0] : '/';
+        symCode = p->symbol[1] ? p->symbol[1] : '>';
     }
-    str_append(infoField, sizeof(infoField), &used, "%s", p->statusText);
+
+    // '>' (1) + timestamp (7) + freq block (up to 20, space-separated) +
+    // optional locator block ("IO91SX" + symbol table + symbol code +
+    // separating space = 9) + status text (up to STATUS_SIZE - 1) + NUL, so
+    // the buffer holds every assembly attempt below even before the blocks
+    // are dropped. Built with str_append() so a would-be negative/oversize
+    // snprintf() result from any one piece saturates the buffer instead of
+    // underflowing the running offset.
+    char infoField[STATUS_SIZE + 40];
+    bool useFreq = freqBlock[0] != 0;
+    bool useGrid = p->gridEnable;
+    size_t used;
+    for (;;) {
+        used = 0;
+        str_append(infoField, sizeof(infoField), &used, ">%s", ts);
+        if (useFreq)
+            str_append(infoField, sizeof(infoField), &used, "%s ", freqBlock);
+        if (useGrid)
+            str_append(infoField, sizeof(infoField), &used, "%s%c%c ", grid, symTable, symCode);
+        str_append(infoField, sizeof(infoField), &used, "%s", p->statusText);
+
+        if (used <= APRS_STATUS_INFO_MAX)
+            break;
+        // Over budget: give up the optional blocks, least useful first. The
+        // locator only restates a position this station already beacons,
+        // while the frequency block is the one thing in the report a radio
+        // can act on, so the locator goes first.
+        if (useGrid) {
+            useGrid = false;
+            ESP_LOGW(TAG, "status info field %u bytes (max %d) - Maidenhead locator omitted", (unsigned)used, APRS_STATUS_INFO_MAX);
+            continue;
+        }
+        if (useFreq) {
+            useFreq = false;
+            ESP_LOGW(TAG, "status info field %u bytes (max %d) - frequency block omitted", (unsigned)used, APRS_STATUS_INFO_MAX);
+            continue;
+        }
+        ESP_LOGW(TAG, "status info field %u bytes (max %d) - shorten the status text", (unsigned)used, APRS_STATUS_INFO_MAX);
+        return 0;
+    }
 
     int n = snprintf(out, outMax, "%s>%s%s:%s", callField, BEACON_DEST, path, infoField);
-    // A status line is at most 201 bytes: call field (up to 15) + '>' +
-    // destination (6) + path (up to 79) + ':' + info field (up to 99, i.e.
-    // the 50-byte '>'-plus-text form plus the 7-byte timestamp, the up to
-    // 23-byte frequency block and the 9-byte Maidenhead locator block), so it
-    // always fits the APRS_TNC2_BUF_SIZE buffer every caller provides. The
-    // check is kept anyway, on the same terms as buildPositionPacket():
+    // A status line is at most 172 bytes: call field (up to 15) + '>' +
+    // destination (6) + path (up to 79) + ':' + info field (up to
+    // APRS_STATUS_INFO_MAX, which the assembly above has already enforced),
+    // so it always fits the APRS_TNC2_BUF_SIZE buffer every caller provides.
+    // The check is kept anyway, on the same terms as buildPositionPacket():
     // refuse rather than clamp, so neither leg ever carries a truncated - and
     // therefore malformed - status report.
     if (n < 0)

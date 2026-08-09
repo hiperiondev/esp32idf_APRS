@@ -119,6 +119,30 @@ La baliza WX
    ``!lat/lon_WIND/SPDgGUSTtTTTrRRRhHHbBBBBB…``.
 #. **Transmitirlo** por RF y/o APRS-IS según ``wx_2rf`` / ``wx_2inet``.
 
+Comentario e identificador de software
+======================================
+
+Todo reporte termina con el identificador de tipo de software / unidad
+meteorológica de APRS101 cap.12, ``xESP``: la letra de tipo de software seguida
+de la cadena que nombra la familia de sensores basada en ESP32 de este firmware.
+
+La especificación define ese identificador como el token que termina los datos
+meteorológicos, y no define ningún comentario de texto libre para un reporte
+meteorológico, así que ambos no pueden ocupar a la vez su lugar nominal. Este
+firmware pone el comentario del operador (``g_config.wx_comment``) entre los
+datos meteorológicos y el identificador, de modo que el orden al aire es:
+
+.. code-block:: text
+
+   =DDMM.mmN/DDDMM.mmW_<tokens meteorológicos><comentario>xESP
+
+Así un decodificador que lea la cadena de unidad hasta el fin de línea no puede
+absorber el comentario dentro de ella, y uno que explore desde el final sigue
+encontrando el identificador donde lo espera. Los cuatro formatos de reporte
+(objeto, posición con marca de tiempo, posición sin marca de tiempo y sin
+posición) usan el mismo orden, y el identificador aparece exactamente una vez
+por reporte.
+
 Bloqueo
 =======
 

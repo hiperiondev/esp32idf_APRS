@@ -119,6 +119,32 @@ Il beacon WX
    ``!lat/lon_WIND/SPDgGUSTtTTTrRRRhHHbBBBBB…``.
 #. **Trasmettilo** in RF e/o APRS-IS secondo ``wx_2rf`` / ``wx_2inet``.
 
+Commento e identificatore software
+==================================
+
+Ogni rapporto termina con l'identificatore di tipo software / unità
+meteorologica di APRS101 cap.12, ``xESP``: la lettera del tipo software seguita
+dalla stringa che nomina la famiglia di sensori basata su ESP32 di questo
+firmware.
+
+La specifica definisce quell'identificatore come il token che chiude i dati
+meteorologici e non definisce affatto un commento in testo libero per un
+rapporto meteorologico, quindi i due non possono stare entrambi al loro posto
+nominale. Questo firmware mette il commento dell'operatore
+(``g_config.wx_comment``) tra i dati meteorologici e l'identificatore, per cui
+l'ordine in onda è:
+
+.. code-block:: text
+
+   =DDMM.mmN/DDDMM.mmW_<token meteorologici><commento>xESP
+
+In questo modo un decodificatore che legge la stringa di unità fino a fine riga
+non può inglobare il commento, e uno che scorre a ritroso dalla fine trova
+comunque l'identificatore dove se lo aspetta. Tutti e quattro i layout di
+rapporto (oggetto, posizione con timestamp, posizione senza timestamp e senza
+posizione) usano lo stesso ordine, e l'identificatore compare esattamente una
+volta per rapporto.
+
 Blocco
 ======
 

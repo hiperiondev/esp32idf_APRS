@@ -549,7 +549,12 @@ Objetos, Items, Boletines, Estado
      - ✅
      - Baliza de estado en texto libre por rol (DTI ``>``, APRS101 cap.16) para
        tracker, IGate y digi, cada una con su propio intervalo
-       (``*_sts_interval``) y texto (``*_status``); ver ``main/beacon.c``
+       (``*_sts_interval``) y texto (``*_status``); ver ``main/beacon.c``. El
+       campo de información se mantiene dentro del tope de 70 bytes del cap.16
+       (``>`` + marca de tiempo de 7 bytes + 62 caracteres de texto): cuando los
+       bloques opcionales no entran, se descarta primero el localizador
+       Maidenhead y después el bloque de frecuencia, y el texto del operador
+       nunca se recorta
    * - Respuesta a consultas (``?APRS?``, ``?WX?``, etc.)
      - ⚠️
      - ✅

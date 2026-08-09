@@ -530,7 +530,11 @@ Objects, Items, Bulletins, Status
      - ✅
      - Per-role free-text status beacon (DTI ``>``, APRS101 ch.16) for tracker,
        IGate and digi, each with its own interval (``*_sts_interval``) and text
-       (``*_status``); see ``main/beacon.c``
+       (``*_status``); see ``main/beacon.c``. The information field is held to
+       the 70-byte ch.16 ceiling (``>`` + 7-byte timestamp + 62 characters of
+       text): when the optional blocks do not fit, the Maidenhead locator is
+       dropped first, then the frequency block, and the operator's text is never
+       shortened
    * - Query response (``?APRS?``, ``?WX?``, etc.)
      - ⚠️
      - ✅
