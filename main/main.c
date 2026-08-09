@@ -158,9 +158,11 @@ static void ip_event_handler(void *arg, esp_event_base_t base, int32_t id, void 
 // line of defence for anything that still reaches the driver out of range.
 static void wifi_apply_ap_config(void) {
     wifi_config_t ap_cfg = { 0 };
-    strncpy((char *)ap_cfg.ap.ssid, g_config.wifi_ap_ssid, sizeof(ap_cfg.ap.ssid) - 1);
-    ap_cfg.ap.ssid_len = strlen(g_config.wifi_ap_ssid);
-    strncpy((char *)ap_cfg.ap.password, g_config.wifi_ap_pass, sizeof(ap_cfg.ap.password) - 1);
+    size_t ssid_len = strnlen(g_config.wifi_ap_ssid, sizeof(ap_cfg.ap.ssid));
+    memcpy(ap_cfg.ap.ssid, g_config.wifi_ap_ssid, ssid_len);
+    ap_cfg.ap.ssid_len = (uint8_t)ssid_len;
+    size_t pass_len = strnlen(g_config.wifi_ap_pass, sizeof(ap_cfg.ap.password));
+    memcpy(ap_cfg.ap.password, g_config.wifi_ap_pass, pass_len);
     ap_cfg.ap.channel = g_config.wifi_ap_ch;
     ap_cfg.ap.max_connection = 4;
     ap_cfg.ap.authmode = strlen(g_config.wifi_ap_pass) >= 8 ? WIFI_AUTH_WPA2_PSK : WIFI_AUTH_OPEN;

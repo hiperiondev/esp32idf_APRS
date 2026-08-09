@@ -75,14 +75,22 @@ static SemaphoreHandle_t s_config_mutex = NULL;
 static SemaphoreHandle_t config_mutex(void) {
     SemaphoreHandle_t m = __atomic_load_n(&s_config_mutex, __ATOMIC_ACQUIRE);
     if (!m) {
+        // Allocated before the critical section is entered, so the heap walk
+        // never runs with interrupts masked; the critical section only ever
+        // publishes the winning handle. A concurrent loser's candidate is
+        // freed once outside the lock.
+        SemaphoreHandle_t candidate = xSemaphoreCreateMutex();
         static portMUX_TYPE creation_lock = portMUX_INITIALIZER_UNLOCKED;
         taskENTER_CRITICAL(&creation_lock);
         m = s_config_mutex;
         if (!m) {
-            m = xSemaphoreCreateMutex();
+            m = candidate;
+            candidate = NULL;
             __atomic_store_n(&s_config_mutex, m, __ATOMIC_RELEASE);
         }
         taskEXIT_CRITICAL(&creation_lock);
+        if (candidate)
+            vSemaphoreDelete(candidate);
     }
     return m;
 }
@@ -102,14 +110,22 @@ static SemaphoreHandle_t s_data_mutex = NULL;
 static SemaphoreHandle_t data_mutex(void) {
     SemaphoreHandle_t m = __atomic_load_n(&s_data_mutex, __ATOMIC_ACQUIRE);
     if (!m) {
+        // Allocated before the critical section is entered, so the heap walk
+        // never runs with interrupts masked; the critical section only ever
+        // publishes the winning handle. A concurrent loser's candidate is
+        // freed once outside the lock.
+        SemaphoreHandle_t candidate = xSemaphoreCreateMutex();
         static portMUX_TYPE creation_lock = portMUX_INITIALIZER_UNLOCKED;
         taskENTER_CRITICAL(&creation_lock);
         m = s_data_mutex;
         if (!m) {
-            m = xSemaphoreCreateMutex();
+            m = candidate;
+            candidate = NULL;
             __atomic_store_n(&s_data_mutex, m, __ATOMIC_RELEASE);
         }
         taskEXIT_CRITICAL(&creation_lock);
+        if (candidate)
+            vSemaphoreDelete(candidate);
     }
     return m;
 }

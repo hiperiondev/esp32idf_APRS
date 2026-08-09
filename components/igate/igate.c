@@ -76,10 +76,19 @@ static TaskHandle_t s_task;
 static void ensureSockMutex(void) {
     if (__atomic_load_n(&s_sockMutex, __ATOMIC_ACQUIRE))
         return;
+    // Allocated before the critical section is entered, so the heap walk
+    // never runs with interrupts masked; the critical section only ever
+    // publishes the winning handle. A concurrent loser's candidate is freed
+    // once outside the lock.
+    SemaphoreHandle_t candidate = xSemaphoreCreateMutex();
     portENTER_CRITICAL(&s_sockMutexInitLock);
-    if (!s_sockMutex)
-        __atomic_store_n(&s_sockMutex, xSemaphoreCreateMutex(), __ATOMIC_RELEASE);
+    if (!s_sockMutex) {
+        __atomic_store_n(&s_sockMutex, candidate, __ATOMIC_RELEASE);
+        candidate = NULL;
+    }
     portEXIT_CRITICAL(&s_sockMutexInitLock);
+    if (candidate)
+        vSemaphoreDelete(candidate);
 }
 
 // Web-configured duplicate-cache size (g_config.dup_cache_size), clamped to
@@ -724,7 +733,7 @@ int igateProcess(ax25_msg_t *packet) {
             str_append(header, sizeof(header), &headerLen, ",%s", packet->rpt_list[i].call);
             if (packet->rpt_list[i].ssid > 0)
                 str_append(header, sizeof(header), &headerLen, "-%d", packet->rpt_list[i].ssid);
-            if (packet->rpt_flags & (1 << i))
+            if (AX25_REPEATED(packet, i))
                 str_append(header, sizeof(header), &headerLen, "*");
         }
     }

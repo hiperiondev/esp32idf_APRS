@@ -524,6 +524,13 @@ Telemetria
        registro ``sensors_local``, salvata per nome del driver, così abilitare o
        disabilitare un driver non ripunta mai silenziosamente un canale su un
        altro sensore
+   * - Telemetria nel commento base-91 APRS 1.2 (``|ss..|``)
+     - ⚠️ (una manciata di client/tracker)
+     - ✅
+     - Opzionale, accanto al report ``T#nnn``; viaggia nel commento di
+       posizione della baliza (Tracker/IGate/Digipeater) che sta trasmettendo
+       con il nominativo/SSID configurato nella pagina Telemetry, condividendo
+       il contatore di sequenza di quel report
    * - Ricezione/grafico della telemetria altrui
      - ✅ (grafici Xastir, aprs.fi)
      - ❌
@@ -713,3 +720,10 @@ Gestione stazione / Operatività
      - ⚠️ (raro)
      - ❌
      - Singolo utente/password HTTP Basic, senza ruoli
+   * - Limitazione dei tentativi di accesso / blocco dopo fallimenti ripetuti
+     - ⚠️ (raro nei pannelli web embedded)
+     - ✅
+     - Backoff per IP sorgente, a partire da 5 s e raddoppiato a ogni ulteriore
+       fallimento durante il blocco (tetto di 300 s) dopo 5 credenziali
+       rifiutate; ``429 Too Many Requests`` con ``Retry-After`` invece di
+       ``401`` durante il blocco. Solo in RAM, quindi si azzera al riavvio

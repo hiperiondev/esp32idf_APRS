@@ -92,6 +92,52 @@ stazione ricevente si aspetti ancora il vecchio intervallo 0-255 può essere
 mantenuto al suo interno impostando di conseguenza ``ana_raw_min``/
 ``ana_raw_max`` di quel canale.
 
+Telemetria nel commento (APRS 1.2 base-91)
+============================================
+
+Accanto al report ``T#nnn``, l'opzione *Comment Telemetry*
+(``comment_telemetry`` / ``cmtTlm``) fa sì che
+``telemetry_build_comment_tlm()`` aggiunga una seconda codifica, compatta,
+dello stesso campione al commento di posizione di una stazione:
+
+.. code-block:: text
+
+   |ss1122|
+
+Il gruppo si apre e si chiude con ``|``. La prima coppia base-91 è il numero
+di sequenza; ogni coppia successiva è un canale analogico, in ordine (``A1``
+per primo). Porta solo canali analogici - i bit digitali non hanno una
+posizione base-91 nel gruppo APRS 1.2 e restano esclusivi del report
+``T#nnn``.
+
+Non è una baliza a sé stante. Viaggia dentro il commento di posizione della
+baliza attualmente in trasmissione - Tracker, IGate o Digipeater - con il
+nominativo/SSID configurato nella pagina *Telemetry*; una baliza di posizione
+trasmessa con un nominativo/SSID diverso non riceve mai il gruppo, perché una
+stazione ricevente lo leggerebbe come la telemetria di quell'altra stazione. I
+report di stato, gli oggetti e gli item non lo portano mai: solo un report di
+posizione identifica un'unica stazione segnalante in modo abbastanza univoco
+perché il gruppo abbia senso.
+
+Il numero di sequenza è lo stesso contatore usato dal report ``T#nnn``, preso
+dallo stesso istante di lettura dei canali, così i due non sono mai in
+disaccordo su quale campione descrivono. La codifica base-91 dà a quel
+contatore una finestra di 0-8280 (91×91 valori), che si azzera in modo
+indipendente dal campo decimale 0-999 proprio del report.
+
+Ogni coppia analogica viene emessa solo per un canale abilitato e attualmente
+risolto dal registro sensori, e solo finché lo sono anche tutti i canali
+precedenti nell'ordine A1-A5: il gruppo non ha un identificatore di canale per
+coppia, quindi una stazione ricevente ricava il canale di ogni valore solo
+dalla sua posizione nella sequenza. Il codificatore si ferma al primo vuoto
+invece di saltarlo, mantenendo il gruppo come un prefisso ininterrotto A1,
+A2, ... An.
+
+Un gruppo che non entra nello spazio restante del commento di posizione viene
+scartato invece che troncato - una coppia base-91 troncata si decodifica come
+un valore sbagliato, non come uno assente - e il testo dell'operatore non
+viene mai accorciato per fargli spazio.
+
 Selettori della pagina web
 ==========================
 

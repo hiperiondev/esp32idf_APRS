@@ -501,6 +501,13 @@ Telemetry
      - Every analog A1-A5 and digital B1-B8 channel picks its source from the
        ``sensors_local`` registry, stored by driver name so enabling or
        disabling a driver never silently re-points a channel at another sensor
+   * - APRS 1.2 base-91 comment telemetry (``|ss..|``)
+     - ⚠️ (a handful of clients/trackers)
+     - ✅
+     - Optional, alongside the ``T#nnn`` report; rides in the position comment
+       of whichever beacon (Tracker/IGate/Digipeater) is transmitting under
+       the callsign/SSID configured on the Telemetry page, sharing that
+       report's sequence counter
    * - Receiving/graphing others' telemetry
      - ✅ (Xastir, aprs.fi graphs)
      - ❌
@@ -685,3 +692,10 @@ Station Management / Ops
      - ⚠️ (rare)
      - ❌
      - Single HTTP Basic-auth username/password, no roles
+   * - Login rate limiting / lockout on repeated failures
+     - ⚠️ (rare for embedded web admins)
+     - ✅
+     - Per-source-IP backoff, starting at 5 s and doubling on each further
+       failure while locked out (300 s cap) after 5 rejected credentials;
+       ``429 Too Many Requests`` with ``Retry-After`` instead of ``401``
+       while locked out. RAM-only, so it clears on reboot

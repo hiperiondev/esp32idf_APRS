@@ -53,13 +53,21 @@ static uint32_t s_generation = 0;
 static SemaphoreHandle_t write_mutex(void) {
     SemaphoreHandle_t m = __atomic_load_n(&s_write_mutex, __ATOMIC_ACQUIRE);
     if (!m) {
+        // Allocated before the critical section is entered, so the heap walk
+        // never runs with interrupts masked; the critical section only ever
+        // publishes the winning handle. A concurrent loser's candidate is
+        // freed once outside the lock.
+        SemaphoreHandle_t candidate = xSemaphoreCreateMutex();
         portENTER_CRITICAL(&s_write_mutex_init_lock);
         m = s_write_mutex;
         if (!m) {
-            m = xSemaphoreCreateMutex();
+            m = candidate;
+            candidate = NULL;
             __atomic_store_n(&s_write_mutex, m, __ATOMIC_RELEASE);
         }
         portEXIT_CRITICAL(&s_write_mutex_init_lock);
+        if (candidate)
+            vSemaphoreDelete(candidate);
     }
     return m;
 }

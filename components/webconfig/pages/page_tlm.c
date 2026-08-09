@@ -57,6 +57,7 @@
 // documented in telemetry.h.
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "app_config.h"

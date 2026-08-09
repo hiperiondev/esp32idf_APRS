@@ -88,6 +88,50 @@ original APRS101 000-255 window. A channel whose receiving station still
 expects the older 0-255 range can be kept inside it by setting that channel's
 ``ana_raw_min``/``ana_raw_max`` accordingly.
 
+Comment telemetry (APRS 1.2 base-91)
+=====================================
+
+Alongside the ``T#nnn`` report, the *Comment Telemetry* option
+(``comment_telemetry`` / ``cmtTlm``) makes ``telemetry_build_comment_tlm()``
+append a second, compact encoding of the same sample to a station's position
+comment:
+
+.. code-block:: text
+
+   |ss1122|
+
+The group opens and closes with ``|``. The first base-91 pair is the sequence
+number; each following pair is one analog channel, in order (``A1`` first).
+It carries analog channels only — digital bits have no base-91 slot in the
+APRS 1.2 group and stay exclusive to the ``T#nnn`` report.
+
+This is not a beacon of its own. It rides inside the position comment of
+whichever beacon — Tracker, IGate or Digipeater — is currently transmitting
+under the callsign/SSID configured on the *Telemetry* page; a position beacon
+running under any other callsign/SSID never gets the group appended, since a
+receiving station would otherwise read it as that other station's own
+telemetry. Status reports, objects and items never carry it: only a position
+report identifies a single reporting station unambiguously enough for the
+group to mean anything.
+
+The sequence number is the same counter the ``T#nnn`` report uses, taken from
+the same snapshot of channel values, so the two never disagree about which
+sample they describe. Base-91 encoding gives that counter a 0-8280 window
+(91×91 values), wrapping independently of the report's own 0-999 decimal
+field.
+
+Each analog pair is only emitted for a channel that is both enabled and
+currently resolved from the sensor registry, and only as long as every
+channel before it in the A1-A5 order was too: the group has no per-pair
+channel identifier, so a receiving station recovers each value's channel
+purely from its position in the sequence. The encoder stops at the first gap
+rather than skip it, keeping the group an unbroken prefix of A1, A2, ... An.
+
+A group that would not fit the position comment's remaining room is dropped
+rather than truncated — a truncated base-91 pair decodes to a wrong value, not
+a missing one — and the operator's own comment text is never shortened to make
+room for it.
+
 Web page pickers
 ================
 

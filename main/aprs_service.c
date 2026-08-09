@@ -714,12 +714,15 @@ static void aprs_msg_callback(ax25_msg_t *msg) {
     if (g_config.digi_en) {
         int action = digiProcess(msg);
         if (action == 2) {
-            // Path was rewritten in place; re-transmit the modified frame on RF.
-            int len = ax25ToTnc2(msg, tnc2, sizeof(tnc2));
-            if (send_tnc2_impl(tnc2, (size_t)len, true)) {
+            // Path was rewritten in place by digiProcess(); render the
+            // outgoing frame into its own buffer so the received-frame
+            // rendering above stays untouched for the consumers below.
+            char digiTnc2[APRS_RX_TNC2_BUF_SIZE];
+            int len = ax25ToTnc2(msg, digiTnc2, sizeof(digiTnc2));
+            if (send_tnc2_impl(digiTnc2, (size_t)len, true)) {
                 atomic_fetch_add_explicit(&s_statDigi, 1, memory_order_relaxed);
-                ESP_LOGD(TAG, "DIGI TX: %s", tnc2);
-                trafficlog_add_pkt("DIGI", callsign, tnc2, -1, symTable, symCode);
+                ESP_LOGD(TAG, "DIGI TX: %s", digiTnc2);
+                trafficlog_add_pkt("DIGI", callsign, digiTnc2, -1, symTable, symCode);
             }
         }
     }
@@ -733,14 +736,15 @@ static void aprs_msg_callback(ax25_msg_t *msg) {
     // messages and directed queries ("CALL:?query?") - see the split inside
     // it - so it must run whenever either feature is enabled, not just
     // msg_enable, or a directed query would never reach query_process_directed()
-    // while messaging is turned off.
+    // while messaging is turned off. Both this and query_process() below
+    // operate on the frame as received, rendered once at the top of this
+    // function, since digiProcess() (if it ran) rewrote the path for
+    // retransmission only, not for these consumers.
     if (g_config.msg_enable || (g_config.query_en && g_config.query_directed_en)) {
-        ax25ToTnc2(msg, tnc2, sizeof(tnc2));
         handleIncomingAPRS(tnc2, QUERY_SRC_RF);
     }
 
     if (g_config.query_en) {
-        ax25ToTnc2(msg, tnc2, sizeof(tnc2));
         query_process(tnc2, QUERY_SRC_RF);
     }
 }

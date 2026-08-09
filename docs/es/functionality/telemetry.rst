@@ -91,6 +91,52 @@ respecto a la ventana original 000-255 de APRS101. Un canal cuya estación
 receptora aún espere el rango 0-255 anterior puede mantenerse dentro de él
 ajustando ``ana_raw_min``/``ana_raw_max`` de ese canal.
 
+Telemetría en el comentario (APRS 1.2 base-91)
+================================================
+
+Junto al informe ``T#nnn``, la opción *Comment Telemetry*
+(``comment_telemetry`` / ``cmtTlm``) hace que
+``telemetry_build_comment_tlm()`` añada una segunda codificación, compacta, de
+la misma muestra al comentario de posición de una estación:
+
+.. code-block:: text
+
+   |ss1122|
+
+El grupo se abre y se cierra con ``|``. El primer par en base-91 es el número
+de secuencia; cada par siguiente es un canal analógico, en orden (``A1``
+primero). Solo lleva canales analógicos - los bits digitales no tienen hueco
+en base-91 dentro del grupo APRS 1.2 y siguen siendo exclusivos del informe
+``T#nnn``.
+
+Esto no es una baliza propia. Viaja dentro del comentario de posición de la
+baliza que esté transmitiendo en ese momento - Tracker, IGate o Digipeater -
+bajo el indicativo/SSID configurado en la página *Telemetry*; una baliza de
+posición que transmita bajo cualquier otro indicativo/SSID nunca recibe el
+grupo añadido, ya que una estación receptora lo interpretaría como telemetría
+de esa otra estación. Los informes de estado, objetos e ítems nunca lo llevan:
+solo un informe de posición identifica a una única estación que reporta con
+la claridad suficiente para que el grupo tenga sentido.
+
+El número de secuencia es el mismo contador que usa el informe ``T#nnn``,
+tomado del mismo instante de los valores de canal, de modo que ambos nunca
+discrepan sobre qué muestra describen. La codificación base-91 da a ese
+contador una ventana de 0-8280 (91×91 valores), que da la vuelta de forma
+independiente al campo decimal 0-999 propio del informe.
+
+Cada par analógico solo se emite para un canal habilitado y actualmente
+resuelto desde el registro de sensores, y solo mientras todos los canales
+anteriores en el orden A1-A5 también lo estén: el grupo no tiene identificador
+de canal por par, así que una estación receptora recupera el canal de cada
+valor únicamente por su posición en la secuencia. El codificador se detiene en
+el primer hueco en vez de saltarlo, manteniendo el grupo como un prefijo
+ininterrumpido A1, A2, ... An.
+
+Un grupo que no quepa en el espacio restante del comentario de posición se
+descarta en vez de truncarse - un par base-91 truncado se decodifica como un
+valor incorrecto, no como uno ausente - y el texto propio del operador nunca
+se acorta para hacerle sitio.
+
 Selectores de la página web
 ===========================
 

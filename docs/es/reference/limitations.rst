@@ -519,6 +519,13 @@ Telemetría
      - Cada canal analógico A1-A5 y digital B1-B8 elige su fuente del registro
        ``sensors_local``, guardada por nombre de driver, así que habilitar o
        deshabilitar un driver nunca reapunta un canal a otro sensor en silencio
+   * - Telemetría en comentario base-91 APRS 1.2 (``|ss..|``)
+     - ⚠️ (un puñado de clientes/trackers)
+     - ✅
+     - Opcional, junto al reporte ``T#nnn``; viaja en el comentario de posición
+       de la baliza (Tracker/IGate/Digipeater) que esté transmitiendo con el
+       indicativo/SSID configurado en la página Telemetry, compartiendo el
+       contador de secuencia de ese reporte
    * - Recepción/graficado de telemetría de otros
      - ✅ (gráficos de Xastir, aprs.fi)
      - ❌
@@ -709,3 +716,11 @@ Gestión de estación / Operación
      - ⚠️ (poco común)
      - ❌
      - Un único usuario/contraseña HTTP Basic, sin roles
+   * - Limitación de intentos de acceso / bloqueo tras fallos repetidos
+     - ⚠️ (poco común en paneles web embebidos)
+     - ✅
+     - Backoff por IP de origen, empezando en 5 s y doblando en cada fallo
+       adicional mientras dura el bloqueo (tope de 300 s) tras 5 credenciales
+       rechazadas; ``429 Too Many Requests`` con ``Retry-After`` en lugar de
+       ``401`` mientras dura el bloqueo. Solo en RAM, así que se borra al
+       reiniciar
