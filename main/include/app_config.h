@@ -131,7 +131,7 @@ typedef enum {
     WX_FIELD_RAIN_1H,            /**< Rain last hour, 1/100 in-> "rXXX". */
     WX_FIELD_RAIN_24H,           /**< Rain last 24h, 1/100 in -> "pXXX". */
     WX_FIELD_RAIN_MIDNIGHT,      /**< Rain since midnight      -> "PXXX". */
-    WX_FIELD_SNOW_24H,           /**< Snow last 24h, 1/10 in  -> "sXXX" (APRS 1.2). */
+    WX_FIELD_SNOW_24H,           /**< Snow last 24h, 1/10 in  -> "sXXX" or "sX.X" below 10 in (see aprs.org/aprs11/spec-wx.txt). */
     WX_FIELD_HUMIDITY,           /**< Relative humidity, %    -> "hXX". */
     WX_FIELD_PRESSURE,           /**< Barometric pressure     -> "bXXXXX" (tenths of mb). */
     WX_FIELD_LUMINOSITY,         /**< Solar luminosity, W/m^2 -> "LXXX"/"lXXX" (APRS 1.2). */
