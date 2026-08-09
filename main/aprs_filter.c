@@ -551,8 +551,74 @@ static bool base91_4(const char *p, long *out) {
     return true;
 }
 
+// Place value, in minutes, of each digit of a "MM.hh" minutes field, in the
+// order they appear once the '.' at field index 2 is skipped: tens, units,
+// tenths, hundredths.
+static const float MIN_FIELD_PLACE[4] = { 10.0f, 1.0f, 0.1f, 0.01f };
+
+// Index, within a "MM.hh" minutes field, of each of the four digits above.
+static const int MIN_FIELD_DIGIT_INDEX[4] = { 0, 1, 3, 4 };
+
+// Decode a "MM.hh" minutes field that may carry APRS position ambiguity,
+// where trailing digits (starting from the hundredths place) are replaced
+// with spaces. A fully blanked field decodes to the centre of its ambiguity
+// box rather than to its low corner: each blanked digit is taken at its
+// minimum (0) for the lower bound and at its maximum (9, except the tens
+// digit whose maximum is 5 since minutes never reach 60) for the upper
+// bound, and the returned value is the midpoint of the two. A field with no
+// blanked digits decodes to its exact value. Only a trailing run of blanked
+// digits is a well-formed ambiguous field; a blanked digit followed by a
+// present one is rejected.
+static bool parse_ambiguous_minutes(const char *field, float *out_min) {
+    if (field[2] != '.')
+        return false;
+
+    bool blank[4];
+    for (int i = 0; i < 4; i++) {
+        char c = field[MIN_FIELD_DIGIT_INDEX[i]];
+        if (c == ' ')
+            blank[i] = true;
+        else if (isdigit((unsigned char)c))
+            blank[i] = false;
+        else
+            return false;
+    }
+
+    int firstBlank = -1;
+    for (int i = 0; i < 4; i++) {
+        if (blank[i]) {
+            firstBlank = i;
+            break;
+        }
+    }
+    if (firstBlank >= 0) {
+        for (int i = firstBlank; i < 4; i++)
+            if (!blank[i])
+                return false;
+    }
+
+    float lower = 0.0f, upper = 0.0f;
+    for (int i = 0; i < 4; i++) {
+        if (blank[i]) {
+            float maxDigit = (i == 0) ? 5.0f : 9.0f;
+            upper += maxDigit * MIN_FIELD_PLACE[i];
+        } else {
+            float digit = (float)(field[MIN_FIELD_DIGIT_INDEX[i]] - '0');
+            lower += digit * MIN_FIELD_PLACE[i];
+            upper += digit * MIN_FIELD_PLACE[i];
+        }
+    }
+
+    *out_min = (firstBlank < 0) ? lower : (lower + upper) / 2.0f;
+    return true;
+}
+
 // Uncompressed position: "DDMM.hhN/DDDMM.hhW..." - lat[8] table lon[9] code,
-// same 19-byte layout extract_symbol() checks len>=19 for.
+// same 19-byte layout extract_symbol() checks len>=19 for. The minutes
+// fields may carry position ambiguity (APRS101 chapter 6): blanked digits
+// are resolved to the centre of the resulting ambiguity box, since that is
+// the best estimate of the true position and it feeds the range-gate
+// distance check further down the pipeline.
 static bool decode_pos_uncompressed(const char *pos, float *lat, float *lon) {
     size_t len = strlen(pos);
     if (len < 19)
@@ -572,8 +638,14 @@ static bool decode_pos_uncompressed(const char *pos, float *lat, float *lon) {
         if (!isdigit((unsigned char)lonDeg[i]))
             return false;
 
-    float la = (float)atof(latDeg) + (float)atof(latMin) / 60.0f;
-    float lo = (float)atof(lonDeg) + (float)atof(lonMin) / 60.0f;
+    float latMinVal, lonMinVal;
+    if (!parse_ambiguous_minutes(latMin, &latMinVal))
+        return false;
+    if (!parse_ambiguous_minutes(lonMin, &lonMinVal))
+        return false;
+
+    float la = (float)atof(latDeg) + latMinVal / 60.0f;
+    float lo = (float)atof(lonDeg) + lonMinVal / 60.0f;
     if (ns == 'S' || ns == 's')
         la = -la;
     if (ew == 'W' || ew == 'w')

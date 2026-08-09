@@ -103,3 +103,16 @@ Where to start reading
      - ``main/include/app_config.h``
    * - A specific web page
      - the matching ``components/webconfig/pages/page_*.c``
+
+Position ambiguity and the range gate
+======================================
+
+``main/aprs_filter.c`` decodes an incoming packet's position for the local
+RF→INET range gate independently of ``main/aprs_coord.c``, since it only
+needs a latitude/longitude pair, not the full APRS text encoder/decoder.
+When the position carries ambiguity (APRS101 chapter 6: the least
+significant minute digits replaced with spaces), the decoder resolves the
+blanked digits to the centre of the resulting ambiguity box rather than to
+its low corner, since the centre is the best available estimate of the
+station's true position and it is what feeds the great-circle distance
+check in ``components/igate/igate.c``.

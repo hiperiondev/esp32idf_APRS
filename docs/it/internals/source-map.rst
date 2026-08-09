@@ -103,3 +103,17 @@ Da dove iniziare a leggere
      - ``main/include/app_config.h``
    * - Una pagina web specifica
      - il ``components/webconfig/pages/page_*.c`` corrispondente
+
+Ambiguità di posizione e il filtro di portata
+===============================================
+
+``main/aprs_filter.c`` decodifica la posizione di un pacchetto in arrivo per
+il filtro di portata locale RF→INET in modo indipendente da
+``main/aprs_coord.c``, poiché richiede solo una coppia latitudine/longitudine,
+non l'intero codificatore/decodificatore di testo APRS. Quando la posizione
+presenta ambiguità (APRS101 capitolo 6: le cifre dei minuti meno
+significative sostituite da spazi), il decodificatore risolve le cifre
+vuote al centro del riquadro di ambiguità risultante anziché al suo angolo
+inferiore, poiché il centro è la migliore stima disponibile della vera
+posizione della stazione ed è ciò che alimenta il controllo della distanza
+per grande cerchio in ``components/igate/igate.c``.
