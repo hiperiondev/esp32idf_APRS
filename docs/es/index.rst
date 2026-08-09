@@ -9,7 +9,7 @@
 .. raw:: html
 
    <h1 style="text-align: center;">esp32idf_APRS</h1>
-   <h2 style="text-align: center;">Una estación APRS completa en un único ESP32 — ESP-IDF nativo, sin Arduino.</h2>
+   <h2 style="text-align: center;">Una estación APRS completa en un único ESP32<br>ESP-IDF nativo, sin Arduino.</h2>
    <p style="text-align: center;"><strong>IGate · Digipeater · Tracker · Meteo · Telemetría, con administración web integrada, un módem software AFSK/FSK en el propio chip, enlace a APRS-IS, un framework de controladores de sensores en tiempo de ejecución y actualizaciones de firmware por OTA.</strong></p>
 
 ============
