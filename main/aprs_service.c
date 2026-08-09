@@ -1080,6 +1080,11 @@ static int build_thirdparty_frame(const char *inetLine, char *out, size_t outMax
     cfgSsid = g_config.aprs_ssid;
     cfgPathSel = g_config.igate_path;
     app_config_unlock();
+    // The copy above takes the full field width, so termination depends on
+    // what the config loader stored. Force it: everything downstream treats
+    // this as a C string, and a field filled edge to edge would send it
+    // reading past the end of the local buffer.
+    cfgMycall[sizeof(cfgMycall) - 1] = 0;
 
     char callField[16];
     if (cfgSsid > 0)

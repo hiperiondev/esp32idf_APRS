@@ -25,6 +25,7 @@
 #include <unistd.h>
 
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
@@ -529,6 +530,12 @@ int igateProcess(ax25_msg_t *packet) {
     app_config_lock();
     memcpy(satGates, g_config.satgate, sizeof(satGates));
     app_config_unlock();
+    // The copy above takes the full field width of every row, so termination
+    // depends on what the config loader stored. Force it: everything
+    // downstream treats each row as a C string, and a row filled edge to
+    // edge would send it reading past the end of that row.
+    for (size_t s = 0; s < IGATE_SATGATE_MAX; s++)
+        satGates[s][sizeof(satGates[s]) - 1] = 0;
 
     for (idx = 0; idx < packet->rpt_count; idx++) {
         for (size_t s = 0; s < IGATE_SATGATE_MAX; s++) {
@@ -641,6 +648,11 @@ int igateProcess(ax25_msg_t *packet) {
         prefixEn = g_config.rf2inet_prefix_en;
         memcpy(prefixes, g_config.rf2inet_prefixes, sizeof(prefixes));
         app_config_unlock();
+        // The copy above takes the full field width, so termination depends
+        // on what the config loader stored. Force it: everything downstream
+        // treats this as a C string, and a field filled edge to edge would
+        // send it reading past the end of the local buffer.
+        prefixes[sizeof(prefixes) - 1] = 0;
 
         // The effective destination call feeds the Mic-E decode path inside
         // aprs_filter_decode_position() (the position lives in the AX.25
@@ -729,6 +741,11 @@ int igateProcess(ax25_msg_t *packet) {
     cfg_ssid = g_config.aprs_ssid;
     cfg_window = g_config.igate_local_window_sec;
     app_config_unlock();
+    // The copy above takes the full field width, so termination depends on
+    // what the config loader stored. Force it: everything downstream treats
+    // this as a C string, and a field filled edge to edge would send it
+    // reading past the end of the local buffer.
+    cfg_mycall[sizeof(cfg_mycall) - 1] = 0;
 
     // The station the q construct describes is the one carried in the header
     // just built: the inner station for an unwrapped third-party frame, the
@@ -832,6 +849,22 @@ static void closeSocket(void) {
 // after the last one, giving the failover an endless round-robin.
 static uint8_t s_serverIdx = 0;
 
+// esp_timer_get_time() timestamp (microseconds) at which the currently (or
+// most recently) published socket completed login in connectAprsIs(). Used
+// by the RX loop to tell a server that accepts the login and then drops the
+// session almost immediately - a full server, one in maintenance, a load
+// balancer with no live backend - apart from a normal link that simply drops
+// after a long, healthy run. Only the former should trigger a failover.
+static int64_t s_sessionStartUs = 0;
+
+// A session shorter than this is treated as the connected server rejecting
+// or failing to sustain the link rather than a transient network blip, and
+// triggers an immediate failover to the next enabled slot. Long enough that
+// a normal link dropping after hours of healthy use stays pinned to its
+// server, short enough that a server which accepts and immediately closes
+// is not retried for minutes before the rotation moves on.
+#define IGATE_MIN_SESSION_US (60LL * 1000000LL)
+
 // Moves s_serverIdx to the next enabled slot, wrapping circularly through
 // g_config.aprs_server. Disabled slots are skipped entirely rather than
 // pausing the rotation on them. If every slot is disabled, s_serverIdx is
@@ -847,17 +880,40 @@ static void advanceServer(void) {
     app_config_unlock();
 }
 
+// Called right after a post-login session ends (server closed the connection
+// or recv() failed). A session shorter than IGATE_MIN_SESSION_US means the
+// server accepted the login and then dropped the link almost immediately, so
+// this rotates to the next enabled slot exactly like a connection-establishment
+// failure does; a session that ran longer than that is left pinned to its
+// current slot, since a healthy link dropping after a long run is not a
+// reason to abandon an otherwise-working server.
+static void failoverIfShortSession(void) {
+    int64_t elapsed = esp_timer_get_time() - s_sessionStartUs;
+    if (elapsed < IGATE_MIN_SESSION_US) {
+        ESP_LOGW(TAG, "APRS-IS session lasted %lld ms, failing over to next APRS-IS server", (long long)(elapsed / 1000));
+        advanceServer();
+    }
+}
+
 // Copies the server slot connectAprsIs() should try right now into *host/
 // *port, under the config lock. Falls back to slot 0 whenever s_serverIdx
 // itself is disabled (e.g. every slot got disabled from the web UI after the
 // rotation had already selected one of them), so the IGate always has a
-// concrete destination to dial instead of silently doing nothing. host is
-// always left NUL-terminated within hostSize, regardless of whether the
-// stored field fills every byte.
+// concrete destination to dial instead of silently doing nothing. The copy
+// is bounded by both the source field size and hostSize, so a caller buffer
+// larger than the stored field never reads past the end of the config slot,
+// and a caller buffer smaller than the stored field truncates instead of
+// overflowing. host is always left NUL-terminated within hostSize, and a
+// hostSize of 0 is a no-op.
 static void currentServer(char *host, size_t hostSize, uint16_t *port) {
+    if (hostSize == 0)
+        return;
     app_config_lock();
     uint8_t idx = g_config.aprs_server[s_serverIdx].enable ? s_serverIdx : 0;
-    memcpy(host, g_config.aprs_server[idx].host, hostSize);
+    size_t n = sizeof(g_config.aprs_server[idx].host);
+    if (n > hostSize)
+        n = hostSize;
+    memcpy(host, g_config.aprs_server[idx].host, n);
     *port = g_config.aprs_server[idx].port;
     app_config_unlock();
     host[hostSize - 1] = 0;
@@ -1029,6 +1085,7 @@ static bool connectAprsIs(void) {
     ensureSockMutex();
     xSemaphoreTake(s_sockMutex, portMAX_DELAY);
     s_sock = sock;
+    s_sessionStartUs = esp_timer_get_time();
     xSemaphoreGive(s_sockMutex);
     ESP_LOGI(TAG, "Connected to APRS-IS %s:%u as %s", cfg_host, (unsigned)cfg_port, cfg_mycall);
     trafficlog_add("Connected to APRS-IS %s:%u as %s", cfg_host, (unsigned)cfg_port, cfg_mycall);
@@ -1153,9 +1210,11 @@ static void igateTask(void *arg) {
         } else if (r == 0) {
             ESP_LOGW(TAG, "APRS-IS connection closed by server");
             trafficlog_add("APRS-IS connection closed by server");
+            failoverIfShortSession();
             closeSocket();
         } else if (errno != EAGAIN && errno != EWOULDBLOCK && errno != ETIMEDOUT) {
             ESP_LOGW(TAG, "recv() error errno %d", errno);
+            failoverIfShortSession();
             closeSocket();
         }
         // EAGAIN/timeout: just loop, gives the "igate_en toggled off" check a chance to run.

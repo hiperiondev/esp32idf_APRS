@@ -297,8 +297,12 @@ bool igate_send_raw(const char *line, size_t len);
  * panel. Reflects the failover rotation driven by g_config.aprs_server: it
  * changes as igate_start()'s task advances to the next enabled server after
  * a connection failure.
- * @param host    Buffer to receive the hostname (NUL-terminated).
- * @param hostLen Size of @p host in bytes.
+ * @param host    Buffer to receive the hostname (NUL-terminated). The copy is
+ *                bounded by both the internal field size and @p hostLen: a
+ *                buffer shorter than the stored hostname truncates it, and a
+ *                buffer longer than the stored hostname is safely padded and
+ *                terminated without reading past the source field.
+ * @param hostLen Size of @p host in bytes. Passing 0 is a no-op.
  * @param port    Receives the TCP port.
  */
 void igate_get_current_server(char *host, size_t hostLen, uint16_t *port);

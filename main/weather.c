@@ -526,6 +526,14 @@ static int build_wx_packet(const wx_resolved_t r[WX_SENSOR_NUM], char *out, size
         cfg_msg_capable = g_config.msg_enable;
     }
     app_config_unlock();
+    // The three memcpy() calls above take the full field width, so
+    // termination depends on what the config loader stored. Force it for all
+    // of them: everything downstream treats these as C strings, and a field
+    // filled edge to edge would send it reading past the end of the local
+    // buffer.
+    cfg_call[sizeof(cfg_call) - 1] = 0;
+    cfg_object[sizeof(cfg_object) - 1] = 0;
+    cfg_comment[sizeof(cfg_comment) - 1] = 0;
 
     const char *call = cfg_call;
     uint8_t ssid = cfg_ssid;
