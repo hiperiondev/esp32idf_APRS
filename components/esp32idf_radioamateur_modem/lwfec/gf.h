@@ -130,7 +130,7 @@ static inline uint8_t GfInv(uint8_t x) {
  * @param s Scalar multiplicand
  * @param out Ouput polynomial. Has the same degree as input polynomial
  */
-void GfPolyScale(uint8_t *p, uint8_t o, uint8_t s, uint8_t *out);
+void GfPolyScale(const uint8_t *p, uint8_t o, uint8_t s, uint8_t *out);
 
 /**
  * @brief Add two polynomials
@@ -142,7 +142,7 @@ void GfPolyScale(uint8_t *p, uint8_t o, uint8_t s, uint8_t *out);
  * @return Output polynomial length, that is max(o1, o2). Every coefficient up to
  *         that length is written.
  */
-uint8_t GfPolyAdd(uint8_t *p1, uint8_t o1, uint8_t *p2, uint8_t o2, uint8_t *out);
+uint8_t GfPolyAdd(const uint8_t *p1, uint8_t o1, const uint8_t *p2, uint8_t o2, uint8_t *out);
 
 /**
  * @brief Multiply two polynomials
@@ -153,7 +153,7 @@ uint8_t GfPolyAdd(uint8_t *p1, uint8_t o1, uint8_t *p2, uint8_t o2, uint8_t *out
  * @param out Output polynomial. Has a length of o1 + o2 - 1
  * @warning Output buffer must be separate from input buffers
  */
-void GfPolyMul(uint8_t *p1, uint8_t o1, uint8_t *p2, uint8_t o2, uint8_t *out);
+void GfPolyMul(const uint8_t *p1, uint8_t o1, const uint8_t *p2, uint8_t o2, uint8_t *out);
 
 /**
  * @brief Evaluate the polynomial at given x
@@ -162,7 +162,7 @@ void GfPolyMul(uint8_t *p1, uint8_t o1, uint8_t *p2, uint8_t o2, uint8_t *out);
  * @param x Value to evaluate the polynomial at
  * @return Evaluated value
  */
-uint8_t GfPolyEval(uint8_t *p, uint8_t o, uint8_t x);
+uint8_t GfPolyEval(const uint8_t *p, uint8_t o, uint8_t x);
 
 /**
  * @brief Divide two polynomials in Galois field
@@ -174,7 +174,7 @@ uint8_t GfPolyEval(uint8_t *p, uint8_t o, uint8_t x);
  * @warning This function works on polynomials orderder highest-degree-term-first
  * @return Pointer to the first element of the remainder
  */
-uint8_t *GfPolyDiv(uint8_t *p1, uint8_t o1, uint8_t *p2, uint8_t o2, uint8_t *out);
+uint8_t *GfPolyDiv(const uint8_t *p1, uint8_t o1, const uint8_t *p2, uint8_t o2, uint8_t *out);
 
 /**
  * @brief Reverse the order of elements in a polynomial (in-place)

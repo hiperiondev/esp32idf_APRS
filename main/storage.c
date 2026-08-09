@@ -124,11 +124,24 @@ bool storage_init(void) {
 bool storage_delete(const char *path) {
     if (!s_mounted)
         return false;
+    if (!path || path[0] == 0)
+        return false;
+    // Only a single flat filename under /storage is ever a valid delete
+    // target, with at most one leading '/' accepted so a root-relative path
+    // is interpreted the same as a bare filename. Any '..' segment or any
+    // other path separator - forward or backward slash - anywhere else in
+    // the string is rejected here, so this function is safe to call with an
+    // externally influenced path regardless of what checks, if any, the
+    // caller already applied.
+    const char *name = (path[0] == '/') ? path + 1 : path;
+    if (name[0] == 0 || name[0] == '.')
+        return false;
+    for (const char *p = name; *p; p++) {
+        if (*p == '/' || *p == '\\')
+            return false;
+    }
     char full[300];
-    if (path[0] == '/')
-        snprintf(full, sizeof(full), "%s%s", STORAGE_BASE_PATH, path);
-    else
-        snprintf(full, sizeof(full), "%s/%s", STORAGE_BASE_PATH, path);
+    snprintf(full, sizeof(full), "%s/%s", STORAGE_BASE_PATH, name);
     if (remove(full) != 0)
         return false;
     // The file just removed may be one a subsystem holds a parsed copy of, so

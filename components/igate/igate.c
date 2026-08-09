@@ -239,16 +239,16 @@ bool igate_is_connected(void) {
 // ---------------------------------------------------------------------------
 // @brief Build a 16-byte dedup key for a decoded frame.
 //
-// Seeds the key with the source callsign, source SSID and payload length,
-// then mixes in two CRC-CCITT digests of the *entire* info field - one
-// computed forward, one computed backward - so that any byte anywhere in
-// the payload (not just an early prefix) changes the resulting hash. Two
-// frames only produce the same hash if they genuinely share source,
-// length, and byte-for-byte payload content.
-static void packetHash(ax25_msg_t *packet, char *hash) {
-    int n = snprintf(hash, 16, "%s%d%d", packet->src.call, packet->src.ssid, (int)packet->len);
-    if (n < 0)
-        n = 0;
+// Zero-initializes the full 16-byte key, then seeds it with the source
+// callsign, source SSID and payload length, and finally mixes in two
+// CRC-CCITT digests of the *entire* info field - one computed forward, one
+// computed backward - so that any byte anywhere in the payload (not just an
+// early prefix) changes the resulting hash. Two frames only produce the
+// same hash if they genuinely share source, length, and byte-for-byte
+// payload content.
+static void packetHash(const ax25_msg_t *packet, char *hash) {
+    memset(hash, 0, 16);
+    snprintf(hash, 16, "%s%d%d", packet->src.call, packet->src.ssid, (int)packet->len);
 
     uint16_t crcFwd = CRC_CCIT_INIT_VAL;
     for (size_t i = 0; i < packet->len; i++)

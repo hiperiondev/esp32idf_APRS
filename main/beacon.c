@@ -165,8 +165,6 @@ static void buildPhgExtension(uint16_t power, float gain, uint16_t height, uint8
         G = 9;
 
     int D = (int)dir;
-    if (D < 0)
-        D = 0;
     if (D > 8)
         D = 8;
 
@@ -193,8 +191,6 @@ static void buildHgdCodes(float gain, uint16_t height, uint8_t dir, char *out, s
         G = 9;
 
     int D = (int)dir;
-    if (D < 0)
-        D = 0;
     if (D > 8)
         D = 8;
 
@@ -267,8 +263,6 @@ static void buildRangeExtension(uint16_t rangeMiles, char *out, size_t outMax) {
 // >= 8 bytes.
 static void buildDfsExtension(uint8_t strength, float gain, uint16_t height, uint8_t dir, char *out, size_t outMax) {
     int S = (int)strength;
-    if (S < 0)
-        S = 0;
     if (S > APRS_EXT_DFS_STRENGTH_MAX)
         S = APRS_EXT_DFS_STRENGTH_MAX;
 

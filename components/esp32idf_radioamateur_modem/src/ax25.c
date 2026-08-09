@@ -507,7 +507,7 @@ static void *writeFx25Frame(const uint8_t *data, uint16_t size) {
     return ret;
 }
 
-static struct FrameHandle *parseFx25Frame(uint8_t *frame, uint16_t size, uint16_t *crc) {
+static struct FrameHandle *parseFx25Frame(const uint8_t *frame, uint16_t size, uint16_t *crc) {
     struct FrameHandle *h = &rxFrame[rxFrameHead];
     uint16_t initialRxBufferHead = rxBufferHead;
     uint8_t tempRxFrameHead = rxFrameHead;
@@ -744,15 +744,15 @@ bool Ax25ReadNextRxFrame(uint8_t **dst, uint16_t *size, int8_t *peak, int8_t *va
     return true;
 }
 
-enum Ax25RxStage Ax25GetRxStage(uint8_t modem) {
+enum Ax25RxStage Ax25GetRxStage(uint8_t modemNo) {
     // Public component API: the index is bounded against the rxState array
     // here rather than trusted, so a caller outside the component cannot read
     // past it. An out-of-range demodulator reports RX_STAGE_IDLE, which is
     // what every consumer already treats as "nothing in progress".
-    if (modem >= MODEM_MAX_DEMODULATOR_COUNT)
+    if (modemNo >= MODEM_MAX_DEMODULATOR_COUNT)
         return RX_STAGE_IDLE;
 
-    return rxState[modem].rx;
+    return rxState[modemNo].rx;
 }
 
 void Ax25BitParse(uint8_t bit, uint8_t modem, uint16_t mV) {
@@ -1481,7 +1481,8 @@ static void convPath(ax25_header_t *hdr, const char *txt, unsigned int size) {
 }
 
 char ax25_encode(ax25_frame_t *frame, char *txt, int size) {
-    char *token, *ptr;
+    char *token;
+    const char *ptr;
     int i;
     unsigned int p, p2, p3;
     char j;

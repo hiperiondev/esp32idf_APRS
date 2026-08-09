@@ -36,7 +36,7 @@ static uint8_t commonBuffer[4 * RS_MAX_REDUNDANCY_BYTES + 4];
 // @param data Input block (length = N)
 // @param size Block size = N
 // @param out Output syndromes (length = T)
-static void syndromes(struct LwFecRS *rs, uint8_t *data, uint8_t size, uint8_t *out) {
+static void syndromes(const struct LwFecRS *rs, const uint8_t *data, uint8_t size, uint8_t *out) {
     for (uint8_t i = 0; i < rs->T; i++) {
         out[i] = GfPolyEval(data, size, GfPow2(i + rs->fcr));
     }
@@ -47,7 +47,7 @@ static void syndromes(struct LwFecRS *rs, uint8_t *data, uint8_t size, uint8_t *
 // @param locatorSize Error locator polynomial length <= T
 // @param out List of erroneous positions (error evaulator) (length = locatorSize - 1)
 // @return True on success, else the "out" buffer must be invalidated and the block is uncorrectable
-static bool errorEvaluator(uint8_t *locator, uint8_t locatorSize, uint8_t *out) {
+static bool errorEvaluator(const uint8_t *locator, uint8_t locatorSize, uint8_t *out) {
     // The roots of the error locator polynomial give the error positions. They are
     // found with a Chien search: the polynomial is evaluated at 2^i for every
     // position of the block, which reuses the log tables instead of doing a full
@@ -88,7 +88,7 @@ static bool errorEvaluator(uint8_t *locator, uint8_t locatorSize, uint8_t *out) 
 // @param *out Output error locator buffer
 // @param outSize Error locator polynomial buffer length <= T
 // @return True if success, else the "out" buffer must be invalidated and the block is uncorrectable
-static bool errorLocator(struct LwFecRS *rs, uint8_t *syndromes, uint8_t *out, uint8_t *outSize) {
+static bool errorLocator(const struct LwFecRS *rs, const uint8_t *syndromes, uint8_t *out, uint8_t *outSize) {
     // The error locator polynomial is calculated with the Berlekamp-Massey
     // algorithm, ported from the Python listing of the Wikiversity article
     // "Reed-Solomon codes for coders".
@@ -163,7 +163,7 @@ static bool errorLocator(struct LwFecRS *rs, uint8_t *syndromes, uint8_t *out, u
 // @param *evaluator Error evaluator polynomial
 // @param errCount Number of errors (error evaulator size)
 // @return True on success, false on failure
-static bool fix(struct LwFecRS *rs, uint8_t *data, uint8_t size, uint8_t *syn, uint8_t *evaluator, uint8_t errCount) {
+static bool fix(const struct LwFecRS *rs, uint8_t *data, uint8_t size, uint8_t *syn, const uint8_t *evaluator, uint8_t errCount) {
     // This is based on Forney's algorithm.
     // variables of size 3 * RS_MAX_REDUNDANCY_BYTES + 3
     // static uint8_t locator[RS_MAX_REDUNDANCY_BYTES + 1];
@@ -234,7 +234,7 @@ static bool fix(struct LwFecRS *rs, uint8_t *data, uint8_t size, uint8_t *syn, u
 // @param *syndromes Syndrome polynomial
 // @param size Syndrome polynomial size (buffer length)
 // @return True if all zero
-static bool checkSyndromes(uint8_t *syndromes, uint8_t size) {
+static bool checkSyndromes(const uint8_t *syndromes, uint8_t size) {
     bool err = false;
 
     for (uint8_t i = 0; i < size; i++) // check if all syndromes are 0, if so, the message is correct
@@ -246,7 +246,7 @@ static bool checkSyndromes(uint8_t *syndromes, uint8_t size) {
     return !err;
 }
 
-bool RsDecode(struct LwFecRS *rs, uint8_t *data, uint8_t size, uint8_t *fixed) {
+bool RsDecode(const struct LwFecRS *rs, uint8_t *data, uint8_t size, uint8_t *fixed) {
     if ((size > (RS_BLOCK_SIZE - rs->T)) || (rs->T > RS_MAX_REDUNDANCY_BYTES))
         return false;
 
@@ -287,7 +287,7 @@ bool RsDecode(struct LwFecRS *rs, uint8_t *data, uint8_t size, uint8_t *fixed) {
         return false;
 }
 
-void RsEncode(struct LwFecRS *rs, uint8_t *data, uint8_t size) {
+void RsEncode(const struct LwFecRS *rs, uint8_t *data, uint8_t size) {
     if ((size > (RS_BLOCK_SIZE - rs->T)) || (rs->T > RS_MAX_REDUNDANCY_BYTES))
         return;
 

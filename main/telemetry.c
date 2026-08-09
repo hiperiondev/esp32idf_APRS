@@ -862,11 +862,8 @@ static int build_tlm_data_packet(const telemetry_config_t *s, uint32_t seq, bool
             break;
         u += (size_t)n;
     }
-    if (haveDigital && fieldsToEmit > ana_count) {
-        int n = snprintf(fields + u, sizeof(fields) - u, ",%s", bits);
-        if (n > 0 && (size_t)n < sizeof(fields) - u)
-            u += (size_t)n;
-    }
+    if (haveDigital && fieldsToEmit > ana_count)
+        snprintf(fields + u, sizeof(fields) - u, ",%s", bits);
 
     char info[TLM_CH * 20 + TLM_BIT_NUM + 32 + sizeof(s->trail_comment)];
     if (snprintf(info, sizeof(info), "T#%03u%s%s", (unsigned)(seq % 1000u), fields, s->trail_comment) < 0)

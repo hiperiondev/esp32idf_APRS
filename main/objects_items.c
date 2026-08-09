@@ -230,12 +230,12 @@ static bool load_locked(objitems_t *out, bool *out_missing) {
                 b->df_bearing = (uint16_t)((int)v->valuedouble % 360);
             v = cJSON_GetObjectItem(o, "dfN");
             if (cJSON_IsNumber(v)) {
-                int n = (int)v->valuedouble;
-                if (n < 0)
-                    n = 0;
-                if (n > 9)
-                    n = 9;
-                b->df_nrq_n = (uint8_t)n;
+                int dfN = (int)v->valuedouble;
+                if (dfN < 0)
+                    dfN = 0;
+                if (dfN > 9)
+                    dfN = 9;
+                b->df_nrq_n = (uint8_t)dfN;
             }
             v = cJSON_GetObjectItem(o, "dfR");
             if (cJSON_IsNumber(v)) {
@@ -665,8 +665,6 @@ static void objitem_build_phg(const objitem_t *b, char *out, size_t out_size) {
         G = 9;
 
     int D = (int)b->phg_dir;
-    if (D < 0)
-        D = 0;
     if (D > 8)
         D = 8;
 

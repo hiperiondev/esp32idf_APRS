@@ -828,13 +828,25 @@ static bool base_call_equals(const char *src, size_t srcLen, const char *cfg) {
     return true;
 }
 
+// Number of distinct report sources this station can upload to APRS-IS under
+// their own callsign: the IGate beacon/status, the shared "My Station"
+// identity, the tracker, the digipeater, the weather station, telemetry and
+// APRS messages. OWN_REPORT_CALL_COUNT is the single source of truth for how
+// many entries inet_line_is_own_report()'s calls[] array must hold; the
+// _Static_assert next to that array fails the build the moment the two drift
+// apart, so a report source added to calls[] without updating this constant
+// (or vice versa) is caught at compile time rather than surfacing later as a
+// silent RF feedback loop.
+#define OWN_REPORT_CALL_COUNT 7
+
 // True if this APRS-IS line's SOURCE callsign (base call, SSID ignored) is one
-// of THIS station's own report callsigns. Every report we upload to APRS-IS via
-// its *_2inet flag is echoed straight back to us by the server; this lets
-// inet2rfHandler() recognise those echoes so it never re-gates our own reports
-// from INET back to RF. Our reports reach RF exclusively through their own
-// "Send via RF" (*_2rf) flags in weather.c / beacon.c - the IGATE INET->RF
-// filter is for foreign internet traffic only, never our own.
+// of THIS station's own report callsigns. Every report this station uploads
+// to APRS-IS is echoed straight back by the server; recognising that echo
+// here lets inet2rfHandler() skip it instead of re-gating it back to RF, which
+// would otherwise cause a feedback loop / double transmission. This station's
+// own reports reach RF exclusively through their own "Send via RF" flags in
+// weather.c / beacon.c - the IGATE INET->RF filter below is for foreign
+// internet traffic only, never our own.
 static bool inet_line_is_own_report(const char *line) {
     // Source call is everything up to the first '-' (SSID) or '>' (path).
     size_t srcLen = 0;
@@ -853,18 +865,12 @@ static bool inet_line_is_own_report(const char *line) {
     char tlm_mycall[10];
     telemetry_get_mycall(tlm_mycall, sizeof(tlm_mycall));
 
-    // CROSS-REFERENCE: this array must be kept in sync with every *_mycall /
-    // *_callsign field that can appear as the SOURCE of a report we send with
-    // its matching *_2inet flag on (beacon.c, weather.c, telemetry.c,
-    // trk_*.c, digi.c, message handling). Any new report source that gains
-    // its own callsign field - or its own INET-upload flag - must be added
-    // here too. An omitted callsign means the APRS-IS echo of our own report is
-    // not recognised as such, and inet2rfHandler() re-gates it back to RF,
-    // causing a feedback loop / double transmission. grep for "_2inet" across the tree
-    // to find every current uplink flag this list needs to cover.
     const char *calls[] = {
         g_config.aprs_mycall, g_config.my_callsign, g_config.trk_mycall, g_config.digi_mycall, g_config.wx_mycall, tlm_mycall, g_config.msg_mycall,
     };
+    _Static_assert(sizeof(calls) / sizeof(calls[0]) == OWN_REPORT_CALL_COUNT,
+                   "calls[] in inet_line_is_own_report() must list exactly OWN_REPORT_CALL_COUNT callsigns; "
+                   "update OWN_REPORT_CALL_COUNT alongside any report source added to or removed from this array");
     for (size_t i = 0; i < sizeof(calls) / sizeof(calls[0]); i++) {
         if (base_call_equals(line, srcLen, calls[i]))
             return true;

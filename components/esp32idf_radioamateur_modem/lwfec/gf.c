@@ -61,13 +61,13 @@ const uint8_t GfLog[256] = {
     0x16, 0xeb, 0x7a, 0x75, 0x2c, 0xd7, 0x4f, 0xae, 0xd5, 0xe9, 0xe6, 0xe7, 0xad, 0xe8, 0x74, 0xd6, 0xf4, 0xea, 0xa8, 0x50, 0x58, 0xaf,
 };
 
-void GfPolyScale(uint8_t *p, uint8_t o, uint8_t s, uint8_t *out) {
+void GfPolyScale(const uint8_t *p, uint8_t o, uint8_t s, uint8_t *out) {
     for (uint8_t i = 0; i < o; i++) {
         out[i] = GfMul(p[i], s);
     }
 }
 
-uint8_t GfPolyAdd(uint8_t *p1, uint8_t o1, uint8_t *p2, uint8_t o2, uint8_t *out) {
+uint8_t GfPolyAdd(const uint8_t *p1, uint8_t o1, const uint8_t *p2, uint8_t o2, uint8_t *out) {
     if (o1 >= o2) // p1 is longer than p2
     {
         for (uint8_t i = 0; i < o2; i++) {
@@ -87,7 +87,7 @@ uint8_t GfPolyAdd(uint8_t *p1, uint8_t o1, uint8_t *p2, uint8_t o2, uint8_t *out
     }
 }
 
-void GfPolyMul(uint8_t *p1, uint8_t o1, uint8_t *p2, uint8_t o2, uint8_t *out) {
+void GfPolyMul(const uint8_t *p1, uint8_t o1, const uint8_t *p2, uint8_t o2, uint8_t *out) {
     memset(out, 0, o1 + o2 - 1);
     for (uint8_t i = 0; i < o1; i++) {
         for (uint8_t j = 0; j < o2; j++) {
@@ -96,7 +96,7 @@ void GfPolyMul(uint8_t *p1, uint8_t o1, uint8_t *p2, uint8_t o2, uint8_t *out) {
     }
 }
 
-uint8_t GfPolyEval(uint8_t *p, uint8_t o, uint8_t x) {
+uint8_t GfPolyEval(const uint8_t *p, uint8_t o, uint8_t x) {
     uint8_t ret = p[0];
     for (uint8_t i = 1; i < o; i++) {
         ret = GfAdd(GfMul(ret, x), p[i]); // this uses Horner's scheme to perform fast evaluation
@@ -104,7 +104,7 @@ uint8_t GfPolyEval(uint8_t *p, uint8_t o, uint8_t x) {
     return ret;
 }
 
-uint8_t *GfPolyDiv(uint8_t *p1, uint8_t o1, uint8_t *p2, uint8_t o2, uint8_t *out) {
+uint8_t *GfPolyDiv(const uint8_t *p1, uint8_t o1, const uint8_t *p2, uint8_t o2, uint8_t *out) {
     memcpy(out, p1, o1);
     for (uint8_t i = 0; i < (o1 - o2 + 1); i++) {
         uint8_t coeff = out[i];

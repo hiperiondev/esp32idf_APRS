@@ -343,6 +343,9 @@ static void resolve_fields(wx_resolved_t out[WX_SENSOR_NUM]) {
 // WX_SW_SUFFIX itself, as the last token of the whole information field.
 // Returns bytes written.
 static int build_wx_tokens(const wx_resolved_t r[WX_SENSOR_NUM], bool positionless, char *out, size_t outMax) {
+    if (outMax == 0)
+        return 0;
+
     size_t u = 0;
 #define WX_APP(...)                                                                                                                                            \
     do {                                                                                                                                                       \

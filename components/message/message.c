@@ -267,6 +267,9 @@ static bool isValidMsgNoField(const char *s) {
 // and an empty acknowledgement, and a plain "MM" gives the number alone. Both
 // outputs are always NUL-terminated.
 static void splitReplyAck(const char *msgNo, char *own, size_t own_size, char *ack, size_t ack_size) {
+    if (own_size == 0 || ack_size == 0)
+        return;
+
     own[0] = 0;
     ack[0] = 0;
 

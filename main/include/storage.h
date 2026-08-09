@@ -43,10 +43,14 @@
 bool storage_init(void);
 
 /**
- * @brief Delete a single file (not directories) under /storage.
+ * @brief Delete a single flat file under /storage.
  *
- * Bumps ::storage_generation on success, since the file may be one a
- * subsystem holds a RAM copy of.
+ * @p path must name a plain file directly under the storage root: an
+ * optional single leading '/' is accepted, but a '..' segment or any other
+ * '/' or '\' anywhere in the name is rejected internally, independent of any
+ * sanitization the caller may already have performed. Bumps
+ * ::storage_generation on success, since the file may be one a subsystem
+ * holds a RAM copy of.
  *
  * @param path Path of the file to remove.
  * @return true if the file was deleted.
