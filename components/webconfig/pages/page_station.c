@@ -188,6 +188,8 @@ esp_err_t page_station_get(httpd_req_t *req) {
     }
     web_select_close(req);
     web_field_checkbox(req, TR_F_STATUS_GRID, "myStatusGrid", g_config.status_grid_en);
+    web_field_checkbox(req, TR_F_STATUS_TIMESTAMP, "myStatusTS", g_config.status_timestamp_en);
+    web_field_checkbox(req, TR_F_POS_DAO, "myPosDao", g_config.pos_dao_en);
     web_fieldset_close(req);
 
     // PHG (Power-Height-Gain-Directivity) ------------------------------------
@@ -307,6 +309,8 @@ esp_err_t page_station_post(httpd_req_t *req) {
         g_config.pos_ambiguity = (uint8_t)amb;
     }
     g_config.status_grid_en = web_form_get_bool(body, "myStatusGrid");
+    g_config.status_timestamp_en = web_form_get_bool(body, "myStatusTS");
+    g_config.pos_dao_en = web_form_get_bool(body, "myPosDao");
     g_config.my_phg_power = (uint16_t)web_form_get_int(body, "myPHGPower", g_config.my_phg_power);
     g_config.my_phg_gain = (float)web_form_get_int(body, "myPHGGain", (int)lroundf(g_config.my_phg_gain));
     // Select value is the underlying feet code (see the GET handler); saved

@@ -28,6 +28,17 @@
 
 static const char *TAG = "page_digi";
 
+// Duplex-direction <select>. UI values 0=simplex, 1=+, 2=- (converted to the
+// stored int8_t duplex on POST).
+static void render_duplex_select(httpd_req_t *req, const char *name, int8_t duplex) {
+    int cur = duplex > 0 ? 1 : (duplex < 0 ? 2 : 0);
+    web_select_open(req, TR_F_OBJITEM_DUPLEX, name);
+    web_select_option(req, 0, TR_F_OBJITEM_DUPLEX_SIMPLEX, cur == 0);
+    web_select_option(req, 1, TR_F_OBJITEM_DUPLEX_PLUS, cur == 1);
+    web_select_option(req, 2, TR_F_OBJITEM_DUPLEX_MINUS, cur == 2);
+    web_select_close(req);
+}
+
 esp_err_t page_digi_get(httpd_req_t *req) {
     if (!web_check_auth(req))
         return ESP_OK;
@@ -100,6 +111,19 @@ esp_err_t page_digi_get(httpd_req_t *req) {
     web_field_text(req, TR_F_STATUS_TEXT, "digiStatus", g_config.digi_status, STATUS_SIZE - 1);
     web_fieldset_close(req);
 
+    // REPEATER RADIO PARAMETERS ----------------------------------------------
+    // Recommended travelers' voice repeater this digipeater advertises
+    // (freqspec.txt), built with objitem_build_freq_block() and prepended to
+    // both the position beacon comment and the status report. A frequency of
+    // 0 emits no frequency block at all - the tone/duplex/offset sub-fields
+    // are then unused.
+    web_fieldset_open(req, TR_F_OBJITEM_REPEATER_SECTION);
+    web_field_float(req, TR_F_OBJITEM_FREQ, "digiFreq", g_config.digi_freq_mhz, "0.001", 0.0f, 999.999f);
+    render_duplex_select(req, "digiDup", g_config.digi_duplex);
+    web_field_int(req, TR_F_OBJITEM_OFFSET, "digiOfs", (long)g_config.digi_offset_khz, 0, 65535);
+    web_field_float(req, TR_F_OBJITEM_TONE, "digiTone", g_config.digi_tone_tenths / 10.0f, "0.1", 0.0f, 254.1f);
+    web_fieldset_close(req);
+
     web_fieldset_open(req, TR_SYS_DIGI_PATH_ALIASES);
     web_field_text(req, TR_SYS_PATH_1, "path0", g_config.path[0], 71);
     web_field_text(req, TR_SYS_PATH_2, "path1", g_config.path[1], 71);
@@ -117,9 +141,10 @@ esp_err_t page_digi_post(httpd_req_t *req) {
     if (!web_check_auth(req))
         return ESP_OK;
     // Sized for the whole page in one POST: the main settings and the beacon
-    // fieldsets, the four path presets, and the alias table's four rows of
-    // {alias, hop limit, mode} plus its three policy controls.
-    char body[2400];
+    // fieldsets, the repeater radio parameters block, the four path presets,
+    // and the alias table's four rows of {alias, hop limit, mode} plus its
+    // three policy controls.
+    char body[2500];
     if (web_read_body(req, body, sizeof(body)) < 0) {
         httpd_resp_send_500(req);
         return ESP_OK;
@@ -186,6 +211,31 @@ esp_err_t page_digi_post(httpd_req_t *req) {
 
     g_config.digi_sts_interval = (uint16_t)web_form_get_int(body, "digiSTSIntv", g_config.digi_sts_interval);
     web_form_get(body, "digiStatus", g_config.digi_status, sizeof(g_config.digi_status));
+
+    // Repeater radio parameters: same two-layer clamp as every other bounded
+    // field on this page.
+    {
+        float freq = web_form_get_float(body, "digiFreq", g_config.digi_freq_mhz);
+        g_config.digi_freq_mhz = freq < 0 ? 0 : freq;
+
+        int dup = web_form_get_int(body, "digiDup", g_config.digi_duplex > 0 ? 1 : (g_config.digi_duplex < 0 ? 2 : 0));
+        g_config.digi_duplex = (int8_t)(dup == 1 ? 1 : (dup == 2 ? -1 : 0));
+
+        int ofs = web_form_get_int(body, "digiOfs", (int)g_config.digi_offset_khz);
+        if (ofs < 0)
+            ofs = 0;
+        if (ofs > 65535)
+            ofs = 65535;
+        g_config.digi_offset_khz = (uint16_t)ofs;
+
+        float tone_hz = web_form_get_float(body, "digiTone", g_config.digi_tone_tenths / 10.0f);
+        if (tone_hz < 0)
+            tone_hz = 0;
+        int tone_tenths = (int)(tone_hz * 10.0f + 0.5f);
+        if (tone_tenths > 65535)
+            tone_tenths = 65535;
+        g_config.digi_tone_tenths = (uint16_t)tone_tenths;
+    }
 
     web_form_get(body, "path0", g_config.path[0], sizeof(g_config.path[0]));
     web_form_get(body, "path1", g_config.path[1], sizeof(g_config.path[1]));

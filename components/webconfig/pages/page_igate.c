@@ -30,6 +30,17 @@
 
 static const char *TAG = "page_igate";
 
+// Duplex-direction <select>. UI values 0=simplex, 1=+, 2=- (converted to the
+// stored int8_t duplex on POST).
+static void render_duplex_select(httpd_req_t *req, const char *name, int8_t duplex) {
+    int cur = duplex > 0 ? 1 : (duplex < 0 ? 2 : 0);
+    web_select_open(req, TR_F_OBJITEM_DUPLEX, name);
+    web_select_option(req, 0, TR_F_OBJITEM_DUPLEX_SIMPLEX, cur == 0);
+    web_select_option(req, 1, TR_F_OBJITEM_DUPLEX_PLUS, cur == 1);
+    web_select_option(req, 2, TR_F_OBJITEM_DUPLEX_MINUS, cur == 2);
+    web_select_close(req);
+}
+
 // Warning banner for the APRS-IS filter field, set at save time (grammar
 // error and/or truncation) and shown once on the next GET of this page.
 // Free text (not TR_*), so no translation table entry - it always embeds the
@@ -339,6 +350,19 @@ esp_err_t page_igate_get(httpd_req_t *req) {
     web_field_text(req, TR_F_STATUS_TEXT, "igateStatus", g_config.igate_status, STATUS_SIZE - 1);
     web_fieldset_close(req);
 
+    // REPEATER RADIO PARAMETERS ----------------------------------------------
+    // Recommended travelers' voice repeater this IGate advertises
+    // (freqspec.txt), built with objitem_build_freq_block() and prepended to
+    // both the position beacon comment and the status report. A frequency of
+    // 0 emits no frequency block at all - the tone/duplex/offset sub-fields
+    // are then unused.
+    web_fieldset_open(req, TR_F_OBJITEM_REPEATER_SECTION);
+    web_field_float(req, TR_F_OBJITEM_FREQ, "igateFreq", g_config.igate_freq_mhz, "0.001", 0.0f, 999.999f);
+    render_duplex_select(req, "igateDup", g_config.igate_duplex);
+    web_field_int(req, TR_F_OBJITEM_OFFSET, "igateOfs", (long)g_config.igate_offset_khz, 0, 65535);
+    web_field_float(req, TR_F_OBJITEM_TONE, "igateTone", g_config.igate_tone_tenths / 10.0f, "0.1", 0.0f, 254.1f);
+    web_fieldset_close(req);
+
     web_raw(req, "<p style='color:var(--sub);font-size:12px'>" TR_NOTE_TLM_IGATE "</p>");
 
     // [IGATE] Filter --------------------------------------------------------
@@ -635,6 +659,31 @@ esp_err_t page_igate_post(httpd_req_t *req) {
 
     g_config.igate_sts_interval = (uint16_t)web_form_get_int(body, "igateSTSIntv", g_config.igate_sts_interval);
     web_form_get(body, "igateStatus", g_config.igate_status, sizeof(g_config.igate_status));
+
+    // Repeater radio parameters: same two-layer clamp as every other bounded
+    // field on this page.
+    {
+        float freq = web_form_get_float(body, "igateFreq", g_config.igate_freq_mhz);
+        g_config.igate_freq_mhz = freq < 0 ? 0 : freq;
+
+        int dup = web_form_get_int(body, "igateDup", g_config.igate_duplex > 0 ? 1 : (g_config.igate_duplex < 0 ? 2 : 0));
+        g_config.igate_duplex = (int8_t)(dup == 1 ? 1 : (dup == 2 ? -1 : 0));
+
+        int ofs = web_form_get_int(body, "igateOfs", (int)g_config.igate_offset_khz);
+        if (ofs < 0)
+            ofs = 0;
+        if (ofs > 65535)
+            ofs = 65535;
+        g_config.igate_offset_khz = (uint16_t)ofs;
+
+        float tone_hz = web_form_get_float(body, "igateTone", g_config.igate_tone_tenths / 10.0f);
+        if (tone_hz < 0)
+            tone_hz = 0;
+        int tone_tenths = (int)(tone_hz * 10.0f + 0.5f);
+        if (tone_tenths > 65535)
+            tone_tenths = 65535;
+        g_config.igate_tone_tenths = (uint16_t)tone_tenths;
+    }
 
     // [IGATE] Filter checkboxes -> bitmasks. Both fieldsets are now part of
     // the same single page form (one Save button for the whole page), so the

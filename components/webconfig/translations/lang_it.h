@@ -656,6 +656,8 @@
 #define TR_AMB_TEN_MINUTES     "Ai 10 minuti"
 #define TR_AMB_DEGREE          "Al grado"
 #define TR_F_STATUS_GRID       "Localizzatore Maidenhead nei rapporti di stato"
+#define TR_F_STATUS_TIMESTAMP  "Timestamp zulu nei rapporti di stato"
+#define TR_F_POS_DAO           "Estensione di precisione DAO nei rapporti di posizione"
 #define TR_DIR_OMNI            "Omni"
 #define TR_DIR_N               "N"
 #define TR_DIR_NE              "NE"

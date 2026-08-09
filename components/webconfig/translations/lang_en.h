@@ -647,6 +647,8 @@
 #define TR_AMB_TEN_MINUTES     "Nearest 10 minutes"
 #define TR_AMB_DEGREE          "Nearest degree"
 #define TR_F_STATUS_GRID       "Maidenhead locator in status reports"
+#define TR_F_STATUS_TIMESTAMP  "Zulu timestamp in status reports"
+#define TR_F_POS_DAO           "DAO precision extension in position reports"
 #define TR_DIR_OMNI            "Omni"
 #define TR_DIR_N               "N"
 #define TR_DIR_NE              "NE"
