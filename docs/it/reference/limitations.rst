@@ -376,6 +376,12 @@ Tracciamento / Beaconing
      - Livello 0-4 a livello di stazione nella pagina Stazione; si applica ai
        formati non compresso e Mic-E, e forza il formato non compresso quando è
        diverso da zero
+   * - Estensione di precisione/datum ``!DAO!``
+     - ⚠️ (pochi client/tracker)
+     - ✅
+     - Opzione a livello di stazione nella pagina Stazione; aggiunge la forma
+       leggibile WGS-84 ai formati non compresso e Mic-E, solo quando
+       l'ambiguità è 0 e il formato non è quello compresso
    * - Localizzatore Maidenhead nei rapporti di stato
      - ⚠️
      - ✅

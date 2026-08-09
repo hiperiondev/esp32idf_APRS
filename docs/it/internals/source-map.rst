@@ -5,9 +5,9 @@ Mappa del codice sorgente
 =========================
 
 Un percorso attraverso il repository, così che tu sappia dove guardare. Le
-dimensioni sono approssimative. Il C di prima parte somma ~37 k righe tra
+dimensioni sono approssimative. Il C di prima parte somma ~42 k righe tra
 ``main/`` + ``components/`` (esclusi i ``managed_components/``), di cui ~6,8 k
-sono il componente del modem e ~10 k l'amministrazione web.
+sono il componente del modem e ~11 k l'amministrazione web.
 
 Disposizione del repository
 ===========================
@@ -34,6 +34,7 @@ Disposizione del repository
    │   ├── include/json_store.h / json_escape.h ← scrittore JSON in streaming + escaping
    │   ├── include/sched_time.h ← secondi monotonici usati da ogni scheduler
    │   ├── beacon.c/.h         ← beacon posizione propria (trk / igate / digi)
+   │   ├── aprs_dao.c/.h       ← estensione di precisione/datum "!DAO!" (aprs12/datum.txt), usata da beacon.c
    │   ├── weather.c/.h        ← report WX proprio: refresh sensors_local + beacon WX
    │   ├── telemetry.c/.h      ← telemetria propria: A1–A5 + B1–B8, beacon T#nnn + metadati
    │   ├── beacon_scheduler.c/.h ← UN task condiviso che aziona TUTTO il TX periodico + risposte alle query

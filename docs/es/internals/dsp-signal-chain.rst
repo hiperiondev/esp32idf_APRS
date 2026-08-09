@@ -202,11 +202,11 @@ Los archivos fuente del módem
 
    * - Archivo
      - Rol
-   * - ``src/afsk.c`` (~1440 lín)
+   * - ``src/afsk.c`` (~1360 lín)
      - ingesta DMA del ADC, AGC, FIR de diezmado, ISR del DAC, PTT
    * - ``src/modem.c`` (~870 lín)
      - correladores, DPLL, tablas de tonos, DCD, calibración
-   * - ``src/ax25.c`` (~1500 lín)
+   * - ``src/ax25.c`` (~1600 lín)
      - encuadrador HDLC, NRZI, bit-stuffing, códec AX.25, cola de TX
    * - ``src/fx25.c``, ``lwfec/rs.c``, ``lwfec/gf.c``
      - FEC Reed–Solomon FX.25

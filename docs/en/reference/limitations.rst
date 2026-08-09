@@ -358,6 +358,12 @@ Tracking / Beaconing
      - ✅
      - Station-wide level 0-4 on the Station page; applies to the uncompressed
        and Mic-E layouts, and forces the uncompressed layout when non-zero
+   * - ``!DAO!`` precision/datum extension
+     - ⚠️ (a handful of clients/trackers)
+     - ✅
+     - Station-wide option on the Station page; appends the WGS-84
+       human-readable form to the uncompressed and Mic-E layouts, only when
+       ambiguity is 0 and the layout is not compressed
    * - Maidenhead locator in status reports
      - ⚠️
      - ✅

@@ -5,8 +5,8 @@ Source Map
 ==========
 
 A tour of the repository, so you know where to look. Sizes are approximate.
-First-party C totals ~37 k lines across ``main/`` + ``components/`` (excluding
-``managed_components/``), of which ~6.8 k is the modem component and ~10 k is the
+First-party C totals ~42 k lines across ``main/`` + ``components/`` (excluding
+``managed_components/``), of which ~6.8 k is the modem component and ~11 k is the
 web admin.
 
 Repository layout
@@ -34,6 +34,7 @@ Repository layout
    │   ├── include/json_store.h / json_escape.h ← streaming JSON writer + escaping
    │   ├── include/sched_time.h ← monotonic seconds used by every scheduler
    │   ├── beacon.c/.h         ← own-position beacons (trk / igate / digi)
+   │   ├── aprs_dao.c/.h       ← "!DAO!" precision/datum extension (aprs12/datum.txt), consumed by beacon.c
    │   ├── weather.c/.h        ← own-station WX report: sensors_local refresh + WX beacon
    │   ├── telemetry.c/.h      ← own-station telemetry: A1–A5 + B1–B8, T#nnn beacon + metadata
    │   ├── beacon_scheduler.c/.h ← ONE shared task driving ALL periodic TX + query answers

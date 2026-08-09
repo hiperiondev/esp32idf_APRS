@@ -195,11 +195,11 @@ The modem source files
 
    * - File
      - Role
-   * - ``src/afsk.c`` (~1440 ln)
+   * - ``src/afsk.c`` (~1360 ln)
      - ADC DMA ingest, AGC, decimation FIR, DAC ISR, PTT
    * - ``src/modem.c`` (~870 ln)
      - correlators, DPLL, tone tables, DCD, calibration
-   * - ``src/ax25.c`` (~1500 ln)
+   * - ``src/ax25.c`` (~1600 ln)
      - HDLC framer, NRZI, bit-stuffing, AX.25 codec, TX queue
    * - ``src/fx25.c``, ``lwfec/rs.c``, ``lwfec/gf.c``
      - FX.25 Reed–Solomon FEC

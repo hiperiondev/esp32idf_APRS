@@ -202,11 +202,11 @@ I file sorgente del modem
 
    * - File
      - Ruolo
-   * - ``src/afsk.c`` (~1440 righe)
+   * - ``src/afsk.c`` (~1360 righe)
      - ingest DMA dell'ADC, AGC, FIR di decimazione, ISR del DAC, PTT
    * - ``src/modem.c`` (~870 righe)
      - correlatori, DPLL, tabelle di toni, DCD, calibrazione
-   * - ``src/ax25.c`` (~1500 righe)
+   * - ``src/ax25.c`` (~1600 righe)
      - framer HDLC, NRZI, bit-stuffing, codec AX.25, coda TX
    * - ``src/fx25.c``, ``lwfec/rs.c``, ``lwfec/gf.c``
      - FEC Reed–Solomon FX.25

@@ -246,6 +246,30 @@ trasmetterebbe la posizione esatta che l'operatore ha chiesto di nascondere.
 Mic-E, invece, porta l'ambiguità in modo nativo e non ha bisogno di questo
 ripiego.
 
+L'estensione di precisione !DAO!
+=================================
+
+*Estensione DAO* nella pagina Station è una seconda impostazione di
+precisione, a livello di stazione, che si affianca all'ambiguità invece di
+sostituirla. Quando è attiva, ``aprs_dao_build()`` aggiunge l'estensione di
+precisione/datum ``!DAO!`` nella sua forma leggibile (WGS-84,
+``aprs12/datum.txt``) al commento di ogni rapporto di posizione non
+compresso e al campo di testo Mic-E, dove lo standard riserva la stessa
+posizione finale. I cinque byte recuperano, come una cifra decimale in più
+per asse, la terza cifra dei minuti che i campi semplici
+``DDMM.mmN``/``DDDMM.mmW`` arrotondano via — un ordine di grandezza in più
+di precisione rispetto a quella che il formato non compresso porta da solo,
+pari alla risoluzione in virgola mobile di latitudine/longitudine di questo
+firmware.
+
+Poiché ripristina precisione, ``!DAO!`` viene applicata solo quando
+*Position ambiguity* è 0 e il formato non è quello compresso: una stazione
+che nasconde deliberatamente la propria posizione, o che invia già
+coordinate compresse a piena risoluzione, non deve recuperare quella
+risoluzione tramite questa estensione. Un ricevitore che non riconosce
+l'estensione vede semplicemente cinque byte in più di testo nel commento,
+quindi è sempre sicuro attivarla.
+
 Localizzatore Maidenhead nei rapporti di stato
 ==============================================
 

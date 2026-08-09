@@ -374,6 +374,12 @@ Seguimiento / Balizamiento
      - Nivel 0-4 a nivel de estación en la página Estación; se aplica a los
        formatos sin comprimir y Mic-E, y fuerza el formato sin comprimir cuando
        es distinto de cero
+   * - Extensión de precisión/datum ``!DAO!``
+     - ⚠️ (algunos clientes/trackers)
+     - ✅
+     - Opción a nivel de estación en la página Estación; añade la forma
+       legible WGS-84 a los formatos sin comprimir y Mic-E, solo cuando la
+       ambigüedad es 0 y el formato no es el comprimido
    * - Localizador Maidenhead en los reportes de estado
      - ⚠️
      - ✅

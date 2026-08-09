@@ -230,6 +230,28 @@ blank, so honouring a *compressed* tick alongside ambiguity would transmit the
 exact position the operator asked to obscure. Mic-E, by contrast, carries
 ambiguity natively and needs no such fallback.
 
+The !DAO! precision extension
+==============================
+
+*DAO extension* on the Station page is a second, station-wide precision
+setting that sits next to ambiguity rather than replacing it. When enabled,
+``aprs_dao_build()`` appends the WGS-84 human-readable ``!DAO!``
+precision/datum extension (``aprs12/datum.txt``) to the comment of every
+uncompressed position report and to the Mic-E text field, where the spec
+reserves the same trailing position for it. The five bytes recover, as one
+extra decimal digit per axis, the third minute digit that the plain
+``DDMM.mmN``/``DDDMM.mmW`` fields round away — one order of magnitude more
+precision than the uncompressed layout otherwise carries, matching this
+firmware's own float latitude/longitude resolution.
+
+Because it restores precision, ``!DAO!`` is only ever applied when
+*Position ambiguity* is 0 and the layout is not the compressed one — a
+station deliberately obscuring its position, or already sending
+full-resolution compressed coordinates, must not have that resolution handed
+back through this extension. A receiver that does not recognise the
+extension simply sees five extra bytes of comment text, so it is always safe
+to enable.
+
 Maidenhead locator in status reports
 ====================================
 
