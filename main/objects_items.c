@@ -611,7 +611,7 @@ void objitem_build_freq_block(float freq_mhz, uint16_t tone_tenths, int8_t duple
             used += (size_t)n;
     }
 
-    // Duplex direction + shift: "±nnn" in units of 10 kHz (e.g. 600 kHz => 060).
+    // Duplex direction + shift: "+/-nnn" in units of 10 kHz (e.g. 600 kHz => 060).
     if (duplex != 0 && used < out_size) {
         unsigned nnn = (unsigned)(offset_khz / 10u);
         if (nnn > 999)

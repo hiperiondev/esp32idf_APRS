@@ -64,13 +64,13 @@
  *        the AX.25 Information field (see APRS101 chapter 5 and 8).
  * @{
  */
-#define APRS_MAX_INFO_FIELD_LEN          256 /**< Max AX.25 Information field length (protocol id + data), bytes. */
-#define APRS_MAX_COMMENT_LEN             43  /**< Max comment length for a position report without data extension. */
-#define APRS_MAX_COMMENT_WITH_EXT_LEN    36  /**< Max comment length when a 7-byte Data Extension is present. */
-#define APRS_CALLSIGN_LEN                6   /**< Callsign field length, excluding SSID. */
-#define APRS_CALLSIGN_SSID_LEN           9 /**< Callsign left-justified, space-padded to 9 chars, as required in the addressee field of Messages/PARM/UNIT/EQNS/BITS. */
-#define APRS_MAX_STATUS_TEXT_LEN         62 /**< Max status text length. */
-#define APRS_MAX_OBJECT_NAME_LEN         9  /**< Fixed object/item name length. */
+#define APRS_MAX_INFO_FIELD_LEN       256 /**< Max AX.25 Information field length (protocol id + data), bytes. */
+#define APRS_MAX_COMMENT_LEN          43  /**< Max comment length for a position report without data extension. */
+#define APRS_MAX_COMMENT_WITH_EXT_LEN 36  /**< Max comment length when a 7-byte Data Extension is present. */
+#define APRS_CALLSIGN_LEN             6   /**< Callsign field length, excluding SSID. */
+#define APRS_CALLSIGN_SSID_LEN   9 /**< Callsign left-justified, space-padded to 9 chars, as required in the addressee field of Messages/PARM/UNIT/EQNS/BITS. */
+#define APRS_MAX_STATUS_TEXT_LEN 62         /**< Max status text length. */
+#define APRS_MAX_OBJECT_NAME_LEN 9          /**< Fixed object/item name length. */
 #define APRS_MAX_MESSAGE_TEXT_LEN        67 /**< Max message text length (excluding message number). */
 #define APRS_MESSAGE_NUMBER_LEN          5  /**< Message number field length "{mm}" incl. braces, up to 5 chars. */
 #define APRS_TELEMETRY_PARAM_NAME_MAXLEN 24 /**< Max length of a single PARM/UNIT/BITS project title text. */
@@ -287,6 +287,22 @@ typedef enum {
     APRS_AREA_TYPE_RECTANGLE = 5                 /**< Open rectangle (box) centred on the Object position. */
 } aprs_area_object_type_t;
 
+/**
+ * @brief One APRS Area Object overlay (APRS101 Chapter 12).
+ *
+ * An Area Object draws a geometric shape on the receiving map instead of a
+ * single point symbol: the Object's own position gives the centre (or, for a
+ * line, a point on it), and the fields below give the shape, its size and how
+ * it is filled. On air the whole descriptor is a fixed-width token of the form
+ * @c {TCcxxyyywww} appended to the Object's data extension, where @c T is the
+ * shape code, @c Cc the colour, @c xx / @c yyy the offsets and @c www the
+ * width.
+ *
+ * Sizes are expressed in the units defined by the specification rather than in
+ * metres, so a decoder must scale them against the map projection before
+ * drawing. A shape whose code is one of the filled variants is drawn solid in
+ * the given colour; the open variants are outlines only.
+ */
 typedef struct {
     aprs_area_object_type_t type; /**< T: shape type code. */
     uint8_t color_code;           /**< Cxx: fill color code (0-15, per APRS101 area color table). */
@@ -420,6 +436,21 @@ typedef enum {
     APRS_WX_SENSOR_COUNT                /**< Sentinel: total number of defined weather sensor slots (13). Not a real sensor. */
 } aprs_weather_sensor_id_t;
 
+/**
+ * @brief A complete decoded or to-be-encoded APRS weather report.
+ *
+ * This is the neutral, in-memory form of a weather report: one field per
+ * quantity the APRS weather format can carry, plus a per-sensor validity mask
+ * so that a station reporting only, say, temperature and pressure is
+ * distinguishable from one reporting zeroes for everything else. Only the
+ * fields flagged valid are emitted on air, and only the fields present on air
+ * are flagged valid after a decode.
+ *
+ * Units follow the wire format rather than SI: temperatures in degrees
+ * Fahrenheit, rainfall in hundredths of an inch, pressure in tenths of a
+ * millibar, wind speed in miles per hour. A driver producing SI readings is
+ * responsible for converting before filling this structure.
+ */
 typedef struct {
     /**
      * @brief Per-sensor "enabled" flag, indexed by ::aprs_weather_sensor_id_t.
@@ -491,6 +522,21 @@ typedef enum {
     APRS_EXT_SENSOR_CUSTOM               /**< Vendor/application-defined; see custom_label. */
 } aprs_extended_sensor_kind_t;
 
+/**
+ * @brief One reading from a sensor outside the standard APRS weather set.
+ *
+ * The APRS weather format has a fixed vocabulary of quantities; anything else
+ * a station measures - soil moisture, battery voltage, a gas concentration, a
+ * particle count - has no reserved token and is normally carried as a
+ * telemetry analog channel with a project-defined name and unit instead. This
+ * structure is the neutral carrier for such a reading: the @c kind field
+ * selects one of the recognised extra quantities, or ::APRS_EXT_SENSOR_CUSTOM
+ * for anything else, in which case @c custom_label names it.
+ *
+ * Because these readings have no standard on-air encoding, storing one here
+ * does not by itself put anything on the air; it is the caller's decision
+ * which telemetry channel, if any, the value is routed to.
+ */
 typedef struct {
     aprs_extended_sensor_kind_t kind; /**< Which physical quantity this slot represents. */
     char custom_label[APRS_TELEMETRY_PARAM_NAME_MAXLEN +
@@ -841,6 +887,20 @@ typedef enum {
 /** @brief Maximum number of county/zone identifiers carried in one NWS bulletin. */
 #define APRS_NWS_MAX_COUNTIES 5
 
+/**
+ * @brief A decoded National Weather Service bulletin (APRS101 Chapter 14).
+ *
+ * NWS bulletins are ordinary APRS messages addressed to @c "NWS-xxxxx" that
+ * carry a severe-weather warning, watch, advisory, test or cancellation rather
+ * than free text. Beyond the message body they name the counties or zones the
+ * notice applies to and when it expires, so that a receiving client can filter
+ * by area and drop the notice once it lapses.
+ *
+ * The county/zone list is bounded by ::APRS_NWS_MAX_COUNTIES; a bulletin
+ * naming more areas than that is decoded with the list truncated, and the
+ * remaining identifiers are not recoverable from this structure. A
+ * cancellation carries no expiration time.
+ */
 typedef struct {
     aprs_nws_bulletin_kind_t kind;                          /**< WARN/WATCH/ADVIS/TEST/CANCL. */
     aprs_timestamp_t expiration;                            /**< exptime: DDHHMM expiration time (absent for CANCL). */
@@ -859,10 +919,10 @@ typedef enum {
     APRS_MSG_KIND_ANNOUNCEMENT,   /**< Announcement, addressee "BLNn" reserved usage per convention. */
     APRS_MSG_KIND_NWS_BULLETIN,   /**< Special-cased NWS bulletin, addressee "NWS-xxxxx". */
     APRS_MSG_KIND_NTS_RADIOGRAM,  /**< National Traffic System formatted radiogram, addressee "NTSstn". */
-    APRS_MSG_KIND_TELEMETRY_PARM, /**< ":addressee:PARM.…" telemetry parameter-name metadata message. */
-    APRS_MSG_KIND_TELEMETRY_UNIT, /**< ":addressee:UNIT.…" telemetry unit/label metadata message. */
-    APRS_MSG_KIND_TELEMETRY_EQNS, /**< ":addressee:EQNS.…" telemetry equation-coefficient metadata message. */
-    APRS_MSG_KIND_TELEMETRY_BITS  /**< ":addressee:BITS.…" telemetry bit-sense/project-name metadata message. */
+    APRS_MSG_KIND_TELEMETRY_PARM, /**< ":addressee:PARM..." telemetry parameter-name metadata message. */
+    APRS_MSG_KIND_TELEMETRY_UNIT, /**< ":addressee:UNIT..." telemetry unit/label metadata message. */
+    APRS_MSG_KIND_TELEMETRY_EQNS, /**< ":addressee:EQNS..." telemetry equation-coefficient metadata message. */
+    APRS_MSG_KIND_TELEMETRY_BITS  /**< ":addressee:BITS..." telemetry bit-sense/project-name metadata message. */
 } aprs_message_kind_t;
 
 /**

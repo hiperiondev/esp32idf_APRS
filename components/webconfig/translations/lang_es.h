@@ -28,14 +28,24 @@
  * @name Brand / chrome
  * @{
  */
-#define TR_BRAND            "Administración Web esp32idf_APRS"
-#define TR_LOGOUT           "Cerrar sesión"
+/** Spanish text for the product name shown in the page header and browser title bar. English: "esp32idf_APRS Web Admin". */
+#define TR_BRAND "Administración Web esp32idf_APRS"
+/** Spanish text for the caption of the log-out link in the page header. English: "Logout". */
+#define TR_LOGOUT "Cerrar sesión"
+/** Spanish text for the heading of the page shown after a successful log-out. English: "Logged out". */
 #define TR_LOGGED_OUT_TITLE "Sesión cerrada"
-#define TR_LOG_IN_AGAIN     "Iniciar sesión de nuevo"
-#define TR_UNAUTHORIZED     "401 No autorizado"
-#define TR_FORBIDDEN_CSRF   "403 Prohibido: no se pudo verificar el origen de la solicitud"
-#define TR_SAVED_REDIRECT   "Guardado. Redirigiendo..."
-#define TR_SAVE_FAILED      "Error al guardar: no se pudieron escribir los ajustes en la memoria flash. Siguen activos hasta el próximo reinicio."
+/** Spanish text for the caption of the link back to the login prompt after logging out. English: "Log in again". */
+#define TR_LOG_IN_AGAIN "Iniciar sesión de nuevo"
+/** Spanish text for the body of the HTTP 401 response sent when authentication fails. English: "401 Unauthorized". */
+#define TR_UNAUTHORIZED "401 No autorizado"
+/** Spanish text for the body of the HTTP 403 response sent when a POST fails the cross-site request check. English: "403 Forbidden: request origin could not be
+ * verified". */
+#define TR_FORBIDDEN_CSRF "403 Prohibido: no se pudo verificar el origen de la solicitud"
+/** Spanish text for the interstitial shown after a successful save, while the browser is redirected back to the form. English: "Saved. Redirecting...". */
+#define TR_SAVED_REDIRECT "Guardado. Redirigiendo..."
+/** Spanish text for the warning shown when settings were accepted but could not be committed to flash. English: "Save failed: the settings could not be written
+ * to flash. They are still in effect until...". */
+#define TR_SAVE_FAILED "Error al guardar: no se pudieron escribir los ajustes en la memoria flash. Siguen activos hasta el próximo reinicio."
 
 /** @} */
 
@@ -43,23 +53,40 @@
  * @name Sidebar menu
  * @{
  */
+/** Spanish text for the sidebar navigation entry for the Dashboard page, rendered on the sidebar. English: "Dashboard". */
 #define TR_MENU_DASHBOARD "Panel"
-#define TR_MENU_MSGCHAT   "Env/Rec Msj"
+/** Spanish text for the sidebar navigation entry for the Send/Receive Message page, rendered on the sidebar. English: "Snd/Rcv Msg". */
+#define TR_MENU_MSGCHAT "Env/Rec Msj"
+/** Spanish text for the sidebar navigation entry for the Bulletins page, rendered on the sidebar. English: "Bulletins". */
 #define TR_MENU_BULLETINS "Boletines"
-#define TR_MENU_OBJITEMS  "Objetos e Ítems"
-#define TR_MENU_STATION   "Estación"
-#define TR_MENU_RADIO     "Radiomódem"
-#define TR_MENU_MSG       "Mensaje"
-#define TR_MENU_QUERY     "Consulta"
-#define TR_MENU_IGATE     "IGate"
-#define TR_MENU_DIGI      "Digirepetidor"
-#define TR_MENU_TRACKER   "Rastreador"
-#define TR_MENU_WX        "Meteorología"
-#define TR_MENU_TLM       "Telemetría"
-#define TR_MENU_SYSTEM    "Sistema"
-#define TR_MENU_WIRELESS  "Inalámbrico"
-#define TR_MENU_STORAGE   "Almacenamiento de archivos"
-#define TR_MENU_ABOUT     "Firmware"
+/** Spanish text for the sidebar navigation entry for the Objects and Items page, rendered on the sidebar. English: "Objects and Items". */
+#define TR_MENU_OBJITEMS "Objetos e Ítems"
+/** Spanish text for the sidebar navigation entry for the Station page, rendered on the sidebar. English: "Station". */
+#define TR_MENU_STATION "Estación"
+/** Spanish text for the sidebar navigation entry for the Radiomodem page, rendered on the sidebar. English: "Radiomodem". */
+#define TR_MENU_RADIO "Radiomódem"
+/** Spanish text for the sidebar navigation entry for the Message page, rendered on the sidebar. English: "Message". */
+#define TR_MENU_MSG "Mensaje"
+/** Spanish text for the sidebar navigation entry for the Query page, rendered on the sidebar. English: "Query". */
+#define TR_MENU_QUERY "Consulta"
+/** Spanish text for the sidebar navigation entry for the IGate page, rendered on the sidebar. English: "IGate". */
+#define TR_MENU_IGATE "IGate"
+/** Spanish text for the sidebar navigation entry for the Digipeater page, rendered on the sidebar. English: "Digipeater". */
+#define TR_MENU_DIGI "Digirepetidor"
+/** Spanish text for the sidebar navigation entry for the Tracker page, rendered on the sidebar. English: "Tracker". */
+#define TR_MENU_TRACKER "Rastreador"
+/** Spanish text for the sidebar navigation entry for the Weather page, rendered on the sidebar. English: "Weather". */
+#define TR_MENU_WX "Meteorología"
+/** Spanish text for the sidebar navigation entry for the Telemetry page, rendered on the sidebar. English: "Telemetry". */
+#define TR_MENU_TLM "Telemetría"
+/** Spanish text for the sidebar navigation entry for the System page, rendered on the sidebar. English: "System". */
+#define TR_MENU_SYSTEM "Sistema"
+/** Spanish text for the sidebar navigation entry for the Wireless page, rendered on the sidebar. English: "Wireless". */
+#define TR_MENU_WIRELESS "Inalámbrico"
+/** Spanish text for the sidebar navigation entry for the File Storage page, rendered on the sidebar. English: "File Storage". */
+#define TR_MENU_STORAGE "Almacenamiento de archivos"
+/** Spanish text for the sidebar navigation entry for the Firmware page, rendered on the sidebar. English: "Firmware". */
+#define TR_MENU_ABOUT "Firmware"
 
 /** @} */
 
@@ -67,13 +94,20 @@
  * @name Common buttons / widgets
  * @{
  */
-#define TR_BTN_SAVE          "Guardar"
+/** Spanish text for the caption of the "save" button, rendered on any page. English: "Save". */
+#define TR_BTN_SAVE "Guardar"
+/** Spanish text for the caption of the "auto generate" button, rendered on any page. English: "Auto Generate". */
 #define TR_BTN_AUTO_GENERATE "Generar automáticamente"
-#define TR_BTN_LOOP_TEST     "PRUEBA DE BUCLE"
-#define TR_LOOPTEST_SAVING   "Guardando..."
-#define TR_LOOPTEST_RUNNING  "Probando..."
-#define TR_LOOPTEST_FAILED   "Fallo en la solicitud"
-#define TR_SHOW_PASSWORD     "Mostrar contraseña"
+/** Spanish text for the caption of the "loop test" button, rendered on any page. English: "LOOP TEST". */
+#define TR_BTN_LOOP_TEST "PRUEBA DE BUCLE"
+/** Spanish text for the loopback-test status message: saving, rendered on any page. English: "Saving settings...". */
+#define TR_LOOPTEST_SAVING "Guardando..."
+/** Spanish text for the loopback-test status message: running, rendered on any page. English: "Testing...". */
+#define TR_LOOPTEST_RUNNING "Probando..."
+/** Spanish text for the loopback-test status message: failed, rendered on any page. English: "Request failed". */
+#define TR_LOOPTEST_FAILED "Fallo en la solicitud"
+/** Spanish text for the caption of the checkbox that reveals a masked password field. English: "Show password". */
+#define TR_SHOW_PASSWORD "Mostrar contraseña"
 
 /** @} */
 
@@ -81,35 +115,64 @@
  * @name page_about.c
  * @{
  */
-#define TR_ABOUT_TITLE       "Firmware"
-#define TR_ABOUT_FW_LEGEND   "Firmware"
-#define TR_ABOUT_PROJECT     "Proyecto:"
-#define TR_ABOUT_VERSION     "Versión:"
-#define TR_ABOUT_BUILD_DATE  "Fecha de compilación:"
+/** Spanish text for the firmware page label for title, rendered on the Firmware page. English: "Firmware". */
+#define TR_ABOUT_TITLE "Firmware"
+/** Spanish text for the firmware page label for fw legend, rendered on the Firmware page. English: "Firmware". */
+#define TR_ABOUT_FW_LEGEND "Firmware"
+/** Spanish text for the firmware page label for project, rendered on the Firmware page. English: "Project:". */
+#define TR_ABOUT_PROJECT "Proyecto:"
+/** Spanish text for the firmware page label for version, rendered on the Firmware page. English: "Version:". */
+#define TR_ABOUT_VERSION "Versión:"
+/** Spanish text for the firmware page label for build date, rendered on the Firmware page. English: "Build date:". */
+#define TR_ABOUT_BUILD_DATE "Fecha de compilación:"
+/** Spanish text for the firmware page label for idf version, rendered on the Firmware page. English: "IDF version:". */
 #define TR_ABOUT_IDF_VERSION "Versión de IDF:"
-#define TR_ABOUT_PARTITION   "Partición en ejecución:"
-#define TR_ABOUT_OTA_LEGEND  "Actualización OTA"
+/** Spanish text for the firmware page label for partition, rendered on the Firmware page. English: "Running partition:". */
+#define TR_ABOUT_PARTITION "Partición en ejecución:"
+/** Spanish text for the firmware page label for ota legend, rendered on the Firmware page. English: "OTA Update". */
+#define TR_ABOUT_OTA_LEGEND "Actualización OTA"
+/** Spanish text for the firmware page label for ota body, rendered on the Firmware page. English: "Upload a new firmware .bin built for this board. It is
+ * written to the inactive OTA slot...". */
 #define TR_ABOUT_OTA_BODY                                                                                                                                      \
     "Cargue un nuevo firmware .bin compilado para esta placa. Se escribe en la "                                                                               \
-    "partición OTA inactiva mientras el dispositivo sigue funcionando con la "                                                                                \
+    "partición OTA inactiva mientras el dispositivo sigue funcionando con la "                                                                                 \
     "actual; el dispositivo solo cambia y se reinicia una vez que la carga "                                                                                   \
     "finaliza y se verifica. Si el nuevo firmware no arranca correctamente, "                                                                                  \
     "se revierte automáticamente en el próximo reinicio."
-#define TR_OTA_TARGET_SLOT      "Partición destino:"
-#define TR_OTA_SELECT_FILE      "Archivo de firmware (.bin):"
-#define TR_OTA_UPLOAD_BTN       "Cargar y grabar"
-#define TR_OTA_CONFIRM          "¿Cargar y grabar este firmware? El dispositivo se reiniciará al finalizar."
+/** Spanish text for the firmware-update label or status message for target slot, rendered on the Firmware page. English: "Target slot:". */
+#define TR_OTA_TARGET_SLOT "Partición destino:"
+/** Spanish text for the firmware-update label or status message for select file, rendered on the Firmware page. English: "Firmware file (.bin):". */
+#define TR_OTA_SELECT_FILE "Archivo de firmware (.bin):"
+/** Spanish text for the firmware-update label or status message for upload btn, rendered on the Firmware page. English: "Upload &amp; Flash". */
+#define TR_OTA_UPLOAD_BTN "Cargar y grabar"
+/** Spanish text for the firmware-update label or status message for confirm, rendered on the Firmware page. English: "Upload and flash this firmware? The
+ * device will reboot when done.". */
+#define TR_OTA_CONFIRM "¿Cargar y grabar este firmware? El dispositivo se reiniciará al finalizar."
+/** Spanish text for the firmware-update label or status message for no file selected, rendered on the Firmware page. English: "Choose a firmware .bin file
+ * first.". */
 #define TR_OTA_NO_FILE_SELECTED "Seleccione primero un archivo de firmware .bin."
-#define TR_OTA_UPLOADING        "Cargando y escribiendo en la memoria flash..."
-#define TR_OTA_NO_PARTITION                                                                                                                                     \
+/** Spanish text for the firmware-update label or status message for uploading, rendered on the Firmware page. English: "Uploading and writing to flash...". */
+#define TR_OTA_UPLOADING "Cargando y escribiendo en la memoria flash..."
+/** Spanish text for the firmware-update label or status message for no partition, rendered on the Firmware page. English: "No OTA update slot is available on
+ * this device's partition table. Reflash it once over...". */
+#define TR_OTA_NO_PARTITION                                                                                                                                    \
     "No hay una partición OTA disponible en la tabla de particiones de este dispositivo. Vuelva a grabarlo una vez por USB/UART con el partitions.csv actual " \
     "para habilitar OTA."
-#define TR_OTA_BEGIN_FAILED    "No se pudo iniciar la escritura OTA: "
-#define TR_OTA_NO_FILE_CHOSEN  "no se recibió ningún archivo"
-#define TR_OTA_UPLOAD_FAILED   "La carga del firmware falló"
+/** Spanish text for the firmware-update label or status message for begin failed, rendered on the Firmware page. English: "Could not start the OTA write:". */
+#define TR_OTA_BEGIN_FAILED "No se pudo iniciar la escritura OTA: "
+/** Spanish text for the firmware-update label or status message for no file chosen, rendered on the Firmware page. English: "no file was received". */
+#define TR_OTA_NO_FILE_CHOSEN "no se recibió ningún archivo"
+/** Spanish text for the firmware-update label or status message for upload failed, rendered on the Firmware page. English: "Firmware upload failed". */
+#define TR_OTA_UPLOAD_FAILED "La carga del firmware falló"
+/** Spanish text for the firmware-update label or status message for validate failed, rendered on the Firmware page. English: "image validation failed - the
+ * file is not a valid firmware image for this board". */
 #define TR_OTA_VALIDATE_FAILED "la validación de la imagen falló: el archivo no es una imagen de firmware válida para esta placa"
-#define TR_OTA_SUCCESS         "Firmware escrito y verificado correctamente."
-#define TR_OTA_REBOOTING       "Reiniciando con el nuevo firmware..."
+/** Spanish text for the firmware-update label or status message for success, rendered on the Firmware page. English: "Firmware written and verified
+ * successfully.". */
+#define TR_OTA_SUCCESS "Firmware escrito y verificado correctamente."
+/** Spanish text for the firmware-update label or status message for rebooting, rendered on the Firmware page. English: "Rebooting into the new firmware
+ * now...". */
+#define TR_OTA_REBOOTING "Reiniciando con el nuevo firmware..."
 
 /** @} */
 
@@ -117,192 +180,402 @@
  * @name Common field/fieldset labels (auto-extracted from pages/<page>.c source files)
  * @{
  */
-#define TR_F_ADD_TIMESTAMP                                 "Añadir marca de tiempo"
-#define TR_F_ALTITUDE_M                                    "Altitud (m)"
-#define TR_F_APRS_IS_SERVER                                "Servidor APRS-IS"
-#define TR_F_APRS_MESSAGING                                "Mensajería APRS"
-#define TR_F_APRS_PASSCODE                                 "Código de acceso APRS-IS"
-#define TR_F_APRS_SYMBOLS                                  "Símbolos APRS"
-#define TR_F_AUDIO_AFSK                                    "Audio / AFSK"
-#define TR_F_ENABLE_AUDIO_MODEM                            "Activar módem ADC/DAC de audio"
-#define TR_F_AFSK_MODULATION                               "Modulación"
-#define TR_F_AUDIO_LOW_PASS_FILTER                         "Filtro paso bajo de audio"
-#define TR_F_BEACON_INTERVAL_S                             "Intervalo de baliza (s)"
-#define TR_F_BEACON_POSITION                               "Baliza / Posición"
-#define TR_F_BEACON_POSITION_2                             "Posición de baliza"
-#define TR_F_BEACON_VIA_INTERNET                           "Baliza vía Internet"
-#define TR_F_BEACON_VIA_RF                                 "Baliza vía RF"
-#define TR_F_COMMENT                                       "Comentario"
-#define TR_F_COMPRESS_POSITION                             "Comprimir posición"
-#define TR_F_DASHBOARD                                     "Panel"
-#define TR_F_DATA_INTERVAL_S                               "Intervalo de datos (s)"
-#define TR_F_DIGIPEATER                                    "Digipeater"
-#define TR_F_ENABLE                                        "Habilitar"
-#define TR_F_ENABLE_DIGIPEATER                             "Habilitar Digipeater"
-#define TR_F_ENABLE_IGATE                                  "Habilitar IGate"
-#define TR_F_ENABLE_MESSAGING                              "Habilitar mensajería"
-#define TR_F_ENABLE_TRACKER                                "Habilitar Tracker"
-#define TR_F_ENABLE_WX                                     "Habilitar WX"
-#define TR_F_FILE_STORAGE                                  "Almacenamiento de archivos"
-#define TR_F_FILTER                                        "Filtro"
-#define TR_F_FIXED_ALTITUDE_M                              "Altitud fija (m)"
-#define TR_F_FIXED_INTERVAL_S                              "Intervalo fijo (s)"
-#define TR_F_FIXED_LATITUDE                                "Latitud fija"
-#define TR_F_FIXED_LONGITUDE                               "Longitud fija"
-#define TR_F_FX_25_FORWARD_ERROR_CORRECTED_AX_25           "FX.25 (AX.25 con corrección de errores)"
-#define TR_F_IGATE                                         "IGate"
-#define TR_F_INCLUDE_ALTITUDE                              "Incluir altitud"
-#define TR_F_INTERNET_TO_RF                                "Internet a RF"
-#define TR_F_LATITUDE                                      "Latitud"
-#define TR_F_LONGITUDE                                     "Longitud"
-#define TR_F_MESSAGE                                       "Mensaje"
-#define TR_F_MESSAGE_ALARM_ENABLE                          "Activar alarma de mensajes"
-#define TR_F_MESSAGE_ALARM_PIN                             "Pin de alarma de mensajes"
-#define TR_F_MICE_POSITION                                 "Codificación de posición Mic-E"
-#define TR_F_MODE                                          "Modo"
-#define TR_F_MY_CALLSIGN                                   "Mi indicativo"
-#define TR_USE_MY_STATION_DATA                             "Usar mis datos de estación"
-#define TR_F_NAME                                          "Nombre"
-#define TR_F_OBJECT_ITEM_NAME                              "Nombre del objeto/ítem"
-#define TR_F_OBJECT_NAME                                   "Nombre del objeto"
-#define TR_F_OPTIONS                                       "Opciones"
-#define TR_F_PARM_UNIT_EQNS_INTERVAL_S                     "Intervalo PARM/UNIT/EQNS (s)"
-#define TR_F_PASSWORD                                      "Contraseña"
-#define TR_F_POSITION                                      "Posición"
-#define TR_F_PREAMBLE_MS                                   "Preámbulo (ms)"
-#define TR_DISABLED                                        "Deshabilitado"
-#define TR_GPIO_USED_BY                                    "GPIO%d (usado: %.30s)"
-#define TR_F_PROTOCOL                                      "Protocolo"
-#define TR_F_QUERY                                         "Consulta"
-#define TR_F_ENABLE_QUERY                                  "Habilitar respondedor de consultas"
-#define TR_F_QUERY_RF                                      "Responder consultas escuchadas en RF"
-#define TR_F_QUERY_INET                                    "Responder consultas recibidas de APRS-IS"
-#define TR_F_QUERY_APRS                                    "?APRS? - consulta general de estación"
-#define TR_F_QUERY_WX                                      "?WX? - solicitud de reporte meteorológico"
-#define TR_F_QUERY_IGATE                                   "?IGATE? - solicitud de estado del IGate"
-#define TR_F_QUERY_DIRECTED                                "Consultas dirigidas (CALL:?query?)"
-#define TR_F_QUERY_EXT                                     "Consultas dirigidas extendidas (?APRSD/?APRSH/?APRSM/?APRSO/?APRSP/?APRSS/?APRST)"
-#define TR_F_QUERY_MIN_INTERVAL                            "Segundos mínimos entre respuestas idénticas"
-#define TR_F_RADIO_MODEM                                   "Radiomódem"
-#define TR_F_RETRY_COUNT                                   "Número de reintentos"
-#define TR_F_RETRY_INTERVAL_S                              "Intervalo de reintento (s)"
-#define TR_F_RF_TO_INTERNET                                "RF a Internet"
-#define TR_F_RF_TX_BUFFERS                                 "Buffers de TX"
-#define TR_F_DUTY_CYCLE_EN                                 "Limitador de ciclo de trabajo"
-#define TR_F_DUTY_CYCLE_PCT                                "Límite de ciclo de trabajo (%)"
-#define TR_F_PTT_MIN_UNKEY_MS                              "Tiempo mínimo de PTT liberado (ms)"
-#define TR_F_CSMA_PERSISTENCE                              "Persistencia CSMA (p, 1-255)"
-#define TR_F_SEND_RECEIVE_VIA_INTERNET                     "Enviar/recibir vía Internet"
-#define TR_F_SEND_RECEIVE_VIA_RF                           "Enviar/recibir vía RF"
-#define TR_F_SEND_VIA_INTERNET                             "Enviar vía Internet"
-#define TR_F_SEND_VIA_RF                                   "Enviar vía RF"
+/** Spanish text for the form label for the "add timestamp" field or fieldset, rendered on the configuration forms. English: "Add timestamp". */
+#define TR_F_ADD_TIMESTAMP "Añadir marca de tiempo"
+/** Spanish text for the form label for the "altitude m" field or fieldset, rendered on the configuration forms. English: "Altitude (m)". */
+#define TR_F_ALTITUDE_M "Altitud (m)"
+/** Spanish text for the form label for the "aprs is server" field or fieldset, rendered on the configuration forms. English: "APRS-IS Server". */
+#define TR_F_APRS_IS_SERVER "Servidor APRS-IS"
+/** Spanish text for the form label for the "aprs messaging" field or fieldset, rendered on the configuration forms. English: "APRS Messaging". */
+#define TR_F_APRS_MESSAGING "Mensajería APRS"
+/** Spanish text for the form label for the "aprs passcode" field or fieldset, rendered on the configuration forms. English: "APRS-IS Passcode". */
+#define TR_F_APRS_PASSCODE "Código de acceso APRS-IS"
+/** Spanish text for the form label for the "aprs symbols" field or fieldset, rendered on the configuration forms. English: "APRS Symbols". */
+#define TR_F_APRS_SYMBOLS "Símbolos APRS"
+/** Spanish text for the form label for the "audio afsk" field or fieldset, rendered on the configuration forms. English: "Audio / AFSK". */
+#define TR_F_AUDIO_AFSK "Audio / AFSK"
+/** Spanish text for the form label for the "enable audio modem" field or fieldset, rendered on the configuration forms. English: "Enable audio ADC/DAC modem".
+ */
+#define TR_F_ENABLE_AUDIO_MODEM "Activar módem ADC/DAC de audio"
+/** Spanish text for the form label for the "afsk modulation" field or fieldset, rendered on the configuration forms. English: "Modulation". */
+#define TR_F_AFSK_MODULATION "Modulación"
+/** Spanish text for the form label for the "audio low pass filter" field or fieldset, rendered on the configuration forms. English: "Audio low-pass filter". */
+#define TR_F_AUDIO_LOW_PASS_FILTER "Filtro paso bajo de audio"
+/** Spanish text for the form label for the "beacon interval s" field or fieldset, rendered on the configuration forms. English: "Beacon interval (s)". */
+#define TR_F_BEACON_INTERVAL_S "Intervalo de baliza (s)"
+/** Spanish text for the form label for the "beacon position" field or fieldset, rendered on the configuration forms. English: "Beacon / Position". */
+#define TR_F_BEACON_POSITION "Baliza / Posición"
+/** Spanish text for the form label for the "beacon position 2" field or fieldset, rendered on the configuration forms. English: "Beacon position". */
+#define TR_F_BEACON_POSITION_2 "Posición de baliza"
+/** Spanish text for the form label for the "beacon via internet" field or fieldset, rendered on the configuration forms. English: "Beacon via Internet". */
+#define TR_F_BEACON_VIA_INTERNET "Baliza vía Internet"
+/** Spanish text for the form label for the "beacon via rf" field or fieldset, rendered on the configuration forms. English: "Beacon via RF". */
+#define TR_F_BEACON_VIA_RF "Baliza vía RF"
+/** Spanish text for the form label for the "comment" field or fieldset, rendered on the configuration forms. English: "Comment". */
+#define TR_F_COMMENT "Comentario"
+/** Spanish text for the form label for the "compress position" field or fieldset, rendered on the configuration forms. English: "Compress position". */
+#define TR_F_COMPRESS_POSITION "Comprimir posición"
+/** Spanish text for the form label for the "dashboard" field or fieldset, rendered on the configuration forms. English: "Dashboard". */
+#define TR_F_DASHBOARD "Panel"
+/** Spanish text for the form label for the "data interval s" field or fieldset, rendered on the configuration forms. English: "Data interval (s)". */
+#define TR_F_DATA_INTERVAL_S "Intervalo de datos (s)"
+/** Spanish text for the form label for the "digipeater" field or fieldset, rendered on the configuration forms. English: "Digipeater". */
+#define TR_F_DIGIPEATER "Digipeater"
+/** Spanish text for the form label for the "enable" field or fieldset, rendered on the configuration forms. English: "Enable". */
+#define TR_F_ENABLE "Habilitar"
+/** Spanish text for the form label for the "enable digipeater" field or fieldset, rendered on the configuration forms. English: "Enable Digipeater". */
+#define TR_F_ENABLE_DIGIPEATER "Habilitar Digipeater"
+/** Spanish text for the form label for the "enable igate" field or fieldset, rendered on the configuration forms. English: "Enable IGate". */
+#define TR_F_ENABLE_IGATE "Habilitar IGate"
+/** Spanish text for the form label for the "enable messaging" field or fieldset, rendered on the configuration forms. English: "Enable messaging". */
+#define TR_F_ENABLE_MESSAGING "Habilitar mensajería"
+/** Spanish text for the form label for the "enable tracker" field or fieldset, rendered on the configuration forms. English: "Enable Tracker". */
+#define TR_F_ENABLE_TRACKER "Habilitar Tracker"
+/** Spanish text for the form label for the "enable wx" field or fieldset, rendered on the configuration forms. English: "Enable WX". */
+#define TR_F_ENABLE_WX "Habilitar WX"
+/** Spanish text for the form label for the "file storage" field or fieldset, rendered on the configuration forms. English: "File Storage". */
+#define TR_F_FILE_STORAGE "Almacenamiento de archivos"
+/** Spanish text for the form label for the "filter" field or fieldset, rendered on the configuration forms. English: "Filter". */
+#define TR_F_FILTER "Filtro"
+/** Spanish text for the form label for the "fixed altitude m" field or fieldset, rendered on the configuration forms. English: "Fixed Altitude (m)". */
+#define TR_F_FIXED_ALTITUDE_M "Altitud fija (m)"
+/** Spanish text for the form label for the "fixed interval s" field or fieldset, rendered on the configuration forms. English: "Fixed interval (s)". */
+#define TR_F_FIXED_INTERVAL_S "Intervalo fijo (s)"
+/** Spanish text for the form label for the "fixed latitude" field or fieldset, rendered on the configuration forms. English: "Fixed Latitude". */
+#define TR_F_FIXED_LATITUDE "Latitud fija"
+/** Spanish text for the form label for the "fixed longitude" field or fieldset, rendered on the configuration forms. English: "Fixed Longitude". */
+#define TR_F_FIXED_LONGITUDE "Longitud fija"
+/** Spanish text for the form label for the "fx 25 forward error corrected ax 25" field or fieldset, rendered on the configuration forms. English: "FX.25
+ * (forward-error-corrected AX.25)". */
+#define TR_F_FX_25_FORWARD_ERROR_CORRECTED_AX_25 "FX.25 (AX.25 con corrección de errores)"
+/** Spanish text for the form label for the "igate" field or fieldset, rendered on the configuration forms. English: "IGate". */
+#define TR_F_IGATE "IGate"
+/** Spanish text for the form label for the "include altitude" field or fieldset, rendered on the configuration forms. English: "Include altitude". */
+#define TR_F_INCLUDE_ALTITUDE "Incluir altitud"
+/** Spanish text for the form label for the "internet to rf" field or fieldset, rendered on the configuration forms. English: "Internet to RF". */
+#define TR_F_INTERNET_TO_RF "Internet a RF"
+/** Spanish text for the form label for the "latitude" field or fieldset, rendered on the configuration forms. English: "Latitude". */
+#define TR_F_LATITUDE "Latitud"
+/** Spanish text for the form label for the "longitude" field or fieldset, rendered on the configuration forms. English: "Longitude". */
+#define TR_F_LONGITUDE "Longitud"
+/** Spanish text for the form label for the "message" field or fieldset, rendered on the configuration forms. English: "Message". */
+#define TR_F_MESSAGE "Mensaje"
+/** Spanish text for the form label for the "message alarm enable" field or fieldset, rendered on the configuration forms. English: "Enable Message Alarm". */
+#define TR_F_MESSAGE_ALARM_ENABLE "Activar alarma de mensajes"
+/** Spanish text for the form label for the "message alarm pin" field or fieldset, rendered on the configuration forms. English: "Message Alarm pin". */
+#define TR_F_MESSAGE_ALARM_PIN "Pin de alarma de mensajes"
+/** Spanish text for the form label for the "mice position" field or fieldset, rendered on the configuration forms. English: "Mic-E position encoding". */
+#define TR_F_MICE_POSITION "Codificación de posición Mic-E"
+/** Spanish text for the form label for the "mode" field or fieldset, rendered on the configuration forms. English: "Mode". */
+#define TR_F_MODE "Modo"
+/** Spanish text for the form label for the "my callsign" field or fieldset, rendered on the configuration forms. English: "My Callsign". */
+#define TR_F_MY_CALLSIGN "Mi indicativo"
+/** Spanish text for the caption of the control that copies the station identity into the current form. English: "Use My Station Data". */
+#define TR_USE_MY_STATION_DATA "Usar mis datos de estación"
+/** Spanish text for the form label for the "name" field or fieldset, rendered on the configuration forms. English: "Name". */
+#define TR_F_NAME "Nombre"
+/** Spanish text for the form label for the "object item name" field or fieldset, rendered on the configuration forms. English: "Object/Item name". */
+#define TR_F_OBJECT_ITEM_NAME "Nombre del objeto/ítem"
+/** Spanish text for the form label for the "object name" field or fieldset, rendered on the configuration forms. English: "Object name". */
+#define TR_F_OBJECT_NAME "Nombre del objeto"
+/** Spanish text for the form label for the "options" field or fieldset, rendered on the configuration forms. English: "Options". */
+#define TR_F_OPTIONS "Opciones"
+/** Spanish text for the form label for the "parm unit eqns interval s" field or fieldset, rendered on the configuration forms. English: "PARM/UNIT/EQNS
+ * interval (s)". */
+#define TR_F_PARM_UNIT_EQNS_INTERVAL_S "Intervalo PARM/UNIT/EQNS (s)"
+/** Spanish text for the form label for the "password" field or fieldset, rendered on the configuration forms. English: "Password". */
+#define TR_F_PASSWORD "Contraseña"
+/** Spanish text for the form label for the "position" field or fieldset, rendered on the configuration forms. English: "Position". */
+#define TR_F_POSITION "Posición"
+/** Spanish text for the form label for the "preamble ms" field or fieldset, rendered on the configuration forms. English: "Preamble (ms)". */
+#define TR_F_PREAMBLE_MS "Preámbulo (ms)"
+/** Spanish text for the selector entry meaning the feature or pin is switched off. English: "Disabled". */
+#define TR_DISABLED "Deshabilitado"
+/** Spanish text for the format string for a GPIO selector entry that is already claimed, taking the pin number and the claiming peripheral. English: "GPIO%d
+ * (used: %.30s)". */
+#define TR_GPIO_USED_BY "GPIO%d (usado: %.30s)"
+/** Spanish text for the form label for the "protocol" field or fieldset, rendered on the configuration forms. English: "Protocol". */
+#define TR_F_PROTOCOL "Protocolo"
+/** Spanish text for the form label for the "query" field or fieldset, rendered on the configuration forms. English: "Query". */
+#define TR_F_QUERY "Consulta"
+/** Spanish text for the form label for the "enable query" field or fieldset, rendered on the configuration forms. English: "Enable query responder". */
+#define TR_F_ENABLE_QUERY "Habilitar respondedor de consultas"
+/** Spanish text for the form label for the "query rf" field or fieldset, rendered on the configuration forms. English: "Answer queries heard on RF". */
+#define TR_F_QUERY_RF "Responder consultas escuchadas en RF"
+/** Spanish text for the form label for the "query inet" field or fieldset, rendered on the configuration forms. English: "Answer queries heard from APRS-IS".
+ */
+#define TR_F_QUERY_INET "Responder consultas recibidas de APRS-IS"
+/** Spanish text for the form label for the "query aprs" field or fieldset, rendered on the configuration forms. English: "?APRS? - general station query". */
+#define TR_F_QUERY_APRS "?APRS? - consulta general de estación"
+/** Spanish text for the form label for the "query wx" field or fieldset, rendered on the configuration forms. English: "?WX? - weather report request". */
+#define TR_F_QUERY_WX "?WX? - solicitud de reporte meteorológico"
+/** Spanish text for the form label for the "query igate" field or fieldset, rendered on the configuration forms. English: "?IGATE? - IGate status request". */
+#define TR_F_QUERY_IGATE "?IGATE? - solicitud de estado del IGate"
+/** Spanish text for the form label for the "query directed" field or fieldset, rendered on the configuration forms. English: "Directed queries (CALL:?query?)".
+ */
+#define TR_F_QUERY_DIRECTED "Consultas dirigidas (CALL:?query?)"
+/** Spanish text for the form label for the "query ext" field or fieldset, rendered on the configuration forms. English: "Extended directed queries
+ * (?APRSD/?APRSH/?APRSM/?APRSO/?APRSP/?APRSS/?APRST)". */
+#define TR_F_QUERY_EXT "Consultas dirigidas extendidas (?APRSD/?APRSH/?APRSM/?APRSO/?APRSP/?APRSS/?APRST)"
+/** Spanish text for the form label for the "query min interval" field or fieldset, rendered on the configuration forms. English: "Minimum seconds between
+ * identical responses". */
+#define TR_F_QUERY_MIN_INTERVAL "Segundos mínimos entre respuestas idénticas"
+/** Spanish text for the form label for the "radio modem" field or fieldset, rendered on the configuration forms. English: "Radiomodem". */
+#define TR_F_RADIO_MODEM "Radiomódem"
+/** Spanish text for the form label for the "retry count" field or fieldset, rendered on the configuration forms. English: "Retry count". */
+#define TR_F_RETRY_COUNT "Número de reintentos"
+/** Spanish text for the form label for the "retry interval s" field or fieldset, rendered on the configuration forms. English: "Retry interval (s)". */
+#define TR_F_RETRY_INTERVAL_S "Intervalo de reintento (s)"
+/** Spanish text for the form label for the "rf to internet" field or fieldset, rendered on the configuration forms. English: "RF to Internet". */
+#define TR_F_RF_TO_INTERNET "RF a Internet"
+/** Spanish text for the form label for the "rf tx buffers" field or fieldset, rendered on the configuration forms. English: "TX buffers". */
+#define TR_F_RF_TX_BUFFERS "Buffers de TX"
+/** Spanish text for the form label for the "duty cycle en" field or fieldset, rendered on the configuration forms. English: "Duty-cycle limiter". */
+#define TR_F_DUTY_CYCLE_EN "Limitador de ciclo de trabajo"
+/** Spanish text for the form label for the "duty cycle pct" field or fieldset, rendered on the configuration forms. English: "Duty-cycle limit (%)". */
+#define TR_F_DUTY_CYCLE_PCT "Límite de ciclo de trabajo (%)"
+/** Spanish text for the form label for the "ptt min unkey ms" field or fieldset, rendered on the configuration forms. English: "PTT minimum unkey time (ms)".
+ */
+#define TR_F_PTT_MIN_UNKEY_MS "Tiempo mínimo de PTT liberado (ms)"
+/** Spanish text for the form label for the "csma persistence" field or fieldset, rendered on the configuration forms. English: "CSMA persistence (p, 1-255)".
+ */
+#define TR_F_CSMA_PERSISTENCE "Persistencia CSMA (p, 1-255)"
+/** Spanish text for the form label for the "send receive via internet" field or fieldset, rendered on the configuration forms. English: "Send/receive via
+ * Internet". */
+#define TR_F_SEND_RECEIVE_VIA_INTERNET "Enviar/recibir vía Internet"
+/** Spanish text for the form label for the "send receive via rf" field or fieldset, rendered on the configuration forms. English: "Send/receive via RF". */
+#define TR_F_SEND_RECEIVE_VIA_RF "Enviar/recibir vía RF"
+/** Spanish text for the form label for the "send via internet" field or fieldset, rendered on the configuration forms. English: "Send via Internet". */
+#define TR_F_SEND_VIA_INTERNET "Enviar vía Internet"
+/** Spanish text for the form label for the "send via rf" field or fieldset, rendered on the configuration forms. English: "Send via RF". */
+#define TR_F_SEND_VIA_RF "Enviar vía RF"
+/** Spanish text for the form label for the "sensor mapping enable averaged source channel" field or fieldset, rendered on the configuration forms. English:
+ * "Sensor Mapping (enable / averaged / source channel)". */
 #define TR_F_SENSOR_MAPPING_ENABLE_AVERAGED_SOURCE_CHANNEL "Mapeo de sensores (habilitar / promediado / canal de origen)"
-#define TR_F_SERVER_HOST                                   "Host del servidor"
-#define TR_F_SERVER_PORT                                   "Puerto del servidor"
-#define TR_F_SSID                                          "SSID"
-#define TR_F_STATION                                       "Estación"
-#define TR_F_BULLETINS                                     "Boletines"
-#define TR_F_BULLETIN_FMT                                  "Boletín %d"
-#define TR_F_BULLETIN_ID                                   "Identificador (0-9 boletin, A-Z anuncio)"
-#define TR_F_BULLETIN_GROUP                                "Grupo (hasta 5 caracteres, vacio = general)"
-#define TR_F_BULLETIN_MSG                                  "Mensaje (máx 67 caract.)"
-#define TR_F_BULLETIN_EXPIRE                               "Expira (horas, 0 = nunca)"
-#define TR_F_OBJITEMS                                      "Objetos e Ítems"
-#define TR_F_OBJITEM_FMT                                   "Objeto/Ítem %d"
-#define TR_F_OBJITEM_TX_CONTROL                            "Control de Transmisión"
-#define TR_F_OBJITEM_IDENTITY                              "Identidad y Estado"
-#define TR_F_OBJITEM_POS_SYMBOL                            "Posición y Símbolo"
-#define TR_F_OBJITEM_AREA_SECTION                          "Objeto de Área"
-#define TR_F_OBJITEM_SIGNPOST_SECTION                      "Señal (Signpost)"
-#define TR_F_OBJITEM_REPEATER_SECTION                      "Parámetros de Radio del Repetidor"
-#define TR_F_OBJITEM_TIMING_SECTION                        "Temporización de Baliza"
-#define TR_F_OBJITEM_TYPE                                  "Tipo"
-#define TR_F_OBJITEM_TYPE_OBJECT                           "Objeto (con marca de tiempo)"
-#define TR_F_OBJITEM_TYPE_ITEM                             "Ítem (sin marca de tiempo)"
-#define TR_F_OBJITEM_PERMANENT                             "Permanente (solo Objeto, 111111z)"
+/** Spanish text for the form label for the "server host" field or fieldset, rendered on the configuration forms. English: "Server Host". */
+#define TR_F_SERVER_HOST "Host del servidor"
+/** Spanish text for the form label for the "server port" field or fieldset, rendered on the configuration forms. English: "Server Port". */
+#define TR_F_SERVER_PORT "Puerto del servidor"
+/** Spanish text for the form label for the "ssid" field or fieldset, rendered on the configuration forms. English: "SSID". */
+#define TR_F_SSID "SSID"
+/** Spanish text for the form label for the "station" field or fieldset, rendered on the configuration forms. English: "Station". */
+#define TR_F_STATION "Estación"
+/** Spanish text for the form label for the "bulletins" field or fieldset, rendered on the configuration forms. English: "Bulletins". */
+#define TR_F_BULLETINS "Boletines"
+/** Spanish text for the form label for the "bulletin fmt" field or fieldset, rendered on the configuration forms. English: "Bulletin %d". */
+#define TR_F_BULLETIN_FMT "Boletín %d"
+/** Spanish text for the form label for the "bulletin id" field or fieldset, rendered on the configuration forms. English: "Identifier (0-9 bulletin, A-Z
+ * announcement)". */
+#define TR_F_BULLETIN_ID "Identificador (0-9 boletin, A-Z anuncio)"
+/** Spanish text for the form label for the "bulletin group" field or fieldset, rendered on the configuration forms. English: "Group (up to 5 chars, empty =
+ * general)". */
+#define TR_F_BULLETIN_GROUP "Grupo (hasta 5 caracteres, vacio = general)"
+/** Spanish text for the form label for the "bulletin msg" field or fieldset, rendered on the configuration forms. English: "Message (max 67 chars)". */
+#define TR_F_BULLETIN_MSG "Mensaje (máx 67 caract.)"
+/** Spanish text for the form label for the "bulletin expire" field or fieldset, rendered on the configuration forms. English: "Expire (hours, 0 = never)". */
+#define TR_F_BULLETIN_EXPIRE "Expira (horas, 0 = nunca)"
+/** Spanish text for the form label for the "objitems" field or fieldset, rendered on the configuration forms. English: "Objects and Items". */
+#define TR_F_OBJITEMS "Objetos e Ítems"
+/** Spanish text for the form label for the "objitem fmt" field or fieldset, rendered on the configuration forms. English: "Object/Item %d". */
+#define TR_F_OBJITEM_FMT "Objeto/Ítem %d"
+/** Spanish text for the form label for the "objitem tx control" field or fieldset, rendered on the configuration forms. English: "Transmission Control". */
+#define TR_F_OBJITEM_TX_CONTROL "Control de Transmisión"
+/** Spanish text for the form label for the "objitem identity" field or fieldset, rendered on the configuration forms. English: "Identity & State". */
+#define TR_F_OBJITEM_IDENTITY "Identidad y Estado"
+/** Spanish text for the form label for the "objitem pos symbol" field or fieldset, rendered on the configuration forms. English: "Position & Symbol". */
+#define TR_F_OBJITEM_POS_SYMBOL "Posición y Símbolo"
+/** Spanish text for the form label for the "objitem area section" field or fieldset, rendered on the configuration forms. English: "Area Object". */
+#define TR_F_OBJITEM_AREA_SECTION "Objeto de Área"
+/** Spanish text for the form label for the "objitem signpost section" field or fieldset, rendered on the configuration forms. English: "Signpost". */
+#define TR_F_OBJITEM_SIGNPOST_SECTION "Señal (Signpost)"
+/** Spanish text for the form label for the "objitem repeater section" field or fieldset, rendered on the configuration forms. English: "Repeater Radio
+ * Parameters". */
+#define TR_F_OBJITEM_REPEATER_SECTION "Parámetros de Radio del Repetidor"
+/** Spanish text for the form label for the "objitem timing section" field or fieldset, rendered on the configuration forms. English: "Beacon Timing". */
+#define TR_F_OBJITEM_TIMING_SECTION "Temporización de Baliza"
+/** Spanish text for the form label for the "objitem type" field or fieldset, rendered on the configuration forms. English: "Type". */
+#define TR_F_OBJITEM_TYPE "Tipo"
+/** Spanish text for the form label for the "objitem type object" field or fieldset, rendered on the configuration forms. English: "Object (timestamped)". */
+#define TR_F_OBJITEM_TYPE_OBJECT "Objeto (con marca de tiempo)"
+/** Spanish text for the form label for the "objitem type item" field or fieldset, rendered on the configuration forms. English: "Item (non-timestamped)". */
+#define TR_F_OBJITEM_TYPE_ITEM "Ítem (sin marca de tiempo)"
+/** Spanish text for the form label for the "objitem permanent" field or fieldset, rendered on the configuration forms. English: "Permanent (Object only,
+ * 111111z)". */
+#define TR_F_OBJITEM_PERMANENT "Permanente (solo Objeto, 111111z)"
+/** Spanish text for the form label for the "objitem permanent note" field or fieldset, rendered on the configuration forms. English: "A permanent Object is
+ * sent with the fixed 111111z timestamp instead of the live time, s...". */
 #define TR_F_OBJITEM_PERMANENT_NOTE                                                                                                                            \
-    "Un Objeto permanente se envía con la marca de tiempo fija 111111z en lugar de la hora actual, de modo que nunca es reemplazado por un Objeto homónimo " \
+    "Un Objeto permanente se envía con la marca de tiempo fija 111111z en lugar de la hora actual, de modo que nunca es reemplazado por un Objeto homónimo "   \
     "de otra estación - solo la estación de origen puede actualizarlo o moverlo. No tiene efecto en un Ítem."
-#define TR_F_OBJITEM_ACTIVE         "Activo (desmarcar = eliminar)"
-#define TR_F_OBJITEM_SCOPE          "Alcance"
-#define TR_F_OBJITEM_SCOPE_PRIVATE  "Privado (no se transmite)"
-#define TR_F_OBJITEM_SCOPE_LOCAL    "Local (solo RF)"
-#define TR_F_OBJITEM_SCOPE_GLOBAL   "Global (RF + Internet)"
-#define TR_F_OBJITEM_SYMBOL         "Símbolo / superposición"
-#define TR_F_OBJITEM_COURSE         "Rumbo (grados, 0-359)"
-#define TR_F_OBJITEM_SPEED          "Velocidad (nudos, 0 = omitir)"
-#define TR_F_OBJITEM_AREA_SHAPE     "Forma de área (símbolo \\l)"
-#define TR_F_OBJITEM_SHAPE_CIRCLE   "Círculo"
-#define TR_F_OBJITEM_SHAPE_LINE     "Línea"
-#define TR_F_OBJITEM_SHAPE_ELLIPSE  "Elipse"
+/** Spanish text for the form label for the "objitem active" field or fieldset, rendered on the configuration forms. English: "Active (uncheck = kill)". */
+#define TR_F_OBJITEM_ACTIVE "Activo (desmarcar = eliminar)"
+/** Spanish text for the form label for the "objitem scope" field or fieldset, rendered on the configuration forms. English: "Scope". */
+#define TR_F_OBJITEM_SCOPE "Alcance"
+/** Spanish text for the form label for the "objitem scope private" field or fieldset, rendered on the configuration forms. English: "Private (not
+ * transmitted)". */
+#define TR_F_OBJITEM_SCOPE_PRIVATE "Privado (no se transmite)"
+/** Spanish text for the form label for the "objitem scope local" field or fieldset, rendered on the configuration forms. English: "Local (RF only)". */
+#define TR_F_OBJITEM_SCOPE_LOCAL "Local (solo RF)"
+/** Spanish text for the form label for the "objitem scope global" field or fieldset, rendered on the configuration forms. English: "Global (RF + Internet)". */
+#define TR_F_OBJITEM_SCOPE_GLOBAL "Global (RF + Internet)"
+/** Spanish text for the form label for the "objitem symbol" field or fieldset, rendered on the configuration forms. English: "Symbol / overlay". */
+#define TR_F_OBJITEM_SYMBOL "Símbolo / superposición"
+/** Spanish text for the form label for the "objitem course" field or fieldset, rendered on the configuration forms. English: "Course (deg, 0-359)". */
+#define TR_F_OBJITEM_COURSE "Rumbo (grados, 0-359)"
+/** Spanish text for the form label for the "objitem speed" field or fieldset, rendered on the configuration forms. English: "Speed (knots, 0 = omit)". */
+#define TR_F_OBJITEM_SPEED "Velocidad (nudos, 0 = omitir)"
+/** Spanish text for the form label for the "objitem area shape" field or fieldset, rendered on the configuration forms. English: "Area shape (\l symbol)". */
+#define TR_F_OBJITEM_AREA_SHAPE "Forma de área (símbolo \\l)"
+/** Spanish text for the form label for the "objitem shape circle" field or fieldset, rendered on the configuration forms. English: "Circle". */
+#define TR_F_OBJITEM_SHAPE_CIRCLE "Círculo"
+/** Spanish text for the form label for the "objitem shape line" field or fieldset, rendered on the configuration forms. English: "Line". */
+#define TR_F_OBJITEM_SHAPE_LINE "Línea"
+/** Spanish text for the form label for the "objitem shape ellipse" field or fieldset, rendered on the configuration forms. English: "Ellipse". */
+#define TR_F_OBJITEM_SHAPE_ELLIPSE "Elipse"
+/** Spanish text for the form label for the "objitem shape triangle" field or fieldset, rendered on the configuration forms. English: "Triangle". */
 #define TR_F_OBJITEM_SHAPE_TRIANGLE "Triángulo"
-#define TR_F_OBJITEM_SHAPE_BOX      "Caja"
-#define TR_F_OBJITEM_SHAPE_FILLED   " (rellena)"
-#define TR_F_OBJITEM_AREA_COLOR     "Color de área (0-15)"
-#define TR_F_OBJITEM_AREA_LAT_OFF   "Desplaz. latitud del área (grados)"
-#define TR_F_OBJITEM_AREA_LON_OFF   "Desplaz. longitud del área (grados)"
-#define TR_F_OBJITEM_SIGNPOST       "Texto de señal (símbolo \\m, 3 caract.)"
-#define TR_F_OBJITEM_FREQ           "Frecuencia de monitoreo (MHz, 0 = ninguna)"
-#define TR_F_OBJITEM_DUPLEX         "Dirección dúplex"
+/** Spanish text for the form label for the "objitem shape box" field or fieldset, rendered on the configuration forms. English: "Box". */
+#define TR_F_OBJITEM_SHAPE_BOX "Caja"
+/** Spanish text for the form label for the "objitem shape filled" field or fieldset, rendered on the configuration forms. English: "(filled)". */
+#define TR_F_OBJITEM_SHAPE_FILLED " (rellena)"
+/** Spanish text for the form label for the "objitem area color" field or fieldset, rendered on the configuration forms. English: "Area color (0-15)". */
+#define TR_F_OBJITEM_AREA_COLOR "Color de área (0-15)"
+/** Spanish text for the form label for the "objitem area lat off" field or fieldset, rendered on the configuration forms. English: "Area latitude offset
+ * (deg)". */
+#define TR_F_OBJITEM_AREA_LAT_OFF "Desplaz. latitud del área (grados)"
+/** Spanish text for the form label for the "objitem area lon off" field or fieldset, rendered on the configuration forms. English: "Area longitude offset
+ * (deg)". */
+#define TR_F_OBJITEM_AREA_LON_OFF "Desplaz. longitud del área (grados)"
+/** Spanish text for the form label for the "objitem signpost" field or fieldset, rendered on the configuration forms. English: "Signpost text (\m symbol, 3
+ * chars)". */
+#define TR_F_OBJITEM_SIGNPOST "Texto de señal (símbolo \\m, 3 caract.)"
+/** Spanish text for the form label for the "objitem freq" field or fieldset, rendered on the configuration forms. English: "Monitor frequency (MHz, 0 = none)".
+ */
+#define TR_F_OBJITEM_FREQ "Frecuencia de monitoreo (MHz, 0 = ninguna)"
+/** Spanish text for the form label for the "objitem duplex" field or fieldset, rendered on the configuration forms. English: "Duplex direction". */
+#define TR_F_OBJITEM_DUPLEX "Dirección dúplex"
+/** Spanish text for the form label for the "objitem duplex simplex" field or fieldset, rendered on the configuration forms. English: "Simplex". */
 #define TR_F_OBJITEM_DUPLEX_SIMPLEX "Símplex"
-#define TR_F_OBJITEM_DUPLEX_PLUS    "Positivo (+)"
-#define TR_F_OBJITEM_DUPLEX_MINUS   "Negativo (-)"
-#define TR_F_OBJITEM_OFFSET         "Desplazamiento dúplex (kHz)"
-#define TR_F_OBJITEM_TONE           "Tono subaudible CTCSS (Hz, 0 = ninguno)"
-#define TR_F_OBJITEM_PATH_FMT       "Ruta %d"
-#define TR_F_OBJITEM_QRU            "Membresía de grupo QRU"
-#define TR_F_OBJITEM_QRU_NONE       "(ninguno)"
-#define TR_F_QRU_AMBU               "ambulancia"
-#define TR_F_QRU_CLUB               "club de radioaficionados"
-#define TR_F_QRU_ECHO               "Echolink"
-#define TR_F_QRU_FIRE               "estación de bomberos"
-#define TR_F_QRU_FOOD               "restaurantes"
-#define TR_F_QRU_FUEL               "estaciones de servicio/gasolineras"
-#define TR_F_QRU_HOSP               "hospitales"
-#define TR_F_QRU_LIFEBOAT           "botes salvavidas"
-#define TR_F_QRU_LTHS               "faros"
-#define TR_F_QRU_POLI               "comisarías de policía"
-#define TR_F_QRU_POST               "oficinas de correos"
-#define TR_F_QRU_RD13               "repetidores D-Star 13cm"
-#define TR_F_QRU_RD23               "repetidores D-Star 23cm"
-#define TR_F_QRU_RD2M               "repetidores D-Star 2m"
-#define TR_F_QRU_RD3C               "repetidores D-Star 3cm"
-#define TR_F_QRU_RD70               "repetidores D-Star 70cm"
-#define TR_F_QRU_RP10               "repetidores analógicos 10m"
-#define TR_F_QRU_RP13               "repetidores analógicos 13cm"
-#define TR_F_QRU_RP23               "repetidores analógicos 23cm"
-#define TR_F_QRU_RP2M               "repetidores analógicos 2m"
-#define TR_F_QRU_RP3C               "repetidores analógicos 3cm"
-#define TR_F_QRU_RP6M               "repetidores analógicos 6m"
-#define TR_F_QRU_RP70               "repetidores analógicos 70cm"
-#define TR_F_QRU_RT13               "repetidores de televisión 13cm"
-#define TR_F_QRU_RT23               "repetidores de televisión 23cm"
-#define TR_F_QRU_RT3C               "repetidores de televisión 3cm"
-#define TR_F_QRU_SRAIL              "ferrocarril de vapor"
-#define TR_F_QRU_STOR               "tiendas de radioafición"
-#define TR_F_QRU_T2SRV              "ubic. aprox. de servidores APRS-IS Tier 2"
-#define TR_F_QRU_VETE               "veterinarios"
-#define TR_F_QRU_WOTA               "Wainwrights On The Air"
-#define TR_F_OBJITEM_INIT_RATE      "Intervalo inicial (s)"
-#define TR_F_OBJITEM_SLOW_RATE      "Intervalo lento (s, 0 = sin decaimiento)"
-#define TR_F_OBJITEM_DECAY          "Razón de decaimiento (ej. 2.0, <1 = ninguna)"
+/** Spanish text for the form label for the "objitem duplex plus" field or fieldset, rendered on the configuration forms. English: "Plus (+)". */
+#define TR_F_OBJITEM_DUPLEX_PLUS "Positivo (+)"
+/** Spanish text for the form label for the "objitem duplex minus" field or fieldset, rendered on the configuration forms. English: "Minus (-)". */
+#define TR_F_OBJITEM_DUPLEX_MINUS "Negativo (-)"
+/** Spanish text for the form label for the "objitem offset" field or fieldset, rendered on the configuration forms. English: "Duplex offset (kHz)". */
+#define TR_F_OBJITEM_OFFSET "Desplazamiento dúplex (kHz)"
+/** Spanish text for the form label for the "objitem tone" field or fieldset, rendered on the configuration forms. English: "Subaudible tone CTCSS (Hz, 0 =
+ * none)". */
+#define TR_F_OBJITEM_TONE "Tono subaudible CTCSS (Hz, 0 = ninguno)"
+/** Spanish text for the form label for the "objitem path fmt" field or fieldset, rendered on the configuration forms. English: "Path %d". */
+#define TR_F_OBJITEM_PATH_FMT "Ruta %d"
+/** Spanish text for the form label for the "objitem qru" field or fieldset, rendered on the configuration forms. English: "QRU group membership". */
+#define TR_F_OBJITEM_QRU "Membresía de grupo QRU"
+/** Spanish text for the form label for the "objitem qru none" field or fieldset, rendered on the configuration forms. English: "(none)". */
+#define TR_F_OBJITEM_QRU_NONE "(ninguno)"
+/** Spanish text for the form label for the "qru ambu" field or fieldset, rendered on the configuration forms. English: "ambulance". */
+#define TR_F_QRU_AMBU "ambulancia"
+/** Spanish text for the form label for the "qru club" field or fieldset, rendered on the configuration forms. English: "ham radio club". */
+#define TR_F_QRU_CLUB "club de radioaficionados"
+/** Spanish text for the form label for the "qru echo" field or fieldset, rendered on the configuration forms. English: "Echolink". */
+#define TR_F_QRU_ECHO "Echolink"
+/** Spanish text for the form label for the "qru fire" field or fieldset, rendered on the configuration forms. English: "fire station". */
+#define TR_F_QRU_FIRE "estación de bomberos"
+/** Spanish text for the form label for the "qru food" field or fieldset, rendered on the configuration forms. English: "restaurants". */
+#define TR_F_QRU_FOOD "restaurantes"
+/** Spanish text for the form label for the "qru fuel" field or fieldset, rendered on the configuration forms. English: "gas/petrol stations". */
+#define TR_F_QRU_FUEL "estaciones de servicio/gasolineras"
+/** Spanish text for the form label for the "qru hosp" field or fieldset, rendered on the configuration forms. English: "hospitals". */
+#define TR_F_QRU_HOSP "hospitales"
+/** Spanish text for the form label for the "qru lifeboat" field or fieldset, rendered on the configuration forms. English: "lifeboats". */
+#define TR_F_QRU_LIFEBOAT "botes salvavidas"
+/** Spanish text for the form label for the "qru lths" field or fieldset, rendered on the configuration forms. English: "lighthouses". */
+#define TR_F_QRU_LTHS "faros"
+/** Spanish text for the form label for the "qru poli" field or fieldset, rendered on the configuration forms. English: "police stations". */
+#define TR_F_QRU_POLI "comisarías de policía"
+/** Spanish text for the form label for the "qru post" field or fieldset, rendered on the configuration forms. English: "post offices". */
+#define TR_F_QRU_POST "oficinas de correos"
+/** Spanish text for the form label for the "qru rd13" field or fieldset, rendered on the configuration forms. English: "D-Star 13cm repeaters". */
+#define TR_F_QRU_RD13 "repetidores D-Star 13cm"
+/** Spanish text for the form label for the "qru rd23" field or fieldset, rendered on the configuration forms. English: "D-Star 23cm repeaters". */
+#define TR_F_QRU_RD23 "repetidores D-Star 23cm"
+/** Spanish text for the form label for the "qru rd2m" field or fieldset, rendered on the configuration forms. English: "D-Star 2m repeaters". */
+#define TR_F_QRU_RD2M "repetidores D-Star 2m"
+/** Spanish text for the form label for the "qru rd3c" field or fieldset, rendered on the configuration forms. English: "D-Star 3cm repeaters". */
+#define TR_F_QRU_RD3C "repetidores D-Star 3cm"
+/** Spanish text for the form label for the "qru rd70" field or fieldset, rendered on the configuration forms. English: "D-Star 70cm repeaters". */
+#define TR_F_QRU_RD70 "repetidores D-Star 70cm"
+/** Spanish text for the form label for the "qru rp10" field or fieldset, rendered on the configuration forms. English: "analog 10m repeaters". */
+#define TR_F_QRU_RP10 "repetidores analógicos 10m"
+/** Spanish text for the form label for the "qru rp13" field or fieldset, rendered on the configuration forms. English: "analog 13cm repeaters". */
+#define TR_F_QRU_RP13 "repetidores analógicos 13cm"
+/** Spanish text for the form label for the "qru rp23" field or fieldset, rendered on the configuration forms. English: "analog 23cm repeaters". */
+#define TR_F_QRU_RP23 "repetidores analógicos 23cm"
+/** Spanish text for the form label for the "qru rp2m" field or fieldset, rendered on the configuration forms. English: "analog 2m repeaters". */
+#define TR_F_QRU_RP2M "repetidores analógicos 2m"
+/** Spanish text for the form label for the "qru rp3c" field or fieldset, rendered on the configuration forms. English: "analog 3cm repeaters". */
+#define TR_F_QRU_RP3C "repetidores analógicos 3cm"
+/** Spanish text for the form label for the "qru rp6m" field or fieldset, rendered on the configuration forms. English: "analog 6m repeaters". */
+#define TR_F_QRU_RP6M "repetidores analógicos 6m"
+/** Spanish text for the form label for the "qru rp70" field or fieldset, rendered on the configuration forms. English: "analog 70cm repeaters". */
+#define TR_F_QRU_RP70 "repetidores analógicos 70cm"
+/** Spanish text for the form label for the "qru rt13" field or fieldset, rendered on the configuration forms. English: "television 13cm repeaters". */
+#define TR_F_QRU_RT13 "repetidores de televisión 13cm"
+/** Spanish text for the form label for the "qru rt23" field or fieldset, rendered on the configuration forms. English: "television 23cm repeaters". */
+#define TR_F_QRU_RT23 "repetidores de televisión 23cm"
+/** Spanish text for the form label for the "qru rt3c" field or fieldset, rendered on the configuration forms. English: "television 3cm repeaters". */
+#define TR_F_QRU_RT3C "repetidores de televisión 3cm"
+/** Spanish text for the form label for the "qru srail" field or fieldset, rendered on the configuration forms. English: "steam railroad". */
+#define TR_F_QRU_SRAIL "ferrocarril de vapor"
+/** Spanish text for the form label for the "qru stor" field or fieldset, rendered on the configuration forms. English: "Amateur Radio stores". */
+#define TR_F_QRU_STOR "tiendas de radioafición"
+/** Spanish text for the form label for the "qru t2srv" field or fieldset, rendered on the configuration forms. English: "approx. locations of Tier 2 APRS-IS
+ * servers". */
+#define TR_F_QRU_T2SRV "ubic. aprox. de servidores APRS-IS Tier 2"
+/** Spanish text for the form label for the "qru vete" field or fieldset, rendered on the configuration forms. English: "veterinarians". */
+#define TR_F_QRU_VETE "veterinarios"
+/** Spanish text for the form label for the "qru wota" field or fieldset, rendered on the configuration forms. English: "Wainwrights On The Air". */
+#define TR_F_QRU_WOTA "Wainwrights On The Air"
+/** Spanish text for the form label for the "objitem init rate" field or fieldset, rendered on the configuration forms. English: "Initial repeat rate (s)". */
+#define TR_F_OBJITEM_INIT_RATE "Intervalo inicial (s)"
+/** Spanish text for the form label for the "objitem slow rate" field or fieldset, rendered on the configuration forms. English: "Slow repeat rate (s, 0 = no
+ * decay)". */
+#define TR_F_OBJITEM_SLOW_RATE "Intervalo lento (s, 0 = sin decaimiento)"
+/** Spanish text for the form label for the "objitem decay" field or fieldset, rendered on the configuration forms. English: "Decay ratio (e.g. 2.0, <1 =
+ * none)". */
+#define TR_F_OBJITEM_DECAY "Razón de decaimiento (ej. 2.0, <1 = ninguna)"
+/** Spanish text for the explanatory note shown beside the objitem setting, rendered on the configuration forms. English: "Objects are timestamped (;NAME);
+ * Items are never timestamped ()NAME). Unchecking Active...". */
 #define TR_NOTE_OBJITEM                                                                                                                                        \
-    "Los Objetos llevan marca de tiempo (;NOMBRE); los Ítems nunca la llevan ()NOMBRE). Al desmarcar Activo se envían reportes de eliminación y luego se "  \
+    "Los Objetos llevan marca de tiempo (;NOMBRE); los Ítems nunca la llevan ()NOMBRE). Al desmarcar Activo se envían reportes de eliminación y luego se "     \
     "deshabilita automáticamente. El Alcance limita la transmisión independientemente de las casillas RF/Internet."
-#define TR_F_STATUS_BEACON           "Baliza de estado"
+/** Spanish text for the form label for the "status beacon" field or fieldset, rendered on the configuration forms. English: "Status Beacon". */
+#define TR_F_STATUS_BEACON "Baliza de estado"
+/** Spanish text for the form label for the "status interval s 0 off" field or fieldset, rendered on the configuration forms. English: "Status interval (s,
+ * 0=off)". */
 #define TR_F_STATUS_INTERVAL_S_0_OFF "Intervalo de estado (s, 0=desactivado)"
-#define TR_F_STATUS_TEXT             "Texto de estado"
-#define TR_F_SYSTEM                  "Sistema"
-#define TR_F_TELEMETRY               "Telemetría"
-#define TR_F_BEACON                  "Baliza"
-#define TR_F_TRACKER                 "Tracker"
-#define TR_F_TX_TIME_SLOT_MS         "Intervalo de tiempo TX (ms)"
-#define TR_F_UPLOAD                  "Subir"
-#define TR_F_USERNAME                "Usuario"
-#define TR_F_WEATHER                 "Clima"
-#define TR_F_WEATHER_STATION         "Estación meteorológica"
-#define TR_F_WIRELESS                "Inalámbrico"
+/** Spanish text for the form label for the "status text" field or fieldset, rendered on the configuration forms. English: "Status text". */
+#define TR_F_STATUS_TEXT "Texto de estado"
+/** Spanish text for the form label for the "system" field or fieldset, rendered on the configuration forms. English: "System". */
+#define TR_F_SYSTEM "Sistema"
+/** Spanish text for the form label for the "telemetry" field or fieldset, rendered on the configuration forms. English: "Telemetry". */
+#define TR_F_TELEMETRY "Telemetría"
+/** Spanish text for the form label for the "beacon" field or fieldset, rendered on the configuration forms. English: "Beacon". */
+#define TR_F_BEACON "Baliza"
+/** Spanish text for the form label for the "tracker" field or fieldset, rendered on the configuration forms. English: "Tracker". */
+#define TR_F_TRACKER "Tracker"
+/** Spanish text for the form label for the "tx time slot ms" field or fieldset, rendered on the configuration forms. English: "TX time-slot (ms)". */
+#define TR_F_TX_TIME_SLOT_MS "Intervalo de tiempo TX (ms)"
+/** Spanish text for the form label for the "upload" field or fieldset, rendered on the configuration forms. English: "Upload". */
+#define TR_F_UPLOAD "Subir"
+/** Spanish text for the form label for the "username" field or fieldset, rendered on the configuration forms. English: "Username". */
+#define TR_F_USERNAME "Usuario"
+/** Spanish text for the form label for the "weather" field or fieldset, rendered on the configuration forms. English: "Weather". */
+#define TR_F_WEATHER "Clima"
+/** Spanish text for the form label for the "weather station" field or fieldset, rendered on the configuration forms. English: "Weather Station". */
+#define TR_F_WEATHER_STATION "Estación meteorológica"
+/** Spanish text for the form label for the "wireless" field or fieldset, rendered on the configuration forms. English: "Wireless". */
+#define TR_F_WIRELESS "Inalámbrico"
 
+/** Spanish text for the form label for the "off" field or fieldset, rendered on the configuration forms. English: "Off". */
 #define TR_F_OFF "Apagado"
 
 /** @} */
@@ -311,34 +584,63 @@
  * @name page_common.c: dashboard / sysinfo
  * @{
  */
-#define TR_ENABLED               "activado"
-#define TR_DASH_DIGI_SHORT       "Digi"
-#define TR_DASH_WX_SHORT         "WX:"
-#define TR_DASH_DATETIME         "Fecha/Hora:"
-#define TR_DASH_UPTIME           "Tiempo activo:"
-#define TR_DASH_FREE_HEAP        "Memoria libre:"
-#define TR_DASH_LITTLEFS         "LittleFS:"
-#define TR_DASH_SYSINFO          "Información del sistema"
-#define TR_DASH_IGATE_TRAFFIC    "Tráfico IGate"
-#define TR_TRAFFIC_PAUSE         "Pausar"
-#define TR_TRAFFIC_RESUME        "Reanudar"
-#define TR_TRAFFIC_CLEAR         "Limpiar"
-#define TR_TRAFFIC_WAITING       "Esperando tráfico..."
-#define TR_TRAFFIC_COL_TIME      "HORA"
-#define TR_TRAFFIC_COL_TYPE      "TIPO"
-#define TR_TRAFFIC_COL_DX        "DX"
-#define TR_TRAFFIC_COL_PACKET    "PAQUETE"
-#define TR_TRAFFIC_COL_AUDIO     "AUDIO"
-#define TR_SYSINFO_CHIP          "Chip"
-#define TR_SYSINFO_MODEL         "Modelo:"
-#define TR_SYSINFO_CORES         "Núcleos:"
-#define TR_SYSINFO_REVISION      "Revisión:"
-#define TR_SYSINFO_CPU_FREQ      "Velocidad de CPU:"
-#define TR_SYSINFO_CPU_FREQ_SET  "Establecer frecuencia de CPU"
+/** Spanish text for the interface string labelling enabled, rendered on the dashboard. English: "enabled". */
+#define TR_ENABLED "activado"
+/** Spanish text for the dashboard label or value for digi short, rendered on the dashboard. English: "Digi". */
+#define TR_DASH_DIGI_SHORT "Digi"
+/** Spanish text for the dashboard label or value for wx short, rendered on the dashboard. English: "WX:". */
+#define TR_DASH_WX_SHORT "WX:"
+/** Spanish text for the dashboard label or value for datetime, rendered on the dashboard. English: "Date/Time:". */
+#define TR_DASH_DATETIME "Fecha/Hora:"
+/** Spanish text for the dashboard label or value for uptime, rendered on the dashboard. English: "Uptime:". */
+#define TR_DASH_UPTIME "Tiempo activo:"
+/** Spanish text for the dashboard label or value for free heap, rendered on the dashboard. English: "Free heap:". */
+#define TR_DASH_FREE_HEAP "Memoria libre:"
+/** Spanish text for the dashboard label or value for littlefs, rendered on the dashboard. English: "LittleFS:". */
+#define TR_DASH_LITTLEFS "LittleFS:"
+/** Spanish text for the dashboard label or value for sysinfo, rendered on the dashboard. English: "System Info". */
+#define TR_DASH_SYSINFO "Información del sistema"
+/** Spanish text for the dashboard label or value for igate traffic, rendered on the dashboard. English: "IGate Traffic". */
+#define TR_DASH_IGATE_TRAFFIC "Tráfico IGate"
+/** Spanish text for the traffic-log column heading or label for pause, rendered on the dashboard. English: "Pause". */
+#define TR_TRAFFIC_PAUSE "Pausar"
+/** Spanish text for the traffic-log column heading or label for resume, rendered on the dashboard. English: "Resume". */
+#define TR_TRAFFIC_RESUME "Reanudar"
+/** Spanish text for the traffic-log column heading or label for clear, rendered on the dashboard. English: "Clear". */
+#define TR_TRAFFIC_CLEAR "Limpiar"
+/** Spanish text for the traffic-log column heading or label for waiting, rendered on the dashboard. English: "Waiting for traffic...". */
+#define TR_TRAFFIC_WAITING "Esperando tráfico..."
+/** Spanish text for the traffic-log column heading or label for col time, rendered on the dashboard. English: "TIME". */
+#define TR_TRAFFIC_COL_TIME "HORA"
+/** Spanish text for the traffic-log column heading or label for col type, rendered on the dashboard. English: "TYPE". */
+#define TR_TRAFFIC_COL_TYPE "TIPO"
+/** Spanish text for the traffic-log column heading or label for col dx, rendered on the dashboard. English: "DX". */
+#define TR_TRAFFIC_COL_DX "DX"
+/** Spanish text for the traffic-log column heading or label for col packet, rendered on the dashboard. English: "PACKET". */
+#define TR_TRAFFIC_COL_PACKET "PAQUETE"
+/** Spanish text for the traffic-log column heading or label for col audio, rendered on the dashboard. English: "AUDIO". */
+#define TR_TRAFFIC_COL_AUDIO "AUDIO"
+/** Spanish text for the system-information row label for chip, rendered on the dashboard. English: "Chip". */
+#define TR_SYSINFO_CHIP "Chip"
+/** Spanish text for the system-information row label for model, rendered on the dashboard. English: "Model:". */
+#define TR_SYSINFO_MODEL "Modelo:"
+/** Spanish text for the system-information row label for cores, rendered on the dashboard. English: "Cores:". */
+#define TR_SYSINFO_CORES "Núcleos:"
+/** Spanish text for the system-information row label for revision, rendered on the dashboard. English: "Revision:". */
+#define TR_SYSINFO_REVISION "Revisión:"
+/** Spanish text for the system-information row label for cpu freq, rendered on the dashboard. English: "CPU speed:". */
+#define TR_SYSINFO_CPU_FREQ "Velocidad de CPU:"
+/** Spanish text for the system-information row label for cpu freq set, rendered on the dashboard. English: "Set CPU frequency". */
+#define TR_SYSINFO_CPU_FREQ_SET "Establecer frecuencia de CPU"
+/** Spanish text for the system-information row label for cpu freq note, rendered on the dashboard. English: "Saved to flash and re-applied automatically on
+ * every boot.". */
 #define TR_SYSINFO_CPU_FREQ_NOTE "Se guarda en la memoria flash y se vuelve a aplicar automáticamente en cada arranque."
-#define TR_SYSINFO_FLASH_SIZE    "Tamaño de flash:"
+/** Spanish text for the system-information row label for flash size, rendered on the dashboard. English: "Flash size:". */
+#define TR_SYSINFO_FLASH_SIZE "Tamaño de flash:"
+/** Spanish text for the system-information row label for min free heap, rendered on the dashboard. English: "Min free heap:". */
 #define TR_SYSINFO_MIN_FREE_HEAP "Memoria libre mínima:"
-#define TR_DASH_REBOOT_REASON    "Motivo de reinicio:"
+/** Spanish text for the dashboard label or value for reboot reason, rendered on the dashboard. English: "Reboot Reason:". */
+#define TR_DASH_REBOOT_REASON "Motivo de reinicio:"
 
 /** @} */
 
@@ -346,33 +648,60 @@
  * @name page_common.c
  * @{
  */
-#define TR_DASH_RADIO_INFO     "Info de Radio"
-#define TR_DASH_MODEM          "MÓDEM"
-#define TR_DASH_FX25           "FX.25"
+/** Spanish text for the dashboard label or value for radio info, rendered on the dashboard. English: "Radio Info". */
+#define TR_DASH_RADIO_INFO "Info de Radio"
+/** Spanish text for the dashboard label or value for modem, rendered on the dashboard. English: "MODEM". */
+#define TR_DASH_MODEM "MÓDEM"
+/** Spanish text for the dashboard label or value for fx25, rendered on the dashboard. English: "FX.25". */
+#define TR_DASH_FX25 "FX.25"
+/** Spanish text for the dashboard label or value for aprs is server, rendered on the dashboard. English: "APRS-IS SERVER". */
 #define TR_DASH_APRS_IS_SERVER "SERVIDOR APRS-IS"
-#define TR_DASH_HOST           "HOST"
-#define TR_DASH_PORT           "PUERTO"
-#define TR_DASH_WIFI           "WiFi"
-#define TR_DASH_MODE           "MODO"
-#define TR_DASH_SSID           "SSID"
-#define TR_DASH_RSSI           "RSSI"
-#define TR_DASH_DISCONNECTED   "Desconectado"
-#define TR_DASH_MODES_ENABLED  "Modos Activos"
+/** Spanish text for the dashboard label or value for host, rendered on the dashboard. English: "HOST". */
+#define TR_DASH_HOST "HOST"
+/** Spanish text for the dashboard label or value for port, rendered on the dashboard. English: "PORT". */
+#define TR_DASH_PORT "PUERTO"
+/** Spanish text for the dashboard label or value for wifi, rendered on the dashboard. English: "WiFi". */
+#define TR_DASH_WIFI "WiFi"
+/** Spanish text for the dashboard label or value for mode, rendered on the dashboard. English: "MODE". */
+#define TR_DASH_MODE "MODO"
+/** Spanish text for the dashboard label or value for ssid, rendered on the dashboard. English: "SSID". */
+#define TR_DASH_SSID "SSID"
+/** Spanish text for the dashboard label or value for rssi, rendered on the dashboard. English: "RSSI". */
+#define TR_DASH_RSSI "RSSI"
+/** Spanish text for the dashboard label or value for disconnected, rendered on the dashboard. English: "Disconnect". */
+#define TR_DASH_DISCONNECTED "Desconectado"
+/** Spanish text for the dashboard label or value for modes enabled, rendered on the dashboard. English: "Modes Enabled". */
+#define TR_DASH_MODES_ENABLED "Modos Activos"
+/** Spanish text for the dashboard label or value for network status, rendered on the dashboard. English: "Network Status". */
 #define TR_DASH_NETWORK_STATUS "Estado de Red"
-#define TR_DASH_STATISTICS     "ESTADÍSTICAS"
-#define TR_DASH_RADIO_RX       "RADIO RX:"
-#define TR_DASH_PACKET_TX      "RADIO TX:"
-#define TR_DASH_RF2INET        "RF2INET:"
-#define TR_DASH_INET2RF        "INET2RF:"
-#define TR_DASH_IGATE_RX       "IGATE RX:"
-#define TR_DASH_IGATE_TX       "IGATE TX:"
-#define TR_DASH_DIGI_STAT      "DIGI:"
-#define TR_DASH_DROP_ERR       "DESCARTE/ERR:"
+/** Spanish text for the dashboard label or value for statistics, rendered on the dashboard. English: "STATISTICS". */
+#define TR_DASH_STATISTICS "ESTADÍSTICAS"
+/** Spanish text for the dashboard label or value for radio rx, rendered on the dashboard. English: "RADIO RX:". */
+#define TR_DASH_RADIO_RX "RADIO RX:"
+/** Spanish text for the dashboard label or value for packet tx, rendered on the dashboard. English: "RADIO TX:". */
+#define TR_DASH_PACKET_TX "RADIO TX:"
+/** Spanish text for the dashboard label or value for rf2inet, rendered on the dashboard. English: "RF2INET:". */
+#define TR_DASH_RF2INET "RF2INET:"
+/** Spanish text for the dashboard label or value for inet2rf, rendered on the dashboard. English: "INET2RF:". */
+#define TR_DASH_INET2RF "INET2RF:"
+/** Spanish text for the dashboard label or value for igate rx, rendered on the dashboard. English: "IGATE RX:". */
+#define TR_DASH_IGATE_RX "IGATE RX:"
+/** Spanish text for the dashboard label or value for igate tx, rendered on the dashboard. English: "IGATE TX:". */
+#define TR_DASH_IGATE_TX "IGATE TX:"
+/** Spanish text for the dashboard label or value for digi stat, rendered on the dashboard. English: "DIGI:". */
+#define TR_DASH_DIGI_STAT "DIGI:"
+/** Spanish text for the dashboard label or value for drop err, rendered on the dashboard. English: "DROP/ERR:". */
+#define TR_DASH_DROP_ERR "DESCARTE/ERR:"
+/** Spanish text for the dashboard label or value for drop breakdown, rendered on the dashboard. English: "Drop Breakdown". */
 #define TR_DASH_DROP_BREAKDOWN "Detalle de Descartes"
-#define TR_DASH_TX_QUEUE       "COLA TX RF:"
-#define TR_DASH_CSMA_FORCED    "CSMA FORZADO (OCUP./PERSIST.):"
-#define TR_DASH_TX_DUTY_CYCLE  "CICLO DE TRABAJO TX:"
-#define TR_DASH_LH_ICON        "ICONO"
+/** Spanish text for the dashboard label or value for tx queue, rendered on the dashboard. English: "RF TX QUEUE:". */
+#define TR_DASH_TX_QUEUE "COLA TX RF:"
+/** Spanish text for the dashboard label or value for csma forced, rendered on the dashboard. English: "CSMA FORCED (BUSY/PERSIST):". */
+#define TR_DASH_CSMA_FORCED "CSMA FORZADO (OCUP./PERSIST.):"
+/** Spanish text for the dashboard label or value for tx duty cycle, rendered on the dashboard. English: "TX DUTY CYCLE:". */
+#define TR_DASH_TX_DUTY_CYCLE "CICLO DE TRABAJO TX:"
+/** Spanish text for the dashboard label or value for lh icon, rendered on the dashboard. English: "ICON". */
+#define TR_DASH_LH_ICON "ICONO"
 
 /** @} */
 
@@ -380,14 +709,20 @@
  * @name page_digi.c / page_igate.c / page_tracker.c telemetry notes
  * @{
  */
+/** Spanish text for the explanatory note shown beside the tlm digi setting, rendered on the Digipeater, IGate and Tracker pages. English: "Telemetry
+ * (EQNS/PARM/UNIT) for Digi beacons is configured on the <a href='/tlm'>Telemet...". */
 #define TR_NOTE_TLM_DIGI                                                                                                                                       \
-    "La telemetría (EQNS/PARM/UNIT) para las balizas de Digi se configura en la "                                                                             \
+    "La telemetría (EQNS/PARM/UNIT) para las balizas de Digi se configura en la "                                                                              \
     "página <a href='/tlm'>Telemetría</a>."
+/** Spanish text for the explanatory note shown beside the tlm igate setting, rendered on the Digipeater, IGate and Tracker pages. English: "Telemetry
+ * (EQNS/PARM/UNIT) for IGate beacons is configured on the <a href='/tlm'>Teleme...". */
 #define TR_NOTE_TLM_IGATE                                                                                                                                      \
-    "La telemetría (EQNS/PARM/UNIT) para las balizas de IGate se configura en la "                                                                            \
+    "La telemetría (EQNS/PARM/UNIT) para las balizas de IGate se configura en la "                                                                             \
     "página <a href='/tlm'>Telemetría</a>."
+/** Spanish text for the explanatory note shown beside the tlm tracker setting, rendered on the Digipeater, IGate and Tracker pages. English: "Telemetry
+ * (EQNS/PARM/UNIT) for Tracker beacons is configured on the <a href='/tlm'>Tele...". */
 #define TR_NOTE_TLM_TRACKER                                                                                                                                    \
-    "La telemetría (EQNS/PARM/UNIT) para las balizas de Tracker se configura en la "                                                                          \
+    "La telemetría (EQNS/PARM/UNIT) para las balizas de Tracker se configura en la "                                                                           \
     "página <a href='/tlm'>Telemetría</a>."
 
 /** @} */
@@ -402,23 +737,41 @@
  * @name page_msgchat.c ("Snd/Rcv Msg")
  * @{
  */
-#define TR_F_SND_RCV_MSG      "Env/Rec Msj"
+/** Spanish text for the form label for the "snd rcv msg" field or fieldset, rendered on the Send/Receive Message page. English: "Snd/Rcv Msg". */
+#define TR_F_SND_RCV_MSG "Env/Rec Msj"
+/** Spanish text for the message page label for my station, rendered on the Send/Receive Message page. English: "My Station:". */
 #define TR_MSGCHAT_MY_STATION "Mi Estación:"
+/** Spanish text for the message page label for disabled note, rendered on the Send/Receive Message page. English: "APRS Messaging is disabled or no station
+ * callsign is configured. Enable it and set a ca...". */
 #define TR_MSGCHAT_DISABLED_NOTE                                                                                                                               \
     "La Mensajería APRS está deshabilitada o no hay un indicativo configurado. Habilítela y configure un indicativo en la página Message primero."
-#define TR_MSGCHAT_LOADING          "Cargando mensajes..."
-#define TR_MSGCHAT_EMPTY            "Aún no hay mensajes."
-#define TR_MSGCHAT_TO               "Para (indicativo):"
-#define TR_MSGCHAT_TO_PLACEHOLDER   "N0CALL-9"
-#define TR_MSGCHAT_TEXT             "Mensaje:"
+/** Spanish text for the message page label for loading, rendered on the Send/Receive Message page. English: "Loading messages...". */
+#define TR_MSGCHAT_LOADING "Cargando mensajes..."
+/** Spanish text for the message page label for empty, rendered on the Send/Receive Message page. English: "No messages yet.". */
+#define TR_MSGCHAT_EMPTY "Aún no hay mensajes."
+/** Spanish text for the message page label for to, rendered on the Send/Receive Message page. English: "To (callsign):". */
+#define TR_MSGCHAT_TO "Para (indicativo):"
+/** Spanish text for the message page label for to placeholder, rendered on the Send/Receive Message page. English: "N0CALL-9". */
+#define TR_MSGCHAT_TO_PLACEHOLDER "N0CALL-9"
+/** Spanish text for the message page label for text, rendered on the Send/Receive Message page. English: "Message:". */
+#define TR_MSGCHAT_TEXT "Mensaje:"
+/** Spanish text for the message page label for text placeholder, rendered on the Send/Receive Message page. English: "Type a message...". */
 #define TR_MSGCHAT_TEXT_PLACEHOLDER "Escriba un mensaje..."
-#define TR_MSGCHAT_SEND             "Enviar"
-#define TR_MSGCHAT_YOU              "Tú"
-#define TR_MSGCHAT_ERR_EMPTY        "Ingrese un indicativo de destino y un mensaje."
-#define TR_MSGCHAT_ERR_DISABLED     "La Mensajería APRS está deshabilitada en la página Message."
-#define TR_MSGCHAT_ERR_NO_MYCALL    "No hay un indicativo de estación configurado."
-#define TR_MSGCHAT_SENT_OK          "Enviado."
-#define TR_MSGCHAT_SENT_FAIL        "Error al enviar."
+/** Spanish text for the message page label for send, rendered on the Send/Receive Message page. English: "Send". */
+#define TR_MSGCHAT_SEND "Enviar"
+/** Spanish text for the message page label for you, rendered on the Send/Receive Message page. English: "You". */
+#define TR_MSGCHAT_YOU "Tú"
+/** Spanish text for the message page label for err empty, rendered on the Send/Receive Message page. English: "Enter a destination callsign and a message.". */
+#define TR_MSGCHAT_ERR_EMPTY "Ingrese un indicativo de destino y un mensaje."
+/** Spanish text for the message page label for err disabled, rendered on the Send/Receive Message page. English: "APRS Messaging is disabled on the Message
+ * page.". */
+#define TR_MSGCHAT_ERR_DISABLED "La Mensajería APRS está deshabilitada en la página Message."
+/** Spanish text for the message page label for err no mycall, rendered on the Send/Receive Message page. English: "No station callsign configured.". */
+#define TR_MSGCHAT_ERR_NO_MYCALL "No hay un indicativo de estación configurado."
+/** Spanish text for the message page label for sent ok, rendered on the Send/Receive Message page. English: "Sent.". */
+#define TR_MSGCHAT_SENT_OK "Enviado."
+/** Spanish text for the message page label for sent fail, rendered on the Send/Receive Message page. English: "Send failed.". */
+#define TR_MSGCHAT_SENT_FAIL "Error al enviar."
 
 /** @} */
 
@@ -433,19 +786,34 @@
  * @name page_storage.c
  * @{
  */
-#define TR_STORAGE_USAGE                 "Uso de LittleFS:"
-#define TR_STORAGE_UPLOAD_FILE           "Subir archivo"
-#define TR_STORAGE_CONFIRM_FORMAT        "¿Borrar TODOS los archivos y restablecer la configuración de fábrica?"
-#define TR_STORAGE_FORMAT_BTN            "Formatear LittleFS"
-#define TR_STORAGE_SIZE_BYTES            "Tamaño (bytes)"
-#define TR_STORAGE_ACTIONS               "Acciones"
-#define TR_STORAGE_DOWNLOAD              "Descargar"
+/** Spanish text for the file Storage page label for usage, rendered on the File Storage page. English: "LittleFS usage:". */
+#define TR_STORAGE_USAGE "Uso de LittleFS:"
+/** Spanish text for the file Storage page label for upload file, rendered on the File Storage page. English: "Upload file". */
+#define TR_STORAGE_UPLOAD_FILE "Subir archivo"
+/** Spanish text for the file Storage page label for confirm format, rendered on the File Storage page. English: "Erase ALL files and reset config to
+ * defaults?". */
+#define TR_STORAGE_CONFIRM_FORMAT "¿Borrar TODOS los archivos y restablecer la configuración de fábrica?"
+/** Spanish text for the file Storage page label for format btn, rendered on the File Storage page. English: "Format LittleFS". */
+#define TR_STORAGE_FORMAT_BTN "Formatear LittleFS"
+/** Spanish text for the file Storage page label for size bytes, rendered on the File Storage page. English: "Size (bytes)". */
+#define TR_STORAGE_SIZE_BYTES "Tamaño (bytes)"
+/** Spanish text for the file Storage page label for actions, rendered on the File Storage page. English: "Actions". */
+#define TR_STORAGE_ACTIONS "Acciones"
+/** Spanish text for the file Storage page label for download, rendered on the File Storage page. English: "Download". */
+#define TR_STORAGE_DOWNLOAD "Descargar"
+/** Spanish text for the file Storage page label for confirm delete prefix, rendered on the File Storage page. English: "Delete". */
 #define TR_STORAGE_CONFIRM_DELETE_PREFIX "¿Eliminar "
-#define TR_STORAGE_DELETE                "Eliminar"
-#define TR_STORAGE_UPLOAD_OK             "Subido:"
-#define TR_STORAGE_UPLOAD_FAILED         "La carga falló. Verifique el archivo y que haya espacio libre suficiente."
-#define TR_STORAGE_NO_FILE_CHOSEN        "Seleccione primero un archivo."
-#define TR_STORAGE_BACK                  "Volver"
+/** Spanish text for the file Storage page label for delete, rendered on the File Storage page. English: "Delete". */
+#define TR_STORAGE_DELETE "Eliminar"
+/** Spanish text for the file Storage page label for upload ok, rendered on the File Storage page. English: "Uploaded:". */
+#define TR_STORAGE_UPLOAD_OK "Subido:"
+/** Spanish text for the file Storage page label for upload failed, rendered on the File Storage page. English: "Upload failed. Check the file and make sure
+ * there is enough free space.". */
+#define TR_STORAGE_UPLOAD_FAILED "La carga falló. Verifique el archivo y que haya espacio libre suficiente."
+/** Spanish text for the file Storage page label for no file chosen, rendered on the File Storage page. English: "Choose a file first.". */
+#define TR_STORAGE_NO_FILE_CHOSEN "Seleccione primero un archivo."
+/** Spanish text for the file Storage page label for back, rendered on the File Storage page. English: "Back". */
+#define TR_STORAGE_BACK "Volver"
 
 /** @} */
 
@@ -453,32 +821,57 @@
  * @name page_symbol.c
  * @{
  */
-#define TR_SYM_HOUSE_HF        "Casa (HF)"
-#define TR_SYM_CAR             "Automóvil"
-#define TR_SYM_MOTORCYCLE      "Motocicleta"
-#define TR_SYM_BICYCLE         "Bicicleta"
-#define TR_SYM_TRUCK           "Camión"
-#define TR_SYM_VAN             "Furgoneta"
-#define TR_SYM_JEEP            "Jeep"
-#define TR_SYM_FIRE_TRUCK      "Camión de bomberos"
-#define TR_SYM_POLICE          "Policía"
-#define TR_SYM_HOUSE           "Casa"
-#define TR_SYM_DIGIPEATER      "Digipeater"
-#define TR_SYM_GATEWAY         "Puerta de enlace"
+/** Spanish text for the symbol-picker label for house hf, rendered on the symbol picker. English: "House (HF)". */
+#define TR_SYM_HOUSE_HF "Casa (HF)"
+/** Spanish text for the symbol-picker label for car, rendered on the symbol picker. English: "Car". */
+#define TR_SYM_CAR "Automóvil"
+/** Spanish text for the symbol-picker label for motorcycle, rendered on the symbol picker. English: "Motorcycle". */
+#define TR_SYM_MOTORCYCLE "Motocicleta"
+/** Spanish text for the symbol-picker label for bicycle, rendered on the symbol picker. English: "Bicycle". */
+#define TR_SYM_BICYCLE "Bicicleta"
+/** Spanish text for the symbol-picker label for truck, rendered on the symbol picker. English: "Truck". */
+#define TR_SYM_TRUCK "Camión"
+/** Spanish text for the symbol-picker label for van, rendered on the symbol picker. English: "Van". */
+#define TR_SYM_VAN "Furgoneta"
+/** Spanish text for the symbol-picker label for jeep, rendered on the symbol picker. English: "Jeep". */
+#define TR_SYM_JEEP "Jeep"
+/** Spanish text for the symbol-picker label for fire truck, rendered on the symbol picker. English: "Fire truck". */
+#define TR_SYM_FIRE_TRUCK "Camión de bomberos"
+/** Spanish text for the symbol-picker label for police, rendered on the symbol picker. English: "Police". */
+#define TR_SYM_POLICE "Policía"
+/** Spanish text for the symbol-picker label for house, rendered on the symbol picker. English: "House". */
+#define TR_SYM_HOUSE "Casa"
+/** Spanish text for the symbol-picker label for digipeater, rendered on the symbol picker. English: "Digipeater". */
+#define TR_SYM_DIGIPEATER "Digipeater"
+/** Spanish text for the symbol-picker label for gateway, rendered on the symbol picker. English: "Gateway". */
+#define TR_SYM_GATEWAY "Puerta de enlace"
+/** Spanish text for the symbol-picker label for weather station, rendered on the symbol picker. English: "Weather station". */
 #define TR_SYM_WEATHER_STATION "Estación meteorológica"
-#define TR_SYM_BALLOON         "Globo"
-#define TR_SYM_SPACE_SHUTTLE   "Transbordador espacial"
-#define TR_SYM_SAILBOAT        "Velero"
-#define TR_SYM_NWS_SITE        "Sitio NWS"
-#define TR_SYM_TCP_IP          "TCP/IP"
-#define TR_SYM_CAR_ALT         "Automóvil (tabla alterna)"
-#define TR_SYM_WX_STATION_ALT  "Estación WX (tabla alterna)"
+/** Spanish text for the symbol-picker label for balloon, rendered on the symbol picker. English: "Balloon". */
+#define TR_SYM_BALLOON "Globo"
+/** Spanish text for the symbol-picker label for space shuttle, rendered on the symbol picker. English: "Space shuttle". */
+#define TR_SYM_SPACE_SHUTTLE "Transbordador espacial"
+/** Spanish text for the symbol-picker label for sailboat, rendered on the symbol picker. English: "Sailboat". */
+#define TR_SYM_SAILBOAT "Velero"
+/** Spanish text for the symbol-picker label for nws site, rendered on the symbol picker. English: "NWS site". */
+#define TR_SYM_NWS_SITE "Sitio NWS"
+/** Spanish text for the symbol-picker label for tcp ip, rendered on the symbol picker. English: "TCP/IP". */
+#define TR_SYM_TCP_IP "TCP/IP"
+/** Spanish text for the symbol-picker label for car alt, rendered on the symbol picker. English: "Car (alternate table)". */
+#define TR_SYM_CAR_ALT "Automóvil (tabla alterna)"
+/** Spanish text for the symbol-picker label for wx station alt, rendered on the symbol picker. English: "WX station (alternate table)". */
+#define TR_SYM_WX_STATION_ALT "Estación WX (tabla alterna)"
+/** Spanish text for the symbol-picker label for intro, rendered on the symbol picker. English: "Quick reference for common APRS symbol codes. Each service page
+ * (IGate / Digi / Tracker...". */
 #define TR_SYM_INTRO                                                                                                                                           \
-    "Referencia rápida de los códigos de símbolo APRS más comunes. Cada página de "                                                                       \
-    "servicio (IGate / Digi / Tracker) tiene su propio campo de símbolo de texto libre "                                                                      \
+    "Referencia rápida de los códigos de símbolo APRS más comunes. Cada página de "                                                                            \
+    "servicio (IGate / Digi / Tracker) tiene su propio campo de símbolo de texto libre "                                                                       \
     "\u2014 copie el código de 2 caracteres desde aquí a ese campo."
-#define TR_SYM_CODE                 "Código"
-#define TR_SYM_MEANING              "Significado"
+/** Spanish text for the symbol-picker label for code, rendered on the symbol picker. English: "Code". */
+#define TR_SYM_CODE "Código"
+/** Spanish text for the symbol-picker label for meaning, rendered on the symbol picker. English: "Meaning". */
+#define TR_SYM_MEANING "Significado"
+/** Spanish text for the symbol-picker label for currently configured, rendered on the symbol picker. English: "Currently configured symbols". */
 #define TR_SYM_CURRENTLY_CONFIGURED "Símbolos actualmente configurados"
 
 /** @} */
@@ -487,21 +880,36 @@
  * @name page_system.c
  * @{
  */
-#define TR_SYS_WEB_ADMIN_LOGIN       "Acceso al administrador web"
-#define TR_SYS_TIME                  "Hora"
-#define TR_SYS_SYNC_NTP              "Sincronizar hora vía NTP"
-#define TR_SYS_NTP_HOST              "Host NTP (primario)"
-#define TR_SYS_NTP_HOST2             "Host NTP (alternativo 2)"
-#define TR_SYS_NTP_HOST3             "Host NTP (alternativo 3)"
-#define TR_SYS_NTP_RESYNC            "Intervalo de resincronización NTP (s, mín 30)"
-#define TR_SYS_TIMEZONE              "Zona horaria (solo para el panel)"
-#define TR_SYS_DIGI_PATH_ALIASES     "Alias de ruta del Digipeater"
-#define TR_SYS_PATH_1                "Ruta 1"
-#define TR_SYS_PATH_2                "Ruta 2"
-#define TR_SYS_PATH_3                "Ruta 3"
-#define TR_SYS_PATH_4                "Ruta 4"
+/** Spanish text for the system page label for web admin login, rendered on the System page. English: "Web Admin Login". */
+#define TR_SYS_WEB_ADMIN_LOGIN "Acceso al administrador web"
+/** Spanish text for the system page label for time, rendered on the System page. English: "Time". */
+#define TR_SYS_TIME "Hora"
+/** Spanish text for the system page label for sync ntp, rendered on the System page. English: "Sync time via NTP". */
+#define TR_SYS_SYNC_NTP "Sincronizar hora vía NTP"
+/** Spanish text for the system page label for ntp host, rendered on the System page. English: "NTP host (primary)". */
+#define TR_SYS_NTP_HOST "Host NTP (primario)"
+/** Spanish text for the system page label for ntp host2, rendered on the System page. English: "NTP host (fallback 2)". */
+#define TR_SYS_NTP_HOST2 "Host NTP (alternativo 2)"
+/** Spanish text for the system page label for ntp host3, rendered on the System page. English: "NTP host (fallback 3)". */
+#define TR_SYS_NTP_HOST3 "Host NTP (alternativo 3)"
+/** Spanish text for the system page label for ntp resync, rendered on the System page. English: "NTP resync interval (s, min 30)". */
+#define TR_SYS_NTP_RESYNC "Intervalo de resincronización NTP (s, mín 30)"
+/** Spanish text for the system page label for timezone, rendered on the System page. English: "Time zone (dashboard display only)". */
+#define TR_SYS_TIMEZONE "Zona horaria (solo para el panel)"
+/** Spanish text for the system page label for digi path aliases, rendered on the System page. English: "Digipeater Path Aliases". */
+#define TR_SYS_DIGI_PATH_ALIASES "Alias de ruta del Digipeater"
+/** Spanish text for the system page label for path 1, rendered on the System page. English: "Path 1". */
+#define TR_SYS_PATH_1 "Ruta 1"
+/** Spanish text for the system page label for path 2, rendered on the System page. English: "Path 2". */
+#define TR_SYS_PATH_2 "Ruta 2"
+/** Spanish text for the system page label for path 3, rendered on the System page. English: "Path 3". */
+#define TR_SYS_PATH_3 "Ruta 3"
+/** Spanish text for the system page label for path 4, rendered on the System page. English: "Path 4". */
+#define TR_SYS_PATH_4 "Ruta 4"
+/** Spanish text for the system page label for confirm factory reset, rendered on the System page. English: "Reset ALL settings to factory defaults?". */
 #define TR_SYS_CONFIRM_FACTORY_RESET "¿Restablecer TODA la configuración a los valores de fábrica?"
-#define TR_SYS_FACTORY_RESET         "Restablecer a fábrica"
+/** Spanish text for the system page label for factory reset, rendered on the System page. English: "Factory Reset". */
+#define TR_SYS_FACTORY_RESET "Restablecer a fábrica"
 
 /** @} */
 
@@ -509,7 +917,9 @@
  * @name page_tlm.c
  * @{
  */
+/** Spanish text for the telemetry configurator label for avg, rendered on the Telemetry page. English: "Avg". */
 #define TR_TLM_AVG "Prom"
+/** Spanish text for the telemetry configurator label for bit, rendered on the Telemetry page. English: "Bit". */
 #define TR_TLM_BIT "Bit"
 /** @} */
 
@@ -517,45 +927,86 @@
  * @name page_tlm.c: telemetry configurator
  * @{
  */
-#define TR_TLM_ENABLE_TELEMETRY   "Habilitar telemetría"
-#define TR_TLM_REPORT_PARAMS      "Parámetros del reporte"
-#define TR_TLM_PATH_DIGIS         "Ruta (digipeaters)"
-#define TR_TLM_DESTINATION        "Destino"
-#define TR_TLM_AUTO_INC_SEQ       "Autoincrementar secuencia"
+/** Spanish text for the telemetry configurator label for enable telemetry, rendered on the Telemetry page. English: "Enable Telemetry". */
+#define TR_TLM_ENABLE_TELEMETRY "Habilitar telemetría"
+/** Spanish text for the telemetry configurator label for report params, rendered on the Telemetry page. English: "Report Parameters". */
+#define TR_TLM_REPORT_PARAMS "Parámetros del reporte"
+/** Spanish text for the telemetry configurator label for path digis, rendered on the Telemetry page. English: "Path (digipeaters)". */
+#define TR_TLM_PATH_DIGIS "Ruta (digipeaters)"
+/** Spanish text for the telemetry configurator label for destination, rendered on the Telemetry page. English: "Destination". */
+#define TR_TLM_DESTINATION "Destino"
+/** Spanish text for the telemetry configurator label for auto inc seq, rendered on the Telemetry page. English: "Auto-increment sequence". */
+#define TR_TLM_AUTO_INC_SEQ "Autoincrementar secuencia"
+/** Spanish text for the telemetry configurator label for analog field width, rendered on the Telemetry page. English: "Analog field width". */
 #define TR_TLM_ANALOG_FIELD_WIDTH "Ancho de campo analógico"
-#define TR_TLM_FIELDW_3DIGIT      "3 dígitos con ceros (000-255, estricto)"
-#define TR_TLM_FIELDW_AUTO        "Mínimo / según necesidad (enteros o decimales)"
-#define TR_TLM_OMIT_TRAILING      "Omitir canales finales sin usar"
-#define TR_TLM_TRAIL_COMMENT      "Comentario final (opcional, tras los bits)"
-#define TR_TLM_COMMENT_TLM        "Incluir también telemetría en el comentario de posición (APRS 1.2, |ss..|)"
-#define TR_TLM_ANALOG_COUNT       "Canales analógicos enviados"
-#define TR_TLM_DIGITAL_COUNT      "Bits digitales enviados"
-#define TR_TLM_DEF_MESSAGES       "Mensajes de definición"
-#define TR_TLM_GEN_PARM           "PARM - nombres de canal y bits"
-#define TR_TLM_GEN_UNIT           "UNIT - unidades / etiquetas de estado de bit"
-#define TR_TLM_GEN_EQNS           "EQNS - coeficientes de escala (A,B,C)"
-#define TR_TLM_GEN_BITS           "BITS - sentido de bit + nombre"
-#define TR_TLM_ANALOG_LEGEND      "Canales analógicos (A1-A5)"
-#define TR_TLM_DIGITAL_LEGEND     "Canales digitales (B1-B8)"
-#define TR_TLM_UNIT               "Unidad"
-#define TR_TLM_SOURCE             "Fuente"
-#define TR_TLM_RF                 "RF"
-#define TR_TLM_RAW_MIN            "Bruto mín"
-#define TR_TLM_RAW_MAX            "Bruto máx"
-#define TR_TLM_COEF_A             "A (cuadrático)"
-#define TR_TLM_COEF_B             "B (lineal / pendiente)"
-#define TR_TLM_COEF_C             "C (desplazamiento)"
-#define TR_TLM_DECIMALS           "Decimales mostrados"
-#define TR_TLM_ON_STATE           "Significado de estado activo"
-#define TR_TLM_SENSE              "Sentido"
-#define TR_TLM_LABEL              "Etiqueta"
-#define TR_TLM_CALIB_WIZARD       "Asistente de calibracion de 2 puntos"
-#define TR_TLM_CALIB_PROMPT_X1    "Lectura cruda #1 (x1):"
-#define TR_TLM_CALIB_PROMPT_Y1    "Valor real conocido en x1:"
-#define TR_TLM_CALIB_PROMPT_X2    "Lectura cruda #2 (x2):"
-#define TR_TLM_CALIB_PROMPT_Y2    "Valor real conocido en x2:"
-#define TR_TLM_CALIB_SAME_X       "x1 y x2 deben ser diferentes."
-#define TR_TLM_CALIB_CANCELLED    "Calibracion cancelada: ingrese valores numericos."
+/** Spanish text for the telemetry configurator label for fieldw 3digit, rendered on the Telemetry page. English: "3-digit zero-padded (000-255, strict)". */
+#define TR_TLM_FIELDW_3DIGIT "3 dígitos con ceros (000-255, estricto)"
+/** Spanish text for the telemetry configurator label for fieldw auto, rendered on the Telemetry page. English: "Minimal / as-needed (integers or decimals)". */
+#define TR_TLM_FIELDW_AUTO "Mínimo / según necesidad (enteros o decimales)"
+/** Spanish text for the telemetry configurator label for omit trailing, rendered on the Telemetry page. English: "Omit unused trailing channels". */
+#define TR_TLM_OMIT_TRAILING "Omitir canales finales sin usar"
+/** Spanish text for the telemetry configurator label for trail comment, rendered on the Telemetry page. English: "Trailing comment (optional, after bits)". */
+#define TR_TLM_TRAIL_COMMENT "Comentario final (opcional, tras los bits)"
+/** Spanish text for the telemetry configurator label for comment tlm, rendered on the Telemetry page. English: "Also carry telemetry in position comment
+ * (APRS 1.2, |ss..|)". */
+#define TR_TLM_COMMENT_TLM "Incluir también telemetría en el comentario de posición (APRS 1.2, |ss..|)"
+/** Spanish text for the telemetry configurator label for analog count, rendered on the Telemetry page. English: "Analog channels sent". */
+#define TR_TLM_ANALOG_COUNT "Canales analógicos enviados"
+/** Spanish text for the telemetry configurator label for digital count, rendered on the Telemetry page. English: "Digital bits sent". */
+#define TR_TLM_DIGITAL_COUNT "Bits digitales enviados"
+/** Spanish text for the telemetry configurator label for def messages, rendered on the Telemetry page. English: "Definition Messages". */
+#define TR_TLM_DEF_MESSAGES "Mensajes de definición"
+/** Spanish text for the telemetry configurator label for gen parm, rendered on the Telemetry page. English: "PARM - channel & bit names". */
+#define TR_TLM_GEN_PARM "PARM - nombres de canal y bits"
+/** Spanish text for the telemetry configurator label for gen unit, rendered on the Telemetry page. English: "UNIT - units / bit-state labels". */
+#define TR_TLM_GEN_UNIT "UNIT - unidades / etiquetas de estado de bit"
+/** Spanish text for the telemetry configurator label for gen eqns, rendered on the Telemetry page. English: "EQNS - scaling coefficients (A,B,C)". */
+#define TR_TLM_GEN_EQNS "EQNS - coeficientes de escala (A,B,C)"
+/** Spanish text for the telemetry configurator label for gen bits, rendered on the Telemetry page. English: "BITS - bit sense + name". */
+#define TR_TLM_GEN_BITS "BITS - sentido de bit + nombre"
+/** Spanish text for the telemetry configurator label for analog legend, rendered on the Telemetry page. English: "Analog Channels (A1-A5)". */
+#define TR_TLM_ANALOG_LEGEND "Canales analógicos (A1-A5)"
+/** Spanish text for the telemetry configurator label for digital legend, rendered on the Telemetry page. English: "Digital Channels (B1-B8)". */
+#define TR_TLM_DIGITAL_LEGEND "Canales digitales (B1-B8)"
+/** Spanish text for the telemetry configurator label for unit, rendered on the Telemetry page. English: "Unit". */
+#define TR_TLM_UNIT "Unidad"
+/** Spanish text for the telemetry configurator label for source, rendered on the Telemetry page. English: "Source". */
+#define TR_TLM_SOURCE "Fuente"
+/** Spanish text for the telemetry configurator label for rf, rendered on the Telemetry page. English: "RF". */
+#define TR_TLM_RF "RF"
+/** Spanish text for the telemetry configurator label for raw min, rendered on the Telemetry page. English: "Raw min". */
+#define TR_TLM_RAW_MIN "Bruto mín"
+/** Spanish text for the telemetry configurator label for raw max, rendered on the Telemetry page. English: "Raw max". */
+#define TR_TLM_RAW_MAX "Bruto máx"
+/** Spanish text for the telemetry configurator label for coef a, rendered on the Telemetry page. English: "A (quadratic)". */
+#define TR_TLM_COEF_A "A (cuadrático)"
+/** Spanish text for the telemetry configurator label for coef b, rendered on the Telemetry page. English: "B (linear / slope)". */
+#define TR_TLM_COEF_B "B (lineal / pendiente)"
+/** Spanish text for the telemetry configurator label for coef c, rendered on the Telemetry page. English: "C (offset)". */
+#define TR_TLM_COEF_C "C (desplazamiento)"
+/** Spanish text for the telemetry configurator label for decimals, rendered on the Telemetry page. English: "Displayed decimals". */
+#define TR_TLM_DECIMALS "Decimales mostrados"
+/** Spanish text for the telemetry configurator label for on state, rendered on the Telemetry page. English: "On-state means". */
+#define TR_TLM_ON_STATE "Significado de estado activo"
+/** Spanish text for the telemetry configurator label for sense, rendered on the Telemetry page. English: "Sense". */
+#define TR_TLM_SENSE "Sentido"
+/** Spanish text for the telemetry configurator label for label, rendered on the Telemetry page. English: "Label". */
+#define TR_TLM_LABEL "Etiqueta"
+/** Spanish text for the telemetry configurator label for calib wizard, rendered on the Telemetry page. English: "2-point calibration wizard". */
+#define TR_TLM_CALIB_WIZARD "Asistente de calibracion de 2 puntos"
+/** Spanish text for the telemetry configurator label for calib prompt x1, rendered on the Telemetry page. English: "Raw reading #1 (x1):". */
+#define TR_TLM_CALIB_PROMPT_X1 "Lectura cruda #1 (x1):"
+/** Spanish text for the telemetry configurator label for calib prompt y1, rendered on the Telemetry page. English: "Known real-world value at x1:". */
+#define TR_TLM_CALIB_PROMPT_Y1 "Valor real conocido en x1:"
+/** Spanish text for the telemetry configurator label for calib prompt x2, rendered on the Telemetry page. English: "Raw reading #2 (x2):". */
+#define TR_TLM_CALIB_PROMPT_X2 "Lectura cruda #2 (x2):"
+/** Spanish text for the telemetry configurator label for calib prompt y2, rendered on the Telemetry page. English: "Known real-world value at x2:". */
+#define TR_TLM_CALIB_PROMPT_Y2 "Valor real conocido en x2:"
+/** Spanish text for the telemetry configurator label for calib same x, rendered on the Telemetry page. English: "x1 and x2 must differ.". */
+#define TR_TLM_CALIB_SAME_X "x1 y x2 deben ser diferentes."
+/** Spanish text for the telemetry configurator label for calib cancelled, rendered on the Telemetry page. English: "Calibration cancelled: enter numeric
+ * values.". */
+#define TR_TLM_CALIB_CANCELLED "Calibracion cancelada: ingrese valores numericos."
 
 /** @} */
 
@@ -563,9 +1014,13 @@
  * @name page_radio.c
  * @{
  */
+/** Spanish text for the radiomodem page label for audio hw title, rendered on the Radiomodem page. English: "Audio hardware (compile-time)". */
 #define TR_RADIO_AUDIO_HW_TITLE "Hardware de audio (en tiempo de compilación)"
+/** Spanish text for the radiomodem page label for audio hw info, rendered on the Radiomodem page. English: "<br>DAC out: GPIO%d<br>ADC in: GPIO%d<br>PTT pin:
+ * %s<br>PTT active-high: %s<br>ADC atte...". */
 #define TR_RADIO_AUDIO_HW_INFO                                                                                                                                 \
     "<br>DAC salida: GPIO%d<br>ADC entrada: GPIO%d<br>Pin PTT: %s<br>PTT activo en alto: %s<br>Atenuación ADC: %d<br>ADC: %d Hz<br>DAC: %d Hz"
+/** Spanish text: Radiomodem page label for audio hw note, rendered on the Radiomodem page. */
 #define TR_RADIO_AUDIO_HW_NOTE ""
 
 /** @} */
@@ -574,21 +1029,36 @@
  * @name page_wireless.c
  * @{
  */
-#define TR_WIFI_MODE_LEGEND      "Modo WiFi"
-#define TR_WIFI_STATION          "Estación (STA)"
-#define TR_WIFI_ACCESS_POINT     "Punto de acceso (AP)"
-#define TR_WIFI_AP_STA           "AP + STA"
-#define TR_WIFI_TX_POWER         "Potencia TX (0-20 dBm)"
-#define TR_WIFI_AP_SSID          "SSID del AP"
-#define TR_WIFI_AP_PASSWORD      "Contraseña del AP"
-#define TR_WIFI_AP_CHANNEL       "Canal del AP"
-#define TR_WIFI_CLIENT_LEGEND    "Cliente WiFi n.º %d"
-#define TR_BTN_WIFI_SCAN         "ESCANEAR WIFI"
+/** Spanish text for the wireless page label for mode legend, rendered on the Wireless page. English: "WiFi Mode". */
+#define TR_WIFI_MODE_LEGEND "Modo WiFi"
+/** Spanish text for the wireless page label for station, rendered on the Wireless page. English: "Station (STA)". */
+#define TR_WIFI_STATION "Estación (STA)"
+/** Spanish text for the wireless page label for access point, rendered on the Wireless page. English: "Access Point (AP)". */
+#define TR_WIFI_ACCESS_POINT "Punto de acceso (AP)"
+/** Spanish text for the wireless page label for ap sta, rendered on the Wireless page. English: "AP + STA". */
+#define TR_WIFI_AP_STA "AP + STA"
+/** Spanish text for the wireless page label for tx power, rendered on the Wireless page. English: "TX Power (0-20 dBm)". */
+#define TR_WIFI_TX_POWER "Potencia TX (0-20 dBm)"
+/** Spanish text for the wireless page label for ap ssid, rendered on the Wireless page. English: "AP SSID". */
+#define TR_WIFI_AP_SSID "SSID del AP"
+/** Spanish text for the wireless page label for ap password, rendered on the Wireless page. English: "AP Password". */
+#define TR_WIFI_AP_PASSWORD "Contraseña del AP"
+/** Spanish text for the wireless page label for ap channel, rendered on the Wireless page. English: "AP Channel". */
+#define TR_WIFI_AP_CHANNEL "Canal del AP"
+/** Spanish text for the wireless page label for client legend, rendered on the Wireless page. English: "WiFi Client #%d". */
+#define TR_WIFI_CLIENT_LEGEND "Cliente WiFi n.º %d"
+/** Spanish text for the caption of the "wifi scan" button, rendered on the Wireless page. English: "WIFI SCAN". */
+#define TR_BTN_WIFI_SCAN "ESCANEAR WIFI"
+/** Spanish text for the wireless page label for ssid placeholder, rendered on the Wireless page. English: "Network name (type it, or use WiFi Scan)". */
 #define TR_WIFI_SSID_PLACEHOLDER "Nombre de la red (escríbalo o use Buscar WiFi)"
-#define TR_WIFI_STA_NEEDS_SSID                                                                                                                                   \
-    "Guardado, pero NO se conectará: el Modo selecciona estación, pero ningún bloque Cliente WiFi tiene 'Habilitar' marcado y un SSID cargado. Corríjalo y " \
+/** Spanish text for the wireless page label for sta needs ssid, rendered on the Wireless page. English: "Saved, but this will NOT connect: Mode selects a
+ * station, yet no WiFi Client block has...". */
+#define TR_WIFI_STA_NEEDS_SSID                                                                                                                                 \
+    "Guardado, pero NO se conectará: el Modo selecciona estación, pero ningún bloque Cliente WiFi tiene 'Habilitar' marcado y un SSID cargado. Corríjalo y "   \
     "guarde de nuevo."
-#define TR_WIFI_SCANNING    "Escaneando..."
+/** Spanish text for the wireless page label for scanning, rendered on the Wireless page. English: "Scanning...". */
+#define TR_WIFI_SCANNING "Escaneando..."
+/** Spanish text for the wireless page label for scan failed, rendered on the Wireless page. English: "Scan failed". */
 #define TR_WIFI_SCAN_FAILED "Error al escanear"
 
 /** @} */
@@ -597,23 +1067,40 @@
  * @name page_wx.c
  * @{
  */
-#define TR_WX_WIND_SPEED     "Velocidad del viento"
-#define TR_WX_WIND_GUST      "Ráfaga de viento"
+/** Spanish text for the weather page label for wind speed, rendered on the Weather page. English: "Wind Speed". */
+#define TR_WX_WIND_SPEED "Velocidad del viento"
+/** Spanish text for the weather page label for wind gust, rendered on the Weather page. English: "Wind Gust". */
+#define TR_WX_WIND_GUST "Ráfaga de viento"
+/** Spanish text for the weather page label for wind direction, rendered on the Weather page. English: "Wind Direction". */
 #define TR_WX_WIND_DIRECTION "Dirección del viento"
-#define TR_WX_TEMPERATURE    "Temperatura"
-#define TR_WX_RAIN_1H        "Lluvia 1h"
-#define TR_WX_RAIN_24H       "Lluvia 24h"
-#define TR_WX_RAIN_MIDNIGHT  "Lluvia desde medianoche"
-#define TR_WX_HUMIDITY       "Humedad"
-#define TR_WX_PRESSURE       "Presión"
-#define TR_WX_LUMINOSITY     "Luminosidad"
-#define TR_WX_SNOW           "Nieve"
-#define TR_WX_FLOOD_FT       "Nivel de crecida (ft)"
-#define TR_WX_FLOOD_M        "Nivel de crecida"
-#define TR_WX_FIELD          "Campo WX"
-#define TR_WX_CHANNEL        "Canal"
-#define TR_WX_CHANNEL_NONE   "(ninguno)"
-#define TR_WX_VALUE          "Valor"
+/** Spanish text for the weather page label for temperature, rendered on the Weather page. English: "Temperature". */
+#define TR_WX_TEMPERATURE "Temperatura"
+/** Spanish text for the weather page label for rain 1h, rendered on the Weather page. English: "Rain 1h". */
+#define TR_WX_RAIN_1H "Lluvia 1h"
+/** Spanish text for the weather page label for rain 24h, rendered on the Weather page. English: "Rain 24h". */
+#define TR_WX_RAIN_24H "Lluvia 24h"
+/** Spanish text for the weather page label for rain midnight, rendered on the Weather page. English: "Rain since midnight". */
+#define TR_WX_RAIN_MIDNIGHT "Lluvia desde medianoche"
+/** Spanish text for the weather page label for humidity, rendered on the Weather page. English: "Humidity". */
+#define TR_WX_HUMIDITY "Humedad"
+/** Spanish text for the weather page label for pressure, rendered on the Weather page. English: "Pressure". */
+#define TR_WX_PRESSURE "Presión"
+/** Spanish text for the weather page label for luminosity, rendered on the Weather page. English: "Luminosity". */
+#define TR_WX_LUMINOSITY "Luminosidad"
+/** Spanish text for the weather page label for snow, rendered on the Weather page. English: "Snow". */
+#define TR_WX_SNOW "Nieve"
+/** Spanish text for the weather page label for flood ft, rendered on the Weather page. English: "Flood Height (ft)". */
+#define TR_WX_FLOOD_FT "Nivel de crecida (ft)"
+/** Spanish text for the weather page label for flood m, rendered on the Weather page. English: "Flood Height". */
+#define TR_WX_FLOOD_M "Nivel de crecida"
+/** Spanish text for the weather page label for field, rendered on the Weather page. English: "WX Field". */
+#define TR_WX_FIELD "Campo WX"
+/** Spanish text for the weather page label for channel, rendered on the Weather page. English: "Channel". */
+#define TR_WX_CHANNEL "Canal"
+/** Spanish text for the weather page label for channel none, rendered on the Weather page. English: "(none)". */
+#define TR_WX_CHANNEL_NONE "(ninguno)"
+/** Spanish text for the weather page label for value, rendered on the Weather page. English: "Value". */
+#define TR_WX_VALUE "Valor"
 
 /** @} */
 
@@ -621,136 +1108,252 @@
  * @name IGATE page additions (station symbol, path preset, timestamp, PHG, filters)
  * @{
  */
-#define TR_F_STATION_SYMBOL    "Símbolo de Estación"
-#define TR_F_SYMBOL_TABLE      "Tabla"
-#define TR_F_SYMBOL_CODE       "Símbolo"
-#define TR_BTN_PICK_SYMBOL     "..."
-#define TR_SYM_PICK_HINT       "Haga clic en el icono para elegir el símbolo"
-#define TR_F_PATH              "RUTA"
-#define TR_PATH_DIRECT         "Directo (sin ruta)"
-#define TR_PATH_CUSTOM_UNSET   "(no configurado)"
-#define TR_PATH_DIRECT_HINT    "sin ruta de digipeater - solo lo recibirán estaciones que lo escuchen directamente"
-#define TR_PATH_HOP_HINT       "salto(s) vía digipeater, codificado como sufijo SSID (forma corta WIDEn-N)"
-#define TR_PATH_CUSTOM_HINT    "ruta de digipeater personalizada configurada en la página Sistema"
-#define TR_F_TIME_STAMP        "Marca de Tiempo"
-#define TR_F_TX_CHANNEL        "Canal TX"
-#define TR_F_PHG_SECTION       "PHG"
-#define TR_F_ENABLE_PHG        "Habilitar PHG"
-#define TR_F_RADIO_TX_POWER    "Potencia TX de Radio"
-#define TR_F_ANTENNA_GAIN      "Ganancia de Antena"
-#define TR_F_HEIGHT_M          "Altura (m)"
+/** Spanish text for the form label for the "station symbol" field or fieldset, rendered on the IGate page. English: "Station Symbol". */
+#define TR_F_STATION_SYMBOL "Símbolo de Estación"
+/** Spanish text for the form label for the "symbol table" field or fieldset, rendered on the IGate page. English: "Table". */
+#define TR_F_SYMBOL_TABLE "Tabla"
+/** Spanish text for the form label for the "symbol code" field or fieldset, rendered on the IGate page. English: "Symbol". */
+#define TR_F_SYMBOL_CODE "Símbolo"
+/** Spanish text for the caption of the "pick symbol" button, rendered on the IGate page. English: "...". */
+#define TR_BTN_PICK_SYMBOL "..."
+/** Spanish text for the symbol-picker label for pick hint, rendered on the IGate page. English: "Click icon for select symbol". */
+#define TR_SYM_PICK_HINT "Haga clic en el icono para elegir el símbolo"
+/** Spanish text for the form label for the "path" field or fieldset, rendered on the IGate page. English: "PATH". */
+#define TR_F_PATH "RUTA"
+/** Spanish text for the digipeat path preset label for direct, rendered on the IGate page. English: "Direct (no path)". */
+#define TR_PATH_DIRECT "Directo (sin ruta)"
+/** Spanish text for the digipeat path preset label for custom unset, rendered on the IGate page. English: "(not set)". */
+#define TR_PATH_CUSTOM_UNSET "(no configurado)"
+/** Spanish text for the digipeat path preset label for direct hint, rendered on the IGate page. English: "no digipeater path - only stations that hear you
+ * directly will receive it". */
+#define TR_PATH_DIRECT_HINT "sin ruta de digipeater - solo lo recibirán estaciones que lo escuchen directamente"
+/** Spanish text for the digipeat path preset label for hop hint, rendered on the IGate page. English: "hop(s) via digipeater, encoded as an SSID suffix (short
+ * WIDEn-N form)". */
+#define TR_PATH_HOP_HINT "salto(s) vía digipeater, codificado como sufijo SSID (forma corta WIDEn-N)"
+/** Spanish text for the digipeat path preset label for custom hint, rendered on the IGate page. English: "custom digipeater path configured on the System
+ * page". */
+#define TR_PATH_CUSTOM_HINT "ruta de digipeater personalizada configurada en la página Sistema"
+/** Spanish text for the form label for the "time stamp" field or fieldset, rendered on the IGate page. English: "Time Stamp". */
+#define TR_F_TIME_STAMP "Marca de Tiempo"
+/** Spanish text for the form label for the "tx channel" field or fieldset, rendered on the IGate page. English: "TX Channel". */
+#define TR_F_TX_CHANNEL "Canal TX"
+/** Spanish text for the form label for the "phg section" field or fieldset, rendered on the IGate page. English: "PHG". */
+#define TR_F_PHG_SECTION "PHG"
+/** Spanish text for the form label for the "enable phg" field or fieldset, rendered on the IGate page. English: "Enable PHG". */
+#define TR_F_ENABLE_PHG "Habilitar PHG"
+/** Spanish text for the form label for the "radio tx power" field or fieldset, rendered on the IGate page. English: "Radio TX Power". */
+#define TR_F_RADIO_TX_POWER "Potencia TX de Radio"
+/** Spanish text for the form label for the "antenna gain" field or fieldset, rendered on the IGate page. English: "Antenna Gain". */
+#define TR_F_ANTENNA_GAIN "Ganancia de Antena"
+/** Spanish text for the form label for the "height m" field or fieldset, rendered on the IGate page. English: "Height (m)". */
+#define TR_F_HEIGHT_M "Altura (m)"
+/** Spanish text for the form label for the "antenna direction" field or fieldset, rendered on the IGate page. English: "Antenna/Direction". */
 #define TR_F_ANTENNA_DIRECTION "Antena/Dirección"
-#define TR_F_PHG_TEXT          "Texto PHG"
-#define TR_F_EXT_SECTION       "Extension de datos"
-#define TR_F_ENABLE_EXT        "Habilitar extension de datos"
-#define TR_F_EXT_TYPE          "Tipo de extension"
-#define TR_EXT_PHG             "PHG - potencia/altura/ganancia/directividad"
-#define TR_EXT_RNG             "RNG - alcance de radio precalculado"
-#define TR_EXT_DFS             "DFS - intensidad de senal omni-DF"
-#define TR_F_EXT_RANGE_MI      "Alcance de radio (millas)"
-#define TR_F_EXT_DFS_STRENGTH  "Intensidad de senal (puntos S, 0 = no se oye)"
-#define TR_F_POS_AMBIGUITY     "Ambiguedad de posicion"
-#define TR_AMB_NONE            "Precision total"
-#define TR_AMB_TENTH           "Al 1/10 de minuto"
-#define TR_AMB_MINUTE          "Al minuto"
-#define TR_AMB_TEN_MINUTES     "A los 10 minutos"
-#define TR_AMB_DEGREE          "Al grado"
-#define TR_F_STATUS_GRID       "Localizador Maidenhead en los reportes de estado"
-#define TR_F_STATUS_TIMESTAMP  "Marca de tiempo zulu en los reportes de estado"
-#define TR_F_POS_DAO           "Extensión de precisión DAO en los reportes de posición"
-#define TR_DIR_OMNI            "Omni"
-#define TR_DIR_N               "N"
-#define TR_DIR_NE              "NE"
-#define TR_DIR_E               "E"
-#define TR_DIR_SE              "SE"
-#define TR_DIR_S               "S"
-#define TR_DIR_SW              "SO"
-#define TR_DIR_W               "O"
-#define TR_DIR_NW              "NO"
-#define TR_F_IGATE_FILTER      "Filtro IGate"
-#define TR_F_FILTER_RF2INET    "Filtro RF a Internet"
-#define TR_F_FILTER_INET2RF    "Filtro Internet a RF"
-#define TR_FILT_MESSAGE        "Mensaje"
-#define TR_FILT_STATUS         "Estado"
-#define TR_FILT_TELEMETRY      "Telemetría"
-#define TR_FILT_WEATHER        "Clima"
-#define TR_FILT_OBJECT         "Objeto"
-#define TR_FILT_ITEM           "Ítem"
-#define TR_FILT_BUOY           "Boya"
-#define TR_FILT_POSITION       "Posición"
+/** Spanish text for the form label for the "phg text" field or fieldset, rendered on the IGate page. English: "PHG Text". */
+#define TR_F_PHG_TEXT "Texto PHG"
+/** Spanish text for the form label for the "ext section" field or fieldset, rendered on the IGate page. English: "Data Extension". */
+#define TR_F_EXT_SECTION "Extension de datos"
+/** Spanish text for the form label for the "enable ext" field or fieldset, rendered on the IGate page. English: "Enable data extension". */
+#define TR_F_ENABLE_EXT "Habilitar extension de datos"
+/** Spanish text for the form label for the "ext type" field or fieldset, rendered on the IGate page. English: "Extension type". */
+#define TR_F_EXT_TYPE "Tipo de extension"
+/** Spanish text for the data-extension label for phg, rendered on the IGate page. English: "PHG - power/height/gain/directivity". */
+#define TR_EXT_PHG "PHG - potencia/altura/ganancia/directividad"
+/** Spanish text for the data-extension label for rng, rendered on the IGate page. English: "RNG - pre-calculated radio range". */
+#define TR_EXT_RNG "RNG - alcance de radio precalculado"
+/** Spanish text for the data-extension label for dfs, rendered on the IGate page. English: "DFS - omni-DF signal strength". */
+#define TR_EXT_DFS "DFS - intensidad de senal omni-DF"
+/** Spanish text for the form label for the "ext range mi" field or fieldset, rendered on the IGate page. English: "Radio range (miles)". */
+#define TR_F_EXT_RANGE_MI "Alcance de radio (millas)"
+/** Spanish text for the form label for the "ext dfs strength" field or fieldset, rendered on the IGate page. English: "Signal strength (S-points, 0 = not
+ * heard)". */
+#define TR_F_EXT_DFS_STRENGTH "Intensidad de senal (puntos S, 0 = no se oye)"
+/** Spanish text for the form label for the "pos ambiguity" field or fieldset, rendered on the IGate page. English: "Position ambiguity". */
+#define TR_F_POS_AMBIGUITY "Ambiguedad de posicion"
+/** Spanish text for the position-ambiguity selector entry: none, rendered on the IGate page. English: "Full precision". */
+#define TR_AMB_NONE "Precision total"
+/** Spanish text for the position-ambiguity selector entry: tenth, rendered on the IGate page. English: "Nearest 1/10 minute". */
+#define TR_AMB_TENTH "Al 1/10 de minuto"
+/** Spanish text for the position-ambiguity selector entry: minute, rendered on the IGate page. English: "Nearest minute". */
+#define TR_AMB_MINUTE "Al minuto"
+/** Spanish text for the position-ambiguity selector entry: ten minutes, rendered on the IGate page. English: "Nearest 10 minutes". */
+#define TR_AMB_TEN_MINUTES "A los 10 minutos"
+/** Spanish text for the position-ambiguity selector entry: degree, rendered on the IGate page. English: "Nearest degree". */
+#define TR_AMB_DEGREE "Al grado"
+/** Spanish text for the form label for the "status grid" field or fieldset, rendered on the IGate page. English: "Maidenhead locator in status reports". */
+#define TR_F_STATUS_GRID "Localizador Maidenhead en los reportes de estado"
+/** Spanish text for the form label for the "status timestamp" field or fieldset, rendered on the IGate page. English: "Zulu timestamp in status reports". */
+#define TR_F_STATUS_TIMESTAMP "Marca de tiempo zulu en los reportes de estado"
+/** Spanish text for the form label for the "pos dao" field or fieldset, rendered on the IGate page. English: "DAO precision extension in position reports". */
+#define TR_F_POS_DAO "Extensión de precisión DAO en los reportes de posición"
+/** Spanish text for the compass direction abbreviation: omni, rendered on the IGate page. English: "Omni". */
+#define TR_DIR_OMNI "Omni"
+/** Spanish text for the compass direction abbreviation: n, rendered on the IGate page. English: "N". */
+#define TR_DIR_N "N"
+/** Spanish text for the compass direction abbreviation: ne, rendered on the IGate page. English: "NE". */
+#define TR_DIR_NE "NE"
+/** Spanish text for the compass direction abbreviation: e, rendered on the IGate page. English: "E". */
+#define TR_DIR_E "E"
+/** Spanish text for the compass direction abbreviation: se, rendered on the IGate page. English: "SE". */
+#define TR_DIR_SE "SE"
+/** Spanish text for the compass direction abbreviation: s, rendered on the IGate page. English: "S". */
+#define TR_DIR_S "S"
+/** Spanish text for the compass direction abbreviation: sw, rendered on the IGate page. English: "SW". */
+#define TR_DIR_SW "SO"
+/** Spanish text for the compass direction abbreviation: w, rendered on the IGate page. English: "W". */
+#define TR_DIR_W "O"
+/** Spanish text for the compass direction abbreviation: nw, rendered on the IGate page. English: "NW". */
+#define TR_DIR_NW "NO"
+/** Spanish text for the form label for the "igate filter" field or fieldset, rendered on the IGate page. English: "IGate Filter". */
+#define TR_F_IGATE_FILTER "Filtro IGate"
+/** Spanish text for the form label for the "filter rf2inet" field or fieldset, rendered on the IGate page. English: "Filter RF to Internet". */
+#define TR_F_FILTER_RF2INET "Filtro RF a Internet"
+/** Spanish text for the form label for the "filter inet2rf" field or fieldset, rendered on the IGate page. English: "Filter Internet to RF". */
+#define TR_F_FILTER_INET2RF "Filtro Internet a RF"
+/** Spanish text for the aPRS-IS filter editor label for message, rendered on the IGate page. English: "Message". */
+#define TR_FILT_MESSAGE "Mensaje"
+/** Spanish text for the aPRS-IS filter editor label for status, rendered on the IGate page. English: "Status". */
+#define TR_FILT_STATUS "Estado"
+/** Spanish text for the aPRS-IS filter editor label for telemetry, rendered on the IGate page. English: "Telemetry". */
+#define TR_FILT_TELEMETRY "Telemetría"
+/** Spanish text for the aPRS-IS filter editor label for weather, rendered on the IGate page. English: "Weather". */
+#define TR_FILT_WEATHER "Clima"
+/** Spanish text for the aPRS-IS filter editor label for object, rendered on the IGate page. English: "Object". */
+#define TR_FILT_OBJECT "Objeto"
+/** Spanish text for the aPRS-IS filter editor label for item, rendered on the IGate page. English: "Item". */
+#define TR_FILT_ITEM "Ítem"
+/** Spanish text for the aPRS-IS filter editor label for buoy, rendered on the IGate page. English: "Buoy". */
+#define TR_FILT_BUOY "Boya"
+/** Spanish text for the aPRS-IS filter editor label for position, rendered on the IGate page. English: "Position". */
+#define TR_FILT_POSITION "Posición"
 
-#define TR_F_CALLSIGN_FILTER      "Filtro de Indicativos"
+/** Spanish text for the form label for the "callsign filter" field or fieldset, rendered on the IGate page. English: "Callsign Filter". */
+#define TR_F_CALLSIGN_FILTER "Filtro de Indicativos"
+/** Spanish text for the form label for the "budlist mode rf2inet" field or fieldset, rendered on the IGate page. English: "RF to Internet Mode". */
 #define TR_F_BUDLIST_MODE_RF2INET "Modo RF a Internet"
+/** Spanish text for the form label for the "budlist mode inet2rf" field or fieldset, rendered on the IGate page. English: "Internet to RF Mode". */
 #define TR_F_BUDLIST_MODE_INET2RF "Modo Internet a RF"
-#define TR_BUDLIST_OFF            "Desactivado"
-#define TR_BUDLIST_WHITELIST      "Lista Blanca"
-#define TR_BUDLIST_BLACKLIST      "Lista Negra"
-#define TR_F_BUDLIST_CALL         "Indicativo"
+/** Spanish text for the buddy-list editor label for off, rendered on the IGate page. English: "Off". */
+#define TR_BUDLIST_OFF "Desactivado"
+/** Spanish text for the buddy-list editor label for whitelist, rendered on the IGate page. English: "Whitelist". */
+#define TR_BUDLIST_WHITELIST "Lista Blanca"
+/** Spanish text for the buddy-list editor label for blacklist, rendered on the IGate page. English: "Blacklist". */
+#define TR_BUDLIST_BLACKLIST "Lista Negra"
+/** Spanish text for the form label for the "budlist call" field or fieldset, rendered on the IGate page. English: "Callsign". */
+#define TR_F_BUDLIST_CALL "Indicativo"
+/** Spanish text for the explanatory note shown beside the budlist setting, rendered on the IGate page. English: "Shared callsign list, up to 8 entries.
+ * Whitelist: only listed calls pass. Blacklist: li...". */
 #define TR_NOTE_BUDLIST                                                                                                                                        \
     "Lista de indicativos compartida, hasta 8 entradas. Lista Blanca: solo pasan los indicativos listados. Lista Negra: los indicativos listados se bloquean."
 
-#define TR_F_RANGE_FILTER_EN  "Activar filtro de distancia"
-#define TR_F_RANGE_KM         "Distancia máxima (km, 0 = sin límite)"
+/** Spanish text for the form label for the "range filter en" field or fieldset, rendered on the IGate page. English: "Enable range filter". */
+#define TR_F_RANGE_FILTER_EN "Activar filtro de distancia"
+/** Spanish text for the form label for the "range km" field or fieldset, rendered on the IGate page. English: "Max distance (km, 0 = unlimited)". */
+#define TR_F_RANGE_KM "Distancia máxima (km, 0 = sin límite)"
+/** Spanish text for the form label for the "prefix filter en" field or fieldset, rendered on the IGate page. English: "Enable callsign-prefix filter". */
 #define TR_F_PREFIX_FILTER_EN "Activar filtro de prefijo de indicativo"
-#define TR_F_PREFIXES         "Prefijos permitidos (separados por coma)"
+/** Spanish text for the form label for the "prefixes" field or fieldset, rendered on the IGate page. English: "Allowed prefixes (comma-separated)". */
+#define TR_F_PREFIXES "Prefijos permitidos (separados por coma)"
+/** Spanish text for the explanatory note shown beside the range prefix setting, rendered on the IGate page. English: "Local gate applied only to RF ->
+ * Internet, independent of the payload-type filter above...". */
 #define TR_NOTE_RANGE_PREFIX                                                                                                                                   \
-    "Filtro local aplicado solo a RF -> Internet, independiente del filtro por tipo de carga anterior. La distancia se mide desde la posición de Mi "         \
+    "Filtro local aplicado solo a RF -> Internet, independiente del filtro por tipo de carga anterior. La distancia se mide desde la posición de Mi "          \
     "Estación; los paquetes cuya posición no se puede decodificar no se ven afectados por el filtro de distancia."
 
+/** Spanish text for the form label for the "3rdparty unwrap en" field or fieldset, rendered on the IGate page. English: "Relay whitelisted third-party (})
+ * traffic". */
 #define TR_F_3RDPARTY_UNWRAP_EN "Retransmitir tráfico de terceros (}) en lista blanca"
+/** Spanish text for the explanatory note shown beside the 3rdparty unwrap setting, rendered on the IGate page. English: "Off by default. Only takes effect when
+ * the Internet to RF Callsign Filter above is set...". */
 #define TR_NOTE_3RDPARTY_UNWRAP                                                                                                                                \
-    "Desactivado por defecto. Solo tiene efecto cuando el Filtro de Indicativos de Internet a RF anterior está en modo Lista Blanca: un paquete envuelto de " \
-    "terceros solo se desenvuelve y retransmite si su indicativo de origen interno está en la lista blanca. Active esto solo si confía en la fuente "        \
+    "Desactivado por defecto. Solo tiene efecto cuando el Filtro de Indicativos de Internet a RF anterior está en modo Lista Blanca: un paquete envuelto de "  \
+    "terceros solo se desenvuelve y retransmite si su indicativo de origen interno está en la lista blanca. Active esto solo si confía en la fuente "          \
     "específica y la ha incluido en la lista blanca - volver a filtrar tráfico de terceros sin esta restricción es la causa más común de bucles de IGate."
 
-#define TR_F_SATGATE      "Lista de Satélites Digipetidores"
+/** Spanish text for the form label for the "satgate" field or fieldset, rendered on the IGate page. English: "Satellite Gate List". */
+#define TR_F_SATGATE "Lista de Satélites Digipetidores"
+/** Spanish text for the form label for the "satgate call" field or fieldset, rendered on the IGate page. English: "Satellite Callsign". */
 #define TR_F_SATGATE_CALL "Indicativo de Satélite"
+/** Spanish text for the explanatory note shown beside the satgate setting, rendered on the IGate page. English: "Callsigns of satellite/ISS digipeaters (e.g.
+ * ISS, PSAT). A frame routed through one of...". */
 #define TR_NOTE_SATGATE                                                                                                                                        \
-    "Indicativos de satélites/ISS digipetidores (p. ej. ISS, PSAT). Un paquete enrutado por uno de estos solo se retransmite a APRS-IS si la entrada de "     \
+    "Indicativos de satélites/ISS digipetidores (p. ej. ISS, PSAT). Un paquete enrutado por uno de estos solo se retransmite a APRS-IS si la entrada de "      \
     "trayectoria del digipetidor está realmente marcada como usada. Hasta 8 entradas; deje una entrada vacía para desactivarla."
 
-#define TR_F_DUP_CACHE            "Supresión de Duplicados"
-#define TR_F_DUP_CACHE_SIZE       "Tamaño de Caché (entradas)"
+/** Spanish text for the form label for the "dup cache" field or fieldset, rendered on the IGate page. English: "Duplicate Suppression". */
+#define TR_F_DUP_CACHE "Supresión de Duplicados"
+/** Spanish text for the form label for the "dup cache size" field or fieldset, rendered on the IGate page. English: "Cache Size (entries)". */
+#define TR_F_DUP_CACHE_SIZE "Tamaño de Caché (entradas)"
+/** Spanish text for the form label for the "dup cache timeout ms" field or fieldset, rendered on the IGate page. English: "Suppression Window (ms)". */
 #define TR_F_DUP_CACHE_TIMEOUT_MS "Ventana de Supresión (ms)"
+/** Spanish text for the explanatory note shown beside the dup cache setting, rendered on the IGate page. English: "Shared by the IGate and the Digipeater to
+ * suppress repeated copies of the same frame. A...". */
 #define TR_NOTE_DUP_CACHE                                                                                                                                      \
     "Compartido por el IGate y el Digipetidor para suprimir copias repetidas del mismo paquete. Un digipetidor ocupado en una frecuencia congestionada "       \
     "puede necesitar una caché más grande; un IGate rural con poco tráfico puede preferir una ventana más corta."
 
-#define TR_F_MSG_GATING         "Filtrado de Mensajes (Internet a RF)"
-#define TR_F_MSG_GATE_EN        "Aplicar criterios de filtrado de mensajes"
+/** Spanish text for the form label for the "msg gating" field or fieldset, rendered on the IGate page. English: "Message Gating (Internet to RF)". */
+#define TR_F_MSG_GATING "Filtrado de Mensajes (Internet a RF)"
+/** Spanish text for the form label for the "msg gate en" field or fieldset, rendered on the IGate page. English: "Apply message gating criteria". */
+#define TR_F_MSG_GATE_EN "Aplicar criterios de filtrado de mensajes"
+/** Spanish text for the form label for the "msg local window s" field or fieldset, rendered on the IGate page. English: "Heard-locally window (s)". */
 #define TR_F_MSG_LOCAL_WINDOW_S "Ventana de escucha local (s)"
-#define TR_NOTE_MSG_GATING                                                                                                                                       \
-    "Un mensaje leído de APRS-IS sale al aire solo si su destinatario fue escuchado por RF dentro de la ventana, su remitente no lo fue, la cabecera del "      \
-    "remitente no lleva TCPXX/NOGATE/RFONLY y el destinatario no está a su vez en Internet. El siguiente reporte de posición de ese destinatario también se " \
-    "retransmite una vez, para poder ubicarlo. Si se desactiva, se transmite todo mensaje que permita el filtro de tipos, a destinatarios de cualquier parte "   \
+/** Spanish text for the explanatory note shown beside the msg gating setting, rendered on the IGate page. English: "A message read from APRS-IS is put on the
+ * air only when its addressee was heard on RF i...". */
+#define TR_NOTE_MSG_GATING                                                                                                                                     \
+    "Un mensaje leído de APRS-IS sale al aire solo si su destinatario fue escuchado por RF dentro de la ventana, su remitente no lo fue, la cabecera del "     \
+    "remitente no lleva TCPXX/NOGATE/RFONLY y el destinatario no está a su vez en Internet. El siguiente reporte de posición de ese destinatario también se "  \
+    "retransmite una vez, para poder ubicarlo. Si se desactiva, se transmite todo mensaje que permita el filtro de tipos, a destinatarios de cualquier parte " \
     "del mundo."
 
-#define TR_F_DIGI_ALIASES     "Alias de Ruta n-N"
-#define TR_F_DIGI_ALIAS       "Alias"
-#define TR_F_DIGI_MAX_N       "N máximo"
-#define TR_F_DIGI_ALIAS_MODE  "Modo"
+/** Spanish text for the form label for the "digi aliases" field or fieldset, rendered on the IGate page. English: "n-N Path Aliases". */
+#define TR_F_DIGI_ALIASES "Alias de Ruta n-N"
+/** Spanish text for the form label for the "digi alias" field or fieldset, rendered on the IGate page. English: "Alias". */
+#define TR_F_DIGI_ALIAS "Alias"
+/** Spanish text for the form label for the "digi max n" field or fieldset, rendered on the IGate page. English: "Max N". */
+#define TR_F_DIGI_MAX_N "N máximo"
+/** Spanish text for the form label for the "digi alias mode" field or fieldset, rendered on the IGate page. English: "Mode". */
+#define TR_F_DIGI_ALIAS_MODE "Modo"
+/** Spanish text for the form label for the "digi fillin only" field or fieldset, rendered on the IGate page. English: "Fill-in digipeater (single hop only)".
+ */
 #define TR_F_DIGI_FILLIN_ONLY "Digipetidor de relleno (un solo salto)"
+/** Spanish text for the form label for the "digi trap action" field or fieldset, rendered on the IGate page. English: "Hop count above Max N". */
 #define TR_F_DIGI_TRAP_ACTION "Saltos por encima del N máximo"
-#define TR_DIGI_TRAP_CLAMP    "Limitar al N máximo"
-#define TR_DIGI_TRAP_DROP     "Descartar la trama"
-#define TR_DIGI_MODE_OFF      "Apagado"
-#define TR_DIGI_MODE_TRACE    "Traza (inserta indicativo)"
-#define TR_DIGI_MODE_FLOOD    "Inundación (sin indicativo)"
-#define TR_F_DIGI_DEST_SSID   "Digipetir por SSID de destino (heredado)"
+/** Spanish text for the digipeater page label for trap clamp, rendered on the IGate page. English: "Clamp to Max N". */
+#define TR_DIGI_TRAP_CLAMP "Limitar al N máximo"
+/** Spanish text for the digipeater page label for trap drop, rendered on the IGate page. English: "Drop the frame". */
+#define TR_DIGI_TRAP_DROP "Descartar la trama"
+/** Spanish text for the digipeater page label for mode off, rendered on the IGate page. English: "Off". */
+#define TR_DIGI_MODE_OFF "Apagado"
+/** Spanish text for the digipeater page label for mode trace, rendered on the IGate page. English: "Trace (insert callsign)". */
+#define TR_DIGI_MODE_TRACE "Traza (inserta indicativo)"
+/** Spanish text for the digipeater page label for mode flood, rendered on the IGate page. English: "Flood (no callsign)". */
+#define TR_DIGI_MODE_FLOOD "Inundación (sin indicativo)"
+/** Spanish text for the form label for the "digi dest ssid" field or fieldset, rendered on the IGate page. English: "Digipeat by destination SSID (legacy)". */
+#define TR_F_DIGI_DEST_SSID "Digipetir por SSID de destino (heredado)"
+/** Spanish text for the explanatory note shown beside the digi aliases setting, rendered on the IGate page. English: "The only aliases this digipeater honours.
+ * Write each one without its SSID; '#' matches...". */
 #define TR_NOTE_DIGI_ALIASES                                                                                                                                   \
-    "Los únicos alias que este digipetidor atiende. Escriba cada uno sin su SSID; '#' equivale a un solo dígito, así 'WIDE#' cubre toda la familia WIDEn. " \
-    "Las filas se prueban en orden y gana la primera coincidencia. Traza inserta el indicativo de esta estación para que cada salto sea identificable "       \
+    "Los únicos alias que este digipetidor atiende. Escriba cada uno sin su SSID; '#' equivale a un solo dígito, así 'WIDE#' cubre toda la familia WIDEn. "    \
+    "Las filas se prueban en orden y gana la primera coincidencia. Traza inserta el indicativo de esta estación para que cada salto sea identificable "        \
     "después, que es lo que exige WIDEn-N; inundación no deja rastro y solo conviene en un alias regional que se decida usar así."
 
-#define TR_NOTE_DIGI_DEST_SSID                                                                                                                                   \
+/** Spanish text for the explanatory note shown beside the digi dest ssid setting, rendered on the IGate page. English: "Off by default. When on, a frame whose
+ * AX.25 destination SSID is 1 to 7 is repeated on...". */
+#define TR_NOTE_DIGI_DEST_SSID                                                                                                                                 \
     "Desactivado por omisión. Cuando está activo, una trama cuyo SSID de destino AX.25 sea de 1 a 7 se repite por ese solo SSID, antes de consultar la tabla " \
     "de alias de arriba, así que se ignora la ruta que pidió la estación de origen. Actívelo solo por un vecino heredado que todavía rutee de esta manera."
 
-#define TR_SYM_ICON            "Icono"
-#define TR_SYM_QUICK_PICK      "Selección Rápida"
-#define TR_SYM_PRIMARY_TABLE   "Tabla Primaria ( / )"
+/** Spanish text for the symbol-picker label for icon, rendered on the IGate page. English: "Icon". */
+#define TR_SYM_ICON "Icono"
+/** Spanish text for the symbol-picker label for quick pick, rendered on the IGate page. English: "Quick Pick". */
+#define TR_SYM_QUICK_PICK "Selección Rápida"
+/** Spanish text for the symbol-picker label for primary table, rendered on the IGate page. English: "Primary Table ( / )". */
+#define TR_SYM_PRIMARY_TABLE "Tabla Primaria ( / )"
+/** Spanish text for the symbol-picker label for alternate table, rendered on the IGate page. English: "Alternate Table ( \ )". */
 #define TR_SYM_ALTERNATE_TABLE "Tabla Alternativa ( \\ )"
-#define TR_SYM_TRACKER         "Tracker:"
+/** Spanish text for the symbol-picker label for tracker, rendered on the IGate page. English: "Tracker:". */
+#define TR_SYM_TRACKER "Tracker:"
 
 /** @} */
 

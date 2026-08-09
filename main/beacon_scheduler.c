@@ -47,12 +47,11 @@ static const char *TAG = "beacon_sched";
 // including newlib's float-capable *printf (a much deeper call tree than
 // integer formatting), then lat_lon_to_aprs + aprs_path_build_suffix ->
 // aprs_service_send_tnc2 -> modem_send_tnc2 -> modem_build_frame_tnc2 ->
-// ax25_encode/hdlcFrame, stacking several ~300-450 byte buffers per level. When
-// they had separate tasks these were sized independently (WX 14336, the
-// tracker/igate/digi beacons 12288, the bulletin transmitter 10240) after a
-// stack overrun on the RF leg was seen to silently corrupt/truncate packets;
-// sizing the one shared stack to that proven maximum keeps every path's
-// headroom while replacing ~61 KB of separate stacks with a single ~14 KB one.
+// ax25_encode/hdlcFrame, stacking several ~300-450 byte buffers per level. The
+// deepest of those paths is the weather one, which needs about 14 KB end to
+// end; every other transmitter fits comfortably inside that. Sizing the one
+// shared stack to the deepest path keeps full headroom on all of them while
+// costing a single ~14 KB stack instead of one stack per transmitter.
 //
 // One consumer of that headroom is invisible from here and worth naming: at
 // the very bottom of the same call tree, Ax25WriteTxFrame() can decode the

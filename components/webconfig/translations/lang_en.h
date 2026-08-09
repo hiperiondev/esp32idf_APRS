@@ -28,14 +28,22 @@
  * @name Brand / chrome
  * @{
  */
-#define TR_BRAND            "esp32idf_APRS Web Admin"
-#define TR_LOGOUT           "Logout"
+/** Product name shown in the page header and browser title bar. */
+#define TR_BRAND "esp32idf_APRS Web Admin"
+/** Caption of the log-out link in the page header. */
+#define TR_LOGOUT "Logout"
+/** Heading of the page shown after a successful log-out. */
 #define TR_LOGGED_OUT_TITLE "Logged out"
-#define TR_LOG_IN_AGAIN     "Log in again"
-#define TR_UNAUTHORIZED     "401 Unauthorized"
-#define TR_FORBIDDEN_CSRF   "403 Forbidden: request origin could not be verified"
-#define TR_SAVED_REDIRECT   "Saved. Redirecting..."
-#define TR_SAVE_FAILED      "Save failed: the settings could not be written to flash. They are still in effect until the next restart."
+/** Caption of the link back to the login prompt after logging out. */
+#define TR_LOG_IN_AGAIN "Log in again"
+/** Body of the HTTP 401 response sent when authentication fails. */
+#define TR_UNAUTHORIZED "401 Unauthorized"
+/** Body of the HTTP 403 response sent when a POST fails the cross-site request check. */
+#define TR_FORBIDDEN_CSRF "403 Forbidden: request origin could not be verified"
+/** Interstitial shown after a successful save, while the browser is redirected back to the form. */
+#define TR_SAVED_REDIRECT "Saved. Redirecting..."
+/** Warning shown when settings were accepted but could not be committed to flash. */
+#define TR_SAVE_FAILED "Save failed: the settings could not be written to flash. They are still in effect until the next restart."
 
 /** @} */
 
@@ -43,23 +51,40 @@
  * @name Sidebar menu
  * @{
  */
+/** Sidebar navigation entry for the Dashboard page, rendered on the sidebar. */
 #define TR_MENU_DASHBOARD "Dashboard"
-#define TR_MENU_MSGCHAT   "Snd/Rcv Msg"
+/** Sidebar navigation entry for the Send/Receive Message page, rendered on the sidebar. */
+#define TR_MENU_MSGCHAT "Snd/Rcv Msg"
+/** Sidebar navigation entry for the Bulletins page, rendered on the sidebar. */
 #define TR_MENU_BULLETINS "Bulletins"
-#define TR_MENU_OBJITEMS  "Objects and Items"
-#define TR_MENU_STATION   "Station"
-#define TR_MENU_RADIO     "Radiomodem"
-#define TR_MENU_MSG       "Message"
-#define TR_MENU_QUERY     "Query"
-#define TR_MENU_IGATE     "IGate"
-#define TR_MENU_DIGI      "Digipeater"
-#define TR_MENU_TRACKER   "Tracker"
-#define TR_MENU_WX        "Weather"
-#define TR_MENU_TLM       "Telemetry"
-#define TR_MENU_SYSTEM    "System"
-#define TR_MENU_WIRELESS  "Wireless"
-#define TR_MENU_STORAGE   "File Storage"
-#define TR_MENU_ABOUT     "Firmware"
+/** Sidebar navigation entry for the Objects and Items page, rendered on the sidebar. */
+#define TR_MENU_OBJITEMS "Objects and Items"
+/** Sidebar navigation entry for the Station page, rendered on the sidebar. */
+#define TR_MENU_STATION "Station"
+/** Sidebar navigation entry for the Radiomodem page, rendered on the sidebar. */
+#define TR_MENU_RADIO "Radiomodem"
+/** Sidebar navigation entry for the Message page, rendered on the sidebar. */
+#define TR_MENU_MSG "Message"
+/** Sidebar navigation entry for the Query page, rendered on the sidebar. */
+#define TR_MENU_QUERY "Query"
+/** Sidebar navigation entry for the IGate page, rendered on the sidebar. */
+#define TR_MENU_IGATE "IGate"
+/** Sidebar navigation entry for the Digipeater page, rendered on the sidebar. */
+#define TR_MENU_DIGI "Digipeater"
+/** Sidebar navigation entry for the Tracker page, rendered on the sidebar. */
+#define TR_MENU_TRACKER "Tracker"
+/** Sidebar navigation entry for the Weather page, rendered on the sidebar. */
+#define TR_MENU_WX "Weather"
+/** Sidebar navigation entry for the Telemetry page, rendered on the sidebar. */
+#define TR_MENU_TLM "Telemetry"
+/** Sidebar navigation entry for the System page, rendered on the sidebar. */
+#define TR_MENU_SYSTEM "System"
+/** Sidebar navigation entry for the Wireless page, rendered on the sidebar. */
+#define TR_MENU_WIRELESS "Wireless"
+/** Sidebar navigation entry for the File Storage page, rendered on the sidebar. */
+#define TR_MENU_STORAGE "File Storage"
+/** Sidebar navigation entry for the Firmware page, rendered on the sidebar. */
+#define TR_MENU_ABOUT "Firmware"
 
 /** @} */
 
@@ -67,13 +92,20 @@
  * @name Common buttons / widgets
  * @{
  */
-#define TR_BTN_SAVE          "Save"
+/** Caption of the "save" button, rendered on any page. */
+#define TR_BTN_SAVE "Save"
+/** Caption of the "auto generate" button, rendered on any page. */
 #define TR_BTN_AUTO_GENERATE "Auto Generate"
-#define TR_BTN_LOOP_TEST     "LOOP TEST"
-#define TR_LOOPTEST_SAVING   "Saving settings..."
-#define TR_LOOPTEST_RUNNING  "Testing..."
-#define TR_LOOPTEST_FAILED   "Request failed"
-#define TR_SHOW_PASSWORD     "Show password"
+/** Caption of the "loop test" button, rendered on any page. */
+#define TR_BTN_LOOP_TEST "LOOP TEST"
+/** Loopback-test status message: saving, rendered on any page. */
+#define TR_LOOPTEST_SAVING "Saving settings..."
+/** Loopback-test status message: running, rendered on any page. */
+#define TR_LOOPTEST_RUNNING "Testing..."
+/** Loopback-test status message: failed, rendered on any page. */
+#define TR_LOOPTEST_FAILED "Request failed"
+/** Caption of the checkbox that reveals a masked password field. */
+#define TR_SHOW_PASSWORD "Show password"
 
 /** @} */
 
@@ -81,34 +113,56 @@
  * @name page_about.c
  * @{
  */
-#define TR_ABOUT_TITLE       "Firmware"
-#define TR_ABOUT_FW_LEGEND   "Firmware"
-#define TR_ABOUT_PROJECT     "Project:"
-#define TR_ABOUT_VERSION     "Version:"
-#define TR_ABOUT_BUILD_DATE  "Build date:"
+/** Firmware page label for title, rendered on the Firmware page. */
+#define TR_ABOUT_TITLE "Firmware"
+/** Firmware page label for fw legend, rendered on the Firmware page. */
+#define TR_ABOUT_FW_LEGEND "Firmware"
+/** Firmware page label for project, rendered on the Firmware page. */
+#define TR_ABOUT_PROJECT "Project:"
+/** Firmware page label for version, rendered on the Firmware page. */
+#define TR_ABOUT_VERSION "Version:"
+/** Firmware page label for build date, rendered on the Firmware page. */
+#define TR_ABOUT_BUILD_DATE "Build date:"
+/** Firmware page label for idf version, rendered on the Firmware page. */
 #define TR_ABOUT_IDF_VERSION "IDF version:"
-#define TR_ABOUT_PARTITION   "Running partition:"
-#define TR_ABOUT_OTA_LEGEND  "OTA Update"
+/** Firmware page label for partition, rendered on the Firmware page. */
+#define TR_ABOUT_PARTITION "Running partition:"
+/** Firmware page label for ota legend, rendered on the Firmware page. */
+#define TR_ABOUT_OTA_LEGEND "OTA Update"
+/** Firmware page label for ota body, rendered on the Firmware page. */
 #define TR_ABOUT_OTA_BODY                                                                                                                                      \
     "Upload a new firmware .bin built for this board. It is written to the "                                                                                   \
     "inactive OTA slot while the device keeps running from the current one; "                                                                                  \
     "the device only switches over and reboots once the upload is complete "                                                                                   \
     "and verified. If the new firmware fails to boot cleanly, it is rolled "                                                                                   \
     "back automatically on the next restart."
-#define TR_OTA_TARGET_SLOT      "Target slot:"
-#define TR_OTA_SELECT_FILE      "Firmware file (.bin):"
-#define TR_OTA_UPLOAD_BTN       "Upload &amp; Flash"
-#define TR_OTA_CONFIRM          "Upload and flash this firmware? The device will reboot when done."
+/** Firmware-update label or status message for target slot, rendered on the Firmware page. */
+#define TR_OTA_TARGET_SLOT "Target slot:"
+/** Firmware-update label or status message for select file, rendered on the Firmware page. */
+#define TR_OTA_SELECT_FILE "Firmware file (.bin):"
+/** Firmware-update label or status message for upload btn, rendered on the Firmware page. */
+#define TR_OTA_UPLOAD_BTN "Upload &amp; Flash"
+/** Firmware-update label or status message for confirm, rendered on the Firmware page. */
+#define TR_OTA_CONFIRM "Upload and flash this firmware? The device will reboot when done."
+/** Firmware-update label or status message for no file selected, rendered on the Firmware page. */
 #define TR_OTA_NO_FILE_SELECTED "Choose a firmware .bin file first."
-#define TR_OTA_UPLOADING        "Uploading and writing to flash..."
+/** Firmware-update label or status message for uploading, rendered on the Firmware page. */
+#define TR_OTA_UPLOADING "Uploading and writing to flash..."
+/** Firmware-update label or status message for no partition, rendered on the Firmware page. */
 #define TR_OTA_NO_PARTITION                                                                                                                                    \
     "No OTA update slot is available on this device's partition table. Reflash it once over USB/UART with the current partitions.csv to enable OTA."
-#define TR_OTA_BEGIN_FAILED    "Could not start the OTA write: "
-#define TR_OTA_NO_FILE_CHOSEN  "no file was received"
-#define TR_OTA_UPLOAD_FAILED   "Firmware upload failed"
+/** Firmware-update label or status message for begin failed, rendered on the Firmware page. */
+#define TR_OTA_BEGIN_FAILED "Could not start the OTA write: "
+/** Firmware-update label or status message for no file chosen, rendered on the Firmware page. */
+#define TR_OTA_NO_FILE_CHOSEN "no file was received"
+/** Firmware-update label or status message for upload failed, rendered on the Firmware page. */
+#define TR_OTA_UPLOAD_FAILED "Firmware upload failed"
+/** Firmware-update label or status message for validate failed, rendered on the Firmware page. */
 #define TR_OTA_VALIDATE_FAILED "image validation failed - the file is not a valid firmware image for this board"
-#define TR_OTA_SUCCESS         "Firmware written and verified successfully."
-#define TR_OTA_REBOOTING       "Rebooting into the new firmware now..."
+/** Firmware-update label or status message for success, rendered on the Firmware page. */
+#define TR_OTA_SUCCESS "Firmware written and verified successfully."
+/** Firmware-update label or status message for rebooting, rendered on the Firmware page. */
+#define TR_OTA_REBOOTING "Rebooting into the new firmware now..."
 
 /** @} */
 
@@ -116,192 +170,374 @@
  * @name Common field/fieldset labels (auto-extracted from pages/<page>.c source files)
  * @{
  */
-#define TR_F_ADD_TIMESTAMP                                 "Add timestamp"
-#define TR_F_ALTITUDE_M                                    "Altitude (m)"
-#define TR_F_APRS_IS_SERVER                                "APRS-IS Server"
-#define TR_F_APRS_MESSAGING                                "APRS Messaging"
-#define TR_F_APRS_PASSCODE                                 "APRS-IS Passcode"
-#define TR_F_APRS_SYMBOLS                                  "APRS Symbols"
-#define TR_F_AUDIO_AFSK                                    "Audio / AFSK"
-#define TR_F_ENABLE_AUDIO_MODEM                            "Enable audio ADC/DAC modem"
-#define TR_F_AFSK_MODULATION                               "Modulation"
-#define TR_F_AUDIO_LOW_PASS_FILTER                         "Audio low-pass filter"
-#define TR_F_BEACON_INTERVAL_S                             "Beacon interval (s)"
-#define TR_F_BEACON_POSITION                               "Beacon / Position"
-#define TR_F_BEACON_POSITION_2                             "Beacon position"
-#define TR_F_BEACON_VIA_INTERNET                           "Beacon via Internet"
-#define TR_F_BEACON_VIA_RF                                 "Beacon via RF"
-#define TR_F_COMMENT                                       "Comment"
-#define TR_F_COMPRESS_POSITION                             "Compress position"
-#define TR_F_DASHBOARD                                     "Dashboard"
-#define TR_F_DATA_INTERVAL_S                               "Data interval (s)"
-#define TR_F_DIGIPEATER                                    "Digipeater"
-#define TR_F_ENABLE                                        "Enable"
-#define TR_F_ENABLE_DIGIPEATER                             "Enable Digipeater"
-#define TR_F_ENABLE_IGATE                                  "Enable IGate"
-#define TR_F_ENABLE_MESSAGING                              "Enable messaging"
-#define TR_F_ENABLE_TRACKER                                "Enable Tracker"
-#define TR_F_ENABLE_WX                                     "Enable WX"
-#define TR_F_FILE_STORAGE                                  "File Storage"
-#define TR_F_FILTER                                        "Filter"
-#define TR_F_FIXED_ALTITUDE_M                              "Fixed Altitude (m)"
-#define TR_F_FIXED_INTERVAL_S                              "Fixed interval (s)"
-#define TR_F_FIXED_LATITUDE                                "Fixed Latitude"
-#define TR_F_FIXED_LONGITUDE                               "Fixed Longitude"
-#define TR_F_FX_25_FORWARD_ERROR_CORRECTED_AX_25           "FX.25 (forward-error-corrected AX.25)"
-#define TR_F_IGATE                                         "IGate"
-#define TR_F_INCLUDE_ALTITUDE                              "Include altitude"
-#define TR_F_INTERNET_TO_RF                                "Internet to RF"
-#define TR_F_LATITUDE                                      "Latitude"
-#define TR_F_LONGITUDE                                     "Longitude"
-#define TR_F_MESSAGE                                       "Message"
-#define TR_F_MESSAGE_ALARM_ENABLE                          "Enable Message Alarm"
-#define TR_F_MESSAGE_ALARM_PIN                             "Message Alarm pin"
-#define TR_F_MICE_POSITION                                 "Mic-E position encoding"
-#define TR_F_MODE                                          "Mode"
-#define TR_F_MY_CALLSIGN                                   "My Callsign"
-#define TR_USE_MY_STATION_DATA                             "Use My Station Data"
-#define TR_F_NAME                                          "Name"
-#define TR_F_OBJECT_ITEM_NAME                              "Object/Item name"
-#define TR_F_OBJECT_NAME                                   "Object name"
-#define TR_F_OPTIONS                                       "Options"
-#define TR_F_PARM_UNIT_EQNS_INTERVAL_S                     "PARM/UNIT/EQNS interval (s)"
-#define TR_F_PASSWORD                                      "Password"
-#define TR_F_POSITION                                      "Position"
-#define TR_F_PREAMBLE_MS                                   "Preamble (ms)"
-#define TR_DISABLED                                        "Disabled"
-#define TR_GPIO_USED_BY                                    "GPIO%d (used: %.30s)"
-#define TR_F_PROTOCOL                                      "Protocol"
-#define TR_F_QUERY                                         "Query"
-#define TR_F_ENABLE_QUERY                                  "Enable query responder"
-#define TR_F_QUERY_RF                                      "Answer queries heard on RF"
-#define TR_F_QUERY_INET                                    "Answer queries heard from APRS-IS"
-#define TR_F_QUERY_APRS                                    "?APRS? - general station query"
-#define TR_F_QUERY_WX                                      "?WX? - weather report request"
-#define TR_F_QUERY_IGATE                                   "?IGATE? - IGate status request"
-#define TR_F_QUERY_DIRECTED                                "Directed queries (CALL:?query?)"
-#define TR_F_QUERY_EXT                                     "Extended directed queries (?APRSD/?APRSH/?APRSM/?APRSO/?APRSP/?APRSS/?APRST)"
-#define TR_F_QUERY_MIN_INTERVAL                            "Minimum seconds between identical responses"
-#define TR_F_RADIO_MODEM                                   "Radiomodem"
-#define TR_F_RETRY_COUNT                                   "Retry count"
-#define TR_F_RETRY_INTERVAL_S                              "Retry interval (s)"
-#define TR_F_RF_TO_INTERNET                                "RF to Internet"
-#define TR_F_RF_TX_BUFFERS                                 "TX buffers"
-#define TR_F_DUTY_CYCLE_EN                                 "Duty-cycle limiter"
-#define TR_F_DUTY_CYCLE_PCT                                "Duty-cycle limit (%)"
-#define TR_F_PTT_MIN_UNKEY_MS                              "PTT minimum unkey time (ms)"
-#define TR_F_CSMA_PERSISTENCE                              "CSMA persistence (p, 1-255)"
-#define TR_F_SEND_RECEIVE_VIA_INTERNET                     "Send/receive via Internet"
-#define TR_F_SEND_RECEIVE_VIA_RF                           "Send/receive via RF"
-#define TR_F_SEND_VIA_INTERNET                             "Send via Internet"
-#define TR_F_SEND_VIA_RF                                   "Send via RF"
+/** Form label for the "add timestamp" field or fieldset, rendered on the configuration forms. */
+#define TR_F_ADD_TIMESTAMP "Add timestamp"
+/** Form label for the "altitude m" field or fieldset, rendered on the configuration forms. */
+#define TR_F_ALTITUDE_M "Altitude (m)"
+/** Form label for the "aprs is server" field or fieldset, rendered on the configuration forms. */
+#define TR_F_APRS_IS_SERVER "APRS-IS Server"
+/** Form label for the "aprs messaging" field or fieldset, rendered on the configuration forms. */
+#define TR_F_APRS_MESSAGING "APRS Messaging"
+/** Form label for the "aprs passcode" field or fieldset, rendered on the configuration forms. */
+#define TR_F_APRS_PASSCODE "APRS-IS Passcode"
+/** Form label for the "aprs symbols" field or fieldset, rendered on the configuration forms. */
+#define TR_F_APRS_SYMBOLS "APRS Symbols"
+/** Form label for the "audio afsk" field or fieldset, rendered on the configuration forms. */
+#define TR_F_AUDIO_AFSK "Audio / AFSK"
+/** Form label for the "enable audio modem" field or fieldset, rendered on the configuration forms. */
+#define TR_F_ENABLE_AUDIO_MODEM "Enable audio ADC/DAC modem"
+/** Form label for the "afsk modulation" field or fieldset, rendered on the configuration forms. */
+#define TR_F_AFSK_MODULATION "Modulation"
+/** Form label for the "audio low pass filter" field or fieldset, rendered on the configuration forms. */
+#define TR_F_AUDIO_LOW_PASS_FILTER "Audio low-pass filter"
+/** Form label for the "beacon interval s" field or fieldset, rendered on the configuration forms. */
+#define TR_F_BEACON_INTERVAL_S "Beacon interval (s)"
+/** Form label for the "beacon position" field or fieldset, rendered on the configuration forms. */
+#define TR_F_BEACON_POSITION "Beacon / Position"
+/** Form label for the "beacon position 2" field or fieldset, rendered on the configuration forms. */
+#define TR_F_BEACON_POSITION_2 "Beacon position"
+/** Form label for the "beacon via internet" field or fieldset, rendered on the configuration forms. */
+#define TR_F_BEACON_VIA_INTERNET "Beacon via Internet"
+/** Form label for the "beacon via rf" field or fieldset, rendered on the configuration forms. */
+#define TR_F_BEACON_VIA_RF "Beacon via RF"
+/** Form label for the "comment" field or fieldset, rendered on the configuration forms. */
+#define TR_F_COMMENT "Comment"
+/** Form label for the "compress position" field or fieldset, rendered on the configuration forms. */
+#define TR_F_COMPRESS_POSITION "Compress position"
+/** Form label for the "dashboard" field or fieldset, rendered on the configuration forms. */
+#define TR_F_DASHBOARD "Dashboard"
+/** Form label for the "data interval s" field or fieldset, rendered on the configuration forms. */
+#define TR_F_DATA_INTERVAL_S "Data interval (s)"
+/** Form label for the "digipeater" field or fieldset, rendered on the configuration forms. */
+#define TR_F_DIGIPEATER "Digipeater"
+/** Form label for the "enable" field or fieldset, rendered on the configuration forms. */
+#define TR_F_ENABLE "Enable"
+/** Form label for the "enable digipeater" field or fieldset, rendered on the configuration forms. */
+#define TR_F_ENABLE_DIGIPEATER "Enable Digipeater"
+/** Form label for the "enable igate" field or fieldset, rendered on the configuration forms. */
+#define TR_F_ENABLE_IGATE "Enable IGate"
+/** Form label for the "enable messaging" field or fieldset, rendered on the configuration forms. */
+#define TR_F_ENABLE_MESSAGING "Enable messaging"
+/** Form label for the "enable tracker" field or fieldset, rendered on the configuration forms. */
+#define TR_F_ENABLE_TRACKER "Enable Tracker"
+/** Form label for the "enable wx" field or fieldset, rendered on the configuration forms. */
+#define TR_F_ENABLE_WX "Enable WX"
+/** Form label for the "file storage" field or fieldset, rendered on the configuration forms. */
+#define TR_F_FILE_STORAGE "File Storage"
+/** Form label for the "filter" field or fieldset, rendered on the configuration forms. */
+#define TR_F_FILTER "Filter"
+/** Form label for the "fixed altitude m" field or fieldset, rendered on the configuration forms. */
+#define TR_F_FIXED_ALTITUDE_M "Fixed Altitude (m)"
+/** Form label for the "fixed interval s" field or fieldset, rendered on the configuration forms. */
+#define TR_F_FIXED_INTERVAL_S "Fixed interval (s)"
+/** Form label for the "fixed latitude" field or fieldset, rendered on the configuration forms. */
+#define TR_F_FIXED_LATITUDE "Fixed Latitude"
+/** Form label for the "fixed longitude" field or fieldset, rendered on the configuration forms. */
+#define TR_F_FIXED_LONGITUDE "Fixed Longitude"
+/** Form label for the "fx 25 forward error corrected ax 25" field or fieldset, rendered on the configuration forms. */
+#define TR_F_FX_25_FORWARD_ERROR_CORRECTED_AX_25 "FX.25 (forward-error-corrected AX.25)"
+/** Form label for the "igate" field or fieldset, rendered on the configuration forms. */
+#define TR_F_IGATE "IGate"
+/** Form label for the "include altitude" field or fieldset, rendered on the configuration forms. */
+#define TR_F_INCLUDE_ALTITUDE "Include altitude"
+/** Form label for the "internet to rf" field or fieldset, rendered on the configuration forms. */
+#define TR_F_INTERNET_TO_RF "Internet to RF"
+/** Form label for the "latitude" field or fieldset, rendered on the configuration forms. */
+#define TR_F_LATITUDE "Latitude"
+/** Form label for the "longitude" field or fieldset, rendered on the configuration forms. */
+#define TR_F_LONGITUDE "Longitude"
+/** Form label for the "message" field or fieldset, rendered on the configuration forms. */
+#define TR_F_MESSAGE "Message"
+/** Form label for the "message alarm enable" field or fieldset, rendered on the configuration forms. */
+#define TR_F_MESSAGE_ALARM_ENABLE "Enable Message Alarm"
+/** Form label for the "message alarm pin" field or fieldset, rendered on the configuration forms. */
+#define TR_F_MESSAGE_ALARM_PIN "Message Alarm pin"
+/** Form label for the "mice position" field or fieldset, rendered on the configuration forms. */
+#define TR_F_MICE_POSITION "Mic-E position encoding"
+/** Form label for the "mode" field or fieldset, rendered on the configuration forms. */
+#define TR_F_MODE "Mode"
+/** Form label for the "my callsign" field or fieldset, rendered on the configuration forms. */
+#define TR_F_MY_CALLSIGN "My Callsign"
+/** Caption of the control that copies the station identity into the current form. */
+#define TR_USE_MY_STATION_DATA "Use My Station Data"
+/** Form label for the "name" field or fieldset, rendered on the configuration forms. */
+#define TR_F_NAME "Name"
+/** Form label for the "object item name" field or fieldset, rendered on the configuration forms. */
+#define TR_F_OBJECT_ITEM_NAME "Object/Item name"
+/** Form label for the "object name" field or fieldset, rendered on the configuration forms. */
+#define TR_F_OBJECT_NAME "Object name"
+/** Form label for the "options" field or fieldset, rendered on the configuration forms. */
+#define TR_F_OPTIONS "Options"
+/** Form label for the "parm unit eqns interval s" field or fieldset, rendered on the configuration forms. */
+#define TR_F_PARM_UNIT_EQNS_INTERVAL_S "PARM/UNIT/EQNS interval (s)"
+/** Form label for the "password" field or fieldset, rendered on the configuration forms. */
+#define TR_F_PASSWORD "Password"
+/** Form label for the "position" field or fieldset, rendered on the configuration forms. */
+#define TR_F_POSITION "Position"
+/** Form label for the "preamble ms" field or fieldset, rendered on the configuration forms. */
+#define TR_F_PREAMBLE_MS "Preamble (ms)"
+/** Selector entry meaning the feature or pin is switched off. */
+#define TR_DISABLED "Disabled"
+/** Format string for a GPIO selector entry that is already claimed, taking the pin number and the claiming peripheral. */
+#define TR_GPIO_USED_BY "GPIO%d (used: %.30s)"
+/** Form label for the "protocol" field or fieldset, rendered on the configuration forms. */
+#define TR_F_PROTOCOL "Protocol"
+/** Form label for the "query" field or fieldset, rendered on the configuration forms. */
+#define TR_F_QUERY "Query"
+/** Form label for the "enable query" field or fieldset, rendered on the configuration forms. */
+#define TR_F_ENABLE_QUERY "Enable query responder"
+/** Form label for the "query rf" field or fieldset, rendered on the configuration forms. */
+#define TR_F_QUERY_RF "Answer queries heard on RF"
+/** Form label for the "query inet" field or fieldset, rendered on the configuration forms. */
+#define TR_F_QUERY_INET "Answer queries heard from APRS-IS"
+/** Form label for the "query aprs" field or fieldset, rendered on the configuration forms. */
+#define TR_F_QUERY_APRS "?APRS? - general station query"
+/** Form label for the "query wx" field or fieldset, rendered on the configuration forms. */
+#define TR_F_QUERY_WX "?WX? - weather report request"
+/** Form label for the "query igate" field or fieldset, rendered on the configuration forms. */
+#define TR_F_QUERY_IGATE "?IGATE? - IGate status request"
+/** Form label for the "query directed" field or fieldset, rendered on the configuration forms. */
+#define TR_F_QUERY_DIRECTED "Directed queries (CALL:?query?)"
+/** Form label for the "query ext" field or fieldset, rendered on the configuration forms. */
+#define TR_F_QUERY_EXT "Extended directed queries (?APRSD/?APRSH/?APRSM/?APRSO/?APRSP/?APRSS/?APRST)"
+/** Form label for the "query min interval" field or fieldset, rendered on the configuration forms. */
+#define TR_F_QUERY_MIN_INTERVAL "Minimum seconds between identical responses"
+/** Form label for the "radio modem" field or fieldset, rendered on the configuration forms. */
+#define TR_F_RADIO_MODEM "Radiomodem"
+/** Form label for the "retry count" field or fieldset, rendered on the configuration forms. */
+#define TR_F_RETRY_COUNT "Retry count"
+/** Form label for the "retry interval s" field or fieldset, rendered on the configuration forms. */
+#define TR_F_RETRY_INTERVAL_S "Retry interval (s)"
+/** Form label for the "rf to internet" field or fieldset, rendered on the configuration forms. */
+#define TR_F_RF_TO_INTERNET "RF to Internet"
+/** Form label for the "rf tx buffers" field or fieldset, rendered on the configuration forms. */
+#define TR_F_RF_TX_BUFFERS "TX buffers"
+/** Form label for the "duty cycle en" field or fieldset, rendered on the configuration forms. */
+#define TR_F_DUTY_CYCLE_EN "Duty-cycle limiter"
+/** Form label for the "duty cycle pct" field or fieldset, rendered on the configuration forms. */
+#define TR_F_DUTY_CYCLE_PCT "Duty-cycle limit (%)"
+/** Form label for the "ptt min unkey ms" field or fieldset, rendered on the configuration forms. */
+#define TR_F_PTT_MIN_UNKEY_MS "PTT minimum unkey time (ms)"
+/** Form label for the "csma persistence" field or fieldset, rendered on the configuration forms. */
+#define TR_F_CSMA_PERSISTENCE "CSMA persistence (p, 1-255)"
+/** Form label for the "send receive via internet" field or fieldset, rendered on the configuration forms. */
+#define TR_F_SEND_RECEIVE_VIA_INTERNET "Send/receive via Internet"
+/** Form label for the "send receive via rf" field or fieldset, rendered on the configuration forms. */
+#define TR_F_SEND_RECEIVE_VIA_RF "Send/receive via RF"
+/** Form label for the "send via internet" field or fieldset, rendered on the configuration forms. */
+#define TR_F_SEND_VIA_INTERNET "Send via Internet"
+/** Form label for the "send via rf" field or fieldset, rendered on the configuration forms. */
+#define TR_F_SEND_VIA_RF "Send via RF"
+/** Form label for the "sensor mapping enable averaged source channel" field or fieldset, rendered on the configuration forms. */
 #define TR_F_SENSOR_MAPPING_ENABLE_AVERAGED_SOURCE_CHANNEL "Sensor Mapping (enable / averaged / source channel)"
-#define TR_F_SERVER_HOST                                   "Server Host"
-#define TR_F_SERVER_PORT                                   "Server Port"
-#define TR_F_SSID                                          "SSID"
-#define TR_F_STATION                                       "Station"
-#define TR_F_BULLETINS                                     "Bulletins"
-#define TR_F_BULLETIN_FMT                                  "Bulletin %d"
-#define TR_F_BULLETIN_ID                                   "Identifier (0-9 bulletin, A-Z announcement)"
-#define TR_F_BULLETIN_GROUP                                "Group (up to 5 chars, empty = general)"
-#define TR_F_BULLETIN_MSG                                  "Message (max 67 chars)"
-#define TR_F_BULLETIN_EXPIRE                               "Expire (hours, 0 = never)"
-#define TR_F_OBJITEMS                                      "Objects and Items"
-#define TR_F_OBJITEM_FMT                                   "Object/Item %d"
-#define TR_F_OBJITEM_TX_CONTROL                            "Transmission Control"
-#define TR_F_OBJITEM_IDENTITY                              "Identity & State"
-#define TR_F_OBJITEM_POS_SYMBOL                            "Position & Symbol"
-#define TR_F_OBJITEM_AREA_SECTION                          "Area Object"
-#define TR_F_OBJITEM_SIGNPOST_SECTION                      "Signpost"
-#define TR_F_OBJITEM_REPEATER_SECTION                      "Repeater Radio Parameters"
-#define TR_F_OBJITEM_TIMING_SECTION                        "Beacon Timing"
-#define TR_F_OBJITEM_TYPE                                  "Type"
-#define TR_F_OBJITEM_TYPE_OBJECT                           "Object (timestamped)"
-#define TR_F_OBJITEM_TYPE_ITEM                             "Item (non-timestamped)"
-#define TR_F_OBJITEM_PERMANENT                             "Permanent (Object only, 111111z)"
+/** Form label for the "server host" field or fieldset, rendered on the configuration forms. */
+#define TR_F_SERVER_HOST "Server Host"
+/** Form label for the "server port" field or fieldset, rendered on the configuration forms. */
+#define TR_F_SERVER_PORT "Server Port"
+/** Form label for the "ssid" field or fieldset, rendered on the configuration forms. */
+#define TR_F_SSID "SSID"
+/** Form label for the "station" field or fieldset, rendered on the configuration forms. */
+#define TR_F_STATION "Station"
+/** Form label for the "bulletins" field or fieldset, rendered on the configuration forms. */
+#define TR_F_BULLETINS "Bulletins"
+/** Form label for the "bulletin fmt" field or fieldset, rendered on the configuration forms. */
+#define TR_F_BULLETIN_FMT "Bulletin %d"
+/** Form label for the "bulletin id" field or fieldset, rendered on the configuration forms. */
+#define TR_F_BULLETIN_ID "Identifier (0-9 bulletin, A-Z announcement)"
+/** Form label for the "bulletin group" field or fieldset, rendered on the configuration forms. */
+#define TR_F_BULLETIN_GROUP "Group (up to 5 chars, empty = general)"
+/** Form label for the "bulletin msg" field or fieldset, rendered on the configuration forms. */
+#define TR_F_BULLETIN_MSG "Message (max 67 chars)"
+/** Form label for the "bulletin expire" field or fieldset, rendered on the configuration forms. */
+#define TR_F_BULLETIN_EXPIRE "Expire (hours, 0 = never)"
+/** Form label for the "objitems" field or fieldset, rendered on the configuration forms. */
+#define TR_F_OBJITEMS "Objects and Items"
+/** Form label for the "objitem fmt" field or fieldset, rendered on the configuration forms. */
+#define TR_F_OBJITEM_FMT "Object/Item %d"
+/** Form label for the "objitem tx control" field or fieldset, rendered on the configuration forms. */
+#define TR_F_OBJITEM_TX_CONTROL "Transmission Control"
+/** Form label for the "objitem identity" field or fieldset, rendered on the configuration forms. */
+#define TR_F_OBJITEM_IDENTITY "Identity & State"
+/** Form label for the "objitem pos symbol" field or fieldset, rendered on the configuration forms. */
+#define TR_F_OBJITEM_POS_SYMBOL "Position & Symbol"
+/** Form label for the "objitem area section" field or fieldset, rendered on the configuration forms. */
+#define TR_F_OBJITEM_AREA_SECTION "Area Object"
+/** Form label for the "objitem signpost section" field or fieldset, rendered on the configuration forms. */
+#define TR_F_OBJITEM_SIGNPOST_SECTION "Signpost"
+/** Form label for the "objitem repeater section" field or fieldset, rendered on the configuration forms. */
+#define TR_F_OBJITEM_REPEATER_SECTION "Repeater Radio Parameters"
+/** Form label for the "objitem timing section" field or fieldset, rendered on the configuration forms. */
+#define TR_F_OBJITEM_TIMING_SECTION "Beacon Timing"
+/** Form label for the "objitem type" field or fieldset, rendered on the configuration forms. */
+#define TR_F_OBJITEM_TYPE "Type"
+/** Form label for the "objitem type object" field or fieldset, rendered on the configuration forms. */
+#define TR_F_OBJITEM_TYPE_OBJECT "Object (timestamped)"
+/** Form label for the "objitem type item" field or fieldset, rendered on the configuration forms. */
+#define TR_F_OBJITEM_TYPE_ITEM "Item (non-timestamped)"
+/** Form label for the "objitem permanent" field or fieldset, rendered on the configuration forms. */
+#define TR_F_OBJITEM_PERMANENT "Permanent (Object only, 111111z)"
+/** Form label for the "objitem permanent note" field or fieldset, rendered on the configuration forms. */
 #define TR_F_OBJITEM_PERMANENT_NOTE                                                                                                                            \
     "A permanent Object is sent with the fixed 111111z timestamp instead of the live time, so it is never replaced by anyone else's similarly named "          \
     "Object - only the originating station may update or move it. Has no effect on an Item."
-#define TR_F_OBJITEM_ACTIVE         "Active (uncheck = kill)"
-#define TR_F_OBJITEM_SCOPE          "Scope"
-#define TR_F_OBJITEM_SCOPE_PRIVATE  "Private (not transmitted)"
-#define TR_F_OBJITEM_SCOPE_LOCAL    "Local (RF only)"
-#define TR_F_OBJITEM_SCOPE_GLOBAL   "Global (RF + Internet)"
-#define TR_F_OBJITEM_SYMBOL         "Symbol / overlay"
-#define TR_F_OBJITEM_COURSE         "Course (deg, 0-359)"
-#define TR_F_OBJITEM_SPEED          "Speed (knots, 0 = omit)"
-#define TR_F_OBJITEM_AREA_SHAPE     "Area shape (\\l symbol)"
-#define TR_F_OBJITEM_SHAPE_CIRCLE   "Circle"
-#define TR_F_OBJITEM_SHAPE_LINE     "Line"
-#define TR_F_OBJITEM_SHAPE_ELLIPSE  "Ellipse"
+/** Form label for the "objitem active" field or fieldset, rendered on the configuration forms. */
+#define TR_F_OBJITEM_ACTIVE "Active (uncheck = kill)"
+/** Form label for the "objitem scope" field or fieldset, rendered on the configuration forms. */
+#define TR_F_OBJITEM_SCOPE "Scope"
+/** Form label for the "objitem scope private" field or fieldset, rendered on the configuration forms. */
+#define TR_F_OBJITEM_SCOPE_PRIVATE "Private (not transmitted)"
+/** Form label for the "objitem scope local" field or fieldset, rendered on the configuration forms. */
+#define TR_F_OBJITEM_SCOPE_LOCAL "Local (RF only)"
+/** Form label for the "objitem scope global" field or fieldset, rendered on the configuration forms. */
+#define TR_F_OBJITEM_SCOPE_GLOBAL "Global (RF + Internet)"
+/** Form label for the "objitem symbol" field or fieldset, rendered on the configuration forms. */
+#define TR_F_OBJITEM_SYMBOL "Symbol / overlay"
+/** Form label for the "objitem course" field or fieldset, rendered on the configuration forms. */
+#define TR_F_OBJITEM_COURSE "Course (deg, 0-359)"
+/** Form label for the "objitem speed" field or fieldset, rendered on the configuration forms. */
+#define TR_F_OBJITEM_SPEED "Speed (knots, 0 = omit)"
+/** Form label for the "objitem area shape" field or fieldset, rendered on the configuration forms. */
+#define TR_F_OBJITEM_AREA_SHAPE "Area shape (\\l symbol)"
+/** Form label for the "objitem shape circle" field or fieldset, rendered on the configuration forms. */
+#define TR_F_OBJITEM_SHAPE_CIRCLE "Circle"
+/** Form label for the "objitem shape line" field or fieldset, rendered on the configuration forms. */
+#define TR_F_OBJITEM_SHAPE_LINE "Line"
+/** Form label for the "objitem shape ellipse" field or fieldset, rendered on the configuration forms. */
+#define TR_F_OBJITEM_SHAPE_ELLIPSE "Ellipse"
+/** Form label for the "objitem shape triangle" field or fieldset, rendered on the configuration forms. */
 #define TR_F_OBJITEM_SHAPE_TRIANGLE "Triangle"
-#define TR_F_OBJITEM_SHAPE_BOX      "Box"
-#define TR_F_OBJITEM_SHAPE_FILLED   " (filled)"
-#define TR_F_OBJITEM_AREA_COLOR     "Area color (0-15)"
-#define TR_F_OBJITEM_AREA_LAT_OFF   "Area latitude offset (deg)"
-#define TR_F_OBJITEM_AREA_LON_OFF   "Area longitude offset (deg)"
-#define TR_F_OBJITEM_SIGNPOST       "Signpost text (\\m symbol, 3 chars)"
-#define TR_F_OBJITEM_FREQ           "Monitor frequency (MHz, 0 = none)"
-#define TR_F_OBJITEM_DUPLEX         "Duplex direction"
+/** Form label for the "objitem shape box" field or fieldset, rendered on the configuration forms. */
+#define TR_F_OBJITEM_SHAPE_BOX "Box"
+/** Form label for the "objitem shape filled" field or fieldset, rendered on the configuration forms. */
+#define TR_F_OBJITEM_SHAPE_FILLED " (filled)"
+/** Form label for the "objitem area color" field or fieldset, rendered on the configuration forms. */
+#define TR_F_OBJITEM_AREA_COLOR "Area color (0-15)"
+/** Form label for the "objitem area lat off" field or fieldset, rendered on the configuration forms. */
+#define TR_F_OBJITEM_AREA_LAT_OFF "Area latitude offset (deg)"
+/** Form label for the "objitem area lon off" field or fieldset, rendered on the configuration forms. */
+#define TR_F_OBJITEM_AREA_LON_OFF "Area longitude offset (deg)"
+/** Form label for the "objitem signpost" field or fieldset, rendered on the configuration forms. */
+#define TR_F_OBJITEM_SIGNPOST "Signpost text (\\m symbol, 3 chars)"
+/** Form label for the "objitem freq" field or fieldset, rendered on the configuration forms. */
+#define TR_F_OBJITEM_FREQ "Monitor frequency (MHz, 0 = none)"
+/** Form label for the "objitem duplex" field or fieldset, rendered on the configuration forms. */
+#define TR_F_OBJITEM_DUPLEX "Duplex direction"
+/** Form label for the "objitem duplex simplex" field or fieldset, rendered on the configuration forms. */
 #define TR_F_OBJITEM_DUPLEX_SIMPLEX "Simplex"
-#define TR_F_OBJITEM_DUPLEX_PLUS    "Plus (+)"
-#define TR_F_OBJITEM_DUPLEX_MINUS   "Minus (-)"
-#define TR_F_OBJITEM_OFFSET         "Duplex offset (kHz)"
-#define TR_F_OBJITEM_TONE           "Subaudible tone CTCSS (Hz, 0 = none)"
-#define TR_F_OBJITEM_PATH_FMT       "Path %d"
-#define TR_F_OBJITEM_QRU            "QRU group membership"
-#define TR_F_OBJITEM_QRU_NONE       "(none)"
-#define TR_F_QRU_AMBU               "ambulance"
-#define TR_F_QRU_CLUB               "ham radio club"
-#define TR_F_QRU_ECHO               "Echolink"
-#define TR_F_QRU_FIRE               "fire station"
-#define TR_F_QRU_FOOD               "restaurants"
-#define TR_F_QRU_FUEL               "gas/petrol stations"
-#define TR_F_QRU_HOSP               "hospitals"
-#define TR_F_QRU_LIFEBOAT           "lifeboats"
-#define TR_F_QRU_LTHS               "lighthouses"
-#define TR_F_QRU_POLI               "police stations"
-#define TR_F_QRU_POST               "post offices"
-#define TR_F_QRU_RD13               "D-Star 13cm repeaters"
-#define TR_F_QRU_RD23               "D-Star 23cm repeaters"
-#define TR_F_QRU_RD2M               "D-Star 2m repeaters"
-#define TR_F_QRU_RD3C               "D-Star 3cm repeaters"
-#define TR_F_QRU_RD70               "D-Star 70cm repeaters"
-#define TR_F_QRU_RP10               "analog 10m repeaters"
-#define TR_F_QRU_RP13               "analog 13cm repeaters"
-#define TR_F_QRU_RP23               "analog 23cm repeaters"
-#define TR_F_QRU_RP2M               "analog 2m repeaters"
-#define TR_F_QRU_RP3C               "analog 3cm repeaters"
-#define TR_F_QRU_RP6M               "analog 6m repeaters"
-#define TR_F_QRU_RP70               "analog 70cm repeaters"
-#define TR_F_QRU_RT13               "television 13cm repeaters"
-#define TR_F_QRU_RT23               "television 23cm repeaters"
-#define TR_F_QRU_RT3C               "television 3cm repeaters"
-#define TR_F_QRU_SRAIL              "steam railroad"
-#define TR_F_QRU_STOR               "Amateur Radio stores"
-#define TR_F_QRU_T2SRV              "approx. locations of Tier 2 APRS-IS servers"
-#define TR_F_QRU_VETE               "veterinarians"
-#define TR_F_QRU_WOTA               "Wainwrights On The Air"
-#define TR_F_OBJITEM_INIT_RATE      "Initial repeat rate (s)"
-#define TR_F_OBJITEM_SLOW_RATE      "Slow repeat rate (s, 0 = no decay)"
-#define TR_F_OBJITEM_DECAY          "Decay ratio (e.g. 2.0, <1 = none)"
+/** Form label for the "objitem duplex plus" field or fieldset, rendered on the configuration forms. */
+#define TR_F_OBJITEM_DUPLEX_PLUS "Plus (+)"
+/** Form label for the "objitem duplex minus" field or fieldset, rendered on the configuration forms. */
+#define TR_F_OBJITEM_DUPLEX_MINUS "Minus (-)"
+/** Form label for the "objitem offset" field or fieldset, rendered on the configuration forms. */
+#define TR_F_OBJITEM_OFFSET "Duplex offset (kHz)"
+/** Form label for the "objitem tone" field or fieldset, rendered on the configuration forms. */
+#define TR_F_OBJITEM_TONE "Subaudible tone CTCSS (Hz, 0 = none)"
+/** Form label for the "objitem path fmt" field or fieldset, rendered on the configuration forms. */
+#define TR_F_OBJITEM_PATH_FMT "Path %d"
+/** Form label for the "objitem qru" field or fieldset, rendered on the configuration forms. */
+#define TR_F_OBJITEM_QRU "QRU group membership"
+/** Form label for the "objitem qru none" field or fieldset, rendered on the configuration forms. */
+#define TR_F_OBJITEM_QRU_NONE "(none)"
+/** Form label for the "qru ambu" field or fieldset, rendered on the configuration forms. */
+#define TR_F_QRU_AMBU "ambulance"
+/** Form label for the "qru club" field or fieldset, rendered on the configuration forms. */
+#define TR_F_QRU_CLUB "ham radio club"
+/** Form label for the "qru echo" field or fieldset, rendered on the configuration forms. */
+#define TR_F_QRU_ECHO "Echolink"
+/** Form label for the "qru fire" field or fieldset, rendered on the configuration forms. */
+#define TR_F_QRU_FIRE "fire station"
+/** Form label for the "qru food" field or fieldset, rendered on the configuration forms. */
+#define TR_F_QRU_FOOD "restaurants"
+/** Form label for the "qru fuel" field or fieldset, rendered on the configuration forms. */
+#define TR_F_QRU_FUEL "gas/petrol stations"
+/** Form label for the "qru hosp" field or fieldset, rendered on the configuration forms. */
+#define TR_F_QRU_HOSP "hospitals"
+/** Form label for the "qru lifeboat" field or fieldset, rendered on the configuration forms. */
+#define TR_F_QRU_LIFEBOAT "lifeboats"
+/** Form label for the "qru lths" field or fieldset, rendered on the configuration forms. */
+#define TR_F_QRU_LTHS "lighthouses"
+/** Form label for the "qru poli" field or fieldset, rendered on the configuration forms. */
+#define TR_F_QRU_POLI "police stations"
+/** Form label for the "qru post" field or fieldset, rendered on the configuration forms. */
+#define TR_F_QRU_POST "post offices"
+/** Form label for the "qru rd13" field or fieldset, rendered on the configuration forms. */
+#define TR_F_QRU_RD13 "D-Star 13cm repeaters"
+/** Form label for the "qru rd23" field or fieldset, rendered on the configuration forms. */
+#define TR_F_QRU_RD23 "D-Star 23cm repeaters"
+/** Form label for the "qru rd2m" field or fieldset, rendered on the configuration forms. */
+#define TR_F_QRU_RD2M "D-Star 2m repeaters"
+/** Form label for the "qru rd3c" field or fieldset, rendered on the configuration forms. */
+#define TR_F_QRU_RD3C "D-Star 3cm repeaters"
+/** Form label for the "qru rd70" field or fieldset, rendered on the configuration forms. */
+#define TR_F_QRU_RD70 "D-Star 70cm repeaters"
+/** Form label for the "qru rp10" field or fieldset, rendered on the configuration forms. */
+#define TR_F_QRU_RP10 "analog 10m repeaters"
+/** Form label for the "qru rp13" field or fieldset, rendered on the configuration forms. */
+#define TR_F_QRU_RP13 "analog 13cm repeaters"
+/** Form label for the "qru rp23" field or fieldset, rendered on the configuration forms. */
+#define TR_F_QRU_RP23 "analog 23cm repeaters"
+/** Form label for the "qru rp2m" field or fieldset, rendered on the configuration forms. */
+#define TR_F_QRU_RP2M "analog 2m repeaters"
+/** Form label for the "qru rp3c" field or fieldset, rendered on the configuration forms. */
+#define TR_F_QRU_RP3C "analog 3cm repeaters"
+/** Form label for the "qru rp6m" field or fieldset, rendered on the configuration forms. */
+#define TR_F_QRU_RP6M "analog 6m repeaters"
+/** Form label for the "qru rp70" field or fieldset, rendered on the configuration forms. */
+#define TR_F_QRU_RP70 "analog 70cm repeaters"
+/** Form label for the "qru rt13" field or fieldset, rendered on the configuration forms. */
+#define TR_F_QRU_RT13 "television 13cm repeaters"
+/** Form label for the "qru rt23" field or fieldset, rendered on the configuration forms. */
+#define TR_F_QRU_RT23 "television 23cm repeaters"
+/** Form label for the "qru rt3c" field or fieldset, rendered on the configuration forms. */
+#define TR_F_QRU_RT3C "television 3cm repeaters"
+/** Form label for the "qru srail" field or fieldset, rendered on the configuration forms. */
+#define TR_F_QRU_SRAIL "steam railroad"
+/** Form label for the "qru stor" field or fieldset, rendered on the configuration forms. */
+#define TR_F_QRU_STOR "Amateur Radio stores"
+/** Form label for the "qru t2srv" field or fieldset, rendered on the configuration forms. */
+#define TR_F_QRU_T2SRV "approx. locations of Tier 2 APRS-IS servers"
+/** Form label for the "qru vete" field or fieldset, rendered on the configuration forms. */
+#define TR_F_QRU_VETE "veterinarians"
+/** Form label for the "qru wota" field or fieldset, rendered on the configuration forms. */
+#define TR_F_QRU_WOTA "Wainwrights On The Air"
+/** Form label for the "objitem init rate" field or fieldset, rendered on the configuration forms. */
+#define TR_F_OBJITEM_INIT_RATE "Initial repeat rate (s)"
+/** Form label for the "objitem slow rate" field or fieldset, rendered on the configuration forms. */
+#define TR_F_OBJITEM_SLOW_RATE "Slow repeat rate (s, 0 = no decay)"
+/** Form label for the "objitem decay" field or fieldset, rendered on the configuration forms. */
+#define TR_F_OBJITEM_DECAY "Decay ratio (e.g. 2.0, <1 = none)"
+/** Explanatory note shown beside the objitem setting, rendered on the configuration forms. */
 #define TR_NOTE_OBJITEM                                                                                                                                        \
     "Objects are timestamped (;NAME); Items are never timestamped ()NAME). Unchecking Active sends kill reports, then auto-disables. Scope limits "            \
     "transmission regardless of the RF/Internet checks."
-#define TR_F_STATUS_BEACON           "Status Beacon"
+/** Form label for the "status beacon" field or fieldset, rendered on the configuration forms. */
+#define TR_F_STATUS_BEACON "Status Beacon"
+/** Form label for the "status interval s 0 off" field or fieldset, rendered on the configuration forms. */
 #define TR_F_STATUS_INTERVAL_S_0_OFF "Status interval (s, 0=off)"
-#define TR_F_STATUS_TEXT             "Status text"
-#define TR_F_SYSTEM                  "System"
-#define TR_F_TELEMETRY               "Telemetry"
-#define TR_F_BEACON                  "Beacon"
-#define TR_F_TRACKER                 "Tracker"
-#define TR_F_TX_TIME_SLOT_MS         "TX time-slot (ms)"
-#define TR_F_UPLOAD                  "Upload"
-#define TR_F_USERNAME                "Username"
-#define TR_F_WEATHER                 "Weather"
-#define TR_F_WEATHER_STATION         "Weather Station"
-#define TR_F_WIRELESS                "Wireless"
+/** Form label for the "status text" field or fieldset, rendered on the configuration forms. */
+#define TR_F_STATUS_TEXT "Status text"
+/** Form label for the "system" field or fieldset, rendered on the configuration forms. */
+#define TR_F_SYSTEM "System"
+/** Form label for the "telemetry" field or fieldset, rendered on the configuration forms. */
+#define TR_F_TELEMETRY "Telemetry"
+/** Form label for the "beacon" field or fieldset, rendered on the configuration forms. */
+#define TR_F_BEACON "Beacon"
+/** Form label for the "tracker" field or fieldset, rendered on the configuration forms. */
+#define TR_F_TRACKER "Tracker"
+/** Form label for the "tx time slot ms" field or fieldset, rendered on the configuration forms. */
+#define TR_F_TX_TIME_SLOT_MS "TX time-slot (ms)"
+/** Form label for the "upload" field or fieldset, rendered on the configuration forms. */
+#define TR_F_UPLOAD "Upload"
+/** Form label for the "username" field or fieldset, rendered on the configuration forms. */
+#define TR_F_USERNAME "Username"
+/** Form label for the "weather" field or fieldset, rendered on the configuration forms. */
+#define TR_F_WEATHER "Weather"
+/** Form label for the "weather station" field or fieldset, rendered on the configuration forms. */
+#define TR_F_WEATHER_STATION "Weather Station"
+/** Form label for the "wireless" field or fieldset, rendered on the configuration forms. */
+#define TR_F_WIRELESS "Wireless"
 
+/** Form label for the "off" field or fieldset, rendered on the configuration forms. */
 #define TR_F_OFF "Off"
 
 /** @} */
@@ -310,34 +546,62 @@
  * @name page_common.c: dashboard / sysinfo
  * @{
  */
-#define TR_ENABLED               "enabled"
-#define TR_DASH_DIGI_SHORT       "Digi"
-#define TR_DASH_WX_SHORT         "WX:"
-#define TR_DASH_DATETIME         "Date/Time:"
-#define TR_DASH_UPTIME           "Uptime:"
-#define TR_DASH_FREE_HEAP        "Free heap:"
-#define TR_DASH_LITTLEFS         "LittleFS:"
-#define TR_DASH_SYSINFO          "System Info"
-#define TR_DASH_IGATE_TRAFFIC    "IGate Traffic"
-#define TR_TRAFFIC_PAUSE         "Pause"
-#define TR_TRAFFIC_RESUME        "Resume"
-#define TR_TRAFFIC_CLEAR         "Clear"
-#define TR_TRAFFIC_WAITING       "Waiting for traffic..."
-#define TR_TRAFFIC_COL_TIME      "TIME"
-#define TR_TRAFFIC_COL_TYPE      "TYPE"
-#define TR_TRAFFIC_COL_DX        "DX"
-#define TR_TRAFFIC_COL_PACKET    "PACKET"
-#define TR_TRAFFIC_COL_AUDIO     "AUDIO"
-#define TR_SYSINFO_CHIP          "Chip"
-#define TR_SYSINFO_MODEL         "Model:"
-#define TR_SYSINFO_CORES         "Cores:"
-#define TR_SYSINFO_REVISION      "Revision:"
-#define TR_SYSINFO_CPU_FREQ      "CPU speed:"
-#define TR_SYSINFO_CPU_FREQ_SET  "Set CPU frequency"
+/** Interface string labelling enabled, rendered on the dashboard. */
+#define TR_ENABLED "enabled"
+/** Dashboard label or value for digi short, rendered on the dashboard. */
+#define TR_DASH_DIGI_SHORT "Digi"
+/** Dashboard label or value for wx short, rendered on the dashboard. */
+#define TR_DASH_WX_SHORT "WX:"
+/** Dashboard label or value for datetime, rendered on the dashboard. */
+#define TR_DASH_DATETIME "Date/Time:"
+/** Dashboard label or value for uptime, rendered on the dashboard. */
+#define TR_DASH_UPTIME "Uptime:"
+/** Dashboard label or value for free heap, rendered on the dashboard. */
+#define TR_DASH_FREE_HEAP "Free heap:"
+/** Dashboard label or value for littlefs, rendered on the dashboard. */
+#define TR_DASH_LITTLEFS "LittleFS:"
+/** Dashboard label or value for sysinfo, rendered on the dashboard. */
+#define TR_DASH_SYSINFO "System Info"
+/** Dashboard label or value for igate traffic, rendered on the dashboard. */
+#define TR_DASH_IGATE_TRAFFIC "IGate Traffic"
+/** Traffic-log column heading or label for pause, rendered on the dashboard. */
+#define TR_TRAFFIC_PAUSE "Pause"
+/** Traffic-log column heading or label for resume, rendered on the dashboard. */
+#define TR_TRAFFIC_RESUME "Resume"
+/** Traffic-log column heading or label for clear, rendered on the dashboard. */
+#define TR_TRAFFIC_CLEAR "Clear"
+/** Traffic-log column heading or label for waiting, rendered on the dashboard. */
+#define TR_TRAFFIC_WAITING "Waiting for traffic..."
+/** Traffic-log column heading or label for col time, rendered on the dashboard. */
+#define TR_TRAFFIC_COL_TIME "TIME"
+/** Traffic-log column heading or label for col type, rendered on the dashboard. */
+#define TR_TRAFFIC_COL_TYPE "TYPE"
+/** Traffic-log column heading or label for col dx, rendered on the dashboard. */
+#define TR_TRAFFIC_COL_DX "DX"
+/** Traffic-log column heading or label for col packet, rendered on the dashboard. */
+#define TR_TRAFFIC_COL_PACKET "PACKET"
+/** Traffic-log column heading or label for col audio, rendered on the dashboard. */
+#define TR_TRAFFIC_COL_AUDIO "AUDIO"
+/** System-information row label for chip, rendered on the dashboard. */
+#define TR_SYSINFO_CHIP "Chip"
+/** System-information row label for model, rendered on the dashboard. */
+#define TR_SYSINFO_MODEL "Model:"
+/** System-information row label for cores, rendered on the dashboard. */
+#define TR_SYSINFO_CORES "Cores:"
+/** System-information row label for revision, rendered on the dashboard. */
+#define TR_SYSINFO_REVISION "Revision:"
+/** System-information row label for cpu freq, rendered on the dashboard. */
+#define TR_SYSINFO_CPU_FREQ "CPU speed:"
+/** System-information row label for cpu freq set, rendered on the dashboard. */
+#define TR_SYSINFO_CPU_FREQ_SET "Set CPU frequency"
+/** System-information row label for cpu freq note, rendered on the dashboard. */
 #define TR_SYSINFO_CPU_FREQ_NOTE "Saved to flash and re-applied automatically on every boot."
-#define TR_SYSINFO_FLASH_SIZE    "Flash size:"
+/** System-information row label for flash size, rendered on the dashboard. */
+#define TR_SYSINFO_FLASH_SIZE "Flash size:"
+/** System-information row label for min free heap, rendered on the dashboard. */
 #define TR_SYSINFO_MIN_FREE_HEAP "Min free heap:"
-#define TR_DASH_REBOOT_REASON    "Reboot Reason:"
+/** Dashboard label or value for reboot reason, rendered on the dashboard. */
+#define TR_DASH_REBOOT_REASON "Reboot Reason:"
 
 /** @} */
 
@@ -345,33 +609,60 @@
  * @name page_common.c
  * @{
  */
-#define TR_DASH_RADIO_INFO     "Radio Info"
-#define TR_DASH_MODEM          "MODEM"
-#define TR_DASH_FX25           "FX.25"
+/** Dashboard label or value for radio info, rendered on the dashboard. */
+#define TR_DASH_RADIO_INFO "Radio Info"
+/** Dashboard label or value for modem, rendered on the dashboard. */
+#define TR_DASH_MODEM "MODEM"
+/** Dashboard label or value for fx25, rendered on the dashboard. */
+#define TR_DASH_FX25 "FX.25"
+/** Dashboard label or value for aprs is server, rendered on the dashboard. */
 #define TR_DASH_APRS_IS_SERVER "APRS-IS SERVER"
-#define TR_DASH_HOST           "HOST"
-#define TR_DASH_PORT           "PORT"
-#define TR_DASH_WIFI           "WiFi"
-#define TR_DASH_MODE           "MODE"
-#define TR_DASH_SSID           "SSID"
-#define TR_DASH_RSSI           "RSSI"
-#define TR_DASH_DISCONNECTED   "Disconnect"
-#define TR_DASH_MODES_ENABLED  "Modes Enabled"
+/** Dashboard label or value for host, rendered on the dashboard. */
+#define TR_DASH_HOST "HOST"
+/** Dashboard label or value for port, rendered on the dashboard. */
+#define TR_DASH_PORT "PORT"
+/** Dashboard label or value for wifi, rendered on the dashboard. */
+#define TR_DASH_WIFI "WiFi"
+/** Dashboard label or value for mode, rendered on the dashboard. */
+#define TR_DASH_MODE "MODE"
+/** Dashboard label or value for ssid, rendered on the dashboard. */
+#define TR_DASH_SSID "SSID"
+/** Dashboard label or value for rssi, rendered on the dashboard. */
+#define TR_DASH_RSSI "RSSI"
+/** Dashboard label or value for disconnected, rendered on the dashboard. */
+#define TR_DASH_DISCONNECTED "Disconnect"
+/** Dashboard label or value for modes enabled, rendered on the dashboard. */
+#define TR_DASH_MODES_ENABLED "Modes Enabled"
+/** Dashboard label or value for network status, rendered on the dashboard. */
 #define TR_DASH_NETWORK_STATUS "Network Status"
-#define TR_DASH_STATISTICS     "STATISTICS"
-#define TR_DASH_RADIO_RX       "RADIO RX:"
-#define TR_DASH_PACKET_TX      "RADIO TX:"
-#define TR_DASH_RF2INET        "RF2INET:"
-#define TR_DASH_INET2RF        "INET2RF:"
-#define TR_DASH_IGATE_RX       "IGATE RX:"
-#define TR_DASH_IGATE_TX       "IGATE TX:"
-#define TR_DASH_DIGI_STAT      "DIGI:"
-#define TR_DASH_DROP_ERR       "DROP/ERR:"
+/** Dashboard label or value for statistics, rendered on the dashboard. */
+#define TR_DASH_STATISTICS "STATISTICS"
+/** Dashboard label or value for radio rx, rendered on the dashboard. */
+#define TR_DASH_RADIO_RX "RADIO RX:"
+/** Dashboard label or value for packet tx, rendered on the dashboard. */
+#define TR_DASH_PACKET_TX "RADIO TX:"
+/** Dashboard label or value for rf2inet, rendered on the dashboard. */
+#define TR_DASH_RF2INET "RF2INET:"
+/** Dashboard label or value for inet2rf, rendered on the dashboard. */
+#define TR_DASH_INET2RF "INET2RF:"
+/** Dashboard label or value for igate rx, rendered on the dashboard. */
+#define TR_DASH_IGATE_RX "IGATE RX:"
+/** Dashboard label or value for igate tx, rendered on the dashboard. */
+#define TR_DASH_IGATE_TX "IGATE TX:"
+/** Dashboard label or value for digi stat, rendered on the dashboard. */
+#define TR_DASH_DIGI_STAT "DIGI:"
+/** Dashboard label or value for drop err, rendered on the dashboard. */
+#define TR_DASH_DROP_ERR "DROP/ERR:"
+/** Dashboard label or value for drop breakdown, rendered on the dashboard. */
 #define TR_DASH_DROP_BREAKDOWN "Drop Breakdown"
-#define TR_DASH_TX_QUEUE       "RF TX QUEUE:"
-#define TR_DASH_CSMA_FORCED    "CSMA FORCED (BUSY/PERSIST):"
-#define TR_DASH_TX_DUTY_CYCLE  "TX DUTY CYCLE:"
-#define TR_DASH_LH_ICON        "ICON"
+/** Dashboard label or value for tx queue, rendered on the dashboard. */
+#define TR_DASH_TX_QUEUE "RF TX QUEUE:"
+/** Dashboard label or value for csma forced, rendered on the dashboard. */
+#define TR_DASH_CSMA_FORCED "CSMA FORCED (BUSY/PERSIST):"
+/** Dashboard label or value for tx duty cycle, rendered on the dashboard. */
+#define TR_DASH_TX_DUTY_CYCLE "TX DUTY CYCLE:"
+/** Dashboard label or value for lh icon, rendered on the dashboard. */
+#define TR_DASH_LH_ICON "ICON"
 
 /** @} */
 
@@ -379,12 +670,15 @@
  * @name page_digi.c / page_igate.c / page_tracker.c telemetry notes
  * @{
  */
+/** Explanatory note shown beside the tlm digi setting, rendered on the Digipeater, IGate and Tracker pages. */
 #define TR_NOTE_TLM_DIGI                                                                                                                                       \
     "Telemetry (EQNS/PARM/UNIT) for Digi beacons is configured on the "                                                                                        \
     "<a href='/tlm'>Telemetry</a> page."
+/** Explanatory note shown beside the tlm igate setting, rendered on the Digipeater, IGate and Tracker pages. */
 #define TR_NOTE_TLM_IGATE                                                                                                                                      \
     "Telemetry (EQNS/PARM/UNIT) for IGate beacons is configured on the "                                                                                       \
     "<a href='/tlm'>Telemetry</a> page."
+/** Explanatory note shown beside the tlm tracker setting, rendered on the Digipeater, IGate and Tracker pages. */
 #define TR_NOTE_TLM_TRACKER                                                                                                                                    \
     "Telemetry (EQNS/PARM/UNIT) for Tracker beacons is configured on the "                                                                                     \
     "<a href='/tlm'>Telemetry</a> page."
@@ -395,22 +689,38 @@
  * @name page_msgchat.c ("Snd/Rcv Msg")
  * @{
  */
-#define TR_F_SND_RCV_MSG            "Snd/Rcv Msg"
-#define TR_MSGCHAT_MY_STATION       "My Station:"
-#define TR_MSGCHAT_DISABLED_NOTE    "APRS Messaging is disabled or no station callsign is configured. Enable it and set a callsign on the Message page first."
-#define TR_MSGCHAT_LOADING          "Loading messages..."
-#define TR_MSGCHAT_EMPTY            "No messages yet."
-#define TR_MSGCHAT_TO               "To (callsign):"
-#define TR_MSGCHAT_TO_PLACEHOLDER   "N0CALL-9"
-#define TR_MSGCHAT_TEXT             "Message:"
+/** Form label for the "snd rcv msg" field or fieldset, rendered on the Send/Receive Message page. */
+#define TR_F_SND_RCV_MSG "Snd/Rcv Msg"
+/** Message page label for my station, rendered on the Send/Receive Message page. */
+#define TR_MSGCHAT_MY_STATION "My Station:"
+/** Message page label for disabled note, rendered on the Send/Receive Message page. */
+#define TR_MSGCHAT_DISABLED_NOTE "APRS Messaging is disabled or no station callsign is configured. Enable it and set a callsign on the Message page first."
+/** Message page label for loading, rendered on the Send/Receive Message page. */
+#define TR_MSGCHAT_LOADING "Loading messages..."
+/** Message page label for empty, rendered on the Send/Receive Message page. */
+#define TR_MSGCHAT_EMPTY "No messages yet."
+/** Message page label for to, rendered on the Send/Receive Message page. */
+#define TR_MSGCHAT_TO "To (callsign):"
+/** Message page label for to placeholder, rendered on the Send/Receive Message page. */
+#define TR_MSGCHAT_TO_PLACEHOLDER "N0CALL-9"
+/** Message page label for text, rendered on the Send/Receive Message page. */
+#define TR_MSGCHAT_TEXT "Message:"
+/** Message page label for text placeholder, rendered on the Send/Receive Message page. */
 #define TR_MSGCHAT_TEXT_PLACEHOLDER "Type a message..."
-#define TR_MSGCHAT_SEND             "Send"
-#define TR_MSGCHAT_YOU              "You"
-#define TR_MSGCHAT_ERR_EMPTY        "Enter a destination callsign and a message."
-#define TR_MSGCHAT_ERR_DISABLED     "APRS Messaging is disabled on the Message page."
-#define TR_MSGCHAT_ERR_NO_MYCALL    "No station callsign configured."
-#define TR_MSGCHAT_SENT_OK          "Sent."
-#define TR_MSGCHAT_SENT_FAIL        "Send failed."
+/** Message page label for send, rendered on the Send/Receive Message page. */
+#define TR_MSGCHAT_SEND "Send"
+/** Message page label for you, rendered on the Send/Receive Message page. */
+#define TR_MSGCHAT_YOU "You"
+/** Message page label for err empty, rendered on the Send/Receive Message page. */
+#define TR_MSGCHAT_ERR_EMPTY "Enter a destination callsign and a message."
+/** Message page label for err disabled, rendered on the Send/Receive Message page. */
+#define TR_MSGCHAT_ERR_DISABLED "APRS Messaging is disabled on the Message page."
+/** Message page label for err no mycall, rendered on the Send/Receive Message page. */
+#define TR_MSGCHAT_ERR_NO_MYCALL "No station callsign configured."
+/** Message page label for sent ok, rendered on the Send/Receive Message page. */
+#define TR_MSGCHAT_SENT_OK "Sent."
+/** Message page label for sent fail, rendered on the Send/Receive Message page. */
+#define TR_MSGCHAT_SENT_FAIL "Send failed."
 
 /** @} */
 
@@ -425,19 +735,32 @@
  * @name page_storage.c
  * @{
  */
-#define TR_STORAGE_USAGE                 "LittleFS usage:"
-#define TR_STORAGE_UPLOAD_FILE           "Upload file"
-#define TR_STORAGE_CONFIRM_FORMAT        "Erase ALL files and reset config to defaults?"
-#define TR_STORAGE_FORMAT_BTN            "Format LittleFS"
-#define TR_STORAGE_SIZE_BYTES            "Size (bytes)"
-#define TR_STORAGE_ACTIONS               "Actions"
-#define TR_STORAGE_DOWNLOAD              "Download"
+/** File Storage page label for usage, rendered on the File Storage page. */
+#define TR_STORAGE_USAGE "LittleFS usage:"
+/** File Storage page label for upload file, rendered on the File Storage page. */
+#define TR_STORAGE_UPLOAD_FILE "Upload file"
+/** File Storage page label for confirm format, rendered on the File Storage page. */
+#define TR_STORAGE_CONFIRM_FORMAT "Erase ALL files and reset config to defaults?"
+/** File Storage page label for format btn, rendered on the File Storage page. */
+#define TR_STORAGE_FORMAT_BTN "Format LittleFS"
+/** File Storage page label for size bytes, rendered on the File Storage page. */
+#define TR_STORAGE_SIZE_BYTES "Size (bytes)"
+/** File Storage page label for actions, rendered on the File Storage page. */
+#define TR_STORAGE_ACTIONS "Actions"
+/** File Storage page label for download, rendered on the File Storage page. */
+#define TR_STORAGE_DOWNLOAD "Download"
+/** File Storage page label for confirm delete prefix, rendered on the File Storage page. */
 #define TR_STORAGE_CONFIRM_DELETE_PREFIX "Delete "
-#define TR_STORAGE_DELETE                "Delete"
-#define TR_STORAGE_UPLOAD_OK             "Uploaded:"
-#define TR_STORAGE_UPLOAD_FAILED         "Upload failed. Check the file and make sure there is enough free space."
-#define TR_STORAGE_NO_FILE_CHOSEN        "Choose a file first."
-#define TR_STORAGE_BACK                  "Back"
+/** File Storage page label for delete, rendered on the File Storage page. */
+#define TR_STORAGE_DELETE "Delete"
+/** File Storage page label for upload ok, rendered on the File Storage page. */
+#define TR_STORAGE_UPLOAD_OK "Uploaded:"
+/** File Storage page label for upload failed, rendered on the File Storage page. */
+#define TR_STORAGE_UPLOAD_FAILED "Upload failed. Check the file and make sure there is enough free space."
+/** File Storage page label for no file chosen, rendered on the File Storage page. */
+#define TR_STORAGE_NO_FILE_CHOSEN "Choose a file first."
+/** File Storage page label for back, rendered on the File Storage page. */
+#define TR_STORAGE_BACK "Back"
 
 /** @} */
 
@@ -445,32 +768,56 @@
  * @name page_symbol.c
  * @{
  */
-#define TR_SYM_HOUSE_HF        "House (HF)"
-#define TR_SYM_CAR             "Car"
-#define TR_SYM_MOTORCYCLE      "Motorcycle"
-#define TR_SYM_BICYCLE         "Bicycle"
-#define TR_SYM_TRUCK           "Truck"
-#define TR_SYM_VAN             "Van"
-#define TR_SYM_JEEP            "Jeep"
-#define TR_SYM_FIRE_TRUCK      "Fire truck"
-#define TR_SYM_POLICE          "Police"
-#define TR_SYM_HOUSE           "House"
-#define TR_SYM_DIGIPEATER      "Digipeater"
-#define TR_SYM_GATEWAY         "Gateway"
+/** Symbol-picker label for house hf, rendered on the symbol picker. */
+#define TR_SYM_HOUSE_HF "House (HF)"
+/** Symbol-picker label for car, rendered on the symbol picker. */
+#define TR_SYM_CAR "Car"
+/** Symbol-picker label for motorcycle, rendered on the symbol picker. */
+#define TR_SYM_MOTORCYCLE "Motorcycle"
+/** Symbol-picker label for bicycle, rendered on the symbol picker. */
+#define TR_SYM_BICYCLE "Bicycle"
+/** Symbol-picker label for truck, rendered on the symbol picker. */
+#define TR_SYM_TRUCK "Truck"
+/** Symbol-picker label for van, rendered on the symbol picker. */
+#define TR_SYM_VAN "Van"
+/** Symbol-picker label for jeep, rendered on the symbol picker. */
+#define TR_SYM_JEEP "Jeep"
+/** Symbol-picker label for fire truck, rendered on the symbol picker. */
+#define TR_SYM_FIRE_TRUCK "Fire truck"
+/** Symbol-picker label for police, rendered on the symbol picker. */
+#define TR_SYM_POLICE "Police"
+/** Symbol-picker label for house, rendered on the symbol picker. */
+#define TR_SYM_HOUSE "House"
+/** Symbol-picker label for digipeater, rendered on the symbol picker. */
+#define TR_SYM_DIGIPEATER "Digipeater"
+/** Symbol-picker label for gateway, rendered on the symbol picker. */
+#define TR_SYM_GATEWAY "Gateway"
+/** Symbol-picker label for weather station, rendered on the symbol picker. */
 #define TR_SYM_WEATHER_STATION "Weather station"
-#define TR_SYM_BALLOON         "Balloon"
-#define TR_SYM_SPACE_SHUTTLE   "Space shuttle"
-#define TR_SYM_SAILBOAT        "Sailboat"
-#define TR_SYM_NWS_SITE        "NWS site"
-#define TR_SYM_TCP_IP          "TCP/IP"
-#define TR_SYM_CAR_ALT         "Car (alternate table)"
-#define TR_SYM_WX_STATION_ALT  "WX station (alternate table)"
+/** Symbol-picker label for balloon, rendered on the symbol picker. */
+#define TR_SYM_BALLOON "Balloon"
+/** Symbol-picker label for space shuttle, rendered on the symbol picker. */
+#define TR_SYM_SPACE_SHUTTLE "Space shuttle"
+/** Symbol-picker label for sailboat, rendered on the symbol picker. */
+#define TR_SYM_SAILBOAT "Sailboat"
+/** Symbol-picker label for nws site, rendered on the symbol picker. */
+#define TR_SYM_NWS_SITE "NWS site"
+/** Symbol-picker label for tcp ip, rendered on the symbol picker. */
+#define TR_SYM_TCP_IP "TCP/IP"
+/** Symbol-picker label for car alt, rendered on the symbol picker. */
+#define TR_SYM_CAR_ALT "Car (alternate table)"
+/** Symbol-picker label for wx station alt, rendered on the symbol picker. */
+#define TR_SYM_WX_STATION_ALT "WX station (alternate table)"
+/** Symbol-picker label for intro, rendered on the symbol picker. */
 #define TR_SYM_INTRO                                                                                                                                           \
     "Quick reference for common APRS symbol codes. Each service page "                                                                                         \
     "(IGate / Digi / Tracker) has its own free-text symbol field \u2014 copy the "                                                                             \
     "2-character code from here into that field."
-#define TR_SYM_CODE                 "Code"
-#define TR_SYM_MEANING              "Meaning"
+/** Symbol-picker label for code, rendered on the symbol picker. */
+#define TR_SYM_CODE "Code"
+/** Symbol-picker label for meaning, rendered on the symbol picker. */
+#define TR_SYM_MEANING "Meaning"
+/** Symbol-picker label for currently configured, rendered on the symbol picker. */
 #define TR_SYM_CURRENTLY_CONFIGURED "Currently configured symbols"
 
 /** @} */
@@ -479,21 +826,36 @@
  * @name page_system.c
  * @{
  */
-#define TR_SYS_WEB_ADMIN_LOGIN       "Web Admin Login"
-#define TR_SYS_TIME                  "Time"
-#define TR_SYS_SYNC_NTP              "Sync time via NTP"
-#define TR_SYS_NTP_HOST              "NTP host (primary)"
-#define TR_SYS_NTP_HOST2             "NTP host (fallback 2)"
-#define TR_SYS_NTP_HOST3             "NTP host (fallback 3)"
-#define TR_SYS_NTP_RESYNC            "NTP resync interval (s, min 30)"
-#define TR_SYS_TIMEZONE              "Time zone (dashboard display only)"
-#define TR_SYS_DIGI_PATH_ALIASES     "Digipeater Path Aliases"
-#define TR_SYS_PATH_1                "Path 1"
-#define TR_SYS_PATH_2                "Path 2"
-#define TR_SYS_PATH_3                "Path 3"
-#define TR_SYS_PATH_4                "Path 4"
+/** System page label for web admin login, rendered on the System page. */
+#define TR_SYS_WEB_ADMIN_LOGIN "Web Admin Login"
+/** System page label for time, rendered on the System page. */
+#define TR_SYS_TIME "Time"
+/** System page label for sync ntp, rendered on the System page. */
+#define TR_SYS_SYNC_NTP "Sync time via NTP"
+/** System page label for ntp host, rendered on the System page. */
+#define TR_SYS_NTP_HOST "NTP host (primary)"
+/** System page label for ntp host2, rendered on the System page. */
+#define TR_SYS_NTP_HOST2 "NTP host (fallback 2)"
+/** System page label for ntp host3, rendered on the System page. */
+#define TR_SYS_NTP_HOST3 "NTP host (fallback 3)"
+/** System page label for ntp resync, rendered on the System page. */
+#define TR_SYS_NTP_RESYNC "NTP resync interval (s, min 30)"
+/** System page label for timezone, rendered on the System page. */
+#define TR_SYS_TIMEZONE "Time zone (dashboard display only)"
+/** System page label for digi path aliases, rendered on the System page. */
+#define TR_SYS_DIGI_PATH_ALIASES "Digipeater Path Aliases"
+/** System page label for path 1, rendered on the System page. */
+#define TR_SYS_PATH_1 "Path 1"
+/** System page label for path 2, rendered on the System page. */
+#define TR_SYS_PATH_2 "Path 2"
+/** System page label for path 3, rendered on the System page. */
+#define TR_SYS_PATH_3 "Path 3"
+/** System page label for path 4, rendered on the System page. */
+#define TR_SYS_PATH_4 "Path 4"
+/** System page label for confirm factory reset, rendered on the System page. */
 #define TR_SYS_CONFIRM_FACTORY_RESET "Reset ALL settings to factory defaults?"
-#define TR_SYS_FACTORY_RESET         "Factory Reset"
+/** System page label for factory reset, rendered on the System page. */
+#define TR_SYS_FACTORY_RESET "Factory Reset"
 
 /** @} */
 
@@ -501,7 +863,9 @@
  * @name page_tlm.c
  * @{
  */
+/** Telemetry configurator label for avg, rendered on the Telemetry page. */
 #define TR_TLM_AVG "Avg"
+/** Telemetry configurator label for bit, rendered on the Telemetry page. */
 #define TR_TLM_BIT "Bit"
 /** @} */
 
@@ -509,45 +873,84 @@
  * @name page_tlm.c: telemetry configurator
  * @{
  */
-#define TR_TLM_ENABLE_TELEMETRY   "Enable Telemetry"
-#define TR_TLM_REPORT_PARAMS      "Report Parameters"
-#define TR_TLM_PATH_DIGIS         "Path (digipeaters)"
-#define TR_TLM_DESTINATION        "Destination"
-#define TR_TLM_AUTO_INC_SEQ       "Auto-increment sequence"
+/** Telemetry configurator label for enable telemetry, rendered on the Telemetry page. */
+#define TR_TLM_ENABLE_TELEMETRY "Enable Telemetry"
+/** Telemetry configurator label for report params, rendered on the Telemetry page. */
+#define TR_TLM_REPORT_PARAMS "Report Parameters"
+/** Telemetry configurator label for path digis, rendered on the Telemetry page. */
+#define TR_TLM_PATH_DIGIS "Path (digipeaters)"
+/** Telemetry configurator label for destination, rendered on the Telemetry page. */
+#define TR_TLM_DESTINATION "Destination"
+/** Telemetry configurator label for auto inc seq, rendered on the Telemetry page. */
+#define TR_TLM_AUTO_INC_SEQ "Auto-increment sequence"
+/** Telemetry configurator label for analog field width, rendered on the Telemetry page. */
 #define TR_TLM_ANALOG_FIELD_WIDTH "Analog field width"
-#define TR_TLM_FIELDW_3DIGIT      "3-digit zero-padded (000-255, strict)"
-#define TR_TLM_FIELDW_AUTO        "Minimal / as-needed (integers or decimals)"
-#define TR_TLM_OMIT_TRAILING      "Omit unused trailing channels"
-#define TR_TLM_TRAIL_COMMENT      "Trailing comment (optional, after bits)"
-#define TR_TLM_COMMENT_TLM        "Also carry telemetry in position comment (APRS 1.2, |ss..|)"
-#define TR_TLM_ANALOG_COUNT       "Analog channels sent"
-#define TR_TLM_DIGITAL_COUNT      "Digital bits sent"
-#define TR_TLM_DEF_MESSAGES       "Definition Messages"
-#define TR_TLM_GEN_PARM           "PARM - channel & bit names"
-#define TR_TLM_GEN_UNIT           "UNIT - units / bit-state labels"
-#define TR_TLM_GEN_EQNS           "EQNS - scaling coefficients (A,B,C)"
-#define TR_TLM_GEN_BITS           "BITS - bit sense + name"
-#define TR_TLM_ANALOG_LEGEND      "Analog Channels (A1-A5)"
-#define TR_TLM_DIGITAL_LEGEND     "Digital Channels (B1-B8)"
-#define TR_TLM_UNIT               "Unit"
-#define TR_TLM_SOURCE             "Source"
-#define TR_TLM_RF                 "RF"
-#define TR_TLM_RAW_MIN            "Raw min"
-#define TR_TLM_RAW_MAX            "Raw max"
-#define TR_TLM_COEF_A             "A (quadratic)"
-#define TR_TLM_COEF_B             "B (linear / slope)"
-#define TR_TLM_COEF_C             "C (offset)"
-#define TR_TLM_DECIMALS           "Displayed decimals"
-#define TR_TLM_ON_STATE           "On-state means"
-#define TR_TLM_SENSE              "Sense"
-#define TR_TLM_LABEL              "Label"
-#define TR_TLM_CALIB_WIZARD       "2-point calibration wizard"
-#define TR_TLM_CALIB_PROMPT_X1    "Raw reading #1 (x1):"
-#define TR_TLM_CALIB_PROMPT_Y1    "Known real-world value at x1:"
-#define TR_TLM_CALIB_PROMPT_X2    "Raw reading #2 (x2):"
-#define TR_TLM_CALIB_PROMPT_Y2    "Known real-world value at x2:"
-#define TR_TLM_CALIB_SAME_X       "x1 and x2 must differ."
-#define TR_TLM_CALIB_CANCELLED    "Calibration cancelled: enter numeric values."
+/** Telemetry configurator label for fieldw 3digit, rendered on the Telemetry page. */
+#define TR_TLM_FIELDW_3DIGIT "3-digit zero-padded (000-255, strict)"
+/** Telemetry configurator label for fieldw auto, rendered on the Telemetry page. */
+#define TR_TLM_FIELDW_AUTO "Minimal / as-needed (integers or decimals)"
+/** Telemetry configurator label for omit trailing, rendered on the Telemetry page. */
+#define TR_TLM_OMIT_TRAILING "Omit unused trailing channels"
+/** Telemetry configurator label for trail comment, rendered on the Telemetry page. */
+#define TR_TLM_TRAIL_COMMENT "Trailing comment (optional, after bits)"
+/** Telemetry configurator label for comment tlm, rendered on the Telemetry page. */
+#define TR_TLM_COMMENT_TLM "Also carry telemetry in position comment (APRS 1.2, |ss..|)"
+/** Telemetry configurator label for analog count, rendered on the Telemetry page. */
+#define TR_TLM_ANALOG_COUNT "Analog channels sent"
+/** Telemetry configurator label for digital count, rendered on the Telemetry page. */
+#define TR_TLM_DIGITAL_COUNT "Digital bits sent"
+/** Telemetry configurator label for def messages, rendered on the Telemetry page. */
+#define TR_TLM_DEF_MESSAGES "Definition Messages"
+/** Telemetry configurator label for gen parm, rendered on the Telemetry page. */
+#define TR_TLM_GEN_PARM "PARM - channel & bit names"
+/** Telemetry configurator label for gen unit, rendered on the Telemetry page. */
+#define TR_TLM_GEN_UNIT "UNIT - units / bit-state labels"
+/** Telemetry configurator label for gen eqns, rendered on the Telemetry page. */
+#define TR_TLM_GEN_EQNS "EQNS - scaling coefficients (A,B,C)"
+/** Telemetry configurator label for gen bits, rendered on the Telemetry page. */
+#define TR_TLM_GEN_BITS "BITS - bit sense + name"
+/** Telemetry configurator label for analog legend, rendered on the Telemetry page. */
+#define TR_TLM_ANALOG_LEGEND "Analog Channels (A1-A5)"
+/** Telemetry configurator label for digital legend, rendered on the Telemetry page. */
+#define TR_TLM_DIGITAL_LEGEND "Digital Channels (B1-B8)"
+/** Telemetry configurator label for unit, rendered on the Telemetry page. */
+#define TR_TLM_UNIT "Unit"
+/** Telemetry configurator label for source, rendered on the Telemetry page. */
+#define TR_TLM_SOURCE "Source"
+/** Telemetry configurator label for rf, rendered on the Telemetry page. */
+#define TR_TLM_RF "RF"
+/** Telemetry configurator label for raw min, rendered on the Telemetry page. */
+#define TR_TLM_RAW_MIN "Raw min"
+/** Telemetry configurator label for raw max, rendered on the Telemetry page. */
+#define TR_TLM_RAW_MAX "Raw max"
+/** Telemetry configurator label for coef a, rendered on the Telemetry page. */
+#define TR_TLM_COEF_A "A (quadratic)"
+/** Telemetry configurator label for coef b, rendered on the Telemetry page. */
+#define TR_TLM_COEF_B "B (linear / slope)"
+/** Telemetry configurator label for coef c, rendered on the Telemetry page. */
+#define TR_TLM_COEF_C "C (offset)"
+/** Telemetry configurator label for decimals, rendered on the Telemetry page. */
+#define TR_TLM_DECIMALS "Displayed decimals"
+/** Telemetry configurator label for on state, rendered on the Telemetry page. */
+#define TR_TLM_ON_STATE "On-state means"
+/** Telemetry configurator label for sense, rendered on the Telemetry page. */
+#define TR_TLM_SENSE "Sense"
+/** Telemetry configurator label for label, rendered on the Telemetry page. */
+#define TR_TLM_LABEL "Label"
+/** Telemetry configurator label for calib wizard, rendered on the Telemetry page. */
+#define TR_TLM_CALIB_WIZARD "2-point calibration wizard"
+/** Telemetry configurator label for calib prompt x1, rendered on the Telemetry page. */
+#define TR_TLM_CALIB_PROMPT_X1 "Raw reading #1 (x1):"
+/** Telemetry configurator label for calib prompt y1, rendered on the Telemetry page. */
+#define TR_TLM_CALIB_PROMPT_Y1 "Known real-world value at x1:"
+/** Telemetry configurator label for calib prompt x2, rendered on the Telemetry page. */
+#define TR_TLM_CALIB_PROMPT_X2 "Raw reading #2 (x2):"
+/** Telemetry configurator label for calib prompt y2, rendered on the Telemetry page. */
+#define TR_TLM_CALIB_PROMPT_Y2 "Known real-world value at x2:"
+/** Telemetry configurator label for calib same x, rendered on the Telemetry page. */
+#define TR_TLM_CALIB_SAME_X "x1 and x2 must differ."
+/** Telemetry configurator label for calib cancelled, rendered on the Telemetry page. */
+#define TR_TLM_CALIB_CANCELLED "Calibration cancelled: enter numeric values."
 
 /** @} */
 
@@ -555,9 +958,12 @@
  * @name page_radio.c
  * @{
  */
+/** Radiomodem page label for audio hw title, rendered on the Radiomodem page. */
 #define TR_RADIO_AUDIO_HW_TITLE "Audio hardware (compile-time)"
-#define TR_RADIO_AUDIO_HW_INFO  "<br>DAC out: GPIO%d<br>ADC in: GPIO%d<br>PTT pin: %s<br>PTT active-high: %s<br>ADC attenuation: %d<br>ADC: %d Hz<br>DAC: %d Hz"
-#define TR_RADIO_AUDIO_HW_NOTE  ""
+/** Radiomodem page label for audio hw info, rendered on the Radiomodem page. */
+#define TR_RADIO_AUDIO_HW_INFO "<br>DAC out: GPIO%d<br>ADC in: GPIO%d<br>PTT pin: %s<br>PTT active-high: %s<br>ADC attenuation: %d<br>ADC: %d Hz<br>DAC: %d Hz"
+/** Radiomodem page label for audio hw note, rendered on the Radiomodem page. */
+#define TR_RADIO_AUDIO_HW_NOTE ""
 
 /** @} */
 
@@ -565,21 +971,35 @@
  * @name page_wireless.c
  * @{
  */
-#define TR_WIFI_MODE_LEGEND      "WiFi Mode"
-#define TR_WIFI_STATION          "Station (STA)"
-#define TR_WIFI_ACCESS_POINT     "Access Point (AP)"
-#define TR_WIFI_AP_STA           "AP + STA"
-#define TR_WIFI_TX_POWER         "TX Power (0-20 dBm)"
-#define TR_WIFI_AP_SSID          "AP SSID"
-#define TR_WIFI_AP_PASSWORD      "AP Password"
-#define TR_WIFI_AP_CHANNEL       "AP Channel"
-#define TR_WIFI_CLIENT_LEGEND    "WiFi Client #%d"
-#define TR_BTN_WIFI_SCAN         "WIFI SCAN"
+/** Wireless page label for mode legend, rendered on the Wireless page. */
+#define TR_WIFI_MODE_LEGEND "WiFi Mode"
+/** Wireless page label for station, rendered on the Wireless page. */
+#define TR_WIFI_STATION "Station (STA)"
+/** Wireless page label for access point, rendered on the Wireless page. */
+#define TR_WIFI_ACCESS_POINT "Access Point (AP)"
+/** Wireless page label for ap sta, rendered on the Wireless page. */
+#define TR_WIFI_AP_STA "AP + STA"
+/** Wireless page label for tx power, rendered on the Wireless page. */
+#define TR_WIFI_TX_POWER "TX Power (0-20 dBm)"
+/** Wireless page label for ap ssid, rendered on the Wireless page. */
+#define TR_WIFI_AP_SSID "AP SSID"
+/** Wireless page label for ap password, rendered on the Wireless page. */
+#define TR_WIFI_AP_PASSWORD "AP Password"
+/** Wireless page label for ap channel, rendered on the Wireless page. */
+#define TR_WIFI_AP_CHANNEL "AP Channel"
+/** Wireless page label for client legend, rendered on the Wireless page. */
+#define TR_WIFI_CLIENT_LEGEND "WiFi Client #%d"
+/** Caption of the "wifi scan" button, rendered on the Wireless page. */
+#define TR_BTN_WIFI_SCAN "WIFI SCAN"
+/** Wireless page label for ssid placeholder, rendered on the Wireless page. */
 #define TR_WIFI_SSID_PLACEHOLDER "Network name (type it, or use WiFi Scan)"
+/** Wireless page label for sta needs ssid, rendered on the Wireless page. */
 #define TR_WIFI_STA_NEEDS_SSID                                                                                                                                 \
     "Saved, but this will NOT connect: Mode selects a station, yet no WiFi Client block has both 'Enable' ticked and an SSID filled in. Fix that and Save "    \
     "again."
-#define TR_WIFI_SCANNING    "Scanning..."
+/** Wireless page label for scanning, rendered on the Wireless page. */
+#define TR_WIFI_SCANNING "Scanning..."
+/** Wireless page label for scan failed, rendered on the Wireless page. */
 #define TR_WIFI_SCAN_FAILED "Scan failed"
 
 /** @} */
@@ -588,23 +1008,40 @@
  * @name page_wx.c
  * @{
  */
-#define TR_WX_WIND_SPEED     "Wind Speed"
-#define TR_WX_WIND_GUST      "Wind Gust"
+/** Weather page label for wind speed, rendered on the Weather page. */
+#define TR_WX_WIND_SPEED "Wind Speed"
+/** Weather page label for wind gust, rendered on the Weather page. */
+#define TR_WX_WIND_GUST "Wind Gust"
+/** Weather page label for wind direction, rendered on the Weather page. */
 #define TR_WX_WIND_DIRECTION "Wind Direction"
-#define TR_WX_TEMPERATURE    "Temperature"
-#define TR_WX_RAIN_1H        "Rain 1h"
-#define TR_WX_RAIN_24H       "Rain 24h"
-#define TR_WX_RAIN_MIDNIGHT  "Rain since midnight"
-#define TR_WX_HUMIDITY       "Humidity"
-#define TR_WX_PRESSURE       "Pressure"
-#define TR_WX_LUMINOSITY     "Luminosity"
-#define TR_WX_SNOW           "Snow"
-#define TR_WX_FLOOD_FT       "Flood Height (ft)"
-#define TR_WX_FLOOD_M        "Flood Height"
-#define TR_WX_FIELD          "WX Field"
-#define TR_WX_CHANNEL        "Channel"
-#define TR_WX_CHANNEL_NONE   "(none)"
-#define TR_WX_VALUE          "Value"
+/** Weather page label for temperature, rendered on the Weather page. */
+#define TR_WX_TEMPERATURE "Temperature"
+/** Weather page label for rain 1h, rendered on the Weather page. */
+#define TR_WX_RAIN_1H "Rain 1h"
+/** Weather page label for rain 24h, rendered on the Weather page. */
+#define TR_WX_RAIN_24H "Rain 24h"
+/** Weather page label for rain midnight, rendered on the Weather page. */
+#define TR_WX_RAIN_MIDNIGHT "Rain since midnight"
+/** Weather page label for humidity, rendered on the Weather page. */
+#define TR_WX_HUMIDITY "Humidity"
+/** Weather page label for pressure, rendered on the Weather page. */
+#define TR_WX_PRESSURE "Pressure"
+/** Weather page label for luminosity, rendered on the Weather page. */
+#define TR_WX_LUMINOSITY "Luminosity"
+/** Weather page label for snow, rendered on the Weather page. */
+#define TR_WX_SNOW "Snow"
+/** Weather page label for flood ft, rendered on the Weather page. */
+#define TR_WX_FLOOD_FT "Flood Height (ft)"
+/** Weather page label for flood m, rendered on the Weather page. */
+#define TR_WX_FLOOD_M "Flood Height"
+/** Weather page label for field, rendered on the Weather page. */
+#define TR_WX_FIELD "WX Field"
+/** Weather page label for channel, rendered on the Weather page. */
+#define TR_WX_CHANNEL "Channel"
+/** Weather page label for channel none, rendered on the Weather page. */
+#define TR_WX_CHANNEL_NONE "(none)"
+/** Weather page label for value, rendered on the Weather page. */
+#define TR_WX_VALUE "Value"
 
 /** @} */
 
@@ -612,134 +1049,236 @@
  * @name IGATE page additions (station symbol, path preset, timestamp, PHG, filters)
  * @{
  */
-#define TR_F_STATION_SYMBOL    "Station Symbol"
-#define TR_F_SYMBOL_TABLE      "Table"
-#define TR_F_SYMBOL_CODE       "Symbol"
-#define TR_BTN_PICK_SYMBOL     "..."
-#define TR_SYM_PICK_HINT       "Click icon for select symbol"
-#define TR_F_PATH              "PATH"
-#define TR_PATH_DIRECT         "Direct (no path)"
-#define TR_PATH_CUSTOM_UNSET   "(not set)"
-#define TR_PATH_DIRECT_HINT    "no digipeater path - only stations that hear you directly will receive it"
-#define TR_PATH_HOP_HINT       "hop(s) via digipeater, encoded as an SSID suffix (short WIDEn-N form)"
-#define TR_PATH_CUSTOM_HINT    "custom digipeater path configured on the System page"
-#define TR_F_TIME_STAMP        "Time Stamp"
-#define TR_F_TX_CHANNEL        "TX Channel"
-#define TR_F_PHG_SECTION       "PHG"
-#define TR_F_ENABLE_PHG        "Enable PHG"
-#define TR_F_RADIO_TX_POWER    "Radio TX Power"
-#define TR_F_ANTENNA_GAIN      "Antenna Gain"
-#define TR_F_HEIGHT_M          "Height (m)"
+/** Form label for the "station symbol" field or fieldset, rendered on the IGate page. */
+#define TR_F_STATION_SYMBOL "Station Symbol"
+/** Form label for the "symbol table" field or fieldset, rendered on the IGate page. */
+#define TR_F_SYMBOL_TABLE "Table"
+/** Form label for the "symbol code" field or fieldset, rendered on the IGate page. */
+#define TR_F_SYMBOL_CODE "Symbol"
+/** Caption of the "pick symbol" button, rendered on the IGate page. */
+#define TR_BTN_PICK_SYMBOL "..."
+/** Symbol-picker label for pick hint, rendered on the IGate page. */
+#define TR_SYM_PICK_HINT "Click icon for select symbol"
+/** Form label for the "path" field or fieldset, rendered on the IGate page. */
+#define TR_F_PATH "PATH"
+/** Digipeat path preset label for direct, rendered on the IGate page. */
+#define TR_PATH_DIRECT "Direct (no path)"
+/** Digipeat path preset label for custom unset, rendered on the IGate page. */
+#define TR_PATH_CUSTOM_UNSET "(not set)"
+/** Digipeat path preset label for direct hint, rendered on the IGate page. */
+#define TR_PATH_DIRECT_HINT "no digipeater path - only stations that hear you directly will receive it"
+/** Digipeat path preset label for hop hint, rendered on the IGate page. */
+#define TR_PATH_HOP_HINT "hop(s) via digipeater, encoded as an SSID suffix (short WIDEn-N form)"
+/** Digipeat path preset label for custom hint, rendered on the IGate page. */
+#define TR_PATH_CUSTOM_HINT "custom digipeater path configured on the System page"
+/** Form label for the "time stamp" field or fieldset, rendered on the IGate page. */
+#define TR_F_TIME_STAMP "Time Stamp"
+/** Form label for the "tx channel" field or fieldset, rendered on the IGate page. */
+#define TR_F_TX_CHANNEL "TX Channel"
+/** Form label for the "phg section" field or fieldset, rendered on the IGate page. */
+#define TR_F_PHG_SECTION "PHG"
+/** Form label for the "enable phg" field or fieldset, rendered on the IGate page. */
+#define TR_F_ENABLE_PHG "Enable PHG"
+/** Form label for the "radio tx power" field or fieldset, rendered on the IGate page. */
+#define TR_F_RADIO_TX_POWER "Radio TX Power"
+/** Form label for the "antenna gain" field or fieldset, rendered on the IGate page. */
+#define TR_F_ANTENNA_GAIN "Antenna Gain"
+/** Form label for the "height m" field or fieldset, rendered on the IGate page. */
+#define TR_F_HEIGHT_M "Height (m)"
+/** Form label for the "antenna direction" field or fieldset, rendered on the IGate page. */
 #define TR_F_ANTENNA_DIRECTION "Antenna/Direction"
-#define TR_F_PHG_TEXT          "PHG Text"
-#define TR_F_EXT_SECTION       "Data Extension"
-#define TR_F_ENABLE_EXT        "Enable data extension"
-#define TR_F_EXT_TYPE          "Extension type"
-#define TR_EXT_PHG             "PHG - power/height/gain/directivity"
-#define TR_EXT_RNG             "RNG - pre-calculated radio range"
-#define TR_EXT_DFS             "DFS - omni-DF signal strength"
-#define TR_F_EXT_RANGE_MI      "Radio range (miles)"
-#define TR_F_EXT_DFS_STRENGTH  "Signal strength (S-points, 0 = not heard)"
-#define TR_F_POS_AMBIGUITY     "Position ambiguity"
-#define TR_AMB_NONE            "Full precision"
-#define TR_AMB_TENTH           "Nearest 1/10 minute"
-#define TR_AMB_MINUTE          "Nearest minute"
-#define TR_AMB_TEN_MINUTES     "Nearest 10 minutes"
-#define TR_AMB_DEGREE          "Nearest degree"
-#define TR_F_STATUS_GRID       "Maidenhead locator in status reports"
-#define TR_F_STATUS_TIMESTAMP  "Zulu timestamp in status reports"
-#define TR_F_POS_DAO           "DAO precision extension in position reports"
-#define TR_DIR_OMNI            "Omni"
-#define TR_DIR_N               "N"
-#define TR_DIR_NE              "NE"
-#define TR_DIR_E               "E"
-#define TR_DIR_SE              "SE"
-#define TR_DIR_S               "S"
-#define TR_DIR_SW              "SW"
-#define TR_DIR_W               "W"
-#define TR_DIR_NW              "NW"
-#define TR_F_IGATE_FILTER      "IGate Filter"
-#define TR_F_FILTER_RF2INET    "Filter RF to Internet"
-#define TR_F_FILTER_INET2RF    "Filter Internet to RF"
-#define TR_FILT_MESSAGE        "Message"
-#define TR_FILT_STATUS         "Status"
-#define TR_FILT_TELEMETRY      "Telemetry"
-#define TR_FILT_WEATHER        "Weather"
-#define TR_FILT_OBJECT         "Object"
-#define TR_FILT_ITEM           "Item"
-#define TR_FILT_BUOY           "Buoy"
-#define TR_FILT_POSITION       "Position"
+/** Form label for the "phg text" field or fieldset, rendered on the IGate page. */
+#define TR_F_PHG_TEXT "PHG Text"
+/** Form label for the "ext section" field or fieldset, rendered on the IGate page. */
+#define TR_F_EXT_SECTION "Data Extension"
+/** Form label for the "enable ext" field or fieldset, rendered on the IGate page. */
+#define TR_F_ENABLE_EXT "Enable data extension"
+/** Form label for the "ext type" field or fieldset, rendered on the IGate page. */
+#define TR_F_EXT_TYPE "Extension type"
+/** Data-extension label for phg, rendered on the IGate page. */
+#define TR_EXT_PHG "PHG - power/height/gain/directivity"
+/** Data-extension label for rng, rendered on the IGate page. */
+#define TR_EXT_RNG "RNG - pre-calculated radio range"
+/** Data-extension label for dfs, rendered on the IGate page. */
+#define TR_EXT_DFS "DFS - omni-DF signal strength"
+/** Form label for the "ext range mi" field or fieldset, rendered on the IGate page. */
+#define TR_F_EXT_RANGE_MI "Radio range (miles)"
+/** Form label for the "ext dfs strength" field or fieldset, rendered on the IGate page. */
+#define TR_F_EXT_DFS_STRENGTH "Signal strength (S-points, 0 = not heard)"
+/** Form label for the "pos ambiguity" field or fieldset, rendered on the IGate page. */
+#define TR_F_POS_AMBIGUITY "Position ambiguity"
+/** Position-ambiguity selector entry: none, rendered on the IGate page. */
+#define TR_AMB_NONE "Full precision"
+/** Position-ambiguity selector entry: tenth, rendered on the IGate page. */
+#define TR_AMB_TENTH "Nearest 1/10 minute"
+/** Position-ambiguity selector entry: minute, rendered on the IGate page. */
+#define TR_AMB_MINUTE "Nearest minute"
+/** Position-ambiguity selector entry: ten minutes, rendered on the IGate page. */
+#define TR_AMB_TEN_MINUTES "Nearest 10 minutes"
+/** Position-ambiguity selector entry: degree, rendered on the IGate page. */
+#define TR_AMB_DEGREE "Nearest degree"
+/** Form label for the "status grid" field or fieldset, rendered on the IGate page. */
+#define TR_F_STATUS_GRID "Maidenhead locator in status reports"
+/** Form label for the "status timestamp" field or fieldset, rendered on the IGate page. */
+#define TR_F_STATUS_TIMESTAMP "Zulu timestamp in status reports"
+/** Form label for the "pos dao" field or fieldset, rendered on the IGate page. */
+#define TR_F_POS_DAO "DAO precision extension in position reports"
+/** Compass direction abbreviation: omni, rendered on the IGate page. */
+#define TR_DIR_OMNI "Omni"
+/** Compass direction abbreviation: n, rendered on the IGate page. */
+#define TR_DIR_N "N"
+/** Compass direction abbreviation: ne, rendered on the IGate page. */
+#define TR_DIR_NE "NE"
+/** Compass direction abbreviation: e, rendered on the IGate page. */
+#define TR_DIR_E "E"
+/** Compass direction abbreviation: se, rendered on the IGate page. */
+#define TR_DIR_SE "SE"
+/** Compass direction abbreviation: s, rendered on the IGate page. */
+#define TR_DIR_S "S"
+/** Compass direction abbreviation: sw, rendered on the IGate page. */
+#define TR_DIR_SW "SW"
+/** Compass direction abbreviation: w, rendered on the IGate page. */
+#define TR_DIR_W "W"
+/** Compass direction abbreviation: nw, rendered on the IGate page. */
+#define TR_DIR_NW "NW"
+/** Form label for the "igate filter" field or fieldset, rendered on the IGate page. */
+#define TR_F_IGATE_FILTER "IGate Filter"
+/** Form label for the "filter rf2inet" field or fieldset, rendered on the IGate page. */
+#define TR_F_FILTER_RF2INET "Filter RF to Internet"
+/** Form label for the "filter inet2rf" field or fieldset, rendered on the IGate page. */
+#define TR_F_FILTER_INET2RF "Filter Internet to RF"
+/** APRS-IS filter editor label for message, rendered on the IGate page. */
+#define TR_FILT_MESSAGE "Message"
+/** APRS-IS filter editor label for status, rendered on the IGate page. */
+#define TR_FILT_STATUS "Status"
+/** APRS-IS filter editor label for telemetry, rendered on the IGate page. */
+#define TR_FILT_TELEMETRY "Telemetry"
+/** APRS-IS filter editor label for weather, rendered on the IGate page. */
+#define TR_FILT_WEATHER "Weather"
+/** APRS-IS filter editor label for object, rendered on the IGate page. */
+#define TR_FILT_OBJECT "Object"
+/** APRS-IS filter editor label for item, rendered on the IGate page. */
+#define TR_FILT_ITEM "Item"
+/** APRS-IS filter editor label for buoy, rendered on the IGate page. */
+#define TR_FILT_BUOY "Buoy"
+/** APRS-IS filter editor label for position, rendered on the IGate page. */
+#define TR_FILT_POSITION "Position"
 
-#define TR_F_CALLSIGN_FILTER      "Callsign Filter"
+/** Form label for the "callsign filter" field or fieldset, rendered on the IGate page. */
+#define TR_F_CALLSIGN_FILTER "Callsign Filter"
+/** Form label for the "budlist mode rf2inet" field or fieldset, rendered on the IGate page. */
 #define TR_F_BUDLIST_MODE_RF2INET "RF to Internet Mode"
+/** Form label for the "budlist mode inet2rf" field or fieldset, rendered on the IGate page. */
 #define TR_F_BUDLIST_MODE_INET2RF "Internet to RF Mode"
-#define TR_BUDLIST_OFF            "Off"
-#define TR_BUDLIST_WHITELIST      "Whitelist"
-#define TR_BUDLIST_BLACKLIST      "Blacklist"
-#define TR_F_BUDLIST_CALL         "Callsign"
-#define TR_NOTE_BUDLIST           "Shared callsign list, up to 8 entries. Whitelist: only listed calls pass. Blacklist: listed calls are blocked."
+/** Buddy-list editor label for off, rendered on the IGate page. */
+#define TR_BUDLIST_OFF "Off"
+/** Buddy-list editor label for whitelist, rendered on the IGate page. */
+#define TR_BUDLIST_WHITELIST "Whitelist"
+/** Buddy-list editor label for blacklist, rendered on the IGate page. */
+#define TR_BUDLIST_BLACKLIST "Blacklist"
+/** Form label for the "budlist call" field or fieldset, rendered on the IGate page. */
+#define TR_F_BUDLIST_CALL "Callsign"
+/** Explanatory note shown beside the budlist setting, rendered on the IGate page. */
+#define TR_NOTE_BUDLIST "Shared callsign list, up to 8 entries. Whitelist: only listed calls pass. Blacklist: listed calls are blocked."
 
-#define TR_F_RANGE_FILTER_EN  "Enable range filter"
-#define TR_F_RANGE_KM         "Max distance (km, 0 = unlimited)"
+/** Form label for the "range filter en" field or fieldset, rendered on the IGate page. */
+#define TR_F_RANGE_FILTER_EN "Enable range filter"
+/** Form label for the "range km" field or fieldset, rendered on the IGate page. */
+#define TR_F_RANGE_KM "Max distance (km, 0 = unlimited)"
+/** Form label for the "prefix filter en" field or fieldset, rendered on the IGate page. */
 #define TR_F_PREFIX_FILTER_EN "Enable callsign-prefix filter"
-#define TR_F_PREFIXES         "Allowed prefixes (comma-separated)"
+/** Form label for the "prefixes" field or fieldset, rendered on the IGate page. */
+#define TR_F_PREFIXES "Allowed prefixes (comma-separated)"
+/** Explanatory note shown beside the range prefix setting, rendered on the IGate page. */
 #define TR_NOTE_RANGE_PREFIX                                                                                                                                   \
     "Local gate applied only to RF -> Internet, independent of the payload-type filter above. Range is measured from My Station's position; packets whose "    \
     "position can't be decoded are not affected by the range filter."
 
+/** Form label for the "3rdparty unwrap en" field or fieldset, rendered on the IGate page. */
 #define TR_F_3RDPARTY_UNWRAP_EN "Relay whitelisted third-party (}) traffic"
+/** Explanatory note shown beside the 3rdparty unwrap setting, rendered on the IGate page. */
 #define TR_NOTE_3RDPARTY_UNWRAP                                                                                                                                \
     "Off by default. Only takes effect when the Internet to RF Callsign Filter above is set to Whitelist: a third-party-wrapped packet is only ever "          \
     "unwrapped and relayed if its inner source callsign is itself on the whitelist. Only enable if you trust and have whitelisted the specific source - "      \
     "re-gating third-party traffic without this restriction is the most common cause of IGate loops."
 
-#define TR_F_SATGATE      "Satellite Gate List"
+/** Form label for the "satgate" field or fieldset, rendered on the IGate page. */
+#define TR_F_SATGATE "Satellite Gate List"
+/** Form label for the "satgate call" field or fieldset, rendered on the IGate page. */
 #define TR_F_SATGATE_CALL "Satellite Callsign"
+/** Explanatory note shown beside the satgate setting, rendered on the IGate page. */
 #define TR_NOTE_SATGATE                                                                                                                                        \
     "Callsigns of satellite/ISS digipeaters (e.g. ISS, PSAT). A frame routed through one of these is only gated to APRS-IS if the digipeater's path entry "    \
     "is actually marked used. Up to 8 entries; leave a slot blank to disable it."
 
-#define TR_F_DUP_CACHE            "Duplicate Suppression"
-#define TR_F_DUP_CACHE_SIZE       "Cache Size (entries)"
+/** Form label for the "dup cache" field or fieldset, rendered on the IGate page. */
+#define TR_F_DUP_CACHE "Duplicate Suppression"
+/** Form label for the "dup cache size" field or fieldset, rendered on the IGate page. */
+#define TR_F_DUP_CACHE_SIZE "Cache Size (entries)"
+/** Form label for the "dup cache timeout ms" field or fieldset, rendered on the IGate page. */
 #define TR_F_DUP_CACHE_TIMEOUT_MS "Suppression Window (ms)"
+/** Explanatory note shown beside the dup cache setting, rendered on the IGate page. */
 #define TR_NOTE_DUP_CACHE                                                                                                                                      \
     "Shared by the IGate and the Digipeater to suppress repeated copies of the same frame. A busy digipeater on a congested frequency may need a larger "      \
     "cache; a sparse rural IGate may prefer a shorter window."
 
-#define TR_F_MSG_GATING         "Message Gating (Internet to RF)"
-#define TR_F_MSG_GATE_EN        "Apply message gating criteria"
+/** Form label for the "msg gating" field or fieldset, rendered on the IGate page. */
+#define TR_F_MSG_GATING "Message Gating (Internet to RF)"
+/** Form label for the "msg gate en" field or fieldset, rendered on the IGate page. */
+#define TR_F_MSG_GATE_EN "Apply message gating criteria"
+/** Form label for the "msg local window s" field or fieldset, rendered on the IGate page. */
 #define TR_F_MSG_LOCAL_WINDOW_S "Heard-locally window (s)"
+/** Explanatory note shown beside the msg gating setting, rendered on the IGate page. */
 #define TR_NOTE_MSG_GATING                                                                                                                                     \
     "A message read from APRS-IS is put on the air only when its addressee was heard on RF inside the window, its sender was not, the sender's header "        \
     "carries no TCPXX/NOGATE/RFONLY, and the addressee is not itself on the Internet. The next position report seen for that addressee is gated once too, "    \
     "so it can be plotted. Switching this off transmits every message the type filter allows, to addressees anywhere in the world."
 
-#define TR_F_DIGI_ALIASES     "n-N Path Aliases"
-#define TR_F_DIGI_ALIAS       "Alias"
-#define TR_F_DIGI_MAX_N       "Max N"
-#define TR_F_DIGI_ALIAS_MODE  "Mode"
+/** Form label for the "digi aliases" field or fieldset, rendered on the IGate page. */
+#define TR_F_DIGI_ALIASES "n-N Path Aliases"
+/** Form label for the "digi alias" field or fieldset, rendered on the IGate page. */
+#define TR_F_DIGI_ALIAS "Alias"
+/** Form label for the "digi max n" field or fieldset, rendered on the IGate page. */
+#define TR_F_DIGI_MAX_N "Max N"
+/** Form label for the "digi alias mode" field or fieldset, rendered on the IGate page. */
+#define TR_F_DIGI_ALIAS_MODE "Mode"
+/** Form label for the "digi fillin only" field or fieldset, rendered on the IGate page. */
 #define TR_F_DIGI_FILLIN_ONLY "Fill-in digipeater (single hop only)"
+/** Form label for the "digi trap action" field or fieldset, rendered on the IGate page. */
 #define TR_F_DIGI_TRAP_ACTION "Hop count above Max N"
-#define TR_DIGI_TRAP_CLAMP    "Clamp to Max N"
-#define TR_DIGI_TRAP_DROP     "Drop the frame"
-#define TR_DIGI_MODE_OFF      "Off"
-#define TR_DIGI_MODE_TRACE    "Trace (insert callsign)"
-#define TR_DIGI_MODE_FLOOD    "Flood (no callsign)"
-#define TR_F_DIGI_DEST_SSID   "Digipeat by destination SSID (legacy)"
+/** Digipeater page label for trap clamp, rendered on the IGate page. */
+#define TR_DIGI_TRAP_CLAMP "Clamp to Max N"
+/** Digipeater page label for trap drop, rendered on the IGate page. */
+#define TR_DIGI_TRAP_DROP "Drop the frame"
+/** Digipeater page label for mode off, rendered on the IGate page. */
+#define TR_DIGI_MODE_OFF "Off"
+/** Digipeater page label for mode trace, rendered on the IGate page. */
+#define TR_DIGI_MODE_TRACE "Trace (insert callsign)"
+/** Digipeater page label for mode flood, rendered on the IGate page. */
+#define TR_DIGI_MODE_FLOOD "Flood (no callsign)"
+/** Form label for the "digi dest ssid" field or fieldset, rendered on the IGate page. */
+#define TR_F_DIGI_DEST_SSID "Digipeat by destination SSID (legacy)"
+/** Explanatory note shown beside the digi aliases setting, rendered on the IGate page. */
 #define TR_NOTE_DIGI_ALIASES                                                                                                                                   \
     "The only aliases this digipeater honours. Write each one without its SSID; '#' matches a single digit, so 'WIDE#' covers the whole WIDEn family. Rows "   \
     "are tried in order and the first match wins. Trace inserts this station's callsign so every hop can be identified afterwards, which is what WIDEn-N "     \
     "requires; flood leaves no trace and suits only a regional alias run that way on purpose."
 
+/** Explanatory note shown beside the digi dest ssid setting, rendered on the IGate page. */
 #define TR_NOTE_DIGI_DEST_SSID                                                                                                                                 \
     "Off by default. When on, a frame whose AX.25 destination SSID is 1 to 7 is repeated on the strength of that SSID alone, before the alias table above is " \
     "consulted, so the path the originating station asked for is ignored. Turn it on only for a legacy neighbour that still routes this way."
 
-#define TR_SYM_ICON            "Icon"
-#define TR_SYM_QUICK_PICK      "Quick Pick"
-#define TR_SYM_PRIMARY_TABLE   "Primary Table ( / )"
+/** Symbol-picker label for icon, rendered on the IGate page. */
+#define TR_SYM_ICON "Icon"
+/** Symbol-picker label for quick pick, rendered on the IGate page. */
+#define TR_SYM_QUICK_PICK "Quick Pick"
+/** Symbol-picker label for primary table, rendered on the IGate page. */
+#define TR_SYM_PRIMARY_TABLE "Primary Table ( / )"
+/** Symbol-picker label for alternate table, rendered on the IGate page. */
 #define TR_SYM_ALTERNATE_TABLE "Alternate Table ( \\ )"
-#define TR_SYM_TRACKER         "Tracker:"
+/** Symbol-picker label for tracker, rendered on the IGate page. */
+#define TR_SYM_TRACKER "Tracker:"
 
 /** @} */
 
