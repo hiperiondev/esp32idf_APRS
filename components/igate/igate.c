@@ -68,13 +68,16 @@ static TaskHandle_t s_task;
 // it. This helper makes mutex creation idempotent and safe to call from any
 // task, the first time any of them needs it - a portMUX critical section
 // (not the mutex itself, which doesn't exist yet) protects the one-time
-// creation against a race between concurrent first callers.
+// creation against a race between concurrent first callers. The handle is
+// read and written with __atomic_load_n()/__atomic_store_n() so every caller,
+// including the one outside the critical section, sees either NULL or a
+// fully constructed semaphore, never a partially published pointer.
 static void ensureSockMutex(void) {
-    if (s_sockMutex)
+    if (__atomic_load_n(&s_sockMutex, __ATOMIC_ACQUIRE))
         return;
     portENTER_CRITICAL(&s_sockMutexInitLock);
     if (!s_sockMutex)
-        s_sockMutex = xSemaphoreCreateMutex();
+        __atomic_store_n(&s_sockMutex, xSemaphoreCreateMutex(), __ATOMIC_RELEASE);
     portEXIT_CRITICAL(&s_sockMutexInitLock);
 }
 

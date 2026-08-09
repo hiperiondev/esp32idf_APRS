@@ -36,7 +36,10 @@ static bool s_mounted = false;
 // creates cannot guard its own creation) so the first caller wins the race
 // whichever task it runs on, and so this file keeps no init-order dependency
 // on storage_init(): the same one-time-init pattern app_config.c's
-// config_mutex() and igate.c's ensureSockMutex() use.
+// config_mutex() and igate.c's ensureSockMutex() use. The handle is read and
+// written with __atomic_load_n()/__atomic_store_n() so every caller,
+// including the one outside the critical section, sees either NULL or a
+// fully constructed semaphore, never a partially published pointer.
 static SemaphoreHandle_t s_write_mutex = NULL;
 static portMUX_TYPE s_write_mutex_init_lock = portMUX_INITIALIZER_UNLOCKED;
 
@@ -48,13 +51,17 @@ static portMUX_TYPE s_write_mutex_init_lock = portMUX_INITIALIZER_UNLOCKED;
 static uint32_t s_generation = 0;
 
 static SemaphoreHandle_t write_mutex(void) {
-    if (!s_write_mutex) {
+    SemaphoreHandle_t m = __atomic_load_n(&s_write_mutex, __ATOMIC_ACQUIRE);
+    if (!m) {
         portENTER_CRITICAL(&s_write_mutex_init_lock);
-        if (!s_write_mutex)
-            s_write_mutex = xSemaphoreCreateMutex();
+        m = s_write_mutex;
+        if (!m) {
+            m = xSemaphoreCreateMutex();
+            __atomic_store_n(&s_write_mutex, m, __ATOMIC_RELEASE);
+        }
         portEXIT_CRITICAL(&s_write_mutex_init_lock);
     }
-    return s_write_mutex;
+    return m;
 }
 
 void storage_write_lock(void) {
@@ -64,8 +71,9 @@ void storage_write_lock(void) {
 }
 
 void storage_write_unlock(void) {
-    if (s_write_mutex)
-        xSemaphoreGive(s_write_mutex);
+    SemaphoreHandle_t m = __atomic_load_n(&s_write_mutex, __ATOMIC_ACQUIRE);
+    if (m)
+        xSemaphoreGive(m);
 }
 
 uint32_t storage_generation(void) {

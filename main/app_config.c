@@ -62,7 +62,10 @@ app_config_t g_config;
 // json_store_open_tmp(). This mutex is here because serializing saves is
 // correct on its own terms: it avoids wasted flash writes and it is what lets
 // a save reuse a single static stdio buffer.) Created lazily so this file has
-// no init-order dependency.
+// no init-order dependency. The handle is read and written with
+// __atomic_load_n()/__atomic_store_n() so every caller, including the one
+// outside the critical section, sees either NULL or a fully constructed
+// semaphore, never a partially published pointer.
 //
 // Returns NULL when the heap had no room for the mutex: every caller tests
 // the handle before using it, so an out-of-memory device reports a failed save
@@ -70,14 +73,18 @@ app_config_t g_config;
 static SemaphoreHandle_t s_config_mutex = NULL;
 
 static SemaphoreHandle_t config_mutex(void) {
-    if (!s_config_mutex) {
+    SemaphoreHandle_t m = __atomic_load_n(&s_config_mutex, __ATOMIC_ACQUIRE);
+    if (!m) {
         static portMUX_TYPE creation_lock = portMUX_INITIALIZER_UNLOCKED;
         taskENTER_CRITICAL(&creation_lock);
-        if (!s_config_mutex)
-            s_config_mutex = xSemaphoreCreateMutex();
+        m = s_config_mutex;
+        if (!m) {
+            m = xSemaphoreCreateMutex();
+            __atomic_store_n(&s_config_mutex, m, __ATOMIC_RELEASE);
+        }
         taskEXIT_CRITICAL(&creation_lock);
     }
-    return s_config_mutex;
+    return m;
 }
 
 // Short-held lock guarding concurrent access to the live g_config struct
@@ -86,18 +93,25 @@ static SemaphoreHandle_t config_mutex(void) {
 // is a strict LEAF lock, only ever held long enough to mutate/copy a few
 // fields. See the app_config_lock() contract in app_config.h. Created lazily
 // with the same one-time-init guard as config_mutex(), and NULL under the same
-// out-of-memory condition.
+// out-of-memory condition. The handle is read and written with
+// __atomic_load_n()/__atomic_store_n() so every caller, including the one
+// outside the critical section, sees either NULL or a fully constructed
+// semaphore, never a partially published pointer.
 static SemaphoreHandle_t s_data_mutex = NULL;
 
 static SemaphoreHandle_t data_mutex(void) {
-    if (!s_data_mutex) {
+    SemaphoreHandle_t m = __atomic_load_n(&s_data_mutex, __ATOMIC_ACQUIRE);
+    if (!m) {
         static portMUX_TYPE creation_lock = portMUX_INITIALIZER_UNLOCKED;
         taskENTER_CRITICAL(&creation_lock);
-        if (!s_data_mutex)
-            s_data_mutex = xSemaphoreCreateMutex();
+        m = s_data_mutex;
+        if (!m) {
+            m = xSemaphoreCreateMutex();
+            __atomic_store_n(&s_data_mutex, m, __ATOMIC_RELEASE);
+        }
         taskEXIT_CRITICAL(&creation_lock);
     }
-    return s_data_mutex;
+    return m;
 }
 
 void app_config_lock(void) {
@@ -110,8 +124,9 @@ void app_config_lock(void) {
 }
 
 void app_config_unlock(void) {
-    if (s_data_mutex)
-        xSemaphoreGive(s_data_mutex);
+    SemaphoreHandle_t m = __atomic_load_n(&s_data_mutex, __ATOMIC_ACQUIRE);
+    if (m)
+        xSemaphoreGive(m);
 }
 
 static void set_str(char *dst, size_t sz, const char *val) {
