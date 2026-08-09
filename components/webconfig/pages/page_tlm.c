@@ -223,6 +223,7 @@ static void send_report_params_form(httpd_req_t *req, const telemetry_config_t *
 
     web_field_checkbox(req, TR_TLM_OMIT_TRAILING, "omitTrail", cfg->omit_trailing);
     web_field_text(req, TR_TLM_TRAIL_COMMENT, "trailCmt", cfg->trail_comment, 31);
+    web_field_checkbox(req, TR_TLM_COMMENT_TLM, "cmtTlm", cfg->comment_telemetry);
 
     web_select_open(req, TR_TLM_ANALOG_COUNT, "anaCount");
     for (int c = 1; c <= TLM_CH; c++) {
@@ -653,6 +654,7 @@ static void parse_report_params(const char *body, telemetry_config_t *cfg) {
     cfg->field_width = (uint8_t)web_form_get_int(body, "fieldW", cfg->field_width);
     cfg->omit_trailing = web_form_get_bool(body, "omitTrail");
     web_form_get(body, "trailCmt", cfg->trail_comment, sizeof(cfg->trail_comment));
+    cfg->comment_telemetry = web_form_get_bool(body, "cmtTlm");
     cfg->analog_count = (uint8_t)web_form_get_int(body, "anaCount", cfg->analog_count);
     cfg->digital_count = (uint8_t)web_form_get_int(body, "digCount", cfg->digital_count);
 

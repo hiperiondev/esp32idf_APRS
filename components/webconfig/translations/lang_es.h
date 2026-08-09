@@ -91,7 +91,7 @@
 #define TR_ABOUT_OTA_LEGEND  "Actualización OTA"
 #define TR_ABOUT_OTA_BODY                                                                                                                                      \
     "Cargue un nuevo firmware .bin compilado para esta placa. Se escribe en la "                                                                               \
-    "partición OTA inactiva mientras el dispositivo sigue funcionando con la "                                                                                 \
+    "partición OTA inactiva mientras el dispositivo sigue funcionando con la "                                                                                \
     "actual; el dispositivo solo cambia y se reinicia una vez que la carga "                                                                                   \
     "finaliza y se verifica. Si el nuevo firmware no arranca correctamente, "                                                                                  \
     "se revierte automáticamente en el próximo reinicio."
@@ -101,7 +101,7 @@
 #define TR_OTA_CONFIRM          "¿Cargar y grabar este firmware? El dispositivo se reiniciará al finalizar."
 #define TR_OTA_NO_FILE_SELECTED "Seleccione primero un archivo de firmware .bin."
 #define TR_OTA_UPLOADING        "Cargando y escribiendo en la memoria flash..."
-#define TR_OTA_NO_PARTITION                                                                                                                                    \
+#define TR_OTA_NO_PARTITION                                                                                                                                     \
     "No hay una partición OTA disponible en la tabla de particiones de este dispositivo. Vuelva a grabarlo una vez por USB/UART con el partitions.csv actual " \
     "para habilitar OTA."
 #define TR_OTA_BEGIN_FAILED    "No se pudo iniciar la escritura OTA: "
@@ -221,73 +221,73 @@
 #define TR_F_OBJITEM_TYPE_ITEM                             "Ítem (sin marca de tiempo)"
 #define TR_F_OBJITEM_PERMANENT                             "Permanente (solo Objeto, 111111z)"
 #define TR_F_OBJITEM_PERMANENT_NOTE                                                                                                                            \
-    "Un Objeto permanente se envía con la marca de tiempo fija 111111z en lugar de la hora actual, de modo que nunca es reemplazado por un Objeto homónimo "  \
+    "Un Objeto permanente se envía con la marca de tiempo fija 111111z en lugar de la hora actual, de modo que nunca es reemplazado por un Objeto homónimo " \
     "de otra estación - solo la estación de origen puede actualizarlo o moverlo. No tiene efecto en un Ítem."
-#define TR_F_OBJITEM_ACTIVE                                "Activo (desmarcar = eliminar)"
-#define TR_F_OBJITEM_SCOPE                                 "Alcance"
-#define TR_F_OBJITEM_SCOPE_PRIVATE                         "Privado (no se transmite)"
-#define TR_F_OBJITEM_SCOPE_LOCAL                           "Local (solo RF)"
-#define TR_F_OBJITEM_SCOPE_GLOBAL                          "Global (RF + Internet)"
-#define TR_F_OBJITEM_SYMBOL                                "Símbolo / superposición"
-#define TR_F_OBJITEM_COURSE                                "Rumbo (grados, 0-359)"
-#define TR_F_OBJITEM_SPEED                                 "Velocidad (nudos, 0 = omitir)"
-#define TR_F_OBJITEM_AREA_SHAPE                            "Forma de área (símbolo \\l)"
-#define TR_F_OBJITEM_SHAPE_CIRCLE                          "Círculo"
-#define TR_F_OBJITEM_SHAPE_LINE                            "Línea"
-#define TR_F_OBJITEM_SHAPE_ELLIPSE                         "Elipse"
-#define TR_F_OBJITEM_SHAPE_TRIANGLE                        "Triángulo"
-#define TR_F_OBJITEM_SHAPE_BOX                             "Caja"
-#define TR_F_OBJITEM_SHAPE_FILLED                          " (rellena)"
-#define TR_F_OBJITEM_AREA_COLOR                            "Color de área (0-15)"
-#define TR_F_OBJITEM_AREA_LAT_OFF                          "Desplaz. latitud del área (grados)"
-#define TR_F_OBJITEM_AREA_LON_OFF                          "Desplaz. longitud del área (grados)"
-#define TR_F_OBJITEM_SIGNPOST                              "Texto de señal (símbolo \\m, 3 caract.)"
-#define TR_F_OBJITEM_FREQ                                  "Frecuencia de monitoreo (MHz, 0 = ninguna)"
-#define TR_F_OBJITEM_DUPLEX                                "Dirección dúplex"
-#define TR_F_OBJITEM_DUPLEX_SIMPLEX                        "Símplex"
-#define TR_F_OBJITEM_DUPLEX_PLUS                           "Positivo (+)"
-#define TR_F_OBJITEM_DUPLEX_MINUS                          "Negativo (-)"
-#define TR_F_OBJITEM_OFFSET                                "Desplazamiento dúplex (kHz)"
-#define TR_F_OBJITEM_TONE                                  "Tono subaudible CTCSS (Hz, 0 = ninguno)"
-#define TR_F_OBJITEM_PATH_FMT                              "Ruta %d"
-#define TR_F_OBJITEM_QRU                                   "Membresía de grupo QRU"
-#define TR_F_OBJITEM_QRU_NONE                              "(ninguno)"
-#define TR_F_QRU_AMBU                                      "ambulancia"
-#define TR_F_QRU_CLUB                                      "club de radioaficionados"
-#define TR_F_QRU_ECHO                                      "Echolink"
-#define TR_F_QRU_FIRE                                      "estación de bomberos"
-#define TR_F_QRU_FOOD                                      "restaurantes"
-#define TR_F_QRU_FUEL                                      "estaciones de servicio/gasolineras"
-#define TR_F_QRU_HOSP                                      "hospitales"
-#define TR_F_QRU_LIFEBOAT                                  "botes salvavidas"
-#define TR_F_QRU_LTHS                                      "faros"
-#define TR_F_QRU_POLI                                      "comisarías de policía"
-#define TR_F_QRU_POST                                      "oficinas de correos"
-#define TR_F_QRU_RD13                                      "repetidores D-Star 13cm"
-#define TR_F_QRU_RD23                                      "repetidores D-Star 23cm"
-#define TR_F_QRU_RD2M                                      "repetidores D-Star 2m"
-#define TR_F_QRU_RD3C                                      "repetidores D-Star 3cm"
-#define TR_F_QRU_RD70                                      "repetidores D-Star 70cm"
-#define TR_F_QRU_RP10                                      "repetidores analógicos 10m"
-#define TR_F_QRU_RP13                                      "repetidores analógicos 13cm"
-#define TR_F_QRU_RP23                                      "repetidores analógicos 23cm"
-#define TR_F_QRU_RP2M                                      "repetidores analógicos 2m"
-#define TR_F_QRU_RP3C                                      "repetidores analógicos 3cm"
-#define TR_F_QRU_RP6M                                      "repetidores analógicos 6m"
-#define TR_F_QRU_RP70                                      "repetidores analógicos 70cm"
-#define TR_F_QRU_RT13                                      "repetidores de televisión 13cm"
-#define TR_F_QRU_RT23                                      "repetidores de televisión 23cm"
-#define TR_F_QRU_RT3C                                      "repetidores de televisión 3cm"
-#define TR_F_QRU_SRAIL                                     "ferrocarril de vapor"
-#define TR_F_QRU_STOR                                      "tiendas de radioafición"
-#define TR_F_QRU_T2SRV                                     "ubic. aprox. de servidores APRS-IS Tier 2"
-#define TR_F_QRU_VETE                                      "veterinarios"
-#define TR_F_QRU_WOTA                                      "Wainwrights On The Air"
-#define TR_F_OBJITEM_INIT_RATE                             "Intervalo inicial (s)"
-#define TR_F_OBJITEM_SLOW_RATE                             "Intervalo lento (s, 0 = sin decaimiento)"
-#define TR_F_OBJITEM_DECAY                                 "Razón de decaimiento (ej. 2.0, <1 = ninguna)"
+#define TR_F_OBJITEM_ACTIVE         "Activo (desmarcar = eliminar)"
+#define TR_F_OBJITEM_SCOPE          "Alcance"
+#define TR_F_OBJITEM_SCOPE_PRIVATE  "Privado (no se transmite)"
+#define TR_F_OBJITEM_SCOPE_LOCAL    "Local (solo RF)"
+#define TR_F_OBJITEM_SCOPE_GLOBAL   "Global (RF + Internet)"
+#define TR_F_OBJITEM_SYMBOL         "Símbolo / superposición"
+#define TR_F_OBJITEM_COURSE         "Rumbo (grados, 0-359)"
+#define TR_F_OBJITEM_SPEED          "Velocidad (nudos, 0 = omitir)"
+#define TR_F_OBJITEM_AREA_SHAPE     "Forma de área (símbolo \\l)"
+#define TR_F_OBJITEM_SHAPE_CIRCLE   "Círculo"
+#define TR_F_OBJITEM_SHAPE_LINE     "Línea"
+#define TR_F_OBJITEM_SHAPE_ELLIPSE  "Elipse"
+#define TR_F_OBJITEM_SHAPE_TRIANGLE "Triángulo"
+#define TR_F_OBJITEM_SHAPE_BOX      "Caja"
+#define TR_F_OBJITEM_SHAPE_FILLED   " (rellena)"
+#define TR_F_OBJITEM_AREA_COLOR     "Color de área (0-15)"
+#define TR_F_OBJITEM_AREA_LAT_OFF   "Desplaz. latitud del área (grados)"
+#define TR_F_OBJITEM_AREA_LON_OFF   "Desplaz. longitud del área (grados)"
+#define TR_F_OBJITEM_SIGNPOST       "Texto de señal (símbolo \\m, 3 caract.)"
+#define TR_F_OBJITEM_FREQ           "Frecuencia de monitoreo (MHz, 0 = ninguna)"
+#define TR_F_OBJITEM_DUPLEX         "Dirección dúplex"
+#define TR_F_OBJITEM_DUPLEX_SIMPLEX "Símplex"
+#define TR_F_OBJITEM_DUPLEX_PLUS    "Positivo (+)"
+#define TR_F_OBJITEM_DUPLEX_MINUS   "Negativo (-)"
+#define TR_F_OBJITEM_OFFSET         "Desplazamiento dúplex (kHz)"
+#define TR_F_OBJITEM_TONE           "Tono subaudible CTCSS (Hz, 0 = ninguno)"
+#define TR_F_OBJITEM_PATH_FMT       "Ruta %d"
+#define TR_F_OBJITEM_QRU            "Membresía de grupo QRU"
+#define TR_F_OBJITEM_QRU_NONE       "(ninguno)"
+#define TR_F_QRU_AMBU               "ambulancia"
+#define TR_F_QRU_CLUB               "club de radioaficionados"
+#define TR_F_QRU_ECHO               "Echolink"
+#define TR_F_QRU_FIRE               "estación de bomberos"
+#define TR_F_QRU_FOOD               "restaurantes"
+#define TR_F_QRU_FUEL               "estaciones de servicio/gasolineras"
+#define TR_F_QRU_HOSP               "hospitales"
+#define TR_F_QRU_LIFEBOAT           "botes salvavidas"
+#define TR_F_QRU_LTHS               "faros"
+#define TR_F_QRU_POLI               "comisarías de policía"
+#define TR_F_QRU_POST               "oficinas de correos"
+#define TR_F_QRU_RD13               "repetidores D-Star 13cm"
+#define TR_F_QRU_RD23               "repetidores D-Star 23cm"
+#define TR_F_QRU_RD2M               "repetidores D-Star 2m"
+#define TR_F_QRU_RD3C               "repetidores D-Star 3cm"
+#define TR_F_QRU_RD70               "repetidores D-Star 70cm"
+#define TR_F_QRU_RP10               "repetidores analógicos 10m"
+#define TR_F_QRU_RP13               "repetidores analógicos 13cm"
+#define TR_F_QRU_RP23               "repetidores analógicos 23cm"
+#define TR_F_QRU_RP2M               "repetidores analógicos 2m"
+#define TR_F_QRU_RP3C               "repetidores analógicos 3cm"
+#define TR_F_QRU_RP6M               "repetidores analógicos 6m"
+#define TR_F_QRU_RP70               "repetidores analógicos 70cm"
+#define TR_F_QRU_RT13               "repetidores de televisión 13cm"
+#define TR_F_QRU_RT23               "repetidores de televisión 23cm"
+#define TR_F_QRU_RT3C               "repetidores de televisión 3cm"
+#define TR_F_QRU_SRAIL              "ferrocarril de vapor"
+#define TR_F_QRU_STOR               "tiendas de radioafición"
+#define TR_F_QRU_T2SRV              "ubic. aprox. de servidores APRS-IS Tier 2"
+#define TR_F_QRU_VETE               "veterinarios"
+#define TR_F_QRU_WOTA               "Wainwrights On The Air"
+#define TR_F_OBJITEM_INIT_RATE      "Intervalo inicial (s)"
+#define TR_F_OBJITEM_SLOW_RATE      "Intervalo lento (s, 0 = sin decaimiento)"
+#define TR_F_OBJITEM_DECAY          "Razón de decaimiento (ej. 2.0, <1 = ninguna)"
 #define TR_NOTE_OBJITEM                                                                                                                                        \
-    "Los Objetos llevan marca de tiempo (;NOMBRE); los Ítems nunca la llevan ()NOMBRE). Al desmarcar Activo se envían reportes de eliminación y luego se "     \
+    "Los Objetos llevan marca de tiempo (;NOMBRE); los Ítems nunca la llevan ()NOMBRE). Al desmarcar Activo se envían reportes de eliminación y luego se "  \
     "deshabilita automáticamente. El Alcance limita la transmisión independientemente de las casillas RF/Internet."
 #define TR_F_STATUS_BEACON           "Baliza de estado"
 #define TR_F_STATUS_INTERVAL_S_0_OFF "Intervalo de estado (s, 0=desactivado)"
@@ -381,13 +381,13 @@
  * @{
  */
 #define TR_NOTE_TLM_DIGI                                                                                                                                       \
-    "La telemetría (EQNS/PARM/UNIT) para las balizas de Digi se configura en la "                                                                              \
+    "La telemetría (EQNS/PARM/UNIT) para las balizas de Digi se configura en la "                                                                             \
     "página <a href='/tlm'>Telemetría</a>."
 #define TR_NOTE_TLM_IGATE                                                                                                                                      \
-    "La telemetría (EQNS/PARM/UNIT) para las balizas de IGate se configura en la "                                                                             \
+    "La telemetría (EQNS/PARM/UNIT) para las balizas de IGate se configura en la "                                                                            \
     "página <a href='/tlm'>Telemetría</a>."
 #define TR_NOTE_TLM_TRACKER                                                                                                                                    \
-    "La telemetría (EQNS/PARM/UNIT) para las balizas de Tracker se configura en la "                                                                           \
+    "La telemetría (EQNS/PARM/UNIT) para las balizas de Tracker se configura en la "                                                                          \
     "página <a href='/tlm'>Telemetría</a>."
 
 /** @} */
@@ -474,8 +474,8 @@
 #define TR_SYM_CAR_ALT         "Automóvil (tabla alterna)"
 #define TR_SYM_WX_STATION_ALT  "Estación WX (tabla alterna)"
 #define TR_SYM_INTRO                                                                                                                                           \
-    "Referencia rápida de los códigos de símbolo APRS más comunes. Cada página de "                                                                            \
-    "servicio (IGate / Digi / Tracker) tiene su propio campo de símbolo de texto libre "                                                                       \
+    "Referencia rápida de los códigos de símbolo APRS más comunes. Cada página de "                                                                       \
+    "servicio (IGate / Digi / Tracker) tiene su propio campo de símbolo de texto libre "                                                                      \
     "\u2014 copie el código de 2 caracteres desde aquí a ese campo."
 #define TR_SYM_CODE                 "Código"
 #define TR_SYM_MEANING              "Significado"
@@ -527,6 +527,7 @@
 #define TR_TLM_FIELDW_AUTO        "Mínimo / según necesidad (enteros o decimales)"
 #define TR_TLM_OMIT_TRAILING      "Omitir canales finales sin usar"
 #define TR_TLM_TRAIL_COMMENT      "Comentario final (opcional, tras los bits)"
+#define TR_TLM_COMMENT_TLM        "Incluir también telemetría en el comentario de posición (APRS 1.2, |ss..|)"
 #define TR_TLM_ANALOG_COUNT       "Canales analógicos enviados"
 #define TR_TLM_DIGITAL_COUNT      "Bits digitales enviados"
 #define TR_TLM_DEF_MESSAGES       "Mensajes de definición"
@@ -584,8 +585,8 @@
 #define TR_WIFI_CLIENT_LEGEND    "Cliente WiFi n.º %d"
 #define TR_BTN_WIFI_SCAN         "ESCANEAR WIFI"
 #define TR_WIFI_SSID_PLACEHOLDER "Nombre de la red (escríbalo o use Buscar WiFi)"
-#define TR_WIFI_STA_NEEDS_SSID                                                                                                                                 \
-    "Guardado, pero NO se conectará: el Modo selecciona estación, pero ningún bloque Cliente WiFi tiene 'Habilitar' marcado y un SSID cargado. Corríjalo y "   \
+#define TR_WIFI_STA_NEEDS_SSID                                                                                                                                   \
+    "Guardado, pero NO se conectará: el Modo selecciona estación, pero ningún bloque Cliente WiFi tiene 'Habilitar' marcado y un SSID cargado. Corríjalo y " \
     "guarde de nuevo."
 #define TR_WIFI_SCANNING    "Escaneando..."
 #define TR_WIFI_SCAN_FAILED "Error al escanear"
@@ -691,19 +692,19 @@
 #define TR_F_PREFIX_FILTER_EN "Activar filtro de prefijo de indicativo"
 #define TR_F_PREFIXES         "Prefijos permitidos (separados por coma)"
 #define TR_NOTE_RANGE_PREFIX                                                                                                                                   \
-    "Filtro local aplicado solo a RF -> Internet, independiente del filtro por tipo de carga anterior. La distancia se mide desde la posición de Mi "          \
+    "Filtro local aplicado solo a RF -> Internet, independiente del filtro por tipo de carga anterior. La distancia se mide desde la posición de Mi "         \
     "Estación; los paquetes cuya posición no se puede decodificar no se ven afectados por el filtro de distancia."
 
 #define TR_F_3RDPARTY_UNWRAP_EN "Retransmitir tráfico de terceros (}) en lista blanca"
 #define TR_NOTE_3RDPARTY_UNWRAP                                                                                                                                \
-    "Desactivado por defecto. Solo tiene efecto cuando el Filtro de Indicativos de Internet a RF anterior está en modo Lista Blanca: un paquete envuelto de "  \
-    "terceros solo se desenvuelve y retransmite si su indicativo de origen interno está en la lista blanca. Active esto solo si confía en la fuente "          \
+    "Desactivado por defecto. Solo tiene efecto cuando el Filtro de Indicativos de Internet a RF anterior está en modo Lista Blanca: un paquete envuelto de " \
+    "terceros solo se desenvuelve y retransmite si su indicativo de origen interno está en la lista blanca. Active esto solo si confía en la fuente "        \
     "específica y la ha incluido en la lista blanca - volver a filtrar tráfico de terceros sin esta restricción es la causa más común de bucles de IGate."
 
 #define TR_F_SATGATE      "Lista de Satélites Digipetidores"
 #define TR_F_SATGATE_CALL "Indicativo de Satélite"
 #define TR_NOTE_SATGATE                                                                                                                                        \
-    "Indicativos de satélites/ISS digipetidores (p. ej. ISS, PSAT). Un paquete enrutado por uno de estos solo se retransmite a APRS-IS si la entrada de "      \
+    "Indicativos de satélites/ISS digipetidores (p. ej. ISS, PSAT). Un paquete enrutado por uno de estos solo se retransmite a APRS-IS si la entrada de "     \
     "trayectoria del digipetidor está realmente marcada como usada. Hasta 8 entradas; deje una entrada vacía para desactivarla."
 
 #define TR_F_DUP_CACHE            "Supresión de Duplicados"
@@ -716,10 +717,10 @@
 #define TR_F_MSG_GATING         "Filtrado de Mensajes (Internet a RF)"
 #define TR_F_MSG_GATE_EN        "Aplicar criterios de filtrado de mensajes"
 #define TR_F_MSG_LOCAL_WINDOW_S "Ventana de escucha local (s)"
-#define TR_NOTE_MSG_GATING                                                                                                                                     \
-    "Un mensaje leído de APRS-IS sale al aire solo si su destinatario fue escuchado por RF dentro de la ventana, su remitente no lo fue, la cabecera del "     \
-    "remitente no lleva TCPXX/NOGATE/RFONLY y el destinatario no está a su vez en Internet. El siguiente reporte de posición de ese destinatario también se "  \
-    "retransmite una vez, para poder ubicarlo. Si se desactiva, se transmite todo mensaje que permita el filtro de tipos, a destinatarios de cualquier parte " \
+#define TR_NOTE_MSG_GATING                                                                                                                                       \
+    "Un mensaje leído de APRS-IS sale al aire solo si su destinatario fue escuchado por RF dentro de la ventana, su remitente no lo fue, la cabecera del "      \
+    "remitente no lleva TCPXX/NOGATE/RFONLY y el destinatario no está a su vez en Internet. El siguiente reporte de posición de ese destinatario también se " \
+    "retransmite una vez, para poder ubicarlo. Si se desactiva, se transmite todo mensaje que permita el filtro de tipos, a destinatarios de cualquier parte "   \
     "del mundo."
 
 #define TR_F_DIGI_ALIASES     "Alias de Ruta n-N"
@@ -735,11 +736,11 @@
 #define TR_DIGI_MODE_FLOOD    "Inundación (sin indicativo)"
 #define TR_F_DIGI_DEST_SSID   "Digipetir por SSID de destino (heredado)"
 #define TR_NOTE_DIGI_ALIASES                                                                                                                                   \
-    "Los únicos alias que este digipetidor atiende. Escriba cada uno sin su SSID; '#' equivale a un solo dígito, así 'WIDE#' cubre toda la familia WIDEn. "    \
-    "Las filas se prueban en orden y gana la primera coincidencia. Traza inserta el indicativo de esta estación para que cada salto sea identificable "        \
+    "Los únicos alias que este digipetidor atiende. Escriba cada uno sin su SSID; '#' equivale a un solo dígito, así 'WIDE#' cubre toda la familia WIDEn. " \
+    "Las filas se prueban en orden y gana la primera coincidencia. Traza inserta el indicativo de esta estación para que cada salto sea identificable "       \
     "después, que es lo que exige WIDEn-N; inundación no deja rastro y solo conviene en un alias regional que se decida usar así."
 
-#define TR_NOTE_DIGI_DEST_SSID                                                                                                                                 \
+#define TR_NOTE_DIGI_DEST_SSID                                                                                                                                   \
     "Desactivado por omisión. Cuando está activo, una trama cuyo SSID de destino AX.25 sea de 1 a 7 se repite por ese solo SSID, antes de consultar la tabla " \
     "de alias de arriba, así que se ignora la ruta que pidió la estación de origen. Actívelo solo por un vecino heredado que todavía rutee de esta manera."
 

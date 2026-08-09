@@ -40,6 +40,17 @@
  * that split: build_tlm_data_packet() (in telemetry.c) never emits
  * tlm_bit_name[], only build_tlm_bits_packet() does, and only inside a
  * ":...:BITS." message.
+ *
+ * Optional base-91 comment telemetry (APRS 1.2) piggybacks the same analog
+ * readings onto a station's own position-report comment as a compact
+ * "|ss1122|"-style group, so a station that already beacons position on a
+ * schedule can carry telemetry at a handful of extra bytes instead of a
+ * whole separate transmission. telemetry_build_comment_tlm() (telemetry.c)
+ * builds that group from the identical resolved analog readings the "T#..."
+ * report uses, so the two forms can never disagree; beacon.c appends it to
+ * a station's comment only when that beacon's callsign matches this
+ * module's own mycall/ssid, since the comment form is only meaningful when
+ * it rides along on the telemetry station's own position report.
  */
 
 #ifndef TELEMETRY_H
@@ -145,6 +156,9 @@ typedef struct {
     bool digital_tx2rf;   /**< "Digital: Beacon via RF". */
     bool digital_tx2inet; /**< "Digital: Beacon via Internet". */
     char proj_title[24];  /**< BITS. project title / "Name". */
+
+    bool comment_telemetry; /**< Also carry base-91 comment telemetry (APRS 1.2) in this station's own position-report comment; off by default. Complements, and
+                               never replaces, the "T#..." report. */
 } telemetry_config_t;
 
 /**
@@ -229,5 +243,27 @@ uint32_t telemetry_beacon_service(void);
  * @param out_size Size of @p out (should be >= sizeof(telemetry_config_t.mycall)).
  */
 void telemetry_get_mycall(char *out, size_t out_size);
+
+/**
+ * @brief Build the optional APRS 1.2 base-91 comment telemetry group
+ *        ("|ss1122334455|") from the same resolved analog readings the
+ *        "T#..." Telemetry Data Report carries, for a caller (beacon.c) to
+ *        append to a position-report comment.
+ *
+ * Encodes the current sequence number and each enabled, resolved analog
+ * channel (up to ::TLM_CH) as a base-91 pair, using the same
+ * data-in-flight snapshot build_tlm_data_packet() reads, so the comment
+ * form and the concurrent "T#..." report always decode to the same raw
+ * numbers and advance the same sequence number together.
+ *
+ * @param out     Destination buffer for the group, including both '|'
+ *                delimiters and a terminating NUL.
+ * @param out_max Size of @p out in bytes.
+ * @return Group length in bytes (always <= 2 + 2*TLM_CH, plus the closing
+ *         '|'), or 0 if comment telemetry is disabled, no callsign is
+ *         configured, no analog channel is currently resolved, or @p out_max
+ *         is too small to hold the group.
+ */
+size_t telemetry_build_comment_tlm(char *out, size_t out_max);
 
 #endif // TELEMETRY_H

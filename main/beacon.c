@@ -40,6 +40,7 @@
 #include "objects_items.h"     // objitem_build_freq_block()
 #include "sched_time.h"        // sched_mono_seconds() / sched_clamp_interval()
 #include "str_append.h"        // str_append()
+#include "telemetry.h"         // telemetry_build_comment_tlm() / telemetry_config_load()
 #include "weather_telemetry.h" // aprs_mice_encode()
 
 static const char *TAG = "beacon";
@@ -198,6 +199,52 @@ static void buildHgdCodes(float gain, uint16_t height, uint8_t dir, char *out, s
         D = 8;
 
     snprintf(out, outMax, "%c%c%c", '0' + H, '0' + G, '0' + D);
+}
+
+// Case-insensitive exact-length compare of two NUL-terminated base callsigns,
+// same rule aprs_service.c's base_call_equals() applies to APRS-IS echo
+// detection: callsigns are conventionally uppercase on air, but the two
+// config stores compared here (g_config.*_mycall and telemetry.json's
+// mycall) are each entered independently, so a stray-case entry in either
+// must not silently defeat the match below.
+static bool call_equals_ci(const char *a, const char *b) {
+    if (!a || !b)
+        return false;
+    size_t i = 0;
+    for (; a[i] && b[i]; i++) {
+        char ca = a[i], cb = b[i];
+        if (ca >= 'a' && ca <= 'z')
+            ca -= 32;
+        if (cb >= 'a' && cb <= 'z')
+            cb -= 32;
+        if (ca != cb)
+            return false;
+    }
+    return a[i] == b[i]; // both NUL at the same position
+}
+
+// Appends the optional APRS 1.2 base-91 comment telemetry group
+// (telemetry_build_comment_tlm(), "|ss1122|") to p->comment, if and only if
+// this beacon's own callsign/SSID is the one the Telemetry page has
+// configured: the comment form only makes sense riding along on the
+// telemetry station's own position report, since a receiving station reads
+// it as THIS report's source station's telemetry. Called once per beacon
+// service right after that service fills p->comment from its own g_config
+// field, so buildPositionPacket()/buildMicePositionPacket() never need to
+// know comment telemetry exists - they just see a slightly longer comment.
+// A group that would not fit the remaining comment room is silently dropped
+// (telemetry_build_comment_tlm() logs why) rather than truncated, since a
+// truncated base-91 pair decodes to a wrong value instead of a missing one.
+static void appendCommentTelemetry(beacon_params_t *p) {
+    telemetry_config_t tlmCfg;
+    telemetry_config_load(&tlmCfg);
+    if (!tlmCfg.mycall[0] || !call_equals_ci(tlmCfg.mycall, p->call) || tlmCfg.ssid != p->ssid)
+        return;
+
+    size_t used = strlen(p->comment);
+    if (used >= sizeof(p->comment) - 1)
+        return;
+    telemetry_build_comment_tlm(p->comment + used, sizeof(p->comment) - used);
 }
 
 // Builds the 7-byte "RNGrrrr" Pre-Calculated Radio Range data extension
@@ -881,6 +928,7 @@ static uint32_t trackerBeaconService(void) {
             p.freqOffsetKhz = g_config.trk_offset_khz;
         }
         app_config_unlock();
+        appendCommentTelemetry(&p);
 
         char packet[APRS_TNC2_BUF_SIZE]; // sized by the RF leg's own limit, so a line that does not fit is refused at build time
         int len = buildPositionPacket(&p, packet, sizeof(packet));
@@ -963,6 +1011,7 @@ static uint32_t igateBeaconService(void) {
             p.freqOffsetKhz = g_config.igate_offset_khz;
         }
         app_config_unlock();
+        appendCommentTelemetry(&p);
 
         char packet[APRS_TNC2_BUF_SIZE]; // sized by the RF leg's own limit, so a line that does not fit is refused at build time
         int len = buildPositionPacket(&p, packet, sizeof(packet));
@@ -1036,6 +1085,7 @@ static void fillIgatePositionParams(beacon_params_t *p) {
         p->freqOffsetKhz = g_config.igate_offset_khz;
     }
     app_config_unlock();
+    appendCommentTelemetry(p);
 }
 
 int beacon_build_igate_position_packet(char *out, size_t out_max) {
@@ -1106,6 +1156,7 @@ static uint32_t digiBeaconService(void) {
             p.freqOffsetKhz = g_config.digi_offset_khz;
         }
         app_config_unlock();
+        appendCommentTelemetry(&p);
 
         char packet[APRS_TNC2_BUF_SIZE]; // sized by the RF leg's own limit, so a line that does not fit is refused at build time
         int len = buildPositionPacket(&p, packet, sizeof(packet));

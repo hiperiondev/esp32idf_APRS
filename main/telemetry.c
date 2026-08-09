@@ -67,6 +67,11 @@ static bool s_bit_present[TLM_BIT_NUM]; // channel mapped ("(none)" excluded) th
 static double s_ana_val[TLM_CH];        // last resolved RAW analog reading (pre-EQNS; see build_tlm_data_packet())
 static bool s_ana_present[TLM_CH];      // channel mapped and resolved this cycle
 
+// "T#..." Telemetry Data Report sequence number, shared with the base-91
+// comment telemetry group (telemetry_build_comment_tlm()) so both forms
+// always advance the same count together.
+static uint32_t s_sequence = 0;
+
 // In-RAM copy of just the callsign, kept in sync on every load/save so
 // telemetry_get_mycall() (called from aprs_service.c's inet_line_is_own_report(),
 // once per APRS-IS line received - potentially many per second on a busy
@@ -295,6 +300,9 @@ static bool load_locked(telemetry_config_t *out, bool *out_missing) {
         strncpy(out->proj_title, v->valuestring, sizeof(out->proj_title) - 1);
         out->proj_title[sizeof(out->proj_title) - 1] = 0;
     }
+    v = cJSON_GetObjectItemCaseSensitive(doc, "cmtTlm");
+    if (v)
+        out->comment_telemetry = cJSON_IsTrue(v);
 
     // ---- Analog channels A1-A5 (parallel arrays) ----
     cJSON *anaEn = cJSON_GetObjectItemCaseSensitive(doc, "anaEn");
@@ -421,6 +429,7 @@ static bool save_locked(const telemetry_config_t *in) {
     fputs("\"projTitle\":", f);
     json_write_escaped(f, in->proj_title);
     fputc(',', f);
+    fprintf(f, "\"cmtTlm\":%s,", in->comment_telemetry ? "true" : "false");
 
     // ---- Analog channels A1-A5 (parallel arrays) ----
     fputs("\"anaEn\":[", f);
@@ -697,6 +706,32 @@ static void tlm_path_field(const telemetry_config_t *s, char *out, size_t outMax
     aprs_path_build_suffix_from_config(s->path, out, outMax);
 }
 
+// Clamps a raw analog reading to the 0-8280 window a two-character base-91
+// pair can hold (91*91 - 1) and rounds it to the nearest integer. Shared by
+// the base-91 comment-telemetry encoder below: base-91 comment telemetry has
+// no metadata channel of its own to carry an out-of-range indication, unlike
+// field_width == 3's "T#..." form, so an out-of-range raw reading is clamped
+// rather than wrapped, the same reasoning format_analog_field() applies to
+// the 3-digit "T#..." form.
+static long clamp_analog_raw_base91(double raw) {
+    long v = lround(raw);
+    if (v < 0)
+        v = 0;
+    if (v > 91 * 91 - 1)
+        v = 91 * 91 - 1;
+    return v;
+}
+
+// Encodes one non-negative value below 91*91 as a two-character base-91 pair
+// (APRS 1.2 comment telemetry, aprs12/spec.txt): each digit is the value's
+// base-91 digit plus the ASCII code for '!' (33), most significant digit
+// first. @p out must hold at least 2 bytes; a terminating NUL is not
+// written, so callers append it (or the next pair) themselves.
+static void encode_base91_pair(long v, char *out) {
+    out[0] = (char)('!' + (v / 91));
+    out[1] = (char)('!' + (v % 91));
+}
+
 // Formats one analog channel's RAW transmitted value per the "Analog Field
 // Width" Report Parameters option:
 //   - field_width == 3 : 3-digit zero-padded encoding, unsigned integer,
@@ -843,6 +878,59 @@ static int build_tlm_data_packet(const telemetry_config_t *s, uint32_t seq, bool
     if (outMax > 0 && (size_t)n >= outMax)
         n = (int)outMax - 1;
     return n;
+}
+
+size_t telemetry_build_comment_tlm(char *out, size_t out_max) {
+    if (!out || out_max == 0)
+        return 0;
+    out[0] = 0;
+
+    telemetry_config_t cfg;
+    telemetry_config_load(&cfg);
+    if (!cfg.en || !cfg.comment_telemetry || !cfg.mycall[0])
+        return 0;
+
+    uint8_t ana_count = cfg.analog_count > TLM_CH ? TLM_CH : cfg.analog_count;
+
+    // Same seq/value snapshot build_tlm_data_packet() takes, so the comment
+    // form can never disagree with the concurrent "T#..." report: the
+    // sequence number is base-91 encoded whole (0-8280 window, matching the
+    // "T#..." field's own 0-999 modulo window in spirit but with more
+    // headroom), and each enabled, currently resolved analog channel is
+    // base-91 encoded from the identical raw reading. A channel that is
+    // disabled or not currently resolved is skipped entirely - the base-91
+    // form has no placeholder-comma shorthand to hold its place with, unlike
+    // the "T#..." report, so the group simply carries fewer pairs.
+    telemetry_lock();
+    long seqVal = (long)(s_sequence % (91u * 91u));
+    long anaVal[TLM_CH];
+    bool anaPresent[TLM_CH];
+    for (int i = 0; i < TLM_CH; i++) {
+        anaPresent[i] = (i < ana_count) && cfg.ana_enable[i] && s_ana_present[i];
+        anaVal[i] = anaPresent[i] ? clamp_analog_raw_base91(s_ana_val[i]) : 0;
+    }
+    telemetry_unlock();
+
+    char group[2 + 2 + TLM_CH * 2 + 1 + 1]; // '|' + seq pair + up to 5 value pairs + '|' + NUL
+    size_t u = 0;
+    group[u++] = '|';
+    encode_base91_pair(seqVal, group + u);
+    u += 2;
+    for (int i = 0; i < TLM_CH; i++) {
+        if (!anaPresent[i])
+            continue;
+        encode_base91_pair(anaVal[i], group + u);
+        u += 2;
+    }
+    group[u++] = '|';
+    group[u] = 0;
+
+    if (u >= out_max) {
+        ESP_LOGW(TAG, "comment telemetry group (%u bytes) does not fit the remaining comment room (%u) - dropped", (unsigned)u, (unsigned)out_max);
+        return 0;
+    }
+    memcpy(out, group, u + 1);
+    return u;
 }
 
 // Shared "addressee" builder for the four telemetry metadata Messages
@@ -1031,7 +1119,6 @@ static uint32_t clamp_info_interval(uint32_t s) {
 // Tasks / scheduler-service entry points
 // -------------------------------------------------------------------------
 
-static uint32_t s_sequence = 0;
 static int64_t s_data_next_due = 0;
 static int64_t s_info_next_due = 0;
 
