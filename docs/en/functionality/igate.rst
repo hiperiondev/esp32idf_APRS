@@ -18,11 +18,18 @@ The APRS-IS client task
 * **Gated on real connectivity**, not merely on "Wi-Fi is up": it polls
   ``net_state_is_connected()``, which becomes true only on
   ``IP_EVENT_STA_GOT_IP`` and false again on disconnect or AP-only mode.
-* **Login line:** ``user <mycall> pass <passcode> vers ESP32APRS 1.0 filter
-  <filter>`` — logged verbatim, so a malformed filter is visible. The server
-  banner and the ``# logresp … verified/unverified`` line are surfaced; an
-  ``unverified`` response raises a warning naming ``aprs_mycall`` /
-  ``aprs_passcode``.
+* **Login line:** ``user <mycall> pass <passcode> vers esp32_APRS_igate
+  <version>``, with `` filter <filter>`` appended only when a server-side
+  filter is configured — the ``filter`` command takes one or more terms, so
+  the clause is left out entirely rather than sent as a bare keyword. The
+  name and version come from ``APRS_SOFTWARE_NAME`` /
+  ``APRS_SOFTWARE_VERSION`` in ``main/include/aprs_service.h``, the latter
+  being ``FIRMWARE_INFO``, so the ``vers`` clause identifies *this* firmware
+  to APRS-IS server operators. The line is logged exactly as sent (minus the
+  CR/LF), so a malformed filter is visible; with no filter configured a second
+  line notes that the server's own default applies. The server banner and the
+  ``# logresp … verified/unverified`` line are surfaced; an ``unverified``
+  response raises a warning naming ``aprs_mycall`` / ``aprs_passcode``.
 * **Server-side filter validation.** Before it is sent, ``g_config.aprs_filter``
   is checked for structural validity by
   ``aprs_filter_validate_server_string()`` — each space-separated term must be
@@ -110,12 +117,25 @@ the dashboard can show "N dropped because X" rather than one opaque aggregate.
 #. **Budlist.** The source callsign is tested against the local
    whitelist/blacklist in ``g_config.rf2inet_budlist_mode`` (``DROP_BUDLIST``).
 
-A frame that survives all stages gets a ``,qAR,<mycall>-<ssid>`` header — or
-``,qAO,<mycall>-<ssid>`` when this IGate cannot gate messages back to RF for
-the station being gated (``aprs_service_can_gate_to_rf()``, i.e. transmit is
-unavailable, ``igate_en`` is off, or ``inet2rf`` is off) — and is written to
-APRS-IS. The callsign-SSID following the q construct is always this station's
-own login identity, per QCON.
+A frame that survives all stages gets a ``,qAR,<mycall>-<ssid>`` or
+``,qAO,<mycall>-<ssid>`` header and is written to APRS-IS. Per QCON the
+construct describes the **station being gated**, not the gateway: ``qAO``
+marks a station this IGate would not deliver a message to, and downstream
+consumers (message routers, the "messageable" indication on APRS-IS map
+sites) read it that way. ``qConstructFor()`` therefore chooses ``qAR`` only
+when both hold:
+
+* this station can gate messages to RF at all
+  (``aprs_service_can_gate_to_rf()``: transmit available, ``igate_en`` on,
+  ``inet2rf`` on), and
+* the gated station has **not** been seen on APRS-IS within
+  ``igate_local_window_sec`` — the same condition ``messageGatePass()``
+  applies to an addressee in the INET → RF direction, since an
+  Internet-connected station already has anything addressed to it.
+
+Everything else gets ``qAO``, so a receive-only IGate sends ``qAO`` for every
+packet. The callsign-SSID following the q construct is always this station's
+own login identity.
 
 INET → RF (``inet2rfHandler()``)
 ================================

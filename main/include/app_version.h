@@ -18,6 +18,9 @@
  * human-readable version/project strings shown on the web admin "About" page.
  */
 
+#ifndef APP_VERSION_H
+#define APP_VERSION_H
+
 /**
  * @def FIRMWARE_VERSION_MAYOR
  * @brief Indicate a really big change that can cause a incompatibilities with previous versions.
@@ -68,3 +71,5 @@
  * directly in log lines, HTTP responses and APRS status text.
  */
 #define FIRMWARE_INFO APP_VERSION_STR(FIRMWARE_VERSION_MAYOR) "." APP_VERSION_STR(FIRMWARE_VERSION_MINOR) "." APP_VERSION_STR(FIRMWARE_VERSION_PATCH)
+
+#endif // APP_VERSION_H

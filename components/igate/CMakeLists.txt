@@ -9,5 +9,6 @@ idf_component_register(
         lwip
         esp_netif
         trafficlog
+        lastheard
         main
 )

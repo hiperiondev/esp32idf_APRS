@@ -150,9 +150,11 @@ IGate (RF <-> APRS-IS)
    * - ``qAR``/``qAO`` Q-construct insertion
      - ✅
      - ✅
-     - ``qAR`` when this IGate can gate messages back to RF for the station
-       being gated; ``qAO`` otherwise (receive-only IGates, or a bidirectional
-       IGate with INET→RF relay disabled)
+     - Decided per gated station, per QCON: ``qAR`` only when this IGate can
+       gate messages to RF **and** that station has not been seen on APRS-IS
+       within ``igate_local_window_sec``; ``qAO`` otherwise (receive-only
+       IGates, a bidirectional IGate with INET→RF relay disabled, and any
+       Internet-connected station)
    * - Server-side APRS-IS filter string (``r/``, ``p/``, ``t/``, ``b/``...)
      - ✅
      - ✅

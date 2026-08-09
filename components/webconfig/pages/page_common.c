@@ -60,7 +60,7 @@ esp_err_t page_root(httpd_req_t *req) {
 esp_err_t page_logout(httpd_req_t *req) {
     // Force the browser to drop cached Basic-Auth creds by re-issuing 401.
     httpd_resp_set_status(req, "401 Unauthorized");
-    httpd_resp_set_hdr(req, "WWW-Authenticate", "Basic realm=\"ESP32APRS\"");
+    httpd_resp_set_hdr(req, "WWW-Authenticate", "Basic realm=\"" APRS_SOFTWARE_NAME "\"");
     httpd_resp_set_type(req, "text/html");
     httpd_resp_sendstr(req, "<h1>" TR_LOGGED_OUT_TITLE "</h1><a href='/'>" TR_LOG_IN_AGAIN "</a>");
     return ESP_OK;

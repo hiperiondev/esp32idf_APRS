@@ -293,7 +293,7 @@ void app_config_set_defaults(app_config_t *c) {
     set_str(c->wx_mycall, sizeof(c->wx_mycall), "NOCALL");
     c->wx_path = ACTIVATE_WX;
     c->wx_interval = 300;
-    set_str(c->wx_comment, sizeof(c->wx_comment), "ESP32APRS WX");
+    set_str(c->wx_comment, sizeof(c->wx_comment), APRS_SOFTWARE_NAME " WX");
     // Enable the WX fields a typical station reports; the rest stay off until
     // the operator maps a sensor channel to them on the Weather page.
     //

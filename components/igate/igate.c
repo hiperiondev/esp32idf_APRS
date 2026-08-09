@@ -35,6 +35,7 @@
 #include "aprs_service.h"
 #include "crc_ccit.h"
 #include "igate.h"
+#include "lastheard.h"
 #include "net_state.h"
 #include "str_append.h"
 #include "trafficlog.h"
@@ -431,6 +432,34 @@ static bool isSrcPlaceholder(const char *call) {
     return false;
 }
 
+// Pick the q construct for one packet gated from RF to APRS-IS.
+//
+// QCON defines qAR as a packet placed on APRS-IS by an IGate that heard it on
+// RF, and qAO as one from an IGate that cannot gate messages to the station it
+// heard, so the choice describes the station being gated and not the gateway:
+// message routers and the "messageable" indication on APRS-IS map viewers read
+// it as "a message for this station can be delivered through this IGate". A
+// receive-only gateway therefore answers qAO for everything, and a
+// bidirectional one still answers qAO for each station it would decline to
+// deliver to.
+//
+// What it would decline is fixed by the message gate in the INET->RF
+// direction (messageGatePass() in aprs_service.c): the addressee must have
+// been heard on RF and must not be Internet-connected. The first half holds by
+// construction here - this station is the source of a frame just decoded off
+// the air - so only the second half is left to test, over the same last-heard
+// window the message gate itself uses. A source that cannot be identified is
+// answered qAO as well, since nothing can be promised about delivering to it.
+static const char *qConstructFor(const char *srcCall, uint16_t localWindowSec) {
+    if (!aprs_service_can_gate_to_rf())
+        return "qAO";
+    if (srcCall == NULL || srcCall[0] == 0)
+        return "qAO";
+    if (lastheard_heard_inet_within(srcCall, localWindowSec))
+        return "qAO";
+    return "qAR";
+}
+
 int igateProcess(ax25_msg_t *packet) {
     int idx;
 
@@ -685,24 +714,35 @@ int igateProcess(ax25_msg_t *packet) {
         }
     }
 
-    // Snapshot the own-station identity used to build the qAR/qAO header. This
+    // Snapshot the own-station identity that goes into the qAR/qAO header,
+    // together with the last-heard window the construct is decided over. This
     // runs on the modem RX task; a concurrent web save could otherwise rewrite
-    // aprs_mycall mid-snprintf.
+    // aprs_mycall mid-snprintf or move the window between the two reads.
     char cfg_mycall[10];
     uint8_t cfg_ssid;
+    uint16_t cfg_window;
     app_config_lock();
     memcpy(cfg_mycall, g_config.aprs_mycall, sizeof(cfg_mycall));
     cfg_ssid = g_config.aprs_ssid;
+    cfg_window = g_config.igate_local_window_sec;
     app_config_unlock();
 
-    // Per QCON, the q construct identifies this IGate: qAR when it placed the
-    // packet on APRS-IS having heard it on RF and can also gate messages back
-    // to RF for the station being gated, qAO when it cannot - which covers a
-    // receive-only IGate as well as a bidirectional one with INET->RF relay
-    // disabled. The callsign-SSID that follows is always this station's own
-    // login identity - never a cosmetic label - and no other part of the path
-    // is touched.
-    const char *qConstruct = aprs_service_can_gate_to_rf() ? "qAR" : "qAO";
+    // The station the q construct describes is the one carried in the header
+    // just built: the inner station for an unwrapped third-party frame, the
+    // frame's own source otherwise, in the "CALL-SSID" spelling the last-heard
+    // table is keyed by.
+    char qSrc[12];
+    if (thirdParty)
+        snprintf(qSrc, sizeof(qSrc), "%s", effSrc);
+    else if (packet->src.ssid > 0)
+        snprintf(qSrc, sizeof(qSrc), "%s-%d", packet->src.call, packet->src.ssid);
+    else
+        snprintf(qSrc, sizeof(qSrc), "%s", packet->src.call);
+
+    // The callsign-SSID that follows the q construct is always this station's
+    // own login identity - never a cosmetic label - and no other part of the
+    // path is touched.
+    const char *qConstruct = qConstructFor(qSrc, cfg_window);
     if (cfg_ssid > 0)
         str_append(header, sizeof(header), &headerLen, ",%s,%s-%d", qConstruct, cfg_mycall, cfg_ssid);
     else
@@ -926,14 +966,41 @@ static bool connectAprsIs(void) {
     }
     freeaddrinfo(res);
 
+    // The login line is assembled once and then both logged and sent from this
+    // one buffer, so what the logs show can never drift from what the server
+    // actually received. The mandatory part identifies the login and the
+    // software behind it (APRS_SOFTWARE_NAME/APRS_SOFTWARE_VERSION name this
+    // firmware, which is what lets a server operator reach its author). The
+    // "filter" command takes one or more filter terms, so the whole clause is
+    // appended only when there is a term to send rather than leaving the
+    // server a bare keyword to make sense of.
     char login[160];
-    int n = snprintf(login, sizeof(login), "user %s pass %s vers ESP32APRS 1.0 filter %s\r\n", cfg_mycall, cfg_passcode, cfg_filter[0] ? cfg_filter : "");
-    // Log exactly what we're sending (minus the trailing \r\n) so a bad
-    // filter string (e.g. wrong filter letter, malformed args) is visible
-    // in the logs instead of silently resulting in zero RX traffic.
-    ESP_LOGI(TAG, "APRS-IS login: user %s pass %s vers ESP32APRS 1.0 filter %s", cfg_mycall, cfg_passcode,
-             cfg_filter[0] ? cfg_filter : "(none - server default, usually nothing)");
-    if (send(sock, login, n, 0) != n) {
+    size_t loginLen = 0;
+    str_append(login, sizeof(login), &loginLen, "user %s pass %s vers %s %s", cfg_mycall, cfg_passcode, APRS_SOFTWARE_NAME, APRS_SOFTWARE_VERSION);
+    if (cfg_filter[0])
+        str_append(login, sizeof(login), &loginLen, " filter %s", cfg_filter);
+
+    // Log the line as sent, minus the CR/LF that terminates it, so a bad
+    // filter string (e.g. wrong filter letter, malformed args) is visible in
+    // the logs instead of silently resulting in zero RX traffic. With no
+    // filter configured the server applies its own default, which is worth a
+    // line of its own since the sent line then says nothing about filtering.
+    ESP_LOGI(TAG, "APRS-IS login: %s", login);
+    if (!cfg_filter[0])
+        ESP_LOGI(TAG, "No APRS-IS filter configured - the server applies its default, usually nothing");
+
+    // str_append() clamps, so the only way the terminator does not fit is a
+    // login line longer than the buffer, which would reach the server as a
+    // partial - and therefore unparseable - command. Treat that as a failed
+    // attempt on this server rather than sending it.
+    if (!str_append(login, sizeof(login), &loginLen, "\r\n")) {
+        ESP_LOGW(TAG, "APRS-IS login line too long to send, failing over to next APRS-IS server");
+        close(sock);
+        advanceServer();
+        return false;
+    }
+
+    if (send(sock, login, loginLen, 0) != (int)loginLen) {
         close(sock);
         advanceServer();
         return false;

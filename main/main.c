@@ -413,7 +413,7 @@ static void app_task(void *arg) {
     // Do not log the admin password: this line reaches serial console captures
     // and any future remote-logging feature. Only the username is logged; the
     // operator already has the configured password.
-    ESP_LOGI(TAG, "ESP32APRS web admin ready. Login user: %s", g_config.http_username);
+    ESP_LOGI(TAG, APRS_SOFTWARE_NAME " web admin ready. Login user: %s", g_config.http_username);
 
     // Initialisation is done and everything above runs in its own tasks now
     // (WiFi, web server, APRS service + its tick, the beacon scheduler, the

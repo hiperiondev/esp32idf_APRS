@@ -18,11 +18,20 @@ La tarea cliente de APRS-IS
 * **Condicionado a conectividad real**, no simplemente a que "el Wi-Fi está
   arriba": sondea ``net_state_is_connected()``, que solo se vuelve verdadero con
   ``IP_EVENT_STA_GOT_IP`` y falso de nuevo al desconectarse o en modo solo-AP.
-* **Línea de login:** ``user <mycall> pass <passcode> vers ESP32APRS 1.0 filter
-  <filter>`` — registrada literalmente, para que un filtro mal formado sea
-  visible. El banner del servidor y la línea ``# logresp … verified/unverified``
-  se muestran; una respuesta ``unverified`` genera una advertencia que nombra
-  ``aprs_mycall`` / ``aprs_passcode``.
+* **Línea de login:** ``user <mycall> pass <passcode> vers esp32_APRS_igate
+  <versión>``, con `` filter <filter>`` añadido solo cuando hay un filtro de
+  servidor configurado — el comando ``filter`` lleva uno o más términos, así
+  que la cláusula se omite por completo en vez de enviarse como palabra clave
+  suelta. El nombre y la versión salen de ``APRS_SOFTWARE_NAME`` /
+  ``APRS_SOFTWARE_VERSION`` en ``main/include/aprs_service.h`` (la segunda es
+  ``FIRMWARE_INFO``), de modo que la cláusula ``vers`` identifica a *este*
+  firmware ante los operadores de servidores APRS-IS. La línea se registra
+  exactamente como se envía (sin el CR/LF), para que un filtro mal formado sea
+  visible; si no hay filtro configurado, una segunda línea indica que rige el
+  valor por defecto del servidor. El banner del servidor y la línea
+  ``# logresp … verified/unverified`` se muestran; una respuesta
+  ``unverified`` genera una advertencia que nombra ``aprs_mycall`` /
+  ``aprs_passcode``.
 * **Validación del filtro de servidor.** Antes de enviarse, ``g_config.aprs_filter``
   se comprueba estructuralmente con ``aprs_filter_validate_server_string()`` —
   cada término separado por espacios debe ser ``<letra>/<args>`` con el número de
@@ -118,12 +127,24 @@ agregado opaco.
    blanca/negra local en ``g_config.rf2inet_budlist_mode`` (``DROP_BUDLIST``).
 
 Una trama que sobrevive a todas las etapas recibe una cabecera
-``,qAR,<mycall>-<ssid>`` — o ``,qAO,<mycall>-<ssid>`` cuando esta IGate no
-puede pasar mensajes de vuelta a RF para la estación que se está pasando a
-APRS-IS (``aprs_service_can_gate_to_rf()``, es decir, no se puede transmitir,
-``igate_en`` está desactivado, o ``inet2rf`` está desactivado) — y se escribe
-en APRS-IS. El indicativo-SSID que sigue al q construct es siempre la propia
-identidad de login de esta estación, según QCON.
+``,qAR,<mycall>-<ssid>`` o ``,qAO,<mycall>-<ssid>`` y se escribe en APRS-IS.
+Según QCON el constructo describe a la **estación que se está pasando**, no a
+la pasarela: ``qAO`` marca una estación a la que esta IGate no le entregaría
+un mensaje, y así lo leen los consumidores aguas abajo (enrutadores de
+mensajes, el indicador "messageable" de los sitios de mapas APRS-IS). Por eso
+``qConstructFor()`` elige ``qAR`` solo cuando se cumplen ambas condiciones:
+
+* esta estación puede pasar mensajes a RF en absoluto
+  (``aprs_service_can_gate_to_rf()``: transmisión disponible, ``igate_en``
+  activado, ``inet2rf`` activado), y
+* la estación pasada **no** se ha visto en APRS-IS dentro de
+  ``igate_local_window_sec`` — la misma condición que ``messageGatePass()``
+  aplica al destinatario en el sentido INET → RF, ya que una estación
+  conectada a Internet ya tiene todo lo dirigido a ella.
+
+Todo lo demás recibe ``qAO``, así que una IGate de solo recepción envía
+``qAO`` en cada paquete. El indicativo-SSID que sigue al q construct es
+siempre la propia identidad de login de esta estación.
 
 INET → RF (``inet2rfHandler()``)
 ================================

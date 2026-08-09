@@ -19,11 +19,20 @@ Il task client APRS-IS
   attivo": interroga ``net_state_is_connected()``, che diventa vero solo con
   ``IP_EVENT_STA_GOT_IP`` e falso di nuovo alla disconnessione o in modalità
   solo-AP.
-* **Riga di login:** ``user <mycall> pass <passcode> vers ESP32APRS 1.0 filter
-  <filter>`` — registrata alla lettera, così che un filtro malformato sia
-  visibile. Il banner del server e la riga ``# logresp … verified/unverified``
-  vengono mostrati; una risposta ``unverified`` genera un avviso che nomina
-  ``aprs_mycall`` / ``aprs_passcode``.
+* **Riga di login:** ``user <mycall> pass <passcode> vers esp32_APRS_igate
+  <versione>``, con `` filter <filter>`` aggiunto solo quando è configurato un
+  filtro lato server — il comando ``filter`` richiede uno o più termini, per
+  cui la clausola viene omessa del tutto invece di essere inviata come parola
+  chiave nuda. Nome e versione vengono da ``APRS_SOFTWARE_NAME`` /
+  ``APRS_SOFTWARE_VERSION`` in ``main/include/aprs_service.h`` (la seconda è
+  ``FIRMWARE_INFO``), così che la clausola ``vers`` identifichi *questo*
+  firmware agli operatori dei server APRS-IS. La riga è registrata esattamente
+  come viene inviata (senza il CR/LF), così che un filtro malformato sia
+  visibile; senza filtro configurato una seconda riga segnala che vale il
+  valore predefinito del server. Il banner del server e la riga
+  ``# logresp … verified/unverified`` vengono mostrati; una risposta
+  ``unverified`` genera un avviso che nomina ``aprs_mycall`` /
+  ``aprs_passcode``.
 * **Validazione del filtro lato server.** Prima di essere inviato,
   ``g_config.aprs_filter`` è controllato strutturalmente da
   ``aprs_filter_validate_server_string()`` — ogni termine separato da spazi deve
@@ -119,12 +128,25 @@ singolo aggregato opaco.
    locale in ``g_config.rf2inet_budlist_mode`` (``DROP_BUDLIST``).
 
 Un frame che sopravvive a tutte le fasi riceve un'intestazione
-``,qAR,<mycall>-<ssid>`` — o ``,qAO,<mycall>-<ssid>`` quando questo IGate non
-può inoltrare messaggi verso RF per la stazione che viene inoltrata
-(``aprs_service_can_gate_to_rf()``, ossia trasmissione non disponibile,
-``igate_en`` disattivato, oppure ``inet2rf`` disattivato) — ed è scritto su
-APRS-IS. Il nominativo-SSID che segue il q construct è sempre l'identità di
-login di questa stazione, secondo QCON.
+``,qAR,<mycall>-<ssid>`` oppure ``,qAO,<mycall>-<ssid>`` ed è scritto su
+APRS-IS. Secondo QCON il costrutto descrive la **stazione inoltrata**, non il
+gateway: ``qAO`` segnala una stazione a cui questo IGate non consegnerebbe un
+messaggio, ed è così che lo leggono i consumatori a valle (router di messaggi,
+l'indicazione "messageable" sui siti di mappe APRS-IS). Per questo
+``qConstructFor()`` sceglie ``qAR`` solo quando valgono entrambe le
+condizioni:
+
+* questa stazione può inoltrare messaggi verso RF
+  (``aprs_service_can_gate_to_rf()``: trasmissione disponibile, ``igate_en``
+  attivo, ``inet2rf`` attivo), e
+* la stazione inoltrata **non** è stata vista su APRS-IS entro
+  ``igate_local_window_sec`` — la stessa condizione che ``messageGatePass()``
+  applica al destinatario nella direzione INET → RF, dato che una stazione
+  connessa a Internet ha già tutto ciò che le è indirizzato.
+
+Tutto il resto riceve ``qAO``, quindi un IGate a sola ricezione invia ``qAO``
+per ogni pacchetto. Il nominativo-SSID che segue il q construct è sempre
+l'identità di login di questa stazione.
 
 INET → RF (``inet2rfHandler()``)
 ================================

@@ -31,6 +31,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "app_version.h"
 #include "esp32idf_radioamateur_modem.h"
 
 /**
@@ -167,6 +168,32 @@
  * @{
  */
 #define APRS_TOCALL "APZ32L" /**< Experimental (unallocated) TOCALL for this firmware; see the allocation note above. */
+/** @} */
+
+/**
+ * @name APRS-IS software identification (@c vers clause)
+ *
+ * The name and version this station announces in the @c vers clause of its
+ * APRS-IS login line, as in
+ * @c "user CALL pass 12345 vers esp32_APRS_igate 1.0.0".
+ *
+ * This clause is how an APRS-IS server operator knows which software is
+ * connected, and it is the only channel through which the author of a
+ * misbehaving client can be reached; the public APRS-IS client statistics
+ * group sessions by the same pair. It therefore has to name @e this firmware:
+ * announcing the name of a project this one is only derived from sends
+ * operators to an author who cannot change anything here, and leaves this
+ * firmware invisible in those statistics.
+ *
+ * ::APRS_SOFTWARE_NAME plays on the Internet side the role ::APRS_TOCALL
+ * plays on the air, and is likewise the single source of truth for it -
+ * igate.c, which builds the login line, is the only consumer of either macro
+ * here. The version is ::FIRMWARE_INFO rather than a second literal, so the
+ * numbers in app_version.h are the only place a release has to be bumped.
+ * @{
+ */
+#define APRS_SOFTWARE_NAME    "esp32_APRS_igate" /**< Software name sent in the APRS-IS @c vers clause; one token, no spaces. */
+#define APRS_SOFTWARE_VERSION FIRMWARE_INFO      /**< Version sent right after ::APRS_SOFTWARE_NAME, taken from the firmware version macros. */
 /** @} */
 
 /**

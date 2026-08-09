@@ -156,10 +156,12 @@ IGate (RF <-> APRS-IS)
    * - Inserimento Q-construct ``qAR``/``qAO``
      - ✅
      - ✅
-     - ``qAR`` quando questo IGate può inoltrare messaggi verso RF per la
-       stazione che viene inoltrata; ``qAO`` altrimenti (IGate a sola
-       ricezione, oppure IGate bidirezionale con l'inoltro INET→RF
-       disattivato)
+     - Deciso per singola stazione inoltrata, secondo QCON: ``qAR`` solo
+       quando questo IGate può inoltrare messaggi verso RF **e** quella
+       stazione non è stata vista su APRS-IS entro
+       ``igate_local_window_sec``; ``qAO`` altrimenti (IGate a sola ricezione,
+       IGate bidirezionale con l'inoltro INET→RF disattivato, e qualsiasi
+       stazione connessa a Internet)
    * - Stringa di filtro APRS-IS lato server (``r/``, ``p/``, ``t/``, ``b/``...)
      - ✅
      - ✅

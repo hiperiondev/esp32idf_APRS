@@ -27,6 +27,7 @@
 
 #include "BMP180.h" // BMP180_I2C_SDA_GPIO/SCL_GPIO: fixed pins for the GPIO registry
 #include "app_config.h"
+#include "aprs_service.h"                       // APRS_SOFTWARE_NAME: the firmware name shown as the HTTP auth realm and page title
 #include "esp32idf_radioamateur_modem_config.h" // MODEM_ADC_GPIO/MODEM_DAC_GPIO/MODEM_PTT_GPIO: fixed audio front-end + PTT pins for the GPIO registry
 #include "esp_log.h"
 #include "esp_timer.h"    // esp_timer_get_time(): monotonic clock for the login lockout window
@@ -309,7 +310,7 @@ bool web_check_auth(httpd_req_t *req) {
 need_auth:
     web_auth_note_failure(client_ip);
     httpd_resp_set_status(req, "401 Unauthorized");
-    httpd_resp_set_hdr(req, "WWW-Authenticate", "Basic realm=\"ESP32APRS\"");
+    httpd_resp_set_hdr(req, "WWW-Authenticate", "Basic realm=\"" APRS_SOFTWARE_NAME "\"");
     httpd_resp_set_type(req, "text/html");
     httpd_resp_sendstr(req, "<h1>" TR_UNAUTHORIZED "</h1>");
     return false;
@@ -795,7 +796,7 @@ void web_send_header(httpd_req_t *req, const char *title, const char *active_men
     httpd_resp_sendstr_chunk(req, "<!DOCTYPE html><html><head><meta charset='utf-8'>"
                                   "<meta name='viewport' content='width=device-width,initial-scale=1'>"
                                   "<link rel='stylesheet' href='/style.css'>"
-                                  "<title>ESP32APRS</title></head><body>"
+                                  "<title>" APRS_SOFTWARE_NAME "</title></head><body>"
                                   "<div class='topbar'><span class='brand'>" TR_BRAND "</span>"
                                   "<a class='logout' href='/logout'>" TR_LOGOUT "</a></div>"
                                   "<div class='layout'><nav class='sidebar'><ul>");
