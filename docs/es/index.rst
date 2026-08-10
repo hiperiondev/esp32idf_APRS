@@ -174,4 +174,5 @@ de capítulos:
    reference/http-routes
    reference/troubleshooting
    reference/limitations
+   reference/aprs-coverage
    reference/credits

@@ -8,6 +8,10 @@ Il firmware è **work in progress**. Il percorso di trasmissione RF, l'IGate, il
 digipeater, i beacon, il meteo, la telemetria, la messaggistica e
 l'amministrazione web sono tutti funzionanti.
 
+Questa pagina confronta il progetto con *altri software APRS*. Per la vista
+complementare — quanta parte della *specifica APRS stessa* la stazione mette in
+onda, capitolo per capitolo — vedere :ref:`it-aprs-coverage`.
+
 Tabella comparativa delle funzionalità
 =========================================
 

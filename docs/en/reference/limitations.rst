@@ -7,6 +7,10 @@ Status and Known Limitations
 The firmware is **work in progress**. The RF transmit path, IGate, digipeater,
 beacons, weather, telemetry, messaging and web admin are all functional.
 
+This page compares the project with *other APRS software*. For the companion
+view — how much of the *APRS specification itself* the station puts on the air,
+chapter by chapter — see :ref:`en-aprs-coverage`.
+
 Feature comparison table
 =========================
 

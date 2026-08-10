@@ -8,6 +8,10 @@ El firmware es **trabajo en progreso**. La ruta de transmisión RF, el IGate, el
 digipeater, las balizas, la meteorología, la telemetría, la mensajería y la
 administración web son todos funcionales.
 
+Esta página compara el proyecto con *otros programas APRS*. Para la vista
+complementaria — cuánto de la *especificación APRS en sí* pone la estación al
+aire, capítulo por capítulo — vea :ref:`es-aprs-coverage`.
+
 Tabla comparativa de funcionalidades
 =======================================
 
