@@ -152,6 +152,18 @@ typedef struct {
     uint16_t freqToneTenths;
     int8_t freqDuplex;
     uint16_t freqOffsetKhz;
+    // The APRS 1.2 base-91 comment telemetry group ("|ss1122|",
+    // telemetry_build_comment_tlm()), filled in by appendCommentTelemetry()
+    // once this beacon's other fields are set, or left empty when comment
+    // telemetry does not apply to this beacon/callsign. Kept separate from
+    // comment rather than concatenated onto it, so buildPositionPacket() and
+    // buildMicePositionPacket() can reserve room for it - the same way they
+    // already reserve room for the trailing !DAO! extension - and truncate
+    // only the operator's free-form comment text if the info field would
+    // otherwise overflow. Sized for the group's documented worst case: '|' +
+    // 2-byte sequence pair + up to TLM_CH 2-byte analog pairs + closing '|' +
+    // NUL.
+    char cmtTlm[1 + 2 + TLM_CH * 2 + 1 + 1];
 } beacon_params_t;
 
 // Encodes a beacon's own transmit interval into the PHGR "probes" rate
@@ -267,28 +279,30 @@ static bool call_equals_ci(const char *a, const char *b) {
     return a[i] == b[i]; // both NUL at the same position
 }
 
-// Appends the optional APRS 1.2 base-91 comment telemetry group
-// (telemetry_build_comment_tlm(), "|ss1122|") to p->comment, if and only if
+// Resolves the optional APRS 1.2 base-91 comment telemetry group
+// (telemetry_build_comment_tlm(), "|ss1122|") into p->cmtTlm, if and only if
 // this beacon's own callsign/SSID is the one the Telemetry page has
 // configured: the comment form only makes sense riding along on the
 // telemetry station's own position report, since a receiving station reads
 // it as THIS report's source station's telemetry. Called once per beacon
 // service right after that service fills p->comment from its own g_config
-// field, so buildPositionPacket()/buildMicePositionPacket() never need to
-// know comment telemetry exists - they just see a slightly longer comment.
-// A group that would not fit the remaining comment room is silently dropped
-// (telemetry_build_comment_tlm() logs why) rather than truncated, since a
-// truncated base-91 pair decodes to a wrong value instead of a missing one.
+// field. Kept out of p->comment itself so buildPositionPacket() and
+// buildMicePositionPacket() can place it after the operator's comment text
+// and before any trailing !DAO! extension, and reserve its bytes the same
+// way they already reserve the DAO's, rather than let it be truncated along
+// with an over-long comment. A group that would not fit p->cmtTlm is
+// silently dropped (telemetry_build_comment_tlm() logs why) rather than
+// truncated, since a truncated base-91 pair decodes to a wrong value instead
+// of a missing one.
 static void appendCommentTelemetry(beacon_params_t *p) {
+    p->cmtTlm[0] = 0;
+
     telemetry_config_t tlmCfg;
     telemetry_config_load(&tlmCfg);
     if (!tlmCfg.mycall[0] || !call_equals_ci(tlmCfg.mycall, p->call) || tlmCfg.ssid != p->ssid)
         return;
 
-    size_t used = strlen(p->comment);
-    if (used >= sizeof(p->comment) - 1)
-        return;
-    telemetry_build_comment_tlm(p->comment + used, sizeof(p->comment) - used);
+    telemetry_build_comment_tlm(p->cmtTlm, sizeof(p->cmtTlm));
 }
 
 // Builds the 7-byte "RNGrrrr" Pre-Calculated Radio Range data extension
@@ -424,14 +438,25 @@ static int buildMicePositionPacket(const beacon_params_t *p, char *out, size_t o
     char freqBlock[24];
     objitem_build_freq_block(p->freqMhz, p->freqToneTenths, p->freqDuplex, p->freqOffsetKhz, freqBlock, sizeof(freqBlock));
 
+    // Layout order for the text field is [freqBlock][comment][comment
+    // telemetry][!DAO!]: the base-91 comment telemetry group must follow the
+    // operator's free-form comment text but precede the DAO extension
+    // (APRS101 ch.13, aprs12/datum.txt). Both the telemetry group and the DAO
+    // extension have their bytes reserved ahead of time, the same way the DAO
+    // extension alone used to be, so an over-long comment truncates only the
+    // comment - never the telemetry group or the DAO bytes trailing it.
     size_t daoLen = strlen(dao);
+    size_t cmtTlmLen = strlen(p->cmtTlm);
     size_t textMax = sizeof(report.status_text);
-    size_t bodyMax = (textMax > daoLen) ? textMax - daoLen : 1;
+    size_t reserved = daoLen + cmtTlmLen;
+    size_t bodyMax = (textMax > reserved) ? textMax - reserved : 1;
     size_t used = 0;
     if (freqBlock[0])
         str_append(report.status_text, bodyMax, &used, "%s ", freqBlock);
     if (p->comment[0])
         str_append(report.status_text, bodyMax, &used, "%s", p->comment);
+    if (cmtTlmLen > 0)
+        str_append(report.status_text, textMax - daoLen, &used, "%s", p->cmtTlm);
     if (daoLen > 0)
         str_append(report.status_text, textMax, &used, "%s", dao);
     report.has_status_text = (report.status_text[0] != 0);
@@ -527,43 +552,51 @@ static int buildPositionPacket(const beacon_params_t *p, char *out, size_t outMa
         snprintf(extra, sizeof(extra), "/A=%06d", feet);
     }
 
+    // !DAO! precision/datum extension (aprs12/datum.txt), appended after the
+    // comment telemetry group below. Only meaningful, and only applied,
+    // alongside the uncompressed layout at full precision: the compressed
+    // format already carries full resolution, and a station that asked for a
+    // coarser-than-full-precision report (ambiguity > 0) must not have that
+    // precision handed straight back through this extension.
+    char dao[APRS_DAO_BUF_SIZE] = { 0 };
+    if (p->daoEnable && p->ambiguity == 0 && !useCompressed)
+        aprs_dao_build(p->lat, p->lon, dao);
+
     // Frequency block (freqspec.txt): built once here and prepended to the
     // comment as its first bytes, ahead of anything the operator typed. The
     // frequency token itself is exactly 10 bytes whichever of the spec's
     // three forms the configured frequency selects, satisfying the
     // fixed-field requirement for radios (e.g. Yaesu) that only look at the
     // first 10 bytes of the comment and do not decode the frequency Object
-    // form. A single space separates it from the rest of the comment. Comment
-    // text that would push the combined field past COMMENT_SIZE - 1 is
-    // truncated, same as an over-long operator-entered comment always was.
+    // form. A single space separates it from the rest of the comment.
+    //
+    // Layout order is [freqBlock][comment][comment telemetry][!DAO!]
+    // (APRS101 ch.13, aprs12/datum.txt): the base-91 comment telemetry group
+    // must follow the operator's free-form comment text but precede the DAO
+    // extension. Both the telemetry group and the DAO extension have their
+    // bytes reserved ahead of the operator's comment text, so an over-long
+    // comment truncates only the comment - never the telemetry group or the
+    // DAO bytes trailing it.
     char comment[COMMENT_SIZE];
     {
         char freqBlock[24];
         objitem_build_freq_block(p->freqMhz, p->freqToneTenths, p->freqDuplex, p->freqOffsetKhz, freqBlock, sizeof(freqBlock));
-        if (freqBlock[0]) {
-            // Precision on %s bounds the operator-entered part explicitly to
-            // whatever room is left after freqBlock and the separating space,
-            // so the combined write is provably within sizeof(comment) - the
-            // same truncation the plain "%s %s" form already produced, just
-            // in a shape the compiler can verify statically.
-            int room = (int)sizeof(comment) - (int)strlen(freqBlock) - 1;
-            if (room < 0)
-                room = 0;
-            snprintf(comment, sizeof(comment), "%s %.*s", freqBlock, room, p->comment);
-        } else {
-            snprintf(comment, sizeof(comment), "%.*s", (int)sizeof(comment) - 1, p->comment);
-        }
-    }
 
-    // !DAO! precision/datum extension (aprs12/datum.txt), appended after the
-    // comment. Only meaningful, and only applied, alongside the uncompressed
-    // layout at full precision: the compressed format already carries full
-    // resolution, and a station that asked for a coarser-than-full-precision
-    // report (ambiguity > 0) must not have that precision handed straight
-    // back through this extension.
-    char dao[APRS_DAO_BUF_SIZE] = { 0 };
-    if (p->daoEnable && p->ambiguity == 0 && !useCompressed)
-        aprs_dao_build(p->lat, p->lon, dao);
+        size_t cmtTlmLen = strlen(p->cmtTlm);
+        size_t daoLen = strlen(dao);
+        size_t reserved = cmtTlmLen + daoLen;
+        size_t bodyMax = (sizeof(comment) > reserved) ? sizeof(comment) - reserved : 1;
+
+        size_t used = 0;
+        if (freqBlock[0])
+            str_append(comment, bodyMax, &used, "%s ", freqBlock);
+        if (p->comment[0])
+            str_append(comment, bodyMax, &used, "%s", p->comment);
+        if (cmtTlmLen > 0)
+            str_append(comment, sizeof(comment) - daoLen, &used, "%s", p->cmtTlm);
+        if (daoLen > 0)
+            str_append(comment, sizeof(comment), &used, "%s", dao);
+    }
 
     // The data type identifier encodes both whether a timestamp follows and
     // whether this station can accept APRS messages (APRS101 ch.6):
@@ -575,16 +608,19 @@ static int buildPositionPacket(const beacon_params_t *p, char *out, size_t outMa
     // acknowledges what it receives, so with messaging on it says so - a
     // beacon that claims otherwise is displayed by Kenwood radios, APRSISCE/32,
     // Xastir, YAAC and aprs.fi alike as a station nobody can reply to.
-    char infoField[256]; // ts(7)+posField(up to 21)+ext(7)+extra(40)+comment(up to 128)+dao(5)+NUL
+    // comment already carries the trailing comment telemetry group and !DAO!
+    // extension in the order the earlier reservation established, so neither
+    // is passed here separately.
+    char infoField[256]; // ts(7)+posField(up to 21)+ext(7)+extra(40)+comment(up to 128, includes telemetry+dao)+NUL
     if (p->timestamp) {
         time_t now = time(NULL);
         struct tm tmv;
         gmtime_r(&now, &tmv);
         char ts[8];
         snprintf(ts, sizeof(ts), "%02d%02d%02dz", tmv.tm_mday, tmv.tm_hour, tmv.tm_min);
-        snprintf(infoField, sizeof(infoField), "%c%s%s%s%s%s%s", p->msgCapable ? '@' : '/', ts, posField, ext, extra, comment, dao);
+        snprintf(infoField, sizeof(infoField), "%c%s%s%s%s%s", p->msgCapable ? '@' : '/', ts, posField, ext, extra, comment);
     } else {
-        snprintf(infoField, sizeof(infoField), "%c%s%s%s%s%s", p->msgCapable ? '=' : '!', posField, ext, extra, comment, dao);
+        snprintf(infoField, sizeof(infoField), "%c%s%s%s%s", p->msgCapable ? '=' : '!', posField, ext, extra, comment);
     }
 
     int n = snprintf(out, outMax, "%s>%s%s:%s", callField, BEACON_DEST, path, infoField);

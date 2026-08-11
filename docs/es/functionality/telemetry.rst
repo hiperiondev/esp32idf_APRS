@@ -132,10 +132,21 @@ valor únicamente por su posición en la secuencia. El codificador se detiene en
 el primer hueco en vez de saltarlo, manteniendo el grupo como un prefijo
 ininterrumpido A1, A2, ... An.
 
-Un grupo que no quepa en el espacio restante del comentario de posición se
-descarta en vez de truncarse - un par base-91 truncado se decodifica como un
-valor incorrecto, no como uno ausente - y el texto propio del operador nunca
-se acorta para hacerle sitio.
+Un grupo que no quepa en el búfer de salida propio de
+``telemetry_build_comment_tlm()`` se descarta en vez de truncarse - un par
+base-91 truncado se decodifica como un valor incorrecto, no como uno ausente.
+Una vez resuelto, los bytes del grupo (y los de la extensión ``!DAO!``
+final, si está habilitada) se reservan antes que el propio texto del
+comentario del operador, de modo que un informe de posición cuyo comentario
+desbordaría el campo trunca el *comentario*, nunca el grupo de telemetría ni
+la extensión DAO que lo sigue.
+
+Dentro del campo de texto del informe de posición el orden de emisión es
+fijo: bloque de frecuencia (si lo hay), comentario del operador, grupo de
+telemetría en el comentario y, por último, ``!DAO!`` (si está habilitado) -
+de acuerdo con el capítulo 13 de APRS101 y la propia regla de colocación de
+la extensión DAO (``aprs12/datum.txt``). Este orden se mantiene tanto en el
+formato sin comprimir como en Mic-E.
 
 Selectores de la página web
 ===========================

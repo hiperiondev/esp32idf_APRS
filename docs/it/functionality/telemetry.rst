@@ -133,10 +133,21 @@ dalla sua posizione nella sequenza. Il codificatore si ferma al primo vuoto
 invece di saltarlo, mantenendo il gruppo come un prefisso ininterrotto A1,
 A2, ... An.
 
-Un gruppo che non entra nello spazio restante del commento di posizione viene
-scartato invece che troncato - una coppia base-91 troncata si decodifica come
-un valore sbagliato, non come uno assente - e il testo dell'operatore non
-viene mai accorciato per fargli spazio.
+Un gruppo che non entra nel buffer di uscita proprio di
+``telemetry_build_comment_tlm()`` viene scartato invece che troncato - una
+coppia base-91 troncata si decodifica come un valore sbagliato, non come uno
+assente. Una volta risolto, i byte del gruppo (e quelli dell'estensione
+``!DAO!`` finale, se abilitata) vengono riservati prima del testo del
+commento dell'operatore, cosicché un rapporto di posizione il cui commento
+ecceda il campo tronca il *commento*, mai il gruppo di telemetria né
+l'estensione DAO che lo segue.
+
+All'interno del campo di testo del rapporto di posizione l'ordine di
+emissione è fisso: blocco di frequenza (se presente), commento
+dell'operatore, gruppo di telemetria nel commento e infine ``!DAO!`` (se
+abilitato) - in accordo con il capitolo 13 di APRS101 e con la regola di
+posizionamento propria dell'estensione DAO (``aprs12/datum.txt``). Questo
+ordine vale sia per il formato non compresso sia per il Mic-E.
 
 Selettori della pagina web
 ==========================

@@ -127,10 +127,19 @@ channel identifier, so a receiving station recovers each value's channel
 purely from its position in the sequence. The encoder stops at the first gap
 rather than skip it, keeping the group an unbroken prefix of A1, A2, ... An.
 
-A group that would not fit the position comment's remaining room is dropped
-rather than truncated — a truncated base-91 pair decodes to a wrong value, not
-a missing one — and the operator's own comment text is never shortened to make
-room for it.
+A group that would not fit the telemetry station's own ``telemetry_build_comment_tlm()``
+output buffer is dropped rather than truncated — a truncated base-91 pair
+decodes to a wrong value, not a missing one. Once resolved, the group's bytes
+(and the trailing ``!DAO!`` extension's, if enabled) are reserved ahead of the
+operator's own comment text, so a position report whose comment would
+otherwise overflow the field truncates the *comment*, never the telemetry
+group or the DAO extension that follows it.
+
+Within the position report's text field the emission order is fixed:
+frequency block (if any), operator comment, comment telemetry group, then
+``!DAO!`` (if enabled) — matching APRS101 chapter 13 and the DAO extension's
+own placement rule (``aprs12/datum.txt``). This order holds for both the
+uncompressed layout and Mic-E.
 
 Web page pickers
 ================
