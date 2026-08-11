@@ -638,34 +638,42 @@ typedef struct {
 // Builds the full TNC2 text line for one status-report transmission. The
 // info field is DTI '>' followed by the free-text status (APRS101 ch.16).
 //
-// After the '>', up to three optional blocks precede the operator's own
-// status text, in the fixed order the spec and this project's conventions
-// put them in:
+// After the '>', up to two optional blocks precede the operator's own status
+// text, in the fixed order the spec and this project's conventions put them
+// in:
 //
-//   1. The optional "DDHHMMz" zulu timestamp (APRS101 ch.16), immediately
-//      after '>', when g_config.status_timestamp_en is set.
+//   1. Either the "DDHHMMz" zulu timestamp or the Maidenhead grid locator,
+//      immediately after '>' - APRS101 ch.16 defines the two as mutually
+//      exclusive forms of the same leading field, so a status report never
+//      carries both. When both g_config.status_timestamp_en and the grid
+//      option are set, the locator wins - it carries this station's position,
+//      which the timestamp does not - and the timestamp is left out. The
+//      locator itself is the fixed 6-char field (always upper case) that
+//      aprs_maidenhead_locator() produces, immediately followed by the
+//      symbol table byte and the symbol code with no separating space, the
+//      ">IO91SX/G" form the spec defines.
 //   2. The frequency block (freqspec.txt) - the fixed 10-byte frequency
 //      field, its tone and its duplex shift - when this beacon has a monitor
 //      frequency configured - the second advertisement
 //      the spec endorses, for radios that decode neither the frequency
 //      Object form nor the leading bytes of a position report's comment.
-//   3. With the Maidenhead option on, the 6-char grid locator of this
-//      beacon's position, the symbol table byte and the symbol code - the
-//      ">IO91SX/G" form the spec defines.
 //
-// Each present block is followed by a single space separating it from what
-// comes next. Receivers that understand a given form read it out on its own;
-// the rest simply show the whole thing as status text. The configured status
-// text itself is never interpreted: whatever the operator typed is carried
-// verbatim at the end.
+// A single space separates the last present block from the status text that
+// follows it; with no block present the text follows the DTI directly, and
+// with the locator present the space follows the symbol code. Receivers that
+// understand a given leading field read it out on its own; the rest simply
+// show the whole thing as status text. The configured status text itself is
+// never interpreted: whatever the operator typed is carried verbatim at the
+// end.
 //
-// All four pieces share the APRS_STATUS_INFO_MAX budget APRS101 ch.16 sets
-// for the information field, and a full status text plus both optional blocks
-// asks for more than that, so the blocks are dropped in a defined order until
-// the field fits: the locator first, then the frequency block. The operator's
-// text is what the report exists to carry, so it is never the thing that
-// gives way - if it does not fit on its own the report is refused outright,
-// on the same terms buildPositionPacket() refuses an over-long position.
+// All pieces share the APRS_STATUS_INFO_MAX budget APRS101 ch.16 sets for the
+// information field, and a full status text plus both optional blocks asks
+// for more than that, so the blocks are dropped in a defined order until the
+// field fits: the leading field (timestamp or locator) first, then the
+// frequency block. The operator's text is what the report exists to carry,
+// so it is never the thing that gives way - if it does not fit on its own
+// the report is refused outright, on the same terms buildPositionPacket()
+// refuses an over-long position.
 //
 // Returns the packet length, or 0 if nothing usable is configured.
 static int buildStatusPacket(const status_params_t *p, char *out, size_t outMax) {
@@ -684,8 +692,16 @@ static int buildStatusPacket(const status_params_t *p, char *out, size_t outMax)
     char freqBlock[24];
     objitem_build_freq_block(p->freqMhz, p->freqToneTenths, p->freqDuplex, p->freqOffsetKhz, freqBlock, sizeof(freqBlock));
 
+    // The grid locator takes precedence over the timestamp: APRS101 ch.16
+    // allows only one of the two immediately after the '>' DTI, and the
+    // locator is the one that carries information the timestamp does not.
+    bool useGrid = p->gridEnable;
+    bool useTs = g_config.status_timestamp_en && !useGrid;
+    if (p->gridEnable && g_config.status_timestamp_en)
+        ESP_LOGW(TAG, "status report: Maidenhead locator and timestamp both enabled - timestamp omitted");
+
     char ts[8] = { 0 };
-    if (g_config.status_timestamp_en) {
+    if (useTs) {
         time_t now = time(NULL);
         struct tm tmv;
         gmtime_r(&now, &tmv);
@@ -694,41 +710,47 @@ static int buildStatusPacket(const status_params_t *p, char *out, size_t outMax)
 
     char grid[APRS_MAIDENHEAD_BUF_SIZE] = { 0 };
     char symTable = 0, symCode = 0;
-    if (p->gridEnable) {
+    if (useGrid) {
         aprs_maidenhead_locator(p->lat, p->lon, grid, sizeof(grid));
         symTable = p->symbol[0] ? p->symbol[0] : '/';
         symCode = p->symbol[1] ? p->symbol[1] : '>';
     }
 
-    // '>' (1) + timestamp (7) + freq block (up to 20, space-separated) +
-    // optional locator block ("IO91SX" + symbol table + symbol code +
-    // separating space = 9) + status text (up to STATUS_SIZE - 1) + NUL, so
-    // the buffer holds every assembly attempt below even before the blocks
-    // are dropped. Built with str_append() so a would-be negative/oversize
-    // snprintf() result from any one piece saturates the buffer instead of
-    // underflowing the running offset.
+    // '>' (1) + leading field (timestamp "DDHHMMz" = 7, or locator "IO91SX"
+    // + symbol table + symbol code = 9) + freq block (up to 20,
+    // space-separated) + separating space + status text (up to
+    // STATUS_SIZE - 1) + NUL, so the buffer holds every assembly attempt
+    // below even before the blocks are dropped. Built with str_append() so a
+    // would-be negative/oversize snprintf() result from any one piece
+    // saturates the buffer instead of underflowing the running offset.
     char infoField[STATUS_SIZE + 40];
     bool useFreq = freqBlock[0] != 0;
-    bool useGrid = p->gridEnable;
     size_t used;
     for (;;) {
         used = 0;
-        str_append(infoField, sizeof(infoField), &used, ">%s", ts);
-        if (useFreq)
-            str_append(infoField, sizeof(infoField), &used, "%s ", freqBlock);
+        str_append(infoField, sizeof(infoField), &used, ">");
         if (useGrid)
-            str_append(infoField, sizeof(infoField), &used, "%s%c%c ", grid, symTable, symCode);
-        str_append(infoField, sizeof(infoField), &used, "%s", p->statusText);
+            str_append(infoField, sizeof(infoField), &used, "%s%c%c", grid, symTable, symCode);
+        else if (useTs)
+            str_append(infoField, sizeof(infoField), &used, "%s", ts);
+        if (useFreq)
+            str_append(infoField, sizeof(infoField), &used, "%s", freqBlock);
+        str_append(infoField, sizeof(infoField), &used, " %s", p->statusText);
 
         if (used <= APRS_STATUS_INFO_MAX)
             break;
         // Over budget: give up the optional blocks, least useful first. The
-        // locator only restates a position this station already beacons,
-        // while the frequency block is the one thing in the report a radio
-        // can act on, so the locator goes first.
-        if (useGrid) {
+        // leading field only restates information this station already
+        // beacons elsewhere (its position or the current time), while the
+        // frequency block is the one thing in the report a radio can act on,
+        // so the leading field goes first.
+        if (useGrid || useTs) {
+            if (useGrid)
+                ESP_LOGW(TAG, "status info field %u bytes (max %d) - Maidenhead locator omitted", (unsigned)used, APRS_STATUS_INFO_MAX);
+            else
+                ESP_LOGW(TAG, "status info field %u bytes (max %d) - timestamp omitted", (unsigned)used, APRS_STATUS_INFO_MAX);
             useGrid = false;
-            ESP_LOGW(TAG, "status info field %u bytes (max %d) - Maidenhead locator omitted", (unsigned)used, APRS_STATUS_INFO_MAX);
+            useTs = false;
             continue;
         }
         if (useFreq) {

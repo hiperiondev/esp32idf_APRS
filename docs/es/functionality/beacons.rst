@@ -303,7 +303,18 @@ posición propia de esa baliza, su byte de tabla de símbolo y su código de
 símbolo — la forma ``>IO91SX/G`` de APRS101 cap.16 — seguido de un espacio y el
 texto de estado configurado. Los receptores que entienden la forma sitúan la
 estación solo con el localizador; el resto muestran todo como texto de estado. El
-texto configurado nunca se interpreta.
+texto configurado nunca se interpreta. El localizador es siempre el campo fijo
+de 6 caracteres, en mayúsculas.
+
+APRS101 cap.16 permite un único campo inicial en el campo de información de un
+reporte de estado: la marca de tiempo DHM o el localizador Maidenhead, nunca
+ambos a la vez — un receptor lee lo que sigue inmediatamente al DTI ``>`` como
+el localizador, así que una marca de tiempo en esa posición se leería mal como
+tal. Cuando *Marca de tiempo de estado* y *Localizador Maidenhead en los
+reportes de estado* están activas a la vez en la misma baliza, el localizador
+tiene prioridad y la marca de tiempo se omite en los reportes de estado de esa
+baliza, ya que el localizador lleva la posición de la estación, algo que la
+marca de tiempo no lleva.
 
 Presupuesto de longitud del reporte de estado
 =============================================
@@ -311,16 +322,17 @@ Presupuesto de longitud del reporte de estado
 APRS101 cap.16 limita el campo de información de un reporte de estado a 70
 bytes: el DTI ``>``, una marca de tiempo DHM opcional de 7 caracteres y como
 máximo 62 caracteres de texto de estado. Todo lo que el reporte puede llevar
-además de las palabras del operador sale de ese mismo presupuesto — la marca de
-tiempo, el bloque de frecuencia y el localizador Maidenhead — y un texto de
-estado completo de 49 caracteres más los dos bloques opcionales pide más de lo
-que entra.
+además de las palabras del operador sale de ese mismo presupuesto — el campo
+inicial (la marca de tiempo, o el localizador Maidenhead cuando tiene
+prioridad) y el bloque de frecuencia — y un texto de estado completo de 49
+caracteres más los dos bloques opcionales pide más de lo que entra.
 
 Cuando eso ocurre se descartan los bloques opcionales, en este orden, hasta que
 el campo entra:
 
-#. el localizador Maidenhead, que solo repite una posición que esta estación ya
-   baliza;
+#. el campo inicial (el localizador Maidenhead, o la marca de tiempo cuando no
+   se usa localizador), que solo repite información que esta estación ya
+   baliza por otro medio — su posición o la hora actual;
 #. el bloque de frecuencia, la única parte del reporte sobre la que una radio
    receptora puede actuar.
 

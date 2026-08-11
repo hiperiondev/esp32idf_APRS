@@ -285,7 +285,16 @@ position, its symbol table byte and its symbol code — the ``>IO91SX/G`` form o
 APRS101 ch.16 — followed by a space and the configured status text. Receivers
 that understand the form plot the station from the locator alone; the rest show
 the whole thing as status text. The configured text itself is never
-interpreted.
+interpreted. The locator is always the fixed 6-character field in upper case.
+
+APRS101 ch.16 allows only one leading field in a status report's information
+field: either the DHM timestamp or the Maidenhead locator, never both — a
+receiver reads whatever immediately follows the ``>`` DTI as the locator, so a
+timestamp in that position would be misread as one. When both *Status
+timestamp* and *Maidenhead locator in status reports* are enabled on the same
+beacon, the locator takes precedence and the timestamp is left out of that
+beacon's status reports, since the locator carries the station's position,
+which the timestamp does not.
 
 Status report length budget
 ===========================
@@ -293,15 +302,16 @@ Status report length budget
 APRS101 ch.16 caps a status report's information field at 70 bytes: the ``>``
 DTI, an optional 7-character DHM timestamp and at most 62 characters of status
 text. Everything the report can carry beyond the operator's own words is spent
-out of that same budget — the timestamp, the frequency block and the Maidenhead
-locator — and a full 49-character status text plus both optional blocks asks for
-more than fits.
+out of that same budget — the leading field (the timestamp, or the Maidenhead
+locator when it takes precedence) and the frequency block — and a full
+49-character status text plus both optional blocks asks for more than fits.
 
 When that happens the optional blocks are dropped, in this order, until the
 field fits:
 
-#. the Maidenhead locator, which only restates a position this station already
-   beacons;
+#. the leading field (the Maidenhead locator, or the timestamp when no locator
+   is in use), which only restates information this station already beacons
+   elsewhere — its position or the current time;
 #. the frequency block, the one part of the report a receiving radio can act on.
 
 The configured status text is never shortened: it is what the report exists to

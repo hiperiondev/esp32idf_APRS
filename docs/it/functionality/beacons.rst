@@ -305,7 +305,18 @@ simboli e il codice del simbolo — la forma ``>IO91SX/G`` di APRS101 cap.16 —
 seguito da uno spazio e dal testo di stato configurato. I ricevitori che
 comprendono la forma posizionano la stazione con il solo localizzatore; gli
 altri mostrano il tutto come testo di stato. Il testo configurato non viene mai
-interpretato.
+interpretato. Il localizzatore è sempre il campo fisso di 6 caratteri, in
+maiuscolo.
+
+APRS101 cap.16 ammette un solo campo iniziale nel campo informativo di un
+rapporto di stato: il timestamp DHM oppure il localizzatore Maidenhead, mai
+entrambi insieme — un ricevitore legge ciò che segue immediatamente il DTI
+``>`` come il localizzatore, quindi un timestamp in quella posizione verrebbe
+letto erroneamente come tale. Quando *Timestamp di stato* e *Localizzatore
+Maidenhead nei rapporti di stato* sono entrambi attivi sullo stesso beacon, il
+localizzatore ha la precedenza e il timestamp viene omesso dai rapporti di
+stato di quel beacon, poiché il localizzatore porta la posizione della
+stazione, cosa che il timestamp non porta.
 
 Budget di lunghezza del rapporto di stato
 =========================================
@@ -313,15 +324,18 @@ Budget di lunghezza del rapporto di stato
 APRS101 cap.16 limita il campo informativo di un rapporto di stato a 70 byte: il
 DTI ``>``, un timestamp DHM opzionale di 7 caratteri e al massimo 62 caratteri
 di testo di stato. Tutto ciò che il rapporto può portare oltre alle parole
-dell'operatore viene preso dallo stesso budget — il timestamp, il blocco di
-frequenza e il localizzatore Maidenhead — e un testo di stato completo di 49
-caratteri più entrambi i blocchi opzionali chiede più di quanto entri.
+dell'operatore viene preso dallo stesso budget — il campo iniziale (il
+timestamp, oppure il localizzatore Maidenhead quando ha la precedenza) e il
+blocco di frequenza — e un testo di stato completo di 49 caratteri più
+entrambi i blocchi opzionali chiede più di quanto entri.
 
 Quando questo accade i blocchi opzionali vengono scartati, in quest'ordine, fino
 a che il campo entra:
 
-#. il localizzatore Maidenhead, che si limita a ripetere una posizione che
-   questa stazione già trasmette;
+#. il campo iniziale (il localizzatore Maidenhead, oppure il timestamp quando
+   non si usa il localizzatore), che si limita a ripetere informazioni che
+   questa stazione già trasmette altrove — la propria posizione o l'ora
+   corrente;
 #. il blocco di frequenza, l'unica parte del rapporto su cui una radio ricevente
    può agire.
 

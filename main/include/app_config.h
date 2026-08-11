@@ -489,9 +489,12 @@ typedef struct {
 
     uint8_t pos_ambiguity;    /**< Position ambiguity applied to every uncompressed own-station position report, 0 (full precision) to ::POS_AMBIGUITY_MAX
                                  (nearest degree). See aprs_coord_format_ambiguous(). */
-    bool status_grid_en;      /**< Prefix every own-station status report with the Maidenhead grid locator of the beacon's position (APRS101 chapter 16). */
+    bool status_grid_en;      /**< Prefix every own-station status report with the Maidenhead grid locator of the beacon's position, its symbol table byte
+                                 and its symbol code, immediately after the '>' data type identifier (APRS101 chapter 16). Takes precedence over
+                                 ::status_timestamp_en: the spec allows only one of the two leading fields, so when both are set the timestamp is left
+                                 out of the report. */
     bool status_timestamp_en; /**< Prefix every own-station status report with the optional "DDHHMMz" zulu timestamp (APRS101 chapter 16), immediately
-                                 after the '>' data type identifier and before any Maidenhead locator block. */
+                                 after the '>' data type identifier, unless ::status_grid_en is also set, in which case the grid locator is sent instead. */
     bool pos_dao_en; /**< Append the WGS-84 human-readable "!DAO!" precision/datum extension (aprs12/datum.txt) to every uncompressed own-station position
                         report, recovering the third decimal minute digit of latitude/longitude that the plain "DDMM.mmN"/"DDDMM.mmW" fields round away. See
                         aprs_dao_build(). Only applied when pos_ambiguity is 0: a station deliberately obscuring its position must not have that precision
