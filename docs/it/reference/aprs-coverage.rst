@@ -194,7 +194,7 @@ Rapporti di posizione compressi (cap. 9)
      - Selezionabile per servizio — tracker, IGate, digipeater e oggetti — e decodificata in ricezione. La compressione è soppressa automaticamente quando sono in uso un'estensione dati o l'ambiguità di posizione, perché nessuna delle due sopravvive al formato compresso.
    * - Rotta/velocità compresse e il byte di tipo di compressione
      - ✅
-     - Un tracker in movimento codifica rotta e velocità nel campo a due byte e imposta il byte di tipo su rotta/velocità compresse con fix corrente; una stazione senza nulla da riportare invia la codifica a tre spazi di "nessun dato".
+     - Un tracker in movimento codifica rotta e velocità nel campo a due byte e imposta il byte di tipo su rotta/velocità compresse con fix corrente; una stazione senza nulla da riportare invia la codifica a tre spazi di "nessun dato". Il campo quantizza la rotta a passi di 4 gradi e la velocità a passi di circa l'8 per cento, e il codificatore mantiene entrambi i byte nell'intervallo che appartiene alla forma rotta/velocità, quindi un token non viene mai letto come la forma di portata radio che condivide quei due byte.
    * - Portata radio e altitudine compresse
      - ❌
      - Il campo a due byte porta solo rotta e velocità. Una stazione che deve annunciare portata o altitudine insieme alla posizione usa il formato non compresso, dove entrambe hanno un campo proprio.

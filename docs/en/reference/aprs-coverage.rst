@@ -192,7 +192,7 @@ Compressed position reports (ch. 9)
      - Selectable per service — tracker, IGate, digipeater and objects — and decoded on receive. Compression is automatically suppressed when a data extension or position ambiguity is in use, since neither survives the compressed layout.
    * - Compressed course/speed and the compression type byte
      - ✅
-     - A moving tracker encodes course and speed into the two-byte field and sets the type byte to compressed course/speed with a current fix; a station with nothing to report sends the three-space "no data" encoding.
+     - A moving tracker encodes course and speed into the two-byte field and sets the type byte to compressed course/speed with a current fix; a station with nothing to report sends the three-space "no data" encoding. The field quantises course to a 4 degree step and speed to a step of about 8 per cent, and the encoder keeps both bytes inside the range the course/speed form owns, so a token is never read back as the radio range form that shares those two bytes.
    * - Compressed radio range and compressed altitude
      - ❌
      - The two-byte field carries course and speed only. A station that needs to advertise range or altitude alongside a position uses the uncompressed layout, where both have their own fields.

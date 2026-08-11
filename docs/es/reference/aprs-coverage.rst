@@ -194,7 +194,7 @@ Reportes de posición comprimidos (cap. 9)
      - Seleccionable por servicio — tracker, IGate, digipetidor y objetos — y se decodifica en recepción. La compresión se suprime automáticamente cuando hay una extensión de datos o ambigüedad de posición, porque ninguna de las dos sobrevive al formato comprimido.
    * - Rumbo/velocidad comprimidos y el byte de tipo de compresión
      - ✅
-     - Un tracker en movimiento codifica rumbo y velocidad en el campo de dos bytes y pone el byte de tipo en rumbo/velocidad comprimidos con posicionamiento actual; una estación sin nada que reportar manda la codificación de tres espacios de "sin datos".
+     - Un tracker en movimiento codifica rumbo y velocidad en el campo de dos bytes y pone el byte de tipo en rumbo/velocidad comprimidos con posicionamiento actual; una estación sin nada que reportar manda la codificación de tres espacios de "sin datos". El campo cuantiza el rumbo en pasos de 4 grados y la velocidad en pasos de alrededor del 8 por ciento, y el codificador mantiene ambos bytes dentro del rango que pertenece a la forma de rumbo/velocidad, así que un token nunca se lee como la forma de alcance de radio que comparte esos dos bytes.
    * - Alcance de radio y altitud comprimidos
      - ❌
      - El campo de dos bytes solo lleva rumbo y velocidad. Una estación que necesite anunciar alcance o altitud junto con la posición usa el formato sin comprimir, donde ambos tienen campo propio.

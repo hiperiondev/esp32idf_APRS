@@ -209,29 +209,31 @@ void aprs_coord_format_compressed(float lat, float lon, char symTable, char symC
 }
 
 void aprs_compressed_cs_from_course_speed(unsigned course_deg, unsigned speed_knots, char out[3]) {
-    unsigned course = course_deg % 360;
-    if (course == 0)
-        course = 360; // table has no "0 degrees" entry; wraps to 360 per spec
+    // Course quantises to the 4 degree step the field is decoded with
+    // (course = c * 4), so the digit is the truncated quotient: due north is
+    // digit 0 and reads back as 0 degrees. The digit never reaches
+    // APRS_COMPRESSED_CS_DIGIT_MAX + 1, the value reserved for the
+    // pre-calculated radio range form of the same two bytes.
+    long cDigit = (long)((course_deg % 360u) / 4u);
+    if (cDigit > APRS_COMPRESSED_CS_DIGIT_MAX)
+        cDigit = APRS_COMPRESSED_CS_DIGIT_MAX;
 
-    long cDigit = lroundf((float)course / 4.0f);
-    if (cDigit < 0)
-        cDigit = 0;
-    if (cDigit > 90)
-        cDigit = 90;
-
+    // Speed is decoded as 1.08^s - 1 knots, so the digit is the inverse of
+    // that relation. Speeds past the top of the table saturate at the highest
+    // digit, which stands for roughly 1030 knots.
     long sDigit;
     if (speed_knots == 0) {
         sDigit = 0;
     } else {
-        sDigit = lroundf(logf(1.0f + (float)speed_knots / 0.076f) / logf(1.08f));
+        sDigit = lroundf(logf(1.0f + (float)speed_knots) / logf(1.08f));
         if (sDigit < 0)
             sDigit = 0;
-        if (sDigit > 90)
-            sDigit = 90;
+        if (sDigit > APRS_COMPRESSED_CS_DIGIT_MAX)
+            sDigit = APRS_COMPRESSED_CS_DIGIT_MAX;
     }
 
-    out[0] = (char)('!' + cDigit);
-    out[1] = (char)('!' + sDigit);
+    out[0] = (char)(APRS_COMPRESSED_BASE91_OFFSET + cDigit);
+    out[1] = (char)(APRS_COMPRESSED_BASE91_OFFSET + sDigit);
     out[2] = 'C'; // compression type: compressed Course/Speed, current GPS fix, no NMEA source, no compression origin flag
 }
 

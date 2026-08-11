@@ -150,18 +150,45 @@ void aprs_maidenhead_locator(float lat, float lon, char *out, size_t outMax);
 void aprs_coord_format_compressed(float lat, float lon, char symTable, char symCode, const char csT[3], char *out, size_t outMax);
 
 /**
+ * @brief ASCII offset applied to every base-91 digit of a compressed position
+ * field, per APRS101 chapter 9: numeric value 0 is transmitted as '!' (33).
+ */
+#define APRS_COMPRESSED_BASE91_OFFSET 33
+
+/**
+ * @brief Highest numeric value either byte of the compressed course/speed
+ * token may carry, i.e. ASCII 'z'.
+ *
+ * APRS101 chapter 9 gives the course/speed form the numeric range 0-89
+ * ('!' through 'z') and reserves the next value, 90 ('{'), for the
+ * pre-calculated radio range form of the same two bytes. A course/speed
+ * token whose first byte reached 90 would therefore be decoded as a range
+ * circle rather than as a moving station.
+ */
+#define APRS_COMPRESSED_CS_DIGIT_MAX 89
+
+/**
  * @brief Build the 2-byte compressed course/speed token described by
- * APRS101 chapter 9, encoding a course of 1-360 degrees as base-91 digit
- * `round(course / 4)` and a speed of 0+ knots as base-91 digit
- * `round(log(1 + speed/0.076) / log(1.08))`, each offset by the standard
- * '!' base and followed by the fixed compression-type byte for "compressed
- * Course/Speed, current GPS fix".
+ * APRS101 chapter 9, followed by the fixed compression-type byte for
+ * "compressed Course/Speed, current GPS fix".
  *
- * Per spec, course 0 has no valid encoding (the table starts at 1 degree),
- * so a course of exactly 0 is emitted as 360 (i.e. due north wraps to the
- * top of the table) rather than being silently dropped.
+ * A receiver decodes the two bytes as `course = c * 4` degrees and
+ * `speed = 1.08^s - 1` knots, where c and s are the numeric values of the
+ * bytes once ::APRS_COMPRESSED_BASE91_OFFSET has been subtracted. This
+ * function is the exact inverse of that pair of relations:
  *
- * @param course_deg Course over ground, degrees (0-359; 0 is treated as 360).
+ *   - Course is truncated to the 4 degree step the field quantises to, so
+ *     the value read back is always the multiple of 4 at or below the course
+ *     given. Due north is digit 0 and decodes as 0 degrees.
+ *   - Speed is `round(log(1 + speed) / log(1.08))`, which reproduces the
+ *     requested speed to within the roughly 8 % step of the table.
+ *
+ * Both digits are capped at ::APRS_COMPRESSED_CS_DIGIT_MAX, so the token can
+ * never be mistaken for the pre-calculated radio range form. A speed beyond
+ * the top of the table saturates at approximately 1030 knots.
+ *
+ * @param course_deg Course over ground, degrees; values of 360 and above are
+ *        reduced modulo 360.
  * @param speed_knots Speed over ground, knots.
  * @param out 3-byte destination for the course/speed-and-type token.
  */
