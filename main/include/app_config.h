@@ -179,6 +179,30 @@ typedef enum {
 /** @} */
 
 /**
+ * @name Mic-E position comment selection
+ * @brief Accepted range and fallback for ::app_config_t::trk_mice_msg.
+ *
+ * The A/B/C bits of a Mic-E destination address select one of fifteen
+ * position comments (APRS101 Chapter 10, "Mic-E Message Types"): seven
+ * Standard values M0-M6, seven locally defined Custom values C0-C6, and
+ * Emergency when all three bits are clear. This setting maps them onto a
+ * single contiguous range so one @c <select> can carry it: 0-6 are the
+ * Standard values in order, 7-13 the Custom ones.
+ *
+ * Emergency has deliberately no value here. Transmitting it asks other
+ * operators, and in some regions dispatchers, to respond to a real
+ * emergency, which is not something a settings page should be able to arm
+ * with one mis-click and leave armed for every beacon afterwards. A received
+ * Emergency is fully decoded and raised to the operator; see
+ * ::aprs_mice_message_name and the receive path in aprs_service.c.
+ * @{
+ */
+#define MICE_POS_COMMENT_CUSTOM_BASE 7  /**< First value of the Custom C0-C6 block. */
+#define MICE_POS_COMMENT_MAX         13 /**< Highest selectable value (Custom C6). */
+#define MICE_POS_COMMENT_DEFAULT     0  /**< Factory default: M0 Off Duty, the conventional value for a station that does not move. */
+/** @} */
+
+/**
  * @brief Number of stored APRS-IS server slots (see ::app_config_t::aprs_server).
  *
  * The IGate task cycles through the enabled slots in order and wraps back to
@@ -592,6 +616,7 @@ typedef struct {
     bool trk_compress;              /**< Use APRS compressed position format. */
     bool trk_altitude;              /**< Include altitude in the beacon. */
     bool trk_mice;                  /**< Use Mic-E position encoding (APRS101 ch.10) instead of uncompressed/compressed; excludes trk_timestamp. */
+    uint8_t trk_mice_msg;           /**< Mic-E position comment: 0-6 = Standard M0-M6, 7-13 = Custom C0-C6. See ::MICE_POS_COMMENT_MAX. */
     char trk_symbol[3];             /**< Tracker APRS symbol. */
     char trk_comment[COMMENT_SIZE]; /**< Tracker beacon comment. */
     uint16_t trk_sts_interval;      /**< Tracker status-beacon interval, seconds. */

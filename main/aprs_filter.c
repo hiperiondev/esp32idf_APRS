@@ -750,6 +750,35 @@ bool aprs_filter_decode_position(const char *info, const char *dst_call, float *
     }
 }
 
+bool aprs_filter_mice_message(const char *dst_call, const char *info, size_t len, const char **out_name, bool *out_emergency) {
+    if (dst_call == NULL || info == NULL || len == 0)
+        return false;
+
+    // The four Mic-E data type identifiers, the same set the position decode
+    // above dispatches on: current and old data, in their printable and
+    // control-character forms.
+    switch ((unsigned char)info[0]) {
+        case '`':
+        case '\'':
+        case 0x1c:
+        case 0x1d:
+            break;
+        default:
+            return false;
+    }
+
+    aprs_mice_report_t mice;
+    if (!aprs_mice_decode(dst_call, info, len, &mice))
+        return false;
+
+    if (out_name != NULL)
+        *out_name = aprs_mice_message_name(mice.message_code, mice.is_custom_message);
+    if (out_emergency != NULL)
+        *out_emergency = (mice.message_code == APRS_MICE_MSG_EMERGENCY);
+
+    return true;
+}
+
 float aprs_filter_haversine_km(float lat1, float lon1, float lat2, float lon2) {
     static const float EARTH_RADIUS_KM = 6371.0f;
     static const float DEG2RAD = 0.017453293f; // pi / 180

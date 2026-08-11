@@ -1231,6 +1231,30 @@ static void igateTask(void *arg) {
                                 }
 
                                 trafficlog_add_pkt("RX-IS", dx, line, -1, symTable, symCode);
+
+                                // Mic-E position comment (APRS101 ch.10),
+                                // carried in the destination address and so
+                                // absent from the packet text logged above.
+                                // The internet feed reaches this station
+                                // through its own server-side filter, which
+                                // is a local one, so an emergency arriving
+                                // here is as close by as one heard on the
+                                // radio and is raised the same way.
+                                if (colon) {
+                                    const char *info = colon + 1;
+                                    char destCall[10];
+                                    const char *miceMsg = NULL;
+                                    bool miceEmergency = false;
+                                    if (aprs_tnc2_dest_call(line, destCall, sizeof(destCall)) &&
+                                        aprs_filter_mice_message(destCall, info, strlen(info), &miceMsg, &miceEmergency)) {
+                                        if (miceEmergency) {
+                                            ESP_LOGW(TAG, "Mic-E EMERGENCY from %s (APRS-IS)", dx);
+                                            trafficlog_add("Mic-E EMERGENCY from %s (APRS-IS)", dx);
+                                        } else {
+                                            ESP_LOGI(TAG, "Mic-E position comment from %s (APRS-IS): %s", dx, miceMsg);
+                                        }
+                                    }
+                                }
                             }
                             if (g_config.inet2rf && s_inet2rfHandler)
                                 s_inet2rfHandler(line);

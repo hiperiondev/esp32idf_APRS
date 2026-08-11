@@ -219,14 +219,14 @@ Formato dati Mic-E (cap. 10)
      - ✅
      - L'altitudine apre il campo di testo e sposta il commento invece di sostituirlo, e il blocco di frequenza e l'estensione datum sono emessi nell'ordine canonico mostrato dagli esempi della specifica stessa.
    * - Codici di commento di posizione (Off Duty, En Route … Emergency)
-     - ⚠️
-     - Il ricevitore decodifica tutti e quindici i valori, incluso l'insieme personalizzato e lo schema Emergency di tutti zeri, e riporta correttamente come indefinito uno schema misto standard/personalizzato. Il trasmettitore non ha un controllo e invia sempre Off Duty.
+     - ✅
+     - Il ricevitore decodifica tutti e quindici i valori, incluso l'insieme personalizzato e lo schema Emergency di tutti zeri, e riporta correttamente come indefinito uno schema misto standard/personalizzato. La pagina Tracker consente di scegliere per la trasmissione uno qualsiasi dei quattordici valori standard e personalizzati. Emergency è deliberatamente assente da quell'elenco: chiede ad altri operatori di rispondere a un'emergenza reale, cosa che una pagina di configurazione non dovrebbe poter attivare con un clic sbagliato e lasciare attiva per tutti i beacon successivi.
    * - Indicazione di emergenza
-     - ⚠️
-     - Un'emergenza Mic-E ricevuta viene decodificata ma non viene segnalata all'operatore da alcuna riga di log distinta, riquadro del pannello o allarme: appare come qualsiasi altro pacchetto nel registro del traffico.
+     - ✅
+     - Un'emergenza Mic-E ricevuta via radio o da APRS-IS produce una riga di log di livello warning e una propria voce nel registro del traffico, accanto al pacchetto che l'ha trasportata. Gli altri quattordici commenti di posizione sono registrati a livello informativo, perché il valore vive nell'indirizzo di destinazione ed è altrimenti invisibile nel testo del pacchetto.
    * - Velocità oltre i 670 nodi
-     - ❌
-     - Non viene applicata l'estensione 1.2 che mappa i valori codificati oltre 670 su velocità orbitali, quindi le trame Mic-E digipetate dalle stazioni spaziali che questo firmware inoltra ad APRS-IS decodificano con una velocità sbagliata. Posizione, rotta e tutto il resto non sono influenzati.
+     - ✅
+     - L'estensione 1.2 è applicata in entrambi i versi, quindi una trama digipetata da una stazione spaziale riporta la propria velocità orbitale invece di una troncata. Quella scala è quantizzata a passi di 112 nodi e ha un vuoto fra 671 e 781 nodi che la regola pubblicata stessa lascia senza rappresentazione; sotto i 671 nodi il campo resta esatto al nodo.
    * - PHG dentro il campo di testo Mic-E
      - ❌
      - Non viene prodotta l'aggiunta 1.2 che consente un normale campo di commento di posizione — in particolare PHG — dentro il testo Mic-E. Conta soprattutto per i digipeater hardware che trasmettono beacon in Mic-E.
@@ -586,10 +586,9 @@ Le lacune si concentrano in tre punti, e vale la pena dirlo chiaramente:
   filtri di gateway — ma il loro contenuto non viene mai analizzato. In un
   IGate questo si manifesta come stazioni che superano il filtro di tipo ma
   le cui misure non sono disponibili localmente.
-* **Proposte successive al 2004.** Mancano le sonde PHGR, la regola della
-  velocità supersonica del Mic-E e le proposte di segnalazione con i bit RR.
-  Sono aggiunte reali alla specifica, non folclore, ma la loro diffusione sul
-  campo è disomogenea. Il digipeating preventivo, il più rilevante del gruppo,
+* **Proposte successive al 2004.** Mancano le sonde PHGR e le proposte di
+  segnalazione con i bit RR. Sono aggiunte reali alla specifica, non folclore,
+  ma la loro diffusione sul campo è disomogenea. Il digipeating preventivo, il più rilevante del gruppo,
   è implementato e spento per impostazione predefinita.
 * **Formati senza sorgente locale.** I dati di tempesta, i bollettini NWS e i
   radiogrammi NTS sono, per una stazione di questo tipo, questioni di puro

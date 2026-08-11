@@ -363,8 +363,10 @@ Tracciamento / Beaconing
      - ✅
      - La pagina beacon Tracker offre un'opzione Mic-E
        (``aprs_mice_encode()``); solo posizione fissa, quindi rotta/velocità
-       vengono sempre inviate come "sconosciute" e il codice messaggio è fisso
-       su Off Duty. Il campo informativo segue l'ordine canonico di
+       vengono sempre inviate come "sconosciute". Il commento di posizione si
+       sceglie nella stessa pagina, fra i sette valori standard e i sette
+       personalizzati; Emergency non è offerto, perché trasmetterlo chiede una
+       risposta del mondo reale. Il campo informativo segue l'ordine canonico di
        ``mic-e-examples.txt``: byte TYPE, altitudine, blocco di frequenza,
        commento, ``!DAO!`` e la coppia Produttore/Versione che identifica il
        firmware (l'indirizzo di destinazione porta dati di posizione, quindi il

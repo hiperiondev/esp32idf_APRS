@@ -252,8 +252,26 @@
 #define TR_F_MESSAGE_ALARM_ENABLE "Enable Message Alarm"
 /** Form label for the "message alarm pin" field or fieldset, rendered on the configuration forms. */
 #define TR_F_MESSAGE_ALARM_PIN "Message Alarm pin"
+/** Option label for the Mic-E position comment M0 (Off Duty), rendered on the Tracker page. */
+#define TR_F_MICE_MSG_M0 "M0 Off Duty"
+/** Option label for the Mic-E position comment M1 (En Route), rendered on the Tracker page. */
+#define TR_F_MICE_MSG_M1 "M1 En Route"
+/** Option label for the Mic-E position comment M2 (In Service), rendered on the Tracker page. */
+#define TR_F_MICE_MSG_M2 "M2 In Service"
+/** Option label for the Mic-E position comment M3 (Returning), rendered on the Tracker page. */
+#define TR_F_MICE_MSG_M3 "M3 Returning"
+/** Option label for the Mic-E position comment M4 (Committed), rendered on the Tracker page. */
+#define TR_F_MICE_MSG_M4 "M4 Committed"
+/** Option label for the Mic-E position comment M5 (Special), rendered on the Tracker page. */
+#define TR_F_MICE_MSG_M5 "M5 Special"
+/** Option label for the Mic-E position comment M6 (Priority), rendered on the Tracker page. */
+#define TR_F_MICE_MSG_M6 "M6 Priority"
+/** Word prefixed to the number of each locally defined Mic-E position comment C0-C6, rendered on the Tracker page. */
+#define TR_F_MICE_MSG_CUSTOM "Custom"
 /** Form label for the "mice position" field or fieldset, rendered on the configuration forms. */
 #define TR_F_MICE_POSITION "Mic-E position encoding"
+/** Form label for the "mice position comment" field or fieldset, rendered on the configuration forms. */
+#define TR_F_MICE_POSITION_COMMENT "Mic-E position comment"
 /** Form label for the "mode" field or fieldset, rendered on the configuration forms. */
 #define TR_F_MODE "Mode"
 /** Form label for the "my callsign" field or fieldset, rendered on the configuration forms. */

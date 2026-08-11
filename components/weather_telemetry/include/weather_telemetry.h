@@ -1106,7 +1106,10 @@ typedef struct {
  *         Mic-E report.
  *
  * @note This decoder recovers position, course/speed, symbol and message
- *       code. The bytes after the fixed 9-byte report are split into the
+ *       code. An encoded speed above 670 is expanded through the supersonic
+ *       mapping of APRS 1.2 (aprs.org/aprs12.html), which is what makes a
+ *       frame digipeated through a space station report its orbital
+ *       velocity rather than a clipped one. The bytes after the fixed 9-byte report are split into the
  *       structured fields aprs12/mic-e-types.txt defines around the free
  *       text - the leading TYPE byte into @c out->msg_capable, the "aaa}"
  *       altitude field into @c out->position.has_altitude /
@@ -1168,17 +1171,42 @@ bool aprs_mice_decode(const char *dst_call, const char *info, size_t info_len, a
  *         invalid input (out-of-range position, undersized output buffer)
  *         without writing partial data to either output.
  *
- * @note Only the Standard message alphabet is ever emitted (never the
- *       Custom alphabet), matching every current mobile/portable Mic-E
- *       source (Kenwood D7/D700/D710, Yaesu VX-8/FTM-350/400D).
- *       @c report->is_custom_message is therefore ignored;
- *       ::APRS_MICE_MSG_UNKNOWN, which has no on-air representation of its
- *       own, encodes as ::APRS_MICE_MSG_OFF_DUTY. This encoder does not
- *       generate the separate, legacy Mic-E Telemetry sub-format (APRS101
- *       Chapter 10, "Mic-E Telemetry Data"); @c report->has_telemetry is
- *       ignored.
+ * @note @c report->is_custom_message selects the Custom message alphabet
+ *       (C0-C6) instead of the Standard one (M0-M6); both carry the same
+ *       three message bits and differ only in the destination-address
+ *       letters that write them. ::APRS_MICE_MSG_UNKNOWN, which has no
+ *       on-air representation of its own, encodes as
+ *       ::APRS_MICE_MSG_OFF_DUTY. This encoder does not generate the
+ *       separate, legacy Mic-E Telemetry sub-format (APRS101 Chapter 10,
+ *       "Mic-E Telemetry Data"); @c report->has_telemetry is ignored.
+ *
+ * @note Speeds above 670 knots are emitted through the supersonic mapping of
+ *       APRS 1.2 (aprs.org/aprs12.html), so they survive the round trip
+ *       through ::aprs_mice_decode. That scale is quantised in steps of 112
+ *       knots and has no representation at all between 671 and 781 knots, so
+ *       a speed in that band is sent as whichever neighbouring value is
+ *       closer. Below 671 knots the field is exact to the knot.
  */
 bool aprs_mice_encode(const aprs_mice_report_t *report, char *dst_call_out, char *info_out, size_t info_out_max);
+
+/**
+ * @brief Human-readable name of a Mic-E position comment (APRS101 Chapter 10,
+ *        "Mic-E Message Types").
+ *
+ * This is the wording radio front panels and APRS clients use for the value
+ * carried by the A/B/C bits of the destination address, so it is what a log
+ * line or a traffic-table entry should show to an operator.
+ *
+ * @param code Message code, as decoded into @c aprs_mice_report_t::message_code.
+ * @param is_custom Selects the Custom naming (C0-C6) over the Standard one
+ *                  (M0-M6), as reported by
+ *                  @c aprs_mice_report_t::is_custom_message. Ignored for
+ *                  ::APRS_MICE_MSG_EMERGENCY and ::APRS_MICE_MSG_UNKNOWN,
+ *                  which belong to neither alphabet.
+ * @return Static, NUL-terminated English name, never NULL. An out-of-range
+ *         @p code reads as ::APRS_MICE_MSG_UNKNOWN.
+ */
+const char *aprs_mice_message_name(aprs_mice_message_code_t code, bool is_custom);
 
 /**
  * @brief Discriminator for the top-level decoded-packet union, mirroring

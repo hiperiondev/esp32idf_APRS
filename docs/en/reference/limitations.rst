@@ -345,8 +345,10 @@ Tracking / Beaconing
      - ⚠️ (mostly mobile-tracker firmware)
      - ✅
      - Tracker beacon page offers a Mic-E option (``aprs_mice_encode()``);
-       fixed-position only, so course/speed is always sent as "unknown" and the
-       message code is fixed at Off Duty. The information field follows the
+       fixed-position only, so course/speed is always sent as "unknown". The
+       position comment is selectable on the same page, over the seven standard
+       and seven custom values; Emergency is not offered, since transmitting it
+       asks for a real-world response. The information field follows the
        canonical order of ``mic-e-examples.txt``: TYPE byte, altitude,
        frequency block, comment, ``!DAO!``, and the Manufacturer/Version pair
        that identifies the firmware (the destination address carries position

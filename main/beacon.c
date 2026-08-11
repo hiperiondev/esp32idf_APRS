@@ -108,6 +108,12 @@ typedef struct {
     // the Tracker beacon exposes it (Mic-E is the mobile-tracker format
     // this project's other two fixed beacons have no need to originate).
     bool mice;
+    // Mic-E position comment (APRS101 ch.10 "Mic-E Message Types"), in the
+    // packed 0-13 form ::MICE_POS_COMMENT_MAX documents: 0-6 select the
+    // Standard values M0-M6, 7-13 the Custom values C0-C6. Only meaningful
+    // when mice is set, since no other layout has a field for it. Sourced
+    // from g_config.trk_mice_msg, alongside the Mic-E flag itself.
+    uint8_t miceMsg;
     // Whether this station accepts APRS messages, which the position report's
     // own data type identifier has to state: '!' and '/' mean it does not,
     // '=' and '@' mean it does (APRS101 ch.6). Receiving clients read that bit
@@ -302,8 +308,9 @@ static void buildDataExtension(const beacon_params_t *p, char *out, size_t outMa
 // portion of the TNC2 line itself instead of reusing BEACON_DEST. This
 // project's beacons are fixed-position with no live course/speed source
 // (see docs/reference/limitations.rst), so the report always carries the
-// on-air "unknown" course/speed pattern (000/000); the message code is
-// fixed at Off Duty (M0), the conventional default for a fixed/base station.
+// on-air "unknown" course/speed pattern (000/000); the position comment is
+// whatever the operator selected on the Tracker page, which cannot be
+// Emergency.
 //
 // Mic-E has one free-text slot, and aprs12/mic-e-examples.txt fixes the order
 // of what may go in it: the frequency block first (radios auto-tune from the
@@ -337,7 +344,13 @@ static int buildMicePositionPacket(const beacon_params_t *p, char *out, size_t o
     report.position.ambiguity = (aprs_position_ambiguity_t)p->ambiguity;
     report.position.symbol.table = (p->symbol[0] == '\\') ? APRS_SYMBOL_TABLE_ALTERNATE : APRS_SYMBOL_TABLE_PRIMARY;
     report.position.symbol.code = p->symbol[1] ? p->symbol[1] : '>';
-    report.message_code = APRS_MICE_MSG_OFF_DUTY;
+    // Position comment, unpacked from the single 0-13 UI value into the
+    // code plus alphabet the encoder takes. Emergency is not reachable from
+    // this range by design (see ::MICE_POS_COMMENT_MAX), so no beacon this
+    // station originates can claim one.
+    uint8_t miceMsg = (p->miceMsg > MICE_POS_COMMENT_MAX) ? MICE_POS_COMMENT_DEFAULT : p->miceMsg;
+    report.is_custom_message = (miceMsg >= MICE_POS_COMMENT_CUSTOM_BASE);
+    report.message_code = (aprs_mice_message_code_t)(report.is_custom_message ? miceMsg - MICE_POS_COMMENT_CUSTOM_BASE : miceMsg);
     report.course_speed.is_unknown = true;
     // Messaging capability, taken from the same flag that picks '='/'@' over
     // '!'/'/' in buildPositionPacket(), so the two layouts state the same
@@ -910,6 +923,7 @@ static uint32_t trackerBeaconService(void) {
             p.sendAltitude = g_config.trk_altitude;
             p.compress = g_config.trk_compress;
             p.mice = g_config.trk_mice;
+            p.miceMsg = g_config.trk_mice_msg;
             p.msgCapable = g_config.msg_enable;
             p.ambiguity = g_config.pos_ambiguity;
             p.daoEnable = g_config.pos_dao_en;

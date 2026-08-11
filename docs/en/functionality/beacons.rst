@@ -180,6 +180,30 @@ message-capable flag is carried by the TYPE byte (`` ` `` message capable,
 the same *Enable messaging* tick, so they cannot disagree about what this
 station claims.
 
+Mic-E position comment
+======================
+
+A Mic-E report carries, in the A/B/C bits of its destination address, one of
+fifteen *position comments*: the seven standard values M0 *Off Duty*, M1 *En
+Route*, M2 *In Service*, M3 *Returning*, M4 *Committed*, M5 *Special* and M6
+*Priority*; seven locally defined custom values C0–C6; and *Emergency*, which
+is the pattern with all three bits clear. Every Kenwood and Yaesu APRS radio
+puts this on a front-panel menu, and receiving clients display it next to the
+station.
+
+*Mic-E position comment*, on the Tracker page, selects among the fourteen
+standard and custom values. It applies only when *Mic-E position encoding* is
+on, since no other layout has a field for it, and the factory default is M0
+*Off Duty* — the conventional value for a station that does not move, which is
+what this firmware beacons.
+
+Emergency is deliberately absent from that list. Transmitting it asks other
+operators, and in some regions dispatchers, to respond to a real emergency;
+that is not something a settings page should be able to arm with one mis-click
+and then leave armed for every beacon afterwards. On receive it is handled in
+full: see :ref:`en-filtering` for the decoder, and the traffic log
+for the warning line a received emergency produces.
+
 Position ambiguity
 ==================
 

@@ -66,7 +66,8 @@ The pages
        single control, on the *IGate* page.
    * - **Tracker**
      - Tracker enable, callsign/SSID, fixed interval, position, station symbol,
-       comment, compressed-position, Mic-E-position and altitude options.
+       comment, compressed-position, Mic-E-position (with its position-comment
+       selector) and altitude options.
    * - **Weather**
      - Enable, send-via-RF/-INET, timestamp, WX callsign/SSID/path, position,
        object name, comment, per-field *Averaged* checkboxes, and — for every

@@ -359,8 +359,10 @@ Seguimiento / Balizamiento
      - ✅
      - La página del beacon Tracker ofrece una opción Mic-E
        (``aprs_mice_encode()``); solo posición fija, por lo que el
-       curso/velocidad se envía siempre como "desconocido" y el código de
-       mensaje queda fijo en Off Duty. El campo de información sigue el orden
+       curso/velocidad se envía siempre como "desconocido". El comentario de
+       posición se elige en la misma página, entre los siete valores estándar y
+       los siete personalizados; Emergency no se ofrece, porque transmitirlo
+       pide una respuesta del mundo real. El campo de información sigue el orden
        canónico de ``mic-e-examples.txt``: byte TYPE, altitud, bloque de
        frecuencia, comentario, ``!DAO!`` y el par Fabricante/Versión que
        identifica al firmware (la dirección de destino lleva datos de posición,

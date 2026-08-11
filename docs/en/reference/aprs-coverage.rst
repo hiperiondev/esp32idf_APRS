@@ -217,14 +217,14 @@ Mic-E data format (ch. 10)
      - ✅
      - Altitude leads the text field and shifts the comment rather than replacing it, and the frequency block and datum extension are emitted in the canonical order the specification's own examples show.
    * - Position comment codes (Off Duty, En Route … Emergency)
-     - ⚠️
-     - The receiver decodes all fifteen values, including the custom set and the all-zero Emergency pattern, and correctly reports a mixed standard/custom pattern as undefined. The transmitter has no control for it and always sends Off Duty.
+     - ✅
+     - The receiver decodes all fifteen values, including the custom set and the all-zero Emergency pattern, and correctly reports a mixed standard/custom pattern as undefined. The Tracker page selects any of the fourteen standard and custom values for transmission. Emergency is deliberately absent from that list: it asks other operators to respond to a real emergency, which is not something a settings page should arm with one mis-click and leave armed for every beacon afterwards.
    * - Emergency indication
-     - ⚠️
-     - A received Mic-E emergency is decoded but is not raised to the operator by any distinct log line, dashboard tile or alarm — it looks like any other packet in the traffic log.
+     - ✅
+     - A Mic-E emergency received on radio or from APRS-IS raises a warning-level log line and its own entry in the traffic log, next to the packet that carried it. The other fourteen position comments are logged at information level, since the value lives in the destination address and is otherwise invisible in the packet text.
    * - Speeds above 670 knots
-     - ❌
-     - The 1.2 extension that maps encoded values above 670 onto orbital speeds is not applied, so Mic-E frames digipeated through the space stations this firmware satellite-gates decode with a wrong velocity. Position, course and everything else are unaffected.
+     - ✅
+     - The 1.2 extension is applied on both sides, so a frame digipeated through a space station reports its orbital velocity rather than a clipped one. That scale is quantised in steps of 112 knots and has a gap between 671 and 781 knots that the published rule itself leaves unrepresentable; below 671 knots the field stays exact to the knot.
    * - PHG inside the Mic-E text field
      - ❌
      - The 1.2 addition allowing a normal position comment field — notably PHG — inside the Mic-E text is not produced. It matters mainly for hardware digipeaters that beacon in Mic-E.
@@ -582,8 +582,8 @@ The gaps cluster in three places, and they are worth stating plainly:
   *category* — enough to route them through the gating filters — but their
   contents are never parsed. For an IGate this shows up as stations that pass
   the type filter but whose measurements are unavailable locally.
-* **Post-2004 proposals.** PHGR probes, the supersonic Mic-E speed rule and
-  the RR-bit signalling proposals are absent. These are genuine specification
+* **Post-2004 proposals.** PHGR probes and the RR-bit signalling proposals
+  are absent. These are genuine specification
   additions, not folklore, but their deployment in the field is uneven.
   Preemptive digipeating, the most consequential of the group, is implemented
   and off by default.

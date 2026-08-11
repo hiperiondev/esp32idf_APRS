@@ -17,6 +17,7 @@
 // (callsign/SSID, fixed position, symbol, comment, path and beacon settings) in
 // g_config.
 
+#include <stdio.h>
 #include <string.h>
 
 #include "app_config.h"
@@ -35,6 +36,28 @@ static void render_duplex_select(httpd_req_t *req, const char *name, int8_t dupl
     web_select_option(req, 0, TR_F_OBJITEM_DUPLEX_SIMPLEX, cur == 0);
     web_select_option(req, 1, TR_F_OBJITEM_DUPLEX_PLUS, cur == 1);
     web_select_option(req, 2, TR_F_OBJITEM_DUPLEX_MINUS, cur == 2);
+    web_select_close(req);
+}
+
+// Mic-E position comment <select> (APRS101 ch.10 "Mic-E Message Types").
+// Values are the packed 0-13 form app_config.h documents: the seven Standard
+// comments in order, then the seven locally defined Custom ones. Emergency
+// is absent on purpose - it asks other operators to react to a real
+// emergency, so it is not something a dropdown should be able to arm for
+// every beacon that follows.
+static void render_mice_msg_select(httpd_req_t *req, const char *name, uint8_t cur) {
+    static const char *const standard[MICE_POS_COMMENT_CUSTOM_BASE] = { TR_F_MICE_MSG_M0, TR_F_MICE_MSG_M1, TR_F_MICE_MSG_M2, TR_F_MICE_MSG_M3,
+                                                                        TR_F_MICE_MSG_M4, TR_F_MICE_MSG_M5, TR_F_MICE_MSG_M6 };
+
+    web_select_open(req, TR_F_MICE_POSITION_COMMENT, name);
+    for (int i = 0; i < MICE_POS_COMMENT_CUSTOM_BASE; i++)
+        web_select_option(req, i, standard[i], cur == i);
+
+    for (int i = MICE_POS_COMMENT_CUSTOM_BASE; i <= MICE_POS_COMMENT_MAX; i++) {
+        char label[40];
+        snprintf(label, sizeof(label), "C%d %s %d", i - MICE_POS_COMMENT_CUSTOM_BASE, TR_F_MICE_MSG_CUSTOM, i - MICE_POS_COMMENT_CUSTOM_BASE);
+        web_select_option(req, i, label, cur == i);
+    }
     web_select_close(req);
 }
 
@@ -67,6 +90,7 @@ esp_err_t page_tracker_get(httpd_req_t *req) {
     web_fieldset_open(req, TR_F_OPTIONS);
     web_field_checkbox(req, TR_F_COMPRESS_POSITION, "trkCompress", g_config.trk_compress);
     web_field_checkbox(req, TR_F_MICE_POSITION, "trkMice", g_config.trk_mice);
+    render_mice_msg_select(req, "trkMiceMsg", g_config.trk_mice_msg);
     web_field_checkbox(req, TR_F_INCLUDE_ALTITUDE, "trkOptAlt", g_config.trk_altitude);
     web_field_symbol(req, TR_F_STATION_SYMBOL, "trkSymbol", g_config.trk_symbol);
     web_field_text(req, TR_F_COMMENT, "trkComment", g_config.trk_comment, COMMENT_SIZE - 1);
@@ -134,6 +158,12 @@ esp_err_t page_tracker_post(httpd_req_t *req) {
 
     g_config.trk_compress = web_form_get_bool(body, "trkCompress");
     g_config.trk_mice = web_form_get_bool(body, "trkMice");
+
+    // Same two-layer clamp as every other bounded field on this page: a value
+    // outside the selectable range - including the Emergency the <select>
+    // does not offer - falls back to the factory default.
+    int miceMsg = web_form_get_int(body, "trkMiceMsg", g_config.trk_mice_msg);
+    g_config.trk_mice_msg = (uint8_t)((miceMsg < 0 || miceMsg > MICE_POS_COMMENT_MAX) ? MICE_POS_COMMENT_DEFAULT : miceMsg);
     g_config.trk_altitude = web_form_get_bool(body, "trkOptAlt");
 
     // Station Symbol: Table + Symbol 1-char fields from the shared picker

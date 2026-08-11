@@ -23,6 +23,7 @@
 
 #include <ctype.h>
 #include <math.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "weather_telemetry.h"
@@ -126,6 +127,67 @@ static bool mice_is_type_byte(char c) {
 // '\'' and the original Mic-E ' ' are not.
 static bool mice_type_is_msg_capable(char c) {
     return c == '`' || c == '>' || c == ']';
+}
+
+// Speed range of the on-air Mic-E course/speed triplet (APRS101 Ch.10
+// "Decoding the Speed and Course"): the SP/DC pair encodes 0-799 in units of
+// one knot, and the "subtract 800" fold in the decode is what brings the
+// three raw bytes back into that window.
+#define MICE_SPEED_RAW_MAX 799
+
+// Supersonic speed extension (aprs.org/aprs12.html, SPEC ADDITIONS): a raw
+// value above 670 is not a speed in knots but an index into the supersonic
+// range, and the speed it stands for is raw * 112 - 74370 knots. The worked
+// example in the addendum is the Space Station: raw 799 is 15,118 kt. This
+// supersedes an earlier raw * 135 - 9000 mapping, which is not implemented.
+//
+// The two halves of the scale do not meet: raw 670 is 670 kt and raw 671 is
+// 782 kt, so the 671-781 kt band has no on-air representation at all. That
+// gap is in the published rule, not in this implementation, and the whole
+// supersonic range stays positive and monotonic across it.
+#define MICE_SPEED_SUPERSONIC_MAX_PLAIN 670
+#define MICE_SPEED_SUPERSONIC_SCALE     112
+#define MICE_SPEED_SUPERSONIC_OFFSET    74370
+
+// Knots carried by one raw course/speed value. `raw` is clamped to the
+// 0-799 range the field can hold before the supersonic rule is applied, so a
+// corrupt or non-conforming frame can never produce a negative speed nor one
+// past the 15,118 kt top of the scale.
+static int32_t mice_speed_from_raw(int raw) {
+    if (raw < 0)
+        raw = 0;
+    if (raw > MICE_SPEED_RAW_MAX)
+        raw = MICE_SPEED_RAW_MAX;
+
+    if (raw > MICE_SPEED_SUPERSONIC_MAX_PLAIN)
+        return (int32_t)raw * MICE_SPEED_SUPERSONIC_SCALE - MICE_SPEED_SUPERSONIC_OFFSET;
+
+    return (int32_t)raw;
+}
+
+// Inverse of mice_speed_from_raw(): the raw course/speed value that best
+// represents `knots`. Up to 670 kt the mapping is the identity; above it the
+// supersonic rule is inverted and rounded to the nearest 112 kt step, then
+// clamped to the top of the scale. Because the two halves leave a gap, a
+// target inside it is served by whichever of its two neighbours - plain 670
+// or the first supersonic step - is closer, so the round trip never moves a
+// speed further than it has to.
+static int mice_speed_to_raw(int32_t knots) {
+    if (knots <= 0)
+        return 0;
+    if (knots <= MICE_SPEED_SUPERSONIC_MAX_PLAIN)
+        return (int)knots;
+
+    long raw = lround(((double)knots + MICE_SPEED_SUPERSONIC_OFFSET) / (double)MICE_SPEED_SUPERSONIC_SCALE);
+    if (raw < MICE_SPEED_SUPERSONIC_MAX_PLAIN + 1)
+        raw = MICE_SPEED_SUPERSONIC_MAX_PLAIN + 1;
+    if (raw > MICE_SPEED_RAW_MAX)
+        raw = MICE_SPEED_RAW_MAX;
+
+    long supersonic_err = labs((long)mice_speed_from_raw((int)raw) - (long)knots);
+    long plain_err = (long)knots - MICE_SPEED_SUPERSONIC_MAX_PLAIN;
+
+    return (supersonic_err < plain_err) ? (int)raw : MICE_SPEED_SUPERSONIC_MAX_PLAIN;
 }
 
 // Altitude field of the Mic-E text (APRS101 Ch.10, aprs12/mic-e-examples.txt):
@@ -255,16 +317,19 @@ bool aprs_mice_decode(const char *dst_call, const char *info, size_t info_len, a
     int dc = (unsigned char)info[5] - 28;
     int se = (unsigned char)info[6] - 28;
 
-    int speed = sp * 10 + dc / 10;
+    int raw_speed = sp * 10 + dc / 10;
     int course = (dc % 10) * 100 + se;
-    if (speed >= 800)
-        speed -= 800;
+    if (raw_speed >= 800)
+        raw_speed -= 800;
     if (course >= 400)
         course -= 400;
-    if (speed < 0)
-        speed = 0;
     if (course < 0)
         course = 0;
+
+    // The raw value is a speed in knots only up to 670; past that it indexes
+    // the supersonic range added by APRS 1.2, which is what carries the
+    // orbital velocity of a frame digipeated through a space station.
+    int32_t speed = mice_speed_from_raw(raw_speed);
 
     out->course_speed.speed_knots = (uint16_t)speed;
     out->course_speed.course_deg = (uint16_t)course;
@@ -333,22 +398,28 @@ bool aprs_mice_decode(const char *dst_call, const char *info, size_t info_len, a
 }
 
 // Encodes one digit (0-9) or a blanked/space position (digit < 0) of a
-// Mic-E destination address byte, using the Standard alphabet ('P'-'Y',
-// 'Z' for space) when flag_bit is set, or the plain digit / 'L' (space,
-// flag bit 0) otherwise. This is the exact inverse of
-// mice_decode_dest_byte() restricted to the Standard alphabet, which is
-// what every current Mic-E encoder (Kenwood D7/D700/D710, Yaesu VX-8/
-// FTM-350/400D) uses for its own beacons; the Custom alphabet only ever
-// appears on receive, decoded for compatibility, and is never generated
-// here.
-static char mice_encode_dest_byte(int digit, bool flag_bit) {
+// Mic-E destination address byte: the plain digit, or 'L' for a blanked
+// position, when flag_bit is clear; the Standard alphabet ('P'-'Y', 'Z' for
+// a blanked position) or the Custom alphabet ('A'-'J', 'K' for a blanked
+// position) when it is set. This is the exact inverse of
+// mice_decode_dest_byte().
+//
+// `custom` picks between the two flag-bit-set alphabets and is only ever
+// true for the first three bytes, which carry the message code: bytes 4-6
+// carry the plain N/S, longitude-offset and W/E flags, and those always use
+// the Standard alphabet.
+static char mice_encode_dest_byte(int digit, bool flag_bit, bool custom) {
     if (digit < 0)
-        return flag_bit ? 'Z' : 'L';
-    return flag_bit ? (char)('P' + digit) : (char)('0' + digit);
+        return flag_bit ? (custom ? 'K' : 'Z') : 'L';
+    if (!flag_bit)
+        return (char)('0' + digit);
+    return custom ? (char)('A' + digit) : (char)('P' + digit);
 }
 
-// APRS101 Ch.10 "Mic-E Messages": inverse of mice_message_from_bits() for
-// the Standard alphabet. idx = 7 - message_code for the six Standard/
+// APRS101 Ch.10 "Mic-E Messages": inverse of mice_message_from_bits(). The
+// three bits it produces are the same for both alphabets; which alphabet
+// writes them is decided by the caller. idx = 7 - message_code for the six
+// Standard/
 // Custom codes (0-6); Emergency (7) always encodes as idx = 0 (all three
 // bits clear). aprs_mice_message_code_t's APRS_MICE_MSG_UNKNOWN has no
 // on-air representation of its own, so a caller passing it gets Off Duty
@@ -490,6 +561,10 @@ bool aprs_mice_encode(const aprs_mice_report_t *report, char *dst_call_out, char
 
     bool msgA, msgB, msgC;
     mice_message_to_bits(report->message_code, &msgA, &msgB, &msgC);
+    // The Custom alphabet distinguishes C0-C6 from M0-M6 while carrying the
+    // same three bits. Emergency is the all-bits-clear pattern and belongs to
+    // neither alphabet, so it is always written with plain digits.
+    bool custom_msg = report->is_custom_message && report->message_code != APRS_MICE_MSG_EMERGENCY;
 
     bool west = lon < 0.0;
     double lon_abs = west ? -lon : lon;
@@ -513,12 +588,12 @@ bool aprs_mice_encode(const aprs_mice_report_t *report, char *dst_call_out, char
     bool long_offset_100 = lon_deg_full >= 100;
 
     char d[6];
-    d[0] = mice_encode_dest_byte(dig[0], msgA);
-    d[1] = mice_encode_dest_byte(dig[1], msgB);
-    d[2] = mice_encode_dest_byte(dig[2], msgC);
-    d[3] = mice_encode_dest_byte(dig[3], north);
-    d[4] = mice_encode_dest_byte(dig[4], long_offset_100);
-    d[5] = mice_encode_dest_byte(dig[5], west);
+    d[0] = mice_encode_dest_byte(dig[0], msgA, custom_msg);
+    d[1] = mice_encode_dest_byte(dig[1], msgB, custom_msg);
+    d[2] = mice_encode_dest_byte(dig[2], msgC, custom_msg);
+    d[3] = mice_encode_dest_byte(dig[3], north, false);
+    d[4] = mice_encode_dest_byte(dig[4], long_offset_100, false);
+    d[5] = mice_encode_dest_byte(dig[5], west, false);
     memcpy(dst_call_out, d, 6);
     dst_call_out[6] = 0;
 
@@ -536,15 +611,13 @@ bool aprs_mice_encode(const aprs_mice_report_t *report, char *dst_call_out, char
     int d3_val = lon_hun + 28;
 
     // Course and speed (APRS101 Ch.10 "Decoding the Speed and Course"),
-    // inverse of the split used in aprs_mice_decode(). An "unknown"
-    // course/speed report (report->course_speed.is_unknown) is sent as
-    // 0/0, the same convention aprs_mice_decode() recognizes on receive.
-    int speed = report->course_speed.is_unknown ? 0 : (int)report->course_speed.speed_knots;
+    // inverse of the split used in aprs_mice_decode(), including the
+    // supersonic mapping of APRS 1.2 for speeds the plain 0-670 kt field
+    // cannot hold. An "unknown" course/speed report
+    // (report->course_speed.is_unknown) is sent as 0/0, the same convention
+    // aprs_mice_decode() recognizes on receive.
+    int speed = report->course_speed.is_unknown ? 0 : mice_speed_to_raw((int32_t)report->course_speed.speed_knots);
     int course = report->course_speed.is_unknown ? 0 : (int)report->course_speed.course_deg;
-    if (speed < 0)
-        speed = 0;
-    if (speed > 799)
-        speed = 799;
     if (course < 0)
         course = 0;
     if (course > 399)
@@ -606,4 +679,20 @@ bool aprs_mice_encode(const aprs_mice_report_t *report, char *dst_call_out, char
     }
 
     return true;
+}
+
+const char *aprs_mice_message_name(aprs_mice_message_code_t code, bool is_custom) {
+    // APRS101 Ch.10 "Mic-E Message Types". The Standard set is the one every
+    // radio front panel exposes; the Custom set shares the same three bits
+    // and has no assigned meaning, so it is named by its number alone.
+    static const char *const standard[7] = { "Off Duty", "En Route", "In Service", "Returning", "Committed", "Special", "Priority" };
+    static const char *const custom[7] = { "Custom 0", "Custom 1", "Custom 2", "Custom 3", "Custom 4", "Custom 5", "Custom 6" };
+
+    if (code == APRS_MICE_MSG_EMERGENCY)
+        return "Emergency";
+
+    if (code >= APRS_MICE_MSG_OFF_DUTY && code <= APRS_MICE_MSG_PRIORITY)
+        return is_custom ? custom[(int)code] : standard[(int)code];
+
+    return "Unknown";
 }

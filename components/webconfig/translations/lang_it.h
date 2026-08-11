@@ -264,8 +264,27 @@
 #define TR_F_MESSAGE_ALARM_ENABLE "Abilita allarme messaggi"
 /** Italian text for the form label for the "message alarm pin" field or fieldset, rendered on the configuration forms. English: "Message Alarm pin". */
 #define TR_F_MESSAGE_ALARM_PIN "Pin allarme messaggi"
+/** Italian text for the option label for the Mic-E position comment M0 (Off Duty), rendered on the Tracker page. English: "M0 Off Duty". */
+#define TR_F_MICE_MSG_M0 "M0 Fuori servizio"
+/** Italian text for the option label for the Mic-E position comment M1 (En Route), rendered on the Tracker page. English: "M1 En Route". */
+#define TR_F_MICE_MSG_M1 "M1 In viaggio"
+/** Italian text for the option label for the Mic-E position comment M2 (In Service), rendered on the Tracker page. English: "M2 In Service". */
+#define TR_F_MICE_MSG_M2 "M2 In servizio"
+/** Italian text for the option label for the Mic-E position comment M3 (Returning), rendered on the Tracker page. English: "M3 Returning". */
+#define TR_F_MICE_MSG_M3 "M3 In rientro"
+/** Italian text for the option label for the Mic-E position comment M4 (Committed), rendered on the Tracker page. English: "M4 Committed". */
+#define TR_F_MICE_MSG_M4 "M4 Impegnato"
+/** Italian text for the option label for the Mic-E position comment M5 (Special), rendered on the Tracker page. English: "M5 Special". */
+#define TR_F_MICE_MSG_M5 "M5 Speciale"
+/** Italian text for the option label for the Mic-E position comment M6 (Priority), rendered on the Tracker page. English: "M6 Priority". */
+#define TR_F_MICE_MSG_M6 "M6 Prioritario"
+/** Italian text for the word prefixed to the number of each locally defined Mic-E position comment C0-C6, rendered on the Tracker page. English: "Custom". */
+#define TR_F_MICE_MSG_CUSTOM "Personalizzato"
 /** Italian text for the form label for the "mice position" field or fieldset, rendered on the configuration forms. English: "Mic-E position encoding". */
 #define TR_F_MICE_POSITION "Codifica posizione Mic-E"
+/** Italian text for the form label for the "mice position comment" field or fieldset, rendered on the configuration forms. English: "Mic-E position comment".
+ */
+#define TR_F_MICE_POSITION_COMMENT "Commento di posizione Mic-E"
 /** Italian text for the form label for the "mode" field or fieldset, rendered on the configuration forms. English: "Mode". */
 #define TR_F_MODE "Modalità"
 /** Italian text for the form label for the "my callsign" field or fieldset, rendered on the configuration forms. English: "My Callsign". */

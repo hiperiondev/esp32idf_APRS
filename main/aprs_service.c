@@ -669,6 +669,25 @@ static void aprs_msg_callback(ax25_msg_t *msg) {
     ESP_LOGI(TAG, "RX: %s", tnc2);
     trafficlog_add_pkt("RX", callsign, tnc2, (int)msg->mVrms, symTable, symCode);
 
+    // Mic-E position comment (APRS101 ch.10). It lives in the destination
+    // address, so it never appears in the packet text above and would
+    // otherwise be invisible to the operator. Emergency is the one value that
+    // asks for a human response, so it gets a warning of its own and a line
+    // in the traffic log next to the packet that carried it; the other
+    // fourteen values are informational.
+    {
+        const char *miceMsg = NULL;
+        bool miceEmergency = false;
+        if (aprs_filter_mice_message(msg->dst.call, (const char *)msg->info, msg->len, &miceMsg, &miceEmergency)) {
+            if (miceEmergency) {
+                ESP_LOGW(TAG, "Mic-E EMERGENCY from %s", callsign);
+                trafficlog_add("Mic-E EMERGENCY from %s", callsign);
+            } else {
+                ESP_LOGI(TAG, "Mic-E position comment from %s: %s", callsign, miceMsg);
+            }
+        }
+    }
+
     // Feed the web dashboard's "LAST HEARD" table (see components/lastheard).
     {
         // str_append() clamps the running offset itself, so the loop needs no

@@ -73,8 +73,8 @@ Le pagine
        controllo, sulla pagina *IGate*.
    * - **Tracker**
      - Abilita tracker, indicativo/SSID, intervallo fisso, posizione, simbolo di
-       stazione, commento, opzioni di posizione compressa, posizione Mic-E e
-       altitudine.
+       stazione, commento, opzioni di posizione compressa, posizione Mic-E (con
+       il suo selettore di commento di posizione) e altitudine.
    * - **Weather**
      - Abilita, invia-in-RF/-INET, timestamp, indicativo/SSID/percorso WX,
        posizione, nome oggetto, commento, caselle *Averaged* per campo, e — per

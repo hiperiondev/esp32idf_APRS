@@ -300,4 +300,23 @@ bool aprs_symbol_from_dest(char dti, const char *destCall, int srcSsid, char *sy
  */
 bool aprs_symbol_from_tnc2_header(const char *line, char dti, char *symTable, char *symCode);
 
+/**
+ * @brief Copy the destination callsign out of a TNC2 line
+ * ("SRC-N>DEST-N,PATH,...:info").
+ *
+ * The destination runs from the '>' up to the first ',' or ':' that follows
+ * it, and any "-SSID" it carries is part of what is copied. Mic-E is the
+ * reason this is worth having on its own: its destination address is a data
+ * field, not a callsign, so a receiver has to hand it to the Mic-E decoder
+ * together with the information field.
+ *
+ * @param line Complete TNC2 line, NUL-terminated.
+ * @param out Buffer for the NUL-terminated destination field.
+ * @param out_max Size of @p out in bytes. A destination longer than this
+ *        fits nothing and is refused rather than truncated, since a partial
+ *        Mic-E destination decodes to a wrong position.
+ * @return true if a destination field was found and copied whole.
+ */
+bool aprs_tnc2_dest_call(const char *line, char *out, size_t out_max);
+
 #endif

@@ -315,6 +315,7 @@ void app_config_set_defaults(app_config_t *c) {
     c->trk_interval = 60;
     c->trk_compress = false;
     c->trk_mice = false;
+    c->trk_mice_msg = MICE_POS_COMMENT_DEFAULT;
     set_str(c->trk_symbol, sizeof(c->trk_symbol), "\\>");
     set_str(c->trk_comment, sizeof(c->trk_comment), "esp32idf_APRS Tracker");
     c->trk_freq_mhz = 0.0f;
@@ -687,6 +688,7 @@ static void config_write_json(jw_t *d, const app_config_t *c) {
     jadd_num(d, "trkINV", c->trk_interval);
     jadd_bool(d, "trkCompress", c->trk_compress);
     jadd_bool(d, "trkMice", c->trk_mice);
+    jadd_num(d, "trkMiceMsg", c->trk_mice_msg);
     jadd_bool(d, "trkOptAlt", c->trk_altitude);
     jadd_str(d, "trkSymbol", c->trk_symbol);
     jadd_str(d, "trkComment", c->trk_comment);
@@ -1075,6 +1077,14 @@ static void config_from_json(cJSON *d, app_config_t *c) {
     c->trk_interval = (uint16_t)jget_num(d, "trkINV", def.trk_interval);
     c->trk_compress = jget_bool(d, "trkCompress", def.trk_compress);
     c->trk_mice = jget_bool(d, "trkMice", def.trk_mice);
+    c->trk_mice_msg = (uint8_t)jget_num(d, "trkMiceMsg", def.trk_mice_msg);
+    // Same two-layer clamp every other bounded field uses: the form handler
+    // bounds what the operator can send, and this bounds what a hand-edited
+    // or older config.json can carry into the beacon builder.
+    if (c->trk_mice_msg > MICE_POS_COMMENT_MAX) {
+        ESP_LOGW(TAG, "trkMiceMsg %u out of range (0-%d) - using %d", (unsigned)c->trk_mice_msg, MICE_POS_COMMENT_MAX, MICE_POS_COMMENT_DEFAULT);
+        c->trk_mice_msg = MICE_POS_COMMENT_DEFAULT;
+    }
     c->trk_altitude = jget_bool(d, "trkOptAlt", def.trk_altitude);
     set_str(c->trk_symbol, sizeof(c->trk_symbol), jget_str(d, "trkSymbol", def.trk_symbol));
     set_str(c->trk_comment, sizeof(c->trk_comment), jget_str(d, "trkComment", def.trk_comment));

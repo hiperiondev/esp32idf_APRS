@@ -196,6 +196,31 @@ vía) que sigue al byte de tabla de símbolos. Ambos formatos leen la misma marc
 *Habilitar mensajería*, así que no pueden contradecirse sobre lo que esta
 estación declara.
 
+Comentario de posición Mic-E
+============================
+
+Un reporte Mic-E lleva, en los bits A/B/C de su dirección de destino, uno de
+quince *comentarios de posición*: los siete valores estándar M0 *Off Duty*, M1
+*En Route*, M2 *In Service*, M3 *Returning*, M4 *Committed*, M5 *Special* y M6
+*Priority*; siete valores personalizados de definición local C0–C6; y
+*Emergency*, que es el patrón con los tres bits en cero. Toda radio APRS
+Kenwood y Yaesu lo expone en un menú del panel frontal, y los clientes
+receptores lo muestran junto a la estación.
+
+*Comentario de posición Mic-E*, en la página Tracker, elige entre los catorce
+valores estándar y personalizados. Solo se aplica cuando *Codificación de
+posición Mic-E* está activa, porque ningún otro formato tiene un campo para
+él, y el valor de fábrica es M0 *Off Duty*: el habitual para una estación que
+no se mueve, que es lo que este firmware baliza.
+
+Emergency queda deliberadamente fuera de esa lista. Transmitirlo pide a otros
+operadores, y en algunas regiones a servicios de emergencia, que respondan a
+una emergencia real; eso no es algo que una página de configuración deba poder
+activar con un clic equivocado y dejar activado para todas las balizas
+siguientes. En recepción se trata por completo: ver
+:ref:`es-filtering` para el decodificador, y el registro de tráfico
+para la línea de advertencia que genera una emergencia recibida.
+
 Ambigüedad de posición
 ======================
 

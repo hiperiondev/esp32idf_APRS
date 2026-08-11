@@ -800,9 +800,27 @@ bool aprs_symbol_from_tnc2_header(const char *line, char dti, char *symTable, ch
     }
 
     char dest[10] = { 0 };
-    size_t n = 0;
-    for (const char *p = gt + 1; *p && *p != ',' && *p != ':' && n < sizeof(dest) - 1; p++)
-        dest[n++] = *p;
+    if (!aprs_tnc2_dest_call(line, dest, sizeof(dest)))
+        return false;
 
     return aprs_symbol_from_dest(dti, dest, srcSsid, symTable, symCode);
+}
+
+bool aprs_tnc2_dest_call(const char *line, char *out, size_t out_max) {
+    if (line == NULL || out == NULL || out_max == 0)
+        return false;
+
+    const char *gt = strchr(line, '>');
+    if (gt == NULL)
+        return false;
+
+    size_t n = 0;
+    for (const char *p = gt + 1; *p && *p != ',' && *p != ':'; p++) {
+        if (n + 1 >= out_max)
+            return false;
+        out[n++] = *p;
+    }
+
+    out[n] = 0;
+    return n > 0;
 }

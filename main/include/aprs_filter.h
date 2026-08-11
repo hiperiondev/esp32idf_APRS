@@ -167,6 +167,37 @@ bool aprs_filter_budlist_pass(budlist_mode_t mode, const char *call);
 bool aprs_filter_decode_position(const char *info, const char *dst_call, float *out_lat, float *out_lon);
 
 /**
+ * @brief Report the Mic-E position comment carried by a received packet
+ * (APRS101 Chapter 10, "Mic-E Message Types").
+ *
+ * The comment lives in the A/B/C bits of the destination address, so it takes
+ * both halves of the frame to read, exactly like the position itself. This is
+ * the receive-side entry point for surfacing it: it answers whether the
+ * packet is Mic-E at all, what the operator-visible name of its comment is,
+ * and whether that comment is the all-bits-clear Emergency, which a station
+ * sends to ask for help and which therefore has to reach the operator rather
+ * than sit unremarked in a packet log.
+ *
+ * @param dst_call 6-character AX.25 destination address field, exactly as
+ *                 decoded off the air (see aprs_mice_decode()). NULL simply
+ *                 yields false, since a Mic-E packet cannot be read without
+ *                 it.
+ * @param info APRS information field, starting at its data type identifier.
+ * @param len Length of @p info in bytes.
+ * @param out_name Set to the static English name of the comment (see
+ *                 aprs_mice_message_name()) on success; untouched otherwise.
+ *                 May be NULL.
+ * @param out_emergency Set to true on success when the comment is Emergency,
+ *                      false for any other value - including the mixed
+ *                      standard/custom bit pattern the specification leaves
+ *                      undefined, which is reported as unknown and never as
+ *                      an emergency. May be NULL.
+ * @return true if @p info is a well-formed Mic-E report whose comment was
+ *         read.
+ */
+bool aprs_filter_mice_message(const char *dst_call, const char *info, size_t len, const char **out_name, bool *out_emergency);
+
+/**
  * @brief Great-circle distance between two lat/lon points (haversine formula).
  * @return Distance in kilometers.
  */
