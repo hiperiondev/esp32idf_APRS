@@ -46,18 +46,53 @@ El motor de mensajes
   fuera sigue pendiente, así que la pasada de reintentos de arriba lo entrega
   separado un ``msg_interval``.
 * **Análisis de entrantes.** ``handleIncomingAPRS()`` analiza cualquier línea
-  TNC2 — de RF *o* de APRS-IS — reconoce los mensajes dirigidos a esta estación,
-  responde con un ack, y reconoce los acks entrantes (``ackNNN``) para limpiar el
+  TNC2 — de RF *o* de APRS-IS — reconoce los mensajes dirigidos a esta estación
+  o a un grupo de mensajes que ella lee, responde con un ack cuando es un
+  mensaje directo, y reconoce los acks entrantes (``ackNNN``) para limpiar el
   mensaje encolado correspondiente. Cada mensaje aceptado es una línea nueva de
   la conversación y recibe su propia ranura, incluidos los que no traen ningún
   ``{id`` y los que repiten un número que la estación remitente ya había usado
   (la numeración se reinicia cuando esa estación se reinicia). La única línea que
   no ocupa ranura es una retransmisión que la cola ya tiene — mismo remitente,
-  mismo número de mensaje, texto idéntico —, que se responde con un ack nuevo,
-  porque un repetido significa que el remitente nunca escuchó el primero, sin
-  aparecer dos veces en el historial. Los indicativos de origen se normalizan a
-  mayúsculas al analizarlos, de modo que una estación ocupa un solo nombre en el
-  hilo y un ack se empareja con el mensaje saliente que reconoce.
+  mismo número de mensaje, texto idéntico, mismo carácter directo/grupal —, que
+  se responde con un ack nuevo cuando era un mensaje directo, porque un repetido
+  significa que el remitente nunca escuchó el primero, sin aparecer dos veces en
+  el historial. Los indicativos de origen se normalizan a mayúsculas al
+  analizarlos, de modo que una estación ocupa un solo nombre en el hilo y un ack
+  se empareja con el mensaje saliente que reconoce.
+
+Grupos de mensajes
+==================
+
+Según el capítulo 14 de APRS101, "Message Groups", una estación receptora lee
+todo mensaje dirigido a ``ALL``, ``QST`` o ``CQ`` — el conjunto de grupos
+incorporado — además de a su propio indicativo, más cualquier nombre de grupo
+configurado localmente, como el destinatario que usa un net o una ronda APRS en
+lugar del indicativo propio de cada participante. ``ALL``, ``QST`` y ``CQ`` no
+requieren configuración y se leen siempre; hasta ``MSG_USER_GROUPS`` (3)
+nombres definidos por el operador se configuran en el bloque "Message Groups"
+de la página **Message**, un campo de texto por ranura, el mismo patrón de
+ranuras repetidas que usa la página de Boletines. Un nombre de grupo se compara
+completo y sin distinguir mayúsculas/minúsculas, sin recorte de ``-SSID`` (un
+grupo no es un indicativo).
+
+* **Se lee, nunca se confirma.** Un mensaje dirigido a un grupo se guarda en la
+  cola y se muestra en el panel ``/msgchat`` igual que un mensaje directo. Sin
+  embargo, nunca se confirma, nunca se retransmite y nunca recibe una respuesta
+  automática, lleve o no un sufijo ``{id``: un grupo no tiene un único dueño
+  que devuelva un ``ackNN``, y cada miembro que lo lea le respondería al
+  remitente al mismo tiempo. ``handleIncomingAPRS()`` decide cada "enviar un
+  ack" / "recordar un Reply-ACK adeudado" / "activar la Alarma de Mensaje"
+  según si el destinatario coincidió exactamente con el indicativo propio de
+  esta estación, nunca solo por haber sido aceptado — una línea ``ack``/``rej``
+  dirigida a un grupo también se ignora, ya que esta estación nunca envía un
+  mensaje saliente a un grupo para que algo lo confirme.
+* **Ranuras de historial separadas.** Un mensaje de grupo y uno directo se
+  mantienen separados en la cola aun cuando compartan el mismo remitente y el
+  mismo número de mensaje APRS: la detección de duplicados y el almacenamiento
+  usan el indicativo del remitente y el número de mensaje junto con el carácter
+  directo/grupal, de modo que los dos nunca chocan en una sola ranura ni se
+  sobrescriben entre sí.
 
 Reply-ACK
 =========

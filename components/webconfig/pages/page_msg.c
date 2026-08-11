@@ -17,6 +17,7 @@
 // configuration (RF/INET destinations) and provides the message
 // send/inbox interface.
 
+#include <ctype.h>
 #include <string.h>
 
 #include "afsk.h" // afsk_ptt_gpio_is_valid(): hardware-capable pins for the picker
@@ -74,6 +75,22 @@ esp_err_t page_msg_get(httpd_req_t *req) {
     web_field_msg_alarm_gpio(req, g_config.msg_alarm_gpio);
     web_fieldset_close(req);
 
+    // Message groups: this station always reads the built-in "ALL"/"QST"/
+    // "CQ" set (APRS101 chapter 14) with no configuration needed; these
+    // MSG_USER_GROUPS slots are the operator's own group names on top of
+    // that, e.g. a net's or round-table's addressee. A message to any of
+    // them is stored and shown like any other, but - same as the built-in
+    // set - is never acknowledged, retransmitted or auto-replied to.
+    web_fieldset_open(req, TR_F_MESSAGE_GROUPS);
+    for (int i = 0; i < MSG_USER_GROUPS; i++) {
+        char name[16];
+        snprintf(name, sizeof(name), "msgGrp%d", i + 1);
+        char label[24];
+        snprintf(label, sizeof(label), TR_F_MESSAGE_GROUP_FMT, i + 1);
+        web_field_text(req, label, name, g_config.msg_group[i], 9);
+    }
+    web_fieldset_close(req);
+
     httpd_resp_sendstr_chunk(req, "<button type='submit'>" TR_BTN_SAVE "</button></form>");
     web_send_footer(req);
     return ESP_OK;
@@ -82,7 +99,7 @@ esp_err_t page_msg_get(httpd_req_t *req) {
 esp_err_t page_msg_post(httpd_req_t *req) {
     if (!web_check_auth(req))
         return ESP_OK;
-    char body[700];
+    char body[800]; // 700 base + MSG_USER_GROUPS x "msgGrpN=........."
     if (web_read_body(req, body, sizeof(body)) < 0) {
         httpd_resp_send_500(req);
         return ESP_OK;
@@ -109,6 +126,21 @@ esp_err_t page_msg_post(httpd_req_t *req) {
     g_config.msg_alarm_enable = web_form_get_bool(body, "msgAlarmEn");
     int8_t alarm_gpio_in = (int8_t)web_form_get_int(body, "msgAlarmGpio", g_config.msg_alarm_gpio);
     g_config.msg_alarm_gpio = message_alarm_gpio_is_valid(alarm_gpio_in) ? alarm_gpio_in : -1;
+
+    // Group names travel upper case on the air, same as every other
+    // addressee, so they are normalized here rather than trusted to the
+    // operator's typing - the same rule the message engine applies to
+    // g_config.msg_mycall.
+    for (int i = 0; i < MSG_USER_GROUPS; i++) {
+        char name[16];
+        snprintf(name, sizeof(name), "msgGrp%d", i + 1);
+        char group[10] = { 0 };
+        web_form_get(body, name, group, sizeof(group));
+        for (char *p = group; *p; p++)
+            *p = (char)toupper((unsigned char)*p);
+        strncpy(g_config.msg_group[i], group, sizeof(g_config.msg_group[i]) - 1);
+        g_config.msg_group[i][sizeof(g_config.msg_group[i]) - 1] = 0;
+    }
 
     app_config_unlock();
 

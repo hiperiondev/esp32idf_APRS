@@ -704,6 +704,12 @@ typedef struct {
     bool msg_alarm_enable; /**< "Message Alarm": drive a GPIO on incoming message (disabled by default). */
     int8_t msg_alarm_gpio; /**< Message-alarm GPIO; -1 = disabled/unset (see message_alarm_gpio_is_valid()). */
 
+    char msg_group[3][10]; /**< Up to 3 operator-defined message group names (APRS101 ch.14 "Message Groups"), in addition to the built-in "ALL"/"QST"/"CQ"
+                               set every station reads. Each slot holds a bare group name, upper case, up to 9 characters wide (the addressee field width);
+                               an empty slot ("") is unused. A message addressed to one of these names is stored and shown like any other, but - same as
+                               "ALL"/"QST"/"CQ" - is never acknowledged, retransmitted or auto-replied to, since a group name is not this station's own
+                               callsign. */
+
     bool query_en;                   /**< Query responder master enable. */
     bool query_rf;                   /**< Answer queries heard on RF; the answer goes back out on RF. */
     bool query_inet;                 /**< Answer queries read from the APRS-IS feed; the answer goes back to APRS-IS. */

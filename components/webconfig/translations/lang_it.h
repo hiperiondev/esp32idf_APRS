@@ -264,6 +264,10 @@
 #define TR_F_MESSAGE_ALARM_ENABLE "Abilita allarme messaggi"
 /** Italian text for the form label for the "message alarm pin" field or fieldset, rendered on the configuration forms. English: "Message Alarm pin". */
 #define TR_F_MESSAGE_ALARM_PIN "Pin allarme messaggi"
+/** Italian text for the fieldset label for the operator-defined message-group name slots on the Message page. English: "Message Groups". */
+#define TR_F_MESSAGE_GROUPS "Gruppi messaggi"
+/** Italian text for the form label for one operator-defined message-group name slot, "%d" is the slot number (1-based). English: "Group %d". */
+#define TR_F_MESSAGE_GROUP_FMT "Gruppo %d"
 /** Italian text for the option label for the Mic-E position comment M0 (Off Duty), rendered on the Tracker page. English: "M0 Off Duty". */
 #define TR_F_MICE_MSG_M0 "M0 Fuori servizio"
 /** Italian text for the option label for the Mic-E position comment M1 (En Route), rendered on the Tracker page. English: "M1 En Route". */

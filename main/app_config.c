@@ -401,6 +401,8 @@ void app_config_set_defaults(app_config_t *c) {
     c->msg_interval = 30;
     c->msg_alarm_enable = false; // disabled by default
     c->msg_alarm_gpio = -1;
+    for (int i = 0; i < 3; i++)
+        c->msg_group[i][0] = 0; // no operator-defined groups by default
 
     // Query responder
     c->query_en = false; // opt-in, like msg_enable
@@ -754,6 +756,10 @@ static void config_write_json(jw_t *d, const app_config_t *c) {
     jadd_num(d, "msgInterval", c->msg_interval);
     jadd_bool(d, "msgAlarmEn", c->msg_alarm_enable);
     jadd_num(d, "msgAlarmGpio", c->msg_alarm_gpio);
+    jarr_begin(d, "msgGroup");
+    for (int i = 0; i < 3; i++)
+        jarr_str(d, c->msg_group[i]);
+    jarr_end(d);
 
     jadd_bool(d, "queryEn", c->query_en);
     jadd_bool(d, "queryRf", c->query_rf);
@@ -1184,6 +1190,13 @@ static void config_from_json(cJSON *d, app_config_t *c) {
     }
     c->msg_alarm_enable = jget_bool(d, "msgAlarmEn", def.msg_alarm_enable);
     c->msg_alarm_gpio = (int8_t)jget_num(d, "msgAlarmGpio", def.msg_alarm_gpio);
+    {
+        cJSON *g = cJSON_GetObjectItemCaseSensitive(d, "msgGroup");
+        for (int i = 0; i < 3; i++) {
+            cJSON *v = g ? cJSON_GetArrayItem(g, i) : NULL;
+            set_str(c->msg_group[i], sizeof(c->msg_group[i]), (v && cJSON_IsString(v)) ? v->valuestring : def.msg_group[i]);
+        }
+    }
 
     c->query_en = jget_bool(d, "queryEn", def.query_en);
     c->query_rf = jget_bool(d, "queryRf", def.query_rf);

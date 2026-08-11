@@ -103,6 +103,20 @@
 #define MSG_QUERY_BURST_MAX 3
 
 /**
+ * @brief Number of operator-defined message group names g_config.msg_group[]
+ * holds, on top of the built-in "ALL"/"QST"/"CQ" set every station reads.
+ *
+ * @details APRS101 chapter 14, "Message Groups", has a receiving station read
+ * every message addressed to "ALL", "QST" or "CQ" in addition to its own
+ * callsign, plus any locally configured group names - a net or round-table
+ * addresses its traffic to a group rather than to each participant by
+ * callsign. Three slots mirrors the bulletin-slot UI pattern (::BULLETIN_COUNT
+ * territory) and is ample for the handful of nets/groups a single station
+ * typically follows.
+ */
+#define MSG_USER_GROUPS 3
+
+/**
  * @brief One entry of the in-memory message queue (an RX or TX message).
  *
  * @p seq orders the conversation and @p time dates it: @p seq is assigned once,
@@ -117,8 +131,11 @@ typedef struct {
     time_t last_tx;          /**< Wall-clock time of this entry's last transmission; the retry timer measures its interval from here. TX entries only. */
     int8_t ack;              /**< TX retry state: >0 = retries remaining, -1 = RX pending, -2 = acked, -3 = rejected by recipient (rej). */
     bool rxtx;               /**< true = received (RX), false = to transmit (TX). */
+    bool group;              /**< RX entries only: true when the message was addressed to a group name ("ALL"/"QST"/"CQ" or a g_config.msg_group[] entry)
+                                   rather than to this station's own callsign. A group entry is never acked, retransmitted or auto-replied to, and is kept
+                                   in a slot of its own even when a direct message from the same sender carries the same ::msgID. */
     uint16_t msgID;          /**< APRS message number. */
-    char callsign[11];       /**< The other station's callsign, upper case (NUL-terminated). */
+    char callsign[11];       /**< The other station's callsign, upper case (NUL-terminated). RX entries: the sender. TX entries: the addressee. */
     char text[MSG_TEXT_MAX]; /**< Message text. */
     bool used;               /**< true if this slot holds a valid entry. */
 } msg_entry_t;
@@ -204,15 +221,30 @@ int message_send_pending_to(const char *toCall);
 
 /**
  * @brief Parse one incoming TNC2 text line (from RF or APRS-IS) and, if it is
- * an APRS message addressed to g_config.msg_mycall, store it and send an
- * ack. ACK lines update the outbound queue's retry state instead.
+ * an APRS message addressed to g_config.msg_mycall or to a message group this
+ * station reads ("ALL", "QST", "CQ" or one of g_config.msg_group[]), store it.
+ * A message addressed to this station's own callsign is also acked; a group
+ * message never is. ACK lines update the outbound queue's retry state
+ * instead.
+ *
+ * Per APRS101 chapter 14, "Message Groups", a receiving station reads every
+ * message sent to "ALL", "QST" or "CQ" plus any user-defined group name, but
+ * acknowledges only messages addressed to itself - a group has no single
+ * owner to send an "ackNN" back, and every member reading the group would
+ * otherwise answer at once. A group message is therefore never acked, never
+ * retransmitted and never auto-replied to (no Reply-ACK bookkeeping, no
+ * Message Alarm pulse), regardless of whether it happens to carry a "{id"
+ * suffix.
  *
  * A stored message takes its own queue slot next to everything else in the
- * conversation and is only ever displaced by newer traffic. The one line that
- * does not take a slot is a retransmission the queue already holds - same
- * sender, same message number and identical text - which is answered with a
- * fresh ack (the sender is asking for one) without appearing twice in the
- * history.
+ * conversation and is only ever displaced by newer traffic. A group message
+ * and a direct message that carry the same sender and the same message number
+ * still take separate slots, since one is addressed to this station and the
+ * other to a group. The one line that does not take a slot of its own is a
+ * retransmission the queue already holds - same sender, same message number,
+ * identical text and the same direct/group status - which is answered with a
+ * fresh ack when it was a direct message (the sender is asking for one)
+ * without appearing twice in the history.
  *
  * A message number written @c "MM}AA" is a Reply-ACK (APRS 1.1): @c MM is the
  * sender's own number and @c AA a free acknowledgement of one of this station's

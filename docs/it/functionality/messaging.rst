@@ -47,19 +47,55 @@ Il motore dei messaggi
   limite lascia fuori resta pendente, quindi la passata di ritentativi qui sopra
   continua a consegnarlo a distanza di un ``msg_interval``.
 * **Analisi degli entranti.** ``handleIncomingAPRS()`` analizza qualsiasi riga
-  TNC2 — da RF *o* da APRS-IS — riconosce i messaggi diretti a questa stazione,
-  risponde con un ack, e riconosce gli ack entranti (``ackNNN``) per pulire il
+  TNC2 — da RF *o* da APRS-IS — riconosce i messaggi diretti a questa stazione o
+  a un gruppo di messaggi che essa legge, risponde con un ack quando è un
+  messaggio diretto, e riconosce gli ack entranti (``ackNNN``) per pulire il
   messaggio accodato corrispondente. Ogni messaggio accettato è una nuova riga
   della conversazione e riceve una propria casella, compresi quelli che non
   portano alcun ``{id`` e quelli il cui numero la stazione mittente ha già usato
   in precedenza (la numerazione riparte quando quella stazione si riavvia).
   L'unica riga che non occupa una casella è una ritrasmissione che la coda già
-  contiene — stesso mittente, stesso numero di messaggio, testo identico — a cui
-  si risponde con un ack nuovo, perché un ripetuto significa che il mittente non
-  ha mai sentito il primo, senza comparire due volte nella cronologia. Gli
-  indicativi di origine sono normalizzati in maiuscolo durante l'analisi, così
-  una stazione occupa un solo nome nel filo e un ack si abbina al messaggio in
+  contiene — stesso mittente, stesso numero di messaggio, testo identico, stesso
+  carattere diretto/di gruppo — a cui si risponde con un ack nuovo quando era un
+  messaggio diretto, perché un ripetuto significa che il mittente non ha mai
+  sentito il primo, senza comparire due volte nella cronologia. Gli indicativi
+  di origine sono normalizzati in maiuscolo durante l'analisi, così una
+  stazione occupa un solo nome nel filo e un ack si abbina al messaggio in
   uscita che conferma.
+
+Gruppi di messaggi
+===================
+
+Secondo il capitolo 14 di APRS101, "Message Groups", una stazione ricevente
+legge ogni messaggio indirizzato a ``ALL``, ``QST`` o ``CQ`` — l'insieme di
+gruppi incorporato — oltre che al proprio indicativo, più qualsiasi nome di
+gruppo configurato localmente, come il destinatario che un net o una tavola
+rotonda APRS usa al posto dell'indicativo proprio di ciascun partecipante.
+``ALL``, ``QST`` e ``CQ`` non richiedono configurazione e sono sempre letti;
+fino a ``MSG_USER_GROUPS`` (3) nomi definiti dall'operatore si impostano nel
+riquadro "Message Groups" della pagina **Message**, un campo di testo per
+casella, lo stesso schema a caselle ripetute usato dalla pagina Bollettini. Un
+nome di gruppo è confrontato per intero e senza distinguere maiuscole/
+minuscole, senza rimozione del ``-SSID`` (un gruppo non è un indicativo).
+
+* **Si legge, non si conferma mai.** Un messaggio indirizzato a un gruppo viene
+  salvato nella coda e mostrato nel pannello ``/msgchat`` esattamente come un
+  messaggio diretto. Tuttavia non viene mai confermato, mai ritrasmesso e mai
+  a cui si risponde automaticamente, che porti o meno un suffisso ``{id``: un
+  gruppo non ha un unico proprietario che rimandi un ``ackNN``, e ogni membro
+  che lo legga risponderebbe altrimenti al mittente contemporaneamente.
+  ``handleIncomingAPRS()`` decide ogni scelta "invia un ack" / "ricorda un
+  Reply-ACK dovuto" / "attiva l'Allarme Messaggio" in base al fatto che il
+  destinatario abbia corrisposto esattamente all'indicativo proprio di questa
+  stazione, mai solo per essere stato accettato — anche una riga ``ack``/
+  ``rej`` diretta a un gruppo viene ignorata, poiché questa stazione non invia
+  mai un messaggio in uscita a un gruppo perché qualcosa lo confermi.
+* **Caselle di cronologia separate.** Un messaggio di gruppo e uno diretto
+  restano separati nella coda anche quando condividono lo stesso mittente e lo
+  stesso numero di messaggio APRS: il rilevamento dei duplicati e il salvataggio
+  usano l'indicativo del mittente e il numero di messaggio insieme al carattere
+  diretto/di gruppo, così i due non collidono mai in un'unica casella né si
+  sovrascrivono a vicenda.
 
 Reply-ACK
 =========

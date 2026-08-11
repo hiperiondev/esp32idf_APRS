@@ -252,6 +252,10 @@
 #define TR_F_MESSAGE_ALARM_ENABLE "Enable Message Alarm"
 /** Form label for the "message alarm pin" field or fieldset, rendered on the configuration forms. */
 #define TR_F_MESSAGE_ALARM_PIN "Message Alarm pin"
+/** Fieldset label for the operator-defined message-group name slots on the Message page, rendered on the configuration forms. */
+#define TR_F_MESSAGE_GROUPS "Message Groups"
+/** Form label for one operator-defined message-group name slot, "%d" is the slot number (1-based), rendered on the Message page. */
+#define TR_F_MESSAGE_GROUP_FMT "Group %d"
 /** Option label for the Mic-E position comment M0 (Off Duty), rendered on the Tracker page. */
 #define TR_F_MICE_MSG_M0 "M0 Off Duty"
 /** Option label for the Mic-E position comment M1 (En Route), rendered on the Tracker page. */

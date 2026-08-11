@@ -44,18 +44,51 @@ The message engine
   pending, so the retry pass above keeps delivering it one ``msg_interval``
   apart.
 * **Incoming parse.** ``handleIncomingAPRS()`` parses any TNC2 line — from RF
-  *or* from APRS-IS — recognises messages addressed to this station, replies
-  with an ack, and recognises inbound acks (``ackNNN``) to clear the matching
-  queued message. Each accepted message is a new line of the conversation and
-  gets its own slot, including messages that carry no ``{id`` at all and
-  messages whose number the sending station has already used before (numbering
-  restarts when that station reboots). The one line that does not take a slot is
-  a retransmission the queue already holds — same sender, same message number,
-  identical text — which is answered with a fresh ack, since a repeat means the
-  sender never heard the first one, without appearing twice in the history.
-  Sender callsigns are normalised to upper case as they are parsed, so one
-  station occupies one name in the thread and an ack pairs with the outbound
-  message it acknowledges.
+  *or* from APRS-IS — recognises messages addressed to this station or to a
+  message group it reads, replies with an ack for a direct message, and
+  recognises inbound acks (``ackNNN``) to clear the matching queued message.
+  Each accepted message is a new line of the conversation and gets its own
+  slot, including messages that carry no ``{id`` at all and messages whose
+  number the sending station has already used before (numbering restarts when
+  that station reboots). The one line that does not take a slot is a
+  retransmission the queue already holds — same sender, same message number,
+  identical text, same direct/group status — which is answered with a fresh
+  ack when it was a direct message, since a repeat means the sender never
+  heard the first one, without appearing twice in the history. Sender
+  callsigns are normalised to upper case as they are parsed, so one station
+  occupies one name in the thread and an ack pairs with the outbound message
+  it acknowledges.
+
+Message groups
+==============
+
+Per APRS101 chapter 14, "Message Groups", a receiving station reads every
+message addressed to ``ALL``, ``QST`` or ``CQ`` — the built-in group set — in
+addition to its own callsign, plus any locally configured group name, such as
+the addressee an APRS net or round-table uses instead of each participant's
+own callsign. ``ALL``, ``QST`` and ``CQ`` need no configuration and are always
+read; up to ``MSG_USER_GROUPS`` (3) operator-defined names are set on the
+**Message** page's "Message Groups" fieldset, one text field per slot, the
+same repeated-slot pattern the Bulletins page uses. A group name is compared
+whole and case-insensitively, with no ``-SSID`` stripping (a group is not a
+callsign).
+
+* **Reading, never acknowledging.** A message addressed to a group is stored
+  in the queue and shown in the ``/msgchat`` panel exactly like a direct
+  message. It is, however, never acknowledged, never retransmitted and never
+  auto-replied to, whether or not it carries a ``{id`` suffix: a group has no
+  single owner to send an ``ackNN`` back, and every member reading the group
+  would otherwise answer the sender at once. ``handleIncomingAPRS()`` routes
+  every "send an ack" / "remember a Reply-ACK owed" / "pulse the Message
+  Alarm" decision on whether the addressee matched this station's own
+  callsign exactly, never on acceptance alone — an ``ack``/``rej`` line
+  addressed to a group is likewise ignored, since this station never sends an
+  outbound message to a group for one to acknowledge.
+* **Separate history slots.** A group message and a direct message are kept
+  apart in the queue even when they happen to share the same sender and the
+  same APRS message number — the duplicate-detection and storage keys the
+  sender's callsign and message number against the message's direct/group
+  status, so the two never collide into one slot or overwrite one another.
 
 Reply-ACK
 =========

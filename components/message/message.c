@@ -212,6 +212,28 @@ static bool callsignBaseMatch(const char *a, const char *b) {
     return strncasecmp(a, b, na) == 0;
 }
 
+// Reports whether toCall (already trimmed and upper-cased) is one of the
+// message-group addressees this station reads: the built-in "ALL"/"QST"/"CQ"
+// set every station reads per APRS101 chapter 14, or one of the operator's
+// own group names in g_config.msg_group[]. Compared whole, unlike a callsign:
+// a group name carries no SSID and is matched exactly.
+static bool isGroupAddressee(const char *toCall) {
+    if (strcmp(toCall, "ALL") == 0 || strcmp(toCall, "QST") == 0 || strcmp(toCall, "CQ") == 0)
+        return true;
+
+    for (int i = 0; i < MSG_USER_GROUPS; i++) {
+        if (g_config.msg_group[i][0] == 0)
+            continue;
+        char group[10];
+        strncpy(group, g_config.msg_group[i], sizeof(group) - 1);
+        group[sizeof(group) - 1] = 0;
+        trimUpper(group);
+        if (group[0] && strcmp(toCall, group) == 0)
+            return true;
+    }
+    return false;
+}
+
 // ---------------------------------------------------------------------------
 // Reply-ACK: reading a received identifier and building an outgoing one
 // ---------------------------------------------------------------------------
@@ -378,8 +400,12 @@ static int pkgMsgEvictSlot(void) {
 
 // Appends one message to the conversation. Every call takes a slot of its own,
 // so a received message sits in the history next to the ones this station sent
-// and stays there until MSG_QUEUE_SIZE newer messages have pushed it out.
-static int pkgMsgStore(const char *call, const char *text, uint16_t msgID, int8_t ack, bool rxtx) {
+// and stays there until MSG_QUEUE_SIZE newer messages have pushed it out. group
+// is meaningful for RX entries only: true when the message was addressed to a
+// message group rather than to this station's own callsign, which is what
+// keeps a group message and a direct message that happen to share the same
+// sender and message number in separate slots.
+static int pkgMsgStore(const char *call, const char *text, uint16_t msgID, int8_t ack, bool rxtx, bool group) {
     if (!call[0] || !text[0])
         return -1;
 
@@ -392,6 +418,7 @@ static int pkgMsgStore(const char *call, const char *text, uint16_t msgID, int8_
     s_queue[i].msgID = msgID;
     s_queue[i].ack = ack;
     s_queue[i].rxtx = rxtx;
+    s_queue[i].group = group;
     memset(s_queue[i].callsign, 0, sizeof(s_queue[i].callsign));
     strncpy(s_queue[i].callsign, call, sizeof(s_queue[i].callsign) - 1);
     memset(s_queue[i].text, 0, sizeof(s_queue[i].text));
@@ -404,12 +431,15 @@ static int pkgMsgStore(const char *call, const char *text, uint16_t msgID, int8_
 // text - and that repeat belongs in the history once, not once per copy heard.
 // Anything else is a new line of the conversation, including a second message
 // carrying the number the sender used before (numbering restarts when the
-// sending station reboots) and a message with no number at all, which arrives
-// with number 0 the way every other unnumbered message does. Text is compared
-// as stored, i.e. after the truncation to MSG_TEXT_MAX bytes.
-static int pkgMsgFindRepeat(const char *call, const char *text, uint16_t msgID, bool rxtx) {
+// sending station reboots), a message with no number at all, which arrives
+// with number 0 the way every other unnumbered message does, and a group
+// message that happens to share its sender and number with an unrelated
+// direct message, which is a different line of the conversation and is kept
+// in a slot of its own. Text is compared as stored, i.e. after the truncation
+// to MSG_TEXT_MAX bytes.
+static int pkgMsgFindRepeat(const char *call, const char *text, uint16_t msgID, bool rxtx, bool group) {
     for (int i = 0; i < MSG_QUEUE_SIZE; i++) {
-        if (!s_queue[i].used || s_queue[i].rxtx != rxtx || s_queue[i].msgID != msgID)
+        if (!s_queue[i].used || s_queue[i].rxtx != rxtx || s_queue[i].msgID != msgID || s_queue[i].group != group)
             continue;
         if (strcmp(s_queue[i].callsign, call) != 0)
             continue;
@@ -579,7 +609,7 @@ void sendAPRSMessage(const char *toCall, const char *text) {
     // shows next to the message. The sanitized payload is stored rather than
     // the caller's raw text, so a retry re-sends exactly what was already put
     // on the air instead of re-deriving it.
-    pkgMsgStore(toCallUp, payload, s_msgID, ackVal, false);
+    pkgMsgStore(toCallUp, payload, s_msgID, ackVal, false, false);
 }
 
 void sendAPRSAck(const char *toCall, const char *msgNo) {
@@ -825,17 +855,28 @@ void handleIncomingAPRS(const char *line, query_source_t source) {
 
     ESP_LOGD(TAG, "Message from %s to %s: %s", fromCall, toCall, message);
 
-    // Accept the message if the addressee's base callsign matches ours,
-    // regardless of SSID on either side (message to "N0CALL", "N0CALL-7",
-    // etc. is accepted as long as it's configured mycall is "N0CALL", with
-    // or without its own SSID).
-    if (!callsignBaseMatch(toCall, g_config.msg_mycall))
+    // Accept the message either addressed to this station - the addressee's
+    // base callsign matches ours regardless of SSID on either side, so a
+    // message to "N0CALL", "N0CALL-7", etc. is accepted as long as the
+    // configured mycall is "N0CALL", with or without its own SSID - or
+    // addressed to a message group this station reads (APRS101 chapter 14):
+    // the built-in "ALL"/"QST"/"CQ" set, or one of g_config.msg_group[].
+    // isDirect is what the rest of this function routes every "acknowledge
+    // it" / "remember a Reply-ACK for it" / "pulse the alarm for it" decision
+    // on, never on acceptance alone: a group has no single owner to send an
+    // ack back, and every member reading it would otherwise answer at once.
+    bool isDirect = callsignBaseMatch(toCall, g_config.msg_mycall);
+    bool isGroup = !isDirect && isGroupAddressee(toCall);
+    if (!isDirect && !isGroup)
         return;
 
     // An ack or rej always carries a message ID (it's the ID of the queued
     // message being acknowledged/rejected); without one there is nothing to
-    // match against a queued outgoing message, so it can't be processed.
-    if ((isAck || isRej) && msgNo[0] == 0)
+    // match against a queued outgoing message, so it can't be processed. A
+    // group address can't carry one either: an ack/rej is a reply to this
+    // station's own outbound message, which is only ever sent to a callsign,
+    // never to a group.
+    if ((isAck || isRej) && (msgNo[0] == 0 || isGroup))
         return;
 
     uint16_t number;
@@ -866,8 +907,10 @@ void handleIncomingAPRS(const char *line, query_source_t source) {
 
     // A free acknowledgement riding with the message clears the outbound
     // message it names, so a reply doubles as the ack for what it replies to
-    // and no separate "ackNN" has to survive the return path.
-    if (parseMsgNumber(replyAck, &number)) {
+    // and no separate "ackNN" has to survive the return path. Meaningless for
+    // a group message - this station never sent an outbound message to a
+    // group for one to acknowledge - so skipped entirely for one.
+    if (!isGroup && parseMsgNumber(replyAck, &number)) {
         int i = pkgMsg_Find(fromCall, number, false);
         if (i >= 0)
             s_queue[i].ack = -2;
@@ -875,22 +918,30 @@ void handleIncomingAPRS(const char *line, query_source_t source) {
 
     // Every received message is a new line of the conversation and gets a queue
     // slot of its own; only a copy of one already in the history is left out,
-    // and even then the ack below still goes back out, since a repeat means the
-    // sender never heard the first one. The message is identified by the
-    // sender's own number alone, so two copies carrying different free
-    // acknowledgements are still one message.
+    // and even then the ack below still goes back out for a direct message,
+    // since a repeat means the sender never heard the first one. The message
+    // is identified by the sender's own number and its direct/group status, so
+    // two copies carrying different free acknowledgements are still one
+    // message, while a group message and a direct message that happen to
+    // share a sender and number are two.
     uint16_t rxID = 0;
     parseMsgNumber(ownNo, &rxID);
-    if (pkgMsgFindRepeat(fromCall, decoded, rxID, true) < 0)
-        pkgMsgStore(fromCall, decoded, rxID, -1, true);
+    if (pkgMsgFindRepeat(fromCall, decoded, rxID, true, isGroup) < 0)
+        pkgMsgStore(fromCall, decoded, rxID, -1, true, isGroup);
 
-    // Per APRS101 the message ID is optional: only send an ack when the
+    // A group message is never acked, never retransmitted and never
+    // auto-replied to, "{id" suffix or not - it has no single owner to answer
+    // it, and answering on behalf of the whole group would key the
+    // transmitter for every member that heard it. Per APRS101 the message ID
+    // is otherwise optional: for a direct message, only send an ack when the
     // sender actually requested one. That ack quotes the identifier whole,
     // Reply-ACK suffix included, and the sender's own number becomes the
     // acknowledgement owed back to that station.
-    if (msgNo[0] != 0) {
-        sendAPRSAck(fromCall, msgNo);
-        replyAckRemember(fromCall, ownNo);
+    if (!isGroup) {
+        if (msgNo[0] != 0) {
+            sendAPRSAck(fromCall, msgNo);
+            replyAckRemember(fromCall, ownNo);
+        }
+        message_alarm_pulse();
     }
-    message_alarm_pulse();
 }
