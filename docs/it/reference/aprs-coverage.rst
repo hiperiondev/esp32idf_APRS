@@ -80,11 +80,11 @@ Campi indirizzo di destinazione e sorgente (cap. 4)
      - ✅
      - Riconosciuto dal digipeater come forma di instradamento legacy, dietro un interruttore esplicito spento per impostazione predefinita perché non scavalchi mai un percorso esplicito.
    * - Simbolo nell'indirizzo di destinazione (GPSxyz / SYMxyz)
-     - ❌
-     - Viene letto solo il simbolo del campo informazioni. Una stazione che usa la vecchia convenzione del campo di destinazione viene memorizzata senza simbolo.
+     - ✅
+     - Letto in ricezione quando il campo informazioni non fornisce un simbolo proprio, in tutte le forme ``GPSxy``, ``SPCxy``, ``SYMxy``, ``GPSCnn`` e ``GPSEnn``, incluso il carattere di sovrapposizione sui simboli della tabella alternativa. I pacchetti Mic-E sono esclusi, perché il loro indirizzo di destinazione trasporta dati di posizione. Il traffico originato mantiene il simbolo nel campo informazioni, quindi non viene mai scritto in questa forma.
    * - Simbolo dall'SSID dell'indirizzo sorgente (obsoleto)
-     - ❌
-     - Non implementato, e non vale la pena implementarlo: la specifica lo elenca come obsoleto e l'SSID è usato per il ruolo della stazione.
+     - ⚠️
+     - Applicato in ricezione solo come ultimo passo della catena di precedenza dei simboli, e solo ai pacchetti NMEA grezzi, l'unico caso per cui la convenzione è stata inventata. Per ogni altro tipo di dato l'SSID resta il ruolo della stazione, che è ciò che significa oggi.
    * - Reti alternative
      - ❌
      - Il traffico originato usa sempre il TOCALL del progetto; non c'è un'impostazione per un indirizzo di destinazione di rete alternativa.
@@ -118,8 +118,8 @@ Formati di ora e posizione (cap. 6)
      - ✅
      - Trasmesso su posizioni non compresse e dentro il campo di testo Mic-E, soppresso quando è in uso l'ambiguità di posizione o è selezionato il formato compresso, perché entrambi dichiarano già una precisione diversa. I pacchetti ricevuti non vengono raffinati col loro ``!DAO!``, il che costa circa 18 m di risoluzione nel filtro di distanza e nient'altro.
    * - Rapporti di posizione NMEA grezzi (``$``)
-     - ⚠️
-     - Classificati come posizione ai fini del gateway, quindi questi pacchetti sono instradati dal filtro di tipo e digipetati normalmente, ma la frase non viene mai analizzata. La conseguenza è che tale stazione non ha coordinate internamente: il filtro di distanza dell'IGate non può valutarla e Last Heard la registra senza posizione.
+     - ✅
+     - Le frasi ``RMC``, ``GGA`` e ``GLL`` sono decodificate in ricezione, con qualsiasi identificatore di talker di due lettere, così da coprire sia i ricevitori multicostellazione sia quelli solo GPS. Il checksum opzionale è verificato quando presente, e una frase che dichiara un fix non valido viene rifiutata, così il filtro di distanza dell'IGate non valuta mai una stazione su una coordinata vecchia. ``$GPWPL`` nomina un waypoint e non il fix proprio del mittente, ed è lasciato deliberatamente non decodificato; ``$ULTW`` è un record meteorologico ed è instradato come tale.
    * - Posizione nulla predefinita
      - ❌
      - Le coordinate configurate vengono sempre trasmesse così come sono; non c'è convenzione per segnalare "posizione sconosciuta" quando l'operatore non le ha impostate.
@@ -581,12 +581,11 @@ New-N.
 Le lacune si concentrano in tre punti, e vale la pena dirlo chiaramente:
 
 * **Ampiezza in ricezione.** La stazione trasmette più formati di quanti ne
-  decodifichi. Le frasi NMEA grezze, la meteorologia grezza Peet Bros e
-  Ultimeter e i simboli trasportati nel campo di destinazione AX.25 sono
-  riconosciuti come *categorie* — quanto basta per farli passare attraverso i
+  decodifichi. I record meteorologici grezzi Peet Bros e Ultimeter sono
+  riconosciuti come *categoria* — quanto basta per farli passare attraverso i
   filtri di gateway — ma il loro contenuto non viene mai analizzato. In un
   IGate questo si manifesta come stazioni che superano il filtro di tipo ma
-  non possono essere filtrate per distanza né collocate sulla mappa.
+  le cui misure non sono disponibili localmente.
 * **Proposte successive al 2004.** Mancano il digipeating preventivo, le sonde
   PHGR, la regola della velocità supersonica del Mic-E e le proposte di
   segnalazione con i bit RR. Sono aggiunte reali alla specifica, non

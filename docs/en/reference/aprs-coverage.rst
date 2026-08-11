@@ -78,11 +78,11 @@ Destination and source address fields (ch. 4)
      - ✅
      - Recognised by the digipeater as a legacy routing form, behind an explicit switch that is off by default so it never short-circuits an explicit path.
    * - Symbol carried in the destination address (GPSxyz / SYMxyz)
-     - ❌
-     - Only the information-field symbol is read. A station using the older destination-address convention is stored without a symbol.
+     - ✅
+     - Read on receive when the information field yields no symbol of its own, in all of the ``GPSxy``, ``SPCxy``, ``SYMxy``, ``GPSCnn`` and ``GPSEnn`` forms, including the overlay character on alternate-table symbols. Mic-E packets are excluded, since their destination address carries position data. Originated traffic keeps the symbol in the information field, so nothing is written in this form.
    * - Symbol from the source address SSID (obsolete)
-     - ❌
-     - Not implemented, and not worth implementing: the specification lists it as obsolete and the SSID is used for station role instead.
+     - ⚠️
+     - Applied on receive only as the last step of the symbol precedence chain, and only to raw NMEA packets — the one case the convention was invented for. Any other data type keeps the SSID as a station role, which is what it means today.
    * - Alternate nets
      - ❌
      - Originated traffic always uses the project TOCALL; there is no setting for an alternate-net destination address.
@@ -116,8 +116,8 @@ Time and position formats (ch. 6)
      - ✅
      - Transmitted on uncompressed positions and inside the Mic-E text field, suppressed when position ambiguity is in use or the compressed layout is selected — both of which already carry a different precision claim. Received packets are not re-refined by their ``!DAO!``, which costs about 18 m of resolution in the range filter and nothing else.
    * - Raw NMEA position reports (``$``)
-     - ⚠️
-     - Classified as a position for gating purposes, so these packets are routed by the type filter and digipeated normally, but the sentence is never parsed. The consequence is that such a station has no coordinates internally: the IGate range filter cannot evaluate it and Last Heard records it without a position.
+     - ✅
+     - ``RMC``, ``GGA`` and ``GLL`` sentences are decoded on receive, with any two-letter talker identifier so that multi-constellation receivers are covered as well as GPS-only ones. The optional checksum is enforced when present, and a sentence reporting an invalid fix is refused, so the IGate range filter never evaluates a station on a stale coordinate. ``$GPWPL`` names a waypoint rather than the sender's own fix and is deliberately left undecoded; ``$ULTW`` is a weather record and is routed as one.
    * - Default null position
      - ❌
      - The configured coordinates are always transmitted as they stand; there is no convention for signalling "position unknown" when the operator has not set them.
@@ -578,11 +578,10 @@ telemetry and the New-N paradigm.
 The gaps cluster in three places, and they are worth stating plainly:
 
 * **Receive-side breadth.** The station transmits more formats than it
-  decodes. Raw NMEA sentences, Peet Bros and Ultimeter raw weather, and
-  symbols carried in the AX.25 destination address are recognised as
-  *categories* — enough to route them through the gating filters — but their
+  decodes. Peet Bros and Ultimeter raw weather records are recognised as a
+  *category* — enough to route them through the gating filters — but their
   contents are never parsed. For an IGate this shows up as stations that pass
-  the type filter but cannot be range-filtered or placed on the map.
+  the type filter but whose measurements are unavailable locally.
 * **Post-2004 proposals.** Preemptive digipeating, PHGR probes, the
   supersonic Mic-E speed rule and the RR-bit signalling proposals are absent.
   These are genuine specification additions, not folklore, but their

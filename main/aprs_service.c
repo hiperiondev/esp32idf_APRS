@@ -652,8 +652,15 @@ static void aprs_msg_callback(ax25_msg_t *msg) {
     // !=/@; the symbol table and symbol code follow the latitude/longitude
     // fields. Handles both no-timestamp ('!'/'=') and timestamped ('/'/'@')
     // position formats - see aprs_extract_symbol() for the offset math.
+    //
+    // Payloads that carry no symbol of their own - a raw NMEA sentence above
+    // all, which is verbatim GPS receiver output with nowhere to put one -
+    // fall back to the AX.25 destination address and then to the source
+    // SSID, in the precedence order APRS101 chapter 21 lays down. The
+    // information field always wins when it does yield a symbol.
     char symTable = 0, symCode = 0;
-    aprs_extract_symbol((const char *)msg->info, msg->len, &symTable, &symCode);
+    if (!aprs_extract_symbol((const char *)msg->info, msg->len, &symTable, &symCode) && msg->len > 0)
+        aprs_symbol_from_dest((char)msg->info[0], msg->dst.call, msg->src.ssid, &symTable, &symCode);
 
     // Log every decoded RF frame so the web traffic viewer mirrors what the
     // serial console shows for RF activity, regardless of which
@@ -1145,7 +1152,11 @@ static void inet2rfHandler(const char *line) {
 
             const char *info = colon + 1;
             size_t infoLen = strlen(info);
-            aprs_extract_symbol(info, infoLen, &symTable, &symCode);
+            // Same symbol precedence as the RF path above: information
+            // field first, then the destination address of the TNC2 header,
+            // then the source SSID for raw NMEA only.
+            if (!aprs_extract_symbol(info, infoLen, &symTable, &symCode) && infoLen > 0)
+                aprs_symbol_from_tnc2_header(line, info[0], &symTable, &symCode);
 
             // A frame that arrived over APRS-IS was never heard off the air
             // here, so it is never direct and has no RF hop count.

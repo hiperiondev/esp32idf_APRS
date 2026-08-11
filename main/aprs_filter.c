@@ -24,6 +24,7 @@
 #include <string.h>
 
 #include "app_config.h"
+#include "aprs_coord.h"
 #include "aprs_filter.h"
 #include "weather_telemetry.h"
 
@@ -707,6 +708,14 @@ bool aprs_filter_decode_position(const char *info, const char *dst_call, float *
             if (len < 19)
                 return false;
             return decode_pos(&info[18], out_lat, out_lon);
+
+        // Raw NMEA sentence, whose coordinates are degrees-and-minutes text
+        // in the receiver's own wire format rather than an APRS position
+        // field. "$ULTW..." is an Ultimeter weather record and carries no
+        // position; it is refused by the sentence-identifier check inside
+        // the decoder like any other unsupported sentence.
+        case '$':
+            return aprs_nmea_decode_position(info, len, out_lat, out_lon);
 
         case ')':
             for (size_t i = 4; i <= 10 && i < len; i++) {

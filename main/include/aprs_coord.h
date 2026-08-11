@@ -14,12 +14,20 @@
  *
  *     please contact their authors for more information.
  *
- * @brief Shared decimal-degrees -> APRS position field conversion, used by
+ * @brief Shared APRS position and symbol conversion.
+ *
+ * On the transmit side, decimal-degrees -> APRS position field conversion for
  * every module that builds a position report (station beacons, Objects/Items,
- * weather reports). Covers the uncompressed "DDMM.mmN/DDDMM.mmW" field pair
- * (with optional position ambiguity, APRS101 chapter 6), the base-91
- * compressed position format (APRS101 chapter 9), and the Maidenhead grid
- * locator used by status reports (APRS101 chapter 16).
+ * weather reports): the uncompressed "DDMM.mmN/DDDMM.mmW" field pair (with
+ * optional position ambiguity, APRS101 chapter 6), the base-91 compressed
+ * position format (APRS101 chapter 9), and the Maidenhead grid locator used
+ * by status reports (APRS101 chapter 16).
+ *
+ * On the receive side, the decoders that read a position or a symbol out of a
+ * packet whose own information field does not spell them out in one of those
+ * formats: raw NMEA-0183 sentences behind the '$' data type identifier
+ * (APRS101 chapter 6) and symbols carried in the AX.25 destination address or
+ * source SSID (APRS101 chapters 20 and 21).
  */
 
 #ifndef APRS_COORD_H
@@ -195,5 +203,101 @@ void aprs_compressed_cs_from_course_speed(unsigned course_deg, unsigned speed_kn
  *         calling).
  */
 bool aprs_extract_symbol(const char *info, size_t infoLen, char *symTable, char *symCode);
+
+/**
+ * @brief Decode a raw NMEA-0183 position sentence carried behind the APRS
+ * '$' data type identifier (APRS101 chapter 6, "Raw NMEA Position Reports",
+ * and Appendix 1).
+ *
+ * Recognized sentences are @c RMC (recommended minimum), @c GGA (fix data)
+ * and @c GLL (geographic position). Any two-letter talker identifier is
+ * accepted, not just @c GP: multi-constellation receivers emit @c GN, @c GL,
+ * @c GA and @c GB for the same sentences, and APRS 1.2c renamed GPS to GNSS
+ * throughout for exactly that reason.
+ *
+ * A sentence is rejected when its optional "*HH" checksum trailer is present
+ * and does not match, when @c RMC reports the navigation-warning status @c V
+ * instead of @c A, when @c GGA reports fix quality 0 ("fix not available"),
+ * when @c GLL carries the later status field and it reads @c V, or when any
+ * coordinate field is malformed or out of range. A corrupt or stale position
+ * is worse than none at all for the range gate this feeds, so there is no
+ * best-effort fallback.
+ *
+ * @c $GPWPL is deliberately not decoded: it names a waypoint rather than the
+ * transmitting station's own fix, so treating it as a position report would
+ * range-gate a station on a coordinate it is not at.
+ *
+ * The whole parse is integer arithmetic - coordinates are accumulated in
+ * units of 1e-7 degrees and converted to float exactly once on return - so
+ * the result does not depend on floating-point rounding of the input text.
+ *
+ * @param sentence First byte of the sentence, which is the '$' itself (the
+ *        APRS data type identifier and the NMEA start delimiter are the same
+ *        character).
+ * @param len Number of valid bytes available at @p sentence. The sentence
+ *        does not need to be NUL-terminated; a trailing CR and/or LF is
+ *        ignored.
+ * @param outLat Out param: latitude in decimal degrees (positive = N),
+ *        written only on success.
+ * @param outLon Out param: longitude in decimal degrees (positive = E),
+ *        written only on success.
+ * @return true if a supported sentence was decoded to a valid position.
+ */
+bool aprs_nmea_decode_position(const char *sentence, size_t len, float *outLat, float *outLon);
+
+/**
+ * @brief Resolve the display symbol a packet carries outside its information
+ * field (APRS101 chapters 20 and 21).
+ *
+ * This is the second and third steps of the symbol precedence order the
+ * project implements:
+ *
+ *   1. the information field, read by aprs_extract_symbol(); it always wins;
+ *   2. the AX.25 destination address, in the forms "GPSxyz", "SPCxyz" and
+ *      "SYMxyz" (the three prefixes are equivalent) or the numeric forms
+ *      "GPSCnn" (primary table) and "GPSEnn" (alternate table), where the
+ *      optional overlay character @c z replaces the alternate table byte;
+ *   3. the source address SSID, which selects one of fifteen symbols on the
+ *      primary table.
+ *
+ * Step 3 is legacy and is applied only to the raw NMEA data type identifier
+ * '$', which is the one case the convention was invented for. Applying it
+ * more widely would turn any ordinary "-9" station's messages and status
+ * reports into cars.
+ *
+ * Mic-E packets are skipped entirely: their destination address carries
+ * latitude, message code and ambiguity, so reading a symbol out of it would
+ * be reading position data.
+ *
+ * @param dti Data type identifier of the packet, i.e. the first byte of its
+ *        information field.
+ * @param destCall Destination callsign. A trailing "-SSID" is ignored.
+ * @param srcSsid Source address SSID, 0 when the source carries none.
+ * @param symTable Out param: symbol table byte ('/' primary, '\\' alternate,
+ *        or an overlay character) on success, left untouched on failure.
+ * @param symCode Out param: symbol code byte on success, left untouched on
+ *        failure.
+ * @return true if a symbol was resolved.
+ */
+bool aprs_symbol_from_dest(char dti, const char *destCall, int srcSsid, char *symTable, char *symCode);
+
+/**
+ * @brief aprs_symbol_from_dest() for a packet available as TNC2 text
+ * ("SRC-N>DEST-N,PATH,...:info") rather than as a decoded AX.25 frame.
+ *
+ * Reads the destination callsign and the source SSID out of the header and
+ * applies the same precedence rules. Callers pass the data type identifier
+ * separately because the information field they already searched starts
+ * after the first ':' of the same line.
+ *
+ * @param line Complete TNC2 line, NUL-terminated.
+ * @param dti Data type identifier of the packet.
+ * @param symTable Out param: symbol table byte on success, left untouched on
+ *        failure.
+ * @param symCode Out param: symbol code byte on success, left untouched on
+ *        failure.
+ * @return true if a symbol was resolved.
+ */
+bool aprs_symbol_from_tnc2_header(const char *line, char dti, char *symTable, char *symCode);
 
 #endif

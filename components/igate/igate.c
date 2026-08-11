@@ -1217,12 +1217,17 @@ static void igateTask(void *arg) {
                                 // the latitude/longitude fields. Handles both
                                 // no-timestamp ('!'/'=') and timestamped
                                 // ('/'/'@') formats - see aprs_extract_symbol().
+                                // A payload with no symbol of its own falls
+                                // back to the destination address and then
+                                // the source SSID of the TNC2 header, in the
+                                // precedence order of APRS101 chapter 21.
                                 char symTable = 0, symCode = 0;
                                 const char *colon = strchr(line, ':');
                                 if (colon) {
                                     const char *info = colon + 1;
                                     size_t infoLen = strlen(info);
-                                    aprs_extract_symbol(info, infoLen, &symTable, &symCode);
+                                    if (!aprs_extract_symbol(info, infoLen, &symTable, &symCode) && infoLen > 0)
+                                        aprs_symbol_from_tnc2_header(line, info[0], &symTable, &symCode);
                                 }
 
                                 trafficlog_add_pkt("RX-IS", dx, line, -1, symTable, symCode);

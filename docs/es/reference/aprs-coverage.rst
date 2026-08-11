@@ -80,11 +80,11 @@ Campos de dirección de destino y origen (cap. 4)
      - ✅
      - El digipetidor la reconoce como forma de ruteo heredada, detrás de un interruptor explícito apagado por omisión para que nunca cortocircuite una ruta explícita.
    * - Símbolo en la dirección de destino (GPSxyz / SYMxyz)
-     - ❌
-     - Solo se lee el símbolo del campo de información. Una estación que use la convención antigua del campo de destino queda guardada sin símbolo.
+     - ✅
+     - Se lee en recepción cuando el campo de información no aporta un símbolo propio, en todas las formas ``GPSxy``, ``SPCxy``, ``SYMxy``, ``GPSCnn`` y ``GPSEnn``, incluido el carácter de superposición sobre los símbolos de la tabla alternativa. Los paquetes Mic-E quedan excluidos, porque su dirección de destino lleva datos de posición. El tráfico originado mantiene el símbolo en el campo de información, así que nunca se escribe en esta forma.
    * - Símbolo desde el SSID de la dirección de origen (obsoleto)
-     - ❌
-     - No implementado, y no vale la pena implementarlo: la especificación lo lista como obsoleto y el SSID se usa para el rol de la estación.
+     - ⚠️
+     - Se aplica en recepción solo como último paso de la cadena de precedencia de símbolos, y solo a los paquetes NMEA crudos, que es el caso para el que se inventó la convención. En cualquier otro tipo de dato el SSID sigue significando el rol de la estación, que es lo que significa hoy.
    * - Redes alternativas
      - ❌
      - El tráfico originado siempre usa el TOCALL del proyecto; no hay ajuste para una dirección de destino de red alternativa.
@@ -118,8 +118,8 @@ Formatos de hora y posición (cap. 6)
      - ✅
      - Se transmite en posiciones sin comprimir y dentro del campo de texto Mic-E, y se suprime cuando hay ambigüedad de posición o se eligió el formato comprimido, porque ambos ya declaran otra precisión. Los paquetes recibidos no se refinan con su ``!DAO!``, lo que cuesta unos 18 m de resolución en el filtro de distancia y nada más.
    * - Reportes de posición NMEA crudos (``$``)
-     - ⚠️
-     - Se clasifican como posición a efectos de pasarela, así que estos paquetes se rutean por el filtro de tipo y se digipetean con normalidad, pero la sentencia nunca se analiza. La consecuencia es que esa estación no tiene coordenadas internamente: el filtro de distancia del IGate no puede evaluarla y Last Heard la registra sin posición.
+     - ✅
+     - Las sentencias ``RMC``, ``GGA`` y ``GLL`` se decodifican en recepción, con cualquier identificador de emisor de dos letras, de modo que quedan cubiertos tanto los receptores multiconstelación como los de solo GPS. La suma de verificación opcional se exige cuando está presente, y una sentencia que declara una fijación inválida se rechaza, así el filtro de distancia del IGate nunca evalúa una estación sobre una coordenada vieja. ``$GPWPL`` nombra un punto de ruta y no la fijación propia del emisor, y se deja deliberadamente sin decodificar; ``$ULTW`` es un registro meteorológico y se rutea como tal.
    * - Posición nula por omisión
      - ❌
      - Siempre se transmiten las coordenadas configuradas tal como están; no hay convención para señalar "posición desconocida" cuando el operador no las cargó.
@@ -580,12 +580,11 @@ frecuencia, Reply-ACK, telemetría base-91 en comentario y el paradigma New-N.
 Los huecos se agrupan en tres lugares, y conviene decirlo sin rodeos:
 
 * **Amplitud del lado de recepción.** La estación transmite más formatos de
-  los que decodifica. Las sentencias NMEA crudas, la meteorología cruda de
-  Peet Bros y Ultimeter, y los símbolos que viajan en el campo de destino
-  AX.25 se reconocen como *categorías* — lo suficiente para pasarlos por los
-  filtros de pasarela — pero su contenido nunca se analiza. En un IGate esto
-  se ve como estaciones que pasan el filtro de tipo pero que no se pueden
-  filtrar por distancia ni ubicar en el mapa.
+  los que decodifica. Los registros meteorológicos crudos de Peet Bros y
+  Ultimeter se reconocen como *categoría* — lo suficiente para pasarlos por
+  los filtros de pasarela — pero su contenido nunca se analiza. En un IGate
+  esto se ve como estaciones que pasan el filtro de tipo pero cuyas medidas
+  no quedan disponibles localmente.
 * **Propuestas posteriores a 2004.** Faltan el digipeteo preventivo, las
   sondas PHGR, la regla de velocidad supersónica de Mic-E y las propuestas de
   señalización con los bits RR. Son adiciones reales a la especificación, no
