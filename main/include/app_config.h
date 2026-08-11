@@ -346,6 +346,29 @@ typedef struct {
 } digi_alias_t;
 
 /**
+ * @brief How the digipeater treats an explicit path that names this station
+ *        further down than the first unused address.
+ *
+ * Preemptive digipeating (http://www.aprs.org/aprs12/preemptive-digipeating.txt)
+ * scans from the first unused address to the end of the path for one of this
+ * station's own identities, and repeats the frame on that match instead of
+ * waiting to be reached one address at a time. It is what makes an explicit
+ * route such as @c WIDE1-1,CITYA,WIDE2-1,CITYB work: without it a digipeater
+ * named in such a path simply drops out of it, and the operator is pushed back
+ * onto a @c WIDEn-N flood that loads the channel far more heavily.
+ *
+ * The two indicator modes differ only in what is left of the addresses that
+ * were skipped, and neither applies to generic @c XXXXn-N aliases, which the
+ * scan never claims.
+ */
+typedef enum {
+    DIGI_PREEMPT_OFF = 0, /**< No scan: only the first unused address can route the frame. */
+    DIGI_PREEMPT_DROP, /**< The matched address is moved to the head of the path and everything before it is discarded, so the frame goes out with the shortest
+                          path that still describes what is left to do. */
+    DIGI_PREEMPT_MARK, /**< The skipped addresses are kept and marked as used, so the path still shows the route that was requested. */
+} digi_preempt_mode_t;
+
+/**
  * @brief One stored WiFi station (STA) profile.
  */
 typedef struct {
@@ -535,6 +558,8 @@ typedef struct {
     bool digi_dest_ssid_en;                  /**< Honour the pre-New-N convention that carries the hop count in the AX.25 destination SSID (1-7) instead of in
                                                 the path. Off by default: it repeats on the strength of that SSID alone, ahead of and instead of the operator's
                                                 alias table, so it is only appropriate where a legacy neighbour still needs it. */
+    uint8_t digi_preempt;                    /**< ::digi_preempt_mode_t: whether the path is scanned past its first unused address for one of this station's own
+                                                identities, and what is left of the addresses skipped when it is. ::DIGI_PREEMPT_OFF by default. */
     bool digi_bcn;                           /**< Enable the digipeater position beacon. */
     bool digi_compress;                      /**< Use APRS compressed position format for the digipeater position beacon. */
     float digi_lat;                          /**< Digipeater beacon latitude. */

@@ -527,14 +527,14 @@ Digipeating and the New-N paradigm
      - ✅
      - A shared cache with a configurable depth and time window, used by both the digipeater and the gateway so a frame cannot be repeated by one path after the other has already seen it.
    * - Preemptive digipeating
-     - ❌
-     - The digipeater looks only at the first unused address; it never scans further down the path for one of its own aliases. Explicit multi-hop paths that name specific digipeaters therefore pass this station by, even though they load the channel far less than a wide-area flood. Both indicator modes the proposal defines, and its two exclusions, would need implementing together.
+     - ✅
+     - Off by default and selectable in two indicator modes: the addresses jumped over are either kept and marked used, or discarded so that only what is still to be done goes out. The scan runs from the first unused address to the end of the path and claims only a fixed identity, so both exclusions the proposal states - generic n-N aliases, and an alias written with a hop count - are enforced by construction.
    * - Legacy destination-SSID routing
      - ✅
      - Available behind a switch that is off by default. When it is off, a packet using that convention falls through to the explicit path logic instead of being dropped.
    * - RR-bit precedence and operator-present signalling
      - ❌
-     - The proposals that repurpose the reserved bits of the SSID octet are not implemented in either direction. They interact with the marking mode of preemptive digipeating, so the two are best considered together.
+     - The proposals that repurpose the reserved bits of the SSID octet are not implemented in either direction. The marking mode of preemptive digipeating sets the low reserved bit on the addresses it skips, but the frame is re-encoded from its TNC2 rendering, which does not carry those bits onto the channel.
 
 APRS-IS gatewaying
 ==================
@@ -582,10 +582,11 @@ The gaps cluster in three places, and they are worth stating plainly:
   *category* — enough to route them through the gating filters — but their
   contents are never parsed. For an IGate this shows up as stations that pass
   the type filter but whose measurements are unavailable locally.
-* **Post-2004 proposals.** Preemptive digipeating, PHGR probes, the
-  supersonic Mic-E speed rule and the RR-bit signalling proposals are absent.
-  These are genuine specification additions, not folklore, but their
-  deployment in the field is uneven.
+* **Post-2004 proposals.** PHGR probes, the supersonic Mic-E speed rule and
+  the RR-bit signalling proposals are absent. These are genuine specification
+  additions, not folklore, but their deployment in the field is uneven.
+  Preemptive digipeating, the most consequential of the group, is implemented
+  and off by default.
 * **Formats with no local source.** Storm data, NWS bulletins and NTS
   radiograms are transport-only concerns for a station of this kind: the
   firmware has no source of that information. They are listed for

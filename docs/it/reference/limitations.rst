@@ -311,7 +311,14 @@ Digipeater
      - ⚠️ (alcuni, es. VP-Digi)
      - ❌
      - Non esposto come filtro specifico del digipeater (la budlist dell'IGate non equivale a un filtro del digi)
-   * - Digipeating viscoso/preventivo
+   * - Digipeating preventivo
+     - ⚠️ (raro, TNC avanzati)
+     - ✅
+     - Spento per impostazione predefinita; due modalità indicatrici (mantenere
+       gli indirizzi saltati marcati come usati, oppure scartarli), con
+       scansione dal primo indirizzo inutilizzato fino alla fine del percorso e
+       senza reclamare mai un alias ``n-N`` generico
+   * - Digipeating viscoso (attendere e ripetere solo se nessun altro lo ha fatto)
      - ⚠️ (raro, TNC avanzati)
      - ❌
      - Non implementato

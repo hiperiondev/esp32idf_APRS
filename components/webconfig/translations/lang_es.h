@@ -1329,6 +1329,14 @@
 #define TR_DIGI_MODE_TRACE "Traza (inserta indicativo)"
 /** Spanish text for the digipeater page label for mode flood, rendered on the IGate page. English: "Flood (no callsign)". */
 #define TR_DIGI_MODE_FLOOD "Inundación (sin indicativo)"
+/** Spanish text for the form label for the "digi preempt" field or fieldset, rendered on the IGate page. English: "Explicit routes naming this station". */
+#define TR_F_DIGI_PREEMPT "Rutas explícitas que nombran a esta estación"
+/** Spanish text for the digipeater page label for preempt off, rendered on the IGate page. English: "Off (first unused address only)". */
+#define TR_DIGI_PREEMPT_OFF "Apagado (solo la primera dirección sin usar)"
+/** Spanish text for the digipeater page label for preempt mark, rendered on the IGate page. English: "Serve now, keep the skipped addresses". */
+#define TR_DIGI_PREEMPT_MARK "Atender ya, conservando las direcciones salteadas"
+/** Spanish text for the digipeater page label for preempt drop, rendered on the IGate page. English: "Serve now, discard the skipped addresses". */
+#define TR_DIGI_PREEMPT_DROP "Atender ya, descartando las direcciones salteadas"
 /** Spanish text for the form label for the "digi dest ssid" field or fieldset, rendered on the IGate page. English: "Digipeat by destination SSID (legacy)". */
 #define TR_F_DIGI_DEST_SSID "Digipetir por SSID de destino (heredado)"
 /** Spanish text for the explanatory note shown beside the digi aliases setting, rendered on the IGate page. English: "The only aliases this digipeater honours.
@@ -1337,6 +1345,15 @@
     "Los únicos alias que este digipetidor atiende. Escriba cada uno sin su SSID; '#' equivale a un solo dígito, así 'WIDE#' cubre toda la familia WIDEn. "    \
     "Las filas se prueban en orden y gana la primera coincidencia. Traza inserta el indicativo de esta estación para que cada salto sea identificable "        \
     "después, que es lo que exige WIDEn-N; inundación no deja rastro y solo conviene en un alias regional que se decida usar así."
+
+/** Spanish text for the explanatory note shown beside the digi preempt setting, rendered on the IGate page. English: "Off is the safe default. When it is on,
+ * the path is scanned from its first unused address...". */
+#define TR_NOTE_DIGI_PREEMPT                                                                                                                                   \
+    "Apagado es el valor seguro por omisión. Encendido, la ruta se recorre desde su primera dirección sin usar hasta el final buscando el indicativo de "      \
+    "esta estación o alguno de los alias de arriba que no sea un nombre de la familia n-N, y una coincidencia más adelante se atiende de inmediato en vez "    \
+    "de esperar a las direcciones que están delante. Eso es lo que hace funcionar una ruta explícita como WIDE1-1,CITYA,WIDE2-1,CITYB, que carga el canal "    \
+    "mucho menos que una inundación WIDEn-N. Conservar las direcciones salteadas deja visible la ruta pedida; descartarlas pone al aire el camino restante "   \
+    "más corto. Los alias n-N genéricos nunca se reclaman así en ninguno de los dos modos."
 
 /** Spanish text for the explanatory note shown beside the digi dest ssid setting, rendered on the IGate page. English: "Off by default. When on, a frame whose
  * AX.25 destination SSID is 1 to 7 is repeated on...". */

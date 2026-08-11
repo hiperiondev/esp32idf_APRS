@@ -114,6 +114,86 @@ porta già l'indicativo di questa stazione marcato come usato, qualunque cosa
 contenga ancora il suo percorso, e quella che ricade nella finestra di
 soppressione duplicati qui sotto.
 
+Digipeating preventivo
+======================
+
+Per impostazione predefinita il digipeater guarda solo il primo indirizzo
+inutilizzato del percorso. *Percorsi espliciti che nominano questa stazione*
+nella pagina *Digi* (``digi_preempt``) estende il comportamento a quanto
+descritto in
+`preemptive-digipeating.txt <http://www.aprs.org/aprs12/preemptive-digipeating.txt>`_:
+il percorso viene scandito dal primo indirizzo inutilizzato fino alla fine
+cercando una delle identità proprie di questa stazione, e una corrispondenza
+trovata più avanti reclama subito la trama invece di attendere che gli
+indirizzi che la precedono siano serviti dai digipeater che nominano.
+
+È questo che fa funzionare un percorso esplicito come
+``WIDE1-1,CITYA,WIDE2-1,CITYB``. Ogni stazione elencata ripete la trama quando
+arriva il suo turno, gli indirizzi che restano dietro la corrispondenza
+rimangono attivi e il canale porta una copia per ogni salto nominato invece
+del ventaglio esponenziale di un'inondazione ``WIDEn-N``. Un digipeater che non
+scandisce mai oltre il primo indirizzo inutilizzato resta semplicemente fuori
+da un percorso simile.
+
+L'impostazione è **spenta per impostazione predefinita**, perché accenderla
+cambia per quali stazioni questo digipeater risponde.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 70
+
+   * - Valore
+     - Comportamento
+   * - Spento (solo il primo indirizzo inutilizzato)
+     - Nessuna scansione. La trama è instradata esattamente come decidono la
+       tabella degli alias e i controlli precedenti.
+   * - Servire subito, mantenendo gli indirizzi saltati
+     - Ogni indirizzo dal primo inutilizzato fino alla corrispondenza inclusa
+       viene marcato come usato, e viene acceso il bit riservato basso del suo
+       ottetto SSID. Il percorso continua a mostrare la rotta richiesta dalla
+       stazione originante.
+   * - Servire subito, scartando gli indirizzi saltati
+     - Gli indirizzi che precedono la corrispondenza vengono rimossi e la
+       corrispondenza diventa la testa del percorso, così la trama esce
+       portando solo ciò che resta da fare.
+
+In entrambe le modalità l'indirizzo corrispondente viene sostituito dal
+nominativo di questa stazione, marcato come usato, esattamente come in un salto
+``n-N`` tracciato, e tutto ciò che sta dietro resta intatto. Una corrispondenza
+preventiva è una ripetizione, non uno scarto: conta nella cifra ``digi``
+principale e non ha un motivo di scarto proprio.
+
+Che cosa può reclamare la scansione
+-----------------------------------
+
+Solo un'identità *fissa*: un nome che rappresenta questa stazione e nient'altro:
+
+* il nominativo e l'SSID propri di questa stazione, oppure
+* una riga di alias il cui nome non contenga il carattere jolly ``#`` e non
+  termini con una cifra decimale, e solo quando l'indirizzo ricevuto porta
+  SSID 0.
+
+Quella regola fa rispettare entrambe le esclusioni enunciate dalla proposta. Un
+alias generico ``XXXXn-N`` non viene mai reclamato preventivamente — saltare a
+un ``WIDEn`` o a un ``TRACEn`` più avanti ripeterebbe una richiesta di
+inondazione che la rete si aspetta viaggi un salto alla volta — e nemmeno lo è
+un alias scritto con un conteggio di salti, che è una richiesta di
+instradamento ``n-N`` a pieno titolo. Righe come ``WIDE#``, ``WIDE1`` e
+``TRACE7`` restano quindi escluse per costruzione, mentre una riga come
+``CITYA`` è ammissibile.
+
+Una corrispondenza sul primo indirizzo inutilizzato non è preventiva — non si
+salta nulla — quindi è lasciata alla logica di percorso ordinaria. È questo che
+mantiene un primo salto esplicito, e ogni richiesta ``n-N`` generica, con lo
+stesso comportamento che avrebbero a scansione spenta.
+
+.. note::
+
+   La trama che questa stazione rimette in onda viene ricodificata dalla sua
+   rappresentazione TNC2, che esprime un indirizzo solo come nominativo, SSID e
+   marcatore di usato. Per questo il bit riservato basso acceso dalla modalità
+   di marcatura è mantenuto nella trama decodificata ma non raggiunge il canale.
+
 Instradamento legacy tramite SSID di destinazione
 =================================================
 

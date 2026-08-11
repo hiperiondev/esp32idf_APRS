@@ -111,6 +111,84 @@ Dos tramas se rechazan antes de consultar la tabla: la que ya lleva el
 indicativo de esta estación marcado como usado, sin importar lo que aún tenga su
 ruta, y la que coincide con la ventana de supresión de duplicados de abajo.
 
+Digipeteo preventivo
+====================
+
+Por omisión el digipeater solo mira la primera dirección sin usar de la ruta.
+*Rutas explícitas que nombran a esta estación* en la página *Digi*
+(``digi_preempt``) lo amplía a la conducta que describe
+`preemptive-digipeating.txt <http://www.aprs.org/aprs12/preemptive-digipeating.txt>`_:
+la ruta se recorre desde su primera dirección sin usar hasta el final buscando
+alguna de las identidades propias de esta estación, y una coincidencia hallada
+más adelante reclama la trama de inmediato en vez de esperar a que las
+direcciones que están delante sean atendidas por los digipeaters que nombran.
+
+Eso es lo que hace funcionar una ruta explícita como
+``WIDE1-1,CITYA,WIDE2-1,CITYB``. Cada estación listada en ella repite la trama
+cuando le llega el turno, las direcciones que quedan detrás de la coincidencia
+siguen vivas, y el canal lleva una copia por salto nombrado en vez del
+abanico exponencial de una inundación ``WIDEn-N``. Un digipeater que nunca
+escanea más allá de la primera dirección sin usar simplemente queda fuera de
+esa ruta.
+
+El ajuste está **apagado por omisión**, porque encenderlo cambia por qué
+estaciones responde este digipeater.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 70
+
+   * - Valor
+     - Conducta
+   * - Apagado (solo la primera dirección sin usar)
+     - Sin escaneo. La trama se rutea exactamente como deciden la tabla de
+       alias y las comprobaciones anteriores.
+   * - Atender ya, conservando las direcciones salteadas
+     - Cada dirección desde la primera sin usar hasta la coincidencia inclusive
+       queda marcada como usada, y se enciende el bit reservado bajo de su
+       octeto de SSID. La ruta sigue mostrando el camino que pidió la estación
+       originante.
+   * - Atender ya, descartando las direcciones salteadas
+     - Las direcciones que están delante de la coincidencia se eliminan y la
+       coincidencia pasa a encabezar la ruta, así la trama sale llevando solo
+       lo que queda por hacer.
+
+En ambos modos la dirección coincidente se reemplaza por el indicativo de esta
+estación, marcado como usado, igual que en un salto ``n-N`` trazado, y todo lo
+que queda detrás se deja intacto. Una coincidencia preventiva es una
+repetición, no un descarte: cuenta en la cifra ``digi`` principal y no tiene
+razón de descarte propia.
+
+Qué puede reclamar el escaneo
+-----------------------------
+
+Solo una identidad *fija*: un nombre que representa a esta estación y a nada
+más:
+
+* el indicativo y SSID propios de esta estación, o
+* una fila de alias cuyo nombre no contenga el comodín ``#`` ni termine en un
+  dígito decimal, y solo cuando la dirección recibida lleve SSID 0.
+
+Esa regla hace cumplir las dos exclusiones que enuncia la propuesta. Un alias
+genérico ``XXXXn-N`` nunca se reclama preventivamente — saltar hasta un
+``WIDEn`` o un ``TRACEn`` más adelante repetiría una petición de inundación que
+la red espera que viaje salto a salto — y tampoco se reclama un alias escrito
+con contador de saltos, que es una petición de ruteo ``n-N`` por derecho
+propio. Filas como ``WIDE#``, ``WIDE1`` y ``TRACE7`` quedan excluidas por
+construcción, mientras que una fila como ``CITYA`` es elegible.
+
+Una coincidencia en la primera dirección sin usar no es preventiva —no se
+saltea nada—, así que se deja a la lógica de ruta ordinaria. Eso es lo que
+mantiene un primer salto explícito, y toda petición ``n-N`` genérica,
+comportándose exactamente igual que con el escaneo apagado.
+
+.. note::
+
+   La trama que esta estación devuelve al aire se recodifica desde su
+   representación TNC2, que expresa una dirección solo como indicativo, SSID y
+   marca de usada. Por eso el bit reservado bajo que enciende el modo de
+   marcado se mantiene en la trama decodificada pero no llega al canal.
+
 Ruteo heredado por SSID de destino
 ==================================
 

@@ -529,14 +529,14 @@ Digipeteo y el paradigma New-N
      - ✅
      - Una caché compartida con profundidad y ventana de tiempo configurables, usada tanto por el digipetidor como por la pasarela, así una trama no puede repetirse por un camino después de que el otro ya la vio.
    * - Digipeteo preventivo
-     - ❌
-     - El digipetidor solo mira la primera dirección sin usar; nunca escanea más adelante en la ruta buscando alguno de sus propios alias. Por eso las rutas explícitas de varios saltos que nombran digipetidores concretos pasan de largo por esta estación, aunque cargan el canal mucho menos que una inundación de área amplia. Habría que implementar juntos los dos modos indicadores que define la propuesta y sus dos exclusiones.
+     - ✅
+     - Apagado por omisión y seleccionable en dos modos indicadores: las direcciones salteadas se conservan marcadas como usadas, o se descartan para que salga solo lo que queda por hacer. El escaneo va desde la primera dirección sin usar hasta el final de la ruta y solo reclama una identidad fija, así que las dos exclusiones que enuncia la propuesta -los alias n-N genéricos y un alias escrito con contador de saltos- quedan garantizadas por construcción.
    * - Ruteo heredado por SSID de destino
      - ✅
      - Disponible detrás de un interruptor apagado por omisión. Cuando está apagado, un paquete que use esa convención cae a la lógica de ruta explícita en vez de descartarse.
    * - Señalización de precedencia y de operador presente con los bits RR
      - ❌
-     - No se implementan en ninguno de los dos sentidos las propuestas que reutilizan los bits reservados del octeto de SSID. Interactúan con el modo de marcado del digipeteo preventivo, así que conviene considerar ambos temas juntos.
+     - No se implementan en ninguno de los dos sentidos las propuestas que reutilizan los bits reservados del octeto de SSID. El modo de marcado del digipeteo preventivo enciende el bit reservado bajo en las direcciones que saltea, pero la trama se recodifica desde su representación TNC2, que no lleva esos bits al canal.
 
 Pasarela APRS-IS
 ================
@@ -585,10 +585,11 @@ Los huecos se agrupan en tres lugares, y conviene decirlo sin rodeos:
   los filtros de pasarela — pero su contenido nunca se analiza. En un IGate
   esto se ve como estaciones que pasan el filtro de tipo pero cuyas medidas
   no quedan disponibles localmente.
-* **Propuestas posteriores a 2004.** Faltan el digipeteo preventivo, las
-  sondas PHGR, la regla de velocidad supersónica de Mic-E y las propuestas de
-  señalización con los bits RR. Son adiciones reales a la especificación, no
-  folclore, pero su despliegue en el aire es desparejo.
+* **Propuestas posteriores a 2004.** Faltan las sondas PHGR, la regla de
+  velocidad supersónica de Mic-E y las propuestas de señalización con los bits
+  RR. Son adiciones reales a la especificación, no folclore, pero su
+  despliegue en el aire es desparejo. El digipeteo preventivo, el más
+  consecuente del grupo, está implementado y apagado por omisión.
 * **Formatos sin origen local.** Los datos de tormenta, los boletines del NWS
   y los radiogramas NTS son, para una estación de este tipo, asuntos de puro
   transporte: el firmware no tiene de dónde sacar esa información. Se listan

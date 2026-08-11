@@ -14,8 +14,8 @@
 //     please contact their authors for more information.
 //
 // @brief APRS digipeater path logic: New n-N Paradigm alias handling driven by
-// the operator's alias table, hop-count trapping, callsign insertion and
-// duplicate suppression.
+// the operator's alias table, hop-count trapping, callsign insertion,
+// preemptive scanning of explicit routes and duplicate suppression.
 
 #include <ctype.h>
 #include <string.h>
@@ -110,6 +110,146 @@ static void insert_own_call(ax25_msg_t *packet, int idx, const char *myCall, uin
     packet->rpt_flags |= (1 << idx);
 }
 
+// Bits of the raw AX.25 address SSID octet touched when preemptive digipeating
+// rewrites a path address: bit 7 is the has-been-repeated flag, bit 5 is the
+// low reserved bit the preemptive proposal sets on every address the scan
+// skipped, and bits 4:1 carry the SSID. Bit 6 (the high reserved bit), bit 0
+// (the address-extension bit) and the command/response bit of the first two
+// addresses are left exactly as received.
+#define AX25_SSID_OCTET_H      0x80
+#define AX25_SSID_OCTET_RR_LOW 0x20
+#define AX25_SSID_OCTET_KEEP   0x41
+
+// Rewrite one path address' raw SSID octet so it agrees with the decoded
+// callsign/SSID pair and carries the repeated flag.
+//
+// The frame this station puts back on the air is re-encoded from its TNC2
+// rendering, which expresses an address as callsign, SSID and the used marker
+// alone, so the reserved bits do not reach the channel. Maintaining the octet
+// still matters: it is the raw form every other consumer of the decoded frame
+// reads, and leaving it describing the address that used to be in this slot
+// would make the two views of the same frame disagree.
+static inline void set_ssid_octet(ax25_call_t *field, uint8_t ssid, bool rr_low) {
+    field->ssidBits =
+        (uint8_t)((field->ssidBits & AX25_SSID_OCTET_KEEP) | AX25_SSID_OCTET_H | (rr_low ? AX25_SSID_OCTET_RR_LOW : 0) | (uint8_t)((ssid & 0x0F) << 1));
+}
+
+// May a preemptive scan claim this alias row? Only a fixed alias - a name that
+// stands for this station and nothing else - qualifies. A row holding
+// DIGI_ALIAS_WILDCARD, or one whose name ends in a decimal digit, is the
+// generic XXXXn-N form, which the preemptive proposal excludes explicitly:
+// jumping ahead to a WIDEn or TRACEn further down the path would repeat a
+// flooding request the network expects to travel one hop at a time.
+static bool alias_is_preemptable(const digi_alias_t *row) {
+    size_t n;
+
+    if (row->mode == DIGI_ALIAS_OFF)
+        return false;
+
+    n = strlen(row->alias);
+    if (n == 0)
+        return false;
+
+    for (size_t i = 0; i < n; i++) {
+        if (row->alias[i] == DIGI_ALIAS_WILDCARD)
+            return false;
+    }
+
+    return row->alias[n - 1] < '0' || row->alias[n - 1] > '9';
+}
+
+// Does this path address name the station itself? Either the digipeater's own
+// callsign and SSID, or one of the fixed alias rows above. An alias is claimed
+// only when the address carries SSID 0: an alias written with a hop count is a
+// routing request in the n-N sense, and answering it out of turn is the very
+// thing the proposal's generic exclusion forbids.
+static bool preempt_matches(const ax25_call_t *field, const digi_alias_t *table, const char *myCall, uint8_t mySsid) {
+    if (!strcmp(field->call, myCall) && field->ssid == mySsid)
+        return true;
+
+    if (field->ssid != 0)
+        return false;
+
+    for (int i = 0; i < DIGI_ALIAS_MAX; i++) {
+        if (alias_is_preemptable(&table[i]) && alias_matches(table[i].alias, field->call))
+            return true;
+    }
+
+    return false;
+}
+
+// Preemptive digipeating: scan from the first unused path address to the end
+// of the path for one of this station's own identities and, on a match, repeat
+// the frame now rather than waiting for the addresses in front of it to be
+// served by the digipeaters they name.
+//
+// This is what carries an explicit route such as WIDE1-1,CITYA,WIDE2-1,CITYB:
+// every station listed in it repeats the frame when its turn comes into view,
+// the addresses still ahead stay live, and the channel carries one copy per
+// named hop instead of the exponential fan-out of a WIDEn-N flood.
+//
+// A match at the first unused address is not preemption - nothing is being
+// jumped over - so it is left to the ordinary path logic, which is what keeps
+// an explicit first hop and a generic n-N request behaving exactly as they do
+// with the scan switched off.
+//
+// Returns 2 when the frame was claimed and its path rewritten, 0 when the scan
+// found nothing to do and the caller should carry on.
+static int digipeat_preemptive(ax25_msg_t *packet, const digi_alias_t *table, const char *myCall, uint8_t mySsid, uint8_t mode) {
+    int first = -1;
+    int match = -1;
+
+    for (int idx = 0; idx < packet->rpt_count; idx++) {
+        if (AX25_REPEATED(packet, idx))
+            continue;
+        if (first < 0)
+            first = idx;
+        if (preempt_matches(&packet->rpt_list[idx], table, myCall, mySsid)) {
+            match = idx;
+            break;
+        }
+    }
+
+    if (match < 0 || match <= first)
+        return 0;
+
+    if (mode == DIGI_PREEMPT_MARK) {
+        // Every address from the first unused one up to and including the
+        // match is marked used, so the path still records the route the
+        // originating station asked for and the addresses behind the match
+        // cannot be served a second time by anybody else.
+        for (int idx = first; idx <= match; idx++) {
+            packet->rpt_flags |= (uint8_t)(1u << idx);
+            set_ssid_octet(&packet->rpt_list[idx], packet->rpt_list[idx].ssid, true);
+        }
+    } else {
+        // The addresses in front of the match are discarded and the match
+        // becomes the head of the path, which leaves the frame carrying only
+        // what is still to be done.
+        uint8_t flags = 0;
+        int kept = packet->rpt_count - match;
+
+        for (int idx = 0; idx < kept; idx++) {
+            packet->rpt_list[idx] = packet->rpt_list[match + idx];
+            if (packet->rpt_flags & (1u << (match + idx)))
+                flags |= (uint8_t)(1u << idx);
+        }
+        packet->rpt_count = (uint8_t)kept;
+        packet->rpt_flags = flags;
+        match = 0;
+        packet->rpt_flags |= 1u;
+    }
+
+    // In both modes the matched alias becomes this station's callsign, marked
+    // used, so the hop is attributable afterwards exactly as a traced n-N hop
+    // is. Whatever follows it in the path is untouched and stays live.
+    copy_call(packet->rpt_list[match].call, myCall);
+    packet->rpt_list[match].ssid = mySsid;
+    set_ssid_octet(&packet->rpt_list[match], mySsid, mode == DIGI_PREEMPT_MARK);
+
+    return 2;
+}
+
 // Pre-New-N routing on the AX.25 destination SSID, where a hop count of 1 to 7
 // in the destination address stands in for a WIDEn-N path entry. A frame that
 // carries one is repeated on the strength of that SSID alone: the count is
@@ -180,6 +320,7 @@ int digiProcess(ax25_msg_t *packet) {
     bool digiFillinOnly;
     bool digiTrapClamp;
     bool digiDestSsidEn;
+    uint8_t digiPreempt;
     app_config_lock();
     memcpy(digiMyCall, g_config.digi_mycall, sizeof(digiMyCall));
     digiMySsid = g_config.digi_ssid;
@@ -187,6 +328,7 @@ int digiProcess(ax25_msg_t *packet) {
     digiFillinOnly = g_config.digi_fillin_only;
     digiTrapClamp = g_config.digi_trap_n_clamp;
     digiDestSsidEn = g_config.digi_dest_ssid_en;
+    digiPreempt = g_config.digi_preempt;
     app_config_unlock();
 
     if (packet->len < 5) {
@@ -254,6 +396,17 @@ int digiProcess(ax25_msg_t *packet) {
             igate_note_drop(DROP_DIGI_ALREADY_USED);
             return 0;
         }
+    }
+
+    // Preemptive digipeating runs once the explicit first-hop and self checks
+    // above have had their say and before the alias table decides anything, so
+    // an explicit route that names this station further down is served, while
+    // a generic n-N request - which the scan never claims - still reaches the
+    // table untouched.
+    if (digiPreempt != DIGI_PREEMPT_OFF) {
+        int routed = digipeat_preemptive(packet, digiAlias, digiMyCall, digiMySsid, digiPreempt);
+        if (routed != 0)
+            return routed;
     }
 
     j = 0;

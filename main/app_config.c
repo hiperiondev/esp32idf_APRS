@@ -302,6 +302,10 @@ void app_config_set_defaults(app_config_t *c) {
     // bypasses the alias table entirely, so it stays off until an operator who
     // still has a legacy neighbour asks for it.
     c->digi_dest_ssid_en = false;
+    // Scanning past the first unused address changes which stations this
+    // digipeater answers for, so it is opt-in: a station that has not been
+    // asked to serve an explicit route behaves exactly as the alias table says.
+    c->digi_preempt = DIGI_PREEMPT_OFF;
 
     // TRACKER
     c->trk_en = false;
@@ -653,6 +657,7 @@ static void config_write_json(jw_t *d, const app_config_t *c) {
     jadd_bool(d, "digiFillinOnly", c->digi_fillin_only);
     jadd_bool(d, "digiTrapNClamp", c->digi_trap_n_clamp);
     jadd_bool(d, "digiDestSsidEn", c->digi_dest_ssid_en);
+    jadd_num(d, "digiPreempt", c->digi_preempt);
     jadd_bool(d, "digiBcn", c->digi_bcn);
     jadd_bool(d, "digiCompress", c->digi_compress);
     jadd_num(d, "digiAlt", c->digi_alt);
@@ -1036,6 +1041,11 @@ static void config_from_json(cJSON *d, app_config_t *c) {
     c->digi_fillin_only = jget_bool(d, "digiFillinOnly", def.digi_fillin_only);
     c->digi_trap_n_clamp = jget_bool(d, "digiTrapNClamp", def.digi_trap_n_clamp);
     c->digi_dest_ssid_en = jget_bool(d, "digiDestSsidEn", def.digi_dest_ssid_en);
+    c->digi_preempt = (uint8_t)jget_num(d, "digiPreempt", def.digi_preempt);
+    if (c->digi_preempt != DIGI_PREEMPT_OFF && c->digi_preempt != DIGI_PREEMPT_DROP && c->digi_preempt != DIGI_PREEMPT_MARK) {
+        ESP_LOGW(TAG, "digiPreempt %u unknown, preemptive digipeating disabled", (unsigned)c->digi_preempt);
+        c->digi_preempt = DIGI_PREEMPT_OFF;
+    }
     c->digi_bcn = jget_bool(d, "digiBcn", def.digi_bcn);
     c->digi_compress = jget_bool(d, "digiCompress", def.digi_compress);
     c->digi_alt = (float)jget_num(d, "digiAlt", def.digi_alt);

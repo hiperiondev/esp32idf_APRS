@@ -1256,6 +1256,14 @@
 #define TR_DIGI_MODE_TRACE "Trace (insert callsign)"
 /** Digipeater page label for mode flood, rendered on the IGate page. */
 #define TR_DIGI_MODE_FLOOD "Flood (no callsign)"
+/** Form label for the "digi preempt" field or fieldset, rendered on the IGate page. */
+#define TR_F_DIGI_PREEMPT "Explicit routes naming this station"
+/** Digipeater page label for preempt off, rendered on the IGate page. */
+#define TR_DIGI_PREEMPT_OFF "Off (first unused address only)"
+/** Digipeater page label for preempt mark, rendered on the IGate page. */
+#define TR_DIGI_PREEMPT_MARK "Serve now, keep the skipped addresses"
+/** Digipeater page label for preempt drop, rendered on the IGate page. */
+#define TR_DIGI_PREEMPT_DROP "Serve now, discard the skipped addresses"
 /** Form label for the "digi dest ssid" field or fieldset, rendered on the IGate page. */
 #define TR_F_DIGI_DEST_SSID "Digipeat by destination SSID (legacy)"
 /** Explanatory note shown beside the digi aliases setting, rendered on the IGate page. */
@@ -1263,6 +1271,14 @@
     "The only aliases this digipeater honours. Write each one without its SSID; '#' matches a single digit, so 'WIDE#' covers the whole WIDEn family. Rows "   \
     "are tried in order and the first match wins. Trace inserts this station's callsign so every hop can be identified afterwards, which is what WIDEn-N "     \
     "requires; flood leaves no trace and suits only a regional alias run that way on purpose."
+
+/** Explanatory note shown beside the digi preempt setting, rendered on the IGate page. */
+#define TR_NOTE_DIGI_PREEMPT                                                                                                                                   \
+    "Off is the safe default. When it is on, the path is scanned from its first unused address to the end for this station's own callsign or for one of the "  \
+    "alias rows above that is not an n-N family name, and a match found further down is served at once instead of waiting for the addresses in front of it. "  \
+    "That is what carries an explicit route such as WIDE1-1,CITYA,WIDE2-1,CITYB, which loads the channel far less than a WIDEn-N flood. Keeping the skipped "  \
+    "addresses leaves the requested route visible; discarding them puts the shortest remaining path on the air. Generic n-N aliases are never claimed this "   \
+    "way in either mode."
 
 /** Explanatory note shown beside the digi dest ssid setting, rendered on the IGate page. */
 #define TR_NOTE_DIGI_DEST_SSID                                                                                                                                 \

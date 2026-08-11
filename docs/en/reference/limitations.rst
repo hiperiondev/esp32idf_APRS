@@ -296,7 +296,13 @@ Digipeater
      - ⚠️ (some, e.g. VP-Digi)
      - ❌
      - Not exposed as a separate digipeater-specific filter (IGate-side budlist != digi-side filter)
-   * - Viscous/preemptive digipeating
+   * - Preemptive digipeating
+     - ⚠️ (rare, advanced TNCs)
+     - ✅
+     - Off by default; two indicator modes (keep the skipped addresses marked
+       used, or discard them), scanning from the first unused address to the
+       end of the path and never claiming a generic ``n-N`` alias
+   * - Viscous digipeating (hold and repeat only if nobody else did)
      - ⚠️ (rare, advanced TNCs)
      - ❌
      - Not implemented

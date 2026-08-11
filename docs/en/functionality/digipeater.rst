@@ -106,6 +106,80 @@ Two frames are refused before the table is consulted at all: one that already
 carries this station's callsign marked used, whatever its path still holds, and
 one matching the duplicate-suppression window below.
 
+Preemptive digipeating
+======================
+
+By default the digipeater looks only at the first unused address in the path.
+*Explicit routes naming this station* on the *Digi* page
+(``digi_preempt``) widens that to the behaviour described in
+`preemptive-digipeating.txt <http://www.aprs.org/aprs12/preemptive-digipeating.txt>`_:
+the path is scanned from its first unused address to the end for one of this
+station's own identities, and a match found further down claims the frame at
+once instead of waiting for the addresses in front of it to be served by the
+digipeaters they name.
+
+That is what carries an explicit route such as
+``WIDE1-1,CITYA,WIDE2-1,CITYB``. Every station listed in it repeats the frame
+when its turn comes into view, the addresses still behind the match stay live,
+and the channel carries one copy per named hop instead of the exponential
+fan-out of a ``WIDEn-N`` flood. A digipeater that never scans past the first
+unused address simply drops out of such a path.
+
+The setting is **off by default**, because switching it on changes which
+stations this digipeater answers for.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 70
+
+   * - Value
+     - Behaviour
+   * - Off (first unused address only)
+     - No scan. The frame is routed exactly as the alias table and the checks
+       above decide.
+   * - Serve now, keep the skipped addresses
+     - Every address from the first unused one up to and including the match is
+       marked used, and the low reserved bit of its SSID octet is set. The path
+       still shows the route the originating station asked for.
+   * - Serve now, discard the skipped addresses
+     - The addresses in front of the match are removed and the match becomes
+       the head of the path, so the frame goes out carrying only what is still
+       to be done.
+
+In both modes the matched address is replaced by this station's callsign,
+marked used, exactly as a traced ``n-N`` hop is, and everything behind it is
+left untouched. A preemptive match is a repeat, not a drop: it counts under the
+headline ``digi`` figure and has no drop reason of its own.
+
+What the scan may claim
+-----------------------
+
+Only a *fixed* identity — a name that stands for this station and nothing else:
+
+* this station's own callsign and SSID, or
+* an alias row whose name contains no ``#`` wildcard and does not end in a
+  decimal digit, matched only when the received address carries SSID 0.
+
+Both exclusions the proposal states are enforced by that rule. A generic
+``XXXXn-N`` alias is never claimed preemptively — jumping ahead to a ``WIDEn``
+or ``TRACEn`` further down the path would repeat a flooding request the network
+expects to travel one hop at a time — and neither is an alias written with a
+hop count, which is an ``n-N`` routing request in its own right. Rows such as
+``WIDE#``, ``WIDE1`` and ``TRACE7`` are therefore excluded by construction,
+while a row such as ``CITYA`` is eligible.
+
+A match at the first unused address is not preemption — nothing is being jumped
+over — so it is left to the ordinary path logic. That is what keeps an explicit
+first hop, and every generic ``n-N`` request, behaving exactly as they do with
+the scan switched off.
+
+.. note::
+
+   The frame this station puts back on the air is re-encoded from its TNC2
+   rendering, which expresses an address as callsign, SSID and the used marker
+   alone. The low reserved bit set by the marking mode is therefore maintained
+   in the decoded frame but does not reach the channel.
+
 Legacy destination-SSID routing
 ===============================
 

@@ -529,14 +529,14 @@ Digipeating e il paradigma New-N
      - ✅
      - Una cache condivisa con profondità e finestra temporale configurabili, usata sia dal digipeater sia dal gateway, così una trama non può essere ripetuta da un percorso dopo che l'altro l'ha già vista.
    * - Digipeating preventivo
-     - ❌
-     - Il digipeater guarda solo il primo indirizzo inutilizzato; non scandisce mai più avanti nel percorso alla ricerca di uno dei propri alias. Per questo i percorsi espliciti a più salti che nominano digipeater specifici passano oltre questa stazione, benché carichino il canale molto meno di un'inondazione ad ampio raggio. Andrebbero implementate insieme entrambe le modalità indicatrici definite dalla proposta e le sue due esclusioni.
+     - ✅
+     - Spento per impostazione predefinita e selezionabile in due modalità indicatrici: gli indirizzi saltati vengono mantenuti e marcati come usati, oppure scartati così che esca solo ciò che resta da fare. La scansione va dal primo indirizzo inutilizzato fino alla fine del percorso e reclama solo un'identità fissa, quindi entrambe le esclusioni enunciate dalla proposta - gli alias n-N generici e un alias scritto con un conteggio di salti - sono garantite per costruzione.
    * - Instradamento legacy tramite SSID di destinazione
      - ✅
      - Disponibile dietro un interruttore spento per impostazione predefinita. Quando è spento, un pacchetto che usa quella convenzione ricade sulla logica del percorso esplicito invece di essere scartato.
    * - Segnalazione di precedenza e di operatore presente con i bit RR
      - ❌
-     - Le proposte che riutilizzano i bit riservati dell'ottetto SSID non sono implementate in nessuna delle due direzioni. Interagiscono con la modalità di marcatura del digipeating preventivo, quindi conviene considerare i due temi insieme.
+     - Le proposte che riutilizzano i bit riservati dell'ottetto SSID non sono implementate in nessuna delle due direzioni. La modalità di marcatura del digipeating preventivo accende il bit riservato basso sugli indirizzi che salta, ma la trama viene ricodificata dalla sua rappresentazione TNC2, che non porta quei bit sul canale.
 
 Gateway APRS-IS
 ===============
@@ -586,10 +586,11 @@ Le lacune si concentrano in tre punti, e vale la pena dirlo chiaramente:
   filtri di gateway — ma il loro contenuto non viene mai analizzato. In un
   IGate questo si manifesta come stazioni che superano il filtro di tipo ma
   le cui misure non sono disponibili localmente.
-* **Proposte successive al 2004.** Mancano il digipeating preventivo, le sonde
-  PHGR, la regola della velocità supersonica del Mic-E e le proposte di
-  segnalazione con i bit RR. Sono aggiunte reali alla specifica, non
-  folclore, ma la loro diffusione sul campo è disomogenea.
+* **Proposte successive al 2004.** Mancano le sonde PHGR, la regola della
+  velocità supersonica del Mic-E e le proposte di segnalazione con i bit RR.
+  Sono aggiunte reali alla specifica, non folclore, ma la loro diffusione sul
+  campo è disomogenea. Il digipeating preventivo, il più rilevante del gruppo,
+  è implementato e spento per impostazione predefinita.
 * **Formati senza sorgente locale.** I dati di tempesta, i bollettini NWS e i
   radiogrammi NTS sono, per una stazione di questo tipo, questioni di puro
   trasporto: il firmware non ha da dove ricavare quelle informazioni. Sono
