@@ -142,8 +142,8 @@ Data extensions (ch. 7)
      - ✅
      - Built from watts, feet, dBi and a direction on the Station page and mirrored into the per-role beacons and objects.
    * - PHGR "probes" (beacon rate character)
-     - ❌
-     - The 1.2 eight-character form is neither transmitted nor parsed. On receive this matters more than on transmit: a strict 7-byte parser fed a PHGR extension consumes the rate character and leaves a stray slash at the head of the comment.
+     - ✅
+     - The 1.2 nine-byte form ("PHGphgd" plus a beacons-per-hour rate character and its mandatory trailing slash) is transmitted whenever the IGate beacon's own interval is known, which it always is, and is parsed on receive: the rate character and slash are recognised and stripped so the comment that follows is read correctly rather than starting with a stray slash.
    * - Pre-calculated radio range (RNG)
      - ✅
      - Selectable as the data extension for any beacon role, in statute miles.
@@ -582,8 +582,8 @@ The gaps cluster in three places, and they are worth stating plainly:
   *category* — enough to route them through the gating filters — but their
   contents are never parsed. For an IGate this shows up as stations that pass
   the type filter but whose measurements are unavailable locally.
-* **Post-2004 proposals.** PHGR probes and the RR-bit signalling proposals
-  are absent. These are genuine specification
+* **Post-2004 proposals.** The RR-bit signalling proposal is absent, though
+  PHGR probes are supported. These are genuine specification
   additions, not folklore, but their deployment in the field is uneven.
   Preemptive digipeating, the most consequential of the group, is implemented
   and off by default.

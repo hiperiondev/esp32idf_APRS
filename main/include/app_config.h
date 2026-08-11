@@ -453,6 +453,15 @@ typedef enum {
 #define APRS_EXT_DFS_STRENGTH_MAX 9    /**< Highest "DFSshgd" signal-strength code, in S-points. */
 
 /**
+ * @brief Highest beacons-per-hour value the single-character PHGR "probes"
+ * rate field can carry (1.2 addition, aprs.org/aprs12/probes.txt): '0'-'9'
+ * for 0-9, then 'A' upward for 10 and above, up to 'Z' for this value. A
+ * beacon cadence that would compute to a higher rate is clamped to this
+ * ceiling rather than wrapped into an unrelated byte.
+ */
+#define APRS_EXT_PHG_RATE_MAX 35
+
+/**
  * @brief Highest position-ambiguity level selectable on the Station page
  * (0 = full precision, 4 = nearest degree). Mirrors
  * ::APRS_COORD_AMBIGUITY_MAX, kept here so the web page and the JSON clamp

@@ -98,6 +98,14 @@ typedef struct {
     uint8_t phgDir;      // 0=Omni, 1-8 = N,NE,E,SE,S,SW,W,NW (PHG and DFS)
     uint16_t rangeMiles; // statute miles (RNG)
     uint8_t dfsStrength; // 0-9 S-points (DFS)
+    // This beacon's own effective transmit interval, in seconds, used only to
+    // compute the PHGR "probes" beacon-rate character (aprs.org/aprs12/probes.txt)
+    // appended to a PHG extension: 0 leaves the rate off and emits the plain
+    // 7-byte "PHGphgd" form, since a receiving station has nothing meaningful
+    // to divide by. Populated from the same sched_clamp_interval() value the
+    // scheduler itself transmits at, so the rate character always matches the
+    // cadence actually observed on air.
+    uint32_t beaconIntervalSec;
     // When set, buildPositionPacket() emits a Mic-E position report
     // (APRS101 ch.10) instead of the uncompressed/compressed layout above,
     // via aprs_mice_encode() (components/weather_telemetry/mice.c). Mic-E
@@ -146,11 +154,42 @@ typedef struct {
     uint16_t freqOffsetKhz;
 } beacon_params_t;
 
-// Builds the 7-byte "PHGphgd" data-extension token from PHG sub-fields, using
-// the same rounding/clamping and single-character-per-digit encoding as the
+// Encodes a beacon's own transmit interval into the PHGR "probes" rate
+// character (aprs.org/aprs12/probes.txt): '0'-'9' for 0-9 beacons per hour,
+// then 'A' upward for 10 and above. A cadence that computes to more than
+// APRS_EXT_PHG_RATE_MAX beacons/hour is clamped to that ceiling - documented
+// on the constant itself - rather than silently wrapped into an unrelated
+// printable byte.
+static char phgRateChar(uint32_t intervalSec) {
+    uint32_t perHour = (3600u + intervalSec / 2u) / intervalSec; // rounded to the nearest whole beacon/hour
+    if (perHour > APRS_EXT_PHG_RATE_MAX)
+        perHour = APRS_EXT_PHG_RATE_MAX;
+    return (perHour <= 9) ? (char)('0' + perHour) : (char)('A' + (perHour - 10));
+}
+
+// Decodes one PHGR "probes" rate character back into its beacons-per-hour
+// value: '0'-'9' map to 0-9, 'A' upward map to 10 and above. Returns -1 for
+// any other byte, so a caller stepping through a received extension can tell
+// a real rate character apart from an ordinary comment byte sitting in the
+// same position.
+static int phgRateValue(char c) {
+    if (c >= '0' && c <= '9')
+        return c - '0';
+    if (c >= 'A' && c <= 'Z')
+        return 10 + (c - 'A');
+    return -1;
+}
+
+// Builds the "PHGphgd" data-extension token from PHG sub-fields, using the
+// same rounding/clamping and single-character-per-digit encoding as the
 // Station/Objects web pages (see objitem_build_phg() in objects_items.c and
-// the calcStationPHG() JS on the Station page). `out` must be >= 8 bytes.
-static void buildPhgExtension(uint16_t power, float gain, uint16_t height, uint8_t dir, char *out, size_t outMax) {
+// the calcStationPHG() JS on the Station page). When intervalSec is nonzero,
+// the PHGR "probes" beacon-rate character and its mandatory trailing slash
+// (1.2 addition, aprs.org/aprs12/probes.txt) are appended right after the
+// standard four digits, so a station tracking this beacon's reception can
+// compute how reliably it is heard; intervalSec == 0 emits the plain 7-byte
+// form instead. `out` must be >= 10 bytes.
+static void buildPhgExtension(uint16_t power, float gain, uint16_t height, uint8_t dir, uint32_t intervalSec, char *out, size_t outMax) {
     int P = (int)lroundf(sqrtf((float)power));
     if (P < 0)
         P = 0;
@@ -174,7 +213,10 @@ static void buildPhgExtension(uint16_t power, float gain, uint16_t height, uint8
     if (D > 8)
         D = 8;
 
-    snprintf(out, outMax, "PHG%c%c%c%c", '0' + P, '0' + H, '0' + G, '0' + D);
+    if (intervalSec > 0)
+        snprintf(out, outMax, "PHG%c%c%c%c%c/", '0' + P, '0' + H, '0' + G, '0' + D, phgRateChar(intervalSec));
+    else
+        snprintf(out, outMax, "PHG%c%c%c%c", '0' + P, '0' + H, '0' + G, '0' + D);
 }
 
 // Encodes the antenna height, gain and directivity sub-fields shared by the
@@ -277,10 +319,11 @@ static void buildDfsExtension(uint8_t strength, float gain, uint16_t height, uin
     snprintf(out, outMax, "DFS%c%s", '0' + S, hgd);
 }
 
-// Selects and builds the beacon's data extension into `out` (>= 8 bytes),
+// Selects and builds the beacon's data extension into `out` (>= 10 bytes),
 // which is left as an empty string when no extension is enabled. Exactly one
 // extension is ever emitted: they all occupy the same 7-byte slot after the
-// symbol code.
+// symbol code, except PHG when p->beaconIntervalSec is known, which adds the
+// two-byte PHGR probe rate/slash suffix described on buildPhgExtension().
 static void buildDataExtension(const beacon_params_t *p, char *out, size_t outMax) {
     out[0] = 0;
     if (!p->extEnable)
@@ -295,7 +338,7 @@ static void buildDataExtension(const beacon_params_t *p, char *out, size_t outMa
             return;
         case APRS_EXT_PHG:
         default:
-            buildPhgExtension(p->phgPower, p->phgGain, p->phgHeight, p->phgDir, out, outMax);
+            buildPhgExtension(p->phgPower, p->phgGain, p->phgHeight, p->phgDir, p->beaconIntervalSec, out, outMax);
             return;
     }
 }
@@ -440,8 +483,9 @@ static int buildPositionPacket(const beacon_params_t *p, char *out, size_t outMa
     // Data-extension token (PHG / RNG / DFS), when enabled. Emitted right
     // after the symbol code and before the altitude/comment, matching the
     // Object/Item info field layout (main/objects_items.c) and the order the
-    // APRS spec defines for this slot.
-    char ext[8] = { 0 };
+    // APRS spec defines for this slot. Sized for the longest of the four:
+    // a PHGR-suffixed PHG token ("PHG" + 4 digits + rate + '/', 9 bytes) plus NUL.
+    char ext[10] = { 0 };
     buildDataExtension(p, ext, sizeof(ext));
 
     // Two things force the uncompressed layout:
@@ -1013,6 +1057,7 @@ static uint32_t igateBeaconService(void) {
             p.phgDir = g_config.igate_phg_dir;
             p.rangeMiles = g_config.igate_range_miles;
             p.dfsStrength = g_config.igate_dfs_strength;
+            p.beaconIntervalSec = sched_clamp_interval(g_config.igate_interval, BEACON_MIN_INTERVAL_S, BEACON_DEFAULT_INTERVAL_S);
             p.freqMhz = g_config.igate_freq_mhz;
             p.freqToneTenths = g_config.igate_tone_tenths;
             p.freqDuplex = g_config.igate_duplex;
@@ -1085,6 +1130,7 @@ static void fillIgatePositionParams(beacon_params_t *p) {
         p->phgDir = g_config.igate_phg_dir;
         p->rangeMiles = g_config.igate_range_miles;
         p->dfsStrength = g_config.igate_dfs_strength;
+        p->beaconIntervalSec = sched_clamp_interval(g_config.igate_interval, BEACON_MIN_INTERVAL_S, BEACON_DEFAULT_INTERVAL_S);
         p->ambiguity = g_config.pos_ambiguity;
         p->daoEnable = g_config.pos_dao_en;
         p->freqMhz = g_config.igate_freq_mhz;
@@ -1100,6 +1146,36 @@ int beacon_build_igate_position_packet(char *out, size_t out_max) {
     beacon_params_t p;
     fillIgatePositionParams(&p);
     return buildPositionPacket(&p, out, out_max);
+}
+
+bool beacon_parse_phg_extension(const char *field, char phg_digits[5], int *rate_out, const char **comment_out) {
+    if (!field || strlen(field) < 7 || strncmp(field, "PHG", 3) != 0)
+        return false;
+
+    memcpy(phg_digits, field + 3, 4);
+    phg_digits[4] = 0;
+
+    // The PHGR probe form only exists when the byte right after the standard
+    // 7-byte token is a legal rate character AND that byte is immediately
+    // followed by the mandatory '/' (aprs.org/aprs12/probes.txt); anything
+    // else is the plain 7-byte form, with the comment starting one byte
+    // earlier. Requiring both keeps a legacy comment that happens to start
+    // with a letter or digit from being misread as a probe rate. Testing
+    // rate >= 0 first guarantees field[7] is not the NUL terminator before
+    // field[8] is read, so this never reads past the string.
+    int rate = phgRateValue(field[7]);
+    if (rate >= 0 && field[8] == '/') {
+        if (rate_out)
+            *rate_out = rate;
+        if (comment_out)
+            *comment_out = field + 9;
+    } else {
+        if (rate_out)
+            *rate_out = -1;
+        if (comment_out)
+            *comment_out = field + 7;
+    }
+    return true;
 }
 
 int beacon_build_igate_status_packet(char *out, size_t out_max) {

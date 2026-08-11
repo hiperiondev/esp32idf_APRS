@@ -144,8 +144,8 @@ Extensiones de datos (cap. 7)
      - ✅
      - Se arma a partir de vatios, pies, dBi y una dirección en la página Station, y se espeja a las balizas por rol y a los objetos.
    * - Sondas PHGR (carácter de tasa de baliza)
-     - ❌
-     - La forma de ocho caracteres de 1.2 no se transmite ni se analiza. En recepción esto pesa más que en transmisión: un analizador estricto de 7 bytes al que le llega una extensión PHGR se come el carácter de tasa y deja una barra suelta al principio del comentario.
+     - ✅
+     - La forma de nueve bytes de 1.2 ("PHGphgd" más un carácter de tasa de balizas por hora y su barra final obligatoria) se transmite siempre que se conoce el intervalo propio de la baliza IGate, lo cual siempre ocurre, y se analiza en recepción: el carácter de tasa y la barra se reconocen y se descartan, de modo que el comentario que sigue se lee correctamente en lugar de empezar con una barra suelta.
    * - Alcance de radio precalculado (RNG)
      - ✅
      - Seleccionable como extensión de datos para cualquier rol de baliza, en millas terrestres.
@@ -585,8 +585,8 @@ Los huecos se agrupan en tres lugares, y conviene decirlo sin rodeos:
   los filtros de pasarela — pero su contenido nunca se analiza. En un IGate
   esto se ve como estaciones que pasan el filtro de tipo pero cuyas medidas
   no quedan disponibles localmente.
-* **Propuestas posteriores a 2004.** Faltan las sondas PHGR y las propuestas
-  de señalización con los bits RR. Son adiciones reales a la especificación, no
+* **Propuestas posteriores a 2004.** Falta la propuesta de señalización con
+  los bits RR, aunque las sondas PHGR sí son compatibles. Son adiciones reales a la especificación, no
   folclore, pero su despliegue en el aire es desparejo. El digipeteo preventivo, el más
   consecuente del grupo, está implementado y apagado por omisión.
 * **Formatos sin origen local.** Los datos de tormenta, los boletines del NWS

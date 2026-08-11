@@ -144,8 +144,8 @@ Estensioni dati (cap. 7)
      - ✅
      - Costruito da watt, piedi, dBi e una direzione nella pagina Station e rispecchiato nei beacon per ruolo e negli oggetti.
    * - Sonde PHGR (carattere di cadenza del beacon)
-     - ❌
-     - La forma a otto caratteri della 1.2 non è né trasmessa né analizzata. In ricezione questo pesa più che in trasmissione: un parser rigido da 7 byte a cui arriva un'estensione PHGR consuma il carattere di cadenza e lascia una barra vagante all'inizio del commento.
+     - ✅
+     - La forma a nove byte della 1.2 ("PHGphgd" più un carattere di cadenza in beacon all'ora e la barra finale obbligatoria) viene trasmessa ogni volta che l'intervallo proprio del beacon IGate è noto, il che avviene sempre, ed è analizzata in ricezione: il carattere di cadenza e la barra vengono riconosciuti e rimossi, così il commento che segue viene letto correttamente invece di iniziare con una barra vagante.
    * - Portata radio precalcolata (RNG)
      - ✅
      - Selezionabile come estensione dati per qualsiasi ruolo di beacon, in miglia terrestri.
@@ -586,8 +586,8 @@ Le lacune si concentrano in tre punti, e vale la pena dirlo chiaramente:
   filtri di gateway — ma il loro contenuto non viene mai analizzato. In un
   IGate questo si manifesta come stazioni che superano il filtro di tipo ma
   le cui misure non sono disponibili localmente.
-* **Proposte successive al 2004.** Mancano le sonde PHGR e le proposte di
-  segnalazione con i bit RR. Sono aggiunte reali alla specifica, non folclore,
+* **Proposte successive al 2004.** Manca la proposta di segnalazione con i
+  bit RR, mentre le sonde PHGR sono supportate. Sono aggiunte reali alla specifica, non folclore,
   ma la loro diffusione sul campo è disomogenea. Il digipeating preventivo, il più rilevante del gruppo,
   è implementato e spento per impostazione predefinita.
 * **Formati senza sorgente locale.** I dati di tempesta, i bollettini NWS e i
