@@ -96,7 +96,7 @@ static void insert_own_call(ax25_msg_t *packet, int idx, const char *myCall, uin
         int n = j + 1;
         if (n >= AX25_MAX_RPT)
             break;
-        strcpy(packet->rpt_list[n].call, packet->rpt_list[j].call);
+        copy_call(packet->rpt_list[n].call, packet->rpt_list[j].call);
         packet->rpt_list[n].ssid = packet->rpt_list[j].ssid;
         if (packet->rpt_flags & (1 << j))
             packet->rpt_flags |= (1 << n);

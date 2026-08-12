@@ -99,12 +99,21 @@ void trafficlog_init(void) {
     s_inited = true;
 }
 
-// Appends a new (mostly) zeroed entry to the ring buffer and returns a
-// pointer to it, already stamped with seq/time_ms. Caller fills the rest
-// while still holding s_lock. Returns NULL if the lock couldn't be taken.
-static trafficlog_entry_t *push_entry(void) {
+// Signature of the callback push_entry() invokes, while still holding
+// s_lock, to fill in the fields of a freshly appended entry beyond the
+// seq/time_ms/audio_mv already stamped by push_entry() itself. 'ctx' is the
+// opaque pointer push_entry() was given by its caller, cast back to whatever
+// type that caller's filler expects.
+typedef void (*trafficlog_fill_fn)(trafficlog_entry_t *e, void *ctx);
+
+// Appends a new entry to the ring buffer, stamps it with seq/time_ms/
+// audio_mv, invokes 'fill' with 'ctx' to populate the rest, then releases
+// s_lock - all inside this single function, so the lock is never held across
+// a function boundary. Does nothing if the lock couldn't be taken within the
+// timeout, which never blocks the caller (radio/network tasks) indefinitely.
+static void push_entry(trafficlog_fill_fn fill, void *ctx) {
     if (!s_lock || xSemaphoreTake(s_lock, pdMS_TO_TICKS(50)) != pdTRUE)
-        return NULL; // never block the caller (radio/network tasks) indefinitely
+        return;
 
     trafficlog_entry_t *e = &s_buf[s_head];
     memset(e, 0, sizeof(*e));
@@ -116,7 +125,53 @@ static trafficlog_entry_t *push_entry(void) {
     if (s_count < TRAFFICLOG_CAPACITY)
         s_count++;
 
-    return e;
+    fill(e, ctx);
+
+    xSemaphoreGive(s_lock);
+}
+
+// Argument bundle for fill_line(), carrying the already-formatted text of a
+// trafficlog_add() call across the push_entry() callback boundary.
+typedef struct {
+    const char *text;
+} fill_line_ctx_t;
+
+// trafficlog_fill_fn for trafficlog_add(): stores the pre-formatted line as
+// a LINE-kind entry. dx is left blank and audio_mv stays at the -1 push_entry()
+// already stamped; there is no raw packet.
+static void fill_line(trafficlog_entry_t *e, void *ctx) {
+    const fill_line_ctx_t *c = ctx;
+    e->kind = TL_KIND_LINE;
+    strncpy(e->text, c->text, sizeof(e->text) - 1);
+    strncpy(e->dir, "LOG", sizeof(e->dir) - 1);
+}
+
+// Argument bundle for fill_pkt(), carrying a trafficlog_add_pkt() call's
+// fields across the push_entry() callback boundary.
+typedef struct {
+    const char *dir;
+    const char *dx;
+    const char *packet;
+    const char *decoded;
+    int audio_mv;
+    char sym_table;
+    char sym_code;
+} fill_pkt_ctx_t;
+
+// trafficlog_fill_fn for trafficlog_add_pkt(): stores the raw packet and its
+// associated fields as a PKT-kind entry. The "m" field ("<DIR>: <packet>") is
+// not stored here - it is derived on the fly in trafficlog_next_json() from
+// dir + text, so the free-form line and the raw packet can share one buffer.
+static void fill_pkt(trafficlog_entry_t *e, void *ctx) {
+    const fill_pkt_ctx_t *c = ctx;
+    e->kind = TL_KIND_PKT;
+    strncpy(e->dir, c->dir, sizeof(e->dir) - 1);
+    strncpy(e->dx, c->dx, sizeof(e->dx) - 1);
+    strncpy(e->text, c->packet, sizeof(e->text) - 1); // raw TNC2 packet ("pkt")
+    strncpy(e->dec, c->decoded, sizeof(e->dec) - 1);
+    e->audio_mv = c->audio_mv;
+    e->sym_table = c->sym_table;
+    e->sym_code = c->sym_code;
 }
 
 void trafficlog_add(const char *fmt, ...) {
@@ -129,16 +184,8 @@ void trafficlog_add(const char *fmt, ...) {
     vsnprintf(tmp, sizeof(tmp), fmt, ap);
     va_end(ap);
 
-    trafficlog_entry_t *e = push_entry();
-    if (!e)
-        return;
-
-    e->kind = TL_KIND_LINE;
-    strncpy(e->text, tmp, sizeof(e->text) - 1);
-    strncpy(e->dir, "LOG", sizeof(e->dir) - 1);
-    // dx left blank, audio_mv left at -1 (set by push_entry); no raw packet.
-
-    xSemaphoreGive(s_lock);
+    fill_line_ctx_t ctx = { .text = tmp };
+    push_entry(fill_line, &ctx);
 }
 
 void trafficlog_add_pkt(const char *dir, const char *dx, const char *packet, const char *decoded, int audio_mv, char sym_table, char sym_code) {
@@ -154,24 +201,16 @@ void trafficlog_add_pkt(const char *dir, const char *dx, const char *packet, con
     if (!decoded)
         decoded = "";
 
-    trafficlog_entry_t *e = push_entry();
-    if (!e)
-        return;
-
-    e->kind = TL_KIND_PKT;
-    strncpy(e->dir, dir, sizeof(e->dir) - 1);
-    strncpy(e->dx, dx, sizeof(e->dx) - 1);
-    strncpy(e->text, packet, sizeof(e->text) - 1); // raw TNC2 packet ("pkt")
-    strncpy(e->dec, decoded, sizeof(e->dec) - 1);
-    e->audio_mv = audio_mv;
-    e->sym_table = sym_table;
-    e->sym_code = sym_code;
-
-    // The "m" field ("<DIR>: <packet>") is not stored - it is derived on the
-    // fly in trafficlog_next_json() from dir + text, so the free-form line and
-    // the raw packet can share a single buffer.
-
-    xSemaphoreGive(s_lock);
+    fill_pkt_ctx_t ctx = {
+        .dir = dir,
+        .dx = dx,
+        .packet = packet,
+        .decoded = decoded,
+        .audio_mv = audio_mv,
+        .sym_table = sym_table,
+        .sym_code = sym_code,
+    };
+    push_entry(fill_pkt, &ctx);
 }
 
 uint32_t trafficlog_latest_seq(void) {

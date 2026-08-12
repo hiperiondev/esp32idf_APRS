@@ -84,14 +84,14 @@ esp_err_t page_dashboard(httpd_req_t *req) {
 
     // -- Radio Info -----------------------------------------------------
     size_t n = 0;
-    n += snprintf(buf + n, sizeof(buf) - n, "<fieldset><legend>" TR_DASH_RADIO_INFO "</legend><table>");
+    str_append(buf, sizeof(buf), &n, "<fieldset><legend>" TR_DASH_RADIO_INFO "</legend><table>");
     // MODEM status reflects the audio ADC/DAC AFSK modem enable state set on
     // the Radiomodem (Audio / AFSK) page - it is the only modem in the build.
     const char *modemName = g_config.audio_modem_en ? "AFSK (Audio)" : TR_F_OFF;
-    n += snprintf(buf + n, sizeof(buf) - n,
-                  "<tr><td>" TR_DASH_MODEM "</td><td>%s</td></tr>"
-                  "<tr><td>" TR_DASH_FX25 "</td><td>%s</td></tr></table></fieldset>",
-                  modemName, g_config.fx25_mode ? TR_ENABLED : TR_F_OFF);
+    str_append(buf, sizeof(buf), &n,
+               "<tr><td>" TR_DASH_MODEM "</td><td>%s</td></tr>"
+               "<tr><td>" TR_DASH_FX25 "</td><td>%s</td></tr></table></fieldset>",
+               modemName, g_config.fx25_mode ? TR_ENABLED : TR_F_OFF);
     httpd_resp_sendstr_chunk(req, buf);
 
     // -- APRS-IS SERVER ---------------------------------------------------
@@ -99,11 +99,12 @@ esp_err_t page_dashboard(httpd_req_t *req) {
         char host[20];
         uint16_t port;
         igate_get_current_server(host, sizeof(host), &port);
-        n = snprintf(buf, sizeof(buf),
-                     "<fieldset><legend>" TR_DASH_APRS_IS_SERVER "</legend><table>"
-                     "<tr><td>" TR_DASH_HOST "</td><td>%s</td></tr>"
-                     "<tr><td>" TR_DASH_PORT "</td><td>%d</td></tr></table></fieldset>",
-                     host, port);
+        n = 0;
+        str_append(buf, sizeof(buf), &n,
+                   "<fieldset><legend>" TR_DASH_APRS_IS_SERVER "</legend><table>"
+                   "<tr><td>" TR_DASH_HOST "</td><td>%s</td></tr>"
+                   "<tr><td>" TR_DASH_PORT "</td><td>%d</td></tr></table></fieldset>",
+                   host, port);
         httpd_resp_sendstr_chunk(req, buf);
     }
 
@@ -119,15 +120,16 @@ esp_err_t page_dashboard(httpd_req_t *req) {
         web_html_attr_escape(ssidBuf, ssidEsc, sizeof(ssidEsc));
     }
 
-    n = snprintf(buf, sizeof(buf),
-                 "<fieldset><legend>" TR_DASH_WIFI "</legend><table>"
-                 "<tr><td>" TR_DASH_MODE "</td><td>%s</td></tr>"
-                 "<tr><td>" TR_DASH_SSID "</td><td>%s</td></tr>",
-                 wifiModeName, ssidEsc);
+    n = 0;
+    str_append(buf, sizeof(buf), &n,
+               "<fieldset><legend>" TR_DASH_WIFI "</legend><table>"
+               "<tr><td>" TR_DASH_MODE "</td><td>%s</td></tr>"
+               "<tr><td>" TR_DASH_SSID "</td><td>%s</td></tr>",
+               wifiModeName, ssidEsc);
     if (sta_connected)
-        n += snprintf(buf + n, sizeof(buf) - n, "<tr><td>" TR_DASH_RSSI "</td><td>%d dBm</td></tr></table></fieldset>", ap_info.rssi);
+        str_append(buf, sizeof(buf), &n, "<tr><td>" TR_DASH_RSSI "</td><td>%d dBm</td></tr></table></fieldset>", ap_info.rssi);
     else
-        n += snprintf(buf + n, sizeof(buf) - n, "<tr><td>" TR_DASH_RSSI "</td><td>" TR_DASH_DISCONNECTED "</td></tr></table></fieldset>");
+        str_append(buf, sizeof(buf), &n, "<tr><td>" TR_DASH_RSSI "</td><td>" TR_DASH_DISCONNECTED "</td></tr></table></fieldset>");
     httpd_resp_sendstr_chunk(req, buf);
 
     // -- IGate Traffic table: a real (not modal) table at the bottom of the
