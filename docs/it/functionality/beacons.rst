@@ -256,7 +256,7 @@ decodificatore, e il registro del traffico per la riga di avviso che
 un'emergenza ricevuta produce.
 
 Direzione d'antenna ed ERP nei rapporti di stato
-===============================================
+================================================
 
 Un rapporto di stato può terminare con due caratteri dopo un ``^``: la direzione
 d'antenna in unità di dieci gradi, e un codice che rappresenta la potenza

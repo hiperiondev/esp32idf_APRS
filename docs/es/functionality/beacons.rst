@@ -257,7 +257,7 @@ siguientes. En recepción se trata por completo: ver
 para la línea de advertencia que genera una emergencia recibida.
 
 Rumbo de antena y PRE en los reportes de estado
-==============================================
+===============================================
 
 Un reporte de estado puede terminar con dos caracteres detrás de un ``^``: el
 rumbo de antena en unidades de diez grados, y un código que representa la

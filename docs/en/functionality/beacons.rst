@@ -237,7 +237,7 @@ full: see :ref:`en-filtering` for the decoder, and the traffic log
 for the warning line a received emergency produces.
 
 Beam heading and ERP in status reports
-=====================================
+======================================
 
 A status report may end with two characters after a ``^``: the beam heading in
 units of ten degrees, and a code standing for the effective radiated power.
