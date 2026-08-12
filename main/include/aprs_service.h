@@ -127,22 +127,26 @@
 /**
  * @name Status report length limits
  *
- * APRS101 chapter 16 defines a status report as the DTI @c '>', an optional
- * seven-character DHM zulu timestamp and status text of at most 62
- * characters, so the whole information field is at most 1 + 7 + 62 bytes.
+ * APRS101 chapter 16 defines a status report as the DTI @c '>', followed
+ * either by an optional seven-character DHM zulu timestamp and up to
+ * 55 characters of status text, or by no timestamp and up to 62 characters
+ * of status text. Both cases give the same 63-byte ceiling for the whole
+ * information field: the timestamp is carved out of the 62-character budget,
+ * not added on top of it.
  *
  * This is a much tighter ceiling than ::APRS_TNC2_MAX_LEN, which only bounds
  * what the AX.25 frame can carry, and it is the one that decides whether
  * receivers show the report the way it was meant: everything the status
  * report can carry beyond the operator's own text - the timestamp, the
- * frequency block and the Maidenhead locator - is spent out of the same 62
- * characters. buildStatusPacket() in beacon.c is the single consumer, and it
- * drops its optional blocks in a defined order rather than let the assembled
- * field pass ::APRS_STATUS_INFO_MAX.
+ * frequency block and the Maidenhead locator - is spent out of that same
+ * 63-byte information field. buildStatusPacket() in beacon.c is the single
+ * consumer, and it drops its optional blocks in a defined order rather than
+ * let the assembled field pass ::APRS_STATUS_INFO_MAX.
  * @{
  */
-#define APRS_STATUS_TEXT_MAX 62                             /**< Longest status text, in characters, APRS101 ch.16 allows after the DTI and the timestamp. */
-#define APRS_STATUS_INFO_MAX (1 + 7 + APRS_STATUS_TEXT_MAX) /**< Longest status information field: DTI, DHM timestamp and ::APRS_STATUS_TEXT_MAX of text. */
+#define APRS_STATUS_TEXT_MAX    62                         /**< Longest status text, in characters, APRS101 ch.16 allows with no timestamp. */
+#define APRS_STATUS_TEXT_TS_MAX 55                         /**< Longest status text, in characters, APRS101 ch.16 allows alongside a DHM timestamp. */
+#define APRS_STATUS_INFO_MAX    (1 + APRS_STATUS_TEXT_MAX) /**< Longest status information field, in bytes: the same 63-byte ceiling either way. */
 /** @} */
 
 /**

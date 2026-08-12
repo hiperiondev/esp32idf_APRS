@@ -255,7 +255,7 @@ only when both are set — leaving either on *Off* is what a station that does n
 work meteor scatter does, and it then transmits exactly the status report it
 transmitted before.
 
-The status information field is capped at 70 bytes, and the assembly drops its
+The status information field is capped at 63 bytes, and the assembly drops its
 optional blocks in order until it fits: the leading field first, then the
 frequency block. The beam/ERP pair is never dropped. It is three bytes, and a
 station transmitting a status report during a meteor-scatter schedule is
@@ -356,12 +356,14 @@ which the timestamp does not.
 Status report length budget
 ===========================
 
-APRS101 ch.16 caps a status report's information field at 70 bytes: the ``>``
-DTI, an optional 7-character DHM timestamp and at most 62 characters of status
-text. Everything the report can carry beyond the operator's own words is spent
-out of that same budget — the leading field (the timestamp, or the Maidenhead
-locator when it takes precedence) and the frequency block — and a full
-49-character status text plus both optional blocks asks for more than fits.
+APRS101 ch.16 caps a status report's information field at 63 bytes: the ``>``
+DTI, followed either by an optional 7-character DHM timestamp and at most 55
+characters of status text, or by no timestamp and at most 62 characters of
+status text. Everything the report can carry beyond the operator's own words
+is spent out of that same budget — the leading field (the timestamp, or the
+Maidenhead locator when it takes precedence) and the frequency block — and a
+full 49-character status text plus both optional blocks asks for more than
+fits.
 
 When that happens the optional blocks are dropped, in this order, until the
 field fits:

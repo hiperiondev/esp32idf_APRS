@@ -275,7 +275,7 @@ lasciarne una su *Off* è ciò che fa una stazione che non lavora in meteor
 scatter, e allora trasmette esattamente il rapporto di stato che trasmetteva
 prima.
 
-Il campo informativo di stato ha un tetto di 70 byte, e l'assemblaggio scarta i
+Il campo informativo di stato ha un tetto di 63 byte, e l'assemblaggio scarta i
 suoi blocchi opzionali in ordine finché non entra: prima il campo iniziale, poi
 il blocco di frequenza. La coppia direzione/ERP non viene mai scartata. Sono tre
 byte, e una stazione che trasmette un rapporto di stato durante un appuntamento
@@ -383,10 +383,11 @@ stazione, cosa che il timestamp non porta.
 Budget di lunghezza del rapporto di stato
 =========================================
 
-APRS101 cap.16 limita il campo informativo di un rapporto di stato a 70 byte: il
-DTI ``>``, un timestamp DHM opzionale di 7 caratteri e al massimo 62 caratteri
-di testo di stato. Tutto ciò che il rapporto può portare oltre alle parole
-dell'operatore viene preso dallo stesso budget — il campo iniziale (il
+APRS101 cap.16 limita il campo informativo di un rapporto di stato a 63 byte:
+il DTI ``>``, seguito da un timestamp DHM opzionale di 7 caratteri e al
+massimo 55 caratteri di testo di stato, oppure senza timestamp e al massimo 62
+caratteri di testo di stato. Tutto ciò che il rapporto può portare oltre alle
+parole dell'operatore viene preso dallo stesso budget — il campo iniziale (il
 timestamp, oppure il localizzatore Maidenhead quando ha la precedenza) e il
 blocco di frequenza — e un testo di stato completo di 49 caratteri più
 entrambi i blocchi opzionali chiede più di quanto entri.

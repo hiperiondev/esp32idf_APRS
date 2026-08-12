@@ -276,7 +276,7 @@ cualquiera de las dos en *Off* es lo que hace una estación que no trabaja meteo
 scatter, y entonces transmite exactamente el mismo reporte de estado que
 transmitía antes.
 
-El campo de información de estado tiene un tope de 70 bytes, y el armado va
+El campo de información de estado tiene un tope de 63 bytes, y el armado va
 descartando sus bloques opcionales en orden hasta que entre: primero el campo
 inicial, después el bloque de frecuencia. El par rumbo/PRE nunca se descarta.
 Son tres bytes, y una estación que transmite un reporte de estado durante una
@@ -380,13 +380,14 @@ marca de tiempo no lleva.
 Presupuesto de longitud del reporte de estado
 =============================================
 
-APRS101 cap.16 limita el campo de información de un reporte de estado a 70
-bytes: el DTI ``>``, una marca de tiempo DHM opcional de 7 caracteres y como
-máximo 62 caracteres de texto de estado. Todo lo que el reporte puede llevar
-además de las palabras del operador sale de ese mismo presupuesto — el campo
-inicial (la marca de tiempo, o el localizador Maidenhead cuando tiene
-prioridad) y el bloque de frecuencia — y un texto de estado completo de 49
-caracteres más los dos bloques opcionales pide más de lo que entra.
+APRS101 cap.16 limita el campo de información de un reporte de estado a 63
+bytes: el DTI ``>``, seguido de una marca de tiempo DHM opcional de 7
+caracteres y como máximo 55 caracteres de texto de estado, o bien sin marca de
+tiempo y como máximo 62 caracteres de texto de estado. Todo lo que el reporte
+puede llevar además de las palabras del operador sale de ese mismo presupuesto
+— el campo inicial (la marca de tiempo, o el localizador Maidenhead cuando
+tiene prioridad) y el bloque de frecuencia — y un texto de estado completo de
+49 caracteres más los dos bloques opcionales pide más de lo que entra.
 
 Cuando eso ocurre se descartan los bloques opcionales, en este orden, hasta que
 el campo entra:
