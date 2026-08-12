@@ -192,6 +192,10 @@ const char *igate_drop_reason_name(drop_reason_t reason) {
             return "TX failed";
         case DROP_HEADER_OVERFLOW:
             return "header overflow";
+        case DROP_IS_LINE_TOO_LONG:
+            return "APRS-IS line too long (RF->INET)";
+        case DROP_IS_RX_LINE_TOO_LONG:
+            return "APRS-IS line too long (RX)";
         case DROP_PLACEHOLDER_CALL:
             return "placeholder callsign (NOCALL/MYCALL)";
         case DROP_MODEM_NOT_READY:
@@ -318,10 +322,17 @@ bool isDuplicatePacket(ax25_msg_t *packet) {
     return isDuplicatePacketScoped(packet, DUP_SCOPE_IGATE);
 }
 
+// APRS-IS line limit (aprs-is.net/Connecting.aspx): no line, including its
+// CR/LF terminator, may exceed 512 bytes. Expressed as the usable payload
+// (510 bytes) plus the two-byte terminator, so every buffer sized from this
+// constant states its budget in the same terms as the rule it enforces.
+#define APRS_IS_LINE_MAX (510)
+
 // Longest line, including the CRLF terminator, that sendToAprsIs() will
-// assemble and send in one write. Comfortably above the 500-byte frame built
-// by the RF->INET gateway path, the largest of sendToAprsIs()'s callers.
-#define SEND_TO_APRSIS_BUF_SIZE (512)
+// assemble and send in one write. Matches the APRS-IS line limit exactly, so
+// a line that fits here is guaranteed acceptable to the server and a line
+// that does not is refused rather than sent truncated.
+#define SEND_TO_APRSIS_BUF_SIZE (APRS_IS_LINE_MAX + 2)
 
 // ---------------------------------------------------------------------------
 // RF -> INET
@@ -836,16 +847,37 @@ int igateProcess(ax25_msg_t *packet) {
         return 0;
     }
 
-    uint8_t frame[500];
+    // The effective info field's CR/LF-stripped length is computed before any
+    // copying, so the frame can be sized and refused up front - the gated
+    // line must never reach APRS-IS or RF as a silently truncated half-frame.
+    size_t strippedInfoLen = 0;
+    for (size_t i = 0; i < effInfoLen; i++) {
+        uint8_t c = (uint8_t)effInfo[i];
+        if (c != '\r' && c != '\n')
+            strippedInfoLen++;
+    }
+
+    if (headerLen + strippedInfoLen > APRS_IS_LINE_MAX) {
+        // The assembled line would exceed the APRS-IS 512-byte line limit
+        // (headerLen + strippedInfoLen + CRLF > 512). Refusing here, before
+        // any bytes are copied, keeps this call site consistent with every
+        // beacon builder in the project: a frame that does not fit is
+        // dropped whole, never gated as a mangled fragment.
+        ESP_LOGW(TAG, "RF2INET frame too long for APRS-IS (%u bytes, limit %u) - dropped", (unsigned)(headerLen + strippedInfoLen), (unsigned)APRS_IS_LINE_MAX);
+        s_stats.dropByReason[DROP_IS_LINE_TOO_LONG]++;
+        return 0;
+    }
+
+    uint8_t frame[APRS_IS_LINE_MAX];
     size_t fpos = 0;
     memcpy(&frame[fpos], header, headerLen);
     fpos += headerLen;
 
-    // copy the effective info field, stripping CR/LF, bounded to the frame
-    // buffer - the inner payload for an unwrapped third-party frame (the
-    // outer '}' data type identifier is left behind with the discarded outer
-    // header), or the frame's own info field otherwise.
-    for (size_t i = 0; i < effInfoLen && fpos < sizeof(frame); i++) {
+    // Copy the effective info field, stripping CR/LF - the inner payload for
+    // an unwrapped third-party frame (the outer '}' data type identifier is
+    // left behind with the discarded outer header), or the frame's own info
+    // field otherwise. The length check above guarantees every byte fits.
+    for (size_t i = 0; i < effInfoLen; i++) {
         uint8_t c = (uint8_t)effInfo[i];
         if (c == '\r' || c == '\n')
             continue;
@@ -1219,8 +1251,16 @@ static bool igateUplinkNeeded(void) {
 }
 
 static void igateTask(void *arg) {
-    char line[512];
+    // Sized to hold the longest line APRS-IS may legally send (the 512-byte
+    // limit's usable payload) plus the NUL terminator this buffer is always
+    // kept holding, so a full-length line is never itself the overflow case.
+    char line[APRS_IS_LINE_MAX + 1];
     size_t linePos = 0;
+    // Set for the remainder of an over-length line once linePos has already
+    // saturated the buffer, so every further byte up to the next terminator
+    // is consumed without being written anywhere, and the line is discarded
+    // as a whole rather than processed as a truncated fragment.
+    bool discarding = false;
     bool waitingLogged = false;
 
     for (;;) {
@@ -1262,6 +1302,7 @@ static void igateTask(void *arg) {
                 continue;
             }
             linePos = 0;
+            discarding = false;
             sock = socketSnapshot();
             if (sock < 0)
                 continue; // closed again between the connect and this read
@@ -1290,7 +1331,13 @@ static void igateTask(void *arg) {
             for (int i = 0; i < r; i++) {
                 char c = buf[i];
                 if (c == '\n' || c == '\r') {
-                    if (linePos > 0) {
+                    if (discarding) {
+                        // The overflowing line ends here: drop it whole and
+                        // resynchronise on the next line's first byte,
+                        // rather than handing anything from it downstream.
+                        discarding = false;
+                        linePos = 0;
+                    } else if (linePos > 0) {
                         line[linePos] = 0;
                         if (line[0] != '#') { // '#' = server comment/keepalive
                             // Counts every packet received from APRS-IS,
@@ -1374,6 +1421,16 @@ static void igateTask(void *arg) {
                     }
                 } else if (linePos < sizeof(line) - 1) {
                     line[linePos++] = c;
+                } else if (!discarding) {
+                    // The line has exceeded the APRS-IS 512-byte limit:
+                    // every byte received so far is unusable as a whole
+                    // line, so stop accumulating and discard the rest up to
+                    // the next terminator instead of processing a truncated
+                    // remainder as if it were a complete packet.
+                    discarding = true;
+                    linePos = 0;
+                    s_stats.dropByReason[DROP_IS_RX_LINE_TOO_LONG]++;
+                    ESP_LOGW(TAG, "APRS-IS RX line exceeded %u bytes - discarding until next line", (unsigned)sizeof(line));
                 }
             }
         } else if (r == 0) {

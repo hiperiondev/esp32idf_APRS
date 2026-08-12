@@ -152,6 +152,13 @@ agregado opaco.
    (``DROP_PREFIX_FILTER``).
 #. **Budlist.** El indicativo de origen se prueba contra la lista
    blanca/negra local en ``g_config.rf2inet_budlist_mode`` (``DROP_BUDLIST``).
+#. **Límite de longitud de línea APRS-IS.** Una vez construida la cabecera
+   ``qAR``/``qAO``, su longitud más el campo de información (sin CR/LF) se
+   comprueba contra el límite de 512 bytes de APRS-IS
+   (``aprs-is.net/Connecting.aspx``, expresado como ``APRS_IS_LINE_MAX`` = 510
+   bytes utilizables). Una trama que no cabe se descarta entera, con una
+   advertencia que indica su longitud, en lugar de enviarse truncada
+   (``DROP_IS_LINE_TOO_LONG``).
 
 Una trama que sobrevive a todas las etapas recibe una cabecera
 ``,qAR,<mycall>-<ssid>`` o ``,qAO,<mycall>-<ssid>`` y se escribe en APRS-IS.
@@ -176,7 +183,14 @@ siempre la propia identidad de login de esta estación.
 INET → RF (``inet2rfHandler()``)
 ================================
 
-Cada línea distinta de ``#`` leída del socket incrementa ``isRxCount`` y se
+Cada línea leída del socket se comprueba primero contra el límite de 512
+bytes de APRS-IS a medida que se acumula. Una línea que lo supera se descarta
+por completo — cada byte adicional hasta el siguiente terminador se consume
+sin almacenarse, de modo que el framer se resincroniza limpiamente en la
+siguiente línea en lugar de entregar un fragmento truncado aguas abajo — y se
+cuenta bajo ``DROP_IS_RX_LINE_TOO_LONG``.
+
+Cada línea distinta de ``#`` dentro del límite incrementa ``isRxCount`` y se
 entrega al motor de mensajería (``handleIncomingAPRS()``) cuando la mensajería
 está activa. Luego se considera para retransmisión por RF solo si ``inet2rf``
 está activo, y solo tras pasar:
@@ -316,7 +330,8 @@ La instantánea ``igate_stats_t`` (``igate_get_stats()``) lleva:
        etapas RF→INET anteriores cubren ``DROP_TOO_SHORT``, ``DROP_PATH_TOKEN``,
        ``DROP_SAT_NOT_USED``, ``DROP_3RDPARTY_LOOP``, ``DROP_GENERIC_QUERY``,
        ``DROP_TYPE_FILTER``, ``DROP_RANGE_FILTER``, ``DROP_PREFIX_FILTER``,
-       ``DROP_BUDLIST`` y ``DROP_TX_FAIL``; el arreglo
+       ``DROP_BUDLIST``, ``DROP_IS_LINE_TOO_LONG`` y ``DROP_TX_FAIL``; el
+       lector de línea RX cubre ``DROP_IS_RX_LINE_TOO_LONG``. El arreglo
        también lleva razones incrementadas en otras partes del firmware (ruta
        de TX de RF, digipeater, decodificación AX.25) — ver ``drop_reason_t``
        en ``components/igate/include/igate.h`` para la lista completa y

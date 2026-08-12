@@ -98,29 +98,33 @@ typedef enum {
     DROP_BUDLIST,       /**< Blocked by the local callsign whitelist/blacklist (see aprs_filter_budlist_pass()). */
     DROP_MSG_NOT_LOCAL, /**< INET->RF message whose addressee has not been heard on the local RF channel inside g_config.igate_local_window_sec, so there is
                            nobody in earshot to transmit it to. */
-    DROP_MSG_SENDER_LOCAL,   /**< INET->RF message whose sender was itself heard on RF inside the same window: both ends of the conversation are local, so the
-                                original transmission was already on the air and gating the copy back would echo it. */
-    DROP_HEADER_FORBIDS_RF,  /**< INET->RF line whose header carries TCPXX, NOGATE, RFONLY, qAX or qAZ - tokens/q-constructs whose whole purpose is to forbid
-                                this packet reaching RF. Checked for every line inet2rfHandler() considers, not just messages. */
-    DROP_MSG_ADDRESSEE_INET, /**< INET->RF message whose addressee is itself Internet-connected and therefore already has it. */
-    DROP_TX_FAIL,            /**< APRS-IS TX attempted but the socket wasn't connected / the write failed (IGate). */
-    DROP_HEADER_OVERFLOW,    /**< IGate RF->INET header build overflowed its buffer (excessively long repeater path). */
-    DROP_PLACEHOLDER_CALL,   /**< RX frame's source callsign is the NOCALL/MYCALL sentinel (radio not configured / digipeater misconfigured), checked
-                                unconditionally at RX regardless of digi_en. */
-    DROP_MODEM_NOT_READY,    /**< RF TX attempted before the audio modem finished bring-up. */
-    DROP_TX_QUEUE_FULL,      /**< RF TX ring already holds "TX buffers" pending frames; new frame discarded instead of queued. */
-    DROP_TX_TOO_LONG,        /**< Outgoing TNC2 packet longer than the modem's frame buffer. */
-    DROP_TX_DUTY_CYCLE,      /**< Non-critical RF TX (beacon, object/item, weather, telemetry, or bulk IGate INET->RF relay) held back because the
-                                station's measured transmit airtime over the rolling duty-cycle window has reached the configured ceiling
-                                (g_config.duty_cycle_en/duty_cycle_pct). Message traffic and digipeat repeats are exempt and always transmit; the deferred
-                                frame is simply re-offered on its own next scheduled attempt, so this is a hold-back rather than a permanent loss. */
-    ERR_MODEM_SEND_FAIL,     /**< modem_send_tnc2() itself returned an error transmitting an RF frame. */
-    ERR_AX25_DECODE,         /**< RX frame too short or with an address field running past the frame end: a malformed/corrupted reception, not a
-                                well-formed non-APRS frame (see ERR_AX25_NOT_APRS for that case). */
-    ERR_AX25_NOT_APRS,       /**< RX frame decoded as a well-formed AX.25 frame but is not APRS: Control field not UI, or UI with a PID other than
-                                "no layer 3". Expected, benign traffic on a channel shared with legacy connected-mode packet stations - distinguished
-                                from ERR_AX25_DECODE so the dashboard can tell "channel has non-APRS traffic on it" apart from "my decoder is broken". */
-    DROP_DIGI_MALFORMED,     /**< Digipeater: frame too short to carry a destination / usable path. */
+    DROP_MSG_SENDER_LOCAL,    /**< INET->RF message whose sender was itself heard on RF inside the same window: both ends of the conversation are local, so the
+                                 original transmission was already on the air and gating the copy back would echo it. */
+    DROP_HEADER_FORBIDS_RF,   /**< INET->RF line whose header carries TCPXX, NOGATE, RFONLY, qAX or qAZ - tokens/q-constructs whose whole purpose is to forbid
+                                 this packet reaching RF. Checked for every line inet2rfHandler() considers, not just messages. */
+    DROP_MSG_ADDRESSEE_INET,  /**< INET->RF message whose addressee is itself Internet-connected and therefore already has it. */
+    DROP_TX_FAIL,             /**< APRS-IS TX attempted but the socket wasn't connected / the write failed (IGate). */
+    DROP_HEADER_OVERFLOW,     /**< IGate RF->INET header build overflowed its buffer (excessively long repeater path). */
+    DROP_IS_LINE_TOO_LONG,    /**< IGate RF->INET gated frame (header + info field) would exceed the 512-byte APRS-IS line limit and was refused instead of
+                                 being sent truncated. */
+    DROP_IS_RX_LINE_TOO_LONG, /**< A line received from APRS-IS exceeded the 512-byte APRS-IS line limit; the whole line was discarded up to the next
+                                terminator instead of being processed truncated. */
+    DROP_PLACEHOLDER_CALL,    /**< RX frame's source callsign is the NOCALL/MYCALL sentinel (radio not configured / digipeater misconfigured), checked
+                                 unconditionally at RX regardless of digi_en. */
+    DROP_MODEM_NOT_READY,     /**< RF TX attempted before the audio modem finished bring-up. */
+    DROP_TX_QUEUE_FULL,       /**< RF TX ring already holds "TX buffers" pending frames; new frame discarded instead of queued. */
+    DROP_TX_TOO_LONG,         /**< Outgoing TNC2 packet longer than the modem's frame buffer. */
+    DROP_TX_DUTY_CYCLE,       /**< Non-critical RF TX (beacon, object/item, weather, telemetry, or bulk IGate INET->RF relay) held back because the
+                                 station's measured transmit airtime over the rolling duty-cycle window has reached the configured ceiling
+                                 (g_config.duty_cycle_en/duty_cycle_pct). Message traffic and digipeat repeats are exempt and always transmit; the deferred
+                                 frame is simply re-offered on its own next scheduled attempt, so this is a hold-back rather than a permanent loss. */
+    ERR_MODEM_SEND_FAIL,      /**< modem_send_tnc2() itself returned an error transmitting an RF frame. */
+    ERR_AX25_DECODE,          /**< RX frame too short or with an address field running past the frame end: a malformed/corrupted reception, not a
+                                 well-formed non-APRS frame (see ERR_AX25_NOT_APRS for that case). */
+    ERR_AX25_NOT_APRS,        /**< RX frame decoded as a well-formed AX.25 frame but is not APRS: Control field not UI, or UI with a PID other than
+                                 "no layer 3". Expected, benign traffic on a channel shared with legacy connected-mode packet stations - distinguished
+                                 from ERR_AX25_DECODE so the dashboard can tell "channel has non-APRS traffic on it" apart from "my decoder is broken". */
+    DROP_DIGI_MALFORMED,      /**< Digipeater: frame too short to carry a destination / usable path. */
     DROP_DIGI_PLACEHOLDER_CALL, /**< Digipeater: source callsign is the NOCALL/MYCALL sentinel. */
     DROP_DIGI_ALREADY_USED,     /**< Digipeater: path already carries this digipeater's call marked used ('*'). */
     DROP_DIGI_PATH_FULL,  /**< Digipeater: path already at the AX.25 maximum (8) repeater addresses; inserting our call would overflow rpt_list/rpt_flags. */

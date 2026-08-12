@@ -141,6 +141,12 @@ the dashboard can show "N dropped because X" rather than one opaque aggregate.
    ``EA,EB,EC``), else it is dropped (``DROP_PREFIX_FILTER``).
 #. **Budlist.** The source callsign is tested against the local
    whitelist/blacklist in ``g_config.rf2inet_budlist_mode`` (``DROP_BUDLIST``).
+#. **APRS-IS line-length limit.** Once the ``qAR``/``qAO`` header is built, its
+   length plus the CR/LF-stripped info field is checked against the 512-byte
+   APRS-IS line limit (``aprs-is.net/Connecting.aspx``, expressed as
+   ``APRS_IS_LINE_MAX`` = 510 usable bytes). A frame that would not fit is
+   dropped whole, with a warning naming its length, rather than sent as a
+   truncated fragment (``DROP_IS_LINE_TOO_LONG``).
 
 A frame that survives all stages gets a ``,qAR,<mycall>-<ssid>`` or
 ``,qAO,<mycall>-<ssid>`` header and is written to APRS-IS. Per QCON the
@@ -165,7 +171,14 @@ own login identity.
 INET → RF (``inet2rfHandler()``)
 ================================
 
-Every non-``#`` line read off the socket increments ``isRxCount`` and is handed
+Every line read off the socket is first checked against the 512-byte APRS-IS
+line limit as it is accumulated. A line that exceeds it is discarded in full —
+every further byte up to the next terminator is consumed without being stored,
+so the framer resynchronises cleanly on the following line instead of handing
+a truncated fragment downstream — and counted under
+``DROP_IS_RX_LINE_TOO_LONG``.
+
+Every non-``#`` line within the limit increments ``isRxCount`` and is handed
 to the message engine (``handleIncomingAPRS()``) when messaging is on. It is
 then considered for re-transmission on RF only if ``inet2rf`` is set, and only
 after passing:
@@ -298,7 +311,8 @@ The ``igate_stats_t`` snapshot (``igate_get_stats()``) carries:
        stages above cover ``DROP_TOO_SHORT``, ``DROP_PATH_TOKEN``,
        ``DROP_SAT_NOT_USED``, ``DROP_3RDPARTY_LOOP``, ``DROP_GENERIC_QUERY``,
        ``DROP_TYPE_FILTER``, ``DROP_RANGE_FILTER``, ``DROP_PREFIX_FILTER``,
-       ``DROP_BUDLIST`` and ``DROP_TX_FAIL``; the
+       ``DROP_BUDLIST``, ``DROP_IS_LINE_TOO_LONG`` and ``DROP_TX_FAIL``; the
+       RX line reader above covers ``DROP_IS_RX_LINE_TOO_LONG``. The
        array also carries reasons bumped elsewhere in the firmware (RF TX
        path, digipeater, AX.25 decode) — see ``drop_reason_t`` in
        ``components/igate/include/igate.h`` for the complete, authoritative
