@@ -182,10 +182,14 @@ IGate (RF <-> APRS-IS)
      - ✅
      - ✅
      - Modalità per direzione: disattivato / whitelist / blacklist
-   * - Filtro per tipo di payload (msg/status/tlm/wx/obj/item/query/buoy/position)
+   * - Filtro per tipo di payload (msg/status/tlm/wx/obj/item/query/buoy/position/other)
      - ✅ (principalmente tramite filtri APRS-IS)
      - ✅
-     - Locale, basato su bitmask, applicato in entrambe le direzioni indipendentemente dal filtro del server
+     - Locale, basato su bitmask, applicato in entrambe le direzioni indipendentemente dal filtro del server. La casella "Altri" copre i tipi di payload che non hanno un bit proprio — capacità di stazione, formati definiti dall'utente, radiogoniometria Agrelo, radiofari di locatore Maidenhead e l'elemento di mappa riservato — così sono instradabili invece di essere scartati in silenzio. Il traffico di terze parti e i dati di test restano fuori da ogni bit e non vengono mai ritrasmessi
+   * - Decodifica in ricezione dei campi attorno a una posizione
+     - ⚠️ (Xastir e aprs.fi li decodificano; la maggior parte dei firmware di sola gateway no)
+     - ✅
+     - La marca temporale propria del rapporto, i byte compressi di rotta/velocità, portata radio e altitudine, l'estensione dati da 7 byte (PHG, la forma PHGR da nove byte, RNG, DFS, CSE/SPD o vento), il token ``/A=`` e il raffinamento ``!DAO!`` sono letti in un'unica passata e mostrati nella colonna DECODIFICATO della tabella del traffico. ``!DAO!`` raffina inoltre la coordinata misurata dal filtro di distanza. La tabella LAST HEARD continua di proposito a marcare le sue voci con l'ora locale di ricezione: risponde a quando questa stazione ha sentito un nominativo, che è anche ciò da cui dipende il gate dei messaggi INET→RF
    * - Gestione pacchetti di terze parti (``}``) / protezione anti-loop
      - ✅ (critico, spesso manuale)
      - ✅
@@ -514,7 +518,7 @@ Meteo
    * - Ricezione/registrazione dei report WX di altre stazioni
      - ✅ (overlay mappa Xastir, aprs.fi)
      - ⚠️
-     - Decodificato/instradato/digipeated come qualsiasi pacchetto, ma non c'è una vista dedicata di storico WX nell'amministrazione web
+     - Viene classificato, instradato e digipeated come qualsiasi pacchetto, e ritrasmesso byte per byte, ma i valori non vengono decodificati di proposito: né il rapporto meteo completo, né la forma senza posizione, né i formati grezzi Peet Bros e Ultimeter vengono trasformati in letture, quindi non c'è una vista WX delle altre stazioni nell'amministrazione web. Una stazione che invia meteo grezzo o senza posizione deve inoltre inviare la propria posizione separatamente, quindi il filtro di distanza non ha una coordinata per essa e la lascia passare solo per il filtro di tipo
 
 Telemetria
 -----------
@@ -565,7 +569,7 @@ Telemetria
    * - Ricezione/grafico della telemetria altrui
      - ✅ (grafici Xastir, aprs.fi)
      - ❌
-     - Non implementato — nessuna vista di grafico/storico per la telemetria ricevuta
+     - Non implementato — nessuna vista di grafico/storico per la telemetria ricevuta. I rapporti ``T#`` e le definizioni ``PARM./UNIT./EQNS./BITS.`` in arrivo vengono classificati per l'instradamento e ritrasmessi byte per byte, che è quanto un IGate deve loro, ma i loro valori non vengono mai analizzati, di proposito
 
 Oggetti, Item, Bollettini, Stato
 ------------------------------------

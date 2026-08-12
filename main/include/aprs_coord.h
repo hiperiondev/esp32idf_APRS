@@ -221,6 +221,29 @@ void aprs_compressed_cs_from_course_speed(unsigned course_deg, unsigned speed_kn
 #define APRS_COMPRESSED_T_BYTE_ALTITUDE 'S'
 
 /**
+ * @brief Bit mask selecting the NMEA source field of the compression type
+ * (T) byte, once ::APRS_COMPRESSED_BASE91_OFFSET has been subtracted
+ * (APRS101 chapter 9).
+ *
+ * The field is two bits wide and names the sentence the position came from:
+ * 0 = other, 1 = GLL, 2 = GGA, 3 = RMC. It is what tells a receiver whether
+ * the cs pair holds an altitude, since only a GGA fix carries one.
+ */
+#define APRS_COMPRESSED_T_NMEA_MASK 0x18
+
+/**
+ * @brief Value of the ::APRS_COMPRESSED_T_NMEA_MASK field, already shifted
+ * down, that marks a GGA source and therefore an altitude in the cs pair.
+ */
+#define APRS_COMPRESSED_T_NMEA_GGA 2
+
+/**
+ * @brief Bit position of the ::APRS_COMPRESSED_T_NMEA_MASK field within the
+ * compression type byte.
+ */
+#define APRS_COMPRESSED_T_NMEA_SHIFT 3
+
+/**
  * @brief Numeric value of the first compressed cs byte that selects the
  * pre-calculated radio range form, i.e. ASCII '{'.
  *

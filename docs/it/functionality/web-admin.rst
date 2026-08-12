@@ -43,8 +43,11 @@ Le pagine
    * - **Dashboard**
      - Pillole di Network Status (Wi-Fi, APRS-IS via ``igate_is_connected()``),
        un pannello STATISTICS, una tabella LAST HEARD con icone di simbolo, e una
-       tabella di traffico in tempo reale (DX / PACKET / AUDIO) alimentata da
-       long-poll basato su sequenza.
+       tabella di traffico in tempo reale (DX / PACKET / DECODIFICATO / AUDIO)
+       alimentata da long-poll basato su sequenza. DECODIFICATO riporta ciò che
+       è stato letto dal payload stesso — la marca temporale propria del
+       pacchetto, rotta, velocità, altitudine, portata radio e PHG — e resta
+       vuoto per un payload che non ne porta nessuno.
    * - **Station**
      - L'identità condivisa della propria stazione che ogni beacon, oggetto e
        messaggio legge: indicativo, latitudine, longitudine, altitudine
@@ -57,7 +60,10 @@ Le pagine
        di portata/prefisso, indicativo/SSID/passcode, quattro riquadri *APRS-IS
        Server* (ciascuno con casella Abilita più host e porta, usati come
        rotazione di failover), stringa di
-       filtro server, beacon on/off, posizione, intervallo, selettore di simbolo,
+       filtro server, nove caselle di tipo di payload per direzione (la nona,
+       *Altri*, copre capacità di stazione, formati definiti dall'utente,
+       radiogoniometria Agrelo, radiofari di locatore Maidenhead e l'elemento di
+       mappa riservato), beacon on/off, posizione, intervallo, selettore di simbolo,
        oggetto, commento, stato, PHG. *Filtraggio Messaggi* contiene
        l'interruttore dei criteri per i messaggi INET→RF e la finestra di
        ascolto locale.
@@ -192,7 +198,9 @@ Feed in tempo reale
   APRS-IS.
 * ``/igate_traffic?since=<seq>`` — il delta del log di traffico (JSON). Ogni voce
   porta un'etichetta di direzione (``RX``/``TX``/``DIGI``/``INET2RF``/``RX-IS``),
-  l'indicativo DX, il pacchetto grezzo, e il livello audio in mV RMS (o −1). Il
+  l'indicativo DX, il pacchetto grezzo, il riepilogo dei campi decodificati
+  (``dec``, vuoto quando il payload non ne porta nessuno), e il livello audio in
+  mV RMS (o −1). Il
   corpo viene trasmesso una voce per chunk HTTP, così un client molto arretrato
   riceve comunque tutte le righe memorizzate: la risposta non ha un tetto di
   dimensione e il firmware non assembla mai l'intero documento in RAM. Il

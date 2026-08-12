@@ -645,6 +645,8 @@
 #define TR_TRAFFIC_COL_PACKET "PACCHETTO"
 /** Italian text for the traffic-log column heading or label for col audio, rendered on the dashboard. English: "AUDIO". */
 #define TR_TRAFFIC_COL_AUDIO "AUDIO"
+/** Italian text for the column header of the IGate traffic table holding the fields decoded out of the packet. English: "DECODED". */
+#define TR_TRAFFIC_COL_DECODED "DECODIFICATO"
 /** Italian text for the system-information row label for chip, rendered on the dashboard. English: "Chip". */
 #define TR_SYSINFO_CHIP "Chip"
 /** Italian text for the system-information row label for model, rendered on the dashboard. English: "Model:". */
@@ -1257,6 +1259,9 @@
 #define TR_FILT_BUOY "Boa"
 /** Italian text for the aPRS-IS filter editor label for position, rendered on the IGate page. English: "Position". */
 #define TR_FILT_POSITION "Posizione"
+/** Italian text for the APRS-IS filter editor label for the payload kinds that share one bit (capacità, formati definiti dall'utente, radiogoniometria,
+ * radiofari di locatore, elemento di mappa), rendered on the IGate page. English: "Other". */
+#define TR_FILT_OTHER "Altri"
 
 /** Italian text for the form label for the "callsign filter" field or fieldset, rendered on the IGate page. English: "Callsign Filter". */
 #define TR_F_CALLSIGN_FILTER "Filtro Nominativi"

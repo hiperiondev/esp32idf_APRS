@@ -606,6 +606,8 @@
 #define TR_TRAFFIC_COL_PACKET "PACKET"
 /** Traffic-log column heading or label for col audio, rendered on the dashboard. */
 #define TR_TRAFFIC_COL_AUDIO "AUDIO"
+/** Column header of the IGate traffic table holding the fields decoded out of the packet. */
+#define TR_TRAFFIC_COL_DECODED "DECODED"
 /** System-information row label for chip, rendered on the dashboard. */
 #define TR_SYSINFO_CHIP "Chip"
 /** System-information row label for model, rendered on the dashboard. */
@@ -1193,6 +1195,9 @@
 #define TR_FILT_BUOY "Buoy"
 /** APRS-IS filter editor label for position, rendered on the IGate page. */
 #define TR_FILT_POSITION "Position"
+/** APRS-IS filter editor label for the payload kinds that share one bit (capabilities, user-defined, direction finding, locator beacons, map feature), rendered
+ * on the IGate page. */
+#define TR_FILT_OTHER "Other"
 
 /** Form label for the "callsign filter" field or fieldset, rendered on the IGate page. */
 #define TR_F_CALLSIGN_FILTER "Callsign Filter"

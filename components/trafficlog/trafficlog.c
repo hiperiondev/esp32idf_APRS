@@ -37,6 +37,7 @@
 #define TRAFFICLOG_TEXT_LEN 144
 #define TRAFFICLOG_DIR_LEN  12 // max chars for the direction/type tag
 #define TRAFFICLOG_DX_LEN   16 // max chars for the DX (callsign) field
+#define TRAFFICLOG_DEC_LEN  48 // max chars for the decoded-fields summary
 
 // Worst-case length of the reconstructed "m" field for a PKT entry,
 // "<dir>: <text>": DIR_LEN + strlen(": ") + TEXT_LEN, all buffers being
@@ -50,14 +51,14 @@
 // above. Every escaped field is bounded by its own destination buffer in
 // trafficlog_next_json(), which json_escape() never overruns, so the four
 // widths doubled plus these four numbers bound the whole object.
-#define TRAFFICLOG_JSON_TEMPLATE_LEN 52 // punctuation and key names of the object template
+#define TRAFFICLOG_JSON_TEMPLATE_LEN 61 // punctuation and key names of the object template
 #define TRAFFICLOG_JSON_TIME_LEN     20 // widest "t" value: int64 milliseconds, sign included
 #define TRAFFICLOG_JSON_AUDIO_LEN    11 // widest "au" value: int, sign included
 #define TRAFFICLOG_JSON_SYM_LEN      7  // "sym" is at most "<code>-<table>", held in a char[8]
 
 _Static_assert(TRAFFICLOG_JSON_ENTRY_MAX >= TRAFFICLOG_JSON_TEMPLATE_LEN + TRAFFICLOG_JSON_TIME_LEN + TRAFFICLOG_JSON_AUDIO_LEN + TRAFFICLOG_JSON_SYM_LEN +
                                                 (TRAFFICLOG_M_LEN * 2 - 1) + (TRAFFICLOG_DIR_LEN * 2 - 1) + (TRAFFICLOG_DX_LEN * 2 - 1) +
-                                                (TRAFFICLOG_TEXT_LEN * 2 - 1) + 1,
+                                                (TRAFFICLOG_TEXT_LEN * 2 - 1) + (TRAFFICLOG_DEC_LEN * 2 - 1) + 1,
                "TRAFFICLOG_JSON_ENTRY_MAX is too small for the entry field widths");
 
 // Which of the two mutually-exclusive roles the shared 'text' buffer plays for
@@ -75,6 +76,7 @@ typedef struct {
     char text[TRAFFICLOG_TEXT_LEN]; // shared: free-form "m" line OR raw packet (see 'kind')
     char dir[TRAFFICLOG_DIR_LEN];   // direction/type tag ("d"), e.g. RX/TX/DIGI
     char dx[TRAFFICLOG_DX_LEN];     // station callsign ("dx")
+    char dec[TRAFFICLOG_DEC_LEN];   // fields decoded out of the payload ("dec"), empty when there are none
     int audio_mv;                   // demodulated audio level, mV RMS, -1 = n/a ("au")
     char sym_table;                 // APRS symbol table byte, 0 = unknown
     char sym_code;                  // APRS symbol code byte, 0 = unknown
@@ -139,7 +141,7 @@ void trafficlog_add(const char *fmt, ...) {
     xSemaphoreGive(s_lock);
 }
 
-void trafficlog_add_pkt(const char *dir, const char *dx, const char *packet, int audio_mv, char sym_table, char sym_code) {
+void trafficlog_add_pkt(const char *dir, const char *dx, const char *packet, const char *decoded, int audio_mv, char sym_table, char sym_code) {
     if (!s_inited)
         trafficlog_init();
 
@@ -149,6 +151,8 @@ void trafficlog_add_pkt(const char *dir, const char *dx, const char *packet, int
         dx = "";
     if (!packet)
         packet = "";
+    if (!decoded)
+        decoded = "";
 
     trafficlog_entry_t *e = push_entry();
     if (!e)
@@ -158,6 +162,7 @@ void trafficlog_add_pkt(const char *dir, const char *dx, const char *packet, int
     strncpy(e->dir, dir, sizeof(e->dir) - 1);
     strncpy(e->dx, dx, sizeof(e->dx) - 1);
     strncpy(e->text, packet, sizeof(e->text) - 1); // raw TNC2 packet ("pkt")
+    strncpy(e->dec, decoded, sizeof(e->dec) - 1);
     e->audio_mv = audio_mv;
     e->sym_table = sym_table;
     e->sym_code = sym_code;
@@ -225,10 +230,12 @@ size_t trafficlog_next_json(uint32_t after_seq, uint32_t max_seq, char *out, siz
     char escDir[TRAFFICLOG_DIR_LEN * 2];
     char escDx[TRAFFICLOG_DX_LEN * 2];
     char escPkt[TRAFFICLOG_TEXT_LEN * 2];
+    char escDec[TRAFFICLOG_DEC_LEN * 2];
     json_escape(m_src, escM, sizeof(escM));
     json_escape(e.dir, escDir, sizeof(escDir));
     json_escape(e.dx, escDx, sizeof(escDx));
     json_escape(pkt_src, escPkt, sizeof(escPkt));
+    json_escape(e.dec, escDec, sizeof(escDec));
 
     // Matches lastheard_dump_json()'s icon naming: aprs.dprns.com serves
     // icons as /symbols/icons/<symbol_code>-<1_or_2>.png, where 1 = the
@@ -241,8 +248,8 @@ size_t trafficlog_next_json(uint32_t after_seq, uint32_t max_seq, char *out, siz
 
     // out_size is at least TRAFFICLOG_JSON_ENTRY_MAX, which the static
     // assertion above ties to these field widths, so this cannot truncate.
-    int n = snprintf(out, out_size, "{\"t\":%lld,\"m\":\"%s\",\"d\":\"%s\",\"dx\":\"%s\",\"pkt\":\"%s\",\"au\":%d,\"sym\":\"%s\"}", (long long)e.time_ms, escM,
-                     escDir, escDx, escPkt, e.audio_mv, sym);
+    int n = snprintf(out, out_size, "{\"t\":%lld,\"m\":\"%s\",\"d\":\"%s\",\"dx\":\"%s\",\"pkt\":\"%s\",\"dec\":\"%s\",\"au\":%d,\"sym\":\"%s\"}",
+                     (long long)e.time_ms, escM, escDir, escDx, escPkt, escDec, e.audio_mv, sym);
     if (n < 0)
         return 0;
 

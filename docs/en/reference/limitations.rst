@@ -175,10 +175,14 @@ IGate (RF <-> APRS-IS)
      - ✅
      - ✅
      - Per-direction mode: off / whitelist / blacklist
-   * - Payload-type gating (msg/status/tlm/wx/obj/item/query/buoy/position)
+   * - Payload-type gating (msg/status/tlm/wx/obj/item/query/buoy/position/other)
      - ✅ (via APRS-IS filters mostly)
      - ✅
-     - Local, bitmask-based, applied on both directions independently of the server filter
+     - Local, bitmask-based, applied on both directions independently of the server filter. The "other" checkbox covers the payload kinds with no bit of their own — station capabilities, user-defined formats, Agrelo direction finding, Maidenhead locator beacons and the reserved map feature — so they are gateable instead of silently dropped. Third-party traffic and test data stay outside every bit and are never relayed
+   * - Receive-side decoding of the fields around a position
+     - ⚠️ (Xastir and aprs.fi decode them; most gateway-only firmwares do not)
+     - ✅
+     - The report's own timestamp, the compressed course/speed, radio range and altitude bytes, the 7-byte data extension (PHG, the nine-byte PHGR form, RNG, DFS, CSE/SPD or wind), the ``/A=`` token and the ``!DAO!`` refinement are read in one pass and shown in the DECODED column of the traffic table. ``!DAO!`` also refines the coordinate the range gate measures. The LAST HEARD table keeps stamping entries with the local receive time on purpose: it answers when this station heard a callsign, which is also what the INET→RF message gate depends on
    * - Third-party (``}``) packet handling / loop protection
      - ✅ (critical, often manual)
      - ✅
@@ -491,7 +495,7 @@ Weather
    * - Receiving/logging other stations' WX reports
      - ✅ (Xastir map overlays, aprs.fi)
      - ⚠️
-     - Decoded/gated/digipeated like any packet, but there is no dedicated WX-history display in the web admin
+     - Classified, gated and digipeated like any packet, and relayed byte for byte, but the values are deliberately not decoded: neither the complete weather report, nor the positionless form, nor the raw Peet Bros and Ultimeter formats are parsed into readings, so there is no WX display for other stations in the web admin. A station sending a raw or positionless weather report also has to send its position separately, so the range gate has no coordinate for it and lets it through on the type filter alone
 
 Telemetry
 ----------
@@ -540,7 +544,7 @@ Telemetry
    * - Receiving/graphing others' telemetry
      - ✅ (Xastir, aprs.fi graphs)
      - ❌
-     - Not implemented — no telemetry-graphing/history view for received data
+     - Not implemented — no telemetry-graphing/history view for received data. Received ``T#`` reports and ``PARM./UNIT./EQNS./BITS.`` definitions are classified for gating and relayed byte for byte, which is what an IGate owes them, but their values are deliberately never parsed
 
 Objects, Items, Bulletins, Status
 ------------------------------------

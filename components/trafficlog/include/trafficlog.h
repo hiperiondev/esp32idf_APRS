@@ -72,11 +72,16 @@ void trafficlog_add(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
  * @param dir       Short direction/type tag, e.g. "RX", "TX", "DIGI", "RX-IS".
  * @param dx        Station callsign this entry is associated with (may be "").
  * @param packet    Raw TNC2 packet text (may be "").
+ * @param decoded   One-line summary of the fields read out of the payload -
+ *                  timestamp, course, speed, altitude, radio range, PHG -
+ *                  as produced by aprs_filter_format_report(). NULL or ""
+ *                  leaves the DECODED column of the entry empty, which is
+ *                  what a payload carrying none of those fields yields.
  * @param audio_mv  Demodulated audio level in mV RMS, or -1 if not available.
  * @param sym_table APRS symbol table byte ('/' or '\\'), or 0 if unknown.
  * @param sym_code  APRS symbol code byte, or 0 if unknown.
  */
-void trafficlog_add_pkt(const char *dir, const char *dx, const char *packet, int audio_mv, char sym_table, char sym_code);
+void trafficlog_add_pkt(const char *dir, const char *dx, const char *packet, const char *decoded, int audio_mv, char sym_table, char sym_code);
 
 /**
  * @brief Upper bound, in bytes, on what trafficlog_next_json() writes for a
@@ -89,7 +94,7 @@ void trafficlog_add_pkt(const char *dir, const char *dx, const char *packet, int
  * of a ring entry and is checked against them by a static assertion in
  * trafficlog.c, so it cannot fall behind if those widths change.
  */
-#define TRAFFICLOG_JSON_ENTRY_MAX 768
+#define TRAFFICLOG_JSON_ENTRY_MAX 896
 
 /**
  * @brief Sequence number of the newest entry currently in the ring buffer.

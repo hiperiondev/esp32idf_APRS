@@ -348,7 +348,7 @@ static bool sendToAprsIs(const uint8_t *data, size_t len) {
         // the RF->INET gatewaying path specifically.
         s_stats.isTxCount++;
         ESP_LOGI(TAG, "APRS-IS TX: %.*s", (int)len, (const char *)data);
-        trafficlog_add_pkt("TX", dx, pkt, -1, 0, 0);
+        trafficlog_add_pkt("TX", dx, pkt, "", -1, 0, 0);
     } else {
         // Every failed APRS-IS TX (socket not connected, or the write
         // itself failed) counts as a drop here, at the single choke point
@@ -359,7 +359,7 @@ static bool sendToAprsIs(const uint8_t *data, size_t len) {
         // DROP/ERR tally, which reads igate_stats_total_drop().
         s_stats.dropByReason[DROP_TX_FAIL]++;
         ESP_LOGW(TAG, "APRS-IS TX failed (not connected?): %.*s", (int)len, (const char *)data);
-        trafficlog_add_pkt("TX-FAIL", dx, pkt, -1, 0, 0);
+        trafficlog_add_pkt("TX-FAIL", dx, pkt, "", -1, 0, 0);
     }
     return ok;
 }
@@ -1222,15 +1222,28 @@ static void igateTask(void *arg) {
                                 // the source SSID of the TNC2 header, in the
                                 // precedence order of APRS101 chapter 21.
                                 char symTable = 0, symCode = 0;
+                                char decoded[APRS_RX_DECODED_BUF_SIZE] = "";
                                 const char *colon = strchr(line, ':');
                                 if (colon) {
                                     const char *info = colon + 1;
                                     size_t infoLen = strlen(info);
                                     if (!aprs_extract_symbol(info, infoLen, &symTable, &symCode) && infoLen > 0)
                                         aprs_symbol_from_tnc2_header(line, info[0], &symTable, &symCode);
+
+                                    // Same decode as the RF path, and the one
+                                    // place where it earns more than display:
+                                    // a packet relayed through APRS-IS reaches
+                                    // this station later than it was sent, so
+                                    // its own timestamp is the only statement
+                                    // of when the sender was where it says.
+                                    char destCall[10];
+                                    aprs_rx_report_t report;
+                                    const char *dest = aprs_tnc2_dest_call(line, destCall, sizeof(destCall)) ? destCall : NULL;
+                                    if (aprs_filter_decode_report(info, dest, &report))
+                                        aprs_filter_format_report(&report, decoded, sizeof(decoded));
                                 }
 
-                                trafficlog_add_pkt("RX-IS", dx, line, -1, symTable, symCode);
+                                trafficlog_add_pkt("RX-IS", dx, line, decoded, -1, symTable, symCode);
 
                                 // Mic-E position comment (APRS101 ch.10),
                                 // carried in the destination address and so

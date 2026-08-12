@@ -148,9 +148,10 @@ esp_err_t page_dashboard(httpd_req_t *req) {
                                   "<th>" TR_DASH_LH_ICON "</th>"
                                   "<th>" TR_TRAFFIC_COL_DX "</th>"
                                   "<th>" TR_TRAFFIC_COL_PACKET "</th>"
+                                  "<th>" TR_TRAFFIC_COL_DECODED "</th>"
                                   "<th>" TR_TRAFFIC_COL_AUDIO "</th>"
                                   "</tr></thead><tbody id='trafficBody'>"
-                                  "<tr><td colspan='6'>" TR_TRAFFIC_WAITING "</td></tr>"
+                                  "<tr><td colspan='7'>" TR_TRAFFIC_WAITING "</td></tr>"
                                   "</tbody></table></div></fieldset>");
 
     httpd_resp_sendstr_chunk(
@@ -169,13 +170,13 @@ esp_err_t page_dashboard(httpd_req_t *req) {
              "}"
              "function renderTraffic(){"
              "var body=document.getElementById('trafficBody');"
-             "if(!trafficRows.length){body.innerHTML='<tr><td colspan=\"6\">" TR_TRAFFIC_WAITING "</td></tr>';return;}"
+             "if(!trafficRows.length){body.innerHTML='<tr><td colspan=\"7\">" TR_TRAFFIC_WAITING "</td></tr>';return;}"
              "var rows='';"
              "for(var i=trafficRows.length-1;i>=0;i--){"
              "var it=trafficRows[i];"
              "var au=(it.au!=null&&it.au>=0)?(it.au+' mV'):'-';"
              "rows+='<tr><td>'+(it.t/1000).toFixed(1)+'s</td><td>'+esc(it.d)+'</td><td>'+fmtIcon(it.sym)+'</td><td>'+esc(it.dx)+'</"
-             "td><td>'+esc(it.pkt||it.m)+'</td><td>'+esc(au)+'</td></tr>';"
+             "td><td>'+esc(it.pkt||it.m)+'</td><td>'+esc(it.dec||'-')+'</td><td>'+esc(au)+'</td></tr>';"
              "}"
              "body.innerHTML=rows;"
              "}"

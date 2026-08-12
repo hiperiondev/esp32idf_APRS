@@ -249,6 +249,20 @@ typedef enum {
 #define IGATE_FILT_QUERY     (1 << 6) /**< Queries. */
 #define IGATE_FILT_BUOY      (1 << 7) /**< Buoy position reports. */
 #define IGATE_FILT_POSITION  (1 << 8) /**< Plain position reports. */
+/**
+ * @brief Payload kinds that have no bit of their own: station capabilities
+ * ('<'), user-defined formats ('{'), Agrelo direction finding ('%'),
+ * Maidenhead locator beacons ('[') and the reserved map feature ('&').
+ *
+ * They share one checkbox because each is rare on its own and none has a
+ * setting a gateway operator would want to turn on or off independently of
+ * the others; what matters is that they are gateable at all, since a
+ * classification of 0 means "never relay" whatever the mask says. Third-party
+ * traffic ('}') and test data (',') are deliberately left out of this bit and
+ * keep their zero classification - re-gating third-party traffic is how IGate
+ * loops start, and test data is not meant to leave the channel it was sent on.
+ */
+#define IGATE_FILT_OTHER (1 << 9)
 /** @} */
 
 /**

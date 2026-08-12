@@ -43,8 +43,11 @@ Las páginas
    * - **Dashboard**
      - Píldoras de Network Status (Wi-Fi, APRS-IS vía ``igate_is_connected()``),
        un panel de STATISTICS, una tabla LAST HEARD con iconos de símbolo, y una
-       tabla de tráfico en vivo (DX / PACKET / AUDIO) alimentada por long-poll
-       basado en secuencia.
+       tabla de tráfico en vivo (DX / PACKET / DECODIFICADO / AUDIO) alimentada
+       por long-poll basado en secuencia. DECODIFICADO trae lo que se leyó de la
+       carga en sí — la marca de tiempo propia del paquete, rumbo, velocidad,
+       altitud, alcance de radio y PHG — y queda vacío para una carga que no
+       lleva ninguno de esos campos.
    * - **Station**
      - La identidad compartida de la propia estación que leen cada baliza,
        objeto y mensaje: indicativo, latitud, longitud, altitud
@@ -57,7 +60,10 @@ Las páginas
        de rango/prefijo, indicativo/SSID/passcode, cuatro recuadros *APRS-IS
        Server* (cada uno con casilla Habilitar más host y puerto, usados como
        rotación de failover), cadena de filtro
-       de servidor, baliza on/off, posición, intervalo, selector de símbolo,
+       de servidor, nueve casillas de tipo de carga por dirección (la novena,
+       *Otros*, cubre capacidades de estación, formatos definidos por el
+       usuario, radiogoniometría Agrelo, balizas de localizador Maidenhead y el
+       elemento de mapa reservado), baliza on/off, posición, intervalo, selector de símbolo,
        objeto, comentario, estado, PHG. *Filtrado de Mensajes* lleva el
        interruptor de criterios de mensajes INET→RF y la ventana de escucha
        local.
@@ -193,7 +199,9 @@ Feeds en vivo
   APRS-IS.
 * ``/igate_traffic?since=<seq>`` — el delta del registro de tráfico (JSON). Cada
   entrada lleva una etiqueta de dirección (``RX``/``TX``/``DIGI``/``INET2RF``/``RX-IS``),
-  el indicativo DX, el paquete crudo, y el nivel de audio en mV RMS (o −1). El
+  el indicativo DX, el paquete crudo, el resumen de campos decodificados
+  (``dec``, vacío cuando la carga no lleva ninguno), y el nivel de audio en mV
+  RMS (o −1). El
   cuerpo se transmite una entrada por fragmento HTTP, así que un cliente muy
   atrasado recibe igual todas las líneas guardadas: la respuesta no tiene tope
   de tamaño y el firmware nunca arma el documento completo en RAM. El ``seq``

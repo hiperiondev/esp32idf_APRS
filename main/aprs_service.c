@@ -666,8 +666,20 @@ static void aprs_msg_callback(ax25_msg_t *msg) {
     // serial console shows for RF activity, regardless of which
     // feature(s) below end up acting on it. AUDIO is the demodulated
     // signal level (mV RMS) reported by the AFSK/GFSK modem for this frame.
+    // DECODED holds the fields the payload carries next to its coordinates -
+    // its own timestamp, course, speed, altitude, radio range, PHG - read
+    // once here so a moving station reads as moving instead of as a bare
+    // packet line. A payload carrying none of them yields an empty string
+    // and an empty column.
+    char decoded[APRS_RX_DECODED_BUF_SIZE] = "";
+    {
+        aprs_rx_report_t report;
+        if (aprs_filter_decode_report((const char *)msg->info, msg->dst.call, &report))
+            aprs_filter_format_report(&report, decoded, sizeof(decoded));
+    }
+
     ESP_LOGI(TAG, "RX: %s", tnc2);
-    trafficlog_add_pkt("RX", callsign, tnc2, (int)msg->mVrms, symTable, symCode);
+    trafficlog_add_pkt("RX", callsign, tnc2, decoded, (int)msg->mVrms, symTable, symCode);
 
     // Mic-E position comment (APRS101 ch.10). It lives in the destination
     // address, so it never appears in the packet text above and would
@@ -748,7 +760,7 @@ static void aprs_msg_callback(ax25_msg_t *msg) {
             if (send_tnc2_impl(digiTnc2, (size_t)len, true)) {
                 atomic_fetch_add_explicit(&s_statDigi, 1, memory_order_relaxed);
                 ESP_LOGD(TAG, "DIGI TX: %s", digiTnc2);
-                trafficlog_add_pkt("DIGI", callsign, digiTnc2, -1, symTable, symCode);
+                trafficlog_add_pkt("DIGI", callsign, digiTnc2, decoded, -1, symTable, symCode);
             }
         }
     }
@@ -1391,7 +1403,7 @@ static void inet2rfHandler(const char *line) {
         if (send_tnc2_impl(thirdPartyFrame, (size_t)txLen, (type & IGATE_FILT_MESSAGE) != 0)) {
             atomic_fetch_add_explicit(&s_statInet2Rf, 1, memory_order_relaxed);
             ESP_LOGD(TAG, "INET2RF TX: %.*s", txLen, thirdPartyFrame);
-            trafficlog_add_pkt("INET2RF", budlistCall, thirdPartyFrame, -1, symTable, symCode);
+            trafficlog_add_pkt("INET2RF", budlistCall, thirdPartyFrame, "", -1, symTable, symCode);
 
             // MSG_CNT in the "?IGATE?" answer counts APRS messages this
             // gateway has passed, in both directions. srcLine's ':' ends

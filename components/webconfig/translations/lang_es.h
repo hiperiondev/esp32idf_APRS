@@ -645,6 +645,8 @@
 #define TR_TRAFFIC_COL_PACKET "PAQUETE"
 /** Spanish text for the traffic-log column heading or label for col audio, rendered on the dashboard. English: "AUDIO". */
 #define TR_TRAFFIC_COL_AUDIO "AUDIO"
+/** Spanish text for the column header of the IGate traffic table holding the fields decoded out of the packet. English: "DECODED". */
+#define TR_TRAFFIC_COL_DECODED "DECODIFICADO"
 /** Spanish text for the system-information row label for chip, rendered on the dashboard. English: "Chip". */
 #define TR_SYSINFO_CHIP "Chip"
 /** Spanish text for the system-information row label for model, rendered on the dashboard. English: "Model:". */
@@ -1257,6 +1259,9 @@
 #define TR_FILT_BUOY "Boya"
 /** Spanish text for the aPRS-IS filter editor label for position, rendered on the IGate page. English: "Position". */
 #define TR_FILT_POSITION "Posición"
+/** Spanish text for the APRS-IS filter editor label for the payload kinds that share one bit (capacidades, formatos definidos por el usuario, radiogoniometría,
+ * balizas de localizador, elemento de mapa), rendered on the IGate page. English: "Other". */
+#define TR_FILT_OTHER "Otros"
 
 /** Spanish text for the form label for the "callsign filter" field or fieldset, rendered on the IGate page. English: "Callsign Filter". */
 #define TR_F_CALLSIGN_FILTER "Filtro de Indicativos"

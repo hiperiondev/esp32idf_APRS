@@ -104,8 +104,8 @@ Time and position formats (ch. 6)
      - ✅
      - The only form this station originates, on positions, objects, status reports and weather. The clock runs in UTC throughout, so no timezone conversion is involved.
    * - Local day/hour/minute and hour/minute/second timestamps on receive
-     - ⚠️
-     - All three 7-byte timestamp forms are stepped over correctly when locating the position field, so no packet is misparsed. The timestamp value itself is not decoded or displayed — the receive time is used instead.
+     - ✅
+     - All four forms are read: the two zulu 7-byte forms, the legacy local-time one and the month/day/hour/minute stamp of a positionless weather report. The zulu forms are resolved to absolute UTC against the clock, stepping back a day, a month or a year when the value would otherwise land in the future, and the local form is reported exactly as the sender wrote it, since the packet does not name the time zone it is in. The value is shown in the DECODED column of the traffic table, which is what tells a packet relayed with minutes of latency apart from one just heard.
    * - Position ambiguity
      - ✅
      - One to four digits blanked on transmit, station-wide. On receive the blanked minutes are parsed digit by digit and resolved to the centre of the ambiguity box, so a coarse position still range-filters sensibly instead of collapsing toward the degree boundary.
@@ -114,7 +114,7 @@ Time and position formats (ch. 6)
      - The six-digit ``/A=`` form in comments, per station role, plus the base-91 form inside Mic-E.
    * - High-precision ``!DAO!`` and datum option
      - ✅
-     - Transmitted on uncompressed positions and inside the Mic-E text field, suppressed when position ambiguity is in use or the compressed layout is selected — both of which already carry a different precision claim. Received packets are not re-refined by their ``!DAO!``, which costs about 18 m of resolution in the range filter and nothing else.
+     - Transmitted on uncompressed positions and inside the Mic-E text field, suppressed when position ambiguity is in use or the compressed layout is selected — both of which already carry a different precision claim. A received token is applied the other way round, on both of its on-air forms — the human-readable digits and the base-91 one most trackers emit — so an incoming uncompressed position is refined by up to about 18 m before the range gate measures it. A compressed report is left alone, since its base-91 fields already carry that precision.
    * - Raw NMEA position reports (``$``)
      - ✅
      - ``RMC``, ``GGA`` and ``GLL`` sentences are decoded on receive, with any two-letter talker identifier so that multi-constellation receivers are covered as well as GPS-only ones. The optional checksum is enforced when present, and a sentence reporting an invalid fix is refused, so the IGate range filter never evaluates a station on a stale coordinate. ``$GPWPL`` names a waypoint rather than the sender's own fix and is deliberately left undecoded; ``$ULTW`` is a weather record and is routed as one.
@@ -153,6 +153,9 @@ Data extensions (ch. 7)
    * - Bearing and number/range/quality (BRG/NRQ)
      - ✅
      - Available on objects and items, in the ``000/000`` form the specification requires.
+   * - Data extensions on receive
+     - ✅
+     - The 7-byte slot of an incoming uncompressed report is parsed rather than read as the first seven characters of the comment: ``PHGphgd`` and its nine-byte PHGR form, ``RNGrrrr``, ``DFSshgd`` and ``CSE/SPD``, which is reported as wind direction and speed when the symbol is a weather station. The comment is then taken from the first byte past whichever token was found, so the nine-byte form no longer leaves a stray rate character and slash at its front.
    * - Area object descriptor
      - ✅
      - Full shape, colour and size encoding, including the rule that replaces the slash with a digit for colour values of ten and above.
@@ -192,7 +195,7 @@ Compressed position reports (ch. 9)
      - Selectable per service — tracker, IGate, digipeater and objects — and decoded on receive. Compression is automatically suppressed when a PHG or DF extension or position ambiguity is in use, since none of those survives the compressed layout; a pre-calculated radio range is the one extension that does, and folds into the two-byte field instead.
    * - Compressed course/speed and the compression type byte
      - ✅
-     - A moving tracker encodes course and speed into the two-byte field and sets the type byte to compressed course/speed with a current fix; a station with nothing to report sends the three-space "no data" encoding. The field quantises course to a 4 degree step and speed to a step of about 8 per cent, and the encoder keeps both bytes inside the range the course/speed form owns, so a token is never read back as the radio range form that shares those two bytes.
+     - A moving tracker encodes course and speed into the two-byte field and sets the type byte to compressed course/speed with a current fix; a station with nothing to report sends the three-space "no data" encoding. The field quantises course to a 4 degree step and speed to a step of about 8 per cent, and the encoder keeps both bytes inside the range the course/speed form owns, so a token is never read back as the radio range form that shares those two bytes. On receive the three bytes are read back the same way: the type byte decides between altitude, radio range and course/speed, so a moving station shows its heading and speed instead of a bare coordinate.
    * - Compressed pre-calculated radio range
      - ✅
      - A beacon whose data extension is the pre-calculated radio range folds it into the two-byte field — the reserved ``{`` marker followed by the range digit — rather than falling back to the uncompressed layout, so a coverage circle travels with a compressed position and no ``RNGrrrr`` token is left in the information field. The field quantises the range to a step of about 8 per cent, from a floor of 2 miles.
@@ -486,6 +489,14 @@ User-defined and other packet types (ch. 19–20)
    * - Reserved identifiers (map feature, shelter data, space weather)
      - ❌
      - Reserved by the specification and never defined further, so there is nothing to implement.
+
+None of the five identifiers above carries a payload this firmware decodes, but
+all five are classified for gating under one shared filter bit, the "Other"
+checkbox of the IGate Filter page, so a packet of any of those kinds can be
+forwarded to APRS-IS instead of being dropped whatever the operator ticks.
+Third-party traffic and test data stay deliberately unclassified and are never
+relayed: re-gating third-party traffic is how IGate loops start, and test data
+is not meant to leave the channel it was sent on.
 
 Symbols (ch. 21)
 ================

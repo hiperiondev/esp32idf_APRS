@@ -41,7 +41,10 @@ The pages
    * - **Dashboard**
      - Network Status pills (Wi-Fi, APRS-IS via ``igate_is_connected()``), a
        STATISTICS panel, a LAST HEARD table with symbol icons, and a live
-       traffic table (DX / PACKET / AUDIO) fed by sequence-based long polling.
+       traffic table (DX / PACKET / DECODED / AUDIO) fed by sequence-based long
+       polling. DECODED holds what was read out of the payload itself - the
+       packet's own timestamp, course, speed, altitude, radio range and PHG -
+       and is empty for a payload that carries none of them.
    * - **Station**
      - The shared own-station identity read by every beacon, object and
        message: callsign, latitude, longitude, altitude (``g_config.my_*``),
@@ -53,6 +56,9 @@ The pages
        gates, callsign/SSID/passcode, four *APRS-IS Server* fieldsets (each an
        Enable checkbox plus host and port, used as a failover rotation),
        server-side filter string,
+       nine payload-type checkboxes per direction (the ninth, *Other*, covers
+       station capabilities, user-defined formats, Agrelo direction finding,
+       Maidenhead locator beacons and the reserved map feature),
        beacon on/off, position, interval, symbol picker, object, comment,
        status, PHG. *Message Gating* holds the INET→RF message criteria switch
        and the heard-locally window.
@@ -177,7 +183,8 @@ Live feeds
 * ``/lastheard`` — the LAST HEARD table (JSON), fed from both RF and APRS-IS.
 * ``/igate_traffic?since=<seq>`` — the traffic log delta (JSON). Each entry
   carries a direction tag (``RX``/``TX``/``DIGI``/``INET2RF``/``RX-IS``), the DX
-  callsign, the raw packet, and the audio level in mV RMS (or −1). The body is
+  callsign, the raw packet, the decoded-fields summary (``dec``, empty when the
+  payload carries none), and the audio level in mV RMS (or −1). The body is
   streamed one entry per HTTP chunk, so a client that is far behind still gets
   every buffered line: the response has no size cap and the firmware never
   assembles the whole document in RAM. The ``seq`` it reports back is the

@@ -106,8 +106,8 @@ Formatos de hora y posición (cap. 6)
      - ✅
      - Es la única forma que esta estación origina, en posiciones, objetos, reportes de estado y meteorología. El reloj corre siempre en UTC, así que no interviene ninguna conversión de zona horaria.
    * - Marcas de tiempo local día/hora/minuto y hora/minuto/segundo en recepción
-     - ⚠️
-     - Las tres formas de marca de tiempo de 7 bytes se saltean correctamente al ubicar el campo de posición, así que ningún paquete se analiza mal. El valor de la marca en sí no se decodifica ni se muestra: se usa la hora de recepción.
+     - ✅
+     - Se leen las cuatro formas: las dos formas zulú de 7 bytes, la forma heredada de hora local y la marca mes/día/hora/minuto de un reporte meteorológico sin posición. Las formas zulú se resuelven a UTC absoluto contra el reloj, retrocediendo un día, un mes o un año cuando el valor caería en el futuro, y la forma local se reporta tal como la escribió el emisor, porque el paquete no nombra la zona horaria en la que está. El valor se muestra en la columna DECODIFICADO de la tabla de tráfico, que es lo que distingue un paquete retransmitido con minutos de latencia de uno recién escuchado.
    * - Ambigüedad de posición
      - ✅
      - De uno a cuatro dígitos en blanco al transmitir, a nivel de estación. Al recibir, los minutos en blanco se analizan dígito a dígito y se resuelven al centro de la caja de ambigüedad, así que una posición gruesa igual se filtra por distancia de forma razonable en vez de colapsar hacia el borde del grado.
@@ -116,7 +116,7 @@ Formatos de hora y posición (cap. 6)
      - La forma ``/A=`` de seis dígitos en los comentarios, por rol de estación, más la forma base-91 dentro de Mic-E.
    * - ``!DAO!`` de alta precisión y opción de datum
      - ✅
-     - Se transmite en posiciones sin comprimir y dentro del campo de texto Mic-E, y se suprime cuando hay ambigüedad de posición o se eligió el formato comprimido, porque ambos ya declaran otra precisión. Los paquetes recibidos no se refinan con su ``!DAO!``, lo que cuesta unos 18 m de resolución en el filtro de distancia y nada más.
+     - Se transmite en posiciones sin comprimir y dentro del campo de texto Mic-E, y se suprime cuando hay ambigüedad de posición o se eligió el formato comprimido, porque ambos ya declaran otra precisión. Un token recibido se aplica en sentido inverso, en sus dos formas de aire — los dígitos legibles y la forma base-91 que emite la mayoría de los trackers — así que una posición sin comprimir que llega se refina hasta unos 18 m antes de que el filtro de distancia la mida. Un reporte comprimido se deja como está, porque sus campos base-91 ya llevan esa precisión.
    * - Reportes de posición NMEA crudos (``$``)
      - ✅
      - Las sentencias ``RMC``, ``GGA`` y ``GLL`` se decodifican en recepción, con cualquier identificador de emisor de dos letras, de modo que quedan cubiertos tanto los receptores multiconstelación como los de solo GPS. La suma de verificación opcional se exige cuando está presente, y una sentencia que declara una fijación inválida se rechaza, así el filtro de distancia del IGate nunca evalúa una estación sobre una coordenada vieja. ``$GPWPL`` nombra un punto de ruta y no la fijación propia del emisor, y se deja deliberadamente sin decodificar; ``$ULTW`` es un registro meteorológico y se rutea como tal.
@@ -155,6 +155,9 @@ Extensiones de datos (cap. 7)
    * - Marcación y número/alcance/calidad (BRG/NRQ)
      - ✅
      - Disponible en objetos e ítems, en la forma ``000/000`` que exige la especificación.
+   * - Extensiones de datos en recepción
+     - ✅
+     - La ranura de 7 bytes de un reporte sin comprimir que llega se analiza en vez de leerse como los primeros siete caracteres del comentario: ``PHGphgd`` y su forma PHGR de nueve bytes, ``RNGrrrr``, ``DFSshgd`` y ``CSE/SPD``, que se reporta como dirección y velocidad del viento cuando el símbolo es una estación meteorológica. El comentario se toma después desde el primer byte posterior al token encontrado, así que la forma de nueve bytes ya no deja un carácter de tasa y una barra sueltos al frente.
    * - Descriptor de objeto de área
      - ✅
      - Codificación completa de forma, color y tamaño, incluida la regla que reemplaza la barra por un dígito para valores de color de diez en adelante.
@@ -194,7 +197,7 @@ Reportes de posición comprimidos (cap. 9)
      - Seleccionable por servicio — tracker, IGate, digipetidor y objetos — y se decodifica en recepción. La compresión se suprime automáticamente cuando hay una extensión PHG o DF o ambigüedad de posición, porque ninguna de ellas sobrevive al formato comprimido; el alcance de radio precalculado es la única extensión que sí lo hace, y se pliega en el campo de dos bytes.
    * - Rumbo/velocidad comprimidos y el byte de tipo de compresión
      - ✅
-     - Un tracker en movimiento codifica rumbo y velocidad en el campo de dos bytes y pone el byte de tipo en rumbo/velocidad comprimidos con posicionamiento actual; una estación sin nada que reportar manda la codificación de tres espacios de "sin datos". El campo cuantiza el rumbo en pasos de 4 grados y la velocidad en pasos de alrededor del 8 por ciento, y el codificador mantiene ambos bytes dentro del rango que pertenece a la forma de rumbo/velocidad, así que un token nunca se lee como la forma de alcance de radio que comparte esos dos bytes.
+     - Un tracker en movimiento codifica rumbo y velocidad en el campo de dos bytes y pone el byte de tipo en rumbo/velocidad comprimidos con posicionamiento actual; una estación sin nada que reportar manda la codificación de tres espacios de "sin datos". El campo cuantiza el rumbo en pasos de 4 grados y la velocidad en pasos de alrededor del 8 por ciento, y el codificador mantiene ambos bytes dentro del rango que pertenece a la forma de rumbo/velocidad, así que un token nunca se lee como la forma de alcance de radio que comparte esos dos bytes. En recepción los tres bytes se leen del mismo modo: el byte de tipo decide entre altitud, alcance de radio y rumbo/velocidad, así que una estación en movimiento muestra su rumbo y su velocidad en vez de una coordenada pelada.
    * - Alcance de radio precalculado comprimido
      - ✅
      - Una baliza cuya extensión de datos es el alcance de radio precalculado lo pliega en el campo de dos bytes — el marcador reservado ``{`` seguido del dígito de alcance — en vez de recaer en el formato sin comprimir, así que el círculo de cobertura viaja con una posición comprimida y no queda ningún token ``RNGrrrr`` en el campo de información. El campo cuantiza el alcance en pasos de alrededor del 8 por ciento, desde un piso de 2 millas.
@@ -488,6 +491,15 @@ Formatos definidos por el usuario y otros tipos de paquete (cap. 19-20)
    * - Identificadores reservados (elemento de mapa, datos de refugio, clima espacial)
      - ❌
      - Están reservados por la especificación y nunca se definieron más, así que no hay nada que implementar.
+
+Ninguno de los cinco identificadores de arriba lleva una carga que este
+firmware decodifique, pero los cinco se clasifican para el enrutado bajo un
+único bit de filtro compartido, la casilla "Otros" de la página IGate Filter,
+así que un paquete de cualquiera de esas clases puede reenviarse a APRS-IS en
+vez de descartarse haga lo que haga el operador. El tráfico de terceros y los
+datos de prueba quedan sin clasificar a propósito y nunca se retransmiten:
+re-enrutar tráfico de terceros es como empiezan los lazos de IGate, y los datos
+de prueba no están pensados para salir del canal en el que se mandaron.
 
 Símbolos (cap. 21)
 ==================

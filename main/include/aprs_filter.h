@@ -34,6 +34,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <time.h>
 
 #include "app_config.h"
 
@@ -165,6 +166,114 @@ bool aprs_filter_budlist_pass(budlist_mode_t mode, const char *call);
  * @return true if a position was found and decoded.
  */
 bool aprs_filter_decode_position(const char *info, const char *dst_call, float *out_lat, float *out_lon);
+
+// ---------------------------------------------------------------------------
+// Receive-side field decoding.
+//
+// Everything a well-formed report carries next to its coordinates: the
+// compressed cs/T pair (APRS101 chapter 9), the 7-byte data extension slot
+// that follows an uncompressed symbol code (chapter 7), the "/A=" altitude
+// token, the report's own timestamp (chapter 6) and the "!DAO!" precision
+// extension (aprs12/datum.txt). One pass over the information field fills all
+// of them, so a consumer that wants to show what a station is doing - moving,
+// how fast, how high, how far it reaches, and when it said so - does not have
+// to walk the payload again itself.
+// ---------------------------------------------------------------------------
+
+/** @brief Which data extension a received report carried, if any. */
+typedef enum {
+    APRS_RX_EXT_NONE = 0, /**< No extension: the 7-byte slot is comment text. */
+    APRS_RX_EXT_CSE_SPD,  /**< "CSE/SPD" course and speed. */
+    APRS_RX_EXT_WIND,     /**< Same layout on a weather symbol: wind direction and speed. */
+    APRS_RX_EXT_PHG,      /**< "PHGphgd", optionally with the 1.2 "PHGphgdr/" probe rate. */
+    APRS_RX_EXT_RNG,      /**< "RNGrrrr" pre-calculated radio range. */
+    APRS_RX_EXT_DFS       /**< "DFSshgd" omni-DF signal strength. */
+} aprs_rx_ext_t;
+
+/** @brief Value of ::aprs_rx_report_t::phg_rate_per_hour when the received
+ *  PHG extension carried no "probes" rate character. */
+#define APRS_RX_PHG_RATE_NONE (-1)
+
+/**
+ * @brief Everything aprs_filter_decode_report() reads out of one received
+ * information field.
+ *
+ * Every member is only meaningful when the matching @c has_ flag (or, for the
+ * extension sub-fields, @c ext) says so; the whole structure is zeroed on
+ * entry, so an untouched field reads as absent rather than as stale.
+ */
+typedef struct {
+    bool has_position; /**< A latitude/longitude was decoded. */
+    float lat;         /**< Latitude, decimal degrees, +N/-S. */
+    float lon;         /**< Longitude, decimal degrees, +E/-W. */
+    bool dao_refined;  /**< The position was refined by a "!DAO!" extension in the comment. */
+
+    bool has_course_speed; /**< Course and speed were decoded (compressed cs pair, data extension or Mic-E). */
+    uint16_t course_deg;   /**< Course over ground, degrees clockwise from true north, 0-359. */
+    float speed_kt;        /**< Speed over ground, knots. */
+
+    bool has_range;    /**< A pre-calculated radio range was decoded (compressed cs pair or "RNGrrrr"). */
+    float range_miles; /**< Omnidirectional radio range, statute miles. */
+    bool has_altitude; /**< An altitude was decoded (compressed cs pair, "/A=" token or Mic-E). */
+    float altitude_ft; /**< Altitude above mean sea level, feet. */
+
+    aprs_rx_ext_t ext;         /**< Which data extension occupied the 7-byte slot. */
+    uint16_t phg_power_w;      /**< PHG transmitter power, watts (::APRS_RX_EXT_PHG). */
+    uint32_t phg_height_ft;    /**< PHG/DFS antenna height above average terrain, feet. */
+    uint8_t phg_gain_db;       /**< PHG/DFS antenna gain, dB. */
+    uint8_t phg_dir;           /**< PHG/DFS directivity: 0 = omni, 1-8 = the eight compass octants. */
+    int16_t phg_rate_per_hour; /**< PHGR beacon rate, beacons/hour, or ::APRS_RX_PHG_RATE_NONE. */
+    uint8_t dfs_strength;      /**< DFS received signal strength, S-points (::APRS_RX_EXT_DFS). */
+
+    bool has_time;       /**< The report carried its own timestamp. */
+    bool time_is_zulu;   /**< true for the 'z'/'h' (UTC) forms, false for the legacy local-time '/' form. */
+    time_t time_utc;     /**< The timestamp as absolute UTC, or 0 when it is local time or the clock is unset. */
+    uint8_t time_day;    /**< Day of month, 0 when the format carries none (HMS). */
+    uint8_t time_hour;   /**< Hour, 0-23. */
+    uint8_t time_minute; /**< Minute, 0-59. */
+    uint8_t time_second; /**< Second, 0-59; 0 for the formats that carry no seconds. */
+} aprs_rx_report_t;
+
+/**
+ * @brief Decode one received information field into an ::aprs_rx_report_t.
+ *
+ * Uses the same data type identifier dispatch as
+ * aprs_filter_classify_info() to find where the position data starts, so the
+ * two can never disagree about a payload's layout. Handles the position
+ * report DTIs '!'/'='/'/'/'@', objects (';'), items (')'), raw NMEA ('$'),
+ * Mic-E ('`', '\'', 0x1c, 0x1d) and the positionless weather report ('_',
+ * timestamp only). Any other payload yields false.
+ *
+ * @param info NUL-terminated APRS information field.
+ * @param dst_call 6-character AX.25 destination address field, as decoded off
+ *                 the air. Only consulted for Mic-E DTIs; NULL is fine for
+ *                 every other payload type.
+ * @param out Destination, zeroed before anything is written to it.
+ * @return true if at least one field was decoded (a position, a timestamp or
+ *         a data extension).
+ */
+bool aprs_filter_decode_report(const char *info, const char *dst_call, aprs_rx_report_t *out);
+
+/**
+ * @brief Buffer size aprs_filter_format_report() needs for its longest output.
+ */
+#define APRS_RX_DECODED_BUF_SIZE 64
+
+/**
+ * @brief Render the decoded fields of a report as one short operator-facing
+ * line, e.g. "121530Z CSE 088 SPD 36kt ALT 1200ft".
+ *
+ * Only the fields the report actually carried appear, in a fixed order:
+ * timestamp, course/speed (or wind), altitude, range, PHG or DFS, and a
+ * "DAO" marker when the position was refined. A report with nothing to show
+ * produces an empty string.
+ *
+ * @param report Decoded report; NULL yields an empty string.
+ * @param out Destination buffer, always NUL-terminated when @p out_size > 0.
+ * @param out_size Size of @p out; ::APRS_RX_DECODED_BUF_SIZE always fits.
+ * @return Number of characters written, excluding the NUL terminator.
+ */
+size_t aprs_filter_format_report(const aprs_rx_report_t *report, char *out, size_t out_size);
 
 /**
  * @brief Report the Mic-E position comment carried by a received packet

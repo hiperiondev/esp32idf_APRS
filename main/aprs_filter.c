@@ -25,7 +25,9 @@
 
 #include "app_config.h"
 #include "aprs_coord.h"
+#include "aprs_dao.h"
 #include "aprs_filter.h"
+#include "str_append.h"
 #include "weather_telemetry.h"
 
 // ---------------------------------------------------------------------------
@@ -227,11 +229,23 @@ uint16_t aprs_filter_classify_info(const char *info) {
             return IGATE_FILT_POSITION;
 
         // ------------------------------------------------------------------
+        // Payload kinds with no bit of their own, gated together under
+        // IGATE_FILT_OTHER: station capabilities, user-defined formats,
+        // Agrelo direction finding, Maidenhead locator beacons (marked
+        // obsolete by APRS101 but still heard) and the reserved map feature.
+        // ------------------------------------------------------------------
+        case '<':
+        case '{':
+        case '%':
+        case '[':
+        case '&':
+            return IGATE_FILT_OTHER;
+
+        // ------------------------------------------------------------------
         // Deliberately unclassified -> never relayed, whatever the mask:
         //   '}'  third-party traffic (already gated once; re-gating it is how
         //        IGate loops are born)
-        //   '<'  station capabilities   ')' handled above
-        //   '{'  user-defined           ','  test/invalid data
+        //   ','  test/invalid data, which is not meant to leave its channel
         // ------------------------------------------------------------------
         default:
             return 0;
@@ -515,6 +529,8 @@ const char *aprs_filter_type_name(uint16_t type) {
             return "buoy";
         case IGATE_FILT_POSITION:
             return "position";
+        case IGATE_FILT_OTHER:
+            return "other";
         default:
             return "unknown";
     }
@@ -657,8 +673,9 @@ static bool decode_pos_uncompressed(const char *pos, float *lat, float *lon) {
     return true;
 }
 
-// Compressed position: table[1] lat[4] lon[4] code[1] (+ optional compression
-// type byte, not needed here). Standard APRS compressed-position formula.
+// Compressed position: table[1] lat[4] lon[4] code[1] cs[2] T[1]. Standard
+// APRS compressed-position formula for the coordinates; the three bytes that
+// follow the symbol code are read by decode_compressed_cs() below.
 static bool decode_pos_compressed(const char *pos, float *lat, float *lon) {
     size_t len = strlen(pos);
     if (len < 9)
@@ -673,16 +690,414 @@ static bool decode_pos_compressed(const char *pos, float *lat, float *lon) {
     return true;
 }
 
-static bool decode_pos(const char *pos, float *lat, float *lon) {
-    if (pos == NULL || pos[0] == 0)
-        return false;
-    if (isdigit((unsigned char)pos[0]))
-        return decode_pos_uncompressed(pos, lat, lon);
-    return decode_pos_compressed(pos, lat, lon);
+// ---------------------------------------------------------------------------
+// Receive-side field decoding (see aprs_filter.h).
+// ---------------------------------------------------------------------------
+
+// Length of the position field of each layout, i.e. the offset from its first
+// byte to the first byte that follows it: the 7-byte data extension slot for
+// the uncompressed layout, the comment for the compressed one (whose cs/T
+// bytes take the place of the extension).
+#define POS_UNCOMPRESSED_LEN 19
+#define POS_COMPRESSED_LEN   13
+
+// Width of the data extension slot, and of the "PHGphgdr/" form, which is the
+// one extension that is longer than the slot: APRS 1.2 appends the beacon
+// rate character and a mandatory slash (aprs.org/aprs12/probes.txt).
+#define EXT_SLOT_LEN 7
+#define EXT_PHGR_LEN 9
+
+// Highest antenna height code accepted from a received PHG/DFS extension.
+// Height is 10 * 2^code feet, so this stands for 10485760 ft - far past any
+// real antenna, and low enough that the shift stays inside uint32_t.
+#define EXT_HEIGHT_CODE_MAX 20
+
+// Timestamps carry no year, and often no month or day either, so they are
+// resolved against the current clock. A stamp that lands further ahead than
+// this belongs to the previous day, month or year rather than to the future.
+#define TIME_FUTURE_SLACK_SEC (12 * 3600)
+
+// Below this epoch the clock has not been set yet (no SNTP sync since boot),
+// so an absolute UTC value cannot be derived from a partial timestamp.
+#define TIME_CLOCK_VALID_EPOCH 1600000000
+
+// Decodes the three bytes that follow the symbol code of a compressed report
+// (APRS101 chapter 9). The pair means one of three things, and the
+// compression type byte is what says which: a GGA NMEA source puts an
+// altitude there, the reserved first-byte value 90 ('{') introduces a
+// pre-calculated radio range, and anything else is course and speed. A space
+// in the first byte means the sender put nothing there at all.
+static void decode_compressed_cs(const char *cs, aprs_rx_report_t *r) {
+    if (cs[0] == ' ')
+        return;
+
+    int c = (int)(unsigned char)cs[0] - APRS_COMPRESSED_BASE91_OFFSET;
+    int s = (int)(unsigned char)cs[1] - APRS_COMPRESSED_BASE91_OFFSET;
+    int t = (int)(unsigned char)cs[2] - APRS_COMPRESSED_BASE91_OFFSET;
+    if (c < 0 || c > APRS_COMPRESSED_CS_RANGE_MARKER || s < 0 || s > APRS_COMPRESSED_CS_DIGIT_MAX || t < 0)
+        return;
+
+    if (((t & APRS_COMPRESSED_T_NMEA_MASK) >> APRS_COMPRESSED_T_NMEA_SHIFT) == APRS_COMPRESSED_T_NMEA_GGA) {
+        r->has_altitude = true;
+        r->altitude_ft = powf(1.002f, (float)(c * 91 + s));
+        return;
+    }
+
+    if (c == APRS_COMPRESSED_CS_RANGE_MARKER) {
+        r->has_range = true;
+        r->range_miles = 2.0f * powf(1.08f, (float)s);
+        return;
+    }
+
+    r->has_course_speed = true;
+    r->course_deg = (uint16_t)((c * 4) % 360);
+    r->speed_kt = powf(1.08f, (float)s) - 1.0f;
 }
 
-bool aprs_filter_decode_position(const char *info, const char *dst_call, float *out_lat, float *out_lon) {
-    if (info == NULL || out_lat == NULL || out_lon == NULL)
+// Decodes the antenna height/gain/directivity codes shared by the "PHGphgd"
+// and "DFSshgd" extensions. Height is the APRS code table's 10 * 2^h feet,
+// gain is the dB value itself, and directivity is 0 (omni) through 8.
+static bool decode_hgd(const char *p, aprs_rx_report_t *r) {
+    if (p[0] < '0' || p[1] < '0' || p[1] > '9' || p[2] < '0' || p[2] > '8')
+        return false;
+
+    int h = p[0] - '0';
+    if (h > EXT_HEIGHT_CODE_MAX)
+        return false;
+
+    r->phg_height_ft = 10u << h;
+    r->phg_gain_db = (uint8_t)(p[1] - '0');
+    r->phg_dir = (uint8_t)(p[2] - '0');
+    return true;
+}
+
+// Decodes one PHGR "probes" rate character (aprs.org/aprs12/probes.txt) into
+// its beacons-per-hour value: '0'-'9' map to 0-9, 'A' upward to 10 and above.
+// Returns APRS_RX_PHG_RATE_NONE for any other byte, which is how an ordinary
+// comment byte sitting in that position is told apart from a real rate.
+static int16_t decode_phg_rate(char c) {
+    if (c >= '0' && c <= '9')
+        return (int16_t)(c - '0');
+    if (c >= 'A' && c <= 'Z')
+        return (int16_t)(10 + (c - 'A'));
+    return APRS_RX_PHG_RATE_NONE;
+}
+
+// True if the three bytes at p are a course or speed group of a "CSE/SPD"
+// extension: three digits, or one of the two "not available" spellings the
+// specification allows in their place.
+static bool is_cse_spd_group(const char *p) {
+    if (isdigit((unsigned char)p[0]) && isdigit((unsigned char)p[1]) && isdigit((unsigned char)p[2]))
+        return true;
+    return !strncmp(p, "...", 3) || !strncmp(p, "VVV", 3);
+}
+
+// Reads the three digits of a course or speed group; the "not available"
+// spellings read as zero, which the caller treats as unknown.
+static uint16_t cse_spd_value(const char *p) {
+    if (!isdigit((unsigned char)p[0]))
+        return 0;
+    return (uint16_t)((p[0] - '0') * 100 + (p[1] - '0') * 10 + (p[2] - '0'));
+}
+
+// Parses the 7-byte data extension slot that follows the symbol code of an
+// uncompressed report (APRS101 chapter 7). Returns how many bytes the
+// extension occupies, so the caller knows where the comment starts: 0 when
+// the slot holds ordinary comment text, 7 for the standard forms, or 9 for
+// the APRS 1.2 "PHGphgdr/" form, whose rate character and mandatory slash sit
+// past the end of the slot.
+//
+// The course/speed layout is also what a weather station puts there, where it
+// means wind direction and wind speed instead; the symbol code is what tells
+// the two apart, so it decides which of the two extension kinds is reported.
+static size_t parse_data_extension(const char *slot, size_t avail, char sym_code, aprs_rx_report_t *r) {
+    if (avail < EXT_SLOT_LEN)
+        return 0;
+
+    if (!strncmp(slot, "PHG", 3)) {
+        if (slot[3] < '0' || slot[3] > '9' || !decode_hgd(&slot[4], r))
+            return 0;
+        int p = slot[3] - '0';
+        r->ext = APRS_RX_EXT_PHG;
+        r->phg_power_w = (uint16_t)(p * p);
+        if (avail >= EXT_PHGR_LEN && slot[8] == '/') {
+            int16_t rate = decode_phg_rate(slot[7]);
+            if (rate != APRS_RX_PHG_RATE_NONE) {
+                r->phg_rate_per_hour = rate;
+                return EXT_PHGR_LEN;
+            }
+        }
+        return EXT_SLOT_LEN;
+    }
+
+    if (!strncmp(slot, "RNG", 3)) {
+        for (int i = 3; i < EXT_SLOT_LEN; i++)
+            if (!isdigit((unsigned char)slot[i]))
+                return 0;
+        r->ext = APRS_RX_EXT_RNG;
+        r->has_range = true;
+        r->range_miles = (float)((slot[3] - '0') * 1000 + (slot[4] - '0') * 100 + (slot[5] - '0') * 10 + (slot[6] - '0'));
+        return EXT_SLOT_LEN;
+    }
+
+    if (!strncmp(slot, "DFS", 3)) {
+        if (slot[3] < '0' || slot[3] > '9' || !decode_hgd(&slot[4], r))
+            return 0;
+        r->ext = APRS_RX_EXT_DFS;
+        r->dfs_strength = (uint8_t)(slot[3] - '0');
+        return EXT_SLOT_LEN;
+    }
+
+    if (slot[3] == '/' && is_cse_spd_group(&slot[0]) && is_cse_spd_group(&slot[4])) {
+        uint16_t course = cse_spd_value(&slot[0]);
+        uint16_t speed = cse_spd_value(&slot[4]);
+        r->ext = (sym_code == '_') ? APRS_RX_EXT_WIND : APRS_RX_EXT_CSE_SPD;
+        // Course 360 is due north and 0 means "unknown", so a zero course
+        // with a zero speed is a station saying it is not moving rather than
+        // one heading north at a standstill.
+        if (course != 0 || speed != 0) {
+            r->has_course_speed = true;
+            r->course_deg = (uint16_t)(course % 360);
+            r->speed_kt = (float)speed;
+        }
+        return EXT_SLOT_LEN;
+    }
+
+    return 0;
+}
+
+// Days from the Unix epoch to the first day of the given civil month, for a
+// proleptic Gregorian calendar. Leap years and month lengths fall out of the
+// era arithmetic rather than out of a table, and the result is exact for any
+// year a time_t can hold. This is what converts a broken-down UTC date into
+// an epoch value here: the C library's own inverse of gmtime_r() is not part
+// of the standard and is absent from this toolchain's headers.
+static long days_from_civil_month(int year, int month) {
+    int y = year - (month <= 2 ? 1 : 0);
+    int era = (y >= 0 ? y : y - 399) / 400;
+    unsigned yoe = (unsigned)(y - era * 400);                                  // year within the 400-year era, 0-399
+    unsigned doy = (unsigned)((153 * (month + (month > 2 ? -3 : 9)) + 2) / 5); // day of the March-based year
+    unsigned doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;                      // day within the era
+
+    return (long)era * 146097L + (long)doe - 719468L;
+}
+
+// Converts a UTC date and time to an epoch value. The day is passed as an
+// ordinary day of month but may sit outside the month's real length, and the
+// month may sit outside 1-12: both are folded into place first, which is what
+// lets the caller step one field back and land on the previous day, month or
+// year without knowing how long any of them are.
+static time_t utc_from_fields(int year, int month, int day, int hour, int minute, int second) {
+    while (month < 1) {
+        month += 12;
+        year--;
+    }
+    while (month > 12) {
+        month -= 12;
+        year++;
+    }
+
+    long days = days_from_civil_month(year, month) + (long)day - 1;
+    return (time_t)days * 86400 + (time_t)hour * 3600 + (time_t)minute * 60 + (time_t)second;
+}
+
+// Resolves a timestamp that carries no year - and, depending on its format,
+// no month or day either - into absolute UTC, by filling the missing fields
+// from the current clock. A value that would land further ahead than
+// TIME_FUTURE_SLACK_SEC belongs to the previous period instead, which is what
+// makes a stamp read correctly across a day, month or year boundary. Returns
+// 0 when the clock has not been set yet, since there is nothing to resolve
+// against.
+static time_t resolve_utc(int month, int day, int hour, int minute, int second, bool has_month, bool has_day) {
+    time_t now = time(NULL);
+    if (now < (time_t)TIME_CLOCK_VALID_EPOCH)
+        return 0;
+
+    struct tm ref;
+    gmtime_r(&now, &ref);
+
+    int year = ref.tm_year + 1900;
+    int mon = has_month ? month : ref.tm_mon + 1;
+    int mday = has_day ? day : ref.tm_mday;
+
+    time_t v = utc_from_fields(year, mon, mday, hour, minute, second);
+    if (v > now + TIME_FUTURE_SLACK_SEC) {
+        // Stepping the next coarser field back by one is all it takes to land
+        // on the previous period; utc_from_fields() folds the result back into
+        // a real calendar date, month lengths and leap years included.
+        if (has_month)
+            year -= 1;
+        else if (has_day)
+            mon -= 1;
+        else
+            mday -= 1;
+        v = utc_from_fields(year, mon, mday, hour, minute, second);
+    }
+
+    return v;
+}
+
+// Reads a 7-byte timestamp field, the form every position report and object
+// uses (APRS101 chapter 6): six digits followed by an indicator byte that
+// says how to read them - 'z' for day/hours/minutes UTC, '/' for the same in
+// the sender's local time, 'h' for hours/minutes/seconds UTC.
+static bool decode_timestamp7(const char *p, size_t avail, aprs_rx_report_t *r) {
+    if (avail < 7)
+        return false;
+    for (int i = 0; i < 6; i++)
+        if (!isdigit((unsigned char)p[i]))
+            return false;
+
+    int a = (p[0] - '0') * 10 + (p[1] - '0');
+    int b = (p[2] - '0') * 10 + (p[3] - '0');
+    int c = (p[4] - '0') * 10 + (p[5] - '0');
+
+    switch (p[6]) {
+        case 'z':
+        case '/':
+            if (a < 1 || a > 31 || b > 23 || c > 59)
+                return false;
+            r->has_time = true;
+            r->time_is_zulu = (p[6] == 'z');
+            r->time_day = (uint8_t)a;
+            r->time_hour = (uint8_t)b;
+            r->time_minute = (uint8_t)c;
+            // Local time is stated in a time zone the packet does not name,
+            // so it is reported as the sender wrote it and never converted.
+            if (r->time_is_zulu)
+                r->time_utc = resolve_utc(0, a, b, c, 0, false, true);
+            return true;
+
+        case 'h':
+            if (a > 23 || b > 59 || c > 59)
+                return false;
+            r->has_time = true;
+            r->time_is_zulu = true;
+            r->time_hour = (uint8_t)a;
+            r->time_minute = (uint8_t)b;
+            r->time_second = (uint8_t)c;
+            r->time_utc = resolve_utc(0, 0, a, b, c, false, false);
+            return true;
+
+        default:
+            return false;
+    }
+}
+
+// Reads the 8-digit month/day/hours/minutes timestamp, the form a positionless
+// weather report uses (APRS101 chapter 12). It carries no indicator byte and
+// is always UTC.
+static bool decode_timestamp_mdhm(const char *p, size_t avail, aprs_rx_report_t *r) {
+    if (avail < 8)
+        return false;
+    for (int i = 0; i < 8; i++)
+        if (!isdigit((unsigned char)p[i]))
+            return false;
+
+    int month = (p[0] - '0') * 10 + (p[1] - '0');
+    int day = (p[2] - '0') * 10 + (p[3] - '0');
+    int hour = (p[4] - '0') * 10 + (p[5] - '0');
+    int minute = (p[6] - '0') * 10 + (p[7] - '0');
+    if (month < 1 || month > 12 || day < 1 || day > 31 || hour > 23 || minute > 59)
+        return false;
+
+    r->has_time = true;
+    r->time_is_zulu = true;
+    r->time_day = (uint8_t)day;
+    r->time_hour = (uint8_t)hour;
+    r->time_minute = (uint8_t)minute;
+    r->time_utc = resolve_utc(month, day, hour, minute, 0, true, true);
+    return true;
+}
+
+// Reads the "/A=aaaaaa" altitude token APRS101 chapter 6 allows anywhere in a
+// position comment: six digits of feet above mean sea level, which may be
+// negative for a position below it (leading '-' in place of a digit).
+static void parse_altitude_token(const char *comment, aprs_rx_report_t *r) {
+    const char *p = strstr(comment, "/A=");
+    if (p == NULL)
+        return;
+
+    p += 3;
+    bool negative = (p[0] == '-');
+    long value = 0;
+    for (int i = 0; i < 6; i++) {
+        char c = (i == 0 && negative) ? '0' : p[i];
+        if (!isdigit((unsigned char)c))
+            return;
+        value = value * 10 + (c - '0');
+    }
+
+    r->has_altitude = true;
+    r->altitude_ft = negative ? -(float)value : (float)value;
+}
+
+// Applies a "!DAO!" extension found in the comment to an uncompressed
+// position, recovering the decimal minute digit the two-decimal on-air field
+// rounds away. The token states a magnitude, so it refines a coordinate away
+// from zero on both hemispheres. Compressed reports are left alone: their
+// base-91 fields already carry that precision, and the specification does not
+// pair the two forms.
+static void apply_dao(const char *comment, aprs_rx_report_t *r) {
+    float latExtra = 0.0f, lonExtra = 0.0f;
+    if (!aprs_dao_parse(comment, strlen(comment), &latExtra, &lonExtra))
+        return;
+
+    r->lat += (r->lat < 0.0f ? -latExtra : latExtra) / 60.0f;
+    r->lon += (r->lon < 0.0f ? -lonExtra : lonExtra) / 60.0f;
+    r->dao_refined = true;
+}
+
+// Decodes a position field and everything that hangs off it: the coordinates
+// themselves, the compressed cs/T bytes or the uncompressed 7-byte data
+// extension slot, and then the comment's "/A=" altitude and "!DAO!" tokens.
+// `pos` points at the first byte of the position data, the same convention
+// extract_symbol() uses. Returns false when the coordinates do not decode.
+static bool decode_position_field(const char *pos, aprs_rx_report_t *r) {
+    if (pos == NULL || pos[0] == 0)
+        return false;
+
+    size_t len = strlen(pos);
+    bool compressed = !isdigit((unsigned char)pos[0]);
+    size_t fieldLen = compressed ? POS_COMPRESSED_LEN : POS_UNCOMPRESSED_LEN;
+
+    if (compressed) {
+        if (!decode_pos_compressed(pos, &r->lat, &r->lon))
+            return false;
+    } else {
+        if (!decode_pos_uncompressed(pos, &r->lat, &r->lon))
+            return false;
+    }
+    r->has_position = true;
+
+    if (len < fieldLen)
+        return true;
+
+    const char *comment = pos + fieldLen;
+    if (compressed) {
+        // The three bytes of the compressed layout that the uncompressed one
+        // spends on the extension slot: two data bytes and the compression
+        // type byte that says what they mean.
+        decode_compressed_cs(&pos[10], r);
+    } else {
+        comment += parse_data_extension(pos + POS_UNCOMPRESSED_LEN, len - POS_UNCOMPRESSED_LEN, pos[18], r);
+    }
+
+    parse_altitude_token(comment, r);
+    if (!compressed)
+        apply_dao(comment, r);
+
+    return true;
+}
+
+bool aprs_filter_decode_report(const char *info, const char *dst_call, aprs_rx_report_t *out) {
+    if (out == NULL)
+        return false;
+
+    memset(out, 0, sizeof(*out));
+    out->phg_rate_per_hour = APRS_RX_PHG_RATE_NONE;
+
+    if (info == NULL)
         return false;
 
     size_t len = strlen(info);
@@ -690,24 +1105,32 @@ bool aprs_filter_decode_position(const char *info, const char *dst_call, float *
         return false;
 
     // Mirrors aprs_filter_classify_info()'s DTI dispatch so the two never
-    // disagree about where the position data starts for a given payload.
+    // disagree about where the timestamp and the position data start for a
+    // given payload.
     switch (info[0]) {
         case '!':
         case '=':
             if (len < 2)
                 return false;
-            return decode_pos(&info[1], out_lat, out_lon);
+            return decode_position_field(&info[1], out);
 
         case '/':
         case '@':
             if (len < 9)
                 return false;
-            return decode_pos(&info[8], out_lat, out_lon);
+            decode_timestamp7(&info[1], len - 1, out);
+            return decode_position_field(&info[8], out) || out->has_time;
 
         case ';':
             if (len < 19)
                 return false;
-            return decode_pos(&info[18], out_lat, out_lon);
+            decode_timestamp7(&info[11], len - 11, out);
+            return decode_position_field(&info[18], out) || out->has_time;
+
+        // Positionless weather report: an 8-digit MDHM timestamp and weather
+        // values, whose decoding is out of scope here (see limitations).
+        case '_':
+            return decode_timestamp_mdhm(&info[1], len - 1, out);
 
         // Raw NMEA sentence, whose coordinates are degrees-and-minutes text
         // in the receiver's own wire format rather than an APRS position
@@ -715,20 +1138,23 @@ bool aprs_filter_decode_position(const char *info, const char *dst_call, float *
         // position; it is refused by the sentence-identifier check inside
         // the decoder like any other unsupported sentence.
         case '$':
-            return aprs_nmea_decode_position(info, len, out_lat, out_lon);
+            out->has_position = aprs_nmea_decode_position(info, len, &out->lat, &out->lon);
+            return out->has_position;
 
         case ')':
             for (size_t i = 4; i <= 10 && i < len; i++) {
                 if (info[i] == '!' || info[i] == '_') {
                     if (i + 1 >= len)
                         return false;
-                    return decode_pos(&info[i + 1], out_lat, out_lon);
+                    return decode_position_field(&info[i + 1], out);
                 }
             }
             return false;
 
         // Mic-E's position is split between this info field and the AX.25
-        // destination field; aprs_mice_decode() reassembles both halves.
+        // destination field; aprs_mice_decode() reassembles both halves and
+        // returns the course, speed and altitude it also carries, so the
+        // fields below come from there rather than from a second parse.
         case '`':
         case '\'':
         case 0x1c:
@@ -738,8 +1164,26 @@ bool aprs_filter_decode_position(const char *info, const char *dst_call, float *
             aprs_mice_report_t mice;
             if (!aprs_mice_decode(dst_call, info, len, &mice))
                 return false;
-            *out_lat = (float)mice.position.latitude_deg;
-            *out_lon = (float)mice.position.longitude_deg;
+
+            out->has_position = true;
+            out->lat = (float)mice.position.latitude_deg;
+            out->lon = (float)mice.position.longitude_deg;
+            if (!mice.course_speed.is_unknown) {
+                out->has_course_speed = true;
+                out->course_deg = (uint16_t)(mice.course_speed.course_deg % 360);
+                out->speed_kt = (float)mice.course_speed.speed_knots;
+            }
+            if (mice.position.has_altitude) {
+                out->has_altitude = true;
+                out->altitude_ft = (float)mice.position.altitude_ft;
+            }
+            if (mice.has_status_text) {
+                // The status text is an ordinary position comment: it may
+                // carry a data extension of its own and a !DAO! refinement.
+                size_t textLen = strlen(mice.status_text);
+                parse_data_extension(mice.status_text, textLen, 0, out);
+                apply_dao(mice.status_text, out);
+            }
             return true;
         }
 
@@ -748,6 +1192,65 @@ bool aprs_filter_decode_position(const char *info, const char *dst_call, float *
         default:
             return false;
     }
+}
+
+bool aprs_filter_decode_position(const char *info, const char *dst_call, float *out_lat, float *out_lon) {
+    if (out_lat == NULL || out_lon == NULL)
+        return false;
+
+    aprs_rx_report_t report;
+    if (!aprs_filter_decode_report(info, dst_call, &report) || !report.has_position)
+        return false;
+
+    *out_lat = report.lat;
+    *out_lon = report.lon;
+    return true;
+}
+
+size_t aprs_filter_format_report(const aprs_rx_report_t *report, char *out, size_t out_size) {
+    if (out == NULL || out_size == 0)
+        return 0;
+
+    out[0] = 0;
+    if (report == NULL)
+        return 0;
+
+    size_t used = 0;
+
+    if (report->has_time) {
+        // A day of 0 is what marks the hours/minutes/seconds form: the two
+        // formats that do carry a day never state it as zero.
+        if (report->time_day == 0)
+            str_append(out, out_size, &used, "%02u:%02u:%02uZ", report->time_hour, report->time_minute, report->time_second);
+        else
+            str_append(out, out_size, &used, "%02u%02u%02u%c", report->time_day, report->time_hour, report->time_minute, report->time_is_zulu ? 'Z' : 'L');
+    }
+
+    if (report->has_course_speed) {
+        const char *label = (report->ext == APRS_RX_EXT_WIND) ? "WIND" : "CSE";
+        str_append(out, out_size, &used, "%s%s %03u SPD %.0fkt", used > 0 ? " " : "", label, report->course_deg, (double)report->speed_kt);
+    }
+
+    if (report->has_altitude)
+        str_append(out, out_size, &used, "%sALT %.0fft", used > 0 ? " " : "", (double)report->altitude_ft);
+
+    if (report->has_range)
+        str_append(out, out_size, &used, "%sRNG %.0fmi", used > 0 ? " " : "", (double)report->range_miles);
+
+    if (report->ext == APRS_RX_EXT_PHG) {
+        str_append(out, out_size, &used, "%sPHG %uW %luft %udB", used > 0 ? " " : "", (unsigned)report->phg_power_w, (unsigned long)report->phg_height_ft,
+                   (unsigned)report->phg_gain_db);
+        if (report->phg_rate_per_hour != APRS_RX_PHG_RATE_NONE)
+            str_append(out, out_size, &used, " %u/h", (unsigned)report->phg_rate_per_hour);
+    } else if (report->ext == APRS_RX_EXT_DFS) {
+        str_append(out, out_size, &used, "%sDFS S%u %luft %udB", used > 0 ? " " : "", (unsigned)report->dfs_strength, (unsigned long)report->phg_height_ft,
+                   (unsigned)report->phg_gain_db);
+    }
+
+    if (report->dao_refined)
+        str_append(out, out_size, &used, "%sDAO", used > 0 ? " " : "");
+
+    return used;
 }
 
 bool aprs_filter_mice_message(const char *dst_call, const char *info, size_t len, const char **out_name, bool *out_emergency) {

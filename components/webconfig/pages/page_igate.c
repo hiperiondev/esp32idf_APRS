@@ -384,6 +384,7 @@ esp_err_t page_igate_get(httpd_req_t *req) {
             { TR_FILT_ITEM, IGATE_FILT_ITEM, "Item" },
             { TR_FILT_BUOY, IGATE_FILT_BUOY, "Buoy" },
             { TR_FILT_POSITION, IGATE_FILT_POSITION, "Position" },
+            { TR_FILT_OTHER, IGATE_FILT_OTHER, "Other" },
         };
         web_fieldset_open(req, TR_F_FILTER_RF2INET);
         for (size_t i = 0; i < sizeof(filt) / sizeof(filt[0]); i++) {
@@ -694,8 +695,9 @@ esp_err_t page_igate_post(httpd_req_t *req) {
             uint16_t bit;
             const char *name;
         } filt[] = {
-            { IGATE_FILT_MESSAGE, "Message" }, { IGATE_FILT_STATUS, "Status" }, { IGATE_FILT_TELEMETRY, "Telemetry" }, { IGATE_FILT_WEATHER, "Weather" },
-            { IGATE_FILT_OBJECT, "Object" },   { IGATE_FILT_ITEM, "Item" },     { IGATE_FILT_BUOY, "Buoy" },           { IGATE_FILT_POSITION, "Position" },
+            { IGATE_FILT_MESSAGE, "Message" }, { IGATE_FILT_STATUS, "Status" },     { IGATE_FILT_TELEMETRY, "Telemetry" },
+            { IGATE_FILT_WEATHER, "Weather" }, { IGATE_FILT_OBJECT, "Object" },     { IGATE_FILT_ITEM, "Item" },
+            { IGATE_FILT_BUOY, "Buoy" },       { IGATE_FILT_POSITION, "Position" }, { IGATE_FILT_OTHER, "Other" },
         };
         uint16_t rf2inetF = 0, inet2rfF = 0;
         for (size_t i = 0; i < sizeof(filt) / sizeof(filt[0]); i++) {

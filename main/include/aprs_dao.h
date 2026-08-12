@@ -26,14 +26,18 @@
  * receiver that does not recognize it just sees five extra bytes of comment
  * text, so it is always safe to append.
  *
- * Only the human-readable form (uppercase datum byte, one extra decimal
- * digit per axis) is implemented here, against the WGS-84 datum ('W') this
- * firmware's positions are already in.
+ * Transmission uses the human-readable form only (uppercase datum byte, one
+ * extra decimal digit per axis), against the WGS-84 datum ('W') this
+ * firmware's positions are already in. Reception accepts both forms: the
+ * human-readable one and the base-91 one (lower-case datum byte), which is
+ * what most trackers emit and which resolves the same hundredth of a minute
+ * into 91 steps instead of 10.
  */
 
 #ifndef APRS_DAO_H
 #define APRS_DAO_H
 
+#include <stdbool.h>
 #include <stddef.h>
 
 /**
@@ -62,5 +66,38 @@
  *            Left untouched if too small or NULL.
  */
 void aprs_dao_build(float lat, float lon, char out[APRS_DAO_BUF_SIZE]);
+
+/**
+ * @brief Find and decode a "!DAO!" precision/datum extension inside a
+ * position comment.
+ *
+ * Scans @p text for the first well-formed 5-byte token, "!" + datum byte +
+ * two axis bytes + "!", and reports how much extra latitude and longitude
+ * the sender encoded in it. Both on-air forms are accepted, told apart by
+ * the case of the datum byte exactly as aprs12/datum.txt specifies:
+ *
+ * - Upper-case datum (human-readable): each axis byte is a decimal digit
+ *   giving the third decimal place of the minutes field, i.e. 0.001 minute
+ *   per unit.
+ * - Lower-case datum (base-91): each axis byte is a base-91 digit ('!'
+ *   through '{') giving the position inside the hundredth of a minute the
+ *   plain field rounds to, i.e. 0.01/91 minute per unit.
+ *
+ * A space in an axis byte means "not specified" and yields 0 for that axis.
+ * The values are magnitudes, always positive: they refine a coordinate away
+ * from zero, so a caller applies them to the absolute value of its latitude
+ * and longitude before restoring the hemisphere sign.
+ *
+ * @param text Text to scan (typically the comment of a position report).
+ *             May be NULL, which yields false.
+ * @param len Number of bytes of @p text to scan.
+ * @param out_lat_extra_min Extra latitude, in minutes, in the range
+ *                          [0, 0.01). May be NULL.
+ * @param out_lon_extra_min Extra longitude, in minutes, same range. May be
+ *                          NULL.
+ * @return true if a token was found and decoded, false otherwise (in which
+ *         case both outputs are left untouched).
+ */
+bool aprs_dao_parse(const char *text, size_t len, float *out_lat_extra_min, float *out_lon_extra_min);
 
 #endif // APRS_DAO_H
