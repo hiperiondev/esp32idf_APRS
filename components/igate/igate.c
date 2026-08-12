@@ -19,6 +19,8 @@
 
 #include <errno.h>
 #include <netdb.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/socket.h>
@@ -888,6 +890,18 @@ static uint8_t s_serverIdx = 0;
 // after a long, healthy run. Only the former should trigger a failover.
 static int64_t s_sessionStartUs = 0;
 
+// esp_timer_get_time() timestamp (microseconds) of the most recent byte
+// actually read off the APRS-IS socket, set alongside s_sessionStartUs when
+// a session starts and refreshed on every recv() that returns data -
+// including server comment lines starting with '#', since a quiet channel
+// with nothing to gate still produces those on a healthy link. This is the
+// only signal that distinguishes a socket that is merely idle from one whose
+// far end has gone silent: unlike net_state_is_connected(), which only
+// catches the station's own Wi-Fi dropping, this catches the link staying
+// nominally "connected" while nothing is actually flowing - an evicted NAT
+// mapping, a blackholed route, or a peer that hung without a FIN.
+static int64_t s_lastRxUs = 0;
+
 // A session shorter than this is treated as the connected server rejecting
 // or failing to sustain the link rather than a transient network blip, and
 // triggers an immediate failover to the next enabled slot. Long enough that
@@ -895,6 +909,15 @@ static int64_t s_sessionStartUs = 0;
 // server, short enough that a server which accepts and immediately closes
 // is not retried for minutes before the rotation moves on.
 #define IGATE_MIN_SESSION_US (60LL * 1000000LL)
+
+// Longest stretch the RX loop tolerates with nothing at all read off the
+// socket before treating the link as dead and forcing a reconnect. Servers
+// following aprs-is.net's connection guidance send a '#' comment line on a
+// cadence well under a minute whenever there is no other traffic, so this
+// margin is comfortably above that cadence while staying short enough to
+// recover well within the eviction time of a typical NAT/firewall's idle-TCP
+// table entry.
+#define IGATE_RX_SILENCE_US (90LL * 1000000LL)
 
 // Moves s_serverIdx to the next enabled slot, wrapping circularly through
 // g_config.aprs_server. Disabled slots are skipped entirely rather than
@@ -1047,6 +1070,22 @@ static bool connectAprsIs(void) {
     setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &rcv_tv, sizeof(rcv_tv));
     setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, &snd_tv, sizeof(snd_tv));
 
+    // Backstop for the application-level silence timer below, not a
+    // substitute for it: lwIP's own probes catch a peer that stops
+    // acknowledging at the TCP layer (a dead route, a vanished NAT mapping)
+    // even faster than IGATE_RX_SILENCE_US would, and cost nothing to leave
+    // on. They do not, on their own, catch a peer that keeps acknowledging
+    // but simply stops sending application data, which is why the RX loop's
+    // own s_lastRxUs check still runs regardless of this.
+    int keepAlive = 1;
+    int keepIdleSec = 30;
+    int keepIntervalSec = 10;
+    int keepCount = 3;
+    setsockopt(sock, SOL_SOCKET, SO_KEEPALIVE, &keepAlive, sizeof(keepAlive));
+    setsockopt(sock, IPPROTO_TCP, TCP_KEEPIDLE, &keepIdleSec, sizeof(keepIdleSec));
+    setsockopt(sock, IPPROTO_TCP, TCP_KEEPINTVL, &keepIntervalSec, sizeof(keepIntervalSec));
+    setsockopt(sock, IPPROTO_TCP, TCP_KEEPCNT, &keepCount, sizeof(keepCount));
+
     if (connect(sock, res->ai_addr, res->ai_addrlen) != 0) {
         ESP_LOGW(TAG, "Connect to %s:%u failed: errno %d, failing over to next APRS-IS server", cfg_host, (unsigned)cfg_port, errno);
         close(sock);
@@ -1117,6 +1156,11 @@ static bool connectAprsIs(void) {
     xSemaphoreTake(s_sockMutex, portMAX_DELAY);
     s_sock = sock;
     s_sessionStartUs = esp_timer_get_time();
+    // Seeded here, not left at 0, so a server that accepts the login and then
+    // sends nothing further is caught by the same silence timer as a link
+    // that goes quiet mid-session - the RX loop's very first pass already has
+    // a meaningful "last heard from" instant to measure against.
+    s_lastRxUs = s_sessionStartUs;
     xSemaphoreGive(s_sockMutex);
     ESP_LOGI(TAG, "Connected to APRS-IS %s:%u as %s", cfg_host, (unsigned)cfg_port, cfg_mycall);
     trafficlog_add("Connected to APRS-IS %s:%u as %s", cfg_host, (unsigned)cfg_port, cfg_mycall);
@@ -1188,9 +1232,26 @@ static void igateTask(void *arg) {
                 continue; // closed again between the connect and this read
         }
 
+        // Dead-link detection: a socket can stay open with recv() returning
+        // nothing but EAGAIN forever - an evicted NAT mapping, a blackholed
+        // route, a peer that hung without sending a FIN - none of which
+        // net_state_is_connected() can see, since Wi-Fi itself stays
+        // associated throughout. A healthy link never goes this long without
+        // at least a server '#' comment, so exceeding IGATE_RX_SILENCE_US
+        // means the other end is no longer actually feeding this station;
+        // closing here hands off to the same reconnect path used for every
+        // other kind of drop.
+        if (esp_timer_get_time() - s_lastRxUs > IGATE_RX_SILENCE_US) {
+            ESP_LOGW(TAG, "No data received from APRS-IS for over %lld s, reconnecting", (long long)(IGATE_RX_SILENCE_US / 1000000LL));
+            trafficlog_add("APRS-IS link silent for over %lld s, reconnecting", (long long)(IGATE_RX_SILENCE_US / 1000000LL));
+            closeSocket();
+            continue;
+        }
+
         char buf[256];
         int r = recv(sock, buf, sizeof(buf), 0);
         if (r > 0) {
+            s_lastRxUs = esp_timer_get_time();
             for (int i = 0; i < r; i++) {
                 char c = buf[i];
                 if (c == '\n' || c == '\r') {

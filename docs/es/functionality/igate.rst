@@ -39,6 +39,25 @@ La tarea cliente de APRS-IS
 * **Enlace de subida compartido.** La tarea siempre se ejecuta, porque el mismo
   socket lo usan el componente de mensajería (``igate_send_raw()``) y la "baliza
   a internet". Queda en reposo de forma barata cuando nada lo necesita.
+* **Detección de enlace muerto.** ``net_state_is_connected()`` solo detecta que
+  el propio Wi-Fi de la estación se cayó; no dice nada de que el otro extremo
+  de un socket APRS-IS ya abierto se quede callado — una entrada NAT/firewall
+  de un TCP inactivo que se expulsa, una ruta agujereada, o un peer que deja
+  de enviar sin llegar a cerrar la conexión. El bucle de recepción registra la
+  marca de tiempo del último byte realmente leído del socket y, si no llega
+  nada durante ``IGATE_RX_SILENCE_US`` (90 s), registra una advertencia y
+  cierra el socket para que corra la ruta normal de reconexión. 90 s queda
+  cómodamente por encima de la cadencia de líneas ``#`` que envían los
+  servidores que siguen la `guía de conexión de aprs-is.net
+  <https://www.aprs-is.net/Connecting.aspx>`_ cuando el canal está por lo
+  demás en silencio — esa línea de comentario es lo que evita que un enlace
+  sano pero inactivo dispare el temporizador — a la vez que se mantiene lo
+  bastante corto como para recuperarse bien dentro del tiempo de expulsión de
+  una entrada NAT típica. El socket también lleva ``SO_KEEPALIVE`` (30 s de
+  inactividad, 10 s de intervalo, 3 sondeos) como respaldo independiente de
+  nivel más bajo; complementa al temporizador del lado de recepción sin
+  sustituirlo, ya que un peer que sigue confirmando los sondeos a nivel TCP
+  pero deja de enviar datos de aplicación se le escaparía de otro modo.
 
 Failover de servidores
 ======================
@@ -309,4 +328,8 @@ Indicador de conectividad
 
 ``igate_is_connected()`` es verdadero mientras el socket TCP de APRS-IS está
 abierto, con sesión iniciada y bombeando el lector de líneas RX. El panel
-*Network Status* del panel web (la píldora de APRS-IS) lo lee.
+*Network Status* del panel web (la píldora de APRS-IS) lo lee. Como el bucle
+de recepción cierra el socket en cuanto salta la detección de enlace muerto
+(ver más arriba), esto también da falso durante todo el intervalo entre un
+enlace caído en silencio y el siguiente re-login exitoso, en vez de seguir
+mostrando "conectado" sobre un socket que ya dejó de entregar nada.

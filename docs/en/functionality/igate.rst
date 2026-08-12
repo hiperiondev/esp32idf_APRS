@@ -37,6 +37,23 @@ The APRS-IS client task
 * **Shared uplink.** The task always runs, because the same socket is used by
   the message component (``igate_send_raw()``) and by "beacon to internet". It
   idles cheaply when nothing needs it.
+* **Dead-link detection.** ``net_state_is_connected()`` only catches the
+  station's own Wi-Fi dropping; it says nothing about the far end of an
+  already-open APRS-IS socket going quiet - an idle-TCP NAT/firewall mapping
+  getting evicted, a blackholed route, or a peer that stops sending without
+  ever closing the connection. The RX loop tracks the timestamp of the last
+  byte actually read off the socket and, if none arrives for
+  ``IGATE_RX_SILENCE_US`` (90 s), logs a warning and closes the socket so the
+  normal reconnect path runs. 90 s is comfortably above the ``#`` comment
+  cadence servers following `aprs-is.net's connection guidance
+  <https://www.aprs-is.net/Connecting.aspx>`_ send whenever the channel is
+  otherwise quiet - that comment line is what keeps an idle-but-healthy link
+  from ever tripping the timer - while staying short enough to recover well
+  within the eviction time of a typical NAT table entry. The socket also
+  carries ``SO_KEEPALIVE`` (30 s idle, 10 s interval, 3 probes) as an
+  independent, lower-level backstop; it complements rather than replaces the
+  RX-side timer, since a peer that keeps acknowledging TCP-level probes while
+  no longer sending application data would otherwise slip past it.
 
 Server failover
 ===============
@@ -291,4 +308,8 @@ Connectivity indicator
 
 ``igate_is_connected()`` is true while the APRS-IS TCP socket is open, logged
 in and pumping the RX line reader. The web dashboard's *Network Status* panel
-(the APRS-IS pill) reads it.
+(the APRS-IS pill) reads it. Because the RX loop closes the socket as soon as
+dead-link detection trips (see above), this also reports false for the whole
+interval between a silently dropped link and the next successful re-login,
+rather than continuing to show "connected" against a socket that has stopped
+delivering anything.

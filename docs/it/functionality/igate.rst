@@ -41,6 +41,25 @@ Il task client APRS-IS
 * **Uplink condiviso.** Il task è sempre in esecuzione, perché lo stesso socket è
   usato dal componente di messaggistica (``igate_send_raw()``) e dal "beacon a
   internet". Resta inattivo a basso costo quando niente lo richiede.
+* **Rilevamento del collegamento morto.** ``net_state_is_connected()`` rileva
+  solo la caduta del Wi-Fi della stazione stessa; non dice nulla sul fatto che
+  l'altro capo di un socket APRS-IS già aperto sia rimasto muto — una voce
+  NAT/firewall di un TCP inattivo che viene espulsa, una rotta bloccata, o un
+  peer che smette di inviare senza mai chiudere la connessione. Il ciclo di
+  ricezione tiene traccia dell'istante dell'ultimo byte effettivamente letto
+  dal socket e, se non arriva nulla per ``IGATE_RX_SILENCE_US`` (90 s),
+  registra un avviso e chiude il socket così da far partire il normale
+  percorso di riconnessione. 90 s resta comodamente sopra la cadenza delle
+  righe di commento ``#`` che i server conformi alla `guida di connessione di
+  aprs-is.net <https://www.aprs-is.net/Connecting.aspx>`_ inviano quando il
+  canale è altrimenti silenzioso — è proprio quella riga di commento a
+  impedire che un collegamento sano ma inattivo faccia scattare il timer —
+  restando comunque abbastanza breve da recuperare ben entro il tempo di
+  espulsione di una tipica voce NAT. Il socket porta anche ``SO_KEEPALIVE``
+  (30 s di inattività, intervallo di 10 s, 3 sonde) come backstop indipendente
+  a livello più basso; completa il timer lato ricezione senza sostituirlo,
+  perché un peer che continua a confermare le sonde TCP ma smette di inviare
+  dati applicativi altrimenti gli sfuggirebbe.
 
 Server failover
 ===============
@@ -310,4 +329,9 @@ Indicatore di connettività
 
 ``igate_is_connected()`` è vero mentre il socket TCP APRS-IS è aperto, con login
 effettuato e con il lettore di righe RX in funzione. Il pannello *Network Status*
-della dashboard web (la pillola APRS-IS) lo legge.
+della dashboard web (la pillola APRS-IS) lo legge. Poiché il ciclo di ricezione
+chiude il socket non appena scatta il rilevamento del collegamento morto (vedi
+sopra), questo restituisce falso anche per l'intero intervallo tra una caduta
+silenziosa del collegamento e il successivo re-login riuscito, invece di
+continuare a mostrare "connesso" su un socket che ha già smesso di consegnare
+qualsiasi cosa.
