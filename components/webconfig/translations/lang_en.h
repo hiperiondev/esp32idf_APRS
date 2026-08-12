@@ -240,6 +240,8 @@
 #define TR_F_IGATE "IGate"
 /** Form label for the "include altitude" field or fieldset, rendered on the configuration forms. */
 #define TR_F_INCLUDE_ALTITUDE "Include altitude"
+/** Form label for the "tracker phg" field or fieldset, rendered on the Tracker page. */
+#define TR_F_TRACKER_PHG "Include PHG data extension"
 /** Form label for the "internet to rf" field or fieldset, rendered on the configuration forms. */
 #define TR_F_INTERNET_TO_RF "Internet to RF"
 /** Form label for the "latitude" field or fieldset, rendered on the configuration forms. */
@@ -1056,6 +1058,8 @@
 #define TR_WX_FLOOD_FT "Flood Height (ft)"
 /** Weather page label for flood m, rendered on the Weather page. */
 #define TR_WX_FLOOD_M "Flood Height"
+/** Weather page label for the raw rain counter, rendered on the Weather page. */
+#define TR_WX_RAIN_RAW "Raw rain counter"
 /** Weather page label for field, rendered on the Weather page. */
 #define TR_WX_FIELD "WX Field"
 /** Weather page label for channel, rendered on the Weather page. */
@@ -1143,6 +1147,10 @@
 #define TR_F_STATUS_GRID "Maidenhead locator in status reports"
 /** Form label for the "status timestamp" field or fieldset, rendered on the IGate page. */
 #define TR_F_STATUS_TIMESTAMP "Zulu timestamp in status reports"
+/** Form label for the "status beam" field or fieldset, rendered on the IGate page. */
+#define TR_F_STATUS_BEAM "Beam heading in status reports (deg)"
+/** Form label for the "status erp" field or fieldset, rendered on the IGate page. */
+#define TR_F_STATUS_ERP "ERP in status reports (W)"
 /** Form label for the "pos dao" field or fieldset, rendered on the IGate page. */
 #define TR_F_POS_DAO "DAO precision extension in position reports"
 /** Compass direction abbreviation: omni, rendered on the IGate page. */

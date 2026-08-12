@@ -132,11 +132,43 @@ them; the page disables whichever inputs the selected type does not use. Since a
 disabled control does not POST, the stored values of the *other* type survive
 switching back and forth.
 
-Enabling any extension forces the uncompressed position layout. The compressed
+Enabling PHG or DFS forces the uncompressed position layout. The compressed
 format has no room for the 7-byte slot (APRS101 ch.9 states it does not support
 PHG), so emitting those bytes inside a compressed report would simply be wrong
 data, and dropping the extension to keep compression would silently lose a field
 the operator explicitly enabled.
+
+RNG is the exception, because the compressed format carries a pre-calculated
+radio range natively: the two ``cs`` bytes hold ``{`` followed by a range digit,
+decoded as ``2 × 1.08^s`` miles. A beacon that has RNG selected and compression
+ticked therefore stays compressed, with the range folded into those two bytes
+and no ``RNGrrrr`` token in the information field. The compressed form quantises
+the range to a step of about 8 per cent and starts at a floor of 2 miles, so a
+range set below that is transmitted as 2.
+
+The Tracker beacon carries PHG and nothing else, switched on with *Include PHG
+data extension* on its own page. There are no sub-fields to fill in there: the
+four values are the station's own antenna data, edited once in the PHG block on
+the Station page. A tracker beaconing in Mic-E keeps the token — Mic-E has no
+7-byte slot after a symbol code, but APRS 1.2 states that its text field may
+carry an ordinary position comment field, PHG included, and that is where the
+token goes: after the frequency block, so a radio still auto-tunes from the
+leading bytes, and before the operator's comment.
+
+Compressed altitude
+===================
+
+A compressed position report has no comment token for altitude, but it does not
+need one. The same two ``cs`` bytes that carry course/speed or a radio range
+carry an altitude when the type byte names GGA as the NMEA source, decoded as
+``1.002^(c × 91 + s)`` feet. A beacon with *Include altitude* and *Compress
+position* both ticked uses that form, and the ``/A=`` token is left out of the
+comment so the altitude is stated once — nine bytes of comment saved for
+nothing, at a step of about 0.2 per cent.
+
+The two bytes hold one thing at a time, so a beacon that also has RNG selected
+gives them to the range: the range has no other place to go, while altitude
+still has ``/A=`` to fall back on, and that is what such a beacon emits.
 
 Messaging capability is in the data type identifier
 ===================================================
@@ -203,6 +235,31 @@ that is not something a settings page should be able to arm with one mis-click
 and then leave armed for every beacon afterwards. On receive it is handled in
 full: see :ref:`en-filtering` for the decoder, and the traffic log
 for the warning line a received emergency produces.
+
+Beam heading and ERP in status reports
+=====================================
+
+A status report may end with two characters after a ``^``: the beam heading in
+units of ten degrees, and a code standing for the effective radiated power.
+Meteor-scatter operating is what the pair exists for — the two figures a
+correspondent needs in order to know whether a burst is worth waiting for — and
+APRS101 ch.16 fixes it as the *last* field of the status text, which is the only
+place it can be recognised.
+
+Both halves are set on the Station page and apply station-wide, like the
+Maidenhead option: *Beam heading in status reports* steps in ten degrees from 0
+to 350, and *ERP in status reports* offers the specification's own table, 10 W
+through 7290 W in the steps that follow the square of the code digit. A heading
+with no power, or a power with no heading, says nothing, so the block is emitted
+only when both are set — leaving either on *Off* is what a station that does not
+work meteor scatter does, and it then transmits exactly the status report it
+transmitted before.
+
+The status information field is capped at 70 bytes, and the assembly drops its
+optional blocks in order until it fits: the leading field first, then the
+frequency block. The beam/ERP pair is never dropped. It is three bytes, and a
+station transmitting a status report during a meteor-scatter schedule is
+transmitting it for those three bytes.
 
 Position ambiguity
 ==================

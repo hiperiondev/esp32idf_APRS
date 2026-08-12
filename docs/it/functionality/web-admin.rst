@@ -48,9 +48,10 @@ Le pagine
    * - **Station**
      - L'identità condivisa della propria stazione che ogni beacon, oggetto e
        messaggio legge: indicativo, latitudine, longitudine, altitudine
-       (``g_config.my_*``), più le due opzioni di precisione in onda valide per
-       tutta la stazione: ambiguità di posizione e prefisso del localizzatore
-       Maidenhead nei rapporti di stato.
+       (``g_config.my_*``), più le opzioni in onda valide per tutta la
+       stazione: ambiguità di posizione, prefisso del localizzatore Maidenhead
+       nei rapporti di stato, e la direzione d'antenna e l'ERP di meteor scatter
+       che li chiudono.
    * - **IGate**
      - Abilita, RF→INET / INET→RF, entrambe le maschere di filtro, budlist e gate
        di portata/prefisso, indicativo/SSID/passcode, quattro riquadri *APRS-IS

@@ -220,7 +220,7 @@ void aprs_compressed_cs_from_course_speed(unsigned course_deg, unsigned speed_kn
 
     // Speed is decoded as 1.08^s - 1 knots, so the digit is the inverse of
     // that relation. Speeds past the top of the table saturate at the highest
-    // digit, which stands for roughly 1030 knots.
+    // digit, which stands for roughly 940 knots.
     long sDigit;
     if (speed_knots == 0) {
         sDigit = 0;
@@ -234,7 +234,56 @@ void aprs_compressed_cs_from_course_speed(unsigned course_deg, unsigned speed_kn
 
     out[0] = (char)(APRS_COMPRESSED_BASE91_OFFSET + cDigit);
     out[1] = (char)(APRS_COMPRESSED_BASE91_OFFSET + sDigit);
-    out[2] = 'C'; // compression type: compressed Course/Speed, current GPS fix, no NMEA source, no compression origin flag
+    out[2] = APRS_COMPRESSED_T_BYTE_CS;
+}
+
+void aprs_compressed_cs_from_range(unsigned range_miles, char out[3]) {
+    // Range is decoded as 2 * 1.08^s miles, so the digit is the inverse of
+    // that relation. The form starts at 2 miles (s = 0): anything below that
+    // floor, including 0, encodes as the floor rather than as a negative
+    // digit, and anything past the top of the table saturates at the highest
+    // digit, which stands for roughly 1890 miles.
+    long sDigit;
+    if (range_miles <= 2) {
+        sDigit = 0;
+    } else {
+        sDigit = lroundf(logf((float)range_miles / 2.0f) / logf(1.08f));
+        if (sDigit < 0)
+            sDigit = 0;
+        if (sDigit > APRS_COMPRESSED_CS_DIGIT_MAX)
+            sDigit = APRS_COMPRESSED_CS_DIGIT_MAX;
+    }
+
+    out[0] = (char)(APRS_COMPRESSED_BASE91_OFFSET + APRS_COMPRESSED_CS_RANGE_MARKER);
+    out[1] = (char)(APRS_COMPRESSED_BASE91_OFFSET + sDigit);
+    out[2] = APRS_COMPRESSED_T_BYTE_CS;
+}
+
+void aprs_compressed_cs_from_altitude(unsigned alt_feet, char out[3]) {
+    // Altitude is decoded as 1.002^(c * 91 + s) feet, so the combined value of
+    // the two bytes is the inverse of that relation. The form starts at 1 foot
+    // (cs = 0): anything below that floor, including 0, encodes as the floor
+    // rather than as a negative value, and anything past the top of the table
+    // saturates at APRS_COMPRESSED_ALT_CS_MAX. The logarithm is taken in
+    // double precision because the 0.2 % step divides the result by a very
+    // small constant, which magnifies any error in the ratio.
+    long cs;
+    if (alt_feet <= 1) {
+        cs = 0;
+    } else {
+        cs = lround(log((double)alt_feet) / log(1.002));
+        if (cs < 0)
+            cs = 0;
+        if (cs > APRS_COMPRESSED_ALT_CS_MAX)
+            cs = APRS_COMPRESSED_ALT_CS_MAX;
+    }
+
+    // Both bytes carry a full base-91 digit here: the altitude form is
+    // selected by the type byte, so the value the course/speed form reserves
+    // for the radio range marker is an ordinary digit in this one.
+    out[0] = (char)(APRS_COMPRESSED_BASE91_OFFSET + cs / 91);
+    out[1] = (char)(APRS_COMPRESSED_BASE91_OFFSET + cs % 91);
+    out[2] = APRS_COMPRESSED_T_BYTE_ALTITUDE;
 }
 
 // Reads the symbol table byte and symbol code out of a position field that

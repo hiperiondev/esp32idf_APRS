@@ -101,9 +101,9 @@ comment:
    |ss1122|
 
 The group opens and closes with ``|``. The first base-91 pair is the sequence
-number; each following pair is one analog channel, in order (``A1`` first).
-It carries analog channels only — digital bits have no base-91 slot in the
-APRS 1.2 group and stay exclusive to the ``T#nnn`` report.
+number; each following pair is one analog channel, in order (``A1`` first). A
+final pair may carry the whole 8-bit digital bank as a single number, its least
+significant bit being ``B1`` and its eighth bit ``B8``.
 
 This is not a beacon of its own. It rides inside the position comment of
 whichever beacon — Tracker, IGate or Digipeater — is currently transmitting
@@ -126,6 +126,21 @@ channel before it in the A1-A5 order was too: the group has no per-pair
 channel identifier, so a receiving station recovers each value's channel
 purely from its position in the sequence. The encoder stops at the first gap
 rather than skip it, keeping the group an unbroken prefix of A1, A2, ... An.
+
+APRS 1.2 requires the extension to carry the sequence counter *and* at least one
+channel, so a station with no analog channel currently enabled and resolved
+emits no group at all rather than a bare ``|ss|``. An empty group is a form a
+strict parser is entitled to reject, and it would spend four bytes of comment
+budget on every beacon while carrying nothing.
+
+The digital pair is legal only after all five analog pairs — with a shorter
+group in front of it, a receiver would read it as the next analog channel — so
+it is emitted only when every analog channel resolved *and* the digital bank is
+routed with at least one channel configured. The group is a single string
+appended to a position report that goes out over whichever legs that beacon
+uses, so it has no per-leg form of its own: a digital channel travels whenever
+the bank and the channel are routed to either leg. A channel that must stay off
+the air entirely is disabled on the *Telemetry* page rather than unrouted.
 
 A group that would not fit the telemetry station's own ``telemetry_build_comment_tlm()``
 output buffer is dropped rather than truncated — a truncated base-91 pair

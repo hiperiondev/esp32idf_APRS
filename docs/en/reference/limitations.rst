@@ -339,8 +339,9 @@ Tracking / Beaconing
      - ✅
      - Per-service option on the Tracker, IGate, Digipeater and Objects/Items
        pages; the decoder understands it too. Skipped automatically when
-       position ambiguity is non-zero or a data extension is in use, since the
-       compressed layout has room for neither
+       position ambiguity is non-zero or a PHG/DFS extension is in use, since
+       the compressed layout has room for neither; a pre-calculated radio
+       range instead folds into the compressed field's own two-byte slot
    * - Mic-E position encoding (TX)
      - ⚠️ (mostly mobile-tracker firmware)
      - ✅
@@ -350,17 +351,22 @@ Tracking / Beaconing
        and seven custom values; Emergency is not offered, since transmitting it
        asks for a real-world response. The information field follows the
        canonical order of ``mic-e-examples.txt``: TYPE byte, altitude,
-       frequency block, comment, ``!DAO!``, and the Manufacturer/Version pair
-       that identifies the firmware (the destination address carries position
-       data, so the ``APxxxx`` TOCALL cannot)
+       frequency block, data extension, comment, ``!DAO!``, and the
+       Manufacturer/Version pair that identifies the firmware (the destination
+       address carries position data, so the ``APxxxx`` TOCALL cannot)
    * - PHG / power-height-gain-directivity
      - ✅
      - ✅
-     - Exposed on the IGate beacon page
+     - Exposed on the IGate beacon page, with its own sub-fields, and as a
+       single switch on the Tracker page that reuses the station-wide antenna
+       data. In the Mic-E layout the token rides in the text field, which is
+       where APRS 1.2 puts an ordinary position comment field
    * - RNG / pre-calculated radio range
      - ⚠️
      - ✅
-     - Selectable as the IGate beacon's data extension (``RNGrrrr``)
+     - Selectable as the IGate beacon's data extension (``RNGrrrr``), or as
+       the compressed field's own two-byte range form when compression is also
+       requested
    * - DFS / omni-DF signal strength
      - ⚠️ (DF-specific software)
      - ✅
@@ -380,6 +386,12 @@ Tracking / Beaconing
      - ⚠️
      - ✅
      - Station-wide option; emits the ``>IO91SX/G`` form of APRS101 ch.16
+   * - Beam heading and ERP in status reports
+     - ⚠️ (meteor-scatter operating)
+     - ✅
+     - Station-wide heading and power on the Station page, emitted as the
+       ``^HP`` pair that closes the status text; both halves are needed and
+       the pair is never dropped to fit the length budget
    * - Maidenhead locator in the AX.25 destination (``[IO91SX]``, obsolete)
      - ⚠️ (legacy software)
      - ❌
@@ -388,8 +400,11 @@ Tracking / Beaconing
      - ✅
      - ✅
      - Per-role altitude (tracker, IGate, digipeater), each mirrored from the
-       "My Station" value when *Use My Station Data* is ticked. Weather reports
-       carry no altitude field
+       "My Station" value when *Use My Station Data* is ticked. Sent as the
+       ``/A=`` comment token, or free of charge inside the compressed field's
+       own two-byte slot when the beacon is compressed and that slot is not
+       already carrying a radio range. Weather reports carry no altitude
+       field
    * - Configurable digipeat path per service
      - ✅
      - ✅
@@ -519,7 +534,9 @@ Telemetry
      - Optional, alongside the ``T#nnn`` report; rides in the position comment
        of whichever beacon (Tracker/IGate/Digipeater) is transmitting under
        the callsign/SSID configured on the Telemetry page, sharing that
-       report's sequence counter
+       report's sequence counter. Carries the analog channels and, behind a
+       full set of five of them, the eight-bit digital bank as one further
+       pair
    * - Receiving/graphing others' telemetry
      - ✅ (Xastir, aprs.fi graphs)
      - ❌
@@ -565,8 +582,8 @@ Objects, Items, Bulletins, Status
        (``*_status``); see ``main/beacon.c``. The information field is held to
        the 70-byte ch.16 ceiling (``>`` + 7-byte timestamp + 62 characters of
        text): when the optional blocks do not fit, the Maidenhead locator is
-       dropped first, then the frequency block, and the operator's text is never
-       shortened
+       dropped first, then the frequency block, and neither the operator's text
+       nor the trailing beam/ERP pair is ever shortened
    * - Query response (``?APRS?``, ``?WX?``, etc.)
      - ⚠️
      - ✅

@@ -84,12 +84,15 @@ typedef struct {
     // beacons carry the same precision. A non-zero level forces the
     // uncompressed layout, which is the only one with digits to blank.
     uint8_t ambiguity;
-    // APRS Data Extension (APRS101 ch.7), only used by the IGate beacon so
-    // far (see igateBeaconService()). Not settable for the Tracker/Digipeater
-    // beacons, so extEnable stays false and the slot is never emitted for
-    // those. All three extension types share the same 7-byte info-field slot
-    // that moving stations use for CSE/SPD - mutually exclusive with
-    // movement, which is fine here since these are fixed-position beacons.
+    // APRS Data Extension (APRS101 ch.7). The IGate beacon selects any of the
+    // three types with its own sub-fields (see igateBeaconService()); the
+    // Tracker beacon offers PHG alone, taken from the station-wide antenna
+    // data. The Digipeater beacon has no extension, so extEnable stays false
+    // and the slot is never emitted for it. All three extension types share
+    // the same 7-byte info-field slot that moving stations use for CSE/SPD -
+    // mutually exclusive with movement, which is fine here since these are
+    // fixed-position beacons. Mic-E has no such slot, and carries the token in
+    // its text field instead (see buildMicePositionPacket()).
     bool extEnable;
     uint8_t extType;     // aprs_ext_type_t: PHG, RNG or DFS
     uint16_t phgPower;   // Watts (PHG)
@@ -109,10 +112,10 @@ typedef struct {
     // When set, buildPositionPacket() emits a Mic-E position report
     // (APRS101 ch.10) instead of the uncompressed/compressed layout above,
     // via aprs_mice_encode() (components/weather_telemetry/mice.c). Mic-E
-    // has its own fixed on-air layout: no timestamp, no data extension, and
-    // no compression, so this takes priority over p->timestamp/extEnable/
-    // compress when set - see the mutual-exclusion note in
-    // buildPositionPacket() itself. Sourced from g_config.trk_mice; only
+    // has its own fixed on-air layout: no timestamp and no compression, so
+    // this takes priority over p->timestamp/compress when set - see the
+    // mutual-exclusion note in buildPositionPacket() itself. The data
+    // extension is the one field it keeps, inside its text. Sourced from g_config.trk_mice; only
     // the Tracker beacon exposes it (Mic-E is the mobile-tracker format
     // this project's other two fixed beacons have no need to originate).
     bool mice;
@@ -160,10 +163,9 @@ typedef struct {
     // buildMicePositionPacket() can reserve room for it - the same way they
     // already reserve room for the trailing !DAO! extension - and truncate
     // only the operator's free-form comment text if the info field would
-    // otherwise overflow. Sized for the group's documented worst case: '|' +
-    // 2-byte sequence pair + up to TLM_CH 2-byte analog pairs + closing '|' +
-    // NUL.
-    char cmtTlm[1 + 2 + TLM_CH * 2 + 1 + 1];
+    // otherwise overflow. Sized from telemetry.h's own worst-case figure for
+    // the group, so the two never drift apart.
+    char cmtTlm[TLM_COMMENT_GROUP_BUF_SIZE];
 } beacon_params_t;
 
 // Encodes a beacon's own transmit interval into the PHGR "probes" rate
@@ -371,10 +373,11 @@ static void buildDataExtension(const beacon_params_t *p, char *out, size_t outMa
 //
 // Mic-E has one free-text slot, and aprs12/mic-e-examples.txt fixes the order
 // of what may go in it: the frequency block first (radios auto-tune from the
-// leading bytes and stop looking after them), then the operator's comment,
-// then "!DAO!" last. The altitude field and the Manufacturer/Version pair sit
-// outside that text, before and after it respectively, and are added by
-// aprs_mice_encode() itself.
+// leading bytes and stop looking after them), then the data extension the
+// 1.2 revision allows here, then the operator's comment, then "!DAO!" last.
+// The altitude field and the Manufacturer/Version pair sit outside that text,
+// before and after it respectively, and are added by aprs_mice_encode()
+// itself.
 //
 // Returns the packet length, or 0 if nothing usable is configured or the
 // position/line does not fit the Mic-E format.
@@ -438,7 +441,18 @@ static int buildMicePositionPacket(const beacon_params_t *p, char *out, size_t o
     char freqBlock[24];
     objitem_build_freq_block(p->freqMhz, p->freqToneTenths, p->freqDuplex, p->freqOffsetKhz, freqBlock, sizeof(freqBlock));
 
-    // Layout order for the text field is [freqBlock][comment][comment
+    // Data extension (PHG / RNG / DFS). Mic-E has no 7-byte slot of its own
+    // after a symbol code, but the 1.2 revision states that the Mic-E text
+    // field may carry any ordinary position comment field, PHG included, which
+    // is how a station beaconing in Mic-E advertises its coverage. It is
+    // written ahead of the operator's comment, so it stays in the leading,
+    // fixed-position part of the text where a decoder looks for it, and behind
+    // the frequency block, which radios expect in the first bytes of the text
+    // and stop looking for after them. Sized as in buildPositionPacket().
+    char ext[10] = { 0 };
+    buildDataExtension(p, ext, sizeof(ext));
+
+    // Layout order for the text field is [freqBlock][ext][comment][comment
     // telemetry][!DAO!]: the base-91 comment telemetry group must follow the
     // operator's free-form comment text but precede the DAO extension
     // (APRS101 ch.13, aprs12/datum.txt). Both the telemetry group and the DAO
@@ -453,6 +467,8 @@ static int buildMicePositionPacket(const beacon_params_t *p, char *out, size_t o
     size_t used = 0;
     if (freqBlock[0])
         str_append(report.status_text, bodyMax, &used, "%s ", freqBlock);
+    if (ext[0])
+        str_append(report.status_text, bodyMax, &used, "%s", ext);
     if (p->comment[0])
         str_append(report.status_text, bodyMax, &used, "%s", p->comment);
     if (cmtTlmLen > 0)
@@ -484,8 +500,8 @@ static int buildPositionPacket(const beacon_params_t *p, char *out, size_t outMa
     if (!p->call[0])
         return 0;
 
-    // Mic-E has its own fixed on-air layout (no timestamp, no data extension,
-    // no compression - see the mice field's own comment in beacon_params_t),
+    // Mic-E has its own fixed on-air layout (no timestamp, no compression -
+    // see the mice field's own comment in beacon_params_t),
     // so it is handled by a dedicated builder and takes priority over every
     // other layout choice below.
     if (p->mice)
@@ -513,23 +529,40 @@ static int buildPositionPacket(const beacon_params_t *p, char *out, size_t outMa
     char ext[10] = { 0 };
     buildDataExtension(p, ext, sizeof(ext));
 
+    // A pre-calculated radio range is the one data extension the compressed
+    // layout carries natively: APRS101 ch.9 gives the cs bytes a radio range
+    // form of their own ('{' followed by the range digit), so an RNG beacon
+    // folds into the compressed field instead of forcing the uncompressed
+    // one.
+    bool extIsRange = p->extEnable && (aprs_ext_type_t)p->extType == APRS_EXT_RNG;
+
     // Two things force the uncompressed layout:
     //
-    //   * A data extension. The compressed format has no room for the 7-byte
-    //     slot (APRS101 ch.9 states it does not support PHG); emitting those
-    //     bytes inside a compressed report would just be wrong data, and
-    //     dropping the extension silently to keep compression would lose a
-    //     field the operator explicitly enabled.
+    //   * A PHG or DFS data extension. The compressed format has no room for
+    //     the 7-byte slot (APRS101 ch.9 states it does not support PHG);
+    //     emitting those bytes inside a compressed report would just be wrong
+    //     data, and dropping the extension silently to keep compression would
+    //     lose a field the operator explicitly enabled.
     //   * Position ambiguity. Ambiguity is expressed by blanking decimal
     //     digits, and the compressed format has no decimal digits to blank -
     //     a compressed report always states a position to full resolution, so
     //     honouring the compress flag here would transmit the exact position
     //     the operator asked to obscure.
     //
-    // None of these three fixed-position beacons track course/speed, so when
-    // compression is used the cs/T slot always carries "no cs/T data"
-    // (3 spaces).
-    bool useCompressed = p->compress && !p->extEnable && p->ambiguity == 0;
+    // None of these three fixed-position beacons track course/speed, so the
+    // compressed cs/T slot carries either the radio range form or "no cs/T
+    // data" (3 spaces).
+    bool useCompressed = p->compress && (!p->extEnable || extIsRange) && p->ambiguity == 0;
+
+    // Altitude has a compressed form of its own (APRS101 ch.9): the same two
+    // cs bytes, read as an altitude instead of as a course/speed pair when the
+    // type byte names GGA as the NMEA source. It costs nothing on air, where
+    // the uncompressed "/A=" token costs nine bytes, so a compressed report
+    // carrying an altitude uses it - unless the cs slot is already spoken for
+    // by a radio range, which is an extension the operator enabled explicitly
+    // and which has no other place to go. Altitude always has the "/A=" form
+    // to fall back on, so it is the one that gives way.
+    bool useCompressedAltitude = useCompressed && p->sendAltitude && !extIsRange;
 
     // Sized for the larger of the two layouts: uncompressed is up to 21
     // bytes (9-char latStr content + symTable + 10-char lonStr content +
@@ -537,15 +570,28 @@ static int buildPositionPacket(const beacon_params_t *p, char *out, size_t outMa
     // symCode + 3 cs/T), plus NUL either way.
     char posField[22];
     if (useCompressed) {
-        aprs_coord_format_compressed(p->lat, p->lon, symTable, symCode, "   ", posField, sizeof(posField));
+        char csT[3] = { ' ', ' ', ' ' };
+        if (extIsRange) {
+            aprs_compressed_cs_from_range(p->rangeMiles, csT);
+            ext[0] = 0; // the range travels in the compressed field's own cs/T slot
+        } else if (useCompressedAltitude) {
+            int feet = (int)(p->alt * 3.28084f);
+            if (feet < 0)
+                feet = 0;
+            aprs_compressed_cs_from_altitude((unsigned)feet, csT);
+        }
+        aprs_coord_format_compressed(p->lat, p->lon, symTable, symCode, csT, posField, sizeof(posField));
     } else {
         char latStr[10], lonStr[11];
         aprs_coord_format_ambiguous(p->lat, p->lon, p->ambiguity, latStr, sizeof(latStr), lonStr, sizeof(lonStr));
         snprintf(posField, sizeof(posField), "%s%c%s%c", latStr, symTable, lonStr, symCode);
     }
 
+    // Uncompressed altitude token, used whenever the compressed form above is
+    // not the one carrying it. Emitting both would state the altitude twice,
+    // at two different resolutions.
     char extra[40] = { 0 };
-    if (p->sendAltitude) {
+    if (p->sendAltitude && !useCompressedAltitude) {
         int feet = (int)(p->alt * 3.28084f);
         if (feet < 0)
             feet = 0;
@@ -671,6 +717,34 @@ typedef struct {
     uint16_t freqOffsetKhz;
 } status_params_t;
 
+// Builds the meteor-scatter beam heading and ERP block (APRS101 ch.16) into
+// `out` (>= 4 bytes), or leaves it empty when either half is switched off.
+// The block is '^' followed by two code characters:
+//
+//   H = beam heading / 10, as '0'-'9' for 0-90 degrees and 'A'-'Z' for
+//       100-350 degrees.
+//   P = ERP code, where the effective radiated power is 10 * P^2 watts and
+//       the code itself is the single character '0' + P. The spec's table
+//       runs from 10 W ('1') to 7290 W ('K'), which is one contiguous run of
+//       printable ASCII, so the code is computed rather than looked up. The
+//       configured power is matched to the nearest table entry.
+static void buildBeamErpBlock(int16_t beamDeg, uint16_t erpWatts, char *out, size_t outMax) {
+    out[0] = 0;
+    if (beamDeg < 0 || erpWatts == 0)
+        return;
+
+    unsigned h = ((unsigned)beamDeg % 360u) / 10u;
+    char hChar = (h <= 9) ? (char)('0' + h) : (char)('A' + (h - 10));
+
+    long p = lroundf(sqrtf((float)erpWatts / 10.0f));
+    if (p < STATUS_ERP_CODE_MIN)
+        p = STATUS_ERP_CODE_MIN;
+    if (p > STATUS_ERP_CODE_MAX)
+        p = STATUS_ERP_CODE_MAX;
+
+    snprintf(out, outMax, "^%c%c", hChar, (char)('0' + p));
+}
+
 // Builds the full TNC2 text line for one status-report transmission. The
 // info field is DTI '>' followed by the free-text status (APRS101 ch.16).
 //
@@ -699,17 +773,25 @@ typedef struct {
 // with the locator present the space follows the symbol code. Receivers that
 // understand a given leading field read it out on its own; the rest simply
 // show the whole thing as status text. The configured status text itself is
-// never interpreted: whatever the operator typed is carried verbatim at the
-// end.
+// never interpreted: whatever the operator typed is carried verbatim.
+//
+// One optional block follows that text instead of preceding it: the
+// meteor-scatter beam heading and ERP pair, which APRS101 ch.16 defines as
+// the last two characters of the status text preceded by '^' - a fixed
+// position it can only hold by being last. It is emitted only when both
+// halves are configured (::app_config_t::status_beam_deg and
+// ::app_config_t::status_erp_watts).
 //
 // All pieces share the APRS_STATUS_INFO_MAX budget APRS101 ch.16 sets for the
-// information field, and a full status text plus both optional blocks asks
+// information field, and a full status text plus every optional block asks
 // for more than that, so the blocks are dropped in a defined order until the
 // field fits: the leading field (timestamp or locator) first, then the
-// frequency block. The operator's text is what the report exists to carry,
-// so it is never the thing that gives way - if it does not fit on its own
-// the report is refused outright, on the same terms buildPositionPacket()
-// refuses an over-long position.
+// frequency block. The beam heading and ERP pair is never dropped: it is
+// three bytes, and a station running meteor scatter is transmitting the
+// report for those three bytes. The operator's text is what the report exists
+// to carry, so it does not give way either - if the text plus that pair does
+// not fit on its own the report is refused outright, on the same terms
+// buildPositionPacket() refuses an over-long position.
 //
 // Returns the packet length, or 0 if nothing usable is configured.
 static int buildStatusPacket(const status_params_t *p, char *out, size_t outMax) {
@@ -752,11 +834,18 @@ static int buildStatusPacket(const status_params_t *p, char *out, size_t outMax)
         symCode = p->symbol[1] ? p->symbol[1] : '>';
     }
 
+    // Meteor-scatter beam heading and ERP, station-wide like the Maidenhead
+    // option above and read the same way: the two values are scalars, so the
+    // builder takes them straight from g_config rather than through the
+    // caller's snapshot, which exists to keep the strings from tearing.
+    char hp[4] = { 0 };
+    buildBeamErpBlock(g_config.status_beam_deg, g_config.status_erp_watts, hp, sizeof(hp));
+
     // '>' (1) + leading field (timestamp "DDHHMMz" = 7, or locator "IO91SX"
     // + symbol table + symbol code = 9) + freq block (up to 20,
     // space-separated) + separating space + status text (up to
-    // STATUS_SIZE - 1) + NUL, so the buffer holds every assembly attempt
-    // below even before the blocks are dropped. Built with str_append() so a
+    // STATUS_SIZE - 1) + the 3-byte beam/ERP block + NUL, so the buffer holds
+    // every assembly attempt below even before the blocks are dropped. Built with str_append() so a
     // would-be negative/oversize snprintf() result from any one piece
     // saturates the buffer instead of underflowing the running offset.
     char infoField[STATUS_SIZE + 40];
@@ -772,6 +861,8 @@ static int buildStatusPacket(const status_params_t *p, char *out, size_t outMax)
         if (useFreq)
             str_append(infoField, sizeof(infoField), &used, "%s", freqBlock);
         str_append(infoField, sizeof(infoField), &used, " %s", p->statusText);
+        if (hp[0])
+            str_append(infoField, sizeof(infoField), &used, "%s", hp);
 
         if (used <= APRS_STATUS_INFO_MAX)
             break;
@@ -1011,7 +1102,7 @@ static uint32_t trackerBeaconService(void) {
 
     int64_t now = sched_mono_seconds();
     if (now >= s_trk_next_due) {
-        beacon_params_t p = { 0 }; // zero-init: Tracker carries no data extension, so extEnable must default false
+        beacon_params_t p = { 0 };
         app_config_lock();
         {
             bool useTrk = g_config.trk_mycall[0] != 0;
@@ -1036,6 +1127,17 @@ static uint32_t trackerBeaconService(void) {
             p.freqToneTenths = g_config.trk_tone_tenths;
             p.freqDuplex = g_config.trk_duplex;
             p.freqOffsetKhz = g_config.trk_offset_khz;
+            // The Tracker's one data extension is PHG, describing the coverage
+            // of this station's own antenna, so its sub-fields come from the
+            // station-wide PHG block on the Station page rather than from a
+            // second copy of the same four settings on this page.
+            p.extEnable = g_config.trk_phg_enable;
+            p.extType = APRS_EXT_PHG;
+            p.phgPower = g_config.my_phg_power;
+            p.phgGain = g_config.my_phg_gain;
+            p.phgHeight = g_config.my_phg_height;
+            p.phgDir = g_config.my_phg_dir;
+            p.beaconIntervalSec = sched_clamp_interval(g_config.trk_interval, BEACON_MIN_INTERVAL_S, BEACON_DEFAULT_INTERVAL_S);
         }
         app_config_unlock();
         appendCommentTelemetry(&p);

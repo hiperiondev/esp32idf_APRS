@@ -189,13 +189,16 @@ Compressed position reports (ch. 9)
      - Notes
    * - Base-91 compressed latitude and longitude
      - ✅
-     - Selectable per service — tracker, IGate, digipeater and objects — and decoded on receive. Compression is automatically suppressed when a data extension or position ambiguity is in use, since neither survives the compressed layout.
+     - Selectable per service — tracker, IGate, digipeater and objects — and decoded on receive. Compression is automatically suppressed when a PHG or DF extension or position ambiguity is in use, since none of those survives the compressed layout; a pre-calculated radio range is the one extension that does, and folds into the two-byte field instead.
    * - Compressed course/speed and the compression type byte
      - ✅
      - A moving tracker encodes course and speed into the two-byte field and sets the type byte to compressed course/speed with a current fix; a station with nothing to report sends the three-space "no data" encoding. The field quantises course to a 4 degree step and speed to a step of about 8 per cent, and the encoder keeps both bytes inside the range the course/speed form owns, so a token is never read back as the radio range form that shares those two bytes.
-   * - Compressed radio range and compressed altitude
-     - ❌
-     - The two-byte field carries course and speed only. A station that needs to advertise range or altitude alongside a position uses the uncompressed layout, where both have their own fields.
+   * - Compressed pre-calculated radio range
+     - ✅
+     - A beacon whose data extension is the pre-calculated radio range folds it into the two-byte field — the reserved ``{`` marker followed by the range digit — rather than falling back to the uncompressed layout, so a coverage circle travels with a compressed position and no ``RNGrrrr`` token is left in the information field. The field quantises the range to a step of about 8 per cent, from a floor of 2 miles.
+   * - Compressed altitude
+     - ✅
+     - A compressed beacon carrying an altitude puts it in the same two bytes, with the type byte naming GGA as the source, which is what selects that reading of them. The ``/A=`` comment token is left out when it does, so the altitude is stated once and costs nothing rather than nine bytes. A radio range keeps the two bytes when both are configured, since it has nowhere else to go and altitude still has the comment form to fall back on. The step is about 0.2 per cent.
 
 Mic-E data format (ch. 10)
 ==========================
@@ -226,8 +229,8 @@ Mic-E data format (ch. 10)
      - ✅
      - The 1.2 extension is applied on both sides, so a frame digipeated through a space station reports its orbital velocity rather than a clipped one. That scale is quantised in steps of 112 knots and has a gap between 671 and 781 knots that the published rule itself leaves unrepresentable; below 671 knots the field stays exact to the knot.
    * - PHG inside the Mic-E text field
-     - ❌
-     - The 1.2 addition allowing a normal position comment field — notably PHG — inside the Mic-E text is not produced. It matters mainly for hardware digipeaters that beacon in Mic-E.
+     - ✅
+     - The data extension is written into the Mic-E text, behind the frequency block and ahead of the operator's comment, so a station beaconing in Mic-E advertises its coverage the way the 1.2 addition allows. The Tracker page carries the switch; its four sub-fields are the station's own antenna data.
    * - Mic-E telemetry
      - ❌
      - Deliberately absent: version 1.2 deprecates this format in favour of the manufacturer type codes and the base-91 comment telemetry, both of which this firmware implements.
@@ -298,9 +301,12 @@ Weather reports (ch. 12)
    * - Software type and weather unit identifiers
      - ⚠️
      - Both are emitted, as the last token of the information field so a strict parser does not absorb the operator's comment into the unit string. The unit code is free-form and fine; the single software-type character is one the specification does not allocate.
-   * - Raw rain counter, radiation and voltage fields
+   * - Raw rain counter
+     - ✅
+     - The gauge's own running count, four digits after a ``#``, transmitted unscaled and never reset by the station so a receiver can difference two reports. It is a row of the sensor mapping table like every other weather field, emitted only when a driver is mapped to it.
+   * - Radiation and voltage fields
      - ❌
-     - The raw rain counter from the original specification and the radiation and voltage fields proposed for 1.2 have no encoder. The sensor framework maps drivers to fields by name, so adding them is a field-table extension rather than new plumbing.
+     - The two fields proposed for 1.2 have no weather token of their own and travel as telemetry analog channels instead, which is where the sensor framework routes them.
    * - Raw Peet Bros and Ultimeter weather reports
      - ⚠️
      - Recognised as weather by the gating classifier so they route correctly, but the raw payloads are never decoded into readings. The specification says senders should convert to the complete format anyway, so this is receive-side breadth rather than a transmit gap.
@@ -328,8 +334,8 @@ Telemetry data (ch. 13)
      - ✅
      - All four definition messages — names, units and labels, equation coefficients and bit sense with project title — sent as addressed messages, as the specification requires. The report carries the raw value and the receiver applies the coefficients.
    * - Base-91 comment telemetry
-     - ⚠️
-     - The analog channels and the sequence counter are encoded into the pipe-delimited group. Because that group is positional — the nth pair *is* channel n, with no per-pair identifier — the encoder stops at the first channel that is disabled or unresolved rather than leaving a gap that would shift every later channel one slot. The eight-bit digital bank is not included in the group; it travels only in the ordinary telemetry report.
+     - ✅
+     - The sequence counter, the analog channels and the eight-bit digital bank are encoded into the pipe-delimited group. Because that group is positional — the nth pair *is* channel n, with no per-pair identifier — the encoder stops at the first channel that is disabled or unresolved rather than leaving a gap that would shift every later channel one slot, and the digital pair is appended only behind a full set of five analog pairs, which is the only place the specification allows it. A station with no channel to report emits no group at all, since the extension must carry the counter and at least one channel.
    * - Alternative sequence number form
      - ❌
      - The three-letter sequence identifier some encoders use in place of a number is neither produced nor specially recognised on receive.
@@ -412,8 +418,8 @@ Status reports (ch. 16)
      - ⚠️
      - The four or six character locator and its symbol are produced, but two placement rules are not met: the specification requires the locator to follow the data type identifier immediately, and forbids combining it with a timestamp. Here the timestamp and the frequency block can both precede it, so a strict receiver will not recognise the locator form.
    * - Beam heading and effective radiated power
-     - ❌
-     - The two-character meteor-scatter encoding at the end of the status text is not produced. Narrow use, and it needs a lookup table plus two settings to add.
+     - ✅
+     - The two characters close the status text after a ``^``, from a station-wide heading and power set on the Station page. The heading steps in ten degrees and the power is matched to the nearest entry of the specification's table, which runs from 10 to 7290 watts. Both halves have to be set for the block to appear, and it is the one block the length budget never drops — a station running meteor scatter is sending the report for those three bytes.
 
 Network tunnelling and third-party traffic (ch. 17)
 ===================================================

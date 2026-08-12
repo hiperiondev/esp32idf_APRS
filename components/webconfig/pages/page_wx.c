@@ -49,6 +49,7 @@ static const char *WX_FIELD_NAME[WX_SENSOR_NUM] = {
     [WX_FIELD_LUMINOSITY] = TR_WX_LUMINOSITY,
     [WX_FIELD_FLOOD_HEIGHT_FT] = TR_WX_FLOOD_FT,
     [WX_FIELD_FLOOD_HEIGHT_M] = TR_WX_FLOOD_M,
+    [WX_FIELD_RAIN_RAW] = TR_WX_RAIN_RAW,
 };
 
 // Bit position in ::sensor_local_wx_mask_t for each ::wx_field_id_t row of
@@ -70,6 +71,7 @@ static const sensor_local_wx_mask_t WX_FIELD_PROPERTY_BIT[WX_SENSOR_NUM] = {
     [WX_FIELD_LUMINOSITY] = SENSOR_LOCAL_WX_LUMINOSITY,
     [WX_FIELD_FLOOD_HEIGHT_FT] = SENSOR_LOCAL_WX_FLOOD_HEIGHT_FT,
     [WX_FIELD_FLOOD_HEIGHT_M] = SENSOR_LOCAL_WX_FLOOD_HEIGHT_M,
+    [WX_FIELD_RAIN_RAW] = SENSOR_LOCAL_WX_RAIN_RAW,
 };
 
 // Emits the <select> for one field's "source channel", populated from the live
@@ -159,6 +161,8 @@ static bool wx_field_present(const aprs_weather_report_t *wx, wx_field_id_t f) {
             return wx->enabled[APRS_WX_SENSOR_FLOOD_HEIGHT_FT];
         case WX_FIELD_FLOOD_HEIGHT_M:
             return wx->enabled[APRS_WX_SENSOR_FLOOD_HEIGHT_M];
+        case WX_FIELD_RAIN_RAW:
+            return wx->enabled[APRS_WX_SENSOR_RAW_RAIN_COUNTER];
         default:
             return false;
     }
@@ -225,6 +229,10 @@ static void wx_field_format(const aprs_weather_report_t *wx, wx_field_id_t f, ch
             break;
         case WX_FIELD_FLOOD_HEIGHT_M:
             snprintf(out, outsz, "\"%.1f m\"", (double)wx->flood_height_m);
+            break;
+        case WX_FIELD_RAIN_RAW:
+            // A bucket count, not a length: it has no unit to convert to.
+            snprintf(out, outsz, "\"%lu\"", (unsigned long)wx->raw_rain_counter);
             break;
         default:
             snprintf(out, outsz, "null");

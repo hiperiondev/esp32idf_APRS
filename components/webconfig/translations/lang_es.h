@@ -252,6 +252,8 @@
 #define TR_F_IGATE "IGate"
 /** Spanish text for the form label for the "include altitude" field or fieldset, rendered on the configuration forms. English: "Include altitude". */
 #define TR_F_INCLUDE_ALTITUDE "Incluir altitud"
+/** Form label for the "tracker phg" field or fieldset, rendered on the Tracker page. */
+#define TR_F_TRACKER_PHG "Incluir extension de datos PHG"
 /** Spanish text for the form label for the "internet to rf" field or fieldset, rendered on the configuration forms. English: "Internet to RF". */
 #define TR_F_INTERNET_TO_RF "Internet a RF"
 /** Spanish text for the form label for the "latitude" field or fieldset, rendered on the configuration forms. English: "Latitude". */
@@ -1116,6 +1118,8 @@
 #define TR_WX_FLOOD_FT "Nivel de crecida (ft)"
 /** Spanish text for the weather page label for flood m, rendered on the Weather page. English: "Flood Height". */
 #define TR_WX_FLOOD_M "Nivel de crecida"
+/** Weather page label for the raw rain counter, rendered on the Weather page. */
+#define TR_WX_RAIN_RAW "Contador de lluvia crudo"
 /** Spanish text for the weather page label for field, rendered on the Weather page. English: "WX Field". */
 #define TR_WX_FIELD "Campo WX"
 /** Spanish text for the weather page label for channel, rendered on the Weather page. English: "Channel". */
@@ -1207,6 +1211,10 @@
 #define TR_F_STATUS_GRID "Localizador Maidenhead en los reportes de estado"
 /** Spanish text for the form label for the "status timestamp" field or fieldset, rendered on the IGate page. English: "Zulu timestamp in status reports". */
 #define TR_F_STATUS_TIMESTAMP "Marca de tiempo zulu en los reportes de estado"
+/** Form label for the "status beam" field or fieldset, rendered on the IGate page. */
+#define TR_F_STATUS_BEAM "Rumbo de antena en los reportes de estado (grados)"
+/** Form label for the "status erp" field or fieldset, rendered on the IGate page. */
+#define TR_F_STATUS_ERP "PRE en los reportes de estado (W)"
 /** Spanish text for the form label for the "pos dao" field or fieldset, rendered on the IGate page. English: "DAO precision extension in position reports". */
 #define TR_F_POS_DAO "Extensión de precisión DAO en los reportes de posición"
 /** Spanish text for the compass direction abbreviation: omni, rendered on the IGate page. English: "Omni". */

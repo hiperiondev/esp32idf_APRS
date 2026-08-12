@@ -146,12 +146,47 @@ ninguno; la página deshabilita las entradas que el tipo seleccionado no usa.
 Como un control deshabilitado no se envía en el POST, los valores guardados del
 *otro* tipo sobreviven al ir y volver entre ellos.
 
-Habilitar cualquier extensión fuerza el formato de posición sin comprimir. El
-formato comprimido no tiene sitio para la ranura de 7 bytes (APRS101 cap.9 dice
-que no admite PHG), así que emitir esos bytes dentro de un reporte comprimido
-sería simplemente dato erróneo, y descartar la extensión para conservar la
-compresión perdería en silencio un campo que el operador habilitó
-explícitamente.
+Habilitar PHG o DFS fuerza el formato de posición sin comprimir. El formato
+comprimido no tiene sitio para la ranura de 7 bytes (APRS101 cap.9 dice que no
+admite PHG), así que emitir esos bytes dentro de un reporte comprimido sería
+simplemente dato erróneo, y descartar la extensión para conservar la compresión
+perdería en silencio un campo que el operador habilitó explícitamente.
+
+RNG es la excepción, porque el formato comprimido lleva un alcance de radio
+precalculado de forma nativa: los dos bytes ``cs`` contienen ``{`` seguido de un
+dígito de alcance, que se decodifica como ``2 × 1,08^s`` millas. Una baliza con
+RNG seleccionado y la compresión marcada sigue por tanto comprimida, con el
+alcance plegado en esos dos bytes y sin ningún token ``RNGrrrr`` en el campo de
+información. La forma comprimida cuantiza el alcance en pasos de alrededor del
+8 por ciento y arranca en un piso de 2 millas, así que un alcance configurado
+por debajo se transmite como 2.
+
+La baliza Tracker lleva PHG y nada más, que se activa con *Incluir extensión de
+datos PHG* en su propia página. Ahí no hay subcampos que completar: los cuatro
+valores son los datos de antena de la propia estación, que se editan una sola
+vez en el bloque PHG de la página Estación. Un tracker que baliza en Mic-E
+conserva el token — Mic-E no tiene ranura de 7 bytes después del código de
+símbolo, pero APRS 1.2 establece que su campo de texto puede llevar un campo de
+comentario de posición normal, PHG incluido, y ahí es donde va: detrás del
+bloque de frecuencia, para que una radio siga sintonizando automáticamente a
+partir de los primeros bytes, y delante del comentario del operador.
+
+Altitud comprimida
+==================
+
+Un reporte de posición comprimido no tiene token de comentario para la altitud,
+pero no lo necesita. Los mismos dos bytes ``cs`` que llevan curso/velocidad o un
+alcance de radio llevan una altitud cuando el byte de tipo declara GGA como
+fuente NMEA, que se decodifica como ``1,002^(c × 91 + s)`` pies. Una baliza con
+*Incluir altitud* y *Comprimir posición* marcadas usa esa forma, y el token
+``/A=`` se omite del comentario, así que la altitud se enuncia una sola vez —
+nueve bytes de comentario ahorrados a cambio de nada, con un paso de alrededor
+del 0,2 %.
+
+Los dos bytes llevan una sola cosa por vez, así que una baliza que además tenga
+RNG seleccionado se los cede al alcance: el alcance no tiene otro lugar donde
+ir, mientras que la altitud todavía cuenta con ``/A=`` como respaldo, y eso es
+lo que una baliza así emite.
 
 La capacidad de mensajería va en el identificador de tipo de datos
 ==================================================================
@@ -220,6 +255,32 @@ activar con un clic equivocado y dejar activado para todas las balizas
 siguientes. En recepción se trata por completo: ver
 :ref:`es-filtering` para el decodificador, y el registro de tráfico
 para la línea de advertencia que genera una emergencia recibida.
+
+Rumbo de antena y PRE en los reportes de estado
+==============================================
+
+Un reporte de estado puede terminar con dos caracteres detrás de un ``^``: el
+rumbo de antena en unidades de diez grados, y un código que representa la
+potencia radiada efectiva. La operación de meteor scatter es la razón de ser del
+par — las dos cifras que un corresponsal necesita para saber si vale la pena
+esperar una ráfaga — y APRS101 cap.16 lo fija como el *último* campo del texto
+de estado, que es el único lugar donde puede reconocerse.
+
+Las dos mitades se fijan en la página Estación y valen para toda la estación,
+como la opción Maidenhead: *Rumbo de antena en los reportes de estado* avanza de
+a diez grados de 0 a 350, y *PRE en los reportes de estado* ofrece la tabla de la
+propia especificación, de 10 W a 7290 W en los pasos que siguen al cuadrado del
+dígito del código. Un rumbo sin potencia, o una potencia sin rumbo, no dice
+nada, así que el bloque se emite solo cuando ambas están fijadas — dejar
+cualquiera de las dos en *Off* es lo que hace una estación que no trabaja meteor
+scatter, y entonces transmite exactamente el mismo reporte de estado que
+transmitía antes.
+
+El campo de información de estado tiene un tope de 70 bytes, y el armado va
+descartando sus bloques opcionales en orden hasta que entre: primero el campo
+inicial, después el bloque de frecuencia. El par rumbo/PRE nunca se descarta.
+Son tres bytes, y una estación que transmite un reporte de estado durante una
+cita de meteor scatter lo transmite justamente por esos tres bytes.
 
 Ambigüedad de posición
 ======================

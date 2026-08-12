@@ -129,6 +129,8 @@ static bool wx_field_present(const aprs_weather_report_t *wx, wx_field_id_t f) {
             return wx->enabled[APRS_WX_SENSOR_FLOOD_HEIGHT_FT];
         case WX_FIELD_FLOOD_HEIGHT_M:
             return wx->enabled[APRS_WX_SENSOR_FLOOD_HEIGHT_M];
+        case WX_FIELD_RAIN_RAW:
+            return wx->enabled[APRS_WX_SENSOR_RAW_RAIN_COUNTER];
         default:
             return false;
     }
@@ -162,6 +164,8 @@ static double wx_field_value(const aprs_weather_report_t *wx, wx_field_id_t f) {
             return (double)wx->flood_height_ft;
         case WX_FIELD_FLOOD_HEIGHT_M:
             return (double)wx->flood_height_m;
+        case WX_FIELD_RAIN_RAW:
+            return (double)wx->raw_rain_counter;
         default:
             return 0.0;
     }
@@ -497,6 +501,17 @@ static int build_wx_tokens(const wx_resolved_t r[WX_SENSOR_NUM], bool positionle
         if (m > 999.9)
             m = 999.9;
         WX_APP("f%.1f", m);
+    }
+    // Raw tip-bucket counter: the gauge's own running count, transmitted
+    // unscaled so a receiver can difference two reports. It is a count, not a
+    // measurement in hundredths of an inch, and it is never reset by the
+    // station. Four digits, zero-padded, wrapping at the field width the way
+    // the counter itself wraps.
+    if (r[WX_FIELD_RAIN_RAW].present) {
+        long raw = lround(r[WX_FIELD_RAIN_RAW].value);
+        if (raw < 0)
+            raw = 0;
+        WX_APP("#%04ld", raw % 10000);
     }
 
 #undef WX_APP

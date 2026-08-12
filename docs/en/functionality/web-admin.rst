@@ -45,8 +45,9 @@ The pages
    * - **Station**
      - The shared own-station identity read by every beacon, object and
        message: callsign, latitude, longitude, altitude (``g_config.my_*``),
-       plus the two station-wide on-air precision options - position ambiguity
-       and the Maidenhead locator prefix for status reports.
+       plus the station-wide on-air options - position ambiguity, the
+       Maidenhead locator prefix for status reports, and the meteor-scatter
+       beam heading and ERP that close them.
    * - **IGate**
      - Enable, RF→INET / INET→RF, both filter bitmasks, budlist and range/prefix
        gates, callsign/SSID/passcode, four *APRS-IS Server* fieldsets (each an

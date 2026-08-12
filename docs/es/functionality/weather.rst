@@ -104,6 +104,17 @@ las propuestas de inundación de APRS 1.2, enumerados por ``wx_field_id_t``:
    * - Altura de inundación (metros)
      - ``fXXXX.X``
      - metros (APRS 1.2)
+   * - Contador de lluvia crudo
+     - ``#XXXX``
+     - cuentas de cazoleta, sin escalar
+
+El contador de lluvia crudo es el caso distinto: es la cuenta corrida de vuelcos
+de cazoleta del propio pluviómetro, no una medición en centésimas de pulgada, y
+la estación nunca lo reinicia. Un receptor obtiene la lluvia restando dos
+reportes, que es lo que lo vuelve útil en un sitio sin atención cuyos otros
+campos de lluvia dependen de que la estación haya estado encendida el tiempo
+suficiente para acumularlos. Se transmite sin escalar, con cuatro dígitos, y da
+la vuelta en el ancho del campo igual que el propio contador.
 
 La baliza WX
 ============

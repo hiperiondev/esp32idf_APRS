@@ -102,6 +102,9 @@ flood proposals, enumerated by ``wx_field_id_t``:
    * - Flood height (metres)
      - ``fXXXX.X``
      - metres (APRS 1.2)
+   * - Raw rain counter
+     - ``#XXXX``
+     - tip-bucket counts, unscaled
 
 A station with no position configured (``g_config.wx_lat``/``wx_lon`` both
 zero, and no object name set) sends the positionless report format instead,
@@ -109,6 +112,14 @@ which reuses the ``s`` letter for wind speed and therefore has no slot for
 snow. The snow token is left out of that report even when the field is
 enabled and a reading is available; the firmware logs a warning each time
 this happens so the gap is traceable to its cause.
+
+The raw rain counter is the odd one out: it is the gauge's own running count of
+bucket tips, not a measurement in hundredths of an inch, and the station never
+resets it. A receiver reads rainfall out of it by differencing two reports,
+which is what makes it useful for an unattended site whose other rain fields
+depend on the station having been up long enough to accumulate them. It is
+transmitted unscaled, four digits, and wraps at the field width the way the
+counter itself does.
 
 The WX beacon
 =============

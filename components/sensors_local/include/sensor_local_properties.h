@@ -91,9 +91,10 @@ typedef enum {
     SENSOR_LOCAL_WX_LUMINOSITY = 1u << 10,      /**< Luminosity, solar radiation ("LXXX"/"lXXX", APRS 1.2). */
     SENSOR_LOCAL_WX_FLOOD_HEIGHT_FT = 1u << 11, /**< Flood/water gauge height, feet ("FXXXX.X", APRS 1.2). */
     SENSOR_LOCAL_WX_FLOOD_HEIGHT_M = 1u << 12,  /**< Flood/water gauge height, meters ("fXXXX.X", APRS 1.2). */
+    SENSOR_LOCAL_WX_RAIN_RAW = 1u << 13,        /**< Raw tip-bucket rain counter ("#XXXX"). */
 
     SENSOR_LOCAL_WX_NONE = 0,              /**< No weather parameter (telemetry-only or uninitialised driver). */
-    SENSOR_LOCAL_WX_ALL = (1u << 13) - 1u, /**< Convenience: every weather bit currently defined. */
+    SENSOR_LOCAL_WX_ALL = (1u << 14) - 1u, /**< Convenience: every weather bit currently defined. */
 } sensor_local_wx_mask_t;
 
 /**
@@ -147,10 +148,10 @@ typedef enum {
 
 /**
  * @brief Number of ::sensor_local_wx_mask_t field slots, i.e. the highest
- *        bit position used (::SENSOR_LOCAL_WX_FLOOD_HEIGHT_M, bit 12) plus
+ *        bit position used (::SENSOR_LOCAL_WX_RAIN_RAW, bit 13) plus
  *        one. Used to size ::sensor_local_properties_t::wx_channel_name.
  */
-#define SENSOR_LOCAL_WX_FIELD_COUNT 13u
+#define SENSOR_LOCAL_WX_FIELD_COUNT 14u
 
 /**
  * @brief Number of ::sensor_local_tlm_channel_mask_t channel slots (5

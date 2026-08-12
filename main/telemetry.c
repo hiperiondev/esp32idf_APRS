@@ -72,6 +72,11 @@ static bool s_ana_present[TLM_CH];      // channel mapped and resolved this cycl
 // always advance the same count together.
 static uint32_t s_sequence = 0;
 
+// Latches the "no analog channel resolved, nothing to encode" state of
+// telemetry_build_comment_tlm() so it is reported once instead of on every
+// beacon that asks for the group.
+static bool s_cmt_tlm_empty_logged = false;
+
 // In-RAM copy of just the callsign, kept in sync on every load/save so
 // telemetry_get_mycall() (called from aprs_service.c's inet_line_is_own_report(),
 // once per APRS-IS line received - potentially many per second on a busy
@@ -888,6 +893,7 @@ size_t telemetry_build_comment_tlm(char *out, size_t out_max) {
         return 0;
 
     uint8_t ana_count = cfg.analog_count > TLM_CH ? TLM_CH : cfg.analog_count;
+    uint8_t dig_count = cfg.digital_count > TLM_BIT_NUM ? TLM_BIT_NUM : cfg.digital_count;
 
     // Same seq/value snapshot build_tlm_data_packet() takes, so the comment
     // form can never disagree with the concurrent "T#..." report: the
@@ -904,6 +910,21 @@ size_t telemetry_build_comment_tlm(char *out, size_t out_max) {
     // at the first one that is disabled or not currently resolved, so the
     // group always carries an unambiguous, contiguous prefix of channels
     // rather than a gap that would shift every later channel one slot left.
+    //
+    // The digital bank rides in one further base-91 pair holding the whole
+    // 8-bit byte, bit 0 (least significant) being B1 and bit 7 being B8. That
+    // pair is legal only after all five analog pairs, so the same positional
+    // rule that governs the analog prefix also decides whether the byte can
+    // travel at all: with fewer than TLM_CH analog pairs emitted, a receiver
+    // would read the binary pair as the next analog channel.
+    //
+    // The group is one shared string appended to a position report that goes
+    // out over whichever legs that beacon uses, so it has no per-leg form of
+    // its own: a digital channel is carried whenever the bank and the channel
+    // are routed to either leg. A channel that must stay off the air entirely
+    // is disabled on the Telemetry page rather than unrouted.
+    bool dig_bank_on = (cfg.digital_tx2rf || cfg.digital_tx2inet) && dig_count > 0;
+
     telemetry_lock();
     long seqVal = (long)(s_sequence % (91u * 91u));
     long anaVal[TLM_CH];
@@ -912,9 +933,15 @@ size_t telemetry_build_comment_tlm(char *out, size_t out_max) {
         anaPresent[i] = (i < ana_count) && cfg.ana_enable[i] && s_ana_present[i];
         anaVal[i] = anaPresent[i] ? clamp_analog_raw_base91(s_ana_val[i]) : 0;
     }
+    long digVal = 0;
+    for (int i = 0; i < dig_count; i++) {
+        bool routed = cfg.tlm_bit_rf[i] || cfg.tlm_bit_igate[i];
+        if (dig_bank_on && routed && cfg.bit_enable[i] && s_bit_present[i] && s_bit_val[i])
+            digVal |= 1L << i;
+    }
     telemetry_unlock();
 
-    char group[1 + 2 + TLM_CH * 2 + 1 + 1]; // '|' + seq pair + up to 5 value pairs + '|' + NUL
+    char group[TLM_COMMENT_GROUP_BUF_SIZE];
     size_t u = 0;
     group[u++] = '|';
     encode_base91_pair(seqVal, group + u);
@@ -927,8 +954,30 @@ size_t telemetry_build_comment_tlm(char *out, size_t out_max) {
         u += 2;
         anaEmitted++;
     }
+
+    // Chapter 13 requires the extension to carry the sequence counter AND at
+    // least one channel, so with no analog channel resolved there is nothing
+    // to send: an empty "|ss|" group is a form a strict parser may reject,
+    // and it would spend comment budget on every single beacon to say
+    // nothing. The state is logged once and then stays quiet until a channel
+    // does resolve, since the beacon that asks for the group repeats on its
+    // own cadence.
+    if (anaEmitted == 0) {
+        if (!s_cmt_tlm_empty_logged) {
+            ESP_LOGD(TAG, "comment telemetry group not emitted - no analog channel is both enabled and resolved");
+            s_cmt_tlm_empty_logged = true;
+        }
+        return 0;
+    }
+    s_cmt_tlm_empty_logged = false;
+
     if (anaEmitted < ana_count)
         ESP_LOGD(TAG, "comment telemetry group truncated at channel A%d (not enabled or not resolved)", anaEmitted + 1);
+
+    if (dig_bank_on && anaEmitted == TLM_CH) {
+        encode_base91_pair(digVal, group + u);
+        u += 2;
+    }
     group[u++] = '|';
     group[u] = 0;
 

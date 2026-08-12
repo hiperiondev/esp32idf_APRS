@@ -122,6 +122,12 @@
  * Extended measurements such as UV, soil moisture, water level or battery
  * voltage have no such token and are carried as Telemetry instead, so they are
  * deliberately absent here.
+ *
+ * New rows go immediately before ::WX_SENSOR_NUM, which keeps every existing
+ * row at the position a stored @c config.json already uses. The loader reads
+ * the persisted arrays element by element and leaves anything the stored array
+ * is too short to cover at its default, so a file written by an earlier build
+ * loads with the new field disabled and every other field mapped as before.
  */
 typedef enum {
     WX_FIELD_WIND_DIRECTION = 0, /**< Wind direction, deg     -> "ddd/" (aprs_wind_t.direction_deg). */
@@ -137,6 +143,7 @@ typedef enum {
     WX_FIELD_LUMINOSITY,         /**< Solar luminosity, W/m^2 -> "LXXX"/"lXXX" (APRS 1.2). */
     WX_FIELD_FLOOD_HEIGHT_FT,    /**< Flood/water gauge, feet -> "FXXXX.X" (APRS 1.2). */
     WX_FIELD_FLOOD_HEIGHT_M,     /**< Flood/water gauge, m    -> "fXXXX.X" (APRS 1.2). */
+    WX_FIELD_RAIN_RAW,           /**< Raw tip-bucket counter  -> "#XXXX" (APRS101 ch.12), un-reset running count. */
     WX_SENSOR_NUM                /**< Sentinel: number of mappable WX fields. Not a real field. */
 } wx_field_id_t;
 
@@ -469,6 +476,27 @@ typedef enum {
  */
 #define POS_AMBIGUITY_MAX 4
 
+/**
+ * @name Meteor-scatter beam heading and ERP (APRS101 chapter 16)
+ *
+ * The two characters a status report may carry after a @c '^' as its last
+ * field: the beam heading in units of 10 degrees, and a code standing for the
+ * effective radiated power. Both halves have to be configured for the block to
+ * be emitted at all - a heading with no power, or the reverse, says nothing.
+ * @{
+ */
+#define STATUS_BEAM_DEG_OFF                                                                                                                                    \
+    (-1) /**< ::app_config_t::status_beam_deg value meaning "no beam heading configured": 0 degrees is itself a legal heading, so "off" needs a value of its   \
+            own. */
+#define STATUS_BEAM_DEG_MAX  350 /**< Highest beam heading the single character can encode ('Z'); the field steps in ::STATUS_BEAM_DEG_STEP degrees. */
+#define STATUS_BEAM_DEG_STEP 10  /**< Beam-heading quantisation: the character carries the heading divided by ten. */
+
+#define STATUS_ERP_CODE_MIN   1    /**< Lowest ERP code in the chapter 16 table, character '1', standing for 10 W. */
+#define STATUS_ERP_CODE_MAX   27   /**< Highest ERP code in the chapter 16 table, character 'K', standing for 7290 W. */
+#define STATUS_ERP_WATTS_STEP 10   /**< Multiplier of the ERP table: the power is this many watts times the square of the code. */
+#define STATUS_ERP_WATTS_MAX  7290 /**< Highest ERP the table can express, i.e. ::STATUS_ERP_WATTS_STEP times the square of ::STATUS_ERP_CODE_MAX. */
+/** @} */
+
 typedef struct {
     bool synctime;        /**< Enable SNTP time sync. */
     uint8_t cpuFreq;      /**< CPU clock frequency selection (80/160/240 MHz); see cpu_freq.h. */
@@ -495,6 +523,11 @@ typedef struct {
                                  out of the report. */
     bool status_timestamp_en; /**< Prefix every own-station status report with the optional "DDHHMMz" zulu timestamp (APRS101 chapter 16), immediately
                                  after the '>' data type identifier, unless ::status_grid_en is also set, in which case the grid locator is sent instead. */
+    int16_t
+        status_beam_deg; /**< Beam heading advertised at the end of every own-station status report, degrees, quantised to ::STATUS_BEAM_DEG_STEP and at most
+                            ::STATUS_BEAM_DEG_MAX; ::STATUS_BEAM_DEG_OFF leaves the block out. Paired with ::status_erp_watts - the block needs both. */
+    uint16_t status_erp_watts; /**< Effective radiated power advertised alongside ::status_beam_deg, watts, rounded to the nearest entry of the APRS101 chapter
+                                  16 table (::STATUS_ERP_WATTS_STEP times the square of a code of 1 to ::STATUS_ERP_CODE_MAX); 0 leaves the block out. */
     bool pos_dao_en; /**< Append the WGS-84 human-readable "!DAO!" precision/datum extension (aprs12/datum.txt) to every uncompressed own-station position
                         report, recovering the third decimal minute digit of latitude/longitude that the plain "DDMM.mmN"/"DDDMM.mmW" fields round away. See
                         aprs_dao_build(). Only applied when pos_ambiguity is 0: a station deliberately obscuring its position must not have that precision
@@ -613,23 +646,25 @@ typedef struct {
     int8_t digi_duplex;        /**< Repeater duplex direction: 0 = simplex, +1 = "+", -1 = "-". */
     uint16_t digi_offset_khz;  /**< Repeater duplex shift magnitude, kHz; used only when digi_duplex != 0. */
 
-    bool trk_en;                    /**< Tracker service enabled. */
-    bool trk_loc2rf;                /**< Beacon the tracker position on RF. */
-    bool trk_loc2inet;              /**< Beacon the tracker position to APRS-IS. */
-    bool trk_timestamp;             /**< Include a timestamp in the tracker beacon. */
-    uint8_t trk_ssid;               /**< SSID for the tracker callsign. */
-    char trk_mycall[10];            /**< Tracker callsign. */
-    bool trk_use_station;           /**< "Use My Station Data": mirror My Station into the tracker fields and lock them. */
-    uint8_t trk_path;               /**< Tracker digipeat-path selection (bitmask over g_config.path[0..3]). */
-    float trk_lat;                  /**< Tracker beacon latitude. */
-    float trk_lon;                  /**< Tracker beacon longitude. */
-    float trk_alt;                  /**< Tracker beacon altitude. */
-    uint16_t trk_interval;          /**< Fixed tracker beacon period in seconds (see beacon.c). */
-    bool trk_compress;              /**< Use APRS compressed position format. */
-    bool trk_altitude;              /**< Include altitude in the beacon. */
-    bool trk_mice;                  /**< Use Mic-E position encoding (APRS101 ch.10) instead of uncompressed/compressed; excludes trk_timestamp. */
-    uint8_t trk_mice_msg;           /**< Mic-E position comment: 0-6 = Standard M0-M6, 7-13 = Custom C0-C6. See ::MICE_POS_COMMENT_MAX. */
-    char trk_symbol[3];             /**< Tracker APRS symbol. */
+    bool trk_en;           /**< Tracker service enabled. */
+    bool trk_loc2rf;       /**< Beacon the tracker position on RF. */
+    bool trk_loc2inet;     /**< Beacon the tracker position to APRS-IS. */
+    bool trk_timestamp;    /**< Include a timestamp in the tracker beacon. */
+    uint8_t trk_ssid;      /**< SSID for the tracker callsign. */
+    char trk_mycall[10];   /**< Tracker callsign. */
+    bool trk_use_station;  /**< "Use My Station Data": mirror My Station into the tracker fields and lock them. */
+    uint8_t trk_path;      /**< Tracker digipeat-path selection (bitmask over g_config.path[0..3]). */
+    float trk_lat;         /**< Tracker beacon latitude. */
+    float trk_lon;         /**< Tracker beacon longitude. */
+    float trk_alt;         /**< Tracker beacon altitude. */
+    uint16_t trk_interval; /**< Fixed tracker beacon period in seconds (see beacon.c). */
+    bool trk_compress;     /**< Use APRS compressed position format. */
+    bool trk_altitude;     /**< Include altitude in the beacon. */
+    bool trk_phg_enable;   /**< Carry the "PHGphgd" data extension in the tracker beacon, built from the station-wide @c my_phg_* antenna data. In the Mic-E
+                                layout the token rides in the text field, which is where APRS 1.2 puts an ordinary position comment field. */
+    bool trk_mice;         /**< Use Mic-E position encoding (APRS101 ch.10) instead of uncompressed/compressed; excludes trk_timestamp. */
+    uint8_t trk_mice_msg;  /**< Mic-E position comment: 0-6 = Standard M0-M6, 7-13 = Custom C0-C6. See ::MICE_POS_COMMENT_MAX. */
+    char trk_symbol[3];    /**< Tracker APRS symbol. */
     char trk_comment[COMMENT_SIZE]; /**< Tracker beacon comment. */
     uint16_t trk_sts_interval;      /**< Tracker status-beacon interval, seconds. */
     char trk_status[STATUS_SIZE];   /**< Tracker status text. */

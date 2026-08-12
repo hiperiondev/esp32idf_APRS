@@ -190,6 +190,35 @@ esp_err_t page_station_get(httpd_req_t *req) {
     web_field_checkbox(req, TR_F_STATUS_GRID, "myStatusGrid", g_config.status_grid_en);
     web_field_checkbox(req, TR_F_STATUS_TIMESTAMP, "myStatusTS", g_config.status_timestamp_en);
     web_field_checkbox(req, TR_F_POS_DAO, "myPosDao", g_config.pos_dao_en);
+
+    // Meteor-scatter beam heading and ERP (APRS101 ch.16), carried as two
+    // characters at the very end of every status report. Both are pick lists
+    // because both are code tables on air, not free values: the heading steps
+    // in STATUS_BEAM_DEG_STEP degrees, and the power is the fixed table of
+    // STATUS_ERP_WATTS_STEP times the square of the code. Either one left off
+    // suppresses the block, so a station that does not work meteor scatter
+    // sends exactly what it sent before.
+    web_select_open(req, TR_F_STATUS_BEAM, "myStatusBeam");
+    {
+        web_select_option(req, STATUS_BEAM_DEG_OFF, TR_F_OFF, g_config.status_beam_deg < 0);
+        for (int deg = 0; deg <= STATUS_BEAM_DEG_MAX; deg += STATUS_BEAM_DEG_STEP) {
+            char lbl[16];
+            snprintf(lbl, sizeof(lbl), "%d", deg);
+            web_select_option(req, deg, lbl, g_config.status_beam_deg == (int16_t)deg);
+        }
+    }
+    web_select_close(req);
+    web_select_open(req, TR_F_STATUS_ERP, "myStatusERP");
+    {
+        web_select_option(req, 0, TR_F_OFF, g_config.status_erp_watts == 0);
+        for (int code = STATUS_ERP_CODE_MIN; code <= STATUS_ERP_CODE_MAX; code++) {
+            int watts = STATUS_ERP_WATTS_STEP * code * code;
+            char lbl[16];
+            snprintf(lbl, sizeof(lbl), "%d", watts);
+            web_select_option(req, watts, lbl, g_config.status_erp_watts == (uint16_t)watts);
+        }
+    }
+    web_select_close(req);
     web_fieldset_close(req);
 
     // PHG (Power-Height-Gain-Directivity) ------------------------------------
@@ -311,6 +340,26 @@ esp_err_t page_station_post(httpd_req_t *req) {
     g_config.status_grid_en = web_form_get_bool(body, "myStatusGrid");
     g_config.status_timestamp_en = web_form_get_bool(body, "myStatusTS");
     g_config.pos_dao_en = web_form_get_bool(body, "myPosDao");
+    {
+        // Both values arrive from a pick list built out of the code tables, so
+        // the only inputs that can reach here are table entries or the "off"
+        // choice. Clamped anyway, on the same two-layer terms config_from_json()
+        // applies to the stored file: a POST is not required to come from the
+        // form that was served.
+        int beam = web_form_get_int(body, "myStatusBeam", g_config.status_beam_deg);
+        if (beam < 0 || beam > STATUS_BEAM_DEG_MAX)
+            beam = STATUS_BEAM_DEG_OFF;
+        else
+            beam -= beam % STATUS_BEAM_DEG_STEP;
+        g_config.status_beam_deg = (int16_t)beam;
+
+        int erp = web_form_get_int(body, "myStatusERP", g_config.status_erp_watts);
+        if (erp < 0)
+            erp = 0;
+        if (erp > STATUS_ERP_WATTS_MAX)
+            erp = STATUS_ERP_WATTS_MAX;
+        g_config.status_erp_watts = (uint16_t)erp;
+    }
     g_config.my_phg_power = (uint16_t)web_form_get_int(body, "myPHGPower", g_config.my_phg_power);
     g_config.my_phg_gain = (float)web_form_get_int(body, "myPHGGain", (int)lroundf(g_config.my_phg_gain));
     // Select value is the underlying feet code (see the GET handler); saved

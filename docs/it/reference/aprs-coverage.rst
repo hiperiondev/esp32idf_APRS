@@ -191,13 +191,16 @@ Rapporti di posizione compressi (cap. 9)
      - Note
    * - Latitudine e longitudine compresse in base-91
      - ✅
-     - Selezionabile per servizio — tracker, IGate, digipeater e oggetti — e decodificata in ricezione. La compressione è soppressa automaticamente quando sono in uso un'estensione dati o l'ambiguità di posizione, perché nessuna delle due sopravvive al formato compresso.
+     - Selezionabile per servizio — tracker, IGate, digipeater e oggetti — e decodificata in ricezione. La compressione è soppressa automaticamente quando sono in uso un'estensione PHG o DF o l'ambiguità di posizione, perché nessuna di queste sopravvive al formato compresso; la portata radio precalcolata è l'unica estensione che invece lo fa, e viene ripiegata nel campo a due byte.
    * - Rotta/velocità compresse e il byte di tipo di compressione
      - ✅
      - Un tracker in movimento codifica rotta e velocità nel campo a due byte e imposta il byte di tipo su rotta/velocità compresse con fix corrente; una stazione senza nulla da riportare invia la codifica a tre spazi di "nessun dato". Il campo quantizza la rotta a passi di 4 gradi e la velocità a passi di circa l'8 per cento, e il codificatore mantiene entrambi i byte nell'intervallo che appartiene alla forma rotta/velocità, quindi un token non viene mai letto come la forma di portata radio che condivide quei due byte.
-   * - Portata radio e altitudine compresse
-     - ❌
-     - Il campo a due byte porta solo rotta e velocità. Una stazione che deve annunciare portata o altitudine insieme alla posizione usa il formato non compresso, dove entrambe hanno un campo proprio.
+   * - Portata radio precalcolata compressa
+     - ✅
+     - Una baliza la cui estensione dati è la portata radio precalcolata la ripiega nel campo a due byte — il marcatore riservato ``{`` seguito dalla cifra di portata — invece di ricadere sul formato non compresso, così il cerchio di copertura viaggia con una posizione compressa e nel campo informativo non resta alcun token ``RNGrrrr``. Il campo quantizza la portata a passi di circa l'8 per cento, da un minimo di 2 miglia.
+   * - Altitudine compressa
+     - ✅
+     - Un beacon compresso che porta un'altitudine la mette negli stessi due byte, con il byte di tipo che dichiara GGA come sorgente, che è ciò che seleziona quella lettura. Quando lo fa, il token ``/A=`` del commento viene omesso, così l'altitudine è dichiarata una volta sola e non costa nulla invece di nove byte. Se è configurato anche un raggio radio, è il raggio a tenersi i due byte: non ha altro posto dove andare, e l'altitudine ha ancora la forma nel commento. Il passo è di circa lo 0,2 %.
 
 Formato dati Mic-E (cap. 10)
 ============================
@@ -228,8 +231,8 @@ Formato dati Mic-E (cap. 10)
      - ✅
      - L'estensione 1.2 è applicata in entrambi i versi, quindi una trama digipetata da una stazione spaziale riporta la propria velocità orbitale invece di una troncata. Quella scala è quantizzata a passi di 112 nodi e ha un vuoto fra 671 e 781 nodi che la regola pubblicata stessa lascia senza rappresentazione; sotto i 671 nodi il campo resta esatto al nodo.
    * - PHG dentro il campo di testo Mic-E
-     - ❌
-     - Non viene prodotta l'aggiunta 1.2 che consente un normale campo di commento di posizione — in particolare PHG — dentro il testo Mic-E. Conta soprattutto per i digipeater hardware che trasmettono beacon in Mic-E.
+     - ✅
+     - L'estensione dati viene scritta dentro il testo Mic-E, dopo il blocco di frequenza e prima del commento dell'operatore, così una stazione che trasmette beacon in Mic-E annuncia la propria copertura come consente l'aggiunta 1.2. L'interruttore è nella pagina Tracker; i suoi quattro sottocampi sono i dati d'antenna della stazione stessa.
    * - Telemetria Mic-E
      - ❌
      - Deliberatamente assente: la versione 1.2 depreca questo formato a favore dei codici di tipo del costruttore e della telemetria base-91 nel commento, entrambi implementati da questo firmware.
@@ -300,9 +303,12 @@ Rapporti meteorologici (cap. 12)
    * - Identificatori di tipo software e di unità meteo
      - ⚠️
      - Entrambi sono emessi, come ultimo token del campo informazioni perché un parser rigido non assorba il commento dell'operatore nella stringa dell'unità. Il codice di unità è libero e va bene; il singolo carattere di tipo software è uno che la specifica non assegna.
-   * - Contatore di pioggia grezzo, radiazione e tensione
+   * - Contatore di pioggia grezzo
+     - ✅
+     - Il conteggio corrente del pluviometro stesso, quattro cifre dopo un ``#``, trasmesso senza scalatura e mai azzerato dalla stazione, così un ricevitore può sottrarre due rapporti. È una riga della tabella di mappatura dei sensori come ogni altro campo meteo, emessa solo quando un driver è mappato su di essa.
+   * - Campi di radiazione e tensione
      - ❌
-     - Il contatore di pioggia grezzo della specifica originale e i campi di radiazione e tensione proposti per la 1.2 non hanno codificatore. Il framework dei sensori mappa i driver ai campi per nome, quindi aggiungerli è un'estensione della tabella dei campi, non una nuova infrastruttura.
+     - I due campi proposti per la 1.2 non hanno un token meteo proprio e viaggiano come canali analogici di telemetria, che è dove li instrada il framework dei sensori.
    * - Rapporti meteo grezzi Peet Bros e Ultimeter
      - ⚠️
      - Riconosciuti come meteo dal classificatore di gateway, quindi vengono instradati correttamente, ma i payload grezzi non sono mai decodificati in letture. La specifica dice comunque che chi trasmette dovrebbe convertire al formato completo, quindi si tratta di ampiezza in ricezione e non di una lacuna in trasmissione.
@@ -330,8 +336,8 @@ Dati di telemetria (cap. 13)
      - ✅
      - Tutti e quattro i messaggi di definizione — nomi, unità ed etichette, coefficienti dell'equazione e senso dei bit con titolo del progetto — inviati come messaggi indirizzati, come richiede la specifica. Il rapporto porta il valore grezzo e il ricevitore applica i coefficienti.
    * - Telemetria base-91 nel commento
-     - ⚠️
-     - I canali analogici e il contatore di sequenza sono codificati nel gruppo delimitato da barre verticali. Poiché quel gruppo è posizionale — l'n-esima coppia *è* il canale n, senza identificatore per coppia — il codificatore si ferma al primo canale disabilitato o non risolto invece di lasciare un vuoto che sposterebbe di un posto ogni canale successivo. Il banco digitale a otto bit non è incluso nel gruppo; viaggia solo nel rapporto di telemetria ordinario.
+     - ✅
+     - Il contatore di sequenza, i canali analogici e il banco digitale a otto bit sono codificati nel gruppo delimitato da barre verticali. Poiché quel gruppo è posizionale — l'n-esima coppia *è* il canale n, senza identificatore per coppia — il codificatore si ferma al primo canale disabilitato o non risolto invece di lasciare un vuoto che sposterebbe di un posto ogni canale successivo, e la coppia digitale viene aggiunta solo dietro un insieme completo di cinque coppie analogiche, l'unico punto in cui la specifica la consente. Una stazione senza alcun canale da riportare non emette alcun gruppo, poiché l'estensione deve portare il contatore e almeno un canale.
    * - Forma alternativa del numero di sequenza
      - ❌
      - L'identificatore di sequenza a tre lettere che alcuni codificatori usano al posto di un numero non è prodotto né riconosciuto in modo speciale in ricezione.
@@ -414,8 +420,8 @@ Rapporti di stato (cap. 16)
      - ⚠️
      - Il locatore a quattro o sei caratteri e il suo simbolo vengono prodotti, ma due regole di posizione non sono rispettate: la specifica richiede che il locatore segua immediatamente l'identificatore di tipo dato e vieta di combinarlo con una marca temporale. Qui la marca temporale e il blocco di frequenza possono precederlo, quindi un ricevitore rigido non riconoscerà la forma con locatore.
    * - Direzione d'antenna e potenza irradiata efficace
-     - ❌
-     - La codifica a due caratteri per il meteor scatter alla fine del testo di stato non viene prodotta. Uso ristretto, e per aggiungerla servono una tabella di ricerca e due impostazioni.
+     - ✅
+     - I due caratteri chiudono il testo di stato dopo un ``^``, a partire da una direzione e da una potenza valide per l'intera stazione e impostate nella pagina Station. La direzione avanza di dieci gradi e la potenza è portata alla voce più vicina della tabella della specifica, che va da 10 a 7290 watt. Servono entrambe le metà perché il blocco compaia, ed è l'unico blocco che il budget di lunghezza non scarta mai: una stazione che lavora in meteor scatter manda il rapporto proprio per quei tre byte.
 
 Tunneling di rete e traffico di terze parti (cap. 17)
 =====================================================

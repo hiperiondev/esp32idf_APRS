@@ -191,13 +191,16 @@ Reportes de posición comprimidos (cap. 9)
      - Notas
    * - Latitud y longitud comprimidas en base-91
      - ✅
-     - Seleccionable por servicio — tracker, IGate, digipetidor y objetos — y se decodifica en recepción. La compresión se suprime automáticamente cuando hay una extensión de datos o ambigüedad de posición, porque ninguna de las dos sobrevive al formato comprimido.
+     - Seleccionable por servicio — tracker, IGate, digipetidor y objetos — y se decodifica en recepción. La compresión se suprime automáticamente cuando hay una extensión PHG o DF o ambigüedad de posición, porque ninguna de ellas sobrevive al formato comprimido; el alcance de radio precalculado es la única extensión que sí lo hace, y se pliega en el campo de dos bytes.
    * - Rumbo/velocidad comprimidos y el byte de tipo de compresión
      - ✅
      - Un tracker en movimiento codifica rumbo y velocidad en el campo de dos bytes y pone el byte de tipo en rumbo/velocidad comprimidos con posicionamiento actual; una estación sin nada que reportar manda la codificación de tres espacios de "sin datos". El campo cuantiza el rumbo en pasos de 4 grados y la velocidad en pasos de alrededor del 8 por ciento, y el codificador mantiene ambos bytes dentro del rango que pertenece a la forma de rumbo/velocidad, así que un token nunca se lee como la forma de alcance de radio que comparte esos dos bytes.
-   * - Alcance de radio y altitud comprimidos
-     - ❌
-     - El campo de dos bytes solo lleva rumbo y velocidad. Una estación que necesite anunciar alcance o altitud junto con la posición usa el formato sin comprimir, donde ambos tienen campo propio.
+   * - Alcance de radio precalculado comprimido
+     - ✅
+     - Una baliza cuya extensión de datos es el alcance de radio precalculado lo pliega en el campo de dos bytes — el marcador reservado ``{`` seguido del dígito de alcance — en vez de recaer en el formato sin comprimir, así que el círculo de cobertura viaja con una posición comprimida y no queda ningún token ``RNGrrrr`` en el campo de información. El campo cuantiza el alcance en pasos de alrededor del 8 por ciento, desde un piso de 2 millas.
+   * - Altitud comprimida
+     - ✅
+     - Una baliza comprimida que lleva altitud la pone en esos mismos dos bytes, con el byte de tipo declarando GGA como fuente, que es lo que selecciona esa lectura. Cuando lo hace, el token ``/A=`` del comentario se omite, así que la altitud se enuncia una sola vez y no cuesta nada en vez de nueve bytes. Si además hay un alcance de radio configurado, el alcance se queda con los dos bytes: no tiene otro lugar donde ir, y la altitud todavía cuenta con la forma del comentario. El paso es de alrededor del 0,2 %.
 
 Formato de datos Mic-E (cap. 10)
 ================================
@@ -228,8 +231,8 @@ Formato de datos Mic-E (cap. 10)
      - ✅
      - La extensión de 1.2 se aplica en ambos sentidos, así que una trama digipeteada por una estación espacial reporta su velocidad orbital en vez de una recortada. Esa escala está cuantizada en pasos de 112 nudos y tiene un hueco entre 671 y 781 nudos que la propia regla publicada deja sin representación; por debajo de 671 nudos el campo sigue siendo exacto al nudo.
    * - PHG dentro del campo de texto Mic-E
-     - ❌
-     - No se produce la incorporación de 1.2 que permite un campo de comentario de posición normal —notablemente PHG— dentro del texto Mic-E. Importa sobre todo para digipetidores por hardware que balizan en Mic-E.
+     - ✅
+     - La extensión de datos se escribe dentro del texto Mic-E, detrás del bloque de frecuencia y delante del comentario del operador, así que una estación que baliza en Mic-E anuncia su cobertura como habilita la incorporación de 1.2. El interruptor está en la página Tracker; sus cuatro subcampos son los datos de antena de la propia estación.
    * - Telemetría Mic-E
      - ❌
      - Ausente a propósito: la versión 1.2 deprecia este formato en favor de los códigos de tipo de fabricante y de la telemetría base-91 en comentario, que este firmware sí implementa.
@@ -300,9 +303,12 @@ Reportes meteorológicos (cap. 12)
    * - Identificadores de tipo de software y de unidad meteorológica
      - ⚠️
      - Ambos se emiten, como último token del campo de información para que un analizador estricto no absorba el comentario del operador dentro de la cadena de unidad. El código de unidad es libre y está bien; el carácter único de tipo de software es uno que la especificación no asigna.
-   * - Contador de lluvia crudo, radiación y voltaje
+   * - Contador de lluvia crudo
+     - ✅
+     - La cuenta corrida del propio pluviómetro, cuatro dígitos detrás de un ``#``, transmitida sin escalar y sin que la estación la reinicie nunca, de modo que un receptor pueda restar dos reportes. Es una fila más de la tabla de mapeo de sensores, y se emite solo cuando hay un driver mapeado a ella.
+   * - Campos de radiación y voltaje
      - ❌
-     - El contador de lluvia crudo de la especificación original y los campos de radiación y voltaje propuestos para 1.2 no tienen codificador. El marco de sensores mapea los drivers a campos por nombre, así que agregarlos es extender la tabla de campos y no armar plomería nueva.
+     - Los dos campos propuestos para 1.2 no tienen token meteorológico propio y viajan como canales analógicos de telemetría, que es adonde los rutea el marco de sensores.
    * - Reportes meteorológicos crudos Peet Bros y Ultimeter
      - ⚠️
      - El clasificador de pasarela los reconoce como meteorología, así que se rutean bien, pero las cargas crudas nunca se decodifican a lecturas. De todos modos la especificación dice que quien transmite debería convertir al formato completo, así que esto es amplitud del lado de recepción y no un hueco de transmisión.
@@ -330,8 +336,8 @@ Datos de telemetría (cap. 13)
      - ✅
      - Los cuatro mensajes de definición —nombres, unidades y etiquetas, coeficientes de ecuación, y sentido de bits con título de proyecto— se mandan como mensajes dirigidos, como exige la especificación. El reporte lleva el valor crudo y el receptor aplica los coeficientes.
    * - Telemetría base-91 en comentario
-     - ⚠️
-     - Los canales analógicos y el contador de secuencia se codifican en el grupo delimitado por barras verticales. Como ese grupo es posicional —el n-ésimo par *es* el canal n, sin identificador por par—, el codificador se detiene en el primer canal deshabilitado o no resuelto en vez de dejar un hueco que correría un lugar a todos los canales siguientes. El banco digital de ocho bits no se incluye en el grupo; viaja solo en el reporte de telemetría común.
+     - ✅
+     - El contador de secuencia, los canales analógicos y el banco digital de ocho bits se codifican en el grupo delimitado por barras verticales. Como ese grupo es posicional —el n-ésimo par *es* el canal n, sin identificador por par—, el codificador se detiene en el primer canal deshabilitado o no resuelto en vez de dejar un hueco que correría un lugar a todos los canales siguientes, y el par digital solo se añade detrás de un conjunto completo de cinco pares analógicos, que es el único sitio donde la especificación lo permite. Una estación sin ningún canal que reportar no emite grupo alguno, ya que la extensión debe llevar el contador y al menos un canal.
    * - Forma alternativa del número de secuencia
      - ❌
      - El identificador de secuencia de tres letras que algunos codificadores usan en lugar de un número no se produce ni se reconoce de forma especial en recepción.
@@ -414,8 +420,8 @@ Reportes de estado (cap. 16)
      - ⚠️
      - Se producen el localizador de cuatro o seis caracteres y su símbolo, pero no se cumplen dos reglas de ubicación: la especificación exige que el localizador siga inmediatamente al identificador de tipo de dato, y prohíbe combinarlo con una marca de tiempo. Acá la marca de tiempo y el bloque de frecuencia pueden precederlo, así que un receptor estricto no reconocerá la forma con localizador.
    * - Rumbo de antena y potencia radiada efectiva
-     - ❌
-     - No se produce la codificación de dos caracteres para meteor scatter al final del texto de estado. Es de uso acotado, y agregarla requiere una tabla de búsqueda y dos ajustes.
+     - ✅
+     - Los dos caracteres cierran el texto de estado detrás de un ``^``, a partir de un rumbo y una potencia de alcance global de la estación que se fijan en la página Station. El rumbo avanza de a diez grados y la potencia se ajusta a la entrada más cercana de la tabla de la especificación, que va de 10 a 7290 vatios. Hacen falta las dos mitades para que el bloque aparezca, y es el único bloque que el presupuesto de longitud nunca descarta: una estación que trabaja meteor scatter manda el reporte justamente por esos tres bytes.
 
 Tunelizado de red y tráfico de terceros (cap. 17)
 =================================================

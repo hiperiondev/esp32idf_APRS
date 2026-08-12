@@ -136,9 +136,10 @@ void aprs_maidenhead_locator(float lat, float lon, char *out, size_t outMax);
  * @param symTable Symbol table byte ('/' primary or '\\' alternate, or an
  *        overlay character).
  * @param symCode Symbol code byte.
- * @param csT The 3-byte course/speed-or-PHG-or-radio-range token described
- *        by aprs_compressed_cs_from_course_speed(), or "   " (3 spaces) to
- *        emit "no cs/T data" per spec.
+ * @param csT The 3-byte token built by aprs_compressed_cs_from_course_speed(),
+ *        aprs_compressed_cs_from_range() or aprs_compressed_cs_from_altitude()
+ *        - the three readings of these bytes the spec defines - or "   " (3
+ *        spaces) to emit "no cs/T data" per spec.
  * @param out Destination buffer for the compressed position field (symbol
  *        table byte + 4 lat digits + 4 lon digits + symbol code + 3-byte csT).
  * @param outMax Size of out; must be >= 14 to hold the full 13-byte field plus
@@ -185,7 +186,7 @@ void aprs_coord_format_compressed(float lat, float lon, char symTable, char symC
  *
  * Both digits are capped at ::APRS_COMPRESSED_CS_DIGIT_MAX, so the token can
  * never be mistaken for the pre-calculated radio range form. A speed beyond
- * the top of the table saturates at approximately 1030 knots.
+ * the top of the table saturates at approximately 940 knots.
  *
  * @param course_deg Course over ground, degrees; values of 360 and above are
  *        reduced modulo 360.
@@ -193,6 +194,102 @@ void aprs_coord_format_compressed(float lat, float lon, char symTable, char symC
  * @param out 3-byte destination for the course/speed-and-type token.
  */
 void aprs_compressed_cs_from_course_speed(unsigned course_deg, unsigned speed_knots, char out[3]);
+
+/**
+ * @brief Compression type (T) byte emitted with the course/speed and
+ * pre-calculated radio range forms of the cs bytes.
+ *
+ * APRS101 chapter 9 packs three fields into the T byte: the GPS fix status
+ * (bit 5), the NMEA sentence the position came from (bits 4-3) and the origin
+ * of the compression (bits 2-0). This value is 34 (0b100010) plus the
+ * ::APRS_COMPRESSED_BASE91_OFFSET, i.e. current fix, no NMEA source, software
+ * compression origin - what a station computing the field itself from a
+ * configured position reports.
+ */
+#define APRS_COMPRESSED_T_BYTE_CS 'C'
+
+/**
+ * @brief Compression type (T) byte emitted with the altitude form of the cs
+ * bytes.
+ *
+ * Same fields as ::APRS_COMPRESSED_T_BYTE_CS with the NMEA source set to GGA
+ * (bits 4-3 = 0b10, adding 16 to the value), which is what tells a receiver to
+ * read the two cs bytes as an altitude instead of as a course/speed pair.
+ * There is no other way to select the altitude form: the two bytes carry no
+ * marker of their own.
+ */
+#define APRS_COMPRESSED_T_BYTE_ALTITUDE 'S'
+
+/**
+ * @brief Numeric value of the first compressed cs byte that selects the
+ * pre-calculated radio range form, i.e. ASCII '{'.
+ *
+ * APRS101 chapter 9 reserves this one value, immediately above the
+ * ::APRS_COMPRESSED_CS_DIGIT_MAX the course/speed form ends at, to mark the
+ * two bytes as a range circle rather than a moving station.
+ */
+#define APRS_COMPRESSED_CS_RANGE_MARKER 90
+
+/**
+ * @brief Build the 2-byte compressed pre-calculated radio range token
+ * described by APRS101 chapter 9, followed by the fixed compression-type
+ * byte.
+ *
+ * A receiver decodes the two bytes as `range = 2 * 1.08^s` statute miles,
+ * where the first byte is the fixed '{' marker
+ * (::APRS_COMPRESSED_CS_RANGE_MARKER plus ::APRS_COMPRESSED_BASE91_OFFSET)
+ * and s is the numeric value of the second byte once
+ * ::APRS_COMPRESSED_BASE91_OFFSET has been subtracted. This function is the
+ * exact inverse of that relation: `s = round(log(range / 2) / log(1.08))`,
+ * which reproduces the requested range to within the roughly 8 % step of the
+ * table. Ranges below the 2 mile floor the form can express encode as s = 0,
+ * and ranges past the top of the table saturate at
+ * ::APRS_COMPRESSED_CS_DIGIT_MAX, which stands for about 1890 miles.
+ *
+ * This is the compressed equivalent of the uncompressed "RNGrrrr" data
+ * extension: a beacon emits one or the other, never both, since they are two
+ * encodings of the same figure.
+ *
+ * @param range_miles Omnidirectional radio range, statute miles.
+ * @param out 3-byte destination for the radio-range-and-type token.
+ */
+void aprs_compressed_cs_from_range(unsigned range_miles, char out[3]);
+
+/**
+ * @brief Highest combined numeric value the two compressed cs bytes can carry
+ * in the altitude form, i.e. both bytes at ASCII '{'.
+ *
+ * The altitude form reads the two bytes as the single number `c * 91 + s`, so
+ * unlike the course/speed form it uses the whole base-91 range of both bytes -
+ * including the value 90 that the course/speed form has to stay clear of. The
+ * ceiling is therefore 90 * 91 + 90.
+ */
+#define APRS_COMPRESSED_ALT_CS_MAX 8280
+
+/**
+ * @brief Build the 2-byte compressed altitude token described by APRS101
+ * chapter 9, followed by the ::APRS_COMPRESSED_T_BYTE_ALTITUDE compression
+ * type byte that selects this reading of them.
+ *
+ * A receiver decodes the two bytes as `altitude = 1.002^(c * 91 + s)` feet,
+ * where c and s are the numeric values of the bytes once
+ * ::APRS_COMPRESSED_BASE91_OFFSET has been subtracted. This function is the
+ * exact inverse of that relation: `cs = round(log(altitude) / log(1.002))`,
+ * split into `c = cs / 91` and `s = cs % 91`, which reproduces the requested
+ * altitude to within the roughly 0.2 % step of the table. Altitudes at or
+ * below the 1 foot floor the form can express encode as cs = 0, which reads
+ * back as 1 foot, and altitudes past the top of the table saturate at
+ * ::APRS_COMPRESSED_ALT_CS_MAX.
+ *
+ * This is the compressed equivalent of the uncompressed "/A=" comment token:
+ * a report carries one or the other, never both, since they are two encodings
+ * of the same figure. It costs nothing on air - the three bytes it occupies
+ * are part of every compressed position field - where "/A=" costs nine.
+ *
+ * @param alt_feet Altitude above mean sea level, feet.
+ * @param out 3-byte destination for the altitude-and-type token.
+ */
+void aprs_compressed_cs_from_altitude(unsigned alt_feet, char out[3]);
 
 /**
  * @brief Extract the symbol table identifier and symbol code from a

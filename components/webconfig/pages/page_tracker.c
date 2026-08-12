@@ -92,6 +92,13 @@ esp_err_t page_tracker_get(httpd_req_t *req) {
     web_field_checkbox(req, TR_F_MICE_POSITION, "trkMice", g_config.trk_mice);
     render_mice_msg_select(req, "trkMiceMsg", g_config.trk_mice_msg);
     web_field_checkbox(req, TR_F_INCLUDE_ALTITUDE, "trkOptAlt", g_config.trk_altitude);
+    // The tracker's data extension is PHG and nothing else, so this is one
+    // checkbox rather than a type selector: its four sub-fields are the
+    // station's own antenna data, edited once on the Station page. Enabling it
+    // makes the beacon fall back to the uncompressed layout, which is the only
+    // one with a slot for the token - except in Mic-E, which carries it in the
+    // text field.
+    web_field_checkbox(req, TR_F_TRACKER_PHG, "trkPHG", g_config.trk_phg_enable);
     web_field_symbol(req, TR_F_STATION_SYMBOL, "trkSymbol", g_config.trk_symbol);
     web_field_text(req, TR_F_COMMENT, "trkComment", g_config.trk_comment, COMMENT_SIZE - 1);
     web_fieldset_close(req);
@@ -157,6 +164,7 @@ esp_err_t page_tracker_post(httpd_req_t *req) {
     g_config.trk_interval = (uint16_t)web_form_get_int(body, "trkINV", g_config.trk_interval);
 
     g_config.trk_compress = web_form_get_bool(body, "trkCompress");
+    g_config.trk_phg_enable = web_form_get_bool(body, "trkPHG");
     g_config.trk_mice = web_form_get_bool(body, "trkMice");
 
     // Same two-layer clamp as every other bounded field on this page: a value

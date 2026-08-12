@@ -106,9 +106,9 @@ dello stesso campione al commento di posizione di una stazione:
 
 Il gruppo si apre e si chiude con ``|``. La prima coppia base-91 è il numero
 di sequenza; ogni coppia successiva è un canale analogico, in ordine (``A1``
-per primo). Porta solo canali analogici - i bit digitali non hanno una
-posizione base-91 nel gruppo APRS 1.2 e restano esclusivi del report
-``T#nnn``.
+per primo). Una coppia finale può portare l'intero banco digitale a 8 bit come
+un unico numero, con il bit meno significativo pari a ``B1`` e l'ottavo bit
+pari a ``B8``.
 
 Non è una baliza a sé stante. Viaggia dentro il commento di posizione della
 baliza attualmente in trasmissione - Tracker, IGate o Digipeater - con il
@@ -132,6 +132,22 @@ coppia, quindi una stazione ricevente ricava il canale di ogni valore solo
 dalla sua posizione nella sequenza. Il codificatore si ferma al primo vuoto
 invece di saltarlo, mantenendo il gruppo come un prefisso ininterrotto A1,
 A2, ... An.
+
+APRS 1.2 richiede che l'estensione porti il contatore di sequenza *e* almeno un
+canale, quindi una stazione senza alcun canale analogico abilitato e risolto non
+emette alcun gruppo invece di un ``|ss|`` vuoto. Un gruppo vuoto è una forma che
+un parser rigoroso ha il diritto di rifiutare, e spenderebbe quattro byte del
+budget del commento a ogni baliza senza portare nulla.
+
+La coppia digitale è legale solo dopo tutte e cinque le coppie analogiche - con
+un gruppo più corto davanti, un ricevitore la leggerebbe come il canale
+analogico successivo - quindi viene emessa solo quando tutti i canali analogici
+sono risolti *e* il banco digitale è instradato con almeno un canale
+configurato. Il gruppo è una singola stringa aggiunta a un rapporto di posizione
+che esce sulle tratte usate da quella baliza, quindi non ha una forma propria
+per tratta: un canale digitale viaggia ogni volta che il banco e il canale sono
+instradati verso una delle due. Un canale che deve restare del tutto fuori onda
+va disabilitato nella pagina *Telemetry* anziché non instradato.
 
 Un gruppo che non entra nel buffer di uscita proprio di
 ``telemetry_build_comment_tlm()`` viene scartato invece che troncato - una

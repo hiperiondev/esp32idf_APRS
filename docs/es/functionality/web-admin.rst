@@ -48,9 +48,10 @@ Las páginas
    * - **Station**
      - La identidad compartida de la propia estación que leen cada baliza,
        objeto y mensaje: indicativo, latitud, longitud, altitud
-       (``g_config.my_*``), más las dos opciones de precisión al aire de toda la
-       estación: ambigüedad de posición y prefijo de localizador Maidenhead en
-       los reportes de estado.
+       (``g_config.my_*``), más las opciones al aire de toda la estación:
+       ambigüedad de posición, prefijo de localizador Maidenhead en los reportes
+       de estado, y el rumbo de antena y la PRE de meteor scatter que los
+       cierran.
    * - **IGate**
      - Habilitar, RF→INET / INET→RF, ambas máscaras de filtro, budlist y guardas
        de rango/prefijo, indicativo/SSID/passcode, cuatro recuadros *APRS-IS

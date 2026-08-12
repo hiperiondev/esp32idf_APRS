@@ -43,11 +43,13 @@
  *
  * Optional base-91 comment telemetry (APRS 1.2) piggybacks the same analog
  * readings onto a station's own position-report comment as a compact
- * "|ss1122|"-style group, so a station that already beacons position on a
- * schedule can carry telemetry at a handful of extra bytes instead of a
- * whole separate transmission. telemetry_build_comment_tlm() (telemetry.c)
- * builds that group from the identical resolved analog readings the "T#..."
- * report uses, so the two forms can never disagree; beacon.c appends it to
+ * "|ss1122|"-style group - with the whole digital bank as one further pair
+ * once all five analog channels are present - so a station that already
+ * beacons position on a schedule can carry telemetry at a handful of extra
+ * bytes instead of a whole separate transmission.
+ * telemetry_build_comment_tlm() (telemetry.c) builds that group from the
+ * identical resolved readings the "T#..." report uses, so the two forms can
+ * never disagree; beacon.c appends it to
  * a station's comment only when that beacon's callsign matches this
  * module's own mycall/ssid, since the comment form is only meaningful when
  * it rides along on the telemetry station's own position report.
@@ -74,6 +76,18 @@
  * @brief Number of digital bit channels B1-B8 (APRS101 Ch.13).
  */
 #define TLM_BIT_NUM 8
+
+/**
+ * @brief Buffer size a caller must provide to telemetry_build_comment_tlm()
+ *        to hold the longest APRS 1.2 base-91 comment telemetry group.
+ *
+ * The worst case is the opening '|', the 2-byte sequence pair, one 2-byte
+ * pair per analog channel (::TLM_CH of them), the single 2-byte pair holding
+ * the whole 8-bit digital bank, the closing '|' and a terminating NUL: 17
+ * bytes in total. This is the one place that arithmetic is written down;
+ * beacon.c sizes its own copy of the group from it.
+ */
+#define TLM_COMMENT_GROUP_BUF_SIZE (1 + 2 + TLM_CH * 2 + 2 + 1 + 1)
 
 /**
  * @name Analog channel editing ranges
@@ -246,9 +260,9 @@ void telemetry_get_mycall(char *out, size_t out_size);
 
 /**
  * @brief Build the optional APRS 1.2 base-91 comment telemetry group
- *        ("|ss1122334455|") from the same resolved analog readings the
- *        "T#..." Telemetry Data Report carries, for a caller (beacon.c) to
- *        append to a position-report comment.
+ *        ("|ss1122334455bb|") from the same resolved readings the "T#..."
+ *        Telemetry Data Report carries, for a caller (beacon.c) to append to
+ *        a position-report comment.
  *
  * Encodes the current sequence number and each enabled, resolved analog
  * channel (up to ::TLM_CH) as a base-91 pair, using the same
@@ -256,13 +270,26 @@ void telemetry_get_mycall(char *out, size_t out_size);
  * form and the concurrent "T#..." report always decode to the same raw
  * numbers and advance the same sequence number together.
  *
+ * Two rules from APRS101 Ch.13 shape what comes out:
+ *
+ *  - The extension must carry the sequence counter @b and at least one
+ *    channel, so a station with no analog channel currently enabled and
+ *    resolved emits no group at all rather than a bare "|ss|".
+ *  - The 8-bit digital bank travels as one further base-91 pair whose least
+ *    significant bit is B1 and whose eighth bit is B8, and that pair is only
+ *    legal after all five analog pairs. It is therefore emitted only when
+ *    every analog channel resolved and the digital bank is routed with at
+ *    least one channel configured; with fewer analog pairs present, a
+ *    receiver would read it as the next analog channel instead.
+ *
  * @param out     Destination buffer for the group, including both '|'
- *                delimiters and a terminating NUL.
+ *                delimiters and a terminating NUL; ::TLM_COMMENT_GROUP_BUF_SIZE
+ *                bytes always suffice.
  * @param out_max Size of @p out in bytes.
- * @return Group length in bytes (always <= 2 + 2*TLM_CH, plus the closing
- *         '|'), or 0 if comment telemetry is disabled, no callsign is
- *         configured, no analog channel is currently resolved, or @p out_max
- *         is too small to hold the group.
+ * @return Group length in bytes (at most ::TLM_COMMENT_GROUP_BUF_SIZE - 1),
+ *         or 0 if comment telemetry is disabled, no callsign is configured,
+ *         no analog channel is currently resolved, or @p out_max is too small
+ *         to hold the group.
  */
 size_t telemetry_build_comment_tlm(char *out, size_t out_max);
 

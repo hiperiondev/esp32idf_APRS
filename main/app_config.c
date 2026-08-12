@@ -174,6 +174,8 @@ void app_config_set_defaults(app_config_t *c) {
     c->pos_ambiguity = 0;
     c->status_grid_en = false;
     c->status_timestamp_en = false;
+    c->status_beam_deg = STATUS_BEAM_DEG_OFF;
+    c->status_erp_watts = 0;
     c->pos_dao_en = false;
 
     c->wifi_mode = 2; // AP_STA equivalent default (matches original shipping as AP)
@@ -314,6 +316,7 @@ void app_config_set_defaults(app_config_t *c) {
     c->trk_path = ACTIVATE_TRACKER;
     c->trk_interval = 60;
     c->trk_compress = false;
+    c->trk_phg_enable = false;
     c->trk_mice = false;
     c->trk_mice_msg = MICE_POS_COMMENT_DEFAULT;
     set_str(c->trk_symbol, sizeof(c->trk_symbol), "\\>");
@@ -541,6 +544,8 @@ static void config_write_json(jw_t *d, const app_config_t *c) {
     jadd_num(d, "myAmbiguity", c->pos_ambiguity);
     jadd_bool(d, "myStatusGrid", c->status_grid_en);
     jadd_bool(d, "myStatusTS", c->status_timestamp_en);
+    jadd_num(d, "myStatusBeam", c->status_beam_deg);
+    jadd_num(d, "myStatusERP", c->status_erp_watts);
     jadd_bool(d, "myPosDao", c->pos_dao_en);
     jadd_num(d, "txTimeSlot", c->tx_timeslot);
     jadd_num(d, "csmaPersist", c->csma_persist);
@@ -689,6 +694,7 @@ static void config_write_json(jw_t *d, const app_config_t *c) {
     jadd_num(d, "trkALT", c->trk_alt);
     jadd_num(d, "trkINV", c->trk_interval);
     jadd_bool(d, "trkCompress", c->trk_compress);
+    jadd_bool(d, "trkPHG", c->trk_phg_enable);
     jadd_bool(d, "trkMice", c->trk_mice);
     jadd_num(d, "trkMiceMsg", c->trk_mice_msg);
     jadd_bool(d, "trkOptAlt", c->trk_altitude);
@@ -798,6 +804,31 @@ static void config_from_json(cJSON *d, app_config_t *c) {
     }
     c->status_grid_en = jget_bool(d, "myStatusGrid", def.status_grid_en);
     c->status_timestamp_en = jget_bool(d, "myStatusTS", def.status_timestamp_en);
+    {
+        // Same two-layer clamp the web form applies, so a hand-edited or
+        // imported config.json cannot put a heading or a power on air that the
+        // two code characters have no room for. A heading is quantised to the
+        // step the field encodes in; anything outside the range switches the
+        // block off rather than being folded into an unrelated bearing.
+        int beam = (int)jget_num(d, "myStatusBeam", def.status_beam_deg);
+        if (beam < 0 || beam > STATUS_BEAM_DEG_MAX) {
+            if (beam != STATUS_BEAM_DEG_OFF)
+                ESP_LOGW(TAG, "status beam heading %d out of range - beam/ERP block disabled", beam);
+            beam = STATUS_BEAM_DEG_OFF;
+        } else {
+            beam -= beam % STATUS_BEAM_DEG_STEP;
+        }
+        c->status_beam_deg = (int16_t)beam;
+
+        long erp = (long)jget_num(d, "myStatusERP", def.status_erp_watts);
+        if (erp < 0)
+            erp = 0;
+        if (erp > STATUS_ERP_WATTS_MAX) {
+            ESP_LOGW(TAG, "status ERP %ld W above the %d W table maximum - clamped", erp, STATUS_ERP_WATTS_MAX);
+            erp = STATUS_ERP_WATTS_MAX;
+        }
+        c->status_erp_watts = (uint16_t)erp;
+    }
     c->pos_dao_en = jget_bool(d, "myPosDao", def.pos_dao_en);
     // Channel-access timing: bound every value coming off flash to the same
     // range the Radiomodem form accepts (aprs_service.h), so a hand-edited or
@@ -1082,6 +1113,7 @@ static void config_from_json(cJSON *d, app_config_t *c) {
     c->trk_alt = (float)jget_num(d, "trkALT", def.trk_alt);
     c->trk_interval = (uint16_t)jget_num(d, "trkINV", def.trk_interval);
     c->trk_compress = jget_bool(d, "trkCompress", def.trk_compress);
+    c->trk_phg_enable = jget_bool(d, "trkPHG", def.trk_phg_enable);
     c->trk_mice = jget_bool(d, "trkMice", def.trk_mice);
     c->trk_mice_msg = (uint8_t)jget_num(d, "trkMiceMsg", def.trk_mice_msg);
     // Same two-layer clamp every other bounded field uses: the form handler

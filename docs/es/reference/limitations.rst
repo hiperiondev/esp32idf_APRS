@@ -352,8 +352,9 @@ Seguimiento / Balizamiento
      - Opción por servicio en las páginas Tracker, IGate, Digipeater y
        Objetos/Ítems; el decodificador también la entiende. Se omite
        automáticamente cuando la ambigüedad de posición no es cero o hay una
-       extensión de datos en uso, porque el formato comprimido no tiene espacio
-       para ninguna de las dos
+       extensión PHG/DFS en uso, porque el formato comprimido no tiene espacio
+       para ninguna de las dos; un alcance de radio precalculado, en cambio, se
+       pliega en la ranura de dos bytes propia del campo comprimido
    * - Codificación de posición Mic-E (TX)
      - ⚠️ (sobre todo firmware de tracker móvil)
      - ✅
@@ -364,18 +365,23 @@ Seguimiento / Balizamiento
        los siete personalizados; Emergency no se ofrece, porque transmitirlo
        pide una respuesta del mundo real. El campo de información sigue el orden
        canónico de ``mic-e-examples.txt``: byte TYPE, altitud, bloque de
-       frecuencia, comentario, ``!DAO!`` y el par Fabricante/Versión que
-       identifica al firmware (la dirección de destino lleva datos de posición,
-       así que el TOCALL ``APxxxx`` no puede)
+       frecuencia, extensión de datos, comentario, ``!DAO!`` y el par
+       Fabricante/Versión que identifica al firmware (la dirección de destino
+       lleva datos de posición, así que el TOCALL ``APxxxx`` no puede)
    * - PHG / potencia-altura-ganancia-directividad
      - ✅
      - ✅
-     - Expuesto en la página de baliza del IGate
+     - Expuesto en la página de baliza del IGate, con sus propios subcampos, y
+       como un único interruptor en la página Tracker que reutiliza los datos
+       de antena de la estación. En el formato Mic-E el token viaja en el campo
+       de texto, que es donde APRS 1.2 ubica un campo de comentario de posición
+       normal
    * - RNG / alcance de radio precalculado
      - ⚠️
      - ✅
      - Seleccionable como extensión de datos de la baliza del IGate
-       (``RNGrrrr``)
+       (``RNGrrrr``), o como la forma de alcance de dos bytes propia del campo
+       comprimido cuando además se pide compresión
    * - DFS / intensidad de señal omni-DF
      - ⚠️ (software específico de DF)
      - ✅
@@ -398,6 +404,13 @@ Seguimiento / Balizamiento
      - ✅
      - Opción a nivel de estación; emite la forma ``>IO91SX/G`` de APRS101
        cap.16
+   * - Rumbo de antena y PRE en los reportes de estado
+     - ⚠️ (operación de meteor scatter)
+     - ✅
+     - Rumbo y potencia a nivel de estación en la página Estación, emitidos
+       como el par ``^HP`` que cierra el texto de estado; hacen falta las dos
+       mitades y el par nunca se descarta para entrar en el presupuesto de
+       longitud
    * - Localizador Maidenhead en el destino AX.25 (``[IO91SX]``, obsoleto)
      - ⚠️ (software antiguo)
      - ❌
@@ -406,8 +419,11 @@ Seguimiento / Balizamiento
      - ✅
      - ✅
      - Altitud por rol (tracker, IGate, digipeater), cada una copiada del valor
-       de "Mi Estación" cuando se marca *Usar datos de Mi Estación*. Los
-       reportes meteorológicos no llevan campo de altitud
+       de "Mi Estación" cuando se marca *Usar datos de Mi Estación*. Se envía
+       como el token ``/A=`` del comentario, o gratis dentro de la ranura de
+       dos bytes propia del campo comprimido cuando la baliza está comprimida y
+       esa ranura no lleva ya un alcance de radio. Los reportes meteorológicos
+       no llevan campo de altitud
    * - Ruta de digipeteo configurable por servicio
      - ✅
      - ✅
@@ -538,7 +554,9 @@ Telemetría
      - Opcional, junto al reporte ``T#nnn``; viaja en el comentario de posición
        de la baliza (Tracker/IGate/Digipeater) que esté transmitiendo con el
        indicativo/SSID configurado en la página Telemetry, compartiendo el
-       contador de secuencia de ese reporte
+       contador de secuencia de ese reporte. Lleva los canales analógicos y,
+       detrás de un conjunto completo de cinco, el banco digital de ocho bits
+       como un par más
    * - Recepción/graficado de telemetría de otros
      - ✅ (gráficos de Xastir, aprs.fi)
      - ❌
@@ -585,8 +603,8 @@ Objetos, Items, Boletines, Estado
        campo de información se mantiene dentro del tope de 70 bytes del cap.16
        (``>`` + marca de tiempo de 7 bytes + 62 caracteres de texto): cuando los
        bloques opcionales no entran, se descarta primero el localizador
-       Maidenhead y después el bloque de frecuencia, y el texto del operador
-       nunca se recorta
+       Maidenhead y después el bloque de frecuencia, y ni el texto del operador
+       ni el par rumbo/PRE del final se recortan nunca
    * - Respuesta a consultas (``?APRS?``, ``?WX?``, etc.)
      - ⚠️
      - ✅

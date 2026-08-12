@@ -144,12 +144,48 @@ selezionato non usa. Poiché un controllo disabilitato non viene inviato nel
 POST, i valori memorizzati dell'*altro* tipo sopravvivono al passaggio avanti e
 indietro.
 
-Abilitare una qualsiasi estensione forza il formato di posizione non compresso.
-Il formato compresso non ha spazio per lo slot di 7 byte (APRS101 cap.9 afferma
-che non supporta il PHG), quindi emettere quei byte dentro un rapporto compresso
-sarebbe semplicemente un dato sbagliato, e scartare l'estensione per mantenere la
+Abilitare PHG o DFS forza il formato di posizione non compresso. Il formato
+compresso non ha spazio per lo slot di 7 byte (APRS101 cap.9 afferma che non
+supporta il PHG), quindi emettere quei byte dentro un rapporto compresso sarebbe
+semplicemente un dato sbagliato, e scartare l'estensione per mantenere la
 compressione perderebbe in silenzio un campo che l'operatore ha abilitato
 esplicitamente.
+
+RNG è l'eccezione, perché il formato compresso porta nativamente una portata
+radio precalcolata: i due byte ``cs`` contengono ``{`` seguito da una cifra di
+portata, decodificata come ``2 × 1,08^s`` miglia. Una baliza con RNG selezionato
+e la compressione spuntata resta quindi compressa, con la portata ripiegata in
+quei due byte e senza alcun token ``RNGrrrr`` nel campo informativo. La forma
+compressa quantizza la portata a passi di circa l'8 per cento e parte da un
+minimo di 2 miglia, quindi una portata impostata sotto quel valore viene
+trasmessa come 2.
+
+Il beacon Tracker porta PHG e nient'altro, attivato con *Includi estensione dati
+PHG* nella sua stessa pagina. Lì non ci sono sottocampi da compilare: i quattro
+valori sono i dati d'antenna della stazione stessa, modificati una volta sola nel
+blocco PHG della pagina Stazione. Un tracker che trasmette beacon in Mic-E
+mantiene il token — Mic-E non ha uno slot di 7 byte dopo il codice di simbolo, ma
+APRS 1.2 stabilisce che il suo campo di testo può portare un normale campo di
+commento di posizione, PHG incluso, ed è lì che va: dopo il blocco di frequenza,
+così una radio continua a sintonizzarsi automaticamente dai primi byte, e prima
+del commento dell'operatore.
+
+Altitudine compressa
+====================
+
+Un rapporto di posizione compresso non ha un token di commento per l'altitudine,
+ma non gli serve. Gli stessi due byte ``cs`` che portano rotta/velocità o una
+portata radio portano un'altitudine quando il byte di tipo dichiara GGA come
+sorgente NMEA, decodificata come ``1,002^(c × 91 + s)`` piedi. Un beacon con
+*Includi altitudine* e *Comprimi posizione* entrambe spuntate usa quella forma, e
+il token ``/A=`` viene omesso dal commento, così l'altitudine è dichiarata una
+volta sola — nove byte di commento risparmiati in cambio di nulla, con un passo
+di circa lo 0,2 %.
+
+I due byte portano una cosa per volta, quindi un beacon che abbia anche RNG
+selezionato li cede alla portata: la portata non ha altro posto dove andare,
+mentre l'altitudine ha ancora ``/A=`` come ripiego, ed è questo che un beacon
+del genere emette.
 
 La capacità di messaggistica sta nell'identificatore di tipo dati
 =================================================================
@@ -218,6 +254,32 @@ attivare con un clic sbagliato e lasciare attivo per tutti i beacon successivi.
 In ricezione è gestito per intero: vedere :ref:`it-filtering` per il
 decodificatore, e il registro del traffico per la riga di avviso che
 un'emergenza ricevuta produce.
+
+Direzione d'antenna ed ERP nei rapporti di stato
+===============================================
+
+Un rapporto di stato può terminare con due caratteri dopo un ``^``: la direzione
+d'antenna in unità di dieci gradi, e un codice che rappresenta la potenza
+irradiata efficace. L'operatività in meteor scatter è la ragione d'essere della
+coppia — le due cifre che serve a un corrispondente per sapere se vale la pena
+aspettare un burst — e APRS101 cap.16 la fissa come *ultimo* campo del testo di
+stato, che è l'unico posto in cui può essere riconosciuta.
+
+Entrambe le metà si impostano nella pagina Stazione e valgono per tutta la
+stazione, come l'opzione Maidenhead: *Direzione antenna nei rapporti di stato*
+avanza di dieci gradi da 0 a 350, ed *ERP nei rapporti di stato* offre la tabella
+della specifica stessa, da 10 W a 7290 W nei passi che seguono il quadrato della
+cifra del codice. Una direzione senza potenza, o una potenza senza direzione, non
+dice nulla, quindi il blocco viene emesso solo quando entrambe sono impostate —
+lasciarne una su *Off* è ciò che fa una stazione che non lavora in meteor
+scatter, e allora trasmette esattamente il rapporto di stato che trasmetteva
+prima.
+
+Il campo informativo di stato ha un tetto di 70 byte, e l'assemblaggio scarta i
+suoi blocchi opzionali in ordine finché non entra: prima il campo iniziale, poi
+il blocco di frequenza. La coppia direzione/ERP non viene mai scartata. Sono tre
+byte, e una stazione che trasmette un rapporto di stato durante un appuntamento
+di meteor scatter lo trasmette proprio per quei tre byte.
 
 Ambiguità di posizione
 ======================

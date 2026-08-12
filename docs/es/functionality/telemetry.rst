@@ -105,9 +105,8 @@ la misma muestra al comentario de posición de una estación:
 
 El grupo se abre y se cierra con ``|``. El primer par en base-91 es el número
 de secuencia; cada par siguiente es un canal analógico, en orden (``A1``
-primero). Solo lleva canales analógicos - los bits digitales no tienen hueco
-en base-91 dentro del grupo APRS 1.2 y siguen siendo exclusivos del informe
-``T#nnn``.
+primero). Un par final puede llevar todo el banco digital de 8 bits como un
+único número, siendo su bit menos significativo ``B1`` y su octavo bit ``B8``.
 
 Esto no es una baliza propia. Viaja dentro del comentario de posición de la
 baliza que esté transmitiendo en ese momento - Tracker, IGate o Digipeater -
@@ -131,6 +130,22 @@ de canal por par, así que una estación receptora recupera el canal de cada
 valor únicamente por su posición en la secuencia. El codificador se detiene en
 el primer hueco en vez de saltarlo, manteniendo el grupo como un prefijo
 ininterrumpido A1, A2, ... An.
+
+APRS 1.2 exige que la extensión lleve el contador de secuencia *y* al menos un
+canal, así que una estación sin ningún canal analógico habilitado y resuelto no
+emite grupo alguno en lugar de un ``|ss|`` pelado. Un grupo vacío es una forma
+que un analizador estricto puede rechazar con razón, y gastaría cuatro bytes del
+presupuesto de comentario en cada baliza sin llevar nada.
+
+El par digital solo es legal después de los cinco pares analógicos - con un
+grupo más corto delante, un receptor lo leería como el siguiente canal
+analógico -, así que solo se emite cuando todos los canales analógicos se
+resolvieron *y* el banco digital está ruteado con al menos un canal configurado.
+El grupo es una única cadena añadida a un reporte de posición que sale por las
+patas que use esa baliza, de modo que no tiene una forma propia por pata: un
+canal digital viaja siempre que el banco y el canal estén ruteados a cualquiera
+de las dos. Un canal que deba quedar fuera del aire por completo se deshabilita
+en la página *Telemetry* en vez de desrutearse.
 
 Un grupo que no quepa en el búfer de salida propio de
 ``telemetry_build_comment_tlm()`` se descarta en vez de truncarse - un par

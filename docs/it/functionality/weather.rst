@@ -104,6 +104,17 @@ proposte di inondazione di APRS 1.2, enumerati da ``wx_field_id_t``:
    * - Altezza di inondazione (metri)
      - ``fXXXX.X``
      - metri (APRS 1.2)
+   * - Contatore di pioggia grezzo
+     - ``#XXXX``
+     - conteggi della bascula, non scalati
+
+Il contatore di pioggia grezzo è il caso a parte: è il conteggio corrente dei
+ribaltamenti della bascula del pluviometro stesso, non una misura in centesimi di
+pollice, e la stazione non lo azzera mai. Un ricevitore ricava la pioggia
+sottraendo due rapporti, ed è questo a renderlo utile in un sito non presidiato i
+cui altri campi di pioggia dipendono dal fatto che la stazione sia rimasta accesa
+abbastanza a lungo da accumularli. Viene trasmesso senza scalatura, con quattro
+cifre, e si riavvolge nella larghezza del campo come fa il contatore stesso.
 
 Il beacon WX
 ============

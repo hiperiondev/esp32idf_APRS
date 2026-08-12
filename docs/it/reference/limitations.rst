@@ -356,8 +356,9 @@ Tracciamento / Beaconing
      - Opzione per servizio nelle pagine Tracker, IGate, Digipeater e
        Oggetti/Item; anche il decoder la comprende. Viene saltata
        automaticamente quando l'ambiguità di posizione non è zero o è in uso
-       un'estensione dati, perché il formato compresso non ha spazio per
-       nessuna delle due
+       un'estensione PHG/DFS, perché il formato compresso non ha spazio per
+       nessuna delle due; una portata radio precalcolata viene invece ripiegata
+       nello slot a due byte proprio del campo compresso
    * - Codifica posizione Mic-E (TX)
      - ⚠️ (soprattutto firmware per tracker mobili)
      - ✅
@@ -368,17 +369,22 @@ Tracciamento / Beaconing
        personalizzati; Emergency non è offerto, perché trasmetterlo chiede una
        risposta del mondo reale. Il campo informativo segue l'ordine canonico di
        ``mic-e-examples.txt``: byte TYPE, altitudine, blocco di frequenza,
-       commento, ``!DAO!`` e la coppia Produttore/Versione che identifica il
-       firmware (l'indirizzo di destinazione porta dati di posizione, quindi il
-       TOCALL ``APxxxx`` non può)
+       estensione dati, commento, ``!DAO!`` e la coppia Produttore/Versione che
+       identifica il firmware (l'indirizzo di destinazione porta dati di
+       posizione, quindi il TOCALL ``APxxxx`` non può)
    * - PHG / potenza-altezza-guadagno-direttività
      - ✅
      - ✅
-     - Esposto nella pagina beacon dell'IGate
+     - Esposto nella pagina beacon dell'IGate, con i propri sottocampi, e come
+       un unico interruttore nella pagina Tracker che riusa i dati d'antenna
+       della stazione. Nel formato Mic-E il token viaggia nel campo di testo,
+       che è dove APRS 1.2 colloca un normale campo di commento di posizione
    * - RNG / portata radio precalcolata
      - ⚠️
      - ✅
-     - Selezionabile come estensione dati del beacon dell'IGate (``RNGrrrr``)
+     - Selezionabile come estensione dati del beacon dell'IGate (``RNGrrrr``),
+       oppure come la forma di portata a due byte propria del campo compresso
+       quando si richiede anche la compressione
    * - DFS / intensità del segnale omni-DF
      - ⚠️ (software specifico per DF)
      - ✅
@@ -400,6 +406,13 @@ Tracciamento / Beaconing
      - ✅
      - Opzione a livello di stazione; emette la forma ``>IO91SX/G`` di APRS101
        cap.16
+   * - Direzione d'antenna ed ERP nei rapporti di stato
+     - ⚠️ (operatività meteor scatter)
+     - ✅
+     - Direzione e potenza a livello di stazione nella pagina Stazione, emesse
+       come la coppia ``^HP`` che chiude il testo di stato; servono entrambe le
+       metà e la coppia non viene mai scartata per rientrare nel budget di
+       lunghezza
    * - Localizzatore Maidenhead nella destinazione AX.25 (``[IO91SX]``,
        obsoleto)
      - ⚠️ (software legacy)
@@ -410,7 +423,10 @@ Tracciamento / Beaconing
      - ✅
      - Altitudine per ruolo (tracker, IGate, digipeater), ciascuna copiata dal
        valore di "La mia stazione" quando è spuntato *Usa i dati de La mia
-       stazione*. I report meteo non contengono alcun campo di altitudine
+       stazione*. Inviata come token ``/A=`` nel commento, oppure gratis dentro
+       lo slot a due byte proprio del campo compresso quando il beacon è
+       compresso e quello slot non porta già una portata radio. I report meteo
+       non contengono alcun campo di altitudine
    * - Percorso di digipeating configurabile per servizio
      - ✅
      - ✅
@@ -543,7 +559,9 @@ Telemetria
      - Opzionale, accanto al report ``T#nnn``; viaggia nel commento di
        posizione della baliza (Tracker/IGate/Digipeater) che sta trasmettendo
        con il nominativo/SSID configurato nella pagina Telemetry, condividendo
-       il contatore di sequenza di quel report
+       il contatore di sequenza di quel report. Porta i canali analogici e,
+       dietro un insieme completo di cinque, il banco digitale a otto bit come
+       una coppia in più
    * - Ricezione/grafico della telemetria altrui
      - ✅ (grafici Xastir, aprs.fi)
      - ❌
@@ -590,7 +608,8 @@ Oggetti, Item, Bollettini, Stato
        campo informativo resta entro il tetto di 70 byte del cap.16 (``>`` +
        timestamp da 7 byte + 62 caratteri di testo): quando i blocchi opzionali
        non entrano, viene scartato prima il localizzatore Maidenhead e poi il
-       blocco di frequenza, e il testo dell'operatore non viene mai accorciato
+       blocco di frequenza, e né il testo dell'operatore né la coppia
+       direzione/ERP finale vengono mai accorciati
    * - Risposta a query (``?APRS?``, ``?WX?``, ecc.)
      - ⚠️
      - ✅
