@@ -55,6 +55,11 @@ An expired bulletin auto-clears its enable flag and leaves the air. Bulletins
 persist to their own ``/storage/bulletins.json``. The page is gated by the
 ``ENABLE_BULLETINS`` compile-time switch.
 
+Bulletin text has ``|`` and ``~`` filtered out at transmission time — both
+characters are reserved for the base-91 comment telemetry group
+(:ref:`en-telemetry`) and must not appear in ordinary free text on the air.
+The stored text is unaffected; only the on-air rendering is filtered.
+
 .. note::
 
    NTS Radiograms, also described in chapter 14, are a traffic-handling message
@@ -76,6 +81,13 @@ Objects and Items
 their maps), then auto-disables it. Objects/Items persist to their own
 ``/storage/objitems.json``. The page is gated by the ``ENABLE_OBJECTS_ITEMS``
 compile-time switch.
+
+An object/item comment has ``|`` and ``~`` filtered out at transmission time,
+for the same reason and in the same way as a beacon comment
+(:ref:`en-telemetry`); ``{`` is left untouched, since it is legal in a
+comment and is the compressed-position radio-range marker rather than a
+telemetry delimiter. The stored comment is unaffected; only the on-air
+rendering is filtered.
 
 Permanent objects
 ------------------

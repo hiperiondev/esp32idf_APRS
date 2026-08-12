@@ -456,6 +456,14 @@
 #define TR_F_OBJITEM_OFFSET "Duplex offset (kHz)"
 /** Form label for the "objitem tone" field or fieldset, rendered on the configuration forms. */
 #define TR_F_OBJITEM_TONE "Subaudible tone CTCSS (Hz, 0 = none)"
+/** Form label for the "objitem range" field or fieldset, rendered on the configuration forms. */
+#define TR_F_OBJITEM_RANGE "Coverage range (0 = none)"
+/** Form label for the "objitem range unit" field or fieldset, rendered on the configuration forms. */
+#define TR_F_OBJITEM_RANGE_UNIT "Range unit"
+/** Form label for the "objitem range unit mi" field or fieldset, rendered on the configuration forms. */
+#define TR_F_OBJITEM_RANGE_UNIT_MI "Miles"
+/** Form label for the "objitem range unit km" field or fieldset, rendered on the configuration forms. */
+#define TR_F_OBJITEM_RANGE_UNIT_KM "Kilometers"
 /** Form label for the "objitem path fmt" field or fieldset, rendered on the configuration forms. */
 #define TR_F_OBJITEM_PATH_FMT "Path %d"
 /** Form label for the "objitem qru" field or fieldset, rendered on the configuration forms. */

@@ -84,6 +84,14 @@ static void render_duplex_select(httpd_req_t *req, const char *name, int8_t dupl
     web_select_close(req);
 }
 
+// Range-unit <select>. Values match objitem_t.range_km (0 = miles, 1 = km).
+static void render_range_unit_select(httpd_req_t *req, const char *name, bool range_km) {
+    web_select_open(req, TR_F_OBJITEM_RANGE_UNIT, name);
+    web_select_option(req, 0, TR_F_OBJITEM_RANGE_UNIT_MI, !range_km);
+    web_select_option(req, 1, TR_F_OBJITEM_RANGE_UNIT_KM, range_km);
+    web_select_close(req);
+}
+
 // The standard APRS QRU group names and their meanings, shown as the choices in
 // the QRU dropdown. Names are fixed APRS identifiers (never translated); only
 // the meanings are localized.
@@ -361,7 +369,7 @@ esp_err_t page_objects_get(httpd_req_t *req) {
         web_fieldset_close(req);
 
         // -- Group 7: Repeater radio parameters (monitor frequency / duplex /
-        //    tone / digipeat path / QRU group). --
+        //    tone / range / digipeat path / QRU group). --
         web_fieldset_open(req, TR_F_OBJITEM_REPEATER_SECTION);
         snprintf(name, sizeof(name), "oFreq%d", i + 1);
         web_field_float(req, TR_F_OBJITEM_FREQ, name, b->freq_mhz, "0.001", 0.0f, 999.999f);
@@ -371,6 +379,10 @@ esp_err_t page_objects_get(httpd_req_t *req) {
         web_field_int(req, TR_F_OBJITEM_OFFSET, name, (long)b->offset_khz, 0, 65535);
         snprintf(name, sizeof(name), "oTone%d", i + 1);
         web_field_float(req, TR_F_OBJITEM_TONE, name, b->tone_tenths / 10.0f, "0.1", 0.0f, 254.1f);
+        snprintf(name, sizeof(name), "oRng%d", i + 1);
+        web_field_int(req, TR_F_OBJITEM_RANGE, name, (long)b->range, 0, 99);
+        snprintf(name, sizeof(name), "oRngU%d", i + 1);
+        render_range_unit_select(req, name, b->range_km);
 
         // Path: one checkbox per shared Digipeater Path Alias, same control
         // shared with the Digipeater/Tracker/WX/Messaging/Telemetry pages.
@@ -690,6 +702,16 @@ esp_err_t page_objects_post(httpd_req_t *req) {
         if (tone_tenths > 65535)
             tone_tenths = 65535;
         b->tone_tenths = (uint16_t)tone_tenths;
+
+        snprintf(name, sizeof(name), "oRng%d", i + 1);
+        int range = web_form_get_int(body, name, (int)b->range);
+        if (range < 0)
+            range = 0;
+        if (range > 99)
+            range = 99;
+        b->range = (uint16_t)range;
+        snprintf(name, sizeof(name), "oRngU%d", i + 1);
+        b->range_km = web_form_get_int(body, name, b->range_km ? 1 : 0) != 0;
 
         // -- Path bitmask (one checkbox per shared Digipeater Path Alias). --
         char path_prefix[24];

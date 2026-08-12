@@ -135,7 +135,7 @@
  * written to the inactive OTA slot...". */
 #define TR_ABOUT_OTA_BODY                                                                                                                                      \
     "Cargue un nuevo firmware .bin compilado para esta placa. Se escribe en la "                                                                               \
-    "partición OTA inactiva mientras el dispositivo sigue funcionando con la "                                                                                 \
+    "partición OTA inactiva mientras el dispositivo sigue funcionando con la "                                                                                \
     "actual; el dispositivo solo cambia y se reinicia una vez que la carga "                                                                                   \
     "finaliza y se verifica. Si el nuevo firmware no arranca correctamente, "                                                                                  \
     "se revierte automáticamente en el próximo reinicio."
@@ -155,7 +155,7 @@
 #define TR_OTA_UPLOADING "Cargando y escribiendo en la memoria flash..."
 /** Spanish text for the firmware-update label or status message for no partition, rendered on the Firmware page. English: "No OTA update slot is available on
  * this device's partition table. Reflash it once over...". */
-#define TR_OTA_NO_PARTITION                                                                                                                                    \
+#define TR_OTA_NO_PARTITION                                                                                                                                     \
     "No hay una partición OTA disponible en la tabla de particiones de este dispositivo. Vuelva a grabarlo una vez por USB/UART con el partitions.csv actual " \
     "para habilitar OTA."
 /** Spanish text for the firmware-update label or status message for begin failed, rendered on the Firmware page. English: "Could not start the OTA write:". */
@@ -430,7 +430,7 @@
 /** Spanish text for the form label for the "objitem permanent note" field or fieldset, rendered on the configuration forms. English: "A permanent Object is
  * sent with the fixed 111111z timestamp instead of the live time, s...". */
 #define TR_F_OBJITEM_PERMANENT_NOTE                                                                                                                            \
-    "Un Objeto permanente se envía con la marca de tiempo fija 111111z en lugar de la hora actual, de modo que nunca es reemplazado por un Objeto homónimo "   \
+    "Un Objeto permanente se envía con la marca de tiempo fija 111111z en lugar de la hora actual, de modo que nunca es reemplazado por un Objeto homónimo " \
     "de otra estación - solo la estación de origen puede actualizarlo o moverlo. No tiene efecto en un Ítem."
 /** Spanish text for the form label for the "objitem active" field or fieldset, rendered on the configuration forms. English: "Active (uncheck = kill)". */
 #define TR_F_OBJITEM_ACTIVE "Activo (desmarcar = eliminar)"
@@ -490,6 +490,14 @@
 /** Spanish text for the form label for the "objitem tone" field or fieldset, rendered on the configuration forms. English: "Subaudible tone CTCSS (Hz, 0 =
  * none)". */
 #define TR_F_OBJITEM_TONE "Tono subaudible CTCSS (Hz, 0 = ninguno)"
+/** Spanish text for the form label for the "objitem range" field or fieldset, rendered on the configuration forms. English: "Coverage range (0 = none)". */
+#define TR_F_OBJITEM_RANGE "Alcance de cobertura (0 = ninguno)"
+/** Spanish text for the form label for the "objitem range unit" field or fieldset, rendered on the configuration forms. English: "Range unit". */
+#define TR_F_OBJITEM_RANGE_UNIT "Unidad de alcance"
+/** Spanish text for the form label for the "objitem range unit mi" field or fieldset, rendered on the configuration forms. English: "Miles". */
+#define TR_F_OBJITEM_RANGE_UNIT_MI "Millas"
+/** Spanish text for the form label for the "objitem range unit km" field or fieldset, rendered on the configuration forms. English: "Kilometers". */
+#define TR_F_OBJITEM_RANGE_UNIT_KM "Kilómetros"
 /** Spanish text for the form label for the "objitem path fmt" field or fieldset, rendered on the configuration forms. English: "Path %d". */
 #define TR_F_OBJITEM_PATH_FMT "Ruta %d"
 /** Spanish text for the form label for the "objitem qru" field or fieldset, rendered on the configuration forms. English: "QRU group membership". */
@@ -570,7 +578,7 @@
 /** Spanish text for the explanatory note shown beside the objitem setting, rendered on the configuration forms. English: "Objects are timestamped (;NAME);
  * Items are never timestamped ()NAME). Unchecking Active...". */
 #define TR_NOTE_OBJITEM                                                                                                                                        \
-    "Los Objetos llevan marca de tiempo (;NOMBRE); los Ítems nunca la llevan ()NOMBRE). Al desmarcar Activo se envían reportes de eliminación y luego se "     \
+    "Los Objetos llevan marca de tiempo (;NOMBRE); los Ítems nunca la llevan ()NOMBRE). Al desmarcar Activo se envían reportes de eliminación y luego se "  \
     "deshabilita automáticamente. El Alcance limita la transmisión independientemente de las casillas RF/Internet."
 /** Spanish text for the form label for the "status beacon" field or fieldset, rendered on the configuration forms. English: "Status Beacon". */
 #define TR_F_STATUS_BEACON "Baliza de estado"
@@ -739,17 +747,17 @@
 /** Spanish text for the explanatory note shown beside the tlm digi setting, rendered on the Digipeater, IGate and Tracker pages. English: "Telemetry
  * (EQNS/PARM/UNIT) for Digi beacons is configured on the <a href='/tlm'>Telemet...". */
 #define TR_NOTE_TLM_DIGI                                                                                                                                       \
-    "La telemetría (EQNS/PARM/UNIT) para las balizas de Digi se configura en la "                                                                              \
+    "La telemetría (EQNS/PARM/UNIT) para las balizas de Digi se configura en la "                                                                             \
     "página <a href='/tlm'>Telemetría</a>."
 /** Spanish text for the explanatory note shown beside the tlm igate setting, rendered on the Digipeater, IGate and Tracker pages. English: "Telemetry
  * (EQNS/PARM/UNIT) for IGate beacons is configured on the <a href='/tlm'>Teleme...". */
 #define TR_NOTE_TLM_IGATE                                                                                                                                      \
-    "La telemetría (EQNS/PARM/UNIT) para las balizas de IGate se configura en la "                                                                             \
+    "La telemetría (EQNS/PARM/UNIT) para las balizas de IGate se configura en la "                                                                            \
     "página <a href='/tlm'>Telemetría</a>."
 /** Spanish text for the explanatory note shown beside the tlm tracker setting, rendered on the Digipeater, IGate and Tracker pages. English: "Telemetry
  * (EQNS/PARM/UNIT) for Tracker beacons is configured on the <a href='/tlm'>Tele...". */
 #define TR_NOTE_TLM_TRACKER                                                                                                                                    \
-    "La telemetría (EQNS/PARM/UNIT) para las balizas de Tracker se configura en la "                                                                           \
+    "La telemetría (EQNS/PARM/UNIT) para las balizas de Tracker se configura en la "                                                                          \
     "página <a href='/tlm'>Telemetría</a>."
 
 /** @} */
@@ -891,8 +899,8 @@
 /** Spanish text for the symbol-picker label for intro, rendered on the symbol picker. English: "Quick reference for common APRS symbol codes. Each service page
  * (IGate / Digi / Tracker...". */
 #define TR_SYM_INTRO                                                                                                                                           \
-    "Referencia rápida de los códigos de símbolo APRS más comunes. Cada página de "                                                                            \
-    "servicio (IGate / Digi / Tracker) tiene su propio campo de símbolo de texto libre "                                                                       \
+    "Referencia rápida de los códigos de símbolo APRS más comunes. Cada página de "                                                                       \
+    "servicio (IGate / Digi / Tracker) tiene su propio campo de símbolo de texto libre "                                                                      \
     "\u2014 copie el código de 2 caracteres desde aquí a ese campo."
 /** Spanish text for the symbol-picker label for code, rendered on the symbol picker. English: "Code". */
 #define TR_SYM_CODE "Código"
@@ -1080,8 +1088,8 @@
 #define TR_WIFI_SSID_PLACEHOLDER "Nombre de la red (escríbalo o use Buscar WiFi)"
 /** Spanish text for the wireless page label for sta needs ssid, rendered on the Wireless page. English: "Saved, but this will NOT connect: Mode selects a
  * station, yet no WiFi Client block has...". */
-#define TR_WIFI_STA_NEEDS_SSID                                                                                                                                 \
-    "Guardado, pero NO se conectará: el Modo selecciona estación, pero ningún bloque Cliente WiFi tiene 'Habilitar' marcado y un SSID cargado. Corríjalo y "   \
+#define TR_WIFI_STA_NEEDS_SSID                                                                                                                                   \
+    "Guardado, pero NO se conectará: el Modo selecciona estación, pero ningún bloque Cliente WiFi tiene 'Habilitar' marcado y un SSID cargado. Corríjalo y " \
     "guarde de nuevo."
 /** Spanish text for the wireless page label for scanning, rendered on the Wireless page. English: "Scanning...". */
 #define TR_WIFI_SCANNING "Escaneando..."
@@ -1293,7 +1301,7 @@
 /** Spanish text for the explanatory note shown beside the range prefix setting, rendered on the IGate page. English: "Local gate applied only to RF ->
  * Internet, independent of the payload-type filter above...". */
 #define TR_NOTE_RANGE_PREFIX                                                                                                                                   \
-    "Filtro local aplicado solo a RF -> Internet, independiente del filtro por tipo de carga anterior. La distancia se mide desde la posición de Mi "          \
+    "Filtro local aplicado solo a RF -> Internet, independiente del filtro por tipo de carga anterior. La distancia se mide desde la posición de Mi "         \
     "Estación; los paquetes cuya posición no se puede decodificar no se ven afectados por el filtro de distancia."
 
 /** Spanish text for the form label for the "3rdparty unwrap en" field or fieldset, rendered on the IGate page. English: "Relay whitelisted third-party (})
@@ -1302,8 +1310,8 @@
 /** Spanish text for the explanatory note shown beside the 3rdparty unwrap setting, rendered on the IGate page. English: "Off by default. Only takes effect when
  * the Internet to RF Callsign Filter above is set...". */
 #define TR_NOTE_3RDPARTY_UNWRAP                                                                                                                                \
-    "Desactivado por defecto. Solo tiene efecto cuando el Filtro de Indicativos de Internet a RF anterior está en modo Lista Blanca: un paquete envuelto de "  \
-    "terceros solo se desenvuelve y retransmite si su indicativo de origen interno está en la lista blanca. Active esto solo si confía en la fuente "          \
+    "Desactivado por defecto. Solo tiene efecto cuando el Filtro de Indicativos de Internet a RF anterior está en modo Lista Blanca: un paquete envuelto de " \
+    "terceros solo se desenvuelve y retransmite si su indicativo de origen interno está en la lista blanca. Active esto solo si confía en la fuente "        \
     "específica y la ha incluido en la lista blanca - volver a filtrar tráfico de terceros sin esta restricción es la causa más común de bucles de IGate."
 
 /** Spanish text for the form label for the "satgate" field or fieldset, rendered on the IGate page. English: "Satellite Gate List". */
@@ -1313,7 +1321,7 @@
 /** Spanish text for the explanatory note shown beside the satgate setting, rendered on the IGate page. English: "Callsigns of satellite/ISS digipeaters (e.g.
  * ISS, PSAT). A frame routed through one of...". */
 #define TR_NOTE_SATGATE                                                                                                                                        \
-    "Indicativos de satélites/ISS digipetidores (p. ej. ISS, PSAT). Un paquete enrutado por uno de estos solo se retransmite a APRS-IS si la entrada de "      \
+    "Indicativos de satélites/ISS digipetidores (p. ej. ISS, PSAT). Un paquete enrutado por uno de estos solo se retransmite a APRS-IS si la entrada de "     \
     "trayectoria del digipetidor está realmente marcada como usada. Hasta 8 entradas; deje una entrada vacía para desactivarla."
 
 /** Spanish text for the form label for the "dup cache" field or fieldset, rendered on the IGate page. English: "Duplicate Suppression". */
@@ -1336,10 +1344,10 @@
 #define TR_F_MSG_LOCAL_WINDOW_S "Ventana de escucha local (s)"
 /** Spanish text for the explanatory note shown beside the msg gating setting, rendered on the IGate page. English: "A message read from APRS-IS is put on the
  * air only when its addressee was heard on RF i...". */
-#define TR_NOTE_MSG_GATING                                                                                                                                     \
-    "Un mensaje leído de APRS-IS sale al aire solo si su destinatario fue escuchado por RF dentro de la ventana, su remitente no lo fue, la cabecera del "     \
-    "remitente no lleva TCPXX/NOGATE/RFONLY y el destinatario no está a su vez en Internet. El siguiente reporte de posición de ese destinatario también se "  \
-    "retransmite una vez, para poder ubicarlo. Si se desactiva, se transmite todo mensaje que permita el filtro de tipos, a destinatarios de cualquier parte " \
+#define TR_NOTE_MSG_GATING                                                                                                                                       \
+    "Un mensaje leído de APRS-IS sale al aire solo si su destinatario fue escuchado por RF dentro de la ventana, su remitente no lo fue, la cabecera del "      \
+    "remitente no lleva TCPXX/NOGATE/RFONLY y el destinatario no está a su vez en Internet. El siguiente reporte de posición de ese destinatario también se " \
+    "retransmite una vez, para poder ubicarlo. Si se desactiva, se transmite todo mensaje que permita el filtro de tipos, a destinatarios de cualquier parte "   \
     "del mundo."
 
 /** Spanish text for the form label for the "digi aliases" field or fieldset, rendered on the IGate page. English: "n-N Path Aliases". */
@@ -1378,22 +1386,22 @@
 /** Spanish text for the explanatory note shown beside the digi aliases setting, rendered on the IGate page. English: "The only aliases this digipeater honours.
  * Write each one without its SSID; '#' matches...". */
 #define TR_NOTE_DIGI_ALIASES                                                                                                                                   \
-    "Los únicos alias que este digipetidor atiende. Escriba cada uno sin su SSID; '#' equivale a un solo dígito, así 'WIDE#' cubre toda la familia WIDEn. "    \
-    "Las filas se prueban en orden y gana la primera coincidencia. Traza inserta el indicativo de esta estación para que cada salto sea identificable "        \
+    "Los únicos alias que este digipetidor atiende. Escriba cada uno sin su SSID; '#' equivale a un solo dígito, así 'WIDE#' cubre toda la familia WIDEn. " \
+    "Las filas se prueban en orden y gana la primera coincidencia. Traza inserta el indicativo de esta estación para que cada salto sea identificable "       \
     "después, que es lo que exige WIDEn-N; inundación no deja rastro y solo conviene en un alias regional que se decida usar así."
 
 /** Spanish text for the explanatory note shown beside the digi preempt setting, rendered on the IGate page. English: "Off is the safe default. When it is on,
  * the path is scanned from its first unused address...". */
 #define TR_NOTE_DIGI_PREEMPT                                                                                                                                   \
-    "Apagado es el valor seguro por omisión. Encendido, la ruta se recorre desde su primera dirección sin usar hasta el final buscando el indicativo de "      \
-    "esta estación o alguno de los alias de arriba que no sea un nombre de la familia n-N, y una coincidencia más adelante se atiende de inmediato en vez "    \
-    "de esperar a las direcciones que están delante. Eso es lo que hace funcionar una ruta explícita como WIDE1-1,CITYA,WIDE2-1,CITYB, que carga el canal "    \
-    "mucho menos que una inundación WIDEn-N. Conservar las direcciones salteadas deja visible la ruta pedida; descartarlas pone al aire el camino restante "   \
+    "Apagado es el valor seguro por omisión. Encendido, la ruta se recorre desde su primera dirección sin usar hasta el final buscando el indicativo de "    \
+    "esta estación o alguno de los alias de arriba que no sea un nombre de la familia n-N, y una coincidencia más adelante se atiende de inmediato en vez "  \
+    "de esperar a las direcciones que están delante. Eso es lo que hace funcionar una ruta explícita como WIDE1-1,CITYA,WIDE2-1,CITYB, que carga el canal "  \
+    "mucho menos que una inundación WIDEn-N. Conservar las direcciones salteadas deja visible la ruta pedida; descartarlas pone al aire el camino restante "  \
     "más corto. Los alias n-N genéricos nunca se reclaman así en ninguno de los dos modos."
 
 /** Spanish text for the explanatory note shown beside the digi dest ssid setting, rendered on the IGate page. English: "Off by default. When on, a frame whose
  * AX.25 destination SSID is 1 to 7 is repeated on...". */
-#define TR_NOTE_DIGI_DEST_SSID                                                                                                                                 \
+#define TR_NOTE_DIGI_DEST_SSID                                                                                                                                   \
     "Desactivado por omisión. Cuando está activo, una trama cuyo SSID de destino AX.25 sea de 1 a 7 se repite por ese solo SSID, antes de consultar la tabla " \
     "de alias de arriba, así que se ignora la ruta que pidió la estación de origen. Actívelo solo por un vecino heredado que todavía rutee de esta manera."
 

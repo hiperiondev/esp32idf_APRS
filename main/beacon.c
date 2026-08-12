@@ -150,7 +150,9 @@ typedef struct {
     // block leads the Mic-E text field, where the spec reserves the same
     // first-in-the-text position for it. Sourced from each service's own
     // *_freq_mhz/_tone_tenths/_duplex/_offset_khz fields; freqMhz <= 0 means
-    // no block is emitted.
+    // no block is emitted. There is no per-service coverage-range setting, so
+    // the block's optional range sub-field is never emitted here (only
+    // Objects/Items carry one, via objitem_t's own range/range_km fields).
     float freqMhz;
     uint16_t freqToneTenths;
     int8_t freqDuplex;
@@ -439,7 +441,7 @@ static int buildMicePositionPacket(const beacon_params_t *p, char *out, size_t o
         aprs_dao_build(p->lat, p->lon, dao);
 
     char freqBlock[24];
-    objitem_build_freq_block(p->freqMhz, p->freqToneTenths, p->freqDuplex, p->freqOffsetKhz, freqBlock, sizeof(freqBlock));
+    objitem_build_freq_block(p->freqMhz, p->freqToneTenths, p->freqDuplex, p->freqOffsetKhz, 0, false, freqBlock, sizeof(freqBlock));
 
     // Data extension (PHG / RNG / DFS). Mic-E has no 7-byte slot of its own
     // after a symbol code, but the 1.2 revision states that the Mic-E text
@@ -626,7 +628,7 @@ static int buildPositionPacket(const beacon_params_t *p, char *out, size_t outMa
     char comment[COMMENT_SIZE];
     {
         char freqBlock[24];
-        objitem_build_freq_block(p->freqMhz, p->freqToneTenths, p->freqDuplex, p->freqOffsetKhz, freqBlock, sizeof(freqBlock));
+        objitem_build_freq_block(p->freqMhz, p->freqToneTenths, p->freqDuplex, p->freqOffsetKhz, 0, false, freqBlock, sizeof(freqBlock));
 
         size_t cmtTlmLen = strlen(p->cmtTlm);
         size_t daoLen = strlen(dao);
@@ -710,7 +712,9 @@ typedef struct {
     // to the status text instead of a position comment - the second
     // advertisement freqspec.txt explicitly endorses, for radios that decode
     // neither the frequency Object form nor the leading bytes of a position
-    // report's comment. freqMhz <= 0 means no block is emitted.
+    // report's comment. freqMhz <= 0 means no block is emitted. As with
+    // beacon_params_t, there is no per-service range setting, so the block's
+    // optional range sub-field is never emitted here.
     float freqMhz;
     uint16_t freqToneTenths;
     int8_t freqDuplex;
@@ -808,7 +812,7 @@ static int buildStatusPacket(const status_params_t *p, char *out, size_t outMax)
     aprs_path_build_suffix(p->pathSel, p->pathPreset, path, sizeof(path));
 
     char freqBlock[24];
-    objitem_build_freq_block(p->freqMhz, p->freqToneTenths, p->freqDuplex, p->freqOffsetKhz, freqBlock, sizeof(freqBlock));
+    objitem_build_freq_block(p->freqMhz, p->freqToneTenths, p->freqDuplex, p->freqOffsetKhz, 0, false, freqBlock, sizeof(freqBlock));
 
     // The grid locator takes precedence over the timestamp: APRS101 ch.16
     // allows only one of the two immediately after the '>' DTI, and the
@@ -934,7 +938,7 @@ static uint32_t trackerStatusService(void) {
             memcpy(p.call, useTrk ? g_config.trk_mycall : g_config.aprs_mycall, sizeof(p.call));
             p.ssid = useTrk ? g_config.trk_ssid : g_config.aprs_ssid;
             p.pathSel = g_config.trk_path;
-            memcpy(p.statusText, g_config.trk_status, sizeof(p.statusText));
+            str_copy_strip_reserved(g_config.trk_status, p.statusText, sizeof(p.statusText));
             memcpy(p.pathPreset, g_config.path, sizeof(p.pathPreset));
             p.gridEnable = g_config.status_grid_en;
             p.lat = g_config.trk_lat;
@@ -988,7 +992,7 @@ static uint32_t igateStatusService(void) {
             memcpy(p.call, g_config.aprs_mycall, sizeof(p.call));
             p.ssid = g_config.aprs_ssid;
             p.pathSel = g_config.igate_path;
-            memcpy(p.statusText, g_config.igate_status, sizeof(p.statusText));
+            str_copy_strip_reserved(g_config.igate_status, p.statusText, sizeof(p.statusText));
             memcpy(p.pathPreset, g_config.path, sizeof(p.pathPreset));
             p.gridEnable = g_config.status_grid_en;
             p.lat = g_config.igate_lat;
@@ -1043,7 +1047,7 @@ static uint32_t digiStatusService(void) {
             memcpy(p.call, useDigi ? g_config.digi_mycall : g_config.aprs_mycall, sizeof(p.call));
             p.ssid = useDigi ? g_config.digi_ssid : g_config.aprs_ssid;
             p.pathSel = g_config.digi_path;
-            memcpy(p.statusText, g_config.digi_status, sizeof(p.statusText));
+            str_copy_strip_reserved(g_config.digi_status, p.statusText, sizeof(p.statusText));
             memcpy(p.pathPreset, g_config.path, sizeof(p.pathPreset));
             p.gridEnable = g_config.status_grid_en;
             p.lat = g_config.digi_lat;
@@ -1121,7 +1125,7 @@ static uint32_t trackerBeaconService(void) {
             p.ambiguity = g_config.pos_ambiguity;
             p.daoEnable = g_config.pos_dao_en;
             memcpy(p.symbol, g_config.trk_symbol, sizeof(p.symbol));
-            memcpy(p.comment, g_config.trk_comment, sizeof(p.comment));
+            str_copy_strip_reserved(g_config.trk_comment, p.comment, sizeof(p.comment));
             memcpy(p.pathPreset, g_config.path, sizeof(p.pathPreset));
             p.freqMhz = g_config.trk_freq_mhz;
             p.freqToneTenths = g_config.trk_tone_tenths;
@@ -1207,7 +1211,7 @@ static uint32_t igateBeaconService(void) {
             p.ambiguity = g_config.pos_ambiguity;
             p.daoEnable = g_config.pos_dao_en;
             memcpy(p.symbol, g_config.igate_symbol, sizeof(p.symbol));
-            memcpy(p.comment, g_config.igate_comment, sizeof(p.comment));
+            str_copy_strip_reserved(g_config.igate_comment, p.comment, sizeof(p.comment));
             memcpy(p.pathPreset, g_config.path, sizeof(p.pathPreset));
             p.extEnable = g_config.igate_phg_enable;
             p.extType = g_config.igate_ext_type;
@@ -1280,7 +1284,7 @@ static void fillIgatePositionParams(beacon_params_t *p) {
         p->compress = g_config.igate_compress;
         p->msgCapable = g_config.msg_enable;
         memcpy(p->symbol, g_config.igate_symbol, sizeof(p->symbol));
-        memcpy(p->comment, g_config.igate_comment, sizeof(p->comment));
+        str_copy_strip_reserved(g_config.igate_comment, p->comment, sizeof(p->comment));
         memcpy(p->pathPreset, g_config.path, sizeof(p->pathPreset));
         p->extEnable = g_config.igate_phg_enable;
         p->extType = g_config.igate_ext_type;
@@ -1347,7 +1351,7 @@ int beacon_build_igate_status_packet(char *out, size_t out_max) {
         memcpy(p.call, g_config.aprs_mycall, sizeof(p.call));
         p.ssid = g_config.aprs_ssid;
         p.pathSel = g_config.igate_path;
-        memcpy(p.statusText, g_config.igate_status, sizeof(p.statusText));
+        str_copy_strip_reserved(g_config.igate_status, p.statusText, sizeof(p.statusText));
         memcpy(p.pathPreset, g_config.path, sizeof(p.pathPreset));
         p.gridEnable = g_config.status_grid_en;
         p.lat = g_config.igate_lat;
@@ -1392,7 +1396,7 @@ static uint32_t digiBeaconService(void) {
             p.ambiguity = g_config.pos_ambiguity;
             p.daoEnable = g_config.pos_dao_en;
             memcpy(p.symbol, g_config.digi_symbol, sizeof(p.symbol));
-            memcpy(p.comment, g_config.digi_comment, sizeof(p.comment));
+            str_copy_strip_reserved(g_config.digi_comment, p.comment, sizeof(p.comment));
             memcpy(p.pathPreset, g_config.path, sizeof(p.pathPreset));
             p.freqMhz = g_config.digi_freq_mhz;
             p.freqToneTenths = g_config.digi_tone_tenths;

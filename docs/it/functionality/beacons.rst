@@ -255,6 +255,22 @@ In ricezione è gestito per intero: vedere :ref:`it-filtering` per il
 decodificatore, e il registro del traffico per la riga di avviso che
 un'emergenza ricevuta produce.
 
+Testo di stato Mic-E
+====================
+
+La coda di testo libero del campo informazioni Mic-E — tutto ciò che segue il
+blocco di frequenza, il token PHG/estensione dati e il campo altitudine —
+porta, byte per byte, ciò che l'operatore ha scritto come commento del
+beacon. L'unica eccezione è il primo byte di quella coda: APRS12c cap.10
+riserva una ``,`` o ``0x1d`` iniziale al sottoformato Mic-E Telemetry Data
+(ormai obsoleto), quindi un commento che iniziasse con uno di quei due byte
+verrebbe letto come telemetria anziché come testo. ``aprs_mice_encode()`` si
+protegge da questo inserendo un singolo spazio prima di uno di quei
+caratteri prima di aggiungere il commento; un commento che inizia con
+qualsiasi altro byte arriva in aria invariato. Lo spazio inserito non porta
+informazione propria e un client ricevente lo mostra come un normale spazio
+iniziale del commento.
+
 Direzione d'antenna ed ERP nei rapporti di stato
 ================================================
 

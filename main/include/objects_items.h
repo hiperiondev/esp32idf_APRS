@@ -175,8 +175,9 @@ typedef enum {
  * @details Optional on-air blocks are emitted only for the matching symbol:
  * the Area block (@c area_*) for the Area symbol ('\\','l'); the Signpost text
  * (@c signpost) for the Signpost symbol ('\\','m'); and the repeater frequency
- * block (@c freq_mhz / @c offset_khz / @c duplex / @c tone_tenths) for the
- * Antenna/repeater symbols, emitted at the very start of the comment text.
+ * block (@c freq_mhz / @c offset_khz / @c duplex / @c tone_tenths / @c range /
+ * @c range_km) for the Antenna/repeater symbols, emitted at the very start of
+ * the comment text.
  * The DF ("/BRG/NRQ") block (@c df_*), by contrast, is not symbol-gated: it is
  * appended to the CSE/SPD block whenever @c df_enable is set, for any element
  * that is not an Area/Signpost object and not PHG-enabled (see
@@ -239,6 +240,8 @@ typedef struct {
     uint16_t offset_khz;  /**< Duplex shift magnitude in kHz (e.g. 600); used only when @c duplex != 0. */
     int8_t duplex;        /**< Duplex direction: 0 = simplex, +1 = "+", -1 = "-". */
     uint16_t tone_tenths; /**< CTCSS subaudible tone in tenths of Hz (e.g. 1000 = 100.0 Hz); 0 => "Toff". */
+    uint16_t range;       /**< Coverage range magnitude, in @c range_km's unit, clamped to two digits (0..99) on air; 0 => no range sub-field emitted. */
+    bool range_km;        /**< Range unit: false => miles ("Rxxm"), true => kilometers ("Rxxkm"); ignored when @c range == 0. */
 
     uint8_t path_mask; /**< Digipeat paths: bitmask over the four shared presets g_config.path[0..3]. 0 => transmit direct (no path). When >1 bit is set,
                           proportional pathing is used (one preset per transmission, ascending bit order), and @c decay_x10 is applied after each full cycle. */
@@ -349,14 +352,23 @@ void objitems_request_transmit_all(void);
 
 /**
  * @brief Build the standard APRS repeater frequency block ("FFF.FFFMHz Tnnn
- * +/-nnn") into @p out, or the empty string when @p freq_mhz is not positive
- * or has no representation in the fixed field.
+ * +/-nnn Rxxm") into @p out, or the empty string when @p freq_mhz is not
+ * positive or has no representation in the fixed field.
  *
  * This is the exact wire format freqspec.txt defines and objitem_t's
- * @c freq_mhz/@c tone_tenths/@c duplex/@c offset_khz fields already build for
- * the Objects/Items Antenna/repeater symbols; it is exposed here so any other
- * beacon (own-station position/status reports, main/beacon.c) can prepend or
- * append the identical block instead of re-deriving the format.
+ * @c freq_mhz/@c tone_tenths/@c duplex/@c offset_khz/@c range/@c range_km
+ * fields already build for the Objects/Items Antenna/repeater symbols; it is
+ * exposed here so any other beacon (own-station position/status reports,
+ * main/beacon.c) can prepend or append the identical block instead of
+ * re-deriving the format.
+ *
+ * freqspec.txt also defines a narrowband-modulation sub-field ("tnnn",
+ * lower-case), a DCS-code sub-field ("Dnnn") in place of the CTCSS tone, and a
+ * split transmit/receive frequency form ("FFF.FFFrx"). None of these three is
+ * built: they cover modulation and receiver details this firmware has no
+ * source for (narrowband/DCS radio settings) or a use case objitem_t's single
+ * @c freq_mhz does not model (independent TX/RX frequencies), so they are
+ * left unimplemented by design rather than approximated.
  *
  * The frequency itself always occupies exactly ten bytes, because receivers
  * read it as a fixed-position field: the block is what a radio auto-tunes
@@ -381,8 +393,9 @@ void objitems_request_transmit_all(void);
  * shift every byte a receiver reads after it, which is worse than a comment
  * that simply starts with the operator's own text.
  *
- * The optional tone and duplex sub-fields follow the frequency, each with its
- * own leading space, in the order the spec shows them.
+ * The optional tone, duplex and range sub-fields follow the frequency, each
+ * with its own leading space, in the order the spec shows them: tone, then
+ * duplex offset, then range.
  *
  * @param freq_mhz Repeater monitor frequency in MHz; <= 0 => nothing is
  *        written and @p out is left as an empty string.
@@ -392,11 +405,16 @@ void objitems_request_transmit_all(void);
  *        -1 = "-".
  * @param offset_khz Duplex shift magnitude, kHz (e.g. 600); used only when
  *        @p duplex != 0.
- * @param out Destination buffer, always left NUL-terminated. 21 bytes hold
+ * @param range Coverage range magnitude in @p range_km's unit, clamped to two
+ *        digits (0..99) on air; 0 => the range sub-field is omitted.
+ * @param range_km Range unit: false => miles ("Rxxm"), true => kilometers
+ *        ("Rxxkm"); ignored when @p range == 0.
+ * @param out Destination buffer, always left NUL-terminated. 27 bytes hold
  *        the longest block (ten-byte frequency, five-byte tone, five-byte
- *        duplex shift and the terminator).
+ *        duplex shift, six-byte range and the terminator).
  * @param out_size Size of @p out in bytes.
  */
-void objitem_build_freq_block(float freq_mhz, uint16_t tone_tenths, int8_t duplex, uint16_t offset_khz, char *out, size_t out_size);
+void objitem_build_freq_block(float freq_mhz, uint16_t tone_tenths, int8_t duplex, uint16_t offset_khz, uint16_t range, bool range_km, char *out,
+                              size_t out_size);
 
 #endif // OBJECTS_ITEMS_H

@@ -1077,8 +1077,21 @@ typedef struct {
      */
     char device_id[2];
 
-    bool has_status_text;                           /**< true if a Mic-E status text string follows the fixed fields. */
-    char status_text[APRS_MAX_STATUS_TEXT_LEN + 1]; /**< Free-text Mic-E status, with the TYPE byte, the altitude field and the Mv pair already removed. */
+    bool has_status_text; /**< true if a Mic-E status text string follows the fixed fields. */
+
+    /**
+     * @brief Free-text Mic-E status, with the TYPE byte, the altitude field
+     *        and the Mv pair already removed.
+     *
+     * On encode, a text that begins with ',' or 0x1d is preceded by a single
+     * inserted space (APRS12c Chapter 10, "Mic-E Status Text"), since either
+     * leading byte would otherwise be indiscernible from the Data Type
+     * Identifier of the obsolete Mic-E Telemetry Data sub-format; every other
+     * leading byte is emitted unchanged. On decode this field holds exactly
+     * the bytes that followed the fixed fields, including any such inserted
+     * space.
+     */
+    char status_text[APRS_MAX_STATUS_TEXT_LEN + 1];
 } aprs_mice_report_t;
 
 /**
@@ -1203,6 +1216,14 @@ bool aprs_mice_decode(const char *dst_call, const char *info, size_t info_len, a
  *       knots and has no representation at all between 671 and 781 knots, so
  *       a speed in that band is sent as whichever neighbouring value is
  *       closer. Below 671 knots the field is exact to the knot.
+ *
+ * @note APRS12c Chapter 10, "Mic-E Status Text": a status text that begins
+ *       with ',' or 0x1d would be indiscernible from the Data Type
+ *       Identifier of the (obsolete) Mic-E Telemetry Data sub-format, so a
+ *       single space is inserted ahead of either character before
+ *       @c report->status_text is appended. The inserted space carries no
+ *       information; a status text beginning with any other byte is emitted
+ *       unchanged.
  */
 bool aprs_mice_encode(const aprs_mice_report_t *report, char *dst_call_out, char *info_out, size_t info_out_max);
 

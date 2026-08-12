@@ -150,6 +150,18 @@ operator's own comment text, so a position report whose comment would
 otherwise overflow the field truncates the *comment*, never the telemetry
 group or the DAO extension that follows it.
 
+Because ``|`` delimits this group and ``~`` is reserved alongside it, neither
+character may appear anywhere else in the same information field without a
+receiver misreading which region is the telemetry group. Every operator
+comment and status text this firmware transmits — Tracker, IGate and
+Digipeater position/Mic-E comments, status text, and object/item and
+bulletin text — has both characters filtered out before it goes on the air,
+regardless of whether that particular beacon carries a comment telemetry
+group itself. ``{`` is left untouched in these fields, since it is the
+compressed-position radio-range marker rather than a telemetry delimiter.
+The stored, operator-entered text is never altered; only the on-air
+rendering is filtered.
+
 Within the position report's text field the emission order is fixed:
 frequency block (if any), operator comment, comment telemetry group, then
 ``!DAO!`` (if enabled) — matching APRS101 chapter 13 and the DAO extension's

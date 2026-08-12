@@ -660,8 +660,19 @@ bool aprs_mice_encode(const aprs_mice_report_t *report, char *dst_call_out, char
     if (report->position.has_altitude)
         mice_encode_altitude(report->position.altitude_ft, info_out, info_out_max);
 
-    if (report->has_status_text && report->status_text[0])
+    if (report->has_status_text && report->status_text[0]) {
+        // APRS12c ch.10 "Mic-E Status Text": a text field beginning with ','
+        // or 0x1d is indiscernible from the Data Type Identifier of the
+        // obsolete Mic-E Telemetry Data sub-format, so a single space is
+        // inserted ahead of either character before the text is appended.
+        // The inserted space carries no information; every other leading
+        // byte reaches the information field unchanged.
+        unsigned char first_byte = (unsigned char)report->status_text[0];
+        if (first_byte == ',' || first_byte == 0x1d)
+            mice_append(info_out, info_out_max, " ", 1);
+
         mice_append(info_out, info_out_max, report->status_text, strlen(report->status_text));
+    }
 
     // Manufacturer and Version bytes, closing the information field after the
     // text and after any "!DAO!" the caller put at its end. The spec's

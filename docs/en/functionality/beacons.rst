@@ -9,7 +9,11 @@ IGate and digipeater alone only relay traffic they hear; they never announce
 their own position. Three logical beacons exist — **tracker**, **igate** and
 **digi** — each with its own enable flags, interval, coordinates, symbol,
 comment and RF/INET routing, saved by its respective web-admin page
-(``g_config.trk_*``, ``g_config.igate_*``, ``g_config.digi_*``).
+(``g_config.trk_*``, ``g_config.igate_*``, ``g_config.digi_*``). Each
+beacon's comment and status text has ``|`` and ``~`` filtered out at
+transmission time, before it reaches the on-air packet — both characters are
+reserved for the base-91 comment telemetry group (:ref:`en-telemetry`); the
+saved text itself is left exactly as the operator entered it.
 
 The shared beacon scheduler
 ===========================
@@ -235,6 +239,21 @@ that is not something a settings page should be able to arm with one mis-click
 and then leave armed for every beacon afterwards. On receive it is handled in
 full: see :ref:`en-filtering` for the decoder, and the traffic log
 for the warning line a received emergency produces.
+
+Mic-E status text
+==================
+
+The free-text tail of the Mic-E information field — everything after the
+frequency block, the PHG/data-extension token and the altitude field —
+carries whatever the operator entered as the beacon's comment, byte for byte.
+The one exception is the very first byte of that tail: APRS12c ch.10 reserves
+a leading ``,`` or ``0x1d`` for the (now obsolete) Mic-E Telemetry Data
+sub-format, so a comment that happens to start with either byte would be
+misread as telemetry rather than as text. ``aprs_mice_encode()`` guards
+against this by inserting a single space ahead of either character before the
+comment is appended; a comment starting with any other byte reaches the air
+unchanged. The inserted space carries no information of its own and a
+receiving client displays it as an ordinary leading space in the comment.
 
 Beam heading and ERP in status reports
 ======================================

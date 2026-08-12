@@ -226,8 +226,8 @@ Mic-E data format (ch. 10)
      - ✅
      - The receiver decodes all fifteen values, including the custom set and the all-zero Emergency pattern, and correctly reports a mixed standard/custom pattern as undefined. The Tracker page selects any of the fourteen standard and custom values for transmission. Emergency is deliberately absent from that list: it asks other operators to respond to a real emergency, which is not something a settings page should arm with one mis-click and leave armed for every beacon afterwards.
    * - Emergency indication
-     - ✅
-     - A Mic-E emergency received on radio or from APRS-IS raises a warning-level log line and its own entry in the traffic log, next to the packet that carried it. The other fourteen position comments are logged at information level, since the value lives in the destination address and is otherwise invisible in the packet text.
+     - ⚠️
+     - A Mic-E emergency received on radio or from APRS-IS raises a warning-level log line and its own entry in the traffic log, next to the packet that carried it. The other fourteen position comments are logged at information level, since the value lives in the destination address and is otherwise invisible in the packet text. The bracketed comment-field forms (``!EMERGENCY!``, ``!WXALARM!`` and the rest of that proposed set) that let a non-Mic-E station raise the same signal are not recognised, so a station declaring an emergency that way passes through as ordinary traffic today. Low frequency of occurrence, high consequence when it does occur; classifying those forms alongside the Mic-E case is worth doing regardless of how rarely the field sees a real one.
    * - Speeds above 670 knots
      - ✅
      - The 1.2 extension is applied on both sides, so a frame digipeated through a space station reports its orbital velocity rather than a clipped one. That scale is quantised in steps of 112 knots and has a gap between 671 and 781 knots that the published rule itself leaves unrepresentable; below 671 knots the field stays exact to the knot.
@@ -363,8 +363,14 @@ Messages, bulletins and announcements (ch. 14)
      - ⚠️
      - Incoming numbers of any legal length are matched. Outgoing messages number themselves with two digits, wrapping at 99, so that a Reply-ACK suffix still fits inside the five characters the specification allows for the whole identifier.
    * - Message groups
+     - ✅
+     - Messages addressed to the built-in group names ``ALL``, ``QST`` and ``CQ``, or to any of the operator-defined group names, are matched case-insensitively alongside the station's own callsign, across all SSIDs. A group message stays distinct from a direct message of the same text and is displayed but never acknowledged, since a group has no single owner to answer for it.
+   * - OBJECT-in-MSG and ITEM-in-MSG
      - ❌
-     - Messages addressed to the general group names, or to an operator-defined group, are not read — only the station's own callsign is matched, across all SSIDs. Net traffic addressed to a group is therefore invisible in the message panel. Note that group messages must never be acknowledged, only displayed.
+     - The two 1.2 proposals that carry a full object or item report inside a message payload, for a station that cannot digipeat the ordinary object/item packet, are not recognised as a class. This station has no map to plot one on and neither originates nor needs the workaround; a message using either form still reaches the operator as plain text.
+   * - UTF-8 text encoding
+     - ⚠️
+     - Message and other free-text fields are 8-bit-clean end to end — nothing here re-encodes or rejects a non-ASCII byte, which is the specification's own recommendation (``aprs.org/aprs12/utf-8.txt``). What is not yet guaranteed is that a length-driven truncation always lands on a character boundary rather than through the middle of one; the outgoing message path enforces this, the rest of the free-text fields do not yet.
    * - General bulletins, announcements and group bulletins
      - ✅
      - Five configurable slots with the correct addressee forms for all three: the digit identifier for bulletins, the letter identifier for announcements, and the group name suffix for group bulletins. Each slot has its own expiry.
@@ -443,6 +449,9 @@ Network tunnelling and third-party traffic (ch. 17)
    * - No-archive marker
      - ❌
      - The ``!x!`` string that asks the databases behind APRS-IS not to store a packet is neither written into the station's own beacons nor given any special treatment when relaying. It addresses the archives rather than the gateways, so it never decides where a frame may travel; relayed packets keep it because the payload is passed through byte for byte.
+   * - IGate-to-RF path report
+     - ❌
+     - The experimental ``{IP-`` wrapper that would let this station announce, over APRS-IS, the AX.25 path it used to gate a packet onto RF is not generated. Unlike most of the other 1.2 proposals in this table, the station is squarely in this one's scope: it is a bidirectional IGate and does gate to RF. It remains a proposal rather than a ratified addition, has seen thin adoption among IGates in general, and would add a second transmit on every gated packet at the cost of channel time this deliberately lightweight design does not spend elsewhere. Revisit if the proposal is ever ratified or an operator asks for it.
 
 Frequency specification (ch. 18)
 ================================
@@ -457,9 +466,12 @@ Frequency specification (ch. 18)
    * - Frequency block in positions, objects and status
      - ✅
      - All three fixed ten-byte forms are produced — the ten-kilohertz form below 100 MHz, the plain form in the VHF and UHF range, and the letter-prefixed form for the microwave bands — working in whole kilohertz so no digit drifts, and refusing to emit anything that is not exactly ten bytes.
-   * - Tone and offset
+   * - Tone, offset and range
      - ✅
-     - The three-digit CTCSS tone and the offset in units of ten kilohertz, in the order the frequency specification defines.
+     - The three-digit CTCSS tone, the offset in units of ten kilohertz, and the two-digit coverage range in miles or kilometers, in the order the frequency specification defines. Range is an Objects/Items sub-field (a fixed repeater's own advertised coverage), not a per-service tracker/IGate/digipeater setting.
+   * - Narrowband tone, DCS code and split TX/RX frequency
+     - ❌
+     - Three further optional sub-fields the specification defines are not built: the lower-case narrowband-modulation flag, the DCS code that can stand in for the CTCSS tone, and the split transmit/receive frequency form. None of the three is a defect in the block this station transmits, which stays well-formed and auto-tunable without them - they are capability gaps, declined because the firmware has no narrowband/DCS radio setting to report and objitem_t models a single monitor frequency rather than independent TX/RX ones.
    * - Frequency and QSY requests inside messages
      - ❌
      - The proposed message forms that request or command a change of operating frequency are not generated or acted on. They are 1.2 proposals with thin field deployment.

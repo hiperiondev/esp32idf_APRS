@@ -27,6 +27,11 @@
  * further append is a no-op. A builder can therefore chain any number of
  * appends and test for truncation once, at the end.
  *
+ * Also here: str_copy_strip_reserved() for copying operator-editable free
+ * text while dropping the bytes APRS101 reserves elsewhere in the frame, and
+ * str_copy_utf8_safe() for truncating 8-bit-clean text to a byte budget
+ * without splitting a UTF-8 character across the cut.
+ *
  * This header is deliberately implementation-only (static inline, no .c file)
  * so it can be included from `main/` and from every component that already has
  * `main/include` on its include path, without adding a link dependency.
@@ -39,6 +44,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdio.h>
+#include <string.h>
 
 /**
  * @brief Append printf-formatted text to a fixed-size buffer, saturating
@@ -118,6 +124,144 @@ static inline bool str_append(char *buf, size_t buf_size, size_t *used, const ch
  */
 static inline bool str_append_truncated(size_t used, size_t buf_size) {
     return buf_size == 0 || used >= buf_size - 1;
+}
+
+/**
+ * @brief Copy @p src into @p dst, dropping every `|` and `~` along the way.
+ *
+ * APRS101 chapter 13 (see also `he.fi/doc/aprs-base91-comment-telemetry.txt`)
+ * reserves both characters for the base-91 comment telemetry group: `|`
+ * delimits it and `~` is reserved alongside it. Any operator-editable
+ * free-text field that can end up on the air next to a telemetry group this
+ * firmware appends of its own accord - a status text, a position or Mic-E
+ * comment, an object/item comment, a bulletin - must not be able to
+ * introduce a second `|`-delimited region, or every receiving decoder ends
+ * up parsing the wrong one.
+ *
+ * `{` is deliberately left untouched here: it is legal inside these fields
+ * (it is the compressed-position radio-range marker), unlike inside message
+ * text, where it doubles as the message-number delimiter and is stripped
+ * separately, on top of this filter, by the message component.
+ *
+ * @p dst is always NUL-terminated. Passing a @p dst_size of 0 is a no-op;
+ * passing a NULL @p src is treated as an empty string.
+ *
+ * @param src Source string to filter and copy from.
+ * @param dst Destination buffer.
+ * @param dst_size Total size of @p dst in bytes, including room for the NUL.
+ */
+static inline void str_copy_strip_reserved(const char *src, char *dst, size_t dst_size) {
+    if (dst == NULL || dst_size == 0)
+        return;
+
+    size_t out = 0;
+    for (size_t i = 0; src != NULL && src[i] != '\0' && out < dst_size - 1; i++) {
+        char c = src[i];
+        if (c == '|' || c == '~')
+            continue;
+        dst[out++] = c;
+    }
+    dst[out] = '\0';
+}
+
+/**
+ * @brief Number of bytes a UTF-8 continuation byte contributes to, i.e. 0 for
+ * a byte that is not a UTF-8 lead byte.
+ *
+ * A lead byte's top bits announce how many bytes the character occupies: one
+ * of ``0xC0``, ``0xE0`` or ``0xF0`` matched against @p c (after masking away
+ * the low bits each pattern leaves free) says two, three or four bytes; any
+ * other value - a plain ASCII byte, a continuation byte (``10xxxxxx``), or an
+ * invalid ``0xF8``-``0xFF`` byte - is not the start of a multi-byte sequence
+ * and reports 0.
+ *
+ * @param c Byte to inspect.
+ * @return Total length in bytes of the sequence @p c would start (2-4), or 0
+ *         if @p c is not a UTF-8 lead byte.
+ */
+static inline int utf8_seq_len(unsigned char c) {
+    if ((c & 0xE0) == 0xC0)
+        return 2;
+    if ((c & 0xF0) == 0xE0)
+        return 3;
+    if ((c & 0xF8) == 0xF0)
+        return 4;
+    return 0;
+}
+
+/**
+ * @brief Copy @p src into @p dst, truncating to at most @p dst_size - 1 bytes
+ * without splitting a UTF-8 multi-byte character across the cut.
+ *
+ * A plain byte-count truncation (``strncpy()``, a bounds-checked loop, ...)
+ * can land its cut in the middle of a multi-byte UTF-8 sequence whenever the
+ * natural cut point falls inside one, leaving an incomplete, invalid sequence
+ * at the end of @p dst. For 8-bit-clean text that is passed through unchanged
+ * end to end - exactly what this firmware does with packet text, per
+ * ``aprs.org/aprs12/utf-8.txt`` - that invalid tail byte or byte pair goes out
+ * on the air as-is, which this function avoids: whenever the byte immediately
+ * after the would-be cut is a UTF-8 continuation byte (``10xxxxxx``), the cut
+ * is walked back to the start of that character instead, so @p dst always
+ * ends on a complete character (or on a run of raw 8-bit bytes that never
+ * looked like UTF-8 to begin with, which are left exactly as truncation would
+ * have cut them - this function only ever moves the cut earlier, never
+ * later, so it never grows the output past @p dst_size).
+ *
+ * This is a plain byte-oriented safeguard, not a validator: text that is not
+ * UTF-8 at all (or that is already malformed before truncation) is copied and
+ * cut on the same rule and is not rejected or repaired.
+ *
+ * @p dst is always NUL-terminated. Passing a @p dst_size of 0 is a no-op;
+ * passing a NULL @p src is treated as an empty string.
+ *
+ * @param src Source string to copy from.
+ * @param dst Destination buffer.
+ * @param dst_size Total size of @p dst in bytes, including room for the NUL.
+ */
+static inline void str_copy_utf8_safe(const char *src, char *dst, size_t dst_size) {
+    if (dst == NULL || dst_size == 0)
+        return;
+
+    if (src == NULL)
+        src = "";
+
+    size_t srclen = strlen(src);
+    size_t cap = dst_size - 1;
+    size_t n = srclen < cap ? srclen : cap;
+
+    // The whole string already fits: no cut is being made, so there is no
+    // boundary to protect and the byte immediately after n (if any) is simply
+    // the character that did not fit, never a continuation of one that did.
+    if (n == srclen) {
+        memcpy(dst, src, n);
+        dst[n] = '\0';
+        return;
+    }
+
+    // n bytes were kept and src[n] is the first byte left out. If src[n] is a
+    // UTF-8 continuation byte, the character it belongs to started somewhere
+    // inside [0, n) and is being split by this cut; walk n back to that
+    // character's lead byte so the kept bytes end on a complete character.
+    // Continuation bytes only ever run 1-3 deep (the longest UTF-8 sequence is
+    // four bytes, one lead plus three continuations), so this loop always
+    // terminates well before n reaches 0.
+    if ((unsigned char)src[n] >= 0x80 && (unsigned char)src[n] < 0xC0) {
+        size_t back = n;
+        while (back > 0 && (unsigned char)src[back] >= 0x80 && (unsigned char)src[back] < 0xC0)
+            back--;
+        // Only step back if what is left at `back` is actually a lead byte
+        // whose declared length reaches past n - i.e. this really is a
+        // sequence that n was about to split. Otherwise `back` landed on a
+        // stray continuation byte with no valid lead before it (malformed
+        // input to start with), and the original cut at n is left alone
+        // rather than discarding good bytes on its account.
+        int seqlen = utf8_seq_len((unsigned char)src[back]);
+        if (seqlen > 0 && back + (size_t)seqlen > n)
+            n = back;
+    }
+
+    memcpy(dst, src, n);
+    dst[n] = '\0';
 }
 
 #endif /* STR_APPEND_H */

@@ -256,6 +256,22 @@ siguientes. En recepción se trata por completo: ver
 :ref:`es-filtering` para el decodificador, y el registro de tráfico
 para la línea de advertencia que genera una emergencia recibida.
 
+Texto de estado Mic-E
+======================
+
+La cola de texto libre del campo de información Mic-E — todo lo que sigue al
+bloque de frecuencia, al token PHG/extensión de datos y al campo de
+altitud — lleva, byte a byte, lo que el operador haya escrito como comentario
+de la baliza. La única excepción es el primer byte de esa cola: APRS12c
+cap.10 reserva un ``,`` o ``0x1d`` inicial para el subformato Mic-E Telemetry
+Data (ya obsoleto), de modo que un comentario que empezara con cualquiera de
+esos dos bytes se leería como telemetría en lugar de como texto.
+``aprs_mice_encode()`` se protege de esto insertando un único espacio antes
+de cualquiera de esos caracteres antes de añadir el comentario; un comentario
+que empiece con cualquier otro byte llega al aire sin cambios. El espacio
+insertado no aporta información propia y un cliente receptor lo muestra como
+un espacio inicial ordinario dentro del comentario.
+
 Rumbo de antena y PRE en los reportes de estado
 ===============================================
 

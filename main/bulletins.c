@@ -36,6 +36,7 @@
 #include "json_store.h"  // shared JSON-file store scaffolding
 #include "sched_time.h"  // sched_mono_seconds() / sched_clamp_interval()
 #include "storage.h"     // storage_write_lock() / storage_generation()
+#include "str_append.h"  // str_copy_strip_reserved()
 
 static const char *TAG = "bulletins";
 
@@ -372,8 +373,14 @@ static void build_info_field(int idx, const bulletin_t *b, const char *text, cha
 }
 
 static void tx_one(int idx, const bulletin_t *b, const char *src) {
+    // '|' and '~' are reserved for the base-91 comment telemetry group
+    // (APRS101 ch.13) and are filtered out of the on-air text here, leaving
+    // the stored text exactly as the operator entered it.
+    char text[BULLETIN_TEXT_MAX + 1];
+    str_copy_strip_reserved(b->text, text, sizeof(text));
+
     char info[128];
-    build_info_field(idx, b, b->text, info, sizeof(info));
+    build_info_field(idx, b, text, info, sizeof(info));
 
     if (b->send_rf) {
         // Sent direct (no digipeater path). Bulletins here intentionally carry

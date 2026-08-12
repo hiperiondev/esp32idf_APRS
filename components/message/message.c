@@ -541,18 +541,34 @@ static void txPacket(const char *myCall, const char *info) {
 }
 
 // Copies as much of src into dst as fits in APRS_MSG_TEXT_STD_MAX bytes,
-// dropping any '|', '~' and '{' along the way: APRS101 chapter 14 reserves
-// those characters for telemetry and the message-number delimiter, so none of
-// them may appear inside ordinary message text regardless of what the caller
-// passed in. dst is always NUL-terminated; dst_size must be at least 1.
+// dropping any '|', '~' and '{' along the way. str_copy_strip_reserved()
+// handles '|' and '~', reserved for the base-91 comment telemetry group
+// (APRS101 ch.13); '{' is dropped here on top of that, since message text
+// also reserves it as the message-number delimiter (APRS101 ch.14), unlike
+// the free-text fields str_copy_strip_reserved() is otherwise used for.
+//
+// Message text is 8-bit-clean and passed through unchanged, so an operator's
+// UTF-8 comment travels on the air exactly as typed (aprs.org/aprs12/utf-8.txt).
+// The byte budget is still enforced in two passes for that reason: the first,
+// str_copy_utf8_safe(), makes any cut needed to reach APRS_MSG_TEXT_STD_MAX
+// land on a whole character rather than through the middle of one, and the
+// second, the '{' strip below, never lengthens the string, so it cannot undo
+// that boundary once the first pass has set it. dst is always NUL-terminated;
+// dst_size must be at least 1.
 static void sanitizeOutgoingText(const char *src, char *dst, size_t dst_size) {
+    size_t cap = dst_size < APRS_MSG_TEXT_STD_MAX + 1 ? dst_size : APRS_MSG_TEXT_STD_MAX + 1;
+
+    // str_copy_strip_reserved() only ever removes bytes, so this buffer only
+    // needs room for src as typed, not for cap: the byte budget itself is
+    // enforced next, by str_copy_utf8_safe().
+    char stripped[MSG_TEXT_MAX];
+    str_copy_strip_reserved(src, stripped, sizeof(stripped));
+    str_copy_utf8_safe(stripped, dst, cap);
+
     size_t out = 0;
-    for (size_t i = 0; src[i] && out < dst_size - 1 && out < APRS_MSG_TEXT_STD_MAX; i++) {
-        char c = src[i];
-        if (c == '|' || c == '~' || c == '{')
-            continue;
-        dst[out++] = c;
-    }
+    for (size_t i = 0; dst[i]; i++)
+        if (dst[i] != '{')
+            dst[out++] = dst[i];
     dst[out] = 0;
 }
 
@@ -756,13 +772,18 @@ void sendAPRSMessageRetry(void) {
 // ---------------------------------------------------------------------------
 // Incoming
 //
-// A message body is delivered as the text it is. The APRS 1.2 proposals that
-// give a message a meaning of their own - a request for another station's
-// operating frequency, or a command asking it to change frequency - are not
-// recognised as a class, and no reply is generated for them: they are thinly
-// deployed proposals, and this station drives no synthesiser it could retune
-// in answer. Such a message still reaches the operator on the chat page,
-// which is where a request a human can act on belongs.
+// A message body is delivered as the text it is. None of the APRS 1.2
+// message-payload proposals (aprs.org/aprs12.html) is recognised as a class
+// of its own:
+//   - FREQ-in-MSG, the "QSY?"/"QSY!" frequency request/command: this station
+//     drives no synthesiser it could query or retune in answer.
+//   - OBJECT-in-MSG and ITEM-in-MSG, which carry a full object/item report
+//     inside a message payload as a workaround for stations that cannot
+//     digipeat the ordinary object/item packet: this station has no map to
+//     plot one on and neither originates nor needs the workaround.
+// All three are thinly deployed proposals, and a message using one still
+// reaches the operator verbatim on the chat page, which is where a request a
+// human can act on belongs.
 // ---------------------------------------------------------------------------
 void handleIncomingAPRS(const char *line, query_source_t source) {
     const char *msgMarker = strstr(line, "::");

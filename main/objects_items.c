@@ -41,6 +41,7 @@
 #include "objects_items.h"
 #include "sched_time.h" // sched_mono_seconds() / sched_clamp_interval()
 #include "storage.h"    // storage_write_lock() / storage_generation()
+#include "str_append.h" // str_copy_strip_reserved()
 
 static const char *TAG = "objitems";
 
@@ -257,7 +258,7 @@ static bool load_locked(objitems_t *out, bool *out_missing) {
             }
 
             // -- Repeater radio parameters (YAAC "Monitor frequency, duplex
-            //    direction, and subaudible tone"). --
+            //    direction, subaudible tone, and coverage range"). --
             v = cJSON_GetObjectItem(o, "freq");
             if (cJSON_IsNumber(v) && v->valuedouble > 0)
                 b->freq_mhz = (float)v->valuedouble;
@@ -272,6 +273,15 @@ static bool load_locked(objitems_t *out, bool *out_missing) {
             v = cJSON_GetObjectItem(o, "tone");
             if (cJSON_IsNumber(v) && v->valuedouble >= 0)
                 b->tone_tenths = (uint16_t)v->valuedouble;
+            v = cJSON_GetObjectItem(o, "rng");
+            if (cJSON_IsNumber(v) && v->valuedouble >= 0) {
+                int r = (int)v->valuedouble;
+                if (r > 99)
+                    r = 99;
+                b->range = (uint16_t)r;
+            }
+            v = cJSON_GetObjectItem(o, "rngKm");
+            b->range_km = cJSON_IsTrue(v);
 
             // -- Digipeat paths (YAAC "Digipeat paths"). --
             v = cJSON_GetObjectItem(o, "pmask");
@@ -388,6 +398,8 @@ static bool save_locked(const objitems_t *in) {
         fprintf(f, ",\"ofs\":%u", (unsigned)b->offset_khz);
         fprintf(f, ",\"dup\":%d", (int)b->duplex);
         fprintf(f, ",\"tone\":%u", (unsigned)b->tone_tenths);
+        fprintf(f, ",\"rng\":%u", (unsigned)b->range);
+        fprintf(f, ",\"rngKm\":%s", b->range_km ? "true" : "false");
         fprintf(f, ",\"pmask\":%u", (unsigned)b->path_mask);
         fputs(",\"qru\":", f);
         json_write_escaped(f, qru);
@@ -575,7 +587,8 @@ static bool freq_field_format(long khz, char *out) {
     return true;
 }
 
-void objitem_build_freq_block(float freq_mhz, uint16_t tone_tenths, int8_t duplex, uint16_t offset_khz, char *out, size_t out_size) {
+void objitem_build_freq_block(float freq_mhz, uint16_t tone_tenths, int8_t duplex, uint16_t offset_khz, uint16_t range, bool range_km, char *out,
+                              size_t out_size) {
     if (out_size == 0)
         return;
     out[0] = 0;
@@ -620,17 +633,28 @@ void objitem_build_freq_block(float freq_mhz, uint16_t tone_tenths, int8_t duple
         if (n > 0 && (size_t)n < out_size - used)
             used += (size_t)n;
     }
+
+    // Coverage range: "Rxxm" (miles) or "Rxxkm" (kilometers), the two-digit
+    // form freqspec.txt defines. Omitted entirely when no range is
+    // configured, the same way the duplex shift is omitted for simplex.
+    if (range > 0 && used < out_size) {
+        unsigned rr = range > 99 ? 99 : range;
+        n = snprintf(out + used, out_size - used, " R%02u%s", rr, range_km ? "km" : "m");
+        if (n > 0 && (size_t)n < out_size - used)
+            used += (size_t)n;
+    }
 }
 
 // Build the standard APRS frequency block (the fixed ten-byte frequency field
-// followed by "Tnnn" and the duplex shift) into `out`, or the empty string
-// when no monitor frequency is configured. This is what carries YAAC's
-// monitor frequency, subaudible tone and duplex direction; by convention it
-// must be the first thing in the comment text so other stations' radios can
-// auto-tune from it. Thin wrapper over objitem_build_freq_block() so the
-// element's own stored sub-fields feed the shared builder.
+// followed by "Tnnn", the duplex shift and the coverage range) into `out`, or
+// the empty string when no monitor frequency is configured. This is what
+// carries YAAC's monitor frequency, subaudible tone, duplex direction and
+// range; by convention it must be the first thing in the comment text so
+// other stations' radios can auto-tune from it. Thin wrapper over
+// objitem_build_freq_block() so the element's own stored sub-fields feed the
+// shared builder.
 static void build_freq_block(const objitem_t *b, char *out, size_t out_size) {
-    objitem_build_freq_block(b->freq_mhz, b->tone_tenths, b->duplex, b->offset_khz, out, out_size);
+    objitem_build_freq_block(b->freq_mhz, b->tone_tenths, b->duplex, b->offset_khz, b->range, b->range_km, out, out_size);
 }
 
 // Build the 7-character APRS "PHGphgd" Data Extension from the element's stored
@@ -779,16 +803,21 @@ static void objitem_build_info_field(const objitem_t *b, bool live, char *out, s
     }
 
     // Comment text: the APRS frequency block (repeater objects) comes first, so
-    // it is the leading token other stations parse; then the free-text comment.
+    // it is the leading token other stations parse; then the free-text comment,
+    // with '|' and '~' filtered out since both are reserved for the base-91
+    // comment telemetry group (APRS101 ch.13) and this comment sits right next
+    // to whatever telemetry group the caller appends after it.
     char freq[40];
     build_freq_block(b, freq, sizeof(freq));
+    char comment[OBJITEM_COMMENT_MAX + 1];
+    str_copy_strip_reserved(b->comment, comment, sizeof(comment));
     char text[OBJITEM_COMMENT_MAX + sizeof(freq) + 2];
-    if (freq[0] && b->comment[0])
-        snprintf(text, sizeof(text), "%s %s", freq, b->comment);
+    if (freq[0] && comment[0])
+        snprintf(text, sizeof(text), "%s %s", freq, comment);
     else if (freq[0])
         snprintf(text, sizeof(text), "%s", freq);
     else
-        snprintf(text, sizeof(text), "%s", b->comment);
+        snprintf(text, sizeof(text), "%s", comment);
 
     if (b->is_item) {
         // Item: ) NAME (3..9, variable) then '!'(live)/'_'(kill) then position.

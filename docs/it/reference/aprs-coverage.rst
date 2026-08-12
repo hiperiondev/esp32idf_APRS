@@ -228,8 +228,8 @@ Formato dati Mic-E (cap. 10)
      - ✅
      - Il ricevitore decodifica tutti e quindici i valori, incluso l'insieme personalizzato e lo schema Emergency di tutti zeri, e riporta correttamente come indefinito uno schema misto standard/personalizzato. La pagina Tracker consente di scegliere per la trasmissione uno qualsiasi dei quattordici valori standard e personalizzati. Emergency è deliberatamente assente da quell'elenco: chiede ad altri operatori di rispondere a un'emergenza reale, cosa che una pagina di configurazione non dovrebbe poter attivare con un clic sbagliato e lasciare attiva per tutti i beacon successivi.
    * - Indicazione di emergenza
-     - ✅
-     - Un'emergenza Mic-E ricevuta via radio o da APRS-IS produce una riga di log di livello warning e una propria voce nel registro del traffico, accanto al pacchetto che l'ha trasportata. Gli altri quattordici commenti di posizione sono registrati a livello informativo, perché il valore vive nell'indirizzo di destinazione ed è altrimenti invisibile nel testo del pacchetto.
+     - ⚠️
+     - Un'emergenza Mic-E ricevuta via radio o da APRS-IS produce una riga di log di livello warning e una propria voce nel registro del traffico, accanto al pacchetto che l'ha trasportata. Gli altri quattordici commenti di posizione sono registrati a livello informativo, perché il valore vive nell'indirizzo di destinazione ed è altrimenti invisibile nel testo del pacchetto. Le forme tra parentesi esclamative nel campo commento (``!EMERGENCY!``, ``!WXALARM!`` e il resto di quell'insieme proposto) che permettono a una stazione priva di Mic-E di segnalare la stessa cosa non vengono riconosciute, quindi oggi una stazione che dichiari un'emergenza in quel modo passa come traffico ordinario. Bassa frequenza di occorrenza, alta conseguenza quando si verifica; classificare quelle forme insieme al caso Mic-E vale la pena a prescindere da quanto raramente il campo ne veda una reale.
    * - Velocità oltre i 670 nodi
      - ✅
      - L'estensione 1.2 è applicata in entrambi i versi, quindi una trama digipetata da una stazione spaziale riporta la propria velocità orbitale invece di una troncata. Quella scala è quantizzata a passi di 112 nodi e ha un vuoto fra 671 e 781 nodi che la regola pubblicata stessa lascia senza rappresentazione; sotto i 671 nodi il campo resta esatto al nodo.
@@ -365,8 +365,14 @@ Messaggi, bollettini e annunci (cap. 14)
      - ⚠️
      - I numeri in ingresso di qualsiasi lunghezza legale vengono riconosciuti. I messaggi in uscita si numerano con due cifre, con ritorno a capo a 99, così un suffisso Reply-ACK rientra ancora nei cinque caratteri che la specifica consente per l'intero identificatore.
    * - Gruppi di messaggi
+     - ✅
+     - I messaggi indirizzati ai nomi di gruppo integrati ``ALL``, ``QST`` e ``CQ``, o a uno qualsiasi dei nomi di gruppo definiti dall'operatore, vengono confrontati senza distinguere maiuscole/minuscole insieme al nominativo proprio della stazione, con qualsiasi SSID. Un messaggio di gruppo resta distinto da un messaggio diretto con lo stesso testo e viene mostrato ma mai confermato, poiché un gruppo non ha un unico proprietario che risponda per esso.
+   * - OBJECT-in-MSG e ITEM-in-MSG
      - ❌
-     - I messaggi indirizzati ai nomi di gruppo generali, o a un gruppo definito dall'operatore, non vengono letti: si confronta solo il nominativo proprio della stazione, con qualsiasi SSID. Per questo il traffico di rete indirizzato a un gruppo è invisibile nel pannello messaggi. Va notato che i messaggi di gruppo non vanno mai confermati, solo mostrati.
+     - Le due proposte 1.2 che portano un report completo di oggetto o item dentro il corpo di un messaggio, pensate per una stazione che non può digiripetere il pacchetto oggetto/item ordinario, non sono riconosciute come classe a sé. Questa stazione non ha una mappa su cui tracciarne uno e non origina né necessita di quell'espediente; un messaggio che usa una delle due forme arriva comunque all'operatore come testo semplice.
+   * - Codifica del testo UTF-8
+     - ⚠️
+     - I campi messaggio e gli altri campi di testo libero sono trasparenti a 8 bit da un capo all'altro: nulla qui ricodifica o rifiuta un byte non ASCII, il che è la raccomandazione della specifica stessa (``aprs.org/aprs12/utf-8.txt``). Ciò che non è ancora garantito è che un taglio dettato dalla lunghezza cada sempre su un confine di carattere invece che a metà di uno; il percorso dei messaggi in uscita lo garantisce, il resto dei campi di testo libero non ancora.
    * - Bollettini generali, annunci e bollettini di gruppo
      - ✅
      - Cinque slot configurabili con le forme di destinatario corrette per tutti e tre: identificatore numerico per i bollettini, identificatore a lettera per gli annunci e suffisso col nome del gruppo per i bollettini di gruppo. Ogni slot ha la propria scadenza.
@@ -445,6 +451,9 @@ Tunneling di rete e traffico di terze parti (cap. 17)
    * - Marcatore di non archiviazione
      - ❌
      - La stringa ``!x!`` che chiede ai database dietro APRS-IS di non memorizzare un pacchetto non viene scritta nei beacon propri né riceve un trattamento speciale nella ritrasmissione. Si rivolge agli archivi, non ai gateway, quindi non decide mai dove possa viaggiare una trama; i pacchetti ritrasmessi la conservano perché il payload viene passato byte per byte.
+   * - Rapporto del percorso IGate→RF
+     - ❌
+     - L'involucro sperimentale ``{IP-`` che permetterebbe a questa stazione di annunciare via APRS-IS il percorso AX.25 usato per far passare un pacchetto su RF non viene generato. A differenza della maggior parte delle altre proposte 1.2 di questa tabella, la stazione rientra proprio nell'ambito di questa: è un IGate bidirezionale e trasmette effettivamente verso RF. Resta una proposta, non un'aggiunta ratificata, ha avuto una diffusione modesta fra gli IGate in generale, e aggiungerebbe una seconda trasmissione per ogni pacchetto passato a RF, a costo di un tempo di canale che questo design volutamente leggero non spende altrove. Da riconsiderare se la proposta venisse ratificata o se un operatore la richiedesse.
 
 Specifica di frequenza (cap. 18)
 ================================
@@ -459,9 +468,12 @@ Specifica di frequenza (cap. 18)
    * - Blocco di frequenza in posizioni, oggetti e stato
      - ✅
      - Vengono prodotte tutte e tre le forme fisse da dieci byte: quella a dieci kilohertz sotto i 100 MHz, la forma comune in VHF e UHF e quella con prefisso a lettera per le bande a microonde; si lavora in kilohertz interi perché nessuna cifra derivi, e si rifiuta di emettere qualsiasi cosa non misuri esattamente dieci byte.
-   * - Tono e scostamento
+   * - Tono, scostamento e portata
      - ✅
-     - Il tono CTCSS a tre cifre e lo scostamento in unità di dieci kilohertz, nell'ordine definito dalla specifica di frequenza.
+     - Il tono CTCSS a tre cifre, lo scostamento in unità di dieci kilohertz e la portata di copertura a due cifre in miglia o chilometri, nell'ordine definito dalla specifica di frequenza. La portata è un sottocampo di Oggetti/Elementi (la copertura che un ripetitore fisso annuncia di sé), non un'impostazione per servizio di tracker, IGate o ripetitore digitale.
+   * - Tono a banda stretta, codice DCS e frequenza TX/RX separata
+     - ❌
+     - Altri tre sottocampi opzionali definiti dalla specifica non vengono costruiti: l'indicatore di modulazione a banda stretta (minuscolo), il codice DCS che può sostituire il tono CTCSS, e la forma con frequenza di trasmissione/ricezione separata. Nessuno dei tre è un difetto nel blocco che questa stazione trasmette, che resta valido e auto-sintonizzabile anche senza di essi - sono lacune di capacità, tralasciate perché il firmware non ha un'impostazione radio a banda stretta/DCS da riportare e objitem_t modella un'unica frequenza di monitoraggio invece di TX/RX indipendenti.
    * - Richieste di frequenza e QSY nei messaggi
      - ❌
      - Non vengono generate né gestite le forme di messaggio proposte che richiedono o comandano un cambio di frequenza operativa. Sono proposte 1.2 con scarsa diffusione sul campo.
