@@ -442,7 +442,7 @@ Network tunnelling and third-party traffic (ch. 17)
      - The classic no-gate tokens and the internet-only q-constructs are all honoured, and only in the header where they are meaningful — a packet whose comment text happens to contain one of these words is not mistaken for a packet routed with it.
    * - No-archive marker
      - ❌
-     - The convention that asks APRS-IS databases not to archive a packet is neither generated for the station's own beacons nor given any special treatment when relaying. Relayed packets keep it because the payload is passed through byte for byte.
+     - The ``!x!`` string that asks the databases behind APRS-IS not to store a packet is neither written into the station's own beacons nor given any special treatment when relaying. It addresses the archives rather than the gateways, so it never decides where a frame may travel; relayed packets keep it because the payload is passed through byte for byte.
 
 Frequency specification (ch. 18)
 ================================

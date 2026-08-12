@@ -85,6 +85,8 @@ Valori di fabbrica notevoli
      - abilitato, ``rf2inet`` attivo, ``inet2rf`` inattivo
    * - Indicativo / SSID
      - ``NOCALL`` / 10, passcode ``-1``
+   * - Coordinate della stazione
+     - ``0.000`` / ``0.000``, trasmesse così come sono
    * - Server APRS-IS
      - quattro slot di failover, tutti preimpostati a ``aprs.dprns.com`` :
        14580, con il solo slot 1 abilitato
@@ -124,3 +126,8 @@ Valori di fabbrica notevoli
    **Cambia** ``NOCALL`` **e imposta un passcode reale prima di trasmettere.**
    Verifica di essere autorizzato per la frequenza e il ciclo di lavoro che stai
    per attivare.
+
+   **Imposta anche le coordinate della stazione.** APRS non ha una coordinata
+   di "posizione sconosciuta": una stazione che trasmette il beacon prima di
+   averle impostate mette in aria 0° N / 0° E, che è una posizione reale nel
+   golfo di Guinea e non una posizione assente, e ogni mappa la disegna lì.

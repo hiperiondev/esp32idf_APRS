@@ -129,6 +129,12 @@ static void insert_own_call(ax25_msg_t *packet, int idx, const char *myCall, uin
 // still matters: it is the raw form every other consumer of the decoded frame
 // reads, and leaving it describing the address that used to be in this slot
 // would make the two views of the same frame disagree.
+//
+// The other proposals for these two bits are absent in both directions: the
+// reserved pair is neither read as the sender's routing precedence nor
+// written to advertise that an operator is present at this station. They ride
+// in the same octet, so they would meet the same TNC2 re-encoding on the way
+// out, and a signal a receiver only sometimes gets is worse than none.
 static inline void set_ssid_octet(ax25_call_t *field, uint8_t ssid, bool rr_low) {
     field->ssidBits =
         (uint8_t)((field->ssidBits & AX25_SSID_OCTET_KEEP) | AX25_SSID_OCTET_H | (rr_low ? AX25_SSID_OCTET_RR_LOW : 0) | (uint8_t)((ssid & 0x0F) << 1));

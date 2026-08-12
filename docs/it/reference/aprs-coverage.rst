@@ -444,7 +444,7 @@ Tunneling di rete e traffico di terze parti (cap. 17)
      - Sono rispettati tutti i classici token di divieto di gateway e i q-construct di sola internet, e solo nell'intestazione dove hanno senso: un pacchetto il cui commento contenga per caso una di quelle parole non viene scambiato per uno instradato con essa.
    * - Marcatore di non archiviazione
      - ❌
-     - La convenzione che chiede ai database APRS-IS di non archiviare un pacchetto non viene generata per i beacon propri né riceve un trattamento speciale nella ritrasmissione. I pacchetti ritrasmessi la conservano perché il payload viene passato byte per byte.
+     - La stringa ``!x!`` che chiede ai database dietro APRS-IS di non memorizzare un pacchetto non viene scritta nei beacon propri né riceve un trattamento speciale nella ritrasmissione. Si rivolge agli archivi, non ai gateway, quindi non decide mai dove possa viaggiare una trama; i pacchetti ritrasmessi la conservano perché il payload viene passato byte per byte.
 
 Specifica di frequenza (cap. 18)
 ================================

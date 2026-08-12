@@ -84,6 +84,8 @@ Valores de fábrica destacados
      - habilitado, ``rf2inet`` activo, ``inet2rf`` inactivo
    * - Indicativo / SSID
      - ``NOCALL`` / 10, passcode ``-1``
+   * - Coordenadas de la estación
+     - ``0.000`` / ``0.000``, se transmiten tal cual
    * - Servidores APRS-IS
      - cuatro ranuras de failover, todas preconfiguradas a ``aprs.dprns.com`` :
        14580, con solo la ranura 1 habilitada
@@ -123,3 +125,8 @@ Valores de fábrica destacados
    **Cambia** ``NOCALL`` **y establece un passcode real antes de transmitir.**
    Verifica que tienes licencia para la frecuencia y el ciclo de trabajo que vas
    a activar.
+
+   **Configura también las coordenadas de la estación.** APRS no tiene una
+   coordenada de "posición desconocida": una estación que baliza antes de
+   fijarlas pone 0° N / 0° E en el aire, que es una posición real en el golfo
+   de Guinea y no una posición ausente, y todos los mapas la dibujan allí.

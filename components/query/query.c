@@ -538,6 +538,17 @@ static void respondWX(query_source_t source) {
 // would never reach it. Only the stations heard off the air count as local at
 // all, so the rows the APRS-IS feed contributed are excluded regardless of
 // hop count.
+//
+// The capability list is open-ended in ch.15 and this station answers with
+// the gateway token alone, although it is also a digipeater, a weather
+// station and a telemetry source. Each of those roles already announces
+// itself where a receiver looks for it - the digipeater by the path it puts
+// its callsign into, the weather station by its own symbol and report, the
+// telemetry source by its parameter messages - so a broader list would repeat
+// what is already on the air. Nothing is sent unsolicited either: the line
+// goes out in reply to "?IGATE?" and at no other time, which keeps a channel
+// full of gateways from spending airtime on capability packets nobody asked
+// for.
 static void respondIGate(query_source_t source) {
     if (!g_config.igate_en) {
         ESP_LOGD(TAG, "?IGATE? query ignored - IGate service is disabled");

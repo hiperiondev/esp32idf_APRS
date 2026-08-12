@@ -83,6 +83,8 @@ Notable factory defaults
      - enabled, ``rf2inet`` on, ``inet2rf`` off
    * - Callsign / SSID
      - ``NOCALL`` / 10, passcode ``-1``
+   * - Station coordinates
+     - ``0.000`` / ``0.000``, transmitted as they stand
    * - APRS-IS servers
      - four failover slots, all preset to ``aprs.dprns.com`` : 14580, with only
        slot 1 enabled
@@ -120,3 +122,8 @@ Notable factory defaults
    **Change** ``NOCALL`` **and set a real passcode before transmitting.**
    Verify you are licensed for the frequency and duty cycle you are about to
    key up on.
+
+   **Set the station coordinates too.** APRS has no "position unknown"
+   coordinate: a station that beacons before they are set puts 0° N / 0° E on
+   the air, which is a real position in the Gulf of Guinea rather than a
+   missing one, and every map plots it there.

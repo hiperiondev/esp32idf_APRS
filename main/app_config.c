@@ -162,6 +162,11 @@ void app_config_set_defaults(app_config_t *c) {
     c->timezone_idx = 0; // UTC
 
     set_str(c->my_callsign, sizeof(c->my_callsign), "NOCALL");
+    // Coordinates start at 0/0 and are transmitted as they stand. APRS has no
+    // "position unknown" form, so a station that beacons before the operator
+    // sets these puts a real position in the Gulf of Guinea on the air; the
+    // placeholder callsign above is what keeps that from being mistaken for a
+    // licensed station.
     c->my_lat = 0.0f;
     c->my_lon = 0.0f;
     c->my_alt = 0.0f;

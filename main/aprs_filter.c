@@ -233,6 +233,18 @@ uint16_t aprs_filter_classify_info(const char *info) {
         // IGATE_FILT_OTHER: station capabilities, user-defined formats,
         // Agrelo direction finding, Maidenhead locator beacons (marked
         // obsolete by APRS101 but still heard) and the reserved map feature.
+        //
+        // None of the five is decoded any further, and three of them are
+        // closed questions rather than pending work: '{' is the private
+        // experimenter space APRS101 ch.19 reserves for formats that are
+        // meaningful only to the software that defines them - this firmware
+        // defines none, and that space, not the status text, is where any
+        // firmware-specific diagnostic would belong if one were ever added -
+        // while '%' (Agrelo direction finder) and '[' (standalone Maidenhead
+        // beacon) are marked obsolete by the specification itself, the
+        // locator having moved into status reports. Classifying them is what
+        // an IGate owes them: an operator who ticks "Other" forwards them,
+        // and a station running one of those units stays visible on the maps.
         // ------------------------------------------------------------------
         case '<':
         case '{':
@@ -245,7 +257,13 @@ uint16_t aprs_filter_classify_info(const char *info) {
         // Deliberately unclassified -> never relayed, whatever the mask:
         //   '}'  third-party traffic (already gated once; re-gating it is how
         //        IGate loops are born)
-        //   ','  test/invalid data, which is not meant to leave its channel
+        //   ','  test/invalid data (APRS101 ch.20), which is not meant to
+        //        leave the channel it was sent on
+        //
+        // Both fall through the catch-all rather than carrying a class of
+        // their own, which is the same answer either way: a kind that is
+        // never gated needs no bit for the operator to tick, and giving test
+        // data one could only ever be used to defeat the rule above.
         // ------------------------------------------------------------------
         default:
             return 0;

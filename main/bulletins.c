@@ -57,6 +57,15 @@ _Static_assert(BULLETIN_COUNT <= 9, "BULLETIN_COUNT must stay a single digit for
 // sched_clamp_interval() applies to it, so a 0 (or unset) interval falls back
 // to the default and anything below the floor is raised to it, and bulletins
 // cannot be configured to hammer RF/APRS-IS.
+//
+// The rate is flat for as long as a slot lives, where APRS101 ch.14 describes
+// a taper instead: a bulletin repeated a few times in its first hour and then
+// less often over the following hours, an announcement far more slowly over
+// days. The same coverage is bought here with an interval and an expiry the
+// operator sets per slot - a short interval with a near expiry behaves like
+// the head of that curve, a long one with a distant expiry like its tail -
+// so the choice is exposed rather than decided by a decay law the operator
+// cannot see or override.
 #define BULLETIN_MIN_INTERVAL_S     30   // sanity floor
 #define BULLETIN_DEFAULT_INTERVAL_S 1800 // 30 min, used when interval_s == 0
 

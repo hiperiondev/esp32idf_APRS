@@ -519,8 +519,10 @@ typedef struct {
                              stays UTC everywhere else in the firmware; see time_sync.h. */
 
     char my_callsign[10]; /**< "My Station" callsign, entered once on the Station page and reused by every page's "Use My Station Data". */
-    float my_lat;         /**< "My Station" latitude, decimal degrees. */
-    float my_lon;         /**< "My Station" longitude, decimal degrees. */
+    float my_lat;         /**< "My Station" latitude, decimal degrees. Transmitted exactly as configured: APRS defines no "position unknown" coordinate, so a
+                             station left at the 0.0 default beacons 0 deg N / 0 deg E - a valid position in the Gulf of Guinea - rather than announcing that
+                             it has none. Set this before enabling any beacon. */
+    float my_lon;         /**< "My Station" longitude, decimal degrees. Same 0.0 default and the same caveat as ::app_config_t::my_lat. */
     float my_alt;         /**< "My Station" altitude. */
 
     uint16_t my_phg_power;  /**< "My Station" PHG sub-field: radio TX power, Watts (persisted so the form redisplays the selections). */

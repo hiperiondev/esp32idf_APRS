@@ -755,6 +755,14 @@ void sendAPRSMessageRetry(void) {
 
 // ---------------------------------------------------------------------------
 // Incoming
+//
+// A message body is delivered as the text it is. The APRS 1.2 proposals that
+// give a message a meaning of their own - a request for another station's
+// operating frequency, or a command asking it to change frequency - are not
+// recognised as a class, and no reply is generated for them: they are thinly
+// deployed proposals, and this station drives no synthesiser it could retune
+// in answer. Such a message still reaches the operator on the chat page,
+// which is where a request a human can act on belongs.
 // ---------------------------------------------------------------------------
 void handleIncomingAPRS(const char *line, query_source_t source) {
     const char *msgMarker = strstr(line, "::");

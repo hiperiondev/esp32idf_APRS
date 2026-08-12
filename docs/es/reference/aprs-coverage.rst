@@ -444,7 +444,7 @@ Tunelizado de red y tráfico de terceros (cap. 17)
      - Se respetan todos los tokens clásicos de no-pasarela y los q-constructs de solo internet, y solo en la cabecera, que es donde tienen sentido: un paquete cuyo texto de comentario contenga por casualidad una de esas palabras no se confunde con uno ruteado con ella.
    * - Marcador de no archivar
      - ❌
-     - La convención que pide a las bases de datos de APRS-IS no archivar un paquete no se genera para las balizas propias ni recibe tratamiento especial al retransmitir. Los paquetes retransmitidos la conservan porque la carga se pasa byte a byte.
+     - La cadena ``!x!`` que pide a las bases de datos detrás de APRS-IS no almacenar un paquete no se escribe en las balizas propias ni recibe tratamiento especial al retransmitir. Se dirige a los archivos, no a las pasarelas, así que nunca decide por dónde puede viajar una trama; los paquetes retransmitidos la conservan porque la carga se pasa byte a byte.
 
 Especificación de frecuencia (cap. 18)
 ======================================

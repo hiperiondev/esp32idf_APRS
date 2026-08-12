@@ -1016,6 +1016,14 @@ static bool messageAddressee(const char *info, char *out, size_t outMax) {
 // exactly as forbidden on RF as the path tokens. Checked against every line
 // considered for INET->RF, not just messages, since none of these five apply
 // to messages specifically.
+//
+// The related no-archive marker of APRS 1.1 - the literal "!x!" anywhere in a
+// packet, which asks the databases behind APRS-IS not to store it - is
+// deliberately not part of this test: it addresses the archives, not the
+// gateways, and says nothing about where a frame may travel. This station
+// never writes the marker into the traffic it originates, and a relayed
+// packet keeps whatever it arrived with, since the payload crosses byte for
+// byte.
 static bool headerForbidsRf(const char *line) {
     const char *colon = strchr(line, ':');
     size_t headerLen = (colon != NULL) ? (size_t)(colon - line) : strlen(line);

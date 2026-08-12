@@ -165,6 +165,15 @@
  * the registry reserves for exactly this - software that has not yet been
  * allocated a TOCALL - rather than squatting on an "APE" code that belongs to
  * someone else's wildcard.
+ *
+ * There is no alternate-net destination beside it. APRS101 chapter 4 lets a
+ * group of stations agree on a destination address of their own so that their
+ * traffic forms a private net inside the same channel; every packet this
+ * firmware originates carries this TOCALL instead, which is also what keeps
+ * the device identification above meaningful. Nothing is lost on the receive
+ * side: an alternate net is a convention among senders, and this station
+ * classifies, gates and digipeats what it hears by data type and path, never
+ * by destination address, so alternate-net traffic is carried like any other.
  * @{
  */
 #define APRS_TOCALL "APZ32L" /**< Experimental (unallocated) TOCALL for this firmware; see the allocation note above. */

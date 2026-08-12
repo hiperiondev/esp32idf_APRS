@@ -793,6 +793,13 @@ static int format_analog_field(const telemetry_config_t *s, int i, double raw, b
 // verbatim after the last field with no separator (conventional free-text
 // telemetry comment).
 //
+// Sequence numbering uses the numeric "T#nnn" form only. The three-letter
+// identifier some encoders write in that field instead - "T#MIC" and the like,
+// which names the source of the reading rather than counting reports - is
+// neither produced nor given any special treatment on receive: a counter is
+// what lets a receiver spot a gap or a duplicate, and dropping it to label the
+// packet would cost that for nothing this station needs to say.
+//
 // IMPORTANT (on-air naming): this packet intentionally never includes
 // tlm_bit_name[]/PARM[]/UNIT[] or any other channel label - per APRS101
 // Ch.13 the "T#..." report carries only the sequence number and values.

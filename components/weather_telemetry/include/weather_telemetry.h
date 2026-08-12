@@ -854,6 +854,13 @@ typedef enum {
  *        and wind-radius circles.
  *
  * On-air layout: `DDHHMM/LAT/LONG@CSE/SPD/TS/www^GGG/ppp>RRR&rrr`
+ *
+ * @note This firmware neither encodes nor decodes this format: the structure
+ *       documents the on-air layout and nothing else. Cyclone data comes from
+ *       a weather service, not from a sensor, so a station of this kind has no
+ *       source for it; a report that arrives carrying one is classified as the
+ *       position or object report it is and relayed with its comment field
+ *       untouched, which is what a receiver that does plot the track needs.
  */
 typedef struct {
     aprs_timestamp_t forecast_time;         /**< DDHHMM: time of this forecast/observation point. */
@@ -900,6 +907,15 @@ typedef enum {
  * naming more areas than that is decoded with the list truncated, and the
  * remaining identifiers are not recoverable from this structure. A
  * cancellation carries no expiration time.
+ *
+ * @note This firmware does not parse this form: the structure documents the
+ *       on-air layout and nothing else. A weather service bulletin arrives as
+ *       the ordinary message it is on the wire, is gated and digipeated as
+ *       one, and is never acknowledged - the addressee is not this station -
+ *       so the only thing the missing parser costs is a label of its own in
+ *       the user interface. The area and expiry fields it would fill are for
+ *       clients that filter by county and drop a notice once it lapses,
+ *       decisions a station with no display of its own does not make.
  */
 typedef struct {
     aprs_nws_bulletin_kind_t kind;                          /**< WARN/WATCH/ADVIS/TEST/CANCL. */
@@ -917,7 +933,8 @@ typedef enum {
     APRS_MSG_KIND_BULLETIN,       /**< General bulletin, addressee "BLNn" (n = 0-9). */
     APRS_MSG_KIND_GROUP_BULLETIN, /**< Group bulletin, addressee "BLNnid" (id = up to 5-char group name). */
     APRS_MSG_KIND_ANNOUNCEMENT,   /**< Announcement, addressee "BLNn" reserved usage per convention. */
-    APRS_MSG_KIND_NWS_BULLETIN,   /**< Special-cased NWS bulletin, addressee "NWS-xxxxx". */
+    APRS_MSG_KIND_NWS_BULLETIN,   /**< Special-cased NWS bulletin, addressee "NWS-xxxxx"; see ::aprs_nws_bulletin_t for why this kind is documented but never
+                                     produced here. */
     APRS_MSG_KIND_NTS_RADIOGRAM,  /**< National Traffic System formatted radiogram, addressee "NTSstn". */
     APRS_MSG_KIND_TELEMETRY_PARM, /**< ":addressee:PARM..." telemetry parameter-name metadata message. */
     APRS_MSG_KIND_TELEMETRY_UNIT, /**< ":addressee:UNIT..." telemetry unit/label metadata message. */
