@@ -318,19 +318,43 @@ bool isDuplicatePacket(ax25_msg_t *packet) {
     return isDuplicatePacketScoped(packet, DUP_SCOPE_IGATE);
 }
 
+// Longest line, including the CRLF terminator, that sendToAprsIs() will
+// assemble and send in one write. Comfortably above the 500-byte frame built
+// by the RF->INET gateway path, the largest of sendToAprsIs()'s callers.
+#define SEND_TO_APRSIS_BUF_SIZE (512)
+
 // ---------------------------------------------------------------------------
 // RF -> INET
 // ---------------------------------------------------------------------------
 static bool sendToAprsIs(const uint8_t *data, size_t len) {
     bool ok = false;
-    ensureSockMutex();
-    xSemaphoreTake(s_sockMutex, portMAX_DELAY);
-    if (s_sock >= 0) {
-        if (send(s_sock, data, len, 0) == (ssize_t)len && send(s_sock, "\r\n", 2, 0) == 2) {
-            ok = true;
+
+    // The line and its CRLF terminator are assembled into one local buffer
+    // and handed to a single send(). APRS-IS is line-oriented, so the server
+    // cannot act on a line until the terminator lands: sending it separately
+    // would let TCP hold the two-byte CRLF back waiting to coalesce with a
+    // further write, adding a full round trip to every gated frame and
+    // outbound message. A single send() also means the socket can never be
+    // left holding a line whose payload went out but whose terminator did
+    // not. The buffer is sized well above every known caller's longest line
+    // (the RF->INET gateway path builds at most a 500-byte frame); a line
+    // that still would not fit is refused rather than sent truncated.
+    uint8_t line[SEND_TO_APRSIS_BUF_SIZE];
+    if (len + 2 <= sizeof(line)) {
+        memcpy(line, data, len);
+        line[len] = '\r';
+        line[len + 1] = '\n';
+        size_t lineLen = len + 2;
+
+        ensureSockMutex();
+        xSemaphoreTake(s_sockMutex, portMAX_DELAY);
+        if (s_sock >= 0) {
+            if (send(s_sock, line, lineLen, 0) == (ssize_t)lineLen) {
+                ok = true;
+            }
         }
+        xSemaphoreGive(s_sockMutex);
     }
-    xSemaphoreGive(s_sockMutex);
 
     // Information-level log of every APRS-IS TX (RF->INET gated frames and
     // outbound messages alike go through here) so the igate traffic is
@@ -1069,6 +1093,17 @@ static bool connectAprsIs(void) {
     struct timeval snd_tv = { .tv_sec = 3, .tv_usec = 0 };
     setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &rcv_tv, sizeof(rcv_tv));
     setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, &snd_tv, sizeof(snd_tv));
+
+    // APRS-IS is bidirectional on this station (RF->INET gatewaying, outbound
+    // messages and beacons all flow out over the same link that receives INET
+    // traffic), and aprs-is.net/Connecting.aspx asks bidirectional clients to
+    // disable the Nagle algorithm so outgoing lines are not delayed waiting to
+    // coalesce with further writes. Every APRS-IS line here is already
+    // assembled into a single send() before it reaches the wire, so disabling
+    // Nagle lets that single write leave immediately instead of waiting on an
+    // ACK or a Nagle timeout.
+    int noDelay = 1;
+    setsockopt(sock, IPPROTO_TCP, TCP_NODELAY, &noDelay, sizeof(noDelay));
 
     // Backstop for the application-level silence timer below, not a
     // substitute for it: lwIP's own probes catch a peer that stops

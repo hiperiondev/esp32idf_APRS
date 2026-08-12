@@ -58,6 +58,14 @@ La tarea cliente de APRS-IS
   nivel más bajo; complementa al temporizador del lado de recepción sin
   sustituirlo, ya que un peer que sigue confirmando los sondeos a nivel TCP
   pero deja de enviar datos de aplicación se le escaparía de otro modo.
+* **Algoritmo de Nagle desactivado (``TCP_NODELAY``).** Se activa en el socket
+  antes de ``connect()``, tal como pide la `guía de conexión de aprs-is.net
+  <https://www.aprs-is.net/Connecting.aspx>`_ para cualquier cliente
+  bidireccional. Cada línea saliente — una trama gateada desde RF, un mensaje
+  saliente, un beacon — se ensambla junto con su terminador CR/LF y se escribe
+  con un único ``send()`` en ``sendToAprsIs()``, de modo que con Nagle
+  desactivado esa única escritura sale de inmediato en vez de esperar un ACK o
+  el temporizador de Nagle.
 
 Failover de servidores
 ======================

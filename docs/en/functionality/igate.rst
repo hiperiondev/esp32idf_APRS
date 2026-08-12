@@ -54,6 +54,14 @@ The APRS-IS client task
   independent, lower-level backstop; it complements rather than replaces the
   RX-side timer, since a peer that keeps acknowledging TCP-level probes while
   no longer sending application data would otherwise slip past it.
+* **Nagle disabled (``TCP_NODELAY``).** Set on the socket before ``connect()``,
+  as `aprs-is.net's connection guidance
+  <https://www.aprs-is.net/Connecting.aspx>`_ asks of any bidirectional
+  client. Every outbound line — a gated RF frame, an outbound message, a
+  beacon — is assembled together with its CR/LF terminator and written with a
+  single ``send()`` in ``sendToAprsIs()``, so with Nagle off that one write
+  reaches the wire immediately instead of waiting on an ACK or a Nagle
+  timeout.
 
 Server failover
 ===============
