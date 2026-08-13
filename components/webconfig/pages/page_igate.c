@@ -24,6 +24,7 @@
 #include "app_config.h"
 #include "aprs_filter.h"
 #include "esp_log.h"
+#include "igate.h"
 #include "pages.h"
 #include "str_append.h" // str_copy_utf8_safe()
 #include "translations.h"
@@ -532,6 +533,25 @@ esp_err_t page_igate_post(httpd_req_t *req) {
     }
 
     app_config_lock();
+
+    // Snapshot of every field that reaches APRS-IS only via connectAprsIs()'s
+    // once-at-connect-time read (login identity, server slots, filter),
+    // taken before any of them are overwritten below. Compared against the
+    // post-save values further down to decide whether the running IGate
+    // session needs to be told about the change: connectAprsIs() itself only
+    // ever runs again on its own if the link happens to drop, so without
+    // this comparison a corrected passcode, a narrowed filter or a switched
+    // server would sit in g_config with no visible effect until then.
+    char prevMycall[sizeof(g_config.aprs_mycall)];
+    char prevPasscode[sizeof(g_config.aprs_passcode)];
+    char prevFilter[sizeof(g_config.aprs_filter)];
+    uint8_t prevSsid = g_config.aprs_ssid;
+    aprs_server_t prevServer[APRS_SERVER_NUM];
+    memcpy(prevMycall, g_config.aprs_mycall, sizeof(prevMycall));
+    memcpy(prevPasscode, g_config.aprs_passcode, sizeof(prevPasscode));
+    memcpy(prevFilter, g_config.aprs_filter, sizeof(prevFilter));
+    memcpy(prevServer, g_config.aprs_server, sizeof(prevServer));
+
     g_config.igate_en = web_form_get_bool(body, "igateEn");
     g_config.igate_use_station = web_form_get_bool(body, "igateUseStation");
     g_config.rf2inet = web_form_get_bool(body, "rf2inet");
@@ -601,6 +621,20 @@ esp_err_t page_igate_post(httpd_req_t *req) {
             }
         }
     }
+
+    // Decide which of the two live-update paths (if any) the running IGate
+    // session needs, by comparing against the pre-save snapshot taken above.
+    // A changed identity or server slot needs the session dropped and
+    // reopened (igate_request_reconnect()) since those only ever go out in
+    // the login line; a changed filter with everything else unchanged can be
+    // pushed to the open session instead (igate_request_filter_update()),
+    // preserving it. Actually calling the igate component happens after
+    // app_config_unlock() below, so this section only records the two
+    // booleans.
+    bool identityOrServerChanged = memcmp(prevMycall, g_config.aprs_mycall, sizeof(prevMycall)) != 0 || prevSsid != g_config.aprs_ssid ||
+                                   memcmp(prevPasscode, g_config.aprs_passcode, sizeof(prevPasscode)) != 0 ||
+                                   memcmp(prevServer, g_config.aprs_server, sizeof(prevServer)) != 0;
+    bool filterChanged = memcmp(prevFilter, g_config.aprs_filter, sizeof(prevFilter)) != 0;
 
     // Station Symbol: prefer the separate Table+Symbol fields (top of page);
     // fall back to the legacy combined 2-char field if those aren't present.
@@ -796,6 +830,18 @@ esp_err_t page_igate_post(httpd_req_t *req) {
     }
 
     app_config_unlock();
+
+    // Push the identity/server/filter change (if any) to the running IGate
+    // session now that g_config is updated and unlocked - see the
+    // comparison above. An identity or server change takes priority over a
+    // simultaneous filter change: igate_request_reconnect() drops and
+    // reopens the session with the new filter already in its login line, so
+    // requesting both would only send the filter twice. Saving an unrelated
+    // IGate field trips neither.
+    if (identityOrServerChanged)
+        igate_request_reconnect();
+    else if (filterChanged)
+        igate_request_filter_update();
 
     // The page rendered next is built from the live settings, so the save
     // result is what decides whether the operator is told this reached flash.

@@ -13,8 +13,27 @@ Il task client APRS-IS
 ======================
 
 * **Client TCP** con failover multiserver e riconnessione automatica. Rilegge
-  ``g_config`` a ogni riconnessione, quindi la maggior parte delle modifiche dal
-  web ha effetto dopo il ciclo di riconnessione successivo, senza riavvio.
+  ``g_config`` a ogni riconnessione, quindi le modifiche web alla maggior
+  parte delle impostazioni IGate (interruttori di abilitazione, direzione
+  RF/INET, budlist, PHG, tempistica dei beacon e il resto) hanno effetto non
+  appena il ciclo di uplink le rilegge, senza riavvio.
+* **Aggiornamenti live di identità/server/filtro.** L'identità di login
+  (``aprs_mycall``/``aprs_ssid``/``aprs_passcode``), l'elenco dei server di
+  failover (``aprs_server``) e il filtro lato server (``aprs_filter``) sono
+  l'eccezione: ``connectAprsIs()`` li legge una sola volta, al momento della
+  connessione, e l'uplink mantiene poi quella sessione aperta a tempo
+  indeterminato, quindi da soli una password corretta o un filtro ristretto
+  resterebbero inutilizzati finché il collegamento non cade da solo. Il
+  gestore di salvataggio della pagina *IGate* confronta i nuovi valori con
+  quelli salvati in precedenza e, quando cambiano l'identità o uno slot
+  server, chiama ``igate_request_reconnect()`` per chiudere e riaprire la
+  sessione con i nuovi valori nella riga di login successiva; quando cambia
+  solo il filtro, chiama invece ``igate_request_filter_update()``, che invia
+  una riga di commento ``#filter <spec>`` sul socket già aperto - 
+  l'aggiornamento live descritto da `la documentazione dei filtri di
+  aprs-is.net <https://www.aprs-is.net/javAPRSFilter.aspx>`_ - così la
+  sessione non viene chiusa solo per cambiare il filtro. Salvare un campo
+  IGate non correlato non attiva nessuno dei due.
 * **Condizionato alla connettività reale**, non solo al fatto che "il Wi-Fi è
   attivo": interroga ``net_state_is_connected()``, che diventa vero solo con
   ``IP_EVENT_STA_GOT_IP`` e falso di nuovo alla disconnessione o in modalità

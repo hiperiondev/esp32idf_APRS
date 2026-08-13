@@ -315,4 +315,33 @@ bool igate_send_raw(const char *line, size_t len);
  */
 void igate_get_current_server(char *host, size_t hostLen, uint16_t *port);
 
+/**
+ * @brief Ask the IGate uplink task to drop and re-establish its APRS-IS
+ * session on its next loop iteration, so a changed login identity
+ * (aprs_mycall/aprs_ssid/aprs_passcode) or a changed/newly-enabled/disabled
+ * server slot (g_config.aprs_server) takes effect immediately instead of
+ * waiting for the link to drop on its own. Safe to call from any task
+ * (typically the web-admin POST handler right after g_config is updated);
+ * only sets a flag for the uplink task to act on, so it never blocks. A call
+ * while no session is open, or while one is already pending closure, is a
+ * harmless no-op. For a filter-only change, prefer
+ * igate_request_filter_update() instead: it updates the running session
+ * without dropping it.
+ */
+void igate_request_reconnect(void);
+
+/**
+ * @brief Ask the IGate uplink task to push the current g_config.aprs_filter
+ * to APRS-IS on its next loop iteration without dropping the session, using
+ * the live filter-update mechanism aprs-is.net/javAPRSFilter.aspx documents:
+ * a "#filter <spec>" comment line sent on the already-open socket. Safe to
+ * call from any task; only sets a flag, so it never blocks. If no session is
+ * currently open, the new filter is simply picked up by the next
+ * connectAprsIs() login line, so this call is harmless in that case too. A
+ * pending igate_request_reconnect() takes priority: if both are requested,
+ * the session is dropped and reopened with the new filter already in the
+ * login line, rather than sending it twice.
+ */
+void igate_request_filter_update(void);
+
 #endif // IGATE_H

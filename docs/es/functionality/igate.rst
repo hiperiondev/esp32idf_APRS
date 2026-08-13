@@ -13,8 +13,27 @@ La tarea cliente de APRS-IS
 ===========================
 
 * **Cliente TCP** con failover multiservidor y reconexión automática. Relee
-  ``g_config`` en cada reconexión, así que la mayoría de los cambios de la web
-  surten efecto tras el siguiente ciclo de reconexión, sin reiniciar.
+  ``g_config`` en cada reconexión, así que los cambios web a la mayoría de los
+  ajustes de IGate (interruptores de activación, dirección RF/INET, lista de
+  contactos, PHG, temporización de baliza y el resto) surten efecto en cuanto
+  el bucle de enlace ascendente los comprueba de nuevo, sin reiniciar.
+* **Actualizaciones en vivo de identidad/servidor/filtro.** La identidad de
+  inicio de sesión (``aprs_mycall``/``aprs_ssid``/``aprs_passcode``), la lista
+  de servidores de failover (``aprs_server``) y el filtro del lado del
+  servidor (``aprs_filter``) son la excepción: ``connectAprsIs()`` los lee una
+  sola vez, al conectar, y el enlace ascendente mantiene esa sesión abierta
+  indefinidamente, así que por sí solos una contraseña corregida o un filtro
+  reducido quedarían sin usarse hasta que el enlace se cayera por su cuenta.
+  El manejador de guardado de la página *IGate* compara los valores nuevos
+  con los guardados antes y, cuando cambió la identidad o un servidor, llama
+  a ``igate_request_reconnect()`` para cerrar y reabrir la sesión con los
+  valores nuevos en su próxima línea de inicio de sesión; cuando solo cambió
+  el filtro, llama en su lugar a ``igate_request_filter_update()``, que envía
+  una línea de comentario ``#filter <spec>`` por el socket ya abierto - la
+  actualización en vivo que describe `la documentación de filtros de
+  aprs-is.net <https://www.aprs-is.net/javAPRSFilter.aspx>`_ - de modo que la
+  sesión no se cierra solo para cambiar el filtro. Guardar un campo de IGate
+  sin relación no dispara ninguna de las dos.
 * **Condicionado a conectividad real**, no simplemente a que "el Wi-Fi está
   arriba": sondea ``net_state_is_connected()``, que solo se vuelve verdadero con
   ``IP_EVENT_STA_GOT_IP`` y falso de nuevo al desconectarse o en modo solo-AP.

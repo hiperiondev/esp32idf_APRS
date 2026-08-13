@@ -956,6 +956,29 @@ static void closeSocket(void) {
     xSemaphoreGive(s_sockMutex);
 }
 
+// Set by igate_request_reconnect() (typically the web-admin POST handler,
+// off the igate task) and consumed by igateTask() alongside the silence
+// timer, so a changed login identity or server slot takes effect on the very
+// next loop iteration instead of waiting for the link to drop on its own.
+// Plain bool: every write is 0/1 from a single call site pattern (set here,
+// clear in igateTask()), so the usual read/clear race costs at worst one
+// extra reconnect, never a missed one.
+static volatile bool s_reconnectRequested = false;
+
+// Set by igate_request_filter_update() and consumed by igateTask() to push
+// g_config.aprs_filter to an already-open session via the APRS-IS live
+// filter-update comment line, without dropping the socket. Same race
+// tolerance as s_reconnectRequested.
+static volatile bool s_filterUpdateRequested = false;
+
+void igate_request_reconnect(void) {
+    s_reconnectRequested = true;
+}
+
+void igate_request_filter_update(void) {
+    s_filterUpdateRequested = true;
+}
+
 // Index into g_config.aprs_server of the slot the next connectAprsIs() call
 // will try. Advanced by advanceServer() every time a connection attempt
 // fails, so the rotation keeps moving forward across calls instead of
@@ -1376,6 +1399,50 @@ static void igateTask(void *arg) {
             trafficlog_add("APRS-IS link silent for over %lld s, reconnecting", (long long)(IGATE_RX_SILENCE_US / 1000000LL));
             closeSocket();
             continue;
+        }
+
+        // A changed login identity or server list (igate_request_reconnect(),
+        // typically called from the web-admin POST handler right after
+        // g_config is updated) must not wait for the link to drop on its own,
+        // so it is treated exactly like the silence timer above: close here
+        // and fall into the normal reconnect path, which rebuilds the login
+        // line from the now-current g_config. Cleared unconditionally so a
+        // request arriving between the read and the clear is not lost - it is
+        // instead honoured on the very next iteration. A pending filter-only
+        // update is dropped here rather than sent twice: the reconnect below
+        // logs in with g_config.aprs_filter already current.
+        if (s_reconnectRequested) {
+            s_reconnectRequested = false;
+            s_filterUpdateRequested = false;
+            ESP_LOGI(TAG, "APRS-IS identity/server settings changed, reconnecting");
+            trafficlog_add("APRS-IS identity/server settings changed, reconnecting");
+            closeSocket();
+            continue;
+        }
+
+        // A filter-only change (igate_request_filter_update()) is pushed to
+        // the already-open session with APRS-IS's live filter-update comment
+        // line: aprs-is.net/javAPRSFilter.aspx documents the filter command
+        // as also acceptable "as a separate comment line", so the session
+        // survives the change instead of being torn down. Read under the
+        // config lock so a save that is still in progress cannot hand this a
+        // half-written string. Cleared before sending so a request that
+        // arrives while this send is in flight is not lost.
+        if (s_filterUpdateRequested) {
+            s_filterUpdateRequested = false;
+            char newFilter[30];
+            app_config_lock();
+            memcpy(newFilter, g_config.aprs_filter, sizeof(newFilter));
+            app_config_unlock();
+            newFilter[sizeof(newFilter) - 1] = 0;
+            if (newFilter[0]) {
+                char cmd[40];
+                size_t cmdLen = 0;
+                str_append(cmd, sizeof(cmd), &cmdLen, "#filter %s", newFilter);
+                sendToAprsIs((const uint8_t *)cmd, cmdLen);
+                ESP_LOGI(TAG, "APRS-IS filter updated live: %s", newFilter);
+                trafficlog_add("APRS-IS filter updated live: %s", newFilter);
+            }
         }
 
         char buf[256];

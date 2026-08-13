@@ -13,8 +13,26 @@ The APRS-IS client task
 =======================
 
 * **TCP client** with multiserver failover and auto-reconnect. It re-reads
-  ``g_config`` on every reconnect, so most web-admin changes land after the
-  next reconnect cycle without a reboot.
+  ``g_config`` on every reconnect, so web-admin changes to most IGate
+  settings (enable toggles, RF/INET direction, budlist, PHG, beacon timing,
+  and the rest) land as soon as the uplink loop next checks them, without a
+  reboot.
+* **Live identity/server/filter updates.** The login identity
+  (``aprs_mycall``/``aprs_ssid``/``aprs_passcode``), the failover server list
+  (``aprs_server``) and the server-side filter (``aprs_filter``) are the one
+  exception: ``connectAprsIs()`` reads them only once, at connect time, and
+  the uplink then holds that session open indefinitely, so on their own a
+  changed passcode or a narrowed filter would otherwise sit unused until the
+  link happened to drop. The *IGate* page's save handler compares the new
+  values against what was saved before and, when identity or a server slot
+  changed, calls ``igate_request_reconnect()`` to drop and re-open the
+  session with the new values in its next login line; when only the filter
+  changed, it calls ``igate_request_filter_update()`` instead, which pushes a
+  ``#filter <spec>`` comment line on the already-open socket - the live
+  update `aprs-is.net's filter documentation
+  <https://www.aprs-is.net/javAPRSFilter.aspx>`_ describes - so the session
+  is not dropped just to change the filter. Saving an unrelated IGate field
+  triggers neither.
 * **Gated on real connectivity**, not merely on "Wi-Fi is up": it polls
   ``net_state_is_connected()``, which becomes true only on
   ``IP_EVENT_STA_GOT_IP`` and false again on disconnect or AP-only mode.
