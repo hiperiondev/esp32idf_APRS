@@ -578,14 +578,22 @@ endParseFx25Frame:
     *crc ^= 0xFFFF;
     if ((rxBuffer[i] == (*crc & 0xFF)) && (rxBuffer[(i + 1) % FRAME_BUFFER_SIZE] == ((*crc >> 8) & 0xFF))) {
         uint16_t pathEnd = initialRxBufferHead;
+        bool pathEndFound = false;
         for (uint16_t j = 0; j < (k - 2); j++) {
-            if (rxBuffer[pathEnd] & 1)
+            if (rxBuffer[pathEnd] & 1) {
+                pathEndFound = true;
                 break;
+            }
             pathEnd++;
             pathEnd %= FRAME_BUFFER_SIZE;
         }
 
-        if (Ax25Config.allowNonAprs || ((rxBuffer[(pathEnd + 1) % FRAME_BUFFER_SIZE] == 0x03) && (rxBuffer[(pathEnd + 2) % FRAME_BUFFER_SIZE] == 0xF0))) {
+        // a frame with no path-end bit before the CRC has no valid
+        // control/PID field to inspect and is treated as invalid
+        //
+        // if non-APRS frames are not allowed, require control=0x03 and PID=0xF0
+        if (pathEndFound &&
+            (Ax25Config.allowNonAprs || ((rxBuffer[(pathEnd + 1) % FRAME_BUFFER_SIZE] == 0x03) && (rxBuffer[(pathEnd + 2) % FRAME_BUFFER_SIZE] == 0xF0)))) {
             // The payload is already in rxBuffer at this point. Fill the handle,
             // and only then make it visible - the release store below is what
             // orders both against the consumer on the other core. The caller
