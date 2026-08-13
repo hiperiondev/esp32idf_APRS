@@ -33,6 +33,7 @@
 #include "esp_log.h"
 #include "objects_items.h"
 #include "pages.h"
+#include "str_append.h" // str_copy_utf8_safe()
 #include "translations.h"
 #include "web_common.h"
 
@@ -647,8 +648,12 @@ esp_err_t page_objects_post(httpd_req_t *req) {
         char cmt[OBJITEM_COMMENT_MAX + 1];
         cmt[0] = 0;
         web_form_get(body, name, cmt, sizeof(cmt));
-        memcpy(b->comment, cmt, sizeof(b->comment));
-        b->comment[OBJITEM_COMMENT_MAX] = 0;
+        // web_form_get() clamps to sizeof(cmt) on a plain byte count, so an
+        // operator-typed multi-byte UTF-8 character sitting right at that
+        // boundary could arrive already split; re-cut here so the stored
+        // comment - which this station repeats on every future beacon -
+        // never carries an incomplete character even in that edge case.
+        str_copy_utf8_safe(cmt, b->comment, sizeof(b->comment));
 
         // -- Area object. --
         snprintf(name, sizeof(name), "oAType%d", i + 1);

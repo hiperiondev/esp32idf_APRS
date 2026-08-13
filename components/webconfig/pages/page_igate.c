@@ -25,6 +25,7 @@
 #include "aprs_filter.h"
 #include "esp_log.h"
 #include "pages.h"
+#include "str_append.h" // str_copy_utf8_safe()
 #include "translations.h"
 #include "web_common.h"
 
@@ -656,10 +657,24 @@ esp_err_t page_igate_post(httpd_req_t *req) {
     }
 
     g_config.igate_path = (uint8_t)web_form_get_int(body, "igatePath", g_config.igate_path);
-    web_form_get(body, "igateComment", g_config.igate_comment, sizeof(g_config.igate_comment));
+    // web_form_get() clamps to a plain byte count, so an operator-typed
+    // multi-byte UTF-8 character sitting right at that boundary could arrive
+    // already split; stage it and re-cut with str_copy_utf8_safe() so the
+    // stored comment - repeated on the air on every future beacon - never
+    // carries an incomplete character even in that edge case. On a request
+    // with no igateComment field, the staging buffer starts as a copy of the
+    // current value, so an absent field leaves it unchanged, matching
+    // web_form_get()'s own leave-untouched-when-absent behaviour.
+    char igateCommentStage[sizeof(g_config.igate_comment)];
+    memcpy(igateCommentStage, g_config.igate_comment, sizeof(igateCommentStage));
+    web_form_get(body, "igateComment", igateCommentStage, sizeof(igateCommentStage));
+    str_copy_utf8_safe(igateCommentStage, g_config.igate_comment, sizeof(g_config.igate_comment));
 
     g_config.igate_sts_interval = (uint16_t)web_form_get_int(body, "igateSTSIntv", g_config.igate_sts_interval);
-    web_form_get(body, "igateStatus", g_config.igate_status, sizeof(g_config.igate_status));
+    char igateStatusStage[sizeof(g_config.igate_status)];
+    memcpy(igateStatusStage, g_config.igate_status, sizeof(igateStatusStage));
+    web_form_get(body, "igateStatus", igateStatusStage, sizeof(igateStatusStage));
+    str_copy_utf8_safe(igateStatusStage, g_config.igate_status, sizeof(g_config.igate_status));
 
     // Repeater radio parameters: same two-layer clamp as every other bounded
     // field on this page.

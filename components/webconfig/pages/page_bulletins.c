@@ -36,6 +36,7 @@
 #include "bulletins.h"
 #include "esp_log.h"
 #include "pages.h"
+#include "str_append.h" // str_copy_utf8_safe()
 #include "translations.h"
 #include "web_common.h"
 
@@ -178,8 +179,12 @@ esp_err_t page_bulletins_post(httpd_req_t *req) {
         char text[BULLETIN_TEXT_MAX + 1];
         text[0] = 0;
         web_form_get(body, name, text, sizeof(text)); // URL-decoded, clamped to buffer
-        strncpy(b->text, text, BULLETIN_TEXT_MAX);
-        b->text[BULLETIN_TEXT_MAX] = 0;
+        // web_form_get() clamps to sizeof(text) on a plain byte count, so a
+        // multi-byte UTF-8 character sitting right at that boundary could
+        // arrive already split; re-cut here so the stored text - repeated on
+        // the air on every future transmission - never carries an incomplete
+        // character even in that edge case.
+        str_copy_utf8_safe(text, b->text, sizeof(b->text));
 
         snprintf(name, sizeof(name), "bInt%d", i + 1);
         int interval = web_form_get_int(body, name, (int)b->interval_s);

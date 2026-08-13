@@ -307,6 +307,37 @@ size_t aprs_filter_format_report(const aprs_rx_report_t *report, char *out, size
 bool aprs_filter_mice_message(const char *dst_call, const char *info, size_t len, const char **out_name, bool *out_emergency);
 
 /**
+ * @brief Detect a bracketed APRS 1.2 alert code in the comment field of a
+ * non-Mic-E position, object or item report (aprs.org/aprs12/EmergencyCode.txt).
+ *
+ * Mic-E carries its Emergency/Priority/Special/... indication in the A/B/C
+ * bits of the destination address (see aprs_filter_mice_message()), which a
+ * station not using Mic-E has no way to set. This proposal lets any station
+ * raise the same fourteen indications as plain text, bracketed by '!' and
+ * placed where the comment field begins: right after the fixed-length
+ * position bytes, and after the data extension slot (PHG/DFS/RNG/CSE-SPD)
+ * when one is present.
+ *
+ * @param info APRS information field, starting at its data type identifier.
+ *             Only the four position DTIs ('!' '=' '/' '@'), the object DTI
+ *             (';') and the item DTI (')') carry a comment field this way;
+ *             every other DTI, including the four Mic-E ones, yields false.
+ * @param len Length of @p info in bytes.
+ * @param out_name Set to the static English name of the alert code found
+ *                 (e.g. "Emergency", "Priority", "WX Alarm") on success;
+ *                 untouched otherwise. May be NULL.
+ * @param out_emergency Set to true on success when the code found is
+ *                      ``!EMERGENCY!``, false for any of the other thirteen
+ *                      values - including ``!TESTALARM!``, which is
+ *                      deliberately excluded so a station testing its own
+ *                      alarm chain never raises a real one downstream. May
+ *                      be NULL.
+ * @return true if @p info carries a position/object/item comment and that
+ *         comment starts with one of the recognised bracketed codes.
+ */
+bool aprs_filter_comment_alert(const char *info, size_t len, const char **out_name, bool *out_emergency);
+
+/**
  * @brief Great-circle distance between two lat/lon points (haversine formula).
  * @return Distance in kilometers.
  */

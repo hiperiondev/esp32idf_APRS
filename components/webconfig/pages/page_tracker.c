@@ -23,6 +23,7 @@
 #include "app_config.h"
 #include "esp_log.h"
 #include "pages.h"
+#include "str_append.h" // str_copy_utf8_safe()
 #include "translations.h"
 #include "web_common.h"
 
@@ -178,10 +179,24 @@ esp_err_t page_tracker_post(httpd_req_t *req) {
     // widget, falling back to a combined 2-char field if present.
     web_form_get_symbol(body, "trkSymbol", "trkSymbol", g_config.trk_symbol, sizeof(g_config.trk_symbol));
 
-    web_form_get(body, "trkComment", g_config.trk_comment, sizeof(g_config.trk_comment));
+    // web_form_get() clamps to a plain byte count, so an operator-typed
+    // multi-byte UTF-8 character sitting right at that boundary could arrive
+    // already split; stage it and re-cut with str_copy_utf8_safe() so the
+    // stored comment - repeated on the air on every future beacon - never
+    // carries an incomplete character even in that edge case. On a request
+    // with no trkComment field, the staging buffer starts as a copy of the
+    // current value, so an absent field leaves it unchanged, matching
+    // web_form_get()'s own leave-untouched-when-absent behaviour.
+    char trkCommentStage[sizeof(g_config.trk_comment)];
+    memcpy(trkCommentStage, g_config.trk_comment, sizeof(trkCommentStage));
+    web_form_get(body, "trkComment", trkCommentStage, sizeof(trkCommentStage));
+    str_copy_utf8_safe(trkCommentStage, g_config.trk_comment, sizeof(g_config.trk_comment));
 
     g_config.trk_sts_interval = (uint16_t)web_form_get_int(body, "trkSTSIntv", g_config.trk_sts_interval);
-    web_form_get(body, "trkStatus", g_config.trk_status, sizeof(g_config.trk_status));
+    char trkStatusStage[sizeof(g_config.trk_status)];
+    memcpy(trkStatusStage, g_config.trk_status, sizeof(trkStatusStage));
+    web_form_get(body, "trkStatus", trkStatusStage, sizeof(trkStatusStage));
+    str_copy_utf8_safe(trkStatusStage, g_config.trk_status, sizeof(g_config.trk_status));
 
     // Repeater radio parameters: same two-layer clamp as every other bounded
     // field on this page.

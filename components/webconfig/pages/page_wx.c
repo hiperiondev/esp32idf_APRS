@@ -24,6 +24,7 @@
 #include "esp_log.h"
 #include "pages.h"
 #include "sensors_local.h"
+#include "str_append.h" // str_copy_utf8_safe()
 #include "translations.h"
 #include "web_common.h"
 
@@ -421,7 +422,18 @@ esp_err_t page_wx_post(httpd_req_t *req) {
     }
     g_config.wx_interval = (uint16_t)web_form_get_int(body, "wxInv", g_config.wx_interval);
     web_form_get(body, "wxObject", g_config.wx_object, sizeof(g_config.wx_object));
-    web_form_get(body, "wxComment", g_config.wx_comment, sizeof(g_config.wx_comment));
+    // web_form_get() clamps to a plain byte count, so an operator-typed
+    // multi-byte UTF-8 character sitting right at that boundary could arrive
+    // already split; stage it and re-cut with str_copy_utf8_safe() so the
+    // stored comment - repeated on the air on every future WX report - never
+    // carries an incomplete character even in that edge case. On a request
+    // with no wxComment field, the staging buffer starts as a copy of the
+    // current value, so an absent field leaves it unchanged, matching
+    // web_form_get()'s own leave-untouched-when-absent behaviour.
+    char wxCommentStage[sizeof(g_config.wx_comment)];
+    memcpy(wxCommentStage, g_config.wx_comment, sizeof(wxCommentStage));
+    web_form_get(body, "wxComment", wxCommentStage, sizeof(wxCommentStage));
+    str_copy_utf8_safe(wxCommentStage, g_config.wx_comment, sizeof(g_config.wx_comment));
 
     for (int i = 0; i < WX_SENSOR_NUM; i++) {
         if (i == WX_FIELD_FLOOD_HEIGHT_FT)

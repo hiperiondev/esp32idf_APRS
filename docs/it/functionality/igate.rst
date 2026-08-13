@@ -274,7 +274,7 @@ Una riga che supera tutte le fasi non viene mai trasmessa in RF con la sua
 intestazione APRS-IS intatta. ``build_thirdparty_frame()`` scarta del tutto
 quell'intestazione e avvolge l'originale ``SRC>DST`` e il campo informativo,
 inalterati, dietro un ``}`` come payload dell'intestazione propria di questa
-stazione (``MYCALL[-SSID]>APE32L,<percorso igate>:}SRC>DST,TCPIP,
+stazione (``MYCALL[-SSID]>APE32I,<percorso igate>:}SRC>DST,TCPIP,
 MYCALL[-SSID]*:info``) — la forma di terze parti richiesta dalla
 specifica APRS per il traffico ritrasmesso. Questo mantiene i costrutti
 ``qA`` e un ``TCPIP`` non incapsulato fuori dall'etere, e permette a

@@ -700,6 +700,25 @@ static void aprs_msg_callback(ax25_msg_t *msg) {
         }
     }
 
+    // Bracketed comment-field alert code (aprs.org/aprs12/EmergencyCode.txt),
+    // the equivalent of the Mic-E check above for a station that does not use
+    // Mic-E: raised as plain text at the front of the position/object/item
+    // comment instead of in the destination address. Same treatment as the
+    // Mic-E case - EMERGENCY gets a warning and its own traffic-log line, the
+    // other thirteen values are informational.
+    {
+        const char *alertName = NULL;
+        bool alertEmergency = false;
+        if (aprs_filter_comment_alert((const char *)msg->info, msg->len, &alertName, &alertEmergency)) {
+            if (alertEmergency) {
+                ESP_LOGW(TAG, "EMERGENCY from %s", callsign);
+                trafficlog_add("EMERGENCY from %s", callsign);
+            } else {
+                ESP_LOGI(TAG, "Comment alert from %s: %s", callsign, alertName);
+            }
+        }
+    }
+
     // Feed the web dashboard's "LAST HEARD" table (see components/lastheard).
     {
         // str_append() clamps the running offset itself, so the loop needs no

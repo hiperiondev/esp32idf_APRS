@@ -43,6 +43,7 @@
 #include "json_store.h"    // shared JSON-file store scaffolding
 #include "sensors_local.h" // sensors_local_channel_name() / _from_name() - WX field mappings are stored by driver name, not registry index
 #include "storage.h"       // storage_write_lock() - keeps a save from overlapping a whole-partition format
+#include "str_append.h"    // str_copy_utf8_safe()
 #include "time_sync.h"     // time_sync_tz_count() - bounds g_config.timezone_idx on load
 
 static const char *TAG = "app_config";
@@ -152,6 +153,18 @@ static void set_str(char *dst, size_t sz, const char *val) {
     }
     strncpy(dst, val, sz - 1);
     dst[sz - 1] = 0;
+}
+
+// Loads a stored free-text field the same way set_str() loads every other
+// stored string, except that the cut is walked back to a whole character
+// instead of a whole byte. Reserved for the handful of fields that are
+// 8-bit-clean and repeated on the air unchanged (comment and status text,
+// per aprs.org/aprs12/utf-8.txt) - every other set_str() call is a coded or
+// structured field (callsign, hostname, filter spec, ...) that is
+// effectively ASCII, where a byte cut and a character cut always land in the
+// same place.
+static void set_str_utf8(char *dst, size_t sz, const char *val) {
+    str_copy_utf8_safe(val, dst, sz);
 }
 
 void app_config_set_defaults(app_config_t *c) {
@@ -1016,7 +1029,7 @@ static void config_from_json(cJSON *d, app_config_t *c) {
     c->igate_interval = (uint16_t)jget_num(d, "igateINV", def.igate_interval);
     set_str(c->igate_symbol, sizeof(c->igate_symbol), jget_str(d, "igateSymbol", def.igate_symbol));
     c->igate_path = (uint8_t)jget_num(d, "igatePath", def.igate_path);
-    set_str(c->igate_comment, sizeof(c->igate_comment), jget_str(d, "igateComment", def.igate_comment));
+    set_str_utf8(c->igate_comment, sizeof(c->igate_comment), jget_str(d, "igateComment", def.igate_comment));
     c->igate_timestamp = jget_bool(d, "igateTimestamp", def.igate_timestamp);
     c->igate_compress = jget_bool(d, "igateCompress", def.igate_compress);
     c->igate_phg_enable = jget_bool(d, "igatePHGEn", def.igate_phg_enable);
@@ -1045,7 +1058,7 @@ static void config_from_json(cJSON *d, app_config_t *c) {
     c->igate_duplex = (int8_t)jget_num(d, "igateFreqDup", def.igate_duplex);
     c->igate_offset_khz = (uint16_t)jget_num(d, "igateFreqOff", def.igate_offset_khz);
     c->igate_sts_interval = (uint16_t)jget_num(d, "igateSTSIntv", def.igate_sts_interval);
-    set_str(c->igate_status, sizeof(c->igate_status), jget_str(d, "igateStatus", def.igate_status));
+    set_str_utf8(c->igate_status, sizeof(c->igate_status), jget_str(d, "igateStatus", def.igate_status));
 
     c->digi_en = jget_bool(d, "digiEn", def.digi_en);
     c->digi_loc2rf = jget_bool(d, "digiPos2rf", def.digi_loc2rf);
@@ -1097,9 +1110,9 @@ static void config_from_json(cJSON *d, app_config_t *c) {
     c->digi_lon = (float)jget_num(d, "digiLON", def.digi_lon);
     c->digi_interval = (uint16_t)jget_num(d, "digiINV", def.digi_interval);
     set_str(c->digi_symbol, sizeof(c->digi_symbol), jget_str(d, "digiSymbol", def.digi_symbol));
-    set_str(c->digi_comment, sizeof(c->digi_comment), jget_str(d, "digiComment", def.digi_comment));
+    set_str_utf8(c->digi_comment, sizeof(c->digi_comment), jget_str(d, "digiComment", def.digi_comment));
     c->digi_sts_interval = (uint16_t)jget_num(d, "digiSTSIntv", def.digi_sts_interval);
-    set_str(c->digi_status, sizeof(c->digi_status), jget_str(d, "digiStatus", def.digi_status));
+    set_str_utf8(c->digi_status, sizeof(c->digi_status), jget_str(d, "digiStatus", def.digi_status));
     c->digi_freq_mhz = (float)jget_num(d, "digiFreqMHz", def.digi_freq_mhz);
     c->digi_tone_tenths = (uint16_t)jget_num(d, "digiFreqTone", def.digi_tone_tenths);
     c->digi_duplex = (int8_t)jget_num(d, "digiFreqDup", def.digi_duplex);
@@ -1130,9 +1143,9 @@ static void config_from_json(cJSON *d, app_config_t *c) {
     }
     c->trk_altitude = jget_bool(d, "trkOptAlt", def.trk_altitude);
     set_str(c->trk_symbol, sizeof(c->trk_symbol), jget_str(d, "trkSymbol", def.trk_symbol));
-    set_str(c->trk_comment, sizeof(c->trk_comment), jget_str(d, "trkComment", def.trk_comment));
+    set_str_utf8(c->trk_comment, sizeof(c->trk_comment), jget_str(d, "trkComment", def.trk_comment));
     c->trk_sts_interval = (uint16_t)jget_num(d, "trkSTSIntv", def.trk_sts_interval);
-    set_str(c->trk_status, sizeof(c->trk_status), jget_str(d, "trkStatus", def.trk_status));
+    set_str_utf8(c->trk_status, sizeof(c->trk_status), jget_str(d, "trkStatus", def.trk_status));
     c->trk_freq_mhz = (float)jget_num(d, "trkFreqMHz", def.trk_freq_mhz);
     c->trk_tone_tenths = (uint16_t)jget_num(d, "trkFreqTone", def.trk_tone_tenths);
     c->trk_duplex = (int8_t)jget_num(d, "trkFreqDup", def.trk_duplex);
@@ -1150,7 +1163,7 @@ static void config_from_json(cJSON *d, app_config_t *c) {
     c->wx_lon = (float)jget_num(d, "wxLON", def.wx_lon);
     c->wx_interval = (uint16_t)jget_num(d, "wxInv", def.wx_interval);
     set_str(c->wx_object, sizeof(c->wx_object), jget_str(d, "wxObject", def.wx_object));
-    set_str(c->wx_comment, sizeof(c->wx_comment), jget_str(d, "wxComment", def.wx_comment));
+    set_str_utf8(c->wx_comment, sizeof(c->wx_comment), jget_str(d, "wxComment", def.wx_comment));
     {
         cJSON *a1 = cJSON_GetObjectItemCaseSensitive(d, "wxSenEn"), *a2 = cJSON_GetObjectItemCaseSensitive(d, "wxSenAvg"),
               *a3 = cJSON_GetObjectItemCaseSensitive(d, "wxSenCH");

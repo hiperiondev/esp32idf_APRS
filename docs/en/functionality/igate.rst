@@ -256,7 +256,7 @@ after passing:
 A line that survives all stages is never keyed onto RF with its APRS-IS
 header intact. ``build_thirdparty_frame()`` discards that header entirely and
 wraps the original ``SRC>DST`` and information field, unmodified, behind a
-``}`` as the payload of this station's own header (``MYCALL[-SSID]>APE32L,
+``}`` as the payload of this station's own header (``MYCALL[-SSID]>APE32I,
 <igate path>:}SRC>DST,TCPIP,MYCALL[-SSID]*:info``) - the third-party form the
 APRS spec requires for gatewayed traffic. This keeps ``qA`` constructs and a
 bare ``TCPIP`` off the air, and lets every other IGate that hears the frame

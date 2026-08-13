@@ -39,7 +39,7 @@
 #include "igate.h"
 #include "objects_items.h"     // objitem_build_freq_block()
 #include "sched_time.h"        // sched_mono_seconds() / sched_clamp_interval()
-#include "str_append.h"        // str_append()
+#include "str_append.h"        // str_append(), str_copy_strip_reserved(), str_copy_utf8_safe()
 #include "telemetry.h"         // telemetry_build_comment_tlm() / telemetry_config_load()
 #include "weather_telemetry.h" // aprs_mice_encode()
 
@@ -1025,7 +1025,9 @@ static uint32_t trackerStatusService(void) {
             memcpy(p.call, useTrk ? g_config.trk_mycall : g_config.aprs_mycall, sizeof(p.call));
             p.ssid = useTrk ? g_config.trk_ssid : g_config.aprs_ssid;
             p.pathSel = g_config.trk_path;
-            str_copy_strip_reserved(g_config.trk_status, p.statusText, sizeof(p.statusText));
+            char trkStsStripped[STATUS_SIZE];
+            str_copy_strip_reserved(g_config.trk_status, trkStsStripped, sizeof(trkStsStripped));
+            str_copy_utf8_safe(trkStsStripped, p.statusText, sizeof(p.statusText));
             memcpy(p.pathPreset, g_config.path, sizeof(p.pathPreset));
             p.gridEnable = g_config.status_grid_en;
             p.lat = g_config.trk_lat;
@@ -1065,7 +1067,9 @@ static uint32_t igateStatusService(void) {
             memcpy(p.call, g_config.aprs_mycall, sizeof(p.call));
             p.ssid = g_config.aprs_ssid;
             p.pathSel = g_config.igate_path;
-            str_copy_strip_reserved(g_config.igate_status, p.statusText, sizeof(p.statusText));
+            char igateStsStripped[STATUS_SIZE];
+            str_copy_strip_reserved(g_config.igate_status, igateStsStripped, sizeof(igateStsStripped));
+            str_copy_utf8_safe(igateStsStripped, p.statusText, sizeof(p.statusText));
             memcpy(p.pathPreset, g_config.path, sizeof(p.pathPreset));
             p.gridEnable = g_config.status_grid_en;
             p.lat = g_config.igate_lat;
@@ -1105,7 +1109,9 @@ static uint32_t digiStatusService(void) {
             memcpy(p.call, useDigi ? g_config.digi_mycall : g_config.aprs_mycall, sizeof(p.call));
             p.ssid = useDigi ? g_config.digi_ssid : g_config.aprs_ssid;
             p.pathSel = g_config.digi_path;
-            str_copy_strip_reserved(g_config.digi_status, p.statusText, sizeof(p.statusText));
+            char digiStsStripped[STATUS_SIZE];
+            str_copy_strip_reserved(g_config.digi_status, digiStsStripped, sizeof(digiStsStripped));
+            str_copy_utf8_safe(digiStsStripped, p.statusText, sizeof(p.statusText));
             memcpy(p.pathPreset, g_config.path, sizeof(p.pathPreset));
             p.gridEnable = g_config.status_grid_en;
             p.lat = g_config.digi_lat;
@@ -1169,7 +1175,9 @@ static uint32_t trackerBeaconService(void) {
             p.ambiguity = g_config.pos_ambiguity;
             p.daoEnable = g_config.pos_dao_en;
             memcpy(p.symbol, g_config.trk_symbol, sizeof(p.symbol));
-            str_copy_strip_reserved(g_config.trk_comment, p.comment, sizeof(p.comment));
+            char trkCommentStripped[COMMENT_SIZE];
+            str_copy_strip_reserved(g_config.trk_comment, trkCommentStripped, sizeof(trkCommentStripped));
+            str_copy_utf8_safe(trkCommentStripped, p.comment, sizeof(p.comment));
             memcpy(p.pathPreset, g_config.path, sizeof(p.pathPreset));
             p.freqMhz = g_config.trk_freq_mhz;
             p.freqToneTenths = g_config.trk_tone_tenths;
@@ -1230,7 +1238,9 @@ static uint32_t igateBeaconService(void) {
             p.ambiguity = g_config.pos_ambiguity;
             p.daoEnable = g_config.pos_dao_en;
             memcpy(p.symbol, g_config.igate_symbol, sizeof(p.symbol));
-            str_copy_strip_reserved(g_config.igate_comment, p.comment, sizeof(p.comment));
+            char igateCommentStripped[COMMENT_SIZE];
+            str_copy_strip_reserved(g_config.igate_comment, igateCommentStripped, sizeof(igateCommentStripped));
+            str_copy_utf8_safe(igateCommentStripped, p.comment, sizeof(p.comment));
             memcpy(p.pathPreset, g_config.path, sizeof(p.pathPreset));
             p.extEnable = g_config.igate_phg_enable;
             p.extType = g_config.igate_ext_type;
@@ -1280,7 +1290,9 @@ static void fillIgatePositionParams(beacon_params_t *p) {
         p->compress = g_config.igate_compress;
         p->msgCapable = g_config.msg_enable;
         memcpy(p->symbol, g_config.igate_symbol, sizeof(p->symbol));
-        str_copy_strip_reserved(g_config.igate_comment, p->comment, sizeof(p->comment));
+        char igateCommentStripped[COMMENT_SIZE];
+        str_copy_strip_reserved(g_config.igate_comment, igateCommentStripped, sizeof(igateCommentStripped));
+        str_copy_utf8_safe(igateCommentStripped, p->comment, sizeof(p->comment));
         memcpy(p->pathPreset, g_config.path, sizeof(p->pathPreset));
         p->extEnable = g_config.igate_phg_enable;
         p->extType = g_config.igate_ext_type;
@@ -1347,7 +1359,9 @@ int beacon_build_igate_status_packet(const char *path, char *out, size_t out_max
         memcpy(p.call, g_config.aprs_mycall, sizeof(p.call));
         p.ssid = g_config.aprs_ssid;
         p.pathSel = g_config.igate_path;
-        str_copy_strip_reserved(g_config.igate_status, p.statusText, sizeof(p.statusText));
+        char igateStsStripped[STATUS_SIZE];
+        str_copy_strip_reserved(g_config.igate_status, igateStsStripped, sizeof(igateStsStripped));
+        str_copy_utf8_safe(igateStsStripped, p.statusText, sizeof(p.statusText));
         memcpy(p.pathPreset, g_config.path, sizeof(p.pathPreset));
         p.gridEnable = g_config.status_grid_en;
         p.lat = g_config.igate_lat;
@@ -1392,7 +1406,9 @@ static uint32_t digiBeaconService(void) {
             p.ambiguity = g_config.pos_ambiguity;
             p.daoEnable = g_config.pos_dao_en;
             memcpy(p.symbol, g_config.digi_symbol, sizeof(p.symbol));
-            str_copy_strip_reserved(g_config.digi_comment, p.comment, sizeof(p.comment));
+            char digiCommentStripped[COMMENT_SIZE];
+            str_copy_strip_reserved(g_config.digi_comment, digiCommentStripped, sizeof(digiCommentStripped));
+            str_copy_utf8_safe(digiCommentStripped, p.comment, sizeof(p.comment));
             memcpy(p.pathPreset, g_config.path, sizeof(p.pathPreset));
             p.freqMhz = g_config.digi_freq_mhz;
             p.freqToneTenths = g_config.digi_tone_tenths;

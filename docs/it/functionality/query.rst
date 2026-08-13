@@ -192,7 +192,7 @@ Le risposte di tipo elenco escono come messaggi di testo APRS indirizzati alla
 stazione che interroga, con il campo destinatario fisso di 9 caratteri riempito
 di spazi e **senza** numero di messaggio — una risposta a query è informativa,
 quindi non sollecita ack. Il nominativo di destinazione usato per il traffico di
-query è ``APE32L``, e il percorso è la maschera di percorso della pagina IGate.
+query è ``APE32I``, e il percorso è la maschera di percorso della pagina IGate.
 
 Limitazione di frequenza
 ========================

@@ -42,7 +42,7 @@
 #include "objects_items.h"
 #include "sched_time.h" // sched_mono_seconds() / sched_clamp_interval()
 #include "storage.h"    // storage_write_lock() / storage_generation()
-#include "str_append.h" // str_copy_strip_reserved()
+#include "str_append.h" // str_copy_strip_reserved(), str_copy_utf8_safe()
 
 static const char *TAG = "objitems";
 
@@ -100,6 +100,19 @@ static void clamp_str(char *dst, const char *src, size_t max_chars) {
         n++;
     memcpy(dst, src, n);
     dst[n] = 0;
+}
+
+// Clamps the free-text comment field the same way clamp_str() clamps every
+// other stored field, except that the cut is walked back to a whole
+// character instead of a whole byte. The comment is 8-bit-clean and passed
+// through to the air unchanged (aprs.org/aprs12/utf-8.txt), so unlike name,
+// signpost or qru - short, effectively ASCII coded sub-fields where a byte
+// cut and a character cut always land in the same place - a UTF-8 comment
+// truncated here on a plain byte count could leave an incomplete multi-byte
+// sequence permanently stored, to go out on the air that way on every future
+// beacon until the operator happens to retype it.
+static void clamp_comment(char *dst, const char *src, size_t dst_size) {
+    str_copy_utf8_safe(src, dst, dst_size);
 }
 
 static bool load_locked(objitems_t *out, bool *out_missing) {
@@ -191,7 +204,7 @@ static bool load_locked(objitems_t *out, bool *out_missing) {
 
             v = cJSON_GetObjectItem(o, "cmt");
             if (cJSON_IsString(v) && v->valuestring)
-                clamp_str(b->comment, v->valuestring, OBJITEM_COMMENT_MAX);
+                clamp_comment(b->comment, v->valuestring, sizeof(b->comment));
 
             // -- Area object (YAAC "Area type, color, and offset"). --
             v = cJSON_GetObjectItem(o, "atype");

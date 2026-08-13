@@ -181,7 +181,7 @@ available in that set; the remaining, list-style ones additionally require
 Answers of the list kind go out as APRS text messages addressed back to the
 querying station, with the fixed 9-character space-padded addressee field and
 **no** message number — a query answer is informational, so no ack is solicited.
-The destination call used for query traffic is ``APE32L``, and the path is the
+The destination call used for query traffic is ``APE32I``, and the path is the
 IGate page's own path bitmask.
 
 Rate limiting

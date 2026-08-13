@@ -272,7 +272,7 @@ Una línea que supera todas las etapas nunca se transmite por RF con su
 cabecera de APRS-IS intacta. ``build_thirdparty_frame()`` descarta esa
 cabecera por completo y envuelve el ``SRC>DST`` original y el campo de
 información, sin modificar, tras un ``}`` como carga útil de la cabecera
-propia de esta estación (``MYCALL[-SSID]>APE32L,<ruta igate>:}SRC>DST,TCPIP,
+propia de esta estación (``MYCALL[-SSID]>APE32I,<ruta igate>:}SRC>DST,TCPIP,
 MYCALL[-SSID]*:info``) — la forma de terceros que exige la especificación
 APRS para el tráfico reenrutado. Esto mantiene los constructos ``qA`` y un
 ``TCPIP`` sin envolver fuera del aire, y permite que cualquier otro IGate que

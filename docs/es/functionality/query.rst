@@ -188,7 +188,7 @@ Las respuestas de tipo lista salen como mensajes de texto APRS dirigidos de vuel
 a la estación que consulta, con el campo de destinatario fijo de 9 caracteres
 rellenado con espacios y **sin** número de mensaje — una respuesta a consulta es
 informativa, así que no solicita ack. El indicativo de destino usado para el
-tráfico de consultas es ``APE32L``, y la ruta es la máscara de ruta de la propia
+tráfico de consultas es ``APE32I``, y la ruta es la máscara de ruta de la propia
 página IGate.
 
 Limitación de tasa

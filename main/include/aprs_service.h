@@ -160,15 +160,15 @@
  * itself the same way and a future allocation only needs to change this one
  * definition.
  *
- * "APE32L" is not an allocated TOCALL: it falls under the generic "APE???"
- * wildcard (model: Telemetry devices, no vendor, no class), so device-ID
- * consumers (aprs.fi, findu, YAAC) show this station as an anonymous
- * telemetry device rather than identifying it as this firmware. Until a
- * proper allocation is requested and granted at
- * github.com/aprsorg/aprs-deviceid, this uses the "APZ" + 3 characters space
- * the registry reserves for exactly this - software that has not yet been
- * allocated a TOCALL - rather than squatting on an "APE" code that belongs to
- * someone else's wildcard.
+ * "APE32I" is not yet an allocated TOCALL: as of this writing it has no exact
+ * entry in tocalls.yaml, so it only falls under the generic "APE???" wildcard
+ * (model: Telemetry devices, no vendor, no class), and device-ID consumers
+ * (aprs.fi, findu, YAAC) show this station as an anonymous telemetry device
+ * rather than identifying it as this firmware. A specific allocation for
+ * "APE32I" has been requested at github.com/aprsorg/aprs-deviceid; once it is
+ * granted, an exact match takes priority over the wildcard for every
+ * consumer that follows the registry's longest-match rule, and this station
+ * is then identified by name without any further code change.
  *
  * There is no alternate-net destination beside it. APRS101 chapter 4 lets a
  * group of stations agree on a destination address of their own so that their
@@ -180,7 +180,7 @@
  * by destination address, so alternate-net traffic is carried like any other.
  * @{
  */
-#define APRS_TOCALL "APZ32L" /**< Experimental (unallocated) TOCALL for this firmware; see the allocation note above. */
+#define APRS_TOCALL "APE32I" /**< TOCALL for this firmware, pending allocation; see the registration note above. */
 /** @} */
 
 /**
@@ -229,10 +229,11 @@
  * uses 'T': the allocated manufacturer bytes are '_' (Yaesu), '(' (Anytone),
  * '|' (Byonics), '^' (HinzTec), '*' (KissOZ, NOR), ':' (SQ8L, SCS), '['
  * (APRSdroid), ' ' (SainSonic) and the legacy Kenwood '>' and ']' prefixes.
- * This uses the free 'T' space for the same reason ::APRS_TOCALL uses "APZ"
- * - an unallocated identifier that collides with nobody - pending a proper
- * allocation request at github.com/aprsorg/aprs-deviceid, after which only
- * this one definition changes.
+ * This uses the free 'T' space for the same reason ::APRS_TOCALL names
+ * "APE32I" ahead of its own allocation - an identifier that collides with
+ * nobody - pending a proper allocation request at
+ * github.com/aprsorg/aprs-deviceid, after which only this one definition
+ * changes.
  * @{
  */
 #define APRS_MICE_DEVICE_ID "T1" /**< Experimental (unallocated) Mic-E Manufacturer/Version pair; see the allocation note above. */

@@ -24,6 +24,7 @@
 #include "app_config.h"
 #include "esp_log.h"
 #include "pages.h"
+#include "str_append.h" // str_copy_utf8_safe()
 #include "translations.h"
 #include "web_common.h"
 
@@ -216,10 +217,24 @@ esp_err_t page_digi_post(httpd_req_t *req) {
     // widget, falling back to a legacy combined 2-char field if present.
     web_form_get_symbol(body, "digiSym", "digiSymbol", g_config.digi_symbol, sizeof(g_config.digi_symbol));
 
-    web_form_get(body, "digiComment", g_config.digi_comment, sizeof(g_config.digi_comment));
+    // web_form_get() clamps to a plain byte count, so an operator-typed
+    // multi-byte UTF-8 character sitting right at that boundary could arrive
+    // already split; stage it and re-cut with str_copy_utf8_safe() so the
+    // stored comment - repeated on the air on every future beacon - never
+    // carries an incomplete character even in that edge case. On a request
+    // with no digiComment field, the staging buffer starts as a copy of the
+    // current value, so an absent field leaves it unchanged, matching
+    // web_form_get()'s own leave-untouched-when-absent behaviour.
+    char digiCommentStage[sizeof(g_config.digi_comment)];
+    memcpy(digiCommentStage, g_config.digi_comment, sizeof(digiCommentStage));
+    web_form_get(body, "digiComment", digiCommentStage, sizeof(digiCommentStage));
+    str_copy_utf8_safe(digiCommentStage, g_config.digi_comment, sizeof(g_config.digi_comment));
 
     g_config.digi_sts_interval = (uint16_t)web_form_get_int(body, "digiSTSIntv", g_config.digi_sts_interval);
-    web_form_get(body, "digiStatus", g_config.digi_status, sizeof(g_config.digi_status));
+    char digiStatusStage[sizeof(g_config.digi_status)];
+    memcpy(digiStatusStage, g_config.digi_status, sizeof(digiStatusStage));
+    web_form_get(body, "digiStatus", digiStatusStage, sizeof(digiStatusStage));
+    str_copy_utf8_safe(digiStatusStage, g_config.digi_status, sizeof(g_config.digi_status));
 
     // Repeater radio parameters: same two-layer clamp as every other bounded
     // field on this page.

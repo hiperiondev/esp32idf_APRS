@@ -22,7 +22,7 @@
  * the four shared presets in ::g_config.path[0..3], where bit N selects preset
  * N and a selected-but-empty slot contributes nothing. The resulting suffix is
  * ",PRESET" per selected slot, in ascending bit order, appended straight after
- * the destination call ("MYCALL>APZ32L,WIDE1-1,WIDE2-1:...", where the
+ * the destination call ("MYCALL>APE32I,WIDE1-1,WIDE2-1:...", where the
  * destination is this station's own TOCALL, ::APRS_TOCALL in aprs_service.h).
  *
  * The AX.25 8-via limit is enforced here, on the transmit side. The webconfig
@@ -65,7 +65,7 @@
  * WIDEn-N alias means anything. A packet this station injects straight into
  * APRS-IS never traverses them, so aprs-is.net/Connecting.aspx requires the
  * client's own traffic to carry "TCPIP*" in the path and nothing else -
- * "MYCALL-10>APZ32L,TCPIP*:...". A server receiving an RF path on a packet
+ * "MYCALL-10>APE32I,TCPIP*:...". A server receiving an RF path on a packet
  * whose source callsign is not the login identity keeps that path and tags the
  * packet as relayed (",qAS,<login>"), which publishes a hop sequence that never
  * happened; a server that does recognise the login discards the path bytes it

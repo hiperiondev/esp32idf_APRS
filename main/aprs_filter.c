@@ -1300,6 +1300,126 @@ bool aprs_filter_mice_message(const char *dst_call, const char *info, size_t len
     return true;
 }
 
+// ---------------------------------------------------------------------------
+// Bracketed comment-field alert codes (aprs.org/aprs12/EmergencyCode.txt).
+// ---------------------------------------------------------------------------
+
+// The fourteen bracketed strings the proposal defines, in the order it lists
+// them: the nine primary designators that mirror the Mic-E status bits (with
+// Emergency the one that is raised as an actual alert, and TestAlarm its
+// deliberately-not-alerting test twin), followed by the five CENTER/ZOOM
+// triggers of the "additional proposal" already implemented by APRS+SA and
+// Xastir. Every token is fully bracketed by '!', so none of them is a prefix
+// of another and the order they are checked in does not affect the result.
+typedef struct {
+    const char *token; // Bracketed on-air form, e.g. "!EMERGENCY!".
+    const char *name;  // Operator-visible English name.
+    bool emergency;    // True only for the one code this station alerts on.
+} comment_alert_entry_t;
+
+static const comment_alert_entry_t COMMENT_ALERTS[] = {
+    { "!EMERGENCY!", "Emergency", true },   { "!TESTALARM!", "Test Alarm", false },      { "!PRIORITY!", "Priority", false },
+    { "!SPECIAL!", "Special", false },      { "!COMMITTED!", "Committed", false },       { "!RETURNING!", "Returning", false },
+    { "!INSERVICE!", "In Service", false }, { "!ENROUTE!", "En Route", false },          { "!OFF-DUTY!", "Off Duty", false },
+    { "!WXALARM!", "WX Alarm", false },     { "!WARNING!", "Warning", false },           { "!ALARM!", "Alarm", false },
+    { "!ALERT!", "Alert", false },          { "!EM!", "Emergency (short form)", false },
+};
+
+#define COMMENT_ALERT_COUNT (sizeof(COMMENT_ALERTS) / sizeof(COMMENT_ALERTS[0]))
+
+// Number of bytes from the first byte of a position field to the first byte
+// of the free-text comment that follows it, the same layout
+// decode_position_field() walks, but computed without needing the position
+// itself to decode: only the byte counts matter here, so a malformed
+// coordinate still yields the comment that follows it. `pos` points at the
+// first byte of the position data (extract_symbol()'s convention); `len` is
+// the number of bytes available from `pos` onward, which need not be
+// NUL-terminated.
+static size_t comment_offset(const char *pos, size_t len) {
+    bool compressed = !isdigit((unsigned char)pos[0]);
+    size_t fieldLen = compressed ? POS_COMPRESSED_LEN : POS_UNCOMPRESSED_LEN;
+
+    if (len < fieldLen)
+        return len;
+
+    if (compressed)
+        return fieldLen;
+
+    // parse_data_extension() only needs a report to write its decoded fields
+    // into; this scratch one is discarded - only its return value, the
+    // number of bytes consumed, is used to step past a PHG/DFS/RNG/CSE-SPD
+    // extension when one is present.
+    aprs_rx_report_t scratch;
+    memset(&scratch, 0, sizeof(scratch));
+    return fieldLen + parse_data_extension(pos + POS_UNCOMPRESSED_LEN, len - POS_UNCOMPRESSED_LEN, pos[18], &scratch);
+}
+
+// Matches the first `commentLen` bytes at `comment` (not necessarily
+// NUL-terminated) against the COMMENT_ALERTS table and reports what it
+// found. Per the proposal the code is expected to be the first bytes of the
+// comment, so this checks a leading match rather than searching the whole
+// field - a station's free-text comment is otherwise free to contain '!'
+// bytes of its own without being misread as an alert.
+static bool match_comment_alert(const char *comment, size_t commentLen, const char **out_name, bool *out_emergency) {
+    for (size_t i = 0; i < COMMENT_ALERT_COUNT; i++) {
+        size_t tokLen = strlen(COMMENT_ALERTS[i].token);
+        if (commentLen >= tokLen && !strncmp(comment, COMMENT_ALERTS[i].token, tokLen)) {
+            if (out_name != NULL)
+                *out_name = COMMENT_ALERTS[i].name;
+            if (out_emergency != NULL)
+                *out_emergency = COMMENT_ALERTS[i].emergency;
+            return true;
+        }
+    }
+    return false;
+}
+
+// Runs comment_offset()+match_comment_alert() for a position field starting
+// at info[posStart], with commentLen accordingly derived from len.
+static bool comment_alert_from_pos(const char *info, size_t len, size_t posStart, const char **out_name, bool *out_emergency) {
+    const char *pos = &info[posStart];
+    size_t posLen = len - posStart;
+    size_t off = comment_offset(pos, posLen);
+    return match_comment_alert(pos + off, posLen - off, out_name, out_emergency);
+}
+
+bool aprs_filter_comment_alert(const char *info, size_t len, const char **out_name, bool *out_emergency) {
+    if (info == NULL || len < 1)
+        return false;
+
+    switch (info[0]) {
+        case '!':
+        case '=':
+            if (len < 2)
+                return false;
+            return comment_alert_from_pos(info, len, 1, out_name, out_emergency);
+
+        case '/':
+        case '@':
+            if (len < 9)
+                return false;
+            return comment_alert_from_pos(info, len, 8, out_name, out_emergency);
+
+        case ';':
+            if (len < 19)
+                return false;
+            return comment_alert_from_pos(info, len, 18, out_name, out_emergency);
+
+        case ')':
+            for (size_t i = 4; i <= 10 && i < len; i++) {
+                if (info[i] == '!' || info[i] == '_') {
+                    if (i + 1 >= len)
+                        return false;
+                    return comment_alert_from_pos(info, len, i + 1, out_name, out_emergency);
+                }
+            }
+            return false;
+
+        default:
+            return false;
+    }
+}
+
 float aprs_filter_haversine_km(float lat1, float lon1, float lat2, float lon2) {
     static const float EARTH_RADIUS_KM = 6371.0f;
     static const float DEG2RAD = 0.017453293f; // pi / 180

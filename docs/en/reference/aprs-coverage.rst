@@ -226,8 +226,8 @@ Mic-E data format (ch. 10)
      - ✅
      - The receiver decodes all fifteen values, including the custom set and the all-zero Emergency pattern, and correctly reports a mixed standard/custom pattern as undefined. The Tracker page selects any of the fourteen standard and custom values for transmission. Emergency is deliberately absent from that list: it asks other operators to respond to a real emergency, which is not something a settings page should arm with one mis-click and leave armed for every beacon afterwards.
    * - Emergency indication
-     - ⚠️
-     - A Mic-E emergency received on radio or from APRS-IS raises a warning-level log line and its own entry in the traffic log, next to the packet that carried it. The other fourteen position comments are logged at information level, since the value lives in the destination address and is otherwise invisible in the packet text. The bracketed comment-field forms (``!EMERGENCY!``, ``!WXALARM!`` and the rest of that proposed set) that let a non-Mic-E station raise the same signal are not recognised, so a station declaring an emergency that way passes through as ordinary traffic today. Low frequency of occurrence, high consequence when it does occur; classifying those forms alongside the Mic-E case is worth doing regardless of how rarely the field sees a real one.
+     - ✅
+     - A Mic-E emergency received on radio or from APRS-IS raises a warning-level log line and its own entry in the traffic log, next to the packet that carried it. The other fourteen position comments are logged at information level, since the value lives in the destination address and is otherwise invisible in the packet text. The bracketed comment-field forms a non-Mic-E station uses for the same signal (``aprs.org/aprs12/EmergencyCode.txt``) are recognised the same way: ``!EMERGENCY!`` at the front of a position, object or item comment - after the PHG/DFS/RNG/CSE-SPD data extension when one is present, which is where the proposal places it - raises the identical warning and traffic-log line, and the other thirteen bracketed forms (``!TESTALARM!``, ``!PRIORITY!``, ``!WXALARM!`` and the rest of that proposed set) are logged at information level like their Mic-E counterparts.
    * - Speeds above 670 knots
      - ✅
      - The 1.2 extension is applied on both sides, so a frame digipeated through a space station reports its orbital velocity rather than a clipped one. That scale is quantised in steps of 112 knots and has a gap between 671 and 781 knots that the published rule itself leaves unrepresentable; below 671 knots the field stays exact to the knot.
@@ -369,8 +369,8 @@ Messages, bulletins and announcements (ch. 14)
      - ❌
      - The two 1.2 proposals that carry a full object or item report inside a message payload, for a station that cannot digipeat the ordinary object/item packet, are not recognised as a class. This station has no map to plot one on and neither originates nor needs the workaround; a message using either form still reaches the operator as plain text.
    * - UTF-8 text encoding
-     - ⚠️
-     - Message and other free-text fields are 8-bit-clean end to end — nothing here re-encodes or rejects a non-ASCII byte, which is the specification's own recommendation (``aprs.org/aprs12/utf-8.txt``). What is not yet guaranteed is that a length-driven truncation always lands on a character boundary rather than through the middle of one; the outgoing message path enforces this, the rest of the free-text fields do not yet.
+     - ✅
+     - Message and other free-text fields are 8-bit-clean end to end - nothing here re-encodes or rejects a non-ASCII byte, which is the specification's own recommendation (``aprs.org/aprs12/utf-8.txt``). Every length-driven truncation of a free-text field - the outgoing message path, status and comment text, and object/item and bulletin text, whether entered on the web admin pages or loaded from stored configuration - lands on a character boundary rather than through the middle of one.
    * - General bulletins, announcements and group bulletins
      - ✅
      - Five configurable slots with the correct addressee forms for all three: the digit identifier for bulletins, the letter identifier for announcements, and the group name suffix for group bulletins. Each slot has its own expiry.

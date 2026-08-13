@@ -1464,6 +1464,24 @@ static void igateTask(void *arg) {
                                             ESP_LOGI(TAG, "Mic-E position comment from %s (APRS-IS): %s", dx, miceMsg);
                                         }
                                     }
+
+                                    // Bracketed comment-field alert code
+                                    // (aprs.org/aprs12/EmergencyCode.txt), the
+                                    // non-Mic-E equivalent of the check above.
+                                    // Same reasoning as the Mic-E case applies
+                                    // here: the internet feed's own filter is
+                                    // local, so an emergency arriving this way
+                                    // is raised the same as one heard on radio.
+                                    const char *alertName = NULL;
+                                    bool alertEmergency = false;
+                                    if (aprs_filter_comment_alert(info, strlen(info), &alertName, &alertEmergency)) {
+                                        if (alertEmergency) {
+                                            ESP_LOGW(TAG, "EMERGENCY from %s (APRS-IS)", dx);
+                                            trafficlog_add("EMERGENCY from %s (APRS-IS)", dx);
+                                        } else {
+                                            ESP_LOGI(TAG, "Comment alert from %s (APRS-IS): %s", dx, alertName);
+                                        }
+                                    }
                                 }
                             }
                             if (g_config.inet2rf && s_inet2rfHandler)
