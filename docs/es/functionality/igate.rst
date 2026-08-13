@@ -62,10 +62,18 @@ La tarea cliente de APRS-IS
   firmware ante los operadores de servidores APRS-IS. La línea se registra
   exactamente como se envía (sin el CR/LF), para que un filtro mal formado sea
   visible; si no hay filtro configurado, una segunda línea indica que rige el
-  valor por defecto del servidor. El banner del servidor y la línea
-  ``# logresp … verified/unverified`` se muestran; una respuesta
-  ``unverified`` genera una advertencia que nombra ``aprs_mycall`` /
-  ``aprs_passcode``.
+  valor por defecto del servidor. La lectura inmediatamente posterior al login
+  pasa por el mismo ensamblador de líneas y el mismo manejador de paquetes que
+  el bucle de recepción en régimen estable descrito más abajo, de modo que un
+  servidor que envía su banner, la línea ``# logresp … verified/unverified`` y
+  el primer paquete filtrado dentro de una sola lectura igual entrega ese
+  paquete a ``inet2rf`` — nada de lo que llega junto al banner se descarta. El
+  banner y la línea ``# logresp`` se muestran además como líneas de log
+  propias; una respuesta ``unverified`` genera una advertencia que nombra
+  ``aprs_mycall`` / ``aprs_passcode``, y una identidad devuelta por el
+  servidor que no coincide con la enviada genera su propia advertencia, ya que
+  ese es el fallo que deja sin entregar los mensajes dirigidos a esta estación
+  mientras todo lo demás parece funcionar con normalidad.
 * **Validación del filtro de servidor.** Antes de enviarse, ``g_config.aprs_filter``
   se comprueba estructuralmente con ``aprs_filter_validate_server_string()`` —
   cada término separado por espacios debe ser ``<letra>/<args>`` con el número de

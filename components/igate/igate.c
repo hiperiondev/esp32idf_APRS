@@ -937,6 +937,142 @@ void igate_set_inet2rf_handler(void (*handler)(const char *line)) {
 // would block every APRS-IS transmitter for that whole window, so the value is
 // snapshotted instead. A descriptor closed right after the snapshot makes that
 // recv() fail, which the loop already handles by reconnecting.
+// Handles one complete, NUL-terminated line already assembled by
+// feedAprsIsBytes() from the APRS-IS socket - the single point where a line
+// is classified as a server comment/keepalive or an actual packet, counted,
+// logged, decoded for Mic-E/comment-field alerts, added to the traffic log
+// and, if inet2rf is enabled, handed to the registered RF relay callback.
+// Called identically from the normal RX loop and from the post-login banner
+// read, so a packet delivered in the same TCP segment as the server's banner
+// reaches inet2rf exactly like one delivered on any later read.
+static void processAprsIsLine(char *line) {
+    if (line[0] == '#') { // '#' = server comment/keepalive
+        ESP_LOGD(TAG, "APRS-IS keepalive: %s", line);
+        return;
+    }
+
+    // Counts every packet received from APRS-IS, regardless of whether
+    // inet2rf is enabled or the line ends up relayed to RF below - this is
+    // the total internet RX traffic, not just what was actually transmitted
+    // on RF.
+    s_stats.isRxCount++;
+    // Information-level log of every message received from APRS-IS,
+    // regardless of whether inet2rf is enabled below, so all igate traffic
+    // is visible.
+    ESP_LOGI(TAG, "APRS-IS RX: %s", line);
+
+    char dx[16];
+    tnc2SrcCallsign(line, strlen(line), dx, sizeof(dx));
+
+    // Position/object/item reports start their info field (right after the
+    // first ':') with one of !=/@; the symbol table and symbol code follow
+    // the latitude/longitude fields. Handles both no-timestamp ('!'/'=') and
+    // timestamped ('/'/'@') formats - see aprs_extract_symbol(). A payload
+    // with no symbol of its own falls back to the destination address and
+    // then the source SSID of the TNC2 header, in the precedence order of
+    // APRS101 chapter 21.
+    char symTable = 0, symCode = 0;
+    char decoded[APRS_RX_DECODED_BUF_SIZE] = "";
+    const char *colon = strchr(line, ':');
+    if (colon) {
+        const char *info = colon + 1;
+        size_t infoLen = strlen(info);
+        if (!aprs_extract_symbol(info, infoLen, &symTable, &symCode) && infoLen > 0)
+            aprs_symbol_from_tnc2_header(line, info[0], &symTable, &symCode);
+
+        // Same decode as the RF path, and the one place where it earns more
+        // than display: a packet relayed through APRS-IS reaches this
+        // station later than it was sent, so its own timestamp is the only
+        // statement of when the sender was where it says.
+        char destCall[10];
+        aprs_rx_report_t report;
+        const char *dest = aprs_tnc2_dest_call(line, destCall, sizeof(destCall)) ? destCall : NULL;
+        if (aprs_filter_decode_report(info, dest, &report))
+            aprs_filter_format_report(&report, decoded, sizeof(decoded));
+    }
+
+    trafficlog_add_pkt("RX-IS", dx, line, decoded, -1, symTable, symCode);
+
+    // Mic-E position comment (APRS101 ch.10), carried in the destination
+    // address and so absent from the packet text logged above. The internet
+    // feed reaches this station through its own server-side filter, which is
+    // a local one, so an emergency arriving here is as close by as one heard
+    // on the radio and is raised the same way.
+    if (colon) {
+        const char *info = colon + 1;
+        char destCall[10];
+        const char *miceMsg = NULL;
+        bool miceEmergency = false;
+        if (aprs_tnc2_dest_call(line, destCall, sizeof(destCall)) && aprs_filter_mice_message(destCall, info, strlen(info), &miceMsg, &miceEmergency)) {
+            if (miceEmergency) {
+                ESP_LOGW(TAG, "Mic-E EMERGENCY from %s (APRS-IS)", dx);
+                trafficlog_add("Mic-E EMERGENCY from %s (APRS-IS)", dx);
+            } else {
+                ESP_LOGI(TAG, "Mic-E position comment from %s (APRS-IS): %s", dx, miceMsg);
+            }
+        }
+
+        // Bracketed comment-field alert code (aprs.org/aprs12/EmergencyCode.txt),
+        // the non-Mic-E equivalent of the check above. Same reasoning as the
+        // Mic-E case applies here: the internet feed's own filter is local,
+        // so an emergency arriving this way is raised the same as one heard
+        // on radio.
+        const char *alertName = NULL;
+        bool alertEmergency = false;
+        if (aprs_filter_comment_alert(info, strlen(info), &alertName, &alertEmergency)) {
+            if (alertEmergency) {
+                ESP_LOGW(TAG, "EMERGENCY from %s (APRS-IS)", dx);
+                trafficlog_add("EMERGENCY from %s (APRS-IS)", dx);
+            } else {
+                ESP_LOGI(TAG, "Comment alert from %s (APRS-IS): %s", dx, alertName);
+            }
+        }
+    }
+
+    if (g_config.inet2rf && s_inet2rfHandler)
+        s_inet2rfHandler(line);
+}
+
+// Assembles complete CR/LF-terminated lines out of a chunk of bytes just read
+// off the APRS-IS socket and calls onLine() for each one, sharing the exact
+// same framing state (linePos/discarding) and 512-byte APRS-IS line-length
+// enforcement across every recv() the caller makes - whether that is the
+// login task's own post-login banner read or the main RX loop's steady-state
+// reads. A line that exceeds APRS_IS_LINE_MAX is discarded in full: every
+// further byte up to the next terminator is consumed without being stored,
+// so framing resynchronises cleanly on the following line instead of handing
+// a truncated fragment to onLine().
+static void feedAprsIsBytes(const char *buf, int len, char *line, size_t lineCap, size_t *linePos, bool *discarding, void (*onLine)(char *line)) {
+    for (int i = 0; i < len; i++) {
+        char c = buf[i];
+        if (c == '\n' || c == '\r') {
+            if (*discarding) {
+                // The overflowing line ends here: drop it whole and
+                // resynchronise on the next line's first byte, rather than
+                // handing anything from it downstream.
+                *discarding = false;
+                *linePos = 0;
+            } else if (*linePos > 0) {
+                line[*linePos] = 0;
+                onLine(line);
+                *linePos = 0;
+            }
+        } else if (*linePos < lineCap - 1) {
+            line[(*linePos)++] = c;
+        } else if (!*discarding) {
+            // The line has exceeded the APRS-IS 512-byte limit: every byte
+            // received so far is unusable as a whole line, so stop
+            // accumulating and discard the rest up to the next terminator
+            // instead of processing a truncated remainder as if it were a
+            // complete packet.
+            *discarding = true;
+            *linePos = 0;
+            s_stats.dropByReason[DROP_IS_RX_LINE_TOO_LONG]++;
+            ESP_LOGW(TAG, "APRS-IS RX line exceeded %u bytes - discarding until next line", (unsigned)lineCap);
+        }
+    }
+}
+
 static int socketSnapshot(void) {
     ensureSockMutex();
     int sock = -1;
@@ -1075,6 +1211,43 @@ static void currentServer(char *host, size_t hostSize, uint16_t *port) {
     *port = g_config.aprs_server[idx].port;
     app_config_unlock();
     host[hostSize - 1] = 0;
+}
+
+// Framing/scratch state for the post-login banner read in connectAprsIs():
+// kept separate from igateTask()'s own line/linePos/discarding so the two
+// recv() sites never share mutable framing state across tasks, even though
+// in practice only the login sequence itself ever writes these before
+// s_sock is published.
+static char s_bannerLine[APRS_IS_LINE_MAX + 1];
+static bool s_bannerUnverified;
+static bool s_bannerIdentityMismatch;
+static char s_bannerExpectedIdentity[IGATE_IDENTITY_SIZE];
+
+// onLine callback for the banner read's feedAprsIsBytes() call. Every line -
+// packet or server comment - is first handed to processAprsIsLine(), the
+// same handler the main RX loop uses, so a packet arriving in the same
+// segment as the banner still reaches inet2rf. '#' lines are additionally
+// inspected here for the one-time banner classification connectAprsIs()
+// reports after the read: an "unverified" login, and a "# logresp <call> ..."
+// line whose echoed identity does not match what was sent, the one failure
+// mode that leaves messages addressed to this station undelivered while
+// everything else looks healthy.
+static void bannerOnLine(char *line) {
+    processAprsIsLine(line);
+    if (line[0] != '#')
+        return;
+
+    ESP_LOGI(TAG, "APRS-IS server banner: %s", line);
+    if (strstr(line, "unverified"))
+        s_bannerUnverified = true;
+
+    const char *logresp = strstr(line, "logresp ");
+    if (logresp != NULL) {
+        logresp += 8;
+        size_t idLen = strlen(s_bannerExpectedIdentity);
+        if (strncmp(logresp, s_bannerExpectedIdentity, idLen) != 0 || (logresp[idLen] != ' ' && logresp[idLen] != ','))
+            s_bannerIdentityMismatch = true;
+    }
 }
 
 static bool connectAprsIs(void) {
@@ -1267,30 +1440,28 @@ static bool connectAprsIs(void) {
 
     // Read the server's immediate response. javAPRSSrvr/aprsc reply with a
     // "# ... server ..." banner followed by a "# logresp CALL verified/unverified, server ..."
-    // line right after login. Surfacing this tells the user right away if
-    // their passcode or filter was rejected, rather than them having to
-    // infer it later from a total absence of "APRS-IS RX:" lines.
+    // line right after login, and - within the same SO_RCVTIMEO window or even
+    // the same TCP segment - may already be sending the first filtered packet.
+    // Every line this read produces goes through the same framer and the same
+    // processAprsIsLine() as the main RX loop, so nothing arriving alongside
+    // the banner is ever dropped on the floor; this block only adds the
+    // one-time classification of the '#' lines it cares about as they pass
+    // through.
     char resp[200];
     int rlen = recv(sock, resp, sizeof(resp) - 1, 0);
     if (rlen > 0) {
-        resp[rlen] = 0;
-        ESP_LOGI(TAG, "APRS-IS server banner: %s", resp);
-        if (strstr(resp, "unverified")) {
+        s_bannerUnverified = false;
+        s_bannerIdentityMismatch = false;
+        snprintf(s_bannerExpectedIdentity, sizeof(s_bannerExpectedIdentity), "%s", cfg_identity);
+        size_t bannerLinePos = 0;
+        bool bannerDiscarding = false;
+        feedAprsIsBytes(resp, rlen, s_bannerLine, sizeof(s_bannerLine), &bannerLinePos, &bannerDiscarding, bannerOnLine);
+        if (s_bannerUnverified) {
             ESP_LOGW(TAG, "APRS-IS login unverified - check aprs_mycall/aprs_passcode");
         }
-        // The server echoes the identity it accepted in its "# logresp <call>
-        // ..." line. Comparing it against what was sent turns a silent
-        // mismatch - the one failure mode that leaves messages addressed to
-        // this station undelivered while everything else looks healthy - into
-        // a log line an operator can act on.
-        const char *logresp = strstr(resp, "logresp ");
-        if (logresp != NULL) {
-            logresp += 8;
-            size_t idLen = strlen(cfg_identity);
-            if (strncmp(logresp, cfg_identity, idLen) != 0 || (logresp[idLen] != ' ' && logresp[idLen] != ',')) {
-                ESP_LOGW(TAG, "APRS-IS server accepted a different identity than the one sent (%s) - messages addressed to this station may not arrive",
-                         cfg_identity);
-            }
+        if (s_bannerIdentityMismatch) {
+            ESP_LOGW(TAG, "APRS-IS server accepted a different identity than the one sent (%s) - messages addressed to this station may not arrive",
+                     cfg_identity);
         }
     } else {
         ESP_LOGW(TAG, "No banner/login response received from APRS-IS server within timeout");
@@ -1303,8 +1474,11 @@ static bool connectAprsIs(void) {
     // Seeded here, not left at 0, so a server that accepts the login and then
     // sends nothing further is caught by the same silence timer as a link
     // that goes quiet mid-session - the RX loop's very first pass already has
-    // a meaningful "last heard from" instant to measure against.
-    s_lastRxUs = s_sessionStartUs;
+    // a meaningful "last heard from" instant to measure against. A banner
+    // read that actually returned bytes is itself a genuine sign of life, so
+    // it refreshes this timestamp again rather than leaving it at the moment
+    // the login line was sent.
+    s_lastRxUs = (rlen > 0) ? esp_timer_get_time() : s_sessionStartUs;
     xSemaphoreGive(s_sockMutex);
     ESP_LOGI(TAG, "Connected to APRS-IS %s:%u as %s", cfg_host, (unsigned)cfg_port, cfg_identity);
     trafficlog_add("Connected to APRS-IS %s:%u as %s", cfg_host, (unsigned)cfg_port, cfg_identity);
@@ -1449,129 +1623,7 @@ static void igateTask(void *arg) {
         int r = recv(sock, buf, sizeof(buf), 0);
         if (r > 0) {
             s_lastRxUs = esp_timer_get_time();
-            for (int i = 0; i < r; i++) {
-                char c = buf[i];
-                if (c == '\n' || c == '\r') {
-                    if (discarding) {
-                        // The overflowing line ends here: drop it whole and
-                        // resynchronise on the next line's first byte,
-                        // rather than handing anything from it downstream.
-                        discarding = false;
-                        linePos = 0;
-                    } else if (linePos > 0) {
-                        line[linePos] = 0;
-                        if (line[0] != '#') { // '#' = server comment/keepalive
-                            // Counts every packet received from APRS-IS,
-                            // regardless of whether inet2rf is enabled or the
-                            // line ends up relayed to RF below - this is the
-                            // total internet RX traffic, not just what was
-                            // actually transmitted on RF.
-                            s_stats.isRxCount++;
-                            // Information-level log of every message received
-                            // from APRS-IS, regardless of whether inet2rf is
-                            // enabled below, so all igate traffic is visible.
-                            ESP_LOGI(TAG, "APRS-IS RX: %s", line);
-                            {
-                                char dx[16];
-                                tnc2SrcCallsign(line, strlen(line), dx, sizeof(dx));
-
-                                // Position/object/item reports start their info
-                                // field (right after the first ':') with one of
-                                // !=/@; the symbol table and symbol code follow
-                                // the latitude/longitude fields. Handles both
-                                // no-timestamp ('!'/'=') and timestamped
-                                // ('/'/'@') formats - see aprs_extract_symbol().
-                                // A payload with no symbol of its own falls
-                                // back to the destination address and then
-                                // the source SSID of the TNC2 header, in the
-                                // precedence order of APRS101 chapter 21.
-                                char symTable = 0, symCode = 0;
-                                char decoded[APRS_RX_DECODED_BUF_SIZE] = "";
-                                const char *colon = strchr(line, ':');
-                                if (colon) {
-                                    const char *info = colon + 1;
-                                    size_t infoLen = strlen(info);
-                                    if (!aprs_extract_symbol(info, infoLen, &symTable, &symCode) && infoLen > 0)
-                                        aprs_symbol_from_tnc2_header(line, info[0], &symTable, &symCode);
-
-                                    // Same decode as the RF path, and the one
-                                    // place where it earns more than display:
-                                    // a packet relayed through APRS-IS reaches
-                                    // this station later than it was sent, so
-                                    // its own timestamp is the only statement
-                                    // of when the sender was where it says.
-                                    char destCall[10];
-                                    aprs_rx_report_t report;
-                                    const char *dest = aprs_tnc2_dest_call(line, destCall, sizeof(destCall)) ? destCall : NULL;
-                                    if (aprs_filter_decode_report(info, dest, &report))
-                                        aprs_filter_format_report(&report, decoded, sizeof(decoded));
-                                }
-
-                                trafficlog_add_pkt("RX-IS", dx, line, decoded, -1, symTable, symCode);
-
-                                // Mic-E position comment (APRS101 ch.10),
-                                // carried in the destination address and so
-                                // absent from the packet text logged above.
-                                // The internet feed reaches this station
-                                // through its own server-side filter, which
-                                // is a local one, so an emergency arriving
-                                // here is as close by as one heard on the
-                                // radio and is raised the same way.
-                                if (colon) {
-                                    const char *info = colon + 1;
-                                    char destCall[10];
-                                    const char *miceMsg = NULL;
-                                    bool miceEmergency = false;
-                                    if (aprs_tnc2_dest_call(line, destCall, sizeof(destCall)) &&
-                                        aprs_filter_mice_message(destCall, info, strlen(info), &miceMsg, &miceEmergency)) {
-                                        if (miceEmergency) {
-                                            ESP_LOGW(TAG, "Mic-E EMERGENCY from %s (APRS-IS)", dx);
-                                            trafficlog_add("Mic-E EMERGENCY from %s (APRS-IS)", dx);
-                                        } else {
-                                            ESP_LOGI(TAG, "Mic-E position comment from %s (APRS-IS): %s", dx, miceMsg);
-                                        }
-                                    }
-
-                                    // Bracketed comment-field alert code
-                                    // (aprs.org/aprs12/EmergencyCode.txt), the
-                                    // non-Mic-E equivalent of the check above.
-                                    // Same reasoning as the Mic-E case applies
-                                    // here: the internet feed's own filter is
-                                    // local, so an emergency arriving this way
-                                    // is raised the same as one heard on radio.
-                                    const char *alertName = NULL;
-                                    bool alertEmergency = false;
-                                    if (aprs_filter_comment_alert(info, strlen(info), &alertName, &alertEmergency)) {
-                                        if (alertEmergency) {
-                                            ESP_LOGW(TAG, "EMERGENCY from %s (APRS-IS)", dx);
-                                            trafficlog_add("EMERGENCY from %s (APRS-IS)", dx);
-                                        } else {
-                                            ESP_LOGI(TAG, "Comment alert from %s (APRS-IS): %s", dx, alertName);
-                                        }
-                                    }
-                                }
-                            }
-                            if (g_config.inet2rf && s_inet2rfHandler)
-                                s_inet2rfHandler(line);
-                        } else {
-                            ESP_LOGD(TAG, "APRS-IS keepalive: %s", line);
-                        }
-                        linePos = 0;
-                    }
-                } else if (linePos < sizeof(line) - 1) {
-                    line[linePos++] = c;
-                } else if (!discarding) {
-                    // The line has exceeded the APRS-IS 512-byte limit:
-                    // every byte received so far is unusable as a whole
-                    // line, so stop accumulating and discard the rest up to
-                    // the next terminator instead of processing a truncated
-                    // remainder as if it were a complete packet.
-                    discarding = true;
-                    linePos = 0;
-                    s_stats.dropByReason[DROP_IS_RX_LINE_TOO_LONG]++;
-                    ESP_LOGW(TAG, "APRS-IS RX line exceeded %u bytes - discarding until next line", (unsigned)sizeof(line));
-                }
-            }
+            feedAprsIsBytes(buf, r, line, sizeof(line), &linePos, &discarding, processAprsIsLine);
         } else if (r == 0) {
             ESP_LOGW(TAG, "APRS-IS connection closed by server");
             trafficlog_add("APRS-IS connection closed by server");

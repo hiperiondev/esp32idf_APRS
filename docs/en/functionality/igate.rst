@@ -59,9 +59,17 @@ The APRS-IS client task
   being ``FIRMWARE_INFO``, so the ``vers`` clause identifies *this* firmware
   to APRS-IS server operators. The line is logged exactly as sent (minus the
   CR/LF), so a malformed filter is visible; with no filter configured a second
-  line notes that the server's own default applies. The server banner and the
-  ``# logresp … verified/unverified`` line are surfaced; an ``unverified``
-  response raises a warning naming ``aprs_mycall`` / ``aprs_passcode``.
+  line notes that the server's own default applies. The read immediately
+  following login goes through the exact same line framer and packet handler
+  as the steady-state RX loop below, so a server that sends its banner, the
+  ``# logresp … verified/unverified`` line and the first filtered packet all
+  within one read still delivers that packet to ``inet2rf`` — nothing arriving
+  alongside the banner is ever dropped. The banner and ``# logresp`` lines are
+  additionally surfaced as their own log lines; an ``unverified`` response
+  raises a warning naming ``aprs_mycall`` / ``aprs_passcode``, and an echoed
+  identity that does not match the one sent raises a warning of its own, since
+  that is the failure mode that leaves messages addressed to this station
+  undelivered while everything else looks healthy.
 * **Server-side filter validation.** Before it is sent, ``g_config.aprs_filter``
   is checked for structural validity by
   ``aprs_filter_validate_server_string()`` — each space-separated term must be

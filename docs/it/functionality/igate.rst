@@ -63,10 +63,19 @@ Il task client APRS-IS
   firmware agli operatori dei server APRS-IS. La riga è registrata esattamente
   come viene inviata (senza il CR/LF), così che un filtro malformato sia
   visibile; senza filtro configurato una seconda riga segnala che vale il
-  valore predefinito del server. Il banner del server e la riga
-  ``# logresp … verified/unverified`` vengono mostrati; una risposta
-  ``unverified`` genera un avviso che nomina ``aprs_mycall`` /
-  ``aprs_passcode``.
+  valore predefinito del server. La lettura immediatamente successiva al
+  login passa attraverso lo stesso assemblatore di righe e lo stesso gestore
+  di pacchetti usati dal ciclo di ricezione a regime descritto più sotto, per
+  cui un server che invia il proprio banner, la riga
+  ``# logresp … verified/unverified`` e il primo pacchetto filtrato in
+  un'unica lettura consegna comunque quel pacchetto a ``inet2rf`` — nulla di
+  ciò che arriva insieme al banner viene scartato. Il banner e la riga
+  ``# logresp`` vengono inoltre mostrati come proprie righe di log; una
+  risposta ``unverified`` genera un avviso che nomina ``aprs_mycall`` /
+  ``aprs_passcode``, e un'identità restituita dal server diversa da quella
+  inviata genera un proprio avviso, poiché è questo il guasto che lascia non
+  recapitati i messaggi indirizzati a questa stazione mentre tutto il resto
+  sembra funzionare normalmente.
 * **Validazione del filtro lato server.** Prima di essere inviato,
   ``g_config.aprs_filter`` è controllato strutturalmente da
   ``aprs_filter_validate_server_string()`` — ogni termine separato da spazi deve
