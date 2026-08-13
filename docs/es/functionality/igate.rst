@@ -18,7 +18,22 @@ La tarea cliente de APRS-IS
 * **Condicionado a conectividad real**, no simplemente a que "el Wi-Fi está
   arriba": sondea ``net_state_is_connected()``, que solo se vuelve verdadero con
   ``IP_EVENT_STA_GOT_IP`` y falso de nuevo al desconectarse o en modo solo-AP.
-* **Línea de login:** ``user <mycall> pass <passcode> vers esp32_APRS_igate
+* **Identidad de login.** La estación se conecta con su **indicativo-SSID**
+  (``aprs_mycall`` más ``aprs_ssid``, p. ej. ``LU3VEA-10``; el indicativo
+  pelado cuando el SSID es 0 — una identidad APRS-IS no tiene forma ``-0``).
+  Es la misma cadena que ``stationIdentity()`` escribe detrás del constructo
+  ``qA*`` en las tramas pasarela y la misma que llevan como indicativo de
+  origen las balizas del IGate, y las tres le importan al servidor: según
+  `los detalles de IGate de aprs-is.net
+  <https://www.aprs-is.net/IGateDetails.aspx>`_ el servidor entrega un mensaje
+  de APRS-IS solo al cliente cuyo login coincide byte a byte con el
+  destinatario, de modo que **un mensaje dirigido a esta estación debe
+  dirigirse a su indicativo-SSID**, y un paquete se reconoce como originado
+  por el cliente —en vez de marcarse como retransmitido por un servidor— solo
+  cuando su indicativo de origen coincide con el login. El passcode no cambia:
+  se deriva del indicativo base sin el SSID, así que todos los SSID de una
+  misma estación comparten un passcode.
+* **Línea de login:** ``user <indicativo-SSID> pass <passcode> vers esp32_APRS_igate
   <versión>``, con `` filter <filter>`` añadido solo cuando hay un filtro de
   servidor configurado — el comando ``filter`` lleva uno o más términos, así
   que la cláusula se omite por completo en vez de enviarse como palabra clave
@@ -96,6 +111,37 @@ cuando ese nuevo intento también falla.
 El panel muestra el host y el puerto de la ranura en uso en ese momento
 (``igate_get_current_server()``), así que se ve de un vistazo en qué servidor se
 acabó tras un failover.
+
+Tráfico originado localmente
+============================
+
+Todo lo que esta estación pone por sí misma en APRS-IS —balizas de posición y
+de estado (Tracker, IGate, Digipeater), reportes meteorológicos, datos de
+telemetría y sus definiciones PARM/UNIT/EQNS/BITS, boletines, objetos e ítems,
+mensajes salientes y respuestas a consultas— sale por ``igate_send_raw()`` con
+``TCPIP*`` como ruta **completa**, y nada más. `La guía de conexión de
+aprs-is.net <https://www.aprs-is.net/Connecting.aspx>`_ enuncia la regla con
+esas palabras: un paquete originado en el cliente lleva ``TCPIP*`` en la ruta,
+ni más ni menos.
+
+Una ruta de digipetidores como ``WIDE1-1,WIDE2-1`` nombra repetidores en el
+aire. Un paquete inyectado directamente en APRS-IS no atraviesa ninguno, así
+que enviar esa ruta describe saltos que nunca ocurrieron: un servidor que no
+reconoce el indicativo de origen como el de su propio cliente conserva la ruta
+y marca el paquete como retransmitido (``,qAS,<login>``), y todo consumidor
+—aprs.fi incluido— muestra entonces la baliza propia de la estación como si
+hubiera sido repetida por el aire. Por eso también la identidad de login de más
+arriba tiene que llevar el SSID: es lo que le dice al servidor que el paquete
+es del propio cliente.
+
+Por eso cada originador arma **un paquete por pata** en vez de un paquete
+enviado dos veces. Las dos líneas son idénticas salvo por el sufijo de ruta: la
+pata de RF lleva la selección de digipetidores de la página de esa baliza
+(``aprs_path_build_suffix()``) y la pata de APRS-IS lleva
+``APRS_PATH_TCPIP_SUFFIX``, de ``main/include/aprs_path.h``, que es el único
+lugar donde se escribe ese literal. Las respuestas a consultas eligen entre las
+dos según el canal por el que llegó la pregunta, ya que la respuesta vuelve por
+donde vino.
 
 RF → INET (``igateProcess()``)
 ==============================

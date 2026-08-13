@@ -30,7 +30,7 @@
 
 #include "app_config.h"
 #include "aprs_coord.h"
-#include "aprs_path.h" // aprs_path_build_suffix_from_config()
+#include "aprs_path.h" // aprs_path_build_suffix_from_config(), APRS_PATH_TCPIP_SUFFIX
 #include "aprs_service.h"
 #include "beacon_scheduler.h" // beacon_scheduler_jitter()
 #include "igate.h"
@@ -518,15 +518,19 @@ static int build_wx_tokens(const wx_resolved_t r[WX_SENSOR_NUM], bool positionle
     return (int)u;
 }
 
-// Builds the full TNC2 line for the weather beacon. Returns length or 0.
-static int build_wx_packet(const wx_resolved_t r[WX_SENSOR_NUM], char *out, size_t outMax) {
+// Builds the full TNC2 line for the weather beacon. `path` is the path suffix
+// that goes between the destination address and the ':', leading comma
+// included: the caller picks it per leg, so an RF transmission carries the
+// operator's digipeater selection and an APRS-IS transmission carries
+// APRS_PATH_TCPIP_SUFFIX. Returns length or 0.
+static int build_wx_packet(const wx_resolved_t r[WX_SENSOR_NUM], const char *path, char *out, size_t outMax) {
     // Snapshot every g_config field this builder needs up front, under the
     // config lock, so the web task rewriting them during a save can't tear a
     // string mid-build (this runs on the 1 Hz weather task, async to saves).
     char cfg_call[10];
     char cfg_object[sizeof(g_config.wx_object)];
     char cfg_comment[COMMENT_SIZE];
-    uint8_t cfg_ssid, cfg_path;
+    uint8_t cfg_ssid;
     float cfg_lat, cfg_lon;
     bool cfg_timestamp;
     bool cfg_msg_capable;
@@ -537,7 +541,6 @@ static int build_wx_packet(const wx_resolved_t r[WX_SENSOR_NUM], char *out, size
         cfg_ssid = useWx ? g_config.wx_ssid : g_config.aprs_ssid;
         memcpy(cfg_object, g_config.wx_object, sizeof(cfg_object));
         memcpy(cfg_comment, g_config.wx_comment, sizeof(cfg_comment));
-        cfg_path = g_config.wx_path;
         cfg_lat = g_config.wx_lat;
         cfg_lon = g_config.wx_lon;
         cfg_timestamp = g_config.wx_timestamp;
@@ -563,9 +566,6 @@ static int build_wx_packet(const wx_resolved_t r[WX_SENSOR_NUM], char *out, size
         snprintf(callField, sizeof(callField), "%s-%d", call, (int)ssid);
     else
         snprintf(callField, sizeof(callField), "%s", call);
-
-    char path[80];
-    aprs_path_build_suffix_from_config(cfg_path, path, sizeof(path));
 
     // Timestamp (DHM zulu for positioned/object, MDHM for positionless).
     // Reduce each field modulo its cycle so the formatter can prove a 2-digit
@@ -660,10 +660,10 @@ static void peek_fields(wx_resolved_t out[WX_SENSOR_NUM]) {
 // responder) never disturbs the periodic beacon's own cadence or its next
 // average window. Shares build_wx_packet() with weather_beacon_service() so
 // the two encodings can never disagree.
-int weather_build_report_packet(char *out, size_t out_max) {
+int weather_build_report_packet(const char *path, char *out, size_t out_max) {
     wx_resolved_t r[WX_SENSOR_NUM];
     peek_fields(r);
-    return build_wx_packet(r, out, out_max);
+    return build_wx_packet(r, path, out, out_max);
 }
 
 // -------------------------------------------------------------------------
@@ -698,23 +698,35 @@ uint32_t weather_beacon_service(void) {
         wx_resolved_t r[WX_SENSOR_NUM];
         resolve_fields(r);
 
+        // One packet per leg: the two differ in their path, since a report
+        // injected straight into APRS-IS never traverses the digipeaters the
+        // RF leg names and carries APRS_PATH_TCPIP_SUFFIX instead
+        // (aprs-is.net/Connecting.aspx). Everything else comes from the same
+        // builder and the same reading snapshot.
         char packet[APRS_TNC2_BUF_SIZE]; // sized by the RF leg's own limit, so a line that does not fit is refused at build time
-        int len = build_wx_packet(r, packet, sizeof(packet));
-        if (len > 0) {
-            if (g_config.wx_2rf) {
+        if (g_config.wx_2rf) {
+            char path[80];
+            aprs_path_build_suffix_from_config(g_config.wx_path, path, sizeof(path));
+            int len = build_wx_packet(r, path, packet, sizeof(packet));
+            if (len > 0) {
                 if (aprs_service_send_tnc2(packet, (size_t)len))
                     ESP_LOGI(TAG, "WX beacon TX (RF): %s", packet);
                 else
                     ESP_LOGW(TAG, "WX beacon NOT sent over RF - modem not ready or busy: %s", packet);
+            } else {
+                ESP_LOGW(TAG, "WX packet not built - no callsign configured (set Weather or APRS callsign), or the line did not fit; skipping");
             }
-            if (g_config.wx_2inet) {
+        }
+        if (g_config.wx_2inet) {
+            int len = build_wx_packet(r, APRS_PATH_TCPIP_SUFFIX, packet, sizeof(packet));
+            if (len > 0) {
                 if (igate_send_raw(packet, (size_t)len))
                     ESP_LOGI(TAG, "WX beacon TX (INET): %s", packet);
                 else
                     ESP_LOGW(TAG, "WX beacon NOT sent over INET - APRS-IS not connected yet: %s", packet);
+            } else {
+                ESP_LOGW(TAG, "WX packet not built - no callsign configured (set Weather or APRS callsign), or the line did not fit; skipping");
             }
-        } else {
-            ESP_LOGW(TAG, "WX packet not built - no callsign configured (set Weather or APRS callsign), or the line did not fit; skipping");
         }
 
         // Same watermark log the beacon tasks emit: a tight stack shows up here

@@ -581,6 +581,12 @@ Pasarela APRS-IS
    * - Ingreso e identificación de software
      - ✅
      - La línea de ingreso lleva el indicativo, el passcode, el nombre y la versión del software, y el filtro del lado del servidor solo cuando hay uno configurado: nunca se manda la palabra clave de filtro pelada sin argumento.
+   * - Identidad de ingreso
+     - ✅
+     - La estación ingresa con su indicativo-SSID, la misma identidad que llevan como origen sus propios paquetes y la misma que sigue al constructo q en las tramas pasarela, escrita en un solo lugar para que las tres no puedan divergir. Es la dirección a la que hay que mandar un mensaje desde APRS-IS, ya que el servidor compara el destinatario con el ingreso de forma exacta.
+   * - Ruta del tráfico originado localmente
+     - ✅
+     - Todo lo que esta estación pone por sí misma en APRS-IS lleva ``TCPIP*`` como ruta completa y ningún alias de digipetidor. Cada originador arma un paquete por pata, así la transmisión de radio conserva la ruta de digipetidores del operador mientras que la de internet declara que el paquete fue inyectado y no repetido.
    * - Pasarela de RF a internet
      - ✅
      - Casillas de pasarela por tipo, un filtro de distancia alrededor de la estación, filtros de prefijo de indicativo y lista negra, y una lista de pasarela satelital para estaciones oídas a través de digipetidores espaciales.

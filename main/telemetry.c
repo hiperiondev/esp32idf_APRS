@@ -34,7 +34,7 @@
 #include "freertos/task.h"
 
 #include "app_config.h"
-#include "aprs_path.h" // aprs_path_build_suffix_from_config()
+#include "aprs_path.h" // aprs_path_build_suffix_from_config(), APRS_PATH_TCPIP_SUFFIX
 #include "aprs_service.h"
 #include "beacon_scheduler.h" // beacon_scheduler_jitter()
 #include "igate.h"
@@ -695,13 +695,24 @@ static void tlm_dest_field(const telemetry_config_t *s, char *out, size_t outMax
     snprintf(out, outMax, "%s", s->tocall[0] ? s->tocall : TLM_DEST);
 }
 
-// Digipeater path: prefers the free-text "Path (digipeaters)" picker from the
+// Path suffix for one leg of a telemetry report.
+//
+// The APRS-IS leg never carries a digipeater path: a report injected straight
+// into APRS-IS traverses no repeaters, and aprs-is.net/Connecting.aspx
+// requires a client's own traffic to carry APRS_PATH_TCPIP_SUFFIX and nothing
+// else.
+//
+// The RF leg prefers the free-text "Path (digipeaters)" picker from the
 // Report Parameters section (cfg->report_path, e.g. "WIDE1-1,WIDE2-1" - a
-// literal alias value copied from g_config.path[]). Falls back to the
+// literal alias value copied from g_config.path[]). It falls back to the
 // Beacon-section path bitmask (aprs_path_build_suffix_from_config()) when
-// report_path is empty,
-// so configurations that only set the bitmask keep working.
-static void tlm_path_field(const telemetry_config_t *s, char *out, size_t outMax) {
+// report_path is empty, so configurations that only set the bitmask keep
+// working.
+static void tlm_path_field(const telemetry_config_t *s, bool for_rf, char *out, size_t outMax) {
+    if (!for_rf) {
+        snprintf(out, outMax, "%s", APRS_PATH_TCPIP_SUFFIX);
+        return;
+    }
     if (s->report_path[0]) {
         int n = snprintf(out, outMax, ",%s", s->report_path);
         if (n < 0 || (size_t)n >= outMax)
@@ -815,7 +826,7 @@ static int build_tlm_data_packet(const telemetry_config_t *s, uint32_t seq, bool
     char dest[8];
     tlm_dest_field(s, dest, sizeof(dest));
     char path[80];
-    tlm_path_field(s, path, sizeof(path));
+    tlm_path_field(s, for_rf, path, sizeof(path));
 
     bool ana_bank_on = for_rf ? s->analog_tx2rf : s->analog_tx2inet;
     bool dig_bank_on = for_rf ? s->digital_tx2rf : s->digital_tx2inet;
@@ -999,6 +1010,11 @@ size_t telemetry_build_comment_tlm(char *out, size_t out_max) {
 // Shared "addressee" builder for the four telemetry metadata Messages
 // (PARM/UNIT/EQNS/BITS): left-justified, space-padded to 9 chars, as
 // required by APRS101 Ch.13/14 for the Message addressee field.
+//
+// Each of the four builders below takes the path suffix for the leg it is
+// being built for, on the same terms as build_tlm_data_packet(): the RF leg
+// sends these definitions direct, with no via path, and the APRS-IS leg
+// carries APRS_PATH_TCPIP_SUFFIX.
 static void tlm_addressee(const telemetry_config_t *s, const char *callField, char *out, size_t outMax) {
     snprintf(out, outMax, "%-9.9s", callField);
 }
@@ -1010,7 +1026,7 @@ static void tlm_addressee(const telemetry_config_t *s, const char *callField, ch
 // Only gen_parm-gated; only analog_count/digital_count channels are
 // considered "active" (channels beyond those counts are sent as empty
 // fields so the trailing-comma trim below can still drop them).
-static int build_tlm_parm_packet(const telemetry_config_t *s, char *out, size_t outMax) {
+static int build_tlm_parm_packet(const telemetry_config_t *s, const char *path, char *out, size_t outMax) {
     if (!s->mycall[0] || !s->gen_parm)
         return 0;
 
@@ -1043,7 +1059,7 @@ static int build_tlm_parm_packet(const telemetry_config_t *s, char *out, size_t 
     while (u > 0 && body[u - 1] == ',')
         body[--u] = '\0';
 
-    int len = snprintf(out, outMax, "%s>%s::%s:%s", callField, dest, addressee, body);
+    int len = snprintf(out, outMax, "%s>%s%s::%s:%s", callField, dest, path, addressee, body);
     if (len < 0)
         return 0;
     if (outMax > 0 && (size_t)len >= outMax)
@@ -1054,7 +1070,7 @@ static int build_tlm_parm_packet(const telemetry_config_t *s, char *out, size_t 
 // Builds the ":addressee:UNIT.unit1,...,unit13" Unit/Label Message (APRS101
 // Ch.13): the 5 analog channel units (cfg->UNIT[0..4]) followed by the 8
 // digital ON-state labels (cfg->UNIT[TLM_CH..TLM_PARM_NUM-1]). gen_unit-gated.
-static int build_tlm_unit_packet(const telemetry_config_t *s, char *out, size_t outMax) {
+static int build_tlm_unit_packet(const telemetry_config_t *s, const char *path, char *out, size_t outMax) {
     if (!s->mycall[0] || !s->gen_unit)
         return 0;
 
@@ -1085,7 +1101,7 @@ static int build_tlm_unit_packet(const telemetry_config_t *s, char *out, size_t 
     while (u > 0 && body[u - 1] == ',')
         body[--u] = '\0';
 
-    int len = snprintf(out, outMax, "%s>%s::%s:%s", callField, dest, addressee, body);
+    int len = snprintf(out, outMax, "%s>%s%s::%s:%s", callField, dest, path, addressee, body);
     if (len < 0)
         return 0;
     if (outMax > 0 && (size_t)len >= outMax)
@@ -1098,7 +1114,7 @@ static int build_tlm_unit_packet(const telemetry_config_t *s, char *out, size_t 
 // (cfg->ana_a/ana_b/ana_c[0..analog_count-1]), so a receiving station can
 // recover the engineering value from the raw "T#..." field via
 // value = a*raw^2 + b*raw + c. gen_eqns-gated.
-static int build_tlm_eqns_packet(const telemetry_config_t *s, char *out, size_t outMax) {
+static int build_tlm_eqns_packet(const telemetry_config_t *s, const char *path, char *out, size_t outMax) {
     if (!s->mycall[0] || !s->gen_eqns)
         return 0;
 
@@ -1123,7 +1139,7 @@ static int build_tlm_eqns_packet(const telemetry_config_t *s, char *out, size_t 
         u += (size_t)n;
     }
 
-    int len = snprintf(out, outMax, "%s>%s::%s:%s", callField, dest, addressee, body);
+    int len = snprintf(out, outMax, "%s>%s%s::%s:%s", callField, dest, path, addressee, body);
     if (len < 0)
         return 0;
     if (outMax > 0 && (size_t)len >= outMax)
@@ -1139,7 +1155,7 @@ static int build_tlm_eqns_packet(const telemetry_config_t *s, char *out, size_t 
 // build_tlm_parm_packet() above; the previous implementation of this
 // function sent tlm_bit_name[] here instead of sense flags, and never sent
 // the project title at all - both fixed here). gen_bits-gated.
-static int build_tlm_bits_packet(const telemetry_config_t *s, char *out, size_t outMax) {
+static int build_tlm_bits_packet(const telemetry_config_t *s, const char *path, char *out, size_t outMax) {
     if (!s->mycall[0] || !s->gen_bits)
         return 0;
 
@@ -1158,7 +1174,7 @@ static int build_tlm_bits_packet(const telemetry_config_t *s, char *out, size_t 
     char body[8 + TLM_BIT_NUM + 1 + sizeof(s->proj_title)];
     snprintf(body, sizeof(body), "BITS.%s,%s", sense, s->proj_title);
 
-    int len = snprintf(out, outMax, "%s>%s::%s:%s", callField, dest, addressee, body);
+    int len = snprintf(out, outMax, "%s>%s%s::%s:%s", callField, dest, path, addressee, body);
     if (len < 0)
         return 0;
     if (outMax > 0 && (size_t)len >= outMax)
@@ -1267,19 +1283,40 @@ uint32_t telemetry_beacon_service(void) {
         // Definition Messages: each of PARM./UNIT./EQNS./BITS. is sent as
         // its own Message packet, independently gated by its "Generate ..."
         // checkbox (cfg.gen_parm/gen_unit/gen_eqns/gen_bits).
+        //
+        // As with the data report, each leg gets its own line, because the
+        // path differs between them: on RF these Messages go out direct, and
+        // on APRS-IS they carry APRS_PATH_TCPIP_SUFFIX.
         char packet[280];
-        int len = build_tlm_parm_packet(&cfg, packet, sizeof(packet));
-        if (len > 0)
-            send_packet("TLM PARM", cfg.tx2rf, cfg.tx2inet, packet, (size_t)len);
-        len = build_tlm_unit_packet(&cfg, packet, sizeof(packet));
-        if (len > 0)
-            send_packet("TLM UNIT", cfg.tx2rf, cfg.tx2inet, packet, (size_t)len);
-        len = build_tlm_eqns_packet(&cfg, packet, sizeof(packet));
-        if (len > 0)
-            send_packet("TLM EQNS", cfg.tx2rf, cfg.tx2inet, packet, (size_t)len);
-        len = build_tlm_bits_packet(&cfg, packet, sizeof(packet));
-        if (len > 0)
-            send_packet("TLM BITS", cfg.tx2rf, cfg.tx2inet, packet, (size_t)len);
+        int len;
+        if (cfg.tx2rf) {
+            len = build_tlm_parm_packet(&cfg, "", packet, sizeof(packet));
+            if (len > 0)
+                send_packet("TLM PARM", true, false, packet, (size_t)len);
+            len = build_tlm_unit_packet(&cfg, "", packet, sizeof(packet));
+            if (len > 0)
+                send_packet("TLM UNIT", true, false, packet, (size_t)len);
+            len = build_tlm_eqns_packet(&cfg, "", packet, sizeof(packet));
+            if (len > 0)
+                send_packet("TLM EQNS", true, false, packet, (size_t)len);
+            len = build_tlm_bits_packet(&cfg, "", packet, sizeof(packet));
+            if (len > 0)
+                send_packet("TLM BITS", true, false, packet, (size_t)len);
+        }
+        if (cfg.tx2inet) {
+            len = build_tlm_parm_packet(&cfg, APRS_PATH_TCPIP_SUFFIX, packet, sizeof(packet));
+            if (len > 0)
+                send_packet("TLM PARM", false, true, packet, (size_t)len);
+            len = build_tlm_unit_packet(&cfg, APRS_PATH_TCPIP_SUFFIX, packet, sizeof(packet));
+            if (len > 0)
+                send_packet("TLM UNIT", false, true, packet, (size_t)len);
+            len = build_tlm_eqns_packet(&cfg, APRS_PATH_TCPIP_SUFFIX, packet, sizeof(packet));
+            if (len > 0)
+                send_packet("TLM EQNS", false, true, packet, (size_t)len);
+            len = build_tlm_bits_packet(&cfg, APRS_PATH_TCPIP_SUFFIX, packet, sizeof(packet));
+            if (len > 0)
+                send_packet("TLM BITS", false, true, packet, (size_t)len);
+        }
         s_info_next_due = now + (int64_t)info_iv;
     } else if (info_iv == 0) {
         s_info_next_due = now; // keep re-checking cheaply in case the operator sets an interval later

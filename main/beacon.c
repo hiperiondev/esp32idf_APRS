@@ -381,9 +381,14 @@ static void buildDataExtension(const beacon_params_t *p, char *out, size_t outMa
 // before and after it respectively, and are added by aprs_mice_encode()
 // itself.
 //
+// `path` is the TNC2 path suffix, leading comma included, that goes between
+// the destination address and the ':' - the caller picks it per leg, so an
+// RF transmission carries the operator's digipeater selection and an APRS-IS
+// transmission carries APRS_PATH_TCPIP_SUFFIX.
+//
 // Returns the packet length, or 0 if nothing usable is configured or the
 // position/line does not fit the Mic-E format.
-static int buildMicePositionPacket(const beacon_params_t *p, char *out, size_t outMax) {
+static int buildMicePositionPacket(const beacon_params_t *p, const char *path, char *out, size_t outMax) {
     if (!p->call[0])
         return 0;
 
@@ -392,9 +397,6 @@ static int buildMicePositionPacket(const beacon_params_t *p, char *out, size_t o
         snprintf(callField, sizeof(callField), "%s-%d", p->call, (int)p->ssid);
     else
         snprintf(callField, sizeof(callField), "%s", p->call);
-
-    char path[80];
-    aprs_path_build_suffix(p->pathSel, p->pathPreset, path, sizeof(path));
 
     aprs_mice_report_t report;
     memset(&report, 0, sizeof(report));
@@ -496,9 +498,11 @@ static int buildMicePositionPacket(const beacon_params_t *p, char *out, size_t o
     return n;
 }
 
-// Builds the full TNC2 text line for one beacon transmission. Returns the
-// packet length, or 0 if nothing usable is configured.
-static int buildPositionPacket(const beacon_params_t *p, char *out, size_t outMax) {
+// Builds the full TNC2 text line for one beacon transmission. `path` is the
+// path suffix for the leg this line is destined for, on the same terms as
+// buildMicePositionPacket() above. Returns the packet length, or 0 if nothing
+// usable is configured.
+static int buildPositionPacket(const beacon_params_t *p, const char *path, char *out, size_t outMax) {
     if (!p->call[0])
         return 0;
 
@@ -507,16 +511,13 @@ static int buildPositionPacket(const beacon_params_t *p, char *out, size_t outMa
     // so it is handled by a dedicated builder and takes priority over every
     // other layout choice below.
     if (p->mice)
-        return buildMicePositionPacket(p, out, outMax);
+        return buildMicePositionPacket(p, path, out, outMax);
 
     char callField[16];
     if (p->ssid > 0)
         snprintf(callField, sizeof(callField), "%s-%d", p->call, (int)p->ssid);
     else
         snprintf(callField, sizeof(callField), "%s", p->call);
-
-    char path[80];
-    aprs_path_build_suffix(p->pathSel, p->pathPreset, path, sizeof(path));
 
     // symbol = 2 chars: [0] symbol table ('/' primary or '\' alternate), [1] symbol code.
     // Falls back to a plain "car" symbol on the primary table if unset.
@@ -797,8 +798,11 @@ static void buildBeamErpBlock(int16_t beamDeg, uint16_t erpWatts, char *out, siz
 // not fit on its own the report is refused outright, on the same terms
 // buildPositionPacket() refuses an over-long position.
 //
+// `path` is the path suffix for the leg this line is destined for, on the
+// same terms as the position builders above.
+//
 // Returns the packet length, or 0 if nothing usable is configured.
-static int buildStatusPacket(const status_params_t *p, char *out, size_t outMax) {
+static int buildStatusPacket(const status_params_t *p, const char *path, char *out, size_t outMax) {
     if (!p->call[0] || !p->statusText[0])
         return 0;
 
@@ -807,9 +811,6 @@ static int buildStatusPacket(const status_params_t *p, char *out, size_t outMax)
         snprintf(callField, sizeof(callField), "%s-%d", p->call, (int)p->ssid);
     else
         snprintf(callField, sizeof(callField), "%s", p->call);
-
-    char path[80];
-    aprs_path_build_suffix(p->pathSel, p->pathPreset, path, sizeof(path));
 
     char freqBlock[24];
     objitem_build_freq_block(p->freqMhz, p->freqToneTenths, p->freqDuplex, p->freqOffsetKhz, 0, false, freqBlock, sizeof(freqBlock));
@@ -911,6 +912,92 @@ static int buildStatusPacket(const status_params_t *p, char *out, size_t outMax)
 }
 
 // ---------------------------------------------------------------------------
+// Per-leg transmission
+//
+// A beacon that is enabled on both legs is built twice, once per leg, because
+// the path is the one part of the line that differs between them: the RF leg
+// carries the digipeater path the operator selected on that beacon's page,
+// and the APRS-IS leg carries APRS_PATH_TCPIP_SUFFIX, which is what
+// aprs-is.net/Connecting.aspx requires of a client's own traffic. Both lines
+// come from the same builder and the same parameter snapshot, so nothing else
+// about them can drift apart.
+//
+// Each leg is also reported from what actually happened rather than from an
+// unconditional "beacon TX" line: igate_send_raw() returns false whenever the
+// APRS-IS uplink is not connected yet (no internet route at boot, for
+// instance), and aprs_service_send_tnc2() returns false when the modem is
+// busy, so a per-leg line keeps a transmission that never left from being
+// logged as one that did.
+// ---------------------------------------------------------------------------
+
+// Builds and sends one position beacon per enabled leg. `label` names the
+// beacon in the log lines ("Tracker beacon"), and `hint` completes the
+// "not built" warning with the setting the operator has to fill in.
+static void txPositionBeacon(const beacon_params_t *p, bool toRf, bool toInet, const char *label, const char *hint) {
+    char packet[APRS_TNC2_BUF_SIZE]; // sized by the RF leg's own limit, so a line that does not fit is refused at build time
+
+    if (toRf) {
+        char path[80];
+        aprs_path_build_suffix(p->pathSel, p->pathPreset, path, sizeof(path));
+        int len = buildPositionPacket(p, path, packet, sizeof(packet));
+        if (len > 0) {
+            if (aprs_service_send_tnc2(packet, (size_t)len))
+                ESP_LOGI(TAG, "%s TX (RF): %s", label, packet);
+            else
+                ESP_LOGW(TAG, "%s NOT sent over RF - modem not ready or busy: %s", label, packet);
+        } else {
+            ESP_LOGW(TAG, "%s not built - %s, or the line did not fit; skipping", label, hint);
+        }
+    }
+
+    if (toInet) {
+        int len = buildPositionPacket(p, APRS_PATH_TCPIP_SUFFIX, packet, sizeof(packet));
+        if (len > 0) {
+            if (igate_send_raw(packet, (size_t)len))
+                ESP_LOGI(TAG, "%s TX (INET): %s", label, packet);
+            else
+                ESP_LOGW(TAG, "%s NOT sent over INET - APRS-IS not connected yet: %s", label, packet);
+        } else {
+            ESP_LOGW(TAG, "%s not built - %s, or the line did not fit; skipping", label, hint);
+        }
+    }
+
+    ESP_LOGD(TAG, "%s: scheduler stack free: %u bytes", label, (unsigned)(uxTaskGetStackHighWaterMark(NULL) * sizeof(StackType_t)));
+}
+
+// Builds and sends one status report per enabled leg, on the same terms as
+// txPositionBeacon() above.
+static void txStatusBeacon(const status_params_t *p, bool toRf, bool toInet, const char *label, const char *hint) {
+    char packet[APRS_TNC2_BUF_SIZE]; // sized by the RF leg's own limit, so a line that does not fit is refused at build time
+
+    if (toRf) {
+        char path[80];
+        aprs_path_build_suffix(p->pathSel, p->pathPreset, path, sizeof(path));
+        int len = buildStatusPacket(p, path, packet, sizeof(packet));
+        if (len > 0) {
+            if (aprs_service_send_tnc2(packet, (size_t)len))
+                ESP_LOGI(TAG, "%s TX (RF): %s", label, packet);
+            else
+                ESP_LOGW(TAG, "%s NOT sent over RF - modem not ready or busy: %s", label, packet);
+        } else {
+            ESP_LOGW(TAG, "%s not built - %s, or the line did not fit; skipping", label, hint);
+        }
+    }
+
+    if (toInet) {
+        int len = buildStatusPacket(p, APRS_PATH_TCPIP_SUFFIX, packet, sizeof(packet));
+        if (len > 0) {
+            if (igate_send_raw(packet, (size_t)len))
+                ESP_LOGI(TAG, "%s TX (INET): %s", label, packet);
+            else
+                ESP_LOGW(TAG, "%s NOT sent over INET - APRS-IS not connected yet: %s", label, packet);
+        } else {
+            ESP_LOGW(TAG, "%s not built - %s, or the line did not fit; skipping", label, hint);
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Status beacons (Tracker / IGate / Digipeater "Status Beacon" fieldset).
 //
 // Each of the three position beacons above has a matching status-report
@@ -951,22 +1038,8 @@ static uint32_t trackerStatusService(void) {
         }
         app_config_unlock();
 
-        char packet[APRS_TNC2_BUF_SIZE]; // sized by the RF leg's own limit, so a line that does not fit is refused at build time
-        int len = buildStatusPacket(&p, packet, sizeof(packet));
-        if (len > 0) {
-            if (g_config.trk_loc2rf) {
-                if (aprs_service_send_tnc2(packet, (size_t)len))
-                    ESP_LOGI(TAG, "Tracker status TX (RF): %s", packet);
-                else
-                    ESP_LOGW(TAG, "Tracker status NOT sent over RF - modem not ready or busy: %s", packet);
-            }
-            if (g_config.trk_loc2inet) {
-                if (igate_send_raw(packet, (size_t)len))
-                    ESP_LOGI(TAG, "Tracker status TX (INET): %s", packet);
-                else
-                    ESP_LOGW(TAG, "Tracker status NOT sent over INET - APRS-IS not connected yet: %s", packet);
-            }
-        }
+        txStatusBeacon(&p, g_config.trk_loc2rf, g_config.trk_loc2inet, "Tracker status",
+                       "no callsign or status text configured (set the Tracker or APRS callsign and the status text)");
 
         s_trk_sts_next_due =
             now + (int64_t)beacon_scheduler_jitter(sched_clamp_interval(g_config.trk_sts_interval, BEACON_MIN_INTERVAL_S, BEACON_DEFAULT_INTERVAL_S));
@@ -1005,22 +1078,7 @@ static uint32_t igateStatusService(void) {
         }
         app_config_unlock();
 
-        char packet[APRS_TNC2_BUF_SIZE]; // sized by the RF leg's own limit, so a line that does not fit is refused at build time
-        int len = buildStatusPacket(&p, packet, sizeof(packet));
-        if (len > 0) {
-            if (g_config.igate_loc2rf) {
-                if (aprs_service_send_tnc2(packet, (size_t)len))
-                    ESP_LOGI(TAG, "IGate status TX (RF): %s", packet);
-                else
-                    ESP_LOGW(TAG, "IGate status NOT sent over RF - modem not ready or busy: %s", packet);
-            }
-            if (g_config.igate_loc2inet) {
-                if (igate_send_raw(packet, (size_t)len))
-                    ESP_LOGI(TAG, "IGate status TX (INET): %s", packet);
-                else
-                    ESP_LOGW(TAG, "IGate status NOT sent over INET - APRS-IS not connected yet: %s", packet);
-            }
-        }
+        txStatusBeacon(&p, g_config.igate_loc2rf, g_config.igate_loc2inet, "IGate status", "no APRS callsign or status text configured");
 
         s_igate_sts_next_due =
             now + (int64_t)beacon_scheduler_jitter(sched_clamp_interval(g_config.igate_sts_interval, BEACON_MIN_INTERVAL_S, BEACON_DEFAULT_INTERVAL_S));
@@ -1060,22 +1118,8 @@ static uint32_t digiStatusService(void) {
         }
         app_config_unlock();
 
-        char packet[APRS_TNC2_BUF_SIZE]; // sized by the RF leg's own limit, so a line that does not fit is refused at build time
-        int len = buildStatusPacket(&p, packet, sizeof(packet));
-        if (len > 0) {
-            if (g_config.digi_loc2rf) {
-                if (aprs_service_send_tnc2(packet, (size_t)len))
-                    ESP_LOGI(TAG, "Digipeater status TX (RF): %s", packet);
-                else
-                    ESP_LOGW(TAG, "Digipeater status NOT sent over RF - modem not ready or busy: %s", packet);
-            }
-            if (g_config.digi_loc2inet) {
-                if (igate_send_raw(packet, (size_t)len))
-                    ESP_LOGI(TAG, "Digipeater status TX (INET): %s", packet);
-                else
-                    ESP_LOGW(TAG, "Digipeater status NOT sent over INET - APRS-IS not connected yet: %s", packet);
-            }
-        }
+        txStatusBeacon(&p, g_config.digi_loc2rf, g_config.digi_loc2inet, "Digipeater status",
+                       "no callsign or status text configured (set the Digipeater or APRS callsign and the status text)");
 
         s_digi_sts_next_due =
             now + (int64_t)beacon_scheduler_jitter(sched_clamp_interval(g_config.digi_sts_interval, BEACON_MIN_INTERVAL_S, BEACON_DEFAULT_INTERVAL_S));
@@ -1146,32 +1190,7 @@ static uint32_t trackerBeaconService(void) {
         app_config_unlock();
         appendCommentTelemetry(&p);
 
-        char packet[APRS_TNC2_BUF_SIZE]; // sized by the RF leg's own limit, so a line that does not fit is refused at build time
-        int len = buildPositionPacket(&p, packet, sizeof(packet));
-        if (len > 0) {
-            // Log the RF and internet legs from what actually happened,
-            // rather than an unconditional "beacon TX" line. igate_send_raw()
-            // returns false (no bytes sent) whenever the APRS-IS uplink isn't
-            // connected yet (e.g. no internet route at boot), so logging per
-            // leg avoids reporting an internet transmission that was actually
-            // dropped because the connection was not up.
-            if (g_config.trk_loc2rf) {
-                if (aprs_service_send_tnc2(packet, (size_t)len))
-                    ESP_LOGI(TAG, "Tracker beacon TX (RF): %s", packet);
-                else
-                    ESP_LOGW(TAG, "Tracker beacon NOT sent over RF - modem not ready or busy: %s", packet);
-            }
-            if (g_config.trk_loc2inet) {
-                if (igate_send_raw(packet, (size_t)len))
-                    ESP_LOGI(TAG, "Tracker beacon TX (INET): %s", packet);
-                else
-                    ESP_LOGW(TAG, "Tracker beacon NOT sent over INET - APRS-IS not connected yet: %s", packet);
-            }
-
-            ESP_LOGD(TAG, "trk_beacon_task stack free: %u bytes", (unsigned)(uxTaskGetStackHighWaterMark(NULL) * sizeof(StackType_t)));
-        } else {
-            ESP_LOGW(TAG, "Tracker beacon not built - no callsign configured (set Tracker or APRS callsign), or the line did not fit; skipping");
-        }
+        txPositionBeacon(&p, g_config.trk_loc2rf, g_config.trk_loc2inet, "Tracker beacon", "no callsign configured (set Tracker or APRS callsign)");
 
         s_trk_next_due = now + (int64_t)beacon_scheduler_jitter(sched_clamp_interval(g_config.trk_interval, BEACON_MIN_INTERVAL_S, BEACON_DEFAULT_INTERVAL_S));
     }
@@ -1230,30 +1249,7 @@ static uint32_t igateBeaconService(void) {
         app_config_unlock();
         appendCommentTelemetry(&p);
 
-        char packet[APRS_TNC2_BUF_SIZE]; // sized by the RF leg's own limit, so a line that does not fit is refused at build time
-        int len = buildPositionPacket(&p, packet, sizeof(packet));
-        if (len > 0) {
-            // See the identical note in trackerBeaconTask(): log what each
-            // leg actually did instead of an unconditional line, so a
-            // not-yet-connected APRS-IS uplink doesn't look like a
-            // premature internet transmission.
-            if (g_config.igate_loc2rf) {
-                if (aprs_service_send_tnc2(packet, (size_t)len))
-                    ESP_LOGI(TAG, "IGate beacon TX (RF): %s", packet);
-                else
-                    ESP_LOGW(TAG, "IGate beacon NOT sent over RF - modem not ready or busy: %s", packet);
-            }
-            if (g_config.igate_loc2inet) {
-                if (igate_send_raw(packet, (size_t)len))
-                    ESP_LOGI(TAG, "IGate beacon TX (INET): %s", packet);
-                else
-                    ESP_LOGW(TAG, "IGate beacon NOT sent over INET - APRS-IS not connected yet: %s", packet);
-            }
-
-            ESP_LOGD(TAG, "igate_beacon_task stack free: %u bytes", (unsigned)(uxTaskGetStackHighWaterMark(NULL) * sizeof(StackType_t)));
-        } else {
-            ESP_LOGW(TAG, "IGate beacon not built - no APRS callsign configured, or the line did not fit; skipping");
-        }
+        txPositionBeacon(&p, g_config.igate_loc2rf, g_config.igate_loc2inet, "IGate beacon", "no APRS callsign configured");
 
         s_igate_next_due =
             now + (int64_t)beacon_scheduler_jitter(sched_clamp_interval(g_config.igate_interval, BEACON_MIN_INTERVAL_S, BEACON_DEFAULT_INTERVAL_S));
@@ -1306,10 +1302,10 @@ static void fillIgatePositionParams(beacon_params_t *p) {
     appendCommentTelemetry(p);
 }
 
-int beacon_build_igate_position_packet(char *out, size_t out_max) {
+int beacon_build_igate_position_packet(const char *path, char *out, size_t out_max) {
     beacon_params_t p;
     fillIgatePositionParams(&p);
-    return buildPositionPacket(&p, out, out_max);
+    return buildPositionPacket(&p, path, out, out_max);
 }
 
 bool beacon_parse_phg_extension(const char *field, char phg_digits[5], int *rate_out, const char **comment_out) {
@@ -1342,7 +1338,7 @@ bool beacon_parse_phg_extension(const char *field, char phg_digits[5], int *rate
     return true;
 }
 
-int beacon_build_igate_status_packet(char *out, size_t out_max) {
+int beacon_build_igate_status_packet(const char *path, char *out, size_t out_max) {
     // Same snapshot igateStatusService() takes, so the on-demand copy and the
     // periodic status beacon are byte-for-byte identical.
     status_params_t p = { 0 };
@@ -1363,7 +1359,7 @@ int beacon_build_igate_status_packet(char *out, size_t out_max) {
         p.freqOffsetKhz = g_config.igate_offset_khz;
     }
     app_config_unlock();
-    return buildStatusPacket(&p, out, out_max);
+    return buildStatusPacket(&p, path, out, out_max);
 }
 
 // ---------------------------------------------------------------------------
@@ -1406,30 +1402,7 @@ static uint32_t digiBeaconService(void) {
         app_config_unlock();
         appendCommentTelemetry(&p);
 
-        char packet[APRS_TNC2_BUF_SIZE]; // sized by the RF leg's own limit, so a line that does not fit is refused at build time
-        int len = buildPositionPacket(&p, packet, sizeof(packet));
-        if (len > 0) {
-            // See the identical note in trackerBeaconTask(): log what each
-            // leg actually did instead of an unconditional line, so a
-            // not-yet-connected APRS-IS uplink doesn't look like a
-            // premature internet transmission.
-            if (g_config.digi_loc2rf) {
-                if (aprs_service_send_tnc2(packet, (size_t)len))
-                    ESP_LOGI(TAG, "Digipeater beacon TX (RF): %s", packet);
-                else
-                    ESP_LOGW(TAG, "Digipeater beacon NOT sent over RF - modem not ready or busy: %s", packet);
-            }
-            if (g_config.digi_loc2inet) {
-                if (igate_send_raw(packet, (size_t)len))
-                    ESP_LOGI(TAG, "Digipeater beacon TX (INET): %s", packet);
-                else
-                    ESP_LOGW(TAG, "Digipeater beacon NOT sent over INET - APRS-IS not connected yet: %s", packet);
-            }
-
-            ESP_LOGD(TAG, "digi_beacon_task stack free: %u bytes", (unsigned)(uxTaskGetStackHighWaterMark(NULL) * sizeof(StackType_t)));
-        } else {
-            ESP_LOGW(TAG, "Digipeater beacon not built - no callsign configured (set Digipeater or APRS callsign), or the line did not fit; skipping");
-        }
+        txPositionBeacon(&p, g_config.digi_loc2rf, g_config.digi_loc2inet, "Digipeater beacon", "no callsign configured (set Digipeater or APRS callsign)");
 
         s_digi_next_due =
             now + (int64_t)beacon_scheduler_jitter(sched_clamp_interval(g_config.digi_interval, BEACON_MIN_INTERVAL_S, BEACON_DEFAULT_INTERVAL_S));

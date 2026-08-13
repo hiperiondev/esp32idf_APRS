@@ -105,7 +105,7 @@ General queries
      - ``query_aprs_en``
      - This station's own position report, built with
        ``beacon_build_igate_position_packet()`` — byte-for-byte what the IGate
-       position beacon would have sent.
+       position beacon sends on the same channel.
    * - ``?WX?``
      - ``query_wx_en``
      - The latest cached Weather Report, built with
@@ -142,9 +142,9 @@ available in that set; the remaining, list-style ones additionally require
    * - ``?APRSP``
      - Position report (same builder as ``?APRS?``).
    * - ``?APRSS``
-     - Status report, byte-for-byte what the IGate status beacon would send —
-       including the Maidenhead locator block when that Station-page option is
-       on.
+     - Status report, byte-for-byte what the IGate status beacon sends on the
+       same channel — including the Maidenhead locator block when that
+       Station-page option is on.
    * - ``?APRSD``
      - The stations heard **direct** (not via a digipeater), as an APRS text
        message back to the asker. Whole callsigns are dropped rather than

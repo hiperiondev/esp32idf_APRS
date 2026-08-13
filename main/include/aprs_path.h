@@ -57,6 +57,28 @@
 #define APRS_PATH_PRESET_SIZE  72 /**< Size of one preset slot, including the NUL. */
 #define APRS_PATH_MAX_HOPS     8  /**< AX.25 limit on via (digipeater) addresses in one frame. */
 
+/**
+ * @brief The complete path suffix a locally-originated packet carries on its
+ * APRS-IS leg.
+ *
+ * The presets above describe digipeaters on the air, which is the one place a
+ * WIDEn-N alias means anything. A packet this station injects straight into
+ * APRS-IS never traverses them, so aprs-is.net/Connecting.aspx requires the
+ * client's own traffic to carry "TCPIP*" in the path and nothing else -
+ * "MYCALL-10>APZ32L,TCPIP*:...". A server receiving an RF path on a packet
+ * whose source callsign is not the login identity keeps that path and tags the
+ * packet as relayed (",qAS,<login>"), which publishes a hop sequence that never
+ * happened; a server that does recognise the login discards the path bytes it
+ * was sent. Either way the RF path is never useful there.
+ *
+ * Every originator in this project builds one packet per leg and appends this
+ * suffix to the APRS-IS one, so the literal exists once and every leg spells it
+ * the same way. It includes the leading comma, exactly like the suffix
+ * aprs_path_build_suffix() produces, so the two are interchangeable at a call
+ * site that only differs by leg.
+ */
+#define APRS_PATH_TCPIP_SUFFIX ",TCPIP*"
+
 /** @brief ESP-IDF log tag used by the warning this header emits when a bitmask exceeds the AX.25 hop limit. */
 #define APRS_PATH_LOG_TAG "aprs_path"
 

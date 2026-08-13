@@ -73,6 +73,17 @@ Cada subsistema expone una ``*_service()`` que:
 
 ``beacon_service()`` gestiona las tres balizas de posición en una sola pasada.
 
+Una baliza habilitada en ambas patas se arma **dos veces**, una por pata, y las
+dos líneas difieren exactamente en un punto: la ruta. La transmisión de radio
+lleva la selección de digipetidores hecha en la página de esa baliza; la
+transmisión por APRS-IS lleva ``TCPIP*`` y nada más, que es lo que `la guía de
+conexión de aprs-is.net <https://www.aprs-is.net/Connecting.aspx>`_ exige de un
+paquete originado en el cliente: un alias ``WIDEn-N`` enviado allí describiría
+repetidores por los que el paquete nunca pasó. Ambas líneas salen del mismo
+constructor y del mismo snapshot de configuración tomado bajo lock, así que
+nada más puede divergir entre ellas, y cada pata se registra por lo que
+realmente hizo en vez de con una sola línea incondicional.
+
 Fluctuación anti-colisión
 =========================
 

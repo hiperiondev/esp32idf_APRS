@@ -45,6 +45,11 @@
 
 static const char *TAG = "igate";
 
+// Size of a buffer holding this station's APRS-IS identity: the 9-character
+// callsign field of app_config_t, the "-15" SSID suffix and the NUL, with a
+// little room to spare.
+#define IGATE_IDENTITY_SIZE 16
+
 struct DupPacketCache {
     char hash[16];
     unsigned long timestamp;
@@ -135,6 +140,27 @@ static void tnc2SrcCallsign(const char *data, size_t len, char *out, size_t outM
             return;
         }
     }
+}
+
+// Spells one station identity the single way this firmware puts a callsign on
+// APRS-IS: "CALL-SSID", or the bare callsign when the SSID is 0 (an APRS-IS
+// identity has no "-0" form). Every place the station names itself to the
+// server goes through here - the login line, the callsign-SSID that follows
+// the q construct on gated frames, and the source callsign of the frames
+// themselves - so the server sees one identity from this station and not
+// several.
+//
+// That identity is what aprsc matches a client's own traffic against
+// (aprs-is.net/Connecting.aspx, IGating.aspx): an inbound message is delivered
+// only when its addressee equals the login exactly, and an outbound packet is
+// recognised as originated by the client, rather than relayed, only when its
+// source callsign equals the login exactly. out is always NUL-terminated;
+// out_size must be at least 1.
+static void stationIdentity(const char *call, uint8_t ssid, char *out, size_t out_size) {
+    if (ssid > 0)
+        snprintf(out, out_size, "%s-%d", call, (int)ssid);
+    else
+        snprintf(out, out_size, "%s", call);
 }
 
 igate_stats_t igate_get_stats(void) {
@@ -822,19 +848,18 @@ int igateProcess(ax25_msg_t *packet) {
     char qSrc[12];
     if (thirdParty)
         snprintf(qSrc, sizeof(qSrc), "%s", effSrc);
-    else if (packet->src.ssid > 0)
-        snprintf(qSrc, sizeof(qSrc), "%s-%d", packet->src.call, packet->src.ssid);
     else
-        snprintf(qSrc, sizeof(qSrc), "%s", packet->src.call);
+        stationIdentity(packet->src.call, packet->src.ssid, qSrc, sizeof(qSrc));
 
     // The callsign-SSID that follows the q construct is always this station's
     // own login identity - never a cosmetic label - and no other part of the
-    // path is touched.
+    // path is touched. It is spelled by the same helper connectAprsIs() logs
+    // in with, so the two cannot disagree.
+    char identity[IGATE_IDENTITY_SIZE];
+    stationIdentity(cfg_mycall, cfg_ssid, identity, sizeof(identity));
+
     const char *qConstruct = qConstructFor(qSrc, cfg_window);
-    if (cfg_ssid > 0)
-        str_append(header, sizeof(header), &headerLen, ",%s,%s-%d", qConstruct, cfg_mycall, cfg_ssid);
-    else
-        str_append(header, sizeof(header), &headerLen, ",%s,%s", qConstruct, cfg_mycall);
+    str_append(header, sizeof(header), &headerLen, ",%s,%s", qConstruct, identity);
 
     if (!str_append(header, sizeof(header), &headerLen, ":")) {
         // Header buffer exhausted (an excessively long repeater path) - a rare
@@ -1048,7 +1073,6 @@ static bool connectAprsIs(void) {
     memcpy(cfg_filter, g_config.aprs_filter, sizeof(cfg_filter));
     cfg_ssid = g_config.aprs_ssid;
     app_config_unlock();
-    (void)cfg_ssid;
 
     // cfg_host is already NUL-terminated by currentServer(). The three
     // memcpy() calls above copy the full field width, so termination for
@@ -1062,6 +1086,22 @@ static bool connectAprsIs(void) {
     cfg_passcode[sizeof(cfg_passcode) - 1] = 0;
     cfg_filter[sizeof(cfg_filter) - 1] = 0;
 
+    // The identity this station logs in under is its callsign-SSID, the same
+    // string stationIdentity() puts after the q construct on gated frames and
+    // the same one its beacons carry as their source callsign. The server
+    // compares all three: aprsc delivers a message from APRS-IS only to the
+    // client whose login equals the addressee byte for byte
+    // (aprs-is.net/IGateDetails.aspx), and treats a packet as originated by
+    // the client - rewriting its path to TCPIP* rather than tagging it as
+    // relayed through a server - only when its source callsign equals the
+    // login. An identity that differs by an SSID is a different station to
+    // the server, so this station would never receive a message addressed to
+    // the SSID it beacons under. The passcode is no obstacle: it is derived
+    // from the base callsign with the SSID stripped, which is why every
+    // callsign-SSID of one station shares one passcode.
+    char cfg_identity[IGATE_IDENTITY_SIZE];
+    stationIdentity(cfg_mycall, cfg_ssid, cfg_identity, sizeof(cfg_identity));
+
     // APRS-IS is a line-oriented protocol: the login below is a single raw
     // "user <call> pass <code> vers ... filter <spec>\r\n" line, and every one
     // of those three fields is free-form user input (web "IGate" page) that
@@ -1074,7 +1114,7 @@ static bool connectAprsIs(void) {
     // validators each entry path happens to pass through: none of a callsign,
     // a numeric passcode or a server-side filter spec can legitimately contain
     // a line break, so replacing one with a space costs nothing.
-    char *const login_fields[] = { cfg_mycall, cfg_passcode, cfg_filter };
+    char *const login_fields[] = { cfg_identity, cfg_passcode, cfg_filter };
     for (size_t f = 0; f < sizeof(login_fields) / sizeof(login_fields[0]); f++) {
         for (char *p = login_fields[f]; *p; p++) {
             if (*p == '\r' || *p == '\n')
@@ -1172,7 +1212,7 @@ static bool connectAprsIs(void) {
     // server a bare keyword to make sense of.
     char login[160];
     size_t loginLen = 0;
-    str_append(login, sizeof(login), &loginLen, "user %s pass %s vers %s %s", cfg_mycall, cfg_passcode, APRS_SOFTWARE_NAME, APRS_SOFTWARE_VERSION);
+    str_append(login, sizeof(login), &loginLen, "user %s pass %s vers %s %s", cfg_identity, cfg_passcode, APRS_SOFTWARE_NAME, APRS_SOFTWARE_VERSION);
     if (cfg_filter[0])
         str_append(login, sizeof(login), &loginLen, " filter %s", cfg_filter);
 
@@ -1215,6 +1255,20 @@ static bool connectAprsIs(void) {
         if (strstr(resp, "unverified")) {
             ESP_LOGW(TAG, "APRS-IS login unverified - check aprs_mycall/aprs_passcode");
         }
+        // The server echoes the identity it accepted in its "# logresp <call>
+        // ..." line. Comparing it against what was sent turns a silent
+        // mismatch - the one failure mode that leaves messages addressed to
+        // this station undelivered while everything else looks healthy - into
+        // a log line an operator can act on.
+        const char *logresp = strstr(resp, "logresp ");
+        if (logresp != NULL) {
+            logresp += 8;
+            size_t idLen = strlen(cfg_identity);
+            if (strncmp(logresp, cfg_identity, idLen) != 0 || (logresp[idLen] != ' ' && logresp[idLen] != ',')) {
+                ESP_LOGW(TAG, "APRS-IS server accepted a different identity than the one sent (%s) - messages addressed to this station may not arrive",
+                         cfg_identity);
+            }
+        }
     } else {
         ESP_LOGW(TAG, "No banner/login response received from APRS-IS server within timeout");
     }
@@ -1229,8 +1283,8 @@ static bool connectAprsIs(void) {
     // a meaningful "last heard from" instant to measure against.
     s_lastRxUs = s_sessionStartUs;
     xSemaphoreGive(s_sockMutex);
-    ESP_LOGI(TAG, "Connected to APRS-IS %s:%u as %s", cfg_host, (unsigned)cfg_port, cfg_mycall);
-    trafficlog_add("Connected to APRS-IS %s:%u as %s", cfg_host, (unsigned)cfg_port, cfg_mycall);
+    ESP_LOGI(TAG, "Connected to APRS-IS %s:%u as %s", cfg_host, (unsigned)cfg_port, cfg_identity);
+    trafficlog_add("Connected to APRS-IS %s:%u as %s", cfg_host, (unsigned)cfg_port, cfg_identity);
     return true;
 }
 

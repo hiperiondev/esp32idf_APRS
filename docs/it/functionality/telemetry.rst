@@ -85,6 +85,14 @@ finali non usati (``omit_trailing``), un commento a testo libero in coda
 (``trail_comment``), e il numero di canali analogici/digitali effettivamente
 inviati (``analog_count`` / ``digital_count``).
 
+``report_path`` si applica solo alla trasmissione radio. La trasmissione via
+APRS-IS di un rapporto di telemetria — dati e definizioni allo stesso modo —
+porta ``TCPIP*`` come percorso completo, come `la guida alla connessione di
+aprs-is.net <https://www.aprs-is.net/Connecting.aspx>`_ richiede al traffico
+proprio di un client, quindi ogni tratta abilitata è costruita come una riga a
+sé. I Messaggi di definizione escono in aria senza percorso di digipeater,
+diretti, come sempre.
+
 Impostare ``field_width`` a 3 riempie con zeri ogni valore analogico a tre
 cifre, 000-999 - l'intervallo che APRS 1.2 consente per questo campo, esteso
 rispetto alla finestra originale 000-255 di APRS101. Un canale la cui

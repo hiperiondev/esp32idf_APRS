@@ -70,6 +70,17 @@ Each subsystem exposes a ``*_service()`` that:
 
 ``beacon_service()`` handles all three position beacons in one pass.
 
+A beacon enabled on both legs is built **twice**, once per leg, and the two
+lines differ in exactly one place: the path. The radio transmission carries the
+digipeater selection made on that beacon's own page; the APRS-IS transmission
+carries ``TCPIP*`` and nothing else, which is what `aprs-is.net's connection
+guidance <https://www.aprs-is.net/Connecting.aspx>`_ requires of a packet
+originating from the client — a ``WIDEn-N`` alias sent there would describe
+repeaters the packet never passed through. Both lines come from the same
+builder and the same locked configuration snapshot, so nothing else about them
+can drift apart, and each leg is logged from what it actually did rather than
+from a single unconditional line.
+
 Anti-collision jitter
 =====================
 

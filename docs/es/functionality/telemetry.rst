@@ -85,6 +85,14 @@ analógico (``field_width``), una opción para omitir los canales finales no usa
 el número de canales analógicos/digitales realmente enviados (``analog_count`` /
 ``digital_count``).
 
+``report_path`` se aplica solo a la transmisión de radio. La transmisión por
+APRS-IS de un reporte de telemetría —datos y definiciones por igual— lleva
+``TCPIP*`` como ruta completa, tal como `la guía de conexión de aprs-is.net
+<https://www.aprs-is.net/Connecting.aspx>`_ exige del tráfico propio de un
+cliente, así que cada pata habilitada se arma como su propia línea. Los
+Mensajes de definición salen al aire sin ruta de digipetidores, directo, como
+siempre.
+
 Poner ``field_width`` en 3 rellena con ceros cada valor analógico a tres
 dígitos, 000-999 - el rango que permite APRS 1.2 para este campo, ampliado
 respecto a la ventana original 000-255 de APRS101. Un canal cuya estación

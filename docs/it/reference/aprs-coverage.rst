@@ -582,6 +582,12 @@ Gateway APRS-IS
    * - Accesso e identificazione del software
      - ✅
      - La riga di accesso porta il nominativo, il passcode, il nome e la versione del software, e il filtro lato server solo quando ne è configurato uno: la parola chiave di filtro nuda senza argomento non viene mai inviata.
+   * - Identità di accesso
+     - ✅
+     - La stazione accede con il proprio nominativo-SSID, la stessa identità che i suoi pacchetti portano come sorgente e la stessa che segue il costrutto q sulle trame instradate, scritta in un unico punto perché le tre non possano divergere. È l'indirizzo a cui va inviato un messaggio da APRS-IS, dato che il server confronta il destinatario con l'accesso in modo esatto.
+   * - Percorso del traffico originato localmente
+     - ✅
+     - Tutto ciò che questa stazione immette da sé in APRS-IS porta ``TCPIP*`` come percorso completo e nessun alias di digipeater. Ogni originatore costruisce un pacchetto per tratta, così la trasmissione radio conserva il percorso di digipeater dell'operatore mentre quella internet dichiara che il pacchetto è stato immesso e non ripetuto.
    * - Gateway da RF a internet
      - ✅
      - Caselle di gateway per tipo, un filtro di distanza attorno alla stazione, filtri di prefisso di nominativo e lista nera, e un elenco di gateway satellitare per stazioni udite tramite digipeater spaziali.

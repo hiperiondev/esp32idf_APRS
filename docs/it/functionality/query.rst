@@ -109,8 +109,8 @@ Query generali
    * - ``?APRS?``
      - ``query_aprs_en``
      - Il rapporto di posizione della stazione, costruito con
-       ``beacon_build_igate_position_packet()`` — byte per byte ciò che avrebbe
-       inviato il beacon di posizione dell'IGate.
+       ``beacon_build_igate_position_packet()`` — byte per byte ciò che invia
+       il beacon di posizione dell'IGate sullo stesso canale.
    * - ``?WX?``
      - ``query_wx_en``
      - L'ultimo Rapporto Meteo in cache, costruito con
@@ -149,9 +149,9 @@ inoltre *Query dirette estese* (``query_ext_en``).
    * - ``?APRSP``
      - Rapporto di posizione (stesso costruttore di ``?APRS?``).
    * - ``?APRSS``
-     - Rapporto di stato, byte per byte ciò che invierebbe il beacon di stato
-       dell'IGate — incluso il blocco del locatore Maidenhead quando quell'opzione
-       della pagina Station è attiva.
+     - Rapporto di stato, byte per byte ciò che invia il beacon di stato
+       dell'IGate sullo stesso canale — incluso il blocco del locatore
+       Maidenhead quando quell'opzione della pagina Station è attiva.
    * - ``?APRSD``
      - Le stazioni sentite **dirette** (non via digipeater), come messaggio di
        testo APRS di ritorno a chi ha chiesto. Vengono scartati nominativi interi

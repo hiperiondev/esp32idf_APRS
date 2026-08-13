@@ -578,6 +578,12 @@ APRS-IS gatewaying
    * - Login and software identification
      - ✅
      - The login line carries the callsign, passcode, software name and version, and the server-side filter only when one is configured — a bare filter keyword with no argument is never sent.
+   * - Login identity
+     - ✅
+     - The station logs in under its callsign-SSID, the same identity its own packets carry as their source and the same one that follows the q construct on gated frames, spelled in one place so the three cannot drift apart. This is the address a message from APRS-IS has to be sent to, since the server matches the addressee against the login exactly.
+   * - Path on locally-originated traffic
+     - ✅
+     - Everything this station puts on APRS-IS itself carries ``TCPIP*`` as its whole path and no digipeater aliases. Each originator builds one packet per leg, so the radio transmission keeps the operator's digipeater path while the internet one states that the packet was injected rather than repeated.
    * - RF to internet gatewaying
      - ✅
      - Per-type gating checkboxes, a range filter around the station, callsign prefix and blacklist filters, and a satellite gateway list for stations heard through space digipeaters.

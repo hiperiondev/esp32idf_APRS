@@ -29,7 +29,7 @@
 #include "BMP180.h" // bmp180_gpio_is_reserved(): keep the I2C pins out of the alarm pin
 #include "afsk.h"   // afsk_ptt_gpio_is_valid(), MODEM_ADC_GPIO / MODEM_DAC_GPIO (checked internally by afsk_ptt_gpio_is_valid())
 #include "app_config.h"
-#include "aprs_path.h"                          // aprs_path_build_suffix_from_config()
+#include "aprs_path.h"                          // aprs_path_build_suffix_from_config(), APRS_PATH_TCPIP_SUFFIX
 #include "aprs_service.h"                       // APRS_TOCALL: this station's destination call, same one every other packet type uses
 #include "esp32idf_radioamateur_modem_config.h" // MODEM_PTT_GPIO: the fixed PTT pin, checked directly below
 #include "json_escape.h"                        // json_escape()
@@ -533,7 +533,7 @@ static void txPacket(const char *myCall, const char *info) {
     if (g_config.msg_inet) {
         char packet[400];
         size_t len = 0;
-        if (str_append(packet, sizeof(packet), &len, "%s>" APRS_TOCALL ",TCPIP*:%s", myCall, info))
+        if (str_append(packet, sizeof(packet), &len, "%s>" APRS_TOCALL APRS_PATH_TCPIP_SUFFIX ":%s", myCall, info))
             s_txHandler(packet, len, MSG_CHANNEL_INET);
         else
             ESP_LOGW(TAG, "INET message too long for a %u byte frame, dropped: %s", (unsigned)sizeof(packet), info);

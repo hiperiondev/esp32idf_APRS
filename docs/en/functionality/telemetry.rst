@@ -82,6 +82,13 @@ auto-incrementing sequence number (``auto_seq``), analog field width
 number of analog/digital channels actually sent (``analog_count`` /
 ``digital_count``).
 
+``report_path`` applies to the radio transmission only. The APRS-IS
+transmission of a telemetry report - data and definitions alike - carries
+``TCPIP*`` as its whole path, as `aprs-is.net's connection guidance
+<https://www.aprs-is.net/Connecting.aspx>`_ requires of a client's own
+traffic, so each enabled leg is built as its own line. The definition Messages
+go out on the air with no via path, direct, as they always have.
+
 Setting ``field_width`` to 3 zero-pads each analog value to three digits,
 000-999 - the range APRS 1.2 allows for this field, extended from the
 original APRS101 000-255 window. A channel whose receiving station still

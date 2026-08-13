@@ -59,6 +59,12 @@ void beacon_start(void);
  * exactly like igateBeaconService() does internally, so a concurrent web save
  * cannot be observed mid-write.
  *
+ * @param path    TNC2 path suffix placed between the destination address and
+ *                the ':', leading comma included, chosen by the caller for
+ *                the leg the line is transmitted on: the digipeater suffix
+ *                aprs_path_build_suffix() builds for an RF transmission, or
+ *                ::APRS_PATH_TCPIP_SUFFIX for an APRS-IS one. Pass "" for no
+ *                path at all.
  * @param out     Destination buffer for the built TNC2 text line.
  * @param out_max Size of @p out in bytes; ::APRS_TNC2_BUF_SIZE is the size
  *                every other packet builder in this codebase uses.
@@ -66,7 +72,7 @@ void beacon_start(void);
  *         callsign set) or the built line does not fit @p out_max /
  *         APRS_TNC2_MAX_LEN.
  */
-int beacon_build_igate_position_packet(char *out, size_t out_max);
+int beacon_build_igate_position_packet(const char *path, char *out, size_t out_max);
 
 /**
  * @brief Parse an APRS "PHGphgd" Data Extension (APRS101 ch.7) from the start
@@ -105,6 +111,12 @@ bool beacon_parse_phg_extension(const char *field, char phg_digits[5], int *rate
  * Snapshots every g_config field it needs under app_config_lock(), exactly
  * like igateStatusService() does internally.
  *
+ * @param path    TNC2 path suffix placed between the destination address and
+ *                the ':', leading comma included, chosen by the caller for
+ *                the leg the line is transmitted on: the digipeater suffix
+ *                aprs_path_build_suffix() builds for an RF transmission, or
+ *                ::APRS_PATH_TCPIP_SUFFIX for an APRS-IS one. Pass "" for no
+ *                path at all.
  * @param out     Destination buffer for the built TNC2 text line.
  * @param out_max Size of @p out in bytes; ::APRS_TNC2_BUF_SIZE is the size
  *                every other packet builder in this codebase uses.
@@ -112,7 +124,7 @@ bool beacon_parse_phg_extension(const char *field, char phg_digits[5], int *rate
  *         configured, or the built line does not fit @p out_max /
  *         APRS_TNC2_MAX_LEN.
  */
-int beacon_build_igate_status_packet(char *out, size_t out_max);
+int beacon_build_igate_status_packet(const char *path, char *out, size_t out_max);
 
 /**
  * @brief Service all three position beacons (Tracker / IGate / Digipeater) in

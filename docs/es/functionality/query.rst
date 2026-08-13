@@ -107,8 +107,8 @@ Consultas generales
    * - ``?APRS?``
      - ``query_aprs_en``
      - El reporte de posición propio, construido con
-       ``beacon_build_igate_position_packet()`` — byte a byte lo que habría
-       enviado la baliza de posición del IGate.
+       ``beacon_build_igate_position_packet()`` — byte a byte lo que envía la
+       baliza de posición del IGate por ese mismo canal.
    * - ``?WX?``
      - ``query_wx_en``
      - El último Reporte Meteorológico en caché, construido con
@@ -147,9 +147,9 @@ además *Consultas dirigidas extendidas* (``query_ext_en``).
    * - ``?APRSP``
      - Reporte de posición (mismo constructor que ``?APRS?``).
    * - ``?APRSS``
-     - Reporte de estado, byte a byte lo que enviaría la baliza de estado del
-       IGate — incluido el bloque de locator Maidenhead cuando esa opción de la
-       página Station está activa.
+     - Reporte de estado, byte a byte lo que envía la baliza de estado del
+       IGate por ese mismo canal — incluido el bloque de locator Maidenhead
+       cuando esa opción de la página Station está activa.
    * - ``?APRSD``
      - Las estaciones oídas **directo** (no vía digipeater), como mensaje de
        texto APRS de vuelta al que pregunta. Se descartan indicativos enteros en

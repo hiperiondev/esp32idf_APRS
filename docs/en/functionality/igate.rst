@@ -18,7 +18,21 @@ The APRS-IS client task
 * **Gated on real connectivity**, not merely on "Wi-Fi is up": it polls
   ``net_state_is_connected()``, which becomes true only on
   ``IP_EVENT_STA_GOT_IP`` and false again on disconnect or AP-only mode.
-* **Login line:** ``user <mycall> pass <passcode> vers esp32_APRS_igate
+* **Login identity.** The station logs in as its **callsign-SSID**
+  (``aprs_mycall`` plus ``aprs_ssid``, e.g. ``LU3VEA-10``; the bare callsign
+  when the SSID is 0 — an APRS-IS identity has no ``-0`` form). This is the
+  same string ``stationIdentity()`` writes after the ``qA*`` construct on
+  gated frames and the same one the IGate's own beacons carry as their source
+  callsign, and all three matter to the server: `aprs-is.net's IGate details
+  <https://www.aprs-is.net/IGateDetails.aspx>`_ has the server deliver a
+  message from APRS-IS only to the client whose login equals the addressee
+  byte for byte, so **a message addressed to this station must be addressed to
+  its callsign-SSID**, and a packet is recognised as originated by the client
+  — rather than tagged as relayed through a server — only when its source
+  callsign equals the login. The passcode is unaffected: it is derived from
+  the base callsign with the SSID stripped, so every SSID of one station
+  shares one passcode.
+* **Login line:** ``user <call-ssid> pass <passcode> vers esp32_APRS_igate
   <version>``, with `` filter <filter>`` appended only when a server-side
   filter is configured — the ``filter`` command takes one or more terms, so
   the clause is left out entirely rather than sent as a bare keyword. The
@@ -91,6 +105,35 @@ fresh attempt also fails.
 The dashboard shows the host and port of the slot in use at that moment
 (``igate_get_current_server()``), so which server a failover landed on is
 visible at a glance.
+
+Locally-originated traffic
+==========================
+
+Everything this station puts on APRS-IS itself — position and status beacons
+(Tracker, IGate, Digipeater), weather reports, telemetry data and its
+PARM/UNIT/EQNS/BITS definitions, bulletins, objects and items, outbound
+messages and query answers — goes out through ``igate_send_raw()`` with
+``TCPIP*`` as its **entire** path, and nothing else. `aprs-is.net's connection
+guidance <https://www.aprs-is.net/Connecting.aspx>`_ states the rule in those
+words: a packet originating from the client carries ``TCPIP*`` in the path,
+nothing more and nothing less.
+
+A digipeater path such as ``WIDE1-1,WIDE2-1`` names repeaters on the air. A
+packet injected straight into APRS-IS traverses none of them, so sending that
+path describes hops that never happened: a server that does not recognise the
+source callsign as its own client keeps the path and tags the packet as
+relayed (``,qAS,<login>``), and every consumer — aprs.fi included — then shows
+the station's own beacon as if it had been repeated across the air. This is
+also why the login identity above must carry the SSID: it is what tells the
+server the packet is the client's own.
+
+Every originator therefore builds **one packet per leg** rather than one packet
+sent twice. The two lines are identical except for the path suffix: the RF leg
+gets the digipeater selection from that beacon's own page
+(``aprs_path_build_suffix()``), and the APRS-IS leg gets
+``APRS_PATH_TCPIP_SUFFIX`` from ``main/include/aprs_path.h``, which is the one
+place that literal is spelled. Query answers pick between the two by the
+channel the question arrived on, since an answer goes back the way it came.
 
 RF → INET (``igateProcess()``)
 ==============================

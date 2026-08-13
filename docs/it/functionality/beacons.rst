@@ -73,6 +73,18 @@ Ogni sottosistema espone una ``*_service()`` che:
 
 ``beacon_service()`` gestisce i tre beacon di posizione in una singola passata.
 
+Un beacon abilitato su entrambe le tratte viene costruito **due volte**, una per
+tratta, e le due righe differiscono in un solo punto: il percorso. La
+trasmissione radio porta la selezione di digipeater fatta nella pagina di quel
+beacon; la trasmissione via APRS-IS porta ``TCPIP*`` e nient'altro, che è quanto
+`la guida alla connessione di aprs-is.net
+<https://www.aprs-is.net/Connecting.aspx>`_ richiede a un pacchetto originato
+dal client: un alias ``WIDEn-N`` inviato lì descriverebbe ripetitori che il
+pacchetto non ha mai attraversato. Entrambe le righe provengono dallo stesso
+costruttore e dallo stesso snapshot di configurazione preso sotto lock, quindi
+nient'altro può divergere fra loro, e ogni tratta è registrata per ciò che ha
+davvero fatto invece che con un'unica riga incondizionata.
+
 Jitter anti-collisione
 ======================
 

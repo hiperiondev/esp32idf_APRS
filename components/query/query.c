@@ -62,7 +62,7 @@
 
 #include "app_config.h"
 #include "aprs_filter.h"      // aprs_filter_haversine_km()
-#include "aprs_path.h"        // aprs_path_build_suffix_from_config()
+#include "aprs_path.h"        // aprs_path_build_suffix_from_config(), APRS_PATH_TCPIP_SUFFIX
 #include "aprs_service.h"     // APRS_TNC2_BUF_SIZE / APRS_TNC2_MAX_LEN
 #include "beacon.h"           // beacon_build_igate_position_packet() / beacon_build_igate_status_packet()
 #include "beacon_scheduler.h" // beacon_scheduler_wake()
@@ -441,6 +441,22 @@ static void txPacket(const char *packet, size_t len, query_source_t source) {
     s_txHandler(packet, len, querySourceChannel(source));
 }
 
+// Path suffix for an answer leaving on the channel its question arrived on.
+//
+// An answer put on the air carries the IGate page's digipeater selection, the
+// same path the IGate beacon uses, so it reaches as far as the query did. An
+// answer injected into APRS-IS traverses no repeaters at all, and
+// aprs-is.net/Connecting.aspx requires a client's own traffic to carry
+// APRS_PATH_TCPIP_SUFFIX and nothing else, so a digipeater path there would
+// describe hops that never happened.
+static void queryPathSuffix(query_source_t source, char *out, size_t outMax) {
+    if (source == QUERY_SRC_INET) {
+        snprintf(out, outMax, "%s", APRS_PATH_TCPIP_SUFFIX);
+        return;
+    }
+    aprs_path_build_suffix_from_config(g_config.igate_path, out, outMax);
+}
+
 // Resolves the callsign this station answers under: the IGate APRS callsign
 // plus its SSID, the same identity the position/status/capability replies are
 // built from. Returns false when none is configured.
@@ -479,7 +495,7 @@ static void txMessageTo(const char *toCall, const char *text, query_source_t sou
     memcpy(addr, toCall, n > 9 ? 9 : n);
 
     char path[80];
-    aprs_path_build_suffix_from_config(g_config.igate_path, path, sizeof(path));
+    queryPathSuffix(source, path, sizeof(path));
 
     char packet[APRS_TNC2_BUF_SIZE];
     int len = snprintf(packet, sizeof(packet), "%s>%s%s::%s:%s", myCall, QUERY_DEST, path, addr, text);
@@ -497,10 +513,15 @@ static void txMessageTo(const char *toCall, const char *text, query_source_t sou
 // ---------------------------------------------------------------------------
 
 // "?APRS?" -> the station's own position/status packet, byte-for-byte the
-// same the IGate position beacon would send.
+// same the IGate position beacon sends on the channel this answer leaves on
+// (the path is the one part that differs between the two channels, and
+// queryPathSuffix() picks it the same way the beacon does).
 static void respondAPRS(query_source_t source) {
+    char path[80];
+    queryPathSuffix(source, path, sizeof(path));
+
     char packet[APRS_TNC2_BUF_SIZE];
-    int len = beacon_build_igate_position_packet(packet, sizeof(packet));
+    int len = beacon_build_igate_position_packet(path, packet, sizeof(packet));
     if (len <= 0) {
         ESP_LOGW(TAG, "?APRS? query not answered - no IGate callsign/position configured, or the line did not fit");
         return;
@@ -512,8 +533,11 @@ static void respondAPRS(query_source_t source) {
 // "?WX?" -> the latest cached weather report, if ENABLE_WEATHER and a
 // report exists.
 static void respondWX(query_source_t source) {
+    char path[80];
+    queryPathSuffix(source, path, sizeof(path));
+
     char packet[APRS_TNC2_BUF_SIZE];
-    int len = weather_build_report_packet(packet, sizeof(packet));
+    int len = weather_build_report_packet(path, packet, sizeof(packet));
     if (len <= 0) {
         ESP_LOGW(TAG, "?WX? query not answered - no Weather/APRS callsign configured, no reading cached yet, or the line did not fit");
         return;
@@ -564,7 +588,7 @@ static void respondIGate(query_source_t source) {
     igate_stats_t stats = igate_get_stats();
 
     char path[80];
-    aprs_path_build_suffix_from_config(g_config.igate_path, path, sizeof(path));
+    queryPathSuffix(source, path, sizeof(path));
 
     uint8_t txHops = app_config_path_hop_count(g_config.igate_path, g_config.path);
 
@@ -583,11 +607,14 @@ static void respondIGate(query_source_t source) {
 }
 
 // "?APRSS" -> the station's own status report, byte-for-byte the same the
-// IGate status beacon would send (including the Maidenhead locator block when
-// that option is on).
+// IGate status beacon sends on the channel this answer leaves on (including
+// the Maidenhead locator block when that option is on).
 static void respondStatus(query_source_t source) {
+    char path[80];
+    queryPathSuffix(source, path, sizeof(path));
+
     char packet[APRS_TNC2_BUF_SIZE];
-    int len = beacon_build_igate_status_packet(packet, sizeof(packet));
+    int len = beacon_build_igate_status_packet(path, packet, sizeof(packet));
     if (len <= 0) {
         ESP_LOGW(TAG, "?APRSS query not answered - no IGate callsign/status text configured, or the line did not fit");
         return;
@@ -758,7 +785,7 @@ static void respondQRU(query_source_t source) {
 #endif
 
     char path[80];
-    aprs_path_build_suffix_from_config(g_config.igate_path, path, sizeof(path));
+    queryPathSuffix(source, path, sizeof(path));
 
     char packet[APRS_TNC2_BUF_SIZE];
     int len = snprintf(packet, sizeof(packet), "%s>%s%s:%s", myCall, QUERY_DEST, path, info);

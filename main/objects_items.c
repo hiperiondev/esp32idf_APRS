@@ -34,6 +34,7 @@
 
 #include "app_config.h"
 #include "aprs_coord.h"
+#include "aprs_path.h" // APRS_PATH_TCPIP_SUFFIX
 #include "aprs_service.h"
 #include "igate.h"
 #include "json_escape.h" // json_write_escaped()
@@ -959,7 +960,7 @@ static void tx_one(int idx, const objitem_t *b, const char *src, bool live, cons
         // to APRS-IS either - the two legs either both carry the element or
         // both report why they did not.
         char packet[APRS_TNC2_BUF_SIZE];
-        int len = snprintf(packet, sizeof(packet), "%s>%s,TCPIP*:%s", src, OBJITEM_DEST, info);
+        int len = snprintf(packet, sizeof(packet), "%s>%s" APRS_PATH_TCPIP_SUFFIX ":%s", src, OBJITEM_DEST, info);
         if (len > 0 && len <= APRS_TNC2_MAX_LEN) {
             if (igate_send_raw(packet, (size_t)len))
                 ESP_LOGI(TAG, "%s %d TX (INET, %s): %s", kind, idx + 1, state, packet);

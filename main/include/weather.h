@@ -94,6 +94,12 @@ void weather_unlock(void);
  * with the same builder the periodic beacon uses, so the reply is
  * byte-for-byte consistent with a normal WX beacon transmission.
  *
+ * @param path    TNC2 path suffix placed between the destination address and
+ *                the ':', leading comma included, chosen by the caller for
+ *                the leg the line is transmitted on: the digipeater suffix
+ *                aprs_path_build_suffix_from_config() builds for an RF
+ *                transmission, or ::APRS_PATH_TCPIP_SUFFIX for an APRS-IS
+ *                one. Pass "" for no path at all.
  * @param out     Destination buffer for the built TNC2 text line.
  * @param out_max Size of @p out in bytes; ::APRS_TNC2_BUF_SIZE is the size
  *                every other packet builder in this codebase uses.
@@ -101,6 +107,6 @@ void weather_unlock(void);
  *         APRS callsign set) or the built line does not fit @p out_max /
  *         APRS_TNC2_MAX_LEN.
  */
-int weather_build_report_packet(char *out, size_t out_max);
+int weather_build_report_packet(const char *path, char *out, size_t out_max);
 
 #endif // WEATHER_H

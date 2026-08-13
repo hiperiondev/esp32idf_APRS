@@ -29,6 +29,7 @@
 #include "freertos/task.h"
 
 #include "app_config.h"
+#include "aprs_path.h" // APRS_PATH_TCPIP_SUFFIX
 #include "aprs_service.h"
 #include "bulletins.h"
 #include "igate.h"
@@ -399,7 +400,7 @@ static void tx_one(int idx, const bulletin_t *b, const char *src) {
         // Locally-originated APRS-IS traffic carries the TCPIP* q-construct,
         // never an RF unproto path (see the same note in message.c).
         char packet[160];
-        int len = snprintf(packet, sizeof(packet), "%s>%s,TCPIP*:%s", src, BULLETIN_DEST, info);
+        int len = snprintf(packet, sizeof(packet), "%s>%s" APRS_PATH_TCPIP_SUFFIX ":%s", src, BULLETIN_DEST, info);
         if (len > 0) {
             if (igate_send_raw(packet, (size_t)len))
                 ESP_LOGI(TAG, "Bulletin %d TX (INET): %s", idx + 1, packet);
