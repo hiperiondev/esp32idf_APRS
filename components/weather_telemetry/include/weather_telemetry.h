@@ -644,8 +644,12 @@ typedef enum {
  *        Chapter 13 "Telemetry Report Format".
  *
  * On-air strict format: `T#sss,aaa,aaa,aaa,aaa,aaa,bbbbbbbb`
- *   - sss:  3-character sequence number (typically 000-999, or the
- *           literal letters "MIC" for Mic-E-derived telemetry).
+ *   - sss:  3-character sequence number, 000-999 decimal with leading
+ *           zeros. This is the only form this implementation produces or
+ *           recognizes on receive; the three-letter identifier some other
+ *           encoders write in that field instead (e.g. "MIC", naming the
+ *           source of the reading rather than counting reports) is treated
+ *           as an unrecognized report and left unparsed.
  *   - aaa*5: five analog channel values. APRS101 defines these as 8-bit
  *            unsigned integers, 000-255 decimal, three digits with
  *            leading zeros.
@@ -670,7 +674,7 @@ typedef enum {
  *       many channels are actually placed on-air when encoding.
  */
 typedef struct {
-    char sequence[4]; /**< 3-char sequence number, e.g. "001", or "MIC" for Mic-E telemetry; NUL-terminated. */
+    char sequence[4]; /**< 3-char decimal sequence number, e.g. "001"; NUL-terminated. */
 
     /**
      * @brief Number of analog channel slots actually allocated in
