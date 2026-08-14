@@ -167,11 +167,11 @@ esp_err_t page_station_get(httpd_req_t *req) {
     web_field_float(req, TR_F_LATITUDE, "myLAT", g_config.my_lat, "0.0001", WEB_RANGE_LAT_MIN, WEB_RANGE_LAT_MAX);
     web_field_float(req, TR_F_LONGITUDE, "myLON", g_config.my_lon, "0.0001", WEB_RANGE_LON_MIN, WEB_RANGE_LON_MAX);
 
-    // Position ambiguity and the Maidenhead status prefix are station-wide:
-    // both describe how precisely this station is willing to state where it
-    // is, which is a property of the station rather than of any one beacon, so
-    // all three position beacons (Tracker / IGate / Digipeater) and all three
-    // status reports pick them up from here.
+    // Position ambiguity, the Maidenhead status prefix and the no-archive
+    // marker are station-wide: each describes how visible this station wants
+    // to be, which is a property of the station rather than of any one
+    // beacon, so all three position beacons (Tracker / IGate / Digipeater)
+    // and all three status reports pick them up from here.
     //
     // Ambiguity blanks the least significant minute digits on air (APRS101
     // ch.6). It is what a fixed station uses to publish an approximate
@@ -190,6 +190,7 @@ esp_err_t page_station_get(httpd_req_t *req) {
     web_field_checkbox(req, TR_F_STATUS_GRID, "myStatusGrid", g_config.status_grid_en);
     web_field_checkbox(req, TR_F_STATUS_TIMESTAMP, "myStatusTS", g_config.status_timestamp_en);
     web_field_checkbox(req, TR_F_POS_DAO, "myPosDao", g_config.pos_dao_en);
+    web_field_checkbox(req, TR_F_NO_ARCHIVE, "myNoArchive", g_config.my_no_archive);
 
     // Meteor-scatter beam heading and ERP (APRS101 ch.16), carried as two
     // characters at the very end of every status report. Both are pick lists
@@ -340,6 +341,7 @@ esp_err_t page_station_post(httpd_req_t *req) {
     g_config.status_grid_en = web_form_get_bool(body, "myStatusGrid");
     g_config.status_timestamp_en = web_form_get_bool(body, "myStatusTS");
     g_config.pos_dao_en = web_form_get_bool(body, "myPosDao");
+    g_config.my_no_archive = web_form_get_bool(body, "myNoArchive");
     {
         // Both values arrive from a pick list built out of the code tables, so
         // the only inputs that can reach here are table entries or the "off"

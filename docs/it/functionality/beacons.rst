@@ -385,6 +385,26 @@ risoluzione tramite questa estensione. Un ricevitore che non riconosce
 l'estensione vede semplicemente cinque byte in più di testo nel commento,
 quindi è sempre sicuro attivarla.
 
+Il marcatore di non archiviazione !x!
+=======================================
+
+*Richiedi ad APRS-IS di non archiviare i miei pacchetti*, nella pagina
+Stazione, è un'impostazione di privacy valida per tutta la stazione,
+disattivata per impostazione predefinita. Se attivata, ogni commento o testo
+di stato proprio (beacon e rapporti di stato di Tracker, IGate e Digipeater
+allo stesso modo) viene preceduto dal marcatore di non archiviazione di
+APRS-IS, ``!x!``, seguito da uno spazio e poi dal testo dell'operatore, se
+presente. Il marcatore è indirizzato ai database dietro APRS-IS, non a un
+gateway: chiede loro di non memorizzare il pacchetto, ma non lo trattiene da
+RF né da APRS-IS stesso, e un ricevitore che non lo riconosce vede
+semplicemente tre byte in più di testo nel commento.
+
+Questa impostazione influisce solo sui pacchetti che questa stazione
+origina. Un pacchetto che questa stazione ritrasmette, sia esso da IGate a
+RF, da RF a IGate o digipetuto, viene passato invariato; il marcatore, se la
+stazione di origine lo aveva già inserito, viaggia comunque con esso, perché
+la ritrasmissione non riscrive mai i byte del payload.
+
 Localizzatore Maidenhead nei rapporti di stato
 ==============================================
 

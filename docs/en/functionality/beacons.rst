@@ -363,6 +363,25 @@ back through this extension. A receiver that does not recognise the
 extension simply sees five extra bytes of comment text, so it is always safe
 to enable.
 
+The !x! no-archive marker
+==========================
+
+*Request APRS-IS not to archive my packets* on the Station page is a
+station-wide, off-by-default privacy setting. When enabled, every
+own-station comment or status text (Tracker, IGate and Digipeater beacons and
+status reports alike) is prefixed with the APRS-IS no-archive marker ``!x!``,
+followed by a space and then the operator's own text, if any. The marker is
+addressed to the databases behind APRS-IS rather than to any gateway: it asks
+them not to store the packet, but does not withhold it from RF or from
+APRS-IS itself, and a receiver that does not recognise it simply sees three
+extra bytes of comment text.
+
+This setting only affects packets this station originates. A packet this
+station relays, whether IGate-to-RF, RF-to-IGate or digipeated, is passed
+through unchanged — the marker, if the originating station already put one
+there, travels with it either way, since relaying never rewrites payload
+bytes.
+
 Maidenhead locator in status reports
 ====================================
 

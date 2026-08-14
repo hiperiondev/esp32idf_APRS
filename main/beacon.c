@@ -283,6 +283,32 @@ static bool call_equals_ci(const char *a, const char *b) {
     return a[i] == b[i]; // both NUL at the same position
 }
 
+// Fills dst with the operator's free-text field, reserved-character-stripped
+// (str_copy_strip_reserved()), prefixed with the APRS-IS no-archive marker
+// "!x!" (APRS101 ch.17) when g_config.my_no_archive is set. The marker is a
+// station-wide privacy choice rather than a per-beacon one (Station page), so
+// every own-station comment and status text applies it the same way. A single
+// space separates the marker from the rest of the text so a leading word of
+// the operator's own text is never concatenated onto the closing '!'. When
+// the setting is off, this is exactly str_copy_strip_reserved().
+//
+// Must be called with app_config_lock() already held, same as
+// str_copy_strip_reserved() itself is always called under here.
+static void buildCommentField(const char *src, char *dst, size_t dst_size) {
+    if (!g_config.my_no_archive) {
+        str_copy_strip_reserved(src, dst, dst_size);
+        return;
+    }
+
+    char stripped[COMMENT_SIZE > STATUS_SIZE ? COMMENT_SIZE : STATUS_SIZE];
+    str_copy_strip_reserved(src, stripped, sizeof(stripped));
+
+    size_t used = 0;
+    str_append(dst, dst_size, &used, "!x!");
+    if (stripped[0])
+        str_append(dst, dst_size, &used, " %s", stripped);
+}
+
 // Resolves the optional APRS 1.2 base-91 comment telemetry group
 // (telemetry_build_comment_tlm(), "|ss1122|") into p->cmtTlm, if and only if
 // this beacon's own callsign/SSID is the one the Telemetry page has
@@ -1026,7 +1052,7 @@ static uint32_t trackerStatusService(void) {
             p.ssid = useTrk ? g_config.trk_ssid : g_config.aprs_ssid;
             p.pathSel = g_config.trk_path;
             char trkStsStripped[STATUS_SIZE];
-            str_copy_strip_reserved(g_config.trk_status, trkStsStripped, sizeof(trkStsStripped));
+            buildCommentField(g_config.trk_status, trkStsStripped, sizeof(trkStsStripped));
             str_copy_utf8_safe(trkStsStripped, p.statusText, sizeof(p.statusText));
             memcpy(p.pathPreset, g_config.path, sizeof(p.pathPreset));
             p.gridEnable = g_config.status_grid_en;
@@ -1068,7 +1094,7 @@ static uint32_t igateStatusService(void) {
             p.ssid = g_config.aprs_ssid;
             p.pathSel = g_config.igate_path;
             char igateStsStripped[STATUS_SIZE];
-            str_copy_strip_reserved(g_config.igate_status, igateStsStripped, sizeof(igateStsStripped));
+            buildCommentField(g_config.igate_status, igateStsStripped, sizeof(igateStsStripped));
             str_copy_utf8_safe(igateStsStripped, p.statusText, sizeof(p.statusText));
             memcpy(p.pathPreset, g_config.path, sizeof(p.pathPreset));
             p.gridEnable = g_config.status_grid_en;
@@ -1110,7 +1136,7 @@ static uint32_t digiStatusService(void) {
             p.ssid = useDigi ? g_config.digi_ssid : g_config.aprs_ssid;
             p.pathSel = g_config.digi_path;
             char digiStsStripped[STATUS_SIZE];
-            str_copy_strip_reserved(g_config.digi_status, digiStsStripped, sizeof(digiStsStripped));
+            buildCommentField(g_config.digi_status, digiStsStripped, sizeof(digiStsStripped));
             str_copy_utf8_safe(digiStsStripped, p.statusText, sizeof(p.statusText));
             memcpy(p.pathPreset, g_config.path, sizeof(p.pathPreset));
             p.gridEnable = g_config.status_grid_en;
@@ -1176,7 +1202,7 @@ static uint32_t trackerBeaconService(void) {
             p.daoEnable = g_config.pos_dao_en;
             memcpy(p.symbol, g_config.trk_symbol, sizeof(p.symbol));
             char trkCommentStripped[COMMENT_SIZE];
-            str_copy_strip_reserved(g_config.trk_comment, trkCommentStripped, sizeof(trkCommentStripped));
+            buildCommentField(g_config.trk_comment, trkCommentStripped, sizeof(trkCommentStripped));
             str_copy_utf8_safe(trkCommentStripped, p.comment, sizeof(p.comment));
             memcpy(p.pathPreset, g_config.path, sizeof(p.pathPreset));
             p.freqMhz = g_config.trk_freq_mhz;
@@ -1239,7 +1265,7 @@ static uint32_t igateBeaconService(void) {
             p.daoEnable = g_config.pos_dao_en;
             memcpy(p.symbol, g_config.igate_symbol, sizeof(p.symbol));
             char igateCommentStripped[COMMENT_SIZE];
-            str_copy_strip_reserved(g_config.igate_comment, igateCommentStripped, sizeof(igateCommentStripped));
+            buildCommentField(g_config.igate_comment, igateCommentStripped, sizeof(igateCommentStripped));
             str_copy_utf8_safe(igateCommentStripped, p.comment, sizeof(p.comment));
             memcpy(p.pathPreset, g_config.path, sizeof(p.pathPreset));
             p.extEnable = g_config.igate_phg_enable;
@@ -1291,7 +1317,7 @@ static void fillIgatePositionParams(beacon_params_t *p) {
         p->msgCapable = g_config.msg_enable;
         memcpy(p->symbol, g_config.igate_symbol, sizeof(p->symbol));
         char igateCommentStripped[COMMENT_SIZE];
-        str_copy_strip_reserved(g_config.igate_comment, igateCommentStripped, sizeof(igateCommentStripped));
+        buildCommentField(g_config.igate_comment, igateCommentStripped, sizeof(igateCommentStripped));
         str_copy_utf8_safe(igateCommentStripped, p->comment, sizeof(p->comment));
         memcpy(p->pathPreset, g_config.path, sizeof(p->pathPreset));
         p->extEnable = g_config.igate_phg_enable;
@@ -1360,7 +1386,7 @@ int beacon_build_igate_status_packet(const char *path, char *out, size_t out_max
         p.ssid = g_config.aprs_ssid;
         p.pathSel = g_config.igate_path;
         char igateStsStripped[STATUS_SIZE];
-        str_copy_strip_reserved(g_config.igate_status, igateStsStripped, sizeof(igateStsStripped));
+        buildCommentField(g_config.igate_status, igateStsStripped, sizeof(igateStsStripped));
         str_copy_utf8_safe(igateStsStripped, p.statusText, sizeof(p.statusText));
         memcpy(p.pathPreset, g_config.path, sizeof(p.pathPreset));
         p.gridEnable = g_config.status_grid_en;
@@ -1407,7 +1433,7 @@ static uint32_t digiBeaconService(void) {
             p.daoEnable = g_config.pos_dao_en;
             memcpy(p.symbol, g_config.digi_symbol, sizeof(p.symbol));
             char digiCommentStripped[COMMENT_SIZE];
-            str_copy_strip_reserved(g_config.digi_comment, digiCommentStripped, sizeof(digiCommentStripped));
+            buildCommentField(g_config.digi_comment, digiCommentStripped, sizeof(digiCommentStripped));
             str_copy_utf8_safe(digiCommentStripped, p.comment, sizeof(p.comment));
             memcpy(p.pathPreset, g_config.path, sizeof(p.pathPreset));
             p.freqMhz = g_config.digi_freq_mhz;

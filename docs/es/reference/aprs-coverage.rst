@@ -449,8 +449,8 @@ Tunelizado de red y tráfico de terceros (cap. 17)
      - ✅
      - Se respetan todos los tokens clásicos de no-pasarela y los q-constructs de solo internet, y solo en la cabecera, que es donde tienen sentido: un paquete cuyo texto de comentario contenga por casualidad una de esas palabras no se confunde con uno ruteado con ella.
    * - Marcador de no archivar
-     - ❌
-     - La cadena ``!x!`` que pide a las bases de datos detrás de APRS-IS no almacenar un paquete no se escribe en las balizas propias ni recibe tratamiento especial al retransmitir. Se dirige a los archivos, no a las pasarelas, así que nunca decide por dónde puede viajar una trama; los paquetes retransmitidos la conservan porque la carga se pasa byte a byte.
+     - ✅
+     - La cadena ``!x!`` que pide a las bases de datos detrás de APRS-IS no almacenar un paquete puede anteponerse a cada comentario o texto de estado propio con una única casilla a nivel de estación (página Station), desactivada por defecto. Se dirige a los archivos, no a las pasarelas, así que nunca decide por dónde puede viajar una trama ni si llega a RF/APRS-IS; los paquetes retransmitidos no se ven afectados por esta opción y conservan el marcador que ya traía la estación de origen, si lo traía, porque la carga se pasa byte a byte.
    * - Informe de ruta IGate→RF
      - ❌
      - El envoltorio experimental ``{IP-`` que permitiría a esta estación anunciar por APRS-IS la ruta AX.25 usada para pasar un paquete a RF no se genera. A diferencia de la mayoría de las otras propuestas 1.2 de esta tabla, la estación está justo dentro del alcance de esta: es una IGate bidireccional y sí pasa tráfico a RF. Sigue siendo una propuesta, no una adición ratificada, ha tenido poca adopción entre las IGates en general, y añadiría una segunda transmisión por cada paquete pasado a RF, a costa de un tiempo de canal que este diseño deliberadamente ligero no gasta en ningún otro sitio. A reconsiderar si la propuesta llega a ratificarse o si algún operador la pide.

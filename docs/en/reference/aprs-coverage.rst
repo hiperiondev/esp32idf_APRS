@@ -447,8 +447,8 @@ Network tunnelling and third-party traffic (ch. 17)
      - ✅
      - The classic no-gate tokens and the internet-only q-constructs are all honoured, and only in the header where they are meaningful — a packet whose comment text happens to contain one of these words is not mistaken for a packet routed with it.
    * - No-archive marker
-     - ❌
-     - The ``!x!`` string that asks the databases behind APRS-IS not to store a packet is neither written into the station's own beacons nor given any special treatment when relaying. It addresses the archives rather than the gateways, so it never decides where a frame may travel; relayed packets keep it because the payload is passed through byte for byte.
+     - ✅
+     - The ``!x!`` string that asks the databases behind APRS-IS not to store a packet can be prepended to every own-station comment or status text with a single station-wide checkbox (Station page), off by default. It addresses the archives rather than the gateways, so it never decides where a frame may travel or whether it reaches RF/APRS-IS at all; relayed packets are unaffected by this setting and keep whatever marker, if any, the originating station already put there, since the payload is passed through byte for byte.
    * - IGate-to-RF path report
      - ❌
      - The experimental ``{IP-`` wrapper that would let this station announce, over APRS-IS, the AX.25 path it used to gate a packet onto RF is not generated. Unlike most of the other 1.2 proposals in this table, the station is squarely in this one's scope: it is a bidirectional IGate and does gate to RF. It remains a proposal rather than a ratified addition, has seen thin adoption among IGates in general, and would add a second transmit on every gated packet at the cost of channel time this deliberately lightweight design does not spend elsewhere. Revisit if the proposal is ever ratified or an operator asks for it.

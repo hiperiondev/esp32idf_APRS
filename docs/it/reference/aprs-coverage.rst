@@ -449,8 +449,8 @@ Tunneling di rete e traffico di terze parti (cap. 17)
      - ✅
      - Sono rispettati tutti i classici token di divieto di gateway e i q-construct di sola internet, e solo nell'intestazione dove hanno senso: un pacchetto il cui commento contenga per caso una di quelle parole non viene scambiato per uno instradato con essa.
    * - Marcatore di non archiviazione
-     - ❌
-     - La stringa ``!x!`` che chiede ai database dietro APRS-IS di non memorizzare un pacchetto non viene scritta nei beacon propri né riceve un trattamento speciale nella ritrasmissione. Si rivolge agli archivi, non ai gateway, quindi non decide mai dove possa viaggiare una trama; i pacchetti ritrasmessi la conservano perché il payload viene passato byte per byte.
+     - ✅
+     - La stringa ``!x!`` che chiede ai database dietro APRS-IS di non memorizzare un pacchetto può essere anteposta a ogni commento o testo di stato della stazione con un'unica casella a livello di stazione (pagina Station), disattivata per impostazione predefinita. Si rivolge agli archivi, non ai gateway, quindi non decide mai dove possa viaggiare una trama né se raggiunga RF/APRS-IS; i pacchetti ritrasmessi non sono influenzati da questa opzione e conservano il marcatore che la stazione di origine vi aveva già messo, se presente, perché il payload viene passato byte per byte.
    * - Rapporto del percorso IGate→RF
      - ❌
      - L'involucro sperimentale ``{IP-`` che permetterebbe a questa stazione di annunciare via APRS-IS il percorso AX.25 usato per far passare un pacchetto su RF non viene generato. A differenza della maggior parte delle altre proposte 1.2 di questa tabella, la stazione rientra proprio nell'ambito di questa: è un IGate bidirezionale e trasmette effettivamente verso RF. Resta una proposta, non un'aggiunta ratificata, ha avuto una diffusione modesta fra gli IGate in generale, e aggiungerebbe una seconda trasmissione per ogni pacchetto passato a RF, a costo di un tempo di canale che questo design volutamente leggero non spende altrove. Da riconsiderare se la proposta venisse ratificata o se un operatore la richiedesse.

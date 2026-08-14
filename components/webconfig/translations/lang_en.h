@@ -1163,6 +1163,8 @@
 #define TR_F_STATUS_ERP "ERP in status reports (W)"
 /** Form label for the "pos dao" field or fieldset, rendered on the IGate page. */
 #define TR_F_POS_DAO "DAO precision extension in position reports"
+/** Form label for the "no archive" field or fieldset, rendered on the Station page. */
+#define TR_F_NO_ARCHIVE "Request APRS-IS not to archive my packets (!x!)"
 /** Compass direction abbreviation: omni, rendered on the IGate page. */
 #define TR_DIR_OMNI "Omni"
 /** Compass direction abbreviation: n, rendered on the IGate page. */

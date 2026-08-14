@@ -382,6 +382,25 @@ resolución completa, no debe recuperar esa resolución a través de esta
 extensión. Un receptor que no reconoce la extensión simplemente ve cinco
 bytes extra de texto de comentario, así que siempre es seguro activarla.
 
+El marcador de no archivar !x!
+===============================
+
+*Solicitar a APRS-IS que no archive mis paquetes*, en la página Estación, es
+una opción de privacidad de toda la estación, desactivada por defecto. Al
+activarla, cada comentario o texto de estado propio (balizas y reportes de
+estado de Tracker, IGate y Digipeater por igual) se antepone con el marcador
+de no archivar de APRS-IS, ``!x!``, seguido de un espacio y luego el texto
+propio del operador, si lo hay. El marcador se dirige a las bases de datos
+detrás de APRS-IS, no a ninguna pasarela: les pide que no almacenen el
+paquete, pero no lo retiene de RF ni de APRS-IS mismo, y un receptor que no
+lo reconoce simplemente ve tres bytes extra de texto de comentario.
+
+Esta opción solo afecta a los paquetes que esta estación origina. Un paquete
+que esta estación retransmite, ya sea de IGate a RF, de RF a IGate o
+digipetido, se pasa sin cambios; el marcador, si la estación de origen ya lo
+puso ahí, viaja con él de todas formas, porque retransmitir nunca reescribe
+los bytes de carga.
+
 Localizador Maidenhead en los reportes de estado
 ================================================
 

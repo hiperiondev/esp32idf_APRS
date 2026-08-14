@@ -194,6 +194,7 @@ void app_config_set_defaults(app_config_t *c) {
     c->status_timestamp_en = false;
     c->status_beam_deg = STATUS_BEAM_DEG_OFF;
     c->status_erp_watts = 0;
+    c->my_no_archive = false;
     c->pos_dao_en = false;
 
     c->wifi_mode = 2; // AP_STA equivalent default (matches original shipping as AP)
@@ -564,6 +565,7 @@ static void config_write_json(jw_t *d, const app_config_t *c) {
     jadd_bool(d, "myStatusTS", c->status_timestamp_en);
     jadd_num(d, "myStatusBeam", c->status_beam_deg);
     jadd_num(d, "myStatusERP", c->status_erp_watts);
+    jadd_bool(d, "myNoArchive", c->my_no_archive);
     jadd_bool(d, "myPosDao", c->pos_dao_en);
     jadd_num(d, "txTimeSlot", c->tx_timeslot);
     jadd_num(d, "csmaPersist", c->csma_persist);
@@ -847,6 +849,7 @@ static void config_from_json(cJSON *d, app_config_t *c) {
         }
         c->status_erp_watts = (uint16_t)erp;
     }
+    c->my_no_archive = jget_bool(d, "myNoArchive", def.my_no_archive);
     c->pos_dao_en = jget_bool(d, "myPosDao", def.pos_dao_en);
     // Channel-access timing: bound every value coming off flash to the same
     // range the Radiomodem form accepts (aprs_service.h), so a hand-edited or
