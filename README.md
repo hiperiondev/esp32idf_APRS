@@ -93,7 +93,7 @@ Board wiring (audio pins, PTT pin/polarity, sample rates) is set as compile-time
 ## Quick start
 
 ```bash
-# Requires ESP-IDF v5.x (tested and locked at 5.5.4)
+# Requires ESP-IDF v6.x (tested and locked at 6.0.2)
 idf.py set-target esp32
 idf.py build
 idf.py -p PORT flash monitor

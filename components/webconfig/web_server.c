@@ -58,6 +58,20 @@ void web_server_start(void) {
     // deliberate headroom rather than trimmed to the measured maximum. Use
     // uxTaskGetStackHighWaterMark() on the httpd task before changing it.
     config.stack_size = 20480;
+    // The whole firmware shares one pool of CONFIG_LWIP_MAX_SOCKETS (10)
+    // sockets. httpd claims max_open_sockets plus 3 of its own (the TCP
+    // listener and the two UDP control sockets), so 4 concurrent browser
+    // connections leave 3 sockets for the rest of the station: the APRS-IS
+    // uplink, DNS lookups and the SNTP client. Four is also what the admin
+    // UI needs - a page plus /style.css and the periodic /dashinfo,
+    // /sidebarInfo and /heapinfo fetches, all on keep-alive - and every TCP
+    // connection that is not open is a connection whose send and receive
+    // windows (CONFIG_LWIP_TCP_SND_BUF_DEFAULT and
+    // CONFIG_LWIP_TCP_WND_DEFAULT) never come out of the heap.
+    config.max_open_sockets = 4;
+    // A fifth browser connection evicts the least recently used one instead
+    // of being refused, so the cap costs latency under load, never an error
+    // page.
     config.lru_purge_enable = true;
 
     if (httpd_start(&server, &config) != ESP_OK) {

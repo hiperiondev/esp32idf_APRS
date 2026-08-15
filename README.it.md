@@ -93,7 +93,7 @@ Il cablaggio della scheda (pin audio, pin/polarità PTT, frequenze di campioname
 ## Avvio rapido
 
 ```bash
-# Richiede ESP-IDF v5.x (testato e fissato a 5.5.4)
+# Richiede ESP-IDF v6.x (testato e fissato a 6.0.2)
 idf.py set-target esp32
 idf.py build
 idf.py -p PORTA flash monitor

@@ -7,10 +7,11 @@ Primeros pasos
 Requisitos previos
 ==================
 
-* **ESP-IDF v5.1 o posterior** (fijado/probado en **5.5.4** — véase
+* **ESP-IDF v6.0 o posterior** (fijado/probado en **6.0.2** — véase
   ``dependencies.lock``).
 * Un ESP32 con **≥ 4 MB de flash**.
-* El gestor de componentes de IDF descarga ``joltwallet/littlefs`` y, a través
+* El gestor de componentes de IDF descarga ``joltwallet/littlefs``,
+  ``espressif/cjson`` y, a través
   del componente ``sensors_local``, ``esp-idf-lib/bmp180`` (que arrastra
   ``i2cdev`` + ``esp_idf_lib_helpers``) automáticamente.
 
@@ -38,6 +39,58 @@ Compilar en español o italiano en lugar de inglés (véase :ref:`es-localizatio
 
    ``sdkconfig`` viene con ``CONFIG_COMPILER_OPTIMIZATION_DEBUG`` (``-Og``) y
    las aserciones activadas. Cambia a ``-Os`` si andas justo de flash.
+
+Presupuesto de memoria
+======================
+
+El ESP32 de este diseño no lleva PSRAM, así que cada byte de DRAM interna que
+la compilación reserva de forma estática es un byte que el heap nunca recibe.
+``sdkconfig`` está ajustado para eso, y los valores de abajo son deliberados:
+subir cualquiera de ellos baja la cifra *Min free heap* del panel.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 44 10 46
+
+   * - Opción
+     - Valor
+     - Por qué
+   * - ``CONFIG_ESP_WIFI_STATIC_RX_BUFFER_NUM``
+     - 6
+     - ~1,6 KB cada uno, reservados en ``esp_wifi_init()`` y retenidos hasta
+       que se desinicializa el WiFi. Seis coincide con
+       ``CONFIG_ESP_WIFI_RX_BA_WIN``, que es el piso que pide AMPDU RX.
+   * - ``CONFIG_ESP_WIFI_DYNAMIC_RX_BUFFER_NUM`` / ``..._TX_...``
+     - 12
+     - Acota el pico de heap que reclama el driver WiFi. El tráfico APRS son
+       unos cientos de bytes por minuto; el caudal que compran esos búferes no
+       se usa nunca.
+   * - ``CONFIG_LWIP_TCP_SND_BUF_DEFAULT`` / ``CONFIG_LWIP_TCP_WND_DEFAULT``
+     - 2880
+     - Dos MSS por sentido y por conexión. La única transferencia sostenida es
+       la subida de una imagen OTA, que con esta ventana sigue saturando una
+       LAN.
+   * - ``max_open_sockets`` en ``web_server_start()``
+     - 4
+     - httpd toma este número más 3 sockets propios del pool de
+       ``CONFIG_LWIP_MAX_SOCKETS`` (10). Los 3 restantes son los que necesitan
+       el enlace APRS-IS, DNS y SNTP para seguir en pie mientras alguien
+       navega las páginas de administración.
+   * - Capa TLS de mbedTLS, paquete de certificados, WiFi Enterprise
+     - apagados
+     - La administración web es HTTP plano y el enlace APRS-IS es TCP plano.
+       mbedTLS se enlaza por una sola llamada, ``mbedtls_base64_decode()`` en
+       la autenticación HTTP Basic, que no depende de
+       ``CONFIG_MBEDTLS_TLS_ENABLED``.
+
+.. note::
+
+   Desde ESP-IDF v6.0 el port de mbedTLS llama a ``psa_crypto_init()`` desde
+   un hook de arranque del sistema, así que PSA Crypto está vivo en toda
+   compilación que enlace mbedTLS, incluida esta. Eso, junto con la mayor
+   huella estática de mbedTLS 4.x, es la razón de que el mismo firmware
+   informe menos heap libre bajo v6.0 que bajo v5.2 con una configuración por
+   lo demás idéntica.
 
 Primer arranque
 ===============

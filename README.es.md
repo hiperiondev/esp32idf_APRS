@@ -93,7 +93,7 @@ El cableado de la placa (pines de audio, pin/polaridad de PTT, tasas de muestreo
 ## Inicio rápido
 
 ```bash
-# Requiere ESP-IDF v5.x (probado y fijado en 5.5.4)
+# Requiere ESP-IDF v6.x (probado y fijado en 6.0.2)
 idf.py set-target esp32
 idf.py build
 idf.py -p PUERTO flash monitor
