@@ -90,8 +90,14 @@ Potencia TX
 ===========
 
 La potencia TX (dBm) de la página Wireless se convierte ×4 a cuartos de dBm para
-``esp_wifi_set_max_tx_power()``. Esto antes se almacenaba y mostraba pero nunca
-llegaba a la radio.
+``esp_wifi_set_max_tx_power()``. El driver rechaza todo lo que esté por debajo de
+8 cuartos de dBm, así que el rango aceptado es
+``WIFI_TX_POWER_DBM_MIN``..``WIFI_TX_POWER_DBM_MAX`` (2-20 dBm, ``app_config.h``)
+y no 0-20: un valor menor es rechazado y deja en vigencia la potencia anterior,
+lo que se lee como «potencia mínima» siendo en realidad «sin cambio». El valor se
+acota en el handler POST de Wireless y otra vez en ``config_from_json()``, de
+modo que los límites del formulario son una comodidad y lo que realmente se
+aplica es el valor almacenado.
 
 Sincronización horaria
 ======================

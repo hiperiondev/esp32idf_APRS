@@ -295,16 +295,15 @@ static void wifi_init(void) {
     // No esp_wifi_connect() here any more - WIFI_EVENT_STA_START does it, once
     // the driver says the station is genuinely up. See the handler.
 
-    // wifi_power was stored and displayed on the Wireless page but never
-    // reached the radio. The units differ: the config field is dBm (0-20 on
-    // the form), esp_wifi_set_max_tx_power() takes quarter-dBm, hence the x4.
+    // The units differ: the config field is dBm, esp_wifi_set_max_tx_power()
+    // takes quarter-dBm, hence the x4. Both the form and config.json paths
+    // clamp the stored value to WIFI_TX_POWER_DBM_MIN..MAX, so the product
+    // always lands inside the range the driver accepts and fits an int8_t.
     // Only meaningful once the radio is started.
-    if (g_config.wifi_power > 0) {
-        int8_t qdbm = (int8_t)(g_config.wifi_power * 4);
-        esp_err_t perr = esp_wifi_set_max_tx_power(qdbm);
-        if (perr != ESP_OK)
-            ESP_LOGW(TAG, "esp_wifi_set_max_tx_power(%d dBm) failed: %s", (int)g_config.wifi_power, esp_err_to_name(perr));
-    }
+    int8_t qdbm = (int8_t)(g_config.wifi_power * 4);
+    esp_err_t perr = esp_wifi_set_max_tx_power(qdbm);
+    if (perr != ESP_OK)
+        ESP_LOGW(TAG, "esp_wifi_set_max_tx_power(%d dBm) failed: %s", (int)g_config.wifi_power, esp_err_to_name(perr));
 
     ESP_LOGI(TAG, "WiFi started in mode %d (AP SSID '%s', STA %s)", (int)mode, g_config.wifi_ap_ssid, s_staEnabled ? "enabled" : "disabled");
 }

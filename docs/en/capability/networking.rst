@@ -86,8 +86,13 @@ TX power
 ========
 
 The Wireless page's TX power (dBm) is converted ×4 to quarter-dBm for
-``esp_wifi_set_max_tx_power()``. This used to be stored and displayed but never
-reached the radio.
+``esp_wifi_set_max_tx_power()``. The driver refuses anything below 8 quarter-dBm,
+so the accepted range is ``WIFI_TX_POWER_DBM_MIN``..``WIFI_TX_POWER_DBM_MAX``
+(2-20 dBm, ``app_config.h``) rather than 0-20: a lower setting is rejected and
+leaves the previous power in force, which reads as "minimum power" while being
+"no change". The value is clamped in the Wireless POST handler and again in
+``config_from_json()``, so the form bounds are a convenience and the stored
+value is what is actually enforced.
 
 Time sync
 =========

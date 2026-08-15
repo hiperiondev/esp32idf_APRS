@@ -170,6 +170,25 @@ typedef enum {
 /** @} */
 
 /**
+ * @name WiFi transmit power range
+ * @brief Accepted range and factory value for ::app_config_t::wifi_power, in dBm.
+ *
+ * esp_wifi_set_max_tx_power() takes quarter-dBm and refuses anything below 8
+ * of them, so 2 dBm is the lowest setting the driver will actually apply; a
+ * lower one is rejected, logged by the driver as a warning and leaves the
+ * previous power in force, which reads to an operator as "minimum power" while
+ * being "no change". The upper end is the maximum the ESP32 radio is rated
+ * for. The stored value is therefore clamped both when the form is saved and
+ * when config.json is loaded, so the value main.c multiplies by four is always
+ * one the driver accepts.
+ * @{
+ */
+#define WIFI_TX_POWER_DBM_MIN     2  /**< Lowest power the WiFi driver accepts (8 quarter-dBm). */
+#define WIFI_TX_POWER_DBM_MAX     20 /**< Highest power the radio is rated for. */
+#define WIFI_TX_POWER_DBM_DEFAULT 20 /**< Factory WiFi transmit power. */
+/** @} */
+
+/**
  * @name APRS-IS server port range
  * @brief Accepted range and fallback for ::app_config_t::aprs_port.
  *
@@ -578,7 +597,7 @@ typedef struct {
                         handed back via the extension. Never applied to the compressed layout (already full resolution) or to Mic-E. */
 
     uint8_t wifi_mode;                 /**< WiFi mode: 0=off, 1=STA, 2=AP, 3=AP_STA. */
-    int8_t wifi_power;                 /**< WiFi TX power setting. */
+    int8_t wifi_power;                 /**< WiFi transmit power in dBm, clamped to ::WIFI_TX_POWER_DBM_MIN .. ::WIFI_TX_POWER_DBM_MAX on save and on load. */
     wifi_sta_t wifi_sta[WIFI_STA_NUM]; /**< The ::WIFI_STA_NUM stored STA profiles. */
     uint8_t wifi_ap_ch;                /**< SoftAP channel, clamped to ::WIFI_AP_CH_MIN .. ::WIFI_AP_CH_MAX on save and on load. */
     char wifi_ap_ssid[33];             /**< SoftAP SSID: 32 chars max + NUL. */

@@ -62,7 +62,7 @@
 
 #include "app_config.h"
 #include "aprs_filter.h"      // aprs_filter_haversine_km()
-#include "aprs_path.h"        // aprs_path_build_suffix_from_config(), APRS_PATH_TCPIP_SUFFIX
+#include "aprs_path.h"        // aprs_path_build_suffix(), APRS_PATH_PRESET_COUNT / _SIZE, APRS_PATH_TCPIP_SUFFIX
 #include "aprs_service.h"     // APRS_TNC2_BUF_SIZE / APRS_TNC2_MAX_LEN
 #include "beacon.h"           // beacon_build_igate_position_packet() / beacon_build_igate_status_packet()
 #include "beacon_scheduler.h" // beacon_scheduler_wake()
@@ -441,6 +441,37 @@ static void txPacket(const char *packet, size_t len, query_source_t source) {
     s_txHandler(packet, len, querySourceChannel(source));
 }
 
+// The two configuration items an on-air answer's path is built from, copied
+// out of g_config in one go. The preset slots are 72-byte strings that the web
+// task rewrites in place on a settings save, so a builder reading them
+// directly could see one mid-strcpy - torn, or momentarily without its NUL.
+// Taking the selection bitmask in the same copy also keeps the two consistent
+// with each other: the mask cannot describe one generation of the presets
+// while the strings come from the next.
+typedef struct {
+    uint8_t mask;
+    char preset[APRS_PATH_PRESET_COUNT][APRS_PATH_PRESET_SIZE];
+} query_path_cfg_t;
+
+// Fills the snapshot. The lock is a leaf lock: it covers the two copies and
+// nothing else, and the suffix is built after it has been released.
+static void queryPathConfig(query_path_cfg_t *cfg) {
+    app_config_lock();
+    cfg->mask = g_config.igate_path;
+    memcpy(cfg->preset, g_config.path, sizeof(cfg->preset));
+    app_config_unlock();
+}
+
+// Path suffix for an answer built from a snapshot the caller already holds,
+// used where the same selection also has to be measured in hops.
+static void queryPathSuffixFrom(const query_path_cfg_t *cfg, query_source_t source, char *out, size_t outMax) {
+    if (source == QUERY_SRC_INET) {
+        snprintf(out, outMax, "%s", APRS_PATH_TCPIP_SUFFIX);
+        return;
+    }
+    aprs_path_build_suffix(cfg->mask, cfg->preset, out, outMax);
+}
+
 // Path suffix for an answer leaving on the channel its question arrived on.
 //
 // An answer put on the air carries the IGate page's digipeater selection, the
@@ -448,13 +479,17 @@ static void txPacket(const char *packet, size_t len, query_source_t source) {
 // answer injected into APRS-IS traverses no repeaters at all, and
 // aprs-is.net/Connecting.aspx requires a client's own traffic to carry
 // APRS_PATH_TCPIP_SUFFIX and nothing else, so a digipeater path there would
-// describe hops that never happened.
+// describe hops that never happened - which is why the APRS-IS leg is answered
+// before any configuration is read.
 static void queryPathSuffix(query_source_t source, char *out, size_t outMax) {
     if (source == QUERY_SRC_INET) {
         snprintf(out, outMax, "%s", APRS_PATH_TCPIP_SUFFIX);
         return;
     }
-    aprs_path_build_suffix_from_config(g_config.igate_path, out, outMax);
+
+    query_path_cfg_t cfg;
+    queryPathConfig(&cfg);
+    queryPathSuffixFrom(&cfg, source, out, outMax);
 }
 
 // Resolves the callsign this station answers under: the IGate APRS callsign
@@ -587,10 +622,16 @@ static void respondIGate(query_source_t source) {
 
     igate_stats_t stats = igate_get_stats();
 
-    char path[80];
-    queryPathSuffix(source, path, sizeof(path));
+    // One snapshot feeds both the suffix and the hop count, so the LOC_CNT
+    // figure counts stations reachable over exactly the path this answer
+    // carries even if a settings save lands between the two uses.
+    query_path_cfg_t cfg;
+    queryPathConfig(&cfg);
 
-    uint8_t txHops = app_config_path_hop_count(g_config.igate_path, g_config.path);
+    char path[80];
+    queryPathSuffixFrom(&cfg, source, path, sizeof(path));
+
+    uint8_t txHops = app_config_path_hop_count(cfg.mask, cfg.preset);
 
     char info[64];
     snprintf(info, sizeof(info), "<IGATE,MSG_CNT=%u,LOC_CNT=%u>", (unsigned)stats.msgCount, (unsigned)lastheard_station_count(true, txHops));

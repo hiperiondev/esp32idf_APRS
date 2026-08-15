@@ -49,7 +49,10 @@ esp_err_t page_wireless_get(httpd_req_t *req) {
              "<option value='2' %s>" TR_WIFI_ACCESS_POINT "</option>"
              "<option value='3' %s>" TR_WIFI_AP_STA "</option>"
              "</select>"
-             "<label>" TR_WIFI_TX_POWER "</label><input type='number' name='wifiPwr' value='%d' min='0' max='20'>"
+             // Same two-layer arrangement as the AP channel below: these bounds
+             // only stop the browser from submitting a power the WiFi driver
+             // would refuse, and the POST handler clamps the value again.
+             "<label>" TR_WIFI_TX_POWER "</label><input type='number' name='wifiPwr' value='%d' min='%d' max='%d'>"
              "</fieldset>"
              "<fieldset><legend>" TR_WIFI_ACCESS_POINT "</legend>"
              "<label>" TR_WIFI_AP_SSID "</label><input type='text' name='apSsid' value='%s' maxlength='32'>"
@@ -63,7 +66,8 @@ esp_err_t page_wireless_get(httpd_req_t *req) {
              "<button type='button' class='secondary' id='wifiScanBtn' onclick='wifiScan()'>" TR_BTN_WIFI_SCAN "</button> "
              "<span id='wifiScanStatus'></span>",
              g_config.wifi_mode == 0 ? "selected" : "", g_config.wifi_mode == 1 ? "selected" : "", g_config.wifi_mode == 2 ? "selected" : "",
-             g_config.wifi_mode == 3 ? "selected" : "", g_config.wifi_power, esc_ap_ssid, esc_ap_pass, g_config.wifi_ap_ch, WIFI_AP_CH_MIN, WIFI_AP_CH_MAX);
+             g_config.wifi_mode == 3 ? "selected" : "", g_config.wifi_power, WIFI_TX_POWER_DBM_MIN, WIFI_TX_POWER_DBM_MAX, esc_ap_ssid, esc_ap_pass,
+             g_config.wifi_ap_ch, WIFI_AP_CH_MIN, WIFI_AP_CH_MAX);
     httpd_resp_sendstr_chunk(req, buf);
 
     // One shared datalist, filled in by wifiScan() below. It only ever offers
@@ -140,7 +144,15 @@ esp_err_t page_wireless_post(httpd_req_t *req) {
 
     app_config_lock();
     g_config.wifi_mode = (uint8_t)web_form_get_int(body, "wifiMode", g_config.wifi_mode);
-    g_config.wifi_power = (int8_t)web_form_get_int(body, "wifiPwr", g_config.wifi_power);
+    // Clamped through an int, so a crafted POST carrying a value outside
+    // int8_t range is caught before the cast can fold it into a small negative
+    // number and overflow the quarter-dBm multiply main.c applies.
+    int wifiPwr = web_form_get_int(body, "wifiPwr", g_config.wifi_power);
+    if (wifiPwr < WIFI_TX_POWER_DBM_MIN)
+        wifiPwr = WIFI_TX_POWER_DBM_MIN;
+    else if (wifiPwr > WIFI_TX_POWER_DBM_MAX)
+        wifiPwr = WIFI_TX_POWER_DBM_MAX;
+    g_config.wifi_power = (int8_t)wifiPwr;
     web_form_get(body, "apSsid", g_config.wifi_ap_ssid, sizeof(g_config.wifi_ap_ssid));
     web_form_get(body, "apPass", g_config.wifi_ap_pass, sizeof(g_config.wifi_ap_pass));
     // The form's min/max attributes are browser side only: a crafted POST can

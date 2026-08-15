@@ -50,7 +50,8 @@ Concurrencia: el cerrojo de configuración
 ``g_config`` lo escriben campo a campo los manejadores POST de la web (un solo
 guardado de ajustes reescribe muchos campos, varios de ellos cadenas/arrays, uno
 a uno) mientras tareas de larga ejecución (constructores de balizas, login del
-IGate, digipeater, mensaje, meteo) leen esos mismos campos. Un lector que muestrea
+IGate, digipeater, mensaje, meteo, respondedor de consultas) leen esos mismos
+campos. Un lector que muestrea
 una cadena a mitad de ``strcpy`` puede ver un valor roto o transitoriamente sin
 terminador NUL y salirse del final del búfer. ``app_config_lock()`` /
 ``app_config_unlock()`` serializan esos dos lados.

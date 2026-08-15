@@ -50,7 +50,8 @@ Concorrenza: il lock di configurazione
 ``g_config`` è scritto campo per campo dai gestori POST del web (un singolo
 salvataggio di impostazioni riscrive molti campi, diversi dei quali
 stringhe/array, uno a uno) mentre task di lunga durata (costruttori di beacon,
-login dell'IGate, digipeater, messaggio, meteo) leggono quegli stessi campi. Un
+login dell'IGate, digipeater, messaggio, meteo, risponditore di query) leggono
+quegli stessi campi. Un
 lettore che campiona una stringa a metà ``strcpy`` può vedere un valore rotto o
 transitoriamente senza terminatore NUL e uscire dalla fine del buffer.
 ``app_config_lock()`` / ``app_config_unlock()`` serializzano quei due lati.

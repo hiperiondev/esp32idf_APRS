@@ -47,7 +47,7 @@ Concurrency: the config lock
 ``g_config`` is written field-by-field by the web POST handlers (a single
 settings save rewrites many fields, several of them strings/arrays, one at a
 time) while long-running tasks (beacon builders, IGate login, digipeater,
-message, weather) read those same fields. A reader that samples a string
+message, weather, query responder) read those same fields. A reader that samples a string
 mid-``strcpy`` can see a torn or transiently non-NUL-terminated value and walk
 off the end of the buffer. ``app_config_lock()`` / ``app_config_unlock()``
 serialise those two sides.

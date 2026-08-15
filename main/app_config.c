@@ -199,7 +199,7 @@ void app_config_set_defaults(app_config_t *c) {
     c->pos_dao_en = false;
 
     c->wifi_mode = 2; // AP_STA equivalent default (matches original shipping as AP)
-    c->wifi_power = 20;
+    c->wifi_power = WIFI_TX_POWER_DBM_DEFAULT;
     for (int i = 0; i < WIFI_STA_NUM; i++) {
         c->wifi_sta[i].enable = false;
         set_str(c->wifi_sta[i].wifi_ssid, sizeof(c->wifi_sta[i].wifi_ssid), "WIFI_AP");
@@ -902,7 +902,18 @@ static void config_from_json(cJSON *d, app_config_t *c) {
         c->timezone_idx = 0;
     }
     c->wifi_mode = (uint8_t)jget_num(d, "WiFiMode", def.wifi_mode);
-    c->wifi_power = (int8_t)jget_num(d, "WiFiPwr", def.wifi_power);
+    // Read through an int so a value the file carries far outside int8_t range
+    // is bounded here rather than wrapping into a small negative on the cast:
+    // main.c multiplies this by four for the driver's quarter-dBm argument, so
+    // anything outside the accepted band either overflows that multiply or is
+    // refused by esp_wifi_set_max_tx_power(), silently leaving whatever power
+    // the radio came up with.
+    int wifiPwr = (int)jget_num(d, "WiFiPwr", def.wifi_power);
+    if (wifiPwr < WIFI_TX_POWER_DBM_MIN || wifiPwr > WIFI_TX_POWER_DBM_MAX) {
+        ESP_LOGW(TAG, "stored WiFi TX power %d outside %d-%d dBm, clamped", wifiPwr, WIFI_TX_POWER_DBM_MIN, WIFI_TX_POWER_DBM_MAX);
+        wifiPwr = (wifiPwr < WIFI_TX_POWER_DBM_MIN) ? WIFI_TX_POWER_DBM_MIN : WIFI_TX_POWER_DBM_MAX;
+    }
+    c->wifi_power = (int8_t)wifiPwr;
     c->wifi_ap_ch = (uint8_t)jget_num(d, "WiFiAPCH", def.wifi_ap_ch);
     // The file on flash is not a trusted input: it can arrive from a crafted
     // POST, a hand edit over the Storage page, or a backup taken from a build
