@@ -184,19 +184,6 @@ static char phgRateChar(uint32_t intervalSec) {
     return (perHour <= 9) ? (char)('0' + perHour) : (char)('A' + (perHour - 10));
 }
 
-// Decodes one PHGR "probes" rate character back into its beacons-per-hour
-// value: '0'-'9' map to 0-9, 'A' upward map to 10 and above. Returns -1 for
-// any other byte, so a caller stepping through a received extension can tell
-// a real rate character apart from an ordinary comment byte sitting in the
-// same position.
-static int phgRateValue(char c) {
-    if (c >= '0' && c <= '9')
-        return c - '0';
-    if (c >= 'A' && c <= 'Z')
-        return 10 + (c - 'A');
-    return -1;
-}
-
 // Builds the "PHGphgd" data-extension token from PHG sub-fields, using the
 // same rounding/clamping and single-character-per-digit encoding as the
 // Station/Objects web pages (see objitem_build_phg() in objects_items.c and
@@ -1333,36 +1320,6 @@ int beacon_build_igate_position_packet(const char *path, char *out, size_t out_m
     beacon_params_t p;
     fillIgatePositionParams(&p);
     return buildPositionPacket(&p, path, out, out_max);
-}
-
-bool beacon_parse_phg_extension(const char *field, char phg_digits[5], int *rate_out, const char **comment_out) {
-    if (!field || strlen(field) < 7 || strncmp(field, "PHG", 3) != 0)
-        return false;
-
-    memcpy(phg_digits, field + 3, 4);
-    phg_digits[4] = 0;
-
-    // The PHGR probe form only exists when the byte right after the standard
-    // 7-byte token is a legal rate character AND that byte is immediately
-    // followed by the mandatory '/' (aprs.org/aprs12/probes.txt); anything
-    // else is the plain 7-byte form, with the comment starting one byte
-    // earlier. Requiring both keeps a legacy comment that happens to start
-    // with a letter or digit from being misread as a probe rate. Testing
-    // rate >= 0 first guarantees field[7] is not the NUL terminator before
-    // field[8] is read, so this never reads past the string.
-    int rate = phgRateValue(field[7]);
-    if (rate >= 0 && field[8] == '/') {
-        if (rate_out)
-            *rate_out = rate;
-        if (comment_out)
-            *comment_out = field + 9;
-    } else {
-        if (rate_out)
-            *rate_out = -1;
-        if (comment_out)
-            *comment_out = field + 7;
-    }
-    return true;
 }
 
 int beacon_build_igate_status_packet(const char *path, char *out, size_t out_max) {

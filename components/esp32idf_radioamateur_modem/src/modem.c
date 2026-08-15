@@ -218,8 +218,6 @@ void ModemCalibrateSampleRate(float measuredAdcHz, float measuredDacHz) {
 
 #define PLL_TUNE_BITS 8 // fixed point bits when tuning the PLL
 
-#define DIV_ROUND(dividend, divisor) (((dividend) + (divisor) / 2) / (divisor))
-
 // ------------------------------------------------------------------
 // Quarter-wave sine table, 512 points, 8-bit unsigned, midpoint 128.
 // Only the first quarter is stored; sinSample() mirrors/inverts it.
@@ -701,10 +699,6 @@ void IRAM_ATTR ModemTransmitStop(void) {
 
 bool ModemTxTeardownPending(void) {
     return AFSK_TxTeardownPending();
-}
-
-uint8_t IRAM_ATTR ModemSinSample(uint16_t i) {
-    return sinSample(i);
 }
 
 void ModemGetStepTones(float *mark, float *space) {

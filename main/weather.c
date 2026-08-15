@@ -62,9 +62,8 @@ static const char *TAG = "weather";
 // information field as a whole, not to the weather data block.
 #define WX_SW_SUFFIX "xESP"
 
-#define WX_MIN_INTERVAL_S     30   // sanity floor for wx_interval
-#define WX_DEFAULT_INTERVAL_S 600  // used when wx_interval == 0
-#define WX_REFRESH_PERIOD_MS  1000 // sensors_local sampling cadence (1 Hz)
+#define WX_MIN_INTERVAL_S     30  // sanity floor for wx_interval
+#define WX_DEFAULT_INTERVAL_S 600 // used when wx_interval == 0
 
 // -------------------------------------------------------------------------
 // The one shared container and its backing storage.

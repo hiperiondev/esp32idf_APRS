@@ -99,15 +99,6 @@ Every selector ships selecting preset 0 and nothing else
 with a factory string (``WIDE1-1,WIDE2-1``) and a bit pointing at an empty slot
 would beacon with a bare destination call.
 
-The service activation flags are a **separate** bit set, over the services of
-the station rather than over the path presets; the two only happen to be the
-same width:
-
-.. code-block:: text
-
-   ACTIVATE_OFF 0 · TRACKER 1<<0 · IGATE 1<<1 · DIGI 1<<2 · WX 1<<3
-   ACTIVATE_TELEMETRY 1<<4 · QUERY 1<<5 · STATUS 1<<6 · WIFI 1<<7
-
 The IGate filter bits (shared by ``rf2inetFilter`` and ``inet2rfFilter``):
 
 .. code-block:: text

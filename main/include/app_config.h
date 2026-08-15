@@ -250,26 +250,10 @@ typedef enum {
  * factory-fresh station; any other single bit would beacon with a bare
  * destination call until the operator filled the matching preset in.
  *
- * This is a preset-slot mask and shares nothing but its width with the
- * @c ACTIVATE_* service flags below.
+ * The selector is a mask over path preset slots, not over services: a bit
+ * names one of the four shared presets and nothing else.
  */
 #define PATH_PRESET_MASK_DEFAULT (1 << 0)
-
-/**
- * @name Activate bit flags
- * @brief Bit flags naming the services of this station, one bit per service.
- * @{
- */
-#define ACTIVATE_OFF       0        /**< No services active. */
-#define ACTIVATE_TRACKER   (1 << 0) /**< Tracker active. */
-#define ACTIVATE_IGATE     (1 << 1) /**< IGate active. */
-#define ACTIVATE_DIGI      (1 << 2) /**< Digipeater active. */
-#define ACTIVATE_WX        (1 << 3) /**< Weather active. */
-#define ACTIVATE_TELEMETRY (1 << 4) /**< Telemetry active. */
-#define ACTIVATE_QUERY     (1 << 5) /**< Query responder active. */
-#define ACTIVATE_STATUS    (1 << 6) /**< Status beacon active. */
-#define ACTIVATE_WIFI      (1 << 7) /**< WiFi active. */
-/** @} */
 
 /**
  * @name IGate [Filter] section bit flags

@@ -75,34 +75,6 @@ void beacon_start(void);
 int beacon_build_igate_position_packet(const char *path, char *out, size_t out_max);
 
 /**
- * @brief Parse an APRS "PHGphgd" Data Extension (APRS101 ch.7) from the start
- * of a received information-field slice, including the optional PHGR
- * "probes" beacon-rate character and its mandatory trailing slash (1.2
- * addition, aprs.org/aprs12/probes.txt).
- *
- * The standard form is the 7-byte "PHGphgd" token; the probe form inserts
- * one extra character - the beacons-per-hour rate, '0'-'9' then 'A' upward
- * for 10 and above - immediately followed by a mandatory '/' before the
- * free-text comment. Both forms are accepted; whichever one is present,
- * @p comment_out is left pointing at the first byte of the comment/free text
- * that follows the extension, never at a stray rate character or separator.
- *
- * @param field       NUL-terminated slice starting at the 'P' of "PHG".
- * @param phg_digits  Receives the 4-digit "phgd" code (power, height, gain,
- *                    directivity) as a NUL-terminated string; must be
- *                    >= 5 bytes.
- * @param rate_out    Receives the decoded beacons-per-hour rate when the
- *                    probe form is present, or -1 when the plain 7-byte form
- *                    is present instead. May be NULL if the caller does not
- *                    need the rate.
- * @param comment_out Receives a pointer into @p field at the first byte
- *                    after the parsed extension. May be NULL.
- * @return true if @p field begins with a well-formed "PHGphgd" token, false
- *         if it is too short or does not start with "PHG".
- */
-bool beacon_parse_phg_extension(const char *field, char phg_digits[5], int *rate_out, const char **comment_out);
-
-/**
  * @brief Build the same APRS status report the IGate status beacon transmits
  * (g_config.igate_status, plus the Maidenhead locator block when
  * g_config.status_grid_en is set), on demand - currently for the query

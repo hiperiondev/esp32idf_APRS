@@ -144,9 +144,8 @@
  * let the assembled field pass ::APRS_STATUS_INFO_MAX.
  * @{
  */
-#define APRS_STATUS_TEXT_MAX    62                         /**< Longest status text, in characters, APRS101 ch.16 allows with no timestamp. */
-#define APRS_STATUS_TEXT_TS_MAX 55                         /**< Longest status text, in characters, APRS101 ch.16 allows alongside a DHM timestamp. */
-#define APRS_STATUS_INFO_MAX    (1 + APRS_STATUS_TEXT_MAX) /**< Longest status information field, in bytes: the same 63-byte ceiling either way. */
+#define APRS_STATUS_TEXT_MAX 62                         /**< Longest status text, in characters, APRS101 ch.16 allows with no timestamp. */
+#define APRS_STATUS_INFO_MAX (1 + APRS_STATUS_TEXT_MAX) /**< Longest status information field, in bytes: the same 63-byte ceiling either way. */
 /** @} */
 
 /**

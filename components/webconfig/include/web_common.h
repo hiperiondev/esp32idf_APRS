@@ -72,7 +72,6 @@ int web_read_body(httpd_req_t *req, char *buf, size_t buf_size);
  * fields are added, bump the matching constant here.
  * @{
  */
-#define WEBCONFIG_POST_BUF_MOD 3000 /**< page_mod.c - RF/I2C/UART/PPP/power peripheral form. */
 #define WEBCONFIG_POST_BUF_TLM                                                                                                                                 \
     9000 /**< page_tlm.c - telemetry form (Beacon + Report Parameters + Definition Messages + 5 analog channels + 8 digital bits).                             \
           */
@@ -313,17 +312,6 @@ void web_send_footer(httpd_req_t *req);
 void web_send_save_result(httpd_req_t *req, bool ok, const char *location);
 
 /**
- * @brief Send the "saved, redirecting..." response.
- *
- * Equivalent to web_send_save_result() with @p ok true, for handlers that have
- * nothing to persist and therefore nothing that can fail.
- *
- * @param req      Incoming request.
- * @param location URL the browser is redirected to.
- */
-void web_send_saved_redirect(httpd_req_t *req, const char *location);
-
-/**
  * @brief Serve the shared stylesheet (the CSS referenced by web_send_header()).
  * @param req Incoming request.
  * @return ESP_OK or an esp_err_t error.
@@ -387,9 +375,6 @@ void web_fieldset_close(httpd_req_t *req);
 /** @brief Render a labelled single-line text input. @param req Request. @param label Field label. @param name Form field name. @param value Current value.
  * @param maxlen HTML maxlength. */
 void web_field_text(httpd_req_t *req, const char *label, const char *name, const char *value, int maxlen);
-/** @brief Render a labelled password input (with a show/hide toggle). @param req Request. @param label Field label. @param name Form field name. @param value
- * Current value. @param maxlen HTML maxlength. */
-void web_field_password(httpd_req_t *req, const char *label, const char *name, const char *value, int maxlen);
 /**
  * @brief Render a labelled integer input, bounded client-side.
  *

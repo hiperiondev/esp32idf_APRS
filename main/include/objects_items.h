@@ -122,17 +122,6 @@
 #define OBJITEM_SIGNPOST_MAX 3
 
 /**
- * @brief DF (direction-finding) report bearing value meaning "no bearing".
- *
- * APRS101 ch.16: a DF report with no valid bearing uses 000 as the /BRG
- * field and 000 as the /NRQ number-of-hits/range/quality field, so a
- * receiver can tell an omnidirectional signal-strength-only report apart
- * from a real bearing/quality report. 0 is therefore not itself a valid
- * bearing on air.
- */
-#define OBJITEM_DF_NO_BEARING 0
-
-/**
  * @brief QRU group-membership name length.
  *
  * Mirrors YAAC's "QRU group membership" field: a short group tag (e.g. "HOSP",
@@ -230,7 +219,7 @@ typedef struct {
     //    Area/Signpost/PHG (which already repurpose that slot) since a DF
     //    report needs the CSE/SPD portion to still be present.
     bool df_enable;      /**< Enable the DF "/BRG/NRQ" extension for this element. */
-    uint16_t df_bearing; /**< Signal bearing, degrees 0..359 (APRS101 ch.16 "BRG"); OBJITEM_DF_NO_BEARING (0) => omnidirectional/no bearing. */
+    uint16_t df_bearing; /**< Signal bearing, degrees 0..359 (APRS101 ch.16 "BRG"); 0 => omnidirectional/no bearing, never a valid bearing on air. */
     uint8_t df_nrq_n;    /**< NRQ "N" digit: 0 = omnidirectional antenna, 1..8 = beam antenna with a 360/2^(N-1) degree beam width, 9 = reserved. */
     uint8_t df_nrq_r;    /**< NRQ "R" digit: 0 = received signal strength not usable, 1..9 = signal strength code (S-meter reading). */
     uint8_t df_nrq_q;    /**< NRQ "Q" digit: 0 = bearing not accurate, 1..9 = bearing accuracy code (1 = best, per the APRS101 DF quality table). */

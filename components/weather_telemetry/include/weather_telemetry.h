@@ -64,10 +64,7 @@
  *        the AX.25 Information field (see APRS101 chapter 5 and 8).
  * @{
  */
-#define APRS_MAX_INFO_FIELD_LEN       256 /**< Max AX.25 Information field length (protocol id + data), bytes. */
-#define APRS_MAX_COMMENT_LEN          43  /**< Max comment length for a position report without data extension. */
-#define APRS_MAX_COMMENT_WITH_EXT_LEN 36  /**< Max comment length when a 7-byte Data Extension is present. */
-#define APRS_CALLSIGN_LEN             6   /**< Callsign field length, excluding SSID. */
+#define APRS_MAX_COMMENT_LEN     43 /**< Max comment length for a position report without data extension. */
 #define APRS_CALLSIGN_SSID_LEN   9 /**< Callsign left-justified, space-padded to 9 chars, as required in the addressee field of Messages/PARM/UNIT/EQNS/BITS. */
 #define APRS_MAX_STATUS_TEXT_LEN 62         /**< Max status text length. */
 #define APRS_MAX_OBJECT_NAME_LEN 9          /**< Fixed object/item name length. */

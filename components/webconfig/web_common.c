@@ -869,10 +869,6 @@ void web_send_save_result(httpd_req_t *req, bool ok, const char *location) {
     httpd_resp_sendstr(req, buf);
 }
 
-void web_send_saved_redirect(httpd_req_t *req, const char *location) {
-    web_send_save_result(req, true, location);
-}
-
 esp_err_t web_handle_css(httpd_req_t *req) {
     static const char *css =
         // Palette/typography matched to hiperiondev/ESP32_WSPR's embedded web admin
@@ -1029,20 +1025,6 @@ void web_field_text(httpd_req_t *req, const char *label, const char *name, const
     label_clamp(lbl, label);
     char buf[WEB_LABEL_MAX_BYTES + 576];
     snprintf(buf, sizeof(buf), "<label>" WEB_LABEL_FMT "</label><input type='text' name='%.30s' value='%.400s' maxlength='%d'>", lbl, name, esc, maxlen);
-    httpd_resp_sendstr_chunk(req, buf);
-}
-
-void web_field_password(httpd_req_t *req, const char *label, const char *name, const char *value, int maxlen) {
-    char esc[512];
-    web_html_attr_escape(value ? value : "", esc, sizeof(esc));
-    char lbl[WEB_LABEL_MAX_BYTES + 1];
-    label_clamp(lbl, label);
-    char buf[WEB_LABEL_MAX_BYTES + 768];
-    snprintf(buf, sizeof(buf),
-             "<label>" WEB_LABEL_FMT "</label>"
-             "<input type='password' name='%.30s' id='pwd_%.30s' value='%.400s' maxlength='%d'>"
-             "<label class='pwd-show'><input type='checkbox' onclick=\"togglePwd('pwd_%.30s',this)\"> " TR_SHOW_PASSWORD "</label>",
-             lbl, name, name, esc, maxlen, name);
     httpd_resp_sendstr_chunk(req, buf);
 }
 

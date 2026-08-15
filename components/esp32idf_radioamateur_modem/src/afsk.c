@@ -193,8 +193,8 @@ static uint16_t s_avg = 2048;
 // A plain "static inline" is only a hint - at CONFIG_COMPILER_OPTIMIZATION_DEBUG
 // (-Og), GCC frequently declines it, and an un-inlined static function is
 // placed in flash by default. That reintroduces the exact XIP-fetch jitter
-// this file's other ISR-path functions (dac_write_isr, calculateCRC,
-// ModemSinSample) were already made IRAM_ATTR to avoid.
+// this file's other ISR-path functions (dac_write_isr, calculateCRC) are
+// IRAM_ATTR to avoid.
 #define DAC_MID 128
 static inline uint8_t IRAM_ATTR dac_scale(uint8_t s) {
     int v = DAC_MID + (((int)s - DAC_MID) * MODEM_DAC_AMPLITUDE_PCT) / 100;
@@ -588,12 +588,10 @@ int afskDiagCaptureRaw(int16_t *dst, int n, uint32_t timeout_ms) {
 // section here does not race anything.
 #if CONFIG_IDF_TARGET_ESP32
 #include "hal/dac_ll.h"
-#define MODEM_DAC_WRITE_IRAM 1
 static inline void IRAM_ATTR dac_write_isr(uint8_t code) {
     dac_ll_update_output_value(MODEM_DAC_CHANNEL, code);
 }
 #else
-#define MODEM_DAC_WRITE_IRAM 0
 static inline void dac_write_isr(uint8_t code) {
     dac_oneshot_output_voltage(s_dac, code);
 }

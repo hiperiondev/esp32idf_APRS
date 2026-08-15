@@ -39,11 +39,6 @@
 #include "esp_err.h"
 
 /**
- * @brief HDLC flag byte (0x7E) used to delimit AX.25 frames on the air.
- */
-#define AX25_FLAG 0x7e
-
-/**
  * @brief Set the active level (polarity) of the PTT output at runtime.
  *
  * The PTT GPIO itself is a fixed, compile-time-only board wiring choice

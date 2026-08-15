@@ -159,21 +159,14 @@ void aprs_maidenhead_locator(float lat, float lon, char *out, size_t outMax);
  * a compressed report: a compressed position field never starts with a digit,
  * because that first byte is exactly how a receiver tells the two layouts
  * apart. A numeric overlay therefore travels as the matching lower-case
- * letter, 'a' for '0' through ::APRS_COMPRESSED_OVERLAY_DIGIT_LAST for '9',
- * and is mapped back to the digit on receive.
+ * letter, 'a' for '0' through 'j' for '9', and is mapped back to the digit on
+ * receive.
  *
  * aprs_coord_format_compressed() applies the mapping itself, so a caller
  * passes the configured Symbol Table Identifier unchanged whichever layout it
  * is building.
  */
 #define APRS_COMPRESSED_OVERLAY_DIGIT_BASE 'a'
-
-/**
- * @brief Last byte of the lower-case range described by
- * ::APRS_COMPRESSED_OVERLAY_DIGIT_BASE, i.e. the byte that stands for
- * overlay '9'.
- */
-#define APRS_COMPRESSED_OVERLAY_DIGIT_LAST 'j'
 
 /**
  * @brief Test whether a byte is a Symbol Table Identifier (APRS 1.2 chapter

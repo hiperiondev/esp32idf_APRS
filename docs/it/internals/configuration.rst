@@ -106,15 +106,6 @@ Ogni selettore parte selezionando il preset 0 e nient'altro
 una stringa di fabbrica (``WIDE1-1,WIDE2-1``) e un bit che punta a uno slot
 vuoto manderebbe il beacon con la sola destinazione.
 
-I flag di attivazione dei servizi sono un insieme di bit **distinto**, sui
-servizi della stazione e non sui preset di percorso; coincidono solo nella
-larghezza:
-
-.. code-block:: text
-
-   ACTIVATE_OFF 0 · TRACKER 1<<0 · IGATE 1<<1 · DIGI 1<<2 · WX 1<<3
-   ACTIVATE_TELEMETRY 1<<4 · QUERY 1<<5 · STATUS 1<<6 · WIFI 1<<7
-
 I bit del filtro dell'IGate (condivisi da ``rf2inetFilter`` e ``inet2rfFilter``):
 
 .. code-block:: text

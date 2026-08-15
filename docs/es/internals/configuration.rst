@@ -107,15 +107,6 @@ Todos los selectores salen de fábrica seleccionando el preset 0 y nada más
 con una cadena de fábrica (``WIDE1-1,WIDE2-1``) y un bit que apunta a una ranura
 vacía emitiría la baliza con el destino pelado.
 
-Las banderas de activación de servicios son un conjunto de bits **distinto**,
-sobre los servicios de la estación y no sobre los presets de ruta; solo
-coinciden en el ancho:
-
-.. code-block:: text
-
-   ACTIVATE_OFF 0 · TRACKER 1<<0 · IGATE 1<<1 · DIGI 1<<2 · WX 1<<3
-   ACTIVATE_TELEMETRY 1<<4 · QUERY 1<<5 · STATUS 1<<6 · WIFI 1<<7
-
 Los bits del filtro del IGate (compartidos por ``rf2inetFilter`` e
 ``inet2rfFilter``):
 

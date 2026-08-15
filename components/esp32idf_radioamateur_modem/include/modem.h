@@ -182,19 +182,6 @@ void ModemInit(void);
 void ModemCalibrateSampleRate(float measuredAdcHz, float measuredDacHz);
 
 /**
- * @brief Number of entries in the modulator's sine lookup table.
- */
-#define MODEM_SIN_LEN 512
-
-/**
- * @brief Read one sample of the 512-entry, 8-bit unsigned sine table used
- *        by the modulator (midpoint value 128).
- * @param i Index into the sine table, in the range [0, ::MODEM_SIN_LEN).
- * @return Sine table value at index @p i.
- */
-uint8_t ModemSinSample(uint16_t i);
-
-/**
  * @brief Get the mark and space tone frequencies the modulator can
  *        actually emit, in Hz.
  *
