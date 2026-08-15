@@ -47,13 +47,13 @@ struct Ax25ProtoConfig Ax25Config;
 // were read-modify-written from two different cores with no synchronisation.
 // Hence one more than the usable depth.
 //
-// Sized as AX25_TX_FRAME_RING_MAX+1 (11 slots, 10 usable): during
+// Sized as AX25_TX_FRAME_RING_MAX+1 (12 slots, 11 usable): during
 // digipeating/igating, several RF frames can arrive back-to-back and each
 // gets re-queued for TX while the AFSK modem is still keying up and sending
 // the previous one (hundreds of ms at 1200 baud), so the ring must hold that
 // burst without overrunning and dropping later frames ("TX buffer full, frame
 // dropped"). The usable depth matches the Radiomodem page's "TX buffers"
-// field, which the user can set 1-10 (RF_TX_BUFFERS_MAX in aprs_service.h).
+// field, which the user can set 1-11 (RF_TX_BUFFERS_MAX in aprs_service.h).
 // FRAME_MAX_COUNT is defined in terms of the same AX25_TX_FRAME_RING_MAX the
 // config layer clamps against (see ax25.h), so the reported capacity and the
 // ring's real capacity always agree. Each ring slot costs AX25_FRAME_MAX_SIZE

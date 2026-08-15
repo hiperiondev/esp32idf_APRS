@@ -17,6 +17,7 @@
 // implements file download, upload (multipart), delete and whole partition
 // format.
 
+#include <ctype.h>
 #include <dirent.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -53,18 +54,18 @@ static void append_file_row(httpd_req_t *req, const char *name, long size) {
     char *row = malloc(need);
     if (!row)
         return;
-    // Delete is a real POST form (not a GET link): a GET request is meant to
-    // be safe/side-effect-free, so a state-changing action reachable via a
-    // plain <a href> is trivially triggerable by a third-party page (e.g.
-    // <img src="/delete?file=...">) while the admin's browser still has
-    // Basic-Auth credentials cached - i.e. CSRF. The confirm() dialog still
-    // reads the filename from data-fname (already HTML-attribute-escaped),
-    // so nothing needs JS-string escaping.
-    // 'need' is sized from the actual esc/enc lengths above, so this never
-    // truncates at runtime; GCC's format-truncation analysis just can't
-    // follow that arithmetic and assumes the worst case (each %s filled to
-    // its buffer's declared capacity of 512). Silence the false positive
-    // locally instead of disabling the check project-wide.
+        // Delete is a real POST form (not a GET link): a GET request is meant to
+        // be safe/side-effect-free, so a state-changing action reachable via a
+        // plain <a href> is trivially triggerable by a third-party page (e.g.
+        // <img src="/delete?file=...">) while the admin's browser still has
+        // Basic-Auth credentials cached - i.e. CSRF. The confirm() dialog still
+        // reads the filename from data-fname (already HTML-attribute-escaped),
+        // so nothing needs JS-string escaping.
+        // 'need' is sized from the actual esc/enc lengths above, so this never
+        // truncates at runtime; GCC's format-truncation analysis just can't
+        // follow that arithmetic and assumes the worst case (each %s filled to
+        // its buffer's declared capacity of 512). Silence the false positive
+        // locally instead of disabling the check project-wide.
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wformat-truncation"
     snprintf(row, need,
@@ -119,11 +120,16 @@ esp_err_t page_storage_get(httpd_req_t *req) {
 // A `file` query value is only ever supposed to be one of the flat names
 // this page itself listed - never a path. Reject anything with a separator
 // or a leading dot so a hand-crafted request can't walk out of /storage.
+// Also reject '"' and control characters (CR/LF included) so a filename can
+// never break out of the quoted Content-Disposition attribute in
+// page_download() or inject extra header lines, matching the character set
+// web_sanitize_filename() already permits on write.
 static bool safe_flat_filename(const char *fname) {
     if (!fname || fname[0] == 0 || fname[0] == '.')
         return false;
     for (const char *p = fname; *p; p++) {
-        if (*p == '/' || *p == '\\')
+        unsigned char c = (unsigned char)*p;
+        if (c == '/' || c == '\\' || c == '"' || iscntrl(c))
             return false;
     }
     return true;
