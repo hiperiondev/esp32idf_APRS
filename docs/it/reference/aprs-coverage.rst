@@ -426,8 +426,8 @@ Rapporti di stato (cap. 16)
      - ✅
      - Il limite di 62 caratteri è applicato scartando i blocchi opzionali in un ordine definito — prima il locatore, poi il blocco di frequenza — e il testo dell'operatore non viene mai toccato. Se ancora non entra, il rapporto viene rifiutato invece di essere troncato in una trama malformata.
    * - Rapporto di stato con locatore Maidenhead
-     - ⚠️
-     - Il locatore a quattro o sei caratteri e il suo simbolo vengono prodotti, ma due regole di posizione non sono rispettate: la specifica richiede che il locatore segua immediatamente l'identificatore di tipo dato e vieta di combinarlo con una marca temporale. Qui la marca temporale e il blocco di frequenza possono precederlo, quindi un ricevitore rigido non riconoscerà la forma con locatore.
+     - ✅
+     - Il locatore a quattro o sei caratteri e il suo simbolo vengono prodotti subito dopo l'identificatore di tipo dato, prima del blocco di frequenza. Non viene mai combinato con una marca temporale: se entrambi sono abilitati, il locatore ha la precedenza e la marca temporale viene omessa.
    * - Direzione d'antenna e potenza irradiata efficace
      - ✅
      - I due caratteri chiudono il testo di stato dopo un ``^``, a partire da una direzione e da una potenza valide per l'intera stazione e impostate nella pagina Station. La direzione avanza di dieci gradi e la potenza è portata alla voce più vicina della tabella della specifica, che va da 10 a 7290 watt. Servono entrambe le metà perché il blocco compaia, ed è l'unico blocco che il budget di lunghezza non scarta mai: una stazione che lavora in meteor scatter manda il rapporto proprio per quei tre byte.
@@ -529,7 +529,7 @@ Simboli (cap. 21)
      - Un selettore visuale nell'amministrazione web copre entrambe le tabelle, con un simbolo per ruolo per tracker, IGate, digipeater, stazione meteo e ogni oggetto.
    * - Caratteri di sovrapposizione
      - ✅
-     - Un carattere di sovrapposizione può essere collocato nella posizione della tabella per i simboli che lo accettano, ed è così che un digipeater annuncia la propria politica di instradamento sulla mappa.
+     - Un carattere di sovrapposizione può essere collocato nella posizione della tabella per i simboli che lo accettano, ed è così che un digipeater annuncia la propria politica di instradamento sulla mappa. Sono accettate sovrapposizioni alfabetiche e numeriche, e una numerica viene emessa in un rapporto compresso come la lettera minuscola ``a``-``j`` che quel formato richiede, perché un campo di posizione compresso non può mai iniziare con una cifra.
    * - Precedenza dei simboli
      - ⚠️
      - Viene letto solo il simbolo del campo informazioni, quindi la questione della precedenza non si pone in pratica; ma significa anche che le sorgenti di ripiego descritte dalla regola non vengono mai consultate per un pacchetto che lì non porti simbolo.

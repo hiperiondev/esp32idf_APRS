@@ -199,6 +199,28 @@ RNG seleccionado se los cede al alcance: el alcance no tiene otro lugar donde
 ir, mientras que la altitud todavía cuenta con ``/A=`` como respaldo, y eso es
 lo que una baliza así emite.
 
+Superposiciones numéricas en un reporte comprimido
+==================================================
+
+Una superposición de símbolo se escribe en la posición de tabla del par de
+símbolo, y APRS 1.2 cap.21 admite que sea una letra ``A``-``Z`` o un dígito
+``0``-``9``: las numéricas son la forma en que un digipetidor anuncia su
+política de ruteo, el "círculo numerado" de la tabla alternativa. El formato
+comprimido no puede llevar el dígito en sí: el primer byte de un campo de
+posición es justamente lo que le dice a un receptor cuál de los dos formatos
+está leyendo, y un dígito inicial significa no comprimido.
+
+Por eso una superposición numérica viaja como la letra minúscula
+correspondiente, ``a`` para ``0`` hasta ``j`` para ``9``, y el receptor la
+vuelve a mapear al dígito. El firmware aplica ese mapeo al construir el campo,
+así que la superposición se configura una sola vez, como el dígito, y la casilla
+*Comprimir posición* no cambia nada de cómo se ingresa ni de cómo se grafica.
+
+Los dos bytes del par también se acotan a la entrada — en el formulario y otra
+vez al leer el archivo de configuración — porque ninguno es cosmético: un
+identificador de tabla fuera de ``/``, ``\``, ``A``-``Z`` y ``0``-``9`` cae de
+vuelta a la tabla primaria, y un código fuera del rango imprimible cae a ``&``.
+
 La capacidad de mensajería va en el identificador de tipo de datos
 ==================================================================
 

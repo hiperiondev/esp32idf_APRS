@@ -24,6 +24,7 @@
 #include <string.h>
 
 #include "app_config.h"
+#include "aprs_coord.h" // aprs_symbol_table_is_valid()/aprs_symbol_code_is_valid(): the symbol pair accepted on air
 // RF_TX_BUFFERS_MIN/MAX, RF_PREAMBLE_MS_MIN/MAX, RF_TX_TIMESLOT_MS_MAX,
 // PTT_MIN_UNKEY_MS_MAX, CSMA_PERSIST_MIN: the same bounds the Radiomodem form
 // enforces, so what is loaded from flash and what is saved from the web admin
@@ -801,6 +802,25 @@ static void config_write_json(jw_t *d, const app_config_t *c) {
 }
 
 // ---- deserialize ------------------------------------------------------------
+
+// Bounds a stored "<table><code>" symbol pair to what chapter 21 defines,
+// the same two sets the symbol form enforces. Neither byte is cosmetic: the
+// table identifier decides how a receiver reads the rest of a compressed
+// position report, and the code decides which classifier the report lands in,
+// so a byte that arrived from a hand-edited config.json is folded back to the
+// default rather than beaconed.
+static void clamp_symbol(char *sym, const char *key) {
+    if (!aprs_symbol_table_is_valid(sym[0])) {
+        ESP_LOGW(TAG, "%s table identifier 0x%02X is not valid, using '%c'", key, (unsigned)(unsigned char)sym[0], APRS_SYMBOL_TABLE_DEFAULT);
+        sym[0] = APRS_SYMBOL_TABLE_DEFAULT;
+    }
+    if (!aprs_symbol_code_is_valid(sym[1])) {
+        ESP_LOGW(TAG, "%s code 0x%02X is not valid, using '%c'", key, (unsigned)(unsigned char)sym[1], APRS_SYMBOL_CODE_DEFAULT);
+        sym[1] = APRS_SYMBOL_CODE_DEFAULT;
+    }
+    sym[2] = 0;
+}
+
 static void config_from_json(cJSON *d, app_config_t *c) {
     // Start from defaults so every key not present in an older config file
     // still ends up with a sane, documented value (never zero-garbage).
@@ -1031,6 +1051,7 @@ static void config_from_json(cJSON *d, app_config_t *c) {
     c->igate_alt = (float)jget_num(d, "igateALT", def.igate_alt);
     c->igate_interval = (uint16_t)jget_num(d, "igateINV", def.igate_interval);
     set_str(c->igate_symbol, sizeof(c->igate_symbol), jget_str(d, "igateSymbol", def.igate_symbol));
+    clamp_symbol(c->igate_symbol, "igateSymbol");
     c->igate_path = (uint8_t)jget_num(d, "igatePath", def.igate_path);
     set_str_utf8(c->igate_comment, sizeof(c->igate_comment), jget_str(d, "igateComment", def.igate_comment));
     c->igate_timestamp = jget_bool(d, "igateTimestamp", def.igate_timestamp);
@@ -1113,6 +1134,7 @@ static void config_from_json(cJSON *d, app_config_t *c) {
     c->digi_lon = (float)jget_num(d, "digiLON", def.digi_lon);
     c->digi_interval = (uint16_t)jget_num(d, "digiINV", def.digi_interval);
     set_str(c->digi_symbol, sizeof(c->digi_symbol), jget_str(d, "digiSymbol", def.digi_symbol));
+    clamp_symbol(c->digi_symbol, "digiSymbol");
     set_str_utf8(c->digi_comment, sizeof(c->digi_comment), jget_str(d, "digiComment", def.digi_comment));
     c->digi_sts_interval = (uint16_t)jget_num(d, "digiSTSIntv", def.digi_sts_interval);
     set_str_utf8(c->digi_status, sizeof(c->digi_status), jget_str(d, "digiStatus", def.digi_status));
@@ -1146,6 +1168,7 @@ static void config_from_json(cJSON *d, app_config_t *c) {
     }
     c->trk_altitude = jget_bool(d, "trkOptAlt", def.trk_altitude);
     set_str(c->trk_symbol, sizeof(c->trk_symbol), jget_str(d, "trkSymbol", def.trk_symbol));
+    clamp_symbol(c->trk_symbol, "trkSymbol");
     set_str_utf8(c->trk_comment, sizeof(c->trk_comment), jget_str(d, "trkComment", def.trk_comment));
     c->trk_sts_interval = (uint16_t)jget_num(d, "trkSTSIntv", def.trk_sts_interval);
     set_str_utf8(c->trk_status, sizeof(c->trk_status), jget_str(d, "trkStatus", def.trk_status));

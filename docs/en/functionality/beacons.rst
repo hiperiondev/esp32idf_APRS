@@ -185,6 +185,27 @@ The two bytes hold one thing at a time, so a beacon that also has RNG selected
 gives them to the range: the range has no other place to go, while altitude
 still has ``/A=`` to fall back on, and that is what such a beacon emits.
 
+Numeric overlays in a compressed report
+=======================================
+
+A symbol overlay is written in the table position of the symbol pair, and APRS
+1.2 ch.21 allows it to be a letter ``A``-``Z`` or a digit ``0``-``9`` — the
+numeric ones are how a digipeater advertises its routing policy, the "numbered
+circle" of the alternate table. The compressed layout cannot carry the digit
+itself: the first byte of a position field is exactly what tells a receiver
+which of the two layouts it is reading, and a leading digit means uncompressed.
+
+A numeric overlay therefore travels as the matching lower-case letter, ``a`` for
+``0`` through ``j`` for ``9``, and a receiver maps it back to the digit. The
+firmware applies that mapping when it builds the field, so the overlay is
+configured once, as the digit, and the *Compress position* tick changes nothing
+about how it is entered or how it plots.
+
+Both bytes of the pair are also bounded on the way in — on the form and again
+when the configuration file is read — because neither is cosmetic: a table
+identifier outside ``/``, ``\``, ``A``-``Z`` and ``0``-``9`` falls back to the
+primary table, and a code outside the printable range falls back to ``&``.
+
 Messaging capability is in the data type identifier
 ===================================================
 

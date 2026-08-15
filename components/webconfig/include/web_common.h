@@ -568,6 +568,14 @@ void web_field_use_station_data(httpd_req_t *req, const char *checkbox_name, boo
  * split field is present, so older/custom form submissions keep working.
  * Leaves @p out unchanged if nothing relevant is found in @p body.
  *
+ * Both bytes are validated before they are stored, since the form accepts any
+ * character the operator types: the table identifier must be one of the forms
+ * APRS 1.2 chapter 21 defines ('/', '\\', 'A'-'Z' or '0'-'9') and the code
+ * must be printable. A byte outside those sets is replaced with
+ * ::APRS_SYMBOL_TABLE_DEFAULT or ::APRS_SYMBOL_CODE_DEFAULT respectively -
+ * the configuration loader applies the same two bounds to what it reads from
+ * flash.
+ *
  * @param body        POST body.
  * @param name_prefix Same prefix passed to web_field_symbol().
  * @param legacy_name Fallback combined field name.

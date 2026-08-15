@@ -426,8 +426,8 @@ Reportes de estado (cap. 16)
      - ✅
      - El límite de 62 caracteres se aplica descartando los bloques opcionales en un orden definido —primero el localizador, después el bloque de frecuencia— y nunca se toca el texto propio del operador. Si aun así no entra, el reporte se rechaza en vez de recortarse a una trama mal formada.
    * - Reporte de estado con localizador Maidenhead
-     - ⚠️
-     - Se producen el localizador de cuatro o seis caracteres y su símbolo, pero no se cumplen dos reglas de ubicación: la especificación exige que el localizador siga inmediatamente al identificador de tipo de dato, y prohíbe combinarlo con una marca de tiempo. Acá la marca de tiempo y el bloque de frecuencia pueden precederlo, así que un receptor estricto no reconocerá la forma con localizador.
+     - ✅
+     - El localizador de cuatro o seis caracteres y su símbolo se producen inmediatamente después del identificador de tipo de dato, antes del bloque de frecuencia. Nunca se combina con una marca de tiempo: si ambos están habilitados, el localizador tiene precedencia y la marca de tiempo se omite.
    * - Rumbo de antena y potencia radiada efectiva
      - ✅
      - Los dos caracteres cierran el texto de estado detrás de un ``^``, a partir de un rumbo y una potencia de alcance global de la estación que se fijan en la página Station. El rumbo avanza de a diez grados y la potencia se ajusta a la entrada más cercana de la tabla de la especificación, que va de 10 a 7290 vatios. Hacen falta las dos mitades para que el bloque aparezca, y es el único bloque que el presupuesto de longitud nunca descarta: una estación que trabaja meteor scatter manda el reporte justamente por esos tres bytes.
@@ -528,7 +528,7 @@ Símbolos (cap. 21)
      - Un selector visual en la administración web cubre ambas tablas, con un símbolo por rol para el tracker, el IGate, el digipetidor, la estación meteorológica y cada objeto.
    * - Caracteres de superposición
      - ✅
-     - Se puede poner un carácter de superposición en la posición de la tabla para los símbolos que lo aceptan, que es como un digipetidor anuncia su propia política de ruteo en el mapa.
+     - Se puede poner un carácter de superposición en la posición de la tabla para los símbolos que lo aceptan, que es como un digipetidor anuncia su propia política de ruteo en el mapa. Se aceptan superposiciones alfabéticas y numéricas, y una numérica se emite en un reporte comprimido como la letra minúscula ``a``-``j`` que ese formato exige, porque un campo de posición comprimido nunca puede empezar con un dígito.
    * - Precedencia de símbolos
      - ⚠️
      - Solo se lee el símbolo del campo de información, así que la cuestión de la precedencia no se plantea en la práctica; pero también significa que las fuentes de respaldo que describe la regla nunca se consultan para un paquete que no traiga símbolo ahí.

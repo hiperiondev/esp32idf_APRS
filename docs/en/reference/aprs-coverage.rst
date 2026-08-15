@@ -424,8 +424,8 @@ Status reports (ch. 16)
      - ✅
      - The 62-character limit is enforced by discarding optional blocks in a defined order — locator first, then the frequency block — and the operator's own text is never touched. If it still does not fit, the report is refused rather than truncated into a malformed frame.
    * - Status report with Maidenhead grid locator
-     - ⚠️
-     - The four or six character locator and its symbol are produced, but two placement rules are not met: the specification requires the locator to follow the data type identifier immediately, and forbids combining it with a timestamp. Here the timestamp and the frequency block can both precede it, so a strict receiver will not recognise the locator form.
+     - ✅
+     - The four or six character locator and its symbol are produced immediately after the data type identifier, ahead of the frequency block. A timestamp is never combined with it: when both are enabled the locator takes precedence and the timestamp is omitted.
    * - Beam heading and effective radiated power
      - ✅
      - The two characters close the status text after a ``^``, from a station-wide heading and power set on the Station page. The heading steps in ten degrees and the power is matched to the nearest entry of the specification's table, which runs from 10 to 7290 watts. Both halves have to be set for the block to appear, and it is the one block the length budget never drops — a station running meteor scatter is sending the report for those three bytes.
@@ -525,7 +525,7 @@ Symbols (ch. 21)
      - A visual picker in the web admin covers both tables, with a per-role symbol for the tracker, IGate, digipeater, weather station and each object.
    * - Overlay characters
      - ✅
-     - An overlay character can be placed in the table position for the symbols that accept one, which is how a digipeater advertises its own routing policy on the map.
+     - An overlay character can be placed in the table position for the symbols that accept one, which is how a digipeater advertises its own routing policy on the map. Alphabetic and numeric overlays are both accepted, and a numeric one is emitted in a compressed report as the lower-case letter ``a``-``j`` that layout requires, since a compressed position field can never begin with a digit.
    * - Symbol precedence
      - ⚠️
      - Only the information-field symbol is ever read, so the precedence question does not arise in practice — but it also means the fallback sources the rule describes are never consulted for a packet that carries no symbol there.

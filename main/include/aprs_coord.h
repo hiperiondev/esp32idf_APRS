@@ -126,6 +126,85 @@ void aprs_coord_format_ambiguous(float lat, float lon, uint8_t ambiguity, char *
 void aprs_maidenhead_locator(float lat, float lon, char *out, size_t outMax);
 
 /**
+ * @brief Symbol Table Identifier used when the configured one is not a valid
+ * identifier at all: the primary table.
+ */
+#define APRS_SYMBOL_TABLE_DEFAULT '/'
+
+/**
+ * @brief Lowest byte accepted as a Symbol Code, i.e. the first printable
+ * ASCII character.
+ */
+#define APRS_SYMBOL_CODE_MIN '!'
+
+/**
+ * @brief Highest byte accepted as a Symbol Code, i.e. the last printable
+ * ASCII character.
+ */
+#define APRS_SYMBOL_CODE_MAX '~'
+
+/**
+ * @brief Symbol Code used when the configured one is outside
+ * ::APRS_SYMBOL_CODE_MIN ..::APRS_SYMBOL_CODE_MAX : the primary-table
+ * diamond ('&') this firmware beacons with by default.
+ */
+#define APRS_SYMBOL_CODE_DEFAULT '&'
+
+/**
+ * @brief First byte of the lower-case range a *compressed* position report
+ * carries a numeric overlay in, i.e. the byte that stands for overlay '0'.
+ *
+ * APRS 1.2 chapter 21 allows the Symbol Table Identifier of an *uncompressed*
+ * report to be '/', '\\', 'A'-'Z' or '0'-'9', but forbids the numeric form in
+ * a compressed report: a compressed position field never starts with a digit,
+ * because that first byte is exactly how a receiver tells the two layouts
+ * apart. A numeric overlay therefore travels as the matching lower-case
+ * letter, 'a' for '0' through ::APRS_COMPRESSED_OVERLAY_DIGIT_LAST for '9',
+ * and is mapped back to the digit on receive.
+ *
+ * aprs_coord_format_compressed() applies the mapping itself, so a caller
+ * passes the configured Symbol Table Identifier unchanged whichever layout it
+ * is building.
+ */
+#define APRS_COMPRESSED_OVERLAY_DIGIT_BASE 'a'
+
+/**
+ * @brief Last byte of the lower-case range described by
+ * ::APRS_COMPRESSED_OVERLAY_DIGIT_BASE, i.e. the byte that stands for
+ * overlay '9'.
+ */
+#define APRS_COMPRESSED_OVERLAY_DIGIT_LAST 'j'
+
+/**
+ * @brief Test whether a byte is a Symbol Table Identifier (APRS 1.2 chapter
+ * 21): the primary table '/', the alternate table '\\', an alphabetic
+ * overlay 'A'-'Z' or a numeric overlay '0'-'9'.
+ *
+ * This is the configured form of the byte, the one the web form and the
+ * configuration file carry. The numeric overlays it accepts are legal on air
+ * only in an uncompressed report; aprs_coord_format_compressed() maps them
+ * onto ::APRS_COMPRESSED_OVERLAY_DIGIT_BASE for the compressed layout.
+ *
+ * @param t Byte to test.
+ * @return true when @p t is a valid Symbol Table Identifier.
+ */
+static inline bool aprs_symbol_table_is_valid(char t) {
+    return t == '/' || t == '\\' || (t >= 'A' && t <= 'Z') || (t >= '0' && t <= '9');
+}
+
+/**
+ * @brief Test whether a byte is a Symbol Code, i.e. a printable ASCII
+ * character in the ::APRS_SYMBOL_CODE_MIN ..::APRS_SYMBOL_CODE_MAX range the
+ * symbol tables are indexed by.
+ *
+ * @param c Byte to test.
+ * @return true when @p c is a valid Symbol Code.
+ */
+static inline bool aprs_symbol_code_is_valid(char c) {
+    return c >= APRS_SYMBOL_CODE_MIN && c <= APRS_SYMBOL_CODE_MAX;
+}
+
+/**
  * @brief Format a decimal-degrees latitude/longitude pair as the APRS
  * base-91 compressed position field, per APRS101 chapter 9: symbol-table
  * byte, 4 compressed-latitude digits, 4 compressed-longitude digits, symbol
@@ -133,8 +212,14 @@ void aprs_maidenhead_locator(float lat, float lon, char *out, size_t outMax);
  *
  * @param lat Latitude in decimal degrees (positive = N, negative = S).
  * @param lon Longitude in decimal degrees (positive = E, negative = W).
- * @param symTable Symbol table byte ('/' primary or '\\' alternate, or an
- *        overlay character).
+ * @param symTable Symbol Table Identifier as configured: '/' primary,
+ *        '\\' alternate, an alphabetic overlay 'A'-'Z' or a numeric overlay
+ *        '0'-'9'. A numeric overlay is mapped onto the lower-case byte the
+ *        compressed layout requires (see
+ *        ::APRS_COMPRESSED_OVERLAY_DIGIT_BASE); anything that is not a
+ *        Symbol Table Identifier at all is refused and replaced with
+ *        ::APRS_SYMBOL_TABLE_DEFAULT, since a digit in this position turns
+ *        the whole report into an uncompressed one for every receiver.
  * @param symCode Symbol code byte.
  * @param csT The 3-byte token built by aprs_compressed_cs_from_course_speed(),
  *        aprs_compressed_cs_from_range() or aprs_compressed_cs_from_altitude()

@@ -27,6 +27,7 @@
 
 #include "BMP180.h" // BMP180_I2C_SDA_GPIO/SCL_GPIO: fixed pins for the GPIO registry
 #include "app_config.h"
+#include "aprs_coord.h"                         // aprs_symbol_table_is_valid()/aprs_symbol_code_is_valid(): the symbol pair accepted on air
 #include "aprs_service.h"                       // APRS_SOFTWARE_NAME: the firmware name shown as the HTTP auth realm and page title
 #include "esp32idf_radioamateur_modem_config.h" // MODEM_ADC_GPIO/MODEM_DAC_GPIO/MODEM_PTT_GPIO: fixed audio front-end + PTT pins for the GPIO registry
 #include "esp_log.h"
@@ -1262,16 +1263,24 @@ void web_form_get_symbol(const char *body, const char *name_prefix, const char *
     char t[4] = { 0 }, s[4] = { 0 };
     bool got_t = web_form_get(body, name_t, t, sizeof(t));
     bool got_s = web_form_get(body, name_c, s, sizeof(s));
-    if (got_t || got_s) {
-        out[0] = t[0] ? t[0] : '/';
-        out[1] = s[0] ? s[0] : '&';
-        out[2] = 0;
-        return;
+    if (!got_t && !got_s) {
+        char legacy[4] = { 0 };
+        if (!legacy_name || !web_form_get(body, legacy_name, legacy, sizeof(legacy)))
+            return;
+        t[0] = legacy[0];
+        s[0] = legacy[1];
     }
 
-    char legacy[4] = { 0 };
-    if (legacy_name && web_form_get(body, legacy_name, legacy, sizeof(legacy)))
-        web_form_get(body, legacy_name, out, out_size);
+    // Both bytes are free text in the form, so they are bounded here as well
+    // as in the configuration loader: the table identifier is one of the four
+    // forms chapter 21 defines and the code is a printable character the
+    // symbol tables are actually indexed by. A byte outside those sets is not
+    // cosmetic - a digit in the table position of a compressed report makes
+    // every receiver read the report as uncompressed, and a '_' in the code
+    // position makes every classifier read the report as weather.
+    out[0] = aprs_symbol_table_is_valid(t[0]) ? t[0] : APRS_SYMBOL_TABLE_DEFAULT;
+    out[1] = aprs_symbol_code_is_valid(s[0]) ? s[0] : APRS_SYMBOL_CODE_DEFAULT;
+    out[2] = 0;
 }
 
 void web_field_use_station_data(httpd_req_t *req, const char *checkbox_name, bool checked, const char *call_name, const char *lat_name, const char *lon_name,

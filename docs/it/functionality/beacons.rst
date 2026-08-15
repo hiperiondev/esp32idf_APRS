@@ -199,6 +199,30 @@ selezionato li cede alla portata: la portata non ha altro posto dove andare,
 mentre l'altitudine ha ancora ``/A=`` come ripiego, ed è questo che un beacon
 del genere emette.
 
+Sovrapposizioni numeriche in un rapporto compresso
+==================================================
+
+Una sovrapposizione di simbolo si scrive nella posizione di tabella della coppia
+di simbolo, e APRS 1.2 cap.21 ammette che sia una lettera ``A``-``Z`` o una
+cifra ``0``-``9``: quelle numeriche sono il modo in cui un digipeater annuncia la
+propria politica di instradamento, il "cerchio numerato" della tabella
+alternativa. Il formato compresso non può portare la cifra in sé: il primo byte
+di un campo di posizione è proprio ciò che dice a un ricevitore quale dei due
+formati sta leggendo, e una cifra iniziale significa non compresso.
+
+Per questo una sovrapposizione numerica viaggia come la lettera minuscola
+corrispondente, ``a`` per ``0`` fino a ``j`` per ``9``, e il ricevitore la
+rimappa sulla cifra. Il firmware applica quella mappatura mentre costruisce il
+campo, così la sovrapposizione si configura una volta sola, come cifra, e la
+spunta *Comprimi posizione* non cambia nulla né di come si inserisce né di come
+viene tracciata.
+
+Anche i due byte della coppia sono limitati in ingresso — nel modulo e di nuovo
+alla lettura del file di configurazione — perché nessuno dei due è cosmetico: un
+identificatore di tabella fuori da ``/``, ``\``, ``A``-``Z`` e ``0``-``9``
+ripiega sulla tabella primaria, e un codice fuori dall'intervallo stampabile
+ripiega su ``&``.
+
 La capacità di messaggistica sta nell'identificatore di tipo dati
 =================================================================
 

@@ -25,6 +25,10 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "esp_log.h"
+
+static const char *TAG = "aprs_coord";
+
 // Splits an absolute-value decimal-degrees coordinate into whole degrees and
 // minutes, rounding the minutes to two decimal places first and carrying
 // into the degrees when that rounds up to 60.00. This keeps the minutes
@@ -161,6 +165,26 @@ static void base91Encode4(long val, char *out) {
     }
 }
 
+// Translates a configured Symbol Table Identifier into the byte a compressed
+// position report is allowed to carry in its first position. APRS 1.2 chapter
+// 21 forbids a numeric overlay there because a compressed position field never
+// starts with a digit - that byte is what tells a receiver the field is
+// compressed at all - so a numeric overlay travels as the matching lower-case
+// letter ('0' -> 'a' ... '9' -> 'j') and is mapped back to the digit on
+// receive. The primary and alternate tables and the alphabetic overlays are
+// already legal here and pass through unchanged. Anything else reaches this
+// point from a hand-edited configuration file and falls back to the primary
+// table: emitting it would put a byte on air that no receiver can classify.
+static char compressedSymbolTable(char symTable) {
+    if (symTable >= '0' && symTable <= '9')
+        return (char)(APRS_COMPRESSED_OVERLAY_DIGIT_BASE + (symTable - '0'));
+    if (symTable == '/' || symTable == '\\' || (symTable >= 'A' && symTable <= 'Z'))
+        return symTable;
+
+    ESP_LOGW(TAG, "symbol table identifier 0x%02X is not valid, using '%c'", (unsigned)(unsigned char)symTable, APRS_SYMBOL_TABLE_DEFAULT);
+    return APRS_SYMBOL_TABLE_DEFAULT;
+}
+
 void aprs_coord_format_compressed(float lat, float lon, char symTable, char symCode, const char csT[3], char *out, size_t outMax) {
     long latv = lroundf(380926.0f * (90.0f - lat));
     long lonv = lroundf(190463.0f * (180.0f + lon));
@@ -185,7 +209,7 @@ void aprs_coord_format_compressed(float lat, float lon, char symTable, char symC
     // caller-provided outMax smaller than the full field still copies as much
     // as fits and always terminates.
     char field[13];
-    field[0] = symTable;
+    field[0] = compressedSymbolTable(symTable);
     field[1] = latDigits[0];
     field[2] = latDigits[1];
     field[3] = latDigits[2];
