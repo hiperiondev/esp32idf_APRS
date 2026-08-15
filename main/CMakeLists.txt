@@ -23,7 +23,7 @@ idf_component_register(
         esp_netif
         esp_event
         nvs_flash
-        json
+        cjson
         mbedtls
         esp_app_format
         app_update

@@ -1,4 +1,15 @@
 cmake_minimum_required(VERSION 3.16)
+
+# This firmware persists all its data on LittleFS and never mounts a FAT
+# volume, and it never enables Bluetooth (CONFIG_BT_ENABLED is off). Both
+# components are still present in the upstream IDF component tree, and
+# their Kconfig menus get parsed for every build regardless of whether the
+# firmware uses them, which is deliberate but produces defaultless bool
+# warnings from those two upstream Kconfig files. Excluding both removes
+# the unused code from the build and, as a side effect, drops their Kconfig
+# menus from the tree together with those warnings.
+set(EXCLUDE_COMPONENTS "fatfs" "bt")
+
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 
 # ---------------------------------------------------------------------------
