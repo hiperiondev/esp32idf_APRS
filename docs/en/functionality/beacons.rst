@@ -388,14 +388,37 @@ The !x! no-archive marker
 ==========================
 
 *Request APRS-IS not to archive my packets* on the Station page is a
-station-wide, off-by-default privacy setting. When enabled, every
-own-station comment or status text (Tracker, IGate and Digipeater beacons and
-status reports alike) is prefixed with the APRS-IS no-archive marker ``!x!``,
+station-wide, off-by-default privacy setting. When enabled, every own-station
+free-text field is prefixed with the APRS-IS no-archive marker ``!x!``,
 followed by a space and then the operator's own text, if any. The marker is
 addressed to the databases behind APRS-IS rather than to any gateway: it asks
 them not to store the packet, but does not withhold it from RF or from
 APRS-IS itself, and a receiver that does not recognise it simply sees three
 extra bytes of comment text.
+
+The fields it reaches are:
+
+* Tracker, IGate and Digipeater position comments,
+* Tracker, IGate and Digipeater status texts,
+* the weather report comment, in all four of its forms (object, positioned
+  with and without a timestamp, and positionless),
+* object and item comments,
+* bulletin and announcement text.
+
+Three kinds of packet are deliberately left out. Message text is not
+descriptive text about this station: it is a word the correspondent reads in
+the body of a message addressed to them. Telemetry ``PARM``/``UNIT``/``EQNS``/
+``BITS`` definition packets are fixed-layout metadata with no free-text slot,
+and a budget the definition itself needs. Query responses answer another
+station's question rather than reporting this station's own position or
+condition.
+
+All of these fields are assembled by one shared builder,
+``aprs_free_text_build()`` in ``main/include/aprs_free_text.h``, which applies
+the marker and strips the characters APRS reserves for the base-91 comment
+telemetry group (``|`` and ``~``) in the same place. A field the operator has
+already typed the marker into is left alone, so the marker is never sent
+twice.
 
 This setting only affects packets this station originates. A packet this
 station relays, whether IGate-to-RF, RF-to-IGate or digipeated, is passed

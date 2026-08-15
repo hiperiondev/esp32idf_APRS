@@ -30,7 +30,8 @@
 
 #include "app_config.h"
 #include "aprs_coord.h"
-#include "aprs_path.h" // aprs_path_build_suffix_from_config(), APRS_PATH_TCPIP_SUFFIX
+#include "aprs_free_text.h" // aprs_free_text_build(), APRS_NO_ARCHIVE_PREFIX_LEN
+#include "aprs_path.h"      // aprs_path_build_suffix_from_config(), APRS_PATH_TCPIP_SUFFIX
 #include "aprs_service.h"
 #include "beacon_scheduler.h" // beacon_scheduler_jitter()
 #include "igate.h"
@@ -534,6 +535,7 @@ static int build_wx_packet(const wx_resolved_t r[WX_SENSOR_NUM], const char *pat
     float cfg_lat, cfg_lon;
     bool cfg_timestamp;
     bool cfg_msg_capable;
+    bool cfg_no_archive;
     app_config_lock();
     {
         bool useWx = g_config.wx_mycall[0] != 0;
@@ -545,6 +547,7 @@ static int build_wx_packet(const wx_resolved_t r[WX_SENSOR_NUM], const char *pat
         cfg_lon = g_config.wx_lon;
         cfg_timestamp = g_config.wx_timestamp;
         cfg_msg_capable = g_config.msg_enable;
+        cfg_no_archive = g_config.my_no_archive;
     }
     app_config_unlock();
     // The three memcpy() calls above take the full field width, so
@@ -555,6 +558,13 @@ static int build_wx_packet(const wx_resolved_t r[WX_SENSOR_NUM], const char *pat
     cfg_call[sizeof(cfg_call) - 1] = 0;
     cfg_object[sizeof(cfg_object) - 1] = 0;
     cfg_comment[sizeof(cfg_comment) - 1] = 0;
+
+    // On-air form of the operator's comment, built once and used by every
+    // report form below: reserved characters removed and the station-wide
+    // no-archive marker applied. Sized with room for the marker so enabling
+    // it never costs the operator four characters of their own text.
+    char comment[COMMENT_SIZE + APRS_NO_ARCHIVE_PREFIX_LEN];
+    aprs_free_text_build(cfg_comment, cfg_no_archive, comment, sizeof(comment));
 
     const char *call = cfg_call;
     uint8_t ssid = cfg_ssid;
@@ -582,7 +592,7 @@ static int build_wx_packet(const wx_resolved_t r[WX_SENSOR_NUM], const char *pat
     bool is_object = cfg_object[0] != 0;
 
     char wxTokens[160];
-    char info[420]; // DTI(1)+name(9)+ts(8)+lat(9)+lon(10)+wxTokens(up to 160)+comment(up to 128)+WX_SW_SUFFIX(4)+NUL
+    char info[420]; // DTI(1)+name(9)+ts(8)+lat(9)+lon(10)+wxTokens(up to 160)+comment(up to 132)+WX_SW_SUFFIX(4)+NUL
 
     if (is_object) {
         // Object report carrying weather: ";NAME     *DDHHMMz{lat}/{lon}_{wx}{comment}"
@@ -591,7 +601,7 @@ static int build_wx_packet(const wx_resolved_t r[WX_SENSOR_NUM], const char *pat
         snprintf(ts, sizeof(ts), "%02u%02u%02uz", t_day, t_hour, t_min);
         snprintf(name, sizeof(name), "%-9.9s", cfg_object); // fixed 9 chars, space padded
         build_wx_tokens(r, false, wxTokens, sizeof(wxTokens));
-        snprintf(info, sizeof(info), ";%s*%s%s/%s_%s%s%s", name, ts, latStr, lonStr, wxTokens, cfg_comment, WX_SW_SUFFIX);
+        snprintf(info, sizeof(info), ";%s*%s%s/%s_%s%s%s", name, ts, latStr, lonStr, wxTokens, comment, WX_SW_SUFFIX);
     } else if (have_pos) {
         // Positioned weather report, with or without a timestamp.
         char latStr[10], lonStr[11];
@@ -602,9 +612,9 @@ static int build_wx_packet(const wx_resolved_t r[WX_SENSOR_NUM], const char *pat
         if (cfg_timestamp) {
             char ts[8];
             snprintf(ts, sizeof(ts), "%02u%02u%02uz", t_day, t_hour, t_min);
-            snprintf(info, sizeof(info), "%c%s%s/%s_%s%s%s", cfg_msg_capable ? '@' : '/', ts, latStr, lonStr, wxTokens, cfg_comment, WX_SW_SUFFIX);
+            snprintf(info, sizeof(info), "%c%s%s/%s_%s%s%s", cfg_msg_capable ? '@' : '/', ts, latStr, lonStr, wxTokens, comment, WX_SW_SUFFIX);
         } else {
-            snprintf(info, sizeof(info), "%c%s/%s_%s%s%s", cfg_msg_capable ? '=' : '!', latStr, lonStr, wxTokens, cfg_comment, WX_SW_SUFFIX);
+            snprintf(info, sizeof(info), "%c%s/%s_%s%s%s", cfg_msg_capable ? '=' : '!', latStr, lonStr, wxTokens, comment, WX_SW_SUFFIX);
         }
     } else {
         // Positionless weather report: "_MMDDHHMM" + c/s wind prefix.
@@ -618,7 +628,7 @@ static int build_wx_packet(const wx_resolved_t r[WX_SENSOR_NUM], const char *pat
         char ts8[9];
         snprintf(ts8, sizeof(ts8), "%02u%02u%02u%02u", t_mon, t_day, t_hour, t_min);
         build_wx_tokens(r, true, wxTokens, sizeof(wxTokens));
-        snprintf(info, sizeof(info), "_%s%s%s%s", ts8, wxTokens, cfg_comment, WX_SW_SUFFIX);
+        snprintf(info, sizeof(info), "_%s%s%s%s", ts8, wxTokens, comment, WX_SW_SUFFIX);
     }
 
     int n = snprintf(out, outMax, "%s>%s%s:%s", callField, WX_DEST, path, info);

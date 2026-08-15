@@ -158,6 +158,14 @@ where it expects. The same order is used by all four report layouts (object,
 timestamped position, untimestamped position and positionless), and the
 identifier appears exactly once per report.
 
+The comment is filtered the same way every other own-station free-text field
+is, in all four layouts: ``|`` and ``~`` are removed, since both are reserved
+for the base-91 comment telemetry group (:ref:`en-telemetry`) that this
+firmware emits of its own accord, and the ``!x!`` no-archive marker is
+prefixed when the station-wide checkbox on the Station page asks for it
+(:ref:`en-beacons`). The stored text is unaffected; only the on-air rendering
+is filtered.
+
 Locking
 =======
 

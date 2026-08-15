@@ -161,8 +161,9 @@ Because ``|`` delimits this group and ``~`` is reserved alongside it, neither
 character may appear anywhere else in the same information field without a
 receiver misreading which region is the telemetry group. Every operator
 comment and status text this firmware transmits — Tracker, IGate and
-Digipeater position/Mic-E comments, status text, and object/item and
-bulletin text — has both characters filtered out before it goes on the air,
+Digipeater position/Mic-E comments, status text, the weather report comment,
+and object/item and bulletin text — has both characters filtered out before it
+goes on the air,
 regardless of whether that particular beacon carries a comment telemetry
 group itself. ``{`` is left untouched in these fields, since it is the
 compressed-position radio-range marker rather than a telemetry delimiter.

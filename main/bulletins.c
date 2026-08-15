@@ -29,7 +29,8 @@
 #include "freertos/task.h"
 
 #include "app_config.h"
-#include "aprs_path.h" // APRS_PATH_TCPIP_SUFFIX
+#include "aprs_free_text.h" // aprs_free_text_build(), APRS_NO_ARCHIVE_PREFIX_LEN
+#include "aprs_path.h"      // APRS_PATH_TCPIP_SUFFIX
 #include "aprs_service.h"
 #include "bulletins.h"
 #include "igate.h"
@@ -37,7 +38,7 @@
 #include "json_store.h"  // shared JSON-file store scaffolding
 #include "sched_time.h"  // sched_mono_seconds() / sched_clamp_interval()
 #include "storage.h"     // storage_write_lock() / storage_generation()
-#include "str_append.h"  // str_copy_strip_reserved(), str_copy_utf8_safe()
+#include "str_append.h"  // str_copy_utf8_safe()
 
 static const char *TAG = "bulletins";
 
@@ -377,11 +378,18 @@ static void build_info_field(int idx, const bulletin_t *b, const char *text, cha
 }
 
 static void tx_one(int idx, const bulletin_t *b, const char *src) {
-    // '|' and '~' are reserved for the base-91 comment telemetry group
-    // (APRS101 ch.13) and are filtered out of the on-air text here, leaving
-    // the stored text exactly as the operator entered it.
-    char text[BULLETIN_TEXT_MAX + 1];
-    str_copy_strip_reserved(b->text, text, sizeof(text));
+    // On-air form of the bulletin text: '|' and '~' are reserved for the
+    // base-91 comment telemetry group (APRS101 ch.13) and are filtered out
+    // here, and the station-wide no-archive marker is prefixed when the
+    // operator asked for it. The stored text is left exactly as it was
+    // entered. The flag is snapshotted because this runs on the scheduler
+    // task, async to a web save; the buffer carries room for the marker so
+    // enabling it never costs four characters of bulletin text.
+    app_config_lock();
+    bool no_archive = g_config.my_no_archive;
+    app_config_unlock();
+    char text[BULLETIN_TEXT_MAX + APRS_NO_ARCHIVE_PREFIX_LEN + 1];
+    aprs_free_text_build(b->text, no_archive, text, sizeof(text));
 
     char info[128];
     build_info_field(idx, b, text, info, sizeof(info));

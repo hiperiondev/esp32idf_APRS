@@ -544,12 +544,16 @@ typedef struct {
                             ::STATUS_BEAM_DEG_MAX; ::STATUS_BEAM_DEG_OFF leaves the block out. Paired with ::status_erp_watts - the block needs both. */
     uint16_t status_erp_watts; /**< Effective radiated power advertised alongside ::status_beam_deg, watts, rounded to the nearest entry of the APRS101 chapter
                                   16 table (::STATUS_ERP_WATTS_STEP times the square of a code of 1 to ::STATUS_ERP_CODE_MAX); 0 leaves the block out. */
-    bool my_no_archive;        /**< Prepend the APRS-IS "!x!" no-archive marker (APRS101 ch.17) to every own-station position/status comment or status
-                                  text this station originates (Tracker / IGate / Digipeater beacons and status reports), asking the databases behind
-                                  APRS-IS not to store those packets. A station-wide privacy choice rather than a per-beacon one, so it lives here next to
-                                  the other station-wide reporting fields. Purely advisory to the archives: it does not withhold a packet from RF or from
-                                  APRS-IS itself, and packets this station relays are passed through unchanged regardless of this setting - a relayed
-                                  frame's marker, if any, is the originating station's own choice. */
+    bool my_no_archive;        /**< Prepend the APRS-IS "!x!" no-archive marker (APRS101 ch.17) to every own-station free-text field this station
+                                  originates - Tracker / IGate / Digipeater position comments and status texts, the weather report comment, object and
+                                  item comments and bulletin text - asking the databases behind APRS-IS not to store those packets. A station-wide
+                                  privacy choice rather than a per-service one, so it lives here next to the other station-wide reporting fields, and
+                                  every originator applies it through the one shared builder, aprs_free_text_build() in `main/include/aprs_free_text.h`.
+                                  Message text, telemetry definition packets and query responses are deliberately outside its reach: the first is text a
+                                  correspondent reads in a message addressed to them, the second is fixed-layout metadata with no free-text slot, and the
+                                  third answers another station's question rather than reporting this station. Purely advisory to the archives: it does
+                                  not withhold a packet from RF or from APRS-IS itself, and packets this station relays are passed through unchanged
+                                  regardless of this setting - a relayed frame's marker, if any, is the originating station's own choice. */
     bool pos_dao_en; /**< Append the WGS-84 human-readable "!DAO!" precision/datum extension (aprs12/datum.txt) to every uncompressed own-station position
                         report, recovering the third decimal minute digit of latitude/longitude that the plain "DDMM.mmN"/"DDDMM.mmW" fields round away. See
                         aprs_dao_build(). Only applied when pos_ambiguity is 0: a station deliberately obscuring its position must not have that precision

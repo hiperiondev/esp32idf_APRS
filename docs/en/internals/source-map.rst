@@ -29,6 +29,7 @@ Repository layout
    │   ├── aprs_service.c/.h   ← the glue: RX dispatch, TX helper, modem cfg, stats, loop test
    │   ├── aprs_filter.c/.h    ← payload classifier + range/prefix/budlist/3rd-party filters
    │   ├── aprs_coord.c/.h     ← lat/lon ↔ APRS text, ambiguity, symbol extraction
+   │   ├── include/aprs_free_text.h ← own-station free-text field builder: reserved-char strip + "!x!" no-archive marker
    │   ├── include/aprs_path.h ← path-preset bitmask → ",WIDE1-1,WIDE2-1" suffix builder
    │   ├── include/str_append.h ← bounded snprintf-append helper shared by the builders
    │   ├── include/json_store.h / json_escape.h ← streaming JSON writer + escaping

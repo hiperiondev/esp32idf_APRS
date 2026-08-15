@@ -31,15 +31,16 @@
 
 #include "app_config.h"
 #include "aprs_coord.h"
-#include "aprs_dao.h"  // aprs_dao_build()
-#include "aprs_path.h" // aprs_path_build_suffix()
+#include "aprs_dao.h"       // aprs_dao_build()
+#include "aprs_free_text.h" // aprs_free_text_build()
+#include "aprs_path.h"      // aprs_path_build_suffix()
 #include "aprs_service.h"
 #include "beacon.h"
 #include "beacon_scheduler.h" // beacon_scheduler_jitter()
 #include "igate.h"
 #include "objects_items.h"     // objitem_build_freq_block()
 #include "sched_time.h"        // sched_mono_seconds() / sched_clamp_interval()
-#include "str_append.h"        // str_append(), str_copy_strip_reserved(), str_copy_utf8_safe()
+#include "str_append.h"        // str_append(), str_copy_utf8_safe()
 #include "telemetry.h"         // telemetry_build_comment_tlm() / telemetry_config_load()
 #include "weather_telemetry.h" // aprs_mice_encode()
 
@@ -283,30 +284,18 @@ static bool call_equals_ci(const char *a, const char *b) {
     return a[i] == b[i]; // both NUL at the same position
 }
 
-// Fills dst with the operator's free-text field, reserved-character-stripped
-// (str_copy_strip_reserved()), prefixed with the APRS-IS no-archive marker
-// "!x!" (APRS101 ch.17) when g_config.my_no_archive is set. The marker is a
-// station-wide privacy choice rather than a per-beacon one (Station page), so
-// every own-station comment and status text applies it the same way. A single
-// space separates the marker from the rest of the text so a leading word of
-// the operator's own text is never concatenated onto the closing '!'. When
-// the setting is off, this is exactly str_copy_strip_reserved().
+// Fills dst with the on-air form of one of this station's free-text fields:
+// reserved characters removed, and the APRS-IS no-archive marker prefixed
+// when the station-wide privacy setting asks for it. The whole policy lives
+// in aprs_free_text_build(), which every originating service shares, so a
+// beacon comment, a weather comment, an object comment and a bulletin are all
+// assembled by the same code.
 //
-// Must be called with app_config_lock() already held, same as
-// str_copy_strip_reserved() itself is always called under here.
+// Must be called with app_config_lock() already held: g_config.my_no_archive
+// is read here rather than snapshotted, the same way the callers read the
+// g_config text field they pass as src.
 static void buildCommentField(const char *src, char *dst, size_t dst_size) {
-    if (!g_config.my_no_archive) {
-        str_copy_strip_reserved(src, dst, dst_size);
-        return;
-    }
-
-    char stripped[COMMENT_SIZE > STATUS_SIZE ? COMMENT_SIZE : STATUS_SIZE];
-    str_copy_strip_reserved(src, stripped, sizeof(stripped));
-
-    size_t used = 0;
-    str_append(dst, dst_size, &used, "!x!");
-    if (stripped[0])
-        str_append(dst, dst_size, &used, " %s", stripped);
+    aprs_free_text_build(src, g_config.my_no_archive, dst, dst_size);
 }
 
 // Resolves the optional APRS 1.2 base-91 comment telemetry group

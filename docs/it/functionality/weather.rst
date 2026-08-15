@@ -156,6 +156,14 @@ rapporto (oggetto, posizione con timestamp, posizione senza timestamp e senza
 posizione) usano lo stesso ordine, e l'identificatore compare esattamente una
 volta per rapporto.
 
+Il commento viene filtrato come ogni altro campo di testo libero proprio, in
+tutti e quattro i layout: ``|`` e ``~`` vengono rimossi, perché entrambi sono
+riservati al gruppo di telemetria di commento in base 91
+(:ref:`it-telemetry`) che questo firmware emette di propria iniziativa, e il
+marcatore di non archiviazione ``!x!`` viene anteposto quando la casella a
+livello di stazione della pagina Stazione lo richiede (:ref:`it-beacons`). Il
+testo memorizzato non cambia; viene filtrata solo la resa che va in onda.
+
 Blocco
 ======
 

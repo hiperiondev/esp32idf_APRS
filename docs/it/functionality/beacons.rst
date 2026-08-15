@@ -414,14 +414,38 @@ Il marcatore di non archiviazione !x!
 
 *Richiedi ad APRS-IS di non archiviare i miei pacchetti*, nella pagina
 Stazione, è un'impostazione di privacy valida per tutta la stazione,
-disattivata per impostazione predefinita. Se attivata, ogni commento o testo
-di stato proprio (beacon e rapporti di stato di Tracker, IGate e Digipeater
-allo stesso modo) viene preceduto dal marcatore di non archiviazione di
-APRS-IS, ``!x!``, seguito da uno spazio e poi dal testo dell'operatore, se
-presente. Il marcatore è indirizzato ai database dietro APRS-IS, non a un
-gateway: chiede loro di non memorizzare il pacchetto, ma non lo trattiene da
-RF né da APRS-IS stesso, e un ricevitore che non lo riconosce vede
-semplicemente tre byte in più di testo nel commento.
+disattivata per impostazione predefinita. Se attivata, ogni campo di testo
+libero proprio viene preceduto dal marcatore di non archiviazione di APRS-IS,
+``!x!``, seguito da uno spazio e poi dal testo dell'operatore, se presente. Il
+marcatore è indirizzato ai database dietro APRS-IS, non a un gateway: chiede
+loro di non memorizzare il pacchetto, ma non lo trattiene da RF né da APRS-IS
+stesso, e un ricevitore che non lo riconosce vede semplicemente tre byte in
+più di testo nel commento.
+
+I campi che raggiunge sono:
+
+* i commenti di posizione di Tracker, IGate e Digipeater,
+* i testi di stato di Tracker, IGate e Digipeater,
+* il commento del rapporto meteorologico, in tutte e quattro le sue forme
+  (oggetto, posizionata con e senza marca temporale, e senza posizione),
+* i commenti di oggetti e item,
+* il testo di bollettini e annunci.
+
+Tre tipi di pacchetto restano fuori deliberatamente. Il testo di un messaggio
+non è testo descrittivo su questa stazione: è una parola che il
+corrispondente legge nel corpo di un messaggio a lui indirizzato. I pacchetti
+di definizione della telemetria ``PARM``/``UNIT``/``EQNS``/``BITS`` sono
+metadati a formato fisso, senza spazio per testo libero e con un budget di
+cui la definizione stessa ha bisogno. Le risposte alle interrogazioni
+rispondono alla domanda di un'altra stazione anziché riportare la posizione o
+lo stato di questa.
+
+Tutti questi campi sono costruiti da un unico builder condiviso,
+``aprs_free_text_build()`` in ``main/include/aprs_free_text.h``, che applica
+il marcatore e rimuove i caratteri che APRS riserva al gruppo di telemetria
+di commento in base 91 (``|`` e ``~``) nello stesso punto. Un campo in cui
+l'operatore ha già scritto il marcatore viene lasciato intatto, quindi il
+marcatore non viene mai inviato due volte.
 
 Questa impostazione influisce solo sui pacchetti che questa stazione
 origina. Un pacchetto che questa stazione ritrasmette, sia esso da IGate a

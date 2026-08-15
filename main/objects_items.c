@@ -34,7 +34,8 @@
 
 #include "app_config.h"
 #include "aprs_coord.h"
-#include "aprs_path.h" // APRS_PATH_TCPIP_SUFFIX
+#include "aprs_free_text.h" // aprs_free_text_build(), APRS_NO_ARCHIVE_PREFIX_LEN
+#include "aprs_path.h"      // APRS_PATH_TCPIP_SUFFIX
 #include "aprs_service.h"
 #include "igate.h"
 #include "json_escape.h" // json_write_escaped()
@@ -714,7 +715,7 @@ static void objitem_build_phg(const objitem_t *b, char *out, size_t out_size) {
 // `live` overrides b->active for the transmit-time live/kill decision (so the
 // kill sequence can force a kill report even while the stored element is still
 // nominally "active" pending the user's next edit). `out` should be >= 160 to
-// hold the frequency block plus a full comment.
+// hold the frequency block, a full comment and the no-archive marker.
 static void objitem_build_info_field(const objitem_t *b, bool live, char *out, size_t out_size) {
     char sym_table = b->sym[0] ? b->sym[0] : '/';
     char sym_code = b->sym[1] ? b->sym[1] : '-';
@@ -825,13 +826,25 @@ static void objitem_build_info_field(const objitem_t *b, bool live, char *out, s
     build_freq_block(b, freq, sizeof(freq));
     char comment[OBJITEM_COMMENT_MAX + 1];
     str_copy_strip_reserved(b->comment, comment, sizeof(comment));
-    char text[OBJITEM_COMMENT_MAX + sizeof(freq) + 2];
+    char body[OBJITEM_COMMENT_MAX + sizeof(freq) + 2];
     if (freq[0] && comment[0])
-        snprintf(text, sizeof(text), "%s %s", freq, comment);
+        snprintf(body, sizeof(body), "%s %s", freq, comment);
     else if (freq[0])
-        snprintf(text, sizeof(text), "%s", freq);
+        snprintf(body, sizeof(body), "%s", freq);
     else
-        snprintf(text, sizeof(text), "%s", comment);
+        snprintf(body, sizeof(body), "%s", comment);
+
+    // The station-wide no-archive marker leads the whole free-text field, so a
+    // repeater object announces "!x! 146.520MHz ..." rather than burying the
+    // marker behind the frequency block. It is read anywhere in the packet
+    // either way, but keeping it in front matches every other own-station
+    // field this firmware builds. The flag is snapshotted here because this
+    // builder runs on the scheduler task, async to a web save.
+    app_config_lock();
+    bool no_archive = g_config.my_no_archive;
+    app_config_unlock();
+    char text[sizeof(body) + APRS_NO_ARCHIVE_PREFIX_LEN];
+    aprs_free_text_build(body, no_archive, text, sizeof(text));
 
     if (b->is_item) {
         // Item: ) NAME (3..9, variable) then '!'(live)/'_'(kill) then position.

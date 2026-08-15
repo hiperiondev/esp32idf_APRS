@@ -28,7 +28,8 @@
  * appends and test for truncation once, at the end.
  *
  * Also here: str_copy_strip_reserved() for copying operator-editable free
- * text while dropping the bytes APRS101 reserves elsewhere in the frame, and
+ * text while dropping the bytes APRS101 reserves elsewhere in the frame,
+ * str_is_reserved_char() as the definition of which bytes those are, and
  * str_copy_utf8_safe() for truncating 8-bit-clean text to a byte budget
  * without splitting a UTF-8 character across the cut.
  *
@@ -127,6 +128,22 @@ static inline bool str_append_truncated(size_t used, size_t buf_size) {
 }
 
 /**
+ * @brief Test whether @p c is one of the characters str_copy_strip_reserved()
+ * removes from operator-editable free text.
+ *
+ * Published so a caller that has to reason about the filtered form of a string
+ * without building it - deciding whether the text survives the filter at all,
+ * or comparing a prefix against what will reach the air - asks the same
+ * question the filter itself asks, from the same definition.
+ *
+ * @param c Byte to inspect.
+ * @return true if @p c is reserved and will be dropped.
+ */
+static inline bool str_is_reserved_char(char c) {
+    return c == '|' || c == '~';
+}
+
+/**
  * @brief Copy @p src into @p dst, dropping every `|` and `~` along the way.
  *
  * APRS101 chapter 13 (see also `he.fi/doc/aprs-base91-comment-telemetry.txt`)
@@ -157,7 +174,7 @@ static inline void str_copy_strip_reserved(const char *src, char *dst, size_t ds
     size_t out = 0;
     for (size_t i = 0; src != NULL && src[i] != '\0' && out < dst_size - 1; i++) {
         char c = src[i];
-        if (c == '|' || c == '~')
+        if (str_is_reserved_char(c))
             continue;
         dst[out++] = c;
     }

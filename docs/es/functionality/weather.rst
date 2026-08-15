@@ -154,6 +154,14 @@ encontrando el identificador donde lo espera. Los cuatro formatos de reporte
 posición) usan el mismo orden, y el identificador aparece exactamente una vez
 por reporte.
 
+El comentario se filtra igual que cualquier otro campo de texto libre propio,
+en los cuatro formatos: se quitan ``|`` y ``~``, porque ambos están reservados
+para el grupo de telemetría de comentario en base 91 (:ref:`es-telemetry`) que
+este firmware emite por su cuenta, y se antepone el marcador de no archivar
+``!x!`` cuando la casilla a nivel de estación de la página Estación lo pide
+(:ref:`es-beacons`). El texto guardado no cambia; solo se filtra la
+representación que sale al aire.
+
 Bloqueo
 =======
 

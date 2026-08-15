@@ -29,6 +29,7 @@ Disposizione del repository
    │   ├── aprs_service.c/.h   ← la colla: smistamento RX, helper TX, cfg modem, stats, loop test
    │   ├── aprs_filter.c/.h    ← classificatore payload + filtri portata/prefisso/budlist/terze-parti
    │   ├── aprs_coord.c/.h     ← lat/lon ↔ testo APRS, ambiguità, estrazione simbolo
+   │   ├── include/aprs_free_text.h ← builder dei campi di testo libero propri: rimozione riservati + marcatore "!x!" di non archiviazione
    │   ├── include/aprs_path.h ← bitmask dei preset di percorso → suffisso ",WIDE1-1,WIDE2-1"
    │   ├── include/str_append.h ← helper di append snprintf limitato, condiviso dai costruttori
    │   ├── include/json_store.h / json_escape.h ← scrittore JSON in streaming + escaping
