@@ -152,6 +152,8 @@ Valori di fabbrica notevoli
        quando abilitato
    * - Preset di percorso 0
      - ``WIDE1-1,WIDE2-1``
+   * - Selezione del percorso
+     - preset 0, uguale per i beacon IGate, digipeater, tracker e meteo
    * - Digipeater
      - disabilitato, SSID 1
    * - Tracker

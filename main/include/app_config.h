@@ -219,8 +219,26 @@ typedef enum {
 #define APRS_SERVER_NUM 4
 
 /**
+ * @brief Factory value of every per-service path selector
+ * (::app_config_t::igate_path, ::app_config_t::digi_path,
+ * ::app_config_t::trk_path, ::app_config_t::wx_path).
+ *
+ * Those fields are bitmasks over the four shared path presets
+ * ::app_config_t::path[0..3]: bit N selects preset N, and
+ * aprs_path_build_suffix() silently skips a bit whose slot is empty. Only
+ * ::app_config_t::path[0] carries a factory string (@c "WIDE1-1,WIDE2-1"), so
+ * bit 0 is the only selection that puts a digipeater path on the air on a
+ * factory-fresh station; any other single bit would beacon with a bare
+ * destination call until the operator filled the matching preset in.
+ *
+ * This is a preset-slot mask and shares nothing but its width with the
+ * @c ACTIVATE_* service flags below.
+ */
+#define PATH_PRESET_MASK_DEFAULT (1 << 0)
+
+/**
  * @name Activate bit flags
- * @brief Bit flags used by path/object activation selectors.
+ * @brief Bit flags naming the services of this station, one bit per service.
  * @{
  */
 #define ACTIVATE_OFF       0        /**< No services active. */

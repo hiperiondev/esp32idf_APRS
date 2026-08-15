@@ -145,6 +145,8 @@ Notable factory defaults
      - disabled; ceiling 25 % of a rolling 10-minute window when enabled
    * - Path preset 0
      - ``WIDE1-1,WIDE2-1``
+   * - Path selection
+     - preset 0, for the IGate, digipeater, tracker and weather beacons alike
    * - Digipeater
      - disabled, SSID 1
    * - Tracker

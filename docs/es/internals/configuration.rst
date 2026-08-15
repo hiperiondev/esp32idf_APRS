@@ -101,8 +101,14 @@ por preset y no sobre la selección completa, y se cuenta con la misma
 del guardado: un preset que por sí solo supera el límite queda fuera de la
 rotación.
 
-Las banderas de activación hacen doble función como valores de máscara por
-defecto:
+Todos los selectores salen de fábrica seleccionando el preset 0 y nada más
+(``PATH_PRESET_MASK_DEFAULT``), porque ``g_config.path[0]`` es la única ranura
+con una cadena de fábrica (``WIDE1-1,WIDE2-1``) y un bit que apunta a una ranura
+vacía emitiría la baliza con el destino pelado.
+
+Las banderas de activación de servicios son un conjunto de bits **distinto**,
+sobre los servicios de la estación y no sobre los presets de ruta; solo
+coinciden en el ancho:
 
 .. code-block:: text
 

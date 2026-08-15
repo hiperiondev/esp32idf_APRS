@@ -100,7 +100,14 @@ stessa ``app_config_path_hop_count()`` usata dal costruttore condiviso e dal
 taglio al salvataggio: un preset che da solo supera il limite viene escluso dalla
 rotazione.
 
-I flag di attivazione fanno doppia funzione come valori di maschera predefiniti:
+Ogni selettore parte selezionando il preset 0 e nient'altro
+(``PATH_PRESET_MASK_DEFAULT``), perché ``g_config.path[0]`` è l'unico slot con
+una stringa di fabbrica (``WIDE1-1,WIDE2-1``) e un bit che punta a uno slot
+vuoto manderebbe il beacon con la sola destinazione.
+
+I flag di attivazione dei servizi sono un insieme di bit **distinto**, sui
+servizi della stazione e non sui preset di percorso; coincidono solo nella
+larghezza:
 
 .. code-block:: text
 

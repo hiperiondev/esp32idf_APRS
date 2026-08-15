@@ -151,6 +151,8 @@ Valores de fábrica destacados
        cuando se habilita
    * - Preset de ruta 0
      - ``WIDE1-1,WIDE2-1``
+   * - Selección de ruta
+     - preset 0, igual para las balizas de IGate, digipetidor, tracker y meteo
    * - Digipeater
      - deshabilitado, SSID 1
    * - Tracker

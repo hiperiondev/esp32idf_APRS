@@ -94,7 +94,14 @@ per preset there rather than across the selection, and it is counted with the
 same ``app_config_path_hop_count()`` the shared builder and the save-time clamp
 use — a preset that is over the limit on its own is dropped from the rotation.
 
-The activation flags double as default bitmask values:
+Every selector ships selecting preset 0 and nothing else
+(``PATH_PRESET_MASK_DEFAULT``), because ``g_config.path[0]`` is the only slot
+with a factory string (``WIDE1-1,WIDE2-1``) and a bit pointing at an empty slot
+would beacon with a bare destination call.
+
+The service activation flags are a **separate** bit set, over the services of
+the station rather than over the path presets; the two only happen to be the
+same width:
 
 .. code-block:: text
 

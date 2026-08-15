@@ -236,7 +236,9 @@ void app_config_set_defaults(app_config_t *c) {
     c->igate_alt = 0;
     c->igate_interval = 30;
     set_str(c->igate_symbol, sizeof(c->igate_symbol), "N&");
-    c->igate_path = ACTIVATE_IGATE;
+    // Preset-slot mask over path[0..3], not a service mask: bit 0 is the
+    // only slot that ships with a path string.
+    c->igate_path = PATH_PRESET_MASK_DEFAULT;
     set_str(c->igate_comment, sizeof(c->igate_comment), "esp32idf_APRS IGate");
     c->igate_sts_interval = 0;
     c->igate_compress = false;
@@ -284,7 +286,7 @@ void app_config_set_defaults(app_config_t *c) {
     c->digi_en = false;
     c->digi_ssid = 1;
     set_str(c->digi_mycall, sizeof(c->digi_mycall), "NOCALL");
-    c->digi_path = ACTIVATE_DIGI;
+    c->digi_path = PATH_PRESET_MASK_DEFAULT; // preset-slot mask over path[0..3], not a service mask
     c->digi_bcn = true;
     c->digi_compress = false;
     c->digi_interval = 30;
@@ -333,7 +335,7 @@ void app_config_set_defaults(app_config_t *c) {
     c->trk_en = false;
     c->trk_ssid = 9;
     set_str(c->trk_mycall, sizeof(c->trk_mycall), "NOCALL");
-    c->trk_path = ACTIVATE_TRACKER;
+    c->trk_path = PATH_PRESET_MASK_DEFAULT; // preset-slot mask over path[0..3], not a service mask
     c->trk_interval = 60;
     c->trk_compress = false;
     c->trk_phg_enable = false;
@@ -350,7 +352,7 @@ void app_config_set_defaults(app_config_t *c) {
     c->wx_en = false;
     c->wx_ssid = 13;
     set_str(c->wx_mycall, sizeof(c->wx_mycall), "NOCALL");
-    c->wx_path = ACTIVATE_WX;
+    c->wx_path = PATH_PRESET_MASK_DEFAULT; // preset-slot mask over path[0..3], not a service mask
     c->wx_interval = 300;
     set_str(c->wx_comment, sizeof(c->wx_comment), APRS_SOFTWARE_NAME " WX");
     // Enable the WX fields a typical station reports; the rest stay off until
@@ -403,6 +405,9 @@ void app_config_set_defaults(app_config_t *c) {
     // System / HTTP auth  (README documented default: admin/admin)
     set_str(c->http_username, sizeof(c->http_username), "admin");
     set_str(c->http_password, sizeof(c->http_password), "admin");
+    // Shared path presets. Slot 0 carries the generic New n-N Paradigm path and
+    // is the slot every beacon selects out of the box (PATH_PRESET_MASK_DEFAULT);
+    // the other three are free for the operator's regional aliases.
     for (int i = 0; i < 4; i++)
         set_str(c->path[i], sizeof(c->path[i]), "");
     set_str(c->path[0], sizeof(c->path[0]), "WIDE1-1,WIDE2-1");
