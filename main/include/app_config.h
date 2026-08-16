@@ -170,6 +170,30 @@ typedef enum {
 /** @} */
 
 /**
+ * @name WiFi interface selector
+ * @brief Accepted values and factory value for ::app_config_t::wifi_mode.
+ *
+ * The stored value selects which of the two WiFi interfaces are brought up; it
+ * is this project's own numbering, chosen to match the order of the Wireless
+ * page's drop-down, and is mapped to the IDF's ::wifi_mode_t in main.c. The
+ * factory value keeps the SoftAP up on a device that has never been
+ * configured, which is the only way to reach the web admin of a station whose
+ * station credentials are unknown or wrong.
+ *
+ * wifi_init() brings the SoftAP up for ::WIFI_MODE_CFG_OFF as well as for any
+ * value above ::WIFI_MODE_CFG_MAX, so no stored value leaves a headless
+ * station without a web admin to correct it from.
+ * @{
+ */
+#define WIFI_MODE_CFG_OFF     0                   /**< The Wireless page's "off" entry. */
+#define WIFI_MODE_CFG_STA     1                   /**< Station only (::WIFI_MODE_STA). */
+#define WIFI_MODE_CFG_AP      2                   /**< SoftAP only (::WIFI_MODE_AP). */
+#define WIFI_MODE_CFG_APSTA   3                   /**< SoftAP and station together (::WIFI_MODE_APSTA). */
+#define WIFI_MODE_CFG_MAX     WIFI_MODE_CFG_APSTA /**< Highest accepted value; anything above it falls back to the SoftAP. */
+#define WIFI_MODE_CFG_DEFAULT WIFI_MODE_CFG_AP    /**< Factory interface selection. */
+/** @} */
+
+/**
  * @name WiFi transmit power range
  * @brief Accepted range and factory value for ::app_config_t::wifi_power, in dBm.
  *
@@ -580,7 +604,7 @@ typedef struct {
                         aprs_dao_build(). Only applied when pos_ambiguity is 0: a station deliberately obscuring its position must not have that precision
                         handed back via the extension. Never applied to the compressed layout (already full resolution) or to Mic-E. */
 
-    uint8_t wifi_mode;                 /**< WiFi mode: 0=off, 1=STA, 2=AP, 3=AP_STA. */
+    uint8_t wifi_mode;                 /**< Which WiFi interfaces to bring up: one of the ::WIFI_MODE_CFG_OFF .. ::WIFI_MODE_CFG_APSTA selectors. */
     int8_t wifi_power;                 /**< WiFi transmit power in dBm, clamped to ::WIFI_TX_POWER_DBM_MIN .. ::WIFI_TX_POWER_DBM_MAX on save and on load. */
     wifi_sta_t wifi_sta[WIFI_STA_NUM]; /**< The ::WIFI_STA_NUM stored STA profiles. */
     uint8_t wifi_ap_ch;                /**< SoftAP channel, clamped to ::WIFI_AP_CH_MIN .. ::WIFI_AP_CH_MAX on save and on load. */

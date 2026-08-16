@@ -198,7 +198,9 @@ void app_config_set_defaults(app_config_t *c) {
     c->my_no_archive = false;
     c->pos_dao_en = false;
 
-    c->wifi_mode = 2; // AP_STA equivalent default (matches original shipping as AP)
+    // SoftAP only: an unconfigured device has no station credentials to use,
+    // and the AP is what makes the web admin reachable out of the box.
+    c->wifi_mode = WIFI_MODE_CFG_DEFAULT;
     c->wifi_power = WIFI_TX_POWER_DBM_DEFAULT;
     for (int i = 0; i < WIFI_STA_NUM; i++) {
         c->wifi_sta[i].enable = false;

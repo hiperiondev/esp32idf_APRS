@@ -43,6 +43,9 @@ esp_err_t page_wireless_get(httpd_req_t *req) {
     snprintf(buf, sizeof(buf),
              "<form method='POST' action='/wireless'>"
              "<fieldset><legend>" TR_WIFI_MODE_LEGEND "</legend>"
+             // The option values are the WIFI_MODE_CFG_OFF .. WIFI_MODE_CFG_APSTA
+             // selectors, in that order; the matching constants pick the
+             // selected entry below.
              "<label>" TR_F_MODE "</label><select name='wifiMode'>"
              "<option value='0' %s>" TR_F_OFF "</option>"
              "<option value='1' %s>" TR_WIFI_STATION "</option>"
@@ -65,9 +68,9 @@ esp_err_t page_wireless_get(httpd_req_t *req) {
              "</fieldset>"
              "<button type='button' class='secondary' id='wifiScanBtn' onclick='wifiScan()'>" TR_BTN_WIFI_SCAN "</button> "
              "<span id='wifiScanStatus'></span>",
-             g_config.wifi_mode == 0 ? "selected" : "", g_config.wifi_mode == 1 ? "selected" : "", g_config.wifi_mode == 2 ? "selected" : "",
-             g_config.wifi_mode == 3 ? "selected" : "", g_config.wifi_power, WIFI_TX_POWER_DBM_MIN, WIFI_TX_POWER_DBM_MAX, esc_ap_ssid, esc_ap_pass,
-             g_config.wifi_ap_ch, WIFI_AP_CH_MIN, WIFI_AP_CH_MAX);
+             g_config.wifi_mode == WIFI_MODE_CFG_OFF ? "selected" : "", g_config.wifi_mode == WIFI_MODE_CFG_STA ? "selected" : "",
+             g_config.wifi_mode == WIFI_MODE_CFG_AP ? "selected" : "", g_config.wifi_mode == WIFI_MODE_CFG_APSTA ? "selected" : "", g_config.wifi_power,
+             WIFI_TX_POWER_DBM_MIN, WIFI_TX_POWER_DBM_MAX, esc_ap_ssid, esc_ap_pass, g_config.wifi_ap_ch, WIFI_AP_CH_MIN, WIFI_AP_CH_MAX);
     httpd_resp_sendstr_chunk(req, buf);
 
     // One shared datalist, filled in by wifiScan() below. It only ever offers
@@ -192,7 +195,7 @@ esp_err_t page_wireless_post(httpd_req_t *req) {
     // be non-empty. Without this check, getting either wrong would save happily
     // and then fail silently - the only clue an error on the serial console
     // after the next reboot, which nobody watching a web UI ever sees.
-    if (g_config.wifi_mode == 1 || g_config.wifi_mode == 3) {
+    if (g_config.wifi_mode == WIFI_MODE_CFG_STA || g_config.wifi_mode == WIFI_MODE_CFG_APSTA) {
         bool usable = false;
         for (int i = 0; i < WIFI_STA_NUM; i++) {
             if (g_config.wifi_sta[i].enable && g_config.wifi_sta[i].wifi_ssid[0]) {

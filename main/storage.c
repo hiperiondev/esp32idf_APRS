@@ -48,6 +48,15 @@ static portMUX_TYPE s_write_mutex_init_lock = portMUX_INITIALIZER_UNLOCKED;
 // uploaded over an existing one. Read by the subsystems that keep a parsed
 // copy of their LittleFS file in RAM, so those copies are dropped without
 // storage.c needing to know which modules exist.
+//
+// The three bump sites run on whichever task calls them and only the format
+// path holds the writer gate, so the counter is written concurrently. It is
+// accessed with __atomic_add_fetch()/__atomic_load_n() - the same builtins
+// the mutex handle above uses - which makes the read-modify-write indivisible
+// rather than relying on the target's plain 32-bit accesses, and states the
+// requirement in the code instead of leaving it to the reader. Consumers only
+// ever compare the value for equality with the one they cached, so wraparound
+// after 2^32 changes is not a concern.
 static uint32_t s_generation = 0;
 
 static SemaphoreHandle_t write_mutex(void) {
@@ -85,11 +94,11 @@ void storage_write_unlock(void) {
 }
 
 uint32_t storage_generation(void) {
-    return s_generation;
+    return __atomic_load_n(&s_generation, __ATOMIC_ACQUIRE);
 }
 
 void storage_note_external_change(void) {
-    s_generation++;
+    __atomic_add_fetch(&s_generation, 1, __ATOMIC_RELEASE);
 }
 
 bool storage_init(void) {
@@ -146,7 +155,7 @@ bool storage_delete(const char *path) {
         return false;
     // The file just removed may be one a subsystem holds a parsed copy of, so
     // announce it the same way a format does.
-    s_generation++;
+    __atomic_add_fetch(&s_generation, 1, __ATOMIC_RELEASE);
     return true;
 }
 
@@ -164,7 +173,7 @@ bool storage_format(void) {
         // taken before this point is stale. Bumping the generation inside the
         // gate means a reader can never observe the new, empty filesystem
         // together with the old generation.
-        s_generation++;
+        __atomic_add_fetch(&s_generation, 1, __ATOMIC_RELEASE);
     }
     storage_write_unlock();
 

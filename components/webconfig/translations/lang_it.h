@@ -208,9 +208,9 @@
 /** Italian text for the form label for the "beacon position 2" field or fieldset, rendered on the configuration forms. English: "Beacon position". */
 #define TR_F_BEACON_POSITION_2 "Posizione beacon"
 /** Italian text for the form label for the "beacon via internet" field or fieldset, rendered on the configuration forms. English: "Beacon via Internet". */
-#define TR_F_BEACON_VIA_INTERNET "Beacon via Internet"
+#define TR_F_BEACON_VIA_INTERNET "Beacon tramite Internet"
 /** Italian text for the form label for the "beacon via rf" field or fieldset, rendered on the configuration forms. English: "Beacon via RF". */
-#define TR_F_BEACON_VIA_RF "Beacon via RF"
+#define TR_F_BEACON_VIA_RF "Beacon tramite RF"
 /** Italian text for the form label for the "comment" field or fieldset, rendered on the configuration forms. English: "Comment". */
 #define TR_F_COMMENT "Commento"
 /** Italian text for the form label for the "compress position" field or fieldset, rendered on the configuration forms. English: "Compress position". */
@@ -1069,7 +1069,7 @@
 /** Italian text for the wireless page label for station, rendered on the Wireless page. English: "Station (STA)". */
 #define TR_WIFI_STATION "Stazione (STA)"
 /** Italian text for the wireless page label for access point, rendered on the Wireless page. English: "Access Point (AP)". */
-#define TR_WIFI_ACCESS_POINT "Access Point (AP)"
+#define TR_WIFI_ACCESS_POINT "Punto di accesso (AP)"
 /** Italian text for the wireless page label for ap sta, rendered on the Wireless page. English: "AP + STA". */
 #define TR_WIFI_AP_STA "AP + STA"
 /** Italian text for the wireless page label for tx power, rendered on the Wireless page. English: "TX Power (0-20 dBm)". */

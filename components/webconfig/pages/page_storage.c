@@ -54,18 +54,19 @@ static void append_file_row(httpd_req_t *req, const char *name, long size) {
     char *row = malloc(need);
     if (!row)
         return;
-        // Delete is a real POST form (not a GET link): a GET request is meant to
-        // be safe/side-effect-free, so a state-changing action reachable via a
-        // plain <a href> is trivially triggerable by a third-party page (e.g.
-        // <img src="/delete?file=...">) while the admin's browser still has
-        // Basic-Auth credentials cached - i.e. CSRF. The confirm() dialog still
-        // reads the filename from data-fname (already HTML-attribute-escaped),
-        // so nothing needs JS-string escaping.
-        // 'need' is sized from the actual esc/enc lengths above, so this never
-        // truncates at runtime; GCC's format-truncation analysis just can't
-        // follow that arithmetic and assumes the worst case (each %s filled to
-        // its buffer's declared capacity of 512). Silence the false positive
-        // locally instead of disabling the check project-wide.
+
+    // Delete is a real POST form (not a GET link): a GET request is meant to
+    // be safe/side-effect-free, so a state-changing action reachable via a
+    // plain <a href> is trivially triggerable by a third-party page (e.g.
+    // <img src="/delete?file=...">) while the admin's browser still has
+    // Basic-Auth credentials cached - i.e. CSRF. The confirm() dialog still
+    // reads the filename from data-fname (already HTML-attribute-escaped), so
+    // nothing needs JS-string escaping.
+    // 'need' is sized from the actual esc/enc lengths above, so this never
+    // truncates at runtime; GCC's format-truncation analysis just can't follow
+    // that arithmetic and assumes the worst case (each %s filled to its
+    // buffer's declared capacity of 512). Silence the false positive locally
+    // instead of disabling the check project-wide.
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wformat-truncation"
     snprintf(row, need,

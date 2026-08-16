@@ -12,13 +12,18 @@ Wi-Fi modes
 ===========
 
 ``g_config.wifi_mode`` selects the interface configuration, matching the
-Wireless page:
+Wireless page. The stored numbers are the ``WIFI_MODE_CFG_*`` selectors in
+``main/include/app_config.h``, which every consumer uses by name:
 
-* ``0`` = off
-* ``1`` = STA (station)
-* ``2`` = AP (access point) — the safest default; the device is always
-  reachable
-* ``3`` = AP+STA
+* ``0`` = ``WIFI_MODE_CFG_OFF``
+* ``1`` = ``WIFI_MODE_CFG_STA`` (station)
+* ``2`` = ``WIFI_MODE_CFG_AP`` (access point) — ``WIFI_MODE_CFG_DEFAULT``, the
+  factory value; the device is always reachable
+* ``3`` = ``WIFI_MODE_CFG_APSTA``
+
+``wifi_init()`` brings the SoftAP up for ``WIFI_MODE_CFG_OFF`` and for any value
+above ``WIFI_MODE_CFG_MAX``, so no stored value can leave a headless station
+without a web admin to fix it from.
 
 Up to five STA profiles (``WIFI_STA_NUM = 5``) are stored, each with its own
 Enable checkbox. The **first enabled entry with a non-empty SSID** is pushed to

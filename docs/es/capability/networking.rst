@@ -13,13 +13,19 @@ Modos Wi-Fi
 ===========
 
 ``g_config.wifi_mode`` selecciona la configuración de interfaz, coincidiendo con
-la página Wireless:
+la página Wireless. Los números almacenados son los selectores ``WIFI_MODE_CFG_*``
+de ``main/include/app_config.h``, que todos los consumidores usan por nombre:
 
-* ``0`` = off
-* ``1`` = STA (estación)
-* ``2`` = AP (punto de acceso) — el valor por defecto más seguro; el dispositivo
-  siempre es accesible
-* ``3`` = AP+STA
+* ``0`` = ``WIFI_MODE_CFG_OFF``
+* ``1`` = ``WIFI_MODE_CFG_STA`` (estación)
+* ``2`` = ``WIFI_MODE_CFG_AP`` (punto de acceso) — ``WIFI_MODE_CFG_DEFAULT``, el
+  valor de fábrica; el dispositivo siempre es accesible
+* ``3`` = ``WIFI_MODE_CFG_APSTA``
+
+``wifi_init()`` levanta el SoftAP para ``WIFI_MODE_CFG_OFF`` y para cualquier
+valor por encima de ``WIFI_MODE_CFG_MAX``, así que ningún valor almacenado puede
+dejar una estación sin cabeza sin una administración web desde la que
+corregirlo.
 
 Se almacenan hasta cinco perfiles STA (``WIFI_STA_NUM = 5``), cada uno con su
 propia casilla Enable. La **primera entrada habilitada con un SSID no vacío** se

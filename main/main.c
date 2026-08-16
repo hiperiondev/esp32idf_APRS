@@ -195,21 +195,27 @@ static void wifi_init(void) {
     ESP_ERROR_CHECK(esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &wifi_event_handler, NULL));
     ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &ip_event_handler, NULL));
 
-    // wifi_mode: 0=off 1=STA 2=AP 3=AP+STA  (matches the web admin's Wireless page)
+    // Map this project's interface selector onto the IDF mode enum. The two
+    // numbering schemes are independent, so the mapping is spelled out rather
+    // than cast.
     wifi_mode_t mode = WIFI_MODE_NULL;
     switch (g_config.wifi_mode) {
-        case 1:
+        case WIFI_MODE_CFG_STA:
             mode = WIFI_MODE_STA;
             break;
-        case 2:
+        case WIFI_MODE_CFG_AP:
             mode = WIFI_MODE_AP;
             break;
-        case 3:
+        case WIFI_MODE_CFG_APSTA:
             mode = WIFI_MODE_APSTA;
             break;
         default:
+            // Covers WIFI_MODE_CFG_OFF and any value outside the selector
+            // range: the SoftAP comes up regardless, so the web admin is
+            // always reachable and no stored value can lock the operator out
+            // of a headless station.
             mode = WIFI_MODE_AP;
-            break; // safest default: always reachable via AP
+            break;
     }
     ESP_ERROR_CHECK(esp_wifi_set_mode(mode));
 

@@ -109,8 +109,11 @@ esp_err_t page_dashboard(httpd_req_t *req) {
     }
 
     // -- WiFi --------------------------------------------------------------
+    // Indexed by the WIFI_MODE_CFG_OFF .. WIFI_MODE_CFG_APSTA selectors, so
+    // the table is exactly as long as that range and a stored value outside it
+    // falls back to the same label as "off".
     static const char *WIFI_MODE_NAME[] = { TR_F_OFF, "STA", "AP", "AP+STA" };
-    const char *wifiModeName = (g_config.wifi_mode < 4) ? WIFI_MODE_NAME[g_config.wifi_mode] : TR_F_OFF;
+    const char *wifiModeName = (g_config.wifi_mode <= WIFI_MODE_CFG_MAX) ? WIFI_MODE_NAME[g_config.wifi_mode] : TR_F_OFF;
 
     wifi_ap_record_t ap_info;
     bool sta_connected = (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK);

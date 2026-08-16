@@ -110,6 +110,11 @@ void storage_write_unlock(void);
  * replaced, uploaded over or erased behind their back is picked up without
  * every module having to be told about it individually.
  *
+ * The counter is bumped from whichever task performs the change, so it is
+ * incremented and read atomically. Callers may therefore read it without
+ * holding any lock; a value read concurrently with a change is either the old
+ * or the new one, never a partial update.
+ *
  * @return The current generation.
  */
 uint32_t storage_generation(void);
