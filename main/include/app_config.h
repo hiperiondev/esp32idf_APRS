@@ -269,7 +269,7 @@ typedef enum {
  * Those fields are bitmasks over the four shared path presets
  * ::app_config_t::path[0..3]: bit N selects preset N, and
  * aprs_path_build_suffix() silently skips a bit whose slot is empty. Only
- * ::app_config_t::path[0] carries a factory string (@c "WIDE1-1,WIDE2-1"), so
+ * ::app_config_t::path[0] carries a factory string (::PATH_PRESET_DEFAULT), so
  * bit 0 is the only selection that puts a digipeater path on the air on a
  * factory-fresh station; any other single bit would beacon with a bare
  * destination call until the operator filled the matching preset in.
@@ -278,6 +278,17 @@ typedef enum {
  * names one of the four shared presets and nothing else.
  */
 #define PATH_PRESET_MASK_DEFAULT (1 << 0)
+
+/**
+ * @brief Factory string of path preset slot 0, the generic New n-N Paradigm
+ * path every service selects out of the box via ::PATH_PRESET_MASK_DEFAULT.
+ *
+ * Named rather than written inline because two factory values are derived from
+ * it: the preset slot itself, and the reach of the INET->RF message gate
+ * (::app_config_t::igate_msg_max_hops), which defaults to the number of hops
+ * this path travels.
+ */
+#define PATH_PRESET_DEFAULT "WIDE1-1,WIDE2-1"
 
 /**
  * @name IGate [Filter] section bit flags
@@ -326,6 +337,29 @@ typedef enum {
 #define IGATE_LOCAL_WINDOW_SEC_MIN     60   /**< Shortest accepted "heard locally" window, seconds. */
 #define IGATE_LOCAL_WINDOW_SEC_MAX     3600 /**< Longest accepted "heard locally" window, seconds. */
 #define IGATE_LOCAL_WINDOW_SEC_DEFAULT 3600 /**< Factory default "heard locally" window, seconds. */
+/** @} */
+
+/**
+ * @name INET->RF message gating hop limit
+ * @brief Accepted range for ::app_config_t::igate_msg_max_hops.
+ *
+ * The window above says how recently the addressee was heard; this says how far
+ * away it was when it was. The IGate design notes measure a gateway's coverage
+ * area in digipeater hops and ask that it be set to the minimum number of hops
+ * it needs, because a station whose frames only arrive through several
+ * digipeaters is very likely out of reach of a transmission from here. 0 gates
+ * only to stations heard direct, which is the strictest reading of that rule;
+ * 8 is the longest path AX.25 can carry at all (the same via-address limit
+ * app_config_path_mask_clamp() enforces on this station's own paths) and
+ * therefore the widest setting that means anything.
+ *
+ * The factory default is not a constant: app_config_set_defaults() takes it
+ * from the hop count of the default IGate transmit path, so out of the box the
+ * gateway offers to reach exactly as far as it can transmit.
+ * @{
+ */
+#define IGATE_MSG_MAX_HOPS_MIN 0 /**< Strictest accepted hop limit: addressee must have been heard direct. */
+#define IGATE_MSG_MAX_HOPS_MAX 8 /**< Widest accepted hop limit, the AX.25 via-address maximum. */
 /** @} */
 
 /**
@@ -638,10 +672,14 @@ typedef struct {
     char rf2inet_prefixes[40]; /**< Comma-separated callsign-prefix whitelist for rf2inet_prefix_en, e.g. "EA,EB,EC". Case-insensitive. */
 
     bool igate_msg_gate_en;          /**< On by default. Apply the APRS-IS message-gating criteria before putting a message read from APRS-IS on the air: the
-                                        addressee must have been heard on RF inside @c igate_local_window_sec, the sender must not have been, the sender's
-                                        header must carry no TCPXX/NOGATE/RFONLY, and the addressee must not be Internet-connected. */
+                                        addressee must have been heard on RF inside @c igate_local_window_sec over at most @c igate_msg_max_hops digipeater
+                                        hops, the sender must not have been heard on RF, the sender's header must carry no TCPXX/NOGATE/RFONLY, and the
+                                        addressee must not be Internet-connected. */
     uint16_t igate_local_window_sec; /**< How far back the message gate looks in the last-heard table, seconds. Clamped to ::IGATE_LOCAL_WINDOW_SEC_MIN ..
                                         ::IGATE_LOCAL_WINDOW_SEC_MAX on save and on load. */
+    uint8_t igate_msg_max_hops;      /**< Longest path, in used digipeater addresses, over which the message gate still counts an addressee as reachable from
+                                        here; 0 gates only to stations heard direct. Clamped to ::IGATE_MSG_MAX_HOPS_MIN .. ::IGATE_MSG_MAX_HOPS_MAX on save
+                                        and on load, and defaulted to the hop count of the IGate transmit path. */
     bool inet2rf_3rdparty_unwrap_en; /**< Off by default. Selective INET->RF opt-in: unwrap one level of third-party ('}') traffic and re-classify/relay the
                                         inner packet, but ONLY when inet2rf_budlist_mode is BUDLIST_WHITELIST and the inner packet's source callsign is itself
                                         on budlist[] - see aprs_filter_classify_thirdparty_inner(). Never a general "relay all third-party" switch; misuse (or
@@ -919,6 +957,20 @@ void app_config_unlock(void);
  * @return Total number of comma-separated hops the selection would emit.
  */
 uint8_t app_config_path_hop_count(uint8_t pathBitmask, const char pathPreset[4][72]);
+
+/**
+ * @brief Count the AX.25 path hops one preset string produces.
+ *
+ * A preset holds a comma-separated path (e.g. @c "WIDE1-1,WIDE2-1" is 2 hops,
+ * not 1), so this is the per-slot half of app_config_path_hop_count(), which
+ * calls it once per selected slot. Available on its own so a hop count can be
+ * taken from a path that is not (yet) in a ::app_config_t, such as
+ * ::PATH_PRESET_DEFAULT while the factory defaults are still being filled in.
+ *
+ * @param preset One path preset string; NULL or empty counts as 0 hops.
+ * @return Number of comma-separated hops in @p preset.
+ */
+uint8_t app_config_path_preset_hops(const char *preset);
 
 /**
  * @brief Clamp @p pathBitmask so the path it produces never exceeds AX.25's

@@ -434,6 +434,10 @@ esp_err_t page_igate_get(httpd_req_t *req) {
         web_field_checkbox(req, TR_F_MSG_GATE_EN, "igateMsgGateEn", g_config.igate_msg_gate_en);
         web_field_int(req, TR_F_MSG_LOCAL_WINDOW_S, "igateLocalWindowSec", g_config.igate_local_window_sec, IGATE_LOCAL_WINDOW_SEC_MIN,
                       IGATE_LOCAL_WINDOW_SEC_MAX);
+        // How recently the addressee was heard and how far away it was when it
+        // was heard are separate questions, so the window above is paired with
+        // a hop limit here.
+        web_field_int(req, TR_F_MSG_MAX_HOPS, "igateMsgMaxHops", g_config.igate_msg_max_hops, IGATE_MSG_MAX_HOPS_MIN, IGATE_MSG_MAX_HOPS_MAX);
         web_fieldset_close(req);
     }
 
@@ -784,6 +788,13 @@ esp_err_t page_igate_post(httpd_req_t *req) {
         else if (windowSec > IGATE_LOCAL_WINDOW_SEC_MAX)
             windowSec = IGATE_LOCAL_WINDOW_SEC_MAX;
         g_config.igate_local_window_sec = (uint16_t)windowSec;
+
+        int maxHops = web_form_get_int(body, "igateMsgMaxHops", g_config.igate_msg_max_hops);
+        if (maxHops < IGATE_MSG_MAX_HOPS_MIN)
+            maxHops = IGATE_MSG_MAX_HOPS_MIN;
+        else if (maxHops > IGATE_MSG_MAX_HOPS_MAX)
+            maxHops = IGATE_MSG_MAX_HOPS_MAX;
+        g_config.igate_msg_max_hops = (uint8_t)maxHops;
     }
 
     // Callsign Filter (budlist): mode selects + shared callsign list. Same

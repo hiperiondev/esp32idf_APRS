@@ -39,16 +39,21 @@ typedef struct {
     char path[LASTHEARD_PATH_LEN]; // e.g. "RF: WIDE1-1" / "INET: DIRECT"
     char sym_table;
     char sym_code;
-    bool via_rf;       // latest frame from this station was heard off the air
-    bool direct;       // latest frame from this station carried no used digipeater
-    uint8_t used_hops; // digipeater addresses actually repeated in the latest RF frame
-    uint32_t packets;  // total times this callsign has been heard
+    bool via_rf;          // latest frame from this station was heard off the air
+    bool direct;          // latest frame from this station carried no used digipeater
+    uint8_t rf_used_hops; // digipeater addresses actually repeated in the latest RF frame
+    uint32_t packets;     // total times this callsign has been heard
     // Per-channel last-heard stamps, kept alongside the whole-entry time above
     // because the two answer different questions. time is when the station was
     // last heard at all, which is what the dashboard shows; these two are when
     // it was last heard on each channel, which is what the INET->RF message
     // gate needs - a station can be locally audible and Internet-connected at
     // once, and the gate tests each independently. 0 means never heard that way.
+    //
+    // rf_used_hops belongs to rf_time the same way: it describes the frame that
+    // set that stamp, so the hop-limited query reads the path length of the
+    // reception it is testing the age of, even when a later APRS-IS sighting
+    // has already moved the entry to the front of the table.
     time_t rf_time;
     time_t inet_time;
     // Hourly heard histogram for the "?APRSH" query (APRS101 ch.15): hourly[0]
@@ -208,13 +213,19 @@ void lastheard_add(const char *callsign, const char *path, bool via_rf, bool dir
     snprintf(entry.path, sizeof(entry.path), "%s: %s", via_rf ? "RF" : "INET", (path && path[0]) ? path : "DIRECT");
     entry.sym_table = sym_table;
     entry.sym_code = sym_code;
-    // Both of these describe the path this frame took, so the newest frame
+    // via_rf and direct describe the path this frame took, so the newest frame
     // always wins: a station that has moved out of direct range stops being
     // listed as direct as soon as its first digipeated frame arrives, and a
     // station last seen on the APRS-IS feed stops counting as locally heard.
+    //
+    // The hop count is written by RF frames only, so it keeps describing the
+    // reception rf_time is the stamp of. An APRS-IS sighting carries no RF path
+    // to measure, and letting it write a zero here would read back as "heard
+    // direct" to the hop-limited query.
     entry.via_rf = via_rf;
     entry.direct = via_rf && direct;
-    entry.used_hops = via_rf ? used_hops : 0;
+    if (via_rf)
+        entry.rf_used_hops = used_hops;
 
     // The per-channel stamps accumulate rather than replace each other, so a
     // station present on both channels keeps both times and each one ages out
@@ -251,7 +262,7 @@ size_t lastheard_station_count(bool rf_only, uint8_t max_used_hops) {
             continue;
         if (rf_only && !s_buf[i].via_rf)
             continue;
-        if (rf_only && s_buf[i].used_hops > max_used_hops)
+        if (rf_only && s_buf[i].rf_used_hops > max_used_hops)
             continue;
         count++;
     }
@@ -260,7 +271,7 @@ size_t lastheard_station_count(bool rf_only, uint8_t max_used_hops) {
     return count;
 }
 
-// Shared body of the two window queries: look the station up under the stored
+// Shared body of the three window queries: look the station up under the stored
 // key and test one of its per-channel stamps against the window. A station the
 // table does not hold answers false, which is the safe answer for every caller
 // - the message gate reads "not heard" as "do not transmit".
@@ -268,7 +279,11 @@ size_t lastheard_station_count(bool rf_only, uint8_t max_used_hops) {
 // The test is a difference against the current wall clock, so a stamp taken
 // before the clock was set, or one left in the future by a backwards NTP
 // correction, reads as outside the window instead of as arbitrarily recent.
-static bool heardWithin(const char *callsign, uint32_t seconds, bool rf) {
+//
+// max_used_hops bounds the path length of the RF reception as well as its age;
+// UINT8_MAX asks about the age alone. It applies to the RF stamp only, since an
+// Internet sighting has no RF path to measure.
+static bool heardWithin(const char *callsign, uint32_t seconds, bool rf, uint8_t max_used_hops) {
     if (callsign == NULL || callsign[0] == 0 || !s_inited)
         return false;
     if (!s_lock || xSemaphoreTake(s_lock, pdMS_TO_TICKS(100)) != pdTRUE)
@@ -283,7 +298,8 @@ static bool heardWithin(const char *callsign, uint32_t seconds, bool rf) {
         if (strcasecmp(s_buf[i].callsign, call) != 0)
             continue;
         time_t stamp = rf ? s_buf[i].rf_time : s_buf[i].inet_time;
-        if (stamp != 0 && now >= stamp && (uint64_t)(now - stamp) <= (uint64_t)seconds)
+        bool hopsOk = !rf || s_buf[i].rf_used_hops <= max_used_hops;
+        if (hopsOk && stamp != 0 && now >= stamp && (uint64_t)(now - stamp) <= (uint64_t)seconds)
             within = true;
         break;
     }
@@ -293,11 +309,15 @@ static bool heardWithin(const char *callsign, uint32_t seconds, bool rf) {
 }
 
 bool lastheard_heard_rf_within(const char *callsign, uint32_t seconds) {
-    return heardWithin(callsign, seconds, true);
+    return heardWithin(callsign, seconds, true, UINT8_MAX);
+}
+
+bool lastheard_heard_rf_within_hops(const char *callsign, uint32_t seconds, uint8_t max_used_hops) {
+    return heardWithin(callsign, seconds, true, max_used_hops);
 }
 
 bool lastheard_heard_inet_within(const char *callsign, uint32_t seconds) {
-    return heardWithin(callsign, seconds, false);
+    return heardWithin(callsign, seconds, false, UINT8_MAX);
 }
 
 int lastheard_directs(char *out, size_t out_size) {

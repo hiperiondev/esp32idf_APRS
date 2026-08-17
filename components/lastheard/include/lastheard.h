@@ -95,9 +95,12 @@ void lastheard_init(void);
  * @param used_hops  Number of digipeater addresses in the frame's path whose
  *                    AX.25 "has been repeated" bit was set, i.e. how many
  *                    hops the frame actually took to reach this receiver. 0
- *                    for a direct frame or one heard via APRS-IS. Recorded
- *                    per station (from its most recent frame) and used by
- *                    lastheard_station_count() to test path reachability.
+ *                    for a direct frame. Recorded per station from its most
+ *                    recent RF frame - an APRS-IS frame leaves the stored
+ *                    count untouched, since it describes no RF path - and
+ *                    used by lastheard_station_count() and
+ *                    lastheard_heard_rf_within_hops() to test path
+ *                    reachability. Ignored when @p via_rf is false.
  * @param sym_table  APRS symbol table byte ('/' or '\' or overlay char), 0 if
  *                    unknown/not a position packet.
  * @param sym_code   APRS symbol code byte, 0 if unknown/not a position packet.
@@ -134,11 +137,13 @@ size_t lastheard_station_count(bool rf_only, uint8_t max_used_hops);
  * @brief Was this station heard on the local RF channel within the last
  * @p seconds?
  *
- * One half of the locality test an IGate applies before putting a message read
- * from APRS-IS on the air: the message is only worth transmitting if its
- * addressee is reachable on the local channel, and reachable means decoded off
- * the air recently. The stamp this reads is refreshed by every RF frame from
- * the station, independently of the Internet stamp
+ * Part of the locality test an IGate applies before putting a message read from
+ * APRS-IS on the air: a message whose sender is itself audible locally was
+ * already transmitted on this channel, so gating the copy would echo it. The
+ * addressee side of the same test asks the stricter question
+ * ::lastheard_heard_rf_within_hops answers, since being audible and being
+ * reachable are not the same thing. The stamp this reads is refreshed by every
+ * RF frame from the station, independently of the Internet stamp
  * ::lastheard_heard_inet_within reads, so a station that is both audible
  * locally and present on the APRS-IS feed answers true to both.
  *
@@ -150,6 +155,36 @@ size_t lastheard_station_count(bool rf_only, uint8_t max_used_hops);
  *         only ever seen via APRS-IS, answers false.
  */
 bool lastheard_heard_rf_within(const char *callsign, uint32_t seconds);
+
+/**
+ * @brief Was this station heard on the local RF channel within the last
+ * @p seconds, over a path of at most @p max_used_hops digipeater hops?
+ *
+ * The reachability form of ::lastheard_heard_rf_within: an IGate transmits
+ * with a path of its own, and a station whose frames only arrive after several
+ * digipeater hops sits outside what that path can reach back, however recently
+ * it was decoded. The IGate design notes therefore measure the coverage area in
+ * digipeater hops rather than in time alone, and ask that a gateway be set to
+ * the minimum number of hops it needs. This is the test the INET->RF message
+ * gate applies to an addressee.
+ *
+ * The hop count read here is the one carried by the station's most recent RF
+ * frame (see lastheard_add()'s @c used_hops), so a station that answers true
+ * was reachable over that many hops at the time of the stamp this also tests.
+ *
+ * @param callsign      Station to look up, matched without regard to case
+ *                      against the stored (SSID-bearing) callsign.
+ * @param seconds       Width of the window, counted back from now.
+ * @param max_used_hops Longest path accepted, in used digipeater addresses.
+ *                      0 accepts only a station heard direct; @c UINT8_MAX
+ *                      accepts any path, making this identical to
+ *                      ::lastheard_heard_rf_within.
+ * @return true if the station is in the table, its most recent RF frame falls
+ *         inside the window, and that frame took at most @p max_used_hops
+ *         digipeater hops to arrive. A station the table does not hold, or one
+ *         only ever seen via APRS-IS, answers false.
+ */
+bool lastheard_heard_rf_within_hops(const char *callsign, uint32_t seconds, uint8_t max_used_hops);
 
 /**
  * @brief Was this station seen on the Internet side within the last

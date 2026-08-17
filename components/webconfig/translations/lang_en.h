@@ -1273,11 +1273,15 @@
 #define TR_F_MSG_GATE_EN "Apply message gating criteria"
 /** Form label for the "msg local window s" field or fieldset, rendered on the IGate page. */
 #define TR_F_MSG_LOCAL_WINDOW_S "Heard-locally window (s)"
+/** Form label for the "msg max hops" field or fieldset, rendered on the IGate page. */
+#define TR_F_MSG_MAX_HOPS "Addressee hop limit (0 = direct only)"
 /** Explanatory note shown beside the msg gating setting, rendered on the IGate page. */
 #define TR_NOTE_MSG_GATING                                                                                                                                     \
-    "A message read from APRS-IS is put on the air only when its addressee was heard on RF inside the window, its sender was not, the sender's header "        \
-    "carries no TCPXX/NOGATE/RFONLY, and the addressee is not itself on the Internet. The next position report seen for that addressee is gated once too, "    \
-    "so it can be plotted. Switching this off transmits every message the type filter allows, to addressees anywhere in the world."
+    "A message read from APRS-IS is put on the air only when its addressee was heard on RF inside the window and over no more than the hop limit, its "        \
+    "sender was not heard on RF, the sender's header carries no TCPXX/NOGATE/RFONLY, and the addressee is not itself on the Internet. The next position "      \
+    "report seen for that addressee is gated once too, so it can be plotted. The hop limit is what keeps the gateway from transmitting to a station it "       \
+    "hears through distant digipeaters but cannot reach back; set it to the number of hops your own transmit path travels. Switching this off transmits "      \
+    "every message the type filter allows, to addressees anywhere in the world."
 
 /** Form label for the "digi aliases" field or fieldset, rendered on the IGate page. */
 #define TR_F_DIGI_ALIASES "n-N Path Aliases"

@@ -221,14 +221,20 @@ IGate (RF <-> APRS-IS)
    * - Message gating criteria (addressee/sender locality)
      - ✅ (required of a conformant IGate)
      - ✅
-     - All four conditions enforced before a message read from APRS-IS reaches
-       RF: addressee heard locally inside the window, sender not heard on RF,
-       no ``TCPXX``/``NOGATE``/``RFONLY`` in the sender's header, addressee not
-       Internet-connected. Each failure has its own drop reason
+     - All five conditions enforced before a message read from APRS-IS reaches
+       RF: addressee heard locally inside the window, that reception within the
+       hop limit, sender not heard on RF, no ``TCPXX``/``NOGATE``/``RFONLY`` in
+       the sender's header, addressee not Internet-connected. Each failure has
+       its own drop reason
    * - Configurable heard-locally window
      - ⚠️ (often fixed)
      - ✅
      - ``igate_local_window_sec``, 60-3600 s, one hour by default
+   * - Coverage measured in digipeater hops
+     - ⚠️ (Dire Wolf and javAPRSSrvr require direct or hop-limited reception)
+     - ✅
+     - ``igate_msg_max_hops``, 0-8 used digipeater addresses, 0 meaning direct
+       only; defaulted to the hop count of the IGate transmit path
    * - Associated position after a gated message
      - ⚠️ (uncommon)
      - ✅

@@ -321,7 +321,7 @@ Filtraggio dei messaggi
 Un IGate è affacciato su un flusso di dati enorme e non deve ritrasmettere in
 modo indiscriminato. Con ``igate_msg_gate_en`` attivo (il valore di fabbrica),
 un messaggio APRS letto da APRS-IS viene trasmesso solo se valgono **tutte e
-quattro** le condizioni insieme:
+cinque** le condizioni insieme:
 
 .. list-table::
    :header-rows: 1
@@ -330,9 +330,11 @@ quattro** le condizioni insieme:
    * - Condizione
      - Motivo di scarto quando fallisce
    * - L'intestazione del mittente non contiene ``TCPXX``, ``NOGATE``, ``RFONLY``
-     - ``DROP_MSG_NOGATE``
+     - ``DROP_HEADER_FORBIDS_RF``
    * - Il destinatario è stato ascoltato in RF entro ``igate_local_window_sec``
      - ``DROP_MSG_NOT_LOCAL``
+   * - Quell'ascolto non ha richiesto più di ``igate_msg_max_hops`` hop di digipeater
+     - ``DROP_MSG_ADDRESSEE_HOPS``
    * - Il destinatario non è a sua volta connesso a Internet
      - ``DROP_MSG_ADDRESSEE_INET``
    * - Il mittente **non** è stato ascoltato in RF entro la stessa finestra
@@ -344,16 +346,41 @@ frequente su un IGate. I token ``TCPXX``/``NOGATE``/``RFONLY`` sono cercati solo
 nell'intestazione, quindi un messaggio il cui *testo* ne menzioni uno non viene
 scambiato per uno instradato con esso.
 
-Le prove di località leggono ``lastheard_heard_rf_within()`` e
-``lastheard_heard_inet_within()``, che tengono una marca temporale per canale:
-una stazione può essere udibile localmente e connessa a Internet allo stesso
-tempo, e ogni condizione prova la propria. Una trama ascoltata via radio conta
-anche come avvistamento Internet quando il suo percorso porta ``TCPIP`` o
-``TCPXX`` — la firma via radio di un pacchetto già passato per un gateway.
+Le prove di località leggono ``lastheard_heard_rf_within()``,
+``lastheard_heard_rf_within_hops()`` e ``lastheard_heard_inet_within()``, che
+tengono una marca temporale per canale: una stazione può essere udibile
+localmente e connessa a Internet allo stesso tempo, e ogni condizione prova la
+propria. Una trama ascoltata via radio conta anche come avvistamento Internet
+quando il suo percorso porta ``TCPIP`` o ``TCPXX`` — la firma via radio di un
+pacchetto già passato per un gateway.
 
 *Finestra di ascolto locale (s)* è ``igate_local_window_sec``, 60–3600 s, un'ora
 per impostazione predefinita, che è il limite superiore raccomandato dalle note
 di progetto degli IGate APRS-IS.
+
+Copertura in hop
+----------------
+
+Essere udibile ed essere raggiungibile sono cose diverse. Le note di progetto
+degli IGate misurano l'area di copertura di un gateway in hop di digipeater e
+non nel tempo, e chiedono che un IGate sia impostato al numero minimo di hop di
+cui ha bisogno, perché una stazione le cui trame arrivano solo dopo due o tre
+ripetizioni è molto probabilmente fuori dalla portata di una trasmissione da
+qui — trasmettere per lei spende tempo di canale per un messaggio che nessuno in
+ascolto raccoglierà.
+
+*Limite di hop del destinatario* è ``igate_msg_max_hops``, 0–8 indirizzi di
+digipeater usati. 0 ritrasmette solo verso stazioni ascoltate in diretta, la
+lettura più rigorosa della raccomandazione; 8 è il percorso più lungo che AX.25
+possa portare. Il valore di fabbrica non è un numero fisso:
+``app_config_set_defaults()`` lo ricava dal conteggio di hop del percorso di
+trasmissione dell'IGate, così di fabbrica il gateway offre di arrivare
+esattamente fin dove trasmette (due hop con il preset ``WIDE1-1,WIDE2-1``).
+
+Il conteggio di hop provato è quello della trama **RF** più recente del
+destinatario. Un avvistamento via APRS-IS della stessa stazione aggiorna la sua
+marca Internet ma lascia intatto quel conteggio, così una stazione vista per
+l'ultima volta sul flusso non viene mai scambiata per una ascoltata in diretta.
 
 Disattivare il filtraggio dei messaggi trasmette **ogni** messaggio consentito
 dal filtro dei tipi, verso destinatari in qualsiasi parte del mondo, che sul

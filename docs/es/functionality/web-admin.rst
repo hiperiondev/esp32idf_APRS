@@ -65,7 +65,8 @@ Las páginas
        usuario, radiogoniometría Agrelo, balizas de localizador Maidenhead y el
        elemento de mapa reservado), baliza on/off, posición, intervalo, selector de símbolo,
        objeto, comentario, estado, PHG. *Filtrado de Mensajes* lleva el
-       interruptor de criterios de mensajes INET→RF y la ventana de escucha
+       interruptor de criterios de mensajes INET→RF, el límite de saltos del
+       destinatario y la ventana de escucha
        local.
    * - **Digi**
      - Habilitar digipeater, indicativo/SSID y ajustes de baliza (posición,

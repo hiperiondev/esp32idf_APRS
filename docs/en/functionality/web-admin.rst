@@ -60,8 +60,8 @@ The pages
        station capabilities, user-defined formats, Agrelo direction finding,
        Maidenhead locator beacons and the reserved map feature),
        beacon on/off, position, interval, symbol picker, object, comment,
-       status, PHG. *Message Gating* holds the INET→RF message criteria switch
-       and the heard-locally window.
+       status, PHG. *Message Gating* holds the INET→RF message criteria switch,
+       the heard-locally window and the addressee hop limit.
    * - **Digi**
      - Digipeater enable, callsign/SSID and beacon settings (position, symbol,
        interval, comment, status, path). *n-N Path Aliases* holds the four

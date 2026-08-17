@@ -65,8 +65,8 @@ Le pagine
        radiogoniometria Agrelo, radiofari di locatore Maidenhead e l'elemento di
        mappa riservato), beacon on/off, posizione, intervallo, selettore di simbolo,
        oggetto, commento, stato, PHG. *Filtraggio Messaggi* contiene
-       l'interruttore dei criteri per i messaggi INET→RF e la finestra di
-       ascolto locale.
+       l'interruttore dei criteri per i messaggi INET→RF, il limite di hop del
+       destinatario e la finestra di ascolto locale.
    * - **Digi**
      - Abilita digipeater, indicativo/SSID e impostazioni beacon (posizione,
        simbolo, intervallo, commento, stato, percorso). *Alias di Percorso n-N*

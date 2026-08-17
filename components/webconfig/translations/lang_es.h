@@ -1345,12 +1345,16 @@
 #define TR_F_MSG_GATE_EN "Aplicar criterios de filtrado de mensajes"
 /** Spanish text for the form label for the "msg local window s" field or fieldset, rendered on the IGate page. English: "Heard-locally window (s)". */
 #define TR_F_MSG_LOCAL_WINDOW_S "Ventana de escucha local (s)"
+/** Spanish text for the form label for the "msg max hops" field or fieldset, rendered on the IGate page. English: "Addressee hop limit (0 = direct only)". */
+#define TR_F_MSG_MAX_HOPS "Límite de saltos del destinatario (0 = solo directo)"
 /** Spanish text for the explanatory note shown beside the msg gating setting, rendered on the IGate page. English: "A message read from APRS-IS is put on the
  * air only when its addressee was heard on RF i...". */
 #define TR_NOTE_MSG_GATING                                                                                                                                     \
-    "Un mensaje leído de APRS-IS sale al aire solo si su destinatario fue escuchado por RF dentro de la ventana, su remitente no lo fue, la cabecera del "     \
-    "remitente no lleva TCPXX/NOGATE/RFONLY y el destinatario no está a su vez en Internet. El siguiente reporte de posición de ese destinatario también se "  \
-    "retransmite una vez, para poder ubicarlo. Si se desactiva, se transmite todo mensaje que permita el filtro de tipos, a destinatarios de cualquier parte " \
+    "Un mensaje leído de APRS-IS sale al aire solo si su destinatario fue escuchado por RF dentro de la ventana y con no más saltos que el límite, su "        \
+    "remitente no fue escuchado por RF, la cabecera del remitente no lleva TCPXX/NOGATE/RFONLY y el destinatario no está a su vez en Internet. El "            \
+    "siguiente reporte de posición de ese destinatario también se retransmite una vez, para poder ubicarlo. El límite de saltos es lo que evita transmitir "   \
+    "a una estación que se oye a través de digipetidores lejanos pero a la que no se llega de vuelta; conviene ponerlo en la cantidad de saltos que "          \
+    "recorre la propia ruta de transmisión. Si se desactiva, se transmite todo mensaje que permita el filtro de tipos, a destinatarios de cualquier parte "    \
     "del mundo."
 
 /** Spanish text for the form label for the "digi aliases" field or fieldset, rendered on the IGate page. English: "n-N Path Aliases". */

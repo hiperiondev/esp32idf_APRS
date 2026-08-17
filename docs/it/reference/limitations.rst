@@ -230,15 +230,22 @@ IGate (RF <-> APRS-IS)
    * - Criteri di filtraggio messaggi (località di destinatario/mittente)
      - ✅ (richiesto a un IGate conforme)
      - ✅
-     - Tutte e quattro le condizioni sono applicate prima che un messaggio letto
+     - Tutte e cinque le condizioni sono applicate prima che un messaggio letto
        da APRS-IS raggiunga la RF: destinatario ascoltato localmente entro la
-       finestra, mittente non ascoltato in RF, nessun ``TCPXX``/``NOGATE``/
-       ``RFONLY`` nell'intestazione del mittente, destinatario non connesso a
-       Internet. Ogni fallimento ha il proprio motivo di scarto
+       finestra, quell'ascolto entro il limite di hop, mittente non ascoltato in
+       RF, nessun ``TCPXX``/``NOGATE``/``RFONLY`` nell'intestazione del
+       mittente, destinatario non connesso a Internet. Ogni fallimento ha il
+       proprio motivo di scarto
    * - Finestra di ascolto locale configurabile
      - ⚠️ (spesso fissa)
      - ✅
      - ``igate_local_window_sec``, 60-3600 s, un'ora per impostazione predefinita
+   * - Copertura misurata in hop di digipeater
+     - ⚠️ (Dire Wolf e javAPRSSrvr richiedono ascolto diretto o limitato in hop)
+     - ✅
+     - ``igate_msg_max_hops``, 0-8 indirizzi di digipeater usati, con 0 = solo
+       diretto; per impostazione predefinita il conteggio di hop del percorso di
+       trasmissione dell'IGate
    * - Posizione associata dopo un messaggio ritrasmesso
      - ⚠️ (poco comune)
      - ✅

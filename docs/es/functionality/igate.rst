@@ -318,7 +318,7 @@ Filtrado de mensajes
 
 Un IGate está sentado sobre un flujo de datos enorme y no debe retransmitir de
 forma indiscriminada. Con ``igate_msg_gate_en`` activo (el valor de fábrica), un
-mensaje APRS leído de APRS-IS sale al aire solo si se cumplen **las cuatro**
+mensaje APRS leído de APRS-IS sale al aire solo si se cumplen **las cinco**
 condiciones a la vez:
 
 .. list-table::
@@ -328,9 +328,11 @@ condiciones a la vez:
    * - Condición
      - Motivo de descarte cuando falla
    * - La cabecera del remitente no lleva ``TCPXX``, ``NOGATE`` ni ``RFONLY``
-     - ``DROP_MSG_NOGATE``
+     - ``DROP_HEADER_FORBIDS_RF``
    * - El destinatario fue escuchado por RF dentro de ``igate_local_window_sec``
      - ``DROP_MSG_NOT_LOCAL``
+   * - Esa escucha no llevó más de ``igate_msg_max_hops`` saltos de digipetidor
+     - ``DROP_MSG_ADDRESSEE_HOPS``
    * - El destinatario no está a su vez conectado a Internet
      - ``DROP_MSG_ADDRESSEE_INET``
    * - El remitente **no** fue escuchado por RF dentro de la misma ventana
@@ -342,16 +344,41 @@ IGate. Solo se busca en la cabecera los tokens ``TCPXX``/``NOGATE``/``RFONLY``,
 de modo que un mensaje cuyo *texto* mencione alguno no se confunde con uno
 ruteado con él.
 
-Las pruebas de localidad leen ``lastheard_heard_rf_within()`` y
-``lastheard_heard_inet_within()``, que guardan una marca de tiempo por canal:
-una estación puede ser audible localmente y estar conectada a Internet a la vez,
-y cada condición prueba la suya. Una trama escuchada al aire también cuenta como
-avistamiento por Internet cuando su ruta lleva ``TCPIP`` o ``TCPXX`` — la firma
-al aire de un paquete que ya pasó por una pasarela.
+Las pruebas de localidad leen ``lastheard_heard_rf_within()``,
+``lastheard_heard_rf_within_hops()`` y ``lastheard_heard_inet_within()``, que
+guardan una marca de tiempo por canal: una estación puede ser audible localmente
+y estar conectada a Internet a la vez, y cada condición prueba la suya. Una
+trama escuchada al aire también cuenta como avistamiento por Internet cuando su
+ruta lleva ``TCPIP`` o ``TCPXX`` — la firma al aire de un paquete que ya pasó
+por una pasarela.
 
 *Ventana de escucha local (s)* es ``igate_local_window_sec``, 60–3600 s, una hora
 por omisión, que es la cota superior que recomiendan las notas de diseño de
 IGate de APRS-IS.
+
+Cobertura en saltos
+-------------------
+
+Ser audible y ser alcanzable son cosas distintas. Las notas de diseño de IGate
+miden el área de cobertura de una pasarela en saltos de digipetidor y no en
+tiempo, y piden que un IGate se configure con la mínima cantidad de saltos que
+necesite, porque una estación cuyas tramas solo llegan tras dos o tres
+digipeticiones está muy probablemente fuera del alcance de una transmisión desde
+aquí — sacarla al aire gasta tiempo de canal en un mensaje que nadie a la
+escucha va a recoger.
+
+*Límite de saltos del destinatario* es ``igate_msg_max_hops``, 0–8 direcciones
+de digipetidor usadas. 0 retransmite solo a estaciones escuchadas en directo, la
+lectura más estricta de la recomendación; 8 es la ruta más larga que puede
+llevar AX.25. El valor de fábrica no es un número fijo:
+``app_config_set_defaults()`` lo deriva de la cantidad de saltos de la ruta de
+transmisión del IGate, así que de fábrica la pasarela ofrece llegar exactamente
+tan lejos como transmite (dos saltos con el preajuste ``WIDE1-1,WIDE2-1``).
+
+La cantidad de saltos que se prueba es la de la trama de **RF** más reciente del
+destinatario. Un avistamiento por APRS-IS de la misma estación refresca su marca
+de Internet pero deja esa cuenta intacta, de modo que una estación vista por
+última vez en el flujo nunca se confunde con una escuchada en directo.
 
 Desactivar el filtrado de mensajes transmite **todo** mensaje que permita el
 filtro de tipos, a destinatarios de cualquier parte del mundo, haya o no en el

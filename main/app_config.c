@@ -283,6 +283,15 @@ void app_config_set_defaults(app_config_t *c) {
     c->inet2rf_3rdparty_unwrap_en = false;
     c->igate_msg_gate_en = true;
     c->igate_local_window_sec = IGATE_LOCAL_WINDOW_SEC_DEFAULT;
+    // Message gating reaches exactly as far as the IGate transmits: an addressee
+    // whose frames arrive over a longer path than this station can send back is
+    // out of reach whatever the last-heard window says. PATH_PRESET_MASK_DEFAULT
+    // above selects preset slot 0 alone, and that slot is filled with
+    // PATH_PRESET_DEFAULT, so the reach of the factory transmit path is the hop
+    // count of that one string.
+    c->igate_msg_max_hops = app_config_path_preset_hops(PATH_PRESET_DEFAULT);
+    if (c->igate_msg_max_hops > IGATE_MSG_MAX_HOPS_MAX)
+        c->igate_msg_max_hops = IGATE_MSG_MAX_HOPS_MAX;
 
     // DIGI
     c->digi_en = false;
@@ -412,7 +421,7 @@ void app_config_set_defaults(app_config_t *c) {
     // the other three are free for the operator's regional aliases.
     for (int i = 0; i < 4; i++)
         set_str(c->path[i], sizeof(c->path[i]), "");
-    set_str(c->path[0], sizeof(c->path[0]), "WIDE1-1,WIDE2-1");
+    set_str(c->path[0], sizeof(c->path[0]), PATH_PRESET_DEFAULT);
 
     // Audio modem PTT.
     //
@@ -633,6 +642,7 @@ static void config_write_json(jw_t *d, const app_config_t *c) {
     jadd_bool(d, "inet2rf3rdPartyUnwrapEn", c->inet2rf_3rdparty_unwrap_en);
     jadd_bool(d, "igateMsgGateEn", c->igate_msg_gate_en);
     jadd_num(d, "igateLocalWindowSec", c->igate_local_window_sec);
+    jadd_num(d, "igateMsgMaxHops", c->igate_msg_max_hops);
     jadd_num(d, "igateSSID", c->aprs_ssid);
     jarr_begin(d, "igateServers");
     for (int i = 0; i < APRS_SERVER_NUM; i++) {
@@ -1021,6 +1031,18 @@ static void config_from_json(cJSON *d, app_config_t *c) {
                  IGATE_LOCAL_WINDOW_SEC_MAX);
         c->igate_local_window_sec = (c->igate_local_window_sec < IGATE_LOCAL_WINDOW_SEC_MIN) ? IGATE_LOCAL_WINDOW_SEC_MIN : IGATE_LOCAL_WINDOW_SEC_MAX;
     }
+    // The hop limit takes the same treatment, read through an int so a stored
+    // value outside the field's own range is caught before the narrowing cast
+    // rather than after it: a limit longer than an AX.25 path can carry would
+    // gate to stations no transmission from here can reach.
+    {
+        int maxHops = (int)jget_num(d, "igateMsgMaxHops", def.igate_msg_max_hops);
+        if (maxHops < IGATE_MSG_MAX_HOPS_MIN || maxHops > IGATE_MSG_MAX_HOPS_MAX) {
+            ESP_LOGW(TAG, "igateMsgMaxHops %d out of range, clamped to %d..%d hops", maxHops, IGATE_MSG_MAX_HOPS_MIN, IGATE_MSG_MAX_HOPS_MAX);
+            maxHops = (maxHops < IGATE_MSG_MAX_HOPS_MIN) ? IGATE_MSG_MAX_HOPS_MIN : IGATE_MSG_MAX_HOPS_MAX;
+        }
+        c->igate_msg_max_hops = (uint8_t)maxHops;
+    }
     c->aprs_ssid = (uint8_t)jget_num(d, "igateSSID", def.aprs_ssid);
     {
         cJSON *arr = cJSON_GetObjectItemCaseSensitive(d, "igateServers");
@@ -1407,15 +1429,23 @@ bool app_config_factory_reset(void) {
     return app_config_save();
 }
 
+uint8_t app_config_path_preset_hops(const char *preset) {
+    if (preset == NULL || !preset[0])
+        return 0;
+
+    uint8_t hops = 1; // the alias itself is at least 1 hop
+    for (const char *p = preset; *p; p++)
+        if (*p == ',')
+            hops++;
+    return hops;
+}
+
 uint8_t app_config_path_hop_count(uint8_t pathBitmask, const char pathPreset[4][72]) {
     uint8_t hops = 0;
     for (int bit = 0; bit < 4; bit++) {
-        if (!(pathBitmask & (1u << bit)) || !pathPreset[bit][0])
+        if (!(pathBitmask & (1u << bit)))
             continue;
-        hops++; // the alias itself is at least 1 hop
-        for (const char *p = pathPreset[bit]; *p; p++)
-            if (*p == ',')
-                hops++;
+        hops += app_config_path_preset_hops(pathPreset[bit]);
     }
     return hops;
 }

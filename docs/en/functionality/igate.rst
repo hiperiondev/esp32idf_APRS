@@ -299,7 +299,7 @@ Message gating
 
 An IGate sits on a very large data stream and must not gate indiscriminately.
 With ``igate_msg_gate_en`` on (the factory default), an APRS message read from
-APRS-IS is put on the air only when **all four** conditions hold at once:
+APRS-IS is put on the air only when **all five** conditions hold at once:
 
 .. list-table::
    :header-rows: 1
@@ -308,9 +308,11 @@ APRS-IS is put on the air only when **all four** conditions hold at once:
    * - Condition
      - Drop reason when it fails
    * - The sender's header carries none of ``TCPXX``, ``NOGATE``, ``RFONLY``
-     - ``DROP_MSG_NOGATE``
+     - ``DROP_HEADER_FORBIDS_RF``
    * - The addressee was heard on RF inside ``igate_local_window_sec``
      - ``DROP_MSG_NOT_LOCAL``
+   * - That reception took no more than ``igate_msg_max_hops`` digipeater hops
+     - ``DROP_MSG_ADDRESSEE_HOPS``
    * - The addressee is not itself Internet-connected
      - ``DROP_MSG_ADDRESSEE_INET``
    * - The sender was **not** heard on RF inside the same window
@@ -321,15 +323,38 @@ condition stopped a message — the single most-asked IGate support question.
 Only the header is searched for the ``TCPXX``/``NOGATE``/``RFONLY`` tokens, so
 a message whose *text* mentions one is not mistaken for one routed with it.
 
-The locality tests read ``lastheard_heard_rf_within()`` and
-``lastheard_heard_inet_within()``, which keep a separate stamp per channel: a
-station can be both locally audible and Internet-connected, and each condition
-tests its own. A frame heard off the air also counts as an Internet sighting
-when its path carries ``TCPIP`` or ``TCPXX`` — the on-air signature of a packet
-that has already passed through a gateway.
+The locality tests read ``lastheard_heard_rf_within()``,
+``lastheard_heard_rf_within_hops()`` and ``lastheard_heard_inet_within()``,
+which keep a separate stamp per channel: a station can be both locally audible
+and Internet-connected, and each condition tests its own. A frame heard off the
+air also counts as an Internet sighting when its path carries ``TCPIP`` or
+``TCPXX`` — the on-air signature of a packet that has already passed through a
+gateway.
 
 *Heard-locally window (s)* is ``igate_local_window_sec``, 60–3600 s, one hour by
 default, which is the upper bound the APRS-IS IGate design notes recommend.
+
+Coverage in hops
+----------------
+
+Being audible and being reachable are different things. The IGate design notes
+measure a gateway's coverage area in digipeater hops rather than in time, and
+ask that an IGate be set to the minimum number of hops it needs, because a
+station whose frames only arrive after two or three digipeats is very likely
+out of range of a transmission from here — keying up for it spends airtime on a
+message nobody in earshot will collect.
+
+*Addressee hop limit* is ``igate_msg_max_hops``, 0–8 used digipeater addresses.
+0 gates only to stations heard direct, which is the strictest reading of the
+guideline; 8 is the longest path AX.25 can carry. The factory default is not a
+fixed number: ``app_config_set_defaults()`` derives it from the hop count of the
+IGate transmit path, so out of the box the gateway offers to reach exactly as
+far as it transmits (two hops with the stock ``WIDE1-1,WIDE2-1`` preset).
+
+The hop count tested is the one carried by the addressee's most recent **RF**
+frame. An APRS-IS sighting of the same station refreshes its Internet stamp but
+leaves that count alone, so a station last seen on the feed is never mistaken
+for one heard direct.
 
 Turning message gating off transmits **every** message the type filter allows,
 to addressees anywhere in the world, whether or not anything on the local

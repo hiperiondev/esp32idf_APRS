@@ -98,6 +98,9 @@ typedef enum {
     DROP_BUDLIST,       /**< Blocked by the local callsign whitelist/blacklist (see aprs_filter_budlist_pass()). */
     DROP_MSG_NOT_LOCAL, /**< INET->RF message whose addressee has not been heard on the local RF channel inside g_config.igate_local_window_sec, so there is
                            nobody in earshot to transmit it to. */
+    DROP_MSG_ADDRESSEE_HOPS,  /**< INET->RF message whose addressee was heard on RF inside the window, but only over more used digipeater addresses than
+                                 g_config.igate_msg_max_hops allows: audible from here, yet beyond the reach of a transmission that carries this station's own
+                                 IGate path. */
     DROP_MSG_SENDER_LOCAL,    /**< INET->RF message whose sender was itself heard on RF inside the same window: both ends of the conversation are local, so the
                                  original transmission was already on the air and gating the copy back would echo it. */
     DROP_HEADER_FORBIDS_RF,   /**< INET->RF line whose header carries TCPXX, NOGATE, RFONLY, qAX or qAZ - tokens/q-constructs whose whole purpose is to forbid

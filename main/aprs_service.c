@@ -1069,10 +1069,22 @@ static bool messageGatePass(const char *srcLine, const char *srcCall, const char
     }
 
     uint32_t window = g_config.igate_local_window_sec;
+    uint8_t maxHops = g_config.igate_msg_max_hops;
 
     if (!lastheard_heard_rf_within(addressee, window)) {
         ESP_LOGD(TAG, "INET2RF message not gated - %s not heard on RF in the last %u s", addressee, (unsigned)window);
         igate_note_drop(DROP_MSG_NOT_LOCAL);
+        return false;
+    }
+    // Heard, but the reach test is a separate question from the age test: the
+    // coverage area an IGate gates into is measured in digipeater hops, so an
+    // addressee whose frames arrive over a longer path than this station's own
+    // transmissions travel is not somewhere a message can be delivered. The two
+    // count under their own reasons so the dashboard names the condition that
+    // stopped the message.
+    if (!lastheard_heard_rf_within_hops(addressee, window, maxHops)) {
+        ESP_LOGD(TAG, "INET2RF message not gated - %s heard on RF over more than %u digipeater hops", addressee, (unsigned)maxHops);
+        igate_note_drop(DROP_MSG_ADDRESSEE_HOPS);
         return false;
     }
     if (lastheard_heard_inet_within(addressee, window)) {

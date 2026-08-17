@@ -1346,13 +1346,16 @@
 #define TR_F_MSG_GATE_EN "Applica i criteri di filtraggio dei messaggi"
 /** Italian text for the form label for the "msg local window s" field or fieldset, rendered on the IGate page. English: "Heard-locally window (s)". */
 #define TR_F_MSG_LOCAL_WINDOW_S "Finestra di ascolto locale (s)"
+/** Italian text for the form label for the "msg max hops" field or fieldset, rendered on the IGate page. English: "Addressee hop limit (0 = direct only)". */
+#define TR_F_MSG_MAX_HOPS "Limite di hop del destinatario (0 = solo diretto)"
 /** Italian text for the explanatory note shown beside the msg gating setting, rendered on the IGate page. English: "A message read from APRS-IS is put on the
  * air only when its addressee was heard on RF i...". */
 #define TR_NOTE_MSG_GATING                                                                                                                                     \
-    "Un messaggio letto da APRS-IS viene trasmesso solo se il destinatario è stato ascoltato in RF entro la finestra, il mittente no, l'intestazione del "     \
-    "mittente non contiene TCPXX/NOGATE/RFONLY e il destinatario non è a sua volta su Internet. Anche il primo rapporto di posizione di quel destinatario "    \
-    "viene ritrasmesso una volta, per poterlo localizzare. Disattivandolo si trasmette ogni messaggio consentito dal filtro dei tipi, verso destinatari in "   \
-    "qualsiasi parte del mondo."
+    "Un messaggio letto da APRS-IS viene trasmesso solo se il destinatario è stato ascoltato in RF entro la finestra e con non più hop del limite, il "        \
+    "mittente non è stato ascoltato in RF, l'intestazione del mittente non contiene TCPXX/NOGATE/RFONLY e il destinatario non è a sua volta su Internet. "     \
+    "Anche il primo rapporto di posizione di quel destinatario viene ritrasmesso una volta, per poterlo localizzare. Il limite di hop è ciò che evita di "     \
+    "trasmettere verso una stazione ascoltata tramite digipeater lontani ma non raggiungibile; conviene impostarlo al numero di hop percorsi dal proprio "     \
+    "percorso di trasmissione. Disattivandolo si trasmette ogni messaggio consentito dal filtro dei tipi, verso destinatari in qualsiasi parte del mondo."
 
 /** Italian text for the form label for the "digi aliases" field or fieldset, rendered on the IGate page. English: "n-N Path Aliases". */
 #define TR_F_DIGI_ALIASES "Alias di Percorso n-N"
