@@ -363,7 +363,7 @@ por omisión, que es la cota superior que recomiendan las notas de diseño de
 IGate de APRS-IS.
 
 Boletines y difusiones del servicio meteorológico
-------------------------------------------------
+-------------------------------------------------
 
 Las cinco condiciones de arriba gobiernan los mensajes dirigidos a una
 estación. Un mensaje dirigido a *todos* no se retransmite en absoluto: los

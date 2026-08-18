@@ -109,7 +109,7 @@ non-blocking drop-if-full behaviour and a busy RF leg never stalls RX decode or
 the APRS-IS socket.
 
 Data extensions (PHG / RNG / DFS / DF)
-=====================================
+======================================
 
 The IGate position beacon can carry one of the fixed-station APRS data
 extensions in the 7-byte slot that follows the symbol code — the same slot a
