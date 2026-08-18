@@ -15,13 +15,15 @@
 //
 // @brief Web admin "Digipeater" page: renders and saves the digipeater
 // configuration (callsign/SSID, the n-N alias table with its trapping,
-// preemptive and legacy routing policies, and the beacon settings) in
-// g_config.
+// preemptive and legacy routing policies, the beacon settings and the beacon's
+// APRS data extension) in g_config.
 
+#include <math.h>
 #include <stdio.h>
 #include <string.h>
 
 #include "app_config.h"
+#include "aprs_df.h" // aprs_df_symbol_matches()
 #include "esp_log.h"
 #include "pages.h"
 #include "str_append.h" // str_copy_utf8_safe()
@@ -114,6 +116,196 @@ esp_err_t page_digi_get(httpd_req_t *req) {
     web_field_text(req, TR_F_COMMENT, "digiComment", g_config.digi_comment, COMMENT_SIZE - 1);
     web_fieldset_close(req);
 
+    // DATA EXTENSION ---------------------------------------------------------
+    // The digipeater position beacon can carry one of the fixed-station APRS
+    // data extensions in the slot after the symbol code (APRS101 ch.7), which
+    // introduces PHG as the digipeater's field above all: it is the coverage
+    // circle other stations reason about when they choose a path, and mapping
+    // clients draw it for digipeaters first. "Enable data extension" gates
+    // whether any of them is transmitted, and "Extension type" picks which:
+    //
+    //   PHG - power/height/gain/directivity, the classic coverage estimate.
+    //   RNG - a single pre-calculated radio range in statute miles, for an
+    //         operator who already knows their real coverage radius.
+    //   DFS - the same height/gain/directivity codes as PHG, but reporting
+    //         received signal strength instead of transmitted power, which is
+    //         what an omnidirectional direction-finding station transmits.
+    //   DF  - the DF report of APRS101 ch.8: the bearing to a signal and the
+    //         NRQ triplet that qualifies it. The chapter makes it meaningful
+    //         only on the DF symbol (table '/', code '\\'), so it is
+    //         transmitted only with that symbol and the note below says so
+    //         whenever the two do not agree.
+    //
+    // Field-for-field the same block the IGate page renders, on this role's
+    // own settings: the power/gain/height/direction selectors mirror the
+    // "My Station" PHG section on the Station page (same code tables), DFS
+    // reuses the gain/height/direction three and adds its own strength code,
+    // and RNG uses none of them. "Use My Station Data" reuses the shared
+    // Station PHG values and locks the sub-fields. The computed PHG text is
+    // read-only and kept in sync by the script below.
+    web_fieldset_open(req, TR_F_EXT_SECTION);
+    web_field_checkbox(req, TR_F_ENABLE_EXT, "digiPHGEn", g_config.digi_phg_enable);
+    web_select_open(req, TR_F_EXT_TYPE, "digiExtType");
+    {
+        static const char *extNames[] = { TR_EXT_PHG, TR_EXT_RNG, TR_EXT_DFS, TR_EXT_DF };
+        for (size_t i = 0; i < sizeof(extNames) / sizeof(extNames[0]); i++)
+            web_select_option(req, i, extNames[i], g_config.digi_ext_type == (uint8_t)i);
+    }
+    web_select_close(req);
+    web_field_int(req, TR_F_EXT_RANGE_MI, "digiRng", g_config.digi_range_miles, APRS_EXT_RANGE_MILES_MIN, APRS_EXT_RANGE_MILES_MAX);
+    web_field_int(req, TR_F_EXT_DFS_STRENGTH, "digiDfsS", g_config.digi_dfs_strength, APRS_EXT_DFS_STRENGTH_MIN, APRS_EXT_DFS_STRENGTH_MAX);
+    web_field_int(req, TR_F_EXT_DF_BEARING, "digiDfBrg", g_config.digi_df_bearing, APRS_EXT_DF_BEARING_MIN, APRS_EXT_DF_BEARING_MAX);
+    web_field_int(req, TR_F_EXT_DF_NRQ_N, "digiDfN", g_config.digi_df_nrq_n, APRS_EXT_DF_NRQ_MIN, APRS_EXT_DF_NRQ_MAX);
+    web_field_int(req, TR_F_EXT_DF_NRQ_R, "digiDfR", g_config.digi_df_nrq_r, APRS_EXT_DF_NRQ_MIN, APRS_EXT_DF_NRQ_MAX);
+    web_field_int(req, TR_F_EXT_DF_NRQ_Q, "digiDfQ", g_config.digi_df_nrq_q, APRS_EXT_DF_NRQ_MIN, APRS_EXT_DF_NRQ_MAX);
+
+    // The DF report only travels with the DF symbol (APRS101 ch.8), so the
+    // condition the beacon encoder enforces is stated here instead of leaving
+    // it to be discovered off the air. Rendered with the stored symbol and
+    // extension type already applied, so it is right without scripting, and
+    // kept in step by apply() below as the operator edits either one.
+    {
+        bool dfSelected = g_config.digi_phg_enable && g_config.digi_ext_type == (uint8_t)APRS_EXT_DF;
+        bool dfSymbol = aprs_df_symbol_matches(g_config.digi_symbol[0], g_config.digi_symbol[1]);
+        char buf[420];
+        snprintf(buf, sizeof(buf), "<p id='digiDfSymNote' style='color:var(--sub);font-size:12px;margin:4px 0 0%s'>%s</p>",
+                 (dfSelected && !dfSymbol) ? "" : ";display:none", TR_NOTE_EXT_DF_SYMBOL);
+        web_raw(req, buf);
+    }
+    web_field_checkbox(req, TR_USE_MY_STATION_DATA, "digiPHGUseStation", g_config.digi_phg_use_station);
+    web_select_open(req, TR_F_RADIO_TX_POWER, "digiPHGPower");
+    {
+        // APRS PHG power code table (P digit 0-9), rounded to these fixed
+        // Watt values only - not a free-edit field. Same table as Station.
+        static const int watts[] = { 0, 1, 5, 10, 15, 25, 35, 50, 65, 80 };
+        for (size_t i = 0; i < sizeof(watts) / sizeof(watts[0]); i++) {
+            char lbl[16];
+            snprintf(lbl, sizeof(lbl), "%d", watts[i]);
+            web_select_option(req, watts[i], lbl, g_config.digi_phg_power == (uint16_t)watts[i]);
+        }
+    }
+    web_select_close(req);
+    web_select_open(req, TR_F_ANTENNA_GAIN, "digiPHGGain");
+    {
+        // APRS PHG gain code table (G digit 0-9), in dB - not a free-edit field.
+        for (int i = 0; i <= 9; i++) {
+            char lbl[16];
+            snprintf(lbl, sizeof(lbl), "%d", i);
+            web_select_option(req, i, lbl, (int)lroundf(g_config.digi_phg_gain) == i);
+        }
+    }
+    web_select_close(req);
+    web_select_open(req, TR_F_HEIGHT_M, "digiPHGHeight");
+    {
+        // APRS PHG height code table (H digit), 10*2^n feet, extended beyond
+        // the standard 0-9 digits to also allow the requested larger values.
+        static const int feet[] = { 10, 20, 40, 80, 160, 320, 640, 1280, 2560, 5120, 10240, 20480, 40960, 81920 };
+        for (size_t i = 0; i < sizeof(feet) / sizeof(feet[0]); i++) {
+            char lbl[16];
+            snprintf(lbl, sizeof(lbl), "%d", (int)lroundf(feet[i] * 0.3048f));
+            // Option value stays in feet (the APRS code table's own unit);
+            // only the label shown to the user is converted to meters.
+            web_select_option(req, feet[i], lbl, g_config.digi_phg_height == (uint16_t)feet[i]);
+        }
+    }
+    web_select_close(req);
+    web_select_open(req, TR_F_ANTENNA_DIRECTION, "digiPHGDir");
+    {
+        static const char *dirs[] = { TR_DIR_OMNI, TR_DIR_N, TR_DIR_NE, TR_DIR_E, TR_DIR_SE, TR_DIR_S, TR_DIR_SW, TR_DIR_W, TR_DIR_NW };
+        for (int i = 0; i < 9; i++)
+            web_select_option(req, i, dirs[i], g_config.digi_phg_dir == (uint8_t)i);
+    }
+    web_select_close(req);
+
+    // Computed PHG value --------------------------------------------------
+    // Read-only and display-only: it carries no name attribute, so it is never
+    // submitted and never stored. The script below fills it on load and on
+    // every change of the four PHG sub-fields, which are the values the beacon
+    // encoder reads. Same convention as the Station and IGate pages.
+    {
+        char buf[550];
+        snprintf(buf, sizeof(buf), "<label>%s</label><input type='text' id='digiPHG' maxlength='7' readonly>", TR_F_PHG_TEXT);
+        web_raw(req, buf);
+    }
+    web_fieldset_close(req);
+
+    // Shared "My Station" PHG snapshot, exposed to the script below so
+    // "Use My Station Data" can mirror the Station page's values live. Only
+    // the four sub-fields travel: the displayed PHG string is always derived
+    // from them by the same formula on every page.
+    {
+        char sbuf[256];
+        snprintf(sbuf, sizeof(sbuf), "<script>window.__stnPHG={p:%u,g:%d,h:%u,d:%u};</script>", (unsigned)g_config.my_phg_power,
+                 (int)lroundf(g_config.my_phg_gain), (unsigned)g_config.my_phg_height, (unsigned)g_config.my_phg_dir);
+        web_raw(req, sbuf);
+    }
+
+    // PHG behaviour, same convention as the IGate page and the Objects page's
+    // per-element PHG blocks:
+    //   * "Enable data extension" off -> the four PHG sub-fields are disabled
+    //     (and nothing is transmitted in the slot - enforced server-side too,
+    //     see beacon.c).
+    //   * "Use My Station Data" on -> the sub-fields are filled from the
+    //     shared station PHG and disabled (locked), and the computed text is
+    //     recalculated from those mirrored values.
+    //   * otherwise the sub-fields are editable and the computed PHG text is
+    //     recalculated live from them (same formula as the Station page).
+    // Disabled controls don't POST, so the save handler snapshots the
+    // station PHG when "Use My Station Data" is on and keeps the stored
+    // own-values when the extension is disabled - see page_digi_post().
+    web_raw(req, "<script>(function(){"
+                 "var ST=window.__stnPHG||{p:0,g:0,h:10,d:0};"
+                 "function q(n){return document.querySelector(\"[name='\"+n+\"']\");}"
+                 "function calc(){"
+                 "var p=parseInt(q('digiPHGPower').value)||0,g=parseInt(q('digiPHGGain').value)||0,"
+                 "h=parseInt(q('digiPHGHeight').value)||10,d=parseInt(q('digiPHGDir').value)||0;"
+                 "var P=Math.min(9,Math.max(0,Math.round(Math.sqrt(p))));"
+                 "var H=Math.min(13,Math.max(0,Math.round(Math.log(h/10)/Math.log(2))));"
+                 "var G=Math.min(9,Math.max(0,g)),D=Math.min(8,Math.max(0,d));"
+                 "var o=document.getElementById('digiPHG');"
+                 "if(o)o.value='PHG'+P+String.fromCharCode(48+H)+G+D;"
+                 "}"
+                 "function apply(){"
+                 "var en=q('digiPHGEn'),us=q('digiPHGUseStation'),ty=q('digiExtType');"
+                 "if(!en)return;"
+                 "var on=en.checked,useS=us&&us.checked,t=ty?parseInt(ty.value):0;"
+                 "if(useS){q('digiPHGPower').value=ST.p;q('digiPHGGain').value=ST.g;q('digiPHGHeight').value=ST.h;q('digiPHGDir').value=ST.d;}"
+                 "if(ty)ty.disabled=!on;"
+                 // PHG uses all four sub-fields, DFS every one but the transmit
+                 // power, RNG and DF none of them; the range, strength and bearing
+                 // /NRQ inputs each belong to exactly one type. Disabling rather
+                 // than hiding keeps the layout stable and, since a disabled
+                 // control does not POST, matches what the save handler below
+                 // actually stores.
+                 "var dis=(!on)||useS;"
+                 "q('digiPHGPower').disabled=dis||t!==0;"
+                 "['digiPHGGain','digiPHGHeight','digiPHGDir'].forEach(function(nm){var el=q(nm);if(el)el.disabled=dis||t===1||t===3;});"
+                 "var r=q('digiRng');if(r)r.disabled=(!on)||t!==1;"
+                 "var sg=q('digiDfsS');if(sg)sg.disabled=(!on)||t!==2;"
+                 "['digiDfBrg','digiDfN','digiDfR','digiDfQ'].forEach(function(nm){var el=q(nm);if(el)el.disabled=(!on)||t!==3;});"
+                 // The DF report needs the DF symbol pair to be readable as one,
+                 // so the note appears exactly when the selected type is DF and
+                 // the symbol edited above is anything else - the same test the
+                 // beacon encoder makes before it emits the token.
+                 "var nt=document.getElementById('digiDfSymNote');"
+                 "if(nt){var st=q('digiSymTable'),sc=q('digiSymCode');"
+                 "var isDF=st&&sc&&st.value==='/'&&sc.value==='\\\\';"
+                 "nt.style.display=(on&&t===3&&!isDF)?'':'none';}"
+                 "calc();"
+                 "}"
+                 "document.addEventListener('DOMContentLoaded',function(){"
+                 "var en=q('digiPHGEn'),us=q('digiPHGUseStation'),ty=q('digiExtType');"
+                 "if(en)en.addEventListener('change',apply);"
+                 "if(us)us.addEventListener('change',apply);"
+                 "if(ty)ty.addEventListener('change',apply);"
+                 "['digiPHGPower','digiPHGGain','digiPHGHeight','digiPHGDir'].forEach(function(nm){var el=q(nm);if(el)el.addEventListener('change',calc);});"
+                 // The symbol lives in another fieldset of this same form, and the
+                 // DF note depends on it, so editing it re-evaluates the note.
+                 "['digiSymTable','digiSymCode'].forEach(function(nm){var el=q(nm);if(el)el.addEventListener('input',apply);});"
+                 "apply();"
+                 "});"
+                 "})();</script>");
+
     web_fieldset_open(req, TR_F_STATUS_BEACON);
     web_field_int(req, TR_F_STATUS_INTERVAL_S_0_OFF, "digiSTSIntv", g_config.digi_sts_interval, WEB_RANGE_INTERVAL_S_MIN, WEB_RANGE_INTERVAL_S_MAX);
     web_field_text(req, TR_F_STATUS_TEXT, "digiStatus", g_config.digi_status, STATUS_SIZE - 1);
@@ -149,10 +341,10 @@ esp_err_t page_digi_post(httpd_req_t *req) {
     if (!web_check_auth(req))
         return ESP_OK;
     // Sized for the whole page in one POST: the main settings and the beacon
-    // fieldsets, the repeater radio parameters block, the four path presets,
-    // and the alias table's four rows of {alias, hop limit, mode} plus its
-    // four policy controls.
-    char body[2500];
+    // fieldsets, the data-extension block, the repeater radio parameters
+    // block, the four path presets, and the alias table's four rows of
+    // {alias, hop limit, mode} plus its four policy controls.
+    char body[3000];
     if (web_read_body(req, body, sizeof(body)) < 0) {
         httpd_resp_send_500(req);
         return ESP_OK;
@@ -216,6 +408,69 @@ esp_err_t page_digi_post(httpd_req_t *req) {
     // Station Symbol: Table + Symbol 1-char fields from the shared picker
     // widget, falling back to a legacy combined 2-char field if present.
     web_form_get_symbol(body, "digiSym", "digiSymbol", g_config.digi_symbol, sizeof(g_config.digi_symbol));
+
+    // Data extension: same convention as the IGate page. "Use My Station
+    // Data" locks (disables) the sub-fields in the browser, so they don't
+    // POST - snapshot the shared station PHG under the config lock (already
+    // held here) and use that instead of the form in that case.
+    g_config.digi_phg_enable = web_form_get_bool(body, "digiPHGEn");
+    // The type select and the type-specific numbers are disabled in the
+    // browser for whichever extension is not selected, so they do not POST;
+    // web_form_get_int() therefore keeps the stored value for those, which is
+    // what lets an operator switch types back and forth without losing the
+    // settings of the other one. All of them are clamped here as well as in
+    // config_from_json(), the two-layer pattern the rest of the pages use.
+    {
+        int extType = web_form_get_int(body, "digiExtType", (int)g_config.digi_ext_type);
+        if (extType < APRS_EXT_PHG || extType > APRS_EXT_DF)
+            extType = APRS_EXT_PHG;
+        g_config.digi_ext_type = (uint8_t)extType;
+
+        int rng = web_form_get_int(body, "digiRng", (int)g_config.digi_range_miles);
+        if (rng < APRS_EXT_RANGE_MILES_MIN)
+            rng = APRS_EXT_RANGE_MILES_MIN;
+        if (rng > APRS_EXT_RANGE_MILES_MAX)
+            rng = APRS_EXT_RANGE_MILES_MAX;
+        g_config.digi_range_miles = (uint16_t)rng;
+
+        int dfs = web_form_get_int(body, "digiDfsS", (int)g_config.digi_dfs_strength);
+        if (dfs < APRS_EXT_DFS_STRENGTH_MIN)
+            dfs = APRS_EXT_DFS_STRENGTH_MIN;
+        if (dfs > APRS_EXT_DFS_STRENGTH_MAX)
+            dfs = APRS_EXT_DFS_STRENGTH_MAX;
+        g_config.digi_dfs_strength = (uint8_t)dfs;
+
+        // The bearing wraps rather than clamps: 360 and 0 degrees name the
+        // same direction and the on-air field is three digits wide, so an
+        // out-of-range value still has one correct reading.
+        int brg = web_form_get_int(body, "digiDfBrg", (int)g_config.digi_df_bearing) % 360;
+        if (brg < 0)
+            brg += 360;
+        g_config.digi_df_bearing = (uint16_t)brg;
+
+        static const char *nrqKeys[] = { "digiDfN", "digiDfR", "digiDfQ" };
+        uint8_t *nrqFields[] = { &g_config.digi_df_nrq_n, &g_config.digi_df_nrq_r, &g_config.digi_df_nrq_q };
+        for (size_t i = 0; i < sizeof(nrqKeys) / sizeof(nrqKeys[0]); i++) {
+            int digit = web_form_get_int(body, nrqKeys[i], (int)*nrqFields[i]);
+            if (digit < APRS_EXT_DF_NRQ_MIN)
+                digit = APRS_EXT_DF_NRQ_MIN;
+            if (digit > APRS_EXT_DF_NRQ_MAX)
+                digit = APRS_EXT_DF_NRQ_MAX;
+            *nrqFields[i] = (uint8_t)digit;
+        }
+    }
+    g_config.digi_phg_use_station = web_form_get_bool(body, "digiPHGUseStation");
+    if (g_config.digi_phg_use_station) {
+        g_config.digi_phg_power = g_config.my_phg_power;
+        g_config.digi_phg_gain = g_config.my_phg_gain;
+        g_config.digi_phg_height = g_config.my_phg_height;
+        g_config.digi_phg_dir = g_config.my_phg_dir;
+    } else {
+        g_config.digi_phg_power = (uint16_t)web_form_get_int(body, "digiPHGPower", g_config.digi_phg_power);
+        g_config.digi_phg_gain = (float)web_form_get_int(body, "digiPHGGain", (int)lroundf(g_config.digi_phg_gain));
+        g_config.digi_phg_height = (uint16_t)web_form_get_int(body, "digiPHGHeight", g_config.digi_phg_height);
+        g_config.digi_phg_dir = (uint8_t)web_form_get_int(body, "digiPHGDir", g_config.digi_phg_dir);
+    }
 
     // web_form_get() clamps to a plain byte count, so an operator-typed
     // multi-byte UTF-8 character sitting right at that boundary could arrive

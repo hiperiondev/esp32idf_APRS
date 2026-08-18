@@ -26,6 +26,7 @@
 #include "app_config.h"
 #include "aprs_coord.h"
 #include "aprs_dao.h"
+#include "aprs_df.h" // aprs_df_symbol_matches(), APRS_DF_EXT_TAIL_LEN
 #include "aprs_filter.h"
 #include "str_append.h"
 #include "weather_telemetry.h"
@@ -128,19 +129,6 @@ static uint16_t object_bit(const char *pos, uint16_t default_bit) {
 // Highest 1-based character position the exception allows the '!' to sit at.
 #define LATE_DTI_SCAN_MAX 40
 
-// Symbol Table Identifier as it may appear in an uncompressed report: the two
-// standard tables, or an alphanumeric overlay character.
-static bool uncompressed_table_byte(char c) {
-    return c == '/' || c == '\\' || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9');
-}
-
-// Symbol Table Identifier as it may appear in a compressed report, where a
-// numeric overlay travels as 'a'-'j' precisely so that the first byte is never
-// a digit (APRS101 ch.21).
-static bool compressed_table_byte(char c) {
-    return c == '/' || c == '\\' || (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'j');
-}
-
 // One byte of a base-91 compressed field: printable ASCII '!' through '{'.
 static bool base91_byte(char c) {
     return c >= '!' && c <= '{';
@@ -167,7 +155,7 @@ static bool position_field_is_well_formed(const char *pos, size_t len) {
             return false;
         if (pos[7] != 'N' && pos[7] != 'n' && pos[7] != 'S' && pos[7] != 's')
             return false;
-        if (!uncompressed_table_byte(pos[8]))
+        if (!aprs_symbol_table_byte_uncompressed(pos[8]))
             return false;
         for (int i = 9; i < 14; i++)
             if (!isdigit((unsigned char)pos[i]))
@@ -181,7 +169,7 @@ static bool position_field_is_well_formed(const char *pos, size_t len) {
 
     if (len < POS_COMPRESSED_LEN)
         return false;
-    if (!compressed_table_byte(pos[0]))
+    if (!aprs_symbol_table_byte_compressed(pos[0]))
         return false;
     for (int i = 1; i <= 8; i++)
         if (!base91_byte(pos[i]))
@@ -861,6 +849,10 @@ static bool decode_pos_compressed(const char *pos, float *lat, float *lon) {
 #define EXT_SLOT_LEN 7
 #define EXT_PHGR_LEN 9
 
+// Width of the chapter 8 DF report: the slot's "CSE/SPD" pair plus the
+// "/BRG/NRQ" bytes that follow it.
+#define EXT_DF_LEN (EXT_SLOT_LEN + APRS_DF_EXT_TAIL_LEN)
+
 // Highest antenna height code accepted from a received PHG/DFS extension.
 // Height is 10 * 2^code feet, so this stands for 10485760 ft - far past any
 // real antenna, and low enough that the shift stays inside uint32_t.
@@ -954,17 +946,36 @@ static uint16_t cse_spd_value(const char *p) {
     return (uint16_t)((p[0] - '0') * 100 + (p[1] - '0') * 10 + (p[2] - '0'));
 }
 
+// True if the eight bytes at p are the "/BRG/NRQ" continuation of a DF
+// report: a slash, the three bearing digits, a slash and the three NRQ
+// digits. The "not available" spellings a course or speed group accepts have
+// no meaning here - a bearing that is not available is stated as an NRQ "N"
+// digit of 0 - so only digits are taken.
+static bool df_continuation_present(const char *p) {
+    if (p[0] != '/' || p[4] != '/')
+        return false;
+    for (int i = 1; i <= 7; i++) {
+        if (i == 4)
+            continue;
+        if (!isdigit((unsigned char)p[i]))
+            return false;
+    }
+    return true;
+}
+
 // Parses the 7-byte data extension slot that follows the symbol code of an
 // uncompressed report (APRS101 chapter 7). Returns how many bytes the
 // extension occupies, so the caller knows where the comment starts: 0 when
-// the slot holds ordinary comment text, 7 for the standard forms, or 9 for
-// the APRS 1.2 "PHGphgdr/" form, whose rate character and mandatory slash sit
-// past the end of the slot.
+// the slot holds ordinary comment text, 7 for the standard forms, 9 for the
+// APRS 1.2 "PHGphgdr/" form, whose rate character and mandatory slash sit
+// past the end of the slot, or 15 for the chapter 8 DF report, whose
+// "/BRG/NRQ" continuation reaches APRS_DF_EXT_TAIL_LEN bytes further still.
 //
 // The course/speed layout is also what a weather station puts there, where it
-// means wind direction and wind speed instead; the symbol code is what tells
-// the two apart, so it decides which of the two extension kinds is reported.
-static size_t parse_data_extension(const char *slot, size_t avail, char sym_code, aprs_rx_report_t *r) {
+// means wind direction and wind speed instead, and it is the layout the DF
+// report extends; the symbol pair is what tells the three apart, so it
+// decides which extension kind is reported.
+static size_t parse_data_extension(const char *slot, size_t avail, char sym_table, char sym_code, aprs_rx_report_t *r) {
     if (avail < EXT_SLOT_LEN)
         return 0;
 
@@ -1014,6 +1025,26 @@ static size_t parse_data_extension(const char *slot, size_t avail, char sym_code
             r->course_deg = (uint16_t)(course % 360);
             r->speed_kt = (float)speed;
         }
+
+        // A DF report is this same pair followed by "/BRG/NRQ": a bearing and
+        // the triplet that qualifies it. Those eight bytes sit past the slot,
+        // so they are stepped over whenever they are there - a sender that
+        // emits them on the wrong symbol is common, and leaving them in place
+        // would put them at the front of the comment field. Chapter 8 makes
+        // them meaningful only on the DF symbol, so that is the only case in
+        // which the bearing is reported.
+        if (avail >= EXT_DF_LEN && df_continuation_present(&slot[EXT_SLOT_LEN])) {
+            if (aprs_df_symbol_matches(sym_table, sym_code)) {
+                r->ext = APRS_RX_EXT_DF;
+                r->has_bearing = true;
+                r->bearing_deg = (uint16_t)(cse_spd_value(&slot[EXT_SLOT_LEN + 1]) % 360);
+                r->nrq_number = (uint8_t)(slot[EXT_SLOT_LEN + 5] - '0');
+                r->nrq_range = (uint8_t)(slot[EXT_SLOT_LEN + 6] - '0');
+                r->nrq_quality = (uint8_t)(slot[EXT_SLOT_LEN + 7] - '0');
+            }
+            return EXT_DF_LEN;
+        }
+
         return EXT_SLOT_LEN;
     }
 
@@ -1234,7 +1265,7 @@ static bool decode_position_field(const char *pos, aprs_rx_report_t *r) {
         // type byte that says what they mean.
         decode_compressed_cs(&pos[10], r);
     } else {
-        comment += parse_data_extension(pos + POS_UNCOMPRESSED_LEN, len - POS_UNCOMPRESSED_LEN, pos[18], r);
+        comment += parse_data_extension(pos + POS_UNCOMPRESSED_LEN, len - POS_UNCOMPRESSED_LEN, pos[8], pos[18], r);
     }
 
     parse_altitude_token(comment, r);
@@ -1335,7 +1366,7 @@ bool aprs_filter_decode_report(const char *info, const char *dst_call, aprs_rx_r
                 // The status text is an ordinary position comment: it may
                 // carry a data extension of its own and a !DAO! refinement.
                 size_t textLen = strlen(mice.status_text);
-                parse_data_extension(mice.status_text, textLen, 0, out);
+                parse_data_extension(mice.status_text, textLen, 0, 0, out);
                 apply_dao(mice.status_text, out);
             }
             return true;
@@ -1414,6 +1445,11 @@ size_t aprs_filter_format_report(const aprs_rx_report_t *report, char *out, size
     } else if (report->ext == APRS_RX_EXT_DFS) {
         str_append(out, out_size, &used, "%sDFS S%u %luft %udB", used > 0 ? " " : "", (unsigned)report->dfs_strength, (unsigned long)report->phg_height_ft,
                    (unsigned)report->phg_gain_db);
+    }
+
+    if (report->has_bearing) {
+        str_append(out, out_size, &used, "%sDF BRG %03u NRQ %u%u%u", used > 0 ? " " : "", report->bearing_deg, (unsigned)report->nrq_number,
+                   (unsigned)report->nrq_range, (unsigned)report->nrq_quality);
     }
 
     if (report->dao_refined)
@@ -1498,11 +1534,11 @@ static size_t comment_offset(const char *pos, size_t len) {
 
     // parse_data_extension() only needs a report to write its decoded fields
     // into; this scratch one is discarded - only its return value, the
-    // number of bytes consumed, is used to step past a PHG/DFS/RNG/CSE-SPD
-    // extension when one is present.
+    // number of bytes consumed, is used to step past a
+    // PHG/DFS/RNG/CSE-SPD/DF extension when one is present.
     aprs_rx_report_t scratch;
     memset(&scratch, 0, sizeof(scratch));
-    return fieldLen + parse_data_extension(pos + POS_UNCOMPRESSED_LEN, len - POS_UNCOMPRESSED_LEN, pos[18], &scratch);
+    return fieldLen + parse_data_extension(pos + POS_UNCOMPRESSED_LEN, len - POS_UNCOMPRESSED_LEN, pos[8], pos[18], &scratch);
 }
 
 // Matches the first `commentLen` bytes at `comment` (not necessarily

@@ -195,7 +195,8 @@ typedef enum {
     APRS_RX_EXT_WIND,     /**< Same layout on a weather symbol: wind direction and speed. */
     APRS_RX_EXT_PHG,      /**< "PHGphgd", optionally with the 1.2 "PHGphgdr/" probe rate. */
     APRS_RX_EXT_RNG,      /**< "RNGrrrr" pre-calculated radio range. */
-    APRS_RX_EXT_DFS       /**< "DFSshgd" omni-DF signal strength. */
+    APRS_RX_EXT_DFS,      /**< "DFSshgd" omni-DF signal strength. */
+    APRS_RX_EXT_DF        /**< "CSE/SPD/BRG/NRQ" DF report: course/speed plus a bearing and its NRQ triplet. */
 } aprs_rx_ext_t;
 
 /** @brief Value of ::aprs_rx_report_t::phg_rate_per_hour when the received
@@ -233,6 +234,12 @@ typedef struct {
     int16_t phg_rate_per_hour; /**< PHGR beacon rate, beacons/hour, or ::APRS_RX_PHG_RATE_NONE. */
     uint8_t dfs_strength;      /**< DFS received signal strength, S-points (::APRS_RX_EXT_DFS). */
 
+    bool has_bearing;     /**< A DF report's bearing and NRQ triplet were decoded (::APRS_RX_EXT_DF). */
+    uint16_t bearing_deg; /**< Bearing to the reported signal, degrees clockwise from true north, 0-359. */
+    uint8_t nrq_number;   /**< NRQ "N": 0 = the whole triplet is meaningless, 1-8 = hits per sampling period, 9 = the bearing was reported manually. */
+    uint8_t nrq_range;    /**< NRQ "R": the range of the bearing line is 2^R miles. */
+    uint8_t nrq_quality;  /**< NRQ "Q": bearing accuracy code, 1 (worst) to 9 (better than one degree). */
+
     bool has_time;       /**< The report carried its own timestamp. */
     bool time_is_zulu;   /**< true for the 'z'/'h' (UTC) forms, false for the legacy local-time '/' form. */
     time_t time_utc;     /**< The timestamp as absolute UTC, or 0 when it is local time or the clock is unset. */
@@ -264,16 +271,21 @@ bool aprs_filter_decode_report(const char *info, const char *dst_call, aprs_rx_r
 
 /**
  * @brief Buffer size aprs_filter_format_report() needs for its longest output.
+ *
+ * The widest line a single report can produce is a timestamped DF report that
+ * also carries an altitude: a timestamp, a course/speed pair, an altitude, the
+ * bearing with its NRQ triplet and the "DAO" marker, each at its widest.
  */
-#define APRS_RX_DECODED_BUF_SIZE 64
+#define APRS_RX_DECODED_BUF_SIZE 80
 
 /**
  * @brief Render the decoded fields of a report as one short operator-facing
  * line, e.g. "121530Z CSE 088 SPD 36kt ALT 1200ft".
  *
  * Only the fields the report actually carried appear, in a fixed order:
- * timestamp, course/speed (or wind), altitude, range, PHG or DFS, and a
- * "DAO" marker when the position was refined. A report with nothing to show
+ * timestamp, course/speed (or wind), altitude, range, PHG, DFS or the DF
+ * report's bearing and NRQ, and a "DAO" marker when the position was
+ * refined. A report with nothing to show
  * produces an empty string.
  *
  * @param report Decoded report; NULL yields an empty string.

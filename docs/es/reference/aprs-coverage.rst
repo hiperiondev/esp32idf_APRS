@@ -148,16 +148,16 @@ Extensiones de datos (cap. 7)
      - La forma de nueve bytes de 1.2 ("PHGphgd" más un carácter de tasa de balizas por hora y su barra final obligatoria) se transmite siempre que se conoce el intervalo propio de la baliza IGate, lo cual siempre ocurre, y se analiza en recepción: el carácter de tasa y la barra se reconocen y se descartan, de modo que el comentario que sigue se lee correctamente en lugar de empezar con una barra suelta.
    * - Alcance de radio precalculado (RNG)
      - ✅
-     - Seleccionable como extensión de datos para cualquier rol de baliza, en millas terrestres.
+     - Seleccionable como extensión de datos de las balizas de IGate y de digipetidor, en millas terrestres. La baliza de tracker lleva solo PHG.
    * - Intensidad de señal omni-DF (DFS)
      - ✅
-     - Seleccionable como extensión de datos, con la intensidad en puntos S más los mismos códigos de altura, ganancia y directividad que usa PHG.
+     - Seleccionable como extensión de datos de las balizas de IGate y de digipetidor, con la intensidad en puntos S más los mismos códigos de altura, ganancia y directividad que usa PHG.
    * - Marcación y número/alcance/calidad (BRG/NRQ)
      - ✅
-     - Disponible en objetos e ítems y en la baliza de posición de la propia estación, en la forma ``000/000`` que exige la especificación para un reporte sin rumbo ni velocidad. Ambos arman el token con un único codificador compartido.
+     - En transmisión y en recepción. Disponible en objetos e ítems y en la baliza de posición de la propia estación, en la forma ``000/000`` que exige la especificación para un reporte sin rumbo ni velocidad; ambos arman el token con un único codificador compartido. El capítulo 8 sólo da sentido a estos parámetros cuando el reporte lleva el símbolo DF — tabla de símbolos ``/`` y código de símbolo ``\`` —, así que es el único símbolo con el que se transmiten: elegir la extensión DF en una baliza o un elemento con cualquier otro símbolo deja la ranura vacía y registra qué símbolo la suprimió, en vez de poner ocho bytes al frente del campo de comentario de todos los receptores. La misma regla decide si se lee la marcación de un reporte entrante.
    * - Extensiones de datos en recepción
      - ✅
-     - La ranura de 7 bytes de un reporte sin comprimir que llega se analiza en vez de leerse como los primeros siete caracteres del comentario: ``PHGphgd`` y su forma PHGR de nueve bytes, ``RNGrrrr``, ``DFSshgd`` y ``CSE/SPD``, que se reporta como dirección y velocidad del viento cuando el símbolo es una estación meteorológica. El comentario se toma después desde el primer byte posterior al token encontrado, así que la forma de nueve bytes ya no deja un carácter de tasa y una barra sueltos al frente.
+     - La ranura de 7 bytes de un reporte sin comprimir que llega se analiza en vez de leerse como los primeros siete caracteres del comentario: ``PHGphgd`` y su forma PHGR de nueve bytes, ``RNGrrrr``, ``DFSshgd``, ``CSE/SPD`` —que se reporta como dirección y velocidad del viento cuando el símbolo es una estación meteorológica— y el reporte DF ``CSE/SPD/BRG/NRQ`` de quince bytes, cuya marcación y dígitos NRQ se decodifican cuando el símbolo es el símbolo DF. El comentario se toma después desde el primer byte posterior al token encontrado, así que ni la forma de nueve bytes ni el reporte DF dejan bytes sueltos al frente; una continuación DF que llega con otro símbolo igual se saltea, porque los emisores que la mandan así son comunes, pero su marcación no se reporta.
    * - Descriptor de objeto de área
      - ✅
      - Codificación completa de forma, color y tamaño, incluida la regla que reemplaza la barra por un dígito para valores de color de diez en adelante. Los dos códigos de tamaño usan la escala corregida de 1500-avos de grado y no los centésimos del texto original.
@@ -183,7 +183,7 @@ Formatos de reporte de posición y DF (cap. 8)
      - Va en toda posición originada, con el bloque de frecuencia, ``!DAO!`` y la telemetría en comentario reservando sus bytes antes de que el texto libre llene el campo, así un comentario largo se recorta en vez de tirar una extensión.
    * - Formato de reporte DF
      - ✅
-     - Seleccionable como extensión de datos de la baliza de posición propia, que es la forma que el capítulo describe para una estación de radiogoniometría, además de en objetos e ítems para una marcación tomada sobre otra estación. Elegirlo suprime el formato comprimido, que no tiene lugar para la extensión, y lo dice en el log en vez de descartar en silencio una de las dos opciones.
+     - Seleccionable como extensión de datos de la baliza de posición propia, que es la forma que el capítulo describe para una estación de radiogoniometría, además de en objetos e ítems para una marcación tomada sobre otra estación, y decodificado en recepción. Viaja únicamente con el símbolo DF (tabla ``/``, código ``\``), que es lo que le indica al receptor que el token mide quince bytes y no los siete de la ranura; las páginas IGate y Digi enuncian el requisito junto al tipo de extensión cada vez que el símbolo configurado es otro. Transmitirlo suprime el formato comprimido, que no tiene lugar para la extensión, y lo dice en el log en vez de descartar en silencio una de las dos opciones — un reporte DF que el símbolo suprime no pone nada en la ranura, así que no le cuesta la compresión a la baliza.
 
 Reportes de posición comprimidos (cap. 9)
 =========================================
@@ -531,7 +531,7 @@ Símbolos (cap. 21)
      - Un selector visual en la administración web cubre ambas tablas, con un símbolo por rol para el tracker, el IGate, el digipetidor, la estación meteorológica y cada objeto.
    * - Caracteres de superposición
      - ✅
-     - Se puede poner un carácter de superposición en la posición de la tabla para los símbolos que lo aceptan, que es como un digipetidor anuncia su propia política de ruteo en el mapa. Se aceptan superposiciones alfabéticas y numéricas, y una numérica se emite en un reporte comprimido como la letra minúscula ``a``-``j`` que ese formato exige, porque un campo de posición comprimido nunca puede empezar con un dígito.
+     - Se puede poner un carácter de superposición en la posición de la tabla para los símbolos que lo aceptan, que es como un digipetidor anuncia su propia política de ruteo en el mapa. Se aceptan superposiciones alfabéticas y numéricas, y una numérica se emite en un reporte comprimido como la letra minúscula ``a``-``j`` que ese formato exige, porque un campo de posición comprimido nunca puede empezar con un dígito. El mismo conjunto se lee en recepción, desde un único par de predicados compartido por el extractor de símbolo y el decodificador de posición, así que un reporte comprimido entrante con superposición entrega su símbolo real en vez de dos bytes de su comentario; una superposición ``a``-``j`` se traduce de vuelta al dígito que representa, para que una misma estación se lea igual en cualquiera de los dos formatos.
    * - Precedencia de símbolos
      - ⚠️
      - Solo se lee el símbolo del campo de información, así que la cuestión de la precedencia no se plantea en la práctica; pero también significa que las fuentes de respaldo que describe la regla nunca se consultan para un paquete que no traiga símbolo ahí.

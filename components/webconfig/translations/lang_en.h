@@ -1127,41 +1127,46 @@
 #define TR_F_PHG_SECTION "PHG"
 /** Form label for the "enable phg" field or fieldset, rendered on the IGate page. */
 #define TR_F_ENABLE_PHG "Enable PHG"
-/** Form label for the "radio tx power" field or fieldset, rendered on the IGate page. */
+/** Form label for the "radio tx power" field or fieldset, rendered on the IGate and Digipeater pages. */
 #define TR_F_RADIO_TX_POWER "Radio TX Power"
-/** Form label for the "antenna gain" field or fieldset, rendered on the IGate page. */
+/** Form label for the "antenna gain" field or fieldset, rendered on the IGate and Digipeater pages. */
 #define TR_F_ANTENNA_GAIN "Antenna Gain"
-/** Form label for the "height m" field or fieldset, rendered on the IGate page. */
+/** Form label for the "height m" field or fieldset, rendered on the IGate and Digipeater pages. */
 #define TR_F_HEIGHT_M "Height (m)"
-/** Form label for the "antenna direction" field or fieldset, rendered on the IGate page. */
+/** Form label for the "antenna direction" field or fieldset, rendered on the IGate and Digipeater pages. */
 #define TR_F_ANTENNA_DIRECTION "Antenna/Direction"
-/** Form label for the "phg text" field or fieldset, rendered on the IGate page. */
+/** Form label for the "phg text" field or fieldset, rendered on the IGate and Digipeater pages. */
 #define TR_F_PHG_TEXT "PHG Text"
-/** Form label for the "ext section" field or fieldset, rendered on the IGate page. */
+/** Form label for the "ext section" field or fieldset, rendered on the IGate and Digipeater pages. */
 #define TR_F_EXT_SECTION "Data Extension"
-/** Form label for the "enable ext" field or fieldset, rendered on the IGate page. */
+/** Form label for the "enable ext" field or fieldset, rendered on the IGate and Digipeater pages. */
 #define TR_F_ENABLE_EXT "Enable data extension"
-/** Form label for the "ext type" field or fieldset, rendered on the IGate page. */
+/** Form label for the "ext type" field or fieldset, rendered on the IGate and Digipeater pages. */
 #define TR_F_EXT_TYPE "Extension type"
-/** Data-extension label for phg, rendered on the IGate page. */
+/** Data-extension label for phg, rendered on the IGate and Digipeater pages. */
 #define TR_EXT_PHG "PHG - power/height/gain/directivity"
-/** Data-extension label for rng, rendered on the IGate page. */
+/** Data-extension label for rng, rendered on the IGate and Digipeater pages. */
 #define TR_EXT_RNG "RNG - pre-calculated radio range"
-/** Data-extension label for dfs, rendered on the IGate page. */
+/** Data-extension label for dfs, rendered on the IGate and Digipeater pages. */
 #define TR_EXT_DFS "DFS - omni-DF signal strength"
-/** Data-extension label for df, rendered on the IGate page. */
+/** Data-extension label for df, rendered on the IGate and Digipeater pages. */
 #define TR_EXT_DF "DF - bearing and NRQ report"
-/** Form label for the "ext range mi" field or fieldset, rendered on the IGate page. */
+/** Explanatory note shown in the Data Extension fieldset when DF is selected but the station symbol is not the DF symbol, rendered on the IGate and Digipeater
+ * pages. */
+#define TR_NOTE_EXT_DF_SYMBOL                                                                                                                                  \
+    "The DF report is only meaningful with the DF symbol (table '/', code '\\'), "                                                                             \
+    "so with the symbol set above it is not transmitted."
+/** Form label for the "ext range mi" field or fieldset, rendered on the IGate and Digipeater pages. */
 #define TR_F_EXT_RANGE_MI "Radio range (miles)"
-/** Form label for the "ext dfs strength" field or fieldset, rendered on the IGate page. */
+/** Form label for the "ext dfs strength" field or fieldset, rendered on the IGate and Digipeater pages. */
 #define TR_F_EXT_DFS_STRENGTH "Signal strength (S-points, 0 = not heard)"
-/** Form label for the "ext df bearing" field or fieldset, rendered on the IGate page. */
+/** Form label for the "ext df bearing" field or fieldset, rendered on the IGate and Digipeater pages. */
 #define TR_F_EXT_DF_BEARING "Signal bearing (degrees)"
-/** Form label for the "ext df nrq n" field or fieldset, rendered on the IGate page. */
+/** Form label for the "ext df nrq n" field or fieldset, rendered on the IGate and Digipeater pages. */
 #define TR_F_EXT_DF_NRQ_N "Hits per period (N, 0 = NRQ not meaningful)"
-/** Form label for the "ext df nrq r" field or fieldset, rendered on the IGate page. */
+/** Form label for the "ext df nrq r" field or fieldset, rendered on the IGate and Digipeater pages. */
 #define TR_F_EXT_DF_NRQ_R "Range code (R, range = 2^R miles)"
-/** Form label for the "ext df nrq q" field or fieldset, rendered on the IGate page. */
+/** Form label for the "ext df nrq q" field or fieldset, rendered on the IGate and Digipeater pages. */
 #define TR_F_EXT_DF_NRQ_Q "Bearing accuracy (Q, 9 = best)"
 /** Form label for the "pos ambiguity" field or fieldset, rendered on the IGate page. */
 #define TR_F_POS_AMBIGUITY "Position ambiguity"
@@ -1187,23 +1192,23 @@
 #define TR_F_POS_DAO "DAO precision extension in position reports"
 /** Form label for the "no archive" field or fieldset, rendered on the Station page. */
 #define TR_F_NO_ARCHIVE "Request APRS-IS not to archive my packets (!x!)"
-/** Compass direction abbreviation: omni, rendered on the IGate page. */
+/** Compass direction abbreviation: omni, rendered on the IGate and Digipeater pages. */
 #define TR_DIR_OMNI "Omni"
-/** Compass direction abbreviation: n, rendered on the IGate page. */
+/** Compass direction abbreviation: n, rendered on the IGate and Digipeater pages. */
 #define TR_DIR_N "N"
-/** Compass direction abbreviation: ne, rendered on the IGate page. */
+/** Compass direction abbreviation: ne, rendered on the IGate and Digipeater pages. */
 #define TR_DIR_NE "NE"
-/** Compass direction abbreviation: e, rendered on the IGate page. */
+/** Compass direction abbreviation: e, rendered on the IGate and Digipeater pages. */
 #define TR_DIR_E "E"
-/** Compass direction abbreviation: se, rendered on the IGate page. */
+/** Compass direction abbreviation: se, rendered on the IGate and Digipeater pages. */
 #define TR_DIR_SE "SE"
-/** Compass direction abbreviation: s, rendered on the IGate page. */
+/** Compass direction abbreviation: s, rendered on the IGate and Digipeater pages. */
 #define TR_DIR_S "S"
-/** Compass direction abbreviation: sw, rendered on the IGate page. */
+/** Compass direction abbreviation: sw, rendered on the IGate and Digipeater pages. */
 #define TR_DIR_SW "SW"
-/** Compass direction abbreviation: w, rendered on the IGate page. */
+/** Compass direction abbreviation: w, rendered on the IGate and Digipeater pages. */
 #define TR_DIR_W "W"
-/** Compass direction abbreviation: nw, rendered on the IGate page. */
+/** Compass direction abbreviation: nw, rendered on the IGate and Digipeater pages. */
 #define TR_DIR_NW "NW"
 /** Form label for the "igate filter" field or fieldset, rendered on the IGate page. */
 #define TR_F_IGATE_FILTER "IGate Filter"

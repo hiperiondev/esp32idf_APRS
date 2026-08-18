@@ -94,7 +94,7 @@ void trafficlog_add_pkt(const char *dir, const char *dx, const char *packet, con
  * of a ring entry and is checked against them by a static assertion in
  * trafficlog.c, so it cannot fall behind if those widths change.
  */
-#define TRAFFICLOG_JSON_ENTRY_MAX 896
+#define TRAFFICLOG_JSON_ENTRY_MAX 960
 
 /**
  * @brief Sequence number of the newest entry currently in the ring buffer.

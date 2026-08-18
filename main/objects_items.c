@@ -34,7 +34,7 @@
 
 #include "app_config.h"
 #include "aprs_coord.h"
-#include "aprs_df.h"        // aprs_df_build_extension(), APRS_DF_EXT_BUF_SIZE
+#include "aprs_df.h"        // aprs_df_build_extension(), aprs_df_symbol_matches(), APRS_DF_EXT_BUF_SIZE
 #include "aprs_free_text.h" // aprs_free_text_build(), APRS_NO_ARCHIVE_PREFIX_LEN
 #include "aprs_path.h"      // APRS_PATH_TCPIP_SUFFIX
 #include "aprs_service.h"
@@ -248,7 +248,7 @@ static bool load_locked(objitems_t *out, bool *out_missing) {
             if (cJSON_IsString(v) && v->valuestring)
                 clamp_str(b->signpost, v->valuestring, OBJITEM_SIGNPOST_MAX);
 
-            // -- DF report (APRS101 ch.16 "/BRG/NRQ" extension). --
+            // -- DF report (APRS101 ch.8 "/BRG/NRQ" extension). --
             v = cJSON_GetObjectItem(o, "dfEn");
             b->df_enable = cJSON_IsTrue(v);
             v = cJSON_GetObjectItem(o, "dfBrg");
@@ -747,8 +747,9 @@ static void objitem_build_info_field(const objitem_t *b, bool live, char *out, s
     //   anything else        -> CSE/SPD, only when speed > 0 (YAAC:
     //                           "if the speed is set to zero, speed and course
     //                           will not be included"), optionally extended
-    //                           to CSE/SPD/BRG/NRQ when df_enable is set
-    //                           (APRS101 ch.16 DF report).
+    //                           to CSE/SPD/BRG/NRQ when df_enable is set and
+    //                           the symbol is the DF symbol (APRS101 ch.8 DF
+    //                           report).
     // Sized for the longest of these, which is the DF report: its own buffer
     // size constant covers the "NNN/NNN/NNN/NNN" token plus NUL, and is wider
     // than every other descriptor that shares the slot.
@@ -756,6 +757,25 @@ static void objitem_build_info_field(const objitem_t *b, bool live, char *out, s
     ext[0] = 0;
     bool isArea = objitem_is_area(b);
     bool isSignpost = objitem_is_signpost(b);
+
+    // A DF report is only meaningful on the DF symbol (APRS101 ch.8), and its
+    // token is 15 bytes where the slot is 7: on any other symbol a receiver
+    // reads the trailing "/BRG/NRQ" as the first eight characters of the
+    // comment field. So the element's df_enable only takes effect on that
+    // symbol pair; on any other one the slot falls back to whatever it would
+    // hold without it. The Area and Signpost symbols own the slot outright,
+    // so they are left out of the warning that names the symbol which
+    // suppressed the report.
+    bool dfActive = b->df_enable && aprs_df_symbol_matches(sym_table, sym_code);
+    if (b->df_enable && !dfActive && !isArea && !isSignpost) {
+        static bool df_symbol_warned = false;
+        if (!df_symbol_warned) {
+            df_symbol_warned = true;
+            ESP_LOGW(TAG, "DF report not transmitted for \"%s\": it needs the DF symbol \"%c%c\", this element uses \"%c%c\"", b->name, APRS_DF_SYMBOL_TABLE,
+                     APRS_DF_SYMBOL_CODE, sym_table, sym_code);
+        }
+    }
+
     if (isArea) {
         unsigned t = b->area_type > OBJITEM_AREA_TYPE_MAX ? OBJITEM_AREA_TYPE_MAX : b->area_type;
         unsigned color = b->area_color > OBJITEM_AREA_COLOR_MAX ? OBJITEM_AREA_COLOR_MAX : b->area_color;
@@ -770,8 +790,8 @@ static void objitem_build_info_field(const objitem_t *b, bool live, char *out, s
     } else if (b->speed > 0) {
         unsigned crs = (unsigned)(b->course % 360);      // 0..359
         unsigned spd = b->speed > 999 ? 999u : b->speed; // APRS speed field is 3 digits
-        if (b->df_enable) {
-            // DF report (APRS101 ch.16): CSE/SPD extended with /BRG/NRQ. BRG
+        if (dfActive) {
+            // DF report (APRS101 ch.8): CSE/SPD extended with /BRG/NRQ. BRG
             // is the 3-digit signal bearing; NRQ packs the antenna-type digit
             // (N), signal-strength digit (R) and bearing-accuracy digit (Q)
             // into one 3-digit field. Built by the shared encoder the
@@ -781,10 +801,10 @@ static void objitem_build_info_field(const objitem_t *b, bool live, char *out, s
         } else {
             snprintf(ext, sizeof(ext), "%03u/%03u", crs, spd);
         }
-    } else if (b->df_enable) {
+    } else if (dfActive) {
         // DF report with no course/speed data: CSE/SPD is still required by
         // the spec to carry the BRG/NRQ extension, so it is emitted as
-        // "000/000" (APRS101 ch.16: course/speed of 000/000 with a DF
+        // "000/000" (APRS101 ch.8: course/speed of 000/000 with a DF
         // extension is valid and means "no course/speed data").
         aprs_bearing_nrq_t nrq = { .bearing_deg = b->df_bearing, .number = b->df_nrq_n, .range_code = b->df_nrq_r, .quality = b->df_nrq_q };
         aprs_df_build_extension(0, 0, &nrq, ext, sizeof(ext));
@@ -808,12 +828,13 @@ static void objitem_build_info_field(const objitem_t *b, bool live, char *out, s
     // descriptor. It is likewise ignored whenever ext[] carries a PHG token,
     // since the compressed format has no PHG equivalent either (APRS101
     // ch.9: "this format does not support PHG"), and whenever a DF report is
-    // enabled, since the compressed format's cs/T slot has no /BRG/NRQ
-    // equivalent either (APRS101 ch.16 defines DF reports only for the
-    // uncompressed CSE/SPD layout). Course/speed on its own (df_enable off)
-    // has a compressed equivalent and is folded into the compressed field's
-    // own cs/T slot below instead of the uncompressed ext[] one.
-    bool useCompressed = b->compress && !isArea && !isSignpost && !b->phg_enable && !b->df_enable;
+    // transmitted, since the compressed format's cs/T slot has no /BRG/NRQ
+    // equivalent either (APRS101 ch.8 defines DF reports only for the
+    // uncompressed CSE/SPD layout). Course/speed on its own - and a DF report
+    // the symbol does not allow, which puts no bytes in the slot - has a
+    // compressed equivalent and is folded into the compressed field's own
+    // cs/T slot below instead of the uncompressed ext[] one.
+    bool useCompressed = b->compress && !isArea && !isSignpost && !b->phg_enable && !dfActive;
 
     // Sized for the larger of the two layouts: uncompressed is up to 21
     // bytes (9-char latStr content + symTable + 10-char lonStr content +

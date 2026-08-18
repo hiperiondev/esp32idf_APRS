@@ -43,8 +43,12 @@ The pages
        STATISTICS panel, a LAST HEARD table with symbol icons, and a live
        traffic table (DX / PACKET / DECODED / AUDIO) fed by sequence-based long
        polling. DECODED holds what was read out of the payload itself - the
-       packet's own timestamp, course, speed, altitude, radio range and PHG -
-       and is empty for a payload that carries none of them.
+       packet's own timestamp, course, speed, altitude, radio range, PHG or
+       DFS, and the bearing and NRQ of a DF report - and is empty for a payload
+       that carries none of them. The column holds a whole summary line
+       whatever the payload: the ring sizes its field from the same constant
+       the formatter writes into, so a report that fills every field is shown
+       entire rather than cut short.
    * - **Station**
      - The shared own-station identity read by every beacon, object and
        message: callsign, latitude, longitude, altitude (``g_config.my_*``),
@@ -64,7 +68,10 @@ The pages
        the heard-locally window and the addressee hop limit.
    * - **Digi**
      - Digipeater enable, callsign/SSID and beacon settings (position, symbol,
-       interval, comment, status, path). *n-N Path Aliases* holds the four
+       interval, comment, status, path). *Data Extension* selects what the
+       position beacon carries in the slot after the symbol code — PHG, RNG,
+       DFS or a DF report — with the same sub-fields and the same *Use My
+       Station Data* mirror the *IGate* page offers. *n-N Path Aliases* holds the four
        {alias, max N, mode} rows the digipeater repeats by, the fill-in-only
        switch, the choice of what to do with a trapped hop count and the
        *Digipeat by destination SSID (legacy)* switch, off by default. It also

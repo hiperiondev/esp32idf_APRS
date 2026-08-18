@@ -1197,43 +1197,52 @@
 #define TR_F_PHG_SECTION "PHG"
 /** Italian text for the form label for the "enable phg" field or fieldset, rendered on the IGate page. English: "Enable PHG". */
 #define TR_F_ENABLE_PHG "Abilita PHG"
-/** Italian text for the form label for the "radio tx power" field or fieldset, rendered on the IGate page. English: "Radio TX Power". */
+/** Italian text for the form label for the "radio tx power" field or fieldset, rendered on the IGate and Digipeater pages. English: "Radio TX Power". */
 #define TR_F_RADIO_TX_POWER "Potenza TX radio"
-/** Italian text for the form label for the "antenna gain" field or fieldset, rendered on the IGate page. English: "Antenna Gain". */
+/** Italian text for the form label for the "antenna gain" field or fieldset, rendered on the IGate and Digipeater pages. English: "Antenna Gain". */
 #define TR_F_ANTENNA_GAIN "Guadagno antenna"
-/** Italian text for the form label for the "height m" field or fieldset, rendered on the IGate page. English: "Height (m)". */
+/** Italian text for the form label for the "height m" field or fieldset, rendered on the IGate and Digipeater pages. English: "Height (m)". */
 #define TR_F_HEIGHT_M "Altezza (m)"
-/** Italian text for the form label for the "antenna direction" field or fieldset, rendered on the IGate page. English: "Antenna/Direction". */
+/** Italian text for the form label for the "antenna direction" field or fieldset, rendered on the IGate and Digipeater pages. English: "Antenna/Direction". */
 #define TR_F_ANTENNA_DIRECTION "Antenna/Direzione"
-/** Italian text for the form label for the "phg text" field or fieldset, rendered on the IGate page. English: "PHG Text". */
+/** Italian text for the form label for the "phg text" field or fieldset, rendered on the IGate and Digipeater pages. English: "PHG Text". */
 #define TR_F_PHG_TEXT "Testo PHG"
-/** Italian text for the form label for the "ext section" field or fieldset, rendered on the IGate page. English: "Data Extension". */
+/** Italian text for the form label for the "ext section" field or fieldset, rendered on the IGate and Digipeater pages. English: "Data Extension". */
 #define TR_F_EXT_SECTION "Estensione dati"
-/** Italian text for the form label for the "enable ext" field or fieldset, rendered on the IGate page. English: "Enable data extension". */
+/** Italian text for the form label for the "enable ext" field or fieldset, rendered on the IGate and Digipeater pages. English: "Enable data extension". */
 #define TR_F_ENABLE_EXT "Abilita estensione dati"
-/** Italian text for the form label for the "ext type" field or fieldset, rendered on the IGate page. English: "Extension type". */
+/** Italian text for the form label for the "ext type" field or fieldset, rendered on the IGate and Digipeater pages. English: "Extension type". */
 #define TR_F_EXT_TYPE "Tipo di estensione"
-/** Italian text for the data-extension label for phg, rendered on the IGate page. English: "PHG - power/height/gain/directivity". */
+/** Italian text for the data-extension label for phg, rendered on the IGate and Digipeater pages. English: "PHG - power/height/gain/directivity". */
 #define TR_EXT_PHG "PHG - potenza/altezza/guadagno/direttivita"
-/** Italian text for the data-extension label for rng, rendered on the IGate page. English: "RNG - pre-calculated radio range". */
+/** Italian text for the data-extension label for rng, rendered on the IGate and Digipeater pages. English: "RNG - pre-calculated radio range". */
 #define TR_EXT_RNG "RNG - portata radio precalcolata"
-/** Italian text for the data-extension label for dfs, rendered on the IGate page. English: "DFS - omni-DF signal strength". */
+/** Italian text for the data-extension label for dfs, rendered on the IGate and Digipeater pages. English: "DFS - omni-DF signal strength". */
 #define TR_EXT_DFS "DFS - intensita del segnale omni-DF"
-/** Italian text for the data-extension label for df, rendered on the IGate page. English: "DF - bearing and NRQ report". */
+/** Italian text for the data-extension label for df, rendered on the IGate and Digipeater pages. English: "DF - bearing and NRQ report". */
 #define TR_EXT_DF "DF - rapporto di rilevamento e NRQ"
-/** Italian text for the form label for the "ext range mi" field or fieldset, rendered on the IGate page. English: "Radio range (miles)". */
+/** Italian text for the explanatory note shown in the Data Extension fieldset when DF is selected but the station symbol is not the DF symbol, rendered on
+ * the IGate and Digipeater pages. English: "The DF report is only meaningful with the DF symbol (table '/', code '\\'), so with the symbol set above it is not
+ * transmitted.". */
+#define TR_NOTE_EXT_DF_SYMBOL                                                                                                                                  \
+    "Il rapporto DF ha senso solo con il simbolo DF (tabella '/', codice '\\'), "                                                                              \
+    "quindi con il simbolo impostato sopra non viene trasmesso."
+/** Italian text for the form label for the "ext range mi" field or fieldset, rendered on the IGate and Digipeater pages. English: "Radio range (miles)". */
 #define TR_F_EXT_RANGE_MI "Portata radio (miglia)"
-/** Italian text for the form label for the "ext dfs strength" field or fieldset, rendered on the IGate page. English: "Signal strength (S-points, 0 = not
- * heard)". */
+/** Italian text for the form label for the "ext dfs strength" field or fieldset, rendered on the IGate and Digipeater pages. English: "Signal strength
+ * (S-points, 0 = not heard)". */
 #define TR_F_EXT_DFS_STRENGTH "Intensita del segnale (punti S, 0 = non ricevuto)"
-/** Italian text for the form label for the "ext df bearing" field or fieldset, rendered on the IGate page. English: "Signal bearing (degrees)". */
+/** Italian text for the form label for the "ext df bearing" field or fieldset, rendered on the IGate and Digipeater pages. English: "Signal bearing (degrees)".
+ */
 #define TR_F_EXT_DF_BEARING "Rilevamento del segnale (gradi)"
-/** Italian text for the form label for the "ext df nrq n" field or fieldset, rendered on the IGate page. English: "Hits per period (N, 0 = NRQ not
- * meaningful)". */
+/** Italian text for the form label for the "ext df nrq n" field or fieldset, rendered on the IGate and Digipeater pages. English: "Hits per period (N, 0 = NRQ
+ * not meaningful)". */
 #define TR_F_EXT_DF_NRQ_N "Rilevazioni per periodo (N, 0 = NRQ senza significato)"
-/** Italian text for the form label for the "ext df nrq r" field or fieldset, rendered on the IGate page. English: "Range code (R, range = 2^R miles)". */
+/** Italian text for the form label for the "ext df nrq r" field or fieldset, rendered on the IGate and Digipeater pages. English: "Range code (R, range = 2^R
+ * miles)". */
 #define TR_F_EXT_DF_NRQ_R "Codice di portata (R, portata = 2^R miglia)"
-/** Italian text for the form label for the "ext df nrq q" field or fieldset, rendered on the IGate page. English: "Bearing accuracy (Q, 9 = best)". */
+/** Italian text for the form label for the "ext df nrq q" field or fieldset, rendered on the IGate and Digipeater pages. English: "Bearing accuracy (Q, 9 =
+ * best)". */
 #define TR_F_EXT_DF_NRQ_Q "Precisione del rilevamento (Q, 9 = migliore)"
 /** Italian text for the form label for the "pos ambiguity" field or fieldset, rendered on the IGate page. English: "Position ambiguity". */
 #define TR_F_POS_AMBIGUITY "Ambiguita di posizione"
@@ -1260,23 +1269,23 @@
 /** Italian text for the form label for the "no archive" field or fieldset, rendered on the Station page. English: "Request APRS-IS not to archive my packets
  * (!x!)". */
 #define TR_F_NO_ARCHIVE "Richiedi ad APRS-IS di non archiviare i miei pacchetti (!x!)"
-/** Italian text for the compass direction abbreviation: omni, rendered on the IGate page. English: "Omni". */
+/** Italian text for the compass direction abbreviation: omni, rendered on the IGate and Digipeater pages. English: "Omni". */
 #define TR_DIR_OMNI "Omni"
-/** Italian text for the compass direction abbreviation: n, rendered on the IGate page. English: "N". */
+/** Italian text for the compass direction abbreviation: n, rendered on the IGate and Digipeater pages. English: "N". */
 #define TR_DIR_N "N"
-/** Italian text for the compass direction abbreviation: ne, rendered on the IGate page. English: "NE". */
+/** Italian text for the compass direction abbreviation: ne, rendered on the IGate and Digipeater pages. English: "NE". */
 #define TR_DIR_NE "NE"
-/** Italian text for the compass direction abbreviation: e, rendered on the IGate page. English: "E". */
+/** Italian text for the compass direction abbreviation: e, rendered on the IGate and Digipeater pages. English: "E". */
 #define TR_DIR_E "E"
-/** Italian text for the compass direction abbreviation: se, rendered on the IGate page. English: "SE". */
+/** Italian text for the compass direction abbreviation: se, rendered on the IGate and Digipeater pages. English: "SE". */
 #define TR_DIR_SE "SE"
-/** Italian text for the compass direction abbreviation: s, rendered on the IGate page. English: "S". */
+/** Italian text for the compass direction abbreviation: s, rendered on the IGate and Digipeater pages. English: "S". */
 #define TR_DIR_S "S"
-/** Italian text for the compass direction abbreviation: sw, rendered on the IGate page. English: "SW". */
+/** Italian text for the compass direction abbreviation: sw, rendered on the IGate and Digipeater pages. English: "SW". */
 #define TR_DIR_SW "SO"
-/** Italian text for the compass direction abbreviation: w, rendered on the IGate page. English: "W". */
+/** Italian text for the compass direction abbreviation: w, rendered on the IGate and Digipeater pages. English: "W". */
 #define TR_DIR_W "O"
-/** Italian text for the compass direction abbreviation: nw, rendered on the IGate page. English: "NW". */
+/** Italian text for the compass direction abbreviation: nw, rendered on the IGate and Digipeater pages. English: "NW". */
 #define TR_DIR_NW "NO"
 /** Italian text for the form label for the "igate filter" field or fieldset, rendered on the IGate page. English: "IGate Filter". */
 #define TR_F_IGATE_FILTER "Filtro IGate"

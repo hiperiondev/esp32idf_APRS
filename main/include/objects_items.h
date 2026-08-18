@@ -35,11 +35,11 @@
  *     - name is 3..9 chars, variable length
  *     - '!' = live, '_' = killed  (the char right after the name)
  *
- *   DF (direction-finding) report (APRS101 ch.16), when @c df_enable is set:
- *   the CSE/SPD block above is extended to CSE/SPD/BRG/NRQ, where BRG is the
- *   3-digit signal bearing and NRQ is the 3-digit number-of-hits/range/
- *   quality code - e.g. "088/036/270/729" for a station moving at course 088
- *   speed 036 with a bearing of 270 and NRQ 729.
+ *   DF (direction-finding) report (APRS101 ch.8), when @c df_enable is set and
+ *   the element carries the DF symbol: the CSE/SPD block above is extended to
+ *   CSE/SPD/BRG/NRQ, where BRG is the 3-digit signal bearing and NRQ is the
+ *   3-digit number-of-hits/range/quality code - e.g. "088/036/270/729" for a
+ *   station moving at course 088 speed 036 with a bearing of 270 and NRQ 729.
  *
  * The choice between Object and Item is independent of permanence: an Item
  * (::objitem_t.is_item) never carries a timestamp at all, while an Object may
@@ -225,9 +225,13 @@ typedef enum {
  * block (@c freq_mhz / @c offset_khz / @c duplex / @c tone_tenths / @c range /
  * @c range_km) for the Antenna/repeater symbols, emitted at the very start of
  * the comment text.
- * The DF ("/BRG/NRQ") block (@c df_*), by contrast, is not symbol-gated: it is
- * appended to the CSE/SPD block whenever @c df_enable is set, for any element
- * that is not an Area/Signpost object and not PHG-enabled (see
+ * The DF ("/BRG/NRQ") block (@c df_*) is symbol-gated too, and more strictly:
+ * APRS101 chapter 8 states that BRG/NRQ is only meaningful when the Symbol
+ * Table ID is @c '/' and the Symbol Code is @c '\\', so it is appended to the
+ * CSE/SPD block only for an element carrying that symbol pair
+ * (::APRS_DF_SYMBOL_TABLE / ::APRS_DF_SYMBOL_CODE). On any other symbol
+ * @c df_enable has no on-air effect and the slot holds whatever it would hold
+ * without it - plain CSE/SPD, PHG, or nothing (see
  * objitem_build_info_field()).
  *
  * The optional PHG ("PHGphgd") Data Extension (@c phg_*) is emitted, when
@@ -272,14 +276,15 @@ typedef struct {
 
     char signpost[OBJITEM_SIGNPOST_MAX + 1]; /**< Up to 3 chars of signpost text; emitted as "{TEXT}" for the Signpost symbol ('\\','m') only. */
 
-    // -- DF (direction-finding) report (APRS101 ch.16, "/BRG/NRQ" extension).
+    // -- DF (direction-finding) report (APRS101 ch.8, "/BRG/NRQ" extension).
     //    Fox-hunting/direction-finding stations append a bearing and receiver
     //    quality tuple right after CSE/SPD in the 7-byte data-extension slot,
     //    turning "CSE/SPD" into "CSE/SPD/BRG/NRQ". Mutually exclusive with
     //    Area/Signpost/PHG (which already repurpose that slot) since a DF
     //    report needs the CSE/SPD portion to still be present.
-    bool df_enable;      /**< Enable the DF "/BRG/NRQ" extension for this element. */
-    uint16_t df_bearing; /**< Signal bearing, degrees 0..359 (APRS101 ch.16 "BRG"); 0 => omnidirectional/no bearing, never a valid bearing on air. */
+    bool df_enable;      /**< Enable the DF "/BRG/NRQ" extension for this element; transmitted only on the DF symbol (::APRS_DF_SYMBOL_TABLE /
+                            ::APRS_DF_SYMBOL_CODE). */
+    uint16_t df_bearing; /**< Signal bearing, degrees 0..359 (APRS101 ch.8 "BRG"); 0 => omnidirectional/no bearing, never a valid bearing on air. */
     uint8_t df_nrq_n;    /**< NRQ "N" digit: 0 = omnidirectional antenna, 1..8 = beam antenna with a 360/2^(N-1) degree beam width, 9 = reserved. */
     uint8_t df_nrq_r;    /**< NRQ "R" digit: 0 = received signal strength not usable, 1..9 = signal strength code (S-meter reading). */
     uint8_t df_nrq_q;    /**< NRQ "Q" digit: 0 = bearing not accurate, 1..9 = bearing accuracy code (1 = best, per the APRS101 DF quality table). */

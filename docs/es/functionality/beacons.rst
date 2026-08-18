@@ -118,12 +118,14 @@ pata de RF ocupada nunca detiene la decodificación de RX ni el socket de APRS-I
 Extensiones de datos (PHG / RNG / DFS / DF)
 ===========================================
 
-La baliza de posición del IGate puede llevar una de las extensiones de
-datos APRS de estación fija en la ranura de 7 bytes que sigue al código de
-símbolo — la misma ranura que una estación en movimiento usa para rumbo y
-velocidad, y por eso solo se emite una de ellas. *Habilitar extensión de datos*
-en la página IGate abre la ranura, y *Tipo de extensión* elige cuál de las tres
-la llena:
+Las balizas de posición del IGate y del digipetidor pueden llevar cada una
+una de las extensiones de datos APRS de estación fija en la ranura de 7 bytes
+que sigue al código de símbolo — la misma ranura que una estación en movimiento
+usa para rumbo y velocidad, y por eso solo se emite una de ellas. *Habilitar
+extensión de datos* en la página IGate o Digi abre la ranura de ese rol, y
+*Tipo de extensión* elige cuál la llena. Cada rol guarda sus propios ajustes,
+así que un IGate y un digipetidor sobre la misma estación con distintos SSID
+pueden publicar coberturas diferentes:
 
 .. list-table::
    :header-rows: 1
@@ -153,7 +155,7 @@ la llena:
        cobertura.
    * - DF
      - ``000/000/270/735``
-     - El reporte DF del cap.16 de APRS101: la marcación hacia una señal,
+     - El reporte DF del cap.8 de APRS101: la marcación hacia una señal,
        seguida del trío NRQ que la califica — detecciones por período de muestreo
        (``N``, donde 0 dice que el trío no tiene significado), el código de
        alcance (``R``, que representa 2\ :sup:`R` millas) y la precisión de la
@@ -165,19 +167,36 @@ la llena:
        el token para objetos e ítems, donde informa una marcación tomada sobre
        otra estación.
 
+El reporte DF es la única extensión con un requisito de símbolo propio. Su token
+mide quince bytes donde la ranura tiene siete, y el capítulo 8 establece que la
+marcación y el NRQ sólo tienen sentido cuando el reporte lleva el símbolo DF —
+tabla de símbolos ``/`` y código de símbolo ``\``. Un receptor que ve cualquier
+otro símbolo no tiene motivo para mirar más allá de la ranura: lee ``000/000``
+como un par rumbo/velocidad común y toma ``/270/735`` como los primeros ocho
+caracteres del campo de comentario. Por eso DF se transmite únicamente con ese
+par de símbolo; con cualquier otro la ranura queda vacía, el log nombra el
+símbolo que suprimió el reporte y la página muestra una nota junto al tipo
+de extensión apenas los dos no coinciden. La misma regla vale para objetos e
+ítems y en recepción: una continuación DF entrante siempre se saltea para que
+nunca caiga en el comentario, pero su marcación sólo se lee cuando el símbolo
+del emisor es el símbolo DF.
+
 PHG usa los cuatro subcampos, DFS todos menos la potencia de transmisión, y RNG
 y DF ninguno — DF tiene en cambio sus propias entradas de marcación y NRQ; la
 página deshabilita las entradas que el tipo seleccionado no usa. Como un control
 deshabilitado no se envía en el POST, los valores guardados de los *otros* tipos
 sobreviven al ir y volver entre ellos.
 
-Habilitar PHG, DFS o DF fuerza el formato de posición sin comprimir. El formato
+Habilitar PHG, DFS o un reporte DF que el símbolo permita fuerza el formato de
+posición sin comprimir. El formato
 comprimido no tiene sitio para la ranura de 7 bytes (APRS101 cap.9 dice que no
 admite PHG), y un reporte DF es todavía más ancho que la ranura, así que emitir
 esos bytes dentro de un reporte comprimido sería simplemente dato erróneo, y
 descartar la extensión para conservar la compresión perdería un campo que el
 operador habilitó explícitamente. El firmware deja un warning en el log nombrando
 cuál de las dos opciones cedió, en vez de dejarlo para que se descubra al aire.
+Un reporte DF que el símbolo suprime no pone bytes en la ranura, así que no le
+cuesta la compresión a la baliza.
 
 La ambigüedad de posición es otra cosa y viaja con cualquiera de ellas: blanquea
 dígitos decimales del formato sin comprimir, que conserva su ranura de
@@ -191,6 +210,13 @@ alcance plegado en esos dos bytes y sin ningún token ``RNGrrrr`` en el campo de
 información. La forma comprimida cuantiza el alcance en pasos de alrededor del
 8 por ciento y arranca en un piso de 2 millas, así que un alcance configurado
 por debajo se transmite como 2.
+
+PHG es la extensión que se espera de un digipetidor. El capítulo 7 la presenta
+como la forma en que una estación declara el círculo de cobertura con el que sus
+vecinos razonan al elegir una ruta, y los clientes de mapa dibujan ese círculo
+para los digipetidores antes que para nadie — por eso la página Digi ofrece los
+mismos cuatro tipos que la página IGate, sobre sus propios ajustes, en vez de
+dejar vacía la ranura de ese rol.
 
 La baliza Tracker lleva PHG y nada más, que se activa con *Incluir extensión de
 datos PHG* en su propia página. Ahí no hay subcampos que completar: los cuatro

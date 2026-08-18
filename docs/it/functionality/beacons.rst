@@ -118,12 +118,14 @@ RF occupato non ferma mai la decodifica RX né il socket APRS-IS.
 Estensioni dati (PHG / RNG / DFS / DF)
 ======================================
 
-Il beacon di posizione dell'IGate può portare una delle estensioni dati APRS
-da stazione fissa nello slot di 7 byte che segue il codice del simbolo — lo
-stesso slot che una stazione in movimento usa per rotta e velocità, ed è per
-questo che ne viene emessa sempre una sola. *Abilita estensione dati* nella
-pagina IGate apre lo slot, e *Tipo di estensione* sceglie quale delle tre lo
-riempie:
+I beacon di posizione dell'IGate e del digipeater possono portare ciascuno
+una delle estensioni dati APRS da stazione fissa nello slot di 7 byte che segue
+il codice del simbolo — lo stesso slot che una stazione in movimento usa per
+rotta e velocità, ed è per questo che ne viene emessa sempre una sola.
+*Abilita estensione dati* nella pagina IGate o Digi apre lo slot di quel ruolo,
+e *Tipo di estensione* sceglie quale lo riempie. I due ruoli hanno impostazioni
+proprie, così un IGate e un digipeater sulla stessa stazione con SSID diversi
+possono pubblicare coperture diverse:
 
 .. list-table::
    :header-rows: 1
@@ -151,7 +153,7 @@ riempie:
        lo rappresenta come un cerchio di esclusione anziché di copertura.
    * - DF
      - ``000/000/270/735``
-     - Il rapporto DF del cap.16 di APRS101: il rilevamento verso un segnale,
+     - Il rapporto DF del cap.8 di APRS101: il rilevamento verso un segnale,
        seguito dalla terna NRQ che lo qualifica — rilevazioni per periodo di
        campionamento (``N``, dove 0 dichiara che la terna non ha significato), il
        codice di portata (``R``, che vale 2\ :sup:`R` miglia) e la precisione del
@@ -163,20 +165,36 @@ riempie:
        token per oggetti e item, dove riporta un rilevamento preso su un'altra
        stazione.
 
+Il rapporto DF è l'unica estensione con un requisito di simbolo tutto suo. Il suo
+token è di quindici byte dove lo slot ne ha sette, e il capitolo 8 afferma che il
+rilevamento e l'NRQ sono significativi solo quando il rapporto porta il simbolo
+DF — tabella dei simboli ``/`` e codice simbolo ``\``. Un ricevitore che vede un
+altro simbolo non ha motivo di guardare oltre lo slot: legge ``000/000`` come una
+normale coppia rotta/velocità e prende ``/270/735`` come i primi otto caratteri
+del campo commento. Perciò il DF viene trasmesso solo con quella coppia di
+simbolo; con qualsiasi altra lo slot resta vuoto, il log nomina il simbolo che ha
+soppresso il rapporto e la pagina mostra una nota accanto al tipo di
+estensione non appena i due non concordano. La stessa regola vale per oggetti e
+item e in ricezione: una continuazione DF in arrivo viene sempre scavalcata così
+da non finire mai nel commento, ma il suo rilevamento viene letto solo quando il
+simbolo del trasmettitore è il simbolo DF.
+
 PHG usa tutti e quattro i sottocampi, DFS tutti tranne la potenza di
 trasmissione, e RNG e DF nessuno — DF ha invece i propri input di rilevamento e
 NRQ; la pagina disabilita gli input che il tipo selezionato non usa. Poiché un
 controllo disabilitato non viene inviato nel POST, i valori memorizzati degli
 *altri* tipi sopravvivono al passaggio avanti e indietro.
 
-Abilitare PHG, DFS o DF forza il formato di posizione non compresso. Il formato
+Abilitare PHG, DFS o un rapporto DF che il simbolo consente forza il formato di
+posizione non compresso. Il formato
 compresso non ha spazio per lo slot di 7 byte (APRS101 cap.9 afferma che non
 supporta il PHG), e un rapporto DF è più largo dello slot stesso, quindi emettere
 quei byte dentro un rapporto compresso sarebbe semplicemente un dato sbagliato, e
 scartare l'estensione per mantenere la compressione perderebbe un campo che
 l'operatore ha abilitato esplicitamente. Il firmware registra un warning che
 nomina quale delle due impostazioni ha ceduto, invece di lasciarlo scoprire in
-onda.
+onda. Un rapporto DF che il simbolo sopprime non mette byte nello slot, quindi
+non costa al beacon la sua compressione.
 
 L'ambiguità di posizione è un'altra cosa e viaggia con ciascuna di esse: azzera
 cifre decimali del formato non compresso, che mantiene il suo slot di estensione,
@@ -190,6 +208,13 @@ quei due byte e senza alcun token ``RNGrrrr`` nel campo informativo. La forma
 compressa quantizza la portata a passi di circa l'8 per cento e parte da un
 minimo di 2 miglia, quindi una portata impostata sotto quel valore viene
 trasmessa come 2.
+
+PHG è l'estensione che ci si aspetta da un digipeater. Il capitolo 7 la presenta
+come il modo in cui una stazione dichiara il cerchio di copertura su cui i vicini
+ragionano quando scelgono un percorso, e i client di mappa disegnano quel cerchio
+prima di tutto per i digipeater — per questo la pagina Digi offre gli stessi
+quattro tipi della pagina IGate, sulle proprie impostazioni, invece di lasciare
+vuoto lo slot di quel ruolo.
 
 Il beacon Tracker porta PHG e nient'altro, attivato con *Includi estensione dati
 PHG* nella sua stessa pagina. Lì non ci sono sottocampi da compilare: i quattro

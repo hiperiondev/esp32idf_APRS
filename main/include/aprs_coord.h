@@ -410,7 +410,9 @@ void aprs_compressed_cs_from_altitude(unsigned alt_feet, char out[3]);
  * 9-byte longitude) or the base-91 compressed field (symbol table byte
  * immediately at the start of the field, symbol code 9 bytes later). The
  * two position layouts are told apart by the first byte of the field: a
- * decimal digit means uncompressed, '/' or '\\' means compressed.
+ * decimal digit opens an uncompressed latitude, anything else is the symbol
+ * table byte of a compressed field, which is why chapter 21 spells a numeric
+ * overlay 'a'-'j' there (see ::aprs_symbol_table_byte_compressed).
  *
  * @param info Pointer to the start of the AX.25/TNC2 Information field
  *        (i.e. starting at the DTI byte itself).
@@ -418,7 +420,9 @@ void aprs_compressed_cs_from_altitude(unsigned alt_feet, char out[3]);
  *        be NUL-terminated; pass strlen(info) for a NUL-terminated line).
  * @param symTable Out param: set to the symbol table byte ('/' primary,
  *        '\\' alternate, or an overlay character) on success, left
- *        untouched on failure.
+ *        untouched on failure. A compressed report's 'a'-'j' overlay is
+ *        translated to the digit it stands for, so the same station reads
+ *        the same whichever layout it transmits in.
  * @param symCode Out param: set to the symbol code byte on success, left
  *        untouched on failure.
  * @return true if info is a recognized position/object/item DTI, in either
@@ -428,6 +432,48 @@ void aprs_compressed_cs_from_altitude(unsigned alt_feet, char out[3]);
  *         calling).
  */
 bool aprs_extract_symbol(const char *info, size_t infoLen, char *symTable, char *symCode);
+
+/**
+ * @brief True when @p c may be the Symbol Table Identifier of an
+ * @b uncompressed position report.
+ *
+ * The two standard tables ('/' primary, '\\' alternate) and the alphanumeric
+ * overlay characters APRS101 chapter 21 allows in their place: 'A'-'Z' and
+ * '0'-'9', the digits travelling as themselves in this layout.
+ *
+ * @param c Candidate symbol table byte.
+ * @return true when @p c is a valid uncompressed Symbol Table Identifier.
+ */
+bool aprs_symbol_table_byte_uncompressed(char c);
+
+/**
+ * @brief True when @p c may be the Symbol Table Identifier of a
+ * @b compressed position report.
+ *
+ * The same set as ::aprs_symbol_table_byte_uncompressed except for the
+ * numeric overlays, which chapter 21 spells 'a'-'j' here precisely so that
+ * the first byte of a compressed field is never a decimal digit - that is
+ * what lets the two position layouts be told apart by their first byte
+ * alone.
+ *
+ * @param c Candidate symbol table byte.
+ * @return true when @p c is a valid compressed Symbol Table Identifier.
+ */
+bool aprs_symbol_table_byte_compressed(char c);
+
+/**
+ * @brief Translate a compressed report's Symbol Table Identifier into the
+ * byte the uncompressed layout would carry for the same symbol.
+ *
+ * Only the numeric overlays differ between the two layouts: 'a'-'j' stand for
+ * the overlay digits '0'-'9'. Every other byte, the two standard tables and
+ * the 'A'-'Z' overlays included, is its own uncompressed spelling and is
+ * returned unchanged.
+ *
+ * @param c Symbol Table Identifier as it appeared in a compressed field.
+ * @return The equivalent uncompressed Symbol Table Identifier.
+ */
+char aprs_symbol_table_from_compressed(char c);
 
 /**
  * @brief Decode a raw NMEA-0183 position sentence carried behind the APRS

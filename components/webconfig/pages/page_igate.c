@@ -22,6 +22,7 @@
 #include <string.h>
 
 #include "app_config.h"
+#include "aprs_df.h" // aprs_df_symbol_matches()
 #include "aprs_filter.h"
 #include "esp_log.h"
 #include "igate.h"
@@ -205,9 +206,12 @@ esp_err_t page_igate_get(httpd_req_t *req) {
     //   DFS - the same height/gain/directivity codes as PHG, but reporting
     //         received signal strength instead of transmitted power, which is
     //         what an omnidirectional direction-finding station transmits.
-    //   DF  - the DF report of APRS101 ch.16: the bearing to a signal and the
+    //   DF  - the DF report of APRS101 ch.8: the bearing to a signal and the
     //         NRQ triplet that qualifies it, which is how a station reports a
-    //         fix it took itself rather than a coverage estimate.
+    //         fix it took itself rather than a coverage estimate. The chapter
+    //         makes it meaningful only on the DF symbol (table '/', code
+    //         '\\'), so it is transmitted only with that symbol and the note
+    //         below says so whenever the two do not agree.
     //
     // The power/gain/height/direction fields below mirror the "My Station" PHG
     // section on the Station page field-for-field (same code tables); DFS
@@ -232,6 +236,20 @@ esp_err_t page_igate_get(httpd_req_t *req) {
     web_field_int(req, TR_F_EXT_DF_NRQ_N, "igateDfN", g_config.igate_df_nrq_n, APRS_EXT_DF_NRQ_MIN, APRS_EXT_DF_NRQ_MAX);
     web_field_int(req, TR_F_EXT_DF_NRQ_R, "igateDfR", g_config.igate_df_nrq_r, APRS_EXT_DF_NRQ_MIN, APRS_EXT_DF_NRQ_MAX);
     web_field_int(req, TR_F_EXT_DF_NRQ_Q, "igateDfQ", g_config.igate_df_nrq_q, APRS_EXT_DF_NRQ_MIN, APRS_EXT_DF_NRQ_MAX);
+
+    // The DF report only travels with the DF symbol (APRS101 ch.8), so the
+    // condition the beacon encoder enforces is stated here instead of leaving
+    // it to be discovered off the air. Rendered with the stored symbol and
+    // extension type already applied, so it is right without scripting, and
+    // kept in step by apply() below as the operator edits either one.
+    {
+        bool dfSelected = g_config.igate_phg_enable && g_config.igate_ext_type == (uint8_t)APRS_EXT_DF;
+        bool dfSymbol = aprs_df_symbol_matches(g_config.igate_symbol[0], g_config.igate_symbol[1]);
+        char buf[420];
+        snprintf(buf, sizeof(buf), "<p id='igateDfSymNote' style='color:var(--sub);font-size:12px;margin:4px 0 0%s'>%s</p>",
+                 (dfSelected && !dfSymbol) ? "" : ";display:none", TR_NOTE_EXT_DF_SYMBOL);
+        web_raw(req, buf);
+    }
     web_field_checkbox(req, TR_USE_MY_STATION_DATA, "igatePHGUseStation", g_config.igate_phg_use_station);
     web_select_open(req, TR_F_RADIO_TX_POWER, "igatePHGPower");
     {
@@ -343,6 +361,14 @@ esp_err_t page_igate_get(httpd_req_t *req) {
             "var r=q('igateRng');if(r)r.disabled=(!on)||t!==1;"
             "var sg=q('igateDfsS');if(sg)sg.disabled=(!on)||t!==2;"
             "['igateDfBrg','igateDfN','igateDfR','igateDfQ'].forEach(function(nm){var el=q(nm);if(el)el.disabled=(!on)||t!==3;});"
+            // The DF report needs the DF symbol pair to be readable as one,
+            // so the note appears exactly when the selected type is DF and
+            // the symbol edited above is anything else - the same test the
+            // beacon encoder makes before it emits the token.
+            "var nt=document.getElementById('igateDfSymNote');"
+            "if(nt){var st=q('igateSymTable'),sc=q('igateSymCode');"
+            "var isDF=st&&sc&&st.value==='/'&&sc.value==='\\\\';"
+            "nt.style.display=(on&&t===3&&!isDF)?'':'none';}"
             "calc();"
             "}"
             "document.addEventListener('DOMContentLoaded',function(){"
@@ -351,6 +377,9 @@ esp_err_t page_igate_get(httpd_req_t *req) {
             "if(us)us.addEventListener('change',apply);"
             "if(ty)ty.addEventListener('change',apply);"
             "['igatePHGPower','igatePHGGain','igatePHGHeight','igatePHGDir'].forEach(function(nm){var el=q(nm);if(el)el.addEventListener('change',calc);});"
+            // The symbol lives in another fieldset of this same form, and the
+            // DF note depends on it, so editing it re-evaluates the note.
+            "['igateSymTable','igateSymCode'].forEach(function(nm){var el=q(nm);if(el)el.addEventListener('input',apply);});"
             "apply();"
             "});"
             "})();</script>");

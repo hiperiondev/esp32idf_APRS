@@ -111,11 +111,13 @@ the APRS-IS socket.
 Data extensions (PHG / RNG / DFS / DF)
 ======================================
 
-The IGate position beacon can carry one of the fixed-station APRS data
-extensions in the 7-byte slot that follows the symbol code — the same slot a
-moving station uses for course/speed, which is why exactly one of them is ever
-emitted. *Enable data extension* on the IGate page gates the slot, and
-*Extension type* picks which one fills it:
+The IGate and digipeater position beacons can each carry one of the
+fixed-station APRS data extensions in the 7-byte slot that follows the symbol
+code — the same slot a moving station uses for course/speed, which is why
+exactly one of them is ever emitted. *Enable data extension* on the IGate or
+Digi page gates that role's slot, and *Extension type* picks which one fills
+it. The two roles hold their own settings, so an IGate and a digipeater running
+on one station under different SSIDs can publish different coverage:
 
 .. list-table::
    :header-rows: 1
@@ -143,7 +145,7 @@ emitted. *Enable data extension* on the IGate page gates the slot, and
        than a coverage circle.
    * - DF
      - ``000/000/270/735``
-     - The DF report of APRS101 ch.16: the bearing to a signal, followed by the
+     - The DF report of APRS101 ch.8: the bearing to a signal, followed by the
        NRQ triplet that qualifies it — hits per sampling period (``N``, where 0
        says the triplet carries no meaning), the range code (``R``, standing for
        2\ :sup:`R` miles) and the bearing accuracy (``Q``, 9 being better than
@@ -154,19 +156,36 @@ emitted. *Enable data extension* on the IGate page gates the slot, and
        builds the token for objects and items, where it reports a fix taken on
        someone else.
 
+The DF report is the one extension with a symbol requirement of its own. Its
+token is fifteen bytes where the slot is seven, and chapter 8 states that the
+bearing and NRQ are only meaningful when the report carries the DF symbol —
+symbol table ``/`` and symbol code ``\``. A receiver that sees any other symbol
+has no reason to look past the slot: it reads ``000/000`` as an ordinary
+course/speed pair and takes ``/270/735`` as the first eight characters of the
+comment field. So DF is transmitted only with that symbol pair; with any other
+one the slot is left empty, the log names the symbol that suppressed the
+report, and the page shows a note beside the extension type as soon as
+the two disagree. The same rule applies to objects and items, and on receive:
+an incoming DF continuation is always stepped over so it never lands in the
+comment, but its bearing is only read when the sender's symbol is the DF
+symbol.
+
 PHG uses all four sub-fields, DFS every one but transmit power, and RNG and DF
 none of them — DF has its own bearing and NRQ inputs instead; the page disables
 whichever inputs the selected type does not use. Since a disabled control does
 not POST, the stored values of the *other* types survive switching back and
 forth.
 
-Enabling PHG, DFS or DF forces the uncompressed position layout. The compressed
+Enabling PHG, DFS or a DF report that the symbol allows forces the uncompressed
+position layout. The compressed
 format has no room for the 7-byte slot (APRS101 ch.9 states it does not support
 PHG), and a DF report is wider than the slot still, so emitting those bytes
 inside a compressed report would simply be wrong data, and dropping the
 extension to keep compression would lose a field the operator explicitly
 enabled. The firmware logs a warning naming which of the two settings gave way,
-rather than leaving it to be discovered off the air.
+rather than leaving it to be discovered off the air. A DF report the symbol
+suppresses puts no bytes in the slot, so it does not cost the beacon its
+compression.
 
 Position ambiguity is a separate matter and travels with any of them: it blanks
 decimal digits of the uncompressed layout, which keeps its extension slot, so
@@ -179,6 +198,12 @@ ticked therefore stays compressed, with the range folded into those two bytes
 and no ``RNGrrrr`` token in the information field. The compressed form quantises
 the range to a step of about 8 per cent and starts at a floor of 2 miles, so a
 range set below that is transmitted as 2.
+
+PHG is the extension a digipeater is expected to publish. Chapter 7 introduces
+it as the way a station states the coverage circle its neighbours reason about
+when they choose a path, and mapping clients draw that circle for digipeaters
+first — which is why the Digi page offers the same four types the IGate page
+does, on its own settings, rather than leaving the role's slot empty.
 
 The Tracker beacon carries PHG and nothing else, switched on with *Include PHG
 data extension* on its own page. There are no sub-fields to fill in there: the

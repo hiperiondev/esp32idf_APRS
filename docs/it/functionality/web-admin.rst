@@ -46,8 +46,12 @@ Le pagine
        tabella di traffico in tempo reale (DX / PACKET / DECODIFICATO / AUDIO)
        alimentata da long-poll basato su sequenza. DECODIFICATO riporta ciò che
        è stato letto dal payload stesso — la marca temporale propria del
-       pacchetto, rotta, velocità, altitudine, portata radio e PHG — e resta
-       vuoto per un payload che non ne porta nessuno.
+       pacchetto, rotta, velocità, altitudine, portata radio, PHG o DFS, e il
+       rilevamento e l'NRQ di un rapporto DF — e resta vuoto per un payload che
+       non ne porta nessuno. La colonna conserva l'intera riga di riepilogo
+       qualunque sia il payload: l'anello dimensiona il proprio campo con la
+       stessa costante in cui scrive il formattatore, così un rapporto che
+       riempie ogni campo viene mostrato per intero e non troncato.
    * - **Station**
      - L'identità condivisa della propria stazione che ogni beacon, oggetto e
        messaggio legge: indicativo, latitudine, longitudine, altitudine
@@ -69,7 +73,11 @@ Le pagine
        destinatario e la finestra di ascolto locale.
    * - **Digi**
      - Abilita digipeater, indicativo/SSID e impostazioni beacon (posizione,
-       simbolo, intervallo, commento, stato, percorso). *Alias di Percorso n-N*
+       simbolo, intervallo, commento, stato, percorso). *Estensione Dati*
+       sceglie cosa porta il beacon di posizione nello spazio dopo il codice di
+       simbolo — PHG, RNG, DFS o un rapporto DF — con gli stessi sottocampi e
+       lo stesso specchio *Usa i Dati della Mia Stazione* offerto dalla pagina
+       *IGate*. *Alias di Percorso n-N*
        contiene le quattro righe di {alias, N massimo, modalità} con cui il
        digipeater ripete, l'interruttore di solo riempimento, la scelta di cosa
        fare con un conteggio hop intrappolato e l'interruttore *Ripetizione

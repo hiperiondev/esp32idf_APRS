@@ -21,6 +21,7 @@
 
 #include "aprs_coord.h"
 
+#include <ctype.h>
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
@@ -310,30 +311,46 @@ void aprs_compressed_cs_from_altitude(unsigned alt_feet, char out[3]) {
     out[2] = APRS_COMPRESSED_T_BYTE_ALTITUDE;
 }
 
+bool aprs_symbol_table_byte_uncompressed(char c) {
+    return c == '/' || c == '\\' || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9');
+}
+
+bool aprs_symbol_table_byte_compressed(char c) {
+    return c == '/' || c == '\\' || (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'j');
+}
+
+char aprs_symbol_table_from_compressed(char c) {
+    if (c >= 'a' && c <= 'j')
+        return (char)('0' + (c - 'a'));
+    return c;
+}
+
 // Reads the symbol table byte and symbol code out of a position field that
 // starts at offset `posStart` within info, handling both position layouts
 // defined by APRS101 chapter 9: the base-91 compressed field (symbol table
 // byte immediately followed by 4 compressed-latitude digits, 4
 // compressed-longitude digits, then the symbol code) and the uncompressed
 // field (8-byte latitude, symbol table byte, 9-byte longitude, symbol code).
-// The two are told apart by the byte at posStart: an uncompressed latitude
-// always starts with a decimal digit, while a compressed field always starts
-// with the symbol table byte itself, which is '/' (primary table) or '\'
-// (alternate table) in every compressed report this project transmits or is
-// expected to gate, matching the heuristic used by other open-source APRS
-// decoders. Compressed reports using a digit/letter overlay character in
-// place of '/' or '\' are not distinguishable from an uncompressed field by
-// this byte alone, so they are left unrecognized rather than guessed at.
+// The two are told apart by the byte at posStart, which is the same rule the
+// receive-side decoder in main/aprs_filter.c applies, from these same
+// predicates: an uncompressed latitude always starts with a decimal digit,
+// and a compressed field always starts with its own symbol table byte, which
+// chapter 21 keeps clear of the digits by spelling a numeric overlay 'a'-'j'
+// there. So any non-digit opens a compressed field, overlays included, and
+// the overlay is translated to the digit the uncompressed layout carries for
+// the same symbol, so one station reads the same whichever layout it uses.
 static bool aprsExtractPositionSymbol(const char *info, size_t infoLen, size_t posStart, char *symTable, char *symCode) {
     if (posStart >= infoLen)
         return false;
 
     char first = info[posStart];
-    if (first == '/' || first == '\\') {
+    if (!isdigit((unsigned char)first)) {
+        if (!aprs_symbol_table_byte_compressed(first))
+            return false;
         size_t symCodePos = posStart + 9; // symtable[1] + lat[4] + lon[4]
         if (symCodePos >= infoLen)
             return false;
-        *symTable = first;
+        *symTable = aprs_symbol_table_from_compressed(first);
         *symCode = info[symCodePos];
         return true;
     }

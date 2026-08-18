@@ -547,18 +547,26 @@ typedef struct {
  * They are mutually exclusive on air - they all occupy the same slot, the one
  * a moving station uses for CSE/SPD - so the beacon carries at most one of
  * them, selected here and gated by the beacon's own "enable data extension"
- * flag (@c app_config_t.igate_phg_enable).
+ * flag (@c app_config_t.igate_phg_enable for the IGate beacon,
+ * @c app_config_t.digi_phg_enable for the digipeater beacon). The tracker
+ * beacon has no selector of its own: it carries ::APRS_EXT_PHG alone, gated by
+ * @c app_config_t.trk_phg_enable.
  *
  * ::APRS_EXT_DF is the one that is wider than the slot: the DF report of
- * chapter 16 puts its course/speed pair in the slot and appends the bearing
+ * chapter 8 puts its course/speed pair in the slot and appends the bearing
  * and NRQ bytes after it. That is why it, like PHG and DFS, cannot travel in
- * a compressed position report.
+ * a compressed position report, and why the same chapter transmits it only
+ * with the DF symbol (::APRS_DF_SYMBOL_TABLE / ::APRS_DF_SYMBOL_CODE): a
+ * receiver seeing any other symbol reads the extra bytes as the start of the
+ * comment field. Selecting it for a beacon whose symbol is anything else
+ * leaves the slot empty.
  */
 typedef enum {
     APRS_EXT_PHG = 0, /**< "PHGphgd": transmitter power, antenna height/gain and directivity. */
     APRS_EXT_RNG = 1, /**< "RNGrrrr": pre-calculated omnidirectional radio range, statute miles. */
     APRS_EXT_DFS = 2, /**< "DFSshgd": Omni-DF signal strength, with the same height/gain/directivity codes as PHG. */
-    APRS_EXT_DF = 3,  /**< "CSE/SPD/BRG/NRQ": DF report, the bearing to a signal and the NRQ triplet describing it (APRS101 chapter 16). */
+    APRS_EXT_DF = 3, /**< "CSE/SPD/BRG/NRQ": DF report, the bearing to a signal and the NRQ triplet describing it (APRS101 chapter 8); transmitted only with the
+                        DF symbol. */
 } aprs_ext_type_t;
 
 #define APRS_EXT_RANGE_MILES_MIN  0    /**< Lowest "RNGrrrr" pre-calculated radio range, statute miles. */
@@ -771,6 +779,23 @@ typedef struct {
     char digi_comment[COMMENT_SIZE];         /**< Digipeater beacon comment. */
     uint16_t digi_sts_interval;              /**< Digipeater status-beacon interval, seconds. */
     char digi_status[STATUS_SIZE];           /**< Digipeater status text. */
+
+    bool digi_phg_enable;      /**< Enable transmitting a data extension in the digipeater position beacon; @c digi_ext_type picks which one. PHG is the
+                                  extension a digipeater is expected to publish (APRS101 chapter 7), since it is the coverage circle other stations reason
+                                  about when they choose a path. */
+    bool digi_phg_use_station; /**< "Use My Station Data": mirror the shared "My Station" PHG sub-fields into the digipeater PHG fields and lock them. */
+    uint16_t digi_phg_power;   /**< PHG sub-field: radio TX power, Watts (persisted so the form redisplays the selections). */
+    float digi_phg_gain;       /**< PHG sub-field: antenna gain, dBi. */
+    uint16_t digi_phg_height;  /**< PHG sub-field: antenna height, feet. */
+    uint8_t digi_phg_dir;      /**< PHG sub-field: directivity, 0=Omni, 1-8 = N,NE,E,SE,S,SW,W,NW. */
+    uint8_t digi_ext_type;     /**< Which ::aprs_ext_type_t the digipeater position beacon carries when @c digi_phg_enable is set. */
+    uint16_t digi_range_miles; /**< "RNGrrrr" pre-calculated radio range, statute miles (::APRS_EXT_RNG only). */
+    uint8_t digi_dfs_strength; /**< "DFSshgd" signal-strength code 0-9 (::APRS_EXT_DFS only; height/gain/directivity come from the PHG sub-fields). */
+    uint16_t digi_df_bearing;  /**< DF report bearing to the signal, degrees (::APRS_EXT_DF only). */
+    uint8_t digi_df_nrq_n;     /**< DF report N digit: 0 = the NRQ triplet carries no meaning, 1-8 = relative number of hits per sampling period, 9 = manual
+                                   report (::APRS_EXT_DF only). */
+    uint8_t digi_df_nrq_r;     /**< DF report R digit: range code, standing for 2^R miles (::APRS_EXT_DF only). */
+    uint8_t digi_df_nrq_q;     /**< DF report Q digit: bearing accuracy, 0 (useless) through 9 (better than one degree) (::APRS_EXT_DF only). */
 
     float digi_freq_mhz;       /**< Recommended travelers' voice repeater frequency this digipeater advertises, MHz; 0 => no frequency block emitted. See
                                   igate_freq_mhz; freqspec.txt calls this out as specifically the digipeater's responsibility. */

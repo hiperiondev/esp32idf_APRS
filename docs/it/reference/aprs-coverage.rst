@@ -148,16 +148,16 @@ Estensioni dati (cap. 7)
      - La forma a nove byte della 1.2 ("PHGphgd" più un carattere di cadenza in beacon all'ora e la barra finale obbligatoria) viene trasmessa ogni volta che l'intervallo proprio del beacon IGate è noto, il che avviene sempre, ed è analizzata in ricezione: il carattere di cadenza e la barra vengono riconosciuti e rimossi, così il commento che segue viene letto correttamente invece di iniziare con una barra vagante.
    * - Portata radio precalcolata (RNG)
      - ✅
-     - Selezionabile come estensione dati per qualsiasi ruolo di beacon, in miglia terrestri.
+     - Selezionabile come estensione dati dei beacon IGate e digipeater, in miglia terrestri. Il beacon tracker porta solo PHG.
    * - Intensità di segnale omni-DF (DFS)
      - ✅
-     - Selezionabile come estensione dati, con l'intensità in punti S più gli stessi codici di altezza, guadagno e direttività usati da PHG.
+     - Selezionabile come estensione dati dei beacon IGate e digipeater, con l'intensità in punti S più gli stessi codici di altezza, guadagno e direttività usati da PHG.
    * - Rilevamento e numero/portata/qualità (BRG/NRQ)
      - ✅
-     - Disponibile su oggetti e item e sul beacon di posizione della stazione stessa, nella forma ``000/000`` richiesta dalla specifica per un rapporto privo di rotta e velocità. Entrambi costruiscono il token con un unico codificatore condiviso.
+     - In trasmissione e in ricezione. Disponibile su oggetti e item e sul beacon di posizione della stazione stessa, nella forma ``000/000`` richiesta dalla specifica per un rapporto privo di rotta e velocità; entrambi costruiscono il token con un unico codificatore condiviso. Il capitolo 8 rende questi parametri significativi solo quando il rapporto porta il simbolo DF — tabella dei simboli ``/`` e codice simbolo ``\`` —, quindi è l'unico simbolo con cui vengono trasmessi: scegliere l'estensione DF su un beacon o un elemento con qualsiasi altro simbolo lascia lo slot vuoto e registra quale simbolo l'ha soppressa, invece di mettere otto byte in testa al campo commento di ogni ricevitore. La stessa regola decide se il rilevamento di un rapporto in arrivo viene letto.
    * - Estensioni dati in ricezione
      - ✅
-     - Lo slot da 7 byte di un rapporto non compresso in arrivo viene analizzato invece di essere letto come i primi sette caratteri del commento: ``PHGphgd`` e la sua forma PHGR da nove byte, ``RNGrrrr``, ``DFSshgd`` e ``CSE/SPD``, riportata come direzione e velocità del vento quando il simbolo è una stazione meteo. Il commento viene poi preso dal primo byte successivo al token trovato, così la forma da nove byte non lascia più un carattere di frequenza e una barra spaiati in testa.
+     - Lo slot da 7 byte di un rapporto non compresso in arrivo viene analizzato invece di essere letto come i primi sette caratteri del commento: ``PHGphgd`` e la sua forma PHGR da nove byte, ``RNGrrrr``, ``DFSshgd``, ``CSE/SPD`` —riportata come direzione e velocità del vento quando il simbolo è una stazione meteo— e il rapporto DF ``CSE/SPD/BRG/NRQ`` da quindici byte, il cui rilevamento e le cui cifre NRQ vengono decodificati quando il simbolo è il simbolo DF. Il commento viene poi preso dal primo byte successivo al token trovato, così né la forma da nove byte né il rapporto DF lasciano byte spaiati in testa; una continuazione DF che arriva con un altro simbolo viene comunque scavalcata, perché i trasmettitori che la inviano così sono comuni, ma il suo rilevamento non viene riportato.
    * - Descrittore di oggetto area
      - ✅
      - Codifica completa di forma, colore e dimensione, inclusa la regola che sostituisce la barra con una cifra per valori di colore da dieci in su. I due codici di dimensione usano la scala corretta di 1500-esimi di grado e non i centesimi del testo originale.
@@ -183,7 +183,7 @@ Formati dei rapporti di posizione e DF (cap. 8)
      - Presente in ogni posizione originata, con il blocco di frequenza, ``!DAO!`` e la telemetria nel commento che riservano i loro byte prima che il testo libero riempia il campo, così un commento lungo viene troncato invece di far cadere un'estensione.
    * - Formato del rapporto DF
      - ✅
-     - Selezionabile come estensione dati del beacon di posizione della stazione stessa, che è la forma descritta dal capitolo per una stazione di radiogoniometria, oltre che su oggetti e item per un rilevamento preso su un'altra stazione. Sceglierlo sopprime il formato compresso, che non ha spazio per l'estensione, e lo dichiara nel log invece di scartare in silenzio una delle due impostazioni.
+     - Selezionabile come estensione dati del beacon di posizione della stazione stessa, che è la forma descritta dal capitolo per una stazione di radiogoniometria, oltre che su oggetti e item per un rilevamento preso su un'altra stazione, e decodificato in ricezione. Viaggia solo con il simbolo DF (tabella ``/``, codice ``\``), che è ciò che dice al ricevitore che il token è di quindici byte e non dei sette dello slot; le pagine IGate e Digi enunciano il requisito accanto al tipo di estensione ogni volta che il simbolo configurato è un altro. Trasmetterlo sopprime il formato compresso, che non ha spazio per l'estensione, e lo dichiara nel log invece di scartare in silenzio una delle due impostazioni — un rapporto DF che il simbolo sopprime non mette nulla nello slot, quindi non costa al beacon la sua compressione.
 
 Rapporti di posizione compressi (cap. 9)
 ========================================
@@ -532,7 +532,7 @@ Simboli (cap. 21)
      - Un selettore visuale nell'amministrazione web copre entrambe le tabelle, con un simbolo per ruolo per tracker, IGate, digipeater, stazione meteo e ogni oggetto.
    * - Caratteri di sovrapposizione
      - ✅
-     - Un carattere di sovrapposizione può essere collocato nella posizione della tabella per i simboli che lo accettano, ed è così che un digipeater annuncia la propria politica di instradamento sulla mappa. Sono accettate sovrapposizioni alfabetiche e numeriche, e una numerica viene emessa in un rapporto compresso come la lettera minuscola ``a``-``j`` che quel formato richiede, perché un campo di posizione compresso non può mai iniziare con una cifra.
+     - Un carattere di sovrapposizione può essere collocato nella posizione della tabella per i simboli che lo accettano, ed è così che un digipeater annuncia la propria politica di instradamento sulla mappa. Sono accettate sovrapposizioni alfabetiche e numeriche, e una numerica viene emessa in un rapporto compresso come la lettera minuscola ``a``-``j`` che quel formato richiede, perché un campo di posizione compresso non può mai iniziare con una cifra. Lo stesso insieme viene letto in ricezione, da un'unica coppia di predicati condivisa dall'estrattore di simbolo e dal decodificatore di posizione, così un rapporto compresso in arrivo con sovrapposizione restituisce il suo simbolo reale invece di due byte del suo commento; una sovrapposizione ``a``-``j`` viene ritradotta nella cifra che rappresenta, perché una stessa stazione si legga uguale in entrambi i formati.
    * - Precedenza dei simboli
      - ⚠️
      - Viene letto solo il simbolo del campo informazioni, quindi la questione della precedenza non si pone in pratica; ma significa anche che le sorgenti di ripiego descritte dalla regola non vengono mai consultate per un pacchetto che lì non porti simbolo.

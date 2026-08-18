@@ -309,6 +309,21 @@ void app_config_set_defaults(app_config_t *c) {
     c->digi_interval = 30;
     set_str(c->digi_symbol, sizeof(c->digi_symbol), "N&");
     set_str(c->digi_comment, sizeof(c->digi_comment), "esp32idf_APRS Digi");
+    c->digi_phg_enable = false;
+    c->digi_phg_use_station = false;
+    c->digi_phg_power = 1;
+    c->digi_phg_gain = 6.0f;
+    c->digi_phg_height = 10;
+    c->digi_phg_dir = 0;
+    c->digi_ext_type = APRS_EXT_PHG;
+    c->digi_range_miles = 0;
+    c->digi_dfs_strength = 0;
+    c->digi_df_bearing = 0;
+    // A DF report whose N digit is 0 states that the NRQ triplet carries no
+    // meaning, which is the honest reading until the operator enters one.
+    c->digi_df_nrq_n = 0;
+    c->digi_df_nrq_r = 0;
+    c->digi_df_nrq_q = 0;
     c->digi_freq_mhz = 0.0f;
     c->digi_tone_tenths = 0;
     c->digi_duplex = 0;
@@ -731,6 +746,19 @@ static void config_write_json(jw_t *d, const app_config_t *c) {
     jadd_str(d, "digiComment", c->digi_comment);
     jadd_num(d, "digiSTSIntv", c->digi_sts_interval);
     jadd_str(d, "digiStatus", c->digi_status);
+    jadd_bool(d, "digiPHGEn", c->digi_phg_enable);
+    jadd_bool(d, "digiPHGUseStation", c->digi_phg_use_station);
+    jadd_num(d, "digiPHGPower", c->digi_phg_power);
+    jadd_num(d, "digiPHGGain", c->digi_phg_gain);
+    jadd_num(d, "digiPHGHeight", c->digi_phg_height);
+    jadd_num(d, "digiPHGDir", c->digi_phg_dir);
+    jadd_num(d, "digiExtType", c->digi_ext_type);
+    jadd_num(d, "digiRng", c->digi_range_miles);
+    jadd_num(d, "digiDfsS", c->digi_dfs_strength);
+    jadd_num(d, "digiDfBrg", c->digi_df_bearing);
+    jadd_num(d, "digiDfN", c->digi_df_nrq_n);
+    jadd_num(d, "digiDfR", c->digi_df_nrq_r);
+    jadd_num(d, "digiDfQ", c->digi_df_nrq_q);
     jadd_num(d, "digiFreqMHz", c->digi_freq_mhz);
     jadd_num(d, "digiFreqTone", c->digi_tone_tenths);
     jadd_num(d, "digiFreqDup", c->digi_duplex);
@@ -1242,6 +1270,42 @@ static void config_from_json(cJSON *d, app_config_t *c) {
     set_str_utf8(c->digi_comment, sizeof(c->digi_comment), jget_str(d, "digiComment", def.digi_comment));
     c->digi_sts_interval = (uint16_t)jget_num(d, "digiSTSIntv", def.digi_sts_interval);
     set_str_utf8(c->digi_status, sizeof(c->digi_status), jget_str(d, "digiStatus", def.digi_status));
+    c->digi_phg_enable = jget_bool(d, "digiPHGEn", def.digi_phg_enable);
+    c->digi_phg_use_station = jget_bool(d, "digiPHGUseStation", def.digi_phg_use_station);
+    c->digi_phg_power = (uint16_t)jget_num(d, "digiPHGPower", def.digi_phg_power);
+    c->digi_phg_gain = (float)jget_num(d, "digiPHGGain", def.digi_phg_gain);
+    c->digi_phg_height = (uint16_t)jget_num(d, "digiPHGHeight", def.digi_phg_height);
+    c->digi_phg_dir = (uint8_t)jget_num(d, "digiPHGDir", def.digi_phg_dir);
+    c->digi_ext_type = (uint8_t)jget_num(d, "digiExtType", def.digi_ext_type);
+    if (c->digi_ext_type > APRS_EXT_DF) {
+        ESP_LOGW(TAG, "digiExtType %u unknown, using PHG", (unsigned)c->digi_ext_type);
+        c->digi_ext_type = APRS_EXT_PHG;
+    }
+    c->digi_range_miles = (uint16_t)jget_num(d, "digiRng", def.digi_range_miles);
+    if (c->digi_range_miles > APRS_EXT_RANGE_MILES_MAX) {
+        ESP_LOGW(TAG, "digiRng %u out of range, clamped to %d", (unsigned)c->digi_range_miles, APRS_EXT_RANGE_MILES_MAX);
+        c->digi_range_miles = APRS_EXT_RANGE_MILES_MAX;
+    }
+    c->digi_dfs_strength = (uint8_t)jget_num(d, "digiDfsS", def.digi_dfs_strength);
+    if (c->digi_dfs_strength > APRS_EXT_DFS_STRENGTH_MAX) {
+        ESP_LOGW(TAG, "digiDfsS %u out of range, clamped to %d", (unsigned)c->digi_dfs_strength, APRS_EXT_DFS_STRENGTH_MAX);
+        c->digi_dfs_strength = APRS_EXT_DFS_STRENGTH_MAX;
+    }
+    {
+        // The bearing wraps rather than clamps: 360 degrees and 0 degrees name
+        // the same direction, and the on-air field is three digits, so a value
+        // outside the range still has one correct reading.
+        int brg = (int)jget_num(d, "digiDfBrg", def.digi_df_bearing);
+        int wrapped = brg % 360;
+        if (wrapped < 0)
+            wrapped += 360;
+        if (wrapped != brg)
+            ESP_LOGW(TAG, "digiDfBrg %d out of range, wrapped to %d", brg, wrapped);
+        c->digi_df_bearing = (uint16_t)wrapped;
+    }
+    c->digi_df_nrq_n = clamp_nrq_digit(jget_num(d, "digiDfN", def.digi_df_nrq_n), "digiDfN");
+    c->digi_df_nrq_r = clamp_nrq_digit(jget_num(d, "digiDfR", def.digi_df_nrq_r), "digiDfR");
+    c->digi_df_nrq_q = clamp_nrq_digit(jget_num(d, "digiDfQ", def.digi_df_nrq_q), "digiDfQ");
     c->digi_freq_mhz = (float)jget_num(d, "digiFreqMHz", def.digi_freq_mhz);
     c->digi_tone_tenths = (uint16_t)jget_num(d, "digiFreqTone", def.digi_tone_tenths);
     c->digi_duplex = (int8_t)jget_num(d, "digiFreqDup", def.digi_duplex);

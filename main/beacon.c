@@ -32,7 +32,7 @@
 #include "app_config.h"
 #include "aprs_coord.h"
 #include "aprs_dao.h"       // aprs_dao_build()
-#include "aprs_df.h"        // aprs_df_build_extension(), APRS_DF_EXT_BUF_SIZE
+#include "aprs_df.h"        // aprs_df_build_extension(), aprs_df_symbol_matches(), APRS_DF_EXT_BUF_SIZE
 #include "aprs_free_text.h" // aprs_free_text_build()
 #include "aprs_path.h"      // aprs_path_build_suffix()
 #include "aprs_service.h"
@@ -86,11 +86,10 @@ typedef struct {
     // beacons carry the same precision. A non-zero level forces the
     // uncompressed layout, which is the only one with digits to blank.
     uint8_t ambiguity;
-    // APRS Data Extension (APRS101 ch.7). The IGate beacon selects any of the
-    // three types with its own sub-fields (see igateBeaconService()); the
-    // Tracker beacon offers PHG alone, taken from the station-wide antenna
-    // data. The Digipeater beacon has no extension, so extEnable stays false
-    // and the slot is never emitted for it. All three extension types share
+    // APRS Data Extension (APRS101 ch.7). The IGate and Digipeater beacons
+    // each select any of the types with their own sub-fields (see
+    // igateBeaconService() and digiBeaconService()); the Tracker beacon offers
+    // PHG alone, taken from the station-wide antenna data. All extension types share
     // the same 7-byte info-field slot that moving stations use for CSE/SPD -
     // mutually exclusive with movement, which is fine here since these are
     // fixed-position beacons. Mic-E has no such slot, and carries the token in
@@ -344,11 +343,19 @@ static void buildDfsExtension(uint8_t strength, float gain, uint16_t height, uin
     snprintf(out, outMax, "DFS%c%s", '0' + S, hgd);
 }
 
-// Selects and builds the beacon's data extension into `out` (>= 10 bytes),
-// which is left as an empty string when no extension is enabled. Exactly one
-// extension is ever emitted: they all occupy the same 7-byte slot after the
-// symbol code, except PHG when p->beaconIntervalSec is known, which adds the
-// two-byte PHGR probe rate/slash suffix described on buildPhgExtension().
+// Selects and builds the beacon's data extension into `out`, which is left as
+// an empty string when no extension is enabled or when the selected one may
+// not travel with this beacon's symbol. `out` must be >= APRS_DF_EXT_BUF_SIZE:
+// that is the size the DF form needs, and aprs_df_build_extension() empties
+// the buffer instead of writing a short token below it, because a truncated
+// DF report would decode as a different bearing rather than as a missing one.
+// Every call site asserts that size at compile time, so an undersized buffer
+// is a build error rather than an extension that silently never goes out.
+// Exactly one extension is ever emitted: they all
+// occupy the same 7-byte slot after the symbol code, except PHG when
+// p->beaconIntervalSec is known, which adds the two-byte PHGR probe rate/slash
+// suffix described on buildPhgExtension(), and DF, which reaches
+// APRS_DF_EXT_TAIL_LEN bytes past the slot.
 static void buildDataExtension(const beacon_params_t *p, char *out, size_t outMax) {
     out[0] = 0;
     if (!p->extEnable)
@@ -359,10 +366,31 @@ static void buildDataExtension(const beacon_params_t *p, char *out, size_t outMa
             buildRangeExtension(p->rangeMiles, out, outMax);
             return;
         case APRS_EXT_DF:
-            // DF report (APRS101 ch.16). These three beacons are fixed
-            // stations with no course/speed source, and the chapter gives
-            // "000/000" as the pair that says exactly that while still
-            // carrying the bearing that follows it.
+            // DF report (APRS101 ch.8). BRG/NRQ is only meaningful on the DF
+            // symbol, and the token is 15 bytes where the slot is 7, so a
+            // receiver seeing any other symbol would read the trailing
+            // "/BRG/NRQ" as the first eight characters of the comment field.
+            // The token therefore travels only with the DF symbol pair, and
+            // the symbol that suppressed it is named once.
+            {
+                // Same fallbacks the position builders apply to an unset
+                // symbol, so the test is made on the pair that actually goes
+                // on the air.
+                char symTable = p->symbol[0] ? p->symbol[0] : '/';
+                char symCode = p->symbol[1] ? p->symbol[1] : '>';
+                if (!aprs_df_symbol_matches(symTable, symCode)) {
+                    static bool dfSymbolWarned = false;
+                    if (!dfSymbolWarned) {
+                        dfSymbolWarned = true;
+                        ESP_LOGW(TAG, "DF report not transmitted: it needs the DF symbol \"%c%c\", this beacon uses \"%c%c\"", APRS_DF_SYMBOL_TABLE,
+                                 APRS_DF_SYMBOL_CODE, symTable, symCode);
+                    }
+                    return;
+                }
+            }
+            // These three beacons are fixed stations with no course/speed
+            // source, and the chapter gives "000/000" as the pair that says
+            // exactly that while still carrying the bearing that follows it.
             aprs_df_build_extension(0, 0, &p->df, out, outMax);
             return;
         case APRS_EXT_DFS:
@@ -469,6 +497,7 @@ static int buildMicePositionPacket(const beacon_params_t *p, const char *path, c
     // and stop looking for after them. Sized as in buildPositionPacket(), so
     // the widest token fits here too.
     char ext[APRS_DF_EXT_BUF_SIZE] = { 0 };
+    _Static_assert(sizeof(ext) >= APRS_DF_EXT_BUF_SIZE, "beacon data-extension buffer must hold the DF form, which is dropped whole below that size");
     buildDataExtension(p, ext, sizeof(ext));
 
     // Layout order for the text field is [freqBlock][ext][comment][comment
@@ -547,6 +576,7 @@ static int buildPositionPacket(const beacon_params_t *p, const char *path, char 
     // "CSE/SPD/BRG/NRQ" token plus NUL, and is wider than the 9-byte
     // PHGR-suffixed PHG form.
     char ext[APRS_DF_EXT_BUF_SIZE] = { 0 };
+    _Static_assert(sizeof(ext) >= APRS_DF_EXT_BUF_SIZE, "beacon data-extension buffer must hold the DF form, which is dropped whole below that size");
     buildDataExtension(p, ext, sizeof(ext));
 
     // A pre-calculated radio range is the one data extension the compressed
@@ -555,6 +585,11 @@ static int buildPositionPacket(const beacon_params_t *p, const char *path, char 
     // folds into the compressed field instead of forcing the uncompressed
     // one.
     bool extIsRange = p->extEnable && (aprs_ext_type_t)p->extType == APRS_EXT_RNG;
+
+    // What the slot really holds decides the layout, not what was selected:
+    // a DF report the symbol does not allow leaves the slot empty, and an
+    // empty slot is no reason to give up compression.
+    bool extPresent = (ext[0] != 0);
 
     // Two things force the uncompressed layout:
     //
@@ -573,14 +608,14 @@ static int buildPositionPacket(const beacon_params_t *p, const char *path, char 
     // None of these three fixed-position beacons track course/speed, so the
     // compressed cs/T slot carries either the radio range form or "no cs/T
     // data" (3 spaces).
-    bool useCompressed = p->compress && (!p->extEnable || extIsRange) && p->ambiguity == 0;
+    bool useCompressed = p->compress && (!extPresent || extIsRange) && p->ambiguity == 0;
 
     // The operator selected two settings that cannot both be honoured, so the
     // one that is dropped is named rather than left to be discovered off the
     // air. Position ambiguity is not part of this: it blanks digits of the
     // uncompressed layout, which keeps its extension slot, so the two travel
     // together without either giving way.
-    if (p->compress && !useCompressed && p->extEnable && !extIsRange)
+    if (p->compress && !useCompressed && extPresent && !extIsRange)
         ESP_LOGW(TAG, "Compressed position disabled for this beacon: the selected data extension needs the uncompressed layout");
 
     // Altitude has a compressed form of its own (APRS101 ch.9): the same two
@@ -1393,7 +1428,7 @@ static uint32_t digiBeaconService(void) {
 
     int64_t now = sched_mono_seconds();
     if (now >= s_digi_next_due) {
-        beacon_params_t p = { 0 }; // zero-init: Digipeater carries no data extension, so extEnable must default false
+        beacon_params_t p = { 0 };
         app_config_lock();
         {
             bool useDigi = g_config.digi_mycall[0] != 0;
@@ -1414,6 +1449,24 @@ static uint32_t digiBeaconService(void) {
             buildCommentField(g_config.digi_comment, digiCommentStripped, sizeof(digiCommentStripped));
             str_copy_utf8_safe(digiCommentStripped, p.comment, sizeof(p.comment));
             memcpy(p.pathPreset, g_config.path, sizeof(p.pathPreset));
+            // PHG is the coverage circle other stations reason about when they
+            // pick a path, which is why APRS101 ch.7 presents it as a
+            // digipeater's field first of all, so this role selects among the
+            // same four extensions the IGate role does and from its own
+            // sub-fields.
+            p.extEnable = g_config.digi_phg_enable;
+            p.extType = g_config.digi_ext_type;
+            p.phgPower = g_config.digi_phg_power;
+            p.phgGain = g_config.digi_phg_gain;
+            p.phgHeight = g_config.digi_phg_height;
+            p.phgDir = g_config.digi_phg_dir;
+            p.rangeMiles = g_config.digi_range_miles;
+            p.dfsStrength = g_config.digi_dfs_strength;
+            p.df.bearing_deg = g_config.digi_df_bearing;
+            p.df.number = g_config.digi_df_nrq_n;
+            p.df.range_code = g_config.digi_df_nrq_r;
+            p.df.quality = g_config.digi_df_nrq_q;
+            p.beaconIntervalSec = sched_clamp_interval(g_config.digi_interval, BEACON_MIN_INTERVAL_S, BEACON_DEFAULT_INTERVAL_S);
             p.freqMhz = g_config.digi_freq_mhz;
             p.freqToneTenths = g_config.digi_tone_tenths;
             p.freqDuplex = g_config.digi_duplex;

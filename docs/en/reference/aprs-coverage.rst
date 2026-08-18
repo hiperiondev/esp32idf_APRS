@@ -146,16 +146,16 @@ Data extensions (ch. 7)
      - The 1.2 nine-byte form ("PHGphgd" plus a beacons-per-hour rate character and its mandatory trailing slash) is transmitted whenever the IGate beacon's own interval is known, which it always is, and is parsed on receive: the rate character and slash are recognised and stripped so the comment that follows is read correctly rather than starting with a stray slash.
    * - Pre-calculated radio range (RNG)
      - ✅
-     - Selectable as the data extension for any beacon role, in statute miles.
+     - Selectable as the data extension of the IGate and digipeater beacons, in statute miles. The tracker beacon carries PHG alone.
    * - Omni-DF signal strength (DFS)
      - ✅
-     - Selectable as the data extension, with the S-point strength plus the same height, gain and directivity codes PHG uses.
+     - Selectable as the data extension of the IGate and digipeater beacons, with the S-point strength plus the same height, gain and directivity codes PHG uses.
    * - Bearing and number/range/quality (BRG/NRQ)
      - ✅
-     - Available on objects and items and on the station's own position beacon, in the ``000/000`` form the specification requires for a report that carries no course and speed. Both build the token from one shared encoder.
+     - Transmitted and received. Available on objects and items and on the station's own position beacon, in the ``000/000`` form the specification requires for a report that carries no course and speed; both build the token from one shared encoder. Chapter 8 makes the parameters meaningful only when the report carries the DF symbol — symbol table ``/`` and symbol code ``\`` — so that is the only symbol they are transmitted with: selecting the DF extension for a beacon or element with any other symbol leaves the slot empty and logs which symbol suppressed it, rather than putting eight bytes at the front of every receiver's comment field. The same rule decides whether an incoming report's bearing is read.
    * - Data extensions on receive
      - ✅
-     - The 7-byte slot of an incoming uncompressed report is parsed rather than read as the first seven characters of the comment: ``PHGphgd`` and its nine-byte PHGR form, ``RNGrrrr``, ``DFSshgd`` and ``CSE/SPD``, which is reported as wind direction and speed when the symbol is a weather station. The comment is then taken from the first byte past whichever token was found, so the nine-byte form no longer leaves a stray rate character and slash at its front.
+     - The 7-byte slot of an incoming uncompressed report is parsed rather than read as the first seven characters of the comment: ``PHGphgd`` and its nine-byte PHGR form, ``RNGrrrr``, ``DFSshgd``, ``CSE/SPD`` — reported as wind direction and speed when the symbol is a weather station — and the fifteen-byte ``CSE/SPD/BRG/NRQ`` DF report, whose bearing and NRQ digits are decoded when the symbol is the DF symbol. The comment is then taken from the first byte past whichever token was found, so neither the nine-byte form nor the DF report leaves stray bytes at its front; a DF continuation arriving on some other symbol is still stepped over, since senders that emit one are common, but its bearing is not reported.
    * - Area object descriptor
      - ✅
      - Full shape, colour and size encoding, including the rule that replaces the slash with a digit for colour values of ten and above. The two size codes use the corrected scale of 1500ths of a degree rather than the hundredths the original text gave.
@@ -181,7 +181,7 @@ Position and DF report formats (ch. 8)
      - Carried on every originated position, with the frequency block, ``!DAO!`` and comment telemetry reserving their bytes before the free text is allowed to fill the field, so a long comment truncates instead of dropping an extension.
    * - DF report format
      - ✅
-     - Selectable as the data extension of the station's own position beacon, which is the form the chapter describes for a direction-finding station, as well as on objects and items for a fix taken on someone else. Selecting it suppresses the compressed layout, which has no room for the extension, and says so in the log rather than dropping one of the two settings quietly.
+     - Selectable as the data extension of the station's own position beacon, which is the form the chapter describes for a direction-finding station, as well as on objects and items for a fix taken on someone else, and decoded on receive. It travels only with the DF symbol (table ``/``, code ``\``), which is what tells a receiver that the token is fifteen bytes rather than the slot's seven; the IGate and Digi pages state the requirement beside the extension type whenever the configured symbol is a different one. Transmitting it suppresses the compressed layout, which has no room for the extension, and says so in the log rather than dropping one of the two settings quietly — a DF report the symbol suppresses puts nothing in the slot, so it does not cost the beacon its compression.
 
 Compressed position reports (ch. 9)
 ===================================
@@ -528,7 +528,7 @@ Symbols (ch. 21)
      - A visual picker in the web admin covers both tables, with a per-role symbol for the tracker, IGate, digipeater, weather station and each object.
    * - Overlay characters
      - ✅
-     - An overlay character can be placed in the table position for the symbols that accept one, which is how a digipeater advertises its own routing policy on the map. Alphabetic and numeric overlays are both accepted, and a numeric one is emitted in a compressed report as the lower-case letter ``a``-``j`` that layout requires, since a compressed position field can never begin with a digit.
+     - An overlay character can be placed in the table position for the symbols that accept one, which is how a digipeater advertises its own routing policy on the map. Alphabetic and numeric overlays are both accepted, and a numeric one is emitted in a compressed report as the lower-case letter ``a``-``j`` that layout requires, since a compressed position field can never begin with a digit. The same set is read on receive, from one shared pair of predicates used by both the symbol extractor and the position decoder, so an incoming compressed report carrying an overlay yields its real symbol instead of two bytes of its comment; an ``a``-``j`` overlay is translated back to the digit it stands for, so one station reads the same whichever layout it transmits in.
    * - Symbol precedence
      - ⚠️
      - Only the information-field symbol is ever read, so the precedence question does not arise in practice — but it also means the fallback sources the rule describes are never consulted for a packet that carries no symbol there.

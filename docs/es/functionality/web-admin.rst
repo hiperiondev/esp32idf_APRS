@@ -46,8 +46,12 @@ Las páginas
        tabla de tráfico en vivo (DX / PACKET / DECODIFICADO / AUDIO) alimentada
        por long-poll basado en secuencia. DECODIFICADO trae lo que se leyó de la
        carga en sí — la marca de tiempo propia del paquete, rumbo, velocidad,
-       altitud, alcance de radio y PHG — y queda vacío para una carga que no
-       lleva ninguno de esos campos.
+       altitud, alcance de radio, PHG o DFS, y la marcación y el NRQ de un
+       reporte DF — y queda vacío para una carga que no lleva ninguno de esos
+       campos. La columna guarda la línea de resumen completa sea cual sea la
+       carga: el anillo dimensiona su campo con la misma constante en la que
+       escribe el formateador, así que un reporte que llena todos los campos se
+       muestra entero y no recortado.
    * - **Station**
      - La identidad compartida de la propia estación que leen cada baliza,
        objeto y mensaje: indicativo, latitud, longitud, altitud
@@ -70,7 +74,11 @@ Las páginas
        local.
    * - **Digi**
      - Habilitar digipeater, indicativo/SSID y ajustes de baliza (posición,
-       símbolo, intervalo, comentario, estado, ruta). *Alias de Ruta n-N* lleva
+       símbolo, intervalo, comentario, estado, ruta). *Extensión de Datos*
+       elige qué lleva la baliza de posición en la ranura posterior al código
+       de símbolo — PHG, RNG, DFS o un reporte DF — con los mismos subcampos y
+       el mismo espejo *Usar Datos de Mi Estación* que ofrece la página
+       *IGate*. *Alias de Ruta n-N* lleva
        las cuatro filas de {alias, N máximo, modo} con las que repite el
        digipeater, el interruptor de solo relleno, la elección de qué hacer con
        un contador de saltos atrapado y el interruptor *Digipetir por SSID de

@@ -24,6 +24,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "aprs_filter.h" // APRS_RX_DECODED_BUF_SIZE
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
@@ -37,7 +38,11 @@
 #define TRAFFICLOG_TEXT_LEN 144
 #define TRAFFICLOG_DIR_LEN  12 // max chars for the direction/type tag
 #define TRAFFICLOG_DX_LEN   16 // max chars for the DX (callsign) field
-#define TRAFFICLOG_DEC_LEN  48 // max chars for the decoded-fields summary
+// The decoded-fields summary is produced by aprs_filter_format_report(), so
+// the ring holds exactly what that function can emit and the column shows the
+// whole line rather than its first characters. Taking the producer's own
+// buffer-size constant is what keeps the two from drifting apart.
+#define TRAFFICLOG_DEC_LEN APRS_RX_DECODED_BUF_SIZE
 
 // Worst-case length of the reconstructed "m" field for a PKT entry,
 // "<dir>: <text>": DIR_LEN + strlen(": ") + TEXT_LEN, all buffers being

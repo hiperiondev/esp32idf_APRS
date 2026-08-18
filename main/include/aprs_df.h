@@ -14,7 +14,7 @@
  *
  *     please contact their authors for more information.
  *
- * @brief Encoder for the APRS101 chapter 16 DF report data extension:
+ * @brief Encoder for the APRS101 chapter 8 DF report data extension:
  * "CSE/SPD/BRG/NRQ", the course/speed token extended with the bearing to a
  * signal and the NRQ triplet describing that bearing.
  *
@@ -36,14 +36,42 @@
 #ifndef APRS_DF_H
 #define APRS_DF_H
 
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 
 #include "weather_telemetry.h" // aprs_bearing_nrq_t
 
+/**
+ * @brief Symbol Table ID a station must transmit for its DF report to be read
+ *        as one.
+ *
+ * Chapter 8 states, in the note that precedes both DF Report format diagrams,
+ * that the BRG/NRQ parameters are only meaningful when the report carries the
+ * DF symbol, i.e. when the Symbol Table ID is @c '/' and the Symbol Code is
+ * @c '\\'. The 1.2 errata list records the same rule as an explicit addition
+ * to the chapter.
+ *
+ * The rule is what decides the width of the data-extension slot on the wire:
+ * the token is 15 bytes where the slot is 7, so a receiver that does not see
+ * the DF symbol reads the leading "CSE/SPD" pair as an ordinary course/speed
+ * extension and the trailing "/BRG/NRQ" bytes as the first eight characters
+ * of the comment field. Both originators of the token and the receive-side
+ * parser therefore share this one definition.
+ */
+#define APRS_DF_SYMBOL_TABLE '/'
+
+/** @brief Symbol Code that goes with ::APRS_DF_SYMBOL_TABLE to form the DF
+ *         symbol pair. @see APRS_DF_SYMBOL_TABLE */
+#define APRS_DF_SYMBOL_CODE '\\'
+
 /** @brief On-air width of a "CSE/SPD/BRG/NRQ" token, excluding the NUL. */
 #define APRS_DF_EXT_LEN 15
+
+/** @brief On-air width of the "/BRG/NRQ" bytes that follow the "CSE/SPD" pair,
+ *         i.e. how far past the 7-byte data-extension slot the token reaches. */
+#define APRS_DF_EXT_TAIL_LEN 8
 
 /** @brief Buffer size a caller must provide to hold one built token. */
 #define APRS_DF_EXT_BUF_SIZE (APRS_DF_EXT_LEN + 1)
@@ -59,6 +87,20 @@
 
 /** @brief Widest course or speed the three-digit CSE and SPD fields hold. */
 #define APRS_DF_CSE_SPD_MAX 999
+
+/**
+ * @brief True when a symbol pair is the DF symbol, and therefore when a
+ *        "CSE/SPD/BRG/NRQ" token may be transmitted with it or read out of a
+ *        received report.
+ *
+ * @param sym_table Symbol Table ID byte of the report.
+ * @param sym_code  Symbol Code byte of the report.
+ * @return true when the pair is ::APRS_DF_SYMBOL_TABLE / ::APRS_DF_SYMBOL_CODE.
+ * @see APRS_DF_SYMBOL_TABLE
+ */
+static inline bool aprs_df_symbol_matches(char sym_table, char sym_code) {
+    return sym_table == APRS_DF_SYMBOL_TABLE && sym_code == APRS_DF_SYMBOL_CODE;
+}
 
 /**
  * @brief Build the "CSE/SPD/BRG/NRQ" DF report data extension.
