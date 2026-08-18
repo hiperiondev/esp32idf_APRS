@@ -170,9 +170,10 @@ static void beacon_scheduler_task(void *arg) {
         // Each service transmits whatever is due and returns seconds-until-next.
         uint32_t soonest = BEACON_SCHED_POLL_CAP_S;
 
-        soonest = min_u32(soonest, beacon_service());           // tracker + igate + digi
-        soonest = min_u32(soonest, weather_beacon_service());   // WX report
-        soonest = min_u32(soonest, telemetry_beacon_service()); // Telemetry (Binary B1-B8) report
+        soonest = min_u32(soonest, beacon_service());             // tracker + igate + digi
+        soonest = min_u32(soonest, weather_beacon_service());     // WX report
+        soonest = min_u32(soonest, telemetry_beacon_service());   // Telemetry (Binary B1-B8) report
+        soonest = min_u32(soonest, query_capabilities_service()); // Station Capabilities line
 #ifdef ENABLE_BULLETINS
         soonest = min_u32(soonest, bulletins_service()); // BLN1..BLNn
 #endif

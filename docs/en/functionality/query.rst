@@ -126,6 +126,33 @@ General queries
 Because position, status and weather answers reuse the existing beacon builders,
 a reply can never drift from what the periodic beacons transmit.
 
+Periodic capabilities beacon
+============================
+
+Chapter 15 lets a station send its capabilities line at any time, not only when
+asked, and many gateways beacon one so that neighbours know a gateway exists
+without having to query for it. *Send capabilities periodically*
+(``query_cap_beacon_en``) turns that on; it is off by default, and the line is
+still sent in reply to ``?IGATE?`` either way.
+
+The beacon has its own interval (``query_cap_interval_sec``, clamped to the
+``QUERY_CAP_INTERVAL_S_MIN``..``QUERY_CAP_INTERVAL_S_MAX`` range in both the POST
+handler and the JSON reader) and its own channel selection
+(``query_cap_rf`` / ``query_cap_inet``), rather than inheriting the two source
+switches: those say where a *question* is listened for, while this keys the
+transmitter on a timer of its own. It also requires ``igate_en``, since the line
+announces a gateway.
+
+*Additional capability tokens* (``query_cap_extra``) is appended after the two
+mandatory ones, because the capability list is open-ended. The text is stripped
+of CR, LF and of the ``,`` and ``>`` bytes that delimit the line itself, in the
+POST handler and again when the stored configuration is read, so a token typed
+into the box cannot invent a token or close the list early.
+
+One packet is built per enabled leg, since the path differs between them, and
+both come from the same builder the ``?IGATE?`` answer uses. The transmission
+runs on the beacon scheduler task alongside the other periodic originators.
+
 Directed queries
 ================
 

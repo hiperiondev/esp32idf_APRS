@@ -115,10 +115,10 @@ radio, mientras todos los demás llamadores (RX/digipeat, INET→RF, TX de
 mensajes) mantienen el comportamiento no bloqueante de descartar-si-lleno y una
 pata de RF ocupada nunca detiene la decodificación de RX ni el socket de APRS-IS.
 
-Extensiones de datos (PHG / RNG / DFS)
-======================================
+Extensiones de datos (PHG / RNG / DFS / DF)
+===========================================
 
-La baliza de posición del IGate puede llevar una de las tres extensiones de
+La baliza de posición del IGate puede llevar una de las extensiones de
 datos APRS de estación fija en la ranura de 7 bytes que sigue al código de
 símbolo — la misma ranura que una estación en movimiento usa para rumbo y
 velocidad, y por eso solo se emite una de ellas. *Habilitar extensión de datos*
@@ -151,17 +151,37 @@ la llena:
        significa que esta estación **no** oye la señal, y el software de
        graficado lo representa como un círculo de exclusión en vez de uno de
        cobertura.
+   * - DF
+     - ``000/000/270/735``
+     - El reporte DF del cap.16 de APRS101: la marcación hacia una señal,
+       seguida del trío NRQ que la califica — detecciones por período de muestreo
+       (``N``, donde 0 dice que el trío no tiene significado), el código de
+       alcance (``R``, que representa 2\ :sup:`R` millas) y la precisión de la
+       marcación (``Q``, siendo 9 mejor que un grado). Es la forma que el
+       capítulo describe para una estación de radiogoniometría que informa su
+       propia marcación. Estas balizas son de estación fija y no tienen fuente de
+       rumbo ni velocidad, así que el par inicial es el ``000/000`` que la
+       especificación usa para decir exactamente eso. El mismo codificador arma
+       el token para objetos e ítems, donde informa una marcación tomada sobre
+       otra estación.
 
 PHG usa los cuatro subcampos, DFS todos menos la potencia de transmisión, y RNG
-ninguno; la página deshabilita las entradas que el tipo seleccionado no usa.
-Como un control deshabilitado no se envía en el POST, los valores guardados del
-*otro* tipo sobreviven al ir y volver entre ellos.
+y DF ninguno — DF tiene en cambio sus propias entradas de marcación y NRQ; la
+página deshabilita las entradas que el tipo seleccionado no usa. Como un control
+deshabilitado no se envía en el POST, los valores guardados de los *otros* tipos
+sobreviven al ir y volver entre ellos.
 
-Habilitar PHG o DFS fuerza el formato de posición sin comprimir. El formato
+Habilitar PHG, DFS o DF fuerza el formato de posición sin comprimir. El formato
 comprimido no tiene sitio para la ranura de 7 bytes (APRS101 cap.9 dice que no
-admite PHG), así que emitir esos bytes dentro de un reporte comprimido sería
-simplemente dato erróneo, y descartar la extensión para conservar la compresión
-perdería en silencio un campo que el operador habilitó explícitamente.
+admite PHG), y un reporte DF es todavía más ancho que la ranura, así que emitir
+esos bytes dentro de un reporte comprimido sería simplemente dato erróneo, y
+descartar la extensión para conservar la compresión perdería un campo que el
+operador habilitó explícitamente. El firmware deja un warning en el log nombrando
+cuál de las dos opciones cedió, en vez de dejarlo para que se descubra al aire.
+
+La ambigüedad de posición es otra cosa y viaja con cualquiera de ellas: blanquea
+dígitos decimales del formato sin comprimir, que conserva su ranura de
+extensión, así que ninguna de las dos opciones tiene que ceder ante la otra.
 
 RNG es la excepción, porque el formato comprimido lleva un alcance de radio
 precalculado de forma nativa: los dos bytes ``cs`` contienen ``{`` seguido de un

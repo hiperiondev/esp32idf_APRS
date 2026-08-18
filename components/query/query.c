@@ -117,6 +117,10 @@ static int64_t s_lastBroadcastRespondSec[QUERY_TYPE_COUNT][QUERY_SRC_COUNT];
 // per-source limit so a single remote station can't hammer it. Small fixed
 // table rather than a hash map: directed queries are rare traffic, and a
 // full table simply means the oldest source gets recycled.
+// Idle re-check cadence for the periodic capabilities beacon, matching the one
+// the other periodic transmitters return when they are switched off: it is how
+// long a web-admin change waits before the scheduler notices it.
+#define QUERY_CAP_IDLE_RECHECK_S        5
 #define QUERY_DIRECTED_TRACK_MAX        8
 #define QUERY_DIRECTED_MIN_INTERVAL_SEC 5
 
@@ -581,8 +585,9 @@ static void respondWX(query_source_t source) {
     ESP_LOGI(TAG, "?WX? query answered: %s", packet);
 }
 
-// "?IGATE?" -> the "<IGATE,MSG_CNT=n,LOC_CNT=n>" capability/status line
-// APRS101 ch.15 defines, carrying the two figures that chapter gives them.
+// Builds the "<IGATE,MSG_CNT=n,LOC_CNT=n>" Station Capabilities line APRS101
+// ch.15 defines, as a complete TNC2 packet ready for the channel named by
+// `source`, and returns its length (0 when it could not be built).
 //
 // MSG_CNT is the running count of APRS message packets this gateway has
 // passed in either direction (igate_stats_t::msgCount, bumped wherever a ':'
@@ -598,32 +603,29 @@ static void respondWX(query_source_t source) {
 // all, so the rows the APRS-IS feed contributed are excluded regardless of
 // hop count.
 //
-// The capability list is open-ended in ch.15 and this station answers with
-// the gateway token alone, although it is also a digipeater, a weather
-// station and a telemetry source. Each of those roles already announces
-// itself where a receiver looks for it - the digipeater by the path it puts
-// its callsign into, the weather station by its own symbol and report, the
-// telemetry source by its parameter messages - so a broader list would repeat
-// what is already on the air. Nothing is sent unsolicited either: the line
-// goes out in reply to "?IGATE?" and at no other time, which keeps a channel
-// full of gateways from spending airtime on capability packets nobody asked
-// for.
-static void respondIGate(query_source_t source) {
-    if (!g_config.igate_en) {
-        ESP_LOGD(TAG, "?IGATE? query ignored - IGate service is disabled");
-        return;
-    }
+// The capability list is open-ended in ch.15, so the two mandatory tokens are
+// followed by whatever the operator typed into g_config.query_cap_extra -
+// already stripped of the CR/LF and the ',' and '>' delimiters that would
+// break the line (app_config_query_cap_extra_sanitize()). Left empty, the
+// line carries the gateway token alone: each of this station's other roles
+// already announces itself where a receiver looks for it - the digipeater by
+// the path it puts its callsign into, the weather station by its own symbol
+// and report, the telemetry source by its parameter messages.
+//
+// Both callers share this one builder so the line an operator sees in reply
+// to "?IGATE?" and the one the periodic beacon sends are the same packet,
+// counters and all.
+static size_t buildCapabilitiesPacket(query_source_t source, char *packet, size_t packet_size) {
+    packet[0] = 0;
 
     char callField[16];
-    if (!resolveOwnCall(callField, sizeof(callField))) {
-        ESP_LOGW(TAG, "?IGATE? query not answered - no IGate callsign configured");
-        return;
-    }
+    if (!resolveOwnCall(callField, sizeof(callField)))
+        return 0;
 
     igate_stats_t stats = igate_get_stats();
 
     // One snapshot feeds both the suffix and the hop count, so the LOC_CNT
-    // figure counts stations reachable over exactly the path this answer
+    // figure counts stations reachable over exactly the path this line
     // carries even if a settings save lands between the two uses.
     query_path_cfg_t cfg;
     queryPathConfig(&cfg);
@@ -633,17 +635,39 @@ static void respondIGate(query_source_t source) {
 
     uint8_t txHops = app_config_path_hop_count(cfg.mask, cfg.preset);
 
-    char info[64];
-    snprintf(info, sizeof(info), "<IGATE,MSG_CNT=%u,LOC_CNT=%u>", (unsigned)stats.msgCount, (unsigned)lastheard_station_count(true, txHops));
+    char extra[QUERY_CAP_EXTRA_SIZE];
+    app_config_lock();
+    memcpy(extra, g_config.query_cap_extra, sizeof(extra));
+    app_config_unlock();
+    extra[sizeof(extra) - 1] = 0;
 
-    char packet[APRS_TNC2_BUF_SIZE];
-    int n = snprintf(packet, sizeof(packet), "%s>%s%s:%s", callField, QUERY_DEST, path, info);
-    if (n < 0 || (size_t)n >= sizeof(packet) || n > APRS_TNC2_MAX_LEN) {
-        ESP_LOGW(TAG, "?IGATE? query not answered - built line too long");
+    char info[QUERY_CAP_EXTRA_SIZE + 64];
+    snprintf(info, sizeof(info), "<IGATE,MSG_CNT=%u,LOC_CNT=%u%s%s>", (unsigned)stats.msgCount, (unsigned)lastheard_station_count(true, txHops),
+             extra[0] ? "," : "", extra);
+
+    int n = snprintf(packet, packet_size, "%s>%s%s:%s", callField, QUERY_DEST, path, info);
+    if (n < 0 || (size_t)n >= packet_size || n > APRS_TNC2_MAX_LEN)
+        return 0;
+
+    return (size_t)n;
+}
+
+// "?IGATE?" -> the Station Capabilities line, built above and transmitted on
+// the channel the question arrived on.
+static void respondIGate(query_source_t source) {
+    if (!g_config.igate_en) {
+        ESP_LOGD(TAG, "?IGATE? query ignored - IGate service is disabled");
         return;
     }
 
-    txPacket(packet, (size_t)n, source);
+    char packet[APRS_TNC2_BUF_SIZE];
+    size_t len = buildCapabilitiesPacket(source, packet, sizeof(packet));
+    if (len == 0) {
+        ESP_LOGW(TAG, "?IGATE? query not answered - no IGate callsign configured, or the line did not fit");
+        return;
+    }
+
+    txPacket(packet, len, source);
     ESP_LOGI(TAG, "?IGATE? query answered: %s", packet);
 }
 
@@ -897,6 +921,63 @@ static void runRequest(const query_request_t *req) {
         default:
             return;
     }
+}
+
+// Monotonic second at which the periodic capabilities beacon is next due. 0
+// means "due now", which is also what disabling the beacon resets it to, so
+// re-enabling transmits one straight away rather than after a full interval of
+// silence.
+static int64_t s_cap_next_due = 0;
+
+uint32_t query_capabilities_service(void) {
+    bool enabled;
+    uint32_t interval;
+    bool toRf, toInet;
+
+    app_config_lock();
+    enabled = g_config.query_cap_beacon_en && g_config.igate_en;
+    interval = g_config.query_cap_interval_sec;
+    toRf = g_config.query_cap_rf;
+    toInet = g_config.query_cap_inet;
+    app_config_unlock();
+
+    if (!enabled || (!toRf && !toInet)) {
+        s_cap_next_due = 0;
+        return QUERY_CAP_IDLE_RECHECK_S;
+    }
+
+    int64_t now = sched_mono_seconds();
+    if (now >= s_cap_next_due) {
+        // One packet per leg: the path differs between them, so the line an
+        // APRS-IS reader sees carries the TCPIP suffix while the RF one
+        // carries the digipeater path, exactly as the query answer does.
+        char packet[APRS_TNC2_BUF_SIZE];
+        if (toRf) {
+            size_t len = buildCapabilitiesPacket(QUERY_SRC_RF, packet, sizeof(packet));
+            if (len > 0) {
+                txPacket(packet, len, QUERY_SRC_RF);
+                ESP_LOGI(TAG, "Capabilities beacon (RF): %s", packet);
+            } else {
+                ESP_LOGW(TAG, "Capabilities beacon not sent on RF - no IGate callsign configured, or the line did not fit");
+            }
+        }
+        if (toInet) {
+            size_t len = buildCapabilitiesPacket(QUERY_SRC_INET, packet, sizeof(packet));
+            if (len > 0) {
+                txPacket(packet, len, QUERY_SRC_INET);
+                ESP_LOGI(TAG, "Capabilities beacon (INET): %s", packet);
+            } else {
+                ESP_LOGW(TAG, "Capabilities beacon not sent to APRS-IS - no IGate callsign configured, or the line did not fit");
+            }
+        }
+
+        s_cap_next_due = now + (int64_t)beacon_scheduler_jitter(sched_clamp_interval(interval, QUERY_CAP_INTERVAL_S_MIN, QUERY_CAP_INTERVAL_S_DEFAULT));
+    }
+
+    int64_t rem = s_cap_next_due - now;
+    if (rem < 1)
+        rem = 1;
+    return (uint32_t)rem;
 }
 
 void query_service(void) {

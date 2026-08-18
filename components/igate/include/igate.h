@@ -101,6 +101,10 @@ typedef enum {
     DROP_MSG_ADDRESSEE_HOPS,  /**< INET->RF message whose addressee was heard on RF inside the window, but only over more used digipeater addresses than
                                  g_config.igate_msg_max_hops allows: audible from here, yet beyond the reach of a transmission that carries this station's own
                                  IGate path. */
+    DROP_MSG_BROADCAST,       /**< INET->RF message addressed to a broadcast addressee - a general bulletin or announcement ("BLNn", "BLNa", with or without a
+                                 group name) or one of the weather service families ("NWS-xxxxx", "SKY...", "CWA...") - which is never gated onto RF. Applied
+                                 unconditionally, independently of g_config.igate_msg_gate_en and g_config.inet2rfFilter, on the same terms as
+                                 ::DROP_GENERIC_QUERY. */
     DROP_MSG_SENDER_LOCAL,    /**< INET->RF message whose sender was itself heard on RF inside the same window: both ends of the conversation are local, so the
                                  original transmission was already on the air and gating the copy back would echo it. */
     DROP_HEADER_FORBIDS_RF,   /**< INET->RF line whose header carries TCPXX, NOGATE, RFONLY, qAX or qAZ - tokens/q-constructs whose whole purpose is to forbid

@@ -154,13 +154,13 @@ Estensioni dati (cap. 7)
      - Selezionabile come estensione dati, con l'intensità in punti S più gli stessi codici di altezza, guadagno e direttività usati da PHG.
    * - Rilevamento e numero/portata/qualità (BRG/NRQ)
      - ✅
-     - Disponibile su oggetti e item, nella forma ``000/000`` richiesta dalla specifica.
+     - Disponibile su oggetti e item e sul beacon di posizione della stazione stessa, nella forma ``000/000`` richiesta dalla specifica per un rapporto privo di rotta e velocità. Entrambi costruiscono il token con un unico codificatore condiviso.
    * - Estensioni dati in ricezione
      - ✅
      - Lo slot da 7 byte di un rapporto non compresso in arrivo viene analizzato invece di essere letto come i primi sette caratteri del commento: ``PHGphgd`` e la sua forma PHGR da nove byte, ``RNGrrrr``, ``DFSshgd`` e ``CSE/SPD``, riportata come direzione e velocità del vento quando il simbolo è una stazione meteo. Il commento viene poi preso dal primo byte successivo al token trovato, così la forma da nove byte non lascia più un carattere di frequenza e una barra spaiati in testa.
    * - Descrittore di oggetto area
      - ✅
-     - Codifica completa di forma, colore e dimensione, inclusa la regola che sostituisce la barra con una cifra per valori di colore da dieci in su.
+     - Codifica completa di forma, colore e dimensione, inclusa la regola che sostituisce la barra con una cifra per valori di colore da dieci in su. I due codici di dimensione usano la scala corretta di 1500-esimi di grado e non i centesimi del testo originale.
 
 Formati dei rapporti di posizione e DF (cap. 8)
 ===============================================
@@ -175,12 +175,15 @@ Formati dei rapporti di posizione e DF (cap. 8)
    * - Tutti e quattro gli identificatori di tipo dato di posizione
      - ✅
      - In trasmissione e ricezione. La scelta fra gli identificatori con e senza capacità di messaggistica segue l'impostazione reale di messaggistica della stazione, non il fatto che ci sia o meno una marca temporale.
+   * - Identificatore ``!`` tardivo (eccezione X1J)
+     - ✅
+     - Una posizione senza marca temporale introdotta da un ``!`` in qualunque punto fino alla posizione di carattere 40, che è quanto il capitolo consente per le trame a cui un digipeater X1J ha anteposto testo fisso, viene classificata e decodificata da quello scostamento. La scansione richiede un campo di posizione completo e ben formato prima di accettarne uno, così un ``!`` dentro il testo di un commento non viene scambiato per un identificatore; il traffico di terzi e i dati di prova ne sono esclusi, così la posizione interna di un pacchetto ritrasmesso non può essere nuovamente gateata.
    * - Campo commento
      - ✅
      - Presente in ogni posizione originata, con il blocco di frequenza, ``!DAO!`` e la telemetria nel commento che riservano i loro byte prima che il testo libero riempia il campo, così un commento lungo viene troncato invece di far cadere un'estensione.
    * - Formato del rapporto DF
-     - ⚠️
-     - I campi di rilevamento e NRQ sono prodotti su oggetti e item, che copre il riportare un rilevamento su un'altra stazione. Non esiste un ruolo di rapporto DF dedicato per il beacon della stazione stessa.
+     - ✅
+     - Selezionabile come estensione dati del beacon di posizione della stazione stessa, che è la forma descritta dal capitolo per una stazione di radiogoniometria, oltre che su oggetti e item per un rilevamento preso su un'altra stazione. Sceglierlo sopprime il formato compresso, che non ha spazio per l'estensione, e lo dichiara nel log invece di scartare in silenzio una delle due impostazioni.
 
 Rapporti di posizione compressi (cap. 9)
 ========================================
@@ -264,7 +267,7 @@ Rapporti di oggetto e item (cap. 11)
      - Viene emessa la pseudo-marca temporale fissa di tutti uno per un oggetto contrassegnato come permanente, che è ciò che serve a un oggetto fisso di ripetitore o punto di riferimento.
    * - Oggetti di area
      - ✅
-     - Forma, colore, spessore della linea e dimensione, sugli stessi slot di oggetto.
+     - Forma, colore e dimensione sugli stessi slot di oggetto, con le forme a linea in grado di dichiarare una larghezza di corridoio in miglia come token tra parentesi graffe in testa al commento.
    * - Oggetti e item segnaletici
      - ✅
      - Fino a tre caratteri di testo del cartello fra graffe, sul simbolo apposito.
@@ -317,7 +320,7 @@ Rapporti meteorologici (cap. 12)
      - Riconosciuti come meteo dal classificatore di gateway, quindi vengono instradati correttamente, ma i payload grezzi non sono mai decodificati in letture. La specifica dice comunque che chi trasmette dovrebbe convertire al formato completo, quindi si tratta di ampiezza in ricezione e non di una lacuna in trasmissione.
    * - Dati di tempesta
      - ❌
-     - Il modello dati per i rapporti di ciclone tropicale esiste negli header, ma nulla codifica o decodifica la forma in onda. Una stazione di questo tipo non ha da dove ricavare quell'informazione — viene dai servizi meteo — quindi ritrasmettere tali pacchetti intatti, come accade oggi, è il comportamento sensato.
+     - Nulla codifica o decodifica la forma in onda. Una stazione di questo tipo non ha da dove ricavare quell'informazione — viene dai servizi meteo — quindi ritrasmettere tali pacchetti intatti, come accade oggi, è il comportamento sensato.
 
 Dati di telemetria (cap. 13)
 ============================
@@ -381,7 +384,7 @@ Messaggi, bollettini e annunci (cap. 14)
      - I bollettini escono a intervallo fisso con un tempo di scadenza. La specifica raccomanda invece una cadenza decrescente — frequente all'inizio e poi diradata nell'arco di ore — che carica meno un canale condiviso a parità di effetto.
    * - Bollettini del servizio meteorologico nazionale
      - ❌
-     - I bollettini indirizzati ai prefissi del servizio meteorologico sono gestiti come messaggi ordinari invece di essere riconosciuti come classe a sé. Vengono ritrasmessi correttamente e mai confermati, perché il destinatario non è questa stazione, quindi l'effetto pratico si limita a come vengono etichettati nell'interfaccia.
+     - Il loro contenuto non viene analizzato: un bollettino del servizio meteorologico è gestito come il messaggio ordinario che è sul filo, ritrasmesso correttamente e mai confermato, perché il destinatario non è questa stazione. La famiglia di destinatari è invece riconosciuta in un punto — il gateway INET → RF, che non mette mai in onda un bollettino o una diffusione del servizio meteorologico — quindi ciò che resta è come tale avviso viene etichettato nell'interfaccia.
    * - Radiogrammi NTS
      - ❌
      - La convenzione dei prefissi di riga non viene analizzata. La specifica dice esplicitamente che un'applicazione non deve necessariamente comprenderla, perché le righe sono messaggi ordinari e si leggono correttamente come testo semplice, che è ciò che accade qui.
@@ -406,8 +409,8 @@ Capacità di stazione, interrogazioni e risposte (cap. 15)
      - ✅
      - L'istogramma di otto ore richiesto dalla specifica, tenuto per stazione e trasportato con essa quando la sua riga si sposta in cima alla tabella.
    * - Pacchetto delle capacità di stazione
-     - ⚠️
-     - Inviato in risposta all'interrogazione IGate con il token di gateway e i contatori di messaggi e di stazioni locali, dove i contatori significano ciò che dice la specifica e non totali grezzi di trame. Il modello delle capacità è aperto, quindi la stazione potrebbe anche annunciare i suoi ruoli di digipeater, meteo e telemetria; non lo fa.
+     - ✅
+     - Inviato in risposta all'interrogazione IGate e, quando l'operatore lo abilita, con un temporizzatore proprio, così un vicino scopre che il gateway esiste senza chiedere. Entrambi portano la stessa riga, con il token di gateway, i contatori di messaggi e di stazioni locali — che significano ciò che dice la specifica e non totali grezzi di trame — e gli eventuali elementi aggiuntivi digitati dall'operatore, perché il modello delle capacità è aperto.
 
 Rapporti di stato (cap. 16)
 ===========================

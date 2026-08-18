@@ -115,10 +115,10 @@ attivare la radio, mentre tutti gli altri chiamanti (RX/digipeat, INET→RF, TX 
 messaggi) mantengono il comportamento non bloccante di scarta-se-pieno e un ramo
 RF occupato non ferma mai la decodifica RX né il socket APRS-IS.
 
-Estensioni dati (PHG / RNG / DFS)
-=================================
+Estensioni dati (PHG / RNG / DFS / DF)
+======================================
 
-Il beacon di posizione dell'IGate può portare una delle tre estensioni dati APRS
+Il beacon di posizione dell'IGate può portare una delle estensioni dati APRS
 da stazione fissa nello slot di 7 byte che segue il codice del simbolo — lo
 stesso slot che una stazione in movimento usa per rotta e velocità, ed è per
 questo che ne viene emessa sempre una sola. *Abilita estensione dati* nella
@@ -149,19 +149,38 @@ riempie:
        punti S invece della potenza trasmessa. Un'intensità di 0 significa che
        questa stazione **non** riceve il segnale, e il software di tracciamento
        lo rappresenta come un cerchio di esclusione anziché di copertura.
+   * - DF
+     - ``000/000/270/735``
+     - Il rapporto DF del cap.16 di APRS101: il rilevamento verso un segnale,
+       seguito dalla terna NRQ che lo qualifica — rilevazioni per periodo di
+       campionamento (``N``, dove 0 dichiara che la terna non ha significato), il
+       codice di portata (``R``, che vale 2\ :sup:`R` miglia) e la precisione del
+       rilevamento (``Q``, dove 9 è meglio di un grado). È la forma che il
+       capitolo descrive per una stazione di radiogoniometria che riporta il
+       proprio rilevamento. Questi beacon sono di stazione fissa e non hanno una
+       sorgente di rotta e velocità, quindi la coppia iniziale è il ``000/000``
+       che la specifica usa per dichiararlo. Lo stesso codificatore costruisce il
+       token per oggetti e item, dove riporta un rilevamento preso su un'altra
+       stazione.
 
 PHG usa tutti e quattro i sottocampi, DFS tutti tranne la potenza di
-trasmissione, e RNG nessuno; la pagina disabilita gli input che il tipo
-selezionato non usa. Poiché un controllo disabilitato non viene inviato nel
-POST, i valori memorizzati dell'*altro* tipo sopravvivono al passaggio avanti e
-indietro.
+trasmissione, e RNG e DF nessuno — DF ha invece i propri input di rilevamento e
+NRQ; la pagina disabilita gli input che il tipo selezionato non usa. Poiché un
+controllo disabilitato non viene inviato nel POST, i valori memorizzati degli
+*altri* tipi sopravvivono al passaggio avanti e indietro.
 
-Abilitare PHG o DFS forza il formato di posizione non compresso. Il formato
+Abilitare PHG, DFS o DF forza il formato di posizione non compresso. Il formato
 compresso non ha spazio per lo slot di 7 byte (APRS101 cap.9 afferma che non
-supporta il PHG), quindi emettere quei byte dentro un rapporto compresso sarebbe
-semplicemente un dato sbagliato, e scartare l'estensione per mantenere la
-compressione perderebbe in silenzio un campo che l'operatore ha abilitato
-esplicitamente.
+supporta il PHG), e un rapporto DF è più largo dello slot stesso, quindi emettere
+quei byte dentro un rapporto compresso sarebbe semplicemente un dato sbagliato, e
+scartare l'estensione per mantenere la compressione perderebbe un campo che
+l'operatore ha abilitato esplicitamente. Il firmware registra un warning che
+nomina quale delle due impostazioni ha ceduto, invece di lasciarlo scoprire in
+onda.
+
+L'ambiguità di posizione è un'altra cosa e viaggia con ciascuna di esse: azzera
+cifre decimali del formato non compresso, che mantiene il suo slot di estensione,
+quindi nessuna delle due impostazioni deve cedere all'altra.
 
 RNG è l'eccezione, perché il formato compresso porta nativamente una portata
 radio precalcolata: i due byte ``cs`` contengono ``{`` seguito da una cifra di

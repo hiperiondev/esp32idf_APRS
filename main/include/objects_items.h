@@ -122,6 +122,62 @@
 #define OBJITEM_SIGNPOST_MAX 3
 
 /**
+ * @name APRS Area Object descriptor (APRS101 chapter 11)
+ *
+ * An element whose symbol is the Area symbol (`\l`, alternate table) replaces
+ * the 7-byte data-extension slot with the descriptor `Tyy/Cxx`: `T` is the
+ * shape digit, `yy` and `xx` are the two size codes and the two bytes between
+ * them carry the colour. Colours 0..9 are written as `/C`; colours 10..15
+ * replace the slash with a `1` and write the units digit, which is why the
+ * field is a fixed seven bytes for every colour.
+ *
+ * The two size codes are the square root of the offset expressed in
+ * ::OBJITEM_AREA_OFFSET_SCALE-ths of a degree, so a receiver recovers the
+ * offset as `code * code / 1500` degrees. The offsets run from the shape's
+ * "offset reference" corner - the upper left corner of the shape, which is the
+ * position the report itself carries - to the lower right corner, or to the
+ * centre for a circle.
+ * @{
+ */
+
+/** @brief Highest area shape digit (`T`). */
+#define OBJITEM_AREA_TYPE_MAX 9
+
+/** @brief Area shape digit for a line drawn down and to the right. */
+#define OBJITEM_AREA_TYPE_LINE_DOWN_RIGHT 1
+
+/** @brief Area shape digit for a line drawn down and to the left. */
+#define OBJITEM_AREA_TYPE_LINE_DOWN_LEFT 6
+
+/** @brief Highest area colour code (`Cxx`), per the APRS101 colour table. */
+#define OBJITEM_AREA_COLOR_MAX 15
+
+/** @brief Highest value either two-digit area size code can hold. */
+#define OBJITEM_AREA_OFFSET_CODE_MAX 99
+
+/**
+ * @brief Scale factor between an area offset in degrees and its on-air code.
+ *
+ * `code = sqrt(degrees * 1500)`, so the code the receiver squares and divides
+ * by the same factor comes back as the original offset.
+ */
+#define OBJITEM_AREA_OFFSET_SCALE 1500.0
+
+/**
+ * @brief Largest area offset, in degrees, that the two-digit code can express
+ * (`99 * 99 / 1500`).
+ */
+#define OBJITEM_AREA_OFFSET_DEG_MAX 6.534f
+
+/**
+ * @brief Largest line corridor half-width, in miles, that fits the `{www}`
+ * comment token.
+ */
+#define OBJITEM_AREA_WIDTH_MAX 999
+
+/** @} */
+
+/**
  * @brief QRU group-membership name length.
  *
  * Mirrors YAAC's "QRU group membership" field: a short group tag (e.g. "HOSP",
@@ -157,12 +213,14 @@ typedef enum {
  * @brief One configured APRS Object or Item.
  *
  * Field order groups the three request-mandated checks first, then identity,
- * then the YAAC-derived on-air parameters. Packed layout is deliberately
- * compact (see objects_items.c static_assert) to keep the on-demand load
- * buffer small.
+ * then the YAAC-derived on-air parameters. The layout is deliberately compact
+ * to keep the on-demand load buffer small.
  *
  * @details Optional on-air blocks are emitted only for the matching symbol:
- * the Area block (@c area_*) for the Area symbol ('\\','l'); the Signpost text
+ * the Area descriptor (@c area_type / @c area_color / @c area_lat_off /
+ * @c area_lon_off) for the Area symbol ('\\','l'), followed by the "{www}"
+ * corridor token (@c area_line_width) when the shape is one of the two lines;
+ * the Signpost text
  * (@c signpost) for the Signpost symbol ('\\','m'); and the repeater frequency
  * block (@c freq_mhz / @c offset_khz / @c duplex / @c tone_tenths / @c range /
  * @c range_km) for the Antenna/repeater symbols, emitted at the very start of
@@ -204,11 +262,13 @@ typedef struct {
 
     char comment[OBJITEM_COMMENT_MAX + 1]; /**< Free-text comment, appended last. */
 
-    uint8_t area_type;  /**< Area object type 0..9: 0=circle,1=line,2=ellipse,3=triangle,4=box; +5 = colour-filled variant. Emitted only for the Area symbol
-                           ('\\','l'); "Tyy/Cxx" replaces the CSE/SPD slot. */
-    uint8_t area_color; /**< APRS area colour 0..15 (Area symbol only). */
-    float area_lat_off; /**< Latitude corner offset in degrees (>=0); quantized to the APRS "yy" code at TX. */
-    float area_lon_off; /**< Longitude corner offset in degrees (>=0); quantized to the APRS "xx" code at TX. */
+    uint8_t area_type;        /**< Area shape digit, 0..::OBJITEM_AREA_TYPE_MAX: 0 = circle, 1 = line down/right, 2 = ellipse, 3 = triangle, 4 = box, 5 = filled
+                                 circle, 6 = line down/left, 7 = filled ellipse, 8 = filled triangle, 9 = filled box. Emitted only for the Area symbol
+                                 ('\\','l'), where "Tyy/Cxx" replaces the CSE/SPD slot. */
+    uint8_t area_color;       /**< APRS area colour, 0..::OBJITEM_AREA_COLOR_MAX (Area symbol only). */
+    float area_lat_off;       /**< Latitude offset to the shape's lower right corner, degrees (>=0); quantized to the APRS "yy" code at TX. */
+    float area_lon_off;       /**< Longitude offset to the shape's lower right corner, degrees (>=0); quantized to the APRS "xx" code at TX. */
+    uint16_t area_line_width; /**< Corridor half-width in miles, emitted as the "{www}" comment token for the two line shapes only; 0 => no corridor. */
 
     char signpost[OBJITEM_SIGNPOST_MAX + 1]; /**< Up to 3 chars of signpost text; emitted as "{TEXT}" for the Signpost symbol ('\\','m') only. */
 

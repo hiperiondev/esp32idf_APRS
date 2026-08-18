@@ -133,6 +133,35 @@ Poiché le risposte di posizione, stato e meteo riusano i costruttori di beacon
 esistenti, una risposta non può mai divergere da ciò che trasmettono i beacon
 periodici.
 
+Beacon periodico delle capacità
+===============================
+
+Il capitolo 15 consente a una stazione di inviare la riga delle capacità in
+qualsiasi momento, non solo quando viene interrogata, e molti gateway ne
+trasmettono uno perché i vicini sappiano che il gateway esiste senza doverlo
+chiedere. *Invia le capacità periodicamente* (``query_cap_beacon_en``) lo attiva;
+è disattivato per impostazione predefinita, e la riga viene comunque inviata in
+risposta a ``?IGATE?`` in entrambi i casi.
+
+Il beacon ha un intervallo proprio (``query_cap_interval_sec``, limitato
+all'intervallo ``QUERY_CAP_INTERVAL_S_MIN``..``QUERY_CAP_INTERVAL_S_MAX`` sia nel
+gestore POST sia nel lettore JSON) e una propria selezione di canale
+(``query_cap_rf`` / ``query_cap_inet``), invece di ereditare i due interruttori
+di sorgente: quelli dicono dove viene ascoltata una *domanda*, mentre questo
+attiva il trasmettitore con un temporizzatore proprio. Richiede inoltre
+``igate_en``, perché la riga annuncia un gateway.
+
+*Elementi di capacità aggiuntivi* (``query_cap_extra``) viene accodato ai due
+obbligatori, perché l'elenco delle capacità è aperto. Al testo vengono tolti CR,
+LF e i byte ``,`` e ``>`` che delimitano la riga stessa, nel gestore POST e di
+nuovo alla lettura della configurazione salvata, così un elemento digitato nel
+campo non può inventare un token né chiudere l'elenco in anticipo.
+
+Viene costruito un pacchetto per ogni tratta abilitata, perché il percorso
+differisce fra loro, ed entrambi provengono dallo stesso costruttore usato dalla
+risposta a ``?IGATE?``. La trasmissione gira sul task dello scheduler dei beacon,
+insieme agli altri originatori periodici.
+
 Query dirette
 =============
 

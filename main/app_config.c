@@ -253,6 +253,12 @@ void app_config_set_defaults(app_config_t *c) {
     c->igate_ext_type = APRS_EXT_PHG;
     c->igate_range_miles = 0;
     c->igate_dfs_strength = 0;
+    c->igate_df_bearing = 0;
+    // A DF report whose N digit is 0 states that the NRQ triplet carries no
+    // meaning, which is the honest reading until the operator enters one.
+    c->igate_df_nrq_n = 0;
+    c->igate_df_nrq_r = 0;
+    c->igate_df_nrq_q = 0;
     c->igate_freq_mhz = 0.0f;
     c->igate_tone_tenths = 0;
     c->igate_duplex = 0;
@@ -453,6 +459,13 @@ void app_config_set_defaults(app_config_t *c) {
     c->query_directed_en = true;
     c->query_ext_en = true;
     c->query_min_interval_sec = 30;
+    // Opt-in: a channel full of gateways all announcing themselves is exactly
+    // what the reply-only default avoids.
+    c->query_cap_beacon_en = false;
+    c->query_cap_interval_sec = QUERY_CAP_INTERVAL_S_DEFAULT;
+    c->query_cap_rf = true;
+    c->query_cap_inet = false;
+    c->query_cap_extra[0] = 0;
 }
 
 // ---- streaming JSON writer -----------------------------------------------
@@ -675,6 +688,10 @@ static void config_write_json(jw_t *d, const app_config_t *c) {
     jadd_num(d, "igateExtType", c->igate_ext_type);
     jadd_num(d, "igateRng", c->igate_range_miles);
     jadd_num(d, "igateDfsS", c->igate_dfs_strength);
+    jadd_num(d, "igateDfBrg", c->igate_df_bearing);
+    jadd_num(d, "igateDfN", c->igate_df_nrq_n);
+    jadd_num(d, "igateDfR", c->igate_df_nrq_r);
+    jadd_num(d, "igateDfQ", c->igate_df_nrq_q);
     jadd_num(d, "igateFreqMHz", c->igate_freq_mhz);
     jadd_num(d, "igateFreqTone", c->igate_tone_tenths);
     jadd_num(d, "igateFreqDup", c->igate_duplex);
@@ -814,6 +831,11 @@ static void config_write_json(jw_t *d, const app_config_t *c) {
     jadd_bool(d, "queryDirectedEn", c->query_directed_en);
     jadd_bool(d, "queryExtEn", c->query_ext_en);
     jadd_num(d, "queryMinInterval", c->query_min_interval_sec);
+    jadd_bool(d, "queryCapEn", c->query_cap_beacon_en);
+    jadd_num(d, "queryCapIntv", c->query_cap_interval_sec);
+    jadd_bool(d, "queryCapRf", c->query_cap_rf);
+    jadd_bool(d, "queryCapInet", c->query_cap_inet);
+    jadd_str(d, "queryCapExtra", c->query_cap_extra);
 
     fputc('}', d->f);
 }
@@ -826,6 +848,20 @@ static void config_write_json(jw_t *d, const app_config_t *c) {
 // position report, and the code decides which classifier the report lands in,
 // so a byte that arrived from a hand-edited config.json is folded back to the
 // default rather than beaconed.
+void app_config_query_cap_extra_sanitize(char *extra) {
+    if (extra == NULL)
+        return;
+
+    size_t w = 0;
+    for (size_t r = 0; extra[r] != 0; r++) {
+        char c = extra[r];
+        if (c == '\r' || c == '\n' || c == ',' || c == '>')
+            continue;
+        extra[w++] = c;
+    }
+    extra[w] = 0;
+}
+
 static void clamp_symbol(char *sym, const char *key) {
     if (!aprs_symbol_table_is_valid(sym[0])) {
         ESP_LOGW(TAG, "%s table identifier 0x%02X is not valid, using '%c'", key, (unsigned)(unsigned char)sym[0], APRS_SYMBOL_TABLE_DEFAULT);
@@ -836,6 +872,19 @@ static void clamp_symbol(char *sym, const char *key) {
         sym[1] = APRS_SYMBOL_CODE_DEFAULT;
     }
     sym[2] = 0;
+}
+
+// Bounds one stored DF report NRQ digit. N, R and Q are a single decimal
+// digit each on air, so a wider stored value would push the following bytes
+// of the extension out of position for every receiver.
+static uint8_t clamp_nrq_digit(double value, const char *key) {
+    int v = (int)value;
+    if (v < APRS_EXT_DF_NRQ_MIN || v > APRS_EXT_DF_NRQ_MAX) {
+        int clamped = (v < APRS_EXT_DF_NRQ_MIN) ? APRS_EXT_DF_NRQ_MIN : APRS_EXT_DF_NRQ_MAX;
+        ESP_LOGW(TAG, "%s %d out of range, clamped to %d", key, v, clamped);
+        v = clamped;
+    }
+    return (uint8_t)v;
 }
 
 static void config_from_json(cJSON *d, app_config_t *c) {
@@ -1103,7 +1152,7 @@ static void config_from_json(cJSON *d, app_config_t *c) {
     c->igate_phg_height = (uint16_t)jget_num(d, "igatePHGHeight", def.igate_phg_height);
     c->igate_phg_dir = (uint8_t)jget_num(d, "igatePHGDir", def.igate_phg_dir);
     c->igate_ext_type = (uint8_t)jget_num(d, "igateExtType", def.igate_ext_type);
-    if (c->igate_ext_type > APRS_EXT_DFS) {
+    if (c->igate_ext_type > APRS_EXT_DF) {
         ESP_LOGW(TAG, "igateExtType %u unknown, using PHG", (unsigned)c->igate_ext_type);
         c->igate_ext_type = APRS_EXT_PHG;
     }
@@ -1117,6 +1166,21 @@ static void config_from_json(cJSON *d, app_config_t *c) {
         ESP_LOGW(TAG, "igateDfsS %u out of range, clamped to %d", (unsigned)c->igate_dfs_strength, APRS_EXT_DFS_STRENGTH_MAX);
         c->igate_dfs_strength = APRS_EXT_DFS_STRENGTH_MAX;
     }
+    {
+        // The bearing wraps rather than clamps: 360 degrees and 0 degrees name
+        // the same direction, and the on-air field is three digits, so a value
+        // outside the range still has one correct reading.
+        int brg = (int)jget_num(d, "igateDfBrg", def.igate_df_bearing);
+        int wrapped = brg % 360;
+        if (wrapped < 0)
+            wrapped += 360;
+        if (wrapped != brg)
+            ESP_LOGW(TAG, "igateDfBrg %d out of range, wrapped to %d", brg, wrapped);
+        c->igate_df_bearing = (uint16_t)wrapped;
+    }
+    c->igate_df_nrq_n = clamp_nrq_digit(jget_num(d, "igateDfN", def.igate_df_nrq_n), "igateDfN");
+    c->igate_df_nrq_r = clamp_nrq_digit(jget_num(d, "igateDfR", def.igate_df_nrq_r), "igateDfR");
+    c->igate_df_nrq_q = clamp_nrq_digit(jget_num(d, "igateDfQ", def.igate_df_nrq_q), "igateDfQ");
     c->igate_freq_mhz = (float)jget_num(d, "igateFreqMHz", def.igate_freq_mhz);
     c->igate_tone_tenths = (uint16_t)jget_num(d, "igateFreqTone", def.igate_tone_tenths);
     c->igate_duplex = (int8_t)jget_num(d, "igateFreqDup", def.igate_duplex);
@@ -1325,6 +1389,20 @@ static void config_from_json(cJSON *d, app_config_t *c) {
     c->query_min_interval_sec = (uint16_t)jget_num(d, "queryMinInterval", def.query_min_interval_sec);
     if (c->query_min_interval_sec < 5) // floor: airtime/loop safety, matches the webconfig page's own clamp
         c->query_min_interval_sec = 5;
+    c->query_cap_beacon_en = jget_bool(d, "queryCapEn", def.query_cap_beacon_en);
+    {
+        int iv = (int)jget_num(d, "queryCapIntv", def.query_cap_interval_sec);
+        if (iv < QUERY_CAP_INTERVAL_S_MIN || iv > QUERY_CAP_INTERVAL_S_MAX) {
+            int clamped = (iv < QUERY_CAP_INTERVAL_S_MIN) ? QUERY_CAP_INTERVAL_S_MIN : QUERY_CAP_INTERVAL_S_MAX;
+            ESP_LOGW(TAG, "queryCapIntv %d out of range, clamped to %d", iv, clamped);
+            iv = clamped;
+        }
+        c->query_cap_interval_sec = (uint32_t)iv;
+    }
+    c->query_cap_rf = jget_bool(d, "queryCapRf", def.query_cap_rf);
+    c->query_cap_inet = jget_bool(d, "queryCapInet", def.query_cap_inet);
+    set_str_utf8(c->query_cap_extra, sizeof(c->query_cap_extra), jget_str(d, "queryCapExtra", def.query_cap_extra));
+    app_config_query_cap_extra_sanitize(c->query_cap_extra);
 }
 
 bool app_config_save(void) {

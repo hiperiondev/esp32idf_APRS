@@ -108,14 +108,14 @@ up, while every other caller (RX/digipeat, INET→RF, message TX) keeps the
 non-blocking drop-if-full behaviour and a busy RF leg never stalls RX decode or
 the APRS-IS socket.
 
-Data extensions (PHG / RNG / DFS)
-=================================
+Data extensions (PHG / RNG / DFS / DF)
+=====================================
 
-The IGate position beacon can carry one of the three fixed-station APRS data
+The IGate position beacon can carry one of the fixed-station APRS data
 extensions in the 7-byte slot that follows the symbol code — the same slot a
 moving station uses for course/speed, which is why exactly one of them is ever
 emitted. *Enable data extension* on the IGate page gates the slot, and
-*Extension type* picks which of the three fills it:
+*Extension type* picks which one fills it:
 
 .. list-table::
    :header-rows: 1
@@ -141,17 +141,36 @@ emitted. *Enable data extension* on the IGate page gates the slot, and
        transmitted power. A strength of 0 means this station does **not** hear
        the signal, which plotting software renders as an exclusion circle rather
        than a coverage circle.
+   * - DF
+     - ``000/000/270/735``
+     - The DF report of APRS101 ch.16: the bearing to a signal, followed by the
+       NRQ triplet that qualifies it — hits per sampling period (``N``, where 0
+       says the triplet carries no meaning), the range code (``R``, standing for
+       2\ :sup:`R` miles) and the bearing accuracy (``Q``, 9 being better than
+       one degree). It is the form the chapter describes for a
+       direction-finding station reporting its own fix. These beacons are fixed
+       stations with no course/speed source, so the leading pair is the
+       ``000/000`` the specification uses to say exactly that. The same encoder
+       builds the token for objects and items, where it reports a fix taken on
+       someone else.
 
-PHG uses all four sub-fields, DFS every one but transmit power, and RNG none of
-them; the page disables whichever inputs the selected type does not use. Since a
-disabled control does not POST, the stored values of the *other* type survive
-switching back and forth.
+PHG uses all four sub-fields, DFS every one but transmit power, and RNG and DF
+none of them — DF has its own bearing and NRQ inputs instead; the page disables
+whichever inputs the selected type does not use. Since a disabled control does
+not POST, the stored values of the *other* types survive switching back and
+forth.
 
-Enabling PHG or DFS forces the uncompressed position layout. The compressed
+Enabling PHG, DFS or DF forces the uncompressed position layout. The compressed
 format has no room for the 7-byte slot (APRS101 ch.9 states it does not support
-PHG), so emitting those bytes inside a compressed report would simply be wrong
-data, and dropping the extension to keep compression would silently lose a field
-the operator explicitly enabled.
+PHG), and a DF report is wider than the slot still, so emitting those bytes
+inside a compressed report would simply be wrong data, and dropping the
+extension to keep compression would lose a field the operator explicitly
+enabled. The firmware logs a warning naming which of the two settings gave way,
+rather than leaving it to be discovered off the air.
+
+Position ambiguity is a separate matter and travels with any of them: it blanks
+decimal digits of the uncompressed layout, which keeps its extension slot, so
+neither setting has to give way to the other.
 
 RNG is the exception, because the compressed format carries a pre-calculated
 radio range natively: the two ``cs`` bytes hold ``{`` followed by a range digit,

@@ -33,7 +33,8 @@
  * Net effect: five stacks (~61 KB total) become one (~14 KB), freeing ~46 KB of
  * internal heap on this no-PSRAM build.
  *
- * The same task also answers APRS queries (::query_service). A query answer is
+ * The same task also drives the periodic Station Capabilities beacon
+ * (::query_capabilities_service) and answers APRS queries (::query_service). A query answer is
  * a beacon: it runs the same builders and the same TNC2/AX.25 encode chain, so
  * it belongs on the stack sized for that tree rather than on the far smaller
  * radio RX and APRS-IS task stacks the queries themselves arrive on. Those

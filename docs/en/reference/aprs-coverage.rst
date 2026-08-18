@@ -152,13 +152,13 @@ Data extensions (ch. 7)
      - Selectable as the data extension, with the S-point strength plus the same height, gain and directivity codes PHG uses.
    * - Bearing and number/range/quality (BRG/NRQ)
      - ✅
-     - Available on objects and items, in the ``000/000`` form the specification requires.
+     - Available on objects and items and on the station's own position beacon, in the ``000/000`` form the specification requires for a report that carries no course and speed. Both build the token from one shared encoder.
    * - Data extensions on receive
      - ✅
      - The 7-byte slot of an incoming uncompressed report is parsed rather than read as the first seven characters of the comment: ``PHGphgd`` and its nine-byte PHGR form, ``RNGrrrr``, ``DFSshgd`` and ``CSE/SPD``, which is reported as wind direction and speed when the symbol is a weather station. The comment is then taken from the first byte past whichever token was found, so the nine-byte form no longer leaves a stray rate character and slash at its front.
    * - Area object descriptor
      - ✅
-     - Full shape, colour and size encoding, including the rule that replaces the slash with a digit for colour values of ten and above.
+     - Full shape, colour and size encoding, including the rule that replaces the slash with a digit for colour values of ten and above. The two size codes use the corrected scale of 1500ths of a degree rather than the hundredths the original text gave.
 
 Position and DF report formats (ch. 8)
 ======================================
@@ -173,12 +173,15 @@ Position and DF report formats (ch. 8)
    * - All four position data type identifiers
      - ✅
      - Transmit and receive. The choice between the messaging-capable and non-messaging identifiers follows the station's actual messaging setting rather than whether a timestamp happens to be present.
+   * - Late ``!`` identifier (X1J exception)
+     - ✅
+     - A position without timestamp introduced by a ``!`` anywhere up to character position 40, which is what the chapter allows for frames an X1J TNC digipeater has prefixed with fixed text, is classified and decoded from that offset. The scan requires a complete, well-formed position field before it accepts one, so a ``!`` inside ordinary comment text is not mistaken for an identifier; third-party and test payloads are excluded from it, so a relayed packet's inner position cannot be re-gated.
    * - Comment field
      - ✅
      - Carried on every originated position, with the frequency block, ``!DAO!`` and comment telemetry reserving their bytes before the free text is allowed to fill the field, so a long comment truncates instead of dropping an extension.
    * - DF report format
-     - ⚠️
-     - The bearing and NRQ fields are produced on objects and items, which covers reporting a fix on someone else. There is no dedicated DF report role for the station's own beacon.
+     - ✅
+     - Selectable as the data extension of the station's own position beacon, which is the form the chapter describes for a direction-finding station, as well as on objects and items for a fix taken on someone else. Selecting it suppresses the compressed layout, which has no room for the extension, and says so in the log rather than dropping one of the two settings quietly.
 
 Compressed position reports (ch. 9)
 ===================================
@@ -262,7 +265,7 @@ Object and item reports (ch. 11)
      - The fixed all-ones pseudo-timestamp is emitted for an object marked permanent, which is what a standing repeater or landmark object needs.
    * - Area objects
      - ✅
-     - Shape, colour, line width and size, on the same object slots.
+     - Shape, colour and size on the same object slots, with the line shapes able to declare a corridor width in miles as the braced token at the front of the comment.
    * - Signpost objects and items
      - ✅
      - Up to three characters of signpost text in braces, on the signpost symbol.
@@ -315,7 +318,7 @@ Weather reports (ch. 12)
      - Recognised as weather by the gating classifier so they route correctly, but the raw payloads are never decoded into readings. The specification says senders should convert to the complete format anyway, so this is receive-side breadth rather than a transmit gap.
    * - Storm data
      - ❌
-     - The data model for tropical cyclone reports exists in the headers, but nothing encodes or decodes the on-air form. A station of this kind has no source for that information — it comes from weather services — so relaying such packets untouched, which is what happens today, is the sensible behaviour.
+     - Nothing encodes or decodes the on-air form. A station of this kind has no source for that information — it comes from weather services — so relaying such packets untouched, which is what happens today, is the sensible behaviour.
 
 Telemetry data (ch. 13)
 =======================
@@ -379,7 +382,7 @@ Messages, bulletins and announcements (ch. 14)
      - Bulletins go out on a fixed interval with an expiry time. The specification recommends a decaying schedule instead — frequent at first, then tapering over hours — which puts less load on a shared channel for the same effect.
    * - National Weather Service bulletins
      - ❌
-     - Bulletins addressed to the weather service prefixes are handled as ordinary messages rather than recognised as a class of their own. They are relayed correctly and never acknowledged, because the addressee is not this station, so the practical effect is limited to how they are labelled in the UI.
+     - Their contents are not parsed: a weather service bulletin is handled as the ordinary message it is on the wire, relayed correctly and never acknowledged, because the addressee is not this station. The addressee family is recognised in one place — the INET → RF gate, which never puts a bulletin or a weather service broadcast on the air — so what is left is how such a notice is labelled in the UI.
    * - NTS radiograms
      - ❌
      - The line-prefix convention is not parsed. The specification explicitly says an application need not understand it, since the lines are ordinary messages and read correctly as plain text — which is what happens here.
@@ -404,8 +407,8 @@ Station capabilities, queries and responses (ch. 15)
      - ✅
      - The eight-hour histogram the specification asks for, kept per station and carried with the station when its row moves to the front of the table.
    * - Station capabilities packet
-     - ⚠️
-     - Sent in reply to the IGate query with the gateway token and the message and local-station counts, where the counts mean what the specification says rather than raw frame totals. The capability model is open-ended, so the station could also advertise its digipeater, weather and telemetry roles; it does not.
+     - ✅
+     - Sent in reply to the IGate query and, when the operator enables it, on a timer of its own, so a neighbour learns the gateway exists without asking. Both carry the same line, with the gateway token, the message and local-station counts - which mean what the specification says rather than raw frame totals - and any further tokens the operator typed, since the capability model is open-ended.
 
 Status reports (ch. 16)
 =======================

@@ -345,6 +345,18 @@
 /** Spanish text for the form label for the "query min interval" field or fieldset, rendered on the configuration forms. English: "Minimum seconds between
  * identical responses". */
 #define TR_F_QUERY_MIN_INTERVAL "Segundos mínimos entre respuestas idénticas"
+/** Spanish text for the form label for the "query cap section" field or fieldset, rendered on the configuration forms. English: "Station capabilities
+ * beacon". */
+#define TR_F_QUERY_CAP_SECTION "Baliza de capacidades de estación"
+/** Spanish text for the form label for the "query cap enable" field or fieldset, rendered on the configuration forms. English: "Send capabilities
+ * periodically". */
+#define TR_F_QUERY_CAP_ENABLE "Enviar capacidades periódicamente"
+/** Spanish text for the form label for the "query cap interval" field or fieldset, rendered on the configuration forms. English: "Capabilities beacon interval
+ * (s)". */
+#define TR_F_QUERY_CAP_INTERVAL "Intervalo de la baliza de capacidades (s)"
+/** Spanish text for the form label for the "query cap extra" field or fieldset, rendered on the configuration forms. English: "Additional capability
+ * tokens". */
+#define TR_F_QUERY_CAP_EXTRA "Elementos de capacidad adicionales"
 /** Spanish text for the form label for the "radio modem" field or fieldset, rendered on the configuration forms. English: "Radiomodem". */
 #define TR_F_RADIO_MODEM "Radiomódem"
 /** Spanish text for the form label for the "retry count" field or fieldset, rendered on the configuration forms. English: "Retry count". */
@@ -453,8 +465,9 @@
 #define TR_F_OBJITEM_AREA_SHAPE "Forma de área (símbolo \\l)"
 /** Spanish text for the form label for the "objitem shape circle" field or fieldset, rendered on the configuration forms. English: "Circle". */
 #define TR_F_OBJITEM_SHAPE_CIRCLE "Círculo"
-/** Spanish text for the form label for the "objitem shape line" field or fieldset, rendered on the configuration forms. English: "Line". */
-#define TR_F_OBJITEM_SHAPE_LINE "Línea"
+/** Spanish text for the form label for the "objitem shape line down right" field or fieldset, rendered on the configuration forms. English: "Line
+ * (down/right)". */
+#define TR_F_OBJITEM_SHAPE_LINE_DOWN_RIGHT "Línea (abajo/derecha)"
 /** Spanish text for the form label for the "objitem shape ellipse" field or fieldset, rendered on the configuration forms. English: "Ellipse". */
 #define TR_F_OBJITEM_SHAPE_ELLIPSE "Elipse"
 /** Spanish text for the form label for the "objitem shape triangle" field or fieldset, rendered on the configuration forms. English: "Triangle". */
@@ -471,6 +484,12 @@
 /** Spanish text for the form label for the "objitem area lon off" field or fieldset, rendered on the configuration forms. English: "Area longitude offset
  * (deg)". */
 #define TR_F_OBJITEM_AREA_LON_OFF "Desplaz. longitud del área (grados)"
+/** Spanish text for the form label for the "objitem shape line down left" field or fieldset, rendered on the configuration forms. English: "Line
+ * (down/left)". */
+#define TR_F_OBJITEM_SHAPE_LINE_DOWN_LEFT "Línea (abajo/izquierda)"
+/** Spanish text for the form label for the "objitem area width" field or fieldset, rendered on the configuration forms. English: "Line corridor width
+ * (miles, 0 = omit)". */
+#define TR_F_OBJITEM_AREA_WIDTH "Ancho del corredor de línea (millas, 0 = omitir)"
 /** Spanish text for the form label for the "objitem signpost" field or fieldset, rendered on the configuration forms. English: "Signpost text (\m symbol, 3
  * chars)". */
 #define TR_F_OBJITEM_SIGNPOST "Texto de señal (símbolo \\m, 3 caract.)"
@@ -1200,11 +1219,22 @@
 #define TR_EXT_RNG "RNG - alcance de radio precalculado"
 /** Spanish text for the data-extension label for dfs, rendered on the IGate page. English: "DFS - omni-DF signal strength". */
 #define TR_EXT_DFS "DFS - intensidad de senal omni-DF"
+/** Spanish text for the data-extension label for df, rendered on the IGate page. English: "DF - bearing and NRQ report". */
+#define TR_EXT_DF "DF - reporte de rumbo y NRQ"
 /** Spanish text for the form label for the "ext range mi" field or fieldset, rendered on the IGate page. English: "Radio range (miles)". */
 #define TR_F_EXT_RANGE_MI "Alcance de radio (millas)"
 /** Spanish text for the form label for the "ext dfs strength" field or fieldset, rendered on the IGate page. English: "Signal strength (S-points, 0 = not
  * heard)". */
 #define TR_F_EXT_DFS_STRENGTH "Intensidad de senal (puntos S, 0 = no se oye)"
+/** Spanish text for the form label for the "ext df bearing" field or fieldset, rendered on the IGate page. English: "Signal bearing (degrees)". */
+#define TR_F_EXT_DF_BEARING "Rumbo de la senal (grados)"
+/** Spanish text for the form label for the "ext df nrq n" field or fieldset, rendered on the IGate page. English: "Hits per period (N, 0 = NRQ not
+ * meaningful)". */
+#define TR_F_EXT_DF_NRQ_N "Deteccion por periodo (N, 0 = NRQ sin significado)"
+/** Spanish text for the form label for the "ext df nrq r" field or fieldset, rendered on the IGate page. English: "Range code (R, range = 2^R miles)". */
+#define TR_F_EXT_DF_NRQ_R "Codigo de alcance (R, alcance = 2^R millas)"
+/** Spanish text for the form label for the "ext df nrq q" field or fieldset, rendered on the IGate page. English: "Bearing accuracy (Q, 9 = best)". */
+#define TR_F_EXT_DF_NRQ_Q "Precision del rumbo (Q, 9 = mejor)"
 /** Spanish text for the form label for the "pos ambiguity" field or fieldset, rendered on the IGate page. English: "Position ambiguity". */
 #define TR_F_POS_AMBIGUITY "Ambiguedad de posicion"
 /** Spanish text for the position-ambiguity selector entry: none, rendered on the IGate page. English: "Full precision". */

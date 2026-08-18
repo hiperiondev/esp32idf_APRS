@@ -210,6 +210,8 @@ const char *igate_drop_reason_name(drop_reason_t reason) {
             return "msg: addressee not heard locally";
         case DROP_MSG_ADDRESSEE_HOPS:
             return "msg: addressee beyond hop limit";
+        case DROP_MSG_BROADCAST:
+            return "msg: bulletin/NWS broadcast";
         case DROP_MSG_SENDER_LOCAL:
             return "msg: sender heard on RF";
         case DROP_HEADER_FORBIDS_RF:

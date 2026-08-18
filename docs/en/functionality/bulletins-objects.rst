@@ -89,6 +89,37 @@ comment and is the compressed-position radio-range marker rather than a
 telemetry delimiter. The stored comment is unaffected; only the on-air
 rendering is filtered.
 
+Area objects
+------------
+
+An element whose symbol is the Area symbol (``\\l``, the lower-case letter L on
+the alternate table) draws a shape on the receiving map instead of a point.
+The 7-byte data-extension slot then carries the ``Tyy/Cxx`` descriptor of
+APRS101 chapter 11 rather than course/speed:
+
+* **shape** — one of the ten digits: circle, line down/right, ellipse,
+  triangle, box, and the colour-filled circle, line down/left, filled ellipse,
+  filled triangle and filled box that follow them,
+* **colour** — 0 to 15. Values of ten and above replace the slash with a ``1``
+  and write the units digit, so the field is a fixed seven bytes either way,
+* **latitude and longitude offsets** — the distance in degrees from the
+  reported position, which is the shape's upper left corner, to its lower
+  right corner (or to the centre, for a circle).
+
+Each offset is transmitted as a two-digit code, the square root of the offset
+expressed in 1500ths of a degree; a receiver recovers it as
+``code × code ÷ 1500``. The specification originally used a factor of 100 and
+was corrected to 1500 by ``aprs.org/aprs11/areaobjects.txt``, which is the
+scale current applications decode with. Two digits therefore reach 6.534
+degrees per axis, and both offset fields are clamped to that on save so the
+stored value and the transmitted shape always describe the same area.
+
+The two line shapes may also declare a **corridor**: a band of the given width
+in miles either side of the line, transmitted as a ``{www}`` token at the front
+of the comment text, exactly where the specification's own example places it.
+A width of zero omits the token, and the field is ignored for the eight closed
+shapes.
+
 Permanent objects
 ------------------
 

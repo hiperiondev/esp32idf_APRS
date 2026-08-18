@@ -34,6 +34,7 @@
 
 #include "app_config.h"
 #include "aprs_coord.h"
+#include "aprs_df.h"        // aprs_df_build_extension(), APRS_DF_EXT_BUF_SIZE
 #include "aprs_free_text.h" // aprs_free_text_build(), APRS_NO_ARCHIVE_PREFIX_LEN
 #include "aprs_path.h"      // APRS_PATH_TCPIP_SUFFIX
 #include "aprs_service.h"
@@ -232,6 +233,15 @@ static bool load_locked(objitems_t *out, bool *out_missing) {
             v = cJSON_GetObjectItem(o, "alon");
             if (cJSON_IsNumber(v) && v->valuedouble >= 0)
                 b->area_lon_off = (float)v->valuedouble;
+            v = cJSON_GetObjectItem(o, "awid");
+            if (cJSON_IsNumber(v)) {
+                int w = (int)v->valuedouble;
+                if (w < 0)
+                    w = 0;
+                if (w > OBJITEM_AREA_WIDTH_MAX)
+                    w = OBJITEM_AREA_WIDTH_MAX;
+                b->area_line_width = (uint16_t)w;
+            }
 
             // -- Signpost (YAAC "Signpost"). --
             v = cJSON_GetObjectItem(o, "sign");
@@ -402,6 +412,7 @@ static bool save_locked(const objitems_t *in) {
         fprintf(f, ",\"acol\":%u", (unsigned)b->area_color);
         fprintf(f, ",\"alat\":%.4f", (double)b->area_lat_off);
         fprintf(f, ",\"alon\":%.4f", (double)b->area_lon_off);
+        fprintf(f, ",\"awid\":%u", (unsigned)b->area_line_width);
         fputs(",\"sign\":", f);
         json_write_escaped(f, sign);
         fprintf(f, ",\"dfEn\":%s", b->df_enable ? "true" : "false");
@@ -521,18 +532,27 @@ static bool objitem_is_signpost(const objitem_t *b) {
 }
 
 // Encode an Area corner offset (degrees, >= 0) into the APRS 2-digit "yy"/"xx"
-// code. Per the APRS symbols spec the code is the square root of the offset
-// expressed in 1/100ths of a degree, so the on-air offset is (code^2)/100
-// degrees. Clamped to 00..99.
+// code. The code is the square root of the offset expressed in
+// OBJITEM_AREA_OFFSET_SCALE-ths of a degree, so a receiver recovers the offset
+// as (code * code) / 1500 degrees - the scale areaobjects.txt settled on and
+// the one every current application decodes with. Clamped to 00..99, which
+// caps the shape at OBJITEM_AREA_OFFSET_DEG_MAX degrees per axis.
 static unsigned area_offset_code(float deg) {
     if (deg <= 0.0f)
         return 0;
-    double code = sqrt((double)deg * 100.0);
+    double code = sqrt((double)deg * OBJITEM_AREA_OFFSET_SCALE);
     if (code < 0.0)
         code = 0.0;
-    if (code > 99.0)
-        code = 99.0;
+    if (code > (double)OBJITEM_AREA_OFFSET_CODE_MAX)
+        code = (double)OBJITEM_AREA_OFFSET_CODE_MAX;
     return (unsigned)(code + 0.5);
+}
+
+// True for the two Area shapes that are drawn as a line rather than a closed
+// figure. Only these carry the "{www}" corridor token, which states the width
+// in miles of the band either side of the line.
+static bool objitem_area_is_line(uint8_t type) {
+    return type == OBJITEM_AREA_TYPE_LINE_DOWN_RIGHT || type == OBJITEM_AREA_TYPE_LINE_DOWN_LEFT;
 }
 
 // Width, in bytes, of the frequency field itself. freqspec.txt defines it as
@@ -729,15 +749,16 @@ static void objitem_build_info_field(const objitem_t *b, bool live, char *out, s
     //                           will not be included"), optionally extended
     //                           to CSE/SPD/BRG/NRQ when df_enable is set
     //                           (APRS101 ch.16 DF report).
-    // Sized for the longest of these: "NNN/NNN/NNN/NNN" (DF report, 15 bytes)
-    // is now the longest, so ext[] is grown to fit it plus NUL.
-    char ext[16];
+    // Sized for the longest of these, which is the DF report: its own buffer
+    // size constant covers the "NNN/NNN/NNN/NNN" token plus NUL, and is wider
+    // than every other descriptor that shares the slot.
+    char ext[APRS_DF_EXT_BUF_SIZE];
     ext[0] = 0;
     bool isArea = objitem_is_area(b);
     bool isSignpost = objitem_is_signpost(b);
     if (isArea) {
-        unsigned t = b->area_type > 9 ? 9 : b->area_type;
-        unsigned color = b->area_color > 15 ? 15 : b->area_color;
+        unsigned t = b->area_type > OBJITEM_AREA_TYPE_MAX ? OBJITEM_AREA_TYPE_MAX : b->area_type;
+        unsigned color = b->area_color > OBJITEM_AREA_COLOR_MAX ? OBJITEM_AREA_COLOR_MAX : b->area_color;
         // Colours 0..9 use "/C"; 10..15 replace the '/' with '1' and C = C-10.
         char sep = color <= 9 ? '/' : '1';
         unsigned cdig = color <= 9 ? color : color - 10;
@@ -753,12 +774,10 @@ static void objitem_build_info_field(const objitem_t *b, bool live, char *out, s
             // DF report (APRS101 ch.16): CSE/SPD extended with /BRG/NRQ. BRG
             // is the 3-digit signal bearing; NRQ packs the antenna-type digit
             // (N), signal-strength digit (R) and bearing-accuracy digit (Q)
-            // into one 3-digit field.
-            unsigned brg = (unsigned)(b->df_bearing % 360);
-            unsigned n = b->df_nrq_n > 9 ? 9 : b->df_nrq_n;
-            unsigned r = b->df_nrq_r > 9 ? 9 : b->df_nrq_r;
-            unsigned q = b->df_nrq_q > 9 ? 9 : b->df_nrq_q;
-            snprintf(ext, sizeof(ext), "%03u/%03u/%03u/%u%u%u", crs, spd, brg, n, r, q);
+            // into one 3-digit field. Built by the shared encoder the
+            // own-station position beacon uses too (aprs_df.h).
+            aprs_bearing_nrq_t nrq = { .bearing_deg = b->df_bearing, .number = b->df_nrq_n, .range_code = b->df_nrq_r, .quality = b->df_nrq_q };
+            aprs_df_build_extension((uint16_t)crs, (uint16_t)spd, &nrq, ext, sizeof(ext));
         } else {
             snprintf(ext, sizeof(ext), "%03u/%03u", crs, spd);
         }
@@ -767,11 +786,8 @@ static void objitem_build_info_field(const objitem_t *b, bool live, char *out, s
         // the spec to carry the BRG/NRQ extension, so it is emitted as
         // "000/000" (APRS101 ch.16: course/speed of 000/000 with a DF
         // extension is valid and means "no course/speed data").
-        unsigned brg = (unsigned)(b->df_bearing % 360);
-        unsigned n = b->df_nrq_n > 9 ? 9 : b->df_nrq_n;
-        unsigned r = b->df_nrq_r > 9 ? 9 : b->df_nrq_r;
-        unsigned q = b->df_nrq_q > 9 ? 9 : b->df_nrq_q;
-        snprintf(ext, sizeof(ext), "000/000/%03u/%u%u%u", brg, n, r, q);
+        aprs_bearing_nrq_t nrq = { .bearing_deg = b->df_bearing, .number = b->df_nrq_n, .range_code = b->df_nrq_r, .quality = b->df_nrq_q };
+        aprs_df_build_extension(0, 0, &nrq, ext, sizeof(ext));
     } else if (b->phg_enable) {
         // PHG shares the 7-byte data-extension slot with CSE/SPD (they are
         // mutually exclusive), so it is emitted only for a normal symbol that
@@ -822,17 +838,31 @@ static void objitem_build_info_field(const objitem_t *b, bool live, char *out, s
     // with '|' and '~' filtered out since both are reserved for the base-91
     // comment telemetry group (APRS101 ch.13) and this comment sits right next
     // to whatever telemetry group the caller appends after it.
+    //
+    // An Area line shape puts its corridor width first, as "{www}" (miles
+    // either side of the line, APRS101 ch.11), so it sits where the example in
+    // the specification shows it: directly after the "Tyy/Cxx" descriptor and
+    // ahead of anything the operator typed.
+    char corridor[6];
+    corridor[0] = 0;
+    if (isArea && objitem_area_is_line(b->area_type) && b->area_line_width > 0) {
+        unsigned w = b->area_line_width > OBJITEM_AREA_WIDTH_MAX ? OBJITEM_AREA_WIDTH_MAX : b->area_line_width;
+        snprintf(corridor, sizeof(corridor), "{%u}", w);
+    }
+
     char freq[40];
     build_freq_block(b, freq, sizeof(freq));
     char comment[OBJITEM_COMMENT_MAX + 1];
     str_copy_strip_reserved(b->comment, comment, sizeof(comment));
-    char body[OBJITEM_COMMENT_MAX + sizeof(freq) + 2];
-    if (freq[0] && comment[0])
-        snprintf(body, sizeof(body), "%s %s", freq, comment);
-    else if (freq[0])
-        snprintf(body, sizeof(body), "%s", freq);
-    else
-        snprintf(body, sizeof(body), "%s", comment);
+    char body[OBJITEM_COMMENT_MAX + sizeof(freq) + sizeof(corridor) + 2];
+    size_t used = 0;
+    body[0] = 0;
+    if (corridor[0])
+        str_append(body, sizeof(body), &used, "%s", corridor);
+    if (freq[0])
+        str_append(body, sizeof(body), &used, "%s%s", used ? " " : "", freq);
+    if (comment[0])
+        str_append(body, sizeof(body), &used, "%s%s", used ? " " : "", comment);
 
     // The station-wide no-archive marker leads the whole free-text field, so a
     // repeater object announces "!x! 146.520MHz ..." rather than burying the

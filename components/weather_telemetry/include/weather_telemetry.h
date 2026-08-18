@@ -272,41 +272,6 @@ typedef struct {
 } aprs_bearing_nrq_t;
 
 /**
- * @brief Area Object Descriptor data extension: "Tyy/Cxx" (7 bytes),
- *        used with Object reports to describe circles, lines, ellipses,
- *        triangles, boxes, etc. (APRS101 Chapter 11).
- */
-typedef enum {
-    APRS_AREA_TYPE_CIRCLE = 1,                   /**< Open circle centred on the Object position, radius taken from the {www} width field. */
-    APRS_AREA_TYPE_LINE = 2,                     /**< Open line drawn through the Object position. */
-    APRS_AREA_TYPE_TRIANGLE = 6,                 /**< Open triangle centred on the Object position. */
-    APRS_AREA_TYPE_BOX_FILLED_RECT_TRIANGLE = 3, /**< Filled variants offset by +3/+6 per spec table; application decodes per full table. */
-    APRS_AREA_TYPE_RECTANGLE = 5                 /**< Open rectangle (box) centred on the Object position. */
-} aprs_area_object_type_t;
-
-/**
- * @brief One APRS Area Object overlay (APRS101 Chapter 12).
- *
- * An Area Object draws a geometric shape on the receiving map instead of a
- * single point symbol: the Object's own position gives the centre (or, for a
- * line, a point on it), and the fields below give the shape, its size and how
- * it is filled. On air the whole descriptor is a fixed-width token of the form
- * @c {TCcxxyyywww} appended to the Object's data extension, where @c T is the
- * shape code, @c Cc the colour, @c xx / @c yyy the offsets and @c www the
- * width.
- *
- * Sizes are expressed in the units defined by the specification rather than in
- * metres, so a decoder must scale them against the map projection before
- * drawing. A shape whose code is one of the filled variants is drawn solid in
- * the given colour; the open variants are outlines only.
- */
-typedef struct {
-    aprs_area_object_type_t type; /**< T: shape type code. */
-    uint8_t color_code;           /**< Cxx: fill color code (0-15, per APRS101 area color table). */
-    uint16_t line_width_miles;    /**< Optional {www} line/box width in miles, embedded in comment text for WATCH/WARNING boxes (WX.TXT). */
-} aprs_area_object_t;
-
-/**
  * @brief Wind Direction and Speed data extension used specifically in
  *        Weather Reports: "DIR/SPDgXXX" (course/speed 7 bytes + gust).
  */
@@ -395,10 +360,11 @@ typedef enum { APRS_SW_TYPE_DOS = 'd', APRS_SW_TYPE_MAC = 'm', APRS_SW_TYPE_WIND
  *       depth other than flood gauges, air quality, lightning strikes,
  *       etc.) are commonly carried either as free-text in the comment
  *       field, or - more robustly - via the generic APRS Telemetry
- *       channels (see Section 6). This header exposes an explicit
- *       "extended sensor" array (::aprs_weather_extended_sensor_t) for
- *       exactly that purpose, so that no measurable physical quantity is
- *       left unrepresentable.
+ *       channels (see Section 6). That is the route this firmware takes:
+ *       a quantity with no reserved weather token is mapped to a
+ *       telemetry analog channel, with its name and unit supplied by the
+ *       PARM/UNIT definition messages, so no measurable physical
+ *       quantity is left unrepresentable.
  */
 
 /**
@@ -490,96 +456,6 @@ typedef struct {
 
     char raw_comment[APRS_MAX_COMMENT_LEN + 1]; /**< Any free-text remainder of the comment field, verbatim. */
 } aprs_weather_report_t;
-
-/**
- * @brief Generic key/value slot for weather-adjacent sensor quantities
- *        that have no reserved on-air token in APRS101/WX.TXT, but which
- *        real-world CWOP (Citizen Weather Observer Program) gateways and
- *        modern IoT weather stations commonly report - either appended
- *        as free text in the comment field, or (recommended) via the
- *        Telemetry channels of Section 6.
- *
- * @note  This structure exists purely as an application-level convenience
- *        container; it has no fixed on-air representation of its own.
- */
-typedef enum {
-    APRS_EXT_SENSOR_UV_INDEX,            /**< Ultraviolet index (dimensionless, typically 0-11+). Non-standard. */
-    APRS_EXT_SENSOR_SOLAR_RADIATION_WM2, /**< Solar radiation, W/m^2, when distinct from the standard "L"/"l" luminosity token. Non-standard. */
-    APRS_EXT_SENSOR_INDOOR_TEMP_F,       /**< Indoor temperature, degrees F. Non-standard. */
-    APRS_EXT_SENSOR_INDOOR_HUMIDITY_PCT, /**< Indoor relative humidity, percent. Non-standard. */
-    APRS_EXT_SENSOR_SOIL_TEMP_F,         /**< Soil temperature, degrees F. Non-standard. */
-    APRS_EXT_SENSOR_SOIL_MOISTURE_PCT,   /**< Soil moisture, percent. Non-standard. */
-    APRS_EXT_SENSOR_WATER_TEMP_F,        /**< Water temperature (lake/river/sea buoy), degrees F. Non-standard. */
-    APRS_EXT_SENSOR_WIND_CHILL_F,        /**< Computed wind chill, degrees F. Non-standard (usually derived, not transmitted). */
-    APRS_EXT_SENSOR_HEAT_INDEX_F,        /**< Computed heat index, degrees F. Non-standard (usually derived, not transmitted). */
-    APRS_EXT_SENSOR_DEW_POINT_F,         /**< Computed dew point, degrees F. Non-standard (usually derived, not transmitted). */
-    APRS_EXT_SENSOR_BATTERY_VOLTAGE,     /**< Station power-supply / battery voltage, volts. Typically sent as a Telemetry analog channel. */
-    APRS_EXT_SENSOR_RADIATION_CPM,       /**< Ionizing radiation, counts per minute (Geiger payloads). Non-standard, typically sent via Telemetry. */
-    APRS_EXT_SENSOR_CO2_PPM,             /**< Carbon dioxide concentration, ppm. Non-standard, typically sent via Telemetry. */
-    APRS_EXT_SENSOR_CUSTOM               /**< Vendor/application-defined; see custom_label. */
-} aprs_extended_sensor_kind_t;
-
-/**
- * @brief One reading from a sensor outside the standard APRS weather set.
- *
- * The APRS weather format has a fixed vocabulary of quantities; anything else
- * a station measures - soil moisture, battery voltage, a gas concentration, a
- * particle count - has no reserved token and is normally carried as a
- * telemetry analog channel with a project-defined name and unit instead. This
- * structure is the neutral carrier for such a reading: the @c kind field
- * selects one of the recognised extra quantities, or ::APRS_EXT_SENSOR_CUSTOM
- * for anything else, in which case @c custom_label names it.
- *
- * Because these readings have no standard on-air encoding, storing one here
- * does not by itself put anything on the air; it is the caller's decision
- * which telemetry channel, if any, the value is routed to.
- */
-typedef struct {
-    aprs_extended_sensor_kind_t kind; /**< Which physical quantity this slot represents. */
-    char custom_label[APRS_TELEMETRY_PARAM_NAME_MAXLEN +
-                      1]; /**< Human-readable label, used verbatim when kind == APRS_EXT_SENSOR_CUSTOM or to override the default label. */
-    double value;         /**< Decoded engineering-unit value. */
-    char unit[16];        /**< Free-text unit string (e.g. "V", "ppm", "CPM", "degF"). */
-} aprs_weather_extended_sensor_t;
-
-/**
- * @brief Peet Bros Ultimeter II raw serial passthrough packet, as
- *        directly retransmitted on-air by remote (TNC + radio only, no
- *        PC) stations using DTI '#' or '*' (APRS101 DTI table; WX.TXT
- *        "REMOTE ULTIMETER OPERATION" / "DATA LOGGER MODE").
- *        Fixed 14-byte record beginning with '*' or '#'.
- */
-typedef struct {
-    uint16_t wind_speed_raw;     /**< Raw wind speed counter (peak gust since last transmission), instrument units. */
-    uint16_t wind_direction_raw; /**< Raw wind direction, instrument units (0-255 representing 0-360 degrees). */
-    int16_t outdoor_temp_raw;    /**< Raw outdoor temperature, tenths of a degree F, instrument units. */
-    uint16_t rain_counter_raw;   /**< Raw rain tip-bucket counter, un-reset. */
-    uint16_t barometer_raw;      /**< Raw barometric pressure, instrument units. */
-    bool units_are_mph;          /**< true if the unit outputs in MPH (marked with '*'); false if KPH (marked with '#'). */
-} aprs_peet_ultimeter_ii_raw_t;
-
-/**
- * @brief Peet Bros Ultimeter 2000/500/2000+ "$ULTW" raw hexadecimal
- *        packet-mode sentence (WX.TXT "PACKET MODE"), 44/48/52 bytes of
- *        ASCII-hex fields, transmitted once every 5 minutes.
- *        Every field below is one raw hex sub-field of the $ULTW record,
- *        stored already converted from ASCII-hex to its native integer
- *        instrument units (application must still apply the appropriate
- *        engineering scale factor, which is instrument-firmware
- *        specific and is not standardized by APRS).
- */
-typedef struct {
-    uint16_t wind_gust_speed_raw;       /**< Peak wind speed since last transmission. */
-    uint16_t wind_gust_direction_raw;   /**< Direction of peak wind gust. */
-    int16_t outdoor_temp_raw;           /**< Outdoor temperature, tenths of degree F. */
-    uint16_t rain_since_midnight_raw;   /**< Total rain since local midnight, instrument units (0.01 in resolution typical). */
-    uint16_t barometer_raw;             /**< Barometric pressure, instrument units (0.1 mbar resolution typical). */
-    int16_t indoor_temp_raw;            /**< Indoor temperature, tenths of degree F. */
-    uint8_t outdoor_humidity_raw;       /**< Outdoor relative humidity, tenths of a percent. */
-    uint8_t indoor_humidity_raw;        /**< Indoor relative humidity, tenths of a percent. */
-    uint16_t rain_today_raw;            /**< Rain today, alternate accumulator, instrument units. */
-    uint16_t one_minute_wind_speed_raw; /**< Average wind speed, once-per-minute sample, instrument units. */
-} aprs_ultimeter_ultw_raw_t;
 
 /**
  * @brief Number of analog telemetry channels defined by APRS101 (5, A1-A5).
@@ -842,40 +718,6 @@ typedef struct {
     char project_title[APRS_TELEMETRY_PARAM_NAME_MAXLEN + 1]; /**< Free-text project/title name, up to 24 characters, used to title the telemetry display. */
 } aprs_telemetry_metadata_t;
 
-/** @brief Classification of a tropical cyclone, per WX.TXT storm data format. */
-typedef enum {
-    APRS_STORM_TYPE_TROPICAL_DEPRESSION, /**< "TD": sustained winds < 34 kt. Plotted blue. */
-    APRS_STORM_TYPE_TROPICAL_STORM,      /**< "TS": sustained winds 34-63 kt. Plotted yellow. */
-    APRS_STORM_TYPE_HURRICANE            /**< "HC": sustained winds >= 64 kt. Plotted red. */
-} aprs_storm_type_t;
-
-/**
- * @brief Decoded Storm Data, appended in the comment field of a Position
- *        or Object report to plot a tropical cyclone's predicted track
- *        and wind-radius circles.
- *
- * On-air layout: `DDHHMM/LAT/LONG@CSE/SPD/TS/www^GGG/ppp>RRR&rrr`
- *
- * @note This firmware neither encodes nor decodes this format: the structure
- *       documents the on-air layout and nothing else. Cyclone data comes from
- *       a weather service, not from a sensor, so a station of this kind has no
- *       source for it; a report that arrives carrying one is classified as the
- *       position or object report it is and relayed with its comment field
- *       untouched, which is what a receiver that does plot the track needs.
- */
-typedef struct {
-    aprs_timestamp_t forecast_time;         /**< DDHHMM: time of this forecast/observation point. */
-    aprs_position_t predicted_position;     /**< LAT/LONG @ symbol: predicted position at forecast_time. */
-    uint16_t movement_course_deg;           /**< CSE: direction of movement, degrees. */
-    uint16_t movement_speed_kt;             /**< SPD: speed of movement, knots. */
-    aprs_storm_type_t storm_type;           /**< TS/HC/TD classification. */
-    uint16_t sustained_wind_kt;             /**< www: sustained wind speed, knots. */
-    uint16_t peak_gust_kt;                  /**< GGG: peak wind gusts, knots. */
-    uint16_t central_pressure_mb;           /**< ppp: central barometric pressure, millibars. */
-    uint16_t hurricane_wind_radius_nm;      /**< RRR: radius of hurricane-force winds, nautical miles. */
-    uint16_t tropical_storm_wind_radius_nm; /**< rrr: radius of tropical-storm-force winds, nautical miles. */
-} aprs_storm_data_t;
-
 /**
  * @brief National Weather Service bulletin / county warning message,
  *        addressed to "NWS-xxxxx" (APRS101 Ch.14; WX.TXT "COUNTY
@@ -1001,13 +843,24 @@ typedef enum {
     APRS_OBJECT_KILLED = '_' /**< Object has been killed (removed from other stations' maps). */
 } aprs_object_state_t;
 
+/**
+ * @brief Decoded Object Report, DTI ';'.
+ *
+ * On-air layout: `;NAMExxxxx*DDHHMMz<position><data extension><comment>`, where
+ * the name is exactly nine characters, space-padded, and the marker byte is
+ * '*' for a live Object or '_' for a killed one.
+ *
+ * The 7-byte data-extension slot that follows the symbol code is not modelled
+ * here: an Object may carry course/speed, PHG, RNG, DFS or - on the Area
+ * symbol `\l` - the `Tyy/Cxx` Area Object descriptor of APRS101 chapter 11,
+ * and the transmit side of that descriptor is built from ::objitem_t by
+ * `main/objects_items.c`.
+ */
 typedef struct {
     char name[APRS_MAX_OBJECT_NAME_LEN + 1]; /**< Fixed 9-character object name. */
     aprs_object_state_t state;               /**< Live ('*') or Killed ('_'). */
     aprs_timestamp_t timestamp;              /**< Object report timestamp (DHM or HMS format). */
     aprs_position_t position;                /**< Object's geographic position and symbol. */
-    bool has_area;                           /**< true if this is an Area Object (circle/line/triangle/etc). */
-    aprs_area_object_t area;                 /**< Valid only if has_area == true. */
     bool has_weather;                        /**< true if the object carries an embedded weather report (raw weather data extension). */
     aprs_weather_report_t weather;           /**< Valid only if has_weather == true. */
     char comment[APRS_MAX_COMMENT_LEN + 1];  /**< Free-text comment. */
@@ -1256,7 +1109,6 @@ typedef enum {
     APRS_PACKET_WEATHER,            /**< Weather Report; read the @c weather member. */
     APRS_PACKET_TELEMETRY_REPORT,   /**< Telemetry Data Report ("T#"); read the @c telemetry member. */
     APRS_PACKET_TELEMETRY_METADATA, /**< Telemetry PARM/UNIT/EQNS/BITS definition message; read the @c telemetry_metadata member. */
-    APRS_PACKET_STORM_DATA,         /**< Hurricane/tropical storm data; read the @c storm member. */
     APRS_PACKET_NWS_BULLETIN,       /**< National Weather Service bulletin; read the @c nws_bulletin member. */
     APRS_PACKET_MESSAGE,            /**< Message, bulletin, announcement, ACK or REJ; read the @c message member. */
     APRS_PACKET_STATUS,             /**< Status report; read the @c status member. */
@@ -1310,7 +1162,6 @@ typedef struct {
     size_t telemetry_metadata_qty;
 
     union {
-        aprs_storm_data_t storm;          /**< Valid when kind == ::APRS_PACKET_STORM_DATA. */
         aprs_nws_bulletin_t nws_bulletin; /**< Valid when kind == ::APRS_PACKET_NWS_BULLETIN. */
         aprs_message_t message;           /**< Valid when kind == ::APRS_PACKET_MESSAGE. */
         aprs_status_report_t status;      /**< Valid when kind == ::APRS_PACKET_STATUS. */
@@ -1322,15 +1173,6 @@ typedef struct {
     } payload; /**< Active member selected by @c kind, for the remaining packet kinds that are genuinely mutually exclusive (a frame cannot simultaneously be,
                  e.g., both a Status report and an Object report). Not used for APRS_PACKET_WEATHER, APRS_PACKET_TELEMETRY_REPORT or
                  APRS_PACKET_TELEMETRY_METADATA - see @ref weather, @ref telemetry_report and @ref telemetry_metadata instead. */
-
-    /** @brief Optional array of application-level "extended" sensor
-     *         readings that have no reserved APRS on-air token (see
-     *         ::aprs_weather_extended_sensor_t). Only meaningful when
-     *         @ref weather_qty is nonzero. NULL/0 if unused. */
-    aprs_weather_extended_sensor_t *extended_sensors;
-    /** @brief Number of entries populated in @ref extended_sensors; 0 when the
-     *         pointer is NULL or no extended readings are attached. */
-    size_t extended_sensor_count;
 } weather_telemetry_data_t;
 
 #endif /* WEATHER_TELEMETRY_H */

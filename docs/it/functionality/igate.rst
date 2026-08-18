@@ -282,6 +282,12 @@ messaggistica è attiva. È poi considerata per la ritrasmissione in RF solo se
    echi (confrontando l'indicativo base di origine contro ogni indicativo di
    report della propria stazione) e non li reinoltra mai in RF. I report propri
    raggiungono RF esclusivamente tramite i loro flag "Send via RF" (``*_2rf``).
+#. **Gate di bollettini e diffusioni del servizio meteorologico.** Un messaggio
+   indirizzato a un destinatario di bollettino o annuncio (``BLNn``, ``BLNa``,
+   con o senza nome di gruppo) o a una delle famiglie del servizio
+   meteorologico (``NWS-xxxxx``, ``SKY…``, ``CWA…``) viene scartato
+   incondizionatamente (``DROP_MSG_BROADCAST``), indipendentemente da
+   ``g_config.igate_msg_gate_en`` e da ``g_config.inet2rfFilter``. Vedi sotto.
 #. **Filtro per tipo di payload.** La riga è classificata da
    ``aprs_filter_classify_tnc2()`` e testata contro ``g_config.inet2rfFilter``.
 #. **Unwrap selettivo di terze parti (opzionale).** Il traffico di terze parti
@@ -357,6 +363,34 @@ pacchetto già passato per un gateway.
 *Finestra di ascolto locale (s)* è ``igate_local_window_sec``, 60–3600 s, un'ora
 per impostazione predefinita, che è il limite superiore raccomandato dalle note
 di progetto degli IGate APRS-IS.
+
+Bollettini e diffusioni del servizio meteorologico
+--------------------------------------------------
+
+Le cinque condizioni qui sopra governano i messaggi indirizzati a una stazione.
+Un messaggio indirizzato a *tutti* non viene ritrasmesso affatto: i bollettini e
+gli annunci (``BLNn``, ``BLNa``, con o senza nome di gruppo) e le famiglie di
+destinatari del servizio meteorologico (``NWS-xxxxx``, ``SKY…``, ``CWA…``)
+vengono scartati prima che il filtro dei tipi entri in azione, sotto
+``DROP_MSG_BROADCAST``.
+
+Lo scarto è incondizionato, negli stessi termini del gate delle query generiche:
+non lo disarma il togliere la spunta a *Gate messages to RF*, né alcuna
+combinazione di bit di tipo nel filtro INET → RF. La ragione è il volume, non il
+contenuto. Un bollettino viene ripetuto finché resta valido, non è mai
+confermato, arriva a 67 caratteri di testo, e APRS-IS trasporta ogni bollettino
+della rete; una stazione che ritrasmettesse quel flusso sarebbe un ripetitore di
+bollettini per il mondo intero su un canale locale condiviso, che è proprio il
+modo di guasto indicato dalle note di progetto degli IGate. Gli avvisi del
+servizio meteorologico hanno la stessa forma e arrivano a raffiche.
+
+La regola vale anche per un pacchetto che esce dall'unwrap selettivo di terze
+parti: mettere in whitelist il traffico di terze parti di una stazione è
+permesso di ritrasmettere *quella stazione*, non permesso di portarsi dietro il
+flusso dei bollettini. Nulla di tutto questo tocca i bollettini **propri** di
+questa stazione, che si configurano nella pagina *Bulletins* e sono trasmessi
+dal loro scheduler, né la direzione RF → INET, dove un bollettino udito in onda
+è ritrasmesso ad APRS-IS come qualsiasi altro frame.
 
 Copertura in hop
 ----------------

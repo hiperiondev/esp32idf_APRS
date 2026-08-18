@@ -113,7 +113,9 @@ Las páginas
        ``?WX?``/``?IGATE?``), habilitación de consultas dirigidas, conjunto
        extendido de consultas dirigidas, intervalo
        mínimo de respuesta (límite de seguridad frente a bucles/uso del
-       canal).
+       canal), y la baliza periódica de capacidades de estación: habilitación,
+       intervalo, selección de canal RF y APRS-IS, y los elementos de capacidad
+       adicionales a agregar.
    * - **Radio / Modem**
      - Modo FX.25 (apagado / solo RX / RX+TX); habilitar módem de audio,
        modulación (300 / 1200 Bell202 / 1200 V.23 / 9600 G3RUH), LPF de audio

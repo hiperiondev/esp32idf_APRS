@@ -81,6 +81,39 @@ lo eliminen de sus mapas), luego lo deshabilita automáticamente. Los
 objetos/ítems persisten en su propio ``/storage/objitems.json``. La página está
 condicionada por el interruptor de compilación ``ENABLE_OBJECTS_ITEMS``.
 
+Objetos de área
+---------------
+
+Un elemento cuyo símbolo es el símbolo de área (``\\l``, la letra L minúscula
+de la tabla alternativa) dibuja una figura en el mapa receptor en lugar de un
+punto. La ranura de extensión de datos de 7 bytes lleva entonces el descriptor
+``Tyy/Cxx`` del capítulo 11 de APRS101 en vez de rumbo/velocidad:
+
+* **forma** — uno de los diez dígitos: círculo, línea abajo/derecha, elipse,
+  triángulo, caja, y luego el círculo relleno, la línea abajo/izquierda, la
+  elipse rellena, el triángulo relleno y la caja rellena,
+* **color** — de 0 a 15. Los valores de diez en adelante reemplazan la barra
+  por un ``1`` y escriben el dígito de las unidades, así que el campo mide
+  siete bytes fijos en cualquier caso,
+* **desplazamientos de latitud y longitud** — la distancia en grados desde la
+  posición reportada, que es la esquina superior izquierda de la figura, hasta
+  su esquina inferior derecha (o hasta el centro, en el caso de un círculo).
+
+Cada desplazamiento se transmite como un código de dos dígitos, la raíz
+cuadrada del desplazamiento expresado en 1500-avos de grado; el receptor lo
+recupera como ``código × código ÷ 1500``. La especificación usaba
+originalmente un factor de 100 y fue corregida a 1500 por
+``aprs.org/aprs11/areaobjects.txt``, que es la escala con la que decodifican
+las aplicaciones actuales. Dos dígitos alcanzan entonces 6,534 grados por eje,
+y ambos campos de desplazamiento se limitan a ese valor al guardar, para que el
+valor almacenado y la figura transmitida describan siempre la misma área.
+
+Las dos formas de línea pueden además declarar un **corredor**: una franja del
+ancho indicado en millas a cada lado de la línea, transmitida como un token
+``{www}`` al frente del texto del comentario, exactamente donde lo ubica el
+ejemplo de la propia especificación. Un ancho de cero omite el token, y el
+campo se ignora para las ocho formas cerradas.
+
 Objetos permanentes
 --------------------
 

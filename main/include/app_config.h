@@ -109,6 +109,14 @@
 #define STATUS_SIZE 50
 
 /**
+ * @brief Size of the free-form Station Capabilities token buffer: 63 bytes of
+ * operator text + NUL terminator. The two mandatory tokens and the enclosing
+ * "<IGATE" and ">" bytes leave this much of an information field that still
+ * fits any hop count a beacon path can carry.
+ */
+#define QUERY_CAP_EXTRA_SIZE 64
+
+/**
  * @brief Weather station "Sensor Mapping" rows: the canonical on-air list of
  * every quantity an APRS Weather Report can carry, one row per mappable
  * measurement.
@@ -536,21 +544,31 @@ typedef struct {
  * @brief Which 7-byte APRS Data Extension a fixed-position beacon carries in
  * the slot immediately after the symbol code (APRS101 chapter 7).
  *
- * The three are mutually exclusive on air - they all occupy the same slot, the
- * one a moving station uses for CSE/SPD - so the beacon carries at most one of
+ * They are mutually exclusive on air - they all occupy the same slot, the one
+ * a moving station uses for CSE/SPD - so the beacon carries at most one of
  * them, selected here and gated by the beacon's own "enable data extension"
  * flag (@c app_config_t.igate_phg_enable).
+ *
+ * ::APRS_EXT_DF is the one that is wider than the slot: the DF report of
+ * chapter 16 puts its course/speed pair in the slot and appends the bearing
+ * and NRQ bytes after it. That is why it, like PHG and DFS, cannot travel in
+ * a compressed position report.
  */
 typedef enum {
     APRS_EXT_PHG = 0, /**< "PHGphgd": transmitter power, antenna height/gain and directivity. */
     APRS_EXT_RNG = 1, /**< "RNGrrrr": pre-calculated omnidirectional radio range, statute miles. */
     APRS_EXT_DFS = 2, /**< "DFSshgd": Omni-DF signal strength, with the same height/gain/directivity codes as PHG. */
+    APRS_EXT_DF = 3,  /**< "CSE/SPD/BRG/NRQ": DF report, the bearing to a signal and the NRQ triplet describing it (APRS101 chapter 16). */
 } aprs_ext_type_t;
 
 #define APRS_EXT_RANGE_MILES_MIN  0    /**< Lowest "RNGrrrr" pre-calculated radio range, statute miles. */
 #define APRS_EXT_RANGE_MILES_MAX  9999 /**< Highest "RNGrrrr" pre-calculated radio range: the field is 4 digits wide. */
 #define APRS_EXT_DFS_STRENGTH_MIN 0    /**< Lowest "DFSshgd" signal-strength code (0 = this station does NOT hear the signal). */
 #define APRS_EXT_DFS_STRENGTH_MAX 9    /**< Highest "DFSshgd" signal-strength code, in S-points. */
+#define APRS_EXT_DF_BEARING_MIN   0    /**< Lowest DF report bearing, degrees. */
+#define APRS_EXT_DF_BEARING_MAX   359  /**< Highest DF report bearing, degrees: the field is three digits and 360 is expressed as 0. */
+#define APRS_EXT_DF_NRQ_MIN       0    /**< Lowest value of each DF report NRQ digit. */
+#define APRS_EXT_DF_NRQ_MAX       9    /**< Highest value of each DF report NRQ digit: N, R and Q are one decimal digit each. */
 
 /**
  * @brief Highest beacons-per-hour value the single-character PHGR "probes"
@@ -711,6 +729,11 @@ typedef struct {
     uint8_t igate_ext_type;     /**< Which ::aprs_ext_type_t the IGate position beacon carries when @c igate_phg_enable is set. */
     uint16_t igate_range_miles; /**< "RNGrrrr" pre-calculated radio range, statute miles (::APRS_EXT_RNG only). */
     uint8_t igate_dfs_strength; /**< "DFSshgd" signal-strength code 0-9 (::APRS_EXT_DFS only; height/gain/directivity come from the PHG sub-fields). */
+    uint16_t igate_df_bearing;  /**< DF report bearing to the signal, degrees (::APRS_EXT_DF only). */
+    uint8_t igate_df_nrq_n;     /**< DF report N digit: 0 = the NRQ triplet carries no meaning, 1-8 = relative number of hits per sampling period, 9 = manual
+                                    report (::APRS_EXT_DF only). */
+    uint8_t igate_df_nrq_r;     /**< DF report R digit: range code, standing for 2^R miles (::APRS_EXT_DF only). */
+    uint8_t igate_df_nrq_q;     /**< DF report Q digit: bearing accuracy, 0 (useless) through 9 (better than one degree) (::APRS_EXT_DF only). */
 
     float igate_freq_mhz;       /**< Recommended travelers' voice repeater frequency this digipeater advertises, MHz; 0 => no frequency block emitted. Built
                                    with objitem_build_freq_block() and prepended as the first 10 bytes of the IGate beacon comment (freqspec.txt); the same
@@ -867,7 +890,26 @@ typedef struct {
     bool query_ext_en;               /**< Enable the extended directed query set (?APRSD/?APRSH/?APRSM/?APRSO/?APRSP/?APRSS/?APRST/?PING?). */
     uint16_t query_min_interval_sec; /**< Per-type broadcast query rate limit, seconds (floored at 5). */
 
+    bool query_cap_beacon_en;        /**< Transmit the Station Capabilities line periodically, not only in reply to "?IGATE?". Disabled by default. */
+    uint32_t query_cap_interval_sec; /**< Interval between periodic Station Capabilities beacons, seconds. */
+    bool query_cap_rf;               /**< Send the periodic capabilities beacon on RF. */
+    bool query_cap_inet;             /**< Send the periodic capabilities beacon to APRS-IS. */
+    char query_cap_extra[QUERY_CAP_EXTRA_SIZE]; /**< Free-form capability tokens appended to the two mandatory ones; empty leaves the line as the
+                                                   specification's minimum. Sanitized of CR/LF and of the ',' and '>' bytes that delimit the line itself. */
+
 } app_config_t;
+
+/** @name Periodic Station Capabilities beacon
+ *  Bounds for the optional periodic transmission of the
+ *  "<IGATE,MSG_CNT=n,LOC_CNT=n>" line. APRS101 chapter 15 allows a station to
+ *  send its capabilities at any time; the floor keeps a mistyped interval from
+ *  spending the channel on a packet nobody asked for.
+ *  @{
+ */
+#define QUERY_CAP_INTERVAL_S_MIN     300   /**< Shortest interval between periodic capabilities beacons. */
+#define QUERY_CAP_INTERVAL_S_MAX     86400 /**< Longest interval between periodic capabilities beacons: 24 h, which is why the field is a uint32_t. */
+#define QUERY_CAP_INTERVAL_S_DEFAULT 1800  /**< Interval a station gets when it enables the beacon without choosing one. */
+/** @} */
 
 /**
  * @brief Global live configuration instance (loaded at boot, edited by web
@@ -991,5 +1033,22 @@ uint8_t app_config_path_preset_hops(const char *preset);
  *         bring the total hop count to 8 or fewer.
  */
 uint8_t app_config_path_mask_clamp(uint8_t pathBitmask, const char pathPreset[4][72]);
+
+/**
+ * @brief Strip from a free-form Station Capabilities token string every byte
+ * that would break the line carrying it.
+ *
+ * The capabilities line is a comma-separated list enclosed in "<" and ">", so
+ * a ',' or '>' typed by the operator would either invent a token or close the
+ * list early; CR and LF would end the frame itself. Each of them is removed
+ * in place, leaving the rest of the text as typed.
+ *
+ * Called by both clamp layers - the web POST handler and
+ * ::app_config_load's JSON reader - so a hand-edited config.json is held to
+ * the same rule as the form.
+ *
+ * @param extra NUL-terminated buffer, edited in place. NULL is a no-op.
+ */
+void app_config_query_cap_extra_sanitize(char *extra);
 
 #endif // APP_CONFIG_H

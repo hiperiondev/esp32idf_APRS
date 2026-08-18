@@ -32,6 +32,7 @@
 #include "app_config.h"
 #include "aprs_coord.h"
 #include "aprs_dao.h"       // aprs_dao_build()
+#include "aprs_df.h"        // aprs_df_build_extension(), APRS_DF_EXT_BUF_SIZE
 #include "aprs_free_text.h" // aprs_free_text_build()
 #include "aprs_path.h"      // aprs_path_build_suffix()
 #include "aprs_service.h"
@@ -95,13 +96,17 @@ typedef struct {
     // fixed-position beacons. Mic-E has no such slot, and carries the token in
     // its text field instead (see buildMicePositionPacket()).
     bool extEnable;
-    uint8_t extType;     // aprs_ext_type_t: PHG, RNG or DFS
+    uint8_t extType;     // aprs_ext_type_t: PHG, RNG, DFS or DF
     uint16_t phgPower;   // Watts (PHG)
     float phgGain;       // dB (PHG and DFS)
     uint16_t phgHeight;  // feet (PHG and DFS; the APRS code table's own unit)
     uint8_t phgDir;      // 0=Omni, 1-8 = N,NE,E,SE,S,SW,W,NW (PHG and DFS)
     uint16_t rangeMiles; // statute miles (RNG)
     uint8_t dfsStrength; // 0-9 S-points (DFS)
+    // Bearing and NRQ triplet of a DF report (APRS_EXT_DF). Carried in the
+    // modelled type the receive side uses for the same extension, so the
+    // firmware describes the field in one place.
+    aprs_bearing_nrq_t df;
     // This beacon's own effective transmit interval, in seconds, used only to
     // compute the PHGR "probes" beacon-rate character (aprs.org/aprs12/probes.txt)
     // appended to a PHG extension: 0 leaves the rate off and emits the plain
@@ -353,6 +358,13 @@ static void buildDataExtension(const beacon_params_t *p, char *out, size_t outMa
         case APRS_EXT_RNG:
             buildRangeExtension(p->rangeMiles, out, outMax);
             return;
+        case APRS_EXT_DF:
+            // DF report (APRS101 ch.16). These three beacons are fixed
+            // stations with no course/speed source, and the chapter gives
+            // "000/000" as the pair that says exactly that while still
+            // carrying the bearing that follows it.
+            aprs_df_build_extension(0, 0, &p->df, out, outMax);
+            return;
         case APRS_EXT_DFS:
             buildDfsExtension(p->dfsStrength, p->phgGain, p->phgHeight, p->phgDir, out, outMax);
             return;
@@ -447,15 +459,16 @@ static int buildMicePositionPacket(const beacon_params_t *p, const char *path, c
     char freqBlock[24];
     objitem_build_freq_block(p->freqMhz, p->freqToneTenths, p->freqDuplex, p->freqOffsetKhz, 0, false, freqBlock, sizeof(freqBlock));
 
-    // Data extension (PHG / RNG / DFS). Mic-E has no 7-byte slot of its own
+    // Data extension (PHG / RNG / DFS / DF). Mic-E has no 7-byte slot of its own
     // after a symbol code, but the 1.2 revision states that the Mic-E text
     // field may carry any ordinary position comment field, PHG included, which
     // is how a station beaconing in Mic-E advertises its coverage. It is
     // written ahead of the operator's comment, so it stays in the leading,
     // fixed-position part of the text where a decoder looks for it, and behind
     // the frequency block, which radios expect in the first bytes of the text
-    // and stop looking for after them. Sized as in buildPositionPacket().
-    char ext[10] = { 0 };
+    // and stop looking for after them. Sized as in buildPositionPacket(), so
+    // the widest token fits here too.
+    char ext[APRS_DF_EXT_BUF_SIZE] = { 0 };
     buildDataExtension(p, ext, sizeof(ext));
 
     // Layout order for the text field is [freqBlock][ext][comment][comment
@@ -526,12 +539,14 @@ static int buildPositionPacket(const beacon_params_t *p, const char *path, char 
     char symTable = p->symbol[0] ? p->symbol[0] : '/';
     char symCode = p->symbol[1] ? p->symbol[1] : '>';
 
-    // Data-extension token (PHG / RNG / DFS), when enabled. Emitted right
+    // Data-extension token (PHG / RNG / DFS / DF), when enabled. Emitted right
     // after the symbol code and before the altitude/comment, matching the
     // Object/Item info field layout (main/objects_items.c) and the order the
-    // APRS spec defines for this slot. Sized for the longest of the four:
-    // a PHGR-suffixed PHG token ("PHG" + 4 digits + rate + '/', 9 bytes) plus NUL.
-    char ext[10] = { 0 };
+    // APRS spec defines for this slot. Sized for the longest of them, which is
+    // the DF report: its own buffer-size constant covers the 15-byte
+    // "CSE/SPD/BRG/NRQ" token plus NUL, and is wider than the 9-byte
+    // PHGR-suffixed PHG form.
+    char ext[APRS_DF_EXT_BUF_SIZE] = { 0 };
     buildDataExtension(p, ext, sizeof(ext));
 
     // A pre-calculated radio range is the one data extension the compressed
@@ -543,11 +558,12 @@ static int buildPositionPacket(const beacon_params_t *p, const char *path, char 
 
     // Two things force the uncompressed layout:
     //
-    //   * A PHG or DFS data extension. The compressed format has no room for
-    //     the 7-byte slot (APRS101 ch.9 states it does not support PHG);
-    //     emitting those bytes inside a compressed report would just be wrong
-    //     data, and dropping the extension silently to keep compression would
-    //     lose a field the operator explicitly enabled.
+    //   * A PHG, DFS or DF data extension. The compressed format has no room
+    //     for the 7-byte slot (APRS101 ch.9 states it does not support PHG),
+    //     and a DF report is wider than the slot still; emitting those bytes
+    //     inside a compressed report would just be wrong data, and dropping
+    //     the extension to keep compression would lose a field the operator
+    //     explicitly enabled.
     //   * Position ambiguity. Ambiguity is expressed by blanking decimal
     //     digits, and the compressed format has no decimal digits to blank -
     //     a compressed report always states a position to full resolution, so
@@ -558,6 +574,14 @@ static int buildPositionPacket(const beacon_params_t *p, const char *path, char 
     // compressed cs/T slot carries either the radio range form or "no cs/T
     // data" (3 spaces).
     bool useCompressed = p->compress && (!p->extEnable || extIsRange) && p->ambiguity == 0;
+
+    // The operator selected two settings that cannot both be honoured, so the
+    // one that is dropped is named rather than left to be discovered off the
+    // air. Position ambiguity is not part of this: it blanks digits of the
+    // uncompressed layout, which keeps its extension slot, so the two travel
+    // together without either giving way.
+    if (p->compress && !useCompressed && p->extEnable && !extIsRange)
+        ESP_LOGW(TAG, "Compressed position disabled for this beacon: the selected data extension needs the uncompressed layout");
 
     // Altitude has a compressed form of its own (APRS101 ch.9): the same two
     // cs bytes, read as an altitude instead of as a course/speed pair when the
@@ -1252,6 +1276,10 @@ static uint32_t igateBeaconService(void) {
             p.phgDir = g_config.igate_phg_dir;
             p.rangeMiles = g_config.igate_range_miles;
             p.dfsStrength = g_config.igate_dfs_strength;
+            p.df.bearing_deg = g_config.igate_df_bearing;
+            p.df.number = g_config.igate_df_nrq_n;
+            p.df.range_code = g_config.igate_df_nrq_r;
+            p.df.quality = g_config.igate_df_nrq_q;
             p.beaconIntervalSec = sched_clamp_interval(g_config.igate_interval, BEACON_MIN_INTERVAL_S, BEACON_DEFAULT_INTERVAL_S);
             p.freqMhz = g_config.igate_freq_mhz;
             p.freqToneTenths = g_config.igate_tone_tenths;
@@ -1304,6 +1332,10 @@ static void fillIgatePositionParams(beacon_params_t *p) {
         p->phgDir = g_config.igate_phg_dir;
         p->rangeMiles = g_config.igate_range_miles;
         p->dfsStrength = g_config.igate_dfs_strength;
+        p->df.bearing_deg = g_config.igate_df_bearing;
+        p->df.number = g_config.igate_df_nrq_n;
+        p->df.range_code = g_config.igate_df_nrq_r;
+        p->df.quality = g_config.igate_df_nrq_q;
         p->beaconIntervalSec = sched_clamp_interval(g_config.igate_interval, BEACON_MIN_INTERVAL_S, BEACON_DEFAULT_INTERVAL_S);
         p->ambiguity = g_config.pos_ambiguity;
         p->daoEnable = g_config.pos_dao_en;

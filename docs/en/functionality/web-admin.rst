@@ -102,7 +102,9 @@ The pages
        an answer always goes back on the channel the question arrived on),
        general query types (``?APRS?``,
        and where built, ``?WX?``/``?IGATE?``), directed-query enable, extended
-       directed query set, minimum reply interval (airtime/loop safety floor).
+       directed query set, minimum reply interval (airtime/loop safety floor),
+       and the periodic station-capabilities beacon: enable, interval, RF and
+       APRS-IS channel selection, and any extra capability tokens to append.
    * - **Radio / Modem**
      - FX.25 mode (off / RX only / RX+TX); audio modem enable, modulation (300 /
        1200 Bell202 / 1200 V.23 / 9600 G3RUH), audio LPF (flat audio), preamble

@@ -345,6 +345,18 @@
 /** Italian text for the form label for the "query min interval" field or fieldset, rendered on the configuration forms. English: "Minimum seconds between
  * identical responses". */
 #define TR_F_QUERY_MIN_INTERVAL "Secondi minimi tra risposte identiche"
+/** Italian text for the form label for the "query cap section" field or fieldset, rendered on the configuration forms. English: "Station capabilities
+ * beacon". */
+#define TR_F_QUERY_CAP_SECTION "Beacon delle capacità della stazione"
+/** Italian text for the form label for the "query cap enable" field or fieldset, rendered on the configuration forms. English: "Send capabilities
+ * periodically". */
+#define TR_F_QUERY_CAP_ENABLE "Invia le capacità periodicamente"
+/** Italian text for the form label for the "query cap interval" field or fieldset, rendered on the configuration forms. English: "Capabilities beacon interval
+ * (s)". */
+#define TR_F_QUERY_CAP_INTERVAL "Intervallo del beacon delle capacità (s)"
+/** Italian text for the form label for the "query cap extra" field or fieldset, rendered on the configuration forms. English: "Additional capability
+ * tokens". */
+#define TR_F_QUERY_CAP_EXTRA "Elementi di capacità aggiuntivi"
 /** Italian text for the form label for the "radio modem" field or fieldset, rendered on the configuration forms. English: "Radiomodem". */
 #define TR_F_RADIO_MODEM "Radiomodem"
 /** Italian text for the form label for the "retry count" field or fieldset, rendered on the configuration forms. English: "Retry count". */
@@ -453,8 +465,9 @@
 #define TR_F_OBJITEM_AREA_SHAPE "Forma area (simbolo \\l)"
 /** Italian text for the form label for the "objitem shape circle" field or fieldset, rendered on the configuration forms. English: "Circle". */
 #define TR_F_OBJITEM_SHAPE_CIRCLE "Cerchio"
-/** Italian text for the form label for the "objitem shape line" field or fieldset, rendered on the configuration forms. English: "Line". */
-#define TR_F_OBJITEM_SHAPE_LINE "Linea"
+/** Italian text for the form label for the "objitem shape line down right" field or fieldset, rendered on the configuration forms. English: "Line
+ * (down/right)". */
+#define TR_F_OBJITEM_SHAPE_LINE_DOWN_RIGHT "Linea (giù/destra)"
 /** Italian text for the form label for the "objitem shape ellipse" field or fieldset, rendered on the configuration forms. English: "Ellipse". */
 #define TR_F_OBJITEM_SHAPE_ELLIPSE "Ellisse"
 /** Italian text for the form label for the "objitem shape triangle" field or fieldset, rendered on the configuration forms. English: "Triangle". */
@@ -471,6 +484,12 @@
 /** Italian text for the form label for the "objitem area lon off" field or fieldset, rendered on the configuration forms. English: "Area longitude offset
  * (deg)". */
 #define TR_F_OBJITEM_AREA_LON_OFF "Offset longitudine area (gradi)"
+/** Italian text for the form label for the "objitem shape line down left" field or fieldset, rendered on the configuration forms. English: "Line
+ * (down/left)". */
+#define TR_F_OBJITEM_SHAPE_LINE_DOWN_LEFT "Linea (giù/sinistra)"
+/** Italian text for the form label for the "objitem area width" field or fieldset, rendered on the configuration forms. English: "Line corridor width
+ * (miles, 0 = omit)". */
+#define TR_F_OBJITEM_AREA_WIDTH "Larghezza del corridoio della linea (miglia, 0 = ometti)"
 /** Italian text for the form label for the "objitem signpost" field or fieldset, rendered on the configuration forms. English: "Signpost text (\m symbol, 3
  * chars)". */
 #define TR_F_OBJITEM_SIGNPOST "Testo segnale (simbolo \\m, 3 caratteri)"
@@ -1200,11 +1219,22 @@
 #define TR_EXT_RNG "RNG - portata radio precalcolata"
 /** Italian text for the data-extension label for dfs, rendered on the IGate page. English: "DFS - omni-DF signal strength". */
 #define TR_EXT_DFS "DFS - intensita del segnale omni-DF"
+/** Italian text for the data-extension label for df, rendered on the IGate page. English: "DF - bearing and NRQ report". */
+#define TR_EXT_DF "DF - rapporto di rilevamento e NRQ"
 /** Italian text for the form label for the "ext range mi" field or fieldset, rendered on the IGate page. English: "Radio range (miles)". */
 #define TR_F_EXT_RANGE_MI "Portata radio (miglia)"
 /** Italian text for the form label for the "ext dfs strength" field or fieldset, rendered on the IGate page. English: "Signal strength (S-points, 0 = not
  * heard)". */
 #define TR_F_EXT_DFS_STRENGTH "Intensita del segnale (punti S, 0 = non ricevuto)"
+/** Italian text for the form label for the "ext df bearing" field or fieldset, rendered on the IGate page. English: "Signal bearing (degrees)". */
+#define TR_F_EXT_DF_BEARING "Rilevamento del segnale (gradi)"
+/** Italian text for the form label for the "ext df nrq n" field or fieldset, rendered on the IGate page. English: "Hits per period (N, 0 = NRQ not
+ * meaningful)". */
+#define TR_F_EXT_DF_NRQ_N "Rilevazioni per periodo (N, 0 = NRQ senza significato)"
+/** Italian text for the form label for the "ext df nrq r" field or fieldset, rendered on the IGate page. English: "Range code (R, range = 2^R miles)". */
+#define TR_F_EXT_DF_NRQ_R "Codice di portata (R, portata = 2^R miglia)"
+/** Italian text for the form label for the "ext df nrq q" field or fieldset, rendered on the IGate page. English: "Bearing accuracy (Q, 9 = best)". */
+#define TR_F_EXT_DF_NRQ_Q "Precisione del rilevamento (Q, 9 = migliore)"
 /** Italian text for the form label for the "pos ambiguity" field or fieldset, rendered on the IGate page. English: "Position ambiguity". */
 #define TR_F_POS_AMBIGUITY "Ambiguita di posizione"
 /** Italian text for the position-ambiguity selector entry: none, rendered on the IGate page. English: "Full precision". */

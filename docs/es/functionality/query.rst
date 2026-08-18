@@ -131,6 +131,36 @@ Como las respuestas de posición, estado y meteorología reutilizan los
 constructores de baliza existentes, una respuesta nunca puede desviarse de lo que
 transmiten las balizas periódicas.
 
+Baliza periódica de capacidades
+===============================
+
+El capítulo 15 permite que una estación mande su línea de capacidades en
+cualquier momento, no solo cuando se la consulta, y muchas pasarelas la balizan
+para que los vecinos sepan que existe una pasarela sin tener que preguntar.
+*Enviar capacidades periódicamente* (``query_cap_beacon_en``) lo habilita; viene
+deshabilitada, y la línea se sigue mandando en respuesta a ``?IGATE?`` en
+cualquiera de los dos casos.
+
+La baliza tiene intervalo propio (``query_cap_interval_sec``, acotado al rango
+``QUERY_CAP_INTERVAL_S_MIN``..``QUERY_CAP_INTERVAL_S_MAX`` tanto en el manejador
+POST como en el lector de JSON) y selección de canal propia
+(``query_cap_rf`` / ``query_cap_inet``), en vez de heredar los dos selectores de
+fuente: esos dicen dónde se escucha una *pregunta*, mientras que esto keyea el
+transmisor con un temporizador propio. También requiere ``igate_en``, porque la
+línea anuncia una pasarela.
+
+*Elementos de capacidad adicionales* (``query_cap_extra``) se agrega después de
+los dos obligatorios, porque la lista de capacidades es abierta. Al texto se le
+quitan CR, LF y los bytes ``,`` y ``>`` que delimitan la propia línea, en el
+manejador POST y otra vez al leer la configuración guardada, así que un elemento
+escrito en el campo no puede inventar un token ni cerrar la lista antes de
+tiempo.
+
+Se arma un paquete por cada pata habilitada, porque el path difiere entre ellas,
+y ambos salen del mismo constructor que usa la respuesta a ``?IGATE?``. La
+transmisión corre en la tarea del planificador de balizas, junto a los demás
+originadores periódicos.
+
 Consultas dirigidas
 ===================
 

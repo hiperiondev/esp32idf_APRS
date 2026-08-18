@@ -83,6 +83,39 @@ ascoltatori lo rimuovano dalle loro mappe), poi lo disabilita automaticamente.
 Gli oggetti/item persistono nel proprio ``/storage/objitems.json``. La pagina è
 condizionata dall'interruttore di compilazione ``ENABLE_OBJECTS_ITEMS``.
 
+Oggetti di area
+---------------
+
+Un elemento il cui simbolo è il simbolo di area (``\\l``, la lettera L
+minuscola della tabella alternativa) disegna una figura sulla mappa ricevente
+invece di un punto. Lo slot di estensione dati da 7 byte porta allora il
+descrittore ``Tyy/Cxx`` del capitolo 11 di APRS101 anziché rotta/velocità:
+
+* **forma** — una delle dieci cifre: cerchio, linea giù/destra, ellisse,
+  triangolo, riquadro, e poi il cerchio pieno, la linea giù/sinistra,
+  l'ellisse piena, il triangolo pieno e il riquadro pieno,
+* **colore** — da 0 a 15. I valori da dieci in su sostituiscono la barra con un
+  ``1`` e scrivono la cifra delle unità, così il campo misura sempre sette
+  byte fissi,
+* **offset di latitudine e longitudine** — la distanza in gradi dalla posizione
+  riportata, che è l'angolo superiore sinistro della figura, fino al suo angolo
+  inferiore destro (o al centro, nel caso di un cerchio).
+
+Ogni offset viene trasmesso come codice di due cifre, la radice quadrata
+dell'offset espresso in 1500-esimi di grado; il ricevitore lo recupera come
+``codice × codice ÷ 1500``. La specifica usava in origine un fattore 100 ed è
+stata corretta a 1500 da ``aprs.org/aprs11/areaobjects.txt``, che è la scala
+con cui decodificano le applicazioni attuali. Due cifre raggiungono quindi
+6,534 gradi per asse, ed entrambi i campi di offset vengono limitati a quel
+valore al salvataggio, così che il valore memorizzato e la figura trasmessa
+descrivano sempre la stessa area.
+
+Le due forme a linea possono inoltre dichiarare un **corridoio**: una fascia
+della larghezza indicata in miglia su ciascun lato della linea, trasmessa come
+token ``{www}`` in testa al testo del commento, esattamente dove la colloca
+l'esempio della specifica stessa. Una larghezza pari a zero omette il token, e
+il campo viene ignorato per le otto forme chiuse.
+
 Oggetti permanenti
 -------------------
 

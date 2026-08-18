@@ -160,6 +160,25 @@ void query_process_directed(const char *fromCall, const char *toCall, const char
  * question already waiting to be answered is not queued twice: every answer
  * reports live state at the moment it is sent.
  */
+/**
+ * @brief Transmit the periodic Station Capabilities beacon when it is due, and
+ * report how many seconds until it next needs servicing.
+ *
+ * APRS101 chapter 15 allows a station to send its capabilities line at any
+ * time, not only in reply to "?IGATE?", so that neighbours learn a gateway
+ * exists without having to ask. The beacon is off by default and gated on
+ * @c g_config.query_cap_beacon_en together with @c g_config.igate_en, with its
+ * own interval and its own RF/APRS-IS channel selection
+ * (@c g_config.query_cap_rf / @c g_config.query_cap_inet).
+ *
+ * Called by the beacon scheduler task on each pass, alongside the other
+ * periodic originators and for the same reason: the line is built and
+ * transmitted through the TNC2/AX.25 chain that task's stack is sized for.
+ *
+ * @return Seconds until this function next needs to be called.
+ */
+uint32_t query_capabilities_service(void);
+
 void query_service(void);
 
 #endif // QUERY_H

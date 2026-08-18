@@ -263,6 +263,12 @@ after passing:
    base callsign against every own-station report callsign) and never re-gates
    them back to RF. Own reports reach RF exclusively through their own "Send via
    RF" (``*_2rf``) flags.
+#. **Bulletin and weather service broadcast gate.** A message addressed to a
+   bulletin or announcement addressee (``BLNn``, ``BLNa``, with or without a
+   group name) or to one of the weather service families (``NWS-xxxxx``,
+   ``SKY…``, ``CWA…``) is dropped unconditionally (``DROP_MSG_BROADCAST``),
+   independently of ``g_config.igate_msg_gate_en`` and
+   ``g_config.inet2rfFilter``. See below.
 #. **Payload-type filter.** The line is classified by
    ``aprs_filter_classify_tnc2()`` and tested against
    ``g_config.inet2rfFilter``.
@@ -333,6 +339,32 @@ gateway.
 
 *Heard-locally window (s)* is ``igate_local_window_sec``, 60–3600 s, one hour by
 default, which is the upper bound the APRS-IS IGate design notes recommend.
+
+Bulletins and weather service broadcasts
+----------------------------------------
+
+The five conditions above govern messages addressed to a station. A message
+addressed to *everybody* is not gated at all: bulletins and announcements
+(``BLNn``, ``BLNa``, with or without a group name) and the weather service
+addressee families (``NWS-xxxxx``, ``SKY…``, ``CWA…``) are dropped before the
+type filter runs, under ``DROP_MSG_BROADCAST``.
+
+The drop is unconditional, on the same terms as the generic query gate: it is
+not defeated by clearing *Gate messages to RF*, nor by any combination of type
+bits in the INET → RF filter. The reason is the volume, not the content. A
+bulletin is repeated for as long as it stands, is never acknowledged, runs to
+67 characters of text, and APRS-IS carries every bulletin on the network; a
+station that relayed that stream would be a bulletin repeater for the world on
+a shared local channel, which is the failure mode the IGate design notes
+single out. Weather service notices are the same shape and arrive in bursts.
+
+The rule holds for a packet that comes out of the selective third-party
+unwrap as well: whitelisting a station's third-party traffic is permission to
+relay *that station*, not permission to carry the bulletin stream behind it.
+Nothing here affects this station's **own** bulletins, which are configured on
+the *Bulletins* page and transmitted by their own scheduler, nor the RF → INET
+direction, where a bulletin heard off the air is gated to APRS-IS like any
+other frame.
 
 Coverage in hops
 ----------------

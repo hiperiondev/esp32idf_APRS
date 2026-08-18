@@ -280,6 +280,12 @@ está activo, y solo tras pasar:
    indicativo base de origen contra cada indicativo de informe de la propia
    estación) y nunca los reenruta de vuelta a RF. Los informes propios llegan a
    RF exclusivamente a través de sus propias banderas "Send via RF" (``*_2rf``).
+#. **Guarda de boletines y difusiones del servicio meteorológico.** Un mensaje
+   dirigido a un destinatario de boletín o anuncio (``BLNn``, ``BLNa``, con o
+   sin nombre de grupo) o a una de las familias del servicio meteorológico
+   (``NWS-xxxxx``, ``SKY…``, ``CWA…``) se descarta incondicionalmente
+   (``DROP_MSG_BROADCAST``), con independencia de
+   ``g_config.igate_msg_gate_en`` y de ``g_config.inet2rfFilter``. Ver abajo.
 #. **Filtro por tipo de carga útil.** La línea se clasifica con
    ``aprs_filter_classify_tnc2()`` y se prueba contra ``g_config.inet2rfFilter``.
 #. **Desempaquetado selectivo de terceros (opcional).** El tráfico de terceros
@@ -355,6 +361,34 @@ por una pasarela.
 *Ventana de escucha local (s)* es ``igate_local_window_sec``, 60–3600 s, una hora
 por omisión, que es la cota superior que recomiendan las notas de diseño de
 IGate de APRS-IS.
+
+Boletines y difusiones del servicio meteorológico
+------------------------------------------------
+
+Las cinco condiciones de arriba gobiernan los mensajes dirigidos a una
+estación. Un mensaje dirigido a *todos* no se retransmite en absoluto: los
+boletines y anuncios (``BLNn``, ``BLNa``, con o sin nombre de grupo) y las
+familias de destinatarios del servicio meteorológico (``NWS-xxxxx``, ``SKY…``,
+``CWA…``) se descartan antes de que corra el filtro de tipos, bajo
+``DROP_MSG_BROADCAST``.
+
+El descarte es incondicional, en los mismos términos que la guarda de consultas
+genéricas: no lo desarma destildar *Gate messages to RF* ni ninguna combinación
+de bits de tipo del filtro INET → RF. La razón es el volumen, no el contenido.
+Un boletín se repite mientras siga vigente, nunca se acusa, llega a 67
+caracteres de texto, y APRS-IS transporta todos los boletines de la red; una
+estación que retransmitiera ese caudal sería un repetidor de boletines para el
+mundo entero sobre un canal local compartido, que es justo el modo de falla que
+señalan las notas de diseño de IGate. Los avisos del servicio meteorológico
+tienen la misma forma y llegan en ráfagas.
+
+La regla vale también para un paquete que sale del desempaquetado selectivo de
+terceros: poner en lista blanca el tráfico de terceros de una estación es
+permiso para retransmitir *esa estación*, no permiso para cargar detrás el
+caudal de boletines. Nada de esto afecta los boletines **propios** de esta
+estación, que se configuran en la página *Bulletins* y los transmite su propio
+planificador, ni al sentido RF → INET, donde un boletín oído al aire se
+retransmite a APRS-IS como cualquier otra trama.
 
 Cobertura en saltos
 -------------------

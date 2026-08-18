@@ -56,21 +56,26 @@ static void render_type_select(httpd_req_t *req, const char *name, bool is_item)
     web_select_close(req);
 }
 
-// Area-shape <select> for one element. Values 0..4 are the open shapes,
-// 5..9 the colour-filled variants (value == the on-air area type digit).
+// Area-shape <select> for one element. The option value is the on-air area
+// type digit, so the labels follow the APRS101 chapter 11 table rather than a
+// pattern: the filled variants sit five digits above their open counterparts,
+// but digit 6 is the second line direction, not a filled line.
 static void render_area_type_select(httpd_req_t *req, const char *name, uint8_t cur) {
-    static const char *const base[5] = {
-        TR_F_OBJITEM_SHAPE_CIRCLE, TR_F_OBJITEM_SHAPE_LINE, TR_F_OBJITEM_SHAPE_ELLIPSE, TR_F_OBJITEM_SHAPE_TRIANGLE, TR_F_OBJITEM_SHAPE_BOX,
+    static const char *const shape[OBJITEM_AREA_TYPE_MAX + 1] = {
+        TR_F_OBJITEM_SHAPE_CIRCLE,
+        TR_F_OBJITEM_SHAPE_LINE_DOWN_RIGHT,
+        TR_F_OBJITEM_SHAPE_ELLIPSE,
+        TR_F_OBJITEM_SHAPE_TRIANGLE,
+        TR_F_OBJITEM_SHAPE_BOX,
+        TR_F_OBJITEM_SHAPE_CIRCLE TR_F_OBJITEM_SHAPE_FILLED,
+        TR_F_OBJITEM_SHAPE_LINE_DOWN_LEFT,
+        TR_F_OBJITEM_SHAPE_ELLIPSE TR_F_OBJITEM_SHAPE_FILLED,
+        TR_F_OBJITEM_SHAPE_TRIANGLE TR_F_OBJITEM_SHAPE_FILLED,
+        TR_F_OBJITEM_SHAPE_BOX TR_F_OBJITEM_SHAPE_FILLED,
     };
     web_select_open(req, TR_F_OBJITEM_AREA_SHAPE, name);
-    for (int t = 0; t < 10; t++) {
-        char label[64];
-        if (t < 5)
-            snprintf(label, sizeof(label), "%s", base[t]);
-        else
-            snprintf(label, sizeof(label), "%s%s", base[t - 5], TR_F_OBJITEM_SHAPE_FILLED);
-        web_select_option(req, t, label, cur == t);
-    }
+    for (int t = 0; t <= OBJITEM_AREA_TYPE_MAX; t++)
+        web_select_option(req, t, shape[t], cur == t);
     web_select_close(req);
 }
 
@@ -357,9 +362,11 @@ esp_err_t page_objects_get(httpd_req_t *req) {
         snprintf(name, sizeof(name), "oAColor%d", i + 1);
         web_field_int(req, TR_F_OBJITEM_AREA_COLOR, name, (long)b->area_color, 0, 15);
         snprintf(name, sizeof(name), "oALat%d", i + 1);
-        web_field_float(req, TR_F_OBJITEM_AREA_LAT_OFF, name, b->area_lat_off, "0.01", 0.0f, (float)WEB_RANGE_LAT_MAX);
+        web_field_float(req, TR_F_OBJITEM_AREA_LAT_OFF, name, b->area_lat_off, "0.01", 0.0f, OBJITEM_AREA_OFFSET_DEG_MAX);
         snprintf(name, sizeof(name), "oALon%d", i + 1);
-        web_field_float(req, TR_F_OBJITEM_AREA_LON_OFF, name, b->area_lon_off, "0.01", 0.0f, (float)WEB_RANGE_LON_MAX);
+        web_field_float(req, TR_F_OBJITEM_AREA_LON_OFF, name, b->area_lon_off, "0.01", 0.0f, OBJITEM_AREA_OFFSET_DEG_MAX);
+        snprintf(name, sizeof(name), "oAWidth%d", i + 1);
+        web_field_int(req, TR_F_OBJITEM_AREA_WIDTH, name, (long)b->area_line_width, 0, OBJITEM_AREA_WIDTH_MAX);
         web_fieldset_close(req);
 
         // -- Group 6: Signpost text (used only with the Signpost symbol
@@ -660,22 +667,40 @@ esp_err_t page_objects_post(httpd_req_t *req) {
         int atype = web_form_get_int(body, name, (int)b->area_type);
         if (atype < 0)
             atype = 0;
-        if (atype > 9)
-            atype = 9;
+        if (atype > OBJITEM_AREA_TYPE_MAX)
+            atype = OBJITEM_AREA_TYPE_MAX;
         b->area_type = (uint8_t)atype;
         snprintf(name, sizeof(name), "oAColor%d", i + 1);
         int acolor = web_form_get_int(body, name, (int)b->area_color);
         if (acolor < 0)
             acolor = 0;
-        if (acolor > 15)
-            acolor = 15;
+        if (acolor > OBJITEM_AREA_COLOR_MAX)
+            acolor = OBJITEM_AREA_COLOR_MAX;
         b->area_color = (uint8_t)acolor;
+        // Both offsets are clamped to the largest value the two-digit on-air
+        // code can express, so the stored value and the transmitted shape
+        // always describe the same area.
         snprintf(name, sizeof(name), "oALat%d", i + 1);
         float alat = web_form_get_float(body, name, b->area_lat_off);
-        b->area_lat_off = alat < 0 ? 0 : alat;
+        if (alat < 0)
+            alat = 0;
+        if (alat > OBJITEM_AREA_OFFSET_DEG_MAX)
+            alat = OBJITEM_AREA_OFFSET_DEG_MAX;
+        b->area_lat_off = alat;
         snprintf(name, sizeof(name), "oALon%d", i + 1);
         float alon = web_form_get_float(body, name, b->area_lon_off);
-        b->area_lon_off = alon < 0 ? 0 : alon;
+        if (alon < 0)
+            alon = 0;
+        if (alon > OBJITEM_AREA_OFFSET_DEG_MAX)
+            alon = OBJITEM_AREA_OFFSET_DEG_MAX;
+        b->area_lon_off = alon;
+        snprintf(name, sizeof(name), "oAWidth%d", i + 1);
+        int awidth = web_form_get_int(body, name, (int)b->area_line_width);
+        if (awidth < 0)
+            awidth = 0;
+        if (awidth > OBJITEM_AREA_WIDTH_MAX)
+            awidth = OBJITEM_AREA_WIDTH_MAX;
+        b->area_line_width = (uint16_t)awidth;
 
         // -- Signpost text. --
         snprintf(name, sizeof(name), "oSign%d", i + 1);

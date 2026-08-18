@@ -194,8 +194,8 @@ esp_err_t page_igate_get(httpd_req_t *req) {
     web_fieldset_close(req);
 
     // DATA EXTENSION ---------------------------------------------------------
-    // The IGate position beacon can carry one of the three fixed-station APRS
-    // data extensions in the 7-byte slot after the symbol code (APRS101 ch.7).
+    // The IGate position beacon can carry one of the fixed-station APRS data
+    // extensions in the slot after the symbol code (APRS101 ch.7).
     // "Enable data extension" gates whether any of them is transmitted, and
     // "Extension type" picks which:
     //
@@ -204,7 +204,10 @@ esp_err_t page_igate_get(httpd_req_t *req) {
     //         operator who already knows their real coverage radius.
     //   DFS - the same height/gain/directivity codes as PHG, but reporting
     //         received signal strength instead of transmitted power, which is
-    //         what a direction-finding station transmits.
+    //         what an omnidirectional direction-finding station transmits.
+    //   DF  - the DF report of APRS101 ch.16: the bearing to a signal and the
+    //         NRQ triplet that qualifies it, which is how a station reports a
+    //         fix it took itself rather than a coverage estimate.
     //
     // The power/gain/height/direction fields below mirror the "My Station" PHG
     // section on the Station page field-for-field (same code tables); DFS
@@ -218,13 +221,17 @@ esp_err_t page_igate_get(httpd_req_t *req) {
     web_field_checkbox(req, TR_F_ENABLE_EXT, "igatePHGEn", g_config.igate_phg_enable);
     web_select_open(req, TR_F_EXT_TYPE, "igateExtType");
     {
-        static const char *extNames[] = { TR_EXT_PHG, TR_EXT_RNG, TR_EXT_DFS };
-        for (int i = 0; i < 3; i++)
+        static const char *extNames[] = { TR_EXT_PHG, TR_EXT_RNG, TR_EXT_DFS, TR_EXT_DF };
+        for (size_t i = 0; i < sizeof(extNames) / sizeof(extNames[0]); i++)
             web_select_option(req, i, extNames[i], g_config.igate_ext_type == (uint8_t)i);
     }
     web_select_close(req);
     web_field_int(req, TR_F_EXT_RANGE_MI, "igateRng", g_config.igate_range_miles, APRS_EXT_RANGE_MILES_MIN, APRS_EXT_RANGE_MILES_MAX);
     web_field_int(req, TR_F_EXT_DFS_STRENGTH, "igateDfsS", g_config.igate_dfs_strength, APRS_EXT_DFS_STRENGTH_MIN, APRS_EXT_DFS_STRENGTH_MAX);
+    web_field_int(req, TR_F_EXT_DF_BEARING, "igateDfBrg", g_config.igate_df_bearing, APRS_EXT_DF_BEARING_MIN, APRS_EXT_DF_BEARING_MAX);
+    web_field_int(req, TR_F_EXT_DF_NRQ_N, "igateDfN", g_config.igate_df_nrq_n, APRS_EXT_DF_NRQ_MIN, APRS_EXT_DF_NRQ_MAX);
+    web_field_int(req, TR_F_EXT_DF_NRQ_R, "igateDfR", g_config.igate_df_nrq_r, APRS_EXT_DF_NRQ_MIN, APRS_EXT_DF_NRQ_MAX);
+    web_field_int(req, TR_F_EXT_DF_NRQ_Q, "igateDfQ", g_config.igate_df_nrq_q, APRS_EXT_DF_NRQ_MIN, APRS_EXT_DF_NRQ_MAX);
     web_field_checkbox(req, TR_USE_MY_STATION_DATA, "igatePHGUseStation", g_config.igate_phg_use_station);
     web_select_open(req, TR_F_RADIO_TX_POWER, "igatePHGPower");
     {
@@ -325,15 +332,17 @@ esp_err_t page_igate_get(httpd_req_t *req) {
             "if(useS){q('igatePHGPower').value=ST.p;q('igatePHGGain').value=ST.g;q('igatePHGHeight').value=ST.h;q('igatePHGDir').value=ST.d;}"
             "if(ty)ty.disabled=!on;"
             // PHG uses all four sub-fields, DFS every one but the transmit
-            // power, RNG none of them; the strength and range inputs each
-            // belong to exactly one type. Disabling rather than hiding keeps
-            // the layout stable and, since a disabled control does not POST,
-            // matches what the save handler below actually stores.
+            // power, RNG and DF none of them; the range, strength and bearing
+            // /NRQ inputs each belong to exactly one type. Disabling rather
+            // than hiding keeps the layout stable and, since a disabled
+            // control does not POST, matches what the save handler below
+            // actually stores.
             "var dis=(!on)||useS;"
             "q('igatePHGPower').disabled=dis||t!==0;"
-            "['igatePHGGain','igatePHGHeight','igatePHGDir'].forEach(function(nm){var el=q(nm);if(el)el.disabled=dis||t===1;});"
+            "['igatePHGGain','igatePHGHeight','igatePHGDir'].forEach(function(nm){var el=q(nm);if(el)el.disabled=dis||t===1||t===3;});"
             "var r=q('igateRng');if(r)r.disabled=(!on)||t!==1;"
             "var sg=q('igateDfsS');if(sg)sg.disabled=(!on)||t!==2;"
+            "['igateDfBrg','igateDfN','igateDfR','igateDfQ'].forEach(function(nm){var el=q(nm);if(el)el.disabled=(!on)||t!==3;});"
             "calc();"
             "}"
             "document.addEventListener('DOMContentLoaded',function(){"
@@ -663,7 +672,7 @@ esp_err_t page_igate_post(httpd_req_t *req) {
     // config_from_json(), the two-layer pattern the rest of the pages use.
     {
         int extType = web_form_get_int(body, "igateExtType", (int)g_config.igate_ext_type);
-        if (extType < APRS_EXT_PHG || extType > APRS_EXT_DFS)
+        if (extType < APRS_EXT_PHG || extType > APRS_EXT_DF)
             extType = APRS_EXT_PHG;
         g_config.igate_ext_type = (uint8_t)extType;
 
@@ -680,6 +689,25 @@ esp_err_t page_igate_post(httpd_req_t *req) {
         if (dfs > APRS_EXT_DFS_STRENGTH_MAX)
             dfs = APRS_EXT_DFS_STRENGTH_MAX;
         g_config.igate_dfs_strength = (uint8_t)dfs;
+
+        // The bearing wraps rather than clamps: 360 and 0 degrees name the
+        // same direction and the on-air field is three digits wide, so an
+        // out-of-range value still has one correct reading.
+        int brg = web_form_get_int(body, "igateDfBrg", (int)g_config.igate_df_bearing) % 360;
+        if (brg < 0)
+            brg += 360;
+        g_config.igate_df_bearing = (uint16_t)brg;
+
+        static const char *nrqKeys[] = { "igateDfN", "igateDfR", "igateDfQ" };
+        uint8_t *nrqFields[] = { &g_config.igate_df_nrq_n, &g_config.igate_df_nrq_r, &g_config.igate_df_nrq_q };
+        for (size_t i = 0; i < sizeof(nrqKeys) / sizeof(nrqKeys[0]); i++) {
+            int digit = web_form_get_int(body, nrqKeys[i], (int)*nrqFields[i]);
+            if (digit < APRS_EXT_DF_NRQ_MIN)
+                digit = APRS_EXT_DF_NRQ_MIN;
+            if (digit > APRS_EXT_DF_NRQ_MAX)
+                digit = APRS_EXT_DF_NRQ_MAX;
+            *nrqFields[i] = (uint8_t)digit;
+        }
     }
     g_config.igate_phg_use_station = web_form_get_bool(body, "igatePHGUseStation");
     if (g_config.igate_phg_use_station) {

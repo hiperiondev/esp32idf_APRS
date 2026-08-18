@@ -100,6 +100,122 @@ static uint16_t object_bit(const char *pos, uint16_t default_bit) {
     return default_bit;
 }
 
+// Length of the position field of each layout, i.e. the offset from its first
+// byte to the first byte that follows it: the 7-byte data extension slot for
+// the uncompressed layout, the comment for the compressed one (whose cs/T
+// bytes take the place of the extension).
+#define POS_UNCOMPRESSED_LEN 19
+#define POS_COMPRESSED_LEN   13
+
+// ---------------------------------------------------------------------------
+// Late '!' data type identifier (APRS101 ch.5).
+//
+// The DTI is the first byte of the information field, with exactly one
+// exception: a position without timestamp ('!') may appear anywhere up to and
+// including character position 40, so that an X1J TNC digipeater which
+// prepends fixed, unmodifiable text to the frame still produces a readable
+// position report. Both the classifier and the decoder below fall back to this
+// scan when the first byte names no known DTI, from the same helper, so the
+// two can never disagree about where a payload's position field starts.
+//
+// The scan is deliberately strict: a '!' inside ordinary comment text is
+// common ("HI! 146.520"), so the bytes that follow the candidate must form a
+// complete, well-formed position field - every fixed digit, separator,
+// hemisphere and symbol byte of the uncompressed layout, or a full 13-byte
+// compressed field - before the offset is accepted.
+// ---------------------------------------------------------------------------
+
+// Highest 1-based character position the exception allows the '!' to sit at.
+#define LATE_DTI_SCAN_MAX 40
+
+// Symbol Table Identifier as it may appear in an uncompressed report: the two
+// standard tables, or an alphanumeric overlay character.
+static bool uncompressed_table_byte(char c) {
+    return c == '/' || c == '\\' || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9');
+}
+
+// Symbol Table Identifier as it may appear in a compressed report, where a
+// numeric overlay travels as 'a'-'j' precisely so that the first byte is never
+// a digit (APRS101 ch.21).
+static bool compressed_table_byte(char c) {
+    return c == '/' || c == '\\' || (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'j');
+}
+
+// One byte of a base-91 compressed field: printable ASCII '!' through '{'.
+static bool base91_byte(char c) {
+    return c >= '!' && c <= '{';
+}
+
+// A minute field digit, or the blank a position-ambiguity level leaves behind.
+static bool minute_byte(char c) {
+    return c == ' ' || isdigit((unsigned char)c);
+}
+
+// Tests whether `pos` opens a complete position field of either layout. Used
+// only by the late-'!' scan: the ordinary DTI paths already know a position
+// starts there and hand the bytes straight to the decoders, which apply their
+// own value checks.
+static bool position_field_is_well_formed(const char *pos, size_t len) {
+    if (isdigit((unsigned char)pos[0])) {
+        if (len < POS_UNCOMPRESSED_LEN)
+            return false;
+
+        for (int i = 0; i < 4; i++)
+            if (!isdigit((unsigned char)pos[i]))
+                return false;
+        if (pos[4] != '.' || !minute_byte(pos[5]) || !minute_byte(pos[6]))
+            return false;
+        if (pos[7] != 'N' && pos[7] != 'n' && pos[7] != 'S' && pos[7] != 's')
+            return false;
+        if (!uncompressed_table_byte(pos[8]))
+            return false;
+        for (int i = 9; i < 14; i++)
+            if (!isdigit((unsigned char)pos[i]))
+                return false;
+        if (pos[14] != '.' || !minute_byte(pos[15]) || !minute_byte(pos[16]))
+            return false;
+        if (pos[17] != 'E' && pos[17] != 'e' && pos[17] != 'W' && pos[17] != 'w')
+            return false;
+        return aprs_symbol_code_is_valid(pos[18]);
+    }
+
+    if (len < POS_COMPRESSED_LEN)
+        return false;
+    if (!compressed_table_byte(pos[0]))
+        return false;
+    for (int i = 1; i <= 8; i++)
+        if (!base91_byte(pos[i]))
+            return false;
+    if (!aprs_symbol_code_is_valid(pos[9]))
+        return false;
+    // The cs/T token: two compressed data bytes and the compression type byte
+    // that says what they mean. Spaces stand for "no cs/T data".
+    for (int i = 10; i <= 12; i++)
+        if (pos[i] != ' ' && !base91_byte(pos[i]))
+            return false;
+    return true;
+}
+
+// Returns the offset of the position data of a late '!', i.e. the index just
+// past the identifier, or 0 when the payload carries none.
+static size_t late_position_offset(const char *info, size_t len) {
+    size_t limit = (len < LATE_DTI_SCAN_MAX) ? len : LATE_DTI_SCAN_MAX;
+
+    for (size_t i = 1; i < limit; i++) {
+        if (info[i] != '!')
+            continue;
+        if (position_field_is_well_formed(&info[i + 1], len - i - 1))
+            return i + 1;
+    }
+
+    return 0;
+}
+
+// Dispatches on the data type identifier, which APRS101 defines as the first
+// byte of the information field. The one exception the specification makes to
+// that rule - a position report introduced by a '!' further into the field -
+// is applied by the default case, so every other kind still costs a single
+// byte comparison.
 uint16_t aprs_filter_classify_info(const char *info) {
     if (info == NULL)
         return 0;
@@ -153,7 +269,15 @@ uint16_t aprs_filter_classify_info(const char *info) {
         case '_':
             return IGATE_FILT_WEATHER;
 
-        // Peet Bros U-II / U-I weather in the "#"/"*" formats.
+        // Peet Bros U-II / U-I weather in the "#"/"*" formats. Classification
+        // is all this station does with them: the payload is routed and
+        // relayed byte for byte as weather, and no reading is ever parsed out
+        // of it. The same holds for the "$ULTW" record below. Both are raw
+        // instrument records whose scale factors are set by the station's own
+        // firmware and are not standardized by APRS, so there is no general
+        // conversion into the engineering units the rest of the code works
+        // in, and this station keeps no weather store for anyone else's
+        // readings in the first place.
         case '#':
         case '*':
             return IGATE_FILT_WEATHER;
@@ -260,13 +384,32 @@ uint16_t aprs_filter_classify_info(const char *info) {
         //   ','  test/invalid data (APRS101 ch.20), which is not meant to
         //        leave the channel it was sent on
         //
-        // Both fall through the catch-all rather than carrying a class of
-        // their own, which is the same answer either way: a kind that is
-        // never gated needs no bit for the operator to tick, and giving test
-        // data one could only ever be used to defeat the rule above.
+        // Neither carries a class of its own, which is the same answer either
+        // way: a kind that is never gated needs no bit for the operator to
+        // tick, and giving test data one could only ever be used to defeat
+        // the rule above. They are named here rather than left to the
+        // catch-all because the catch-all now scans for a late '!', and the
+        // payload of a third-party frame is a whole packet whose own position
+        // report would be found by that scan - which is precisely the
+        // re-gating this rule exists to prevent.
         // ------------------------------------------------------------------
-        default:
+        case '}':
+        case ',':
             return 0;
+
+        // ------------------------------------------------------------------
+        // No known identifier in the first byte. Before giving up, apply
+        // APRS101 chapter 5's one exception to that rule and look for a
+        // position report introduced by a '!' further into the field (see
+        // late_position_offset()). Anything else is unclassified, and
+        // unclassified means "do not relay".
+        // ------------------------------------------------------------------
+        default: {
+            size_t pos = late_position_offset(info, len);
+            if (pos > 0)
+                return position_bit(&info[pos]);
+            return 0;
+        }
     }
 }
 
@@ -711,13 +854,6 @@ static bool decode_pos_compressed(const char *pos, float *lat, float *lon) {
 // ---------------------------------------------------------------------------
 // Receive-side field decoding (see aprs_filter.h).
 // ---------------------------------------------------------------------------
-
-// Length of the position field of each layout, i.e. the offset from its first
-// byte to the first byte that follows it: the 7-byte data extension slot for
-// the uncompressed layout, the comment for the compressed one (whose cs/T
-// bytes take the place of the extension).
-#define POS_UNCOMPRESSED_LEN 19
-#define POS_COMPRESSED_LEN   13
 
 // Width of the data extension slot, and of the "PHGphgdr/" form, which is the
 // one extension that is longer than the slot: APRS 1.2 appends the beacon
@@ -1205,10 +1341,25 @@ bool aprs_filter_decode_report(const char *info, const char *dst_call, aprs_rx_r
             return true;
         }
 
-        // Every other DTI either has no position or isn't worth the extra
-        // parsing for a "should we push this to APRS-IS" range check.
-        default:
+        // Third-party traffic and test data are the two payloads the
+        // classifier refuses outright, so they are refused here too: a
+        // position found inside them belongs to the station that originated
+        // the inner packet, not to the sender of this one.
+        case '}':
+        case ',':
             return false;
+
+        // Every other DTI either has no position or isn't worth the extra
+        // parsing for a "should we push this to APRS-IS" range check - except
+        // for the late '!' the classifier accepts, which is decoded from the
+        // same offset so that a frame classified as a position is also
+        // decodable as one.
+        default: {
+            size_t pos = late_position_offset(info, len);
+            if (pos > 0)
+                return decode_position_field(&info[pos], out);
+            return false;
+        }
     }
 }
 

@@ -56,6 +56,14 @@ uint16_t aprs_filter_classify_tnc2(const char *line);
  * @brief Same as aprs_filter_classify_tnc2() but for an already-isolated
  * information field (no header, starts at the data type identifier).
  *
+ * The data type identifier is the first byte of the field, with the single
+ * exception APRS101 chapter 5 makes: a position without timestamp ('!') may
+ * appear anywhere up to and including character position 40, to accommodate
+ * X1J TNC digipeaters that prepend fixed text. A field whose first byte names
+ * no known identifier is therefore scanned for such a position before it is
+ * reported as unclassified, and ::aprs_filter_decode_report reads it from the
+ * same offset.
+ *
  * @param info NUL-terminated APRS information field.
  * @return The matching IGATE_FILT_* bit, or 0 if none applies.
  */

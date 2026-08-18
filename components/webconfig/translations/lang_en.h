@@ -326,6 +326,14 @@
 #define TR_F_QUERY_EXT "Extended directed queries (?APRSD/?APRSH/?APRSM/?APRSO/?APRSP/?APRSS/?APRST)"
 /** Form label for the "query min interval" field or fieldset, rendered on the configuration forms. */
 #define TR_F_QUERY_MIN_INTERVAL "Minimum seconds between identical responses"
+/** Form label for the "query cap section" field or fieldset, rendered on the configuration forms. */
+#define TR_F_QUERY_CAP_SECTION "Station capabilities beacon"
+/** Form label for the "query cap enable" field or fieldset, rendered on the configuration forms. */
+#define TR_F_QUERY_CAP_ENABLE "Send capabilities periodically"
+/** Form label for the "query cap interval" field or fieldset, rendered on the configuration forms. */
+#define TR_F_QUERY_CAP_INTERVAL "Capabilities beacon interval (s)"
+/** Form label for the "query cap extra" field or fieldset, rendered on the configuration forms. */
+#define TR_F_QUERY_CAP_EXTRA "Additional capability tokens"
 /** Form label for the "radio modem" field or fieldset, rendered on the configuration forms. */
 #define TR_F_RADIO_MODEM "Radiomodem"
 /** Form label for the "retry count" field or fieldset, rendered on the configuration forms. */
@@ -424,8 +432,8 @@
 #define TR_F_OBJITEM_AREA_SHAPE "Area shape (\\l symbol)"
 /** Form label for the "objitem shape circle" field or fieldset, rendered on the configuration forms. */
 #define TR_F_OBJITEM_SHAPE_CIRCLE "Circle"
-/** Form label for the "objitem shape line" field or fieldset, rendered on the configuration forms. */
-#define TR_F_OBJITEM_SHAPE_LINE "Line"
+/** Form label for the "objitem shape line down right" field or fieldset, rendered on the configuration forms. */
+#define TR_F_OBJITEM_SHAPE_LINE_DOWN_RIGHT "Line (down/right)"
 /** Form label for the "objitem shape ellipse" field or fieldset, rendered on the configuration forms. */
 #define TR_F_OBJITEM_SHAPE_ELLIPSE "Ellipse"
 /** Form label for the "objitem shape triangle" field or fieldset, rendered on the configuration forms. */
@@ -440,6 +448,10 @@
 #define TR_F_OBJITEM_AREA_LAT_OFF "Area latitude offset (deg)"
 /** Form label for the "objitem area lon off" field or fieldset, rendered on the configuration forms. */
 #define TR_F_OBJITEM_AREA_LON_OFF "Area longitude offset (deg)"
+/** Form label for the "objitem shape line down left" field or fieldset, rendered on the configuration forms. */
+#define TR_F_OBJITEM_SHAPE_LINE_DOWN_LEFT "Line (down/left)"
+/** Form label for the "objitem area width" field or fieldset, rendered on the configuration forms. */
+#define TR_F_OBJITEM_AREA_WIDTH "Line corridor width (miles, 0 = omit)"
 /** Form label for the "objitem signpost" field or fieldset, rendered on the configuration forms. */
 #define TR_F_OBJITEM_SIGNPOST "Signpost text (\\m symbol, 3 chars)"
 /** Form label for the "objitem freq" field or fieldset, rendered on the configuration forms. */
@@ -1137,10 +1149,20 @@
 #define TR_EXT_RNG "RNG - pre-calculated radio range"
 /** Data-extension label for dfs, rendered on the IGate page. */
 #define TR_EXT_DFS "DFS - omni-DF signal strength"
+/** Data-extension label for df, rendered on the IGate page. */
+#define TR_EXT_DF "DF - bearing and NRQ report"
 /** Form label for the "ext range mi" field or fieldset, rendered on the IGate page. */
 #define TR_F_EXT_RANGE_MI "Radio range (miles)"
 /** Form label for the "ext dfs strength" field or fieldset, rendered on the IGate page. */
 #define TR_F_EXT_DFS_STRENGTH "Signal strength (S-points, 0 = not heard)"
+/** Form label for the "ext df bearing" field or fieldset, rendered on the IGate page. */
+#define TR_F_EXT_DF_BEARING "Signal bearing (degrees)"
+/** Form label for the "ext df nrq n" field or fieldset, rendered on the IGate page. */
+#define TR_F_EXT_DF_NRQ_N "Hits per period (N, 0 = NRQ not meaningful)"
+/** Form label for the "ext df nrq r" field or fieldset, rendered on the IGate page. */
+#define TR_F_EXT_DF_NRQ_R "Range code (R, range = 2^R miles)"
+/** Form label for the "ext df nrq q" field or fieldset, rendered on the IGate page. */
+#define TR_F_EXT_DF_NRQ_Q "Bearing accuracy (Q, 9 = best)"
 /** Form label for the "pos ambiguity" field or fieldset, rendered on the IGate page. */
 #define TR_F_POS_AMBIGUITY "Position ambiguity"
 /** Position-ambiguity selector entry: none, rendered on the IGate page. */

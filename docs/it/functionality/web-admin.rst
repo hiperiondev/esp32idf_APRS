@@ -111,7 +111,10 @@ Le pagine
        arrivata la domanda), tipi di query generali (``?APRS?``, e dove
        compilati, ``?WX?``/``?IGATE?``),
        abilitazione query dirette, insieme esteso di query dirette, intervallo
-       minimo di risposta (soglia di sicurezza contro loop/uso del canale).
+       minimo di risposta (soglia di sicurezza contro loop/uso del canale), e il
+       beacon periodico delle capacità di stazione: abilitazione, intervallo,
+       selezione dei canali RF e APRS-IS, ed eventuali elementi di capacità
+       aggiuntivi da accodare.
    * - **Radio / Modem**
      - Modalità FX.25 (spento / solo RX / RX+TX); abilita modem audio, modulazione
        (300 / 1200 Bell202 / 1200 V.23 / 9600 G3RUH), LPF audio (audio piatto), ms

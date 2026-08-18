@@ -18,6 +18,7 @@
 // lastheard and trafficlog components, provides the TNC2 transmit path and runs
 // the periodic service tick.
 
+#include <ctype.h>
 #include <stdatomic.h>
 #include <stdio.h>
 #include <string.h>
@@ -1024,6 +1025,48 @@ static bool messageAddressee(const char *info, char *out, size_t outMax) {
     return n > 0;
 }
 
+// True if a message addressee names a broadcast rather than an individual
+// station: the bulletin and announcement addressees of APRS101 chapter 14 and
+// the addressees the weather service feed uses for its own notices.
+//
+// A general bulletin is "BLN" followed by a single digit, an announcement is
+// "BLN" followed by a single upper-case letter, and a group bulletin appends a
+// group name of up to five characters to either - all three share the same
+// first four bytes, which is what this tests. The weather service families
+// ("NWS-xxxxx" in the specification, plus the "SKY" and "CWA" addressees the
+// same feed uses) are matched on their three-letter prefix; none of the three
+// can begin an amateur callsign, so no station is caught by them.
+static bool addresseeIsBroadcast(const char *addressee) {
+    if (addressee == NULL)
+        return false;
+
+    if (!strncmp(addressee, "BLN", 3) && (isdigit((unsigned char)addressee[3]) || isupper((unsigned char)addressee[3])))
+        return true;
+
+    static const char *const broadcastPrefixes[] = { "NWS", "SKY", "CWA" };
+    for (size_t i = 0; i < sizeof(broadcastPrefixes) / sizeof(broadcastPrefixes[0]); i++) {
+        if (!strncmp(addressee, broadcastPrefixes[i], 3))
+            return true;
+    }
+
+    return false;
+}
+
+// True if a TNC2 line carries a message payload whose addressee is one of the
+// broadcast addressees above. Anything that is not shaped like a message -
+// messageAddressee() enforces the ':' data type identifier and the fixed
+// 9-character addressee field followed by its ':' - is not one, so a position
+// or object report never reaches the addressee test.
+static bool lineIsBroadcastMessage(const char *line) {
+    const char *colon = strchr(line, ':');
+    char addressee[12];
+
+    if (colon == NULL || !messageAddressee(colon + 1, addressee, sizeof(addressee)))
+        return false;
+
+    return addresseeIsBroadcast(addressee);
+}
+
 // True if the address block of a TNC2 line carries a token or q-construct
 // that forbids the packet reaching RF. Only the header is searched -
 // everything up to the first ':' - so a message whose TEXT happens to mention
@@ -1289,6 +1332,27 @@ static void inet2rfHandler(const char *line) {
             return;
         }
 
+        // Bulletins, announcements and weather service broadcasts are never
+        // put on the air from the APRS-IS feed. A bulletin is addressed to
+        // everybody, is repeated for as long as it stands, is never
+        // acknowledged and runs to 67 characters of text, and the feed
+        // carries every one of them worldwide; relaying that stream turns a
+        // single station into a bulletin repeater for the whole network on
+        // the shared local channel. The same reasoning as the generic query
+        // drop applies, and so does the same placement: this check is
+        // unconditional and independent of both g_config.igate_msg_gate_en
+        // and g_config.inet2rfFilter, so no checkbox state can defeat it,
+        // and it runs ahead of the type filter that would otherwise be the
+        // only thing standing between the feed and the transmitter. A
+        // message addressed to a station is unaffected: only the broadcast
+        // addressee families are matched here, and they are the traffic an
+        // operator on the local channel has no way to answer or refuse.
+        if (lineIsBroadcastMessage(line)) {
+            ESP_LOGD(TAG, "INET2RF: not gated, bulletin/broadcast addressee: %s", line);
+            igate_note_drop(DROP_MSG_BROADCAST);
+            return;
+        }
+
         // g_config.inet2rfFilter is a whitelist of payload types (the IGATE
         // Filter fieldset on the /igate page): classify the line and drop it
         // unless its bit is set. Unclassifiable payloads - third-party
@@ -1372,6 +1436,15 @@ static void inet2rfHandler(const char *line) {
                     if (innerColon && innerColon[1] == '}') {
                         ESP_LOGD(TAG, "INET2RF: third-party payload nested more than one level, not unwrapped: %s", line);
                         igate_note_drop(DROP_3RDPARTY_NESTED);
+                    } else if (lineIsBroadcastMessage(inner)) {
+                        // The broadcast-addressee rule above is stated for
+                        // every line this handler considers, so the packet
+                        // that comes out of an unwrap is held to it too:
+                        // whitelisting a station's third-party traffic is
+                        // permission to relay that station, not permission
+                        // to put the bulletin stream on the air behind it.
+                        ESP_LOGD(TAG, "INET2RF: third-party payload is a bulletin/broadcast, not unwrapped: %s", inner);
+                        igate_note_drop(DROP_MSG_BROADCAST);
                     } else {
                         uint16_t innerType = aprs_filter_classify_thirdparty_inner(colon + 1);
 
