@@ -510,12 +510,17 @@ bool aprs_mice_encode(const aprs_mice_report_t *report, char *dst_call_out, char
     int lat_deg = (int)lat_abs;
     double lat_min = (lat_abs - lat_deg) * 60.0;
 
-    // Round to hundredths of a minute first, same resolution as the on-air
-    // field, then split into the four destination-address digit pairs
-    // (minutes tens/units, hundredths tens/units) decoded by
-    // aprs_mice_decode(). A minutes value that rounds up to 60.00 carries
-    // into the next whole degree, keeping the encoded position valid.
-    int lat_hun_total = (int)lround(lat_min * 100.0);
+    // Truncate to hundredths of a minute first, same resolution as the
+    // on-air field and the same truncation aprs_coord.c's splitDegMin() and
+    // aprs_dao.c's extraMinuteDigit() apply to the plain uncompressed
+    // position field, so the destination-address digits and the trailing
+    // !DAO! extension on the same packet (aprs_dao_build(), main/aprs_dao.c)
+    // always agree on the same coordinate. The digit pairs are then split
+    // (minutes tens/units, hundredths tens/units) for aprs_mice_decode(). A
+    // minutes value that computes to a full 60.00 because of floating-point
+    // error at the top of a degree carries into the next whole degree,
+    // keeping the encoded position valid.
+    int lat_hun_total = (int)(lat_min * 100.0);
     if (lat_hun_total >= 6000) {
         lat_hun_total -= 6000;
         lat_deg += 1;
@@ -570,7 +575,9 @@ bool aprs_mice_encode(const aprs_mice_report_t *report, char *dst_call_out, char
     double lon_abs = west ? -lon : lon;
     int lon_deg_full = (int)lon_abs;
     double lon_min = (lon_abs - lon_deg_full) * 60.0;
-    int lon_hun_total = (int)lround(lon_min * 100.0);
+    // Truncated the same way as the latitude above, so this axis agrees
+    // with its own destination-address digits and the trailing !DAO!.
+    int lon_hun_total = (int)(lon_min * 100.0);
     if (lon_hun_total >= 6000) {
         lon_hun_total -= 6000;
         lon_deg_full += 1;
@@ -579,7 +586,7 @@ bool aprs_mice_encode(const aprs_mice_report_t *report, char *dst_call_out, char
     int lon_hun = lon_hun_total % 100;
 
     if (lon_deg_full > 179)
-        return false; // rounding carried into the unencodable +/-180 antimeridian
+        return false; // the degree carry above reached the unencodable +/-180 antimeridian
 
     // Longitude offset flag (byte 5 of the destination address): set
     // whenever the (unsigned) longitude is 100 degrees or more, matching

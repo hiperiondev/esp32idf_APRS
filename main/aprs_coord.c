@@ -31,19 +31,25 @@
 static const char *TAG = "aprs_coord";
 
 // Splits an absolute-value decimal-degrees coordinate into whole degrees and
-// minutes, rounding the minutes to two decimal places first and carrying
-// into the degrees when that rounds up to 60.00. This keeps the minutes
-// field within the valid 00.00-59.99 range in every case, including
-// fractional degrees that split to a minutes value of e.g. 59.997.
+// minutes, truncating the minutes to two decimal places so the base field
+// and the extra digit aprs_dao_build() appends for the same coordinate
+// (main/aprs_dao.c) both derive from the same truncated value rather than
+// one rounding and the other not. The truncation is done on the integer
+// hundredths so it never depends on how the C library rounds a printf
+// conversion. A minutes value that computes to a full 60.00 because of
+// floating-point error at the top of a degree carries into the next whole
+// degree, which keeps the minutes field within the valid 00.00-59.99 range
+// in every case.
 static void splitDegMin(float absVal, int *deg, float *min) {
     int d = (int)absVal;
     float m = (absVal - d) * 60.0f;
-    if (m >= 59.995f) {
-        m = 0.0f;
+    int hundredths = (int)(m * 100.0f);
+    if (hundredths >= 6000) {
+        hundredths -= 6000;
         d += 1;
     }
     *deg = d;
-    *min = m;
+    *min = (float)hundredths / 100.0f;
 }
 
 void aprs_coord_format(float lat, float lon, char *latOut, size_t latMax, char *lonOut, size_t lonMax) {
@@ -71,9 +77,9 @@ void aprs_coord_format_ambiguous(float lat, float lon, uint8_t ambiguity, char *
         ambiguity = APRS_COORD_AMBIGUITY_MAX;
 
     // Build both fields at full precision first, then blank digits. The
-    // rounding carry in splitDegMin() therefore still applies at every
-    // ambiguity level, so a coordinate that rounds up to the next degree is
-    // reported in that degree rather than in the one below it.
+    // degree carry in splitDegMin() therefore still applies at every
+    // ambiguity level, so a coordinate whose minutes compute to a full 60.00
+    // is reported in the next degree rather than in the one below it.
     int dLat;
     float mLat;
     splitDegMin(fabsf(lat), &dLat, &mLat);

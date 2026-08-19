@@ -419,8 +419,9 @@ reporte analizable:
 
 Los dígitos se blanquean, nunca se redondean fuera, igual que los decodificadores
 de referencia que leen un dígito blanqueado como "desconocido". El acarreo de
-redondeo se aplica primero, así que una coordenada que redondea al grado
-siguiente se informa en ese grado y no en el anterior.
+grado descrito arriba se aplica primero, así que una coordenada cuyos minutos
+dan un 60.00 completo por error de punto flotante en el borde de un grado se
+informa en el grado siguiente y no en el anterior.
 
 Un nivel distinto de cero también fuerza el formato sin comprimir, por el mismo
 tipo de razón que una extensión de datos: el formato comprimido no tiene dígitos
@@ -438,10 +439,13 @@ precisión/datum ``!DAO!`` en su forma legible (WGS-84, ``aprs12/datum.txt``)
 al comentario de todo reporte de posición sin comprimir y al campo de texto
 Mic-E, donde el estándar reserva esa misma posición final para ella. Los
 cinco bytes recuperan, como un dígito decimal extra por eje, el tercer
-dígito de minuto que los campos planos ``DDMM.mmN``/``DDDMM.mmW`` redondean y
+dígito de minuto que los campos planos ``DDMM.mmN``/``DDDMM.mmW`` truncan y
 descartan — un orden de magnitud más de precisión que la que el formato sin
 comprimir lleva por sí solo, igualando la resolución propia en punto
-flotante de latitud/longitud de este firmware.
+flotante de latitud/longitud de este firmware. Tanto el campo base como este
+dígito extra se derivan del mismo truncamiento del valor de minutos, así que
+añadirlo siempre recupera una posición al menos tan cercana a la real como el
+campo base por sí solo.
 
 Como restituye precisión, ``!DAO!`` solo se aplica cuando *Position
 ambiguity* es 0 y el formato no es el comprimido: una estación que oculta su

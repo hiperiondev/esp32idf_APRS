@@ -17,7 +17,7 @@
  * @brief Builds the APRS !DAO! precision/datum extension (aprs12/datum.txt),
  * the 5-byte field a position comment carries to recover the third decimal
  * minute digit of latitude and longitude - the digit the uncompressed
- * "DDMM.mmN"/"DDDMM.mmW" fields (APRS101 chapter 6) round away - plus an
+ * "DDMM.mmN"/"DDDMM.mmW" fields (APRS101 chapter 6) truncate away - plus an
  * explicit datum identification.
  *
  * The extension is a self-contained token, "!" + one datum byte + one digit
@@ -51,10 +51,13 @@
  * for a decimal-degrees position.
  *
  * Recovers, as a single extra digit per axis, the third decimal minute digit
- * that aprs_coord_format_ambiguous() rounds away when it prints the minutes
- * field to two decimal places - one order of magnitude more precision than
- * the plain "DDMM.mmN"/"DDDMM.mmW" fields carry, matching this firmware's own
- * float latitude/longitude resolution.
+ * that aprs_coord_format_ambiguous() truncates away when it prints the
+ * minutes field to two decimal places - one order of magnitude more
+ * precision than the plain "DDMM.mmN"/"DDDMM.mmW" fields carry, matching
+ * this firmware's own float latitude/longitude resolution. Both the base
+ * field and this extra digit are derived from the same truncation of the
+ * minutes value, so appending it always recovers a value at least as close
+ * to the true position as the base field alone, never further from it.
  *
  * The output is always exactly 5 bytes: '!', the datum byte 'W' (uppercase =
  * human-readable form, WGS-84), the latitude's extra digit, the longitude's

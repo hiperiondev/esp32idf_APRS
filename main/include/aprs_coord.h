@@ -59,11 +59,14 @@
  * @brief Format a decimal-degrees latitude/longitude pair as the APRS
  * uncompressed position fields "DDMM.mmN"/"S" and "DDDMM.mmE"/"W".
  *
- * The minutes value is rounded to two decimal places before the
- * degrees/minutes split is finalized, so a minutes value that rounds up to
- * 60.00 carries into the degrees field instead of being emitted as-is.
- * This keeps the output within the valid MM.mm range of 00.00-59.99
- * required by the APRS spec.
+ * The minutes value is truncated, never rounded, to two decimal places
+ * before the degrees/minutes split is finalized, so the field always shows
+ * the whole hundredths-of-a-minute digits the coordinate actually has and
+ * agrees with the extra precision digit aprs_dao_build() (aprs_dao.h) can
+ * append for the same coordinate. A minutes value that computes to a full
+ * 60.00 because of floating-point error at the top of a degree carries into
+ * the degrees field instead of being emitted as-is, which keeps the output
+ * within the valid MM.mm range of 00.00-59.99 required by the APRS spec.
  *
  * @param lat Latitude in decimal degrees (positive = N, negative = S).
  * @param lon Longitude in decimal degrees (positive = E, negative = W).

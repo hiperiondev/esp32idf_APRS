@@ -23,16 +23,17 @@
 // Returns the third decimal digit of the minutes part of an absolute-value
 // decimal-degrees coordinate, i.e. the thousandths-of-a-minute digit that
 // sits one place past the hundredths already carried by the plain
-// "DDMM.mmN"/"DDDMM.mmW" fields. The minutes value is rounded to three
-// decimal places first so a value that lands exactly on a digit boundary
-// (e.g. .9175) is not truncated one digit short, and a rounding carry all
-// the way to a whole minute (999 thousandths) is folded back to 9 rather
-// than producing a digit outside 0-9.
+// "DDMM.mmN"/"DDDMM.mmW" fields. The minutes value is truncated to three
+// decimal places, the same way aprs_coord.c's splitDegMin() truncates it to
+// two, so the digit this function returns is always the exact next digit of
+// the base field rather than an independently rounded value that can
+// disagree with it. Clamping to 59999 thousandths keeps the result inside
+// 0-9 even if floating-point error pushes the minutes to a full 60.0.
 static char extraMinuteDigit(float absVal) {
     int deg = (int)absVal;
     float minutes = (absVal - deg) * 60.0f;
 
-    long thousandths = lroundf(minutes * 1000.0f);
+    long thousandths = (long)(minutes * 1000.0f);
     if (thousandths < 0)
         thousandths = 0;
     if (thousandths > 59999)

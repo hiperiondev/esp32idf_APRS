@@ -396,9 +396,10 @@ is what keeps the report parseable:
      - Nearest degree.
 
 Digits are blanked, never rounded away, matching the reference decoders that
-read a blanked digit as "unknown". The rounding carry still applies first, so a
-coordinate that rounds up to the next degree is reported in that degree rather
-than the one below it.
+read a blanked digit as "unknown". The degree carry described above still
+applies first, so a coordinate whose minutes compute to a full 60.00 because
+of floating-point error at the top of a degree is reported in the next degree
+rather than the one below it.
 
 A non-zero level also forces the uncompressed layout, for the same class of
 reason as a data extension: the compressed format has no decimal digits to
@@ -416,9 +417,12 @@ precision/datum extension (``aprs12/datum.txt``) to the comment of every
 uncompressed position report and to the Mic-E text field, where the spec
 reserves the same trailing position for it. The five bytes recover, as one
 extra decimal digit per axis, the third minute digit that the plain
-``DDMM.mmN``/``DDDMM.mmW`` fields round away — one order of magnitude more
+``DDMM.mmN``/``DDDMM.mmW`` fields truncate away — one order of magnitude more
 precision than the uncompressed layout otherwise carries, matching this
-firmware's own float latitude/longitude resolution.
+firmware's own float latitude/longitude resolution. Both the base field and
+this extra digit are derived from the same truncation of the minutes value,
+so appending it always recovers a position at least as close to the true one
+as the base field alone.
 
 Because it restores precision, ``!DAO!`` is only ever applied when
 *Position ambiguity* is 0 and the layout is not the compressed one — a

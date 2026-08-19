@@ -419,8 +419,9 @@ analizzabile:
 
 Le cifre vengono svuotate, mai arrotondate via, come fanno i decodificatori di
 riferimento che leggono una cifra svuotata come "sconosciuta". Il riporto di
-arrotondamento si applica prima, quindi una coordinata che arrotonda al grado
-successivo viene riportata in quel grado e non in quello precedente.
+grado descritto sopra si applica prima, quindi una coordinata i cui minuti
+danno un 60.00 pieno per errore in virgola mobile al limite di un grado viene
+riportata nel grado successivo e non in quello precedente.
 
 Un livello diverso da zero forza anche il formato non compresso, per lo stesso
 tipo di motivo di un'estensione dati: il formato compresso non ha cifre decimali
@@ -440,9 +441,13 @@ precisione/datum ``!DAO!`` nella sua forma leggibile (WGS-84,
 compresso e al campo di testo Mic-E, dove lo standard riserva la stessa
 posizione finale. I cinque byte recuperano, come una cifra decimale in più
 per asse, la terza cifra dei minuti che i campi semplici
-``DDMM.mmN``/``DDDMM.mmW`` arrotondano via — un ordine di grandezza in più
+``DDMM.mmN``/``DDDMM.mmW`` troncano via — un ordine di grandezza in più
 di precisione rispetto a quella che il formato non compresso porta da solo,
 pari alla risoluzione in virgola mobile di latitudine/longitudine di questo
+firmware. Sia il campo base sia questa cifra extra derivano dallo stesso
+troncamento del valore dei minuti, quindi aggiungerla recupera sempre una
+posizione almeno tanto vicina a quella reale quanto il solo campo base.
+
 firmware.
 
 Poiché ripristina precisione, ``!DAO!`` viene applicata solo quando
