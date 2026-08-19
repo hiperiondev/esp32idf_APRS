@@ -220,7 +220,7 @@ Formato dati Mic-E (cap. 10)
      - Note
    * - Mic-E in trasmissione e ricezione
      - ✅
-     - Codificatore e decodificatore completi, che coprono la metà nell'indirizzo di destinazione, la longitudine, la velocità e la rotta, e entrambi gli identificatori di tipo dato, l'attuale e il vecchio.
+     - Codificatore e decodificatore completi, che coprono la metà nell'indirizzo di destinazione, la longitudine, la velocità e la rotta, la coppia di simbolo compreso il suo carattere di sovrapposizione, e entrambi gli identificatori di tipo dato, l'attuale e il vecchio.
    * - Codice di tipo e identificatore del costruttore
      - ✅
      - Il byte di tipo segue il byte della tabella simboli e riflette la capacità di messaggistica della stazione; la coppia costruttore/versione chiude il campo di testo. Senza di essi un beacon Mic-E è anonimo per ogni client, perché l'indirizzo di destinazione porta la posizione e non può anche identificare il firmware.
@@ -360,7 +360,7 @@ Messaggi, bollettini e annunci (cap. 14)
      - Note
    * - Messaggi di testo con conferma e rifiuto
      - ✅
-     - Campo destinatario a nove caratteri, corrispondenza di conferma e rifiuto limitata a uno-cinque caratteri alfanumerici come consente la specifica, e un timer di ritentativo per i messaggi in uscita non confermati.
+     - Campo destinatario a nove caratteri, corrispondenza di conferma e rifiuto limitata a uno-cinque caratteri alfanumerici come consente la specifica, e un timer di ritentativo per i messaggi in uscita non confermati. Una riga entrante viene presa come messaggio solo quando il suo campo informazioni porta l'inquadratura completa — l'identificatore ``:``, nove caratteri di destinatario e il ``:`` di chiusura — così un rapporto di stato o un commento il cui testo libero le somiglia non viene né risposto, né allarmato, né memorizzato.
    * - Reply-ACK
      - ✅
      - Tutte e sette le regole dell'algoritmo, incluso costruire il suffisso nell'istante della trasmissione e tenere una piccola tabella per stazione delle conferme dovute. È ciò che fa scorrere uno scambio di messaggi a velocità di conversazione invece di due pacchetti per turno.
@@ -532,7 +532,7 @@ Simboli (cap. 21)
      - Un selettore visuale nell'amministrazione web copre entrambe le tabelle, con un simbolo per ruolo per tracker, IGate, digipeater, stazione meteo e ogni oggetto.
    * - Caratteri di sovrapposizione
      - ✅
-     - Un carattere di sovrapposizione può essere collocato nella posizione della tabella per i simboli che lo accettano, ed è così che un digipeater annuncia la propria politica di instradamento sulla mappa. Sono accettate sovrapposizioni alfabetiche e numeriche, e una numerica viene emessa in un rapporto compresso come la lettera minuscola ``a``-``j`` che quel formato richiede, perché un campo di posizione compresso non può mai iniziare con una cifra. Lo stesso insieme viene letto in ricezione, da un'unica coppia di predicati condivisa dall'estrattore di simbolo e dal decodificatore di posizione, così un rapporto compresso in arrivo con sovrapposizione restituisce il suo simbolo reale invece di due byte del suo commento; una sovrapposizione ``a``-``j`` viene ritradotta nella cifra che rappresenta, perché una stessa stazione si legga uguale in entrambi i formati.
+     - Un carattere di sovrapposizione può essere collocato nella posizione della tabella per i simboli che lo accettano, ed è così che un digipeater annuncia la propria politica di instradamento sulla mappa. Sono accettate sovrapposizioni alfabetiche e numeriche, e una numerica viene emessa in un rapporto compresso come la lettera minuscola ``a``-``j`` che quel formato richiede, perché un campo di posizione compresso non può mai iniziare con una cifra. Lo stesso insieme viene letto in ricezione, da un'unica coppia di predicati condivisa dall'estrattore di simbolo e dal decodificatore di posizione, così un rapporto compresso in arrivo con sovrapposizione restituisce il suo simbolo reale invece di due byte del suo commento; una sovrapposizione ``a``-``j`` viene ritradotta nella cifra che rappresenta, perché una stessa stazione si legga uguale in entrambi i formati. Mic-E trasporta la sovrapposizione nello stesso byte e con lo stesso significato che le assegna il formato non compresso, quindi anche un beacon in quel formato viene tracciato con la sovrapposizione dell'operatore, e il decodificatore la legge come sovrapposizione sulla tabella alternativa e non come un identificatore di tabella a sé stante.
    * - Precedenza dei simboli
      - ⚠️
      - Viene letto solo il simbolo del campo informazioni, quindi la questione della precedenza non si pone in pratica; ma significa anche che le sorgenti di ripiego descritte dalla regola non vengono mai consultate per un pacchetto che lì non porti simbolo.

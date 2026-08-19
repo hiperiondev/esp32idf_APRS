@@ -220,7 +220,7 @@ Formato de datos Mic-E (cap. 10)
      - Notas
    * - Mic-E en transmisión y recepción
      - ✅
-     - Codificador y decodificador completos, cubriendo la mitad de la dirección de destino, la longitud, la velocidad y el rumbo, y ambos identificadores de tipo de dato, el actual y el antiguo.
+     - Codificador y decodificador completos, cubriendo la mitad de la dirección de destino, la longitud, la velocidad y el rumbo, el par de símbolo incluido su carácter de superposición, y ambos identificadores de tipo de dato, el actual y el antiguo.
    * - Código de tipo e identificador de fabricante
      - ✅
      - El byte de tipo va después del byte de tabla de símbolos y refleja la capacidad de mensajería de la estación; el par de fabricante y versión cierra el campo de texto. Sin ellos una baliza Mic-E es anónima para todo cliente, porque la dirección de destino lleva la posición y no puede además identificar el firmware.
@@ -360,7 +360,7 @@ Mensajes, boletines y anuncios (cap. 14)
      - Notas
    * - Mensajes de texto con acuse y rechazo
      - ✅
-     - Campo de destinatario de nueve caracteres, coincidencia de acuse y rechazo restringida a los de uno a cinco caracteres alfanuméricos que permite la especificación, y un temporizador de reintento para los mensajes salientes sin acusar.
+     - Campo de destinatario de nueve caracteres, coincidencia de acuse y rechazo restringida a los de uno a cinco caracteres alfanuméricos que permite la especificación, y un temporizador de reintento para los mensajes salientes sin acusar. Una línea entrante se toma como mensaje solo cuando su campo de información lleva el encuadre completo — el identificador ``:``, nueve caracteres de destinatario y el ``:`` de cierre — así que un reporte de estado o un comentario cuyo texto libre se le parece no se responde, ni dispara la alarma, ni se guarda.
    * - Reply-ACK
      - ✅
      - Las siete reglas del algoritmo, incluido armar el sufijo en el instante de la transmisión y llevar una pequeña tabla por estación de acuses adeudados. Es lo que hace que un intercambio de mensajes fluya a velocidad de conversación en vez de dos paquetes por turno.
@@ -531,7 +531,7 @@ Símbolos (cap. 21)
      - Un selector visual en la administración web cubre ambas tablas, con un símbolo por rol para el tracker, el IGate, el digipetidor, la estación meteorológica y cada objeto.
    * - Caracteres de superposición
      - ✅
-     - Se puede poner un carácter de superposición en la posición de la tabla para los símbolos que lo aceptan, que es como un digipetidor anuncia su propia política de ruteo en el mapa. Se aceptan superposiciones alfabéticas y numéricas, y una numérica se emite en un reporte comprimido como la letra minúscula ``a``-``j`` que ese formato exige, porque un campo de posición comprimido nunca puede empezar con un dígito. El mismo conjunto se lee en recepción, desde un único par de predicados compartido por el extractor de símbolo y el decodificador de posición, así que un reporte comprimido entrante con superposición entrega su símbolo real en vez de dos bytes de su comentario; una superposición ``a``-``j`` se traduce de vuelta al dígito que representa, para que una misma estación se lea igual en cualquiera de los dos formatos.
+     - Se puede poner un carácter de superposición en la posición de la tabla para los símbolos que lo aceptan, que es como un digipetidor anuncia su propia política de ruteo en el mapa. Se aceptan superposiciones alfabéticas y numéricas, y una numérica se emite en un reporte comprimido como la letra minúscula ``a``-``j`` que ese formato exige, porque un campo de posición comprimido nunca puede empezar con un dígito. El mismo conjunto se lee en recepción, desde un único par de predicados compartido por el extractor de símbolo y el decodificador de posición, así que un reporte comprimido entrante con superposición entrega su símbolo real en vez de dos bytes de su comentario; una superposición ``a``-``j`` se traduce de vuelta al dígito que representa, para que una misma estación se lea igual en cualquiera de los dos formatos. Mic-E lleva la superposición en el mismo byte y con el mismo significado que le da el formato sin comprimir, así que una baliza en ese formato también se dibuja con la superposición del operador, y el decodificador la lee como superposición sobre la tabla alternativa y no como un identificador de tabla propio.
    * - Precedencia de símbolos
      - ⚠️
      - Solo se lee el símbolo del campo de información, así que la cuestión de la precedencia no se plantea en la práctica; pero también significa que las fuentes de respaldo que describe la regla nunca se consultan para un paquete que no traiga símbolo ahí.

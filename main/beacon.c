@@ -448,7 +448,27 @@ static int buildMicePositionPacket(const beacon_params_t *p, const char *path, c
     // the same least significant digits the uncompressed format spaces out,
     // so the station-wide setting applies here unchanged.
     report.position.ambiguity = (aprs_position_ambiguity_t)p->ambiguity;
-    report.position.symbol.table = (p->symbol[0] == '\\') ? APRS_SYMBOL_TABLE_ALTERNATE : APRS_SYMBOL_TABLE_PRIMARY;
+    // Symbol table byte as configured: '/' primary, '\' alternate, or one of
+    // the overlay characters APRS 1.2 ch.21 allows in their place, 'A'-'Z' and
+    // '0'-'9'. Mic-E carries this byte at info[8] with exactly the meaning the
+    // uncompressed layout gives it, so an overlay travels as itself and is
+    // handed to the encoder in the overlay field, which keeps the same symbol
+    // on the map whichever layout the operator selects. The 'a'-'j' spelling
+    // of ::APRS_COMPRESSED_OVERLAY_DIGIT_BASE belongs to the compressed layout
+    // alone, whose first byte doubles as the layout marker, and has no place
+    // here.
+    char symTable = p->symbol[0] ? p->symbol[0] : APRS_SYMBOL_TABLE_DEFAULT;
+    if (!aprs_symbol_table_is_valid(symTable))
+        symTable = APRS_SYMBOL_TABLE_DEFAULT;
+    if (symTable == '/' || symTable == '\\') {
+        report.position.symbol.table = (symTable == '\\') ? APRS_SYMBOL_TABLE_ALTERNATE : APRS_SYMBOL_TABLE_PRIMARY;
+    } else {
+        // An overlay always reads against the alternate table: the overlay
+        // character replaces the table byte on air, and the table it selects
+        // is the one the symbol code is looked up in.
+        report.position.symbol.table = APRS_SYMBOL_TABLE_ALTERNATE;
+        report.position.symbol.overlay = symTable;
+    }
     report.position.symbol.code = p->symbol[1] ? p->symbol[1] : '>';
     // Position comment, unpacked from the single 0-13 UI value into the
     // code plus alphabet the encoder takes. Emergency is not reachable from

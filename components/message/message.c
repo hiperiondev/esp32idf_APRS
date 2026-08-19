@@ -794,12 +794,31 @@ void sendAPRSMessageRetry(void) {
 // human can act on belongs.
 // ---------------------------------------------------------------------------
 void handleIncomingAPRS(const char *line, query_source_t source) {
-    const char *msgMarker = strstr(line, "::");
-    if (msgMarker == NULL || msgMarker == line)
+    if (line == NULL)
+        return;
+
+    // The information field is what follows the first ':' of the TNC2 line: a
+    // TNC2 header is a source address, a destination address and a digipeater
+    // path, none of which can hold a ':', so the first one always ends the
+    // header and nothing before it is payload.
+    const char *header_end = strchr(line, ':');
+    if (header_end == NULL)
+        return;
+
+    const char *info = header_end + 1;
+
+    // ":ADDRESSEE:text" (APRS101 chapter 14). The addressee field is a fixed
+    // nine characters, so the closing ':' is always at info[10]; this is the
+    // same test aprs_filter_classify_info() applies, which is what keeps a
+    // frame shown on the chat page and a frame this station's own classifier
+    // calls a message the one set. Free text that happens to read like a
+    // message - inside a status report, a position comment or an object - is
+    // not one, and is left where it belongs.
+    if (info[0] != ':' || strlen(info) < 11 || info[10] != ':')
         return;
 
     char fromCall[16] = { 0 };
-    const char *gt = strchr(line, '>');
+    const char *gt = memchr(line, '>', (size_t)(header_end - line));
     if (gt) {
         size_t n = (size_t)(gt - line);
         if (n >= sizeof(fromCall))
@@ -812,20 +831,18 @@ void handleIncomingAPRS(const char *line, query_source_t source) {
     // message it acknowledges, and the addressee of the ack sent back.
     trimUpper(fromCall);
 
-    const char *payload = msgMarker + 2;
-    if (strlen(payload) < 10)
-        return;
-
+    // Addressee: info[1..9], the nine characters between the two ':' the test
+    // above located.
     char toCall[12] = { 0 };
-    memcpy(toCall, payload, 9);
+    memcpy(toCall, info + 1, 9);
     trimUpper(toCall);
 
     if (strcasecmp(fromCall, toCall) == 0)
         return; // message to self, ignore
 
-    const char *colon = strchr(payload + 9, ':');
-    if (colon == NULL)
-        return;
+    // Closing ':' of the addressee field, so colon[1] is the first byte of the
+    // message text.
+    const char *colon = info + 10;
 
     // Directed query ("CALL:?query?") shares this same ":ADDRESSEE:" framing
     // but is not an APRS message: hand it to the query responder's own

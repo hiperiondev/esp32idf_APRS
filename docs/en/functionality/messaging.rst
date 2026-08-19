@@ -44,8 +44,16 @@ The message engine
   pending, so the retry pass above keeps delivering it one ``msg_interval``
   apart.
 * **Incoming parse.** ``handleIncomingAPRS()`` parses any TNC2 line — from RF
-  *or* from APRS-IS — recognises messages addressed to this station or to a
-  message group it reads, replies with an ack for a direct message, and
+  *or* from APRS-IS. A message is recognised from the line's *information
+  field*, everything after the first ``:`` (no address in a TNC2 header can
+  hold one), which must carry the full ``":ADDRESSEE:"`` framing of chapter 14:
+  the ``:`` data type identifier, a nine-character addressee and a closing
+  ``:``. That is the same test the packet classifier applies, so free text that
+  merely *reads* like a message — inside a status report, a position comment or
+  an object — is left where it belongs, and neither the Message Alarm nor an
+  ack transmission can be raised by a frame that was never addressed here. From
+  a line that does pass, it recognises messages addressed to this station or
+  to a message group it reads, replies with an ack for a direct message, and
   recognises inbound acks (``ackNNN``) to clear the matching queued message.
   Each accepted message is a new line of the conversation and gets its own
   slot, including messages that carry no ``{id`` at all and messages whose

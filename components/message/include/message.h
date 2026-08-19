@@ -227,6 +227,15 @@ int message_send_pending_to(const char *toCall);
  * message never is. ACK lines update the outbound queue's retry state
  * instead.
  *
+ * The message is recognised from the line's information field - everything
+ * after the first ':', since no address in a TNC2 header can hold one - which
+ * must carry the @c ":ADDRESSEE:" framing of APRS101 chapter 14 in full: data
+ * type identifier ':', a nine-character addressee and a closing ':'. This is
+ * the same test aprs_filter_classify_info() applies, so free text that merely
+ * reads like a message - inside a status report, a position comment or an
+ * object - is not treated as one, and neither the Message Alarm nor an ack
+ * transmission can be raised by a frame that was never addressed here.
+ *
  * Per APRS101 chapter 14, "Message Groups", a receiving station reads every
  * message sent to "ALL", "QST" or "CQ" plus any user-defined group name, but
  * acknowledges only messages addressed to itself - a group has no single

@@ -216,6 +216,27 @@ static bool mice_parse_altitude_ft(const char *text, int32_t *out_ft) {
     return true;
 }
 
+// Test whether a symbol table byte is an overlay character, i.e. one of the
+// substitutes APRS 1.2 ch.21 allows in place of the alternate table byte:
+// 'A'-'Z' or '0'-'9'. Mic-E writes the byte in the same place and with the
+// same meaning as the uncompressed layout, so the test is the plain
+// uncompressed one - the 'a'-'j' spelling of a numeric overlay belongs to the
+// compressed layout, which Mic-E is not.
+static bool mice_is_overlay_byte(char c) {
+    return (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9');
+}
+
+// The byte to transmit at info[8] for `sym`: the overlay character when the
+// symbol carries one, otherwise the table identifier itself. An overlay
+// always reads against the alternate table, so the table field is what the
+// caller sets alongside it rather than something read here.
+static char mice_symbol_table_byte(const aprs_symbol_t *sym) {
+    if (mice_is_overlay_byte(sym->overlay))
+        return sym->overlay;
+
+    return (char)(sym->table == APRS_SYMBOL_TABLE_ALTERNATE ? APRS_SYMBOL_TABLE_ALTERNATE : APRS_SYMBOL_TABLE_PRIMARY);
+}
+
 bool aprs_mice_decode(const char *dst_call, const char *info, size_t info_len, aprs_mice_report_t *out) {
     if (dst_call == NULL || info == NULL || out == NULL)
         return false;
@@ -336,9 +357,20 @@ bool aprs_mice_decode(const char *dst_call, const char *info, size_t info_len, a
     out->course_speed.is_unknown = (speed == 0 && course == 0);
 
     // Symbol: raw (unoffset) bytes 8-9 of the information field.
+    // An overlay character stands in for the alternate table byte, so it is
+    // reported as an overlay against that table and the raw byte is not passed
+    // off as a table identifier of its own. Any other byte is taken as the
+    // table it names, which is what makes the round trip through
+    // aprs_mice_encode() exact for every symbol pair a station can be
+    // configured with.
     out->position.symbol.code = info[7];
-    out->position.symbol.table = (aprs_symbol_table_id_t)info[8];
-    out->position.symbol.overlay = 0;
+    if (mice_is_overlay_byte(info[8])) {
+        out->position.symbol.table = APRS_SYMBOL_TABLE_ALTERNATE;
+        out->position.symbol.overlay = info[8];
+    } else {
+        out->position.symbol.table = (aprs_symbol_table_id_t)info[8];
+        out->position.symbol.overlay = 0;
+    }
 
     // Everything past the fixed 9 bytes, peeled apart in the order
     // aprs12/mic-e-examples.txt lays it out: TYPE byte, altitude, free text,
@@ -649,7 +681,11 @@ bool aprs_mice_encode(const aprs_mice_report_t *report, char *dst_call_out, char
     info[5] = (char)dc_val;
     info[6] = (char)se_val;
     info[7] = report->position.symbol.code ? report->position.symbol.code : '>';
-    info[8] = (char)(report->position.symbol.table == APRS_SYMBOL_TABLE_ALTERNATE ? APRS_SYMBOL_TABLE_ALTERNATE : APRS_SYMBOL_TABLE_PRIMARY);
+    // Symbol table byte. Mic-E carries an overlay here exactly as the
+    // uncompressed layout does, the overlay character standing in for the
+    // alternate table byte, so a report that names one puts it on air in
+    // place of '/' or '\'.
+    info[8] = mice_symbol_table_byte(&report->position.symbol);
 
     // TYPE byte (aprs12/mic-e-types.txt), always emitted: '`' for a
     // message-capable station, '\'' for a one-way tracker. Mic-E puts the

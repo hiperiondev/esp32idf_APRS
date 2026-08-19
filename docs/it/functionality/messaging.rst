@@ -47,9 +47,18 @@ Il motore dei messaggi
   limite lascia fuori resta pendente, quindi la passata di ritentativi qui sopra
   continua a consegnarlo a distanza di un ``msg_interval``.
 * **Analisi degli entranti.** ``handleIncomingAPRS()`` analizza qualsiasi riga
-  TNC2 — da RF *o* da APRS-IS — riconosce i messaggi diretti a questa stazione o
-  a un gruppo di messaggi che essa legge, risponde con un ack quando è un
-  messaggio diretto, e riconosce gli ack entranti (``ackNNN``) per pulire il
+  TNC2 — da RF *o* da APRS-IS. Un messaggio viene riconosciuto dal *campo
+  informazioni* della riga, tutto ciò che segue il primo ``:`` (nessun
+  indirizzo di un'intestazione TNC2 può contenerne uno), che deve portare per
+  intero l'inquadratura ``":DESTINATARIO:"`` del capitolo 14: l'identificatore
+  di tipo dato ``:``, un destinatario di nove caratteri e un ``:`` di chiusura.
+  È la stessa prova applicata dal classificatore di pacchetti, così un testo
+  libero che *sembra* soltanto un messaggio — dentro un rapporto di stato, un
+  commento di posizione o un oggetto — resta dove gli compete, e nessuna trama
+  mai indirizzata qui può far scattare l'Allarme Messaggi né una trasmissione
+  di ack. Da una riga che invece passa, riconosce i messaggi diretti a questa
+  stazione o a un gruppo di messaggi che essa legge, risponde con un ack quando
+  è un messaggio diretto, e riconosce gli ack entranti (``ackNNN``) per pulire il
   messaggio accodato corrispondente. Ogni messaggio accettato è una nuova riga
   della conversazione e riceve una propria casella, compresi quelli che non
   portano alcun ``{id`` e quelli il cui numero la stazione mittente ha già usato

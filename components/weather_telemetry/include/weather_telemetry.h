@@ -1007,6 +1007,15 @@ typedef struct {
  *       This matches every mobile/portable Mic-E source in current use
  *       (Kenwood D7/D700/D710, Yaesu VX-8/FTM-350/400D), none of which
  *       transmit that sub-format.
+ *
+ * @note The symbol table byte of the information field carries an overlay
+ *       character ('A'-'Z' or '0'-'9') in place of the table identifier
+ *       exactly as an uncompressed position report does (APRS 1.2 chapter
+ *       21). One of those bytes is reported as
+ *       @c out->position.symbol.overlay against
+ *       ::APRS_SYMBOL_TABLE_ALTERNATE, the table an overlaid symbol code is
+ *       looked up in; any other byte is reported as the table identifier it
+ *       names, with @c out->position.symbol.overlay left at '\\0'.
  */
 bool aprs_mice_decode(const char *dst_call, const char *info, size_t info_len, aprs_mice_report_t *out);
 
@@ -1078,6 +1087,12 @@ bool aprs_mice_decode(const char *dst_call, const char *info, size_t info_len, a
  *       @c report->status_text is appended. The inserted space carries no
  *       information; a status text beginning with any other byte is emitted
  *       unchanged.
+ *
+ * @note @c report->position.symbol.overlay is emitted in the symbol table
+ *       byte of the information field when it holds an overlay character
+ *       ('A'-'Z' or '0'-'9'), which is where APRS 1.2 chapter 21 places one
+ *       and where ::aprs_mice_decode reads it back from. Otherwise that byte
+ *       is @c report->position.symbol.table itself, '/' or '\\'.
  */
 bool aprs_mice_encode(const aprs_mice_report_t *report, char *dst_call_out, char *info_out, size_t info_out_max);
 

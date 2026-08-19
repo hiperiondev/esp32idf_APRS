@@ -218,7 +218,7 @@ Mic-E data format (ch. 10)
      - Notes
    * - Mic-E transmit and receive
      - ✅
-     - Complete encoder and decoder covering the destination-address half, longitude, speed and course, and both the current and old data type identifiers.
+     - Complete encoder and decoder covering the destination-address half, longitude, speed and course, the symbol pair including its overlay character, and both the current and old data type identifiers.
    * - Type code and manufacturer identifier
      - ✅
      - The type byte follows the symbol table byte and reflects the station's messaging capability; the manufacturer and version pair closes the text field. Without these a Mic-E beacon is anonymous to every client, since the destination address is carrying position and cannot also identify the firmware.
@@ -358,7 +358,7 @@ Messages, bulletins and announcements (ch. 14)
      - Notes
    * - Text messages with acknowledgement and rejection
      - ✅
-     - Nine-character addressee field, acknowledgement and rejection matching restricted to the one to five alphanumeric characters the specification allows, and a retry timer for unacknowledged outgoing messages.
+     - Nine-character addressee field, acknowledgement and rejection matching restricted to the one to five alphanumeric characters the specification allows, and a retry timer for unacknowledged outgoing messages. An incoming line is taken as a message only when its information field carries the whole framing — the ``:`` identifier, nine characters of addressee and the closing ``:`` — so a status report or a comment whose free text happens to look like one is not answered, alarmed on or stored.
    * - Reply-ACK
      - ✅
      - All seven rules of the algorithm, including building the suffix at the instant of transmission and keeping a small per-station table of owed acknowledgements. This is what makes a message exchange flow at conversation speed instead of two packets per turn.
@@ -528,7 +528,7 @@ Symbols (ch. 21)
      - A visual picker in the web admin covers both tables, with a per-role symbol for the tracker, IGate, digipeater, weather station and each object.
    * - Overlay characters
      - ✅
-     - An overlay character can be placed in the table position for the symbols that accept one, which is how a digipeater advertises its own routing policy on the map. Alphabetic and numeric overlays are both accepted, and a numeric one is emitted in a compressed report as the lower-case letter ``a``-``j`` that layout requires, since a compressed position field can never begin with a digit. The same set is read on receive, from one shared pair of predicates used by both the symbol extractor and the position decoder, so an incoming compressed report carrying an overlay yields its real symbol instead of two bytes of its comment; an ``a``-``j`` overlay is translated back to the digit it stands for, so one station reads the same whichever layout it transmits in.
+     - An overlay character can be placed in the table position for the symbols that accept one, which is how a digipeater advertises its own routing policy on the map. Alphabetic and numeric overlays are both accepted, and a numeric one is emitted in a compressed report as the lower-case letter ``a``-``j`` that layout requires, since a compressed position field can never begin with a digit. The same set is read on receive, from one shared pair of predicates used by both the symbol extractor and the position decoder, so an incoming compressed report carrying an overlay yields its real symbol instead of two bytes of its comment; an ``a``-``j`` overlay is translated back to the digit it stands for, so one station reads the same whichever layout it transmits in. Mic-E carries the overlay in the same byte and with the same meaning the uncompressed layout gives it, so a beacon in that format plots under the operator's overlay too, and the decoder reads one back as an overlay against the alternate table rather than as a table identifier of its own.
    * - Symbol precedence
      - ⚠️
      - Only the information-field symbol is ever read, so the precedence question does not arise in practice — but it also means the fallback sources the rule describes are never consulted for a packet that carries no symbol there.
