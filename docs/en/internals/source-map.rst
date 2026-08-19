@@ -39,6 +39,7 @@ Repository layout
    │   ├── aprs_dao.c/.h       ← "!DAO!" precision/datum extension (aprs12/datum.txt), consumed by beacon.c
    │   ├── weather.c/.h        ← own-station WX report: sensors_local refresh + WX beacon
    │   ├── telemetry.c/.h      ← own-station telemetry: A1–A5 + B1–B8, T#nnn beacon + metadata
+   │   ├── gps.c/.h            ← NMEA GNSS receiver on its own UART: sentence parser + snapshot
    │   ├── beacon_scheduler.c/.h ← ONE shared task driving ALL periodic TX + query answers
    │   ├── bulletins.c/.h      ← APRS bulletins BLN1..BLN5 (own bulletins.json)
    │   ├── objects_items.c/.h  ← APRS Objects/Items (own objitems.json)

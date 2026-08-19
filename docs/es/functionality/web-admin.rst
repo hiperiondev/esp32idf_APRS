@@ -100,6 +100,15 @@ Las páginas
      - Parámetros de baliza/informe, conmutadores de mensajes de definición,
        analógicos A1–A5 con selectores de origen y calibración, digitales B1–B8
        con selectores de origen y sentido. Valores en vivo vía ``/tlm/values``.
+   * - **GPS**
+     - Vista en vivo de solo lectura del receptor GNSS NMEA: estado del
+       enlace, estado de navegación, calidad del fix y modo 2D/3D, posición,
+       altitud y separación del geoide, velocidad sobre el suelo, rumbo y
+       variación magnética, fecha y hora UTC, satélites usados y a la vista,
+       HDOP/PDOP/VDOP, los contadores de sentencias aceptadas y descartadas y
+       la antigüedad de la última sentencia y del último fix. El puerto serie
+       y sus pines son cableado de placa fijado en compilación y se muestran
+       como texto. Valores en vivo vía ``/gps/values``, sondeado cada segundo.
    * - **Bulletins**
      - Hasta cinco boletines (identificador y grupo de destinatario, texto,
        RF/INET, intervalo, caducidad).

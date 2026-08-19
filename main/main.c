@@ -34,6 +34,7 @@
 #include "aprs_service.h"
 #include "cpu_freq.h"
 #include "esp32idf_radioamateur_modem.h"
+#include "gps.h"
 #include "net_state.h"
 #include "storage.h"
 #include "time_sync.h"
@@ -354,6 +355,14 @@ static void app_task(void *arg) {
     // mode) that IDLE1 never runs and the task watchdog fires a false alarm.
     vTaskDelay(pdMS_TO_TICKS(10));
     time_sync_start();
+
+    // The GNSS receiver is board wiring rather than a service: it holds one
+    // UART and its two pins for the life of the image, is never written to,
+    // and feeds the read-only GPS admin page. Started before the web server so
+    // a page loaded immediately after boot already finds the reader task
+    // running and reports the true link state instead of "no data".
+    gps_start();
+
     web_server_start();
 
     // If this boot is running an image that the web admin's OTA Update

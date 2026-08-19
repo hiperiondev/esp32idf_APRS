@@ -31,6 +31,7 @@
 #include "aprs_path.h"                          // aprs_path_build_suffix_from_config(), APRS_PATH_TCPIP_SUFFIX
 #include "aprs_service.h"                       // APRS_TOCALL: this station's destination call, same one every other packet type uses
 #include "esp32idf_radioamateur_modem_config.h" // MODEM_PTT_GPIO: the fixed PTT pin, checked directly below
+#include "gps.h"                                // gps_gpio_is_reserved(): keep the GNSS serial pins out of the alarm pin
 #include "json_escape.h"                        // json_escape()
 #include "message.h"
 #include "query.h"             // query_process_directed(): second consumer of the ::ADDRESSEE: payload, for "CALL:?query?"
@@ -121,6 +122,12 @@ bool message_alarm_gpio_is_valid(int8_t gpio) {
     // sensor I2C bus via sensors_local_i2c_gpio_is_reserved()) can make a GPIO
     // invalid.)
     if (sensors_local_i2c_gpio_is_reserved(gpio))
+        return false;
+
+    // Not already used by the GNSS receiver's serial port. Both of its pins
+    // count: the transmit pin is wired to the module's input on this board
+    // even though nothing is ever sent on it.
+    if (gps_gpio_is_reserved(gpio))
         return false;
 
     return true;

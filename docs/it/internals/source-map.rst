@@ -39,6 +39,7 @@ Disposizione del repository
    │   ├── aprs_dao.c/.h       ← estensione di precisione/datum "!DAO!" (aprs12/datum.txt), usata da beacon.c
    │   ├── weather.c/.h        ← report WX proprio: refresh sensors_local + beacon WX
    │   ├── telemetry.c/.h      ← telemetria propria: A1–A5 + B1–B8, beacon T#nnn + metadati
+   │   ├── gps.c/.h            ← ricevitore GNSS NMEA sulla propria UART: parser di frasi + snapshot
    │   ├── beacon_scheduler.c/.h ← UN task condiviso che aziona TUTTO il TX periodico + risposte alle query
    │   ├── bulletins.c/.h      ← bollettini APRS BLN1..BLN5 (bulletins.json proprio)
    │   ├── objects_items.c/.h  ← Oggetti/Item APRS (objitems.json proprio)

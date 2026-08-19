@@ -79,6 +79,8 @@
 #define TR_MENU_WX "Meteo"
 /** Italian text for the sidebar navigation entry for the Telemetry page, rendered on the sidebar. English: "Telemetry". */
 #define TR_MENU_TLM "Telemetria"
+/** Italian text for the sidebar navigation entry for the GPS page, rendered on the sidebar. English: "GPS". */
+#define TR_MENU_GPS "GPS"
 /** Italian text for the sidebar navigation entry for the System page, rendered on the sidebar. English: "System". */
 #define TR_MENU_SYSTEM "Sistema"
 /** Italian text for the sidebar navigation entry for the Wireless page, rendered on the sidebar. English: "Wireless". */
@@ -1462,6 +1464,118 @@
 #define TR_SYM_ALTERNATE_TABLE "Tabella alternativa ( \\ )"
 /** Italian text for the symbol-picker label for tracker, rendered on the IGate page. English: "Tracker:". */
 #define TR_SYM_TRACKER "Tracker:"
+
+/** @} */
+
+/**
+ * @name GPS page
+ * @{
+ */
+/** Italian text for the page title of the GPS page, rendered on the GPS page. English: "GPS Receiver". */
+#define TR_F_GPS "Ricevitore GPS"
+/** Italian text for the introductory paragraph of the GPS page, rendered on the GPS page. English: "Live view of the NMEA sentences the GNSS receiver is
+ * sending. Every value refreshes onc...". */
+#define TR_GPS_INTRO                                                                                                                                           \
+    "Vista in tempo reale delle frasi NMEA che il ricevitore GNSS sta inviando. Ogni valore si aggiorna una volta al secondo e nulla in questa pagina è "      \
+    "configurabile: la porta seriale e i suoi pin sono fissati in fase di compilazione."
+/** Italian text for the fieldset legend for the receiver status block, rendered on the GPS page. English: "Receiver Status". */
+#define TR_GPS_FS_STATUS "Stato del Ricevitore"
+/** Italian text for the fieldset legend for the position block, rendered on the GPS page. English: "Position". */
+#define TR_GPS_FS_POSITION "Posizione"
+/** Italian text for the fieldset legend for the motion block, rendered on the GPS page. English: "Motion". */
+#define TR_GPS_FS_MOTION "Movimento"
+/** Italian text for the fieldset legend for the date/time block, rendered on the GPS page. English: "Date and Time (UTC)". */
+#define TR_GPS_FS_TIME "Data e Ora (UTC)"
+/** Italian text for the fieldset legend for the satellites/accuracy block, rendered on the GPS page. English: "Satellites and Accuracy". */
+#define TR_GPS_FS_SATELLITES "Satelliti e Precisione"
+/** Italian text for the fieldset legend for the serial link statistics block, rendered on the GPS page. English: "Serial Link". */
+#define TR_GPS_FS_LINK "Collegamento Seriale"
+/** Italian text for the fieldset legend for the compile-time wiring block, rendered on the GPS page. English: "Wiring (compile-time)". */
+#define TR_GPS_FS_WIRING "Cablaggio (tempo di compilazione)"
+/** Italian text for the row label for the receiver link state, rendered on the GPS page. English: "Link". */
+#define TR_GPS_LINK "Collegamento"
+/** Italian text for the row label for the navigation status reported by RMC, rendered on the GPS page. English: "Navigation Status". */
+#define TR_GPS_NAV_STATUS "Stato di Navigazione"
+/** Italian text for the row label for the fix quality reported by GGA, rendered on the GPS page. English: "Fix Quality". */
+#define TR_GPS_FIX_QUALITY "Qualità del Fix"
+/** Italian text for the row label for the fix mode reported by GSA, rendered on the GPS page. English: "Fix Mode". */
+#define TR_GPS_FIX_MODE "Modo del Fix"
+/** Italian text for the row label for latitude, rendered on the GPS page. English: "Latitude". */
+#define TR_GPS_LATITUDE "Latitudine"
+/** Italian text for the row label for longitude, rendered on the GPS page. English: "Longitude". */
+#define TR_GPS_LONGITUDE "Longitudine"
+/** Italian text for the row label for altitude above mean sea level, rendered on the GPS page. English: "Altitude (MSL)". */
+#define TR_GPS_ALTITUDE "Altitudine (MSL)"
+/** Italian text for the row label for geoid separation, rendered on the GPS page. English: "Geoid Separation". */
+#define TR_GPS_GEOID "Separazione del Geoide"
+/** Italian text for the row label for ground speed, rendered on the GPS page. English: "Ground Speed". */
+#define TR_GPS_SPEED "Velocità al Suolo"
+/** Italian text for the row label for course over ground, rendered on the GPS page. English: "Course (true)". */
+#define TR_GPS_COURSE "Rotta (vera)"
+/** Italian text for the row label for magnetic variation, rendered on the GPS page. English: "Magnetic Variation". */
+#define TR_GPS_MAGVAR "Variazione Magnetica"
+/** Italian text for the row label for the UTC date of the fix, rendered on the GPS page. English: "Date". */
+#define TR_GPS_UTC_DATE "Data"
+/** Italian text for the row label for the UTC time of the fix, rendered on the GPS page. English: "Time". */
+#define TR_GPS_UTC_TIME "Ora"
+/** Italian text for the row label for the satellite count used in the solution, rendered on the GPS page. English: "Satellites Used". */
+#define TR_GPS_SATS_USED "Satelliti Usati"
+/** Italian text for the row label for the satellite count in view, rendered on the GPS page. English: "Satellites in View". */
+#define TR_GPS_SATS_IN_VIEW "Satelliti in Vista"
+/** Italian text for the row label for horizontal dilution of precision, rendered on the GPS page. English: "HDOP (horizontal)". */
+#define TR_GPS_HDOP "HDOP (orizzontale)"
+/** Italian text for the row label for position dilution of precision, rendered on the GPS page. English: "PDOP (position)". */
+#define TR_GPS_PDOP "PDOP (posizione)"
+/** Italian text for the row label for vertical dilution of precision, rendered on the GPS page. English: "VDOP (vertical)". */
+#define TR_GPS_VDOP "VDOP (verticale)"
+/** Italian text for the row label for the count of sentences whose checksum verified, rendered on the GPS page. English: "Sentences Accepted". */
+#define TR_GPS_SENTENCES_OK "Frasi Accettate"
+/** Italian text for the row label for the count of sentences discarded on a checksum error, rendered on the GPS page. English: "Sentences Discarded". */
+#define TR_GPS_SENTENCES_BAD "Frasi Scartate"
+/** Italian text for the row label for the time since the last valid sentence, rendered on the GPS page. English: "Since Last Sentence". */
+#define TR_GPS_LINK_AGE "Dall'Ultima Frase"
+/** Italian text for the row label for the time since the last position fix, rendered on the GPS page. English: "Since Last Fix". */
+#define TR_GPS_FIX_AGE "Dall'Ultimo Fix"
+/** Italian text for the row label for the UART port number the receiver is wired to, rendered on the GPS page. English: "Serial Port". */
+#define TR_GPS_PORT "Porta Seriale"
+/** Italian text for the row label for the ESP32 receive pin, rendered on the GPS page. English: "Receive Pin (module TX)". */
+#define TR_GPS_RX_PIN "Pin di Ricezione (TX del modulo)"
+/** Italian text for the row label for the ESP32 transmit pin, rendered on the GPS page. English: "Transmit Pin (module RX)". */
+#define TR_GPS_TX_PIN "Pin di Trasmissione (RX del modulo)"
+/** Italian text for the row label for the serial line rate, rendered on the GPS page. English: "Line Rate". */
+#define TR_GPS_BAUD "Velocità di Linea"
+/** Italian text for the link state shown while sentences are arriving, rendered on the GPS page. English: "Receiving". */
+#define TR_GPS_LINK_RECEIVING "In ricezione"
+/** Italian text for the link state shown when the receiver has gone silent, rendered on the GPS page. English: "No data from receiver". */
+#define TR_GPS_LINK_SILENT "Nessun dato dal ricevitore"
+/** Italian text for the navigation status shown when RMC reports an active solution, rendered on the GPS page. English: "Active". */
+#define TR_GPS_NAV_ACTIVE "Attiva"
+/** Italian text for the navigation status shown when RMC reports a warning, rendered on the GPS page. English: "Warning (no valid fix)". */
+#define TR_GPS_NAV_WARNING "Avviso (nessun fix valido)"
+/** Italian text for the fix quality shown when the receiver has no fix, rendered on the GPS page. English: "No fix". */
+#define TR_GPS_Q_NONE "Nessun fix"
+/** Italian text for the fix quality shown for an autonomous fix, rendered on the GPS page. English: "GPS (autonomous)". */
+#define TR_GPS_Q_GPS "GPS (autonomo)"
+/** Italian text for the fix quality shown for a differentially corrected fix, rendered on the GPS page. English: "DGPS (differential)". */
+#define TR_GPS_Q_DGPS "DGPS (differenziale)"
+/** Italian text for the fix quality shown for a precise positioning service fix, rendered on the GPS page. English: "PPS". */
+#define TR_GPS_Q_PPS "PPS"
+/** Italian text for the fix quality shown for a fixed-ambiguity RTK solution, rendered on the GPS page. English: "RTK (fixed)". */
+#define TR_GPS_Q_RTK "RTK (fisso)"
+/** Italian text for the fix quality shown for a float RTK solution, rendered on the GPS page. English: "RTK (float)". */
+#define TR_GPS_Q_RTK_FLOAT "RTK (flottante)"
+/** Italian text for the fix quality shown for a dead-reckoning estimate, rendered on the GPS page. English: "Estimated (dead reckoning)". */
+#define TR_GPS_Q_ESTIMATED "Stimato (navigazione stimata)"
+/** Italian text for the fix quality shown for manual input mode, rendered on the GPS page. English: "Manual input". */
+#define TR_GPS_Q_MANUAL "Immissione manuale"
+/** Italian text for the fix quality shown for simulation mode, rendered on the GPS page. English: "Simulated". */
+#define TR_GPS_Q_SIMULATED "Simulato"
+/** Italian text for the fix mode shown when no solution has been computed, rendered on the GPS page. English: "No fix". */
+#define TR_GPS_M_NOFIX "Nessun fix"
+/** Italian text for the fix mode shown for a horizontal-only solution, rendered on the GPS page. English: "2D (horizontal only)". */
+#define TR_GPS_M_2D "2D (solo orizzontale)"
+/** Italian text for the fix mode shown for a solution including altitude, rendered on the GPS page. English: "3D (with altitude)". */
+#define TR_GPS_M_3D "3D (con altitudine)"
 
 /** @} */
 

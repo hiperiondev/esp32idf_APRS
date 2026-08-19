@@ -77,6 +77,8 @@
 #define TR_MENU_WX "Weather"
 /** Sidebar navigation entry for the Telemetry page, rendered on the sidebar. */
 #define TR_MENU_TLM "Telemetry"
+/** Sidebar navigation entry for the GPS page, rendered on the sidebar. */
+#define TR_MENU_GPS "GPS"
 /** Sidebar navigation entry for the System page, rendered on the sidebar. */
 #define TR_MENU_SYSTEM "System"
 /** Sidebar navigation entry for the Wireless page, rendered on the sidebar. */
@@ -1371,6 +1373,117 @@
 #define TR_SYM_ALTERNATE_TABLE "Alternate Table ( \\ )"
 /** Symbol-picker label for tracker, rendered on the IGate page. */
 #define TR_SYM_TRACKER "Tracker:"
+
+/** @} */
+
+/**
+ * @name GPS page
+ * @{
+ */
+/** Page title of the GPS page, rendered on the GPS page. */
+#define TR_F_GPS "GPS Receiver"
+/** Introductory paragraph of the GPS page, rendered on the GPS page. */
+#define TR_GPS_INTRO                                                                                                                                           \
+    "Live view of the NMEA sentences the GNSS receiver is sending. Every value refreshes once per second and nothing on this page is configurable: the "       \
+    "serial port and its pins are fixed at build time."
+/** Fieldset legend for the receiver status block, rendered on the GPS page. */
+#define TR_GPS_FS_STATUS "Receiver Status"
+/** Fieldset legend for the position block, rendered on the GPS page. */
+#define TR_GPS_FS_POSITION "Position"
+/** Fieldset legend for the motion block, rendered on the GPS page. */
+#define TR_GPS_FS_MOTION "Motion"
+/** Fieldset legend for the date/time block, rendered on the GPS page. */
+#define TR_GPS_FS_TIME "Date and Time (UTC)"
+/** Fieldset legend for the satellites/accuracy block, rendered on the GPS page. */
+#define TR_GPS_FS_SATELLITES "Satellites and Accuracy"
+/** Fieldset legend for the serial link statistics block, rendered on the GPS page. */
+#define TR_GPS_FS_LINK "Serial Link"
+/** Fieldset legend for the compile-time wiring block, rendered on the GPS page. */
+#define TR_GPS_FS_WIRING "Wiring (compile-time)"
+/** Row label for the receiver link state, rendered on the GPS page. */
+#define TR_GPS_LINK "Link"
+/** Row label for the navigation status reported by RMC, rendered on the GPS page. */
+#define TR_GPS_NAV_STATUS "Navigation Status"
+/** Row label for the fix quality reported by GGA, rendered on the GPS page. */
+#define TR_GPS_FIX_QUALITY "Fix Quality"
+/** Row label for the fix mode reported by GSA, rendered on the GPS page. */
+#define TR_GPS_FIX_MODE "Fix Mode"
+/** Row label for latitude, rendered on the GPS page. */
+#define TR_GPS_LATITUDE "Latitude"
+/** Row label for longitude, rendered on the GPS page. */
+#define TR_GPS_LONGITUDE "Longitude"
+/** Row label for altitude above mean sea level, rendered on the GPS page. */
+#define TR_GPS_ALTITUDE "Altitude (MSL)"
+/** Row label for geoid separation, rendered on the GPS page. */
+#define TR_GPS_GEOID "Geoid Separation"
+/** Row label for ground speed, rendered on the GPS page. */
+#define TR_GPS_SPEED "Ground Speed"
+/** Row label for course over ground, rendered on the GPS page. */
+#define TR_GPS_COURSE "Course (true)"
+/** Row label for magnetic variation, rendered on the GPS page. */
+#define TR_GPS_MAGVAR "Magnetic Variation"
+/** Row label for the UTC date of the fix, rendered on the GPS page. */
+#define TR_GPS_UTC_DATE "Date"
+/** Row label for the UTC time of the fix, rendered on the GPS page. */
+#define TR_GPS_UTC_TIME "Time"
+/** Row label for the satellite count used in the solution, rendered on the GPS page. */
+#define TR_GPS_SATS_USED "Satellites Used"
+/** Row label for the satellite count in view, rendered on the GPS page. */
+#define TR_GPS_SATS_IN_VIEW "Satellites in View"
+/** Row label for horizontal dilution of precision, rendered on the GPS page. */
+#define TR_GPS_HDOP "HDOP (horizontal)"
+/** Row label for position dilution of precision, rendered on the GPS page. */
+#define TR_GPS_PDOP "PDOP (position)"
+/** Row label for vertical dilution of precision, rendered on the GPS page. */
+#define TR_GPS_VDOP "VDOP (vertical)"
+/** Row label for the count of sentences whose checksum verified, rendered on the GPS page. */
+#define TR_GPS_SENTENCES_OK "Sentences Accepted"
+/** Row label for the count of sentences discarded on a checksum error, rendered on the GPS page. */
+#define TR_GPS_SENTENCES_BAD "Sentences Discarded"
+/** Row label for the time since the last valid sentence, rendered on the GPS page. */
+#define TR_GPS_LINK_AGE "Since Last Sentence"
+/** Row label for the time since the last position fix, rendered on the GPS page. */
+#define TR_GPS_FIX_AGE "Since Last Fix"
+/** Row label for the UART port number the receiver is wired to, rendered on the GPS page. */
+#define TR_GPS_PORT "Serial Port"
+/** Row label for the ESP32 receive pin, rendered on the GPS page. */
+#define TR_GPS_RX_PIN "Receive Pin (module TX)"
+/** Row label for the ESP32 transmit pin, rendered on the GPS page. */
+#define TR_GPS_TX_PIN "Transmit Pin (module RX)"
+/** Row label for the serial line rate, rendered on the GPS page. */
+#define TR_GPS_BAUD "Line Rate"
+/** Link state shown while sentences are arriving, rendered on the GPS page. */
+#define TR_GPS_LINK_RECEIVING "Receiving"
+/** Link state shown when the receiver has gone silent, rendered on the GPS page. */
+#define TR_GPS_LINK_SILENT "No data from receiver"
+/** Navigation status shown when RMC reports an active solution, rendered on the GPS page. */
+#define TR_GPS_NAV_ACTIVE "Active"
+/** Navigation status shown when RMC reports a warning, rendered on the GPS page. */
+#define TR_GPS_NAV_WARNING "Warning (no valid fix)"
+/** Fix quality shown when the receiver has no fix, rendered on the GPS page. */
+#define TR_GPS_Q_NONE "No fix"
+/** Fix quality shown for an autonomous fix, rendered on the GPS page. */
+#define TR_GPS_Q_GPS "GPS (autonomous)"
+/** Fix quality shown for a differentially corrected fix, rendered on the GPS page. */
+#define TR_GPS_Q_DGPS "DGPS (differential)"
+/** Fix quality shown for a precise positioning service fix, rendered on the GPS page. */
+#define TR_GPS_Q_PPS "PPS"
+/** Fix quality shown for a fixed-ambiguity RTK solution, rendered on the GPS page. */
+#define TR_GPS_Q_RTK "RTK (fixed)"
+/** Fix quality shown for a float RTK solution, rendered on the GPS page. */
+#define TR_GPS_Q_RTK_FLOAT "RTK (float)"
+/** Fix quality shown for a dead-reckoning estimate, rendered on the GPS page. */
+#define TR_GPS_Q_ESTIMATED "Estimated (dead reckoning)"
+/** Fix quality shown for manual input mode, rendered on the GPS page. */
+#define TR_GPS_Q_MANUAL "Manual input"
+/** Fix quality shown for simulation mode, rendered on the GPS page. */
+#define TR_GPS_Q_SIMULATED "Simulated"
+/** Fix mode shown when no solution has been computed, rendered on the GPS page. */
+#define TR_GPS_M_NOFIX "No fix"
+/** Fix mode shown for a horizontal-only solution, rendered on the GPS page. */
+#define TR_GPS_M_2D "2D (horizontal only)"
+/** Fix mode shown for a solution including altitude, rendered on the GPS page. */
+#define TR_GPS_M_3D "3D (with altitude)"
 
 /** @} */
 

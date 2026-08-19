@@ -54,6 +54,16 @@ APPEND)``:
    * - **TX / RX LEDs**
      - disabled (``-1``)
      - Any output-capable GPIO.
+   * - **GNSS receive (UART RX)**
+     - ``GPIO16``
+     - Wired to the module's TX output. Any input-capable GPIO the UART
+       matrix can reach. **Unusable on an ESP32-WROVER**, where GPIO16/17
+       belong to the SPI PSRAM die. Set in ``main/include/gps.h``.
+   * - **GNSS transmit (UART TX)**
+     - ``GPIO17``
+     - Wired to the module's RX input. Nothing is ever sent on it — the
+       firmware never configures the receiver — but the pin is still
+       reserved, since it is physically connected to that input.
 
 Wiring to a radio
 =================

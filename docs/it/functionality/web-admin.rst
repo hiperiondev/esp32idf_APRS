@@ -100,6 +100,16 @@ Le pagine
      - Parametri di beacon/report, interruttori dei messaggi di definizione,
        analogici A1–A5 con selettori di origine e calibrazione, digitali B1–B8 con
        selettori di origine e senso. Valori in tempo reale via ``/tlm/values``.
+   * - **GPS**
+     - Vista in tempo reale di sola lettura del ricevitore GNSS NMEA: stato
+       del collegamento, stato di navigazione, qualità del fix e modo 2D/3D,
+       posizione, altitudine e separazione del geoide, velocità al suolo,
+       rotta e variazione magnetica, data e ora UTC, satelliti usati e in
+       vista, HDOP/PDOP/VDOP, i contatori delle frasi accettate e scartate e
+       l'età dell'ultima frase e dell'ultimo fix. La porta seriale e i suoi
+       pin sono cablaggio di scheda fissato in compilazione e sono mostrati
+       come testo. Valori in tempo reale via ``/gps/values``, interrogato
+       ogni secondo.
    * - **Bulletins**
      - Fino a cinque bollettini (identificatore e gruppo del destinatario,
        testo, RF/INET, intervallo, scadenza).

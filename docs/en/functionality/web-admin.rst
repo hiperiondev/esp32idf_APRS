@@ -92,6 +92,14 @@ The pages
      - Beacon/report parameters, definition-message toggles, analog A1–A5 with
        source pickers and calibration, digital B1–B8 with source pickers and
        sense. Live values via ``/tlm/values``.
+   * - **GPS**
+     - Read-only live view of the NMEA GNSS receiver: link state, navigation
+       status, fix quality and 2D/3D mode, position, altitude and geoid
+       separation, ground speed, course and magnetic variation, UTC date and
+       time, satellites used and in view, HDOP/PDOP/VDOP, the accepted and
+       discarded sentence counters and the age of the last sentence and fix.
+       The serial port and its pins are compile-time board wiring and are
+       shown as text. Live values via ``/gps/values``, polled every second.
    * - **Bulletins**
      - Up to five bulletins (addressee identifier and group, text, RF/INET,
        interval, expiry).

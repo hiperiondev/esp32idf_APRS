@@ -92,6 +92,7 @@
 #define ENABLE_TRACKER        /**< Tracker page. */
 #define ENABLE_WEATHER        /**< Weather page. */
 #define ENABLE_TELEMETRY      /**< Telemetry page. */
+#define ENABLE_GPS            /**< GPS receiver page. */
 #define ENABLE_SYSTEM         /**< System page. */
 #define ENABLE_WIRELESS       /**< Wireless page. */
 #define ENABLE_FILE_STORAGE   /**< File Storage page. */

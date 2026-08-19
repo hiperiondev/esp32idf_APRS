@@ -56,6 +56,17 @@ APPEND)``:
    * - **LED TX / RX**
      - disabilitati (``-1``)
      - Qualsiasi GPIO capace di uscita.
+   * - **Ricezione GNSS (UART RX)**
+     - ``GPIO16``
+     - Cablato all'uscita TX del modulo. Qualsiasi GPIO capace di ingresso
+       raggiungibile dalla matrice UART. **Inutilizzabile su un
+       ESP32-WROVER**, dove i GPIO16/17 appartengono al die della PSRAM SPI.
+       Impostato in ``main/include/gps.h``.
+   * - **Trasmissione GNSS (UART TX)**
+     - ``GPIO17``
+     - Cablato all'ingresso RX del modulo. Non vi si invia mai nulla — il
+       firmware non configura mai il ricevitore — ma il pin resta comunque
+       riservato, perché è fisicamente collegato a quell'ingresso.
 
 Cablaggio a una radio
 =====================

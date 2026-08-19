@@ -55,6 +55,17 @@ aplicada *antes* de ``project()`` mediante
    * - **LEDs TX / RX**
      - deshabilitados (``-1``)
      - Cualquier GPIO de salida.
+   * - **Recepción GNSS (UART RX)**
+     - ``GPIO16``
+     - Cableado a la salida TX del módulo. Cualquier GPIO de entrada que
+       alcance la matriz UART. **Inutilizable en un ESP32-WROVER**, donde
+       GPIO16/17 pertenecen al die de PSRAM SPI. Se fija en
+       ``main/include/gps.h``.
+   * - **Transmisión GNSS (UART TX)**
+     - ``GPIO17``
+     - Cableado a la entrada RX del módulo. Nunca se envía nada por él — el
+       firmware jamás configura el receptor — pero el pin queda igualmente
+       reservado, porque está físicamente conectado a esa entrada.
 
 Cableado a una radio
 ====================

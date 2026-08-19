@@ -13,6 +13,7 @@ idf_component_register(
         "bulletins.c"
         "objects_items.c"
         "weather.c"
+        "gps.c"
         "telemetry.c"
         "time_sync.c"
         "cpu_freq.c"
@@ -30,6 +31,7 @@ idf_component_register(
         spi_flash
         esp_timer
         esp_pm
+        esp_driver_uart
         lwip
         webconfig
         esp32idf_radioamateur_modem

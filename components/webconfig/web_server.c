@@ -123,6 +123,8 @@ void web_server_start(void) {
     reg(server, "/tlm", HTTP_GET, page_tlm_get);
     reg(server, "/tlm", HTTP_POST, page_tlm_post);
     reg(server, "/tlm/values", HTTP_GET, page_tlm_values_get);
+    reg(server, "/gps", HTTP_GET, page_gps_get);
+    reg(server, "/gps/values", HTTP_GET, page_gps_values_get);
 
     reg(server, "/radio", HTTP_GET, page_radio_get);
     reg(server, "/radio", HTTP_POST, page_radio_post);

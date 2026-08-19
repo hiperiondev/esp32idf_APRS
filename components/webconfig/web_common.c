@@ -31,6 +31,7 @@
 #include "esp32idf_radioamateur_modem_config.h" // MODEM_ADC_GPIO/MODEM_DAC_GPIO/MODEM_PTT_GPIO: fixed audio front-end + PTT pins for the GPIO registry
 #include "esp_log.h"
 #include "esp_timer.h"    // esp_timer_get_time(): monotonic clock for the login lockout window
+#include "gps.h"          // GPS_UART_RX_GPIO/TX_GPIO: fixed pins for the GPIO registry
 #include "lwip/sockets.h" // getpeername(): client IP for the per-source login lockout
 #include "mbedtls/base64.h"
 #include "sensors_local_i2c.h" // SENSORS_LOCAL_I2C_SDA_GPIO/SCL_GPIO: fixed pins for the GPIO registry
@@ -788,6 +789,9 @@ static const struct menu_item MENU[] = {
 #ifdef ENABLE_TELEMETRY
     { "/tlm", TR_MENU_TLM, "tlm" },
 #endif
+#ifdef ENABLE_GPS
+    { "/gps", TR_MENU_GPS, "gps" },
+#endif
 #ifdef ENABLE_SYSTEM
     { "/system", TR_MENU_SYSTEM, "system" },
 #endif
@@ -1171,6 +1175,13 @@ int web_gpio_collect_used(const char *skip_tag, web_gpio_owner_t *out, int max) 
     // not to any one chip on it.
     WEB_GPIO_ADD(SENSORS_LOCAL_I2C_SDA_GPIO, "Sensor I2C");
     WEB_GPIO_ADD(SENSORS_LOCAL_I2C_SCL_GPIO, "Sensor I2C");
+
+    // GNSS receiver serial port: fixed at compile time (gps.h), always
+    // reserved. Both pins are listed, not just the one carrying sentences:
+    // the transmit pin is physically wired to the module's input on this
+    // board, so handing it to another peripheral would drive that input.
+    WEB_GPIO_ADD(GPS_UART_RX_GPIO, "GPS");
+    WEB_GPIO_ADD(GPS_UART_TX_GPIO, "GPS");
 
 #undef WEB_GPIO_ADD
     return n;
