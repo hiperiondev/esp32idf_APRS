@@ -722,20 +722,79 @@ static void tlm_path_field(const telemetry_config_t *s, bool for_rf, char *out, 
     aprs_path_build_suffix_from_config(s->path, out, outMax);
 }
 
-// Clamps a raw analog reading to the 0-8280 window a two-character base-91
-// pair can hold (91*91 - 1) and rounds it to the nearest integer. Shared by
-// the base-91 comment-telemetry encoder below: base-91 comment telemetry has
-// no metadata channel of its own to carry an out-of-range indication, unlike
-// field_width == 3's "T#..." form, so an out-of-range raw reading is clamped
-// rather than wrapped, the same reasoning format_analog_field() applies to
-// the 3-digit "T#..." form.
-static long clamp_analog_raw_base91(double raw) {
-    long v = lround(raw);
-    if (v < 0)
-        v = 0;
-    if (v > 91 * 91 - 1)
-        v = 91 * 91 - 1;
-    return v;
+// Shared length gate for every complete TNC2 line this module builds.
+//
+// snprintf() returns the length it *would* have written, so a result at or
+// past outMax means the line did not fit, and APRS_TNC2_MAX_LEN is the
+// longest text aprs_service_send_tnc2() can encode into an AX.25 frame.
+// Either way the line is refused rather than clamped, on the same terms as
+// every other builder in the firmware: a clamped length hands send_packet()
+// a half-written report that still goes on the air. That is worst for the
+// definition Messages, because a coefficient cut mid-number -
+// "EQNS.0,1,0,0,1.23456" arriving as "EQNS.0,1,0,0,1.2" - is a well-formed
+// EQNS. line as far as any receiver can tell, and every one of them then
+// applies a different calibration to this station's raw readings for as long
+// as that definition stands. Returning 0 makes the caller skip both legs.
+//
+// @p label names the packet in the log and @p hint names the configuration
+// field the operator should shorten to make it fit.
+static int tlm_line_fits(const char *label, const char *hint, int len, size_t outMax) {
+    if (len < 0)
+        return 0;
+    if ((size_t)len >= outMax || len > APRS_TNC2_MAX_LEN) {
+        ESP_LOGW(TAG, "%s packet too long (%d bytes, max %d) - shorten the %s", label, len, APRS_TNC2_MAX_LEN, hint);
+        return 0;
+    }
+    return len;
+}
+
+// Resolves the on-air window for one analog channel: the operator's declared
+// raw range (ana_raw_min/ana_raw_max, the Telemetry page's "Raw min"/"Raw
+// max" boxes) intersected with the window the selected on-air form can
+// represent, which the caller passes in through @p lo / @p hi.
+//
+// The declared range bounds the transmitted value; it never rescales it.
+// EQNS. carries the a/b/c coefficients that map raw units to engineering
+// units, so a reading stretched into a different span would have every
+// receiving station apply those coefficients to numbers they were not
+// written for. Clamping instead leaves every in-range reading byte-identical
+// and pins an out-of-range one to the edge of the span the operator
+// declared - a value the coefficients still describe - so a probe reading
+// past its own scale reports that edge rather than a figure no receiver can
+// plot.
+//
+// A span that is inverted or empty (ana_raw_max <= ana_raw_min), or that
+// does not overlap the form's own window at all, declares nothing usable and
+// is ignored: only the form's window then applies.
+static void analog_raw_window(const telemetry_config_t *s, int i, double *lo, double *hi) {
+    double rmin = (double)s->ana_raw_min[i];
+    double rmax = (double)s->ana_raw_max[i];
+    if (rmax <= rmin)
+        return;
+    double nlo = rmin > *lo ? rmin : *lo;
+    double nhi = rmax < *hi ? rmax : *hi;
+    if (nlo > nhi)
+        return;
+    *lo = nlo;
+    *hi = nhi;
+}
+
+// Clamps a raw analog reading into the channel's declared raw range narrowed
+// to the 0-8280 window a two-character base-91 pair can hold (91*91 - 1),
+// and rounds it to the nearest integer. Shared by the base-91
+// comment-telemetry encoder below, which has no metadata channel of its own
+// to carry an out-of-range indication, so an out-of-range raw reading is
+// clamped rather than wrapped - the same reasoning, and the same declared
+// range, format_analog_field() applies to the "T#..." form.
+static long clamp_analog_raw_base91(const telemetry_config_t *s, int i, double raw) {
+    double lo = 0.0;
+    double hi = (double)(91 * 91 - 1);
+    analog_raw_window(s, i, &lo, &hi);
+    if (raw < lo)
+        raw = lo;
+    if (raw > hi)
+        raw = hi;
+    return lround(raw);
 }
 
 // Encodes one non-negative value below 91*91 as a two-character base-91 pair
@@ -751,14 +810,16 @@ static void encode_base91_pair(long v, char *out) {
 // Formats one analog channel's RAW transmitted value per the "Analog Field
 // Width" Report Parameters option:
 //   - field_width == 3 : 3-digit zero-padded encoding, unsigned integer,
-//     000-999 per APRS 1.2 (out-of-range raw readings are clamped rather
-//     than silently wrapped, so a mis-set raw_min/max never produces an
-//     on-air value a receiver would reject). An operator whose receiver only
-//     understands the original APRS101 000-255 window can restore it
-//     explicitly with that channel's ana_raw_min/ana_raw_max.
+//     000-999 per APRS 1.2. An operator whose receiver only understands the
+//     original APRS101 000-255 window restores it explicitly by setting that
+//     channel's ana_raw_min/ana_raw_max to 0 and 255.
 //   - field_width == 0 (or anything else) : community/extended ("Kenneth's
 //     Proposed") format - plain decimal number with ana_dec[i] fractional
-//     digits, no padding, negative values allowed.
+//     digits, no padding, negative values allowed, and no window of its own
+//     beyond the channel's declared raw range.
+// Both forms clamp the reading into analog_raw_window() rather than letting
+// it wrap, so neither a probe past its own scale nor a mis-set range ever
+// produces an on-air value a receiver would reject or misplot.
 // Returns the formatted length, or 0 (empty field) if @p present is false -
 // an empty field is valid on-air (APRS101 Ch.13: unused channels are simply
 // blank between the commas).
@@ -768,14 +829,17 @@ static int format_analog_field(const telemetry_config_t *s, int i, double raw, b
             out[0] = 0;
         return 0;
     }
-    if (s->field_width == 3) {
-        long v = lround(raw);
-        if (v < 0)
-            v = 0;
-        if (v > 999)
-            v = 999;
-        return snprintf(out, outMax, "%03ld", v);
-    }
+    double lo = (s->field_width == 3) ? 0.0 : -HUGE_VAL;
+    double hi = (s->field_width == 3) ? 999.0 : HUGE_VAL;
+    analog_raw_window(s, i, &lo, &hi);
+    if (raw < lo)
+        raw = lo;
+    if (raw > hi)
+        raw = hi;
+
+    if (s->field_width == 3)
+        return snprintf(out, outMax, "%03ld", lround(raw));
+
     uint8_t dec = s->ana_dec[i];
     if (dec > 6)
         dec = 6; // sanity bound - keeps the field short and the buffer maths simple
@@ -792,8 +856,8 @@ static int format_analog_field(const telemetry_config_t *s, int i, double raw, b
 // the analog resolution loop in telemetry_refresh_now()); EQNS. metadata
 // (build_tlm_eqns_packet()) carries the a/b/c coefficients a receiver needs
 // to recover the engineering value - this is the standard APRS101 split
-// between report and metadata, and matches how field_width's "3-digit"
-// strict mode expects values in 0-255 raw units.
+// between report and metadata. Each field is bounded by that channel's
+// declared raw range before it is formatted (format_analog_field()).
 //
 // Trailing fields (rightmost analog channels with no value, and/or the
 // whole digital byte) are omitted together with their separating comma
@@ -893,11 +957,7 @@ static int build_tlm_data_packet(const telemetry_config_t *s, uint32_t seq, bool
         return 0;
 
     int n = snprintf(out, outMax, "%s>%s%s:%s", callField, dest, path, info);
-    if (n < 0)
-        return 0;
-    if (outMax > 0 && (size_t)n >= outMax)
-        n = (int)outMax - 1;
-    return n;
+    return tlm_line_fits("TLM data", "trailing comment or the path", n, outMax);
 }
 
 size_t telemetry_build_comment_tlm(char *out, size_t out_max) {
@@ -949,7 +1009,7 @@ size_t telemetry_build_comment_tlm(char *out, size_t out_max) {
     bool anaPresent[TLM_CH];
     for (int i = 0; i < TLM_CH; i++) {
         anaPresent[i] = (i < ana_count) && cfg.ana_enable[i] && s_ana_present[i];
-        anaVal[i] = anaPresent[i] ? clamp_analog_raw_base91(s_ana_val[i]) : 0;
+        anaVal[i] = anaPresent[i] ? clamp_analog_raw_base91(&cfg, i, s_ana_val[i]) : 0;
     }
     long digVal = 0;
     for (int i = 0; i < dig_count; i++) {
@@ -1060,11 +1120,7 @@ static int build_tlm_parm_packet(const telemetry_config_t *s, const char *path, 
         body[--u] = '\0';
 
     int len = snprintf(out, outMax, "%s>%s%s::%s:%s", callField, dest, path, addressee, body);
-    if (len < 0)
-        return 0;
-    if (outMax > 0 && (size_t)len >= outMax)
-        len = (int)outMax - 1;
-    return len;
+    return tlm_line_fits("TLM PARM", "channel names or the path", len, outMax);
 }
 
 // Builds the ":addressee:UNIT.unit1,...,unit13" Unit/Label Message (APRS101
@@ -1102,11 +1158,7 @@ static int build_tlm_unit_packet(const telemetry_config_t *s, const char *path, 
         body[--u] = '\0';
 
     int len = snprintf(out, outMax, "%s>%s%s::%s:%s", callField, dest, path, addressee, body);
-    if (len < 0)
-        return 0;
-    if (outMax > 0 && (size_t)len >= outMax)
-        len = (int)outMax - 1;
-    return len;
+    return tlm_line_fits("TLM UNIT", "unit labels or the path", len, outMax);
 }
 
 // Builds the ":addressee:EQNS.a1,b1,c1,...,a5,b5,c5" Equation Coefficients
@@ -1140,21 +1192,16 @@ static int build_tlm_eqns_packet(const telemetry_config_t *s, const char *path, 
     }
 
     int len = snprintf(out, outMax, "%s>%s%s::%s:%s", callField, dest, path, addressee, body);
-    if (len < 0)
-        return 0;
-    if (outMax > 0 && (size_t)len >= outMax)
-        len = (int)outMax - 1;
-    return len;
+    return tlm_line_fits("TLM EQNS", "coefficients or the path", len, outMax);
 }
 
 // Builds the ":addressee:BITS.b1b2...b8,Project Title" Bit Sense / Project
 // Name Message (APRS101 Ch.13). Per spec the 8 characters immediately after
 // "BITS." are '1'/'0' SENSE flags - one per digital channel, true meaning
 // "a transmitted 1 on this bit represents the labeled condition being true"
-// (cfg->bit_sense[i]) - NOT the bit labels (those belong in PARM., built by
-// build_tlm_parm_packet() above; the previous implementation of this
-// function sent tlm_bit_name[] here instead of sense flags, and never sent
-// the project title at all - both fixed here). gen_bits-gated.
+// (cfg->bit_sense[i]) - NOT the bit labels, which belong in PARM. and are
+// built by build_tlm_parm_packet() above. The project title
+// (cfg->proj_title) follows the flags after a comma. gen_bits-gated.
 static int build_tlm_bits_packet(const telemetry_config_t *s, const char *path, char *out, size_t outMax) {
     if (!s->mycall[0] || !s->gen_bits)
         return 0;
@@ -1175,11 +1222,7 @@ static int build_tlm_bits_packet(const telemetry_config_t *s, const char *path, 
     snprintf(body, sizeof(body), "BITS.%s,%s", sense, s->proj_title);
 
     int len = snprintf(out, outMax, "%s>%s%s::%s:%s", callField, dest, path, addressee, body);
-    if (len < 0)
-        return 0;
-    if (outMax > 0 && (size_t)len >= outMax)
-        len = (int)outMax - 1;
-    return len;
+    return tlm_line_fits("TLM BITS", "project title or the path", len, outMax);
 }
 
 // Metadata (PARM/UNIT/EQNS/BITS) interval. Not sched_clamp_interval(): here 0
@@ -1249,20 +1292,20 @@ uint32_t telemetry_beacon_service(void) {
         // the on-air bit pattern can legitimately differ between the two;
         // the Analog/Digital "Beacon via RF/Internet" toggles further gate
         // each whole bank per leg (build_tlm_data_packet()).
-        char packet[280];
+        char packet[APRS_TNC2_BUF_SIZE];
         if (cfg.tx2rf) {
             int len = build_tlm_data_packet(&cfg, s_sequence, true, packet, sizeof(packet));
             if (len > 0)
                 send_packet("TLM data", true, false, packet, (size_t)len);
             else
-                ESP_LOGW(TAG, "Telemetry enabled but no callsign configured - skipping RF leg");
+                ESP_LOGW(TAG, "TLM data report not built - no callsign configured, or the line did not fit - skipping RF leg");
         }
         if (cfg.tx2inet) {
             int len = build_tlm_data_packet(&cfg, s_sequence, false, packet, sizeof(packet));
             if (len > 0)
                 send_packet("TLM data", false, true, packet, (size_t)len);
             else
-                ESP_LOGW(TAG, "Telemetry enabled but no callsign configured - skipping INET leg");
+                ESP_LOGW(TAG, "TLM data report not built - no callsign configured, or the line did not fit - skipping INET leg");
         }
         // "Auto-increment Sequence Number" (cfg.auto_seq): when off, keep
         // resending the same sequence number - some receiving software uses
@@ -1287,7 +1330,7 @@ uint32_t telemetry_beacon_service(void) {
         // As with the data report, each leg gets its own line, because the
         // path differs between them: on RF these Messages go out direct, and
         // on APRS-IS they carry APRS_PATH_TCPIP_SUFFIX.
-        char packet[280];
+        char packet[APRS_TNC2_BUF_SIZE];
         int len;
         if (cfg.tx2rf) {
             len = build_tlm_parm_packet(&cfg, "", packet, sizeof(packet));

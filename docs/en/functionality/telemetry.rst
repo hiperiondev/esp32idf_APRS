@@ -55,6 +55,13 @@ carries the a/b/c coefficients and each receiving station recovers the
 engineering value itself. The report **never** carries channel names — per the
 APRS spec, names, units and equations travel separately.
 
+The declared raw range defaults to 0–1023, a 10-bit ADC span, and applies to
+both field widths. A channel whose source reads outside that span needs its
+range widened, otherwise the transmitted value is pinned to the edge of the
+declared span. A range that is inverted or empty declares nothing and is
+ignored, leaving only the bound the chosen field width imposes (000–999 for
+the three-digit form, none for the free-decimal form).
+
 The metadata messages
 =====================
 
@@ -70,6 +77,14 @@ messages as APRS messages addressed back to the station itself:
 
 Generation of each is individually toggleable (``gen_parm``, ``gen_unit``,
 ``gen_eqns``, ``gen_bits``).
+
+A line that does not fit — longer than ``APRS_TNC2_MAX_LEN``, the longest text
+the modem can encode into an AX.25 frame — is refused rather than truncated,
+and neither leg transmits it. That matters most for the definition messages: a
+coefficient cut mid-number leaves an ``EQNS.`` line every receiver still reads
+as well formed, and each of them then applies a different calibration to this
+station's raw readings for as long as that definition stands. The warning in
+the log names the field to shorten.
 
 Report parameters
 =================

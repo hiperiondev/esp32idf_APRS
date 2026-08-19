@@ -58,6 +58,15 @@ ricevente ricava da sé il valore ingegneristico. Il report **non** porta mai
 nomi di canale — secondo la specifica APRS, nomi, unità ed equazioni viaggiano
 separatamente.
 
+L'intervallo grezzo dichiarato vale per impostazione predefinita 0–1023, una
+campata di ADC a 10 bit, e si applica a entrambe le larghezze di campo. Un
+canale la cui sorgente legge fuori da quella campata ha bisogno che
+l'intervallo venga allargato, altrimenti il valore trasmesso resta fissato al
+bordo della campata dichiarata. Un intervallo invertito o vuoto non dichiara
+nulla e viene ignorato, lasciando solo il limite imposto dalla larghezza di
+campo scelta (000–999 per la forma a tre cifre, nessuno per la forma decimale
+libera).
+
 I messaggi di metadati
 ======================
 
@@ -73,6 +82,15 @@ definizione come messaggi APRS diretti alla propria stazione:
 
 La generazione di ciascuno è commutabile individualmente (``gen_parm``,
 ``gen_unit``, ``gen_eqns``, ``gen_bits``).
+
+Una riga che non entra — più lunga di ``APRS_TNC2_MAX_LEN``, il testo più lungo
+che il modem può codificare in una trama AX.25 — viene rifiutata invece che
+troncata, e nessuna delle due tratte la trasmette. Questo conta soprattutto per
+i messaggi di definizione: un coefficiente tagliato a metà numero lascia una
+riga ``EQNS.`` che ogni ricevitore continua a leggere come ben formata, e
+ciascuno di essi applica allora una calibrazione diversa alle letture grezze di
+questa stazione finché quella definizione resta in piedi. L'avviso nel log
+nomina il campo da accorciare.
 
 Parametri del report
 ====================

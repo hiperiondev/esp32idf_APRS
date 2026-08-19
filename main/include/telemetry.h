@@ -111,16 +111,20 @@
  * @brief Own-beacon Telemetry channel 0 configuration, as loaded from /
  * saved to /storage/telemetry.json.
  *
- * Analog PARM/UNIT names (@c PARM / @c UNIT) are carried for forward
- * compatibility with an eventual analog A1-A5 mapping; only the Binary
- * (digital) bank is currently produced on-air (see telemetry.c).
- *
  * @details Fields are grouped as: core beacon settings; Report Parameters
  * (APRS101 Ch.13 framing/metadata options); definition-message generation
  * toggles (PARM/UNIT/EQNS/BITS); analog channels A1-A5 (names/units in
  * @c PARM[0..4] / @c UNIT[0..4], calibration quadratic value=a*x*x+b*x+c);
- * and Binary channels B1-B8. Everything except the Binary bank is persisted
- * for a full round-trip but is not yet produced on-air by telemetry.c.
+ * and Binary channels B1-B8.
+ *
+ * The "T#..." data report carries the RAW reading of each analog channel,
+ * clamped to that channel's @c ana_raw_min / @c ana_raw_max span; the a/b/c
+ * coefficients that turn it into an engineering value travel separately, in
+ * the @c EQNS. definition Message, which is the APRS101 Ch.13 split between
+ * report and metadata. The span never rescales a reading, only bounds it, so
+ * those coefficients stay valid for whatever goes on the air; a span that is
+ * inverted or empty (@c ana_raw_max <= @c ana_raw_min) declares nothing and
+ * is ignored.
  */
 typedef struct {
     bool en;                     /**< Master enable for the telemetry subsystem. */
@@ -156,8 +160,8 @@ typedef struct {
     float ana_a[TLM_CH];             /**< Calibration coefficient a (quadratic term) per analog channel. */
     float ana_b[TLM_CH];             /**< Calibration coefficient b (linear term) per analog channel. */
     float ana_c[TLM_CH];             /**< Calibration coefficient c (constant term) per analog channel. */
-    int32_t ana_raw_min[TLM_CH];     /**< Expected minimum raw ADC input per analog channel. */
-    int32_t ana_raw_max[TLM_CH];     /**< Expected maximum raw ADC input per analog channel. */
+    int32_t ana_raw_min[TLM_CH];     /**< Lowest raw reading expected on this channel; bounds the transmitted value. */
+    int32_t ana_raw_max[TLM_CH];     /**< Highest raw reading expected on this channel; bounds the transmitted value. */
     uint8_t ana_dec[TLM_CH];         /**< Number of decimals shown per analog channel. */
 
     char tlm_bit_name[TLM_BIT_NUM][21];   /**< Per-bit operator-facing label (used only inside the BITS. message). */

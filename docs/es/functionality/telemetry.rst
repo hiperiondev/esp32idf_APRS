@@ -58,6 +58,13 @@ misma el valor de ingeniería. El informe **nunca** lleva nombres de canal —
 según la especificación APRS, nombres, unidades y ecuaciones viajan por
 separado.
 
+El rango crudo declarado vale por defecto 0–1023, un tramo de ADC de 10 bits, y
+se aplica a los dos anchos de campo. Un canal cuya fuente lee fuera de ese
+tramo necesita que se le amplíe el rango; si no, el valor transmitido queda
+fijado al borde del tramo declarado. Un rango invertido o vacío no declara nada
+y se ignora, dejando solo la cota que impone el ancho de campo elegido (000–999
+para la forma de tres dígitos, ninguna para la forma decimal libre).
+
 Los mensajes de metadatos
 =========================
 
@@ -73,6 +80,15 @@ definición como mensajes APRS dirigidos a la propia estación:
 
 La generación de cada uno es conmutable individualmente (``gen_parm``,
 ``gen_unit``, ``gen_eqns``, ``gen_bits``).
+
+Una línea que no entra — más larga que ``APRS_TNC2_MAX_LEN``, el texto más largo
+que el módem puede codificar en una trama AX.25 — se rechaza en vez de
+recortarse, y no la transmite ninguna de las dos patas. Esto importa sobre todo
+en los mensajes de definición: un coeficiente cortado a mitad de número deja una
+línea ``EQNS.`` que todo receptor sigue leyendo como bien formada, y cada uno de
+ellos aplica entonces una calibración distinta a las lecturas crudas de esta
+estación mientras esa definición siga en pie. La advertencia del log nombra el
+campo que hay que acortar.
 
 Parámetros del informe
 ======================
