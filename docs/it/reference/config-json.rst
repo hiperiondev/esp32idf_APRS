@@ -31,7 +31,7 @@ Altri file persistenti
      - Contenuto
    * - ``/storage/config.json``
      - L'``app_config_t`` residente (sistema, stazione, Wi-Fi, IGate, digi,
-       tracker, meteo, modem, messaggio).
+       tracker, meteo, GPS, modem, messaggio).
    * - ``/storage/telemetry.json``
      - Configurazione di telemetria (``telemetry_config_t``): analogici A1–A5,
        digitali B1–B8, parametri del report, interruttori dei messaggi di

@@ -1382,10 +1382,10 @@
  */
 /** Page title of the GPS page, rendered on the GPS page. */
 #define TR_F_GPS "GPS Receiver"
-/** Introductory paragraph of the GPS page, rendered on the GPS page. */
-#define TR_GPS_INTRO                                                                                                                                           \
-    "Live view of the NMEA sentences the GNSS receiver is sending. Every value refreshes once per second and nothing on this page is configurable: the "       \
-    "serial port and its pins are fixed at build time."
+/** Fieldset legend for the receiver enable block, rendered on the GPS page. */
+#define TR_GPS_FS_SERVICE "GPS Receiver"
+/** Label of the receiver enable checkbox, rendered on the GPS page. */
+#define TR_GPS_ENABLE "Enable GPS Receiver"
 /** Fieldset legend for the receiver status block, rendered on the GPS page. */
 #define TR_GPS_FS_STATUS "Receiver Status"
 /** Fieldset legend for the position block, rendered on the GPS page. */

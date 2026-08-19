@@ -11,8 +11,8 @@ Una única instancia ``app_config_t g_config`` (``main/app_config.c`` /
 ``app_config.h``) es la copia viva que lee cada subsistema. Se carga al arrancar
 y se edita campo a campo por los manejadores POST de la web. Sus campos se
 agrupan por página de la administración web: sistema/hora, identidad "My Station",
-Wi-Fi, IGate, Digipeater, Tracker, Weather, el módem AFSK, System/autenticación
-HTTP, Message y Query.
+Wi-Fi, IGate, Digipeater, Tracker, Weather, GPS, el módem AFSK,
+System/autenticación HTTP, Message y Query.
 
 Los nombres de campo y las claves JSON se mantienen **1:1** con el ``config.h``/
 ``config.cpp`` del proyecto de referencia original, de modo que cada valor que

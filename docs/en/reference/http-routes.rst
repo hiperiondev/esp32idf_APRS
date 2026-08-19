@@ -53,9 +53,9 @@ auth check to guard.
    * - GET
      - ``/tlm/values``
      - live per-channel telemetry sensor values (JSON)
-   * - GET
+   * - GET/POST
      - ``/gps``
-     - live view of the NMEA GNSS receiver (read-only)
+     - GNSS receiver enable switch and live view
    * - GET
      - ``/gps/values``
      - every value the GNSS receiver reports (JSON)

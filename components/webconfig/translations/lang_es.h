@@ -1472,11 +1472,10 @@
  */
 /** Spanish text for the page title of the GPS page, rendered on the GPS page. English: "GPS Receiver". */
 #define TR_F_GPS "Receptor GPS"
-/** Spanish text for the introductory paragraph of the GPS page, rendered on the GPS page. English: "Live view of the NMEA sentences the GNSS receiver is
- * sending. Every value refreshes onc...". */
-#define TR_GPS_INTRO                                                                                                                                           \
-    "Vista en vivo de las sentencias NMEA que envía el receptor GNSS. Cada valor se refresca una vez por segundo y nada de esta página es configurable: el "   \
-    "puerto serie y sus pines se fijan en tiempo de compilación."
+/** Spanish text for the fieldset legend for the receiver enable block, rendered on the GPS page. English: "GPS Receiver". */
+#define TR_GPS_FS_SERVICE "Receptor GPS"
+/** Spanish text for the label of the receiver enable checkbox, rendered on the GPS page. English: "Enable GPS Receiver". */
+#define TR_GPS_ENABLE "Habilitar Receptor GPS"
 /** Spanish text for the fieldset legend for the receiver status block, rendered on the GPS page. English: "Receiver Status". */
 #define TR_GPS_FS_STATUS "Estado del Receptor"
 /** Spanish text for the fieldset legend for the position block, rendered on the GPS page. English: "Position". */

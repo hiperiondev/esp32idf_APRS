@@ -139,8 +139,11 @@ esp_err_t page_tlm_get(httpd_req_t *req);
 esp_err_t page_tlm_post(httpd_req_t *req);
 /** @brief GET  /tlm/values - JSON live raw-analog preview, polled every 2 s. @param req Incoming request. @return ESP_OK or an esp_err_t error. */
 esp_err_t page_tlm_values_get(httpd_req_t *req);
-/** @brief GET  /gps - read-only live view of the NMEA GNSS receiver. @param req Incoming request. @return ESP_OK or an esp_err_t error. */
+/** @brief GET  /gps - GNSS receiver enable switch and live view of everything it reports. @param req Incoming request. @return ESP_OK or an esp_err_t error. */
 esp_err_t page_gps_get(httpd_req_t *req);
+/** @brief POST /gps - persist the GNSS receiver enable switch and apply it to the running receiver. @param req Incoming request. @return ESP_OK or an esp_err_t
+ * error. */
+esp_err_t page_gps_post(httpd_req_t *req);
 /** @brief GET  /gps/values - JSON snapshot of every value the GNSS receiver reports, polled every 1 s. @param req Incoming request. @return ESP_OK or an
  * esp_err_t error. */
 esp_err_t page_gps_values_get(httpd_req_t *req);

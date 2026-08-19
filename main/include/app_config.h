@@ -833,6 +833,9 @@ typedef struct {
     int8_t trk_duplex;        /**< Repeater duplex direction: 0 = simplex, +1 = "+", -1 = "-". */
     uint16_t trk_offset_khz;  /**< Repeater duplex shift magnitude, kHz; used only when trk_duplex != 0. */
 
+    bool gps_en; /**< GNSS receiver enabled. When false the receiver's UART is never installed, the reader task does not run and every consumer of
+                      ::gps_snapshot sees "no receiver". This is the single switch the rest of the firmware tests before using anything the module reports. */
+
     bool wx_en;                           /**< Weather service enabled. */
     bool wx_2rf;                          /**< Transmit the WX report on RF. */
     bool wx_2inet;                        /**< Transmit the WX report to APRS-IS. */

@@ -194,16 +194,39 @@ typedef struct {
 } gps_data_t;
 
 /**
- * @brief Bring up the GNSS subsystem: configure the UART on the pins above and
- *        start the reader task that parses the incoming sentence stream.
+ * @brief Bring the GNSS subsystem up or down to match @c g_config.gps_en.
  *
- * Safe to call once from application start-up. Failing to install the UART
- * driver is logged and leaves the subsystem inert - ::gps_snapshot then keeps
- * reporting a snapshot with ::gps_data_t::link_up false - rather than aborting
- * the boot, since a missing or miswired receiver must not cost the station its
- * igate, digipeater or beacons.
+ * Call once from application start-up, and again from the GPS page's save
+ * handler whenever the operator moves the switch, so the change takes effect
+ * without a reboot.
+ *
+ * With the switch off nothing is claimed at all: the UART driver is not
+ * installed, the two pins are left alone and the reader task does not exist.
+ * With it on, the UART is configured on the pins above and the reader task
+ * starts. Failing to install the driver is logged and leaves the subsystem
+ * inert - ::gps_snapshot then keeps reporting "no receiver" - rather than
+ * aborting the boot, since a missing or miswired receiver must not cost the
+ * station its igate, digipeater or beacons.
+ *
+ * Turning the switch off asks the reader task to finish its current pass and
+ * exit before the UART driver is removed, so the port is never torn down from
+ * under a task that is reading it.
  */
-void gps_start(void);
+void gps_apply_config(void);
+
+/**
+ * @brief True while the receiver is actually running.
+ *
+ * This is the enable switch as the firmware sees it, not merely as it was
+ * configured: it is false when the operator has the receiver switched off AND
+ * when the switch is on but the UART could not be brought up. Consumers that
+ * want to know whether GNSS data is available at all, without taking a
+ * snapshot, test this; consumers that want the data itself just call
+ * ::gps_snapshot, whose false return says the same thing.
+ *
+ * @return true if the UART is installed and the reader task is running.
+ */
+bool gps_enabled(void);
 
 /**
  * @brief Copy the current receiver state into @p out under the module lock.
@@ -213,9 +236,9 @@ void gps_start(void);
  * paired with a longitude from the next.
  *
  * @param out Destination snapshot; untouched when @c NULL is passed.
- * @return true if the subsystem is running and @p out was filled, false if
- *         ::gps_start has not run or its UART bring-up failed (in which case
- *         @p out is zeroed, which reads as "no link, no fix").
+ * @return true if the receiver is running and @p out was filled, false if it
+ *         is switched off in the configuration or its UART bring-up failed (in
+ *         which case @p out is zeroed, which reads as "no link, no fix").
  */
 bool gps_snapshot(gps_data_t *out);
 

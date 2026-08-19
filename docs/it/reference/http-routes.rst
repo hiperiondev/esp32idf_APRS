@@ -54,9 +54,9 @@ controllo di autenticazione possa proteggere.
    * - GET
      - ``/tlm/values``
      - valori di telemetria per canale in tempo reale (JSON)
-   * - GET
+   * - GET/POST
      - ``/gps``
-     - vista in tempo reale del ricevitore GNSS NMEA (sola lettura)
+     - interruttore di abilitazione del ricevitore GNSS e vista in tempo reale
    * - GET
      - ``/gps/values``
      - tutti i valori riportati dal ricevitore GNSS (JSON)

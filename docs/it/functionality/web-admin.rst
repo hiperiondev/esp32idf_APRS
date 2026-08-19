@@ -101,7 +101,11 @@ Le pagine
        analogici A1–A5 con selettori di origine e calibrazione, digitali B1–B8 con
        selettori di origine e senso. Valori in tempo reale via ``/tlm/values``.
    * - **GPS**
-     - Vista in tempo reale di sola lettura del ricevitore GNSS NMEA: stato
+     - *Abilita Ricevitore GPS* è l'unico interruttore che il resto del
+       firmware consulta prima di usare qualsiasi cosa riportata dal modulo;
+       con esso spento la UART non viene nemmeno installata e la task di
+       lettura non gira. Spostarlo ha effetto immediato, senza riavvio. Sotto,
+       una vista in tempo reale di sola lettura del ricevitore: stato
        del collegamento, stato di navigazione, qualità del fix e modo 2D/3D,
        posizione, altitudine e separazione del geoide, velocità al suolo,
        rotta e variazione magnetica, data e ora UTC, satelliti usati e in

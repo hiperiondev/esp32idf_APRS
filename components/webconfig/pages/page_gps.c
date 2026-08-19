@@ -13,12 +13,14 @@
 //
 //     please contact their authors for more information.
 //
-// @brief Web admin "GPS" page: a read-only view of everything the NMEA GNSS
-// receiver reports, refreshed once per second from the JSON endpoint below.
+// @brief Web admin "GPS" page: the receiver's enable switch, plus a live view
+// of everything the NMEA GNSS receiver reports, refreshed once per second from
+// the JSON endpoint below.
 
 #include <stdio.h>
 #include <string.h>
 
+#include "app_config.h"
 #include "esp_log.h"
 #include "gps.h"
 #include "pages.h"
@@ -241,7 +243,15 @@ esp_err_t page_gps_get(httpd_req_t *req) {
         return ESP_OK;
     web_send_header(req, TR_F_GPS, "gps");
 
-    httpd_resp_sendstr_chunk(req, "<p>" TR_GPS_INTRO "</p>");
+    // The switch is the only thing on this page that is saved, so it gets its
+    // own small form. The live tables below sit outside it: they are readings,
+    // not settings, and putting them inside would invite a Save that appears
+    // to store them.
+    httpd_resp_sendstr_chunk(req, "<form method='POST' action='/gps'>");
+    web_fieldset_open(req, TR_GPS_FS_SERVICE);
+    web_field_checkbox(req, TR_GPS_ENABLE, "gpsEn", g_config.gps_en);
+    web_fieldset_close(req);
+    httpd_resp_sendstr_chunk(req, "<button type='submit'>" TR_BTN_SAVE "</button></form>");
 
     gps_table_open(req, TR_GPS_FS_STATUS);
     gps_row(req, TR_GPS_LINK, "link");
@@ -335,5 +345,32 @@ esp_err_t page_gps_get(httpd_req_t *req) {
                                   "</script>");
 
     web_send_footer(req);
+    return ESP_OK;
+}
+
+esp_err_t page_gps_post(httpd_req_t *req) {
+    if (!web_check_auth(req))
+        return ESP_OK;
+
+    char body[256];
+    if (web_read_body(req, body, sizeof(body)) < 0) {
+        httpd_resp_send_500(req);
+        return ESP_OK;
+    }
+
+    app_config_lock();
+    g_config.gps_en = web_form_get_bool(body, "gpsEn");
+    app_config_unlock();
+
+    // Applied before the save so the switch takes effect even if the write to
+    // flash fails: the operator is told about the failed write separately, and
+    // a receiver that obeys the screen is less confusing than one that waits
+    // for a reboot that may never confirm anything.
+    gps_apply_config();
+
+    bool ok = app_config_save();
+    if (!ok)
+        ESP_LOGE(TAG, "GPS settings could not be written to flash");
+    web_send_save_result(req, ok, "/gps");
     return ESP_OK;
 }

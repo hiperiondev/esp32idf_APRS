@@ -380,6 +380,9 @@ void app_config_set_defaults(app_config_t *c) {
     c->trk_duplex = 0;
     c->trk_offset_khz = 0;
 
+    // GNSS receiver
+    c->gps_en = false;
+
     // WX
     c->wx_en = false;
     c->wx_ssid = 13;
@@ -789,6 +792,8 @@ static void config_write_json(jw_t *d, const app_config_t *c) {
     jadd_num(d, "trkFreqTone", c->trk_tone_tenths);
     jadd_num(d, "trkFreqDup", c->trk_duplex);
     jadd_num(d, "trkFreqOff", c->trk_offset_khz);
+
+    jadd_bool(d, "gpsEn", c->gps_en);
 
     jadd_bool(d, "wxEn", c->wx_en);
     jadd_bool(d, "wxTx2rf", c->wx_2rf);
@@ -1344,6 +1349,8 @@ static void config_from_json(cJSON *d, app_config_t *c) {
     c->trk_tone_tenths = (uint16_t)jget_num(d, "trkFreqTone", def.trk_tone_tenths);
     c->trk_duplex = (int8_t)jget_num(d, "trkFreqDup", def.trk_duplex);
     c->trk_offset_khz = (uint16_t)jget_num(d, "trkFreqOff", def.trk_offset_khz);
+
+    c->gps_en = jget_bool(d, "gpsEn", def.gps_en);
 
     c->wx_en = jget_bool(d, "wxEn", def.wx_en);
     c->wx_2rf = jget_bool(d, "wxTx2rf", def.wx_2rf);

@@ -54,9 +54,9 @@ hay nada que una comprobación de autenticación pueda proteger.
    * - GET
      - ``/tlm/values``
      - valores de telemetría por canal en vivo (JSON)
-   * - GET
+   * - GET/POST
      - ``/gps``
-     - vista en vivo del receptor GNSS NMEA (solo lectura)
+     - conmutador de habilitación del receptor GNSS y vista en vivo
    * - GET
      - ``/gps/values``
      - todos los valores que informa el receptor GNSS (JSON)

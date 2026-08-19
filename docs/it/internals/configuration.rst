@@ -11,7 +11,7 @@ Una singola istanza ``app_config_t g_config`` (``main/app_config.c`` /
 ``app_config.h``) è la copia viva che ogni sottosistema legge. È caricata
 all'avvio e modificata campo per campo dai gestori POST del web. I suoi campi sono
 raggruppati per pagina dell'amministrazione web: sistema/ora, identità "My
-Station", Wi-Fi, IGate, Digipeater, Tracker, Weather, il modem AFSK,
+Station", Wi-Fi, IGate, Digipeater, Tracker, Weather, GPS, il modem AFSK,
 System/autenticazione HTTP, e Message e Query.
 
 I nomi dei campi e le chiavi JSON sono mantenuti **1:1** con il ``config.h``/

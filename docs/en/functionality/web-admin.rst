@@ -93,7 +93,11 @@ The pages
        source pickers and calibration, digital B1–B8 with source pickers and
        sense. Live values via ``/tlm/values``.
    * - **GPS**
-     - Read-only live view of the NMEA GNSS receiver: link state, navigation
+     - *Enable GPS Receiver* is the single switch the rest of the firmware
+       tests before using anything the module reports; with it off the UART is
+       not installed at all and the reader task does not run. Moving it takes
+       effect immediately, without a reboot. Below it, a read-only live view of
+       the receiver: link state, navigation
        status, fix quality and 2D/3D mode, position, altitude and geoid
        separation, ground speed, course and magnetic variation, UTC date and
        time, satellites used and in view, HDOP/PDOP/VDOP, the accepted and

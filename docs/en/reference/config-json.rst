@@ -30,7 +30,7 @@ Other persistent files
      - Contents
    * - ``/storage/config.json``
      - The resident ``app_config_t`` (system, station, Wi-Fi, IGate, digi,
-       tracker, weather, modem, message).
+       tracker, weather, GPS, modem, message).
    * - ``/storage/telemetry.json``
      - Telemetry channel-0 config (``telemetry_config_t``): analog A1–A5,
        digital B1–B8, report parameters, definition-message toggles.

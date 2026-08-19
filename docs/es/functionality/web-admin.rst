@@ -101,7 +101,11 @@ Las páginas
        analógicos A1–A5 con selectores de origen y calibración, digitales B1–B8
        con selectores de origen y sentido. Valores en vivo vía ``/tlm/values``.
    * - **GPS**
-     - Vista en vivo de solo lectura del receptor GNSS NMEA: estado del
+     - *Habilitar Receptor GPS* es el único conmutador que el resto del
+       firmware consulta antes de usar nada de lo que informa el módulo; con él
+       apagado la UART ni siquiera se instala y la tarea lectora no corre.
+       Moverlo surte efecto de inmediato, sin reiniciar. Debajo, una vista en
+       vivo de solo lectura del receptor: estado del
        enlace, estado de navegación, calidad del fix y modo 2D/3D, posición,
        altitud y separación del geoide, velocidad sobre el suelo, rumbo y
        variación magnética, fecha y hora UTC, satélites usados y a la vista,

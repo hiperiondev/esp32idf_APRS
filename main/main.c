@@ -356,12 +356,12 @@ static void app_task(void *arg) {
     vTaskDelay(pdMS_TO_TICKS(10));
     time_sync_start();
 
-    // The GNSS receiver is board wiring rather than a service: it holds one
-    // UART and its two pins for the life of the image, is never written to,
-    // and feeds the read-only GPS admin page. Started before the web server so
-    // a page loaded immediately after boot already finds the reader task
-    // running and reports the true link state instead of "no data".
-    gps_start();
+    // Bring the GNSS receiver up if the operator has it switched on. Done
+    // before the web server so a page loaded immediately after boot already
+    // finds the reader task running and reports the true link state instead of
+    // "no data". The GPS page's save handler calls this again whenever the
+    // switch moves, so enabling or disabling the receiver needs no reboot.
+    gps_apply_config();
 
     web_server_start();
 
