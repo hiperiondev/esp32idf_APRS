@@ -29,8 +29,8 @@ Bundled components
 
 * **littlefs** — ARM / joltwallet (BSD-3-Clause), via the ESP component
   registry.
-* **esp-idf-lib** ``bmp180`` / ``i2cdev`` / ``esp_idf_lib_helpers`` — via the
-  ESP component registry, for the BMP180 sensor driver.
+* **esp-idf-lib** ``bmp280`` / ``bmp180`` / ``i2cdev`` / ``esp_idf_lib_helpers``
+  — via the ESP component registry, for the BME280/BMP280 and BMP180 sensor drivers.
 
 License
 =======

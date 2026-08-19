@@ -12,8 +12,8 @@ Prerequisiti
 * Un ESP32 con **≥ 4 MB di flash**.
 * Il gestore dei componenti di IDF scarica ``joltwallet/littlefs``,
   ``espressif/cjson`` e, tramite il
-  componente ``sensors_local``, ``esp-idf-lib/bmp180`` (che trascina ``i2cdev`` +
-  ``esp_idf_lib_helpers``) automaticamente.
+  componente ``sensors_local``, ``esp-idf-lib/bmp280`` e ``esp-idf-lib/bmp180``
+  (che trascinano ``i2cdev`` + ``esp_idf_lib_helpers``) automaticamente.
 
 Compilazione e scrittura
 ========================

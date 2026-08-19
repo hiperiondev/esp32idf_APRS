@@ -493,7 +493,7 @@ Weather
    * - Live sensor polling framework (pluggable drivers)
      - ⚠️ (uncommon as a generic framework; usually hardcoded to one WX board)
      - ✅
-     - Dynamic, self-registering ``sensors_local`` driver registry; BMP180 included, extensible
+     - Dynamic, self-registering ``sensors_local`` driver registry; BME280/BMP280 and BMP180 included, extensible
    * - Per-field averaging over the report interval
      - ⚠️
      - ✅

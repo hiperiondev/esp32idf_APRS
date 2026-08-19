@@ -181,7 +181,7 @@ static double wx_field_value(const aprs_weather_report_t *wx, wx_field_id_t f) {
 // @note Earlier revisions called sensors_local_save() once and let every
 //       registered WEATHER-capable driver write straight into the shared
 //       s_wx report. That ignored wx_sensor_ch[] entirely: with more than
-//       one weather driver registered (e.g. the real "bmp180" driver and
+//       one weather driver registered (e.g. the real "bme280" driver and
 //       the "wx-example" self-test driver both enabled at once), each
 //       driver's save() overwrote the previous one's fields in registry
 //       order, so the on-air packet ended up carrying whichever driver

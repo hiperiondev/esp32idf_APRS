@@ -30,8 +30,9 @@ Componenti integrati
 
 * **littlefs** — ARM / joltwallet (BSD-3-Clause), tramite il registro dei
   componenti di ESP.
-* **esp-idf-lib** ``bmp180`` / ``i2cdev`` / ``esp_idf_lib_helpers`` — tramite il
-  registro dei componenti di ESP, per il driver del sensore BMP180.
+* **esp-idf-lib** ``bmp280`` / ``bmp180`` / ``i2cdev`` / ``esp_idf_lib_helpers``
+  — tramite il registro dei componenti di ESP, per i driver dei sensori BME280/BMP280
+  e BMP180.
 
 Licenza
 =======

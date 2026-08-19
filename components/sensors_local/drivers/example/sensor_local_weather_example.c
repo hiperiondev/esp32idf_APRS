@@ -30,7 +30,7 @@
 #include "sensors_local.h"
 
 // Everything below is compiled only when the driver is enabled in menuconfig
-// (Component config -> Sensors Local). This mirrors bmp180.c, and it is not
+// (Component config -> Sensors Local). This mirrors bme280.c, and it is not
 // optional: the component is registered WHOLE_ARCHIVE, so without this guard
 // SENSORS_LOCAL_DRIVER_AUTOREGISTER() below is always linked in and the fake
 // sensor registers at boot no matter what Kconfig says.
@@ -74,7 +74,7 @@ static esp_err_t wx_example_init(sensor_local_driver_t *self) {
 // (mph, degrees Fahrenheit, tenths of a millibar, hundredths of an inch)
 // happens only right here, at the boundary where the APRS weather report
 // struct is filled - never earlier. This mirrors the pattern used by the
-// real bmp180 driver. Luminosity (W/m^2) is already SI on both sides, so
+// real bme280 driver. Luminosity (W/m^2) is already SI on both sides, so
 // no conversion is needed there.
 static esp_err_t wx_example_save(sensor_local_driver_t *self, weather_telemetry_data_t *data, sensor_local_data_kind_t kind) {
     wx_example_ctx_t *c = (wx_example_ctx_t *)self->ctx;

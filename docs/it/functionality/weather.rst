@@ -173,5 +173,5 @@ legge, ogni accesso passa per ``weather_lock()`` / ``weather_unlock()``. Tratta
 
 .. seealso::
 
-   :ref:`it-sensor-framework` — come collegare un sensore reale (BME280, DS18B20,
-   BMP180…) così che le sue letture alimentino questi campi.
+   :ref:`it-sensor-framework` — come collegare un sensore reale (BME280/BMP280,
+   DS18B20…) così che le sue letture alimentino questi campi.

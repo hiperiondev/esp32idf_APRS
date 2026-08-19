@@ -514,7 +514,7 @@ Meteorología
    * - Marco de sondeo de sensores en vivo (drivers conectables)
      - ⚠️ (poco común como marco genérico; suele estar fijado a una sola placa WX)
      - ✅
-     - Registro dinámico y autorregistrable ``sensors_local``; incluye driver BMP180, extensible
+     - Registro dinámico y autorregistrable ``sensors_local``; incluye drivers BME280/BMP280 y BMP180, extensible
    * - Promediado por campo durante el intervalo de informe
      - ⚠️
      - ✅

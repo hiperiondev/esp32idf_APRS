@@ -86,8 +86,8 @@ static const sensor_local_wx_mask_t WX_FIELD_PROPERTY_BIT[WX_SENSOR_NUM] = {
 //      (coarse family check - excludes telemetry-only drivers), AND
 //   2) its ::sensor_local_driver_t::properties (see sensor_local_properties.h)
 //      sets the bit matching THIS row's field (fine-grained check - e.g. a
-//      Temperature+Pressure-only sensor such as bmp180 is offered on the
-//      Temperature and Pressure rows, but not on Wind/Rain/Humidity/etc).
+//      Temperature+Humidity+Pressure sensor such as bme280 is offered on
+//      those three rows, but not on Wind/Rain/Luminosity/etc).
 // A driver with a NULL @c properties pointer (not yet migrated to publish a
 // descriptor) is never offered on any row, since its per-field fitness is
 // unknown.
@@ -116,9 +116,9 @@ static void wx_channel_select(httpd_req_t *req, int field, uint8_t selected) {
         if (d == NULL || !(d->capabilities & SENSOR_LOCAL_DATA_WEATHER))
             continue; // not a weather sensor: skip (e.g. telemetry-only drivers)
         if (!sensor_local_properties_has_wx(d->properties, field_bit))
-            continue; // weather sensor, but doesn't produce THIS field (e.g. bmp180 on the Wind row)
+            continue; // weather sensor, but doesn't produce THIS field (e.g. bme280 on the Wind row)
         // Compose "<sensor name> <sensor channel name>" from the driver's
-        // properties (e.g. "BMP180 Temperature"); falls back to just the
+        // properties (e.g. "BME280 Temperature"); falls back to just the
         // sensor name (or "?") if the driver hasn't published a dedicated
         // channel label for this field.
         char nm[80];

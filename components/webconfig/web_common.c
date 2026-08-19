@@ -25,7 +25,6 @@
 #include <string.h>
 #include <strings.h> // strncasecmp (multipart header parsing)
 
-#include "BMP180.h" // BMP180_I2C_SDA_GPIO/SCL_GPIO: fixed pins for the GPIO registry
 #include "app_config.h"
 #include "aprs_coord.h"                         // aprs_symbol_table_is_valid()/aprs_symbol_code_is_valid(): the symbol pair accepted on air
 #include "aprs_service.h"                       // APRS_SOFTWARE_NAME: the firmware name shown as the HTTP auth realm and page title
@@ -34,6 +33,7 @@
 #include "esp_timer.h"    // esp_timer_get_time(): monotonic clock for the login lockout window
 #include "lwip/sockets.h" // getpeername(): client IP for the per-source login lockout
 #include "mbedtls/base64.h"
+#include "sensors_local_i2c.h" // SENSORS_LOCAL_I2C_SDA_GPIO/SCL_GPIO: fixed pins for the GPIO registry
 #include "translations.h"
 
 static const char *TAG = "web_common";
@@ -1133,8 +1133,8 @@ void web_select_close(httpd_req_t *req) {
 //
 // Entries whose feature has an on/off toggle are only reported while that
 // toggle is enabled (a disabled feature doesn't really "hold" its pin); the
-// always-on RF module / audio path / message alarm pins, and the BMP180's
-// compile-time-fixed I2C pins, are reported unconditionally.
+// always-on RF module / audio path / message alarm pins, and the sensor
+// bus's compile-time-fixed I2C pins, are reported unconditionally.
 int web_gpio_collect_used(const char *skip_tag, web_gpio_owner_t *out, int max) {
     int n = 0;
 
@@ -1165,10 +1165,12 @@ int web_gpio_collect_used(const char *skip_tag, web_gpio_owner_t *out, int max) 
     WEB_GPIO_ADD(MODEM_DAC_GPIO, "Radio Modem");
     WEB_GPIO_ADD(MODEM_PTT_GPIO, "PTT");
 
-    // BMP180 I2C bus: fixed at compile time (BMP180.h), always reserved
-    // regardless of any run-time enable flag.
-    WEB_GPIO_ADD(BMP180_I2C_SDA_GPIO, "BMP180 I2C");
-    WEB_GPIO_ADD(BMP180_I2C_SCL_GPIO, "BMP180 I2C");
+    // Local sensor I2C bus: fixed at compile time (sensors_local_i2c.h),
+    // always reserved regardless of any run-time enable flag and of which
+    // sensor drivers are compiled in - the bus belongs to the board's wiring,
+    // not to any one chip on it.
+    WEB_GPIO_ADD(SENSORS_LOCAL_I2C_SDA_GPIO, "Sensor I2C");
+    WEB_GPIO_ADD(SENSORS_LOCAL_I2C_SCL_GPIO, "Sensor I2C");
 
 #undef WEB_GPIO_ADD
     return n;

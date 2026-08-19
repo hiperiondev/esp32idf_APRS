@@ -34,7 +34,7 @@ static const char *TAG = "page_msg";
 // restricted to what's physically able to drive an output
 // (afsk_gpio_is_output_capable(): not input-only, not internal flash/PSRAM -
 // those are truly unusable and stay hidden). message_alarm_gpio_is_valid()'s
-// extra "not already used by the audio front-end/PTT/BMP180" rule is still
+// extra "not already used by the audio front-end/PTT/sensor I2C bus" rule is still
 // enforced on Save, but here it's surfaced via the shared GPIO registry
 // instead: a pin taken by another feature is still listed, just disabled and
 // labelled with its owner, so the user sees the whole pin map rather than

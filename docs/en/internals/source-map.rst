@@ -18,7 +18,7 @@ Repository layout
    ├── CMakeLists.txt          ← board definition (ADC/DAC/PTT/LED pins) + project()
    ├── partitions.csv          ← nvs / otadata / phy_init / ota_0 / ota_1 / storage (LittleFS)
    ├── sdkconfig               ← target=esp32, 4MB flash, custom partitions
-   ├── dependencies.lock       ← idf 5.5.4, littlefs, esp-idf-lib bmp180/i2cdev/helpers
+   ├── dependencies.lock       ← idf 5.5.4, littlefs, esp-idf-lib bmp280/bmp180/i2cdev/helpers
    ├── LICENSE                 ← GPL-3.0
    ├── schematics/             ← KiCad radio-interface schematic + PCB
    │
@@ -67,10 +67,12 @@ Repository layout
    │   │   ├── sensors_local.c              ← the dynamic registry
    │   │   ├── include/sensors_local.h      ← public API
    │   │   ├── include/sensor_local_properties.h ← per-driver capability descriptor
+   │   │   ├── include/sensors_local_i2c.h  ← shared I2C bus pins (reserved GPIOs)
    │   │   └── drivers/<name>/              ← one folder per driver (auto-registered)
    │   │       ├── example/…_weather_example.c    ← random-data WEATHER skeleton
    │   │       ├── example/…_telemetry_example.c  ← random-data TELEMETRY skeleton
-   │   │       └── bmp180/bmp180.c                ← real I2C temperature/pressure driver
+   │   │       ├── bme280/bme280.c                ← real I2C BME280/BMP280 driver (default)
+   │   │       └── bmp180/bmp180.c                ← same, older BMP180 (off by default)
    │   └── webconfig/      ← esp_http_server admin
    │       ├── web_server.c            ← route table
    │       ├── web_common.c            ← auth, form parsing, HTML shell, field helpers
@@ -79,6 +81,7 @@ Repository layout
    │
    └── managed_components/                     (fetched by the component manager)
        ├── joltwallet__littlefs/
+       ├── esp-idf-lib__bmp280/
        ├── esp-idf-lib__bmp180/
        ├── esp-idf-lib__i2cdev/
        └── esp-idf-lib__esp_idf_lib_helpers/

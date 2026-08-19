@@ -201,7 +201,7 @@ uint8_t sensors_local_channel_from_name(const char *name) {
 esp_err_t sensors_local_init_all(void) {
     // Snapshot the driver pointers under the lock, then release it BEFORE
     // running any init(), for the same reason as sensors_local_save() below:
-    // a driver's init() does blocking bus I/O (e.g. BMP180 I2C conversions
+    // a driver's init() does blocking bus I/O (e.g. BME280 I2C conversions
     // take tens of ms) and holding the registry lock across the whole sweep
     // would stall every other registry caller for the sum of them. Driver
     // objects are stable for the program's lifetime (see the note at the top
@@ -248,7 +248,7 @@ esp_err_t sensors_local_save(weather_telemetry_data_t *data, sensor_local_data_k
 
     // Snapshot the matching driver pointers under the lock, then release it
     // BEFORE touching the hardware. ensure_initialized()/d->save() do blocking
-    // bus I/O (e.g. BMP180 I2C conversions take tens of ms); holding the
+    // bus I/O (e.g. BME280 I2C conversions take tens of ms); holding the
     // registry lock across them would stall every other registry caller
     // (sensors_local_count/get from the web sensor page, etc.) for the whole
     // transaction. Driver objects are stable for the program's lifetime

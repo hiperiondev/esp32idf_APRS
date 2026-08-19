@@ -206,15 +206,45 @@ Multiple instances, error handling, thread safety
   framework — if a driver's ``ctx`` is touched from more than the 1 Hz refresh
   (e.g. an ISR), the driver is responsible for its own synchronisation.
 
-The built-in BMP180 driver
-==========================
+The built-in I2C weather drivers
+================================
 
-``drivers/bmp180/bmp180.c`` is a real I2C temperature/pressure driver built on
-``esp-idf-lib/bmp180``. Its I2C pins are configurable by ``#define`` in
-``BMP180.h`` (default GPIO21 = SDA, GPIO22 = SCL); those pins are excluded from
-every GPIO selector in the web admin so they cannot be double-assigned. It
-advertises Weather and writes temperature and barometric pressure. It is gated
-behind ``CONFIG_SENSORS_LOCAL_BMP180_DRIVER``.
+All I2C sensor drivers share one bus. Its SDA/SCL pins and port number are
+configurable by ``#define`` in ``include/sensors_local_i2c.h`` (default
+GPIO21 = SDA, GPIO22 = SCL, port 0), which is the single source of truth for
+them: those pins are excluded from every GPIO selector in the web admin so they
+cannot be double-assigned, and the exclusion holds even when every sensor driver
+has been compiled out, because the bus belongs to the board's wiring rather than
+to any one chip on it. Only chip-specific settings live in each driver's own
+``BME280.h`` / ``BMP180.h``. Both drivers may be enabled at once — each chip
+answers on its own slave address.
+
+``drivers/bme280/bme280.c`` is a real I2C weather driver built on
+``esp-idf-lib/bmp280`` (that managed component is named after the BMP280 and
+covers both parts, which is why its symbols keep the BMP280 spelling). It is
+gated behind ``CONFIG_SENSORS_LOCAL_BME280_DRIVER`` (**on by default**: it is
+the default real weather sensor) and drives two register-compatible chips that
+differ only in their chip ID — the BME280 (temperature + relative humidity +
+barometric pressure) and the humidity-less BMP280.
+
+Bring-up reads that ID off the real device and points the driver's
+``properties`` at one of two descriptors, so the Weather page's per-field
+"Channel" picker offers a Humidity source only on a board that can actually
+measure humidity, and each read asks the chip for humidity only when the element
+is there. This matters because a descriptor is what the picker filters on:
+advertising a field the fitted chip cannot produce would let an operator map a
+Weather row to a source that never fills it, and the field would then simply be
+missing from every WX beacon with nothing on screen to say why.
+
+``drivers/bmp180/bmp180.c`` is the same thing for the older BMP180, built on
+``esp-idf-lib/bmp180`` and gated behind ``CONFIG_SENSORS_LOCAL_BMP180_DRIVER``
+(**off by default**: turn it on only for a board actually fitted with a BMP180).
+
+The two ``drivers/example`` drivers are **off by default** as well. They feed
+random values into the pipeline, which are indistinguishable from real readings
+once mapped to a Weather or Telemetry channel and are then encoded into a beacon
+and transmitted — turn them on for bench testing only, and off again before
+keying a radio.
 
 Adding a whole new sensor *kind*
 ================================

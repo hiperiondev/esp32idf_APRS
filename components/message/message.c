@@ -26,15 +26,15 @@
 #include "esp_log.h"
 #include "esp_timer.h"
 
-#include "BMP180.h" // bmp180_gpio_is_reserved(): keep the I2C pins out of the alarm pin
-#include "afsk.h"   // afsk_ptt_gpio_is_valid(), MODEM_ADC_GPIO / MODEM_DAC_GPIO (checked internally by afsk_ptt_gpio_is_valid())
+#include "afsk.h" // afsk_ptt_gpio_is_valid(), MODEM_ADC_GPIO / MODEM_DAC_GPIO (checked internally by afsk_ptt_gpio_is_valid())
 #include "app_config.h"
 #include "aprs_path.h"                          // aprs_path_build_suffix_from_config(), APRS_PATH_TCPIP_SUFFIX
 #include "aprs_service.h"                       // APRS_TOCALL: this station's destination call, same one every other packet type uses
 #include "esp32idf_radioamateur_modem_config.h" // MODEM_PTT_GPIO: the fixed PTT pin, checked directly below
 #include "json_escape.h"                        // json_escape()
 #include "message.h"
-#include "query.h" // query_process_directed(): second consumer of the ::ADDRESSEE: payload, for "CALL:?query?"
+#include "query.h"             // query_process_directed(): second consumer of the ::ADDRESSEE: payload, for "CALL:?query?"
+#include "sensors_local_i2c.h" // sensors_local_i2c_gpio_is_reserved(): keep the I2C pins out of the alarm pin
 #include "str_append.h"
 
 static const char *TAG = "message";
@@ -117,9 +117,10 @@ bool message_alarm_gpio_is_valid(int8_t gpio) {
     // Not already used by any sensors_local peripheral bus. (These fields are
     // config-struct-only placeholders with no driver behind them yet - see
     // the same note in web_gpio_collect_used() - so they're not checked here;
-    // only pins that are genuinely wired to something (PTT above, BMP180 I2C
-    // via bmp180_gpio_is_reserved()) can make a GPIO invalid.)
-    if (bmp180_gpio_is_reserved(gpio))
+    // only pins that are genuinely wired to something (PTT above, the shared
+    // sensor I2C bus via sensors_local_i2c_gpio_is_reserved()) can make a GPIO
+    // invalid.)
+    if (sensors_local_i2c_gpio_is_reserved(gpio))
         return false;
 
     return true;

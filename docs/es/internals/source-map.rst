@@ -18,7 +18,7 @@ Disposición del repositorio
    ├── CMakeLists.txt          ← definición de placa (pines ADC/DAC/PTT/LED) + project()
    ├── partitions.csv          ← nvs / otadata / phy_init / ota_0 / ota_1 / storage (LittleFS)
    ├── sdkconfig               ← target=esp32, flash 4MB, particiones personalizadas
-   ├── dependencies.lock       ← idf 5.5.4, littlefs, esp-idf-lib bmp180/i2cdev/helpers
+   ├── dependencies.lock       ← idf 5.5.4, littlefs, esp-idf-lib bmp280/bmp180/i2cdev/helpers
    ├── LICENSE                 ← GPL-3.0
    ├── schematics/             ← esquema KiCad de interfaz de radio + PCB
    │
@@ -70,7 +70,8 @@ Disposición del repositorio
    │   │   └── drivers/<name>/              ← una carpeta por controlador (autorregistrado)
    │   │       ├── example/…_weather_example.c    ← esqueleto WEATHER de datos aleatorios
    │   │       ├── example/…_telemetry_example.c  ← esqueleto TELEMETRY de datos aleatorios
-   │   │       └── bmp180/bmp180.c                ← controlador I2C real de temperatura/presión
+   │   │       ├── bme280/bme280.c                ← controlador I2C real BME280/BMP280 (por defecto)
+   │   │       └── bmp180/bmp180.c                ← ídem, BMP180 más viejo (desactivado por defecto)
    │   └── webconfig/      ← administración esp_http_server
    │       ├── web_server.c            ← tabla de rutas
    │       ├── web_common.c            ← auth, análisis de formularios, shell HTML, ayudantes de campo
@@ -79,6 +80,7 @@ Disposición del repositorio
    │
    └── managed_components/                     (obtenidos por el gestor de componentes)
        ├── joltwallet__littlefs/
+       ├── esp-idf-lib__bmp280/
        ├── esp-idf-lib__bmp180/
        ├── esp-idf-lib__i2cdev/
        └── esp-idf-lib__esp_idf_lib_helpers/

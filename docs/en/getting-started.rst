@@ -12,8 +12,9 @@ Prerequisites
 * An ESP32 with **≥ 4 MB flash**.
 * The IDF component manager fetches ``joltwallet/littlefs``, ``espressif/cjson``
   and, via the
-  ``sensors_local`` component, ``esp-idf-lib/bmp180`` (which pulls in
-  ``i2cdev`` + ``esp_idf_lib_helpers``) automatically.
+  ``sensors_local`` component, ``esp-idf-lib/bmp280`` and
+  ``esp-idf-lib/bmp180`` (which pull in ``i2cdev`` +
+  ``esp_idf_lib_helpers``) automatically.
 
 Building and flashing
 =====================

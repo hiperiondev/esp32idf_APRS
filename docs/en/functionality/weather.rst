@@ -175,5 +175,5 @@ Treat ``weather_telemetry_data`` as read-only outside ``weather.c``.
 
 .. seealso::
 
-   :ref:`en-sensor-framework` — how to attach a real sensor (BME280, DS18B20,
-   BMP180…) so its readings feed these fields.
+   :ref:`en-sensor-framework` — how to attach a real sensor (BME280/BMP280,
+   DS18B20…) so its readings feed these fields.

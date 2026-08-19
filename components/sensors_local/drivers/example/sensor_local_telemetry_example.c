@@ -65,7 +65,7 @@
 #include "sensors_local.h"
 
 // Everything below is compiled only when the driver is enabled in menuconfig
-// (Component config -> Sensors Local). This mirrors bmp180.c, and it is not
+// (Component config -> Sensors Local). This mirrors bme280.c, and it is not
 // optional: the component is registered WHOLE_ARCHIVE, so without this guard
 // SENSORS_LOCAL_DRIVER_AUTOREGISTER() below is always linked in and the fake
 // sensor registers at boot no matter what Kconfig says.

@@ -216,15 +216,48 @@ Istanze multiple, gestione errori, thread safety
   diverso dall'aggiornamento a 1 Hz (es. una ISR), il driver è responsabile della
   propria sincronizzazione.
 
-Il driver BMP180 integrato
-==========================
+I driver meteo I2C integrati
+============================
 
-``drivers/bmp180/bmp180.c`` è un driver I2C di temperatura/pressione reale
-costruito su ``esp-idf-lib/bmp180``. I suoi pin I2C sono configurabili tramite
-``#define`` in ``BMP180.h`` (predefinito GPIO21 = SDA, GPIO22 = SCL); quei pin
-sono esclusi da ogni selettore GPIO dell'amministrazione web così che non possano
-essere doppio-assegnati. Annuncia Meteo e scrive temperatura e pressione
-barometrica. È condizionato dietro ``CONFIG_SENSORS_LOCAL_BMP180_DRIVER``.
+Tutti i driver di sensori I2C condividono un solo bus. I suoi pin SDA/SCL e il
+numero di porta sono configurabili tramite ``#define`` in
+``include/sensors_local_i2c.h`` (predefinito GPIO21 = SDA, GPIO22 = SCL,
+porta 0), che ne è l'unica fonte di verità: quei pin sono esclusi da ogni
+selettore GPIO dell'amministrazione web così che non possano essere
+doppio-assegnati, e l'esclusione vale anche quando ogni driver di sensore è stato
+compilato fuori, perché il bus appartiene al cablaggio della scheda e non a un
+singolo chip su di essa. Nel ``BME280.h`` / ``BMP180.h`` proprio di ciascun
+driver restano solo le impostazioni specifiche del chip. Entrambi i driver
+possono essere abilitati insieme: ogni chip risponde al proprio indirizzo slave.
+
+``drivers/bme280/bme280.c`` è un driver meteo I2C reale costruito su
+``esp-idf-lib/bmp280`` (quel componente gestito porta il nome del BMP280 e copre
+entrambe le parti, per questo i suoi simboli mantengono la grafia BMP280). È
+condizionato dietro ``CONFIG_SENSORS_LOCAL_BME280_DRIVER`` (**attivo per
+impostazione predefinita**: è il sensore meteo reale predefinito) e guida due
+chip compatibili a livello di registri che differiscono solo per il proprio ID:
+il BME280 (temperatura + umidità relativa + pressione barometrica) e il BMP280,
+privo dell'elemento di umidità.
+
+L'avvio legge quell'ID dal dispositivo reale e punta il ``properties`` del driver
+a uno di due descrittori, così il selettore "Canale" per campo della pagina Meteo
+offre una sorgente di Umidità solo su una scheda che può davvero misurarla, e
+ogni lettura chiede l'umidità al chip solo quando l'elemento è presente. Questo
+conta perché è il descrittore che il selettore filtra: annunciare un campo che il
+chip montato non può produrre permetterebbe di mappare una riga Meteo su una
+sorgente che non la riempie mai, e il campo mancherebbe da ogni beacon WX senza
+nulla a schermo che lo spieghi.
+
+``drivers/bmp180/bmp180.c`` è la stessa cosa per il più vecchio BMP180, costruito
+su ``esp-idf-lib/bmp180`` e condizionato dietro
+``CONFIG_SENSORS_LOCAL_BMP180_DRIVER`` (**disattivo per impostazione
+predefinita**: attivalo solo per una scheda realmente dotata di un BMP180).
+
+Anche i due driver di ``drivers/example`` sono **disattivi per impostazione
+predefinita**. Immettono valori casuali nella pipeline, indistinguibili da
+letture reali una volta mappati su un canale Meteo o Telemetria, e da lì vengono
+codificati in un beacon e trasmessi: attivali solo per prove da banco, e
+disattivali prima di mandare in trasmissione una radio.
 
 Aggiungere una *classe* di sensore completamente nuova
 ======================================================

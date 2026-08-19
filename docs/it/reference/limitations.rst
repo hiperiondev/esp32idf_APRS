@@ -517,7 +517,7 @@ Meteo
    * - Framework di polling sensori live (driver collegabili)
      - ⚠️ (poco comune come framework generico; di solito fissato a una singola scheda WX)
      - ✅
-     - Registro dinamico e autoregistrante ``sensors_local``; include driver BMP180, estensibile
+     - Registro dinamico e autoregistrante ``sensors_local``; include driver BME280/BMP280 e BMP180, estensibile
    * - Media per campo sull'intervallo di report
      - ⚠️
      - ✅

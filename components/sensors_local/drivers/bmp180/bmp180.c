@@ -19,9 +19,11 @@
 // Advertises only ::SENSOR_LOCAL_DATA_WEATHER and, on every call, reads the
 // BMP180 and writes ambient temperature and barometric pressure straight into
 // ::weather_telemetry_data_t::weather[0], setting the matching
-// ::aprs_weather_sensor_id_t enabled flags. The I2C pins are fixed at build
-// time in BMP180.h (default GPIO21=SDA, GPIO22=SCL) and are excluded from every
-// web-admin GPIO picker via bmp180_gpio_is_reserved().
+// ::aprs_weather_sensor_id_t enabled flags.
+//
+// The bus is the shared sensor I2C bus of sensors_local_i2c.h (default
+// GPIO21=SDA, GPIO22=SCL), whose pins are excluded from every web-admin GPIO
+// picker; only the chip-specific settings come from BMP180.h.
 //
 // Uses the esp-idf-lib BMP180 driver:
 //     https://components.espressif.com/components/esp-idf-lib/bmp180/
@@ -37,9 +39,10 @@
 #include <bmp180.h> // esp-idf-lib managed component driver (lower-case)
 #include <i2cdev.h> // esp-idf-lib i2cdev, required once before init_desc
 
-#include "BMP180.h"            // our compile-time pin/port config (upper-case)
+#include "BMP180.h"            // our compile-time chip config (upper-case)
 #include "bmp180_properties.h" // fine-grained Weather field capability descriptor
 #include "sensors_local.h"
+#include "sensors_local_i2c.h" // shared bus pins / port
 
 #ifdef CONFIG_SENSORS_LOCAL_BMP180_DRIVER
 
@@ -57,7 +60,8 @@ static esp_err_t bmp180_drv_init(sensor_local_driver_t *self) {
     memset(&c->dev, 0, sizeof(c->dev));
 
     // i2cdev keeps a per-port mutex; it must be initialised once before any
-    // descriptor is created. Safe to call again on a re-register.
+    // descriptor is created. Safe to call again on a re-register, and safe
+    // when another driver already brought the shared bus up.
     esp_err_t err = i2cdev_init();
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "i2cdev_init failed: %s", esp_err_to_name(err));
@@ -65,7 +69,7 @@ static esp_err_t bmp180_drv_init(sensor_local_driver_t *self) {
     }
     c->i2cdev_up = true;
 
-    err = bmp180_init_desc(&c->dev, BMP180_I2C_PORT, (gpio_num_t)BMP180_I2C_SDA_GPIO, (gpio_num_t)BMP180_I2C_SCL_GPIO);
+    err = bmp180_init_desc(&c->dev, SENSORS_LOCAL_I2C_PORT, (gpio_num_t)SENSORS_LOCAL_I2C_SDA_GPIO, (gpio_num_t)SENSORS_LOCAL_I2C_SCL_GPIO);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "bmp180_init_desc failed: %s", esp_err_to_name(err));
         return err;
@@ -73,12 +77,13 @@ static esp_err_t bmp180_drv_init(sensor_local_driver_t *self) {
 
     err = bmp180_init(&c->dev);
     if (err != ESP_OK) {
-        ESP_LOGE(TAG, "bmp180_init failed (sensor present on SDA=%d SCL=%d?): %s", BMP180_I2C_SDA_GPIO, BMP180_I2C_SCL_GPIO, esp_err_to_name(err));
+        ESP_LOGE(TAG, "bmp180_init failed (sensor present on SDA=%d SCL=%d?): %s", SENSORS_LOCAL_I2C_SDA_GPIO, SENSORS_LOCAL_I2C_SCL_GPIO,
+                 esp_err_to_name(err));
         bmp180_free_desc(&c->dev);
         return err;
     }
 
-    ESP_LOGI(TAG, "BMP180 brought up on I2C%d (SDA=%d, SCL=%d)", BMP180_I2C_PORT, BMP180_I2C_SDA_GPIO, BMP180_I2C_SCL_GPIO);
+    ESP_LOGI(TAG, "BMP180 brought up on I2C%d (SDA=%d, SCL=%d)", SENSORS_LOCAL_I2C_PORT, SENSORS_LOCAL_I2C_SDA_GPIO, SENSORS_LOCAL_I2C_SCL_GPIO);
     return ESP_OK;
 }
 

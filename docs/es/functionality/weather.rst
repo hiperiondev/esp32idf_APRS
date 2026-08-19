@@ -172,5 +172,5 @@ mientras la baliza lo lee, todo acceso pasa por ``weather_lock()`` /
 
 .. seealso::
 
-   :ref:`es-sensor-framework` — cómo conectar un sensor real (BME280, DS18B20,
-   BMP180…) para que sus lecturas alimenten estos campos.
+   :ref:`es-sensor-framework` — cómo conectar un sensor real (BME280/BMP280,
+   DS18B20…) para que sus lecturas alimenten estos campos.

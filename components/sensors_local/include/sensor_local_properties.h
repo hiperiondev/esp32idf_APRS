@@ -22,12 +22,12 @@
  * ::sensor_local_driver_t::capabilities (see sensors_local.h) only says
  * *what family* a driver belongs to (Weather and/or Telemetry). It says
  * nothing about *which* of the fields within that family the driver can
- * actually fill in. A BMP180 is a Weather sensor, but it can only ever
+ * actually fill in. A BMP280 is a Weather sensor, but it can only ever
  * supply Temperature and Pressure - never Wind, Rain, Humidity, etc. This
  * header closes that gap.
  *
  * Every sensor driver (weather or telemetry) owns exactly one
- * "<sensor>_properties.h" (e.g. bmp180_properties.h, wx_example_properties.h,
+ * "<sensor>_properties.h" (e.g. bme280_properties.h, wx_example_properties.h,
  * tlm_example_properties.h) declaring a single @c static @c const
  * ::sensor_local_properties_t and pointing
  * ::sensor_local_driver_t::properties at it. This lets any consumer of the
@@ -186,7 +186,7 @@ typedef enum {
  *       always have a non-NULL, non-empty name.
  */
 typedef struct {
-    const char *name;                      /**< Human-readable sensor name (e.g. "BMP180", "WX Example"). Must not be NULL. */
+    const char *name;                      /**< Human-readable sensor name (e.g. "BMP280", "WX Example"). Must not be NULL. */
     sensor_local_wx_mask_t wx;             /**< Weather parameter(s) this driver can produce; ::SENSOR_LOCAL_WX_NONE if not a weather sensor. */
     sensor_local_tlm_channel_mask_t tlm;   /**< Telemetry analog/digital channel(s) this driver drives; ::SENSOR_LOCAL_TLM_NONE if not a telemetry sensor. */
     sensor_local_tlm_meta_mask_t tlm_meta; /**< Telemetry metadata (PARM/UNIT/EQNS/BITS) kinds this driver can supply defaults for. */
@@ -251,7 +251,7 @@ typedef struct {
 
 /**
  * @brief Format the human-readable label for a given Weather field as
- *        "<sensor name> <channel name>" into @p out, e.g. "BMP180
+ *        "<sensor name> <channel name>" into @p out, e.g. "BMP280
  *        Temperature". If the field has no dedicated channel-name entry,
  *        @p out is just the sensor name; if @p props itself is NULL,
  *        @p out is "?".

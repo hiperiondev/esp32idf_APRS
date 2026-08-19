@@ -474,7 +474,7 @@ uint8_t web_form_get_path_mask(const char *body, const char *name_prefix);
  */
 typedef struct {
     int8_t gpio;     /**< Pin number (0-39); never -1 (unassigned entries are skipped). */
-    const char *tag; /**< Short human label of what is using it, e.g. "PTT", "BMP180 I2C". */
+    const char *tag; /**< Short human label of what is using it, e.g. "PTT", "Sensor I2C". */
 } web_gpio_owner_t;
 
 /**
