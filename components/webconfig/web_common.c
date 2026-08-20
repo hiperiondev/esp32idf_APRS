@@ -1351,7 +1351,11 @@ void web_field_use_gps_data(httpd_req_t *req, const char *checkbox_name, bool ch
     if (station_checkbox_name)
         snprintf(qstation, sizeof(qstation), "document.getElementById('%.30s')", station_checkbox_name);
 
-    char buf[2200];
+    // Sized for the worst case of this format string: the static markup and
+    // script text plus thirteen %s splices (each up to 79 bytes, from the
+    // qlat/qlon/qalt/qspeed/qcourse/qstation buffers) and four %.30s splices,
+    // rounded up with headroom so the compiler can prove no truncation.
+    char buf[2600];
     snprintf(buf, sizeof(buf),
              "<label><input type='checkbox' name='%.30s' id='%.30s' %s> " TR_USE_GPS_DATA "</label>"
              "<script>(function(){"
