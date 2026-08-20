@@ -413,7 +413,7 @@ static void duty_cycle_add_ms(uint32_t ms) {
 // used only to turn a frame's byte count into an estimated on-air duration
 // for the duty-cycle accumulator below.
 static uint32_t duty_cycle_baud_rate(void) {
-    switch (g_config.afsk_modem_type) {
+    switch (g_config.afsk_modem_type) { // single-word read, benign if stale
         case 0:
             return 300; // AFSK300
         case 3:
@@ -440,7 +440,7 @@ static uint32_t estimate_tx_airtime_ms(size_t tnc2_len) {
     uint32_t frame_bits = ((uint32_t)tnc2_len + DUTY_CYCLE_FRAME_OVERHEAD_BYTES) * 8;
     frame_bits += frame_bits * DUTY_CYCLE_BITSTUFF_PCT / 100;
     uint32_t data_ms = (frame_bits * 1000u) / baud;
-    return (uint32_t)g_config.preamble + data_ms;
+    return (uint32_t)g_config.preamble + data_ms; // single-word read, benign if stale
 }
 
 // ---------------------------------------------------------------------------

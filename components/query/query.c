@@ -204,9 +204,9 @@ static bool baseCallMatch(const char *a, const char *b) {
 static bool querySourceEnabled(query_source_t source) {
     switch (source) {
         case QUERY_SRC_RF:
-            return g_config.query_rf;
+            return g_config.query_rf; // single-word read, benign if stale
         case QUERY_SRC_INET:
-            return g_config.query_inet;
+            return g_config.query_inet; // single-word read, benign if stale
         default:
             return false;
     }
@@ -655,7 +655,7 @@ static size_t buildCapabilitiesPacket(query_source_t source, char *packet, size_
 // "?IGATE?" -> the Station Capabilities line, built above and transmitted on
 // the channel the question arrived on.
 static void respondIGate(query_source_t source) {
-    if (!g_config.igate_en) {
+    if (!g_config.igate_en) { // single-word read, benign if stale
         ESP_LOGD(TAG, "?IGATE? query ignored - IGate service is disabled");
         return;
     }
@@ -1066,11 +1066,11 @@ static bool matchQueryType(const char *info, bool directed, query_type_t *type, 
 static bool queryTypeEnabled(query_type_t type) {
     switch (type) {
         case QUERY_TYPE_APRS:
-            return g_config.query_aprs_en;
+            return g_config.query_aprs_en; // single-word read, benign if stale
         case QUERY_TYPE_WX:
-            return g_config.query_wx_en;
+            return g_config.query_wx_en; // single-word read, benign if stale
         case QUERY_TYPE_IGATE:
-            return g_config.query_igate_en;
+            return g_config.query_igate_en; // single-word read, benign if stale
         case QUERY_TYPE_QRU:
         case QUERY_TYPE_POSITION:
         case QUERY_TYPE_STATUS:
@@ -1079,7 +1079,7 @@ static bool queryTypeEnabled(query_type_t type) {
         case QUERY_TYPE_MESSAGES:
         case QUERY_TYPE_OBJECTS:
         case QUERY_TYPE_TRACE:
-            return g_config.query_ext_en;
+            return g_config.query_ext_en; // single-word read, benign if stale
         default:
             return false;
     }
@@ -1117,7 +1117,7 @@ static void dispatchBroadcast(query_type_t type, query_source_t source, const ch
 }
 
 void query_process(const char *tnc2Line, query_source_t source) {
-    if (!g_config.query_en)
+    if (!g_config.query_en) // single-word read, benign if stale
         return;
     // A general query is broadcast traffic: the same "?APRS?" is heard on the
     // air and carried by the APRS-IS backbone, and only the operator's switch
@@ -1144,14 +1144,25 @@ void query_process(const char *tnc2Line, query_source_t source) {
 }
 
 void query_process_directed(const char *fromCall, const char *toCall, const char *text, const char *tnc2Line, query_source_t source) {
-    if (!g_config.query_en || !g_config.query_directed_en)
+    if (!g_config.query_en || !g_config.query_directed_en) // single-word reads, benign if stale
         return;
     if (!querySourceEnabled(source))
         return;
     if (fromCall == NULL || toCall == NULL || text == NULL || text[0] != '?')
         return;
 
-    if (!baseCallMatch(toCall, g_config.aprs_mycall))
+    // Snapshot the own callsign under the lock before comparing against it:
+    // toCall is matched against a copy rather than g_config.aprs_mycall
+    // directly, since a concurrent web save rewrites that field in place and
+    // baseCallMatch() would otherwise be able to read it torn, or momentarily
+    // without its NUL.
+    char cfg_mycall[sizeof(g_config.aprs_mycall)];
+    app_config_lock();
+    memcpy(cfg_mycall, g_config.aprs_mycall, sizeof(cfg_mycall));
+    app_config_unlock();
+    cfg_mycall[sizeof(cfg_mycall) - 1] = 0;
+
+    if (!baseCallMatch(toCall, cfg_mycall))
         return;
 
     query_type_t type;
