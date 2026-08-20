@@ -32,6 +32,7 @@
 #include <string.h>
 
 #include "app_config.h"
+#include "json_escape.h"
 #include "message.h"
 #include "pages.h"
 #include "translations.h"
@@ -226,7 +227,13 @@ esp_err_t page_msgchat_post(httpd_req_t *req) {
 
     char resp[300];
     if (error) {
-        snprintf(resp, sizeof(resp), "{\"ok\":false,\"error\":\"%s\"}", error);
+        // Translated text, so it is escaped the same way every other
+        // operator/off-air string that ends up in a JSON literal is: a quote,
+        // backslash or newline a translator puts in lang_*.h must not be able
+        // to break out of the string it sits in.
+        char error_esc[160];
+        json_escape(error, error_esc, sizeof(error_esc));
+        snprintf(resp, sizeof(resp), "{\"ok\":false,\"error\":\"%s\"}", error_esc);
     } else {
         sendAPRSMessage(dest, text);
         snprintf(resp, sizeof(resp), "{\"ok\":true}");
