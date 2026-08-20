@@ -173,7 +173,7 @@ esp_err_t page_station_get(httpd_req_t *req) {
     web_field_use_gps_data(req, "myUseGps", g_config.my_use_gps, NULL, "myLAT", "myLON", "myALT", NULL, NULL);
     web_field_float(req, TR_F_LATITUDE, "myLAT", g_config.my_lat, "0.0001", WEB_RANGE_LAT_MIN, WEB_RANGE_LAT_MAX);
     web_field_float(req, TR_F_LONGITUDE, "myLON", g_config.my_lon, "0.0001", WEB_RANGE_LON_MIN, WEB_RANGE_LON_MAX);
-    web_field_float(req, TR_F_ALTITUDE_M, "myALT", g_config.my_alt, "1", WEB_RANGE_ALT_M_MIN, WEB_RANGE_ALT_M_MAX);
+    web_field_float(req, TR_F_ALTITUDE_M, "myALT", g_config.my_alt, "0.1", WEB_RANGE_ALT_M_MIN, WEB_RANGE_ALT_M_MAX);
 
     // Position ambiguity, the Maidenhead status prefix and the no-archive
     // marker are station-wide: each describes how visible this station wants

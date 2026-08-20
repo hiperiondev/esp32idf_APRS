@@ -90,7 +90,7 @@ esp_err_t page_tracker_get(httpd_req_t *req) {
     web_field_use_gps_data(req, "trkUseGps", g_config.trk_use_gps, "trkUseStation", "trkLAT", "trkLON", "trkALT", NULL, NULL);
     web_field_float(req, TR_F_FIXED_LATITUDE, "trkLAT", g_config.trk_lat, "0.0001", WEB_RANGE_LAT_MIN, WEB_RANGE_LAT_MAX);
     web_field_float(req, TR_F_FIXED_LONGITUDE, "trkLON", g_config.trk_lon, "0.0001", WEB_RANGE_LON_MIN, WEB_RANGE_LON_MAX);
-    web_field_float(req, TR_F_FIXED_ALTITUDE_M, "trkALT", g_config.trk_alt, "1", WEB_RANGE_ALT_M_MIN, WEB_RANGE_ALT_M_MAX);
+    web_field_float(req, TR_F_FIXED_ALTITUDE_M, "trkALT", g_config.trk_alt, "0.1", WEB_RANGE_ALT_M_MIN, WEB_RANGE_ALT_M_MAX);
     web_fieldset_close(req);
 
     web_fieldset_open(req, TR_F_OPTIONS);

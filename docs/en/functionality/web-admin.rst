@@ -57,7 +57,9 @@ The pages
        beam heading and ERP that close them. Position can be typed in or
        taken live from the GNSS receiver via *Use GPS*, which disables the
        three fields and fills them from ``GET /gps/live`` once a second while
-       checked.
+       checked, rounding latitude and longitude to 4 decimal places and
+       altitude to 1 decimal place so the filled values always pass the
+       fields' own validation.
    * - **IGate**
      - Enable, RF→INET / INET→RF, both filter bitmasks, budlist and range/prefix
        gates, callsign/SSID/passcode, four *APRS-IS Server* fieldsets (each an
@@ -117,7 +119,10 @@ The pages
        shown as text. Live values via ``/gps/values``, polled every second.
        The plain-numeric counterpart, ``/gps/live``, is what every other
        page's *Use GPS* checkbox polls to auto-fill its own position/motion
-       fields (Station, IGate, Digi, Tracker, Weather).
+       fields (Station, IGate, Digi, Tracker, Weather); each page's script
+       rounds the polled latitude, longitude and altitude to the precision
+       its own fields accept (4 decimal places for position, 1 decimal place
+       for altitude) before writing them in.
    * - **Bulletins**
      - Up to five bulletins (addressee identifier and group, text, RF/INET,
        interval, expiry).

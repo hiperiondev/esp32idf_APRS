@@ -180,7 +180,7 @@ esp_err_t page_igate_get(httpd_req_t *req) {
 
     web_field_float(req, TR_F_LATITUDE, "igateLAT", g_config.igate_lat, "0.0001", WEB_RANGE_LAT_MIN, WEB_RANGE_LAT_MAX);
     web_field_float(req, TR_F_LONGITUDE, "igateLON", g_config.igate_lon, "0.0001", WEB_RANGE_LON_MIN, WEB_RANGE_LON_MAX);
-    web_field_float(req, TR_F_ALTITUDE_M, "igateALT", g_config.igate_alt, "1", WEB_RANGE_ALT_M_MIN, WEB_RANGE_ALT_M_MAX);
+    web_field_float(req, TR_F_ALTITUDE_M, "igateALT", g_config.igate_alt, "0.1", WEB_RANGE_ALT_M_MIN, WEB_RANGE_ALT_M_MAX);
     web_field_checkbox(req, TR_F_COMPRESS_POSITION, "igateCompress", g_config.igate_compress);
 
     // TX Channel: RF / Internet (same data as igate_loc2rf/igate_loc2inet).

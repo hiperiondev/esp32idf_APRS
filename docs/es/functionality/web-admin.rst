@@ -60,7 +60,10 @@ Las páginas
        de estado, y el rumbo de antena y la PRE de meteor scatter que los
        cierran. La posición puede escribirse o tomarse en vivo del receptor
        GNSS mediante *Usar GPS*, que deshabilita los tres campos y los rellena
-       desde ``GET /gps/live`` una vez por segundo mientras está marcado.
+       desde ``GET /gps/live`` una vez por segundo mientras está marcado,
+       redondeando latitud y longitud a 4 decimales y la altitud a 1 decimal
+       para que los valores rellenados siempre pasen la validación de los
+       campos.
    * - **IGate**
      - Habilitar, RF→INET / INET→RF, ambas máscaras de filtro, budlist y guardas
        de rango/prefijo, indicativo/SSID/passcode, cuatro recuadros *APRS-IS
@@ -127,7 +130,10 @@ Las páginas
        como texto. Valores en vivo vía ``/gps/values``, sondeado cada segundo.
        Su contraparte numérica, ``/gps/live``, es la que consulta la casilla
        *Usar GPS* de cada otra página para autocompletar sus propios campos de
-       posición/movimiento (Station, IGate, Digi, Tracker, Weather).
+       posición/movimiento (Station, IGate, Digi, Tracker, Weather); el script
+       de cada página redondea la latitud, longitud y altitud recibidas a la
+       precisión que aceptan sus propios campos (4 decimales para la posición,
+       1 decimal para la altitud) antes de escribirlas.
    * - **Bulletins**
      - Hasta cinco boletines (identificador y grupo de destinatario, texto,
        RF/INET, intervalo, caducidad).

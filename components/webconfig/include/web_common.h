@@ -579,6 +579,12 @@ void web_field_use_station_data(httpd_req_t *req, const char *checkbox_name, boo
  * unchecks and disables "Use My Station Data" and vice versa, since a field
  * can only be driven from one live source at a time.
  *
+ * Latitude and longitude are rounded to 4 decimal places and altitude to 1
+ * decimal place before being written into their fields, matching the @c step
+ * attribute web_field_float() renders for those inputs. This keeps every
+ * live-filled value compliant with its field's own HTML validation, so the
+ * browser never blocks Save on a field the operator did not type into.
+ *
  * This only wires up the client-side fill; it has no effect on what gets
  * POSTed or stored. The page's own POST handler is what must snapshot the
  * receiver's current values into the field's g_config member when this

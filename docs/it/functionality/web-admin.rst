@@ -61,7 +61,9 @@ Le pagine
        che li chiudono. La posizione può essere digitata oppure presa in tempo
        reale dal ricevitore GNSS tramite *Usa GPS*, che disabilita i tre campi
        e li riempie da ``GET /gps/live`` una volta al secondo mentre è
-       selezionata.
+       selezionata, arrotondando latitudine e longitudine a 4 decimali e
+       l'altitudine a 1 decimale, così i valori inseriti superano sempre la
+       validazione dei campi.
    * - **IGate**
      - Abilita, RF→INET / INET→RF, entrambe le maschere di filtro, budlist e gate
        di portata/prefisso, indicativo/SSID/passcode, quattro riquadri *APRS-IS
@@ -130,7 +132,10 @@ Le pagine
        ogni secondo. La sua controparte numerica, ``/gps/live``, è quella
        interrogata dalla casella *Usa GPS* di ogni altra pagina per
        autocompilare i propri campi di posizione/moto (Station, IGate, Digi,
-       Tracker, Weather).
+       Tracker, Weather); lo script di ogni pagina arrotonda la latitudine, la
+       longitudine e l'altitudine ricevute alla precisione accettata dai
+       propri campi (4 decimali per la posizione, 1 decimale per
+       l'altitudine) prima di scriverle.
    * - **Bulletins**
      - Fino a cinque bollettini (identificatore e gruppo del destinatario,
        testo, RF/INET, intervallo, scadenza).

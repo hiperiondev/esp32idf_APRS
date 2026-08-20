@@ -1052,6 +1052,24 @@ void web_field_text(httpd_req_t *req, const char *label, const char *name, const
 // also clamps the posted value server-side: the browser check is the first
 // line of defence against a typo, the handler's clamp is the one that holds
 // against a crafted POST.
+
+// Number of digits after the decimal point in a step string such as "0.0001"
+// or "1" (0 digits). Returns 6 for "any" (the HTML5 sentinel meaning
+// unrestricted precision) or for a value with a decimal point but no digits
+// after it, since those are the only two callers that want full float
+// precision rather than a fixed decimal count.
+static int step_decimals(const char *step) {
+    if (!step || strcmp(step, "any") == 0)
+        return 6;
+    const char *dot = strchr(step, '.');
+    if (!dot)
+        return 0;
+    int n = 0;
+    for (const char *p = dot + 1; *p >= '0' && *p <= '9'; p++)
+        n++;
+    return n > 0 ? n : 6;
+}
+
 void web_field_int(httpd_req_t *req, const char *label, const char *name, long value, long min, long max) {
     char lbl[WEB_LABEL_MAX_BYTES + 1];
     label_clamp(lbl, label);
@@ -1061,12 +1079,20 @@ void web_field_int(httpd_req_t *req, const char *label, const char *name, long v
     httpd_resp_sendstr_chunk(req, buf);
 }
 
+// Renders the value with exactly as many decimal digits as the step
+// attribute itself specifies (e.g. step="0.0001" -> 4 decimals, step="1" ->
+// 0 decimals). A field pre-filled with fewer significant digits than that -
+// the failure mode of a plain "%g", which drops to 3 decimals past 100 - or
+// with more decimals than the step allows leaves a value the browser's own
+// step check rejects, blocking every subsequent Save until the field is
+// retyped by hand.
 void web_field_float(httpd_req_t *req, const char *label, const char *name, float value, const char *step, float min, float max) {
     char lbl[WEB_LABEL_MAX_BYTES + 1];
     label_clamp(lbl, label);
+    int decimals = step_decimals(step);
     char buf[WEB_LABEL_MAX_BYTES + 192];
-    snprintf(buf, sizeof(buf), "<label>" WEB_LABEL_FMT "</label><input type='number' step='%.10s' name='%.30s' value='%g' min='%g' max='%g'>", lbl,
-             step ? step : "0.01", name, (double)value, (double)min, (double)max);
+    snprintf(buf, sizeof(buf), "<label>" WEB_LABEL_FMT "</label><input type='number' step='%.10s' name='%.30s' value='%.*f' min='%g' max='%g'>", lbl,
+             step ? step : "0.01", name, decimals, (double)value, (double)min, (double)max);
     httpd_resp_sendstr_chunk(req, buf);
 }
 
@@ -1309,6 +1335,13 @@ void web_field_use_station_data(httpd_req_t *req, const char *checkbox_name, boo
     // Callsigns only ever contain [A-Z0-9-], so a plain copy into a JS
     // single-quoted string literal is safe here (no escaping needed), unlike
     // arbitrary free-text user input.
+    //
+    // Latitude/longitude are spliced in with a fixed 4 decimals and altitude
+    // with a fixed 1 decimal, matching the step web_field_float() renders for
+    // those fields on every page. Formatting with fewer decimals than the
+    // field's step (as a plain "%g" does once the value has 3+ integer
+    // digits) leaves the field holding a value the browser's own step check
+    // rejects, blocking Save until the operator retypes it by hand.
     char buf[2200];
     snprintf(buf, sizeof(buf),
              "<label><input type='checkbox' name='%.30s' id='%.30s' %s> " TR_USE_MY_STATION_DATA "</label>"
@@ -1318,9 +1351,9 @@ void web_field_use_station_data(httpd_req_t *req, const char *checkbox_name, boo
              "var on=cb.checked;"
              "var call=%s,lat=%s,lon=%s,alt=%s;"
              "if(call){if(on)call.value='%.9s';call.disabled=on;}"
-             "if(lat){if(on)lat.value='%g';lat.disabled=on;}"
-             "if(lon){if(on)lon.value='%g';lon.disabled=on;}"
-             "if(alt){if(on)alt.value='%g';alt.disabled=on;}"
+             "if(lat){if(on)lat.value='%.4f';lat.disabled=on;}"
+             "if(lon){if(on)lon.value='%.4f';lon.disabled=on;}"
+             "if(alt){if(on)alt.value='%.1f';alt.disabled=on;}"
              "}"
              "document.addEventListener('DOMContentLoaded',function(){"
              "var cb=document.getElementById('%.30s');if(cb){cb.addEventListener('change',apply);apply();}"
@@ -1355,7 +1388,16 @@ void web_field_use_gps_data(httpd_req_t *req, const char *checkbox_name, bool ch
     // script text plus thirteen %s splices (each up to 79 bytes, from the
     // qlat/qlon/qalt/qspeed/qcourse/qstation buffers) and four %.30s splices,
     // rounded up with headroom so the compiler can prove no truncation.
-    char buf[2600];
+    //
+    // fill() rounds each live GPS reading to the precision the destination
+    // field's own step attribute accepts before writing it into that field:
+    // latitude/longitude to 4 decimals and altitude to 1 decimal. The
+    // browser only lets a form submit when every filled value already
+    // conforms to its field's step, so writing a value with more decimals
+    // than the field's step allows (as the raw /gps/live latitude/longitude,
+    // at 6 decimals, would be here) would leave the field populated but
+    // silently blocking Save.
+    char buf[2700];
     snprintf(buf, sizeof(buf),
              "<label><input type='checkbox' name='%.30s' id='%.30s' %s> " TR_USE_GPS_DATA "</label>"
              "<script>(function(){"
@@ -1366,9 +1408,9 @@ void web_field_use_gps_data(httpd_req_t *req, const char *checkbox_name, bool ch
              "}"
              "function fill(v){"
              "var lat=%s,lon=%s,alt=%s,speed=%s,course=%s;"
-             "if(lat&&v.lat!==null&&v.lat!==undefined)lat.value=v.lat;"
-             "if(lon&&v.lon!==null&&v.lon!==undefined)lon.value=v.lon;"
-             "if(alt&&v.alt!==null&&v.alt!==undefined)alt.value=v.alt;"
+             "if(lat&&v.lat!==null&&v.lat!==undefined)lat.value=Number(v.lat).toFixed(4);"
+             "if(lon&&v.lon!==null&&v.lon!==undefined)lon.value=Number(v.lon).toFixed(4);"
+             "if(alt&&v.alt!==null&&v.alt!==undefined)alt.value=Number(v.alt).toFixed(1);"
              "if(speed&&v.speed!==null&&v.speed!==undefined)speed.value=v.speed;"
              "if(course&&v.course!==null&&v.course!==undefined)course.value=v.course;"
              "}"

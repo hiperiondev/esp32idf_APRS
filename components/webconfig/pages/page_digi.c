@@ -115,7 +115,7 @@ esp_err_t page_digi_get(httpd_req_t *req) {
     web_field_checkbox(req, TR_F_COMPRESS_POSITION, "digiCompress", g_config.digi_compress);
     web_field_float(req, TR_F_LATITUDE, "digiLAT", g_config.digi_lat, "0.0001", WEB_RANGE_LAT_MIN, WEB_RANGE_LAT_MAX);
     web_field_float(req, TR_F_LONGITUDE, "digiLON", g_config.digi_lon, "0.0001", WEB_RANGE_LON_MIN, WEB_RANGE_LON_MAX);
-    web_field_float(req, TR_F_ALTITUDE_M, "digiAlt", g_config.digi_alt, "1", WEB_RANGE_ALT_M_MIN, WEB_RANGE_ALT_M_MAX);
+    web_field_float(req, TR_F_ALTITUDE_M, "digiAlt", g_config.digi_alt, "0.1", WEB_RANGE_ALT_M_MIN, WEB_RANGE_ALT_M_MAX);
     web_field_int(req, TR_F_BEACON_INTERVAL_S, "digiINV", g_config.digi_interval, WEB_RANGE_INTERVAL_S_MIN, WEB_RANGE_INTERVAL_S_MAX);
     web_field_symbol(req, TR_F_STATION_SYMBOL, "digiSym", g_config.digi_symbol);
     web_field_text(req, TR_F_COMMENT, "digiComment", g_config.digi_comment, COMMENT_SIZE - 1);
