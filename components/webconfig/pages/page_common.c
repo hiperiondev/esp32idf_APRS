@@ -170,7 +170,7 @@ esp_err_t page_dashboard(httpd_req_t *req) {
              "}"
              "function trafficClear(){trafficRows=[];renderTraffic();}"
              "function fmtIcon(sym){"
-             "if(!sym)return '-';"
+             "if(!sym||!/^\\d+-\\d+$/.test(sym))return '-';"
              "return '<img src=\"http://aprs.dprns.com/symbols/icons/'+sym+'.png\" width=16 height=16 onerror=\"this.style.display=\\'none\\'\">';"
              "}"
              "function renderTraffic(){"
