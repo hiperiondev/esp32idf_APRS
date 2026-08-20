@@ -337,9 +337,9 @@ int digiProcess(ax25_msg_t *packet) {
     digiPreempt = g_config.digi_preempt;
     app_config_unlock();
 
-    if (packet->len < 5) {
+    if (packet->len == 0) {
         igate_note_drop(DROP_DIGI_MALFORMED);
-        return 0; // no destination / malformed
+        return 0; // empty info field: nothing to repeat
     }
 
     if (!strncmp(packet->src.call, "NOCALL", 6)) {

@@ -164,6 +164,17 @@ static bool position_field_is_well_formed(const char *pos, size_t len) {
             return false;
         if (pos[17] != 'E' && pos[17] != 'e' && pos[17] != 'W' && pos[17] != 'w')
             return false;
+
+        // Degree-range sanity check, mirrored from decode_pos_uncompressed():
+        // a field can satisfy every digit/separator/hemisphere rule above and
+        // still spell an impossible coordinate (e.g. a "999" longitude degree
+        // run), so the classifier and the decoder must reject the same
+        // out-of-range fields rather than one accepting what the other drops.
+        int latDeg = (pos[0] - '0') * 10 + (pos[1] - '0');
+        int lonDeg = (pos[9] - '0') * 100 + (pos[10] - '0') * 10 + (pos[11] - '0');
+        if (latDeg > 90 || lonDeg > 180)
+            return false;
+
         return aprs_symbol_code_is_valid(pos[18]);
     }
 
@@ -803,6 +814,10 @@ static bool decode_pos_uncompressed(const char *pos, float *lat, float *lon) {
     for (int i = 0; i < 3; i++)
         if (!isdigit((unsigned char)lonDeg[i]))
             return false;
+    if (ns != 'N' && ns != 'n' && ns != 'S' && ns != 's')
+        return false;
+    if (ew != 'E' && ew != 'e' && ew != 'W' && ew != 'w')
+        return false;
 
     float latMinVal, lonMinVal;
     if (!parse_ambiguous_minutes(latMin, &latMinVal))
@@ -816,6 +831,11 @@ static bool decode_pos_uncompressed(const char *pos, float *lat, float *lon) {
         la = -la;
     if (ew == 'W' || ew == 'w')
         lo = -lo;
+
+    // Reject a well-formed but out-of-range field (e.g. a "999" longitude
+    // degree run) instead of handing the caller a bogus coordinate.
+    if (fabsf(la) > 90.0f || fabsf(lo) > 180.0f)
+        return false;
 
     *lat = la;
     *lon = lo;

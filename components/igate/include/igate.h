@@ -131,7 +131,7 @@ typedef enum {
     ERR_AX25_NOT_APRS,        /**< RX frame decoded as a well-formed AX.25 frame but is not APRS: Control field not UI, or UI with a PID other than
                                  "no layer 3". Expected, benign traffic on a channel shared with legacy connected-mode packet stations - distinguished
                                  from ERR_AX25_DECODE so the dashboard can tell "channel has non-APRS traffic on it" apart from "my decoder is broken". */
-    DROP_DIGI_MALFORMED,      /**< Digipeater: frame too short to carry a destination / usable path. */
+    DROP_DIGI_MALFORMED,      /**< Digipeater: information field is empty, so there is nothing to repeat. */
     DROP_DIGI_PLACEHOLDER_CALL, /**< Digipeater: source callsign is the NOCALL/MYCALL sentinel. */
     DROP_DIGI_ALREADY_USED,     /**< Digipeater: path already carries this digipeater's call marked used ('*'). */
     DROP_DIGI_PATH_FULL,  /**< Digipeater: path already at the AX.25 maximum (8) repeater addresses; inserting our call would overflow rpt_list/rpt_flags. */

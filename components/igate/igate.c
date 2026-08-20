@@ -243,7 +243,7 @@ const char *igate_drop_reason_name(drop_reason_t reason) {
         case ERR_AX25_NOT_APRS:
             return "non-APRS AX.25 traffic";
         case DROP_DIGI_MALFORMED:
-            return "digi: malformed packet";
+            return "digi: empty info field";
         case DROP_DIGI_PLACEHOLDER_CALL:
             return "digi: placeholder callsign (NOCALL/MYCALL)";
         case DROP_DIGI_ALREADY_USED:
