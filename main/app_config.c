@@ -614,6 +614,7 @@ static void config_write_json(jw_t *d, const app_config_t *c) {
     fputc('{', d->f);
     jadd_num(d, "cpuFreq", c->cpuFreq);
     jadd_str(d, "myCallsign", c->my_callsign);
+    jadd_bool(d, "myUseGps", c->my_use_gps);
     jadd_num(d, "myLAT", c->my_lat);
     jadd_num(d, "myLON", c->my_lon);
     jadd_num(d, "myALT", c->my_alt);
@@ -697,6 +698,7 @@ static void config_write_json(jw_t *d, const app_config_t *c) {
     jarr_end(d);
     jadd_str(d, "igateMycall", c->aprs_mycall);
     jadd_bool(d, "igateUseStation", c->igate_use_station);
+    jadd_bool(d, "igateUseGps", c->igate_use_gps);
     jadd_str(d, "igatePasscode", c->aprs_passcode);
     jadd_str(d, "igateFilter", c->aprs_filter);
     jadd_num(d, "igateLAT", c->igate_lat);
@@ -735,6 +737,7 @@ static void config_write_json(jw_t *d, const app_config_t *c) {
     jadd_num(d, "digiSSID", c->digi_ssid);
     jadd_str(d, "digiMycall", c->digi_mycall);
     jadd_bool(d, "digiUseStation", c->digi_use_station);
+    jadd_bool(d, "digiUseGps", c->digi_use_gps);
     jadd_num(d, "digiPath", c->digi_path);
     jarr_begin(d, "digiAlias");
     for (int i = 0; i < DIGI_ALIAS_MAX; i++)
@@ -787,6 +790,7 @@ static void config_write_json(jw_t *d, const app_config_t *c) {
     jadd_num(d, "trkSSID", c->trk_ssid);
     jadd_str(d, "trkMycall", c->trk_mycall);
     jadd_bool(d, "trkUseStation", c->trk_use_station);
+    jadd_bool(d, "trkUseGps", c->trk_use_gps);
     jadd_num(d, "trkPath", c->trk_path);
     jadd_num(d, "trkLAT", c->trk_lat);
     jadd_num(d, "trkLON", c->trk_lon);
@@ -815,6 +819,7 @@ static void config_write_json(jw_t *d, const app_config_t *c) {
     jadd_num(d, "wxSSID", c->wx_ssid);
     jadd_str(d, "wxMycall", c->wx_mycall);
     jadd_bool(d, "wxUseStation", c->wx_use_station);
+    jadd_bool(d, "wxUseGps", c->wx_use_gps);
     jadd_num(d, "wxPath", c->wx_path);
     jadd_num(d, "wxLAT", c->wx_lat);
     jadd_num(d, "wxLON", c->wx_lon);
@@ -942,6 +947,7 @@ static void config_from_json(cJSON *d, app_config_t *c) {
 
     c->cpuFreq = (uint8_t)jget_num(d, "cpuFreq", def.cpuFreq);
     set_str(c->my_callsign, sizeof(c->my_callsign), jget_str(d, "myCallsign", def.my_callsign));
+    c->my_use_gps = jget_bool(d, "myUseGps", def.my_use_gps);
     c->my_lat = (float)jget_num(d, "myLAT", def.my_lat);
     c->my_lon = (float)jget_num(d, "myLON", def.my_lon);
     c->my_alt = (float)jget_num(d, "myALT", def.my_alt);
@@ -1179,6 +1185,7 @@ static void config_from_json(cJSON *d, app_config_t *c) {
     }
     set_str(c->aprs_mycall, sizeof(c->aprs_mycall), jget_str(d, "igateMycall", def.aprs_mycall));
     c->igate_use_station = jget_bool(d, "igateUseStation", def.igate_use_station);
+    c->igate_use_gps = jget_bool(d, "igateUseGps", def.igate_use_gps);
     set_str(c->aprs_passcode, sizeof(c->aprs_passcode), jget_str(d, "igatePasscode", def.aprs_passcode));
     set_str(c->aprs_filter, sizeof(c->aprs_filter), jget_str(d, "igateFilter", def.aprs_filter));
     c->igate_lat = (float)jget_num(d, "igateLAT", def.igate_lat);
@@ -1241,6 +1248,7 @@ static void config_from_json(cJSON *d, app_config_t *c) {
     c->digi_ssid = (uint8_t)jget_num(d, "digiSSID", def.digi_ssid);
     set_str(c->digi_mycall, sizeof(c->digi_mycall), jget_str(d, "digiMycall", def.digi_mycall));
     c->digi_use_station = jget_bool(d, "digiUseStation", def.digi_use_station);
+    c->digi_use_gps = jget_bool(d, "digiUseGps", def.digi_use_gps);
     c->digi_path = (uint8_t)jget_num(d, "digiPath", def.digi_path);
     // Alias table: three parallel arrays, one row per index, following the
     // same shape as the budlist/satgate lists above. A row is validated on the
@@ -1336,6 +1344,7 @@ static void config_from_json(cJSON *d, app_config_t *c) {
     c->trk_ssid = (uint8_t)jget_num(d, "trkSSID", def.trk_ssid);
     set_str(c->trk_mycall, sizeof(c->trk_mycall), jget_str(d, "trkMycall", def.trk_mycall));
     c->trk_use_station = jget_bool(d, "trkUseStation", def.trk_use_station);
+    c->trk_use_gps = jget_bool(d, "trkUseGps", def.trk_use_gps);
     c->trk_path = (uint8_t)jget_num(d, "trkPath", def.trk_path);
     c->trk_lat = (float)jget_num(d, "trkLAT", def.trk_lat);
     c->trk_lon = (float)jget_num(d, "trkLON", def.trk_lon);
@@ -1372,6 +1381,7 @@ static void config_from_json(cJSON *d, app_config_t *c) {
     c->wx_ssid = (uint8_t)jget_num(d, "wxSSID", def.wx_ssid);
     set_str(c->wx_mycall, sizeof(c->wx_mycall), jget_str(d, "wxMycall", def.wx_mycall));
     c->wx_use_station = jget_bool(d, "wxUseStation", def.wx_use_station);
+    c->wx_use_gps = jget_bool(d, "wxUseGps", def.wx_use_gps);
     c->wx_path = (uint8_t)jget_num(d, "wxPath", def.wx_path);
     c->wx_lat = (float)jget_num(d, "wxLAT", def.wx_lat);
     c->wx_lon = (float)jget_num(d, "wxLON", def.wx_lon);

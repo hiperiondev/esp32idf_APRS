@@ -625,6 +625,7 @@ typedef struct {
                              stays UTC everywhere else in the firmware; see time_sync.h. */
 
     char my_callsign[10]; /**< "My Station" callsign, entered once on the Station page and reused by every page's "Use My Station Data". */
+    bool my_use_gps;      /**< "Use GPS": mirror the live GNSS fix into my_lat/my_lon/my_alt on every save and lock those fields against manual editing. */
     float my_lat;         /**< "My Station" latitude, decimal degrees. Transmitted exactly as configured: APRS defines no "position unknown" coordinate, so a
                              station left at the 0.0 default beacons 0 deg N / 0 deg E - a valid position in the Gulf of Guinea - rather than announcing that
                              it has none. Set this before enabling any beacon. */
@@ -714,6 +715,8 @@ typedef struct {
     uint8_t aprs_ssid;               /**< SSID for the IGate callsign. */
     char aprs_mycall[10];            /**< IGate callsign. */
     bool igate_use_station;          /**< "Use My Station Data": mirror My Station identity/position into the IGate fields and lock them. */
+    bool igate_use_gps;              /**< "Use GPS": mirror the live GNSS fix into igate_lat/igate_lon/igate_alt on every save and lock those fields against
+                                        manual editing. Mutually exclusive with igate_use_station on the page itself; both write the same three fields. */
     aprs_server_t aprs_server[APRS_SERVER_NUM]; /**< The ::APRS_SERVER_NUM stored APRS-IS server slots the IGate task fails over between; see igate.c. */
     char aprs_passcode[6];                      /**< APRS-IS login passcode. */
     char aprs_filter[30];                       /**< APRS-IS server-side filter string. */
@@ -759,6 +762,9 @@ typedef struct {
     uint8_t digi_ssid;                       /**< SSID for the digipeater callsign. */
     char digi_mycall[10];                    /**< Digipeater callsign. */
     bool digi_use_station;                   /**< "Use My Station Data": mirror My Station into the digipeater fields and lock them. */
+    bool digi_use_gps;                       /**< "Use GPS": mirror the live GNSS fix into digi_lat/digi_lon/digi_alt on every save and lock those fields
+                                                against manual editing. Mutually exclusive with digi_use_station on the page itself; both write the same
+                                                three fields. */
     uint8_t digi_path;                       /**< Digipeater beacon digipeat-path selection (bitmask over g_config.path[0..3]). */
     digi_alias_t digi_alias[DIGI_ALIAS_MAX]; /**< The only path aliases this digipeater honours; see ::digi_alias_t. */
     bool digi_fillin_only;                   /**< Fill-in (home) digipeater role: honour only single-hop rows, so the station serves stations that cannot reach
@@ -811,6 +817,8 @@ typedef struct {
     uint8_t trk_ssid;      /**< SSID for the tracker callsign. */
     char trk_mycall[10];   /**< Tracker callsign. */
     bool trk_use_station;  /**< "Use My Station Data": mirror My Station into the tracker fields and lock them. */
+    bool trk_use_gps;      /**< "Use GPS": mirror the live GNSS fix into trk_lat/trk_lon/trk_alt on every save and lock those fields against manual editing.
+                              Mutually exclusive with trk_use_station on the page itself; both write the same three fields. */
     uint8_t trk_path;      /**< Tracker digipeat-path selection (bitmask over g_config.path[0..3]). */
     float trk_lat;         /**< Tracker beacon latitude. */
     float trk_lon;         /**< Tracker beacon longitude. */
@@ -843,6 +851,8 @@ typedef struct {
     uint8_t wx_ssid;                      /**< SSID for the WX callsign. */
     char wx_mycall[10];                   /**< WX callsign. */
     bool wx_use_station;                  /**< "Use My Station Data": mirror My Station into the WX fields and lock them. */
+    bool wx_use_gps;                      /**< "Use GPS": mirror the live GNSS fix into wx_lat/wx_lon on every save and lock those fields against manual
+                                             editing. Mutually exclusive with wx_use_station on the page itself; both write the same two fields. */
     uint8_t wx_path;                      /**< WX digipeat-path selection (bitmask over g_config.path[0..3]). */
     float wx_lat;                         /**< WX report latitude. */
     float wx_lon;                         /**< WX report longitude. */

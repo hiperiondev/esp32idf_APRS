@@ -14,11 +14,16 @@
 //     please contact their authors for more information.
 //
 // @brief Web admin "Station" page: renders and saves the single shared "My
-// Station" identity (callsign, latitude, longitude) and its PHG
+// Station" identity (callsign, latitude, longitude, altitude) and its PHG
 // (Power-Height-Gain-Directivity) radio-coverage parameters in g_config.
 // This is the data every other page's "Use My Station Data" checkbox pulls
 // from instead of having the same callsign/position retyped on every
-// IGate/Digipeater/Tracker/Weather page.
+// IGate/Digipeater/Tracker/Weather page. Latitude, longitude and altitude can
+// instead be taken live from the GNSS receiver via the "Use GPS" checkbox
+// (see web_field_use_gps_data() in web_common.c); a station using it still
+// feeds every dependent page's "Use My Station Data" exactly as before, since
+// the mirror below only ever reads g_config.my_lat/my_lon/my_alt, whichever
+// way they were last set.
 //
 // The PHG height selector is stored internally in feet (the unit the APRS
 // PHG code table is itself defined in - power^2 Watts, 10*2^n feet, dB gain,
@@ -32,6 +37,7 @@
 
 #include "app_config.h"
 #include "esp_log.h"
+#include "gps.h"
 #include "objects_items.h"
 #include "pages.h"
 #include "telemetry.h"
@@ -164,8 +170,10 @@ esp_err_t page_station_get(httpd_req_t *req) {
 
     web_fieldset_open(req, TR_F_STATION);
     web_field_text(req, TR_F_MY_CALLSIGN, "myCallsign", g_config.my_callsign, 9);
+    web_field_use_gps_data(req, "myUseGps", g_config.my_use_gps, NULL, "myLAT", "myLON", "myALT", NULL, NULL);
     web_field_float(req, TR_F_LATITUDE, "myLAT", g_config.my_lat, "0.0001", WEB_RANGE_LAT_MIN, WEB_RANGE_LAT_MAX);
     web_field_float(req, TR_F_LONGITUDE, "myLON", g_config.my_lon, "0.0001", WEB_RANGE_LON_MIN, WEB_RANGE_LON_MAX);
+    web_field_float(req, TR_F_ALTITUDE_M, "myALT", g_config.my_alt, "1", WEB_RANGE_ALT_M_MIN, WEB_RANGE_ALT_M_MAX);
 
     // Position ambiguity, the Maidenhead status prefix and the no-archive
     // marker are station-wide: each describes how visible this station wants
@@ -328,8 +336,28 @@ esp_err_t page_station_post(httpd_req_t *req) {
 
     app_config_lock();
     web_form_get_call(body, "myCallsign", g_config.my_callsign, sizeof(g_config.my_callsign));
-    g_config.my_lat = web_form_get_float(body, "myLAT", g_config.my_lat);
-    g_config.my_lon = web_form_get_float(body, "myLON", g_config.my_lon);
+    g_config.my_use_gps = web_form_get_bool(body, "myUseGps");
+    if (g_config.my_use_gps) {
+        // Snapshot whatever the receiver currently reports rather than
+        // trusting the submitted fields: they are disabled client-side while
+        // this checkbox is on, but a crafted POST could still carry stale or
+        // fabricated numbers, and the whole point of the checkbox is that
+        // these three fields always come from the receiver, not from the
+        // form.
+        gps_data_t g;
+        if (gps_snapshot(&g)) {
+            if (g.has_position) {
+                g_config.my_lat = (float)g.latitude;
+                g_config.my_lon = (float)g.longitude;
+            }
+            if (g.has_altitude)
+                g_config.my_alt = (float)g.altitude_m;
+        }
+    } else {
+        g_config.my_lat = web_form_get_float(body, "myLAT", g_config.my_lat);
+        g_config.my_lon = web_form_get_float(body, "myLON", g_config.my_lon);
+        g_config.my_alt = web_form_get_float(body, "myALT", g_config.my_alt);
+    }
     {
         int amb = web_form_get_int(body, "myAmbiguity", (int)g_config.pos_ambiguity);
         if (amb < 0)

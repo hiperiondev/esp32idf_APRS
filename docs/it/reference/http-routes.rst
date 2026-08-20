@@ -60,6 +60,10 @@ controllo di autenticazione possa proteggere.
    * - GET
      - ``/gps/values``
      - tutti i valori riportati dal ricevitore GNSS (JSON)
+   * - GET
+     - ``/gps/live``
+     - latitudine/longitudine/altitudine/velocità/rotta come numeri semplici
+       (JSON), interrogato dalla casella *Usa GPS* di ogni pagina
    * - GET/POST
      - ``/bulletins``
      - bollettini APRS BLN1..BLN5

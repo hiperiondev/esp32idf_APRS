@@ -15,7 +15,10 @@
 //
 // @brief Web admin "IGate" page: renders and saves the APRS-IS gateway
 // configuration (failover servers, callsign, passcode, filters, RF/INET direction
-// and beacon settings) in g_config.
+// and beacon settings) in g_config. Beacon position can be typed in, mirrored
+// from "My Station" ("Use My Station Data") or taken live from the GNSS
+// receiver ("Use GPS", see web_field_use_gps_data() in web_common.c); the
+// three sources are mutually exclusive.
 
 #include <math.h>
 #include <stdio.h>
@@ -25,6 +28,7 @@
 #include "aprs_df.h" // aprs_df_symbol_matches()
 #include "aprs_filter.h"
 #include "esp_log.h"
+#include "gps.h"
 #include "igate.h"
 #include "pages.h"
 #include "str_append.h" // str_copy_utf8_safe()
@@ -63,6 +67,7 @@ esp_err_t page_igate_get(httpd_req_t *req) {
     web_fieldset_open(req, TR_F_IGATE);
     web_field_checkbox(req, TR_F_ENABLE_IGATE, "igateEn", g_config.igate_en);
     web_field_use_station_data(req, "igateUseStation", g_config.igate_use_station, "igateMycall", "igateLAT", "igateLON", "igateALT");
+    web_field_use_gps_data(req, "igateUseGps", g_config.igate_use_gps, "igateUseStation", "igateLAT", "igateLON", "igateALT", NULL, NULL);
     web_field_checkbox(req, TR_F_RF_TO_INTERNET, "rf2inet", g_config.rf2inet);
     web_field_checkbox(req, TR_F_INTERNET_TO_RF, "inet2rf", g_config.inet2rf);
     web_fieldset_close(req);
@@ -596,6 +601,7 @@ esp_err_t page_igate_post(httpd_req_t *req) {
 
     g_config.igate_en = web_form_get_bool(body, "igateEn");
     g_config.igate_use_station = web_form_get_bool(body, "igateUseStation");
+    g_config.igate_use_gps = web_form_get_bool(body, "igateUseGps");
     g_config.rf2inet = web_form_get_bool(body, "rf2inet");
     g_config.inet2rf = web_form_get_bool(body, "inet2rf");
     g_config.igate_bcn = web_form_get_bool(body, "igateBcn");
@@ -682,9 +688,25 @@ esp_err_t page_igate_post(httpd_req_t *req) {
     // fall back to the legacy combined 2-char field if those aren't present.
     web_form_get_symbol(body, "igateSym", "igateSymbol", g_config.igate_symbol, sizeof(g_config.igate_symbol));
 
-    g_config.igate_lat = g_config.igate_use_station ? g_config.my_lat : web_form_get_float(body, "igateLAT", g_config.igate_lat);
-    g_config.igate_lon = g_config.igate_use_station ? g_config.my_lon : web_form_get_float(body, "igateLON", g_config.igate_lon);
-    g_config.igate_alt = g_config.igate_use_station ? g_config.my_alt : web_form_get_float(body, "igateALT", g_config.igate_alt);
+    if (g_config.igate_use_gps) {
+        // Same rationale as the Station page's own "Use GPS": trust the
+        // receiver's current snapshot, not whatever the disabled fields
+        // carried in the POST, and leave a field it has not solved yet at
+        // its previous stored value rather than zeroing it.
+        gps_data_t g;
+        if (gps_snapshot(&g)) {
+            if (g.has_position) {
+                g_config.igate_lat = (float)g.latitude;
+                g_config.igate_lon = (float)g.longitude;
+            }
+            if (g.has_altitude)
+                g_config.igate_alt = (float)g.altitude_m;
+        }
+    } else {
+        g_config.igate_lat = g_config.igate_use_station ? g_config.my_lat : web_form_get_float(body, "igateLAT", g_config.igate_lat);
+        g_config.igate_lon = g_config.igate_use_station ? g_config.my_lon : web_form_get_float(body, "igateLON", g_config.igate_lon);
+        g_config.igate_alt = g_config.igate_use_station ? g_config.my_alt : web_form_get_float(body, "igateALT", g_config.igate_alt);
+    }
     g_config.igate_interval = (uint16_t)web_form_get_int(body, "igateINV", g_config.igate_interval);
     g_config.igate_compress = web_form_get_bool(body, "igateCompress");
 

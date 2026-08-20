@@ -15,7 +15,9 @@
 //
 // @brief Web admin "GPS" page: the receiver's enable switch, plus a live view
 // of everything the NMEA GNSS receiver reports, refreshed once per second from
-// the JSON endpoint below.
+// the JSON endpoint below. Also serves the plain-numeric JSON endpoint every
+// other page's "Use GPS" checkbox polls to auto-fill its own position/motion
+// fields (see web_field_use_gps_data() in web_common.c).
 
 #include <stdio.h>
 #include <string.h>
@@ -232,6 +234,68 @@ esp_err_t page_gps_values_get(httpd_req_t *req) {
 
     char json[GPS_VALUES_BUF];
     gps_values_json(&g, have, json, sizeof(json));
+
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_sendstr(req, json);
+    return ESP_OK;
+}
+
+// Builds the "Use GPS" live-fill document into out: plain numbers (or the
+// literal null) for exactly the quantities a page's position/motion fields
+// can be auto-filled from. Kept separate from gps_values_json() above, which
+// formats each value as a display string for the read-only status table -
+// what every "Use GPS" checkbox needs instead is a bare number it can drop
+// straight into an <input>. A member is emitted as null exactly when the
+// receiver has not reported that quantity, the same rule gps_values_json()
+// uses, so the checkbox's script sees the same "not available yet" signal
+// the status page shows.
+static void gps_live_json(const gps_data_t *g, bool have, char *out, size_t out_size) {
+    size_t used = 0;
+
+    str_append(out, out_size, &used, "{");
+
+    if (!have) {
+        str_append(out, out_size, &used, "\"lat\":null,\"lon\":null,\"alt\":null,\"speed\":null,\"course\":null}");
+        return;
+    }
+
+    if (g->has_position)
+        str_append(out, out_size, &used, "\"lat\":%.6f,\"lon\":%.6f", g->latitude, g->longitude);
+    else
+        str_append(out, out_size, &used, "\"lat\":null,\"lon\":null");
+
+    if (g->has_altitude)
+        str_append(out, out_size, &used, ",\"alt\":%.1f", g->altitude_m);
+    else
+        str_append(out, out_size, &used, ",\"alt\":null");
+
+    if (g->has_speed)
+        str_append(out, out_size, &used, ",\"speed\":%.1f", g->speed_kmh);
+    else
+        str_append(out, out_size, &used, ",\"speed\":null");
+
+    if (g->has_course)
+        str_append(out, out_size, &used, ",\"course\":%.1f", g->course_deg);
+    else
+        str_append(out, out_size, &used, ",\"course\":null");
+
+    str_append(out, out_size, &used, "}");
+
+    if (str_append_truncated(used, out_size)) {
+        ESP_LOGE(TAG, "live-fill document did not fit %u bytes", (unsigned)out_size);
+        snprintf(out, out_size, "{}");
+    }
+}
+
+esp_err_t page_gps_live_get(httpd_req_t *req) {
+    if (!web_check_auth(req))
+        return ESP_OK;
+
+    gps_data_t g;
+    bool have = gps_snapshot(&g);
+
+    char json[192];
+    gps_live_json(&g, have, json, sizeof(json));
 
     httpd_resp_set_type(req, "application/json");
     httpd_resp_sendstr(req, json);

@@ -54,7 +54,10 @@ The pages
        message: callsign, latitude, longitude, altitude (``g_config.my_*``),
        plus the station-wide on-air options - position ambiguity, the
        Maidenhead locator prefix for status reports, and the meteor-scatter
-       beam heading and ERP that close them.
+       beam heading and ERP that close them. Position can be typed in or
+       taken live from the GNSS receiver via *Use GPS*, which disables the
+       three fields and fills them from ``GET /gps/live`` once a second while
+       checked.
    * - **IGate**
      - Enable, RF→INET / INET→RF, both filter bitmasks, budlist and range/prefix
        gates, callsign/SSID/passcode, four *APRS-IS Server* fieldsets (each an
@@ -65,7 +68,9 @@ The pages
        Maidenhead locator beacons and the reserved map feature),
        beacon on/off, position, interval, symbol picker, object, comment,
        status, PHG. *Message Gating* holds the INET→RF message criteria switch,
-       the heard-locally window and the addressee hop limit.
+       the heard-locally window and the addressee hop limit. Position can be
+       typed in, mirrored from *Use My Station Data* or taken live from the
+       GNSS receiver via *Use GPS*; the three are mutually exclusive.
    * - **Digi**
      - Digipeater enable, callsign/SSID and beacon settings (position, symbol,
        interval, comment, status, path). *Data Extension* selects what the
@@ -77,17 +82,23 @@ The pages
        *Digipeat by destination SSID (legacy)* switch, off by default. It also
        carries the four shared path presets ``path[0..3]`` that every
        transmitting service selects from. The duplicate-suppression window is a
-       single control, on the *IGate* page.
+       single control, on the *IGate* page. Position can also be taken live
+       from the GNSS receiver via *Use GPS*, mutually exclusive with *Use My
+       Station Data*.
    * - **Tracker**
      - Tracker enable, callsign/SSID, fixed interval, position, station symbol,
        comment, compressed-position, Mic-E-position (with its position-comment
-       selector) and altitude options.
+       selector) and altitude options. The fixed position can be typed in,
+       mirrored from *Use My Station Data* or taken live from the GNSS
+       receiver via *Use GPS*; the three are mutually exclusive.
    * - **Weather**
      - Enable, send-via-RF/-INET, timestamp, WX callsign/SSID/path, position,
        object name, comment, per-field *Averaged* checkboxes, and — for every
        on-air WX field — a **channel dropdown** populated live from the
        ``sensors_local`` registry and filtered by each driver's published
-       capabilities. Live values via ``/wx/values``.
+       capabilities. Live values via ``/wx/values``. Position can be typed in,
+       mirrored from *Use My Station Data* or taken live from the GNSS
+       receiver via *Use GPS*; the three are mutually exclusive.
    * - **Telemetry**
      - Beacon/report parameters, definition-message toggles, analog A1–A5 with
        source pickers and calibration, digital B1–B8 with source pickers and
@@ -104,6 +115,9 @@ The pages
        discarded sentence counters and the age of the last sentence and fix.
        The serial port and its pins are compile-time board wiring and are
        shown as text. Live values via ``/gps/values``, polled every second.
+       The plain-numeric counterpart, ``/gps/live``, is what every other
+       page's *Use GPS* checkbox polls to auto-fill its own position/motion
+       fields (Station, IGate, Digi, Tracker, Weather).
    * - **Bulletins**
      - Up to five bulletins (addressee identifier and group, text, RF/INET,
        interval, expiry).

@@ -58,7 +58,9 @@ Las páginas
        (``g_config.my_*``), más las opciones al aire de toda la estación:
        ambigüedad de posición, prefijo de localizador Maidenhead en los reportes
        de estado, y el rumbo de antena y la PRE de meteor scatter que los
-       cierran.
+       cierran. La posición puede escribirse o tomarse en vivo del receptor
+       GNSS mediante *Usar GPS*, que deshabilita los tres campos y los rellena
+       desde ``GET /gps/live`` una vez por segundo mientras está marcado.
    * - **IGate**
      - Habilitar, RF→INET / INET→RF, ambas máscaras de filtro, budlist y guardas
        de rango/prefijo, indicativo/SSID/passcode, cuatro recuadros *APRS-IS
@@ -71,7 +73,9 @@ Las páginas
        objeto, comentario, estado, PHG. *Filtrado de Mensajes* lleva el
        interruptor de criterios de mensajes INET→RF, el límite de saltos del
        destinatario y la ventana de escucha
-       local.
+       local. La posición puede escribirse, reflejar *Usar Datos de Mi
+       Estación* o tomarse en vivo del receptor GNSS mediante *Usar GPS*; las
+       tres opciones son mutuamente excluyentes.
    * - **Digi**
      - Habilitar digipeater, indicativo/SSID y ajustes de baliza (posición,
        símbolo, intervalo, comentario, estado, ruta). *Extensión de Datos*
@@ -85,17 +89,25 @@ Las páginas
        destino (heredado)*, apagado por omisión. Lleva también los cuatro presets de ruta
        compartidos ``path[0..3]`` entre los que elige cada servicio que
        transmite. La ventana de supresión de duplicados es un único control, en
-       la página *IGate*.
+       la página *IGate*. La posición también puede tomarse en vivo del
+       receptor GNSS mediante *Usar GPS*, mutuamente excluyente con *Usar
+       Datos de Mi Estación*.
    * - **Tracker**
      - Habilitar tracker, indicativo/SSID, intervalo fijo, posición, símbolo de
        estación, comentario, opciones de posición comprimida, posición Mic-E
-       (con su selector de comentario de posición) y altitud.
+       (con su selector de comentario de posición) y altitud. La posición fija
+       puede escribirse, reflejar *Usar Datos de Mi Estación* o tomarse en
+       vivo del receptor GNSS mediante *Usar GPS*; las tres opciones son
+       mutuamente excluyentes.
    * - **Weather**
      - Habilitar, enviar-por-RF/-INET, marca de tiempo, indicativo/SSID/ruta WX,
        posición, nombre de objeto, comentario, casillas *Averaged* por campo, y
        — por cada campo WX al aire — un **desplegable de canal** rellenado en
        vivo desde el registro ``sensors_local`` y filtrado por las capacidades
-       publicadas de cada controlador. Valores en vivo vía ``/wx/values``.
+       publicadas de cada controlador. Valores en vivo vía ``/wx/values``. La
+       posición puede escribirse, reflejar *Usar Datos de Mi Estación* o
+       tomarse en vivo del receptor GNSS mediante *Usar GPS*; las tres
+       opciones son mutuamente excluyentes.
    * - **Telemetry**
      - Parámetros de baliza/informe, conmutadores de mensajes de definición,
        analógicos A1–A5 con selectores de origen y calibración, digitales B1–B8
@@ -113,6 +125,9 @@ Las páginas
        la antigüedad de la última sentencia y del último fix. El puerto serie
        y sus pines son cableado de placa fijado en compilación y se muestran
        como texto. Valores en vivo vía ``/gps/values``, sondeado cada segundo.
+       Su contraparte numérica, ``/gps/live``, es la que consulta la casilla
+       *Usar GPS* de cada otra página para autocompletar sus propios campos de
+       posición/movimiento (Station, IGate, Digi, Tracker, Weather).
    * - **Bulletins**
      - Hasta cinco boletines (identificador y grupo de destinatario, texto,
        RF/INET, intervalo, caducidad).

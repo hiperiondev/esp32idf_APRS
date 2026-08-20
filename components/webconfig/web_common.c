@@ -1330,3 +1330,67 @@ void web_field_use_station_data(httpd_req_t *req, const char *checkbox_name, boo
              (double)g_config.my_lon, (double)g_config.my_alt, checkbox_name);
     httpd_resp_sendstr_chunk(req, buf);
 }
+
+void web_field_use_gps_data(httpd_req_t *req, const char *checkbox_name, bool checked, const char *station_checkbox_name, const char *lat_name,
+                            const char *lon_name, const char *alt_name, const char *speed_name, const char *course_name) {
+    // Same "querySelector or literal null" splice web_field_use_station_data()
+    // uses, extended with the two motion fields that only some pages have.
+    char qlat[80] = "null", qlon[80] = "null", qalt[80] = "null", qspeed[80] = "null", qcourse[80] = "null";
+    if (lat_name)
+        snprintf(qlat, sizeof(qlat), "document.querySelector(\"[name='%.30s']\")", lat_name);
+    if (lon_name)
+        snprintf(qlon, sizeof(qlon), "document.querySelector(\"[name='%.30s']\")", lon_name);
+    if (alt_name)
+        snprintf(qalt, sizeof(qalt), "document.querySelector(\"[name='%.30s']\")", alt_name);
+    if (speed_name)
+        snprintf(qspeed, sizeof(qspeed), "document.querySelector(\"[name='%.30s']\")", speed_name);
+    if (course_name)
+        snprintf(qcourse, sizeof(qcourse), "document.querySelector(\"[name='%.30s']\")", course_name);
+
+    char qstation[80] = "null";
+    if (station_checkbox_name)
+        snprintf(qstation, sizeof(qstation), "document.getElementById('%.30s')", station_checkbox_name);
+
+    char buf[2200];
+    snprintf(buf, sizeof(buf),
+             "<label><input type='checkbox' name='%.30s' id='%.30s' %s> " TR_USE_GPS_DATA "</label>"
+             "<script>(function(){"
+             "var timer=null;"
+             "function setDisabled(on){"
+             "var lat=%s,lon=%s,alt=%s,speed=%s,course=%s;"
+             "if(lat)lat.disabled=on;if(lon)lon.disabled=on;if(alt)alt.disabled=on;if(speed)speed.disabled=on;if(course)course.disabled=on;"
+             "}"
+             "function fill(v){"
+             "var lat=%s,lon=%s,alt=%s,speed=%s,course=%s;"
+             "if(lat&&v.lat!==null&&v.lat!==undefined)lat.value=v.lat;"
+             "if(lon&&v.lon!==null&&v.lon!==undefined)lon.value=v.lon;"
+             "if(alt&&v.alt!==null&&v.alt!==undefined)alt.value=v.alt;"
+             "if(speed&&v.speed!==null&&v.speed!==undefined)speed.value=v.speed;"
+             "if(course&&v.course!==null&&v.course!==undefined)course.value=v.course;"
+             "}"
+             "function poll(){"
+             "fetch('/gps/live').then(function(r){return r.json();}).then(fill).catch(function(){});"
+             "}"
+             "function apply(){"
+             "var cb=document.getElementById('%.30s');if(!cb)return;"
+             "var on=cb.checked;"
+             "setDisabled(on);"
+             "if(timer){clearInterval(timer);timer=null;}"
+             "if(on){"
+             "var station=%s;if(station&&station.checked){station.checked=false;station.dispatchEvent(new Event('change'));}"
+             "poll();timer=setInterval(poll,1000);"
+             "}"
+             "}"
+             "document.addEventListener('DOMContentLoaded',function(){"
+             "var cb=document.getElementById('%.30s');if(!cb)return;"
+             "cb.addEventListener('change',apply);"
+             "var station=%s;"
+             "if(station)station.addEventListener('change',function(){if(station.checked&&cb.checked){cb.checked=false;apply();}});"
+             "apply();"
+             "});"
+             "window.addEventListener('beforeunload',function(){if(timer)clearInterval(timer);});"
+             "})();</script>",
+             checkbox_name, checkbox_name, checked ? "checked" : "", qlat, qlon, qalt, qspeed, qcourse, qlat, qlon, qalt, qspeed, qcourse, checkbox_name,
+             qstation, checkbox_name, qstation);
+    httpd_resp_sendstr_chunk(req, buf);
+}

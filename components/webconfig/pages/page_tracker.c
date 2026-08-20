@@ -15,13 +15,17 @@
 //
 // @brief Web admin "Tracker" page: renders and saves the tracker configuration
 // (callsign/SSID, fixed position, symbol, comment, path and beacon settings) in
-// g_config.
+// g_config. The fixed position can be typed in, mirrored from "My Station"
+// ("Use My Station Data") or taken live from the GNSS receiver ("Use GPS",
+// see web_field_use_gps_data() in web_common.c); the three sources are
+// mutually exclusive.
 
 #include <stdio.h>
 #include <string.h>
 
 #include "app_config.h"
 #include "esp_log.h"
+#include "gps.h"
 #include "pages.h"
 #include "str_append.h" // str_copy_utf8_safe()
 #include "translations.h"
@@ -83,6 +87,7 @@ esp_err_t page_tracker_get(httpd_req_t *req) {
     web_field_text(req, TR_F_MY_CALLSIGN, "trkMycall", g_config.trk_mycall, 9);
     web_field_int(req, TR_F_SSID, "trkSSID", g_config.trk_ssid, WEB_RANGE_SSID_MIN, WEB_RANGE_SSID_MAX);
     web_field_path_checkboxes(req, "trkPath", g_config.trk_path);
+    web_field_use_gps_data(req, "trkUseGps", g_config.trk_use_gps, "trkUseStation", "trkLAT", "trkLON", "trkALT", NULL, NULL);
     web_field_float(req, TR_F_FIXED_LATITUDE, "trkLAT", g_config.trk_lat, "0.0001", WEB_RANGE_LAT_MIN, WEB_RANGE_LAT_MAX);
     web_field_float(req, TR_F_FIXED_LONGITUDE, "trkLON", g_config.trk_lon, "0.0001", WEB_RANGE_LON_MIN, WEB_RANGE_LON_MAX);
     web_field_float(req, TR_F_FIXED_ALTITUDE_M, "trkALT", g_config.trk_alt, "1", WEB_RANGE_ALT_M_MIN, WEB_RANGE_ALT_M_MAX);
@@ -143,11 +148,23 @@ esp_err_t page_tracker_post(httpd_req_t *req) {
     app_config_lock();
     g_config.trk_en = web_form_get_bool(body, "trkEn");
     g_config.trk_use_station = web_form_get_bool(body, "trkUseStation");
+    g_config.trk_use_gps = web_form_get_bool(body, "trkUseGps");
     g_config.trk_loc2rf = web_form_get_bool(body, "trkPos2rf");
     g_config.trk_loc2inet = web_form_get_bool(body, "trkPos2inet");
     g_config.trk_timestamp = web_form_get_bool(body, "trkTime");
 
-    if (g_config.trk_use_station) {
+    if (g_config.trk_use_gps) {
+        web_form_get_call(body, "trkMycall", g_config.trk_mycall, sizeof(g_config.trk_mycall));
+        gps_data_t g;
+        if (gps_snapshot(&g)) {
+            if (g.has_position) {
+                g_config.trk_lat = (float)g.latitude;
+                g_config.trk_lon = (float)g.longitude;
+            }
+            if (g.has_altitude)
+                g_config.trk_alt = (float)g.altitude_m;
+        }
+    } else if (g_config.trk_use_station) {
         strncpy(g_config.trk_mycall, g_config.my_callsign, sizeof(g_config.trk_mycall) - 1);
         g_config.trk_mycall[sizeof(g_config.trk_mycall) - 1] = 0;
         g_config.trk_lat = g_config.my_lat;

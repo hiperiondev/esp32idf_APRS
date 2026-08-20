@@ -58,7 +58,10 @@ Le pagine
        (``g_config.my_*``), più le opzioni in onda valide per tutta la
        stazione: ambiguità di posizione, prefisso del localizzatore Maidenhead
        nei rapporti di stato, e la direzione d'antenna e l'ERP di meteor scatter
-       che li chiudono.
+       che li chiudono. La posizione può essere digitata oppure presa in tempo
+       reale dal ricevitore GNSS tramite *Usa GPS*, che disabilita i tre campi
+       e li riempie da ``GET /gps/live`` una volta al secondo mentre è
+       selezionata.
    * - **IGate**
      - Abilita, RF→INET / INET→RF, entrambe le maschere di filtro, budlist e gate
        di portata/prefisso, indicativo/SSID/passcode, quattro riquadri *APRS-IS
@@ -70,7 +73,10 @@ Le pagine
        mappa riservato), beacon on/off, posizione, intervallo, selettore di simbolo,
        oggetto, commento, stato, PHG. *Filtraggio Messaggi* contiene
        l'interruttore dei criteri per i messaggi INET→RF, il limite di hop del
-       destinatario e la finestra di ascolto locale.
+       destinatario e la finestra di ascolto locale. La posizione può essere
+       digitata, rispecchiare *Usa i Dati della Mia Stazione* oppure essere
+       presa in tempo reale dal ricevitore GNSS tramite *Usa GPS*; le tre
+       opzioni si escludono a vicenda.
    * - **Digi**
      - Abilita digipeater, indicativo/SSID e impostazioni beacon (posizione,
        simbolo, intervallo, commento, stato, percorso). *Estensione Dati*
@@ -85,17 +91,25 @@ Le pagine
        predefinita. Contiene anche i quattro preset
        di percorso condivisi ``path[0..3]`` tra cui sceglie ogni servizio che
        trasmette. La finestra di soppressione dei duplicati è un unico
-       controllo, sulla pagina *IGate*.
+       controllo, sulla pagina *IGate*. La posizione può anche essere presa in
+       tempo reale dal ricevitore GNSS tramite *Usa GPS*, mutuamente esclusiva
+       con *Usa i Dati della Mia Stazione*.
    * - **Tracker**
      - Abilita tracker, indicativo/SSID, intervallo fisso, posizione, simbolo di
        stazione, commento, opzioni di posizione compressa, posizione Mic-E (con
-       il suo selettore di commento di posizione) e altitudine.
+       il suo selettore di commento di posizione) e altitudine. La posizione
+       fissa può essere digitata, rispecchiare *Usa i Dati della Mia Stazione*
+       oppure essere presa in tempo reale dal ricevitore GNSS tramite *Usa
+       GPS*; le tre opzioni si escludono a vicenda.
    * - **Weather**
      - Abilita, invia-in-RF/-INET, timestamp, indicativo/SSID/percorso WX,
        posizione, nome oggetto, commento, caselle *Averaged* per campo, e — per
        ogni campo WX in onda — un **menu a tendina di canale** riempito in tempo
        reale dal registro ``sensors_local`` e filtrato per le capacità pubblicate
-       di ogni driver. Valori in tempo reale via ``/wx/values``.
+       di ogni driver. Valori in tempo reale via ``/wx/values``. La posizione
+       può essere digitata, rispecchiare *Usa i Dati della Mia Stazione* oppure
+       essere presa in tempo reale dal ricevitore GNSS tramite *Usa GPS*; le
+       tre opzioni si escludono a vicenda.
    * - **Telemetry**
      - Parametri di beacon/report, interruttori dei messaggi di definizione,
        analogici A1–A5 con selettori di origine e calibrazione, digitali B1–B8 con
@@ -113,7 +127,10 @@ Le pagine
        l'età dell'ultima frase e dell'ultimo fix. La porta seriale e i suoi
        pin sono cablaggio di scheda fissato in compilazione e sono mostrati
        come testo. Valori in tempo reale via ``/gps/values``, interrogato
-       ogni secondo.
+       ogni secondo. La sua controparte numerica, ``/gps/live``, è quella
+       interrogata dalla casella *Usa GPS* di ogni altra pagina per
+       autocompilare i propri campi di posizione/moto (Station, IGate, Digi,
+       Tracker, Weather).
    * - **Bulletins**
      - Fino a cinque bollettini (identificatore e gruppo del destinatario,
        testo, RF/INET, intervallo, scadenza).

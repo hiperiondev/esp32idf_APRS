@@ -562,6 +562,46 @@ void web_field_use_station_data(httpd_req_t *req, const char *checkbox_name, boo
                                 const char *alt_name);
 
 /**
+ * @brief Render a "Use GPS" checkbox plus the inline JS that binds it to a
+ * page's latitude/longitude/altitude/speed/course fields and keeps them
+ * filled live from the GNSS receiver.
+ *
+ * Placed next to a page's "Use My Station Data" checkbox (see
+ * web_field_use_station_data()) wherever the page has at least one field the
+ * receiver can supply. On load and on every toggle the JS: when checked,
+ * disables the given fields for editing and starts polling @c GET /gps/live
+ * once a second, writing each reported quantity into its field as it arrives
+ * (a field the receiver has not reported yet - @c null in the response - is
+ * left holding whatever value it last had, so a momentary drop-out does not
+ * blank a field the operator is about to save); when unchecked, the polling
+ * stops and the fields are re-enabled for normal editing. The two checkboxes
+ * are mutually exclusive on a page that offers both: checking this one
+ * unchecks and disables "Use My Station Data" and vice versa, since a field
+ * can only be driven from one live source at a time.
+ *
+ * This only wires up the client-side fill; it has no effect on what gets
+ * POSTed or stored. The page's own POST handler is what must snapshot the
+ * receiver's current values into the field's g_config member when this
+ * checkbox is on, the same way it already does for "Use My Station Data"
+ * (see gps_snapshot() in gps.h).
+ *
+ * @param req              Incoming request.
+ * @param checkbox_name    Form field name and DOM id for the checkbox itself
+ *                         (e.g. "digiUseGps").
+ * @param checked          Initial checked state.
+ * @param station_checkbox_name @c id of the page's "Use My Station Data"
+ *                         checkbox to unselect when this one is checked (or
+ *                         NULL if the page has none).
+ * @param lat_name         @c name of the page's latitude input (or NULL).
+ * @param lon_name         @c name of the page's longitude input (or NULL).
+ * @param alt_name         @c name of the page's altitude input (or NULL).
+ * @param speed_name       @c name of the page's speed input (or NULL).
+ * @param course_name      @c name of the page's course input (or NULL).
+ */
+void web_field_use_gps_data(httpd_req_t *req, const char *checkbox_name, bool checked, const char *station_checkbox_name, const char *lat_name,
+                            const char *lon_name, const char *alt_name, const char *speed_name, const char *course_name);
+
+/**
  * @brief Parse the POST body produced by web_field_symbol() back into a 2-char
  * "<table><symbol>" value.
  *

@@ -286,6 +286,8 @@
 #define TR_F_MY_CALLSIGN "My Callsign"
 /** Caption of the control that copies the station identity into the current form. */
 #define TR_USE_MY_STATION_DATA "Use My Station Data"
+/** Caption of the control that fills the current form's position/motion fields live from the GNSS receiver. */
+#define TR_USE_GPS_DATA "Use GPS"
 /** Form label for the "name" field or fieldset, rendered on the configuration forms. */
 #define TR_F_NAME "Name"
 /** Form label for the "object item name" field or fieldset, rendered on the configuration forms. */

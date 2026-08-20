@@ -147,6 +147,9 @@ esp_err_t page_gps_post(httpd_req_t *req);
 /** @brief GET  /gps/values - JSON snapshot of every value the GNSS receiver reports, polled every 1 s. @param req Incoming request. @return ESP_OK or an
  * esp_err_t error. */
 esp_err_t page_gps_values_get(httpd_req_t *req);
+/** @brief GET  /gps/live - JSON snapshot of latitude/longitude/altitude/speed/course as plain numbers (or null), consumed by every page's "Use GPS"
+ * checkbox to auto-fill its position/motion fields. @param req Incoming request. @return ESP_OK or an esp_err_t error. */
+esp_err_t page_gps_live_get(httpd_req_t *req);
 
 /** @} */
 

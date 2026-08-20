@@ -16,7 +16,10 @@
 // @brief Web admin "Digipeater" page: renders and saves the digipeater
 // configuration (callsign/SSID, the n-N alias table with its trapping,
 // preemptive and legacy routing policies, the beacon settings and the beacon's
-// APRS data extension) in g_config.
+// APRS data extension) in g_config. Position can be typed in, mirrored from
+// "My Station" ("Use My Station Data") or taken live from the GNSS receiver
+// ("Use GPS", see web_field_use_gps_data() in web_common.c); the three
+// sources are mutually exclusive.
 
 #include <math.h>
 #include <stdio.h>
@@ -25,6 +28,7 @@
 #include "app_config.h"
 #include "aprs_df.h" // aprs_df_symbol_matches()
 #include "esp_log.h"
+#include "gps.h"
 #include "pages.h"
 #include "str_append.h" // str_copy_utf8_safe()
 #include "translations.h"
@@ -52,6 +56,7 @@ esp_err_t page_digi_get(httpd_req_t *req) {
     web_fieldset_open(req, TR_F_DIGIPEATER);
     web_field_checkbox(req, TR_F_ENABLE_DIGIPEATER, "digiEn", g_config.digi_en);
     web_field_use_station_data(req, "digiUseStation", g_config.digi_use_station, "digiMycall", "digiLAT", "digiLON", "digiAlt");
+    web_field_use_gps_data(req, "digiUseGps", g_config.digi_use_gps, "digiUseStation", "digiLAT", "digiLON", "digiAlt", NULL, NULL);
     web_field_checkbox(req, TR_F_ADD_TIMESTAMP, "digiTime", g_config.digi_timestamp);
     web_fieldset_close(req);
 
@@ -353,9 +358,21 @@ esp_err_t page_digi_post(httpd_req_t *req) {
     app_config_lock();
     g_config.digi_en = web_form_get_bool(body, "digiEn");
     g_config.digi_use_station = web_form_get_bool(body, "digiUseStation");
+    g_config.digi_use_gps = web_form_get_bool(body, "digiUseGps");
     g_config.digi_timestamp = web_form_get_bool(body, "digiTime");
 
-    if (g_config.digi_use_station) {
+    if (g_config.digi_use_gps) {
+        web_form_get_call(body, "digiMycall", g_config.digi_mycall, sizeof(g_config.digi_mycall));
+        gps_data_t g;
+        if (gps_snapshot(&g)) {
+            if (g.has_position) {
+                g_config.digi_lat = (float)g.latitude;
+                g_config.digi_lon = (float)g.longitude;
+            }
+            if (g.has_altitude)
+                g_config.digi_alt = (float)g.altitude_m;
+        }
+    } else if (g_config.digi_use_station) {
         // Fields are disabled client-side while this is checked, so the
         // form never submits them - pull from the shared Station data instead.
         strncpy(g_config.digi_mycall, g_config.my_callsign, sizeof(g_config.digi_mycall) - 1);

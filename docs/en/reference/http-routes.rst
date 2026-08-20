@@ -59,6 +59,10 @@ auth check to guard.
    * - GET
      - ``/gps/values``
      - every value the GNSS receiver reports (JSON)
+   * - GET
+     - ``/gps/live``
+     - latitude/longitude/altitude/speed/course as plain numbers (JSON),
+       polled by every page's *Use GPS* checkbox
    * - GET/POST
      - ``/bulletins``
      - APRS bulletins BLN1..BLN5

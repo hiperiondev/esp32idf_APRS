@@ -126,6 +126,7 @@ void web_server_start(void) {
     reg(server, "/gps", HTTP_GET, page_gps_get);
     reg(server, "/gps", HTTP_POST, page_gps_post);
     reg(server, "/gps/values", HTTP_GET, page_gps_values_get);
+    reg(server, "/gps/live", HTTP_GET, page_gps_live_get);
 
     reg(server, "/radio", HTTP_GET, page_radio_get);
     reg(server, "/radio", HTTP_POST, page_radio_post);

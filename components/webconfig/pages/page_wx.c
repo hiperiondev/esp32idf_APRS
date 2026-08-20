@@ -15,13 +15,17 @@
 //
 // @brief Web admin "Weather" page: renders and saves the weather station slot
 // configuration (wind, temperature, rain, humidity, pressure and the remaining
-// measurement slots) in g_config.
+// measurement slots) in g_config. Position can be typed in, mirrored from
+// "My Station" ("Use My Station Data") or taken live from the GNSS receiver
+// ("Use GPS", see web_field_use_gps_data() in web_common.c); the three
+// sources are mutually exclusive.
 
 #include <stdio.h>
 #include <string.h>
 
 #include "app_config.h"
 #include "esp_log.h"
+#include "gps.h"
 #include "pages.h"
 #include "sensors_local.h"
 #include "str_append.h" // str_copy_utf8_safe()
@@ -298,6 +302,7 @@ esp_err_t page_wx_get(httpd_req_t *req) {
     web_fieldset_open(req, TR_F_WEATHER_STATION);
     web_field_checkbox(req, TR_F_ENABLE_WX, "wxEn", g_config.wx_en);
     web_field_use_station_data(req, "wxUseStation", g_config.wx_use_station, "wxMycall", "wxLAT", "wxLON", NULL);
+    web_field_use_gps_data(req, "wxUseGps", g_config.wx_use_gps, "wxUseStation", "wxLAT", "wxLON", NULL, NULL, NULL);
     web_field_checkbox(req, TR_F_SEND_VIA_RF, "wxTx2rf", g_config.wx_2rf);
     web_field_checkbox(req, TR_F_SEND_VIA_INTERNET, "wxTx2inet", g_config.wx_2inet);
     web_field_checkbox(req, TR_F_ADD_TIMESTAMP, "wxTime", g_config.wx_timestamp);
@@ -401,6 +406,7 @@ esp_err_t page_wx_post(httpd_req_t *req) {
     app_config_lock();
     g_config.wx_en = web_form_get_bool(body, "wxEn");
     g_config.wx_use_station = web_form_get_bool(body, "wxUseStation");
+    g_config.wx_use_gps = web_form_get_bool(body, "wxUseGps");
     g_config.wx_2rf = web_form_get_bool(body, "wxTx2rf");
     g_config.wx_2inet = web_form_get_bool(body, "wxTx2inet");
     g_config.wx_timestamp = web_form_get_bool(body, "wxTime");
@@ -413,7 +419,13 @@ esp_err_t page_wx_post(httpd_req_t *req) {
     g_config.wx_ssid = web_form_get_ssid(body, "wxSSID", g_config.wx_ssid);
     g_config.wx_path = app_config_path_mask_clamp(web_form_get_path_mask(body, "wxPath"), g_config.path);
 
-    if (g_config.wx_use_station) {
+    if (g_config.wx_use_gps) {
+        gps_data_t g;
+        if (gps_snapshot(&g) && g.has_position) {
+            g_config.wx_lat = (float)g.latitude;
+            g_config.wx_lon = (float)g.longitude;
+        }
+    } else if (g_config.wx_use_station) {
         g_config.wx_lat = g_config.my_lat;
         g_config.wx_lon = g_config.my_lon;
     } else {
