@@ -161,3 +161,17 @@ valor que el anillo no podría sostener. Solo a la tarea del planificador de
 balizas se le permite *esperar* a que el anillo se drene (véase :ref:`es-beacons`);
 todos los demás llamadores descartan inmediatamente, así que una pata de RF
 ocupada nunca detiene la decodificación de RX ni el socket de APRS-IS.
+
+Construcción de líneas TNC2
+============================
+
+Todos los módulos que ensamblan una línea de texto TNC2 — ``beacon.c``,
+``weather.c``, ``objects_items.c``, ``query.c`` y ``telemetry.c`` — siguen la
+misma convención: la línea se construye en un buffer de tamaño
+``APRS_TNC2_BUF_SIZE`` (``main/include/aprs_service.h``), y un resultado igual
+o mayor que ese tamaño, o mayor que ``APRS_TNC2_MAX_LEN``, se rechaza con un
+aviso en el log en lugar de transmitirse truncado. Una línea a medio escribir
+es indistinguible en el aire de una bien formada, así que rechazarla por
+completo es el único resultado que nunca entrega a una estación receptora un
+informe verosímil pero erróneo. Un módulo nuevo que construya líneas TNC2
+debe seguir la misma convención.

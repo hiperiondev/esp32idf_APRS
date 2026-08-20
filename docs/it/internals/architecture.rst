@@ -162,3 +162,17 @@ un valore che l'anello non potrebbe sostenere. Solo al task del pianificatore di
 beacon è permesso *attendere* che l'anello si drena (vedi :ref:`it-beacons`);
 tutti gli altri chiamanti scartano immediatamente, così che un ramo RF occupato
 non fermi mai la decodifica RX né il socket APRS-IS.
+
+Costruzione delle righe TNC2
+==============================
+
+Ogni modulo che assembla una riga di testo TNC2 — ``beacon.c``, ``weather.c``,
+``objects_items.c``, ``query.c`` e ``telemetry.c`` — segue la stessa
+convenzione: la riga viene costruita in un buffer di dimensione
+``APRS_TNC2_BUF_SIZE`` (``main/include/aprs_service.h``), e un risultato pari
+o superiore a quella dimensione, oppure superiore a ``APRS_TNC2_MAX_LEN``,
+viene rifiutato con un avviso nel log invece di essere trasmesso troncato. Una
+riga scritta a metà è indistinguibile via etere da una ben formata, quindi
+rifiutarla del tutto è l'unico esito che non consegna mai a una stazione
+ricevente un rapporto plausibile ma errato. Un nuovo modulo che costruisce
+righe TNC2 deve seguire la stessa convenzione.

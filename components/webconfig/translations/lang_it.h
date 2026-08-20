@@ -1306,7 +1306,7 @@
 /** Italian text for the aPRS-IS filter editor label for object, rendered on the IGate page. English: "Object". */
 #define TR_FILT_OBJECT "Oggetto"
 /** Italian text for the aPRS-IS filter editor label for item, rendered on the IGate page. English: "Item". */
-#define TR_FILT_ITEM "Item"
+#define TR_FILT_ITEM "Elemento"
 /** Italian text for the aPRS-IS filter editor label for buoy, rendered on the IGate page. English: "Buoy". */
 #define TR_FILT_BUOY "Boa"
 /** Italian text for the aPRS-IS filter editor label for position, rendered on the IGate page. English: "Position". */
