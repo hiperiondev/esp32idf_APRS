@@ -471,6 +471,14 @@ size_t lastheard_dump_json(char *out, size_t out_size) {
 
     xSemaphoreGive(s_lock);
 
-    pos += (size_t)snprintf(out + pos, out_size - pos, "]");
+    // Only advance pos if the closing bracket was actually written whole:
+    // out_size - pos is at least 1 here (the loop guard leaves room for it),
+    // so snprintf never fails outright, but with exactly one byte free it
+    // still only fits the NUL and reports the one byte it could not write.
+    // Checking the return against the remaining space keeps pos an honest
+    // count of bytes actually in out rather than of bytes that were wanted.
+    int n = snprintf(out + pos, out_size - pos, "]");
+    if (n > 0 && pos + (size_t)n < out_size)
+        pos += (size_t)n;
     return pos;
 }
