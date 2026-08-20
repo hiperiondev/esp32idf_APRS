@@ -164,6 +164,14 @@ marcatore di non archiviazione ``!x!`` viene anteposto quando la casella a
 livello di stazione della pagina Stazione lo richiede (:ref:`it-beacons`). Il
 testo memorizzato non cambia; viene filtrata solo la resa che va in onda.
 
+Poiché il commento si trova tra i token meteorologici e ``xESP`` invece che
+dopo un proprio delimitatore, un commento che inizia con una lettera di campo
+meteorologico (``c``, ``s``, ``h``, ``g``, ``t``, ``r``, ``p``, ``P``, ``L``,
+``l``, ``b``, ``F``, ``f`` o ``#``) seguita da una cifra viene letto, da un
+parser rigoroso del cap.12 di APRS101, come un ulteriore token meteorologico
+invece che come testo libero. ``wx_comment`` viene inviato esattamente come
+inserito nella pagina Weather, quindi è bene evitare di iniziarlo così.
+
 Blocco
 ======
 

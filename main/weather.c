@@ -60,6 +60,15 @@ static const char *TAG = "weather";
 // decoder scanning back from the end still finds the identifier where it
 // expects. This is why build_wx_tokens() does not emit it: it belongs to the
 // information field as a whole, not to the weather data block.
+//
+// Placing the comment before the identifier does mean a comment that opens
+// with a weather field letter ('c', 's', 'h', 'g', 't', 'r', 'p', 'P', 'L',
+// 'l', 'b', 'F', 'f' or '#') immediately followed by a digit reads, to a
+// strict APRS101 ch.12 parser, as one more weather token appended to the
+// block - a second, contradictory reading of that field rather than free
+// text. wx_comment is transmitted exactly as the operator entered it on the
+// Weather web-admin page, so avoiding that leading letter-plus-digit shape
+// is the operator's responsibility when choosing the comment text.
 #define WX_SW_SUFFIX "xESP"
 
 #define WX_MIN_INTERVAL_S     30  // sanity floor for wx_interval
@@ -368,8 +377,8 @@ static int build_wx_tokens(const wx_resolved_t r[WX_SENSOR_NUM], bool positionle
         int dir = (int)lround(r[WX_FIELD_WIND_DIRECTION].value);
         if (dir <= 0)
             dir = 360; // APRS uses 001-360; 000 means "unknown"
-        if (dir > 360)
-            dir %= 360;
+        else if (dir > 360)
+            dir = ((dir - 1) % 360) + 1; // wrap into 001-360, never 000
         int spd = (int)lround(r[WX_FIELD_WIND_SPEED].value);
         if (spd < 0)
             spd = 0;
@@ -443,8 +452,8 @@ static int build_wx_tokens(const wx_resolved_t r[WX_SENSOR_NUM], bool positionle
         int h = (int)lround(r[WX_FIELD_HUMIDITY].value);
         if (h >= 100)
             h = 0; // on-air "00" encodes 100 %RH
-        if (h < 0)
-            h = 0;
+        else if (h < 1)
+            h = 1; // avoid "00", which would read back as 100 %RH
         WX_APP("h%02d", h % 100);
     }
     if (r[WX_FIELD_PRESSURE].present) {
@@ -459,10 +468,12 @@ static int build_wx_tokens(const wx_resolved_t r[WX_SENSOR_NUM], bool positionle
         int l = (int)lround(r[WX_FIELD_LUMINOSITY].value);
         if (l < 0)
             l = 0;
+        if (l > 1999)
+            l = 1999; // clamp instead of wrapping past the 'l' token's range
         if (l < 1000)
             WX_APP("L%03d", l);
         else
-            WX_APP("l%03d", (l - 1000) % 1000);
+            WX_APP("l%03d", l - 1000);
     }
     // Snow has no positionless encoding: the WinAPRS verbose format assigns
     // 's' to wind speed instead, so a snow token there would read back as a

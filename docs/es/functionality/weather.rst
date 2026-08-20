@@ -162,6 +162,14 @@ este firmware emite por su cuenta, y se antepone el marcador de no archivar
 (:ref:`es-beacons`). El texto guardado no cambia; solo se filtra la
 representación que sale al aire.
 
+Como el comentario queda entre los tokens meteorológicos y ``xESP`` en lugar
+de ir tras un delimitador propio, un comentario que empiece por una letra de
+campo meteorológico (``c``, ``s``, ``h``, ``g``, ``t``, ``r``, ``p``, ``P``,
+``L``, ``l``, ``b``, ``F``, ``f`` o ``#``) seguida de un dígito se lee, para
+un decodificador estricto del cap.12 de APRS101, como un token meteorológico
+más en vez de texto libre. ``wx_comment`` se envía tal cual se escribe en la
+página Weather, así que conviene no empezarlo de ese modo.
+
 Bloqueo
 =======
 

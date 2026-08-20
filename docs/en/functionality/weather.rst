@@ -166,6 +166,14 @@ prefixed when the station-wide checkbox on the Station page asks for it
 (:ref:`en-beacons`). The stored text is unaffected; only the on-air rendering
 is filtered.
 
+Because the comment sits between the weather tokens and ``xESP`` rather than
+after a delimiter of its own, a comment that happens to open with a weather
+field letter (``c``, ``s``, ``h``, ``g``, ``t``, ``r``, ``p``, ``P``, ``L``,
+``l``, ``b``, ``F``, ``f`` or ``#``) immediately followed by a digit reads,
+to a strict APRS101 ch.12 parser, as one more weather token rather than free
+text. ``wx_comment`` is sent exactly as entered on the Weather page, so avoid
+starting it that way.
+
 Locking
 =======
 
