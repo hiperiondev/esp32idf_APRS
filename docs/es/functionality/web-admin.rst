@@ -267,3 +267,30 @@ acumulado, de modo que un cliente que sigue reintentando las mismas
 credenciales caducadas tras cada expiración solo vuelve a disparar el bloqueo
 base de 5 s cada vez, en lugar de escalar directamente hasta el tope de 300 s.
 Un login exitoso limpia por completo la entrada del origen.
+
+Protección de mismo origen (CSRF)
+==================================
+
+``web_check_auth()`` también aplica una comprobación de mismo origen en toda
+petición ``HTTP_POST``, independientemente de si ``g_config.http_username``
+está configurado. La comprobación confirma que la cabecera ``Origin`` de la
+petición (recurriendo a ``Referer`` si falta) nombra el propio ``Host`` de
+este equipo antes de que se ejecute cualquier otra cosa, y falla de forma
+cerrada: una petición sin ninguna de las dos cabeceras, o con una que no
+coincide, se rechaza con ``403 Forbidden`` sin importar qué credenciales
+lleve.
+
+Esto es deliberadamente independiente de Basic Auth. Dejar el usuario en
+blanco en la página System es una forma admitida de ejecutar el panel de
+administración sin contraseña, pero solo elimina el aviso de inicio de
+sesión — no relaja el requisito de mismo origen, porque una petición
+entre sitios originada en el navegador es una amenaza con o sin contraseña
+configurada: sin contraseña no hay credencial que robar, pero la página del
+atacante puede seguir haciendo que el propio navegador del operador envíe
+una petición que cambia el estado del equipo en su nombre. Toda ruta que
+cambia el estado (``/ota_update``, ``/format``, ``/upload``, ``/delete``,
+``/msgchat``, y el manejador de guardado de cada página de configuración)
+está registrada como ``HTTP_POST`` precisamente por este motivo; ninguna
+ruta ``GET`` registrada tiene efectos secundarios, así que esta
+comprobación nunca tiene que actuar sobre una navegación normal, un
+marcador o una URL escrita a mano.

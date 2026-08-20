@@ -244,3 +244,26 @@ client that keeps retrying the same stale credentials after every window
 expires re-triggers only the base 5 s lockout each time, instead of ratcheting
 straight back to the 300 s cap. A successful login clears the source's slot
 entirely.
+
+Same-origin protection (CSRF)
+==============================
+
+``web_check_auth()`` also enforces a same-origin check on every ``HTTP_POST``
+request, independently of whether ``g_config.http_username`` is set. The
+check confirms the request's ``Origin`` header (falling back to ``Referer``)
+names this device's own ``Host`` before anything else runs, and fails closed:
+a request with neither header, or with a mismatching one, is rejected with
+``403 Forbidden`` regardless of any credentials it carries.
+
+This is deliberately independent of Basic Auth. Clearing the username on the
+System page is a supported way to run the admin UI without a password, but
+it only removes the login prompt — it does not
+relax the same-origin requirement, because a browser-borne cross-site
+request is a threat with or without a configured password: with no password
+set there is no credential to steal, but the attacker's page can still make
+the operator's own browser submit a state-changing request on their behalf.
+Every state-changing route (``/ota_update``, ``/format``, ``/upload``,
+``/delete``, ``/msgchat``, and every settings page's save handler) is
+registered ``HTTP_POST`` for exactly this reason; no registered ``GET`` route
+has a side effect, so this check never has to run against ordinary
+navigation, bookmarks, or a typed-in URL.

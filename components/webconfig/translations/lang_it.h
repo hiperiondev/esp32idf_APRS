@@ -938,6 +938,10 @@
  */
 /** Italian text for the system page label for web admin login, rendered on the System page. English: "Web Admin Login". */
 #define TR_SYS_WEB_ADMIN_LOGIN "Accesso amministrazione web"
+/** System page note clarifying that a blank username only disables the password prompt, rendered on the System page. */
+#define TR_SYS_WEB_ADMIN_LOGIN_NOTE                                                                                                                            \
+    "Lasciare il nome utente vuoto disabilita solo la richiesta della password. Le richieste devono comunque provenire dalla stessa origine per "              \
+    "qualsiasi modifica effettuata tramite questo pannello di amministrazione."
 /** Italian text for the system page label for time, rendered on the System page. English: "Time". */
 #define TR_SYS_TIME "Ora"
 /** Italian text for the system page label for sync ntp, rendered on the System page. English: "Sync time via NTP". */

@@ -876,6 +876,10 @@
  */
 /** System page label for web admin login, rendered on the System page. */
 #define TR_SYS_WEB_ADMIN_LOGIN "Web Admin Login"
+/** System page note clarifying that a blank username only disables the password prompt, rendered on the System page. */
+#define TR_SYS_WEB_ADMIN_LOGIN_NOTE                                                                                                                            \
+    "Leaving the username blank disables the password prompt only. Same-origin requests are still required for every change made through this admin "          \
+    "interface."
 /** System page label for time, rendered on the System page. */
 #define TR_SYS_TIME "Time"
 /** System page label for sync ntp, rendered on the System page. */

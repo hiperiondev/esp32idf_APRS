@@ -938,6 +938,10 @@
  */
 /** Spanish text for the system page label for web admin login, rendered on the System page. English: "Web Admin Login". */
 #define TR_SYS_WEB_ADMIN_LOGIN "Acceso al administrador web"
+/** System page note clarifying that a blank username only disables the password prompt, rendered on the System page. */
+#define TR_SYS_WEB_ADMIN_LOGIN_NOTE                                                                                                                            \
+    "Dejar el usuario en blanco desactiva solo el aviso de contraseña. Las solicitudes deben seguir siendo del mismo origen para cualquier cambio "            \
+    "realizado a través de este panel de administración."
 /** Spanish text for the system page label for time, rendered on the System page. English: "Time". */
 #define TR_SYS_TIME "Hora"
 /** Spanish text for the system page label for sync ntp, rendered on the System page. English: "Sync time via NTP". */

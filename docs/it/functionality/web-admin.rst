@@ -268,3 +268,30 @@ conteggio accumulato, così un client che continua a riprovare le stesse
 credenziali scadute dopo ogni scadenza fa scattare di nuovo solo il blocco
 base di 5 s ogni volta, invece di risalire direttamente al tetto di 300 s. Un
 login riuscito azzera completamente la voce di quell'origine.
+
+Protezione same-origin (CSRF)
+==============================
+
+``web_check_auth()`` applica anche un controllo di stessa origine su ogni
+richiesta ``HTTP_POST``, indipendentemente dal fatto che
+``g_config.http_username`` sia impostato o meno. Il controllo verifica che
+l'intestazione ``Origin`` della richiesta (con fallback su ``Referer``)
+indichi l'``Host`` di questo stesso dispositivo prima che venga eseguito
+qualsiasi altro codice, e fallisce in modo chiuso: una richiesta priva di
+entrambe le intestazioni, o con una che non corrisponde, viene rifiutata con
+``403 Forbidden`` indipendentemente dalle credenziali che porta.
+
+Questo è deliberatamente indipendente da Basic Auth. Lasciare vuoto il nome
+utente nella pagina System è un modo supportato per eseguire il pannello di
+amministrazione senza password, ma disattiva solo la richiesta di login —
+non allenta il requisito di stessa origine, perché una richiesta cross-site
+originata dal browser è una minaccia con o senza password configurata:
+senza password non c'è alcuna credenziale da rubare, ma la pagina
+dell'attaccante può comunque far inviare al browser dell'operatore una
+richiesta che modifica lo stato del dispositivo per suo conto. Ogni route
+che modifica lo stato (``/ota_update``, ``/format``, ``/upload``,
+``/delete``, ``/msgchat``, e il gestore di salvataggio di ogni pagina di
+configurazione) è registrata come ``HTTP_POST`` esattamente per questo
+motivo; nessuna route ``GET`` registrata ha effetti collaterali, quindi
+questo controllo non deve mai intervenire su una normale navigazione, un
+segnalibro o un URL digitato a mano.

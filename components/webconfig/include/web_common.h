@@ -30,14 +30,22 @@
 
 /**
  * @brief HTTP Basic Auth check against g_config.http_username /
- * g_config.http_password.
+ * g_config.http_password, combined with the same-origin (CSRF) check for
+ * state-changing requests.
  *
- * On failure this sends the 401 response with the @c WWW-Authenticate header
- * itself, so the caller only has to bail out.
+ * The same-origin check and the Basic Auth check are independent controls:
+ * the same-origin check runs first and unconditionally for every POST
+ * request, regardless of whether @c g_config.http_username is set. Leaving
+ * the username blank disables the password prompt only; it does not disable
+ * the same-origin requirement.
+ *
+ * On failure this sends the 401 or 403 response itself (with the
+ * @c WWW-Authenticate header for the 401 case), so the caller only has to
+ * bail out.
  *
  * @param req Incoming request.
  * @return true if the request is authorized; false if it was rejected (401
- *         already sent).
+ *         or 403 already sent).
  */
 bool web_check_auth(httpd_req_t *req);
 

@@ -70,6 +70,7 @@ esp_err_t page_system_get(httpd_req_t *req) {
              "<label>" TR_F_USERNAME "</label><input type='text' name='httpUser' value='%s' maxlength='31'>"
              "<label>" TR_F_PASSWORD "</label><input type='password' name='httpPass' id='pwd_httpPass' value='%s' maxlength='63'>"
              "<label class='pwd-show'><input type='checkbox' onclick=\"togglePwd('pwd_httpPass',this)\"> " TR_SHOW_PASSWORD "</label>"
+             "<p><small>" TR_SYS_WEB_ADMIN_LOGIN_NOTE "</small></p>"
              "</fieldset>"
              "<fieldset><legend>" TR_SYS_TIME "</legend>"
              "<label><input type='checkbox' name='syncTime' %s> " TR_SYS_SYNC_NTP "</label>"

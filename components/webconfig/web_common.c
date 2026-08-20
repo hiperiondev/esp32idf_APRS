@@ -257,18 +257,20 @@ static bool web_check_csrf_origin(httpd_req_t *req) {
 
 // ---------------------------------------------------------------- Basic Auth
 bool web_check_auth(httpd_req_t *req) {
-    if (g_config.http_username[0] == 0)
-        return true; // auth disabled if no user set
-
-    // Same-origin check first, before Basic Auth is even evaluated: a
-    // cross-site request has no business reaching this handler regardless of
-    // whether it happens to carry valid cached credentials.
+    // Same-origin check first, before Basic Auth is even evaluated and before
+    // the "no password configured" bypass below: a cross-site request has no
+    // business reaching this handler regardless of whether it happens to
+    // carry valid cached credentials, and CSRF is the attack that matters
+    // most precisely when there is no password to leak in the first place.
     if (req->method == HTTP_POST && !web_check_csrf_origin(req)) {
         httpd_resp_set_status(req, "403 Forbidden");
         httpd_resp_set_type(req, "text/html");
         httpd_resp_sendstr(req, "<h1>" TR_FORBIDDEN_CSRF "</h1>");
         return false;
     }
+
+    if (g_config.http_username[0] == 0)
+        return true; // auth disabled if no user set; same-origin check above still applies
 
     uint32_t client_ip = web_client_ipv4(req);
     int lockout_remaining_s = web_auth_lockout_remaining_s(client_ip);
