@@ -178,7 +178,7 @@ esp_err_t page_bulletins_post(httpd_req_t *req) {
         snprintf(name, sizeof(name), "bMsg%d", i + 1);
         char text[BULLETIN_TEXT_MAX + 1];
         text[0] = 0;
-        web_form_get(body, name, text, sizeof(text)); // URL-decoded, clamped to buffer
+        web_form_get(body, name, text, sizeof(text)); // URL-decoded (CR/LF-free), clamped to buffer
         // web_form_get() clamps to sizeof(text) on a plain byte count, so a
         // multi-byte UTF-8 character sitting right at that boundary could
         // arrive already split; re-cut here so the stored text - repeated on

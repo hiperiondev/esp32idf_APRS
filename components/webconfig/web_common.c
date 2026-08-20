@@ -35,6 +35,7 @@
 #include "lwip/sockets.h" // getpeername(): client IP for the per-source login lockout
 #include "mbedtls/base64.h"
 #include "sensors_local_i2c.h" // SENSORS_LOCAL_I2C_SDA_GPIO/SCL_GPIO: fixed pins for the GPIO registry
+#include "str_append.h"        // str_is_line_break_char()
 #include "translations.h"
 
 static const char *TAG = "web_common";
@@ -356,19 +357,29 @@ int web_read_body(httpd_req_t *req, char *buf, size_t buf_size) {
 }
 
 // ---------------------------------------------------------------- URL decode
+// CR, LF and NUL are dropped as they are decoded rather than passed through:
+// every caller of web_form_get() eventually writes the decoded value into a
+// line-oriented output (an APRS-IS line, the AX.25 TNC2 text form, a JSON
+// config value), and %0D/%0A let an operator smuggle either byte past a
+// plain-text form field. Filtering here, at the one place every POSTed form
+// value in this firmware is decoded, closes that path for every field
+// without relying on each page's own POST handler to do it separately.
 void web_urldecode(const char *src, char *dst, size_t dst_size) {
     size_t di = 0;
     while (*src && di + 1 < dst_size) {
+        char c;
         if (*src == '%' && isxdigit((unsigned char)src[1]) && isxdigit((unsigned char)src[2])) {
             char hex[3] = { src[1], src[2], 0 };
-            dst[di++] = (char)strtol(hex, NULL, 16);
+            c = (char)strtol(hex, NULL, 16);
             src += 3;
         } else if (*src == '+') {
-            dst[di++] = ' ';
+            c = ' ';
             src++;
         } else {
-            dst[di++] = *src++;
+            c = *src++;
         }
+        if (!str_is_line_break_char(c))
+            dst[di++] = c;
     }
     dst[di] = 0;
 }

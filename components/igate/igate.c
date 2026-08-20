@@ -370,6 +370,21 @@ bool isDuplicatePacket(ax25_msg_t *packet) {
 static bool sendToAprsIs(const uint8_t *data, size_t len) {
     bool ok = false;
 
+    // Every caller is expected to have already stripped CR and LF from
+    // whatever operator-editable text it assembled into data - see
+    // set_str()/set_str_utf8() (app_config.c), sanitizeOutgoingText()
+    // (message.c) and web_urldecode() (web_common.c). This is the class
+    // fix rather than a per-caller one: a payload that reaches this point
+    // still carrying either byte would be split into two APRS-IS lines by
+    // the CRLF this function appends below, the second one entirely
+    // attacker-controlled and attributed to this station's login, so it is
+    // refused outright rather than sent. A single memchr() over the range
+    // is cheap next to the socket write that follows either way.
+    if (memchr(data, '\r', len) != NULL || memchr(data, '\n', len) != NULL) {
+        ESP_LOGW(TAG, "APRS-IS TX refused: payload contains an embedded CR or LF");
+        return false;
+    }
+
     // The line and its CRLF terminator are assembled into one local buffer
     // and handed to a single send(). APRS-IS is line-oriented, so the server
     // cannot act on a line until the terminator lands: sending it separately

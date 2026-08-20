@@ -549,29 +549,34 @@ static void txPacket(const char *myCall, const char *info) {
 }
 
 // Copies as much of src into dst as fits in APRS_MSG_TEXT_STD_MAX bytes,
-// dropping any '|', '~' and '{' along the way. str_copy_strip_reserved()
+// dropping any '|', '~', CR, LF and '{' along the way. str_copy_strip_reserved()
 // handles '|' and '~', reserved for the base-91 comment telemetry group
-// (APRS101 ch.13); '{' is dropped here on top of that, since message text
-// also reserves it as the message-number delimiter (APRS101 ch.14), unlike
-// the free-text fields str_copy_strip_reserved() is otherwise used for.
+// (APRS101 ch.13); str_copy_strip_line_breaks() removes CR and LF, since the
+// finished message line is written to APRS-IS and to the AX.25 TNC2 text
+// form as a single line and neither format escapes an embedded one; '{' is
+// dropped here on top of both, since message text also reserves it as the
+// message-number delimiter (APRS101 ch.14), unlike the free-text fields
+// str_copy_strip_reserved() is otherwise used for.
 //
 // Message text is 8-bit-clean and passed through unchanged, so an operator's
 // UTF-8 comment travels on the air exactly as typed (aprs.org/aprs12/utf-8.txt).
-// The byte budget is still enforced in two passes for that reason: the first,
-// str_copy_utf8_safe(), makes any cut needed to reach APRS_MSG_TEXT_STD_MAX
+// The byte budget is still enforced after both filters for that reason:
+// str_copy_utf8_safe() makes any cut needed to reach APRS_MSG_TEXT_STD_MAX
 // land on a whole character rather than through the middle of one, and the
-// second, the '{' strip below, never lengthens the string, so it cannot undo
-// that boundary once the first pass has set it. dst is always NUL-terminated;
-// dst_size must be at least 1.
+// '{' strip below, run last, never lengthens the string, so it cannot undo
+// that boundary once str_copy_utf8_safe() has set it. dst is always
+// NUL-terminated; dst_size must be at least 1.
 static void sanitizeOutgoingText(const char *src, char *dst, size_t dst_size) {
     size_t cap = dst_size < APRS_MSG_TEXT_STD_MAX + 1 ? dst_size : APRS_MSG_TEXT_STD_MAX + 1;
 
-    // str_copy_strip_reserved() only ever removes bytes, so this buffer only
+    // Neither filter here ever lengthens the string, so this buffer only
     // needs room for src as typed, not for cap: the byte budget itself is
     // enforced next, by str_copy_utf8_safe().
     char stripped[MSG_TEXT_MAX];
+    char no_breaks[MSG_TEXT_MAX];
     str_copy_strip_reserved(src, stripped, sizeof(stripped));
-    str_copy_utf8_safe(stripped, dst, cap);
+    str_copy_strip_line_breaks(stripped, no_breaks, sizeof(no_breaks));
+    str_copy_utf8_safe(no_breaks, dst, cap);
 
     size_t out = 0;
     for (size_t i = 0; dst[i]; i++)

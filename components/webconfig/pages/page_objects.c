@@ -584,7 +584,7 @@ esp_err_t page_objects_post(httpd_req_t *req) {
         snprintf(name, sizeof(name), "oName%d", i + 1);
         char nm[OBJITEM_NAME_MAX + 1];
         nm[0] = 0;
-        web_form_get(body, name, nm, sizeof(nm)); // URL-decoded, clamped, NUL-terminated
+        web_form_get(body, name, nm, sizeof(nm)); // URL-decoded (CR/LF-free), clamped, NUL-terminated
 
         snprintf(name, sizeof(name), "oType%d", i + 1);
         b->is_item = (web_form_get_int(body, name, b->is_item ? 1 : 0) != 0);

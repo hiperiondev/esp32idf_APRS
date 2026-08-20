@@ -199,7 +199,16 @@ int web_form_get_int(const char *body, const char *key, int def);
 float web_form_get_float(const char *body, const char *key, float def);
 
 /**
- * @brief URL-decode @p src into @p dst.
+ * @brief URL-decode @p src into @p dst, dropping any decoded CR, LF or NUL
+ * byte along the way.
+ *
+ * Every caller reaches this through web_form_get(), and every field
+ * web_form_get() reads eventually ends up as one line of a line-oriented
+ * output (an APRS-IS line, the AX.25 TNC2 text form, a JSON config value),
+ * none of which escape an embedded line break. Filtering the three bytes out
+ * here, at decode time, means a percent-encoded `%0D%0A` in any POSTed form
+ * field is stripped the same way a literal CR/LF typed into it would be.
+ *
  * @param src      Source (percent-encoded) string.
  * @param dst      Destination buffer; must be at least @c strlen(src)+1 bytes.
  * @param dst_size Size of @p dst, in bytes.

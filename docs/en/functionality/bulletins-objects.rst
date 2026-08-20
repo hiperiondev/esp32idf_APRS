@@ -58,7 +58,10 @@ persist to their own ``/storage/bulletins.json``. The page is gated by the
 Bulletin text has ``|`` and ``~`` filtered out at transmission time — both
 characters are reserved for the base-91 comment telemetry group
 (:ref:`en-telemetry`) and must not appear in ordinary free text on the air.
-The stored text is unaffected; only the on-air rendering is filtered.
+A CR or LF, by contrast, is stripped at storage time — as the text is
+POSTed from the Bulletins page or loaded from ``config.json`` — since the
+stored text is later written as one line of an APRS-IS/AX.25 message and
+neither format escapes an embedded line break.
 
 .. note::
 
@@ -86,8 +89,9 @@ An object/item comment has ``|`` and ``~`` filtered out at transmission time,
 for the same reason and in the same way as a beacon comment
 (:ref:`en-telemetry`); ``{`` is left untouched, since it is legal in a
 comment and is the compressed-position radio-range marker rather than a
-telemetry delimiter. The stored comment is unaffected; only the on-air
-rendering is filtered.
+telemetry delimiter. A CR or LF is stripped at storage time instead, along
+with the name and any signpost/QRU sub-field, since all of them are written
+unescaped into the outgoing object/item line.
 
 Area objects
 ------------

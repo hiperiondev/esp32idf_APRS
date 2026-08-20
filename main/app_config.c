@@ -147,13 +147,16 @@ void app_config_unlock(void) {
         xSemaphoreGive(m);
 }
 
+// Every stored string in app_config_t passes through here, so this is the
+// one place a CR or LF typed or pasted into any web-admin field - callsign,
+// hostname, filter spec, comment, status, path, anything - is stripped
+// before it reaches flash. Every consumer of these fields later writes them
+// into a line-oriented output (APRS-IS, the AX.25 TNC2 text form, the JSON
+// config file itself), and none of those escape an embedded line break, so
+// filtering it out at the point of storage closes the path regardless of
+// which field carried it or which output it was eventually written to.
 static void set_str(char *dst, size_t sz, const char *val) {
-    if (!val) {
-        dst[0] = 0;
-        return;
-    }
-    strncpy(dst, val, sz - 1);
-    dst[sz - 1] = 0;
+    str_copy_strip_line_breaks(val, dst, sz);
 }
 
 // Loads a stored free-text field the same way set_str() loads every other
@@ -164,8 +167,18 @@ static void set_str(char *dst, size_t sz, const char *val) {
 // structured field (callsign, hostname, filter spec, ...) that is
 // effectively ASCII, where a byte cut and a character cut always land in the
 // same place.
+//
+// CR and LF are stripped first, into a scratch buffer sized to the largest
+// field set_str_utf8() serves (COMMENT_SIZE): both are single-byte ASCII,
+// never a lead or continuation byte of a multi-byte UTF-8 sequence, so
+// removing them ahead of the UTF-8-safe cut cannot itself split a character,
+// and doing so here gives this path the same line-break guarantee set_str()
+// gives every other stored string. The UTF-8-safe cut then runs from the
+// scratch buffer into dst to enforce the byte budget.
 static void set_str_utf8(char *dst, size_t sz, const char *val) {
-    str_copy_utf8_safe(val, dst, sz);
+    char stripped[COMMENT_SIZE];
+    str_copy_strip_line_breaks(val, stripped, sizeof(stripped) < sz ? sizeof(stripped) : sz);
+    str_copy_utf8_safe(stripped, dst, sz);
 }
 
 void app_config_set_defaults(app_config_t *c) {

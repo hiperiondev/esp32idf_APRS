@@ -182,8 +182,15 @@ goes on the air,
 regardless of whether that particular beacon carries a comment telemetry
 group itself. ``{`` is left untouched in these fields, since it is the
 compressed-position radio-range marker rather than a telemetry delimiter.
-The stored, operator-entered text is never altered; only the on-air
-rendering is filtered.
+
+A CR or LF is a separate concern from the telemetry delimiters above: APRS-IS
+and the internal AX.25 TNC2 text form are both line-oriented and neither
+escapes an embedded line break, so either byte is stripped from every
+operator-editable field at the point it is stored — as it is decoded from a
+web form POST, and as it is loaded from a hand-edited ``config.json`` — rather
+than only when the field is rendered onto the air. This keeps a line break
+out of every consumer of the stored text, not only the beacon builders this
+chapter covers.
 
 Within the position report's text field the emission order is fixed:
 frequency block (if any), operator comment, comment telemetry group, then

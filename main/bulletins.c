@@ -38,7 +38,7 @@
 #include "json_store.h"  // shared JSON-file store scaffolding
 #include "sched_time.h"  // sched_mono_seconds() / sched_clamp_interval()
 #include "storage.h"     // storage_write_lock() / storage_generation()
-#include "str_append.h"  // str_copy_utf8_safe()
+#include "str_append.h"  // str_copy_strip_line_breaks(), str_copy_utf8_safe()
 
 static const char *TAG = "bulletins";
 
@@ -152,11 +152,18 @@ static bool load_locked(bulletins_t *out, bool *out_missing) {
             }
             v = cJSON_GetObjectItem(o, "text");
             if (cJSON_IsString(v) && v->valuestring) {
-                // The stored text is 8-bit-clean and repeated on the air
-                // verbatim on every future transmission of this bulletin, so
-                // the cut is walked back to a whole UTF-8 character instead
+                // CR and LF are stripped first: the stored text is later
+                // written as one line of a ":BLNx     :text" APRS-IS/AX.25
+                // message, and neither format escapes an embedded line
+                // break, so a hand-edited config.json carrying one must not
+                // reach that line unfiltered. The stored text is 8-bit-clean
+                // and repeated on the air verbatim on every future
+                // transmission of this bulletin, so the byte-budget cut that
+                // follows is walked back to a whole UTF-8 character instead
                 // of a plain byte count.
-                str_copy_utf8_safe(v->valuestring, b->text, sizeof(b->text));
+                char stripped[BULLETIN_TEXT_MAX + 1];
+                str_copy_strip_line_breaks(v->valuestring, stripped, sizeof(stripped));
+                str_copy_utf8_safe(stripped, b->text, sizeof(b->text));
             }
             v = cJSON_GetObjectItem(o, "int_s");
             if (cJSON_IsNumber(v) && v->valuedouble > 0)

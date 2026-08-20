@@ -29,7 +29,9 @@
  *
  * Also here: str_copy_strip_reserved() for copying operator-editable free
  * text while dropping the bytes APRS101 reserves elsewhere in the frame,
- * str_is_reserved_char() as the definition of which bytes those are, and
+ * str_is_reserved_char() as the definition of which bytes those are,
+ * str_copy_strip_line_breaks() and str_is_line_break_char() for dropping the
+ * bytes that would break a line-oriented output instead, and
  * str_copy_utf8_safe() for truncating 8-bit-clean text to a byte budget
  * without splitting a UTF-8 character across the cut.
  *
@@ -175,6 +177,67 @@ static inline void str_copy_strip_reserved(const char *src, char *dst, size_t ds
     for (size_t i = 0; src != NULL && src[i] != '\0' && out < dst_size - 1; i++) {
         char c = src[i];
         if (str_is_reserved_char(c))
+            continue;
+        dst[out++] = c;
+    }
+    dst[out] = '\0';
+}
+
+/**
+ * @brief Test whether @p c would break a line-oriented protocol frame if it
+ * reached the wire inside operator-supplied text.
+ *
+ * CR, LF and NUL are the three bytes that end a line - or, for NUL, a C
+ * string - regardless of where inside a field they appear. This is a
+ * distinct question from str_is_reserved_char(): that filter protects the
+ * APRS telemetry syntax within a single frame, while this one protects the
+ * frame boundary itself on every line-oriented transport this firmware
+ * writes to (APRS-IS, the AX.25 TNC2 text form, the stored JSON
+ * configuration).
+ *
+ * @param c Byte to inspect.
+ * @return true if @p c is a line-break or NUL byte and must not be allowed
+ *         to reach a line-oriented output unescaped.
+ */
+static inline bool str_is_line_break_char(char c) {
+    return c == '\r' || c == '\n' || c == '\0';
+}
+
+/**
+ * @brief Copy @p src into @p dst, dropping every CR, LF and NUL byte along
+ * the way.
+ *
+ * Operator-supplied text - a callsign, a hostname, a filter spec, a comment
+ * or status field, a chat message - is eventually written as one line of a
+ * line-oriented protocol: APRS-IS, the AX.25 TNC2 text form used internally,
+ * or one value in the stored JSON configuration. None of those formats
+ * escape an embedded CR or LF, so a field that carries one reaches the wire
+ * as two lines instead of one, and everything after the break is read as a
+ * new, independent line rather than as part of the field it was typed into.
+ * Filtering the byte out here, at the point every such field is copied into
+ * its storage or working buffer, closes that path regardless of which
+ * output the field is later written to.
+ *
+ * This is independent of str_copy_strip_reserved(): `|` and `~` stay legal
+ * in text passed through this function, since they only matter to the
+ * base-91 telemetry syntax inside a single line, not to where that line
+ * ends.
+ *
+ * @p dst is always NUL-terminated. Passing a @p dst_size of 0 is a no-op;
+ * passing a NULL @p src is treated as an empty string.
+ *
+ * @param src Source string to filter and copy from.
+ * @param dst Destination buffer.
+ * @param dst_size Total size of @p dst in bytes, including room for the NUL.
+ */
+static inline void str_copy_strip_line_breaks(const char *src, char *dst, size_t dst_size) {
+    if (dst == NULL || dst_size == 0)
+        return;
+
+    size_t out = 0;
+    for (size_t i = 0; src != NULL && src[i] != '\0' && out < dst_size - 1; i++) {
+        char c = src[i];
+        if (str_is_line_break_char(c))
             continue;
         dst[out++] = c;
     }

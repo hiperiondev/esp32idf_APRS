@@ -44,7 +44,7 @@
 #include "objects_items.h"
 #include "sched_time.h" // sched_mono_seconds() / sched_clamp_interval()
 #include "storage.h"    // storage_write_lock() / storage_generation()
-#include "str_append.h" // str_copy_strip_reserved(), str_copy_utf8_safe()
+#include "str_append.h" // str_copy_strip_line_breaks(), str_copy_strip_reserved(), str_copy_utf8_safe()
 
 static const char *TAG = "objitems";
 
@@ -90,18 +90,14 @@ static void unlock(void) {
 // Persistence
 // ---------------------------------------------------------------------------
 
+// Clamps a short coded sub-field (object/item name, signpost token, QRU code)
+// to at most max_chars bytes, dropping any embedded CR, LF or NUL along the
+// way: every one of these fields is written unescaped into the outgoing
+// object/item line (the name as the packet's own addressee, signpost and QRU
+// inside the free-text body), so a line break stored in any of them would
+// inject a second, arbitrary line into that traffic on every future beacon.
 static void clamp_str(char *dst, const char *src, size_t max_chars) {
-    if (!src)
-        src = "";
-    // Copy at most max_chars characters, always NUL-terminating. Written with
-    // an explicit measured length + memcpy (not strncpy) so the ESP-IDF build,
-    // which treats -Wstringop-truncation as an error, is satisfied for the
-    // exactly-max-length case.
-    size_t n = 0;
-    while (n < max_chars && src[n])
-        n++;
-    memcpy(dst, src, n);
-    dst[n] = 0;
+    str_copy_strip_line_breaks(src, dst, max_chars + 1);
 }
 
 // Clamps the free-text comment field the same way clamp_str() clamps every
@@ -113,8 +109,16 @@ static void clamp_str(char *dst, const char *src, size_t max_chars) {
 // truncated here on a plain byte count could leave an incomplete multi-byte
 // sequence permanently stored, to go out on the air that way on every future
 // beacon until the operator happens to retype it.
+//
+// CR and LF are stripped first, into a scratch buffer sized to the largest
+// comment this firmware stores (COMMENT_SIZE, shared with the station/IGate/
+// digipeater/tracker/WX comment fields): both are single-byte ASCII, never a
+// lead or continuation byte of a multi-byte UTF-8 sequence, so removing them
+// ahead of the UTF-8-safe cut cannot itself split a character.
 static void clamp_comment(char *dst, const char *src, size_t dst_size) {
-    str_copy_utf8_safe(src, dst, dst_size);
+    char stripped[COMMENT_SIZE];
+    str_copy_strip_line_breaks(src, stripped, sizeof(stripped) < dst_size ? sizeof(stripped) : dst_size);
+    str_copy_utf8_safe(stripped, dst, dst_size);
 }
 
 static bool load_locked(objitems_t *out, bool *out_missing) {

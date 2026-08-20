@@ -163,8 +163,8 @@ is, in all four layouts: ``|`` and ``~`` are removed, since both are reserved
 for the base-91 comment telemetry group (:ref:`en-telemetry`) that this
 firmware emits of its own accord, and the ``!x!`` no-archive marker is
 prefixed when the station-wide checkbox on the Station page asks for it
-(:ref:`en-beacons`). The stored text is unaffected; only the on-air rendering
-is filtered.
+(:ref:`en-beacons`). A CR or LF is stripped earlier, at storage time, along
+with every other operator-editable field (:ref:`en-telemetry`).
 
 Because the comment sits between the weather tokens and ``xESP`` rather than
 after a delimiter of its own, a comment that happens to open with a weather
