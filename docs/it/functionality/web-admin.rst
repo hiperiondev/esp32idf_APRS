@@ -220,7 +220,10 @@ Feed in tempo reale
 ===================
 
 * ``/lastheard`` — la tabella LAST HEARD (JSON), alimentata sia da RF sia da
-  APRS-IS.
+  APRS-IS. Una stazione ascoltata per l'ultima volta prima che NTP
+  sincronizzasse porta il campo ``time`` vuoto: quando la trama è arrivata
+  l'orologio contava ancora dall'epoca, quindi non c'è alcuna ora del giorno da
+  indicare e nessuna viene inventata.
 * ``/igate_traffic?since=<seq>`` — il delta del log di traffico (JSON). Ogni voce
   porta un'etichetta di direzione (``RX``/``TX``/``DIGI``/``INET2RF``/``RX-IS``),
   l'indicativo DX, il pacchetto grezzo, il riepilogo dei campi decodificati

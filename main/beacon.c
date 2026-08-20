@@ -856,10 +856,14 @@ static void buildBeamErpBlock(int16_t beamDeg, uint16_t erpWatts, char *out, siz
 //
 // A single space separates the last present block from the status text that
 // follows it; with no block present the text follows the DTI directly, and
-// with the locator present the space follows the symbol code. Receivers that
-// understand a given leading field read it out on its own; the rest simply
-// show the whole thing as status text. The configured status text itself is
-// never interpreted: whatever the operator typed is carried verbatim.
+// with the locator present the space follows the symbol code. The separator
+// belongs to the block rather than to the text, so a report that carries
+// neither a leading field nor a frequency block - including one whose blocks
+// the length budget below has just dropped - reads ">My status text", the
+// form APRS101 ch.16 defines. Receivers that understand a given leading field
+// read it out on its own; the rest simply show the whole thing as status
+// text. The configured status text itself is never interpreted: whatever the
+// operator typed is carried verbatim.
 //
 // One optional block follows that text instead of preceding it: the
 // meteor-scatter beam heading and ERP pair, which APRS101 ch.16 defines as
@@ -946,7 +950,16 @@ static int buildStatusPacket(const status_params_t *p, const char *path, char *o
             str_append(infoField, sizeof(infoField), &used, "%s", ts);
         if (useFreq)
             str_append(infoField, sizeof(infoField), &used, "%s", freqBlock);
-        str_append(infoField, sizeof(infoField), &used, " %s", p->statusText);
+        // The separating space is emitted only when a block already occupies
+        // the field past the '>' DTI, so a report carrying neither leading
+        // field nor frequency block puts the operator's text straight after
+        // the DTI. The test reads the running offset rather than the option
+        // flags because it has to hold for every attempt: each retry below
+        // drops a block and rebuilds the field from scratch, and the space
+        // has to go with whatever block it followed.
+        if (used > 1)
+            str_append(infoField, sizeof(infoField), &used, " ");
+        str_append(infoField, sizeof(infoField), &used, "%s", p->statusText);
         if (hp[0])
             str_append(infoField, sizeof(infoField), &used, "%s", hp);
 

@@ -648,7 +648,11 @@ Objetos, Items, Boletines, Estado
        fila pasa al frente de la tabla, y sólo una trama recibida cuenta en él
        —responder la consulta adelanta el gráfico hasta la hora actual pero deja
        intactos los conteos guardados, así que se puede preguntar por una
-       estación tantas veces como se quiera
+       estación tantas veces como se quiera. Nombrar una hora exige un reloj
+       ajustado, así que hasta que NTP sincroniza el gráfico lleva en la hora 0
+       todo lo escuchado de la estación desde el arranque y 0 en el resto; esos
+       conteos se conservan al ajustarse el reloj, y la hora 0 pasa entonces a
+       ser la hora de la primera trama posterior a la sincronización
    * - Capacidades de estación (DTI ``<``)
      - ✅
      - ✅

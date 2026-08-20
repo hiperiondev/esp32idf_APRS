@@ -519,6 +519,13 @@ carry. If it does not fit even on its own, the whole report is refused and the
 reason logged, rather than a truncated — and therefore malformed — status line
 going on the air.
 
+The separating space before the status text belongs to the block that precedes
+it, so it is dropped along with that block: a report left with neither a leading
+field nor a frequency block — because none was configured, or because the budget
+above took both away — reads ``>My status text``, with the operator's words
+immediately after the ``>`` DTI, which is the form APRS101 ch.16 defines. The
+space only ever appears between two things that are both present.
+
 Frequency block
 ===============
 

@@ -199,7 +199,14 @@ inoltre *Query dirette estese* (``query_ext_en``).
        proposito la parola chiave lontana dal primo carattere, poiché un
        messaggio il cui testo inizia con ``?`` è a sua volta una query diretta e
        un peer che esegua un risponditore leggerebbe la risposta come una nuova
-       domanda.
+       domanda. Identificare un'ora richiede un orologio di parete reale, perciò
+       finché NTP non ha sincronizzato dall'avvio — su una stazione senza rotta
+       verso un server di tempo, per tutta la sua vita in funzione — il grafico
+       porta nell'ora 0 tutto ciò che è stato ascoltato da quella stazione
+       dall'avvio e 0 in ogni altra casella. Nulla va perduto: quei conteggi
+       restano al loro posto quando l'orologio viene finalmente impostato,
+       l'ora 0 diventa l'ora in cui arriva la prima trama successiva alla
+       sincronizzazione, e da lì il grafico invecchia normalmente.
    * - ``?APRSM``
      - Reinvia i messaggi pendenti di questa stazione per l'operatore che
        interroga, fino a ``MSG_QUERY_BURST_MAX`` (3) trame per query. Ciò che

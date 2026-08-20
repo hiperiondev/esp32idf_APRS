@@ -33,6 +33,12 @@
 #define LASTHEARD_CALL_LEN 12
 #define LASTHEARD_PATH_LEN 48
 
+// Wall-clock sanity floor (2020-09-13), the same threshold the rest of the
+// firmware tests. time() below this means SNTP has not synced since boot, so
+// the value is an uptime counter rather than a date: no epoch hour number can
+// be derived from it, and no time of day can be shown for it.
+#define LASTHEARD_CLOCK_VALID_EPOCH 1600000000LL
+
 typedef struct {
     time_t time;
     char callsign[LASTHEARD_CALL_LEN];
@@ -61,8 +67,16 @@ typedef struct {
     // hour_slot is the epoch hour number hourly[0] belongs to, so lastheard_add()
     // can tell how many whole hours to roll the histogram forward on the next
     // frame from this station.
+    //
+    // histogram_valid says whether hour_slot holds such a number at all. It is
+    // a field of its own rather than a reserved hour_slot value because 0 is a
+    // perfectly real epoch hour: it is the one every frame carries during the
+    // first hour after boot, before SNTP steps the clock. Until it is set,
+    // hourly[0] is a provisional bucket holding every frame heard so far, and
+    // no rolling is attempted.
     uint16_t hourly[LASTHEARD_HEARD_HOURS];
     time_t hour_slot;
+    bool histogram_valid;
 } lastheard_entry_t;
 
 // One slot per STATION, never per packet: s_buf[0] is the most recently heard
@@ -78,9 +92,10 @@ static SemaphoreHandle_t s_lock = NULL;
 static bool s_inited = false;
 
 // Roll one entry's hourly histogram forward to the current clock hour, and
-// optionally count one packet into it. A brand-new entry (hour_slot == 0)
-// starts with a histogram of all zero except the current hour. A station heard
-// again inside the same clock hour it was last heard in just adds to hourly[0].
+// optionally count one packet into it. A brand-new entry (histogram_valid false,
+// from the cleared row the insertion path builds) starts with a histogram of all
+// zero except the current hour. A station heard again inside the same clock hour
+// it was last heard in just adds to hourly[0].
 // A station heard again after N whole hours have passed shifts the histogram
 // right by N slots (zero-filling the hours that had no traffic) before counting
 // this packet, so a station that goes briefly silent still reads as silent for
@@ -94,28 +109,42 @@ static bool s_inited = false;
 // real packet, so a station sitting at UINT16_MAX for the current hour - where
 // the saturation guard below stops counting - is not silently drained by every
 // query that reads it.
+//
+// Rolling means "shift by the number of whole hours elapsed since hour_slot",
+// which only has an answer once the wall clock is real. Before the first SNTP
+// sync time() counts from the epoch, so the whole roll is skipped and every
+// frame heard in that window lands in hourly[0] - one provisional bucket the
+// first frame seen under a synchronised clock adopts as the current hour. That
+// keeps a station on a link with no route to an NTP server reading as heard
+// rather than as a graph wiped on every frame.
 static void rollHourlyHistogram(lastheard_entry_t *e, time_t now, bool count_packet) {
-    time_t nowHour = now / 3600;
+    if ((int64_t)now >= LASTHEARD_CLOCK_VALID_EPOCH) {
+        time_t nowHour = now / 3600;
 
-    if (e->hour_slot == 0) {
-        // First frame ever recorded for this entry.
-        memset(e->hourly, 0, sizeof(e->hourly));
-        e->hour_slot = nowHour;
-    } else if (nowHour > e->hour_slot) {
-        time_t elapsed = nowHour - e->hour_slot;
-        if (elapsed >= LASTHEARD_HEARD_HOURS) {
-            // More than a full graph's worth of hours passed: every slot is
-            // stale, so start clean rather than shifting in zeros one at a
-            // time for no visible effect.
-            memset(e->hourly, 0, sizeof(e->hourly));
-        } else {
-            memmove(&e->hourly[elapsed], &e->hourly[0], (LASTHEARD_HEARD_HOURS - elapsed) * sizeof(e->hourly[0]));
-            memset(e->hourly, 0, elapsed * sizeof(e->hourly[0]));
+        if (!e->histogram_valid) {
+            // First frame recorded for this entry under a synchronised clock.
+            // Whatever the provisional bucket already holds stays in hourly[0]:
+            // those frames were heard, and the current hour is the nearest hour
+            // that can honestly be claimed for them.
+            e->hour_slot = nowHour;
+            e->histogram_valid = true;
+        } else if (nowHour > e->hour_slot) {
+            time_t elapsed = nowHour - e->hour_slot;
+            if (elapsed >= LASTHEARD_HEARD_HOURS) {
+                // More than a full graph's worth of hours passed: every slot is
+                // stale, so start clean rather than shifting in zeros one at a
+                // time for no visible effect.
+                memset(e->hourly, 0, sizeof(e->hourly));
+            } else {
+                memmove(&e->hourly[elapsed], &e->hourly[0], (LASTHEARD_HEARD_HOURS - elapsed) * sizeof(e->hourly[0]));
+                memset(e->hourly, 0, elapsed * sizeof(e->hourly[0]));
+            }
+            e->hour_slot = nowHour;
         }
-        e->hour_slot = nowHour;
+        // nowHour < e->hour_slot only if the wall clock stepped backwards (e.g.
+        // an NTP correction); the histogram is left as-is rather than guessed
+        // at.
     }
-    // nowHour < e->hour_slot only if the wall clock stepped backwards (e.g. an
-    // NTP correction); the histogram is left as-is rather than guessed at.
 
     if (count_packet && e->hourly[0] < UINT16_MAX)
         e->hourly[0]++;
@@ -194,9 +223,9 @@ void lastheard_add(const char *callsign, const char *path, bool via_rf, bool dir
         shift_from = found;
     } else {
         // New station: a cleared row, which is also what tells
-        // rollHourlyHistogram() to start a fresh histogram (hour_slot == 0).
-        // Everything moves down one slot, dropping the oldest station once the
-        // table is full.
+        // rollHourlyHistogram() to start a fresh histogram (histogram_valid
+        // false, hourly all zero). Everything moves down one slot, dropping the
+        // oldest station once the table is full.
         memset(&entry, 0, sizeof(entry));
         entry.packets = 1;
         if (s_count < LASTHEARD_CAPACITY)
@@ -207,7 +236,15 @@ void lastheard_add(const char *callsign, const char *path, bool via_rf, bool dir
     time_t now = time(NULL);
     rollHourlyHistogram(&entry, now, true);
 
-    entry.time = now;
+    // The displayed stamp is only written from a synchronised clock: an uptime
+    // counter rendered as a time of day would put "00:0x:xxZ" on the dashboard
+    // next to a real reception, which reads as a genuine - and wrong - UTC
+    // time rather than as the missing value it is. 0 means "heard, but at an
+    // unknown time", and lastheard_dump_json() renders it as an empty field.
+    // The per-channel stamps below keep taking the raw value: the gate tests
+    // them as differences against the same clock, which stays meaningful
+    // before a sync, and a pre-sync stamp reads as long expired afterwards.
+    entry.time = ((int64_t)now >= LASTHEARD_CLOCK_VALID_EPOCH) ? now : 0;
     strncpy(entry.callsign, call, sizeof(entry.callsign) - 1);
     entry.callsign[sizeof(entry.callsign) - 1] = 0;
     snprintf(entry.path, sizeof(entry.path), "%s: %s", via_rf ? "RF" : "INET", (path && path[0]) ? path : "DIRECT");
@@ -399,11 +436,17 @@ size_t lastheard_dump_json(char *out, size_t out_size) {
 
         // UTC, and labelled as such: the firmware runs with TZ=UTC0 (see
         // time_sync.c), so gmtime_r() states the timescale these stamps are
-        // really on instead of leaving it to the process timezone.
-        struct tm tmv;
-        gmtime_r(&e->time, &tmv);
+        // really on instead of leaving it to the process timezone. A row
+        // stamped 0 was heard before the clock was set and has no time of day
+        // to state, so its field goes out empty for the client to render as it
+        // sees fit.
         char strTime[12];
-        snprintf(strTime, sizeof(strTime), "%02d:%02d:%02dZ", tmv.tm_hour, tmv.tm_min, tmv.tm_sec);
+        strTime[0] = 0;
+        if (e->time != 0) {
+            struct tm tmv;
+            gmtime_r(&e->time, &tmv);
+            snprintf(strTime, sizeof(strTime), "%02d:%02d:%02dZ", tmv.tm_hour, tmv.tm_min, tmv.tm_sec);
+        }
 
         char call_esc[LASTHEARD_CALL_LEN * 2];
         char path_esc[LASTHEARD_PATH_LEN * 2];

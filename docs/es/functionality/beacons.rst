@@ -544,6 +544,14 @@ para llevar. Si no entra ni siquiera por sí solo, se rechaza el reporte complet
 y se registra el motivo, en vez de poner al aire una línea de estado truncada —
 y por lo tanto malformada.
 
+El espacio separador que precede al texto de estado pertenece al bloque que va
+antes, así que se descarta junto con ese bloque: un reporte que queda sin campo
+inicial y sin bloque de frecuencia — porque no se configuró ninguno, o porque el
+presupuesto de arriba se llevó ambos — sale como ``>Mi texto de estado``, con las
+palabras del operador inmediatamente después del DTI ``>``, que es la forma que
+define APRS101 cap.16. El espacio solo aparece entre dos elementos que están
+ambos presentes.
+
 Bloque de frecuencia
 ====================
 

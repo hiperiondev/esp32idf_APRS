@@ -552,6 +552,14 @@ rapporto esiste. Se non entra nemmeno da solo, l'intero rapporto viene rifiutato
 e il motivo registrato, invece di mettere in aria una riga di stato troncata — e
 quindi malformata.
 
+Lo spazio separatore che precede il testo di stato appartiene al blocco che lo
+precede, quindi viene scartato insieme a quel blocco: un rapporto rimasto senza
+campo iniziale e senza blocco di frequenza — perché non ne è stato configurato
+alcuno, oppure perché il budget qui sopra li ha tolti entrambi — esce come
+``>Il mio testo di stato``, con le parole dell'operatore subito dopo il DTI
+``>``, che è la forma definita da APRS101 cap.16. Lo spazio compare solo fra due
+elementi entrambi presenti.
+
 Blocco di frequenza
 ===================
 

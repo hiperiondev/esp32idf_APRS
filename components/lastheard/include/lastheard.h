@@ -32,8 +32,12 @@
  * defines as the answer to the "?APRSH" query.
  *
  * Thread-safe: lastheard_add() may be called from any task (radio RX callback).
- * Entries are timestamped with time(NULL) (wall clock, once NTP has synced) and
- * rendered as UTC so the web client can show a human time-of-day.
+ * Entries are timestamped with time(NULL) and rendered as UTC so the web client
+ * can show a human time-of-day. A frame heard before the first SNTP sync has no
+ * time of day to show - time() is still counting from the epoch - so it is
+ * stored unstamped and serialized with an empty time field rather than as a
+ * time near midnight; the same applies to the hourly histogram, which does not
+ * roll until the clock is real (see ::lastheard_heard_history).
  */
 
 #ifndef LASTHEARD_H
@@ -74,7 +78,10 @@ void lastheard_init(void);
  * that has elapsed since the entry was last touched is rolled into the
  * histogram as a zero count, then the current hour's slot is incremented, so
  * ::lastheard_heard_history always reflects real elapsed wall-clock hours
- * rather than just call counts.
+ * rather than just call counts. Hours can only be counted once the wall clock
+ * has been set, so frames that arrive before the first SNTP sync are all
+ * accumulated into the current-hour slot and the first frame seen afterwards
+ * adopts that slot as the hour it is then in.
  *
  * @param callsign   Source callsign, e.g. "HS5TQA-7" (already includes SSID
  *                    if non-zero). Stored upper-cased and matched without
@@ -230,6 +237,12 @@ int lastheard_directs(char *out, size_t out_size);
  * with no traffic from the station read as 0, including any hour that
  * elapsed while the table held no entry for it yet.
  *
+ * While the wall clock is unset (no SNTP sync since boot) no hour can be
+ * identified, so the whole graph is the running count of everything heard from
+ * the station since boot, in slot 0, and the remaining slots read 0. The counts
+ * are kept when the clock is finally set: slot 0 becomes the hour of the first
+ * frame seen afterwards and the graph ages normally from there.
+ *
  * @param callsign Station to look up, matched without regard to case against
  *                 the stored (SSID-bearing) callsign.
  * @param out      Out: @c LASTHEARD_HEARD_HOURS counts, index 0 = current
@@ -245,8 +258,10 @@ bool lastheard_heard_history(const char *callsign, uint16_t out[LASTHEARD_HEARD_
  *
  * Each element looks like
  * @c {"time":"HH:MM:SSZ","call":"HS5TQA-7","path":"RF: WIDE1-1","sym":"91-1","packets":3}.
- * The trailing @c Z marks the time as UTC. The result is NUL-terminated and
- * truncated to fit @p out_size.
+ * The trailing @c Z marks the time as UTC. A station last heard before the
+ * clock was set carries an empty @c time string instead, since its stamp names
+ * no time of day; every other field is present as usual. The result is
+ * NUL-terminated and truncated to fit @p out_size.
  *
  * @param out      Destination buffer.
  * @param out_size Size of @p out, in bytes.

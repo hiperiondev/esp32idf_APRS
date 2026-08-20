@@ -188,7 +188,13 @@ available in that set; the remaining, list-style ones additionally require
        ``Usage: ?APRSH <call>`` — the wording keeps the keyword off the first
        character on purpose, since a message payload opening with ``?`` is a
        directed query in its own right and a peer running a responder would
-       read the reply as a fresh question.
+       read the reply as a fresh question. Identifying an hour needs a real
+       wall clock, so while NTP has not synced since boot — on a station with
+       no route to a time server, that is its whole running life — the graph
+       carries everything heard from the station since boot in hour 0 and 0 in
+       every other slot. Nothing is lost: those counts stay in place when the
+       clock is finally set, hour 0 becomes the hour the first frame after the
+       sync arrives in, and the graph ages normally from there.
    * - ``?APRSM``
      - Re-sends this station's pending messages for the querying operator, up to
        ``MSG_QUERY_BURST_MAX`` (3) frames per query. Anything still queued

@@ -197,7 +197,14 @@ además *Consultas dirigidas extendidas* (``query_ext_en``).
        palabra clave fuera del primer carácter a propósito, ya que un mensaje
        cuyo texto empieza con ``?`` es en sí mismo una consulta dirigida y un
        par que corra un respondedor leería la respuesta como una pregunta
-       nueva.
+       nueva. Identificar una hora exige un reloj de pared real, así que
+       mientras NTP no haya sincronizado desde el arranque — en una estación sin
+       ruta hacia un servidor de tiempo, toda su vida en marcha — el gráfico
+       lleva en la hora 0 todo lo escuchado de esa estación desde el arranque y
+       0 en las demás ranuras. No se pierde nada: esos conteos se conservan
+       cuando por fin se ajusta el reloj, la hora 0 pasa a ser la hora en que
+       llega la primera trama posterior a la sincronización, y a partir de ahí
+       el gráfico envejece con normalidad.
    * - ``?APRSM``
      - Reenvía los mensajes pendientes de esta estación para el operador que
        consulta, hasta ``MSG_QUERY_BURST_MAX`` (3) tramas por consulta. Lo que

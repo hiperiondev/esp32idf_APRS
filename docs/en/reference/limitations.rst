@@ -623,7 +623,15 @@ Objects, Items, Bulletins, Status
        station's row and travels with it as the row moves to the front of the
        table, and only a received frame ever counts into it — answering the
        query rolls the graph forward to the current hour but leaves the stored
-       counts alone, so a station can be asked about as often as one likes
+       counts alone, so a station can be asked about as often as one likes.
+       Naming an hour needs a set clock, so until NTP syncs the graph carries
+       everything heard from the station since boot in hour 0 and 0 elsewhere;
+       those counts are kept when the clock is set, and hour 0 then becomes the
+       hour of the first frame after the sync.
+       Naming an hour needs a set wall clock, so until NTP has synced the graph
+       holds everything heard from the station since boot in hour 0 and 0
+       elsewhere; those counts are kept when the clock is set, and hour 0 then
+       becomes the hour of the first frame after the sync
    * - Station Capabilities (``<`` DTI)
      - ✅
      - ✅

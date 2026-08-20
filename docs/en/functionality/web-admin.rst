@@ -201,7 +201,10 @@ decoded.
 Live feeds
 ==========
 
-* ``/lastheard`` — the LAST HEARD table (JSON), fed from both RF and APRS-IS.
+* ``/lastheard`` — the LAST HEARD table (JSON), fed from both RF and APRS-IS. A
+  station last heard before NTP synced carries an empty ``time`` field: the
+  clock was still counting from the epoch when the frame arrived, so there is no
+  time of day to state and none is invented.
 * ``/igate_traffic?since=<seq>`` — the traffic log delta (JSON). Each entry
   carries a direction tag (``RX``/``TX``/``DIGI``/``INET2RF``/``RX-IS``), the DX
   callsign, the raw packet, the decoded-fields summary (``dec``, empty when the

@@ -653,7 +653,12 @@ Oggetti, Item, Bollettini, Stato
        la riga passa in testa alla tabella, e solo una trama ricevuta viene
        conteggiata al suo interno — rispondere alla query porta avanti il grafico
        fino all'ora corrente ma lascia intatti i conteggi memorizzati, quindi si
-       può chiedere di una stazione quante volte si vuole
+       può chiedere di una stazione quante volte si vuole. Nominare un'ora
+       richiede un orologio impostato, perciò finché NTP non ha sincronizzato il
+       grafico porta nell'ora 0 tutto ciò che è stato ascoltato dalla stazione
+       dall'avvio e 0 altrove; quei conteggi vengono mantenuti quando l'orologio
+       viene impostato, e l'ora 0 diventa allora l'ora della prima trama
+       successiva alla sincronizzazione
    * - Capacità di stazione (DTI ``<``)
      - ✅
      - ✅
