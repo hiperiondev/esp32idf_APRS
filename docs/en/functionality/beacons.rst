@@ -689,6 +689,44 @@ each spanning its base plus 99 MHz. A frequency above 999.999 MHz outside all of
 them has no 10-byte form at all, so no block is emitted and the omission is
 logged — an 11-byte field would shift every byte a receiver reads after it.
 
+Own-station beacons (this section) always emit the plain CTCSS-tone form,
+since ``g_config`` has no DCS/narrowband/split-RX source; the Objects/Items
+repeater block below is where the operator can choose those three extra
+sub-fields.
+
+Objects/Items repeater sub-fields
+=================================
+
+The "Objects and Items" page's repeater block builds the same fixed 10-byte
+frequency field described above, plus three further ``freqspec.txt``
+sub-fields an element can opt into:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 26 24 50
+
+   * - Sub-field
+     - Example
+     - Meaning
+   * - DCS code
+     - ``D023``
+     - Replaces the CTCSS tone sub-field with a DCS code (three octal
+       digits); the two share one slot and are mutually exclusive.
+   * - Narrowband flag
+     - ``t077`` / ``d023``
+     - Lower-cases the tone/DCS sub-field's leading letter ('T'/'D' becomes
+       't'/'d') to flag narrowband modulation; has no other on-air effect.
+   * - Split receive frequency
+     - ``146.000rx``
+     - A second, independent 10-byte field (only defined in the
+       100.000-999.999 MHz form) emitted right after the primary
+       (transmit) frequency, for a repeater whose receive frequency is not
+       the standard duplex offset - e.g. a cross-band repeater.
+
+All three are off by default, in which case the block is byte-for-byte the
+same 10-byte-frequency-plus-CTCSS-tone form the own-station beacons above
+build.
+
 Timestamps are UTC
 ==================
 

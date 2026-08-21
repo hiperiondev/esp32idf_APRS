@@ -545,8 +545,9 @@ static int buildMicePositionPacket(const beacon_params_t *p, const char *path, c
     if (p->daoEnable && p->ambiguity == 0)
         aprs_dao_build(p->lat, p->lon, dao);
 
-    char freqBlock[24];
-    objitem_build_freq_block(p->freqMhz, p->freqToneTenths, p->freqDuplex, p->freqOffsetKhz, 0, false, freqBlock, sizeof(freqBlock));
+    char freqBlock[OBJITEM_FREQ_BLOCK_BUF_SIZE];
+    objitem_build_freq_block(p->freqMhz, p->freqToneTenths, p->freqDuplex, p->freqOffsetKhz, 0, false, false, 0, false, false, 0.0f, freqBlock,
+                              sizeof(freqBlock));
 
     // Data extension (PHG / RNG / DFS / DF). Mic-E has no 7-byte slot of its own
     // after a symbol code, but the 1.2 revision states that the Mic-E text
@@ -763,8 +764,9 @@ static int buildPositionPacket(const beacon_params_t *p, const char *path, char 
     // DAO bytes trailing it.
     char comment[COMMENT_SIZE];
     {
-        char freqBlock[24];
-        objitem_build_freq_block(p->freqMhz, p->freqToneTenths, p->freqDuplex, p->freqOffsetKhz, 0, false, freqBlock, sizeof(freqBlock));
+        char freqBlock[OBJITEM_FREQ_BLOCK_BUF_SIZE];
+        objitem_build_freq_block(p->freqMhz, p->freqToneTenths, p->freqDuplex, p->freqOffsetKhz, 0, false, false, 0, false, false, 0.0f, freqBlock,
+                                  sizeof(freqBlock));
 
         size_t cmtTlmLen = strlen(p->cmtTlm);
         size_t daoLen = strlen(dao);
@@ -951,8 +953,9 @@ static int buildStatusPacket(const status_params_t *p, const char *path, char *o
     else
         snprintf(callField, sizeof(callField), "%s", p->call);
 
-    char freqBlock[24];
-    objitem_build_freq_block(p->freqMhz, p->freqToneTenths, p->freqDuplex, p->freqOffsetKhz, 0, false, freqBlock, sizeof(freqBlock));
+    char freqBlock[OBJITEM_FREQ_BLOCK_BUF_SIZE];
+    objitem_build_freq_block(p->freqMhz, p->freqToneTenths, p->freqDuplex, p->freqOffsetKhz, 0, false, false, 0, false, false, 0.0f, freqBlock,
+                              sizeof(freqBlock));
 
     // The grid locator takes precedence over the timestamp: APRS101 ch.16
     // allows only one of the two immediately after the '>' DTI, and the

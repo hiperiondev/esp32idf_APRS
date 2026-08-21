@@ -737,6 +737,46 @@ fuori da tutte queste non ha alcuna forma da 10 byte, quindi nessun blocco viene
 emesso e l'omissione viene registrata — un campo da 11 byte sposterebbe ogni
 byte che un ricevitore legge dopo di esso.
 
+I beacon della propria stazione (questa sezione) emettono sempre la forma
+semplice a tono CTCSS, poiché ``g_config`` non ha una fonte per DCS/banda
+stretta/RX separata; il blocco ripetitore di Oggetti/Elementi qui sotto è
+dove l'operatore può scegliere questi tre sub-campi aggiuntivi.
+
+Sub-campi ripetitore di Oggetti/Elementi
+=========================================
+
+Il blocco ripetitore della pagina "Oggetti ed Elementi" costruisce lo stesso
+campo fisso da 10 byte della frequenza descritto sopra, più altri tre
+sub-campi di ``freqspec.txt`` che un elemento può attivare:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 26 24 50
+
+   * - Sub-campo
+     - Esempio
+     - Significato
+   * - Codice DCS
+     - ``D023``
+     - Sostituisce il sub-campo del tono CTCSS con un codice DCS (tre cifre
+       ottali); i due condividono uno stesso spazio e sono mutuamente
+       esclusivi.
+   * - Flag banda stretta
+     - ``t077`` / ``d023``
+     - Rende minuscola la lettera iniziale del sub-campo tono/DCS ('T'/'D'
+       diventa 't'/'d') per segnalare la modulazione a banda stretta; non ha
+       altro effetto sull'aria.
+   * - Frequenza di ricezione separata
+     - ``146.000rx``
+     - Un secondo campo indipendente da 10 byte (definito solo nella forma
+       100.000-999.999 MHz) emesso subito dopo la frequenza primaria (di
+       trasmissione), per un ripetitore la cui frequenza di ricezione non è
+       lo shift duplex standard - ad esempio un ripetitore cross-band.
+
+Tutti e tre sono disattivati per impostazione predefinita, nel qual caso il
+blocco è, byte per byte, la stessa forma da 10 byte di frequenza più tono
+CTCSS costruita dai beacon della propria stazione descritti sopra.
+
 I timestamp sono UTC
 ====================
 

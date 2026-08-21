@@ -312,6 +312,25 @@ static bool load_locked(objitems_t *out, bool *out_missing) {
             v = cJSON_GetObjectItem(o, "rngKm");
             b->range_km = cJSON_IsTrue(v);
 
+            // -- DCS code, narrowband flag and split RX frequency
+            //    (freqspec.txt "Dnnn", "tnnn"/"dnnn", "FFF.FFFrx"). --
+            v = cJSON_GetObjectItem(o, "dcsEn");
+            b->dcs_enable = cJSON_IsTrue(v);
+            v = cJSON_GetObjectItem(o, "dcs");
+            if (cJSON_IsNumber(v) && v->valuedouble >= 0) {
+                int c = (int)v->valuedouble;
+                if (c > 511)
+                    c = 511;
+                b->dcs_code = (uint16_t)c;
+            }
+            v = cJSON_GetObjectItem(o, "narrow");
+            b->narrow = cJSON_IsTrue(v);
+            v = cJSON_GetObjectItem(o, "rxEn");
+            b->rx_freq_enable = cJSON_IsTrue(v);
+            v = cJSON_GetObjectItem(o, "rxFreq");
+            if (cJSON_IsNumber(v) && v->valuedouble > 0)
+                b->rx_freq_mhz = (float)v->valuedouble;
+
             // -- Digipeat paths (YAAC "Digipeat paths"). --
             v = cJSON_GetObjectItem(o, "pmask");
             if (cJSON_IsNumber(v)) {
@@ -430,6 +449,11 @@ static bool save_locked(const objitems_t *in) {
         fprintf(f, ",\"tone\":%u", (unsigned)b->tone_tenths);
         fprintf(f, ",\"rng\":%u", (unsigned)b->range);
         fprintf(f, ",\"rngKm\":%s", b->range_km ? "true" : "false");
+        fprintf(f, ",\"dcsEn\":%s", b->dcs_enable ? "true" : "false");
+        fprintf(f, ",\"dcs\":%u", (unsigned)b->dcs_code);
+        fprintf(f, ",\"narrow\":%s", b->narrow ? "true" : "false");
+        fprintf(f, ",\"rxEn\":%s", b->rx_freq_enable ? "true" : "false");
+        fprintf(f, ",\"rxFreq\":%.4f", (double)b->rx_freq_mhz);
         fprintf(f, ",\"pmask\":%u", (unsigned)b->path_mask);
         fputs(",\"qru\":", f);
         json_write_escaped(f, qru);
@@ -626,8 +650,32 @@ static bool freq_field_format(long khz, char *out) {
     return true;
 }
 
-void objitem_build_freq_block(float freq_mhz, uint16_t tone_tenths, int8_t duplex, uint16_t offset_khz, uint16_t range, bool range_km, char *out,
-                              size_t out_size) {
+// Width, in bytes, of the split-receive-frequency sub-field's own text
+// ("FFF.FFFrx", nine bytes - one shorter than the primary field, since "rx"
+// is two bytes where the primary field's "MHz" is three).
+#define RX_FIELD_BYTES 9
+
+// Format the split-receive-frequency sub-field ("FFF.FFFrx") for `khz` into
+// `out`, which must hold RX_FIELD_BYTES + 1 bytes. Returns false, leaving
+// `out` empty, for a frequency outside the 100.000-999.999 MHz range:
+// freqspec.txt shows this sub-field only in the 1 kHz decimal form, so a
+// receive frequency below 100 MHz or above 999.999 MHz has no representation
+// for it and is skipped rather than shipped in a mismatched width.
+static bool freq_field_format_rx(long khz, char *out) {
+    if (khz < 100000L || khz > 999999L) {
+        out[0] = 0;
+        return false;
+    }
+    int n = snprintf(out, RX_FIELD_BYTES + 1, "%3ld.%03ldrx", khz / 1000, khz % 1000);
+    if (n != RX_FIELD_BYTES) {
+        out[0] = 0;
+        return false;
+    }
+    return true;
+}
+
+void objitem_build_freq_block(float freq_mhz, uint16_t tone_tenths, int8_t duplex, uint16_t offset_khz, uint16_t range, bool range_km, bool dcs_enable,
+                              uint16_t dcs_code, bool narrow, bool rx_freq_enable, float rx_freq_mhz, char *out, size_t out_size) {
     if (out_size == 0)
         return;
     out[0] = 0;
@@ -653,12 +701,38 @@ void objitem_build_freq_block(float freq_mhz, uint16_t tone_tenths, int8_t duple
     }
     size_t used = (size_t)n;
 
-    // Subaudible tone: "Tnnn" (integer Hz) when set, else "Toff".
+    // Split transmit/receive frequency: "FFF.FFFrx", right after the primary
+    // frequency field and before every other sub-field, when the receive
+    // frequency is not the standard duplex offset from freq_mhz.
+    if (rx_freq_enable && rx_freq_mhz > 0.0f && used < out_size) {
+        long rx_khz = lroundf(rx_freq_mhz * 1000.0f);
+        char rx_field[RX_FIELD_BYTES + 1];
+        if (rx_khz > 0 && freq_field_format_rx(rx_khz, rx_field)) {
+            n = snprintf(out + used, out_size - used, " %s", rx_field);
+            if (n > 0 && (size_t)n < out_size - used)
+                used += (size_t)n;
+        }
+    }
+
+    // Tone/DCS slot: CTCSS tone "Tnnn" (integer Hz) or "Toff" when unset, or
+    // the DCS code "Dnnn" (three octal digits) when dcs_enable is set - the
+    // two share one slot, per freqspec.txt. Either way, a set narrow flag
+    // lower-cases the slot's leading letter, the spec's narrowband-modulation
+    // marker.
     if (used < out_size) {
-        if (tone_tenths > 0)
-            n = snprintf(out + used, out_size - used, " T%03u", (unsigned)(tone_tenths / 10u));
+        char letter;
+        if (dcs_enable)
+            letter = narrow ? 'd' : 'D';
         else
-            n = snprintf(out + used, out_size - used, " Toff");
+            letter = narrow ? 't' : 'T';
+        if (dcs_enable) {
+            unsigned code = dcs_code > 511u ? 511u : dcs_code;
+            n = snprintf(out + used, out_size - used, " %c%03o", letter, code);
+        } else if (tone_tenths > 0) {
+            n = snprintf(out + used, out_size - used, " %c%03u", letter, (unsigned)(tone_tenths / 10u));
+        } else {
+            n = snprintf(out + used, out_size - used, " %coff", letter);
+        }
         if (n > 0 && (size_t)n < out_size - used)
             used += (size_t)n;
     }
@@ -684,16 +758,18 @@ void objitem_build_freq_block(float freq_mhz, uint16_t tone_tenths, int8_t duple
     }
 }
 
-// Build the standard APRS frequency block (the fixed ten-byte frequency field
-// followed by "Tnnn", the duplex shift and the coverage range) into `out`, or
-// the empty string when no monitor frequency is configured. This is what
-// carries YAAC's monitor frequency, subaudible tone, duplex direction and
-// range; by convention it must be the first thing in the comment text so
-// other stations' radios can auto-tune from it. Thin wrapper over
-// objitem_build_freq_block() so the element's own stored sub-fields feed the
-// shared builder.
+// Build the standard APRS frequency block (the fixed ten-byte frequency
+// field, the optional split-receive-frequency sub-field, the tone/DCS slot,
+// the duplex shift and the coverage range) into `out`, or the empty string
+// when no monitor frequency is configured. This is what carries YAAC's
+// monitor frequency, subaudible tone or DCS code, narrowband flag, duplex
+// direction, split receive frequency and range; by convention it must be the
+// first thing in the comment text so other stations' radios can auto-tune
+// from it. Thin wrapper over objitem_build_freq_block() so the element's own
+// stored sub-fields feed the shared builder.
 static void build_freq_block(const objitem_t *b, char *out, size_t out_size) {
-    objitem_build_freq_block(b->freq_mhz, b->tone_tenths, b->duplex, b->offset_khz, b->range, b->range_km, out, out_size);
+    objitem_build_freq_block(b->freq_mhz, b->tone_tenths, b->duplex, b->offset_khz, b->range, b->range_km, b->dcs_enable, b->dcs_code, b->narrow,
+                              b->rx_freq_enable, b->rx_freq_mhz, out, out_size);
 }
 
 // Build the 7-character APRS "PHGphgd" Data Extension from the element's stored
@@ -875,7 +951,7 @@ static void objitem_build_info_field(const objitem_t *b, bool live, char *out, s
         snprintf(corridor, sizeof(corridor), "{%u}", w);
     }
 
-    char freq[40];
+    char freq[OBJITEM_FREQ_BLOCK_BUF_SIZE];
     build_freq_block(b, freq, sizeof(freq));
     char comment[OBJITEM_COMMENT_MAX + 1];
     str_copy_strip_reserved(b->comment, comment, sizeof(comment));

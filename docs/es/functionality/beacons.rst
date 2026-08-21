@@ -727,6 +727,47 @@ fuera de todas ellas no tiene ninguna forma de 10 bytes, así que no se emite
 bloque y se registra la omisión — un campo de 11 bytes correría todos los bytes
 que un receptor lee después de él.
 
+Las balizas de la propia estación (esta sección) siempre emiten la forma
+simple de tono CTCSS, ya que ``g_config`` no tiene una fuente de DCS/banda
+estrecha/RX dividido; el bloque de repetidor de Objetos/Ítems, más abajo, es
+donde el operador puede elegir esos tres sub-campos adicionales.
+
+Sub-campos de repetidor de Objetos/Ítems
+=========================================
+
+El bloque de repetidor de la página "Objetos e Ítems" construye el mismo
+campo fijo de 10 bytes de frecuencia descrito arriba, más otros tres
+sub-campos de ``freqspec.txt`` que un elemento puede activar:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 26 24 50
+
+   * - Sub-campo
+     - Ejemplo
+     - Significado
+   * - Código DCS
+     - ``D023``
+     - Reemplaza el sub-campo de tono CTCSS por un código DCS (tres dígitos
+       octales); ambos comparten un solo espacio y son mutuamente
+       excluyentes.
+   * - Bandera de banda estrecha
+     - ``t077`` / ``d023``
+     - Pone en minúscula la letra inicial del sub-campo de tono/DCS ('T'/'D'
+       pasa a 't'/'d') para señalar modulación de banda estrecha; no tiene
+       ningún otro efecto en el aire.
+   * - Frecuencia de recepción dividida
+     - ``146.000rx``
+     - Un segundo campo de 10 bytes independiente (solo definido en la forma
+       100.000-999.999 MHz) emitido justo después de la frecuencia primaria
+       (de transmisión), para un repetidor cuya frecuencia de recepción no
+       es el desplazamiento dúplex estándar - por ejemplo, un repetidor
+       cruzado de banda.
+
+Los tres están desactivados por defecto, en cuyo caso el bloque es, byte a
+byte, la misma forma de 10 bytes de frecuencia más tono CTCSS que construyen
+las balizas de la propia estación descritas arriba.
+
 Las marcas de tiempo son UTC
 ============================
 

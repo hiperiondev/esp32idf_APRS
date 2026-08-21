@@ -122,6 +122,16 @@
 #define OBJITEM_SIGNPOST_MAX 3
 
 /**
+ * @brief Buffer size, in bytes, that safely holds the longest
+ * ::objitem_build_freq_block output: ten-byte frequency, its own leading
+ * space plus the nine-byte "FFF.FFFrx" sub-field, a leading space plus the
+ * four-byte tone/DCS sub-field, a leading space plus the four-byte duplex
+ * shift, a leading space plus the five-byte range sub-field, and the NUL
+ * terminator (37 bytes of content, rounded up for headroom).
+ */
+#define OBJITEM_FREQ_BLOCK_BUF_SIZE 38
+
+/**
  * @name APRS Area Object descriptor (APRS101 chapter 11)
  *
  * An element whose symbol is the Area symbol (`\l`, alternate table) replaces
@@ -223,8 +233,9 @@ typedef enum {
  * the Signpost text
  * (@c signpost) for the Signpost symbol ('\\','m'); and the repeater frequency
  * block (@c freq_mhz / @c offset_khz / @c duplex / @c tone_tenths / @c range /
- * @c range_km) for the Antenna/repeater symbols, emitted at the very start of
- * the comment text.
+ * @c range_km / @c dcs_enable / @c dcs_code / @c narrow / @c rx_freq_enable /
+ * @c rx_freq_mhz) for the Antenna/repeater symbols, emitted at the very start
+ * of the comment text.
  * The DF ("/BRG/NRQ") block (@c df_*) is symbol-gated too, and more strictly:
  * APRS101 chapter 8 states that BRG/NRQ is only meaningful when the Symbol
  * Table ID is @c '/' and the Symbol Code is @c '\\', so it is appended to the
@@ -293,9 +304,23 @@ typedef struct {
                              ::objitem_build_freq_block) at the start of the comment, for the Antenna/repeater symbols. */
     uint16_t offset_khz;  /**< Duplex shift magnitude in kHz (e.g. 600); used only when @c duplex != 0. */
     int8_t duplex;        /**< Duplex direction: 0 = simplex, +1 = "+", -1 = "-". */
-    uint16_t tone_tenths; /**< CTCSS subaudible tone in tenths of Hz (e.g. 1000 = 100.0 Hz); 0 => "Toff". */
+    uint16_t tone_tenths; /**< CTCSS subaudible tone in tenths of Hz (e.g. 1000 = 100.0 Hz); 0 => "Toff". Ignored on air when @c dcs_enable is set, since the
+                             tone and DCS sub-fields share the same slot. */
     uint16_t range;       /**< Coverage range magnitude, in @c range_km's unit, clamped to two digits (0..99) on air; 0 => no range sub-field emitted. */
     bool range_km;        /**< Range unit: false => miles ("Rxxm"), true => kilometers ("Rxxkm"); ignored when @c range == 0. */
+
+    bool dcs_enable;   /**< Emit the DCS-code sub-field ("Dnnn") in place of the CTCSS tone sub-field ("Tnnn"/"Toff"); the two are mutually exclusive, per
+                          freqspec.txt, since they occupy the same three-byte slot after the frequency field. */
+    uint16_t dcs_code; /**< DCS code, 0..511 (a 9-bit octal code, displayed as three octal digits, e.g. 023 or 754); only meaningful when @c dcs_enable is
+                          set. */
+    bool narrow;       /**< Narrowband-modulation flag (freqspec.txt "tnnn"/"dnnn", lower-case): when set, the leading letter of the tone or DCS sub-field
+                          ('T'/'D') is emitted lower-case ('t'/'d') instead, the spec's way of flagging narrowband modulation without a separate byte. Has no
+                          on-air effect by itself; it only changes the case of the tone/DCS sub-field's leading letter. */
+
+    bool rx_freq_enable; /**< Emit a second, independent receive-frequency sub-field ("FFF.FFFrx") right after the primary (transmit) frequency field, for a
+                            repeater whose receive frequency is not the standard duplex offset from @c freq_mhz (e.g. a cross-band repeater). */
+    float rx_freq_mhz;   /**< Receive frequency in MHz, emitted as the fixed ten-byte "FFF.FFFrx" sub-field when @c rx_freq_enable is set; only the
+                            100.000-999.999 MHz form is defined for this sub-field. */
 
     uint8_t path_mask; /**< Digipeat paths: bitmask over the four shared presets g_config.path[0..3]. 0 => transmit direct (no path). When >1 bit is set,
                           proportional pathing is used (one preset per transmission, ascending bit order), and @c decay_x10 is applied after each full cycle. */
@@ -410,19 +435,12 @@ void objitems_request_transmit_all(void);
  * positive or has no representation in the fixed field.
  *
  * This is the exact wire format freqspec.txt defines and objitem_t's
- * @c freq_mhz/@c tone_tenths/@c duplex/@c offset_khz/@c range/@c range_km
- * fields already build for the Objects/Items Antenna/repeater symbols; it is
- * exposed here so any other beacon (own-station position/status reports,
+ * @c freq_mhz/@c tone_tenths/@c duplex/@c offset_khz/@c range/@c range_km/
+ * @c dcs_enable/@c dcs_code/@c narrow/@c rx_freq_enable/@c rx_freq_mhz fields
+ * already build for the Objects/Items Antenna/repeater symbols; it is exposed
+ * here so any other beacon (own-station position/status reports,
  * main/beacon.c) can prepend or append the identical block instead of
  * re-deriving the format.
- *
- * freqspec.txt also defines a narrowband-modulation sub-field ("tnnn",
- * lower-case), a DCS-code sub-field ("Dnnn") in place of the CTCSS tone, and a
- * split transmit/receive frequency form ("FFF.FFFrx"). None of these three is
- * built: they cover modulation and receiver details this firmware has no
- * source for (narrowband/DCS radio settings) or a use case objitem_t's single
- * @c freq_mhz does not model (independent TX/RX frequencies), so they are
- * left unimplemented by design rather than approximated.
  *
  * The frequency itself always occupies exactly ten bytes, because receivers
  * read it as a fixed-position field: the block is what a radio auto-tunes
@@ -447,14 +465,31 @@ void objitems_request_transmit_all(void);
  * shift every byte a receiver reads after it, which is worse than a comment
  * that simply starts with the operator's own text.
  *
- * The optional tone, duplex and range sub-fields follow the frequency, each
- * with its own leading space, in the order the spec shows them: tone, then
+ * Immediately after the primary frequency field, the optional independent
+ * receive-frequency sub-field ("FFF.FFFrx") is emitted, with its own leading
+ * space, when @p rx_freq_enable is set and @p rx_freq_mhz falls in the
+ * 100.000-999.999 MHz range the sub-field is defined for; this is the split
+ * transmit/receive form freqspec.txt shows for a repeater whose receive
+ * frequency is not its standard duplex offset (e.g. a cross-band repeater).
+ *
+ * The optional tone/DCS, duplex and range sub-fields follow, each with its
+ * own leading space, in the order the spec shows them: tone or DCS, then
  * duplex offset, then range.
  *
- * @param freq_mhz Repeater monitor frequency in MHz; <= 0 => nothing is
- *        written and @p out is left as an empty string.
+ * - When @p dcs_enable is false, the three-byte slot carries the CTCSS tone,
+ *   @c "Tnnn" (integer Hz, tenths dropped) or @c "Toff" when @p tone_tenths
+ *   is 0.
+ * - When @p dcs_enable is true, the same slot instead carries the DCS code,
+ *   @c "Dnnn" (three octal digits), and @p tone_tenths has no on-air effect:
+ *   the tone and DCS sub-fields share one slot and are mutually exclusive.
+ * - Either way, when @p narrow is set the slot's leading letter ('T' or 'D')
+ *   is emitted lower-case ('t' or 'd') instead, freqspec.txt's narrowband-
+ *   modulation flag.
+ *
+ * @param freq_mhz Repeater monitor (transmit) frequency in MHz; <= 0 =>
+ *        nothing is written and @p out is left as an empty string.
  * @param tone_tenths CTCSS subaudible tone, tenths of Hz (e.g. 1000 = 100.0
- *        Hz); 0 => "Toff".
+ *        Hz); 0 => "Toff". Ignored on air when @p dcs_enable is true.
  * @param duplex Duplex direction: 0 = simplex (offset omitted), +1 = "+",
  *        -1 = "-".
  * @param offset_khz Duplex shift magnitude, kHz (e.g. 600); used only when
@@ -463,12 +498,23 @@ void objitems_request_transmit_all(void);
  *        digits (0..99) on air; 0 => the range sub-field is omitted.
  * @param range_km Range unit: false => miles ("Rxxm"), true => kilometers
  *        ("Rxxkm"); ignored when @p range == 0.
- * @param out Destination buffer, always left NUL-terminated. 27 bytes hold
- *        the longest block (ten-byte frequency, five-byte tone, five-byte
- *        duplex shift, six-byte range and the terminator).
+ * @param dcs_enable true => the tone/DCS slot carries the DCS code
+ *        ("Dnnn") instead of the CTCSS tone ("Tnnn"/"Toff").
+ * @param dcs_code DCS code, 0..511, emitted as three octal digits; only used
+ *        when @p dcs_enable is true.
+ * @param narrow true => the tone/DCS slot's leading letter is emitted
+ *        lower-case, freqspec.txt's narrowband-modulation flag.
+ * @param rx_freq_enable true => emit the independent receive-frequency
+ *        sub-field ("FFF.FFFrx") right after the primary frequency field.
+ * @param rx_freq_mhz Receive frequency in MHz for the "FFF.FFFrx" sub-field;
+ *        only used when @p rx_freq_enable is true and only the
+ *        100.000-999.999 MHz form is defined for it - a value outside that
+ *        range is silently skipped rather than shipped in a mismatched width.
+ * @param out Destination buffer, always left NUL-terminated.
+ *        ::OBJITEM_FREQ_BLOCK_BUF_SIZE bytes hold the longest block.
  * @param out_size Size of @p out in bytes.
  */
-void objitem_build_freq_block(float freq_mhz, uint16_t tone_tenths, int8_t duplex, uint16_t offset_khz, uint16_t range, bool range_km, char *out,
-                              size_t out_size);
+void objitem_build_freq_block(float freq_mhz, uint16_t tone_tenths, int8_t duplex, uint16_t offset_khz, uint16_t range, bool range_km, bool dcs_enable,
+                              uint16_t dcs_code, bool narrow, bool rx_freq_enable, float rx_freq_mhz, char *out, size_t out_size);
 
 #endif // OBJECTS_ITEMS_H

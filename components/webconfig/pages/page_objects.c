@@ -376,17 +376,28 @@ esp_err_t page_objects_get(httpd_req_t *req) {
         web_field_text(req, TR_F_OBJITEM_SIGNPOST, name, b->signpost, OBJITEM_SIGNPOST_MAX);
         web_fieldset_close(req);
 
-        // -- Group 7: Repeater radio parameters (monitor frequency / duplex /
-        //    tone / range / digipeat path / QRU group). --
+        // -- Group 7: Repeater radio parameters (monitor frequency / split RX
+        //    frequency / duplex / tone or DCS / narrowband flag / range /
+        //    digipeat path / QRU group). --
         web_fieldset_open(req, TR_F_OBJITEM_REPEATER_SECTION);
         snprintf(name, sizeof(name), "oFreq%d", i + 1);
         web_field_float(req, TR_F_OBJITEM_FREQ, name, b->freq_mhz, "0.001", 0.0f, 999.999f);
+        snprintf(name, sizeof(name), "oRxEn%d", i + 1);
+        web_field_checkbox(req, TR_F_OBJITEM_RX_FREQ_ENABLE, name, b->rx_freq_enable);
+        snprintf(name, sizeof(name), "oRxFreq%d", i + 1);
+        web_field_float(req, TR_F_OBJITEM_RX_FREQ, name, b->rx_freq_mhz, "0.001", 0.0f, 999.999f);
         snprintf(name, sizeof(name), "oDup%d", i + 1);
         render_duplex_select(req, name, b->duplex);
         snprintf(name, sizeof(name), "oOfs%d", i + 1);
         web_field_int(req, TR_F_OBJITEM_OFFSET, name, (long)b->offset_khz, 0, 65535);
+        snprintf(name, sizeof(name), "oDcsEn%d", i + 1);
+        web_field_checkbox(req, TR_F_OBJITEM_DCS_ENABLE, name, b->dcs_enable);
         snprintf(name, sizeof(name), "oTone%d", i + 1);
         web_field_float(req, TR_F_OBJITEM_TONE, name, b->tone_tenths / 10.0f, "0.1", 0.0f, 254.1f);
+        snprintf(name, sizeof(name), "oDcs%d", i + 1);
+        web_field_int(req, TR_F_OBJITEM_DCS_CODE, name, (long)b->dcs_code, 0, 511);
+        snprintf(name, sizeof(name), "oNarrow%d", i + 1);
+        web_field_checkbox(req, TR_F_OBJITEM_NARROW, name, b->narrow);
         snprintf(name, sizeof(name), "oRng%d", i + 1);
         web_field_int(req, TR_F_OBJITEM_RANGE, name, (long)b->range, 0, 99);
         snprintf(name, sizeof(name), "oRngU%d", i + 1);
@@ -714,6 +725,11 @@ esp_err_t page_objects_post(httpd_req_t *req) {
         snprintf(name, sizeof(name), "oFreq%d", i + 1);
         float freq = web_form_get_float(body, name, b->freq_mhz);
         b->freq_mhz = freq < 0 ? 0 : freq;
+        snprintf(name, sizeof(name), "oRxEn%d", i + 1);
+        b->rx_freq_enable = web_form_get_bool(body, name);
+        snprintf(name, sizeof(name), "oRxFreq%d", i + 1);
+        float rx_freq = web_form_get_float(body, name, b->rx_freq_mhz);
+        b->rx_freq_mhz = rx_freq < 0 ? 0 : rx_freq;
         snprintf(name, sizeof(name), "oDup%d", i + 1);
         int dup = web_form_get_int(body, name, b->duplex > 0 ? 1 : (b->duplex < 0 ? 2 : 0));
         b->duplex = (int8_t)(dup == 1 ? 1 : (dup == 2 ? -1 : 0));
@@ -724,6 +740,8 @@ esp_err_t page_objects_post(httpd_req_t *req) {
         if (ofs > 65535)
             ofs = 65535;
         b->offset_khz = (uint16_t)ofs;
+        snprintf(name, sizeof(name), "oDcsEn%d", i + 1);
+        b->dcs_enable = web_form_get_bool(body, name);
         snprintf(name, sizeof(name), "oTone%d", i + 1);
         float tone_hz = web_form_get_float(body, name, b->tone_tenths / 10.0f);
         if (tone_hz < 0)
@@ -732,6 +750,15 @@ esp_err_t page_objects_post(httpd_req_t *req) {
         if (tone_tenths > 65535)
             tone_tenths = 65535;
         b->tone_tenths = (uint16_t)tone_tenths;
+        snprintf(name, sizeof(name), "oDcs%d", i + 1);
+        int dcs = web_form_get_int(body, name, (int)b->dcs_code);
+        if (dcs < 0)
+            dcs = 0;
+        if (dcs > 511)
+            dcs = 511;
+        b->dcs_code = (uint16_t)dcs;
+        snprintf(name, sizeof(name), "oNarrow%d", i + 1);
+        b->narrow = web_form_get_bool(body, name);
 
         snprintf(name, sizeof(name), "oRng%d", i + 1);
         int range = web_form_get_int(body, name, (int)b->range);

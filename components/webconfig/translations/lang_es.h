@@ -524,6 +524,12 @@
 /** Spanish text for the form label for the "objitem freq" field or fieldset, rendered on the configuration forms. English: "Monitor frequency (MHz, 0 = none)".
  */
 #define TR_F_OBJITEM_FREQ "Frecuencia de monitoreo (MHz, 0 = ninguna)"
+/** Spanish text for the form label for the "objitem rx freq enable" field or fieldset, rendered on the configuration forms. English: "Independent receive
+ * frequency". */
+#define TR_F_OBJITEM_RX_FREQ_ENABLE "Frecuencia de recepción independiente"
+/** Spanish text for the form label for the "objitem rx freq" field or fieldset, rendered on the configuration forms. English: "Receive frequency (MHz, split
+ * TX/RX)". */
+#define TR_F_OBJITEM_RX_FREQ "Frecuencia de recepción (MHz, TX/RX separados)"
 /** Spanish text for the form label for the "objitem duplex" field or fieldset, rendered on the configuration forms. English: "Duplex direction". */
 #define TR_F_OBJITEM_DUPLEX "Dirección dúplex"
 /** Spanish text for the form label for the "objitem duplex simplex" field or fieldset, rendered on the configuration forms. English: "Simplex". */
@@ -534,9 +540,16 @@
 #define TR_F_OBJITEM_DUPLEX_MINUS "Negativo (-)"
 /** Spanish text for the form label for the "objitem offset" field or fieldset, rendered on the configuration forms. English: "Duplex offset (kHz)". */
 #define TR_F_OBJITEM_OFFSET "Desplazamiento dúplex (kHz)"
+/** Spanish text for the form label for the "objitem dcs enable" field or fieldset, rendered on the configuration forms. English: "Use DCS code instead of
+ * CTCSS tone". */
+#define TR_F_OBJITEM_DCS_ENABLE "Usar código DCS en vez de tono CTCSS"
 /** Spanish text for the form label for the "objitem tone" field or fieldset, rendered on the configuration forms. English: "Subaudible tone CTCSS (Hz, 0 =
  * none)". */
 #define TR_F_OBJITEM_TONE "Tono subaudible CTCSS (Hz, 0 = ninguno)"
+/** Spanish text for the form label for the "objitem dcs code" field or fieldset, rendered on the configuration forms. English: "DCS code (octal, 0-511)". */
+#define TR_F_OBJITEM_DCS_CODE "Código DCS (octal, 0-511)"
+/** Spanish text for the form label for the "objitem narrow" field or fieldset, rendered on the configuration forms. English: "Narrowband modulation". */
+#define TR_F_OBJITEM_NARROW "Modulación de banda estrecha"
 /** Spanish text for the form label for the "objitem range" field or fieldset, rendered on the configuration forms. English: "Coverage range (0 = none)". */
 #define TR_F_OBJITEM_RANGE "Alcance de cobertura (0 = ninguno)"
 /** Spanish text for the form label for the "objitem range unit" field or fieldset, rendered on the configuration forms. English: "Range unit". */

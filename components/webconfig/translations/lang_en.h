@@ -481,6 +481,10 @@
 #define TR_F_OBJITEM_SIGNPOST "Signpost text (\\m symbol, 3 chars)"
 /** Form label for the "objitem freq" field or fieldset, rendered on the configuration forms. */
 #define TR_F_OBJITEM_FREQ "Monitor frequency (MHz, 0 = none)"
+/** Form label for the "objitem rx freq enable" field or fieldset, rendered on the configuration forms. */
+#define TR_F_OBJITEM_RX_FREQ_ENABLE "Independent receive frequency"
+/** Form label for the "objitem rx freq" field or fieldset, rendered on the configuration forms. */
+#define TR_F_OBJITEM_RX_FREQ "Receive frequency (MHz, split TX/RX)"
 /** Form label for the "objitem duplex" field or fieldset, rendered on the configuration forms. */
 #define TR_F_OBJITEM_DUPLEX "Duplex direction"
 /** Form label for the "objitem duplex simplex" field or fieldset, rendered on the configuration forms. */
@@ -491,8 +495,14 @@
 #define TR_F_OBJITEM_DUPLEX_MINUS "Minus (-)"
 /** Form label for the "objitem offset" field or fieldset, rendered on the configuration forms. */
 #define TR_F_OBJITEM_OFFSET "Duplex offset (kHz)"
+/** Form label for the "objitem dcs enable" field or fieldset, rendered on the configuration forms. */
+#define TR_F_OBJITEM_DCS_ENABLE "Use DCS code instead of CTCSS tone"
 /** Form label for the "objitem tone" field or fieldset, rendered on the configuration forms. */
 #define TR_F_OBJITEM_TONE "Subaudible tone CTCSS (Hz, 0 = none)"
+/** Form label for the "objitem dcs code" field or fieldset, rendered on the configuration forms. */
+#define TR_F_OBJITEM_DCS_CODE "DCS code (octal, 0-511)"
+/** Form label for the "objitem narrow" field or fieldset, rendered on the configuration forms. */
+#define TR_F_OBJITEM_NARROW "Narrowband modulation"
 /** Form label for the "objitem range" field or fieldset, rendered on the configuration forms. */
 #define TR_F_OBJITEM_RANGE "Coverage range (0 = none)"
 /** Form label for the "objitem range unit" field or fieldset, rendered on the configuration forms. */
