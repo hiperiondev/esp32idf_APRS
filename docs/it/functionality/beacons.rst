@@ -277,10 +277,96 @@ ai nodi in cui sono definiti tutti questi campi, usando lo stesso fattore 1.852
 che ``gps.c`` applica già nel verso opposto quando interpreta una velocità NMEA
 in nodi nello snapshot.
 
-Smart Beaconing — accorciare automaticamente l'intervallo di trasmissione in
-base a velocità o direzione — non è implementato; l'intervallo del beacon
-Tracker resta fisso (``trk_interval``) sia che stia trasmettendo una posizione
-in tempo reale sia che non lo faccia.
+Smart Beaconing
+================
+
+*SmartBeaconing* (``g_config.trk_sb_enable``, pagina Tracker) accorcia o
+allunga automaticamente l'intervallo del beacon Tracker in base alla
+velocità attuale, e forza un beacon anticipato in presenza di un
+cambiamento di rotta sufficientemente marcato, seguendo l'algoritmo
+standard pubblicato da Hans-Gunnar Lundahl e implementato da HamHUD e
+dalla maggior parte dei tracker moderni. Ha effetto solo insieme a *Usa
+posizione GPS in tempo reale* descritto sopra: SmartBeaconing non ha
+velocità né rotta su cui lavorare senza una posizione in tempo reale, e il
+beacon Tracker torna all'intervallo fisso ``trk_interval`` ogni volta che
+non ne è disponibile una - lo stesso ripiego che *Usa posizione GPS in
+tempo reale* applica già alla posizione.
+
+Frequenza dinamica
+-------------------
+
+Tra le due soglie di velocità seguenti, ``smartBeaconingInterval()``
+(``main/beacon.c``) interpola linearmente l'intervallo del beacon dal
+valore lento al valore veloce man mano che la velocità aumenta:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 70
+
+   * - Impostazione
+     - Significato
+   * - Intervallo lento
+     - Periodo del beacon usato a o sotto la *Velocità bassa* - la cadenza
+       per una stazione ferma o in movimento lento (valore di fabbrica:
+       600 s).
+   * - Intervallo veloce
+     - Periodo del beacon usato a o sopra la *Velocità alta* (valore di
+       fabbrica: 60 s).
+   * - Velocità bassa / Velocità alta
+     - Le due soglie di velocità, km/h, che delimitano l'interpolazione.
+       Una posizione in tempo reale senza rotta/velocità riportate in
+       quel ciclo (ancora in acquisizione, o un ricevitore che omette la
+       rotta a velocità zero) viene trattata come frequenza lenta.
+
+Corner-pegging
+---------------
+
+Indipendentemente dalla frequenza sopra, ``trackerBeaconService()``
+interroga la posizione in tempo reale ogni pochi secondi alla ricerca di
+un cambiamento di rotta rispetto all'ultimo beacon trasmesso e, non
+appena questo supera la soglia di svolta, anticipa la prossima
+trasmissione a quel ciclo invece di attendere che l'intervallo sopra
+trascorra - il comportamento classico di SmartBeaconing di un tracker che
+segnala visibilmente la curva che sta percorrendo, invece di segnalare
+una posizione solo più avanti sulla nuova strada. La soglia stessa si
+allarga a bassa velocità e si restringe ad alta velocità:
+
+.. code-block:: text
+
+   soglia (gradi) = Angolo di svolta + Pendenza di svolta / velocità (km/h)
+
+per cui una stazione veloce attiva il corner-pegging con un cambiamento
+di rotta molto più piccolo rispetto a una lenta - *Pendenza di svolta* è
+ciò che rende innocuo il normale rumore di rotta a bassa velocità
+(manovre in un parcheggio, una lettura di rotta GPS che oscilla da fermi)
+senza per questo attenuare il rilevamento delle curve ad alta velocità.
+*Tempo minimo tra svolte* rifiuta inoltre un secondo beacon da
+corner-pegging entro quel numero di secondi dall'ultimo, indipendentemente
+da quanto marcato appaia il nuovo cambiamento di rotta, così che una
+stazione lenta o momentaneamente ferma con una lettura di rotta rumorosa
+non possa riattivare il corner-pegging a ogni ciclo.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 70
+
+   * - Impostazione
+     - Significato
+   * - Angolo di svolta
+     - Cambiamento minimo di rotta, in gradi, che attiva una svolta a o
+       sopra la soglia di velocità alta (valore di fabbrica: 25°).
+   * - Pendenza di svolta
+     - Gradi aggiunti a *Angolo di svolta*, scalati in modo inversamente
+       proporzionale alla velocità attuale, allargando la soglia effettiva
+       a bassa velocità (valore di fabbrica: 255°).
+   * - Tempo minimo tra svolte
+     - Intervallo minimo, in secondi, consentito tra due beacon da
+       corner-pegging (valore di fabbrica: 15 s).
+
+Una trasmissione inviata per qualsiasi motivo - l'intervallo di frequenza,
+o il corner-pegging - aggiorna il riferimento del corner-pegging, cosicché
+un beacon appena inviato per una rotta non riattivi subito il corner-pegging
+sulla stessa rotta.
 
 Altitudine compressa
 ====================

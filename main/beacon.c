@@ -87,7 +87,7 @@ typedef struct {
     bool hasCourseSpeed;
     uint16_t courseDeg;  // 0..359, true course over ground
     uint16_t speedKnots; // Speed over ground, knots
-    char symbol[3]; // table + code + NUL
+    char symbol[3];      // table + code + NUL
     char comment[COMMENT_SIZE];
     char pathPreset[4][72]; // snapshot of g_config.path[0..3]
     // When set, buildPositionPacket() emits the APRS base-91 compressed
@@ -1293,19 +1293,196 @@ static uint32_t digiStatusService(void) {
 // begins counting out its interval.
 static int64_t s_trk_next_due = 0;
 
+// ---------------------------------------------------------------------------
+// SmartBeaconing (Hans-Gunnar Lundahl / HamHUD algorithm)
+//
+// Two independent decisions, evaluated together on every live GPS fix the
+// Tracker beacon is about to transmit:
+//
+//   1. Rate: the interval between beacons is not fixed, but interpolated
+//      between a slow-rate (stationary) and a fast-rate (moving) value
+//      according to current speed - a station sitting at a light beacons
+//      rarely, a station on the highway beacons often, without the operator
+//      having to pick one interval that is wrong for the other case.
+//   2. Corner-pegging: independent of the rate above, a heading change past
+//      a threshold forces an immediate beacon - so a station that turns a
+//      corner is seen turning it, rather than only at the next scheduled
+//      beacon somewhere down the new road.
+//
+// Both read the same live gps_data_t snapshot trackerBeaconService() already
+// takes for course/speed, so neither needs a GPS access of its own.
+// ---------------------------------------------------------------------------
+
+// Interpolates the SmartBeaconing beacon interval for the given speed,
+// between g_config.trk_sb_slow_interval (at or below trk_sb_low_speed_kmh)
+// and g_config.trk_sb_fast_interval (at or above trk_sb_high_speed_kmh),
+// linearly in between - the rate rule the standard algorithm defines.
+// Bounded to BEACON_MIN_INTERVAL_S the same way every other beacon interval
+// in this file is, so a very low fast-rate setting cannot outrun the sanity
+// floor the scheduler relies on. Must be called with app_config_lock() held,
+// on the same terms as every other g_config reader in this file.
+static uint32_t smartBeaconingInterval(double speedKmh) {
+    uint32_t slow = g_config.trk_sb_slow_interval;
+    uint32_t fast = g_config.trk_sb_fast_interval;
+    uint32_t lowKmh = g_config.trk_sb_low_speed_kmh;
+    uint32_t highKmh = g_config.trk_sb_high_speed_kmh;
+
+    uint32_t interval;
+    if (speedKmh <= (double)lowKmh || highKmh <= lowKmh) {
+        // At or below the low-speed threshold - or a degenerate threshold
+        // pair where high does not exceed low, which app_config.c's load-time
+        // clamp otherwise prevents but a fresh default pair could still equal
+        // - the slow rate applies outright rather than through a division by
+        // zero.
+        interval = slow;
+    } else if (speedKmh >= (double)highKmh) {
+        interval = fast;
+    } else {
+        // Linear interpolation between the two rates over the speed range
+        // (aprs.org's SmartBeaconing description: interval is proportional to
+        // 1/speed in the reference implementation's spirit, but this project
+        // follows the same simpler linear form VP-Digi and most modern
+        // trackers use, which is close enough over the practical speed range
+        // and does not risk a near-zero interval as speed approaches zero
+        // from above).
+        double frac = (speedKmh - (double)lowKmh) / (double)(highKmh - lowKmh);
+        interval = slow - (uint32_t)lround(frac * (double)(slow - fast));
+    }
+
+    return sched_clamp_interval(interval, BEACON_MIN_INTERVAL_S, BEACON_DEFAULT_INTERVAL_S);
+}
+
+// Smallest signed angular difference from `from` to `to`, both in degrees
+// 0..359, folded into (-180, 180]. Shared by corner-pegging below so a
+// heading change from 350 to 10 degrees reads as +20, not the 340 degrees a
+// plain subtraction would give the long way around the compass.
+static double headingDeltaDeg(double from, double to) {
+    double d = to - from;
+    while (d > 180.0)
+        d -= 360.0;
+    while (d <= -180.0)
+        d += 360.0;
+    return d;
+}
+
+// Per-beacon corner-pegging state: the heading and monotonic time of the last
+// beacon this station actually transmitted with a live course reading, so the
+// next fix has something to compare against. Reset whenever the Tracker
+// beacon is (re-)armed (trackerBeaconService()'s own s_trk_next_due reset) so
+// a stale heading from before a config change or a lost/reacquired fix is
+// never compared against a fix that follows a gap.
+static bool s_sb_have_last = false;
+static double s_sb_last_heading_deg = 0.0;
+static int64_t s_sb_last_time_s = 0;
+
+// Decides whether the current live fix's heading change, relative to the
+// last transmitted beacon, is large enough to force an early beacon right
+// now - the corner-pegging rule - and if so, updates the corner-pegging
+// state as though this beacon is about to go out (the caller is expected to
+// actually send one immediately after a true return). Must be called with
+// app_config_lock() held, on the same terms as smartBeaconingInterval().
+//
+// The turn threshold widens at low speed and narrows at high speed:
+//   threshold = trk_sb_turn_angle + trk_sb_turn_slope / speedKmh
+// which is the standard algorithm's own corner-pegging formula (a large
+// slope makes a small heading wobble at walking pace harmless, while a fast
+// station still pegs on a much smaller turn). A minimum-distance guard
+// backs the minimum-turn-time guard below it: at very low speed the slope
+// term alone can make the threshold larger than any turn the station could
+// physically make, which already suppresses spurious corner beacons without
+// a separate distance calculation.
+//
+// The minimum-turn-time guard (trk_sb_min_turn_time) additionally refuses a
+// second corner-pegged beacon within that many seconds of the last one,
+// regardless of how sharp the new heading change looks - the guard the
+// project brief calls out by name, so a stationary or slow-moving station
+// with a noisy course reading cannot re-trigger corner-pegging every pass.
+static bool smartBeaconingCornerPegged(double headingDeg, double speedKmh, int64_t nowS) {
+    if (!s_sb_have_last) {
+        // Nothing to compare against yet - the very first live fix this
+        // beacon has ever carried, or the state was just reset. Record the
+        // heading so the next fix has a baseline, but do not claim a corner:
+        // there is no prior heading to have turned away from.
+        s_sb_have_last = true;
+        s_sb_last_heading_deg = headingDeg;
+        s_sb_last_time_s = nowS;
+        return false;
+    }
+
+    if (nowS - s_sb_last_time_s < (int64_t)g_config.trk_sb_min_turn_time)
+        return false; // re-arm guard: too soon since the last corner-pegged beacon
+
+    double turnDeg = fabs(headingDeltaDeg(s_sb_last_heading_deg, headingDeg));
+
+    double threshold = (double)g_config.trk_sb_turn_angle;
+    if (speedKmh > 0.0)
+        threshold += (double)g_config.trk_sb_turn_slope / speedKmh;
+    else
+        threshold = 180.0; // stationary: no finite heading is ever "wrong enough" to peg on
+
+    if (turnDeg < threshold)
+        return false;
+
+    s_sb_last_heading_deg = headingDeg;
+    s_sb_last_time_s = nowS;
+    return true;
+}
+
+// Cadence used to poll the GNSS receiver for a corner-pegging check between
+// scheduled beacons, while SmartBeaconing is enabled and the tracker is
+// beaconing a live fix. A heading change only has to be caught before the
+// next SmartBeaconing-computed beacon, not to the second, so this is a
+// coarse poll rather than a dedicated task: cheap enough to run every pass
+// without perturbing the scheduler's own sleep budget (::BEACON_SCHED_POLL_CAP_S
+// already bounds every service's own re-check interval to 30 s).
+#define TRK_SB_CORNER_POLL_S 5
+
 // One serviced pass of the tracker beacon. Called by the shared beacon
 // scheduler (beacon_scheduler.c) via beacon_service(); returns the number of
 // seconds until this beacon next wants servicing.
+//
+// With SmartBeaconing enabled, "due" is decided by two independent clocks
+// rather than one: the ordinary rate-interval due time (s_trk_next_due,
+// recomputed every transmission from current speed) and a corner-pegging
+// check that polls the live fix's heading every ::TRK_SB_CORNER_POLL_S
+// seconds and, on a large-enough change, pulls the next transmission forward
+// to now - which is the entire purpose of corner-pegging: catching a turn
+// before the rate interval alone would have.
 static uint32_t trackerBeaconService(void) {
     if (!g_config.trk_en || (!g_config.trk_loc2rf && !g_config.trk_loc2inet)) {
-        s_trk_next_due = 0; // reset so (re-)enabling the beacon fires an immediate TX
-        return 5;           // idle re-check cadence while the beacon is off
+        s_trk_next_due = 0;     // reset so (re-)enabling the beacon fires an immediate TX
+        s_sb_have_last = false; // corner-pegging has no baseline to resume from once the beacon has been off
+        return 5;               // idle re-check cadence while the beacon is off
     }
 
     int64_t now = sched_mono_seconds();
+
+    bool useLiveGps, sbEnable;
+    app_config_lock();
+    useLiveGps = g_config.trk_use_live_gps;
+    sbEnable = g_config.trk_sb_enable;
+    app_config_unlock();
+
+    // Corner-pegging poll: only meaningful with both switches on, and only
+    // worth taking a fresh GPS reading for when the rate interval has not
+    // already brought this pass due on its own (the block below re-reads the
+    // fix anyway in that case). A poll that finds no heading change yet just
+    // falls through to the ordinary due-time check.
+    if (useLiveGps && sbEnable && now < s_trk_next_due) {
+        gps_data_t g;
+        if (gps_snapshot(&g) && g.valid && g.has_position && g.has_course && g.has_speed) {
+            app_config_lock();
+            bool pegged = smartBeaconingCornerPegged(g.course_deg, g.speed_kmh, now);
+            app_config_unlock();
+            if (pegged) {
+                ESP_LOGI(TAG, "Tracker beacon corner-pegged (heading change beyond threshold) - beaconing now");
+                s_trk_next_due = now; // pull the scheduled transmission forward to this pass
+            }
+        }
+    }
+
     if (now >= s_trk_next_due) {
         beacon_params_t p = { 0 };
-        bool useLiveGps;
         app_config_lock();
         {
             bool useTrk = g_config.trk_mycall[0] != 0;
@@ -1343,7 +1520,6 @@ static uint32_t trackerBeaconService(void) {
             p.phgHeight = g_config.my_phg_height;
             p.phgDir = g_config.my_phg_dir;
             p.beaconIntervalSec = sched_clamp_interval(g_config.trk_interval, BEACON_MIN_INTERVAL_S, BEACON_DEFAULT_INTERVAL_S);
-            useLiveGps = g_config.trk_use_live_gps;
         }
         app_config_unlock();
 
@@ -1358,6 +1534,15 @@ static uint32_t trackerBeaconService(void) {
         // ::GPS_LINK_TIMEOUT_S) - leaves p exactly as filled from
         // g_config.trk_* above, so the beacon keeps beaconing the fixed
         // position rather than transmitting nothing or a stale fix.
+        //
+        // sbIntervalSec carries the SmartBeaconing rate-interval result out
+        // of this block, in place of the fixed trk_interval, whenever a live
+        // fix made one available this pass; 0 means SmartBeaconing did not
+        // apply (live GPS off, no current fix, or SmartBeaconing itself off),
+        // so the ordinary fixed-interval schedule below is unchanged from
+        // before SmartBeaconing existed.
+        uint32_t sbIntervalSec = 0;
+
         if (useLiveGps) {
             gps_data_t g;
             if (gps_snapshot(&g) && g.valid && g.has_position) {
@@ -1378,6 +1563,29 @@ static uint32_t trackerBeaconService(void) {
                     // km/h-per-knot factor (see gps.c's NMEA speed parsing).
                     double speedKt = g.speed_kmh / 1.852;
                     p.speedKnots = (uint16_t)(speedKt < 0.0 ? 0 : speedKt + 0.5);
+
+                    if (sbEnable) {
+                        app_config_lock();
+                        sbIntervalSec = smartBeaconingInterval(g.speed_kmh);
+                        // A transmission is happening right now regardless of
+                        // why (rate interval or corner-pegging), so the
+                        // corner-pegging baseline is refreshed here too - a
+                        // beacon that just went out for hitting the rate
+                        // interval must not immediately re-peg on the same
+                        // heading it just reported.
+                        smartBeaconingCornerPegged(g.course_deg, g.speed_kmh, now);
+                        app_config_unlock();
+                    }
+                } else if (sbEnable) {
+                    // A live fix with no course/speed this cycle (still
+                    // acquiring, or genuinely stationary on a receiver that
+                    // does not report a course at zero speed) has nothing
+                    // SmartBeaconing can rate or peg on, so the beacon falls
+                    // back to the slow rate - the same cadence a stationary
+                    // station idles at once it does have a course reading.
+                    app_config_lock();
+                    sbIntervalSec = sched_clamp_interval(g_config.trk_sb_slow_interval, BEACON_MIN_INTERVAL_S, BEACON_DEFAULT_INTERVAL_S);
+                    app_config_unlock();
                 }
             }
         }
@@ -1386,10 +1594,19 @@ static uint32_t trackerBeaconService(void) {
 
         txPositionBeacon(&p, g_config.trk_loc2rf, g_config.trk_loc2inet, "Tracker beacon", "no callsign configured (set Tracker or APRS callsign)");
 
-        s_trk_next_due = now + (int64_t)beacon_scheduler_jitter(sched_clamp_interval(g_config.trk_interval, BEACON_MIN_INTERVAL_S, BEACON_DEFAULT_INTERVAL_S));
+        uint32_t nextIntervalSec =
+            (sbIntervalSec > 0) ? sbIntervalSec : sched_clamp_interval(g_config.trk_interval, BEACON_MIN_INTERVAL_S, BEACON_DEFAULT_INTERVAL_S);
+        s_trk_next_due = now + (int64_t)beacon_scheduler_jitter(nextIntervalSec);
     }
 
     int64_t rem = s_trk_next_due - sched_mono_seconds();
+    // While SmartBeaconing is watching for a corner, the scheduler must not
+    // sleep past the next poll: a due time far in the future (the slow-rate
+    // interval can be tens of minutes) would otherwise leave a heading change
+    // undetected until that whole interval elapses, which is exactly the
+    // latency corner-pegging exists to avoid.
+    if (useLiveGps && sbEnable && rem > TRK_SB_CORNER_POLL_S)
+        rem = TRK_SB_CORNER_POLL_S;
     if (rem < 1)
         rem = 1;
     return (uint32_t)rem;

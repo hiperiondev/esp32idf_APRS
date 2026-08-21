@@ -400,6 +400,27 @@
 #define TR_F_SERVER_HOST "Host del servidor"
 /** Spanish text for the form label for the "server port" field or fieldset, rendered on the configuration forms. English: "Server Port". */
 #define TR_F_SERVER_PORT "Puerto del servidor"
+/** Spanish text for the fieldset label for the Tracker page's SmartBeaconing settings, rendered on the configuration forms. English: "SmartBeaconing". */
+#define TR_F_SMARTBEACONING "SmartBeaconing"
+/** Spanish text for the form label for the "enable smartbeaconing" checkbox, rendered on the Tracker page. English: "Enable SmartBeaconing". */
+#define TR_F_SMARTBEACONING_ENABLE "Activar SmartBeaconing"
+/** Spanish text for the form label for the SmartBeaconing slow-rate (stationary) beacon interval, rendered on the Tracker page. English: "Slow-rate
+    interval (s)". */
+#define TR_F_SMARTBEACONING_SLOW_INTERVAL_S "Intervalo lento (s)"
+/** Spanish text for the form label for the SmartBeaconing fast-rate (moving) beacon interval, rendered on the Tracker page. English: "Fast-rate interval
+    (s)". */
+#define TR_F_SMARTBEACONING_FAST_INTERVAL_S "Intervalo rápido (s)"
+/** Spanish text for the form label for the SmartBeaconing low-speed threshold, rendered on the Tracker page. English: "Low speed (km/h)". */
+#define TR_F_SMARTBEACONING_LOW_SPEED_KMH "Velocidad baja (km/h)"
+/** Spanish text for the form label for the SmartBeaconing high-speed threshold, rendered on the Tracker page. English: "High speed (km/h)". */
+#define TR_F_SMARTBEACONING_HIGH_SPEED_KMH "Velocidad alta (km/h)"
+/** Spanish text for the form label for the SmartBeaconing corner-pegging minimum turn angle, rendered on the Tracker page. English: "Turn angle (deg)". */
+#define TR_F_SMARTBEACONING_TURN_ANGLE "Ángulo de giro (grados)"
+/** Spanish text for the form label for the SmartBeaconing corner-pegging turn slope, rendered on the Tracker page. English: "Turn slope (deg)". */
+#define TR_F_SMARTBEACONING_TURN_SLOPE "Pendiente de giro (grados)"
+/** Spanish text for the form label for the SmartBeaconing corner-pegging minimum turn time, rendered on the Tracker page. English: "Minimum turn time
+    (s)". */
+#define TR_F_SMARTBEACONING_MIN_TURN_TIME_S "Tiempo mínimo entre giros (s)"
 /** Spanish text for the form label for the "ssid" field or fieldset, rendered on the configuration forms. English: "SSID". */
 #define TR_F_SSID "SSID"
 /** Spanish text for the form label for the "station" field or fieldset, rendered on the configuration forms. English: "Station". */

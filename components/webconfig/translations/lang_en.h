@@ -373,6 +373,24 @@
 #define TR_F_SERVER_HOST "Server Host"
 /** Form label for the "server port" field or fieldset, rendered on the configuration forms. */
 #define TR_F_SERVER_PORT "Server Port"
+/** Fieldset label for the Tracker page's SmartBeaconing settings, rendered on the configuration forms. */
+#define TR_F_SMARTBEACONING "SmartBeaconing"
+/** Form label for the "enable smartbeaconing" checkbox, rendered on the Tracker page. */
+#define TR_F_SMARTBEACONING_ENABLE "Enable SmartBeaconing"
+/** Form label for the SmartBeaconing slow-rate (stationary) beacon interval, rendered on the Tracker page. */
+#define TR_F_SMARTBEACONING_SLOW_INTERVAL_S "Slow-rate interval (s)"
+/** Form label for the SmartBeaconing fast-rate (moving) beacon interval, rendered on the Tracker page. */
+#define TR_F_SMARTBEACONING_FAST_INTERVAL_S "Fast-rate interval (s)"
+/** Form label for the SmartBeaconing low-speed threshold, rendered on the Tracker page. */
+#define TR_F_SMARTBEACONING_LOW_SPEED_KMH "Low speed (km/h)"
+/** Form label for the SmartBeaconing high-speed threshold, rendered on the Tracker page. */
+#define TR_F_SMARTBEACONING_HIGH_SPEED_KMH "High speed (km/h)"
+/** Form label for the SmartBeaconing corner-pegging minimum turn angle, rendered on the Tracker page. */
+#define TR_F_SMARTBEACONING_TURN_ANGLE "Turn angle (deg)"
+/** Form label for the SmartBeaconing corner-pegging turn slope, rendered on the Tracker page. */
+#define TR_F_SMARTBEACONING_TURN_SLOPE "Turn slope (deg)"
+/** Form label for the SmartBeaconing corner-pegging minimum turn time, rendered on the Tracker page. */
+#define TR_F_SMARTBEACONING_MIN_TURN_TIME_S "Minimum turn time (s)"
 /** Form label for the "ssid" field or fieldset, rendered on the configuration forms. */
 #define TR_F_SSID "SSID"
 /** Form label for the "station" field or fieldset, rendered on the configuration forms. */

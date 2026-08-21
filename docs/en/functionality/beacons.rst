@@ -261,9 +261,88 @@ knots every one of these fields is defined in, using the same 1.852 factor
 ``gps.c`` already applies the other way when it parses a raw NMEA speed in
 knots into the snapshot.
 
-Smart Beaconing — shortening the transmit interval automatically as speed or
-heading change — is not implemented; the Tracker beacon's interval stays
-fixed (``trk_interval``) whether or not it is beaconing a live fix.
+Smart Beaconing
+================
+
+*SmartBeaconing* (``g_config.trk_sb_enable``, Tracker page) shortens or
+lengthens the Tracker beacon's own interval automatically with current
+speed, and forces an early beacon on a sharp-enough heading change,
+following the standard algorithm published by Hans-Gunnar Lundahl and
+implemented by HamHUD and most modern trackers. It only has an effect
+together with *Use live GPS fix* above: SmartBeaconing has no speed or
+course to work from without a live fix, and the Tracker beacon falls back
+to the fixed ``trk_interval`` cadence whenever one is not currently
+available - the same fallback *Use live GPS fix* itself already applies to
+position.
+
+Dynamic rate
+------------
+
+Between the two speed thresholds below, ``smartBeaconingInterval()``
+(``main/beacon.c``) linearly interpolates the beacon interval from the
+slow-rate value down to the fast-rate value as speed rises:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 70
+
+   * - Setting
+     - Meaning
+   * - Slow-rate interval
+     - Beacon period used at or below *Low speed* - the cadence for a
+       stationary or slow-moving station (factory default: 600 s).
+   * - Fast-rate interval
+     - Beacon period used at or above *High speed* (factory default: 60 s).
+   * - Low speed / High speed
+     - The two speed thresholds, km/h, that bound the interpolation. A live
+       fix with no course/speed reported that cycle (still acquiring, or a
+       receiver that omits course at zero speed) is treated as the slow rate.
+
+Corner-pegging
+---------------
+
+Independent of the rate above, ``trackerBeaconService()`` polls the live fix
+every few seconds for a heading change relative to the last transmitted
+beacon and, once one crosses the turn threshold, pulls the next
+transmission forward to that pass rather than waiting for the interval
+above to elapse - the classic SmartBeaconing behaviour of a tracker that
+visibly turns the corner it is turning, instead of only reporting a
+position somewhere down the new road. The threshold itself widens at low
+speed and narrows at high speed:
+
+.. code-block:: text
+
+   threshold (deg) = Turn angle + Turn slope / speed (km/h)
+
+so a fast station pegs on a much smaller heading change than a slow one -
+*Turn slope* is what makes ordinary low-speed course jitter (parking lot
+manoeuvring, a GPS course reading that wanders while nearly stationary)
+harmless without also dulling corner detection at speed. *Minimum turn
+time* additionally refuses a second corner-pegged beacon within that many
+seconds of the last one, regardless of how sharp the new heading change
+looks, so a slow-moving or momentarily stationary station with a noisy
+course reading cannot re-trigger corner-pegging every pass.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 70
+
+   * - Setting
+     - Meaning
+   * - Turn angle
+     - Minimum heading change, degrees, that pegs a corner at or above the
+       high-speed threshold (factory default: 25°).
+   * - Turn slope
+     - Degrees added to *Turn angle*, scaled inversely with current speed,
+       widening the effective threshold at low speed (factory default:
+       255°).
+   * - Minimum turn time
+     - Shortest gap, seconds, allowed between two corner-pegged beacons
+       (factory default: 15 s).
+
+A transmission that goes out for any reason - the rate interval, or
+corner-pegging - refreshes the corner-pegging baseline, so a beacon that
+just reported a heading does not immediately re-peg on that same heading.
 
 Compressed altitude
 ===================

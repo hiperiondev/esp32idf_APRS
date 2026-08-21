@@ -278,10 +278,95 @@ a los nudos en que están definidos todos estos campos, usando el mismo factor
 1.852 que ``gps.c`` ya aplica en el sentido inverso al interpretar una
 velocidad NMEA en nudos hacia el snapshot.
 
-Smart Beaconing — acortar el intervalo de transmisión automáticamente según
-la velocidad o el rumbo — no está implementado; el intervalo de la baliza
-Tracker se mantiene fijo (``trk_interval``) tanto si está balizando una
-posición en vivo como si no.
+Smart Beaconing
+================
+
+*SmartBeaconing* (``g_config.trk_sb_enable``, página Tracker) acorta o
+alarga automáticamente el intervalo de la baliza Tracker según la
+velocidad actual, y fuerza una baliza anticipada ante un cambio de rumbo
+suficientemente pronunciado, siguiendo el algoritmo estándar publicado por
+Hans-Gunnar Lundahl e implementado por HamHUD y la mayoría de los
+trackers modernos. Solo tiene efecto junto con *Usar posición GPS en vivo*
+mencionado arriba: SmartBeaconing no tiene velocidad ni rumbo con los que
+trabajar sin una posición en vivo, y la baliza Tracker vuelve al intervalo
+fijo ``trk_interval`` cada vez que no hay una disponible - el mismo
+respaldo que *Usar posición GPS en vivo* ya aplica a la posición.
+
+Tasa dinámica
+-------------
+
+Entre los dos umbrales de velocidad siguientes, ``smartBeaconingInterval()``
+(``main/beacon.c``) interpola linealmente el intervalo de la baliza desde
+el valor lento hasta el valor rápido a medida que aumenta la velocidad:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 70
+
+   * - Ajuste
+     - Significado
+   * - Intervalo lento
+     - Período de baliza usado en o por debajo de *Velocidad baja* - la
+       cadencia para una estación detenida o de movimiento lento
+       (valor de fábrica: 600 s).
+   * - Intervalo rápido
+     - Período de baliza usado en o por encima de *Velocidad alta*
+       (valor de fábrica: 60 s).
+   * - Velocidad baja / Velocidad alta
+     - Los dos umbrales de velocidad, km/h, que acotan la interpolación.
+       Una posición en vivo sin rumbo/velocidad reportados en ese ciclo
+       (todavía adquiriendo, o un receptor que omite el rumbo a velocidad
+       cero) se trata como la tasa lenta.
+
+Corner-pegging
+---------------
+
+Independientemente de la tasa anterior, ``trackerBeaconService()`` sondea
+la posición en vivo cada pocos segundos en busca de un cambio de rumbo
+respecto a la última baliza transmitida y, en cuanto uno supera el umbral
+de giro, adelanta la próxima transmisión a ese ciclo en lugar de esperar a
+que transcurra el intervalo anterior - el comportamiento clásico de
+SmartBeaconing de un tracker que reporta visiblemente el giro que está
+tomando, en lugar de reportar una posición recién más adelante en la nueva
+calle. El umbral en sí se ensancha a baja velocidad y se estrecha a alta
+velocidad:
+
+.. code-block:: text
+
+   umbral (grados) = Ángulo de giro + Pendiente de giro / velocidad (km/h)
+
+de modo que una estación rápida activa el corte con un cambio de rumbo
+mucho menor que una lenta - *Pendiente de giro* es lo que hace inofensivo
+el ruido de rumbo habitual a baja velocidad (maniobras en un
+estacionamiento, una lectura de rumbo GPS que fluctúa estando casi
+detenida) sin por eso embotar la detección de giros a velocidad. *Tiempo
+mínimo entre giros* además rechaza una segunda baliza por corner-pegging
+dentro de esa cantidad de segundos desde la última, sin importar cuán
+pronunciado parezca el nuevo cambio de rumbo, de modo que una estación
+lenta o momentáneamente detenida con una lectura de rumbo ruidosa no pueda
+volver a disparar corner-pegging en cada ciclo.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 70
+
+   * - Ajuste
+     - Significado
+   * - Ángulo de giro
+     - Cambio de rumbo mínimo, en grados, que activa un corte de esquina en
+       o por encima del umbral de velocidad alta (valor de fábrica: 25°).
+   * - Pendiente de giro
+     - Grados sumados a *Ángulo de giro*, escalados inversamente con la
+       velocidad actual, ensanchando el umbral efectivo a baja velocidad
+       (valor de fábrica: 255°).
+   * - Tiempo mínimo entre giros
+     - Intervalo mínimo, en segundos, permitido entre dos balizas por
+       corner-pegging (valor de fábrica: 15 s).
+
+Una transmisión que sale por cualquier motivo - el intervalo de tasa, o
+corner-pegging - renueva la referencia de corner-pegging, de modo que una
+baliza que acaba de reportar un rumbo no vuelva a activar el corte
+inmediatamente sobre ese mismo rumbo.
 
 Altitud comprimida
 ==================

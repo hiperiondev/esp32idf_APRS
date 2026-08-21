@@ -21,7 +21,10 @@
 // mutually exclusive. A separate "Use live GPS fix" switch (trk_use_live_gps)
 // leaves the fixed fields alone and instead has beacon.c read the GNSS
 // receiver at every beacon transmission, carrying live course and speed
-// alongside position - see trackerBeaconService() in main/beacon.c.
+// alongside position - see trackerBeaconService() in main/beacon.c. The
+// SmartBeaconing fieldset (trk_sb_*) configures the dynamic-interval and
+// corner-pegging behaviour that same function applies on top of a live fix -
+// see the SmartBeaconing note in main/beacon.c for the algorithm itself.
 
 #include <stdio.h>
 #include <string.h>
@@ -103,6 +106,26 @@ esp_err_t page_tracker_get(httpd_req_t *req) {
     web_field_checkbox(req, TR_F_TRACKER_USE_LIVE_GPS, "trkUseLiveGps", g_config.trk_use_live_gps);
     web_fieldset_close(req);
 
+    // SMARTBEACONING -----------------------------------------------------
+    // Dynamic beacon interval driven by live GPS speed/course (Hans-Gunnar
+    // Lundahl / HamHUD algorithm, see trackerBeaconService() in
+    // main/beacon.c). Only takes effect while "Use live GPS fix" above is
+    // also on; the fields are still shown and saved with it off, so the
+    // operator can prepare the settings ahead of enabling the receiver.
+    web_fieldset_open(req, TR_F_SMARTBEACONING);
+    web_field_checkbox(req, TR_F_SMARTBEACONING_ENABLE, "trkSbEn", g_config.trk_sb_enable);
+    web_field_int(req, TR_F_SMARTBEACONING_SLOW_INTERVAL_S, "trkSbSlowIntv", g_config.trk_sb_slow_interval, TRK_SB_SLOW_INTERVAL_S_MIN,
+                  TRK_SB_SLOW_INTERVAL_S_MAX);
+    web_field_int(req, TR_F_SMARTBEACONING_FAST_INTERVAL_S, "trkSbFastIntv", g_config.trk_sb_fast_interval, TRK_SB_FAST_INTERVAL_S_MIN,
+                  TRK_SB_FAST_INTERVAL_S_MAX);
+    web_field_int(req, TR_F_SMARTBEACONING_LOW_SPEED_KMH, "trkSbLowSpd", g_config.trk_sb_low_speed_kmh, TRK_SB_SPEED_KMH_MIN, TRK_SB_SPEED_KMH_MAX);
+    web_field_int(req, TR_F_SMARTBEACONING_HIGH_SPEED_KMH, "trkSbHighSpd", g_config.trk_sb_high_speed_kmh, TRK_SB_SPEED_KMH_MIN, TRK_SB_SPEED_KMH_MAX);
+    web_field_int(req, TR_F_SMARTBEACONING_TURN_ANGLE, "trkSbTurnAngle", g_config.trk_sb_turn_angle, TRK_SB_TURN_ANGLE_MIN, TRK_SB_TURN_ANGLE_MAX);
+    web_field_int(req, TR_F_SMARTBEACONING_TURN_SLOPE, "trkSbTurnSlope", g_config.trk_sb_turn_slope, TRK_SB_TURN_SLOPE_MIN, TRK_SB_TURN_SLOPE_MAX);
+    web_field_int(req, TR_F_SMARTBEACONING_MIN_TURN_TIME_S, "trkSbMinTurnTime", g_config.trk_sb_min_turn_time, TRK_SB_MIN_TURN_TIME_S_MIN,
+                  TRK_SB_MIN_TURN_TIME_S_MAX);
+    web_fieldset_close(req);
+
     web_fieldset_open(req, TR_F_OPTIONS);
     web_field_checkbox(req, TR_F_COMPRESS_POSITION, "trkCompress", g_config.trk_compress);
     web_field_checkbox(req, TR_F_MICE_POSITION, "trkMice", g_config.trk_mice);
@@ -143,13 +166,27 @@ esp_err_t page_tracker_get(httpd_req_t *req) {
     return ESP_OK;
 }
 
+// Reads an integer form field and clamps it into [min, max], the same
+// two-layer policy every other bounded field on this page applies: the
+// browser's own min/max attributes are the first line of defence, this is
+// the second for a value that reaches the handler anyway. Shared by every
+// SmartBeaconing field below, all of which are plain int-range fields.
+static long web_form_get_clamped_int(const char *body, const char *key, long def, long min, long max) {
+    long v = web_form_get_int(body, key, (int)def);
+    if (v < min)
+        v = min;
+    if (v > max)
+        v = max;
+    return v;
+}
+
 esp_err_t page_tracker_post(httpd_req_t *req) {
     if (!web_check_auth(req))
         return ESP_OK;
     // Sized for the whole page in one POST: the main settings, station,
-    // options and status beacon fieldsets, plus the repeater radio
-    // parameters block.
-    char body[1900];
+    // SmartBeaconing, options and status beacon fieldsets, plus the repeater
+    // radio parameters block.
+    char body[2200];
     if (web_read_body(req, body, sizeof(body)) < 0) {
         httpd_resp_send_500(req);
         return ESP_OK;
@@ -191,6 +228,28 @@ esp_err_t page_tracker_post(httpd_req_t *req) {
     g_config.trk_path = app_config_path_mask_clamp(web_form_get_path_mask(body, "trkPath"), g_config.path);
 
     g_config.trk_interval = (uint16_t)web_form_get_int(body, "trkINV", g_config.trk_interval);
+
+    // SmartBeaconing: same two-layer clamp as every other bounded field on
+    // this page. High speed is additionally floored at low speed, since
+    // smartBeaconingInterval() (main/beacon.c) treats a high threshold below
+    // the low one as degenerate and falls back to the slow rate outright.
+    g_config.trk_sb_enable = web_form_get_bool(body, "trkSbEn");
+    g_config.trk_sb_slow_interval =
+        (uint16_t)web_form_get_clamped_int(body, "trkSbSlowIntv", g_config.trk_sb_slow_interval, TRK_SB_SLOW_INTERVAL_S_MIN, TRK_SB_SLOW_INTERVAL_S_MAX);
+    g_config.trk_sb_fast_interval =
+        (uint16_t)web_form_get_clamped_int(body, "trkSbFastIntv", g_config.trk_sb_fast_interval, TRK_SB_FAST_INTERVAL_S_MIN, TRK_SB_FAST_INTERVAL_S_MAX);
+    g_config.trk_sb_low_speed_kmh =
+        (uint16_t)web_form_get_clamped_int(body, "trkSbLowSpd", g_config.trk_sb_low_speed_kmh, TRK_SB_SPEED_KMH_MIN, TRK_SB_SPEED_KMH_MAX);
+    g_config.trk_sb_high_speed_kmh =
+        (uint16_t)web_form_get_clamped_int(body, "trkSbHighSpd", g_config.trk_sb_high_speed_kmh, TRK_SB_SPEED_KMH_MIN, TRK_SB_SPEED_KMH_MAX);
+    if (g_config.trk_sb_high_speed_kmh < g_config.trk_sb_low_speed_kmh)
+        g_config.trk_sb_high_speed_kmh = g_config.trk_sb_low_speed_kmh;
+    g_config.trk_sb_turn_angle =
+        (uint16_t)web_form_get_clamped_int(body, "trkSbTurnAngle", g_config.trk_sb_turn_angle, TRK_SB_TURN_ANGLE_MIN, TRK_SB_TURN_ANGLE_MAX);
+    g_config.trk_sb_turn_slope =
+        (uint16_t)web_form_get_clamped_int(body, "trkSbTurnSlope", g_config.trk_sb_turn_slope, TRK_SB_TURN_SLOPE_MIN, TRK_SB_TURN_SLOPE_MAX);
+    g_config.trk_sb_min_turn_time =
+        (uint16_t)web_form_get_clamped_int(body, "trkSbMinTurnTime", g_config.trk_sb_min_turn_time, TRK_SB_MIN_TURN_TIME_S_MIN, TRK_SB_MIN_TURN_TIME_S_MAX);
 
     g_config.trk_compress = web_form_get_bool(body, "trkCompress");
     g_config.trk_phg_enable = web_form_get_bool(body, "trkPHG");

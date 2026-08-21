@@ -393,6 +393,18 @@ void app_config_set_defaults(app_config_t *c) {
     c->trk_duplex = 0;
     c->trk_offset_khz = 0;
 
+    // SmartBeaconing (Hans-Gunnar Lundahl / HamHUD algorithm), off by
+    // default: an operator has to opt in and also enable "Use live GPS fix",
+    // since neither speed nor course exists without a live fix.
+    c->trk_sb_enable = false;
+    c->trk_sb_slow_interval = TRK_SB_SLOW_INTERVAL_S_DEFAULT;
+    c->trk_sb_fast_interval = TRK_SB_FAST_INTERVAL_S_DEFAULT;
+    c->trk_sb_low_speed_kmh = TRK_SB_LOW_SPEED_KMH_DEFAULT;
+    c->trk_sb_high_speed_kmh = TRK_SB_HIGH_SPEED_KMH_DEFAULT;
+    c->trk_sb_turn_angle = TRK_SB_TURN_ANGLE_DEFAULT;
+    c->trk_sb_turn_slope = TRK_SB_TURN_SLOPE_DEFAULT;
+    c->trk_sb_min_turn_time = TRK_SB_MIN_TURN_TIME_S_DEFAULT;
+
     // GNSS receiver
     c->gps_en = false;
 
@@ -811,6 +823,15 @@ static void config_write_json(jw_t *d, const app_config_t *c) {
     jadd_num(d, "trkFreqDup", c->trk_duplex);
     jadd_num(d, "trkFreqOff", c->trk_offset_khz);
 
+    jadd_bool(d, "trkSbEn", c->trk_sb_enable);
+    jadd_num(d, "trkSbSlowIntv", c->trk_sb_slow_interval);
+    jadd_num(d, "trkSbFastIntv", c->trk_sb_fast_interval);
+    jadd_num(d, "trkSbLowSpd", c->trk_sb_low_speed_kmh);
+    jadd_num(d, "trkSbHighSpd", c->trk_sb_high_speed_kmh);
+    jadd_num(d, "trkSbTurnAngle", c->trk_sb_turn_angle);
+    jadd_num(d, "trkSbTurnSlope", c->trk_sb_turn_slope);
+    jadd_num(d, "trkSbMinTurnTime", c->trk_sb_min_turn_time);
+
     jadd_bool(d, "gpsEn", c->gps_en);
 
     jadd_bool(d, "wxEn", c->wx_en);
@@ -937,6 +958,20 @@ static uint8_t clamp_nrq_digit(double value, const char *key) {
         v = clamped;
     }
     return (uint8_t)v;
+}
+
+// Bounds one loaded uint16_t field into [min, max], logging and clamping
+// a hand-edited or older config.json value the same way clamp_nrq_digit()
+// does for a DF digit. Shared by every SmartBeaconing field below, whose
+// bounds are all plain uint16_t ranges.
+static uint16_t clamp_u16_range(double value, uint16_t min, uint16_t max, const char *key) {
+    long v = (long)value;
+    if (v < min || v > max) {
+        long clamped = (v < min) ? min : max;
+        ESP_LOGW(TAG, "%s %ld out of range (%u-%u), clamped to %ld", key, v, (unsigned)min, (unsigned)max, clamped);
+        v = clamped;
+    }
+    return (uint16_t)v;
 }
 
 static void config_from_json(cJSON *d, app_config_t *c) {
@@ -1373,6 +1408,25 @@ static void config_from_json(cJSON *d, app_config_t *c) {
     c->trk_tone_tenths = (uint16_t)jget_num(d, "trkFreqTone", def.trk_tone_tenths);
     c->trk_duplex = (int8_t)jget_num(d, "trkFreqDup", def.trk_duplex);
     c->trk_offset_khz = (uint16_t)jget_num(d, "trkFreqOff", def.trk_offset_khz);
+
+    c->trk_sb_enable = jget_bool(d, "trkSbEn", def.trk_sb_enable);
+    c->trk_sb_slow_interval =
+        clamp_u16_range(jget_num(d, "trkSbSlowIntv", def.trk_sb_slow_interval), TRK_SB_SLOW_INTERVAL_S_MIN, TRK_SB_SLOW_INTERVAL_S_MAX, "trkSbSlowIntv");
+    c->trk_sb_fast_interval =
+        clamp_u16_range(jget_num(d, "trkSbFastIntv", def.trk_sb_fast_interval), TRK_SB_FAST_INTERVAL_S_MIN, TRK_SB_FAST_INTERVAL_S_MAX, "trkSbFastIntv");
+    c->trk_sb_low_speed_kmh = clamp_u16_range(jget_num(d, "trkSbLowSpd", def.trk_sb_low_speed_kmh), TRK_SB_SPEED_KMH_MIN, TRK_SB_SPEED_KMH_MAX, "trkSbLowSpd");
+    c->trk_sb_high_speed_kmh =
+        clamp_u16_range(jget_num(d, "trkSbHighSpd", def.trk_sb_high_speed_kmh), TRK_SB_SPEED_KMH_MIN, TRK_SB_SPEED_KMH_MAX, "trkSbHighSpd");
+    if (c->trk_sb_high_speed_kmh < c->trk_sb_low_speed_kmh) {
+        ESP_LOGW(TAG, "trkSbHighSpd %u below trkSbLowSpd %u, raised to match", (unsigned)c->trk_sb_high_speed_kmh, (unsigned)c->trk_sb_low_speed_kmh);
+        c->trk_sb_high_speed_kmh = c->trk_sb_low_speed_kmh;
+    }
+    c->trk_sb_turn_angle =
+        clamp_u16_range(jget_num(d, "trkSbTurnAngle", def.trk_sb_turn_angle), TRK_SB_TURN_ANGLE_MIN, TRK_SB_TURN_ANGLE_MAX, "trkSbTurnAngle");
+    c->trk_sb_turn_slope =
+        clamp_u16_range(jget_num(d, "trkSbTurnSlope", def.trk_sb_turn_slope), TRK_SB_TURN_SLOPE_MIN, TRK_SB_TURN_SLOPE_MAX, "trkSbTurnSlope");
+    c->trk_sb_min_turn_time =
+        clamp_u16_range(jget_num(d, "trkSbMinTurnTime", def.trk_sb_min_turn_time), TRK_SB_MIN_TURN_TIME_S_MIN, TRK_SB_MIN_TURN_TIME_S_MAX, "trkSbMinTurnTime");
 
     c->gps_en = jget_bool(d, "gpsEn", def.gps_en);
 

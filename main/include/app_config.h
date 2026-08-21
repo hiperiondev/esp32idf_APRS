@@ -238,6 +238,39 @@ typedef enum {
 /** @} */
 
 /**
+ * @name SmartBeaconing bounds and defaults
+ * @brief Accepted ranges and factory defaults for the Tracker beacon's
+ * SmartBeaconing fields (::app_config_t::trk_sb_*), following the standard
+ * algorithm published by Hans-Gunnar Lundahl / HamHUD (aprs.org's
+ * "SmartBeaconing" description). The two-layer clamp policy every other
+ * bounded field in this project follows applies here too: the web form
+ * bounds what the operator can enter, and app_config_load() bounds what a
+ * hand-edited or older config.json can carry into the beacon builder.
+ * @{
+ */
+#define TRK_SB_SLOW_INTERVAL_S_MIN 30    /**< Lowest selectable slow-rate (stationary) interval, seconds. */
+#define TRK_SB_SLOW_INTERVAL_S_MAX 65535 /**< Highest selectable slow-rate interval, seconds (uint16_t width). */
+#define TRK_SB_FAST_INTERVAL_S_MIN 5     /**< Lowest selectable fast-rate (moving at/above the high-speed threshold) interval, seconds. */
+#define TRK_SB_FAST_INTERVAL_S_MAX 65535 /**< Highest selectable fast-rate interval, seconds (uint16_t width). */
+#define TRK_SB_SPEED_KMH_MIN       0     /**< Lowest selectable low/high speed threshold, km/h. */
+#define TRK_SB_SPEED_KMH_MAX       999   /**< Highest selectable low/high speed threshold, km/h. */
+#define TRK_SB_TURN_ANGLE_MIN      1     /**< Lowest selectable minimum turn angle, degrees. */
+#define TRK_SB_TURN_ANGLE_MAX      180   /**< Highest selectable minimum turn angle, degrees. */
+#define TRK_SB_TURN_SLOPE_MIN      0     /**< Lowest selectable turn slope, degrees. A slope of 0 makes the turn threshold speed-independent. */
+#define TRK_SB_TURN_SLOPE_MAX      3600  /**< Highest selectable turn slope, degrees. */
+#define TRK_SB_MIN_TURN_TIME_S_MIN 0     /**< Lowest selectable minimum turn time, seconds. */
+#define TRK_SB_MIN_TURN_TIME_S_MAX 3600  /**< Highest selectable minimum turn time, seconds. */
+
+#define TRK_SB_SLOW_INTERVAL_S_DEFAULT 600 /**< Factory slow-rate interval, seconds: 10 minutes, the classic SmartBeaconing "stationary" cadence. */
+#define TRK_SB_FAST_INTERVAL_S_DEFAULT 60  /**< Factory fast-rate interval, seconds: 1 minute, the classic SmartBeaconing "moving fast" cadence. */
+#define TRK_SB_LOW_SPEED_KMH_DEFAULT   4   /**< Factory low-speed threshold, km/h: at or below this the beacon uses the slow-rate interval. */
+#define TRK_SB_HIGH_SPEED_KMH_DEFAULT  100 /**< Factory high-speed threshold, km/h: at or above this the beacon uses the fast-rate interval. */
+#define TRK_SB_TURN_ANGLE_DEFAULT      25  /**< Factory minimum turn angle, degrees: the classic SmartBeaconing corner-pegging threshold at speed. */
+#define TRK_SB_TURN_SLOPE_DEFAULT      255 /**< Factory turn slope, degrees: widens the turn threshold at low speed (see beacon.c's corner-pegging note). */
+#define TRK_SB_MIN_TURN_TIME_S_DEFAULT 15  /**< Factory minimum turn time, seconds: the classic SmartBeaconing corner-pegging re-arm guard. */
+/** @} */
+
+/**
  * @name Mic-E position comment selection
  * @brief Accepted range and fallback for ::app_config_t::trk_mice_msg.
  *
@@ -844,6 +877,24 @@ typedef struct {
     uint16_t trk_tone_tenths; /**< Repeater CTCSS subaudible tone, tenths of Hz; 0 => "Toff". */
     int8_t trk_duplex;        /**< Repeater duplex direction: 0 = simplex, +1 = "+", -1 = "-". */
     uint16_t trk_offset_khz;  /**< Repeater duplex shift magnitude, kHz; used only when trk_duplex != 0. */
+
+    bool trk_sb_enable; /**< Enable SmartBeaconing (Hans-Gunnar Lundahl / HamHUD algorithm): the Tracker beacon interval varies between trk_sb_slow_interval
+                              and trk_sb_fast_interval with current speed, and a heading change beyond the corner-pegging threshold forces an early beacon.
+                              Only has an effect while trk_use_live_gps is also set - SmartBeaconing has no speed/course input without a live GNSS fix, and
+                              falls back to the fixed trk_interval cadence whenever one is not currently available. See trackerBeaconService() in
+                              main/beacon.c. */
+    uint16_t trk_sb_slow_interval;  /**< SmartBeaconing slow-rate interval, seconds: the beacon period used at or below trk_sb_low_speed_kmh (including
+                                          stationary). */
+    uint16_t trk_sb_fast_interval;  /**< SmartBeaconing fast-rate interval, seconds: the beacon period used at or above trk_sb_high_speed_kmh. */
+    uint16_t trk_sb_low_speed_kmh;  /**< SmartBeaconing low-speed threshold, km/h: at or below this speed the interval is trk_sb_slow_interval. */
+    uint16_t trk_sb_high_speed_kmh; /**< SmartBeaconing high-speed threshold, km/h: at or above this speed the interval is trk_sb_fast_interval. Between the
+                                          two thresholds the interval is linearly interpolated. */
+    uint16_t trk_sb_turn_angle;     /**< SmartBeaconing corner-pegging minimum turn angle, degrees: the heading change (at or above the high-speed threshold)
+                                          that forces an early beacon. */
+    uint16_t trk_sb_turn_slope;     /**< SmartBeaconing corner-pegging turn slope, degrees: added to trk_sb_turn_angle, scaled inversely with current speed, so
+                                          the effective turn threshold widens at low speed - see the corner-pegging note in beacon.c. */
+    uint16_t trk_sb_min_turn_time;  /**< SmartBeaconing minimum turn time, seconds: the shortest gap allowed between two corner-pegged beacons, so a
+                                          stationary or slow-moving station with a noisy course reading cannot re-trigger corner-pegging every pass. */
 
     bool gps_en; /**< GNSS receiver enabled. When false the receiver's UART is never installed, the reader task does not run and every consumer of
                       ::gps_snapshot sees "no receiver". This is the single switch the rest of the firmware tests before using anything the module reports. */
