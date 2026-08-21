@@ -791,6 +791,7 @@ static void config_write_json(jw_t *d, const app_config_t *c) {
     jadd_str(d, "trkMycall", c->trk_mycall);
     jadd_bool(d, "trkUseStation", c->trk_use_station);
     jadd_bool(d, "trkUseGps", c->trk_use_gps);
+    jadd_bool(d, "trkUseLiveGps", c->trk_use_live_gps);
     jadd_num(d, "trkPath", c->trk_path);
     jadd_num(d, "trkLAT", c->trk_lat);
     jadd_num(d, "trkLON", c->trk_lon);
@@ -1345,6 +1346,7 @@ static void config_from_json(cJSON *d, app_config_t *c) {
     set_str(c->trk_mycall, sizeof(c->trk_mycall), jget_str(d, "trkMycall", def.trk_mycall));
     c->trk_use_station = jget_bool(d, "trkUseStation", def.trk_use_station);
     c->trk_use_gps = jget_bool(d, "trkUseGps", def.trk_use_gps);
+    c->trk_use_live_gps = jget_bool(d, "trkUseLiveGps", def.trk_use_live_gps);
     c->trk_path = (uint8_t)jget_num(d, "trkPath", def.trk_path);
     c->trk_lat = (float)jget_num(d, "trkLAT", def.trk_lat);
     c->trk_lon = (float)jget_num(d, "trkLON", def.trk_lon);

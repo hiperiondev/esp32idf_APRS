@@ -343,20 +343,36 @@ Seguimiento / Balizamiento
      - Notas sobre la implementación de este proyecto
    * - Entrada de posición GPS en vivo (NMEA)
      - ✅ (universal en trackers móviles)
-     - ❌
-     - No implementado. Las balizas son solo de posición fija — no hay entrada de posición en vivo ni configuración relacionada con GPS
+     - ✅
+     - El receptor GNSS (``main/gps.c``, ``gps_snapshot()``) interpreta
+       RMC/GGA/GSA y arma una posición en vivo; el interruptor *Usar posición
+       GPS en vivo* de la página del beacon Tracker hace que
+       ``trackerBeaconService()`` (``main/beacon.c``) lea esa posición en cada
+       transmisión y la use en lugar de la latitud/longitud/altitud fija de la
+       página, volviendo a esos valores fijos siempre que el receptor esté
+       apagado o no tenga una posición vigente. Las balizas de IGate y
+       Digipeater siguen siendo solo de posición fija
    * - Balizamiento de posición fija (estación base)
      - ✅
      - ✅
-     - Posición/intervalo/símbolo/comentario independientes por rol (tracker, IGate, digi)
+     - Posición/intervalo/símbolo/comentario independientes por rol (tracker,
+       IGate, digi); el modo por defecto y de respaldo para los tres, y el
+       único que ofrecen las balizas de IGate y Digipeater
    * - Smart Beaconing (intervalo adaptativo por velocidad/rumbo)
      - ✅ (clientes móviles, OpenTracker)
      - ❌
-     - Sin GPS, no aplica
+     - No implementado. El intervalo de transmisión de la baliza Tracker se
+       mantiene fijo incluso mientras baliza una posición GPS en vivo
    * - Rumbo/velocidad en informes de posición
      - ✅
-     - ⚠️
-     - Soportado en Objetos/Items, pero la baliza de tracker propia no tiene fuente de rumbo/velocidad en vivo (sin GPS)
+     - ✅
+     - Soportado en Objetos/Items, y en la baliza Tracker siempre que esté
+       transmitiendo una posición GPS en vivo — como extensión de datos
+       estándar ``CSE/SPD`` (formato sin comprimir), plegado en la ranura de
+       dos bytes ``cs/T`` propia del campo comprimido (formato comprimido), o
+       como el par de curso/velocidad real (Mic-E). Una posición en vivo sin
+       curso/velocidad reportados en ese ciclo, y toda baliza de posición
+       fija, indican "desconocido" (``000/000``)
    * - Codificación de posición comprimida (Base-91)
      - ✅
      - ✅
@@ -370,15 +386,17 @@ Seguimiento / Balizamiento
      - ⚠️ (sobre todo firmware de tracker móvil)
      - ✅
      - La página del beacon Tracker ofrece una opción Mic-E
-       (``aprs_mice_encode()``); solo posición fija, por lo que el
-       curso/velocidad se envía siempre como "desconocido". El comentario de
-       posición se elige en la misma página, entre los siete valores estándar y
-       los siete personalizados; Emergency no se ofrece, porque transmitirlo
-       pide una respuesta del mundo real. El campo de información sigue el orden
-       canónico de ``mic-e-examples.txt``: byte TYPE, altitud, bloque de
-       frecuencia, extensión de datos, comentario, ``!DAO!`` y el par
-       Fabricante/Versión que identifica al firmware (la dirección de destino
-       lleva datos de posición, así que el TOCALL ``APxxxx`` no puede)
+       (``aprs_mice_encode()``); lleva el curso/velocidad real mientras
+       transmite una posición GPS en vivo, y "desconocido" (``000/000``) en
+       cualquier otro momento, con el mismo interruptor fijo/en vivo que el
+       resto de los formatos. El comentario de posición se elige en la misma
+       página, entre los siete valores estándar y los siete personalizados;
+       Emergency no se ofrece, porque transmitirlo pide una respuesta del
+       mundo real. El campo de información sigue el orden canónico de
+       ``mic-e-examples.txt``: byte TYPE, altitud, bloque de frecuencia,
+       extensión de datos, comentario, ``!DAO!`` y el par Fabricante/Versión
+       que identifica al firmware (la dirección de destino lleva datos de
+       posición, así que el TOCALL ``APxxxx`` no puede)
    * - PHG / potencia-altura-ganancia-directividad
      - ✅
      - ✅

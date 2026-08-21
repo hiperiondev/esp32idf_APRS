@@ -18,7 +18,10 @@
 // g_config. The fixed position can be typed in, mirrored from "My Station"
 // ("Use My Station Data") or taken live from the GNSS receiver ("Use GPS",
 // see web_field_use_gps_data() in web_common.c); the three sources are
-// mutually exclusive.
+// mutually exclusive. A separate "Use live GPS fix" switch (trk_use_live_gps)
+// leaves the fixed fields alone and instead has beacon.c read the GNSS
+// receiver at every beacon transmission, carrying live course and speed
+// alongside position - see trackerBeaconService() in main/beacon.c.
 
 #include <stdio.h>
 #include <string.h>
@@ -91,6 +94,13 @@ esp_err_t page_tracker_get(httpd_req_t *req) {
     web_field_float(req, TR_F_FIXED_LATITUDE, "trkLAT", g_config.trk_lat, "0.0001", WEB_RANGE_LAT_MIN, WEB_RANGE_LAT_MAX);
     web_field_float(req, TR_F_FIXED_LONGITUDE, "trkLON", g_config.trk_lon, "0.0001", WEB_RANGE_LON_MIN, WEB_RANGE_LON_MAX);
     web_field_float(req, TR_F_FIXED_ALTITUDE_M, "trkALT", g_config.trk_alt, "0.1", WEB_RANGE_ALT_M_MIN, WEB_RANGE_ALT_M_MAX);
+    // Unlike "Use GPS" above, this does not touch the fixed fields at all: it
+    // leaves them as the fallback and instead has beacon.c re-read the GNSS
+    // receiver at every tracker beacon transmission (trackerBeaconService(),
+    // main/beacon.c), carrying live course and speed alongside position. The
+    // fixed fields stay in effect whenever the receiver is off or has no
+    // current fix.
+    web_field_checkbox(req, TR_F_TRACKER_USE_LIVE_GPS, "trkUseLiveGps", g_config.trk_use_live_gps);
     web_fieldset_close(req);
 
     web_fieldset_open(req, TR_F_OPTIONS);
@@ -149,6 +159,7 @@ esp_err_t page_tracker_post(httpd_req_t *req) {
     g_config.trk_en = web_form_get_bool(body, "trkEn");
     g_config.trk_use_station = web_form_get_bool(body, "trkUseStation");
     g_config.trk_use_gps = web_form_get_bool(body, "trkUseGps");
+    g_config.trk_use_live_gps = web_form_get_bool(body, "trkUseLiveGps");
     g_config.trk_loc2rf = web_form_get_bool(body, "trkPos2rf");
     g_config.trk_loc2inet = web_form_get_bool(body, "trkPos2inet");
     g_config.trk_timestamp = web_form_get_bool(body, "trkTime");

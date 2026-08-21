@@ -38,6 +38,7 @@
 #include "aprs_service.h"
 #include "beacon.h"
 #include "beacon_scheduler.h" // beacon_scheduler_jitter()
+#include "gps.h"              // gps_snapshot(), gps_data_t
 #include "igate.h"
 #include "objects_items.h"     // objitem_build_freq_block()
 #include "sched_time.h"        // sched_mono_seconds() / sched_clamp_interval()
@@ -72,6 +73,20 @@ typedef struct {
     float lon;
     float alt;
     bool sendAltitude;
+    // Course/speed for the standard "CSE/SPD" data-extension slot (APRS101
+    // ch.6/ch.9), the same slot buildDataExtension() fills with PHG/RNG/DFS/DF
+    // when hasCourseSpeed is not set. Populated only by the Tracker beacon,
+    // when it is transmitting a live GNSS fix
+    // (g_config.trk_use_live_gps + a current gps_snapshot() fix) rather than
+    // its fixed position; the fixed-position beacons this project also builds
+    // (IGate, Digipeater) have no course/speed source and never set this.
+    // Course/speed and a PHG/RNG/DFS/DF extension cannot share the slot at
+    // once - see the priority note on buildDataExtension() - so a live fix
+    // reported while trk_phg_enable is also on gives way to PHG, the same way
+    // objects_items.c gives way to PHG over CSE/SPD for a stationary element.
+    bool hasCourseSpeed;
+    uint16_t courseDeg;  // 0..359, true course over ground
+    uint16_t speedKnots; // Speed over ground, knots
     char symbol[3]; // table + code + NUL
     char comment[COMMENT_SIZE];
     char pathPreset[4][72]; // snapshot of g_config.path[0..3]
@@ -91,9 +106,11 @@ typedef struct {
     // igateBeaconService() and digiBeaconService()); the Tracker beacon offers
     // PHG alone, taken from the station-wide antenna data. All extension types share
     // the same 7-byte info-field slot that moving stations use for CSE/SPD -
-    // mutually exclusive with movement, which is fine here since these are
-    // fixed-position beacons. Mic-E has no such slot, and carries the token in
-    // its text field instead (see buildMicePositionPacket()).
+    // mutually exclusive with hasCourseSpeed above, since only the Tracker
+    // beacon can carry either and the two describe the same bytes. IGate and
+    // Digipeater never set hasCourseSpeed, so the slot is free for their own
+    // extension exactly as before. Mic-E has no such slot, and carries the
+    // token in its text field instead (see buildMicePositionPacket()).
     bool extEnable;
     uint8_t extType;     // aprs_ext_type_t: PHG, RNG, DFS or DF
     uint16_t phgPower;   // Watts (PHG)
@@ -344,22 +361,33 @@ static void buildDfsExtension(uint8_t strength, float gain, uint16_t height, uin
 }
 
 // Selects and builds the beacon's data extension into `out`, which is left as
-// an empty string when no extension is enabled or when the selected one may
+// an empty string when nothing is enabled or when the selected one may
 // not travel with this beacon's symbol. `out` must be >= APRS_DF_EXT_BUF_SIZE:
 // that is the size the DF form needs, and aprs_df_build_extension() empties
 // the buffer instead of writing a short token below it, because a truncated
 // DF report would decode as a different bearing rather than as a missing one.
 // Every call site asserts that size at compile time, so an undersized buffer
 // is a build error rather than an extension that silently never goes out.
-// Exactly one extension is ever emitted: they all
-// occupy the same 7-byte slot after the symbol code, except PHG when
-// p->beaconIntervalSec is known, which adds the two-byte PHGR probe rate/slash
-// suffix described on buildPhgExtension(), and DF, which reaches
-// APRS_DF_EXT_TAIL_LEN bytes past the slot.
+// Exactly one thing is ever emitted into the slot: an enabled PHG/RNG/DFS/DF
+// extension takes priority (the operator turned it on explicitly, the same
+// precedence objects_items.c gives PHG over CSE/SPD for a stationary
+// element); with none enabled, a live course/speed reading fills the slot
+// instead, as the plain "CSE/SPD" pair APRS101 ch.7 describes for a moving
+// station. They all occupy the same 7-byte slot after the symbol code,
+// except PHG when p->beaconIntervalSec is known, which adds the two-byte
+// PHGR probe rate/slash suffix described on buildPhgExtension(), and DF,
+// which reaches APRS_DF_EXT_TAIL_LEN bytes past the slot.
 static void buildDataExtension(const beacon_params_t *p, char *out, size_t outMax) {
     out[0] = 0;
-    if (!p->extEnable)
+    if (!p->extEnable) {
+        // No PHG/RNG/DFS/DF selected: a live GNSS fix (Tracker beacon only,
+        // see hasCourseSpeed's own comment) still has a natural home in this
+        // slot, the CSE/SPD pair every APRS client already knows how to read
+        // off a moving station.
+        if (p->hasCourseSpeed)
+            snprintf(out, outMax, "%03u/%03u", (unsigned)(p->courseDeg % 360), (unsigned)(p->speedKnots > 999 ? 999 : p->speedKnots));
         return;
+    }
 
     switch ((aprs_ext_type_t)p->extType) {
         case APRS_EXT_RNG:
@@ -388,9 +416,11 @@ static void buildDataExtension(const beacon_params_t *p, char *out, size_t outMa
                     return;
                 }
             }
-            // These three beacons are fixed stations with no course/speed
-            // source, and the chapter gives "000/000" as the pair that says
-            // exactly that while still carrying the bearing that follows it.
+            // DF is only ever selected on the IGate and Digipeater beacon
+            // pages (see igateBeaconService()/digiBeaconService()), which
+            // stay fixed stations with no course/speed source, so the
+            // chapter's "000/000" pair - meaning exactly that - is always
+            // correct here, while still carrying the bearing that follows it.
             aprs_df_build_extension(0, 0, &p->df, out, outMax);
             return;
         case APRS_EXT_DFS:
@@ -408,12 +438,13 @@ static void buildDataExtension(const beacon_params_t *p, char *out, size_t outMa
 // Mic-E splits its payload between the AX.25 destination address (encoded
 // here via aprs_mice_encode(), which returns 6 raw bytes - not necessarily
 // printable ASCII) and the information field, so this builds the "call>dst"
-// portion of the TNC2 line itself instead of reusing BEACON_DEST. This
-// project's beacons are fixed-position with no live course/speed source
-// (see docs/reference/limitations.rst), so the report always carries the
-// on-air "unknown" course/speed pattern (000/000); the position comment is
-// whatever the operator selected on the Tracker page, which cannot be
-// Emergency.
+// portion of the TNC2 line itself instead of reusing BEACON_DEST. The IGate
+// and Digipeater beacons are always fixed-position with no course/speed
+// source, so their report carries the on-air "unknown" course/speed pattern
+// (000/000); the Tracker beacon carries its real course/speed instead
+// whenever it is transmitting a live GNSS fix (hasCourseSpeed). The position
+// comment is whatever the operator selected on the Tracker page, which
+// cannot be Emergency.
 //
 // Mic-E has one free-text slot, and aprs12/mic-e-examples.txt fixes the order
 // of what may go in it: the frequency block first (radios auto-tune from the
@@ -477,7 +508,17 @@ static int buildMicePositionPacket(const beacon_params_t *p, const char *path, c
     uint8_t miceMsg = (p->miceMsg > MICE_POS_COMMENT_MAX) ? MICE_POS_COMMENT_DEFAULT : p->miceMsg;
     report.is_custom_message = (miceMsg >= MICE_POS_COMMENT_CUSTOM_BASE);
     report.message_code = (aprs_mice_message_code_t)(report.is_custom_message ? miceMsg - MICE_POS_COMMENT_CUSTOM_BASE : miceMsg);
-    report.course_speed.is_unknown = true;
+    // Course/speed (APRS101 ch.10). "Unknown" (000/000) is the on-air
+    // convention for a station with nothing to report here - the only case
+    // before live GPS was wired in, and still what every fixed-position
+    // beacon this project builds sends. A live GNSS fix (hasCourseSpeed,
+    // Tracker beacon only, see its own comment on beacon_params_t) carries
+    // its real course and speed instead.
+    report.course_speed.is_unknown = !p->hasCourseSpeed;
+    if (p->hasCourseSpeed) {
+        report.course_speed.course_deg = p->courseDeg % 360;
+        report.course_speed.speed_knots = p->speedKnots;
+    }
     // Messaging capability, taken from the same flag that picks '='/'@' over
     // '!'/'/' in buildPositionPacket(), so the two layouts state the same
     // thing about this station whichever one the operator selects.
@@ -588,13 +629,14 @@ static int buildPositionPacket(const beacon_params_t *p, const char *path, char 
     char symTable = p->symbol[0] ? p->symbol[0] : '/';
     char symCode = p->symbol[1] ? p->symbol[1] : '>';
 
-    // Data-extension token (PHG / RNG / DFS / DF), when enabled. Emitted right
-    // after the symbol code and before the altitude/comment, matching the
-    // Object/Item info field layout (main/objects_items.c) and the order the
-    // APRS spec defines for this slot. Sized for the longest of them, which is
-    // the DF report: its own buffer-size constant covers the 15-byte
-    // "CSE/SPD/BRG/NRQ" token plus NUL, and is wider than the 9-byte
-    // PHGR-suffixed PHG form.
+    // Data-extension token (PHG / RNG / DFS / DF when enabled, or live
+    // CSE/SPD when none is and the beacon carries a course/speed reading -
+    // see buildDataExtension()). Emitted right after the symbol code and
+    // before the altitude/comment, matching the Object/Item info field
+    // layout (main/objects_items.c) and the order the APRS spec defines for
+    // this slot. Sized for the longest of them, which is the DF report: its
+    // own buffer-size constant covers the 15-byte "CSE/SPD/BRG/NRQ" token
+    // plus NUL, and is wider than the 9-byte PHGR-suffixed PHG form.
     char ext[APRS_DF_EXT_BUF_SIZE] = { 0 };
     _Static_assert(sizeof(ext) >= APRS_DF_EXT_BUF_SIZE, "beacon data-extension buffer must hold the DF form, which is dropped whole below that size");
     buildDataExtension(p, ext, sizeof(ext));
@@ -608,8 +650,13 @@ static int buildPositionPacket(const beacon_params_t *p, const char *path, char 
 
     // What the slot really holds decides the layout, not what was selected:
     // a DF report the symbol does not allow leaves the slot empty, and an
-    // empty slot is no reason to give up compression.
-    bool extPresent = (ext[0] != 0);
+    // empty slot is no reason to give up compression. A live course/speed
+    // reading (buildDataExtension()'s own CSE/SPD fallback, hasCourseSpeed)
+    // has a compressed-format equivalent, so it does not count as "present"
+    // here even though it filled ext[] - it is folded into the compressed
+    // field's own cs/T slot below instead of forcing the uncompressed one.
+    bool extIsCourseSpeed = !p->extEnable && p->hasCourseSpeed;
+    bool extPresent = (ext[0] != 0) && !extIsCourseSpeed;
 
     // Two things force the uncompressed layout:
     //
@@ -625,16 +672,20 @@ static int buildPositionPacket(const beacon_params_t *p, const char *path, char 
     //     honouring the compress flag here would transmit the exact position
     //     the operator asked to obscure.
     //
-    // None of these three fixed-position beacons track course/speed, so the
-    // compressed cs/T slot carries either the radio range form or "no cs/T
-    // data" (3 spaces).
+    // A fixed-position beacon - the only kind these three ever sent before
+    // live GPS was wired in - never sets hasCourseSpeed, so for one the
+    // compressed cs/T slot still carries only the radio range form or "no
+    // cs/T data" (3 spaces), exactly as before.
     bool useCompressed = p->compress && (!extPresent || extIsRange) && p->ambiguity == 0;
 
     // The operator selected two settings that cannot both be honoured, so the
     // one that is dropped is named rather than left to be discovered off the
     // air. Position ambiguity is not part of this: it blanks digits of the
     // uncompressed layout, which keeps its extension slot, so the two travel
-    // together without either giving way.
+    // together without either giving way. A live course/speed reading is not
+    // part of this either, for the same reason RNG is not: it has a
+    // compressed-format home of its own and never forces the uncompressed
+    // layout.
     if (p->compress && !useCompressed && extPresent && !extIsRange)
         ESP_LOGW(TAG, "Compressed position disabled for this beacon: the selected data extension needs the uncompressed layout");
 
@@ -643,10 +694,10 @@ static int buildPositionPacket(const beacon_params_t *p, const char *path, char 
     // type byte names GGA as the NMEA source. It costs nothing on air, where
     // the uncompressed "/A=" token costs nine bytes, so a compressed report
     // carrying an altitude uses it - unless the cs slot is already spoken for
-    // by a radio range, which is an extension the operator enabled explicitly
-    // and which has no other place to go. Altitude always has the "/A=" form
-    // to fall back on, so it is the one that gives way.
-    bool useCompressedAltitude = useCompressed && p->sendAltitude && !extIsRange;
+    // by a radio range or a live course/speed reading, neither of which has
+    // anywhere else to go. Altitude always has the "/A=" form to fall back
+    // on, so it is the one that gives way.
+    bool useCompressedAltitude = useCompressed && p->sendAltitude && !extIsRange && !extIsCourseSpeed;
 
     // Sized for the larger of the two layouts: uncompressed is up to 21
     // bytes (9-char latStr content + symTable + 10-char lonStr content +
@@ -658,6 +709,9 @@ static int buildPositionPacket(const beacon_params_t *p, const char *path, char 
         if (extIsRange) {
             aprs_compressed_cs_from_range(p->rangeMiles, csT);
             ext[0] = 0; // the range travels in the compressed field's own cs/T slot
+        } else if (extIsCourseSpeed) {
+            aprs_compressed_cs_from_course_speed(p->courseDeg, p->speedKnots, csT);
+            ext[0] = 0; // course/speed travels in the compressed field's own cs/T slot
         } else if (useCompressedAltitude) {
             int feet = (int)(p->alt * 3.28084f);
             if (feet < 0)
@@ -1251,6 +1305,7 @@ static uint32_t trackerBeaconService(void) {
     int64_t now = sched_mono_seconds();
     if (now >= s_trk_next_due) {
         beacon_params_t p = { 0 };
+        bool useLiveGps;
         app_config_lock();
         {
             bool useTrk = g_config.trk_mycall[0] != 0;
@@ -1288,8 +1343,45 @@ static uint32_t trackerBeaconService(void) {
             p.phgHeight = g_config.my_phg_height;
             p.phgDir = g_config.my_phg_dir;
             p.beaconIntervalSec = sched_clamp_interval(g_config.trk_interval, BEACON_MIN_INTERVAL_S, BEACON_DEFAULT_INTERVAL_S);
+            useLiveGps = g_config.trk_use_live_gps;
         }
         app_config_unlock();
+
+        // Live GPS fix (APRS101 ch.6/ch.9/ch.10): when the operator has "Use
+        // live GPS fix" on, read the GNSS receiver fresh for this
+        // transmission and let a current fix override the fixed
+        // lat/lon/alt/course/speed snapshotted above. gps_snapshot() takes
+        // its own lock (gps.c), independent of app_config_lock(), so this is
+        // called after that lock is released rather than nested inside it.
+        // Anything short of a full, current fix - the receiver switched off,
+        // still acquiring, or its link gone stale (gps_data_t::link_up past
+        // ::GPS_LINK_TIMEOUT_S) - leaves p exactly as filled from
+        // g_config.trk_* above, so the beacon keeps beaconing the fixed
+        // position rather than transmitting nothing or a stale fix.
+        if (useLiveGps) {
+            gps_data_t g;
+            if (gps_snapshot(&g) && g.valid && g.has_position) {
+                p.lat = (float)g.latitude;
+                p.lon = (float)g.longitude;
+                if (g.has_altitude)
+                    p.alt = (float)g.altitude_m;
+                // Course/speed only carry meaning together, and only once
+                // the receiver has actually reported both this cycle; a
+                // stationary fix legitimately has no course, so course alone
+                // is not enough to claim movement.
+                if (g.has_course && g.has_speed) {
+                    p.hasCourseSpeed = true;
+                    p.courseDeg = (uint16_t)(((int)(g.course_deg + 0.5)) % 360);
+                    // gps_data_t carries speed in km/h (gps.h); the position
+                    // report's CSE/SPD, compressed cs/T and Mic-E course/speed
+                    // fields all take knots, and 1.852 is this project's own
+                    // km/h-per-knot factor (see gps.c's NMEA speed parsing).
+                    double speedKt = g.speed_kmh / 1.852;
+                    p.speedKnots = (uint16_t)(speedKt < 0.0 ? 0 : speedKt + 0.5);
+                }
+            }
+        }
+
         appendCommentTelemetry(&p);
 
         txPositionBeacon(&p, g_config.trk_loc2rf, g_config.trk_loc2inet, "Tracker beacon", "no callsign configured (set Tracker or APRS callsign)");

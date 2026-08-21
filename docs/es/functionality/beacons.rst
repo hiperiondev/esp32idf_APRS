@@ -228,6 +228,61 @@ comentario de posición normal, PHG incluido, y ahí es donde va: detrás del
 bloque de frecuencia, para que una radio siga sintonizando automáticamente a
 partir de los primeros bytes, y delante del comentario del operador.
 
+Posición GPS en vivo y rumbo/velocidad
+========================================
+
+La posición de cada baliza toma por defecto la latitud/longitud/altitud fija
+guardada en su propia página — el único modo que ofrecen las balizas de IGate
+y Digipeater. La página de la baliza Tracker suma un interruptor más, *Usar
+posición GPS en vivo* (``g_config.trk_use_live_gps``), independiente de la
+casilla *Usar GPS* descrita arriba: mientras *Usar GPS* copia la posición del
+receptor GNSS a los campos fijos una sola vez, al guardar, *Usar posición GPS
+en vivo* hace que ``trackerBeaconService()`` (``main/beacon.c``) vuelva a leer
+el receptor — mediante ``gps_snapshot()`` (``main/gps.c``) — en cada
+transmisión, y transmita esa latitud/longitud/altitud en vivo en lugar de los
+valores fijos.
+
+Una posición en vivo solo se usa cuando está realmente vigente:
+``gps_snapshot()`` debe reportar ``valid`` y ``has_position`` (el receptor
+tiene una solución RMC activa, no vencida más allá de ``GPS_LINK_TIMEOUT_S``).
+Cualquier cosa por debajo de eso — receptor apagado, todavía adquiriendo
+posición, o enlace silencioso — deja los parámetros de la baliza exactamente
+como se leyeron de ``g_config.trk_lat``/``trk_lon``/``trk_alt``, así que el
+Tracker sigue balizando su posición fija de respaldo en vez de omitir una
+transmisión o enviar una posición vencida. La altitud solo se reemplaza cuando
+el propio indicador ``has_altitude`` del receptor está activo, ya que una
+posición 2D no trae altitud que dar.
+
+Cuando el receptor también reporta rumbo y velocidad para esa misma lectura
+(``has_course`` y ``has_speed`` activos ambos), la baliza Tracker los lleva
+también, según el formato elegido:
+
+* **Sin comprimir** — la extensión de datos estándar ``CSE/SPD``
+  (``"%03u/%03u"``, grados verdaderos y nudos), en la misma ranura de 7 bytes
+  que ocupan PHG/RNG/DFS/DF. Una extensión PHG activa sigue teniendo prioridad
+  sobre CSE/SPD por esa ranura, la misma precedencia que Objetos/Ítems dan a
+  PHG sobre el CSE/SPD propio de un elemento en movimiento.
+* **Comprimido** — plegado en la ranura de dos bytes propia del campo
+  comprimido (``cs/T``) mediante ``aprs_compressed_cs_from_course_speed()``,
+  el mismo codificador que usan Objetos/Ítems para un elemento en movimiento.
+  Un alcance de radio precalculado sigue teniendo prioridad sobre
+  rumbo/velocidad por esa ranura, porque RNG es un ajuste que el operador
+  activó explícitamente y no tiene otro lugar adonde ir; rumbo/velocidad cede
+  ante él igual que la altitud.
+* **Mic-E** — el par real de rumbo/velocidad, en lugar del "desconocido"
+  ``000/000`` que envía toda baliza de posición fija (y una posición en vivo
+  sin rumbo/velocidad reportados en ese ciclo).
+
+La velocidad se convierte de los km/h del receptor (``gps_data_t::speed_kmh``)
+a los nudos en que están definidos todos estos campos, usando el mismo factor
+1.852 que ``gps.c`` ya aplica en el sentido inverso al interpretar una
+velocidad NMEA en nudos hacia el snapshot.
+
+Smart Beaconing — acortar el intervalo de transmisión automáticamente según
+la velocidad o el rumbo — no está implementado; el intervalo de la baliza
+Tracker se mantiene fijo (``trk_interval``) tanto si está balizando una
+posición en vivo como si no.
+
 Altitud comprimida
 ==================
 

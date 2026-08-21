@@ -819,6 +819,10 @@ typedef struct {
     bool trk_use_station;  /**< "Use My Station Data": mirror My Station into the tracker fields and lock them. */
     bool trk_use_gps;      /**< "Use GPS": mirror the live GNSS fix into trk_lat/trk_lon/trk_alt on every save and lock those fields against manual editing.
                               Mutually exclusive with trk_use_station on the page itself; both write the same three fields. */
+    bool trk_use_live_gps; /**< "Use live GPS fix": read the GNSS receiver at every beacon transmission instead of at save time. When set and
+                              ::gps_snapshot reports a valid fix, the tracker beacon carries the live latitude/longitude/altitude/course/speed instead of
+                              trk_lat/trk_lon/trk_alt; a disabled receiver or a momentary loss of fix falls back to those fixed values for that beacon,
+                              same as when this is off. Independent of trk_use_gps, which only copies the fix into the fixed fields once, on save. */
     uint8_t trk_path;      /**< Tracker digipeat-path selection (bitmask over g_config.path[0..3]). */
     float trk_lat;         /**< Tracker beacon latitude. */
     float trk_lon;         /**< Tracker beacon longitude. */

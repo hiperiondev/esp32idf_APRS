@@ -214,6 +214,57 @@ carry an ordinary position comment field, PHG included, and that is where the
 token goes: after the frequency block, so a radio still auto-tunes from the
 leading bytes, and before the operator's comment.
 
+Live GPS fix and course/speed
+==============================
+
+Every beacon's position defaults to the fixed latitude/longitude/altitude
+saved on its own page — the only mode the IGate and Digipeater beacons offer.
+The Tracker beacon page adds one more switch, *Use live GPS fix*
+(``g_config.trk_use_live_gps``), independent of the *Use GPS* checkbox
+described above: where *Use GPS* copies the GNSS receiver's fix into the
+fixed fields once, at save time, *Use live GPS fix* has
+``trackerBeaconService()`` (``main/beacon.c``) read the receiver fresh —
+via ``gps_snapshot()`` (``main/gps.c``) — at every single transmission, and
+transmit that live latitude/longitude/altitude instead of the fixed values.
+
+A live fix is used only when it is actually current: ``gps_snapshot()``
+reports ``valid`` and ``has_position`` (the receiver has an active RMC
+solution, not stale past ``GPS_LINK_TIMEOUT_S``). Anything short of that —
+the receiver switched off, still acquiring, or its link gone quiet — leaves
+the beacon's parameters exactly as read from ``g_config.trk_lat``/``trk_lon``/
+``trk_alt``, so the Tracker keeps beaconing its fixed fallback position rather
+than skip a transmission or send a stale one. Altitude is only overridden when
+the receiver's own ``has_altitude`` flag is set, since a 2D fix carries no
+altitude to give.
+
+When the receiver also reports course and speed for that same reading
+(``has_course`` and ``has_speed`` both set), the Tracker beacon carries them
+too, in whichever layout is selected:
+
+* **Uncompressed** — the standard ``CSE/SPD`` data extension
+  (``"%03u/%03u"``, degrees true and knots), in the same 7-byte slot PHG/RNG/
+  DFS/DF occupy. An enabled PHG extension still takes priority over CSE/SPD
+  for that slot, the same precedence Objects/Items give PHG over a moving
+  element's own CSE/SPD.
+* **Compressed** — folded into the compressed field's own two-byte ``cs/T``
+  slot via ``aprs_compressed_cs_from_course_speed()``, the same encoder
+  Objects/Items use for a moving element. A pre-calculated radio range still
+  takes priority over course/speed for that slot, since RNG is a setting the
+  operator turned on explicitly and has nowhere else to go; course/speed
+  gives way to it the same way altitude does.
+* **Mic-E** — the real course/speed pair, instead of the "unknown" ``000/000``
+  every fixed-position beacon (and a live fix with no course/speed reported
+  that cycle) sends.
+
+Speed is converted from the receiver's km/h (``gps_data_t::speed_kmh``) to the
+knots every one of these fields is defined in, using the same 1.852 factor
+``gps.c`` already applies the other way when it parses a raw NMEA speed in
+knots into the snapshot.
+
+Smart Beaconing — shortening the transmit interval automatically as speed or
+heading change — is not implemented; the Tracker beacon's interval stays
+fixed (``trk_interval``) whether or not it is beaconing a live fix.
+
 Compressed altitude
 ===================
 

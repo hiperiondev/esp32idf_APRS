@@ -301,6 +301,9 @@
 #define TR_USE_MY_STATION_DATA "Usar mis datos de estación"
 /** Spanish text for the caption of the control that fills the current form's position/motion fields live from the GNSS receiver. English: "Use GPS". */
 #define TR_USE_GPS_DATA "Usar GPS"
+/** Spanish text for the form label for the Tracker page checkbox that has the tracker beacon read the GNSS receiver at every transmission instead of
+    beaconing the fixed position above. English: "Use live GPS fix". */
+#define TR_F_TRACKER_USE_LIVE_GPS "Usar posición GPS en vivo"
 /** Spanish text for the form label for the "name" field or fieldset, rendered on the configuration forms. English: "Name". */
 #define TR_F_NAME "Nombre"
 /** Spanish text for the form label for the "object item name" field or fieldset, rendered on the configuration forms. English: "Object/Item name". */

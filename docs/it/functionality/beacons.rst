@@ -226,6 +226,62 @@ commento di posizione, PHG incluso, ed è lì che va: dopo il blocco di frequenz
 così una radio continua a sintonizzarsi automaticamente dai primi byte, e prima
 del commento dell'operatore.
 
+Posizione GPS in tempo reale e rotta/velocità
+================================================
+
+La posizione di ogni beacon usa per default la latitudine/longitudine/
+altitudine fissa salvata nella propria pagina — l'unica modalità offerta dai
+beacon di IGate e Digipeater. La pagina del beacon Tracker aggiunge un
+ulteriore interruttore, *Usa posizione GPS in tempo reale*
+(``g_config.trk_use_live_gps``), indipendente dalla casella *Usa GPS*
+descritta sopra: mentre *Usa GPS* copia la posizione del ricevitore GNSS nei
+campi fissi una sola volta, al salvataggio, *Usa posizione GPS in tempo reale*
+fa sì che ``trackerBeaconService()`` (``main/beacon.c``) rilegga il ricevitore
+— tramite ``gps_snapshot()`` (``main/gps.c``) — a ogni singola trasmissione, e
+trasmetta quella latitudine/longitudine/altitudine in tempo reale al posto dei
+valori fissi.
+
+Una posizione in tempo reale viene usata solo quando è effettivamente valida:
+``gps_snapshot()`` deve riportare ``valid`` e ``has_position`` (il ricevitore
+ha una soluzione RMC attiva, non scaduta oltre ``GPS_LINK_TIMEOUT_S``).
+Qualsiasi cosa al di sotto di questo — ricevitore spento, ancora in fase di
+acquisizione, o collegamento silenzioso — lascia i parametri del beacon
+esattamente come letti da ``g_config.trk_lat``/``trk_lon``/``trk_alt``, così
+il Tracker continua a trasmettere la sua posizione fissa di riserva invece di
+saltare una trasmissione o inviarne una scaduta. L'altitudine viene sostituita
+solo quando il flag ``has_altitude`` del ricevitore stesso è impostato, dato
+che una posizione 2D non porta alcuna altitudine da fornire.
+
+Quando il ricevitore riporta anche rotta e velocità per quella stessa lettura
+(``has_course`` e ``has_speed`` entrambi impostati), il beacon Tracker li porta
+a sua volta, nel formato scelto:
+
+* **Non compresso** — l'estensione dati standard ``CSE/SPD``
+  (``"%03u/%03u"``, gradi veri e nodi), nello stesso slot di 7 byte occupato
+  da PHG/RNG/DFS/DF. Un'estensione PHG attiva ha comunque priorità su CSE/SPD
+  per quello slot, la stessa precedenza che Oggetti/Item danno a PHG rispetto
+  al CSE/SPD proprio di un elemento in movimento.
+* **Compresso** — ripiegato nello slot a due byte proprio del campo compresso
+  (``cs/T``) tramite ``aprs_compressed_cs_from_course_speed()``, lo stesso
+  codificatore usato da Oggetti/Item per un elemento in movimento. Una portata
+  radio precalcolata ha comunque priorità su rotta/velocità per quello slot,
+  perché RNG è un'impostazione che l'operatore ha attivato esplicitamente e
+  non ha altrove dove andare; rotta/velocità cede il passo allo stesso modo
+  dell'altitudine.
+* **Mic-E** — la coppia reale di rotta/velocità, al posto dello "sconosciuto"
+  ``000/000`` che invia ogni beacon a posizione fissa (e una posizione in
+  tempo reale senza rotta/velocità riportate in quel ciclo).
+
+La velocità viene convertita dai km/h del ricevitore (``gps_data_t::speed_kmh``)
+ai nodi in cui sono definiti tutti questi campi, usando lo stesso fattore 1.852
+che ``gps.c`` applica già nel verso opposto quando interpreta una velocità NMEA
+in nodi nello snapshot.
+
+Smart Beaconing — accorciare automaticamente l'intervallo di trasmissione in
+base a velocità o direzione — non è implementato; l'intervallo del beacon
+Tracker resta fisso (``trk_interval``) sia che stia trasmettendo una posizione
+in tempo reale sia che non lo faccia.
+
 Altitudine compressa
 ====================
 

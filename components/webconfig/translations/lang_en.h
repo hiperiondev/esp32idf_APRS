@@ -288,6 +288,9 @@
 #define TR_USE_MY_STATION_DATA "Use My Station Data"
 /** Caption of the control that fills the current form's position/motion fields live from the GNSS receiver. */
 #define TR_USE_GPS_DATA "Use GPS"
+/** Form label for the Tracker page checkbox that has the tracker beacon read the GNSS receiver at every transmission instead of beaconing the fixed
+    position above. */
+#define TR_F_TRACKER_USE_LIVE_GPS "Use live GPS fix"
 /** Form label for the "name" field or fieldset, rendered on the configuration forms. */
 #define TR_F_NAME "Name"
 /** Form label for the "object item name" field or fieldset, rendered on the configuration forms. */

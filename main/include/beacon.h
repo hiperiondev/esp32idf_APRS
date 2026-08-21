@@ -17,21 +17,28 @@
  * @brief Own-station position beacons (Tracker / IGate / Digipeater web admin
  * pages).
  *
- * Periodically builds an APRS position report from the fixed lat/lon/altitude
- * saved by each page (g_config.trk_*, g_config.igate_*, g_config.digi_*) and
- * transmits it on RF (aprs_service_send_tnc2) and/or to APRS-IS
- * (igate_send_raw), per that page's own loc2rf / loc2inet flags. This is what
- * makes the station itself show up (e.g. on aprs.fi) - the IGate/digipeater alone
- * only relay traffic they already hear, they never announce their own position on
- * their own.
+ * Periodically builds an APRS position report from each page's saved
+ * lat/lon/altitude (g_config.trk_*, g_config.igate_*, g_config.digi_*) - or,
+ * for the Tracker beacon with "Use live GPS fix" on, from the GNSS
+ * receiver's current fix instead - and transmits it on RF
+ * (aprs_service_send_tnc2) and/or to APRS-IS (igate_send_raw), per that
+ * page's own loc2rf / loc2inet flags. This is what makes the station itself
+ * show up (e.g. on aprs.fi) - the IGate/digipeater alone only relay traffic
+ * they already hear, they never announce their own position on their own.
  *
  * Each of the three beacons (tracker, igate, digi) runs as its own FreeRTOS task
  * with its own enable flag and interval, so they operate completely independently
  * of one another.
  *
- * GPS/live-position beaconing is not implemented here: these are fixed-station
- * beacons using each page's saved coordinates only, sent at the fixed interval
- * configured on each page. SmartBeaconing is not implemented.
+ * GPS/live-position beaconing is available on the Tracker beacon alone
+ * ("Use live GPS fix", g_config.trk_use_live_gps): when enabled and the GNSS
+ * receiver (gps.c) reports a current fix, the Tracker's position report
+ * carries that live latitude/longitude/altitude/course/speed instead of the
+ * page's fixed trk_lat/trk_lon/trk_alt; a disabled receiver or a momentary
+ * loss of fix falls back to those fixed values for that beacon. The IGate
+ * and Digipeater beacons remain fixed-station only, always sent at the fixed
+ * interval configured on each page. SmartBeaconing (speed/heading-adaptive
+ * interval) is not implemented.
  */
 
 #ifndef BEACON_H

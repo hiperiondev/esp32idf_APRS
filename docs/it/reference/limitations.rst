@@ -347,20 +347,36 @@ Tracciamento / Beaconing
      - Note sull'implementazione di questo progetto
    * - Ingresso posizione GPS in tempo reale (NMEA)
      - ✅ (universale per tracker mobili)
-     - ❌
-     - Non implementato. I beacon sono solo a posizione fissa — non c'è alcun ingresso di posizione in tempo reale né configurazione relativa al GPS
+     - ✅
+     - Il ricevitore GNSS (``main/gps.c``, ``gps_snapshot()``) analizza
+       RMC/GGA/GSA in una posizione in tempo reale; l'interruttore *Usa
+       posizione GPS in tempo reale* della pagina beacon Tracker fa sì che
+       ``trackerBeaconService()`` (``main/beacon.c``) legga quella posizione a
+       ogni trasmissione e la usi al posto della latitudine/longitudine/
+       altitudine fissa della pagina, ricadendo su quei valori fissi ogni
+       volta che il ricevitore è spento o non ha una posizione valida. I
+       beacon di IGate e Digipeater restano solo a posizione fissa
    * - Beaconing a posizione fissa (stazione base)
      - ✅
      - ✅
-     - Posizione/intervallo/simbolo/commento separati per ruolo (tracker, IGate, digi)
+     - Posizione/intervallo/simbolo/commento separati per ruolo (tracker,
+       IGate, digi); la modalità predefinita e di ripiego per tutti e tre, e
+       l'unica offerta dai beacon di IGate e Digipeater
    * - Smart Beaconing (intervallo adattivo su velocità/direzione)
      - ✅ (client mobili, OpenTracker)
      - ❌
-     - Nessun GPS, quindi non applicabile
+     - Non implementato. L'intervallo di trasmissione del beacon Tracker resta
+       fisso anche mentre trasmette una posizione GPS in tempo reale
    * - Rotta/velocità nei report di posizione
      - ✅
-     - ⚠️
-     - Supportato in Oggetti/Item, ma il beacon tracker della stazione non ha una fonte live di rotta/velocità (nessun GPS)
+     - ✅
+     - Supportato in Oggetti/Item, e nel beacon Tracker ogni volta che
+       trasmette una posizione GPS in tempo reale — come estensione dati
+       standard ``CSE/SPD`` (formato non compresso), ripiegata nello slot a
+       due byte ``cs/T`` proprio del campo compresso (formato compresso),
+       oppure come coppia rotta/velocità reale (Mic-E). Una posizione in
+       tempo reale senza rotta/velocità riportate in quel ciclo, e ogni beacon
+       a posizione fissa, indicano "sconosciuto" (``000/000``)
    * - Codifica posizione compressa (Base-91)
      - ✅
      - ✅
@@ -374,8 +390,10 @@ Tracciamento / Beaconing
      - ⚠️ (soprattutto firmware per tracker mobili)
      - ✅
      - La pagina beacon Tracker offre un'opzione Mic-E
-       (``aprs_mice_encode()``); solo posizione fissa, quindi rotta/velocità
-       vengono sempre inviate come "sconosciute". Il commento di posizione si
+       (``aprs_mice_encode()``); porta la rotta/velocità reale mentre
+       trasmette una posizione GPS in tempo reale, e "sconosciuto"
+       (``000/000``) in ogni altro momento, con lo stesso interruttore
+       fisso/in tempo reale di ogni altro formato. Il commento di posizione si
        sceglie nella stessa pagina, fra i sette valori standard e i sette
        personalizzati; Emergency non è offerto, perché trasmetterlo chiede una
        risposta del mondo reale. Il campo informativo segue l'ordine canonico di

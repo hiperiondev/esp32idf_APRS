@@ -330,20 +330,34 @@ Tracking / Beaconing
      - Notes on this project's implementation
    * - Live GPS position input (NMEA)
      - ✅ (universal for mobile trackers)
-     - ❌
-     - Not implemented. Beacons are fixed-position only — there is no live-position input and no GPS-related configuration
+     - ✅
+     - The GNSS receiver (``main/gps.c``, ``gps_snapshot()``) parses RMC/GGA/GSA
+       into a live fix; the Tracker beacon page's *Use live GPS fix* switch has
+       ``trackerBeaconService()`` (``main/beacon.c``) read that fix at every
+       transmission and carry it in place of the page's fixed
+       latitude/longitude/altitude, falling back to those fixed values
+       whenever the receiver is off or has no current fix. The IGate and
+       Digipeater beacons remain fixed-position only
    * - Fixed-position (base station) beaconing
      - ✅
      - ✅
-     - Separate position/interval/symbol/comment per role (tracker, IGate, digi)
+     - Separate position/interval/symbol/comment per role (tracker, IGate, digi);
+       the default and fallback for all three, and the only mode the IGate and
+       Digipeater beacons offer
    * - Smart Beaconing (speed/heading-adaptive interval)
      - ✅ (mobile clients, OpenTracker)
      - ❌
-     - No GPS, so not applicable
+     - Not implemented. The Tracker beacon's transmit interval stays fixed even
+       while beaconing a live GPS fix
    * - Course/speed in position reports
      - ✅
-     - ⚠️
-     - Supported in Objects/Items, but the station's own tracker beacon has no live course/speed source (no GPS)
+     - ✅
+     - Supported in Objects/Items, and in the Tracker beacon whenever it is
+       transmitting a live GPS fix — carried as the standard ``CSE/SPD`` data
+       extension (uncompressed layout), folded into the compressed field's own
+       two-byte ``cs/T`` slot (compressed layout), or as the real course/speed
+       pair (Mic-E). A live fix with no course/speed reported that cycle, and
+       every fixed-position beacon, states "unknown" (``000/000``) instead
    * - Compressed (Base-91) position encoding
      - ✅
      - ✅
@@ -356,14 +370,16 @@ Tracking / Beaconing
      - ⚠️ (mostly mobile-tracker firmware)
      - ✅
      - Tracker beacon page offers a Mic-E option (``aprs_mice_encode()``);
-       fixed-position only, so course/speed is always sent as "unknown". The
-       position comment is selectable on the same page, over the seven standard
-       and seven custom values; Emergency is not offered, since transmitting it
-       asks for a real-world response. The information field follows the
-       canonical order of ``mic-e-examples.txt``: TYPE byte, altitude,
-       frequency block, data extension, comment, ``!DAO!``, and the
-       Manufacturer/Version pair that identifies the firmware (the destination
-       address carries position data, so the ``APxxxx`` TOCALL cannot)
+       carries the real course/speed while transmitting a live GPS fix, and
+       "unknown" (``000/000``) at any other time, on the same fixed/live
+       switch as every other layout. The position comment is selectable on
+       the same page, over the seven standard and seven custom values;
+       Emergency is not offered, since transmitting it asks for a real-world
+       response. The information field follows the canonical order of
+       ``mic-e-examples.txt``: TYPE byte, altitude, frequency block, data
+       extension, comment, ``!DAO!``, and the Manufacturer/Version pair that
+       identifies the firmware (the destination address carries position
+       data, so the ``APxxxx`` TOCALL cannot)
    * - PHG / power-height-gain-directivity
      - ✅
      - ✅
