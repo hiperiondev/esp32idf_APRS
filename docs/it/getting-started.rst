@@ -77,24 +77,27 @@ alzarne uno qualsiasi abbassa la cifra *Min free heap* del pannello.
        APRS-IS, al DNS e a SNTP per restare attivi mentre qualcuno naviga le
        pagine di amministrazione.
    * - Livello TLS di mbedTLS, bundle di certificati, Wi-Fi Enterprise
-     - inutilizzato
+     - disattivato
      - L'amministrazione web è HTTP in chiaro e il collegamento APRS-IS è TCP
        in chiaro, quindi nessun percorso di codice apre mai una sessione TLS.
-       ``CONFIG_MBEDTLS_TLS_ENABLED`` (e ``CONFIG_MBEDTLS_TLS_SERVER``/``_CLIENT``)
-       sono attive (``y``) per impostazione predefinita di ESP-IDF in
-       ``sdkconfig``, ma nulla nel firmware chiama quel livello: mbedTLS è
-       collegato per una sola chiamata, ``mbedtls_base64_decode()``
-       nell'autenticazione HTTP Basic, che non dipende da quelle opzioni.
-       Disattivarle sarebbe un'ottimizzazione di dimensione valida per questo
-       firmware, semplicemente non è applicata al momento.
+       ``CONFIG_MBEDTLS_TLS_ENABLED`` (e le opzioni
+       ``CONFIG_MBEDTLS_TLS_SERVER``/``_CLIENT`` annidate sotto di essa) sono
+       disattivate in ``sdkconfig``. L'autenticazione HTTP Basic decodifica la
+       propria coppia di credenziali con un piccolo decodificatore locale
+       RFC 4648 (``components/webconfig/include/web_base64.h``) invece di
+       ``mbedtls_base64_decode()``, quindi nessun componente dichiara più una
+       dipendenza da mbedTLS per quella chiamata; ``esp_wifi``/``esp_netif``/
+       ``lwip`` continuano a trascinare mbedTLS in modo transitivo per la
+       crittografia WPA2, che non è influenzata da questa impostazione.
 
 .. note::
 
    Da ESP-IDF v6.0 il port di mbedTLS chiama ``psa_crypto_init()`` da un hook
    di avvio di sistema, quindi PSA Crypto è attivo in ogni build che collega
-   mbedTLS, questa compresa. Questo, insieme alla maggiore impronta statica di
-   mbedTLS 4.x, è il motivo per cui lo stesso firmware riporta meno heap
-   libero sotto v6.0 rispetto a v5.2 con una configurazione per il resto
+   mbedTLS, questa compresa, indipendentemente da
+   ``CONFIG_MBEDTLS_TLS_ENABLED``. Questo, insieme alla maggiore impronta
+   statica di mbedTLS 4.x, è il motivo per cui lo stesso firmware riporta meno
+   heap libero sotto v6.0 rispetto a v5.2 con una configurazione per il resto
    identica.
 
 Primo avvio

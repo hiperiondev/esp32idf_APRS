@@ -43,7 +43,6 @@ idf_component_register(
         esp_event
         nvs_flash
         cjson
-        mbedtls
         esp_app_format
         app_update
         spi_flash

@@ -76,23 +76,26 @@ lowers the *Min free heap* figure on the dashboard.
        APRS-IS uplink, DNS and SNTP need to stay up while someone is browsing
        the admin pages.
    * - mbedTLS TLS layer, certificate bundle, Wi-Fi Enterprise
-     - unused
+     - disabled
      - The web admin is plain HTTP and the APRS-IS uplink is plain TCP, so no
        code path ever opens a TLS session. ``CONFIG_MBEDTLS_TLS_ENABLED`` (and
-       ``CONFIG_MBEDTLS_TLS_SERVER``/``_CLIENT``) ship at their ESP-IDF default
-       of ``y`` in ``sdkconfig``, but nothing in the firmware calls into that
-       layer: mbedTLS is linked for one call, ``mbedtls_base64_decode()`` in
-       HTTP Basic auth, which does not depend on those options. Turning them
-       off is a valid size optimisation for this firmware, just not one it
-       currently makes.
+       the ``CONFIG_MBEDTLS_TLS_SERVER``/``_CLIENT`` options nested under it)
+       are off in ``sdkconfig``. HTTP Basic auth decodes its credential pair
+       with a small local RFC 4648 base64 decoder
+       (``components/webconfig/include/web_base64.h``) instead of
+       ``mbedtls_base64_decode()``, so no component declares an mbedTLS
+       dependency for that call either; ``esp_wifi``/``esp_netif``/``lwip``
+       still pull mbedTLS in transitively for WPA2 crypto, which is unaffected
+       by this setting.
 
 .. note::
 
    From ESP-IDF v6.0 the mbedTLS port calls ``psa_crypto_init()`` from a
    system startup hook, so PSA Crypto is live in every build that links
-   mbedTLS - including this one. That, together with mbedTLS 4.x's larger
-   static footprint, is why the same firmware reports a lower free heap under
-   v6.0 than it did under v5.2 with an otherwise identical configuration.
+   mbedTLS, including this one, regardless of ``CONFIG_MBEDTLS_TLS_ENABLED``.
+   That, together with mbedTLS 4.x's larger static footprint, is why the same
+   firmware reports a lower free heap under v6.0 than it did under v5.2 with
+   an otherwise identical configuration.
 
 First boot
 ==========
