@@ -37,8 +37,16 @@
  * page's fixed trk_lat/trk_lon/trk_alt; a disabled receiver or a momentary
  * loss of fix falls back to those fixed values for that beacon. The IGate
  * and Digipeater beacons remain fixed-station only, always sent at the fixed
- * interval configured on each page. SmartBeaconing (speed/heading-adaptive
- * interval) is not implemented.
+ * interval configured on each page.
+ *
+ * With live GPS active, the Tracker beacon can additionally run
+ * SmartBeaconing (g_config.trk_sb_enable, Hans-Gunnar Lundahl / HamHUD
+ * algorithm): the beacon interval is interpolated between a slow (stationary)
+ * and a fast (moving) rate according to current speed, and an independent
+ * corner-pegging check forces an immediate beacon on a heading change past a
+ * speed-scaled turn-angle/turn-slope threshold, subject to a minimum-turn-time
+ * guard against re-triggering too soon. The IGate and Digipeater beacons have
+ * no SmartBeaconing of their own.
  */
 
 #ifndef BEACON_H
