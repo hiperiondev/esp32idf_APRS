@@ -9,8 +9,8 @@ Visión general
 Qué es esto
 ===========
 
-``esp32idf_APRS`` es un proyecto ESP-IDF **v5.x** (probado y fijado en IDF
-**5.5.4**) que convierte una placa ESP32 DevKit desnuda más una interfaz de
+``esp32idf_APRS`` es un proyecto ESP-IDF **v6.x** (probado y fijado en IDF
+**6.0.2**) que convierte una placa ESP32 DevKit desnuda más una interfaz de
 audio económica en una estación APRS completa y autónoma. Todo se ejecuta en el
 propio ESP32 — no hay núcleo Arduino, ni ``String``, ni PlatformIO, ni
 biblioteca DSP externa. Toda la cadena de señal, desde el demodulador por
@@ -26,8 +26,8 @@ En una frase: el firmware
 * **decodifica** tramas HDLC/AX.25 (opcionalmente con corrección de errores
   FX.25),
 * las **enruta (gate)** hacia APRS-IS por Wi-Fi (``qAR``/``qAO``),
-* las **repite (digipeat)** de vuelta por RF (WIDEn-N / TRACEn-N / RELAY / ECHO
-  / GATE),
+* las **repite (digipeat)** de vuelta por RF (WIDEn-N, mediante una tabla de
+  alias configurable por el operador),
 * **baliza** su propia posición, meteorología y telemetría,
 * **modula** y transmite tramas de vuelta a través del **DAC de 8 bits** del
   ESP32, activando la radio mediante un GPIO de PTT,
@@ -92,7 +92,9 @@ Matriz de funciones
      - configurable desde la web (página IGate), compartido por IGate y Digipeater
    * - Digipeater
      - ✅
-     - WIDEn-N, TRACEn-N, RELAY/ECHO/GATE, supresión de duplicados
+     - WIDEn-N mediante tabla de alias configurable, supresión de duplicados;
+       los alias heredados ``RELAY``/``ECHO``/``GATE``/``TRACEn-N`` no vienen
+       incorporados, pero pueden añadirse como filas de alias ordinarias
    * - Objetos / Ítems APRS propios
      - ✅
      - hasta 5, RF y/o INET, decaimiento de intervalo + repeticiones de kill
@@ -115,7 +117,7 @@ Matriz de funciones
      - RF y/o INET
    * - Administración web (autenticación HTTP Basic)
      - ✅
-     - 17 páginas de la barra lateral + selector de símbolo, panel en vivo
+     - 18 páginas de la barra lateral + selector de símbolo, panel en vivo
    * - Registro de tráfico en vivo + tabla de últimos escuchados
      - ✅
      - long-poll JSON (``?since=<seq>``)

@@ -85,7 +85,7 @@ Mapa de tareas
      - drena el anillo del ADC, ejecuta los demoduladores
    * - ``modem_svc``
      - 6144 B
-     - —
+     - 5
      - cualquiera
      - ``modem_init()``
      - acciona el TX, entrega tramas RX al callback

@@ -9,8 +9,8 @@ Overview
 What this is
 ============
 
-``esp32idf_APRS`` is an ESP-IDF **v5.x** project (tested and locked at IDF
-**5.5.4**) that turns a bare ESP32 DevKit plus a cheap audio interface into a
+``esp32idf_APRS`` is an ESP-IDF **v6.x** project (tested and locked at IDF
+**6.0.2**) that turns a bare ESP32 DevKit plus a cheap audio interface into a
 complete, self-contained APRS station. Everything runs on the ESP32 itself —
 there is no Arduino core, no ``String``, no PlatformIO, and no external DSP
 library. The whole signal chain, from the correlator demodulator through the
@@ -24,7 +24,8 @@ In one sentence: the firmware
   output on **ADC1**,
 * **decodes** HDLC/AX.25 (optionally FX.25 forward-error-corrected) frames,
 * **gates** them to APRS-IS over Wi-Fi (``qAR``/``qAO``),
-* **digipeats** them back on RF (WIDEn-N / TRACEn-N / RELAY / ECHO / GATE),
+* **digipeats** them back on RF (WIDEn-N, via an operator-configurable alias
+  table),
 * **beacons** its own position, weather and telemetry,
 * **modulates** and transmits frames back out through the ESP32's **8-bit
   DAC**, keying the radio via a PTT GPIO,
@@ -88,7 +89,9 @@ Feature matrix
      - web-configurable (IGate page), shared by IGate and Digipeater
    * - Digipeater
      - ✅
-     - WIDEn-N, TRACEn-N, RELAY/ECHO/GATE, dup-suppression
+     - WIDEn-N via a configurable alias table, dup-suppression; legacy
+       ``RELAY``/``ECHO``/``GATE``/``TRACEn-N`` aliases are not built in but
+       can be added as ordinary alias rows
    * - Own-station APRS Objects / Items
      - ✅
      - up to 5, RF and/or INET, interval decay + kill-repeats
@@ -111,7 +114,7 @@ Feature matrix
      - RF and/or INET
    * - Web admin (HTTP Basic auth)
      - ✅
-     - 17 sidebar pages + symbol picker, live dashboard
+     - 18 sidebar pages + symbol picker, live dashboard
    * - Live traffic log + last-heard table
      - ✅
      - JSON long-poll (``?since=<seq>``)

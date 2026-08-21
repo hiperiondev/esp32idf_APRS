@@ -72,7 +72,7 @@ Campi indirizzo di destinazione e sorgente (cap. 4)
      - Note
    * - Identificatore di versione software nella destinazione (TOCALL)
      - ⚠️
-     - Ogni pacchetto originato usa ``APZ32L``. È un TOCALL sperimentale valido, ma non è registrato nell'elenco ``aprsorg/aprs-deviceid``, quindi i client riceventi mostrano la stazione come applicazione sperimentale generica invece di nominare il firmware.
+     - Ogni pacchetto originato usa ``APE32I`` (``APRS_TOCALL``). È un TOCALL sperimentale valido, ma non è registrato nell'elenco ``aprsorg/aprs-deviceid``, quindi i client riceventi mostrano la stazione come applicazione sperimentale generica invece di nominare il firmware.
    * - Dati Mic-E codificati nell'indirizzo di destinazione
      - ✅
      - Le cifre di latitudine, nord/sud, est/ovest e lo scostamento di longitudine sono codificati in trasmissione e riassemblati in ricezione insieme alla metà che viaggia nel campo informazioni.

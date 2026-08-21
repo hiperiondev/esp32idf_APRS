@@ -9,8 +9,8 @@ Panoramica
 Che cos'è
 =========
 
-``esp32idf_APRS`` è un progetto ESP-IDF **v5.x** (testato e bloccato su IDF
-**5.5.4**) che trasforma un semplice ESP32 DevKit più una interfaccia audio
+``esp32idf_APRS`` è un progetto ESP-IDF **v6.x** (testato e bloccato su IDF
+**6.0.2**) che trasforma un semplice ESP32 DevKit più una interfaccia audio
 economica in una stazione APRS completa e autonoma. Tutto gira sull'ESP32 stesso
 — non c'è un core Arduino, niente ``String``, niente PlatformIO e nessuna
 libreria DSP esterna. L'intera catena di segnale, dal demodulatore a
@@ -25,7 +25,8 @@ In una frase: il firmware
   radio su **ADC1**,
 * **decodifica** i frame HDLC/AX.25 (opzionalmente con correzione FX.25),
 * li **inoltra** verso APRS-IS su Wi-Fi (``qAR``/``qAO``),
-* li **digipeta** di nuovo in RF (WIDEn-N / TRACEn-N / RELAY / ECHO / GATE),
+* li **digipeta** di nuovo in RF (WIDEn-N, tramite una tabella di alias
+  configurabile dall'operatore),
 * trasmette **beacon** della propria posizione, meteo e telemetria,
 * **modula** e ritrasmette i frame attraverso il **DAC a 8 bit** dell'ESP32,
   attivando la radio tramite un GPIO di PTT,
@@ -90,7 +91,9 @@ Matrice delle funzionalità
      - configurabile dal web (pagina IGate), condiviso da IGate e Digipeater
    * - Digipeater
      - ✅
-     - WIDEn-N, TRACEn-N, RELAY/ECHO/GATE, soppressione duplicati
+     - WIDEn-N tramite tabella di alias configurabile, soppressione duplicati;
+       gli alias legacy ``RELAY``/``ECHO``/``GATE``/``TRACEn-N`` non sono
+       integrati, ma possono essere aggiunti come normali righe di alias
    * - Oggetti / Item APRS della propria stazione
      - ✅
      - fino a 5, RF e/o INET, decadimento intervallo + kill-repeat
@@ -113,7 +116,7 @@ Matrice delle funzionalità
      - RF e/o INET
    * - Amministrazione web (autenticazione HTTP Basic)
      - ✅
-     - 17 pagine nella barra laterale + selettore di simbolo, dashboard in
+     - 18 pagine nella barra laterale + selettore di simbolo, dashboard in
        tempo reale
    * - Log traffico in tempo reale + tabella last-heard
      - ✅

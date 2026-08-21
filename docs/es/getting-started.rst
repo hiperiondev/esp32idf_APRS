@@ -78,11 +78,16 @@ subir cualquiera de ellos baja la cifra *Min free heap* del panel.
        el enlace APRS-IS, DNS y SNTP para seguir en pie mientras alguien
        navega las páginas de administración.
    * - Capa TLS de mbedTLS, paquete de certificados, WiFi Enterprise
-     - apagados
-     - La administración web es HTTP plano y el enlace APRS-IS es TCP plano.
-       mbedTLS se enlaza por una sola llamada, ``mbedtls_base64_decode()`` en
-       la autenticación HTTP Basic, que no depende de
-       ``CONFIG_MBEDTLS_TLS_ENABLED``.
+     - sin usar
+     - La administración web es HTTP plano y el enlace APRS-IS es TCP plano,
+       así que ningún camino de código abre nunca una sesión TLS.
+       ``CONFIG_MBEDTLS_TLS_ENABLED`` (y ``CONFIG_MBEDTLS_TLS_SERVER``/``_CLIENT``)
+       vienen activadas (``y``) por defecto de ESP-IDF en ``sdkconfig``, pero
+       nada en el firmware llama a esa capa: mbedTLS se enlaza por una sola
+       llamada, ``mbedtls_base64_decode()`` en la autenticación HTTP Basic,
+       que no depende de esas opciones. Desactivarlas sería una optimización
+       de tamaño válida para este firmware, simplemente no es una que se
+       aplique actualmente.
 
 .. note::
 

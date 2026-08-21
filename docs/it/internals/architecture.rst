@@ -86,7 +86,7 @@ Mappa dei task
      - drena l'anello dell'ADC, esegue i demodulatori
    * - ``modem_svc``
      - 6144 B
-     - —
+     - 5
      - qualsiasi
      - ``modem_init()``
      - aziona il TX, consegna i frame RX al callback

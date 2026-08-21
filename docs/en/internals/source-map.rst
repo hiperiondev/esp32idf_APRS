@@ -5,8 +5,8 @@ Source Map
 ==========
 
 A tour of the repository, so you know where to look. Sizes are approximate.
-First-party C totals ~42 k lines across ``main/`` + ``components/`` (excluding
-``managed_components/``), of which ~6.8 k is the modem component and ~11 k is the
+First-party C totals ~53 k lines across ``main/`` + ``components/`` (excluding
+``managed_components/``), of which ~6.8 k is the modem component and ~15 k is the
 web admin.
 
 Repository layout
@@ -18,7 +18,7 @@ Repository layout
    ├── CMakeLists.txt          ← board definition (ADC/DAC/PTT/LED pins) + project()
    ├── partitions.csv          ← nvs / otadata / phy_init / ota_0 / ota_1 / storage (LittleFS)
    ├── sdkconfig               ← target=esp32, 4MB flash, custom partitions
-   ├── dependencies.lock       ← idf 5.5.4, littlefs, esp-idf-lib bmp280/bmp180/i2cdev/helpers
+   ├── dependencies.lock       ← idf 6.0.2, littlefs, esp-idf-lib bmp280/bmp180/i2cdev/helpers
    ├── LICENSE                 ← GPL-3.0
    ├── schematics/             ← KiCad radio-interface schematic + PCB
    │
@@ -63,7 +63,9 @@ Repository layout
    │   ├── query/          ← APRS query responder (?APRS?/?WX?/?IGATE? + directed set), answered from the scheduler task
    │   ├── lastheard/      ← in-RAM table of heard stations, one per callsign → dashboard JSON
    │   ├── trafficlog/     ← in-RAM ring of traffic lines → dashboard JSON (seq long-poll)
-   │   ├── weather_telemetry/  ← protocol-level structs only (APRS101 WX + Telemetry fields)
+   │   ├── weather_telemetry/  ← APRS101 WX + Telemetry protocol structs, plus mice.c: the
+   │   │                          full Mic-E encoder/decoder (aprs_mice_encode()/_decode()),
+   │   │                          used by main/beacon.c (TX) and main/aprs_filter.c (RX)
    │   ├── sensors_local/      ← THE sensor driver framework
    │   │   ├── sensors_local.c              ← the dynamic registry
    │   │   ├── include/sensors_local.h      ← public API

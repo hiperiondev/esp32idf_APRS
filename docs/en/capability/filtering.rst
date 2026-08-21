@@ -60,6 +60,12 @@ report carries (``_`` → weather, ``/N`` → buoy):
    * - Position
      - ``1<<8``
      - plain position report
+   * - Other
+     - ``1<<9``
+     - Station capabilities, user-defined formats, Agrelo direction finding,
+       Maidenhead locator beacons and the reserved map feature — the payload
+       kinds with no bit of their own, gathered here so they are gateable
+       instead of silently dropped.
 
 An unclassifiable payload — third-party (``}``) traffic above all — classifies
 as ``0``, and ``aprs_filter_pass()`` never lets ``0`` through: unknown means

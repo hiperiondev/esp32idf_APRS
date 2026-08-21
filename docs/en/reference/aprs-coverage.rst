@@ -70,7 +70,7 @@ Destination and source address fields (ch. 4)
      - Notes
    * - Software version identifier in the destination (TOCALL)
      - ⚠️
-     - Every originated packet uses ``APZ32L``. That is a valid experimental TOCALL, but it is not registered in the ``aprsorg/aprs-deviceid`` list, so receiving clients show the station as a generic experimental application instead of naming the firmware.
+     - Every originated packet uses ``APE32I`` (``APRS_TOCALL``). That is a valid experimental TOCALL, but it is not registered in the ``aprsorg/aprs-deviceid`` list, so receiving clients show the station as a generic experimental application instead of naming the firmware.
    * - Mic-E encoded data in the destination address
      - ✅
      - Latitude digits, north/south, east/west and longitude offset are encoded on transmit and reassembled on receive together with the information-field half.

@@ -73,8 +73,8 @@ su entrada de barra lateral y su página de la imagen:
    ENABLE_DASHBOARD    ENABLE_MSG_CHAT     ENABLE_BULLETINS    ENABLE_OBJECTS_ITEMS
    ENABLE_STATION      ENABLE_RADIO_MODEM  ENABLE_MESSAGE      ENABLE_IGATE
    ENABLE_DIGIPEATER   ENABLE_TRACKER      ENABLE_WEATHER      ENABLE_TELEMETRY
-   ENABLE_SYSTEM       ENABLE_WIRELESS     ENABLE_FILE_STORAGE ENABLE_ABOUT_FIRMWARE
-   ENABLE_QUERY
+   ENABLE_GPS          ENABLE_SYSTEM       ENABLE_WIRELESS     ENABLE_FILE_STORAGE
+   ENABLE_ABOUT_FIRMWARE ENABLE_QUERY
 
 **No** hay interruptor ``ENABLE_SENSORS``: el marco ``sensors_local`` no tiene
 deshabilitación en compilación y siempre se compila (sus controladores

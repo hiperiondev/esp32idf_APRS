@@ -61,6 +61,12 @@ sull'identificatore di tipo di dato APRS (DTI) e — dove il DTI da solo è ambi
    * - Posizione
      - ``1<<8``
      - report di posizione semplice
+   * - Altro
+     - ``1<<9``
+     - Capacità di stazione, formati definiti dall'utente, radiogoniometria
+       Agrelo, beacon locator Maidenhead e la funzione mappa riservata — i
+       tipi di payload senza un proprio bit, raggruppati qui in modo da poter
+       essere ritrasmessi invece di essere scartati silenziosamente.
 
 Un payload non classificabile — il traffico di terze parti (``}``) su tutti —
 classifica come ``0``, e ``aprs_filter_pass()`` non lascia mai passare ``0``:

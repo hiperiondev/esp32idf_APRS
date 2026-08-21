@@ -76,10 +76,15 @@ lowers the *Min free heap* figure on the dashboard.
        APRS-IS uplink, DNS and SNTP need to stay up while someone is browsing
        the admin pages.
    * - mbedTLS TLS layer, certificate bundle, Wi-Fi Enterprise
-     - off
-     - The web admin is plain HTTP and the APRS-IS uplink is plain TCP.
-       mbedTLS is linked for one call, ``mbedtls_base64_decode()`` in HTTP
-       Basic auth, which does not depend on ``CONFIG_MBEDTLS_TLS_ENABLED``.
+     - unused
+     - The web admin is plain HTTP and the APRS-IS uplink is plain TCP, so no
+       code path ever opens a TLS session. ``CONFIG_MBEDTLS_TLS_ENABLED`` (and
+       ``CONFIG_MBEDTLS_TLS_SERVER``/``_CLIENT``) ship at their ESP-IDF default
+       of ``y`` in ``sdkconfig``, but nothing in the firmware calls into that
+       layer: mbedTLS is linked for one call, ``mbedtls_base64_decode()`` in
+       HTTP Basic auth, which does not depend on those options. Turning them
+       off is a valid size optimisation for this firmware, just not one it
+       currently makes.
 
 .. note::
 

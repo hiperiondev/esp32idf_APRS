@@ -85,7 +85,7 @@ Task map
      - drains the ADC ring, runs the demodulators
    * - ``modem_svc``
      - 6144 B
-     - —
+     - 5
      - any
      - ``modem_init()``
      - drives TX, delivers RX frames to the callback

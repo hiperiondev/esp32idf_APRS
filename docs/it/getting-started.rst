@@ -77,11 +77,16 @@ alzarne uno qualsiasi abbassa la cifra *Min free heap* del pannello.
        APRS-IS, al DNS e a SNTP per restare attivi mentre qualcuno naviga le
        pagine di amministrazione.
    * - Livello TLS di mbedTLS, bundle di certificati, Wi-Fi Enterprise
-     - disattivati
+     - inutilizzato
      - L'amministrazione web è HTTP in chiaro e il collegamento APRS-IS è TCP
-       in chiaro. mbedTLS è collegato per una sola chiamata,
-       ``mbedtls_base64_decode()`` nell'autenticazione HTTP Basic, che non
-       dipende da ``CONFIG_MBEDTLS_TLS_ENABLED``.
+       in chiaro, quindi nessun percorso di codice apre mai una sessione TLS.
+       ``CONFIG_MBEDTLS_TLS_ENABLED`` (e ``CONFIG_MBEDTLS_TLS_SERVER``/``_CLIENT``)
+       sono attive (``y``) per impostazione predefinita di ESP-IDF in
+       ``sdkconfig``, ma nulla nel firmware chiama quel livello: mbedTLS è
+       collegato per una sola chiamata, ``mbedtls_base64_decode()``
+       nell'autenticazione HTTP Basic, che non dipende da quelle opzioni.
+       Disattivarle sarebbe un'ottimizzazione di dimensione valida per questo
+       firmware, semplicemente non è applicata al momento.
 
 .. note::
 

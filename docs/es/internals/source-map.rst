@@ -5,9 +5,9 @@ Mapa del código fuente
 ======================
 
 Un recorrido por el repositorio, para que sepas dónde mirar. Los tamaños son
-aproximados. El C de primera parte suma ~42 k líneas entre ``main/`` +
+aproximados. El C de primera parte suma ~53 k líneas entre ``main/`` +
 ``components/`` (excluyendo ``managed_components/``), de las cuales ~6,8 k son el
-componente del módem y ~11 k la administración web.
+componente del módem y ~15 k la administración web.
 
 Disposición del repositorio
 ===========================
@@ -18,7 +18,7 @@ Disposición del repositorio
    ├── CMakeLists.txt          ← definición de placa (pines ADC/DAC/PTT/LED) + project()
    ├── partitions.csv          ← nvs / otadata / phy_init / ota_0 / ota_1 / storage (LittleFS)
    ├── sdkconfig               ← target=esp32, flash 4MB, particiones personalizadas
-   ├── dependencies.lock       ← idf 5.5.4, littlefs, esp-idf-lib bmp280/bmp180/i2cdev/helpers
+   ├── dependencies.lock       ← idf 6.0.2, littlefs, esp-idf-lib bmp280/bmp180/i2cdev/helpers
    ├── LICENSE                 ← GPL-3.0
    ├── schematics/             ← esquema KiCad de interfaz de radio + PCB
    │
@@ -63,7 +63,9 @@ Disposición del repositorio
    │   ├── query/          ← respondedor de consultas APRS (?APRS?/?WX?/?IGATE? + dirigidas), respondidas desde la tarea del planificador
    │   ├── lastheard/      ← tabla en RAM de estaciones oídas, una por indicativo → JSON del panel
    │   ├── trafficlog/     ← anillo en RAM de líneas de tráfico → JSON del panel (long-poll por seq)
-   │   ├── weather_telemetry/  ← solo estructuras de nivel de protocolo (campos WX + Telemetría APRS101)
+   │   ├── weather_telemetry/  ← estructuras de protocolo APRS101 WX + Telemetría, más mice.c: el
+   │   │                          codificador/decodificador Mic-E completo (aprs_mice_encode()/_decode()),
+   │   │                          usado por main/beacon.c (TX) y main/aprs_filter.c (RX)
    │   ├── sensors_local/      ← EL marco de controladores de sensores
    │   │   ├── sensors_local.c              ← el registro dinámico
    │   │   ├── include/sensors_local.h      ← API pública

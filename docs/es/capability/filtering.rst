@@ -61,6 +61,12 @@ identificador de tipo de dato APRS (DTI) y — donde el DTI por sí solo es ambi
    * - Posición
      - ``1<<8``
      - informe de posición simple
+   * - Otro
+     - ``1<<9``
+     - Capacidades de estación, formatos definidos por el usuario, radiogonio-
+       metría Agrelo, balizas de locator Maidenhead y la característica de
+       mapa reservada — los tipos de carga útil sin bit propio, agrupados
+       aquí para que puedan retransmitirse en vez de descartarse en silencio.
 
 Una carga útil inclasificable — el tráfico de terceros (``}``) por encima de todo
 — clasifica como ``0``, y ``aprs_filter_pass()`` nunca deja pasar ``0``:
