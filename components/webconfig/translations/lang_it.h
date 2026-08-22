@@ -959,7 +959,7 @@
 /** Italian text for the symbol-picker label for intro, rendered on the symbol picker. English: "Quick reference for common APRS symbol codes. Each service page
  * (IGate / Digi / Tracker...". */
 #define TR_SYM_INTRO                                                                                                                                           \
-    "Riferimento rapido per i codici simbolo APRS più comuni. Ogni pagina di servizio "                                                                       \
+    "Riferimento rapido per i codici simbolo APRS più comuni. Ogni pagina di servizio "                                                                        \
     "(IGate / Digi / Tracker) ha il proprio campo simbolo a testo libero \u2014 copia il "                                                                     \
     "codice a 2 caratteri da qui in quel campo."
 /** Italian text for the symbol-picker label for code, rendered on the symbol picker. English: "Code". */
@@ -1153,7 +1153,7 @@
 /** Italian text for the wireless page label for sta needs ssid, rendered on the Wireless page. English: "Saved, but this will NOT connect: Mode selects a
  * station, yet no WiFi Client block has...". */
 #define TR_WIFI_STA_NEEDS_SSID                                                                                                                                 \
-    "Salvato, ma questo NON si connetterà: la modalità seleziona una stazione, ma nessun blocco Client WiFi ha sia 'Abilita' selezionato sia un SSID "       \
+    "Salvato, ma questo NON si connetterà: la modalità seleziona una stazione, ma nessun blocco Client WiFi ha sia 'Abilita' selezionato sia un SSID "         \
     "compilato. Correggi e salva di nuovo."
 /** Italian text for the wireless page label for scanning, rendered on the Wireless page. English: "Scanning...". */
 #define TR_WIFI_SCANNING "Scansione in corso..."
@@ -1388,7 +1388,7 @@
 /** Italian text for the explanatory note shown beside the range prefix setting, rendered on the IGate page. English: "Local gate applied only to RF ->
  * Internet, independent of the payload-type filter above...". */
 #define TR_NOTE_RANGE_PREFIX                                                                                                                                   \
-    "Filtro locale applicato solo a RF -> Internet, indipendente dal filtro per tipo di payload sopra. La distanza è misurata dalla posizione della Mia "     \
+    "Filtro locale applicato solo a RF -> Internet, indipendente dal filtro per tipo di payload sopra. La distanza è misurata dalla posizione della Mia "      \
     "Stazione; i pacchetti la cui posizione non può essere decodificata non sono influenzati dal filtro di distanza."
 
 /** Italian text for the form label for the "3rdparty unwrap en" field or fieldset, rendered on the IGate page. English: "Relay whitelisted third-party (})
@@ -1396,10 +1396,10 @@
 #define TR_F_3RDPARTY_UNWRAP_EN "Inoltra traffico di terze parti (}) in lista bianca"
 /** Italian text for the explanatory note shown beside the 3rdparty unwrap setting, rendered on the IGate page. English: "Off by default. Only takes effect when
  * the Internet to RF Callsign Filter above is set...". */
-#define TR_NOTE_3RDPARTY_UNWRAP                                                                                                                                 \
+#define TR_NOTE_3RDPARTY_UNWRAP                                                                                                                                \
     "Disattivato per impostazione predefinita. Ha effetto solo quando il Filtro Nominativi Internet verso RF sopra è impostato su Lista Bianca: un pacchetto " \
     "incapsulato di terze parti viene decapsulato e inoltrato solo se il nominativo sorgente interno è a sua volta in lista bianca. Abilitare solo se ci si "  \
-    "fida della fonte specifica e questa è stata inserita in lista bianca - ri-filtrare il traffico di terze parti senza questa restrizione è la causa più " \
+    "fida della fonte specifica e questa è stata inserita in lista bianca - ri-filtrare il traffico di terze parti senza questa restrizione è la causa più "   \
     "comune dei loop IGate."
 
 /** Italian text for the form label for the "satgate" field or fieldset, rendered on the IGate page. English: "Satellite Gate List". */
@@ -1435,9 +1435,9 @@
 /** Italian text for the explanatory note shown beside the msg gating setting, rendered on the IGate page. English: "A message read from APRS-IS is put on the
  * air only when its addressee was heard on RF i...". */
 #define TR_NOTE_MSG_GATING                                                                                                                                     \
-    "Un messaggio letto da APRS-IS viene trasmesso solo se il destinatario è stato ascoltato in RF entro la finestra e con non più hop del limite, il "      \
-    "mittente non è stato ascoltato in RF, l'intestazione del mittente non contiene TCPXX/NOGATE/RFONLY e il destinatario non è a sua volta su Internet. "   \
-    "Anche il primo rapporto di posizione di quel destinatario viene ritrasmesso una volta, per poterlo localizzare. Il limite di hop è ciò che evita di "   \
+    "Un messaggio letto da APRS-IS viene trasmesso solo se il destinatario è stato ascoltato in RF entro la finestra e con non più hop del limite, il "        \
+    "mittente non è stato ascoltato in RF, l'intestazione del mittente non contiene TCPXX/NOGATE/RFONLY e il destinatario non è a sua volta su Internet. "     \
+    "Anche il primo rapporto di posizione di quel destinatario viene ritrasmesso una volta, per poterlo localizzare. Il limite di hop è ciò che evita di "     \
     "trasmettere verso una stazione ascoltata tramite digipeater lontani ma non raggiungibile; conviene impostarlo al numero di hop percorsi dal proprio "     \
     "percorso di trasmissione. Disattivandolo si trasmette ogni messaggio consentito dal filtro dei tipi, verso destinatari in qualsiasi parte del mondo."
 
@@ -1478,22 +1478,22 @@
  * Write each one without its SSID; '#' matches...". */
 #define TR_NOTE_DIGI_ALIASES                                                                                                                                   \
     "Gli unici alias che questo digipeater onora. Scrivere ciascuno senza SSID; '#' corrisponde a una sola cifra, quindi 'WIDE#' copre l'intera famiglia "     \
-    "WIDEn. Le righe vengono provate in ordine e vince la prima corrispondenza. Traccia inserisce il nominativo di questa stazione affinché ogni salto sia "  \
+    "WIDEn. Le righe vengono provate in ordine e vince la prima corrispondenza. Traccia inserisce il nominativo di questa stazione affinché ogni salto sia "   \
     "identificabile in seguito, come richiede WIDEn-N; inondazione non lascia traccia e conviene solo a un alias regionale usato di proposito così."
 
 /** Italian text for the explanatory note shown beside the digi preempt setting, rendered on the IGate page. English: "Off is the safe default. When it is on,
  * the path is scanned from its first unused address...". */
 #define TR_NOTE_DIGI_PREEMPT                                                                                                                                   \
-    "Spento è il valore sicuro predefinito. Acceso, il percorso viene scandito dal primo indirizzo inutilizzato fino alla fine cercando il nominativo di "    \
-    "questa stazione o uno degli alias qui sopra che non sia un nome della famiglia n-N, e una corrispondenza trovata più avanti viene servita subito "       \
-    "invece di attendere gli indirizzi che la precedono. È questo che fa funzionare un percorso esplicito come WIDE1-1,CITYA,WIDE2-1,CITYB, che carica il "   \
+    "Spento è il valore sicuro predefinito. Acceso, il percorso viene scandito dal primo indirizzo inutilizzato fino alla fine cercando il nominativo di "     \
+    "questa stazione o uno degli alias qui sopra che non sia un nome della famiglia n-N, e una corrispondenza trovata più avanti viene servita subito "        \
+    "invece di attendere gli indirizzi che la precedono. È questo che fa funzionare un percorso esplicito come WIDE1-1,CITYA,WIDE2-1,CITYB, che carica il "    \
     "canale molto meno di un'inondazione WIDEn-N. Mantenere gli indirizzi saltati lascia visibile il percorso richiesto; scartarli mette in onda il percorso " \
     "residuo più breve. Gli alias n-N generici non vengono mai reclamati così in nessuna delle due modalità."
 
 /** Italian text for the explanatory note shown beside the digi dest ssid setting, rendered on the IGate page. English: "Off by default. When on, a frame whose
  * AX.25 destination SSID is 1 to 7 is repeated on...". */
 #define TR_NOTE_DIGI_DEST_SSID                                                                                                                                 \
-    "Disattivato per impostazione predefinita. Quando è attivo, una trama il cui SSID di destinazione AX.25 sia da 1 a 7 viene ripetuta in base a quel "      \
+    "Disattivato per impostazione predefinita. Quando è attivo, una trama il cui SSID di destinazione AX.25 sia da 1 a 7 viene ripetuta in base a quel "       \
     "solo SSID, prima di consultare la tabella degli alias qui sopra, quindi il percorso richiesto dalla stazione di origine viene ignorato. Attivarlo "       \
     "solo per un vicino datato che instrada ancora in questo modo."
 
@@ -1618,6 +1618,86 @@
 #define TR_GPS_M_2D "2D (solo orizzontale)"
 /** Italian text for the fix mode shown for a solution including altitude, rendered on the GPS page. English: "3D (with altitude)". */
 #define TR_GPS_M_3D "3D (con altitudine)"
+
+/** Sidebar menu entry for the BrandMeister page. */
+#define TR_MENU_BM "BrandMeister"
+/** Page title of the BrandMeister interconnect page. */
+#define TR_F_BM "BrandMeister"
+/** Fieldset legend for the interconnect enable switch, rendered on the BrandMeister page. */
+#define TR_BM_FS_SERVICE "Interconnessione BrandMeister"
+/** Form label for the interconnect enable switch, rendered on the BrandMeister page. */
+#define TR_BM_ENABLE "Abilita l'interconnessione BrandMeister"
+/** Explanatory note shown beside the interconnect enable switch, rendered on the BrandMeister page. */
+#define TR_BM_NOTE_SERVICE                                                                                                                                     \
+    "Il lato APRS di BrandMeister e un client APRS-IS: ogni master immette in APRS-IS il traffico originato in DMR come normali pacchetti. Questa "            \
+    "stazione non richiede quindi alcuna connessione DMR ne un account BrandMeister: l'interconnessione viaggia sulla sessione APRS-IS che l'IGate "           \
+    "ha gia. Con questa opzione disattivata nessuna riga viene classificata e l'instradamento dei messaggi resta invariato."
+/** Fieldset legend for the worldwide monitor subscription, rendered on the BrandMeister page. */
+#define TR_BM_FS_MONITOR "Monitor mondiale"
+/** Form label for the worldwide monitor switch, rendered on the BrandMeister page. */
+#define TR_BM_MONITOR "Sottoscrivi il traffico BrandMeister mondiale"
+/** Explanatory note shown beside the worldwide monitor switch, rendered on the BrandMeister page. */
+#define TR_BM_NOTE_MONITOR                                                                                                                                     \
+    "I termini del filtro server APRS-IS si combinano in OR, mai in AND, quindi il server non puo restringere questa sottoscrizione alla vostra "              \
+    "zona. Viene rifiutata mentre l'inoltro da Internet a RF e attivo e il filtro di distanza da Internet a RF nella pagina IGate e disattivato, "             \
+    "perche non resterebbe nulla tra un flusso mondiale e il vostro trasmettitore."
+/** Lead-in to the server filter term the monitor subscription needs, rendered on the BrandMeister page. */
+#define TR_BM_NOTE_FILTER_TERM "Aggiungete questo termine al filtro server della pagina IGate per ricevere la sottoscrizione:"
+/** Warning shown once when the monitor switch was refused for want of the range gate, rendered on the BrandMeister page. */
+#define TR_BM_WARN_NEEDS_RANGE "Rifiutato: abilitate prima il filtro di distanza da Internet a RF nella pagina IGate."
+/** Fieldset legend for message routing, rendered on the BrandMeister page. */
+#define TR_BM_FS_MESSAGING "Messaggistica"
+/** Form label for the Internet-only message routing switch, rendered on the BrandMeister page. */
+#define TR_BM_MSG_INET_ONLY "Invia i messaggi alle stazioni BrandMeister solo via Internet"
+/** Explanatory note shown beside the Internet-only message routing switch, rendered on the BrandMeister page. */
+#define TR_BM_NOTE_MSG_INET_ONLY                                                                                                                               \
+    "Una stazione sentita l'ultima volta come traffico BrandMeister e sulla rete, non sul canale locale, quindi una copia via RF di un messaggio a "           \
+    "lei indirizzato e tempo di antenna speso per un ricevitore che non c'e. Questo non aggiunge mai la tratta Internet: con \"Invia a Internet\" "            \
+    "disattivato nella pagina Messaggi non viene inviato nulla."
+/** Note on delivery not being guaranteed, rendered on the BrandMeister page. */
+#define TR_BM_NOTE_DELIVERY                                                                                                                                    \
+    "La consegna non e garantita e il fallimento e silenzioso: ogni master BrandMeister applica un proprio modello al destinatario dei messaggi in "           \
+    "arrivo, e questa stazione non puo vederlo. Un messaggio filtrato semplicemente non produce alcuna conferma. Il destinatario deve inoltre "                \
+    "essere il nominativo associato all'ID DMR nel SelfCare del ricevente."
+/** Fieldset legend for the gateway callsign list, rendered on the BrandMeister page. */
+#define TR_BM_FS_GATEWAYS "Nominativi dei gateway"
+/** Form label prefix for one gateway callsign slot, rendered on the BrandMeister page. */
+#define TR_BM_GATEWAY "Gateway"
+/** Explanatory note shown beside the gateway callsign list, rendered on the BrandMeister page. */
+#define TR_BM_NOTE_GATEWAYS                                                                                                                                    \
+    "Facoltativo. Confrontato con la stazione di ingresso che segue il q construct, per chi voglia contrassegnare solo il traffico del proprio "               \
+    "master. Un * finale confronta per prefisso. Lasciate vuoto per riconoscere il traffico BrandMeister dalla sola destinazione APBMxx e "                    \
+    "dall'elemento DMR del percorso, che non richiedono configurazione."
+/** Fieldset legend for the read-only status table, rendered on the BrandMeister page. */
+#define TR_BM_FS_STATUS "Stato"
+/** Status row label for the interconnect switch, rendered on the BrandMeister page. */
+#define TR_BM_ST_SERVICE "Interconnessione"
+/** Status row label for the monitor term in the server filter, rendered on the BrandMeister page. */
+#define TR_BM_ST_FILTER_TERM "Termine di monitor nel filtro server"
+/** Status row label for the Internet to RF range gate, rendered on the BrandMeister page. */
+#define TR_BM_ST_RANGE_GATE "Filtro di distanza da Internet a RF"
+/** Status row label for the count of BrandMeister stations heard, rendered on the BrandMeister page. */
+#define TR_BM_ST_STATIONS "Stazioni BrandMeister sentite"
+/** Status row value for an enabled service, rendered on the BrandMeister page. */
+#define TR_BM_ST_ON "Abilitata"
+/** Status row value for a disabled service, rendered on the BrandMeister page. */
+#define TR_BM_ST_OFF "Disabilitata"
+/** Status row value for a filter term that is present, rendered on the BrandMeister page. */
+#define TR_BM_ST_PRESENT "Presente"
+/** Status row value for a filter term that is missing, rendered on the BrandMeister page. */
+#define TR_BM_ST_ABSENT "Assente"
+/** Status row value for a range gate that governs nothing, rendered on the BrandMeister page. */
+#define TR_BM_ST_GATE_NA "Non applicabile (l'inoltro da Internet a RF e disattivato)"
+/** Status row value for a range gate that is off, rendered on the BrandMeister page. */
+#define TR_BM_ST_GATE_OFF "Disattivato"
+/** Explanatory note shown under the status table, rendered on the BrandMeister page. */
+#define TR_BM_NOTE_STATUS                                                                                                                                      \
+    "Le ultime tre righe sono governate dalla pagina IGate. Le stazioni BrandMeister sono contate nella tabella LAST HEARD, dove portano il prefisso BM."
+/** Explanatory note shown beside the Internet to RF range gate, rendered on the IGate page. */
+#define TR_NOTE_INET2RF_RANGE                                                                                                                                  \
+    "Filtro locale applicato solo da Internet -> RF, indipendente dal filtro di tipo di payload sopra. La distanza e misurata dalla posizione della "          \
+    "Mia Stazione; le righe la cui posizione non e decodificabile non sono interessate. E requisito per inoltrare al trasmettitore qualsiasi "                 \
+    "sottoscrizione mondiale."
 
 /** @} */
 

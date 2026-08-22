@@ -37,6 +37,9 @@ hay nada que una comprobación de autenticación pueda proteger.
      - ``/igate``
      - ajustes del IGate
    * - GET/POST
+     - ``/bm``
+     - ajustes de la interconexión BrandMeister
+   * - GET/POST
      - ``/digi``
      - ajustes del digipeater
    * - GET/POST

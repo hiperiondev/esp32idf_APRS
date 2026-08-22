@@ -79,6 +79,18 @@ Las páginas
        local. La posición puede escribirse, reflejar *Usar Datos de Mi
        Estación* o tomarse en vivo del receptor GNSS mediante *Usar GPS*; las
        tres opciones son mutuamente excluyentes.
+   * - **BrandMeister**
+     - Interruptor de la interconexión, la suscripción de monitor mundial, el
+       interruptor de ruteo de mensajes solo por Internet para destinatarios
+       BrandMeister, y cuatro indicativos de pasarela opcionales. El
+       interruptor de monitor se rechaza mientras el reenvío INET→RF está
+       activo y el filtro de rango INET→RF de la página *IGate* está apagado,
+       porque los términos del filtro APRS-IS se combinan con O y no quedaría
+       nada entre un flujo mundial y el transmisor. Una tabla de estado de solo
+       lectura informa el estado de la interconexión, si ``u/APBM*`` está
+       presente en el filtro de servidor, el ajuste del filtro de rango y
+       cuántas estaciones BrandMeister hay en LAST HEARD. No interviene ninguna
+       conexión DMR; ver :ref:`es-brandmeister`.
    * - **Digi**
      - Habilitar digipeater, indicativo/SSID y ajustes de baliza (posición,
        símbolo, intervalo, comentario, estado, ruta). *Extensión de Datos*

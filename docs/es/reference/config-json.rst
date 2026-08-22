@@ -30,7 +30,7 @@ Otros archivos persistentes
    * - Archivo
      - Contenido
    * - ``/storage/config.json``
-     - El ``app_config_t`` residente (sistema, estación, Wi-Fi, IGate, digi,
+     - El ``app_config_t`` residente (sistema, estación, Wi-Fi, IGate, BrandMeister, digi,
        tracker, meteo, GPS, módem, mensaje).
    * - ``/storage/telemetry.json``
      - Configuración de telemetría (``telemetry_config_t``): analógicos A1–A5,
@@ -55,3 +55,39 @@ Reset de fábrica
 ``app_config_set_defaults()`` y la persiste. Por sí solo no elimina los archivos
 separados de telemetría/boletines/objitems — esos regeneran valores por defecto
 en el siguiente acceso si se borran vía la página Storage.
+
+Claves de la interconexión BrandMeister
+=======================================
+
+.. list-table::
+   :header-rows: 1
+   :widths: 25 15 60
+
+   * - Clave
+     - Tipo
+     - Significado
+   * - ``bmEn``
+     - bool
+     - Interruptor principal de la interconexión BrandMeister. Apagado por
+       omisión.
+   * - ``bmMonitor``
+     - bool
+     - Intención de correr la suscripción mundial ``u/APBM*``. Se fuerza a
+       apagado al cargar cuando ``inet2rf`` está activo e ``inet2rfRangeEn``
+       apagado, así un archivo editado a mano no puede saltear el
+       enclavamiento.
+   * - ``bmMsgInetOnly``
+     - bool
+     - Rutear los mensajes a destinatarios BrandMeister solo por APRS-IS.
+       Habilitado por omisión; solo puede quitar la pata de RF.
+   * - ``bmGateways``
+     - arreglo de 4 cadenas
+     - Indicativos opcionales de estación de entrada para la tercera prueba del
+       clasificador. Un ``*`` final compara por prefijo.
+   * - ``inet2rfRangeEn``
+     - bool
+     - Habilita el filtro de rango INET→RF. Apagado por omisión.
+   * - ``inet2rfRangeKm``
+     - número
+     - Radio del filtro de rango INET→RF en km, 0 = sin límite. Se acota a
+       0…20038 al cargar.

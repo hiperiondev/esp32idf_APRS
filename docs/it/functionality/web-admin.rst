@@ -79,6 +79,18 @@ Le pagine
        digitata, rispecchiare *Usa i Dati della Mia Stazione* oppure essere
        presa in tempo reale dal ricevitore GNSS tramite *Usa GPS*; le tre
        opzioni si escludono a vicenda.
+   * - **BrandMeister**
+     - Interruttore dell'interconnessione, la sottoscrizione del monitor
+       mondiale, l'interruttore di instradamento dei messaggi solo via Internet
+       per i destinatari BrandMeister e quattro nominativi di gateway
+       facoltativi. L'interruttore del monitor viene rifiutato mentre l'inoltro
+       INET→RF è attivo e il filtro di distanza INET→RF nella pagina *IGate* è
+       disattivato, poiché i termini del filtro APRS-IS sono in OR e nulla
+       resterebbe tra un flusso mondiale e il trasmettitore. Una tabella di
+       stato in sola lettura riporta lo stato dell'interconnessione, se
+       ``u/APBM*`` è presente nel filtro server, l'impostazione del filtro di
+       distanza e quante stazioni BrandMeister sono in LAST HEARD. Non è
+       coinvolta alcuna connessione DMR; vedere :ref:`it-brandmeister`.
    * - **Digi**
      - Abilita digipeater, indicativo/SSID e impostazioni beacon (posizione,
        simbolo, intervallo, commento, stato, percorso). *Estensione Dati*

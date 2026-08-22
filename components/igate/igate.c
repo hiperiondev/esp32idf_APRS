@@ -202,6 +202,8 @@ const char *igate_drop_reason_name(drop_reason_t reason) {
             return "type filter";
         case DROP_RANGE_FILTER:
             return "range filter";
+        case DROP_INET2RF_RANGE:
+            return "range filter (INET->RF)";
         case DROP_PREFIX_FILTER:
             return "prefix filter";
         case DROP_BUDLIST:

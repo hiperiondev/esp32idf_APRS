@@ -119,6 +119,10 @@ esp_err_t page_default_reset(httpd_req_t *req);
 esp_err_t page_igate_get(httpd_req_t *req);
 /** @brief POST /igate - persist IGate settings. @param req Incoming request. @return ESP_OK or an esp_err_t error. */
 esp_err_t page_igate_post(httpd_req_t *req);
+/** @brief GET  /bm - BrandMeister interconnect settings form. @param req Incoming request. @return ESP_OK or an esp_err_t error. */
+esp_err_t page_bm_get(httpd_req_t *req);
+/** @brief POST /bm - persist BrandMeister interconnect settings. @param req Incoming request. @return ESP_OK or an esp_err_t error. */
+esp_err_t page_bm_post(httpd_req_t *req);
 /** @brief GET  /digi - Digipeater settings form. @param req Incoming request. @return ESP_OK or an esp_err_t error. */
 esp_err_t page_digi_get(httpd_req_t *req);
 /** @brief POST /digi - persist Digipeater settings. @param req Incoming request. @return ESP_OK or an esp_err_t error. */

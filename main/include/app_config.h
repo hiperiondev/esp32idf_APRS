@@ -51,6 +51,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "aprs_bm.h"    // APRS_BM_GATEWAYS_MAX / APRS_BM_GATEWAY_LEN: dimensions of the stored BrandMeister gateway list
 #include "must_check.h" // APRS_MUST_CHECK: the persistence entry points below may not have their result discarded
 
 /**
@@ -87,6 +88,7 @@
 #define ENABLE_RADIO_MODEM    /**< Radiomodem page. */
 #define ENABLE_MESSAGE        /**< APRS Message service page. */
 #define ENABLE_IGATE          /**< IGate page. */
+#define ENABLE_BRANDMEISTER   /**< BrandMeister interconnect page. */
 #define ENABLE_QUERY          /**< Query responder page. */
 #define ENABLE_DIGIPEATER     /**< Digipeater page. */
 #define ENABLE_TRACKER        /**< Tracker page. */
@@ -379,6 +381,21 @@ typedef enum {
 #define IGATE_LOCAL_WINDOW_SEC_MIN     60   /**< Shortest accepted "heard locally" window, seconds. */
 #define IGATE_LOCAL_WINDOW_SEC_MAX     3600 /**< Longest accepted "heard locally" window, seconds. */
 #define IGATE_LOCAL_WINDOW_SEC_DEFAULT 3600 /**< Factory default "heard locally" window, seconds. */
+/** @} */
+
+/**
+ * @name Gateway range-gate bounds
+ * @brief Accepted range, in kilometres, for both directions' local distance
+ * gate: ::app_config_t::rf2inet_range_km and ::app_config_t::inet2rf_range_km.
+ *
+ * The ceiling is half the Earth's circumference along a meridian - the
+ * greatest distance aprs_filter_haversine_km() can ever return - so anything
+ * at or above it means "no limit" as surely as the 0 sentinel does, and
+ * nothing between the two is unreachable.
+ * @{
+ */
+#define APRS_RANGE_KM_MIN 0.0f     /**< Lowest accepted range-gate radius; 0 disables the limit. */
+#define APRS_RANGE_KM_MAX 20038.0f /**< Highest accepted range-gate radius, kilometres. */
 /** @} */
 
 /**
@@ -732,6 +749,24 @@ typedef struct {
     bool rf2inet_prefix_en; /**< Enable the local RF->INET callsign-prefix gate. */
     char rf2inet_prefixes[40]; /**< Comma-separated callsign-prefix whitelist for rf2inet_prefix_en, e.g. "EA,EB,EC". Case-insensitive. */
 
+    bool inet2rf_range_en;  /**< Enable the local INET->RF range gate, the mirror image of @c rf2inet_range_en. Independent of, and composed with (AND
+                               semantics), inet2rfFilter/the budlist. Required before any worldwide subscription (such as the BrandMeister monitor term) may
+                               be gated to the transmitter: APRS-IS server filter terms are OR'd, never AND'd, so a range restriction cannot be expressed
+                               server-side alongside one. */
+    float inet2rf_range_km; /**< Max allowed distance from "My Station" (my_lat/my_lon), km. 0 = unlimited (gate has no effect even if enabled). Lines whose
+                               position can't be decoded are not evaluated (pass this check). Clamped to ::APRS_RANGE_KM_MIN .. ::APRS_RANGE_KM_MAX. */
+
+    bool bm_en;            /**< BrandMeister interconnect enabled (web admin "BrandMeister" page). Master switch: with it off, no line is classified, no BM
+                              marker is recorded and message routing is untouched. Purely an APRS-IS feature - nothing here opens a DMR connection. */
+    bool bm_monitor;       /**< Operator intends to run the worldwide BrandMeister monitor subscription (::APRS_BM_MONITOR_FILTER_TERM in the IGate server
+                              filter). Refused by the page while @c inet2rf is on and @c inet2rf_range_en is off. */
+    bool bm_msg_inet_only; /**< On by default. Send a message addressed to a station last heard as BrandMeister traffic over APRS-IS only, never on RF: such a
+                              station is reachable through the network, not on the local channel. May only ever remove the RF leg, never add the Internet one.
+                            */
+    char bm_gateways[APRS_BM_GATEWAYS_MAX][APRS_BM_GATEWAY_LEN]; /**< Optional BrandMeister gateway/master callsigns matched against the entry station after
+                                                                    the q construct (third classifier test, see aprs_bm.h). A trailing '*' matches by prefix;
+                                                                    an empty list skips the test, which is the factory state. */
+
     bool igate_msg_gate_en;          /**< On by default. Apply the APRS-IS message-gating criteria before putting a message read from APRS-IS on the air: the
                                         addressee must have been heard on RF inside @c igate_local_window_sec over at most @c igate_msg_max_hops digipeater
                                         hops, the sender must not have been heard on RF, the sender's header must carry no TCPXX/NOGATE/RFONLY, and the
@@ -752,7 +787,9 @@ typedef struct {
                                         manual editing. Mutually exclusive with igate_use_station on the page itself; both write the same three fields. */
     aprs_server_t aprs_server[APRS_SERVER_NUM]; /**< The ::APRS_SERVER_NUM stored APRS-IS server slots the IGate task fails over between; see igate.c. */
     char aprs_passcode[6];                      /**< APRS-IS login passcode. */
-    char aprs_filter[30];                       /**< APRS-IS server-side filter string. */
+    char aprs_filter[128];                      /**< APRS-IS server-side filter string. Sized for several terms at once: a single range or area term already
+                                                    runs past 20 characters, and a subscription that names both a local radius and a traffic class needs two
+                                                    or three of them. See aprs_filter_validate_server_string(). */
     bool igate_bcn;                             /**< Enable the IGate position beacon. */
     bool igate_timestamp;                       /**< Include a timestamp in the IGate beacon. */
     float igate_lat;                            /**< IGate beacon latitude. */

@@ -37,6 +37,9 @@ controllo di autenticazione possa proteggere.
      - ``/igate``
      - impostazioni dell'IGate
    * - GET/POST
+     - ``/bm``
+     - impostazioni dell'interconnessione BrandMeister
+   * - GET/POST
      - ``/digi``
      - impostazioni del digipeater
    * - GET/POST

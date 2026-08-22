@@ -137,6 +137,7 @@ insieme di capitoli:
    :caption: Funzionalità
 
    functionality/igate
+   functionality/brandmeister
    functionality/digipeater
    functionality/beacons
    functionality/messaging

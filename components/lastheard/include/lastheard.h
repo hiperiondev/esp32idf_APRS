@@ -111,8 +111,51 @@ void lastheard_init(void);
  * @param sym_table  APRS symbol table byte ('/' or '\' or overlay char), 0 if
  *                    unknown/not a position packet.
  * @param sym_code   APRS symbol code byte, 0 if unknown/not a position packet.
+ * @param via_bm     true when the line was recognised as BrandMeister traffic
+ *                    by aprs_bm_classify(), which only ever happens on the
+ *                    APRS-IS side: an RF frame always passes false here,
+ *                    because the classifier answers "did the network gate this
+ *                    onto APRS-IS" and a frame decoded off the air did not.
+ *                    Recorded per station from its most recent frame, so a
+ *                    station that turns up on the local channel stops being
+ *                    marked as soon as it does, and reported by
+ *                    lastheard_last_seen_bm(). Rendered as the "BM:" prefix on
+ *                    the path column in place of "INET:".
  */
-void lastheard_add(const char *callsign, const char *path, bool via_rf, bool direct, uint8_t used_hops, char sym_table, char sym_code);
+void lastheard_add(const char *callsign, const char *path, bool via_rf, bool direct, uint8_t used_hops, char sym_table, char sym_code, bool via_bm);
+
+/**
+ * @brief Was this station's most recent frame BrandMeister traffic?
+ *
+ * @details Answers the one question message routing needs: a station reachable
+ * through BrandMeister is on the network, not on the local channel, so a
+ * message addressed to it has no business going out on RF. The answer follows
+ * the newest frame, so it corrects itself the moment the station is heard off
+ * the air.
+ *
+ * @param callsign Callsign to look up, matched the same way lastheard_add()
+ *                 stores it (upper-cased, truncated, case-insensitive).
+ *
+ * @return true when the station is in the table and its most recent frame was
+ *         classified as BrandMeister traffic; false otherwise, including for a
+ *         station that has never been heard.
+ */
+bool lastheard_last_seen_bm(const char *callsign);
+
+/**
+ * @brief How many stations in the table were last seen as BrandMeister
+ * traffic.
+ *
+ * @details A live figure like lastheard_station_count(), not a running total:
+ * it is the number of rows currently marked, and a station drops out of it as
+ * soon as it is heard on RF or evicted. Shown on the web admin
+ * "BrandMeister" page as the one piece of evidence that the interconnect is
+ * actually receiving something.
+ *
+ * @return Number of marked rows, 0 when the table is empty or the lock could
+ *         not be taken.
+ */
+size_t lastheard_bm_count(void);
 
 /**
  * @brief How many stations the table currently holds.

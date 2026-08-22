@@ -46,6 +46,7 @@ typedef struct {
     char sym_table;
     char sym_code;
     bool via_rf;          // latest frame from this station was heard off the air
+    bool via_bm;          // latest frame from this station was BrandMeister traffic gated onto APRS-IS
     bool direct;          // latest frame from this station carried no used digipeater
     uint8_t rf_used_hops; // digipeater addresses actually repeated in the latest RF frame
     uint32_t packets;     // total times this callsign has been heard
@@ -184,7 +185,7 @@ void lastheard_init(void) {
     s_inited = true;
 }
 
-void lastheard_add(const char *callsign, const char *path, bool via_rf, bool direct, uint8_t used_hops, char sym_table, char sym_code) {
+void lastheard_add(const char *callsign, const char *path, bool via_rf, bool direct, uint8_t used_hops, char sym_table, char sym_code, bool via_bm) {
     if (!s_inited)
         lastheard_init();
     if (!callsign || !callsign[0])
@@ -247,7 +248,14 @@ void lastheard_add(const char *callsign, const char *path, bool via_rf, bool dir
     entry.time = ((int64_t)now >= LASTHEARD_CLOCK_VALID_EPOCH) ? now : 0;
     strncpy(entry.callsign, call, sizeof(entry.callsign) - 1);
     entry.callsign[sizeof(entry.callsign) - 1] = 0;
-    snprintf(entry.path, sizeof(entry.path), "%s: %s", via_rf ? "RF" : "INET", (path && path[0]) ? path : "DIRECT");
+    // The channel prefix names where the frame came from, and BrandMeister is
+    // a third answer to that question rather than a decoration on the second:
+    // it is still the APRS-IS side, but the station behind it is reachable
+    // over the network and not on the local channel, which is exactly what an
+    // operator reading the table needs to know. Carrying it in the path string
+    // keeps the /lastheard document's shape unchanged.
+    const char *channel = via_rf ? "RF" : (via_bm ? "BM" : "INET");
+    snprintf(entry.path, sizeof(entry.path), "%s: %s", channel, (path && path[0]) ? path : "DIRECT");
     entry.sym_table = sym_table;
     entry.sym_code = sym_code;
     // via_rf and direct describe the path this frame took, so the newest frame
@@ -261,6 +269,10 @@ void lastheard_add(const char *callsign, const char *path, bool via_rf, bool dir
     // direct" to the hop-limited query.
     entry.via_rf = via_rf;
     entry.direct = via_rf && direct;
+    // Follows the newest frame like via_rf does, and an RF frame is never
+    // BrandMeister traffic, so a station heard on the local channel loses the
+    // mark on that frame alone.
+    entry.via_bm = !via_rf && via_bm;
     if (via_rf)
         entry.rf_used_hops = used_hops;
 
@@ -355,6 +367,49 @@ bool lastheard_heard_rf_within_hops(const char *callsign, uint32_t seconds, uint
 
 bool lastheard_heard_inet_within(const char *callsign, uint32_t seconds) {
     return heardWithin(callsign, seconds, false, UINT8_MAX);
+}
+
+bool lastheard_last_seen_bm(const char *callsign) {
+    if (callsign == NULL || callsign[0] == 0 || !s_inited)
+        return false;
+    if (!s_lock || xSemaphoreTake(s_lock, pdMS_TO_TICKS(100)) != pdTRUE)
+        return false;
+
+    char call[LASTHEARD_CALL_LEN];
+    makeCallKey(call, callsign);
+
+    // No time window here, unlike heardWithin(): this reports which channel
+    // the station was last seen on, not how recently. A station that has aged
+    // out of every window is still one whose only known route is the network,
+    // and routing a message to it over RF on the strength of a stale clock
+    // would put a frame on the air for a station that was never on the local
+    // channel to begin with.
+    bool bm = false;
+    for (size_t i = 0; i < s_count; i++) {
+        if (strcasecmp(s_buf[i].callsign, call) != 0)
+            continue;
+        bm = s_buf[i].via_bm;
+        break;
+    }
+
+    xSemaphoreGive(s_lock);
+    return bm;
+}
+
+size_t lastheard_bm_count(void) {
+    if (!s_inited)
+        return 0;
+    if (!s_lock || xSemaphoreTake(s_lock, pdMS_TO_TICKS(100)) != pdTRUE)
+        return 0;
+
+    size_t n = 0;
+    for (size_t i = 0; i < s_count; i++) {
+        if (s_buf[i].via_bm)
+            n++;
+    }
+
+    xSemaphoreGive(s_lock);
+    return n;
 }
 
 int lastheard_directs(char *out, size_t out_size) {

@@ -22,6 +22,7 @@ idf_component_register(
         "pages/page_system.c"
         "pages/page_about.c"
         "pages/page_igate.c"
+        "pages/page_bm.c"
         "pages/page_digi.c"
         "pages/page_tracker.c"
         "pages/page_wx.c"

@@ -123,6 +123,7 @@ chapters:
    :caption: Functionalities
 
    functionality/igate
+   functionality/brandmeister
    functionality/digipeater
    functionality/beacons
    functionality/messaging

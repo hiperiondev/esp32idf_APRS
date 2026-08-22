@@ -299,6 +299,19 @@ void app_config_set_defaults(app_config_t *c) {
     c->rf2inet_range_km = 0.0f;
     c->rf2inet_prefix_en = false;
     set_str(c->rf2inet_prefixes, sizeof(c->rf2inet_prefixes), "");
+    c->inet2rf_range_en = false;
+    c->inet2rf_range_km = 0.0f;
+
+    // BrandMeister interconnect: off, and with the worldwide monitor
+    // subscription off inside it. Both are opt-in because the feature changes
+    // what the station puts on the air, and the gateway list starts empty
+    // because the two tests that matter (TOCALL and the DMR alias) need no
+    // configuration at all - see aprs_bm.h.
+    c->bm_en = false;
+    c->bm_monitor = false;
+    c->bm_msg_inet_only = true;
+    for (int i = 0; i < APRS_BM_GATEWAYS_MAX; i++)
+        set_str(c->bm_gateways[i], sizeof(c->bm_gateways[i]), "");
     c->inet2rf_3rdparty_unwrap_en = false;
     c->igate_msg_gate_en = true;
     c->igate_local_window_sec = IGATE_LOCAL_WINDOW_SEC_DEFAULT;
@@ -696,6 +709,15 @@ static void config_write_json(jw_t *d, const app_config_t *c) {
     jadd_num(d, "rf2inetRangeKm", c->rf2inet_range_km);
     jadd_bool(d, "rf2inetPrefixEn", c->rf2inet_prefix_en);
     jadd_str(d, "rf2inetPrefixes", c->rf2inet_prefixes);
+    jadd_bool(d, "inet2rfRangeEn", c->inet2rf_range_en);
+    jadd_num(d, "inet2rfRangeKm", c->inet2rf_range_km);
+    jadd_bool(d, "bmEn", c->bm_en);
+    jadd_bool(d, "bmMonitor", c->bm_monitor);
+    jadd_bool(d, "bmMsgInetOnly", c->bm_msg_inet_only);
+    jarr_begin(d, "bmGateways");
+    for (int i = 0; i < APRS_BM_GATEWAYS_MAX; i++)
+        jarr_str(d, c->bm_gateways[i]);
+    jarr_end(d);
     jadd_bool(d, "inet2rf3rdPartyUnwrapEn", c->inet2rf_3rdparty_unwrap_en);
     jadd_bool(d, "igateMsgGateEn", c->igate_msg_gate_en);
     jadd_num(d, "igateLocalWindowSec", c->igate_local_window_sec);
@@ -974,6 +996,23 @@ static uint16_t clamp_u16_range(double value, uint16_t min, uint16_t max, const 
     return (uint16_t)v;
 }
 
+// Bounds one loaded range-gate radius into [APRS_RANGE_KM_MIN,
+// APRS_RANGE_KM_MAX]. A NaN reaching the gate would compare false against
+// every threshold and quietly turn the gate off, so it is caught here rather
+// than at the comparison: the test is written so that a value which is not
+// greater than or equal to the floor - NaN included - takes the floor.
+static float clamp_range_km(float value, const char *key) {
+    if (!(value >= APRS_RANGE_KM_MIN)) {
+        ESP_LOGW(TAG, "%s is not a usable distance, clamped to %.0f km", key, (double)APRS_RANGE_KM_MIN);
+        return APRS_RANGE_KM_MIN;
+    }
+    if (value > APRS_RANGE_KM_MAX) {
+        ESP_LOGW(TAG, "%s %.1f km out of range, clamped to %.0f km", key, (double)value, (double)APRS_RANGE_KM_MAX);
+        return APRS_RANGE_KM_MAX;
+    }
+    return value;
+}
+
 static void config_from_json(cJSON *d, app_config_t *c) {
     // Start from defaults so every key not present in an older config file
     // still ends up with a sane, documented value (never zero-garbage).
@@ -1156,6 +1195,37 @@ static void config_from_json(cJSON *d, app_config_t *c) {
     c->rf2inet_range_km = (float)jget_num(d, "rf2inetRangeKm", def.rf2inet_range_km);
     c->rf2inet_prefix_en = jget_bool(d, "rf2inetPrefixEn", def.rf2inet_prefix_en);
     set_str(c->rf2inet_prefixes, sizeof(c->rf2inet_prefixes), jget_str(d, "rf2inetPrefixes", def.rf2inet_prefixes));
+
+    // Both range gates take the same two-layer clamp the rest of the bounded
+    // numerics use: the form emits min/max, and the file on flash is checked
+    // again on the way in because it is not a trusted input.
+    c->rf2inet_range_km = clamp_range_km(c->rf2inet_range_km, "rf2inetRangeKm");
+    c->inet2rf_range_en = jget_bool(d, "inet2rfRangeEn", def.inet2rf_range_en);
+    c->inet2rf_range_km = clamp_range_km((float)jget_num(d, "inet2rfRangeKm", def.inet2rf_range_km), "inet2rfRangeKm");
+
+    c->bm_en = jget_bool(d, "bmEn", def.bm_en);
+    c->bm_monitor = jget_bool(d, "bmMonitor", def.bm_monitor);
+    c->bm_msg_inet_only = jget_bool(d, "bmMsgInetOnly", def.bm_msg_inet_only);
+    {
+        cJSON *gw = cJSON_GetObjectItemCaseSensitive(d, "bmGateways");
+        for (int i = 0; i < APRS_BM_GATEWAYS_MAX; i++) {
+            cJSON *v = gw ? cJSON_GetArrayItem(gw, i) : NULL;
+            set_str(c->bm_gateways[i], sizeof(c->bm_gateways[i]), (v && cJSON_IsString(v)) ? v->valuestring : def.bm_gateways[i]);
+        }
+    }
+
+    // The interlock the BrandMeister page enforces on save is re-applied here,
+    // for the same reason every other bounded field is re-checked on load: a
+    // config.json edited by hand or carried over from another station can
+    // arrive with the worldwide monitor subscription on and nothing standing
+    // between that feed and the transmitter. Turning the monitor flag off
+    // rather than the gating is the conservative direction - it withdraws the
+    // subscription the operator would otherwise be told to add, and leaves
+    // every other setting as written.
+    if (c->bm_monitor && c->inet2rf && !c->inet2rf_range_en) {
+        ESP_LOGW(TAG, "bmMonitor requires the INET->RF range gate while inet2rf is on - monitor disabled");
+        c->bm_monitor = false;
+    }
     c->inet2rf_3rdparty_unwrap_en = jget_bool(d, "inet2rf3rdPartyUnwrapEn", def.inet2rf_3rdparty_unwrap_en);
     c->igate_msg_gate_en = jget_bool(d, "igateMsgGateEn", def.igate_msg_gate_en);
     // Same two-layer clamp the rest of the bounded fields use: the file on

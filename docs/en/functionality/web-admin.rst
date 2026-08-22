@@ -73,6 +73,17 @@ The pages
        the heard-locally window and the addressee hop limit. Position can be
        typed in, mirrored from *Use My Station Data* or taken live from the
        GNSS receiver via *Use GPS*; the three are mutually exclusive.
+   * - **BrandMeister**
+     - Interconnect enable switch, the worldwide monitor subscription, the
+       Internet-only message routing switch for BrandMeister addressees, and
+       four optional gateway callsigns. The monitor switch is refused while
+       INET→RF gating is on and the INET→RF range filter on the *IGate* page is
+       off, since APRS-IS filter terms are OR'd and nothing else would stand
+       between a worldwide feed and the transmitter. A read-only status table
+       reports the interconnect state, whether ``u/APBM*`` is present in the
+       server filter, the range filter's setting and how many BrandMeister
+       stations are currently in LAST HEARD. No DMR connection of any kind is
+       involved; see :ref:`en-brandmeister`.
    * - **Digi**
      - Digipeater enable, callsign/SSID and beacon settings (position, symbol,
        interval, comment, status, path). *Data Extension* selects what the

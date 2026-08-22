@@ -790,6 +790,9 @@ static const struct menu_item MENU[] = {
 #ifdef ENABLE_IGATE
     { "/igate", TR_MENU_IGATE, "igate" },
 #endif
+#ifdef ENABLE_BRANDMEISTER
+    { "/bm", TR_MENU_BM, "bm" },
+#endif
 #ifdef ENABLE_DIGIPEATER
     { "/digi", TR_MENU_DIGI, "digi" },
 #endif

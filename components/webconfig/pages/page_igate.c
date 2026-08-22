@@ -37,6 +37,21 @@
 
 static const char *TAG = "page_igate";
 
+// Bounds a range-gate radius submitted by the form. The browser already
+// carries min/max on the input, so this is the second layer: a POST does not
+// have to come from that form, and the same bounds are applied a third time on
+// load in app_config.c. Written so that a value which is not at or above the
+// floor - a NaN parsed out of a malformed field included - takes the floor,
+// since a NaN would compare false against the gate's own threshold and quietly
+// turn the gate off.
+static float clampRangeKm(float km) {
+    if (!(km >= APRS_RANGE_KM_MIN))
+        return APRS_RANGE_KM_MIN;
+    if (km > APRS_RANGE_KM_MAX)
+        return APRS_RANGE_KM_MAX;
+    return km;
+}
+
 // Duplex-direction <select>. UI values 0=simplex, 1=+, 2=- (converted to the
 // stored int8_t duplex on POST).
 static void render_duplex_select(httpd_req_t *req, const char *name, int8_t duplex) {
@@ -122,7 +137,7 @@ esp_err_t page_igate_get(httpd_req_t *req) {
                  TR_F_APRS_PASSCODE, esc_pc, TR_BTN_AUTO_GENERATE);
         web_raw(req, pcbuf);
     }
-    web_field_text(req, TR_F_FILTER, "igateFilter", g_config.aprs_filter, 29);
+    web_field_text(req, TR_F_FILTER, "igateFilter", g_config.aprs_filter, (int)(sizeof(g_config.aprs_filter) - 1));
     if (s_filterWarning[0]) {
         char esc_warn[sizeof(s_filterWarning) * 6 + 1];
         web_html_attr_escape(s_filterWarning, esc_warn, sizeof(esc_warn));
@@ -443,7 +458,7 @@ esp_err_t page_igate_get(httpd_req_t *req) {
         // <form>/Save button as the rest of the page.
         web_raw(req, "<p style='color:var(--sub);font-size:12px;margin:10px 0 4px'>" TR_NOTE_RANGE_PREFIX "</p>");
         web_field_checkbox(req, TR_F_RANGE_FILTER_EN, "rf2inetRangeEn", g_config.rf2inet_range_en);
-        web_field_float(req, TR_F_RANGE_KM, "rf2inetRangeKm", g_config.rf2inet_range_km, "0.1", 0.0f, 20038.0f);
+        web_field_float(req, TR_F_RANGE_KM, "rf2inetRangeKm", g_config.rf2inet_range_km, "0.1", APRS_RANGE_KM_MIN, APRS_RANGE_KM_MAX);
         web_field_checkbox(req, TR_F_PREFIX_FILTER_EN, "rf2inetPrefixEn", g_config.rf2inet_prefix_en);
         web_field_text(req, TR_F_PREFIXES, "rf2inetPrefixes", g_config.rf2inet_prefixes, sizeof(g_config.rf2inet_prefixes) - 1);
         web_fieldset_close(req);
@@ -463,6 +478,15 @@ esp_err_t page_igate_get(httpd_req_t *req) {
         // a "what may pass the INET->RF type filter" exception.
         web_field_checkbox(req, TR_F_3RDPARTY_UNWRAP_EN, "inet2rf3rdPartyUnwrapEn", g_config.inet2rf_3rdparty_unwrap_en);
         web_raw(req, "<p style='color:#cf222e;font-size:12px;margin:4px 0'>" TR_NOTE_3RDPARTY_UNWRAP "</p>");
+
+        // Local distance gate for this direction, the mirror of the RF->INET
+        // one above and rendered the same way. It lives here rather than on
+        // the BrandMeister page because it governs every line the feed
+        // offers the transmitter, whatever its origin; that page reads its
+        // state and refuses the worldwide subscription while it is off.
+        web_raw(req, "<p style='color:var(--sub);font-size:12px;margin:10px 0 4px'>" TR_NOTE_INET2RF_RANGE "</p>");
+        web_field_checkbox(req, TR_F_RANGE_FILTER_EN, "inet2rfRangeEn", g_config.inet2rf_range_en);
+        web_field_float(req, TR_F_RANGE_KM, "inet2rfRangeKm", g_config.inet2rf_range_km, "0.1", APRS_RANGE_KM_MIN, APRS_RANGE_KM_MAX);
         web_fieldset_close(req);
     }
 
@@ -851,6 +875,19 @@ esp_err_t page_igate_post(httpd_req_t *req) {
     g_config.rf2inet_range_km = web_form_get_float(body, "rf2inetRangeKm", g_config.rf2inet_range_km);
     g_config.rf2inet_prefix_en = web_form_get_bool(body, "rf2inetPrefixEn");
     web_form_get(body, "rf2inetPrefixes", g_config.rf2inet_prefixes, sizeof(g_config.rf2inet_prefixes));
+    g_config.rf2inet_range_km = clampRangeKm(g_config.rf2inet_range_km);
+    g_config.inet2rf_range_en = web_form_get_bool(body, "inet2rfRangeEn");
+    g_config.inet2rf_range_km = clampRangeKm(web_form_get_float(body, "inet2rfRangeKm", g_config.inet2rf_range_km));
+
+    // Turning the gate off withdraws the precondition the BrandMeister
+    // monitor subscription was accepted under, so the subscription goes with
+    // it rather than being left on with nothing between a worldwide feed and
+    // the transmitter. The same rule is enforced on the BrandMeister page and
+    // again on load; this is the third place it can be reached from.
+    if (g_config.bm_monitor && g_config.inet2rf && !g_config.inet2rf_range_en) {
+        ESP_LOGW(TAG, "INET->RF range gate turned off - BrandMeister monitor subscription disabled with it");
+        g_config.bm_monitor = false;
+    }
 
     // Selective third-party ('}') unwrap (INET->RF): off by default; only
     // actually takes effect when inet2rf_budlist_mode is BUDLIST_WHITELIST

@@ -113,6 +113,8 @@ void web_server_start(void) {
 
     reg(server, "/igate", HTTP_GET, page_igate_get);
     reg(server, "/igate", HTTP_POST, page_igate_post);
+    reg(server, "/bm", HTTP_GET, page_bm_get);
+    reg(server, "/bm", HTTP_POST, page_bm_post);
     reg(server, "/digi", HTTP_GET, page_digi_get);
     reg(server, "/digi", HTTP_POST, page_digi_post);
     reg(server, "/tracker", HTTP_GET, page_tracker_get);

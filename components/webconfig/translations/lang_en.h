@@ -1522,6 +1522,85 @@
 /** Fix mode shown for a solution including altitude, rendered on the GPS page. */
 #define TR_GPS_M_3D "3D (with altitude)"
 
+/** Sidebar menu entry for the BrandMeister page. */
+#define TR_MENU_BM "BrandMeister"
+/** Page title of the BrandMeister interconnect page. */
+#define TR_F_BM "BrandMeister"
+/** Fieldset legend for the interconnect enable switch, rendered on the BrandMeister page. */
+#define TR_BM_FS_SERVICE "BrandMeister Interconnect"
+/** Form label for the interconnect enable switch, rendered on the BrandMeister page. */
+#define TR_BM_ENABLE "Enable BrandMeister interconnect"
+/** Explanatory note shown beside the interconnect enable switch, rendered on the BrandMeister page. */
+#define TR_BM_NOTE_SERVICE                                                                                                                                     \
+    "BrandMeister's APRS side is an APRS-IS client: each master gates DMR-sourced traffic onto APRS-IS as ordinary packets. This station "                     \
+    "therefore needs no DMR connection and no BrandMeister account - the interconnect rides the IGate's existing APRS-IS session. With this "                  \
+    "switch off no line is classified and message routing is untouched."
+/** Fieldset legend for the worldwide monitor subscription, rendered on the BrandMeister page. */
+#define TR_BM_FS_MONITOR "Worldwide Monitor"
+/** Form label for the worldwide monitor switch, rendered on the BrandMeister page. */
+#define TR_BM_MONITOR "Subscribe to worldwide BrandMeister traffic"
+/** Explanatory note shown beside the worldwide monitor switch, rendered on the BrandMeister page. */
+#define TR_BM_NOTE_MONITOR                                                                                                                                     \
+    "APRS-IS server filter terms are OR'd, never AND'd, so this subscription cannot be narrowed to your area by the server. It is refused "                    \
+    "while Internet to RF gating is on and the Internet to RF range filter on the IGate page is off, because nothing else would stand between a "              \
+    "worldwide feed and your transmitter."
+/** Lead-in to the server filter term the monitor subscription needs, rendered on the BrandMeister page. */
+#define TR_BM_NOTE_FILTER_TERM "Add this term to the IGate page's server filter to receive the subscription:"
+/** Warning shown once when the monitor switch was refused for want of the range gate, rendered on the BrandMeister page. */
+#define TR_BM_WARN_NEEDS_RANGE "Refused: enable the Internet to RF range filter on the IGate page first."
+/** Fieldset legend for message routing, rendered on the BrandMeister page. */
+#define TR_BM_FS_MESSAGING "Messaging"
+/** Form label for the Internet-only message routing switch, rendered on the BrandMeister page. */
+#define TR_BM_MSG_INET_ONLY "Send messages to BrandMeister stations over the Internet only"
+/** Explanatory note shown beside the Internet-only message routing switch, rendered on the BrandMeister page. */
+#define TR_BM_NOTE_MSG_INET_ONLY                                                                                                                               \
+    "A station last heard as BrandMeister traffic is on the network, not on the local channel, so an RF copy of a message addressed to it is "                 \
+    "airtime spent on a receiver that is not there. This never adds the Internet leg: with \"Send to Internet\" off on the Message page, nothing "             \
+    "is sent at all."
+/** Note on delivery not being guaranteed, rendered on the BrandMeister page. */
+#define TR_BM_NOTE_DELIVERY                                                                                                                                    \
+    "Delivery is not guaranteed and failure is silent: each BrandMeister master applies its own pattern to the addressee of incoming messages, "               \
+    "which this station cannot see. A message that is filtered out simply produces no acknowledgement. The addressee must also be the callsign "               \
+    "associated with the DMR ID in the recipient's SelfCare."
+/** Fieldset legend for the gateway callsign list, rendered on the BrandMeister page. */
+#define TR_BM_FS_GATEWAYS "Gateway Callsigns"
+/** Form label prefix for one gateway callsign slot, rendered on the BrandMeister page. */
+#define TR_BM_GATEWAY "Gateway"
+/** Explanatory note shown beside the gateway callsign list, rendered on the BrandMeister page. */
+#define TR_BM_NOTE_GATEWAYS                                                                                                                                    \
+    "Optional. Matched against the entry station that follows the q construct, for an operator who wants only their own master's traffic "                     \
+    "marked. A trailing * matches by prefix. Leave empty to recognise BrandMeister traffic by its APBMxx destination and its DMR path element "                \
+    "alone, which needs no configuration."
+/** Fieldset legend for the read-only status table, rendered on the BrandMeister page. */
+#define TR_BM_FS_STATUS "Status"
+/** Status row label for the interconnect switch, rendered on the BrandMeister page. */
+#define TR_BM_ST_SERVICE "Interconnect"
+/** Status row label for the monitor term in the server filter, rendered on the BrandMeister page. */
+#define TR_BM_ST_FILTER_TERM "Monitor term in server filter"
+/** Status row label for the Internet to RF range gate, rendered on the BrandMeister page. */
+#define TR_BM_ST_RANGE_GATE "Internet to RF range filter"
+/** Status row label for the count of BrandMeister stations heard, rendered on the BrandMeister page. */
+#define TR_BM_ST_STATIONS "BrandMeister stations heard"
+/** Status row value for an enabled service, rendered on the BrandMeister page. */
+#define TR_BM_ST_ON "Enabled"
+/** Status row value for a disabled service, rendered on the BrandMeister page. */
+#define TR_BM_ST_OFF "Disabled"
+/** Status row value for a filter term that is present, rendered on the BrandMeister page. */
+#define TR_BM_ST_PRESENT "Present"
+/** Status row value for a filter term that is missing, rendered on the BrandMeister page. */
+#define TR_BM_ST_ABSENT "Absent"
+/** Status row value for a range gate that governs nothing, rendered on the BrandMeister page. */
+#define TR_BM_ST_GATE_NA "Not applicable (Internet to RF gating is off)"
+/** Status row value for a range gate that is off, rendered on the BrandMeister page. */
+#define TR_BM_ST_GATE_OFF "Off"
+/** Explanatory note shown under the status table, rendered on the BrandMeister page. */
+#define TR_BM_NOTE_STATUS                                                                                                                                      \
+    "The last three rows are governed by the IGate page. BrandMeister stations are counted in the LAST HEARD table, where they carry a BM prefix."
+/** Explanatory note shown beside the Internet to RF range gate, rendered on the IGate page. */
+#define TR_NOTE_INET2RF_RANGE                                                                                                                                  \
+    "Local gate applied only to Internet -> RF, independent of the payload-type filter above. Range is measured from My Station's position; lines "            \
+    "whose position can't be decoded are not affected. Required before any worldwide subscription may be gated to the transmitter."
+
 /** @} */
 
 #endif // LANG_EN_H

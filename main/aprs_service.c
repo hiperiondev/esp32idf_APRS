@@ -38,6 +38,7 @@
 #include "modem.h"
 
 #include "app_config.h"
+#include "aprs_bm.h"
 #include "aprs_coord.h"
 #include "aprs_filter.h"
 #include "aprs_path.h"
@@ -751,7 +752,13 @@ static void aprs_msg_callback(ax25_msg_t *msg) {
             }
         }
 
-        lastheard_add(callsign, path, true, direct, usedHops, symTable, symCode);
+        // Never BrandMeister: the classifier answers "did the network gate
+        // this line onto APRS-IS", and a frame decoded off the air did not
+        // arrive that way whatever its path reads. A third-party frame relayed
+        // locally can carry a DMR hop in its text, and letting that mark the
+        // station would claim it is reachable over the Internet when it was
+        // just heard on the radio.
+        lastheard_add(callsign, path, true, direct, usedHops, symTable, symCode, false);
     }
 
     // Placeholder/invalid source callsign check (NOCALL = radio not
@@ -1246,6 +1253,27 @@ static void inet2rfHandler(const char *line) {
     // at ':' for the via/path, matching what aprs_msg_callback does for RF.
     char callsign[12] = "";
     char symTable = 0, symCode = 0;
+
+    // Is this BrandMeister traffic? Classified once, here, from the raw line,
+    // and reused by everything below: the last-heard row, the range gate's log
+    // line and the message-routing rule all have to agree on the answer, and
+    // the header is only in hand at this point.
+    //
+    // The gateway list is snapshotted under the config lock for the same
+    // reason every other string field is: this runs on the IGate task while a
+    // web save may be rewriting it.
+    aprs_bm_match_t bmMatch = APRS_BM_MATCH_NONE;
+    if (g_config.bm_en) {
+        char gateways[APRS_BM_GATEWAYS_MAX][APRS_BM_GATEWAY_LEN];
+        app_config_lock();
+        memcpy(gateways, g_config.bm_gateways, sizeof(gateways));
+        app_config_unlock();
+        for (int i = 0; i < APRS_BM_GATEWAYS_MAX; i++)
+            gateways[i][APRS_BM_GATEWAY_LEN - 1] = 0;
+        bmMatch = aprs_bm_classify(line, gateways, APRS_BM_GATEWAYS_MAX);
+    }
+    const bool viaBm = (bmMatch != APRS_BM_MATCH_NONE);
+
     {
         const char *gt = strchr(line, '>');
         const char *colon = strchr(line, ':');
@@ -1273,7 +1301,7 @@ static void inet2rfHandler(const char *line) {
 
             // A frame that arrived over APRS-IS was never heard off the air
             // here, so it is never direct and has no RF hop count.
-            lastheard_add(callsign, path, false, false, 0, symTable, symCode);
+            lastheard_add(callsign, path, false, false, 0, symTable, symCode, viaBm);
         }
     }
 
@@ -1388,6 +1416,52 @@ static void inet2rfHandler(const char *line) {
         if ((type & (IGATE_FILT_POSITION | IGATE_FILT_BUOY)) != 0 && msgAssocTake(budlistCall)) {
             assocPosition = true;
             ESP_LOGD(TAG, "INET2RF: gating the position follow-up owed to %s", budlistCall);
+        }
+
+        // Local distance gate, the mirror image of the RF->INET one in
+        // igate.c. Placed ahead of the type filter and the budlist, so it
+        // composes with them under AND semantics exactly as its RF->INET twin
+        // does, and behind the associated-position claim just above, so a
+        // position this gateway already owes a station it messaged is still
+        // gated however far away that station turns out to be.
+        //
+        // This gate is what makes a wide server-side subscription safe to put
+        // on the air. APRS-IS filter terms are OR'd, never AND'd - a packet
+        // matching any one term is passed - so a subscription such as
+        // "u/APBM* r/lat/lon/150" asks for BrandMeister traffic worldwide OR
+        // anything within 150 km, and the intersection the operator actually
+        // wants cannot be expressed to the server at all. It has to be
+        // enforced here, before the transmitter.
+        //
+        // A line whose position cannot be decoded is not dropped: a message,
+        // a status report or a telemetry frame has no position to measure, and
+        // each of those is governed by its own gating rules further down.
+        // Guessing at a distance for them, in either direction, would make
+        // this gate mean something different for every payload type.
+        if (!assocPosition && g_config.inet2rf_range_en) {
+            bool rangeEn;
+            float rangeKm, ownLat, ownLon;
+            app_config_lock();
+            rangeEn = g_config.inet2rf_range_en;
+            rangeKm = g_config.inet2rf_range_km;
+            ownLat = g_config.my_lat;
+            ownLon = g_config.my_lon;
+            app_config_unlock();
+
+            if (rangeEn && rangeKm > 0.0f) {
+                char destCall[12] = "";
+                const char *colon = strchr(line, ':');
+                float plat, plon;
+                aprs_tnc2_dest_call(line, destCall, sizeof(destCall));
+                if (colon && aprs_filter_decode_position(colon + 1, destCall, &plat, &plon)) {
+                    float d = aprs_filter_haversine_km(ownLat, ownLon, plat, plon);
+                    if (d > rangeKm) {
+                        ESP_LOGD(TAG, "INET2RF range-filtered (%.1f km > %.1f km)%s: %s", d, rangeKm, viaBm ? " [BM]" : "", callsign);
+                        igate_note_drop(DROP_INET2RF_RANGE);
+                        return;
+                    }
+                }
+            }
         }
 
         if (!assocPosition && !aprs_filter_pass(g_config.inet2rfFilter, type)) {

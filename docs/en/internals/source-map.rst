@@ -31,6 +31,7 @@ Repository layout
    │   ├── aprs_coord.c/.h     ← lat/lon ↔ APRS text, ambiguity, symbol extraction
    │   ├── include/aprs_free_text.h ← own-station free-text field builder: reserved-char strip + "!x!" no-archive marker
    │   ├── include/aprs_df.h  ← "CSE/SPD/BRG/NRQ" DF report encoder shared by beacon.c and objects_items.c
+   │   ├── include/aprs_bm.h  ← BrandMeister classifier for APRS-IS lines: APBMxx tocall, DMR path alias, entry station
    │   ├── include/aprs_path.h ← path-preset bitmask → ",WIDE1-1,WIDE2-1" suffix builder
    │   ├── include/str_append.h ← bounded snprintf-append helper shared by the builders
    │   ├── include/json_store.h / json_escape.h ← streaming JSON writer + escaping

@@ -20,6 +20,7 @@ idf_component_register(
         esp32idf_radioamateur_modem
         sensors_local
         query
+        lastheard
     PRIV_REQUIRES
         main
 )

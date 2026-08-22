@@ -33,6 +33,7 @@
 #include "esp32idf_radioamateur_modem_config.h" // MODEM_PTT_GPIO: the fixed PTT pin, checked directly below
 #include "gps.h"                                // gps_gpio_is_reserved(): keep the GNSS serial pins out of the alarm pin
 #include "json_escape.h"                        // json_escape()
+#include "lastheard.h"                          // lastheard_last_seen_bm(): which channel the addressee was last seen on
 #include "message.h"
 #include "query.h"             // query_process_directed(): second consumer of the ::ADDRESSEE: payload, for "CALL:?query?"
 #include "sensors_local_i2c.h" // sensors_local_i2c_gpio_is_reserved(): keep the I2C pins out of the alarm pin
@@ -512,11 +513,43 @@ size_t message_next_json(uint32_t after_seq, char *out, size_t out_size, uint32_
 // carries a "TCPIP*" q-construct tag in its path instead of an RF unproto path
 // - see aprsc/javAPRSSrvr behavior and the APRS-IS server spec - so the IS leg
 // carries "TCPIP*" rather than something like "WIDE1-1,WIDE2-1".
-static void txPacket(const char *myCall, const char *info) {
+// True when a message addressed to toCall must leave over APRS-IS alone.
+//
+// A station whose most recent frame reached this gateway as BrandMeister
+// traffic is on the network, not on the local channel: every RF copy of a
+// message addressed to it is airtime spent on a receiver that is not there,
+// multiplied by g_config.msg_retry for as long as the message goes unacked.
+//
+// The rule may only ever REMOVE the RF leg, never add the Internet one. If
+// g_config.msg_inet is off the operator has said this station does not put
+// messages on APRS-IS, and a BrandMeister addressee is not a reason to
+// override that - it is a reason to send nothing, which is what returning
+// false here and letting the two flags stand achieves.
+//
+// The answer is derived at each transmission rather than recorded with the
+// queued message on purpose: it follows the last-heard table, so a station
+// that turns up on the local channel between one attempt and the next has its
+// retries put on the air without anything having to invalidate a stored
+// decision.
+static bool destIsInetOnly(const char *toCall) {
+    if (!g_config.bm_en || !g_config.bm_msg_inet_only)
+        return false;
+    if (!g_config.msg_inet)
+        return false;
+    if (toCall == NULL || toCall[0] == 0)
+        return false;
+    return lastheard_last_seen_bm(toCall);
+}
+
+static void txPacket(const char *myCall, const char *toCall, const char *info) {
     if (!s_txHandler) {
         ESP_LOGW(TAG, "No TX handler registered, dropping: %s", info);
         return;
     }
+
+    const bool inetOnly = destIsInetOnly(toCall);
+    if (inetOnly && g_config.msg_rf)
+        ESP_LOGD(TAG, "%s was last heard as BrandMeister traffic - RF leg suppressed, sending over APRS-IS only", toCall);
     // str_append() reports whether the whole frame fit and leaves len at the
     // number of characters actually written. Both matter here: len is handed
     // straight to the TX handler, which memcpy()s and send()s exactly that
@@ -525,7 +558,7 @@ static void txPacket(const char *myCall, const char *info) {
     // than sent short - the same discipline the beacon builders follow -
     // because a truncated APRS message loses its trailing "{id" sequence
     // suffix and would never be acked.
-    if (g_config.msg_rf) {
+    if (g_config.msg_rf && !inetOnly) {
         // The path presets are snapshotted under app_config_lock() inside the
         // builder; msg_path itself is a single byte, read here the same way the
         // msg_rf/msg_inet flags around it are.
@@ -628,7 +661,7 @@ void sendAPRSMessage(const char *toCall, const char *text) {
     char info[320];
     snprintf(info, sizeof(info), ":%s:%s%s", toCallFixed, payload, suffix);
 
-    txPacket(myCallUp, info);
+    txPacket(myCallUp, toCallUp, info);
     ESP_LOGD(TAG, "Send APRS message to %s msgID %u: %s", toCall, (unsigned)s_msgID, info);
 
     int8_t ackVal = (g_config.msg_retry == 0) ? -2 : (int8_t)g_config.msg_retry;
@@ -660,7 +693,10 @@ void sendAPRSAck(const char *toCall, const char *msgNo) {
 
     char info[160];
     snprintf(info, sizeof(info), ":%s:ack%s", toCallFixed, msgNo);
-    txPacket(myCall, info);
+    // An ack follows the same route as the message it answers: the addressee
+    // here is the station that sent it, and if that station is only reachable
+    // over the network then so is its acknowledgement.
+    txPacket(myCall, toCall, info);
     ESP_LOGD(TAG, "Send APRS ACK to %s msgNo %s", toCall, msgNo);
 }
 
@@ -719,7 +755,7 @@ int message_send_pending_to(const char *toCall) {
 
         char info[320];
         snprintf(info, sizeof(info), ":%s:%s%s", toCallFixed, payload, suffix);
-        txPacket(myCall, info);
+        txPacket(myCall, s_queue[i].callsign, info);
         sent++;
     }
 
@@ -777,7 +813,7 @@ void sendAPRSMessageRetry(void) {
 
         char info[320];
         snprintf(info, sizeof(info), ":%s:%s%s", toCallFixed, payload, suffix);
-        txPacket(myCall, info);
+        txPacket(myCall, s_queue[i].callsign, info);
         ESP_LOGD(TAG, "Retry APRS message[%d] to %s msgID %u ack left %d", i, s_queue[i].callsign, (unsigned)s_queue[i].msgID, s_queue[i].ack);
     }
 }

@@ -137,6 +137,7 @@ de capítulos:
    :caption: Funcionalidades
 
    functionality/igate
+   functionality/brandmeister
    functionality/digipeater
    functionality/beacons
    functionality/messaging

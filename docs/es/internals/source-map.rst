@@ -31,6 +31,7 @@ Disposición del repositorio
    │   ├── aprs_coord.c/.h     ← lat/lon ↔ texto APRS, ambigüedad, extracción de símbolo
    │   ├── include/aprs_free_text.h ← constructor de campos de texto libre propios: quita reservados + marcador "!x!" de no archivar
    │   ├── include/aprs_df.h  ← codificador del reporte DF "CSE/SPD/BRG/NRQ" compartido por beacon.c y objects_items.c
+   │   ├── include/aprs_bm.h  ← clasificador BrandMeister de líneas APRS-IS: tocall APBMxx, alias DMR en la ruta, estación de entrada
    │   ├── include/aprs_path.h ← bitmask de presets de ruta → sufijo ",WIDE1-1,WIDE2-1"
    │   ├── include/str_append.h ← ayudante de append snprintf acotado, compartido por los constructores
    │   ├── include/json_store.h / json_escape.h ← escritor JSON en streaming + escapado

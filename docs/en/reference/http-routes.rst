@@ -36,6 +36,9 @@ auth check to guard.
      - ``/igate``
      - IGate settings
    * - GET/POST
+     - ``/bm``
+     - BrandMeister interconnect settings
+   * - GET/POST
      - ``/digi``
      - digipeater settings
    * - GET/POST
