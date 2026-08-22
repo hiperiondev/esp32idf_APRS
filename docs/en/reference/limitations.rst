@@ -346,9 +346,18 @@ Tracking / Beaconing
        Digipeater beacons offer
    * - Smart Beaconing (speed/heading-adaptive interval)
      - ✅ (mobile clients, OpenTracker)
-     - ❌
-     - Not implemented. The Tracker beacon's transmit interval stays fixed even
-       while beaconing a live GPS fix
+     - ✅
+     - The standard algorithm, on its own fieldset of the Tracker page
+       (``trk_sb_*``): the interval is interpolated linearly between a
+       slow-rate value at or below the low-speed threshold (default 600 s at
+       4 km/h) and a fast-rate value at or above the high-speed threshold
+       (default 60 s at 100 km/h), and corner-pegging pulls the next
+       transmission forward on a heading change past
+       ``turn angle + turn slope / speed`` (defaults 25° and 255), with a
+       minimum turn time (default 15 s) re-arm guard. It works only alongside
+       *Use live GPS fix*, since there is no speed or course to read
+       otherwise; without a current fix the beacon falls back to the fixed
+       ``trk_interval`` cadence. Off by default. See :ref:`en-beacons`
    * - Course/speed in position reports
      - ✅
      - ✅
@@ -488,8 +497,14 @@ Messaging
      - GPIO-driven alert (LED/buzzer) instead of a desktop popup, appropriate for a headless device
    * - Bulk/broadcast messaging to a group
      - ⚠️ (some via bulletins instead)
-     - ❌
-     - Use Bulletins for broadcast; direct messaging is 1:1 only
+     - ⚠️
+     - Receive side only: the station reads every message addressed to the
+       built-in ``ALL``/``QST``/``CQ`` set and to up to ``MSG_USER_GROUPS`` (3)
+       operator-defined group names set on the Message page, stores them in
+       their own history slots and never acknowledges them, since a group has
+       no single owner to ack for it. Composing a message *to* a group is not
+       offered — use Bulletins for broadcast; outbound direct messaging is 1:1
+       only. See :ref:`en-messaging`
 
 Weather
 --------
@@ -640,10 +655,6 @@ Objects, Items, Bulletins, Status
        table, and only a received frame ever counts into it — answering the
        query rolls the graph forward to the current hour but leaves the stored
        counts alone, so a station can be asked about as often as one likes.
-       Naming an hour needs a set clock, so until NTP syncs the graph carries
-       everything heard from the station since boot in hour 0 and 0 elsewhere;
-       those counts are kept when the clock is set, and hour 0 then becomes the
-       hour of the first frame after the sync.
        Naming an hour needs a set wall clock, so until NTP has synced the graph
        holds everything heard from the station since boot in hour 0 and 0
        elsewhere; those counts are kept when the clock is set, and hour 0 then
@@ -654,7 +665,12 @@ Objects, Items, Bulletins, Status
      - Emitted as the ``?IGATE?`` response
        (``<IGATE,MSG_CNT=n,LOC_CNT=n>``), where ``MSG_CNT`` is the running count
        of APRS message packets gated in either direction and ``LOC_CNT`` the
-       live number of stations currently in the local (RF-heard) list
+       live number of stations currently in the local (RF-heard) list. The same
+       line can also be beaconed on a timer of its own — *Send capabilities
+       periodically* (``query_cap_beacon_en``, off by default) with its own
+       interval and RF/APRS-IS channel selection, and an optional field for
+       further capability tokens — so neighbours learn a gateway is there
+       without having to ask; see :ref:`en-query`
 
 Mapping / Visualization
 --------------------------
@@ -698,7 +714,7 @@ Station Management / Ops
    * - Web-based configuration UI
      - ⚠️ (VP-Digi and some ESP32 projects have one; most desktop clients use native GUIs instead)
      - ✅
-     - 18 sidebar pages + symbol picker, HTTP Basic auth, live re-apply for most settings without reboot
+     - 19 sidebar pages + symbol picker, HTTP Basic auth, live re-apply for most settings without reboot
    * - Live dashboard (status, counters)
      - ⚠️
      - ✅

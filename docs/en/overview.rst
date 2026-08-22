@@ -75,6 +75,10 @@ Feature matrix
    * - APRS-IS IGate INET→RF
      - ✅
      - payload-type gating + budlist + third-party unwrap opt-in
+   * - BrandMeister APRS interconnect (no DMR link)
+     - ✅
+     - recognition, gating and message routing over the existing APRS-IS
+       session; own page, off by default
    * - Local RF→INET range gate & prefix gate
      - ✅
      - haversine distance + callsign-prefix whitelist
@@ -109,12 +113,18 @@ Feature matrix
    * - Fixed-position beacons (tracker / igate / digi)
      - ✅
      - one shared beacon-scheduler task
+   * - NMEA GNSS receiver (own UART) + live view page
+     - ✅
+     - master switch; RMC/GGA/GSA/GSV/VTG, multi-constellation, 1 Hz web view
+   * - Live GPS tracking + SmartBeaconing
+     - ✅
+     - Tracker beacon only; speed-adaptive interval and corner-pegging
    * - APRS messaging + ack/retry
      - ✅
      - RF and/or INET
    * - Web admin (HTTP Basic auth)
      - ✅
-     - 18 sidebar pages + symbol picker, live dashboard
+     - 19 sidebar pages + symbol picker, live dashboard
    * - Live traffic log + last-heard table
      - ✅
      - JSON long-poll (``?since=<seq>``)
@@ -309,12 +319,13 @@ firmware image.
      - ✅
      - Deliberately out of scope — this is a station, not a mapping client.
    * - GPS-based live tracking
-     - ❌ (fixed-position only)
+     - ✅ (NMEA receiver + SmartBeaconing)
      - ➖ (via connected GPS/tracker)
      - ✅
      - ✅
      - ✅
-     - Noted as a known limitation; see :ref:`en-limitations`.
+     - A GNSS module on its own UART feeds the Tracker beacon; the IGate and
+       digipeater beacons stay fixed-position. See :ref:`en-beacons`.
    * - Position beaconing (fixed station)
      - ✅
      - ✅ (as config'd)
@@ -396,9 +407,7 @@ objects, weather and telemetry, all reachable from a self-hosted web UI with
 no companion PC software.
 
 **What this project deliberately does not implement**: it has no map
-display and no GPS-based mobile tracking (fixed-position beacons only, see
-:ref:`en-limitations`), and it does not include an APRStt DTMF-to-APRS
-gateway. These are intentionally out of scope for a headless, browser
+display, and it does not include an APRStt DTMF-to-APRS gateway. These are intentionally out of scope for a headless, browser
 configured embedded station — a companion mapping client such as YAAC,
 Xastir or `aprs.fi <https://aprs.fi>`__ remains the natural way to
 *visualise* the traffic this firmware generates and relays.

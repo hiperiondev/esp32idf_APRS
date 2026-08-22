@@ -75,12 +75,19 @@ lowers the *Min free heap* figure on the dashboard.
        ``CONFIG_LWIP_MAX_SOCKETS`` (10) pool. The remaining 3 are what the
        APRS-IS uplink, DNS and SNTP need to stay up while someone is browsing
        the admin pages.
-   * - mbedTLS TLS layer, certificate bundle, Wi-Fi Enterprise
+   * - HTTPS server, certificate bundle, Wi-Fi Enterprise
      - disabled
      - The web admin is plain HTTP and the APRS-IS uplink is plain TCP, so no
-       code path ever opens a TLS session. ``CONFIG_MBEDTLS_TLS_ENABLED`` (and
-       the ``CONFIG_MBEDTLS_TLS_SERVER``/``_CLIENT`` options nested under it)
-       are off in ``sdkconfig``. HTTP Basic auth decodes its credential pair
+       code path ever opens a TLS session: ``CONFIG_ESP_HTTPS_SERVER_ENABLE``,
+       ``CONFIG_MBEDTLS_CERTIFICATE_BUNDLE`` and
+       ``CONFIG_ESP_WIFI_ENTERPRISE_SUPPORT`` are all off in ``sdkconfig``.
+       mbedTLS itself stays enabled — Wi-Fi crypto needs it — so
+       ``CONFIG_MBEDTLS_TLS_ENABLED`` and its nested ``_SERVER``/``_CLIENT``
+       options remain set at their defaults; what that costs at run time is
+       only the per-session record buffers
+       (``CONFIG_MBEDTLS_SSL_IN_CONTENT_LEN``/``_OUT_CONTENT_LEN``, 4096 each),
+       which are allocated per TLS session and so never allocated at all here.
+       HTTP Basic auth decodes its credential pair
        with a small local RFC 4648 base64 decoder
        (``components/webconfig/include/web_base64.h``) instead of
        ``mbedtls_base64_decode()``, so no component declares an mbedTLS

@@ -77,13 +77,20 @@ subir cualquiera de ellos baja la cifra *Min free heap* del panel.
        ``CONFIG_LWIP_MAX_SOCKETS`` (10). Los 3 restantes son los que necesitan
        el enlace APRS-IS, DNS y SNTP para seguir en pie mientras alguien
        navega las páginas de administración.
-   * - Capa TLS de mbedTLS, paquete de certificados, WiFi Enterprise
-     - desactivada
+   * - Servidor HTTPS, paquete de certificados, WiFi Enterprise
+     - desactivados
      - La administración web es HTTP plano y el enlace APRS-IS es TCP plano,
-       así que ningún camino de código abre nunca una sesión TLS.
-       ``CONFIG_MBEDTLS_TLS_ENABLED`` (y las opciones
-       ``CONFIG_MBEDTLS_TLS_SERVER``/``_CLIENT`` anidadas debajo) están
-       desactivadas en ``sdkconfig``. La autenticación HTTP Basic decodifica
+       así que ningún camino de código abre nunca una sesión TLS:
+       ``CONFIG_ESP_HTTPS_SERVER_ENABLE``,
+       ``CONFIG_MBEDTLS_CERTIFICATE_BUNDLE`` y
+       ``CONFIG_ESP_WIFI_ENTERPRISE_SUPPORT`` están todos desactivados en
+       ``sdkconfig``. mbedTLS en sí sigue habilitado — la criptografía Wi-Fi lo
+       necesita —, así que ``CONFIG_MBEDTLS_TLS_ENABLED`` y sus opciones
+       anidadas ``_SERVER``/``_CLIENT`` quedan en sus valores por defecto; lo
+       único que eso cuesta en ejecución son los búferes de registro por sesión
+       (``CONFIG_MBEDTLS_SSL_IN_CONTENT_LEN``/``_OUT_CONTENT_LEN``, 4096 cada
+       uno), que se reservan por sesión TLS y por lo tanto aquí no se reservan
+       nunca. La autenticación HTTP Basic decodifica
        su par de credenciales con un pequeño decodificador local RFC 4648
        (``components/webconfig/include/web_base64.h``) en lugar de
        ``mbedtls_base64_decode()``, así que ningún componente declara ya una

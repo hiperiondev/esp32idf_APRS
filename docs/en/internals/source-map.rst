@@ -35,6 +35,8 @@ Repository layout
    │   ├── include/aprs_path.h ← path-preset bitmask → ",WIDE1-1,WIDE2-1" suffix builder
    │   ├── include/str_append.h ← bounded snprintf-append helper shared by the builders
    │   ├── include/json_store.h / json_escape.h ← streaming JSON writer + escaping
+   │   ├── include/must_check.h ← the "caller must read this return value" attribute
+   │   ├── include/app_version.h ← firmware version string shown on the About page
    │   ├── include/sched_time.h ← monotonic seconds used by every scheduler
    │   ├── beacon.c/.h         ← own-position beacons (trk / igate / digi)
    │   ├── aprs_dao.c/.h       ← "!DAO!" precision/datum extension (aprs12/datum.txt), consumed by beacon.c

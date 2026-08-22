@@ -110,10 +110,17 @@ Las páginas
    * - **Tracker**
      - Habilitar tracker, indicativo/SSID, intervalo fijo, posición, símbolo de
        estación, comentario, opciones de posición comprimida, posición Mic-E
-       (con su selector de comentario de posición) y altitud. La posición fija
-       puede escribirse, reflejar *Usar Datos de Mi Estación* o tomarse en
+       (con su selector de comentario de posición), PHG y altitud. La posición
+       fija puede escribirse, reflejar *Usar Datos de Mi Estación* o tomarse en
        vivo del receptor GNSS mediante *Usar GPS*; las tres opciones son
-       mutuamente excluyentes.
+       mutuamente excluyentes. *Usar posición GPS en vivo* es independiente de
+       las tres: deja la posición fija como respaldo y hace que cada
+       transmisión lea el receptor. El fieldset *SmartBeaconing* (intervalo
+       lento/rápido, velocidad baja/alta, ángulo de giro, pendiente de giro,
+       tiempo mínimo de giro) vuelve ese intervalo adaptativo a la velocidad;
+       necesita la posición en vivo para tener algo de donde leer. Cierran la
+       página un fieldset de baliza de estado (intervalo y texto) y otro de
+       frecuencia/repetidora (frecuencia, dúplex, desplazamiento, tono).
    * - **Weather**
      - Habilitar, enviar-por-RF/-INET, marca de tiempo, indicativo/SSID/ruta WX,
        posición, nombre de objeto, comentario, casillas *Averaged* por campo, y

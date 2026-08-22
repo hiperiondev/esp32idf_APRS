@@ -364,9 +364,20 @@ Tracciamento / Beaconing
        l'unica offerta dai beacon di IGate e Digipeater
    * - Smart Beaconing (intervallo adattivo su velocità/direzione)
      - ✅ (client mobili, OpenTracker)
-     - ❌
-     - Non implementato. L'intervallo di trasmissione del beacon Tracker resta
-       fisso anche mentre trasmette una posizione GPS in tempo reale
+     - ✅
+     - L'algoritmo standard, nel suo fieldset della pagina Tracker
+       (``trk_sb_*``): l'intervallo è interpolato linearmente fra un valore a
+       ritmo lento alla soglia di bassa velocità o sotto (predefinito 600 s a
+       4 km/h) e uno a ritmo veloce alla soglia di alta velocità o sopra
+       (predefinito 60 s a 100 km/h), e il corner-pegging anticipa la
+       trasmissione successiva su un cambio di direzione oltre
+       ``angolo di virata + pendenza di virata / velocità`` (predefiniti 25° e
+       255), con un tempo minimo di virata (predefinito 15 s) come guardia di
+       riarmo. Ha effetto solo insieme a *Usa posizione GPS in tempo reale*,
+       perché altrimenti non c'è velocità né rotta da leggere; senza una
+       posizione corrente il beacon torna alla cadenza fissa
+       ``trk_interval``. Disattivato per impostazione predefinita. Vedi
+       :ref:`it-beacons`
    * - Rotta/velocità nei report di posizione
      - ✅
      - ✅
@@ -514,8 +525,15 @@ Messaggistica
      - Avviso via GPIO (LED/cicalino) invece di un popup desktop, adatto a un dispositivo headless
    * - Messaggistica broadcast/di gruppo
      - ⚠️ (alcuni tramite bollettini)
-     - ❌
-     - Usare i Bollettini per il broadcast; la messaggistica diretta è solo 1 a 1
+     - ⚠️
+     - Solo in ricezione: la stazione legge ogni messaggio indirizzato
+       all'insieme integrato ``ALL``/``QST``/``CQ`` e fino a
+       ``MSG_USER_GROUPS`` (3) nomi di gruppo definiti dall'operatore nella
+       pagina Message, li conserva in slot di cronologia propri e non li
+       riscontra mai, perché un gruppo non ha un proprietario unico che possa
+       farlo. Comporre un messaggio *verso* un gruppo non è previsto — usare i
+       Bollettini per il broadcast; la messaggistica diretta in uscita è solo
+       1 a 1. Vedi :ref:`it-messaging`
 
 Meteo
 ------
@@ -684,7 +702,12 @@ Oggetti, Item, Bollettini, Stato
        (``<IGATE,MSG_CNT=n,LOC_CNT=n>``), dove ``MSG_CNT`` è il conteggio
        cumulativo dei pacchetti di messaggio APRS inoltrati in entrambe le
        direzioni e ``LOC_CNT`` il numero vivo di stazioni presenti nell'elenco
-       delle ascoltate locali (in RF)
+       delle ascoltate locali (in RF). La stessa riga può anche essere
+       trasmessa con un timer proprio — *Invia capacità periodicamente*
+       (``query_cap_beacon_en``, disattivato per impostazione predefinita), con
+       intervallo e selezione di canale RF/APRS-IS propri, più un campo
+       opzionale per ulteriori token di capacità — così i vicini sanno che
+       esiste un gateway senza doverlo chiedere; vedi :ref:`it-query`
 
 Mappatura / Visualizzazione
 -------------------------------
@@ -728,7 +751,7 @@ Gestione stazione / Operatività
    * - UI di configurazione via web
      - ⚠️ (VP-Digi e alcuni progetti ESP32 ce l'hanno; la maggior parte dei client desktop usa GUI native)
      - ✅
-     - 18 pagine nella barra laterale + selettore di simbolo, autenticazione HTTP Basic, riapplicazione live della maggior parte delle impostazioni senza riavvio
+     - 19 pagine nella barra laterale + selettore di simbolo, autenticazione HTTP Basic, riapplicazione live della maggior parte delle impostazioni senza riavvio
    * - Dashboard live (stato, contatori)
      - ⚠️
      - ✅

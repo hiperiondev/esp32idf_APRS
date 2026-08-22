@@ -360,9 +360,19 @@ Seguimiento / Balizamiento
        único que ofrecen las balizas de IGate y Digipeater
    * - Smart Beaconing (intervalo adaptativo por velocidad/rumbo)
      - ✅ (clientes móviles, OpenTracker)
-     - ❌
-     - No implementado. El intervalo de transmisión de la baliza Tracker se
-       mantiene fijo incluso mientras baliza una posición GPS en vivo
+     - ✅
+     - El algoritmo estándar, en su propio fieldset de la página Tracker
+       (``trk_sb_*``): el intervalo se interpola linealmente entre un valor de
+       tasa lenta en el umbral de baja velocidad o por debajo (por defecto
+       600 s a 4 km/h) y uno de tasa rápida en el umbral de alta velocidad o
+       por encima (por defecto 60 s a 100 km/h), y el corner-pegging adelanta
+       la siguiente transmisión ante un cambio de rumbo que supere
+       ``ángulo de giro + pendiente de giro / velocidad`` (por defecto 25° y
+       255), con un tiempo mínimo de giro (por defecto 15 s) como guarda de
+       rearme. Solo tiene efecto junto con *Usar posición GPS en vivo*, porque
+       de otro modo no hay velocidad ni rumbo que leer; sin una posición
+       actual la baliza vuelve a la cadencia fija ``trk_interval``. Apagado
+       por defecto. Véase :ref:`es-beacons`
    * - Rumbo/velocidad en informes de posición
      - ✅
      - ✅
@@ -511,8 +521,14 @@ Mensajería
      - Alerta por GPIO (LED/zumbador) en lugar de un popup de escritorio, adecuado para un dispositivo sin pantalla
    * - Mensajería masiva/difusión a un grupo
      - ⚠️ (algunos mediante boletines en su lugar)
-     - ❌
-     - Usar Boletines para difusión; la mensajería directa es solo 1 a 1
+     - ⚠️
+     - Solo del lado de recepción: la estación lee todo mensaje dirigido al
+       conjunto integrado ``ALL``/``QST``/``CQ`` y a hasta ``MSG_USER_GROUPS``
+       (3) nombres de grupo definidos por el operador en la página Message, los
+       guarda en ranuras de historial propias y nunca los acusa, porque un
+       grupo no tiene un dueño único que acuse por él. No se ofrece redactar un
+       mensaje *hacia* un grupo — usar Boletines para difusión; la mensajería
+       directa saliente es solo 1 a 1. Véase :ref:`es-messaging`
 
 Meteorología
 -------------
@@ -678,7 +694,12 @@ Objetos, Items, Boletines, Estado
        (``<IGATE,MSG_CNT=n,LOC_CNT=n>``), donde ``MSG_CNT`` es la cuenta
        acumulada de paquetes de mensaje APRS enrutados en cualquiera de los dos
        sentidos y ``LOC_CNT`` la cantidad viva de estaciones que hay en la lista
-       de escuchadas locales (por RF)
+       de escuchadas locales (por RF). La misma línea también puede balizarse
+       con un temporizador propio — *Enviar capacidades periódicamente*
+       (``query_cap_beacon_en``, apagado por defecto), con su propio intervalo
+       y su selección de canal RF/APRS-IS, más un campo opcional para tokens de
+       capacidad adicionales — para que los vecinos sepan que hay una pasarela
+       sin tener que preguntar; véase :ref:`es-query`
 
 Mapeo / Visualización
 ------------------------
@@ -722,7 +743,7 @@ Gestión de estación / Operación
    * - UI de configuración basada en web
      - ⚠️ (VP-Digi y algunos proyectos ESP32 la tienen; la mayoría de clientes de escritorio usan GUI nativas)
      - ✅
-     - 18 páginas de la barra lateral + selector de símbolo, autenticación HTTP Basic, reaplicación en vivo de la mayoría de ajustes sin reiniciar
+     - 19 páginas de la barra lateral + selector de símbolo, autenticación HTTP Basic, reaplicación en vivo de la mayoría de ajustes sin reiniciar
    * - Panel en vivo (estado, contadores)
      - ⚠️
      - ✅

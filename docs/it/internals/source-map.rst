@@ -35,6 +35,8 @@ Disposizione del repository
    │   ├── include/aprs_path.h ← bitmask dei preset di percorso → suffisso ",WIDE1-1,WIDE2-1"
    │   ├── include/str_append.h ← helper di append snprintf limitato, condiviso dai costruttori
    │   ├── include/json_store.h / json_escape.h ← scrittore JSON in streaming + escaping
+   │   ├── include/must_check.h ← attributo "il chiamante deve leggere questo valore di ritorno"
+   │   ├── include/app_version.h ← stringa di versione del firmware mostrata nella pagina About
    │   ├── include/sched_time.h ← secondi monotonici usati da ogni scheduler
    │   ├── beacon.c/.h         ← beacon posizione propria (trk / igate / digi)
    │   ├── aprs_dao.c/.h       ← estensione di precisione/datum "!DAO!" (aprs12/datum.txt), usata da beacon.c

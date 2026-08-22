@@ -77,6 +77,11 @@ Matrice delle funzionalità
    * - IGate APRS-IS INET→RF
      - ✅
      - gating per tipo + budlist + opzione unwrap di terze parti
+   * - Interconnessione APRS con BrandMeister (senza collegamento DMR)
+     - ✅
+     - riconoscimento, gating e instradamento dei messaggi sulla sessione
+       APRS-IS esistente; pagina dedicata, disattivata per impostazione
+       predefinita
    * - Gate di portata e di prefisso locale RF→INET
      - ✅
      - distanza haversine + whitelist di prefisso indicativo
@@ -111,12 +116,19 @@ Matrice delle funzionalità
    * - Beacon a posizione fissa (tracker / igate / digi)
      - ✅
      - un singolo task pianificatore di beacon condiviso
+   * - Ricevitore GNSS NMEA (UART dedicata) + pagina di vista live
+     - ✅
+     - interruttore principale; RMC/GGA/GSA/GSV/VTG, multicostellazione, vista
+       web a 1 Hz
+   * - Tracciamento GPS live + SmartBeaconing
+     - ✅
+     - solo beacon Tracker; intervallo adattivo sulla velocità e corner-pegging
    * - Messaggistica APRS + ack/ritentativo
      - ✅
      - RF e/o INET
    * - Amministrazione web (autenticazione HTTP Basic)
      - ✅
-     - 18 pagine nella barra laterale + selettore di simbolo, dashboard in
+     - 19 pagine nella barra laterale + selettore di simbolo, dashboard in
        tempo reale
    * - Log traffico in tempo reale + tabella last-heard
      - ✅
@@ -324,12 +336,14 @@ scheda singola.
      - Fuori ambito deliberatamente — questa è una stazione, non un client
        di mappatura.
    * - Tracciamento in tempo reale via GPS
-     - ❌ (solo posizione fissa)
+     - ✅ (ricevitore NMEA + SmartBeaconing)
      - ➖ (via GPS/tracker collegato)
      - ✅
      - ✅
      - ✅
-     - Segnalato come limitazione nota; vedi :ref:`it-limitations`.
+     - Un modulo GNSS su una UART dedicata alimenta il beacon Tracker; i beacon
+       di IGate e digipeater restano a posizione fissa. Vedi
+       :ref:`it-beacons`.
    * - Beacon di posizione (stazione fissa)
      - ✅
      - ✅ (secondo configurazione)
@@ -414,9 +428,7 @@ e la telemetria, tutto raggiungibile da un'interfaccia web self-hosted
 senza software companion su PC.
 
 **Ciò che questo progetto deliberatamente non implementa**: non ha
-visualizzazione su mappa né tracciamento mobile basato su GPS (solo beacon
-a posizione fissa; vedi :ref:`it-limitations`), e non include un gateway
-APRStt da DTMF ad APRS. Questi elementi sono intenzionalmente fuori ambito
+visualizzazione su mappa, e non include un gateway APRStt da DTMF ad APRS. Questi elementi sono intenzionalmente fuori ambito
 per una stazione embedded headless configurata via browser — un client di
 mappatura complementare come YAAC, Xastir o `aprs.fi <https://aprs.fi>`__
 resta il modo naturale per *visualizzare* il traffico che questo firmware

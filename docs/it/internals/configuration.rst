@@ -72,9 +72,9 @@ rimuove la sua voce di barra laterale e la sua pagina dall'immagine:
 
    ENABLE_DASHBOARD    ENABLE_MSG_CHAT     ENABLE_BULLETINS    ENABLE_OBJECTS_ITEMS
    ENABLE_STATION      ENABLE_RADIO_MODEM  ENABLE_MESSAGE      ENABLE_IGATE
-   ENABLE_DIGIPEATER   ENABLE_TRACKER      ENABLE_WEATHER      ENABLE_TELEMETRY
-   ENABLE_GPS          ENABLE_SYSTEM       ENABLE_WIRELESS     ENABLE_FILE_STORAGE
-   ENABLE_ABOUT_FIRMWARE ENABLE_QUERY
+   ENABLE_BRANDMEISTER ENABLE_DIGIPEATER   ENABLE_TRACKER      ENABLE_WEATHER
+   ENABLE_TELEMETRY    ENABLE_GPS          ENABLE_SYSTEM       ENABLE_WIRELESS
+   ENABLE_FILE_STORAGE ENABLE_ABOUT_FIRMWARE                   ENABLE_QUERY
 
 **Non** c'è interruttore ``ENABLE_SENSORS``: il framework ``sensors_local`` non ha
 disabilitazione in compilazione ed è sempre compilato (i suoi singoli driver sono

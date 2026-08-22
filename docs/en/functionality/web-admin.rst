@@ -101,9 +101,16 @@ The pages
    * - **Tracker**
      - Tracker enable, callsign/SSID, fixed interval, position, station symbol,
        comment, compressed-position, Mic-E-position (with its position-comment
-       selector) and altitude options. The fixed position can be typed in,
+       selector), PHG and altitude options. The fixed position can be typed in,
        mirrored from *Use My Station Data* or taken live from the GNSS
-       receiver via *Use GPS*; the three are mutually exclusive.
+       receiver via *Use GPS*; the three are mutually exclusive. *Use live GPS
+       fix* is separate from all three: it leaves the fixed position as the
+       fallback and has each transmission read the receiver instead. The
+       *SmartBeaconing* fieldset (slow/fast interval, low/high speed, turn
+       angle, turn slope, minimum turn time) makes that interval
+       speed-adaptive; it needs the live fix to have anything to work from.
+       A status-beacon fieldset (interval and text) and a frequency/repeater
+       fieldset (frequency, duplex, offset, tone) close the page.
    * - **Weather**
      - Enable, send-via-RF/-INET, timestamp, WX callsign/SSID/path, position,
        object name, comment, per-field *Averaged* checkboxes, and — for every

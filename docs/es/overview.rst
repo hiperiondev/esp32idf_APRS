@@ -78,6 +78,10 @@ Matriz de funciones
    * - IGate APRS-IS INET→RF
      - ✅
      - filtro por tipo + budlist + opción de desempaquetado de terceros
+   * - Interconexión APRS con BrandMeister (sin enlace DMR)
+     - ✅
+     - reconocimiento, filtrado y ruteo de mensajes sobre la sesión APRS-IS
+       existente; página propia, apagada por defecto
    * - Filtro local de rango y prefijo RF→INET
      - ✅
      - distancia haversine + lista blanca de prefijos de indicativo
@@ -112,12 +116,19 @@ Matriz de funciones
    * - Balizas de posición fija (tracker / igate / digi)
      - ✅
      - una tarea planificadora de balizas compartida
+   * - Receptor GNSS NMEA (UART propia) + página de vista en vivo
+     - ✅
+     - interruptor maestro; RMC/GGA/GSA/GSV/VTG, multiconstelación, vista web
+       a 1 Hz
+   * - Rastreo GPS en vivo + SmartBeaconing
+     - ✅
+     - solo baliza Tracker; intervalo adaptativo por velocidad y corner-pegging
    * - Mensajería APRS + ack/reintento
      - ✅
      - RF y/o INET
    * - Administración web (autenticación HTTP Basic)
      - ✅
-     - 18 páginas de la barra lateral + selector de símbolo, panel en vivo
+     - 19 páginas de la barra lateral + selector de símbolo, panel en vivo
    * - Registro de tráfico en vivo + tabla de últimos escuchados
      - ✅
      - long-poll JSON (``?since=<seq>``)
@@ -321,12 +332,14 @@ placa única.
      - Fuera de alcance de forma deliberada — esto es una estación, no un
        cliente de mapeo.
    * - Rastreo en vivo por GPS
-     - ❌ (solo posición fija)
+     - ✅ (receptor NMEA + SmartBeaconing)
      - ➖ (vía GPS/tracker conectado)
      - ✅
      - ✅
      - ✅
-     - Señalado como limitación conocida; véase :ref:`es-limitations`.
+     - Un módulo GNSS en su propia UART alimenta la baliza Tracker; las balizas
+       de IGate y digipetidor siguen siendo de posición fija. Véase
+       :ref:`es-beacons`.
    * - Baliza de posición (estación fija)
      - ✅
      - ✅ (según configuración)
@@ -411,9 +424,7 @@ meteorología y la telemetría, todo accesible desde una interfaz web
 autoalojada sin software complementario en una PC.
 
 **Lo que este proyecto deliberadamente no implementa**: no tiene
-visualización de mapa ni rastreo móvil basado en GPS (solo balizas de
-posición fija; véase :ref:`es-limitations`), y no incluye un gateway
-APRStt de DTMF a APRS. Estos elementos están fuera de alcance de forma
+visualización de mapa, y no incluye un gateway APRStt de DTMF a APRS. Estos elementos están fuera de alcance de forma
 intencional para una estación embebida sin cabeza, configurada por
 navegador — un cliente de mapeo complementario como YAAC, Xastir o
 `aprs.fi <https://aprs.fi>`__ sigue siendo la forma natural de *visualizar*
