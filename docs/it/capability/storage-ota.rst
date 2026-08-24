@@ -16,6 +16,7 @@ persistente che il firmware scrive:
 * ``/storage/telemetry.json`` — configurazione del canale di telemetria.
 * ``/storage/bulletins.json`` — i cinque bollettini.
 * ``/storage/objitems.json`` — i cinque oggetti/item.
+* ``/storage/telegram.json`` — l'intera configurazione del bot Telegram.
 
 La pagina web *Storage* è un navigatore LittleFS completo: elenca i file con le
 dimensioni, scarica (``GET /download?file=…``), elimina (``POST /delete`` con
@@ -40,10 +41,13 @@ invece di costruire un albero cJSON completo e poi serializzarlo — perché ci�
 necessiterebbe dell'albero **e** del suo buffer serializzato vivi
 contemporaneamente su un heap piccolo e frammentato. Invece, lo scrittore scorre
 direttamente nel file. Ogni salvataggio è **atomico**: scrive ``<file>.tmp`` e poi
-rinomina. Ogni scrittore chiama anche ``setvbuf()`` con un buffer statico subito
-dopo ``fopen()`` così che newlib non allochi pigramente un grande buffer stdio a
-metà scrittura (una fonte sottile di un fallimento intermittente di doppia
-eccezione su un heap frammentato che è stato tracciato e corretto).
+rinomina. Ogni scrittore chiama anche ``setvbuf()`` subito dopo ``fopen()`` così
+che newlib non allochi pigramente un grande buffer stdio a metà scrittura, che su
+un heap frammentato è una fonte sottile di fallimenti intermittenti di doppia
+eccezione. Il buffer che installano è un unico oggetto statico da 512 byte
+definito in ``main/json_store.c``: il cancello di scrittura dell'intero
+filesystem (``storage_write_lock()``) fa sì che un solo salvataggio sia in corso
+per volta, quindi un unico buffer serve tutti e cinque gli store.
 
 Il caricamento è fatto con **cJSON**; i file mancanti o corrotti ripiegano su
 valori predefiniti che vengono poi salvati immediatamente, così che ogni file

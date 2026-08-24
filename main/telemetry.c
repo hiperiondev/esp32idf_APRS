@@ -677,6 +677,24 @@ static void telemetry_refresh_now(void) {
     }
 }
 
+void telemetry_get_values(telemetry_values_t *out) {
+    if (!out)
+        return;
+
+    // One pass under the lock so every channel in the snapshot comes from the
+    // same refresh, the way the encoder reads them.
+    telemetry_lock();
+    for (int a = 0; a < TLM_CH; a++) {
+        out->analog_present[a] = s_ana_present[a];
+        out->analog_raw[a] = s_ana_val[a];
+    }
+    for (int bit = 0; bit < TLM_BIT_NUM; bit++) {
+        out->digital_present[bit] = s_bit_present[bit];
+        out->digital_value[bit] = s_bit_val[bit];
+    }
+    telemetry_unlock();
+}
+
 // -------------------------------------------------------------------------
 // Encoding helpers
 // -------------------------------------------------------------------------

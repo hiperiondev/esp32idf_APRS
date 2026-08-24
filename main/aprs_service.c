@@ -53,6 +53,7 @@
 #include "objects_items.h"
 #include "query.h"
 #include "str_append.h"
+#include "telegram_app.h"
 #include "telemetry.h"
 #include "time_sync.h"
 #include "trafficlog.h"
@@ -1647,6 +1648,14 @@ static void serviceTickTask(void *arg) {
         // time_sync task (saves its 4 KB stack). Non-blocking: it just advances
         // the state machine armed by time_sync_start() and returns.
         time_sync_1hz();
+
+        // 1 Hz Telegram bot step, folded in here for the same reason as the
+        // two above: it only reads counters and decides whether a bring-up or
+        // a teardown is due, and it spawns a worker task for the rare moments
+        // when either is. Keeping that work off a permanent task of its own is
+        // what stops the bot from holding a large stack while it is merely
+        // running.
+        telegram_app_tick_1hz();
 
         if (g_config.msg_enable)
             sendAPRSMessageRetry();

@@ -1,0 +1,7 @@
+## Manifest for the telegram_service component.
+## cJSON ships as a managed component from the ESP Component Registry.
+## Dependencies declared here default to private visibility, so cJSON is
+## added to PRIV_REQUIRES and stays out of the public interface of
+## telegram_service.h.
+dependencies:
+  espressif/cjson: "^1.7.19"

@@ -15,7 +15,8 @@
  *     please contact their authors for more information.
  *
  * @brief Scaffolding shared by every subsystem that keeps its own JSON file on
- * LittleFS (config.json, bulletins.json, objitems.json, telemetry.json).
+ * LittleFS (config.json, bulletins.json, objitems.json, telemetry.json,
+ * telegram.json).
  *
  * What each of those files contains is entirely its owner's business, and stays
  * there. What they all have to get right in exactly the same way is the part
@@ -34,8 +35,9 @@
  * heap, and a commit sequence that can leave no file at all across a power cut -
  * so they are written once and every store gets them.
  *
- * This header is deliberately implementation-only (static inline, no .c file)
- * so it can be included without adding a link dependency.
+ * Everything here is static inline except json_store_open_tmp(), which lives in
+ * main/json_store.c because it owns the one stdio buffer all the stores write
+ * their temp file through: a single definition, not one per including module.
  */
 
 #ifndef JSON_STORE_H
@@ -182,12 +184,22 @@ static inline json_store_status_t json_store_read(const char *path, const char *
  * exhaustion. Pinning a buffer removes the allocation entirely and coalesces
  * the hundreds of token writes a save performs into a handful of block writes.
  *
- * The buffer is static rather than a local, so it does not add half a kilobyte
- * to the stack of whichever task is saving (usually the HTTP server task, whose
- * stack this firmware sizes tightly). Each translation unit that includes this
- * header gets its own instance, and reuse within one is safe only because the
- * caller holds @p owner_lock across the whole save. That requirement is
- * asserted here rather than merely documented, so any relaxation of the
+ * The buffer is a single static object in main/json_store.c, shared by every
+ * store: config.json, telemetry.json, bulletins.json, objitems.json and
+ * telegram.json all write their temp file through the same
+ * ::JSON_STORE_STDIO_BUF_SIZE bytes. It is static rather than a local so it
+ * does not add half a kilobyte to the stack of whichever task is saving
+ * (usually the HTTP server task, whose stack this firmware sizes tightly), and
+ * it is defined once rather than per translation unit because only one saver
+ * can ever be using it.
+ *
+ * That is a guarantee, not an assumption. Every saver takes its module mutex
+ * and then ::storage_write_lock (main/storage.c) around the whole temp-file +
+ * rename sequence; that gate is filesystem-wide, so two saves can never
+ * overlap, and the buffer belongs to a stream only between this call and the
+ * fclose() inside json_store_commit(), which is entirely inside the gate.
+ * Holding @p owner_lock is the caller-side half of that contract, and the
+ * call checks it instead of merely documenting it, so any relaxation of the
  * locking fails loudly instead of letting one save corrupt another's output.
  *
  * @param tmp_path   Path of the temp file to create.
@@ -195,20 +207,7 @@ static inline json_store_status_t json_store_read(const char *path, const char *
  * @param owner_lock The module mutex the caller must be holding.
  * @return The open stream, or NULL if it could not be created.
  */
-static inline FILE *json_store_open_tmp(const char *tmp_path, const char *tag, SemaphoreHandle_t owner_lock) {
-    static char s_stdio_buf[JSON_STORE_STDIO_BUF_SIZE];
-
-    configASSERT(xSemaphoreGetMutexHolder(owner_lock) == xTaskGetCurrentTaskHandle());
-
-    FILE *f = fopen(tmp_path, "w");
-    if (f == NULL) {
-        ESP_LOGE(tag, "open tmp for write failed");
-        return NULL;
-    }
-
-    setvbuf(f, s_stdio_buf, _IOFBF, sizeof(s_stdio_buf));
-    return f;
-}
+FILE *json_store_open_tmp(const char *tmp_path, const char *tag, SemaphoreHandle_t owner_lock);
 
 /**
  * @brief Finish a store's temp file and commit it over the live one.

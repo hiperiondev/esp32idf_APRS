@@ -81,6 +81,8 @@
 #define TR_MENU_TLM "Telemetría"
 /** Spanish text for the sidebar navigation entry for the GPS page, rendered on the sidebar. English: "GPS". */
 #define TR_MENU_GPS "GPS"
+/** Sidebar navigation entry for the Telegram page, rendered on the sidebar. */
+#define TR_MENU_TELEGRAM "Telegram"
 /** Spanish text for the sidebar navigation entry for the System page, rendered on the sidebar. English: "System". */
 #define TR_MENU_SYSTEM "Sistema"
 /** Spanish text for the sidebar navigation entry for the Wireless page, rendered on the sidebar. English: "Wireless". */
@@ -1697,6 +1699,132 @@
     "Filtro local aplicado solo a Internet -> RF, independiente del filtro de tipo de payload de arriba. El rango se mide desde la posicion de Mi "            \
     "Estacion; las lineas cuya posicion no se puede decodificar no se ven afectadas. Es requisito para reenviar al transmisor cualquier "                      \
     "suscripcion mundial."
+
+/** @} */
+
+/**
+ * @name Telegram page
+ * @{
+ */
+/** Page title of the Telegram page, rendered on the Telegram page. */
+#define TR_F_TELEGRAM "Bot de Telegram"
+/** Fieldset legend for the bot enable block, rendered on the Telegram page. */
+#define TR_TG_FS_SERVICE "Bot de Telegram"
+/** Label of the bot enable checkbox, rendered on the Telegram page. */
+#define TR_TG_ENABLE "Habilitar bot de Telegram"
+/** Explanatory note shown under the enable switch, rendered on the Telegram page. */
+#define TR_TG_NOTE_SERVICE                                                                                                                                     \
+    "Con esto apagado no se conecta nada a Telegram ni corre ninguna tarea de sondeo. Encenderlo o apagarlo tiene efecto inmediato, sin reiniciar. El bot "    \
+    "necesita conexion a Internet y memoria libre suficiente para una sesion TLS."
+/** Fieldset legend for the credentials block, rendered on the Telegram page. */
+#define TR_TG_FS_BOT "Credenciales"
+/** Label of the bot token field, rendered on the Telegram page. */
+#define TR_TG_TOKEN "Token del bot"
+/** Label of the administrator identifier field, rendered on the Telegram page. */
+#define TR_TG_ADMIN_ID "ID del administrador"
+/** Explanatory note shown under the credentials, rendered on the Telegram page. */
+#define TR_TG_NOTE_ADMIN                                                                                                                                       \
+    "El token lo emite @BotFather. El identificador del administrador es un numero, no un nombre de usuario: envie /start al bot y lealo del log, o "          \
+    "pidaselo a un bot de informacion de usuario. Dejelo en 0 para no agregar ningun administrador aqui."
+/** Fieldset legend for the connection status block, rendered on the Telegram page. */
+#define TR_TG_FS_STATUS "Estado de la conexion"
+/** Status row label for the coarse state, rendered on the Telegram page. */
+#define TR_TG_ST_STATE "Estado"
+/** Status row label for the reason behind the state, rendered on the Telegram page. */
+#define TR_TG_ST_REASON "Diagnostico"
+/** Status row label for the untranslated detail, rendered on the Telegram page. */
+#define TR_TG_ST_DETAIL "Detalle"
+/** Status row label for the bot user name, rendered on the Telegram page. */
+#define TR_TG_ST_BOT "Bot"
+/** Status row label for the time the service has been polling, rendered on the Telegram page. */
+#define TR_TG_ST_UPTIME "Tiempo en marcha"
+/** Status row label for the count of decoded updates, rendered on the Telegram page. */
+#define TR_TG_ST_UPDATES "Actualizaciones recibidas"
+/** Status row label for the count of dispatched commands, rendered on the Telegram page. */
+#define TR_TG_ST_COMMANDS "Comandos atendidos"
+/** Status row label for the count of accepted outgoing messages, rendered on the Telegram page. */
+#define TR_TG_ST_SENT "Mensajes enviados"
+/** Status row label for the count of updates from unauthorized senders, rendered on the Telegram page. */
+#define TR_TG_ST_REJECTED "No autorizados rechazados"
+/** Status row label for the consecutive polling failure count, rendered on the Telegram page. */
+#define TR_TG_ST_POLL_ERRORS "Errores de sondeo seguidos"
+/** Explanatory note shown under the status table, rendered on the Telegram page. */
+#define TR_TG_NOTE_STATUS                                                                                                                                      \
+    "Se refresca cada dos segundos. Los contadores se reinician cada vez que arranca el servicio. La fila de detalle lleva una ruta de archivo, un nombre de " \
+    "error de ESP-IDF o el texto que devolvio Telegram, y se muestra sin traducir a proposito."
+/** Note naming the file the whole configuration lives in, rendered on the Telegram page. */
+#define TR_TG_NOTE_FILE                                                                                                                                        \
+    "La direccion de la Mini App y las listas de usuarios y chats de grupo autorizados no se editan aqui. Viven, junto con los dos ajustes de arriba, en "     \
+    "este archivo, que se puede descargar y volver a subir desde la pagina Almacenamiento:"
+/** Coarse state shown while the bot is switched off, rendered on the Telegram page. */
+#define TR_TG_STATE_DISABLED "Deshabilitado"
+/** Coarse state shown while bring-up is in progress, rendered on the Telegram page. */
+#define TR_TG_STATE_STARTING "Iniciando"
+/** Coarse state shown while the bot is polling Telegram, rendered on the Telegram page. */
+#define TR_TG_STATE_RUNNING "En marcha"
+/** Coarse state shown when bring-up stopped at a fault, rendered on the Telegram page. */
+#define TR_TG_STATE_ERROR "Error"
+/** Diagnosis shown when the switch is off, rendered on the Telegram page. */
+#define TR_TG_R_DISABLED "El bot esta apagado en esta pagina."
+/** Diagnosis shown when the settings file is absent, rendered on the Telegram page. */
+#define TR_TG_R_FILE_MISSING                                                                                                                                   \
+    "El archivo de configuracion no esta en la particion de almacenamiento. Guarde esta pagina una vez para crearlo, o subalo desde la pagina Almacenamiento."
+/** Diagnosis shown when the settings file does not parse, rendered on the Telegram page. */
+#define TR_TG_R_FILE_CORRUPT                                                                                                                                   \
+    "El archivo de configuracion no es JSON valido. Se dejo intacto para que pueda examinarlo: descarguelo desde la pagina Almacenamiento, corrijalo y "       \
+    "vuelva a subirlo, o guarde esta pagina para sobrescribirlo."
+/** Diagnosis shown when the settings file could not be read into memory, rendered on the Telegram page. */
+#define TR_TG_R_FILE_UNREADABLE                                                                                                                                \
+    "El archivo de configuracion no se pudo leer en memoria. Lo mas probable es que el archivo este bien y que la memoria se haya agotado por un momento; a "  \
+    "proposito no se sobrescribio. Reinicie la estacion y mire la memoria libre en el panel."
+/** Diagnosis shown when no token is configured, rendered on the Telegram page. */
+#define TR_TG_R_NO_TOKEN "No hay token configurado. Cree un bot con @BotFather y pegue arriba el token que le entregue."
+/** Diagnosis shown when the token is not of the expected shape, rendered on the Telegram page. */
+#define TR_TG_R_TOKEN_MALFORMED                                                                                                                                \
+    "El token no tiene la forma <numeros>:<secreto>. Lo mas probable es que se haya pegado incompleto, partido en dos lineas, o copiado junto con las "        \
+    "comillas. Vuelva a pegarlo desde @BotFather."
+/** Diagnosis shown when the root certificate file is absent, rendered on the Telegram page. */
+#define TR_TG_R_CERT_MISSING                                                                                                                                   \
+    "El certificado raiz que valida api.telegram.org no esta en la particion de almacenamiento. Subalo, como archivo PEM, a la ruta que muestra la fila de "   \
+    "detalle usando la pagina Almacenamiento. Sin el no se puede establecer ninguna conexion TLS."
+/** Diagnosis shown when the root certificate file is unusable, rendered on the Telegram page. */
+#define TR_TG_R_CERT_INVALID                                                                                                                                   \
+    "El archivo del certificado raiz esta vacio, es mas grande de lo que acepta este firmware, o no contiene un certificado PEM. Suba un PEM plano, que "      \
+    "empiece con la linea BEGIN CERTIFICATE, desde la pagina Almacenamiento."
+/** Diagnosis shown while there is no route to the Internet, rendered on the Telegram page. */
+#define TR_TG_R_WAITING_NETWORK                                                                                                                                \
+    "Esperando una ruta a Internet. La estacion todavia no tiene direccion IP, asi que no se puede resolver ningun nombre ni abrir ninguna sesion TLS. Mire "  \
+    "la pagina Inalambrico: el bot necesita conexion como estacion, un punto de acceso propio no alcanza."
+/** Diagnosis shown when the host name could not be resolved, rendered on the Telegram page. */
+#define TR_TG_R_DNS_FAILED                                                                                                                                     \
+    "No se pudo resolver api.telegram.org. La estacion tiene direccion pero no un servidor de nombres que funcione: revise el DNS que entrega su router y "    \
+    "que el puerto 53 de salida no este bloqueado. La fila de detalle indica cuanto corrio la consulta antes de rendirse."
+/** Diagnosis shown when a plain TCP connection could not be opened, rendered on the Telegram page. */
+#define TR_TG_R_TCP_FAILED                                                                                                                                     \
+    "El nombre se resolvio pero no se pudo abrir ninguna conexion TCP al puerto 443. La ruta a Internet esta caida, o el HTTPS de salida esta bloqueado por "  \
+    "un firewall o un portal cautivo. La fila de detalle lleva la direccion probada, el tiempo transcurrido y el numero de error del socket."
+/** Diagnosis shown when the heap could not satisfy the bring-up, rendered on the Telegram page. */
+#define TR_TG_R_NO_MEMORY                                                                                                                                      \
+    "No hay memoria libre suficiente para una sesion TLS. Es el recurso mas ajustado de esta placa: una sesion cuesta decenas de kilobytes y el modem de "     \
+    "radio, la pila WiFi y este servidor web ya tienen la suya. Vigile la memoria libre en el panel y considere apagar algun servicio que no use."
+/** Diagnosis shown when the service refused to initialize, rendered on the Telegram page. */
+#define TR_TG_R_INIT_FAILED                                                                                                                                    \
+    "El servicio de Telegram no pudo inicializarse. La fila de detalle lleva el error exacto de ESP-IDF junto con la memoria libre y el bloque contiguo mas "  \
+    "grande, asi que un par de numeros sano descarta la memoria; una linea de tabla llena en el log serie nombra la tabla de tamano fijo que hay que "         \
+    "agrandar. Se reintentara dentro de un minuto."
+/** Diagnosis shown when the call to Telegram did not complete, rendered on the Telegram page. */
+#define TR_TG_R_CONNECT_FAILED                                                                                                                                 \
+    "La estacion no pudo completar una llamada a api.telegram.org. La fila de detalle lleva el error exacto de ESP-IDF. Las causas tipicas son una conexion "  \
+    "a Internet bloqueada o filtrada, una resolucion de nombres que falla, o un saludo TLS rechazado porque el certificado raiz no corresponde a la cadena "   \
+    "del servidor. Se reintentara dentro de un minuto."
+/** Diagnosis shown when Telegram answered and refused, rendered on the Telegram page. */
+#define TR_TG_R_API_REJECTED                                                                                                                                   \
+    "Telegram respondio y rechazo el token. La fila de detalle lleva el codigo de error y el texto que devolvio Telegram; 401 Unauthorized significa que el "  \
+    "token es incorrecto o fue revocado, 404 Not Found que el bot ya no existe. Corrija el token de arriba; esto no se reintenta solo."
+/** Diagnosis shown when the polling task could not be created, rendered on the Telegram page. */
+#define TR_TG_R_TASK_FAILED "No se pudo crear la tarea de sondeo, lo que en esta placa siempre significa que la memoria no alcanzo para su pila."
+/** Diagnosis shown while the bot is connected and polling, rendered on the Telegram page. */
+#define TR_TG_R_CONNECTED "Conectado a Telegram y sondeando actualizaciones."
 
 /** @} */
 

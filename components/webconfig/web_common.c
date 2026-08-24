@@ -808,6 +808,9 @@ static const struct menu_item MENU[] = {
 #ifdef ENABLE_GPS
     { "/gps", TR_MENU_GPS, "gps" },
 #endif
+#ifdef ENABLE_TELEGRAM
+    { "/telegram", TR_MENU_TELEGRAM, "telegram" },
+#endif
 #ifdef ENABLE_SYSTEM
     { "/system", TR_MENU_SYSTEM, "system" },
 #endif

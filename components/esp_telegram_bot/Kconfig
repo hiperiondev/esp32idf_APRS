@@ -1,0 +1,52 @@
+menu "Telegram bot transport"
+
+    config TELEGRAM_BOT_CERT_BUNDLE
+        bool "Validate api.telegram.org against the ESP-IDF certificate bundle"
+        default n
+        select MBEDTLS_CERTIFICATE_BUNDLE
+        help
+            When enabled, the TLS connection to api.telegram.org is validated
+            against the certificate bundle shipped with ESP-IDF, which keeps
+            working when Telegram rotates its certificate chain.
+
+            It is also what covers a host answered by several front-ends,
+            each presenting a chain rooted at a different authority.
+
+            When disabled, the trusted roots are read at run time from a PEM
+            file stored in the LittleFS storage partition. That file can be
+            replaced from the web admin's File Storage page whenever the
+            server chain changes, without rebuilding the firmware, but it
+            only trusts the authorities it actually carries.
+
+    config TELEGRAM_BOT_CERT_PATH
+        string "Path of the root certificate file"
+        depends on !TELEGRAM_BOT_CERT_BUNDLE
+        default "/storage/telegram_certificate.pem"
+        help
+            Absolute path of the PEM file holding the trusted roots of
+            api.telegram.org. It must sit inside STORAGE_BASE_PATH, the
+            mount point of the LittleFS partition brought up by
+            main/storage.c, and it is read once, when telegram_bot_init()
+            runs, so the file system has to be mounted first.
+
+            Several certificates may be concatenated in the file and each
+            becomes a trust anchor. api.telegram.org is answered by more
+            than one front-end and they do not all chain to the same
+            authority, so a file carrying a single root validates only the
+            connections that land on a matching front-end and fails the
+            others with mbedTLS error -0x2700. The count actually loaded is
+            logged at start-up.
+
+    config TELEGRAM_BOT_CERT_MAX_LEN
+        int "Largest accepted certificate file"
+        depends on !TELEGRAM_BOT_CERT_BUNDLE
+        range 512 16384
+        default 8192
+        help
+            Size in bytes above which the certificate file is rejected
+            instead of being loaded. It bounds the heap the transport
+            holds for the whole life of the connection, and therefore how
+            many roots the file may concatenate: a PEM root runs to roughly
+            1.5 kB, so the default leaves room for a handful.
+
+endmenu

@@ -28,6 +28,7 @@ idf_component_register(
         "pages/page_wx.c"
         "pages/page_tlm.c"
         "pages/page_gps.c"
+        "pages/page_telegram.c"
         "pages/page_radio.c"
         "pages/page_msg.c"
         "pages/page_query.c"

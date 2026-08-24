@@ -3,6 +3,7 @@ idf_component_register(
         "main.c"
         "app_config.c"
         "storage.c"
+        "json_store.c"
         "aprs_service.c"
         "aprs_filter.c"
         "aprs_coord.c"
@@ -14,6 +15,7 @@ idf_component_register(
         "objects_items.c"
         "weather.c"
         "gps.c"
+        "telegram_app.c"
         "telemetry.c"
         "time_sync.c"
         "cpu_freq.c"
@@ -33,6 +35,8 @@ idf_component_register(
         esp_driver_uart
         lwip
         webconfig
+        telegram_service
+        esp_telegram_bot
         esp32idf_radioamateur_modem
         digirepeater
         igate

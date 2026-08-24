@@ -102,7 +102,16 @@ Why the numbers are what they are
    board property: measured **once per boot**, reapplied on every profile
    switch.
 
-**``MODEM_RX_FIFO_SIZE = 4096`` samples.**
+**The decimation FIR filters in place.**
+   Output sample *i* is written to ``buf[i]`` while the taps read the window
+   ending at ``buf[i × MODEM_RESAMPLE_RATIO]``, so for any ratio ≥ 2 the write
+   pointer stays behind the read window except for the first
+   ``FILTER_TAPS − 1`` slots. Those few leading samples, together with the
+   previous block's tail, are staged in a short stack array before the loop
+   starts; the rest of the block is read raw from ``buf[]`` itself. That is the
+   whole reason the RX path holds no second copy of the 20 ms block.
+
+**``MODEM_RX_FIFO_SIZE = 4096`` samples.****``MODEM_RX_FIFO_SIZE = 4096`` samples.**
    Sized in *samples*, so it shrank in *time* when the rate doubled (2048 was
    53 ms at 38.4 k, only 26.7 ms at 76.8 k — barely one 20 ms block). 4096
    restores the margin; it must hold ≥ 2 blocks, since ``AFSK_Poll()`` consumes
@@ -115,7 +124,10 @@ Compile-time ``#error`` guards enforce: DAC pin ∈ {25, 26}; ADC pin ∈ 32–3
 ``MODEM_ADC_SAMPLERATE % 9600 == 0``; FIFO ≥ 2 blocks; ``MODEM_ADC_CONV_FRAME``
 even, dividing ``MODEM_BLOCK_SIZE``, and byte-aligned to
 ``SOC_ADC_DIGI_DATA_BYTES_PER_CONV``; DAC timer core ≠ ADC ISR core; DAC timer
-priority ∈ 1..3.
+priority ∈ 1..3. Two ``_Static_assert``\ s in ``afsk.c`` pin the decimator's
+in-place invariant: ``MODEM_RESAMPLE_RATIO`` ≥ 2 unless the filter is a single
+tap, and ``MODEM_BLOCK_SIZE`` ≥ 2 × (``FILTER_TAPS`` − 1) so the leading and
+trailing history runs cannot overlap.
 
 Compile-time configuration reference
 ====================================

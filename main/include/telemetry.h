@@ -297,4 +297,35 @@ void telemetry_get_mycall(char *out, size_t out_size);
  */
 size_t telemetry_build_comment_tlm(char *out, size_t out_max);
 
+/**
+ * @brief The readings the 1 Hz refresh resolved for every analog channel and
+ *        every binary bit, as one consistent snapshot.
+ *
+ * This is what the encoder works from, exposed for the callers that present
+ * readings to a person rather than transmitting them (the Telegram bot's
+ * `/sensors` answer). "Present" is the same notion the encoder uses: the
+ * channel has a source sensor mapped and that sensor reported on the last
+ * refresh, so a channel that is enabled but unmapped, or mapped to a driver
+ * that is not answering, reads as absent instead of as a zero.
+ */
+typedef struct {
+    bool analog_present[TLM_CH];       /**< Whether A1-A5 resolved on the last refresh. */
+    double analog_raw[TLM_CH];         /**< Raw reading of A1-A5, before the a/b/c calibration, as transmitted on air. */
+    bool digital_present[TLM_BIT_NUM]; /**< Whether B1-B8 resolved on the last refresh. */
+    bool digital_value[TLM_BIT_NUM];   /**< Raw state of B1-B8, before @c bit_sense is applied. */
+} telemetry_values_t;
+
+/**
+ * @brief Copy the latest resolved readings into @p out.
+ *
+ * Reads the values cached by the 1 Hz refresh under the module lock; it never
+ * touches a sensor bus itself, so it is safe to call from any task and costs
+ * nothing beyond the copy.
+ *
+ * @param out Destination (ignored when NULL). Every channel reads as absent
+ *            until the beacon scheduler's first pass has published a channel
+ *            mapping for the refresh to work from.
+ */
+void telemetry_get_values(telemetry_values_t *out);
+
 #endif // TELEMETRY_H

@@ -181,6 +181,95 @@ static double wx_field_value(const aprs_weather_report_t *wx, wx_field_id_t f) {
 }
 
 // -------------------------------------------------------------------------
+// Single-field read-out (weather.h): the name of a field, its current value,
+// and that value rendered in International System units for display.
+// -------------------------------------------------------------------------
+
+// Fixed English names, indexed by wx_field_id_t. The web admin renders its own
+// translated table; this is what a caller with no locale reports.
+static const char *const WX_FIELD_LABEL[WX_SENSOR_NUM] = {
+    [WX_FIELD_WIND_DIRECTION] = "Wind direction",     [WX_FIELD_WIND_SPEED] = "Wind speed",     [WX_FIELD_WIND_GUST] = "Wind gust",
+    [WX_FIELD_TEMPERATURE] = "Temperature",           [WX_FIELD_RAIN_1H] = "Rain last hour",    [WX_FIELD_RAIN_24H] = "Rain last 24 h",
+    [WX_FIELD_RAIN_MIDNIGHT] = "Rain since midnight", [WX_FIELD_SNOW_24H] = "Snow last 24 h",   [WX_FIELD_HUMIDITY] = "Humidity",
+    [WX_FIELD_PRESSURE] = "Barometric pressure",      [WX_FIELD_LUMINOSITY] = "Luminosity",     [WX_FIELD_FLOOD_HEIGHT_FT] = "Flood height",
+    [WX_FIELD_FLOOD_HEIGHT_M] = "Flood height",       [WX_FIELD_RAIN_RAW] = "Raw rain counter",
+};
+
+const char *weather_field_label(wx_field_id_t field) {
+    if ((unsigned)field >= (unsigned)WX_SENSOR_NUM || WX_FIELD_LABEL[field] == NULL)
+        return "";
+    return WX_FIELD_LABEL[field];
+}
+
+bool weather_field_snapshot(wx_field_id_t field, double *out_value) {
+    if ((unsigned)field >= (unsigned)WX_SENSOR_NUM || out_value == NULL)
+        return false;
+
+    weather_lock();
+    bool present = wx_field_present(&s_wx, field);
+    if (present)
+        *out_value = wx_field_value(&s_wx, field);
+    weather_unlock();
+
+    return present;
+}
+
+void weather_field_format(wx_field_id_t field, double value, char *out, size_t out_max) {
+    if (out == NULL || out_max == 0)
+        return;
+
+    switch (field) {
+        case WX_FIELD_WIND_DIRECTION:
+            snprintf(out, out_max, "%.0f deg", value);
+            break;
+        case WX_FIELD_WIND_SPEED:
+        case WX_FIELD_WIND_GUST:
+            // mph -> km/h
+            snprintf(out, out_max, "%.1f km/h", value * 1.609344);
+            break;
+        case WX_FIELD_TEMPERATURE:
+            // deg F -> deg C
+            snprintf(out, out_max, "%.1f C", (value - 32.0) * 5.0 / 9.0);
+            break;
+        case WX_FIELD_RAIN_1H:
+        case WX_FIELD_RAIN_24H:
+        case WX_FIELD_RAIN_MIDNIGHT:
+            // 1/100 in -> mm
+            snprintf(out, out_max, "%.1f mm", (value / 100.0) * 25.4);
+            break;
+        case WX_FIELD_SNOW_24H:
+            // 1/10 in -> mm
+            snprintf(out, out_max, "%.1f mm", (value / 10.0) * 25.4);
+            break;
+        case WX_FIELD_HUMIDITY:
+            snprintf(out, out_max, "%.0f %%", value);
+            break;
+        case WX_FIELD_PRESSURE:
+            // Already SI: tenths of a millibar are tenths of a hectopascal
+            snprintf(out, out_max, "%.1f hPa", value / 10.0);
+            break;
+        case WX_FIELD_LUMINOSITY:
+            // Already SI
+            snprintf(out, out_max, "%.0f W/m2", value);
+            break;
+        case WX_FIELD_FLOOD_HEIGHT_FT:
+            // ft -> m
+            snprintf(out, out_max, "%.1f m", value * 0.3048);
+            break;
+        case WX_FIELD_FLOOD_HEIGHT_M:
+            snprintf(out, out_max, "%.1f m", value);
+            break;
+        case WX_FIELD_RAIN_RAW:
+            // A bucket count, not a length: it has no unit to convert to
+            snprintf(out, out_max, "%.0f", value);
+            break;
+        default:
+            snprintf(out, out_max, "%.1f", value);
+            break;
+    }
+}
+
+// -------------------------------------------------------------------------
 // 1 Hz refresh: for EACH weather field independently, read the one local
 // driver the operator picked in g_config.wx_sensor_ch[field] (Weather page
 // "Channel" column) and copy only that field's value into the shared

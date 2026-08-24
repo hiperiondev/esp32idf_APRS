@@ -68,6 +68,13 @@ hay nada que una comprobación de autenticación pueda proteger.
      - latitud/longitud/altitud/velocidad/rumbo como números simples (JSON),
        consultado por la casilla *Usar GPS* de cada página
    * - GET/POST
+     - ``/telegram``
+     - interruptor del bot de Telegram, credenciales y diagnóstico en vivo de
+       la conexión
+   * - GET
+     - ``/telegram/status``
+     - estado del bot, su causa y sus contadores (JSON), consultado cada 2 s
+   * - GET/POST
      - ``/bulletins``
      - boletines APRS BLN1..BLN5
    * - GET/POST

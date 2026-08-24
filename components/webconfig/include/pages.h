@@ -154,6 +154,15 @@ esp_err_t page_gps_values_get(httpd_req_t *req);
 /** @brief GET  /gps/live - JSON snapshot of latitude/longitude/altitude/speed/course as plain numbers (or null), consumed by every page's "Use GPS"
  * checkbox to auto-fill its position/motion fields. @param req Incoming request. @return ESP_OK or an esp_err_t error. */
 esp_err_t page_gps_live_get(httpd_req_t *req);
+/** @brief GET  /telegram - Telegram bot enable switch, credentials and live connection diagnosis. @param req Incoming request. @return ESP_OK or an esp_err_t
+ * error. */
+esp_err_t page_telegram_get(httpd_req_t *req);
+/** @brief POST /telegram - persist the Telegram bot settings (to /storage/telegram.json) and apply them to the running service. @param req Incoming request.
+ * @return ESP_OK or an esp_err_t error. */
+esp_err_t page_telegram_post(httpd_req_t *req);
+/** @brief GET  /telegram/status - JSON snapshot of the bot's state, the reason for it and its counters, polled every 2 s. @param req Incoming request.
+ * @return ESP_OK or an esp_err_t error. */
+esp_err_t page_telegram_status_get(httpd_req_t *req);
 
 /** @} */
 

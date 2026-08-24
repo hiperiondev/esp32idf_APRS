@@ -34,7 +34,7 @@ Disposizione del repository
    │   ├── include/aprs_bm.h  ← classificatore BrandMeister di righe APRS-IS: tocall APBMxx, alias DMR nel percorso, stazione di ingresso
    │   ├── include/aprs_path.h ← bitmask dei preset di percorso → suffisso ",WIDE1-1,WIDE2-1"
    │   ├── include/str_append.h ← helper di append snprintf limitato, condiviso dai costruttori
-   │   ├── include/json_store.h / json_escape.h ← scrittore JSON in streaming + escaping
+   │   ├── json_store.c + include/json_store.h / json_escape.h ← impalcatura comune degli store JSON (un solo buffer stdio) + scrittore in streaming/escaping
    │   ├── include/must_check.h ← attributo "il chiamante deve leggere questo valore di ritorno"
    │   ├── include/app_version.h ← stringa di versione del firmware mostrata nella pagina About
    │   ├── include/sched_time.h ← secondi monotonici usati da ogni scheduler
@@ -43,6 +43,7 @@ Disposizione del repository
    │   ├── weather.c/.h        ← report WX proprio: refresh sensors_local + beacon WX
    │   ├── telemetry.c/.h      ← telemetria propria: A1–A5 + B1–B8, beacon T#nnn + metadati
    │   ├── gps.c/.h            ← ricevitore GNSS NMEA sulla propria UART: parser di frasi + snapshot
+   │   ├── telegram_app.c/.h  ← archivio del bot Telegram (telegram.json proprio) + avvio supervisionato + diagnosi + risposte /status e /sensors
    │   ├── beacon_scheduler.c/.h ← UN task condiviso che aziona TUTTO il TX periodico + risposte alle query
    │   ├── bulletins.c/.h      ← bollettini APRS BLN1..BLN5 (bulletins.json proprio)
    │   ├── objects_items.c/.h  ← Oggetti/Item APRS (objitems.json proprio)
@@ -64,6 +65,8 @@ Disposizione del repository
    │   ├── digirepeater/   ← logica di percorso n-N guidata dalla tabella alias dell'operatore, più l'instradamento legacy tramite SSID di destinazione, opzionale
    │   ├── message/        ← messaggistica APRS, ack/ritentativo, la coda di conversazione RX/TX condivisa
    │   ├── query/          ← risponditore di query APRS (?APRS?/?WX?/?IGATE? + dirette), risposte dal task dello scheduler
+   │   ├── esp_telegram_bot/   ← trasporto HTTPS del bot Telegram: token, URL, client TLS, caricamento multipart
+   │   ├── telegram_service/  ← interrogazione lunga, invio comandi, autorizzazione, avvisi, parametri remoti
    │   ├── lastheard/      ← tabella in RAM di stazioni sentite, una per nominativo → JSON dashboard
    │   ├── trafficlog/     ← anello in RAM di righe di traffico → JSON dashboard (long-poll per seq)
    │   ├── weather_telemetry/  ← strutture di protocollo APRS101 WX + Telemetria, più mice.c: il

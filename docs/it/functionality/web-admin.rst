@@ -156,6 +156,37 @@ Le pagine
        longitudine e l'altitudine ricevute alla precisione accettata dai
        propri campi (4 decimali per la posizione, 1 decimale per
        l'altitudine) prima di scriverle.
+   * - **Telegram**
+     - *Abilita bot Telegram* governa l'intero sottosistema; con esso spento
+       nulla si collega a Telegram e nessuna attività di interrogazione viene
+       eseguita, e spostarlo ha effetto immediato senza riavviare. Sotto, il
+       token del bot (come campo password, con lo stesso controllo
+       mostra/nascondi usato dal passcode dell'IGate) e l'identificativo
+       numerico dell'amministratore, portato come valore a 64 bit e inviato
+       come testo perché gli identificativi utente di Telegram non stanno più
+       in 32 bit. Tutto ciò che si trova in questa pagina è memorizzato in
+       ``/storage/telegram.json``, non in ``config.json``; l'indirizzo della
+       Mini App e gli elenchi di utenti e chat di gruppo autorizzati risiedono
+       nello stesso file e si modificano scaricandolo e ricaricandolo dalla
+       pagina Archivio file, e un Save di questa pagina li conserva intatti. La
+       tabella di stato sotto il modulo riporta a che punto è la connessione e,
+       quando non avanza, esattamente quale passo è fallito e cosa fare: manca
+       il file di configurazione o non è analizzabile, il token è vuoto o non
+       ha la forma ``<numeri>:<segreto>``, il certificato radice non è nella
+       partizione di archiviazione, non c'è ancora una rotta verso Internet, la
+       memoria non è bastata per una sessione TLS, oppure Telegram stesso ha
+       risposto e ha rifiutato, nel qual caso si mostrano il suo codice di
+       errore e il suo testo non tradotti. Valori live via
+       ``/telegram/status``, ogni due secondi. Il bot che questa pagina avvia
+       risponde a ``/status`` con l'interruttore di ogni servizio - igate,
+       digipeater, tracker, meteo, telemetria, messaggistica, risponditore di
+       interrogazioni, BrandMeister, ricevitore GNSS, modem AFSK, limitatore
+       del ciclo di lavoro in TX e sincronizzazione SNTP - e a ``/sensors`` con
+       ogni campo meteo e ogni canale di telemetria abilitato nelle pagine
+       Weather e Telemetry, con il driver di sensore a cui è mappato e la sua
+       lettura attuale. Entrambe le risposte sono costruite sulla
+       configurazione in vigore quando il comando arriva, quindi un Save ha
+       effetto al comando successivo senza riavviare.
    * - **Bulletins**
      - Fino a cinque bollettini (identificatore e gruppo del destinatario,
        testo, RF/INET, intervallo, scadenza).

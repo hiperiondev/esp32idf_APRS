@@ -106,7 +106,17 @@ Perché i numeri sono quelli che sono
    fissa della scheda: misurata **una volta per avvio**, riapplicata a ogni cambio
    di profilo.
 
-**``MODEM_RX_FIFO_SIZE = 4096`` campioni.**
+**Il FIR di decimazione filtra sul posto.**
+   Il campione di uscita *i* viene scritto in ``buf[i]`` mentre i coefficienti
+   leggono la finestra che termina in ``buf[i × MODEM_RESAMPLE_RATIO]``, quindi
+   con qualunque rapporto ≥ 2 il puntatore di scrittura resta dietro alla
+   finestra di lettura tranne che nelle prime ``FILTER_TAPS − 1`` posizioni.
+   Quei pochi campioni iniziali, insieme alla coda del blocco precedente, sono
+   preparati in un breve array di stack prima che il ciclo inizi; il resto del
+   blocco è letto grezzo da ``buf[]`` stesso. È tutta qui la ragione per cui il
+   percorso di RX non tiene una seconda copia del blocco da 20 ms.
+
+**``MODEM_RX_FIFO_SIZE = 4096`` campioni.****``MODEM_RX_FIFO_SIZE = 4096`` campioni.**
    Dimensionato in *campioni*, quindi si è ristretto nel *tempo* quando la
    frequenza è raddoppiata (2048 erano 53 ms a 38,4 k, solo 26,7 ms a 76,8 k —
    appena un blocco da 20 ms). 4096 ripristina il margine; deve contenere ≥ 2
@@ -119,7 +129,11 @@ Guardie ``#error`` di compilazione impongono: pin del DAC ∈ {25, 26}; pin
 dell'ADC ∈ 32–39; ``MODEM_ADC_SAMPLERATE % 9600 == 0``; FIFO ≥ 2 blocchi;
 ``MODEM_ADC_CONV_FRAME`` pari, che divida ``MODEM_BLOCK_SIZE``, e allineato ai
 byte a ``SOC_ADC_DIGI_DATA_BYTES_PER_CONV``; core del timer DAC ≠ core dell'ISR
-ADC; priorità del timer DAC ∈ 1..3.
+ADC; priorità del timer DAC ∈ 1..3. Due ``_Static_assert`` in ``afsk.c`` fissano
+l'invariante di lavoro sul posto del decimatore: ``MODEM_RESAMPLE_RATIO`` ≥ 2 a
+meno che il filtro non abbia un solo coefficiente, e ``MODEM_BLOCK_SIZE`` ≥ 2 ×
+(``FILTER_TAPS`` − 1) perché i tratti di storia iniziale e finale non possano
+sovrapporsi.
 
 Riferimento di configurazione in compilazione
 =============================================

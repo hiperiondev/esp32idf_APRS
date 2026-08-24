@@ -42,10 +42,17 @@ Altri file persistenti
    * - ``/storage/objitems.json``
      - I cinque oggetti/item APRS (nome, posizione, simbolo, rotta/velocità,
        commento, intervallo, flag permanente).
+   * - ``/storage/telegram.json``
+     - L'intera configurazione del bot Telegram: l'interruttore di
+       abilitazione, il token del bot, l'identificativo dell'amministratore,
+       l'indirizzo della Mini App e gli elenchi di utenti e chat di gruppo
+       autorizzati.
 
-Tutti e quattro usano lo stesso scrittore a flusso, ciascuno sotto il proprio
+Tutti e cinque usano lo stesso scrittore a flusso, ciascuno sotto il proprio
 mutex, ciascuno con un ``setvbuf()`` esplicito per evitare un'allocazione pigra di
-grande buffer stdio a metà scrittura.
+grande buffer stdio a metà scrittura. Quel buffer è un unico oggetto statico
+condiviso da tutti e cinque gli store, poiché il cancello di scrittura
+dell'intero filesystem impedisce la sovrapposizione di due salvataggi.
 
 Reset di fabbrica
 =================

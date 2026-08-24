@@ -106,7 +106,17 @@ Por qué los números son los que son
    propiedad fija de la placa: medida **una vez por arranque**, reaplicada en cada
    cambio de perfil.
 
-**``MODEM_RX_FIFO_SIZE = 4096`` muestras.**
+**El FIR de diezmado filtra en el mismo arreglo.**
+   La muestra de salida *i* se escribe en ``buf[i]`` mientras los coeficientes
+   leen la ventana que termina en ``buf[i × MODEM_RESAMPLE_RATIO]``, así que con
+   cualquier ratio ≥ 2 el puntero de escritura queda por detrás de la ventana de
+   lectura salvo en las primeras ``FILTER_TAPS − 1`` posiciones. Esas pocas
+   muestras iniciales, junto con la cola del bloque anterior, se preparan en un
+   arreglo corto de pila antes de que empiece el bucle; el resto del bloque se
+   lee crudo del propio ``buf[]``. Ese es todo el motivo por el que la ruta de RX
+   no guarda una segunda copia del bloque de 20 ms.
+
+**``MODEM_RX_FIFO_SIZE = 4096`` muestras.****``MODEM_RX_FIFO_SIZE = 4096`` muestras.**
    Dimensionado en *muestras*, así que encogió en *tiempo* cuando la tasa se
    duplicó (2048 eran 53 ms a 38,4 k, solo 26,7 ms a 76,8 k — apenas un bloque de
    20 ms). 4096 restaura el margen; debe contener ≥ 2 bloques, ya que
@@ -119,7 +129,11 @@ Guardas ``#error`` de compilación fuerzan: pin del DAC ∈ {25, 26}; pin del AD
 32–39; ``MODEM_ADC_SAMPLERATE % 9600 == 0``; FIFO ≥ 2 bloques;
 ``MODEM_ADC_CONV_FRAME`` par, que divida ``MODEM_BLOCK_SIZE``, y alineado a bytes
 a ``SOC_ADC_DIGI_DATA_BYTES_PER_CONV``; núcleo del temporizador DAC ≠ núcleo de la
-ISR del ADC; prioridad del temporizador DAC ∈ 1..3.
+ISR del ADC; prioridad del temporizador DAC ∈ 1..3. Dos ``_Static_assert`` en ``afsk.c``
+fijan el invariante de trabajo en sitio del diezmador: ``MODEM_RESAMPLE_RATIO``
+≥ 2 salvo que el filtro sea de un solo coeficiente, y ``MODEM_BLOCK_SIZE`` ≥ 2 ×
+(``FILTER_TAPS`` − 1) para que los tramos de historia inicial y final no puedan
+solaparse.
 
 Referencia de configuración en compilación
 ==========================================

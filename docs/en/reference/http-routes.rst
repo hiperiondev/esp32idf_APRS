@@ -67,6 +67,12 @@ auth check to guard.
      - latitude/longitude/altitude/speed/course as plain numbers (JSON),
        polled by every page's *Use GPS* checkbox
    * - GET/POST
+     - ``/telegram``
+     - Telegram bot enable switch, credentials and live connection diagnosis
+   * - GET
+     - ``/telegram/status``
+     - bot state, the reason for it and its counters (JSON), polled every 2 s
+   * - GET/POST
      - ``/bulletins``
      - APRS bulletins BLN1..BLN5
    * - GET/POST

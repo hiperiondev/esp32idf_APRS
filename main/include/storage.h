@@ -85,8 +85,8 @@ bool storage_format(void) APRS_MUST_CHECK;
  * esp_littlefs already serializes each individual VFS call, so this gate is
  * not about metadata integrity: it exists for sequences that are only correct
  * as a whole - the "write temp file, then rename it over the live one" save
- * used by config.json, telemetry.json, bulletins.json and objitems.json, and
- * the whole-partition erase done by ::storage_format.
+ * used by config.json, telemetry.json, bulletins.json, objitems.json and
+ * telegram.json, and the whole-partition erase done by ::storage_format.
  *
  * Ordering contract: a caller may take its own module lock first and this gate
  * second (that is what the savers do), never the other way round.

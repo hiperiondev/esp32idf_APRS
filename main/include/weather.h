@@ -26,9 +26,11 @@
 #ifndef WEATHER_H
 #define WEATHER_H
 
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
+#include "app_config.h" // wx_field_id_t
 #include "weather_telemetry.h"
 
 /**
@@ -108,5 +110,69 @@ void weather_unlock(void);
  *         APRS_TNC2_MAX_LEN.
  */
 int weather_build_report_packet(const char *path, char *out, size_t out_max);
+
+/**
+ * @name Single-field read-out
+ *
+ * Read one weather field of the shared container without going through the
+ * on-air encoder, for the callers that present readings to a person instead
+ * of transmitting them (the Telegram bot's `/sensors` answer).
+ *
+ * The three helpers split what such a caller needs: the name of the field,
+ * whether the container currently carries it and with which value, and how
+ * that value reads in International System units. Keeping them here rather
+ * than in the caller is what stops the field tables from being copied a third
+ * time - weather.c already owns the one that decides presence and value for
+ * the encoder, and these expose it.
+ * @{
+ */
+
+/**
+ * @brief Fixed English name of one weather field.
+ *
+ * Untranslated on purpose: the web admin has its own translated table
+ * (::wx_field_id_t indexed, in the webconfig pages), while this is what a
+ * caller uses when it has no locale to work from.
+ *
+ * @param field Field to name.
+ * @return The field's name, or "" when @p field is out of range. Valid for the
+ *         program's lifetime.
+ */
+const char *weather_field_label(wx_field_id_t field);
+
+/**
+ * @brief Read one field of the shared weather container.
+ *
+ * Takes ::weather_lock internally, so the caller must not already hold it.
+ *
+ * @param[in]  field     Field to read.
+ * @param[out] out_value Receives the field's value in the units the APRS
+ *                       Weather Report format itself uses on air (degrees
+ *                       Fahrenheit, miles per hour, hundredths of an inch,
+ *                       tenths of a millibar - see weather_telemetry.h).
+ *                       Untouched when the field is not present.
+ * @return true when the container currently carries this field, i.e. when its
+ *         selected sensor reported it on the last refresh; false otherwise,
+ *         including for an out-of-range @p field.
+ */
+bool weather_field_snapshot(wx_field_id_t field, double *out_value);
+
+/**
+ * @brief Render one field's value as human-readable text in International
+ *        System units, measurement unit included (e.g. "21.3 C", "1013.2 hPa").
+ *
+ * The conversion is the display side of ::weather_field_snapshot: on-air units
+ * are what the container holds because that is what the encoder needs, and no
+ * caller showing a reading to a person wants them.
+ *
+ * @param[in]  field   Field @p value belongs to; it selects both the
+ *                     conversion and the unit shown.
+ * @param[in]  value   Value as returned by ::weather_field_snapshot.
+ * @param[out] out     Destination buffer, always NUL-terminated. 24 bytes hold
+ *                     every field's rendering.
+ * @param[in]  out_max Size of @p out in bytes; nothing is written when it is 0.
+ */
+void weather_field_format(wx_field_id_t field, double value, char *out, size_t out_max);
+/** @} */
 
 #endif // WEATHER_H

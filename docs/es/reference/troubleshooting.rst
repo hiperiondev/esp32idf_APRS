@@ -96,3 +96,111 @@ etapa de excitación invierte (un optoacoplador sí; un simple NPN de lado bajo
 no): cambia la macro al otro valor y haz una recompilación limpia completa — el
 valor queda horneado en ``afsk.c``, así que una compilación incremental no lo
 tomará.
+"Telegram deja de responder tras un rato funcionando, con 'mbedtls_ssl_fetch_input' o 'Socket is not connected' en el log."
+=============================================================================================================================
+
+El camino de sondeo mantiene abierta su conexión HTTPS con la API de Telegram
+entre ciclos, para que un *long poll* que no devuelve nada no pague un nuevo
+*handshake* TLS cada diez segundos. Si esa conexión queda inactiva el tiempo
+suficiente, el extremo remoto o un NAT intermedio puede cerrarla en silencio;
+el socket queda entonces obsoleto aunque nada localmente lo haya notado.
+``telegram_bot_client_call()`` trata un fallo de transporte como señal
+exactamente de eso: cierra la conexión a la fuerza y reintenta la solicitud
+sobre un socket recién abierto, hasta tres intentos en total con una espera
+que crece entre ellos, de modo que una única sesión obsoleta se recupera sola
+dentro de la misma llamada. Si el error sigue repitiéndose en todos los
+intentos, lo que falla es la red y no un socket puntual; revisa la
+conectividad Wi-Fi/Internet y el token del bot.
+
+"sendMessage falla con 'ESP_ERR_HTTP_CONNECT' justo después de llegar una actualización, precedido de 'Dynamic Impl: alloc(...) failed'."
+=========================================================================================================================================
+
+Un *handshake* TLS nuevo pide a la memoria heap sus búferes de registro como
+asignaciones únicas de unos pocos kilobytes cada una, así que lo que decide
+si sale adelante es el mayor bloque **contiguo** libre, no el total libre. El
+asignador del ESP-IDF registra el rechazo como ``Dynamic Impl: alloc(...)
+failed``, mbedTLS lo convierte en ``mbedtls_ssl_handshake returned -0x008D``
+y el transporte ve ``ESP_ERR_HTTP_CONNECT``.
+
+Una sesión TLS viva retiene un bloque de tamaño comparable mientras se
+mantiene, así que el firmware nunca sostiene dos a la vez. El manejador de
+transmisión funciona sin *keep-alive* y por tanto queda vacío en cuanto
+retorna la llamada, y la conexión de sondeo la libera
+``telegram_release_poll_connection()`` justo antes de cualquier solicitud
+saliente, que es el momento que importa: una respuesta se envía justo después
+de llegar un lote de actualizaciones, con la carga útil y el árbol
+decodificado todavía en memoria. El sondeo paga un *handshake* extra en su
+ciclo siguiente y nada más.
+
+Cada intento fallido se registra con la memoria heap libre y el mayor bloque
+libre en ese instante. Si el mayor bloque está holgadamente por encima de
+cuatro kilobytes y la llamada aún así falla, el problema es el enlace y no la
+memoria. Si no lo está, al dispositivo le falta realmente memoria contigua:
+reduce ``rx_buffer_size`` en los manejadores del cliente, o reduce lo que el
+resto del firmware retiene en ese momento.
+
+``CONFIG_MBEDTLS_SSL_IN_CONTENT_LEN`` no es la palanca que parece. Es un tope
+sobre el registro que el otro extremo puede enviar, y la cadena de
+certificados que presenta Telegram ronda los cuatro kilobytes en un solo
+registro, así que bajarlo por debajo de esa cifra no ahorra memoria: hace que
+el *handshake* falle de plano, en todos los intentos y con cualquier estado
+de la memoria.
+
+"Los botones del menú siguen girando y el log muestra 'query is too old and response timeout expired or query ID is invalid'."
+==============================================================================================================================
+
+Telegram invalida una *callback query* pocos segundos después de pulsar el
+botón. Responderla es una solicitud en sí misma, y en este dispositivo una
+solicitud puede costar un *handshake* TLS, así que el orden en que se hace el
+trabajo decide si la respuesta llega todavía a tiempo.
+
+Tres cosas la mantienen dentro del plazo. La consulta se responde antes de
+ejecutar el manejador del botón, no después, así que construir y enviar un
+informe nunca retrasa la respuesta. La conexión de transmisión permanece
+abierta durante un lote de actualizaciones, así que una ráfaga de pulsaciones
+paga un *handshake* entre todas en vez de uno cada una. Y un único ciclo de
+sondeo fallido ya no añade su propia pausa de cinco segundos encima de los
+reintentos que el transporte ya gastó, porque esa pausa es tiempo que las
+consultas en cola pasan envejeciendo; la pausa vuelve en cuanto los fallos se
+repiten, que es cuando la red está realmente caída.
+
+Una consulta genuinamente vencida la rechaza Telegram con un 400 y el mensaje
+de arriba, y el lote al que pertenecía se procesa igualmente. Si esto aparece
+una vez tras un fallo de sondeo o una reconexión, la cola simplemente
+sobrevivió a sus actualizaciones. Si aparece de forma sostenida, el
+dispositivo no está siguiendo el ritmo del sondeo: busca los fallos de sondeo
+por encima en el log.
+
+"Las solicitudes fallan al azar con 'mbedtls_ssl_handshake returned -0x2700', con memoria heap de sobra."
+=========================================================================================================
+
+``-0x2700`` es ``MBEDTLS_ERR_X509_CERT_VERIFY_FAILED``: el *handshake* TLS
+llegó al servidor, intercambió mensajes y después rechazó el certificado que
+le mostraron. Ni el enlace ni la memoria tenían nada malo, y por eso las
+cifras impresas junto al fallo se ven sanas.
+
+A ``api.telegram.org`` lo atiende más de un *front-end* y no todos encadenan
+a la misma autoridad certificadora. Cuando el transporte valida contra un
+archivo PEM en vez del *bundle* del ESP-IDF, ese archivo solo confía en las
+autoridades que realmente lleva, así que un archivo con una única raíz valida
+las conexiones que caen en un *front-end* compatible y falla las demás. Qué
+*front-end* entrega el DNS varía entre intentos, que es exactamente por qué
+el fallo parece aleatorio y por qué un reintento suele funcionar.
+
+El transporte lo informa de forma explícita. Una cadena rechazada se registra
+como ``Peer certificate refused, verification flags 0x…, validating against
+<ruta>``, y el arranque registra cuántos anclajes de confianza dio el archivo
+(``Loaded N trust anchors from …``). Un solo anclaje con ``-0x2700``
+intermitente es la firma de este problema.
+
+Hay dos soluciones. Concatenar las raíces que faltan en el archivo PEM: cada
+certificado que contenga pasa a ser un anclaje de confianza, y el archivo se
+puede reemplazar desde la página File Storage del admin web sin recompilar. O
+seleccionar ``TELEGRAM_BOT_CERT_BUNDLE`` en menuconfig y validar contra el
+*bundle* de certificados que trae ESP-IDF, que cubre las autoridades públicas
+y sigue funcionando cuando Telegram rota su cadena, a costa de llevar el
+*bundle* en la imagen.
+
+Ten en cuenta que ``CONFIG_MBEDTLS_HAVE_TIME_DATE`` no está habilitado en
+este firmware, así que no se comprueban las fechas de validez de los
+certificados. Un reloj sin sincronizar nunca es aquí la causa de ``-0x2700``.

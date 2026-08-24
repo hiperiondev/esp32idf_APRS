@@ -34,7 +34,7 @@ Repository layout
    │   ├── include/aprs_bm.h  ← BrandMeister classifier for APRS-IS lines: APBMxx tocall, DMR path alias, entry station
    │   ├── include/aprs_path.h ← path-preset bitmask → ",WIDE1-1,WIDE2-1" suffix builder
    │   ├── include/str_append.h ← bounded snprintf-append helper shared by the builders
-   │   ├── include/json_store.h / json_escape.h ← streaming JSON writer + escaping
+   │   ├── json_store.c + include/json_store.h / json_escape.h ← shared JSON-file store scaffolding (one stdio buffer) + streaming writer/escaping
    │   ├── include/must_check.h ← the "caller must read this return value" attribute
    │   ├── include/app_version.h ← firmware version string shown on the About page
    │   ├── include/sched_time.h ← monotonic seconds used by every scheduler
@@ -43,6 +43,7 @@ Repository layout
    │   ├── weather.c/.h        ← own-station WX report: sensors_local refresh + WX beacon
    │   ├── telemetry.c/.h      ← own-station telemetry: A1–A5 + B1–B8, T#nnn beacon + metadata
    │   ├── gps.c/.h            ← NMEA GNSS receiver on its own UART: sentence parser + snapshot
+   │   ├── telegram_app.c/.h  ← Telegram bot store (own telegram.json) + supervised bring-up + diagnosis + /status and /sensors answers
    │   ├── beacon_scheduler.c/.h ← ONE shared task driving ALL periodic TX + query answers
    │   ├── bulletins.c/.h      ← APRS bulletins BLN1..BLN5 (own bulletins.json)
    │   ├── objects_items.c/.h  ← APRS Objects/Items (own objitems.json)
@@ -64,6 +65,8 @@ Repository layout
    │   ├── digirepeater/   ← n-N path logic driven by the operator's alias table, plus optional legacy destination-SSID routing
    │   ├── message/        ← APRS messaging, ack/retry, the shared RX/TX conversation queue
    │   ├── query/          ← APRS query responder (?APRS?/?WX?/?IGATE? + directed set), answered from the scheduler task
+   │   ├── esp_telegram_bot/   ← Telegram Bot HTTPS transport: token, URLs, TLS clients, multipart upload
+   │   ├── telegram_service/  ← long polling, command dispatch, authorization, alerts, remote parameters
    │   ├── lastheard/      ← in-RAM table of heard stations, one per callsign → dashboard JSON
    │   ├── trafficlog/     ← in-RAM ring of traffic lines → dashboard JSON (seq long-poll)
    │   ├── weather_telemetry/  ← APRS101 WX + Telemetry protocol structs, plus mice.c: the

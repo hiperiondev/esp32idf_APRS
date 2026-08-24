@@ -141,6 +141,34 @@ The pages
        rounds the polled latitude, longitude and altitude to the precision
        its own fields accept (4 decimal places for position, 1 decimal place
        for altitude) before writing them in.
+   * - **Telegram**
+     - *Enable Telegram Bot* switches the whole subsystem; with it off nothing
+       connects to Telegram and no polling task runs, and moving it takes
+       effect immediately without a reboot. Below it the bot token (rendered as
+       a password field, with the same show/hide control the IGate passcode
+       uses) and the administrator's numeric identifier, which is carried as a
+       64-bit value and posted as text because today's Telegram user
+       identifiers no longer fit in 32 bits. Everything on this page is stored
+       in ``/storage/telegram.json``, not in ``config.json``; the Mini App
+       address and the authorized user and group chat lists live in that same
+       file and are edited by downloading and uploading it from the File
+       Storage page, which a save on this page preserves untouched. The status
+       table below the form reports where the connection stands and, when it
+       stands still, exactly which step failed and what to do about it - the
+       settings file is missing or unparseable, the token is empty or not of
+       the form ``<numbers>:<secret>``, the root certificate is not on the
+       storage partition, there is no route to the Internet yet, the heap could
+       not supply a TLS session, or Telegram itself answered and refused, in
+       which case its own error code and wording are shown untranslated. Live
+       values via ``/telegram/status``, polled every two seconds. The bot the
+       page brings up answers ``/status`` with every service's on/off switch -
+       IGate, digipeater, tracker, weather, telemetry, messaging, query
+       responder, BrandMeister, GNSS receiver, AFSK modem, TX duty-cycle
+       limiter and SNTP time sync - and ``/sensors`` with every weather field
+       and telemetry channel enabled on the Weather and Telemetry pages, each
+       with the sensor driver it is mapped to and its current reading. Both
+       answers are built from the configuration as it stands when the command
+       arrives, so a save takes effect on the next command without a restart.
    * - **Bulletins**
      - Up to five bulletins (addressee identifier and group, text, RF/INET,
        interval, expiry).

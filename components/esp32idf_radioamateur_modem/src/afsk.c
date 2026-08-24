@@ -299,34 +299,62 @@ static const float resample_coeffs[FILTER_TAPS] = { 1.0f };
 static float s_resampleTail[FILTER_TAPS - 1];
 #endif
 
-// Raw copy of the incoming block. resample_audio() overwrites buf[] in
-// place with its (much shorter) decimated output, so the taps still need
-// an untouched copy of the original samples to read from.
-static float s_resampleScratch[MODEM_BLOCK_SIZE];
+// The decimator filters buf[] into the front of buf[] itself: output i lands in
+// buf[i] while the taps read the window that ends at buf[i *
+// MODEM_RESAMPLE_RATIO]. Almost none of that overlaps, and the proof is worth
+// spelling out because it is what keeps a whole block out of .bss.
+//
+// The samples output i reads from buf[] sit at indices
+// [i * MODEM_RESAMPLE_RATIO - (FILTER_TAPS - 1) .. i * MODEM_RESAMPLE_RATIO].
+// Take one such index r with r >= FILTER_TAPS - 1 and suppose the loop had
+// already overwritten it, that is r < i. The lower bound with
+// MODEM_RESAMPLE_RATIO >= 2 gives r >= 2i - (FILTER_TAPS - 1), and r < i gives
+// 2i > 2r, so r > 2r - (FILTER_TAPS - 1), i.e. r < FILTER_TAPS - 1 - which
+// contradicts the assumption. So every read that CAN land on an already-written
+// slot lies below index FILTER_TAPS - 1, and there are at most FILTER_TAPS - 1
+// of them: at ratio 8 they are the reads of buf[0] and buf[1] taken while
+// computing outputs 1 and 2.
+//
+// The filter therefore needs two short runs of history and no full-block copy:
+// the previous block's tail (s_resampleTail) and this block's own leading
+// FILTER_TAPS - 1 samples. They are staged together in hist[] so that the tap
+// index k walks the conceptual [ previous tail ][ this block ] sequence with a
+// single bound test; everything from index FILTER_TAPS - 1 upwards is read
+// straight out of buf[], still raw.
+_Static_assert(MODEM_RESAMPLE_RATIO >= 2 || FILTER_TAPS == 1,
+               "In-place decimation needs MODEM_RESAMPLE_RATIO >= 2: at ratio 1 a multi-tap filter reads its own output.");
+_Static_assert(MODEM_BLOCK_SIZE >= 2 * (FILTER_TAPS - 1), "MODEM_BLOCK_SIZE must hold the leading and trailing history runs without them overlapping.");
 
 static void resample_audio(float *buf) {
-    memcpy(s_resampleScratch, buf, sizeof(s_resampleScratch));
+#if FILTER_TAPS > 1
+    // [ previous block's tail ][ this block's first FILTER_TAPS - 1 samples ]
+    float hist[2 * (FILTER_TAPS - 1)];
+    memcpy(hist, s_resampleTail, sizeof(s_resampleTail));
+    memcpy(hist + (FILTER_TAPS - 1), buf, (FILTER_TAPS - 1) * sizeof(float));
+
+    // Take this block's own tail now, before the decimation loop runs. The
+    // loop only ever writes the first MODEM_BLOCK_SIZE / MODEM_RESAMPLE_RATIO
+    // slots and so cannot reach these, but reading them up front means the
+    // tail no longer depends on where the write pointer stops.
+    for (int t = 0; t < FILTER_TAPS - 1; t++)
+        s_resampleTail[t] = buf[MODEM_BLOCK_SIZE - (FILTER_TAPS - 1) + t];
+#endif
 
     for (int i = 0; i < MODEM_BLOCK_SIZE / MODEM_RESAMPLE_RATIO; i++) {
         float sum = 0;
         for (int j = 0; j < FILTER_TAPS; j++) {
 #if FILTER_TAPS > 1
-            // k indexes the conceptual [ tail ][ scratch ] sequence.
+            // k indexes the conceptual [ tail ][ block ] sequence; hist[] holds
+            // its first 2 * (FILTER_TAPS - 1) entries.
             int k = i * MODEM_RESAMPLE_RATIO + j;
-            float in = (k < FILTER_TAPS - 1) ? s_resampleTail[k] : s_resampleScratch[k - (FILTER_TAPS - 1)];
+            float in = (k < 2 * (FILTER_TAPS - 1)) ? hist[k] : buf[k - (FILTER_TAPS - 1)];
 #else
-            float in = s_resampleScratch[i * MODEM_RESAMPLE_RATIO + j]; // MODEM_RESAMPLE_RATIO == 1, index always in range
+            float in = buf[i * MODEM_RESAMPLE_RATIO + j]; // MODEM_RESAMPLE_RATIO == 1, reads and writes the same slot
 #endif
             sum += in * resample_coeffs[j];
         }
         buf[i] = sum;
     }
-
-#if FILTER_TAPS > 1
-    // Save this block's own tail for the next call.
-    for (int t = 0; t < FILTER_TAPS - 1; t++)
-        s_resampleTail[t] = s_resampleScratch[MODEM_BLOCK_SIZE - (FILTER_TAPS - 1) + t];
-#endif
 }
 
 // ------------------------------------------------------------------

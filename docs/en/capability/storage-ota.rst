@@ -16,6 +16,7 @@ file the firmware writes:
 * ``/storage/telemetry.json`` — telemetry channel-0 config.
 * ``/storage/bulletins.json`` — the five bulletins.
 * ``/storage/objitems.json`` — the five objects/items.
+* ``/storage/telegram.json`` — the Telegram bot's whole configuration.
 
 The *Storage* web page is a full LittleFS browser: it lists files with sizes,
 downloads (``GET /download?file=…``), deletes (``POST /delete`` with the
@@ -38,10 +39,13 @@ Every JSON file is written by a small streaming, token-at-a-time writer rather
 than by building a full cJSON tree and then serialising it — because that would
 need the tree **and** its serialised buffer alive at once on a small, fragmented
 heap. Instead the writer streams straight to the file. Each save is **atomic**:
-it writes ``<file>.tmp`` and then renames. Each writer also calls ``setvbuf()``
-with a static buffer immediately after ``fopen()`` so newlib does not lazily
-allocate a large stdio buffer mid-write (a subtle source of an intermittent
-double-exception crash on a fragmented heap that was tracked down and fixed).
+it writes ``<file>.tmp`` and then renames. Every writer also calls ``setvbuf()``
+immediately after ``fopen()`` so newlib does not lazily allocate a large stdio
+buffer mid-write, which on a fragmented heap is a subtle source of intermittent
+double-exception crashes. The buffer they install is one shared 512-byte static
+object defined in ``main/json_store.c``: the filesystem-wide writer gate
+(``storage_write_lock()``) means only one save can be in flight at a time, so a
+single buffer serves all five stores.
 
 Loading is done with **cJSON**; missing or corrupt files fall back to defaults
 that are then immediately saved, so each file always exists and is consistent.

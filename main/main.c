@@ -37,6 +37,7 @@
 #include "gps.h"
 #include "net_state.h"
 #include "storage.h"
+#include "telegram_app.h"
 #include "time_sync.h"
 #include "web_server.h"
 
@@ -299,6 +300,26 @@ static void wifi_init(void) {
 
     ESP_ERROR_CHECK(esp_wifi_start());
 
+    // Modem sleep off. The default powers the radio down between DTIM beacons,
+    // which suits a sensor that wakes, posts and sleeps again; this station
+    // instead holds an APRS-IS socket, an admin web server and, when the
+    // Telegram bot is enabled, a TLS long poll, all at once and all of them
+    // latency-sensitive. With the radio asleep most of the time, transmits
+    // queue behind the next wake-up: sockets report EAGAIN under load and a
+    // TLS handshake can exhaust its whole timeout while a plain connection to
+    // the same address completes in a few hundred milliseconds.
+    //
+    // A sleeping radio also misses the periodic WPA2 group key update some
+    // access points perform, which disconnects the station with reason 16 and
+    // takes every open connection down with it.
+    //
+    // The cost is receiver current draw, which an always-on gateway on mains
+    // power can afford. A battery-powered installation that does not run the
+    // bot may prefer WIFI_PS_MIN_MODEM here.
+    esp_err_t ps_err = esp_wifi_set_ps(WIFI_PS_NONE);
+    if (ps_err != ESP_OK)
+        ESP_LOGW(TAG, "Could not disable WiFi modem sleep: %s", esp_err_to_name(ps_err));
+
     // No esp_wifi_connect() here any more - WIFI_EVENT_STA_START does it, once
     // the driver says the station is genuinely up. See the handler.
 
@@ -425,6 +446,20 @@ static void app_task(void *arg) {
     } else {
         ESP_LOGI(TAG, "Audio ADC/DAC AFSK modem disabled in config - skipping modem_init()");
     }
+
+    // Bring the Telegram bot up if the operator has it switched on, and do it
+    // last on purpose. A TLS session and the modem's DMA buffers both want
+    // large contiguous allocations out of the same internal RAM, and this is a
+    // radio station: the transmitter has first claim. Starting the bot after
+    // modem_init() means a heap too small for both costs the convenience
+    // rather than the radio, and the Telegram page says so in as many words.
+    //
+    // Its own supervisor task performs the bring-up in the background and
+    // waits for a network route itself, so this call returns immediately and
+    // never blocks the boot behind a TLS handshake. The Telegram page's save
+    // handler calls this again whenever a setting moves, so the bot needs no
+    // reboot.
+    telegram_app_apply_config();
 
     // Do not log the admin password: this line reaches serial console captures
     // and any future remote-logging feature. Only the username is logged; the

@@ -1,0 +1,78 @@
+menu "Telegram bot service"
+
+    config TELEGRAM_SERVICE_MAX_USERS
+        int "Maximum number of authorized users"
+        range 1 64
+        default 8
+        help
+            Size of the static table holding the users allowed to interact
+            with the bot.
+
+    config TELEGRAM_SERVICE_MAX_CHATS
+        int "Maximum number of allowed group chats"
+        range 1 32
+        default 4
+        help
+            Size of the static table holding the group chats the bot serves.
+
+    config TELEGRAM_SERVICE_MAX_COMMANDS
+        int "Maximum number of registered commands"
+        range 16 64
+        default 20
+        help
+            Size of the static command table. The fourteen built-in
+            commands are registered in this same table, so anything below
+            fifteen leaves no room for a command of your own and anything
+            below fourteen makes telegram_init() fail outright. The lower
+            bound of this range is set accordingly; the default leaves six
+            free slots.
+
+    config TELEGRAM_SERVICE_MAX_CALLBACKS
+        int "Maximum number of inline button handlers"
+        range 1 32
+        default 4
+        help
+            Size of the static table routing inline button payloads to
+            handlers by prefix. The built-in /menu command registers its
+            own, so leave room for it; raise this to match the number of
+            button prefixes the application adds on top.
+
+    config TELEGRAM_SERVICE_MAX_PARAMS
+        int "Maximum number of remotely configurable parameters"
+        range 1 32
+        default 4
+        help
+            Size of the static table holding the parameters exposed through
+            the /config, /get and /set commands. Raise it to match the
+            number of parameters the application actually registers.
+
+    config TELEGRAM_SERVICE_MAX_SENSORS
+        int "Maximum number of published sensors"
+        range 1 32
+        default 4
+        help
+            Size of the static table holding the sensors exposed through the
+            /sensors and /status commands. Raise it to match the number of
+            sensors the application actually publishes.
+
+    config TELEGRAM_SERVICE_RX_BUFFER_SIZE
+        int "Default size of the update reception buffer"
+        range 1024 32768
+        default 2048
+        help
+            Default capacity of the buffer holding one getUpdates answer.
+            An answer larger than this is skipped and reported, so the
+            default trades a rare long batch for heap that a TLS handshake
+            needs in one contiguous piece. Increase it when updates carry
+            long texts, when several updates are delivered in a single
+            batch, or on a board with memory to spare.
+
+    config TELEGRAM_SERVICE_TASK_STACK_SIZE
+        int "Default stack size of the service task"
+        range 4096 32768
+        default 8192
+        help
+            Default stack size in bytes of the task created by
+            telegram_start(). TLS and JSON parsing dominate this figure.
+
+endmenu

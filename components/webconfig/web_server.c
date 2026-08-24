@@ -58,18 +58,31 @@ void web_server_start(void) {
     // deliberate headroom rather than trimmed to the measured maximum. Use
     // uxTaskGetStackHighWaterMark() on the httpd task before changing it.
     config.stack_size = 20480;
-    // The whole firmware shares one pool of CONFIG_LWIP_MAX_SOCKETS (10)
+    // The whole firmware shares one pool of CONFIG_LWIP_MAX_SOCKETS (16)
     // sockets. httpd claims max_open_sockets plus 3 of its own (the TCP
-    // listener and the two UDP control sockets), so 4 concurrent browser
-    // connections leave 3 sockets for the rest of the station: the APRS-IS
-    // uplink, DNS lookups and the SNTP client. Four is also what the admin
-    // UI needs - a page plus /style.css and the periodic /dashinfo,
-    // /sidebarInfo and /heapinfo fetches, all on keep-alive - and every TCP
-    // connection that is not open is a connection whose send and receive
-    // windows (CONFIG_LWIP_TCP_SND_BUF_DEFAULT and
-    // CONFIG_LWIP_TCP_WND_DEFAULT) never come out of the heap.
-    config.max_open_sockets = 4;
-    // A fifth browser connection evicts the least recently used one instead
+    // listener and the two UDP control sockets), so three concurrent browser
+    // connections account for 6. The rest of the station needs the APRS-IS
+    // uplink, DNS lookups, the SNTP client and, when the Telegram bot is
+    // enabled, its long-polling connection plus a transient one for each
+    // outgoing message and for the pre-flight probe: five more at peak.
+    //
+    // Running that total close to the pool is what makes a busy station fail
+    // in its least obvious way: accept() cannot get a descriptor, so
+    // lru_purge_enable has no free slot to purge into and the admin server
+    // stops answering for good, while unrelated connections report EAGAIN on
+    // send.
+    //
+    // What the admin UI wants is four - a page plus /style.css and the
+    // periodic /dashinfo, /sidebarInfo and /heapinfo fetches, all on
+    // keep-alive - so three means the least recently used connection is
+    // recycled while a page loads. That is a deliberate trade on a station
+    // this size: the browser sees a little more latency, and the heap keeps
+    // one connection's send and receive windows (CONFIG_LWIP_TCP_SND_BUF_DEFAULT
+    // and CONFIG_LWIP_TCP_WND_DEFAULT) free for the TLS handshake the Telegram
+    // bot performs. It is the first value to raise again if the admin UI feels
+    // sluggish and the heap has room.
+    config.max_open_sockets = 3;
+    // A fourth browser connection evicts the least recently used one instead
     // of being refused, so the cap costs latency under load, never an error
     // page.
     config.lru_purge_enable = true;
@@ -129,6 +142,9 @@ void web_server_start(void) {
     reg(server, "/gps", HTTP_POST, page_gps_post);
     reg(server, "/gps/values", HTTP_GET, page_gps_values_get);
     reg(server, "/gps/live", HTTP_GET, page_gps_live_get);
+    reg(server, "/telegram", HTTP_GET, page_telegram_get);
+    reg(server, "/telegram", HTTP_POST, page_telegram_post);
+    reg(server, "/telegram/status", HTTP_GET, page_telegram_status_get);
 
     reg(server, "/radio", HTTP_GET, page_radio_get);
     reg(server, "/radio", HTTP_POST, page_radio_post);
