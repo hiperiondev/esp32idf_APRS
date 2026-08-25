@@ -42,20 +42,17 @@ Todo lo que el bot necesita vive en ``/storage/telegram.json``, no en
        la estación. ``telegram_init()`` lo añade por sí mismo a la lista de
        usuarios autorizados.
    * - Dirección de la Mini App
-     - Dirección HTTPS opcional de una Mini App de Telegram. No se muestra en
-       la página Telegram; se conserva intacta al guardar.
+     - Dirección HTTPS opcional de una Mini App de Telegram que abre el botón
+       de menú del bot.
    * - Usuarios autorizados / chats de grupo permitidos
      - Hasta 8 usuarios autorizados y 4 chats de grupo permitidos, cada uno con
-       un identificador y un nombre para mostrar. Tampoco se muestran en la
-       página Telegram.
+       un identificador y un nombre para mostrar.
 
-Solo el interruptor de habilitación, el token y el identificador del
-administrador son editables desde la página *Telegram*. La dirección de la
-Mini App y las listas de usuarios/chats se cargan en la misma estructura en
-memoria antes de guardar y se escriben de vuelta sin cambios, de modo que la
-configuración completa —incluidas las partes que la página no expone— es un
-único archivo que puede descargarse, editarse a mano y volver a subirse desde
-la página *File Storage* (:ref:`es-storage-ota`).
+Todos los campos anteriores son editables desde la página *Telegram*, que
+carga la estructura completa antes de guardar y la escribe de vuelta con los
+cambios del formulario aplicados, de modo que la configuración completa
+también es un único archivo que puede descargarse, editarse a mano y volver
+a subirse desde la página *File Storage* (:ref:`es-storage-ota`).
 
 Los identificadores de Telegram son de 64 bits y con signo (el identificador
 de un supergrupo es un número negativo grande), así que tanto el identificador
@@ -198,18 +195,29 @@ rechazada en lugar de responderse.
 La página Telegram
 ====================
 
-``GET``/``POST /telegram`` (:ref:`es-http-routes`) expone exactamente tres
-cosas: el interruptor de habilitación, el token del bot (enmascarado, con un
-control *mostrar contraseña*) y el identificador del administrador — los dos
-ajustes que un operador plausiblemente tenga que corregir desde un teléfono o
-portátil después de configurarlos. Debajo del formulario de guardado, una
-tabla de estado en vivo (``GET /telegram/status``, JSON, consultada cada
+``GET``/``POST /telegram`` (:ref:`es-http-routes`) expone todos los campos de
+``telegram.json``: el interruptor de habilitación, el token del bot
+(enmascarado, con un control *mostrar contraseña*), el identificador del
+administrador, la dirección de la Mini App y las tablas de usuarios
+autorizados y chats de grupo permitidos. Debajo del formulario de guardado,
+una tabla de estado en vivo (``GET /telegram/status``, JSON, consultada cada
 2 segundos) muestra el estado general, la razón precisa, cualquier detalle
 sin traducir que Telegram o la pila de red hayan devuelto, el nombre de
 usuario propio del bot una vez conocido, su tiempo activo y sus contadores.
-La dirección de la Mini App y las listas de usuarios/chats están
-deliberadamente ausentes de esta página; se editan descargando y volviendo a
-subir ``telegram.json`` desde la página *File Storage*.
+
+Las tablas de usuarios autorizados y chats de grupo permitidos tienen tamaño
+fijo — hasta 8 usuarios y 4 chats de grupo, según ``TELEGRAM_APP_USERS_MAX``
+y ``TELEGRAM_APP_CHATS_MAX`` — y cada entrada se muestra como una tarjeta
+plegable con un campo de identificador y un campo de nombre para mostrar.
+Enviar ``/whoami`` al bot desde la cuenta o el grupo en cuestión es la forma
+más rápida de obtener el identificador a introducir; dejar vacío (o en 0) el
+identificador de una tarjeta deja esa ranura sin usar, y al guardar la tabla
+se compacta para que una ranura vaciada en medio no deje un hueco.
+
+Todo lo que muestra la página sigue siendo el mismo ``telegram.json``
+descrito arriba, así que también puede descargarse, editarse a mano y
+volver a subirse desde la página *File Storage* — útil para editar varias
+entradas a la vez, o para restaurar una configuración conocida.
 
 .. seealso::
 

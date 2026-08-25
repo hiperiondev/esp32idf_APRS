@@ -40,19 +40,17 @@ Everything the bot needs lives in ``/storage/telegram.json``, not in
      - The numeric Telegram user identifier of the station's administrator.
        ``telegram_init()`` adds it to the authorized-user list itself.
    * - Mini App address
-     - Optional HTTPS address of a Telegram Mini App. Not rendered by the
-       Telegram page; carried through a save untouched.
+     - Optional HTTPS address of a Telegram Mini App the bot's menu button
+       opens.
    * - Authorized users / allowed group chats
      - Up to 8 authorized users and 4 allowed group chats, each an
-       identifier plus a display name. Not rendered by the Telegram page
-       either.
+       identifier plus a display name.
 
-Only the enable switch, the token and the administrator identifier are
-editable from the *Telegram* page. The Mini App address and the user/chat
-lists are loaded into the same in-memory structure before a save and written
-back unchanged, so the whole configuration — including the parts the page
-does not expose — is one file that can be downloaded, edited by hand and
-uploaded again from the *File Storage* page (:ref:`en-storage-ota`).
+Every field above is editable from the *Telegram* page, which loads the
+whole structure before a save and writes it back with the form's changes
+applied, so the whole configuration is also one file that can be downloaded,
+edited by hand and uploaded again from the *File Storage* page
+(:ref:`en-storage-ota`).
 
 Telegram identifiers are 64-bit and signed (a supergroup identifier is a large
 negative number), so both the administrator identifier and every user/chat
@@ -183,16 +181,28 @@ attempt is counted as a rejected update rather than answered.
 The Telegram page
 ==================
 
-``GET``/``POST /telegram`` (:ref:`en-http-routes`) exposes exactly three
-things: the enable switch, the bot token (masked, with a *show password*
-toggle) and the administrator identifier — the two settings an operator
-plausibly has to correct from a phone or laptop after the fact. Below the
-save form, a live status table (``GET /telegram/status``, JSON, polled every
-2 seconds) shows the coarse state, the precise reason, any untranslated
-detail Telegram or the network stack returned, the bot's own username once
-known, its uptime, and its counters. The Mini App address and the user/chat
-lists are intentionally absent from this page; they are edited by downloading
-and re-uploading ``telegram.json`` from the *File Storage* page instead.
+``GET``/``POST /telegram`` (:ref:`en-http-routes`) exposes every field of
+``telegram.json``: the enable switch, the bot token (masked, with a *show
+password* toggle), the administrator identifier, the Mini App address, and
+the authorized-user and allowed-group-chat tables. Below the save form, a
+live status table (``GET /telegram/status``, JSON, polled every 2 seconds)
+shows the coarse state, the precise reason, any untranslated detail Telegram
+or the network stack returned, the bot's own username once known, its
+uptime, and its counters.
+
+The authorized-user and allowed-group-chat tables are fixed-size — up to 8
+users and 4 group chats, matching ``TELEGRAM_APP_USERS_MAX`` and
+``TELEGRAM_APP_CHATS_MAX`` — and each entry is rendered as a collapsible card
+with an identifier field and a display-name field. Sending ``/whoami`` to the
+bot from the account or group in question is the quickest way to read off
+the identifier to enter; leaving a card's identifier empty (or at 0) leaves
+that slot unused, and a save compacts the table so a cleared slot in the
+middle does not leave a gap behind.
+
+Everything the page renders is still the same ``telegram.json`` described
+above, so it can also be downloaded, edited by hand and uploaded again from
+the *File Storage* page — useful for editing several entries at once, or for
+restoring a known-good configuration.
 
 .. seealso::
 

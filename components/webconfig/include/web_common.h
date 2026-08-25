@@ -89,6 +89,9 @@ int web_read_body(httpd_req_t *req, char *buf, size_t buf_size);
 #define WEBCONFIG_POST_BUF_OBJITEMS                                                                                                                            \
     6000 /**< page_objects.c - 5 objects/items x (checkboxes + name/type/active/scope + lat/lon + symbol + course/speed + compress + comment + area +          \
             signpost + freq/duplex/offset/tone + 4 path checkboxes + QRU + intervals + decay). */
+#define WEBCONFIG_POST_BUF_TELEGRAM                                                                                                                            \
+    3200 /**< page_telegram.c - enable + token + admin id + Mini App URL + 8 authorized users x (id + name) + 4 allowed group chats x (id + name).             \
+          */
 /** @} */
 
 /**

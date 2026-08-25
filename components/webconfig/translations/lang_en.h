@@ -1629,6 +1629,33 @@
 #define TR_TG_NOTE_ADMIN                                                                                                                                       \
     "The token is issued by @BotFather. The administrator identifier is a number, not a user name; send /start to the bot and read it from the log, or ask a " \
     "user-info bot for it. Leave it at 0 to add no administrator here."
+/** Fieldset legend for the Mini App block, rendered on the Telegram page. */
+#define TR_TG_FS_MINIAPP "Mini App"
+/** Label of the Mini App address field, rendered on the Telegram page. */
+#define TR_TG_MINIAPP_URL "Mini App Address"
+/** Explanatory note shown under the Mini App address, rendered on the Telegram page. */
+#define TR_TG_NOTE_MINIAPP                                                                                                                                     \
+    "The HTTPS address of a Telegram Mini App the bot's menu button opens. Leave it empty to run the bot with no Mini App button."
+/** Fieldset legend for the authorized-users block, rendered on the Telegram page. */
+#define TR_TG_FS_USERS "Authorized Users"
+/** Explanatory note shown above the authorized-users table, rendered on the Telegram page. */
+#define TR_TG_NOTE_USERS                                                                                                                                       \
+    "Up to 8 users, in addition to the administrator, who may talk to the bot as themselves rather than being turned away as unauthorized. Send /whoami to "  \
+    "the bot from the account in question to read off the identifier to enter here. An empty identifier leaves the slot unused."
+/** Fieldset legend for the allowed-group-chats block, rendered on the Telegram page. */
+#define TR_TG_FS_CHATS "Allowed Group Chats"
+/** Explanatory note shown above the allowed-group-chats table, rendered on the Telegram page. */
+#define TR_TG_NOTE_CHATS                                                                                                                                       \
+    "Up to 4 group chats the bot is allowed to answer in. A supergroup identifier is a large negative number; send /whoami to the bot from inside the group "  \
+    "to read it off. An empty identifier leaves the slot unused."
+/** Legend format ("User %d") for one authorized-user accordion card, rendered on the Telegram page. */
+#define TR_TG_F_USER_FMT "User %d"
+/** Legend format ("Chat %d") for one allowed-group-chat accordion card, rendered on the Telegram page. */
+#define TR_TG_F_CHAT_FMT "Chat %d"
+/** Label of one entry's identifier field, rendered on the Telegram page. */
+#define TR_TG_F_PEER_ID "Identifier"
+/** Label of one entry's display-name field, rendered on the Telegram page. */
+#define TR_TG_F_PEER_NAME "Name"
 /** Fieldset legend for the connection status block, rendered on the Telegram page. */
 #define TR_TG_FS_STATUS "Connection Status"
 /** Status row label for the coarse state, rendered on the Telegram page. */
@@ -1657,8 +1684,7 @@
     "wording Telegram itself returned, and is shown untranslated on purpose."
 /** Note naming the file the whole configuration lives in, rendered on the Telegram page. */
 #define TR_TG_NOTE_FILE                                                                                                                                        \
-    "The Mini App address and the authorized user and group chat lists are not edited here. They live, together with the two settings above, in this file, "   \
-    "which can be downloaded and uploaded again from the File Storage page:"
+    "Everything above is stored in this file, which can also be downloaded, edited and uploaded again from the File Storage page:"
 /** Coarse state shown while the bot is switched off, rendered on the Telegram page. */
 #define TR_TG_STATE_DISABLED "Disabled"
 /** Coarse state shown while bring-up is in progress, rendered on the Telegram page. */

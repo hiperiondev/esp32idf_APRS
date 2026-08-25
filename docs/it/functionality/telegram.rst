@@ -42,20 +42,17 @@ in ``config.json``:
        stazione. ``telegram_init()`` lo aggiunge da sé alla lista degli
        utenti autorizzati.
    * - Indirizzo della Mini App
-     - Indirizzo HTTPS facoltativo di una Mini App Telegram. Non mostrato
-       dalla pagina Telegram; conservato invariato a un salvataggio.
+     - Indirizzo HTTPS facoltativo di una Mini App Telegram aperta dal
+       pulsante di menu del bot.
    * - Utenti autorizzati / chat di gruppo consentite
      - Fino a 8 utenti autorizzati e 4 chat di gruppo consentite, ciascuno con
-       un identificativo e un nome visualizzato. Nemmeno questi sono mostrati
-       dalla pagina Telegram.
+       un identificativo e un nome visualizzato.
 
-Solo l'interruttore di abilitazione, il token e l'identificativo
-dell'amministratore sono modificabili dalla pagina *Telegram*. L'indirizzo
-della Mini App e le liste di utenti/chat vengono caricati nella stessa
-struttura in memoria prima di un salvataggio e riscritti invariati, così
-l'intera configurazione — comprese le parti che la pagina non espone — è un
-unico file che può essere scaricato, modificato a mano e ricaricato dalla
-pagina *File Storage* (:ref:`it-storage-ota`).
+Tutti i campi sopra sono modificabili dalla pagina *Telegram*, che carica
+l'intera struttura prima di un salvataggio e la riscrive con le modifiche del
+modulo applicate, così l'intera configurazione è anche un unico file che può
+essere scaricato, modificato a mano e ricaricato dalla pagina *File Storage*
+(:ref:`it-storage-ota`).
 
 Gli identificativi Telegram sono a 64 bit e con segno (l'identificativo di un
 supergruppo è un numero negativo grande), quindi sia l'identificativo
@@ -196,18 +193,30 @@ anziché ricevere risposta.
 La pagina Telegram
 =====================
 
-``GET``/``POST /telegram`` (:ref:`it-http-routes`) espone esattamente tre
-cose: l'interruttore di abilitazione, il token del bot (mascherato, con un
-controllo *mostra password*) e l'identificativo dell'amministratore — le due
-impostazioni che un operatore plausibilmente deve correggere da un telefono o
-un portatile dopo la configurazione iniziale. Sotto il modulo di salvataggio,
-una tabella di stato live (``GET /telegram/status``, JSON, interrogata ogni
-2 secondi) mostra lo stato generale, il motivo preciso, ogni dettaglio non
-tradotto restituito da Telegram o dallo stack di rete, il nome utente del bot
-stesso una volta noto, il suo uptime e i suoi contatori. L'indirizzo della
-Mini App e le liste di utenti/chat sono deliberatamente assenti da questa
-pagina; si modificano scaricando e ricaricando ``telegram.json`` dalla pagina
-*File Storage*.
+``GET``/``POST /telegram`` (:ref:`it-http-routes`) espone tutti i campi di
+``telegram.json``: l'interruttore di abilitazione, il token del bot
+(mascherato, con un controllo *mostra password*), l'identificativo
+dell'amministratore, l'indirizzo della Mini App e le tabelle degli utenti
+autorizzati e delle chat di gruppo consentite. Sotto il modulo di
+salvataggio, una tabella di stato live (``GET /telegram/status``, JSON,
+interrogata ogni 2 secondi) mostra lo stato generale, il motivo preciso,
+ogni dettaglio non tradotto restituito da Telegram o dallo stack di rete, il
+nome utente del bot stesso una volta noto, il suo uptime e i suoi contatori.
+
+Le tabelle degli utenti autorizzati e delle chat di gruppo consentite hanno
+dimensione fissa — fino a 8 utenti e 4 chat di gruppo, secondo
+``TELEGRAM_APP_USERS_MAX`` e ``TELEGRAM_APP_CHATS_MAX`` — e ogni voce è
+mostrata come una scheda a comparsa con un campo identificativo e un campo
+nome visualizzato. Inviare ``/whoami`` al bot dall'account o dal gruppo in
+questione è il modo più rapido per leggere l'identificativo da inserire;
+lasciare vuoto (o a 0) l'identificativo di una scheda lascia quello slot
+inutilizzato, e un salvataggio compatta la tabella così uno slot svuotato in
+mezzo non lascia un vuoto.
+
+Tutto ciò che la pagina mostra resta lo stesso ``telegram.json`` descritto
+sopra, quindi può anche essere scaricato, modificato a mano e ricaricato
+dalla pagina *File Storage* — utile per modificare più voci alla volta, o
+per ripristinare una configurazione nota e funzionante.
 
 .. seealso::
 

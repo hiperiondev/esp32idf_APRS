@@ -164,11 +164,12 @@ Le pagine
        mostra/nascondi usato dal passcode dell'IGate) e l'identificativo
        numerico dell'amministratore, portato come valore a 64 bit e inviato
        come testo perché gli identificativi utente di Telegram non stanno più
-       in 32 bit. Tutto ciò che si trova in questa pagina è memorizzato in
-       ``/storage/telegram.json``, non in ``config.json``; l'indirizzo della
-       Mini App e gli elenchi di utenti e chat di gruppo autorizzati risiedono
-       nello stesso file e si modificano scaricandolo e ricaricandolo dalla
-       pagina Archivio file, e un Save di questa pagina li conserva intatti. La
+       in 32 bit. Sotto, l'indirizzo della Mini App e le tabelle a dimensione
+       fissa di utenti autorizzati e chat di gruppo consentite (fino a 8
+       utenti e 4 chat di gruppo, ciascuno con un identificativo e un nome
+       visualizzato). Tutto ciò che si trova in questa pagina è memorizzato in
+       ``/storage/telegram.json``, non in ``config.json``, quindi può anche
+       essere scaricato e ricaricato dalla pagina Archivio file. La
        tabella di stato sotto il modulo riporta a che punto è la connessione e,
        quando non avanza, esattamente quale passo è fallito e cosa fare: manca
        il file di configurazione o non è analizzabile, il token è vuoto o non

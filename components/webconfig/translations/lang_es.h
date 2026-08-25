@@ -1726,6 +1726,33 @@
 #define TR_TG_NOTE_ADMIN                                                                                                                                       \
     "El token lo emite @BotFather. El identificador del administrador es un numero, no un nombre de usuario: envie /start al bot y lealo del log, o "          \
     "pidaselo a un bot de informacion de usuario. Dejelo en 0 para no agregar ningun administrador aqui."
+/** Fieldset legend for the Mini App block, rendered on the Telegram page. */
+#define TR_TG_FS_MINIAPP "Mini App"
+/** Label of the Mini App address field, rendered on the Telegram page. */
+#define TR_TG_MINIAPP_URL "Direccion de la Mini App"
+/** Explanatory note shown under the Mini App address, rendered on the Telegram page. */
+#define TR_TG_NOTE_MINIAPP                                                                                                                                     \
+    "La direccion HTTPS de una Mini App de Telegram que abre el boton de menu del bot. Dejela vacia para ejecutar el bot sin boton de Mini App."
+/** Fieldset legend for the authorized-users block, rendered on the Telegram page. */
+#define TR_TG_FS_USERS "Usuarios autorizados"
+/** Explanatory note shown above the authorized-users table, rendered on the Telegram page. */
+#define TR_TG_NOTE_USERS                                                                                                                                       \
+    "Hasta 8 usuarios, ademas del administrador, que pueden hablar con el bot como ellos mismos en lugar de ser rechazados por no estar autorizados. Envie "   \
+    "/whoami al bot desde la cuenta en cuestion para obtener el identificador que debe ingresar aqui. Un identificador vacio deja la ranura sin usar."
+/** Fieldset legend for the allowed-group-chats block, rendered on the Telegram page. */
+#define TR_TG_FS_CHATS "Chats de grupo permitidos"
+/** Explanatory note shown above the allowed-group-chats table, rendered on the Telegram page. */
+#define TR_TG_NOTE_CHATS                                                                                                                                       \
+    "Hasta 4 chats de grupo en los que el bot puede responder. El identificador de un supergrupo es un numero negativo grande; envie /whoami al bot desde "    \
+    "dentro del grupo para obtenerlo. Un identificador vacio deja la ranura sin usar."
+/** Legend format ("User %d") for one authorized-user accordion card, rendered on the Telegram page. */
+#define TR_TG_F_USER_FMT "Usuario %d"
+/** Legend format ("Chat %d") for one allowed-group-chat accordion card, rendered on the Telegram page. */
+#define TR_TG_F_CHAT_FMT "Chat %d"
+/** Label of one entry's identifier field, rendered on the Telegram page. */
+#define TR_TG_F_PEER_ID "Identificador"
+/** Label of one entry's display-name field, rendered on the Telegram page. */
+#define TR_TG_F_PEER_NAME "Nombre"
 /** Fieldset legend for the connection status block, rendered on the Telegram page. */
 #define TR_TG_FS_STATUS "Estado de la conexion"
 /** Status row label for the coarse state, rendered on the Telegram page. */
@@ -1754,8 +1781,7 @@
     "error de ESP-IDF o el texto que devolvio Telegram, y se muestra sin traducir a proposito."
 /** Note naming the file the whole configuration lives in, rendered on the Telegram page. */
 #define TR_TG_NOTE_FILE                                                                                                                                        \
-    "La direccion de la Mini App y las listas de usuarios y chats de grupo autorizados no se editan aqui. Viven, junto con los dos ajustes de arriba, en "     \
-    "este archivo, que se puede descargar y volver a subir desde la pagina Almacenamiento:"
+    "Todo lo anterior se guarda en este archivo, que tambien se puede descargar, editar y volver a subir desde la pagina Almacenamiento:"
 /** Coarse state shown while the bot is switched off, rendered on the Telegram page. */
 #define TR_TG_STATE_DISABLED "Deshabilitado"
 /** Coarse state shown while bring-up is in progress, rendered on the Telegram page. */

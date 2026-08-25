@@ -148,11 +148,12 @@ The pages
        a password field, with the same show/hide control the IGate passcode
        uses) and the administrator's numeric identifier, which is carried as a
        64-bit value and posted as text because today's Telegram user
-       identifiers no longer fit in 32 bits. Everything on this page is stored
-       in ``/storage/telegram.json``, not in ``config.json``; the Mini App
-       address and the authorized user and group chat lists live in that same
-       file and are edited by downloading and uploading it from the File
-       Storage page, which a save on this page preserves untouched. The status
+       identifiers no longer fit in 32 bits. Below that, the Mini App address
+       and the fixed-size authorized-user and allowed-group-chat tables (up to
+       8 users and 4 group chats, each an identifier plus a display name).
+       Everything on this page is stored in ``/storage/telegram.json``, not in
+       ``config.json``, so it can also be downloaded and uploaded from the File
+       Storage page. The status
        table below the form reports where the connection stands and, when it
        stands still, exactly which step failed and what to do about it - the
        settings file is missing or unparseable, the token is empty or not of

@@ -13,16 +13,20 @@
 //
 //     please contact their authors for more information.
 //
-// @brief Web admin "Telegram" page: the bot's enable switch, the two settings
-// an operator has to be able to correct from a browser (the token and the
-// administrator's identifier), and a live diagnosis of where the connection to
+// @brief Web admin "Telegram" page: the bot's enable switch, the settings an
+// operator has to be able to correct from a browser (the token, the
+// administrator's identifier, the Mini App address, the authorized users and
+// the allowed group chats), and a live diagnosis of where the connection to
 // api.telegram.org currently stands.
 //
 // Everything on this page is stored in /storage/telegram.json, not in
-// config.json, so the whole bot configuration is one file that can be
-// downloaded, edited and uploaded again from the File Storage page. The parts
-// this page does not render - the Mini App address and the user/chat lists -
-// are loaded into the same structure before a save and written back untouched.
+// config.json, so the whole bot configuration is one file that can also be
+// downloaded, edited and uploaded again from the File Storage page. The
+// authorized users and allowed group chats are fixed-size tables
+// (TELEGRAM_APP_USERS_MAX / TELEGRAM_APP_CHATS_MAX entries), each rendered as
+// one accordion card; a card whose identifier is left at 0 is an empty slot
+// and is dropped from the table on save, the same way a hand-edited file
+// omits it.
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -55,6 +59,42 @@ static void tg_row(httpd_req_t *req, const char *label, const char *key) {
     char row[240];
     snprintf(row, sizeof(row), "<tr><td>%s</td><td id='tg_%s'>-</td></tr>", label, key);
     httpd_resp_sendstr_chunk(req, row);
+}
+
+// Renders one accordion card of the authorized-users or allowed-chats table:
+// an identifier field and a display-name field, under field names built from
+// id_prefix plus the slot index (e.g. "tgUId3"/"tgUName3"). peer is NULL for
+// a slot past the stored entry count, which renders as an empty card - the
+// same shape a slot cleared by the operator ends up in after a save.
+//
+// Shares the .achan accordion styling and the accordionClick() helper with
+// the Bulletins and Objects/Items pages; id_prefix doubles as the
+// accordionClick() DOM-id prefix, so the users and chats tables toggle
+// independently of each other and of any other accordion on the page.
+static void tg_render_peer(httpd_req_t *req, const char *id_prefix, int index, int count, const char *legend_fmt, const telegram_app_peer_t *peer) {
+    char legend[32];
+    snprintf(legend, sizeof(legend), legend_fmt, index + 1);
+
+    char head[256];
+    snprintf(head, sizeof(head),
+             "<div class='achan%s' id='%s%d'>"
+             "<div class='achan-head' onclick='accordionClick(\"%s\",%d,%d)'>"
+             "<span class='achan-name'>%s</span>"
+             "<span class='achan-caret'>&#9654;</span>"
+             "</div><div class='achan-body'>",
+             (index == 0) ? " open" : "", id_prefix, index, id_prefix, index, count, legend);
+    httpd_resp_sendstr_chunk(req, head);
+
+    char idbuf[24];
+    snprintf(idbuf, sizeof(idbuf), "%lld", (long long)(peer ? peer->id : 0));
+    char name[24];
+    snprintf(name, sizeof(name), "%sId%d", id_prefix, index + 1);
+    web_field_text(req, TR_TG_F_PEER_ID, name, idbuf, 20);
+
+    snprintf(name, sizeof(name), "%sName%d", id_prefix, index + 1);
+    web_field_text(req, TR_TG_F_PEER_NAME, name, peer ? peer->name : "", TELEGRAM_APP_NAME_MAX);
+
+    httpd_resp_sendstr_chunk(req, "</div></div>");
 }
 
 // Translated one-word rendering of the coarse state.
@@ -233,6 +273,53 @@ esp_err_t page_telegram_get(httpd_req_t *req) {
     web_raw(req, "<p style='color:var(--sub);font-size:12px;margin:4px 0'>" TR_TG_NOTE_ADMIN "</p>");
     web_fieldset_close(req);
 
+    // MINI APP --------------------------------------------------------------
+    web_fieldset_open(req, TR_TG_FS_MINIAPP);
+    {
+        char esc[sizeof(cfg.web_app_url) * 6 + 1];
+        web_html_attr_escape(cfg.web_app_url, esc, sizeof(esc));
+        char buf[sizeof(esc) + 200];
+        snprintf(buf, sizeof(buf), "<label>%s</label><input type='text' name='tgUrl' value='%s' maxlength='%d'>", TR_TG_MINIAPP_URL, esc,
+                 (int)(sizeof(cfg.web_app_url) - 1));
+        web_raw(req, buf);
+    }
+    web_raw(req, "<p style='color:var(--sub);font-size:12px;margin:4px 0'>" TR_TG_NOTE_MINIAPP "</p>");
+    web_fieldset_close(req);
+
+    // AUTHORIZED USERS ------------------------------------------------------
+    web_fieldset_open(req, TR_TG_FS_USERS);
+    web_raw(req, "<p style='color:var(--sub);font-size:12px;margin:4px 0'>" TR_TG_NOTE_USERS "</p>");
+    httpd_resp_sendstr_chunk(req, "<div id='tgUWrap'>");
+    for (int i = 0; i < TELEGRAM_APP_USERS_MAX; i++)
+        tg_render_peer(req, "tgU", i, TELEGRAM_APP_USERS_MAX, TR_TG_F_USER_FMT, (i < cfg.user_count) ? &cfg.users[i] : NULL);
+    httpd_resp_sendstr_chunk(req, "</div>");
+    web_fieldset_close(req);
+
+    // ALLOWED GROUP CHATS ---------------------------------------------------
+    web_fieldset_open(req, TR_TG_FS_CHATS);
+    web_raw(req, "<p style='color:var(--sub);font-size:12px;margin:4px 0'>" TR_TG_NOTE_CHATS "</p>");
+    httpd_resp_sendstr_chunk(req, "<div id='tgCWrap'>");
+    for (int i = 0; i < TELEGRAM_APP_CHATS_MAX; i++)
+        tg_render_peer(req, "tgC", i, TELEGRAM_APP_CHATS_MAX, TR_TG_F_CHAT_FMT, (i < cfg.chat_count) ? &cfg.chats[i] : NULL);
+    httpd_resp_sendstr_chunk(req, "</div>");
+    web_fieldset_close(req);
+
+    // Generic single-open accordion helper, shared verbatim with the
+    // Bulletins and Objects/Items pages: closes every card of the given
+    // id-prefix except the one just clicked (toggling it), so at most one
+    // card of the users table and at most one card of the chats table are
+    // expanded at a time, independently of each other.
+    httpd_resp_sendstr_chunk(req, "<script>"
+                                  "function accordionClick(p,i,n){"
+                                  "for(var k=0;k<n;k++){"
+                                  "var c=document.getElementById(p+k);"
+                                  "if(!c)continue;"
+                                  "if(k===i)c.classList.toggle('open');"
+                                  "else c.classList.remove('open');"
+                                  "}"
+                                  "}"
+                                  "</script>");
+
     httpd_resp_sendstr_chunk(req, "<button type='submit'>" TR_BTN_SAVE "</button></form>");
 
     // STATUS --------------------------------------------------------------
@@ -255,11 +342,10 @@ esp_err_t page_telegram_get(httpd_req_t *req) {
     web_raw(req, "<p style='color:var(--sub);font-size:12px;margin:4px 0'>" TR_TG_NOTE_STATUS "</p>");
     web_fieldset_close(req);
 
-    // The parts of the file this page does not edit are named here rather
-    // than rendered as fields: the Mini App address and the user and chat
-    // lists are edited by uploading the file, and an operator looking for
-    // them needs to be told where they are instead of concluding they are
-    // unsupported.
+    // Named here so an operator who prefers to hand-edit the whole
+    // configuration at once knows where it lives: everything on this page is
+    // one file that can also be downloaded, edited and uploaded again from
+    // the File Storage page.
     {
         char note[400];
         snprintf(note, sizeof(note), "<p style='color:var(--sub);font-size:12px;margin:4px 0'>%s <code>%s</code></p>", TR_TG_NOTE_FILE, TELEGRAM_APP_PATH);
@@ -307,19 +393,59 @@ esp_err_t page_telegram_get(httpd_req_t *req) {
     return ESP_OK;
 }
 
+// Reads one accordion card of the authorized-users or allowed-chats table
+// back out of the POST body, mirroring tg_render_peer()'s field names. An
+// identifier field left empty, or holding anything that is not a number,
+// reads as 0, which the caller treats as an empty slot - the same value
+// load_peers() in telegram_app.c drops rather than storing.
+static int64_t tg_parse_peer_id(const char *body, const char *id_prefix, int index) {
+    char name[24];
+    snprintf(name, sizeof(name), "%sId%d", id_prefix, index + 1);
+    char idbuf[24];
+    if (!web_form_get(body, name, idbuf, sizeof(idbuf)))
+        return 0;
+    return (int64_t)strtoll(idbuf, NULL, 10);
+}
+
+// Reads the whole authorized-users or allowed-chats table back into out,
+// compacting the result: a slot whose identifier field was left at 0 is
+// skipped rather than stored as a zero-identifier entry, so clearing a card
+// in the middle of the table removes that entry instead of leaving a hole
+// telegram_service would otherwise have to special-case.
+static uint8_t tg_parse_peer_table(const char *body, const char *id_prefix, int count, telegram_app_peer_t *out) {
+    uint8_t used = 0;
+    for (int i = 0; i < count; i++) {
+        int64_t id = tg_parse_peer_id(body, id_prefix, i);
+        if (id == 0)
+            continue;
+        char name[24];
+        snprintf(name, sizeof(name), "%sName%d", id_prefix, i + 1);
+        out[used].id = id;
+        web_form_get(body, name, out[used].name, sizeof(out[used].name));
+        used++;
+    }
+    return used;
+}
+
 esp_err_t page_telegram_post(httpd_req_t *req) {
     if (!web_check_auth(req))
         return ESP_OK;
 
-    char body[512];
-    if (web_read_body(req, body, sizeof(body)) < 0) {
+    char *body = malloc(WEBCONFIG_POST_BUF_TELEGRAM);
+    if (!body) {
+        httpd_resp_send_500(req);
+        return ESP_OK;
+    }
+    if (web_read_body(req, body, WEBCONFIG_POST_BUF_TELEGRAM) < 0) {
+        free(body);
         httpd_resp_send_500(req);
         return ESP_OK;
     }
 
-    // Loaded first so the members this page does not render - the Mini App
-    // address and the user and chat lists - are carried through the save
-    // instead of being erased by a form that never knew about them.
+    // Loaded first so a field this save omits - which does not happen today,
+    // since this page now renders every member of the file, but would for a
+    // form submitted with a stale field set - is carried through rather than
+    // erased.
     telegram_app_config_t cfg;
     telegram_app_load(&cfg);
 
@@ -337,6 +463,13 @@ esp_err_t page_telegram_post(httpd_req_t *req) {
         else
             cfg.admin_id = 0;
     }
+
+    web_form_get(body, "tgUrl", cfg.web_app_url, sizeof(cfg.web_app_url));
+
+    cfg.user_count = tg_parse_peer_table(body, "tgU", TELEGRAM_APP_USERS_MAX, cfg.users);
+    cfg.chat_count = tg_parse_peer_table(body, "tgC", TELEGRAM_APP_CHATS_MAX, cfg.chats);
+
+    free(body);
 
     bool ok = telegram_app_save(&cfg);
     if (!ok)
