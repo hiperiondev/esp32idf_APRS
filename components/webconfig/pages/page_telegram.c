@@ -270,6 +270,14 @@ esp_err_t page_telegram_get(httpd_req_t *req) {
         snprintf(idbuf, sizeof(idbuf), "%lld", (long long)cfg.admin_id);
         web_field_text(req, TR_TG_ADMIN_ID, "tgAdmin", idbuf, 20);
     }
+    // Shown only while it applies, and only for the state an operator can act
+    // on from this very fieldset. A bot with a token but no administrator is
+    // a running service that answers nobody, which from the Telegram client
+    // looks the same as a bot that is off or unreachable; saying so here is
+    // what turns that silence into one field left to fill in.
+    if (cfg.enable && cfg.admin_id == 0) {
+        web_raw(req, "<p style='background:#fef3c7;color:#92400e;font-size:12px;margin:8px 0;padding:8px 10px;border-radius:6px'>" TR_TG_WARN_NO_ADMIN "</p>");
+    }
     web_raw(req, "<p style='color:var(--sub);font-size:12px;margin:4px 0'>" TR_TG_NOTE_ADMIN "</p>");
     web_fieldset_close(req);
 

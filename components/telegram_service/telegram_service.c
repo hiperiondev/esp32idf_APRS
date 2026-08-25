@@ -308,18 +308,6 @@ static telegram_user_entry_t *telegram_find_user(int64_t user_id) {
     return NULL;
 }
 
-// Reports whether the authorization list is empty and no administrator was
-// configured, which is the bring-up situation where every sender is let
-// through so the operator can discover their own identifier.
-static bool telegram_access_list_empty(void) {
-    for (size_t i = 0; i < TELEGRAM_MAX_USERS; i++) {
-        if (s_users[i].used) {
-            return false;
-        }
-    }
-    return true;
-}
-
 esp_err_t telegram_add_user(int64_t user_id, const char *name, bool is_admin) {
     if (user_id == 0) {
         return ESP_ERR_INVALID_ARG;
@@ -376,13 +364,21 @@ bool telegram_is_authorized(int64_t user_id) {
     if (!s_initialized) {
         return false;
     }
+    // ::telegram_service_config_t::open_access is the only thing that opens
+    // the bot to an unlisted sender, and it has to be asked for. An empty
+    // authorization list is not a second, implicit way in: a device whose
+    // token was configured before its administrator - a cloned image, a
+    // configuration template shipped without per-unit editing - answers
+    // nobody until an identifier is entered. Discovery does not depend on
+    // being let in, because a rejected private command is answered with the
+    // sender's own identifier.
     if (s_config.open_access) {
         return true;
     }
     if (!telegram_lock()) {
         return false;
     }
-    bool allowed = telegram_access_list_empty() || (telegram_find_user(user_id) != NULL);
+    bool allowed = (telegram_find_user(user_id) != NULL);
     telegram_unlock();
     return allowed;
 }
@@ -2458,11 +2454,14 @@ static bool telegram_authorize_update(telegram_update_t *update) {
             telegram_unlock();
         }
         // Answering a private request with the identifier of the sender is
-        // what lets an operator authorize themselves from the device side.
+        // what lets an operator authorize themselves from the device side,
+        // and it is the whole bring-up path: the list starts empty and
+        // closed, so the first command an operator sends comes back with the
+        // number they have to enter in the device's Telegram settings.
         if (!update->is_group && update->type == TELEGRAM_UPDATE_COMMAND) {
             telegram_send_message_fmt(update->chat_id_str,
-                                      "This device is restricted. Ask an administrator to authorize "
-                                      "the user id %" PRId64 ".",
+                                      "This device is restricted. Your Telegram user id is %" PRId64
+                                      ". An administrator has to authorize it in the device settings.",
                                       update->user_id);
         }
         return false;
@@ -2807,6 +2806,15 @@ void telegram_task(void *arg) {
 esp_err_t telegram_start(void) {
     if (!s_initialized || s_running) {
         return ESP_ERR_INVALID_STATE;
+    }
+
+    // Polling with an empty list is a working configuration, not a fault: the
+    // bot turns everyone away and reports each sender their own identifier,
+    // which is how an operator learns the number to enter. It is still worth
+    // one line in the log, because from the outside it is indistinguishable
+    // from a bot that answers nobody for a reason nearer the network.
+    if (!s_config.open_access && telegram_user_count() == 0) {
+        ESP_LOGW(TAG, "No user authorized: every sender will be turned away until an identifier is configured");
     }
 
     // The running flag is raised before the task exists, so a stop or a

@@ -1724,8 +1724,13 @@
 #define TR_TG_ADMIN_ID "ID del administrador"
 /** Explanatory note shown under the credentials, rendered on the Telegram page. */
 #define TR_TG_NOTE_ADMIN                                                                                                                                       \
-    "El token lo emite @BotFather. El identificador del administrador es un numero, no un nombre de usuario: envie /start al bot y lealo del log, o "          \
-    "pidaselo a un bot de informacion de usuario. Dejelo en 0 para no agregar ningun administrador aqui."
+    "El token lo emite @BotFather. El identificador del administrador es un numero, no un nombre de usuario: envie cualquier comando al bot desde su propia "  \
+    "cuenta y el bot responde con ese numero, que ademas queda escrito en el log. Dejelo en 0 para no agregar ningun administrador aqui."
+/** Warning shown under the credentials when the bot is enabled with no administrator identifier, rendered on the Telegram page. */
+#define TR_TG_WARN_NO_ADMIN                                                                                                                                    \
+    "El bot esta habilitado pero no hay identificador de administrador configurado. Nadie tiene permisos de administrador y, salvo que haya un usuario "       \
+    "autorizado en la lista de abajo, el bot rechaza a todos los remitentes. Envie cualquier comando al bot desde su propia cuenta: el rechazo que responde "  \
+    "incluye su identificador numerico, que es lo que va en el campo de arriba."
 /** Fieldset legend for the Mini App block, rendered on the Telegram page. */
 #define TR_TG_FS_MINIAPP "Mini App"
 /** Label of the Mini App address field, rendered on the Telegram page. */
@@ -1737,8 +1742,9 @@
 #define TR_TG_FS_USERS "Usuarios autorizados"
 /** Explanatory note shown above the authorized-users table, rendered on the Telegram page. */
 #define TR_TG_NOTE_USERS                                                                                                                                       \
-    "Hasta 8 usuarios, ademas del administrador, que pueden hablar con el bot como ellos mismos en lugar de ser rechazados por no estar autorizados. Envie "   \
-    "/whoami al bot desde la cuenta en cuestion para obtener el identificador que debe ingresar aqui. Un identificador vacio deja la ranura sin usar."
+    "Hasta 8 usuarios, ademas del administrador, que pueden hablar con el bot como ellos mismos en lugar de ser rechazados por no estar autorizados. El bot "  \
+    "responde a un comando de una cuenta que no conoce con el identificador de esa cuenta, que es el numero a ingresar aqui; una cuenta ya autorizada lo "     \
+    "obtiene con /whoami. Un identificador vacio deja la ranura sin usar."
 /** Fieldset legend for the allowed-group-chats block, rendered on the Telegram page. */
 #define TR_TG_FS_CHATS "Chats de grupo permitidos"
 /** Explanatory note shown above the allowed-group-chats table, rendered on the Telegram page. */
@@ -1780,8 +1786,7 @@
     "Se refresca cada dos segundos. Los contadores se reinician cada vez que arranca el servicio. La fila de detalle lleva una ruta de archivo, un nombre de " \
     "error de ESP-IDF o el texto que devolvio Telegram, y se muestra sin traducir a proposito."
 /** Note naming the file the whole configuration lives in, rendered on the Telegram page. */
-#define TR_TG_NOTE_FILE                                                                                                                                        \
-    "Todo lo anterior se guarda en este archivo, que tambien se puede descargar, editar y volver a subir desde la pagina Almacenamiento:"
+#define TR_TG_NOTE_FILE "Todo lo anterior se guarda en este archivo, que tambien se puede descargar, editar y volver a subir desde la pagina Almacenamiento:"
 /** Coarse state shown while the bot is switched off, rendered on the Telegram page. */
 #define TR_TG_STATE_DISABLED "Deshabilitado"
 /** Coarse state shown while bring-up is in progress, rendered on the Telegram page. */

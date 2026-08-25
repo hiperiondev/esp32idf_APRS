@@ -1627,21 +1627,26 @@
 #define TR_TG_ADMIN_ID "Administrator ID"
 /** Explanatory note shown under the credentials, rendered on the Telegram page. */
 #define TR_TG_NOTE_ADMIN                                                                                                                                       \
-    "The token is issued by @BotFather. The administrator identifier is a number, not a user name; send /start to the bot and read it from the log, or ask a " \
-    "user-info bot for it. Leave it at 0 to add no administrator here."
+    "The token is issued by @BotFather. The administrator identifier is a number, not a user name; send any command to the bot from your own account and it "  \
+    "answers with that number, which is also written to the log. Leave it at 0 to add no administrator here."
+/** Warning shown under the credentials when the bot is enabled with no administrator identifier, rendered on the Telegram page. */
+#define TR_TG_WARN_NO_ADMIN                                                                                                                                    \
+    "The bot is enabled but no administrator identifier is set. Nobody holds administrator rights, and unless an authorized user is listed below the bot "     \
+    "turns every sender away. Send it any command from your own account: the refusal it answers with carries your numeric identifier, which is what goes in "  \
+    "the field above."
 /** Fieldset legend for the Mini App block, rendered on the Telegram page. */
 #define TR_TG_FS_MINIAPP "Mini App"
 /** Label of the Mini App address field, rendered on the Telegram page. */
 #define TR_TG_MINIAPP_URL "Mini App Address"
 /** Explanatory note shown under the Mini App address, rendered on the Telegram page. */
-#define TR_TG_NOTE_MINIAPP                                                                                                                                     \
-    "The HTTPS address of a Telegram Mini App the bot's menu button opens. Leave it empty to run the bot with no Mini App button."
+#define TR_TG_NOTE_MINIAPP "The HTTPS address of a Telegram Mini App the bot's menu button opens. Leave it empty to run the bot with no Mini App button."
 /** Fieldset legend for the authorized-users block, rendered on the Telegram page. */
 #define TR_TG_FS_USERS "Authorized Users"
 /** Explanatory note shown above the authorized-users table, rendered on the Telegram page. */
 #define TR_TG_NOTE_USERS                                                                                                                                       \
-    "Up to 8 users, in addition to the administrator, who may talk to the bot as themselves rather than being turned away as unauthorized. Send /whoami to "  \
-    "the bot from the account in question to read off the identifier to enter here. An empty identifier leaves the slot unused."
+    "Up to 8 users, in addition to the administrator, who may talk to the bot as themselves rather than being turned away as unauthorized. The bot answers a " \
+    "command from an account it does not know with that account's identifier, which is the number to enter here; an already authorized account reads it "      \
+    "with /whoami. An empty identifier leaves the slot unused."
 /** Fieldset legend for the allowed-group-chats block, rendered on the Telegram page. */
 #define TR_TG_FS_CHATS "Allowed Group Chats"
 /** Explanatory note shown above the allowed-group-chats table, rendered on the Telegram page. */
@@ -1683,8 +1688,7 @@
     "Refreshed every two seconds. The counters are reset each time the service starts. The detail row carries a file path, an ESP-IDF error name or the "      \
     "wording Telegram itself returned, and is shown untranslated on purpose."
 /** Note naming the file the whole configuration lives in, rendered on the Telegram page. */
-#define TR_TG_NOTE_FILE                                                                                                                                        \
-    "Everything above is stored in this file, which can also be downloaded, edited and uploaded again from the File Storage page:"
+#define TR_TG_NOTE_FILE "Everything above is stored in this file, which can also be downloaded, edited and uploaded again from the File Storage page:"
 /** Coarse state shown while the bot is switched off, rendered on the Telegram page. */
 #define TR_TG_STATE_DISABLED "Disabled"
 /** Coarse state shown while bring-up is in progress, rendered on the Telegram page. */

@@ -1725,8 +1725,13 @@
 #define TR_TG_ADMIN_ID "ID dell'amministratore"
 /** Explanatory note shown under the credentials, rendered on the Telegram page. */
 #define TR_TG_NOTE_ADMIN                                                                                                                                       \
-    "Il token viene emesso da @BotFather. L'identificativo dell'amministratore e un numero, non un nome utente: invia /start al bot e leggilo dal log, "       \
-    "oppure chiedilo a un bot di informazioni utente. Lascialo a 0 per non aggiungere qui alcun amministratore."
+    "Il token viene emesso da @BotFather. L'identificativo dell'amministratore e un numero, non un nome utente: invia un comando qualsiasi al bot dal tuo "    \
+    "account e il bot risponde con quel numero, che viene scritto anche nel log. Lascialo a 0 per non aggiungere qui alcun amministratore."
+/** Warning shown under the credentials when the bot is enabled with no administrator identifier, rendered on the Telegram page. */
+#define TR_TG_WARN_NO_ADMIN                                                                                                                                    \
+    "Il bot e abilitato ma non e configurato alcun identificativo dell'amministratore. Nessuno ha i permessi di amministratore e, a meno che nell'elenco "     \
+    "sottostante non ci sia un utente autorizzato, il bot respinge tutti i mittenti. Invia al bot un comando qualsiasi dal tuo account: il rifiuto che "       \
+    "risponde contiene il tuo identificativo numerico, che e quello da inserire nel campo qui sopra."
 /** Fieldset legend for the Mini App block, rendered on the Telegram page. */
 #define TR_TG_FS_MINIAPP "Mini App"
 /** Label of the Mini App address field, rendered on the Telegram page. */
@@ -1738,13 +1743,14 @@
 #define TR_TG_FS_USERS "Utenti autorizzati"
 /** Explanatory note shown above the authorized-users table, rendered on the Telegram page. */
 #define TR_TG_NOTE_USERS                                                                                                                                       \
-    "Fino a 8 utenti, oltre all'amministratore, che possono parlare con il bot come se stessi invece di essere respinti come non autorizzati. Invia /whoami "  \
-    "al bot dall'account in questione per leggere l'identificativo da inserire qui. Un identificativo vuoto lascia lo slot inutilizzato."
+    "Fino a 8 utenti, oltre all'amministratore, che possono parlare con il bot come se stessi invece di essere respinti come non autorizzati. A un comando "   \
+    "di un account che non conosce il bot risponde con l'identificativo di quell'account, che e il numero da inserire qui; un account gia autorizzato lo "     \
+    "legge con /whoami. Un identificativo vuoto lascia lo slot inutilizzato."
 /** Fieldset legend for the allowed-group-chats block, rendered on the Telegram page. */
 #define TR_TG_FS_CHATS "Chat di gruppo consentite"
 /** Explanatory note shown above the allowed-group-chats table, rendered on the Telegram page. */
 #define TR_TG_NOTE_CHATS                                                                                                                                       \
-    "Fino a 4 chat di gruppo in cui il bot puo rispondere. L'identificativo di un supergruppo e un numero negativo grande; invia /whoami al bot dall'interno "  \
+    "Fino a 4 chat di gruppo in cui il bot puo rispondere. L'identificativo di un supergruppo e un numero negativo grande; invia /whoami al bot dall'interno " \
     "del gruppo per leggerlo. Un identificativo vuoto lascia lo slot inutilizzato."
 /** Legend format ("User %d") for one authorized-user accordion card, rendered on the Telegram page. */
 #define TR_TG_F_USER_FMT "Utente %d"
@@ -1781,8 +1787,7 @@
     "Aggiornato ogni due secondi. I contatori si azzerano a ogni avvio del servizio. La riga di dettaglio riporta un percorso di file, un nome di errore di "  \
     "ESP-IDF o il testo restituito da Telegram, ed e mostrata non tradotta di proposito."
 /** Note naming the file the whole configuration lives in, rendered on the Telegram page. */
-#define TR_TG_NOTE_FILE                                                                                                                                        \
-    "Tutto quanto sopra e memorizzato in questo file, che puo anche essere scaricato, modificato e ricaricato dalla pagina Archivio file:"
+#define TR_TG_NOTE_FILE "Tutto quanto sopra e memorizzato in questo file, che puo anche essere scaricato, modificato e ricaricato dalla pagina Archivio file:"
 /** Coarse state shown while the bot is switched off, rendered on the Telegram page. */
 #define TR_TG_STATE_DISABLED "Disabilitato"
 /** Coarse state shown while bring-up is in progress, rendered on the Telegram page. */

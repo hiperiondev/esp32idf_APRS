@@ -198,6 +198,33 @@ ad ``admin_id`` o a uno degli utenti autorizzati aggiunti con il flag admin;
 il tentativo di chiunque altro viene contato come un aggiornamento rifiutato
 anziché ricevere risposta.
 
+Chi può parlare con il bot
+===========================
+
+L'autorizzazione è un elenco, e l'elenco è chiuso. Un mittente viene accettato
+solo quando il suo identificativo vi compare — inizializzato da ``admin_id``
+in ``telegram_init()`` ed esteso con gli utenti autorizzati di
+``telegram.json`` — oppure quando il servizio gira in modalità ad accesso
+aperto, che questo firmware non abilita mai. Un elenco vuoto non è
+un'eccezione a quella regola: respinge tutti.
+
+Questo conta per una stazione il cui token viene configurato prima del suo
+amministratore, che è il caso normale di un'immagine clonata o di un
+``telegram.json`` scritto una volta e copiato su più dispositivi. Un elenco
+che si aprisse da solo finché è vuoto lascerebbe quel dispositivo a
+rispondere al primo sconosciuto che trova il bot, per tutto il tempo in cui
+il campo dell'identificativo resta a 0.
+
+Chiudere l'elenco non rende più difficile scoprire il primo identificativo,
+perché scoprirlo non è mai dipeso dall'essere ammessi. Un comando privato di
+un mittente non elencato viene rifiutato con una risposta che riporta
+l'identificativo numerico di quello stesso mittente, e lo stesso numero viene
+scritto nel log; inserirlo come identificativo dell'amministratore nella
+pagina *Telegram* è tutta la messa in servizio. Finché nessuno è autorizzato,
+la pagina lo segnala sotto le credenziali e il servizio lo annota una volta
+nel log quando inizia a interrogare, così un bot che non risponde a nessuno
+non viene mai scambiato per un bot che non riesce a connettersi.
+
 La pagina Telegram
 =====================
 
@@ -215,9 +242,11 @@ Le tabelle degli utenti autorizzati e delle chat di gruppo consentite hanno
 dimensione fissa — fino a 8 utenti e 4 chat di gruppo, secondo
 ``TELEGRAM_APP_USERS_MAX`` e ``TELEGRAM_APP_CHATS_MAX`` — e ogni voce è
 mostrata come una scheda a comparsa con un campo identificativo e un campo
-nome visualizzato. Inviare ``/whoami`` al bot dall'account o dal gruppo in
-questione è il modo più rapido per leggere l'identificativo da inserire;
-lasciare vuoto (o a 0) l'identificativo di una scheda lascia quello slot
+nome visualizzato. Un account già presente nell'elenco legge il proprio
+identificativo con ``/whoami``; uno che non c'è riceve lo stesso numero nel
+rifiuto con cui il bot risponde a qualsiasi comando, e l'identificativo di un
+gruppo si legge inviando ``/whoami`` dentro il gruppo. Lasciare vuoto (o a 0)
+l'identificativo di una scheda lascia quello slot
 inutilizzato, e un salvataggio compatta la tabella così uno slot svuotato in
 mezzo non lascia un vuoto.
 

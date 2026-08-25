@@ -186,6 +186,31 @@ of its own on top of it.
 the authorized users added with a non-default admin flag; anyone else's
 attempt is counted as a rejected update rather than answered.
 
+Who may talk to the bot
+========================
+
+Authorization is a list, and the list is closed. A sender is accepted only
+when the identifier is on it — seeded from ``admin_id`` by ``telegram_init()``
+and extended with the authorized users from ``telegram.json`` — or when the
+service was built to run in open-access mode, which this firmware never
+enables. An empty list is not an exception to that rule: it denies everyone.
+
+That matters for a station whose token is configured before its
+administrator is, which is the normal case for a cloned image or a
+``telegram.json`` written once and copied to several devices. A list that
+opened itself while it was empty would leave such a device answering the
+first stranger who found the bot, for as long as the identifier field stayed
+at 0.
+
+Closing the list does not make the first identifier harder to find, because
+discovery never depended on being let in. A private command from an
+unlisted sender is refused with a reply naming that sender's own numeric
+identifier, and the same number is written to the log; entering it as the
+administrator identifier on the *Telegram* page is the whole bring-up. While
+nobody is authorized, the page says so under the credentials and the service
+notes it once in the log when polling starts, so a bot that answers nobody
+is never mistaken for a bot that cannot connect.
+
 The Telegram page
 ==================
 
@@ -201,9 +226,11 @@ uptime, and its counters.
 The authorized-user and allowed-group-chat tables are fixed-size — up to 8
 users and 4 group chats, matching ``TELEGRAM_APP_USERS_MAX`` and
 ``TELEGRAM_APP_CHATS_MAX`` — and each entry is rendered as a collapsible card
-with an identifier field and a display-name field. Sending ``/whoami`` to the
-bot from the account or group in question is the quickest way to read off
-the identifier to enter; leaving a card's identifier empty (or at 0) leaves
+with an identifier field and a display-name field. An account already on the
+list reads its own identifier with ``/whoami``; one that is not gets the same
+number back in the refusal the bot answers any command with, and a group's
+identifier comes from ``/whoami`` sent inside the group. Leaving a card's
+identifier empty (or at 0) leaves
 that slot unused, and a save compacts the table so a cleared slot in the
 middle does not leave a gap behind.
 

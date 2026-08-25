@@ -383,7 +383,7 @@ typedef struct {
     const char *bot_token;            /**< Token issued by @BotFather. Required. */
     const char *device_name;          /**< Name used in greetings, status reports and alerts. */
     int64_t admin_id;                 /**< Identifier of the first administrator, or 0 to add none here. */
-    bool open_access;                 /**< True to accept every sender. Intended for bring-up only; the authorization list is ignored while it is set. */
+    bool open_access;                 /**< True to accept every sender. Bring-up only; the only way in for a sender the list does not name. */
     bool register_builtin_commands;   /**< True to register the built-in command set at initialization. */
     bool publish_commands;            /**< True to push the command list to Telegram when the service starts, so clients show it in the command menu. */
     bool announce_start;              /**< True to send a start-up notice to the administrators. */
@@ -545,9 +545,16 @@ esp_err_t telegram_remove_user(int64_t user_id);
 /**
  * @brief Report whether a user may interact with the bot.
  *
- * A user is authorized when the service runs in open access mode, when the
- * authorization list is empty and no administrator was configured, or when
- * the identifier is present in the list.
+ * A user is authorized when the identifier is present in the authorization
+ * list, or when the service runs in open access mode
+ * (::telegram_service_config_t::open_access).
+ *
+ * An empty authorization list denies everyone. Opening the bot to unlisted
+ * senders is never implicit: it takes the flag above, so a device that has a
+ * token but no administrator yet answers nobody instead of answering anyone.
+ * The operator still learns their own identifier without being let in,
+ * because a private command from an unlisted sender is refused with a reply
+ * that carries that sender's identifier.
  *
  * @param[in] user_id Numeric Telegram identifier of the user.
  *

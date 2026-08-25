@@ -200,6 +200,33 @@ ni parámetros remotos propios por encima de él.
 administrador; el intento de cualquier otro se cuenta como una actualización
 rechazada en lugar de responderse.
 
+Quién puede hablar con el bot
+==============================
+
+La autorización es una lista, y la lista está cerrada. Un remitente se acepta
+solo cuando su identificador está en ella —sembrada desde ``admin_id`` por
+``telegram_init()`` y ampliada con los usuarios autorizados de
+``telegram.json``— o cuando el servicio corre en modo de acceso abierto, que
+este firmware nunca habilita. Una lista vacía no es una excepción a esa
+regla: rechaza a todos.
+
+Eso importa en una estación cuyo token se configura antes que su
+administrador, que es el caso normal de una imagen clonada o de un
+``telegram.json`` escrito una vez y copiado a varios equipos. Una lista que
+se abriera sola mientras está vacía dejaría a ese equipo respondiendo al
+primer desconocido que encuentre el bot, durante todo el tiempo que el campo
+del identificador siga en 0.
+
+Cerrar la lista no hace más difícil averiguar el primer identificador, porque
+averiguarlo nunca dependió de estar dentro. Un comando privado de un
+remitente no listado se rechaza con una respuesta que nombra el identificador
+numérico de ese mismo remitente, y ese número también queda escrito en el
+log; ingresarlo como identificador del administrador en la página *Telegram*
+es toda la puesta en marcha. Mientras no haya nadie autorizado, la página lo
+advierte debajo de las credenciales y el servicio lo anota una vez en el log
+al empezar a consultar, de modo que un bot que no responde a nadie nunca se
+confunde con un bot que no logra conectarse.
+
 La página Telegram
 ====================
 
@@ -217,8 +244,10 @@ Las tablas de usuarios autorizados y chats de grupo permitidos tienen tamaño
 fijo — hasta 8 usuarios y 4 chats de grupo, según ``TELEGRAM_APP_USERS_MAX``
 y ``TELEGRAM_APP_CHATS_MAX`` — y cada entrada se muestra como una tarjeta
 plegable con un campo de identificador y un campo de nombre para mostrar.
-Enviar ``/whoami`` al bot desde la cuenta o el grupo en cuestión es la forma
-más rápida de obtener el identificador a introducir; dejar vacío (o en 0) el
+Una cuenta que ya está en la lista obtiene su propio identificador con
+``/whoami``; una que no lo está recibe el mismo número en el rechazo con que
+el bot responde a cualquier comando, y el identificador de un grupo se lee
+enviando ``/whoami`` dentro del grupo. Dejar vacío (o en 0) el
 identificador de una tarjeta deja esa ranura sin usar, y al guardar la tabla
 se compacta para que una ranura vaciada en medio no deje un hueco.
 
