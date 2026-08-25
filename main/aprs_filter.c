@@ -874,9 +874,12 @@ static bool decode_pos_compressed(const char *pos, float *lat, float *lon) {
 #define EXT_DF_LEN (EXT_SLOT_LEN + APRS_DF_EXT_TAIL_LEN)
 
 // Highest antenna height code accepted from a received PHG/DFS extension.
-// Height is 10 * 2^code feet, so this stands for 10485760 ft - far past any
-// real antenna, and low enough that the shift stays inside uint32_t.
-#define EXT_HEIGHT_CODE_MAX 20
+// The APRS code table defines codes 0-9, height being 10 * 2^code feet, so
+// this is the code for the tallest antenna the table can express (5120 ft);
+// the height digit itself is confirmed to be an ASCII digit before this
+// bound is applied, so the check below is a range assertion on the shift
+// amount rather than the sole gate against non-digit bytes.
+#define EXT_HEIGHT_CODE_MAX 9
 
 // Timestamps carry no year, and often no month or day either, so they are
 // resolved against the current clock. A stamp that lands further ahead than
@@ -924,7 +927,7 @@ static void decode_compressed_cs(const char *cs, aprs_rx_report_t *r) {
 // and "DFSshgd" extensions. Height is the APRS code table's 10 * 2^h feet,
 // gain is the dB value itself, and directivity is 0 (omni) through 8.
 static bool decode_hgd(const char *p, aprs_rx_report_t *r) {
-    if (p[0] < '0' || p[1] < '0' || p[1] > '9' || p[2] < '0' || p[2] > '8')
+    if (p[0] < '0' || p[0] > '9' || p[1] < '0' || p[1] > '9' || p[2] < '0' || p[2] > '8')
         return false;
 
     int h = p[0] - '0';
