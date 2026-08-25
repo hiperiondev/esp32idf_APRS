@@ -94,13 +94,21 @@ static SemaphoreHandle_t s_lock;
 
 // Shutdown handshake between whoever throws the switch and the reader task.
 // s_stop_request is raised by the requester and observed by the task at the
-// top of each pass; s_task_alive is lowered by the task as the last thing it
-// does, and is what tells the requester the port is free. Both are plain
-// volatile bools written by exactly one side each, which is all the
-// synchronisation a single word needs on this MCU.
+// top of each pass; once raised it is never retracted from outside the task,
+// so a requester that gives up on waiting cannot un-notice a request the task
+// already saw. s_task_alive is lowered by the task as the last thing it does,
+// and is what tells the requester the port is free. Both are plain volatile
+// bools written by exactly one side each, which is all the synchronisation a
+// single word needs on this MCU.
+//
+// There is no separate "running" flag: whether the receiver is up is read
+// straight off s_task_alive plus whether the UART port is currently
+// installed, so a task that dies (on request or otherwise) is immediately
+// visible to gps_apply_config() on its next call instead of leaving a stale
+// "enabled" state that only a reboot clears.
 static volatile bool s_stop_request;
 static volatile bool s_task_alive;
-static bool s_running;
+static bool s_port_installed;
 
 // The live receiver state. Everything outside this file reads it through
 // gps_snapshot(), which copies it whole under s_lock.
@@ -659,18 +667,24 @@ static void gps_bringup(void) {
         return;
     }
 
+    s_port_installed = true;
     s_task_alive = true;
     if (xTaskCreate(gpsTask, "gps", GPS_TASK_STACK_BYTES, NULL, GPS_TASK_PRIORITY, NULL) != pdPASS) {
         ESP_LOGE(TAG, "Could not create the GNSS reader task - receiver disabled");
         s_task_alive = false;
         uart_driver_delete((uart_port_t)GPS_UART_PORT);
+        s_port_installed = false;
         return;
     }
-
-    s_running = true;
 }
 
 // Asks the reader task to exit, waits for it, then releases the UART.
+// A timeout here does not retract s_stop_request: the task may already have
+// observed it and be on its way out, and un-asking now would leave that exit
+// racing a fresh bring-up. The request stays latched so a task that finishes
+// late still runs its own exit path and lowers s_task_alive, and the next
+// call in either direction re-reads the live s_task_alive/s_port_installed
+// state instead of trusting a flag that could have gone stale in the meantime.
 static void gps_teardown(void) {
     s_stop_request = true;
 
@@ -678,38 +692,54 @@ static void gps_teardown(void) {
         vTaskDelay(pdMS_TO_TICKS(GPS_STOP_POLL_MS));
 
     if (s_task_alive) {
-        // The task did not answer, so the port stays installed and the
-        // receiver stays nominally running: releasing the driver now would
-        // pull it out from under a task that is still reading it. The switch
-        // takes effect on the next restart instead.
-        ESP_LOGE(TAG, "GNSS reader did not stop within %d ms - leaving the port installed", (int)GPS_STOP_TIMEOUT_MS);
-        s_stop_request = false;
+        // The task did not answer within the timeout, so the port stays
+        // installed for now: releasing the driver here would pull it out
+        // from under a task that may still be reading it. s_stop_request
+        // stays set so that whenever the task does get to run again it takes
+        // the exit path and lowers s_task_alive on its own; the next
+        // gps_apply_config() call will see that and finish the teardown then,
+        // rather than believing the receiver is enabled because s_task_alive
+        // never got a chance to come down before someone asked.
+        ESP_LOGE(TAG, "GNSS reader did not stop within %d ms - will finish teardown once it does", (int)GPS_STOP_TIMEOUT_MS);
         return;
     }
 
     uart_driver_delete((uart_port_t)GPS_UART_PORT);
+    s_port_installed = false;
     s_stop_request = false;
-    s_running = false;
 }
 
 void gps_apply_config(void) {
     bool want = g_config.gps_en;
+    bool running = s_task_alive;
 
-    if (want && !s_running)
+    if (!running && s_port_installed) {
+        // The reader task has exited (on request, or otherwise) but the port
+        // is still installed - either a teardown that was still waiting on a
+        // slow task now has its answer, or the task died unexpectedly. Either
+        // way this is not a running receiver: finish releasing the port so
+        // the state below reflects reality instead of the stale "enabled and
+        // silent" condition this whole function exists to prevent.
+        uart_driver_delete((uart_port_t)GPS_UART_PORT);
+        s_port_installed = false;
+        s_stop_request = false;
+    }
+
+    if (want && !running)
         gps_bringup();
-    else if (!want && s_running)
+    else if (!want && running)
         gps_teardown();
 }
 
 bool gps_enabled(void) {
-    return s_running;
+    return s_task_alive;
 }
 
 bool gps_snapshot(gps_data_t *out) {
     if (out == NULL)
         return false;
 
-    if (!s_running || s_lock == NULL) {
+    if (!s_task_alive || s_lock == NULL) {
         memset(out, 0, sizeof(*out));
         out->mode = GPS_MODE_NOFIX;
         return false;
