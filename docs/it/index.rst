@@ -117,7 +117,7 @@ insieme di capitoli:
 
 * **Funzionalità** — ciò che la stazione *fa* dal punto di vista dell'operatore:
   gateway, digipeating, beacon, messaggistica, meteo, telemetria, bollettini,
-  oggetti e l'amministrazione web.
+  oggetti, il bot Telegram opzionale e l'amministrazione web.
 * **Capacità** — le *proprietà* del firmware trasversali alle funzioni: i
   profili del modem, il filtraggio, la localizzazione, l'archiviazione, OTA, la
   rete e il supporto hardware.
@@ -145,6 +145,7 @@ insieme di capitoli:
    functionality/weather
    functionality/telemetry
    functionality/bulletins-objects
+   functionality/telegram
    functionality/web-admin
 
 .. toctree::

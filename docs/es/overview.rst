@@ -128,7 +128,7 @@ Matriz de funciones
      - RF y/o INET
    * - Administración web (autenticación HTTP Basic)
      - ✅
-     - 19 páginas de la barra lateral + selector de símbolo, panel en vivo
+     - 20 páginas de la barra lateral + selector de símbolo, panel en vivo
    * - Registro de tráfico en vivo + tabla de últimos escuchados
      - ✅
      - long-poll JSON (``?since=<seq>``)

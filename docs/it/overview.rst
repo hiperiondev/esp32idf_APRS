@@ -128,7 +128,7 @@ Matrice delle funzionalità
      - RF e/o INET
    * - Amministrazione web (autenticazione HTTP Basic)
      - ✅
-     - 19 pagine nella barra laterale + selettore di simbolo, dashboard in
+     - 20 pagine nella barra laterale + selettore di simbolo, dashboard in
        tempo reale
    * - Log traffico in tempo reale + tabella last-heard
      - ✅

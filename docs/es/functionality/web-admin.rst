@@ -364,3 +364,9 @@ está registrada como ``HTTP_POST`` precisamente por este motivo; ninguna
 ruta ``GET`` registrada tiene efectos secundarios, así que esta
 comprobación nunca tiene que actuar sobre una navegación normal, un
 marcador o una URL escrita a mano.
+
+.. seealso::
+
+   :ref:`es-telegram` — el subsistema del bot de Telegram detrás de la página
+   *Telegram*: su propio archivo de configuración, su arranque supervisado y
+   su conjunto de comandos incorporados.

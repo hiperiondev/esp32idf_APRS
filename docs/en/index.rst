@@ -104,7 +104,7 @@ chapters:
 
 * **Functionalities** — what the station *does* as seen by an operator:
   gatewaying, digipeating, beacons, messaging, weather, telemetry, bulletins,
-  objects and the web admin.
+  objects, the optional Telegram bot and the web admin.
 * **Capabilities** — the *properties* of the firmware that cut across
   features: the modem profiles, filtering, localization, storage, OTA,
   networking and hardware support.
@@ -131,6 +131,7 @@ chapters:
    functionality/weather
    functionality/telemetry
    functionality/bulletins-objects
+   functionality/telegram
    functionality/web-admin
 
 .. toctree::

@@ -124,7 +124,7 @@ Feature matrix
      - RF and/or INET
    * - Web admin (HTTP Basic auth)
      - ✅
-     - 19 sidebar pages + symbol picker, live dashboard
+     - 20 sidebar pages + symbol picker, live dashboard
    * - Live traffic log + last-heard table
      - ✅
      - JSON long-poll (``?since=<seq>``)

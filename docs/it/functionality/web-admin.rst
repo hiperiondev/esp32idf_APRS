@@ -368,3 +368,9 @@ configurazione) è registrata come ``HTTP_POST`` esattamente per questo
 motivo; nessuna route ``GET`` registrata ha effetti collaterali, quindi
 questo controllo non deve mai intervenire su una normale navigazione, un
 segnalibro o un URL digitato a mano.
+
+.. seealso::
+
+   :ref:`it-telegram` — il sottosistema del bot Telegram dietro la pagina
+   *Telegram*: il proprio file di configurazione, l'avvio supervisionato e
+   il set di comandi integrati.

@@ -332,3 +332,9 @@ Every state-changing route (``/ota_update``, ``/format``, ``/upload``,
 registered ``HTTP_POST`` for exactly this reason; no registered ``GET`` route
 has a side effect, so this check never has to run against ordinary
 navigation, bookmarks, or a typed-in URL.
+
+.. seealso::
+
+   :ref:`en-telegram` — the Telegram bot subsystem behind the *Telegram* page:
+   its own configuration file, its supervised bring-up, and its built-in
+   command set.

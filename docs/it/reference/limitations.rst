@@ -751,7 +751,7 @@ Gestione stazione / Operatività
    * - UI di configurazione via web
      - ⚠️ (VP-Digi e alcuni progetti ESP32 ce l'hanno; la maggior parte dei client desktop usa GUI native)
      - ✅
-     - 19 pagine nella barra laterale + selettore di simbolo, autenticazione HTTP Basic, riapplicazione live della maggior parte delle impostazioni senza riavvio
+     - 20 pagine nella barra laterale + selettore di simbolo, autenticazione HTTP Basic, riapplicazione live della maggior parte delle impostazioni senza riavvio
    * - Dashboard live (stato, contatori)
      - ⚠️
      - ✅
