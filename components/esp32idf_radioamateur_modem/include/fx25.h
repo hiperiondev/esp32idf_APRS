@@ -16,11 +16,15 @@
  *
  * @brief FX.25 forward-error-correction (FEC) framing on top of AX.25.
  *
- * @note FX.25 requires the Reed-Solomon codec (rs.h / rs.c from VP-Digi),
- *       which was NOT included in the archive this component was ported
- *       from. The declarations and logic below are ported and ready to use,
- *       but remain disabled until rs.h/rs.c are added to this component and
- *       the build is compiled with -DENABLE_FX25.
+ * @note FX.25 sits on top of the Reed-Solomon codec in @c lwfec/ (@c rs.h,
+ *       @c rs.c) and is only compiled when the build defines @c ENABLE_FX25,
+ *       which this component's own @c CMakeLists.txt does publicly.
+ *
+ * @par Buffer-size contract
+ * Fx25Encode() and Fx25Decode() work in place on a full Reed-Solomon block, so
+ * their buffer must hold ::FX25_MAX_BLOCK_SIZE (255) bytes for every mode,
+ * including the modes whose payload @c K is as small as 32 bytes. Both take an
+ * explicit capacity argument that is checked before the codec is entered.
  */
 
 #ifndef LIB_FX25_H_
@@ -29,6 +33,7 @@
 #ifdef ENABLE_FX25
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 /**
@@ -68,23 +73,35 @@ const struct Fx25Mode *Fx25GetModeForSize(uint16_t size);
 
 /**
  * @brief Encode a buffer in place using FX.25 (add Reed-Solomon parity).
- * @param buffer In/out buffer: input holds the plain frame data, output
- *               holds the encoded FX.25 block; must be large enough to hold
- *               @p mode's total block size.
- * @param mode   FX.25 mode to encode with.
+ * @param[in,out] buffer In/out buffer: input holds the plain frame data,
+ *                output holds the encoded FX.25 block. The whole
+ *                ::FX25_MAX_BLOCK_SIZE byte block is rewritten, so it must be
+ *                that large even for the small-@c K modes
+ * @param[in] bufferCapacity Number of bytes the caller owns at @p buffer. Must
+ *            be at least ::FX25_MAX_BLOCK_SIZE; a smaller value makes the call
+ *            return without touching @p buffer
+ * @param[in] mode FX.25 mode to encode with.
+ * @pre @p bufferCapacity >= ::FX25_MAX_BLOCK_SIZE
  */
-void Fx25Encode(uint8_t *buffer, const struct Fx25Mode *mode);
+void Fx25Encode(uint8_t *buffer, size_t bufferCapacity, const struct Fx25Mode *mode);
 
 /**
  * @brief Decode and error-correct an FX.25 block in place.
- * @param buffer  In/out buffer holding the received FX.25 block; overwritten
- *                with the corrected data on success.
- * @param mode    FX.25 mode the block was encoded with.
- * @param fixed   Set to the number of byte errors that were corrected.
+ * @param[in,out] buffer In/out buffer holding the received FX.25 block;
+ *                overwritten with the corrected data on success. The whole
+ *                ::FX25_MAX_BLOCK_SIZE byte block is rewritten, so it must be
+ *                that large even for the small-@c K modes
+ * @param[in] bufferCapacity Number of bytes the caller owns at @p buffer. Must
+ *            be at least ::FX25_MAX_BLOCK_SIZE; a smaller value makes the call
+ *            fail without touching @p buffer
+ * @param[in] mode FX.25 mode the block was encoded with.
+ * @param[out] fixed Set to the number of byte errors that were corrected.
  * @return true if the block was successfully decoded (with or without
- *         corrections), false if it was uncorrectable.
+ *         corrections), false if it was uncorrectable or @p bufferCapacity is
+ *         smaller than ::FX25_MAX_BLOCK_SIZE.
+ * @pre @p bufferCapacity >= ::FX25_MAX_BLOCK_SIZE
  */
-bool Fx25Decode(uint8_t *buffer, const struct Fx25Mode *mode, uint8_t *fixed);
+bool Fx25Decode(uint8_t *buffer, size_t bufferCapacity, const struct Fx25Mode *mode, uint8_t *fixed);
 
 /**
  * @brief Initialize internal FX.25 tables and state (Reed-Solomon codec

@@ -24,6 +24,11 @@
 #include "fx25.h"
 #include "rs.h"
 
+// An FX.25 block is a Reed-Solomon block, so the two block-size constants are
+// the same number expressed by two headers. Checking it here means a change to
+// either one is a compile error instead of a buffer that is one codec short.
+_Static_assert(FX25_MAX_BLOCK_SIZE == RS_BLOCK_SIZE, "FX.25 block size must match the Reed-Solomon block size");
+
 #define FX25_RS_FCR 1
 #define FX25_PREGENERATE_POLYS
 #define FX25_MAX_DISTANCE 10 // maximum Hamming distance when comparing tags
@@ -82,21 +87,25 @@ static struct LwFecRS *rsForMode(const struct Fx25Mode *mode) {
 }
 #endif
 
-void Fx25Encode(uint8_t *buffer, const struct Fx25Mode *mode) {
+void Fx25Encode(uint8_t *buffer, size_t bufferCapacity, const struct Fx25Mode *mode) {
+    // mode->K is the payload length, not the buffer length: the codec rewrites
+    // the whole 255-byte block, so the caller's capacity is what gets checked.
 #ifdef FX25_PREGENERATE_POLYS
-    RsEncode(rsForMode(mode), buffer, mode->K);
+    RsEncode(rsForMode(mode), buffer, bufferCapacity, mode->K);
 #else
     RsInit(&rs, mode->T, FX25_RS_FCR);
-    RsEncode(&rs, buffer, mode->K);
+    RsEncode(&rs, buffer, bufferCapacity, mode->K);
 #endif
 }
 
-bool Fx25Decode(uint8_t *buffer, const struct Fx25Mode *mode, uint8_t *fixed) {
+bool Fx25Decode(uint8_t *buffer, size_t bufferCapacity, const struct Fx25Mode *mode, uint8_t *fixed) {
+    // Same whole-block contract as Fx25Encode(): a buffer sized to mode->K is
+    // rejected by the codec rather than overflowed.
 #ifdef FX25_PREGENERATE_POLYS
-    return RsDecode(rsForMode(mode), buffer, mode->K, fixed);
+    return RsDecode(rsForMode(mode), buffer, bufferCapacity, mode->K, fixed);
 #else
     RsInit(&rs, mode->T, FX25_RS_FCR);
-    return RsDecode(&rs, buffer, mode->K, fixed);
+    return RsDecode(&rs, buffer, bufferCapacity, mode->K, fixed);
 #endif
 }
 

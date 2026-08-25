@@ -61,6 +61,16 @@ del componente stesso definisce ``ENABLE_FX25`` pubblicamente — quindi cambiar
 modalità non richiede una ricompilazione. L'implementazione RS vive in
 ``lwfec/`` (``rs.c``, ``gf.c``).
 
+Il codec lavora sul posto su un intero blocco Reed–Solomon di 255 byte in ogni
+modalità, comprese quelle il cui payload ``K`` è di soli 32 byte: la parità
+viene spostata in coda al blocco e lo spazio intermedio viene azzerato. Il
+buffer del chiamante deve quindi essere lungo 255 byte qualunque sia la ``K``
+passata. Per questo ``Fx25Encode()``/``Fx25Decode()`` e
+``RsEncode()``/``RsDecode()`` ricevono la capacità del buffer come argomento
+esplicito: viene verificata con ``assert`` nelle build di debug e fa fallire la
+chiamata in modo sicuro altrimenti, e ``ax25.c`` la sostiene con un controllo a
+tempo di compilazione sui due buffer che consegna.
+
 API pubblica
 ============
 

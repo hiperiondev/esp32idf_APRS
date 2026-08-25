@@ -59,6 +59,15 @@ so plain-AX.25 receivers still decode the inner frame. The mode is selectable:
 — the component's own ``CMakeLists.txt`` defines ``ENABLE_FX25`` publicly — so
 switching modes needs no rebuild. The RS implementation lives in ``lwfec/`` (``rs.c``, ``gf.c``).
 
+The codec works in place on a whole 255-byte Reed–Solomon block for every mode,
+including those whose payload ``K`` is only 32 bytes: parity is relocated to the
+tail of the block and the gap is zero-filled. A caller's buffer must therefore
+be 255 bytes long whatever ``K`` it passes. ``Fx25Encode()``/``Fx25Decode()``
+and ``RsEncode()``/``RsDecode()`` take the buffer capacity as an explicit
+argument for that reason: it is asserted in debug builds and makes the call fail
+safely otherwise, and ``ax25.c`` backs it with a compile-time check on the two
+buffers it hands over.
+
 Public API
 ==========
 

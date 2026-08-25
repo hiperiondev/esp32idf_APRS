@@ -17,6 +17,8 @@
 // Berlekamp-Massey error locator search, Chien search and Forney error
 // correction, written to avoid heap and large stack allocations.
 
+#include <assert.h>
+#include <stddef.h>
 #include <string.h>
 
 #include "gf.h"
@@ -246,7 +248,17 @@ static bool checkSyndromes(const uint8_t *syndromes, uint8_t size) {
     return !err;
 }
 
-bool RsDecode(const struct LwFecRS *rs, uint8_t *data, uint8_t size, uint8_t *fixed) {
+bool RsDecode(const struct LwFecRS *rs, uint8_t *data, size_t dataCapacity, uint8_t size, uint8_t *fixed) {
+    // The block is always processed at its natural length N: the parity bytes
+    // are relocated to the tail and the gap is zero-filled, so every byte up to
+    // data[RS_BLOCK_SIZE - 1] is written whatever "size" says. "dataCapacity"
+    // is what the caller actually owns. The assert reports a buffer sized to
+    // "size" instead of to N right where such a caller is introduced, and the
+    // check below keeps builds with NDEBUG from writing out of bounds.
+    assert(dataCapacity >= RS_BLOCK_SIZE);
+    if (dataCapacity < RS_BLOCK_SIZE)
+        return false;
+
     if ((size > (RS_BLOCK_SIZE - rs->T)) || (rs->T > RS_MAX_REDUNDANCY_BYTES))
         return false;
 
@@ -287,7 +299,14 @@ bool RsDecode(const struct LwFecRS *rs, uint8_t *data, uint8_t size, uint8_t *fi
         return false;
 }
 
-void RsEncode(const struct LwFecRS *rs, uint8_t *data, uint8_t size) {
+void RsEncode(const struct LwFecRS *rs, uint8_t *data, size_t dataCapacity, uint8_t size) {
+    // Same whole-block contract as RsDecode(): the zero fill and the parity
+    // write reach data[RS_BLOCK_SIZE - 1] regardless of "size", so a buffer
+    // sized to "size" is rejected here rather than overflowed.
+    assert(dataCapacity >= RS_BLOCK_SIZE);
+    if (dataCapacity < RS_BLOCK_SIZE)
+        return;
+
     if ((size > (RS_BLOCK_SIZE - rs->T)) || (rs->T > RS_MAX_REDUNDANCY_BYTES))
         return;
 

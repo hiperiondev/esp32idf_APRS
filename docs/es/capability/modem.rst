@@ -61,6 +61,16 @@ componente define ``ENABLE_FX25`` de forma pública — así que cambiar de modo
 requiere recompilar. La implementación RS vive en ``lwfec/`` (``rs.c``,
 ``gf.c``).
 
+El códec trabaja en sitio sobre un bloque Reed–Solomon completo de 255 bytes en
+todos los modos, incluidos aquellos cuya carga útil ``K`` es de solo 32 bytes:
+la paridad se traslada al final del bloque y el hueco se rellena con ceros. Por
+tanto el búfer de quien llama debe medir 255 bytes sea cual sea la ``K`` que
+pase. Por eso ``Fx25Encode()``/``Fx25Decode()`` y ``RsEncode()``/``RsDecode()``
+reciben la capacidad del búfer como argumento explícito: se comprueba con
+``assert`` en compilaciones de depuración y hace fallar la llamada de forma
+segura en el resto, y ``ax25.c`` lo respalda con una comprobación en tiempo de
+compilación sobre los dos búferes que entrega.
+
 API pública
 ===========
 

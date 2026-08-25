@@ -35,6 +35,12 @@
 
 #ifdef ENABLE_FX25
 #include "fx25.h"
+
+// Both FX.25 buffers below are handed to a codec that rewrites a full 255-byte
+// Reed-Solomon block whatever the mode's payload size K is, so they are sized
+// to the block, never to K. Shrinking either one to a per-mode size is caught
+// here at compile time instead of by an out-of-bounds write at runtime.
+_Static_assert(AX25_FRAME_MAX_SIZE >= FX25_MAX_BLOCK_SIZE, "rx frame buffer must hold a whole FX.25 block");
 #endif
 
 static const char *TAG = "ax25";
@@ -161,6 +167,7 @@ static bool rxRingHasRoom(uint16_t size) {
 
 #ifdef ENABLE_FX25
 static uint8_t txFx25Buffer[FX25_MAX_BLOCK_SIZE];
+_Static_assert(sizeof(txFx25Buffer) >= FX25_MAX_BLOCK_SIZE, "tx FX.25 buffer must hold a whole FX.25 block");
 static uint8_t txTagByteIdx = 0;
 #endif
 
@@ -495,7 +502,7 @@ static void *writeFx25Frame(const uint8_t *data, uint16_t size) {
         }
     }
 
-    Fx25Encode(txFx25Buffer, fx25Mode);
+    Fx25Encode(txFx25Buffer, sizeof(txFx25Buffer), fx25Mode);
 
     for (uint16_t i = 0; i < (fx25Mode->K + fx25Mode->T); i++) {
         txBuffer[txBufferHead++] = txFx25Buffer[i];
@@ -899,7 +906,7 @@ void Ax25BitParse(uint8_t bit, uint8_t modem, uint16_t mV) {
         // end of FX.25 reception, that is, a full block received
         if ((rx->fx25Mode != NULL) && (rx->frameIdx == (rx->fx25Mode->K + rx->fx25Mode->T))) {
             uint8_t fixed = 0;
-            bool fecSuccess = Fx25Decode(rx->frame, rx->fx25Mode, &fixed);
+            bool fecSuccess = Fx25Decode(rx->frame, sizeof(rx->frame), rx->fx25Mode, &fixed);
             uint16_t crc;
             struct FrameHandle *h = parseFx25Frame(rx->frame, rx->frameIdx, &crc);
             if (h != NULL) {
@@ -910,8 +917,7 @@ void Ax25BitParse(uint8_t bit, uint8_t modem, uint16_t mV) {
                 } else {
                     h->corrected = AX25_NOT_FX25;
                 }
-                h->mVrms = mV; // was never set on the FX.25 path: the service
-                // task reported whatever the slot held last
+                h->mVrms = mV; // input level the service task reports for this frame
                 lastCrc = crc;
                 rxMultiplexDelay = 0;
                 publishRxFrame(); // handle complete - now make the slot visible
