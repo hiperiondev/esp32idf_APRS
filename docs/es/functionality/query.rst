@@ -49,12 +49,22 @@ goteo constante; con el interruptor de origen APRS-IS apagado — el valor de
 fábrica — nada de eso llega al respondedor, y con el interruptor encendido las
 respuestas vuelven hacia APRS-IS en vez de salir al aire.
 
-Hay dos excepciones deliberadas, porque ese tráfico no es la respuesta en sí.
+Una respuesta no se construye aquí, y otra no es un solo paquete, pero ninguna
+de las dos se escapa del emparejamiento. ``?APRSO`` vuelve a anunciar los
+Objetos/Ítems originados por esta estación: la pata por la que llegó la pregunta
+se le entrega al transmisor como **cota superior** y allí se intersecta con la
+configuración de "enviar por" de cada elemento, de modo que la ronda puede
+quitar una pata que el elemento selecciona pero nunca agregar una que no.
 ``?APRSM`` reenvía mensajes que esta estación ya le debe al operador que
 consulta —un puñado acotado de ellos, véase la tabla más abajo—, enrutados por
-los propios indicadores de "enviar por" de la página Message; ``?APRSO`` vuelve a anunciar los Objetos/Ítems, cada uno enrutado por su
-propia configuración. Solo la respuesta de "no hay mensajes pendientes" y la de
-``No objects`` siguen el origen de la consulta.
+los propios indicadores de "enviar por" de la página Message; esas tramas iban a
+salir igual según la planificación de reintentos del motor de mensajería, así
+que una consulta acelera la entrega de tráfico que la estación ya debía en vez
+de crear tráfico nuevo.
+
+El resultado es la propiedad que prometen los interruptores de origen: con
+**Responder consultas escuchadas en RF** apagado, ninguna secuencia de líneas de
+APRS-IS puede hacer que esta estación active el transmisor.
 
 Dónde se construye la respuesta
 ===============================
@@ -213,9 +223,15 @@ además *Consultas dirigidas extendidas* (``query_ext_en``).
        pregunta no puede mantener el transmisor activo durante toda la cola.
    * - ``?APRSO``
      - Reanuncia los Objetos/Ítems originados aquí. Llama a
-       ``objitems_request_transmit_all()`` y, como se atiende dentro de la
-       pasada del planificador, los elementos salen más adelante en esa misma
-       pasada. Compilado sin ``ENABLE_OBJECTS_ITEMS``, responde ``No objects``.
+       ``objitems_request_transmit_all()`` con la pata por la que llegó la
+       consulta (``OBJITEM_TX_RF`` u ``OBJITEM_TX_INET``) y, como se atiende
+       dentro de la pasada del planificador, los elementos salen más adelante en
+       esa misma pasada. La ronda informa el estado actual de cada elemento y no
+       toca ningún estado de planificación: no mueve el próximo vencimiento de
+       un elemento, no avanza la rampa de decaimiento ni la rotación de rutas
+       proporcionales, y no consume una repetición de kill — así que una
+       consulta no puede correr el momento en que salen los informes periódicos.
+       Compilado sin ``ENABLE_OBJECTS_ITEMS``, responde ``No objects``.
    * - ``?APRST`` / ``?PING?``
      - La ruta que tomó la propia consulta, leída de la línea TNC2 recibida en
        el momento de encolar el pedido. Sin línea disponible responde con ruta
@@ -231,9 +247,8 @@ página IGate.
 Limitación de tasa
 ==================
 
-Dos limitadores independientes evitan que el respondedor se vuelva un problema de
-tiempo al aire o la mitad de un bucle de realimentación con otro
-auto-respondedor:
+Tres limitadores evitan que el respondedor se vuelva un problema de tiempo al
+aire o la mitad de un bucle de realimentación con otro auto-respondedor:
 
 * **Limitador de difusión** — por *tipo* de consulta **y origen**, como máximo
   una respuesta cada ``g_config.query_min_interval_sec`` (30 s por defecto; el
@@ -241,12 +256,28 @@ auto-respondedor:
   preguntando ``?APRS?`` no puede suprimir una respuesta a ``?WX?``; al ser
   además por origen, un flujo de APRS-IS hablador no puede gastar el cupo que
   necesita una pregunta escuchada al aire.
-* **Limitador de dirigidas** — las consultas dirigidas se saltan el limitador de
-  difusión (están explícitamente dirigidas a esta estación) pero tienen su propio
-  límite **por origen**, más estricto, de ``QUERY_DIRECTED_MIN_INTERVAL_SEC``
-  (5 s), rastreado en una tabla fija de ``QUERY_DIRECTED_TRACK_MAX`` (8) entradas.
-  Las consultas dirigidas son tráfico raro, así que una tabla llena simplemente
-  recicla el origen más antiguo.
+* **Limitador de dirigidas por indicativo** — las consultas dirigidas se saltan
+  el limitador de difusión (están explícitamente dirigidas a esta estación) pero
+  tienen su propio límite, más estricto, de
+  ``QUERY_DIRECTED_MIN_INTERVAL_SEC`` (5 s) por indicativo que pregunta,
+  rastreado en una tabla fija de ``QUERY_DIRECTED_TRACK_MAX`` (8) entradas. Las
+  consultas dirigidas son tráfico raro, así que una tabla llena simplemente
+  recicla la entrada más antigua.
+* **Techo global de dirigidas** — como máximo una respuesta dirigida por origen
+  cada ``QUERY_DIRECTED_GLOBAL_MIN_INTERVAL_SEC`` (10 s), sin importar cuántos
+  indicativos pregunten. La tabla por indicativo es un límite de equidad y no
+  puede ser por sí sola un límite de tiempo al aire: el indicativo con el que se
+  indexa lo elige quien pregunta y, en la pata de APRS-IS, no está autenticado en
+  absoluto, así que rotar más indicativos de los que caben en la tabla reciclaría
+  entradas y compraría cupo nuevo cada vez. Este techo se indexa por algo que
+  quien pregunta no controla, así que rotar indicativos no compra nada. Una
+  ráfaga de *N* consultas dirigidas desde *N* indicativos distintos produce
+  entonces como mucho una respuesta por intervalo.
+
+Los dos límites de dirigidas se aplican en serie y un pedido tiene que superar
+ambos. El techo se comprueba primero y se estampa último, de modo que un pedido
+que el origen todavía no puede responder tampoco gasta el cupo propio del
+indicativo que pregunta.
 
 Configuración
 =============

@@ -48,12 +48,20 @@ with the APRS-IS source switch off — the factory setting — none of it reache
 the responder, and with the switch on the answers go back to APRS-IS rather than
 on the air.
 
-Two exceptions are deliberate, because the traffic is not the answer itself.
-``?APRSM`` re-sends messages this station already owes the querying operator —
-a bounded handful of them, see the table below — routed by the Message page's
-own "send via" flags; ``?APRSO`` re-announces
-Objects/Items, each routed by its own configuration. Only the "nothing pending"
-reply and the ``No objects`` reply follow the query's source.
+One answer is not built here, and one is not a single packet, but neither
+escapes the pairing. ``?APRSO`` re-announces the Objects/Items this station
+originates: the leg the question arrived on is handed to the transmitter as an
+**upper bound** and intersected there with each element's own "send via"
+configuration, so the round can withhold a leg an element selects but never add
+one it does not. ``?APRSM`` re-sends messages this station already owes the
+querying operator — a bounded handful of them, see the table below — routed by
+the Message page's own "send via" flags; those frames were going out on the
+messaging engine's retry schedule regardless, so a query accelerates delivery
+of traffic this station already owed rather than creating any.
+
+The result is the property the source switches promise: with **Answer queries
+heard on RF** off, no sequence of APRS-IS lines can make this station key the
+transmitter.
 
 Where the answer is built
 =========================
@@ -203,8 +211,13 @@ available in that set; the remaining, list-style ones additionally require
        queue.
    * - ``?APRSO``
      - Re-announces the Objects/Items originated here. It calls
-       ``objitems_request_transmit_all()``, and since it is served from the
-       scheduler pass itself the elements go out later in that same pass. Built
+       ``objitems_request_transmit_all()`` with the leg the query arrived on
+       (``OBJITEM_TX_RF`` or ``OBJITEM_TX_INET``), and since it is served from
+       the scheduler pass itself the elements go out later in that same pass.
+       The round reports each element's current state and touches no schedule
+       state: it does not move an element's next-due time, does not advance the
+       decay ramp or the proportional-path rotation, and does not consume a kill
+       repeat — so a query cannot shift when the periodic reports go out. Built
        without ``ENABLE_OBJECTS_ITEMS``, it replies ``No objects``.
    * - ``?APRST`` / ``?PING?``
      - The route the query itself took, read off the received TNC2 line when the
@@ -220,19 +233,33 @@ IGate page's own path bitmask.
 Rate limiting
 =============
 
-Two independent limiters keep the responder from becoming an airtime problem or
-half of a feedback loop with another auto-responder:
+Three limiters keep the responder from becoming an airtime problem or half of a
+feedback loop with another auto-responder:
 
 * **Broadcast limiter** — per query *type* **and source**, at most one answer
   per ``g_config.query_min_interval_sec`` (default 30 s; the *Query* page's
   minimum is 5 s). Because it is per type, a busy channel asking ``?APRS?``
   cannot suppress a ``?WX?`` answer; because it is also per source, a talkative
   APRS-IS feed cannot spend the allowance a question heard on the air needs.
-* **Directed limiter** — directed queries bypass the broadcast limiter (they are
-  explicitly addressed to this station) but get their own, tighter **per-source**
-  limit of ``QUERY_DIRECTED_MIN_INTERVAL_SEC`` (5 s), tracked in a fixed
-  ``QUERY_DIRECTED_TRACK_MAX`` (8) entry table. Directed queries are rare
-  traffic, so a full table simply recycles the oldest source.
+* **Per-callsign directed limiter** — directed queries bypass the broadcast
+  limiter (they are explicitly addressed to this station) but get their own,
+  tighter limit of ``QUERY_DIRECTED_MIN_INTERVAL_SEC`` (5 s) per asking
+  callsign, tracked in a fixed ``QUERY_DIRECTED_TRACK_MAX`` (8) entry table.
+  Directed queries are rare traffic, so a full table simply recycles the oldest
+  entry.
+* **Global directed ceiling** — at most one directed answer per source every
+  ``QUERY_DIRECTED_GLOBAL_MIN_INTERVAL_SEC`` (10 s), regardless of how many
+  callsigns ask. The per-callsign table is a fairness limit and cannot be an
+  airtime limit on its own: the callsign it keys on is chosen by the asker and,
+  on the APRS-IS leg, is not authenticated at all, so rotating more callsigns
+  than the table holds would recycle entries and buy a fresh allowance every
+  time. This ceiling is keyed on nothing the asker controls, so rotating
+  callsigns buys nothing. A burst of *N* directed queries from *N* different
+  callsigns therefore produces at most one answer per interval.
+
+The two directed limits run in series and a request has to clear both. The
+ceiling is checked first and stamped last, so a request the source may not
+answer yet does not spend the asking callsign's own allowance either.
 
 Configuration
 =============

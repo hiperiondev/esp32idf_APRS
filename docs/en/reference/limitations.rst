@@ -641,9 +641,14 @@ Objects, Items, Bulletins, Status
      - ✅
      - Answered when *Extended directed queries* is enabled. List-style answers
        come back as APRS messages to the querying station; ``?APRSO``
-       re-announces the Objects/Items later in the same scheduler pass, and
-       ``?APRSM`` re-sends at most ``MSG_QUERY_BURST_MAX`` (3) held messages per
-       query, leaving the rest to the message retry schedule
+       re-announces the Objects/Items later in the same scheduler pass, on the
+       leg the query arrived on and without touching the elements' own
+       schedules, and ``?APRSM`` re-sends at most ``MSG_QUERY_BURST_MAX`` (3)
+       held messages per query, leaving the rest to the message retry schedule.
+       Two limits apply in series: ``QUERY_DIRECTED_MIN_INTERVAL_SEC`` (5 s) per
+       asking callsign and ``QUERY_DIRECTED_GLOBAL_MIN_INTERVAL_SEC`` (10 s) per
+       source, the latter keyed on nothing the asker chooses so that rotating
+       callsigns buys no extra airtime
    * - ``?APRSH`` heard-history graph
      - ⚠️
      - ✅

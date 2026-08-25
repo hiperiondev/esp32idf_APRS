@@ -769,7 +769,7 @@ void objitem_build_freq_block(float freq_mhz, uint16_t tone_tenths, int8_t duple
 // stored sub-fields feed the shared builder.
 static void build_freq_block(const objitem_t *b, char *out, size_t out_size) {
     objitem_build_freq_block(b->freq_mhz, b->tone_tenths, b->duplex, b->offset_khz, b->range, b->range_km, b->dcs_enable, b->dcs_code, b->narrow,
-                              b->rx_freq_enable, b->rx_freq_mhz, out, out_size);
+                             b->rx_freq_enable, b->rx_freq_mhz, out, out_size);
 }
 
 // Build the 7-character APRS "PHGphgd" Data Extension from the element's stored
@@ -1080,14 +1080,20 @@ static bool objitem_effective_inet(const objitem_t *b) {
 // `path` is the RF digipeat path to insert (e.g. "WIDE1-1,WIDE2-1"), or NULL/
 // empty to send direct. It applies to the RF copy only; APRS-IS traffic always
 // carries TCPIP* instead of an RF path.
-static void tx_one(int idx, const objitem_t *b, const char *src, bool live, const char *path) {
+//
+// `allow` is an OBJITEM_TX_* bitmask bounding which legs this call may use. It
+// is intersected with the element's own "send via" flags, so it can withhold a
+// leg the element selects but never add one it does not; the periodic pass
+// passes OBJITEM_TX_ALL, which leaves the element's configuration in sole
+// control.
+static void tx_one(int idx, const objitem_t *b, const char *src, bool live, const char *path, uint8_t allow) {
     char info[200];
     objitem_build_info_field(b, live, info, sizeof(info));
 
     const char *kind = b->is_item ? "Item" : "Object";
     const char *state = live ? "live" : "KILL";
 
-    if (objitem_effective_rf(b)) {
+    if ((allow & OBJITEM_TX_RF) && objitem_effective_rf(b)) {
         // Digipeat path (YAAC "Digipeat paths"): inserted when the element
         // selects one or more of the shared path presets; otherwise direct.
         // Sized by the RF leg's own limit, so the length test below is the
@@ -1109,7 +1115,7 @@ static void tx_one(int idx, const objitem_t *b, const char *src, bool live, cons
             ESP_LOGW(TAG, "%s %d NOT sent over RF - line too long (%d bytes, max %d)", kind, idx + 1, len, APRS_TNC2_MAX_LEN);
         }
     }
-    if (objitem_effective_inet(b)) {
+    if ((allow & OBJITEM_TX_INET) && objitem_effective_inet(b)) {
         // Locally-originated APRS-IS traffic carries the TCPIP* q-construct,
         // never an RF unproto path (same note as message.c / bulletins.c).
         // Same buffer size as the RF copy above, and the same length test, so
@@ -1201,14 +1207,57 @@ static uint32_t s_cur_interval[OBJITEM_COUNT] = { 0 };
 static uint8_t s_path_rot[OBJITEM_COUNT] = { 0 };
 static uint32_t s_sig[OBJITEM_COUNT] = { 0 };
 
-// Raised by objitems_request_transmit_all() from whichever task handled the
-// query, consumed by the scheduler task below. A plain flag is enough: the
-// only transition another task performs is false -> true, and the worst
-// outcome of the two racing is one extra round of transmissions.
-static volatile bool s_tx_all_requested = false;
+// Legs requested by objitems_request_transmit_all() from whichever task handled
+// the query, consumed by the scheduler task below. An OBJITEM_TX_* bitmask
+// rather than a plain flag, so a re-announcement asked for over APRS-IS cannot
+// reach the RF leg. Requests accumulate by OR: the only transition another task
+// performs is setting bits, and the worst outcome of two racing is one extra
+// round of transmissions.
+static volatile uint8_t s_tx_all_channels = 0;
 
-void objitems_request_transmit_all(void) {
-    s_tx_all_requested = true;
+void objitems_request_transmit_all(uint8_t channels) {
+    channels &= (uint8_t)OBJITEM_TX_ALL;
+    if (channels == 0)
+        return;
+    s_tx_all_channels |= channels;
+}
+
+// One on-demand re-announcement round: report every transmittable element once
+// on the legs `allow` permits.
+//
+// This is a read of the elements, not a step of the transmitter. It leaves
+// s_next_due, s_cur_interval and s_path_rot untouched and never advances a kill
+// sequence, so the periodic schedule is exactly where it was when the round
+// started. That separation is what bounds the round's reach: the caller is
+// "?APRSO", which is answerable from the APRS-IS feed, and an unauthenticated
+// peer must not be able to move when this station's own periodic reports go
+// out, only to spend the airtime of the round its rate limiter allowed.
+//
+// The path is this cycle's entry of the element's proportional-path set, read
+// without rotating it, so the round follows the same path the next periodic
+// report will use.
+static void tx_all_now(const objitems_t *set, const char *src, uint8_t allow) {
+    if (!src[0])
+        return;
+
+    for (int i = 0; i < OBJITEM_COUNT; i++) {
+        const objitem_t *b = &set->item[i];
+
+        bool has_dest = objitem_effective_rf(b) || objitem_effective_inet(b);
+        if (!b->enable || !b->name[0] || !has_dest)
+            continue;
+
+        char paths[OBJITEM_PATH_PRESETS][72];
+        int np = objitem_paths(b, paths);
+        const char *path = (np > 0) ? paths[s_path_rot[i] % np] : NULL;
+
+        // An element already in its kill sequence, or retired outright, is
+        // reported as the kill report it currently is: what the round announces
+        // is the element's present state, which for those is that they are gone.
+        bool live = b->active && b->kill_left == 0;
+        tx_one(i, b, src, live, path, allow);
+        vTaskDelay(pdMS_TO_TICKS(OBJITEM_INTER_TX_MS));
+    }
 }
 
 uint32_t objitems_service(void) {
@@ -1219,16 +1268,13 @@ uint32_t objitems_service(void) {
         return OBJITEM_START_DELAY_S;
     }
 
-    // An on-demand re-announcement makes every element due right now; the
-    // per-element loop below then transmits and re-schedules them exactly as
-    // it does for a normally-due element, so the elements' own intervals pick
-    // up again from this transmission.
-    bool txAll = s_tx_all_requested;
-    if (txAll) {
-        s_tx_all_requested = false;
-        for (int i = 0; i < OBJITEM_COUNT; i++)
-            s_next_due[i] = 0;
-        ESP_LOGI(TAG, "On-demand transmission of all Objects/Items requested");
+    // Claim any on-demand re-announcement request before the periodic pass
+    // reads the store, so the two work from the same snapshot.
+    uint8_t txAllChannels = s_tx_all_channels;
+    if (txAllChannels) {
+        s_tx_all_channels = 0;
+        ESP_LOGI(TAG, "On-demand transmission of all Objects/Items requested (channels: %s%s)", (txAllChannels & OBJITEM_TX_RF) ? "RF " : "",
+                 (txAllChannels & OBJITEM_TX_INET) ? "INET" : "");
     }
 
     // A false load means the file was missing or unusable and empty defaults
@@ -1244,6 +1290,12 @@ uint32_t objitems_service(void) {
 
     char src[16];
     resolve_source_call(src, sizeof(src));
+
+    // The on-demand round runs first and on its own, before `now` is taken, so
+    // the airtime it spends is already behind the periodic pass when that pass
+    // decides what is due.
+    if (txAllChannels)
+        tx_all_now(&set, src, txAllChannels);
 
     int64_t now = sched_mono_seconds();
     int64_t soonest = now + OBJITEM_POLL_CAP_S;
@@ -1296,7 +1348,7 @@ uint32_t objitems_service(void) {
                     b->kill_left = OBJITEM_KILL_REPEATS; // first kill pass arms the repeat count
                 // A kill report is a normal element report with the "_" timestamp, so
                 // the builder is called with is_status = false.
-                tx_one(i, b, src, false, path);
+                tx_one(i, b, src, false, path, OBJITEM_TX_ALL);
                 b->kill_left--;
                 if (b->kill_left == 0) {
                     b->enable = false;
@@ -1305,7 +1357,7 @@ uint32_t objitems_service(void) {
                 dirty = true;
             } else {
                 // Normal live report.
-                tx_one(i, b, src, true, path);
+                tx_one(i, b, src, true, path, OBJITEM_TX_ALL);
             }
 
             // Advance proportional pathing; apply one decay step after each

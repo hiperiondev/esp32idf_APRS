@@ -49,13 +49,22 @@ flusso costante; con l'interruttore della sorgente APRS-IS spento — l'impostaz
 di fabbrica — nulla di quel traffico raggiunge il risponditore, e con
 l'interruttore acceso le risposte tornano verso APRS-IS invece di andare in onda.
 
-Due eccezioni sono deliberate, perché quel traffico non è la risposta in sé.
-``?APRSM`` ritrasmette messaggi che questa stazione già deve all'operatore che
-interroga — un numero limitato di essi, vedi la tabella più sotto — instradati
-dagli indicatori "invia via" della pagina Message;
-``?APRSO`` riannuncia gli Oggetti/Elementi, ciascuno instradato dalla propria
-configurazione. Solo la risposta "nessun messaggio in sospeso" e quella
-``No objects`` seguono la sorgente della query.
+Una risposta non viene costruita qui, e un'altra non è un singolo pacchetto, ma
+nessuna delle due sfugge all'accoppiamento. ``?APRSO`` riannuncia gli
+Oggetti/Elementi originati da questa stazione: la gamba da cui è arrivata la
+domanda viene consegnata al trasmettitore come **limite superiore** e lì
+intersecata con la configurazione "invia via" di ogni elemento, così il giro può
+togliere una gamba che l'elemento seleziona ma non aggiungerne mai una che non
+seleziona. ``?APRSM`` ritrasmette messaggi che questa stazione già deve
+all'operatore che interroga — un numero limitato di essi, vedi la tabella più
+sotto — instradati dagli indicatori "invia via" della pagina Message; quelle
+trame sarebbero uscite comunque secondo la pianificazione dei ritentativi del
+motore di messaggistica, quindi una query accelera la consegna di traffico che
+la stazione già doveva invece di crearne di nuovo.
+
+Il risultato è la proprietà che gli interruttori di sorgente promettono: con
+**Rispondi alle query ascoltate in RF** spento, nessuna sequenza di righe
+APRS-IS può far attivare il trasmettitore a questa stazione.
 
 Dove viene costruita la risposta
 ================================
@@ -215,9 +224,15 @@ inoltre *Query dirette estese* (``query_ext_en``).
        tenere il trasmettitore attivo per un'intera coda.
    * - ``?APRSO``
      - Riannuncia gli Oggetti/Item originati qui. Chiama
-       ``objitems_request_transmit_all()`` e, poiché viene servita all'interno
-       della passata dello scheduler, gli elementi escono più avanti nella stessa
-       passata. Compilato senza ``ENABLE_OBJECTS_ITEMS``, risponde
+       ``objitems_request_transmit_all()`` con la gamba da cui è arrivata la
+       query (``OBJITEM_TX_RF`` oppure ``OBJITEM_TX_INET``) e, poiché viene
+       servita all'interno della passata dello scheduler, gli elementi escono più
+       avanti nella stessa passata. Il giro riporta lo stato corrente di ogni
+       elemento e non tocca alcuno stato di pianificazione: non sposta la
+       prossima scadenza di un elemento, non avanza la rampa di decadimento né la
+       rotazione dei percorsi proporzionali, e non consuma una ripetizione di
+       kill — quindi una query non può spostare il momento in cui escono i
+       rapporti periodici. Compilato senza ``ENABLE_OBJECTS_ITEMS``, risponde
        ``No objects``.
    * - ``?APRST`` / ``?PING?``
      - Il percorso preso dalla query stessa, letto dalla riga TNC2 ricevuta al
@@ -233,8 +248,8 @@ query è ``APE32I``, e il percorso è la maschera di percorso della pagina IGate
 Limitazione di frequenza
 ========================
 
-Due limitatori indipendenti evitano che il risponditore diventi un problema di
-tempo in onda o metà di un anello di retroazione con un altro auto-risponditore:
+Tre limitatori evitano che il risponditore diventi un problema di tempo in onda o
+metà di un anello di retroazione con un altro auto-risponditore:
 
 * **Limitatore broadcast** — per *tipo* di query **e sorgente**, al massimo una
   risposta ogni ``g_config.query_min_interval_sec`` (30 s predefiniti; il minimo
@@ -242,12 +257,27 @@ tempo in onda o metà di un anello di retroazione con un altro auto-risponditore
   ``?APRS?`` non può sopprimere una risposta a ``?WX?``; essendo anche per
   sorgente, un flusso APRS-IS loquace non può consumare la quota che serve a una
   domanda ascoltata in onda.
-* **Limitatore delle dirette** — le query dirette saltano il limitatore broadcast
-  (sono esplicitamente indirizzate a questa stazione) ma hanno un proprio limite
-  **per sorgente**, più stretto, di ``QUERY_DIRECTED_MIN_INTERVAL_SEC`` (5 s),
-  tracciato in una tabella fissa di ``QUERY_DIRECTED_TRACK_MAX`` (8) voci. Le
-  query dirette sono traffico raro, quindi una tabella piena semplicemente ricicla
-  la sorgente più vecchia.
+* **Limitatore delle dirette per nominativo** — le query dirette saltano il
+  limitatore broadcast (sono esplicitamente indirizzate a questa stazione) ma
+  hanno un proprio limite, più stretto, di ``QUERY_DIRECTED_MIN_INTERVAL_SEC``
+  (5 s) per nominativo che interroga, tracciato in una tabella fissa di
+  ``QUERY_DIRECTED_TRACK_MAX`` (8) voci. Le query dirette sono traffico raro,
+  quindi una tabella piena semplicemente ricicla la voce più vecchia.
+* **Tetto globale delle dirette** — al massimo una risposta diretta per sorgente
+  ogni ``QUERY_DIRECTED_GLOBAL_MIN_INTERVAL_SEC`` (10 s), indipendentemente da
+  quanti nominativi interroghino. La tabella per nominativo è un limite di equità
+  e non può essere da sola un limite di tempo in onda: il nominativo su cui si
+  indicizza è scelto da chi interroga e, sulla gamba APRS-IS, non è affatto
+  autenticato, quindi ruotare più nominativi di quanti la tabella ne contenga
+  riciclerebbe le voci e comprerebbe una quota nuova ogni volta. Questo tetto si
+  indicizza su qualcosa che chi interroga non controlla, quindi ruotare i
+  nominativi non compra nulla. Una raffica di *N* query dirette da *N*
+  nominativi diversi produce dunque al massimo una risposta per intervallo.
+
+I due limiti delle dirette vengono applicati in serie e una richiesta deve
+superarli entrambi. Il tetto viene controllato per primo e timbrato per ultimo,
+così una richiesta che la sorgente non può ancora soddisfare non consuma nemmeno
+la quota propria del nominativo che interroga.
 
 Configurazione
 ==============

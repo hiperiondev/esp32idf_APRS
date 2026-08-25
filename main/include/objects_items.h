@@ -80,6 +80,33 @@
 #define OBJITEM_COUNT 5
 
 /**
+ * @name On-demand transmit channel selection
+ *
+ * Bitmask handed to ::objitems_request_transmit_all naming the legs an
+ * on-demand re-announcement may use. Each bit is an upper bound only: an
+ * element still has to select the leg itself through its own "send via"
+ * checkboxes and scope, so the mask can withhold a leg but never add one.
+ *
+ * The mask exists because "?APRSO" is answerable from the APRS-IS feed, whose
+ * peers are unauthenticated. Passing the leg the question arrived on keeps the
+ * responder's invariant intact - an answer leaves the way its question came -
+ * and is what makes it impossible for a line read off the feed to key the
+ * transmitter.
+ * @{
+ */
+
+/** @brief Allow the RF leg of each element. */
+#define OBJITEM_TX_RF 0x01u
+
+/** @brief Allow the APRS-IS leg of each element. */
+#define OBJITEM_TX_INET 0x02u
+
+/** @brief Allow both legs, i.e. exactly what each element's own configuration selects. */
+#define OBJITEM_TX_ALL (OBJITEM_TX_RF | OBJITEM_TX_INET)
+
+/** @} */
+
+/**
  * @brief APRS Object/Item name field width.
  *
  * An Object name is EXACTLY 9 characters, space-padded on air; an Item name is
@@ -405,6 +432,10 @@ void objitems_start(void);
  * and return the number of seconds until the transmitter next needs servicing
  * (always >= 1, capped so web edits are picked up promptly).
  *
+ * A pending ::objitems_request_transmit_all request is served first, as a
+ * separate round that reports current state on the requested legs and leaves
+ * every piece of schedule state alone; the periodic pass then runs as usual.
+ *
  * The first call returns a one-time boot settle delay without transmitting.
  * Intended to be called only from the shared beacon scheduler task.
  *
@@ -414,20 +445,31 @@ uint32_t objitems_service(void);
 
 /**
  * @brief Ask the transmitter to send every enabled Object/Item once more, as
- * soon as it next runs.
+ * soon as it next runs, on the legs @p channels permits.
  *
  * This is what an APRS "?APRSO" directed query asks for (APRS101 chapter 15):
  * a re-announcement of the objects this station originates. The request only
  * raises a flag - the elements are transmitted from the shared beacon
  * scheduler task on its next pass, spaced by the usual inter-element gap, so
  * a query arriving on the radio RX task never blocks that task for the
- * duration of a burst of transmissions. Each element's own schedule then
- * resumes from that transmission.
+ * duration of a burst of transmissions.
+ *
+ * The round reports each element's current state and nothing else: it does not
+ * move the element's next-due time, does not advance the decay ramp or the
+ * proportional-path rotation, and does not consume a kill repeat. A caller
+ * that can be driven from off-station traffic therefore cannot reach the
+ * periodic schedule through this entry point - the worst it can do is spend
+ * the airtime the round itself costs, which its own rate limiter bounds.
+ *
+ * @param channels Bitmask of ::OBJITEM_TX_RF / ::OBJITEM_TX_INET. Each bit is
+ *                 an upper bound on the corresponding leg; an element still
+ *                 has to select that leg itself. A mask of 0 requests nothing
+ *                 and is discarded.
  *
  * Safe to call from any task. Repeated calls before the next pass collapse
- * into one round of transmissions.
+ * into one round whose mask is the union of theirs.
  */
-void objitems_request_transmit_all(void);
+void objitems_request_transmit_all(uint8_t channels);
 
 /**
  * @brief Build the standard APRS repeater frequency block ("FFF.FFFMHz Tnnn

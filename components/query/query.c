@@ -39,6 +39,13 @@
 // queries are ordinary backbone traffic, and an IGate's feed carries a steady
 // stream of them.
 //
+// The pairing holds for every answer without exception, including the two that
+// are not built here. "?APRSO" hands the transmitter of Objects/Items the leg
+// its question arrived on as an upper bound, and "?APRSM" only flushes frames
+// this station already owes the querying operator - traffic that was going out
+// on its own retry schedule regardless. So with g_config.query_rf off, no
+// sequence of APRS-IS lines can make this station key the transmitter.
+//
 // Answers are built and transmitted from the beacon scheduler task, never from
 // the task a query arrives on: query_process() and query_process_directed()
 // parse, rate-limit and record a request, and query_service() drains those
@@ -48,8 +55,8 @@
 // the TNC2/AX.25 encode chain - which is exactly the tree beacon_scheduler.c
 // sizes its stack for; the radio RX and APRS-IS tasks that receive queries run
 // on a fraction of that stack. Deferring also keeps the receiving task free
-// for the length of a transmission burst, which is the reason the "?APRSO"
-// answer has always gone out through objitems_request_transmit_all().
+// for the length of a transmission burst, which is why the "?APRSO" answer
+// goes out through objitems_request_transmit_all() rather than from here.
 
 #include <stdbool.h>
 #include <stdio.h>
@@ -120,9 +127,10 @@ static int64_t s_lastBroadcastRespondSec[QUERY_TYPE_COUNT][QUERY_SRC_COUNT];
 // Idle re-check cadence for the periodic capabilities beacon, matching the one
 // the other periodic transmitters return when they are switched off: it is how
 // long a web-admin change waits before the scheduler notices it.
-#define QUERY_CAP_IDLE_RECHECK_S        5
-#define QUERY_DIRECTED_TRACK_MAX        8
-#define QUERY_DIRECTED_MIN_INTERVAL_SEC 5
+#define QUERY_CAP_IDLE_RECHECK_S               5
+#define QUERY_DIRECTED_TRACK_MAX               8
+#define QUERY_DIRECTED_MIN_INTERVAL_SEC        5
+#define QUERY_DIRECTED_GLOBAL_MIN_INTERVAL_SEC 10
 
 typedef struct {
     char call[12];
@@ -130,6 +138,18 @@ typedef struct {
 } query_directed_track_t;
 
 static query_directed_track_t s_directedTrack[QUERY_DIRECTED_TRACK_MAX];
+
+// Ceiling on the whole directed responder, per source: at most one directed
+// answer every QUERY_DIRECTED_GLOBAL_MIN_INTERVAL_SEC seconds, no matter how
+// many callsigns ask. The per-callsign table above is a fairness limit and
+// cannot be an airtime limit on its own, because the callsign it keys on is
+// chosen by the asker and, on the APRS-IS leg, is not authenticated at all:
+// rotating more callsigns than the table holds recycles entries and buys a
+// fresh allowance every time. This limit is keyed on nothing the asker
+// controls, so rotating callsigns buys nothing. It is per source for the same
+// reason the broadcast one is: the two answers go to different places, so
+// neither costs the other any airtime.
+static int64_t s_lastDirectedRespondSec[QUERY_SRC_COUNT];
 
 // ---------------------------------------------------------------------------
 // Deferred response queue
@@ -168,6 +188,7 @@ static SemaphoreHandle_t s_pendingLock = NULL;
 void query_init(void) {
     memset(s_lastBroadcastRespondSec, 0, sizeof(s_lastBroadcastRespondSec));
     memset(s_directedTrack, 0, sizeof(s_directedTrack));
+    memset(s_lastDirectedRespondSec, 0, sizeof(s_lastDirectedRespondSec));
     memset(s_pending, 0, sizeof(s_pending));
     s_pendingHead = 0;
     s_pendingCount = 0;
@@ -234,11 +255,19 @@ static bool broadcastRateLimitPass(query_type_t type, query_source_t source) {
     return true;
 }
 
-// Rate-limit gate for directed queries: tighter, per-source limit so one
-// remote station addressing us repeatedly cannot hammer the responder even
-// though directed queries bypass the broadcast-type limiter above.
-static bool directedRateLimitPass(const char *fromCall) {
+// Rate-limit gate for directed queries, which bypass the broadcast-type
+// limiter above because they are explicitly addressed to this station.
+//
+// Two limits in series, and a request has to clear both. The per-source
+// ceiling is checked first and stamped last, so a request the source is not
+// allowed to answer yet does not spend the asking callsign's own allowance
+// either - the callsign's next question is judged on its own timing rather
+// than on the timing of an answer that never went out.
+static bool directedRateLimitPass(const char *fromCall, query_source_t source) {
     int64_t now = sched_mono_seconds();
+
+    if (now - s_lastDirectedRespondSec[source] < QUERY_DIRECTED_GLOBAL_MIN_INTERVAL_SEC)
+        return false;
 
     int freeSlot = -1;
     int oldestSlot = 0;
@@ -252,18 +281,22 @@ static bool directedRateLimitPass(const char *fromCall) {
             if (now - s_directedTrack[i].lastRespondSec < QUERY_DIRECTED_MIN_INTERVAL_SEC)
                 return false;
             s_directedTrack[i].lastRespondSec = now;
+            s_lastDirectedRespondSec[source] = now;
             return true;
         }
         if (s_directedTrack[i].lastRespondSec < s_directedTrack[oldestSlot].lastRespondSec)
             oldestSlot = i;
     }
 
-    // Unknown source: take a free slot, or recycle the least-recently-used
-    // one if the table is full.
+    // A callsign with no entry yet: take a free slot, or recycle the
+    // least-recently-used one if the table is full. Recycling is a fairness
+    // decision only - the per-source ceiling above is what bounds the airtime,
+    // so a fresh entry never means a fresh allowance.
     int slot = (freeSlot >= 0) ? freeSlot : oldestSlot;
     strncpy(s_directedTrack[slot].call, fromCall, sizeof(s_directedTrack[slot].call) - 1);
     s_directedTrack[slot].call[sizeof(s_directedTrack[slot].call) - 1] = 0;
     s_directedTrack[slot].lastRespondSec = now;
+    s_lastDirectedRespondSec[source] = now;
     return true;
 }
 
@@ -789,14 +822,21 @@ static void respondMessages(const char *fromCall, query_source_t source) {
 // "?APRSO" -> re-announce the Objects/Items this station originates. The
 // elements go out from the beacon scheduler task (see
 // objitems_request_transmit_all()), not from here, so answering a query never
-// occupies the radio RX task for the length of a transmission burst. They are
-// this station's own announcements, so each one is routed by its own "send via"
-// configuration; the query's source only governs the reply built here.
+// occupies the radio RX task for the length of a transmission burst.
+//
+// The re-announcement follows the same rule every other answer here does: it
+// leaves on the channel the question arrived on, and only on that one. The leg
+// is handed to the transmitter as an upper bound, intersected there with each
+// element's own "send via" configuration, so an element that is not announced
+// on a channel is not announced there by a query either. Pairing the two is
+// what makes the source switches mean what they say: with g_config.query_rf
+// off, no line read off the APRS-IS feed can reach the transmitter through
+// this answer.
 static void respondObjects(const char *fromCall, query_source_t source) {
 #ifdef ENABLE_OBJECTS_ITEMS
-    (void)source;
-    objitems_request_transmit_all();
-    ESP_LOGI(TAG, "?APRSO query from %s: all Objects/Items queued for transmission", fromCall);
+    uint8_t channels = (source == QUERY_SRC_INET) ? (uint8_t)OBJITEM_TX_INET : (uint8_t)OBJITEM_TX_RF;
+    objitems_request_transmit_all(channels);
+    ESP_LOGI(TAG, "?APRSO query from %s: all Objects/Items queued for transmission on %s", fromCall, (source == QUERY_SRC_INET) ? "INET" : "RF");
 #else
     txMessageTo(fromCall, "No objects", source);
 #endif
@@ -1173,7 +1213,7 @@ void query_process_directed(const char *fromCall, const char *toCall, const char
     if (!queryTypeEnabled(type))
         return;
 
-    if (!directedRateLimitPass(fromCall))
+    if (!directedRateLimitPass(fromCall, source))
         return;
 
     // Directed replies are queued the same way broadcast ones are, without

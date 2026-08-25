@@ -675,9 +675,15 @@ Oggetti, Item, Bollettini, Stato
      - Risposte fornite quando *Interrogazioni dirette estese* è abilitato. Le
        risposte in forma di elenco tornano come messaggi APRS alla stazione
        richiedente; ``?APRSO`` riannuncia gli Oggetti/Item più avanti nella stessa
-       passata dello scheduler, e ``?APRSM`` ritrasmette al massimo
-       ``MSG_QUERY_BURST_MAX`` (3) messaggi trattenuti per query, lasciando il
-       resto alla pianificazione dei ritentativi di messaggistica
+       passata dello scheduler, sulla gamba da cui è arrivata la query e senza
+       toccare la pianificazione propria degli elementi, e ``?APRSM`` ritrasmette
+       al massimo ``MSG_QUERY_BURST_MAX`` (3) messaggi trattenuti per query,
+       lasciando il resto alla pianificazione dei ritentativi di messaggistica.
+       Si applicano due limiti in serie: ``QUERY_DIRECTED_MIN_INTERVAL_SEC``
+       (5 s) per nominativo che interroga e
+       ``QUERY_DIRECTED_GLOBAL_MIN_INTERVAL_SEC`` (10 s) per sorgente,
+       quest'ultimo indicizzato su qualcosa che chi interroga non sceglie, così
+       che ruotare i nominativi non compri tempo in onda extra
    * - Grafico della cronologia di ascolto di ``?APRSH``
      - ⚠️
      - ✅

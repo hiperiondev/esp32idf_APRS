@@ -668,9 +668,14 @@ Objetos, Items, Boletines, Estado
      - Se responden cuando *Consultas dirigidas extendidas* está habilitado. Las
        respuestas tipo lista vuelven como mensajes APRS a la estación que
        consulta; ``?APRSO`` reanuncia los Objetos/Ítems más adelante en esa misma
-       pasada del planificador, y ``?APRSM`` reenvía como mucho
-       ``MSG_QUERY_BURST_MAX`` (3) mensajes retenidos por consulta, dejando el
-       resto a la planificación de reintentos de mensajería
+       pasada del planificador, por la pata por la que llegó la consulta y sin
+       tocar la planificación propia de los elementos, y ``?APRSM`` reenvía como
+       mucho ``MSG_QUERY_BURST_MAX`` (3) mensajes retenidos por consulta, dejando
+       el resto a la planificación de reintentos de mensajería. Se aplican dos
+       límites en serie: ``QUERY_DIRECTED_MIN_INTERVAL_SEC`` (5 s) por indicativo
+       que pregunta y ``QUERY_DIRECTED_GLOBAL_MIN_INTERVAL_SEC`` (10 s) por
+       origen, este último indexado por algo que quien pregunta no elige, de modo
+       que rotar indicativos no compra tiempo al aire extra
    * - Gráfico de historial de escucha de ``?APRSH``
      - ⚠️
      - ✅
