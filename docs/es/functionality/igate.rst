@@ -312,6 +312,15 @@ APRS para el tráfico reenrutado. Esto mantiene los constructos ``qA`` y un
 escuche el paquete lo reconozca como ya reenrutado en lugar de reenviarlo de
 vuelta.
 
+Los dos indicativos que se conservan de la cabecera original vienen de un feed
+sin autenticar y se validan antes de armar la trama: cada uno tiene que ser de
+una a nueve letras mayúsculas o dígitos, seguidos opcionalmente de ``-`` y un
+SSID de 0 a 15. Una línea cuyo origen o destino lleve cualquier otra cosa — un
+espacio, una coma, un ``>`` o un ``:`` — se descarta en lugar de reenrutarse,
+porque esos caracteres volverían a puntuar la cabecera para quien la reciba.
+Nada se recorta para que entre: un indicativo recortado nombraría a otra
+estación, así que un token sobredimensionado también es un rechazo.
+
 .. warning::
 
    Reenrutar tráfico de terceros sin restricción es la causa número uno de

@@ -115,6 +115,17 @@ y el tipo de callback ``modem_rx_cb_t``. Nótese que **no** hay punto de entrada
 de desmontaje: el módem se levanta una vez por arranque y se reconfigura en su
 sitio con ``modem_set_modem()``.
 
+Los tres puntos de entrada de transmisión — ``modem_send_raw()``,
+``modem_build_frame_tnc2()`` y ``modem_send_tnc2()`` — se pueden llamar desde
+cualquier tarea. Comparten un mutex interno, porque comparten el acumulador de
+CRC saliente, el anillo de transmisión de productor único y la máquina de
+estados que keyea desde él. ``modem_send_tnc2()`` sostiene ese mutex a lo largo
+del armado y del encolado, así que una trama siempre llega al anillo con la
+suma de verificación acumulada para ella, incluso cuando una baliza sale justo
+en el momento en que el IGate retransmite una línea de APRS-IS. Un llamador que
+no consigue el camino en un segundo recibe ``ESP_ERR_TIMEOUT`` (o ``0`` del
+constructor) en vez de quedarse esperando detrás indefinidamente.
+
 Configuración en ejecución (``modem_config_t``)
 ===============================================
 

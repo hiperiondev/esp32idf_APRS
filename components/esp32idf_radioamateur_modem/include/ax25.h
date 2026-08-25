@@ -225,6 +225,11 @@ typedef void (*ax25_callback_t)(ax25_msg_t *msg);
 /**
  * @brief Low-level AX.25 codec context: raw frame buffer, CRC accumulators
  *        and HDLC bit-stuffing state.
+ *
+ * A context carries state across the individual bytes of one frame and has no
+ * locking of its own, so a single context must be used by one encoder or
+ * decoder at a time; concurrent users need either their own context or a lock
+ * shared between them.
  */
 typedef struct AX25Ctx {
     uint8_t buf[AX25_FRAME_MAX_SIZE]; /**< Raw frame buffer (no flags, no FCS). */
@@ -453,11 +458,20 @@ bool ax25_decode(uint8_t *buf, size_t len, uint16_t mVrms, ax25_msg_t *msg, enum
 
 /**
  * @brief Parse a TNC2-style monitor string into an ::ax25frame structure.
+ *
+ * @p txt is rewritten in place: the digipeater path is compacted to the front
+ * of the buffer and tokenized there, so the caller must pass a scratch copy it
+ * owns and must not expect the string to survive the call. Beyond that the
+ * function keeps no state of its own and may be called from several tasks at
+ * once, each with its own @p frame and @p txt.
+ *
  * @param frame Destination structure to fill.
  * @param txt   TNC2 monitor string, in the form
- *              "SRC>DST,PATH:payload".
- * @param size  Size, in bytes, of the buffer available for @p txt.
- * @return Non-zero on success, zero if the string could not be parsed.
+ *              "SRC>DST,PATH:payload". Must be NUL-terminated.
+ * @param size  Number of bytes of @p txt to parse, i.e. its string length.
+ * @return Non-zero on success, zero if the string could not be parsed: an
+ *         empty argument, no information field, or a header whose '>' does
+ *         not precede the ':' that opens that field.
  */
 char ax25_encode(ax25_frame_t *frame, char *txt, int size);
 

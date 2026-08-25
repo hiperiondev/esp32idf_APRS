@@ -26,6 +26,7 @@
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 #include "freertos/task.h"
 
 #include "afsk.h"
@@ -40,11 +41,53 @@ static const char *TAG = "radiomodem";
 // The effective period is never shorter than one FreeRTOS tick.
 #define MODEM_SVC_PERIOD_MS 5
 
+// How long a caller waits for the TX encode path before giving up. Building a
+// frame and pushing it into the TX ring is pure computation over a few hundred
+// bytes - microseconds - so any wait longer than this means the holder is not
+// running at all, and blocking a beacon or IGate task forever on it would be
+// worse than reporting the failure and letting the caller move on.
+#define MODEM_TX_LOCK_TIMEOUT_MS 1000
+
 static ax25_ctx_t s_ctx;
 static TaskHandle_t s_svcTask = NULL;
 static modem_rx_cb_t s_rxCb = NULL;
 static void *s_rxCbCtx = NULL;
 static bool s_running = false;
+
+// Serializes the whole TNC2 -> raw -> TX-ring sequence. Three pieces of shared
+// state make this mandatory, and none of them is per-call:
+//
+//   - s_ctx below carries the outgoing CRC accumulator across every byte of
+//     one frame inside hdlcFrame(), so an interleaved second frame would emit
+//     both with the wrong FCS.
+//   - Ax25WriteTxFrame() is a single-producer ring: txFrameHead and
+//     txBufferHead are owned by the writing side and published to the DAC ISR
+//     with a release store. Two writers would both claim the same slot.
+//   - Ax25TransmitBuffer() reads that head to decide whether to start keying
+//     up, which has to happen after the payload it is about to send is in
+//     place.
+//
+// beacon_sched_task (own-station beacons, weather, telemetry, objects,
+// bulletins) and igate_task (INET->RF relay and message TX) both reach this
+// path, so the overlap is routine on a busy IGate rather than exceptional.
+static SemaphoreHandle_t s_txMutex = NULL;
+
+// @brief Take the TX lock.
+// @return ESP_OK when held, ESP_ERR_INVALID_STATE before modem_init() has run,
+//         ESP_ERR_TIMEOUT if the holder did not release in time.
+static esp_err_t txLock(void) {
+    if (s_txMutex == NULL)
+        return ESP_ERR_INVALID_STATE;
+    if (xSemaphoreTake(s_txMutex, MODEM_DELAY_TICKS(MODEM_TX_LOCK_TIMEOUT_MS)) != pdTRUE) {
+        ESP_LOGE(TAG, "TX path busy for more than %d ms", MODEM_TX_LOCK_TIMEOUT_MS);
+        return ESP_ERR_TIMEOUT;
+    }
+    return ESP_OK;
+}
+
+static void txUnlock(void) {
+    xSemaphoreGive(s_txMutex);
+}
 
 // ------------------------------------------------------------------
 // Service task
@@ -120,6 +163,15 @@ void modem_set_modem(const modem_config_t *cfg) {
 esp_err_t modem_init(const modem_config_t *cfg) {
     if (s_running)
         return ESP_ERR_INVALID_STATE;
+
+    // Created before anything can transmit, and kept for the lifetime of the
+    // image: a failed init may be retried, and the component has no teardown
+    // entry point.
+    if (s_txMutex == NULL) {
+        s_txMutex = xSemaphoreCreateMutex();
+        if (s_txMutex == NULL)
+            return ESP_ERR_NO_MEM;
+    }
 
     memset(&s_ctx, 0, sizeof(s_ctx));
 
@@ -220,9 +272,12 @@ uint32_t modem_measure_adc_rate(uint32_t ms) {
 // Frame helpers
 // ------------------------------------------------------------------
 
-int modem_build_frame_tnc2(const char *tnc2, uint8_t *out, size_t out_len) {
-    // ax25_encode() writes into the string it is given (it uses strtok on the
-    // digipeater path), so work on a scratch copy.
+// @brief Encode one TNC2 line into a raw AX.25 frame. The caller must hold
+//        ::s_txMutex, which is what makes the shared s_ctx CRC accumulator
+//        inside hdlcFrame() belong to this frame alone.
+static int buildFrameTnc2Locked(const char *tnc2, uint8_t *out, size_t out_len) {
+    // ax25_encode() writes into the string it is given (it tokenizes the
+    // digipeater path in place), so work on a scratch copy.
     char scratch[AX25_FRAME_MAX_SIZE + 1];
     ax25_frame_t frame;
 
@@ -238,10 +293,10 @@ int modem_build_frame_tnc2(const char *tnc2, uint8_t *out, size_t out_len) {
     return hdlcFrame(out, out_len, &s_ctx, &frame);
 }
 
-esp_err_t modem_send_raw(const uint8_t *frame, uint16_t len) {
-    if (frame == NULL || len == 0)
-        return ESP_ERR_INVALID_ARG;
-
+// @brief Queue one raw frame and let the TX state machine pick it up. The
+//        caller must hold ::s_txMutex: this is the single-producer side of the
+//        TX ring the DAC ISR consumes.
+static esp_err_t sendRawLocked(const uint8_t *frame, uint16_t len) {
     if (Ax25WriteTxFrame(frame, len) == NULL) {
         ESP_LOGW(TAG, "TX buffer full, frame dropped");
         return ESP_ERR_NO_MEM;
@@ -250,16 +305,60 @@ esp_err_t modem_send_raw(const uint8_t *frame, uint16_t len) {
     return ESP_OK;
 }
 
+int modem_build_frame_tnc2(const char *tnc2, uint8_t *out, size_t out_len) {
+    int size;
+
+    if (tnc2 == NULL || out == NULL || out_len == 0)
+        return 0;
+
+    if (txLock() != ESP_OK)
+        return 0;
+
+    size = buildFrameTnc2Locked(tnc2, out, out_len);
+    txUnlock();
+    return size;
+}
+
+esp_err_t modem_send_raw(const uint8_t *frame, uint16_t len) {
+    esp_err_t err;
+
+    if (frame == NULL || len == 0)
+        return ESP_ERR_INVALID_ARG;
+
+    err = txLock();
+    if (err != ESP_OK)
+        return err;
+
+    err = sendRawLocked(frame, len);
+    txUnlock();
+    return err;
+}
+
 esp_err_t modem_send_tnc2(const char *tnc2) {
     uint8_t buf[AX25_FRAME_MAX_SIZE];
-    int size = modem_build_frame_tnc2(tnc2, buf, sizeof(buf));
+    esp_err_t err;
+    int size;
 
+    if (tnc2 == NULL)
+        return ESP_ERR_INVALID_ARG;
+
+    // One lock spans build and queue, so the frame reaches the ring with the
+    // CRC that was accumulated for it.
+    err = txLock();
+    if (err != ESP_OK)
+        return err;
+
+    size = buildFrameTnc2Locked(tnc2, buf, sizeof(buf));
     if (size <= 0) {
+        txUnlock();
         ESP_LOGW(TAG, "cannot encode \"%s\"", tnc2);
         return ESP_ERR_INVALID_ARG;
     }
+
     ESP_LOGI(TAG, "TX: %s", tnc2);
-    return modem_send_raw(buf, (uint16_t)size);
+    err = sendRawLocked(buf, (uint16_t)size);
+    txUnlock();
+    return err;
 }
 
 static int appendCall(char *out, size_t out_len, size_t pos, const ax25_call_t *c) {

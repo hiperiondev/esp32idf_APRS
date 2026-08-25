@@ -156,30 +156,52 @@ void modem_set_rx_callback(modem_rx_cb_t cb, void *ctx);
 
 /**
  * @brief Queue a raw AX.25 frame for transmission.
+ *
+ * Safe to call from any task: the transmit path is serialized internally, so
+ * concurrent callers are queued one after another rather than interleaved.
+ *
  * @param frame Frame content, address field onwards: no HDLC flags, no bit
  *              stuffing and no FCS; all three are added automatically by
  *              the modulator.
  * @param len   Length, in bytes, of @p frame.
- * @return ESP_OK if the frame was queued successfully, or an ESP-IDF error
- *         code otherwise.
+ * @return ESP_OK if the frame was queued successfully.
+ *         ESP_ERR_INVALID_ARG if @p frame is NULL or @p len is zero.
+ *         ESP_ERR_INVALID_STATE if modem_init() has not run yet.
+ *         ESP_ERR_TIMEOUT if the transmit path could not be acquired.
+ *         ESP_ERR_NO_MEM if the transmit ring is full (frame dropped).
  */
 esp_err_t modem_send_raw(const uint8_t *frame, uint16_t len);
 
 /**
  * @brief Build a raw AX.25 frame from a TNC2-style monitor string.
+ *
+ * Safe to call from any task: the encoder state this shares with the rest of
+ * the transmit path is held under the same internal lock.
+ *
  * @param tnc2    Monitor string, e.g. "NOCALL-1>APE32I,WIDE1-1:>hello".
  * @param out     Destination buffer for the built raw AX.25 frame.
  * @param out_len Size, in bytes, of @p out.
- * @return Length, in bytes, of the built frame, or 0 if @p tnc2 is
- *         malformed.
+ * @return Length, in bytes, of the built frame, or 0 if any argument is
+ *         unusable, if @p tnc2 is malformed or does not fit, if modem_init()
+ *         has not run yet, or if the transmit path could not be acquired.
  */
 int modem_build_frame_tnc2(const char *tnc2, uint8_t *out, size_t out_len);
 
 /**
  * @brief Build a frame from a TNC2-style monitor string and queue it for
  *        transmission in a single call.
+ *
+ * Build and queue happen under one acquisition of the internal transmit lock,
+ * so the frame reaches the transmit ring carrying the checksum accumulated for
+ * it. This is the entry point every beacon, IGate relay and message transmit
+ * uses, and they may call it concurrently.
+ *
  * @param tnc2 Monitor string, e.g. "NOCALL-1>APE32I,WIDE1-1:>hello".
- * @return ESP_OK on success, or an ESP-IDF error code otherwise.
+ * @return ESP_OK if the frame was queued successfully.
+ *         ESP_ERR_INVALID_ARG if @p tnc2 is NULL or could not be encoded.
+ *         ESP_ERR_INVALID_STATE if modem_init() has not run yet.
+ *         ESP_ERR_TIMEOUT if the transmit path could not be acquired.
+ *         ESP_ERR_NO_MEM if the transmit ring is full (frame dropped).
  */
 esp_err_t modem_send_tnc2(const char *tnc2);
 

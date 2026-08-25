@@ -149,10 +149,10 @@ static inline uint16_t ringByteSpace(uint16_t head, uint16_t tail) {
 // @brief Producer-side check: is there room for one more RX frame of @p size
 //        bytes, both in the handle ring and in the byte buffer?
 //
-// The byte-buffer half of this did not exist before: rxBufferHead simply wrapped
-// modulo FRAME_BUFFER_SIZE and silently overwrote frames the service task had
-// not read yet. Only txBuffer was ever checked (GET_FREE_SIZE, in
-// Ax25WriteTxFrame).
+// Both halves have to be asked. A free handle slot alone is not room: the
+// frame payloads share one byte buffer, so a run of long frames can leave a
+// slot available while the bytes behind it would land on top of frames the
+// service task has not read yet.
 static bool rxRingHasRoom(uint16_t size) {
     if (RING_NEXT(rxFrameHead) == RING_OBSERVE(rxFrameTail))
         return false;
@@ -1497,63 +1497,81 @@ static void convPath(ax25_header_t *hdr, const char *txt, unsigned int size) {
 
 char ax25_encode(ax25_frame_t *frame, char *txt, int size) {
     char *token;
-    const char *ptr;
-    int i;
-    unsigned int p, p2, p3;
-    char j;
+    char *save;
+    int i, hop;
+    unsigned int p, p2, p3, j;
 
     memset(frame, 0, sizeof(ax25_frame_t));
 
+    if (txt == NULL || size <= 0)
+        return 0;
+
+    // A TNC2 line is "SRC>DST[,PATH]:info": the information field starts right
+    // after the first ':', the source call ends at the first '>' and the
+    // destination call spans from there to either the first ',' of the
+    // digipeater path or that same ':'.
+    //
+    // Every one of these offsets is a byte position into a line that may be up
+    // to AX25_FRAME_MAX_SIZE bytes long, so all four are held in unsigned int:
+    // a narrower type would wrap on the far half of a long line and hand
+    // convPath() a start/size pair describing a field that is not there.
     p = strpos(txt, ':');
-    if (p > 0 && p < (unsigned int)size) {
-        // payload
-        memset(frame->data, 0, sizeof(frame->data));
-        for (i = 0; i < (size - (int)p) - 1 && i < (int)sizeof(frame->data) - 1; i++)
-            frame->data[i] = txt[p + i + 1];
+    if (p == 0 || p >= (unsigned int)size)
+        return 0;
 
-        p2 = strpos(txt, '>');
-        if (p2 > 0 && p2 < (unsigned int)size) {
-            convPath(&frame->header[1], &txt[0], p2); // source callsign
-            j = (char)strpos(txt, ',');
-            if ((j < 1) || ((unsigned int)j > p))
-                j = (char)p;
-            convPath(&frame->header[0], &txt[p2 + 1], (unsigned int)j - p2 - 1); // destination
+    p2 = strpos(txt, '>');
+    if (p2 == 0 || p2 >= p)
+        return 0;
 
-            p3 = 0;
-            if (((unsigned int)j > p2) && ((unsigned int)j < p)) { // digipeater path present
-                for (i = j; i < size; i++) {
-                    if (txt[i] == ':') {
-                        for (; i < size; i++)
-                            txt[p3++] = 0x00;
-                        break;
-                    }
-                    txt[p3++] = txt[i];
-                }
-                token = strtok(txt, ",");
-                j = 0;
-                while (token != NULL) {
-                    ptr = token;
-                    convPath(&frame->header[j + 2], ptr, (unsigned int)strlen(ptr));
-                    token = strtok(NULL, ",");
-                    j++;
-                    if (j > 7)
-                        break;
-                }
+    // payload
+    memset(frame->data, 0, sizeof(frame->data));
+    for (i = 0; i < (size - (int)p) - 1 && i < (int)sizeof(frame->data) - 1; i++)
+        frame->data[i] = txt[p + i + 1];
+
+    convPath(&frame->header[1], &txt[0], p2); // source callsign
+
+    // strpos() scans the whole line, so a ',' inside the information field
+    // reports an offset past the header, and one inside the source call
+    // reports an offset before the destination field even begins. Both are
+    // clamped to the ':' offset, which makes the destination field run to the
+    // end of the header and leaves the digipeater path empty.
+    j = strpos(txt, ',');
+    if (j <= p2 || j > p)
+        j = p;
+
+    convPath(&frame->header[0], &txt[p2 + 1], j - p2 - 1); // destination
+
+    p3 = 0;
+    if (j < p) { // digipeater path present
+        for (i = (int)j; i < size; i++) {
+            if (txt[i] == ':') {
+                for (; i < size; i++)
+                    txt[p3++] = 0x00;
+                break;
             }
-
-            for (i = 0; i < 10; i++)
-                frame->header[i].ssid &= 0xFE; // clear all end-of-path bits
-            // fix the end-of-path bit
-            for (i = 2; i < 10; i++) {
-                if (frame->header[i].addr[0] == 0x00) {
-                    frame->header[i - 1].ssid |= 0x01;
-                    break;
-                }
-            }
-            return 1;
+            txt[p3++] = txt[i];
+        }
+        // strtok_r keeps the tokenizer state in this call frame, so two tasks
+        // encoding at the same time cannot resume each other's scan.
+        token = strtok_r(txt, ",", &save);
+        hop = 0;
+        while (token != NULL && hop < 8) {
+            convPath(&frame->header[hop + 2], token, (unsigned int)strlen(token));
+            token = strtok_r(NULL, ",", &save);
+            hop++;
         }
     }
-    return 0;
+
+    for (i = 0; i < 10; i++)
+        frame->header[i].ssid &= 0xFE; // clear all end-of-path bits
+    // fix the end-of-path bit
+    for (i = 2; i < 10; i++) {
+        if (frame->header[i].addr[0] == 0x00) {
+            frame->header[i - 1].ssid |= 0x01;
+            break;
+        }
+    }
+    return 1;
 }
 
 static void ax25_putRaw(uint8_t *raw, ax25_ctx_t *ctx, uint8_t c) {

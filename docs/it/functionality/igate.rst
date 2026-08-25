@@ -315,6 +315,16 @@ specifica APRS per il traffico ritrasmesso. Questo mantiene i costrutti
 qualsiasi altro IGate che ascolti il pacchetto di riconoscerlo come già
 ritrasmesso invece di rimandarlo indietro.
 
+I due nominativi conservati dall'intestazione originale provengono da un feed
+non autenticato e vengono controllati prima di costruire la trama: ciascuno
+deve essere composto da una a nove lettere maiuscole o cifre, seguite
+facoltativamente da ``-`` e da un SSID da 0 a 15. Una riga la cui origine o
+destinazione porti qualsiasi altra cosa — uno spazio, una virgola, un ``>`` o
+un ``:`` — viene scartata invece che ritrasmessa, perché quei caratteri
+ripunteggerebbero l'intestazione per chi la riceve. Nulla viene accorciato per
+farlo entrare: un nominativo troncato indicherebbe un'altra stazione, quindi
+anche un token sovradimensionato è un rifiuto.
+
 .. warning::
 
    Reinoltrare il traffico di terze parti senza restrizioni è la causa numero uno

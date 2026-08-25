@@ -111,6 +111,17 @@ initialiser), the ``MODEM_DELAY_TICKS(ms)`` helper, ``modem_rx_frame_t`` and the
 the modem is brought up once per boot and reconfigured in place with
 ``modem_set_modem()``.
 
+The three transmit entry points — ``modem_send_raw()``,
+``modem_build_frame_tnc2()`` and ``modem_send_tnc2()`` — are safe to call from
+any task. They share one internal mutex, because they share the outgoing CRC
+accumulator, the single-producer transmit ring and the state machine that keys
+up from it. ``modem_send_tnc2()`` holds that mutex across both the build and
+the queue, so a frame always reaches the ring with the checksum accumulated for
+it, even when a beacon fires at the same moment the IGate relays a line from
+APRS-IS. A caller that cannot acquire the path within one second gets
+``ESP_ERR_TIMEOUT`` (or ``0`` from the builder) rather than waiting behind it
+indefinitely.
+
 Runtime configuration (``modem_config_t``)
 ==========================================
 

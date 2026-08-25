@@ -294,6 +294,15 @@ APRS spec requires for gatewayed traffic. This keeps ``qA`` constructs and a
 bare ``TCPIP`` off the air, and lets every other IGate that hears the frame
 recognise it as already gated instead of gating it back.
 
+The two calls kept from the original header are read out of an unauthenticated
+feed and are checked before the frame is built: each has to be one to nine
+upper-case letters or digits, optionally followed by ``-`` and an SSID of 0 to
+15. A line whose source or destination carries anything else — a space, a
+comma, a ``>`` or a ``:`` — is dropped instead of gated, because those
+characters would re-punctuate the header for whoever receives it. Nothing is
+shortened to fit: a truncated call would name a different station, so an
+oversized token is a rejection too.
+
 .. warning::
 
    Re-gating third-party traffic without restriction is the number-one cause of

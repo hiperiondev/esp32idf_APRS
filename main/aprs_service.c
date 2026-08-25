@@ -451,8 +451,9 @@ static uint32_t estimate_tx_airtime_ms(size_t tnc2_len) {
 // Callers build TNC2 text into larger scratch buffers and pass a pointer plus a
 // length, so the text is not necessarily NUL-terminated at exactly `len`. The
 // modem's modem_send_tnc2() needs a NUL-terminated string (it copies into a
-// scratch buffer for ax25_encode(), which runs strtok over the digipeater
-// path), so the terminator is applied here rather than trusted from the caller.
+// scratch buffer for ax25_encode(), which tokenizes the digipeater path in
+// place), so the terminator is applied here rather than trusted from the
+// caller.
 //
 // `critical` exempts message traffic and digipeat repeats from the duty-cycle
 // ceiling below (see the DUTY_CYCLE_WINDOW_MS block comment): every other
@@ -1171,8 +1172,54 @@ static bool messageGatePass(const char *srcLine, const char *srcCall, const char
 // field after that first ':' is carried through unmodified.
 //
 // Returns the frame length on success, or 0 (after logging a warning) if
-// the input line has no usable "SRC>DST...:" header or the built frame does
-// not fit APRS_TNC2_BUF_SIZE - never a truncated frame.
+// the input line has no usable "SRC>DST...:" header, if either inner call is
+// not a legal AX.25 address token, or if the built frame does not fit
+// APRS_TNC2_BUF_SIZE - never a truncated frame.
+
+// Both inner calls are copied straight out of an unauthenticated feed into a
+// line this station then transmits, where every receiver reads them back as a
+// callsign and as the head of a path. So they are held to the alphabet a call
+// is written in - upper-case letters and digits, optionally followed by '-'
+// and an SSID of 0 to 15 - and a line carrying anything else is dropped
+// instead of gated: a token holding a space, a comma, a '>' or a ':' would
+// re-punctuate the frame for whoever parses it next.
+//
+// The base is allowed up to THIRDPARTY_CALL_MAX_BASE characters rather than
+// the six an AX.25 address field holds. These calls travel as text inside the
+// information field, not as an address, and Internet-side sources longer than
+// six characters are ordinary traffic on a full feed; shortening one would
+// name a different station, and rejecting it would drop traffic that every
+// other gateway carries.
+#define THIRDPARTY_CALL_MAX_BASE 9
+
+static bool thirdparty_call_is_legal(const char *call) {
+    size_t i = 0;
+    int ssid;
+
+    while (call[i] != 0 && call[i] != '-') {
+        if (!isupper((unsigned char)call[i]) && !isdigit((unsigned char)call[i]))
+            return false;
+        if (++i > THIRDPARTY_CALL_MAX_BASE)
+            return false;
+    }
+    if (i == 0)
+        return false;
+    if (call[i] == 0)
+        return true;
+
+    // SSID: one or two digits, 0 to 15, and nothing after them.
+    i++;
+    if (!isdigit((unsigned char)call[i]))
+        return false;
+    ssid = call[i] - '0';
+    i++;
+    if (isdigit((unsigned char)call[i])) {
+        ssid = ssid * 10 + (call[i] - '0');
+        i++;
+    }
+    return call[i] == 0 && ssid <= 15;
+}
+
 static int build_thirdparty_frame(const char *inetLine, char *out, size_t outMax) {
     const char *gt = strchr(inetLine, '>');
     const char *colon = strchr(inetLine, ':');
@@ -1181,10 +1228,15 @@ static int build_thirdparty_frame(const char *inetLine, char *out, size_t outMax
         return 0;
     }
 
+    // A token that does not fit the buffer cannot be a legal call either, so
+    // both fields are rejected on length here rather than shortened - a
+    // truncated call would name a different station.
     char innerSrc[12];
     size_t srcLen = (size_t)(gt - inetLine);
-    if (srcLen >= sizeof(innerSrc))
-        srcLen = sizeof(innerSrc) - 1;
+    if (srcLen >= sizeof(innerSrc)) {
+        ESP_LOGW(TAG, "INET2RF: line has an oversized source call, not gated: %s", inetLine);
+        return 0;
+    }
     memcpy(innerSrc, inetLine, srcLen);
     innerSrc[srcLen] = 0;
 
@@ -1194,13 +1246,15 @@ static int build_thirdparty_frame(const char *inetLine, char *out, size_t outMax
         dstEnd++;
     char innerDst[12];
     size_t dstLen = (size_t)(dstEnd - dstStart);
-    if (dstLen >= sizeof(innerDst))
-        dstLen = sizeof(innerDst) - 1;
+    if (dstLen >= sizeof(innerDst)) {
+        ESP_LOGW(TAG, "INET2RF: line has an oversized destination call, not gated: %s", inetLine);
+        return 0;
+    }
     memcpy(innerDst, dstStart, dstLen);
     innerDst[dstLen] = 0;
 
-    if (innerSrc[0] == 0 || innerDst[0] == 0) {
-        ESP_LOGW(TAG, "INET2RF: line has an empty source or destination call, not gated: %s", inetLine);
+    if (!thirdparty_call_is_legal(innerSrc) || !thirdparty_call_is_legal(innerDst)) {
+        ESP_LOGW(TAG, "INET2RF: line has an unusable source or destination call, not gated: %s", inetLine);
         return 0;
     }
 
