@@ -80,6 +80,14 @@ Telegram bring-up can fail for a reason the operator has to be told apart:
 #. **Telegram's own answer.** A malformed but well-formed-looking token is
    only caught once the API itself rejects it.
 
+Each attempt begins by taking a locked snapshot of ``telegram.json``'s
+in-memory copy — token, administrator identifier, authorized users and
+allowed chats — into a stack-local copy the worker then runs from for the
+rest of the attempt. A save landing on the *Telegram* page while a handshake
+is already tens of seconds into flight therefore never reaches the token or
+tables an attempt in progress is using; it is picked up cleanly by the next
+attempt instead.
+
 Bring-up and teardown both happen off the calling task, handed to
 ``telegram_app_tick_1hz()`` (called once a second) which spawns a short-lived
 worker only when one is actually due. That keeps the handshake-sized stack a

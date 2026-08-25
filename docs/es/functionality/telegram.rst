@@ -85,6 +85,14 @@ distinguir del resto:
 #. **La propia respuesta de Telegram.** Un token con forma correcta pero
    inválido solo se detecta cuando la propia API lo rechaza.
 
+Cada intento empieza tomando, bajo el lock, una instantánea de la copia en
+memoria de ``telegram.json`` — token, identificador del administrador,
+usuarios autorizados y chats permitidos — en una copia local de pila desde la
+que el trabajador corre el resto del intento. Un guardado hecho desde la
+página *Telegram* mientras un handshake ya lleva decenas de segundos en
+curso nunca llega así al token ni a las tablas que un intento en marcha está
+usando; queda recogido con normalidad por el siguiente intento.
+
 Tanto el arranque como el apagado ocurren fuera de la tarea que los invoca,
 entregados a ``telegram_app_tick_1hz()`` (llamada una vez por segundo), que
 solo lanza una tarea trabajadora de corta vida cuando realmente corresponde.

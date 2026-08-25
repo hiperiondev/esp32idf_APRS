@@ -890,9 +890,22 @@ static telegram_app_reason_t verify_token(char *detail, size_t detail_size) {
 static telegram_app_reason_t bring_up(void) {
     char detail[TELEGRAM_APP_DETAIL_MAX + 1] = "";
 
-    if (s_cfg.bot_token[0] == '\0')
+    // Snapshotted once, under the lock, before anything else runs. A save
+    // landing on s_cfg while this attempt is mid-flight (net_probe() and the
+    // TLS handshake below can take tens of seconds) must not be able to hand
+    // this function a token, user list or chat list that is half-old,
+    // half-new. `local` is an automatic variable that lives for the rest of
+    // this call, so cfg.bot_token below can point straight into it: it stays
+    // valid for as long as telegram_init()/telegram_start() need it, and it
+    // can never be rewritten out from under them by telegram_app_apply_config().
+    telegram_app_config_t local;
+    lock();
+    local = s_cfg;
+    unlock();
+
+    if (local.bot_token[0] == '\0')
         return TELEGRAM_APP_REASON_NO_TOKEN;
-    if (!token_well_formed(s_cfg.bot_token))
+    if (!token_well_formed(local.bot_token))
         return TELEGRAM_APP_REASON_TOKEN_MALFORMED;
 
 #if !CONFIG_TELEGRAM_BOT_CERT_BUNDLE
@@ -935,8 +948,8 @@ static telegram_app_reason_t bring_up(void) {
     status_set(TELEGRAM_APP_STATE_STARTING, TELEGRAM_APP_REASON_CONNECTED, NULL);
 
     telegram_service_config_t cfg = TELEGRAM_SERVICE_DEFAULT_CONFIG();
-    cfg.bot_token = s_cfg.bot_token;
-    cfg.admin_id = s_cfg.admin_id;
+    cfg.bot_token = local.bot_token;
+    cfg.admin_id = local.admin_id;
     cfg.device_name = APRS_SOFTWARE_NAME;
     cfg.status_cb = telegram_status_lines;
     cfg.sensors_cb = telegram_sensor_lines;
@@ -994,10 +1007,10 @@ static telegram_app_reason_t bring_up(void) {
     // half a service configured. The administrator is already in the list -
     // telegram_init() adds admin_id itself - and re-adding an identifier the
     // component already holds updates that entry rather than consuming a slot.
-    for (uint8_t i = 0; i < s_cfg.user_count; i++)
-        telegram_add_user(s_cfg.users[i].id, s_cfg.users[i].name, false);
-    for (uint8_t i = 0; i < s_cfg.chat_count; i++)
-        telegram_allow_chat(s_cfg.chats[i].id, s_cfg.chats[i].name);
+    for (uint8_t i = 0; i < local.user_count; i++)
+        telegram_add_user(local.users[i].id, local.users[i].name, false);
+    for (uint8_t i = 0; i < local.chat_count; i++)
+        telegram_allow_chat(local.chats[i].id, local.chats[i].name);
 
     err = telegram_start();
     if (err != ESP_OK) {

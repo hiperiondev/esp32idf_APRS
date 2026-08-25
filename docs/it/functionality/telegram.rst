@@ -84,6 +84,14 @@ avvio di Telegram può fallire per un motivo che va distinto dagli altri:
 #. **La risposta di Telegram stessa.** Un token dalla forma corretta ma non
    valido viene rilevato solo quando l'API stessa lo rifiuta.
 
+Ogni tentativo inizia prendendo, sotto lock, un'istantanea della copia in
+memoria di ``telegram.json`` — token, identificativo dell'amministratore,
+utenti autorizzati e chat consentite — in una copia locale sullo stack da cui
+il worker esegue il resto del tentativo. Un salvataggio effettuato dalla
+pagina *Telegram* mentre un handshake è già in corso da decine di secondi non
+raggiunge quindi mai il token né le tabelle che un tentativo in corso sta
+usando; viene recepito normalmente dal tentativo successivo.
+
 Sia l'avvio sia lo spegnimento avvengono fuori dal task chiamante, affidati a
 ``telegram_app_tick_1hz()`` (chiamata una volta al secondo), che avvia un
 worker di breve durata solo quando è effettivamente dovuto. Questo mantiene
