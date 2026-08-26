@@ -226,8 +226,15 @@ static inline bool str_is_line_break_char(char c) {
  * @p dst is always NUL-terminated. Passing a @p dst_size of 0 is a no-op;
  * passing a NULL @p src is treated as an empty string.
  *
+ * @p src and @p dst may be the same buffer, which filters a stored field in
+ * place. The copy is a forward, byte-at-a-time loop whose write index can
+ * only fall behind its read index (a dropped byte is never written back), so
+ * every byte is read before anything can be written over it, and the closing
+ * NUL is written after the last read. Refiltering an already-filtered field
+ * this way is a no-op on its contents.
+ *
  * @param src Source string to filter and copy from.
- * @param dst Destination buffer.
+ * @param dst Destination buffer; may be @p src.
  * @param dst_size Total size of @p dst in bytes, including room for the NUL.
  */
 static inline void str_copy_strip_line_breaks(const char *src, char *dst, size_t dst_size) {
@@ -294,7 +301,12 @@ static inline int utf8_seq_len(unsigned char c) {
  * @p dst is always NUL-terminated. Passing a @p dst_size of 0 is a no-op;
  * passing a NULL @p src is treated as an empty string.
  *
- * @param src Source string to copy from.
+ * Unlike str_copy_strip_line_breaks(), the two buffers must not overlap: the
+ * kept bytes are moved with ``memcpy()``, whose operands are required to be
+ * distinct. A caller holding text in the destination field itself copies it
+ * through a scratch buffer first, which is what set_str_utf8() does.
+ *
+ * @param src Source string to copy from; must not overlap @p dst.
  * @param dst Destination buffer.
  * @param dst_size Total size of @p dst in bytes, including room for the NUL.
  */

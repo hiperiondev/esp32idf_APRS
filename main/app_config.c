@@ -1015,35 +1015,46 @@ static float clamp_range_km(float value, const char *key) {
 
 static void config_from_json(cJSON *d, app_config_t *c) {
     // Start from defaults so every key not present in an older config file
-    // still ends up with a sane, documented value (never zero-garbage).
-    app_config_t def;
-    app_config_set_defaults(&def);
-    *c = def;
+    // still ends up with a sane, documented value (never zero-garbage). The
+    // defaults are written straight into the destination struct, and every
+    // read below takes its fallback from the very field it is about to
+    // overwrite: each field is assigned exactly once, always after this call,
+    // so at the instant a fallback is read that field still holds its
+    // default. Keeping the defaults only in *c is what keeps a second
+    // app_config_t - the size of the whole configuration - off the stack of
+    // whichever task is loading, on top of the cJSON tree of the whole file
+    // that is live in the heap while this runs.
+    //
+    // A string field's fallback is therefore its own buffer. Both loaders
+    // take that: set_str() filters in place, and set_str_utf8() copies
+    // through a scratch buffer before touching the field. Either way a
+    // default that is already stored gets refiltered to itself.
+    app_config_set_defaults(c);
 
-    c->cpuFreq = (uint8_t)jget_num(d, "cpuFreq", def.cpuFreq);
-    set_str(c->my_callsign, sizeof(c->my_callsign), jget_str(d, "myCallsign", def.my_callsign));
-    c->my_use_gps = jget_bool(d, "myUseGps", def.my_use_gps);
-    c->my_lat = (float)jget_num(d, "myLAT", def.my_lat);
-    c->my_lon = (float)jget_num(d, "myLON", def.my_lon);
-    c->my_alt = (float)jget_num(d, "myALT", def.my_alt);
-    c->my_phg_power = (uint16_t)jget_num(d, "myPHGPower", def.my_phg_power);
-    c->my_phg_gain = (float)jget_num(d, "myPHGGain", def.my_phg_gain);
-    c->my_phg_height = (uint16_t)jget_num(d, "myPHGHeight", def.my_phg_height);
-    c->my_phg_dir = (uint8_t)jget_num(d, "myPHGDir", def.my_phg_dir);
-    c->pos_ambiguity = (uint8_t)jget_num(d, "myAmbiguity", def.pos_ambiguity);
+    c->cpuFreq = (uint8_t)jget_num(d, "cpuFreq", c->cpuFreq);
+    set_str(c->my_callsign, sizeof(c->my_callsign), jget_str(d, "myCallsign", c->my_callsign));
+    c->my_use_gps = jget_bool(d, "myUseGps", c->my_use_gps);
+    c->my_lat = (float)jget_num(d, "myLAT", c->my_lat);
+    c->my_lon = (float)jget_num(d, "myLON", c->my_lon);
+    c->my_alt = (float)jget_num(d, "myALT", c->my_alt);
+    c->my_phg_power = (uint16_t)jget_num(d, "myPHGPower", c->my_phg_power);
+    c->my_phg_gain = (float)jget_num(d, "myPHGGain", c->my_phg_gain);
+    c->my_phg_height = (uint16_t)jget_num(d, "myPHGHeight", c->my_phg_height);
+    c->my_phg_dir = (uint8_t)jget_num(d, "myPHGDir", c->my_phg_dir);
+    c->pos_ambiguity = (uint8_t)jget_num(d, "myAmbiguity", c->pos_ambiguity);
     if (c->pos_ambiguity > POS_AMBIGUITY_MAX) {
         ESP_LOGW(TAG, "myAmbiguity %u out of range, clamped to %d", (unsigned)c->pos_ambiguity, POS_AMBIGUITY_MAX);
         c->pos_ambiguity = POS_AMBIGUITY_MAX;
     }
-    c->status_grid_en = jget_bool(d, "myStatusGrid", def.status_grid_en);
-    c->status_timestamp_en = jget_bool(d, "myStatusTS", def.status_timestamp_en);
+    c->status_grid_en = jget_bool(d, "myStatusGrid", c->status_grid_en);
+    c->status_timestamp_en = jget_bool(d, "myStatusTS", c->status_timestamp_en);
     {
         // Same two-layer clamp the web form applies, so a hand-edited or
         // imported config.json cannot put a heading or a power on air that the
         // two code characters have no room for. A heading is quantised to the
         // step the field encodes in; anything outside the range switches the
         // block off rather than being folded into an unrelated bearing.
-        int beam = (int)jget_num(d, "myStatusBeam", def.status_beam_deg);
+        int beam = (int)jget_num(d, "myStatusBeam", c->status_beam_deg);
         if (beam < 0 || beam > STATUS_BEAM_DEG_MAX) {
             if (beam != STATUS_BEAM_DEG_OFF)
                 ESP_LOGW(TAG, "status beam heading %d out of range - beam/ERP block disabled", beam);
@@ -1053,7 +1064,7 @@ static void config_from_json(cJSON *d, app_config_t *c) {
         }
         c->status_beam_deg = (int16_t)beam;
 
-        long erp = (long)jget_num(d, "myStatusERP", def.status_erp_watts);
+        long erp = (long)jget_num(d, "myStatusERP", c->status_erp_watts);
         if (erp < 0)
             erp = 0;
         if (erp > STATUS_ERP_WATTS_MAX) {
@@ -1062,47 +1073,47 @@ static void config_from_json(cJSON *d, app_config_t *c) {
         }
         c->status_erp_watts = (uint16_t)erp;
     }
-    c->my_no_archive = jget_bool(d, "myNoArchive", def.my_no_archive);
-    c->pos_dao_en = jget_bool(d, "myPosDao", def.pos_dao_en);
+    c->my_no_archive = jget_bool(d, "myNoArchive", c->my_no_archive);
+    c->pos_dao_en = jget_bool(d, "myPosDao", c->pos_dao_en);
     // Channel-access timing: bound every value coming off flash to the same
     // range the Radiomodem form accepts (aprs_service.h), so a hand-edited or
     // imported config.json cannot hand aprs_service_build_modem_config() a
     // setting the radio should never transmit with - see the note there on
     // what an unbounded preamble does to a shared channel.
-    c->tx_timeslot = (uint16_t)jget_num(d, "txTimeSlot", def.tx_timeslot);
+    c->tx_timeslot = (uint16_t)jget_num(d, "txTimeSlot", c->tx_timeslot);
     if (c->tx_timeslot > RF_TX_TIMESLOT_MS_MAX) {
         ESP_LOGW(TAG, "txTimeSlot %u out of range, clamped to %d ms", (unsigned)c->tx_timeslot, RF_TX_TIMESLOT_MS_MAX);
         c->tx_timeslot = RF_TX_TIMESLOT_MS_MAX;
     }
-    c->csma_persist = (uint8_t)jget_num(d, "csmaPersist", def.csma_persist);
+    c->csma_persist = (uint8_t)jget_num(d, "csmaPersist", c->csma_persist);
     if (c->csma_persist < CSMA_PERSIST_MIN)
         c->csma_persist = CSMA_PERSIST_MIN;
-    c->synctime = jget_bool(d, "syncTime", def.synctime);
-    set_str(c->ntp_host[0], sizeof(c->ntp_host[0]), jget_str(d, "ntpHost0", jget_str(d, "ntpHost", def.ntp_host[0])));
-    set_str(c->ntp_host[1], sizeof(c->ntp_host[1]), jget_str(d, "ntpHost1", def.ntp_host[1]));
-    set_str(c->ntp_host[2], sizeof(c->ntp_host[2]), jget_str(d, "ntpHost2", def.ntp_host[2]));
-    c->ntp_resync_sec = (uint16_t)jget_num(d, "ntpResync", def.ntp_resync_sec);
+    c->synctime = jget_bool(d, "syncTime", c->synctime);
+    set_str(c->ntp_host[0], sizeof(c->ntp_host[0]), jget_str(d, "ntpHost0", jget_str(d, "ntpHost", c->ntp_host[0])));
+    set_str(c->ntp_host[1], sizeof(c->ntp_host[1]), jget_str(d, "ntpHost1", c->ntp_host[1]));
+    set_str(c->ntp_host[2], sizeof(c->ntp_host[2]), jget_str(d, "ntpHost2", c->ntp_host[2]));
+    c->ntp_resync_sec = (uint16_t)jget_num(d, "ntpResync", c->ntp_resync_sec);
     if (c->ntp_resync_sec < NTP_RESYNC_MIN_SEC)
         c->ntp_resync_sec = NTP_RESYNC_MIN_SEC;
-    c->timezone_idx = (uint8_t)jget_num(d, "timeZone", def.timezone_idx);
+    c->timezone_idx = (uint8_t)jget_num(d, "timeZone", c->timezone_idx);
     if (c->timezone_idx >= time_sync_tz_count()) {
         ESP_LOGW(TAG, "timeZone %u out of range, clamped to 0 (UTC)", (unsigned)c->timezone_idx);
         c->timezone_idx = 0;
     }
-    c->wifi_mode = (uint8_t)jget_num(d, "WiFiMode", def.wifi_mode);
+    c->wifi_mode = (uint8_t)jget_num(d, "WiFiMode", c->wifi_mode);
     // Read through an int so a value the file carries far outside int8_t range
     // is bounded here rather than wrapping into a small negative on the cast:
     // main.c multiplies this by four for the driver's quarter-dBm argument, so
     // anything outside the accepted band either overflows that multiply or is
     // refused by esp_wifi_set_max_tx_power(), silently leaving whatever power
     // the radio came up with.
-    int wifiPwr = (int)jget_num(d, "WiFiPwr", def.wifi_power);
+    int wifiPwr = (int)jget_num(d, "WiFiPwr", c->wifi_power);
     if (wifiPwr < WIFI_TX_POWER_DBM_MIN || wifiPwr > WIFI_TX_POWER_DBM_MAX) {
         ESP_LOGW(TAG, "stored WiFi TX power %d outside %d-%d dBm, clamped", wifiPwr, WIFI_TX_POWER_DBM_MIN, WIFI_TX_POWER_DBM_MAX);
         wifiPwr = (wifiPwr < WIFI_TX_POWER_DBM_MIN) ? WIFI_TX_POWER_DBM_MIN : WIFI_TX_POWER_DBM_MAX;
     }
     c->wifi_power = (int8_t)wifiPwr;
-    c->wifi_ap_ch = (uint8_t)jget_num(d, "WiFiAPCH", def.wifi_ap_ch);
+    c->wifi_ap_ch = (uint8_t)jget_num(d, "WiFiAPCH", c->wifi_ap_ch);
     // The file on flash is not a trusted input: it can arrive from a crafted
     // POST, a hand edit over the Storage page, or a backup taken from a build
     // with a different regulatory range. A channel outside WIFI_AP_CH_MIN..MAX
@@ -1114,8 +1125,8 @@ static void config_from_json(cJSON *d, app_config_t *c) {
                  (unsigned)WIFI_AP_CH_DEFAULT);
         c->wifi_ap_ch = WIFI_AP_CH_DEFAULT;
     }
-    set_str(c->wifi_ap_ssid, sizeof(c->wifi_ap_ssid), jget_str(d, "WiFiAP_SSID", def.wifi_ap_ssid));
-    set_str(c->wifi_ap_pass, sizeof(c->wifi_ap_pass), jget_str(d, "WiFiAP_PASS", def.wifi_ap_pass));
+    set_str(c->wifi_ap_ssid, sizeof(c->wifi_ap_ssid), jget_str(d, "WiFiAP_SSID", c->wifi_ap_ssid));
+    set_str(c->wifi_ap_pass, sizeof(c->wifi_ap_pass), jget_str(d, "WiFiAP_PASS", c->wifi_ap_pass));
     {
         cJSON *arr = cJSON_GetObjectItemCaseSensitive(d, "WiFiSTA");
         if (arr && cJSON_IsArray(arr)) {
@@ -1124,93 +1135,93 @@ static void config_from_json(cJSON *d, app_config_t *c) {
                 cJSON *s = cJSON_GetArrayItem(arr, i * 3 + 1);
                 cJSON *p = cJSON_GetArrayItem(arr, i * 3 + 2);
                 c->wifi_sta[i].enable = e ? cJSON_IsTrue(e) : false;
-                set_str(c->wifi_sta[i].wifi_ssid, sizeof(c->wifi_sta[i].wifi_ssid), (s && cJSON_IsString(s)) ? s->valuestring : def.wifi_sta[i].wifi_ssid);
-                set_str(c->wifi_sta[i].wifi_pass, sizeof(c->wifi_sta[i].wifi_pass), (p && cJSON_IsString(p)) ? p->valuestring : def.wifi_sta[i].wifi_pass);
+                set_str(c->wifi_sta[i].wifi_ssid, sizeof(c->wifi_sta[i].wifi_ssid), (s && cJSON_IsString(s)) ? s->valuestring : c->wifi_sta[i].wifi_ssid);
+                set_str(c->wifi_sta[i].wifi_pass, sizeof(c->wifi_sta[i].wifi_pass), (p && cJSON_IsString(p)) ? p->valuestring : c->wifi_sta[i].wifi_pass);
             }
         }
     }
 
-    c->fx25_mode = (uint8_t)jget_num(d, "fx25Mode", def.fx25_mode);
-    c->afsk_modem_type = (uint8_t)jget_num(d, "afskModem", def.afsk_modem_type);
-    c->preamble = (uint16_t)jget_num(d, "rfPreamble", def.preamble);
+    c->fx25_mode = (uint8_t)jget_num(d, "fx25Mode", c->fx25_mode);
+    c->afsk_modem_type = (uint8_t)jget_num(d, "afskModem", c->afsk_modem_type);
+    c->preamble = (uint16_t)jget_num(d, "rfPreamble", c->preamble);
     if (c->preamble < RF_PREAMBLE_MS_MIN || c->preamble > RF_PREAMBLE_MS_MAX) {
         ESP_LOGW(TAG, "rfPreamble %u out of range, clamped to %d..%d ms", (unsigned)c->preamble, RF_PREAMBLE_MS_MIN, RF_PREAMBLE_MS_MAX);
         c->preamble = (c->preamble < RF_PREAMBLE_MS_MIN) ? RF_PREAMBLE_MS_MIN : RF_PREAMBLE_MS_MAX;
     }
-    c->audio_modem_en = jget_bool(d, "audioModemEn", def.audio_modem_en);
-    c->audio_lpf = jget_bool(d, "audioLPF", def.audio_lpf);
-    c->rf_tx_buffers = (uint8_t)jget_num(d, "rfTxBuffers", def.rf_tx_buffers);
+    c->audio_modem_en = jget_bool(d, "audioModemEn", c->audio_modem_en);
+    c->audio_lpf = jget_bool(d, "audioLPF", c->audio_lpf);
+    c->rf_tx_buffers = (uint8_t)jget_num(d, "rfTxBuffers", c->rf_tx_buffers);
     if (c->rf_tx_buffers < RF_TX_BUFFERS_MIN)
         c->rf_tx_buffers = RF_TX_BUFFERS_MIN;
     else if (c->rf_tx_buffers > RF_TX_BUFFERS_MAX)
         c->rf_tx_buffers = RF_TX_BUFFERS_MAX;
-    c->duty_cycle_en = jget_bool(d, "dutyCycleEn", def.duty_cycle_en);
-    c->duty_cycle_pct = (uint8_t)jget_num(d, "dutyCyclePct", def.duty_cycle_pct);
+    c->duty_cycle_en = jget_bool(d, "dutyCycleEn", c->duty_cycle_en);
+    c->duty_cycle_pct = (uint8_t)jget_num(d, "dutyCyclePct", c->duty_cycle_pct);
     if (c->duty_cycle_pct < DUTY_CYCLE_PCT_MIN)
         c->duty_cycle_pct = DUTY_CYCLE_PCT_MIN;
     else if (c->duty_cycle_pct > DUTY_CYCLE_PCT_MAX)
         c->duty_cycle_pct = DUTY_CYCLE_PCT_MAX;
-    c->ptt_min_unkey_ms = (uint16_t)jget_num(d, "pttMinUnkeyMs", def.ptt_min_unkey_ms);
+    c->ptt_min_unkey_ms = (uint16_t)jget_num(d, "pttMinUnkeyMs", c->ptt_min_unkey_ms);
     if (c->ptt_min_unkey_ms > PTT_MIN_UNKEY_MS_MAX)
         c->ptt_min_unkey_ms = PTT_MIN_UNKEY_MS_MAX;
 
-    c->igate_en = jget_bool(d, "igateEn", def.igate_en);
-    c->igate_bcn = jget_bool(d, "igateBcn", def.igate_bcn);
-    c->rf2inet = jget_bool(d, "rf2inet", def.rf2inet);
-    c->inet2rf = jget_bool(d, "inet2rf", def.inet2rf);
-    c->igate_loc2rf = jget_bool(d, "igatePos2rf", def.igate_loc2rf);
-    c->igate_loc2inet = jget_bool(d, "igatePos2inet", def.igate_loc2inet);
-    c->rf2inetFilter = (uint16_t)jget_num(d, "rf2inetFilter", def.rf2inetFilter);
+    c->igate_en = jget_bool(d, "igateEn", c->igate_en);
+    c->igate_bcn = jget_bool(d, "igateBcn", c->igate_bcn);
+    c->rf2inet = jget_bool(d, "rf2inet", c->rf2inet);
+    c->inet2rf = jget_bool(d, "inet2rf", c->inet2rf);
+    c->igate_loc2rf = jget_bool(d, "igatePos2rf", c->igate_loc2rf);
+    c->igate_loc2inet = jget_bool(d, "igatePos2inet", c->igate_loc2inet);
+    c->rf2inetFilter = (uint16_t)jget_num(d, "rf2inetFilter", c->rf2inetFilter);
     // "inet2rfFiltger" was a legacy misspelling of the key used when saving;
     // fall back to it so configs written by older firmware still load correctly.
-    c->inet2rfFilter = (uint16_t)jget_num(d, "inet2rfFilter", (double)jget_num(d, "inet2rfFiltger", def.inet2rfFilter));
-    c->rf2inet_budlist_mode = (budlist_mode_t)jget_num(d, "rf2inetBudlistMode", def.rf2inet_budlist_mode);
-    c->inet2rf_budlist_mode = (budlist_mode_t)jget_num(d, "inet2rfBudlistMode", def.inet2rf_budlist_mode);
+    c->inet2rfFilter = (uint16_t)jget_num(d, "inet2rfFilter", (double)jget_num(d, "inet2rfFiltger", c->inet2rfFilter));
+    c->rf2inet_budlist_mode = (budlist_mode_t)jget_num(d, "rf2inetBudlistMode", c->rf2inet_budlist_mode);
+    c->inet2rf_budlist_mode = (budlist_mode_t)jget_num(d, "inet2rfBudlistMode", c->inet2rf_budlist_mode);
     {
         cJSON *bl = cJSON_GetObjectItemCaseSensitive(d, "budlist");
         for (int i = 0; i < IGATE_BUDLIST_MAX; i++) {
             cJSON *v = bl ? cJSON_GetArrayItem(bl, i) : NULL;
-            set_str(c->budlist[i], sizeof(c->budlist[i]), (v && cJSON_IsString(v)) ? v->valuestring : def.budlist[i]);
+            set_str(c->budlist[i], sizeof(c->budlist[i]), (v && cJSON_IsString(v)) ? v->valuestring : c->budlist[i]);
         }
     }
     {
         cJSON *sg = cJSON_GetObjectItemCaseSensitive(d, "satgate");
         for (int i = 0; i < IGATE_SATGATE_MAX; i++) {
             cJSON *v = sg ? cJSON_GetArrayItem(sg, i) : NULL;
-            set_str(c->satgate[i], sizeof(c->satgate[i]), (v && cJSON_IsString(v)) ? v->valuestring : def.satgate[i]);
+            set_str(c->satgate[i], sizeof(c->satgate[i]), (v && cJSON_IsString(v)) ? v->valuestring : c->satgate[i]);
         }
     }
-    c->dup_cache_size = (uint8_t)jget_num(d, "dupCacheSize", def.dup_cache_size);
+    c->dup_cache_size = (uint8_t)jget_num(d, "dupCacheSize", c->dup_cache_size);
     if (c->dup_cache_size < DUP_CACHE_SIZE_MIN || c->dup_cache_size > DUP_CACHE_SIZE_MAX) {
         ESP_LOGW(TAG, "dupCacheSize %u out of range, clamped to %d..%d", (unsigned)c->dup_cache_size, DUP_CACHE_SIZE_MIN, DUP_CACHE_SIZE_MAX);
         c->dup_cache_size = (c->dup_cache_size < DUP_CACHE_SIZE_MIN) ? DUP_CACHE_SIZE_MIN : DUP_CACHE_SIZE_MAX;
     }
-    c->dup_cache_timeout_ms = (uint32_t)jget_num(d, "dupCacheTimeoutMs", def.dup_cache_timeout_ms);
+    c->dup_cache_timeout_ms = (uint32_t)jget_num(d, "dupCacheTimeoutMs", c->dup_cache_timeout_ms);
     if (c->dup_cache_timeout_ms < DUP_CACHE_TIMEOUT_MS_MIN || c->dup_cache_timeout_ms > DUP_CACHE_TIMEOUT_MS_MAX) {
         ESP_LOGW(TAG, "dupCacheTimeoutMs %u out of range, clamped to %d..%d ms", (unsigned)c->dup_cache_timeout_ms, DUP_CACHE_TIMEOUT_MS_MIN,
                  DUP_CACHE_TIMEOUT_MS_MAX);
         c->dup_cache_timeout_ms = (c->dup_cache_timeout_ms < DUP_CACHE_TIMEOUT_MS_MIN) ? DUP_CACHE_TIMEOUT_MS_MIN : DUP_CACHE_TIMEOUT_MS_MAX;
     }
-    c->rf2inet_range_en = jget_bool(d, "rf2inetRangeEn", def.rf2inet_range_en);
-    c->rf2inet_range_km = (float)jget_num(d, "rf2inetRangeKm", def.rf2inet_range_km);
-    c->rf2inet_prefix_en = jget_bool(d, "rf2inetPrefixEn", def.rf2inet_prefix_en);
-    set_str(c->rf2inet_prefixes, sizeof(c->rf2inet_prefixes), jget_str(d, "rf2inetPrefixes", def.rf2inet_prefixes));
+    c->rf2inet_range_en = jget_bool(d, "rf2inetRangeEn", c->rf2inet_range_en);
+    c->rf2inet_range_km = (float)jget_num(d, "rf2inetRangeKm", c->rf2inet_range_km);
+    c->rf2inet_prefix_en = jget_bool(d, "rf2inetPrefixEn", c->rf2inet_prefix_en);
+    set_str(c->rf2inet_prefixes, sizeof(c->rf2inet_prefixes), jget_str(d, "rf2inetPrefixes", c->rf2inet_prefixes));
 
     // Both range gates take the same two-layer clamp the rest of the bounded
     // numerics use: the form emits min/max, and the file on flash is checked
     // again on the way in because it is not a trusted input.
     c->rf2inet_range_km = clamp_range_km(c->rf2inet_range_km, "rf2inetRangeKm");
-    c->inet2rf_range_en = jget_bool(d, "inet2rfRangeEn", def.inet2rf_range_en);
-    c->inet2rf_range_km = clamp_range_km((float)jget_num(d, "inet2rfRangeKm", def.inet2rf_range_km), "inet2rfRangeKm");
+    c->inet2rf_range_en = jget_bool(d, "inet2rfRangeEn", c->inet2rf_range_en);
+    c->inet2rf_range_km = clamp_range_km((float)jget_num(d, "inet2rfRangeKm", c->inet2rf_range_km), "inet2rfRangeKm");
 
-    c->bm_en = jget_bool(d, "bmEn", def.bm_en);
-    c->bm_monitor = jget_bool(d, "bmMonitor", def.bm_monitor);
-    c->bm_msg_inet_only = jget_bool(d, "bmMsgInetOnly", def.bm_msg_inet_only);
+    c->bm_en = jget_bool(d, "bmEn", c->bm_en);
+    c->bm_monitor = jget_bool(d, "bmMonitor", c->bm_monitor);
+    c->bm_msg_inet_only = jget_bool(d, "bmMsgInetOnly", c->bm_msg_inet_only);
     {
         cJSON *gw = cJSON_GetObjectItemCaseSensitive(d, "bmGateways");
         for (int i = 0; i < APRS_BM_GATEWAYS_MAX; i++) {
             cJSON *v = gw ? cJSON_GetArrayItem(gw, i) : NULL;
-            set_str(c->bm_gateways[i], sizeof(c->bm_gateways[i]), (v && cJSON_IsString(v)) ? v->valuestring : def.bm_gateways[i]);
+            set_str(c->bm_gateways[i], sizeof(c->bm_gateways[i]), (v && cJSON_IsString(v)) ? v->valuestring : c->bm_gateways[i]);
         }
     }
 
@@ -1226,13 +1237,13 @@ static void config_from_json(cJSON *d, app_config_t *c) {
         ESP_LOGW(TAG, "bmMonitor requires the INET->RF range gate while inet2rf is on - monitor disabled");
         c->bm_monitor = false;
     }
-    c->inet2rf_3rdparty_unwrap_en = jget_bool(d, "inet2rf3rdPartyUnwrapEn", def.inet2rf_3rdparty_unwrap_en);
-    c->igate_msg_gate_en = jget_bool(d, "igateMsgGateEn", def.igate_msg_gate_en);
+    c->inet2rf_3rdparty_unwrap_en = jget_bool(d, "inet2rf3rdPartyUnwrapEn", c->inet2rf_3rdparty_unwrap_en);
+    c->igate_msg_gate_en = jget_bool(d, "igateMsgGateEn", c->igate_msg_gate_en);
     // Same two-layer clamp the rest of the bounded fields use: the file on
     // flash is not a trusted input, and a window of zero would stop the
     // gateway putting any message on the air while a window of days would
     // keep transmitting to stations that left the area hours ago.
-    c->igate_local_window_sec = (uint16_t)jget_num(d, "igateLocalWindowSec", def.igate_local_window_sec);
+    c->igate_local_window_sec = (uint16_t)jget_num(d, "igateLocalWindowSec", c->igate_local_window_sec);
     if (c->igate_local_window_sec < IGATE_LOCAL_WINDOW_SEC_MIN || c->igate_local_window_sec > IGATE_LOCAL_WINDOW_SEC_MAX) {
         ESP_LOGW(TAG, "igateLocalWindowSec %u out of range, clamped to %d..%d s", (unsigned)c->igate_local_window_sec, IGATE_LOCAL_WINDOW_SEC_MIN,
                  IGATE_LOCAL_WINDOW_SEC_MAX);
@@ -1243,14 +1254,14 @@ static void config_from_json(cJSON *d, app_config_t *c) {
     // rather than after it: a limit longer than an AX.25 path can carry would
     // gate to stations no transmission from here can reach.
     {
-        int maxHops = (int)jget_num(d, "igateMsgMaxHops", def.igate_msg_max_hops);
+        int maxHops = (int)jget_num(d, "igateMsgMaxHops", c->igate_msg_max_hops);
         if (maxHops < IGATE_MSG_MAX_HOPS_MIN || maxHops > IGATE_MSG_MAX_HOPS_MAX) {
             ESP_LOGW(TAG, "igateMsgMaxHops %d out of range, clamped to %d..%d hops", maxHops, IGATE_MSG_MAX_HOPS_MIN, IGATE_MSG_MAX_HOPS_MAX);
             maxHops = (maxHops < IGATE_MSG_MAX_HOPS_MIN) ? IGATE_MSG_MAX_HOPS_MIN : IGATE_MSG_MAX_HOPS_MAX;
         }
         c->igate_msg_max_hops = (uint8_t)maxHops;
     }
-    c->aprs_ssid = (uint8_t)jget_num(d, "igateSSID", def.aprs_ssid);
+    c->aprs_ssid = (uint8_t)jget_num(d, "igateSSID", c->aprs_ssid);
     {
         cJSON *arr = cJSON_GetObjectItemCaseSensitive(d, "igateServers");
         if (arr && cJSON_IsArray(arr)) {
@@ -1258,9 +1269,9 @@ static void config_from_json(cJSON *d, app_config_t *c) {
                 cJSON *e = cJSON_GetArrayItem(arr, i * 3);
                 cJSON *h = cJSON_GetArrayItem(arr, i * 3 + 1);
                 cJSON *p = cJSON_GetArrayItem(arr, i * 3 + 2);
-                c->aprs_server[i].enable = e ? cJSON_IsTrue(e) : def.aprs_server[i].enable;
-                set_str(c->aprs_server[i].host, sizeof(c->aprs_server[i].host), (h && cJSON_IsString(h)) ? h->valuestring : def.aprs_server[i].host);
-                c->aprs_server[i].port = (uint16_t)((p && cJSON_IsNumber(p)) ? p->valuedouble : def.aprs_server[i].port);
+                c->aprs_server[i].enable = e ? cJSON_IsTrue(e) : c->aprs_server[i].enable;
+                set_str(c->aprs_server[i].host, sizeof(c->aprs_server[i].host), (h && cJSON_IsString(h)) ? h->valuestring : c->aprs_server[i].host);
+                c->aprs_server[i].port = (uint16_t)((p && cJSON_IsNumber(p)) ? p->valuedouble : c->aprs_server[i].port);
                 // Same two-layer clamp as the SoftAP channel above: the file
                 // on flash is not a trusted input, and port 0 would send the
                 // IGate into a reconnect loop against an address it can
@@ -1276,11 +1287,12 @@ static void config_from_json(cJSON *d, app_config_t *c) {
         } else {
             // Pre-failover config.json: migrate the single legacy "igateHost"
             // / "igatePort" pair into slot 0 so an upgraded device keeps
-            // connecting to the same server it already had configured.
-            for (int i = 0; i < APRS_SERVER_NUM; i++)
-                c->aprs_server[i] = def.aprs_server[i];
-            set_str(c->aprs_server[0].host, sizeof(c->aprs_server[0].host), jget_str(d, "igateHost", def.aprs_server[0].host));
-            c->aprs_server[0].port = (uint16_t)jget_num(d, "igatePort", def.aprs_server[0].port);
+            // connecting to the same server it already had configured. Every
+            // slot still holds the default written at the top of this
+            // function - nothing in this branch has touched the array yet -
+            // so only slot 0 needs filling in from the legacy keys.
+            set_str(c->aprs_server[0].host, sizeof(c->aprs_server[0].host), jget_str(d, "igateHost", c->aprs_server[0].host));
+            c->aprs_server[0].port = (uint16_t)jget_num(d, "igatePort", c->aprs_server[0].port);
             if (c->aprs_server[0].port < APRS_PORT_MIN) {
                 ESP_LOGW(TAG, "stored APRS-IS port %u outside %u-%u, using %u", (unsigned)c->aprs_server[0].port, (unsigned)APRS_PORT_MIN,
                          (unsigned)APRS_PORT_MAX, (unsigned)APRS_PORT_DEFAULT);
@@ -1289,38 +1301,38 @@ static void config_from_json(cJSON *d, app_config_t *c) {
             c->aprs_server[0].enable = true;
         }
     }
-    set_str(c->aprs_mycall, sizeof(c->aprs_mycall), jget_str(d, "igateMycall", def.aprs_mycall));
-    c->igate_use_station = jget_bool(d, "igateUseStation", def.igate_use_station);
-    c->igate_use_gps = jget_bool(d, "igateUseGps", def.igate_use_gps);
-    set_str(c->aprs_passcode, sizeof(c->aprs_passcode), jget_str(d, "igatePasscode", def.aprs_passcode));
-    set_str(c->aprs_filter, sizeof(c->aprs_filter), jget_str(d, "igateFilter", def.aprs_filter));
-    c->igate_lat = (float)jget_num(d, "igateLAT", def.igate_lat);
-    c->igate_lon = (float)jget_num(d, "igateLON", def.igate_lon);
-    c->igate_alt = (float)jget_num(d, "igateALT", def.igate_alt);
-    c->igate_interval = (uint16_t)jget_num(d, "igateINV", def.igate_interval);
-    set_str(c->igate_symbol, sizeof(c->igate_symbol), jget_str(d, "igateSymbol", def.igate_symbol));
+    set_str(c->aprs_mycall, sizeof(c->aprs_mycall), jget_str(d, "igateMycall", c->aprs_mycall));
+    c->igate_use_station = jget_bool(d, "igateUseStation", c->igate_use_station);
+    c->igate_use_gps = jget_bool(d, "igateUseGps", c->igate_use_gps);
+    set_str(c->aprs_passcode, sizeof(c->aprs_passcode), jget_str(d, "igatePasscode", c->aprs_passcode));
+    set_str(c->aprs_filter, sizeof(c->aprs_filter), jget_str(d, "igateFilter", c->aprs_filter));
+    c->igate_lat = (float)jget_num(d, "igateLAT", c->igate_lat);
+    c->igate_lon = (float)jget_num(d, "igateLON", c->igate_lon);
+    c->igate_alt = (float)jget_num(d, "igateALT", c->igate_alt);
+    c->igate_interval = (uint16_t)jget_num(d, "igateINV", c->igate_interval);
+    set_str(c->igate_symbol, sizeof(c->igate_symbol), jget_str(d, "igateSymbol", c->igate_symbol));
     clamp_symbol(c->igate_symbol, "igateSymbol");
-    c->igate_path = (uint8_t)jget_num(d, "igatePath", def.igate_path);
-    set_str_utf8(c->igate_comment, sizeof(c->igate_comment), jget_str(d, "igateComment", def.igate_comment));
-    c->igate_timestamp = jget_bool(d, "igateTimestamp", def.igate_timestamp);
-    c->igate_compress = jget_bool(d, "igateCompress", def.igate_compress);
-    c->igate_phg_enable = jget_bool(d, "igatePHGEn", def.igate_phg_enable);
-    c->igate_phg_use_station = jget_bool(d, "igatePHGUseStation", def.igate_phg_use_station);
-    c->igate_phg_power = (uint16_t)jget_num(d, "igatePHGPower", def.igate_phg_power);
-    c->igate_phg_gain = (float)jget_num(d, "igatePHGGain", def.igate_phg_gain);
-    c->igate_phg_height = (uint16_t)jget_num(d, "igatePHGHeight", def.igate_phg_height);
-    c->igate_phg_dir = (uint8_t)jget_num(d, "igatePHGDir", def.igate_phg_dir);
-    c->igate_ext_type = (uint8_t)jget_num(d, "igateExtType", def.igate_ext_type);
+    c->igate_path = (uint8_t)jget_num(d, "igatePath", c->igate_path);
+    set_str_utf8(c->igate_comment, sizeof(c->igate_comment), jget_str(d, "igateComment", c->igate_comment));
+    c->igate_timestamp = jget_bool(d, "igateTimestamp", c->igate_timestamp);
+    c->igate_compress = jget_bool(d, "igateCompress", c->igate_compress);
+    c->igate_phg_enable = jget_bool(d, "igatePHGEn", c->igate_phg_enable);
+    c->igate_phg_use_station = jget_bool(d, "igatePHGUseStation", c->igate_phg_use_station);
+    c->igate_phg_power = (uint16_t)jget_num(d, "igatePHGPower", c->igate_phg_power);
+    c->igate_phg_gain = (float)jget_num(d, "igatePHGGain", c->igate_phg_gain);
+    c->igate_phg_height = (uint16_t)jget_num(d, "igatePHGHeight", c->igate_phg_height);
+    c->igate_phg_dir = (uint8_t)jget_num(d, "igatePHGDir", c->igate_phg_dir);
+    c->igate_ext_type = (uint8_t)jget_num(d, "igateExtType", c->igate_ext_type);
     if (c->igate_ext_type > APRS_EXT_DF) {
         ESP_LOGW(TAG, "igateExtType %u unknown, using PHG", (unsigned)c->igate_ext_type);
         c->igate_ext_type = APRS_EXT_PHG;
     }
-    c->igate_range_miles = (uint16_t)jget_num(d, "igateRng", def.igate_range_miles);
+    c->igate_range_miles = (uint16_t)jget_num(d, "igateRng", c->igate_range_miles);
     if (c->igate_range_miles > APRS_EXT_RANGE_MILES_MAX) {
         ESP_LOGW(TAG, "igateRng %u out of range, clamped to %d", (unsigned)c->igate_range_miles, APRS_EXT_RANGE_MILES_MAX);
         c->igate_range_miles = APRS_EXT_RANGE_MILES_MAX;
     }
-    c->igate_dfs_strength = (uint8_t)jget_num(d, "igateDfsS", def.igate_dfs_strength);
+    c->igate_dfs_strength = (uint8_t)jget_num(d, "igateDfsS", c->igate_dfs_strength);
     if (c->igate_dfs_strength > APRS_EXT_DFS_STRENGTH_MAX) {
         ESP_LOGW(TAG, "igateDfsS %u out of range, clamped to %d", (unsigned)c->igate_dfs_strength, APRS_EXT_DFS_STRENGTH_MAX);
         c->igate_dfs_strength = APRS_EXT_DFS_STRENGTH_MAX;
@@ -1329,7 +1341,7 @@ static void config_from_json(cJSON *d, app_config_t *c) {
         // The bearing wraps rather than clamps: 360 degrees and 0 degrees name
         // the same direction, and the on-air field is three digits, so a value
         // outside the range still has one correct reading.
-        int brg = (int)jget_num(d, "igateDfBrg", def.igate_df_bearing);
+        int brg = (int)jget_num(d, "igateDfBrg", c->igate_df_bearing);
         int wrapped = brg % 360;
         if (wrapped < 0)
             wrapped += 360;
@@ -1337,25 +1349,25 @@ static void config_from_json(cJSON *d, app_config_t *c) {
             ESP_LOGW(TAG, "igateDfBrg %d out of range, wrapped to %d", brg, wrapped);
         c->igate_df_bearing = (uint16_t)wrapped;
     }
-    c->igate_df_nrq_n = clamp_nrq_digit(jget_num(d, "igateDfN", def.igate_df_nrq_n), "igateDfN");
-    c->igate_df_nrq_r = clamp_nrq_digit(jget_num(d, "igateDfR", def.igate_df_nrq_r), "igateDfR");
-    c->igate_df_nrq_q = clamp_nrq_digit(jget_num(d, "igateDfQ", def.igate_df_nrq_q), "igateDfQ");
-    c->igate_freq_mhz = (float)jget_num(d, "igateFreqMHz", def.igate_freq_mhz);
-    c->igate_tone_tenths = (uint16_t)jget_num(d, "igateFreqTone", def.igate_tone_tenths);
-    c->igate_duplex = (int8_t)jget_num(d, "igateFreqDup", def.igate_duplex);
-    c->igate_offset_khz = (uint16_t)jget_num(d, "igateFreqOff", def.igate_offset_khz);
-    c->igate_sts_interval = (uint16_t)jget_num(d, "igateSTSIntv", def.igate_sts_interval);
-    set_str_utf8(c->igate_status, sizeof(c->igate_status), jget_str(d, "igateStatus", def.igate_status));
+    c->igate_df_nrq_n = clamp_nrq_digit(jget_num(d, "igateDfN", c->igate_df_nrq_n), "igateDfN");
+    c->igate_df_nrq_r = clamp_nrq_digit(jget_num(d, "igateDfR", c->igate_df_nrq_r), "igateDfR");
+    c->igate_df_nrq_q = clamp_nrq_digit(jget_num(d, "igateDfQ", c->igate_df_nrq_q), "igateDfQ");
+    c->igate_freq_mhz = (float)jget_num(d, "igateFreqMHz", c->igate_freq_mhz);
+    c->igate_tone_tenths = (uint16_t)jget_num(d, "igateFreqTone", c->igate_tone_tenths);
+    c->igate_duplex = (int8_t)jget_num(d, "igateFreqDup", c->igate_duplex);
+    c->igate_offset_khz = (uint16_t)jget_num(d, "igateFreqOff", c->igate_offset_khz);
+    c->igate_sts_interval = (uint16_t)jget_num(d, "igateSTSIntv", c->igate_sts_interval);
+    set_str_utf8(c->igate_status, sizeof(c->igate_status), jget_str(d, "igateStatus", c->igate_status));
 
-    c->digi_en = jget_bool(d, "digiEn", def.digi_en);
-    c->digi_loc2rf = jget_bool(d, "digiPos2rf", def.digi_loc2rf);
-    c->digi_loc2inet = jget_bool(d, "digiPos2inet", def.digi_loc2inet);
-    c->digi_timestamp = jget_bool(d, "digiTime", def.digi_timestamp);
-    c->digi_ssid = (uint8_t)jget_num(d, "digiSSID", def.digi_ssid);
-    set_str(c->digi_mycall, sizeof(c->digi_mycall), jget_str(d, "digiMycall", def.digi_mycall));
-    c->digi_use_station = jget_bool(d, "digiUseStation", def.digi_use_station);
-    c->digi_use_gps = jget_bool(d, "digiUseGps", def.digi_use_gps);
-    c->digi_path = (uint8_t)jget_num(d, "digiPath", def.digi_path);
+    c->digi_en = jget_bool(d, "digiEn", c->digi_en);
+    c->digi_loc2rf = jget_bool(d, "digiPos2rf", c->digi_loc2rf);
+    c->digi_loc2inet = jget_bool(d, "digiPos2inet", c->digi_loc2inet);
+    c->digi_timestamp = jget_bool(d, "digiTime", c->digi_timestamp);
+    c->digi_ssid = (uint8_t)jget_num(d, "digiSSID", c->digi_ssid);
+    set_str(c->digi_mycall, sizeof(c->digi_mycall), jget_str(d, "digiMycall", c->digi_mycall));
+    c->digi_use_station = jget_bool(d, "digiUseStation", c->digi_use_station);
+    c->digi_use_gps = jget_bool(d, "digiUseGps", c->digi_use_gps);
+    c->digi_path = (uint8_t)jget_num(d, "digiPath", c->digi_path);
     // Alias table: three parallel arrays, one row per index, following the
     // same shape as the budlist/satgate lists above. A row is validated on the
     // way in rather than trusted: an out-of-range hop limit or an unknown mode
@@ -1366,59 +1378,59 @@ static void config_from_json(cJSON *d, app_config_t *c) {
         cJSON *am = cJSON_GetObjectItemCaseSensitive(d, "digiAliasMode");
         for (int i = 0; i < DIGI_ALIAS_MAX; i++) {
             cJSON *v = al ? cJSON_GetArrayItem(al, i) : NULL;
-            set_str(c->digi_alias[i].alias, sizeof(c->digi_alias[i].alias), (v && cJSON_IsString(v)) ? v->valuestring : def.digi_alias[i].alias);
+            set_str(c->digi_alias[i].alias, sizeof(c->digi_alias[i].alias), (v && cJSON_IsString(v)) ? v->valuestring : c->digi_alias[i].alias);
 
             cJSON *n = an ? cJSON_GetArrayItem(an, i) : NULL;
-            c->digi_alias[i].max_n = (uint8_t)((n && cJSON_IsNumber(n)) ? n->valuedouble : def.digi_alias[i].max_n);
+            c->digi_alias[i].max_n = (uint8_t)((n && cJSON_IsNumber(n)) ? n->valuedouble : c->digi_alias[i].max_n);
             if (c->digi_alias[i].max_n < 1 || c->digi_alias[i].max_n > DIGI_ALIAS_MAX_N) {
                 ESP_LOGW(TAG, "digiAliasMaxN[%d] %u out of range, clamped to 1..%d", i, (unsigned)c->digi_alias[i].max_n, DIGI_ALIAS_MAX_N);
                 c->digi_alias[i].max_n = (c->digi_alias[i].max_n < 1) ? 1 : DIGI_ALIAS_MAX_N;
             }
 
             cJSON *m = am ? cJSON_GetArrayItem(am, i) : NULL;
-            c->digi_alias[i].mode = (uint8_t)((m && cJSON_IsNumber(m)) ? m->valuedouble : def.digi_alias[i].mode);
+            c->digi_alias[i].mode = (uint8_t)((m && cJSON_IsNumber(m)) ? m->valuedouble : c->digi_alias[i].mode);
             if (c->digi_alias[i].mode != DIGI_ALIAS_OFF && c->digi_alias[i].mode != DIGI_ALIAS_TRACE && c->digi_alias[i].mode != DIGI_ALIAS_FLOOD) {
                 ESP_LOGW(TAG, "digiAliasMode[%d] %u unknown, row disabled", i, (unsigned)c->digi_alias[i].mode);
                 c->digi_alias[i].mode = DIGI_ALIAS_OFF;
             }
         }
     }
-    c->digi_fillin_only = jget_bool(d, "digiFillinOnly", def.digi_fillin_only);
-    c->digi_trap_n_clamp = jget_bool(d, "digiTrapNClamp", def.digi_trap_n_clamp);
-    c->digi_dest_ssid_en = jget_bool(d, "digiDestSsidEn", def.digi_dest_ssid_en);
-    c->digi_preempt = (uint8_t)jget_num(d, "digiPreempt", def.digi_preempt);
+    c->digi_fillin_only = jget_bool(d, "digiFillinOnly", c->digi_fillin_only);
+    c->digi_trap_n_clamp = jget_bool(d, "digiTrapNClamp", c->digi_trap_n_clamp);
+    c->digi_dest_ssid_en = jget_bool(d, "digiDestSsidEn", c->digi_dest_ssid_en);
+    c->digi_preempt = (uint8_t)jget_num(d, "digiPreempt", c->digi_preempt);
     if (c->digi_preempt != DIGI_PREEMPT_OFF && c->digi_preempt != DIGI_PREEMPT_DROP && c->digi_preempt != DIGI_PREEMPT_MARK) {
         ESP_LOGW(TAG, "digiPreempt %u unknown, preemptive digipeating disabled", (unsigned)c->digi_preempt);
         c->digi_preempt = DIGI_PREEMPT_OFF;
     }
-    c->digi_bcn = jget_bool(d, "digiBcn", def.digi_bcn);
-    c->digi_compress = jget_bool(d, "digiCompress", def.digi_compress);
-    c->digi_alt = (float)jget_num(d, "digiAlt", def.digi_alt);
-    c->digi_lat = (float)jget_num(d, "digiLAT", def.digi_lat);
-    c->digi_lon = (float)jget_num(d, "digiLON", def.digi_lon);
-    c->digi_interval = (uint16_t)jget_num(d, "digiINV", def.digi_interval);
-    set_str(c->digi_symbol, sizeof(c->digi_symbol), jget_str(d, "digiSymbol", def.digi_symbol));
+    c->digi_bcn = jget_bool(d, "digiBcn", c->digi_bcn);
+    c->digi_compress = jget_bool(d, "digiCompress", c->digi_compress);
+    c->digi_alt = (float)jget_num(d, "digiAlt", c->digi_alt);
+    c->digi_lat = (float)jget_num(d, "digiLAT", c->digi_lat);
+    c->digi_lon = (float)jget_num(d, "digiLON", c->digi_lon);
+    c->digi_interval = (uint16_t)jget_num(d, "digiINV", c->digi_interval);
+    set_str(c->digi_symbol, sizeof(c->digi_symbol), jget_str(d, "digiSymbol", c->digi_symbol));
     clamp_symbol(c->digi_symbol, "digiSymbol");
-    set_str_utf8(c->digi_comment, sizeof(c->digi_comment), jget_str(d, "digiComment", def.digi_comment));
-    c->digi_sts_interval = (uint16_t)jget_num(d, "digiSTSIntv", def.digi_sts_interval);
-    set_str_utf8(c->digi_status, sizeof(c->digi_status), jget_str(d, "digiStatus", def.digi_status));
-    c->digi_phg_enable = jget_bool(d, "digiPHGEn", def.digi_phg_enable);
-    c->digi_phg_use_station = jget_bool(d, "digiPHGUseStation", def.digi_phg_use_station);
-    c->digi_phg_power = (uint16_t)jget_num(d, "digiPHGPower", def.digi_phg_power);
-    c->digi_phg_gain = (float)jget_num(d, "digiPHGGain", def.digi_phg_gain);
-    c->digi_phg_height = (uint16_t)jget_num(d, "digiPHGHeight", def.digi_phg_height);
-    c->digi_phg_dir = (uint8_t)jget_num(d, "digiPHGDir", def.digi_phg_dir);
-    c->digi_ext_type = (uint8_t)jget_num(d, "digiExtType", def.digi_ext_type);
+    set_str_utf8(c->digi_comment, sizeof(c->digi_comment), jget_str(d, "digiComment", c->digi_comment));
+    c->digi_sts_interval = (uint16_t)jget_num(d, "digiSTSIntv", c->digi_sts_interval);
+    set_str_utf8(c->digi_status, sizeof(c->digi_status), jget_str(d, "digiStatus", c->digi_status));
+    c->digi_phg_enable = jget_bool(d, "digiPHGEn", c->digi_phg_enable);
+    c->digi_phg_use_station = jget_bool(d, "digiPHGUseStation", c->digi_phg_use_station);
+    c->digi_phg_power = (uint16_t)jget_num(d, "digiPHGPower", c->digi_phg_power);
+    c->digi_phg_gain = (float)jget_num(d, "digiPHGGain", c->digi_phg_gain);
+    c->digi_phg_height = (uint16_t)jget_num(d, "digiPHGHeight", c->digi_phg_height);
+    c->digi_phg_dir = (uint8_t)jget_num(d, "digiPHGDir", c->digi_phg_dir);
+    c->digi_ext_type = (uint8_t)jget_num(d, "digiExtType", c->digi_ext_type);
     if (c->digi_ext_type > APRS_EXT_DF) {
         ESP_LOGW(TAG, "digiExtType %u unknown, using PHG", (unsigned)c->digi_ext_type);
         c->digi_ext_type = APRS_EXT_PHG;
     }
-    c->digi_range_miles = (uint16_t)jget_num(d, "digiRng", def.digi_range_miles);
+    c->digi_range_miles = (uint16_t)jget_num(d, "digiRng", c->digi_range_miles);
     if (c->digi_range_miles > APRS_EXT_RANGE_MILES_MAX) {
         ESP_LOGW(TAG, "digiRng %u out of range, clamped to %d", (unsigned)c->digi_range_miles, APRS_EXT_RANGE_MILES_MAX);
         c->digi_range_miles = APRS_EXT_RANGE_MILES_MAX;
     }
-    c->digi_dfs_strength = (uint8_t)jget_num(d, "digiDfsS", def.digi_dfs_strength);
+    c->digi_dfs_strength = (uint8_t)jget_num(d, "digiDfsS", c->digi_dfs_strength);
     if (c->digi_dfs_strength > APRS_EXT_DFS_STRENGTH_MAX) {
         ESP_LOGW(TAG, "digiDfsS %u out of range, clamped to %d", (unsigned)c->digi_dfs_strength, APRS_EXT_DFS_STRENGTH_MAX);
         c->digi_dfs_strength = APRS_EXT_DFS_STRENGTH_MAX;
@@ -1427,7 +1439,7 @@ static void config_from_json(cJSON *d, app_config_t *c) {
         // The bearing wraps rather than clamps: 360 degrees and 0 degrees name
         // the same direction, and the on-air field is three digits, so a value
         // outside the range still has one correct reading.
-        int brg = (int)jget_num(d, "digiDfBrg", def.digi_df_bearing);
+        int brg = (int)jget_num(d, "digiDfBrg", c->digi_df_bearing);
         int wrapped = brg % 360;
         if (wrapped < 0)
             wrapped += 360;
@@ -1435,32 +1447,32 @@ static void config_from_json(cJSON *d, app_config_t *c) {
             ESP_LOGW(TAG, "digiDfBrg %d out of range, wrapped to %d", brg, wrapped);
         c->digi_df_bearing = (uint16_t)wrapped;
     }
-    c->digi_df_nrq_n = clamp_nrq_digit(jget_num(d, "digiDfN", def.digi_df_nrq_n), "digiDfN");
-    c->digi_df_nrq_r = clamp_nrq_digit(jget_num(d, "digiDfR", def.digi_df_nrq_r), "digiDfR");
-    c->digi_df_nrq_q = clamp_nrq_digit(jget_num(d, "digiDfQ", def.digi_df_nrq_q), "digiDfQ");
-    c->digi_freq_mhz = (float)jget_num(d, "digiFreqMHz", def.digi_freq_mhz);
-    c->digi_tone_tenths = (uint16_t)jget_num(d, "digiFreqTone", def.digi_tone_tenths);
-    c->digi_duplex = (int8_t)jget_num(d, "digiFreqDup", def.digi_duplex);
-    c->digi_offset_khz = (uint16_t)jget_num(d, "digiFreqOff", def.digi_offset_khz);
+    c->digi_df_nrq_n = clamp_nrq_digit(jget_num(d, "digiDfN", c->digi_df_nrq_n), "digiDfN");
+    c->digi_df_nrq_r = clamp_nrq_digit(jget_num(d, "digiDfR", c->digi_df_nrq_r), "digiDfR");
+    c->digi_df_nrq_q = clamp_nrq_digit(jget_num(d, "digiDfQ", c->digi_df_nrq_q), "digiDfQ");
+    c->digi_freq_mhz = (float)jget_num(d, "digiFreqMHz", c->digi_freq_mhz);
+    c->digi_tone_tenths = (uint16_t)jget_num(d, "digiFreqTone", c->digi_tone_tenths);
+    c->digi_duplex = (int8_t)jget_num(d, "digiFreqDup", c->digi_duplex);
+    c->digi_offset_khz = (uint16_t)jget_num(d, "digiFreqOff", c->digi_offset_khz);
 
-    c->trk_en = jget_bool(d, "trkEn", def.trk_en);
-    c->trk_loc2rf = jget_bool(d, "trkPos2rf", def.trk_loc2rf);
-    c->trk_loc2inet = jget_bool(d, "trkPos2inet", def.trk_loc2inet);
-    c->trk_timestamp = jget_bool(d, "trkTime", def.trk_timestamp);
-    c->trk_ssid = (uint8_t)jget_num(d, "trkSSID", def.trk_ssid);
-    set_str(c->trk_mycall, sizeof(c->trk_mycall), jget_str(d, "trkMycall", def.trk_mycall));
-    c->trk_use_station = jget_bool(d, "trkUseStation", def.trk_use_station);
-    c->trk_use_gps = jget_bool(d, "trkUseGps", def.trk_use_gps);
-    c->trk_use_live_gps = jget_bool(d, "trkUseLiveGps", def.trk_use_live_gps);
-    c->trk_path = (uint8_t)jget_num(d, "trkPath", def.trk_path);
-    c->trk_lat = (float)jget_num(d, "trkLAT", def.trk_lat);
-    c->trk_lon = (float)jget_num(d, "trkLON", def.trk_lon);
-    c->trk_alt = (float)jget_num(d, "trkALT", def.trk_alt);
-    c->trk_interval = (uint16_t)jget_num(d, "trkINV", def.trk_interval);
-    c->trk_compress = jget_bool(d, "trkCompress", def.trk_compress);
-    c->trk_phg_enable = jget_bool(d, "trkPHG", def.trk_phg_enable);
-    c->trk_mice = jget_bool(d, "trkMice", def.trk_mice);
-    c->trk_mice_msg = (uint8_t)jget_num(d, "trkMiceMsg", def.trk_mice_msg);
+    c->trk_en = jget_bool(d, "trkEn", c->trk_en);
+    c->trk_loc2rf = jget_bool(d, "trkPos2rf", c->trk_loc2rf);
+    c->trk_loc2inet = jget_bool(d, "trkPos2inet", c->trk_loc2inet);
+    c->trk_timestamp = jget_bool(d, "trkTime", c->trk_timestamp);
+    c->trk_ssid = (uint8_t)jget_num(d, "trkSSID", c->trk_ssid);
+    set_str(c->trk_mycall, sizeof(c->trk_mycall), jget_str(d, "trkMycall", c->trk_mycall));
+    c->trk_use_station = jget_bool(d, "trkUseStation", c->trk_use_station);
+    c->trk_use_gps = jget_bool(d, "trkUseGps", c->trk_use_gps);
+    c->trk_use_live_gps = jget_bool(d, "trkUseLiveGps", c->trk_use_live_gps);
+    c->trk_path = (uint8_t)jget_num(d, "trkPath", c->trk_path);
+    c->trk_lat = (float)jget_num(d, "trkLAT", c->trk_lat);
+    c->trk_lon = (float)jget_num(d, "trkLON", c->trk_lon);
+    c->trk_alt = (float)jget_num(d, "trkALT", c->trk_alt);
+    c->trk_interval = (uint16_t)jget_num(d, "trkINV", c->trk_interval);
+    c->trk_compress = jget_bool(d, "trkCompress", c->trk_compress);
+    c->trk_phg_enable = jget_bool(d, "trkPHG", c->trk_phg_enable);
+    c->trk_mice = jget_bool(d, "trkMice", c->trk_mice);
+    c->trk_mice_msg = (uint8_t)jget_num(d, "trkMiceMsg", c->trk_mice_msg);
     // Same two-layer clamp every other bounded field uses: the form handler
     // bounds what the operator can send, and this bounds what a hand-edited
     // or older config.json can carry into the beacon builder.
@@ -1468,52 +1480,50 @@ static void config_from_json(cJSON *d, app_config_t *c) {
         ESP_LOGW(TAG, "trkMiceMsg %u out of range (0-%d) - using %d", (unsigned)c->trk_mice_msg, MICE_POS_COMMENT_MAX, MICE_POS_COMMENT_DEFAULT);
         c->trk_mice_msg = MICE_POS_COMMENT_DEFAULT;
     }
-    c->trk_altitude = jget_bool(d, "trkOptAlt", def.trk_altitude);
-    set_str(c->trk_symbol, sizeof(c->trk_symbol), jget_str(d, "trkSymbol", def.trk_symbol));
+    c->trk_altitude = jget_bool(d, "trkOptAlt", c->trk_altitude);
+    set_str(c->trk_symbol, sizeof(c->trk_symbol), jget_str(d, "trkSymbol", c->trk_symbol));
     clamp_symbol(c->trk_symbol, "trkSymbol");
-    set_str_utf8(c->trk_comment, sizeof(c->trk_comment), jget_str(d, "trkComment", def.trk_comment));
-    c->trk_sts_interval = (uint16_t)jget_num(d, "trkSTSIntv", def.trk_sts_interval);
-    set_str_utf8(c->trk_status, sizeof(c->trk_status), jget_str(d, "trkStatus", def.trk_status));
-    c->trk_freq_mhz = (float)jget_num(d, "trkFreqMHz", def.trk_freq_mhz);
-    c->trk_tone_tenths = (uint16_t)jget_num(d, "trkFreqTone", def.trk_tone_tenths);
-    c->trk_duplex = (int8_t)jget_num(d, "trkFreqDup", def.trk_duplex);
-    c->trk_offset_khz = (uint16_t)jget_num(d, "trkFreqOff", def.trk_offset_khz);
+    set_str_utf8(c->trk_comment, sizeof(c->trk_comment), jget_str(d, "trkComment", c->trk_comment));
+    c->trk_sts_interval = (uint16_t)jget_num(d, "trkSTSIntv", c->trk_sts_interval);
+    set_str_utf8(c->trk_status, sizeof(c->trk_status), jget_str(d, "trkStatus", c->trk_status));
+    c->trk_freq_mhz = (float)jget_num(d, "trkFreqMHz", c->trk_freq_mhz);
+    c->trk_tone_tenths = (uint16_t)jget_num(d, "trkFreqTone", c->trk_tone_tenths);
+    c->trk_duplex = (int8_t)jget_num(d, "trkFreqDup", c->trk_duplex);
+    c->trk_offset_khz = (uint16_t)jget_num(d, "trkFreqOff", c->trk_offset_khz);
 
-    c->trk_sb_enable = jget_bool(d, "trkSbEn", def.trk_sb_enable);
+    c->trk_sb_enable = jget_bool(d, "trkSbEn", c->trk_sb_enable);
     c->trk_sb_slow_interval =
-        clamp_u16_range(jget_num(d, "trkSbSlowIntv", def.trk_sb_slow_interval), TRK_SB_SLOW_INTERVAL_S_MIN, TRK_SB_SLOW_INTERVAL_S_MAX, "trkSbSlowIntv");
+        clamp_u16_range(jget_num(d, "trkSbSlowIntv", c->trk_sb_slow_interval), TRK_SB_SLOW_INTERVAL_S_MIN, TRK_SB_SLOW_INTERVAL_S_MAX, "trkSbSlowIntv");
     c->trk_sb_fast_interval =
-        clamp_u16_range(jget_num(d, "trkSbFastIntv", def.trk_sb_fast_interval), TRK_SB_FAST_INTERVAL_S_MIN, TRK_SB_FAST_INTERVAL_S_MAX, "trkSbFastIntv");
-    c->trk_sb_low_speed_kmh = clamp_u16_range(jget_num(d, "trkSbLowSpd", def.trk_sb_low_speed_kmh), TRK_SB_SPEED_KMH_MIN, TRK_SB_SPEED_KMH_MAX, "trkSbLowSpd");
+        clamp_u16_range(jget_num(d, "trkSbFastIntv", c->trk_sb_fast_interval), TRK_SB_FAST_INTERVAL_S_MIN, TRK_SB_FAST_INTERVAL_S_MAX, "trkSbFastIntv");
+    c->trk_sb_low_speed_kmh = clamp_u16_range(jget_num(d, "trkSbLowSpd", c->trk_sb_low_speed_kmh), TRK_SB_SPEED_KMH_MIN, TRK_SB_SPEED_KMH_MAX, "trkSbLowSpd");
     c->trk_sb_high_speed_kmh =
-        clamp_u16_range(jget_num(d, "trkSbHighSpd", def.trk_sb_high_speed_kmh), TRK_SB_SPEED_KMH_MIN, TRK_SB_SPEED_KMH_MAX, "trkSbHighSpd");
+        clamp_u16_range(jget_num(d, "trkSbHighSpd", c->trk_sb_high_speed_kmh), TRK_SB_SPEED_KMH_MIN, TRK_SB_SPEED_KMH_MAX, "trkSbHighSpd");
     if (c->trk_sb_high_speed_kmh < c->trk_sb_low_speed_kmh) {
         ESP_LOGW(TAG, "trkSbHighSpd %u below trkSbLowSpd %u, raised to match", (unsigned)c->trk_sb_high_speed_kmh, (unsigned)c->trk_sb_low_speed_kmh);
         c->trk_sb_high_speed_kmh = c->trk_sb_low_speed_kmh;
     }
-    c->trk_sb_turn_angle =
-        clamp_u16_range(jget_num(d, "trkSbTurnAngle", def.trk_sb_turn_angle), TRK_SB_TURN_ANGLE_MIN, TRK_SB_TURN_ANGLE_MAX, "trkSbTurnAngle");
-    c->trk_sb_turn_slope =
-        clamp_u16_range(jget_num(d, "trkSbTurnSlope", def.trk_sb_turn_slope), TRK_SB_TURN_SLOPE_MIN, TRK_SB_TURN_SLOPE_MAX, "trkSbTurnSlope");
+    c->trk_sb_turn_angle = clamp_u16_range(jget_num(d, "trkSbTurnAngle", c->trk_sb_turn_angle), TRK_SB_TURN_ANGLE_MIN, TRK_SB_TURN_ANGLE_MAX, "trkSbTurnAngle");
+    c->trk_sb_turn_slope = clamp_u16_range(jget_num(d, "trkSbTurnSlope", c->trk_sb_turn_slope), TRK_SB_TURN_SLOPE_MIN, TRK_SB_TURN_SLOPE_MAX, "trkSbTurnSlope");
     c->trk_sb_min_turn_time =
-        clamp_u16_range(jget_num(d, "trkSbMinTurnTime", def.trk_sb_min_turn_time), TRK_SB_MIN_TURN_TIME_S_MIN, TRK_SB_MIN_TURN_TIME_S_MAX, "trkSbMinTurnTime");
+        clamp_u16_range(jget_num(d, "trkSbMinTurnTime", c->trk_sb_min_turn_time), TRK_SB_MIN_TURN_TIME_S_MIN, TRK_SB_MIN_TURN_TIME_S_MAX, "trkSbMinTurnTime");
 
-    c->gps_en = jget_bool(d, "gpsEn", def.gps_en);
+    c->gps_en = jget_bool(d, "gpsEn", c->gps_en);
 
-    c->wx_en = jget_bool(d, "wxEn", def.wx_en);
-    c->wx_2rf = jget_bool(d, "wxTx2rf", def.wx_2rf);
-    c->wx_2inet = jget_bool(d, "wxTx2inet", def.wx_2inet);
-    c->wx_timestamp = jget_bool(d, "wxTime", def.wx_timestamp);
-    c->wx_ssid = (uint8_t)jget_num(d, "wxSSID", def.wx_ssid);
-    set_str(c->wx_mycall, sizeof(c->wx_mycall), jget_str(d, "wxMycall", def.wx_mycall));
-    c->wx_use_station = jget_bool(d, "wxUseStation", def.wx_use_station);
-    c->wx_use_gps = jget_bool(d, "wxUseGps", def.wx_use_gps);
-    c->wx_path = (uint8_t)jget_num(d, "wxPath", def.wx_path);
-    c->wx_lat = (float)jget_num(d, "wxLAT", def.wx_lat);
-    c->wx_lon = (float)jget_num(d, "wxLON", def.wx_lon);
-    c->wx_interval = (uint16_t)jget_num(d, "wxInv", def.wx_interval);
-    set_str(c->wx_object, sizeof(c->wx_object), jget_str(d, "wxObject", def.wx_object));
-    set_str_utf8(c->wx_comment, sizeof(c->wx_comment), jget_str(d, "wxComment", def.wx_comment));
+    c->wx_en = jget_bool(d, "wxEn", c->wx_en);
+    c->wx_2rf = jget_bool(d, "wxTx2rf", c->wx_2rf);
+    c->wx_2inet = jget_bool(d, "wxTx2inet", c->wx_2inet);
+    c->wx_timestamp = jget_bool(d, "wxTime", c->wx_timestamp);
+    c->wx_ssid = (uint8_t)jget_num(d, "wxSSID", c->wx_ssid);
+    set_str(c->wx_mycall, sizeof(c->wx_mycall), jget_str(d, "wxMycall", c->wx_mycall));
+    c->wx_use_station = jget_bool(d, "wxUseStation", c->wx_use_station);
+    c->wx_use_gps = jget_bool(d, "wxUseGps", c->wx_use_gps);
+    c->wx_path = (uint8_t)jget_num(d, "wxPath", c->wx_path);
+    c->wx_lat = (float)jget_num(d, "wxLAT", c->wx_lat);
+    c->wx_lon = (float)jget_num(d, "wxLON", c->wx_lon);
+    c->wx_interval = (uint16_t)jget_num(d, "wxInv", c->wx_interval);
+    set_str(c->wx_object, sizeof(c->wx_object), jget_str(d, "wxObject", c->wx_object));
+    set_str_utf8(c->wx_comment, sizeof(c->wx_comment), jget_str(d, "wxComment", c->wx_comment));
     {
         cJSON *a1 = cJSON_GetObjectItemCaseSensitive(d, "wxSenEn"), *a2 = cJSON_GetObjectItemCaseSensitive(d, "wxSenAvg"),
               *a3 = cJSON_GetObjectItemCaseSensitive(d, "wxSenCH");
@@ -1554,13 +1564,13 @@ static void config_from_json(cJSON *d, app_config_t *c) {
     // tlm0*/tlm1*/tlmBit* keys in an old config.json are simply ignored here
     // (config_from_json() already ignores unknown keys generally).
 
-    set_str(c->http_username, sizeof(c->http_username), jget_str(d, "httpUser", def.http_username));
-    set_str(c->http_password, sizeof(c->http_password), jget_str(d, "httpPass", def.http_password));
+    set_str(c->http_username, sizeof(c->http_username), jget_str(d, "httpUser", c->http_username));
+    set_str(c->http_password, sizeof(c->http_password), jget_str(d, "httpPass", c->http_password));
     {
         cJSON *p = cJSON_GetObjectItemCaseSensitive(d, "path");
         for (int i = 0; i < 4; i++) {
             cJSON *v = p ? cJSON_GetArrayItem(p, i) : NULL;
-            set_str(c->path[i], sizeof(c->path[i]), (v && cJSON_IsString(v)) ? v->valuestring : def.path[i]);
+            set_str(c->path[i], sizeof(c->path[i]), (v && cJSON_IsString(v)) ? v->valuestring : c->path[i]);
         }
     }
 
@@ -1579,39 +1589,39 @@ static void config_from_json(cJSON *d, app_config_t *c) {
         c->msg_path = 9;
         set_str(c->msg_mycall, sizeof(c->msg_mycall), "NOCALL");
     } else {
-        c->msg_enable = jget_bool(d, "msgEnable", def.msg_enable);
-        c->msg_path = (uint8_t)jget_num(d, "msgPath", def.msg_path);
-        c->msg_rf = jget_bool(d, "msgRf", def.msg_rf);
-        c->msg_inet = jget_bool(d, "msgInet", def.msg_inet);
-        c->msg_retry = (uint8_t)jget_num(d, "msgRetry", def.msg_retry);
-        c->msg_interval = (uint16_t)jget_num(d, "msgInterval", def.msg_interval);
-        set_str(c->msg_mycall, sizeof(c->msg_mycall), jget_str(d, "msgMycall", def.msg_mycall));
-        c->msg_use_station = jget_bool(d, "msgUseStation", def.msg_use_station);
+        c->msg_enable = jget_bool(d, "msgEnable", c->msg_enable);
+        c->msg_path = (uint8_t)jget_num(d, "msgPath", c->msg_path);
+        c->msg_rf = jget_bool(d, "msgRf", c->msg_rf);
+        c->msg_inet = jget_bool(d, "msgInet", c->msg_inet);
+        c->msg_retry = (uint8_t)jget_num(d, "msgRetry", c->msg_retry);
+        c->msg_interval = (uint16_t)jget_num(d, "msgInterval", c->msg_interval);
+        set_str(c->msg_mycall, sizeof(c->msg_mycall), jget_str(d, "msgMycall", c->msg_mycall));
+        c->msg_use_station = jget_bool(d, "msgUseStation", c->msg_use_station);
     }
-    c->msg_alarm_enable = jget_bool(d, "msgAlarmEn", def.msg_alarm_enable);
-    c->msg_alarm_gpio = (int8_t)jget_num(d, "msgAlarmGpio", def.msg_alarm_gpio);
+    c->msg_alarm_enable = jget_bool(d, "msgAlarmEn", c->msg_alarm_enable);
+    c->msg_alarm_gpio = (int8_t)jget_num(d, "msgAlarmGpio", c->msg_alarm_gpio);
     {
         cJSON *g = cJSON_GetObjectItemCaseSensitive(d, "msgGroup");
         for (int i = 0; i < 3; i++) {
             cJSON *v = g ? cJSON_GetArrayItem(g, i) : NULL;
-            set_str(c->msg_group[i], sizeof(c->msg_group[i]), (v && cJSON_IsString(v)) ? v->valuestring : def.msg_group[i]);
+            set_str(c->msg_group[i], sizeof(c->msg_group[i]), (v && cJSON_IsString(v)) ? v->valuestring : c->msg_group[i]);
         }
     }
 
-    c->query_en = jget_bool(d, "queryEn", def.query_en);
-    c->query_rf = jget_bool(d, "queryRf", def.query_rf);
-    c->query_inet = jget_bool(d, "queryInet", def.query_inet);
-    c->query_aprs_en = jget_bool(d, "queryAprsEn", def.query_aprs_en);
-    c->query_wx_en = jget_bool(d, "queryWxEn", def.query_wx_en);
-    c->query_igate_en = jget_bool(d, "queryIgateEn", def.query_igate_en);
-    c->query_directed_en = jget_bool(d, "queryDirectedEn", def.query_directed_en);
-    c->query_ext_en = jget_bool(d, "queryExtEn", def.query_ext_en);
-    c->query_min_interval_sec = (uint16_t)jget_num(d, "queryMinInterval", def.query_min_interval_sec);
+    c->query_en = jget_bool(d, "queryEn", c->query_en);
+    c->query_rf = jget_bool(d, "queryRf", c->query_rf);
+    c->query_inet = jget_bool(d, "queryInet", c->query_inet);
+    c->query_aprs_en = jget_bool(d, "queryAprsEn", c->query_aprs_en);
+    c->query_wx_en = jget_bool(d, "queryWxEn", c->query_wx_en);
+    c->query_igate_en = jget_bool(d, "queryIgateEn", c->query_igate_en);
+    c->query_directed_en = jget_bool(d, "queryDirectedEn", c->query_directed_en);
+    c->query_ext_en = jget_bool(d, "queryExtEn", c->query_ext_en);
+    c->query_min_interval_sec = (uint16_t)jget_num(d, "queryMinInterval", c->query_min_interval_sec);
     if (c->query_min_interval_sec < 5) // floor: airtime/loop safety, matches the webconfig page's own clamp
         c->query_min_interval_sec = 5;
-    c->query_cap_beacon_en = jget_bool(d, "queryCapEn", def.query_cap_beacon_en);
+    c->query_cap_beacon_en = jget_bool(d, "queryCapEn", c->query_cap_beacon_en);
     {
-        int iv = (int)jget_num(d, "queryCapIntv", def.query_cap_interval_sec);
+        int iv = (int)jget_num(d, "queryCapIntv", c->query_cap_interval_sec);
         if (iv < QUERY_CAP_INTERVAL_S_MIN || iv > QUERY_CAP_INTERVAL_S_MAX) {
             int clamped = (iv < QUERY_CAP_INTERVAL_S_MIN) ? QUERY_CAP_INTERVAL_S_MIN : QUERY_CAP_INTERVAL_S_MAX;
             ESP_LOGW(TAG, "queryCapIntv %d out of range, clamped to %d", iv, clamped);
@@ -1619,9 +1629,9 @@ static void config_from_json(cJSON *d, app_config_t *c) {
         }
         c->query_cap_interval_sec = (uint32_t)iv;
     }
-    c->query_cap_rf = jget_bool(d, "queryCapRf", def.query_cap_rf);
-    c->query_cap_inet = jget_bool(d, "queryCapInet", def.query_cap_inet);
-    set_str_utf8(c->query_cap_extra, sizeof(c->query_cap_extra), jget_str(d, "queryCapExtra", def.query_cap_extra));
+    c->query_cap_rf = jget_bool(d, "queryCapRf", c->query_cap_rf);
+    c->query_cap_inet = jget_bool(d, "queryCapInet", c->query_cap_inet);
+    set_str_utf8(c->query_cap_extra, sizeof(c->query_cap_extra), jget_str(d, "queryCapExtra", c->query_cap_extra));
     app_config_query_cap_extra_sanitize(c->query_cap_extra);
 }
 

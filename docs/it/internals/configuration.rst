@@ -33,6 +33,14 @@ Caricamento e salvataggio
 * **Caricato** con **cJSON**. Se il file manca o è corrotto, si applicano i
   valori predefiniti **e si salvano immediatamente**, così che il file esista
   sempre e sia coerente.
+* **Caricato sul posto**: ``config_from_json()`` scrive l'insieme dei valori
+  predefiniti direttamente nella struttura di destinazione e poi legge il valore
+  di ripiego di ogni chiave dal campo stesso che sta per sovrascrivere. Ogni
+  campo è assegnato esattamente una volta, sempre dopo quella chiamata, così un
+  valore di ripiego contiene ancora il suo predefinito nell'istante in cui viene
+  letto. Questo tiene una seconda ``app_config_t`` — la dimensione dell'intera
+  configurazione — fuori dallo stack del task che carica, che ha già accanto a sé
+  l'albero cJSON dell'intero file vivo nell'heap.
 * **Salvato** da un piccolo scrittore JSON token per token (``jw_t``/``jadd_*``)
   che scorre direttamente nel file, evitando la doppia allocazione di heap che
   necessiterebbero un albero cJSON completo più il suo buffer serializzato. Un

@@ -30,6 +30,13 @@ Loading and saving
 * **Loaded** with **cJSON**. If the file is missing or corrupt, defaults are
   applied **and immediately saved**, so the file always exists and is
   consistent.
+* **Loaded in place**: ``config_from_json()`` writes the default set straight
+  into the destination struct and then reads each key's fallback from the very
+  field it is about to overwrite. Every field is assigned exactly once, always
+  after that call, so a fallback still holds its default at the instant it is
+  read. This keeps a second ``app_config_t`` — the size of the whole
+  configuration — off the stack of the loading task, which already has the
+  cJSON tree of the entire file live in the heap beside it.
 * **Saved** by a small token-at-a-time JSON writer (``jw_t``/``jadd_*``) that
   streams straight to the file, avoiding the double heap allocation a full cJSON
   tree plus its serialised buffer would need. A static ``setvbuf()`` buffer is

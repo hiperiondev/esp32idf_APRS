@@ -33,6 +33,14 @@ Carga y guardado
 * **Cargado** con **cJSON**. Si el archivo falta o está corrupto, se aplican los
   valores por defecto **y se guardan inmediatamente**, de modo que el archivo
   siempre existe y es consistente.
+* **Cargado en el lugar**: ``config_from_json()`` escribe el conjunto de valores
+  por defecto directamente en la estructura de destino y luego lee el valor de
+  reserva de cada clave del mismo campo que está por sobrescribir. Cada campo se
+  asigna exactamente una vez, siempre después de esa llamada, así que un valor de
+  reserva todavía contiene su valor por defecto en el instante en que se lee.
+  Esto mantiene una segunda ``app_config_t`` — el tamaño de toda la
+  configuración — fuera de la pila de la tarea que carga, que ya tiene a su lado
+  el árbol cJSON del archivo entero vivo en el heap.
 * **Guardado** por un pequeño escritor JSON token a token (``jw_t``/``jadd_*``)
   que fluye directamente al archivo, evitando la doble asignación de heap que
   necesitarían un árbol cJSON completo más su búfer serializado. Un búfer estático
