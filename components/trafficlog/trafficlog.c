@@ -30,7 +30,19 @@
 #include "freertos/semphr.h"
 #include "json_escape.h" // json_escape()
 
-#define TRAFFICLOG_CAPACITY 64 // number of lines kept in RAM
+// Number of lines kept in RAM. The ring is a backlog, not the history the
+// operator reads: the dashboard keeps its own much longer list of rows in the
+// browser and only asks the firmware for what it has not seen yet, since
+// trafficlog_next_json() delivers strictly from after_seq upward. What has to
+// fit here is therefore one polling interval's worth of traffic, not a session's
+// worth. The panel polls /igate_traffic every 1.5 s and a 1200 baud AX.25 frame
+// occupies the channel for a good fraction of a second, so a handful of entries
+// per pass is the realistic ceiling and 32 slots leave an order of magnitude of
+// margin - enough that a client stalled for several passes still catches up
+// without a gap. Each entry costs sizeof(trafficlog_entry_t), so this constant
+// is also the single largest .bss block of the component and the one knob that
+// trades RAM for backlog depth.
+#define TRAFFICLOG_CAPACITY 32
 // Shared text buffer: an entry holds EITHER the free-form "m" line
 // (trafficlog_add) OR the raw TNC2 packet (trafficlog_add_pkt), never both, so
 // one buffer tagged by 'kind' serves both and the ring costs half of what two
