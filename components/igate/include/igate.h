@@ -101,8 +101,12 @@ typedef enum {
     DROP_MSG_ADDRESSEE_HOPS,  /**< INET->RF message whose addressee was heard on RF inside the window, but only over more used digipeater addresses than
                                  g_config.igate_msg_max_hops allows: audible from here, yet beyond the reach of a transmission that carries this station's own
                                  IGate path. */
-    DROP_INET2RF_RANGE,       /**< INET->RF line whose decoded position lies further from "My Station" than app_config_t::inet2rf_range_km. The mirror of
-                                 ::DROP_RANGE_FILTER on the other direction; a line carrying no decodable position is never counted here. */
+    DROP_INET2RF_RANGE,       /**< INET->RF line whose decoded position lies further from "My Station" than app_config_t::inet2rf_range_km, the mirror of
+                                 ::DROP_RANGE_FILTER on the other direction. Also counted, without a distance to report, for a BrandMeister-classified line
+                                 (see aprs_bm.h) that carries no decodable position of its own: an ordinary INET->RF line without one is already known local
+                                 through the operator's own server-side geographic filter term, but a BrandMeister worldwide-monitor subscription carries no
+                                 such term, so a position-less BrandMeister line has no other geographic gate standing between it and the transmitter. Every
+                                 other position-less line is left to the gating rules further down and never counted here. */
     DROP_MSG_BROADCAST,       /**< INET->RF message addressed to a broadcast addressee - a general bulletin or announcement ("BLNn", "BLNa", with or without a
                                  group name) or one of the weather service families ("NWS-xxxxx", "SKY...", "CWA...") - which is never gated onto RF. Applied
                                  unconditionally, independently of g_config.igate_msg_gate_en and g_config.inet2rfFilter, on the same terms as

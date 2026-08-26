@@ -1488,11 +1488,27 @@ static void inet2rfHandler(const char *line) {
         // wants cannot be expressed to the server at all. It has to be
         // enforced here, before the transmitter.
         //
-        // A line whose position cannot be decoded is not dropped: a message,
-        // a status report or a telemetry frame has no position to measure, and
-        // each of those is governed by its own gating rules further down.
-        // Guessing at a distance for them, in either direction, would make
-        // this gate mean something different for every payload type.
+        // A line whose position cannot be decoded is not dropped merely for
+        // lacking one: a message, a status report or a telemetry frame has no
+        // position of its own to measure, and each of those is governed by
+        // its own gating rules further down. Guessing at a distance for them
+        // would make this gate mean something different for every payload
+        // type.
+        //
+        // BrandMeister worldwide-monitor traffic is the one exception, and it
+        // has to be: every other line reaching this handler was already
+        // range-limited server-side by the operator's own "r/lat/lon/radius"
+        // APRS-IS filter term, so a position-less line among them (a status
+        // report, say) is still known to be local because the server itself
+        // never sent anything else. The BrandMeister monitor subscription
+        // ("u/APBM*", see aprs_bm.h) carries no such term - APRS-IS filter
+        // terms are OR'd, never AND'd, so it cannot be combined with one - and
+        // this station's own range gate is the only geographic restriction a
+        // BrandMeister line is ever subject to (see docs/brandmeister.rst).
+        // Passing a position-less BrandMeister line through unmeasured would
+        // leave the very traffic this gate exists to bound (worldwide
+        // repeater status/telemetry chatter) completely ungated, flooding the
+        // RF TX ring with distant traffic the local channel has no use for.
         if (!assocPosition && g_config.inet2rf_range_en) {
             bool rangeEn;
             float rangeKm, ownLat, ownLon;
@@ -1508,13 +1524,18 @@ static void inet2rfHandler(const char *line) {
                 const char *colon = strchr(line, ':');
                 float plat, plon;
                 aprs_tnc2_dest_call(line, destCall, sizeof(destCall));
-                if (colon && aprs_filter_decode_position(colon + 1, destCall, &plat, &plon)) {
+                bool haveFix = colon && aprs_filter_decode_position(colon + 1, destCall, &plat, &plon);
+                if (haveFix) {
                     float d = aprs_filter_haversine_km(ownLat, ownLon, plat, plon);
                     if (d > rangeKm) {
                         ESP_LOGD(TAG, "INET2RF range-filtered (%.1f km > %.1f km)%s: %s", d, rangeKm, viaBm ? " [BM]" : "", callsign);
                         igate_note_drop(DROP_INET2RF_RANGE);
                         return;
                     }
+                } else if (viaBm) {
+                    ESP_LOGD(TAG, "INET2RF range-filtered, BrandMeister line carries no position to measure: %s", callsign);
+                    igate_note_drop(DROP_INET2RF_RANGE);
+                    return;
                 }
             }
         }

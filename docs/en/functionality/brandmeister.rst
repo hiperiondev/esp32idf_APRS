@@ -178,8 +178,13 @@ the menu:
 
 The Internet-to-RF range filter lives on the *IGate* page next to its
 RF-to-Internet twin, because it governs every line the feed offers the
-transmitter and not only BrandMeister traffic. The *BrandMeister* page's status
-table reports its state.
+transmitter and not only BrandMeister traffic. It applies even to a
+BrandMeister line that carries no position of its own — a repeater status
+broadcast, for example — since a worldwide monitor subscription carries no
+geographic filter term for the range gate to stand in for; every other
+INET→RF line without a position is left to its own gating rules because the
+operator's ordinary server-side radius filter already keeps it local. The
+*BrandMeister* page's status table reports the range filter's state.
 
 What is deliberately not implemented
 ====================================

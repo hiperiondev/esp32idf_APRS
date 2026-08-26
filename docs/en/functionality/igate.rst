@@ -263,12 +263,31 @@ after passing:
    base callsign against every own-station report callsign) and never re-gates
    them back to RF. Own reports reach RF exclusively through their own "Send via
    RF" (``*_2rf``) flags.
+#. **Header-token gate.** A line whose header (everything before the first
+   ``:``) carries ``TCPXX``, ``NOGATE``, ``RFONLY``, ``qAX`` or ``qAZ`` is
+   dropped unconditionally (``DROP_HEADER_FORBIDS_RF``) — these are the path
+   tokens and q constructs whose whole purpose is to forbid a packet reaching
+   RF, checked for every line this handler considers, not only messages.
 #. **Bulletin and weather service broadcast gate.** A message addressed to a
    bulletin or announcement addressee (``BLNn``, ``BLNa``, with or without a
    group name) or to one of the weather service families (``NWS-xxxxx``,
    ``SKY…``, ``CWA…``) is dropped unconditionally (``DROP_MSG_BROADCAST``),
    independently of ``g_config.igate_msg_gate_en`` and
    ``g_config.inet2rfFilter``. See below.
+#. **Local range gate.** If ``inet2rf_range_en`` is on, the line's position is
+   decoded and its great-circle (haversine) distance from "My Station" is
+   compared against ``g_config.inet2rf_range_km``; too-distant lines are
+   dropped (``DROP_INET2RF_RANGE``). A line whose position cannot be decoded
+   (a status, telemetry or message payload) passes this check — except a line
+   already recognised as BrandMeister traffic (see :ref:`en-brandmeister`),
+   which is dropped instead. An ordinary line with no position of its own is
+   already known local because the operator's own server-side
+   ``r/lat/lon/radius`` filter term never delivered anything else, but the
+   BrandMeister worldwide-monitor subscription (``u/APBM*``) carries no such
+   term, so a position-less BrandMeister line — a repeater status broadcast,
+   for instance — has no other geographic gate standing between it and the
+   transmitter and would otherwise flood the RF TX ring with traffic from
+   every corner of the network.
 #. **Payload-type filter.** The line is classified by
    ``aprs_filter_classify_tnc2()`` and tested against
    ``g_config.inet2rfFilter``.
