@@ -128,7 +128,13 @@ The pages
        tests before using anything the module reports; with it off the UART is
        not installed at all and the reader task does not run. Moving it takes
        effect immediately, without a reboot. Below it, a read-only live view of
-       the receiver: link state, navigation
+       the receiver, led by a colour-coded *Module Status* badge that turns a
+       page of numbers into a single diagnosis: red *Disabled* when the switch
+       is off or the UART failed to come up, red *No data (check wiring)* when
+       the module is enabled but nothing has arrived on the receive pin within
+       the link timeout, amber *Searching (no fix)* once sentences are
+       arriving but no valid navigation solution has been reported yet, and
+       green *Fix OK* once one has. Below the badge, link state, navigation
        status, fix quality and 2D/3D mode, position, altitude and geoid
        separation, ground speed, course and magnetic variation, UTC date and
        time, satellites used and in view, HDOP/PDOP/VDOP, the accepted and

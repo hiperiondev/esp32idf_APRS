@@ -139,7 +139,15 @@ Las páginas
        firmware consulta antes de usar nada de lo que informa el módulo; con él
        apagado la UART ni siquiera se instala y la tarea lectora no corre.
        Moverlo surte efecto de inmediato, sin reiniciar. Debajo, una vista en
-       vivo de solo lectura del receptor: estado del
+       vivo de solo lectura del receptor, encabezada por una insignia
+       *Estado del Módulo* con código de color que convierte una página de
+       números en un único diagnóstico: rojo *Deshabilitado* cuando el
+       conmutador está apagado o la UART no pudo inicializarse, rojo *Sin
+       datos (revisar cableado)* cuando el módulo está habilitado pero no ha
+       llegado nada por el pin de recepción dentro del plazo de enlace, ámbar
+       *Buscando (sin fijación)* cuando llegan sentencias pero aún no se ha
+       informado una solución de navegación válida, y verde *Fijación OK* una
+       vez que sí. Debajo de la insignia, estado del
        enlace, estado de navegación, calidad del fix y modo 2D/3D, posición,
        altitud y separación del geoide, velocidad sobre el suelo, rumbo y
        variación magnética, fecha y hora UTC, satélites usados y a la vista,

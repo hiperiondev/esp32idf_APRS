@@ -1535,6 +1535,8 @@
 #define TR_GPS_FS_LINK "Enlace Serie"
 /** Spanish text for the fieldset legend for the compile-time wiring block, rendered on the GPS page. English: "Wiring (compile-time)". */
 #define TR_GPS_FS_WIRING "Cableado (tiempo de compilación)"
+/** Spanish text for the row label for the coloured module-status badge summarising the serial link, rendered on the GPS page. English: "Module Status". */
+#define TR_GPS_MODULE_STATUS "Estado del Módulo"
 /** Spanish text for the row label for the receiver link state, rendered on the GPS page. English: "Link". */
 #define TR_GPS_LINK "Enlace"
 /** Spanish text for the row label for the navigation status reported by RMC, rendered on the GPS page. English: "Navigation Status". */
@@ -1591,6 +1593,14 @@
 #define TR_GPS_LINK_RECEIVING "Recibiendo"
 /** Spanish text for the link state shown when the receiver has gone silent, rendered on the GPS page. English: "No data from receiver". */
 #define TR_GPS_LINK_SILENT "Sin datos del receptor"
+/** Spanish text for the module-status badge text shown when the receiver is switched off or its UART failed to come up, rendered on the GPS page. English: "Disabled". */
+#define TR_GPS_STATUS_DISABLED "Deshabilitado"
+/** Spanish text for the module-status badge text shown when the receiver is enabled but no sentence has arrived within the link timeout, rendered on the GPS page. English: "No data (check wiring)". */
+#define TR_GPS_STATUS_NO_LINK "Sin datos (revisar cableado)"
+/** Spanish text for the module-status badge text shown when sentences are arriving but no valid fix has been reported yet, rendered on the GPS page. English: "Searching (no fix)". */
+#define TR_GPS_STATUS_SEARCHING "Buscando (sin fijación)"
+/** Spanish text for the module-status badge text shown when sentences are arriving and the last navigation solution is valid, rendered on the GPS page. English: "Fix OK". */
+#define TR_GPS_STATUS_FIX_OK "Fijación OK"
 /** Spanish text for the navigation status shown when RMC reports an active solution, rendered on the GPS page. English: "Active". */
 #define TR_GPS_NAV_ACTIVE "Activa"
 /** Spanish text for the navigation status shown when RMC reports a warning, rendered on the GPS page. English: "Warning (no valid fix)". */

@@ -1439,6 +1439,8 @@
 #define TR_GPS_FS_LINK "Serial Link"
 /** Fieldset legend for the compile-time wiring block, rendered on the GPS page. */
 #define TR_GPS_FS_WIRING "Wiring (compile-time)"
+/** Row label for the coloured module-status badge summarising the serial link, rendered on the GPS page. */
+#define TR_GPS_MODULE_STATUS "Module Status"
 /** Row label for the receiver link state, rendered on the GPS page. */
 #define TR_GPS_LINK "Link"
 /** Row label for the navigation status reported by RMC, rendered on the GPS page. */
@@ -1495,6 +1497,14 @@
 #define TR_GPS_LINK_RECEIVING "Receiving"
 /** Link state shown when the receiver has gone silent, rendered on the GPS page. */
 #define TR_GPS_LINK_SILENT "No data from receiver"
+/** Module-status badge text shown when the receiver is switched off or its UART failed to come up, rendered on the GPS page. */
+#define TR_GPS_STATUS_DISABLED "Disabled"
+/** Module-status badge text shown when the receiver is enabled but no sentence has arrived within the link timeout, rendered on the GPS page. */
+#define TR_GPS_STATUS_NO_LINK "No data (check wiring)"
+/** Module-status badge text shown when sentences are arriving but no valid fix has been reported yet, rendered on the GPS page. */
+#define TR_GPS_STATUS_SEARCHING "Searching (no fix)"
+/** Module-status badge text shown when sentences are arriving and the last navigation solution is valid, rendered on the GPS page. */
+#define TR_GPS_STATUS_FIX_OK "Fix OK"
 /** Navigation status shown when RMC reports an active solution, rendered on the GPS page. */
 #define TR_GPS_NAV_ACTIVE "Active"
 /** Navigation status shown when RMC reports a warning, rendered on the GPS page. */

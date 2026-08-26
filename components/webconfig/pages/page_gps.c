@@ -13,11 +13,12 @@
 //
 //     please contact their authors for more information.
 //
-// @brief Web admin "GPS" page: the receiver's enable switch, plus a live view
-// of everything the NMEA GNSS receiver reports, refreshed once per second from
-// the JSON endpoint below. Also serves the plain-numeric JSON endpoint every
-// other page's "Use GPS" checkbox polls to auto-fill its own position/motion
-// fields (see web_field_use_gps_data() in web_common.c).
+// @brief Web admin "GPS" page: the receiver's enable switch, a colour-coded
+// module-status badge for diagnosing the serial link at a glance, and a live
+// view of everything the NMEA GNSS receiver reports, refreshed once per
+// second from the JSON endpoint below. Also serves the plain-numeric JSON
+// endpoint every other page's "Use GPS" checkbox polls to auto-fill its own
+// position/motion fields (see web_field_use_gps_data() in web_common.c).
 
 #include <stdio.h>
 #include <string.h>
@@ -33,10 +34,11 @@
 static const char *TAG = "page_gps";
 
 // Room for the whole live-value document: one JSON member per displayed row,
-// the longest of which carry a translated phrase rather than a number. The
+// the longest of which carry a translated phrase rather than a number, plus
+// the "module"/"moduleClass" status-badge pair emitted ahead of them. The
 // widest document any of the three languages can produce - every member
 // present, every numeric field at its maximum width and the longest
-// translation selected for each phrase - measures a little over 450 bytes, so
+// translation selected for each phrase - measures a little over 500 bytes, so
 // this leaves room for rows and translations added later and makes the
 // truncation branch below a guard rather than an expected path.
 #define GPS_VALUES_BUF 1024
@@ -49,6 +51,17 @@ static const char *TAG = "page_gps";
 static void gps_row(httpd_req_t *req, const char *label, const char *key) {
     char row[200];
     snprintf(row, sizeof(row), "<tr><td>%s</td><td id='gps_%s'>-</td></tr>", label, key);
+    httpd_resp_sendstr_chunk(req, row);
+}
+
+// Emits the one row rendered as a coloured badge rather than plain text: the
+// module-status summary at the top of the Receiver Status table. The span
+// carries both the placeholder text and a starting "badge" class so the cell
+// already looks like a badge before the first live refresh lands; the script
+// below replaces the class along with the text on every subsequent update.
+static void gps_row_badge(httpd_req_t *req, const char *label, const char *key) {
+    char row[220];
+    snprintf(row, sizeof(row), "<tr><td>%s</td><td><span id='gps_%s' class='badge'>-</span></td></tr>", label, key);
     httpd_resp_sendstr_chunk(req, row);
 }
 
@@ -101,13 +114,78 @@ static const char *mode_text(gps_fix_mode_t m) {
     }
 }
 
+// One-glance verdict on whether the receiver is usable, folding link and fix
+// state into the single question an operator wiring up a module actually
+// asks: is it plugged in the right way round and producing a position?
+//
+// "link" (sentences arriving on the ESP32's RX pin, wired to the module's TX
+// output) and "fix" (a valid solution once sentences are flowing) are the two
+// halves of that question, and they fail for different reasons: a dead link
+// points at wiring, baud rate or a module with no power, while a live link
+// with no fix points at antenna placement or cold-start time instead. Kept
+// separate from quality_text()/mode_text() because those describe what the
+// last GGA/GSA sentence said, while this describes whether the module is
+// worth listening to at all right now.
+typedef enum {
+    GPS_STATUS_DISABLED,  // Switched off, or the UART could not be brought up.
+    GPS_STATUS_NO_LINK,   // Enabled but no sentence has verified within the link timeout.
+    GPS_STATUS_SEARCHING, // Sentences are arriving but no sentence reports a valid fix yet.
+    GPS_STATUS_FIX_OK,    // Sentences are arriving and the last navigation solution is valid.
+} gps_status_t;
+
+static gps_status_t module_status(const gps_data_t *g, bool have) {
+    if (!have)
+        return GPS_STATUS_DISABLED;
+    if (!g->link_up)
+        return GPS_STATUS_NO_LINK;
+    if (!g->valid)
+        return GPS_STATUS_SEARCHING;
+    return GPS_STATUS_FIX_OK;
+}
+
+// Translated label shown inside the status badge.
+static const char *module_status_text(gps_status_t s) {
+    switch (s) {
+        case GPS_STATUS_DISABLED:
+            return TR_GPS_STATUS_DISABLED;
+        case GPS_STATUS_NO_LINK:
+            return TR_GPS_STATUS_NO_LINK;
+        case GPS_STATUS_SEARCHING:
+            return TR_GPS_STATUS_SEARCHING;
+        case GPS_STATUS_FIX_OK:
+        default:
+            return TR_GPS_STATUS_FIX_OK;
+    }
+}
+
+// CSS badge class (see the .badge.ok/.warn/.err rules in web_common.c) that
+// colours the status text above: red for a module that cannot be heard at
+// all, amber for one that is heard but has not solved a position yet, green
+// once it has.
+static const char *module_status_class(gps_status_t s) {
+    switch (s) {
+        case GPS_STATUS_DISABLED:
+        case GPS_STATUS_NO_LINK:
+            return "err";
+        case GPS_STATUS_SEARCHING:
+            return "warn";
+        case GPS_STATUS_FIX_OK:
+        default:
+            return "ok";
+    }
+}
+
 // Builds the live-value document into out.
 //
 // Every member is either a quoted, ready-to-display string or the literal
 // null, and a member is emitted as null exactly when the receiver has not
 // reported that quantity - which the page renders as "-". Formatting happens
 // here rather than in the browser so the units and the translated phrases stay
-// with the rest of the firmware's strings.
+// with the rest of the firmware's strings. "module" and "moduleClass" are the
+// exception to the null rule: they are the one-glance status verdict from
+// module_status() and are always present, since there is always an answer to
+// whether the module is currently usable even when every other field is
+// absent.
 //
 // Nothing in the document comes from the network or from operator input: every
 // value is either a number this firmware formatted or one of the translated
@@ -117,15 +195,18 @@ static void gps_values_json(const gps_data_t *g, bool have, char *out, size_t ou
 
     str_append(out, out_size, &used, "{");
 
+    gps_status_t status = module_status(g, have);
+    str_append(out, out_size, &used, "\"module\":\"%s\",\"moduleClass\":\"%s\"", module_status_text(status), module_status_class(status));
+
     if (!have) {
         // The subsystem never came up (no UART). Reporting the link as down
         // and everything else as absent is the truthful rendering of that, and
         // it is what the page already knows how to display.
-        str_append(out, out_size, &used, "\"link\":\"%s\"}", TR_GPS_LINK_SILENT);
+        str_append(out, out_size, &used, ",\"link\":\"%s\"}", TR_GPS_LINK_SILENT);
         return;
     }
 
-    str_append(out, out_size, &used, "\"link\":\"%s\"", g->link_up ? TR_GPS_LINK_RECEIVING : TR_GPS_LINK_SILENT);
+    str_append(out, out_size, &used, ",\"link\":\"%s\"", g->link_up ? TR_GPS_LINK_RECEIVING : TR_GPS_LINK_SILENT);
     str_append(out, out_size, &used, ",\"nav\":\"%s\"", g->valid ? TR_GPS_NAV_ACTIVE : TR_GPS_NAV_WARNING);
     str_append(out, out_size, &used, ",\"quality\":\"%s\"", quality_text(g->quality));
     str_append(out, out_size, &used, ",\"mode\":\"%s\"", mode_text(g->mode));
@@ -318,6 +399,7 @@ esp_err_t page_gps_get(httpd_req_t *req) {
     httpd_resp_sendstr_chunk(req, "<button type='submit'>" TR_BTN_SAVE "</button></form>");
 
     gps_table_open(req, TR_GPS_FS_STATUS);
+    gps_row_badge(req, TR_GPS_MODULE_STATUS, "module");
     gps_row(req, TR_GPS_LINK, "link");
     gps_row(req, TR_GPS_NAV_STATUS, "nav");
     gps_row(req, TR_GPS_FIX_QUALITY, "quality");
@@ -378,7 +460,10 @@ esp_err_t page_gps_get(httpd_req_t *req) {
     // the update from the response's own keys - rather than from a list of row
     // names repeated here - means a row added above needs no change in this
     // script, and a member the firmware omits leaves its cell showing the
-    // placeholder instead of a stale reading.
+    // placeholder instead of a stale reading. "moduleClass" is the one member
+    // that is not itself a row: it carries the badge colour for "module"
+    // instead of text of its own, so it is applied as a class on that cell
+    // rather than written into any cell of its own.
     //
     // A member arriving as null is rendered as the placeholder for the same
     // reason: the receiver has not reported that quantity, and blanking the
@@ -396,7 +481,12 @@ esp_err_t page_gps_get(httpd_req_t *req) {
                                   "if(gpsBusy||document.hidden)return;"
                                   "gpsBusy=true;"
                                   "fetch('/gps/values').then(function(r){return r.json();}).then(function(v){"
+                                  "if(v.moduleClass){"
+                                  "var badge=document.getElementById('gps_module');"
+                                  "if(badge)badge.className='badge '+v.moduleClass;"
+                                  "}"
                                   "for(var k in v){"
+                                  "if(k==='moduleClass')continue;"
                                   "var td=document.getElementById('gps_'+k);"
                                   "if(td)td.textContent=(v[k]===null||v[k]===undefined)?'-':v[k];"
                                   "}"

@@ -141,7 +141,15 @@ Le pagine
        firmware consulta prima di usare qualsiasi cosa riportata dal modulo;
        con esso spento la UART non viene nemmeno installata e la task di
        lettura non gira. Spostarlo ha effetto immediato, senza riavvio. Sotto,
-       una vista in tempo reale di sola lettura del ricevitore: stato
+       una vista in tempo reale di sola lettura del ricevitore, guidata da un
+       badge *Stato del Modulo* a colori che trasforma una pagina di numeri
+       in un'unica diagnosi: rosso *Disabilitato* quando l'interruttore è
+       spento o la UART non è riuscita ad avviarsi, rosso *Nessun dato
+       (controllare il cablaggio)* quando il modulo è abilitato ma non è
+       arrivato nulla sul pin di ricezione entro il timeout di collegamento,
+       ambra *Ricerca in corso (nessuna posizione)* quando le frasi arrivano
+       ma non è stata ancora riportata una soluzione di navigazione valida, e
+       verde *Posizione OK* una volta ottenuta. Sotto il badge, stato
        del collegamento, stato di navigazione, qualità del fix e modo 2D/3D,
        posizione, altitudine e separazione del geoide, velocità al suolo,
        rotta e variazione magnetica, data e ora UTC, satelliti usati e in
