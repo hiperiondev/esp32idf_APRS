@@ -158,9 +158,9 @@ ni parámetros remotos propios por encima de él.
        libre actual.
    * - ``/sensors``
      - cualquiera
-     - Informa cada campo meteorológico habilitado (valor y canal de sensor
-       asignado, o "sin lectura"/"sin sensor asignado") y cada canal de
-       telemetría habilitado.
+     - Informa cada campo meteorológico y canal de telemetría que esté
+       habilitado y además tenga un sensor asignado, con su valor o "sin
+       lectura". Los campos habilitados sin sensor asignado no se muestran.
    * - ``/uptime``
      - cualquiera
      - Informa cuánto tiempo lleva encendido el dispositivo.

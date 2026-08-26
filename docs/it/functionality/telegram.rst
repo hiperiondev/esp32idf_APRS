@@ -156,9 +156,10 @@ o parametri remoti propri al di sopra di esso.
        libera attuale.
    * - ``/sensors``
      - chiunque
-     - Segnala ogni campo meteo abilitato (valore e canale sensore
-       assegnato, oppure "nessuna lettura"/"nessun sensore assegnato") e ogni
-       canale di telemetria abilitato.
+     - Segnala ogni campo meteo e canale di telemetria che sia abilitato e
+       abbia anche un sensore assegnato, con il relativo valore oppure
+       "nessuna lettura". I campi abilitati senza sensore assegnato non
+       vengono mostrati.
    * - ``/uptime``
      - chiunque
      - Segnala da quanto tempo il dispositivo è acceso.

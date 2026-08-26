@@ -535,18 +535,20 @@ static void telegram_status_lines(char *buffer, size_t size, void *ctx) {
 }
 
 // Lines appended to the built-in /sensors answer: every weather field and
-// every telemetry channel the operator has enabled, with the sensor driver
-// each one is mapped to and its current reading.
+// every telemetry channel the operator has both enabled and mapped to a
+// sensor channel, with the sensor driver each one resolves to and its
+// current reading.
 //
 // Built from the live configuration on every call rather than from sensors
 // registered once at bring-up, because the set is the operator's to change:
 // a save on the Weather or Telemetry page re-maps channels while the bot
 // keeps running, and the next answer must describe what is mapped then.
 //
-// Enabled but unresolved is reported as such instead of being left out. A
-// field whose source driver is missing from this image, or whose sensor did
-// not answer on the last refresh, is exactly what an operator asks this
-// command about, and a silent omission would read as "not configured".
+// An enabled field with no sensor channel assigned is skipped rather than
+// listed, since it names nothing the operator can act on. A field that is
+// enabled and mapped but whose sensor did not answer on the last refresh is
+// still reported, with its reading shown as "no reading", because that is
+// exactly what an operator asks this command about.
 static void telegram_sensor_lines(char *buffer, size_t size, void *ctx) {
     (void)ctx;
 
@@ -564,7 +566,8 @@ static void telegram_sensor_lines(char *buffer, size_t size, void *ctx) {
 
     bool header = false;
     for (int f = 0; f < WX_SENSOR_NUM; f++) {
-        if (!wx_enabled[f])
+        uint8_t ch = wx_channel[f];
+        if (!wx_enabled[f] || ch == SENSOR_LOCAL_CH_NONE)
             continue;
 
         if (!header) {
@@ -573,20 +576,16 @@ static void telegram_sensor_lines(char *buffer, size_t size, void *ctx) {
         }
 
         const char *label = weather_field_label((wx_field_id_t)f);
-        uint8_t ch = wx_channel[f];
-        const char *source = (ch == SENSOR_LOCAL_CH_NONE) ? "" : sensors_local_channel_name(ch);
+        const char *source = sensors_local_channel_name(ch);
 
         double value = 0.0;
         char rendered[TELEGRAM_APP_VALUE_MAX];
-        if (ch != SENSOR_LOCAL_CH_NONE && weather_field_snapshot((wx_field_id_t)f, &value))
+        if (weather_field_snapshot((wx_field_id_t)f, &value))
             weather_field_format((wx_field_id_t)f, value, rendered, sizeof(rendered));
         else
             snprintf(rendered, sizeof(rendered), "no reading");
 
-        if (source[0] != '\0')
-            str_append(buffer, size, &used, "- %s: %s (%s)\n", label, rendered, source);
-        else
-            str_append(buffer, size, &used, "- %s: %s (no sensor mapped)\n", label, rendered);
+        str_append(buffer, size, &used, "- %s: %s (%s)\n", label, rendered, source);
     }
 
     // Telemetry: settings in their own file, readings from the snapshot the
@@ -605,7 +604,8 @@ static void telegram_sensor_lines(char *buffer, size_t size, void *ctx) {
 
     header = false;
     for (int a = 0; a < TLM_CH; a++) {
-        if (!tcfg->ana_enable[a])
+        uint8_t ch = tcfg->tlm_ana_channel[a];
+        if (!tcfg->ana_enable[a] || ch == SENSOR_LOCAL_CH_NONE)
             continue;
 
         if (!header) {
@@ -613,8 +613,7 @@ static void telegram_sensor_lines(char *buffer, size_t size, void *ctx) {
             header = true;
         }
 
-        uint8_t ch = tcfg->tlm_ana_channel[a];
-        const char *source = (ch == SENSOR_LOCAL_CH_NONE) ? "" : sensors_local_channel_name(ch);
+        const char *source = sensors_local_channel_name(ch);
         const char *name = tcfg->PARM[a];
         const char *unit = tcfg->UNIT[a];
 
@@ -624,12 +623,13 @@ static void telegram_sensor_lines(char *buffer, size_t size, void *ctx) {
         else
             snprintf(rendered, sizeof(rendered), "no reading");
 
-        str_append(buffer, size, &used, "- A%d %s: %s (%s)\n", a + 1, name, rendered, source[0] ? source : "no sensor mapped");
+        str_append(buffer, size, &used, "- A%d %s: %s (%s)\n", a + 1, name, rendered, source);
     }
 
     header = false;
     for (int bit = 0; bit < TLM_BIT_NUM; bit++) {
-        if (!tcfg->bit_enable[bit])
+        uint8_t ch = tcfg->tlm_bit_channel[bit];
+        if (!tcfg->bit_enable[bit] || ch == SENSOR_LOCAL_CH_NONE)
             continue;
 
         if (!header) {
@@ -637,8 +637,7 @@ static void telegram_sensor_lines(char *buffer, size_t size, void *ctx) {
             header = true;
         }
 
-        uint8_t ch = tcfg->tlm_bit_channel[bit];
-        const char *source = (ch == SENSOR_LOCAL_CH_NONE) ? "" : sensors_local_channel_name(ch);
+        const char *source = sensors_local_channel_name(ch);
         const char *name = tcfg->tlm_bit_name[bit];
 
         // Reported as it is transmitted: bit_sense selects whether a raw 1
@@ -652,13 +651,13 @@ static void telegram_sensor_lines(char *buffer, size_t size, void *ctx) {
             snprintf(rendered, sizeof(rendered), "no reading");
         }
 
-        str_append(buffer, size, &used, "- B%d %s: %s (%s)\n", bit + 1, name, rendered, source[0] ? source : "no sensor mapped");
+        str_append(buffer, size, &used, "- B%d %s: %s (%s)\n", bit + 1, name, rendered, source);
     }
 
     free(tcfg);
 
     if (used == 0)
-        str_append(buffer, size, &used, "No weather or telemetry channel is enabled.\n");
+        str_append(buffer, size, &used, "No weather or telemetry channel is enabled and mapped to a sensor.\n");
 }
 
 // Asks Telegram who this bot is. This is the only step that proves the token

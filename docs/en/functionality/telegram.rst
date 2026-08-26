@@ -149,9 +149,9 @@ of its own on top of it.
        sync) and the current free heap.
    * - ``/sensors``
      - anyone
-     - Reports every enabled weather field (value and mapped sensor channel,
-       or "no reading"/"no sensor mapped") and every enabled telemetry
-       channel.
+     - Reports every weather field and telemetry channel that is both
+       enabled and mapped to a sensor channel, with its value or "no
+       reading". Enabled fields with no sensor mapped are omitted.
    * - ``/uptime``
      - anyone
      - Reports how long the device has been up.
