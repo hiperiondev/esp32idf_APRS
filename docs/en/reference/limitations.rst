@@ -735,7 +735,13 @@ Station Management / Ops
        eviction, plus the 18-hour hourly histogram that answers ``?APRSH``.
        Callsigns are stored upper-cased and matched without regard to case, so
        the two feeds that fill the table — raw AX.25 addresses off the air and
-       raw TNC2 text off APRS-IS — cannot give one station two rows
+       raw TNC2 text off APRS-IS — cannot give one station two rows. The table
+       is a fixed ``LASTHEARD_CAPACITY`` (30) rows of 136 bytes, 4080 bytes of
+       RAM in total, and both feeds compete for the same rows: a wide APRS-IS
+       server-side filter turns over more distinct callsigns per hour than the
+       local channel does, and an RF station evicted by that traffic stops
+       answering the INET→RF message gate and stops counting towards
+       ``LOC_CNT``
    * - Factory reset to compiled-in defaults
      - ⚠️
      - ✅

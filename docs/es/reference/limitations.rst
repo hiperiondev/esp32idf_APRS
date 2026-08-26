@@ -765,7 +765,13 @@ Gestión de estación / Operación
        ``?APRSH``. Los indicativos se guardan en mayúsculas y se comparan sin
        distinguir mayúsculas de minúsculas, así las dos fuentes que alimentan la
        tabla —direcciones AX.25 crudas del aire y texto TNC2 crudo de APRS-IS—
-       no pueden darle dos filas a una misma estación
+       no pueden darle dos filas a una misma estación. La tabla son
+       ``LASTHEARD_CAPACITY`` (30) filas fijas de 136 bytes, 4080 bytes de RAM
+       en total, y las dos fuentes compiten por las mismas filas: un filtro
+       amplio del lado del servidor APRS-IS renueva más indicativos distintos
+       por hora que el canal local, y una estación de RF desalojada por ese
+       tráfico deja de responder a la compuerta de mensajes INET→RF y deja de
+       contar para ``LOC_CNT``
    * - Restauración a los valores de fábrica compilados
      - ⚠️
      - ✅

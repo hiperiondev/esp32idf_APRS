@@ -774,7 +774,13 @@ Gestione stazione / Operatività
        ``?APRSH``. Gli indicativi sono memorizzati in maiuscolo e confrontati
        senza distinzione tra maiuscole e minuscole, così le due sorgenti che
        riempiono la tabella — indirizzi AX.25 grezzi dall'aria e testo TNC2
-       grezzo da APRS-IS — non possono dare due righe alla stessa stazione
+       grezzo da APRS-IS — non possono dare due righe alla stessa stazione. La
+       tabella è di ``LASTHEARD_CAPACITY`` (30) righe fisse da 136 byte, 4080
+       byte di RAM in totale, e le due sorgenti competono per le stesse righe:
+       un filtro lato server APRS-IS ampio rinnova più indicativi distinti
+       all'ora del canale locale, e una stazione RF sfrattata da quel traffico
+       smette di rispondere al gate dei messaggi INET→RF e smette di contare
+       per ``LOC_CNT``
    * - Ripristino ai valori di fabbrica compilati
      - ⚠️
      - ✅

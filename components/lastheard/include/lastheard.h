@@ -19,8 +19,9 @@
  *
  * The table holds one entry per callsign - upper-cased on the way in, so case
  * alone never splits a station across entries - ordered most recently heard
- * first, and remembers whether each station's latest frame arrived without passing
- * through a digipeater - which is what the "?APRSD" query responder reports.
+ * first, up to ::LASTHEARD_CAPACITY of them, and remembers whether each
+ * station's latest frame arrived without passing through a digipeater - which
+ * is what the "?APRSD" query responder reports.
  * Every decoded AX.25 frame from a callsign already in the table refreshes that
  * entry - time, path, symbol - and increments its packet counter, so the
  * dashboard can show how many times each station has been heard the same way
@@ -57,6 +58,38 @@ extern "C" {
  * history, matching the 18-hour graph APRS101 chapter 15 defines.
  */
 #define LASTHEARD_HEARD_HOURS 18
+
+/**
+ * @brief Number of stations the table holds, one row per callsign.
+ *
+ * @details The table is statically allocated, so this is the whole RAM cost of
+ * the module: @c LASTHEARD_CAPACITY rows of 136 bytes each (a 64-bit
+ * @c time_t target), 4080 bytes at the value set here. Roughly a quarter of a
+ * row is the ::LASTHEARD_HEARD_HOURS histogram, which only the "?APRSH" query
+ * reads.
+ *
+ * Sizing this is not the same as sizing the dashboard panel, which is why the
+ * figure is stated here rather than left to the implementation. The table is
+ * the state three other things read:
+ *
+ * - the INET->RF message gate, which transmits only to an addressee that is in
+ *   the table and was heard on RF recently enough
+ *   (::lastheard_heard_rf_within_hops);
+ * - the @c LOC_CNT field of the "?IGATE?" Station Capabilities line
+ *   (::lastheard_station_count);
+ * - ::lastheard_last_seen_bm, which keeps a message to a BrandMeister station
+ *   off the air.
+ *
+ * All three answer "no" for a station the table no longer holds, and rows are
+ * evicted least-recently-heard first. Both feeds compete for the same rows:
+ * every line read from the APRS-IS filter port takes one as well as every
+ * frame decoded off the air, and a wide server-side filter turns over far more
+ * distinct callsigns per hour than the local channel does. Lowering this
+ * therefore shortens how far back the message gate can remember an RF station,
+ * and lowers the station count this IGate advertises; it is not merely fewer
+ * rows on screen.
+ */
+#define LASTHEARD_CAPACITY 30
 
 /**
  * @brief Initialise the last-heard table. Must be called once (e.g. from

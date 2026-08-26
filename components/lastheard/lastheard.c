@@ -29,7 +29,6 @@
 #include "freertos/semphr.h"
 #include "json_escape.h" // json_escape()
 
-#define LASTHEARD_CAPACITY 30 // stations kept in RAM, most recent first
 #define LASTHEARD_CALL_LEN 12
 #define LASTHEARD_PATH_LEN 48
 
@@ -39,46 +38,65 @@
 // be derived from it, and no time of day can be shown for it.
 #define LASTHEARD_CLOCK_VALID_EPOCH 1600000000LL
 
+// One heard station. The fields are grouped widest-first - the wall-clock
+// stamps, then the 32-bit counters, then the arrays, then the single bytes -
+// so the row packs with one byte of tail padding instead of scattering holes
+// between members. The table is LASTHEARD_CAPACITY of these in .bss, so every
+// byte of padding here is paid for LASTHEARD_CAPACITY times over.
 typedef struct {
-    time_t time;
-    char callsign[LASTHEARD_CALL_LEN];
-    char path[LASTHEARD_PATH_LEN]; // e.g. "RF: WIDE1-1" / "INET: DIRECT"
-    char sym_table;
-    char sym_code;
-    bool via_rf;          // latest frame from this station was heard off the air
-    bool via_bm;          // latest frame from this station was BrandMeister traffic gated onto APRS-IS
-    bool direct;          // latest frame from this station carried no used digipeater
-    uint8_t rf_used_hops; // digipeater addresses actually repeated in the latest RF frame
-    uint32_t packets;     // total times this callsign has been heard
-    // Per-channel last-heard stamps, kept alongside the whole-entry time above
+    // Per-channel last-heard stamps, kept alongside the whole-entry time
     // because the two answer different questions. time is when the station was
-    // last heard at all, which is what the dashboard shows; these two are when
-    // it was last heard on each channel, which is what the INET->RF message
-    // gate needs - a station can be locally audible and Internet-connected at
-    // once, and the gate tests each independently. 0 means never heard that way.
+    // last heard at all, which is what the dashboard shows; the other two are
+    // when it was last heard on each channel, which is what the INET->RF
+    // message gate needs - a station can be locally audible and
+    // Internet-connected at once, and the gate tests each independently.
+    // 0 means never heard that way.
     //
     // rf_used_hops belongs to rf_time the same way: it describes the frame that
     // set that stamp, so the hop-limited query reads the path length of the
     // reception it is testing the age of, even when a later APRS-IS sighting
     // has already moved the entry to the front of the table.
+    time_t time;
     time_t rf_time;
     time_t inet_time;
+    // Epoch hour number hourly[0] belongs to, so lastheard_add() can tell how
+    // many whole hours to roll the histogram forward on the next frame from
+    // this station. An hour number is a fifth of the range of the seconds it
+    // is derived from, so 32 bits hold every hour a wall clock can name for
+    // the next few hundred thousand years and the field costs half of what the
+    // time_t it comes from would.
+    uint32_t hour_slot;
+    uint32_t packets; // total times this callsign has been heard
     // Hourly heard histogram for the "?APRSH" query (APRS101 ch.15): hourly[0]
     // is the current clock hour, hourly[LASTHEARD_HEARD_HOURS - 1] the oldest.
-    // hour_slot is the epoch hour number hourly[0] belongs to, so lastheard_add()
-    // can tell how many whole hours to roll the histogram forward on the next
-    // frame from this station.
     //
-    // histogram_valid says whether hour_slot holds such a number at all. It is
+    // histogram_valid says whether hour_slot holds an hour number at all. It is
     // a field of its own rather than a reserved hour_slot value because 0 is a
     // perfectly real epoch hour: it is the one every frame carries during the
     // first hour after boot, before SNTP steps the clock. Until it is set,
     // hourly[0] is a provisional bucket holding every frame heard so far, and
     // no rolling is attempted.
     uint16_t hourly[LASTHEARD_HEARD_HOURS];
-    time_t hour_slot;
-    bool histogram_valid;
+    char callsign[LASTHEARD_CALL_LEN];
+    char path[LASTHEARD_PATH_LEN]; // e.g. "RF: WIDE1-1" / "INET: DIRECT"
+    char sym_table;
+    char sym_code;
+    uint8_t rf_used_hops; // digipeater addresses actually repeated in the latest RF frame
+    bool via_rf;          // latest frame from this station was heard off the air
+    bool via_bm;          // latest frame from this station was BrandMeister traffic gated onto APRS-IS
+    bool direct;          // latest frame from this station carried no used digipeater
+    bool histogram_valid; // hour_slot names a real clock hour
 } lastheard_entry_t;
+
+// The grouping above is a sizing decision, not a style one, so it is stated as
+// a compile-time test rather than trusted to survive the next edit: the row may
+// cost the sum of its members plus the tail padding its widest member forces,
+// and nothing else. Adding a field of a different width in the middle of the
+// byte-sized group at the end is what would break it, and the diagnostic points
+// straight at the fix.
+_Static_assert(sizeof(lastheard_entry_t) <= 3 * sizeof(time_t) + 2 * sizeof(uint32_t) + LASTHEARD_HEARD_HOURS * sizeof(uint16_t) + LASTHEARD_CALL_LEN +
+                                                LASTHEARD_PATH_LEN + 6 + sizeof(time_t),
+               "lastheard_entry_t has gained internal padding: group members widest-first");
 
 // One slot per STATION, never per packet: s_buf[0] is the most recently heard
 // callsign and s_count grows to LASTHEARD_CAPACITY, at which point the oldest
@@ -120,7 +138,7 @@ static bool s_inited = false;
 // rather than as a graph wiped on every frame.
 static void rollHourlyHistogram(lastheard_entry_t *e, time_t now, bool count_packet) {
     if ((int64_t)now >= LASTHEARD_CLOCK_VALID_EPOCH) {
-        time_t nowHour = now / 3600;
+        uint32_t nowHour = (uint32_t)((int64_t)now / 3600);
 
         if (!e->histogram_valid) {
             // First frame recorded for this entry under a synchronised clock.
@@ -130,7 +148,7 @@ static void rollHourlyHistogram(lastheard_entry_t *e, time_t now, bool count_pac
             e->hour_slot = nowHour;
             e->histogram_valid = true;
         } else if (nowHour > e->hour_slot) {
-            time_t elapsed = nowHour - e->hour_slot;
+            uint32_t elapsed = nowHour - e->hour_slot;
             if (elapsed >= LASTHEARD_HEARD_HOURS) {
                 // More than a full graph's worth of hours passed: every slot is
                 // stale, so start clean rather than shifting in zeros one at a
