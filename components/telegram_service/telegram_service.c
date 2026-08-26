@@ -2598,33 +2598,30 @@ static bool telegram_scan_first_update_id(const char *payload, int64_t *out_id) 
     return true;
 }
 
-// Performs one getUpdates call and hands the answer to the decoder.
+// Performs one getUpdates call and hands the answer to the decoder. The
+// request body has a fixed shape with only the offset and timeout varying
+// per call, so it is built with a plain snprintf into a stack buffer
+// instead of a cJSON tree, keeping this hot, continuously repeated call
+// site free of heap traffic.
 static esp_err_t telegram_poll_once(void) {
-    cJSON *root = cJSON_CreateObject();
-    if (root == NULL) {
-        return ESP_ERR_NO_MEM;
+    char body[160];
+    int n;
+    // Telegram keeps both reaction kinds out of the set it delivers by
+    // default, so they only arrive when they are asked for by name.
+    if (s_config.receive_reactions) {
+        n = snprintf(body, sizeof(body),
+                     "{\"offset\":%" PRId64 ",\"timeout\":%d,\"limit\":5,"
+                     "\"allowed_updates\":[\"message\",\"callback_query\","
+                     "\"message_reaction\",\"message_reaction_count\"]}",
+                     s_next_offset, s_config.poll_timeout_s);
+    } else {
+        n = snprintf(body, sizeof(body),
+                     "{\"offset\":%" PRId64 ",\"timeout\":%d,\"limit\":5,"
+                     "\"allowed_updates\":[\"message\",\"callback_query\"]}",
+                     s_next_offset, s_config.poll_timeout_s);
     }
-    cJSON_AddNumberToObject(root, "offset", (double)s_next_offset);
-    cJSON_AddNumberToObject(root, "timeout", s_config.poll_timeout_s);
-    cJSON_AddNumberToObject(root, "limit", 5);
-
-    cJSON *allowed = cJSON_CreateArray();
-    if (allowed != NULL) {
-        cJSON_AddItemToArray(allowed, cJSON_CreateString("message"));
-        cJSON_AddItemToArray(allowed, cJSON_CreateString("callback_query"));
-        // Telegram keeps both reaction kinds out of the set it delivers by
-        // default, so they only arrive when they are asked for by name.
-        if (s_config.receive_reactions) {
-            cJSON_AddItemToArray(allowed, cJSON_CreateString("message_reaction"));
-            cJSON_AddItemToArray(allowed, cJSON_CreateString("message_reaction_count"));
-        }
-        cJSON_AddItemToObject(root, "allowed_updates", allowed);
-    }
-
-    char *body = cJSON_PrintUnformatted(root);
-    cJSON_Delete(root);
-    if (body == NULL) {
-        return ESP_ERR_NO_MEM;
+    if (n < 0 || (size_t)n >= sizeof(body)) {
+        return ESP_ERR_INVALID_SIZE;
     }
 
     telegram_bot_request_t request = {
@@ -2640,7 +2637,6 @@ static esp_err_t telegram_poll_once(void) {
     telegram_release_tx_connection();
 
     esp_err_t err = telegram_bot_client_call(s_poll_client, &request, &response);
-    cJSON_free(body);
 
     if (err != ESP_OK) {
         return err;
@@ -2684,20 +2680,10 @@ static void telegram_drain_alerts(void) {
 }
 
 // Acknowledges every update Telegram kept while the device was offline, so
-// the service starts from a clean state.
+// the service starts from a clean state. The request body never varies, so
+// it is a plain string literal instead of a cJSON tree.
 static void telegram_discard_pending_updates(void) {
-    cJSON *root = cJSON_CreateObject();
-    if (root == NULL) {
-        return;
-    }
-    cJSON_AddNumberToObject(root, "offset", -1);
-    cJSON_AddNumberToObject(root, "timeout", 0);
-
-    char *body = cJSON_PrintUnformatted(root);
-    cJSON_Delete(root);
-    if (body == NULL) {
-        return;
-    }
+    static const char body[] = "{\"offset\":-1,\"timeout\":0}";
 
     telegram_bot_request_t request = {
         .method = "getUpdates",
@@ -2724,7 +2710,6 @@ static void telegram_discard_pending_updates(void) {
             cJSON_Delete(answer);
         }
     }
-    cJSON_free(body);
 }
 
 void telegram_task(void *arg) {
