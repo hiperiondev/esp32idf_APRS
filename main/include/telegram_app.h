@@ -78,11 +78,12 @@
  * warning rather than silently truncating the file on the next save.
  * @{
  */
-#define TELEGRAM_APP_TOKEN_MAX 128 /**< Longest accepted bot token, terminator excluded. */
-#define TELEGRAM_APP_URL_MAX   128 /**< Longest accepted Mini App address, terminator excluded. */
-#define TELEGRAM_APP_NAME_MAX  40  /**< Longest accepted display name of a user or chat, terminator excluded. */
-#define TELEGRAM_APP_USERS_MAX 8   /**< Number of authorized users held by the store. */
-#define TELEGRAM_APP_CHATS_MAX 4   /**< Number of allowed group chats held by the store. */
+#define TELEGRAM_APP_TOKEN_MAX    128 /**< Longest accepted bot token, terminator excluded. */
+#define TELEGRAM_APP_URL_MAX      128 /**< Longest accepted Mini App address, terminator excluded. */
+#define TELEGRAM_APP_NAME_MAX     40  /**< Longest accepted display name of a user or chat, terminator excluded. */
+#define TELEGRAM_APP_CALLSIGN_MAX 9   /**< Longest accepted user callsign, SSID included, terminator excluded. */
+#define TELEGRAM_APP_USERS_MAX    8   /**< Number of authorized users held by the store. */
+#define TELEGRAM_APP_CHATS_MAX    4   /**< Number of allowed group chats held by the store. */
 /** @} */
 
 /** @brief Longest free-form detail string published beside a reason. */
@@ -92,12 +93,11 @@
 #define TELEGRAM_APP_BOTNAME_MAX 40
 
 /**
- * @brief One authorized user or one allowed group chat.
+ * @brief One allowed group chat.
  *
- * Telegram identifiers are 64-bit and signed: a user identifier is positive
- * and now routinely exceeds the range of a 32-bit integer, while a supergroup
- * identifier is a large negative number. Both are therefore carried as
- * @c int64_t everywhere, including through the web form, which posts them as
+ * Telegram identifiers are 64-bit and signed: a supergroup identifier is a
+ * large negative number, well outside the range of a 32-bit integer, so it is
+ * carried as @c int64_t, including through the web form, which posts it as
  * text for exactly that reason.
  */
 typedef struct {
@@ -106,20 +106,39 @@ typedef struct {
 } telegram_app_peer_t;
 
 /**
+ * @brief One authorized Telegram user.
+ *
+ * Carries the same identifier and display name as ::telegram_app_peer_t, plus
+ * the amateur radio callsign that ties this Telegram account to one operator.
+ * ::telegram_app_notify_station_message() is what reads @c callsign: it is
+ * the addressee this user's routed messages are selected by, and the only one
+ * consulted, so every incoming APRS message sent to it reaches this user's own
+ * Telegram account. The match is exact (case-insensitive, SSID included), so
+ * two users sharing one base callsign under different SSIDs each receive only
+ * the messages sent to their own SSID.
+ */
+typedef struct {
+    int64_t id;                                   /**< Numeric Telegram identifier. */
+    char name[TELEGRAM_APP_NAME_MAX + 1];         /**< Display name, for the operator's benefit only. */
+    char callsign[TELEGRAM_APP_CALLSIGN_MAX + 1]; /**< This user's own callsign, upper case, SSID included, or empty. */
+} telegram_app_user_t;
+
+/**
  * @brief Everything telegram.json holds.
  *
  * The whole file is kept as one value so a save can rewrite it without losing
  * the parts the web page does not edit: the Telegram page owns @c enable,
- * @c bot_token and @c admin_id, while @c web_app_url, @c users and @c chats
- * survive a save untouched because they were loaded into this same structure
- * first.
+ * @c route_station_messages, @c bot_token and @c admin_id, while
+ * @c web_app_url, @c users and @c chats survive a save untouched because they
+ * were loaded into this same structure first.
  */
 typedef struct {
-    bool enable;                                       /**< True to run the bot; the Telegram page's switch. */
+    bool enable;                 /**< True to run the bot; the Telegram page's switch. */
+    bool route_station_messages; /**< True to route each incoming message to its addressee's own user; see ::telegram_app_notify_station_message. */
     char bot_token[TELEGRAM_APP_TOKEN_MAX + 1];        /**< Token issued by @@BotFather. */
     int64_t admin_id;                                  /**< Identifier of the administrator, or 0 for none. */
     char web_app_url[TELEGRAM_APP_URL_MAX + 1];        /**< HTTPS address of the Mini App, or empty. */
-    telegram_app_peer_t users[TELEGRAM_APP_USERS_MAX]; /**< Authorized users. */
+    telegram_app_user_t users[TELEGRAM_APP_USERS_MAX]; /**< Authorized users. */
     uint8_t user_count;                                /**< Entries used in ::users. */
     telegram_app_peer_t chats[TELEGRAM_APP_CHATS_MAX]; /**< Allowed group chats. */
     uint8_t chat_count;                                /**< Entries used in ::chats. */
@@ -278,5 +297,49 @@ void telegram_app_status(telegram_app_status_t *out);
  * whether it actually reached the servers.
  */
 bool telegram_app_enabled(void);
+
+/**
+ * @brief Forward one received APRS message to the Telegram account of the
+ * authorized user whose own callsign it was addressed to, when the operator
+ * has turned that routing on.
+ *
+ * The addressee set is the *Telegram* page's authorized-users table and
+ * nothing else. This station's own callsign - the *Station* page's My
+ * Callsign - plays no part in the decision, so a message addressed to any
+ * user listed there is routed to that user whether or not this station reads
+ * the frame on its own account, and every user is served from their own
+ * Callsign field rather than all of them sharing one station callsign.
+ *
+ * A no-op unless every one of these holds: the *Telegram* page's "Route
+ * Station messages" switch is on, the bot is enabled, and the bot is
+ * currently running. Nothing is buffered for later delivery when any of
+ * those does not hold - a message that arrives while the bot is off or still
+ * connecting is simply not routed, the same way it would not reach an
+ * operator who has not opened Telegram at all.
+ *
+ * @p to_call keeps whatever SSID it was sent with, which is what lets several
+ * users share one base callsign under distinct SSIDs and each be addressed
+ * individually: the message is delivered to every authorized user whose
+ * ::telegram_app_user_t::callsign matches @p to_call exactly
+ * (case-insensitive). A @p to_call that matches no configured user's callsign
+ * is not delivered to anyone, and a user whose callsign field is left empty
+ * never matches. Delivery never reaches a group chat.
+ *
+ * The rendered line always reads
+ * @code
+ * msg from <sender callsign> to <addressee callsign> :: <message text>
+ * @endcode
+ * Delivery happens off a small internal queue rather than inline, which is
+ * what makes this function safe to call from message.c's frame-decoding
+ * path: that path runs on a task with no stack to spare for the TLS
+ * handshake a call reaching Telegram needs.
+ *
+ * @param[in] from_call Callsign of the station that sent the message, upper
+ *                       case, SSID included when the sender used one.
+ * @param[in] to_call    Callsign this message was addressed to, upper case,
+ *                        SSID included when the sender used one.
+ * @param[in] text       Message text, decoded and trimmed.
+ */
+void telegram_app_notify_station_message(const char *from_call, const char *to_call, const char *text);
 
 #endif // TELEGRAM_APP_H

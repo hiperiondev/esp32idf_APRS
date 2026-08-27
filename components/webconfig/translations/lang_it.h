@@ -1594,13 +1594,17 @@
 #define TR_GPS_LINK_RECEIVING "In ricezione"
 /** Italian text for the link state shown when the receiver has gone silent, rendered on the GPS page. English: "No data from receiver". */
 #define TR_GPS_LINK_SILENT "Nessun dato dal ricevitore"
-/** Italian text for the module-status badge text shown when the receiver is switched off or its UART failed to come up, rendered on the GPS page. English: "Disabled". */
+/** Italian text for the module-status badge text shown when the receiver is switched off or its UART failed to come up, rendered on the GPS page. English:
+ * "Disabled". */
 #define TR_GPS_STATUS_DISABLED "Disabilitato"
-/** Italian text for the module-status badge text shown when the receiver is enabled but no sentence has arrived within the link timeout, rendered on the GPS page. English: "No data (check wiring)". */
+/** Italian text for the module-status badge text shown when the receiver is enabled but no sentence has arrived within the link timeout, rendered on the GPS
+ * page. English: "No data (check wiring)". */
 #define TR_GPS_STATUS_NO_LINK "Nessun dato (controllare il cablaggio)"
-/** Italian text for the module-status badge text shown when sentences are arriving but no valid fix has been reported yet, rendered on the GPS page. English: "Searching (no fix)". */
+/** Italian text for the module-status badge text shown when sentences are arriving but no valid fix has been reported yet, rendered on the GPS page. English:
+ * "Searching (no fix)". */
 #define TR_GPS_STATUS_SEARCHING "Ricerca in corso (nessuna posizione)"
-/** Italian text for the module-status badge text shown when sentences are arriving and the last navigation solution is valid, rendered on the GPS page. English: "Fix OK". */
+/** Italian text for the module-status badge text shown when sentences are arriving and the last navigation solution is valid, rendered on the GPS page.
+ * English: "Fix OK". */
 #define TR_GPS_STATUS_FIX_OK "Posizione OK"
 /** Italian text for the navigation status shown when RMC reports an active solution, rendered on the GPS page. English: "Active". */
 #define TR_GPS_NAV_ACTIVE "Attiva"
@@ -1727,6 +1731,16 @@
 #define TR_TG_NOTE_SERVICE                                                                                                                                     \
     "Con questo spento nulla si collega a Telegram e nessuna attivita di interrogazione viene eseguita. Accenderlo o spegnerlo ha effetto immediato, senza "   \
     "riavviare. Il bot richiede una connessione a Internet e memoria libera sufficiente per una sessione TLS."
+/** Label of the route-station-messages checkbox, rendered on the Telegram page. */
+#define TR_TG_ROUTE_MESSAGES "Inoltra messaggi della stazione"
+/** Explanatory note shown under the route-station-messages switch, rendered on the Telegram page. */
+#define TR_TG_NOTE_ROUTE_MESSAGES                                                                                                                              \
+    "Con questo acceso, un messaggio APRS ricevuto indirizzato al Nominativo proprio di uno degli utenti autorizzati qui sotto viene inviato alla "            \
+    "chat Telegram di quell'utente come \"msg from <mittente> to <destinatario> :: <testo del messaggio>\". Il destinatario viene confrontato solo con "       \
+    "i campi Nominativo di quegli utenti, mai con il My Callsign di questa stazione della pagina Station, cosi ogni utente riceve i messaggi "                 \
+    "indirizzati al proprio nominativo e a nessun altro. La corrispondenza e esatta, SSID incluso, cosi piu utenti possono condividere uno stesso "            \
+    "nominativo base con SSID diversi. Un messaggio il cui destinatario non corrisponde al Nominativo di alcun utente non viene inoltrato a nessuno. "         \
+    "Le conferme e i messaggi indirizzati a un gruppo non vengono mai inoltrati."
 /** Fieldset legend for the credentials block, rendered on the Telegram page. */
 #define TR_TG_FS_BOT "Credenziali"
 /** Label of the bot token field, rendered on the Telegram page. */
@@ -1753,9 +1767,10 @@
 #define TR_TG_FS_USERS "Utenti autorizzati"
 /** Explanatory note shown above the authorized-users table, rendered on the Telegram page. */
 #define TR_TG_NOTE_USERS                                                                                                                                       \
-    "Fino a 8 utenti, oltre all'amministratore, che possono parlare con il bot come se stessi invece di essere respinti come non autorizzati. A un comando "   \
-    "di un account che non conosce il bot risponde con l'identificativo di quell'account, che e il numero da inserire qui; un account gia autorizzato lo "     \
-    "legge con /whoami. Un identificativo vuoto lascia lo slot inutilizzato."
+    "Fino a 8 utenti, oltre all'amministratore, che possono parlare con il bot come se stessi invece di essere respinti come non autorizzati. A un "           \
+    "comando di un account che non conosce il bot risponde con l'identificativo di quell'account, che e il numero da inserire qui; un account gia "            \
+    "autorizzato lo legge con /whoami. Un identificativo vuoto lascia lo slot inutilizzato. Nominativo e il nominativo radioamatoriale di "                    \
+    "quell'operatore; e il destinatario con cui \"Inoltra messaggi della stazione\" sceglie questo utente e non e usato per altro."
 /** Fieldset legend for the allowed-group-chats block, rendered on the Telegram page. */
 #define TR_TG_FS_CHATS "Chat di gruppo consentite"
 /** Explanatory note shown above the allowed-group-chats table, rendered on the Telegram page. */
@@ -1770,6 +1785,8 @@
 #define TR_TG_F_PEER_ID "Identificativo"
 /** Label of one entry's display-name field, rendered on the Telegram page. */
 #define TR_TG_F_PEER_NAME "Nome"
+/** Label of one authorized user's own callsign field, rendered on the Telegram page. */
+#define TR_TG_F_USER_CALLSIGN "Nominativo"
 /** Fieldset legend for the connection status block, rendered on the Telegram page. */
 #define TR_TG_FS_STATUS "Stato della connessione"
 /** Status row label for the coarse state, rendered on the Telegram page. */

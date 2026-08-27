@@ -37,6 +37,7 @@
 #include "esp_timer.h"
 #include "esp_wifi.h"
 #include "freertos/FreeRTOS.h"
+#include "freertos/queue.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
 #include "lwip/sockets.h"
@@ -74,6 +75,27 @@ static const char *TAG = "telegram_app";
 // stack of its own.
 #define TELEGRAM_WORKER_STACK_BYTES 8192
 #define TELEGRAM_WORKER_PRIORITY    4
+
+// Geometry of the routed-station-message drain task.
+//
+// Delivery goes through telegram_send_message(), which performs the same kind
+// of TLS-bearing network call as the bring-up worker above, so it needs the
+// same stack for the same reason and is given its own copy of that constant
+// rather than sharing the name, since the two tasks exist for unrelated
+// reasons and are sized alike by coincidence, not by a shared purpose.
+#define TELEGRAM_NOTIFY_STACK_BYTES 8192
+#define TELEGRAM_NOTIFY_PRIORITY    4
+
+// Number of routed station messages held between one drain and the next. A
+// handful is enough: this is a convenience notification, not the message
+// store the "Snd/Rcv Msg" page itself keeps, and a burst larger than this
+// simply loses its oldest members rather than growing without bound.
+#define TELEGRAM_NOTIFY_QUEUE_LEN 8
+
+// Longest rendered "msg from ... to ... :: ..." line the queue carries. Wide
+// enough for two 9-character callsigns, the fixed wording around them, and
+// the full ::MSG_TEXT_MAX message text with room to spare.
+#define TELEGRAM_NOTIFY_TEXT_MAX 300
 
 // Pause before a failed bring-up is attempted again. Applied only to the
 // failures that can clear on their own - no route yet, a TLS call that did not
@@ -182,6 +204,93 @@ static volatile bool s_token_verified;
 // reached Telegram. Written under s_lock alongside s_cfg.
 static bool s_enabled;
 
+// Cached copy of s_cfg.route_station_messages, read the same way s_enabled
+// is: without the lock, from telegram_app_notify_station_message(), which
+// message.c's frame-decoding path calls for every received message and which
+// therefore must never block on s_lock behind a save in progress.
+static bool s_route_messages;
+
+// Cached copy of s_cfg.users, read the same way s_route_messages is: without
+// the lock, from telegram_app_notify_station_message(), for the same reason.
+// Refreshed together with s_route_messages, under s_lock, whenever
+// telegram_app_apply_config() runs, so a save landing mid-lookup is seen as
+// either the whole old table or the whole new one, never a mix of both.
+static telegram_app_user_t s_route_users[TELEGRAM_APP_USERS_MAX];
+static uint8_t s_route_user_count;
+
+// Longest chat identifier a queued item addresses, rendered as text the same
+// way telegram_send_message() expects it.
+#define TELEGRAM_NOTIFY_CHAT_ID_MAX 24
+
+// ---------------------------------------------------------------------------
+// Routed station message notifications
+//
+// message.c's frame-decoding path calls telegram_app_notify_station_message()
+// for every received message it decodes, and that path runs on the modem's
+// own RX task, which carries none of the stack a TLS handshake needs. So the
+// call site only ever formats a line, looks up the users it belongs to and
+// pushes one item per user onto s_notify_queue; a dedicated drain task,
+// spawned on demand and sized like the bring-up worker above, is what
+// actually reaches Telegram.
+// ---------------------------------------------------------------------------
+
+// One pending "msg from ... to ... :: ..." line, addressed to one user.
+typedef struct {
+    char chat_id[TELEGRAM_NOTIFY_CHAT_ID_MAX]; // recipient's Telegram identifier, as text
+    char text[TELEGRAM_NOTIFY_TEXT_MAX];
+} telegram_notify_item_t;
+
+// Created on first use rather than at start-up: most stations never turn
+// "Route Station messages" on, and an unused queue would hold its storage for
+// the life of the firmware for nothing.
+static QueueHandle_t s_notify_queue;
+static volatile bool s_notify_worker_alive;
+
+static void notify_queue_ensure(void) {
+    if (s_notify_queue == NULL)
+        s_notify_queue = xQueueCreate(TELEGRAM_NOTIFY_QUEUE_LEN, sizeof(telegram_notify_item_t));
+}
+
+// Delivers every item queued so far and exits, returning its stack to the
+// heap exactly like telegram_worker_task() does once a bring-up or a teardown
+// is done. An item telegram_send_message() could not deliver - the bot went
+// down between the lookup in telegram_app_notify_station_message() and this
+// task running - is dropped rather than requeued: this is a convenience
+// notification, not the message store the "Snd/Rcv Msg" page itself keeps, and
+// the operator has the same message there regardless.
+static void telegram_notify_worker_task(void *arg) {
+    (void)arg;
+
+    telegram_notify_item_t item;
+    while (xQueueReceive(s_notify_queue, &item, 0) == pdTRUE) {
+        esp_err_t err = telegram_send_message(item.chat_id, item.text);
+        if (err != ESP_OK)
+            ESP_LOGW(TAG, "Station message not routed to Telegram: %s", esp_err_to_name(err));
+    }
+
+    // Between the last empty receive above and this task actually deleting
+    // itself there is a small window where a new item could be queued while
+    // notify_worker_spawn() still sees this task as alive and skips spawning
+    // another one. That item waits in the queue until the next routed message
+    // triggers a spawn, so nothing beyond a brief delay is lost.
+    s_notify_worker_alive = false;
+    vTaskDelete(NULL);
+}
+
+// Spawns the drain task if one is not already running. Safe to call every
+// time an item is queued: a worker already alive drains the new item itself,
+// and a second one is never started alongside it.
+static void notify_worker_spawn(void) {
+    if (s_notify_worker_alive)
+        return;
+
+    s_notify_worker_alive = true;
+    if (xTaskCreate(telegram_notify_worker_task, "telegram_notify", TELEGRAM_NOTIFY_STACK_BYTES, NULL, TELEGRAM_NOTIFY_PRIORITY, NULL) != pdPASS) {
+        s_notify_worker_alive = false;
+        ESP_LOGE(TAG, "Notify worker task could not be created");
+    }
+}
+
 static void lock(void) {
     json_store_lock_take(&s_lock);
 }
@@ -282,6 +391,52 @@ bool telegram_app_enabled(void) {
     return en;
 }
 
+void telegram_app_notify_station_message(const char *from_call, const char *to_call, const char *text) {
+    if (from_call == NULL || to_call == NULL || text == NULL)
+        return;
+
+    // Read without the lock, the same way telegram_app_tick_1hz() reads
+    // s_enabled: this runs on message.c's frame-decoding path for every
+    // received message, and must never wait behind a save in progress.
+    if (!s_route_messages || !s_enabled || !s_service_up)
+        return;
+
+    notify_queue_ensure();
+    if (s_notify_queue == NULL)
+        return;
+
+    char line[TELEGRAM_NOTIFY_TEXT_MAX];
+    snprintf(line, sizeof(line), "msg from %s to %s :: %s", from_call, to_call, text);
+
+    // s_route_users is the same kind of lock-free cache s_route_messages is,
+    // for the same reason: this path must never wait behind a save. The users
+    // table is the only addressee set consulted here - this station's own
+    // callsign has no part in the decision - and every authorized user whose
+    // own callsign matches to_call exactly gets a copy on their own Telegram
+    // account. to_call keeps whatever SSID it arrived with, which is what
+    // lets several users share one base callsign under distinct SSIDs and
+    // each be addressed on their own. A to_call that matches nobody's
+    // callsign is simply not queued.
+    for (uint8_t i = 0; i < s_route_user_count; i++) {
+        if (s_route_users[i].callsign[0] == 0 || strcasecmp(s_route_users[i].callsign, to_call) != 0)
+            continue;
+
+        telegram_notify_item_t item;
+        snprintf(item.chat_id, sizeof(item.chat_id), "%" PRId64, s_route_users[i].id);
+        memcpy(item.text, line, sizeof(item.text));
+
+        // Never blocks: a full queue means notifications are arriving faster
+        // than the drain task can deliver them, and the frame-decoding path
+        // that called this function must not be held up waiting for
+        // Telegram. The oldest undelivered notification is what a full queue
+        // costs here.
+        if (xQueueSend(s_notify_queue, &item, 0) != pdTRUE)
+            continue;
+
+        notify_worker_spawn();
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Persistence
 // ---------------------------------------------------------------------------
@@ -310,8 +465,8 @@ static int64_t get_id(const cJSON *obj, const char *key) {
     return 0;
 }
 
-// Reads one "users" / "chats" array into a bounded table, reporting entries
-// that did not fit rather than dropping them in silence.
+// Reads the "chats" array into a bounded table, reporting entries that did
+// not fit rather than dropping them in silence.
 static uint8_t load_peers(const cJSON *doc, const char *key, telegram_app_peer_t *out, uint8_t max) {
     const cJSON *arr = cJSON_GetObjectItem(doc, key);
     if (!cJSON_IsArray(arr))
@@ -338,6 +493,35 @@ static uint8_t load_peers(const cJSON *doc, const char *key, telegram_app_peer_t
     return count;
 }
 
+// Reads the "users" array into a bounded table, the same way load_peers()
+// reads "chats", plus each entry's own callsign.
+static uint8_t load_users(const cJSON *doc, const char *key, telegram_app_user_t *out, uint8_t max) {
+    const cJSON *arr = cJSON_GetObjectItem(doc, key);
+    if (!cJSON_IsArray(arr))
+        return 0;
+
+    int n = cJSON_GetArraySize(arr);
+    if (n > (int)max) {
+        ESP_LOGW(TAG, "%s holds %d entries, only the first %u are kept", key, n, (unsigned)max);
+        n = (int)max;
+    }
+
+    uint8_t count = 0;
+    for (int i = 0; i < n; i++) {
+        const cJSON *o = cJSON_GetArrayItem(arr, i);
+        if (!cJSON_IsObject(o))
+            continue;
+        int64_t id = get_id(o, "id");
+        if (id == 0)
+            continue;
+        out[count].id = id;
+        get_string(o, "name", out[count].name, sizeof(out[count].name));
+        get_string(o, "callsign", out[count].callsign, sizeof(out[count].callsign));
+        count++;
+    }
+    return count;
+}
+
 // Reported by load_locked() so the reason published to the page distinguishes
 // a file that is absent from one that is present and unusable.
 static json_store_status_t s_last_read_status = JSON_STORE_MISSING;
@@ -357,23 +541,45 @@ static bool load_locked(telegram_app_config_t *out) {
     const cJSON *v = cJSON_GetObjectItem(doc, "enabled");
     out->enable = cJSON_IsTrue(v);
 
+    // Absent means off, the same as "enabled": a file written before this
+    // switch existed, or hand-edited from the project's example, must not
+    // start routing station traffic to Telegram because a key it never
+    // carried is missing.
+    const cJSON *rsm = cJSON_GetObjectItem(doc, "routeStationMessages");
+    out->route_station_messages = cJSON_IsTrue(rsm);
+
     get_string(doc, "bot_token", out->bot_token, sizeof(out->bot_token));
     get_string(doc, "web_app_url", out->web_app_url, sizeof(out->web_app_url));
     out->admin_id = get_id(doc, "admin_id");
-    out->user_count = load_peers(doc, "users", out->users, TELEGRAM_APP_USERS_MAX);
+    out->user_count = load_users(doc, "users", out->users, TELEGRAM_APP_USERS_MAX);
     out->chat_count = load_peers(doc, "chats", out->chats, TELEGRAM_APP_CHATS_MAX);
 
     cJSON_Delete(doc);
     return true;
 }
 
-// Writes one "users" / "chats" array.
+// Writes the "chats" array.
 static void save_peers(FILE *f, const char *key, const telegram_app_peer_t *in, uint8_t count) {
     fprintf(f, ",\"%s\":[", key);
     for (uint8_t i = 0; i < count; i++) {
         fputs(i ? ",{\"id\":" : "{\"id\":", f);
         fprintf(f, "%" PRId64 ",\"name\":", in[i].id);
         json_write_escaped(f, in[i].name);
+        fputc('}', f);
+    }
+    fputc(']', f);
+}
+
+// Writes the "users" array, the same way save_peers() writes "chats", plus
+// each entry's own callsign.
+static void save_users(FILE *f, const char *key, const telegram_app_user_t *in, uint8_t count) {
+    fprintf(f, ",\"%s\":[", key);
+    for (uint8_t i = 0; i < count; i++) {
+        fputs(i ? ",{\"id\":" : "{\"id\":", f);
+        fprintf(f, "%" PRId64 ",\"name\":", in[i].id);
+        json_write_escaped(f, in[i].name);
+        fputs(",\"callsign\":", f);
+        json_write_escaped(f, in[i].callsign);
         fputc('}', f);
     }
     fputc(']', f);
@@ -396,12 +602,14 @@ static bool save_locked(const telegram_app_config_t *in) {
     // hand-edits read the same way.
     fputs("{\"enabled\":", f);
     fputs(in->enable ? "true" : "false", f);
+    fputs(",\"routeStationMessages\":", f);
+    fputs(in->route_station_messages ? "true" : "false", f);
     fputs(",\"bot_token\":", f);
     json_write_escaped(f, in->bot_token);
     fprintf(f, ",\"admin_id\":%" PRId64, in->admin_id);
     fputs(",\"web_app_url\":", f);
     json_write_escaped(f, in->web_app_url);
-    save_peers(f, "users", in->users, in->user_count);
+    save_users(f, "users", in->users, in->user_count);
     save_peers(f, "chats", in->chats, in->chat_count);
     fputc('}', f);
 
@@ -1164,6 +1372,9 @@ void telegram_app_apply_config(void) {
     lock();
     s_cfg = cfg;
     s_enabled = cfg.enable;
+    s_route_messages = cfg.route_station_messages;
+    memcpy(s_route_users, cfg.users, sizeof(s_route_users));
+    s_route_user_count = cfg.user_count;
     unlock();
 
     if (!cfg.enable) {

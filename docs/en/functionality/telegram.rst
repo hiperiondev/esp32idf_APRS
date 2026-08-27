@@ -34,6 +34,12 @@ Everything the bot needs lives in ``/storage/telegram.json``, not in
    * - ``enabled``
      - The switch the Telegram page renders. The only key this firmware adds
        to the store; a hand-written file that omits it loads with the bot off.
+   * - ``routeStationMessages``
+     - The Telegram page's "Route Station messages" switch. When on, every
+       APRS message received addressed to an authorized user's own callsign
+       is also sent to that user's own Telegram chat; see `Routing station
+       messages to Telegram`_ below. Absent, the same as ``enabled``, loads
+       as off.
    * - Bot token
      - The token issued by `@BotFather <https://t.me/BotFather>`__.
    * - Administrator identifier
@@ -120,6 +126,50 @@ in the log at every start-up. Neither commands nor the start-up notice are
 lost in any functional sense — every command works whether or not Telegram
 has been told about it, and the *Telegram* page's live status already shows
 an administrator that the bot is up.
+
+Routing station messages to Telegram
+====================================
+
+The *Telegram* page's "Route Station messages" switch, next to the bot's own
+enable switch, delivers incoming APRS messages to their addressee's own
+Telegram chat, so an operator reads what was sent to them on their phone
+without opening the *Snd/Rcv Msg* page.
+
+The addressee set is the *Telegram* page's authorized-users table and nothing
+else. Each user card carries that operator's own Callsign, and a received
+message is delivered to every user whose Callsign matches the message's
+addressee exactly, SSID included. This station's own callsign — the *Station*
+page's My Callsign — takes no part in the decision, so a message addressed to
+a listed user is routed to that user whether or not this station reads the
+frame on its own account, and several users sharing one base callsign under
+different SSIDs each receive only what was sent to their own. An addressee
+matching no user's Callsign is routed to nobody.
+
+An ``ackNN``/``rejNN`` reply carries no readable text and is never routed, and
+neither is a message addressed to a group (``ALL``, ``QST``, ``CQ`` or one of
+the operator's own group names), since a group name is not a user's callsign.
+Routing is independent of what this station does with the same frame
+afterwards: the automatic acknowledgement, the ``/status`` alarm pulse and the
+*Snd/Rcv Msg* history still apply only to messages addressed to this station's
+own callsign.
+
+A routed message reaches its user as one line:
+
+.. code-block:: text
+
+   msg from <sender callsign> to <addressee callsign> :: <message text>
+
+Delivery only happens when the switch is on, the bot itself is enabled, and
+the bot is currently connected; a message that arrives while any of those
+does not hold is simply not routed; it is not queued for later delivery once
+the bot comes back. ``telegram_app_notify_station_message()`` (declared in
+``telegram_app.h``) is the entry point message.c calls; it only formats the
+line, looks up the users it belongs to and hands one item per user to a small
+queue, since the frame-decoding path that calls it runs on the modem's own
+receive task, which carries none of the stack a Telegram network call needs
+for its TLS handshake. A short-lived worker task, sized and spawned the same
+way the bring-up worker described above is, drains that queue through
+``telegram_send_message()``.
 
 Built-in commands
 ==================

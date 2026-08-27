@@ -13,10 +13,11 @@
 //
 //     please contact their authors for more information.
 //
-// @brief Web admin "Telegram" page: the bot's enable switch, the settings an
-// operator has to be able to correct from a browser (the token, the
-// administrator's identifier, the Mini App address, the authorized users and
-// the allowed group chats), and a live diagnosis of where the connection to
+// @brief Web admin "Telegram" page: the bot's enable switch, the switch that
+// routes incoming station messages to the bot, the settings an operator has
+// to be able to correct from a browser (the token, the administrator's
+// identifier, the Mini App address, the authorized users and the allowed
+// group chats), and a live diagnosis of where the connection to
 // api.telegram.org currently stands.
 //
 // Everything on this page is stored in /storage/telegram.json, not in
@@ -26,8 +27,11 @@
 // (TELEGRAM_APP_USERS_MAX / TELEGRAM_APP_CHATS_MAX entries), each rendered as
 // one accordion card; a card whose identifier is left at 0 is an empty slot
 // and is dropped from the table on save, the same way a hand-edited file
-// omits it.
+// omits it. Each user's card also carries that operator's own callsign, which
+// is the addressee "Route Station messages" matches an incoming APRS message
+// against to decide which user's Telegram account it is delivered to.
 
+#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -61,16 +65,17 @@ static void tg_row(httpd_req_t *req, const char *label, const char *key) {
     httpd_resp_sendstr_chunk(req, row);
 }
 
-// Renders one accordion card of the authorized-users or allowed-chats table:
-// an identifier field and a display-name field, under field names built from
-// id_prefix plus the slot index (e.g. "tgUId3"/"tgUName3"). peer is NULL for
-// a slot past the stored entry count, which renders as an empty card - the
-// same shape a slot cleared by the operator ends up in after a save.
+// Renders one accordion card of the allowed-chats table: an identifier field
+// and a display-name field, under field names built from id_prefix plus the
+// slot index (e.g. "tgCId3"/"tgCName3"). peer is NULL for a slot past the
+// stored entry count, which renders as an empty card - the same shape a slot
+// cleared by the operator ends up in after a save.
 //
 // Shares the .achan accordion styling and the accordionClick() helper with
-// the Bulletins and Objects/Items pages; id_prefix doubles as the
-// accordionClick() DOM-id prefix, so the users and chats tables toggle
-// independently of each other and of any other accordion on the page.
+// the Bulletins and Objects/Items pages, and with tg_render_user() below;
+// id_prefix doubles as the accordionClick() DOM-id prefix, so the users and
+// chats tables toggle independently of each other and of any other accordion
+// on the page.
 static void tg_render_peer(httpd_req_t *req, const char *id_prefix, int index, int count, const char *legend_fmt, const telegram_app_peer_t *peer) {
     char legend[32];
     snprintf(legend, sizeof(legend), legend_fmt, index + 1);
@@ -93,6 +98,41 @@ static void tg_render_peer(httpd_req_t *req, const char *id_prefix, int index, i
 
     snprintf(name, sizeof(name), "%sName%d", id_prefix, index + 1);
     web_field_text(req, TR_TG_F_PEER_NAME, name, peer ? peer->name : "", TELEGRAM_APP_NAME_MAX);
+
+    httpd_resp_sendstr_chunk(req, "</div></div>");
+}
+
+// Renders one accordion card of the authorized-users table: an identifier
+// field, a display-name field and, unlike tg_render_peer(), the operator's
+// own callsign field, which is the addressee "Route Station messages" matches
+// an incoming APRS message against to reach this user. user is NULL for a slot past the stored entry
+// count, which renders as an empty card - the same shape a slot cleared by
+// the operator ends up in after a save.
+static void tg_render_user(httpd_req_t *req, const char *id_prefix, int index, int count, const char *legend_fmt, const telegram_app_user_t *user) {
+    char legend[32];
+    snprintf(legend, sizeof(legend), legend_fmt, index + 1);
+
+    char head[256];
+    snprintf(head, sizeof(head),
+             "<div class='achan%s' id='%s%d'>"
+             "<div class='achan-head' onclick='accordionClick(\"%s\",%d,%d)'>"
+             "<span class='achan-name'>%s</span>"
+             "<span class='achan-caret'>&#9654;</span>"
+             "</div><div class='achan-body'>",
+             (index == 0) ? " open" : "", id_prefix, index, id_prefix, index, count, legend);
+    httpd_resp_sendstr_chunk(req, head);
+
+    char idbuf[24];
+    snprintf(idbuf, sizeof(idbuf), "%lld", (long long)(user ? user->id : 0));
+    char name[24];
+    snprintf(name, sizeof(name), "%sId%d", id_prefix, index + 1);
+    web_field_text(req, TR_TG_F_PEER_ID, name, idbuf, 20);
+
+    snprintf(name, sizeof(name), "%sName%d", id_prefix, index + 1);
+    web_field_text(req, TR_TG_F_PEER_NAME, name, user ? user->name : "", TELEGRAM_APP_NAME_MAX);
+
+    snprintf(name, sizeof(name), "%sCallsign%d", id_prefix, index + 1);
+    web_field_text(req, TR_TG_F_USER_CALLSIGN, name, user ? user->callsign : "", TELEGRAM_APP_CALLSIGN_MAX);
 
     httpd_resp_sendstr_chunk(req, "</div></div>");
 }
@@ -242,6 +282,8 @@ esp_err_t page_telegram_get(httpd_req_t *req) {
     web_fieldset_open(req, TR_TG_FS_SERVICE);
     web_field_checkbox(req, TR_TG_ENABLE, "tgEn", cfg.enable);
     web_raw(req, "<p style='color:var(--sub);font-size:12px;margin:4px 0'>" TR_TG_NOTE_SERVICE "</p>");
+    web_field_checkbox(req, TR_TG_ROUTE_MESSAGES, "tgRouteMsg", cfg.route_station_messages);
+    web_raw(req, "<p style='color:var(--sub);font-size:12px;margin:4px 0'>" TR_TG_NOTE_ROUTE_MESSAGES "</p>");
     web_fieldset_close(req);
 
     // CREDENTIALS ---------------------------------------------------------
@@ -299,7 +341,7 @@ esp_err_t page_telegram_get(httpd_req_t *req) {
     web_raw(req, "<p style='color:var(--sub);font-size:12px;margin:4px 0'>" TR_TG_NOTE_USERS "</p>");
     httpd_resp_sendstr_chunk(req, "<div id='tgUWrap'>");
     for (int i = 0; i < TELEGRAM_APP_USERS_MAX; i++)
-        tg_render_peer(req, "tgU", i, TELEGRAM_APP_USERS_MAX, TR_TG_F_USER_FMT, (i < cfg.user_count) ? &cfg.users[i] : NULL);
+        tg_render_user(req, "tgU", i, TELEGRAM_APP_USERS_MAX, TR_TG_F_USER_FMT, (i < cfg.user_count) ? &cfg.users[i] : NULL);
     httpd_resp_sendstr_chunk(req, "</div>");
     web_fieldset_close(req);
 
@@ -401,11 +443,12 @@ esp_err_t page_telegram_get(httpd_req_t *req) {
     return ESP_OK;
 }
 
-// Reads one accordion card of the authorized-users or allowed-chats table
-// back out of the POST body, mirroring tg_render_peer()'s field names. An
-// identifier field left empty, or holding anything that is not a number,
+// Reads one accordion card's identifier field back out of the POST body,
+// shared by the authorized-users and allowed-chats tables since both name it
+// the same way ("<id_prefix>Id<slot>"; see tg_render_peer() / tg_render_user()).
+// An identifier field left empty, or holding anything that is not a number,
 // reads as 0, which the caller treats as an empty slot - the same value
-// load_peers() in telegram_app.c drops rather than storing.
+// load_peers() / load_users() in telegram_app.c drop rather than storing.
 static int64_t tg_parse_peer_id(const char *body, const char *id_prefix, int index) {
     char name[24];
     snprintf(name, sizeof(name), "%sId%d", id_prefix, index + 1);
@@ -415,11 +458,11 @@ static int64_t tg_parse_peer_id(const char *body, const char *id_prefix, int ind
     return (int64_t)strtoll(idbuf, NULL, 10);
 }
 
-// Reads the whole authorized-users or allowed-chats table back into out,
-// compacting the result: a slot whose identifier field was left at 0 is
-// skipped rather than stored as a zero-identifier entry, so clearing a card
-// in the middle of the table removes that entry instead of leaving a hole
-// telegram_service would otherwise have to special-case.
+// Reads the whole allowed-chats table back into out, compacting the result: a
+// slot whose identifier field was left at 0 is skipped rather than stored as
+// a zero-identifier entry, so clearing a card in the middle of the table
+// removes that entry instead of leaving a hole telegram_service would
+// otherwise have to special-case.
 static uint8_t tg_parse_peer_table(const char *body, const char *id_prefix, int count, telegram_app_peer_t *out) {
     uint8_t used = 0;
     for (int i = 0; i < count; i++) {
@@ -430,6 +473,46 @@ static uint8_t tg_parse_peer_table(const char *body, const char *id_prefix, int 
         snprintf(name, sizeof(name), "%sName%d", id_prefix, i + 1);
         out[used].id = id;
         web_form_get(body, name, out[used].name, sizeof(out[used].name));
+        used++;
+    }
+    return used;
+}
+
+// Trims leading and trailing whitespace off s and upper-cases what remains,
+// in place. Applied to a saved callsign field so it is stored in exactly the
+// form telegram_app_notify_station_message() compares a routed message's
+// addressee against.
+static void tg_trim_upper(char *s) {
+    char *start = s;
+    while (*start && isspace((unsigned char)*start))
+        start++;
+    if (start != s)
+        memmove(s, start, strlen(start) + 1);
+    size_t len = strlen(s);
+    while (len > 0 && isspace((unsigned char)s[len - 1]))
+        s[--len] = 0;
+    for (size_t i = 0; i < len; i++)
+        s[i] = (char)toupper((unsigned char)s[i]);
+}
+
+// Reads the whole authorized-users table back into out, the same way
+// tg_parse_peer_table() reads the allowed-chats table, plus each entry's own
+// callsign, normalized to upper case with tg_trim_upper().
+static uint8_t tg_parse_user_table(const char *body, const char *id_prefix, int count, telegram_app_user_t *out) {
+    uint8_t used = 0;
+    for (int i = 0; i < count; i++) {
+        int64_t id = tg_parse_peer_id(body, id_prefix, i);
+        if (id == 0)
+            continue;
+        char name[24];
+        snprintf(name, sizeof(name), "%sName%d", id_prefix, i + 1);
+        out[used].id = id;
+        web_form_get(body, name, out[used].name, sizeof(out[used].name));
+
+        snprintf(name, sizeof(name), "%sCallsign%d", id_prefix, i + 1);
+        web_form_get(body, name, out[used].callsign, sizeof(out[used].callsign));
+        tg_trim_upper(out[used].callsign);
+
         used++;
     }
     return used;
@@ -458,6 +541,7 @@ esp_err_t page_telegram_post(httpd_req_t *req) {
     telegram_app_load(&cfg);
 
     cfg.enable = web_form_get_bool(body, "tgEn");
+    cfg.route_station_messages = web_form_get_bool(body, "tgRouteMsg");
     web_form_get(body, "tgToken", cfg.bot_token, sizeof(cfg.bot_token));
 
     // strtoll, not the int helper: a Telegram user identifier does not fit in
@@ -474,7 +558,7 @@ esp_err_t page_telegram_post(httpd_req_t *req) {
 
     web_form_get(body, "tgUrl", cfg.web_app_url, sizeof(cfg.web_app_url));
 
-    cfg.user_count = tg_parse_peer_table(body, "tgU", TELEGRAM_APP_USERS_MAX, cfg.users);
+    cfg.user_count = tg_parse_user_table(body, "tgU", TELEGRAM_APP_USERS_MAX, cfg.users);
     cfg.chat_count = tg_parse_peer_table(body, "tgC", TELEGRAM_APP_CHATS_MAX, cfg.chats);
 
     free(body);

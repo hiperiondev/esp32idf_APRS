@@ -1629,6 +1629,15 @@
 #define TR_TG_NOTE_SERVICE                                                                                                                                     \
     "With this off nothing connects to Telegram and no polling task runs. Turning it on or off takes effect immediately, without a reboot. The bot needs a "   \
     "working Internet connection and enough free heap for a TLS session."
+/** Label of the route-station-messages checkbox, rendered on the Telegram page. */
+#define TR_TG_ROUTE_MESSAGES "Route Station messages"
+/** Explanatory note shown under the route-station-messages switch, rendered on the Telegram page. */
+#define TR_TG_NOTE_ROUTE_MESSAGES                                                                                                                              \
+    "With this on, an APRS message received addressed to the own Callsign of one of the authorized users below is sent to that user's own Telegram "           \
+    "chat as \"msg from <sender> to <addressee> :: <message text>\". The addressee is matched only against the Callsign fields of those users, never "         \
+    "against this station's My Callsign on the Station page, so each user receives the messages sent to their own callsign and nobody else's. The "            \
+    "match is exact, SSID included, so several users can share one base callsign under different SSIDs. A message whose addressee matches no user's "          \
+    "Callsign is not routed to anyone. Acknowledgements and messages addressed to a group are never routed."
 /** Fieldset legend for the credentials block, rendered on the Telegram page. */
 #define TR_TG_FS_BOT "Credentials"
 /** Label of the bot token field, rendered on the Telegram page. */
@@ -1654,9 +1663,10 @@
 #define TR_TG_FS_USERS "Authorized Users"
 /** Explanatory note shown above the authorized-users table, rendered on the Telegram page. */
 #define TR_TG_NOTE_USERS                                                                                                                                       \
-    "Up to 8 users, in addition to the administrator, who may talk to the bot as themselves rather than being turned away as unauthorized. The bot answers a " \
-    "command from an account it does not know with that account's identifier, which is the number to enter here; an already authorized account reads it "      \
-    "with /whoami. An empty identifier leaves the slot unused."
+    "Up to 8 users, in addition to the administrator, who may talk to the bot as themselves rather than being turned away as unauthorized. The bot "           \
+    "answers a command from an account it does not know with that account's identifier, which is the number to enter here; an already authorized "             \
+    "account reads it with /whoami. An empty identifier leaves the slot unused. Callsign is that operator's own amateur radio callsign; it is the "            \
+    "addressee \"Route Station messages\" selects this user by, and is otherwise unused."
 /** Fieldset legend for the allowed-group-chats block, rendered on the Telegram page. */
 #define TR_TG_FS_CHATS "Allowed Group Chats"
 /** Explanatory note shown above the allowed-group-chats table, rendered on the Telegram page. */
@@ -1671,6 +1681,8 @@
 #define TR_TG_F_PEER_ID "Identifier"
 /** Label of one entry's display-name field, rendered on the Telegram page. */
 #define TR_TG_F_PEER_NAME "Name"
+/** Label of one authorized user's own callsign field, rendered on the Telegram page. */
+#define TR_TG_F_USER_CALLSIGN "Callsign"
 /** Fieldset legend for the connection status block, rendered on the Telegram page. */
 #define TR_TG_FS_STATUS "Connection Status"
 /** Status row label for the coarse state, rendered on the Telegram page. */

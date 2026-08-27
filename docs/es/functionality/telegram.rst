@@ -35,6 +35,12 @@ Todo lo que el bot necesita vive en ``/storage/telegram.json``, no en
      - El interruptor que dibuja la página Telegram. La única clave que este
        firmware añade al almacén; un archivo escrito a mano que la omita se
        carga con el bot apagado.
+   * - ``routeStationMessages``
+     - El interruptor "Reenviar mensajes de la estacion" de la página
+       Telegram. Encendido, todo mensaje APRS recibido dirigido al indicativo
+       propio de un usuario autorizado también se envía al chat de Telegram de
+       ese usuario; ver `Reenvío de mensajes de la estación a Telegram`_ más
+       abajo. Ausente, igual que ``enabled``, se carga apagado.
    * - Token del bot
      - El token emitido por `@BotFather <https://t.me/BotFather>`__.
    * - Identificador del administrador
@@ -128,6 +134,54 @@ comandos ni el aviso de arranque se pierden en ningún sentido funcional: cada
 comando funciona se le haya avisado o no a Telegram sobre él, y el estado en
 vivo de la página *Telegram* ya muestra a un administrador que el bot está
 activo.
+
+Reenvío de mensajes de la estación a Telegram
+===============================================
+
+El interruptor "Reenviar mensajes de la estacion" de la página *Telegram*,
+junto al propio interruptor de encendido del bot, entrega los mensajes APRS
+entrantes al chat de Telegram de su destinatario, de modo que cada operador
+lee en su teléfono lo que le enviaron sin necesidad de abrir la página
+*Snd/Rcv Msg*.
+
+El conjunto de destinatarios es la tabla de usuarios autorizados de la página
+*Telegram* y nada más. Cada tarjeta de usuario lleva el Indicativo propio de
+ese operador, y un mensaje recibido se entrega a todo usuario cuyo Indicativo
+coincide exactamente con el destinatario del mensaje, SSID incluido. El
+indicativo propio de esta estación —el My Callsign de la página *Station*— no
+participa de la decisión, así un mensaje dirigido a un usuario listado se
+reenvía a ese usuario lea o no esta estación la trama por cuenta propia, y
+varios usuarios que comparten un mismo indicativo base con distinto SSID
+reciben solo lo que se envió al suyo. Un destinatario que no coincide con el
+Indicativo de ningún usuario no se reenvía a nadie.
+
+Una respuesta ``ackNN``/``rejNN`` no lleva texto legible y nunca se reenvía, y
+tampoco lo hace un mensaje dirigido a un grupo (``ALL``, ``QST``, ``CQ`` o uno
+de los nombres de grupo propios del operador), ya que un nombre de grupo no es
+el indicativo de un usuario. El reenvío es independiente de lo que esta
+estación haga después con la misma trama: la confirmación automática, el pulso
+de alarma de ``/status`` y el historial de *Snd/Rcv Msg* siguen aplicándose
+solo a los mensajes dirigidos al indicativo propio de esta estación.
+
+Un mensaje reenviado llega a su usuario como una sola línea:
+
+.. code-block:: text
+
+   msg from <indicativo del remitente> to <indicativo del destinatario> :: <texto del mensaje>
+
+El envío solo ocurre cuando el interruptor está encendido, el bot mismo está
+habilitado y el bot está actualmente conectado; un mensaje que llega mientras
+alguna de esas condiciones no se cumple simplemente no se reenvía, no queda
+en espera para cuando el bot vuelva a estar disponible.
+``telegram_app_notify_station_message()`` (declarada en ``telegram_app.h``)
+es el punto de entrada que llama message.c; solo arma la línea, busca los
+usuarios a los que corresponde y entrega un elemento por usuario a una pequeña
+cola, ya que la ruta de decodificación de tramas que la llama corre en la
+propia tarea de recepción del módem, que no lleva la pila que un llamado de
+red a Telegram necesita para su handshake TLS. Una tarea trabajadora de corta
+vida, dimensionada y lanzada del mismo modo que el trabajador de arranque
+descrito más arriba, vacía esa cola a través de
+``telegram_send_message()``.
 
 Comandos incorporados
 =======================

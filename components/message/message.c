@@ -15,7 +15,10 @@
 //
 // @brief APRS text messaging implementation: outgoing message and ACK
 // formatting, incoming message parsing and acknowledgement, the Reply-ACK
-// algorithm of APRS 1.1, and retry/timeout handling of the in-memory queue.
+// algorithm of APRS 1.1, retry/timeout handling of the in-memory queue, and
+// optional forwarding of incoming messages to the Telegram account of the
+// authorized user they were addressed to (see
+// telegram_app_notify_station_message()).
 
 #include <ctype.h>
 #include <stdio.h>
@@ -38,6 +41,7 @@
 #include "query.h"             // query_process_directed(): second consumer of the ::ADDRESSEE: payload, for "CALL:?query?"
 #include "sensors_local_i2c.h" // sensors_local_i2c_gpio_is_reserved(): keep the I2C pins out of the alarm pin
 #include "str_append.h"
+#include "telegram_app.h" // telegram_app_notify_station_message(): optional per-user Telegram routing of incoming messages
 
 static const char *TAG = "message";
 
@@ -949,6 +953,17 @@ void handleIncomingAPRS(const char *line, query_source_t source) {
     splitReplyAck(msgNo, ownNo, sizeof(ownNo), replyAck, sizeof(replyAck));
 
     ESP_LOGD(TAG, "Message from %s to %s: %s", fromCall, toCall, message);
+
+    // Handed to the Telegram bot ahead of this station's own acceptance test.
+    // The callsigns of the authorized users configured on the Telegram page
+    // are an addressee set of their own, unrelated to g_config.msg_mycall, so
+    // a message addressed to one of them is routed to that user's own
+    // Telegram account whether or not this station reads the frame itself.
+    // Only readable text travels: an ack or a rej carries none, and an empty
+    // text is nothing to deliver. A no-op unless the operator has turned
+    // "Route Station messages" on for a bot that is actually running.
+    if (!isAck && !isRej && message[0] != 0)
+        telegram_app_notify_station_message(fromCall, toCall, message);
 
     // Accept the message either addressed to this station - the addressee's
     // base callsign matches ours regardless of SSID on either side, so a

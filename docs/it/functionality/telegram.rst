@@ -35,6 +35,13 @@ in ``config.json``:
      - L'interruttore disegnato dalla pagina Telegram. L'unica chiave che
        questo firmware aggiunge all'archivio; un file scritto a mano che la
        omette si carica con il bot spento.
+   * - ``routeStationMessages``
+     - L'interruttore "Inoltra messaggi della stazione" della pagina
+       Telegram. Acceso, ogni messaggio APRS ricevuto indirizzato al
+       nominativo proprio di un utente autorizzato viene anche inviato alla
+       chat Telegram di quell'utente; vedi `Inoltro dei messaggi della
+       stazione a Telegram`_ più sotto. Assente, come ``enabled``, si carica
+       spento.
    * - Token del bot
      - Il token rilasciato da `@BotFather <https://t.me/BotFather>`__.
    * - Identificativo dell'amministratore
@@ -126,6 +133,56 @@ Né i comandi né l'avviso di avvio vengono persi in alcun senso funzionale:
 ogni comando funziona indipendentemente dal fatto che Telegram ne sia stato
 informato, e lo stato live della pagina *Telegram* mostra già a un
 amministratore che il bot è attivo.
+
+Inoltro dei messaggi della stazione a Telegram
+================================================
+
+L'interruttore "Inoltra messaggi della stazione" della pagina *Telegram*,
+accanto all'interruttore di accensione del bot stesso, consegna i messaggi
+APRS in arrivo alla chat Telegram del loro destinatario, così ogni operatore
+legge sul proprio telefono ciò che gli è stato inviato senza dover aprire la
+pagina *Snd/Rcv Msg*.
+
+L'insieme dei destinatari è la tabella degli utenti autorizzati della pagina
+*Telegram* e nient'altro. Ogni scheda utente porta il Nominativo proprio di
+quell'operatore, e un messaggio ricevuto viene consegnato a ogni utente il cui
+Nominativo corrisponde esattamente al destinatario del messaggio, SSID
+incluso. Il nominativo proprio di questa stazione — il My Callsign della
+pagina *Station* — non entra nella decisione, così un messaggio indirizzato a
+un utente elencato viene inoltrato a quell'utente indipendentemente dal fatto
+che questa stazione legga il frame per conto proprio, e più utenti che
+condividono uno stesso nominativo base con SSID diversi ricevono solo ciò che
+è stato inviato al proprio. Un destinatario che non corrisponde al Nominativo
+di alcun utente non viene inoltrato a nessuno.
+
+Una risposta ``ackNN``/``rejNN`` non porta testo leggibile e non viene mai
+inoltrata, e nemmeno un messaggio indirizzato a un gruppo (``ALL``, ``QST``,
+``CQ`` o uno dei nomi di gruppo propri dell'operatore), poiché un nome di
+gruppo non è il nominativo di un utente. L'inoltro è indipendente da ciò che
+questa stazione fa poi con lo stesso frame: la conferma automatica, l'impulso
+di allarme di ``/status`` e lo storico di *Snd/Rcv Msg* continuano ad
+applicarsi solo ai messaggi indirizzati al nominativo proprio di questa
+stazione.
+
+Un messaggio inoltrato raggiunge il suo utente come un'unica riga:
+
+.. code-block:: text
+
+   msg from <nominativo del mittente> to <nominativo del destinatario> :: <testo del messaggio>
+
+L'invio avviene solo quando l'interruttore è acceso, il bot stesso è
+abilitato e il bot è attualmente connesso; un messaggio che arriva mentre una
+di queste condizioni non è soddisfatta semplicemente non viene inoltrato, e
+non resta in coda per quando il bot torna disponibile.
+``telegram_app_notify_station_message()`` (dichiarata in ``telegram_app.h``)
+è il punto d'ingresso chiamato da message.c; si limita a comporre la riga, a
+cercare gli utenti a cui compete e a consegnare un elemento per utente a una
+piccola coda, poiché il percorso di decodifica dei frame che la chiama gira
+sul task di ricezione del modem stesso, che non porta lo stack necessario a
+una chiamata di rete verso Telegram per il suo handshake TLS. Un task
+lavoratore di breve durata, dimensionato e avviato allo stesso modo del task
+di avvio descritto sopra, svuota quella coda tramite
+``telegram_send_message()``.
 
 Comandi integrati
 ===================

@@ -1593,13 +1593,17 @@
 #define TR_GPS_LINK_RECEIVING "Recibiendo"
 /** Spanish text for the link state shown when the receiver has gone silent, rendered on the GPS page. English: "No data from receiver". */
 #define TR_GPS_LINK_SILENT "Sin datos del receptor"
-/** Spanish text for the module-status badge text shown when the receiver is switched off or its UART failed to come up, rendered on the GPS page. English: "Disabled". */
+/** Spanish text for the module-status badge text shown when the receiver is switched off or its UART failed to come up, rendered on the GPS page. English:
+ * "Disabled". */
 #define TR_GPS_STATUS_DISABLED "Deshabilitado"
-/** Spanish text for the module-status badge text shown when the receiver is enabled but no sentence has arrived within the link timeout, rendered on the GPS page. English: "No data (check wiring)". */
+/** Spanish text for the module-status badge text shown when the receiver is enabled but no sentence has arrived within the link timeout, rendered on the GPS
+ * page. English: "No data (check wiring)". */
 #define TR_GPS_STATUS_NO_LINK "Sin datos (revisar cableado)"
-/** Spanish text for the module-status badge text shown when sentences are arriving but no valid fix has been reported yet, rendered on the GPS page. English: "Searching (no fix)". */
+/** Spanish text for the module-status badge text shown when sentences are arriving but no valid fix has been reported yet, rendered on the GPS page. English:
+ * "Searching (no fix)". */
 #define TR_GPS_STATUS_SEARCHING "Buscando (sin fijación)"
-/** Spanish text for the module-status badge text shown when sentences are arriving and the last navigation solution is valid, rendered on the GPS page. English: "Fix OK". */
+/** Spanish text for the module-status badge text shown when sentences are arriving and the last navigation solution is valid, rendered on the GPS page.
+ * English: "Fix OK". */
 #define TR_GPS_STATUS_FIX_OK "Fijación OK"
 /** Spanish text for the navigation status shown when RMC reports an active solution, rendered on the GPS page. English: "Active". */
 #define TR_GPS_NAV_ACTIVE "Activa"
@@ -1726,6 +1730,16 @@
 #define TR_TG_NOTE_SERVICE                                                                                                                                     \
     "Con esto apagado no se conecta nada a Telegram ni corre ninguna tarea de sondeo. Encenderlo o apagarlo tiene efecto inmediato, sin reiniciar. El bot "    \
     "necesita conexion a Internet y memoria libre suficiente para una sesion TLS."
+/** Label of the route-station-messages checkbox, rendered on the Telegram page. */
+#define TR_TG_ROUTE_MESSAGES "Reenviar mensajes de la estacion"
+/** Explanatory note shown under the route-station-messages switch, rendered on the Telegram page. */
+#define TR_TG_NOTE_ROUTE_MESSAGES                                                                                                                              \
+    "Con esto encendido, un mensaje APRS recibido dirigido al Indicativo propio de uno de los usuarios autorizados de abajo se envia al chat de "              \
+    "Telegram de ese usuario como \"msg from <remitente> to <destinatario> :: <texto del mensaje>\". El destinatario se compara solo con los campos "          \
+    "Indicativo de esos usuarios, nunca con el My Callsign de esta estacion de la pagina Station, asi cada usuario recibe los mensajes dirigidos a su "        \
+    "propio indicativo y a ningun otro. La coincidencia es exacta, SSID incluido, asi varios usuarios pueden compartir un mismo indicativo base con "          \
+    "distinto SSID. Un mensaje cuyo destinatario no coincide con el Indicativo de ningun usuario no se reenvia a nadie. Las confirmaciones y los "             \
+    "mensajes dirigidos a un grupo nunca se reenvian."
 /** Fieldset legend for the credentials block, rendered on the Telegram page. */
 #define TR_TG_FS_BOT "Credenciales"
 /** Label of the bot token field, rendered on the Telegram page. */
@@ -1752,9 +1766,10 @@
 #define TR_TG_FS_USERS "Usuarios autorizados"
 /** Explanatory note shown above the authorized-users table, rendered on the Telegram page. */
 #define TR_TG_NOTE_USERS                                                                                                                                       \
-    "Hasta 8 usuarios, ademas del administrador, que pueden hablar con el bot como ellos mismos en lugar de ser rechazados por no estar autorizados. El bot "  \
-    "responde a un comando de una cuenta que no conoce con el identificador de esa cuenta, que es el numero a ingresar aqui; una cuenta ya autorizada lo "     \
-    "obtiene con /whoami. Un identificador vacio deja la ranura sin usar."
+    "Hasta 8 usuarios, ademas del administrador, que pueden hablar con el bot como ellos mismos en lugar de ser rechazados por no estar autorizados. "         \
+    "El bot responde a un comando de una cuenta que no conoce con el identificador de esa cuenta, que es el numero a ingresar aqui; una cuenta ya "            \
+    "autorizada lo obtiene con /whoami. Un identificador vacio deja la ranura sin usar. Indicativo es el indicativo de radioaficionado propio de ese "         \
+    "operador; es el destinatario por el que \"Reenviar mensajes de la estacion\" elige a este usuario y no se usa para nada mas."
 /** Fieldset legend for the allowed-group-chats block, rendered on the Telegram page. */
 #define TR_TG_FS_CHATS "Chats de grupo permitidos"
 /** Explanatory note shown above the allowed-group-chats table, rendered on the Telegram page. */
@@ -1769,6 +1784,8 @@
 #define TR_TG_F_PEER_ID "Identificador"
 /** Label of one entry's display-name field, rendered on the Telegram page. */
 #define TR_TG_F_PEER_NAME "Nombre"
+/** Label of one authorized user's own callsign field, rendered on the Telegram page. */
+#define TR_TG_F_USER_CALLSIGN "Indicativo"
 /** Fieldset legend for the connection status block, rendered on the Telegram page. */
 #define TR_TG_FS_STATUS "Estado de la conexion"
 /** Status row label for the coarse state, rendered on the Telegram page. */
