@@ -63,6 +63,11 @@ POSTed from the Bulletins page or loaded from ``config.json`` — since the
 stored text is later written as one line of an APRS-IS/AX.25 message and
 neither format escapes an embedded line break.
 
+A bulletin this station transmits is also handed to the Telegram bot, on the
+same terms as one heard from another station, so the operators reading the bot
+see the station's own announcements alongside everyone else's. The *Telegram*
+page's "Route Bulletins" switch governs it; see :ref:`en-telegram`.
+
 .. note::
 
    NTS Radiograms, also described in chapter 14, are a traffic-handling message

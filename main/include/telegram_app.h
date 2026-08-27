@@ -128,13 +128,15 @@ typedef struct {
  *
  * The whole file is kept as one value so a save can rewrite it without losing
  * the parts the web page does not edit: the Telegram page owns @c enable,
- * @c route_station_messages, @c bot_token and @c admin_id, while
+ * @c route_station_messages, @c route_bulletins, @c bot_token and
+ * @c admin_id, while
  * @c web_app_url, @c users and @c chats survive a save untouched because they
  * were loaded into this same structure first.
  */
 typedef struct {
     bool enable;                 /**< True to run the bot; the Telegram page's switch. */
     bool route_station_messages; /**< True to route each incoming message to its addressee's own user; see ::telegram_app_notify_station_message. */
+    bool route_bulletins;        /**< True to route every received APRS bulletin to every user and group chat; see ::telegram_app_notify_bulletin. */
     char bot_token[TELEGRAM_APP_TOKEN_MAX + 1];        /**< Token issued by @@BotFather. */
     int64_t admin_id;                                  /**< Identifier of the administrator, or 0 for none. */
     char web_app_url[TELEGRAM_APP_URL_MAX + 1];        /**< HTTPS address of the Mini App, or empty. */
@@ -299,9 +301,35 @@ void telegram_app_status(telegram_app_status_t *out);
 bool telegram_app_enabled(void);
 
 /**
- * @brief Forward one received APRS message to the Telegram account of the
+ * @brief True while a line handed to one of the notify entry points below
+ * could actually be delivered.
+ *
+ * Reports the conjunction the two of them test before they queue anything:
+ * the bot is switched on, it is currently connected, and at least one of the
+ * *Telegram* page's two routing switches is on. It is published because the
+ * frame-decoding path is reached through gates of its own - APRS messaging
+ * and the query responder each have an enable switch - and Telegram routing
+ * is a third consumer of the same frames, independent of both. A caller that
+ * asks this before deciding whether to parse an incoming frame keeps routing
+ * working on a station that runs the bot with APRS messaging switched off.
+ *
+ * Safe to call from any task and from any stack: it reads cached copies of
+ * the switches rather than taking the lock a save holds.
+ */
+bool telegram_app_routing_active(void);
+
+/**
+ * @brief Forward one APRS message to the Telegram account of the
  * authorized user whose own callsign it was addressed to, when the operator
  * has turned that routing on.
+ *
+ * Both origins of a message are routed on the same terms: one received over
+ * the air or from the APRS-IS feed, and one this station itself originates
+ * from the *Snd/Rcv Msg* page. What the line says changes accordingly - the
+ * sender of a locally originated message is this station's own Message
+ * callsign - but the recipient is selected the same way in both cases, so an
+ * operator listed on the *Telegram* page reads what was sent to them whether
+ * it came from another station or from this one's web admin.
  *
  * The addressee set is the *Telegram* page's authorized-users table and
  * nothing else. This station's own callsign - the *Station* page's My
@@ -330,9 +358,11 @@ bool telegram_app_enabled(void);
  * msg from <sender callsign> to <addressee callsign> :: <message text>
  * @endcode
  * Delivery happens off a small internal queue rather than inline, which is
- * what makes this function safe to call from message.c's frame-decoding
- * path: that path runs on a task with no stack to spare for the TLS
- * handshake a call reaching Telegram needs.
+ * what makes this function safe to call from both paths that reach it:
+ * message.c's frame decoder, which runs on a task with no stack to spare for
+ * the TLS handshake a call reaching Telegram needs, and the web server's own
+ * task, where an inline network call would hold a browser open for the
+ * length of a Telegram round trip.
  *
  * @param[in] from_call Callsign of the station that sent the message, upper
  *                       case, SSID included when the sender used one.
@@ -341,5 +371,58 @@ bool telegram_app_enabled(void);
  * @param[in] text       Message text, decoded and trimmed.
  */
 void telegram_app_notify_station_message(const char *from_call, const char *to_call, const char *text);
+
+/**
+ * @brief Forward one APRS bulletin to every Telegram account this station
+ * knows, when the operator has turned bulletin routing on.
+ *
+ * A bulletin is a broadcast: it names no individual station, so unlike
+ * ::telegram_app_notify_station_message there is no addressee to match and no
+ * callsign to select a recipient by. It is therefore delivered to everyone the
+ * bot is configured to talk to - every authorized user of the *Telegram*
+ * page's users table, the administrator when one is configured, and every
+ * allowed group chat. An administrator who is also listed in the users table
+ * receives one copy, not two.
+ *
+ * Every bulletin this station handles is routed, whatever its origin: one
+ * heard off the air, one that arrived from the APRS-IS feed, and one this
+ * station transmits itself from its own *Bulletins* page. The last of those
+ * is routed as its scheduler sends it, so the operators reading the bot see
+ * the station's own announcements in the same chat and in the same form as
+ * everyone else's.
+ *
+ * A no-op unless every one of these holds: the *Telegram* page's "Route
+ * Bulletins" switch is on, the bot is enabled, and the bot is currently
+ * running. Nothing is buffered for later delivery when any of those does not
+ * hold, exactly as for a routed station message.
+ *
+ * A bulletin is transmitted over and over by its originator and is heard again
+ * through every digipeater that repeats it, so the same one reaches this
+ * station many times. A bulletin whose sender, addressee and text match one
+ * routed in the last fifteen minutes is dropped rather than sent again, which
+ * is what keeps a periodic bulletin from filling a chat with copies of itself.
+ * Editing the text, or a different station sending it, makes it a new bulletin
+ * and it is routed at once. This is also what keeps one of this station's own
+ * bulletins to a single copy when the digipeated frame comes back within the
+ * window: it carries the same sender, addressee and text, so the returning
+ * copy is recognised as the repeat it is.
+ *
+ * The rendered line always reads
+ * @code
+ * bulletin from <sender callsign> to <bulletin addressee> :: <bulletin text>
+ * @endcode
+ * Delivery happens off the same internal queue routed station messages use,
+ * as one queued item that fans out to every recipient when it is drained, so
+ * this is safe to call from every task that reaches it: message.c's frame
+ * decoder and the shared beacon scheduler alike carry none of the stack a TLS
+ * handshake needs.
+ *
+ * @param[in] from_call Callsign of the station that originated the bulletin,
+ *                       upper case, SSID included when one was used.
+ * @param[in] to_call    Bulletin addressee the sender used ("BLN1", "BLNA",
+ *                        "BLN1WX", ...), upper case.
+ * @param[in] text       Bulletin text, decoded and trimmed.
+ */
+void telegram_app_notify_bulletin(const char *from_call, const char *to_call, const char *text);
 
 #endif // TELEGRAM_APP_H

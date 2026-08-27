@@ -799,15 +799,16 @@ static void aprs_msg_callback(ax25_msg_t *msg) {
             atomic_fetch_add_explicit(&s_statRf2Inet, 1, memory_order_relaxed);
     }
 
-    // handleIncomingAPRS() is the single ":ADDRESSEE:" parser for both APRS
-    // messages and directed queries ("CALL:?query?") - see the split inside
-    // it - so it must run whenever either feature is enabled, not just
-    // msg_enable, or a directed query would never reach query_process_directed()
-    // while messaging is turned off. Both this and query_process() below
-    // operate on the frame as received, rendered once at the top of this
-    // function, since digiProcess() (if it ran) rewrote the path for
-    // retransmission only, not for these consumers.
-    if (g_config.msg_enable || (g_config.query_en && g_config.query_directed_en)) {
+    // handleIncomingAPRS() is the single ":ADDRESSEE:" parser for three
+    // consumers - APRS messaging, directed queries ("CALL:?query?") and the
+    // Telegram routing of messages and bulletins - so it must run whenever any
+    // one of them is enabled, not just msg_enable, or a directed query would
+    // never reach query_process_directed() and no message or bulletin would
+    // reach Telegram while messaging is turned off. Both this and
+    // query_process() below operate on the frame as received, rendered once at
+    // the top of this function, since digiProcess() (if it ran) rewrote the
+    // path for retransmission only, not for these consumers.
+    if (g_config.msg_enable || (g_config.query_en && g_config.query_directed_en) || telegram_app_routing_active()) {
         handleIncomingAPRS(tnc2, QUERY_SRC_RF);
     }
 
@@ -1361,12 +1362,13 @@ static void inet2rfHandler(const char *line) {
     }
 
     // See the identical note at the RF call site above: handleIncomingAPRS()
-    // must run for directed queries even when messaging itself is off. Both
-    // entry points are told the line came from the APRS-IS feed, which is what
-    // lets the query responder keep internet traffic off the transmitter: a
-    // general query such as "?APRS?" is ordinary backbone traffic, and the
-    // answer to one belongs on the channel the question arrived on.
-    if (g_config.msg_enable || (g_config.query_en && g_config.query_directed_en))
+    // must run for directed queries and for Telegram routing even when
+    // messaging itself is off. Both entry points are told the line came from
+    // the APRS-IS feed, which is what lets the query responder keep internet
+    // traffic off the transmitter: a general query such as "?APRS?" is
+    // ordinary backbone traffic, and the answer to one belongs on the channel
+    // the question arrived on.
+    if (g_config.msg_enable || (g_config.query_en && g_config.query_directed_en) || telegram_app_routing_active())
         handleIncomingAPRS(line, QUERY_SRC_INET);
 
     if (g_config.query_en)

@@ -58,6 +58,12 @@ Un boletín caducado limpia automáticamente su bandera de habilitación y sale 
 aire. Los boletines persisten en su propio ``/storage/bulletins.json``. La página
 está condicionada por el interruptor de compilación ``ENABLE_BULLETINS``.
 
+Un boletín que esta estación transmite también se entrega al bot de Telegram,
+en los mismos términos que uno escuchado de otra estación, de modo que los
+operadores que leen el bot ven los anuncios propios de la estación junto a los
+de todos los demás. Lo gobierna el interruptor "Reenviar boletines" de la
+página *Telegram*; ver :ref:`es-telegram`.
+
 .. note::
 
    Los radiogramas NTS, también descritos en el capítulo 14, son un formato de

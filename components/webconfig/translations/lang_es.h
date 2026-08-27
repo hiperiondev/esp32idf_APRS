@@ -1740,6 +1740,15 @@
     "propio indicativo y a ningun otro. La coincidencia es exacta, SSID incluido, asi varios usuarios pueden compartir un mismo indicativo base con "          \
     "distinto SSID. Un mensaje cuyo destinatario no coincide con el Indicativo de ningun usuario no se reenvia a nadie. Las confirmaciones y los "             \
     "mensajes dirigidos a un grupo nunca se reenvian."
+/** Label of the route-bulletins checkbox, rendered on the Telegram page. */
+#define TR_TG_ROUTE_BULLETINS "Reenviar boletines"
+/** Explanatory note shown under the route-bulletins switch, rendered on the Telegram page. */
+#define TR_TG_NOTE_ROUTE_BULLETINS                                                                                                                             \
+    "Con esto encendido, todo boletin APRS recibido en la red, por el aire o desde el flujo APRS-IS, se envia a todos los usuarios autorizados, al "           \
+    "administrador y a todos los chats de grupo permitidos de mas abajo, como \"bulletin from <remitente> to <boletin> :: <texto del boletin>\". Un "          \
+    "boletin es un destinatario \"BLN\" seguido de un digito o una letra y, opcionalmente, de un nombre de grupo; no se compara ningun indicativo, ya que "    \
+    "un boletin esta dirigido a toda la red y no a una estacion. Un boletin identico a otro ya reenviado en los ultimos quince minutos no se envia de "        \
+    "nuevo, asi un boletin que su emisor repite por temporizador, o que se escucha a traves de varios digipetidores, llega una sola vez a cada chat."
 /** Fieldset legend for the credentials block, rendered on the Telegram page. */
 #define TR_TG_FS_BOT "Credenciales"
 /** Label of the bot token field, rendered on the Telegram page. */

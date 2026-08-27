@@ -14,11 +14,11 @@
 //     please contact their authors for more information.
 //
 // @brief Web admin "Telegram" page: the bot's enable switch, the switch that
-// routes incoming station messages to the bot, the settings an operator has
-// to be able to correct from a browser (the token, the administrator's
-// identifier, the Mini App address, the authorized users and the allowed
-// group chats), and a live diagnosis of where the connection to
-// api.telegram.org currently stands.
+// routes incoming station messages to the bot, the switch that routes
+// incoming bulletins to it, the settings an operator has to be able to
+// correct from a browser (the token, the administrator's identifier, the Mini
+// App address, the authorized users and the allowed group chats), and a live
+// diagnosis of where the connection to api.telegram.org currently stands.
 //
 // Everything on this page is stored in /storage/telegram.json, not in
 // config.json, so the whole bot configuration is one file that can also be
@@ -284,6 +284,8 @@ esp_err_t page_telegram_get(httpd_req_t *req) {
     web_raw(req, "<p style='color:var(--sub);font-size:12px;margin:4px 0'>" TR_TG_NOTE_SERVICE "</p>");
     web_field_checkbox(req, TR_TG_ROUTE_MESSAGES, "tgRouteMsg", cfg.route_station_messages);
     web_raw(req, "<p style='color:var(--sub);font-size:12px;margin:4px 0'>" TR_TG_NOTE_ROUTE_MESSAGES "</p>");
+    web_field_checkbox(req, TR_TG_ROUTE_BULLETINS, "tgRouteBul", cfg.route_bulletins);
+    web_raw(req, "<p style='color:var(--sub);font-size:12px;margin:4px 0'>" TR_TG_NOTE_ROUTE_BULLETINS "</p>");
     web_fieldset_close(req);
 
     // CREDENTIALS ---------------------------------------------------------
@@ -542,6 +544,7 @@ esp_err_t page_telegram_post(httpd_req_t *req) {
 
     cfg.enable = web_form_get_bool(body, "tgEn");
     cfg.route_station_messages = web_form_get_bool(body, "tgRouteMsg");
+    cfg.route_bulletins = web_form_get_bool(body, "tgRouteBul");
     web_form_get(body, "tgToken", cfg.bot_token, sizeof(cfg.bot_token));
 
     // strtoll, not the int helper: a Telegram user identifier does not fit in

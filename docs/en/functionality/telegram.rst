@@ -36,10 +36,18 @@ Everything the bot needs lives in ``/storage/telegram.json``, not in
        to the store; a hand-written file that omits it loads with the bot off.
    * - ``routeStationMessages``
      - The Telegram page's "Route Station messages" switch. When on, every
-       APRS message received addressed to an authorized user's own callsign
-       is also sent to that user's own Telegram chat; see `Routing station
-       messages to Telegram`_ below. Absent, the same as ``enabled``, loads
-       as off.
+       APRS message addressed to an authorized user's own callsign is also
+       sent to that user's own Telegram chat, whether it was received from
+       the network or originated here on the *Snd/Rcv Msg* page; see `Routing
+       station messages to Telegram`_ below. Absent, the same as ``enabled``,
+       loads as off.
+   * - ``routeBulletins``
+     - The Telegram page's "Route Bulletins" switch. When on, every APRS
+       bulletin this station handles - received from the network or
+       transmitted by its own *Bulletins* page - is sent to every authorized
+       user, to the administrator and to every allowed group chat; see
+       `Routing bulletins to Telegram`_ below. Absent, the same as
+       ``enabled``, loads as off.
    * - Bot token
      - The token issued by `@BotFather <https://t.me/BotFather>`__.
    * - Administrator identifier
@@ -131,9 +139,21 @@ Routing station messages to Telegram
 ====================================
 
 The *Telegram* page's "Route Station messages" switch, next to the bot's own
-enable switch, delivers incoming APRS messages to their addressee's own
-Telegram chat, so an operator reads what was sent to them on their phone
-without opening the *Snd/Rcv Msg* page.
+enable switch and above the "Route Bulletins" switch described below,
+delivers APRS messages to their addressee's own Telegram chat, so an operator
+reads what was sent to them on their phone without opening the *Snd/Rcv Msg*
+page.
+
+Both origins are routed on the same terms. A message received over the air or
+from the APRS-IS feed is routed as it is decoded, and a message this station
+originates itself from the *Snd/Rcv Msg* page is routed as it is transmitted,
+so sending to a callsign listed on the *Telegram* page puts the line in that
+user's chat as well as on the air. What is routed in the second case is the
+text that actually went out, after the sanitising the outgoing path applies,
+and without the message-number suffix, which addresses the radio protocol
+rather than the person reading the line. Only the first transmission is
+routed: the automatic retries carry the same text to the same addressee and
+would otherwise arrive as duplicates.
 
 The addressee set is the *Telegram* page's authorized-users table and nothing
 else. Each user card carries that operator's own Callsign, and a received
@@ -151,7 +171,12 @@ the operator's own group names), since a group name is not a user's callsign.
 Routing is independent of what this station does with the same frame
 afterwards: the automatic acknowledgement, the ``/status`` alarm pulse and the
 *Snd/Rcv Msg* history still apply only to messages addressed to this station's
-own callsign.
+own callsign. It is also independent of the *Message* page's own enable
+switch. Telegram routing is a consumer of the received frame in its own right,
+so an incoming message or bulletin is decoded and routed even on a station
+that runs the bot with APRS messaging switched off; everything behind that
+switch - the acceptance rule, the acknowledgement, the alarm pulse and the
+chat history - stays behind it.
 
 A routed message reaches its user as one line:
 
@@ -170,6 +195,65 @@ receive task, which carries none of the stack a Telegram network call needs
 for its TLS handshake. A short-lived worker task, sized and spawned the same
 way the bring-up worker described above is, drains that queue through
 ``telegram_send_message()``.
+
+Routing bulletins to Telegram
+=============================
+
+The *Telegram* page's "Route Bulletins" switch, directly under the one above,
+delivers APRS bulletins to Telegram. A bulletin is addressed to the
+whole network rather than to any station, so there is no addressee to match
+and no callsign to select a recipient by: every bulletin goes to every
+authorized user of the users table, to the administrator when one is
+configured, and to every allowed group chat. An administrator who is also
+listed in the users table receives one copy, not two.
+
+A bulletin is recognised by its addressee, per APRS101 chapter 14: ``BLN``
+followed by a single digit is a general bulletin, ``BLN`` followed by a single
+upper-case letter is an announcement, and either may carry a group name of up
+to five further characters (``BLN1``, ``BLNA``, ``BLN1WX``). Every source
+counts: a bulletin heard off the air, one that arrived from the APRS-IS feed,
+and one this station transmits itself are routed alike, so the operators
+reading the bot see the station's own announcements in the same chat and in
+the same form as everyone else's.
+
+A bulletin this station originates is routed by the scheduler that transmits
+it, once per transmit pass rather than once per channel, so a bulletin sent
+over both RF and the internet still reaches each chat once. It is routed
+whether or not either transmission succeeded, because what travels to
+Telegram is the announcement rather than a report on the radio, and it carries
+the on-air text, no-archive marker included, rather than the stored draft. A
+bulletin slot with neither RF nor Internet ticked is not transmitted at all
+and so is not routed either.
+
+A bulletin reaches its recipients as one line:
+
+.. code-block:: text
+
+   bulletin from <sender callsign> to <bulletin addressee> :: <bulletin text>
+
+Bulletins repeat, which is what makes them bulletins: the originator
+retransmits on a timer, every digipeater within earshot repeats what it hears,
+and an igated copy comes back from APRS-IS as well. A bulletin whose sender,
+addressee and text match one routed within the last fifteen minutes is
+therefore dropped instead of being sent again, so a periodic bulletin reaches
+each chat once rather than filling it with copies of itself. Editing the text,
+or a different station sending it, makes it a new bulletin and it is routed at
+once. The eight most recently routed bulletins are remembered, as a hash of
+those three fields and the time they were seen. This is also what keeps one of
+this station's own bulletins to a single copy when the digipeated frame comes
+back within the window: it carries the same sender, addressee and text, so the
+returning copy is recognised as the repeat it is.
+
+Delivery is bound by the same three conditions as a routed station message -
+the switch on, the bot enabled, the bot connected - and nothing is queued for
+later delivery when one of them does not hold.
+``telegram_app_notify_bulletin()`` (declared in ``telegram_app.h``) is the
+entry point message.c calls for a received bulletin and bulletins.c for one of
+this station's own, both under the same reasoning about the calling task's
+stack. It queues one item for
+the whole bulletin rather than one per recipient: the item carries the text
+once and is fanned out by the drain task, which is also where the recipient
+list is read, so a save landing between the two is reflected in the delivery.
 
 Built-in commands
 ==================

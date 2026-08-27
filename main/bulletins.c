@@ -34,11 +34,12 @@
 #include "aprs_service.h"
 #include "bulletins.h"
 #include "igate.h"
-#include "json_escape.h" // json_write_escaped()
-#include "json_store.h"  // shared JSON-file store scaffolding
-#include "sched_time.h"  // sched_mono_seconds() / sched_clamp_interval()
-#include "storage.h"     // storage_write_lock() / storage_generation()
-#include "str_append.h"  // str_copy_strip_line_breaks(), str_copy_utf8_safe()
+#include "json_escape.h"  // json_write_escaped()
+#include "json_store.h"   // shared JSON-file store scaffolding
+#include "sched_time.h"   // sched_mono_seconds() / sched_clamp_interval()
+#include "storage.h"      // storage_write_lock() / storage_generation()
+#include "str_append.h"   // str_copy_strip_line_breaks(), str_copy_utf8_safe()
+#include "telegram_app.h" // telegram_app_notify_bulletin(): optional Telegram routing of this station's own bulletins
 
 static const char *TAG = "bulletins";
 
@@ -376,11 +377,13 @@ void bulletins_build_addressee(const bulletin_t *b, int idx, char *out, size_t o
     snprintf(out, out_size, "%s", addr);
 }
 
-// Builds the ":BLNx     :text" APRS message info field for bulletin index i.
-static void build_info_field(int idx, const bulletin_t *b, const char *text, char *out, size_t out_size) {
+// Builds the ":BLNx     :text" APRS message info field from an addressee
+// already rendered by bulletins_build_addressee() and the on-air text. The
+// addressee is passed in rather than derived here because the caller needs it
+// for the Telegram routing as well, and one bulletin must carry one spelling
+// of it wherever it appears.
+static void build_info_field(const char *addr, const char *text, char *out, size_t out_size) {
     // No message number/ack is appended: bulletins never carry one.
-    char addr[10];
-    bulletins_build_addressee(b, idx, addr, sizeof(addr));
     snprintf(out, out_size, ":%s:%s", addr, text);
 }
 
@@ -398,8 +401,11 @@ static void tx_one(int idx, const bulletin_t *b, const char *src) {
     char text[BULLETIN_TEXT_MAX + APRS_NO_ARCHIVE_PREFIX_LEN + 1];
     aprs_free_text_build(b->text, no_archive, text, sizeof(text));
 
+    char addr[10];
+    bulletins_build_addressee(b, idx, addr, sizeof(addr));
+
     char info[128];
-    build_info_field(idx, b, text, info, sizeof(info));
+    build_info_field(addr, text, info, sizeof(info));
 
     if (b->send_rf) {
         // Sent direct (no digipeater path). Bulletins here intentionally carry
@@ -426,6 +432,19 @@ static void tx_one(int idx, const bulletin_t *b, const char *src) {
                 ESP_LOGW(TAG, "Bulletin %d NOT sent over INET - APRS-IS not connected yet", idx + 1);
         }
     }
+
+    // A bulletin this station originates reaches the operators reading the bot
+    // exactly as one from any other station does, so it is handed to the same
+    // routing entry point with the same three fields. What travels is the
+    // on-air text, marker included, which is the announcement as the network
+    // sees it rather than the stored draft. The call is made once per pass
+    // rather than once per channel: a bulletin sent over both RF and the
+    // internet is still one bulletin, and it is made regardless of whether
+    // either transmission succeeded, since the routing carries the
+    // announcement rather than a report on the radio. Telegram routing has its
+    // own switch on the Telegram page, so this is a no-op unless the operator
+    // turned it on for a bot that is running.
+    telegram_app_notify_bulletin(src, addr, text);
 }
 
 // Applies expiry to a freshly-loaded set: any enabled bulletin whose deadline

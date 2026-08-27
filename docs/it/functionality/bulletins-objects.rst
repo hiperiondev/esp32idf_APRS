@@ -60,6 +60,12 @@ Un bollettino scaduto pulisce automaticamente il suo flag di abilitazione ed esc
 dall'onda. I bollettini persistono nel proprio ``/storage/bulletins.json``. La
 pagina è condizionata dall'interruttore di compilazione ``ENABLE_BULLETINS``.
 
+Anche un bollettino che questa stazione trasmette viene consegnato al bot
+Telegram, alle stesse condizioni di uno sentito da un'altra stazione, così gli
+operatori che leggono il bot vedono gli annunci della stazione accanto a
+quelli di tutti gli altri. Lo governa l'interruttore "Inoltra bollettini"
+della pagina *Telegram*; vedi :ref:`it-telegram`.
+
 .. note::
 
    I radiogrammi NTS, descritti anch'essi nel capitolo 14, sono un formato di

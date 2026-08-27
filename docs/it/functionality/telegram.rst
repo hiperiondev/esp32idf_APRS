@@ -37,11 +37,18 @@ in ``config.json``:
        omette si carica con il bot spento.
    * - ``routeStationMessages``
      - L'interruttore "Inoltra messaggi della stazione" della pagina
-       Telegram. Acceso, ogni messaggio APRS ricevuto indirizzato al
-       nominativo proprio di un utente autorizzato viene anche inviato alla
-       chat Telegram di quell'utente; vedi `Inoltro dei messaggi della
-       stazione a Telegram`_ più sotto. Assente, come ``enabled``, si carica
-       spento.
+       Telegram. Acceso, ogni messaggio APRS indirizzato al nominativo proprio
+       di un utente autorizzato viene anche inviato alla chat Telegram di
+       quell'utente, che sia ricevuto dalla rete o originato qui dalla pagina
+       *Snd/Rcv Msg*; vedi `Inoltro dei messaggi della stazione a Telegram`_
+       più sotto. Assente, come ``enabled``, si carica spento.
+   * - ``routeBulletins``
+     - L'interruttore "Inoltra bollettini" della pagina Telegram. Acceso,
+       ogni bollettino APRS che questa stazione tratta - ricevuto dalla rete o
+       trasmesso dalla sua stessa pagina *Bulletins* - viene inviato a tutti
+       gli utenti autorizzati, all'amministratore e a tutte le chat di gruppo
+       consentite; vedi `Inoltro dei bollettini a Telegram`_ più sotto.
+       Assente, come ``enabled``, si carica spento.
    * - Token del bot
      - Il token rilasciato da `@BotFather <https://t.me/BotFather>`__.
    * - Identificativo dell'amministratore
@@ -138,10 +145,22 @@ Inoltro dei messaggi della stazione a Telegram
 ================================================
 
 L'interruttore "Inoltra messaggi della stazione" della pagina *Telegram*,
-accanto all'interruttore di accensione del bot stesso, consegna i messaggi
-APRS in arrivo alla chat Telegram del loro destinatario, così ogni operatore
-legge sul proprio telefono ciò che gli è stato inviato senza dover aprire la
-pagina *Snd/Rcv Msg*.
+accanto all'interruttore di accensione del bot stesso e sopra l'interruttore
+"Inoltra bollettini" descritto più sotto, consegna i messaggi APRS alla chat
+Telegram del loro destinatario, così ogni operatore legge sul proprio telefono
+ciò che gli è stato inviato senza dover aprire la pagina *Snd/Rcv Msg*.
+
+Entrambe le provenienze vengono inoltrate alle stesse condizioni. Un messaggio
+ricevuto via radio o dal flusso APRS-IS viene inoltrato quando è decodificato,
+e un messaggio che questa stazione origina dalla pagina *Snd/Rcv Msg* viene
+inoltrato quando è trasmesso, così inviare a un nominativo elencato nella
+pagina *Telegram* mette la riga nella chat di quell'utente oltre che in aria.
+Nel secondo caso ciò che viene inoltrato è il testo effettivamente uscito,
+dopo la sanificazione che applica il percorso di uscita, e senza il suffisso
+del numero di messaggio, che riguarda il protocollo radio e non la persona che
+legge la riga. Viene inoltrata solo la prima trasmissione: i ritenti
+automatici portano lo stesso testo allo stesso destinatario e arriverebbero
+come duplicati.
 
 L'insieme dei destinatari è la tabella degli utenti autorizzati della pagina
 *Telegram* e nient'altro. Ogni scheda utente porta il Nominativo proprio di
@@ -162,7 +181,13 @@ gruppo non è il nominativo di un utente. L'inoltro è indipendente da ciò che
 questa stazione fa poi con lo stesso frame: la conferma automatica, l'impulso
 di allarme di ``/status`` e lo storico di *Snd/Rcv Msg* continuano ad
 applicarsi solo ai messaggi indirizzati al nominativo proprio di questa
-stazione.
+stazione. È anche indipendente dall'interruttore di abilitazione della pagina
+*Message*. L'inoltro a Telegram è un consumatore del frame ricevuto a pieno
+titolo, così un messaggio o un bollettino in arrivo viene decodificato e
+inoltrato anche su una stazione che fa girare il bot con la messaggistica APRS
+spenta; tutto ciò che sta dietro quell'interruttore - la regola di
+accettazione, la conferma, l'impulso di allarme e lo storico della chat -
+resta dietro di esso.
 
 Un messaggio inoltrato raggiunge il suo utente come un'unica riga:
 
@@ -183,6 +208,69 @@ una chiamata di rete verso Telegram per il suo handshake TLS. Un task
 lavoratore di breve durata, dimensionato e avviato allo stesso modo del task
 di avvio descritto sopra, svuota quella coda tramite
 ``telegram_send_message()``.
+
+Inoltro dei bollettini a Telegram
+===================================
+
+L'interruttore "Inoltra bollettini" della pagina *Telegram*, subito sotto
+quello precedente, consegna a Telegram i bollettini APRS. Un
+bollettino è indirizzato a tutta la rete e non a una stazione, quindi non c'è
+alcun destinatario da confrontare né alcun nominativo con cui scegliere a chi
+consegnarlo: ogni bollettino va a tutti gli utenti autorizzati della tabella
+degli utenti, all'amministratore se ne è configurato uno e a tutte le chat di
+gruppo consentite. Un amministratore che compare anche nella tabella degli
+utenti riceve una copia, non due.
+
+Un bollettino si riconosce dal suo destinatario, secondo il capitolo 14 di
+APRS101: ``BLN`` seguito da una sola cifra è un bollettino generale, ``BLN``
+seguito da una sola lettera maiuscola è un annuncio, e ciascuno dei due può
+portare un nome di gruppo di al massimo altri cinque caratteri (``BLN1``,
+``BLNA``, ``BLN1WX``). Contano tutte le provenienze: un bollettino sentito via
+radio, uno arrivato dal flusso APRS-IS e uno che questa stazione trasmette da
+sé vengono inoltrati allo stesso modo, così gli operatori che leggono il bot
+vedono gli annunci della stazione nella stessa chat e nella stessa forma di
+quelli di chiunque altro.
+
+Un bollettino originato da questa stazione viene inoltrato dallo scheduler che
+lo trasmette, una volta per passata di trasmissione e non una per canale, così
+un bollettino inviato sia via RF sia via Internet raggiunge comunque ogni chat
+una sola volta. Viene inoltrato indipendentemente dall'esito di ciascuna
+trasmissione, perché ciò che viaggia verso Telegram è l'annuncio e non un
+resoconto sulla radio, e porta il testo come esce in aria, marcatore di non
+archiviazione incluso, anziché la bozza memorizzata. Uno slot di bollettino
+senza né RF né Internet spuntati non viene trasmesso affatto e quindi non
+viene nemmeno inoltrato.
+
+Un bollettino arriva ai suoi destinatari come una sola riga:
+
+.. code-block:: text
+
+   bulletin from <nominativo del mittente> to <destinatario del bollettino> :: <testo del bollettino>
+
+I bollettini si ripetono, ed è questo che li rende bollettini: il mittente li
+ritrasmette a intervalli, ogni digipeater a portata ripete ciò che sente e in
+più torna una copia igatata da APRS-IS. Perciò un bollettino il cui mittente,
+destinatario e testo coincidono con uno inoltrato negli ultimi quindici
+minuti viene scartato invece di essere inviato di nuovo, così un bollettino
+periodico arriva una sola volta in ogni chat anziché riempirla di copie di sé
+stesso. Modificare il testo, o l'invio da parte di un'altra stazione, ne fa un
+bollettino nuovo che viene inoltrato subito. Vengono ricordati gli otto
+bollettini inoltrati più di recente, come un hash di quei tre campi e il
+momento in cui sono stati visti. È anche ciò che mantiene a una sola copia un
+bollettino proprio di questa stazione quando il frame digipetuto torna entro
+la finestra: porta lo stesso mittente, destinatario e testo, così la copia di
+ritorno viene riconosciuta per la ripetizione che è.
+
+La consegna è vincolata alle stesse tre condizioni di un messaggio della
+stazione inoltrato - interruttore acceso, bot abilitato, bot connesso - e
+nulla resta in attesa per quando una di esse tornerà a valere.
+``telegram_app_notify_bulletin()`` (dichiarata in ``telegram_app.h``) è il
+punto di ingresso che chiama message.c per un bollettino ricevuto e
+bulletins.c per uno proprio di questa stazione, entrambi per lo stesso
+ragionamento sullo stack del task chiamante. Accoda un solo elemento per l'intero bollettino invece di uno per
+destinatario: l'elemento porta il testo una sola volta e il task che svuota la
+coda lo distribuisce, ed è lì che viene letto l'elenco dei destinatari, così
+un salvataggio che cade fra i due momenti si riflette nella consegna.
 
 Comandi integrati
 ===================

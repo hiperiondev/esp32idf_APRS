@@ -157,6 +157,12 @@ registrado:
 
 ``g_config.msg_rf`` y ``g_config.msg_inet`` deciden qué patas están activas.
 
+Hay una tercera pata opcional que no llega a ninguna radio: con el interruptor
+"Reenviar mensajes de la estacion" de la página *Telegram* encendido, un
+mensaje dirigido a un indicativo listado allí se entrega además al chat de
+Telegram de ese usuario, sea recibido de la red o enviado desde la página
+``/msgchat``. Ver :ref:`es-telegram`.
+
 La interfaz de chat de mensajes (``/msgchat``)
 ==============================================
 

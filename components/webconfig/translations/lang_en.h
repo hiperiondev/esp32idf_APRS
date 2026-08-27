@@ -1638,6 +1638,15 @@
     "against this station's My Callsign on the Station page, so each user receives the messages sent to their own callsign and nobody else's. The "            \
     "match is exact, SSID included, so several users can share one base callsign under different SSIDs. A message whose addressee matches no user's "          \
     "Callsign is not routed to anyone. Acknowledgements and messages addressed to a group are never routed."
+/** Label of the route-bulletins checkbox, rendered on the Telegram page. */
+#define TR_TG_ROUTE_BULLETINS "Route Bulletins"
+/** Explanatory note shown under the route-bulletins switch, rendered on the Telegram page. */
+#define TR_TG_NOTE_ROUTE_BULLETINS                                                                                                                             \
+    "With this on, every APRS bulletin received on the network, off the air or from the APRS-IS feed, is sent to all the authorized users, to the "            \
+    "administrator and to all the allowed group chats listed below, as \"bulletin from <sender> to <bulletin> :: <bulletin text>\". A bulletin is an "         \
+    "addressee of \"BLN\" plus a digit or a letter, optionally followed by a group name; no callsign is matched, since a bulletin is addressed to the whole "  \
+    "network rather than to any station. A bulletin identical to one already routed in the last fifteen minutes is not sent again, so a bulletin its "         \
+    "sender repeats on a timer, or one heard through several digipeaters, reaches each chat once."
 /** Fieldset legend for the credentials block, rendered on the Telegram page. */
 #define TR_TG_FS_BOT "Credentials"
 /** Label of the bot token field, rendered on the Telegram page. */

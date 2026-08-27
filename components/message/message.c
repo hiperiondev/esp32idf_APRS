@@ -16,9 +16,10 @@
 // @brief APRS text messaging implementation: outgoing message and ACK
 // formatting, incoming message parsing and acknowledgement, the Reply-ACK
 // algorithm of APRS 1.1, retry/timeout handling of the in-memory queue, and
-// optional forwarding of incoming messages to the Telegram account of the
-// authorized user they were addressed to (see
-// telegram_app_notify_station_message()).
+// optional forwarding to Telegram of every message this station handles -
+// received or originated here - to the account of the authorized user it was
+// addressed to, and of every bulletin to every account the bot knows (see
+// telegram_app_notify_station_message() and telegram_app_notify_bulletin()).
 
 #include <ctype.h>
 #include <stdio.h>
@@ -41,7 +42,7 @@
 #include "query.h"             // query_process_directed(): second consumer of the ::ADDRESSEE: payload, for "CALL:?query?"
 #include "sensors_local_i2c.h" // sensors_local_i2c_gpio_is_reserved(): keep the I2C pins out of the alarm pin
 #include "str_append.h"
-#include "telegram_app.h" // telegram_app_notify_station_message(): optional per-user Telegram routing of incoming messages
+#include "telegram_app.h" // telegram_app_notify_station_message(), telegram_app_notify_bulletin(), telegram_app_routing_active(): optional Telegram routing
 
 static const char *TAG = "message";
 
@@ -223,6 +224,17 @@ static bool callsignBaseMatch(const char *a, const char *b) {
     if (na == 0 || na != nb)
         return false;
     return strncasecmp(a, b, na) == 0;
+}
+
+// True if a message addressee names a bulletin rather than a station or a
+// message group: "BLN" followed by a single digit is a general bulletin,
+// "BLN" followed by a single upper-case letter is an announcement, and either
+// may carry a group name of up to five further characters, which is what the
+// four-byte test here covers for all three at once (APRS101 chapter 14).
+// Bulletins are broadcasts this station neither acknowledges nor stores; the
+// only thing done with one here is the optional Telegram routing of the text.
+static bool isBulletinAddressee(const char *toCall) {
+    return strncmp(toCall, "BLN", 3) == 0 && (isdigit((unsigned char)toCall[3]) || isupper((unsigned char)toCall[3]));
 }
 
 // Reports whether toCall (already trimmed and upper-cased) is one of the
@@ -668,6 +680,27 @@ void sendAPRSMessage(const char *toCall, const char *text) {
     txPacket(myCallUp, toCallUp, info);
     ESP_LOGD(TAG, "Send APRS message to %s msgID %u: %s", toCall, (unsigned)s_msgID, info);
 
+    // A message this station originates is routed to Telegram on the same
+    // terms as one it receives: the addressee decides the recipient, so a
+    // message the operator sends from the Snd/Rcv Msg page to a callsign
+    // listed on the Telegram page reaches that user's own chat. What is
+    // routed is the sanitized payload, which is the text that actually went
+    // on the air, and the message number suffix is left out of it because it
+    // addresses the radio protocol rather than the person reading the line.
+    //
+    // An addressee in the bulletin range is routed as the broadcast it is,
+    // to every account the bot knows, so the origin of a bulletin never
+    // decides who reads it. Only the first transmission is routed; the
+    // retries sendAPRSMessageRetry() sends carry the same text to the same
+    // addressee and would otherwise arrive as duplicates of a line already
+    // delivered.
+    if (payload[0] != 0) {
+        if (isBulletinAddressee(toCallUp))
+            telegram_app_notify_bulletin(myCallUp, toCallUp, payload);
+        else
+            telegram_app_notify_station_message(myCallUp, toCallUp, payload);
+    }
+
     int8_t ackVal = (g_config.msg_retry == 0) ? -2 : (int8_t)g_config.msg_retry;
     // The trimmed upper-case addressee is what goes in the queue, matching the
     // form the callsign takes on the air. An incoming ack is matched against
@@ -905,7 +938,15 @@ void handleIncomingAPRS(const char *line, query_source_t source) {
         return;
     }
 
-    if (!g_config.msg_enable)
+    // Telegram routing is a consumer of this frame in its own right, with its
+    // own switches on the Telegram page, so the text is decoded before the
+    // messaging service's own switch is consulted and the routing below runs
+    // whether or not this station keeps the message for itself. Everything
+    // past that test - the acceptance rule, the acknowledgement, the alarm
+    // pulse and the chat history - belongs to the messaging service and stays
+    // behind it.
+    bool msg_service_on = g_config.msg_enable;
+    if (!msg_service_on && !telegram_app_routing_active())
         return;
 
     char message[300] = { 0 };
@@ -942,16 +983,6 @@ void handleIncomingAPRS(const char *line, query_source_t source) {
         msgNo[sizeof(msgNo) - 1] = 0;
     }
 
-    // Reply-ACK split. msgNo keeps the identifier whole, because an ack has to
-    // quote it back exactly as it arrived; ownNo is the sender's own number and
-    // replyAck the free acknowledgement riding with it, empty when the sender
-    // sent none. On an "ackMM}AA" line the trailing part is this station's own
-    // free acknowledgement quoted back, not an acknowledgement of anything, so
-    // only ownNo is used there.
-    char ownNo[8];
-    char replyAck[8];
-    splitReplyAck(msgNo, ownNo, sizeof(ownNo), replyAck, sizeof(replyAck));
-
     ESP_LOGD(TAG, "Message from %s to %s: %s", fromCall, toCall, message);
 
     // Handed to the Telegram bot ahead of this station's own acceptance test.
@@ -964,6 +995,33 @@ void handleIncomingAPRS(const char *line, query_source_t source) {
     // "Route Station messages" on for a bot that is actually running.
     if (!isAck && !isRej && message[0] != 0)
         telegram_app_notify_station_message(fromCall, toCall, message);
+
+    // A bulletin is handed to the bot on the same terms, and by the same
+    // reasoning: a bulletin is addressed to the whole network rather than to
+    // any station, so it reaches every account the bot is configured to talk
+    // to instead of being matched against a callsign. Bulletins arrive both
+    // off the air and from the APRS-IS feed and are repeated by their
+    // originator and by every digipeater that hears them, so the routing
+    // itself drops a bulletin identical to one it delivered recently. A
+    // no-op unless the operator has turned "Route Bulletins" on for a bot
+    // that is actually running.
+    if (!isAck && !isRej && message[0] != 0 && isBulletinAddressee(toCall))
+        telegram_app_notify_bulletin(fromCall, toCall, message);
+
+    // Everything from here on is the messaging service's own work on a frame
+    // it keeps, so it happens only when that service is switched on.
+    if (!msg_service_on)
+        return;
+
+    // Reply-ACK split. msgNo keeps the identifier whole, because an ack has to
+    // quote it back exactly as it arrived; ownNo is the sender's own number and
+    // replyAck the free acknowledgement riding with it, empty when the sender
+    // sent none. On an "ackMM}AA" line the trailing part is this station's own
+    // free acknowledgement quoted back, not an acknowledgement of anything, so
+    // only ownNo is used there.
+    char ownNo[8];
+    char replyAck[8];
+    splitReplyAck(msgNo, ownNo, sizeof(ownNo), replyAck, sizeof(replyAck));
 
     // Accept the message either addressed to this station - the addressee's
     // base callsign matches ours regardless of SSID on either side, so a

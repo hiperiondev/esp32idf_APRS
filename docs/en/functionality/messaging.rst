@@ -149,6 +149,12 @@ Each message is routed by a channel bitmask via a registered TX handler:
 
 ``g_config.msg_rf`` and ``g_config.msg_inet`` decide which legs are active.
 
+A third leg is optional and reaches no radio: when the *Telegram* page's
+"Route Station messages" switch is on, a message addressed to a callsign
+listed there is delivered to that user's Telegram chat as well, whether it was
+received from the network or sent from the ``/msgchat`` page. See
+:ref:`en-telegram`.
+
 The message-chat UI (``/msgchat``)
 ==================================
 

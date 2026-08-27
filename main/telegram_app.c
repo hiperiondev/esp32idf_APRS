@@ -86,11 +86,27 @@ static const char *TAG = "telegram_app";
 #define TELEGRAM_NOTIFY_STACK_BYTES 8192
 #define TELEGRAM_NOTIFY_PRIORITY    4
 
-// Number of routed station messages held between one drain and the next. A
+// Number of routed notifications held between one drain and the next. A
 // handful is enough: this is a convenience notification, not the message
 // store the "Snd/Rcv Msg" page itself keeps, and a burst larger than this
-// simply loses its oldest members rather than growing without bound.
+// simply loses its oldest members rather than growing without bound. A
+// bulletin occupies one slot however many recipients it reaches, since a
+// broadcast item carries its text once and is fanned out as it is drained.
 #define TELEGRAM_NOTIFY_QUEUE_LEN 8
+
+// Bulletins remembered for the duplicate test, and how long one stays
+// remembered.
+//
+// A bulletin is not sent once: its originator repeats it on a timer, every
+// digipeater within earshot repeats it again, and an igated copy comes back
+// from the APRS-IS feed as well, so one bulletin reaches this station many
+// times over. Routing every copy would fill a chat with the same paragraph,
+// so a bulletin identical to one routed inside the window is dropped. Eight
+// slots cover the bulletin sets stations in one area actually run (APRS101
+// allows nine general bulletins plus announcements), and the window is longer
+// than the shortest interval an operator would sensibly transmit one at.
+#define TELEGRAM_BULLETIN_SEEN_SLOTS   8
+#define TELEGRAM_BULLETIN_SEEN_SECONDS 900
 
 // Longest rendered "msg from ... to ... :: ..." line the queue carries. Wide
 // enough for two 9-character callsigns, the fixed wording around them, and
@@ -218,31 +234,52 @@ static bool s_route_messages;
 static telegram_app_user_t s_route_users[TELEGRAM_APP_USERS_MAX];
 static uint8_t s_route_user_count;
 
+// Cached copy of s_cfg.route_bulletins, and of the recipient set a routed
+// bulletin fans out to: the users above, the allowed group chats and the
+// administrator. Read without the lock from the drain task and from
+// telegram_app_notify_bulletin(), and refreshed together with everything
+// else above, under s_lock, whenever telegram_app_apply_config() runs.
+static bool s_route_bulletins;
+static telegram_app_peer_t s_route_chats[TELEGRAM_APP_CHATS_MAX];
+static uint8_t s_route_chat_count;
+static int64_t s_route_admin_id;
+
 // Longest chat identifier a queued item addresses, rendered as text the same
 // way telegram_send_message() expects it.
 #define TELEGRAM_NOTIFY_CHAT_ID_MAX 24
 
 // ---------------------------------------------------------------------------
-// Routed station message notifications
+// Routed notifications: station messages and bulletins
 //
 // message.c's frame-decoding path calls telegram_app_notify_station_message()
-// for every received message it decodes, and that path runs on the modem's
-// own RX task, which carries none of the stack a TLS handshake needs. So the
-// call site only ever formats a line, looks up the users it belongs to and
-// pushes one item per user onto s_notify_queue; a dedicated drain task,
+// for every received message it decodes and telegram_app_notify_bulletin()
+// for every bulletin, and that path runs on the modem's own RX task, which
+// carries none of the stack a TLS handshake needs. So the call sites only
+// ever format a line and push it onto s_notify_queue; a dedicated drain task,
 // spawned on demand and sized like the bring-up worker above, is what
 // actually reaches Telegram.
+//
+// The two differ in who receives the line, and that difference is what the
+// broadcast flag below carries. A station message names one addressee, so its
+// recipients are known at the call site and one item is queued per user it
+// matched. A bulletin names nobody and goes to every user, every group chat
+// and the administrator, so queueing a copy per recipient would spend
+// thirteen slots and thirteen copies of the same text on one bulletin; it is
+// queued once instead and fanned out by the drain task, which is also where
+// the recipient list is read, so a save landing in between is reflected in
+// the delivery rather than in a list captured a moment earlier.
 // ---------------------------------------------------------------------------
 
-// One pending "msg from ... to ... :: ..." line, addressed to one user.
+// One pending line, either addressed to one user or broadcast to all.
 typedef struct {
-    char chat_id[TELEGRAM_NOTIFY_CHAT_ID_MAX]; // recipient's Telegram identifier, as text
+    char chat_id[TELEGRAM_NOTIFY_CHAT_ID_MAX]; // recipient's Telegram identifier, as text; unused when broadcast
+    bool broadcast;                            // true to fan out to every user, group chat and the administrator
     char text[TELEGRAM_NOTIFY_TEXT_MAX];
 } telegram_notify_item_t;
 
-// Created on first use rather than at start-up: most stations never turn
-// "Route Station messages" on, and an unused queue would hold its storage for
-// the life of the firmware for nothing.
+// Created on first use rather than at start-up: most stations leave both
+// "Route Station messages" and "Route Bulletins" off, and an unused queue
+// would hold its storage for the life of the firmware for nothing.
 static QueueHandle_t s_notify_queue;
 static volatile bool s_notify_worker_alive;
 
@@ -251,21 +288,64 @@ static void notify_queue_ensure(void) {
         s_notify_queue = xQueueCreate(TELEGRAM_NOTIFY_QUEUE_LEN, sizeof(telegram_notify_item_t));
 }
 
+// Sends one line to one chat, naming a delivery that did not happen rather
+// than letting it disappear. A failure is never retried: the bot going down
+// between the moment an item was queued and the moment it is drained is the
+// ordinary way this happens, and this is a convenience notification, not the
+// message store the "Snd/Rcv Msg" page itself keeps, so the operator has the
+// same traffic there regardless.
+static void notify_send_one(const char *chat_id, const char *text) {
+    esp_err_t err = telegram_send_message(chat_id, text);
+    if (err != ESP_OK)
+        ESP_LOGW(TAG, "Line not routed to Telegram chat %s: %s", chat_id, esp_err_to_name(err));
+}
+
+// Delivers one broadcast item to every account this station knows: every
+// authorized user, the administrator when one is configured, and every
+// allowed group chat.
+//
+// The administrator is sent to separately because telegram_init() holds it as
+// an authorized user of the service while the file's own users table does not
+// necessarily list it. An administrator that does appear there would then
+// receive the same bulletin twice, so the identifier is checked against the
+// users table first and only sent to when it is not already among them.
+static void notify_broadcast(const char *text) {
+    char chat_id[TELEGRAM_NOTIFY_CHAT_ID_MAX];
+
+    for (uint8_t i = 0; i < s_route_user_count; i++) {
+        snprintf(chat_id, sizeof(chat_id), "%" PRId64, s_route_users[i].id);
+        notify_send_one(chat_id, text);
+    }
+
+    int64_t admin = s_route_admin_id;
+    if (admin != 0) {
+        bool already_sent = false;
+        for (uint8_t i = 0; i < s_route_user_count && !already_sent; i++)
+            already_sent = (s_route_users[i].id == admin);
+        if (!already_sent) {
+            snprintf(chat_id, sizeof(chat_id), "%" PRId64, admin);
+            notify_send_one(chat_id, text);
+        }
+    }
+
+    for (uint8_t i = 0; i < s_route_chat_count; i++) {
+        snprintf(chat_id, sizeof(chat_id), "%" PRId64, s_route_chats[i].id);
+        notify_send_one(chat_id, text);
+    }
+}
+
 // Delivers every item queued so far and exits, returning its stack to the
 // heap exactly like telegram_worker_task() does once a bring-up or a teardown
-// is done. An item telegram_send_message() could not deliver - the bot went
-// down between the lookup in telegram_app_notify_station_message() and this
-// task running - is dropped rather than requeued: this is a convenience
-// notification, not the message store the "Snd/Rcv Msg" page itself keeps, and
-// the operator has the same message there regardless.
+// is done.
 static void telegram_notify_worker_task(void *arg) {
     (void)arg;
 
     telegram_notify_item_t item;
     while (xQueueReceive(s_notify_queue, &item, 0) == pdTRUE) {
-        esp_err_t err = telegram_send_message(item.chat_id, item.text);
-        if (err != ESP_OK)
-            ESP_LOGW(TAG, "Station message not routed to Telegram: %s", esp_err_to_name(err));
+        if (item.broadcast)
+            notify_broadcast(item.text);
+        else
+            notify_send_one(item.chat_id, item.text);
     }
 
     // Between the last empty receive above and this task actually deleting
@@ -391,6 +471,16 @@ bool telegram_app_enabled(void) {
     return en;
 }
 
+bool telegram_app_routing_active(void) {
+    // The same three conditions the two notify entry points below test, read
+    // the same lock-free way and for the same reason: this is asked on the
+    // frame-decoding path, once per frame, and must never wait behind a save
+    // in progress. A caller that gets true and finds the bot gone a moment
+    // later loses one routed line, which is what any of the three going false
+    // costs at any other point in the sequence.
+    return (s_route_messages || s_route_bulletins) && s_enabled && s_service_up;
+}
+
 void telegram_app_notify_station_message(const char *from_call, const char *to_call, const char *text) {
     if (from_call == NULL || to_call == NULL || text == NULL)
         return;
@@ -423,6 +513,7 @@ void telegram_app_notify_station_message(const char *from_call, const char *to_c
 
         telegram_notify_item_t item;
         snprintf(item.chat_id, sizeof(item.chat_id), "%" PRId64, s_route_users[i].id);
+        item.broadcast = false;
         memcpy(item.text, line, sizeof(item.text));
 
         // Never blocks: a full queue means notifications are arriving faster
@@ -435,6 +526,96 @@ void telegram_app_notify_station_message(const char *from_call, const char *to_c
 
         notify_worker_spawn();
     }
+}
+
+// One bulletin already routed, remembered so its repeats are not routed
+// again. The hash identifies the bulletin by everything an operator would
+// call part of it - who sent it, which bulletin slot it is, and what it says -
+// so an edited bulletin is a new one and is delivered at once.
+typedef struct {
+    uint32_t hash;
+    int64_t seen_us;
+} telegram_bulletin_seen_t;
+
+static telegram_bulletin_seen_t s_bulletin_seen[TELEGRAM_BULLETIN_SEEN_SLOTS];
+static uint8_t s_bulletin_seen_next;
+
+// FNV-1a over the three fields that identify a bulletin. A hash rather than
+// the strings themselves: the table then costs twelve bytes per slot instead
+// of the three hundred a stored text would, and the only cost of a collision
+// is one bulletin not routed, which the next edit of its text clears.
+static uint32_t bulletin_hash(const char *from_call, const char *to_call, const char *text) {
+    uint32_t h = 2166136261u;
+    const char *const parts[] = { from_call, to_call, text };
+    for (size_t p = 0; p < sizeof(parts) / sizeof(parts[0]); p++) {
+        for (const char *c = parts[p]; *c != 0; c++) {
+            h ^= (uint32_t)(unsigned char)*c;
+            h *= 16777619u;
+        }
+        h ^= 0xffu; // separator, so "AB"+"C" and "A"+"BC" are different bulletins
+        h *= 16777619u;
+    }
+    return h;
+}
+
+// True when this exact bulletin was routed inside the window, in which case
+// nothing is delivered. A bulletin that was not is recorded in the oldest
+// slot and reported as new.
+//
+// Called from the frame-decoding path, which runs on the modem's receive task
+// for a bulletin heard off the air and on the APRS-IS client's task for one
+// that arrived from the feed, so two calls can overlap. The table is left
+// unlocked all the same. The worst an overlap can produce is one extra copy
+// of a bulletin, which is the very thing this test only ever makes rare
+// rather than impossible, and a mutex here would make a frame decode wait on
+// a network task for a notification nobody is waiting for.
+static bool bulletin_is_repeat(const char *from_call, const char *to_call, const char *text) {
+    uint32_t h = bulletin_hash(from_call, to_call, text);
+    int64_t now = esp_timer_get_time();
+    int64_t window = (int64_t)TELEGRAM_BULLETIN_SEEN_SECONDS * 1000000;
+
+    for (uint8_t i = 0; i < TELEGRAM_BULLETIN_SEEN_SLOTS; i++) {
+        if (s_bulletin_seen[i].seen_us != 0 && s_bulletin_seen[i].hash == h && (now - s_bulletin_seen[i].seen_us) < window)
+            return true;
+    }
+
+    s_bulletin_seen[s_bulletin_seen_next].hash = h;
+    s_bulletin_seen[s_bulletin_seen_next].seen_us = now;
+    s_bulletin_seen_next = (uint8_t)((s_bulletin_seen_next + 1) % TELEGRAM_BULLETIN_SEEN_SLOTS);
+    return false;
+}
+
+void telegram_app_notify_bulletin(const char *from_call, const char *to_call, const char *text) {
+    if (from_call == NULL || to_call == NULL || text == NULL)
+        return;
+
+    // Read without the lock, the same way telegram_app_notify_station_message()
+    // reads its own switch and for the same reason: this runs on the
+    // frame-decoding path and must never wait behind a save in progress.
+    if (!s_route_bulletins || !s_enabled || !s_service_up)
+        return;
+
+    // Tested before the queue is created, so a station that only ever hears
+    // repeats of one bulletin does not allocate a queue to drop them from.
+    if (bulletin_is_repeat(from_call, to_call, text))
+        return;
+
+    notify_queue_ensure();
+    if (s_notify_queue == NULL)
+        return;
+
+    telegram_notify_item_t item;
+    item.chat_id[0] = 0;
+    item.broadcast = true;
+    snprintf(item.text, sizeof(item.text), "bulletin from %s to %s :: %s", from_call, to_call, text);
+
+    // Never blocks, for the reason given at the same call in
+    // telegram_app_notify_station_message(): the oldest undelivered
+    // notification is what a full queue costs here.
+    if (xQueueSend(s_notify_queue, &item, 0) != pdTRUE)
+        return;
+
+    notify_worker_spawn();
 }
 
 // ---------------------------------------------------------------------------
@@ -548,6 +729,10 @@ static bool load_locked(telegram_app_config_t *out) {
     const cJSON *rsm = cJSON_GetObjectItem(doc, "routeStationMessages");
     out->route_station_messages = cJSON_IsTrue(rsm);
 
+    // Absent means off, for the same reason the two switches above do.
+    const cJSON *rbl = cJSON_GetObjectItem(doc, "routeBulletins");
+    out->route_bulletins = cJSON_IsTrue(rbl);
+
     get_string(doc, "bot_token", out->bot_token, sizeof(out->bot_token));
     get_string(doc, "web_app_url", out->web_app_url, sizeof(out->web_app_url));
     out->admin_id = get_id(doc, "admin_id");
@@ -604,6 +789,8 @@ static bool save_locked(const telegram_app_config_t *in) {
     fputs(in->enable ? "true" : "false", f);
     fputs(",\"routeStationMessages\":", f);
     fputs(in->route_station_messages ? "true" : "false", f);
+    fputs(",\"routeBulletins\":", f);
+    fputs(in->route_bulletins ? "true" : "false", f);
     fputs(",\"bot_token\":", f);
     json_write_escaped(f, in->bot_token);
     fprintf(f, ",\"admin_id\":%" PRId64, in->admin_id);
@@ -1375,6 +1562,10 @@ void telegram_app_apply_config(void) {
     s_route_messages = cfg.route_station_messages;
     memcpy(s_route_users, cfg.users, sizeof(s_route_users));
     s_route_user_count = cfg.user_count;
+    s_route_bulletins = cfg.route_bulletins;
+    memcpy(s_route_chats, cfg.chats, sizeof(s_route_chats));
+    s_route_chat_count = cfg.chat_count;
+    s_route_admin_id = cfg.admin_id;
     unlock();
 
     if (!cfg.enable) {

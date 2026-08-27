@@ -163,6 +163,12 @@ TX registrato:
 
 ``g_config.msg_rf`` e ``g_config.msg_inet`` decidono quali rami sono attivi.
 
+C'è un terzo ramo facoltativo che non raggiunge alcuna radio: con
+l'interruttore "Inoltra messaggi della stazione" della pagina *Telegram*
+acceso, un messaggio indirizzato a un nominativo elencato lì viene consegnato
+anche alla chat Telegram di quell'utente, che sia ricevuto dalla rete o
+inviato dalla pagina ``/msgchat``. Vedi :ref:`it-telegram`.
+
 L'interfaccia di chat messaggi (``/msgchat``)
 =============================================
 

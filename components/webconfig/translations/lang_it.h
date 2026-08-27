@@ -1741,6 +1741,16 @@
     "indirizzati al proprio nominativo e a nessun altro. La corrispondenza e esatta, SSID incluso, cosi piu utenti possono condividere uno stesso "            \
     "nominativo base con SSID diversi. Un messaggio il cui destinatario non corrisponde al Nominativo di alcun utente non viene inoltrato a nessuno. "         \
     "Le conferme e i messaggi indirizzati a un gruppo non vengono mai inoltrati."
+/** Label of the route-bulletins checkbox, rendered on the Telegram page. */
+#define TR_TG_ROUTE_BULLETINS "Inoltra bollettini"
+/** Explanatory note shown under the route-bulletins switch, rendered on the Telegram page. */
+#define TR_TG_NOTE_ROUTE_BULLETINS                                                                                                                             \
+    "Con questo acceso, ogni bollettino APRS ricevuto sulla rete, via radio o dal flusso APRS-IS, viene inviato a tutti gli utenti autorizzati, "              \
+    "all'amministratore e a tutte le chat di gruppo consentite qui sotto, come \"bulletin from <mittente> to <bollettino> :: <testo del bollettino>\". Un "    \
+    "bollettino e un destinatario \"BLN\" seguito da una cifra o da una lettera e, facoltativamente, da un nome di gruppo; non viene confrontato alcun "       \
+    "nominativo, poiche un bollettino e indirizzato a tutta la rete e non a una stazione. Un bollettino identico a uno gia inoltrato negli ultimi "            \
+    "quindici minuti non viene inviato di nuovo, cosi un bollettino che il mittente ripete a intervalli, o sentito attraverso piu digipeater, arriva "         \
+    "una sola volta in ogni chat."
 /** Fieldset legend for the credentials block, rendered on the Telegram page. */
 #define TR_TG_FS_BOT "Credenziali"
 /** Label of the bot token field, rendered on the Telegram page. */

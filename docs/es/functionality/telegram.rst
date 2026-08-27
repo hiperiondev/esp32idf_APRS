@@ -37,10 +37,18 @@ Todo lo que el bot necesita vive en ``/storage/telegram.json``, no en
        carga con el bot apagado.
    * - ``routeStationMessages``
      - El interruptor "Reenviar mensajes de la estacion" de la página
-       Telegram. Encendido, todo mensaje APRS recibido dirigido al indicativo
-       propio de un usuario autorizado también se envía al chat de Telegram de
-       ese usuario; ver `Reenvío de mensajes de la estación a Telegram`_ más
-       abajo. Ausente, igual que ``enabled``, se carga apagado.
+       Telegram. Encendido, todo mensaje APRS dirigido al indicativo propio de
+       un usuario autorizado también se envía al chat de Telegram de ese
+       usuario, sea recibido de la red u originado aquí en la página *Snd/Rcv
+       Msg*; ver `Reenvío de mensajes de la estación a Telegram`_ más abajo.
+       Ausente, igual que ``enabled``, se carga apagado.
+   * - ``routeBulletins``
+     - El interruptor "Reenviar boletines" de la página Telegram. Encendido,
+       todo boletín APRS que esta estación maneja —recibido de la red o
+       transmitido por su propia página *Bulletins*— se envía a todos los
+       usuarios autorizados, al administrador y a todos los chats de grupo
+       permitidos; ver `Reenvío de boletines a Telegram`_ más abajo. Ausente,
+       igual que ``enabled``, se carga apagado.
    * - Token del bot
      - El token emitido por `@BotFather <https://t.me/BotFather>`__.
    * - Identificador del administrador
@@ -139,10 +147,21 @@ Reenvío de mensajes de la estación a Telegram
 ===============================================
 
 El interruptor "Reenviar mensajes de la estacion" de la página *Telegram*,
-junto al propio interruptor de encendido del bot, entrega los mensajes APRS
-entrantes al chat de Telegram de su destinatario, de modo que cada operador
-lee en su teléfono lo que le enviaron sin necesidad de abrir la página
-*Snd/Rcv Msg*.
+junto al propio interruptor de encendido del bot y encima del interruptor
+"Reenviar boletines" descrito más abajo, entrega los mensajes APRS al chat de
+Telegram de su destinatario, de modo que cada operador lee en su teléfono lo
+que le enviaron sin necesidad de abrir la página *Snd/Rcv Msg*.
+
+Ambas procedencias se reenvían en los mismos términos. Un mensaje recibido por
+el aire o desde el flujo APRS-IS se reenvía al decodificarlo, y un mensaje que
+esta estación origina desde la página *Snd/Rcv Msg* se reenvía al
+transmitirlo, así que enviar a un indicativo listado en la página *Telegram*
+deja la línea en el chat de ese usuario además de ponerla al aire. En el
+segundo caso lo que se reenvía es el texto que realmente salió, después del
+saneamiento que aplica la ruta de salida, y sin el sufijo de número de
+mensaje, que atañe al protocolo de radio y no a la persona que lee la línea.
+Solo se reenvía la primera transmisión: los reintentos automáticos llevan el
+mismo texto al mismo destinatario y llegarían como duplicados.
 
 El conjunto de destinatarios es la tabla de usuarios autorizados de la página
 *Telegram* y nada más. Cada tarjeta de usuario lleva el Indicativo propio de
@@ -161,7 +180,13 @@ de los nombres de grupo propios del operador), ya que un nombre de grupo no es
 el indicativo de un usuario. El reenvío es independiente de lo que esta
 estación haga después con la misma trama: la confirmación automática, el pulso
 de alarma de ``/status`` y el historial de *Snd/Rcv Msg* siguen aplicándose
-solo a los mensajes dirigidos al indicativo propio de esta estación.
+solo a los mensajes dirigidos al indicativo propio de esta estación. También
+es independiente del interruptor de habilitación de la página *Message*. El
+reenvío a Telegram es un consumidor de la trama recibida por derecho propio,
+así que un mensaje o un boletín entrante se decodifica y se reenvía incluso en
+una estación que corre el bot con la mensajería APRS apagada; todo lo que está
+detrás de ese interruptor —la regla de aceptación, la confirmación, el pulso
+de alarma y el historial del chat— sigue detrás de él.
 
 Un mensaje reenviado llega a su usuario como una sola línea:
 
@@ -182,6 +207,67 @@ red a Telegram necesita para su handshake TLS. Una tarea trabajadora de corta
 vida, dimensionada y lanzada del mismo modo que el trabajador de arranque
 descrito más arriba, vacía esa cola a través de
 ``telegram_send_message()``.
+
+Reenvío de boletines a Telegram
+=================================
+
+El interruptor "Reenviar boletines" de la página *Telegram*, justo debajo del
+anterior, entrega a Telegram los boletines APRS. Un boletín está
+dirigido a toda la red y no a una estación, así que no hay destinatario que
+comparar ni indicativo por el que elegir a quién entregarlo: cada boletín va a
+todos los usuarios autorizados de la tabla de usuarios, al administrador si
+hay uno configurado y a todos los chats de grupo permitidos. Un administrador
+que además figura en la tabla de usuarios recibe una copia, no dos.
+
+Un boletín se reconoce por su destinatario, según el capítulo 14 de APRS101:
+``BLN`` seguido de un solo dígito es un boletín general, ``BLN`` seguido de una
+sola letra mayúscula es un anuncio, y cualquiera de los dos puede llevar un
+nombre de grupo de hasta cinco caracteres más (``BLN1``, ``BLNA``,
+``BLN1WX``). Cuentan todas las procedencias: un boletín escuchado por el aire,
+uno llegado desde el flujo APRS-IS y uno que esta estación transmite por sí
+misma se reenvían igual, de modo que los operadores que leen el bot ven los
+anuncios propios de la estación en el mismo chat y con la misma forma que los
+de cualquier otra.
+
+Un boletín originado por esta estación lo reenvía el planificador que lo
+transmite, una vez por pasada de transmisión y no una por canal, así que un
+boletín enviado por RF e Internet a la vez llega igual una sola vez a cada
+chat. Se reenvía haya tenido éxito o no cada transmisión, porque lo que viaja
+a Telegram es el anuncio y no un informe sobre la radio, y lleva el texto tal
+como sale al aire, marcador de no archivar incluido, en lugar del borrador
+almacenado. Una ranura de boletín sin RF ni Internet marcados no se transmite
+en absoluto y por lo tanto tampoco se reenvía.
+
+Un boletín llega a sus destinatarios como una sola línea:
+
+.. code-block:: text
+
+   bulletin from <indicativo del remitente> to <destinatario del boletín> :: <texto del boletín>
+
+Los boletines se repiten, que es lo que los hace boletines: el emisor los
+retransmite por temporizador, cada digipetidor al alcance repite lo que oye y
+además vuelve una copia igateada desde APRS-IS. Por eso un boletín cuyo
+remitente, destinatario y texto coinciden con uno reenviado en los últimos
+quince minutos se descarta en lugar de enviarse de nuevo, así un boletín
+periódico llega una sola vez a cada chat en vez de llenarlo de copias de sí
+mismo. Editar el texto, o que lo envíe otra estación, lo convierte en un
+boletín nuevo y se reenvía de inmediato. Se recuerdan los ocho boletines
+reenviados más recientemente, como un hash de esos tres campos y el momento en
+que se vieron. Eso es también lo que mantiene en una sola copia un boletín
+propio de esta estación cuando la trama digipetida vuelve dentro de la
+ventana: lleva el mismo remitente, destinatario y texto, así que la copia que
+regresa se reconoce como la repetición que es.
+
+El envío está sujeto a las mismas tres condiciones que un mensaje de estación
+reenviado —interruptor encendido, bot habilitado, bot conectado— y no queda
+nada en espera para cuando alguna de ellas vuelva a cumplirse.
+``telegram_app_notify_bulletin()`` (declarada en ``telegram_app.h``) es el
+punto de entrada que llama message.c para un boletín recibido y bulletins.c
+para uno propio de esta estación, ambos por el mismo razonamiento sobre la
+pila de la tarea que llama. Encola un único elemento para todo el boletín en lugar de uno por
+destinatario: el elemento lleva el texto una sola vez y la tarea que vacía la
+cola lo reparte, y es ahí donde se lee la lista de destinatarios, de modo que
+un guardado que caiga entre ambos momentos se refleja en la entrega.
 
 Comandos incorporados
 =======================
