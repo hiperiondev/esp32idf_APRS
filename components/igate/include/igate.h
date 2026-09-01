@@ -252,6 +252,47 @@ void igate_start(void);
 int igateProcess(ax25_msg_t *packet);
 
 /**
+ * @brief Should this RF frame appear in the web traffic log?
+ *
+ * Implements the "Log after filters" switch of the IGate page
+ * (app_config_t::igate_log_after_filters) for the RF side. With the switch
+ * off - the default - every decoded frame is logged and this returns true
+ * unconditionally. With it on, the frame is shown only if it passes this
+ * station's own RF->INET filters: the Satellite Gate List, the payload-type
+ * whitelist g_config.rf2inetFilter, the local range and prefix gates of the
+ * same fieldset, and the Callsign Filter. Third-party ('}') traffic is
+ * evaluated on its unwrapped inner packet, exactly as igateProcess() gates it.
+ *
+ * The verdict is a display choice only: it governs the traffic-log entry and
+ * the matching serial console line together, and changes nothing about what is
+ * gated, digipeated, transmitted or counted. The filters are evaluated
+ * whatever the state of the IGate enable and the RF->INET direction switch, so
+ * a receive-only station's log is narrowed rather than emptied.
+ *
+ * @param packet Decoded frame, as handed to igateProcess().
+ * @return true if the frame belongs in the traffic log.
+ */
+bool igate_log_accepts_frame(const ax25_msg_t *packet);
+
+/**
+ * @brief Should this APRS-IS line appear in the web traffic log?
+ *
+ * The INET->RF counterpart of igate_log_accepts_frame(), with the same
+ * semantics and the same switch behind it. The filters applied are the
+ * payload-type whitelist g_config.inet2rfFilter (including the selective
+ * third-party unwrap exception), the local INET->RF range gate, and the
+ * Callsign Filter - the settings the operator makes on the IGate page, and not
+ * the unconditional safety rules of aprs_service.c's INET->RF handler, whose
+ * traffic (this station's own reports echoed back by the server above all)
+ * stays visible. It gates the console line and the traffic-log entry together,
+ * exactly as its RF counterpart does.
+ *
+ * @param line Raw TNC2 text line read from APRS-IS, NUL-terminated.
+ * @return true if the line belongs in the traffic log.
+ */
+bool igate_log_accepts_line(const char *line);
+
+/**
  * @brief Duplicate-packet check within one ::dup_scope_t window.
  *
  * Hashes @p packet (source callsign+SSID, payload length and a bidirectional

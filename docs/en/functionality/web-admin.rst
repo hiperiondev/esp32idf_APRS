@@ -64,7 +64,8 @@ The pages
      - Enable, RF→INET / INET→RF, both filter bitmasks, budlist and range/prefix
        gates, callsign/SSID/passcode, four *APRS-IS Server* fieldsets (each an
        Enable checkbox plus host and port, used as a failover rotation),
-       server-side filter string,
+       server-side filter string, the *Log after filters* switch that narrows the
+       traffic table and the serial console to what the local filters accept,
        nine payload-type checkboxes per direction (the ninth, *Other*, covers
        station capabilities, user-defined formats, Agrelo direction finding,
        Maidenhead locator beacons and the reserved map feature),
@@ -280,7 +281,9 @@ Live feeds
 * ``/igate_traffic?since=<seq>`` — the traffic log delta (JSON). Each entry
   carries a direction tag (``RX``/``TX``/``DIGI``/``INET2RF``/``RX-IS``), the DX
   callsign, the raw packet, the decoded-fields summary (``dec``, empty when the
-  payload carries none), and the audio level in mV RMS (or −1). The body is
+  payload carries none), and the audio level in mV RMS (or −1). With *Log after
+  filters* set on the IGate page, the ``RX`` and ``RX-IS`` entries cover only the
+  traffic this station's own filters accept — see :ref:`en-igate`. The body is
   streamed one entry per HTTP chunk, so a client that is far behind still gets
   every buffered line: the response has no size cap and the firmware never
   assembles the whole document in RAM. The ``seq`` it reports back is the

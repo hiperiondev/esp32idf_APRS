@@ -1315,6 +1315,15 @@
     "unwrapped and relayed if its inner source callsign is itself on the whitelist. Only enable if you trust and have whitelisted the specific source - "      \
     "re-gating third-party traffic without this restriction is the most common cause of IGate loops."
 
+/** Form label for the "log after filters" field or fieldset, rendered on the IGate page. */
+#define TR_F_LOG_AFTER_FILTERS "Log after filters"
+/** Explanatory note shown beside the log after filters setting, rendered on the IGate page. */
+#define TR_NOTE_LOG_AFTER_FILTERS                                                                                                                              \
+    "While off, the traffic table and the serial console report every frame decoded on RF and every line the APRS-IS server sends. While on, they report "     \
+    "only what this station's own IGate filters accept: the Satellite Gate List and the RF to Internet set for radio traffic, the Internet to RF set for "     \
+    "APRS-IS traffic, and the Callsign Filter for both. This narrows what is shown only - a frame left out is still digipeated, gated and counted exactly "    \
+    "as before."
+
 /** Form label for the "satgate" field or fieldset, rendered on the IGate page. */
 #define TR_F_SATGATE "Satellite Gate List"
 /** Form label for the "satgate call" field or fieldset, rendered on the IGate page. */

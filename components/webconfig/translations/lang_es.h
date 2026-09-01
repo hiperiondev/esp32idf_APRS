@@ -1403,6 +1403,15 @@
     "terceros solo se desenvuelve y retransmite si su indicativo de origen interno está en la lista blanca. Active esto solo si confía en la fuente "          \
     "específica y la ha incluido en la lista blanca - volver a filtrar tráfico de terceros sin esta restricción es la causa más común de bucles de IGate."
 
+/** Spanish text for the form label for the "log after filters" field or fieldset, rendered on the IGate page. English: "Log after filters". */
+#define TR_F_LOG_AFTER_FILTERS "Registrar después de los filtros"
+/** Spanish text for the explanatory note shown beside the log after filters setting, rendered on the IGate page. */
+#define TR_NOTE_LOG_AFTER_FILTERS                                                                                                                              \
+    "Desactivado, la tabla de tráfico y la consola serie informan todas las tramas decodificadas en RF y todas las líneas que envía el servidor APRS-IS. "     \
+    "Activado, informan solo lo que aceptan los filtros IGate de esta estación: la Lista de Satélites Digipetidores y el juego RF a Internet para el "         \
+    "tráfico de radio, el juego Internet a RF para el tráfico APRS-IS, y el Filtro de Indicativos para ambos. Solo acota lo que se muestra: una trama "        \
+    "omitida se repite, se pasarela y se cuenta igual que antes."
+
 /** Spanish text for the form label for the "satgate" field or fieldset, rendered on the IGate page. English: "Satellite Gate List". */
 #define TR_F_SATGATE "Lista de Satélites Digipetidores"
 /** Spanish text for the form label for the "satgate call" field or fieldset, rendered on the IGate page. English: "Satellite Callsign". */

@@ -791,6 +791,12 @@ typedef struct {
     char aprs_filter[128];                      /**< APRS-IS server-side filter string. Sized for several terms at once: a single range or area term already
                                                     runs past 20 characters, and a subscription that names both a local radius and a traffic class needs two
                                                     or three of them. See aprs_filter_validate_server_string(). */
+    bool igate_log_after_filters;               /**< Off by default. Log display gate: while set, the "RX" and "RX-IS" entries of the web traffic log and their
+                                                    matching serial console lines are only emitted for a frame/line that passes this station's own IGate
+                                                    filters - the Satellite Gate List and the RF->INET set (type mask, range, prefix) plus the Callsign Filter
+                                                    for RF, the INET->RF set (type mask, range) plus the Callsign Filter for APRS-IS - instead of every frame
+                                                    received. Purely a display choice: a frame left out of both views is still digipeated, gated, parsed and
+                                                    counted exactly as before. See igate_log_accepts_frame() / igate_log_accepts_line(). */
     bool igate_bcn;                             /**< Enable the IGate position beacon. */
     bool igate_timestamp;                       /**< Include a timestamp in the IGate beacon. */
     float igate_lat;                            /**< IGate beacon latitude. */

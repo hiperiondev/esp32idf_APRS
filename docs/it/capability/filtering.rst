@@ -166,3 +166,22 @@ essere ``<lettera>/<argomenti>`` con una lettera di filtro nota e la forma di
 argomenti corretta per quella lettera (``r`` necessita esattamente 3 argomenti
 numerici, ``p`` necessita almeno un prefisso, …). Valida solo la struttura, non
 se i valori di coordinata/distanza sono sensati.
+
+
+Filtro di visualizzazione del registro traffico
+===============================================
+
+``igate_log_after_filters`` (*Registra dopo i filtri* nella pagina IGate,
+disattivato di default) riusa i filtri qui sopra come filtro di
+**visualizzazione** della tabella del traffico web e delle righe corrispondenti
+della console seriale: con l'opzione attiva, una voce ``RX`` viene emessa solo
+per una trama accettata da
+``igate_log_accepts_frame()`` (Elenco Digipeater Satellitari, ``rf2inetFilter``,
+i filtri di distanza e prefisso RF→INET, il filtro indicativi RF→INET) e una
+voce ``RX-IS`` solo per una riga accettata da ``igate_log_accepts_line()``
+(``inet2rfFilter`` incluso l'unwrap selettivo di terze parti, il filtro di
+distanza INET→RF, il filtro indicativi INET→RF). Entrambe condividono
+l'implementazione con il percorso di gating, quindi il registro e il gateway non
+possono discordare. Nulla cambia in ciò che viene instradato, ripetuto o
+trasmesso e nessun contatore di scarto si muove: una trama omessa dal registro
+viene trattata esattamente come prima.

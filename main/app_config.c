@@ -245,6 +245,7 @@ void app_config_set_defaults(app_config_t *c) {
         c->aprs_server[i].port = APRS_PORT_DEFAULT;
     }
     set_str(c->aprs_filter, sizeof(c->aprs_filter), "");
+    c->igate_log_after_filters = false;
     c->igate_bcn = true;
     c->igate_lat = 0.000f;
     c->igate_lon = 0.000f;
@@ -735,6 +736,7 @@ static void config_write_json(jw_t *d, const app_config_t *c) {
     jadd_bool(d, "igateUseGps", c->igate_use_gps);
     jadd_str(d, "igatePasscode", c->aprs_passcode);
     jadd_str(d, "igateFilter", c->aprs_filter);
+    jadd_bool(d, "igateLogAfterFilters", c->igate_log_after_filters);
     jadd_num(d, "igateLAT", c->igate_lat);
     jadd_num(d, "igateLON", c->igate_lon);
     jadd_num(d, "igateALT", c->igate_alt);
@@ -1306,6 +1308,7 @@ static void config_from_json(cJSON *d, app_config_t *c) {
     c->igate_use_gps = jget_bool(d, "igateUseGps", c->igate_use_gps);
     set_str(c->aprs_passcode, sizeof(c->aprs_passcode), jget_str(d, "igatePasscode", c->aprs_passcode));
     set_str(c->aprs_filter, sizeof(c->aprs_filter), jget_str(d, "igateFilter", c->aprs_filter));
+    c->igate_log_after_filters = jget_bool(d, "igateLogAfterFilters", c->igate_log_after_filters);
     c->igate_lat = (float)jget_num(d, "igateLAT", c->igate_lat);
     c->igate_lon = (float)jget_num(d, "igateLON", c->igate_lon);
     c->igate_alt = (float)jget_num(d, "igateALT", c->igate_alt);

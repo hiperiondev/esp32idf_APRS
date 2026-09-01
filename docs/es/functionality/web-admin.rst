@@ -69,7 +69,8 @@ Las páginas
        de rango/prefijo, indicativo/SSID/passcode, cuatro recuadros *APRS-IS
        Server* (cada uno con casilla Habilitar más host y puerto, usados como
        rotación de failover), cadena de filtro
-       de servidor, nueve casillas de tipo de carga por dirección (la novena,
+       de servidor, el interruptor *Registrar después de los filtros* que acota la
+       tabla de tráfico y la consola serie a lo que aceptan los filtros locales, nueve casillas de tipo de carga por dirección (la novena,
        *Otros*, cubre capacidades de estación, formatos definidos por el
        usuario, radiogoniometría Agrelo, balizas de localizador Maidenhead y el
        elemento de mapa reservado), baliza on/off, posición, intervalo, selector de símbolo,
@@ -307,7 +308,9 @@ Feeds en vivo
   entrada lleva una etiqueta de dirección (``RX``/``TX``/``DIGI``/``INET2RF``/``RX-IS``),
   el indicativo DX, el paquete crudo, el resumen de campos decodificados
   (``dec``, vacío cuando la carga no lleva ninguno), y el nivel de audio en mV
-  RMS (o −1). El
+  RMS (o −1). Con *Registrar después de los filtros* activo en la página IGate,
+  las entradas ``RX`` y ``RX-IS`` cubren solo el tráfico que aceptan los filtros
+  de esta estación — ver :ref:`es-igate`. El
   cuerpo se transmite una entrada por fragmento HTTP, así que un cliente muy
   atrasado recibe igual todas las líneas guardadas: la respuesta no tiene tope
   de tamaño y el firmware nunca arma el documento completo en RAM. El ``seq``

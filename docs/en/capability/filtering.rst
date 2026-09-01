@@ -159,3 +159,20 @@ Server-side filter validation
 that letter (``r`` needs exactly 3 numeric args, ``p`` needs at least one
 prefix, …). It validates structure only, not whether the coordinate/distance
 values are sensible.
+
+
+Traffic log display gate
+========================
+
+``igate_log_after_filters`` (*Log after filters* on the IGate page, off by
+default) reuses the filters above as a **display** gate for the web traffic
+table and the matching serial console lines: while it is on, an ``RX`` entry is
+emitted only for a frame
+``igate_log_accepts_frame()`` accepts (Satellite Gate List, ``rf2inetFilter``,
+the RF→INET range and prefix gates, the RF→INET callsign filter) and an
+``RX-IS`` entry only for a line ``igate_log_accepts_line()`` accepts
+(``inet2rfFilter`` including the selective third-party unwrap, the INET→RF range
+gate, the INET→RF callsign filter). Both share their implementation with the
+gating path, so the log and the gateway cannot disagree. Nothing about gating,
+digipeating or transmitting changes and no drop counter moves: a frame left out
+of the log is still handled exactly as before.

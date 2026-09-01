@@ -667,10 +667,15 @@ static void aprs_msg_callback(ax25_msg_t *msg) {
     if (!aprs_extract_symbol((const char *)msg->info, msg->len, &symTable, &symCode) && msg->len > 0)
         aprs_symbol_from_dest((char)msg->info[0], msg->dst.call, msg->src.ssid, &symTable, &symCode);
 
-    // Log every decoded RF frame so the web traffic viewer mirrors what the
-    // serial console shows for RF activity, regardless of which
-    // feature(s) below end up acting on it. AUDIO is the demodulated
-    // signal level (mV RMS) reported by the AFSK/GFSK modem for this frame.
+    // Both views of RF activity - the serial console line and the web traffic
+    // viewer - report every decoded frame, regardless of which feature(s)
+    // below end up acting on it, unless "Log after filters" is set on the
+    // IGate page: that narrows both to the frames this station's own IGate
+    // filters accept (igate_log_accepts_frame()). What a frame is used for is
+    // decided further down and is unaffected either way - a frame the two
+    // views leave out is still digipeated, gated and parsed as usual.
+    // AUDIO is the demodulated signal level (mV RMS) reported by the AFSK/GFSK
+    // modem for this frame.
     // DECODED holds the fields the payload carries next to its coordinates -
     // its own timestamp, course, speed, altitude, radio range, PHG - read
     // once here so a moving station reads as moving instead of as a bare
@@ -683,8 +688,10 @@ static void aprs_msg_callback(ax25_msg_t *msg) {
             aprs_filter_format_report(&report, decoded, sizeof(decoded));
     }
 
-    ESP_LOGI(TAG, "RX: %s", tnc2);
-    trafficlog_add_pkt("RX", callsign, tnc2, decoded, (int)msg->mVrms, symTable, symCode);
+    if (igate_log_accepts_frame(msg)) {
+        ESP_LOGI(TAG, "RX: %s", tnc2);
+        trafficlog_add_pkt("RX", callsign, tnc2, decoded, (int)msg->mVrms, symTable, symCode);
+    }
 
     // Mic-E position comment (APRS101 ch.10). It lives in the destination
     // address, so it never appears in the packet text above and would

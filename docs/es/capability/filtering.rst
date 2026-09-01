@@ -166,3 +166,22 @@ debe ser ``<letra>/<args>`` con una letra de filtro conocida y la forma de
 argumentos correcta para esa letra (``r`` necesita exactamente 3 args numéricos,
 ``p`` necesita al menos un prefijo, …). Valida solo la estructura, no si los
 valores de coordenada/distancia son sensatos.
+
+
+Filtrado del registro de tráfico
+================================
+
+``igate_log_after_filters`` (*Registrar después de los filtros* en la página
+IGate, desactivado por defecto) reutiliza los filtros anteriores como filtro de
+**visualización** de la tabla de tráfico web y de las líneas correspondientes de
+la consola serie: con la opción activa, solo se emite una entrada ``RX`` para
+una trama que acepta
+``igate_log_accepts_frame()`` (Lista de Satélites Digipetidores,
+``rf2inetFilter``, los filtros de rango y prefijo RF→INET, el filtro de
+indicativos RF→INET) y una entrada ``RX-IS`` solo para una línea que acepta
+``igate_log_accepts_line()`` (``inet2rfFilter`` incluido el desempaquetado
+selectivo de terceros, el filtro de rango INET→RF, el filtro de indicativos
+INET→RF). Ambas comparten implementación con la ruta de pasarela, así que el
+registro y la pasarela no pueden discrepar. No cambia nada de lo que se
+pasarela, repite o transmite y ningún contador de descartes se mueve: una trama
+omitida del registro se sigue tratando igual que antes.

@@ -431,6 +431,40 @@ the far end of the conversation. The slot is released by that one report, which
 is what makes it a follow-up rather than a subscription; a weather or object
 report is gated under its own type bit, on its own merits.
 
+Traffic log display gate
+========================
+
+*Log after filters* on the IGate page (``igate_log_after_filters``, off by
+default) narrows both views of received traffic — the web traffic table and the
+``RX``/``APRS-IS RX`` lines on the serial console — to the traffic this
+station's own filters accept. It changes nothing about what is gated,
+digipeated or transmitted.
+
+While it is on, an ``RX`` entry and its console line are emitted only for a
+frame that passes
+``igate_log_accepts_frame()`` — the Satellite Gate List, the ``rf2inetFilter``
+payload-type mask, the RF→INET range and prefix gates and the RF→INET callsign
+filter — and an ``RX-IS`` entry only for a line that passes
+``igate_log_accepts_line()`` — the ``inet2rfFilter`` mask including the
+selective third-party unwrap, the INET→RF range gate and the INET→RF callsign
+filter. Both share their implementation with the gating path itself
+(``satGateListPass()``, ``rf2inetFiltersPass()``), so the log and the gateway
+cannot drift apart, and both are evaluated whatever the state of the IGate
+enable and the two direction switches, so a receive-only station's log is
+narrowed rather than emptied.
+
+The unconditional INET→RF rules — the own-report echo guard, the
+``TCPXX``/``NOGATE``/``RFONLY`` header tokens, the broadcast-addressee rule, the
+generic query drop and the message gate — are deliberately left out. They are
+not filters the operator sets on the page, and applying them would hide this
+station's own reports as APRS-IS echoes them back.
+
+Nothing but the display changes. A frame the two views leave out is still
+digipeated, gated, parsed and counted exactly as before — ``isRxCount`` stays
+the total of every line read off the socket, and no drop counter moves, because
+a hidden line was not dropped, only not shown. Turning the switch off restores
+both views in full, which is how to check what it is holding back.
+
 Counters and drop reasons
 =========================
 

@@ -146,6 +146,15 @@ esp_err_t page_igate_get(httpd_req_t *req) {
         web_raw(req, wbuf);
         s_filterWarning[0] = 0; // shown once
     }
+
+    // Traffic-log display gate, placed right under the server-side filter it
+    // is most easily confused with: that string decides what the server sends
+    // this station, this checkbox decides how much of what arrives - and of
+    // what the radio hears - the traffic table shows. It changes nothing about
+    // what is gated or transmitted, which is what the note says.
+    web_field_checkbox(req, TR_F_LOG_AFTER_FILTERS, "igateLogAfterFilters", g_config.igate_log_after_filters);
+    web_raw(req, "<p style='color:var(--sub);font-size:12px;margin:-4px 0 8px'>" TR_NOTE_LOG_AFTER_FILTERS "</p>");
+
     web_field_text(req, TR_F_COMMENT, "igateComment", g_config.igate_comment, COMMENT_SIZE - 1);
     web_field_checkbox(req, TR_F_TIME_STAMP, "igateTime", g_config.igate_timestamp);
     web_fieldset_close(req);
@@ -693,6 +702,10 @@ esp_err_t page_igate_post(httpd_req_t *req) {
             }
         }
     }
+
+    // Traffic-log display gate. Nothing to push to the running session: it is
+    // read straight from g_config every time an entry is about to be added.
+    g_config.igate_log_after_filters = web_form_get_bool(body, "igateLogAfterFilters");
 
     // Decide which of the two live-update paths (if any) the running IGate
     // session needs, by comparing against the pre-save snapshot taken above.

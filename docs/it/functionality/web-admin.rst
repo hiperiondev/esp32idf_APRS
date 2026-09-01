@@ -69,7 +69,9 @@ Le pagine
        di portata/prefisso, indicativo/SSID/passcode, quattro riquadri *APRS-IS
        Server* (ciascuno con casella Abilita più host e porta, usati come
        rotazione di failover), stringa di
-       filtro server, nove caselle di tipo di payload per direzione (la nona,
+       filtro server, l'interruttore *Registra dopo i filtri* che restringe la
+       tabella del traffico e la console seriale a ciò che i filtri locali
+       accettano, nove caselle di tipo di payload per direzione (la nona,
        *Altri*, copre capacità di stazione, formati definiti dall'utente,
        radiogoniometria Agrelo, radiofari di locatore Maidenhead e l'elemento di
        mappa riservato), beacon on/off, posizione, intervallo, selettore di simbolo,
@@ -310,7 +312,9 @@ Feed in tempo reale
   porta un'etichetta di direzione (``RX``/``TX``/``DIGI``/``INET2RF``/``RX-IS``),
   l'indicativo DX, il pacchetto grezzo, il riepilogo dei campi decodificati
   (``dec``, vuoto quando il payload non ne porta nessuno), e il livello audio in
-  mV RMS (o −1). Il
+  mV RMS (o −1). Con *Registra dopo i filtri* attivo nella pagina IGate, le voci
+  ``RX`` e ``RX-IS`` coprono solo il traffico che i filtri di questa stazione
+  accettano — vedi :ref:`it-igate`. Il
   corpo viene trasmesso una voce per chunk HTTP, così un client molto arretrato
   riceve comunque tutte le righe memorizzate: la risposta non ha un tetto di
   dimensione e il firmware non assembla mai l'intero documento in RAM. Il

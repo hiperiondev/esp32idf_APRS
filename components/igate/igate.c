@@ -33,6 +33,7 @@
 #include "freertos/task.h"
 
 #include "app_config.h"
+#include "aprs_bm.h"
 #include "aprs_coord.h"
 #include "aprs_filter.h"
 #include "aprs_service.h"
@@ -572,6 +573,214 @@ static const char *qConstructFor(const char *srcCall, uint16_t localWindowSec) {
     return "qAR";
 }
 
+// Satellite Gate List (IGate page): only gate frames routed through a known
+// satellite digipeater when that satellite address is actually marked as used,
+// i.e. the AX.25 "has been repeated" H-bit of the address is set. A frame
+// carrying the satellite in its path without that bit was merely addressed to
+// the bird, never relayed by it, so it must not reach APRS-IS.
+//
+// The H-bit is decoded by ax25_decode() into the packet->rpt_flags bitmap (one
+// bit per rpt_list entry) and is read through the AX25_REPEATED() accessor;
+// rpt_list[].call holds only the bare NUL-terminated callsign. The '*' marker
+// is a TNC2 text convention and is emitted from rpt_flags when the header line
+// is rendered by igateProcess().
+//
+// The gate-call list is web-configurable (IGate page, parallel to the callsign
+// whitelist/blacklist). It is snapshotted under the config lock because this
+// runs on the modem RX task and a concurrent web save could otherwise rewrite
+// the list mid-check.
+//
+// @p report tells the two callers apart: igateProcess() is deciding whether to
+// gate the frame and counts its verdict, while igate_log_accepts_frame() is
+// only deciding whether to show it and must leave the counters alone.
+static bool satGateListPass(const ax25_msg_t *packet, bool report) {
+    char satGates[IGATE_SATGATE_MAX][10];
+    app_config_lock();
+    memcpy(satGates, g_config.satgate, sizeof(satGates));
+    app_config_unlock();
+    // The copy above takes the full field width of every row, so termination
+    // depends on what the config loader stored. Force it: everything
+    // downstream treats each row as a C string, and a row filled edge to edge
+    // would send it reading past the end of that row.
+    for (size_t s = 0; s < IGATE_SATGATE_MAX; s++)
+        satGates[s][sizeof(satGates[s]) - 1] = 0;
+
+    for (int idx = 0; idx < packet->rpt_count; idx++) {
+        for (size_t s = 0; s < IGATE_SATGATE_MAX; s++) {
+            size_t satLen = strlen(satGates[s]);
+            if (satLen == 0)
+                continue; // empty slot: skip
+            if (!strncmp(packet->rpt_list[idx].call, satGates[s], satLen)) {
+                if (!AX25_REPEATED(packet, idx)) {
+                    if (report)
+                        s_stats.dropByReason[DROP_SAT_NOT_USED]++;
+                    return false;
+                }
+            }
+        }
+    }
+    return true;
+}
+
+// The RF->INET filter set of the IGate page, applied to one frame already
+// reduced to its effective view: the inner packet's source, destination and
+// information field for third-party ('}') traffic, the frame's own otherwise.
+// The four checks compose under AND semantics and are independent of each
+// other:
+//
+//   * the payload-type whitelist g_config.rf2inetFilter, the RF side of the
+//     pair aprs_service.c applies to g_config.inet2rfFilter for INET->RF
+//     traffic - both halves classify with the same aprs_filter helpers and
+//     test with the same aprs_filter_pass(), so a type turned off gates
+//     identically whichever direction it travels in;
+//   * the local range gate, measured from "My Station";
+//   * the local callsign-prefix gate;
+//   * the Callsign Filter, keyed on the effective source callsign.
+//
+// None of them has anything to do with g_config.aprs_filter (the APRS-IS
+// server-side filter, which only governs what the server sends INTO this
+// client); these gate what this client chooses to push OUT to APRS-IS from RF.
+//
+// The two range/prefix settings are snapshotted under the config lock for the
+// same reason the satellite list above is. @p report has the same meaning as
+// it does there: only the gating caller counts and logs a verdict.
+static bool rf2inetFiltersPass(const char *srcCall, const char *dstCall, const char *effInfo, size_t effInfoLen, bool report) {
+    uint16_t type = aprs_filter_classify_info(effInfo);
+    if (!aprs_filter_pass(g_config.rf2inetFilter, type)) {
+        if (report) {
+            ESP_LOGD(TAG, "RF2INET filtered (%s, mask=0x%03X): %.*s", aprs_filter_type_name(type), (unsigned)g_config.rf2inetFilter, (int)effInfoLen, effInfo);
+            s_stats.dropByReason[DROP_TYPE_FILTER]++;
+        }
+        return false;
+    }
+
+    bool rangeEn, prefixEn;
+    float rangeKm, ownLat, ownLon;
+    char prefixes[sizeof(g_config.rf2inet_prefixes)];
+
+    app_config_lock();
+    rangeEn = g_config.rf2inet_range_en;
+    rangeKm = g_config.rf2inet_range_km;
+    ownLat = g_config.my_lat;
+    ownLon = g_config.my_lon;
+    prefixEn = g_config.rf2inet_prefix_en;
+    memcpy(prefixes, g_config.rf2inet_prefixes, sizeof(prefixes));
+    app_config_unlock();
+    // The copy above takes the full field width, so termination depends on
+    // what the config loader stored. Force it: everything downstream treats
+    // this as a C string, and a field filled edge to edge would send it
+    // reading past the end of the local buffer.
+    prefixes[sizeof(prefixes) - 1] = 0;
+
+    // The effective destination call feeds the Mic-E decode path inside
+    // aprs_filter_decode_position() (the position lives in the AX.25
+    // destination field for that payload type); a third-party inner packet
+    // never carries Mic-E in its unwrapped text form, so this is only exact
+    // for the non-unwrapped case and simply doesn't decode for the other,
+    // same as any other undecodable position.
+    if (rangeEn && rangeKm > 0.0f) {
+        float plat, plon;
+        if (aprs_filter_decode_position(effInfo, dstCall, &plat, &plon)) {
+            float d = aprs_filter_haversine_km(ownLat, ownLon, plat, plon);
+            if (d > rangeKm) {
+                if (report) {
+                    ESP_LOGD(TAG, "RF2INET range-filtered (%.1f km > %.1f km): %s", d, rangeKm, srcCall);
+                    s_stats.dropByReason[DROP_RANGE_FILTER]++;
+                }
+                return false;
+            }
+        }
+        // Position couldn't be decoded (e.g. a non-position payload type that
+        // still passed the type filter above, like a message or status
+        // report): distance can't be evaluated, so this gate simply doesn't
+        // apply - fall through rather than guessing/dropping.
+    }
+
+    if (prefixEn && !aprs_filter_prefix_match(srcCall, prefixes)) {
+        if (report) {
+            ESP_LOGD(TAG, "RF2INET prefix-filtered (%s not in \"%s\")", srcCall, prefixes);
+            s_stats.dropByReason[DROP_PREFIX_FILTER]++;
+        }
+        return false;
+    }
+
+    // Local callsign whitelist/blacklist (RF->INET direction): keyed on the
+    // effective source callsign only (SSID stripped inside the helper), same
+    // as aprs_service.c's INET->RF handler applies it on its own side.
+    if (!aprs_filter_budlist_pass(g_config.rf2inet_budlist_mode, srcCall)) {
+        if (report) {
+            ESP_LOGD(TAG, "RF2INET budlist-filtered (mode=%d): %s", (int)g_config.rf2inet_budlist_mode, srcCall);
+            s_stats.dropByReason[DROP_BUDLIST]++;
+        }
+        return false;
+    }
+
+    return true;
+}
+
+// Reduce one received frame to the effective source, destination and
+// information field its filters are evaluated against: the inner packet's own
+// for third-party ('}') traffic, the frame's own otherwise. @p info is the
+// caller's scratch buffer holding the NUL-terminated information field, which
+// the returned @p effInfo points into.
+//
+// A '}' payload that cannot be unwrapped, or whose inner header shows it has
+// already reached APRS-IS (TCPIP/TCPXX) or is wrapped more than one level
+// deep, keeps the frame's own view: the type filter classifies a '}' payload
+// as 0, which never passes, so such a frame is refused either way.
+static void effectiveFrameView(const ax25_msg_t *packet, char *info, size_t infoMax, const char **effInfo, size_t *effInfoLen, const char **srcCall,
+                               const char **dstCall, char *effSrc, size_t effSrcMax, char *effDst, size_t effDstMax, char *effPath, size_t effPathMax) {
+    size_t n = packet->len < infoMax - 1 ? packet->len : infoMax - 1;
+    memcpy(info, packet->info, n);
+    info[n] = 0;
+
+    *effInfo = info;
+    *effInfoLen = n;
+    *srcCall = packet->src.call;
+    *dstCall = packet->dst.call;
+
+    if (info[0] != '}')
+        return;
+
+    const char *innerInfo;
+    size_t innerInfoLen;
+    bool isLoop, isNested;
+    if (!thirdPartyUnwrap(info, effSrc, effSrcMax, effDst, effDstMax, effPath, effPathMax, &innerInfo, &innerInfoLen, &isLoop, &isNested))
+        return;
+    if (isLoop || isNested)
+        return;
+
+    *effInfo = innerInfo;
+    *effInfoLen = innerInfoLen;
+    *srcCall = effSrc;
+    *dstCall = effDst;
+}
+
+bool igate_log_accepts_frame(const ax25_msg_t *packet) {
+    if (!g_config.igate_log_after_filters)
+        return true;
+
+    if (!satGateListPass(packet, false))
+        return false;
+
+    // Sized and shaped exactly like the equivalent locals in igateProcess()
+    // below, and this runs on the same task from the same dispatch function,
+    // one call before that one - never nested inside it - so the deepest
+    // stack this adds is the one igateProcess() already needs.
+    char info[AX25_FRAME_MAX_SIZE + 1];
+    char effSrc[12] = { 0 };
+    char effDst[12] = { 0 };
+    char effPath[200] = { 0 };
+    const char *effInfo;
+    size_t effInfoLen;
+    const char *srcCall;
+    const char *dstCall;
+    effectiveFrameView(packet, info, sizeof(info), &effInfo, &effInfoLen, &srcCall, &dstCall, effSrc, sizeof(effSrc), effDst, sizeof(effDst), effPath,
+                       sizeof(effPath));
+
+    return rf2inetFiltersPass(srcCall, dstCall, effInfo, effInfoLen, false);
+}
+
 int igateProcess(ax25_msg_t *packet) {
     int idx;
 
@@ -617,47 +826,10 @@ int igateProcess(ax25_msg_t *packet) {
         }
     }
 
-    // Only gate frames routed through a satellite digipeater when that
-    // satellite address is actually marked as used, i.e. the AX.25 "has been
-    // repeated" H-bit of the address is set. A frame carrying the satellite in
-    // its path without that bit was merely addressed to the bird, never
-    // relayed by it, so it must not reach APRS-IS.
-    //
-    // The H-bit is decoded by ax25_decode() into the packet->rpt_flags bitmap
-    // (one bit per rpt_list entry) and is read through the AX25_REPEATED()
-    // accessor; rpt_list[].call holds only the bare NUL-terminated callsign.
-    // The '*' marker is a TNC2 text convention and is emitted from rpt_flags
-    // when the header line is rendered further down this function.
-    // Satellite/ISS digipeater gate-call list: web-configurable (IGate page,
-    // parallel to the callsign whitelist/blacklist), defaults to the
-    // firmware's previous fixed 6-entry set. Snapshotted under the config
-    // lock, same as rf2inet_prefixes/rf2inet_range_* below - this runs on the
-    // modem RX task, and a concurrent web save could otherwise rewrite the
-    // list mid-check.
-    char satGates[IGATE_SATGATE_MAX][10];
-    app_config_lock();
-    memcpy(satGates, g_config.satgate, sizeof(satGates));
-    app_config_unlock();
-    // The copy above takes the full field width of every row, so termination
-    // depends on what the config loader stored. Force it: everything
-    // downstream treats each row as a C string, and a row filled edge to
-    // edge would send it reading past the end of that row.
-    for (size_t s = 0; s < IGATE_SATGATE_MAX; s++)
-        satGates[s][sizeof(satGates[s]) - 1] = 0;
-
-    for (idx = 0; idx < packet->rpt_count; idx++) {
-        for (size_t s = 0; s < IGATE_SATGATE_MAX; s++) {
-            size_t satLen = strlen(satGates[s]);
-            if (satLen == 0)
-                continue; // empty slot: skip
-            if (!strncmp(packet->rpt_list[idx].call, satGates[s], satLen)) {
-                if (!AX25_REPEATED(packet, idx)) {
-                    s_stats.dropByReason[DROP_SAT_NOT_USED]++;
-                    return 0;
-                }
-            }
-        }
-    }
+    // Satellite Gate List: shared with the traffic log's display gate, so the
+    // two always answer the same question the same way.
+    if (!satGateListPass(packet, true))
+        return 0;
 
     // The classifier and the third-party unwrap below both take a C string
     // while packet->info is a raw AX.25 field with no terminator of its own,
@@ -725,90 +897,14 @@ int igateProcess(ax25_msg_t *packet) {
         return 0;
     }
 
-    // [IGATE] Filter (RF->INET): g_config.rf2inetFilter is a whitelist of
-    // payload types, one bit per type, built from the checkboxes in the
-    // "RF -> INET" fieldset of the web IGate page. Classify the effective
-    // info field and drop it unless its bit is set. This is the RF side of
-    // the pair aprs_service.c applies to g_config.inet2rfFilter for INET->RF
-    // traffic: both halves classify with the same aprs_filter helpers and
-    // test with the same aprs_filter_pass(), so a type turned off gates
-    // identically whichever direction it travels in.
-    {
-        uint16_t type = aprs_filter_classify_info(effInfo);
-        if (!aprs_filter_pass(g_config.rf2inetFilter, type)) {
-            ESP_LOGD(TAG, "RF2INET filtered (%s, mask=0x%03X): %.*s", aprs_filter_type_name(type), (unsigned)g_config.rf2inetFilter, (int)effInfoLen, effInfo);
-            s_stats.dropByReason[DROP_TYPE_FILTER]++;
-            return 0;
-        }
-    }
-
-    // Local range/prefix gate (RF->INET direction): independent of - and
-    // composed with (AND semantics) - the type filter just above, exactly
-    // like the budlist check below it. Neither knob has anything to do with
-    // g_config.aprs_filter (the APRS-IS *server-side* filter, which only
-    // governs what the server sends INTO this client, INET->RF); these gate
-    // what this client chooses to push OUT to APRS-IS from RF.
-    {
-        bool rangeEn, prefixEn;
-        float rangeKm, ownLat, ownLon;
-        char prefixes[sizeof(g_config.rf2inet_prefixes)];
-
-        // Snapshot under the config lock: this runs on the modem RX task, and
-        // a concurrent web save could otherwise rewrite these mid-check.
-        app_config_lock();
-        rangeEn = g_config.rf2inet_range_en;
-        rangeKm = g_config.rf2inet_range_km;
-        ownLat = g_config.my_lat;
-        ownLon = g_config.my_lon;
-        prefixEn = g_config.rf2inet_prefix_en;
-        memcpy(prefixes, g_config.rf2inet_prefixes, sizeof(prefixes));
-        app_config_unlock();
-        // The copy above takes the full field width, so termination depends
-        // on what the config loader stored. Force it: everything downstream
-        // treats this as a C string, and a field filled edge to edge would
-        // send it reading past the end of the local buffer.
-        prefixes[sizeof(prefixes) - 1] = 0;
-
-        // The effective destination call feeds the Mic-E decode path inside
-        // aprs_filter_decode_position() (the position lives in the AX.25
-        // destination field for that payload type); a third-party inner
-        // packet never carries Mic-E in its unwrapped text form, so this is
-        // only exact for the non-unwrapped case and simply doesn't decode
-        // for the other, same as any other undecodable position above.
-        if (rangeEn && rangeKm > 0.0f) {
-            float plat, plon;
-            if (aprs_filter_decode_position(effInfo, thirdParty ? effDst : packet->dst.call, &plat, &plon)) {
-                float d = aprs_filter_haversine_km(ownLat, ownLon, plat, plon);
-                if (d > rangeKm) {
-                    ESP_LOGD(TAG, "RF2INET range-filtered (%.1f km > %.1f km): %s", d, rangeKm, thirdParty ? effSrc : packet->src.call);
-                    s_stats.dropByReason[DROP_RANGE_FILTER]++;
-                    return 0;
-                }
-            }
-            // Position couldn't be decoded (e.g. a non-position payload
-            // type that still passed the type filter above, like a message
-            // or status report): distance can't be evaluated, so this gate
-            // simply doesn't apply - fall through rather than guessing/
-            // dropping.
-        }
-
-        if (prefixEn && !aprs_filter_prefix_match(thirdParty ? effSrc : packet->src.call, prefixes)) {
-            ESP_LOGD(TAG, "RF2INET prefix-filtered (%s not in \"%s\")", thirdParty ? effSrc : packet->src.call, prefixes);
-            s_stats.dropByReason[DROP_PREFIX_FILTER]++;
-            return 0;
-        }
-    }
-
-    // Local callsign whitelist/blacklist (RF->INET direction): independent of
-    // - and composes with (AND semantics) - the type filter just above. Keyed
-    // on the effective source callsign only (SSID stripped inside the
-    // helper), same as aprs_service.c's INET->RF handler below applies it on
-    // its own side.
-    if (!aprs_filter_budlist_pass(g_config.rf2inet_budlist_mode, thirdParty ? effSrc : packet->src.call)) {
-        ESP_LOGD(TAG, "RF2INET budlist-filtered (mode=%d): %s", (int)g_config.rf2inet_budlist_mode, thirdParty ? effSrc : packet->src.call);
-        s_stats.dropByReason[DROP_BUDLIST]++;
+    // [IGATE] Filter (RF->INET): the payload-type whitelist built from the
+    // checkboxes of the "Filter RF to Internet" fieldset, the local range and
+    // prefix gates of that same fieldset, and the Callsign Filter, all applied
+    // to the effective view resolved above. Shared with the traffic log's
+    // display gate, so what the log shows and what the gateway uplinks cannot
+    // drift apart.
+    if (!rf2inetFiltersPass(thirdParty ? effSrc : packet->src.call, thirdParty ? effDst : packet->dst.call, effInfo, effInfoLen, true))
         return 0;
-    }
 
     // Every append below is clamped by str_append(), so headerLen can never
     // walk past the end of header[] however long the decoded repeater path is.
@@ -951,6 +1047,103 @@ void igate_set_inet2rf_handler(void (*handler)(const char *line)) {
     s_inet2rfHandler = handler;
 }
 
+// The INET->RF filter set of the IGate page, applied to one APRS-IS line for
+// display purposes only: the payload-type whitelist g_config.inet2rfFilter
+// (including the selective third-party unwrap exception, which is the one way
+// a line the mask refuses still reaches the transmitter), the local range gate
+// measured from "My Station", and the Callsign Filter. It mirrors
+// aprs_service.c's inet2rfHandler() check for check, in the same order.
+//
+// What it deliberately leaves out are the rules that are not filters the
+// operator sets on that page: the own-report echo guard, the
+// TCPXX/NOGATE/RFONLY header tokens, the broadcast-addressee rule, the generic
+// query drop and the message gate. Those decide whether a line may be put on
+// the air; hiding the traffic they stop - this station's own beacons echoed
+// back by the server, above all - would answer a question the operator did not
+// ask of the log.
+static bool inet2rfFiltersPass(const char *line) {
+    uint16_t type = aprs_filter_classify_tnc2(line);
+    const char *colon = strchr(line, ':');
+
+    // The callsign the Callsign Filter is keyed on: the unwrapped inner source
+    // when the third-party exception below applies, the line's own source
+    // otherwise.
+    char budlistCall[16];
+    tnc2SrcCallsign(line, strlen(line), budlistCall, sizeof(budlistCall));
+
+    if (!aprs_filter_pass(g_config.inet2rfFilter, type)) {
+        bool unwrapped = false;
+
+        if (g_config.inet2rf_3rdparty_unwrap_en && g_config.inet2rf_budlist_mode == BUDLIST_WHITELIST && colon && colon[1] == '}') {
+            const char *inner = colon + 2;
+            const char *igt = strchr(inner, '>');
+            const char *innerColon = strchr(inner, ':');
+            char innerSrc[12] = "";
+            if (igt) {
+                size_t n = (size_t)(igt - inner);
+                if (n >= sizeof(innerSrc))
+                    n = sizeof(innerSrc) - 1;
+                memcpy(innerSrc, inner, n);
+                innerSrc[n] = 0;
+            }
+            if (!(innerColon && innerColon[1] == '}')) {
+                uint16_t innerType = aprs_filter_classify_thirdparty_inner(colon + 1);
+                if (innerSrc[0] && aprs_filter_budlist_pass(BUDLIST_WHITELIST, innerSrc) && aprs_filter_pass(g_config.inet2rfFilter, innerType)) {
+                    strncpy(budlistCall, innerSrc, sizeof(budlistCall) - 1);
+                    budlistCall[sizeof(budlistCall) - 1] = 0;
+                    unwrapped = true;
+                }
+            }
+        }
+
+        if (!unwrapped)
+            return false;
+    }
+
+    if (g_config.inet2rf_range_en) {
+        bool rangeEn;
+        float rangeKm, ownLat, ownLon;
+        app_config_lock();
+        rangeEn = g_config.inet2rf_range_en;
+        rangeKm = g_config.inet2rf_range_km;
+        ownLat = g_config.my_lat;
+        ownLon = g_config.my_lon;
+        app_config_unlock();
+
+        if (rangeEn && rangeKm > 0.0f) {
+            char destCall[12] = "";
+            float plat, plon;
+            aprs_tnc2_dest_call(line, destCall, sizeof(destCall));
+            if (colon && aprs_filter_decode_position(colon + 1, destCall, &plat, &plon)) {
+                if (aprs_filter_haversine_km(ownLat, ownLon, plat, plon) > rangeKm)
+                    return false;
+            } else if (g_config.bm_en) {
+                // A BrandMeister line carries no server-side geographic term
+                // of its own (the worldwide subscription cannot be combined
+                // with one), so one without a position is refused rather than
+                // passed unmeasured - the same reasoning, and the same
+                // outcome, as the transmit side.
+                char gateways[APRS_BM_GATEWAYS_MAX][APRS_BM_GATEWAY_LEN];
+                app_config_lock();
+                memcpy(gateways, g_config.bm_gateways, sizeof(gateways));
+                app_config_unlock();
+                for (int i = 0; i < APRS_BM_GATEWAYS_MAX; i++)
+                    gateways[i][APRS_BM_GATEWAY_LEN - 1] = 0;
+                if (aprs_bm_classify(line, gateways, APRS_BM_GATEWAYS_MAX) != APRS_BM_MATCH_NONE)
+                    return false;
+            }
+        }
+    }
+
+    return aprs_filter_budlist_pass(g_config.inet2rf_budlist_mode, budlistCall);
+}
+
+bool igate_log_accepts_line(const char *line) {
+    if (!g_config.igate_log_after_filters)
+        return true;
+    return inet2rfFiltersPass(line);
+}
+
 // Read the current APRS-IS descriptor under the mutex that guards it, so the
 // uplink task never observes s_sock while closeSocket() or connectAprsIs() is
 // part-way through changing it. The blocking recv() below is then made on the
@@ -958,6 +1151,7 @@ void igate_set_inet2rf_handler(void (*handler)(const char *line)) {
 // would block every APRS-IS transmitter for that whole window, so the value is
 // snapshotted instead. A descriptor closed right after the snapshot makes that
 // recv() fail, which the loop already handles by reconnecting.
+
 // Handles one complete, NUL-terminated line already assembled by
 // feedAprsIsBytes() from the APRS-IS socket - the single point where a line
 // is classified as a server comment/keepalive or an actual packet, counted,
@@ -977,10 +1171,21 @@ static void processAprsIsLine(char *line) {
     // the total internet RX traffic, not just what was actually transmitted
     // on RF.
     s_stats.isRxCount++;
-    // Information-level log of every message received from APRS-IS,
-    // regardless of whether inet2rf is enabled below, so all igate traffic
-    // is visible.
-    ESP_LOGI(TAG, "APRS-IS RX: %s", line);
+
+    // "Log after filters" (IGate page) narrows both views of the APRS-IS feed
+    // - the serial console line below and the web traffic table further down -
+    // to the lines this station's own INET->RF filters accept, so an operator
+    // running a wide server-side subscription reads them as what the gateway
+    // acts on rather than as everything the server offers. The counter above
+    // is deliberately outside it: it measures the feed, not the display, and
+    // stays the total of every line read off the socket.
+    const bool logPacket = igate_log_accepts_line(line);
+
+    // Information-level console line, emitted whether or not inet2rf is
+    // enabled below, so the feed is visible on the serial port as well as in
+    // the web table.
+    if (logPacket)
+        ESP_LOGI(TAG, "APRS-IS RX: %s", line);
 
     char dx[16];
     tnc2SrcCallsign(line, strlen(line), dx, sizeof(dx));
@@ -995,7 +1200,7 @@ static void processAprsIsLine(char *line) {
     char symTable = 0, symCode = 0;
     char decoded[APRS_RX_DECODED_BUF_SIZE] = "";
     const char *colon = strchr(line, ':');
-    if (colon) {
+    if (logPacket && colon) {
         const char *info = colon + 1;
         size_t infoLen = strlen(info);
         if (!aprs_extract_symbol(info, infoLen, &symTable, &symCode) && infoLen > 0)
@@ -1012,7 +1217,8 @@ static void processAprsIsLine(char *line) {
             aprs_filter_format_report(&report, decoded, sizeof(decoded));
     }
 
-    trafficlog_add_pkt("RX-IS", dx, line, decoded, -1, symTable, symCode);
+    if (logPacket)
+        trafficlog_add_pkt("RX-IS", dx, line, decoded, -1, symTable, symCode);
 
     // Mic-E position comment (APRS101 ch.10), carried in the destination
     // address and so absent from the packet text logged above. The internet

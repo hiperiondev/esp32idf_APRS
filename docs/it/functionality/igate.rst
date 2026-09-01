@@ -442,6 +442,41 @@ singolo rapporto libera la voce, ed è questo a renderlo un seguito e non un
 abbonamento; un rapporto meteo o un oggetto viene ritrasmesso sotto il proprio
 bit di tipo, per meriti propri.
 
+Filtro di visualizzazione del registro traffico
+===============================================
+
+*Registra dopo i filtri* nella pagina IGate (``igate_log_after_filters``,
+disattivato di default) restringe entrambe le viste del traffico ricevuto — la
+tabella del traffico web e le righe ``RX``/``APRS-IS RX`` della console seriale
+— al traffico che i filtri di questa stazione accettano. Non cambia nulla di ciò
+che viene instradato, ripetuto o trasmesso.
+
+Con l'opzione attiva, una voce ``RX`` e la sua riga di console vengono emesse
+solo per una trama che supera ``igate_log_accepts_frame()`` — l'Elenco Digipeater Satellitari, la
+maschera di tipi ``rf2inetFilter``, i filtri di distanza e di prefisso RF→INET e
+il filtro indicativi RF→INET — e una voce ``RX-IS`` solo per una riga che supera
+``igate_log_accepts_line()`` — la maschera ``inet2rfFilter`` incluso l'unwrap
+selettivo di terze parti, il filtro di distanza INET→RF e il filtro indicativi
+INET→RF. Entrambe condividono l'implementazione con il percorso di gating stesso
+(``satGateListPass()``, ``rf2inetFiltersPass()``), quindi il registro e il
+gateway non possono divergere, ed entrambe vengono valutate qualunque sia lo
+stato dell'interruttore IGate e dei due sensi, così che il registro di una
+stazione di sola ricezione venga ristretto e non svuotato.
+
+Le regole incondizionate di INET→RF — la protezione dall'eco dei report propri,
+i token ``TCPXX``/``NOGATE``/``RFONLY`` dell'intestazione, la regola dei
+destinatari di broadcast, lo scarto delle query generali e il filtraggio dei
+messaggi — sono lasciate fuori di proposito. Non sono filtri impostati
+dall'operatore nella pagina, e applicarle nasconderebbe i report di questa
+stessa stazione quando APRS-IS li rimanda indietro.
+
+Non cambia nulla oltre alla visualizzazione. Una trama che le due viste omettono
+viene comunque ripetuta, instradata, analizzata e conteggiata come prima —
+``isRxCount`` resta il totale di ogni riga letta dal socket, e nessun contatore
+di scarto si muove, perché una riga nascosta non è stata scartata, solo non
+mostrata. Disattivare l'interruttore ripristina entrambe le viste per intero,
+ed è il modo di vedere che cosa sta trattenendo.
+
 Contatori e ragioni di scarto
 =============================
 

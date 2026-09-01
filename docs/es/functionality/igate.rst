@@ -439,6 +439,42 @@ operador local tenga algo que ubicar del otro extremo de la conversación. Ese
 suscripción; un reporte de clima u objeto se retransmite bajo su propio bit de
 tipo, por sus propios méritos.
 
+Filtrado del registro de tráfico
+================================
+
+*Registrar después de los filtros* en la página IGate
+(``igate_log_after_filters``, desactivado por defecto) acota las dos vistas del tráfico
+recibido — la tabla de tráfico web y las líneas ``RX``/``APRS-IS RX`` de la
+consola serie — al tráfico que aceptan los filtros de esta estación. No cambia
+nada de lo que se pasarela, repite o transmite.
+
+Con la opción activa, solo se emiten una entrada ``RX`` y su línea de consola
+para una trama que pasa
+``igate_log_accepts_frame()`` — la Lista de Satélites Digipetidores, la máscara
+de tipos ``rf2inetFilter``, los filtros de rango y de prefijo RF→INET y el
+filtro de indicativos RF→INET — y una entrada ``RX-IS`` solo para una línea que
+pasa ``igate_log_accepts_line()`` — la máscara ``inet2rfFilter`` incluido el
+desempaquetado selectivo de terceros, el filtro de rango INET→RF y el filtro de
+indicativos INET→RF. Ambas comparten implementación con la propia ruta de
+pasarela (``satGateListPass()``, ``rf2inetFiltersPass()``), así que el registro
+y la pasarela no pueden divergir, y ambas se evalúan sea cual sea el estado del
+interruptor de IGate y de los dos sentidos, de modo que el registro de una
+estación de solo recepción se acota en lugar de vaciarse.
+
+Las reglas incondicionales de INET→RF — la guarda del eco de los reportes
+propios, los tokens ``TCPXX``/``NOGATE``/``RFONLY`` de la cabecera, la regla de
+destinatarios de difusión, el descarte de consultas generales y el filtrado de
+mensajes — quedan fuera a propósito. No son filtros que fije el operador en la
+página, y aplicarlos ocultaría los reportes propios de esta estación cuando
+APRS-IS los devuelve.
+
+No cambia nada más que la visualización. Una trama que las dos vistas omiten se
+repite, se pasarela, se analiza y se cuenta igual que antes — ``isRxCount``
+sigue siendo el total de todas las líneas leídas del socket, y ningún contador
+de descartes se mueve, porque una línea oculta no fue descartada, solo no
+mostrada. Apagar el interruptor restituye las dos vistas completas, que es la
+manera de ver qué está reteniendo.
+
 Contadores y razones de descarte
 ================================
 

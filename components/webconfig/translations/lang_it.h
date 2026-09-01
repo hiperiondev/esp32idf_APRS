@@ -1404,6 +1404,15 @@
     "fida della fonte specifica e questa è stata inserita in lista bianca - ri-filtrare il traffico di terze parti senza questa restrizione è la causa più "   \
     "comune dei loop IGate."
 
+/** Italian text for the form label for the "log after filters" field or fieldset, rendered on the IGate page. English: "Log after filters". */
+#define TR_F_LOG_AFTER_FILTERS "Registra dopo i filtri"
+/** Italian text for the explanatory note shown beside the log after filters setting, rendered on the IGate page. */
+#define TR_NOTE_LOG_AFTER_FILTERS                                                                                                                              \
+    "Disattivato, la tabella del traffico e la console seriale riportano ogni trama decodificata in RF e ogni riga inviata dal server APRS-IS. Attivato, "     \
+    "riportano solo ciò che accettano i filtri IGate di questa stazione: l'Elenco Digipeater Satellitari e il gruppo RF verso Internet per il traffico "       \
+    "radio, il gruppo Internet verso RF per il traffico APRS-IS, e il Filtro Indicativi per entrambi. Restringe solo ciò che viene mostrato: una trama "       \
+    "omessa viene comunque ripetuta, instradata e conteggiata come prima."
+
 /** Italian text for the form label for the "satgate" field or fieldset, rendered on the IGate page. English: "Satellite Gate List". */
 #define TR_F_SATGATE "Elenco Digipeater Satellitari"
 /** Italian text for the form label for the "satgate call" field or fieldset, rendered on the IGate page. English: "Satellite Callsign". */
