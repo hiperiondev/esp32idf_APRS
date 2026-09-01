@@ -81,6 +81,8 @@
 #define TR_MENU_GPS "GPS"
 /** Sidebar navigation entry for the Telegram page, rendered on the sidebar. */
 #define TR_MENU_TELEGRAM "Telegram"
+/** Sidebar navigation entry for the Logs page, rendered on the sidebar. */
+#define TR_MENU_LOGS "Logs"
 /** Sidebar navigation entry for the System page, rendered on the sidebar. */
 #define TR_MENU_SYSTEM "System"
 /** Sidebar navigation entry for the Wireless page, rendered on the sidebar. */
@@ -1806,6 +1808,27 @@
 #define TR_TG_R_TASK_FAILED "The polling task could not be created, which on this board always means the heap could not supply its stack."
 /** Diagnosis shown while the bot is connected and polling, rendered on the Telegram page. */
 #define TR_TG_R_CONNECTED "Connected to Telegram and polling for updates."
+
+/** @} */
+
+/**
+ * @name Logs page
+ * @{
+ */
+/** Page title of the Logs page, rendered on the Logs page. */
+#define TR_F_LOGS "Console Logs"
+/** Fieldset legend for the console log window, rendered on the Logs page. */
+#define TR_LOGS_FS_CONSOLE "Console Log"
+/** Caption of the button while nothing is being captured, rendered on the Logs page. */
+#define TR_LOGS_BTN_START "Start"
+/** Caption of the button while the console log is being captured, rendered on the Logs page. */
+#define TR_LOGS_BTN_STOP "Stop"
+/** Explanatory note shown above the console log window, rendered on the Logs page. */
+#define TR_LOGS_NOTE                                                                                                                                           \
+    "Start mirrors everything the station prints on its serial console into the window below, so it can be read without a serial cable attached. The window "  \
+    "holds the last 50 lines and scrolls; a line longer than 255 characters is continued on the next one. Stop ends the copy, and so does leaving this page: " \
+    "coming back always starts from an empty window with the button ready to start again. Capturing costs the station a little memory and slows nothing else " \
+    "down, but it is not a recording - only what arrives while the window is open is shown, and nothing is written to flash."
 
 /** @} */
 

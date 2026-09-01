@@ -85,6 +85,9 @@ Disposición del repositorio
    │   └── webconfig/      ← administración esp_http_server
    │       ├── web_server.c            ← tabla de rutas
    │       ├── web_common.c            ← auth, análisis de formularios, shell HTML, ayudantes de campo
+   │       ├── logcapture.c            ← copia bajo demanda de la consola serie con
+   │       │                             esp_log_set_vprintf() en un anillo en RAM → JSON de la
+   │       │                             página Registros (sondeo por seq), con tiempo de inactividad
    │       ├── pages/*.c               ← un archivo por página de administración
    │       └── translations/           ← translations.h + lang_en/es/it.h
    │

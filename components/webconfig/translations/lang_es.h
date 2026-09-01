@@ -83,6 +83,8 @@
 #define TR_MENU_GPS "GPS"
 /** Sidebar navigation entry for the Telegram page, rendered on the sidebar. */
 #define TR_MENU_TELEGRAM "Telegram"
+/** Spanish text for the sidebar navigation entry for the Logs page, rendered on the sidebar. English: "Logs". */
+#define TR_MENU_LOGS "Registros"
 /** Spanish text for the sidebar navigation entry for the System page, rendered on the sidebar. English: "System". */
 #define TR_MENU_SYSTEM "Sistema"
 /** Spanish text for the sidebar navigation entry for the Wireless page, rendered on the sidebar. English: "Wireless". */
@@ -1911,6 +1913,29 @@
 #define TR_TG_R_TASK_FAILED "No se pudo crear la tarea de sondeo, lo que en esta placa siempre significa que la memoria no alcanzo para su pila."
 /** Diagnosis shown while the bot is connected and polling, rendered on the Telegram page. */
 #define TR_TG_R_CONNECTED "Conectado a Telegram y sondeando actualizaciones."
+
+/** @} */
+
+/**
+ * @name Logs page
+ * @{
+ */
+/** Spanish text for the page title of the Logs page, rendered on the Logs page. English: "Console Logs". */
+#define TR_F_LOGS "Registros de consola"
+/** Spanish text for the fieldset legend for the console log window, rendered on the Logs page. English: "Console Log". */
+#define TR_LOGS_FS_CONSOLE "Registro de consola"
+/** Spanish text for the caption of the button while nothing is being captured, rendered on the Logs page. English: "Start". */
+#define TR_LOGS_BTN_START "Iniciar"
+/** Spanish text for the caption of the button while the console log is being captured, rendered on the Logs page. English: "Stop". */
+#define TR_LOGS_BTN_STOP "Detener"
+/** Spanish text for the explanatory note shown above the console log window, rendered on the Logs page. English: "Start mirrors everything the station prints
+ * on its serial console...". */
+#define TR_LOGS_NOTE                                                                                                                                                \
+    "Iniciar copia en la ventana de abajo todo lo que la estación imprime en su consola serie, de modo que puede leerse sin tener un cable serie conectado. "      \
+    "La ventana guarda las últimas 50 líneas y se desplaza; una línea de más de 255 caracteres continúa en la siguiente. Detener termina la copia, y salir "   \
+    "de esta página también: al volver siempre se empieza con la ventana vacía y el botón listo para iniciar de nuevo. Capturar cuesta a la estación algo de " \
+    "memoria y no ralentiza nada más, pero no es una grabación: solo se muestra lo que llega mientras la ventana está abierta, y no se escribe nada en la "      \
+    "flash."
 
 /** @} */
 

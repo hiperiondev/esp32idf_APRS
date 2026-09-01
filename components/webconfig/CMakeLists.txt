@@ -1,9 +1,20 @@
+# logcapture.c is a source of this component rather than a component of its
+# own. The console mirror it implements exists solely to serve the Logs page,
+# and nothing outside the web admin calls it - which is also what makes a
+# separate component the wrong shape here: the link line lists a component
+# ahead of the ones that require it, and relies on the repeated pass over the
+# main/webconfig cycle to close the gap. That pass only helps an archive
+# something already resident refers to, so a component reached exclusively
+# from a webconfig page would never have its members pulled in before
+# libwebconfig.a's own are. Keeping the mirror here sidesteps the ordering
+# question entirely.
+#
 # main is listed as PRIV_REQUIRES, not REQUIRES: the web pages use main's
 # app_config.h, app_version.h, aprs_coord.h, aprs_filter.h, aprs_service.h,
-# bulletins.h, cpu_freq.h, objects_items.h, storage.h, str_append.h,
-# telemetry.h and time_sync.h internally, but web_common.h and pages.h never
-# re-export any of them, so the dependency does not belong on the public
-# REQUIRES list. main in turn lists webconfig in its own REQUIRES, which
+# bulletins.h, cpu_freq.h, json_escape.h, objects_items.h, storage.h,
+# str_append.h, telemetry.h and time_sync.h internally, but web_common.h and
+# pages.h never re-export any of them, so the dependency does not belong on
+# the public REQUIRES list. main in turn lists webconfig in its own REQUIRES, which
 # makes this a documented circular component dependency (see the ESP-IDF
 # build-system guide's "Component Requirements" section): CMake resolves it
 # by repeating both component libraries on the linker command line.
@@ -14,6 +25,7 @@ idf_component_register(
     SRCS
         "web_common.c"
         "web_server.c"
+        "logcapture.c"
         "pages/page_common.c"
         "pages/page_station.c"
         "pages/page_bulletins.c"
@@ -30,6 +42,7 @@ idf_component_register(
         "pages/page_tlm.c"
         "pages/page_gps.c"
         "pages/page_telegram.c"
+        "pages/page_logs.c"
         "pages/page_radio.c"
         "pages/page_msg.c"
         "pages/page_query.c"

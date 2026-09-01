@@ -74,6 +74,21 @@ hay nada que una comprobación de autenticación pueda proteger.
    * - GET
      - ``/telegram/status``
      - estado del bot, su causa y sus contadores (JSON), consultado cada 2 s
+   * - GET
+     - ``/logs``
+     - visor del registro de consola; al mostrarla también detiene cualquier
+       captura que siguiera activa
+   * - POST
+     - ``/logs/start``
+     - activa la copia de la consola (JSON ``{"ok":…,"seq":…}``)
+   * - POST
+     - ``/logs/stop``
+     - desactiva la copia de la consola y libera su anillo (JSON)
+   * - POST
+     - ``/logs/read?since=<seq>``
+     - líneas de consola capturadas desde ``seq`` (JSON), consultado cada 1 s;
+       la consulta también rearma el tiempo de inactividad de la copia, y por
+       eso es POST
    * - GET/POST
      - ``/bulletins``
      - boletines APRS BLN1..BLN5

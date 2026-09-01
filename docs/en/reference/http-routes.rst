@@ -72,6 +72,19 @@ auth check to guard.
    * - GET
      - ``/telegram/status``
      - bot state, the reason for it and its counters (JSON), polled every 2 s
+   * - GET
+     - ``/logs``
+     - console log viewer; rendering it also stops any capture still running
+   * - POST
+     - ``/logs/start``
+     - switch the console mirror on (JSON ``{"ok":…,"seq":…}``)
+   * - POST
+     - ``/logs/stop``
+     - switch the console mirror off and release its ring (JSON)
+   * - POST
+     - ``/logs/read?since=<seq>``
+     - captured console lines since ``seq`` (JSON), polled every 1 s; the poll
+       is also what rearms the mirror's idle timeout, which is why it is POST
    * - GET/POST
      - ``/bulletins``
      - APRS bulletins BLN1..BLN5

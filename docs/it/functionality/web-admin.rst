@@ -198,6 +198,27 @@ Le pagine
        lettura attuale. Entrambe le risposte sono costruite sulla
        configurazione in vigore quando il comando arriva, quindi un Save ha
        effetto al comando successivo senza riavviare.
+   * - **Logs**
+     - Un visore della console seriale, per poter leggere ciò che la stazione
+       stampa senza un cavo collegato. Non c'è nulla da configurare: un
+       pulsante, che dice *Avvia* mentre non si cattura nulla e *Ferma* mentre
+       si cattura, e una finestra sotto di esso che conserva le ultime 50
+       righe. Una riga di console più lunga di 255 caratteri prosegue nella
+       riga successiva invece di essere troncata, e la finestra scorre in
+       entrambe le direzioni: verticalmente perché conserva più righe di
+       quante ne stiano sullo schermo, orizzontalmente perché ogni riga viene
+       mantenuta intera. *Avvia* installa una copia sullo scrittore del
+       registro; l'uscita seriale in sé resta invariata in ogni caso, e
+       l'anello che la copia riempie viene allocato solo mentre una cattura è
+       in corso. La cattura non sopravvive mai alla pagina: arrivarci (o
+       ricaricarla) ferma tutto ciò che fosse rimasto attivo, così il pulsante
+       si presenta sempre nel suo stato *Avvia*; lasciarla ferma la cattura dal
+       browser; e una scheda chiusa, addormentata o interrotta a metà sessione
+       non dice nulla, ed è per questo che la copia si ferma anche da sola
+       quando nessuno la legge per dieci secondi. Non viene scritto nulla nella
+       flash e non viene registrato nulla: viene mostrato solo ciò che arriva
+       mentre la finestra è aperta. Righe live tramite ``/logs/read``,
+       interrogato ogni secondo.
    * - **Bulletins**
      - Fino a cinque bollettini (identificatore e gruppo del destinatario,
        testo, RF/INET, intervallo, scadenza).

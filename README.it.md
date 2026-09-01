@@ -41,7 +41,7 @@ In una frase, il firmware **demodula** l'audio AFSK/FSK dall'altoparlante o dall
 - **Meteo e telemetria.** Rapporti meteo APRS in onda con refresh dei sensori a 1 Hz e media per campo, più telemetria APRS (analogica A1–A5 + digitale B1–B8) con rapporti `T#nnn` e metadati.
 - **Oggetti, item e bollettini.** Fino a cinque Oggetti/Item APRS della stazione e cinque bollettini (BLN1–BLN5), ciascuno via RF e/o INET con controllo di scadenza/decadimento.
 - **Framework di sensori a runtime.** Un registro di driver dinamico e auto-registrante (`sensors_local`) — include di serie un driver BME280/BMP280 (I²C), più uno opzionale per BMP180 sullo stesso bus.
-- **Pannello web, ~30 pagine.** Autenticazione HTTP Basic, una dashboard in tempo reale, un log del traffico in tempo reale e tabella degli ultimi ascoltati (long-poll JSON), gestione file LittleFS (upload/download/eliminazione/formattazione), Wi-Fi AP/STA/AP+STA con scansione e controllo della potenza di TX, e controllo della frequenza della CPU (80/160/240 MHz).
+- **Pannello web, ~30 pagine.** Autenticazione HTTP Basic, una dashboard in tempo reale, un log del traffico in tempo reale e tabella degli ultimi ascoltati (long-poll JSON), gestione file LittleFS (upload/download/eliminazione/formattazione), Wi-Fi AP/STA/AP+STA con scansione e controllo della potenza di TX, controllo della frequenza della CPU (80/160/240 MHz), e un visore del registro di console su richiesta che copia l'uscita seriale nel browser.
 - **Aggiornamenti OTA con auto-rollback.** Due slot applicativi `ota_0`/`ota_1`; un'immagine difettosa torna indietro automaticamente al boot successivo.
 - **Interfaccia trilingue.** Inglese, spagnolo e italiano (a tempo di compilazione, una lingua per immagine).
 
@@ -67,7 +67,7 @@ In una frase, il firmware **demodula** l'audio AFSK/FSK dall'altoparlante o dall
 | Rapporto meteo | Refresh dei sensori a 1 Hz, media opzionale |
 | Telemetria | Analogica A1–A5 + digitale B1–B8, `T#nnn` + metadati |
 | Framework di driver per sensori | Registro dinamico, driver BME280/BMP280 incluso |
-| Pannello web | ~30 pagine, dashboard live, traffico + ultimi ascoltati |
+| Pannello web | ~30 pagine, dashboard live, traffico + ultimi ascoltati, visore del registro di console |
 | Archiviazione | LittleFS 512 KB, upload/download/eliminazione/formattazione |
 | Rete | Wi-Fi AP/STA/AP+STA, scansione, potenza TX, SNTP (orologio UTC, fuso orario selezionabile per la visualizzazione) |
 | Controllo frequenza CPU | 80 / 160 / 240 MHz |

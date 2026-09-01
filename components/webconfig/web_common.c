@@ -811,6 +811,9 @@ static const struct menu_item MENU[] = {
 #ifdef ENABLE_TELEGRAM
     { "/telegram", TR_MENU_TELEGRAM, "telegram" },
 #endif
+#ifdef ENABLE_LOGS
+    { "/logs", TR_MENU_LOGS, "logs" },
+#endif
 #ifdef ENABLE_SYSTEM
     { "/system", TR_MENU_SYSTEM, "system" },
 #endif
@@ -988,7 +991,20 @@ esp_err_t web_handle_css(httpd_req_t *req) {
         ".eqn-preview{margin-top:6px;font-size:.85em;color:var(--sub);background:var(--bg);"
         "border:1px solid var(--border);border-radius:6px;padding:6px 8px;}"
         ".eqn-preview b{color:var(--accent);}"
-        "@media (max-width:420px){.achan-head{flex-wrap:wrap;row-gap:4px;}.achan-head .achan-name{flex-basis:100%;order:3;white-space:normal;}}";
+        "@media (max-width:420px){.achan-head{flex-wrap:wrap;row-gap:4px;}.achan-head .achan-name{flex-basis:100%;order:3;white-space:normal;}}"
+        // Console log window (Logs page): a fixed-height terminal panel that
+        // scrolls in both directions. Vertically because it holds more rows
+        // than fit on screen, horizontally because white-space:pre keeps each
+        // console line whole - a log line wrapped at the panel's width would
+        // read as two entries and hide which one the timestamp belongs to.
+        // The dark palette is deliberate: this panel shows what a serial
+        // terminal shows, and the contrast is what makes a wall of monospace
+        // scannable.
+        ".log-actions{display:flex;align-items:center;gap:12px;margin-bottom:10px;}"
+        ".log-actions button{margin-top:0;}"
+        ".log-box{height:420px;overflow:auto;margin:0;padding:10px;background:#1c1c1c;color:#e8e7e3;"
+        "font-family:'Consolas','Courier New',monospace;font-size:.78em;line-height:1.35;"
+        "white-space:pre;border:1px solid var(--border);border-radius:8px;}";
     httpd_resp_set_type(req, "text/css");
     return httpd_resp_sendstr(req, css);
 }

@@ -177,6 +177,25 @@ The pages
        with the sensor driver it is mapped to and its current reading. Both
        answers are built from the configuration as it stands when the command
        arrives, so a save takes effect on the next command without a restart.
+   * - **Logs**
+     - A viewer for the serial console, so what the station prints can be read
+       without a cable attached. There is nothing to configure: one button,
+       which reads *Start* while nothing is being captured and *Stop* while
+       something is, and one window below it holding the last 50 lines. A
+       console line longer than 255 characters is continued on the next row
+       rather than cut, and the window scrolls in both directions - vertically
+       because it holds more rows than fit on screen, horizontally because
+       each line is kept whole. Pressing *Start* installs a mirror on the log
+       writer; the serial output itself is unchanged either way, and the ring
+       the mirror fills is allocated only while a capture is running.
+       Capturing never outlives the page: arriving at it (or reloading it)
+       stops anything left running, so the button always comes up in its
+       *Start* state; leaving it stops the capture from the browser; and a tab
+       that is closed, put to sleep or cut off mid-session says nothing at
+       all, which is why the mirror also stops itself once nothing has read it
+       for ten seconds. Nothing is written to flash and nothing is recorded -
+       only what arrives while the window is open is shown. Live lines via
+       ``/logs/read``, polled every second.
    * - **Bulletins**
      - Up to five bulletins (addressee identifier and group, text, RF/INET,
        interval, expiry).

@@ -167,6 +167,28 @@ esp_err_t page_telegram_status_get(httpd_req_t *req);
 /** @} */
 
 /**
+ * @name Console Logs page
+ * @{
+ */
+
+/** @brief GET  /logs - console log viewer: one window and the button that starts and stops it. Rendering the page also stops any capture still running, so
+ * the button always comes up in its Start state. @param req Incoming request. @return ESP_OK or an esp_err_t error. */
+esp_err_t page_logs_get(httpd_req_t *req);
+/** @brief POST /logs/start - switch the console mirror on; replies JSON {"ok":true|false,"seq":<cursor>}. POST, not GET: it allocates the mirror's ring
+ * buffer and installs a console hook, so it is a state-changing request and has to go through the same-origin check in web_check_auth(). @param req Incoming
+ * request. @return ESP_OK or an esp_err_t error. */
+esp_err_t page_logs_start_post(httpd_req_t *req);
+/** @brief POST /logs/stop - switch the console mirror off and release its ring; replies JSON {"ok":true}. POST for the same reason as /logs/start. @param req
+ * Incoming request. @return ESP_OK or an esp_err_t error. */
+esp_err_t page_logs_stop_post(httpd_req_t *req);
+/** @brief POST /logs/read?since=<seq> - JSON incremental feed of captured console lines, polled every 1 s. POST, not GET: reading is also what rearms the
+ * mirror's idle timeout, so the poll changes state and has to go through the same-origin check in web_check_auth(). @param req Incoming request. @return
+ * ESP_OK or an esp_err_t error. */
+esp_err_t page_logs_read_post(httpd_req_t *req);
+
+/** @} */
+
+/**
  * @name RF / networking pages (Radiomodem, Message)
  * @{
  */

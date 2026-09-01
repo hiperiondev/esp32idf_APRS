@@ -83,6 +83,8 @@
 #define TR_MENU_GPS "GPS"
 /** Sidebar navigation entry for the Telegram page, rendered on the sidebar. */
 #define TR_MENU_TELEGRAM "Telegram"
+/** Italian text for the sidebar navigation entry for the Logs page, rendered on the sidebar. English: "Logs". */
+#define TR_MENU_LOGS "Registri"
 /** Italian text for the sidebar navigation entry for the System page, rendered on the sidebar. English: "System". */
 #define TR_MENU_SYSTEM "Sistema"
 /** Italian text for the sidebar navigation entry for the Wireless page, rendered on the sidebar. English: "Wireless". */
@@ -1915,6 +1917,29 @@
     "Non e stato possibile creare l'attivita di interrogazione, il che su questa scheda significa sempre memoria insufficiente per il suo stack."
 /** Diagnosis shown while the bot is connected and polling, rendered on the Telegram page. */
 #define TR_TG_R_CONNECTED "Collegato a Telegram e in interrogazione degli aggiornamenti."
+
+/** @} */
+
+/**
+ * @name Logs page
+ * @{
+ */
+/** Italian text for the page title of the Logs page, rendered on the Logs page. English: "Console Logs". */
+#define TR_F_LOGS "Registri di console"
+/** Italian text for the fieldset legend for the console log window, rendered on the Logs page. English: "Console Log". */
+#define TR_LOGS_FS_CONSOLE "Registro di console"
+/** Italian text for the caption of the button while nothing is being captured, rendered on the Logs page. English: "Start". */
+#define TR_LOGS_BTN_START "Avvia"
+/** Italian text for the caption of the button while the console log is being captured, rendered on the Logs page. English: "Stop". */
+#define TR_LOGS_BTN_STOP "Ferma"
+/** Italian text for the explanatory note shown above the console log window, rendered on the Logs page. English: "Start mirrors everything the station prints
+ * on its serial console...". */
+#define TR_LOGS_NOTE                                                                                                                                              \
+    "Avvia copia nella finestra qui sotto tutto ciò che la stazione stampa sulla sua console seriale, così da poterlo leggere senza un cavo seriale "           \
+    "collegato. La finestra conserva le ultime 50 righe e scorre; una riga più lunga di 255 caratteri prosegue in quella successiva. Ferma termina la copia, "   \
+    "e lo fa anche lasciare questa pagina: al ritorno si riparte sempre da una finestra vuota con il pulsante pronto ad avviare di nuovo. La cattura costa "      \
+    "alla stazione un po' di memoria e non rallenta nient'altro, ma non è una registrazione: viene mostrato solo ciò che arriva mentre la finestra è aperta, " \
+    "e non viene scritto nulla nella flash."
 
 /** @} */
 

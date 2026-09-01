@@ -193,6 +193,26 @@ Las páginas
        al que está asignado y su lectura actual. Ambas respuestas se arman con
        la configuración vigente en el momento en que llega el comando, así que
        un Save surte efecto en el comando siguiente sin reiniciar.
+   * - **Logs**
+     - Un visor de la consola serie, para poder leer lo que la estación imprime
+       sin tener un cable conectado. No hay nada que configurar: un botón, que
+       dice *Iniciar* mientras no se captura nada y *Detener* mientras se
+       captura, y una ventana debajo que guarda las últimas 50 líneas. Una
+       línea de consola de más de 255 caracteres continúa en la fila siguiente
+       en vez de cortarse, y la ventana se desplaza en ambos sentidos:
+       verticalmente porque guarda más filas de las que caben en pantalla, y
+       horizontalmente porque cada línea se mantiene entera. *Iniciar* instala
+       una copia sobre el escritor del registro; la salida serie en sí no
+       cambia en ningún caso, y el anillo que la copia rellena solo se reserva
+       mientras hay una captura en curso. La captura nunca sobrevive a la
+       página: llegar a ella (o recargarla) detiene lo que hubiera quedado
+       activo, así que el botón siempre aparece en su estado *Iniciar*; salir
+       de ella detiene la captura desde el navegador; y una pestaña cerrada,
+       dormida o cortada a media sesión no dice nada, y por eso la copia
+       también se detiene sola cuando nadie la lee durante diez segundos. No
+       se escribe nada en la flash ni se graba nada: solo se muestra lo que
+       llega mientras la ventana está abierta. Líneas en vivo por
+       ``/logs/read``, consultado cada segundo.
    * - **Bulletins**
      - Hasta cinco boletines (identificador y grupo de destinatario, texto,
        RF/INET, intervalo, caducidad).

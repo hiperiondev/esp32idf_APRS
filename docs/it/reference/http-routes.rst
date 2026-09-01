@@ -75,6 +75,21 @@ controllo di autenticazione possa proteggere.
      - ``/telegram/status``
      - stato del bot, la sua causa e i suoi contatori (JSON), interrogato ogni
        2 s
+   * - GET
+     - ``/logs``
+     - visore del registro di console; mostrarla ferma anche qualsiasi cattura
+       ancora attiva
+   * - POST
+     - ``/logs/start``
+     - attiva la copia della console (JSON ``{"ok":…,"seq":…}``)
+   * - POST
+     - ``/logs/stop``
+     - ferma la copia della console e rilascia il suo anello (JSON)
+   * - POST
+     - ``/logs/read?since=<seq>``
+     - righe di console catturate da ``seq`` (JSON), interrogato ogni 1 s;
+       l'interrogazione riarma anche il tempo di inattività della copia, ed è
+       per questo che è POST
    * - GET/POST
      - ``/bulletins``
      - bollettini APRS BLN1..BLN5
