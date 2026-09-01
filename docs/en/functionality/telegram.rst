@@ -135,6 +135,34 @@ lost in any functional sense — every command works whether or not Telegram
 has been told about it, and the *Telegram* page's live status already shows
 an administrator that the bot is up.
 
+One TLS session, shared by a batch
+==================================
+
+The service keeps two HTTP client handles, one for the long poll and one for
+outgoing requests, and only ever holds a single live TLS session between them.
+A handshake needs its record buffers in contiguous blocks that a station also
+running the radio modem, the Wi-Fi stack and the web server cannot supply
+twice over, so an outgoing request releases the polling session before it
+opens its own, and the next polling cycle takes it back afterwards.
+
+Releasing per message would make a station with routing on pay for that trade
+continuously: every routed line would cost a handshake on the way out and
+another on the way back into the poll. Sends that belong together are
+therefore grouped into a *transmit batch*. The polling session is released
+once, by the first message of the group, and every further message reuses the
+session it opened, so a whole queue drain - a bulletin fanned out to eight
+users, an administrator and four group chats included - costs one handshake
+rather than one per recipient. A polling cycle falling due while a batch is
+still in flight waits for it to close, up to eight seconds, before reclaiming
+the connection, so a fan-out is never cut in half by the poll; past that bound
+the poll takes its connection back anyway, because a send stuck on an
+unresponsive socket must not stop the bot from reading its updates.
+
+Batching applies to the routed-notification drain, to an alert cycle and to
+``telegram_broadcast()``. A send issued on its own is a group of one: it
+releases the polling session, opens its own and leaves it for the next poll
+to reclaim.
+
 Routing station messages to Telegram
 ====================================
 
@@ -254,6 +282,15 @@ stack. It queues one item for
 the whole bulletin rather than one per recipient: the item carries the text
 once and is fanned out by the drain task, which is also where the recipient
 list is read, so a save landing between the two is reflected in the delivery.
+
+The fan-out runs as one transmit batch, so the whole recipient list shares the
+single TLS session described above rather than paying a handshake per chat,
+and it is bounded by the number of recipients the store itself can name -
+eight users, four group chats and the administrator - so a fan-out holds that
+session for a length the firmware fixes rather than a configuration. Each pass
+reports at INFO how many recipients it reached and how long it took, which is
+what tells an operator reading the log that a burst of bulletins, rather than
+something else, is what is spending the heap.
 
 Built-in commands
 ==================

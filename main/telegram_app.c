@@ -94,6 +94,18 @@ static const char *TAG = "telegram_app";
 // broadcast item carries its text once and is fanned out as it is drained.
 #define TELEGRAM_NOTIFY_QUEUE_LEN 8
 
+// Recipients one broadcast pass delivers to before it stops.
+//
+// The addressable set is bounded by the store itself - the users table, the
+// allowed group chats and the administrator - so this covers every recipient
+// a correctly filled file can name and nothing is dropped on a station that
+// is set up sensibly. It is still written down as a number, because the whole
+// pass runs inside one Telegram transmit batch: the batch holds the single
+// TLS session the service allows and the polling cycle waits for it to close,
+// so the length of a pass has to be something the drain task can be read off
+// here rather than something a configuration decides.
+#define TELEGRAM_NOTIFY_BROADCAST_MAX (TELEGRAM_APP_USERS_MAX + TELEGRAM_APP_CHATS_MAX + 1)
+
 // Bulletins remembered for the duplicate test, and how long one stays
 // remembered.
 //
@@ -300,6 +312,20 @@ static void notify_send_one(const char *chat_id, const char *text) {
         ESP_LOGW(TAG, "Line not routed to Telegram chat %s: %s", chat_id, esp_err_to_name(err));
 }
 
+// Delivers one line of a fan-out to one identifier, counting what was sent
+// and what the per-pass cap left out.
+static void notify_broadcast_one(int64_t id, const char *text, unsigned *sent, unsigned *skipped) {
+    if (*sent >= TELEGRAM_NOTIFY_BROADCAST_MAX) {
+        (*skipped)++;
+        return;
+    }
+
+    char chat_id[TELEGRAM_NOTIFY_CHAT_ID_MAX];
+    snprintf(chat_id, sizeof(chat_id), "%" PRId64, id);
+    notify_send_one(chat_id, text);
+    (*sent)++;
+}
+
 // Delivers one broadcast item to every account this station knows: every
 // authorized user, the administrator when one is configured, and every
 // allowed group chat.
@@ -309,29 +335,34 @@ static void notify_send_one(const char *chat_id, const char *text) {
 // necessarily list it. An administrator that does appear there would then
 // receive the same bulletin twice, so the identifier is checked against the
 // users table first and only sent to when it is not already among them.
+//
+// The pass is bounded by TELEGRAM_NOTIFY_BROADCAST_MAX and reports, at INFO,
+// how many recipients it reached and how long it held the transmit session.
 static void notify_broadcast(const char *text) {
-    char chat_id[TELEGRAM_NOTIFY_CHAT_ID_MAX];
+    int64_t started_us = esp_timer_get_time();
+    unsigned sent = 0;
+    unsigned skipped = 0;
 
-    for (uint8_t i = 0; i < s_route_user_count; i++) {
-        snprintf(chat_id, sizeof(chat_id), "%" PRId64, s_route_users[i].id);
-        notify_send_one(chat_id, text);
-    }
+    for (uint8_t i = 0; i < s_route_user_count; i++)
+        notify_broadcast_one(s_route_users[i].id, text, &sent, &skipped);
 
     int64_t admin = s_route_admin_id;
     if (admin != 0) {
         bool already_sent = false;
         for (uint8_t i = 0; i < s_route_user_count && !already_sent; i++)
             already_sent = (s_route_users[i].id == admin);
-        if (!already_sent) {
-            snprintf(chat_id, sizeof(chat_id), "%" PRId64, admin);
-            notify_send_one(chat_id, text);
-        }
+        if (!already_sent)
+            notify_broadcast_one(admin, text, &sent, &skipped);
     }
 
-    for (uint8_t i = 0; i < s_route_chat_count; i++) {
-        snprintf(chat_id, sizeof(chat_id), "%" PRId64, s_route_chats[i].id);
-        notify_send_one(chat_id, text);
-    }
+    for (uint8_t i = 0; i < s_route_chat_count; i++)
+        notify_broadcast_one(s_route_chats[i].id, text, &sent, &skipped);
+
+    // How wide a fan-out was and how long it took, so an operator reading the
+    // log can tell a bulletin storm from the other things that spend heap.
+    ESP_LOGI(TAG, "Bulletin routed to %u recipients in %" PRId64 " ms", sent, (esp_timer_get_time() - started_us) / 1000);
+    if (skipped > 0)
+        ESP_LOGW(TAG, "%u recipients beyond the %d per pass were not reached", skipped, TELEGRAM_NOTIFY_BROADCAST_MAX);
 }
 
 // Delivers every item queued so far and exits, returning its stack to the
@@ -340,13 +371,18 @@ static void notify_broadcast(const char *text) {
 static void telegram_notify_worker_task(void *arg) {
     (void)arg;
 
+    // The whole pass is one Telegram transmit batch, so every line drained
+    // here, fan-outs included, travels over the session the first of them
+    // opens instead of each one paying for a TLS handshake of its own.
     telegram_notify_item_t item;
+    telegram_tx_batch_begin();
     while (xQueueReceive(s_notify_queue, &item, 0) == pdTRUE) {
         if (item.broadcast)
             notify_broadcast(item.text);
         else
             notify_send_one(item.chat_id, item.text);
     }
+    telegram_tx_batch_end();
 
     // Between the last empty receive above and this task actually deleting
     // itself there is a small window where a new item could be queued while

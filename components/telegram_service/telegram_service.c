@@ -109,6 +109,19 @@
 // over a day, little enough to leave the log readable.
 #define TELEGRAM_STACK_REPORT_CYCLES 6
 
+// How long a polling cycle waits for an open transmit batch to close before
+// it reclaims the transmit session anyway, and how often it looks.
+//
+// The two handles hold one live TLS session between them, so the poll cannot
+// open its own until the transmit side has given its up. Waiting for a batch
+// in flight is what lets a fan-out of a dozen recipients share one handshake
+// instead of losing its session halfway through the list. The wait is bounded
+// because a batch whose sender is stuck on a dead socket must not hold the
+// polling task with it; the bound is generous enough for a full fan-out over
+// a slow uplink and short next to the poll timeout itself.
+#define TELEGRAM_TX_BATCH_WAIT_MS 8000
+#define TELEGRAM_TX_BATCH_POLL_MS 50
+
 static const char *TAG = "telegram_service";
 
 // One entry of the authorization list.
@@ -184,6 +197,18 @@ static telegram_bot_client_handle_t s_poll_client = NULL;
 // Connection used by every outgoing message, independent of the polling
 // connection so a long poll never delays a transmission.
 static telegram_bot_client_handle_t s_tx_client = NULL;
+
+// Number of transmit batches currently open, counted rather than flagged so
+// batches nest: an application groups a queue drain, and a helper it calls
+// groups its own fan-out inside it, without either having to know about the
+// other. Held under the table mutex because the batch is opened by an
+// application task and read by the service task.
+//
+// s_tx_batch_released records whether the batch currently open has already
+// released the polling session, so the first request of a group pays for that
+// release and the rest reuse the session it opened.
+static uint32_t s_tx_batch_depth = 0;
+static bool s_tx_batch_released = false;
 
 // Buffer holding one getUpdates answer, owned by the service task.
 static char *s_rx_buffer = NULL;
@@ -696,6 +721,85 @@ static void telegram_release_tx_connection(void) {
     }
 }
 
+// Reports whether a transmit batch is open.
+static bool telegram_tx_batch_active(void) {
+    bool active = false;
+    if (telegram_lock()) {
+        active = (s_tx_batch_depth > 0);
+        telegram_unlock();
+    }
+    return active;
+}
+
+// Waits, up to TELEGRAM_TX_BATCH_WAIT_MS, for every open batch to close.
+//
+// Called by the polling path before it reclaims the transmit session. A batch
+// still in flight owns the one session the service allows, so pulling it out
+// from under a fan-out would make every remaining recipient pay a fresh
+// handshake; waiting the batch out is what keeps the whole fan-out on the
+// handshake it already did. The wait ends anyway once the bound is reached,
+// because a transmit stuck on an unresponsive socket must not stop the bot
+// from reading its updates.
+static void telegram_tx_wait_batch_idle(void) {
+    const TickType_t step = pdMS_TO_TICKS(TELEGRAM_TX_BATCH_POLL_MS);
+    uint32_t waited_ms = 0;
+
+    while (telegram_tx_batch_active()) {
+        if (waited_ms >= TELEGRAM_TX_BATCH_WAIT_MS) {
+            ESP_LOGW(TAG, "Transmit batch still open after %d ms, reclaiming the connection", TELEGRAM_TX_BATCH_WAIT_MS);
+            return;
+        }
+        vTaskDelay(step);
+        waited_ms += TELEGRAM_TX_BATCH_POLL_MS;
+    }
+}
+
+// Prepares the heap for one outgoing request.
+//
+// Outside a batch the request stands alone and releases the polling session
+// itself. Inside one, the first request of the group releases it and the rest
+// find the transmit session already open, so a single handshake covers the
+// whole group instead of one per message. Doing it here rather than in
+// telegram_tx_batch_begin() is what keeps a batch that ends up sending
+// nothing - an empty queue drain, an alert cycle with no alert - from costing
+// the polling session for nothing.
+static void telegram_tx_prepare_connection(void) {
+    bool release = true;
+
+    if (telegram_lock()) {
+        if (s_tx_batch_depth > 0) {
+            release = !s_tx_batch_released;
+            s_tx_batch_released = true;
+        }
+        telegram_unlock();
+    }
+
+    if (release) {
+        telegram_release_poll_connection();
+    }
+}
+
+void telegram_tx_batch_begin(void) {
+    if (telegram_lock()) {
+        // Only the outermost batch arms the release. A nested one shares the
+        // session its parent opened and has nothing of its own to arrange.
+        if (s_tx_batch_depth == 0) {
+            s_tx_batch_released = false;
+        }
+        s_tx_batch_depth++;
+        telegram_unlock();
+    }
+}
+
+void telegram_tx_batch_end(void) {
+    if (telegram_lock()) {
+        if (s_tx_batch_depth > 0) {
+            s_tx_batch_depth--;
+        }
+        telegram_unlock();
+    }
+}
+
 // Issues an API method with a JSON body built by the caller and checks
 // that Telegram accepted it. The cJSON object is released here, whatever
 // the outcome.
@@ -728,7 +832,7 @@ static esp_err_t telegram_api_call(const char *method, cJSON *root) {
         .truncation_expected = true,
     };
 
-    telegram_release_poll_connection();
+    telegram_tx_prepare_connection();
 
     esp_err_t err = telegram_bot_client_call(s_tx_client, &request, &response);
     cJSON_free(body);
@@ -875,7 +979,10 @@ esp_err_t telegram_broadcast(const char *text) {
         return ESP_ERR_NOT_FOUND;
     }
 
+    // The whole list is one batch, so the recipients share the session the
+    // first of them opens instead of each paying its own handshake.
     esp_err_t result = ESP_FAIL;
+    telegram_tx_batch_begin();
     for (size_t i = 0; i < count; i++) {
         char chat_id[TELEGRAM_CHAT_ID_LEN];
         telegram_format_chat_id(recipients[i], chat_id, sizeof(chat_id));
@@ -886,12 +993,19 @@ esp_err_t telegram_broadcast(const char *text) {
             ESP_LOGW(TAG, "Broadcast to %s failed: %s", chat_id, esp_err_to_name(err));
         }
     }
+    telegram_tx_batch_end();
     return result;
 }
 
 // Delivers an alert to the users and, for the highest severities, to the
 // allowed group chats. Runs in the service task.
 static void telegram_deliver_alert(const telegram_alert_item_t *item) {
+    // Users and group chats are one group as far as the connection is
+    // concerned. The batch opened here encloses the one telegram_broadcast()
+    // opens for the users, so the group chats that follow it keep the session
+    // the first user's message opened.
+    telegram_tx_batch_begin();
+
     telegram_broadcast(item->text);
 
     if (item->level >= TELEGRAM_ALERT_ALARM && telegram_lock()) {
@@ -909,6 +1023,8 @@ static void telegram_deliver_alert(const telegram_alert_item_t *item) {
             telegram_send_message(chat_id, item->text);
         }
     }
+
+    telegram_tx_batch_end();
 
     if (telegram_lock()) {
         s_stats.alerts_sent++;
@@ -1039,7 +1155,7 @@ static esp_err_t telegram_upload(const char *method, const char *chat_id, const 
         .truncation_expected = true,
     };
 
-    telegram_release_poll_connection();
+    telegram_tx_prepare_connection();
 
     esp_err_t err = telegram_bot_client_call_multipart(s_tx_client, method, fields, field_count, field, file_name, mime_type, data, len, &response);
     if (err != ESP_OK) {
@@ -1096,7 +1212,7 @@ esp_err_t telegram_download_file(const char *file_id, uint8_t *out_data, size_t 
         .buffer_size = TELEGRAM_FILE_INFO_BUFFER_LEN,
     };
 
-    telegram_release_poll_connection();
+    telegram_tx_prepare_connection();
 
     esp_err_t err = telegram_bot_client_call(s_tx_client, &request, &response);
     if (err != ESP_OK) {
@@ -2634,6 +2750,9 @@ static esp_err_t telegram_poll_once(void) {
         .buffer_size = s_rx_buffer_size,
     };
 
+    // The polling session cannot coexist with a transmit session, so an open
+    // batch is waited out before its connection is reclaimed.
+    telegram_tx_wait_batch_idle();
     telegram_release_tx_connection();
 
     esp_err_t err = telegram_bot_client_call(s_poll_client, &request, &response);
@@ -2669,6 +2788,10 @@ static esp_err_t telegram_poll_once(void) {
 // Sends the alerts that accumulated in the queue since the last cycle.
 static void telegram_drain_alerts(void) {
     telegram_alert_item_t item;
+
+    // One batch covers the whole pass, so a cycle that carries several alerts
+    // to several recipients still costs a single handshake.
+    telegram_tx_batch_begin();
     while (xQueueReceive(s_alert_queue, &item, 0) == pdTRUE) {
         if (s_alerts_enabled) {
             telegram_deliver_alert(&item);
@@ -2677,6 +2800,7 @@ static void telegram_drain_alerts(void) {
         }
         free(item.text);
     }
+    telegram_tx_batch_end();
 }
 
 // Acknowledges every update Telegram kept while the device was offline, so
@@ -2695,6 +2819,7 @@ static void telegram_discard_pending_updates(void) {
         .buffer_size = s_rx_buffer_size,
     };
 
+    telegram_tx_wait_batch_idle();
     telegram_release_tx_connection();
 
     if (telegram_bot_client_call(s_poll_client, &request, &response) == ESP_OK && !response.truncated) {

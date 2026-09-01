@@ -141,6 +141,36 @@ ogni comando funziona indipendentemente dal fatto che Telegram ne sia stato
 informato, e lo stato live della pagina *Telegram* mostra già a un
 amministratore che il bot è attivo.
 
+Una sola sessione TLS, condivisa da un lotto
+============================================
+
+Il servizio mantiene due client HTTP, uno per il polling lungo e uno per le
+richieste in uscita, e fra i due c'è sempre al più una sessione TLS viva. Un
+handshake ha bisogno dei propri buffer di record in blocchi contigui che una
+stazione che porta anche il modem radio, lo stack Wi-Fi e il server web non
+può fornire due volte, quindi una richiesta in uscita rilascia la sessione di
+polling prima di aprire la propria, e il ciclo di polling successivo se la
+riprende.
+
+Rilasciarla a ogni messaggio farebbe pagare quello scambio di continuo a una
+stazione con l'inoltro attivo: ogni riga inoltrata costerebbe un handshake
+all'andata e un altro al ritorno verso il polling. Gli invii che vanno insieme
+sono perciò raggruppati in un *lotto di trasmissione*. La sessione di polling
+viene rilasciata una volta sola, dal primo messaggio del gruppo, e tutti gli
+altri riusano la sessione che quello ha aperto: svuotare l'intera coda —
+compreso un bollettino distribuito a otto utenti, all'amministratore e a
+quattro chat di gruppo — costa un handshake e non uno per destinatario. Un
+ciclo di polling che scade mentre un lotto è ancora in corso attende che si
+chiuda, fino a otto secondi, prima di riprendersi la connessione, così una
+distribuzione non viene mai spezzata a metà; oltre quel limite il polling si
+riprende comunque la connessione, perché un invio bloccato su un socket che
+non risponde non deve impedire al bot di leggere i propri aggiornamenti.
+
+Il raggruppamento vale per lo svuotamento delle notifiche inoltrate, per un
+ciclo di allarmi e per ``telegram_broadcast()``. Un invio singolo è un gruppo
+di uno: rilascia la sessione di polling, apre la propria e la lascia al ciclo
+di polling successivo.
+
 Inoltro dei messaggi della stazione a Telegram
 ================================================
 
@@ -271,6 +301,16 @@ ragionamento sullo stack del task chiamante. Accoda un solo elemento per l'inter
 destinatario: l'elemento porta il testo una sola volta e il task che svuota la
 coda lo distribuisce, ed è lì che viene letto l'elenco dei destinatari, così
 un salvataggio che cade fra i due momenti si riflette nella consegna.
+
+La distribuzione avviene come un solo lotto di trasmissione, quindi l'intero
+elenco dei destinatari condivide l'unica sessione TLS descritta sopra invece
+di pagare un handshake per chat, ed è limitata dal numero di destinatari che
+il file stesso può nominare — otto utenti, quattro chat di gruppo e
+l'amministratore — così una distribuzione trattiene quella sessione per un
+tempo che fissa il firmware e non una configurazione. Ogni passata riporta a
+INFO quanti destinatari ha raggiunto e quanto è durata, ed è questo a dire a
+un operatore che legge il registro che a consumare memoria è una raffica di
+bollettini e non altro.
 
 Comandi integrati
 ===================

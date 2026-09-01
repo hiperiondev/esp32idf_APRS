@@ -614,6 +614,47 @@ size_t telegram_user_count(void);
  */
 
 /**
+ * @brief Open a transmit batch, so a group of sends shares one TLS session.
+ *
+ * The service keeps two HTTP client handles, one for the long poll and one
+ * for outgoing requests, and only ever holds a single live TLS session
+ * between them: a handshake needs its record buffers in contiguous blocks
+ * that a station also running the modem, the Wi-Fi stack and the web server
+ * cannot supply twice over. An outgoing request therefore releases the
+ * polling session before it opens its own.
+ *
+ * A caller that is about to issue several requests in a row - draining a
+ * queue, fanning a bulletin out to every user and group chat - brackets them
+ * with this function and @ref telegram_tx_batch_end(). The polling session is
+ * then released once, by the first request of the group, and every further
+ * request reuses the transmit session it opened, so the whole group costs one
+ * handshake instead of one per message. A polling cycle falling due while a
+ * batch is open waits, up to a bounded time, for the batch to close before it
+ * reclaims the transmit connection.
+ *
+ * Batches nest: a helper that opens its own batch inside a caller's batch
+ * shares the enclosing session and closes nothing when it ends. Every call
+ * must be paired with exactly one @ref telegram_tx_batch_end(), including on
+ * the paths where a send failed.
+ *
+ * Bracketing is an optimization, never a requirement: a send issued outside a
+ * batch behaves exactly as it always has.
+ *
+ * @note Safe to call before the service is initialized, in which case it has
+ *       no effect.
+ */
+void telegram_tx_batch_begin(void);
+
+/**
+ * @brief Close a transmit batch opened by @ref telegram_tx_batch_begin().
+ *
+ * Closing the outermost batch does not itself release the transmit session:
+ * the next polling cycle reclaims it, which is what gives the two handles
+ * their turn. Calls made without a matching open are ignored.
+ */
+void telegram_tx_batch_end(void);
+
+/**
  * @brief Send a plain text message to a chat.
  *
  * @param[in] chat_id Destination chat as text, for example "12345678",

@@ -143,6 +143,34 @@ comando funciona se le haya avisado o no a Telegram sobre él, y el estado en
 vivo de la página *Telegram* ya muestra a un administrador que el bot está
 activo.
 
+Una sola sesión TLS, compartida por un lote
+===========================================
+
+El servicio mantiene dos clientes HTTP, uno para el sondeo largo y otro para
+las peticiones salientes, y entre ambos nunca hay más de una sesión TLS viva.
+Un saludo TLS necesita sus búferes de registro en bloques contiguos que una
+estación que además lleva el módem de radio, la pila Wi-Fi y el servidor web
+no puede dar dos veces, así que una petición saliente libera la sesión de
+sondeo antes de abrir la suya, y el siguiente ciclo de sondeo la recupera.
+
+Liberarla en cada mensaje haría que una estación con el reenvío activo pagara
+ese intercambio de forma continua: cada línea reenviada costaría un saludo TLS
+a la ida y otro a la vuelta al sondeo. Por eso los envíos que van juntos se
+agrupan en un *lote de transmisión*. La sesión de sondeo se libera una sola
+vez, con el primer mensaje del grupo, y todos los demás reutilizan la sesión
+que ese primero abrió: vaciar la cola entera —incluido un boletín repartido a
+ocho usuarios, el administrador y cuatro chats de grupo— cuesta un saludo TLS
+y no uno por destinatario. Un ciclo de sondeo que venza mientras un lote sigue
+en curso espera a que termine, hasta ocho segundos, antes de recuperar la
+conexión, de modo que un reparto nunca se corta por la mitad; pasado ese
+límite el sondeo recupera su conexión igualmente, porque un envío atascado en
+un socket que no responde no puede impedir que el bot lea sus novedades.
+
+El agrupamiento se aplica al vaciado de las notificaciones reenviadas, a un
+ciclo de alertas y a ``telegram_broadcast()``. Un envío suelto es un grupo de
+uno: libera la sesión de sondeo, abre la suya y la deja para que la recupere
+el siguiente sondeo.
+
 Reenvío de mensajes de la estación a Telegram
 ===============================================
 
@@ -268,6 +296,16 @@ pila de la tarea que llama. Encola un único elemento para todo el boletín en l
 destinatario: el elemento lleva el texto una sola vez y la tarea que vacía la
 cola lo reparte, y es ahí donde se lee la lista de destinatarios, de modo que
 un guardado que caiga entre ambos momentos se refleja en la entrega.
+
+El reparto se ejecuta como un solo lote de transmisión, así que toda la lista
+de destinatarios comparte la única sesión TLS descrita más arriba en vez de
+pagar un saludo TLS por chat, y está acotado por el número de destinatarios
+que el propio archivo puede nombrar —ocho usuarios, cuatro chats de grupo y el
+administrador—, de modo que un reparto retiene esa sesión durante un tiempo
+que fija el firmware y no una configuración. Cada pasada informa en INFO a
+cuántos destinatarios llegó y cuánto tardó, que es lo que le dice a un
+operador que lee el registro que lo que está gastando memoria es una ráfaga de
+boletines y no otra cosa.
 
 Comandos incorporados
 =======================
