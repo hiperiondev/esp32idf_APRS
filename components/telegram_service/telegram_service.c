@@ -852,6 +852,23 @@ static esp_err_t telegram_api_call(const char *method, cJSON *root) {
     return ESP_OK;
 }
 
+// Attaches an item to a JSON object and owns it in every outcome. cJSON
+// duplicates the key, so the attach itself allocates and can fail; when it
+// does, the item is left orphaned by the library and is released here. A
+// NULL item, which is what a failed constructor returns, is reported as a
+// failure without touching the object. Returns true only when the item ends
+// up owned by the object.
+static bool telegram_json_attach(cJSON *object, const char *key, cJSON *item) {
+    if (item == NULL) {
+        return false;
+    }
+    if (!cJSON_AddItemToObject(object, key, item)) {
+        cJSON_Delete(item);
+        return false;
+    }
+    return true;
+}
+
 // Adds the parse_mode field matching the requested formatting, if any.
 static void telegram_add_parse_mode(cJSON *root, telegram_parse_mode_t mode) {
     switch (mode) {
@@ -889,8 +906,12 @@ esp_err_t telegram_send_message_ex(const char *chat_id, const char *text, const 
         if (options->disable_notification) {
             cJSON_AddBoolToObject(root, "disable_notification", true);
         }
-        if (options->reply_markup != NULL) {
-            cJSON_AddItemToObject(root, "reply_markup", cJSON_CreateRaw(options->reply_markup));
+        // The keyboard was explicitly requested, so a message that lost it
+        // would reach the user without the controls it is meant to carry:
+        // the failure is reported instead of sending a stripped message.
+        if (options->reply_markup != NULL && !telegram_json_attach(root, "reply_markup", cJSON_CreateRaw(options->reply_markup))) {
+            cJSON_Delete(root);
+            return ESP_ERR_NO_MEM;
         }
     }
 
@@ -934,8 +955,9 @@ esp_err_t telegram_edit_message(const char *chat_id, int32_t message_id, const c
     cJSON_AddStringToObject(root, "chat_id", chat_id);
     cJSON_AddNumberToObject(root, "message_id", message_id);
     cJSON_AddStringToObject(root, "text", text);
-    if (reply_markup != NULL) {
-        cJSON_AddItemToObject(root, "reply_markup", cJSON_CreateRaw(reply_markup));
+    if (reply_markup != NULL && !telegram_json_attach(root, "reply_markup", cJSON_CreateRaw(reply_markup))) {
+        cJSON_Delete(root);
+        return ESP_ERR_NO_MEM;
     }
     return telegram_api_call("editMessageText", root);
 }
@@ -1262,7 +1284,12 @@ static esp_err_t telegram_send_with_markup(const char *chat_id, const char *text
     }
     cJSON_AddStringToObject(root, "chat_id", chat_id);
     cJSON_AddStringToObject(root, "text", text);
-    cJSON_AddItemToObject(root, "reply_markup", markup);
+    // The markup is owned by the helper from here on, including when the
+    // attach fails, so the caller's object is never left dangling.
+    if (!telegram_json_attach(root, "reply_markup", markup)) {
+        cJSON_Delete(root);
+        return ESP_ERR_NO_MEM;
+    }
     return telegram_api_call("sendMessage", root);
 }
 
@@ -1278,7 +1305,10 @@ static cJSON *telegram_build_inline_keyboard(const telegram_button_t *buttons, s
         cJSON_Delete(keyboard);
         return NULL;
     }
-    cJSON_AddItemToObject(markup, "inline_keyboard", keyboard);
+    if (!telegram_json_attach(markup, "inline_keyboard", keyboard)) {
+        cJSON_Delete(markup);
+        return NULL;
+    }
 
     cJSON *row = NULL;
     size_t placed = 0;
@@ -1308,7 +1338,11 @@ static cJSON *telegram_build_inline_keyboard(const telegram_button_t *buttons, s
         } else if (buttons[i].web_app_url != NULL) {
             cJSON *web_app = cJSON_CreateObject();
             cJSON_AddStringToObject(web_app, "url", buttons[i].web_app_url);
-            cJSON_AddItemToObject(button, "web_app", web_app);
+            if (!telegram_json_attach(button, "web_app", web_app)) {
+                cJSON_Delete(button);
+                cJSON_Delete(markup);
+                return NULL;
+            }
         } else if (buttons[i].url != NULL) {
             cJSON_AddStringToObject(button, "url", buttons[i].url);
         } else {
@@ -1354,7 +1388,10 @@ esp_err_t telegram_send_keyboard(const char *chat_id, const char *text, const ch
         cJSON_Delete(keyboard);
         return ESP_ERR_NO_MEM;
     }
-    cJSON_AddItemToObject(markup, "keyboard", keyboard);
+    if (!telegram_json_attach(markup, "keyboard", keyboard)) {
+        cJSON_Delete(markup);
+        return ESP_ERR_NO_MEM;
+    }
     cJSON_AddBoolToObject(markup, "resize_keyboard", true);
     cJSON_AddBoolToObject(markup, "one_time_keyboard", one_time);
 
@@ -1430,10 +1467,19 @@ esp_err_t telegram_send_web_app(const char *chat_id, const char *text, const cha
 
     cJSON_AddStringToObject(web_app, "url", web_app_url);
     cJSON_AddStringToObject(button, "text", button_label);
-    cJSON_AddItemToObject(button, "web_app", web_app);
+    if (!telegram_json_attach(button, "web_app", web_app)) {
+        cJSON_Delete(markup);
+        cJSON_Delete(keyboard);
+        cJSON_Delete(row);
+        cJSON_Delete(button);
+        return ESP_ERR_NO_MEM;
+    }
     cJSON_AddItemToArray(row, button);
     cJSON_AddItemToArray(keyboard, row);
-    cJSON_AddItemToObject(markup, "keyboard", keyboard);
+    if (!telegram_json_attach(markup, "keyboard", keyboard)) {
+        cJSON_Delete(markup);
+        return ESP_ERR_NO_MEM;
+    }
     cJSON_AddBoolToObject(markup, "resize_keyboard", true);
     cJSON_AddBoolToObject(markup, "is_persistent", true);
 
@@ -1649,7 +1695,10 @@ esp_err_t telegram_set_my_commands(void) {
         cJSON_Delete(list);
         return ESP_ERR_NO_MEM;
     }
-    cJSON_AddItemToObject(root, "commands", list);
+    if (!telegram_json_attach(root, "commands", list)) {
+        cJSON_Delete(root);
+        return ESP_ERR_NO_MEM;
+    }
 
     if (!telegram_lock()) {
         cJSON_Delete(root);

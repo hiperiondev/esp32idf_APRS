@@ -665,6 +665,7 @@ void telegram_tx_batch_end(void);
  *  - ESP_OK when Telegram accepted the message.
  *  - ESP_ERR_INVALID_ARG on NULL arguments.
  *  - ESP_ERR_INVALID_STATE if the service is not initialized.
+ *  - ESP_ERR_NO_MEM if the request body cannot be built.
  *  - ESP_FAIL if the API answered with an error.
  */
 esp_err_t telegram_send_message(const char *chat_id, const char *text);
@@ -682,6 +683,10 @@ esp_err_t telegram_send_message_fmt(const char *chat_id, const char *format, ...
 
 /**
  * @brief Send a text message with formatting, reply and keyboard options.
+ *
+ * A keyboard given in ::telegram_send_options_t::reply_markup is part of the
+ * message: when it cannot be attached the call fails with ESP_ERR_NO_MEM
+ * rather than delivering the text without its controls.
  *
  * @param[in] chat_id Destination chat as text.
  * @param[in] text    Message body.
