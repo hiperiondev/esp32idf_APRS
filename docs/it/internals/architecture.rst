@@ -57,7 +57,7 @@ Dentro ``aprs_service_start()``
     ├─ igate_start()                 ← sempre avviato; resta inattivo quando niente richiede APRS-IS
     ├─ beacon_start() / weather_start() / bulletins_start() / objitems_start() / telemetry_start()
     ├─ beacon_scheduler_start()      ← UN task condiviso aziona tutto il TX periodico e le risposte alle query
-    └─ xTaskCreate(serviceTickTask)  ← 1 Hz: refresh meteo + ritentativo messaggi + MaS sincro oraria
+    └─ xTaskCreate(serviceTickTask)  ← 1 Hz: campionamento heap + refresh meteo + ritentativo messaggi + MaS sincro oraria
 
 Mappa dei task
 ==============
@@ -120,7 +120,7 @@ Mappa dei task
      - 4
      - qualsiasi
      - ``aprs_service_start()``
-     - 1 Hz: refresh meteo + ritentativo messaggi + sincro oraria
+     - 1 Hz: campionamento heap + refresh meteo + ritentativo messaggi + sincro oraria
    * - ``httpd``
      - 20480 B
      - —

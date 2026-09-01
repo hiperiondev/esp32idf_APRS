@@ -49,7 +49,8 @@ Disposición del repositorio
    │   ├── objects_items.c/.h  ← Objetos/Ítems APRS (objitems.json propio)
    │   ├── net_state.c/.h      ← bandera "¿tenemos internet de verdad?"
    │   ├── time_sync.c/.h      ← SNTP (siempre UTC), máquina de estados no bloqueante, tabla de zonas horarias (solo visualización)
-   │   └── cpu_freq.c/.h       ← esp_pm_configure() de la página System
+   │   ├── cpu_freq.c/.h       ← esp_pm_configure() de la página System
+   │   └── heap_monitor.c/.h   ← línea periódica de heap libre/mayor bloque/mínimo + barrido de integridad opcional
    │
    ├── components/
    │   ├── esp32idf_radioamateur_modem/    (el módem por software — el corazón del proyecto)

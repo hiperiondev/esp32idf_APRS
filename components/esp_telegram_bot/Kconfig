@@ -49,4 +49,24 @@ menu "Telegram bot transport"
             many roots the file may concatenate: a PEM root runs to roughly
             1.5 kB, so the default leaves room for a handful.
 
+    config TELEGRAM_BOT_HEAP_BRACKET
+        bool "Log the heap on both sides of every API call"
+        default n
+        help
+            Emit one line immediately before and one immediately after each
+            request this transport makes, carrying the free heap and the
+            largest free block at that instant.
+
+            A TLS handshake asks for its record buffers as single allocations
+            of a few kilobytes, so it is the largest single event this
+            firmware performs against the heap. Bracketing it is what turns
+            "the largest free block drops at these moments" into "the drops
+            are these calls": if the notches in the periodic heap line fall
+            inside these brackets, the handshake is what moves the heap, and
+            if they fall between them it is something else.
+
+            Off by default because it is two log lines per API call, and the
+            polling path makes one every few seconds. It is meant to be turned
+            on for a diagnostic session and off again afterwards.
+
 endmenu

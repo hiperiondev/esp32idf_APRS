@@ -631,6 +631,14 @@ CONFIG_PARTITION_TABLE_MD5=y
 # end of Partition Table
 
 #
+# APRS heap instrumentation
+#
+CONFIG_APRS_HEAP_REPORT=y
+CONFIG_APRS_HEAP_REPORT_PERIOD_S=60
+# CONFIG_APRS_HEAP_INTEGRITY_CHECK is not set
+# end of APRS heap instrumentation
+
+#
 # Compiler options
 #
 CONFIG_COMPILER_OPTIMIZATION_DEBUG=y
@@ -2355,6 +2363,7 @@ CONFIG_WL_SECTOR_SIZE=4096
 # CONFIG_TELEGRAM_BOT_CERT_BUNDLE is not set
 CONFIG_TELEGRAM_BOT_CERT_PATH="/storage/telegram_certificate.pem"
 CONFIG_TELEGRAM_BOT_CERT_MAX_LEN=8192
+# CONFIG_TELEGRAM_BOT_HEAP_BRACKET is not set
 # end of Telegram bot transport
 
 #

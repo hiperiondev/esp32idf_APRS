@@ -1,0 +1,81 @@
+menu "APRS heap instrumentation"
+
+    config APRS_HEAP_REPORT
+        bool "Log a periodic heap line"
+        default y
+        help
+            Emit one line per period, from the APRS service's 1 Hz tick, with
+            the free heap, the largest free block and the all-time minimum
+            free heap.
+
+            These three figures are what describe the allocator on the healthy
+            path. Every other heap number this firmware logs is printed after
+            something has already failed, which says what the heap looked like
+            once the damage was done and nothing about how it got there. A
+            watermark that fell overnight leaves no trace without this line.
+
+            It costs three allocator queries per period and no memory, so it
+            is meant to stay on in a normal build.
+
+    config APRS_HEAP_REPORT_PERIOD_S
+        int "Seconds between heap lines"
+        depends on APRS_HEAP_REPORT
+        range 10 3600
+        default 60
+        help
+            One line a minute is enough to place a slow drift or a sudden
+            notch on the clock, and short enough that a minute-by-minute trace
+            lines up with the individual events that caused it.
+
+            A shorter period only adds resolution up to the rate at which the
+            heap actually moves; below about ten seconds the line mostly
+            records the noise of the network stack's own buffers.
+
+    config APRS_HEAP_REPORT_TASKS
+        bool "Add the per-task usage table to each heap line"
+        depends on APRS_HEAP_REPORT && HEAP_TASK_TRACKING
+        default y
+        help
+            Follow each heap line with the per-task overview table that the
+            heap component builds when task tracking is enabled, attributing
+            the memory currently held to the task that allocated it.
+
+            This is the tool that turns "the free heap keeps falling" into a
+            task name in a single dump. It is only offered when
+            CONFIG_HEAP_TASK_TRACKING is selected, which is deliberately not
+            the default: tracking costs RAM per live allocation and slows
+            every allocation and free down, so it belongs in a diagnostic
+            build and should be turned off again afterwards.
+
+    config APRS_HEAP_INTEGRITY_CHECK
+        bool "Run a periodic heap integrity check"
+        default n
+        help
+            Sweep every heap on a slow timer and log the result, so that
+            corruption is ruled out rather than chased as a leak. Corrupted
+            allocator structures present as inexplicable heap behaviour: free
+            counts that move without an obvious owner, allocations that fail
+            with memory apparently available, crashes far from the code that
+            caused them.
+
+            The sweep holds each heap's lock while it walks it, so every other
+            task blocks if it tries to allocate meanwhile. That is why this is
+            off by default and on a slow timer when on.
+
+            What the sweep can see depends on the heap corruption detection
+            level. With the default (no poisoning) it only checks the
+            allocator's own structures; select "Light impact" or
+            "Comprehensive" under "Heap memory debugging" to also verify the
+            canary bytes around every allocated block.
+
+    config APRS_HEAP_INTEGRITY_PERIOD_S
+        int "Seconds between heap integrity checks"
+        depends on APRS_HEAP_INTEGRITY_CHECK
+        range 10 3600
+        default 300
+        help
+            The sweep is long enough to be worth spacing out. Five minutes
+            still brackets corruption to a window small enough to correlate
+            with the rest of the log, at a cost the station does not feel.
+
+endmenu

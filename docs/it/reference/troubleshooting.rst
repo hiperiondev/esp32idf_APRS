@@ -145,6 +145,66 @@ Telegram si aggira sui quattro kilobyte in un solo record, quindi abbassarlo
 sotto quella cifra non risparmia memoria: fa fallire l'handshake del tutto, a
 ogni tentativo e con qualsiasi stato dell'heap.
 
+"Stamattina l'heap libero è più basso di ieri sera e il log non dice nulla."
+============================================================================
+
+Ogni altra cifra di heap che questo firmware registra viene stampata *dopo* un
+guasto: le due righe del trasporto Telegram, il dettaglio di diagnosi allegato a
+un avvio fallito, il percorso di errore di scrittura degli archivi JSON.
+Descrivono l'heap a danno già fatto e non dicono nulla su come ci si è arrivati.
+Un minimo storico caduto alle tre del mattino non lascia quindi alcuna traccia
+di ciò che era in esecuzione.
+
+La strumentazione permanente che risponde a quella domanda sta in
+``main/heap_monitor.c``, è azionata dal tick a 1 Hz del servizio APRS e si
+configura sotto ``APRS heap instrumentation`` in ``idf.py menuconfig``.
+
+**Una riga al minuto.** ``CONFIG_APRS_HEAP_REPORT`` è attivo di default ed emette
+una riga ogni ``CONFIG_APRS_HEAP_REPORT_PERIOD_S`` secondi::
+
+   I (3600123) heap_monitor: free=104512 largest=45056 minimum=41216
+
+Tre cifre, da leggere insieme. La dimensione libera è quanta memoria esiste; il
+blocco libero maggiore è la più grande allocazione singola ancora possibile, e
+le due che si allontanano sono un heap che si frammenta anziché consumarsi; il
+minimo è il valore più basso dall'avvio, quindi un calo rientrato prima della
+riga successiva compare comunque lì. Sono riportate per la memoria interna a 8
+bit, la stessa classe che il trasporto stampa in caso di guasto, così i due tipi
+di riga si possono leggere uno accanto all'altro. La riga costa tre
+interrogazioni all'allocatore per periodo e nessuna memoria.
+
+**Parentesi attorno agli handshake.** ``CONFIG_TELEGRAM_BOT_HEAP_BRACKET``, sotto
+``Telegram bot transport``, registra le stesse due cifre immediatamente prima e
+immediatamente dopo ogni richiesta del bot: ogni tentativo di una chiamata JSON,
+più il caricamento multipart e il download del file, che aprono connessioni
+proprie. Un handshake TLS chiede i suoi buffer di record come allocazioni singole
+di pochi kilobyte, quindi è l'evento singolo più grande che questo firmware
+esegue contro l'heap. Se le tacche della traccia minuto per minuto cadono dentro
+queste parentesi, sono gli handshake a muovere l'heap; se cadono tra di esse, lo
+muove qualcos'altro. Disattivato di default: sono due righe per chiamata API e il
+percorso di polling ne fa una ogni pochi secondi.
+
+**Attribuire la memoria a un task.** Abilita ``CONFIG_HEAP_TASK_TRACKING``
+(``Component config`` → ``Heap memory debugging``) e compare
+``CONFIG_APRS_HEAP_REPORT_TASKS``, che aggiunge la tabella di riepilogo per task
+sotto ogni riga di heap, così una perdita reale indica il suo proprietario in un
+solo dump invece che in una settimana di bisezione. Il tracciamento costa RAM per
+allocazione viva e rallenta ogni allocazione e liberazione, quindi appartiene a
+una build di diagnosi: rispegnilo in seguito.
+
+**Escludere la corruzione.** ``CONFIG_APRS_HEAP_INTEGRITY_CHECK`` scansiona ogni
+heap ogni ``CONFIG_APRS_HEAP_INTEGRITY_PERIOD_S`` secondi e registra un errore,
+dopo gli indirizzi che stampa il verificatore stesso, se qualcosa non va. Le
+strutture corrotte dell'allocatore si presentano come comportamento
+inspiegabile dell'heap e altrimenti vengono inseguite come una perdita. La
+scansione mantiene il lock di ogni heap mentre lo percorre, quindi gli altri task
+si bloccano se allocano nel frattempo: per questo è disattivata di default e, se
+attiva, su un timer lento. Ciò che riesce a vedere dipende dal livello di
+rilevamento della corruzione: con il valore predefinito (senza poisoning) si
+verificano solo le strutture dell'allocatore; scegli "Light impact" o
+"Comprehensive" per verificare anche i byte canarino attorno a ogni blocco
+allocato.
+
 "I pulsanti del menu continuano a girare e il log mostra 'query is too old and response timeout expired or query ID is invalid'."
 =================================================================================================================================
 

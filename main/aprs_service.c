@@ -47,6 +47,7 @@
 #include "beacon_scheduler.h"
 #include "bulletins.h"
 #include "digirepeater.h"
+#include "heap_monitor.h"
 #include "igate.h"
 #include "lastheard.h"
 #include "message.h"
@@ -1710,6 +1711,13 @@ static void messageTxHandler(const char *packet, size_t len, uint8_t channels) {
 
 static void serviceTickTask(void *arg) {
     while (1) {
+        // Periodic heap sample, first in the pass so that consecutive lines
+        // are taken at the same point of the cycle and describe the heap
+        // between passes rather than in the middle of one. This is the only
+        // place that records the allocator while everything is working; every
+        // other heap figure in the log is printed after something failed.
+        heap_monitor_tick_1hz();
+
         // 1 Hz weather sensor refresh, folded in here instead of running its
         // own wx_sensor_task (saves that task's stack). weather_start() has
         // already run by the time this task is created, so the shared container

@@ -146,6 +146,66 @@ registro, así que bajarlo por debajo de esa cifra no ahorra memoria: hace que
 el *handshake* falle de plano, en todos los intentos y con cualquier estado
 de la memoria.
 
+"Esta mañana el heap libre está más bajo que anoche y el log no dice nada al respecto."
+=======================================================================================
+
+Cualquier otra cifra de heap que registre este firmware se imprime *después* de
+un fallo: las dos líneas del transporte de Telegram, el detalle de diagnóstico
+que acompaña a un arranque fallido, la ruta de error de escritura de los
+almacenes JSON. Describen el heap una vez hecho el daño y no dicen nada de cómo
+se llegó ahí. Una marca de agua que cayó a las tres de la madrugada no deja,
+por tanto, ningún rastro de lo que estaba corriendo.
+
+La instrumentación permanente que responde a esa pregunta vive en
+``main/heap_monitor.c``, la acciona el tick de 1 Hz del servicio APRS y se
+configura bajo ``APRS heap instrumentation`` en ``idf.py menuconfig``.
+
+**Una línea por minuto.** ``CONFIG_APRS_HEAP_REPORT`` viene activado y emite una
+línea cada ``CONFIG_APRS_HEAP_REPORT_PERIOD_S`` segundos::
+
+   I (3600123) heap_monitor: free=104512 largest=45056 minimum=41216
+
+Tres cifras, que se leen juntas. El tamaño libre es cuánta memoria existe; el
+mayor bloque libre es la mayor asignación individual todavía posible, y que
+ambas se separen es un heap fragmentándose y no consumiéndose; el mínimo es la
+marca de agua desde el arranque, así que un bajón que se recuperó antes de la
+línea siguiente igual aparece ahí. Se informan sobre memoria interna de 8 bits,
+la misma clase que imprime el transporte al fallar, de modo que los dos tipos de
+línea se pueden leer uno contra otro. La línea cuesta tres consultas al
+asignador por período y nada de memoria.
+
+**Corchetes alrededor de los handshakes.** ``CONFIG_TELEGRAM_BOT_HEAP_BRACKET``,
+bajo ``Telegram bot transport``, registra esas mismas dos cifras inmediatamente
+antes e inmediatamente después de cada petición del bot: cada intento de una
+llamada JSON, más la subida multipart y la descarga de archivos, que abren
+conexiones propias. Un handshake TLS pide sus búferes de registro como
+asignaciones individuales de unos pocos kilobytes, así que es el mayor evento
+individual que este firmware ejecuta contra el heap. Si las muescas de la traza
+minuto a minuto caen dentro de estos corchetes, son los handshakes los que
+mueven el heap; si caen entre ellos, lo mueve otra cosa. Desactivado por
+defecto: son dos líneas por llamada a la API y la ruta de sondeo hace una cada
+pocos segundos.
+
+**Atribuir la memoria a una tarea.** Activa ``CONFIG_HEAP_TASK_TRACKING``
+(``Component config`` → ``Heap memory debugging``) y aparece
+``CONFIG_APRS_HEAP_REPORT_TASKS``, que agrega la tabla de resumen por tarea
+debajo de cada línea de heap, de modo que una fuga real nombra a su dueño en un
+solo volcado en vez de una semana de bisección. El seguimiento cuesta RAM por
+asignación viva y ralentiza cada asignación y cada liberación, así que
+corresponde a una compilación de diagnóstico: vuelve a apagarlo después.
+
+**Descartar corrupción.** ``CONFIG_APRS_HEAP_INTEGRITY_CHECK`` barre todos los
+heaps cada ``CONFIG_APRS_HEAP_INTEGRITY_PERIOD_S`` segundos y registra un error,
+a continuación de las direcciones que imprime el propio verificador, si algo
+está mal. Las estructuras corruptas del asignador se presentan como conducta
+inexplicable del heap y si no se persiguen como una fuga. El barrido sostiene el
+lock de cada heap mientras lo recorre, así que otras tareas se bloquean si
+asignan mientras tanto: de ahí que venga apagado y, encendido, con un
+temporizador lento. Lo que puede ver depende del nivel de detección de
+corrupción: con el valor por defecto (sin envenenamiento) solo se verifican las
+estructuras propias del asignador; elige "Light impact" o "Comprehensive" para
+verificar además los bytes canario alrededor de cada bloque asignado.
+
 "Los botones del menú siguen girando y el log muestra 'query is too old and response timeout expired or query ID is invalid'."
 ==============================================================================================================================
 

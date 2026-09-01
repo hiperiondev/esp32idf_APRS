@@ -19,6 +19,7 @@ idf_component_register(
         "telemetry.c"
         "time_sync.c"
         "cpu_freq.c"
+        "heap_monitor.c"
     INCLUDE_DIRS
         "include"
     REQUIRES

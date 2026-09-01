@@ -140,6 +140,62 @@ presents is around four kilobytes in one record, so lowering it under that
 figure does not save memory — it makes the handshake fail outright, on every
 attempt and in every heap condition.
 
+"The free heap was lower this morning than it was last night, and the log says nothing about it."
+=================================================================================================
+
+Every other heap figure this firmware logs is printed *after* a failure: the
+two lines in the Telegram transport, the diagnosis detail attached to a failed
+bring-up, the write-error path of the JSON stores. They describe the heap once
+the damage was done, and say nothing about how it got there. A watermark that
+fell at three in the morning therefore leaves no trace of what was running.
+
+The standing instrumentation that answers such a question lives in
+``main/heap_monitor.c``, driven from the APRS service's 1 Hz tick, and is
+configured under ``APRS heap instrumentation`` in ``idf.py menuconfig``.
+
+**One line per minute.** ``CONFIG_APRS_HEAP_REPORT`` is on by default and emits
+one line every ``CONFIG_APRS_HEAP_REPORT_PERIOD_S`` seconds::
+
+   I (3600123) heap_monitor: free=104512 largest=45056 minimum=41216
+
+Three figures, read together. The free size is how much memory exists; the
+largest free block is the biggest single allocation still possible, and the two
+drifting apart is a heap breaking up rather than being consumed; the minimum is
+the low watermark since boot, so a dip that recovered before the next line
+still shows there. They are reported for internal 8-bit memory, the same class
+the transport prints on failure, so the two kinds of line can be read against
+each other. The line costs three allocator queries per period and no memory.
+
+**Brackets around the handshakes.** ``CONFIG_TELEGRAM_BOT_HEAP_BRACKET``, under
+``Telegram bot transport``, logs the same two figures immediately before and
+immediately after every request the bot makes — each attempt of a JSON call,
+plus the multipart upload and the file download, which open connections of
+their own. A TLS handshake asks for its record buffers as single allocations of
+a few kilobytes, so it is the largest single event this firmware performs
+against the heap. If the notches in the minute-by-minute trace fall inside
+these brackets, the handshakes are what move the heap; if they fall between
+them, something else does. Off by default: it is two lines per API call and the
+polling path makes one every few seconds.
+
+**Attributing the memory to a task.** Enable ``CONFIG_HEAP_TASK_TRACKING``
+(``Component config`` → ``Heap memory debugging``) and
+``CONFIG_APRS_HEAP_REPORT_TASKS`` appears, adding the per-task overview table
+under each heap line, so a genuine leak names its owner in one dump instead of
+a week of bisection. Tracking costs RAM per live allocation and slows every
+allocation and free, so it belongs in a diagnostic build — turn it off again
+afterwards.
+
+**Ruling out corruption.** ``CONFIG_APRS_HEAP_INTEGRITY_CHECK`` sweeps every
+heap every ``CONFIG_APRS_HEAP_INTEGRITY_PERIOD_S`` seconds and logs an error,
+after the addresses the checker itself prints, if anything is wrong. Corrupted
+allocator structures present as inexplicable heap behaviour and are otherwise
+chased as a leak. The sweep holds each heap's lock while it walks it, so other
+tasks block if they allocate meanwhile — hence off by default and on a slow
+timer when on. What it can see depends on the corruption detection level: with
+the default (no poisoning) only the allocator's own structures are checked;
+select "Light impact" or "Comprehensive" to also verify the canary bytes around
+every allocated block.
+
 "Menu buttons keep spinning and the log shows 'query is too old and response timeout expired or query ID is invalid'."
 ======================================================================================================================
 

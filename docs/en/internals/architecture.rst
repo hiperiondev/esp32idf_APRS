@@ -56,7 +56,7 @@ Inside ``aprs_service_start()``
     ├─ igate_start()                 ← always started; self-idles when nothing needs APRS-IS
     ├─ beacon_start() / weather_start() / bulletins_start() / objitems_start() / telemetry_start()
     ├─ beacon_scheduler_start()      ← ONE shared task drives all periodic TX and query answers
-    └─ xTaskCreate(serviceTickTask)  ← 1 Hz: weather refresh + message retry + time-sync SM
+    └─ xTaskCreate(serviceTickTask)  ← 1 Hz: heap sample + weather refresh + message retry + time-sync SM
 
 Task map
 ========
@@ -119,7 +119,7 @@ Task map
      - 4
      - any
      - ``aprs_service_start()``
-     - 1 Hz: weather refresh + message retry + time sync
+     - 1 Hz: heap sample + weather refresh + message retry + time sync
    * - ``httpd``
      - 20480 B
      - —

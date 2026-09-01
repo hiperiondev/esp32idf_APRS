@@ -87,6 +87,23 @@
 
 static const char *TAG = "esp_telegram_bot";
 
+#if CONFIG_TELEGRAM_BOT_HEAP_BRACKET
+// One side of a heap bracket around a request: the phase is "before" or
+// "after", the attempt numbers the try within one call. Reported in the same
+// memory class and with the same two figures as the failure paths below, so a
+// bracket and a failure line can be read against each other.
+static void telegram_bot_heap_bracket(const char *phase, const char *method, int attempt) {
+    ESP_LOGI(TAG, "%s attempt %d heap %s: %u bytes free with a %u byte largest block", method, attempt, phase,
+             (unsigned)heap_caps_get_free_size(TELEGRAM_BOT_HEAP_CAPS), (unsigned)heap_caps_get_largest_free_block(TELEGRAM_BOT_HEAP_CAPS));
+}
+
+#define TELEGRAM_BOT_HEAP_BRACKET(phase, method, attempt) telegram_bot_heap_bracket((phase), (method), (attempt))
+#else
+// The bracket lines are compiled out entirely when the option is off; the
+// arguments are not evaluated, so the call sites cost nothing.
+#define TELEGRAM_BOT_HEAP_BRACKET(phase, method, attempt) ((void)0)
+#endif
+
 // Internal representation of a client handle: one HTTP client plus the
 // mutex that serialises the requests issued through it.
 struct telegram_bot_client_s {
@@ -625,7 +642,9 @@ esp_err_t telegram_bot_client_call(telegram_bot_client_handle_t handle, const te
     int attempt = 0;
     while (true) {
         attempt++;
+        TELEGRAM_BOT_HEAP_BRACKET("before", request->method, attempt);
         err = esp_http_client_perform(handle->client);
+        TELEGRAM_BOT_HEAP_BRACKET("after", request->method, attempt);
         if (err == ESP_OK || attempt >= TELEGRAM_BOT_MAX_ATTEMPTS) {
             break;
         }
@@ -788,7 +807,12 @@ esp_err_t telegram_bot_client_call_multipart(telegram_bot_client_handle_t handle
     esp_http_client_set_user_data(handle->client, NULL);
     esp_http_client_set_header(handle->client, "Content-Type", "multipart/form-data; boundary=" TELEGRAM_BOT_BOUNDARY);
 
+    // Bracketed like the JSON path above: this opens a connection of its own,
+    // so it is a handshake of the same size against the same heap, and the
+    // body it then streams is the largest one this transport sends.
+    TELEGRAM_BOT_HEAP_BRACKET("before", method, 1);
     esp_err_t err = esp_http_client_open(handle->client, (int)total_len);
+    TELEGRAM_BOT_HEAP_BRACKET("after", method, 1);
     if (err == ESP_OK) {
         if (esp_http_client_write(handle->client, preamble, offset) != (int)offset) {
             err = ESP_FAIL;
@@ -872,7 +896,9 @@ esp_err_t telegram_bot_client_download(telegram_bot_client_handle_t handle, cons
     esp_http_client_set_post_field(handle->client, NULL, 0);
     esp_http_client_set_user_data(handle->client, NULL);
 
+    TELEGRAM_BOT_HEAP_BRACKET("before", file_path, 1);
     esp_err_t err = esp_http_client_open(handle->client, 0);
+    TELEGRAM_BOT_HEAP_BRACKET("after", file_path, 1);
     if (err == ESP_OK) {
         if (esp_http_client_fetch_headers(handle->client) < 0) {
             err = ESP_FAIL;
