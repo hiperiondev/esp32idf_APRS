@@ -49,6 +49,13 @@ in ``config.json``:
        gli utenti autorizzati, all'amministratore e a tutte le chat di gruppo
        consentite; vedi `Inoltro dei bollettini a Telegram`_ più sotto.
        Assente, come ``enabled``, si carica spento.
+   * - ``bulletinWindowSeconds``
+     - Il campo "Finestra di ripetizione dei bollettini" della pagina
+       Telegram: per quanti secondi un bollettino già inoltrato impedisce
+       l'inoltro anche delle proprie ripetizioni, da 0 a 86400. 0 inoltra ogni
+       copia. A differenza degli interruttori qui sopra, una chiave assente si
+       carica con il valore predefinito di 900 s e non come 0, perché qui 0 è
+       un'impostazione legittima e significa l'opposto di "lascia stare".
    * - Token del bot
      - Il token rilasciato da `@BotFather <https://t.me/BotFather>`__.
    * - Identificativo dell'amministratore
@@ -299,13 +306,14 @@ Un bollettino arriva ai suoi destinatari come una sola riga:
 I bollettini si ripetono, ed è questo che li rende bollettini: il mittente li
 ritrasmette a intervalli, ogni digipeater a portata ripete ciò che sente e in
 più torna una copia igatata da APRS-IS. Perciò un bollettino il cui mittente,
-destinatario e testo coincidono con uno inoltrato negli ultimi quindici
-minuti viene scartato invece di essere inviato di nuovo, così un bollettino
-periodico arriva una sola volta in ogni chat anziché riempirla di copie di sé
-stesso. Modificare il testo, o l'invio da parte di un'altra stazione, ne fa un
-bollettino nuovo che viene inoltrato subito. Vengono ricordati gli otto
-bollettini inoltrati più di recente, come un hash di quei tre campi e il
-momento in cui sono stati visti. È anche ciò che mantiene a una sola copia un
+destinatario e testo coincidono con uno inoltrato entro la "Finestra di
+ripetizione dei bollettini" della pagina *Telegram* viene scartato invece di
+essere inviato di nuovo, così un bollettino periodico arriva una sola volta in
+ogni chat anziché riempirla di copie di sé stesso. Modificare il testo, o
+l'invio da parte di un'altra stazione, ne fa un bollettino nuovo che viene
+inoltrato subito. Vengono ricordati gli otto bollettini inoltrati più di
+recente, come un hash di quei tre campi e il momento in cui sono stati visti,
+qualunque sia la finestra. È anche ciò che mantiene a una sola copia un
 bollettino proprio di questa stazione quando il frame digipetuto torna entro
 la finestra: porta lo stesso mittente, destinatario e testo, così la copia di
 ritorno viene riconosciuta per la ripetizione che è. Il destinatario viene
@@ -319,9 +327,21 @@ La finestra viene armata da una consegna, mai da un tentativo. Un bollettino
 che non si è potuto consegnare la lascia intatta e viene inoltrato alla sua
 trasmissione successiva, cosa che conta soprattutto con l'intervallo più breve
 che la pagina *Bollettini* consente: un bollettino che si ripete ogni 30 s
-contro una finestra di 900 s perderebbe altrimenti le sue ventinove
+contro la finestra predefinita perderebbe altrimenti le sue ventinove
 trasmissioni successive per un solo armamento a cui non è seguita alcuna
 consegna, e le perderebbe tutte finché persiste ciò che ha bloccato la prima.
+
+La finestra è il campo subito sotto l'interruttore, in secondi, da 0 a 86400
+(24 h), e vale 900 s per impostazione predefinita. Impostala più lunga
+dell'intervallo con cui vengono trasmessi i bollettini che si sentono sul
+canale, così ognuno arriva nelle chat una volta per modifica e non una volta
+per trasmissione; una stazione i cui vicini ripetono i loro bollettini ogni
+dieci minuti vuole qui più di 600 s. Portarla a 0 disattiva del tutto il
+controllo e inoltra ogni copia, comprese quelle che tornano dai digipeater e
+dal flusso APRS-IS, che è ciò che vuole chi osserva le ritrasmissioni su un
+canale congestionato e ciò che non vuole nessuno che legga una chat. Il valore
+risiede in ``bulletinWindowSeconds`` e ha effetto al salvataggio, senza
+riavviare.
 
 La consegna è vincolata alle stesse tre condizioni di un messaggio della
 stazione inoltrato - interruttore acceso, bot abilitato, bot connesso - e

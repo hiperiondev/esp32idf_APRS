@@ -1747,8 +1747,18 @@
     "Con esto encendido, todo boletin APRS recibido en la red, por el aire o desde el flujo APRS-IS, se envia a todos los usuarios autorizados, al "           \
     "administrador y a todos los chats de grupo permitidos de mas abajo, como \"bulletin from <remitente> to <boletin> :: <texto del boletin>\". Un "          \
     "boletin es un destinatario \"BLN\" seguido de un digito o una letra y, opcionalmente, de un nombre de grupo; no se compara ningun indicativo, ya que "    \
-    "un boletin esta dirigido a toda la red y no a una estacion. Un boletin identico a otro ya reenviado en los ultimos quince minutos no se envia de "        \
-    "nuevo, asi un boletin que su emisor repite por temporizador, o que se escucha a traves de varios digipetidores, llega una sola vez a cada chat."
+    "un boletin esta dirigido a toda la red y no a una estacion. Un boletin identico a otro ya reenviado dentro de la ventana de repeticion de mas abajo "     \
+    "no se envia de nuevo, asi un boletin que su emisor repite por temporizador, o que se escucha a traves de varios digipetidores, llega una sola vez "       \
+    "a cada chat."
+/** Label of the bulletin repeat window field, rendered on the Telegram page. */
+#define TR_TG_BULLETIN_WINDOW "Ventana de repeticion de boletines (s)"
+/** Explanatory note shown under the bulletin repeat window field, rendered on the Telegram page. */
+#define TR_TG_NOTE_BULLETIN_WINDOW                                                                                                                             \
+    "Cuanto tiempo un boletin ya reenviado impide que se reenvien tambien sus repeticiones. Un boletin cuyo remitente, destinatario y texto coinciden "        \
+    "con otro ya entregado dentro de estos segundos se descarta; cambiar el texto, o que lo envie otra estacion, lo convierte en un boletin nuevo y se "       \
+    "reenvia de inmediato. Pongala mas larga que el intervalo con que se transmiten los boletines de este canal, asi cada uno llega a los chats una vez "      \
+    "por edicion y no una vez por transmision. 0 apaga la comprobacion y reenvia todas las copias, incluidas las que vuelven por los digipetidores y "         \
+    "desde el flujo APRS-IS. Se recuerdan los ocho boletines reenviados mas recientes, sea cual sea esta ventana."
 /** Fieldset legend for the credentials block, rendered on the Telegram page. */
 #define TR_TG_FS_BOT "Credenciales"
 /** Label of the bot token field, rendered on the Telegram page. */

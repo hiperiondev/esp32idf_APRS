@@ -49,6 +49,13 @@ Todo lo que el bot necesita vive en ``/storage/telegram.json``, no en
        usuarios autorizados, al administrador y a todos los chats de grupo
        permitidos; ver `Reenvío de boletines a Telegram`_ más abajo. Ausente,
        igual que ``enabled``, se carga apagado.
+   * - ``bulletinWindowSeconds``
+     - El campo "Ventana de repeticion de boletines" de la página Telegram:
+       cuántos segundos un boletín ya reenviado impide que se reenvíen también
+       sus repeticiones, de 0 a 86400. 0 reenvía todas las copias. A
+       diferencia de los interruptores de arriba, una clave ausente se carga
+       con el valor por omisión de 900 s y no como 0, porque aquí 0 es un
+       ajuste válido y significa lo contrario de "déjalo como está".
    * - Token del bot
      - El token emitido por `@BotFather <https://t.me/BotFather>`__.
    * - Identificador del administrador
@@ -293,14 +300,15 @@ Un boletín llega a sus destinatarios como una sola línea:
 Los boletines se repiten, que es lo que los hace boletines: el emisor los
 retransmite por temporizador, cada digipetidor al alcance repite lo que oye y
 además vuelve una copia igateada desde APRS-IS. Por eso un boletín cuyo
-remitente, destinatario y texto coinciden con uno reenviado en los últimos
-quince minutos se descarta en lugar de enviarse de nuevo, así un boletín
-periódico llega una sola vez a cada chat en vez de llenarlo de copias de sí
-mismo. Editar el texto, o que lo envíe otra estación, lo convierte en un
-boletín nuevo y se reenvía de inmediato. Se recuerdan los ocho boletines
-reenviados más recientemente, como un hash de esos tres campos y el momento en
-que se vieron. Eso es también lo que mantiene en una sola copia un boletín
-propio de esta estación cuando la trama digipetida vuelve dentro de la
+remitente, destinatario y texto coinciden con uno reenviado dentro de la
+"Ventana de repeticion de boletines" de la página *Telegram* se descarta en
+lugar de enviarse de nuevo, así un boletín periódico llega una sola vez a cada
+chat en vez de llenarlo de copias de sí mismo. Editar el texto, o que lo envíe
+otra estación, lo convierte en un boletín nuevo y se reenvía de inmediato. Se
+recuerdan los ocho boletines reenviados más recientemente, como un hash de
+esos tres campos y el momento en que se vieron, sea cual sea la ventana. Eso
+es también lo que mantiene en una sola copia un boletín propio de esta
+estación cuando la trama digipetida vuelve dentro de la
 ventana: lleva el mismo remitente, destinatario y texto, así que la copia que
 regresa se reconoce como la repetición que es. El destinatario se compara sin
 sus espacios finales, porque los dos puntos de entrada no lo escriben igual
@@ -311,10 +319,21 @@ recortado (``BLN1``)—, y sin eso la copia que regresa sería otro boletín.
 La ventana la arma una entrega, nunca un intento. Un boletín que no se pudo
 entregar la deja intacta y se reenvía en su siguiente transmisión, lo que
 importa sobre todo con el intervalo más corto que admite la página
-*Boletines*: un boletín que se repite cada 30 s frente a una ventana de 900 s
-perdería si no sus siguientes veintinueve transmisiones por un único armado al
-que no siguió ninguna entrega, y las perdería todas mientras persista lo que
-bloqueó la primera.
+*Boletines*: un boletín que se repite cada 30 s frente a la ventana por
+omisión perdería si no sus siguientes veintinueve transmisiones por un único
+armado al que no siguió ninguna entrega, y las perdería todas mientras
+persista lo que bloqueó la primera.
+
+La ventana es el campo situado justo debajo del interruptor, en segundos, de 0
+a 86400 (24 h), y por omisión vale 900 s. Póngala más larga que el intervalo
+con que se transmiten los boletines que se oyen en el canal, así cada uno
+llega a los chats una vez por edición y no una vez por transmisión; una
+estación cuyos vecinos repiten sus boletines cada diez minutos quiere aquí más
+de 600 s. Ponerla a 0 apaga la comprobación por completo y reenvía todas las
+copias, incluidas las que vuelven por los digipetidores y desde el flujo
+APRS-IS, que es lo que quiere quien vigila las retransmisiones de un canal
+congestionado y lo que no quiere nadie que lea un chat. El valor vive en
+``bulletinWindowSeconds`` y surte efecto al guardar, sin reiniciar.
 
 El envío está sujeto a las mismas tres condiciones que un mensaje de estación
 reenviado —interruptor encendido, bot habilitado, bot conectado— y no queda

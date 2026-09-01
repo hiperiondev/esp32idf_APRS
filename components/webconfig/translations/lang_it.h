@@ -1748,9 +1748,18 @@
     "Con questo acceso, ogni bollettino APRS ricevuto sulla rete, via radio o dal flusso APRS-IS, viene inviato a tutti gli utenti autorizzati, "              \
     "all'amministratore e a tutte le chat di gruppo consentite qui sotto, come \"bulletin from <mittente> to <bollettino> :: <testo del bollettino>\". Un "    \
     "bollettino e un destinatario \"BLN\" seguito da una cifra o da una lettera e, facoltativamente, da un nome di gruppo; non viene confrontato alcun "       \
-    "nominativo, poiche un bollettino e indirizzato a tutta la rete e non a una stazione. Un bollettino identico a uno gia inoltrato negli ultimi "            \
-    "quindici minuti non viene inviato di nuovo, cosi un bollettino che il mittente ripete a intervalli, o sentito attraverso piu digipeater, arriva "         \
-    "una sola volta in ogni chat."
+    "nominativo, poiche un bollettino e indirizzato a tutta la rete e non a una stazione. Un bollettino identico a uno gia inoltrato entro la finestra "       \
+    "di ripetizione qui sotto non viene inviato di nuovo, cosi un bollettino che il mittente ripete a intervalli, o sentito attraverso piu digipeater, "       \
+    "arriva una sola volta in ogni chat."
+/** Label of the bulletin repeat window field, rendered on the Telegram page. */
+#define TR_TG_BULLETIN_WINDOW "Finestra di ripetizione dei bollettini (s)"
+/** Explanatory note shown under the bulletin repeat window field, rendered on the Telegram page. */
+#define TR_TG_NOTE_BULLETIN_WINDOW                                                                                                                             \
+    "Per quanto tempo un bollettino gia inoltrato impedisce l'inoltro anche delle proprie ripetizioni. Un bollettino il cui mittente, destinatario e "         \
+    "testo coincidono con uno gia consegnato entro questi secondi viene scartato; modificare il testo, o l'invio da parte di un'altra stazione, ne fa "        \
+    "un bollettino nuovo che viene inoltrato subito. Impostala piu lunga dell'intervallo con cui vengono trasmessi i bollettini di questo canale, cosi "       \
+    "ognuno arriva nelle chat una volta per modifica e non una volta per trasmissione. 0 disattiva il controllo e inoltra ogni copia, comprese quelle "        \
+    "che tornano dai digipeater e dal flusso APRS-IS. Vengono ricordati gli otto bollettini inoltrati piu recenti, qualunque sia questa finestra."
 /** Fieldset legend for the credentials block, rendered on the Telegram page. */
 #define TR_TG_FS_BOT "Credenziali"
 /** Label of the bot token field, rendered on the Telegram page. */

@@ -48,6 +48,12 @@ Everything the bot needs lives in ``/storage/telegram.json``, not in
        user, to the administrator and to every allowed group chat; see
        `Routing bulletins to Telegram`_ below. Absent, the same as
        ``enabled``, loads as off.
+   * - ``bulletinWindowSeconds``
+     - The Telegram page's "Bulletin repeat window" field: how many seconds a
+       bulletin that has been routed keeps its own repeats from being routed
+       as well, 0 to 86400. 0 routes every copy. Unlike the switches above,
+       an absent key loads as the 900 s default rather than as 0, because 0
+       is a legal setting here and means the opposite of "leave it alone".
    * - Bot token
      - The token issued by `@BotFather <https://t.me/BotFather>`__.
    * - Administrator identifier
@@ -280,15 +286,16 @@ A bulletin reaches its recipients as one line:
 Bulletins repeat, which is what makes them bulletins: the originator
 retransmits on a timer, every digipeater within earshot repeats what it hears,
 and an igated copy comes back from APRS-IS as well. A bulletin whose sender,
-addressee and text match one routed within the last fifteen minutes is
-therefore dropped instead of being sent again, so a periodic bulletin reaches
-each chat once rather than filling it with copies of itself. Editing the text,
-or a different station sending it, makes it a new bulletin and it is routed at
-once. The eight most recently routed bulletins are remembered, as a hash of
-those three fields and the time they were seen. This is also what keeps one of
-this station's own bulletins to a single copy when the digipeated frame comes
-back within the window: it carries the same sender, addressee and text, so the
-returning copy is recognised as the repeat it is. The addressee is compared
+addressee and text match one routed within the *Telegram* page's "Bulletin
+repeat window" is therefore dropped instead of being sent again, so a periodic
+bulletin reaches each chat once rather than filling it with copies of itself.
+Editing the text, or a different station sending it, makes it a new bulletin
+and it is routed at once. The eight most recently routed bulletins are
+remembered, as a hash of those three fields and the time they were seen,
+whatever the window is set to. This is also what keeps one of this station's
+own bulletins to a single copy when the digipeated frame comes back within the
+window: it carries the same sender, addressee and text, so the returning copy
+is recognised as the repeat it is. The addressee is compared
 with its trailing blanks removed, because the two entry points do not spell it
 alike - the scheduler hands over the nine-character space-padded field it just
 put on the air (``BLN1     ``), the frame decoder the trimmed one (``BLN1``) -
@@ -297,9 +304,21 @@ and without that the returning copy would be a different bulletin.
 The window is armed by a delivery, never by an attempt. A bulletin that could
 not be handed over leaves it untouched and is routed on its next transmission
 instead, which matters most on the shortest interval the *Bulletins* page
-allows: a bulletin repeating every 30 s against a 900 s window would otherwise
-lose its next twenty-nine transmissions to a single arming that no delivery
-followed, and lose all of them while whatever blocked the first one persists.
+allows: a bulletin repeating every 30 s against the default window would
+otherwise lose its next twenty-nine transmissions to a single arming that no
+delivery followed, and lose all of them while whatever blocked the first one
+persists.
+
+The window is the field directly under the switch, in seconds, from 0 to
+86400 (24 h), and it defaults to 900 s. Set it longer than the interval the
+bulletins heard on the channel are transmitted at, so each one reaches the
+chats once per edit rather than once per transmission; a station whose
+neighbours repeat their bulletins every ten minutes wants more than 600 s
+here. Setting it to 0 turns the test off altogether and routes every copy,
+including the ones that come back through digipeaters and from the APRS-IS
+feed, which is what an operator watching retransmissions on a congested
+channel wants and what nobody reading a chat does. The value lives in
+``bulletinWindowSeconds`` and takes effect on save, without a reboot.
 
 Delivery is bound by the same three conditions as a routed station message -
 the switch on, the bot enabled, the bot connected - and nothing is queued for

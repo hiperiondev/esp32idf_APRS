@@ -93,6 +93,31 @@
 #define TELEGRAM_APP_BOTNAME_MAX 40
 
 /**
+ * @name Bulletin repeat window
+ *
+ * Bounds and default of ::telegram_app_config_t::bulletin_window_s, the
+ * interval during which a bulletin identical to one already routed is dropped
+ * instead of being sent again. They are published here because three call
+ * sites have to agree on them: the loader, which substitutes the default for a
+ * file that carries no such key; the Telegram page, which renders the field
+ * with these bounds and clamps what it stores; and the routing path, which
+ * compares elapsed time against the stored value.
+ *
+ * The default is longer than the shortest interval an operator would sensibly
+ * transmit a bulletin at, so a station that never touches the field behaves as
+ * one that has no reason to think about it should. The ceiling is a full day,
+ * which is the useful limit rather than the storage type's. The floor is 0,
+ * and 0 means the test is off: every copy of every bulletin is routed, which
+ * is what an operator watching a congested channel for retransmissions wants
+ * and what nobody reading a chat does.
+ * @{
+ */
+#define TELEGRAM_APP_BULLETIN_WINDOW_DEFAULT 900   /**< Window used when telegram.json carries no window, seconds. */
+#define TELEGRAM_APP_BULLETIN_WINDOW_MIN     0     /**< Lowest accepted window, seconds; 0 disables the duplicate test. */
+#define TELEGRAM_APP_BULLETIN_WINDOW_MAX     86400 /**< Highest accepted window, seconds (24 h). */
+/** @} */
+
+/**
  * @brief One allowed group chat.
  *
  * Telegram identifiers are 64-bit and signed: a supergroup identifier is a
@@ -128,15 +153,16 @@ typedef struct {
  *
  * The whole file is kept as one value so a save can rewrite it without losing
  * the parts the web page does not edit: the Telegram page owns @c enable,
- * @c route_station_messages, @c route_bulletins, @c bot_token and
- * @c admin_id, while
- * @c web_app_url, @c users and @c chats survive a save untouched because they
- * were loaded into this same structure first.
+ * @c route_station_messages, @c route_bulletins, @c bulletin_window_s,
+ * @c bot_token and @c admin_id, while @c web_app_url, @c users and @c chats
+ * survive a save untouched because they were loaded into this same structure
+ * first.
  */
 typedef struct {
     bool enable;                 /**< True to run the bot; the Telegram page's switch. */
     bool route_station_messages; /**< True to route each incoming message to its addressee's own user; see ::telegram_app_notify_station_message. */
     bool route_bulletins;        /**< True to route every received APRS bulletin to every user and group chat; see ::telegram_app_notify_bulletin. */
+    uint32_t bulletin_window_s;  /**< Seconds an identical bulletin stays suppressed; 0 routes every repeat. See ::TELEGRAM_APP_BULLETIN_WINDOW_DEFAULT. */
     char bot_token[TELEGRAM_APP_TOKEN_MAX + 1];        /**< Token issued by @@BotFather. */
     int64_t admin_id;                                  /**< Identifier of the administrator, or 0 for none. */
     char web_app_url[TELEGRAM_APP_URL_MAX + 1];        /**< HTTPS address of the Mini App, or empty. */
@@ -413,13 +439,16 @@ void telegram_app_notify_station_message(const char *from_call, const char *to_c
  * A bulletin is transmitted over and over by its originator and is heard again
  * through every digipeater that repeats it, so the same one reaches this
  * station many times. A bulletin whose sender, addressee and text match one
- * routed in the last fifteen minutes is dropped rather than sent again, which
- * is what keeps a periodic bulletin from filling a chat with copies of itself.
- * Editing the text, or a different station sending it, makes it a new bulletin
- * and it is routed at once. This is also what keeps one of this station's own
- * bulletins to a single copy when the digipeated frame comes back within the
- * window: it carries the same sender, addressee and text, so the returning
- * copy is recognised as the repeat it is. @p to_call is compared with its
+ * routed inside the window the *Telegram* page's "Bulletin repeat window"
+ * field sets (::telegram_app_config_t::bulletin_window_s, 900 s unless the
+ * operator changes it) is dropped rather than sent again, which is what keeps
+ * a periodic bulletin from filling a chat with copies of itself. A window of
+ * 0 turns the test off and routes every copy. Editing the text, or a different
+ * station sending it, makes it a new bulletin and it is routed at once. This
+ * is also what keeps one of this station's own bulletins to a single copy
+ * when the digipeated frame comes back within the window: it carries the same
+ * sender, addressee and text, so the returning copy is recognised as the
+ * repeat it is. @p to_call is compared with its
  * trailing blanks removed, so the space-padded nine-character addressee an
  * APRS message header carries and the trimmed one a frame decoder produces
  * are the same bulletin.

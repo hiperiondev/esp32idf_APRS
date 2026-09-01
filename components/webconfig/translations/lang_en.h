@@ -1645,8 +1645,17 @@
     "With this on, every APRS bulletin received on the network, off the air or from the APRS-IS feed, is sent to all the authorized users, to the "            \
     "administrator and to all the allowed group chats listed below, as \"bulletin from <sender> to <bulletin> :: <bulletin text>\". A bulletin is an "         \
     "addressee of \"BLN\" plus a digit or a letter, optionally followed by a group name; no callsign is matched, since a bulletin is addressed to the whole "  \
-    "network rather than to any station. A bulletin identical to one already routed in the last fifteen minutes is not sent again, so a bulletin its "         \
+    "network rather than to any station. A bulletin identical to one already routed inside the repeat window below is not sent again, so a bulletin its "      \
     "sender repeats on a timer, or one heard through several digipeaters, reaches each chat once."
+/** Label of the bulletin repeat window field, rendered on the Telegram page. */
+#define TR_TG_BULLETIN_WINDOW "Bulletin repeat window (s)"
+/** Explanatory note shown under the bulletin repeat window field, rendered on the Telegram page. */
+#define TR_TG_NOTE_BULLETIN_WINDOW                                                                                                                             \
+    "How long a routed bulletin keeps its own repeats from being routed as well. A bulletin whose sender, addressee and text all match one already "           \
+    "delivered within this many seconds is dropped; editing the text, or a different station sending it, makes it a new bulletin and it is routed at "         \
+    "once. Set it longer than the interval the bulletins heard on this channel are transmitted at, so each one reaches the chats once per edit rather "        \
+    "than once per transmission. 0 turns the test off and routes every copy, including the ones that come back through digipeaters and from the "              \
+    "APRS-IS feed. The eight most recently routed bulletins are remembered, whatever this window is."
 /** Fieldset legend for the credentials block, rendered on the Telegram page. */
 #define TR_TG_FS_BOT "Credentials"
 /** Label of the bot token field, rendered on the Telegram page. */

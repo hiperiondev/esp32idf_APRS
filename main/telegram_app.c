@@ -110,8 +110,7 @@ static const char *TAG = "telegram_app";
 // here rather than something a configuration decides.
 #define TELEGRAM_NOTIFY_BROADCAST_MAX (TELEGRAM_APP_USERS_MAX + TELEGRAM_APP_CHATS_MAX + 1)
 
-// Bulletins remembered for the duplicate test, and how long one stays
-// remembered.
+// Bulletins remembered for the duplicate test.
 //
 // A bulletin is not sent once: its originator repeats it on a timer, every
 // digipeater within earshot repeats it again, and an igated copy comes back
@@ -119,10 +118,14 @@ static const char *TAG = "telegram_app";
 // times over. Routing every copy would fill a chat with the same paragraph,
 // so a bulletin identical to one routed inside the window is dropped. Eight
 // slots cover the bulletin sets stations in one area actually run (APRS101
-// allows nine general bulletins plus announcements), and the window is longer
-// than the shortest interval an operator would sensibly transmit one at.
-#define TELEGRAM_BULLETIN_SEEN_SLOTS   8
-#define TELEGRAM_BULLETIN_SEEN_SECONDS 900
+// allows nine general bulletins plus announcements).
+//
+// How long a slot stays valid is not a number here: it is the Telegram page's
+// "Bulletin repeat window" field, since the interval that suits a station
+// depends on how often the bulletins it hears are transmitted, which is a
+// property of the channel rather than of this firmware. See
+// TELEGRAM_APP_BULLETIN_WINDOW_DEFAULT in telegram_app.h.
+#define TELEGRAM_BULLETIN_SEEN_SLOTS 8
 
 // Longest bulletin addressee the routing works with. APRS101 ch.14 allows
 // "BLN" plus one identifier character plus a group name of up to five, and the
@@ -307,6 +310,15 @@ static bool s_route_bulletins;
 static telegram_app_peer_t s_route_chats[TELEGRAM_APP_CHATS_MAX];
 static uint8_t s_route_chat_count;
 static int64_t s_route_admin_id;
+
+// Cached copy of s_cfg.bulletin_window_s, read without the lock from the same
+// frame-decoding path and refreshed with everything else above. Held as a
+// single word so a read taken while a save publishes a new one sees either
+// the old window or the new one, never a half-written figure. Carries the
+// compiled-in default until the first telegram_app_apply_config(), so a
+// bulletin reaching this module before the store has ever been read is
+// measured against the same window a fresh station uses.
+static volatile uint32_t s_bulletin_window_s = TELEGRAM_APP_BULLETIN_WINDOW_DEFAULT;
 
 // Longest chat identifier a queued item addresses, rendered as text the same
 // way telegram_send_message() expects it.
@@ -717,9 +729,16 @@ static void bulletin_trim_addressee(const char *in, char *out, size_t out_size) 
 // thing this test only ever makes rare rather than impossible, and a mutex
 // here would make a frame decode wait on a network task for a notification
 // nobody is waiting for.
+//
+// A window of 0 is the operator asking for every copy, so the table is not
+// even scanned: nothing is ever a repeat.
 static bool bulletin_seen_recently(uint32_t hash) {
+    uint32_t window_s = s_bulletin_window_s;
+    if (window_s == 0)
+        return false;
+
     int64_t now = esp_timer_get_time();
-    int64_t window = (int64_t)TELEGRAM_BULLETIN_SEEN_SECONDS * 1000000;
+    int64_t window = (int64_t)window_s * 1000000;
 
     for (uint8_t i = 0; i < TELEGRAM_BULLETIN_SEEN_SLOTS; i++) {
         if (s_bulletin_seen[i].seen_us != 0 && s_bulletin_seen[i].hash == hash && (now - s_bulletin_seen[i].seen_us) < window)
@@ -733,11 +752,11 @@ static bool bulletin_seen_recently(uint32_t hash) {
 // Kept apart from the test above because of when it must happen: the window
 // says "this bulletin has already been delivered", so arming it for one that
 // was not is what silences a bulletin entirely. A station transmitting on the
-// shortest interval the Bulletins page allows repeats every 30 s while the
-// window runs for 900, so a single arming that no delivery followed swallows
-// the next twenty-nine transmissions of that bulletin, and an arming that
-// keeps happening on a path that keeps failing swallows all of them. So this
-// is called only once the item is on the queue.
+// shortest interval the Bulletins page allows repeats every 30 s, so against
+// the default window a single arming that no delivery followed swallows the
+// next twenty-nine transmissions of that bulletin, and an arming that keeps
+// happening on a path that keeps failing swallows all of them. So this is
+// called only once the item is on the queue.
 static void bulletin_seen_record(uint32_t hash) {
     s_bulletin_seen[s_bulletin_seen_next].hash = hash;
     s_bulletin_seen[s_bulletin_seen_next].seen_us = esp_timer_get_time();
@@ -772,9 +791,16 @@ static void bulletin_report_route(bulletin_route_t outcome, const char *addresse
         return;
     s_bulletin_last_route = outcome;
 
+    // Read once, so the sentence and the behaviour it describes cannot
+    // disagree because a save landed between the two.
+    uint32_t window_s = s_bulletin_window_s;
+
     switch (outcome) {
         case BULLETIN_ROUTE_QUEUED:
-            ESP_LOGI(TAG, "Bulletin %s routed to Telegram; identical repeats are dropped for the next %d s", addressee, TELEGRAM_BULLETIN_SEEN_SECONDS);
+            if (window_s == 0)
+                ESP_LOGI(TAG, "Bulletin %s routed to Telegram; every repeat is routed, the bulletin repeat window is 0 s", addressee);
+            else
+                ESP_LOGI(TAG, "Bulletin %s routed to Telegram; identical repeats are dropped for the next %" PRIu32 " s", addressee, window_s);
             break;
         case BULLETIN_ROUTE_OFF:
             ESP_LOGI(TAG, "Bulletin %s not routed: \"Route Bulletins\" is off on the Telegram page", addressee);
@@ -789,7 +815,7 @@ static void bulletin_report_route(bulletin_route_t outcome, const char *addresse
             ESP_LOGW(TAG, "Bulletin %s not routed: the notification queue is full", addressee);
             break;
         case BULLETIN_ROUTE_DUPLICATE:
-            ESP_LOGI(TAG, "Bulletin %s not routed: identical to one delivered within the last %d s", addressee, TELEGRAM_BULLETIN_SEEN_SECONDS);
+            ESP_LOGI(TAG, "Bulletin %s not routed: identical to one delivered within the last %" PRIu32 " s", addressee, window_s);
             break;
     }
 }
@@ -882,6 +908,31 @@ static int64_t get_id(const cJSON *obj, const char *key) {
     return 0;
 }
 
+// Reads the bulletin repeat window. A member that is absent, is not a number
+// and not a number in a string, or is out of range yields the default rather
+// than a value the routing path would have to defend itself against, since a
+// window is the one numeric member of this file an operator is likely to edit
+// by hand. Both spellings get_id() accepts are accepted here for the same
+// reason: a hand-edited file quoting its numbers is still a usable file.
+static uint32_t get_window(const cJSON *obj, const char *key) {
+    const cJSON *v = cJSON_GetObjectItem(obj, key);
+
+    double raw;
+    if (cJSON_IsNumber(v))
+        raw = v->valuedouble;
+    else if (cJSON_IsString(v) && v->valuestring != NULL)
+        raw = strtod(v->valuestring, NULL);
+    else
+        return TELEGRAM_APP_BULLETIN_WINDOW_DEFAULT;
+
+    if (raw < TELEGRAM_APP_BULLETIN_WINDOW_MIN || raw > TELEGRAM_APP_BULLETIN_WINDOW_MAX) {
+        ESP_LOGW(TAG, "%s is outside %d..%d s, the default of %d s is used", key, TELEGRAM_APP_BULLETIN_WINDOW_MIN, TELEGRAM_APP_BULLETIN_WINDOW_MAX,
+                 TELEGRAM_APP_BULLETIN_WINDOW_DEFAULT);
+        return TELEGRAM_APP_BULLETIN_WINDOW_DEFAULT;
+    }
+    return (uint32_t)raw;
+}
+
 // Reads the "chats" array into a bounded table, reporting entries that did
 // not fit rather than dropping them in silence.
 static uint8_t load_peers(const cJSON *doc, const char *key, telegram_app_peer_t *out, uint8_t max) {
@@ -946,6 +997,11 @@ static json_store_status_t s_last_read_status = JSON_STORE_MISSING;
 static bool load_locked(telegram_app_config_t *out) {
     memset(out, 0, sizeof(*out));
 
+    // Set before the read, so the configuration a station with no file at all
+    // is left holding carries the default window rather than the 0 the memset
+    // above wrote, which would mean the opposite: route every repeat.
+    out->bulletin_window_s = TELEGRAM_APP_BULLETIN_WINDOW_DEFAULT;
+
     cJSON *doc = NULL;
     json_store_status_t st = json_store_read(TELEGRAM_APP_PATH, TAG, "telegram settings", &doc);
     s_last_read_status = st;
@@ -968,6 +1024,13 @@ static bool load_locked(telegram_app_config_t *out) {
     // Absent means off, for the same reason the two switches above do.
     const cJSON *rbl = cJSON_GetObjectItem(doc, "routeBulletins");
     out->route_bulletins = cJSON_IsTrue(rbl);
+
+    // Absent means the default, not 0, which is the one place this file
+    // departs from the "absent means off" rule the switches follow. 0 is a
+    // legal window here and means something specific - route every repeat -
+    // so a file written before this key existed would otherwise start
+    // repeating every bulletin into the chats as soon as it was loaded.
+    out->bulletin_window_s = get_window(doc, "bulletinWindowSeconds");
 
     get_string(doc, "bot_token", out->bot_token, sizeof(out->bot_token));
     get_string(doc, "web_app_url", out->web_app_url, sizeof(out->web_app_url));
@@ -1027,6 +1090,7 @@ static bool save_locked(const telegram_app_config_t *in) {
     fputs(in->route_station_messages ? "true" : "false", f);
     fputs(",\"routeBulletins\":", f);
     fputs(in->route_bulletins ? "true" : "false", f);
+    fprintf(f, ",\"bulletinWindowSeconds\":%" PRIu32, in->bulletin_window_s);
     fputs(",\"bot_token\":", f);
     json_write_escaped(f, in->bot_token);
     fprintf(f, ",\"admin_id\":%" PRId64, in->admin_id);
@@ -1828,6 +1892,7 @@ void telegram_app_apply_config(void) {
     memcpy(s_route_users, cfg.users, sizeof(s_route_users));
     s_route_user_count = cfg.user_count;
     s_route_bulletins = cfg.route_bulletins;
+    s_bulletin_window_s = cfg.bulletin_window_s;
     memcpy(s_route_chats, cfg.chats, sizeof(s_route_chats));
     s_route_chat_count = cfg.chat_count;
     s_route_admin_id = cfg.admin_id;
