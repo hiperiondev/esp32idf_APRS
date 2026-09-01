@@ -308,11 +308,28 @@ bollettini inoltrati più di recente, come un hash di quei tre campi e il
 momento in cui sono stati visti. È anche ciò che mantiene a una sola copia un
 bollettino proprio di questa stazione quando il frame digipetuto torna entro
 la finestra: porta lo stesso mittente, destinatario e testo, così la copia di
-ritorno viene riconosciuta per la ripetizione che è.
+ritorno viene riconosciuta per la ripetizione che è. Il destinatario viene
+confrontato senza gli spazi finali, perché i due punti di ingresso non lo
+scrivono allo stesso modo - lo schedulatore consegna il campo di nove
+caratteri riempito di spazi che ha appena messo in aria (``BLN1     ``), il
+decodificatore di frame quello ridotto (``BLN1``) - e senza questo la copia di
+ritorno sarebbe un altro bollettino.
+
+La finestra viene armata da una consegna, mai da un tentativo. Un bollettino
+che non si è potuto consegnare la lascia intatta e viene inoltrato alla sua
+trasmissione successiva, cosa che conta soprattutto con l'intervallo più breve
+che la pagina *Bollettini* consente: un bollettino che si ripete ogni 30 s
+contro una finestra di 900 s perderebbe altrimenti le sue ventinove
+trasmissioni successive per un solo armamento a cui non è seguita alcuna
+consegna, e le perderebbe tutte finché persiste ciò che ha bloccato la prima.
 
 La consegna è vincolata alle stesse tre condizioni di un messaggio della
 stazione inoltrato - interruttore acceso, bot abilitato, bot connesso - e
-nulla resta in attesa per quando una di esse tornerà a valere.
+nulla resta in attesa per quando una di esse tornerà a valere. Quale di esse
+manchi, o quale altro motivo sia intervenuto, viene scritto nel registro ogni
+volta che cambia e non una volta per bollettino: una chat che resta muta dice
+perché una sola volta, nel momento in cui il motivo inizia e di nuovo quando
+finisce, invece che in silenzio o a ogni ripetizione.
 ``telegram_app_notify_bulletin()`` (dichiarata in ``telegram_app.h``) è il
 punto di ingresso che chiama message.c per un bollettino ricevuto e
 bulletins.c per uno proprio di questa stazione, entrambi per lo stesso
@@ -320,6 +337,14 @@ ragionamento sullo stack del task chiamante. Accoda un solo elemento per l'inter
 destinatario: l'elemento porta il testo una sola volta e il task che svuota la
 coda lo distribuisce, ed è lì che viene letto l'elenco dei destinatari, così
 un salvataggio che cade fra i due momenti si riflette nella consegna.
+
+Uno svuotamento viene richiesto ogni volta che una riga entra in coda, e la
+richiesta è respinta finché l'unico slot di task breve del bot è occupato da
+un avvio, un arresto o un altro svuotamento. La domanda viene perciò riposta
+in ciascun punto in cui quello slot torna libero, così uno svuotamento
+respinto è rinviato e non perduto: un bollettino accodato mentre il bot veniva
+ricostruito parte appena la ricostruzione finisce, senza attendere un'altra
+riga che la finestra dei duplicati avrebbe comunque scartato.
 
 La distribuzione avviene come un solo lotto di trasmissione, quindi l'intero
 elenco dei destinatari condivide l'unica sessione TLS descritta sopra invece

@@ -419,7 +419,17 @@ void telegram_app_notify_station_message(const char *from_call, const char *to_c
  * and it is routed at once. This is also what keeps one of this station's own
  * bulletins to a single copy when the digipeated frame comes back within the
  * window: it carries the same sender, addressee and text, so the returning
- * copy is recognised as the repeat it is.
+ * copy is recognised as the repeat it is. @p to_call is compared with its
+ * trailing blanks removed, so the space-padded nine-character addressee an
+ * APRS message header carries and the trimmed one a frame decoder produces
+ * are the same bulletin.
+ *
+ * That window is armed by a delivery, never by an attempt: a bulletin that
+ * could not be handed over - the switch off, the bot down, the queue full -
+ * leaves it untouched and is routed on its next transmission instead. Which
+ * of those happened is reported to the log whenever it changes, so a chat
+ * that stays quiet says why once rather than either in silence or on every
+ * repeat.
  *
  * The rendered line always reads
  * @code
@@ -434,7 +444,10 @@ void telegram_app_notify_station_message(const char *from_call, const char *to_c
  * @param[in] from_call Callsign of the station that originated the bulletin,
  *                       upper case, SSID included when one was used.
  * @param[in] to_call    Bulletin addressee the sender used ("BLN1", "BLNA",
- *                        "BLN1WX", ...), upper case.
+ *                        "BLN1WX", ...), upper case. Either the trimmed form
+ *                        or the space-padded nine-character message-header
+ *                        field may be passed; trailing blanks are removed
+ *                        before the addressee is compared or rendered.
  * @param[in] text       Bulletin text, decoded and trimmed.
  */
 void telegram_app_notify_bulletin(const char *from_call, const char *to_call, const char *text);

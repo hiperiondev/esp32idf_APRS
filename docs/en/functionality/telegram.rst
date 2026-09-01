@@ -288,11 +288,26 @@ once. The eight most recently routed bulletins are remembered, as a hash of
 those three fields and the time they were seen. This is also what keeps one of
 this station's own bulletins to a single copy when the digipeated frame comes
 back within the window: it carries the same sender, addressee and text, so the
-returning copy is recognised as the repeat it is.
+returning copy is recognised as the repeat it is. The addressee is compared
+with its trailing blanks removed, because the two entry points do not spell it
+alike - the scheduler hands over the nine-character space-padded field it just
+put on the air (``BLN1     ``), the frame decoder the trimmed one (``BLN1``) -
+and without that the returning copy would be a different bulletin.
+
+The window is armed by a delivery, never by an attempt. A bulletin that could
+not be handed over leaves it untouched and is routed on its next transmission
+instead, which matters most on the shortest interval the *Bulletins* page
+allows: a bulletin repeating every 30 s against a 900 s window would otherwise
+lose its next twenty-nine transmissions to a single arming that no delivery
+followed, and lose all of them while whatever blocked the first one persists.
 
 Delivery is bound by the same three conditions as a routed station message -
 the switch on, the bot enabled, the bot connected - and nothing is queued for
-later delivery when one of them does not hold.
+later delivery when one of them does not hold. Which of them is missing, or
+which other reason applied, is written to the log whenever it changes rather
+than once per bulletin: a chat that stays quiet says why once, at the moment
+the reason starts and again at the moment it ends, instead of either in
+silence or on every repeat.
 ``telegram_app_notify_bulletin()`` (declared in ``telegram_app.h``) is the
 entry point message.c calls for a received bulletin and bulletins.c for one of
 this station's own, both under the same reasoning about the calling task's
@@ -300,6 +315,14 @@ stack. It queues one item for
 the whole bulletin rather than one per recipient: the item carries the text
 once and is fanned out by the drain task, which is also where the recipient
 list is read, so a save landing between the two is reflected in the delivery.
+
+A drain is asked for whenever a line is queued, and that request is refused
+while the bot's single short-lived worker slot is held by a bring-up, a
+teardown or another drain. The question is therefore put again at each point
+where that slot is handed back, so a refused drain is a deferred one rather
+than a lost one: a bulletin queued while the bot was being rebuilt leaves as
+soon as the rebuild finishes, without waiting for a further line that the
+duplicate window would have suppressed anyway.
 
 The fan-out runs as one transmit batch, so the whole recipient list shares the
 single TLS session described above rather than paying a handshake per chat,

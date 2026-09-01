@@ -302,11 +302,27 @@ reenviados más recientemente, como un hash de esos tres campos y el momento en
 que se vieron. Eso es también lo que mantiene en una sola copia un boletín
 propio de esta estación cuando la trama digipetida vuelve dentro de la
 ventana: lleva el mismo remitente, destinatario y texto, así que la copia que
-regresa se reconoce como la repetición que es.
+regresa se reconoce como la repetición que es. El destinatario se compara sin
+sus espacios finales, porque los dos puntos de entrada no lo escriben igual
+—el planificador entrega el campo de nueve caracteres rellenado con espacios
+que acaba de poner en el aire (``BLN1     ``), y el decodificador de tramas el
+recortado (``BLN1``)—, y sin eso la copia que regresa sería otro boletín.
+
+La ventana la arma una entrega, nunca un intento. Un boletín que no se pudo
+entregar la deja intacta y se reenvía en su siguiente transmisión, lo que
+importa sobre todo con el intervalo más corto que admite la página
+*Boletines*: un boletín que se repite cada 30 s frente a una ventana de 900 s
+perdería si no sus siguientes veintinueve transmisiones por un único armado al
+que no siguió ninguna entrega, y las perdería todas mientras persista lo que
+bloqueó la primera.
 
 El envío está sujeto a las mismas tres condiciones que un mensaje de estación
 reenviado —interruptor encendido, bot habilitado, bot conectado— y no queda
-nada en espera para cuando alguna de ellas vuelva a cumplirse.
+nada en espera para cuando alguna de ellas vuelva a cumplirse. Cuál de ellas
+falta, o qué otro motivo se aplicó, se escribe en el registro cada vez que
+cambia y no una vez por boletín: un chat que queda en silencio dice por qué
+una sola vez, en el momento en que empieza el motivo y otra vez cuando
+termina, en lugar de callarlo o repetirlo en cada retransmisión.
 ``telegram_app_notify_bulletin()`` (declarada en ``telegram_app.h``) es el
 punto de entrada que llama message.c para un boletín recibido y bulletins.c
 para uno propio de esta estación, ambos por el mismo razonamiento sobre la
@@ -314,6 +330,14 @@ pila de la tarea que llama. Encola un único elemento para todo el boletín en l
 destinatario: el elemento lleva el texto una sola vez y la tarea que vacía la
 cola lo reparte, y es ahí donde se lee la lista de destinatarios, de modo que
 un guardado que caiga entre ambos momentos se refleja en la entrega.
+
+Se pide vaciar la cola cada vez que se encola una línea, y esa petición se
+rechaza mientras la única ranura de tarea breve del bot la ocupa un arranque,
+una parada u otro vaciado. Por eso la pregunta se vuelve a hacer en cada punto
+en que esa ranura se libera, de modo que un vaciado rechazado queda aplazado y
+no perdido: un boletín encolado mientras se reconstruía el bot sale en cuanto
+termina la reconstrucción, sin esperar otra línea que la ventana de duplicados
+habría descartado igualmente.
 
 El reparto se ejecuta como un solo lote de transmisión, así que toda la lista
 de destinatarios comparte la única sesión TLS descrita más arriba en vez de

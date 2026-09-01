@@ -124,6 +124,12 @@ static const char *TAG = "telegram_app";
 #define TELEGRAM_BULLETIN_SEEN_SLOTS   8
 #define TELEGRAM_BULLETIN_SEEN_SECONDS 900
 
+// Longest bulletin addressee the routing works with. APRS101 ch.14 allows
+// "BLN" plus one identifier character plus a group name of up to five, and the
+// message header field it travels in is nine characters wide, so nine plus a
+// terminator holds every spelling either call site can hand over.
+#define TELEGRAM_BULLETIN_ADDRESSEE_MAX 10
+
 // Longest rendered "msg from ... to ... :: ..." line the queue carries. Wide
 // enough for two 9-character callsigns, the fixed wording around them, and
 // the full ::MSG_TEXT_MAX message text with room to spare.
@@ -343,6 +349,12 @@ typedef struct {
 // both switches off never reaches the call below.
 static QueueHandle_t s_notify_queue;
 
+// Declared here because the drain task and the bring-up worker both hand the
+// shared worker slot back and ask for a drain on their way out, which puts
+// their calls above the definitions.
+static void notify_worker_spawn(void);
+static void notify_worker_kick(void);
+
 // Creates the queue if it is not there yet. Called from one task only, which
 // is what makes the test above it sound: the two notify entry points run on
 // two different tasks and only ever read the handle.
@@ -440,18 +452,21 @@ static void telegram_notify_worker_task(void *arg) {
     telegram_tx_batch_end();
 
     // Between the last empty receive above and this task actually deleting
-    // itself there is a small window where a new item could be queued while
-    // the worker slot is still held and notify_worker_spawn() therefore skips
-    // spawning another task. That item waits in the queue until the next
-    // routed line triggers a spawn, so nothing beyond a brief delay is lost.
+    // itself there is a window where a new item can be queued while the worker
+    // slot is still held, so notify_worker_spawn() skips spawning for it. The
+    // slot is released first and the queue is looked at again afterwards, so
+    // that item leaves on a fresh drain instead of waiting for a routed line
+    // that may never come: a bulletin repeats, but its repeats are recognised
+    // as such and dropped, so nothing would arrive to trigger the spawn.
     worker_release();
+    notify_worker_kick();
     vTaskDelete(NULL);
 }
 
 // Spawns the drain task if the shared worker slot is free. Safe to call every
 // time an item is queued: a drain already running takes the new item on its
-// own pass, and an item queued while a bring-up holds the slot waits for the
-// spawn the next routed line triggers.
+// own pass, and an item queued while a bring-up holds the slot is picked up by
+// notify_worker_kick() as soon as that bring-up hands the slot back.
 static void notify_worker_spawn(void) {
     if (!worker_claim())
         return;
@@ -460,6 +475,24 @@ static void notify_worker_spawn(void) {
         worker_release();
         ESP_LOGE(TAG, "Notify worker task could not be created");
     }
+}
+
+// Starts a drain when something is waiting and the shared slot is free.
+//
+// Called wherever that slot changes hands, because a queue that holds items
+// nobody is about to drain is how routing stops for good rather than for a
+// moment. Every line is queued by a caller that then asks for a spawn, and
+// that ask is refused whenever a bring-up, a teardown or another drain owns
+// the slot; the refusal is only harmless while some later line asks again. So
+// the question is put once more at the two points where the slot becomes
+// available, which is what turns a refused spawn into a deferred one.
+static void notify_worker_kick(void) {
+    if (s_notify_queue == NULL)
+        return;
+    if (uxQueueMessagesWaiting(s_notify_queue) == 0)
+        return;
+
+    notify_worker_spawn();
 }
 
 static void lock(void) {
@@ -614,9 +647,13 @@ void telegram_app_notify_station_message(const char *from_call, const char *to_c
         // than the drain task can deliver them, and the frame-decoding path
         // that called this function must not be held up waiting for
         // Telegram. The oldest undelivered notification is what a full queue
-        // costs here.
-        if (xQueueSend(s_notify_queue, &item, 0) != pdTRUE)
+        // costs here, and it is named rather than dropped in silence, so an
+        // operator who is missing lines can tell a queue that cannot keep up
+        // from a switch that is off.
+        if (xQueueSend(s_notify_queue, &item, 0) != pdTRUE) {
+            ESP_LOGW(TAG, "Message from %s to %s not routed, the notification queue is full", from_call, to_call);
             continue;
+        }
 
         notify_worker_spawn();
     }
@@ -652,64 +689,167 @@ static uint32_t bulletin_hash(const char *from_call, const char *to_call, const 
     return h;
 }
 
-// True when this exact bulletin was routed inside the window, in which case
-// nothing is delivered. A bulletin that was not is recorded in the oldest
-// slot and reported as new.
+// Settles on one spelling of a bulletin addressee.
 //
-// Called from the frame-decoding path, which runs on the modem's receive task
-// for a bulletin heard off the air and on the APRS-IS client's task for one
-// that arrived from the feed, so two calls can overlap. The table is left
-// unlocked all the same. The worst an overlap can produce is one extra copy
-// of a bulletin, which is the very thing this test only ever makes rare
-// rather than impossible, and a mutex here would make a frame decode wait on
-// a network task for a notification nobody is waiting for.
-static bool bulletin_is_repeat(const char *from_call, const char *to_call, const char *text) {
-    uint32_t h = bulletin_hash(from_call, to_call, text);
+// The two call sites hand over different ones for the same bulletin.
+// bulletins.c passes the nine-character space-padded field an APRS message
+// header carries ("BLN1     "), because that is what it just put on the air;
+// message.c passes the trimmed addressee its frame decoder produced
+// ("BLN1"). Everything below compares and renders what it is given byte for
+// byte, so without this the station's own bulletin and the digipeated copy of
+// it that comes back a moment later are two different bulletins: each is
+// delivered on its own, and the chat receives the same announcement twice.
+// Trailing blanks are the whole difference, so they are what is removed.
+static void bulletin_trim_addressee(const char *in, char *out, size_t out_size) {
+    snprintf(out, out_size, "%s", in);
+    size_t len = strlen(out);
+    while (len > 0 && out[len - 1] == ' ')
+        out[--len] = 0;
+}
+
+// True when this exact bulletin was routed inside the window.
+//
+// Called from every task a bulletin can reach this module on: the modem's
+// receive task for one heard off the air, the APRS-IS client's task for one
+// from the feed, and the beacon scheduler for one this station transmits, so
+// two calls can overlap. The table is left unlocked all the same. The worst
+// an overlap can produce is one extra copy of a bulletin, which is the very
+// thing this test only ever makes rare rather than impossible, and a mutex
+// here would make a frame decode wait on a network task for a notification
+// nobody is waiting for.
+static bool bulletin_seen_recently(uint32_t hash) {
     int64_t now = esp_timer_get_time();
     int64_t window = (int64_t)TELEGRAM_BULLETIN_SEEN_SECONDS * 1000000;
 
     for (uint8_t i = 0; i < TELEGRAM_BULLETIN_SEEN_SLOTS; i++) {
-        if (s_bulletin_seen[i].seen_us != 0 && s_bulletin_seen[i].hash == h && (now - s_bulletin_seen[i].seen_us) < window)
+        if (s_bulletin_seen[i].seen_us != 0 && s_bulletin_seen[i].hash == hash && (now - s_bulletin_seen[i].seen_us) < window)
             return true;
     }
-
-    s_bulletin_seen[s_bulletin_seen_next].hash = h;
-    s_bulletin_seen[s_bulletin_seen_next].seen_us = now;
-    s_bulletin_seen_next = (uint8_t)((s_bulletin_seen_next + 1) % TELEGRAM_BULLETIN_SEEN_SLOTS);
     return false;
+}
+
+// Arms the window for one bulletin, in the oldest slot.
+//
+// Kept apart from the test above because of when it must happen: the window
+// says "this bulletin has already been delivered", so arming it for one that
+// was not is what silences a bulletin entirely. A station transmitting on the
+// shortest interval the Bulletins page allows repeats every 30 s while the
+// window runs for 900, so a single arming that no delivery followed swallows
+// the next twenty-nine transmissions of that bulletin, and an arming that
+// keeps happening on a path that keeps failing swallows all of them. So this
+// is called only once the item is on the queue.
+static void bulletin_seen_record(uint32_t hash) {
+    s_bulletin_seen[s_bulletin_seen_next].hash = hash;
+    s_bulletin_seen[s_bulletin_seen_next].seen_us = esp_timer_get_time();
+    s_bulletin_seen_next = (uint8_t)((s_bulletin_seen_next + 1) % TELEGRAM_BULLETIN_SEEN_SLOTS);
+}
+
+// Why the last bulletin handed to the entry point below did or did not reach
+// the queue.
+typedef enum {
+    BULLETIN_ROUTE_QUEUED = 0, // on its way to every recipient
+    BULLETIN_ROUTE_OFF,        // the Telegram page's "Route Bulletins" switch is off
+    BULLETIN_ROUTE_BOT_DOWN,   // the bot is disabled, or not connected yet
+    BULLETIN_ROUTE_NO_QUEUE,   // the notification queue is not there
+    BULLETIN_ROUTE_QUEUE_FULL, // delivery is not keeping up with the traffic
+    BULLETIN_ROUTE_DUPLICATE,  // identical to one routed inside the window
+} bulletin_route_t;
+
+static bulletin_route_t s_bulletin_last_route = BULLETIN_ROUTE_QUEUED;
+
+// Reports what became of a bulletin, but only when that changes.
+//
+// Every outcome here is worth one line and none of them is worth one per
+// bulletin: a bulletin arrives as often as its originator transmits it, and
+// this station's own arrives on the interval the operator set, so a station
+// with the switch off or a bot that is down would otherwise write the same
+// sentence to the log every few seconds forever. Reporting the transition
+// instead gives the operator exactly what the silence was missing - the
+// reason nothing is arriving in the chat - at the moment the reason starts
+// and again at the moment it ends.
+static void bulletin_report_route(bulletin_route_t outcome, const char *addressee) {
+    if (outcome == s_bulletin_last_route)
+        return;
+    s_bulletin_last_route = outcome;
+
+    switch (outcome) {
+        case BULLETIN_ROUTE_QUEUED:
+            ESP_LOGI(TAG, "Bulletin %s routed to Telegram; identical repeats are dropped for the next %d s", addressee, TELEGRAM_BULLETIN_SEEN_SECONDS);
+            break;
+        case BULLETIN_ROUTE_OFF:
+            ESP_LOGI(TAG, "Bulletin %s not routed: \"Route Bulletins\" is off on the Telegram page", addressee);
+            break;
+        case BULLETIN_ROUTE_BOT_DOWN:
+            ESP_LOGI(TAG, "Bulletin %s not routed: the bot is not running (see the Telegram page for the reason)", addressee);
+            break;
+        case BULLETIN_ROUTE_NO_QUEUE:
+            ESP_LOGW(TAG, "Bulletin %s not routed: the notification queue does not exist", addressee);
+            break;
+        case BULLETIN_ROUTE_QUEUE_FULL:
+            ESP_LOGW(TAG, "Bulletin %s not routed: the notification queue is full", addressee);
+            break;
+        case BULLETIN_ROUTE_DUPLICATE:
+            ESP_LOGI(TAG, "Bulletin %s not routed: identical to one delivered within the last %d s", addressee, TELEGRAM_BULLETIN_SEEN_SECONDS);
+            break;
+    }
 }
 
 void telegram_app_notify_bulletin(const char *from_call, const char *to_call, const char *text) {
     if (from_call == NULL || to_call == NULL || text == NULL)
         return;
 
+    // One spelling of the addressee for the duplicate test, the rendered line
+    // and the log alike, whichever call site this came from.
+    char addressee[TELEGRAM_BULLETIN_ADDRESSEE_MAX];
+    bulletin_trim_addressee(to_call, addressee, sizeof(addressee));
+
     // Read without the lock, the same way telegram_app_notify_station_message()
     // reads its own switch and for the same reason: this runs on the
     // frame-decoding path and must never wait behind a save in progress.
-    if (!s_route_bulletins || !s_enabled || !s_service_up)
+    if (!s_route_bulletins) {
+        bulletin_report_route(BULLETIN_ROUTE_OFF, addressee);
         return;
+    }
+    if (!s_enabled || !s_service_up) {
+        bulletin_report_route(BULLETIN_ROUTE_BOT_DOWN, addressee);
+        return;
+    }
+
+    // Read, never created here, for the reason given at the same test in
+    // telegram_app_notify_station_message().
+    if (s_notify_queue == NULL) {
+        bulletin_report_route(BULLETIN_ROUTE_NO_QUEUE, addressee);
+        return;
+    }
 
     // Tested before the queue is touched, so a station that only ever hears
     // repeats of one bulletin spends a hash and a table scan on each rather
     // than a queue slot and a copy of its text.
-    if (bulletin_is_repeat(from_call, to_call, text))
+    uint32_t hash = bulletin_hash(from_call, addressee, text);
+    if (bulletin_seen_recently(hash)) {
+        bulletin_report_route(BULLETIN_ROUTE_DUPLICATE, addressee);
         return;
-
-    // Read, never created here, for the reason given at the same test in
-    // telegram_app_notify_station_message().
-    if (s_notify_queue == NULL)
-        return;
+    }
 
     telegram_notify_item_t item;
     item.chat_id[0] = 0;
     item.broadcast = true;
-    snprintf(item.text, sizeof(item.text), "bulletin from %s to %s :: %s", from_call, to_call, text);
+    snprintf(item.text, sizeof(item.text), "bulletin from %s to %s :: %s", from_call, addressee, text);
 
     // Never blocks, for the reason given at the same call in
     // telegram_app_notify_station_message(): the oldest undelivered
     // notification is what a full queue costs here.
-    if (xQueueSend(s_notify_queue, &item, 0) != pdTRUE)
+    if (xQueueSend(s_notify_queue, &item, 0) != pdTRUE) {
+        bulletin_report_route(BULLETIN_ROUTE_QUEUE_FULL, addressee);
         return;
+    }
+
+    // Armed only now, on a bulletin that is actually on its way. Every path
+    // above leaves the window untouched, so a bulletin that could not be
+    // routed this time is routed on its next transmission instead of being
+    // held back as a repeat of a delivery that never happened.
+    bulletin_seen_record(hash);
+    bulletin_report_route(BULLETIN_ROUTE_QUEUED, addressee);
 
     notify_worker_spawn();
 }
@@ -1544,6 +1684,7 @@ static void telegram_worker_task(void *arg) {
             status_reset(TELEGRAM_APP_STATE_DISABLED, TELEGRAM_APP_REASON_DISABLED);
             s_retry_in = TELEGRAM_RETRY_NEVER;
             worker_release();
+            notify_worker_kick();
             vTaskDelete(NULL);
             return;
         }
@@ -1571,16 +1712,23 @@ static void telegram_worker_task(void *arg) {
     ESP_LOGI(TAG, "Worker finished, stack high-water %u bytes free of %d", (unsigned)(uxTaskGetStackHighWaterMark(NULL) * sizeof(StackType_t)),
              TELEGRAM_WORKER_STACK_BYTES);
 
+    // The slot is handed back before the queue is looked at, so a bring-up
+    // that has just made the bot reachable delivers whatever was routed while
+    // it held the slot instead of leaving it there until the next routed line
+    // asks for a drain.
     worker_release();
+    notify_worker_kick();
     vTaskDelete(NULL);
 }
 
-// Spawns the worker for one action, if the shared worker slot is free. A slot
-// held by a notification drain simply postpones the action: the tick keeps it
-// pending and offers it again a second later.
-static void worker_spawn(telegram_action_t action) {
+// Spawns the worker for one action, if the shared worker slot is free.
+// Reports whether it did, because a slot held by a notification drain only
+// postpones the action: the caller keeps it pending and offers it again a
+// second later, and treating a refused spawn as a performed one would drop
+// the operator's enable or disable on the floor.
+static bool worker_spawn(telegram_action_t action) {
     if (!worker_claim())
-        return;
+        return false;
 
     if (xTaskCreate(telegram_worker_task, "telegram_wk", TELEGRAM_WORKER_STACK_BYTES, (void *)(intptr_t)action, TELEGRAM_WORKER_PRIORITY, NULL) != pdPASS) {
         worker_release();
@@ -1588,6 +1736,11 @@ static void worker_spawn(telegram_action_t action) {
         status_reset(TELEGRAM_APP_STATE_ERROR, TELEGRAM_APP_REASON_TASK_FAILED);
         s_retry_in = TELEGRAM_RETRY_SECONDS;
     }
+
+    // Reported as spawned either way: a task that could not be created has
+    // published its fault and armed a retry, so the action has been dealt
+    // with and must not be offered again by the caller.
+    return true;
 }
 
 void telegram_app_tick_1hz(void) {
@@ -1595,10 +1748,15 @@ void telegram_app_tick_1hz(void) {
     // operator's most recent instruction.
     telegram_action_t pending = s_action;
     if (pending != TELEGRAM_ACTION_NONE) {
-        if (s_worker_busy)
-            return;
-        s_action = TELEGRAM_ACTION_NONE;
-        worker_spawn(pending);
+        // Cleared only once the worker owns it. The slot can be taken between
+        // the test above and the claim inside worker_spawn() - a notification
+        // drain is spawned from the modem's receive task, from the APRS-IS
+        // client's task and from the beacon scheduler, none of which is
+        // serialized with this tick - and an action cleared for a worker that
+        // was never created is one the operator has to save the page again to
+        // repeat.
+        if (worker_spawn(pending))
+            s_action = TELEGRAM_ACTION_NONE;
         return;
     }
 
