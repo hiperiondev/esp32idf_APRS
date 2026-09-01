@@ -115,6 +115,18 @@ salvataggio del server web sia da qualsiasi task permanente, così attivare
 l'interruttore sulla pagina *Telegram* non blocca mai il browser e non tiene
 mai allocato quello stack mentre il bot è semplicemente in esecuzione.
 
+C'è un solo posto di lavoratore, non uno per ciascun tipo di compito. Il task
+che esegue un avvio o uno spegnimento e quello che consegna le notifiche
+inoltrate (descritto più avanti) sono dimensionati ciascuno per un handshake
+TLS, e i due insieme sono più stack di quanto questa scheda possa reggere
+accanto al task di polling del servizio stesso, al task del server web e
+all'handshake medesimo. Perciò quello avviato per primo gira da solo: un avvio
+che trova il posto occupato resta in sospeso e viene riproposto dal tick
+successivo, e uno svuotamento di notifiche che lo trova occupato lascia le sue
+righe in coda fino all'avvio che innescherà la prossima riga inoltrata. In
+nessuno dei due casi si perde qualcosa; l'unico costo è un ritardo di un
+secondo o poco più.
+
 Mentre il bot gira, lo stesso tick a 1 Hz ripubblica i suoi contatori e nota
 un collegamento a internet scomparso o un task di polling terminato, così una
 stazione che perde la connessione segnala "in attesa di un percorso di rete"
@@ -235,9 +247,16 @@ cercare gli utenti a cui compete e a consegnare un elemento per utente a una
 piccola coda, poiché il percorso di decodifica dei frame che la chiama gira
 sul task di ricezione del modem stesso, che non porta lo stack necessario a
 una chiamata di rete verso Telegram per il suo handshake TLS. Un task
-lavoratore di breve durata, dimensionato e avviato allo stesso modo del task
-di avvio descritto sopra, svuota quella coda tramite
+lavoratore di breve durata, avviato nell'unico posto di lavoratore che usa
+anche il task di avvio, svuota quella coda tramite
 ``telegram_send_message()``.
+
+La coda stessa viene creata al momento in cui si applica la configurazione —
+cioè all'avvio e a ogni salvataggio della pagina *Telegram* — e solo per un bot
+abilitato con almeno uno dei due interruttori di inoltro acceso. Una stazione
+che li lascia entrambi spenti non la alloca mai, mentre una che ne accende uno
+ha la coda al suo posto prima che la prima riga possa essere inoltrata, così
+nessuno dei due punti d'ingresso alloca qualcosa sul task che lo chiama.
 
 Inoltro dei bollettini a Telegram
 ===================================

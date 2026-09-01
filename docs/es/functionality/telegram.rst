@@ -116,6 +116,18 @@ guardado del servidor web como de cualquier tarea permanente, de modo que
 activar el interruptor en la página *Telegram* nunca bloquea el navegador ni
 mantiene esa pila reservada mientras el bot simplemente está en marcha.
 
+Hay una sola plaza de trabajador, no una por cada clase de tarea. La tarea que
+hace un arranque o un apagado y la que entrega las notificaciones reenviadas
+(descrita más abajo) están dimensionadas cada una para un handshake TLS, y las
+dos juntas son más pila de la que esta placa puede sostener junto a la tarea
+de sondeo del propio servicio, la tarea del servidor web y el handshake mismo.
+Así que la que se lanza primero corre sola: un arranque que encuentra la plaza
+ocupada queda pendiente y se vuelve a ofrecer en el tick siguiente, y un
+vaciado de notificaciones que la encuentra ocupada deja sus líneas en la cola
+hasta el lanzamiento que dispare la próxima línea reenviada. No se pierde nada
+en ninguno de los dos casos; lo único que cuesta es un retraso de un segundo o
+poco más.
+
 Mientras el bot funciona, el mismo tick de 1 Hz vuelve a publicar sus
 contadores y detecta un enlace a internet que desapareció o una tarea de
 sondeo que terminó, de modo que una estación que pierde su conexión informa
@@ -232,9 +244,15 @@ usuarios a los que corresponde y entrega un elemento por usuario a una pequeña
 cola, ya que la ruta de decodificación de tramas que la llama corre en la
 propia tarea de recepción del módem, que no lleva la pila que un llamado de
 red a Telegram necesita para su handshake TLS. Una tarea trabajadora de corta
-vida, dimensionada y lanzada del mismo modo que el trabajador de arranque
-descrito más arriba, vacía esa cola a través de
-``telegram_send_message()``.
+vida, lanzada en la misma y única plaza de trabajador que usa el trabajador de
+arranque, vacía esa cola a través de ``telegram_send_message()``.
+
+La cola en sí se crea al aplicar la configuración —es decir, al arrancar y en
+cada guardado de la página *Telegram*— y solo para un bot habilitado con al
+menos uno de los dos interruptores de reenvío encendido. Una estación que los
+deja ambos apagados nunca la reserva, y una que enciende alguno tiene la cola
+en su sitio antes de que pueda reenviarse la primera línea, de modo que
+ninguno de los dos puntos de entrada reserva nada en la tarea que lo llama.
 
 Reenvío de boletines a Telegram
 =================================

@@ -110,6 +110,17 @@ off both the web server's save handler and any permanent task, so flipping
 the switch on the *Telegram* page never blocks the browser and never keeps
 that stack allocated once the bot is simply running.
 
+There is one worker slot, not one per kind of job. The task that performs a
+bring-up or a teardown and the task that delivers routed notifications
+(described further down) are each sized for a TLS handshake, and the two of
+them together are more stack than this board can hold alongside the service's
+own polling task, the web server's task and the handshake itself. So whichever
+is spawned first runs alone: a bring-up that finds the slot busy stays pending
+and is offered again by the next tick, and a notification drain that finds it
+busy leaves its lines in the queue for the spawn the next routed line
+triggers. Nothing is lost either way; the only cost is a delay of a second or
+so.
+
 While the bot runs, the same 1 Hz tick republishes its counters and notices
 an uplink that went away or a polling task that has ended, so a station that
 loses its connection reports "waiting for a network route" instead of an
@@ -220,9 +231,16 @@ the bot comes back. ``telegram_app_notify_station_message()`` (declared in
 line, looks up the users it belongs to and hands one item per user to a small
 queue, since the frame-decoding path that calls it runs on the modem's own
 receive task, which carries none of the stack a Telegram network call needs
-for its TLS handshake. A short-lived worker task, sized and spawned the same
-way the bring-up worker described above is, drains that queue through
+for its TLS handshake. A short-lived worker task, spawned into the same single
+worker slot the bring-up worker uses, drains that queue through
 ``telegram_send_message()``.
+
+The queue itself is created when the configuration is applied — that is, at
+start-up and on every save of the *Telegram* page — and only for a bot that is
+enabled with at least one of the two routing switches on. A station that
+leaves both off therefore never allocates it, while a station that turns one
+on has the queue in place before the first line can be routed, so neither
+notify entry point ever allocates anything on the task that calls it.
 
 Routing bulletins to Telegram
 =============================

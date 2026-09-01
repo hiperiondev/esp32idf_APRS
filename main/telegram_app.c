@@ -83,6 +83,10 @@ static const char *TAG = "telegram_app";
 // same stack for the same reason and is given its own copy of that constant
 // rather than sharing the name, since the two tasks exist for unrelated
 // reasons and are sized alike by coincidence, not by a shared purpose.
+//
+// Only one of the two exists at a time: both are spawned through the single
+// worker claim described further down, so this figure is the bot's peak stack
+// cost rather than a second one added to the bring-up worker's.
 #define TELEGRAM_NOTIFY_STACK_BYTES 8192
 #define TELEGRAM_NOTIFY_PRIORITY    4
 
@@ -206,7 +210,49 @@ typedef enum {
 } telegram_action_t;
 
 static volatile telegram_action_t s_action;
-static volatile bool s_worker_alive;
+
+// The single worker slot the bot's two short-lived task kinds share.
+//
+// One kind carries out a bring-up or a teardown, the other drains the routed
+// notification queue, and each is sized for a TLS handshake because each
+// performs one. Letting both exist at once would put sixteen kilobytes of
+// stack on the heap on top of the service's own polling task, the web
+// server's task and the handshake itself, which is more than this board has
+// to spare. So there is one claim for both kinds: whichever is spawned first
+// runs alone and the other waits.
+//
+// Waiting costs nothing in either direction. A bring-up that finds the slot
+// taken is attempted again by the next 1 Hz tick, and a drain that finds it
+// taken leaves its items in the queue for the spawn the next routed line
+// triggers, which is the same brief delay the drain task's own exit window
+// already produces.
+static volatile bool s_worker_busy;
+
+// Guards the claim of s_worker_busy. Reading the flag and setting it are one
+// indivisible step: the two notify entry points are reached from the modem's
+// receive task and from the APRS-IS client's task, so two overlapping spawns
+// must not both come away believing they own the slot, which a plain
+// read-then-write would allow. A portMUX (not a mutex) because the claim is a
+// handful of instructions and can then be made with no allocation and no
+// init-order dependency.
+static portMUX_TYPE s_worker_lock = portMUX_INITIALIZER_UNLOCKED;
+
+// Takes the worker slot, reporting whether this caller is the one that got it.
+static bool worker_claim(void) {
+    bool busy;
+    portENTER_CRITICAL(&s_worker_lock);
+    busy = s_worker_busy;
+    if (!busy)
+        s_worker_busy = true;
+    portEXIT_CRITICAL(&s_worker_lock);
+    return !busy;
+}
+
+// Returns the worker slot. Called by a worker task on its way out, and by a
+// spawn whose task could not be created after the slot was already claimed.
+static void worker_release(void) {
+    s_worker_busy = false;
+}
 
 // True between a successful bring-up and the teardown that follows it. Says
 // that the service owns a task, a client pair and a TLS session, which is what
@@ -268,8 +314,8 @@ static int64_t s_route_admin_id;
 // for every bulletin, and that path runs on the modem's own RX task, which
 // carries none of the stack a TLS handshake needs. So the call sites only
 // ever format a line and push it onto s_notify_queue; a dedicated drain task,
-// spawned on demand and sized like the bring-up worker above, is what
-// actually reaches Telegram.
+// spawned on demand into the same worker slot the bring-up worker uses, is
+// what actually reaches Telegram.
 //
 // The two differ in who receives the line, and that difference is what the
 // broadcast flag below carries. A station message names one addressee, so its
@@ -289,15 +335,24 @@ typedef struct {
     char text[TELEGRAM_NOTIFY_TEXT_MAX];
 } telegram_notify_item_t;
 
-// Created on first use rather than at start-up: most stations leave both
-// "Route Station messages" and "Route Bulletins" off, and an unused queue
-// would hold its storage for the life of the firmware for nothing.
+// Created by telegram_app_apply_config(), on the task that owns the
+// configuration, the first time an enabled bot is found with a routing switch
+// on. Not created at start-up regardless: most stations leave both "Route
+// Station messages" and "Route Bulletins" off, and an unused queue would hold
+// its storage for the life of the firmware for nothing, so a station with
+// both switches off never reaches the call below.
 static QueueHandle_t s_notify_queue;
-static volatile bool s_notify_worker_alive;
 
+// Creates the queue if it is not there yet. Called from one task only, which
+// is what makes the test above it sound: the two notify entry points run on
+// two different tasks and only ever read the handle.
 static void notify_queue_ensure(void) {
+    if (s_notify_queue != NULL)
+        return;
+
+    s_notify_queue = xQueueCreate(TELEGRAM_NOTIFY_QUEUE_LEN, sizeof(telegram_notify_item_t));
     if (s_notify_queue == NULL)
-        s_notify_queue = xQueueCreate(TELEGRAM_NOTIFY_QUEUE_LEN, sizeof(telegram_notify_item_t));
+        ESP_LOGE(TAG, "Notification queue could not be created, nothing will be routed to Telegram");
 }
 
 // Sends one line to one chat, naming a delivery that did not happen rather
@@ -386,23 +441,23 @@ static void telegram_notify_worker_task(void *arg) {
 
     // Between the last empty receive above and this task actually deleting
     // itself there is a small window where a new item could be queued while
-    // notify_worker_spawn() still sees this task as alive and skips spawning
-    // another one. That item waits in the queue until the next routed message
-    // triggers a spawn, so nothing beyond a brief delay is lost.
-    s_notify_worker_alive = false;
+    // the worker slot is still held and notify_worker_spawn() therefore skips
+    // spawning another task. That item waits in the queue until the next
+    // routed line triggers a spawn, so nothing beyond a brief delay is lost.
+    worker_release();
     vTaskDelete(NULL);
 }
 
-// Spawns the drain task if one is not already running. Safe to call every
-// time an item is queued: a worker already alive drains the new item itself,
-// and a second one is never started alongside it.
+// Spawns the drain task if the shared worker slot is free. Safe to call every
+// time an item is queued: a drain already running takes the new item on its
+// own pass, and an item queued while a bring-up holds the slot waits for the
+// spawn the next routed line triggers.
 static void notify_worker_spawn(void) {
-    if (s_notify_worker_alive)
+    if (!worker_claim())
         return;
 
-    s_notify_worker_alive = true;
     if (xTaskCreate(telegram_notify_worker_task, "telegram_notify", TELEGRAM_NOTIFY_STACK_BYTES, NULL, TELEGRAM_NOTIFY_PRIORITY, NULL) != pdPASS) {
-        s_notify_worker_alive = false;
+        worker_release();
         ESP_LOGE(TAG, "Notify worker task could not be created");
     }
 }
@@ -527,7 +582,10 @@ void telegram_app_notify_station_message(const char *from_call, const char *to_c
     if (!s_route_messages || !s_enabled || !s_service_up)
         return;
 
-    notify_queue_ensure();
+    // Read, never created here: the queue belongs to the configuration task,
+    // which puts it in place when routing is turned on. A handle still absent
+    // with routing on means the queue did not fit in the heap, which was
+    // named in the log when the attempt was made.
     if (s_notify_queue == NULL)
         return;
 
@@ -631,12 +689,14 @@ void telegram_app_notify_bulletin(const char *from_call, const char *to_call, co
     if (!s_route_bulletins || !s_enabled || !s_service_up)
         return;
 
-    // Tested before the queue is created, so a station that only ever hears
-    // repeats of one bulletin does not allocate a queue to drop them from.
+    // Tested before the queue is touched, so a station that only ever hears
+    // repeats of one bulletin spends a hash and a table scan on each rather
+    // than a queue slot and a copy of its text.
     if (bulletin_is_repeat(from_call, to_call, text))
         return;
 
-    notify_queue_ensure();
+    // Read, never created here, for the reason given at the same test in
+    // telegram_app_notify_station_message().
     if (s_notify_queue == NULL)
         return;
 
@@ -1483,7 +1543,7 @@ static void telegram_worker_task(void *arg) {
         if (action == TELEGRAM_ACTION_STOP) {
             status_reset(TELEGRAM_APP_STATE_DISABLED, TELEGRAM_APP_REASON_DISABLED);
             s_retry_in = TELEGRAM_RETRY_NEVER;
-            s_worker_alive = false;
+            worker_release();
             vTaskDelete(NULL);
             return;
         }
@@ -1511,18 +1571,19 @@ static void telegram_worker_task(void *arg) {
     ESP_LOGI(TAG, "Worker finished, stack high-water %u bytes free of %d", (unsigned)(uxTaskGetStackHighWaterMark(NULL) * sizeof(StackType_t)),
              TELEGRAM_WORKER_STACK_BYTES);
 
-    s_worker_alive = false;
+    worker_release();
     vTaskDelete(NULL);
 }
 
-// Spawns the worker for one action, if one is not already running.
+// Spawns the worker for one action, if the shared worker slot is free. A slot
+// held by a notification drain simply postpones the action: the tick keeps it
+// pending and offers it again a second later.
 static void worker_spawn(telegram_action_t action) {
-    if (s_worker_alive)
+    if (!worker_claim())
         return;
 
-    s_worker_alive = true;
     if (xTaskCreate(telegram_worker_task, "telegram_wk", TELEGRAM_WORKER_STACK_BYTES, (void *)(intptr_t)action, TELEGRAM_WORKER_PRIORITY, NULL) != pdPASS) {
-        s_worker_alive = false;
+        worker_release();
         ESP_LOGE(TAG, "Worker task could not be created");
         status_reset(TELEGRAM_APP_STATE_ERROR, TELEGRAM_APP_REASON_TASK_FAILED);
         s_retry_in = TELEGRAM_RETRY_SECONDS;
@@ -1534,14 +1595,14 @@ void telegram_app_tick_1hz(void) {
     // operator's most recent instruction.
     telegram_action_t pending = s_action;
     if (pending != TELEGRAM_ACTION_NONE) {
-        if (s_worker_alive)
+        if (s_worker_busy)
             return;
         s_action = TELEGRAM_ACTION_NONE;
         worker_spawn(pending);
         return;
     }
 
-    if (!s_enabled || s_worker_alive)
+    if (!s_enabled || s_worker_busy)
         return;
 
     if (s_service_up) {
@@ -1593,6 +1654,16 @@ void telegram_app_apply_config(void) {
     json_store_status_t read_status = s_last_read_status;
 
     lock();
+
+    // Put the queue in place before the routing switches below are published,
+    // so a line routed the instant they go on already has somewhere to go.
+    // This is the only place the queue is created: the two notify entry points
+    // are reached from the modem's receive task and from the APRS-IS client's
+    // task and only ever read the handle, and this call is serialized with
+    // every other one by the same lock a save takes.
+    if (cfg.enable && (cfg.route_station_messages || cfg.route_bulletins))
+        notify_queue_ensure();
+
     s_cfg = cfg;
     s_enabled = cfg.enable;
     s_route_messages = cfg.route_station_messages;

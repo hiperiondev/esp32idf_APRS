@@ -254,6 +254,14 @@ bool telegram_app_save(const telegram_app_config_t *in) APRS_MUST_CHECK;
  * service can take to leave a long poll, and it keeps the handshake-sized
  * stack a bring-up needs off the web server.
  *
+ * This is also where the queue behind ::telegram_app_notify_station_message
+ * and ::telegram_app_notify_bulletin is created, when either routing switch is
+ * found on. Doing it here rather than on the first routed line means the two
+ * notify entry points - which are reached from the modem's receive task and
+ * from the APRS-IS client's task - never allocate anything themselves, while a
+ * station that leaves both switches off still never pays for a queue it will
+ * not use.
+ *
  * Safe to call repeatedly. Called once during start-up and again from the
  * Telegram page's save handler, so moving the switch needs no reboot.
  */
@@ -274,6 +282,12 @@ void telegram_app_apply_config(void);
  * perform it and returns immediately; the worker exits as soon as its one job
  * is done, returning its stack to the heap. So the large stack exists for the
  * few seconds it is genuinely needed and at no other time.
+ *
+ * That worker and the one that delivers routed notifications share a single
+ * slot, since each is sized for a TLS handshake and the two together are more
+ * stack than this board can hold at once. An action that finds the slot taken
+ * by a notification drain stays pending and is offered again a second later,
+ * so nothing is lost by the wait.
  *
  * Cheap and non-blocking: in the steady state it copies six counters and
  * returns. Safe to call before ::telegram_app_apply_config has ever run.
