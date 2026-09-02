@@ -43,6 +43,7 @@ idf_component_register(
         igate
         message
         query
+        winlink
         trafficlog
         lastheard
         sensors_local

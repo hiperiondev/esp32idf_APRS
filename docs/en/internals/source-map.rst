@@ -68,6 +68,7 @@ Repository layout
    │   ├── query/          ← APRS query responder (?APRS?/?WX?/?IGATE? + directed set), answered from the scheduler task
    │   ├── esp_telegram_bot/   ← Telegram Bot HTTPS transport: token, URLs, TLS clients, multipart upload
    │   ├── telegram_service/  ← long polling, command dispatch, authorization, alerts, remote parameters
+   │   ├── winlink/        ← Winlink radio e-mail over APRSLink: session state machine, command queue, mailbox (own winlink.json)
    │   ├── lastheard/      ← in-RAM table of heard stations, one per callsign → dashboard JSON
    │   ├── trafficlog/     ← in-RAM ring of traffic lines → dashboard JSON (seq long-poll)
    │   ├── weather_telemetry/  ← APRS101 WX + Telemetry protocol structs, plus mice.c: the

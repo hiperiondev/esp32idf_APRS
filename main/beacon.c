@@ -45,6 +45,7 @@
 #include "str_append.h"        // str_append(), str_copy_utf8_safe()
 #include "telemetry.h"         // telemetry_build_comment_tlm() / telemetry_config_load()
 #include "weather_telemetry.h" // aprs_mice_encode()
+#include "winlink.h"           // winlink_comment_active(), WL_BEACON_COMMENT_MARKER
 
 static const char *TAG = "beacon";
 
@@ -299,11 +300,28 @@ static bool call_equals_ci(const char *a, const char *b) {
 // beacon comment, a weather comment, an object comment and a bulletin are all
 // assembled by the same code.
 //
+// The Winlink notification marker is appended afterwards when the operator has
+// asked for it (winlink_comment_active()). The APRSLink service watches the
+// comment of the position reports it sees for that word and uses it to decide
+// which stations to tell about waiting mail without being asked, so it belongs
+// on the position beacons this function serves and nowhere else. It is
+// appended rather than substituted, and only while it still fits, so a comment
+// already filling the field keeps every character the operator wrote.
+//
 // Must be called with app_config_lock() already held: g_config.my_no_archive
 // is read here rather than snapshotted, the same way the callers read the
 // g_config text field they pass as src.
 static void buildCommentField(const char *src, char *dst, size_t dst_size) {
     aprs_free_text_build(src, g_config.my_no_archive, dst, dst_size);
+
+    if (!winlink_comment_active())
+        return;
+
+    size_t used = strlen(dst);
+    if (used + strlen(WL_BEACON_COMMENT_MARKER) < dst_size)
+        str_append(dst, dst_size, &used, "%s", WL_BEACON_COMMENT_MARKER);
+    else
+        ESP_LOGW(TAG, "Comment leaves no room for the Winlink marker - shorten it to have this station announced as a Winlink reader");
 }
 
 // Resolves the optional APRS 1.2 base-91 comment telemetry group

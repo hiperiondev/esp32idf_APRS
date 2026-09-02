@@ -81,6 +81,8 @@
 #define TR_MENU_GPS "GPS"
 /** Sidebar navigation entry for the Telegram page, rendered on the sidebar. */
 #define TR_MENU_TELEGRAM "Telegram"
+/** Sidebar navigation entry for the Winlink page, rendered on the sidebar. */
+#define TR_MENU_WINLINK "Winlink"
 /** Sidebar navigation entry for the Logs page, rendered on the sidebar. */
 #define TR_MENU_LOGS "Logs"
 /** Sidebar navigation entry for the System page, rendered on the sidebar. */
@@ -1833,6 +1835,144 @@
     "holds the last 50 lines and scrolls; a line longer than 255 characters is continued on the next one. Stop ends the copy, and so does leaving this page: " \
     "coming back always starts from an empty window with the button ready to start again. Capturing costs the station a little memory and slows nothing else " \
     "down, but it is not a recording - only what arrives while the window is open is shown, and nothing is written to flash."
+
+/** @} */
+
+/**
+ * @name Winlink page
+ *
+ * Strings of the Winlink (APRSLink) page: the account this station uses on the
+ * service, the gating policy that lets the service reach the stations around
+ * it, and the session terminal.
+ * @{
+ */
+/** Page title of the Winlink page, rendered on the Winlink page. */
+#define TR_F_WINLINK "Winlink"
+/** Fieldset legend for the account settings, rendered on the Winlink page. */
+#define TR_WL_FS_ACCOUNT "Winlink Account"
+/** Fieldset legend for the gateway policy, rendered on the Winlink page. */
+#define TR_WL_FS_GATEWAY "Gateway for Local Stations"
+/** Fieldset legend for the session terminal, rendered on the Winlink page. */
+#define TR_WL_FS_SESSION "Session"
+/** Explanatory note above the account settings, rendered on the Winlink page. */
+#define TR_WL_NOTE_ACCOUNT                                                                                                                                     \
+    "APRSLink is the gateway between APRS and Winlink radio e-mail. This station reaches it with ordinary APRS messages addressed to the service callsign, "   \
+    "and the mailbox opened is the one belonging to the base callsign below, without its SSID. The password is never transmitted: a login challenge names "    \
+    "three character positions and only those characters are sent back."
+/** Explanatory note above the gateway policy, rendered on the Winlink page. */
+#define TR_WL_NOTE_GATEWAY                                                                                                                                     \
+    "A neighbouring station can run its own Winlink session through this one: its commands are gated to APRS-IS and the service's answers are put back on "    \
+    "the air, with no account or password of yours involved. The IGate normally refuses to transmit a message whose addressee is also seen on APRS-IS, which " \
+    "an answer from the service would fall foul of because the echo of the station's own gated command makes it look Internet-connected. The setting below "   \
+    "lifts that one condition, and only for the service callsign; the three IGate settings shown with it still decide everything else."
+/** Explanatory note above the session terminal, rendered on the Winlink page. */
+#define TR_WL_NOTE_SESSION                                                                                                                                     \
+    "One command is sent at a time and the next one waits for the service to acknowledge its predecessor, so a session takes a while and cannot be hurried. "  \
+    "Replies arrive below as they come in."
+/** Label of the client enable switch, rendered on the Winlink page. */
+#define TR_WL_ENABLE "Enable Winlink client"
+/** Label of the service callsign field, rendered on the Winlink page. */
+#define TR_WL_SERVICE_CALL "Service callsign"
+/** Label of the Winlink password field, rendered on the Winlink page. */
+#define TR_WL_PASSWORD "Winlink password"
+/** Label of the switch that reuses the messaging callsign, rendered on the Winlink page. */
+#define TR_WL_USE_MSG_CALL "Use the Message service callsign"
+/** Label of the separate Winlink callsign field, rendered on the Winlink page. */
+#define TR_WL_MYCALL "Winlink callsign"
+/** Label of the automatic login switch, rendered on the Winlink page. */
+#define TR_WL_AUTO_LOGIN "Log in automatically when a command is sent"
+/** Label of the session lifetime field, rendered on the Winlink page. */
+#define TR_WL_SESSION_MAX_MIN "Session lifetime (min)"
+/** Label of the unprompted listing interval field, rendered on the Winlink page. */
+#define TR_WL_POLL_MIN "Check for mail every (min, 0 = never)"
+/** Label of the beacon marker switch, rendered on the Winlink page. */
+#define TR_WL_COMMENT_EN "Announce this station as a Winlink reader in the beacon comment"
+/** Label of the Internet-only routing switch, rendered on the Winlink page. */
+#define TR_WL_INET_ONLY "Keep this station's own Winlink traffic off the air"
+/** Label of the gating exemption switch, rendered on the Winlink page. */
+#define TR_WL_GATE_EXEMPT "Let the service's answers reach local stations on RF"
+/** Label of the read-only message-gate row, rendered on the Winlink page. */
+#define TR_WL_GATE_MSG_GATE_EN "IGate message gating"
+/** Label of the read-only local-window row, rendered on the Winlink page. */
+#define TR_WL_GATE_WINDOW "Local station window (s)"
+/** Label of the read-only hop-limit row, rendered on the Winlink page. */
+#define TR_WL_GATE_HOPS "Longest path to a local station (hops)"
+/** Label of the session state row, rendered on the Winlink page. */
+#define TR_WL_ST_STATE "Session"
+/** Label of the remaining lifetime row, rendered on the Winlink page. */
+#define TR_WL_ST_REMAINING "Time left"
+/** Label of the queue depth row, rendered on the Winlink page. */
+#define TR_WL_ST_QUEUE "Commands waiting"
+/** Label of the mailbox size row, rendered on the Winlink page. */
+#define TR_WL_ST_MAILBOX "Replies stored"
+/** Label of the last failure row, rendered on the Winlink page. */
+#define TR_WL_ST_ERROR "Last failure"
+/** Caption of the login button, rendered on the Winlink page. */
+#define TR_WL_BTN_LOGIN "Log in"
+/** Caption of the log-off button, rendered on the Winlink page. */
+#define TR_WL_BTN_LOGOFF "Log off"
+/** Caption of the list-mail button, rendered on the Winlink page. */
+#define TR_WL_BTN_LIST "List mail"
+/** Caption of the send-command button, rendered on the Winlink page. */
+#define TR_WL_BTN_SEND "Send"
+/** Caption of the clear-mailbox button, rendered on the Winlink page. */
+#define TR_WL_BTN_CLEAR_MAIL "Clear replies"
+/** Caption of the start-message button, rendered on the Winlink page. */
+#define TR_WL_BTN_COMPOSE "Start message"
+/** Caption of the add-body-line button, rendered on the Winlink page. */
+#define TR_WL_BTN_COMPOSE_LINE "Add line"
+/** Caption of the send-message button, rendered on the Winlink page. */
+#define TR_WL_BTN_COMPOSE_END "Send message"
+/** Caption of the abandon-message button, rendered on the Winlink page. */
+#define TR_WL_BTN_COMPOSE_ABORT "Discard message"
+/** Label of the free-form command field, rendered on the Winlink page. */
+#define TR_WL_CMD_LABEL "Command"
+/** Placeholder of the free-form command field, rendered on the Winlink page. */
+#define TR_WL_CMD_PLACEHOLDER "L, R1, K1, Y1, ..."
+/** Label of the message recipient field, rendered on the Winlink page. */
+#define TR_WL_TO "To"
+/** Placeholder of the message recipient field, rendered on the Winlink page. */
+#define TR_WL_TO_PLACEHOLDER "address, callsign or alias"
+/** Label of the message subject field, rendered on the Winlink page. */
+#define TR_WL_SUBJECT "Subject"
+/** Label of the message body field, rendered on the Winlink page. */
+#define TR_WL_BODY "Body line"
+/** Heading of the replies panel, rendered on the Winlink page. */
+#define TR_WL_MAILBOX "Replies from the service"
+/** Placeholder shown while the replies are being fetched, rendered on the Winlink page. */
+#define TR_WL_LOADING "Loading..."
+/** Placeholder shown when no reply is stored, rendered on the Winlink page. */
+#define TR_WL_EMPTY "No replies stored."
+/** Confirmation shown after an accepted action, rendered on the Winlink page. */
+#define TR_WL_OK "Done."
+/** Message shown when an action could not be carried out, rendered on the Winlink page. */
+#define TR_WL_FAIL "That could not be done."
+/** Error shown when an action is attempted with the client switched off, rendered on the Winlink page. */
+#define TR_WL_ERR_DISABLED "The Winlink client is switched off."
+/** Error shown when the requested action is not one this page knows, rendered on the Winlink page. */
+#define TR_WL_ERR_ACTION "Unknown action."
+/** Error shown when the session refused the action in its current state, rendered on the Winlink page. */
+#define TR_WL_ERR_REFUSED "The session cannot do that right now."
+/** Name of the disabled session state, rendered on the Winlink page. */
+#define TR_WL_STATE_DISABLED "Switched off"
+/** Name of the idle session state, rendered on the Winlink page. */
+#define TR_WL_STATE_IDLE "Not logged in"
+/** Name of the session state waiting for the login to be acknowledged, rendered on the Winlink page. */
+#define TR_WL_STATE_LOGIN_SENT "Logging in"
+/** Name of the session state waiting for the challenge, rendered on the Winlink page. */
+#define TR_WL_STATE_WAIT_CHALLENGE "Waiting for the challenge"
+/** Name of the session state waiting for the answer to be acknowledged, rendered on the Winlink page. */
+#define TR_WL_STATE_CHALLENGE_SENT "Challenge answered"
+/** Name of the session state waiting for the login to be confirmed, rendered on the Winlink page. */
+#define TR_WL_STATE_WAIT_VALID "Waiting for confirmation"
+/** Name of the logged-in session state, rendered on the Winlink page. */
+#define TR_WL_STATE_LOGGED_IN "Logged in"
+/** Name of the composing session state, rendered on the Winlink page. */
+#define TR_WL_STATE_COMPOSING "Writing a message"
+/** Name of the session state waiting for the log-off to be confirmed, rendered on the Winlink page. */
+#define TR_WL_STATE_LOGGING_OFF "Logging off"
+/** Name of the failed session state, rendered on the Winlink page. */
+#define TR_WL_STATE_ERROR "Session abandoned"
 
 /** @} */
 

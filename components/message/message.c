@@ -65,6 +65,11 @@ _Static_assert(MSG_JSON_ENTRY_MAX >= MSG_JSON_TEMPLATE_LEN + MSG_JSON_TIME_LEN +
 static uint32_t s_seq = 0;
 static uint16_t s_msgID = 0;
 static void (*s_txHandler)(const char *packet, size_t len, uint8_t channels) = NULL;
+static message_rx_observer_t s_rxObserver = NULL;
+
+// Addressee whose messages skip the RF leg while an APRS-IS uplink is
+// available. Empty when no such addressee is registered.
+static char s_inetOnlyPeer[11] = { 0 };
 
 // ---------------------------------------------------------------------------
 // Reply-ACK (APRS 1.1): the acknowledgement owed to each correspondent
@@ -85,6 +90,19 @@ typedef struct {
 
 static reply_ack_t s_replyAck[MSG_REPLY_ACK_STATIONS];
 static uint32_t s_replyAckSeq = 0;
+
+void message_set_rx_observer(message_rx_observer_t observer) {
+    s_rxObserver = observer;
+}
+
+void message_set_inet_only_peer(const char *call) {
+    if (call == NULL) {
+        s_inetOnlyPeer[0] = 0;
+        return;
+    }
+    strncpy(s_inetOnlyPeer, call, sizeof(s_inetOnlyPeer) - 1);
+    s_inetOnlyPeer[sizeof(s_inetOnlyPeer) - 1] = 0;
+}
 
 void message_set_tx_handler(void (*handler)(const char *packet, size_t len, uint8_t channels)) {
     s_txHandler = handler;
@@ -531,28 +549,38 @@ size_t message_next_json(uint32_t after_seq, char *out, size_t out_size, uint32_
 // carries "TCPIP*" rather than something like "WIDE1-1,WIDE2-1".
 // True when a message addressed to toCall must leave over APRS-IS alone.
 //
-// A station whose most recent frame reached this gateway as BrandMeister
-// traffic is on the network, not on the local channel: every RF copy of a
-// message addressed to it is airtime spent on a receiver that is not there,
-// multiplied by g_config.msg_retry for as long as the message goes unacked.
+// Two kinds of addressee qualify, for the same reason: neither is on the local
+// channel, so every RF copy of a message addressed to it is airtime spent on a
+// receiver that is not there, multiplied by g_config.msg_retry for as long as
+// the message goes unacked.
+//
+// The first is an addressee registered with message_set_inet_only_peer(): a
+// service that lives on the Internet, recognised by its address alone. The
+// second is a station whose most recent frame reached this gateway as
+// BrandMeister traffic, recognised from the last-heard table.
 //
 // The rule may only ever REMOVE the RF leg, never add the Internet one. If
 // g_config.msg_inet is off the operator has said this station does not put
-// messages on APRS-IS, and a BrandMeister addressee is not a reason to
-// override that - it is a reason to send nothing, which is what returning
-// false here and letting the two flags stand achieves.
+// messages on APRS-IS, and neither kind of addressee is a reason to override
+// that - it is a reason to send nothing, which is what returning false here
+// and letting the two flags stand achieves.
 //
 // The answer is derived at each transmission rather than recorded with the
-// queued message on purpose: it follows the last-heard table, so a station
-// that turns up on the local channel between one attempt and the next has its
-// retries put on the air without anything having to invalidate a stored
-// decision.
+// queued message on purpose: the BrandMeister half follows the last-heard
+// table, so a station that turns up on the local channel between one attempt
+// and the next has its retries put on the air without anything having to
+// invalidate a stored decision.
 static bool destIsInetOnly(const char *toCall) {
-    if (!g_config.bm_en || !g_config.bm_msg_inet_only)
-        return false;
     if (!g_config.msg_inet)
         return false;
     if (toCall == NULL || toCall[0] == 0)
+        return false;
+    // A registered peer is an addressee that lives on the Internet rather than
+    // on the local channel, so its RF leg is suppressed by the address alone,
+    // without anything having to have been heard first.
+    if (s_inetOnlyPeer[0] != 0 && callsignBaseMatch(toCall, s_inetOnlyPeer))
+        return true;
+    if (!g_config.bm_en || !g_config.bm_msg_inet_only)
         return false;
     return lastheard_last_seen_bm(toCall);
 }
@@ -565,7 +593,7 @@ static void txPacket(const char *myCall, const char *toCall, const char *info) {
 
     const bool inetOnly = destIsInetOnly(toCall);
     if (inetOnly && g_config.msg_rf)
-        ESP_LOGD(TAG, "%s was last heard as BrandMeister traffic - RF leg suppressed, sending over APRS-IS only", toCall);
+        ESP_LOGD(TAG, "%s is reachable over the Internet - RF leg suppressed, sending over APRS-IS only", toCall);
     // str_append() reports whether the whole frame fit and leaves len at the
     // number of characters actually written. Both matter here: len is handed
     // straight to the TX handler, which memcpy()s and send()s exactly that
@@ -1049,17 +1077,19 @@ void handleIncomingAPRS(const char *line, query_source_t source) {
 
     uint16_t number;
 
-    if (isAck) {
+    if (isAck || isRej) {
+        // The observer is told about the acknowledgement whatever it does with
+        // it, and the queue is updated regardless of what it answers: an
+        // outbound message that has been acknowledged must stop being retried
+        // no matter who else is interested in the fact.
+        if (s_rxObserver) {
+            uint16_t ackID = 0;
+            parseMsgNumber(ownNo, &ackID);
+            s_rxObserver(fromCall, message, ackID, true);
+        }
         int i = parseMsgNumber(ownNo, &number) ? pkgMsg_Find(fromCall, number, false) : -1;
         if (i >= 0)
-            s_queue[i].ack = -2; // acked
-        return;
-    }
-
-    if (isRej) {
-        int i = parseMsgNumber(ownNo, &number) ? pkgMsg_Find(fromCall, number, false) : -1;
-        if (i >= 0)
-            s_queue[i].ack = -3; // rejected by recipient: stop retrying, don't count as delivered
+            s_queue[i].ack = isAck ? -2 : -3; // acked, or rejected by recipient: stop retrying, don't count as delivered
         return;
     }
 
@@ -1094,7 +1124,18 @@ void handleIncomingAPRS(const char *line, query_source_t source) {
     // share a sender and number are two.
     uint16_t rxID = 0;
     parseMsgNumber(ownNo, &rxID);
-    if (pkgMsgFindRepeat(fromCall, decoded, rxID, true, isGroup) < 0)
+
+    // A subsystem that holds a conversation with a service over APRS messaging
+    // takes its own traffic here, before any of it reaches the chat history. It
+    // is offered the message only once it has been recognised as addressed to
+    // this station and split into its fields, so it never has to parse a frame
+    // itself, and the acknowledgement below is sent whatever it answers,
+    // because the sender asked for one and is waiting.
+    bool consumed = false;
+    if (s_rxObserver)
+        consumed = s_rxObserver(fromCall, decoded, rxID, false);
+
+    if (!consumed && pkgMsgFindRepeat(fromCall, decoded, rxID, true, isGroup) < 0)
         pkgMsgStore(fromCall, decoded, rxID, -1, true, isGroup);
 
     // A group message is never acked, never retransmitted and never
@@ -1110,6 +1151,10 @@ void handleIncomingAPRS(const char *line, query_source_t source) {
             sendAPRSAck(fromCall, msgNo);
             replyAckRemember(fromCall, ownNo);
         }
-        message_alarm_pulse();
+        // The alarm announces traffic the operator has to come and read. A
+        // message an observer took is being dealt with by whatever took it, so
+        // there is nothing waiting and nothing to announce.
+        if (!consumed)
+            message_alarm_pulse();
     }
 }

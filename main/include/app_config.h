@@ -96,12 +96,35 @@
 #define ENABLE_TELEMETRY      /**< Telemetry page. */
 #define ENABLE_GPS            /**< GPS receiver page. */
 #define ENABLE_TELEGRAM       /**< Telegram bot page. */
+#define ENABLE_WINLINK        /**< Winlink (APRSLink) radio e-mail page. */
 #define ENABLE_LOGS           /**< Console Logs page. */
 #define ENABLE_SYSTEM         /**< System page. */
 #define ENABLE_WIRELESS       /**< Wireless page. */
 #define ENABLE_FILE_STORAGE   /**< File Storage page. */
 #define ENABLE_ABOUT_FIRMWARE /**< About / Firmware page. */
 /** @} */
+
+/**
+ * @name Winlink (APRSLink) accepted ranges
+ *
+ * Single source of truth for the bounds the Winlink page's form advertises and
+ * for the clamps applied both in its POST handler and in config_from_json(),
+ * so a hand-edited config.json cannot put a value on the device that the form
+ * would have refused.
+ * @{
+ */
+#define WL_SESSION_MAX_MIN_MIN     5    /**< Shortest local session lifetime, minutes. */
+#define WL_SESSION_MAX_MIN_MAX     180  /**< Longest local session lifetime, minutes. */
+#define WL_SESSION_MAX_MIN_DEFAULT 110  /**< Default local session lifetime, minutes, comfortably inside the service's own two-hour expiry. */
+#define WL_POLL_MIN_MIN            0    /**< Never ask the service for a listing unprompted. */
+#define WL_POLL_MIN_MAX            1440 /**< Longest interval between unprompted listings, minutes (24 h). */
+/** @} */
+
+/**
+ * @brief Default APRSLink service callsign: the CMS-hosted gateway between
+ * APRS and the Winlink radio e-mail system.
+ */
+#define WL_SERVICE_CALL_DEFAULT "WLNK-1"
 
 /**
  * @brief Size of the comment buffers (IGate/Digipeater/Tracker/Weather):
@@ -1025,6 +1048,18 @@ typedef struct {
     uint16_t msg_interval; /**< Message retry interval, seconds. */
     bool msg_alarm_enable; /**< "Message Alarm": drive a GPIO on incoming message (disabled by default). */
     int8_t msg_alarm_gpio; /**< Message-alarm GPIO; -1 = disabled/unset (see message_alarm_gpio_is_valid()). */
+
+    bool wl_enable;              /**< Winlink client enabled. */
+    char wl_service_call[10];    /**< APRSLink service callsign the commands are addressed to. Defaults to "WLNK-1". */
+    char wl_password[17];        /**< Winlink account password. Never transmitted: only the characters a challenge names are quoted back. */
+    bool wl_use_msg_call;        /**< Use @c msg_mycall as the Winlink identity, instead of @c wl_mycall. */
+    char wl_mycall[10];          /**< Winlink identity when @c wl_use_msg_call is off. The service keys the mailbox on its base callsign. */
+    bool wl_auto_login;          /**< Open a session automatically when a command is queued while idle. */
+    uint16_t wl_session_max_min; /**< Local session lifetime, minutes. Kept below the service's own expiry so this station gives a session up first. */
+    uint16_t wl_poll_min;        /**< Interval between unprompted listings of pending mail, minutes. 0 never asks. */
+    bool wl_comment_en;          /**< Append the Winlink notification marker to the beacon comment, so the service knows this station reads its mail. */
+    bool wl_inet_only;           /**< Keep traffic addressed to the service off the air while this station has an APRS-IS uplink. */
+    bool wl_gate_exempt;         /**< Let a reply from the service reach RF even when its addressee is also seen on APRS-IS (see messageGatePass()). */
 
     char msg_group[3][10]; /**< Up to 3 operator-defined message group names (APRS101 ch.14 "Message Groups"), in addition to the built-in "ALL"/"QST"/"CQ"
                                set every station reads. Each slot holds a bare group name, upper case, up to 9 characters wide (the addressee field width);

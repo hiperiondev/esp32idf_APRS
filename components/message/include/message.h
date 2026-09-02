@@ -349,4 +349,62 @@ size_t message_next_json(uint32_t after_seq, char *out, size_t out_size, uint32_
  */
 void message_set_tx_handler(void (*handler)(const char *packet, size_t len, uint8_t channels));
 
+/**
+ * @brief Observer invoked for every APRS text message this station accepts and
+ * for every acknowledgement or rejection that resolves one of its own outbound
+ * messages.
+ *
+ * @details The observer exists so that a subsystem built on top of APRS
+ * messaging - a conversation with a service that answers in messages, rather
+ * than with a human - can take its own traffic out of the conversation history
+ * without this component having to know that subsystem exists. Only one
+ * observer is registered at a time, and the messaging engine calls it after the
+ * frame has been recognised as a message addressed here and split into its
+ * fields, but before the message is stored, so a consumed message leaves no
+ * trace in the chat thread.
+ *
+ * Acknowledgement of the message is @b not the observer's to suppress. An
+ * @c "ackNN" is what tells the other station its message arrived, it is
+ * required of every direct message that asked for one, and a service waiting
+ * for it will otherwise retransmit until it gives up. It is therefore sent
+ * whatever the observer returns, and an acknowledgement of this station's own
+ * outbound message is likewise always matched against the queue: consuming one
+ * only keeps it out of the conversation history.
+ *
+ * @param sender Other station's callsign, upper case, SSID included as heard.
+ * @param text   Message text with any @c "{id" suffix already removed, or the
+ *               literal @c "ackNN" / @c "rejNN" when @p is_ack is true.
+ * @param msgID  APRS message number, 0 when the message carried none.
+ * @param is_ack true when this is an acknowledgement or rejection of one of
+ *               this station's outbound messages rather than a new message.
+ * @return true when the observer has taken the message: it is then neither
+ *         stored in the queue nor allowed to raise the Message Alarm.
+ */
+typedef bool (*message_rx_observer_t)(const char *sender, const char *text, uint16_t msgID, bool is_ack);
+
+/**
+ * @brief Register the observer described by ::message_rx_observer_t.
+ *
+ * @param observer Callback to invoke, or NULL to remove the one registered.
+ */
+void message_set_rx_observer(message_rx_observer_t observer);
+
+/**
+ * @brief Name one addressee whose messages are sent over APRS-IS only, never on
+ * RF, while this station has an APRS-IS uplink to send them over.
+ *
+ * @details This station is its own IGate, so a message it addresses to a
+ * service that lives on the Internet has no reason to be put on the air: the
+ * transmission would occupy the shared channel for traffic no station on it
+ * needs to hear, and the answer arrives over the same Internet link either way.
+ * The suppression only ever applies to the RF leg - with @c g_config.msg_inet
+ * off there is no Internet leg to fall back on, so the message follows the
+ * ordinary flags and goes out on RF as before.
+ *
+ * @param call Callsign of the addressee, matched on its base form with any
+ *             @c "-SSID" suffix ignored, or NULL to remove the one registered.
+ *             The string is copied.
+ */
+void message_set_inet_only_peer(const char *call);
+
 #endif // MESSAGE_H

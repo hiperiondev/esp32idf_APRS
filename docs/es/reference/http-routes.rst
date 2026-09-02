@@ -74,6 +74,23 @@ hay nada que una comprobación de autenticación pueda proteger.
    * - GET
      - ``/telegram/status``
      - estado del bot, su causa y sus contadores (JSON), consultado cada 2 s
+   * - GET/POST
+     - ``/winlink``
+     - cuenta Winlink, la política de pase de mensajes del servicio y la
+       terminal de sesión
+   * - POST
+     - ``/winlink/cmd``
+     - ejecuta una acción de sesión: acceder, salir, una orden, un paso de
+       redacción o borrar las respuestas guardadas (JSON
+       ``{"ok":…,"error":…}``)
+   * - GET
+     - ``/winlink/status``
+     - estado de la sesión, tiempo restante, órdenes en espera, tamaño del
+       buzón y último fallo (JSON), consultado cada 3 s
+   * - GET
+     - ``/winlink/list``
+     - las respuestas que envió el servicio, de la más antigua a la más
+       reciente (JSON)
    * - GET
      - ``/logs``
      - visor del registro de consola; al mostrarla también detiene cualquier

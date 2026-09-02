@@ -42,16 +42,21 @@ Altri file persistenti
    * - ``/storage/objitems.json``
      - I cinque oggetti/item APRS (nome, posizione, simbolo, rotta/velocità,
        commento, intervallo, flag permanente).
+   * - ``/storage/winlink.json``
+     - Le risposte inviate dal servizio Winlink, dalla più vecchia. Le
+       impostazioni dell'account sono chiavi ``wl*`` di ``config.json``; qui
+       vivono solo le risposte, quindi cancellarle non tocca mai la
+       configurazione.
    * - ``/storage/telegram.json``
      - L'intera configurazione del bot Telegram: l'interruttore di
        abilitazione, il token del bot, l'identificativo dell'amministratore,
        l'indirizzo della Mini App e gli elenchi di utenti e chat di gruppo
        autorizzati.
 
-Tutti e cinque usano lo stesso scrittore a flusso, ciascuno sotto il proprio
+Tutti e sei usano lo stesso scrittore a flusso, ciascuno sotto il proprio
 mutex, ciascuno con un ``setvbuf()`` esplicito per evitare un'allocazione pigra di
 grande buffer stdio a metà scrittura. Quel buffer è un unico oggetto statico
-condiviso da tutti e cinque gli store, poiché il cancello di scrittura
+condiviso da tutti e sei gli store, poiché il cancello di scrittura
 dell'intero filesystem impedisce la sovrapposizione di due salvataggi.
 
 Reset di fabbrica
@@ -100,3 +105,67 @@ Chiavi dell'interconnessione BrandMeister
      - numero
      - Raggio del filtro di distanza INET→RF in km, 0 = illimitato. Limitato a
        0…20038 al caricamento.
+
+Chiavi Winlink (APRSLink)
+=========================
+
+.. list-table::
+   :header-rows: 1
+   :widths: 25 15 60
+
+   * - Chiave
+     - Tipo
+     - Significato
+   * - ``wlEnable``
+     - bool
+     - Interruttore principale del client Winlink. Spento per impostazione
+       predefinita: il client ha bisogno di un account e di una password prima
+       di poter fare qualcosa.
+   * - ``wlServiceCall``
+     - string
+     - Nominativo del servizio APRSLink. ``WLNK-1`` per impostazione
+       predefinita; un valore vuoto carica quel valore predefinito.
+   * - ``wlPassword``
+     - string
+     - Password dell'account Winlink, fino a 16 caratteri. Non viene mai
+       trasmessa: una sfida di accesso indica posizioni di caratteri e solo
+       quei caratteri vengono rimandati indietro.
+   * - ``wlUseMsgCall``
+     - bool
+     - Usa ``msgMycall`` come identità Winlink. Acceso per impostazione
+       predefinita, perché quel nominativo è quello che la trama uscente porta
+       con sé e quindi quello che il servizio vede.
+   * - ``wlMyCall``
+     - string
+     - Identità Winlink quando ``wlUseMsgCall`` è spento. Il servizio apre la
+       casella in base al suo nominativo base, senza l'SSID.
+   * - ``wlAutoLogin``
+     - bool
+     - Apre da sé una sessione quando un comando viene accodato da inattivo.
+       Acceso per impostazione predefinita.
+   * - ``wlSessionMaxMin``
+     - number
+     - Durata locale della sessione in minuti, 5…180, 110 per impostazione
+       predefinita. Tenuta sotto la scadenza di due ore del servizio stesso,
+       così questa stazione abbandona la sessione per prima. Limitata al
+       caricamento.
+   * - ``wlPollMin``
+     - number
+     - Minuti tra le richieste spontanee della posta in attesa, 0…1440. 0 non
+       chiede mai, ed è il valore predefinito. Limitato al caricamento.
+   * - ``wlCommentEn``
+     - bool
+     - Aggiunge il contrassegno di notifica Winlink al commento del beacon,
+       così il servizio sa che questa stazione legge la propria posta. Spento
+       per impostazione predefinita.
+   * - ``wlInetOnly``
+     - bool
+     - Tiene fuori dall'aria il traffico Winlink di questa stazione finché ha
+       un collegamento APRS-IS. Acceso per impostazione predefinita; può solo
+       togliere la tratta RF.
+   * - ``wlGateExempt``
+     - bool
+     - Lascia che una risposta del servizio raggiunga la RF anche quando il suo
+       destinatario si vede pure su APRS-IS. Acceso per impostazione
+       predefinita; toglie quell'unica condizione di inoltro dei messaggi e
+       nessun'altra, e solo per ``wlServiceCall``.

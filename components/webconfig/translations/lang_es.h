@@ -83,6 +83,8 @@
 #define TR_MENU_GPS "GPS"
 /** Sidebar navigation entry for the Telegram page, rendered on the sidebar. */
 #define TR_MENU_TELEGRAM "Telegram"
+/** Sidebar navigation entry for the Winlink page, rendered on the sidebar. */
+#define TR_MENU_WINLINK "Winlink"
 /** Spanish text for the sidebar navigation entry for the Logs page, rendered on the sidebar. English: "Logs". */
 #define TR_MENU_LOGS "Registros"
 /** Spanish text for the sidebar navigation entry for the System page, rendered on the sidebar. English: "System". */
@@ -1936,12 +1938,150 @@
 #define TR_LOGS_BTN_STOP "Detener"
 /** Spanish text for the explanatory note shown above the console log window, rendered on the Logs page. English: "Start mirrors everything the station prints
  * on its serial console...". */
-#define TR_LOGS_NOTE                                                                                                                                                \
-    "Iniciar copia en la ventana de abajo todo lo que la estación imprime en su consola serie, de modo que puede leerse sin tener un cable serie conectado. "      \
+#define TR_LOGS_NOTE                                                                                                                                           \
+    "Iniciar copia en la ventana de abajo todo lo que la estación imprime en su consola serie, de modo que puede leerse sin tener un cable serie conectado. "  \
     "La ventana guarda las últimas 50 líneas y se desplaza; una línea de más de 255 caracteres continúa en la siguiente. Detener termina la copia, y salir "   \
     "de esta página también: al volver siempre se empieza con la ventana vacía y el botón listo para iniciar de nuevo. Capturar cuesta a la estación algo de " \
-    "memoria y no ralentiza nada más, pero no es una grabación: solo se muestra lo que llega mientras la ventana está abierta, y no se escribe nada en la "      \
+    "memoria y no ralentiza nada más, pero no es una grabación: solo se muestra lo que llega mientras la ventana está abierta, y no se escribe nada en la "    \
     "flash."
+
+/** @} */
+
+/**
+ * @name Winlink page
+ *
+ * Spanish text for the strings of the Winlink (APRSLink) page: the account this
+ * station uses on the service, the gating policy that lets the service reach
+ * the stations around it, and the session terminal.
+ * @{
+ */
+/** Spanish text for the page title of the Winlink page. English: "Winlink". */
+#define TR_F_WINLINK "Winlink"
+/** Spanish text for the fieldset legend of the account settings. English: "Winlink Account". */
+#define TR_WL_FS_ACCOUNT "Cuenta Winlink"
+/** Spanish text for the fieldset legend of the gateway policy. English: "Gateway for Local Stations". */
+#define TR_WL_FS_GATEWAY "Pasarela para estaciones locales"
+/** Spanish text for the fieldset legend of the session terminal. English: "Session". */
+#define TR_WL_FS_SESSION "Sesión"
+/** Spanish text for the explanatory note above the account settings. */
+#define TR_WL_NOTE_ACCOUNT                                                                                                                                     \
+    "APRSLink es la pasarela entre APRS y el correo por radio Winlink. Esta estación lo alcanza con mensajes APRS normales dirigidos al indicativo del "       \
+    "servicio, y el buzón que se abre es el del indicativo base de abajo, sin su SSID. La contraseña nunca se transmite: un desafío de acceso nombra tres "    \
+    "posiciones de caracteres y solo esos caracteres se devuelven."
+/** Spanish text for the explanatory note above the gateway policy. */
+#define TR_WL_NOTE_GATEWAY                                                                                                                                     \
+    "Una estación vecina puede llevar su propia sesión Winlink a través de esta: sus órdenes se pasan a APRS-IS y las respuestas del servicio vuelven al "     \
+    "aire, sin que intervenga ninguna cuenta ni contraseña suya. El IGate normalmente no transmite un mensaje cuyo destinatario también se ve en APRS-IS, y "  \
+    "una respuesta del servicio caería en eso porque el eco de la orden que la propia estación envió la hace parecer conectada a Internet. La opción de "      \
+    "abajo levanta solo esa condición, y solo para el indicativo del servicio; los tres ajustes de IGate que la acompañan siguen decidiendo todo lo demás."
+/** Spanish text for the explanatory note above the session terminal. */
+#define TR_WL_NOTE_SESSION                                                                                                                                     \
+    "Se envía una orden por vez y la siguiente espera a que el servicio confirme la anterior, así que una sesión lleva su tiempo y no se puede apurar. Las "   \
+    "respuestas aparecen abajo a medida que llegan."
+/** Spanish text for the label of the client enable switch. English: "Enable Winlink client". */
+#define TR_WL_ENABLE "Habilitar cliente Winlink"
+/** Spanish text for the label of the service callsign field. English: "Service callsign". */
+#define TR_WL_SERVICE_CALL "Indicativo del servicio"
+/** Spanish text for the label of the Winlink password field. English: "Winlink password". */
+#define TR_WL_PASSWORD "Contraseña Winlink"
+/** Spanish text for the label of the switch that reuses the messaging callsign. English: "Use the Message service callsign". */
+#define TR_WL_USE_MSG_CALL "Usar el indicativo del servicio de mensajes"
+/** Spanish text for the label of the separate Winlink callsign field. English: "Winlink callsign". */
+#define TR_WL_MYCALL "Indicativo Winlink"
+/** Spanish text for the label of the automatic login switch. English: "Log in automatically when a command is sent". */
+#define TR_WL_AUTO_LOGIN "Acceder automáticamente al enviar una orden"
+/** Spanish text for the label of the session lifetime field. English: "Session lifetime (min)". */
+#define TR_WL_SESSION_MAX_MIN "Duración de la sesión (min)"
+/** Spanish text for the label of the unprompted listing interval field. English: "Check for mail every (min, 0 = never)". */
+#define TR_WL_POLL_MIN "Consultar el correo cada (min, 0 = nunca)"
+/** Spanish text for the label of the beacon marker switch. English: "Announce this station as a Winlink reader in the beacon comment". */
+#define TR_WL_COMMENT_EN "Anunciar esta estación como lectora de Winlink en el comentario de la baliza"
+/** Spanish text for the label of the Internet-only routing switch. English: "Keep this station's own Winlink traffic off the air". */
+#define TR_WL_INET_ONLY "Mantener fuera del aire el tráfico Winlink propio"
+/** Spanish text for the label of the gating exemption switch. English: "Let the service's answers reach local stations on RF". */
+#define TR_WL_GATE_EXEMPT "Dejar que las respuestas del servicio lleguen por RF a las estaciones locales"
+/** Spanish text for the label of the read-only message-gate row. English: "IGate message gating". */
+#define TR_WL_GATE_MSG_GATE_EN "Pase de mensajes del IGate"
+/** Spanish text for the label of the read-only local-window row. English: "Local station window (s)". */
+#define TR_WL_GATE_WINDOW "Ventana de estación local (s)"
+/** Spanish text for the label of the read-only hop-limit row. English: "Longest path to a local station (hops)". */
+#define TR_WL_GATE_HOPS "Camino más largo hasta una estación local (saltos)"
+/** Spanish text for the label of the session state row. English: "Session". */
+#define TR_WL_ST_STATE "Sesión"
+/** Spanish text for the label of the remaining lifetime row. English: "Time left". */
+#define TR_WL_ST_REMAINING "Tiempo restante"
+/** Spanish text for the label of the queue depth row. English: "Commands waiting". */
+#define TR_WL_ST_QUEUE "Órdenes en espera"
+/** Spanish text for the label of the mailbox size row. English: "Replies stored". */
+#define TR_WL_ST_MAILBOX "Respuestas guardadas"
+/** Spanish text for the label of the last failure row. English: "Last failure". */
+#define TR_WL_ST_ERROR "Último fallo"
+/** Spanish text for the caption of the login button. English: "Log in". */
+#define TR_WL_BTN_LOGIN "Acceder"
+/** Spanish text for the caption of the log-off button. English: "Log off". */
+#define TR_WL_BTN_LOGOFF "Salir"
+/** Spanish text for the caption of the list-mail button. English: "List mail". */
+#define TR_WL_BTN_LIST "Listar correo"
+/** Spanish text for the caption of the send-command button. English: "Send". */
+#define TR_WL_BTN_SEND "Enviar"
+/** Spanish text for the caption of the clear-mailbox button. English: "Clear replies". */
+#define TR_WL_BTN_CLEAR_MAIL "Borrar respuestas"
+/** Spanish text for the caption of the start-message button. English: "Start message". */
+#define TR_WL_BTN_COMPOSE "Empezar mensaje"
+/** Spanish text for the caption of the add-body-line button. English: "Add line". */
+#define TR_WL_BTN_COMPOSE_LINE "Agregar línea"
+/** Spanish text for the caption of the send-message button. English: "Send message". */
+#define TR_WL_BTN_COMPOSE_END "Enviar mensaje"
+/** Spanish text for the caption of the abandon-message button. English: "Discard message". */
+#define TR_WL_BTN_COMPOSE_ABORT "Descartar mensaje"
+/** Spanish text for the label of the free-form command field. English: "Command". */
+#define TR_WL_CMD_LABEL "Orden"
+/** Spanish text for the placeholder of the free-form command field. English: "L, R1, K1, Y1, ...". */
+#define TR_WL_CMD_PLACEHOLDER "L, R1, K1, Y1, ..."
+/** Spanish text for the label of the message recipient field. English: "To". */
+#define TR_WL_TO "Para"
+/** Spanish text for the placeholder of the message recipient field. English: "address, callsign or alias". */
+#define TR_WL_TO_PLACEHOLDER "dirección, indicativo o alias"
+/** Spanish text for the label of the message subject field. English: "Subject". */
+#define TR_WL_SUBJECT "Asunto"
+/** Spanish text for the label of the message body field. English: "Body line". */
+#define TR_WL_BODY "Línea del cuerpo"
+/** Spanish text for the heading of the replies panel. English: "Replies from the service". */
+#define TR_WL_MAILBOX "Respuestas del servicio"
+/** Spanish text for the placeholder shown while the replies are being fetched. English: "Loading...". */
+#define TR_WL_LOADING "Cargando..."
+/** Spanish text for the placeholder shown when no reply is stored. English: "No replies stored.". */
+#define TR_WL_EMPTY "No hay respuestas guardadas."
+/** Spanish text for the confirmation shown after an accepted action. English: "Done.". */
+#define TR_WL_OK "Hecho."
+/** Spanish text for the message shown when an action could not be carried out. English: "That could not be done.". */
+#define TR_WL_FAIL "No se pudo hacer eso."
+/** Spanish text for the error shown when an action is attempted with the client switched off. English: "The Winlink client is switched off.". */
+#define TR_WL_ERR_DISABLED "El cliente Winlink está apagado."
+/** Spanish text for the error shown when the requested action is not one this page knows. English: "Unknown action.". */
+#define TR_WL_ERR_ACTION "Acción desconocida."
+/** Spanish text for the error shown when the session refused the action in its current state. English: "The session cannot do that right now.". */
+#define TR_WL_ERR_REFUSED "La sesión no puede hacer eso ahora."
+/** Spanish text for the name of the disabled session state. English: "Switched off". */
+#define TR_WL_STATE_DISABLED "Apagado"
+/** Spanish text for the name of the idle session state. English: "Not logged in". */
+#define TR_WL_STATE_IDLE "Sin acceso"
+/** Spanish text for the name of the session state waiting for the login to be acknowledged. English: "Logging in". */
+#define TR_WL_STATE_LOGIN_SENT "Accediendo"
+/** Spanish text for the name of the session state waiting for the challenge. English: "Waiting for the challenge". */
+#define TR_WL_STATE_WAIT_CHALLENGE "Esperando el desafío"
+/** Spanish text for the name of the session state waiting for the answer to be acknowledged. English: "Challenge answered". */
+#define TR_WL_STATE_CHALLENGE_SENT "Desafío respondido"
+/** Spanish text for the name of the session state waiting for the login to be confirmed. English: "Waiting for confirmation". */
+#define TR_WL_STATE_WAIT_VALID "Esperando confirmación"
+/** Spanish text for the name of the logged-in session state. English: "Logged in". */
+#define TR_WL_STATE_LOGGED_IN "Con acceso"
+/** Spanish text for the name of the composing session state. English: "Writing a message". */
+#define TR_WL_STATE_COMPOSING "Escribiendo un mensaje"
+/** Spanish text for the name of the session state waiting for the log-off to be confirmed. English: "Logging off". */
+#define TR_WL_STATE_LOGGING_OFF "Saliendo"
+/** Spanish text for the name of the failed session state. English: "Session abandoned". */
+#define TR_WL_STATE_ERROR "Sesión abandonada"
 
 /** @} */
 

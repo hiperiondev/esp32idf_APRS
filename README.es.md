@@ -39,6 +39,7 @@ En una frase, el firmware **demodula** audio AFSK/FSK desde el altavoz o la sali
 - **Digipeater.** Una tabla de alias n-N de cuatro filas (WIDE1-1 / WIDE2-2 / WIDE#-2 por defecto), cada fila con su propio límite de saltos y modo trace/flood, más trampa de contador de saltos, operación de solo relleno y supresión de duplicados.
 - **Balizas, mensajería y chat.** Balizas de posición fija para tracker/igate/digi, mensajería de texto APRS con ack/reintentos (RF y/o INET) y una interfaz de chat de mensajes en el navegador.
 - **Meteorología y telemetría.** Informes meteorológicos APRS al aire con refresco de sensores a 1 Hz y promediado por campo, más telemetría APRS (analógica A1–A5 + digital B1–B8) con informes `T#nnn` y metadatos.
+- **Correo por radio Winlink (APRSLink).** La estación lee y escribe su propio correo `INDICATIVO@winlink.org` a través del servicio `WLNK-1` — acceso por desafío/respuesta sin que la contraseña salga al aire, una sesión pausada de una orden por vez, y una terminal en el navegador — y, por separado, retransmite a través de su IGate la sesión Winlink propia de una estación vecina en RF.
 - **Objetos, ítems y boletines.** Hasta cinco Objetos/Ítems APRS de la estación y cinco boletines (BLN1–BLN5), cada uno por RF y/o INET con control de expiración/decaimiento.
 - **Framework de sensores en tiempo de ejecución.** Un registro de drivers dinámico y autorregistrable (`sensors_local`) — incluye de fábrica un driver BME280/BMP280 (I²C), más uno opcional para BMP180 en el mismo bus.
 - **Panel web, ~30 páginas.** Autenticación HTTP Basic, un dashboard en vivo, un registro de tráfico en vivo y tabla de últimos escuchados (long-poll JSON), gestión de archivos LittleFS (subir/descargar/borrar/formatear), Wi-Fi AP/STA/AP+STA con escaneo y control de potencia de TX, control de frecuencia de CPU (80/160/240 MHz), y un visor de registro de consola bajo demanda que copia la salida serie al navegador.
@@ -63,6 +64,7 @@ En una frase, el firmware **demodula** audio AFSK/FSK desde el altavoz o la sali
 | Range gate y prefix gate locales | Distancia haversine + lista blanca por prefijo de indicativo |
 | Digipeater | Tabla de alias n-N configurable (trace/flood), trampa de saltos, supresión de duplicados |
 | Objetos / Ítems · Boletines | Hasta 5 de cada, RF y/o INET, expiración/decaimiento |
+| Correo por radio Winlink (APRSLink) | Buzón propio por `WLNK-1`, más pasarela para estaciones locales |
 | Mensajería + ack/reintento · Chat | RF y/o INET |
 | Informe meteorológico | Refresco de sensores a 1 Hz, promediado opcional |
 | Telemetría | Analógica A1–A5 + digital B1–B8, `T#nnn` + metadatos |

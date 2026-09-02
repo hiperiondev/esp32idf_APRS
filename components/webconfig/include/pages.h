@@ -167,6 +167,28 @@ esp_err_t page_telegram_status_get(httpd_req_t *req);
 /** @} */
 
 /**
+ * @name Winlink (APRSLink) page (gated by ENABLE_WINLINK)
+ * @{
+ */
+/** @brief GET  /winlink - Winlink account settings, the message-gating policy for the service, and the session terminal. @param req Incoming request.
+ * @return ESP_OK or an esp_err_t error. */
+esp_err_t page_winlink_get(httpd_req_t *req);
+/** @brief POST /winlink - persist the Winlink settings and apply them to the running client. @param req Incoming request. @return ESP_OK or an esp_err_t
+ * error. */
+esp_err_t page_winlink_post(httpd_req_t *req);
+/** @brief POST /winlink/cmd - run one session action (login, log off, a command, a compose step, clearing the mailbox); replies JSON
+ * {"ok":true|false,"error":...}. @param req Incoming request. @return ESP_OK or an esp_err_t error. */
+esp_err_t page_winlink_cmd_post(httpd_req_t *req);
+/** @brief GET  /winlink/status - JSON snapshot of the session state, its remaining lifetime, the queue depth, the mailbox size and the last failure, polled
+ * every 3 s. @param req Incoming request. @return ESP_OK or an esp_err_t error. */
+esp_err_t page_winlink_status_get(httpd_req_t *req);
+/** @brief GET  /winlink/list - JSON array of the replies the service has sent, oldest first, polled by the session terminal. @param req Incoming request.
+ * @return ESP_OK or an esp_err_t error. */
+esp_err_t page_winlink_list_get(httpd_req_t *req);
+
+/** @} */
+
+/**
  * @name Console Logs page
  * @{
  */

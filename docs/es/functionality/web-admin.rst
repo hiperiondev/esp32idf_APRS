@@ -193,6 +193,29 @@ Las páginas
        al que está asignado y su lectura actual. Ambas respuestas se arman con
        la configuración vigente en el momento en que llega el comando, así que
        un Save surte efecto en el comando siguiente sin reiniciar.
+   * - **Winlink**
+     - Los dos roles Winlink de la estación, en una sola página. *Cuenta
+       Winlink* contiene lo que necesita una sesión propia: el indicativo del
+       servicio APRSLink, la identidad con la que se abre el buzón (el
+       indicativo base, sin su SSID), la contraseña con la que se responde un
+       desafío de acceso, y los interruptores que deciden si una sesión se abre
+       sola, cuánto puede durar, si su tráfico se mantiene fuera del aire y si
+       el comentario de la baliza anuncia a esta estación como lectora de
+       Winlink. La contraseña se muestra como campo de contraseña con el mismo
+       control de mostrar/ocultar que usa el passcode del IGate, y nunca se
+       transmite: un desafío nombra tres posiciones de caracteres y solo esos
+       caracteres se devuelven. *Pasarela para estaciones locales* contiene el
+       único ajuste del otro rol, retransmitir la sesión propia de un vecino,
+       junto con una vista de solo lectura de los tres ajustes del IGate que
+       deciden la misma cuestión, para poder ver de un vistazo las cuatro
+       entradas del pase de mensajes. Debajo del formulario, la terminal de
+       sesión: en qué punto está la sesión y cuánto le queda, botones para
+       entrar, salir y listar el correo, un campo de orden libre que admite
+       todo el juego de órdenes de APRSLink, un asistente de tres pasos para
+       escribir un mensaje, y las respuestas que devolvió el servicio. Valores
+       en vivo por ``/winlink/status`` y ``/winlink/list``, consultados cada
+       tres segundos; las acciones se envían a ``/winlink/cmd``, que es POST
+       porque acciona el transmisor.
    * - **Logs**
      - Un visor de la consola serie, para poder leer lo que la estación imprime
        sin tener un cable conectado. No hay nada que configurar: un botón, que

@@ -39,6 +39,7 @@ In one sentence, the firmware **demodulates** AFSK/FSK audio from a radio's spea
 - **Digipeater.** A four-row n-N alias table (WIDE1-1 / WIDE2-2 / WIDE#-2 by default), each row with its own hop limit and trace/flood mode, plus hop-count trapping, fill-in-only operation and duplicate suppression.
 - **Beacons, messaging & chat.** Fixed-position beacons for tracker/igate/digi, APRS text messaging with ack/retry (RF and/or INET), and an in-browser message chat UI.
 - **Weather & telemetry.** On-air APRS Weather Reports with 1 Hz sensor refresh and per-field averaging, plus APRS Telemetry (analog A1–A5 + digital B1–B8) with `T#nnn` reports and metadata.
+- **Winlink radio e-mail (APRSLink).** The station reads and writes its own `CALLSIGN@winlink.org` mail through the `WLNK-1` service — challenge/response login with the password never on the air, a paced one-command-at-a-time session, and a browser terminal — and, separately, relays a neighbouring RF station's own Winlink session through its IGate.
 - **Objects, items & bulletins.** Up to five own-station APRS Objects/Items and five bulletins (BLN1–BLN5), each on RF and/or INET with expiry/decay control.
 - **Runtime sensor framework.** A dynamic, self-registering driver registry (`sensors_local`) — includes a BME280/BMP280 (I²C) driver out of the box, plus an optional BMP180 one on the same bus.
 - **Web admin, ~30 pages.** HTTP Basic auth, a live dashboard, a live traffic log and last-heard table (JSON long-poll), LittleFS file management (upload/download/delete/format), Wi-Fi AP/STA/AP+STA with scan and TX-power control, CPU frequency control (80/160/240 MHz), and an on-demand console log viewer that mirrors the serial output into the browser.
@@ -64,6 +65,7 @@ In one sentence, the firmware **demodulates** AFSK/FSK audio from a radio's spea
 | Digipeater | Configurable n-N alias table (trace/flood), hop trapping, dup-suppression |
 | Objects / Items · Bulletins | Up to 5 each, RF and/or INET, expiry/decay |
 | Messaging + ack/retry · Chat UI | RF and/or INET |
+| Winlink radio e-mail (APRSLink) | Own mailbox over `WLNK-1`, plus gateway for local stations |
 | Weather Report | 1 Hz sensor refresh, optional averaging |
 | Telemetry | Analog A1–A5 + digital B1–B8, `T#nnn` + metadata |
 | Sensor driver framework | Dynamic registry, BME280/BMP280 driver included |

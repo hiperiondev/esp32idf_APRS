@@ -177,6 +177,27 @@ The pages
        with the sensor driver it is mapped to and its current reading. Both
        answers are built from the configuration as it stands when the command
        arrives, so a save takes effect on the next command without a restart.
+   * - **Winlink**
+     - The station's two Winlink roles, on one page. *Winlink Account* holds
+       what a session of its own needs: the APRSLink service callsign, the
+       identity the mailbox is keyed on (the base callsign, without its SSID),
+       the password a login challenge is answered from, and the switches that
+       decide whether a session opens by itself, how long it may live, whether
+       its traffic is kept off the air and whether the beacon comment announces
+       this station as a Winlink reader. The password is rendered as a password
+       field with the same show/hide control the IGate passcode uses, and is
+       never transmitted: a challenge names three character positions and only
+       those characters are sent back. *Gateway for Local Stations* holds the
+       single setting of the other role, relaying a neighbour's own session,
+       together with a read-only view of the three IGate settings that decide
+       the same question, so all four inputs to the message gate can be seen at
+       once. Below the form, the session terminal: where the session stands and
+       how long it has left, buttons for logging in and out and for listing
+       mail, a free-form command field that takes the whole APRSLink command
+       set, a three-step helper for writing a message, and the replies the
+       service has sent back. Live values via ``/winlink/status`` and
+       ``/winlink/list``, polled every three seconds; actions are posted to
+       ``/winlink/cmd``, which is POST because it keys the transmitter.
    * - **Logs**
      - A viewer for the serial console, so what the station prints can be read
        without a cable attached. There is nothing to configure: one button,

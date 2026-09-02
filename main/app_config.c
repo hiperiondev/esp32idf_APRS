@@ -506,6 +506,25 @@ void app_config_set_defaults(app_config_t *c) {
     for (int i = 0; i < 3; i++)
         c->msg_group[i][0] = 0; // no operator-defined groups by default
 
+    // Winlink (APRSLink). Opt-in: the client needs an account and a password
+    // before it can do anything, so it stays off until the operator has
+    // entered both.
+    c->wl_enable = false;
+    set_str(c->wl_service_call, sizeof(c->wl_service_call), WL_SERVICE_CALL_DEFAULT);
+    c->wl_password[0] = 0;
+    c->wl_use_msg_call = true;
+    c->wl_mycall[0] = 0;
+    c->wl_auto_login = true;
+    c->wl_session_max_min = WL_SESSION_MAX_MIN_DEFAULT;
+    c->wl_poll_min = 0;
+    c->wl_comment_en = false;
+    // This station is its own IGate, so its own Winlink traffic has no reason
+    // to occupy the local channel.
+    c->wl_inet_only = true;
+    // A reply from the service is solicited traffic with one delivery path, so
+    // the gate lets it through by default; see messageGatePass().
+    c->wl_gate_exempt = true;
+
     // Query responder
     c->query_en = false; // opt-in, like msg_enable
     c->query_rf = true;
@@ -918,6 +937,18 @@ static void config_write_json(jw_t *d, const app_config_t *c) {
     for (int i = 0; i < 3; i++)
         jarr_str(d, c->msg_group[i]);
     jarr_end(d);
+
+    jadd_bool(d, "wlEnable", c->wl_enable);
+    jadd_str(d, "wlServiceCall", c->wl_service_call);
+    jadd_str(d, "wlPassword", c->wl_password);
+    jadd_bool(d, "wlUseMsgCall", c->wl_use_msg_call);
+    jadd_str(d, "wlMyCall", c->wl_mycall);
+    jadd_bool(d, "wlAutoLogin", c->wl_auto_login);
+    jadd_num(d, "wlSessionMaxMin", c->wl_session_max_min);
+    jadd_num(d, "wlPollMin", c->wl_poll_min);
+    jadd_bool(d, "wlCommentEn", c->wl_comment_en);
+    jadd_bool(d, "wlInetOnly", c->wl_inet_only);
+    jadd_bool(d, "wlGateExempt", c->wl_gate_exempt);
 
     jadd_bool(d, "queryEn", c->query_en);
     jadd_bool(d, "queryRf", c->query_rf);
@@ -1610,6 +1641,36 @@ static void config_from_json(cJSON *d, app_config_t *c) {
             set_str(c->msg_group[i], sizeof(c->msg_group[i]), (v && cJSON_IsString(v)) ? v->valuestring : c->msg_group[i]);
         }
     }
+
+    c->wl_enable = jget_bool(d, "wlEnable", c->wl_enable);
+    set_str(c->wl_service_call, sizeof(c->wl_service_call), jget_str(d, "wlServiceCall", c->wl_service_call));
+    if (c->wl_service_call[0] == 0)
+        set_str(c->wl_service_call, sizeof(c->wl_service_call), WL_SERVICE_CALL_DEFAULT);
+    set_str(c->wl_password, sizeof(c->wl_password), jget_str(d, "wlPassword", c->wl_password));
+    c->wl_use_msg_call = jget_bool(d, "wlUseMsgCall", c->wl_use_msg_call);
+    set_str(c->wl_mycall, sizeof(c->wl_mycall), jget_str(d, "wlMyCall", c->wl_mycall));
+    c->wl_auto_login = jget_bool(d, "wlAutoLogin", c->wl_auto_login);
+    {
+        int mins = (int)jget_num(d, "wlSessionMaxMin", c->wl_session_max_min);
+        if (mins < WL_SESSION_MAX_MIN_MIN || mins > WL_SESSION_MAX_MIN_MAX) {
+            int clamped = (mins < WL_SESSION_MAX_MIN_MIN) ? WL_SESSION_MAX_MIN_MIN : WL_SESSION_MAX_MIN_MAX;
+            ESP_LOGW(TAG, "wlSessionMaxMin %d out of range, clamped to %d", mins, clamped);
+            mins = clamped;
+        }
+        c->wl_session_max_min = (uint16_t)mins;
+    }
+    {
+        int mins = (int)jget_num(d, "wlPollMin", c->wl_poll_min);
+        if (mins < WL_POLL_MIN_MIN || mins > WL_POLL_MIN_MAX) {
+            int clamped = (mins < WL_POLL_MIN_MIN) ? WL_POLL_MIN_MIN : WL_POLL_MIN_MAX;
+            ESP_LOGW(TAG, "wlPollMin %d out of range, clamped to %d", mins, clamped);
+            mins = clamped;
+        }
+        c->wl_poll_min = (uint16_t)mins;
+    }
+    c->wl_comment_en = jget_bool(d, "wlCommentEn", c->wl_comment_en);
+    c->wl_inet_only = jget_bool(d, "wlInetOnly", c->wl_inet_only);
+    c->wl_gate_exempt = jget_bool(d, "wlGateExempt", c->wl_gate_exempt);
 
     c->query_en = jget_bool(d, "queryEn", c->query_en);
     c->query_rf = jget_bool(d, "queryRf", c->query_rf);

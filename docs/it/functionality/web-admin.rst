@@ -198,6 +198,29 @@ Le pagine
        lettura attuale. Entrambe le risposte sono costruite sulla
        configurazione in vigore quando il comando arriva, quindi un Save ha
        effetto al comando successivo senza riavviare.
+   * - **Winlink**
+     - I due ruoli Winlink della stazione, in una sola pagina. *Account
+       Winlink* contiene ciò che serve a una sessione propria: il nominativo
+       del servizio APRSLink, l'identità con cui si apre la casella (il
+       nominativo base, senza il suo SSID), la password con cui si risponde a
+       una sfida di accesso, e gli interruttori che decidono se una sessione si
+       apre da sé, quanto può durare, se il suo traffico resta fuori dall'aria
+       e se il commento del beacon annuncia questa stazione come lettrice
+       Winlink. La password è resa come campo password con lo stesso comando
+       mostra/nascondi usato dal passcode dell'IGate, e non viene mai
+       trasmessa: una sfida indica tre posizioni di caratteri e solo quei
+       caratteri vengono rimandati indietro. *Gateway per le stazioni locali*
+       contiene l'unica impostazione dell'altro ruolo, inoltrare la sessione
+       propria di un vicino, insieme a una vista in sola lettura delle tre
+       impostazioni dell'IGate che decidono la stessa questione, così da vedere
+       in un colpo d'occhio i quattro ingressi dell'inoltro dei messaggi. Sotto
+       il modulo, il terminale di sessione: a che punto è la sessione e quanto
+       le resta, pulsanti per accedere, uscire ed elencare la posta, un campo di
+       comando libero che accetta l'intero insieme di comandi APRSLink, un
+       assistente in tre passi per scrivere un messaggio, e le risposte inviate
+       dal servizio. Valori live via ``/winlink/status`` e ``/winlink/list``,
+       interrogati ogni tre secondi; le azioni sono inviate a
+       ``/winlink/cmd``, che è POST perché aziona il trasmettitore.
    * - **Logs**
      - Un visore della console seriale, per poter leggere ciò che la stazione
        stampa senza un cavo collegato. Non c'è nulla da configurare: un

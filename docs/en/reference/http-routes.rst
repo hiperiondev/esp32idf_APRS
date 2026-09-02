@@ -72,6 +72,21 @@ auth check to guard.
    * - GET
      - ``/telegram/status``
      - bot state, the reason for it and its counters (JSON), polled every 2 s
+   * - GET/POST
+     - ``/winlink``
+     - Winlink account, the message-gating policy for the service, and the
+       session terminal
+   * - POST
+     - ``/winlink/cmd``
+     - run one session action: log in, log off, a command, a compose step, or
+       clearing the stored replies (JSON ``{"ok":…,"error":…}``)
+   * - GET
+     - ``/winlink/status``
+     - session state, remaining lifetime, queue depth, mailbox size and the
+       last failure (JSON), polled every 3 s
+   * - GET
+     - ``/winlink/list``
+     - the replies the service has sent, oldest first (JSON)
    * - GET
      - ``/logs``
      - console log viewer; rendering it also stops any capture still running

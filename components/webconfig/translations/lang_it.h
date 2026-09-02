@@ -83,6 +83,8 @@
 #define TR_MENU_GPS "GPS"
 /** Sidebar navigation entry for the Telegram page, rendered on the sidebar. */
 #define TR_MENU_TELEGRAM "Telegram"
+/** Sidebar navigation entry for the Winlink page, rendered on the sidebar. */
+#define TR_MENU_WINLINK "Winlink"
 /** Italian text for the sidebar navigation entry for the Logs page, rendered on the sidebar. English: "Logs". */
 #define TR_MENU_LOGS "Registri"
 /** Italian text for the sidebar navigation entry for the System page, rendered on the sidebar. English: "System". */
@@ -1940,12 +1942,151 @@
 #define TR_LOGS_BTN_STOP "Ferma"
 /** Italian text for the explanatory note shown above the console log window, rendered on the Logs page. English: "Start mirrors everything the station prints
  * on its serial console...". */
-#define TR_LOGS_NOTE                                                                                                                                              \
-    "Avvia copia nella finestra qui sotto tutto ciò che la stazione stampa sulla sua console seriale, così da poterlo leggere senza un cavo seriale "           \
-    "collegato. La finestra conserva le ultime 50 righe e scorre; una riga più lunga di 255 caratteri prosegue in quella successiva. Ferma termina la copia, "   \
-    "e lo fa anche lasciare questa pagina: al ritorno si riparte sempre da una finestra vuota con il pulsante pronto ad avviare di nuovo. La cattura costa "      \
+#define TR_LOGS_NOTE                                                                                                                                           \
+    "Avvia copia nella finestra qui sotto tutto ciò che la stazione stampa sulla sua console seriale, così da poterlo leggere senza un cavo seriale "          \
+    "collegato. La finestra conserva le ultime 50 righe e scorre; una riga più lunga di 255 caratteri prosegue in quella successiva. Ferma termina la copia, " \
+    "e lo fa anche lasciare questa pagina: al ritorno si riparte sempre da una finestra vuota con il pulsante pronto ad avviare di nuovo. La cattura costa "   \
     "alla stazione un po' di memoria e non rallenta nient'altro, ma non è una registrazione: viene mostrato solo ciò che arriva mentre la finestra è aperta, " \
     "e non viene scritto nulla nella flash."
+
+/** @} */
+
+/**
+ * @name Winlink page
+ *
+ * Italian text for the strings of the Winlink (APRSLink) page: the account this
+ * station uses on the service, the gating policy that lets the service reach
+ * the stations around it, and the session terminal.
+ * @{
+ */
+/** Italian text for the page title of the Winlink page. English: "Winlink". */
+#define TR_F_WINLINK "Winlink"
+/** Italian text for the fieldset legend of the account settings. English: "Winlink Account". */
+#define TR_WL_FS_ACCOUNT "Account Winlink"
+/** Italian text for the fieldset legend of the gateway policy. English: "Gateway for Local Stations". */
+#define TR_WL_FS_GATEWAY "Gateway per le stazioni locali"
+/** Italian text for the fieldset legend of the session terminal. English: "Session". */
+#define TR_WL_FS_SESSION "Sessione"
+/** Italian text for the explanatory note above the account settings. */
+#define TR_WL_NOTE_ACCOUNT                                                                                                                                     \
+    "APRSLink è il gateway tra APRS e la posta radio Winlink. Questa stazione lo raggiunge con normali messaggi APRS indirizzati al nominativo del "           \
+    "servizio, e la casella che si apre è quella del nominativo base qui sotto, senza il suo SSID. La password non viene mai trasmessa: una sfida di "         \
+    "accesso indica tre posizioni di caratteri e solo quei caratteri vengono rimandati indietro."
+/** Italian text for the explanatory note above the gateway policy. */
+#define TR_WL_NOTE_GATEWAY                                                                                                                                     \
+    "Una stazione vicina può svolgere la propria sessione Winlink attraverso questa: i suoi comandi passano su APRS-IS e le risposte del servizio tornano "    \
+    "in aria, senza che sia coinvolto alcun account o password vostri. L'IGate normalmente non trasmette un messaggio il cui destinatario si vede anche su "   \
+    "APRS-IS, e una risposta del servizio ricadrebbe proprio lì perché l'eco del comando che la stazione stessa ha inviato la fa sembrare collegata a "        \
+    "Internet. L'opzione qui sotto toglie solo quella condizione, e solo per il nominativo del servizio; le tre impostazioni IGate mostrate accanto "          \
+    "decidono ancora tutto il resto."
+/** Italian text for the explanatory note above the session terminal. */
+#define TR_WL_NOTE_SESSION                                                                                                                                     \
+    "Si invia un comando per volta e il successivo attende che il servizio confermi il precedente, quindi una sessione richiede tempo e non si può "           \
+    "affrettare. Le risposte compaiono qui sotto man mano che arrivano."
+/** Italian text for the label of the client enable switch. English: "Enable Winlink client". */
+#define TR_WL_ENABLE "Abilita client Winlink"
+/** Italian text for the label of the service callsign field. English: "Service callsign". */
+#define TR_WL_SERVICE_CALL "Nominativo del servizio"
+/** Italian text for the label of the Winlink password field. English: "Winlink password". */
+#define TR_WL_PASSWORD "Password Winlink"
+/** Italian text for the label of the switch that reuses the messaging callsign. English: "Use the Message service callsign". */
+#define TR_WL_USE_MSG_CALL "Usa il nominativo del servizio messaggi"
+/** Italian text for the label of the separate Winlink callsign field. English: "Winlink callsign". */
+#define TR_WL_MYCALL "Nominativo Winlink"
+/** Italian text for the label of the automatic login switch. English: "Log in automatically when a command is sent". */
+#define TR_WL_AUTO_LOGIN "Accedi automaticamente quando si invia un comando"
+/** Italian text for the label of the session lifetime field. English: "Session lifetime (min)". */
+#define TR_WL_SESSION_MAX_MIN "Durata della sessione (min)"
+/** Italian text for the label of the unprompted listing interval field. English: "Check for mail every (min, 0 = never)". */
+#define TR_WL_POLL_MIN "Controlla la posta ogni (min, 0 = mai)"
+/** Italian text for the label of the beacon marker switch. English: "Announce this station as a Winlink reader in the beacon comment". */
+#define TR_WL_COMMENT_EN "Annuncia questa stazione come lettrice Winlink nel commento del beacon"
+/** Italian text for the label of the Internet-only routing switch. English: "Keep this station's own Winlink traffic off the air". */
+#define TR_WL_INET_ONLY "Tieni fuori dall'aria il traffico Winlink di questa stazione"
+/** Italian text for the label of the gating exemption switch. English: "Let the service's answers reach local stations on RF". */
+#define TR_WL_GATE_EXEMPT "Lascia che le risposte del servizio raggiungano in RF le stazioni locali"
+/** Italian text for the label of the read-only message-gate row. English: "IGate message gating". */
+#define TR_WL_GATE_MSG_GATE_EN "Inoltro messaggi dell'IGate"
+/** Italian text for the label of the read-only local-window row. English: "Local station window (s)". */
+#define TR_WL_GATE_WINDOW "Finestra di stazione locale (s)"
+/** Italian text for the label of the read-only hop-limit row. English: "Longest path to a local station (hops)". */
+#define TR_WL_GATE_HOPS "Percorso più lungo verso una stazione locale (salti)"
+/** Italian text for the label of the session state row. English: "Session". */
+#define TR_WL_ST_STATE "Sessione"
+/** Italian text for the label of the remaining lifetime row. English: "Time left". */
+#define TR_WL_ST_REMAINING "Tempo rimasto"
+/** Italian text for the label of the queue depth row. English: "Commands waiting". */
+#define TR_WL_ST_QUEUE "Comandi in attesa"
+/** Italian text for the label of the mailbox size row. English: "Replies stored". */
+#define TR_WL_ST_MAILBOX "Risposte memorizzate"
+/** Italian text for the label of the last failure row. English: "Last failure". */
+#define TR_WL_ST_ERROR "Ultimo errore"
+/** Italian text for the caption of the login button. English: "Log in". */
+#define TR_WL_BTN_LOGIN "Accedi"
+/** Italian text for the caption of the log-off button. English: "Log off". */
+#define TR_WL_BTN_LOGOFF "Esci"
+/** Italian text for the caption of the list-mail button. English: "List mail". */
+#define TR_WL_BTN_LIST "Elenca posta"
+/** Italian text for the caption of the send-command button. English: "Send". */
+#define TR_WL_BTN_SEND "Invia"
+/** Italian text for the caption of the clear-mailbox button. English: "Clear replies". */
+#define TR_WL_BTN_CLEAR_MAIL "Cancella risposte"
+/** Italian text for the caption of the start-message button. English: "Start message". */
+#define TR_WL_BTN_COMPOSE "Inizia messaggio"
+/** Italian text for the caption of the add-body-line button. English: "Add line". */
+#define TR_WL_BTN_COMPOSE_LINE "Aggiungi riga"
+/** Italian text for the caption of the send-message button. English: "Send message". */
+#define TR_WL_BTN_COMPOSE_END "Invia messaggio"
+/** Italian text for the caption of the abandon-message button. English: "Discard message". */
+#define TR_WL_BTN_COMPOSE_ABORT "Scarta messaggio"
+/** Italian text for the label of the free-form command field. English: "Command". */
+#define TR_WL_CMD_LABEL "Comando"
+/** Italian text for the placeholder of the free-form command field. English: "L, R1, K1, Y1, ...". */
+#define TR_WL_CMD_PLACEHOLDER "L, R1, K1, Y1, ..."
+/** Italian text for the label of the message recipient field. English: "To". */
+#define TR_WL_TO "A"
+/** Italian text for the placeholder of the message recipient field. English: "address, callsign or alias". */
+#define TR_WL_TO_PLACEHOLDER "indirizzo, nominativo o alias"
+/** Italian text for the label of the message subject field. English: "Subject". */
+#define TR_WL_SUBJECT "Oggetto"
+/** Italian text for the label of the message body field. English: "Body line". */
+#define TR_WL_BODY "Riga del testo"
+/** Italian text for the heading of the replies panel. English: "Replies from the service". */
+#define TR_WL_MAILBOX "Risposte dal servizio"
+/** Italian text for the placeholder shown while the replies are being fetched. English: "Loading...". */
+#define TR_WL_LOADING "Caricamento..."
+/** Italian text for the placeholder shown when no reply is stored. English: "No replies stored.". */
+#define TR_WL_EMPTY "Nessuna risposta memorizzata."
+/** Italian text for the confirmation shown after an accepted action. English: "Done.". */
+#define TR_WL_OK "Fatto."
+/** Italian text for the message shown when an action could not be carried out. English: "That could not be done.". */
+#define TR_WL_FAIL "Non è stato possibile farlo."
+/** Italian text for the error shown when an action is attempted with the client switched off. English: "The Winlink client is switched off.". */
+#define TR_WL_ERR_DISABLED "Il client Winlink è spento."
+/** Italian text for the error shown when the requested action is not one this page knows. English: "Unknown action.". */
+#define TR_WL_ERR_ACTION "Azione sconosciuta."
+/** Italian text for the error shown when the session refused the action in its current state. English: "The session cannot do that right now.". */
+#define TR_WL_ERR_REFUSED "La sessione non può farlo in questo momento."
+/** Italian text for the name of the disabled session state. English: "Switched off". */
+#define TR_WL_STATE_DISABLED "Spento"
+/** Italian text for the name of the idle session state. English: "Not logged in". */
+#define TR_WL_STATE_IDLE "Non collegato"
+/** Italian text for the name of the session state waiting for the login to be acknowledged. English: "Logging in". */
+#define TR_WL_STATE_LOGIN_SENT "Accesso in corso"
+/** Italian text for the name of the session state waiting for the challenge. English: "Waiting for the challenge". */
+#define TR_WL_STATE_WAIT_CHALLENGE "In attesa della sfida"
+/** Italian text for the name of the session state waiting for the answer to be acknowledged. English: "Challenge answered". */
+#define TR_WL_STATE_CHALLENGE_SENT "Sfida risposta"
+/** Italian text for the name of the session state waiting for the login to be confirmed. English: "Waiting for confirmation". */
+#define TR_WL_STATE_WAIT_VALID "In attesa di conferma"
+/** Italian text for the name of the logged-in session state. English: "Logged in". */
+#define TR_WL_STATE_LOGGED_IN "Collegato"
+/** Italian text for the name of the composing session state. English: "Writing a message". */
+#define TR_WL_STATE_COMPOSING "Scrittura di un messaggio"
+/** Italian text for the name of the session state waiting for the log-off to be confirmed. English: "Logging off". */
+#define TR_WL_STATE_LOGGING_OFF "Uscita in corso"
+/** Italian text for the name of the failed session state. English: "Session abandoned". */
+#define TR_WL_STATE_ERROR "Sessione abbandonata"
 
 /** @} */
 

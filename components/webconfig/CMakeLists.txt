@@ -42,6 +42,7 @@ idf_component_register(
         "pages/page_tlm.c"
         "pages/page_gps.c"
         "pages/page_telegram.c"
+        "pages/page_winlink.c"
         "pages/page_logs.c"
         "pages/page_radio.c"
         "pages/page_msg.c"
@@ -70,6 +71,7 @@ idf_component_register(
         sensors_local
         weather_telemetry
         message
+        winlink
     PRIV_REQUIRES
         main
 )

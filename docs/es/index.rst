@@ -147,6 +147,7 @@ de capítulos:
    functionality/telemetry
    functionality/bulletins-objects
    functionality/telegram
+   functionality/winlink
    functionality/web-admin
 
 .. toctree::

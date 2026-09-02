@@ -68,6 +68,7 @@ Disposición del repositorio
    │   ├── query/          ← respondedor de consultas APRS (?APRS?/?WX?/?IGATE? + dirigidas), respondidas desde la tarea del planificador
    │   ├── esp_telegram_bot/   ← transporte HTTPS del bot de Telegram: token, URLs, clientes TLS, subida multipart
    │   ├── telegram_service/  ← sondeo largo, despacho de comandos, autorización, alertas, parámetros remotos
+   │   ├── winlink/        ← correo por radio Winlink sobre APRSLink: máquina de estados de sesión, cola de órdenes, buzón (winlink.json propio)
    │   ├── lastheard/      ← tabla en RAM de estaciones oídas, una por indicativo → JSON del panel
    │   ├── trafficlog/     ← anillo en RAM de líneas de tráfico → JSON del panel (long-poll por seq)
    │   ├── weather_telemetry/  ← estructuras de protocolo APRS101 WX + Telemetría, más mice.c: el

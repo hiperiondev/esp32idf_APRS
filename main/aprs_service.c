@@ -59,6 +59,7 @@
 #include "time_sync.h"
 #include "trafficlog.h"
 #include "weather.h"
+#include "winlink.h" // winlink_init(), winlink_tick_1hz(), winlink_is_service_call()
 
 static const char *TAG = "aprs_service";
 
@@ -1150,7 +1151,16 @@ static bool messageGatePass(const char *srcLine, const char *srcCall, const char
         igate_note_drop(DROP_MSG_ADDRESSEE_HOPS);
         return false;
     }
-    if (lastheard_heard_inet_within(addressee, window)) {
+    // An addressee that is on APRS-IS itself can read the message there, so
+    // putting a copy on the air is airtime for nothing. A reply from the
+    // Winlink service is the one case where that premise is false: it exists
+    // only because the addressee asked this station's gateway for it, it has
+    // exactly one delivery path, and the echo of the addressee's own gated
+    // command is itself enough to make the addressee look Internet-connected.
+    // The exemption is deliberately narrow - it lifts this condition and no
+    // other, and only for the configured service callsign.
+    bool wl_exempt = g_config.wl_gate_exempt && winlink_is_service_call(srcCall);
+    if (!wl_exempt && lastheard_heard_inet_within(addressee, window)) {
         ESP_LOGD(TAG, "INET2RF message not gated - %s is Internet-connected", addressee);
         igate_note_drop(DROP_MSG_ADDRESSEE_INET);
         return false;
@@ -1751,6 +1761,12 @@ static void serviceTickTask(void *arg) {
         // running.
         telegram_app_tick_1hz();
 
+        // 1 Hz Winlink session step, folded in here for the same reason as the
+        // ones above: it only advances a state machine whose every forward
+        // transition is driven by a reply the messaging engine has already
+        // delivered, and it neither blocks nor touches the filesystem.
+        winlink_tick_1hz();
+
         if (g_config.msg_enable)
             sendAPRSMessageRetry();
         vTaskDelay(pdMS_TO_TICKS(1000));
@@ -2125,6 +2141,11 @@ void aprs_service_start(void) {
 
     query_init();
     query_set_tx_handler(messageTxHandler); // reuse the same RF/INET TX plumbing
+
+    // Winlink client. Registered after message_init() because it installs the
+    // message observer the session state machine is driven by, and after the
+    // storage partition is mounted because it loads its mailbox from there.
+    winlink_init();
 
     // Install the RX callback before main.c calls modem_init(): the component
     // starts its service task inside modem_init() and can deliver a frame the

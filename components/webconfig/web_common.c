@@ -811,6 +811,9 @@ static const struct menu_item MENU[] = {
 #ifdef ENABLE_TELEGRAM
     { "/telegram", TR_MENU_TELEGRAM, "telegram" },
 #endif
+#ifdef ENABLE_WINLINK
+    { "/winlink", TR_MENU_WINLINK, "winlink" },
+#endif
 #ifdef ENABLE_LOGS
     { "/logs", TR_MENU_LOGS, "logs" },
 #endif

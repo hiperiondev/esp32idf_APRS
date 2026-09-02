@@ -40,12 +40,16 @@ Other persistent files
    * - ``/storage/objitems.json``
      - The five APRS objects/items (name, position, symbol, course/speed,
        comment, interval, permanent flag).
+   * - ``/storage/winlink.json``
+     - The replies the Winlink service has sent back, oldest first. The account
+       settings themselves are ``wl*`` keys in ``config.json``; only the
+       replies live here, so clearing them never touches the configuration.
    * - ``/storage/telegram.json``
      - The Telegram bot's whole configuration: the enable switch, the bot
        token, the administrator identifier, the Mini App address and the
        authorized user and group chat lists.
 
-All five use the same streaming writer, each under its own mutex, each with an
+All six use the same streaming writer, each under its own mutex, each with an
 explicit ``setvbuf()`` to avoid a lazy large stdio-buffer allocation mid-write.
 The ``setvbuf()`` buffer is a single static object shared by all five stores,
 since the filesystem-wide writer gate keeps two saves from overlapping.
@@ -92,3 +96,62 @@ BrandMeister interconnect keys
      - number
      - INET→RF range gate radius in km, 0 = unlimited. Clamped to
        0…20038 on load.
+
+Winlink (APRSLink) keys
+=======================
+
+.. list-table::
+   :header-rows: 1
+   :widths: 25 15 60
+
+   * - Key
+     - Type
+     - Meaning
+   * - ``wlEnable``
+     - bool
+     - Winlink client master switch. Off by default: the client needs an
+       account and a password before it can do anything.
+   * - ``wlServiceCall``
+     - string
+     - Callsign of the APRSLink service. ``WLNK-1`` by default; an empty value
+       loads as that default.
+   * - ``wlPassword``
+     - string
+     - Winlink account password, up to 16 characters. Never transmitted: a
+       login challenge names character positions and only those characters are
+       sent back.
+   * - ``wlUseMsgCall``
+     - bool
+     - Use ``msgMycall`` as the Winlink identity. On by default, because that
+       callsign is what the outgoing frame carries and therefore what the
+       service sees.
+   * - ``wlMyCall``
+     - string
+     - Winlink identity when ``wlUseMsgCall`` is off. The service keys the
+       mailbox on its base callsign, without the SSID.
+   * - ``wlAutoLogin``
+     - bool
+     - Open a session by itself when a command is queued while idle. On by
+       default.
+   * - ``wlSessionMaxMin``
+     - number
+     - Local session lifetime in minutes, 5…180, 110 by default. Kept below the
+       service's own two-hour expiry so this station gives a session up first.
+       Clamped on load.
+   * - ``wlPollMin``
+     - number
+     - Minutes between unprompted listings of pending mail, 0…1440. 0 never
+       asks, which is the default. Clamped on load.
+   * - ``wlCommentEn``
+     - bool
+     - Append the Winlink notification marker to the beacon comment, so the
+       service knows this station reads its mail. Off by default.
+   * - ``wlInetOnly``
+     - bool
+     - Keep this station's own Winlink traffic off the air while it has an
+       APRS-IS uplink. On by default; can only ever remove the RF leg.
+   * - ``wlGateExempt``
+     - bool
+     - Let a reply from the service reach RF even when its addressee is also
+       seen on APRS-IS. On by default; lifts that one message-gating condition
+       and no other, and only for ``wlServiceCall``.

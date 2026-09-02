@@ -145,6 +145,11 @@ void web_server_start(void) {
     reg(server, "/telegram", HTTP_GET, page_telegram_get);
     reg(server, "/telegram", HTTP_POST, page_telegram_post);
     reg(server, "/telegram/status", HTTP_GET, page_telegram_status_get);
+    reg(server, "/winlink", HTTP_GET, page_winlink_get);
+    reg(server, "/winlink", HTTP_POST, page_winlink_post);
+    reg(server, "/winlink/cmd", HTTP_POST, page_winlink_cmd_post);
+    reg(server, "/winlink/status", HTTP_GET, page_winlink_status_get);
+    reg(server, "/winlink/list", HTTP_GET, page_winlink_list_get);
     reg(server, "/logs", HTTP_GET, page_logs_get);
     reg(server, "/logs/start", HTTP_POST, page_logs_start_post);
     reg(server, "/logs/stop", HTTP_POST, page_logs_stop_post);
