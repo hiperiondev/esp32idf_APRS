@@ -733,7 +733,7 @@ Mappatura / Visualizzazione
    * - Rendering di simboli/icone secondo la tabella dei simboli APRS
      - ✅
      - ✅
-     - Esiste un selettore di simbolo per configurare beacon/oggetti propri; Last-Heard e il Traffic Log mostrano le icone dei simboli sia per i report di posizione non compressi (``!``/``=`` e, con timestamp, ``/``/``@``) sia per il formato compresso Base-91, e anche per i report Object (``;``) e Item (``)``) con entrambi i formati di posizione (vedere ``aprs_extract_symbol()`` in ``main/aprs_coord.c``)
+     - Esiste un selettore di simbolo per configurare beacon/oggetti propri; Last-Heard e il Traffic Log mostrano le icone dei simboli sia per i report di posizione non compressi (``!``/``=`` e, con timestamp, ``/``/``@``) sia per il formato compresso Base-91, per i report Object (``;``) e Item (``)``) con entrambi i formati di posizione, e per i report Mic-E (``` ` ```, ``'`` e gli identificatori Rev 0 beta ``0x1c``/``0x1d``), la cui coppia di simbolo si trova a un offset fisso del campo informativo (vedere ``aprs_extract_symbol()`` in ``main/aprs_coord.c``). Un payload privo di simbolo proprio ricade sull'indirizzo di destinazione (``GPSxyz``/``SPCxyz``/``SYMxyz``, ``GPSCnn``/``GPSEnn``) e poi, solo per NMEA grezzo, sull'SSID di origine
    * - Riproduzione dello storico delle tracce
      - ✅ (client desktop)
      - ❌

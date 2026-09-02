@@ -386,6 +386,30 @@ bool aprs_extract_symbol(const char *info, size_t infoLen, char *symTable, char 
         return aprsExtractPositionSymbol(info, infoLen, posStart, symTable, symCode);
     }
 
+    // Mic-E (APRS101 chapter 10, "Mic-E Information Field"). The position
+    // travels in the destination address, but the symbol pair travels here,
+    // right after the 3-byte longitude and the 3-byte speed/course fields:
+    // byte 8 of the information field is the symbol code and byte 9 the
+    // symbol table identifier, which carries an overlay character in place of
+    // the table byte exactly as an uncompressed report does. 0x1c and 0x1d
+    // are the Rev 0 beta data type identifiers for the same layout.
+    //
+    // Both bytes are validated before being handed back: the nine leading
+    // bytes are the only part of a Mic-E payload with a fixed meaning, so a
+    // frame that was truncated or corrupted after the destination address is
+    // otherwise indistinguishable from a valid one here, and an unchecked
+    // pair would place a station on the map under whatever byte happened to
+    // land at that offset.
+    if (dti == '`' || dti == '\'' || dti == 0x1c || dti == 0x1d) {
+        if (infoLen < 9)
+            return false;
+        if (!aprs_symbol_code_is_valid(info[7]) || !aprs_symbol_table_byte_uncompressed(info[8]))
+            return false;
+        *symTable = info[8];
+        *symCode = info[7];
+        return true;
+    }
+
     // Object report (APRS101 chapter 11): ';' + 9-byte name + 1-byte
     // live('*')/killed('_') flag + 7-byte DHM timestamp + position field.
     // The name and flag are fixed width, so the position always starts at a

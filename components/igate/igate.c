@@ -1191,12 +1191,13 @@ static void processAprsIsLine(char *line) {
     tnc2SrcCallsign(line, strlen(line), dx, sizeof(dx));
 
     // Position/object/item reports start their info field (right after the
-    // first ':') with one of !=/@; the symbol table and symbol code follow
-    // the latitude/longitude fields. Handles both no-timestamp ('!'/'=') and
-    // timestamped ('/'/'@') formats - see aprs_extract_symbol(). A payload
-    // with no symbol of its own falls back to the destination address and
-    // then the source SSID of the TNC2 header, in the precedence order of
-    // APRS101 chapter 21.
+    // first ':') with one of !=/@;) and carry the symbol table and symbol
+    // code around the latitude/longitude fields; a Mic-E report carries the
+    // pair at a fixed offset of its own. Handles no-timestamp ('!'/'='),
+    // timestamped ('/'/'@'), object, item and Mic-E payloads - see
+    // aprs_extract_symbol(). A payload with no symbol of its own falls back
+    // to the destination address and then the source SSID of the TNC2
+    // header, in the precedence order of APRS101 chapter 21.
     char symTable = 0, symCode = 0;
     char decoded[APRS_RX_DECODED_BUF_SIZE] = "";
     const char *colon = strchr(line, ':');

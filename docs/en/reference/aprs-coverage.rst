@@ -218,7 +218,7 @@ Mic-E data format (ch. 10)
      - Notes
    * - Mic-E transmit and receive
      - ✅
-     - Complete encoder and decoder covering the destination-address half, longitude, speed and course, the symbol pair including its overlay character, and both the current and old data type identifiers.
+     - Complete encoder and decoder covering the destination-address half, longitude, speed and course, the symbol pair including its overlay character, and both the current and old data type identifiers. The symbol pair is read straight from the information field for the Last-Heard and traffic tables as well, so a Mic-E tracker gets the icon it asked for and never has its destination address — which is carrying position — read as a symbol.
    * - Type code and manufacturer identifier
      - ✅
      - The type byte follows the symbol table byte and reflects the station's messaging capability; the manufacturer and version pair closes the text field. Without these a Mic-E beacon is anonymous to every client, since the destination address is carrying position and cannot also identify the firmware.

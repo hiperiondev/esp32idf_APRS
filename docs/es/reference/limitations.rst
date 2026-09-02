@@ -724,7 +724,7 @@ Mapeo / Visualización
    * - Renderizado de símbolos/iconos según la tabla de símbolos APRS
      - ✅
      - ✅
-     - Existe un selector de símbolo para configurar balizas/objetos propios; Last-Heard y el Traffic Log muestran iconos de símbolo tanto para los reportes de posición sin comprimir (``!``/``=`` y, con marca de tiempo, ``/``/``@``) como para el formato comprimido Base-91, y también para los reportes de Objeto (``;``) e Ítem (``)``) con cualquiera de los dos formatos de posición (ver ``aprs_extract_symbol()`` en ``main/aprs_coord.c``)
+     - Existe un selector de símbolo para configurar balizas/objetos propios; Last-Heard y el Traffic Log muestran iconos de símbolo tanto para los reportes de posición sin comprimir (``!``/``=`` y, con marca de tiempo, ``/``/``@``) como para el formato comprimido Base-91, para los reportes de Objeto (``;``) e Ítem (``)``) con cualquiera de los dos formatos de posición, y para los reportes Mic-E (``` ` ```, ``'`` y los identificadores Rev 0 beta ``0x1c``/``0x1d``), cuyo par de símbolo está en un desplazamiento fijo del campo de información (ver ``aprs_extract_symbol()`` en ``main/aprs_coord.c``). Un payload sin símbolo propio recurre a la dirección de destino (``GPSxyz``/``SPCxyz``/``SYMxyz``, ``GPSCnn``/``GPSEnn``) y luego, solo para NMEA crudo, al SSID de origen
    * - Reproducción de historial de trazas
      - ✅ (clientes de escritorio)
      - ❌

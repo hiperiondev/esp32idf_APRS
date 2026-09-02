@@ -396,8 +396,8 @@ void aprs_compressed_cs_from_range(unsigned range_miles, char out[3]);
 void aprs_compressed_cs_from_altitude(unsigned alt_feet, char out[3]);
 
 /**
- * @brief Extract the symbol table identifier and symbol code from a
- * (non-Mic-E) APRS position/object/item info field, covering:
+ * @brief Extract the symbol table identifier and symbol code from an APRS
+ * information field, covering:
  *
  *   - Position reports: '!' and '=' (no timestamp) or '/' and '@' (7-byte
  *     DHM/HMS timestamp between the DTI and the position field).
@@ -406,8 +406,15 @@ void aprs_compressed_cs_from_altitude(unsigned alt_feet, char out[3]);
  *     field.
  *   - Item reports (')' DTI, APRS101 chapter 11): 3-9 byte name terminated
  *     by a 1-byte live('!')/killed('_') flag, then the position field.
+ *   - Mic-E reports ('`', '\'' and the Rev 0 beta 0x1c/0x1d DTIs, APRS101
+ *     chapter 10): the position is in the destination address, but the
+ *     symbol pair is here, as byte 8 (symbol code) and byte 9 (symbol table
+ *     identifier, or an overlay character standing in for it) of the
+ *     information field. Both bytes are validated before being returned,
+ *     since they are the only fixed-meaning part of a Mic-E payload and a
+ *     truncated frame is otherwise indistinguishable from a valid one.
  *
- * Each of those ends in a position field in either of the two layouts
+ * The first three end in a position field in either of the two layouts
  * defined by APRS101 chapter 9: the uncompressed "DDMM.mmN/DDDMM.mmW" pair
  * (symbol table byte after the 8-byte latitude, symbol code after the
  * 9-byte longitude) or the base-91 compressed field (symbol table byte
@@ -428,11 +435,11 @@ void aprs_compressed_cs_from_altitude(unsigned alt_feet, char out[3]);
  *        the same whichever layout it transmits in.
  * @param symCode Out param: set to the symbol code byte on success, left
  *        untouched on failure.
- * @return true if info is a recognized position/object/item DTI, in either
- *         the compressed or uncompressed position layout, and long enough
- *         to contain the symbol pair; false otherwise (symTable/symCode are
- *         left untouched, so callers should zero-initialize them before
- *         calling).
+ * @return true if info is a recognized position, object, item or Mic-E DTI
+ *         carrying a symbol pair - the position formats in either the
+ *         compressed or the uncompressed layout - and long enough to contain
+ *         it; false otherwise (symTable/symCode are left untouched, so
+ *         callers should zero-initialize them before calling).
  */
 bool aprs_extract_symbol(const char *info, size_t infoLen, char *symTable, char *symCode);
 
@@ -526,7 +533,8 @@ bool aprs_nmea_decode_position(const char *sentence, size_t len, float *outLat, 
  * This is the second and third steps of the symbol precedence order the
  * project implements:
  *
- *   1. the information field, read by aprs_extract_symbol(); it always wins;
+ *   1. the information field, read by aprs_extract_symbol(), Mic-E included;
+ *      it always wins;
  *   2. the AX.25 destination address, in the forms "GPSxyz", "SPCxyz" and
  *      "SYMxyz" (the three prefixes are equivalent) or the numeric forms
  *      "GPSCnn" (primary table) and "GPSEnn" (alternate table), where the

@@ -654,9 +654,11 @@ static void aprs_msg_callback(ax25_msg_t *msg) {
         snprintf(callsign, sizeof(callsign), "%s", msg->src.call);
 
     // Position/object/item reports start their info field with one of
-    // !=/@; the symbol table and symbol code follow the latitude/longitude
-    // fields. Handles both no-timestamp ('!'/'=') and timestamped ('/'/'@')
-    // position formats - see aprs_extract_symbol() for the offset math.
+    // !=/@;) and carry the symbol table and symbol code around the
+    // latitude/longitude fields; a Mic-E report carries the pair at a fixed
+    // offset instead, its position being in the destination address. Handles
+    // no-timestamp ('!'/'='), timestamped ('/'/'@'), object, item and Mic-E
+    // payloads - see aprs_extract_symbol() for the offset math.
     //
     // Payloads that carry no symbol of their own - a raw NMEA sentence above
     // all, which is verbatim GPS receiver output with nowhere to put one -
@@ -1358,8 +1360,8 @@ static void inet2rfHandler(const char *line) {
             const char *info = colon + 1;
             size_t infoLen = strlen(info);
             // Same symbol precedence as the RF path above: information
-            // field first, then the destination address of the TNC2 header,
-            // then the source SSID for raw NMEA only.
+            // field first, Mic-E included, then the destination address of
+            // the TNC2 header, then the source SSID for raw NMEA only.
             if (!aprs_extract_symbol(info, infoLen, &symTable, &symCode) && infoLen > 0)
                 aprs_symbol_from_tnc2_header(line, info[0], &symTable, &symCode);
 

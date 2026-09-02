@@ -695,7 +695,7 @@ Mapping / Visualization
    * - Symbol/icon rendering per APRS symbol table
      - ✅
      - ✅
-     - Symbol picker exists for configuring own beacons/objects; Last-Heard and the Traffic Log show symbol icons for position reports in both the uncompressed (``!``/``=`` and timestamped ``/``/``@``) and Base-91 compressed formats, and for Object (``;``) and Item (``)``) reports carrying either position layout (see ``aprs_extract_symbol()`` in ``main/aprs_coord.c``)
+     - Symbol picker exists for configuring own beacons/objects; Last-Heard and the Traffic Log show symbol icons for position reports in both the uncompressed (``!``/``=`` and timestamped ``/``/``@``) and Base-91 compressed formats, for Object (``;``) and Item (``)``) reports carrying either position layout, and for Mic-E reports (``` ` ```, ``'`` and the Rev 0 beta ``0x1c``/``0x1d`` identifiers), whose symbol pair sits at a fixed offset in the information field (see ``aprs_extract_symbol()`` in ``main/aprs_coord.c``). A payload with no symbol of its own falls back to the destination address (``GPSxyz``/``SPCxyz``/``SYMxyz``, ``GPSCnn``/``GPSEnn``) and then, for raw NMEA only, to the source SSID
    * - Track/history playback
      - ✅ (desktop clients)
      - ❌
