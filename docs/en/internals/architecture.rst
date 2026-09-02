@@ -27,14 +27,17 @@ everything, then hands off to a dedicated task:
     ├─ wifi_init()                        ← AP / STA / AP+STA per g_config.wifi_mode
     ├─ vTaskDelay(10 ms)                  ← yield so IDLE runs; avoids a false TWDT trip
     ├─ time_sync_start()                  ← arms the SNTP state machine (non-blocking)
-    ├─ web_server_start()                 ← esp_http_server, ~50 URI handlers, 20 KB stack
+    ├─ gps_apply_config()                 ← starts the GNSS reader task if enabled in config
     ├─ (confirm OTA image valid if pending-verify)
     ├─ aprs_service_start()               ← ⚠ MUST precede modem_init(): installs the RX callback
     ├─ if (audio_modem_en) modem_init()   ← ⏳ BLOCKS ~5 s calibrating the real ADC clock (once per boot)
     │      └─ aprs_service_notify_modem_ready()
+    ├─ telegram_app_apply_config()        ← non-blocking; its own task waits for the network
+    ├─ web_server_start_when_heap_ready() ← waits up to 5 s for ≥10 KB free heap, then
+    │      └─ web_server_start()            starts regardless: esp_http_server, ~70 URI handlers, 20 KB stack
     └─ vTaskDelete(NULL)                  ← returns app_task's 8 KB stack to the heap
 
-Two ordering rules are load-bearing and commented as such in the source:
+Three ordering rules are load-bearing and commented as such in the source:
 
 #. **``aprs_service_start()`` before ``modem_init()``** — the modem starts
    delivering frames *from inside* ``modem_init()``; the RX callback must
@@ -43,6 +46,14 @@ Two ordering rules are load-bearing and commented as such in the source:
    entry, so ``aprs_service_send_tnc2()`` drops frames with a debug log until
    ``s_modemReady`` is set, rather than reaching the AX.25 writer before the
    AX.25 layer is initialised.
+#. **The web admin server starts last** — every other service has already made
+   its allocations by the time it runs, so its free-heap check
+   (``WEB_SERVER_MIN_FREE_HEAP``, 10 KB) sees the heap in the state the station
+   will actually run in. It waits up to ``WEB_SERVER_HEAP_WAIT_MAX_MS`` (5 s)
+   for that much to be free, polling every ``WEB_SERVER_HEAP_POLL_INTERVAL_MS``
+   (100 ms), then starts the server regardless of whether the threshold was
+   reached: a reachable admin UI under memory pressure is more useful than none
+   at all.
 
 Inside ``aprs_service_start()``
 ===============================

@@ -15,8 +15,8 @@
 //
 // @brief Firmware entry point: NVS/LittleFS bring-up, configuration load, WiFi
 // station/AP setup and event handling, and creation of the application task that
-// starts the CPU frequency policy, SNTP client, web admin server, APRS services
-// and the radio modem.
+// starts the CPU frequency policy, SNTP client, APRS services and the radio
+// modem, bringing up the web admin server last once free heap allows it.
 
 #include <string.h>
 
@@ -24,6 +24,7 @@
 #include "esp_log.h"
 #include "esp_netif.h"
 #include "esp_ota_ops.h"
+#include "esp_system.h"
 #include "esp_timer.h"
 #include "esp_wifi.h"
 #include "freertos/FreeRTOS.h"
@@ -61,6 +62,15 @@ static const char *TAG = "main";
 
 // Fixed delay applied before every reconnect attempt after a STA disconnect.
 #define RECONNECT_INTERVAL_MS 5000
+
+// Minimum free heap the web admin server waits for before it binds its
+// listening socket, and the longest this boot will wait for that much to be
+// free. The web server is started last, after every other service has made
+// its own allocations, specifically so this check sees the heap in the state
+// the station will actually run in.
+#define WEB_SERVER_MIN_FREE_HEAP         (10 * 1024)
+#define WEB_SERVER_HEAP_WAIT_MAX_MS      5000
+#define WEB_SERVER_HEAP_POLL_INTERVAL_MS 100
 
 // True when the configured wifi_mode includes a station interface AND a usable
 // STA entry was actually found and pushed to the driver. Gates every automatic
@@ -336,6 +346,32 @@ static void wifi_init(void) {
     ESP_LOGI(TAG, "WiFi started in mode %d (AP SSID '%s', STA %s)", (int)mode, g_config.wifi_ap_ssid, s_staEnabled ? "enabled" : "disabled");
 }
 
+// Blocks until esp_get_free_heap_size() reaches WEB_SERVER_MIN_FREE_HEAP or
+// WEB_SERVER_HEAP_WAIT_MAX_MS has elapsed, whichever comes first, then starts
+// the web admin server either way. Every other service has already made its
+// allocations by the time this runs, so a heap that is still short after the
+// wait is reported and the server is started anyway: an admin UI reachable
+// under memory pressure is more useful to the operator than no admin UI at
+// all, and refusing to start it here would leave the station with no way to
+// diagnose or reconfigure itself over the network.
+static void web_server_start_when_heap_ready(void) {
+    TickType_t start = xTaskGetTickCount();
+    uint32_t freeHeap = esp_get_free_heap_size();
+
+    while (freeHeap < WEB_SERVER_MIN_FREE_HEAP) {
+        TickType_t elapsedTicks = xTaskGetTickCount() - start;
+        if (elapsedTicks >= pdMS_TO_TICKS(WEB_SERVER_HEAP_WAIT_MAX_MS)) {
+            ESP_LOGW(TAG, "Free heap still %u bytes after %d ms wait (wanted %u), starting web admin anyway", (unsigned)freeHeap, WEB_SERVER_HEAP_WAIT_MAX_MS,
+                     (unsigned)WEB_SERVER_MIN_FREE_HEAP);
+            break;
+        }
+        vTaskDelay(pdMS_TO_TICKS(WEB_SERVER_HEAP_POLL_INTERVAL_MS));
+        freeHeap = esp_get_free_heap_size();
+    }
+
+    web_server_start();
+}
+
 // All of the actual application work happens here, on a task created with
 // its own APP_TASK_STACK_SIZE stack, isolated from the system main task.
 static void app_task(void *arg) {
@@ -378,23 +414,22 @@ static void app_task(void *arg) {
     time_sync_start();
 
     // Bring the GNSS receiver up if the operator has it switched on. Done
-    // before the web server so a page loaded immediately after boot already
-    // finds the reader task running and reports the true link state instead of
-    // "no data". The GPS page's save handler calls this again whenever the
-    // switch moves, so enabling or disabling the receiver needs no reboot.
+    // before the web server so a page loaded as soon as the web admin answers
+    // already finds the reader task running and reports the true link state
+    // instead of "no data". The GPS page's save handler calls this again
+    // whenever the switch moves, so enabling or disabling the receiver needs
+    // no reboot.
     gps_apply_config();
-
-    web_server_start();
 
     // If this boot is running an image that the web admin's OTA Update
     // (About / Firmware page) just flashed, CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE
     // (see partitions.csv) leaves it in "pending verify" state: the bootloader
     // will silently roll back to the previous OTA slot on the *next* reset
     // unless something here confirms the image is good first. Reaching this
-    // point means NVS/LittleFS mounted, WiFi came up, and the web admin is
-    // listening - a reasonable bar for "this firmware works" - so confirm it.
-    // On a single-"factory" partition table there is no pending-verify state
-    // to find and this is a harmless no-op.
+    // point means NVS/LittleFS mounted and WiFi came up - a reasonable bar
+    // for "this firmware works" - so confirm it. On a single-"factory"
+    // partition table there is no pending-verify state to find and this is a
+    // harmless no-op.
     {
         esp_ota_img_states_t ota_state;
         const esp_partition_t *running = esp_ota_get_running_partition();
@@ -448,11 +483,12 @@ static void app_task(void *arg) {
     }
 
     // Bring the Telegram bot up if the operator has it switched on, and do it
-    // last on purpose. A TLS session and the modem's DMA buffers both want
-    // large contiguous allocations out of the same internal RAM, and this is a
-    // radio station: the transmitter has first claim. Starting the bot after
-    // modem_init() means a heap too small for both costs the convenience
-    // rather than the radio, and the Telegram page says so in as many words.
+    // after the modem on purpose. A TLS session and the modem's DMA buffers
+    // both want large contiguous allocations out of the same internal RAM,
+    // and this is a radio station: the transmitter has first claim. Starting
+    // the bot after modem_init() means a heap too small for both costs the
+    // convenience rather than the radio, and the Telegram page says so in as
+    // many words.
     //
     // Its own supervisor task performs the bring-up in the background and
     // waits for a network route itself, so this call returns immediately and
@@ -460,6 +496,13 @@ static void app_task(void *arg) {
     // handler calls this again whenever a setting moves, so the bot needs no
     // reboot.
     telegram_app_apply_config();
+
+    // The web admin server is started last, once every other service above
+    // has already made its allocations: esp_http_server's own buffers and
+    // every admin page it can serve are the least critical thing running on
+    // this station, so they are the ones asked to wait on the heap rather
+    // than the radio or the APRS-IS uplink.
+    web_server_start_when_heap_ready();
 
     // Do not log the admin password: this line reaches serial console captures
     // and any future remote-logging feature. Only the username is logged; the

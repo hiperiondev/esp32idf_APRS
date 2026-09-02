@@ -47,7 +47,15 @@ void web_server_start(void) {
     httpd_handle_t server = NULL;
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
     config.uri_match_fn = httpd_uri_match_wildcard;
-    config.max_uri_handlers = 64;
+    // The admin UI registers every route below on a single httpd instance:
+    // 69 handlers as of this file. esp_http_server allocates exactly
+    // max_uri_handlers slots up front and refuses any registration past that
+    // count with ESP_ERR_HTTPD_HANDLERS_FULL - silently, from reg()'s point of
+    // view, until the log line above fires - so this value has to stay above
+    // the actual number of reg() calls in this function, not just the number
+    // of distinct pages, since a GET/POST pair on the same URI is two
+    // handlers. 96 leaves room to add pages without editing this constant.
+    config.max_uri_handlers = 96;
     // OTA firmware upload (esp_ota_write + esp_ota_end's image-verify sha256
     // pass) needs a bit more headroom than the rest of the admin pages.
     // Several POST handlers (e.g. /wireless, /igate, /system, /wx) keep a

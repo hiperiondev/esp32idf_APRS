@@ -27,14 +27,17 @@ cose che devono precedere tutto, e poi cede il controllo a un task dedicato:
     ├─ wifi_init()                        ← AP / STA / AP+STA secondo g_config.wifi_mode
     ├─ vTaskDelay(10 ms)                  ← cedi così IDLE gira; evita un falso scatto del TWDT
     ├─ time_sync_start()                  ← arma la macchina a stati SNTP (non bloccante)
-    ├─ web_server_start()                 ← esp_http_server, ~50 gestori di URI, stack da 20 KB
+    ├─ gps_apply_config()                 ← avvia il task lettore GNSS se abilitato in config
     ├─ (conferma immagine OTA valida se in-attesa-di-verifica)
     ├─ aprs_service_start()               ← ⚠ DEVE precedere modem_init(): installa il callback RX
     ├─ if (audio_modem_en) modem_init()   ← ⏳ SI BLOCCA ~5 s calibrando il clock reale dell'ADC (una volta per avvio)
     │      └─ aprs_service_notify_modem_ready()
+    ├─ telegram_app_apply_config()        ← non bloccante; il suo task attende la rete
+    ├─ web_server_start_when_heap_ready() ← attende fino a 5 s per ≥10 KB di heap libero, poi
+    │      └─ web_server_start()            avvia comunque: esp_http_server, ~70 gestori di URI, stack da 20 KB
     └─ vTaskDelete(NULL)                  ← restituisce lo stack da 8 KB di app_task all'heap
 
-Due regole di ordine sono critiche e sono commentate come tali nel codice
+Tre regole di ordine sono critiche e sono commentate come tali nel codice
 sorgente:
 
 #. **``aprs_service_start()`` prima di ``modem_init()``** — il modem inizia a
@@ -44,6 +47,15 @@ sorgente:
    immediatamente all'ingresso, quindi ``aprs_service_send_tnc2()`` scarta frame
    con un log di debug finché ``s_modemReady`` non è attivo, invece di raggiungere
    lo scrittore AX.25 prima che il livello AX.25 sia inizializzato.
+#. **Il server web di amministrazione parte per ultimo** — tutti gli altri
+   servizi hanno già effettuato le proprie allocazioni quando questo viene
+   eseguito, così il suo controllo dell'heap libero (``WEB_SERVER_MIN_FREE_HEAP``,
+   10 KB) vede l'heap nello stato in cui la stazione funzionerà realmente.
+   Attende fino a ``WEB_SERVER_HEAP_WAIT_MAX_MS`` (5 s) che quella quantità sia
+   libera, controllando ogni ``WEB_SERVER_HEAP_POLL_INTERVAL_MS`` (100 ms), poi
+   avvia comunque il server indipendentemente dal fatto che la soglia sia stata
+   raggiunta: un'interfaccia di amministrazione raggiungibile sotto pressione
+   di memoria è più utile di nessuna interfaccia.
 
 Dentro ``aprs_service_start()``
 ===============================

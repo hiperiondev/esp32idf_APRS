@@ -27,14 +27,17 @@ preceder a todo, y luego cede el control a una tarea dedicada:
     ├─ wifi_init()                        ← AP / STA / AP+STA según g_config.wifi_mode
     ├─ vTaskDelay(10 ms)                  ← ceder para que corra IDLE; evita un falso disparo del TWDT
     ├─ time_sync_start()                  ← arma la máquina de estados SNTP (no bloqueante)
-    ├─ web_server_start()                 ← esp_http_server, ~50 manejadores de URI, pila de 20 KB
+    ├─ gps_apply_config()                 ← arranca la tarea lectora GNSS si está habilitada en config
     ├─ (confirmar imagen OTA válida si está pendiente-de-verificar)
     ├─ aprs_service_start()               ← ⚠ DEBE preceder a modem_init(): instala el callback de RX
     ├─ if (audio_modem_en) modem_init()   ← ⏳ SE BLOQUEA ~5 s calibrando el reloj real del ADC (una vez por arranque)
     │      └─ aprs_service_notify_modem_ready()
+    ├─ telegram_app_apply_config()        ← no bloqueante; su propia tarea espera la red
+    ├─ web_server_start_when_heap_ready() ← espera hasta 5 s por ≥10 KB de heap libre y luego
+    │      └─ web_server_start()            arranca de todas formas: esp_http_server, ~70 manejadores de URI, pila de 20 KB
     └─ vTaskDelete(NULL)                  ← devuelve la pila de 8 KB de app_task al heap
 
-Dos reglas de orden son críticas y están comentadas como tal en el código fuente:
+Tres reglas de orden son críticas y están comentadas como tal en el código fuente:
 
 #. **``aprs_service_start()`` antes de ``modem_init()``** — el módem empieza a
    entregar tramas *desde dentro de* ``modem_init()``; el callback de RX debe
@@ -43,6 +46,15 @@ Dos reglas de orden son críticas y están comentadas como tal en el código fue
    inmediatamente al entrar, así que ``aprs_service_send_tnc2()`` descarta tramas
    con un log de depuración hasta que se activa ``s_modemReady``, en lugar de
    llegar al escritor AX.25 antes de que la capa AX.25 esté inicializada.
+#. **El servidor web de administración arranca al final** — todos los demás
+   servicios ya hicieron sus asignaciones de memoria cuando este se ejecuta,
+   así que su verificación de heap libre (``WEB_SERVER_MIN_FREE_HEAP``, 10 KB)
+   ve el heap en el estado real en que la estación va a funcionar. Espera hasta
+   ``WEB_SERVER_HEAP_WAIT_MAX_MS`` (5 s) a que haya esa cantidad libre,
+   consultando cada ``WEB_SERVER_HEAP_POLL_INTERVAL_MS`` (100 ms), y luego
+   arranca el servidor de todas formas sin importar si se alcanzó el umbral:
+   una interfaz de administración accesible bajo presión de memoria es más
+   útil que ninguna.
 
 Dentro de ``aprs_service_start()``
 ==================================
