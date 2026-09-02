@@ -362,6 +362,20 @@ Seguimiento / Balizamiento
      - Posición/intervalo/símbolo/comentario independientes por rol (tracker,
        IGate, digi); el modo por defecto y de respaldo para los tres, y el
        único que ofrecen las balizas de IGate y Digipeater
+   * - Convención de "posición desconocida"
+     - ⚠️ (APRS no define ninguna)
+     - ✅
+     - APRS no tiene una coordenada al aire para "posición desconocida", así
+       que este proyecto trata el par exacto (0.0, 0.0) - la Isla Null - como
+       "aún no configurado" para la posición de un rol. ``buildPositionPacket()``
+       (``main/beacon.c``) omite por completo la baliza de posición de
+       Tracker/IGate/Digipeater mientras la posición de ese rol, incluido el
+       fix GPS en vivo, siga en ese valor por defecto, y ``buildStatusPacket()``
+       omite del mismo modo el locator Maidenhead del informe de estado
+       correspondiente, en lugar de balizar una posición falsa en el golfo de
+       Guinea. El informe meteorológico tiene un formato sin posición al que
+       recurrir en su lugar (``build_wx_packet()`` en ``main/weather.c``), por
+       lo que no se ve afectado
    * - Smart Beaconing (intervalo adaptativo por velocidad/rumbo)
      - ✅ (clientes móviles, OpenTracker)
      - ✅

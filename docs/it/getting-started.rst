@@ -154,7 +154,9 @@ Valori di fabbrica notevoli
    * - Indicativo / SSID
      - ``NOCALL`` / 10, passcode ``-1``
    * - Coordinate della stazione
-     - ``0.000`` / ``0.000``, trasmesse così come sono
+     - ``0.000`` / ``0.000``; ogni beacon di posizione e il locator Maidenhead
+       dei report di stato vengono omessi finché le coordinate di un ruolo
+       restano su questo valore predefinito
    * - Server APRS-IS
      - quattro slot di failover, tutti preimpostati a ``aprs.dprns.com`` :
        14580, con il solo slot 1 abilitato
@@ -198,6 +200,11 @@ Valori di fabbrica notevoli
    per attivare.
 
    **Imposta anche le coordinate della stazione.** APRS non ha una coordinata
-   di "posizione sconosciuta": una stazione che trasmette il beacon prima di
-   averle impostate mette in aria 0° N / 0° E, che è una posizione reale nel
-   golfo di Guinea e non una posizione assente, e ogni mappa la disegna lì.
+   di "posizione sconosciuta", perciò questo firmware tratta la coppia
+   predefinita ``0.000`` / ``0.000`` — Null Island, non la sede reale di
+   alcuna stazione radioamatoriale — come "non ancora configurata" e omette i
+   beacon di posizione di Tracker, IGate e Digipeater (e il locator
+   Maidenhead dei loro report di stato) invece di mettere in aria una
+   posizione falsa nel golfo di Guinea. Un beacon le cui coordinate non sono
+   ancora impostate resta silenzioso invece di trasmettere; controlla il log
+   se sembra non inviare nulla.

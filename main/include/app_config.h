@@ -678,10 +678,14 @@ typedef struct {
 
     char my_callsign[10]; /**< "My Station" callsign, entered once on the Station page and reused by every page's "Use My Station Data". */
     bool my_use_gps;      /**< "Use GPS": mirror the live GNSS fix into my_lat/my_lon/my_alt on every save and lock those fields against manual editing. */
-    float my_lat;         /**< "My Station" latitude, decimal degrees. Transmitted exactly as configured: APRS defines no "position unknown" coordinate, so a
-                             station left at the 0.0 default beacons 0 deg N / 0 deg E - a valid position in the Gulf of Guinea - rather than announcing that
-                             it has none. Set this before enabling any beacon. */
-    float my_lon;         /**< "My Station" longitude, decimal degrees. Same 0.0 default and the same caveat as ::app_config_t::my_lat. */
+    float my_lat;         /**< "My Station" latitude, decimal degrees. APRS defines no on-air "position unknown" coordinate, so this project treats the exact
+                             pair (0.0, 0.0) - Null Island, not a real amateur station site - as its own convention for "not yet configured": every
+                             position report built from it (buildPositionPacket() in beacon.c) and the Maidenhead locator of a status report
+                             (buildStatusPacket()) is withheld while both my_lat and my_lon, or the per-service position that mirrors them, are still at
+                             that default, rather than putting a false fix in the Gulf of Guinea on the air. Set this, or enable "Use GPS", before enabling
+                             any beacon. */
+    float my_lon;         /**< "My Station" longitude, decimal degrees. Same 0.0 default and the same "not yet configured" convention as
+                             ::app_config_t::my_lat. */
     float my_alt;         /**< "My Station" altitude. */
 
     uint16_t my_phg_power;  /**< "My Station" PHG sub-field: radio TX power, Watts (persisted so the form redisplays the selections). */
@@ -800,8 +804,10 @@ typedef struct {
                                                     counted exactly as before. See igate_log_accepts_frame() / igate_log_accepts_line(). */
     bool igate_bcn;                             /**< Enable the IGate position beacon. */
     bool igate_timestamp;                       /**< Include a timestamp in the IGate beacon. */
-    float igate_lat;                            /**< IGate beacon latitude. */
-    float igate_lon;                            /**< IGate beacon longitude. */
+    float igate_lat;                            /**< IGate beacon latitude. Same "not yet configured" convention as ::app_config_t::my_lat: while
+                                                    igate_lat/igate_lon are still (0.0, 0.0), the IGate position beacon and the Maidenhead locator of its
+                                                    status report are withheld rather than sent. */
+    float igate_lon;                            /**< IGate beacon longitude. See ::app_config_t::igate_lat. */
     float igate_alt;                            /**< IGate beacon altitude. */
     uint16_t igate_interval;                    /**< IGate beacon interval, seconds. */
     char igate_symbol[3];                       /**< IGate APRS symbol ("<table><code>" + NUL). */
@@ -856,8 +862,10 @@ typedef struct {
                                                 identities, and what is left of the addresses skipped when it is. ::DIGI_PREEMPT_OFF by default. */
     bool digi_bcn;                           /**< Enable the digipeater position beacon. */
     bool digi_compress;                      /**< Use APRS compressed position format for the digipeater position beacon. */
-    float digi_lat;                          /**< Digipeater beacon latitude. */
-    float digi_lon;                          /**< Digipeater beacon longitude. */
+    float digi_lat;                          /**< Digipeater beacon latitude. Same "not yet configured" convention as ::app_config_t::my_lat: while
+                                                digi_lat/digi_lon are still (0.0, 0.0), the Digipeater position beacon and the Maidenhead locator of its
+                                                status report are withheld rather than sent. */
+    float digi_lon;                          /**< Digipeater beacon longitude. See ::app_config_t::digi_lat. */
     float digi_alt;                          /**< Digipeater beacon altitude. */
     uint16_t digi_interval;                  /**< Digipeater beacon interval, seconds. */
     char digi_symbol[3];                     /**< Digipeater APRS symbol. */
@@ -902,8 +910,11 @@ typedef struct {
                               trk_lat/trk_lon/trk_alt; a disabled receiver or a momentary loss of fix falls back to those fixed values for that beacon,
                               same as when this is off. Independent of trk_use_gps, which only copies the fix into the fixed fields once, on save. */
     uint8_t trk_path;      /**< Tracker digipeat-path selection (bitmask over g_config.path[0..3]). */
-    float trk_lat;         /**< Tracker beacon latitude. */
-    float trk_lon;         /**< Tracker beacon longitude. */
+    float trk_lat;         /**< Tracker beacon latitude. Same "not yet configured" convention as ::app_config_t::my_lat, applied to whichever position the
+                              beacon actually transmits: the live GNSS fix while trk_use_live_gps is on and current, this fixed value otherwise. While that
+                              position is (0.0, 0.0), the Tracker position beacon and the Maidenhead locator of its status report are withheld rather than
+                              sent. */
+    float trk_lon;         /**< Tracker beacon longitude. See ::app_config_t::trk_lat. */
     float trk_alt;         /**< Tracker beacon altitude. */
     uint16_t trk_interval; /**< Fixed tracker beacon period in seconds (see beacon.c). */
     bool trk_compress;     /**< Use APRS compressed position format. */
@@ -954,8 +965,10 @@ typedef struct {
     bool wx_use_gps;                      /**< "Use GPS": mirror the live GNSS fix into wx_lat/wx_lon on every save and lock those fields against manual
                                              editing. Mutually exclusive with wx_use_station on the page itself; both write the same two fields. */
     uint8_t wx_path;                      /**< WX digipeat-path selection (bitmask over g_config.path[0..3]). */
-    float wx_lat;                         /**< WX report latitude. */
-    float wx_lon;                         /**< WX report longitude. */
+    float wx_lat;                         /**< WX report latitude. Same "not yet configured" convention as ::app_config_t::my_lat, but the weather report has
+                                             a positionless layout to fall back to (build_wx_packet() in weather.c) instead of being withheld outright: while
+                                             wx_lat/wx_lon are still (0.0, 0.0) the report carries no position field. */
+    float wx_lon;                         /**< WX report longitude. See ::app_config_t::wx_lat. */
     uint16_t wx_interval;                 /**< WX report interval, seconds. */
     char wx_object[10];                   /**< WX object name (if beaconing as an object). */
     char wx_comment[COMMENT_SIZE];        /**< WX report comment. */

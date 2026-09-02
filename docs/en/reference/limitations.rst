@@ -347,6 +347,19 @@ Tracking / Beaconing
      - Separate position/interval/symbol/comment per role (tracker, IGate, digi);
        the default and fallback for all three, and the only mode the IGate and
        Digipeater beacons offer
+   * - "Position unknown" convention
+     - ⚠️ (APRS itself defines none)
+     - ✅
+     - APRS has no on-air coordinate for "position unknown", so this project
+       treats the exact pair (0.0, 0.0) - Null Island - as "not yet
+       configured" for a role's position. ``buildPositionPacket()``
+       (``main/beacon.c``) withholds the Tracker/IGate/Digipeater position
+       beacon entirely while that role's position, live GPS fix included, is
+       still at that default, and ``buildStatusPacket()`` drops the Maidenhead
+       locator of the matching status report the same way, instead of
+       beaconing a false fix in the Gulf of Guinea. The weather report has a
+       positionless layout to fall back to instead (``build_wx_packet()`` in
+       ``main/weather.c``), so it is unaffected
    * - Smart Beaconing (speed/heading-adaptive interval)
      - ✅ (mobile clients, OpenTracker)
      - ✅

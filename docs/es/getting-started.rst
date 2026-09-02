@@ -153,7 +153,9 @@ Valores de fábrica destacados
    * - Indicativo / SSID
      - ``NOCALL`` / 10, passcode ``-1``
    * - Coordenadas de la estación
-     - ``0.000`` / ``0.000``, se transmiten tal cual
+     - ``0.000`` / ``0.000``; toda baliza de posición y el locator Maidenhead
+       de los informes de estado se omiten mientras las coordenadas de un rol
+       sigan en este valor por defecto
    * - Servidores APRS-IS
      - cuatro ranuras de failover, todas preconfiguradas a ``aprs.dprns.com`` :
        14580, con solo la ranura 1 habilitada
@@ -197,6 +199,11 @@ Valores de fábrica destacados
    a activar.
 
    **Configura también las coordenadas de la estación.** APRS no tiene una
-   coordenada de "posición desconocida": una estación que baliza antes de
-   fijarlas pone 0° N / 0° E en el aire, que es una posición real en el golfo
-   de Guinea y no una posición ausente, y todos los mapas la dibujan allí.
+   coordenada de "posición desconocida", así que este firmware trata el par
+   por defecto ``0.000`` / ``0.000`` — la Isla Null, no la ubicación real de
+   ninguna estación de radioaficionado — como "aún no configurado" y omite
+   las balizas de posición de Tracker, IGate y Digipeater (y el locator
+   Maidenhead de sus informes de estado) en lugar de poner una posición falsa
+   en el golfo de Guinea al aire. Una baliza cuyas coordenadas siguen sin
+   configurar queda en silencio en vez de transmitir; revisa el registro si
+   parece que no está enviando nada.

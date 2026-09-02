@@ -547,7 +547,7 @@ static int buildMicePositionPacket(const beacon_params_t *p, const char *path, c
 
     char freqBlock[OBJITEM_FREQ_BLOCK_BUF_SIZE];
     objitem_build_freq_block(p->freqMhz, p->freqToneTenths, p->freqDuplex, p->freqOffsetKhz, 0, false, false, 0, false, false, 0.0f, freqBlock,
-                              sizeof(freqBlock));
+                             sizeof(freqBlock));
 
     // Data extension (PHG / RNG / DFS / DF). Mic-E has no 7-byte slot of its own
     // after a symbol code, but the 1.2 revision states that the Mic-E text
@@ -610,6 +610,19 @@ static int buildMicePositionPacket(const beacon_params_t *p, const char *path, c
 // usable is configured.
 static int buildPositionPacket(const beacon_params_t *p, const char *path, char *out, size_t outMax) {
     if (!p->call[0])
+        return 0;
+
+    // APRS defines no on-air "position unknown" coordinate, so the exact
+    // pair (0.0, 0.0) - Null Island, not a real amateur station site - is
+    // this project's own convention for "not yet configured", the same one
+    // build_wx_packet() (main/weather.c) uses for the positioned/positionless
+    // choice. A position report has no positionless layout to fall back to,
+    // so the report is withheld entirely rather than putting a false fix in
+    // the Gulf of Guinea on the air; the caller's "not built" log line names
+    // this as one of the possible causes. p->lat/p->lon already reflect any
+    // live GPS fix the caller applied on top of the fixed configuration, so
+    // this only withholds the report while neither source has a position.
+    if (p->lat == 0.0f && p->lon == 0.0f)
         return 0;
 
     // Mic-E has its own fixed on-air layout (no timestamp, no compression -
@@ -766,7 +779,7 @@ static int buildPositionPacket(const beacon_params_t *p, const char *path, char 
     {
         char freqBlock[OBJITEM_FREQ_BLOCK_BUF_SIZE];
         objitem_build_freq_block(p->freqMhz, p->freqToneTenths, p->freqDuplex, p->freqOffsetKhz, 0, false, false, 0, false, false, 0.0f, freqBlock,
-                                  sizeof(freqBlock));
+                                 sizeof(freqBlock));
 
         size_t cmtTlmLen = strlen(p->cmtTlm);
         size_t daoLen = strlen(dao);
@@ -955,14 +968,22 @@ static int buildStatusPacket(const status_params_t *p, const char *path, char *o
 
     char freqBlock[OBJITEM_FREQ_BLOCK_BUF_SIZE];
     objitem_build_freq_block(p->freqMhz, p->freqToneTenths, p->freqDuplex, p->freqOffsetKhz, 0, false, false, 0, false, false, 0.0f, freqBlock,
-                              sizeof(freqBlock));
+                             sizeof(freqBlock));
 
     // The grid locator takes precedence over the timestamp: APRS101 ch.16
     // allows only one of the two immediately after the '>' DTI, and the
     // locator is the one that carries information the timestamp does not.
     bool useGrid = p->gridEnable;
+    // Same Null Island "not yet configured" convention as buildPositionPacket():
+    // a locator built from (0.0, 0.0) would claim a real grid square the
+    // station is not in, so the leading field falls back to whichever else
+    // it may carry instead of transmitting one.
+    if (useGrid && p->lat == 0.0f && p->lon == 0.0f) {
+        ESP_LOGW(TAG, "status report: Maidenhead locator requested but the beacon position is not configured - omitted");
+        useGrid = false;
+    }
     bool useTs = g_config.status_timestamp_en && !useGrid;
-    if (p->gridEnable && g_config.status_timestamp_en)
+    if (useGrid && g_config.status_timestamp_en)
         ESP_LOGW(TAG, "status report: Maidenhead locator and timestamp both enabled - timestamp omitted");
 
     char ts[8] = { 0 };
@@ -1595,7 +1616,9 @@ static uint32_t trackerBeaconService(void) {
 
         appendCommentTelemetry(&p);
 
-        txPositionBeacon(&p, g_config.trk_loc2rf, g_config.trk_loc2inet, "Tracker beacon", "no callsign configured (set Tracker or APRS callsign)");
+        txPositionBeacon(&p, g_config.trk_loc2rf, g_config.trk_loc2inet, "Tracker beacon",
+                         "no callsign configured (set Tracker or APRS callsign), or the beacon position is not configured (still 0,0) and no live GPS fix "
+                         "is available");
 
         uint32_t nextIntervalSec =
             (sbIntervalSec > 0) ? sbIntervalSec : sched_clamp_interval(g_config.trk_interval, BEACON_MIN_INTERVAL_S, BEACON_DEFAULT_INTERVAL_S);
@@ -1669,7 +1692,8 @@ static uint32_t igateBeaconService(void) {
         app_config_unlock();
         appendCommentTelemetry(&p);
 
-        txPositionBeacon(&p, g_config.igate_loc2rf, g_config.igate_loc2inet, "IGate beacon", "no APRS callsign configured");
+        txPositionBeacon(&p, g_config.igate_loc2rf, g_config.igate_loc2inet, "IGate beacon",
+                         "no APRS callsign configured, or the beacon position is not configured (still 0,0)");
 
         s_igate_next_due =
             now + (int64_t)beacon_scheduler_jitter(sched_clamp_interval(g_config.igate_interval, BEACON_MIN_INTERVAL_S, BEACON_DEFAULT_INTERVAL_S));
@@ -1820,7 +1844,8 @@ static uint32_t digiBeaconService(void) {
         app_config_unlock();
         appendCommentTelemetry(&p);
 
-        txPositionBeacon(&p, g_config.digi_loc2rf, g_config.digi_loc2inet, "Digipeater beacon", "no callsign configured (set Digipeater or APRS callsign)");
+        txPositionBeacon(&p, g_config.digi_loc2rf, g_config.digi_loc2inet, "Digipeater beacon",
+                         "no callsign configured (set Digipeater or APRS callsign), or the beacon position is not configured (still 0,0)");
 
         s_digi_next_due =
             now + (int64_t)beacon_scheduler_jitter(sched_clamp_interval(g_config.digi_interval, BEACON_MIN_INTERVAL_S, BEACON_DEFAULT_INTERVAL_S));

@@ -149,7 +149,9 @@ Notable factory defaults
    * - Callsign / SSID
      - ``NOCALL`` / 10, passcode ``-1``
    * - Station coordinates
-     - ``0.000`` / ``0.000``, transmitted as they stand
+     - ``0.000`` / ``0.000``; every position beacon and status-report grid
+       locator is withheld while a role's coordinates are still at this
+       default
    * - APRS-IS servers
      - four failover slots, all preset to ``aprs.dprns.com`` : 14580, with only
        slot 1 enabled
@@ -191,6 +193,10 @@ Notable factory defaults
    key up on.
 
    **Set the station coordinates too.** APRS has no "position unknown"
-   coordinate: a station that beacons before they are set puts 0° N / 0° E on
-   the air, which is a real position in the Gulf of Guinea rather than a
-   missing one, and every map plots it there.
+   coordinate, so this firmware treats the factory-default ``0.000`` /
+   ``0.000`` pair — Null Island, not a real amateur station site — as "not
+   yet configured" and withholds the Tracker, IGate and Digipeater position
+   beacons (and the Maidenhead locator of their status reports) rather than
+   putting a false fix in the Gulf of Guinea on the air. A beacon whose
+   coordinates are still unset stays silent instead of transmitting; check
+   the log if it does not seem to be sending anything.

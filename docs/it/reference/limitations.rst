@@ -366,6 +366,20 @@ Tracciamento / Beaconing
      - Posizione/intervallo/simbolo/commento separati per ruolo (tracker,
        IGate, digi); la modalità predefinita e di ripiego per tutti e tre, e
        l'unica offerta dai beacon di IGate e Digipeater
+   * - Convenzione "posizione sconosciuta"
+     - ⚠️ (APRS non ne definisce una)
+     - ✅
+     - APRS non ha una coordinata in onda per "posizione sconosciuta", quindi
+       questo progetto tratta la coppia esatta (0.0, 0.0) - Null Island - come
+       "non ancora configurata" per la posizione di un ruolo.
+       ``buildPositionPacket()`` (``main/beacon.c``) omette del tutto il
+       beacon di posizione di Tracker/IGate/Digipeater finché la posizione di
+       quel ruolo, fix GPS live incluso, resta su quel valore predefinito, e
+       ``buildStatusPacket()`` omette allo stesso modo il locator Maidenhead
+       del report di stato corrispondente, invece di trasmettere una
+       posizione falsa nel golfo di Guinea. Il report meteo ha un formato
+       senza posizione a cui ricorrere invece (``build_wx_packet()`` in
+       ``main/weather.c``), quindi non ne è interessato
    * - Smart Beaconing (intervallo adattivo su velocità/direzione)
      - ✅ (client mobili, OpenTracker)
      - ✅
