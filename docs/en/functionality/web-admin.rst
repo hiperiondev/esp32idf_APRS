@@ -198,7 +198,7 @@ The pages
        ``/logs/read``, polled every second.
    * - **Bulletins**
      - Up to five bulletins (addressee identifier and group, text, RF/INET,
-       interval, expiry).
+       initial interval, decay ramp, expiry).
    * - **Objects and Items**
      - Up to five objects/items (name, position, symbol, course/speed, comment,
        RF/INET, interval, permanent flag, kill).

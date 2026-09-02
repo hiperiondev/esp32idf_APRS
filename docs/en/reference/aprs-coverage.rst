@@ -378,8 +378,8 @@ Messages, bulletins and announcements (ch. 14)
      - ✅
      - Five configurable slots with the correct addressee forms for all three: the digit identifier for bulletins, the letter identifier for announcements, and the group name suffix for group bulletins. Each slot has its own expiry.
    * - Bulletin transmit cadence
-     - ⚠️
-     - Bulletins go out on a fixed interval with an expiry time. The specification recommends a decaying schedule instead — frequent at first, then tapering over hours — which puts less load on a shared channel for the same effect.
+     - ✅
+     - Each slot carries the decaying schedule the specification recommends: an initial interval, a slow repeat rate, and the ratio the gap is multiplied by after every transmission until it reaches that slow rate and holds. A bulletin is therefore frequent at first and tapers over hours, which puts less load on a shared channel for the same effect. The ramp restarts at the initial interval on any edit or reboot, and leaving the slow rate or ratio unset keeps the flat interval.
    * - National Weather Service bulletins
      - ❌
      - Their contents are not parsed: a weather service bulletin is handled as the ordinary message it is on the wire, relayed correctly and never acknowledged, because the addressee is not this station. The addressee family is recognised in one place — the INET → RF gate, which never puts a bulletin or a weather service broadcast on the air — so what is left is how such a notice is labelled in the UI.

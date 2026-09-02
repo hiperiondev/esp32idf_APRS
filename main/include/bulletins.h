@@ -44,12 +44,27 @@
  * same size regardless of bulletin text length, which matters on this build's
  * tight heap.
  *
+ * Cadence: APRS101 chapter 14 describes a bulletin as repeated often in its
+ * first hour and then progressively less often over the following hours, and
+ * an announcement as repeated far more slowly still. Each slot therefore
+ * carries a decay ramp on top of its initial interval, in the same form the
+ * objects/items transmitter uses: a slow (final) interval and a ratio the live
+ * interval is multiplied by after every transmission until it reaches that
+ * slow interval, where it holds. Leaving either unset keeps the flat interval,
+ * which is also what a stored set carrying neither key describes.
+ *
+ * The ramp is runtime state, not configuration: it is not persisted, and a
+ * reboot or any edit to the slot restarts it at the initial interval so a
+ * freshly-changed bulletin is heard promptly again.
+ *
  * Expiry: each bulletin may carry an "expire after N hours" window. When set
  * and armed (enabled with a valid wall clock at save time), an absolute
  * deadline is stored. Once that deadline passes, the transmit task clears the
  * bulletin's `enable` flag, persists the change, and stops sending it - so an
  * expired bulletin both disappears from the air and shows up unchecked in the
- * web UI without any user action.
+ * web UI without any user action. Expiry and the decay ramp are complementary:
+ * the ramp thins the repetitions while the bulletin is current, expiry decides
+ * when it stops being current at all.
  */
 
 #ifndef BULLETINS_H
@@ -92,7 +107,11 @@ typedef struct {
     char ident;                         /**< Addressee identifier: '0'..'9' = bulletin, 'A'..'Z' = announcement. 0 or invalid = the slot's own default digit. */
     char group[BULLETIN_GROUP_MAX + 1]; /**< Group name for a group bulletin, empty for a general bulletin. Ignored when @c ident is an announcement letter. */
     char text[BULLETIN_TEXT_MAX + 1];   /**< Bulletin message text (NUL-terminated). */
-    uint32_t interval_s;                /**< Transmit interval in seconds; 0 = firmware default. */
+    uint32_t interval_s;                /**< Initial transmit interval in seconds; 0 = firmware default. */
+    uint32_t slow_interval_s;           /**< Decay: longest (slow) interval, seconds; 0 or <= the effective @c interval_s => no decay. With decay active, the
+                                             live interval starts at @c interval_s and is multiplied by (@c decay_x10 / 10) after each transmission until it
+                                             reaches this, then holds there. Any edit to the slot restarts it at @c interval_s. */
+    uint16_t decay_x10;                 /**< Decay ratio x10 (e.g. 20 => 2.0x, doubling the gap after every transmission); < 10 => no decay. */
     uint32_t expire_hours;              /**< Expire window in hours; 0 = never expires. */
     int64_t expire_at;                  /**< Absolute expiry deadline (epoch seconds); 0 = never. */
 } bulletin_t;
@@ -187,10 +206,11 @@ void bulletins_start(void);
 
 /**
  * @brief Service the bulletin transmitter: transmit each enabled, non-expired
- * bulletin whose per-bulletin interval is due, enforce expiry (disabling and
- * persisting any bulletin whose deadline has passed), and return the number of
- * seconds until the transmitter next needs servicing (always >= 1, capped so
- * web edits and expiry are picked up promptly).
+ * bulletin whose per-bulletin interval is due, advance that bulletin's decay
+ * ramp, enforce expiry (disabling and persisting any bulletin whose deadline
+ * has passed), and return the number of seconds until the transmitter next
+ * needs servicing (always >= 1, capped so web edits and expiry are picked up
+ * promptly).
  *
  * The first call returns a one-time boot settle delay without transmitting.
  * Intended to be called only from the shared beacon scheduler task.

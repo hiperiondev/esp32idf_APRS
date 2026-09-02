@@ -380,8 +380,8 @@ Messaggi, bollettini e annunci (cap. 14)
      - ✅
      - Cinque slot configurabili con le forme di destinatario corrette per tutti e tre: identificatore numerico per i bollettini, identificatore a lettera per gli annunci e suffisso col nome del gruppo per i bollettini di gruppo. Ogni slot ha la propria scadenza.
    * - Cadenza di trasmissione dei bollettini
-     - ⚠️
-     - I bollettini escono a intervallo fisso con un tempo di scadenza. La specifica raccomanda invece una cadenza decrescente — frequente all'inizio e poi diradata nell'arco di ore — che carica meno un canale condiviso a parità di effetto.
+     - ✅
+     - Ogni slot porta la cadenza decrescente raccomandata dalla specifica: un intervallo iniziale, una cadenza lenta e il rapporto per cui viene moltiplicato l'intervallo dopo ogni trasmissione finché non raggiunge quella cadenza lenta e vi si mantiene. Un bollettino è così frequente all'inizio e si dirada nell'arco di ore, il che carica meno un canale condiviso a parità di effetto. La rampa riparte dall'intervallo iniziale a ogni modifica o riavvio, e lasciare non impostata la cadenza lenta o il rapporto mantiene l'intervallo piatto.
    * - Bollettini del servizio meteorologico nazionale
      - ❌
      - Il loro contenuto non viene analizzato: un bollettino del servizio meteorologico è gestito come il messaggio ordinario che è sul filo, ritrasmesso correttamente e mai confermato, perché il destinatario non è questa stazione. La famiglia di destinatari è invece riconosciuta in un punto — il gateway INET → RF, che non mette mai in onda un bollettino o una diffusione del servizio meteorologico — quindi ciò che resta è come tale avviso viene etichettato nell'interfaccia.

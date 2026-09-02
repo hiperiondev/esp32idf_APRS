@@ -221,7 +221,7 @@ Le pagine
        interrogato ogni secondo.
    * - **Bulletins**
      - Fino a cinque bollettini (identificatore e gruppo del destinatario,
-       testo, RF/INET, intervallo, scadenza).
+       testo, RF/INET, intervallo iniziale, rampa di decadimento, scadenza).
    * - **Objects and Items**
      - Fino a cinque oggetti/item (nome, posizione, simbolo, rotta/velocità,
        commento, RF/INET, intervallo, flag permanente, kill).

@@ -17,7 +17,9 @@ Boletines
 * su propio texto,
 * un **identificador** y un nombre de **grupo** de destinatario,
 * una habilitación **RF** y/o **APRS-IS**,
-* un **intervalo** de transmisión,
+* un **intervalo** inicial de transmisión, con una **rampa de decaimiento**
+  opcional: una cadencia lenta y la razón por la que se multiplica el hueco
+  tras cada transmisión,
 * una ventana opcional de **"caducar tras N horas"**.
 
 El identificador y el grupo juntos seleccionan cuál de las tres formas de
@@ -54,7 +56,28 @@ ranura, el nombre de grupo se pasa a mayúsculas y se le quita todo lo que no se
 ``A``–``Z``/``0``–``9``, y un identificador de anuncio suprime el grupo por
 completo.
 
-Un boletín caducado limpia automáticamente su bandera de habilitación y sale del
+El capítulo 14 describe un boletín como algo que se repite a menudo en su
+primera hora y luego cada vez menos a lo largo de las horas siguientes, y un
+anuncio como algo que se repite mucho más despacio todavía. Cada casilla lleva
+ese afinamiento como una rampa de decaimiento sobre su intervalo inicial: tras
+cada transmisión el intervalo vivo se multiplica por la **razón de
+decaimiento** de la casilla hasta alcanzar su **cadencia lenta**, donde se
+mantiene. Un boletín enviado cada diez minutos con una razón de 2.0 y una
+cadencia lenta de dos horas sale así tres veces en su primera hora y se asienta
+en dos horas, lo que llega al mismo público con una fracción del tiempo de aire
+en un canal compartido.
+
+Dejar la cadencia lenta en 0, o la razón por debajo de 1.0, mantiene el
+intervalo plano, que es también como se comporta un boletín almacenado que no
+lleva ninguno de los dos campos. La rampa es estado de ejecución y no
+configuración: no se persiste, y un reinicio o cualquier edición de la casilla
+la reinicia en el
+intervalo inicial, de modo que un boletín reescrito o retemporizado vuelve a
+oírse pronto en lugar de al espaciado al que había decaído el texto anterior.
+
+La caducidad y la rampa son complementarias. La rampa adelgaza las repeticiones
+mientras el boletín es vigente; la caducidad decide cuándo deja de serlo. Un
+boletín caducado limpia automáticamente su bandera de habilitación y sale del
 aire. Los boletines persisten en su propio ``/storage/bulletins.json``. La página
 está condicionada por el interruptor de compilación ``ENABLE_BULLETINS``.
 

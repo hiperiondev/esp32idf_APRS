@@ -409,6 +409,10 @@
 #define TR_F_BULLETIN_GROUP "Group (up to 5 chars, empty = general)"
 /** Form label for the "bulletin msg" field or fieldset, rendered on the configuration forms. */
 #define TR_F_BULLETIN_MSG "Message (max 67 chars)"
+/** Form label for the "bulletin slow rate" field or fieldset, rendered on the configuration forms. */
+#define TR_F_BULLETIN_SLOW_RATE "Slow repeat rate (s, 0 = no decay)"
+/** Form label for the "bulletin decay" field or fieldset, rendered on the configuration forms. */
+#define TR_F_BULLETIN_DECAY "Decay ratio (e.g. 2.0, <1 = none)"
 /** Form label for the "bulletin expire" field or fieldset, rendered on the configuration forms. */
 #define TR_F_BULLETIN_EXPIRE "Expire (hours, 0 = never)"
 /** Form label for the "objitems" field or fieldset, rendered on the configuration forms. */

@@ -17,7 +17,8 @@ Bulletins
 * its own text,
 * an addressee **identifier** and **group** name,
 * an **RF** and/or **APRS-IS** enable,
-* a transmit **interval**,
+* an initial transmit **interval**, with an optional **decay ramp** — a slow
+  repeat rate and the ratio the gap is multiplied by after each transmission,
 * an optional **"expire after N hours"** window.
 
 The identifier and group together select which of the three addressee forms
@@ -51,7 +52,26 @@ addressee field cannot carry ever reaches the air: an identifier outside
 uppercased and stripped of anything outside ``A``–``Z``/``0``–``9``, and an
 announcement identifier suppresses the group name entirely.
 
-An expired bulletin auto-clears its enable flag and leaves the air. Bulletins
+Chapter 14 describes a bulletin as repeated often in its first hour and then
+progressively less often over the following hours, and an announcement as
+repeated far more slowly still. Each slot carries that taper as a decay ramp on
+top of its initial interval: after every transmission the live interval is
+multiplied by the slot's **decay ratio** until it reaches the slot's **slow
+repeat rate**, where it holds. A bulletin sent every ten minutes with a ratio
+of 2.0 and a slow rate of two hours therefore goes out three times in its first
+hour and settles at two-hourly, which reaches the same audience for a fraction
+of the airtime on a shared channel.
+
+Leaving the slow rate at 0, or the ratio below 1.0, keeps the interval flat,
+which is also how a stored bulletin carrying neither field behaves. The ramp is
+runtime state rather than configuration: it is not persisted, and a reboot or
+any edit to the slot restarts it at the initial interval, so a reworded or
+re-timed bulletin is heard promptly again instead of at whatever spacing the
+previous text had decayed to.
+
+Expiry and the ramp are complementary. The ramp thins the repetitions while the
+bulletin is current; expiry decides when it stops being current at all. An
+expired bulletin auto-clears its enable flag and leaves the air. Bulletins
 persist to their own ``/storage/bulletins.json``. The page is gated by the
 ``ENABLE_BULLETINS`` compile-time switch.
 

@@ -19,7 +19,9 @@ ha:
 * il proprio testo,
 * un **identificatore** e un nome di **gruppo** del destinatario,
 * un'abilitazione **RF** e/o **APRS-IS**,
-* un **intervallo** di trasmissione,
+* un **intervallo** iniziale di trasmissione, con una **rampa di decadimento**
+  opzionale: una cadenza lenta e il rapporto per cui viene moltiplicato
+  l'intervallo dopo ogni trasmissione,
 * una finestra opzionale di **"scadi dopo N ore"**.
 
 Identificatore e gruppo insieme selezionano quale delle tre forme di
@@ -56,7 +58,28 @@ stesso, il nome del gruppo viene reso maiuscolo e privato di tutto ciò che non 
 ``A``–``Z``/``0``–``9``, e un identificatore di annuncio sopprime del tutto il
 gruppo.
 
-Un bollettino scaduto pulisce automaticamente il suo flag di abilitazione ed esce
+Il capitolo 14 descrive un bollettino come ripetuto spesso nella sua prima ora e
+poi via via meno nelle ore successive, e un annuncio come ripetuto molto più
+lentamente ancora. Ogni slot porta quel diradamento come una rampa di
+decadimento sopra il proprio intervallo iniziale: dopo ogni trasmissione
+l'intervallo vivo viene moltiplicato per il **rapporto di decadimento** dello
+slot finché non raggiunge la sua **cadenza lenta**, dove si mantiene. Un
+bollettino inviato ogni dieci minuti con un rapporto di 2.0 e una cadenza lenta
+di due ore esce così tre volte nella prima ora e si assesta sulle due ore, il
+che raggiunge lo stesso pubblico con una frazione del tempo d'antenna su un
+canale condiviso.
+
+Lasciare la cadenza lenta a 0, o il rapporto sotto 1.0, mantiene l'intervallo
+piatto, che è anche come si comporta un bollettino memorizzato che non porta
+nessuno dei due campi. La rampa è stato di esecuzione e non configurazione: non
+viene persistita, e un riavvio o qualsiasi modifica allo slot la fa ripartire
+dall'intervallo iniziale, così un bollettino riscritto o ritemporizzato torna a
+farsi sentire subito invece che alla spaziatura a cui era decaduto il testo
+precedente.
+
+La scadenza e la rampa sono complementari. La rampa dirada le ripetizioni
+mentre il bollettino è attuale; la scadenza decide quando smette di esserlo. Un
+bollettino scaduto pulisce automaticamente il suo flag di abilitazione ed esce
 dall'onda. I bollettini persistono nel proprio ``/storage/bulletins.json``. La
 pagina è condizionata dall'interruttore di compilazione ``ENABLE_BULLETINS``.
 

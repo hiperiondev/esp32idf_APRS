@@ -380,8 +380,8 @@ Mensajes, boletines y anuncios (cap. 14)
      - ✅
      - Cinco ranuras configurables con las formas de destinatario correctas para los tres: identificador numérico para boletines, identificador con letra para anuncios, y sufijo de nombre de grupo para boletines de grupo. Cada ranura tiene su propio vencimiento.
    * - Cadencia de transmisión de boletines
-     - ⚠️
-     - Los boletines salen a intervalo fijo con un tiempo de vencimiento. La especificación recomienda en cambio una agenda decreciente —frecuente al principio y espaciándose a lo largo de horas—, que carga menos un canal compartido para el mismo efecto.
+     - ✅
+     - Cada casilla lleva la agenda decreciente que recomienda la especificación: un intervalo inicial, una cadencia lenta y la razón por la que se multiplica el hueco tras cada transmisión hasta alcanzar esa cadencia lenta y mantenerse allí. Un boletín es así frecuente al principio y se espacia a lo largo de horas, lo que carga menos un canal compartido para el mismo efecto. La rampa se reinicia en el intervalo inicial ante cualquier edición o reinicio, y dejar sin poner la cadencia lenta o la razón mantiene el intervalo plano.
    * - Boletines del servicio meteorológico nacional
      - ❌
      - Su contenido no se parsea: un boletín del servicio meteorológico se maneja como el mensaje común que es en el cable, se retransmite correctamente y nunca se acusa, porque el destinatario no es esta estación. La familia de destinatarios sí se reconoce en un lugar —la pasarela INET → RF, que nunca pone al aire un boletín ni una difusión del servicio meteorológico—, así que lo que queda es cómo se rotula ese aviso en la interfaz.

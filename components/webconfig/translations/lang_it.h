@@ -441,6 +441,12 @@
 #define TR_F_BULLETIN_GROUP "Gruppo (fino a 5 caratteri, vuoto = generale)"
 /** Italian text for the form label for the "bulletin msg" field or fieldset, rendered on the configuration forms. English: "Message (max 67 chars)". */
 #define TR_F_BULLETIN_MSG "Messaggio (max 67 caratteri)"
+/** Italian text for the form label for the "bulletin slow rate" field or fieldset, rendered on the configuration forms. English: "Slow repeat rate (s, 0 =
+ * no decay)". */
+#define TR_F_BULLETIN_SLOW_RATE "Cadenza lenta (s, 0 = nessun decadimento)"
+/** Italian text for the form label for the "bulletin decay" field or fieldset, rendered on the configuration forms. English: "Decay ratio (e.g. 2.0, <1 =
+ * none)". */
+#define TR_F_BULLETIN_DECAY "Rapporto di decadimento (es. 2.0, <1 = nessuno)"
 /** Italian text for the form label for the "bulletin expire" field or fieldset, rendered on the configuration forms. English: "Expire (hours, 0 = never)". */
 #define TR_F_BULLETIN_EXPIRE "Scadenza (ore, 0 = mai)"
 /** Italian text for the form label for the "objitems" field or fieldset, rendered on the configuration forms. English: "Objects and Items". */

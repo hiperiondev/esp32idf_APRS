@@ -614,7 +614,7 @@ Objects, Items, Bulletins, Status
    * - Bulletins (``BLN1``-``BLNn``)
      - ✅
      - ✅
-     - 5 slots, own text/interval/expiry, ``BLN1``-``BLN5``
+     - 5 slots, own text/interval/decay ramp/expiry, ``BLN1``-``BLN5``
    * - Status reports (own-station free text)
      - ✅
      - ✅

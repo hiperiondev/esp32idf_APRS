@@ -645,7 +645,7 @@ Oggetti, Item, Bollettini, Stato
    * - Bollettini (``BLN1``-``BLNn``)
      - ✅
      - ✅
-     - 5 slot, testo/intervallo/scadenza propri, ``BLN1``-``BLN5``
+     - 5 slot, testo/intervallo/rampa di decadimento/scadenza propri, ``BLN1``-``BLN5``
    * - Report di stato (testo libero della stazione)
      - ✅
      - ✅

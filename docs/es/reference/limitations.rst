@@ -638,7 +638,7 @@ Objetos, Items, Boletines, Estado
    * - Boletines (``BLN1``-``BLNn``)
      - ✅
      - ✅
-     - 5 ranuras, texto/intervalo/caducidad propios, ``BLN1``-``BLN5``
+     - 5 ranuras, texto/intervalo/rampa de decaimiento/caducidad propios, ``BLN1``-``BLN5``
    * - Informes de estado (texto libre de la propia estación)
      - ✅
      - ✅

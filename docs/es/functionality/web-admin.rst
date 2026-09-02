@@ -215,7 +215,7 @@ Las páginas
        ``/logs/read``, consultado cada segundo.
    * - **Bulletins**
      - Hasta cinco boletines (identificador y grupo de destinatario, texto,
-       RF/INET, intervalo, caducidad).
+       RF/INET, intervalo inicial, rampa de decaimiento, caducidad).
    * - **Objects and Items**
      - Hasta cinco objetos/ítems (nombre, posición, símbolo, rumbo/velocidad,
        comentario, RF/INET, intervalo, bandera permanente, kill).

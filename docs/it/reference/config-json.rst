@@ -38,7 +38,7 @@ Altri file persistenti
        definizione.
    * - ``/storage/bulletins.json``
      - I cinque bollettini APRS (identificatore e gruppo del destinatario,
-       testo, RF/INET, intervallo, scadenza).
+       testo, RF/INET, intervallo iniziale, rampa di decadimento, scadenza).
    * - ``/storage/objitems.json``
      - I cinque oggetti/item APRS (nome, posizione, simbolo, rotta/velocità,
        commento, intervallo, flag permanente).

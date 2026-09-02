@@ -15,9 +15,15 @@
 //
 // @brief Web admin "Bulletins" page: edits the BULLETIN_COUNT APRS bulletins.
 // Each bulletin has enable / Send via RF / Send via Internet toggles, an
-// addressee identifier and group name, a length-limited message, and an
-// "expire after N hours" window that auto-disables the bulletin once it
-// elapses.
+// addressee identifier and group name, a length-limited message, a cadence
+// (the interval it starts at, plus the slow interval and ratio of its decay
+// ramp), and an "expire after N hours" window that auto-disables the bulletin
+// once it elapses.
+//
+// The decay ramp is the taper APRS101 chapter 14 asks for: the bulletin is
+// repeated at its initial interval, and the gap is multiplied by the ratio
+// after every transmission until it reaches the slow interval, where it holds.
+// A slow interval of 0, or a ratio below 1.0, means the cadence stays flat.
 //
 // The identifier and group together select which of the three APRS101
 // chapter 14 addressee forms goes on the air - general bulletin ("BLN1"),
@@ -102,8 +108,18 @@ esp_err_t page_bulletins_get(httpd_req_t *req) {
         snprintf(name, sizeof(name), "bMsg%d", i + 1);
         web_field_text(req, TR_F_BULLETIN_MSG, name, b->text, BULLETIN_TEXT_MAX);
 
+        // Cadence: the interval the bulletin starts at, then the decay ramp
+        // that widens it towards the slow interval after every transmission.
+        // Leaving the slow interval at 0, or the ratio below 1.0, keeps the
+        // flat cadence.
         snprintf(name, sizeof(name), "bInt%d", i + 1);
         web_field_int(req, TR_F_BEACON_INTERVAL_S, name, (long)b->interval_s, WEB_RANGE_INTERVAL_S_MIN, WEB_RANGE_INTERVAL_LONG_S_MAX);
+
+        snprintf(name, sizeof(name), "bSlow%d", i + 1);
+        web_field_int(req, TR_F_BULLETIN_SLOW_RATE, name, (long)b->slow_interval_s, WEB_RANGE_INTERVAL_S_MIN, WEB_RANGE_INTERVAL_LONG_S_MAX);
+
+        snprintf(name, sizeof(name), "bDecay%d", i + 1);
+        web_field_float(req, TR_F_BULLETIN_DECAY, name, b->decay_x10 / 10.0f, "0.1", 0.0f, 10.0f);
 
         snprintf(name, sizeof(name), "bExp%d", i + 1);
         web_field_int(req, TR_F_BULLETIN_EXPIRE, name, (long)b->expire_hours, 0, 8760);
@@ -191,6 +207,23 @@ esp_err_t page_bulletins_post(httpd_req_t *req) {
         if (interval < 0)
             interval = 0;
         b->interval_s = (uint32_t)interval;
+
+        // Decay ramp: slow interval + ratio. Both are stored as typed, and
+        // bulletins.c decides whether the pair actually forms a ramp.
+        snprintf(name, sizeof(name), "bSlow%d", i + 1);
+        int slow = web_form_get_int(body, name, (int)b->slow_interval_s);
+        if (slow < 0)
+            slow = 0;
+        b->slow_interval_s = (uint32_t)slow;
+
+        snprintf(name, sizeof(name), "bDecay%d", i + 1);
+        float ratio = web_form_get_float(body, name, b->decay_x10 / 10.0f);
+        if (ratio < 0)
+            ratio = 0;
+        int decay_x10 = (int)(ratio * 10.0f + 0.5f);
+        if (decay_x10 > 65535)
+            decay_x10 = 65535;
+        b->decay_x10 = (uint16_t)decay_x10;
 
         snprintf(name, sizeof(name), "bExp%d", i + 1);
         int hours = web_form_get_int(body, name, (int)b->expire_hours);

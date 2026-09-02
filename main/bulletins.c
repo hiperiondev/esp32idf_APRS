@@ -56,20 +56,20 @@ _Static_assert(BULLETIN_COUNT <= 9, "BULLETIN_COUNT must stay a single digit for
 // components, for consistency across the firmware.
 #define BULLETIN_DEST APRS_TOCALL
 
-// Per-bulletin transmit interval. Each bulletin carries its own "Beacon
-// interval (s)" (bulletin_t.interval_s); these are the bounds
+// Per-bulletin transmit interval. Each bulletin carries its own initial
+// "Beacon interval (s)" (bulletin_t.interval_s); these are the bounds
 // sched_clamp_interval() applies to it, so a 0 (or unset) interval falls back
 // to the default and anything below the floor is raised to it, and bulletins
 // cannot be configured to hammer RF/APRS-IS.
 //
-// The rate is flat for as long as a slot lives, where APRS101 ch.14 describes
-// a taper instead: a bulletin repeated a few times in its first hour and then
-// less often over the following hours, an announcement far more slowly over
-// days. The same coverage is bought here with an interval and an expiry the
-// operator sets per slot - a short interval with a near expiry behaves like
-// the head of that curve, a long one with a distant expiry like its tail -
-// so the choice is exposed rather than decided by a decay law the operator
-// cannot see or override.
+// That initial rate is the head of the taper APRS101 ch.14 describes: a
+// bulletin repeated a few times in its first hour and then less often over the
+// following hours, an announcement far more slowly over days. The tail is the
+// slot's own slow interval, reached by multiplying the live interval by the
+// slot's decay ratio after every transmission (see bulletin_decay_step()). The
+// shape of the curve is therefore the operator's - initial rate, final rate
+// and how fast one becomes the other are all set per slot - and leaving the
+// ramp unset keeps the flat interval.
 #define BULLETIN_MIN_INTERVAL_S     30   // sanity floor
 #define BULLETIN_DEFAULT_INTERVAL_S 1800 // 30 min, used when interval_s == 0
 
@@ -169,6 +169,14 @@ static bool load_locked(bulletins_t *out, bool *out_missing) {
             v = cJSON_GetObjectItem(o, "int_s");
             if (cJSON_IsNumber(v) && v->valuedouble > 0)
                 b->interval_s = (uint32_t)v->valuedouble;
+            // Decay ramp. Absent keys leave both at 0, which is the flat
+            // interval a bulletin file written without them describes.
+            v = cJSON_GetObjectItem(o, "slow_s");
+            if (cJSON_IsNumber(v) && v->valuedouble > 0)
+                b->slow_interval_s = (uint32_t)v->valuedouble;
+            v = cJSON_GetObjectItem(o, "decay");
+            if (cJSON_IsNumber(v) && v->valuedouble > 0 && v->valuedouble <= 65535.0)
+                b->decay_x10 = (uint16_t)v->valuedouble;
             v = cJSON_GetObjectItem(o, "exp_h");
             if (cJSON_IsNumber(v) && v->valuedouble > 0)
                 b->expire_hours = (uint32_t)v->valuedouble;
@@ -216,6 +224,8 @@ static bool save_locked(const bulletins_t *in) {
         fputs("\"text\":", f);
         json_write_escaped(f, text);
         fprintf(f, ",\"int_s\":%u", (unsigned)b->interval_s);
+        fprintf(f, ",\"slow_s\":%u", (unsigned)b->slow_interval_s);
+        fprintf(f, ",\"decay\":%u", (unsigned)b->decay_x10);
         fprintf(f, ",\"exp_h\":%u,", (unsigned)b->expire_hours);
         fprintf(f, "\"exp_at\":%lld", (long long)b->expire_at);
         fputc('}', f);
@@ -466,12 +476,57 @@ bool bulletins_apply_expiry(bulletins_t *b) {
     return changed;
 }
 
+// One decay step: multiply the current interval by the slot's decay ratio,
+// bounded by its slow interval. No-op unless a ratio >= 1.0 and a slow
+// interval above the initial one are both configured, so a bulletin left
+// without a ramp keeps the flat cadence it had.
+static uint32_t bulletin_decay_step(uint32_t cur, const bulletin_t *b) {
+    if (b->decay_x10 < 10 || b->slow_interval_s == 0)
+        return cur;
+    uint32_t initial = sched_clamp_interval(b->interval_s, BULLETIN_MIN_INTERVAL_S, BULLETIN_DEFAULT_INTERVAL_S);
+    if (b->slow_interval_s <= initial)
+        return cur;
+    uint64_t next = (uint64_t)cur * (uint64_t)b->decay_x10 / 10u;
+    if (next <= cur)
+        next = (uint64_t)cur + 1; // guarantee forward progress
+    if (next > b->slow_interval_s)
+        next = b->slow_interval_s;
+    return (uint32_t)next;
+}
+
+// A change token over a bulletin's stored fields. Any edit changes it, which
+// the scheduler uses to restart the decay ramp at the initial interval and
+// transmit promptly, so a reworded or re-timed bulletin is heard at the head
+// of its curve again rather than at whatever spacing the previous text had
+// decayed to. The struct is fully zeroed on load (memset in load_locked), so
+// padding bytes are stable and don't cause spurious resets.
+static uint32_t bulletin_signature(const bulletin_t *b) {
+    const uint8_t *p = (const uint8_t *)b;
+    uint32_t h = 2166136261u; // FNV-1a
+    for (size_t i = 0; i < sizeof(*b); i++) {
+        h ^= p[i];
+        h *= 16777619u;
+    }
+    return h;
+}
+
 // Per-bulletin next-due timestamps (monotonic seconds). 0 = due now, so every
 // enabled bulletin transmits once on the first pass after start. These live at
 // file scope because the transmitter is a serviced pass (bulletins_service)
 // driven by the shared beacon scheduler rather than a task loop of its own, so
 // the deadlines must survive between calls.
 static int64_t s_bln_next_due[BULLETIN_COUNT] = { 0 };
+
+// Per-bulletin runtime decay state, at file scope for the same reason and
+// transient in the same way as the objects/items ramp - it is deliberately not
+// persisted, so a reboot restarts every bulletin at its initial interval:
+//   s_bln_cur_interval - the live (possibly decayed) interval; 0 => re-seed
+//                        from the bulletin's initial interval on next use.
+//   s_bln_sig          - last-seen change token (see bulletin_signature); a
+//                        change means the slot was edited and its schedule and
+//                        ramp are reset.
+static uint32_t s_bln_cur_interval[BULLETIN_COUNT] = { 0 };
+static uint32_t s_bln_sig[BULLETIN_COUNT] = { 0 };
 
 // One serviced pass of the bulletin transmitter. Called by the shared beacon
 // scheduler (beacon_scheduler.c); returns the number of seconds until the
@@ -515,17 +570,36 @@ uint32_t bulletins_service(void) {
         const bulletin_t *b = &set.item[i];
         bool sendable = b->enable && b->text[0] && (b->send_rf || b->send_inet);
 
+        // Restart the schedule (and the decay ramp) if the slot was edited
+        // since the last pass, so an edited bulletin transmits promptly and at
+        // its initial interval.
+        uint32_t sig = bulletin_signature(b);
+        if (sig != s_bln_sig[i]) {
+            s_bln_sig[i] = sig;
+            s_bln_cur_interval[i] = 0; // re-seed from the initial interval below
+            s_bln_next_due[i] = 0;     // transmit on this pass
+        }
+
         if (!sendable || !src[0]) {
             // Reset so that (re-)enabling or setting a callsign fires an
             // immediate transmit on the next pass instead of waiting out a
-            // stale timer.
+            // stale timer, and so the decay ramp starts fresh.
             s_bln_next_due[i] = 0;
+            s_bln_cur_interval[i] = 0;
             continue;
         }
 
+        // Seed the live interval from the bulletin's initial interval.
+        if (s_bln_cur_interval[i] == 0)
+            s_bln_cur_interval[i] = sched_clamp_interval(b->interval_s, BULLETIN_MIN_INTERVAL_S, BULLETIN_DEFAULT_INTERVAL_S);
+
         if (now >= s_bln_next_due[i]) {
             tx_one(i, b, src);
-            s_bln_next_due[i] = now + (int64_t)sched_clamp_interval(b->interval_s, BULLETIN_MIN_INTERVAL_S, BULLETIN_DEFAULT_INTERVAL_S);
+            // The gap that follows this transmission is the one that widens:
+            // the ramp advances after the bulletin has gone out, so the first
+            // repetition is always spaced at the initial interval.
+            s_bln_next_due[i] = now + (int64_t)s_bln_cur_interval[i];
+            s_bln_cur_interval[i] = bulletin_decay_step(s_bln_cur_interval[i], b);
             vTaskDelay(pdMS_TO_TICKS(BULLETIN_INTER_TX_MS));
             now = sched_mono_seconds(); // account for the inter-TX gap
         }
