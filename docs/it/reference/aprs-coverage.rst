@@ -604,8 +604,8 @@ Gateway APRS-IS
      - ✅
      - La stringa di filtro viene controllata grammaticalmente prima dell'invio — forma del termine e tipo di argomento — mentre l'intervallo e la sensatezza dei valori sono lasciati al server, che è l'autorità.
    * - Commutazione fra server
-     - ⚠️
-     - Quattro slot di server con riconnessione automatica. La rotazione avviene su un fallimento nello stabilire la sessione; un server che accetta la connessione e poi la chiude viene ritentato invece che saltato, quindi un server in manutenzione può trattenere la stazione finché non si riprende.
+     - ✅
+     - Quattro slot di server con riconnessione automatica. La rotazione avanza ogni volta che il server selezionato smette di sostenere la stazione — una connessione che non si stabilisce, una sessione che il server chiude, un errore di ricezione o un collegamento che resta muto oltre il timer di collegamento morto — quindi un server in manutenzione viene lasciato indietro invece di trattenere la stazione. Le chiusure richieste dalla stazione stessa, come il salvataggio della pagina, mantengono lo slot corrente.
 
 Riepilogo
 =========

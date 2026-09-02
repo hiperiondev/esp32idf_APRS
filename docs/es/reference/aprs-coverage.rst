@@ -603,8 +603,8 @@ Pasarela APRS-IS
      - ✅
      - La cadena de filtro se chequea gramaticalmente antes de enviarse —forma del término y tipo de argumento—, mientras que el rango y la sensatez de los valores quedan para el servidor, que es la autoridad.
    * - Conmutación entre servidores
-     - ⚠️
-     - Cuatro ranuras de servidor con reconexión automática. La rotación ocurre ante un fallo al establecer la sesión; un servidor que acepta la conexión y después la corta se reintenta en vez de saltarse, así un servidor en mantenimiento puede retener a la estación hasta que se recupere.
+     - ✅
+     - Cuatro ranuras de servidor con reconexión automática. La rotación avanza siempre que el servidor seleccionado deja de sostener a la estación —una conexión que no llega a establecerse, una sesión que el servidor cierra, un error de recepción o un enlace que queda en silencio más allá del temporizador de enlace muerto—, así un servidor en mantenimiento queda atrás en vez de retener a la estación. Los cierres que pide la propia estación, como guardar la página, conservan la ranura actual.
 
 Resumen
 =======

@@ -229,12 +229,19 @@ void igate_note_message_gated(void);
  * exists is a no-op.
  *
  * The task connects to one of the ::APRS_SERVER_NUM configured APRS-IS
- * servers (g_config.aprs_server). Whenever a connection attempt to the
- * currently selected server fails - DNS lookup, socket connect, or login -
- * the task advances to the next enabled server in the list, wrapping back to
- * the first one after the last, and waits 1 second before the next attempt.
- * This failover keeps cycling through every enabled server indefinitely
- * until one of them accepts the connection.
+ * servers (g_config.aprs_server). It advances to the next enabled server in
+ * the list, wrapping back to the first one after the last and waiting 1
+ * second before the next attempt, whenever the selected server stops
+ * carrying the station: when a connection attempt fails outright (DNS
+ * lookup, socket connect, or login), and equally when a session the server
+ * did accept ends on its side - the peer closing the link, a receive error,
+ * or the link falling silent for longer than the dead-link timeout. A server
+ * that accepts a session and then fails to sustain it therefore never holds
+ * the station on itself. Sessions the station ends on its own - the uplink
+ * no longer being needed, the network going away, or a settings change
+ * asking for a reconnect - leave the selection where it is. This failover
+ * keeps cycling through every enabled server indefinitely until one of them
+ * accepts and sustains the connection.
  */
 void igate_start(void);
 

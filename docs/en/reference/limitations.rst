@@ -204,7 +204,10 @@ IGate (RF <-> APRS-IS)
      - Four server slots (``APRS_SERVER_NUM``), each with its own Enable
        checkbox, host and port. A failed DNS lookup, connect or login advances
        to the next enabled slot and wraps circularly, retrying every second
-       until one accepts; disabled slots are skipped, including on the first
+       until one accepts, and so does a session that ends on the server side —
+       the peer closing it, a receive error, or the dead-link timer expiring —
+       so a slot that accepts and then stops feeding is left behind rather than
+       dialled again; disabled slots are skipped, including on the first
        attempt after boot. All slots share the one login identity
        (callsign/SSID/passcode/filter). The dashboard names the slot in use
    * - Per-drop-reason statistics

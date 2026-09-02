@@ -211,8 +211,12 @@ IGate (RF <-> APRS-IS)
      - Cuatro ranuras de servidor (``APRS_SERVER_NUM``), cada una con su propia
        casilla Habilitar, host y puerto. Un fallo de DNS, de conexión o de login
        pasa a la siguiente ranura habilitada y da la vuelta circularmente,
-       reintentando cada segundo hasta que una acepte; las ranuras
-       deshabilitadas se saltan, incluso en el primer intento tras el arranque.
+       reintentando cada segundo hasta que una acepte, y lo mismo hace una
+       sesión que termina del lado del servidor —el par cerrándola, un error de
+       recepción, o el temporizador de enlace muerto venciendo—, así que una
+       ranura que acepta y después deja de alimentar queda atrás en vez de
+       volver a marcarse; las ranuras deshabilitadas se saltan, incluso en el
+       primer intento tras el arranque.
        Todas las ranuras comparten la misma identidad de login
        (indicativo/SSID/passcode/filtro). El panel indica la ranura en uso
    * - Estadísticas por motivo de descarte

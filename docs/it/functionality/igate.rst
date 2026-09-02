@@ -91,8 +91,9 @@ Il task client APRS-IS
   peer che smette di inviare senza mai chiudere la connessione. Il ciclo di
   ricezione tiene traccia dell'istante dell'ultimo byte effettivamente letto
   dal socket e, se non arriva nulla per ``IGATE_RX_SILENCE_US`` (90 s),
-  registra un avviso e chiude il socket così da far partire il normale
-  percorso di riconnessione. 90 s resta comodamente sopra la cadenza delle
+  registra un avviso e chiude la sessione attraverso il percorso di
+  commutazione, così il tentativo seguente va allo slot successivo e non di
+  nuovo al server rimasto muto. 90 s resta comodamente sopra la cadenza delle
   righe di commento ``#`` che i server conformi alla `guida di connessione di
   aprs-is.net <https://www.aprs-is.net/Connecting.aspx>`_ inviano quando il
   canale è altrimenti silenzioso — è proprio quella riga di commento a
@@ -133,9 +134,21 @@ l'avvio, non solo dopo un fallimento: togliere la spunta a uno slot lo mette
 fuori servizio immediatamente. Se nessuno slot è abilitato il task ripiega sullo
 slot 1, così ha sempre una destinazione concreta da tentare e registrare.
 
-Una connessione già stabilita non fa ruotare la selezione: se il server chiude
-il collegamento, il task riprova prima lo stesso slot, e passa al successivo
-solo quando anche quel nuovo tentativo fallisce.
+Una sessione già stabilita fa ruotare la selezione con gli stessi criteri. Una
+sessione che termina dal lato del server — il peer che chiude il collegamento,
+un errore di ``recv()``, o il timer di collegamento morto qui sopra che scade su
+un collegamento che ha smesso di consegnare qualsiasi cosa — chiama anch'essa
+``advanceServer()``, poi chiude il socket e attende lo stesso 1 secondo prima di
+provare lo slot successivo. Tutti questi finali dicono che il server ha smesso
+di sostenere questa stazione, quindi uno slot che accetta una sessione e poi non
+la sostiene — uno in manutenzione, uno il cui bilanciatore di carico non ha un
+backend vivo — viene lasciato indietro invece di essere ritentato.
+
+Le chiusure richieste dalla stazione stessa mantengono lo slot corrente: il
+collegamento in salita che non serve più, la rotta di rete che sparisce e
+``igate_request_reconnect()`` dopo un cambio di impostazioni non dicono nulla sul
+server, e ruotare per questi motivi sposterebbe la stazione da uno slot
+funzionante ogni volta che l'operatore salva la pagina IGate.
 
 La dashboard mostra host e porta dello slot in uso in quel momento
 (``igate_get_current_server()``), quindi si vede subito su quale server si è

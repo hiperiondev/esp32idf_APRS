@@ -212,8 +212,12 @@ IGate (RF <-> APRS-IS)
      - Quattro slot server (``APRS_SERVER_NUM``), ognuno con la propria casella
        Abilita, host e porta. Un fallimento di DNS, connessione o login passa
        allo slot abilitato successivo e riparte circolarmente, ritentando ogni
-       secondo finché uno accetta; gli slot disabilitati vengono saltati, anche
-       al primo tentativo dopo l'avvio. Tutti gli slot condividono la stessa
+       secondo finché uno accetta, e lo stesso fa una sessione che termina dal
+       lato del server — il peer che la chiude, un errore di ricezione, o il
+       timer di collegamento morto che scade — quindi uno slot che accetta e poi
+       smette di alimentare viene lasciato indietro invece di essere ritentato;
+       gli slot disabilitati vengono saltati, anche al primo tentativo dopo
+       l'avvio. Tutti gli slot condividono la stessa
        identità di login (nominativo/SSID/passcode/filtro). Il pannello indica
        lo slot in uso
    * - Statistiche per motivo di scarto

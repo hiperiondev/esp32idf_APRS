@@ -83,8 +83,9 @@ The APRS-IS client task
   getting evicted, a blackholed route, or a peer that stops sending without
   ever closing the connection. The RX loop tracks the timestamp of the last
   byte actually read off the socket and, if none arrives for
-  ``IGATE_RX_SILENCE_US`` (90 s), logs a warning and closes the socket so the
-  normal reconnect path runs. 90 s is comfortably above the ``#`` comment
+  ``IGATE_RX_SILENCE_US`` (90 s), logs a warning and ends the session through
+  the failover path, so the next attempt goes to the following slot instead of
+  back to the server that went quiet. 90 s is comfortably above the ``#`` comment
   cadence servers following `aprs-is.net's connection guidance
   <https://www.aprs-is.net/Connecting.aspx>`_ send whenever the channel is
   otherwise quiet - that comment line is what keeps an idle-but-healthy link
@@ -124,9 +125,20 @@ only after a failure: clearing a slot's checkbox takes it out of service
 immediately. If no slot at all is enabled the task falls back to slot 1, so it
 always has a concrete destination to attempt and log.
 
-An established connection does not rotate the selection: if the server closes
-the link, the task retries the same slot first, and only moves on when that
-fresh attempt also fails.
+An established session rotates the selection on exactly the same terms. A
+session that ends on the server side — the peer closing the link, a ``recv()``
+error, or the dead-link timer above expiring on a link that has stopped
+delivering anything — calls ``advanceServer()`` too, then closes the socket and
+waits the same 1 second before dialling the next slot. All of those endings say
+the server has stopped carrying this station, so a slot that accepts a session
+and then fails to sustain it — one in maintenance, one whose load balancer has
+no live backend — is left behind rather than dialled again.
+
+Tear-downs the station itself asks for keep the current slot: the uplink no
+longer being needed, the network route going away, and
+``igate_request_reconnect()`` after a settings change say nothing about the
+server, and rotating on them would move the station off a working slot every
+time the operator saves the IGate page.
 
 The dashboard shows the host and port of the slot in use at that moment
 (``igate_get_current_server()``), so which server a failover landed on is

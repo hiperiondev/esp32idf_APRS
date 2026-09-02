@@ -1344,39 +1344,25 @@ void igate_request_filter_update(void) {
 }
 
 // Index into g_config.aprs_server of the slot the next connectAprsIs() call
-// will try. Advanced by advanceServer() every time a connection attempt
-// fails, so the rotation keeps moving forward across calls instead of
+// will try. Advanced by advanceServer() every time the selected server fails
+// to carry this station - either because a connection attempt never got as
+// far as a session, or because a session it did accept then ended on the
+// server side - so the rotation keeps moving forward across calls instead of
 // hammering the same failed server; wraps back to the first enabled slot
 // after the last one, giving the failover an endless round-robin.
 static uint8_t s_serverIdx = 0;
 
-// esp_timer_get_time() timestamp (microseconds) at which the currently (or
-// most recently) published socket completed login in connectAprsIs(). Used
-// by the RX loop to tell a server that accepts the login and then drops the
-// session almost immediately - a full server, one in maintenance, a load
-// balancer with no live backend - apart from a normal link that simply drops
-// after a long, healthy run. Only the former should trigger a failover.
-static int64_t s_sessionStartUs = 0;
-
 // esp_timer_get_time() timestamp (microseconds) of the most recent byte
-// actually read off the APRS-IS socket, set alongside s_sessionStartUs when
-// a session starts and refreshed on every recv() that returns data -
-// including server comment lines starting with '#', since a quiet channel
-// with nothing to gate still produces those on a healthy link. This is the
-// only signal that distinguishes a socket that is merely idle from one whose
-// far end has gone silent: unlike net_state_is_connected(), which only
-// catches the station's own Wi-Fi dropping, this catches the link staying
-// nominally "connected" while nothing is actually flowing - an evicted NAT
-// mapping, a blackholed route, or a peer that hung without a FIN.
+// actually read off the APRS-IS socket, seeded when a session starts and
+// refreshed on every recv() that returns data - including server comment
+// lines starting with '#', since a quiet channel with nothing to gate still
+// produces those on a healthy link. This is the only signal that
+// distinguishes a socket that is merely idle from one whose far end has gone
+// silent: unlike net_state_is_connected(), which only catches the station's
+// own Wi-Fi dropping, this catches the link staying nominally "connected"
+// while nothing is actually flowing - an evicted NAT mapping, a blackholed
+// route, or a peer that hung without a FIN.
 static int64_t s_lastRxUs = 0;
-
-// A session shorter than this is treated as the connected server rejecting
-// or failing to sustain the link rather than a transient network blip, and
-// triggers an immediate failover to the next enabled slot. Long enough that
-// a normal link dropping after hours of healthy use stays pinned to its
-// server, short enough that a server which accepts and immediately closes
-// is not retried for minutes before the rotation moves on.
-#define IGATE_MIN_SESSION_US (60LL * 1000000LL)
 
 // Longest stretch the RX loop tolerates with nothing at all read off the
 // socket before treating the link as dead and forcing a reconnect. Servers
@@ -1402,19 +1388,28 @@ static void advanceServer(void) {
     app_config_unlock();
 }
 
-// Called right after a post-login session ends (server closed the connection
-// or recv() failed). A session shorter than IGATE_MIN_SESSION_US means the
-// server accepted the login and then dropped the link almost immediately, so
-// this rotates to the next enabled slot exactly like a connection-establishment
-// failure does; a session that ran longer than that is left pinned to its
-// current slot, since a healthy link dropping after a long run is not a
-// reason to abandon an otherwise-working server.
-static void failoverIfShortSession(void) {
-    int64_t elapsed = esp_timer_get_time() - s_sessionStartUs;
-    if (elapsed < IGATE_MIN_SESSION_US) {
-        ESP_LOGW(TAG, "APRS-IS session lasted %lld ms, failing over to next APRS-IS server", (long long)(elapsed / 1000));
-        advanceServer();
-    }
+// Ends a session that stopped working on the server side - the peer closed
+// the link, recv() reported an error, or the RX silence timer expired - by
+// rotating to the next enabled slot and then dropping the socket. All three
+// endings say the same thing about the selected server: it is no longer
+// carrying this station's traffic. Rotating on them, exactly as a connection
+// that never got established does, is what stops a server which accepts a
+// session and then fails to sustain it - one in maintenance, one whose load
+// balancer has no live backend, one that has quietly stopped feeding - from
+// holding the station on itself. The one-second wait matches the interval
+// between connection attempts, so a slot that accepts and immediately closes
+// is retried at the same steady cadence as one that refuses outright instead
+// of spinning through the rotation as fast as TCP handshakes complete.
+//
+// Sessions the station itself ends do not come through here: the uplink no
+// longer being needed, the network going away, and a settings change asking
+// for a reconnect say nothing about the server, and rotating on them would
+// move the station off a working slot every time the operator saves the
+// IGate page.
+static void endSessionAndFailover(void) {
+    advanceServer();
+    closeSocket();
+    vTaskDelay(pdMS_TO_TICKS(1000));
 }
 
 // Copies the server slot connectAprsIs() should try right now into *host/
@@ -1698,15 +1693,13 @@ static bool connectAprsIs(void) {
     ensureSockMutex();
     xSemaphoreTake(s_sockMutex, portMAX_DELAY);
     s_sock = sock;
-    s_sessionStartUs = esp_timer_get_time();
     // Seeded here, not left at 0, so a server that accepts the login and then
     // sends nothing further is caught by the same silence timer as a link
     // that goes quiet mid-session - the RX loop's very first pass already has
-    // a meaningful "last heard from" instant to measure against. A banner
-    // read that actually returned bytes is itself a genuine sign of life, so
-    // it refreshes this timestamp again rather than leaving it at the moment
-    // the login line was sent.
-    s_lastRxUs = (rlen > 0) ? esp_timer_get_time() : s_sessionStartUs;
+    // a meaningful "last heard from" instant to measure against. Whether or
+    // not the banner read returned bytes, the instant this session became
+    // usable is the right starting point to measure silence from.
+    s_lastRxUs = esp_timer_get_time();
     xSemaphoreGive(s_sockMutex);
     ESP_LOGI(TAG, "Connected to APRS-IS %s:%u as %s", cfg_host, (unsigned)cfg_port, cfg_identity);
     trafficlog_add("Connected to APRS-IS %s:%u as %s", cfg_host, (unsigned)cfg_port, cfg_identity);
@@ -1793,13 +1786,13 @@ static void igateTask(void *arg) {
         // net_state_is_connected() can see, since Wi-Fi itself stays
         // associated throughout. A healthy link never goes this long without
         // at least a server '#' comment, so exceeding IGATE_RX_SILENCE_US
-        // means the other end is no longer actually feeding this station;
-        // closing here hands off to the same reconnect path used for every
-        // other kind of drop.
+        // means the other end is no longer actually feeding this station -
+        // a server-side failure like any other, so the session ends through
+        // the failover path rather than re-dialling the same slot.
         if (esp_timer_get_time() - s_lastRxUs > IGATE_RX_SILENCE_US) {
-            ESP_LOGW(TAG, "No data received from APRS-IS for over %lld s, reconnecting", (long long)(IGATE_RX_SILENCE_US / 1000000LL));
-            trafficlog_add("APRS-IS link silent for over %lld s, reconnecting", (long long)(IGATE_RX_SILENCE_US / 1000000LL));
-            closeSocket();
+            ESP_LOGW(TAG, "No data received from APRS-IS for over %lld s, failing over to next APRS-IS server", (long long)(IGATE_RX_SILENCE_US / 1000000LL));
+            trafficlog_add("APRS-IS link silent for over %lld s, failing over to next server", (long long)(IGATE_RX_SILENCE_US / 1000000LL));
+            endSessionAndFailover();
             continue;
         }
 
@@ -1853,14 +1846,12 @@ static void igateTask(void *arg) {
             s_lastRxUs = esp_timer_get_time();
             feedAprsIsBytes(buf, r, line, sizeof(line), &linePos, &discarding, processAprsIsLine);
         } else if (r == 0) {
-            ESP_LOGW(TAG, "APRS-IS connection closed by server");
-            trafficlog_add("APRS-IS connection closed by server");
-            failoverIfShortSession();
-            closeSocket();
+            ESP_LOGW(TAG, "APRS-IS connection closed by server, failing over to next APRS-IS server");
+            trafficlog_add("APRS-IS connection closed by server, failing over to next server");
+            endSessionAndFailover();
         } else if (errno != EAGAIN && errno != EWOULDBLOCK && errno != ETIMEDOUT) {
-            ESP_LOGW(TAG, "recv() error errno %d", errno);
-            failoverIfShortSession();
-            closeSocket();
+            ESP_LOGW(TAG, "recv() error errno %d, failing over to next APRS-IS server", errno);
+            endSessionAndFailover();
         }
         // EAGAIN/timeout: just loop, gives the "igate_en toggled off" check a chance to run.
     }

@@ -88,7 +88,8 @@ La tarea cliente de APRS-IS
   de enviar sin llegar a cerrar la conexión. El bucle de recepción registra la
   marca de tiempo del último byte realmente leído del socket y, si no llega
   nada durante ``IGATE_RX_SILENCE_US`` (90 s), registra una advertencia y
-  cierra el socket para que corra la ruta normal de reconexión. 90 s queda
+  termina la sesión por la ruta de conmutación, así que el siguiente intento va
+  a la ranura siguiente y no de vuelta al servidor que se quedó callado. 90 s queda
   cómodamente por encima de la cadencia de líneas ``#`` que envían los
   servidores que siguen la `guía de conexión de aprs-is.net
   <https://www.aprs-is.net/Connecting.aspx>`_ cuando el canal está por lo
@@ -131,9 +132,21 @@ retira del servicio de inmediato. Si no hay ninguna ranura habilitada, la tarea
 recae en la ranura 1, de modo que siempre tiene un destino concreto que intentar
 y registrar.
 
-Una conexión ya establecida no hace rotar la selección: si el servidor cierra el
-enlace, la tarea reintenta primero la misma ranura, y solo pasa a la siguiente
-cuando ese nuevo intento también falla.
+Una sesión ya establecida hace rotar la selección con los mismos criterios. Una
+sesión que termina del lado del servidor —el par cerrando el enlace, un error de
+``recv()``, o el temporizador de enlace muerto de más arriba venciendo sobre un
+enlace que dejó de entregar nada— también llama a ``advanceServer()``, después
+cierra el socket y espera el mismo 1 segundo antes de marcar la ranura
+siguiente. Todos esos finales dicen que el servidor dejó de sostener a esta
+estación, así que una ranura que acepta una sesión y luego no la sostiene —una
+en mantenimiento, una cuyo balanceador de carga no tiene backend vivo— queda
+atrás en vez de volver a marcarse.
+
+Los cierres que pide la propia estación conservan la ranura actual: que el
+enlace de subida ya no haga falta, que se caiga la ruta de red, y
+``igate_request_reconnect()`` tras un cambio de configuración no dicen nada
+sobre el servidor, y rotar por ellos movería a la estación fuera de una ranura
+que funciona cada vez que el operador guarda la página IGate.
 
 El panel muestra el host y el puerto de la ranura en uso en ese momento
 (``igate_get_current_server()``), así que se ve de un vistazo en qué servidor se

@@ -600,8 +600,8 @@ APRS-IS gatewaying
      - ✅
      - The filter string is checked for grammar before it is sent — term shape and argument type — while the range and sanity of the values are left to the server, which is authoritative.
    * - Server failover
-     - ⚠️
-     - Four server slots with automatic reconnection. Rotation happens on a failure to establish a session; a server that accepts a connection and then drops it is retried rather than skipped, so a server in maintenance can hold the station until it recovers.
+     - ✅
+     - Four server slots with automatic reconnection. The rotation moves on whenever the selected server stops carrying the station — a connection that never establishes, a session the server closes, a receive error, or a link that falls silent past the dead-link timeout — so a server in maintenance is left behind instead of holding the station. Tear-downs the station itself asks for, such as saving the page, keep the current slot.
 
 Summary
 =======
