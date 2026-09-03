@@ -67,6 +67,12 @@ static const char *TAG = "beacon_sched";
 // radio RX and APRS-IS tasks the queries arrive on, whose stacks are a
 // fraction of this one. Those tasks only parse and queue; this budget is what
 // covers the build and the transmission.
+//
+// 14336 is set with headroom rather than trimmed to a measured minimum, the
+// same way GPS_TASK_STACK_BYTES and the httpd config.stack_size are: the
+// per-level buffers cited above are worst-case sizes read from the call tree,
+// not a captured high-water mark. Use uxTaskGetStackHighWaterMark() on this
+// task (logged every pass below) before lowering it.
 #define BEACON_SCHED_TASK_STACK_BYTES 14336
 
 // Upper bound on how long the scheduler sleeps between passes. Even when every

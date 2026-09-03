@@ -150,6 +150,19 @@ Task map
      - IDF
      - Wi-Fi reconnect back-off
 
+``beacon_sched`` and ``aprs_svc_tick`` are both created unconditionally inside
+``aprs_service_start()``, i.e. before ``modem_init()``, the Telegram bot, and
+``httpd`` — so their combined 24576 B is committed at boot regardless of
+whether the operator has the modem or Telegram enabled for that boot. Both are
+core, always-needed services, so starting them unconditionally is correct; only
+their *sizes* are sized with headroom rather than trimmed to a measured
+minimum, the same way ``GPS_TASK_STACK_BYTES`` and the ``httpd``
+``config.stack_size`` are (see ``BEACON_SCHED_TASK_STACK_BYTES`` in
+``beacon_scheduler.c`` and ``APRS_SVC_TICK_TASK_STACK_BYTES`` in
+``aprs_service.c``). Both tasks log their ``uxTaskGetStackHighWaterMark()`` at
+``ESP_LOGD`` every pass, which is the tool to right-size them against real
+on-air traffic before lowering either constant.
+
 Data flow
 =========
 

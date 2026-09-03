@@ -151,6 +151,20 @@ Mapa de tareas
      - IDF
      - retroceso de reconexión Wi-Fi
 
+``beacon_sched`` y ``aprs_svc_tick`` se crean ambos incondicionalmente dentro de
+``aprs_service_start()``, es decir, antes de ``modem_init()``, el bot de
+Telegram y ``httpd`` — así que sus 24576 B combinados se comprometen en el
+arranque sin importar si el operador tiene el módem o Telegram habilitados en
+ese arranque. Ambos son servicios centrales, siempre necesarios, así que
+iniciarlos incondicionalmente es correcto; solo sus *tamaños* se dimensionan
+con margen en lugar de recortarse a un mínimo medido, del mismo modo que
+``GPS_TASK_STACK_BYTES`` y el ``config.stack_size`` de ``httpd`` (ver
+``BEACON_SCHED_TASK_STACK_BYTES`` en ``beacon_scheduler.c`` y
+``APRS_SVC_TICK_TASK_STACK_BYTES`` en ``aprs_service.c``). Ambas tareas
+registran su ``uxTaskGetStackHighWaterMark()`` en ``ESP_LOGD`` en cada pasada,
+que es la herramienta para dimensionar correctamente ambas constantes contra
+tráfico real en el aire antes de reducirlas.
+
 Flujo de datos
 ==============
 

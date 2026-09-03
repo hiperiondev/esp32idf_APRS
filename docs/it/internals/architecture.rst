@@ -152,6 +152,20 @@ Mappa dei task
      - IDF
      - back-off di riconnessione Wi-Fi
 
+``beacon_sched`` e ``aprs_svc_tick`` vengono entrambi creati incondizionatamente
+dentro ``aprs_service_start()``, cioè prima di ``modem_init()``, del bot
+Telegram e di ``httpd`` — quindi i loro 24576 B combinati vengono impegnati
+all'avvio indipendentemente dal fatto che l'operatore abbia il modem o Telegram
+abilitati per quell'avvio. Entrambi sono servizi centrali, sempre necessari,
+quindi avviarli incondizionatamente è corretto; solo le loro *dimensioni* sono
+dimensionate con margine anziché ridotte a un minimo misurato, allo stesso modo
+di ``GPS_TASK_STACK_BYTES`` e del ``config.stack_size`` di ``httpd`` (vedi
+``BEACON_SCHED_TASK_STACK_BYTES`` in ``beacon_scheduler.c`` e
+``APRS_SVC_TICK_TASK_STACK_BYTES`` in ``aprs_service.c``). Entrambi i task
+registrano il loro ``uxTaskGetStackHighWaterMark()`` a livello ``ESP_LOGD`` a
+ogni passata, che è lo strumento per dimensionare correttamente entrambe le
+costanti rispetto al traffico reale in aria prima di ridurle.
+
 Flusso dei dati
 ===============
 

@@ -63,6 +63,23 @@
 
 static const char *TAG = "aprs_service";
 
+// Stack budget for serviceTickTask (the 1 Hz housekeeping tick started by
+// aprs_service_start()). Its own per-pass work (heap_monitor_tick_1hz(),
+// weather_service_1hz(), telemetry_service_1hz(), time_sync_1hz(),
+// telegram_app_tick_1hz(), winlink_tick_1hz()) is shallow bookkeeping, but
+// when g_config.msg_enable is set the pass also calls sendAPRSMessageRetry(),
+// which walks the same TNC2/AX.25 encode chain
+// (aprs_service_send_tnc2 -> modem_send_tnc2 -> modem_build_frame_tnc2 ->
+// ax25_encode/hdlcFrame) the beacon scheduler sizes BEACON_SCHED_TASK_STACK_BYTES
+// for. That TX path, not the housekeeping calls around it, is what sets this
+// budget.
+//
+// Set with headroom rather than trimmed to a measured minimum, the same way
+// BEACON_SCHED_TASK_STACK_BYTES, GPS_TASK_STACK_BYTES and the httpd
+// config.stack_size are. Use uxTaskGetStackHighWaterMark() on this task
+// (logged every pass in serviceTickTask) before lowering it.
+#define APRS_SVC_TICK_TASK_STACK_BYTES 10240
+
 // Destination call this station's own INET->RF third-party frames key up
 // under, matching the destination every other own-originated packet type
 // (beacon, weather, telemetry, bulletins, objects/items) uses.
@@ -1769,6 +1786,9 @@ static void serviceTickTask(void *arg) {
 
         if (g_config.msg_enable)
             sendAPRSMessageRetry();
+
+        ESP_LOGD(TAG, "aprs_svc_tick stack free: %u bytes", (unsigned)(uxTaskGetStackHighWaterMark(NULL) * sizeof(StackType_t)));
+
         vTaskDelay(pdMS_TO_TICKS(1000));
     }
 }
@@ -2197,15 +2217,9 @@ void aprs_service_start(void) {
 
     // The modem runs its own RX DSP and TX service tasks (see the note above
     // serviceTickTask); the only task this layer needs for itself is the 1 Hz
-    // housekeeping tick below.
-    //
-    // sendAPRSMessageRetry() walks the same TX chain as the beacon services
-    // (aprs_service_send_tnc2 -> modem_send_tnc2 -> modem_build_frame_tnc2 ->
-    // ax25_encode/hdlcFrame), which stacks several ~300-450 byte buffers per
-    // level. Give it the same stack budget those paths were sized for (see
-    // BEACON_SCHED_TASK_STACK_BYTES in beacon_scheduler.c), rather than a
-    // housekeeping-only budget that the TX chain would overflow.
-    xTaskCreate(serviceTickTask, "aprs_svc_tick", 10240, NULL, 4, NULL);
+    // housekeeping tick below. See APRS_SVC_TICK_TASK_STACK_BYTES above for
+    // why it needs the budget it does.
+    xTaskCreate(serviceTickTask, "aprs_svc_tick", APRS_SVC_TICK_TASK_STACK_BYTES, NULL, 4, NULL);
 
     ESP_LOGI(TAG, "APRS service started (digi=%d igate=%d msg=%d)", g_config.digi_en, g_config.igate_en, g_config.msg_enable);
 }
