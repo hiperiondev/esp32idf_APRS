@@ -8,15 +8,16 @@ publish on Read the Docs.
 ## Layout
 
 ```
-docs/
-├── root/index.html      language-chooser landing page ("first page")
-├── _shared/conf_base.py shared Sphinx config (theme, extensions, language switcher)
-├── en/                  English source tree (conf.py + .rst + _static/)
-├── es/                  Spanish source tree (conf.py + .rst + _static/)
-├── it/                  Italian source tree (conf.py + .rst + _static/)
-├── requirements.txt     Sphinx + Breeze theme pins
-├── build_all.py         builds all three trees into ./_site
-└── .readthedocs.yaml    Read the Docs build config
+esp32_APRS_igate/
+├── .readthedocs.yaml    Read the Docs build config (repo root, not docs/)
+└── docs/
+    ├── root/index.html      language-chooser landing page ("first page")
+    ├── _shared/conf_base.py shared Sphinx config (theme, extensions, language switcher)
+    ├── en/                  English source tree (conf.py + .rst + _static/)
+    ├── es/                  Spanish source tree (conf.py + .rst + _static/)
+    ├── it/                  Italian source tree (conf.py + .rst + _static/)
+    ├── requirements.txt     Sphinx + Breeze theme pins
+    └── build_all.py         builds all three trees into ./_site
 ```
 
 Each language tree carries its own `_static/` (identical copies of `custom.css`,

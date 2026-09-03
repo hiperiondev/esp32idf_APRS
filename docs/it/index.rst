@@ -129,6 +129,7 @@ insieme di capitoli:
    :maxdepth: 2
    :caption: Per iniziare
 
+   overview
    hardware
    getting-started
 

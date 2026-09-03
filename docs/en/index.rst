@@ -115,6 +115,7 @@ chapters:
    :maxdepth: 2
    :caption: Getting Started
 
+   overview
    hardware
    getting-started
 

@@ -5,8 +5,8 @@ Source Map
 ==========
 
 A tour of the repository, so you know where to look. Sizes are approximate.
-First-party C totals ~63 k lines across ``main/`` + ``components/`` (excluding
-``managed_components/``), of which ~6.8 k is the modem component and ~16.4 k is
+First-party C totals ~69 k lines across ``main/`` + ``components/`` (excluding
+``managed_components/``), of which ~7.1 k is the modem component and ~18.9 k is
 the web admin.
 
 Repository layout

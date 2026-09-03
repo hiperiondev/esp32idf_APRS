@@ -5,9 +5,9 @@ Mapa del código fuente
 ======================
 
 Un recorrido por el repositorio, para que sepas dónde mirar. Los tamaños son
-aproximados. El C de primera parte suma ~63 k líneas entre ``main/`` +
-``components/`` (excluyendo ``managed_components/``), de las cuales ~6,8 k son el
-componente del módem y ~16,4 k la administración web.
+aproximados. El C de primera parte suma ~69 k líneas entre ``main/`` +
+``components/`` (excluyendo ``managed_components/``), de las cuales ~7,1 k son el
+componente del módem y ~18,9 k la administración web.
 
 Disposición del repositorio
 ===========================

@@ -17,6 +17,7 @@ file the firmware writes:
 * ``/storage/bulletins.json`` — the five bulletins.
 * ``/storage/objitems.json`` — the five objects/items.
 * ``/storage/telegram.json`` — the Telegram bot's whole configuration.
+* ``/storage/winlink.json`` — the replies the Winlink service has sent back.
 
 The *Storage* web page is a full LittleFS browser: it lists files with sizes,
 downloads (``GET /download?file=…``), deletes (``POST /delete`` with the
@@ -45,7 +46,7 @@ buffer mid-write, which on a fragmented heap is a subtle source of intermittent
 double-exception crashes. The buffer they install is one shared 512-byte static
 object defined in ``main/json_store.c``: the filesystem-wide writer gate
 (``storage_write_lock()``) means only one save can be in flight at a time, so a
-single buffer serves all five stores.
+single buffer serves all six stores.
 
 Loading is done with **cJSON**; missing or corrupt files fall back to defaults
 that are then immediately saved, so each file always exists and is consistent.

@@ -130,6 +130,7 @@ de capítulos:
    :maxdepth: 2
    :caption: Primeros pasos
 
+   overview
    hardware
    getting-started
 

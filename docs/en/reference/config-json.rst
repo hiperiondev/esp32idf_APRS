@@ -51,7 +51,7 @@ Other persistent files
 
 All six use the same streaming writer, each under its own mutex, each with an
 explicit ``setvbuf()`` to avoid a lazy large stdio-buffer allocation mid-write.
-The ``setvbuf()`` buffer is a single static object shared by all five stores,
+The ``setvbuf()`` buffer is a single static object shared by all six stores,
 since the filesystem-wide writer gate keeps two saves from overlapping.
 
 Factory reset

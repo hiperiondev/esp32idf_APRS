@@ -17,6 +17,7 @@ archivo persistente que el firmware escribe:
 * ``/storage/bulletins.json`` — los cinco boletines.
 * ``/storage/objitems.json`` — los cinco objetos/ítems.
 * ``/storage/telegram.json`` — toda la configuración del bot de Telegram.
+* ``/storage/winlink.json`` — las respuestas que el servicio Winlink ha enviado.
 
 La página web *Storage* es un navegador LittleFS completo: lista archivos con
 tamaños, descarga (``GET /download?file=…``), borra (``POST /delete`` con el
@@ -47,7 +48,7 @@ que sobre un heap fragmentado es una fuente sutil de fallos intermitentes de
 doble excepción. El búfer que instalan es un único objeto estático de 512 bytes
 definido en ``main/json_store.c``: la compuerta de escritura de todo el sistema
 de archivos (``storage_write_lock()``) hace que solo un guardado esté en curso a
-la vez, así que un único búfer sirve a los cinco almacenes.
+la vez, así que un único búfer sirve a los seis almacenes.
 
 La carga se hace con **cJSON**; los archivos faltantes o corruptos recurren a
 valores por defecto que luego se guardan inmediatamente, de modo que cada archivo

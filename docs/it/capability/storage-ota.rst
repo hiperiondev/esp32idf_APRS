@@ -17,6 +17,7 @@ persistente che il firmware scrive:
 * ``/storage/bulletins.json`` — i cinque bollettini.
 * ``/storage/objitems.json`` — i cinque oggetti/item.
 * ``/storage/telegram.json`` — l'intera configurazione del bot Telegram.
+* ``/storage/winlink.json`` — le risposte inviate dal servizio Winlink.
 
 La pagina web *Storage* è un navigatore LittleFS completo: elenca i file con le
 dimensioni, scarica (``GET /download?file=…``), elimina (``POST /delete`` con
@@ -47,7 +48,7 @@ un heap frammentato è una fonte sottile di fallimenti intermittenti di doppia
 eccezione. Il buffer che installano è un unico oggetto statico da 512 byte
 definito in ``main/json_store.c``: il cancello di scrittura dell'intero
 filesystem (``storage_write_lock()``) fa sì che un solo salvataggio sia in corso
-per volta, quindi un unico buffer serve tutti e cinque gli store.
+per volta, quindi un unico buffer serve tutti e sei gli store.
 
 Il caricamento è fatto con **cJSON**; i file mancanti o corrotti ripiegano su
 valori predefiniti che vengono poi salvati immediatamente, così che ogni file
