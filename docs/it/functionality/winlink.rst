@@ -82,6 +82,27 @@ sessione diventi una raffica di trame su un canale condiviso. Un comando non
 confermato viene ritrasmesso due volte e poi la sessione viene abbandonata, con
 il motivo in evidenza sulla pagina.
 
+Tre task, una sessione
+----------------------
+
+Una sessione è guidata da tre punti contemporaneamente: la pagina web che
+l'operatore sta usando, il tick di servizio una volta al secondo che ritrasmette
+e invia il comando successivo in coda, e il percorso di ricezione che applica
+ogni risposta del servizio. Due mutex dentro
+``components/winlink/winlink.c`` impediscono che si pestino i piedi — uno sulla
+casella e uno sulla sessione vera e propria: lo stato, la coda dei comandi, il
+comando in sospeso e il suo contatore di ritentativi, il flag di composizione,
+i riferimenti temporali della sessione e il motivo del fallimento.
+
+Senza quel secondo lucchetto i sintomi visibili sono comandi persi o inviati due
+volte — un operatore che scrive mentre il tick ne sta prelevando uno dalla coda
+— e ripetizioni: una conferma che arriva a metà di un ritentativo può azzerare
+il comando in sospeso proprio mentre il ritentativo lo rimette in aria, cosicché
+il servizio vede un comando a cui aveva già risposto. Nessuno dei due lucchetti
+resta preso mentre una trama viene trasmessa o mentre la casella viene scritta
+in flash, quindi nulla di ciò che l'operatore fa sulla pagina attende la radio o
+il filesystem.
+
 Comandi
 -------
 

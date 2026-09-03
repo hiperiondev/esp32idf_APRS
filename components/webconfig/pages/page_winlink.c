@@ -385,10 +385,13 @@ esp_err_t page_winlink_status_get(httpd_req_t *req) {
     if (!web_check_auth(req))
         return ESP_OK;
 
-    // Twice the reason string's own width plus a terminator, since json_escape()
-    // can at worst double a character it has to escape.
+    // The reason is copied out of the session state under its lock, then
+    // escaped. Twice the reason string's own width plus a terminator, since
+    // json_escape() can at worst double a character it has to escape.
+    char err[WL_ERROR_MAX + 1];
+    winlink_last_error(err, sizeof(err));
     char err_esc[WL_ERROR_MAX * 2 + 1];
-    json_escape(winlink_last_error(), err_esc, sizeof(err_esc));
+    json_escape(err, err_esc, sizeof(err_esc));
 
     char resp[WL_STATUS_BUF];
     snprintf(resp, sizeof(resp), "{\"state\":\"%s\",\"remaining\":%u,\"queue\":%d,\"mailbox\":%d,\"error\":\"%s\"}", winlink_state_name(winlink_state()),

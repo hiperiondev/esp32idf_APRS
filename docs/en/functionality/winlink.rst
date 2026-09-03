@@ -79,6 +79,25 @@ becoming a burst of frames on a shared channel. A command that goes
 unacknowledged is retransmitted twice and then the session is abandoned, with
 the reason shown on the page.
 
+Three tasks, one session
+------------------------
+
+A session is driven from three places at once: the web page the operator is
+working, the once-a-second service tick that retransmits and sends the next
+queued command, and the receive path that applies every reply from the service.
+Two mutexes inside ``components/winlink/winlink.c`` keep them from treading on
+each other — one over the mailbox, one over the session itself: the state, the
+command queue, the outstanding command and its retry counter, the composition
+flag, the session timestamps and the failure reason.
+
+Without that second lock the visible symptoms are commands lost or sent twice —
+an operator typing while the tick is taking one off the queue — and replays: an
+acknowledgement arriving mid-retry can clear the outstanding command just as
+the retry puts it back on the air, so the service sees a command it has already
+answered. Neither lock is held while a frame is transmitted or while the
+mailbox is written to flash, so nothing an operator does on the page waits on
+the radio or on the filesystem.
+
 Commands
 --------
 

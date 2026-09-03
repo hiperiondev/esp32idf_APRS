@@ -60,6 +60,49 @@
  * turning into a burst of frames on a shared channel, and it is also what
  * makes the state machine reliable: every transition is driven by something
  * the service actually said, never by a local timer alone.
+ *
+ * @par Concurrency
+ * Three tasks drive one session, and every function below is safe to call from
+ * any of them:
+ *
+ * - The @b HTTP @b server task, through the command functions
+ *   (winlink_login(), winlink_logoff(), winlink_send_command() and the
+ *   shorthands built on it, winlink_compose_begin() and its companions,
+ *   winlink_mail_clear()), which the web admin's @c /winlink handlers call
+ *   while an operator works the page.
+ * - The @b service @b tick, through winlink_tick_1hz(), which retransmits,
+ *   expires and sends the next queued command once a second.
+ * - The @b receive @b path, through the observer this module registers with
+ *   message_set_rx_observer(), which applies every reply from the service to
+ *   the session.
+ *
+ * Two mutexes inside winlink.c keep the three apart. One covers the mailbox
+ * and nothing else; the other covers the whole session state machine - the
+ * state, the command queue and its indices, the outstanding command and its
+ * retry counter, the composition flag, the session timestamps, the challenge
+ * answer and the failure reason. Both are needed rather than one: the mailbox
+ * is written to flash on the receive path and a save must not stall an
+ * operator reading the session state or the tick deciding whether to
+ * retransmit.
+ *
+ * The session lock is what makes each of the operations below indivisible.
+ * Appending to the command queue is a read of the depth, a write of the slot it
+ * names and an increment, and the tick can be popping a command from the other
+ * end of that queue at the same moment; without the lock an operator typing
+ * while the tick transmits loses or duplicates a command. Applying an
+ * acknowledgement clears the outstanding command and resets the retry counter,
+ * which must not interleave with a retry the tick is part-way through, or the
+ * retry puts a command the service has already acknowledged back on the air.
+ * Abandoning a session clears the queue, which must not interleave with an
+ * append, or the depth is left counting commands that are no longer there.
+ *
+ * Neither lock is held across anything that blocks or reaches another
+ * subsystem, and the two are never held at once. A command is copied into a
+ * local buffer under the session lock and only put on the air after it is
+ * released, so sendAPRSMessage() is never called with a lock held; likewise the
+ * mailbox is saved after the session lock is released. Both locks are taken
+ * before storage_write_lock() and never after it, which is the ordering
+ * main/include/storage.h requires of every module that persists a file.
  */
 
 #ifndef WINLINK_H
@@ -100,8 +143,8 @@
 #define WL_MAIL_TEXT_MAX 68
 
 /**
- * @brief Longest reason string winlink_last_error() returns, terminating NUL
- * excluded.
+ * @brief Longest reason string winlink_last_error() copies out, terminating
+ * NUL excluded.
  *
  * @details Published so that a caller rendering the reason - the web admin's
  * status document escapes it into a JSON literal - can size its own buffer
@@ -149,7 +192,8 @@ typedef enum {
  * @brief Initialize the Winlink client. Call once at startup, after storage_init()
  * and after message_init(), and before winlink_tick_1hz() is first called.
  *
- * @details Loads the mailbox from @c /storage/winlink.json, registers the
+ * @details Creates the two mutexes that guard the mailbox and the session
+ * state, loads the mailbox from @c /storage/winlink.json, registers the
  * message observer that feeds replies to the state machine, and tells the
  * messaging engine which addressee is the Winlink service so that
  * ::app_config_t::wl_inet_only can keep the session off the air. The session
@@ -169,6 +213,10 @@ void winlink_init(void);
  * command when the channel has been quiet long enough, and queues the periodic
  * listing when ::app_config_t::wl_poll_min asks for one. A no-op while the
  * client is disabled.
+ *
+ * Takes the session lock for the bookkeeping and releases it before the
+ * command it decides to send reaches the air, so an operator working the web
+ * page never waits on a transmission.
  */
 void winlink_tick_1hz(void);
 
@@ -200,12 +248,20 @@ winlink_state_t winlink_state(void);
 const char *winlink_state_name(winlink_state_t s);
 
 /**
- * @brief Why the session was abandoned.
- * @return The reason recorded when the state last became ::WL_STATE_ERROR, or
- *         an empty string when no session has failed since the last successful
- *         login. Never NULL.
+ * @brief Copy out why the session was abandoned.
+ *
+ * @details The reason recorded when the state last became ::WL_STATE_ERROR, or
+ * an empty string when no session has failed since the last successful login.
+ * Copied rather than returned by pointer because the reason is rewritten by
+ * whichever task abandons the session, so a caller holding a pointer into it
+ * could read a string being replaced under it.
+ *
+ * @param out      Destination buffer, always NUL-terminated. Size it from
+ *                 ::WL_ERROR_MAX to be sure the reason is never cut short.
+ * @param out_size Size of @p out, in bytes.
+ * @return Number of bytes written, excluding the terminating NUL.
  */
-const char *winlink_last_error(void);
+size_t winlink_last_error(char *out, size_t out_size);
 
 /**
  * @brief How much of the local session lifetime is left.

@@ -29,6 +29,26 @@
 // Second, no function here blocks or touches the filesystem on the 1 Hz tick;
 // the mailbox is written from the observer, which runs on the receive path,
 // and only when it has something new to store.
+//
+// Three tasks reach into this module and two mutexes keep them apart. s_lock
+// covers the mailbox (s_mail[] and s_mail_seq) and nothing else. s_sess_lock
+// covers the whole session state machine: the state itself, the command queue,
+// the outstanding command and its retry counter, the composition flag, the
+// session timestamps, the challenge answer and the failure reason. The HTTP
+// server task enters through the public command functions, the 1 Hz service
+// tick enters through winlink_tick_1hz(), and the receive path enters through
+// the observer registered with message_set_rx_observer(); each of the three
+// takes s_sess_lock for as long as it needs that state and for no longer.
+//
+// Neither lock is held across work that blocks or reaches another subsystem,
+// and the two are never held at the same time, so there is no order between
+// them to get wrong. Both are taken before storage_write_lock() and never
+// after it, which is the ordering main/include/storage.h requires. A command
+// reaches the air only once s_sess_lock has been released: the state machine
+// copies it into a caller-owned buffer while it still holds the lock, and
+// flush_tx() calls sendAPRSMessage() from outside. The mailbox is written the
+// same way, the observer releasing s_sess_lock before store_reply() takes
+// s_lock and saves.
 
 #include <ctype.h>
 #include <stdio.h>
@@ -91,6 +111,10 @@ static const char *TAG = "winlink";
 
 #define WL_ANSWER_PAD 3
 
+// Width of the buffer a caller lends the state machine to carry one command
+// out from under the session lock to sendAPRSMessage().
+#define WL_TX_BUF_SIZE (APRS_MSG_TEXT_STD_MAX + 1)
+
 _Static_assert(WL_MAIL_JSON_ENTRY_MAX >= 64 + 20 + 20 + (WL_MAIL_TEXT_MAX * 2 - 1) + 1, "WL_MAIL_JSON_ENTRY_MAX is too small for the mailbox field widths");
 
 typedef struct {
@@ -100,9 +124,15 @@ typedef struct {
     bool used;
 } wl_mail_t;
 
+// Mailbox. Covered by s_lock, which covers nothing else.
 static wl_mail_t s_mail[WL_MAIL_MAX];
 static uint32_t s_mail_seq = 0;
 static SemaphoreHandle_t s_lock = NULL;
+
+// Session state machine. Everything from here to the end of the command queue
+// below is covered by s_sess_lock and is read or written from three tasks: the
+// HTTP server, the 1 Hz service tick and the receive path.
+static SemaphoreHandle_t s_sess_lock = NULL;
 
 static winlink_state_t s_state = WL_STATE_DISABLED;
 static time_t s_session_started = 0;
@@ -134,6 +164,19 @@ static void lock(void) {
 
 static void unlock(void) {
     json_store_lock_give(&s_lock);
+}
+
+// The session lock. Held only for the bookkeeping itself: never across
+// sendAPRSMessage(), never across a mailbox save, and never at the same time
+// as s_lock, so the only ordering rule it takes part in is the one in
+// main/include/storage.h - module lock first, storage_write_lock() second.
+static void session_lock(void) {
+    json_store_lock_ensure(&s_sess_lock);
+    json_store_lock_take(&s_sess_lock);
+}
+
+static void session_unlock(void) {
+    json_store_lock_give(&s_sess_lock);
 }
 
 // ---------------------------------------------------------------------------
@@ -330,6 +373,7 @@ const char *winlink_state_name(winlink_state_t s) {
     return "unknown";
 }
 
+// Entered with s_sess_lock held.
 static void set_state(winlink_state_t s) {
     if (s_state == s)
         return;
@@ -337,11 +381,13 @@ static void set_state(winlink_state_t s) {
     s_state = s;
 }
 
+// Entered with s_sess_lock held.
 static void queue_clear(void) {
     s_q_head = 0;
     s_q_count = 0;
 }
 
+// Entered with s_sess_lock held.
 static void session_fail(const char *why) {
     strncpy(s_error, why, sizeof(s_error) - 1);
     s_error[sizeof(s_error) - 1] = 0;
@@ -354,6 +400,7 @@ static void session_fail(const char *why) {
     ESP_LOGW(TAG, "session abandoned: %s", why);
 }
 
+// Entered with s_sess_lock held.
 static void session_close(void) {
     s_outstanding[0] = 0;
     s_tries_left = 0;
@@ -440,7 +487,10 @@ static bool sanitize_command(const char *src, char *dst, size_t dst_size) {
     return dst[0] != 0;
 }
 
-// Appends one already-sanitized command. The caller has checked the state.
+// Appends one already-sanitized command. Entered with s_sess_lock held, which
+// is what makes the read of s_q_count, the write of the slot it names and the
+// increment a single step: the tick can be popping a command at the same
+// moment an operator is queuing one. The caller has checked the state.
 static bool queue_push(const char *cmd) {
     if (s_q_count >= WL_CMD_QUEUE_SIZE) {
         ESP_LOGW(TAG, "command queue full, dropping: %s", cmd);
@@ -453,6 +503,7 @@ static bool queue_push(const char *cmd) {
     return true;
 }
 
+// Entered with s_sess_lock held, for the reason queue_push() gives.
 static bool queue_pop(char *out, size_t out_size) {
     if (s_q_count == 0)
         return false;
@@ -464,7 +515,10 @@ static bool queue_pop(char *out, size_t out_size) {
 }
 
 int winlink_queue_depth(void) {
-    return s_q_count;
+    session_lock();
+    int n = s_q_count;
+    session_unlock();
+    return n;
 }
 
 // ---------------------------------------------------------------------------
@@ -527,18 +581,44 @@ static bool parse_challenge(const char *text, char *out, size_t out_size) {
 // Transmission
 // ---------------------------------------------------------------------------
 
-static void transmit(const char *cmd) {
-    strncpy(s_outstanding, cmd, sizeof(s_outstanding) - 1);
-    s_outstanding[sizeof(s_outstanding) - 1] = 0;
+// Records a command as the outstanding one and copies it into the caller's
+// buffer, from where flush_tx() puts it on the air once the session lock has
+// been released. Entered with s_sess_lock held.
+//
+// Marking the command outstanding before it is actually transmitted is what
+// keeps the window between the two harmless: any other task that looks at the
+// session in that window sees a command in flight and waits, which is the
+// conservative reading of the one-command-at-a-time rule.
+static void transmit_locked(const char *cmd, char *pending, size_t pending_size) {
+    // The retry path hands back the outstanding command itself, so the copy is
+    // skipped when source and destination are the same buffer.
+    if (cmd != s_outstanding) {
+        strncpy(s_outstanding, cmd, sizeof(s_outstanding) - 1);
+        s_outstanding[sizeof(s_outstanding) - 1] = 0;
+    }
     s_last_tx = time(NULL);
-    sendAPRSMessage(g_config.wl_service_call, s_outstanding);
+    strncpy(pending, s_outstanding, pending_size - 1);
+    pending[pending_size - 1] = 0;
+}
+
+// Puts the command transmit_locked() copied out on the air, if there is one.
+// Entered with no lock held: sendAPRSMessage() reaches into the messaging
+// engine, which builds and queues a frame of its own, and no lock of this
+// module may be held across it.
+static void flush_tx(char *pending) {
+    if (pending[0] == 0)
+        return;
+    sendAPRSMessage(g_config.wl_service_call, pending);
+    pending[0] = 0;
 }
 
 // ---------------------------------------------------------------------------
 // Public session control
 // ---------------------------------------------------------------------------
 
-bool winlink_login(void) {
+// Entered with s_sess_lock held. The command that opens the session is copied
+// into pending for the caller to transmit after unlocking.
+static bool login_locked(char *pending, size_t pending_size) {
     if (!client_usable())
         return false;
     if (s_state != WL_STATE_IDLE && s_state != WL_STATE_ERROR)
@@ -550,23 +630,14 @@ bool winlink_login(void) {
     s_tries_left = WL_CMD_TRIES;
     s_session_started = time(NULL);
     set_state(WL_STATE_LOGIN_SENT);
-    transmit(WL_CMD_LOGIN);
+    transmit_locked(WL_CMD_LOGIN, pending, pending_size);
     return true;
 }
 
-bool winlink_logoff(void) {
-    if (s_state != WL_STATE_LOGGED_IN && s_state != WL_STATE_COMPOSING)
-        return false;
-    // Whatever is still queued belonged to the session being closed, so it goes
-    // with it rather than trailing the log-off out onto the channel.
-    queue_clear();
-    if (!queue_push(WL_CMD_LOGOFF))
-        return false;
-    set_state(WL_STATE_LOGGING_OFF);
-    return true;
-}
-
-bool winlink_send_command(const char *cmd) {
+// Entered with s_sess_lock held. The state test and the queue append are one
+// step under that lock: a command accepted against a state another task is
+// about to leave would be queued into a session that no longer wants it.
+static bool send_command_locked(const char *cmd, char *pending, size_t pending_size) {
     if (!client_usable())
         return false;
 
@@ -577,7 +648,7 @@ bool winlink_send_command(const char *cmd) {
     if (s_state == WL_STATE_IDLE || s_state == WL_STATE_ERROR) {
         if (!g_config.wl_auto_login)
             return false;
-        if (!winlink_login())
+        if (!login_locked(pending, pending_size))
             return false;
         return queue_push(clean);
     }
@@ -586,6 +657,43 @@ bool winlink_send_command(const char *cmd) {
         return false;
 
     return queue_push(clean);
+}
+
+bool winlink_login(void) {
+    char pending[WL_TX_BUF_SIZE] = { 0 };
+
+    session_lock();
+    bool ok = login_locked(pending, sizeof(pending));
+    session_unlock();
+
+    flush_tx(pending);
+    return ok;
+}
+
+bool winlink_logoff(void) {
+    session_lock();
+    bool ok = false;
+    if (s_state == WL_STATE_LOGGED_IN || s_state == WL_STATE_COMPOSING) {
+        // Whatever is still queued belonged to the session being closed, so it
+        // goes with it rather than trailing the log-off out onto the channel.
+        queue_clear();
+        ok = queue_push(WL_CMD_LOGOFF);
+        if (ok)
+            set_state(WL_STATE_LOGGING_OFF);
+    }
+    session_unlock();
+    return ok;
+}
+
+bool winlink_send_command(const char *cmd) {
+    char pending[WL_TX_BUF_SIZE] = { 0 };
+
+    session_lock();
+    bool ok = send_command_locked(cmd, pending, sizeof(pending));
+    session_unlock();
+
+    flush_tx(pending);
+    return ok;
 }
 
 bool winlink_list(void) {
@@ -621,62 +729,103 @@ bool winlink_forward(unsigned n, const char *addressee) {
 bool winlink_compose_begin(const char *addressee, const char *subject) {
     if (!addressee || addressee[0] == 0)
         return false;
-    if (s_state == WL_STATE_COMPOSING)
-        return false;
 
     char cmd[APRS_MSG_TEXT_STD_MAX + 1];
     snprintf(cmd, sizeof(cmd), "SP %s %s", addressee, subject ? subject : "");
-    if (!winlink_send_command(cmd))
-        return false;
-    // The service is in message-entry mode from the moment it reads that
-    // command, so everything queued after it is body text and must not be
-    // mistaken for a command by anything reading this state.
-    s_composing = true;
-    if (s_state == WL_STATE_LOGGED_IN)
-        set_state(WL_STATE_COMPOSING);
-    return true;
+
+    char pending[WL_TX_BUF_SIZE] = { 0 };
+    bool ok = false;
+
+    session_lock();
+    // Queuing the command and raising the composition flag are one step: a
+    // body line accepted between the two would be read by the service as a
+    // command.
+    if (s_state != WL_STATE_COMPOSING && send_command_locked(cmd, pending, sizeof(pending))) {
+        // The service is in message-entry mode from the moment it reads that
+        // command, so everything queued after it is body text and must not be
+        // mistaken for a command by anything reading this state.
+        s_composing = true;
+        if (s_state == WL_STATE_LOGGED_IN)
+            set_state(WL_STATE_COMPOSING);
+        ok = true;
+    }
+    session_unlock();
+
+    flush_tx(pending);
+    return ok;
 }
 
 bool winlink_compose_line(const char *line) {
-    if (!s_composing)
-        return false;
-    return winlink_send_command(line);
+    char pending[WL_TX_BUF_SIZE] = { 0 };
+
+    session_lock();
+    bool ok = s_composing && send_command_locked(line, pending, sizeof(pending));
+    session_unlock();
+
+    flush_tx(pending);
+    return ok;
 }
 
 bool winlink_compose_end(void) {
-    if (!s_composing)
-        return false;
-    if (!winlink_send_command(WL_CMD_ENDMSG))
-        return false;
-    s_composing = false;
-    if (s_state == WL_STATE_COMPOSING)
-        set_state(WL_STATE_LOGGED_IN);
-    return true;
+    char pending[WL_TX_BUF_SIZE] = { 0 };
+    bool ok = false;
+
+    session_lock();
+    if (s_composing && send_command_locked(WL_CMD_ENDMSG, pending, sizeof(pending))) {
+        s_composing = false;
+        if (s_state == WL_STATE_COMPOSING)
+            set_state(WL_STATE_LOGGED_IN);
+        ok = true;
+    }
+    session_unlock();
+
+    flush_tx(pending);
+    return ok;
 }
 
 bool winlink_compose_abort(void) {
-    if (!s_composing)
-        return false;
-    queue_clear();
-    s_composing = false;
-    if (s_state == WL_STATE_COMPOSING)
-        set_state(WL_STATE_LOGGED_IN);
-    return true;
+    session_lock();
+    bool ok = s_composing;
+    if (ok) {
+        queue_clear();
+        s_composing = false;
+        if (s_state == WL_STATE_COMPOSING)
+            set_state(WL_STATE_LOGGED_IN);
+    }
+    session_unlock();
+    return ok;
 }
 
 winlink_state_t winlink_state(void) {
-    return s_state;
+    session_lock();
+    winlink_state_t s = s_state;
+    session_unlock();
+    return s;
 }
 
-const char *winlink_last_error(void) {
-    return s_error;
+size_t winlink_last_error(char *out, size_t out_size) {
+    if (!out || out_size == 0)
+        return 0;
+
+    // Copied out rather than handed back by pointer: the reason is rewritten
+    // by whichever task abandons the session, so a caller holding a pointer
+    // into it could read a string being replaced under it.
+    session_lock();
+    strncpy(out, s_error, out_size - 1);
+    out[out_size - 1] = 0;
+    session_unlock();
+    return strlen(out);
 }
 
 uint32_t winlink_session_remaining_sec(void) {
-    if (s_session_started == 0)
+    session_lock();
+    time_t started = s_session_started;
+    session_unlock();
+
+    if (started == 0)
         return 0;
     time_t limit = (time_t)g_config.wl_session_max_min * 60;
-    time_t elapsed = time(NULL) - s_session_started;
+    time_t elapsed = time(NULL) - started;
     if (elapsed < 0 || elapsed >= limit)
         return 0;
     return (uint32_t)(limit - elapsed);
@@ -694,7 +843,8 @@ bool winlink_comment_active(void) {
 // the number of the message it is acknowledging, and the messaging engine has
 // already matched it against the outbound queue by the time this runs, so the
 // acknowledgement only has to be recognised as belonging to this session.
-static void on_service_ack(void) {
+// Entered with s_sess_lock held.
+static void on_service_ack_locked(void) {
     s_last_rx = time(NULL);
     s_outstanding[0] = 0;
     s_tries_left = WL_CMD_TRIES;
@@ -711,7 +861,9 @@ static void on_service_ack(void) {
     }
 }
 
-static void on_challenge(const char *text) {
+// Entered with s_sess_lock held. The answer is copied into pending for the
+// caller to transmit after unlocking.
+static void on_challenge_locked(const char *text, char *pending, size_t pending_size) {
     char digits[WL_CHALLENGE_MAX + 1];
     if (!parse_challenge(text, digits, sizeof(digits))) {
         session_fail("challenge could not be read");
@@ -726,11 +878,14 @@ static void on_challenge(const char *text) {
     // command is re-sent by the operator once the session is up.
     s_tries_left = WL_CMD_TRIES;
     set_state(WL_STATE_CHALLENGE_SENT);
-    transmit(s_answer);
+    transmit_locked(s_answer, pending, pending_size);
 }
 
 // Stores one reply and persists the mailbox. Runs on the receive path rather
 // than on the 1 Hz tick, which is what keeps filesystem work off that tick.
+// Entered with the session lock released: this takes s_lock and, through
+// mail_save(), storage_write_lock(), and no lock of this module is held across
+// a filesystem write.
 static void store_reply(const char *text) {
     lock();
     mail_store_locked(text);
@@ -744,60 +899,70 @@ static void store_reply(const char *text) {
 // accepts. Only traffic from the service callsign is Winlink's; everything else
 // is left to the ordinary conversation queue, which is what returning false
 // means.
+//
+// Runs on the receive task, so the whole reply is applied to the session under
+// s_sess_lock: clearing the outstanding command and resetting the retry
+// counter must not interleave with a retry the tick is part-way through, or
+// the retry would put a command the service has already acknowledged back on
+// the air. The transmission a challenge provokes and the mailbox write a reply
+// causes both happen after the lock has been released.
 static bool winlink_rx_observer(const char *sender, const char *text, uint16_t msgID, bool is_ack) {
     (void)msgID;
 
     if (!client_usable() || !winlink_is_service_call(sender))
         return false;
-    if (s_state == WL_STATE_DISABLED)
-        return false;
 
-    if (is_ack) {
-        on_service_ack();
-        return true;
+    char pending[WL_TX_BUF_SIZE] = { 0 };
+    bool consumed = true;
+    bool store = false;
+
+    session_lock();
+    if (s_state == WL_STATE_DISABLED) {
+        consumed = false;
+    } else if (is_ack) {
+        on_service_ack_locked();
+    } else {
+        s_last_rx = time(NULL);
+
+        if (strncmp(text, "Login [", 7) == 0) {
+            on_challenge_locked(text, pending, sizeof(pending));
+        } else if (strstr(text, "Login valid") != NULL) {
+            s_error[0] = 0;
+            s_outstanding[0] = 0;
+            s_tries_left = WL_CMD_TRIES;
+            s_session_started = time(NULL);
+            set_state(s_composing ? WL_STATE_COMPOSING : WL_STATE_LOGGED_IN);
+        } else if (strncmp(text, "Log off successful", 18) == 0) {
+            session_close();
+        } else {
+            // An account with secure login switched off is never challenged:
+            // the service simply answers the command that opened the session.
+            // Reaching command mode from any of the waiting states is
+            // therefore a normal outcome, not a protocol error.
+            if (s_state == WL_STATE_LOGIN_SENT || s_state == WL_STATE_WAIT_CHALLENGE || s_state == WL_STATE_CHALLENGE_SENT || s_state == WL_STATE_WAIT_VALID) {
+                s_outstanding[0] = 0;
+                s_tries_left = WL_CMD_TRIES;
+                s_session_started = time(NULL);
+                set_state(s_composing ? WL_STATE_COMPOSING : WL_STATE_LOGGED_IN);
+            }
+            store = true;
+        }
     }
+    session_unlock();
 
-    s_last_rx = time(NULL);
-
-    if (strncmp(text, "Login [", 7) == 0) {
-        on_challenge(text);
-        return true;
-    }
-
-    if (strstr(text, "Login valid") != NULL) {
-        s_error[0] = 0;
-        s_outstanding[0] = 0;
-        s_tries_left = WL_CMD_TRIES;
-        s_session_started = time(NULL);
-        set_state(s_composing ? WL_STATE_COMPOSING : WL_STATE_LOGGED_IN);
-        return true;
-    }
-
-    if (strncmp(text, "Log off successful", 18) == 0) {
-        session_close();
-        return true;
-    }
-
-    // An account with secure login switched off is never challenged: the
-    // service simply answers the command that opened the session. Reaching
-    // command mode from any of the waiting states is therefore a normal
-    // outcome, not a protocol error.
-    if (s_state == WL_STATE_LOGIN_SENT || s_state == WL_STATE_WAIT_CHALLENGE || s_state == WL_STATE_CHALLENGE_SENT || s_state == WL_STATE_WAIT_VALID) {
-        s_outstanding[0] = 0;
-        s_tries_left = WL_CMD_TRIES;
-        s_session_started = time(NULL);
-        set_state(s_composing ? WL_STATE_COMPOSING : WL_STATE_LOGGED_IN);
-    }
-
-    store_reply(text);
-    return true;
+    flush_tx(pending);
+    if (store)
+        store_reply(text);
+    return consumed;
 }
 
 // ---------------------------------------------------------------------------
 // Tick
 // ---------------------------------------------------------------------------
 
-void winlink_tick_1hz(void) {
+// Entered with s_sess_lock held. A command the tick decides to send is copied
+// into pending and put on the air by the caller once the lock is released.
+static void tick_locked(char *pending, size_t pending_size) {
     if (!client_usable()) {
         if (s_state != WL_STATE_DISABLED) {
             queue_clear();
@@ -836,7 +1001,7 @@ void winlink_tick_1hz(void) {
             return;
         }
         ESP_LOGI(TAG, "no answer to \"%s\", retransmitting", s_outstanding);
-        transmit(s_outstanding);
+        transmit_locked(s_outstanding, pending, pending_size);
         return;
     }
 
@@ -849,7 +1014,7 @@ void winlink_tick_1hz(void) {
         char cmd[APRS_MSG_TEXT_STD_MAX + 1];
         if (queue_pop(cmd, sizeof(cmd))) {
             s_tries_left = WL_CMD_TRIES;
-            transmit(cmd);
+            transmit_locked(cmd, pending, pending_size);
         }
         return;
     }
@@ -861,10 +1026,20 @@ void winlink_tick_1hz(void) {
         time_t interval = (time_t)g_config.wl_poll_min * 60;
         if (s_last_poll == 0 || (now - s_last_poll) >= interval) {
             s_last_poll = now;
-            if (winlink_login())
+            if (login_locked(pending, pending_size))
                 queue_push("L");
         }
     }
+}
+
+void winlink_tick_1hz(void) {
+    char pending[WL_TX_BUF_SIZE] = { 0 };
+
+    session_lock();
+    tick_locked(pending, sizeof(pending));
+    session_unlock();
+
+    flush_tx(pending);
 }
 
 // ---------------------------------------------------------------------------
@@ -886,12 +1061,20 @@ void winlink_init(void) {
     mail_load_locked();
     unlock();
 
+    // The session lock is created here, before the observer is registered and
+    // before the tick can run, so every task that later takes it finds it
+    // already in place.
+    session_lock();
     memset(s_queue, 0, sizeof(s_queue));
+    queue_clear();
     s_outstanding[0] = 0;
+    s_tries_left = 0;
+    s_session_started = 0;
     s_error[0] = 0;
     s_composing = false;
     s_state = WL_STATE_DISABLED;
     s_last_poll = time(NULL);
+    session_unlock();
 
     winlink_apply_config();
     message_set_rx_observer(winlink_rx_observer);

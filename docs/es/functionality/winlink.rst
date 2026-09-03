@@ -81,6 +81,26 @@ convierta en una ráfaga de tramas sobre un canal compartido. Una orden sin
 confirmar se retransmite dos veces y después la sesión se abandona, con el
 motivo a la vista en la página.
 
+Tres tareas, una sesión
+-----------------------
+
+Una sesión se gobierna desde tres sitios a la vez: la página web que maneja el
+operador, el tic de servicio de una vez por segundo que retransmite y envía la
+siguiente orden en cola, y la ruta de recepción que aplica cada respuesta del
+servicio. Dos mutex dentro de ``components/winlink/winlink.c`` evitan que se
+pisen entre sí — uno sobre el buzón y otro sobre la sesión en sí: el estado, la
+cola de órdenes, la orden pendiente y su contador de reintentos, el indicador
+de redacción, las marcas de tiempo de la sesión y el motivo del fallo.
+
+Sin ese segundo cerrojo los síntomas visibles son órdenes perdidas o enviadas
+dos veces — un operador escribiendo mientras el tic saca una de la cola — y
+repeticiones: una confirmación que llega en mitad de un reintento puede limpiar
+la orden pendiente justo cuando el reintento la vuelve a poner en el aire, de
+modo que el servicio ve una orden que ya había contestado. Ninguno de los dos
+cerrojos se mantiene mientras se transmite una trama ni mientras se escribe el
+buzón en flash, así que nada de lo que el operador hace en la página queda a la
+espera de la radio o del sistema de ficheros.
+
 Órdenes
 -------
 
