@@ -122,17 +122,20 @@ salvataggio del server web sia da qualsiasi task permanente, così attivare
 l'interruttore sulla pagina *Telegram* non blocca mai il browser e non tiene
 mai allocato quello stack mentre il bot è semplicemente in esecuzione.
 
-C'è un solo posto di lavoratore, non uno per ciascun tipo di compito. Il task
-che esegue un avvio o uno spegnimento e quello che consegna le notifiche
-inoltrate (descritto più avanti) sono dimensionati ciascuno per un handshake
-TLS, e i due insieme sono più stack di quanto questa scheda possa reggere
-accanto al task di polling del servizio stesso, al task del server web e
-all'handshake medesimo. Perciò quello avviato per primo gira da solo: un avvio
-che trova il posto occupato resta in sospeso e viene riproposto dal tick
-successivo, e uno svuotamento di notifiche che lo trova occupato lascia le sue
-righe in coda fino all'avvio che innescherà la prossima riga inoltrata. In
-nessuno dei due casi si perde qualcosa; l'unico costo è un ritardo di un
-secondo o poco più.
+C'è un solo task lavoratore, non uno per ciascun tipo di compito. Un avvio,
+uno spegnimento e la consegna delle notifiche inoltrate (descritta più avanti)
+sono tutti dimensionati per un handshake TLS, e sono tutti svolti dallo stesso
+task invece che da uno per tipo, perché più di uno di quegli stack alla volta
+è più di quanto questa scheda possa reggere accanto al task di polling del
+servizio stesso, al task del server web e all'handshake medesimo. Quello
+avviato per primo gira da solo, e appena finisce lo stesso task svuota la coda
+delle notifiche prima di uscire, invece di avviarne un secondo per farlo. Un
+avvio o uno spegnimento che trova il task lavoratore già in esecuzione resta
+in sospeso e viene riproposto dal tick successivo, e una notifica messa in
+coda mentre il task è occupato lascia la sua riga al suo posto fino
+all'avvio che innescherà la prossima riga inoltrata, oppure fino allo
+svuotamento che il task in esecuzione esegue uscendo. In nessuno dei due casi
+si perde qualcosa; l'unico costo è un ritardo di un secondo o poco più.
 
 Mentre il bot gira, lo stesso tick a 1 Hz ripubblica i suoi contatori e nota
 un collegamento a internet scomparso o un task di polling terminato, così una
@@ -253,10 +256,10 @@ non resta in coda per quando il bot torna disponibile.
 cercare gli utenti a cui compete e a consegnare un elemento per utente a una
 piccola coda, poiché il percorso di decodifica dei frame che la chiama gira
 sul task di ricezione del modem stesso, che non porta lo stack necessario a
-una chiamata di rete verso Telegram per il suo handshake TLS. Un task
-lavoratore di breve durata, avviato nell'unico posto di lavoratore che usa
-anche il task di avvio, svuota quella coda tramite
-``telegram_send_message()``.
+una chiamata di rete verso Telegram per il suo handshake TLS. Lo stesso task
+lavoratore di breve durata che esegue un avvio o uno spegnimento svuota quella
+coda tramite ``telegram_send_message()`` come ultima cosa che fa prima di
+uscire.
 
 La coda stessa viene creata al momento in cui si applica la configurazione —
 cioè all'avvio e a ogni salvataggio della pagina *Telegram* — e solo per un bot
@@ -359,12 +362,13 @@ coda lo distribuisce, ed è lì che viene letto l'elenco dei destinatari, così
 un salvataggio che cade fra i due momenti si riflette nella consegna.
 
 Uno svuotamento viene richiesto ogni volta che una riga entra in coda, e la
-richiesta è respinta finché l'unico slot di task breve del bot è occupato da
-un avvio, un arresto o un altro svuotamento. La domanda viene perciò riposta
-in ciascun punto in cui quello slot torna libero, così uno svuotamento
-respinto è rinviato e non perduto: un bollettino accodato mentre il bot veniva
-ricostruito parte appena la ricostruzione finisce, senza attendere un'altra
-riga che la finestra dei duplicati avrebbe comunque scartato.
+richiesta è respinta finché l'unico task lavoratore breve del bot sta già
+eseguendo un avvio, un arresto o un altro svuotamento. La domanda viene
+perciò riposta nel punto in cui quel task termina e libera il suo posto, così
+uno svuotamento respinto è rinviato e non perduto: un bollettino accodato
+mentre il bot veniva ricostruito parte appena la ricostruzione finisce, senza
+attendere un'altra riga che la finestra dei duplicati avrebbe comunque
+scartato.
 
 La distribuzione avviene come un solo lotto di trasmissione, quindi l'intero
 elenco dei destinatari condivide l'unica sessione TLS descritta sopra invece

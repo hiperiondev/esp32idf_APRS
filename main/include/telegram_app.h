@@ -305,15 +305,17 @@ void telegram_app_apply_config(void);
  * connection needs in order to be rebuilt after it drops.
  *
  * When a bring-up or a teardown does become due, this spawns a worker task to
- * perform it and returns immediately; the worker exits as soon as its one job
- * is done, returning its stack to the heap. So the large stack exists for the
+ * perform it and returns immediately; the worker exits as soon as its work is
+ * done, returning its stack to the heap. So the large stack exists for the
  * few seconds it is genuinely needed and at no other time.
  *
- * That worker and the one that delivers routed notifications share a single
- * slot, since each is sized for a TLS handshake and the two together are more
- * stack than this board can hold at once. An action that finds the slot taken
- * by a notification drain stays pending and is offered again a second later,
- * so nothing is lost by the wait.
+ * That same worker is also what delivers routed notifications: a bring-up, a
+ * teardown and a notification drain are all sized for one TLS handshake, so
+ * one task does whichever of them is pending and drains the notification
+ * queue as the last thing it does before it exits, rather than a second task
+ * with a second handshake-sized stack being spawned for it. An action that
+ * finds the worker already running stays pending and is offered again a
+ * second later, so nothing is lost by the wait.
  *
  * Cheap and non-blocking: in the steady state it copies six counters and
  * returns. Safe to call before ::telegram_app_apply_config has ever run.

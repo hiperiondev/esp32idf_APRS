@@ -63,11 +63,13 @@ static const char *TAG = "telegram_app";
 // Worker task geometry.
 //
 // The stack is sized for a TLS handshake, which the getMe probe performs on
-// this task, and that is the only reason it is this large. The task exists
-// only while a bring-up or a teardown is in progress and exits as soon as the
-// step is done, so those bytes are borrowed for a few seconds rather than held
-// for the life of the bot: on this board the difference is most of the margin
-// a polling connection needs to survive being rebuilt.
+// this task, and delivery of a routed notification also performs on it, so
+// one figure covers both: a bring-up, a teardown and a notification drain are
+// all "make one Telegram API call" work and share the one task this constant
+// sizes. The task exists only while one of those is in progress and exits as
+// soon as it is done, so those bytes are borrowed for a few seconds rather
+// than held for the life of the bot: on this board the difference is most of
+// the margin a polling connection needs to survive being rebuilt.
 //
 // Everything the bot needs while it is merely running - copying six counters,
 // noticing that the uplink went away, noticing that a retry is due - is done
@@ -75,20 +77,6 @@ static const char *TAG = "telegram_app";
 // stack of its own.
 #define TELEGRAM_WORKER_STACK_BYTES 8192
 #define TELEGRAM_WORKER_PRIORITY    4
-
-// Geometry of the routed-station-message drain task.
-//
-// Delivery goes through telegram_send_message(), which performs the same kind
-// of TLS-bearing network call as the bring-up worker above, so it needs the
-// same stack for the same reason and is given its own copy of that constant
-// rather than sharing the name, since the two tasks exist for unrelated
-// reasons and are sized alike by coincidence, not by a shared purpose.
-//
-// Only one of the two exists at a time: both are spawned through the single
-// worker claim described further down, so this figure is the bot's peak stack
-// cost rather than a second one added to the bring-up worker's.
-#define TELEGRAM_NOTIFY_STACK_BYTES 8192
-#define TELEGRAM_NOTIFY_PRIORITY    4
 
 // Number of routed notifications held between one drain and the next. A
 // handful is enough: this is a convenience notification, not the message
@@ -220,21 +208,21 @@ typedef enum {
 
 static volatile telegram_action_t s_action;
 
-// The single worker slot the bot's two short-lived task kinds share.
+// The single worker slot the bot's one short-lived task uses.
 //
-// One kind carries out a bring-up or a teardown, the other drains the routed
-// notification queue, and each is sized for a TLS handshake because each
-// performs one. Letting both exist at once would put sixteen kilobytes of
-// stack on the heap on top of the service's own polling task, the web
-// server's task and the handshake itself, which is more than this board has
-// to spare. So there is one claim for both kinds: whichever is spawned first
-// runs alone and the other waits.
+// A bring-up, a teardown and a notification drain are all carried out by the
+// same task, spawned fresh for whichever of them is next and deleted once it
+// is done, so only one instance of that task - and one 8 KB stack - is ever
+// on the heap at a time on top of the service's own polling task, the web
+// server's task and the handshake itself. This flag is what keeps a second
+// spawn from being attempted while the first is still running: whichever
+// spawn claims it runs alone and the other waits.
 //
 // Waiting costs nothing in either direction. A bring-up that finds the slot
 // taken is attempted again by the next 1 Hz tick, and a drain that finds it
-// taken leaves its items in the queue for the spawn the next routed line
-// triggers, which is the same brief delay the drain task's own exit window
-// already produces.
+// taken leaves its items in the queue: the running worker drains them itself
+// before it exits, which is the same brief delay a fresh spawn would have
+// produced.
 static volatile bool s_worker_busy;
 
 // Guards the claim of s_worker_busy. Reading the flag and setting it are one
@@ -331,9 +319,9 @@ static volatile uint32_t s_bulletin_window_s = TELEGRAM_APP_BULLETIN_WINDOW_DEFA
 // for every received message it decodes and telegram_app_notify_bulletin()
 // for every bulletin, and that path runs on the modem's own RX task, which
 // carries none of the stack a TLS handshake needs. So the call sites only
-// ever format a line and push it onto s_notify_queue; a dedicated drain task,
-// spawned on demand into the same worker slot the bring-up worker uses, is
-// what actually reaches Telegram.
+// ever format a line and push it onto s_notify_queue; the shared worker task,
+// spawned on demand and draining this queue as the last thing it does before
+// it exits, is what actually reaches Telegram.
 //
 // The two differ in who receives the line, and that difference is what the
 // broadcast flag below carries. A station message names one addressee, so its
@@ -341,7 +329,7 @@ static volatile uint32_t s_bulletin_window_s = TELEGRAM_APP_BULLETIN_WINDOW_DEFA
 // matched. A bulletin names nobody and goes to every user, every group chat
 // and the administrator, so queueing a copy per recipient would spend
 // thirteen slots and thirteen copies of the same text on one bulletin; it is
-// queued once instead and fanned out by the drain task, which is also where
+// queued once instead and fanned out by the worker task, which is also where
 // the recipient list is read, so a save landing in between is reflected in
 // the delivery rather than in a list captured a moment earlier.
 // ---------------------------------------------------------------------------
@@ -361,10 +349,11 @@ typedef struct {
 // both switches off never reaches the call below.
 static QueueHandle_t s_notify_queue;
 
-// Declared here because the drain task and the bring-up worker both hand the
-// shared worker slot back and ask for a drain on their way out, which puts
-// their calls above the definitions.
-static void notify_worker_spawn(void);
+// Declared here because notify_worker_spawn() asks for the same task the
+// bring-up and teardown paths use, and the worker hands the shared slot back
+// and asks for a drain on its own way out, which puts these calls above their
+// definitions.
+static bool worker_spawn(telegram_action_t action);
 static void notify_worker_kick(void);
 
 // Creates the queue if it is not there yet. Called from one task only, which
@@ -444,49 +433,14 @@ static void notify_broadcast(const char *text) {
         ESP_LOGW(TAG, "%u recipients beyond the %d per pass were not reached", skipped, TELEGRAM_NOTIFY_BROADCAST_MAX);
 }
 
-// Delivers every item queued so far and exits, returning its stack to the
-// heap exactly like telegram_worker_task() does once a bring-up or a teardown
-// is done.
-static void telegram_notify_worker_task(void *arg) {
-    (void)arg;
-
-    // The whole pass is one Telegram transmit batch, so every line drained
-    // here, fan-outs included, travels over the session the first of them
-    // opens instead of each one paying for a TLS handshake of its own.
-    telegram_notify_item_t item;
-    telegram_tx_batch_begin();
-    while (xQueueReceive(s_notify_queue, &item, 0) == pdTRUE) {
-        if (item.broadcast)
-            notify_broadcast(item.text);
-        else
-            notify_send_one(item.chat_id, item.text);
-    }
-    telegram_tx_batch_end();
-
-    // Between the last empty receive above and this task actually deleting
-    // itself there is a window where a new item can be queued while the worker
-    // slot is still held, so notify_worker_spawn() skips spawning for it. The
-    // slot is released first and the queue is looked at again afterwards, so
-    // that item leaves on a fresh drain instead of waiting for a routed line
-    // that may never come: a bulletin repeats, but its repeats are recognised
-    // as such and dropped, so nothing would arrive to trigger the spawn.
-    worker_release();
-    notify_worker_kick();
-    vTaskDelete(NULL);
-}
-
-// Spawns the drain task if the shared worker slot is free. Safe to call every
-// time an item is queued: a drain already running takes the new item on its
-// own pass, and an item queued while a bring-up holds the slot is picked up by
-// notify_worker_kick() as soon as that bring-up hands the slot back.
+// Spawns the shared worker to drain the notify queue, if the slot is free.
+// Safe to call every time an item is queued: a worker already running takes
+// the new item on its own pass, since draining is the last thing it does
+// before it exits, and an item queued while a bring-up or a teardown holds
+// the slot is picked up by notify_worker_kick() as soon as that action hands
+// the slot back.
 static void notify_worker_spawn(void) {
-    if (!worker_claim())
-        return;
-
-    if (xTaskCreate(telegram_notify_worker_task, "telegram_notify", TELEGRAM_NOTIFY_STACK_BYTES, NULL, TELEGRAM_NOTIFY_PRIORITY, NULL) != pdPASS) {
-        worker_release();
-        ESP_LOGE(TAG, "Notify worker task could not be created");
-    }
+    worker_spawn(TELEGRAM_ACTION_NONE);
 }
 
 // Starts a drain when something is waiting and the shared slot is free.
@@ -494,10 +448,10 @@ static void notify_worker_spawn(void) {
 // Called wherever that slot changes hands, because a queue that holds items
 // nobody is about to drain is how routing stops for good rather than for a
 // moment. Every line is queued by a caller that then asks for a spawn, and
-// that ask is refused whenever a bring-up, a teardown or another drain owns
-// the slot; the refusal is only harmless while some later line asks again. So
-// the question is put once more at the two points where the slot becomes
-// available, which is what turns a refused spawn into a deferred one.
+// that ask is refused whenever another worker owns the slot; the refusal is
+// only harmless while some later line asks again. So the question is put once
+// more at the point where the slot becomes available, which is what turns a
+// refused spawn into a deferred one.
 static void notify_worker_kick(void) {
     if (s_notify_queue == NULL)
         return;
@@ -1728,68 +1682,103 @@ static bool reason_is_transient(telegram_app_reason_t reason) {
            reason == TELEGRAM_APP_REASON_TCP_FAILED;
 }
 
-// Carries out one pending action and exits.
+// Carries out one pending action, if any, then drains whatever the routed-
+// notification queue holds, and exits.
 //
-// The task is spawned by the tick, does its one job and deletes itself, which
-// is what returns its stack to the heap between jobs. It is also the only
-// place telegram_deinit() may run: that call waits for the service's polling
-// task to leave a long poll, which must not happen on the service tick or on
-// the web server's stack.
+// A bring-up, a teardown and a notification drain are the same class of work
+// - at most one Telegram API call held open at a time - so one task does
+// whichever is pending and then folds a drain into the same pass before it
+// gives its stack back, instead of a second task being spawned for it.
+// TELEGRAM_ACTION_NONE is what a spawn asking only for a drain passes: the
+// action stage is skipped entirely and the task goes straight to the queue.
+//
+// The task is spawned by the tick or by whichever notify entry point queued
+// something, does its work and deletes itself, which is what returns its
+// stack to the heap between jobs. It is also the only place telegram_deinit()
+// may run: that call waits for the service's polling task to leave a long
+// poll, which must not happen on the service tick or on the web server's
+// stack.
 static void telegram_worker_task(void *arg) {
     telegram_action_t action = (telegram_action_t)(intptr_t)arg;
+    bool stopped = false;
 
-    if (action == TELEGRAM_ACTION_STOP || s_service_up) {
-        if (s_service_up) {
-            telegram_deinit();
-            s_service_up = false;
-            ESP_LOGI(TAG, "Telegram bot stopped");
+    if (action != TELEGRAM_ACTION_NONE) {
+        if (action == TELEGRAM_ACTION_STOP || s_service_up) {
+            if (s_service_up) {
+                telegram_deinit();
+                s_service_up = false;
+                ESP_LOGI(TAG, "Telegram bot stopped");
+            }
+            if (action == TELEGRAM_ACTION_STOP) {
+                status_reset(TELEGRAM_APP_STATE_DISABLED, TELEGRAM_APP_REASON_DISABLED);
+                s_retry_in = TELEGRAM_RETRY_NEVER;
+                stopped = true;
+            }
         }
-        if (action == TELEGRAM_ACTION_STOP) {
-            status_reset(TELEGRAM_APP_STATE_DISABLED, TELEGRAM_APP_REASON_DISABLED);
-            s_retry_in = TELEGRAM_RETRY_NEVER;
-            worker_release();
-            notify_worker_kick();
-            vTaskDelete(NULL);
-            return;
+
+        if (!stopped) {
+            telegram_app_reason_t reason = bring_up();
+
+            if (reason == TELEGRAM_APP_REASON_CONNECTED) {
+                s_service_up = true;
+                s_retry_in = TELEGRAM_RETRY_NEVER;
+            } else if (reason_is_transient(reason)) {
+                s_retry_in = TELEGRAM_RETRY_SECONDS;
+            } else {
+                // Nothing changes until the operator changes it, and changing
+                // it goes through the Telegram page, which arms a fresh
+                // attempt. So the fault stays published and no retry is
+                // scheduled.
+                ESP_LOGE(TAG, "Telegram bring-up stopped, waiting for a configuration change");
+                s_retry_in = TELEGRAM_RETRY_NEVER;
+            }
+
+            // Reported so the stack above can be cut to what this task
+            // actually uses instead of the figure it was guessed at. Sized
+            // for a TLS handshake, this is the largest stack the bot
+            // allocates, and it is the one worth measuring before trimming.
+            ESP_LOGI(TAG, "Worker finished, stack high-water %u bytes free of %d", (unsigned)(uxTaskGetStackHighWaterMark(NULL) * sizeof(StackType_t)),
+                     TELEGRAM_WORKER_STACK_BYTES);
         }
     }
 
-    telegram_app_reason_t reason = bring_up();
-
-    if (reason == TELEGRAM_APP_REASON_CONNECTED) {
-        s_service_up = true;
-        s_retry_in = TELEGRAM_RETRY_NEVER;
-    } else if (reason_is_transient(reason)) {
-        s_retry_in = TELEGRAM_RETRY_SECONDS;
-    } else {
-        // Nothing changes until the operator changes it, and changing it goes
-        // through the Telegram page, which arms a fresh attempt. So the fault
-        // stays published and no retry is scheduled.
-        ESP_LOGE(TAG, "Telegram bring-up stopped, waiting for a configuration change");
-        s_retry_in = TELEGRAM_RETRY_NEVER;
+    // The whole pass is one Telegram transmit batch, so every line drained
+    // here, fan-outs included, travels over the session a bring-up above just
+    // opened, or over a session of its own when this task was spawned for the
+    // queue alone.
+    if (s_notify_queue != NULL) {
+        telegram_notify_item_t item;
+        telegram_tx_batch_begin();
+        while (xQueueReceive(s_notify_queue, &item, 0) == pdTRUE) {
+            if (item.broadcast)
+                notify_broadcast(item.text);
+            else
+                notify_send_one(item.chat_id, item.text);
+        }
+        telegram_tx_batch_end();
     }
 
-    // Reported so the stack above can be cut to what this task actually uses
-    // instead of the figure it was guessed at. Sized for a TLS handshake, this
-    // is the largest stack the bot allocates, and it is the one worth
-    // measuring before trimming.
-    ESP_LOGI(TAG, "Worker finished, stack high-water %u bytes free of %d", (unsigned)(uxTaskGetStackHighWaterMark(NULL) * sizeof(StackType_t)),
-             TELEGRAM_WORKER_STACK_BYTES);
-
-    // The slot is handed back before the queue is looked at, so a bring-up
-    // that has just made the bot reachable delivers whatever was routed while
-    // it held the slot instead of leaving it there until the next routed line
-    // asks for a drain.
+    // Between the last empty receive above and this task actually deleting
+    // itself there is a window where a new item can be queued while the
+    // worker slot is still held, so notify_worker_spawn() skips spawning for
+    // it. The slot is released first and the queue is looked at again
+    // afterwards, so that item leaves on a fresh spawn instead of waiting for
+    // a routed line that may never come: a bulletin repeats, but its repeats
+    // are recognised as such and dropped, so nothing would arrive to trigger
+    // the spawn. This is also what delivers whatever was routed while a
+    // bring-up held the slot, instead of leaving it there until the next
+    // routed line asks for a drain.
     worker_release();
     notify_worker_kick();
     vTaskDelete(NULL);
 }
 
-// Spawns the worker for one action, if the shared worker slot is free.
-// Reports whether it did, because a slot held by a notification drain only
-// postpones the action: the caller keeps it pending and offers it again a
-// second later, and treating a refused spawn as a performed one would drop
-// the operator's enable or disable on the floor.
+// Spawns the shared worker for one action, or for a queue drain alone when
+// action is TELEGRAM_ACTION_NONE, if the slot is free. Reports whether it
+// did, because a slot held by another spawn only postpones the action: the
+// caller keeps it pending and offers it again a second later, and treating a
+// refused spawn as a performed one would drop the operator's enable or
+// disable on the floor.
 static bool worker_spawn(telegram_action_t action) {
     if (!worker_claim())
         return false;
@@ -1797,8 +1786,10 @@ static bool worker_spawn(telegram_action_t action) {
     if (xTaskCreate(telegram_worker_task, "telegram_wk", TELEGRAM_WORKER_STACK_BYTES, (void *)(intptr_t)action, TELEGRAM_WORKER_PRIORITY, NULL) != pdPASS) {
         worker_release();
         ESP_LOGE(TAG, "Worker task could not be created");
-        status_reset(TELEGRAM_APP_STATE_ERROR, TELEGRAM_APP_REASON_TASK_FAILED);
-        s_retry_in = TELEGRAM_RETRY_SECONDS;
+        if (action != TELEGRAM_ACTION_NONE) {
+            status_reset(TELEGRAM_APP_STATE_ERROR, TELEGRAM_APP_REASON_TASK_FAILED);
+            s_retry_in = TELEGRAM_RETRY_SECONDS;
+        }
     }
 
     // Reported as spawned either way: a task that could not be created has

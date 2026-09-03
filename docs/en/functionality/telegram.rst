@@ -116,16 +116,19 @@ off both the web server's save handler and any permanent task, so flipping
 the switch on the *Telegram* page never blocks the browser and never keeps
 that stack allocated once the bot is simply running.
 
-There is one worker slot, not one per kind of job. The task that performs a
-bring-up or a teardown and the task that delivers routed notifications
-(described further down) are each sized for a TLS handshake, and the two of
-them together are more stack than this board can hold alongside the service's
-own polling task, the web server's task and the handshake itself. So whichever
-is spawned first runs alone: a bring-up that finds the slot busy stays pending
-and is offered again by the next tick, and a notification drain that finds it
-busy leaves its lines in the queue for the spawn the next routed line
-triggers. Nothing is lost either way; the only cost is a delay of a second or
-so.
+There is one worker task, not one per kind of job. A bring-up, a teardown and
+the delivery of routed notifications (described further down) are all sized
+for a TLS handshake, and are all carried out by the same task instead of one
+task per kind, since more than one such stack at a time is more than this
+board can hold alongside the service's own polling task, the web server's
+task and the handshake itself. Whichever job is spawned first runs alone, and
+once it is done the same task drains the notification queue before it exits,
+rather than a second task being spawned for that. A bring-up or teardown that
+finds the worker already running stays pending and is offered again by the
+next tick, and a notification queued while the worker is busy leaves its
+lines in place for the spawn the next routed line triggers, or for the drain
+the running worker performs on its way out. Nothing is lost either way; the
+only cost is a delay of a second or so.
 
 While the bot runs, the same 1 Hz tick republishes its counters and notices
 an uplink that went away or a polling task that has ended, so a station that
@@ -237,9 +240,9 @@ the bot comes back. ``telegram_app_notify_station_message()`` (declared in
 line, looks up the users it belongs to and hands one item per user to a small
 queue, since the frame-decoding path that calls it runs on the modem's own
 receive task, which carries none of the stack a Telegram network call needs
-for its TLS handshake. A short-lived worker task, spawned into the same single
-worker slot the bring-up worker uses, drains that queue through
-``telegram_send_message()``.
+for its TLS handshake. The same short-lived worker task that performs a
+bring-up or a teardown drains that queue through ``telegram_send_message()``
+as the last thing it does before it exits.
 
 The queue itself is created when the configuration is applied — that is, at
 start-up and on every save of the *Telegram* page — and only for a bot that is
@@ -332,16 +335,17 @@ entry point message.c calls for a received bulletin and bulletins.c for one of
 this station's own, both under the same reasoning about the calling task's
 stack. It queues one item for
 the whole bulletin rather than one per recipient: the item carries the text
-once and is fanned out by the drain task, which is also where the recipient
-list is read, so a save landing between the two is reflected in the delivery.
+once and is fanned out by the worker task on its drain pass, which is also
+where the recipient list is read, so a save landing between the two is
+reflected in the delivery.
 
 A drain is asked for whenever a line is queued, and that request is refused
-while the bot's single short-lived worker slot is held by a bring-up, a
-teardown or another drain. The question is therefore put again at each point
-where that slot is handed back, so a refused drain is a deferred one rather
-than a lost one: a bulletin queued while the bot was being rebuilt leaves as
-soon as the rebuild finishes, without waiting for a further line that the
-duplicate window would have suppressed anyway.
+while the bot's single short-lived worker task is already running a
+bring-up, a teardown or another drain. The question is therefore put again at
+the point where the worker hands its slot back, so a refused drain is a
+deferred one rather than a lost one: a bulletin queued while the bot was
+being rebuilt leaves as soon as the rebuild finishes, without waiting for a
+further line that the duplicate window would have suppressed anyway.
 
 The fan-out runs as one transmit batch, so the whole recipient list shares the
 single TLS session described above rather than paying a handshake per chat,

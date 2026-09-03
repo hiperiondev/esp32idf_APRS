@@ -123,17 +123,20 @@ guardado del servidor web como de cualquier tarea permanente, de modo que
 activar el interruptor en la página *Telegram* nunca bloquea el navegador ni
 mantiene esa pila reservada mientras el bot simplemente está en marcha.
 
-Hay una sola plaza de trabajador, no una por cada clase de tarea. La tarea que
-hace un arranque o un apagado y la que entrega las notificaciones reenviadas
-(descrita más abajo) están dimensionadas cada una para un handshake TLS, y las
-dos juntas son más pila de la que esta placa puede sostener junto a la tarea
-de sondeo del propio servicio, la tarea del servidor web y el handshake mismo.
-Así que la que se lanza primero corre sola: un arranque que encuentra la plaza
-ocupada queda pendiente y se vuelve a ofrecer en el tick siguiente, y un
-vaciado de notificaciones que la encuentra ocupada deja sus líneas en la cola
-hasta el lanzamiento que dispare la próxima línea reenviada. No se pierde nada
-en ninguno de los dos casos; lo único que cuesta es un retraso de un segundo o
-poco más.
+Hay una sola tarea trabajadora, no una por cada clase de trabajo. Un arranque,
+un apagado y la entrega de las notificaciones reenviadas (descrita más abajo)
+están dimensionados todos para un handshake TLS, y los tres los realiza la
+misma tarea en lugar de una por clase, porque más de una de esas pilas a la
+vez es más de lo que esta placa puede sostener junto a la tarea de sondeo del
+propio servicio, la tarea del servidor web y el handshake mismo. La que se
+lanza primero corre sola, y en cuanto termina esa misma tarea vacía la cola de
+notificaciones antes de salir, en vez de lanzarse una segunda tarea para ello.
+Un arranque o un apagado que encuentra la tarea trabajadora ya en marcha queda
+pendiente y se vuelve a ofrecer en el tick siguiente, y una notificación
+puesta en cola mientras la tarea está ocupada deja su línea en su sitio hasta
+el lanzamiento que dispare la próxima línea reenviada, o hasta el vaciado que
+la tarea en marcha hace al salir. No se pierde nada en ninguno de los dos
+casos; lo único que cuesta es un retraso de un segundo o poco más.
 
 Mientras el bot funciona, el mismo tick de 1 Hz vuelve a publicar sus
 contadores y detecta un enlace a internet que desapareció o una tarea de
@@ -250,9 +253,9 @@ es el punto de entrada que llama message.c; solo arma la línea, busca los
 usuarios a los que corresponde y entrega un elemento por usuario a una pequeña
 cola, ya que la ruta de decodificación de tramas que la llama corre en la
 propia tarea de recepción del módem, que no lleva la pila que un llamado de
-red a Telegram necesita para su handshake TLS. Una tarea trabajadora de corta
-vida, lanzada en la misma y única plaza de trabajador que usa el trabajador de
-arranque, vacía esa cola a través de ``telegram_send_message()``.
+red a Telegram necesita para su handshake TLS. La misma tarea trabajadora de
+corta vida que hace un arranque o un apagado vacía esa cola a través de
+``telegram_send_message()`` como lo último que hace antes de salir.
 
 La cola en sí se crea al aplicar la configuración —es decir, al arrancar y en
 cada guardado de la página *Telegram*— y solo para un bot habilitado con al
@@ -351,12 +354,12 @@ cola lo reparte, y es ahí donde se lee la lista de destinatarios, de modo que
 un guardado que caiga entre ambos momentos se refleja en la entrega.
 
 Se pide vaciar la cola cada vez que se encola una línea, y esa petición se
-rechaza mientras la única ranura de tarea breve del bot la ocupa un arranque,
-una parada u otro vaciado. Por eso la pregunta se vuelve a hacer en cada punto
-en que esa ranura se libera, de modo que un vaciado rechazado queda aplazado y
-no perdido: un boletín encolado mientras se reconstruía el bot sale en cuanto
-termina la reconstrucción, sin esperar otra línea que la ventana de duplicados
-habría descartado igualmente.
+rechaza mientras la única tarea trabajadora breve del bot ya está ejecutando
+un arranque, una parada u otro vaciado. Por eso la pregunta se vuelve a hacer
+en el punto en que esa tarea termina y libera su lugar, de modo que un
+vaciado rechazado queda aplazado y no perdido: un boletín encolado mientras se
+reconstruía el bot sale en cuanto termina la reconstrucción, sin esperar otra
+línea que la ventana de duplicados habría descartado igualmente.
 
 El reparto se ejecuta como un solo lote de transmisión, así que toda la lista
 de destinatarios comparte la única sesión TLS descrita más arriba en vez de
