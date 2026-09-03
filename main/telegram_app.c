@@ -34,6 +34,7 @@
 #include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "esp_netif.h"
+#include "esp_system.h"
 #include "esp_timer.h"
 #include "esp_wifi.h"
 #include "freertos/FreeRTOS.h"
@@ -43,11 +44,12 @@
 #include "lwip/sockets.h"
 
 #include "app_config.h"
-#include "aprs_service.h"     // APRS_SOFTWARE_NAME
+#include "aprs_service.h"     // APRS_SOFTWARE_NAME, APRS_SOFTWARE_VERSION
 #include "esp_telegram_bot.h" // telegram_bot_get_me()
 #include "json_escape.h"      // json_write_escaped()
 #include "json_store.h"       // shared JSON-file store scaffolding
 #include "net_state.h"        // net_state_is_connected()
+#include "reset_reason.h"     // reset_reason_label(): wording of the start-up notice's cause line
 #include "sensors_local.h"    // sensors_local_channel_name()
 #include "storage.h"          // storage_write_lock()
 #include "str_append.h"       // str_append()
@@ -125,6 +127,31 @@ static const char *TAG = "telegram_app";
 // enough for two 9-character callsigns, the fixed wording around them, and
 // the full ::MSG_TEXT_MAX message text with room to spare.
 #define TELEGRAM_NOTIFY_TEXT_MAX 300
+
+// Longest rendered start-up notice. Four short lines: the word the operator
+// looks for, the cause of the boot, this station's callsign and the firmware
+// build, with room for the longest label reset_reason_label() returns.
+#define TELEGRAM_START_NOTICE_MAX 160
+
+// Seconds the notice waits after the bring-up that armed it before it asks
+// for a transmit session, and the bound on how long it keeps asking.
+//
+// The wait is what keeps the notice out of the busiest moment of the bot's
+// life. A bring-up ends with the polling task opening its own TLS session,
+// and the record buffers of that handshake are the largest contiguous
+// allocation this firmware makes; sending anything at that instant releases
+// the polling connection again and makes the poll pay for a second handshake
+// while the heap is still holding everything the first one needed. A quarter
+// of a minute later the allocations of the bring-up have been returned, the
+// first long poll is in flight, and one send costs what a routed line costs.
+//
+// The bound exists because the notice may find no such moment at all - a
+// station whose heap stays too fragmented for a session, or an uplink that
+// went away again - and a notice describes a boot, so one delivered several
+// minutes late says nothing the Telegram page's live status does not already
+// say. It is dropped instead, with a line in the log.
+#define TELEGRAM_START_NOTICE_DELAY_S  15
+#define TELEGRAM_START_NOTICE_GIVEUP_S 120
 
 // Pause before a failed bring-up is attempted again. Applied only to the
 // failures that can clear on their own - no route yet, a TLS call that did not
@@ -428,9 +455,95 @@ static void notify_broadcast(const char *text) {
 
     // How wide a fan-out was and how long it took, so an operator reading the
     // log can tell a bulletin storm from the other things that spend heap.
-    ESP_LOGI(TAG, "Bulletin routed to %u recipients in %" PRId64 " ms", sent, (esp_timer_get_time() - started_us) / 1000);
+    // Worded for every broadcast rather than for bulletins alone, since the
+    // start-up notice is fanned out through here as well.
+    ESP_LOGI(TAG, "Line broadcast to %u recipients in %" PRId64 " ms", sent, (esp_timer_get_time() - started_us) / 1000);
     if (skipped > 0)
         ESP_LOGW(TAG, "%u recipients beyond the %d per pass were not reached", skipped, TELEGRAM_NOTIFY_BROADCAST_MAX);
+}
+
+// ---------------------------------------------------------------------------
+// Start-up notice
+//
+// One line reporting that the station came up, and why, sent to every account
+// this station knows the first time the bot reaches Telegram after a power-on
+// or a reset. It is what tells an operator who is not watching the web admin
+// that a station they left running has restarted, and the cause line is what
+// tells them whether it restarted because someone cut the power or because
+// the firmware faulted.
+//
+// "The first time" is per boot, not per bring-up: the bot is brought up again
+// whenever the operator saves the Telegram page and again after a connection
+// that dropped is rebuilt, and a notice on each of those would report a
+// restart that did not happen. The latch below is plain RAM, so it is clear
+// on every power-on and every reset - which is exactly the event the notice
+// reports - and set for the rest of the boot afterwards.
+//
+// Delivery goes through the same worker task and the same transmit batch a
+// routed notification uses, rather than through the service's own
+// announce_start: that one sends the instant the polling connection comes up
+// and needs a second concurrent TLS session, which is why it stays off (see
+// bring_up()). Here the notice travels over the session the batch already
+// holds and costs no second handshake.
+// ---------------------------------------------------------------------------
+
+// True while this boot owes a notice that is not ready to go out yet: armed by
+// the bring-up that succeeded, cleared when the countdown behind it runs out
+// or when the notice is given up on.
+static volatile bool s_start_notice_owed;
+
+// True once the notice is ready for the next transmit batch, cleared by the
+// pass that sends it. Kept apart from the flag above so the tail of the
+// bring-up that armed the notice does not send it: that is the one pass whose
+// heap cannot afford it.
+static volatile bool s_start_notice_pending;
+
+// True once a notice has been armed for this boot. Set when the notice is
+// armed rather than when it is delivered, so a delivery that fails is not
+// attempted again: the notice is a convenience, and the state it reports is
+// on the Telegram page and in the log regardless.
+static volatile bool s_start_notice_done;
+
+// Countdowns behind the two constants above, stepped by the 1 Hz tick.
+static volatile int32_t s_start_notice_wait;
+static volatile int32_t s_start_notice_giveup;
+
+// Arms the notice, if this boot has not had one. Called from the bring-up
+// that succeeded, so nothing is armed on a station whose bot never reaches
+// Telegram. The bring-up itself does not send it: what actually asks for a
+// transmit session is start_notice_tick(), once the delay above has run out.
+static void start_notice_arm(void) {
+    if (s_start_notice_done)
+        return;
+
+    s_start_notice_done = true;
+    s_start_notice_wait = TELEGRAM_START_NOTICE_DELAY_S;
+    s_start_notice_giveup = TELEGRAM_START_NOTICE_GIVEUP_S;
+    s_start_notice_owed = true;
+}
+
+// Renders the notice and fans it out. Runs inside a transmit batch, on the
+// worker task, so it is subject to the same one-session rule as every other
+// send.
+static void start_notice_send(void) {
+    s_start_notice_pending = false;
+
+    app_config_lock();
+    char call[sizeof(g_config.aprs_mycall)];
+    snprintf(call, sizeof(call), "%s", g_config.aprs_mycall);
+    app_config_unlock();
+
+    const char *cause = reset_reason_label(esp_reset_reason());
+
+    char text[TELEGRAM_START_NOTICE_MAX];
+    size_t used = 0;
+    str_append(text, sizeof(text), &used, "START\n");
+    str_append(text, sizeof(text), &used, "Reason: %s\n", cause);
+    str_append(text, sizeof(text), &used, "Station: %s\n", call);
+    str_append(text, sizeof(text), &used, "Firmware: %s %s", APRS_SOFTWARE_NAME, APRS_SOFTWARE_VERSION);
+
+    ESP_LOGI(TAG, "Sending start-up notice, reset cause: %s", cause);
+    notify_broadcast(text);
 }
 
 // Spawns the shared worker to drain the notify queue, if the slot is free.
@@ -1722,6 +1835,7 @@ static void telegram_worker_task(void *arg) {
             if (reason == TELEGRAM_APP_REASON_CONNECTED) {
                 s_service_up = true;
                 s_retry_in = TELEGRAM_RETRY_NEVER;
+                start_notice_arm();
             } else if (reason_is_transient(reason)) {
                 s_retry_in = TELEGRAM_RETRY_SECONDS;
             } else {
@@ -1742,19 +1856,33 @@ static void telegram_worker_task(void *arg) {
         }
     }
 
-    // The whole pass is one Telegram transmit batch, so every line drained
-    // here, fan-outs included, travels over the session a bring-up above just
-    // opened, or over a session of its own when this task was spawned for the
-    // queue alone.
-    if (s_notify_queue != NULL) {
-        telegram_notify_item_t item;
+    // The whole pass is one Telegram transmit batch, so every line sent here -
+    // the start-up notice and every drained item, fan-outs included - travels
+    // over the session a bring-up above just opened, or over a session of its
+    // own when this task was spawned for the queue alone. The batch is opened
+    // only when there is something to put in it, since opening one releases
+    // the polling connection.
+    if (s_start_notice_pending || s_notify_queue != NULL) {
         telegram_tx_batch_begin();
-        while (xQueueReceive(s_notify_queue, &item, 0) == pdTRUE) {
-            if (item.broadcast)
-                notify_broadcast(item.text);
-            else
-                notify_send_one(item.chat_id, item.text);
+
+        // First in the batch: an operator reading the chat sees that the
+        // station restarted before whatever else the same pass carries. A
+        // notice is only ever ready here once start_notice_tick() has released
+        // it, which is why the tail of the bring-up that armed it goes past
+        // this without sending anything.
+        if (s_start_notice_pending)
+            start_notice_send();
+
+        if (s_notify_queue != NULL) {
+            telegram_notify_item_t item;
+            while (xQueueReceive(s_notify_queue, &item, 0) == pdTRUE) {
+                if (item.broadcast)
+                    notify_broadcast(item.text);
+                else
+                    notify_send_one(item.chat_id, item.text);
+            }
         }
+
         telegram_tx_batch_end();
     }
 
@@ -1798,6 +1926,42 @@ static bool worker_spawn(telegram_action_t action) {
     return true;
 }
 
+// One second of a pending start-up notice.
+//
+// Runs only while the service is up and the worker slot is free, since it is
+// the tick's running branch that calls it. Spawning the shared worker with no
+// action is what delivers the notice: that pass opens a transmit batch, finds
+// the notice pending and sends it before draining whatever else is queued.
+static void start_notice_tick(void) {
+    if (s_start_notice_giveup > 0)
+        s_start_notice_giveup--;
+
+    if (s_start_notice_giveup == 0) {
+        s_start_notice_owed = false;
+        ESP_LOGW(TAG, "Start-up notice dropped, no moment with room for a transmit session");
+        return;
+    }
+
+    if (s_start_notice_wait > 0) {
+        s_start_notice_wait--;
+        return;
+    }
+
+    // The same two floors a bring-up tests, for the same reason: a send opens
+    // a TLS session of its own and the polling connection pays for another one
+    // when it takes its turn back, so a heap that cannot hold that pair is
+    // asked again a second later instead of being made to fail twice.
+    if (heap_caps_get_largest_free_block(MALLOC_CAP_8BIT) < TELEGRAM_MIN_FREE_BLOCK || heap_caps_get_free_size(MALLOC_CAP_8BIT) < TELEGRAM_MIN_FREE_HEAP)
+        return;
+
+    // Handed over before the spawn, so a spawn refused because another worker
+    // holds the slot costs nothing: that worker's own tail finds the notice
+    // ready and takes it.
+    s_start_notice_owed = false;
+    s_start_notice_pending = true;
+    notify_worker_spawn();
+}
+
 void telegram_app_tick_1hz(void) {
     // A pending enable or disable takes priority over anything else: it is the
     // operator's most recent instruction.
@@ -1835,10 +1999,17 @@ void telegram_app_tick_1hz(void) {
 
         // Said out loud rather than left to show as a polling-error count that
         // climbs for no stated reason.
-        if (!net_state_is_connected())
+        if (!net_state_is_connected()) {
             status_set(TELEGRAM_APP_STATE_STARTING, TELEGRAM_APP_REASON_WAITING_NETWORK, NULL);
-        else
-            status_set(TELEGRAM_APP_STATE_RUNNING, TELEGRAM_APP_REASON_CONNECTED, NULL);
+            return;
+        }
+
+        status_set(TELEGRAM_APP_STATE_RUNNING, TELEGRAM_APP_REASON_CONNECTED, NULL);
+
+        // Last, and only on a bot that is both up and reachable: the notice
+        // is worth a transmit session only where a routed line would be.
+        if (s_start_notice_owed)
+            start_notice_tick();
         return;
     }
 

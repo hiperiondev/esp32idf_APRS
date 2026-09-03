@@ -140,20 +140,68 @@ carries a transmitter and a scheduler with timed obligations, and a restart
 is already available, behind the web admin's own login, from the *System*
 page.
 
-Publish-on-start is off
-========================
+The service's own publish-on-start is off
+=========================================
 
 Two conveniences the service offers — publishing its command list to
 Telegram's own UI, and announcing on start-up that the bot is now running —
 are both turned off (``publish_commands = false``, ``announce_start =
-false``). Both would open a second TLS session the instant the polling
-connection comes up, while the first one's buffers are still held; on a
-station whose heap also carries the radio modem's DMA buffers that second
-session does not fit, and the only visible effect would be a pair of errors
-in the log at every start-up. Neither commands nor the start-up notice are
-lost in any functional sense — every command works whether or not Telegram
-has been told about it, and the *Telegram* page's live status already shows
-an administrator that the bot is up.
+false``). Both send the instant the polling connection comes up, opening a
+second TLS session while the first one's buffers are still held; on a station
+whose heap also carries the radio modem's DMA buffers that second session does
+not fit, and the only visible effect would be a pair of errors in the log at
+every start-up. The command list is not lost in any functional sense — every
+command works whether or not Telegram has been told about it — and the
+start-up announcement is replaced by the notice this firmware sends itself,
+described next, which rides a transmit batch instead of a session of its own.
+
+Start-up notice
+===============
+
+The first bring-up that reaches Telegram after a power-on or a reset sends one
+message to every authorized user, to the administrator and to every allowed
+group chat:
+
+.. code-block:: text
+
+   START
+   Reason: Power-on
+   Station: LU3VEA-10
+   Firmware: esp32_APRS_igate 1.0.0
+
+The cause line is ``esp_reset_reason()``, worded by the same table the
+dashboard's System Info strip reads (``main/include/reset_reason.h``), so the
+two never spell the same cause differently. A station that came back from a
+panic, a watchdog or a brownout says which, rather than only that it came
+back: an operator who is not watching the web admin learns both that a station
+they left running has restarted and what restarted it.
+
+It is sent once per boot, not once per bring-up. The bot is brought up again
+whenever the *Telegram* page is saved, and again after a dropped connection is
+rebuilt, and a notice on each of those would report a restart that never
+happened. The latch that prevents it is plain RAM, so it clears on exactly the
+event the notice reports and stays set for the rest of the boot.
+
+It is not sent as part of the bring-up that armed it, but around fifteen
+seconds later. A bring-up ends with the polling task opening its own TLS
+session, and the record buffers of that handshake are the largest contiguous
+allocation this firmware makes; sending at that instant releases the polling
+connection again and makes the next poll pay for a second handshake while the
+first one's memory is still held, which on this board is exactly the moment it
+does not fit. A quarter of a minute later the bring-up's allocations have been
+returned and one send costs what a routed line costs. The same two heap floors
+a bring-up tests are checked again before the session is asked for, so a
+station that is momentarily short simply waits another second.
+
+There is no switch for it, and nothing is held indefinitely when it cannot be
+sent. A station whose bot is disabled, or whose bot never reaches Telegram,
+never sends one, and a notice that finds no moment with room for a session
+within two minutes is dropped with a line in the log: it describes a boot that
+is over by the time anybody could act on it, so a copy arriving much later
+would say less than the *Telegram* page's live status already does. Delivery
+uses the same short-lived worker task and the same transmit batch a routed
+notification uses, so it costs no TLS session of its own, and it goes first in
+that batch, ahead of anything else the same pass carries.
 
 One TLS session, shared by a batch
 ==================================

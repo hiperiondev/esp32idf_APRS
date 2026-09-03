@@ -149,21 +149,73 @@ esta estación lleva un transmisor y un planificador con compromisos horarios,
 y ya existe un reinicio disponible, tras el propio inicio de sesión del panel
 web, en la página *System*.
 
-No se publica al arrancar
-===========================
+El aviso propio del servicio al arrancar está apagado
+=====================================================
 
 Dos comodidades que ofrece el servicio —publicar su lista de comandos en la
 propia interfaz de Telegram, y anunciar al arrancar que el bot ya está en
 marcha— están ambas desactivadas (``publish_commands = false``,
-``announce_start = false``). Las dos abrirían una segunda sesión TLS justo en
-el instante en que arranca la conexión de sondeo, mientras los búferes de la
-primera siguen reservados; en una estación cuya memoria también lleva los
-búferes DMA del módem de radio, esa segunda sesión no cabe, y el único efecto
-visible sería un par de errores en el registro en cada arranque. Ni los
-comandos ni el aviso de arranque se pierden en ningún sentido funcional: cada
-comando funciona se le haya avisado o no a Telegram sobre él, y el estado en
-vivo de la página *Telegram* ya muestra a un administrador que el bot está
-activo.
+``announce_start = false``). Las dos envían justo en el instante en que
+arranca la conexión de sondeo, abriendo una segunda sesión TLS mientras los
+búferes de la primera siguen reservados; en una estación cuya memoria también
+lleva los búferes DMA del módem de radio, esa segunda sesión no cabe, y el
+único efecto visible sería un par de errores en el registro en cada arranque.
+La lista de comandos no se pierde en ningún sentido funcional —cada comando
+funciona se le haya avisado o no a Telegram sobre él— y el anuncio de arranque
+queda reemplazado por el aviso que envía este propio firmware, descrito a
+continuación, que viaja en un lote de transmisión en vez de en una sesión
+propia.
+
+Aviso de arranque
+=================
+
+El primer arranque del bot que alcanza Telegram tras un encendido o un reinicio
+envía un mensaje a cada usuario autorizado, al administrador y a cada chat de
+grupo permitido:
+
+.. code-block:: text
+
+   START
+   Reason: Power-on
+   Station: LU3VEA-10
+   Firmware: esp32_APRS_igate 1.0.0
+
+La línea de causa es ``esp_reset_reason()``, redactada con la misma tabla que
+lee la franja System Info del panel (``main/include/reset_reason.h``), así que
+las dos nunca escriben distinto la misma causa. Una estación que volvió de un
+pánico, de un perro guardián o de una caída de tensión dice cuál, y no solo que
+volvió: un operador que no está mirando el panel web se entera tanto de que una
+estación que dejó andando se reinició como de qué la reinició.
+
+Se envía una vez por arranque, no una vez por puesta en marcha del bot. El bot
+se vuelve a levantar cada vez que se guarda la página *Telegram*, y otra vez
+cuando se reconstruye una conexión que se cayó, y un aviso en cada una de esas
+ocasiones informaría de un reinicio que nunca ocurrió. El pestillo que lo
+impide es RAM común, así que se limpia exactamente en el evento que el aviso
+informa y queda puesto por el resto del arranque.
+
+No se envía como parte de la puesta en marcha que lo armó, sino unos quince
+segundos después. Una puesta en marcha termina con la tarea de sondeo abriendo
+su propia sesión TLS, y los búferes de registro de ese saludo son la
+asignación contigua más grande que hace este firmware; enviar en ese instante
+libera otra vez la conexión de sondeo y hace que el sondeo siguiente pague un
+segundo saludo mientras la memoria del primero sigue tomada, que en esta placa
+es justo el momento en que no cabe. Un cuarto de minuto después las
+asignaciones de la puesta en marcha ya se devolvieron y un envío cuesta lo que
+cuesta una línea encaminada. Antes de pedir la sesión se comprueban de nuevo
+los mismos dos pisos de memoria que comprueba una puesta en marcha, así que una
+estación que está justa por un momento simplemente espera un segundo más.
+
+No tiene interruptor, y no se guarda nada indefinidamente cuando no se puede
+enviar. Una estación con el bot deshabilitado, o cuyo bot nunca alcanza
+Telegram, no envía ninguno, y un aviso que en dos minutos no encuentra un
+momento con lugar para una sesión se descarta con una línea en el registro: el
+aviso describe un arranque que ya terminó para cuando alguien podría actuar
+sobre él, así que una copia que llegara mucho después diría menos que lo que ya
+muestra el estado en vivo de la página *Telegram*. La entrega usa la misma
+tarea trabajadora de vida corta y el mismo lote de transmisión que usa una
+notificación encaminada, así que no cuesta una sesión TLS propia, y va primera
+en ese lote, por delante de todo lo demás que lleve esa misma pasada.
 
 Una sola sesión TLS, compartida por un lote
 ===========================================

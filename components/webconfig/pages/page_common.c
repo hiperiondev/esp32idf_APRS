@@ -39,6 +39,7 @@
 #include "igate.h"
 #include "lastheard.h"
 #include "pages.h"
+#include "reset_reason.h" // reset_reason_label() - dashboard "Reboot reason" wording
 #include "storage.h"
 #include "str_append.h"
 #include "time_sync.h" // time_sync_format_local() - dashboard local date/time (System page "Time" section)
@@ -218,33 +219,11 @@ esp_err_t page_dashboard(httpd_req_t *req) {
     return ESP_OK;
 }
 
-// Translates esp_reset_reason() into a short human-readable label for the
-// dashboard's System Info strip.
+// Cause of this boot for the dashboard's System Info strip, worded by the
+// shared table so the strip and the Telegram start-up notice name it the same
+// way.
 static const char *dash_reboot_reason_str(void) {
-    switch (esp_reset_reason()) {
-        case ESP_RST_POWERON:
-            return "Power-on";
-        case ESP_RST_EXT:
-            return "External pin";
-        case ESP_RST_SW:
-            return "Software reset";
-        case ESP_RST_PANIC:
-            return "Panic/exception";
-        case ESP_RST_INT_WDT:
-            return "Interrupt watchdog";
-        case ESP_RST_TASK_WDT:
-            return "Task watchdog";
-        case ESP_RST_WDT:
-            return "Other watchdog";
-        case ESP_RST_DEEPSLEEP:
-            return "Deep sleep wake";
-        case ESP_RST_BROWNOUT:
-            return "Brownout";
-        case ESP_RST_SDIO:
-            return "SDIO";
-        default:
-            return "Unknown";
-    }
+    return reset_reason_label(esp_reset_reason());
 }
 
 // GET /dashinfo -> compact live system-info strip shown at the top of the

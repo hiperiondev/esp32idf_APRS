@@ -37,6 +37,7 @@ Disposizione del repository
    │   ├── json_store.c + include/json_store.h / json_escape.h ← impalcatura comune degli store JSON (un solo buffer stdio) + scrittore in streaming/escaping
    │   ├── include/must_check.h ← attributo "il chiamante deve leggere questo valore di ritorno"
    │   ├── include/app_version.h ← stringa di versione del firmware mostrata nella pagina About
+   │   ├── include/reset_reason.h ← causa dell'avvio come etichetta, condivisa dalla striscia del pannello e dall'avviso di avvio di Telegram
    │   ├── include/sched_time.h ← secondi monotonici usati da ogni scheduler
    │   ├── beacon.c/.h         ← beacon posizione propria (trk / igate / digi)
    │   ├── aprs_dao.c/.h       ← estensione di precisione/datum "!DAO!" (aprs12/datum.txt), usata da beacon.c

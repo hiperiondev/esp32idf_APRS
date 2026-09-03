@@ -147,21 +147,75 @@ stazione porta un trasmettitore e uno scheduler con impegni a tempo, e un
 riavvio è già disponibile, dietro il login stesso del pannello web, dalla
 pagina *System*.
 
-Nessuna pubblicazione all'avvio
-==================================
+L'avviso di avvio proprio del servizio è spento
+===============================================
 
 Due comodità offerte dal servizio — pubblicare il proprio elenco di comandi
 sull'interfaccia di Telegram, e annunciare all'avvio che il bot è ora attivo
 — sono entrambe disattivate (``publish_commands = false``,
-``announce_start = false``). Entrambe aprirebbero una seconda sessione TLS
-nell'istante in cui la connessione di polling si avvia, mentre i buffer della
-prima sono ancora occupati; su una stazione la cui memoria porta anche i
-buffer DMA del modem radio, quella seconda sessione non trova posto, e
+``announce_start = false``). Entrambe inviano nell'istante in cui la
+connessione di polling si avvia, aprendo una seconda sessione TLS mentre i
+buffer della prima sono ancora occupati; su una stazione la cui memoria porta
+anche i buffer DMA del modem radio, quella seconda sessione non trova posto, e
 l'unico effetto visibile sarebbe una coppia di errori nel log a ogni avvio.
-Né i comandi né l'avviso di avvio vengono persi in alcun senso funzionale:
-ogni comando funziona indipendentemente dal fatto che Telegram ne sia stato
-informato, e lo stato live della pagina *Telegram* mostra già a un
-amministratore che il bot è attivo.
+L'elenco dei comandi non viene perso in alcun senso funzionale — ogni comando
+funziona indipendentemente dal fatto che Telegram ne sia stato informato — e
+l'annuncio di avvio è sostituito dall'avviso che questo firmware invia per
+conto proprio, descritto qui sotto, che viaggia in un lotto di trasmissione
+invece che in una sessione tutta sua.
+
+Avviso di avvio
+===============
+
+Il primo avvio del bot che raggiunge Telegram dopo un'accensione o un reset
+invia un messaggio a ogni utente autorizzato, all'amministratore e a ogni chat
+di gruppo consentita:
+
+.. code-block:: text
+
+   START
+   Reason: Power-on
+   Station: LU3VEA-10
+   Firmware: esp32_APRS_igate 1.0.0
+
+La riga della causa è ``esp_reset_reason()``, formulata con la stessa tabella
+che legge la striscia System Info del pannello
+(``main/include/reset_reason.h``), così le due non possono scrivere in modo
+diverso la stessa causa. Una stazione tornata da un panic, da un watchdog o da
+un calo di tensione dice quale, e non soltanto che è tornata: un operatore che
+non sta guardando il pannello web viene a sapere sia che una stazione lasciata
+in funzione si è riavviata, sia che cosa l'ha riavviata.
+
+L'invio avviene una volta per avvio, non una volta per messa in servizio del
+bot. Il bot viene rimesso in servizio ogni volta che si salva la pagina
+*Telegram*, e di nuovo quando una connessione caduta viene ricostruita, e un
+avviso a ognuna di quelle occasioni segnalerebbe un riavvio mai avvenuto. Il
+fermo che lo impedisce è RAM normale, quindi si azzera esattamente sull'evento
+che l'avviso segnala e resta impostato per il resto dell'avvio.
+
+Non viene inviato come parte della messa in servizio che lo ha armato, ma circa
+quindici secondi dopo. Una messa in servizio termina con l'attività di polling
+che apre la propria sessione TLS, e i buffer di record di quell'handshake sono
+l'allocazione contigua più grande che questo firmware compie; inviare in
+quell'istante rilascia di nuovo la connessione di polling e fa pagare al
+polling successivo un secondo handshake mentre la memoria del primo è ancora
+occupata, che su questa scheda è esattamente il momento in cui non ci sta. Un
+quarto di minuto dopo le allocazioni della messa in servizio sono state restituite e un
+invio costa quanto costa una riga instradata. Prima di chiedere la sessione
+vengono ricontrollate le stesse due soglie di memoria che controlla una messa
+in servizio, così una stazione momentaneamente al limite aspetta semplicemente
+un altro secondo.
+
+Non ha un interruttore, e nulla viene conservato a tempo indeterminato quando
+non può essere inviato. Una stazione con il bot disabilitato, o il cui bot non
+raggiunge mai Telegram, non ne invia alcuno, e un avviso che in due minuti non
+trova un momento con spazio per una sessione viene scartato con una riga nel
+log: l'avviso descrive un avvio già concluso nel momento in cui qualcuno
+potrebbe agire, quindi una copia che arrivasse molto dopo direbbe meno di
+quanto già mostra lo stato live della pagina *Telegram*. La consegna usa la
+stessa attività di lavoro di breve durata e lo stesso lotto di trasmissione di
+una notifica instradata, quindi non costa una sessione TLS propria, e va per
+prima in quel lotto, davanti a tutto il resto che la stessa passata trasporta.
 
 Una sola sessione TLS, condivisa da un lotto
 ============================================

@@ -53,6 +53,24 @@
  * The supervisor also re-checks connectivity while the bot runs, so a station
  * that loses its uplink reports "waiting for a network route" instead of a
  * growing polling-error count with no explanation.
+ *
+ * The first bring-up that reaches Telegram after a power-on or a reset also
+ * sends a start-up notice - the word @c START, the cause of the boot as
+ * @c esp_reset_reason() reports it, this station's callsign and the firmware
+ * version - to every authorized user, to the administrator and to every
+ * allowed group chat. It is sent once per boot rather than once per bring-up,
+ * so neither a save on the Telegram page nor a connection rebuilt after the
+ * uplink came back reports a restart that did not happen, and it travels in
+ * the same transmit batch a routed notification uses.
+ *
+ * It goes out a few seconds after the bring-up that armed it rather than as
+ * part of it. A bring-up ends with the polling task opening its own TLS
+ * session, whose record buffers are the largest contiguous allocation this
+ * firmware makes, and sending at that instant makes that poll pay for a second
+ * handshake before the first one's memory has been returned. A notice that
+ * finds no moment with room for a session is dropped rather than kept
+ * indefinitely: it describes a boot, so a late copy says nothing
+ * ::telegram_app_status does not already say.
  */
 
 #ifndef TELEGRAM_APP_H

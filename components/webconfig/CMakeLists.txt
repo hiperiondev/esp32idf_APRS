@@ -11,13 +11,14 @@
 #
 # main is listed as PRIV_REQUIRES, not REQUIRES: the web pages use main's
 # app_config.h, app_version.h, aprs_coord.h, aprs_filter.h, aprs_service.h,
-# bulletins.h, cpu_freq.h, json_escape.h, objects_items.h, storage.h,
-# str_append.h, telemetry.h and time_sync.h internally, but web_common.h and
-# pages.h never re-export any of them, so the dependency does not belong on
-# the public REQUIRES list. main in turn lists webconfig in its own REQUIRES, which
-# makes this a documented circular component dependency (see the ESP-IDF
-# build-system guide's "Component Requirements" section): CMake resolves it
-# by repeating both component libraries on the linker command line.
+# bulletins.h, cpu_freq.h, json_escape.h, objects_items.h, reset_reason.h,
+# storage.h, str_append.h, telemetry.h and time_sync.h internally, but
+# web_common.h and pages.h never re-export any of them, so the dependency
+# does not belong on the public REQUIRES list. main in turn lists webconfig in
+# its own REQUIRES, which makes this a documented circular component
+# dependency (see the ESP-IDF build-system guide's "Component Requirements"
+# section): CMake resolves it by repeating both component libraries on the
+# linker command line.
 # PRIV_REQUIRES main is sufficient on its own to make main's public
 # INCLUDE_DIRS visible here, so this component does not add "../../main/include"
 # to its own INCLUDE_DIRS.

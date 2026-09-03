@@ -37,6 +37,7 @@ Repository layout
    │   ├── json_store.c + include/json_store.h / json_escape.h ← shared JSON-file store scaffolding (one stdio buffer) + streaming writer/escaping
    │   ├── include/must_check.h ← the "caller must read this return value" attribute
    │   ├── include/app_version.h ← firmware version string shown on the About page
+   │   ├── include/reset_reason.h ← boot cause as a label, shared by the dashboard strip and the Telegram start-up notice
    │   ├── include/sched_time.h ← monotonic seconds used by every scheduler
    │   ├── beacon.c/.h         ← own-position beacons (trk / igate / digi)
    │   ├── aprs_dao.c/.h       ← "!DAO!" precision/datum extension (aprs12/datum.txt), consumed by beacon.c
