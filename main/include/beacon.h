@@ -26,9 +26,11 @@
  * show up (e.g. on aprs.fi) - the IGate/digipeater alone only relay traffic
  * they already hear, they never announce their own position on their own.
  *
- * Each of the three beacons (tracker, igate, digi) runs as its own FreeRTOS task
- * with its own enable flag and interval, so they operate completely independently
- * of one another.
+ * The three beacons (tracker, igate, digi) each keep their own enable flag,
+ * interval and next-due time, so they operate independently of one another,
+ * but none of them owns a task: ::beacon_service transmits whichever are due
+ * in a single pass, driven by the shared beacon scheduler
+ * (beacon_scheduler.c).
  *
  * GPS/live-position beaconing is available on the Tracker beacon alone
  * ("Use live GPS fix", g_config.trk_use_live_gps): when enabled and the GNSS

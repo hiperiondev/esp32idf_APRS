@@ -481,8 +481,10 @@ char ax25_encode(ax25_frame_t *frame, char *txt, int size);
  * @param outbuf_len Size, in bytes, of @p outbuf.
  * @param ctx        AX.25 codec context to use/update while serializing.
  * @param pkg        Frame to serialize.
- * @return Number of bytes written to @p outbuf (no HDLC flags, no FCS), or a
- *         negative value on error.
+ * @return Number of bytes written to @p outbuf (no HDLC flags, no FCS), or 0
+ *         if the address field or the control/PID pair does not fit the
+ *         internal frame buffer, or if the built frame is longer than
+ *         @p outbuf_len.
  */
 int hdlcFrame(uint8_t *outbuf, size_t outbuf_len, ax25_ctx_t *ctx, ax25_frame_t *pkg);
 

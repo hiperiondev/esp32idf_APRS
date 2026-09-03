@@ -493,8 +493,9 @@ static bool send_tnc2_impl(const char *packet, size_t len, bool critical) {
     // get here: the audio modem is disabled on the Radio page, or the frame is
     // offered during the boot window. aprs_service_start() has to run BEFORE
     // modem_init() because it installs the RX callback, and it starts the
-    // beacon tasks, which transmit on entry rather than after their first
-    // interval; modem_init() then blocks for ~5 s measuring the ADC clock.
+    // beacon scheduler, whose beacons transmit on entry rather than after
+    // their first interval; modem_init() then blocks for ~5 s measuring the
+    // ADC clock.
     // Without this gate a boot-time beacon would reach Ax25WriteTxFrame()
     // before Ax25Init() had run.
     if (!s_modemReady) {
@@ -1754,8 +1755,8 @@ static void serviceTickTask(void *arg) {
         // other heap figure in the log is printed after something failed.
         heap_monitor_tick_1hz();
 
-        // 1 Hz weather sensor refresh, folded in here instead of running its
-        // own wx_sensor_task (saves that task's stack). weather_start() has
+        // 1 Hz weather sensor refresh, folded in here rather than given a task
+        // of its own, which saves that task's stack. weather_start() has
         // already run by the time this task is created, so the shared container
         // and sensor registry are ready.
         weather_service_1hz();

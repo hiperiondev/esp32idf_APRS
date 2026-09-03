@@ -838,8 +838,9 @@ uint32_t weather_beacon_service(void) {
             }
         }
 
-        // Same watermark log the beacon tasks emit: a tight stack shows up here
-        // instead of as a truncated or silently dropped RF packet.
+        // Same watermark log the other beacon builders emit: a tight scheduler
+        // stack shows up here instead of as a truncated or silently dropped RF
+        // packet.
         ESP_LOGD(TAG, "wx_beacon stack free: %u bytes", (unsigned)(uxTaskGetStackHighWaterMark(NULL) * sizeof(StackType_t)));
 
         s_wx_next_due = now + (int64_t)beacon_scheduler_jitter(sched_clamp_interval(g_config.wx_interval, WX_MIN_INTERVAL_S, WX_DEFAULT_INTERVAL_S));
@@ -877,10 +878,9 @@ void weather_start(void) {
     sensors_local_init();
     sensors_local_init_all();
 
-    // The WX sensor refresh (1 Hz) and the WX beacon are both driven elsewhere
-    // now, so the weather subsystem creates no task of its own: the beacon runs
-    // in the shared beacon scheduler (via weather_beacon_service()), and the
-    // 1 Hz sensor refresh runs in the APRS service tick (via weather_service_1hz()).
+    // The weather subsystem creates no task of its own: the WX beacon runs in
+    // the shared beacon scheduler (via weather_beacon_service()) and the 1 Hz
+    // sensor refresh runs in the APRS service tick (via weather_service_1hz()).
     ESP_LOGI(TAG, "Weather subsystem started (en=%d rf=%d inet=%d interval=%us, %u local sensor driver(s))", g_config.wx_en, g_config.wx_2rf, g_config.wx_2inet,
              (unsigned)g_config.wx_interval, (unsigned)sensors_local_count());
 }

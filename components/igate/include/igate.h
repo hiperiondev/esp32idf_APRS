@@ -342,6 +342,8 @@ igate_stats_t igate_get_stats(void);
  * pumping the RX line reader). Used by the web dashboard's "Network Status"
  * panel (APRS-IS pill), mirroring aprsClient.connected() on the reference
  * esp32idf_APRS dashboard.
+ * @return true while the APRS-IS socket is open and logged in, false
+ *         otherwise.
  */
 bool igate_is_connected(void);
 

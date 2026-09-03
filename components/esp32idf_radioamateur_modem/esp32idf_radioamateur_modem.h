@@ -71,7 +71,7 @@ typedef struct {
     bool allow_non_aprs;   /**< true: accept frames whose Control/PID fields are not 0x03/0xF0. */
     uint16_t preamble_ms;  /**< TXDelay (preamble) duration, in milliseconds. */
     uint16_t slot_time_ms; /**< CSMA quiet time, in milliseconds: how long a queued frame waits before channel access begins. The interval between the
-                              persistence rolls that follow is the fixed AX.25 "SlotTime" held in ax25_config_t.csmaSlotTime, not this value. Ignored in
+                              persistence rolls that follow is the fixed AX.25 "SlotTime" held in ::Ax25ProtoConfig::csmaSlotTime, not this value. Ignored in
                               full duplex mode. */
     uint8_t persist;       /**< CSMA/p-persistent channel-access probability (standard AX.25/KISS "Persist"): once the quiet time has elapsed and the
                               channel is heard clear, the modem transmits immediately with probability persist/256 on every slot and otherwise waits one
@@ -92,7 +92,8 @@ typedef struct {
  *        values: Bell 202 modem, standard (de-emphasized) audio, full
  *        duplex enabled, strict APRS frame filtering, 300 ms preamble, no
  *        CSMA slot time, the standard AX.25/KISS Persist default (63, ~25%
- *        transmit chance per clear slot) and FX.25 disabled.
+ *        transmit chance per clear slot), FX.25 disabled, the PTT polarity
+ *        taken from ::MODEM_PTT_ACTIVE_HIGH and no extra unkey hold.
  */
 #define MODEM_DEFAULT_CONFIG()                                                                                                                                 \
     {                                                                                                                                                          \

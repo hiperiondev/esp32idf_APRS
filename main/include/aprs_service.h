@@ -378,6 +378,7 @@ void aprs_service_notify_modem_ready(void);
 /**
  * @brief Whether the audio ADC/DAC AFSK modem hardware has been brought up
  * this boot (i.e. aprs_service_notify_modem_ready() has been called).
+ * @return true once modem_init() has succeeded this boot, false otherwise.
  */
 bool aprs_service_modem_ready(void);
 

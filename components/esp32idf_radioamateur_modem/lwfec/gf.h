@@ -139,8 +139,12 @@ void GfPolyScale(const uint8_t *p, uint8_t o, uint8_t s, uint8_t *out);
  * @param *p2 2nd polynomial
  * @param o2 2nd polynomial buffer length (degree of a poly + 1)
  * @param *out Output polynomial buffer, at least max(o1, o2) bytes long
- * @return Output polynomial length, that is max(o1, o2). Every coefficient up to
- *         that length is written.
+ * @return Output polynomial length, that is max(o1, o2).
+ * @note Only the first min(o1, o2) coefficients are always written. When
+ *       o1 > o2 the coefficients out[o2 .. o1-1] are left untouched, so the
+ *       caller must have staged them itself (the Berlekamp-Massey loop in
+ *       rs.c does, by memcpy-ing the longer operand into the output buffer
+ *       first). When o2 > o1 the tail is taken from p2 and written in full.
  */
 uint8_t GfPolyAdd(const uint8_t *p1, uint8_t o1, const uint8_t *p2, uint8_t o2, uint8_t *out);
 
@@ -170,9 +174,12 @@ uint8_t GfPolyEval(const uint8_t *p, uint8_t o, uint8_t x);
  * @param o1 Divident polynomial buffer length
  * @param *p2 Divisor polynomial
  * @param o2 Divisor polynomial buffer length
- * @param *out Output polynomial quotient and remainder. Size o1 + o2 - 1. Must be preallocated.
- * @warning This function works on polynomials orderder highest-degree-term-first
- * @return Pointer to the first element of the remainder
+ * @param *out Output polynomial quotient followed by remainder. Must be
+ *             preallocated and at least o1 bytes long: the division is done in
+ *             place on a copy of p1, so no index past o1-1 is ever written.
+ * @warning This function works on polynomials ordered highest-degree-term-first
+ * @return Pointer to the first element of the remainder, that is
+ *         &out[o1 - o2 + 1]. The remainder is o2 - 1 bytes long.
  */
 uint8_t *GfPolyDiv(const uint8_t *p1, uint8_t o1, const uint8_t *p2, uint8_t o2, uint8_t *out);
 

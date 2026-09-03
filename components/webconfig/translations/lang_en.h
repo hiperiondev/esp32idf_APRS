@@ -816,13 +816,6 @@
 /** @} */
 
 /**
- * @name page_mod.c
- * @{
- */
-
-/** @} */
-
-/**
  * @name page_storage.c
  * @{
  */

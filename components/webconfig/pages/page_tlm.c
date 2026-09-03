@@ -354,9 +354,9 @@ static void send_analog_form(httpd_req_t *req, const telemetry_config_t *cfg) {
     // solves the line through them (b=(y2-y1)/(x2-x1), c=y1-b*x1), forces
     // the quadratic term to 0, and writes a/b/c back into the form's own
     // inputs (firing their oninput handler so the preview updates
-    // immediately) - mirroring aprs-telemetry-configurator.html's
-    // openCalibWizard(), except it edits the real form fields directly
-    // instead of an in-memory JS state object.
+    // immediately). It edits the real form fields directly rather than an
+    // in-memory JS state object, so a Save persists exactly what the wizard
+    // computed.
     {
         // Sent as separate chunks (rather than one giant snprintf) so no
         // fixed-size buffer has to hold the whole script at once - the

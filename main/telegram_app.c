@@ -201,9 +201,9 @@ static telegram_app_config_t s_cfg;
 // What the worker task should do the next time one is spawned. Written by
 // telegram_app_apply_config() and by the tick, read by the worker.
 typedef enum {
-    TELEGRAM_ACTION_NONE = 0, /**< Nothing pending. */
-    TELEGRAM_ACTION_START,    /**< Bring the service up. */
-    TELEGRAM_ACTION_STOP,     /**< Release the service. */
+    TELEGRAM_ACTION_NONE = 0, // nothing pending
+    TELEGRAM_ACTION_START,    // bring the service up
+    TELEGRAM_ACTION_STOP,     // release the service
 } telegram_action_t;
 
 static volatile telegram_action_t s_action;

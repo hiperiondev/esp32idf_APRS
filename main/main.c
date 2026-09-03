@@ -342,8 +342,9 @@ static void wifi_init(void) {
     if (ps_err != ESP_OK)
         ESP_LOGW(TAG, "Could not disable WiFi modem sleep: %s", esp_err_to_name(ps_err));
 
-    // No esp_wifi_connect() here any more - WIFI_EVENT_STA_START does it, once
-    // the driver says the station is genuinely up. See the handler.
+    // The station association is started from the WIFI_EVENT_STA_START
+    // handler, once the driver reports the station interface is genuinely up,
+    // rather than from here. See that handler.
 
     // The units differ: the config field is dBm, esp_wifi_set_max_tx_power()
     // takes quarter-dBm, hence the x4. Both the form and config.json paths

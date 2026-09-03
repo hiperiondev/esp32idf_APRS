@@ -244,14 +244,15 @@
  *      768 samples = 1536 B  ->  ~11 us   (10 % of a 9600 Bd symbol: fatal)
  *      128 samples =  256 B  ->  ~2 us    (2 % of a symbol: inside budget)
  *
- * At 1200 Bd an 11 us displacement is 1.3 % of a symbol and invisible, which
- * is exactly why every AFSK profile passed while G3RUH dropped frames and
- * stage 2 of the diagnostics blamed a flash fetch that was not there.
+ * At 1200 Bd an 11 us displacement is 1.3 % of a symbol and invisible, so the
+ * frame size only ever shows up as G3RUH frame loss while every AFSK profile
+ * keeps decoding.
  *
- * Making this smaller costs only ISR entries (128 samples at 38400 Hz is one
- * every 3.3 ms instead of every 20 ms) and buys back the symbol edge. The DSP
- * is unaffected: AFSK_Poll() still consumes whole ::MODEM_BLOCK_SIZE blocks
- * out of the FIFO, which is what the FIFO is for.
+ * A small frame costs only ISR entries - 128 samples at ::MODEM_ADC_SAMPLERATE
+ * (76800 Hz) is one every 1.7 ms, against one every 20 ms for a whole
+ * ::MODEM_BLOCK_SIZE block - and buys back the symbol edge. The DSP is
+ * unaffected: AFSK_Poll() still consumes whole ::MODEM_BLOCK_SIZE blocks out
+ * of the FIFO, which is what the FIFO is for.
  *
  * Constraints: must be EVEN (the ESP32 DMA pair-swap un-doing in adc_ingest()
  * works within a frame), must make conv_frame_size a multiple of
@@ -269,8 +270,8 @@
  * It must cover the longest the RX task can be kept off the CPU. Like the FIFO
  * above, it is counted in frames and therefore shrinks in TIME as the sample
  * rate rises: 32 frames of 128 samples is 4096 samples = 53 ms at 76800 Hz,
- * matching the slack the original 4 x 20 ms pool had, at a fraction of its ISR
- * critical section.
+ * i.e. between two and three whole ::MODEM_BLOCK_SIZE blocks of slack, for an
+ * ISR critical section one frame long.
  */
 #ifndef MODEM_ADC_POOL_FRAMES
 #define MODEM_ADC_POOL_FRAMES 32

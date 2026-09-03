@@ -176,7 +176,5 @@ void web_server_start(void) {
 
     reg(server, "/symbol", HTTP_GET, page_symbol_get);
 
-    // -- Everything in the original menu now has a real handler. No stubs left. --
-
     ESP_LOGI(TAG, "Web admin server started");
 }

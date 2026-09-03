@@ -67,7 +67,7 @@ static bool s_running = false;
 //     up, which has to happen after the payload it is about to send is in
 //     place.
 //
-// beacon_sched_task (own-station beacons, weather, telemetry, objects,
+// beacon_scheduler_task (own-station beacons, weather, telemetry, objects,
 // bulletins) and igate_task (INET->RF relay and message TX) both reach this
 // path, so the overlap is routine on a busy IGate rather than exceptional.
 static SemaphoreHandle_t s_txMutex = NULL;

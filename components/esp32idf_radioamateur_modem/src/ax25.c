@@ -49,9 +49,9 @@ struct Ax25ProtoConfig Ax25Config;
 
 // One slot is deliberately left unused in each handle ring so that
 // head == tail unambiguously means "empty" and head + 1 == tail means "full".
-// That removes the shared rxFrameBufferFull/txFrameBufferFull flags, which
-// were read-modify-written from two different cores with no synchronisation.
-// Hence one more than the usable depth.
+// Fullness is therefore derived from the two indices alone, with no shared
+// flag that both cores would have to read-modify-write. Hence one more slot
+// than the usable depth.
 //
 // Sized as AX25_TX_FRAME_RING_MAX+1 (12 slots, 11 usable): during
 // digipeating/igating, several RF frames can arrive back-to-back and each
@@ -121,9 +121,9 @@ struct FrameHandle {
 // CONFIG_FREERTOS_UNICORE is not set, so those two genuinely run in parallel.
 // Every index below is therefore owned by exactly one side and published to
 // the other with an explicit release/acquire pair; nothing is read-modify-
-// written by both. Plain loads and stores of these would be reordered both by
-// the compiler and by the store buffer, which is what let the consumer observe
-// a frame handle whose payload had not been written yet.
+// written by both. Plain loads and stores of these may be reordered by the
+// compiler and by the store buffer, which would let the consumer observe a
+// frame handle whose payload has not been written yet.
 static uint8_t rxBuffer[FRAME_BUFFER_SIZE];
 static uint16_t rxBufferHead = 0; // producer owns; published to consumer
 static uint16_t rxBufferTail = 0; // consumer owns; published to producer
@@ -605,7 +605,7 @@ endParseFx25Frame:
             // and only then make it visible - the release store below is what
             // orders both against the consumer on the other core. The caller
             // still writes h->peak/level/corrected/fx25Mode after we return, so
-            // publication is deferred to Ax25PublishRxFrame().
+            // publication is deferred to publishRxFrame().
             h->start = initialRxBufferHead;
             h->size = k - 2;
             (void)tempRxFrameHead; // rxFrameHead is advanced by publishRxFrame()
@@ -705,12 +705,12 @@ uint8_t Ax25TxFramesPending(void) {
     //
     // txFrameHead is written by Ax25WriteTxFrame(), which normally runs on a
     // different task/core than the DAC ISR that calls this indirectly via
-    // Ax25TransmitCheck() -> pollTxEvents(). Reading it as a plain load gave
-    // no memory-ordering guarantee that a head update published from another
-    // core would actually be observed here, so this could report a stale
-    // (often zero) pending count even with frames genuinely queued. Use
-    // RING_OBSERVE() for both ends of the ring, matching every other cross-
-    // side read of these indices in this file.
+    // Ax25TransmitCheck() -> pollTxEvents(). A plain load carries no
+    // memory-ordering guarantee that a head update published from another core
+    // is observed here, which would report a stale (often zero) pending count
+    // with frames genuinely queued. Both ends of the ring are read with
+    // RING_OBSERVE(), matching every other cross-side read of these indices in
+    // this file.
     uint8_t head = RING_OBSERVE(txFrameHead);
     uint8_t tail = RING_OBSERVE(txFrameTail);
     return (uint8_t)((head + FRAME_MAX_COUNT - tail) % FRAME_MAX_COUNT);
@@ -927,10 +927,10 @@ void Ax25BitParse(uint8_t bit, uint8_t modem, uint16_t mV) {
             rx->receivedByte = 0;
             rx->receivedBitIdx = 0;
             rx->frameIdx = 0;
-            // Drop the mode: it is the only thing arming the block-complete test
-            // above, and it was left dangling once the block was consumed. A
-            // stale pointer here re-arms that test against a plain HDLC frame
-            // that happens to reach K+T bytes.
+            // Drop the mode: it is the only thing arming the block-complete
+            // test above, so it must not outlive the block that has just been
+            // consumed. A stale pointer here would re-arm that test against a
+            // plain HDLC frame that happens to reach K+T bytes.
             rx->fx25Mode = NULL;
             rx->crc = 0xFFFF;
             return;
@@ -1055,21 +1055,18 @@ uint8_t IRAM_ATTR Ax25GetTxBit(void) {
                 txFlagsElapsed = 0;
                 txRetireFrame();
                 // Always drop to the tail/PTT-off here instead of chaining
-                // straight into the next queued frame's header. Chaining used
-                // to let several ring-buffered packets go out back-to-back
-                // inside a single uninterrupted key-up (no PTT toggle, no
-                // fresh TXDelay preamble, no per-frame quiet-time/CSMA check
-                // between them), which is why "Packet sent [N buffer(s) still
-                // awaiting]" could report N, N-1, ... 0 within a couple of
-                // TNC2 frame times even though only one PTT ON/OFF pair
-                // bounded the whole burst.
+                // straight into the next queued frame's header. Chaining would
+                // let several ring-buffered packets go out back-to-back inside
+                // a single uninterrupted key-up: no PTT toggle, no fresh
+                // TXDelay preamble and no per-frame quiet-time/CSMA check
+                // between them.
                 //
                 // Ending the key-up here means every frame - including a
                 // second or third one already sitting in the ring - gets its
                 // own transmitStart() (own preamble, own "PTT ON" log line)
                 // once Ax25TransmitCheck() sees the ring still non-empty on
                 // its next tick, so packets go out one at a time with a real
-                // PTT-off in between rather than "at the same time".
+                // PTT-off in between.
                 txByteIdx = 0;
                 txBitIdx = 0;
                 txStage = TX_STAGE_TAIL;
@@ -1086,8 +1083,8 @@ uint8_t IRAM_ATTR Ax25GetTxBit(void) {
                 txBitstuff = 0;
                 txByte = 0;
                 txInitStage = TX_INIT_OFF;
-                // txBufferTail is released per frame by txRetireFrame(); there
-                // is deliberately no bulk reset here any more.
+                // txBufferTail is released per frame by txRetireFrame(), so
+                // there is deliberately no bulk reset of it here.
                 ModemTransmitStop();
                 txJustKeyedDown = true; // plain store; polled by Ax25TransmitCheck()
                 return 0;
@@ -1219,16 +1216,13 @@ static void pollTxEvents(void) {
     uint32_t sent = txFramesSentCount; // single writer (ISR); safe plain read here
     while (lastReportedSentCount != sent) {
         lastReportedSentCount++;
-        // Ax25TxFramesPending() here is not the queue depth "PTT OFF"
-        // ultimately reports (that is measured once, only when the whole
-        // uninterrupted key-up is fully done) - if this frame was one of
-        // several chained through the same PTT-on/off cycle (see the "back
-        // to normal data" continuation in Ax25GetTxBit(): footer flags for
-        // one frame lead straight into the next queued frame's header, with
-        // no PTT toggle in between), this is the backlog immediately after
-        // *this* buffer specifically, letting a 3-buffer backlog be seen
-        // draining 2, 1, 0 across consecutive lines even though only one
-        // "PTT ON"/"PTT OFF" pair bounds the whole burst.
+        // Every frame gets its own key-up: the footer-flags and FX.25
+        // retirement paths in Ax25GetTxBit() both end the transmission at
+        // TX_STAGE_TAIL rather than chaining into the next queued frame, so
+        // one "PTT ON"/"PTT OFF" pair bounds exactly one packet. The count
+        // printed here is the backlog left immediately after retiring this
+        // frame, so a 3-buffer backlog is seen draining 2, 1, 0 across
+        // consecutive lines, one PTT cycle each.
         ESP_LOGI(TAG, "Packet sent [%u buffer(s) still awaiting]", (unsigned)Ax25TxFramesPending());
     }
 

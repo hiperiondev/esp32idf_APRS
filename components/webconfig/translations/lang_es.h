@@ -835,12 +835,6 @@
 /** @} */
 
 /**
- * @name page_mod.c
- * @{
- */
-/** @} */
-
-/**
  * @name page_msgchat.c ("Snd/Rcv Msg")
  * @{
  */
@@ -879,13 +873,6 @@
 #define TR_MSGCHAT_SENT_OK "Enviado."
 /** Spanish text for the message page label for sent fail, rendered on the Send/Receive Message page. English: "Send failed.". */
 #define TR_MSGCHAT_SENT_FAIL "Error al enviar."
-
-/** @} */
-
-/**
- * @name page_mod.c
- * @{
- */
 
 /** @} */
 

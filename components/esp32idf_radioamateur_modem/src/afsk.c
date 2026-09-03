@@ -35,10 +35,6 @@
 // MODEM_DAC_GPIO - and is not exposed as a runtime/web-admin setting.
 #include "driver/gpio.h"
 #include "driver/gptimer.h"
-// gpio_ll_set_level(): direct out-register write, always-inline and therefore
-// IRAM-safe. gpio_set_level() from driver/gpio.h lives in flash, so it must
-// never be called from setPtt()/LED_Status2(), which run in the DAC ISR while
-// the flash cache can be disabled by a concurrent flash read.
 #include "esp_adc/adc_cali.h"
 #include "esp_adc/adc_cali_scheme.h"
 #include "esp_adc/adc_continuous.h"
@@ -48,6 +44,11 @@
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+// hal/gpio_ll.h provides gpio_ll_set_level(): a direct out-register write,
+// always-inline and therefore IRAM-safe. gpio_set_level() from driver/gpio.h
+// lives in flash, so it must never be called from setPtt()/LED_Status2(),
+// which run in the DAC ISR while the flash cache can be disabled by a
+// concurrent flash read.
 #include "hal/gpio_ll.h"
 #include "sdkconfig.h"
 #include "soc/soc_caps.h"
@@ -192,9 +193,9 @@ static uint16_t s_avg = 2048;
 // IRAM_ATTR: called directly from dac_timer_isr(), which is itself IRAM_ATTR.
 // A plain "static inline" is only a hint - at CONFIG_COMPILER_OPTIMIZATION_DEBUG
 // (-Og), GCC frequently declines it, and an un-inlined static function is
-// placed in flash by default. That reintroduces the exact XIP-fetch jitter
-// this file's other ISR-path functions (dac_write_isr, calculateCRC) are
-// IRAM_ATTR to avoid.
+// placed in flash by default. That introduces the exact XIP-fetch jitter the
+// other ISR-path functions on the transmit side (dac_write_isr() here,
+// calculateCRC() in ax25.c) are IRAM_ATTR to avoid.
 #define DAC_MID 128
 static inline uint8_t IRAM_ATTR dac_scale(uint8_t s) {
     int v = DAC_MID + (((int)s - DAC_MID) * MODEM_DAC_AMPLITUDE_PCT) / 100;
@@ -214,7 +215,6 @@ static inline uint8_t IRAM_ATTR dac_scale(uint8_t s) {
 // Attack = gain coming DOWN because the signal is too loud. It must be fast:
 // an overdriven demodulator decodes nothing. Release = gain going UP on a quiet
 // signal, and must be slow so noise between frames does not pump the gain.
-// The original had these two the wrong way round.
 #define AGC_ATTACK   0.05f
 #define AGC_RELEASE  0.002f
 #define AGC_MAX_GAIN 8.0f
@@ -520,14 +520,13 @@ void IRAM_ATTR setTransmit(bool val) {
         //
         // The pin drop must NOT be deferred with it: AFSK_ServiceTx() runs at
         // most once per service-task period (>= 1 tick) and behind an unbounded
-        // RX-drain loop, so deferring the pin left the PTT line physically
-        // asserted for up to a whole tick after the transmitter had already
-        // stopped modulating (s_txActive == false). During that window the real
-        // PTT GPIO did not match the logical TX state, and "PTT OFF (unkeyed)"
-        // could be reached while the pin was still keyed. Releasing it at
-        // key-down keeps the physical PTT in lock-step with key-down. The
-        // (now idempotent) setPtt(false) in AFSK_ServiceTx() is kept as a
-        // belt-and-suspenders re-assertion of the idle level.
+        // RX-drain loop, so deferring the pin would leave the PTT line
+        // physically asserted for up to a whole tick after the transmitter had
+        // already stopped modulating (s_txActive == false), letting "PTT OFF
+        // (unkeyed)" be reached while the pin was still keyed. Releasing it
+        // here keeps the physical PTT in lock-step with key-down. The
+        // idempotent setPtt(false) in AFSK_ServiceTx() re-asserts the idle
+        // level as a belt-and-suspenders measure.
         setPtt(false);
         s_txStopPending = true;
     }
@@ -700,14 +699,14 @@ static bool IRAM_ATTR adc_conv_done_cb(adc_continuous_handle_t handle, const adc
 // a fixed, known reordering, not a rate error.
 //
 // The three AFSK profiles are immune to it. They are demodulated at 9600 Hz, so
-// the 38400 -> 9600 decimation FIR averages each swapped pair back together
-// before the correlator ever sees it: exchanging two samples inside a filter
-// window does not change the window's output by anything the correlator can
-// measure.
+// the MODEM_ADC_SAMPLERATE -> 9600 decimation FIR averages each swapped pair
+// back together before the correlator ever sees it: exchanging two samples
+// inside a filter window does not change the window's output by anything the
+// correlator can measure.
 //
 // G3RUH is not decimated - it cannot be, its own bandwidth IS the anti-alias
-// cutoff - so it is handed the raw stream, four samples per 9600 Bd symbol,
-// with nothing in between to average the swap away. Whether that is survivable
+// cutoff - so it is handed the raw stream, MODEM_ADC_SAMPLERATE / 9600 samples
+// per symbol, with nothing in between to average the swap away. Whether that is survivable
 // depends on where the DMA word boundary happens to fall relative to the symbol
 // boundary:
 //
@@ -723,9 +722,10 @@ static bool IRAM_ATTR adc_conv_done_cb(adc_continuous_handle_t handle, const adc
 //                                              symbol actually changed
 //
 // Nothing aligns those two boundaries. The DMA frame start bears no relation to
-// the transmitter's symbol phase, and the two clocks differ by ~17 Hz (38461.5
-// DAC vs 38444 ADC measured), so the alignment slips one sample about every 57
-// ms and walks through the fatal phase several times during a single frame.
+// the transmitter's symbol phase, and the ADC and DAC timers are independent
+// and differ by a few hundredths of a percent, so the alignment slips one
+// sample every few tens of milliseconds and walks through the fatal phase
+// several times during a single frame.
 // One burst of bad bits is enough to fail the FCS, so without the un-swap the
 // G3RUH profile decodes nothing while the AFSK profiles are unaffected.
 //
@@ -987,8 +987,8 @@ void AFSK_Poll(void) {
         bool signalPresent = (s_dcdCnt > 3) || (ModemConfig.modem == MODEM_MODEM_G3RUH);
 
         // Track the level only while there is something to track. Adapting on
-        // an idle channel is what pinned the gain at maximum and overdrove
-        // every incoming frame.
+        // an idle channel would pin the gain at maximum and overdrive every
+        // incoming frame.
         if (signalPresent)
             update_agc(s_audio, MODEM_BLOCK_SIZE);
 
@@ -996,14 +996,15 @@ void AFSK_Poll(void) {
             // G3RUH is the one profile that is NOT decimated.
             //
             // The AFSK profiles are demodulated at MODEM_DEMOD_SAMPLERATE
-            // (9600 Hz), so the 38400 Hz ADC stream is low-pass filtered and
-            // decimated by MODEM_RESAMPLE_RATIO first. G3RUH runs at 9600 Bd:
-            // decimating to 9600 Hz would leave exactly one sample per symbol,
-            // which gives the DPLL nothing to recover a clock from and puts the
-            // symbol rate at Nyquist. Its demodulator is built for the raw
-            // 38400 Hz stream instead - four samples per symbol - which is what
-            // N9600 and the fs=38400 lpf9600 coefficients in modem.c have
-            // always assumed. Feed it the undecimated block.
+            // (9600 Hz), so the MODEM_ADC_SAMPLERATE stream is low-pass
+            // filtered and decimated by MODEM_RESAMPLE_RATIO first. G3RUH runs
+            // at 9600 Bd: decimating to 9600 Hz would leave exactly one sample
+            // per symbol, which gives the DPLL nothing to recover a clock from
+            // and puts the symbol rate at Nyquist. Its demodulator is built for
+            // the raw MODEM_ADC_SAMPLERATE stream instead - MODEM_RESAMPLE_RATIO
+            // samples per symbol, which is what N9600 and the lpf9600
+            // coefficients in modem.c are cut for. Feed it the undecimated
+            // block.
             //
             // The anti-alias filter is skipped with it, deliberately: its 4800
             // Hz cutoff is G3RUH's own bandwidth, so it would take the signal
@@ -1037,15 +1038,15 @@ static void afsk_rx_task(void *arg) {
     // block. adc_continuous_read() hands back at most one frame per call, and
     // AFSK_Poll() below only acts once MODEM_BLOCK_SIZE samples have
     // accumulated in the FIFO, so a short read costs nothing but a loop.
-    // Static rather than automatic: it outlived the stack at 1536 bytes and
-    // there is no reason to move it back now that it is 256.
+    // Static rather than automatic so that a conversion frame never has to be
+    // carried on this task's stack.
     static uint8_t convBuf[MODEM_ADC_CONV_FRAME_BYTES];
 
     while (!s_rxStop) {
         uint32_t got = 0;
 
         // Blocks on the driver's own pool. Its ISR fills that pool with an
-        // xRingbufferSendFromISR() whose critical section is now bounded by
+        // xRingbufferSendFromISR() whose critical section is bounded by
         // MODEM_ADC_CONV_FRAME rather than by the DSP block size, and runs on
         // MODEM_ADC_ISR_CORE, which is not where the DAC clock lives. Nothing
         // of ours runs at interrupt level, so however long the DSP below takes,

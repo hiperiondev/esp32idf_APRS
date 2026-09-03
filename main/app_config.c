@@ -490,8 +490,8 @@ void app_config_set_defaults(app_config_t *c) {
     //
     // The modem component takes its ADC/DAC pins, PTT pin, PTT active level,
     // ADC attenuation and LED pins as compile-time constants (MODEM_* macros,
-    // set in the top-level CMakeLists.txt). None of them are g_config fields
-    // any more - see aprs_service_build_modem_config().
+    // set in the top-level CMakeLists.txt). None of them is a g_config field -
+    // see aprs_service_build_modem_config().
 
     // Message
     c->msg_enable = true;

@@ -169,6 +169,8 @@ struct sensor_local_driver {
  *        than once. Not strictly required before ::sensors_local_register (that
  *        works even during C-constructor start-up), but must be called once the
  *        FreeRTOS scheduler is up so subsequent registry access is thread-safe.
+ * @return ESP_OK once the lock exists, ESP_ERR_NO_MEM if it could not be
+ *         created.
  */
 esp_err_t sensors_local_init(void);
 

@@ -70,33 +70,27 @@ static const char *TAG = "modem";
 
 // Every Nx is a samples-per-symbol count, so the PLL step must be 2^32 / Nx.
 //
-// N9600 was 1 (a zero step: dem->pll never advanced and decode() never sampled,
-// so the profile could not decode a single bit by construction), then 4, which
-// at least ran. 4 was still wrong, and it is the whole reason G3RUH sat at 3/5
-// frames while every AFSK profile did 5/5.
-//
-// 4 samples per symbol does not give this timing-recovery design enough to work
-// with. The DPLL's sample instant is quantised to one ADC sample - 25 % of a
-// symbol at N=4 - and the majority vote in decode() spans three of them, i.e.
-// 75 % of a symbol, so the vote window necessarily reaches into a transition.
+// Eight samples per symbol is the resolution this timing-recovery design needs.
+// The DPLL's sample instant is quantised to one ADC sample and the majority
+// vote in decode() spans three of them, so at four samples per symbol the vote
+// window would cover 75 % of a symbol and necessarily reach into a transition.
 // Measured on the host against the real modulator, with the analogue path and
-// both real clocks modelled and no noise at all: at N=4 the profile produces
-// hard bit errors at the sampling phases where the ADC instants coincide with
-// the DAC's update instants (2/8, 4/8 and 6/8 of a symbol), 1.4 % to 2.7 % BER
-// at those phases and 0 % between them. Since the DAC (38461.5 Hz) and the ADC
-// differ by ~0.05 %, the alignment walks through the bad phases every ~55 ms,
-// and a 350 ms transmission crosses them repeatedly. Hence "random" frame loss
-// of roughly 40 %, immune to every amount of TX jitter reduction.
+// both real clocks modelled and no noise at all, four samples per symbol
+// produce hard bit errors at the sampling phases where the ADC instants
+// coincide with the DAC's update instants (2/8, 4/8 and 6/8 of a symbol), 1.4 %
+// to 2.7 % BER at those phases and 0 % between them; since the two clocks
+// differ by ~0.05 %, the alignment walks through the bad phases every ~55 ms
+// and a 350 ms transmission crosses them repeatedly.
 //
-// At N=8 - the same 8 samples per symbol the 1200 Bd profile has always had,
-// obtained by running the ADC at 76800 Hz - the same simulation gives ZERO bit
-// errors at every sampling phase and with up to 30 us of TX edge jitter. Nothing
-// else about the demodulator changes; it stops being starved of resolution.
+// At eight samples per symbol - what N9600 gives once the ADC runs at 76800 Hz,
+// and the same figure the 1200 Bd profile has - the same simulation gives ZERO
+// bit errors at every sampling phase and with up to 30 us of TX edge jitter.
 //
-// The vote window and the DPLL tune constants were both swept on the host first:
-// (win=3, shift=0) is already the best of its family and the tune surface is
-// chaotic (some settings collapse to 48 % BER), which is itself a sign the loop
-// is bistable at N=4. There is no tuning fix, only a resolution fix.
+// The vote window and the DPLL tune constants were both swept on the host:
+// (win=3, shift=0) is the best of its family, and the tune surface is chaotic
+// at four samples per symbol (some settings collapse to 48 % BER), which is
+// itself a sign the loop is bistable there. Resolution, not tuning, is what
+// this profile needs.
 #define PLL1200_STEP ((int32_t)(uint32_t)(((uint64_t)1 << 32) / N1200))
 #define PLL9600_STEP ((int32_t)(uint32_t)(((uint64_t)1 << 32) / N9600))
 #define PLL300_STEP  ((int32_t)(uint32_t)(((uint64_t)1 << 32) / N300))
@@ -132,9 +126,8 @@ static float sampleRateCorrection = 1.0f;
 static int32_t calibratedPllStep(int32_t nominalStep) {
     double step = (double)(uint32_t)nominalStep / (double)sampleRateCorrection;
 
-    // Guard the extremes: a step of 0 would never overflow the PLL counter
-    // (decode() would never sample a symbol, exactly the N9600=1
-    // comment above this block documents), and a step above 2^32-1 cannot be
+    // Guard the extremes: a step of 0 would never overflow the PLL counter, so
+    // decode() would never sample a symbol, and a step above 2^32-1 cannot be
     // represented at all. Both would require sampleRateCorrection to be
     // wildly out of range, which ModemCalibrateSampleRate() rejects,
     // but this keeps the arithmetic itself well-defined regardless.
@@ -189,22 +182,20 @@ void ModemCalibrateSampleRate(float measuredAdcHz, float measuredDacHz) {
 
 #define PLL1200_LOCKED_TUNE     0.74f
 #define PLL1200_NOT_LOCKED_TUNE 0.50f
-// 0.97, not the 0.89 inherited with the profile.
-//
 // The tune is the fraction of the phase error left in place at each transition,
 // so a HIGHER number is a WEAKER pull and a narrower loop. The only thing this
 // loop has to track is the DAC/ADC clock offset - about 17 Hz, 0.045 % - and it
 // gets ~4800 transitions a second from a scrambled signal to do it in, so a
 // narrow loop tracks it with a steady-state error around 1 % of a symbol. What
-// a wide loop buys instead is a faster grab onto edge noise, and at four
-// samples per symbol there is very little phase margin to give away.
+// a wide loop buys instead is a faster grab onto edge noise, and there is
+// little phase margin to give away at 9600 Bd.
 //
 // Host simulation, sweeping the DAC/ADC phase over 16 offsets x 2 DMA
-// alignments x 5 frames: 0.89 loses 2.5 % of frames on a clean channel and
-// 12.5 % with 12 us of TX edge jitter; 0.97 loses 0.0 % and 8.8 %. It is also
-// better, not worse, at every preamble length down to 20 ms, so the slower
-// acquisition a narrow loop would normally cost does not materialise: 20 ms is
-// still 192 symbols at 9600 Bd.
+// alignments x 5 frames: a wide 0.89 loop loses 2.5 % of frames on a clean
+// channel and 12.5 % with 12 us of TX edge jitter, against 0.0 % and 8.8 % for
+// the 0.97 used here. 0.97 is also better at every preamble length down to
+// 20 ms, so the slower acquisition a narrow loop would normally cost does not
+// materialise: 20 ms is still 192 symbols at 9600 Bd.
 //
 // This is a real but secondary effect. The jitter itself is the dominant term
 // and is handled in afsk.c; see the dac_write_isr() notes.
@@ -265,9 +256,9 @@ struct ModemDemodConfig ModemConfig;
 // What serialises this is afskSetModem(), which suspends the RX task
 // across the ModemInit() call. Any other caller of ModemInit() must do the
 // same. A spinlock would be the wrong tool anyway: portENTER_CRITICAL masks
-// interrupts up to level 3 on this core, which is exactly how the DAC sample
-// clock got starved and every AX.25 frame destroyed - see the ring buffer
-// notes in afsk.c.
+// interrupts up to level 3 on this core, which starves the DAC sample clock
+// and destroys every AX.25 frame in flight - see the ring buffer notes in
+// afsk.c.
 
 static uint8_t N;             // samples per symbol
 static uint8_t demodCount;    // number of parallel demodulators
@@ -291,14 +282,13 @@ static uint8_t dcd = 0;
 
 // G3RUH scrambler state. TX and RX must have one each.
 //
-// A single shared `lfsr` was enough for a half duplex node, which is never
-// scrambling and descrambling at the same moment. It is fatal in full duplex -
-// which is the only mode the loopback self test can run in - because the DAC
-// ISR advances the register once per transmitted symbol while the RX task
-// advances it once per received symbol, from the same variable. Neither
-// register then holds the sequence its own side needs and nothing decodes.
-// They are logically two independent shift registers and are now two
-// variables.
+// A single shared register would be enough for a half duplex node, which never
+// scrambles and descrambles at the same moment. It is fatal in full duplex -
+// the only mode the loopback self test can run in - because the DAC ISR
+// advances the register once per transmitted symbol while the RX task advances
+// it once per received symbol, from the same variable, and neither side then
+// holds the sequence it needs. They are logically two independent shift
+// registers, so they are two variables.
 static uint32_t txLfsr = 0x1FFFF;
 static uint32_t rxLfsr = 0x1FFFF;
 
@@ -820,13 +810,13 @@ void ModemInit(void) {
         demodState[0].dcdTune = (int32_t)(DCD9600_TUNE * (float)((uint32_t)1 << PLL_TUNE_BITS));
 
         demodState[0].prefilter = PREFILTER_NONE;
-        // Receive only, despite what this comment said for a long time. Nothing
-        // on the TX path runs it - MODEM_BAUDRATE_TIMER_HANDLER() emits a raw
-        // 240/20 square - and it should stay that way: shaping the transmitter
-        // with this same filter was tried on the host and roughly doubles the
-        // BER, because the TX+RX cascade closes the eye. If transmit shaping is
-        // ever wanted it needs its own, wider filter and its own state (the
-        // receiver is using this instance concurrently in full duplex).
+        // Receive only. Nothing on the TX path runs it -
+        // MODEM_BAUDRATE_TIMER_HANDLER() emits a raw 240/20 square - and it
+        // should stay that way: shaping the transmitter with this same filter
+        // was measured on the host to roughly double the BER, because the TX+RX
+        // cascade closes the eye. If transmit shaping is ever wanted it needs
+        // its own, wider filter and its own state (the receiver is using this
+        // instance concurrently in full duplex).
         demodState[0].lpf.coeffs = lpf9600;
         demodState[0].lpf.taps = sizeof(lpf9600) / sizeof(*lpf9600);
         demodState[0].lpf.gainShift = 16;

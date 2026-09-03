@@ -135,6 +135,11 @@ void AFSK_deinit(void);
  *                    - 1 = RX only
  *                    - 2 = RX and TX (requires the component to be built with
  *                      ENABLE_FX25 defined)
+ * @param minUnkeyMs Extra minimum PTT-off (unkeyed) hold time between
+ *                  transmissions, in milliseconds, on top of the fixed
+ *                  one-service-tick release holdoff that always applies.
+ *                  0 disables the extra hold. Forwarded to
+ *                  Ax25MinUnkeyTime().
  */
 void afskSetModem(uint8_t val, bool flatAudio, uint16_t timeSlot, uint16_t preamble, uint8_t fx25Mode, uint16_t minUnkeyMs);
 

@@ -73,7 +73,7 @@ static char s_ntp_host[NTP_HOST_NUM][sizeof(g_config.ntp_host[0])];
 // countries that span more than one offset (e.g. "UTC-5 Eastern Time (USA,
 // Canada)"), so the select lists every country regardless of how many
 // offsets it spans. Index 0 is plain "UTC" (the default - see
-// app_config_defaults() / app_config_load() clamp); the remaining entries
+// app_config_set_defaults() / app_config_load() clamp); the remaining entries
 // are ordered west to east, UTC-12 .. UTC+14.
 static const time_sync_tz_t TZ_TABLE[] = {
     { "UTC", 0 },

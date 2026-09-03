@@ -13,12 +13,13 @@
 //
 //     please contact their authors for more information.
 //
-// @brief Own-station position and status beacon tasks: builds APRS position
+// @brief Own-station position and status beacons: builds APRS position
 // reports from the saved Tracker/IGate/Digipeater coordinates, resolves the
 // configured path bitmask into a digipeater path, and transmits them on RF
 // and/or APRS-IS at each beacon's own interval. Also builds and transmits
 // each station's APRS status report (DTI '>', APRS101 ch.16) from that page's
-// own status text, at its own independent interval.
+// own status text, at its own independent interval. All of it is serviced
+// from the shared beacon scheduler; this module owns no task.
 
 #include <math.h>
 #include <stdio.h>

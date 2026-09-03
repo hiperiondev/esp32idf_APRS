@@ -87,8 +87,8 @@ static bool errorEvaluator(const uint8_t *locator, uint8_t locatorSize, uint8_t 
 // @brief Calculates the error locator polynomial
 // @param *rs RS instance
 // @param *syndromes Syndrome polynomial (length = T)
-// @param *out Output error locator buffer
-// @param outSize Error locator polynomial buffer length <= T
+// @param *out Output error locator buffer, at least T + 1 bytes long
+// @param outSize Receives the error locator polynomial length, <= T + 1
 // @return True if success, else the "out" buffer must be invalidated and the block is uncorrectable
 static bool errorLocator(const struct LwFecRS *rs, const uint8_t *syndromes, uint8_t *out, uint8_t *outSize) {
     // The error locator polynomial is calculated with the Berlekamp-Massey
@@ -161,15 +161,16 @@ static bool errorLocator(const struct LwFecRS *rs, const uint8_t *syndromes, uin
 // @param *rs RS instance
 // @param *data Input data block
 // @param size Block size = N
-// @param *syn Syndrome polynomial
+// @param *syn Syndrome polynomial. Clobbered: it is reversed in place and then
+//             reused as scratch for the error locator derivative.
 // @param *evaluator Error evaluator polynomial
 // @param errCount Number of errors (error evaulator size)
 // @return True on success, false on failure
 static bool fix(const struct LwFecRS *rs, uint8_t *data, uint8_t size, uint8_t *syn, const uint8_t *evaluator, uint8_t errCount) {
-    // This is based on Forney's algorithm.
-    // variables of size 3 * RS_MAX_REDUNDANCY_BYTES + 3
-    // static uint8_t locator[RS_MAX_REDUNDANCY_BYTES + 1];
-    // static uint8_t errataEvaluator[2 * RS_MAX_REDUNDANCY_BYTES + 2];
+    // This is based on Forney's algorithm. The two working polynomials take
+    // 3 * RS_MAX_REDUNDANCY_BYTES + 3 bytes of the common buffer between them:
+    // RS_MAX_REDUNDANCY_BYTES + 1 for the locator and twice that for the
+    // errata evaluator.
     uint8_t *locator = commonBuffer;
     uint8_t *errataEvaluator = locator + RS_MAX_REDUNDANCY_BYTES + 1;
 

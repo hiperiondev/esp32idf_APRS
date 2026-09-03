@@ -39,8 +39,8 @@
  * Created and owned by weather.c. Local sensor drivers registered in the
  * ::sensors_local registry write their freshly measured values directly into
  * @c weather_telemetry_data.weather[0] (and optionally telemetry_report[0])
- * every time ::weather_refresh_now runs (once per second). The weather beacon
- * task then reads it under the module lock to build the on-air report.
+ * every time ::weather_service_1hz runs (once per second). The WX beacon then
+ * reads it under the module lock to build the on-air report.
  *
  * Declared here so other components (e.g. a future telemetry sender, a
  * dashboard page) can read the latest sample; treat it as read-only outside
@@ -50,14 +50,17 @@
 extern weather_telemetry_data_t weather_telemetry_data;
 
 /**
- * @brief Bring up the weather subsystem: allocate the shared container's
- *        backing storage, initialise the ::sensors_local registry, and start
- *        the 1 Hz sensor-refresh task and the WX beacon task.
+ * @brief Bring up the weather subsystem: wire the shared container to its
+ *        backing storage, create the module lock, and initialise the
+ *        ::sensors_local registry together with every auto-registered driver.
  *
- * Safe to call once from application start-up (after config load). The beacon
- * task idles and re-checks periodically when g_config.wx_en is false or when
- * neither wx_2rf nor wx_2inet is set, so toggling those in the web admin takes
- * effect without a reboot.
+ * Creates no task of its own. The WX beacon is serviced by the shared beacon
+ * scheduler through ::weather_beacon_service, and the sensor refresh by the
+ * APRS service tick through ::weather_service_1hz.
+ *
+ * Safe to call once from application start-up (after config load). Both
+ * services re-read g_config on every pass, so toggling g_config.wx_en,
+ * wx_2rf or wx_2inet in the web admin takes effect without a reboot.
  */
 void weather_start(void);
 
@@ -65,10 +68,10 @@ void weather_start(void);
  * @brief Service the WX beacon: transmit an APRS Weather Report if one is due,
  * and return the number of seconds until it next needs servicing (always >= 1).
  *
- * Uses g_config.wx_* for enable/legs/interval, keeping the same behaviour the
- * old dedicated WX beacon task had. Intended to be called only from the shared
- * beacon scheduler task (beacon_scheduler.c). The 1 Hz sensor-refresh task set
- * up by ::weather_start is unaffected and keeps running on its own.
+ * Uses g_config.wx_* for enable/legs/interval. Intended to be called only from
+ * the shared beacon scheduler task (beacon_scheduler.c); the 1 Hz sensor
+ * refresh is driven separately by ::weather_service_1hz.
+ * @return Seconds until this beacon next needs servicing, always >= 1.
  */
 uint32_t weather_beacon_service(void);
 

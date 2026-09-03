@@ -855,9 +855,9 @@ esp_err_t page_igate_post(httpd_req_t *req) {
         g_config.igate_tone_tenths = (uint16_t)tone_tenths;
     }
 
-    // [IGATE] Filter checkboxes -> bitmasks. Both fieldsets are now part of
-    // the same single page form (one Save button for the whole page), so the
-    // computed mask always reflects exactly what's currently checked -
+    // [IGATE] Filter checkboxes -> bitmasks. Both fieldsets belong to the same
+    // single page form (one Save button for the whole page), so the computed
+    // mask always reflects exactly what's currently checked -
     // including "everything unchecked" correctly clearing the mask to 0.
     {
         static const struct {
