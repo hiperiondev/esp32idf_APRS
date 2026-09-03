@@ -48,13 +48,17 @@ Tres reglas de orden son críticas y están comentadas como tal en el código fu
    llegar al escritor AX.25 antes de que la capa AX.25 esté inicializada.
 #. **El servidor web de administración arranca al final** — todos los demás
    servicios ya hicieron sus asignaciones de memoria cuando este se ejecuta,
-   así que su verificación de heap libre (``WEB_SERVER_MIN_FREE_HEAP``, 10 KB)
-   ve el heap en el estado real en que la estación va a funcionar. Espera hasta
-   ``WEB_SERVER_HEAP_WAIT_MAX_MS`` (5 s) a que haya esa cantidad libre,
-   consultando cada ``WEB_SERVER_HEAP_POLL_INTERVAL_MS`` (100 ms), y luego
-   arranca el servidor de todas formas sin importar si se alcanzó el umbral:
-   una interfaz de administración accesible bajo presión de memoria es más
-   útil que ninguna.
+   así que su verificación del bloque libre contiguo más grande
+   (``WEB_SERVER_MIN_LARGEST_FREE_BLOCK``, 24 KB: los 20 KB de pila de la
+   tarea httpd más margen) ve el heap en el estado real en que la estación va
+   a funcionar. Un heap libre total elevado no garantiza que esta única
+   asignación pueda satisfacerse si el heap está fragmentado, por eso se
+   verifica el tamaño del bloque y no el total. Espera hasta
+   ``WEB_SERVER_HEAP_WAIT_MAX_MS`` (5 s) a que haya un bloque de ese tamaño
+   libre, consultando cada ``WEB_SERVER_HEAP_POLL_INTERVAL_MS`` (100 ms), y
+   luego arranca el servidor de todas formas sin importar si se alcanzó el
+   umbral: una interfaz de administración accesible bajo presión de memoria es
+   más útil que ninguna.
 
 Dentro de ``aprs_service_start()``
 ==================================

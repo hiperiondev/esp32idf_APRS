@@ -21,6 +21,7 @@
 #include <string.h>
 
 #include "esp_event.h"
+#include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "esp_netif.h"
 #include "esp_ota_ops.h"
@@ -63,14 +64,25 @@ static const char *TAG = "main";
 // Fixed delay applied before every reconnect attempt after a STA disconnect.
 #define RECONNECT_INTERVAL_MS 5000
 
-// Minimum free heap the web admin server waits for before it binds its
-// listening socket, and the longest this boot will wait for that much to be
-// free. The web server is started last, after every other service has made
-// its own allocations, specifically so this check sees the heap in the state
-// the station will actually run in.
-#define WEB_SERVER_MIN_FREE_HEAP         (10 * 1024)
-#define WEB_SERVER_HEAP_WAIT_MAX_MS      5000
-#define WEB_SERVER_HEAP_POLL_INTERVAL_MS 100
+// Memory class the gate below checks: internal 8-bit memory, the same
+// capability mask heap_monitor.c samples every minute, so the two figures are
+// always read against each other.
+#define WEB_SERVER_HEAP_CAPS (MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT)
+
+// Minimum largest-contiguous-free-block the web admin server waits for before
+// it binds its listening socket, and the longest this boot will wait for that
+// much to be available. httpd_start() itself needs a single block at least
+// config.stack_size (20480 bytes, see web_server.c) bytes long for the httpd
+// task's stack, so the threshold is that size plus headroom for the first
+// admin page's own buffers. Total free heap can stay well above this while
+// still being too fragmented to satisfy that one allocation, which is why the
+// gate checks the largest block rather than the total. The web server is
+// started last, after every other service has made its own allocations,
+// specifically so this check sees the heap in the state the station will
+// actually run in.
+#define WEB_SERVER_MIN_LARGEST_FREE_BLOCK (20480 + 4096)
+#define WEB_SERVER_HEAP_WAIT_MAX_MS       5000
+#define WEB_SERVER_HEAP_POLL_INTERVAL_MS  100
 
 // True when the configured wifi_mode includes a station interface AND a usable
 // STA entry was actually found and pushed to the driver. Gates every automatic
@@ -346,27 +358,28 @@ static void wifi_init(void) {
     ESP_LOGI(TAG, "WiFi started in mode %d (AP SSID '%s', STA %s)", (int)mode, g_config.wifi_ap_ssid, s_staEnabled ? "enabled" : "disabled");
 }
 
-// Blocks until esp_get_free_heap_size() reaches WEB_SERVER_MIN_FREE_HEAP or
-// WEB_SERVER_HEAP_WAIT_MAX_MS has elapsed, whichever comes first, then starts
-// the web admin server either way. Every other service has already made its
-// allocations by the time this runs, so a heap that is still short after the
-// wait is reported and the server is started anyway: an admin UI reachable
-// under memory pressure is more useful to the operator than no admin UI at
-// all, and refusing to start it here would leave the station with no way to
-// diagnose or reconfigure itself over the network.
+// Blocks until heap_caps_get_largest_free_block(WEB_SERVER_HEAP_CAPS) reaches
+// WEB_SERVER_MIN_LARGEST_FREE_BLOCK or WEB_SERVER_HEAP_WAIT_MAX_MS has
+// elapsed, whichever comes first, then starts the web admin server either
+// way. Every other service has already made its allocations by the time this
+// runs, so a heap that is still too fragmented after the wait is reported and
+// the server is started anyway: an admin UI reachable under memory pressure
+// is more useful to the operator than no admin UI at all, and refusing to
+// start it here would leave the station with no way to diagnose or
+// reconfigure itself over the network.
 static void web_server_start_when_heap_ready(void) {
     TickType_t start = xTaskGetTickCount();
-    uint32_t freeHeap = esp_get_free_heap_size();
+    uint32_t largestBlock = heap_caps_get_largest_free_block(WEB_SERVER_HEAP_CAPS);
 
-    while (freeHeap < WEB_SERVER_MIN_FREE_HEAP) {
+    while (largestBlock < WEB_SERVER_MIN_LARGEST_FREE_BLOCK) {
         TickType_t elapsedTicks = xTaskGetTickCount() - start;
         if (elapsedTicks >= pdMS_TO_TICKS(WEB_SERVER_HEAP_WAIT_MAX_MS)) {
-            ESP_LOGW(TAG, "Free heap still %u bytes after %d ms wait (wanted %u), starting web admin anyway", (unsigned)freeHeap, WEB_SERVER_HEAP_WAIT_MAX_MS,
-                     (unsigned)WEB_SERVER_MIN_FREE_HEAP);
+            ESP_LOGW(TAG, "Largest free block still %u bytes after %d ms wait (wanted %u), starting web admin anyway", (unsigned)largestBlock,
+                     WEB_SERVER_HEAP_WAIT_MAX_MS, (unsigned)WEB_SERVER_MIN_LARGEST_FREE_BLOCK);
             break;
         }
         vTaskDelay(pdMS_TO_TICKS(WEB_SERVER_HEAP_POLL_INTERVAL_MS));
-        freeHeap = esp_get_free_heap_size();
+        largestBlock = heap_caps_get_largest_free_block(WEB_SERVER_HEAP_CAPS);
     }
 
     web_server_start();

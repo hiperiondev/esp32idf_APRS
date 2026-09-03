@@ -47,13 +47,16 @@ Three ordering rules are load-bearing and commented as such in the source:
    ``s_modemReady`` is set, rather than reaching the AX.25 writer before the
    AX.25 layer is initialised.
 #. **The web admin server starts last** — every other service has already made
-   its allocations by the time it runs, so its free-heap check
-   (``WEB_SERVER_MIN_FREE_HEAP``, 10 KB) sees the heap in the state the station
-   will actually run in. It waits up to ``WEB_SERVER_HEAP_WAIT_MAX_MS`` (5 s)
-   for that much to be free, polling every ``WEB_SERVER_HEAP_POLL_INTERVAL_MS``
-   (100 ms), then starts the server regardless of whether the threshold was
-   reached: a reachable admin UI under memory pressure is more useful than none
-   at all.
+   its allocations by the time it runs, so its largest-contiguous-free-block
+   check (``WEB_SERVER_MIN_LARGEST_FREE_BLOCK``, 24 KB, the httpd task's 20 KB
+   stack plus headroom) sees the heap in the state the station will actually
+   run in. A large total free heap does not guarantee this single allocation
+   can be satisfied if the heap is fragmented, which is why the block size is
+   checked rather than the total. It waits up to
+   ``WEB_SERVER_HEAP_WAIT_MAX_MS`` (5 s) for a block that size to be free,
+   polling every ``WEB_SERVER_HEAP_POLL_INTERVAL_MS`` (100 ms), then starts
+   the server regardless of whether the threshold was reached: a reachable
+   admin UI under memory pressure is more useful than none at all.
 
 Inside ``aprs_service_start()``
 ===============================

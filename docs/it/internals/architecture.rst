@@ -49,10 +49,14 @@ sorgente:
    lo scrittore AX.25 prima che il livello AX.25 sia inizializzato.
 #. **Il server web di amministrazione parte per ultimo** — tutti gli altri
    servizi hanno già effettuato le proprie allocazioni quando questo viene
-   eseguito, così il suo controllo dell'heap libero (``WEB_SERVER_MIN_FREE_HEAP``,
-   10 KB) vede l'heap nello stato in cui la stazione funzionerà realmente.
-   Attende fino a ``WEB_SERVER_HEAP_WAIT_MAX_MS`` (5 s) che quella quantità sia
-   libera, controllando ogni ``WEB_SERVER_HEAP_POLL_INTERVAL_MS`` (100 ms), poi
+   eseguito, così il suo controllo del blocco libero contiguo più grande
+   (``WEB_SERVER_MIN_LARGEST_FREE_BLOCK``, 24 KB: lo stack da 20 KB del task
+   httpd più margine) vede l'heap nello stato in cui la stazione funzionerà
+   realmente. Un heap libero totale elevato non garantisce che questa singola
+   allocazione possa essere soddisfatta se l'heap è frammentato, perciò viene
+   controllata la dimensione del blocco anziché il totale. Attende fino a
+   ``WEB_SERVER_HEAP_WAIT_MAX_MS`` (5 s) che un blocco di quella dimensione sia
+   libero, controllando ogni ``WEB_SERVER_HEAP_POLL_INTERVAL_MS`` (100 ms), poi
    avvia comunque il server indipendentemente dal fatto che la soglia sia stata
    raggiunta: un'interfaccia di amministrazione raggiungibile sotto pressione
    di memoria è più utile di nessuna interfaccia.
