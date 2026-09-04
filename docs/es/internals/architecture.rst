@@ -196,9 +196,9 @@ Construcción de líneas TNC2
 ============================
 
 Todos los módulos que ensamblan una línea de texto TNC2 — ``beacon.c``,
-``weather.c``, ``objects_items.c``, ``query.c`` y ``telemetry.c`` — siguen la
-misma convención: la línea se construye en un buffer de tamaño
-``APRS_TNC2_BUF_SIZE`` (``main/include/aprs_service.h``), y un resultado igual
+``weather.c``, ``objects_items.c``, ``bulletins.c``, ``query.c`` y
+``telemetry.c`` — siguen la misma convención: la línea se construye en un
+buffer de tamaño ``APRS_TNC2_BUF_SIZE`` (``main/include/aprs_service.h``), y un resultado igual
 o mayor que ese tamaño, o mayor que ``APRS_TNC2_MAX_LEN``, se rechaza con un
 aviso en el log en lugar de transmitirse truncado. Una línea a medio escribir
 es indistinguible en el aire de una bien formada, así que rechazarla por

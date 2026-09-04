@@ -1210,16 +1210,25 @@ static uint32_t s_sig[OBJITEM_COUNT] = { 0 };
 // Legs requested by objitems_request_transmit_all() from whichever task handled
 // the query, consumed by the scheduler task below. An OBJITEM_TX_* bitmask
 // rather than a plain flag, so a re-announcement asked for over APRS-IS cannot
-// reach the RF leg. Requests accumulate by OR: the only transition another task
-// performs is setting bits, and the worst outcome of two racing is one extra
-// round of transmissions.
+// reach the RF leg. Requests accumulate by OR, and both the accumulation and
+// the scheduler's claim run under s_txAllLock: producers are the RF and APRS-IS
+// receive tasks, the consumer is the scheduler, and a request arriving between
+// a plain read and a plain clear would otherwise be dropped - one round fewer,
+// which is the round the querying station asked for.
 static volatile uint8_t s_tx_all_channels = 0;
+
+// Guards s_tx_all_channels. A portMUX (not a mutex) because both sides are a
+// handful of instructions and can then run with no allocation and no init-order
+// dependency - the same reasoning as s_loopTestLock in aprs_service.c.
+static portMUX_TYPE s_txAllLock = portMUX_INITIALIZER_UNLOCKED;
 
 void objitems_request_transmit_all(uint8_t channels) {
     channels &= (uint8_t)OBJITEM_TX_ALL;
     if (channels == 0)
         return;
+    portENTER_CRITICAL(&s_txAllLock);
     s_tx_all_channels |= channels;
+    portEXIT_CRITICAL(&s_txAllLock);
 }
 
 // One on-demand re-announcement round: report every transmittable element once
@@ -1269,10 +1278,16 @@ uint32_t objitems_service(void) {
     }
 
     // Claim any on-demand re-announcement request before the periodic pass
-    // reads the store, so the two work from the same snapshot.
-    uint8_t txAllChannels = s_tx_all_channels;
+    // reads the store, so the two work from the same snapshot. Reading the
+    // bitmask and clearing it are one indivisible step: bits set by a receive
+    // task in between belong to a request that has not been served yet, and
+    // clearing them outside the critical section would discard it.
+    uint8_t txAllChannels;
+    portENTER_CRITICAL(&s_txAllLock);
+    txAllChannels = s_tx_all_channels;
+    s_tx_all_channels = 0;
+    portEXIT_CRITICAL(&s_txAllLock);
     if (txAllChannels) {
-        s_tx_all_channels = 0;
         ESP_LOGI(TAG, "On-demand transmission of all Objects/Items requested (channels: %s%s)", (txAllChannels & OBJITEM_TX_RF) ? "RF " : "",
                  (txAllChannels & OBJITEM_TX_INET) ? "INET" : "");
     }

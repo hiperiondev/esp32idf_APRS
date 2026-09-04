@@ -197,8 +197,8 @@ Costruzione delle righe TNC2
 ==============================
 
 Ogni modulo che assembla una riga di testo TNC2 — ``beacon.c``, ``weather.c``,
-``objects_items.c``, ``query.c`` e ``telemetry.c`` — segue la stessa
-convenzione: la riga viene costruita in un buffer di dimensione
+``objects_items.c``, ``bulletins.c``, ``query.c`` e ``telemetry.c`` — segue la
+stessa convenzione: la riga viene costruita in un buffer di dimensione
 ``APRS_TNC2_BUF_SIZE`` (``main/include/aprs_service.h``), e un risultato pari
 o superiore a quella dimensione, oppure superiore a ``APRS_TNC2_MAX_LEN``,
 viene rifiutato con un avviso nel log invece di essere trasmesso troncato. Una

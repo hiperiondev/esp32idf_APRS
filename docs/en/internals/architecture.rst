@@ -192,11 +192,11 @@ Building TNC2 lines
 ====================
 
 Every module that assembles a TNC2 text line — ``beacon.c``, ``weather.c``,
-``objects_items.c``, ``query.c`` and ``telemetry.c`` — follows the same
-convention: the line is built into a buffer sized ``APRS_TNC2_BUF_SIZE``
-(``main/include/aprs_service.h``), and a result at or past that size, or past
-``APRS_TNC2_MAX_LEN``, is refused with a warning log rather than transmitted
-truncated. A half-written line is indistinguishable on air from a well-formed
+``objects_items.c``, ``bulletins.c``, ``query.c`` and ``telemetry.c`` — follows
+the same convention: the line is built into a buffer sized
+``APRS_TNC2_BUF_SIZE`` (``main/include/aprs_service.h``), and a result at or
+past that size, or past ``APRS_TNC2_MAX_LEN``, is refused with a warning log
+rather than transmitted truncated. A half-written line is indistinguishable on air from a well-formed
 one, so refusing it outright is the only outcome that never hands a receiving
 station a plausible but wrong report. A new module that builds TNC2 lines
 should follow the same convention.

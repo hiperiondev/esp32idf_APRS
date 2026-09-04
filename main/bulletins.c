@@ -421,25 +421,38 @@ static void tx_one(int idx, const bulletin_t *b, const char *src) {
         // Sent direct (no digipeater path). Bulletins here intentionally carry
         // no unproto path - the page exposes only enable/RF/Internet/text/
         // expire, matching the requested field set.
-        char packet[160];
+        //
+        // The buffer is the one aprs_service.h publishes for every builder, and
+        // the length test is the contract that goes with it: snprintf() reports
+        // the length it would have written, so a line past APRS_TNC2_MAX_LEN is
+        // discarded with a warning here instead of handing an out-of-range
+        // length to the transmit path.
+        char packet[APRS_TNC2_BUF_SIZE];
         int len = snprintf(packet, sizeof(packet), "%s>%s:%s", src, BULLETIN_DEST, info);
-        if (len > 0) {
+        if (len > 0 && len <= APRS_TNC2_MAX_LEN) {
             if (aprs_service_send_tnc2(packet, (size_t)len))
                 ESP_LOGI(TAG, "Bulletin %d TX (RF): %s", idx + 1, packet);
             else
                 ESP_LOGW(TAG, "Bulletin %d NOT sent over RF - modem not ready or busy", idx + 1);
+        } else if (len > APRS_TNC2_MAX_LEN) {
+            ESP_LOGW(TAG, "Bulletin %d NOT sent over RF - line too long (%d bytes, max %d)", idx + 1, len, APRS_TNC2_MAX_LEN);
         }
     }
     if (b->send_inet) {
         // Locally-originated APRS-IS traffic carries the TCPIP* q-construct,
-        // never an RF unproto path (see the same note in message.c).
-        char packet[160];
+        // never an RF unproto path (see the same note in message.c). Same
+        // buffer size and same APRS_TNC2_MAX_LEN test as the RF copy above, so
+        // a bulletin too long to reach the air is not quietly relayed to
+        // APRS-IS either.
+        char packet[APRS_TNC2_BUF_SIZE];
         int len = snprintf(packet, sizeof(packet), "%s>%s" APRS_PATH_TCPIP_SUFFIX ":%s", src, BULLETIN_DEST, info);
-        if (len > 0) {
+        if (len > 0 && len <= APRS_TNC2_MAX_LEN) {
             if (igate_send_raw(packet, (size_t)len))
                 ESP_LOGI(TAG, "Bulletin %d TX (INET): %s", idx + 1, packet);
             else
                 ESP_LOGW(TAG, "Bulletin %d NOT sent over INET - APRS-IS not connected yet", idx + 1);
+        } else if (len > APRS_TNC2_MAX_LEN) {
+            ESP_LOGW(TAG, "Bulletin %d NOT sent over INET - line too long (%d bytes, max %d)", idx + 1, len, APRS_TNC2_MAX_LEN);
         }
     }
 

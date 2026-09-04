@@ -215,7 +215,10 @@ static telegram_app_status_t s_status = {
 static telegram_app_config_t s_cfg;
 
 // What the worker task should do the next time one is spawned. Written by
-// telegram_app_apply_config() and by the tick, read by the worker.
+// telegram_app_apply_config() and by the tick, read by the worker. A write
+// posts the operator's most recent instruction and replaces whatever was
+// queued; the tick only ever clears it through action_clear_if(), so an
+// instruction saved while the tick is spawning the previous one survives.
 typedef enum {
     TELEGRAM_ACTION_NONE = 0, // nothing pending
     TELEGRAM_ACTION_START,    // bring the service up
@@ -265,6 +268,19 @@ static bool worker_claim(void) {
 // spawn whose task could not be created after the slot was already claimed.
 static void worker_release(void) {
     s_worker_busy = false;
+}
+
+// Clears the queued action only if it is still the one the caller took charge
+// of, under the same portMUX the worker slot uses. The comparison and the store
+// are one indivisible step: telegram_app_apply_config() runs on the web
+// server's task and may queue a newer instruction while the tick is spawning
+// the previous one, and an unconditional clear would drop that save until the
+// operator repeated it.
+static void action_clear_if(telegram_action_t expected) {
+    portENTER_CRITICAL(&s_worker_lock);
+    if (s_action == expected)
+        s_action = TELEGRAM_ACTION_NONE;
+    portEXIT_CRITICAL(&s_worker_lock);
 }
 
 // True between a successful bring-up and the teardown that follows it. Says
@@ -1987,9 +2003,11 @@ void telegram_app_tick_1hz(void) {
         // client's task and from the beacon scheduler, none of which is
         // serialized with this tick - and an action cleared for a worker that
         // was never created is one the operator has to save the page again to
-        // repeat.
+        // repeat. The clear is a compare-and-clear on the value read above, so
+        // an instruction saved from the web server's task while this spawn was
+        // running stays queued for the next tick.
         if (worker_spawn(pending))
-            s_action = TELEGRAM_ACTION_NONE;
+            action_clear_if(pending);
         return;
     }
 
