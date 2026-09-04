@@ -504,10 +504,11 @@ static bool thirdPartyUnwrap(const char *info, char *outSrc, size_t outSrcMax, c
     if (outSrc[0] == 0 || outDst[0] == 0)
         return false;
 
+    // An inner header without a ',' before its ':' carries no digipeater path,
+    // and the empty string left here is what the loop guard below reads.
     outPath[0] = 0;
-    size_t pathLen = 0;
     if (pathStart < colon && *pathStart == ',') {
-        pathLen = (size_t)(colon - (pathStart + 1));
+        size_t pathLen = (size_t)(colon - (pathStart + 1));
         if (pathLen >= outPathMax)
             pathLen = outPathMax - 1;
         memcpy(outPath, pathStart + 1, pathLen);

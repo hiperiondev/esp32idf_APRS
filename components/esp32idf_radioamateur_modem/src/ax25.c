@@ -1587,7 +1587,6 @@ static void ax25_putRaw(uint8_t *raw, ax25_ctx_t *ctx, uint8_t c) {
 int hdlcFrame(uint8_t *outbuf, size_t outbuf_len, ax25_ctx_t *ctx, ax25_frame_t *pkg) {
     int i, j;
     int idx = 0;
-    uint8_t data = 0;
     uint8_t info[AX25_FRAME_MAX_SIZE];
 
     ctx->crc_out = CRC_CCIT_INIT_VAL;
@@ -1605,7 +1604,10 @@ int hdlcFrame(uint8_t *outbuf, size_t outbuf_len, ax25_ctx_t *ctx, ax25_frame_t 
         if (pkg->header[i].addr[0] == 0)
             break;
         for (j = 0; j < 6; j++) {
-            data = (uint8_t)pkg->header[i].addr[j];
+            // Callsigns shorter than six characters are padded with spaces,
+            // and every address byte is shifted left one place to leave room
+            // for the end-of-path bit AX.25 keeps in the low bit.
+            uint8_t data = (uint8_t)pkg->header[i].addr[j];
             if (data == 0)
                 data = 0x20;
             data <<= 1;

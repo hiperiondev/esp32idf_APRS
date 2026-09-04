@@ -89,18 +89,6 @@ static const char *TAG = "telegram_app";
 // broadcast item carries its text once and is fanned out as it is drained.
 #define TELEGRAM_NOTIFY_QUEUE_LEN 8
 
-// Recipients one broadcast pass delivers to before it stops.
-//
-// The addressable set is bounded by the store itself - the users table, the
-// allowed group chats and the administrator - so this covers every recipient
-// a correctly filled file can name and nothing is dropped on a station that
-// is set up sensibly. It is still written down as a number, because the whole
-// pass runs inside one Telegram transmit batch: the batch holds the single
-// TLS session the service allows and the polling cycle waits for it to close,
-// so the length of a pass has to be something the drain task can be read off
-// here rather than something a configuration decides.
-#define TELEGRAM_NOTIFY_BROADCAST_MAX (TELEGRAM_APP_USERS_MAX + TELEGRAM_APP_CHATS_MAX + 1)
-
 // Bulletins remembered for the duplicate test.
 //
 // A bulletin is not sent once: its originator repeats it on a timer, every
@@ -408,14 +396,8 @@ static void notify_send_one(const char *chat_id, const char *text) {
         ESP_LOGW(TAG, "Line not routed to Telegram chat %s: %s", chat_id, esp_err_to_name(err));
 }
 
-// Delivers one line of a fan-out to one identifier, counting what was sent
-// and what the per-pass cap left out.
-static void notify_broadcast_one(int64_t id, const char *text, unsigned *sent, unsigned *skipped) {
-    if (*sent >= TELEGRAM_NOTIFY_BROADCAST_MAX) {
-        (*skipped)++;
-        return;
-    }
-
+// Delivers one line of a fan-out to one identifier, counting what was sent.
+static void notify_broadcast_one(int64_t id, const char *text, unsigned *sent) {
     char chat_id[TELEGRAM_NOTIFY_CHAT_ID_MAX];
     snprintf(chat_id, sizeof(chat_id), "%" PRId64, id);
     notify_send_one(chat_id, text);
@@ -432,15 +414,23 @@ static void notify_broadcast_one(int64_t id, const char *text, unsigned *sent, u
 // receive the same bulletin twice, so the identifier is checked against the
 // users table first and only sent to when it is not already among them.
 //
-// The pass is bounded by TELEGRAM_NOTIFY_BROADCAST_MAX and reports, at INFO,
-// how many recipients it reached and how long it held the transmit session.
+// How long a pass runs matters, because the whole fan-out happens inside one
+// Telegram transmit batch: the batch holds the single TLS session the service
+// allows and the polling cycle waits for it to close. It needs no cap of its
+// own, though, because the length of a pass is fixed by construction - the
+// recipients are exactly the users table, the allowed group chats and the
+// administrator, and all three are arrays the store fills up to a size the
+// firmware compiles in, so no configuration can make a pass longer than
+// TELEGRAM_APP_USERS_MAX + TELEGRAM_APP_CHATS_MAX + 1 deliveries.
+//
+// The pass reports, at INFO, how many recipients it reached and how long it
+// held the transmit session.
 static void notify_broadcast(const char *text) {
     int64_t started_us = esp_timer_get_time();
     unsigned sent = 0;
-    unsigned skipped = 0;
 
     for (uint8_t i = 0; i < s_route_user_count; i++)
-        notify_broadcast_one(s_route_users[i].id, text, &sent, &skipped);
+        notify_broadcast_one(s_route_users[i].id, text, &sent);
 
     int64_t admin = s_route_admin_id;
     if (admin != 0) {
@@ -448,19 +438,17 @@ static void notify_broadcast(const char *text) {
         for (uint8_t i = 0; i < s_route_user_count && !already_sent; i++)
             already_sent = (s_route_users[i].id == admin);
         if (!already_sent)
-            notify_broadcast_one(admin, text, &sent, &skipped);
+            notify_broadcast_one(admin, text, &sent);
     }
 
     for (uint8_t i = 0; i < s_route_chat_count; i++)
-        notify_broadcast_one(s_route_chats[i].id, text, &sent, &skipped);
+        notify_broadcast_one(s_route_chats[i].id, text, &sent);
 
     // How wide a fan-out was and how long it took, so an operator reading the
     // log can tell a bulletin storm from the other things that spend heap.
     // Worded for every broadcast rather than for bulletins alone, since the
     // start-up notice is fanned out through here as well.
     ESP_LOGI(TAG, "Line broadcast to %u recipients in %" PRId64 " ms", sent, (esp_timer_get_time() - started_us) / 1000);
-    if (skipped > 0)
-        ESP_LOGW(TAG, "%u recipients beyond the %d per pass were not reached", skipped, TELEGRAM_NOTIFY_BROADCAST_MAX);
 }
 
 // ---------------------------------------------------------------------------

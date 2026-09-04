@@ -201,9 +201,10 @@ static bool fix(const struct LwFecRS *rs, uint8_t *data, uint8_t size, uint8_t *
     }
 
     uint8_t *errLocPrimePoly = syn; // reuse
-    uint8_t errLocPrimePolyLen = 0;
     for (uint8_t i = 0; i < errCount; i++) {
-        errLocPrimePolyLen = 0;
+        // The polynomial is rebuilt from scratch for every error position, so
+        // its length starts over on each iteration.
+        uint8_t errLocPrimePolyLen = 0;
         uint8_t errataInv = GfInv(errataPosition[i]);
         for (uint8_t j = 0; j < errCount; j++) {
             if (j != i) {
