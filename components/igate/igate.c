@@ -26,6 +26,7 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
+#include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
@@ -38,6 +39,7 @@
 #include "aprs_filter.h"
 #include "aprs_service.h"
 #include "crc_ccit.h"
+#include "heap_monitor.h"
 #include "igate.h"
 #include "lastheard.h"
 #include "net_state.h"
@@ -1508,7 +1510,36 @@ static void bannerOnLine(char *line) {
     }
 }
 
+// Free-heap floor connectAprsIs() checks before it opens its socket. This is
+// a plain TCP connect with no TLS record buffers or certificate parsing
+// behind it, so it needs nowhere near Telegram's TELEGRAM_MIN_FREE_HEAP: the
+// stack-side allocations here are the socket structure itself, the
+// getaddrinfo() result and a handful of on-stack buffers (login[], resp[],
+// s_bannerLine). 8 KB leaves several times that much headroom while still
+// refusing to compete with a heap that is genuinely low, which is the failure
+// this check exists to avoid, not to make the uplink itself expensive.
+#define IGATE_MIN_FREE_HEAP 8192
+
 static bool connectAprsIs(void) {
+    // Checked, together with the shared heap_monitor_try_heavy_op() lock,
+    // before anything below is touched. The floor alone only rules out this
+    // task running the heap dry by itself; the lock is what stops this
+    // connect from landing in the same instant as a Telegram TLS handshake -
+    // two independent point-in-time checks do not add up to mutual
+    // exclusion, only serialization does. Either condition failing defers
+    // through the loop's existing retry/backoff (igateTask() re-tries on its
+    // fixed 1 s interval) rather than forcing the attempt through.
+    if (!heap_monitor_try_heavy_op()) {
+        ESP_LOGI(TAG, "APRS-IS connect deferred, heavy network op lock held elsewhere");
+        return false;
+    }
+    if (heap_caps_get_free_size(MALLOC_CAP_8BIT) < IGATE_MIN_FREE_HEAP) {
+        ESP_LOGW(TAG, "APRS-IS connect deferred, free heap %u below floor %u", (unsigned)heap_caps_get_free_size(MALLOC_CAP_8BIT),
+                 (unsigned)IGATE_MIN_FREE_HEAP);
+        heap_monitor_release_heavy_op();
+        return false;
+    }
+
     // Snapshot everything this function needs from g_config up front, under the
     // config lock, so the web task rewriting these strings during a settings
     // save can't tear a value out from under the DNS lookup / login below (this
@@ -1599,6 +1630,7 @@ static bool connectAprsIs(void) {
     if (getaddrinfo(cfg_host, portStr, &hints, &res) != 0 || res == NULL) {
         ESP_LOGW(TAG, "DNS lookup failed for %s, failing over to next APRS-IS server", cfg_host);
         advanceServer();
+        heap_monitor_release_heavy_op();
         return false;
     }
 
@@ -1606,6 +1638,7 @@ static bool connectAprsIs(void) {
     if (sock < 0) {
         freeaddrinfo(res);
         advanceServer();
+        heap_monitor_release_heavy_op();
         return false;
     }
 
@@ -1652,9 +1685,18 @@ static bool connectAprsIs(void) {
         close(sock);
         freeaddrinfo(res);
         advanceServer();
+        heap_monitor_release_heavy_op();
         return false;
     }
     freeaddrinfo(res);
+
+    // The socket is established: the heavy, heap-hungry part of this attempt
+    // (address resolution, socket creation, TCP connect) is over, so the lock
+    // is released here rather than held across the login/banner exchange
+    // below, which only ever touches on-stack buffers already accounted for
+    // in IGATE_MIN_FREE_HEAP. Holding it any longer would keep a healthy
+    // Telegram bring-up waiting on a session that no longer needs protecting.
+    heap_monitor_release_heavy_op();
 
     // The login line is assembled once and then both logged and sent from this
     // one buffer, so what the logs show can never drift from what the server
@@ -1799,12 +1841,19 @@ static void igateTask(void *arg) {
         int sock = socketSnapshot();
         if (sock < 0) {
             if (!connectAprsIs()) {
-                // Failover: connectAprsIs() has already advanced s_serverIdx
-                // to the next server in the rotation on failure, so this
-                // fixed 1 s wait is the interval between successive attempts
-                // against that circular list of servers, not a single-server
+                // Two different kinds of failure share this one retry. A DNS,
+                // socket or TCP failure means connectAprsIs() has already
+                // advanced s_serverIdx to the next server in the rotation, so
+                // this fixed 1 s wait is the interval between successive
+                // attempts against that circular list, not a single-server
                 // backoff - the retry keeps cycling through every enabled
-                // slot forever until one of them accepts the connection.
+                // slot forever until one of them accepts the connection. A
+                // heap-floor or heavy-op-lock defer instead leaves s_serverIdx
+                // untouched and simply tries the same server again after the
+                // same 1 s wait, on the same philosophy Telegram's bring-up
+                // already uses: a station that is momentarily too busy or too
+                // low on memory retries rather than treating the server
+                // itself as the problem.
                 vTaskDelay(pdMS_TO_TICKS(1000));
                 continue;
             }

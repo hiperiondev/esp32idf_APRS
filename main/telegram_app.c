@@ -46,6 +46,7 @@
 #include "app_config.h"
 #include "aprs_service.h"     // APRS_SOFTWARE_NAME, APRS_SOFTWARE_VERSION
 #include "esp_telegram_bot.h" // telegram_bot_get_me()
+#include "heap_monitor.h"     // heap_monitor_try_heavy_op()/_release_heavy_op()
 #include "json_escape.h"      // json_write_escaped()
 #include "json_store.h"       // shared JSON-file store scaffolding
 #include "net_state.h"        // net_state_is_connected()
@@ -1686,13 +1687,26 @@ static telegram_app_reason_t bring_up(void) {
         return TELEGRAM_APP_REASON_WAITING_NETWORK;
     }
 
-    // Checked before anything is allocated, so a station that is simply too
-    // busy right now retries later instead of taking memory from services that
-    // are already running.
+    // Checked, together with the shared heap_monitor_try_heavy_op() lock,
+    // before anything is allocated, so a station that is simply too busy
+    // right now retries later instead of taking memory from services that
+    // are already running. The lock is what stops this handshake from
+    // landing in the same instant as the APRS-IS uplink's own TCP connect:
+    // a free-heap floor checked here is only a snapshot of this instant, and
+    // says nothing about a second heavy allocation starting a moment later,
+    // so serializing the two is what actually prevents the pair from running
+    // the heap dry together. Treated as the same transient, retry-later fault
+    // as a heap that is genuinely too low, rather than a state of its own.
+    if (!heap_monitor_try_heavy_op()) {
+        ESP_LOGW(TAG, "Bring-up deferred, heavy network op lock held elsewhere");
+        status_set(TELEGRAM_APP_STATE_ERROR, TELEGRAM_APP_REASON_NO_MEMORY, NULL);
+        return TELEGRAM_APP_REASON_NO_MEMORY;
+    }
     if (heap_caps_get_largest_free_block(MALLOC_CAP_8BIT) < TELEGRAM_MIN_FREE_BLOCK || heap_caps_get_free_size(MALLOC_CAP_8BIT) < TELEGRAM_MIN_FREE_HEAP) {
         append_heap_figures(detail, sizeof(detail));
         ESP_LOGW(TAG, "Bring-up deferred, not enough contiguous memory for a TLS session: %s", detail);
         status_set(TELEGRAM_APP_STATE_ERROR, TELEGRAM_APP_REASON_NO_MEMORY, detail);
+        heap_monitor_release_heavy_op();
         return TELEGRAM_APP_REASON_NO_MEMORY;
     }
 
@@ -1703,6 +1717,7 @@ static telegram_app_reason_t bring_up(void) {
     if (probe != TELEGRAM_APP_REASON_CONNECTED) {
         append_heap_figures(detail, sizeof(detail));
         status_set(TELEGRAM_APP_STATE_ERROR, probe, detail);
+        heap_monitor_release_heavy_op();
         return probe;
     }
 
@@ -1751,6 +1766,7 @@ static telegram_app_reason_t bring_up(void) {
             heap_caps_get_largest_free_block(MALLOC_CAP_8BIT) >= TELEGRAM_MIN_FREE_BLOCK && heap_caps_get_free_size(MALLOC_CAP_8BIT) >= TELEGRAM_MIN_FREE_HEAP;
         telegram_app_reason_t reason = (err == ESP_ERR_NO_MEM && !heap_is_healthy) ? TELEGRAM_APP_REASON_NO_MEMORY : TELEGRAM_APP_REASON_INIT_FAILED;
         status_set(TELEGRAM_APP_STATE_ERROR, reason, detail);
+        heap_monitor_release_heavy_op();
         return reason;
     }
 
@@ -1759,6 +1775,7 @@ static telegram_app_reason_t bring_up(void) {
         if (verified != TELEGRAM_APP_REASON_CONNECTED) {
             telegram_deinit();
             status_set(TELEGRAM_APP_STATE_ERROR, verified, detail);
+            heap_monitor_release_heavy_op();
             return verified;
         }
         s_token_verified = true;
@@ -1774,6 +1791,15 @@ static telegram_app_reason_t bring_up(void) {
         telegram_allow_chat(local.chats[i].id, local.chats[i].name);
 
     err = telegram_start();
+
+    // Released here regardless of outcome: the bring-up window this lock
+    // protects ends the moment telegram_start() returns, whether it handed
+    // back a running polling connection or a failure telegram_deinit()
+    // already unwound. A connection that did come up settles onto keep-alive
+    // from here on, which is why the lock only needs to span the handshake
+    // above, not the life of the resulting session.
+    heap_monitor_release_heavy_op();
+
     if (err != ESP_OK) {
         snprintf(detail, sizeof(detail), "%s ", esp_err_to_name(err));
         append_heap_figures(detail, sizeof(detail));

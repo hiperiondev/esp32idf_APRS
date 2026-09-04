@@ -94,7 +94,12 @@ Telegram bring-up can fail for a reason the operator has to be told apart:
    before it is ever sent anywhere.
 #. **Heap.** A buffer, a queue or a TLS session that does not fit is
    distinguished from every other failure, since the wrong diagnosis sends
-   an operator chasing memory that was never the problem.
+   an operator chasing memory that was never the problem. The free-heap floor
+   is checked together with a shared lock that also guards the APRS-IS
+   uplink's own TCP connect (:ref:`en-igate`), so the two heaviest network
+   operations on this firmware never run at the same instant; whichever one
+   finds the lock already held simply retries on its own schedule rather than
+   competing for the same memory.
 #. **DNS and TCP.** Resolving ``api.telegram.org`` and opening the TLS
    connection to it are each checked in turn.
 #. **Telegram's own answer.** A malformed but well-formed-looking token is

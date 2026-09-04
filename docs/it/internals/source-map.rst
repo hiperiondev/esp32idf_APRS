@@ -52,7 +52,7 @@ Disposizione del repository
    │   ├── net_state.c/.h      ← flag "abbiamo davvero internet?"
    │   ├── time_sync.c/.h      ← SNTP (sempre UTC), macchina a stati non bloccante, tabella dei fusi orari (solo visualizzazione)
    │   ├── cpu_freq.c/.h       ← esp_pm_configure() dalla pagina System
-   │   └── heap_monitor.c/.h   ← riga periodica di heap libero/blocco maggiore/minimo + scansione di integrità opzionale
+   │   └── heap_monitor.c/.h   ← riga periodica di heap libero/blocco maggiore/minimo + scansione di integrità opzionale + lock condiviso per le operazioni di rete pesanti
    │
    ├── components/
    │   ├── esp32idf_radioamateur_modem/    (il modem software — il cuore del progetto)

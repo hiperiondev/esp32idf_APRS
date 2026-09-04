@@ -206,6 +206,17 @@ corrupción: con el valor por defecto (sin envenenamiento) solo se verifican las
 estructuras propias del asignador; elige "Light impact" o "Comprehensive" para
 verificar además los bytes canario alrededor de cada bloque asignado.
 
+**Serializar las dos operaciones de red más pesadas.** El mismo módulo también
+tiene un pequeño cerrojo no bloqueante, independiente del muestreo anterior y
+presente siempre, sin importar qué opciones ``CONFIG_APRS_HEAP_*`` estén
+activas. El handshake TLS del bot de Telegram (:ref:`es-telegram`) y el
+``connect()`` TCP del enlace APRS-IS (:ref:`es-igate`) lo toman cada uno
+alrededor de su propia comprobación de mínimo de heap y lo liberan en cuanto
+termina ese trabajo de arranque, de modo que nunca se ejecutan en el mismo
+instante compitiendo por la misma memoria contigua. Quien encuentra el cerrojo
+ya tomado simplemente lo reintenta en su propio ciclo — nada aquí se bloquea
+esperando al otro lado.
+
 "Los botones del menú siguen girando y el log muestra 'query is too old and response timeout expired or query ID is invalid'."
 ==============================================================================================================================
 

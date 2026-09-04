@@ -22,6 +22,8 @@
 #include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "esp_system.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 
 #include "heap_monitor.h"
 
@@ -29,9 +31,12 @@
 #include "esp_heap_task_info.h"
 #endif
 
-// Both halves of this module are compile-time options, so the tag and the
-// period counters only exist when at least one of them is selected. With both
-// off the tick below is an empty function and its call site needs no guard.
+// Both halves of the periodic sampling are compile-time options, so the tag
+// and the period counters only exist when at least one of them is selected.
+// With both off the tick below is an empty function and its call site needs
+// no guard. The lock below needs no tag of its own: it never logs anything,
+// since a caller finding it held is an ordinary, silent outcome for the
+// caller to act on, not a fault worth a log line here.
 #if CONFIG_APRS_HEAP_REPORT || CONFIG_APRS_HEAP_INTEGRITY_CHECK
 static const char *TAG = "heap_monitor";
 #endif
@@ -86,4 +91,27 @@ void heap_monitor_tick_1hz(void) {
         }
     }
 #endif
+}
+
+// Binary semaphore, not a mutex: there is no notion of ownership across
+// tasks to enforce (either side may take it and the other may release it in
+// principle, though in practice each caller only ever gives back what it
+// took), and no priority inheritance is wanted here - a low-priority holder
+// stalling briefly is fine, the whole point is that nobody blocks waiting on
+// it either way.
+static SemaphoreHandle_t s_heavyOpLock;
+
+void heap_monitor_init(void) {
+    if (s_heavyOpLock != NULL)
+        return; // already created
+    s_heavyOpLock = xSemaphoreCreateBinary();
+    xSemaphoreGive(s_heavyOpLock); // starts available, not held
+}
+
+bool heap_monitor_try_heavy_op(void) {
+    return xSemaphoreTake(s_heavyOpLock, 0) == pdTRUE;
+}
+
+void heap_monitor_release_heavy_op(void) {
+    xSemaphoreGive(s_heavyOpLock);
 }

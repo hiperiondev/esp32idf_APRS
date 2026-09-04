@@ -100,7 +100,12 @@ distinguir del resto:
    antes de enviarse a ningún sitio.
 #. **Memoria.** Un búfer, una cola o una sesión TLS que no caben se distinguen
    de cualquier otro fallo, ya que un diagnóstico equivocado hace que el
-   operador busque memoria que nunca fue el problema.
+   operador busque memoria que nunca fue el problema. El mínimo de heap libre
+   se comprueba junto con un cerrojo compartido que también protege el propio
+   ``connect()`` TCP del enlace APRS-IS (:ref:`es-igate`), de modo que las dos
+   operaciones de red más pesadas de este firmware nunca se ejecutan en el
+   mismo instante; la que encuentra el cerrojo ya tomado simplemente reintenta
+   en su propio ciclo en lugar de competir por la misma memoria.
 #. **DNS y TCP.** Resolver ``api.telegram.org`` y abrir la conexión TLS hacia
    él se comprueban por separado.
 #. **La propia respuesta de Telegram.** Un token con forma correcta pero

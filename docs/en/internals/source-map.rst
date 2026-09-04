@@ -52,7 +52,7 @@ Repository layout
    │   ├── net_state.c/.h      ← "do we actually have internet?" flag
    │   ├── time_sync.c/.h      ← SNTP (UTC always), non-blocking state machine, timezone table (display only)
    │   ├── cpu_freq.c/.h       ← esp_pm_configure() from the System page
-   │   └── heap_monitor.c/.h   ← periodic free/largest/minimum heap line + optional integrity sweep
+   │   └── heap_monitor.c/.h   ← periodic free/largest/minimum heap line + optional integrity sweep + shared heavy-network-op lock
    │
    ├── components/
    │   ├── esp32idf_radioamateur_modem/    (the soft-modem — the heart of the project)

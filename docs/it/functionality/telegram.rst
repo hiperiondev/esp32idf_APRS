@@ -99,7 +99,13 @@ avvio di Telegram può fallire per un motivo che va distinto dagli altri:
    prima di essere inviato ovunque.
 #. **Memoria.** Un buffer, una coda o una sessione TLS che non trovano posto
    vengono distinti da ogni altro fallimento, perché una diagnosi sbagliata
-   manda l'operatore a cercare memoria che non era mai il problema.
+   manda l'operatore a cercare memoria che non era mai il problema. La soglia
+   di heap libero viene verificata insieme a un lock condiviso che protegge
+   anche la ``connect()`` TCP dell'uplink APRS-IS (:ref:`it-igate`), cosicché
+   le due operazioni di rete più pesanti di questo firmware non vengono mai
+   eseguite nello stesso istante; chi trova il lock già occupato riprova
+   semplicemente al proprio ciclo successivo invece di competere per la stessa
+   memoria.
 #. **DNS e TCP.** La risoluzione di ``api.telegram.org`` e l'apertura della
    connessione TLS verso di esso vengono controllate separatamente.
 #. **La risposta di Telegram stessa.** Un token dalla forma corretta ma non

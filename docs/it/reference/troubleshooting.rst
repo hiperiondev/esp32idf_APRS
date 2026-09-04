@@ -205,6 +205,18 @@ verificano solo le strutture dell'allocatore; scegli "Light impact" o
 "Comprehensive" per verificare anche i byte canarino attorno a ogni blocco
 allocato.
 
+**Serializzare le due operazioni di rete più pesanti.** Lo stesso modulo
+possiede anche un piccolo lock non bloccante, indipendente dal campionamento
+sopra descritto e sempre presente indipendentemente da quali opzioni
+``CONFIG_APRS_HEAP_*`` siano attive. L'handshake TLS del bot Telegram
+(:ref:`it-telegram`) e la ``connect()`` TCP dell'uplink APRS-IS
+(:ref:`it-igate`) lo prendono ciascuno attorno alla propria verifica della
+soglia di heap e lo rilasciano non appena quel lavoro di avvio è concluso,
+cosicché non vengono mai eseguiti nello stesso istante competendo per la
+stessa memoria contigua. Chi trova il lock già occupato riprova semplicemente
+al proprio ciclo successivo: nulla qui resta bloccato in attesa dell'altra
+parte.
+
 "I pulsanti del menu continuano a girare e il log mostra 'query is too old and response timeout expired or query ID is invalid'."
 =================================================================================================================================
 

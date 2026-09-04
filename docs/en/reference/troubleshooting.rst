@@ -196,6 +196,16 @@ the default (no poisoning) only the allocator's own structures are checked;
 select "Light impact" or "Comprehensive" to also verify the canary bytes around
 every allocated block.
 
+**Serializing the two heaviest network operations.** The same module also
+owns a small non-blocking lock, unrelated to the sampling above and always
+present regardless of which ``CONFIG_APRS_HEAP_*`` options are enabled. The
+Telegram bot's TLS handshake (:ref:`en-telegram`) and the APRS-IS uplink's TCP
+connect (:ref:`en-igate`) each take it around their own heap-floor check and
+release it once that setup work is done, so the two never run at the same
+instant and compete for the same contiguous memory. A caller that finds the
+lock already held simply defers to its own next retry pass — nothing here
+blocks waiting for the other side.
+
 "Menu buttons keep spinning and the log shows 'query is too old and response timeout expired or query ID is invalid'."
 ======================================================================================================================
 

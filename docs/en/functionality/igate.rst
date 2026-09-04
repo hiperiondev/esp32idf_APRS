@@ -113,12 +113,20 @@ All slots share one login identity — callsign, SSID, passcode and filter strin
 are single-valued — because they represent the same station connecting to
 alternative APRS-IS servers.
 
-``connectAprsIs()`` dials the currently selected slot. Any failure — DNS
-lookup, ``socket()``, ``connect()`` or sending the login line — calls
-``advanceServer()``, which moves the selection to the next **enabled** slot
-with circular wrap-around, and the task waits 1 second before the next attempt.
-The rotation never stops: it keeps cycling through every enabled slot until one
-accepts the connection.
+``connectAprsIs()`` dials the currently selected slot, but only once it has
+taken a shared "heavy network op" lock and confirmed at least
+``IGATE_MIN_FREE_HEAP`` (8 KB) of free heap; this lock is also taken by the
+Telegram bot's own bring-up (:ref:`en-telegram`) around its TLS handshake, so
+the firmware's two heaviest network operations never compete for memory at
+the same instant. If the lock is already held or the floor is not met, the
+attempt is deferred and the task waits 1 second before trying the **same**
+slot again — no failover, since nothing about the chosen server was at fault.
+
+Past that point, any failure — DNS lookup, ``socket()``, ``connect()`` or
+sending the login line — calls ``advanceServer()``, which moves the selection
+to the next **enabled** slot with circular wrap-around, and the task waits 1
+second before the next attempt. The rotation never stops: it keeps cycling
+through every enabled slot until one accepts the connection.
 
 Disabled slots are skipped on the **first** selection after boot as well, not
 only after a failure: clearing a slot's checkbox takes it out of service

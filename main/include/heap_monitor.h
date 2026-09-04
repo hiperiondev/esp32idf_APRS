@@ -49,10 +49,30 @@
  * is off by default because it blocks every other task's allocations while it
  * walks each heap. With both turned off this module compiles to an empty
  * function, so its caller never needs a guard of its own.
+ *
+ * @details A third, unrelated piece of shared state lives here too: the
+ * "heavy network op" lock. A free-heap floor checked immediately before an
+ * allocation only rules out one thing - that this task, alone, is about to
+ * run the heap dry. It says nothing about a second task passing the same
+ * kind of check a moment later and landing on top of it, because two
+ * independent point-in-time snapshots do not add up to mutual exclusion -
+ * only serialization does. On this firmware the Telegram bot's TLS handshake
+ * and the APRS-IS uplink's TCP connect are exactly that pair: both are rare,
+ * both peak sharply while they set up, and neither has any reason to run at
+ * the same instant as the other. The lock makes that serialization explicit
+ * instead of leaving it to chance.
+ *
+ * Both sides take it with a zero-tick wait and simply defer to their own next
+ * retry pass if it is already held, so neither ever blocks the other, and a
+ * task that dies while holding it (there is no such path today) would wedge
+ * the loser into permanent deferral rather than a crash - a failure mode
+ * worth naming even though nothing here currently produces it.
  */
 
 #ifndef HEAP_MONITOR_H
 #define HEAP_MONITOR_H
+
+#include <stdbool.h>
 
 /**
  * @brief Advance the heap instrumentation one step. Must be called once per
@@ -74,5 +94,44 @@
  * only and keeps no state beyond its own counters.
  */
 void heap_monitor_tick_1hz(void);
+
+/**
+ * @brief Create the "heavy network op" lock, available for one caller to take.
+ *
+ * @details Must be called once, before either of the lock's consumers can run
+ * - aprs_service_start() does this at the top of its own body, ahead of
+ * igate_start() and of the Telegram bring-up path that main.c's app_task()
+ * enables further down the boot sequence. A second call is a no-op: the
+ * semaphore, once created, is never recreated or destroyed for the life of
+ * the firmware.
+ *
+ * Safe to call before any other subsystem is up: it only creates a FreeRTOS
+ * binary semaphore and leaves it given (available).
+ */
+void heap_monitor_init(void);
+
+/**
+ * @brief Try to take the "heavy network op" lock without blocking.
+ *
+ * @details Backed by a FreeRTOS binary semaphore taken with a zero-tick
+ * wait, so a caller that finds the lock already held returns immediately
+ * instead of waiting for the holder to finish - the caller's own retry/
+ * backoff loop is what tries again, on its own schedule, not this call.
+ *
+ * @return true if the lock was free and is now held by this caller; false if
+ * another caller already holds it.
+ */
+bool heap_monitor_try_heavy_op(void);
+
+/**
+ * @brief Release the "heavy network op" lock.
+ *
+ * @details Must be called exactly once for every call to
+ * heap_monitor_try_heavy_op() that returned true, as soon as the heavy setup
+ * work is done - whether it succeeded or failed - so the lock only needs to
+ * be held for the handshake/connect window, never for the life of whatever
+ * session comes out of it.
+ */
+void heap_monitor_release_heavy_op(void);
 
 #endif // HEAP_MONITOR_H

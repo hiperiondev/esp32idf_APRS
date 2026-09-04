@@ -119,12 +119,22 @@ puerto. Todas las ranuras comparten una única identidad de login — indicativo
 SSID, passcode y cadena de filtro son un solo valor — porque representan la
 misma estación conectándose a servidores APRS-IS alternativos.
 
-``connectAprsIs()`` marca la ranura seleccionada en ese momento. Cualquier fallo
-— resolución DNS, ``socket()``, ``connect()`` o el envío de la línea de login —
-llama a ``advanceServer()``, que mueve la selección a la siguiente ranura
-**habilitada** con vuelta circular, y la tarea espera 1 segundo antes del
-siguiente intento. La rotación no se detiene nunca: sigue recorriendo todas las
-ranuras habilitadas hasta que una acepte la conexión.
+``connectAprsIs()`` marca la ranura seleccionada en ese momento, pero solo
+después de haber tomado un cerrojo compartido de "operación de red pesada" y
+de confirmar al menos ``IGATE_MIN_FREE_HEAP`` (8 KB) de heap libre; este mismo
+cerrojo también lo toma el arranque del bot de Telegram (:ref:`es-telegram`)
+alrededor de su handshake TLS, de modo que las dos operaciones de red más
+pesadas del firmware nunca compiten por la misma memoria a la vez. Si el
+cerrojo ya está tomado o no se alcanza el mínimo, el intento se posterga y la
+tarea espera 1 segundo antes de volver a intentar la **misma** ranura — sin
+failover, ya que el servidor elegido no tuvo ninguna culpa.
+
+Superado ese punto, cualquier fallo — resolución DNS, ``socket()``,
+``connect()`` o el envío de la línea de login — llama a ``advanceServer()``,
+que mueve la selección a la siguiente ranura **habilitada** con vuelta
+circular, y la tarea espera 1 segundo antes del siguiente intento. La rotación
+no se detiene nunca: sigue recorriendo todas las ranuras habilitadas hasta que
+una acepte la conexión.
 
 Las ranuras deshabilitadas se saltan también en la **primera** selección tras el
 arranque, no solo después de un fallo: desmarcar la casilla de una ranura la

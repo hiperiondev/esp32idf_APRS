@@ -2173,6 +2173,12 @@ bool aprs_loop_test_run(char *msg, size_t msg_len) {
 }
 
 void aprs_service_start(void) {
+    // Created before anything below it: igate_start() a few lines down and
+    // the Telegram bring-up path main.c's app_task() enables later in the
+    // boot sequence both take this lock around their own heavy setup work,
+    // so it must exist and be available before either can run.
+    heap_monitor_init();
+
     trafficlog_init();
     lastheard_init();
     message_init();

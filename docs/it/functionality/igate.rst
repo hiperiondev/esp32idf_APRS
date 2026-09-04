@@ -122,12 +122,22 @@ porta. Tutti gli slot condividono la stessa identità di login — indicativo, S
 passcode e stringa di filtro sono uno solo — perché rappresentano la stessa
 stazione che si connette a server APRS-IS alternativi.
 
-``connectAprsIs()`` prova lo slot selezionato in quel momento. Qualsiasi
-fallimento — lookup DNS, ``socket()``, ``connect()`` o l'invio della riga di
-login — chiama ``advanceServer()``, che sposta la selezione allo slot
-**abilitato** successivo con avvolgimento circolare, e il task attende 1 secondo
-prima del tentativo seguente. La rotazione non si ferma mai: continua a
-percorrere tutti gli slot abilitati finché uno accetta la connessione.
+``connectAprsIs()`` prova lo slot selezionato in quel momento, ma solo dopo
+aver preso un lock condiviso di "operazione di rete pesante" e verificato
+almeno ``IGATE_MIN_FREE_HEAP`` (8 KB) di heap libero; lo stesso lock viene
+preso anche dall'avvio del bot Telegram (:ref:`it-telegram`) attorno al
+proprio handshake TLS, cosicché le due operazioni di rete più pesanti del
+firmware non competono mai per la stessa memoria nello stesso istante. Se il
+lock è già occupato o la soglia non è raggiunta, il tentativo viene rinviato e
+il task attende 1 secondo prima di riprovare sullo **stesso** slot — nessun
+failover, perché il server scelto non ha alcuna colpa.
+
+Superato questo punto, qualsiasi fallimento — lookup DNS, ``socket()``,
+``connect()`` o l'invio della riga di login — chiama ``advanceServer()``, che
+sposta la selezione allo slot **abilitato** successivo con avvolgimento
+circolare, e il task attende 1 secondo prima del tentativo seguente. La
+rotazione non si ferma mai: continua a percorrere tutti gli slot abilitati
+finché uno accetta la connessione.
 
 Gli slot disabilitati vengono saltati anche alla **prima** selezione dopo
 l'avvio, non solo dopo un fallimento: togliere la spunta a uno slot lo mette
