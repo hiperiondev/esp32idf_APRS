@@ -2018,6 +2018,8 @@
 #define TR_WL_BTN_SEND "Invia"
 /** Italian text for the caption of the clear-mailbox button. English: "Clear replies". */
 #define TR_WL_BTN_CLEAR_MAIL "Cancella risposte"
+/** Italian text for the label of the mailbox message-number field. English: "Message number". */
+#define TR_WL_MSG_NUM "Numero del messaggio"
 /** Italian text for the caption of the per-message read button. English: "Read". */
 #define TR_WL_BTN_READ "Leggi"
 /** Italian text for the caption of the per-message reply button. English: "Reply". */

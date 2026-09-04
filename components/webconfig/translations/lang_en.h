@@ -1910,6 +1910,8 @@
 #define TR_WL_BTN_SEND "Send"
 /** Caption of the clear-mailbox button, rendered on the Winlink page. */
 #define TR_WL_BTN_CLEAR_MAIL "Clear replies"
+/** Label of the mailbox message-number field, rendered on the Winlink page. */
+#define TR_WL_MSG_NUM "Message number"
 /** Caption of the per-message read button, rendered on the Winlink page. */
 #define TR_WL_BTN_READ "Read"
 /** Caption of the per-message reply button, rendered on the Winlink page. */

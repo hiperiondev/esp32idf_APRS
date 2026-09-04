@@ -215,7 +215,9 @@ Las páginas
        escribir un mensaje, y las respuestas que devolvió el servicio. Cada
        respuesta guardada que empieza con un número de mensaje es una línea de
        un listado del buzón y lleva una fila *Leer* / *Responder* /
-       *Reenviar* / *Eliminar* para ese mensaje. Valores en vivo por
+       *Reenviar* / *Eliminar* para ese mensaje; un campo *Número de mensaje*
+       debajo del buzón lleva los mismos cuatro para un número escrito a mano.
+       Valores en vivo por
        ``/winlink/status`` y ``/winlink/list``, consultados cada
        tres segundos; las acciones se envían a ``/winlink/cmd``, que es POST
        porque acciona el transmisor.

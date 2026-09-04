@@ -220,7 +220,9 @@ Le pagine
        assistente in tre passi per scrivere un messaggio, e le risposte inviate
        dal servizio. Ogni risposta memorizzata che inizia con un numero di
        messaggio è una riga di un elenco della casella e porta una fila
-       *Leggi* / *Rispondi* / *Inoltra* / *Elimina* per quel messaggio. Valori
+       *Leggi* / *Rispondi* / *Inoltra* / *Elimina* per quel messaggio; un
+       campo *Numero del messaggio* sotto la casella porta gli stessi quattro
+       per un numero scritto a mano. Valori
        live via ``/winlink/status`` e ``/winlink/list``,
        interrogati ogni tre secondi; le azioni sono inviate a
        ``/winlink/cmd``, che è POST perché aziona il trasmettitore.

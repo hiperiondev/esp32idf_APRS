@@ -138,15 +138,20 @@ Los botones *Empezar mensaje* / *Agregar línea* / *Enviar mensaje* recorren la
 secuencia ``SP`` … ``/EX``, la única cuyo orden importa, y no hacen nada que el
 campo de órdenes no pueda hacer también a mano.
 
-Las cuatro órdenes que actúan sobre un mensaje listado tienen botones propios.
-Una respuesta guardada que empieza con un número de mensaje es una línea de un
-listado y lleva debajo una fila *Leer* / *Responder* / *Reenviar* / *Eliminar*,
-donde cada botón envía la orden correspondiente al número de esa línea:
-``R<n>``, ``Y<n>``, ``F<n> <destinatario>`` y ``K<n>``. *Reenviar* pide antes la
+Las cuatro órdenes que actúan sobre un mensaje listado tienen botones propios:
+*Leer*, *Responder*, *Reenviar* y *Eliminar*, que envían ``R<n>``, ``Y<n>``,
+``F<n> <destinatario>`` y ``K<n>`` respectivamente. *Reenviar* pide antes la
 dirección y *Eliminar* pide confirmación, nombrando el número que va a eliminar.
-Una respuesta que no tiene forma de línea de listado — el texto de un mensaje,
-un desafío de login, un acuse — no tiene número sobre el que actuar y no recibe
-la fila.
+
+Aparecen en dos lugares. Una respuesta guardada que empieza con un número de
+mensaje es una línea de un listado y lleva los cuatro botones debajo, ya
+apuntando al número de esa línea. Lo que separa ese número del resto de la línea
+lo decide el formato del propio servicio, así que solo se busca el número
+inicial; una respuesta que no empieza con uno — el texto de un mensaje, un
+desafío de login, un acuse — no recibe la fila. El campo *Número de mensaje*
+debajo del buzón lleva los mismos cuatro botones para un número escrito a mano,
+que es lo que hay que usar para una respuesta cuyo número no se reconoció, o
+después de haber borrado el listado.
 
 Por dónde sale el tráfico
 -------------------------

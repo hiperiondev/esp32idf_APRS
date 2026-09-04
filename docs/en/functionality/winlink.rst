@@ -135,15 +135,21 @@ The *Start message* / *Add line* / *Send message* buttons drive the ``SP`` …
 ``/EX`` sequence, which is the only one whose order matters, and do nothing the
 command field could not also do by hand.
 
-The four commands that act on one listed message have buttons of their own. A
-stored reply that opens with a message number is a line of a listing, and it
-carries a *Read* / *Reply* / *Forward* / *Delete* row underneath it, each button
-sending the command for the number on that line: ``R<n>``, ``Y<n>``,
-``F<n> <addressee>`` and ``K<n>``. *Forward* asks for the address first and
-*Delete*
-asks for confirmation, naming the number it is about to delete. A reply that is
-not shaped like a listing line — the text of a message, a login challenge, an
-acknowledgement — has no number to act on and gets no row.
+The four commands that act on one listed message have buttons of their own:
+*Read*, *Reply*, *Forward* and *Delete*, sending ``R<n>``, ``Y<n>``,
+``F<n> <addressee>`` and ``K<n>`` respectively. *Forward* asks for the address
+first and *Delete* asks for confirmation, naming the number it is about to
+delete.
+
+They appear in two places. A stored reply that opens with a message number is a
+line of a listing, and carries the four buttons underneath it, already aimed at
+the number on that line. What separates that number from the rest of the line
+is the service's own formatting, so only the leading number itself is looked
+for; a reply that does not start with one — the text of a message, a login
+challenge, an acknowledgement — gets no row. The *Message number* field under
+the mailbox carries the same four buttons for a number typed by hand, which is
+what to use for a reply whose number was not recognised, or after the listing
+has been cleared.
 
 Where the traffic goes
 ----------------------

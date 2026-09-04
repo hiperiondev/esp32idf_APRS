@@ -140,15 +140,21 @@ I pulsanti *Inizia messaggio* / *Aggiungi riga* / *Invia messaggio* percorrono
 la sequenza ``SP`` … ``/EX``, l'unica il cui ordine conta, e non fanno nulla che
 il campo comando non possa fare anche a mano.
 
-I quattro comandi che agiscono su un messaggio elencato hanno pulsanti propri.
-Una risposta memorizzata che inizia con un numero di messaggio è una riga di un
-elenco e porta sotto di sé una fila *Leggi* / *Rispondi* / *Inoltra* /
-*Elimina*, dove ogni pulsante invia il comando per il numero di quella riga:
-``R<n>``, ``Y<n>``, ``F<n> <destinatario>`` e ``K<n>``. *Inoltra* chiede prima
+I quattro comandi che agiscono su un messaggio elencato hanno pulsanti propri:
+*Leggi*, *Rispondi*, *Inoltra* ed *Elimina*, che inviano ``R<n>``, ``Y<n>``,
+``F<n> <destinatario>`` e ``K<n>`` rispettivamente. *Inoltra* chiede prima
 l'indirizzo ed *Elimina* chiede conferma, nominando il numero che sta per
-eliminare. Una risposta che non ha la forma di una riga di elenco — il testo di
-un messaggio, una sfida di login, una conferma — non ha un numero su cui agire e
-non riceve la fila.
+eliminare.
+
+Compaiono in due punti. Una risposta memorizzata che inizia con un numero di
+messaggio è una riga di un elenco e porta sotto di sé i quattro pulsanti, già
+puntati al numero di quella riga. Ciò che separa quel numero dal resto della
+riga lo decide la formattazione del servizio stesso, quindi si cerca solo il
+numero iniziale; una risposta che non inizia con uno — il testo di un messaggio,
+una sfida di login, una conferma — non riceve la fila. Il campo *Numero del
+messaggio* sotto la casella porta gli stessi quattro pulsanti per un numero
+scritto a mano, ed è quello da usare per una risposta il cui numero non è stato
+riconosciuto, o dopo aver cancellato l'elenco.
 
 Dove passa il traffico
 ----------------------

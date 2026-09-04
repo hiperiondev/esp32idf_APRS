@@ -2013,6 +2013,8 @@
 #define TR_WL_BTN_SEND "Enviar"
 /** Spanish text for the caption of the clear-mailbox button. English: "Clear replies". */
 #define TR_WL_BTN_CLEAR_MAIL "Borrar respuestas"
+/** Spanish text for the label of the mailbox message-number field. English: "Message number". */
+#define TR_WL_MSG_NUM "Número de mensaje"
 /** Spanish text for the caption of the per-message read button. English: "Read". */
 #define TR_WL_BTN_READ "Leer"
 /** Spanish text for the caption of the per-message reply button. English: "Reply". */

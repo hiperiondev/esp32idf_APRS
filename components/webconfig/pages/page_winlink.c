@@ -211,6 +211,20 @@ esp_err_t page_winlink_get(httpd_req_t *req) {
     httpd_resp_sendstr_chunk(req, "<h3>" TR_WL_MAILBOX "</h3>"
                                   "<div id='wlMailBox' class='chat-box'><div class='chat-empty'>" TR_WL_LOADING "</div></div>");
 
+    // The same four commands the listing rows carry, addressed to a number
+    // typed by hand. The rows depend on recognising a listing line in what the
+    // service sent back, which its formatting decides; this row depends on
+    // nothing, so the commands stay reachable whatever the mailbox holds.
+    httpd_resp_sendstr_chunk(req, "<div class='chat-compose'><div class='row'><div>"
+                                  "<label>" TR_WL_MSG_NUM "</label>"
+                                  "<input type='number' id='wlMsgNum' min='1' max='9999' step='1'>"
+                                  "</div></div>"
+                                  "<button type='button' onclick='wlReadField()'>" TR_WL_BTN_READ "</button> "
+                                  "<button type='button' onclick='wlReplyField()'>" TR_WL_BTN_REPLY "</button> "
+                                  "<button type='button' onclick='wlForwardField()'>" TR_WL_BTN_FORWARD "</button> "
+                                  "<button type='button' class='danger' onclick='wlKillField()'>" TR_WL_BTN_KILL "</button>"
+                                  "</div>");
+
     httpd_resp_sendstr_chunk(req, "</fieldset>");
 
     // -- Inline JS: poll the status and the mailbox, post actions. Mirrors the
@@ -243,10 +257,20 @@ esp_err_t page_winlink_get(httpd_req_t *req) {
                                   "if(to===null)return;to=to.trim();if(!to)return;"
                                   "wlMsgAct('forward',n,'&to='+encodeURIComponent(to));}"
                                   // A line of a mailbox listing opens with the number the service
-                                  // gave the message, followed by a space. That leading number is
-                                  // what the four per-message commands take, so a reply shaped like
-                                  // one gets the action row and any other reply does not.
-                                  "function wlMsgNum(t){var m=/^\\s*([0-9]{1,4})\\s/.exec(t||'');return m?m[1]:null;}"
+                                  // gave the message. What follows that number varies with the
+                                  // service's own formatting - a space, a colon, a bracket - so the
+                                  // test is only that the line starts with a number and that the
+                                  // number ends there, and the row is offered whenever it does.
+                                  "function wlMsgNum(t){var m=/^\\s*([0-9]{1,4})(?![0-9])/.exec(t||'');return m?m[1]:null;}"
+                                  // Message number typed into the field under the mailbox, for a
+                                  // reply the test above does not recognise and for a listing an
+                                  // operator has already cleared.
+                                  "function wlNumField(){var v=parseInt(document.getElementById('wlMsgNum').value,10);"
+                                  "if(!(v>=1)){wlSay(false,'" TR_WL_ERR_MSGNUM "');return null;}return v;}"
+                                  "function wlReadField(){var n=wlNumField();if(n!==null)wlRead(n);}"
+                                  "function wlReplyField(){var n=wlNumField();if(n!==null)wlReply(n);}"
+                                  "function wlForwardField(){var n=wlNumField();if(n!==null)wlForward(n);}"
+                                  "function wlKillField(){var n=wlNumField();if(n!==null)wlKill(n);}"
                                   "function wlCompose(){"
                                   "var to=document.getElementById('wlTo').value.trim();"
                                   "var su=document.getElementById('wlSubject').value.trim();"
