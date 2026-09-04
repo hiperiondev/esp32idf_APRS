@@ -539,7 +539,7 @@ static void send_digital_form(httpd_req_t *req, const telemetry_config_t *cfg) {
 // GET /tlm/values?ch0=<channel>&ch1=<channel>&... - one "chN" query
 // parameter per analog channel row (A1-A5), giving the sensors_local
 // channel index currently selected in that row's "Source" <select>
-// (255/absent = "(none)"). Reads that ONE channel's driver fresh
+// (255/absent = "(none)"). Reads the selected drivers fresh
 // (sensors_local_save_one(), same as page_wx_values_get() and
 // telemetry_refresh_now()'s per-bit digital read) and returns a JSON array
 // of RAW analog values (before the quadratic a/b/c scaling - the browser
@@ -548,6 +548,13 @@ static void send_digital_form(httpd_req_t *req, const telemetry_config_t *cfg) {
 // either a plain number or `null` if the row has no channel selected, the
 // channel doesn't exist, isn't a telemetry sensor, or didn't mark that
 // channel index enabled this cycle. Polled every 2s by the page's script.
+//
+// Each DISTINCT channel is read exactly once per request: one read fills the
+// whole analog[0..4] array, so a driver feeding several rows is asked for its
+// reading once and every row it feeds is answered from that snapshot, rather
+// than once per row on the same bus the rest of the firmware shares. The same
+// reasoning as page_wx_values_get() applies, including why the snapshot is
+// not kept between requests.
 esp_err_t page_tlm_values_get(httpd_req_t *req) {
     if (!web_check_auth(req))
         return ESP_OK;
@@ -556,40 +563,66 @@ esp_err_t page_tlm_values_get(httpd_req_t *req) {
     if (httpd_req_get_url_query_str(req, query, sizeof(query)) != ESP_OK)
         query[0] = 0;
 
+    // Channel selected by each row, -1 for "(none)" or out of range, and the
+    // JSON slot each row will contribute. Both are filled before anything is
+    // sent, because a row's value can be produced by a read issued for an
+    // earlier row.
+    int row_ch[TLM_CH];
+    char out[TLM_CH][32];
+    for (int i = 0; i < TLM_CH; i++) {
+        char key[16];
+        snprintf(key, sizeof(key), "ch%d", i);
+        int ch = web_form_get_int(query, key, 255);
+        row_ch[i] = (ch >= 0 && ch < 255) ? ch : -1;
+        snprintf(out[i], sizeof(out[i]), "null");
+    }
+
+    for (int i = 0; i < TLM_CH; i++) {
+        if (row_ch[i] < 0)
+            continue;
+
+        // A channel is read by the first row that names it; later rows on the
+        // same channel are served from that read.
+        bool already_read = false;
+        for (int j = 0; j < i; j++) {
+            if (row_ch[j] == row_ch[i]) {
+                already_read = true;
+                break;
+            }
+        }
+        if (already_read)
+            continue;
+
+        bool analog_enabled[APRS_TELEMETRY_ANALOG_CHANNELS] = { 0 };
+        double analog[APRS_TELEMETRY_ANALOG_CHANNELS] = { 0 };
+        aprs_telemetry_report_t scratch_tlm = { 0 };
+        scratch_tlm.analog_count = APRS_TELEMETRY_ANALOG_CHANNELS;
+        scratch_tlm.analog_enabled = analog_enabled;
+        scratch_tlm.analog = analog;
+
+        weather_telemetry_data_t scratch_data = { 0 };
+        scratch_data.telemetry_report = &scratch_tlm;
+        scratch_data.telemetry_report_qty = 1;
+
+        if (sensors_local_save_one((size_t)row_ch[i], &scratch_data, SENSOR_LOCAL_DATA_TELEMETRY) != ESP_OK)
+            continue; // channel gone or driver failed: every row on it stays null
+
+        // Row k (A1..A5) maps 1:1 onto analog[0..4]: the "Source" <select> on
+        // that row only ever offers drivers whose properties advertise THAT
+        // analog slot (tlm_channel_options() filters on chan_mask = 1<<k), so
+        // analog[k] is always the right slot to read back for it.
+        for (int k = i; k < TLM_CH; k++) {
+            if (row_ch[k] == row_ch[i] && k < (int)APRS_TELEMETRY_ANALOG_CHANNELS && analog_enabled[k])
+                snprintf(out[k], sizeof(out[k]), "%g", analog[k]);
+        }
+    }
+
     httpd_resp_set_type(req, "application/json");
     httpd_resp_sendstr_chunk(req, "[");
     for (int i = 0; i < TLM_CH; i++) {
         if (i > 0)
             httpd_resp_sendstr_chunk(req, ",");
-
-        char key[16];
-        snprintf(key, sizeof(key), "ch%d", i);
-        int ch = web_form_get_int(query, key, 255);
-
-        char out[32] = "null";
-        if (ch >= 0 && ch < 255) {
-            bool analog_enabled[APRS_TELEMETRY_ANALOG_CHANNELS] = { 0 };
-            double analog[APRS_TELEMETRY_ANALOG_CHANNELS] = { 0 };
-            aprs_telemetry_report_t scratch_tlm = { 0 };
-            scratch_tlm.analog_count = APRS_TELEMETRY_ANALOG_CHANNELS;
-            scratch_tlm.analog_enabled = analog_enabled;
-            scratch_tlm.analog = analog;
-
-            weather_telemetry_data_t scratch_data = { 0 };
-            scratch_data.telemetry_report = &scratch_tlm;
-            scratch_data.telemetry_report_qty = 1;
-
-            // Row i (A1..A5) maps 1:1 onto analog[0..4]: the "Source"
-            // <select> on this row only ever offers drivers whose
-            // properties advertise THIS analog slot (tlm_channel_options()
-            // filters on chan_mask = 1<<i), so analog[i] is always the
-            // right slot to read back for that row.
-            if (sensors_local_save_one((size_t)ch, &scratch_data, SENSOR_LOCAL_DATA_TELEMETRY) == ESP_OK && i < (int)APRS_TELEMETRY_ANALOG_CHANNELS &&
-                analog_enabled[i]) {
-                snprintf(out, sizeof(out), "%g", analog[i]);
-            }
-        }
-        httpd_resp_sendstr_chunk(req, out);
+        httpd_resp_sendstr_chunk(req, out[i]);
     }
     httpd_resp_sendstr_chunk(req, "]");
     // Final zero-length chunk to close the response (see page_wx_values_get()

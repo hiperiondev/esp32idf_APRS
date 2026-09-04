@@ -50,13 +50,15 @@ hay nada que una comprobación de autenticación pueda proteger.
      - ajustes del informe meteorológico
    * - GET
      - ``/wx/values``
-     - valores WX de sensor por canal en vivo (JSON)
+     - valores WX de sensor por canal en vivo (JSON); cada canal distinto se
+       lee una sola vez por request, apunten las filas que apunten
    * - GET/POST
      - ``/tlm``
      - ajustes de telemetría + selectores de sensor por canal
    * - GET
      - ``/tlm/values``
-     - valores de telemetría por canal en vivo (JSON)
+     - valores de telemetría por canal en vivo (JSON); cada canal distinto se
+       lee una sola vez por request, apunten las filas que apunten
    * - GET/POST
      - ``/gps``
      - conmutador de habilitación del receptor GNSS y vista en vivo
@@ -93,8 +95,8 @@ hay nada que una comprobación de autenticación pueda proteger.
        reciente (JSON)
    * - GET
      - ``/logs``
-     - visor del registro de consola; al mostrarla también detiene cualquier
-       captura que siguiera activa
+     - visor del registro de consola; mostrarla no toca la copia: el script de
+       la página envía ``/logs/stop`` al cargar
    * - POST
      - ``/logs/start``
      - activa la copia de la consola (JSON ``{"ok":…,"seq":…}``)

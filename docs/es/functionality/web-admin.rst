@@ -233,8 +233,9 @@ Las páginas
        una copia sobre el escritor del registro; la salida serie en sí no
        cambia en ningún caso, y el anillo que la copia rellena solo se reserva
        mientras hay una captura en curso. La captura nunca sobrevive a la
-       página: llegar a ella (o recargarla) detiene lo que hubiera quedado
-       activo, así que el botón siempre aparece en su estado *Iniciar*; salir
+       página: al cargar, la página le pide a la estación que detenga lo que
+       hubiera quedado activo, así que el botón siempre aparece en su estado
+       *Iniciar*; salir
        de ella detiene la captura desde el navegador; y una pestaña cerrada,
        dormida o cortada a media sesión no dice nada, y por eso la copia
        también se detiene sola cuando nadie la lee durante diez segundos. No

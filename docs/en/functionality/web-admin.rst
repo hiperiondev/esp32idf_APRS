@@ -214,8 +214,8 @@ The pages
        each line is kept whole. Pressing *Start* installs a mirror on the log
        writer; the serial output itself is unchanged either way, and the ring
        the mirror fills is allocated only while a capture is running.
-       Capturing never outlives the page: arriving at it (or reloading it)
-       stops anything left running, so the button always comes up in its
+       Capturing never outlives the page: the page asks the station to stop
+       anything left running as it loads, so the button always comes up in its
        *Start* state; leaving it stops the capture from the browser; and a tab
        that is closed, put to sleep or cut off mid-session says nothing at
        all, which is why the mirror also stops itself once nothing has read it

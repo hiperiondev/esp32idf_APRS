@@ -24,14 +24,23 @@
 // perform, so it reads Start while nothing is being captured and Stop while
 // something is.
 //
-// Capture never outlives the page. Rendering this page stops any mirror that
-// was already running, so the Start the button shows is always the truth
-// rather than a guess about a previous visit; leaving the page stops it from
-// the browser; and a tab that is closed, put to sleep or cut off mid-session
-// says nothing at all, which is why the mirror also stops itself once nothing
-// has read it for LOGCAPTURE_IDLE_TIMEOUT_S. The station is therefore never
-// left mirroring its log into a ring nobody is reading, whichever way the
-// operator leaves.
+// Capture never outlives the page. The script posts /logs/stop as it loads,
+// so a mirror left running by an earlier visit is switched off and the Start
+// the button shows is the truth rather than a guess; leaving the page stops
+// it from the browser; and a tab that is closed, put to sleep or cut off
+// mid-session says nothing at all, which is why the mirror also stops itself
+// once nothing has read it for LOGCAPTURE_IDLE_TIMEOUT_S. The station is
+// therefore never left mirroring its log into a ring nobody is reading,
+// whichever way the operator leaves.
+//
+// Rendering the page is inert on purpose: the stop belongs to the script and
+// not to page_logs_get(), because a GET that stopped the mirror would break
+// the invariant web_common.c rests its CSRF check on (no registered GET route
+// has a side effect) and would put the stop out of reach of that check. It
+// would also hand the effect to every way a browser fetches a URL on its own:
+// a prefetch, a link prerender or an <img src> pointing at /logs would kill
+// the capture the operator is watching in another window, without any script
+// of this page ever running.
 //
 // All three endpoints behind the page - /logs/start, /logs/stop and
 // /logs/read - are POST, not GET, for the reason set out in web_common.c:
@@ -144,12 +153,6 @@ esp_err_t page_logs_get(httpd_req_t *req) {
     if (!web_check_auth(req))
         return ESP_OK;
 
-    // Any capture still running belongs to a visit that is over: this request
-    // is either a fresh arrival or a reload, and in both cases the page comes
-    // up with an empty window and a Start button. Stopping here is what makes
-    // that button's label true rather than hopeful.
-    logcapture_stop();
-
     web_send_header(req, TR_F_LOGS, "logs");
 
     web_fieldset_open(req, TR_LOGS_FS_CONSOLE);
@@ -176,6 +179,11 @@ esp_err_t page_logs_get(httpd_req_t *req) {
     // busy station an answer can take longer than the interval, and without
     // the in-flight guard the queued fetches would pile up against the
     // three-connection limit the admin server runs with.
+    //
+    // The script's own first act is the /logs/stop that clears whatever an
+    // earlier visit left running. It is fired and forgotten: the window opens
+    // empty and the button reads Start regardless of the answer, and if the
+    // request never lands the mirror still stops itself on its idle timeout.
     //
     // Unlike the other live pages, this one keeps polling while the tab is
     // hidden. Hiding it is precisely when an operator wants the station's
@@ -221,6 +229,7 @@ esp_err_t page_logs_get(httpd_req_t *req) {
                                   "}).catch(function(){});"
                                   "}"
                                   "logButton();"
+                                  "fetch('/logs/stop',{method:'POST'}).catch(function(){});"
                                   "var logTimer=setInterval(logPoll,1000);"
                                   "window.addEventListener('pagehide',function(){"
                                   "clearInterval(logTimer);"

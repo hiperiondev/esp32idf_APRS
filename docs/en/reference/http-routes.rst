@@ -49,13 +49,15 @@ auth check to guard.
      - Weather Report settings
    * - GET
      - ``/wx/values``
-     - live per-channel WX sensor values (JSON)
+     - live per-channel WX sensor values (JSON); each distinct channel is read
+       once per request, however many rows point at it
    * - GET/POST
      - ``/tlm``
      - telemetry settings + per-channel sensor pickers
    * - GET
      - ``/tlm/values``
-     - live per-channel telemetry sensor values (JSON)
+     - live per-channel telemetry sensor values (JSON); each distinct channel
+       is read once per request, however many rows point at it
    * - GET/POST
      - ``/gps``
      - GNSS receiver enable switch and live view
@@ -90,7 +92,8 @@ auth check to guard.
      - the replies the service has sent, oldest first (JSON)
    * - GET
      - ``/logs``
-     - console log viewer; rendering it also stops any capture still running
+     - console log viewer; rendering it has no effect on the mirror, the
+       page's script posts ``/logs/stop`` as it loads
    * - POST
      - ``/logs/start``
      - switch the console mirror on (JSON ``{"ok":…,"seq":…}``)

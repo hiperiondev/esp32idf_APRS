@@ -50,13 +50,17 @@ controllo di autenticazione possa proteggere.
      - impostazioni del report meteo
    * - GET
      - ``/wx/values``
-     - valori WX di sensore per canale in tempo reale (JSON)
+     - valori WX di sensore per canale in tempo reale (JSON); ogni canale
+       distinto viene letto una sola volta per richiesta, comunque siano
+       mappate le righe
    * - GET/POST
      - ``/tlm``
      - impostazioni di telemetria + selettori di sensore per canale
    * - GET
      - ``/tlm/values``
-     - valori di telemetria per canale in tempo reale (JSON)
+     - valori di telemetria per canale in tempo reale (JSON); ogni canale
+       distinto viene letto una sola volta per richiesta, comunque siano
+       mappate le righe
    * - GET/POST
      - ``/gps``
      - interruttore di abilitazione del ricevitore GNSS e vista in tempo reale
@@ -94,8 +98,8 @@ controllo di autenticazione possa proteggere.
      - le risposte inviate dal servizio, dalla più vecchia (JSON)
    * - GET
      - ``/logs``
-     - visore del registro di console; mostrarla ferma anche qualsiasi cattura
-       ancora attiva
+     - visore del registro di console; mostrarla non tocca la copia: lo script
+       della pagina invia ``/logs/stop`` al caricamento
    * - POST
      - ``/logs/start``
      - attiva la copia della console (JSON ``{"ok":…,"seq":…}``)

@@ -238,9 +238,9 @@ Le pagine
        mantenuta intera. *Avvia* installa una copia sullo scrittore del
        registro; l'uscita seriale in sé resta invariata in ogni caso, e
        l'anello che la copia riempie viene allocato solo mentre una cattura è
-       in corso. La cattura non sopravvive mai alla pagina: arrivarci (o
-       ricaricarla) ferma tutto ciò che fosse rimasto attivo, così il pulsante
-       si presenta sempre nel suo stato *Avvia*; lasciarla ferma la cattura dal
+       in corso. La cattura non sopravvive mai alla pagina: al caricamento la
+       pagina chiede alla stazione di fermare tutto ciò che fosse rimasto
+       attivo, così il pulsante si presenta sempre nel suo stato *Avvia*; lasciarla ferma la cattura dal
        browser; e una scheda chiusa, addormentata o interrotta a metà sessione
        non dice nulla, ed è per questo che la copia si ferma anche da sola
        quando nessuno la legge per dieci secondi. Non viene scritto nulla nella

@@ -247,12 +247,27 @@ static void wx_field_format(const aprs_weather_report_t *wx, wx_field_id_t f, ch
 
 // GET /wx/values?ch0=<channel>&ch1=<channel>&... - one "chN" query parameter
 // per WX_SENSOR_NUM row, giving the channel currently selected in that row's
-// <select> (255/absent = "(none)"). Reads that ONE channel's driver fresh
+// <select> (255/absent = "(none)"). Reads the selected drivers fresh
 // (sensors_local_save_one(), no averaging, no dependency on Save having been
 // pressed) and returns a JSON array of the same length, each slot either a
 // quoted "value unit" string or `null` if the row has no channel selected, the
 // channel doesn't exist / isn't a weather sensor, or it has no reading for
 // that particular field this cycle. Polled every 2s by the page's script.
+//
+// Each DISTINCT channel is read exactly once per request, however many rows
+// point at it. One read hands back a whole weather report, so every row whose
+// channel matches is formatted from that same snapshot; a station mapping ten
+// fields onto one BME280 costs the I2C bus one transaction per poll instead of
+// ten. It also makes the column self-consistent: rows sharing a channel now
+// show values that were sampled at the same instant.
+//
+// The reads are not cached between requests. A cache would only pay off when
+// two clients happen to poll the same channel inside the same second, while
+// the 1 Hz weather refresh in weather.c is already reading these very drivers
+// continuously - so the traffic it would save is small next to the load the
+// station carries anyway, and it would cost this diagnostic view its meaning:
+// the Value column is here to show what the driver returns right now, which a
+// value up to a second old no longer answers.
 esp_err_t page_wx_values_get(httpd_req_t *req) {
     if (!web_check_auth(req))
         return ESP_OK;
@@ -261,27 +276,56 @@ esp_err_t page_wx_values_get(httpd_req_t *req) {
     if (httpd_req_get_url_query_str(req, query, sizeof(query)) != ESP_OK)
         query[0] = 0;
 
+    // Channel selected by each row, -1 for "(none)" or out of range, and the
+    // JSON slot each row will contribute. Both are filled before anything is
+    // sent, because a row's value can be produced by a read issued for an
+    // earlier row.
+    int row_ch[WX_SENSOR_NUM];
+    char out[WX_SENSOR_NUM][40];
+    for (int i = 0; i < WX_SENSOR_NUM; i++) {
+        char key[16];
+        snprintf(key, sizeof(key), "ch%d", i);
+        int ch = web_form_get_int(query, key, 255);
+        row_ch[i] = (ch >= 0 && ch < 255) ? ch : -1;
+        snprintf(out[i], sizeof(out[i]), "null");
+    }
+
+    for (int i = 0; i < WX_SENSOR_NUM; i++) {
+        if (row_ch[i] < 0)
+            continue;
+
+        // A channel is read by the first row that names it; later rows on the
+        // same channel are served from that read.
+        bool already_read = false;
+        for (int j = 0; j < i; j++) {
+            if (row_ch[j] == row_ch[i]) {
+                already_read = true;
+                break;
+            }
+        }
+        if (already_read)
+            continue;
+
+        aprs_weather_report_t wx = { 0 };
+        weather_telemetry_data_t scratch = { 0 };
+        scratch.weather = &wx;
+        scratch.weather_qty = 1;
+
+        if (sensors_local_save_one((size_t)row_ch[i], &scratch, SENSOR_LOCAL_DATA_WEATHER) != ESP_OK)
+            continue; // channel gone or driver failed: every row on it stays null
+
+        for (int k = i; k < WX_SENSOR_NUM; k++) {
+            if (row_ch[k] == row_ch[i] && wx_field_present(&wx, (wx_field_id_t)k))
+                wx_field_format(&wx, (wx_field_id_t)k, out[k], sizeof(out[k]));
+        }
+    }
+
     httpd_resp_set_type(req, "application/json");
     httpd_resp_sendstr_chunk(req, "[");
     for (int i = 0; i < WX_SENSOR_NUM; i++) {
         if (i > 0)
             httpd_resp_sendstr_chunk(req, ",");
-
-        char key[16];
-        snprintf(key, sizeof(key), "ch%d", i);
-        int ch = web_form_get_int(query, key, 255);
-
-        char out[40] = "null";
-        if (ch >= 0 && ch < 255) {
-            aprs_weather_report_t wx = { 0 };
-            weather_telemetry_data_t scratch = { 0 };
-            scratch.weather = &wx;
-            scratch.weather_qty = 1;
-
-            if (sensors_local_save_one((size_t)ch, &scratch, SENSOR_LOCAL_DATA_WEATHER) == ESP_OK && wx_field_present(&wx, (wx_field_id_t)i))
-                wx_field_format(&wx, (wx_field_id_t)i, out, sizeof(out));
-        }
-        httpd_resp_sendstr_chunk(req, out);
+        httpd_resp_sendstr_chunk(req, out[i]);
     }
     httpd_resp_sendstr_chunk(req, "]");
     // Required to close the chunked response (see the wifi-scan JSON

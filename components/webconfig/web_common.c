@@ -209,7 +209,9 @@ static void web_auth_note_success(uint32_t ip) {
 // (<img src>, script/stylesheet loads, prefetch, link prerender). See
 // page_radio.c's /radio/looptest and page_wireless.c's /wifiscan for two
 // endpoints that read like queries but are POST for exactly this reason,
-// and page_storage.c for why /delete etc. are POST-only forms.
+// page_logs.c for a page whose own script posts /logs/stop as it loads
+// rather than letting the GET that renders it stop a running capture, and
+// page_storage.c for why /delete etc. are POST-only forms.
 
 // Compares the host[:port] authority component of a "<scheme>://host[:port]/..."
 // header value (Origin or Referer) against this request's own Host header
@@ -607,20 +609,23 @@ esp_err_t web_multipart_receive_file(httpd_req_t *req, web_multipart_data_cb_t c
     if (!buf)
         return ESP_ERR_NO_MEM;
     size_t buf_len = 0;
-    int remaining = (int)req->content_len;
+    // Bytes of the body still to be read, in the same type esp_http_server
+    // reports and consumes them, so no length ever passes through a narrower
+    // one on the way.
+    size_t remaining = req->content_len;
     esp_err_t result = ESP_FAIL;
     bool found_file_part = false;
 
 #define MP_FILL()                                                                                                                                              \
     do {                                                                                                                                                       \
         while (buf_len < MP_BUF_CAP && remaining > 0) {                                                                                                        \
-            int want = (int)(MP_BUF_CAP - buf_len);                                                                                                            \
+            size_t want = MP_BUF_CAP - buf_len;                                                                                                                \
             if (want > remaining)                                                                                                                              \
                 want = remaining;                                                                                                                              \
             int r = httpd_req_recv(req, (char *)buf + buf_len, want);                                                                                          \
             if (r > 0) {                                                                                                                                       \
                 buf_len += (size_t)r;                                                                                                                          \
-                remaining -= r;                                                                                                                                \
+                remaining -= (size_t)r;                                                                                                                        \
             } else if (r == HTTPD_SOCK_ERR_TIMEOUT) {                                                                                                          \
                 continue;                                                                                                                                      \
             } else {                                                                                                                                           \
@@ -670,7 +675,7 @@ esp_err_t web_multipart_receive_file(httpd_req_t *req, web_multipart_data_cb_t c
             hp = mp_mem_find(buf, buf_len, "\r\n\r\n", 4);
             if (hp)
                 break;
-            if (buf_len >= MP_BUF_CAP || remaining <= 0)
+            if (buf_len >= MP_BUF_CAP || remaining == 0)
                 goto done; // headers too large or body ended mid-header: malformed
             MP_FILL();
         }
@@ -736,7 +741,7 @@ esp_err_t web_multipart_receive_file(httpd_req_t *req, web_multipart_data_cb_t c
                 memmove(buf, buf + flush, buf_len - flush);
                 buf_len -= flush;
             }
-            if (remaining <= 0)
+            if (remaining == 0)
                 goto done; // ran out of body before finding the closing boundary: truncated/malformed
             MP_FILL();
         }
