@@ -73,6 +73,10 @@ uint8_t GfPolyAdd(const uint8_t *p1, uint8_t o1, const uint8_t *p2, uint8_t o2, 
         for (uint8_t i = 0; i < o2; i++) {
             out[i] = p1[i] ^ p2[i];
         }
+        // the coefficients above the degree of p2 come from p1 alone
+        for (uint8_t i = o2; i < o1; i++) {
+            out[i] = p1[i];
+        }
         return o1;
     } else // p2 is longer than p1
     {
