@@ -206,12 +206,24 @@ esp_err_t page_radio_looptest_post(httpd_req_t *req) {
     char result[900];
     bool ok = aprs_loop_test_run(result, sizeof(result));
 
-    // JSON-escape the result text: it can echo back raw RX payload bytes on
-    // a mismatch, which are not guaranteed to be JSON-safe.
-    char esc[1800];
+    // Stream the JSON response as it is escaped rather than building the
+    // whole "msg" value in one buffer first: the result text can echo back
+    // raw RX payload bytes on a mismatch, which are not guaranteed to be
+    // JSON-safe, so every byte is still escaped, just in small flushed
+    // batches instead of one combined allocation.
+    char head[24];
+    snprintf(head, sizeof(head), "{\"ok\":%s,\"msg\":\"", ok ? "true" : "false");
+    httpd_resp_sendstr_chunk(req, head);
+
+    char esc[128];
     size_t o = 0;
-    for (size_t i = 0; result[i] != 0 && o + 2 < sizeof(esc); i++) {
+    for (size_t i = 0; result[i] != 0; i++) {
         unsigned char c = (unsigned char)result[i];
+        if (o + 2 > sizeof(esc) - 1) {
+            esc[o] = 0;
+            httpd_resp_sendstr_chunk(req, esc);
+            o = 0;
+        }
         if (c == '"' || c == '\\') {
             esc[o++] = '\\';
             esc[o++] = (char)c;
@@ -225,10 +237,10 @@ esp_err_t page_radio_looptest_post(httpd_req_t *req) {
         }
     }
     esc[o] = 0;
+    httpd_resp_sendstr_chunk(req, esc);
 
-    char out[2000];
-    snprintf(out, sizeof(out), "{\"ok\":%s,\"msg\":\"%s\"}", ok ? "true" : "false", esc);
-    httpd_resp_sendstr(req, out);
+    httpd_resp_sendstr_chunk(req, "\"}");
+    httpd_resp_sendstr_chunk(req, NULL);
     return ESP_OK;
 }
 

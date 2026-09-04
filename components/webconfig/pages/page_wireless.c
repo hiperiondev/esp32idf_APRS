@@ -34,72 +34,89 @@ esp_err_t page_wireless_get(httpd_req_t *req) {
     if (!web_check_auth(req))
         return ESP_OK;
     web_send_header(req, TR_F_WIRELESS, "wireless");
+    httpd_resp_sendstr_chunk(req, "<form method='POST' action='/wireless'>");
 
-    char esc_ap_ssid[33 * 6 + 1], esc_ap_pass[64 * 6 + 1];
-    web_html_attr_escape(g_config.wifi_ap_ssid, esc_ap_ssid, sizeof(esc_ap_ssid));
-    web_html_attr_escape(g_config.wifi_ap_pass, esc_ap_pass, sizeof(esc_ap_pass));
+    web_fieldset_open(req, TR_WIFI_MODE_LEGEND);
+    // The option values are the WIFI_MODE_CFG_OFF .. WIFI_MODE_CFG_APSTA
+    // selectors, in that order; the matching constants pick the selected
+    // entry below.
+    web_select_open(req, TR_F_MODE, "wifiMode");
+    web_select_option(req, 0, TR_F_OFF, g_config.wifi_mode == WIFI_MODE_CFG_OFF);
+    web_select_option(req, 1, TR_WIFI_STATION, g_config.wifi_mode == WIFI_MODE_CFG_STA);
+    web_select_option(req, 2, TR_WIFI_ACCESS_POINT, g_config.wifi_mode == WIFI_MODE_CFG_AP);
+    web_select_option(req, 3, TR_WIFI_AP_STA, g_config.wifi_mode == WIFI_MODE_CFG_APSTA);
+    web_select_close(req);
+    // Same two-layer arrangement as the AP channel below: these bounds only
+    // stop the browser from submitting a power the WiFi driver would refuse,
+    // and the POST handler clamps the value again.
+    web_field_int(req, TR_WIFI_TX_POWER, "wifiPwr", g_config.wifi_power, WIFI_TX_POWER_DBM_MIN, WIFI_TX_POWER_DBM_MAX);
+    web_fieldset_close(req);
 
-    char buf[2400];
-    snprintf(buf, sizeof(buf),
-             "<form method='POST' action='/wireless'>"
-             "<fieldset><legend>" TR_WIFI_MODE_LEGEND "</legend>"
-             // The option values are the WIFI_MODE_CFG_OFF .. WIFI_MODE_CFG_APSTA
-             // selectors, in that order; the matching constants pick the
-             // selected entry below.
-             "<label>" TR_F_MODE "</label><select name='wifiMode'>"
-             "<option value='0' %s>" TR_F_OFF "</option>"
-             "<option value='1' %s>" TR_WIFI_STATION "</option>"
-             "<option value='2' %s>" TR_WIFI_ACCESS_POINT "</option>"
-             "<option value='3' %s>" TR_WIFI_AP_STA "</option>"
-             "</select>"
-             // Same two-layer arrangement as the AP channel below: these bounds
-             // only stop the browser from submitting a power the WiFi driver
-             // would refuse, and the POST handler clamps the value again.
-             "<label>" TR_WIFI_TX_POWER "</label><input type='number' name='wifiPwr' value='%d' min='%d' max='%d'>"
-             "</fieldset>"
-             "<fieldset><legend>" TR_WIFI_ACCESS_POINT "</legend>"
-             "<label>" TR_WIFI_AP_SSID "</label><input type='text' name='apSsid' value='%s' maxlength='32'>"
-             "<label>" TR_WIFI_AP_PASSWORD "</label><input type='password' name='apPass' id='pwd_apPass' value='%s' maxlength='63' minlength='8'>"
-             "<label class='pwd-show'><input type='checkbox' onclick=\"togglePwd('pwd_apPass',this)\"> " TR_SHOW_PASSWORD "</label>"
-             // min/max here only stop the browser from submitting an out of
-             // range channel; the value is clamped again in the POST handler,
-             // which is what actually protects the stored configuration.
-             "<label>" TR_WIFI_AP_CHANNEL "</label><input type='number' name='apCh' value='%d' min='%d' max='%d'>"
-             "</fieldset>"
-             "<button type='button' class='secondary' id='wifiScanBtn' onclick='wifiScan()'>" TR_BTN_WIFI_SCAN "</button> "
-             "<span id='wifiScanStatus'></span>",
-             g_config.wifi_mode == WIFI_MODE_CFG_OFF ? "selected" : "", g_config.wifi_mode == WIFI_MODE_CFG_STA ? "selected" : "",
-             g_config.wifi_mode == WIFI_MODE_CFG_AP ? "selected" : "", g_config.wifi_mode == WIFI_MODE_CFG_APSTA ? "selected" : "", g_config.wifi_power,
-             WIFI_TX_POWER_DBM_MIN, WIFI_TX_POWER_DBM_MAX, esc_ap_ssid, esc_ap_pass, g_config.wifi_ap_ch, WIFI_AP_CH_MIN, WIFI_AP_CH_MAX);
-    httpd_resp_sendstr_chunk(req, buf);
+    web_fieldset_open(req, TR_WIFI_ACCESS_POINT);
+    web_field_text(req, TR_WIFI_AP_SSID, "apSsid", g_config.wifi_ap_ssid, 32);
+    {
+        char buf[600];
+        char esc_ap_pass[64 * 6 + 1];
+        web_html_attr_escape(g_config.wifi_ap_pass, esc_ap_pass, sizeof(esc_ap_pass));
+        snprintf(buf, sizeof(buf),
+                 "<label>" TR_WIFI_AP_PASSWORD "</label><input type='password' name='apPass' id='pwd_apPass' value='%s' maxlength='63' minlength='8'>",
+                 esc_ap_pass);
+        httpd_resp_sendstr_chunk(req, buf);
+    }
+    httpd_resp_sendstr_chunk(req, "<label class='pwd-show'><input type='checkbox' onclick=\"togglePwd('pwd_apPass',this)\"> " TR_SHOW_PASSWORD "</label>");
+    // min/max here only stop the browser from submitting an out of range
+    // channel; the value is clamped again in the POST handler, which is what
+    // actually protects the stored configuration.
+    web_field_int(req, TR_WIFI_AP_CHANNEL, "apCh", g_config.wifi_ap_ch, WIFI_AP_CH_MIN, WIFI_AP_CH_MAX);
+    web_fieldset_close(req);
+
+    httpd_resp_sendstr_chunk(req, "<button type='button' class='secondary' id='wifiScanBtn' onclick='wifiScan()'>" TR_BTN_WIFI_SCAN "</button> "
+                                  "<span id='wifiScanStatus'></span>");
 
     // One shared datalist, filled in by wifiScan() below. It only ever offers
     // *suggestions* - see the SSID field's comment.
     httpd_resp_sendstr_chunk(req, "<datalist id='ssidList'></datalist>");
 
     for (int i = 0; i < WIFI_STA_NUM; i++) {
-        char esc_sta_ssid[33 * 6 + 1], esc_sta_pass[64 * 6 + 1];
-        web_html_attr_escape(g_config.wifi_sta[i].wifi_ssid, esc_sta_ssid, sizeof(esc_sta_ssid));
-        web_html_attr_escape(g_config.wifi_sta[i].wifi_pass, esc_sta_pass, sizeof(esc_sta_pass));
-
-        char sec[1600];
-        snprintf(sec, sizeof(sec),
-                 "<fieldset><legend>" TR_WIFI_CLIENT_LEGEND "</legend>"
-                 "<label><input type='checkbox' name='staEn%d' %s> " TR_F_ENABLE "</label>"
-                 // SSID is a free-text input backed by a datalist: the WiFi Scan
-                 // button fills the datalist with suggestions, but the SSID can
-                 // simply be typed. This means no scan is required before entering
-                 // a new network, and a hidden/5 GHz/out-of-range AP that never
-                 // appears in a scan can still be entered by hand.
-                 "<label>" TR_F_SSID "</label>"
-                 "<input type='text' name='staSsid%d' id='staSsid%d' list='ssidList' value='%s' maxlength='32' autocomplete='off' "
-                 "placeholder='" TR_WIFI_SSID_PLACEHOLDER "'>"
-                 "<label>" TR_F_PASSWORD "</label><input type='password' name='staPass%d' id='pwd_staPass%d' value='%s' maxlength='63' minlength='8'>"
-                 "<label class='pwd-show'><input type='checkbox' onclick=\"togglePwd('pwd_staPass%d',this)\"> " TR_SHOW_PASSWORD "</label>"
-                 "</fieldset>",
-                 i, // legend #%d
-                 i, g_config.wifi_sta[i].enable ? "checked" : "", i, i, esc_sta_ssid, i, i, esc_sta_pass, i);
-        httpd_resp_sendstr_chunk(req, sec);
+        web_fieldset_open(req, TR_WIFI_CLIENT_LEGEND);
+        {
+            char buf[80];
+            snprintf(buf, sizeof(buf), "<label><input type='checkbox' name='staEn%d' %s> " TR_F_ENABLE "</label>", i,
+                     g_config.wifi_sta[i].enable ? "checked" : "");
+            httpd_resp_sendstr_chunk(req, buf);
+        }
+        // SSID is a free-text input backed by a datalist: the WiFi Scan
+        // button fills the datalist with suggestions, but the SSID can
+        // simply be typed. This means no scan is required before entering a
+        // new network, and a hidden/5 GHz/out-of-range AP that never appears
+        // in a scan can still be entered by hand.
+        {
+            char buf[600];
+            char esc_sta_ssid[33 * 6 + 1];
+            web_html_attr_escape(g_config.wifi_sta[i].wifi_ssid, esc_sta_ssid, sizeof(esc_sta_ssid));
+            snprintf(buf, sizeof(buf),
+                     "<label>" TR_F_SSID "</label>"
+                     "<input type='text' name='staSsid%d' id='staSsid%d' list='ssidList' value='%s' maxlength='32' autocomplete='off' "
+                     "placeholder='" TR_WIFI_SSID_PLACEHOLDER "'>",
+                     i, i, esc_sta_ssid);
+            httpd_resp_sendstr_chunk(req, buf);
+        }
+        {
+            char buf[600];
+            char esc_sta_pass[64 * 6 + 1];
+            web_html_attr_escape(g_config.wifi_sta[i].wifi_pass, esc_sta_pass, sizeof(esc_sta_pass));
+            snprintf(buf, sizeof(buf),
+                     "<label>" TR_F_PASSWORD "</label><input type='password' name='staPass%d' id='pwd_staPass%d' value='%s' maxlength='63' minlength='8'>", i,
+                     i, esc_sta_pass);
+            httpd_resp_sendstr_chunk(req, buf);
+        }
+        {
+            char buf[120];
+            snprintf(buf, sizeof(buf),
+                     "<label class='pwd-show'><input type='checkbox' onclick=\"togglePwd('pwd_staPass%d',this)\"> " TR_SHOW_PASSWORD "</label>", i);
+            httpd_resp_sendstr_chunk(req, buf);
+        }
+        web_fieldset_close(req);
     }
 
     httpd_resp_sendstr_chunk(req, "<script>"
