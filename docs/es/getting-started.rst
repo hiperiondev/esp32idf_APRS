@@ -38,8 +38,11 @@ Compilar en español o italiano en lugar de inglés (véase :ref:`es-localizatio
 
 .. tip::
 
-   ``sdkconfig`` viene con ``CONFIG_COMPILER_OPTIMIZATION_DEBUG`` (``-Og``) y
-   las aserciones activadas. Cambia a ``-Os`` si andas justo de flash.
+   ``sdkconfig`` viene con ``CONFIG_COMPILER_OPTIMIZATION_SIZE`` (``-Os``) y
+   las aserciones activadas, y con ``CONFIG_COMPILER_STACK_CHECK_MODE_NORM``
+   para el canario de pila. Cambia a ``CONFIG_COMPILER_OPTIMIZATION_DEBUG``
+   (``-Og``) para una build de desarrollo con mejor depuración a nivel de
+   fuente.
 
 Presupuesto de memoria
 ======================

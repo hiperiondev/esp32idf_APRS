@@ -37,8 +37,10 @@ Compila in spagnolo o italiano invece che in inglese (vedi :ref:`it-localization
 
 .. tip::
 
-   ``sdkconfig`` arriva con ``CONFIG_COMPILER_OPTIMIZATION_DEBUG`` (``-Og``) e le
-   asserzioni attive. Passa a ``-Os`` se sei a corto di flash.
+   ``sdkconfig`` arriva con ``CONFIG_COMPILER_OPTIMIZATION_SIZE`` (``-Os``) e le
+   asserzioni attive, e con ``CONFIG_COMPILER_STACK_CHECK_MODE_NORM`` per il
+   canary dello stack. Passa a ``CONFIG_COMPILER_OPTIMIZATION_DEBUG`` (``-Og``)
+   per una build di sviluppo con un debug a livello sorgente migliore.
 
 Budget di memoria
 =================

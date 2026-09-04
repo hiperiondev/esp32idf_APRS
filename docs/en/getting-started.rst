@@ -38,8 +38,10 @@ Build in Spanish or Italian instead of English (see :ref:`en-localization`):
 
 .. tip::
 
-   ``sdkconfig`` ships with ``CONFIG_COMPILER_OPTIMIZATION_DEBUG`` (``-Og``)
-   and assertions on. Switch to ``-Os`` if you are tight on flash.
+   ``sdkconfig`` ships with ``CONFIG_COMPILER_OPTIMIZATION_SIZE`` (``-Os``)
+   and assertions on, and with ``CONFIG_COMPILER_STACK_CHECK_MODE_NORM`` for
+   the stack canary. Switch to ``CONFIG_COMPILER_OPTIMIZATION_DEBUG``
+   (``-Og``) for a development build with better source-level debugging.
 
 Memory budget
 =============

@@ -958,10 +958,21 @@ static void respondQRU(query_source_t source) {
 static void respondTrace(const char *fromCall, const char *route, query_source_t source) {
     char text[APRS_MSG_TEXT_STD_MAX + 1];
 
-    if (route == NULL || route[0] == 0)
+    if (route == NULL || route[0] == 0) {
         snprintf(text, sizeof(text), "%s via ?", fromCall);
-    else
-        snprintf(text, sizeof(text), "%s>%s", fromCall, route);
+    } else {
+        // route can be as long as QUERY_DETAIL_LEN - 1 (63 bytes), which
+        // together with fromCall and the separator can exceed text's
+        // capacity, so route is capped to what is left in text after
+        // fromCall and '>' are placed; snprintf's own bound keeps the
+        // result a valid, NUL-terminated (possibly shortened) trace.
+        int prefixLen = snprintf(text, sizeof(text), "%s>", fromCall);
+        if (prefixLen < 0)
+            prefixLen = 0;
+        else if ((size_t)prefixLen >= sizeof(text))
+            prefixLen = (int)sizeof(text) - 1;
+        snprintf(text + prefixLen, sizeof(text) - (size_t)prefixLen, "%.*s", (int)(sizeof(text) - (size_t)prefixLen - 1), route);
+    }
 
     txMessageTo(fromCall, text, source);
 }
