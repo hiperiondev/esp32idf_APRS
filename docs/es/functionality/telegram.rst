@@ -521,6 +521,30 @@ advierte debajo de las credenciales y el servicio lo anota una vez en el log
 al empezar a consultar, de modo que un bot que no responde a nadie nunca se
 confunde con un bot que no logra conectarse.
 
+Esa respuesta es lo único que el dispositivo envía en nombre de quien no ha
+autorizado, así que está limitada en frecuencia: como mucho un rechazo por
+identificador de remitente cada ``TELEGRAM_SERVICE_UNKNOWN_REPLY_INTERVAL_S``
+segundos (300 por omisión), con los remitentes ya respondidos guardados en una
+tabla de ``TELEGRAM_SERVICE_MAX_UNKNOWN_SENDERS`` entradas (4 por omisión) que
+descarta primero al respondido hace más tiempo. Ambas son opciones de
+compilación bajo *Telegram bot service* en ``menuconfig``. El motivo es la
+memoria, no el ancho de banda: las conexiones de sondeo y de transmisión se
+turnan una única sesión TLS, porque un solo saludo a la vez es todo lo que esta
+placa admite junto a un módem de radio y un servidor web, de modo que una
+respuesta sin medida dejaría que un desconocido gastara el presupuesto con el
+que funciona el sondeo de la propia estación. Los comandos que quedan sin
+responder se siguen contando como actualizaciones rechazadas y se siguen
+anotando en el log con el identificador del remitente, y un remitente
+descartado de la tabla vuelve a recibir respuesta en su siguiente comando: a
+quien está poniendo en marcha una estación nunca le falta el número que vino a
+buscar.
+
+Una actualización que no nombra a ningún remitente —el total agregado de
+reacciones que Telegram entrega en los chats que ocultan quién reaccionó— se
+acepta solo dentro de un grupo de la lista de chats permitidos, que es la única
+puerta que puede responder por ella. Fuera de un grupo no hay ni lista de chats
+ni remitente, así que no hay nada que autorizar y se descarta.
+
 La página Telegram
 ====================
 

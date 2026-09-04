@@ -93,10 +93,18 @@ della pagina IGate sottoscrive il traffico BrandMeister dell'intera rete.
 
 Per questo motivo, abilitare l'interruttore del monitor mentre l'inoltro da
 Internet a RF è attivo e il filtro di distanza da Internet a RF è disattivato
-viene **rifiutato**, con una spiegazione sotto l'interruttore. La stessa regola
-viene riapplicata quando la pagina IGate disattiva il filtro di distanza, e di
-nuovo al caricamento di un ``config.json``, quindi non è aggirabile modificando
-il file a mano.
+viene **rifiutato**. La spiegazione resta sotto l'interruttore finché la
+condizione preliminare non è soddisfatta, e non solo nella pagina che segue un
+salvataggio rifiutato: la pagina ricava di nuovo la condizione dalla
+configurazione memorizzata a ogni caricamento, quindi dice lo stesso sia che
+l'operatore sia appena stato rifiutato, sia che stia per esserlo, sia che sia
+arrivato su una stazione dove il filtro di distanza è stato disattivato in
+seguito dalla pagina IGate. Ricavarla invece di ricordarla fa anche sì che il
+messaggio raggiunga il browser che riguarda: più operatori possono avere aperta
+l'amministrazione web nello stesso momento. La stessa regola viene riapplicata
+quando la pagina IGate disattiva il filtro di distanza, e di nuovo al
+caricamento di un ``config.json``, quindi non è aggirabile modificando il file a
+mano.
 
 La pagina non modifica mai da sé la stringa del filtro server. Il filtro
 appartiene all'operatore, e una pagina che lo riscrivesse in silenzio farebbe

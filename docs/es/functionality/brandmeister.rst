@@ -91,9 +91,16 @@ página IGate suscribe al tráfico BrandMeister de toda la red.
 
 Por ese motivo, habilitar el interruptor de monitor mientras el reenvío de
 Internet a RF está activo y el filtro de rango Internet a RF está apagado se
-**rechaza**, con una explicación debajo del interruptor. La misma regla se
-vuelve a aplicar cuando la página IGate apaga el filtro de rango, y otra vez al
-cargar un ``config.json``, así que no se puede evitar editando el archivo a
+**rechaza**. La explicación permanece debajo del interruptor mientras no se
+cumpla la condición previa, y no solo en la página que sigue a un guardado
+rechazado: la página vuelve a deducir la condición de la configuración
+almacenada en cada carga, así que dice lo mismo si al operador acaban de
+rechazarlo, si está por ocurrirle, o si llegó a una estación donde el filtro de
+rango se apagó después desde la página IGate. Deducirla en lugar de recordarla
+también hace que el mensaje llegue al navegador al que le corresponde: varios
+operadores pueden tener abierta la administración web a la vez. La misma regla
+se vuelve a aplicar cuando la página IGate apaga el filtro de rango, y otra vez
+al cargar un ``config.json``, así que no se puede evitar editando el archivo a
 mano.
 
 La página nunca edita por sí misma la cadena del filtro de servidor. El filtro

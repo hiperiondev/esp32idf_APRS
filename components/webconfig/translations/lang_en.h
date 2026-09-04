@@ -1568,8 +1568,8 @@
     "worldwide feed and your transmitter."
 /** Lead-in to the server filter term the monitor subscription needs, rendered on the BrandMeister page. */
 #define TR_BM_NOTE_FILTER_TERM "Add this term to the IGate page's server filter to receive the subscription:"
-/** Warning shown once when the monitor switch was refused for want of the range gate, rendered on the BrandMeister page. */
-#define TR_BM_WARN_NEEDS_RANGE "Refused: enable the Internet to RF range filter on the IGate page first."
+/** Warning shown under the monitor switch while the range gate the subscription needs is missing, rendered on the BrandMeister page. */
+#define TR_BM_WARN_NEEDS_RANGE "The worldwide monitor needs the Internet to RF range filter enabled on the IGate page first."
 /** Fieldset legend for message routing, rendered on the BrandMeister page. */
 #define TR_BM_FS_MESSAGING "Messaging"
 /** Form label for the Internet-only message routing switch, rendered on the BrandMeister page. */

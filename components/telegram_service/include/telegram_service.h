@@ -134,6 +134,32 @@ extern "C" {
 #define TELEGRAM_MAX_SENSORS CONFIG_TELEGRAM_SERVICE_MAX_SENSORS
 
 /**
+ * @brief Number of unlisted senders whose refusal reply is rate limited at
+ *        once.
+ *
+ * A command from a sender that is not on the authorization list is answered
+ * with that sender's own numeric identifier, which is how an operator learns
+ * the number to authorize. The reply is an outbound request, so it is issued
+ * at most once per sender per ::TELEGRAM_UNKNOWN_REPLY_INTERVAL_S and the
+ * senders already answered are remembered in a table of this size. The table
+ * is a least-recently-answered one: when it is full, the sender whose reply is
+ * oldest loses its slot and would be answered again on its next command, so
+ * this bound is what decides how many distinct strangers can be probing the
+ * bot at the same time before the limit starts to leak.
+ */
+#define TELEGRAM_MAX_UNKNOWN_SENDERS CONFIG_TELEGRAM_SERVICE_MAX_UNKNOWN_SENDERS
+
+/**
+ * @brief Seconds between two refusal replies sent to the same unlisted
+ *        sender.
+ *
+ * Long enough that a stranger cannot drive the transmit path from outside the
+ * authorization list, short enough that an operator who missed the first reply
+ * gets another one without having to wait out a session.
+ */
+#define TELEGRAM_UNKNOWN_REPLY_INTERVAL_S CONFIG_TELEGRAM_SERVICE_UNKNOWN_REPLY_INTERVAL_S
+
+/**
  * @brief Nature of an incoming update.
  *
  * The two reaction kinds only reach the device when

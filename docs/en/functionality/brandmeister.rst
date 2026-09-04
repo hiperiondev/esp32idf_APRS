@@ -84,10 +84,16 @@ filter subscribes to BrandMeister traffic from the entire network.
    range filter on the IGate page does.
 
 Because of that, enabling the monitor switch while Internet-to-RF gating is on
-and the Internet-to-RF range filter is off is **refused**, with an explanation
-under the switch. The same rule is re-applied when the IGate page turns the
-range filter off, and again when a ``config.json`` is loaded, so it cannot be
-bypassed by editing the file by hand.
+and the Internet-to-RF range filter is off is **refused**. The explanation sits
+under the switch for as long as the precondition is unmet, not just on the page
+that follows a refused save: the page re-derives the condition from the stored
+configuration on every load, so it reads the same whether the operator has just
+been refused, is about to be, or arrived on a station where the range filter was
+turned off from the IGate page afterwards. Deriving it rather than remembering
+it also means the message reaches the browser it concerns — several operators
+can have the web admin open at once. The same rule is re-applied when the IGate
+page turns the range filter off, and again when a ``config.json`` is loaded, so
+it cannot be bypassed by editing the file by hand.
 
 The page never edits the server filter string itself. The filter belongs to the
 operator, and a page that rewrote it silently would make the IGate page

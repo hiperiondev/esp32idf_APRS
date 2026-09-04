@@ -27,7 +27,7 @@
 static const char *TAG = "cpu_freq";
 
 void cpu_freq_apply(void) {
-    uint8_t freq = g_config.cpuFreq;
+    uint8_t freq = g_config.cpuFreq; // single-word read, benign if stale
     // Only 80/160/240 MHz are valid on ESP32 (and the only options the System
     // page offers) - fall back to the max if config ever holds anything else.
     if (freq != 80 && freq != 160 && freq != 240) {

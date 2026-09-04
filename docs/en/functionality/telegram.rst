@@ -494,6 +494,27 @@ nobody is authorized, the page says so under the credentials and the service
 notes it once in the log when polling starts, so a bot that answers nobody
 is never mistaken for a bot that cannot connect.
 
+That reply is the one thing the device sends on behalf of a caller it has not
+authorized, so it is rate limited: at most one refusal per sender identifier
+per ``TELEGRAM_SERVICE_UNKNOWN_REPLY_INTERVAL_S`` seconds (300 by default),
+with the senders already answered held in a least-recently-answered table of
+``TELEGRAM_SERVICE_MAX_UNKNOWN_SENDERS`` entries (4 by default). Both are
+build-time options under *Telegram bot service* in ``menuconfig``. The reason
+is heap rather than bandwidth: the polling and transmit connections take turns
+holding a single TLS session, because one handshake at a time is all this board
+affords next to a radio modem and a web server, so an unmetered reply would let
+a stranger spend the budget the station's own polling runs on. Commands that go
+unanswered are still counted as rejected updates and still logged with the
+sender's identifier, and a sender evicted from the table is answered again on
+its next command — an operator bringing a station up is never left without the
+number they came for.
+
+An update that names no sender at all — the aggregated reaction total Telegram
+delivers in chats that hide who reacted — is accepted only inside a group on
+the allowed-chat list, which is the only gate that can speak for it. Outside a
+group there is neither a chat list nor a sender, so nothing about it can be
+authorized and it is dropped.
+
 The Telegram page
 ==================
 

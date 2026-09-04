@@ -1665,8 +1665,8 @@
     "perche non resterebbe nulla tra un flusso mondiale e il vostro trasmettitore."
 /** Lead-in to the server filter term the monitor subscription needs, rendered on the BrandMeister page. */
 #define TR_BM_NOTE_FILTER_TERM "Aggiungete questo termine al filtro server della pagina IGate per ricevere la sottoscrizione:"
-/** Warning shown once when the monitor switch was refused for want of the range gate, rendered on the BrandMeister page. */
-#define TR_BM_WARN_NEEDS_RANGE "Rifiutato: abilitate prima il filtro di distanza da Internet a RF nella pagina IGate."
+/** Warning shown under the monitor switch while the range gate the subscription needs is missing, rendered on the BrandMeister page. */
+#define TR_BM_WARN_NEEDS_RANGE "Il monitor mondiale richiede che sia prima abilitato il filtro di distanza da Internet a RF nella pagina IGate."
 /** Fieldset legend for message routing, rendered on the BrandMeister page. */
 #define TR_BM_FS_MESSAGING "Messaggistica"
 /** Form label for the Internet-only message routing switch, rendered on the BrandMeister page. */

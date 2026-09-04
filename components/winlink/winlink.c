@@ -333,13 +333,23 @@ int winlink_mail_count(void) {
 }
 
 bool winlink_mail_clear(void) {
+    // Module lock first and held across the whole sequence, filesystem-wide
+    // writer gate second (storage.h), the same order mail_save() uses. RAM and
+    // file are emptied as one step: a reply arriving in between would otherwise
+    // be saved into a mailbox that is about to be deleted, or land in a file
+    // the delete has already removed.
     lock();
     memset(s_mail, 0, sizeof(s_mail));
-    unlock();
 
+    // s_mail_seq is deliberately left running. It numbers replies, not slots,
+    // and winlink_mail_next_json() walks the mailbox by asking for the first
+    // entry above a sequence number the caller still holds from before the
+    // clear; restarting at zero would make the next reply look older than one
+    // the caller has already read, and it would never be handed out.
     storage_write_lock();
     bool ok = storage_delete(WINLINK_PATH);
     storage_write_unlock();
+    unlock();
     return ok;
 }
 

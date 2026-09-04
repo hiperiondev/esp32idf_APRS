@@ -24,7 +24,6 @@
 // See main/include/aprs_bm.h for what "BrandMeister traffic" means here.
 
 #include <stdio.h>
-#include <string.h>
 
 #include "app_config.h"
 #include "aprs_bm.h"
@@ -36,12 +35,22 @@
 
 static const char *TAG = "page_bm";
 
-// Set by the POST handler when the monitor switch was refused, and rendered
-// once under the switch on the next GET. Same one-shot pattern as the IGate
-// page's filter warning: the operator asked for something that cannot be
-// granted in the current configuration, and the page has to say so rather than
-// silently storing a different answer.
-static char s_bmWarning[200] = { 0 };
+// True when the worldwide monitor subscription cannot be granted: this station
+// gates the APRS-IS feed to RF and no INET->RF range gate stands between the
+// feed and the transmitter. A pure function of inet2rf and inet2rf_range_en,
+// so the page derives it on every GET instead of carrying a flag from a POST
+// to the request that follows it. The web server serves several sockets at
+// once, and a flag stored between two requests reaches whichever browser asks
+// next rather than the one that saved.
+//
+// bm_monitor is the third term of the rendered result rather than of the
+// condition: the warning explains why the switch above it will not stay
+// ticked, so it is shown whenever the precondition is unmet - whether the
+// operator has just been refused, is about to be, or loaded a config.json in
+// which the monitor was set by hand.
+static bool bm_monitor_blocked(void) {
+    return g_config.inet2rf && !g_config.inet2rf_range_en;
+}
 
 // Emits one label/value row of the read-only status table.
 static void bm_row(httpd_req_t *req, const char *label, const char *value, bool good) {
@@ -73,14 +82,8 @@ esp_err_t page_bm_get(httpd_req_t *req) {
     // enforces the precondition, and tells them the exact term to add.
     web_fieldset_open(req, TR_BM_FS_MONITOR);
     web_field_checkbox(req, TR_BM_MONITOR, "bmMonitor", g_config.bm_monitor);
-    if (s_bmWarning[0]) {
-        char esc_warn[sizeof(s_bmWarning) * 6 + 1];
-        web_html_attr_escape(s_bmWarning, esc_warn, sizeof(esc_warn));
-        char wbuf[sizeof(esc_warn) + 80];
-        snprintf(wbuf, sizeof(wbuf), "<div style='color:#cf222e;font-size:.85em;margin:-6px 0 8px'>%s</div>", esc_warn);
-        web_raw(req, wbuf);
-        s_bmWarning[0] = 0; // shown once
-    }
+    if (bm_monitor_blocked())
+        web_raw(req, "<div style='color:#cf222e;font-size:.85em;margin:-6px 0 8px'>" TR_BM_WARN_NEEDS_RANGE "</div>");
     web_raw(req, "<p style='color:#cf222e;font-size:12px;margin:4px 0'>" TR_BM_NOTE_MONITOR "</p>");
     {
         char term[200];
@@ -190,10 +193,12 @@ esp_err_t page_bm_post(httpd_req_t *req) {
     // intersection is not expressible to the server at all, which leaves the
     // INET->RF range gate on the IGate page as the only thing standing between
     // a worldwide feed and the transmitter.
+    //
+    // The refusal needs nothing carried over to the redirected GET: that
+    // handler re-derives the same condition from the configuration this one has
+    // just written, so the explanation appears under the switch on its own.
     bool wantMonitor = web_form_get_bool(body, "bmMonitor");
-    s_bmWarning[0] = 0;
-    if (wantMonitor && g_config.inet2rf && !g_config.inet2rf_range_en) {
-        snprintf(s_bmWarning, sizeof(s_bmWarning), "%s", TR_BM_WARN_NEEDS_RANGE);
+    if (wantMonitor && bm_monitor_blocked()) {
         wantMonitor = false;
         ESP_LOGW(TAG, "BrandMeister monitor refused: INET->RF gating is on and the INET->RF range gate is off");
     }

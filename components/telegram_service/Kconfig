@@ -55,6 +55,30 @@ menu "Telegram bot service"
             /sensors and /status commands. Raise it to match the number of
             sensors the application actually publishes.
 
+    config TELEGRAM_SERVICE_MAX_UNKNOWN_SENDERS
+        int "Maximum number of unlisted senders tracked for reply rate limiting"
+        range 1 32
+        default 4
+        help
+            Size of the static least-recently-answered table remembering
+            which unlisted senders have already been told their own user
+            identifier. A sender evicted from the table is answered again
+            on its next command, so this bound decides how many distinct
+            strangers can probe the bot at the same time before the rate
+            limit starts to leak. Each entry costs sixteen bytes.
+
+    config TELEGRAM_SERVICE_UNKNOWN_REPLY_INTERVAL_S
+        int "Seconds between two refusal replies to the same unlisted sender"
+        range 10 3600
+        default 300
+        help
+            A command from a sender that is not on the authorization list
+            is answered with that sender's own numeric identifier, which is
+            how an operator learns the number to authorize. That answer is
+            an outbound TLS request on a device whose heap only affords one
+            session at a time, so it is issued at most once per sender per
+            this many seconds.
+
     config TELEGRAM_SERVICE_RX_BUFFER_SIZE
         int "Default size of the update reception buffer"
         range 1024 32768

@@ -10,9 +10,10 @@
 // Implements the service declared in telegram_service.h on top of the
 // `esp_telegram_bot` transport. All the state lives in this translation
 // unit: the configuration copy, the authorization and group chat lists, the
-// command, callback, parameter and sensor tables, the runtime counters and
-// the polling offset, all protected by a recursive mutex because the
-// built-in handlers call the public API of the service themselves.
+// command, callback, parameter and sensor tables, the table rate limiting the
+// replies sent to unlisted senders, the runtime counters and the polling
+// offset, all protected by a recursive mutex because the built-in handlers
+// call the public API of the service themselves.
 //
 // Two independent transport handles are used, one dedicated to the long poll
 // and one to every outgoing message, so a transmission is never delayed by a
@@ -178,6 +179,15 @@ typedef struct {
     bool used;
 } telegram_sensor_entry_t;
 
+// One entry of the table remembering which unlisted senders have already been
+// told their own identifier, so the refusal is answered once per window rather
+// than once per command.
+typedef struct {
+    int64_t id;
+    int64_t last_reply_us; // esp_timer_get_time() when the refusal was sent
+    bool used;
+} telegram_unknown_entry_t;
+
 // Item travelling through the alert queue. The text is heap allocated by
 // the producer and released by the service task once delivered.
 typedef struct {
@@ -227,6 +237,7 @@ static telegram_command_entry_t s_commands[TELEGRAM_MAX_COMMANDS];
 static telegram_callback_entry_t s_callbacks[TELEGRAM_MAX_CALLBACKS];
 static telegram_param_entry_t s_params[TELEGRAM_MAX_PARAMS];
 static telegram_sensor_entry_t s_sensors[TELEGRAM_MAX_SENSORS];
+static telegram_unknown_entry_t s_unknown[TELEGRAM_MAX_UNKNOWN_SENDERS];
 
 static telegram_event_cb_t s_event_handler = NULL;
 static void *s_event_ctx = NULL;
@@ -502,6 +513,7 @@ esp_err_t telegram_init(const telegram_service_config_t *config) {
     memset(s_callbacks, 0, sizeof(s_callbacks));
     memset(s_params, 0, sizeof(s_params));
     memset(s_sensors, 0, sizeof(s_sensors));
+    memset(s_unknown, 0, sizeof(s_unknown));
     memset(&s_stats, 0, sizeof(s_stats));
     s_event_handler = NULL;
     s_event_ctx = NULL;
@@ -2595,6 +2607,65 @@ static void telegram_dispatch_callback(const telegram_update_t *update) {
     }
 }
 
+// Reports whether the sender named by @p user_id is due a refusal reply, and
+// records the reply as sent when it is.
+//
+// The reply itself is what an operator needs and costs nothing to give, but it
+// is an outbound send that no authorization stands in front of: anyone who
+// discovers the bot handle can otherwise make the device open a TLS session
+// per command, at whatever rate Telegram permits. That matters here more than
+// it would elsewhere because the polling and transmit handles take turns
+// holding a single session - the heap on this board affords one handshake at a
+// time - so a stranger's traffic is paid for out of the same budget the
+// station's own polling runs on.
+//
+// The table remembers the least recently answered senders: a match inside the
+// window is refused silently, a match outside it renews the entry, and a
+// sender the table has no room for evicts the oldest entry rather than the
+// answer being dropped. That bounds the cost to one entry per stranger under
+// TELEGRAM_MAX_UNKNOWN_SENDERS of them, and degrades to answering a little
+// more often above that, which is the right way round: an operator bringing a
+// station up is never left without the number they came for.
+//
+// A sender is refused when the table mutex cannot be taken, so a stalled lock
+// suppresses the reply instead of letting it through unmetered.
+static bool telegram_unknown_reply_due(int64_t user_id) {
+    const int64_t window_us = (int64_t)TELEGRAM_UNKNOWN_REPLY_INTERVAL_S * 1000000;
+    int64_t now = esp_timer_get_time();
+
+    if (!telegram_lock()) {
+        return false;
+    }
+
+    size_t slot = TELEGRAM_MAX_UNKNOWN_SENDERS;
+    size_t oldest = 0;
+    for (size_t i = 0; i < TELEGRAM_MAX_UNKNOWN_SENDERS; i++) {
+        if (s_unknown[i].used && s_unknown[i].id == user_id) {
+            if (now - s_unknown[i].last_reply_us < window_us) {
+                telegram_unlock();
+                return false;
+            }
+            slot = i;
+            break;
+        }
+        if (!s_unknown[i].used && slot == TELEGRAM_MAX_UNKNOWN_SENDERS) {
+            slot = i;
+        }
+        if (s_unknown[i].used && s_unknown[oldest].used && s_unknown[i].last_reply_us < s_unknown[oldest].last_reply_us) {
+            oldest = i;
+        }
+    }
+    if (slot == TELEGRAM_MAX_UNKNOWN_SENDERS) {
+        slot = oldest;
+    }
+
+    s_unknown[slot].id = user_id;
+    s_unknown[slot].last_reply_us = now;
+    s_unknown[slot].used = true;
+    telegram_unlock();
+    return true;
+}
+
 // Applies the authorization rules to a decoded update and reports whether
 // it deserves to be processed.
 static bool telegram_authorize_update(telegram_update_t *update) {
@@ -2608,8 +2679,13 @@ static bool telegram_authorize_update(telegram_update_t *update) {
     // An aggregated reaction update names no sender by construction:
     // Telegram delivers it exactly where the identity of the reacting
     // users is hidden. There is nobody to look up, so the allowed chat
-    // list checked above is the only gate that applies to it.
-    if (update->type == TELEGRAM_UPDATE_REACTION_COUNT) {
+    // list is the only gate that can apply to it - which is why the
+    // exemption is granted inside a group and nowhere else. In a group the
+    // list has already run, just above, and vouched for the chat the
+    // reaction was placed in; outside one there is no chat list and no
+    // sender either, so the update carries nothing to authorize and falls
+    // through to the check below like any other unattributed traffic.
+    if (update->is_group && update->type == TELEGRAM_UPDATE_REACTION_COUNT) {
         return true;
     }
     if (!update->authorized) {
@@ -2622,8 +2698,10 @@ static bool telegram_authorize_update(telegram_update_t *update) {
         // what lets an operator authorize themselves from the device side,
         // and it is the whole bring-up path: the list starts empty and
         // closed, so the first command an operator sends comes back with the
-        // number they have to enter in the device's Telegram settings.
-        if (!update->is_group && update->type == TELEGRAM_UPDATE_COMMAND) {
+        // number they have to enter in the device's Telegram settings. Rate
+        // limited per sender, because the answer is the one outbound send
+        // this device makes for a caller it has not authorized.
+        if (!update->is_group && update->type == TELEGRAM_UPDATE_COMMAND && telegram_unknown_reply_due(update->user_id)) {
             telegram_send_message_fmt(update->chat_id_str,
                                       "This device is restricted. Your Telegram user id is %" PRId64
                                       ". An administrator has to authorize it in the device settings.",
