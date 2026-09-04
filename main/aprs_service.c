@@ -1820,6 +1820,18 @@ static void serviceTickTask(void *arg) {
 
 #define LOOP_TEST_TIMEOUT_MS 4000
 
+// Minimum raw ADC swing (out of the 0-4095 12-bit range) that counts as "an
+// audio tone actually reached the ADC" rather than a flat/near-DC line. Used
+// both to diagnose a FAIL (see the adcSwing < LOOP_TEST_MIN_ADC_SWING branch
+// below) and, symmetrically, to gate a PASS: a decoded frame is only ever
+// reachable through Ax25ReadNextRxFrame() -> ax25_decode(), both of which
+// require a CRC-clean HDLC bitstream, so a token match with no corroborating
+// analog swing does not mean the CRC check is faulty - it means the frame
+// being matched did not originate from this test's own transmission on this
+// physical loop, and reporting PASS on it would certify a link that was never
+// actually exercised end to end.
+#define LOOP_TEST_MIN_ADC_SWING 50
+
 // How long aprs_loop_test_run() will wait for a clear channel (no DCD lock on
 // real off-air traffic) before keying up regardless. Bounded so a stuck/
 // falsely-latched DCD (or continuously heavy traffic) can't hang the test
@@ -2075,7 +2087,7 @@ bool aprs_loop_test_run(char *msg, size_t msg_len) {
                      "(%d captured, sample counter stuck at %lu). The ADC continuous driver/timer isn't running - "
                      "this points at an init failure, not a wiring or level problem.",
                      LOOP_TEST_TIMEOUT_MS, s_diag.rawCount, (unsigned long)s_diag.adcSamplesStart);
-        } else if (adcSwing < 50) {
+        } else if (adcSwing < LOOP_TEST_MIN_ADC_SWING) {
             // The ADC is sampling, but the raw code barely moved - it is not
             // seeing the DAC's tone at all (flat/near-DC line). Report the DC
             // offset the component tracks (already in mV) alongside the raw
@@ -2156,6 +2168,27 @@ bool aprs_loop_test_run(char *msg, size_t msg_len) {
         // rails are 0/4095, so a healthy centered swing should sit well
         // short of either end).
         int adcSwing = (s_diag.rawCount > 0) ? ((int)s_diag.rawMax - (int)s_diag.rawMin) : 0;
+
+        // A token match alone is not proof this test's own tone made the
+        // round trip: it is proof SOME CRC-clean frame carrying that token
+        // was decoded. Require the swing this same run captured to clear the
+        // same floor the FAIL branches above use for "an audio tone actually
+        // reached the ADC", so a PASS can never be reported over a physically
+        // open loop (dead air, floating/unterminated ADC input, or a stale
+        // decode racing in from something other than this run's own DAC
+        // output).
+        if (adcSwing < LOOP_TEST_MIN_ADC_SWING || s_loopTestRxMVrms == 0) {
+            snprintf(msg, msg_len,
+                     "FAIL: a frame carrying the expected token was decoded, but the raw ADC swing captured during "
+                     "this run (%d-%d, a %d-count swing) and RX level (%u mV RMS) do not show a real audio tone "
+                     "reaching the ADC. This is not a genuine pass - check that GPIO%d (ADC in) and GPIO%d (DAC out) "
+                     "are actually wired together (or routed through the radio, for a radiomodem loop test) and both "
+                     "grounds are common.",
+                     s_diag.rawMin, s_diag.rawMax, adcSwing, (unsigned)s_loopTestRxMVrms, MODEM_ADC_GPIO, MODEM_DAC_GPIO);
+            ESP_LOGW(TAG, "Loop test: %s", msg);
+            return false;
+        }
+
         snprintf(msg, msg_len,
                  "PASS: sent \"%s\" and correctly decoded it back (RX level %u mV RMS, raw ADC swing %d-%d [%d counts, "
                  "rails are 0/4095], AGC peak gain %.2fx). The AFSK modem works correctly.",

@@ -27,7 +27,7 @@
  * active at the same time. Driving the DAC from an independent GPTimer instead
  * of the DMA DAC path leaves I2S0 entirely to the ADC, which allows both
  * directions to run simultaneously. This is what makes a simple wire between
- * GPIO25 and GPIO35 usable as a working full-duplex self-test loop.
+ * GPIO25 and GPIO33 usable as a working full-duplex self-test loop.
  */
 
 #ifndef LIB_AFSK_H_
@@ -148,7 +148,7 @@ void afskSetModem(uint8_t val, bool flatAudio, uint16_t timeSlot, uint16_t pream
  *
  * In full duplex mode the modem transmits immediately, without waiting for
  * the channel to be free (no DCD check, no CSMA backoff), which is required
- * for a hardware loopback such as GPIO25 -> GPIO35, where the node always
+ * for a hardware loopback such as GPIO25 -> GPIO33, where the node always
  * hears its own carrier.
  *
  * @param enable true to enable full duplex, false to use standard

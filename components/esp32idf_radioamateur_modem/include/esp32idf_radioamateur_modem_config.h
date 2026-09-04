@@ -61,9 +61,9 @@
  *  - GPIO38 -> ADC1_CH2 (not bonded out on most modules)
  *  - GPIO39 -> ADC1_CH3 (labelled SENSOR_VN / VN)
  *  - GPIO32 -> ADC1_CH4
- *  - GPIO33 -> ADC1_CH5
+ *  - GPIO33 -> ADC1_CH5, the default
  *  - GPIO34 -> ADC1_CH6 (input only, no internal pull-up/down)
- *  - GPIO35 -> ADC1_CH7 (input only, no internal pull-up/down), the default
+ *  - GPIO35 -> ADC1_CH7 (input only, no internal pull-up/down)
  *
  * ADC2 pins (GPIO0/2/4/12..15/25..27) are deliberately NOT supported: ADC2
  * is shared with the Wi-Fi radio and cannot be used by the continuous-mode
@@ -190,7 +190,7 @@
  *
  * 100% would clip against the ADC full scale even at 12 dB attenuation
  * (approximately 3.1 V), so some headroom must be kept when wiring GPIO25
- * directly to GPIO35 for the loopback test.
+ * directly to GPIO33 for the loopback test.
  */
 #ifndef MODEM_DAC_AMPLITUDE_PCT
 #define MODEM_DAC_AMPLITUDE_PCT 60
@@ -199,7 +199,7 @@
 /**
  * @brief ADC input attenuation setting.
  *
- * For a direct GPIO25 -> GPIO35 loopback, the DAC idles at approximately
+ * For a direct GPIO25 -> GPIO33 loopback, the DAC idles at approximately
  * 1.65 V, which lies far outside the 0 dB attenuation window (0..950 mV),
  * so 12 dB attenuation is required.
  */
