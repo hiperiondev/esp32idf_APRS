@@ -468,11 +468,21 @@ de tipos ``rf2inetFilter``, los filtros de rango y de prefijo RF→INET y el
 filtro de indicativos RF→INET — y una entrada ``RX-IS`` solo para una línea que
 pasa ``igate_log_accepts_line()`` — la máscara ``inet2rfFilter`` incluido el
 desempaquetado selectivo de terceros, el filtro de rango INET→RF y el filtro de
-indicativos INET→RF. Ambas comparten implementación con la propia ruta de
-pasarela (``satGateListPass()``, ``rf2inetFiltersPass()``), así que el registro
-y la pasarela no pueden divergir, y ambas se evalúan sea cual sea el estado del
-interruptor de IGate y de los dos sentidos, de modo que el registro de una
-estación de solo recepción se acota en lugar de vaciarse.
+indicativos INET→RF. El lado RF comparte implementación con la propia ruta de
+pasarela (``satGateListPass()``, ``rf2inetFiltersPass()``); el lado INET→RF
+aplica las mismas comprobaciones, en el mismo orden, que ``inet2rfHandler()`` —
+excepción de posición asociada, filtro de rango, máscara de tipos con
+desempaquetado y filtro de indicativos —, así que ambos coinciden en cada línea.
+Las dos se evalúan sea cual sea el estado del interruptor de IGate y de los dos
+sentidos, de modo que el registro de una estación de solo recepción se acota en
+lugar de vaciarse.
+
+Un reporte de posición reclamado bajo la regla de *Posición asociada* anterior
+queda exento del filtro de rango y de la máscara de tipos en el registro
+exactamente igual que en el lado de transmisión, de modo que el seguimiento que
+se le debe a una estación se muestra en vez de aparecer como filtrado. El
+registro solo consulta la reserva; es la decisión de transmisión la que la
+consume.
 
 Las reglas incondicionales de INET→RF — la guarda del eco de los reportes
 propios, los tokens ``TCPXX``/``NOGATE``/``RFONLY`` de la cabecera, la regla de

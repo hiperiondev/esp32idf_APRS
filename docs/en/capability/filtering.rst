@@ -171,8 +171,11 @@ emitted only for a frame
 ``igate_log_accepts_frame()`` accepts (Satellite Gate List, ``rf2inetFilter``,
 the RF→INET range and prefix gates, the RF→INET callsign filter) and an
 ``RX-IS`` entry only for a line ``igate_log_accepts_line()`` accepts
-(``inet2rfFilter`` including the selective third-party unwrap, the INET→RF range
-gate, the INET→RF callsign filter). Both share their implementation with the
-gating path, so the log and the gateway cannot disagree. Nothing about gating,
+(the associated-position exception, the INET→RF range gate, the
+``inet2rfFilter`` mask including the selective third-party unwrap, the INET→RF
+callsign filter). The RF side shares its implementation with the gating path;
+the INET→RF side applies the same checks in the same order as
+``inet2rfHandler()``, follow-up positions included, so the log and the gateway
+cannot disagree. Nothing about gating,
 digipeating or transmitting changes and no drop counter moves: a frame left out
 of the log is still handled exactly as before.

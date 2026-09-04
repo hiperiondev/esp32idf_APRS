@@ -294,6 +294,13 @@ bool igate_log_accepts_frame(const ax25_msg_t *packet);
  * stays visible. It gates the console line and the traffic-log entry together,
  * exactly as its RF counterpart does.
  *
+ * The associated-position follow-up owed to a station this gateway has just
+ * messaged is exempt from the range gate and the payload-type mask here for
+ * the same reason it is exempt on the transmit side, so a position report the
+ * station actually keyed onto the air is shown rather than hidden. The claim
+ * is inspected through the query registered with
+ * igate_set_inet2rf_assoc_query() and is not consumed by this call.
+ *
  * @param line Raw TNC2 text line read from APRS-IS, NUL-terminated.
  * @return true if the line belongs in the traffic log.
  */
@@ -354,6 +361,23 @@ bool igate_is_connected(void);
  * when g_config.inet2rf is true.
  */
 void igate_set_inet2rf_handler(void (*handler)(const char *line));
+
+/**
+ * @brief Register the predicate that reports whether a station is currently
+ * owed an associated-position follow-up by the INET->RF handler.
+ *
+ * The ring of stations this gateway has gated a message to belongs to
+ * aprs_service.c's INET->RF handler; this hook lets igate_log_accepts_line()
+ * consult it so the traffic log applies the same follow-up exception the
+ * transmit side does. The query must be non-destructive: the log verdict is
+ * formed before the handler runs, and consuming the claim here would take the
+ * follow-up away from the station it was recorded for.
+ *
+ * @param query Predicate taking the as-received source callsign, or NULL to
+ *              detach it (in which case no station is treated as owed a
+ *              follow-up).
+ */
+void igate_set_inet2rf_assoc_query(bool (*query)(const char *callsign));
 
 /**
  * @brief Send a raw already-built TNC2 text line to APRS-IS (used by the

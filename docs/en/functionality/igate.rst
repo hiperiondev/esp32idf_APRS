@@ -459,11 +459,19 @@ payload-type mask, the RF→INET range and prefix gates and the RF→INET callsi
 filter — and an ``RX-IS`` entry only for a line that passes
 ``igate_log_accepts_line()`` — the ``inet2rfFilter`` mask including the
 selective third-party unwrap, the INET→RF range gate and the INET→RF callsign
-filter. Both share their implementation with the gating path itself
-(``satGateListPass()``, ``rf2inetFiltersPass()``), so the log and the gateway
-cannot drift apart, and both are evaluated whatever the state of the IGate
-enable and the two direction switches, so a receive-only station's log is
-narrowed rather than emptied.
+filter. The RF side shares its implementation with the gating path itself
+(``satGateListPass()``, ``rf2inetFiltersPass()``); the INET→RF side applies the
+same checks, in the same order, as ``inet2rfHandler()`` — associated-position
+exception, range gate, type mask with unwrap, callsign filter — so the two agree
+on every line. Both are evaluated whatever the state of the IGate enable and the
+two direction switches, so a receive-only station's log is narrowed rather than
+emptied.
+
+A position report claimed under the *Associated position* rule above is exempt
+from the range gate and the type mask in the log exactly as it is on the
+transmit side, so the follow-up a station is owed is shown rather than reported
+as filtered out. The log only inspects the claim; the transmit decision is what
+spends it.
 
 The unconditional INET→RF rules — the own-report echo guard, the
 ``TCPXX``/``NOGATE``/``RFONLY`` header tokens, the broadcast-addressee rule, the

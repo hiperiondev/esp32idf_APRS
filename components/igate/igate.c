@@ -1047,14 +1047,34 @@ void igate_set_inet2rf_handler(void (*handler)(const char *line)) {
     s_inet2rfHandler = handler;
 }
 
+// Non-destructive view of the associated-position ring owned by the INET->RF
+// handler, so the traffic-log filter mirror below can recognise the position
+// follow-up a station is owed without spending it. Left NULL while no handler
+// is registered, in which case no station is owed anything.
+static bool (*s_inet2rfAssocQuery)(const char *callsign) = NULL;
+
+void igate_set_inet2rf_assoc_query(bool (*query)(const char *callsign)) {
+    s_inet2rfAssocQuery = query;
+}
+
 // The INET->RF filter set of the IGate page, applied to one APRS-IS line for
-// display purposes only: the payload-type whitelist g_config.inet2rfFilter
-// (including the selective third-party unwrap exception, which is the one way
-// a line the mask refuses still reaches the transmitter), the local range gate
-// measured from "My Station", and the Callsign Filter. It mirrors
-// aprs_service.c's inet2rfHandler() check for check, in the same order.
+// display purposes only: the associated-position follow-up exception, the
+// local range gate measured from "My Station", the payload-type whitelist
+// g_config.inet2rfFilter (including the selective third-party unwrap
+// exception, which is the one way a line the mask refuses still reaches the
+// transmitter) and the Callsign Filter. Those are the same checks
+// aprs_service.c's inet2rfHandler() makes, in the same order, so the two reach
+// the same verdict on the same line.
 //
-// What it deliberately leaves out are the rules that are not filters the
+// The associated-position claim is read through s_inet2rfAssocQuery, which
+// looks at the handler's ring without consuming a slot: the log runs first and
+// the handler decides afterwards, so spending the claim here would take the
+// follow-up away from the transmitter it was recorded for. A line owed a
+// follow-up skips both the range gate and the type mask, exactly as it does on
+// the transmit side, so the log shows the position report the station actually
+// put on the air.
+//
+// What this deliberately leaves out are the rules that are not filters the
 // operator sets on that page: the own-report echo guard, the
 // TCPXX/NOGATE/RFONLY header tokens, the broadcast-addressee rule, the generic
 // query drop and the message gate. Those decide whether a line may be put on
@@ -1062,19 +1082,69 @@ void igate_set_inet2rf_handler(void (*handler)(const char *line)) {
 // back by the server, above all - would answer a question the operator did not
 // ask of the log.
 static bool inet2rfFiltersPass(const char *line) {
+    // Every configuration field this verdict rests on is read once, under one
+    // hold of the config mutex, so the whole decision is made against a single
+    // consistent view of the settings even if the operator saves the IGate
+    // page while a line is being evaluated. Nothing below the unlock touches
+    // g_config, and no filter helper is called with the lock held.
+    uint16_t filterMask;
+    bool unwrapEn, rangeEn, bmEn;
+    budlist_mode_t budlistMode;
+    float rangeKm, ownLat, ownLon;
+    char gateways[APRS_BM_GATEWAYS_MAX][APRS_BM_GATEWAY_LEN];
+
+    app_config_lock();
+    filterMask = g_config.inet2rfFilter;
+    unwrapEn = g_config.inet2rf_3rdparty_unwrap_en;
+    budlistMode = g_config.inet2rf_budlist_mode;
+    bmEn = g_config.bm_en;
+    rangeEn = g_config.inet2rf_range_en;
+    rangeKm = g_config.inet2rf_range_km;
+    ownLat = g_config.my_lat;
+    ownLon = g_config.my_lon;
+    memcpy(gateways, g_config.bm_gateways, sizeof(gateways));
+    app_config_unlock();
+
+    for (int i = 0; i < APRS_BM_GATEWAYS_MAX; i++)
+        gateways[i][APRS_BM_GATEWAY_LEN - 1] = 0;
+
     uint16_t type = aprs_filter_classify_tnc2(line);
     const char *colon = strchr(line, ':');
 
     // The callsign the Callsign Filter is keyed on: the unwrapped inner source
     // when the third-party exception below applies, the line's own source
-    // otherwise.
+    // otherwise. The associated-position claim is keyed on the as-received
+    // source, before any unwrap, as it is on the transmit side.
     char budlistCall[16];
     tnc2SrcCallsign(line, strlen(line), budlistCall, sizeof(budlistCall));
 
-    if (!aprs_filter_pass(g_config.inet2rfFilter, type)) {
+    // A station this gateway has just put a message on the air for is owed one
+    // position report, gated whatever the range gate and the type mask say.
+    // Only plain position and buoy reports qualify.
+    bool assocPosition = (type & (IGATE_FILT_POSITION | IGATE_FILT_BUOY)) != 0 && s_inet2rfAssocQuery && s_inet2rfAssocQuery(budlistCall);
+
+    if (!assocPosition && rangeEn && rangeKm > 0.0f) {
+        char destCall[12] = "";
+        float plat, plon;
+        aprs_tnc2_dest_call(line, destCall, sizeof(destCall));
+        if (colon && aprs_filter_decode_position(colon + 1, destCall, &plat, &plon)) {
+            if (aprs_filter_haversine_km(ownLat, ownLon, plat, plon) > rangeKm)
+                return false;
+        } else if (bmEn) {
+            // A BrandMeister line carries no server-side geographic term of
+            // its own (the worldwide subscription cannot be combined with
+            // one), so one without a position is refused rather than passed
+            // unmeasured - the same reasoning, and the same outcome, as the
+            // transmit side.
+            if (aprs_bm_classify(line, gateways, APRS_BM_GATEWAYS_MAX) != APRS_BM_MATCH_NONE)
+                return false;
+        }
+    }
+
+    if (!assocPosition && !aprs_filter_pass(filterMask, type)) {
         bool unwrapped = false;
 
-        if (g_config.inet2rf_3rdparty_unwrap_en && g_config.inet2rf_budlist_mode == BUDLIST_WHITELIST && colon && colon[1] == '}') {
+        if (unwrapEn && budlistMode == BUDLIST_WHITELIST && colon && colon[1] == '}') {
             const char *inner = colon + 2;
             const char *igt = strchr(inner, '>');
             const char *innerColon = strchr(inner, ':');
@@ -1088,7 +1158,7 @@ static bool inet2rfFiltersPass(const char *line) {
             }
             if (!(innerColon && innerColon[1] == '}')) {
                 uint16_t innerType = aprs_filter_classify_thirdparty_inner(colon + 1);
-                if (innerSrc[0] && aprs_filter_budlist_pass(BUDLIST_WHITELIST, innerSrc) && aprs_filter_pass(g_config.inet2rfFilter, innerType)) {
+                if (innerSrc[0] && aprs_filter_budlist_pass(BUDLIST_WHITELIST, innerSrc) && aprs_filter_pass(filterMask, innerType)) {
                     strncpy(budlistCall, innerSrc, sizeof(budlistCall) - 1);
                     budlistCall[sizeof(budlistCall) - 1] = 0;
                     unwrapped = true;
@@ -1100,42 +1170,7 @@ static bool inet2rfFiltersPass(const char *line) {
             return false;
     }
 
-    if (g_config.inet2rf_range_en) {
-        bool rangeEn;
-        float rangeKm, ownLat, ownLon;
-        app_config_lock();
-        rangeEn = g_config.inet2rf_range_en;
-        rangeKm = g_config.inet2rf_range_km;
-        ownLat = g_config.my_lat;
-        ownLon = g_config.my_lon;
-        app_config_unlock();
-
-        if (rangeEn && rangeKm > 0.0f) {
-            char destCall[12] = "";
-            float plat, plon;
-            aprs_tnc2_dest_call(line, destCall, sizeof(destCall));
-            if (colon && aprs_filter_decode_position(colon + 1, destCall, &plat, &plon)) {
-                if (aprs_filter_haversine_km(ownLat, ownLon, plat, plon) > rangeKm)
-                    return false;
-            } else if (g_config.bm_en) {
-                // A BrandMeister line carries no server-side geographic term
-                // of its own (the worldwide subscription cannot be combined
-                // with one), so one without a position is refused rather than
-                // passed unmeasured - the same reasoning, and the same
-                // outcome, as the transmit side.
-                char gateways[APRS_BM_GATEWAYS_MAX][APRS_BM_GATEWAY_LEN];
-                app_config_lock();
-                memcpy(gateways, g_config.bm_gateways, sizeof(gateways));
-                app_config_unlock();
-                for (int i = 0; i < APRS_BM_GATEWAYS_MAX; i++)
-                    gateways[i][APRS_BM_GATEWAY_LEN - 1] = 0;
-                if (aprs_bm_classify(line, gateways, APRS_BM_GATEWAYS_MAX) != APRS_BM_MATCH_NONE)
-                    return false;
-            }
-        }
-    }
-
-    return aprs_filter_budlist_pass(g_config.inet2rf_budlist_mode, budlistCall);
+    return aprs_filter_budlist_pass(budlistMode, budlistCall);
 }
 
 bool igate_log_accepts_line(const char *line) {

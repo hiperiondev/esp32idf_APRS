@@ -470,11 +470,19 @@ maschera di tipi ``rf2inetFilter``, i filtri di distanza e di prefisso RF→INET
 il filtro indicativi RF→INET — e una voce ``RX-IS`` solo per una riga che supera
 ``igate_log_accepts_line()`` — la maschera ``inet2rfFilter`` incluso l'unwrap
 selettivo di terze parti, il filtro di distanza INET→RF e il filtro indicativi
-INET→RF. Entrambe condividono l'implementazione con il percorso di gating stesso
-(``satGateListPass()``, ``rf2inetFiltersPass()``), quindi il registro e il
-gateway non possono divergere, ed entrambe vengono valutate qualunque sia lo
-stato dell'interruttore IGate e dei due sensi, così che il registro di una
-stazione di sola ricezione venga ristretto e non svuotato.
+INET→RF. Il lato RF condivide l'implementazione con il percorso di gating stesso
+(``satGateListPass()``, ``rf2inetFiltersPass()``); il lato INET→RF applica gli
+stessi controlli, nello stesso ordine, di ``inet2rfHandler()`` — eccezione della
+posizione associata, filtro di distanza, maschera dei tipi con unwrap e filtro
+indicativi — quindi i due concordano su ogni riga. Entrambe vengono valutate
+qualunque sia lo stato dell'interruttore IGate e dei due sensi, così che il
+registro di una stazione di sola ricezione venga ristretto e non svuotato.
+
+Un rapporto di posizione reclamato in base alla regola *Posizione associata*
+sopra è esente dal filtro di distanza e dalla maschera dei tipi nel registro
+esattamente come lo è sul lato di trasmissione, così il seguito dovuto a una
+stazione viene mostrato invece di risultare filtrato. Il registro si limita a
+consultare la prenotazione; è la decisione di trasmissione a consumarla.
 
 Le regole incondizionate di INET→RF — la protezione dall'eco dei report propri,
 i token ``TCPXX``/``NOGATE``/``RFONLY`` dell'intestazione, la regola dei

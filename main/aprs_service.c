@@ -997,8 +997,11 @@ static bool inet_line_is_own_report(const char *line) {
 // them, so the local operator has something to plot for the far end of the
 // conversation.
 //
-// The ring below is touched only from inet2rfHandler(), which runs on the
-// single igate task, so it needs no lock of its own.
+// The ring below is modified only from inet2rfHandler() and read, without
+// being modified, by the msgAssocPending() query the traffic log uses. Both
+// run on the single igate task - the log verdict and the gating decision are
+// made one after the other for the same line - so the ring needs no lock of
+// its own.
 // ---------------------------------------------------------------------------
 
 static char s_msgAssoc[IGATE_MSG_ASSOC_MAX][12];
@@ -1028,21 +1031,38 @@ static void msgAssocRemember(const char *call) {
     s_msgAssoc[IGATE_MSG_ASSOC_MAX - 1][sizeof(s_msgAssoc[0]) - 1] = 0;
 }
 
+// Index of the slot one station holds in the ring, or -1 when it holds none.
+static int msgAssocFind(const char *call) {
+    if (call == NULL || call[0] == 0)
+        return -1;
+
+    for (int i = 0; i < IGATE_MSG_ASSOC_MAX; i++) {
+        if (strcasecmp(s_msgAssoc[i], call) == 0)
+            return i;
+    }
+    return -1;
+}
+
 // Claim the position follow-up owed to one station, if any. The slot is
 // released by the claim, so exactly one position report is ever gated per
 // message sent - what makes this a follow-up rather than a subscription.
 static bool msgAssocTake(const char *call) {
-    if (call == NULL || call[0] == 0)
+    int i = msgAssocFind(call);
+    if (i < 0)
         return false;
 
-    for (int i = 0; i < IGATE_MSG_ASSOC_MAX; i++) {
-        if (strcasecmp(s_msgAssoc[i], call) != 0)
-            continue;
-        memmove(&s_msgAssoc[i], &s_msgAssoc[i + 1], (size_t)(IGATE_MSG_ASSOC_MAX - 1 - i) * sizeof(s_msgAssoc[0]));
-        s_msgAssoc[IGATE_MSG_ASSOC_MAX - 1][0] = 0;
-        return true;
-    }
-    return false;
+    memmove(&s_msgAssoc[i], &s_msgAssoc[i + 1], (size_t)(IGATE_MSG_ASSOC_MAX - 1 - i) * sizeof(s_msgAssoc[0]));
+    s_msgAssoc[IGATE_MSG_ASSOC_MAX - 1][0] = 0;
+    return true;
+}
+
+// Report whether a station is owed a follow-up without spending it. Registered
+// with igate_set_inet2rf_assoc_query() so the traffic-log filter mirror in
+// igate.c applies the same exception inet2rfHandler() below does: that mirror
+// forms its verdict before this handler runs, so it has to look rather than
+// claim, and the claim is left for the transmit decision it was recorded for.
+static bool msgAssocPending(const char *call) {
+    return msgAssocFind(call) >= 0;
 }
 
 // Copy the addressee out of an APRS message payload. The information field is
@@ -2159,6 +2179,7 @@ void aprs_service_start(void) {
     message_alarm_configure(g_config.msg_alarm_enable, g_config.msg_alarm_gpio);
     message_set_tx_handler(messageTxHandler);
     igate_set_inet2rf_handler(inet2rfHandler);
+    igate_set_inet2rf_assoc_query(msgAssocPending);
 
     query_init();
     query_set_tx_handler(messageTxHandler); // reuse the same RF/INET TX plumbing

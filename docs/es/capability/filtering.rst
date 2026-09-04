@@ -179,9 +179,11 @@ una trama que acepta
 ``igate_log_accepts_frame()`` (Lista de Satélites Digipetidores,
 ``rf2inetFilter``, los filtros de rango y prefijo RF→INET, el filtro de
 indicativos RF→INET) y una entrada ``RX-IS`` solo para una línea que acepta
-``igate_log_accepts_line()`` (``inet2rfFilter`` incluido el desempaquetado
-selectivo de terceros, el filtro de rango INET→RF, el filtro de indicativos
-INET→RF). Ambas comparten implementación con la ruta de pasarela, así que el
-registro y la pasarela no pueden discrepar. No cambia nada de lo que se
+``igate_log_accepts_line()`` (la excepción de posición asociada, el filtro de
+rango INET→RF, la máscara ``inet2rfFilter`` incluido el desempaquetado selectivo
+de terceros, el filtro de indicativos INET→RF). El lado RF comparte
+implementación con la ruta de pasarela; el lado INET→RF aplica las mismas
+comprobaciones y en el mismo orden que ``inet2rfHandler()``, posiciones de
+seguimiento incluidas, así que el registro y la pasarela no pueden discrepar. No cambia nada de lo que se
 pasarela, repite o transmite y ningún contador de descartes se mueve: una trama
 omitida del registro se sigue tratando igual que antes.

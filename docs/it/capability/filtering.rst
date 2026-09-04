@@ -179,9 +179,11 @@ per una trama accettata da
 ``igate_log_accepts_frame()`` (Elenco Digipeater Satellitari, ``rf2inetFilter``,
 i filtri di distanza e prefisso RF→INET, il filtro indicativi RF→INET) e una
 voce ``RX-IS`` solo per una riga accettata da ``igate_log_accepts_line()``
-(``inet2rfFilter`` incluso l'unwrap selettivo di terze parti, il filtro di
-distanza INET→RF, il filtro indicativi INET→RF). Entrambe condividono
-l'implementazione con il percorso di gating, quindi il registro e il gateway non
-possono discordare. Nulla cambia in ciò che viene instradato, ripetuto o
+(l'eccezione della posizione associata, il filtro di distanza INET→RF, la
+maschera ``inet2rfFilter`` incluso l'unwrap selettivo di terze parti, il filtro
+indicativi INET→RF). Il lato RF condivide l'implementazione con il percorso di
+gating; il lato INET→RF applica gli stessi controlli e nello stesso ordine di
+``inet2rfHandler()``, posizioni di seguito incluse, quindi il registro e il
+gateway non possono discordare. Nulla cambia in ciò che viene instradato, ripetuto o
 trasmesso e nessun contatore di scarto si muove: una trama omessa dal registro
 viene trattata esattamente come prima.

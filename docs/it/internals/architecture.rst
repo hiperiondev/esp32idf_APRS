@@ -68,7 +68,7 @@ Dentro ``aprs_service_start()``
 
    aprs_service_start()
     ├─ trafficlog_init / lastheard_init / message_init
-    ├─ message_set_tx_handler / igate_set_inet2rf_handler
+    ├─ message_set_tx_handler / igate_set_inet2rf_handler / igate_set_inet2rf_assoc_query
     ├─ modem_set_rx_callback(on_rx_frame)
     ├─ igate_start()                 ← sempre avviato; resta inattivo quando niente richiede APRS-IS
     ├─ beacon_start() / weather_start() / bulletins_start() / objitems_start() / telemetry_start()
