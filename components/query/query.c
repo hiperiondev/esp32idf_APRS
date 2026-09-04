@@ -117,13 +117,18 @@ typedef enum {
     QUERY_TYPE_COUNT
 } query_type_t;
 
+// Read-modify-written by both producer tasks - the radio RX task for
+// QUERY_SRC_RF, the APRS-IS task for QUERY_SRC_INET - and safe without a lock
+// by construction: the source is part of the key, so each task only ever
+// reaches its own column and no element is touched by more than one task.
 static int64_t s_lastBroadcastRespondSec[QUERY_TYPE_COUNT][QUERY_SRC_COUNT];
 
 // Directed queries bypass the broadcast-type limiter above (they are
 // explicitly addressed to this station) but get their own, tighter
-// per-source limit so a single remote station can't hammer it. Small fixed
-// table rather than a hash map: directed queries are rare traffic, and a
-// full table simply means the oldest source gets recycled.
+// per-callsign limit so a single remote station can't hammer it. Small fixed
+// table rather than a hash map: directed queries are rare traffic, and a full
+// table simply means the least recently answered callsign gets recycled.
+
 // Idle re-check cadence for the periodic capabilities beacon, matching the one
 // the other periodic transmitters return when they are switched off: it is how
 // long a web-admin change waits before the scheduler notices it.
@@ -139,6 +144,16 @@ typedef struct {
 
 static query_directed_track_t s_directedTrack[QUERY_DIRECTED_TRACK_MAX];
 
+// Guards s_directedTrack[] against the two producer tasks that reach it. The
+// two timestamp tables around it are keyed on the source and so are split
+// between the tasks, but this one is keyed on the asking callsign alone, so
+// both tasks contend for the same slots: an entry is compared with
+// strcasecmp() while another task may be filling it with strncpy(), and
+// without mutual exclusion a reader can observe a slot before its terminator
+// is stored. Held only across the eight-entry scan below - a few string
+// compares, no allocation, no I/O and no transmission.
+static SemaphoreHandle_t s_directedTrackLock = NULL;
+
 // Ceiling on the whole directed responder, per source: at most one directed
 // answer every QUERY_DIRECTED_GLOBAL_MIN_INTERVAL_SEC seconds, no matter how
 // many callsigns ask. The per-callsign table above is a fairness limit and
@@ -149,6 +164,10 @@ static query_directed_track_t s_directedTrack[QUERY_DIRECTED_TRACK_MAX];
 // controls, so rotating callsigns buys nothing. It is per source for the same
 // reason the broadcast one is: the two answers go to different places, so
 // neither costs the other any airtime.
+//
+// Being indexed by source is also what lets the two producer tasks stamp it
+// without a lock: each one owns its own element, so the two never write the
+// same word.
 static int64_t s_lastDirectedRespondSec[QUERY_SRC_COUNT];
 
 // ---------------------------------------------------------------------------
@@ -194,6 +213,8 @@ void query_init(void) {
     s_pendingCount = 0;
     if (s_pendingLock == NULL)
         s_pendingLock = xSemaphoreCreateMutex();
+    if (s_directedTrackLock == NULL)
+        s_directedTrackLock = xSemaphoreCreateMutex();
 }
 
 void query_set_tx_handler(void (*handler)(const char *packet, size_t len, uint8_t channels)) {
@@ -255,20 +276,11 @@ static bool broadcastRateLimitPass(query_type_t type, query_source_t source) {
     return true;
 }
 
-// Rate-limit gate for directed queries, which bypass the broadcast-type
-// limiter above because they are explicitly addressed to this station.
-//
-// Two limits in series, and a request has to clear both. The per-source
-// ceiling is checked first and stamped last, so a request the source is not
-// allowed to answer yet does not spend the asking callsign's own allowance
-// either - the callsign's next question is judged on its own timing rather
-// than on the timing of an answer that never went out.
-static bool directedRateLimitPass(const char *fromCall, query_source_t source) {
-    int64_t now = sched_mono_seconds();
-
-    if (now - s_lastDirectedRespondSec[source] < QUERY_DIRECTED_GLOBAL_MIN_INTERVAL_SEC)
-        return false;
-
+// Table half of the directed limiter: finds @p fromCall's entry, or makes one,
+// and reports whether its own per-callsign allowance has elapsed - stamping
+// the entry when it has. Runs with s_directedTrackLock held, since both
+// producer tasks reach the same slots.
+static bool directedTrackClaim(const char *fromCall, int64_t now) {
     int freeSlot = -1;
     int oldestSlot = 0;
     for (int i = 0; i < QUERY_DIRECTED_TRACK_MAX; i++) {
@@ -281,7 +293,6 @@ static bool directedRateLimitPass(const char *fromCall, query_source_t source) {
             if (now - s_directedTrack[i].lastRespondSec < QUERY_DIRECTED_MIN_INTERVAL_SEC)
                 return false;
             s_directedTrack[i].lastRespondSec = now;
-            s_lastDirectedRespondSec[source] = now;
             return true;
         }
         if (s_directedTrack[i].lastRespondSec < s_directedTrack[oldestSlot].lastRespondSec)
@@ -290,12 +301,48 @@ static bool directedRateLimitPass(const char *fromCall, query_source_t source) {
 
     // A callsign with no entry yet: take a free slot, or recycle the
     // least-recently-used one if the table is full. Recycling is a fairness
-    // decision only - the per-source ceiling above is what bounds the airtime,
-    // so a fresh entry never means a fresh allowance.
+    // decision only - the per-source ceiling is what bounds the airtime, so a
+    // fresh entry never means a fresh allowance.
     int slot = (freeSlot >= 0) ? freeSlot : oldestSlot;
     strncpy(s_directedTrack[slot].call, fromCall, sizeof(s_directedTrack[slot].call) - 1);
     s_directedTrack[slot].call[sizeof(s_directedTrack[slot].call) - 1] = 0;
     s_directedTrack[slot].lastRespondSec = now;
+    return true;
+}
+
+// Rate-limit gate for directed queries, which bypass the broadcast-type
+// limiter above because they are explicitly addressed to this station.
+//
+// Two limits in series, and a request has to clear both. The per-source
+// ceiling is checked first and stamped last, so a request the source is not
+// allowed to answer yet does not spend the asking callsign's own allowance
+// either - the callsign's next question is judged on its own timing rather
+// than on the timing of an answer that never went out.
+//
+// Only the per-callsign table needs the lock, and it is released before the
+// ceiling is stamped: the stamp writes one element the calling task owns
+// alone, so it costs nothing to leave outside. A request that cannot take the
+// lock is treated as rate-limited, which errs towards not transmitting.
+static bool directedRateLimitPass(const char *fromCall, query_source_t source) {
+    int64_t now = sched_mono_seconds();
+
+    if (now - s_lastDirectedRespondSec[source] < QUERY_DIRECTED_GLOBAL_MIN_INTERVAL_SEC)
+        return false;
+
+    if (s_directedTrackLock == NULL)
+        return false;
+    if (xSemaphoreTake(s_directedTrackLock, pdMS_TO_TICKS(20)) != pdTRUE) {
+        ESP_LOGW(TAG, "Directed query dropped - tracking table busy");
+        return false;
+    }
+
+    bool pass = directedTrackClaim(fromCall, now);
+
+    xSemaphoreGive(s_directedTrackLock);
+
+    if (!pass)
+        return false;
+
     s_lastDirectedRespondSec[source] = now;
     return true;
 }

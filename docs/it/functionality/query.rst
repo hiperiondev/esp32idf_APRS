@@ -279,6 +279,16 @@ superarli entrambi. Il tetto viene controllato per primo e timbrato per ultimo,
 così una richiesta che la sorgente non può ancora soddisfare non consuma nemmeno
 la quota propria del nominativo che interroga.
 
+I limitatori girano sul task che ha ricevuto la query, e sono due: il task del
+modem per RF e il task dell'IGate per APRS-IS. Le due tabelle di marche
+temporali sono indicizzate per sorgente, quindi ogni task raggiunge solo le
+proprie voci e non serve alcun lock. La tabella per nominativo è indicizzata
+solo sul nominativo che interroga, quindi entrambi i task raggiungono le stesse
+otto celle; viene presa sotto un proprio mutex per la durata della scansione,
+che sono poche comparazioni di stringhe senza I/O. Una query che non riesce a
+prendere quel lock è trattata come limitata in frequenza e resta senza risposta,
+il che sbaglia verso il non trasmettere.
+
 Configurazione
 ==============
 

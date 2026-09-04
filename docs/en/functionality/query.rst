@@ -261,6 +261,15 @@ The two directed limits run in series and a request has to clear both. The
 ceiling is checked first and stamped last, so a request the source may not
 answer yet does not spend the asking callsign's own allowance either.
 
+The limiters run on the task that received the query, and there are two of
+those: the modem task for RF and the IGate task for APRS-IS. The two timestamp
+tables are keyed on the source, so each task only ever reaches its own entries
+and they need no lock. The per-callsign table is keyed on the asking callsign
+alone, so both tasks reach the same eight slots; it is held under its own mutex
+for the length of the scan, which is a handful of string compares with no I/O.
+A query that cannot take that lock is treated as rate-limited and goes
+unanswered, which errs towards not transmitting.
+
 Configuration
 =============
 

@@ -279,6 +279,16 @@ ambos. El techo se comprueba primero y se estampa último, de modo que un pedido
 que el origen todavía no puede responder tampoco gasta el cupo propio del
 indicativo que pregunta.
 
+Los limitadores corren en la tarea que recibió la consulta, y hay dos: la tarea
+del módem para RF y la tarea del IGate para APRS-IS. Las dos tablas de marcas de
+tiempo se indexan por origen, así que cada tarea sólo alcanza sus propias
+entradas y no necesitan lock. La tabla por indicativo se indexa sólo por el
+indicativo que pregunta, así que ambas tareas alcanzan las mismas ocho ranuras;
+se toma bajo su propio mutex durante el recorrido, que son unas pocas
+comparaciones de cadenas sin E/S. Una consulta que no puede tomar ese lock se
+trata como limitada por tasa y queda sin responder, lo que se equivoca hacia no
+transmitir.
+
 Configuración
 =============
 

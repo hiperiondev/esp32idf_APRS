@@ -46,6 +46,13 @@
  * and that task is the one whose stack is budgeted for it - see
  * beacon_scheduler.h. A queued request also wakes the scheduler, so deferring
  * costs a task switch rather than a wait for its next scheduled pass.
+ *
+ * @note The two entry points are safe to call concurrently, which the two
+ * receive paths do: RF queries arrive on the modem task and APRS-IS queries on
+ * the IGate task. The request queue and the per-callsign table the directed
+ * limiter keeps are each serialized internally; the per-source rate-limit
+ * timers need no serialization, since a source is only ever stamped by the one
+ * task that receives it.
  */
 
 #ifndef QUERY_H
@@ -160,6 +167,8 @@ void query_process_directed(const char *fromCall, const char *toCall, const char
  * question already waiting to be answered is not queued twice: every answer
  * reports live state at the moment it is sent.
  */
+void query_service(void);
+
 /**
  * @brief Transmit the periodic Station Capabilities beacon when it is due, and
  * report how many seconds until it next needs servicing.
@@ -178,7 +187,5 @@ void query_process_directed(const char *fromCall, const char *toCall, const char
  * @return Seconds until this function next needs to be called.
  */
 uint32_t query_capabilities_service(void);
-
-void query_service(void);
 
 #endif // QUERY_H
