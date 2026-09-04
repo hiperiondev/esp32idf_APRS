@@ -740,10 +740,16 @@ void ModemInit(void) {
         demodState[0].prefilter = PREFILTER_NONE;
 
         if (ModemConfig.flatAudioIn) {
-            // flat audio input: use deemphasis + flat modems
+            // flat audio input: demodState[0] runs the inverse bandpass, demodState[1]
+            // stays on the raw samples set above, so the pair keeps two distinct
+            // signal paths regardless of FX.25. Without FX.25's extra FEC margin,
+            // demodState[0] also applies de-emphasis to correct the transmitter's
+            // pre-emphasis; with FX.25, that correction is skipped and demodState[0]
+            // only runs the bandpass, since FX.25's redundancy already covers the
+            // resulting SNR loss.
 #ifdef ENABLE_FX25
             if (Ax25Config.fx25)
-                demodState[0].prefilter = PREFILTER_NONE;
+                demodState[0].prefilter = PREFILTER_FLAT;
             else
 #endif
                 demodState[0].prefilter = PREFILTER_DEEMPHASIS;
