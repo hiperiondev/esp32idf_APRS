@@ -90,7 +90,23 @@ typedef struct {
     uint8_t in_view;
 } gps_talker_t;
 
+// Two module mutexes, each with one job.
+//
+// s_lock guards the live receiver state below. It is taken by the reader task
+// on every update and by gps_snapshot() on every read, so it is held for a few
+// microseconds at a time and never across anything that can block.
+//
+// s_apply_lock serialises gps_apply_config() with itself. That function reads
+// the current state, decides, and then installs or removes the UART driver,
+// and the whole read-decide-act sequence has to be one step: two callers
+// (start-up and the GPS page's save handler, or two saves landing together)
+// that both saw "not running" would otherwise reach uart_driver_install()
+// twice, or delete a port the other one already released. It is deliberately
+// not s_lock: the stop handshake in gps_teardown() waits on the reader task
+// for up to GPS_STOP_TIMEOUT_MS, and holding the data lock for that long would
+// stall every snapshot reader in the firmware.
 static SemaphoreHandle_t s_lock;
+static SemaphoreHandle_t s_apply_lock;
 
 // Shutdown handshake between whoever throws the switch and the reader task.
 // s_stop_request is raised by the requester and observed by the task at the
@@ -136,6 +152,47 @@ static void gps_lock(void) {
 static void gps_unlock(void) {
     if (s_lock)
         xSemaphoreGive(s_lock);
+}
+
+static void gps_apply_lock(void) {
+    if (s_apply_lock)
+        xSemaphoreTake(s_apply_lock, portMAX_DELAY);
+}
+
+static void gps_apply_unlock(void) {
+    if (s_apply_lock)
+        xSemaphoreGive(s_apply_lock);
+}
+
+// Creates both module mutexes, once. Called at the top of gps_apply_config(),
+// which is the only entry point that can run before the receiver exists; the
+// first of those calls comes from application start-up, on a single task and
+// before the web server is listening, so there is no concurrent caller yet to
+// race the creation. Every later caller finds both handles already in place
+// and simply takes them.
+//
+// Returns false only when the heap could not provide them, which leaves the
+// receiver switched off: running without the data lock would hand out torn
+// snapshots, and running without the apply lock would leave the UART driver
+// exposed to the double install this pair exists to prevent.
+static bool gps_locks_ensure(void) {
+    if (s_lock == NULL) {
+        s_lock = xSemaphoreCreateMutex();
+        if (s_lock == NULL) {
+            ESP_LOGE(TAG, "Could not create the GNSS lock - receiver disabled");
+            return false;
+        }
+    }
+
+    if (s_apply_lock == NULL) {
+        s_apply_lock = xSemaphoreCreateMutex();
+        if (s_apply_lock == NULL) {
+            ESP_LOGE(TAG, "Could not create the GNSS configuration lock - receiver disabled");
+            return false;
+        }
+    }
+
+    return true;
 }
 
 // -------------------------------------------------------------------------
@@ -616,15 +673,16 @@ static void gpsTask(void *arg) {
 // -------------------------------------------------------------------------
 
 // Installs the UART on the configured pins and starts the reader task.
+// Called with s_apply_lock held, so no teardown and no second bring-up can be
+// running alongside this one.
 static void gps_bringup(void) {
-    if (s_lock == NULL) {
-        s_lock = xSemaphoreCreateMutex();
-        if (s_lock == NULL) {
-            ESP_LOGE(TAG, "Could not create the GNSS lock - receiver disabled");
-            return;
-        }
-    }
-
+    // Cleared under the data lock, in one step, so the snapshot is never
+    // readable half-wiped. s_task_alive is still false here and gps_snapshot()
+    // returns early on it, but that is a second barrier and not the only one:
+    // a reader that consults the state without testing that flag still sees
+    // either the previous receiver's values or a fully reset struct, never a
+    // mixture of the two.
+    gps_lock();
     memset(&s_data, 0, sizeof(s_data));
     memset(s_talkers, 0, sizeof(s_talkers));
     s_data.mode = GPS_MODE_NOFIX;
@@ -632,6 +690,8 @@ static void gps_bringup(void) {
     s_have_sentence = false;
     s_last_fix_s = 0;
     s_have_fix = false;
+    gps_unlock();
+
     s_stop_request = false;
 
     const uart_config_t cfg = {
@@ -679,6 +739,10 @@ static void gps_bringup(void) {
 }
 
 // Asks the reader task to exit, waits for it, then releases the UART.
+// Called with s_apply_lock held: the wait below can run for as long as
+// GPS_STOP_TIMEOUT_MS, and a bring-up starting in that window would claim the
+// port the departing task is still reading. Only the apply lock is held over
+// the wait - the data lock is not - so snapshot readers keep running.
 // A timeout here does not retract s_stop_request: the task may already have
 // observed it and be on its way out, and un-asking now would leave that exit
 // racing a fresh bring-up. The request stays latched so a task that finishes
@@ -710,6 +774,17 @@ static void gps_teardown(void) {
 }
 
 void gps_apply_config(void) {
+    if (!gps_locks_ensure())
+        return;
+
+    // Everything from here to the end of the function is one step: the state
+    // is read, the decision is made and the UART driver is installed or
+    // removed with no other caller able to interleave. Only this function and
+    // the two static helpers it calls are covered, and the data lock is left
+    // free throughout, so a snapshot taken from any other task answers
+    // immediately even while a slow stop handshake is running below.
+    gps_apply_lock();
+
     bool want = g_config.gps_en;
     bool running = s_task_alive;
 
@@ -729,6 +804,8 @@ void gps_apply_config(void) {
         gps_bringup();
     else if (!want && running)
         gps_teardown();
+
+    gps_apply_unlock();
 }
 
 bool gps_enabled(void) {

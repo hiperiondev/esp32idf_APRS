@@ -211,6 +211,14 @@ typedef struct {
  * Turning the switch off asks the reader task to finish its current pass and
  * exit before the UART driver is removed, so the port is never torn down from
  * under a task that is reading it.
+ *
+ * Safe to call from any task, and safe to call concurrently with itself: the
+ * whole sequence (reading the current state, deciding, and installing or
+ * removing the UART driver) runs under a module mutex of its own, so two saves
+ * arriving together are applied one after the other instead of both acting on
+ * the same "not running" reading. The second caller blocks until the first has
+ * finished, which for a switch being turned off includes waiting for the reader
+ * task to exit. ::gps_snapshot is not held up by any of this.
  */
 void gps_apply_config(void);
 

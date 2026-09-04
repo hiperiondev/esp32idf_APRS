@@ -53,7 +53,7 @@
 #include "reset_reason.h"     // reset_reason_label(): wording of the start-up notice's cause line
 #include "sensors_local.h"    // sensors_local_channel_name()
 #include "storage.h"          // storage_write_lock()
-#include "str_append.h"       // str_append()
+#include "str_append.h"       // str_append(), str_copy_utf8_safe()
 #include "telegram_app.h"
 #include "telegram_service.h"
 #include "telemetry.h" // telemetry_config_load(), telemetry_get_values()
@@ -722,10 +722,14 @@ void telegram_app_notify_station_message(const char *from_call, const char *to_c
         if (s_route_users[i].callsign[0] == 0 || strcasecmp(s_route_users[i].callsign, to_call) != 0)
             continue;
 
-        telegram_notify_item_t item;
+        // Zero-initialised and filled with the text only as far as it goes:
+        // what the queue carries is then the line and nothing else, with no
+        // stack bytes past the terminator riding along inside a structure that
+        // is copied whole into the queue.
+        telegram_notify_item_t item = { 0 };
         snprintf(item.chat_id, sizeof(item.chat_id), "%" PRId64, s_route_users[i].id);
         item.broadcast = false;
-        memcpy(item.text, line, sizeof(item.text));
+        str_copy_utf8_safe(line, item.text, sizeof(item.text));
 
         // Never blocks: a full queue means notifications are arriving faster
         // than the drain task can deliver them, and the frame-decoding path
@@ -929,8 +933,10 @@ void telegram_app_notify_bulletin(const char *from_call, const char *to_call, co
         return;
     }
 
-    telegram_notify_item_t item;
-    item.chat_id[0] = 0;
+    // Zero-initialised for the reason given at the same point in
+    // telegram_app_notify_station_message(): the whole structure is copied
+    // into the queue, so every byte of it is set here.
+    telegram_notify_item_t item = { 0 };
     item.broadcast = true;
     snprintf(item.text, sizeof(item.text), "bulletin from %s to %s :: %s", from_call, addressee, text);
 
