@@ -130,7 +130,11 @@ chance of being acknowledged.
 * **Numbering.** Outgoing numbers run 1 to ``MSG_ID_MAX`` (99) and wrap, never
   reaching 0. Two digits are what keeps a full ``{MM}AA`` identifier inside the
   five characters APRS101 chapter 14 allows, and only ``MSG_QUEUE_SIZE``
-  messages are ever outstanding at once.
+  messages are ever outstanding at once. A number is claimed once per message,
+  indivisibly, and the same value is used for the transmitted suffix and for
+  the retry-queue entry: messages composed at the same moment by the web chat
+  page, by the Winlink session and by the service tick each get a number of
+  their own, and an incoming ack always finds the entry it belongs to.
 * **State.** The acknowledgement owed is kept per correspondent, for
   ``MSG_REPLY_ACK_STATIONS`` (5) stations, the least recently updated entry being
   reused beyond that. A station that loses its entry simply loses the free ride:

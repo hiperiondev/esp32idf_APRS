@@ -178,6 +178,14 @@ void message_alarm_configure(bool enable, int8_t gpio);
  * @c "{MM}", whose trailing brace is what tells the other end that a Reply-ACK
  * can be sent back. Both forms are read as an ordinary message identifier by
  * software that does not implement the algorithm.
+ *
+ * @note Safe to call from several tasks at once, as it is: the HTTP server
+ * task reaches it from the @c /msgchat POST handler and from the Winlink
+ * control pages, the 1 Hz APRS service tick and the packet receive path both
+ * reach it through the Winlink session machine. Each caller claims its own
+ * @c MM under a spinlock and carries it to both the transmitted frame and the
+ * retry queue entry, so overlapping sends never share a number nor file one
+ * that differs from the one they put on the air.
  */
 void sendAPRSMessage(const char *toCall, const char *text);
 

@@ -29,6 +29,7 @@
 #include "driver/gpio.h"
 #include "esp_log.h"
 #include "esp_timer.h"
+#include "freertos/FreeRTOS.h" // portMUX_TYPE and the critical section that claims the outgoing message number
 
 #include "afsk.h" // afsk_ptt_gpio_is_valid(), MODEM_ADC_GPIO / MODEM_DAC_GPIO (checked internally by afsk_ptt_gpio_is_valid())
 #include "app_config.h"
@@ -63,7 +64,22 @@ _Static_assert(MSG_JSON_ENTRY_MAX >= MSG_JSON_TEMPLATE_LEN + MSG_JSON_TIME_LEN +
                                          (MSG_TEXT_MAX * 2 - 1) + 1,
                "MSG_JSON_ENTRY_MAX is too small for the message field widths");
 static uint32_t s_seq = 0;
+
+// Sequence number carried by the "{NN" suffix of every message this station
+// originates, and the spinlock that hands one number to one sender. Three
+// tasks reach sendAPRSMessage(): the HTTP server task, from the /msgchat POST
+// handler and from the Winlink control pages; the 1 Hz APRS service tick,
+// through the Winlink session machine; and the packet receive path, through
+// the same machine's RX observer. Each of them has to come away with a number
+// of its own, so the bump and the read are one indivisible step and the value
+// is then carried in a local for the rest of the send - the number that goes
+// on the air and the number filed in the retry queue must be the same one, or
+// the ack coming back never matches its queue entry. A portMUX (not a mutex)
+// because the claim is a handful of instructions and can then be made with no
+// allocation and no init-order dependency; the lock covers the claim alone and
+// is never held across the frame build or the transmit.
 static uint16_t s_msgID = 0;
+static portMUX_TYPE s_msgIDLock = portMUX_INITIALIZER_UNLOCKED;
 static void (*s_txHandler)(const char *packet, size_t len, uint8_t channels) = NULL;
 static message_rx_observer_t s_rxObserver = NULL;
 
@@ -665,14 +681,23 @@ static void sanitizeOutgoingText(const char *src, char *dst, size_t dst_size) {
 void sendAPRSMessage(const char *toCall, const char *text) {
     if (!toCall[0] || !text[0])
         return;
-    // Bump the outbound APRS message number. It must always increment and must
+    // Claim the outbound APRS message number. It must always increment and must
     // never come out as 0: a "{0" suffix is read by many APRS clients (UI-View
     // / APRSIS32 / Xastir) as "no message number", so the message would never
     // get acked. Past MSG_ID_MAX it wraps back to 1, which keeps the number two
     // digits wide and leaves room for the Reply-ACK suffix inside the five
     // characters APRS101 allows a message identifier.
+    //
+    // The claim is taken once, under s_msgIDLock, and msgID carries it through
+    // the rest of the function: everything below - the config snapshot, the
+    // text sanitizer, the transmit and the Telegram notification - can run
+    // while another task is claiming a number of its own, so s_msgID is not
+    // read again. The lock is released before any of that work begins.
+    portENTER_CRITICAL(&s_msgIDLock);
     if (++s_msgID > MSG_ID_MAX)
         s_msgID = 1;
+    uint16_t msgID = s_msgID;
+    portEXIT_CRITICAL(&s_msgIDLock);
 
     char myCallUp[10];
     app_config_lock();
@@ -700,13 +725,13 @@ void sendAPRSMessage(const char *toCall, const char *text) {
     sanitizeOutgoingText(text, payload, sizeof(payload));
 
     char suffix[8];
-    buildMsgNumberSuffix(toCallUp, s_msgID, suffix, sizeof(suffix));
+    buildMsgNumberSuffix(toCallUp, msgID, suffix, sizeof(suffix));
 
     char info[320];
     snprintf(info, sizeof(info), ":%s:%s%s", toCallFixed, payload, suffix);
 
     txPacket(myCallUp, toCallUp, info);
-    ESP_LOGD(TAG, "Send APRS message to %s msgID %u: %s", toCall, (unsigned)s_msgID, info);
+    ESP_LOGD(TAG, "Send APRS message to %s msgID %u: %s", toCall, (unsigned)msgID, info);
 
     // A message this station originates is routed to Telegram on the same
     // terms as one it receives: the addressee decides the recipient, so a
@@ -732,11 +757,12 @@ void sendAPRSMessage(const char *toCall, const char *text) {
     int8_t ackVal = (g_config.msg_retry == 0) ? -2 : (int8_t)g_config.msg_retry;
     // The trimmed upper-case addressee is what goes in the queue, matching the
     // form the callsign takes on the air. An incoming ack is matched against
-    // this field by exact comparison, and it is also the name the chat page
+    // this field by exact comparison, together with msgID, which is the very
+    // number the suffix above put on the air. It is also the name the chat page
     // shows next to the message. The sanitized payload is stored rather than
     // the caller's raw text, so a retry re-sends exactly what was already put
     // on the air instead of re-deriving it.
-    pkgMsgStore(toCallUp, payload, s_msgID, ackVal, false, false);
+    pkgMsgStore(toCallUp, payload, msgID, ackVal, false, false);
 }
 
 void sendAPRSAck(const char *toCall, const char *msgNo) {

@@ -137,7 +137,12 @@ de ser confirmado.
   a empezar, sin pasar nunca por 0. Dos dígitos son lo que mantiene un
   identificador ``{MM}AA`` completo dentro de los cinco caracteres que permite el
   capítulo 14 de APRS101, y nunca hay más de ``MSG_QUEUE_SIZE`` mensajes
-  pendientes a la vez.
+  pendientes a la vez. El número se reserva una sola vez por mensaje, de forma
+  indivisible, y el mismo valor se usa para el sufijo transmitido y para la
+  entrada de la cola de reintentos: los mensajes compuestos en el mismo
+  instante por la página de chat web, por la sesión Winlink y por el tick del
+  servicio reciben cada uno su propio número, y una confirmación entrante
+  siempre encuentra la entrada que le corresponde.
 * **Estado.** La confirmación adeudada se guarda por corresponsal, para
   ``MSG_REPLY_ACK_STATIONS`` (5) estaciones, reutilizando más allá de eso la
   entrada actualizada hace más tiempo. Una estación que pierde su entrada solo

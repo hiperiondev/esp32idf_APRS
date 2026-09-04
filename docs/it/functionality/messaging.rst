@@ -141,7 +141,12 @@ confermato.
   ricominciano, senza mai passare per 0. Due cifre sono ciò che mantiene un
   identificatore ``{MM}AA`` completo entro i cinque caratteri ammessi dal
   capitolo 14 di APRS101, e non ci sono mai più di ``MSG_QUEUE_SIZE`` messaggi
-  pendenti alla volta.
+  pendenti alla volta. Il numero è riservato una sola volta per messaggio, in
+  modo indivisibile, e lo stesso valore è usato per il suffisso trasmesso e per
+  la voce della coda dei tentativi: i messaggi composti nello stesso istante
+  dalla pagina di chat web, dalla sessione Winlink e dal tick del servizio
+  ricevono ciascuno il proprio numero, e una conferma in arrivo trova sempre la
+  voce a cui appartiene.
 * **Stato.** La conferma dovuta è tenuta per corrispondente, per
   ``MSG_REPLY_ACK_STATIONS`` (5) stazioni, riutilizzando oltre quel numero la voce
   aggiornata meno di recente. Una stazione che perde la sua voce perde soltanto
