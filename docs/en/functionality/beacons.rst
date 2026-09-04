@@ -549,10 +549,12 @@ reserves the same trailing position for it. The five bytes recover, as one
 extra decimal digit per axis, the third minute digit that the plain
 ``DDMM.mmN``/``DDDMM.mmW`` fields truncate away — one order of magnitude more
 precision than the uncompressed layout otherwise carries, matching this
-firmware's own float latitude/longitude resolution. Both the base field and
-this extra digit are derived from the same truncation of the minutes value,
-so appending it always recovers a position at least as close to the true one
-as the base field alone.
+firmware's own float latitude/longitude resolution. The base field and this
+extra digit are two views of a single measurement of the coordinate — both
+read the degrees/minutes split of ``main/include/aprs_minutes.h``, as do the
+Mic-E position bytes — so a receiver that adds the digit back always lands
+within half a thousandth of a minute, about 0.9 m, of the true position, and
+never further from it than the base field alone.
 
 Because it restores precision, ``!DAO!`` is only ever applied when
 *Position ambiguity* is 0 and the layout is not the compressed one — a

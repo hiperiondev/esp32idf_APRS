@@ -741,9 +741,10 @@ typedef struct {
                                   not withhold a packet from RF or from APRS-IS itself, and packets this station relays are passed through unchanged
                                   regardless of this setting - a relayed frame's marker, if any, is the originating station's own choice. */
     bool pos_dao_en; /**< Append the WGS-84 human-readable "!DAO!" precision/datum extension (aprs12/datum.txt) to every uncompressed own-station position
-                        report, recovering the third decimal minute digit of latitude/longitude that the plain "DDMM.mmN"/"DDDMM.mmW" fields round away. See
-                        aprs_dao_build(). Only applied when pos_ambiguity is 0: a station deliberately obscuring its position must not have that precision
-                        handed back via the extension. Never applied to the compressed layout (already full resolution) or to Mic-E. */
+                        report and to the Mic-E text field, recovering the third decimal minute digit of latitude/longitude that the plain
+                        "DDMM.mmN"/"DDDMM.mmW" fields and the Mic-E position bytes stop short of. See aprs_dao_build(). Only applied when pos_ambiguity is 0:
+                        a station deliberately obscuring its position must not have that precision handed back via the extension. Never applied to the
+                        compressed layout, which already carries full resolution. */
 
     uint8_t wifi_mode;                 /**< Which WiFi interfaces to bring up: one of the ::WIFI_MODE_CFG_OFF .. ::WIFI_MODE_CFG_APSTA selectors. */
     int8_t wifi_power;                 /**< WiFi transmit power in dBm, clamped to ::WIFI_TX_POWER_DBM_MIN .. ::WIFI_TX_POWER_DBM_MAX on save and on load. */

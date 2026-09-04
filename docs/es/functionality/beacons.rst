@@ -582,10 +582,12 @@ cinco bytes recuperan, como un dígito decimal extra por eje, el tercer
 dígito de minuto que los campos planos ``DDMM.mmN``/``DDDMM.mmW`` truncan y
 descartan — un orden de magnitud más de precisión que la que el formato sin
 comprimir lleva por sí solo, igualando la resolución propia en punto
-flotante de latitud/longitud de este firmware. Tanto el campo base como este
-dígito extra se derivan del mismo truncamiento del valor de minutos, así que
-añadirlo siempre recupera una posición al menos tan cercana a la real como el
-campo base por sí solo.
+flotante de latitud/longitud de este firmware. El campo base y este dígito
+extra son dos vistas de una única medición de la coordenada — ambos leen la
+división grados/minutos de ``main/include/aprs_minutes.h``, igual que los
+bytes de posición Mic-E —, así que un receptor que vuelve a sumar el dígito
+siempre queda a medio milésimo de minuto, unos 0,9 m, de la posición real, y
+nunca más lejos de ella que el campo base por sí solo.
 
 Como restituye precisión, ``!DAO!`` solo se aplica cuando *Position
 ambiguity* es 0 y el formato no es el comprimido: una estación que oculta su

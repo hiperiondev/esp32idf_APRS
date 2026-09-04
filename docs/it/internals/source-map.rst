@@ -29,6 +29,7 @@ Disposizione del repository
    │   ├── aprs_service.c/.h   ← la colla: smistamento RX, helper TX, cfg modem, stats, loop test
    │   ├── aprs_filter.c/.h    ← classificatore payload + filtri portata/prefisso/budlist/terze-parti
    │   ├── aprs_coord.c/.h     ← lat/lon ↔ testo APRS, ambiguità, estrazione simbolo
+   │   ├── include/aprs_minutes.h ← l'unica quantizzazione gradi/minuti: la leggono il campo base di posizione, i byte Mic-E e la cifra "!DAO!"
    │   ├── include/aprs_free_text.h ← builder dei campi di testo libero propri: rimozione riservati + marcatore "!x!" di non archiviazione
    │   ├── include/aprs_df.h  ← codificatore del rapporto DF "CSE/SPD/BRG/NRQ" condiviso da beacon.c e objects_items.c
    │   ├── include/aprs_bm.h  ← classificatore BrandMeister di righe APRS-IS: tocall APBMxx, alias DMR nel percorso, stazione di ingresso

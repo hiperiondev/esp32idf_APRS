@@ -20,26 +20,22 @@
 
 #include <math.h>
 
+#include "aprs_minutes.h"
+
 // Returns the third decimal digit of the minutes part of an absolute-value
 // decimal-degrees coordinate, i.e. the thousandths-of-a-minute digit that
-// sits one place past the hundredths already carried by the plain
-// "DDMM.mmN"/"DDDMM.mmW" fields. The minutes value is truncated to three
-// decimal places, the same way aprs_coord.c's splitDegMin() truncates it to
-// two, so the digit this function returns is always the exact next digit of
-// the base field rather than an independently rounded value that can
-// disagree with it. Clamping to 59999 thousandths keeps the result inside
-// 0-9 even if floating-point error pushes the minutes to a full 60.0.
+// sits one place past the hundredths carried by the plain
+// "DDMM.mmN"/"DDDMM.mmW" fields. The coordinate is quantised by the shared
+// aprs_minutes_split() (main/include/aprs_minutes.h), the same call that
+// produces the base field in aprs_coord.c and the Mic-E position bytes in
+// components/weather_telemetry/mice.c, and this function simply takes the
+// last digit of that single measurement. The digit is therefore always the
+// next digit of the number the base field actually transmitted, and the
+// degree carry the split applies at 60.000 minutes is already reflected in
+// it.
 static char extraMinuteDigit(float absVal) {
-    int deg = (int)absVal;
-    float minutes = (absVal - deg) * 60.0f;
-
-    long thousandths = (long)(minutes * 1000.0f);
-    if (thousandths < 0)
-        thousandths = 0;
-    if (thousandths > 59999)
-        thousandths = 59999;
-
-    return (char)('0' + (thousandths % 10));
+    aprs_minutes_t m = aprs_minutes_split((double)absVal);
+    return (char)('0' + aprs_minutes_dao_digit(m));
 }
 
 void aprs_dao_build(float lat, float lon, char out[APRS_DAO_BUF_SIZE]) {

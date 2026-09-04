@@ -29,6 +29,7 @@ Repository layout
    │   ├── aprs_service.c/.h   ← the glue: RX dispatch, TX helper, modem cfg, stats, loop test
    │   ├── aprs_filter.c/.h    ← payload classifier + range/prefix/budlist/3rd-party filters
    │   ├── aprs_coord.c/.h     ← lat/lon ↔ APRS text, ambiguity, symbol extraction
+   │   ├── include/aprs_minutes.h ← the one degrees/minutes quantisation: base position field, Mic-E bytes and "!DAO!" digit all read it
    │   ├── include/aprs_free_text.h ← own-station free-text field builder: reserved-char strip + "!x!" no-archive marker
    │   ├── include/aprs_df.h  ← "CSE/SPD/BRG/NRQ" DF report encoder shared by beacon.c and objects_items.c
    │   ├── include/aprs_bm.h  ← BrandMeister classifier for APRS-IS lines: APBMxx tocall, DMR path alias, entry station

@@ -51,13 +51,16 @@
  * for a decimal-degrees position.
  *
  * Recovers, as a single extra digit per axis, the third decimal minute digit
- * that aprs_coord_format_ambiguous() truncates away when it prints the
- * minutes field to two decimal places - one order of magnitude more
- * precision than the plain "DDMM.mmN"/"DDDMM.mmW" fields carry, matching
- * this firmware's own float latitude/longitude resolution. Both the base
- * field and this extra digit are derived from the same truncation of the
- * minutes value, so appending it always recovers a value at least as close
- * to the true position as the base field alone, never further from it.
+ * that aprs_coord_format_ambiguous() leaves out when it prints the minutes
+ * field to two decimal places - one order of magnitude more precision than
+ * the plain "DDMM.mmN"/"DDDMM.mmW" fields carry, matching this firmware's
+ * own float latitude/longitude resolution. The digit is taken from the same
+ * ::aprs_minutes_split (aprs_minutes.h) measurement of the coordinate that
+ * produced the base field itself, in the uncompressed layout and in the
+ * Mic-E one alike, so a receiver adding `digit * 0.001` minutes to the
+ * transmitted field always lands within half a thousandth of a minute
+ * (about 0.9 m) of the position, never further from it than the base field
+ * alone.
  *
  * The output is always exactly 5 bytes: '!', the datum byte 'W' (uppercase =
  * human-readable form, WGS-84), the latitude's extra digit, the longitude's

@@ -26,6 +26,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "aprs_minutes.h"
 #include "weather_telemetry.h"
 
 // One decoded byte of a Mic-E destination address field (bytes 1-6 only;
@@ -539,24 +540,21 @@ bool aprs_mice_encode(const aprs_mice_report_t *report, char *dst_call_out, char
 
     bool north = lat >= 0.0;
     double lat_abs = north ? lat : -lat;
-    int lat_deg = (int)lat_abs;
-    double lat_min = (lat_abs - lat_deg) * 60.0;
 
-    // Truncate to hundredths of a minute first, same resolution as the
-    // on-air field and the same truncation aprs_coord.c's splitDegMin() and
-    // aprs_dao.c's extraMinuteDigit() apply to the plain uncompressed
-    // position field, so the destination-address digits and the trailing
-    // !DAO! extension on the same packet (aprs_dao_build(), main/aprs_dao.c)
-    // always agree on the same coordinate. The digit pairs are then split
-    // (minutes tens/units, hundredths tens/units) for aprs_mice_decode(). A
-    // minutes value that computes to a full 60.00 because of floating-point
-    // error at the top of a degree carries into the next whole degree,
-    // keeping the encoded position valid.
-    int lat_hun_total = (int)(lat_min * 100.0);
-    if (lat_hun_total >= 6000) {
-        lat_hun_total -= 6000;
-        lat_deg += 1;
-    }
+    // Quantise through the shared aprs_minutes_split() (main/include/
+    // aprs_minutes.h), the same call that produces the uncompressed position
+    // field in main/aprs_coord.c and the trailing !DAO! digit in
+    // main/aprs_dao.c, so the destination-address digits and the !DAO!
+    // extension on the same packet are two views of one measurement of the
+    // coordinate rather than two independent measurements that can disagree
+    // at a hundredth-of-a-minute boundary. The hundredths are then split
+    // into the digit pairs (minutes tens/units, hundredths tens/units)
+    // aprs_mice_decode() reads back. The degree carry at a full 60.000
+    // minutes is applied inside the split, keeping the encoded position
+    // valid.
+    aprs_minutes_t lat_split = aprs_minutes_split(lat_abs);
+    int lat_deg = lat_split.deg;
+    int lat_hun_total = aprs_minutes_hundredths(lat_split);
     if (lat_deg > 90)
         lat_deg = 90;
 
@@ -605,15 +603,12 @@ bool aprs_mice_encode(const aprs_mice_report_t *report, char *dst_call_out, char
 
     bool west = lon < 0.0;
     double lon_abs = west ? -lon : lon;
-    int lon_deg_full = (int)lon_abs;
-    double lon_min = (lon_abs - lon_deg_full) * 60.0;
-    // Truncated the same way as the latitude above, so this axis agrees
-    // with its own destination-address digits and the trailing !DAO!.
-    int lon_hun_total = (int)(lon_min * 100.0);
-    if (lon_hun_total >= 6000) {
-        lon_hun_total -= 6000;
-        lon_deg_full += 1;
-    }
+    // Quantised through the same shared split as the latitude above, so this
+    // axis agrees with its own destination-address digits and the trailing
+    // !DAO!.
+    aprs_minutes_t lon_split = aprs_minutes_split(lon_abs);
+    int lon_deg_full = lon_split.deg;
+    int lon_hun_total = aprs_minutes_hundredths(lon_split);
     int lon_min_int = lon_hun_total / 100;
     int lon_hun = lon_hun_total % 100;
 

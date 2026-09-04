@@ -1088,6 +1088,14 @@ bool aprs_mice_decode(const char *dst_call, const char *info, size_t info_len, a
  *       information; a status text beginning with any other byte is emitted
  *       unchanged.
  *
+ * @note The position is quantised by ::aprs_minutes_split
+ *       (main/include/aprs_minutes.h), the one measurement every
+ *       transmit-side encoder in this firmware shares. The
+ *       destination-address digits therefore carry the hundredths of a
+ *       minute of exactly the value whose next digit a `!DAO!` extension in
+ *       @c report->status_text carries, so the two agree even for a
+ *       coordinate sitting on a hundredth-of-a-minute boundary.
+ *
  * @note @c report->position.symbol.overlay is emitted in the symbol table
  *       byte of the information field when it holds an overlay character
  *       ('A'-'Z' or '0'-'9'), which is where APRS 1.2 chapter 21 places one

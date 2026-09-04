@@ -29,6 +29,7 @@ Disposición del repositorio
    │   ├── aprs_service.c/.h   ← el pegamento: despacho RX, ayudante TX, cfg módem, stats, loop test
    │   ├── aprs_filter.c/.h    ← clasificador de carga útil + filtros rango/prefijo/budlist/terceros
    │   ├── aprs_coord.c/.h     ← lat/lon ↔ texto APRS, ambigüedad, extracción de símbolo
+   │   ├── include/aprs_minutes.h ← la única cuantización grados/minutos: la leen el campo base de posición, los bytes Mic-E y el dígito "!DAO!"
    │   ├── include/aprs_free_text.h ← constructor de campos de texto libre propios: quita reservados + marcador "!x!" de no archivar
    │   ├── include/aprs_df.h  ← codificador del reporte DF "CSE/SPD/BRG/NRQ" compartido por beacon.c y objects_items.c
    │   ├── include/aprs_bm.h  ← clasificador BrandMeister de líneas APRS-IS: tocall APBMxx, alias DMR en la ruta, estación de entrada

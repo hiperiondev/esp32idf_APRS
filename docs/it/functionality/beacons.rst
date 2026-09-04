@@ -586,9 +586,12 @@ per asse, la terza cifra dei minuti che i campi semplici
 ``DDMM.mmN``/``DDDMM.mmW`` troncano via — un ordine di grandezza in più
 di precisione rispetto a quella che il formato non compresso porta da solo,
 pari alla risoluzione in virgola mobile di latitudine/longitudine di questo
-firmware. Sia il campo base sia questa cifra extra derivano dallo stesso
-troncamento del valore dei minuti, quindi aggiungerla recupera sempre una
-posizione almeno tanto vicina a quella reale quanto il solo campo base.
+firmware. Il campo base e questa cifra extra sono due viste di un'unica
+misura della coordinata — entrambi leggono la divisione gradi/minuti di
+``main/include/aprs_minutes.h``, come i byte di posizione Mic-E — quindi un
+ricevitore che risomma la cifra resta sempre entro mezzo millesimo di minuto,
+circa 0,9 m, dalla posizione reale, e mai più lontano di quanto lo sia il solo
+campo base.
 
 firmware.
 
