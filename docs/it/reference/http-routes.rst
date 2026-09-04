@@ -82,7 +82,8 @@ controllo di autenticazione possa proteggere.
    * - POST
      - ``/winlink/cmd``
      - esegue un'azione di sessione: accedere, uscire, un comando, un passo di
-       composizione o cancellare le risposte memorizzate (JSON
+       composizione, un'azione su un messaggio elencato (``n`` porta il suo
+       numero) o cancellare le risposte memorizzate (JSON
        ``{"ok":…,"error":…}``)
    * - GET
      - ``/winlink/status``

@@ -977,6 +977,13 @@ esp_err_t web_handle_css(httpd_req_t *req) {
         ".chat-compose .row{align-items:flex-start;}"
         ".chat-counter{font-size:.72em;color:var(--sub);text-align:right;margin-top:2px;}"
         "#msgChatStatus{font-size:.8em;margin-top:8px;display:block;}"
+        // Per-message action row of the Winlink mailbox: the commands that act
+        // on one listed message, rendered under the bubble holding that line.
+        // Left-aligned like the bubble it belongs to and set in smaller
+        // buttons, so a listing of several messages still reads as a listing
+        // rather than as a wall of controls.
+        ".wl-msg-acts{align-self:flex-start;display:flex;flex-wrap:wrap;gap:6px;margin:-4px 0 2px 4px;}"
+        ".wl-msg-acts button{margin-top:0;padding:4px 10px;font-size:.75em;}"
         // Collapsible analog-channel accordion (Telemetry page): one card per
         // channel, header always visible (tag + name + live value + caret),
         // body only rendered for the currently-open channel.

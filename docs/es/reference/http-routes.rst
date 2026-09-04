@@ -81,8 +81,8 @@ hay nada que una comprobación de autenticación pueda proteger.
    * - POST
      - ``/winlink/cmd``
      - ejecuta una acción de sesión: acceder, salir, una orden, un paso de
-       redacción o borrar las respuestas guardadas (JSON
-       ``{"ok":…,"error":…}``)
+       redacción, una acción sobre un mensaje listado (``n`` lleva su número) o
+       borrar las respuestas guardadas (JSON ``{"ok":…,"error":…}``)
    * - GET
      - ``/winlink/status``
      - estado de la sesión, tiempo restante, órdenes en espera, tamaño del

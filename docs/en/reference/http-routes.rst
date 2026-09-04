@@ -78,8 +78,9 @@ auth check to guard.
        session terminal
    * - POST
      - ``/winlink/cmd``
-     - run one session action: log in, log off, a command, a compose step, or
-       clearing the stored replies (JSON ``{"ok":…,"error":…}``)
+     - run one session action: log in, log off, a command, a compose step, an
+       action on one listed message (``n`` holds its number) or clearing the
+       stored replies (JSON ``{"ok":…,"error":…}``)
    * - GET
      - ``/winlink/status``
      - session state, remaining lifetime, queue depth, mailbox size and the

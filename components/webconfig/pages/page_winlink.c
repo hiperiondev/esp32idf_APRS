@@ -29,6 +29,13 @@
 // commands an operator sends by hand or through the compose helper, and the
 // replies the service has sent back.
 //
+// A reply that opens with a message number is a line of a mailbox listing, and
+// it carries its own Read / Reply / Forward / Delete row, so the four commands
+// that act on a numbered message are one click away from the line that names
+// it. The row is a shortcut over the same command path the field above uses:
+// every one of those actions is a single APRSLink command an operator could
+// also type.
+//
 // The account and gateway settings live in config.json like every other
 // g_config field; the replies live in /storage/winlink.json, written by the
 // winlink component itself. Nothing on this page keeps state of its own: the
@@ -54,6 +61,12 @@ static const char *TAG = "page_winlink";
 // remaining seconds, two small counters and the escaped failure reason, whose
 // width comes from the client's own WL_ERROR_MAX so the two cannot drift.
 #define WL_STATUS_BUF (WL_ERROR_MAX * 2 + 160)
+
+// Largest message number a per-message action is accepted for. The service
+// numbers a mailbox listing from 1 and never reaches four digits, so anything
+// past this is not a message number but a malformed request, and is refused
+// rather than turned into a command the service would have to reject.
+#define WL_MSG_NUM_MAX 9999
 
 // Emits one label/value row of the session status table, identified by
 // "wl_<key>", which is the same key the status endpoint uses for that member.
@@ -222,6 +235,18 @@ esp_err_t page_winlink_get(httpd_req_t *req) {
                                   "function wlAct(a){return wlPost('act='+encodeURIComponent(a));}"
                                   "function wlSendCmd(){var f=document.getElementById('wlCmdInput');var t=f.value.trim();"
                                   "if(!t)return;wlPost('act=cmd&text='+encodeURIComponent(t)).then(function(){f.value='';});}"
+                                  "function wlMsgAct(a,n,extra){return wlPost('act='+a+'&n='+n+(extra||''));}"
+                                  "function wlRead(n){wlMsgAct('read',n);}"
+                                  "function wlReply(n){wlMsgAct('reply',n);}"
+                                  "function wlKill(n){if(!confirm('" TR_WL_CONFIRM_KILL "'+' '+n))return;wlMsgAct('kill',n);}"
+                                  "function wlForward(n){var to=prompt('" TR_WL_FORWARD_PROMPT "','');"
+                                  "if(to===null)return;to=to.trim();if(!to)return;"
+                                  "wlMsgAct('forward',n,'&to='+encodeURIComponent(to));}"
+                                  // A line of a mailbox listing opens with the number the service
+                                  // gave the message, followed by a space. That leading number is
+                                  // what the four per-message commands take, so a reply shaped like
+                                  // one gets the action row and any other reply does not.
+                                  "function wlMsgNum(t){var m=/^\\s*([0-9]{1,4})\\s/.exec(t||'');return m?m[1]:null;}"
                                   "function wlCompose(){"
                                   "var to=document.getElementById('wlTo').value.trim();"
                                   "var su=document.getElementById('wlSubject').value.trim();"
@@ -243,7 +268,15 @@ esp_err_t page_winlink_get(httpd_req_t *req) {
                                   "var d=new Date(list[i].time*1000);"
                                   "function p(n){return (n<10?'0':'')+n;}"
                                   "var ts=p(d.getHours())+':'+p(d.getMinutes())+':'+p(d.getSeconds());"
-                                  "h+=\"<div class='chat-bubble rx'><span class='chat-meta'>\"+ts+\"</span>\"+wlEsc(list[i].text)+\"</div>\";}"
+                                  "h+=\"<div class='chat-bubble rx'><span class='chat-meta'>\"+ts+\"</span>\"+wlEsc(list[i].text)+\"</div>\";"
+                                  "var n=wlMsgNum(list[i].text);"
+                                  "if(n!==null){"
+                                  "h+=\"<div class='wl-msg-acts'>\""
+                                  "+\"<button type='button' onclick='wlRead(\"+n+\")'>" TR_WL_BTN_READ "</button>\""
+                                  "+\"<button type='button' onclick='wlReply(\"+n+\")'>" TR_WL_BTN_REPLY "</button>\""
+                                  "+\"<button type='button' onclick='wlForward(\"+n+\")'>" TR_WL_BTN_FORWARD "</button>\""
+                                  "+\"<button type='button' class='danger' onclick='wlKill(\"+n+\")'>" TR_WL_BTN_KILL "</button>\""
+                                  "+\"</div>\";}}"
                                   "box.innerHTML=h;box.scrollTop=box.scrollHeight;}"
                                   "function wlPollOnce(){"
                                   "fetch('/winlink/status').then(function(r){return r.json();}).then(wlRenderStatus).catch(function(){});"
@@ -333,6 +366,11 @@ esp_err_t page_winlink_cmd_post(httpd_req_t *req) {
     web_form_get(body, "to", dest, sizeof(dest));
     web_form_get(body, "subject", subject, sizeof(subject));
 
+    // Only the four per-message actions read it, and each of them checks it
+    // before use; -1 is therefore a value they all refuse, which is what an
+    // absent or non-numeric field must produce.
+    int num = web_form_get_int(body, "n", -1);
+
     const char *error = NULL;
     bool ok = false;
 
@@ -346,7 +384,23 @@ esp_err_t page_winlink_cmd_post(httpd_req_t *req) {
         ok = winlink_list();
     else if (strcmp(act, "cmd") == 0)
         ok = winlink_send_command(text);
-    else if (strcmp(act, "compose") == 0)
+    else if (strcmp(act, "read") == 0 || strcmp(act, "reply") == 0 || strcmp(act, "kill") == 0 || strcmp(act, "forward") == 0) {
+        // The number is checked once for all four, since a request that does
+        // not name a message the service could have listed is refused whatever
+        // it asks to do with it.
+        if (num < 1 || num > WL_MSG_NUM_MAX)
+            error = TR_WL_ERR_MSGNUM;
+        else if (strcmp(act, "read") == 0)
+            ok = winlink_read((unsigned)num);
+        else if (strcmp(act, "reply") == 0)
+            ok = winlink_reply((unsigned)num);
+        else if (strcmp(act, "kill") == 0)
+            ok = winlink_kill((unsigned)num);
+        else
+            // The addressee travels in the same field the compose helper uses:
+            // both name where a message is going, and both are read into dest.
+            ok = winlink_forward((unsigned)num, dest);
+    } else if (strcmp(act, "compose") == 0)
         ok = winlink_compose_begin(dest, subject);
     else if (strcmp(act, "line") == 0)
         ok = winlink_compose_line(text);

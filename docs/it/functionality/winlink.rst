@@ -140,6 +140,16 @@ I pulsanti *Inizia messaggio* / *Aggiungi riga* / *Invia messaggio* percorrono
 la sequenza ``SP`` … ``/EX``, l'unica il cui ordine conta, e non fanno nulla che
 il campo comando non possa fare anche a mano.
 
+I quattro comandi che agiscono su un messaggio elencato hanno pulsanti propri.
+Una risposta memorizzata che inizia con un numero di messaggio è una riga di un
+elenco e porta sotto di sé una fila *Leggi* / *Rispondi* / *Inoltra* /
+*Elimina*, dove ogni pulsante invia il comando per il numero di quella riga:
+``R<n>``, ``Y<n>``, ``F<n> <destinatario>`` e ``K<n>``. *Inoltra* chiede prima
+l'indirizzo ed *Elimina* chiede conferma, nominando il numero che sta per
+eliminare. Una risposta che non ha la forma di una riga di elenco — il testo di
+un messaggio, una sfida di login, una conferma — non ha un numero su cui agire e
+non riceve la fila.
+
 Dove passa il traffico
 ----------------------
 

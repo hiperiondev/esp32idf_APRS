@@ -135,6 +135,16 @@ The *Start message* / *Add line* / *Send message* buttons drive the ``SP`` …
 ``/EX`` sequence, which is the only one whose order matters, and do nothing the
 command field could not also do by hand.
 
+The four commands that act on one listed message have buttons of their own. A
+stored reply that opens with a message number is a line of a listing, and it
+carries a *Read* / *Reply* / *Forward* / *Delete* row underneath it, each button
+sending the command for the number on that line: ``R<n>``, ``Y<n>``,
+``F<n> <addressee>`` and ``K<n>``. *Forward* asks for the address first and
+*Delete*
+asks for confirmation, naming the number it is about to delete. A reply that is
+not shaped like a listing line — the text of a message, a login challenge, an
+acknowledgement — has no number to act on and gets no row.
+
 Where the traffic goes
 ----------------------
 

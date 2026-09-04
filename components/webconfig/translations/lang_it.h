@@ -2018,6 +2018,30 @@
 #define TR_WL_BTN_SEND "Invia"
 /** Italian text for the caption of the clear-mailbox button. English: "Clear replies". */
 #define TR_WL_BTN_CLEAR_MAIL "Cancella risposte"
+/** Italian text for the caption of the per-message read button. English: "Read". */
+#define TR_WL_BTN_READ "Leggi"
+/** Italian text for the caption of the per-message reply button. English: "Reply". */
+#define TR_WL_BTN_REPLY "Rispondi"
+/** Italian text for the caption of the per-message forward button. English: "Forward". */
+#define TR_WL_BTN_FORWARD "Inoltra"
+/** Italian text for the caption of the per-message delete button. English: "Delete". */
+#define TR_WL_BTN_KILL "Elimina"
+/**
+ * @brief Italian text for the question asked before a listed message is
+ * deleted. English: "Delete message number".
+ *
+ * The message number is appended to it. It ends up inside a single-quoted
+ * JavaScript literal and must therefore not contain an apostrophe.
+ */
+#define TR_WL_CONFIRM_KILL "Eliminare il messaggio numero"
+/**
+ * @brief Italian text for the prompt for the address a listed message is
+ * forwarded to. English: "Forward to which address, callsign or alias?".
+ *
+ * It ends up inside a single-quoted JavaScript literal and must therefore not
+ * contain an apostrophe.
+ */
+#define TR_WL_FORWARD_PROMPT "A quale indirizzo, nominativo o alias inoltrare?"
 /** Italian text for the caption of the start-message button. English: "Start message". */
 #define TR_WL_BTN_COMPOSE "Inizia messaggio"
 /** Italian text for the caption of the add-body-line button. English: "Add line". */
@@ -2052,6 +2076,8 @@
 #define TR_WL_ERR_DISABLED "Il client Winlink è spento."
 /** Italian text for the error shown when the requested action is not one this page knows. English: "Unknown action.". */
 #define TR_WL_ERR_ACTION "Azione sconosciuta."
+/** Italian text for the error shown when a per-message action names no usable message number. English: "That is not a message number.". */
+#define TR_WL_ERR_MSGNUM "Quello non è un numero di messaggio."
 /** Italian text for the error shown when the session refused the action in its current state. English: "The session cannot do that right now.". */
 #define TR_WL_ERR_REFUSED "La sessione non può farlo in questo momento."
 /** Italian text for the name of the disabled session state. English: "Switched off". */

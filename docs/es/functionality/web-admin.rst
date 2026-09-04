@@ -212,8 +212,11 @@ Las páginas
        sesión: en qué punto está la sesión y cuánto le queda, botones para
        entrar, salir y listar el correo, un campo de orden libre que admite
        todo el juego de órdenes de APRSLink, un asistente de tres pasos para
-       escribir un mensaje, y las respuestas que devolvió el servicio. Valores
-       en vivo por ``/winlink/status`` y ``/winlink/list``, consultados cada
+       escribir un mensaje, y las respuestas que devolvió el servicio. Cada
+       respuesta guardada que empieza con un número de mensaje es una línea de
+       un listado del buzón y lleva una fila *Leer* / *Responder* /
+       *Reenviar* / *Eliminar* para ese mensaje. Valores en vivo por
+       ``/winlink/status`` y ``/winlink/list``, consultados cada
        tres segundos; las acciones se envían a ``/winlink/cmd``, que es POST
        porque acciona el transmisor.
    * - **Logs**

@@ -195,8 +195,11 @@ The pages
        how long it has left, buttons for logging in and out and for listing
        mail, a free-form command field that takes the whole APRSLink command
        set, a three-step helper for writing a message, and the replies the
-       service has sent back. Live values via ``/winlink/status`` and
-       ``/winlink/list``, polled every three seconds; actions are posted to
+       service has sent back. Each stored reply that opens with a message
+       number is a line of a mailbox listing and carries a *Read* / *Reply* /
+       *Forward* / *Delete* row for that message. Live values via
+       ``/winlink/status`` and ``/winlink/list``, polled every three seconds;
+       actions are posted to
        ``/winlink/cmd``, which is POST because it keys the transmitter.
    * - **Logs**
      - A viewer for the serial console, so what the station prints can be read

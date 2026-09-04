@@ -218,7 +218,10 @@ Le pagine
        le resta, pulsanti per accedere, uscire ed elencare la posta, un campo di
        comando libero che accetta l'intero insieme di comandi APRSLink, un
        assistente in tre passi per scrivere un messaggio, e le risposte inviate
-       dal servizio. Valori live via ``/winlink/status`` e ``/winlink/list``,
+       dal servizio. Ogni risposta memorizzata che inizia con un numero di
+       messaggio è una riga di un elenco della casella e porta una fila
+       *Leggi* / *Rispondi* / *Inoltra* / *Elimina* per quel messaggio. Valori
+       live via ``/winlink/status`` e ``/winlink/list``,
        interrogati ogni tre secondi; le azioni sono inviate a
        ``/winlink/cmd``, che è POST perché aziona il trasmettitore.
    * - **Logs**

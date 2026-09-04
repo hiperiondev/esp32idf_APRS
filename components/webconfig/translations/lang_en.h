@@ -1910,6 +1910,31 @@
 #define TR_WL_BTN_SEND "Send"
 /** Caption of the clear-mailbox button, rendered on the Winlink page. */
 #define TR_WL_BTN_CLEAR_MAIL "Clear replies"
+/** Caption of the per-message read button, rendered on the Winlink page. */
+#define TR_WL_BTN_READ "Read"
+/** Caption of the per-message reply button, rendered on the Winlink page. */
+#define TR_WL_BTN_REPLY "Reply"
+/** Caption of the per-message forward button, rendered on the Winlink page. */
+#define TR_WL_BTN_FORWARD "Forward"
+/** Caption of the per-message delete button, rendered on the Winlink page. */
+#define TR_WL_BTN_KILL "Delete"
+/**
+ * @brief Question asked before a listed message is deleted, rendered on the
+ * Winlink page.
+ *
+ * The message number is appended to it, so it reads as a question about that
+ * one message. It ends up inside a single-quoted JavaScript literal and must
+ * therefore not contain an apostrophe.
+ */
+#define TR_WL_CONFIRM_KILL "Delete message number"
+/**
+ * @brief Prompt for the address a listed message is forwarded to, rendered on
+ * the Winlink page.
+ *
+ * It ends up inside a single-quoted JavaScript literal and must therefore not
+ * contain an apostrophe.
+ */
+#define TR_WL_FORWARD_PROMPT "Forward to which address, callsign or alias?"
 /** Caption of the start-message button, rendered on the Winlink page. */
 #define TR_WL_BTN_COMPOSE "Start message"
 /** Caption of the add-body-line button, rendered on the Winlink page. */
@@ -1944,6 +1969,8 @@
 #define TR_WL_ERR_DISABLED "The Winlink client is switched off."
 /** Error shown when the requested action is not one this page knows, rendered on the Winlink page. */
 #define TR_WL_ERR_ACTION "Unknown action."
+/** Error shown when a per-message action names no usable message number, rendered on the Winlink page. */
+#define TR_WL_ERR_MSGNUM "That is not a message number."
 /** Error shown when the session refused the action in its current state, rendered on the Winlink page. */
 #define TR_WL_ERR_REFUSED "The session cannot do that right now."
 /** Name of the disabled session state, rendered on the Winlink page. */
