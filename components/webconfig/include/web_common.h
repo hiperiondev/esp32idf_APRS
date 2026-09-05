@@ -428,8 +428,33 @@ void web_field_int(httpd_req_t *req, const char *label, const char *name, long v
  * @param max   Highest accepted value (inclusive).
  */
 void web_field_float(httpd_req_t *req, const char *label, const char *name, float value, const char *step, float min, float max);
-/** @brief Render a labelled checkbox. @param req Request. @param label Field label. @param name Form field name. @param checked Initial checked state. */
+/**
+ * @brief Render a labelled checkbox as an on/off toggle switch.
+ *
+ * Use for a checkbox that represents a single feature's enable state. For a
+ * checkbox that is one entry in a multi-select list, use
+ * web_field_checkbox_plain() instead so it still reads as a list of options
+ * rather than a bank of independent switches.
+ *
+ * @param req     Request.
+ * @param label   Field label.
+ * @param name    Form field name.
+ * @param checked Initial checked state.
+ */
 void web_field_checkbox(httpd_req_t *req, const char *label, const char *name, bool checked);
+/**
+ * @brief Render a labelled checkbox with no toggle-switch styling.
+ *
+ * Same field semantics as web_field_checkbox(), for a checkbox that is one
+ * entry in a multi-select list (e.g. a payload-type filter or a path alias)
+ * rather than a single feature's on/off state.
+ *
+ * @param req     Request.
+ * @param label   Field label.
+ * @param name    Form field name.
+ * @param checked Initial checked state.
+ */
+void web_field_checkbox_plain(httpd_req_t *req, const char *label, const char *name, bool checked);
 /** @brief Open a labelled @c <select>. @param req Request. @param label Field label. @param name Form field name. */
 void web_select_open(httpd_req_t *req, const char *label, const char *name);
 /** @brief Emit one @c <option> inside an open @c <select>. @param req Request. @param value Option value. @param label Option text. @param selected Whether

@@ -330,13 +330,12 @@ esp_err_t page_sidebar_info(httpd_req_t *req) {
     // APRS-IS SERVER / WiFi so all dashboard boxes share one look and feel.
     str_append(buf, sizeof(buf), &n,
                "<fieldset><legend>" TR_DASH_MODES_ENABLED "</legend><table><tr>"
-               "<th style='background:%s'>" TR_F_IGATE "</th>"
-               "<th style='background:%s'>" TR_DASH_DIGI_SHORT "</th>"
-               "<th style='background:%s'>" TR_F_TRACKER "</th>"
-               "<th style='background:%s'>" TR_DASH_WX_SHORT "</th>"
+               "<th class='badge %s'>" TR_F_IGATE "</th>"
+               "<th class='badge %s'>" TR_DASH_DIGI_SHORT "</th>"
+               "<th class='badge %s'>" TR_F_TRACKER "</th>"
+               "<th class='badge %s'>" TR_DASH_WX_SHORT "</th>"
                "</tr></table></fieldset>",
-               g_config.igate_en ? "#0b0" : "#606060", g_config.digi_en ? "#0b0" : "#606060", g_config.trk_en ? "#0b0" : "#606060",
-               g_config.wx_en ? "#0b0" : "#606060");
+               g_config.igate_en ? "ok" : "off", g_config.digi_en ? "ok" : "off", g_config.trk_en ? "ok" : "off", g_config.wx_en ? "ok" : "off");
 
     // -- Network Status -------------------------------------------------------
     // WIFI reflects the STA link state (connected to an AP), the same check
@@ -346,11 +345,11 @@ esp_err_t page_sidebar_info(httpd_req_t *req) {
     bool wifi_connected = (esp_wifi_sta_get_ap_info(&sidebar_ap_info) == ESP_OK);
     str_append(buf, sizeof(buf), &n,
                "<fieldset><legend>" TR_DASH_NETWORK_STATUS "</legend><table><tr>"
-               "<th style='background:%s'>" TR_DASH_WIFI "</th>"
-               "<th style='background:%s'>APRS-IS</th>"
-               "<th style='background:%s'>" TR_DASH_FX25 "</th>"
+               "<th class='badge %s'>" TR_DASH_WIFI "</th>"
+               "<th class='badge %s'>APRS-IS</th>"
+               "<th class='badge %s'>" TR_DASH_FX25 "</th>"
                "</tr></table></fieldset>",
-               wifi_connected ? "#0b0" : "#606060", igate_is_connected() ? "#0b0" : "#606060", (g_config.fx25_mode > 0) ? "#0b0" : "#606060");
+               wifi_connected ? "ok" : "off", igate_is_connected() ? "ok" : "off", (g_config.fx25_mode > 0) ? "ok" : "off");
 
     // -- STATISTICS -----------------------------------------------------
     // radio_rx/radio_tx/rf2inet/inet2rf/digi come from aprs_service's own

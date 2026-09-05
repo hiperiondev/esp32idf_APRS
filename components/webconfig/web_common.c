@@ -849,8 +849,8 @@ void web_send_header(httpd_req_t *req, const char *title, const char *active_men
                                   "<meta name='viewport' content='width=device-width,initial-scale=1'>"
                                   "<link rel='stylesheet' href='/style.css'>"
                                   "<title>" APRS_SOFTWARE_NAME "</title></head><body>"
-                                  "<div class='topbar'><span class='brand'>" TR_BRAND "</span>"
-                                  "<a class='logout' href='/logout'>" TR_LOGOUT "</a></div>"
+                                  "<div class='topbar'><span class='brand'><span class='brand-mark' aria-hidden='true'></span>" TR_BRAND "</span>"
+                                  "<div class='topbar-right'><a class='logout' href='/logout'>" TR_LOGOUT "</a></div></div>"
                                   "<div class='layout'><nav class='sidebar'><ul>");
 
     for (size_t i = 0; i < MENU_COUNT; i++) {
@@ -890,9 +890,12 @@ void web_send_save_result(httpd_req_t *req, bool ok, const char *location) {
         // rendered from the live settings, so bouncing straight back to it
         // would redisplay exactly what was typed and read as a success. The
         // failure stays on screen until the operator follows the link.
+        // This interstitial doesn't link /style.css, so the failure text
+        // color is spelled out literally here rather than through the
+        // var(--red) custom property the rest of the admin UI shares.
         snprintf(buf, sizeof(buf),
                  "<!DOCTYPE html><html><head><meta charset='utf-8'></head>"
-                 "<body><p style='color:#cf222e;font-weight:600'>" TR_SAVE_FAILED "</p>"
+                 "<body><p style='color:#dc2626;font-weight:600'>" TR_SAVE_FAILED "</p>"
                  "<p><a href='%s'>&larr; %s</a></p></body></html>",
                  location, location);
     }
@@ -906,57 +909,86 @@ void web_send_save_result(httpd_req_t *req, bool ok, const char *location) {
 esp_err_t web_handle_css(httpd_req_t *req) {
     static const char *css =
         // Palette/typography matched to hiperiondev/ESP32_WSPR's embedded web admin
-        ":root{--bg:#f5f4f0;--card:#ffffff;--border:#d0cfc9;--accent:#1a56db;"
-        "--green:#1a7f37;--red:#cf222e;--text:#1c1c1c;--sub:#57534e;}"
+        ":root{--bg:#f6f7f9;--card:#ffffff;--border:#e6e8ec;--accent:#2f6fed;"
+        "--green:#1a7f37;--red:#dc2626;--text:#111827;--sub:#6b7280;"
+        "--shadow:0 1px 3px rgba(0,0,0,.06),0 1px 2px rgba(0,0,0,.04);"
+        "--radius-card:14px;--radius-pill:999px;}"
         "*{box-sizing:border-box;margin:0;padding:0;}"
         "body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text);}"
-        ".topbar{display:flex;justify-content:space-between;align-items:center;padding:14px 20px;"
-        "background:var(--card);border-bottom:1px solid var(--border);}"
-        ".topbar .brand{font-weight:700;color:var(--accent);font-size:1.05em;}"
+        ".topbar{display:flex;justify-content:space-between;align-items:center;padding:14px 24px;"
+        "background:var(--card);border-bottom:1px solid var(--border);box-shadow:0 1px 2px rgba(0,0,0,.03);}"
+        ".topbar .brand{display:flex;align-items:center;gap:10px;font-weight:700;color:var(--text);font-size:1.05em;}"
+        ".topbar .brand-mark{width:22px;height:22px;border-radius:7px;flex:none;"
+        "background:linear-gradient(135deg,var(--accent),#7fb2ff);}"
+        ".topbar-right{display:flex;align-items:center;gap:10px;border:1px solid var(--border);"
+        "border-radius:var(--radius-pill);padding:6px 16px;background:var(--bg);}"
         ".topbar .logout{color:var(--sub);text-decoration:none;font-size:.85em;font-weight:600;}"
         ".topbar .logout:hover{color:var(--red);}"
         ".layout{display:flex;min-height:calc(100vh - 52px);}"
-        ".sidebar{width:210px;background:var(--card);border-right:1px solid var(--border);padding:12px 0;}"
+        ".sidebar{width:220px;background:var(--card);border-right:1px solid var(--border);"
+        "box-shadow:1px 0 3px rgba(0,0,0,.03);padding:16px 0;}"
         ".sidebar ul{list-style:none;}"
         ".sidebar li a{display:block;padding:10px 18px;color:var(--text);text-decoration:none;"
         "font-size:.85em;border-left:3px solid transparent;transition:.15s;}"
         ".sidebar li a:hover{background:var(--bg);border-left-color:var(--border);}"
-        ".sidebar li a.active{background:#eef2ff;color:var(--accent);font-weight:700;border-left-color:var(--accent);}"
+        ".sidebar li a.active{background:#eaf1ff;color:var(--accent);font-weight:700;border-left-color:var(--accent);}"
         ".content{flex:1;padding:24px 28px;max-width:900px;}"
-        "h1{color:var(--accent);font-size:1.4em;border-bottom:1px solid var(--border);padding-bottom:10px;margin-bottom:16px;}"
-        "fieldset{background:var(--card);border:1px solid var(--border);border-radius:10px;"
-        "margin-bottom:16px;padding:18px 20px;}"
-        "legend{color:var(--accent);padding:0 8px;font-size:.85em;font-weight:700;}"
+        "h1{color:var(--text);font-size:1.5em;font-weight:800;margin-bottom:18px;}"
+        "fieldset{background:var(--card);border:1px solid var(--border);border-radius:var(--radius-card);"
+        "box-shadow:var(--shadow);margin-bottom:20px;padding:20px 22px;}"
+        "legend{width:100%;color:var(--text);padding:0;margin:0 0 14px;font-size:1.05em;font-weight:700;}"
         "label{display:block;color:var(--sub);font-size:.8em;margin:12px 0 4px;}"
         "label:first-child{margin-top:0;}"
         "p label{display:inline;}"
         ".pwd-show{display:block;font-size:.72em;font-weight:400;margin:4px 0 0;color:var(--sub);}"
         "input[type=text],input[type=password],input[type=number],select,textarea{"
-        "width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;"
-        "background:var(--bg);color:var(--text);font-size:.9em;outline:none;transition:.2s;}"
+        "width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;"
+        "background:#fff;color:var(--text);font-size:.9em;outline:none;transition:.2s;}"
         "input:focus,select:focus,textarea:focus{border-color:var(--accent);}"
         "input[type=checkbox]{width:16px;height:16px;cursor:pointer;accent-color:var(--accent);margin-right:6px;}"
         ".row{display:flex;gap:16px;flex-wrap:wrap;}"
         ".row>div{flex:1;min-width:160px;}"
-        "button,.btn{background:#b2f0e8;color:#0d4a42;border:0;border-radius:6px;"
+        "button,.btn{background:var(--accent);color:#fff;border:0;border-radius:8px;"
         "padding:10px 20px;font-weight:700;cursor:pointer;font-size:.9em;text-decoration:none;"
         "display:inline-block;margin-top:10px;transition:.2s;}"
-        "button:hover,.btn:hover{background:#89e6d8;}"
-        "button.secondary,.btn.secondary{background:#e8e7e3;color:var(--sub);}"
-        "button.secondary:hover,.btn.secondary:hover{background:#dddcda;}"
-        "button.danger,.btn.danger{background:#fff0f0;color:var(--red);border:1px solid var(--red);}"
+        "button:hover,.btn:hover{background:#245bc4;}"
+        "button.secondary,.btn.secondary{background:#eef1f5;color:var(--sub);}"
+        "button.secondary:hover,.btn.secondary:hover{background:#e2e6ec;}"
+        "button.danger,.btn.danger{background:#fef2f2;color:var(--red);border:1px solid var(--red);}"
         "button.danger:hover,.btn.danger:hover{background:var(--red);color:#fff;}"
         "table{border-collapse:collapse;width:100%;font-size:.82em;}"
         "table th,table td{border:1px solid var(--border);padding:7px 9px;text-align:left;}"
         "table th{background:var(--bg);color:var(--sub);}"
         ".login-box{max-width:340px;margin:80px auto;background:var(--card);padding:28px;"
-        "border-radius:10px;border:1px solid var(--border);}"
+        "border-radius:var(--radius-card);box-shadow:var(--shadow);border:1px solid var(--border);}"
         ".login-box h1{border:0;text-align:center;}"
         ".msg-ok{color:var(--green);} .msg-err{color:var(--red);}"
-        ".badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:.75em;font-weight:700;}"
+        ".badge{display:inline-block;padding:3px 10px;border-radius:var(--radius-pill);"
+        "font-size:.72em;font-weight:700;letter-spacing:.02em;text-transform:uppercase;}"
         ".badge.ok{background:#d1fae5;color:var(--green);}"
         ".badge.warn{background:#fef3c7;color:#92400e;}"
         ".badge.err{background:#fee2e2;color:var(--red);}"
+        ".badge.off{background:#e5e7eb;color:#4b5563;}"
+        // CSS-only toggle switch: wraps the checkbox in a track+knob pair
+        // driven purely by :checked, so it needs no script and keeps the
+        // checkbox's own name/id/checked semantics untouched. Used only where
+        // a checkbox represents a single on/off feature enable, never for a
+        // multi-select checkbox list (see web_field_checkbox_plain()).
+        "label.switch-row{display:flex;align-items:center;gap:10px;cursor:pointer;margin:12px 0 4px;}"
+        "label.switch-row:first-child{margin-top:0;}"
+        ".switch{position:relative;display:inline-block;width:40px;height:22px;flex:none;}"
+        ".switch input{position:absolute;opacity:0;width:0;height:0;}"
+        ".switch .slider{position:absolute;inset:0;background:#cbd5e1;border-radius:var(--radius-pill);transition:.2s;}"
+        ".switch .slider::before{content:'';position:absolute;height:16px;width:16px;left:3px;top:3px;"
+        "background:#fff;border-radius:50%;box-shadow:0 1px 2px rgba(0,0,0,.25);transition:.2s;}"
+        ".switch input:checked+.slider{background:var(--green);}"
+        ".switch input:checked+.slider::before{transform:translateX(18px);}"
+        ".switch input:focus+.slider{box-shadow:0 0 0 2px rgba(47,111,237,.35);}"
+        ".switch-label{color:var(--text);font-size:.85em;}"
+        // Reusable light-blue callout for explanatory text under a control,
+        // available for any page that wants it.
+        ".info-box{background:#eef4ff;border:1px solid #cfe0fb;color:#33456b;"
+        "border-radius:10px;padding:10px 14px;font-size:.82em;}"
         ".traffic-actions{display:flex;gap:8px;margin-bottom:10px;}"
         ".traffic-actions .btn{margin-top:0;padding:6px 12px;font-size:.8em;}"
         ".traffic-table-wrap{max-height:360px;overflow-y:auto;}"
@@ -1133,7 +1165,30 @@ void web_field_float(httpd_req_t *req, const char *label, const char *name, floa
     httpd_resp_sendstr_chunk(req, buf);
 }
 
+// Renders as an iOS-style toggle switch (track+knob) driven purely by
+// :checked in CSS: the extra <span> wrappers around the input are decorative
+// only, and the field's name/checked semantics are exactly what a bare
+// checkbox would post. Reserved for a checkbox that represents a single on/off
+// feature enable; a checkbox that is one of several options in a multi-select
+// list uses web_field_checkbox_plain() instead, so it still reads as a list
+// rather than a bank of independent switches.
 void web_field_checkbox(httpd_req_t *req, const char *label, const char *name, bool checked) {
+    char lbl[WEB_LABEL_MAX_BYTES + 1];
+    label_clamp(lbl, label);
+    char buf[WEB_LABEL_MAX_BYTES + 224];
+    snprintf(buf, sizeof(buf),
+             "<label class='switch-row'><span class='switch'><input type='checkbox' name='%.30s' %s>"
+             "<span class='slider'></span></span><span class='switch-label'>" WEB_LABEL_FMT "</span></label>",
+             name, checked ? "checked" : "", lbl);
+    httpd_resp_sendstr_chunk(req, buf);
+}
+
+// Same field as web_field_checkbox(), rendered as a bare checkbox instead of a
+// toggle switch. Used for a checkbox that is one entry in a multi-select list
+// (e.g. a payload-type filter or a path alias) rather than a single feature's
+// on/off state, since a bank of switches would misrepresent that as several
+// independent settings instead of one selection among peers.
+void web_field_checkbox_plain(httpd_req_t *req, const char *label, const char *name, bool checked) {
     char lbl[WEB_LABEL_MAX_BYTES + 1];
     label_clamp(lbl, label);
     char buf[WEB_LABEL_MAX_BYTES + 128];
@@ -1168,7 +1223,7 @@ void web_field_path_checkboxes(httpd_req_t *req, const char *name_prefix, uint8_
         }
         char name[48];
         snprintf(name, sizeof(name), "%.30s%d", name_prefix, k + 1);
-        web_field_checkbox(req, plabel, name, (mask & (1u << k)) != 0);
+        web_field_checkbox_plain(req, plabel, name, (mask & (1u << k)) != 0);
     }
 }
 

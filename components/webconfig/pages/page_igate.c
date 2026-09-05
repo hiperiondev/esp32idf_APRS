@@ -142,7 +142,7 @@ esp_err_t page_igate_get(httpd_req_t *req) {
         char esc_warn[sizeof(s_filterWarning) * 6 + 1];
         web_html_attr_escape(s_filterWarning, esc_warn, sizeof(esc_warn));
         char wbuf[sizeof(esc_warn) + 80];
-        snprintf(wbuf, sizeof(wbuf), "<div style='color:#cf222e;font-size:.85em;margin:-6px 0 8px'>%s</div>", esc_warn);
+        snprintf(wbuf, sizeof(wbuf), "<div style='color:var(--red);font-size:.85em;margin:-6px 0 8px'>%s</div>", esc_warn);
         web_raw(req, wbuf);
         s_filterWarning[0] = 0; // shown once
     }
@@ -459,7 +459,7 @@ esp_err_t page_igate_get(httpd_req_t *req) {
         for (size_t i = 0; i < sizeof(filt) / sizeof(filt[0]); i++) {
             char name[24];
             snprintf(name, sizeof(name), "rf2inetF_%s", filt[i].name);
-            web_field_checkbox(req, filt[i].label, name, (g_config.rf2inetFilter & filt[i].bit) != 0);
+            web_field_checkbox_plain(req, filt[i].label, name, (g_config.rf2inetFilter & filt[i].bit) != 0);
         }
 
         // Local range/prefix gate: independent of, and composed with (AND
@@ -476,7 +476,7 @@ esp_err_t page_igate_get(httpd_req_t *req) {
         for (size_t i = 0; i < sizeof(filt) / sizeof(filt[0]); i++) {
             char name[24];
             snprintf(name, sizeof(name), "inet2rfF_%s", filt[i].name);
-            web_field_checkbox(req, filt[i].label, name, (g_config.inet2rfFilter & filt[i].bit) != 0);
+            web_field_checkbox_plain(req, filt[i].label, name, (g_config.inet2rfFilter & filt[i].bit) != 0);
         }
 
         // Selective third-party ('}') unwrap: off by default, and only ever
@@ -486,7 +486,7 @@ esp_err_t page_igate_get(httpd_req_t *req) {
         // than only in the Callsign Filter section) since it's fundamentally
         // a "what may pass the INET->RF type filter" exception.
         web_field_checkbox(req, TR_F_3RDPARTY_UNWRAP_EN, "inet2rf3rdPartyUnwrapEn", g_config.inet2rf_3rdparty_unwrap_en);
-        web_raw(req, "<p style='color:#cf222e;font-size:12px;margin:4px 0'>" TR_NOTE_3RDPARTY_UNWRAP "</p>");
+        web_raw(req, "<p style='color:var(--red);font-size:12px;margin:4px 0'>" TR_NOTE_3RDPARTY_UNWRAP "</p>");
 
         // Local distance gate for this direction, the mirror of the RF->INET
         // one above and rendered the same way. It lives here rather than on

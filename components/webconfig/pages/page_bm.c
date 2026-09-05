@@ -57,7 +57,7 @@ static void bm_row(httpd_req_t *req, const char *label, const char *value, bool 
     char esc[240];
     web_html_attr_escape(value, esc, sizeof(esc));
     char row[400];
-    snprintf(row, sizeof(row), "<tr><td>%s</td><td style='color:%s'>%s</td></tr>", label, good ? "var(--sub)" : "#cf222e", esc);
+    snprintf(row, sizeof(row), "<tr><td>%s</td><td style='color:%s'>%s</td></tr>", label, good ? "var(--sub)" : "var(--red)", esc);
     httpd_resp_sendstr_chunk(req, row);
 }
 
@@ -83,8 +83,8 @@ esp_err_t page_bm_get(httpd_req_t *req) {
     web_fieldset_open(req, TR_BM_FS_MONITOR);
     web_field_checkbox(req, TR_BM_MONITOR, "bmMonitor", g_config.bm_monitor);
     if (bm_monitor_blocked())
-        web_raw(req, "<div style='color:#cf222e;font-size:.85em;margin:-6px 0 8px'>" TR_BM_WARN_NEEDS_RANGE "</div>");
-    web_raw(req, "<p style='color:#cf222e;font-size:12px;margin:4px 0'>" TR_BM_NOTE_MONITOR "</p>");
+        web_raw(req, "<div style='color:var(--red);font-size:.85em;margin:-6px 0 8px'>" TR_BM_WARN_NEEDS_RANGE "</div>");
+    web_raw(req, "<p style='color:var(--red);font-size:12px;margin:4px 0'>" TR_BM_NOTE_MONITOR "</p>");
     {
         char term[200];
         snprintf(term, sizeof(term), "<p style='color:var(--sub);font-size:12px;margin:4px 0'>%s <code>%s</code></p>", TR_BM_NOTE_FILTER_TERM,
