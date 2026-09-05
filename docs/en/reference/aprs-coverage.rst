@@ -405,7 +405,7 @@ Station capabilities, queries and responses (ch. 15)
      - The complete set: position, status, stations heard direct, heard-station history, outstanding messages, objects and route trace, including the ping alias for the trace query. Answers are built by the beacon scheduler rather than by the receiving task, so a burst of queries cannot overflow a receive stack.
    * - Heard-station history
      - ✅
-     - The eight-hour histogram the specification asks for, kept per station and carried with the station when its row moves to the front of the table.
+     - The 18-hour histogram the specification asks for, kept per station and carried with the station when its row moves to the front of the table.
    * - Station capabilities packet
      - ✅
      - Sent in reply to the IGate query and, when the operator enables it, on a timer of its own, so a neighbour learns the gateway exists without asking. Both carry the same line, with the gateway token, the message and local-station counts - which mean what the specification says rather than raw frame totals - and any further tokens the operator typed, since the capability model is open-ended.

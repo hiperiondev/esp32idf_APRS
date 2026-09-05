@@ -136,6 +136,17 @@ Consultas generales
        ``lastheard_station_count(true)``, contando solo las filas cuya trama más
        reciente se escuchó al aire. Se ignora en silencio mientras ``igate_en``
        esté apagado.
+   * - ``?QRU?``
+     - ``query_ext_en``
+     - El pase de lista de membresía de grupo que define APRS101 cap.15: un
+       paquete de estado que enumera cada Objeto/Item propio que lleve una
+       etiqueta QRU no vacía, como pares ``<etiqueta>:<nombre>``, de modo que
+       cualquier estación que esté escuchando el pase de lista vea la
+       respuesta, no solo la que preguntó. Un resultado vacío igual se
+       responde con ``none`` en lugar de quedar en silencio. Se controla con
+       el mismo interruptor *Consultas dirigidas extendidas* que el conjunto
+       dirigido de más abajo, ya que comparte esa configuración en lugar de
+       tener una propia.
 
 Como las respuestas de posición, estado y meteorología reutilizan los
 constructores de baliza existentes, una respuesta nunca puede desviarse de lo que

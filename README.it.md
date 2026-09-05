@@ -41,8 +41,9 @@ In una frase, il firmware **demodula** l'audio AFSK/FSK dall'altoparlante o dall
 - **Meteo e telemetria.** Rapporti meteo APRS in onda con refresh dei sensori a 1 Hz e media per campo, più telemetria APRS (analogica A1–A5 + digitale B1–B8) con rapporti `T#nnn` e metadati.
 - **Posta radio Winlink (APRSLink).** La stazione legge e scrive la propria posta `NOMINATIVO@winlink.org` attraverso il servizio `WLNK-1` — accesso a sfida/risposta senza che la password vada in aria, una sessione cadenzata di un comando per volta e un terminale nel browser il cui elenco della casella porta pulsanti di lettura/risposta/inoltro/eliminazione per messaggio — e, separatamente, inoltra attraverso il suo IGate la sessione Winlink propria di una stazione vicina in RF.
 - **Oggetti, item e bollettini.** Fino a cinque Oggetti/Item APRS della stazione e cinque bollettini (BLN1–BLN5), ciascuno via RF e/o INET con controllo di scadenza/decadimento.
+- **Bot Telegram.** Un bot opzionale accanto ai servizi APRS — long polling, autorizzazione per utente e per chat, inoltro a Telegram dei messaggi di stazione e dei bollettini, e un pulsante Mini App — per controllare leggermente la stazione dal telefono.
 - **Framework di sensori a runtime.** Un registro di driver dinamico e auto-registrante (`sensors_local`) — include di serie un driver BME280/BMP280 (I²C), più uno opzionale per BMP180 sullo stesso bus.
-- **Pannello web, 20 pagine.** Autenticazione HTTP Basic, una dashboard in tempo reale, un log del traffico in tempo reale e tabella degli ultimi ascoltati (long-poll JSON), gestione file LittleFS (upload/download/eliminazione/formattazione), Wi-Fi AP/STA/AP+STA con scansione e controllo della potenza di TX, controllo della frequenza della CPU (80/160/240 MHz), e un visore del registro di console su richiesta che copia l'uscita seriale nel browser.
+- **Pannello web, 22 pagine.** Autenticazione HTTP Basic, una dashboard in tempo reale, un log del traffico in tempo reale e tabella degli ultimi ascoltati (long-poll JSON), gestione file LittleFS (upload/download/eliminazione/formattazione), Wi-Fi AP/STA/AP+STA con scansione e controllo della potenza di TX, controllo della frequenza della CPU (80/160/240 MHz), e un visore del registro di console su richiesta che copia l'uscita seriale nel browser.
 - **Aggiornamenti OTA con auto-rollback.** Due slot applicativi `ota_0`/`ota_1`; un'immagine difettosa torna indietro automaticamente al boot successivo.
 - **Interfaccia trilingue.** Inglese, spagnolo e italiano (a tempo di compilazione, una lingua per immagine).
 
@@ -64,12 +65,13 @@ In una frase, il firmware **demodula** l'audio AFSK/FSK dall'altoparlante o dall
 | Range gate e prefix gate locali | Distanza haversine + whitelist per prefisso di nominativo |
 | Digipeater | Tabella di alias n-N configurabile (trace/flood), trappola per gli hop, soppressione duplicati |
 | Oggetti / Item · Bollettini | Fino a 5 ciascuno, RF e/o INET, scadenza/decadimento |
+| Bot Telegram | Long polling, autorizzazione per utente/chat, inoltro messaggi e bollettini, pulsante Mini App |
 | Posta radio Winlink (APRSLink) | Casella propria via `WLNK-1`, più gateway per le stazioni locali |
 | Messaggistica + ack/ritrasmissione · Chat | RF e/o INET |
 | Rapporto meteo | Refresh dei sensori a 1 Hz, media opzionale |
 | Telemetria | Analogica A1–A5 + digitale B1–B8, `T#nnn` + metadati |
 | Framework di driver per sensori | Registro dinamico, driver BME280/BMP280 incluso |
-| Pannello web | 20 pagine, dashboard live, traffico + ultimi ascoltati, visore del registro di console |
+| Pannello web | 22 pagine, dashboard live, traffico + ultimi ascoltati, visore del registro di console |
 | Archiviazione | LittleFS 512 KB, upload/download/eliminazione/formattazione |
 | Rete | Wi-Fi AP/STA/AP+STA, scansione, potenza TX, SNTP (orologio UTC, fuso orario selezionabile per la visualizzazione) |
 | Controllo frequenza CPU | 80 / 160 / 240 MHz |

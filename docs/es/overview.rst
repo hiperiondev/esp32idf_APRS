@@ -108,7 +108,7 @@ Matriz de funciones
      - página de bandeja/redacción sobre el motor de mensajería
    * - Respondedor de consultas APRS (APRS101 cap.15)
      - ✅
-     - generales ``?APRS?``/``?WX?``/``?IGATE?`` + el conjunto dirigido
+     - generales ``?APRS?``/``?WX?``/``?IGATE?``/``?QRU?`` + el conjunto dirigido
        (``?APRSD``/``?APRSH``/``?APRSM``/``?APRSO``/``?APRSP``/``?APRSS``/
        ``?APRST``/``?PING?``), con límites de tasa por tipo y por origen
    * - Balizas de posición fija (tracker / igate / digi)
@@ -126,7 +126,7 @@ Matriz de funciones
      - RF y/o INET
    * - Administración web (autenticación HTTP Basic)
      - ✅
-     - 20 páginas de la barra lateral + selector de símbolo, panel en vivo
+     - 22 páginas de la barra lateral + selector de símbolo, panel en vivo
    * - Registro de tráfico en vivo + tabla de últimos escuchados
      - ✅
      - long-poll JSON (``?since=<seq>``)

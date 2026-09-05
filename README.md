@@ -41,8 +41,9 @@ In one sentence, the firmware **demodulates** AFSK/FSK audio from a radio's spea
 - **Weather & telemetry.** On-air APRS Weather Reports with 1 Hz sensor refresh and per-field averaging, plus APRS Telemetry (analog A1–A5 + digital B1–B8) with `T#nnn` reports and metadata.
 - **Winlink radio e-mail (APRSLink).** The station reads and writes its own `CALLSIGN@winlink.org` mail through the `WLNK-1` service — challenge/response login with the password never on the air, a paced one-command-at-a-time session, and a browser terminal whose mailbox listing carries per-message read/reply/forward/delete buttons — and, separately, relays a neighbouring RF station's own Winlink session through its IGate.
 - **Objects, items & bulletins.** Up to five own-station APRS Objects/Items and five bulletins (BLN1–BLN5), each on RF and/or INET with expiry/decay control.
+- **Telegram bot.** An optional bot alongside the APRS services — long polling, per-user and per-chat authorization, station-message and bulletin routing to Telegram, and a Mini App button — so the station can be checked on and lightly controlled from a phone.
 - **Runtime sensor framework.** A dynamic, self-registering driver registry (`sensors_local`) — includes a BME280/BMP280 (I²C) driver out of the box, plus an optional BMP180 one on the same bus.
-- **Web admin, 20 pages.** HTTP Basic auth, a live dashboard, a live traffic log and last-heard table (JSON long-poll), LittleFS file management (upload/download/delete/format), Wi-Fi AP/STA/AP+STA with scan and TX-power control, CPU frequency control (80/160/240 MHz), and an on-demand console log viewer that mirrors the serial output into the browser.
+- **Web admin, 22 pages.** HTTP Basic auth, a live dashboard, a live traffic log and last-heard table (JSON long-poll), LittleFS file management (upload/download/delete/format), Wi-Fi AP/STA/AP+STA with scan and TX-power control, CPU frequency control (80/160/240 MHz), and an on-demand console log viewer that mirrors the serial output into the browser.
 - **OTA updates with auto-rollback.** Dual `ota_0`/`ota_1` app slots; a failed image rolls back automatically on the next boot.
 - **Trilingual UI.** English, Spanish and Italian (compile-time, one language per image).
 
@@ -64,12 +65,13 @@ In one sentence, the firmware **demodulates** AFSK/FSK audio from a radio's spea
 | Local range gate & prefix gate | Haversine distance + callsign-prefix whitelist |
 | Digipeater | Configurable n-N alias table (trace/flood), hop trapping, dup-suppression |
 | Objects / Items · Bulletins | Up to 5 each, RF and/or INET, expiry/decay |
+| Telegram bot | Long polling, per-user/chat authorization, message & bulletin routing, Mini App button |
 | Messaging + ack/retry · Chat UI | RF and/or INET |
 | Winlink radio e-mail (APRSLink) | Own mailbox over `WLNK-1`, plus gateway for local stations |
 | Weather Report | 1 Hz sensor refresh, optional averaging |
 | Telemetry | Analog A1–A5 + digital B1–B8, `T#nnn` + metadata |
 | Sensor driver framework | Dynamic registry, BME280/BMP280 driver included |
-| Web admin | 20 pages, live dashboard, traffic + last-heard, console log viewer |
+| Web admin | 22 pages, live dashboard, traffic + last-heard, console log viewer |
 | Storage | LittleFS 512 KB, upload/download/delete/format |
 | Networking | Wi-Fi AP/STA/AP+STA, scan, TX power, SNTP (UTC clock, selectable timezone for display) |
 | CPU frequency control | 80 / 160 / 240 MHz |

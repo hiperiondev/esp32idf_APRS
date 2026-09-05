@@ -64,19 +64,20 @@ lowers the *Min free heap* figure on the dashboard.
        de-initialised. Six matches ``CONFIG_ESP_WIFI_RX_BA_WIN``, which is the
        floor AMPDU RX wants.
    * - ``CONFIG_ESP_WIFI_DYNAMIC_RX_BUFFER_NUM`` / ``..._TX_...``
-     - 12
+     - 12 / 24
      - Caps the Wi-Fi driver's peak heap claim. APRS traffic is a few hundred
        bytes per minute; the throughput these buffers buy is never used.
    * - ``CONFIG_LWIP_TCP_SND_BUF_DEFAULT`` / ``CONFIG_LWIP_TCP_WND_DEFAULT``
-     - 2880
-     - Two MSS per direction per connection. The only sustained transfer is an
-       OTA image upload, which still saturates a LAN at this window.
+     - 5760
+     - Four MSS (``CONFIG_LWIP_TCP_MSS`` is 1440) per direction per connection.
+       The only sustained transfer is an OTA image upload, which still
+       saturates a LAN at this window.
    * - ``max_open_sockets`` in ``web_server_start()``
-     - 4
+     - 3
      - httpd takes this plus 3 sockets of its own out of the
-       ``CONFIG_LWIP_MAX_SOCKETS`` (10) pool. The remaining 3 are what the
-       APRS-IS uplink, DNS and SNTP need to stay up while someone is browsing
-       the admin pages.
+       ``CONFIG_LWIP_MAX_SOCKETS`` (16) pool. The remaining budget is what the
+       APRS-IS uplink, DNS, SNTP and the Telegram bot's HTTPS client need to
+       stay up while someone is browsing the admin pages.
    * - HTTPS server, certificate bundle, Wi-Fi Enterprise
      - disabled
      - The web admin is plain HTTP and the APRS-IS uplink is plain TCP, so no

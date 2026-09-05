@@ -407,7 +407,7 @@ Capacidades de estación, consultas y respuestas (cap. 15)
      - El conjunto completo: posición, estado, estaciones oídas en directo, historial de una estación oída, mensajes pendientes, objetos y traza de ruta, incluido el alias ping para la consulta de traza. Las respuestas las arma el planificador de balizas y no la tarea de recepción, así que una ráfaga de consultas no puede desbordar una pila de recepción.
    * - Historial de estaciones oídas
      - ✅
-     - El histograma de ocho horas que pide la especificación, llevado por estación y arrastrado con ella cuando su fila se mueve al frente de la tabla.
+     - El histograma de 18 horas que pide la especificación, llevado por estación y arrastrado con ella cuando su fila se mueve al frente de la tabla.
    * - Paquete de capacidades de estación
      - ✅
      - Se manda en respuesta a la consulta de IGate y, cuando el operador lo habilita, con temporizador propio, así un vecino se entera de que la pasarela existe sin preguntar. Ambos llevan la misma línea, con el token de pasarela, los contadores de mensajes y de estaciones locales — que significan lo que dice la especificación y no totales crudos de tramas — y los elementos adicionales que el operador haya escrito, porque el modelo de capacidades es abierto.

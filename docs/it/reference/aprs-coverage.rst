@@ -407,7 +407,7 @@ Capacità di stazione, interrogazioni e risposte (cap. 15)
      - L'insieme completo: posizione, stato, stazioni udite in diretta, cronologia di una stazione udita, messaggi in sospeso, oggetti e traccia del percorso, incluso l'alias ping per l'interrogazione di traccia. Le risposte sono costruite dallo scheduler dei beacon e non dal task di ricezione, così una raffica di interrogazioni non può far traboccare uno stack di ricezione.
    * - Cronologia delle stazioni udite
      - ✅
-     - L'istogramma di otto ore richiesto dalla specifica, tenuto per stazione e trasportato con essa quando la sua riga si sposta in cima alla tabella.
+     - L'istogramma di 18 ore richiesto dalla specifica, tenuto per stazione e trasportato con essa quando la sua riga si sposta in cima alla tabella.
    * - Pacchetto delle capacità di stazione
      - ✅
      - Inviato in risposta all'interrogazione IGate e, quando l'operatore lo abilita, con un temporizzatore proprio, così un vicino scopre che il gateway esiste senza chiedere. Entrambi portano la stessa riga, con il token di gateway, i contatori di messaggi e di stazioni locali — che significano ciò che dice la specifica e non totali grezzi di trame — e gli eventuali elementi aggiuntivi digitati dall'operatore, perché il modello delle capacità è aperto.

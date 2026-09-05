@@ -197,7 +197,7 @@ What is deliberately not implemented
 
 * Any DMR, Homebrew/MMDVM or OpenBridge connection.
 * The BrandMeister REST API and the LastHeard stream. Both are HTTPS/WSS only,
-  and this firmware ships without a TLS stack; what they return is DMR session
-  metadata and network inventory, not APRS.
+  and this firmware implements no HTTPS/WebSocket client for either; what they
+  return is DMR session metadata and network inventory, not APRS.
 * Any local reproduction of a master's addressee pattern. It is per-master and
   undiscoverable from here.

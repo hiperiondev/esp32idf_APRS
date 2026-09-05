@@ -108,7 +108,7 @@ Matrice delle funzionalità
      - pagina inbox/composizione sul motore di messaggistica
    * - Risponditore di query APRS (APRS101 cap.15)
      - ✅
-     - generali ``?APRS?``/``?WX?``/``?IGATE?`` + l'insieme diretto
+     - generali ``?APRS?``/``?WX?``/``?IGATE?``/``?QRU?`` + l'insieme diretto
        (``?APRSD``/``?APRSH``/``?APRSM``/``?APRSO``/``?APRSP``/``?APRSS``/
        ``?APRST``/``?PING?``), con limiti di frequenza per tipo e per sorgente
    * - Beacon a posizione fissa (tracker / igate / digi)
@@ -126,7 +126,7 @@ Matrice delle funzionalità
      - RF e/o INET
    * - Amministrazione web (autenticazione HTTP Basic)
      - ✅
-     - 20 pagine nella barra laterale + selettore di simbolo, dashboard in
+     - 22 pagine nella barra laterale + selettore di simbolo, dashboard in
        tempo reale
    * - Log traffico in tempo reale + tabella last-heard
      - ✅

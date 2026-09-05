@@ -130,6 +130,16 @@ General queries
        from ``lastheard_station_count(true)``, counting only the rows whose most
        recent frame was heard off the air. Silently ignored while ``igate_en`` is
        off.
+   * - ``?QRU?``
+     - ``query_ext_en``
+     - The group-membership roll call APRS101 ch.15 defines: a status packet
+       listing every own-station Object/Item that carries a non-empty QRU tag,
+       as ``<tag>:<name>`` pairs, so any station listening for the roll call
+       sees the answer, not just the one that asked. An empty result still
+       answers with ``none`` rather than staying silent. Gated by the same
+       *Extended directed queries* switch as the directed set below, since it
+       shares that switch's configuration rather than having a dedicated one
+       of its own.
 
 Because position, status and weather answers reuse the existing beacon builders,
 a reply can never drift from what the periodic beacons transmit.

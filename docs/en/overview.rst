@@ -105,7 +105,7 @@ Feature matrix
      - inbox/compose page over the messaging engine
    * - APRS query responder (APRS101 ch.15)
      - ✅
-     - general ``?APRS?``/``?WX?``/``?IGATE?`` + the directed set
+     - general ``?APRS?``/``?WX?``/``?IGATE?``/``?QRU?`` + the directed set
        (``?APRSD``/``?APRSH``/``?APRSM``/``?APRSO``/``?APRSP``/``?APRSS``/
        ``?APRST``/``?PING?``), per-type and per-source rate limits
    * - Fixed-position beacons (tracker / igate / digi)
@@ -122,7 +122,7 @@ Feature matrix
      - RF and/or INET
    * - Web admin (HTTP Basic auth)
      - ✅
-     - 20 sidebar pages + symbol picker, live dashboard
+     - 22 sidebar pages + symbol picker, live dashboard
    * - Live traffic log + last-heard table
      - ✅
      - JSON long-poll (``?since=<seq>``)

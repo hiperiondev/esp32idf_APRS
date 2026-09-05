@@ -137,6 +137,16 @@ Query generali
        ``lastheard_station_count(true)``, contando solo le righe il cui frame più
        recente è stato ascoltato in onda. Ignorata in silenzio mentre
        ``igate_en`` è spento.
+   * - ``?QRU?``
+     - ``query_ext_en``
+     - L'appello di appartenenza al gruppo definito da APRS101 cap.15: un
+       pacchetto di stato che elenca ogni Oggetto/Item proprio che porta
+       un'etichetta QRU non vuota, come coppie ``<etichetta>:<nome>``, così che
+       qualsiasi stazione in ascolto dell'appello veda la risposta, non solo
+       quella che ha interrogato. Un risultato vuoto viene comunque risposto
+       con ``none`` invece di restare in silenzio. Governata dallo stesso
+       interruttore *Query dirette estese* dell'insieme diretto qui sotto,
+       poiché ne condivide la configurazione invece di averne una propria.
 
 Poiché le risposte di posizione, stato e meteo riusano i costruttori di beacon
 esistenti, una risposta non può mai divergere da ciò che trasmettono i beacon

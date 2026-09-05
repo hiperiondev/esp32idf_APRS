@@ -65,21 +65,22 @@ subir cualquiera de ellos baja la cifra *Min free heap* del panel.
        que se desinicializa el WiFi. Seis coincide con
        ``CONFIG_ESP_WIFI_RX_BA_WIN``, que es el piso que pide AMPDU RX.
    * - ``CONFIG_ESP_WIFI_DYNAMIC_RX_BUFFER_NUM`` / ``..._TX_...``
-     - 12
+     - 12 / 24
      - Acota el pico de heap que reclama el driver WiFi. El tráfico APRS son
        unos cientos de bytes por minuto; el caudal que compran esos búferes no
        se usa nunca.
    * - ``CONFIG_LWIP_TCP_SND_BUF_DEFAULT`` / ``CONFIG_LWIP_TCP_WND_DEFAULT``
-     - 2880
-     - Dos MSS por sentido y por conexión. La única transferencia sostenida es
-       la subida de una imagen OTA, que con esta ventana sigue saturando una
-       LAN.
+     - 5760
+     - Cuatro MSS (``CONFIG_LWIP_TCP_MSS`` es 1440) por sentido y por conexión.
+       La única transferencia sostenida es la subida de una imagen OTA, que
+       con esta ventana sigue saturando una LAN.
    * - ``max_open_sockets`` en ``web_server_start()``
-     - 4
+     - 3
      - httpd toma este número más 3 sockets propios del pool de
-       ``CONFIG_LWIP_MAX_SOCKETS`` (10). Los 3 restantes son los que necesitan
-       el enlace APRS-IS, DNS y SNTP para seguir en pie mientras alguien
-       navega las páginas de administración.
+       ``CONFIG_LWIP_MAX_SOCKETS`` (16). El resto del cupo es lo que necesitan
+       el enlace APRS-IS, DNS, SNTP y el cliente HTTPS del bot de Telegram
+       para seguir en pie mientras alguien navega las páginas de
+       administración.
    * - Servidor HTTPS, paquete de certificados, WiFi Enterprise
      - desactivados
      - La administración web es HTTP plano y el enlace APRS-IS es TCP plano,
