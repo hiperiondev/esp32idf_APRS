@@ -94,12 +94,13 @@ esp_err_t page_storage_get(httpd_req_t *req) {
     snprintf(hdr, sizeof(hdr), "<p><b>" TR_STORAGE_USAGE "</b> %u / %u bytes</p>", (unsigned)used, (unsigned)total);
     httpd_resp_sendstr_chunk(req, hdr);
 
-    httpd_resp_sendstr_chunk(req, "<form method='POST' action='/upload' enctype='multipart/form-data'>"
-                                  "<label>" TR_STORAGE_UPLOAD_FILE "</label><input type='file' name='file'>"
-                                  "<button type='submit'>" TR_F_UPLOAD "</button></form>"
-                                  "<form method='POST' action='/format' onsubmit=\"return confirm('" TR_STORAGE_CONFIRM_FORMAT "');\">"
-                                  "<button class='danger' type='submit'>" TR_STORAGE_FORMAT_BTN "</button></form>"
-                                  "<table><tr><th>" TR_F_NAME "</th><th>" TR_STORAGE_SIZE_BYTES "</th><th>" TR_STORAGE_ACTIONS "</th></tr>");
+    httpd_resp_sendstr_chunk(req,
+                             "<form method='POST' action='/upload' enctype='multipart/form-data'>"
+                             "<label>" TR_STORAGE_UPLOAD_FILE "</label><input type='file' name='file'>"
+                             "<button type='submit'>" TR_F_UPLOAD "</button></form>"
+                             "<form method='POST' action='/format' onsubmit=\"return confirm('" TR_STORAGE_CONFIRM_FORMAT "');\">"
+                             "<button class='danger' type='submit'>" TR_STORAGE_FORMAT_BTN "</button></form>"
+                             "<div class='table-wrap'><table><tr><th>" TR_F_NAME "</th><th>" TR_STORAGE_SIZE_BYTES "</th><th>" TR_STORAGE_ACTIONS "</th></tr>");
 
     DIR *dir = opendir(STORAGE_BASE_PATH);
     if (dir) {
@@ -113,7 +114,7 @@ esp_err_t page_storage_get(httpd_req_t *req) {
         }
         closedir(dir);
     }
-    httpd_resp_sendstr_chunk(req, "</table>");
+    httpd_resp_sendstr_chunk(req, "</table></div>");
     web_send_footer(req);
     return ESP_OK;
 }

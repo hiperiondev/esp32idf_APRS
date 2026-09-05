@@ -119,7 +119,7 @@ esp_err_t page_bm_get(httpd_req_t *req) {
     // IGate page. Rendered server-side on each GET rather than polled - none
     // of it changes without a save somewhere.
     web_fieldset_open(req, TR_BM_FS_STATUS);
-    httpd_resp_sendstr_chunk(req, "<table>");
+    httpd_resp_sendstr_chunk(req, "<div class='table-wrap'><table>");
     bm_row(req, TR_BM_ST_SERVICE, g_config.bm_en ? TR_BM_ST_ON : TR_BM_ST_OFF, g_config.bm_en);
     {
         bool present = aprs_bm_filter_has_monitor_term(g_config.aprs_filter);
@@ -149,7 +149,7 @@ esp_err_t page_bm_get(httpd_req_t *req) {
         snprintf(buf, sizeof(buf), "%u", (unsigned)lastheard_bm_count());
         bm_row(req, TR_BM_ST_STATIONS, buf, true);
     }
-    httpd_resp_sendstr_chunk(req, "</table>");
+    httpd_resp_sendstr_chunk(req, "</table></div>");
     web_raw(req, "<p style='color:var(--sub);font-size:12px;margin:4px 0'>" TR_BM_NOTE_STATUS "</p>");
     web_fieldset_close(req);
 

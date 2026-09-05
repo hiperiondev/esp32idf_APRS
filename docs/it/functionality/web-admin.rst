@@ -13,6 +13,69 @@ eccezione dello ``/style.css`` statico, che non porta dati di configurazione o d
 traffico — oltre a corrispondenza URI con wildcard, uno stack di gestore da 20 KB
 e purga LRU.
 
+Layout responsivo
+=================
+
+Un solo albero di marcatura e un solo foglio di stile servono desktop, tablet e
+telefono. Non c'è una pagina mobile separata, né rilevamento dello user-agent,
+né script di disposizione: ogni pagina porta una dichiarazione di viewport
+``width=device-width``, e ``web_handle_css()`` adatta gli stessi componenti su
+tre punti di rottura.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 26 74
+
+   * - Punto di rottura
+     - Che cosa cambia
+   * - **Oltre 900 px**
+     - Una barra laterale fissa da 220 px accanto a una colonna di contenuto
+       limitata a 1000 px.
+   * - **900 px e meno**
+     - La barra laterale diventa un cassetto laterale aperto da un pulsante di
+       menu nella barra superiore, e la colonna di contenuto prende tutta la
+       larghezza. La barra superiore resta fissa in alto, così si può
+       raggiungere il menu da qualunque punto di una lunga pagina di
+       impostazioni senza risalire.
+   * - **600 px e meno**
+     - Schede, titoli e margini si stringono, e ogni ``.row`` di campi del
+       modulo si riduce a una sola colonna.
+   * - **Puntatore grossolano**
+     - Indipendentemente dalla larghezza: pulsanti e voci di menu crescono fino
+       a un bersaglio tattile di 44 px, le caselle fino a 20 px, e i campi di
+       testo prendono un corpo da 16 px — al di sotto, un browser mobile
+       ingrandisce la pagina quando un campo riceve il fuoco e la lascia
+       ingrandita.
+
+Il cassetto è solo CSS. ``web_send_header()`` emette una casella nascosta come
+fratello sia della barra superiore sia della disposizione, più il pulsante di
+menu e uno sfondo attenuato che sono entrambi etichette di quella casella, così
+il foglio di stile raggiunge tutti e tre dallo stato ``:checked`` della casella.
+Non c'è nulla da inizializzare, nulla si rompe se uno script non viene caricato,
+e un caricamento di pagina ordinario lascia di nuovo il menu chiuso.
+
+Due dettagli reggono quasi tutto il comportamento orizzontale:
+
+* La colonna di contenuto è un elemento flex con ``min-width: 0``. Senza,
+  un elemento flex si rifiuta di restringersi sotto la larghezza del figlio più
+  largo, quindi una sola tabella larga allargherebbe l'intera pagina invece di
+  scorrere dentro sé stessa.
+* Ogni tabella di ogni pagina viene emessa dentro una cornice ``table-wrap``.
+  Una tabella si dimensiona sulle proprie colonne e non può essere ristretta
+  senza piegare le celle, così la cornice assorbe la differenza: le tabelle di
+  telemetria e meteo, a otto colonne, mantengono la loro larghezza piena e
+  scorrono lateralmente dentro la pagina. La tabella del traffico della
+  dashboard scorre su entrambi gli assi, dato che contiene anche più righe di
+  quante ne stiano sullo schermo.
+
+Le risposte mostrate fuori dalla cornice di amministrazione — l'interstiziale di
+salvataggio, i corpi ``401`` / ``403`` / ``429`` e il rifiuto a livello di
+pagina di un gestore — passano per ``web_send_standalone_page()``, che avvolge un
+frammento in un documento minimo proprio. Quel documento porta la propria
+dichiarazione di viewport e le proprie regole inline invece di collegare
+``/style.css``: deve rendersi allo stesso modo quando il foglio di stile non può
+essere servito, che è esattamente ciò che alcune di queste risposte segnalano.
+
 Perché helper per campo
 =======================
 

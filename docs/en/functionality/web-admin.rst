@@ -12,6 +12,62 @@ every page — the single exception being the static ``/style.css``, which carri
 no configuration or traffic data — plus wildcard URI matching, a 20 KB handler
 stack and LRU purge.
 
+Responsive layout
+=================
+
+One markup tree and one stylesheet serve desktop, tablet and phone. There is no
+separate mobile page, no user-agent sniffing and no layout script: every page
+carries a ``width=device-width`` viewport declaration, and ``web_handle_css()``
+adapts the same components at three breakpoints.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 26 74
+
+   * - Breakpoint
+     - What changes
+   * - **Above 900 px**
+     - A fixed 220 px sidebar beside a content column capped at 1000 px.
+   * - **900 px and below**
+     - The sidebar becomes an off-canvas drawer opened by a burger button in
+       the top bar, and the content column takes the full width. The top bar
+       sticks to the top of the viewport, so the menu can be reached from
+       anywhere in a long settings page without scrolling back up.
+   * - **600 px and below**
+     - Cards, headings and gutters tighten, and every ``.row`` of form fields
+       collapses to a single column.
+   * - **Coarse pointer**
+     - Independently of width: buttons and menu entries grow to a 44 px touch
+       target, checkboxes to 20 px, and text fields take a 16 px face — below
+       that, a mobile browser zooms the page in when a field is focused and
+       leaves it zoomed.
+
+The drawer is CSS-only. ``web_send_header()`` emits a hidden checkbox as a
+sibling of both the top bar and the layout, plus the burger and a backdrop that
+are both labels for it, so the stylesheet reaches all three from the checkbox's
+``:checked`` state. Nothing has to be initialised, nothing breaks if a script
+fails to load, and an ordinary page load leaves the menu closed again.
+
+Two details carry most of the horizontal behaviour:
+
+* The content column is a flex item with ``min-width: 0``. Without it a flex
+  item refuses to shrink below the width of its widest child, so a single wide
+  table would widen the whole page instead of scrolling inside itself.
+* Every table on every page is emitted inside a ``table-wrap`` frame. A table
+  sizes itself to its own columns and cannot be narrowed without folding its
+  cells, so the frame absorbs the difference: the eight-column telemetry and
+  weather tables keep their full width and scroll sideways within the page. The
+  dashboard's traffic table scrolls on both axes, since it also holds more rows
+  than fit on screen.
+
+Responses that are shown outside the admin chrome — the save interstitial, the
+``401`` / ``403`` / ``429`` bodies, and a handler's page-level refusal — go
+through ``web_send_standalone_page()``, which wraps a fragment in a minimal
+document of its own. That document carries its own viewport declaration and its
+own inline rules rather than linking ``/style.css``: it has to render the same
+way when the stylesheet cannot be served, which is exactly what some of these
+responses are reporting.
+
 Why per-field helpers
 =====================
 

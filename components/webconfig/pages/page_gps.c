@@ -68,11 +68,11 @@ static void gps_row_badge(httpd_req_t *req, const char *label, const char *key) 
 // Opens a fieldset holding one live table.
 static void gps_table_open(httpd_req_t *req, const char *legend) {
     web_fieldset_open(req, legend);
-    httpd_resp_sendstr_chunk(req, "<table>");
+    httpd_resp_sendstr_chunk(req, "<div class='table-wrap'><table>");
 }
 
 static void gps_table_close(httpd_req_t *req) {
-    httpd_resp_sendstr_chunk(req, "</table>");
+    httpd_resp_sendstr_chunk(req, "</table></div>");
     web_fieldset_close(req);
 }
 
@@ -445,10 +445,10 @@ esp_err_t page_gps_get(httpd_req_t *req) {
     {
         char wiring[400];
         snprintf(wiring, sizeof(wiring),
-                 "<table><tr><td>%s</td><td>UART%d</td></tr>"
+                 "<div class='table-wrap'><table><tr><td>%s</td><td>UART%d</td></tr>"
                  "<tr><td>%s</td><td>GPIO%d</td></tr>"
                  "<tr><td>%s</td><td>GPIO%d</td></tr>"
-                 "<tr><td>%s</td><td>%d 8N1</td></tr></table>",
+                 "<tr><td>%s</td><td>%d 8N1</td></tr></table></div>",
                  TR_GPS_PORT, (int)GPS_UART_PORT, TR_GPS_RX_PIN, (int)GPS_UART_RX_GPIO, TR_GPS_TX_PIN, (int)GPS_UART_TX_GPIO, TR_GPS_BAUD, (int)GPS_UART_BAUD);
         web_fieldset_open(req, TR_GPS_FS_WIRING);
         httpd_resp_sendstr_chunk(req, wiring);

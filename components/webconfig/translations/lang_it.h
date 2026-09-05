@@ -30,6 +30,8 @@
  */
 /** Italian text for the product name shown in the page header and browser title bar. English: "esp32idf_APRS Web Admin". */
 #define TR_BRAND "Amministrazione Web esp32idf_APRS"
+/** Italian text for the accessible name of the button that opens the navigation menu on narrow screens. English: "Menu". */
+#define TR_NAV_MENU "Menu"
 /** Italian text for the caption of the log-out link in the page header. English: "Logout". */
 #define TR_LOGOUT "Disconnetti"
 /** Italian text for the heading of the page shown after a successful log-out. English: "Logged out". */

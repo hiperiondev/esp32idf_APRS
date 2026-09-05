@@ -222,10 +222,8 @@ esp_err_t page_wireless_post(httpd_req_t *req) {
         }
         if (!usable) {
             httpd_resp_set_type(req, "text/html");
-            httpd_resp_sendstr(req, "<!DOCTYPE html><html><head><meta charset='utf-8'></head><body>"
-                                    "<p style='color:var(--red);font-weight:600'>" TR_WIFI_STA_NEEDS_SSID "</p>"
-                                    "<p><a href='/wireless'>&larr; " TR_F_WIRELESS "</a></p>"
-                                    "</body></html>");
+            web_send_standalone_page(req, "<p class='err'>" TR_WIFI_STA_NEEDS_SSID "</p>"
+                                          "<p><a href='/wireless'>&larr; " TR_F_WIRELESS "</a></p>");
             return ESP_OK;
         }
     }

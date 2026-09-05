@@ -86,7 +86,7 @@ esp_err_t page_msgchat_get(httpd_req_t *req) {
                                   "<input type='text' id='msgToInput' maxlength='9' placeholder='" TR_MSGCHAT_TO_PLACEHOLDER
                                   "' oninput=\"this.value=this.value.toUpperCase()\">"
                                   "</div>"
-                                  "<div style='flex:3;'>"
+                                  "<div style='flex:3 1 220px;'>"
                                   "<label>" TR_MSGCHAT_TEXT "</label>"
                                   "<input type='text' id='msgTextInput' maxlength='");
     httpd_resp_sendstr_chunk(req, composeMax);

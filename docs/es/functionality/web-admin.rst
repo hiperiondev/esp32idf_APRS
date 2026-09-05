@@ -13,6 +13,68 @@ excepción del ``/style.css`` estático, que no lleva datos de configuración ni
 tráfico —, además de coincidencia de URI con comodines, una pila de manejador de
 20 KB y purga LRU.
 
+Diseño adaptable
+================
+
+Un solo árbol de marcado y una sola hoja de estilos sirven para escritorio,
+tableta y teléfono. No hay una página móvil aparte, ni detección de
+user-agent, ni script de disposición: cada página lleva una declaración de
+viewport ``width=device-width``, y ``web_handle_css()`` adapta los mismos
+componentes en tres puntos de corte.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 26 74
+
+   * - Punto de corte
+     - Qué cambia
+   * - **Por encima de 900 px**
+     - Una barra lateral fija de 220 px junto a una columna de contenido
+       limitada a 1000 px.
+   * - **900 px o menos**
+     - La barra lateral pasa a ser un cajón lateral que abre un botón de menú
+       en la barra superior, y la columna de contenido ocupa todo el ancho. La
+       barra superior queda fija arriba, de modo que se puede llegar al menú
+       desde cualquier punto de una página de ajustes larga sin volver a subir.
+   * - **600 px o menos**
+     - Las tarjetas, los títulos y los márgenes se ajustan, y cada ``.row`` de
+       campos de formulario se reduce a una sola columna.
+   * - **Puntero grueso**
+     - Con independencia del ancho: los botones y las entradas del menú crecen
+       hasta un objetivo táctil de 44 px, las casillas hasta 20 px, y los
+       campos de texto toman un cuerpo de 16 px — por debajo de eso, un
+       navegador móvil amplía la página al enfocar un campo y la deja ampliada.
+
+El cajón es solo CSS. ``web_send_header()`` emite una casilla oculta como
+hermana tanto de la barra superior como de la disposición, más el botón de menú
+y un fondo atenuado que son ambos etiquetas de esa casilla, de modo que la hoja
+de estilos alcanza los tres desde el estado ``:checked`` de la casilla. No hay
+nada que inicializar, nada se rompe si un script no carga, y una carga de página
+normal vuelve a dejar el menú cerrado.
+
+Dos detalles sostienen casi todo el comportamiento horizontal:
+
+* La columna de contenido es un elemento flex con ``min-width: 0``. Sin eso, un
+  elemento flex se niega a encogerse por debajo del ancho de su hijo más ancho,
+  así que una sola tabla ancha ensancharía la página entera en vez de
+  desplazarse dentro de sí misma.
+* Cada tabla de cada página se emite dentro de un marco ``table-wrap``. Una
+  tabla se dimensiona según sus propias columnas y no se puede estrechar sin
+  plegar sus celdas, así que el marco absorbe la diferencia: las tablas de
+  telemetría y meteorología, de ocho columnas, conservan su ancho completo y se
+  desplazan lateralmente dentro de la página. La tabla de tráfico del panel se
+  desplaza en ambos ejes, ya que además contiene más filas de las que caben en
+  pantalla.
+
+Las respuestas que se muestran fuera del marco de administración — el
+intersticial de guardado, los cuerpos ``401`` / ``403`` / ``429`` y el rechazo a
+nivel de página de un manejador — pasan por ``web_send_standalone_page()``, que
+envuelve un fragmento en un documento mínimo propio. Ese documento lleva su
+propia declaración de viewport y sus propias reglas en línea en vez de enlazar
+``/style.css``: tiene que representarse igual cuando la hoja de estilos no se
+puede servir, que es justamente lo que algunas de esas respuestas están
+informando.
+
 Por qué ayudantes por campo
 ===========================
 

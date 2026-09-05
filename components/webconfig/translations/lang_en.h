@@ -30,6 +30,8 @@
  */
 /** Product name shown in the page header and browser title bar. */
 #define TR_BRAND "esp32idf_APRS Web Admin"
+/** Accessible name of the button that opens the navigation menu on narrow screens. */
+#define TR_NAV_MENU "Menu"
 /** Caption of the log-out link in the page header. */
 #define TR_LOGOUT "Logout"
 /** Heading of the page shown after a successful log-out. */

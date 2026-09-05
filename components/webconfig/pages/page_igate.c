@@ -129,7 +129,7 @@ esp_err_t page_igate_get(httpd_req_t *req) {
         char pcbuf[560];
         snprintf(pcbuf, sizeof(pcbuf),
                  "<label>%s</label>"
-                 "<div style='display:flex;gap:6px;align-items:center'>"
+                 "<div style='display:flex;gap:6px;align-items:center;flex-wrap:wrap'>"
                  "<input type='password' name='igatePasscode' id='igatePasscode' value='%s' maxlength='5' style='flex:1'>"
                  "<button type='button' class='secondary' onclick='aprsAutoGenPasscode()'>%s</button>"
                  "</div>"
@@ -212,7 +212,7 @@ esp_err_t page_igate_get(httpd_req_t *req) {
         char buf[600];
         snprintf(buf, sizeof(buf),
                  "<label>%s</label>"
-                 "<div style='display:flex;gap:14px;align-items:center'>"
+                 "<div style='display:flex;gap:14px;align-items:center;flex-wrap:wrap'>"
                  "<label style='display:inline-flex;align-items:center;margin:0'><input type='checkbox' name='igatePos2rf' "
                  "style='width:16px;height:16px;margin:0 6px 0 0' %s> RF</label>"
                  "<label style='display:inline-flex;align-items:center;margin:0'><input type='checkbox' name='igatePos2inet' "

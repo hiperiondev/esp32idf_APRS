@@ -197,7 +197,7 @@ static void render_full_symbol_table(httpd_req_t *req, char table_char, const ch
     char hdr[256];
     snprintf(hdr, sizeof(hdr),
              "<fieldset><legend>%s</legend>"
-             "<table><tr><th>%s</th><th>%s</th><th>%s</th></tr>",
+             "<div class='table-wrap'><table><tr><th>%s</th><th>%s</th><th>%s</th></tr>",
              legend, TR_SYM_ICON, TR_SYM_CODE, TR_SYM_MEANING);
     httpd_resp_sendstr_chunk(req, hdr);
 
@@ -225,7 +225,7 @@ static void render_full_symbol_table(httpd_req_t *req, char table_char, const ch
         snprintf(row, sizeof(row), "<td><code>%s</code></td><td>%s</td></tr>", code, (meaning && meaning[0]) ? meaning : "&mdash;");
         httpd_resp_sendstr_chunk(req, row);
     }
-    httpd_resp_sendstr_chunk(req, "</table></fieldset>");
+    httpd_resp_sendstr_chunk(req, "</table></div></fieldset>");
 }
 
 esp_err_t page_symbol_get(httpd_req_t *req) {
@@ -238,8 +238,8 @@ esp_err_t page_symbol_get(httpd_req_t *req) {
     // Quick-pick shortlist (with icon tiles added).
     {
         char hdr[256];
-        snprintf(hdr, sizeof(hdr), "<fieldset><legend>%s</legend><table><tr><th>%s</th><th>%s</th><th>%s</th></tr>", TR_SYM_QUICK_PICK, TR_SYM_ICON,
-                 TR_SYM_CODE, TR_SYM_MEANING);
+        snprintf(hdr, sizeof(hdr), "<fieldset><legend>%s</legend><div class='table-wrap'><table><tr><th>%s</th><th>%s</th><th>%s</th></tr>", TR_SYM_QUICK_PICK,
+                 TR_SYM_ICON, TR_SYM_CODE, TR_SYM_MEANING);
         httpd_resp_sendstr_chunk(req, hdr);
         for (size_t i = 0; i < SYM_COUNT; i++) {
             char table = COMMON_SYMBOLS[i].code[0];
@@ -250,7 +250,7 @@ esp_err_t page_symbol_get(httpd_req_t *req) {
             snprintf(row, sizeof(row), "<td><code>%s</code></td><td>%s</td></tr>", COMMON_SYMBOLS[i].code, COMMON_SYMBOLS[i].label);
             httpd_resp_sendstr_chunk(req, row);
         }
-        httpd_resp_sendstr_chunk(req, "</table></fieldset>");
+        httpd_resp_sendstr_chunk(req, "</table></div></fieldset>");
     }
 
     // Full 94-symbol Primary and Alternate tables.
@@ -258,7 +258,7 @@ esp_err_t page_symbol_get(httpd_req_t *req) {
     render_full_symbol_table(req, '\\', TR_SYM_ALTERNATE_TABLE);
 
     // Currently configured symbols, now shown with icon tiles too.
-    httpd_resp_sendstr_chunk(req, "<fieldset><legend>" TR_SYM_CURRENTLY_CONFIGURED "</legend><table>");
+    httpd_resp_sendstr_chunk(req, "<fieldset><legend>" TR_SYM_CURRENTLY_CONFIGURED "</legend><div class='table-wrap'><table>");
     {
         struct {
             const char *label;
@@ -278,7 +278,7 @@ esp_err_t page_symbol_get(httpd_req_t *req) {
             httpd_resp_sendstr_chunk(req, row);
         }
     }
-    httpd_resp_sendstr_chunk(req, "</table></fieldset>");
+    httpd_resp_sendstr_chunk(req, "</table></div></fieldset>");
 
     web_send_footer(req);
     return ESP_OK;

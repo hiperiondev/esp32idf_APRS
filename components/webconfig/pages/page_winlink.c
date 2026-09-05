@@ -137,7 +137,7 @@ esp_err_t page_winlink_get(httpd_req_t *req) {
     httpd_resp_sendstr_chunk(req, "<p class='faint'>" TR_WL_NOTE_GATEWAY "</p>");
     web_field_checkbox(req, TR_WL_GATE_EXEMPT, "wlGateExempt", g_config.wl_gate_exempt);
 
-    httpd_resp_sendstr_chunk(req, "<table>");
+    httpd_resp_sendstr_chunk(req, "<div class='table-wrap'><table>");
     wl_gate_row(req, TR_WL_GATE_MSG_GATE_EN, g_config.igate_msg_gate_en ? TR_ENABLED : TR_DISABLED);
     {
         char v[24];
@@ -146,7 +146,7 @@ esp_err_t page_winlink_get(httpd_req_t *req) {
         snprintf(v, sizeof(v), "%u", (unsigned)g_config.igate_msg_max_hops);
         wl_gate_row(req, TR_WL_GATE_HOPS, v);
     }
-    httpd_resp_sendstr_chunk(req, "</table>");
+    httpd_resp_sendstr_chunk(req, "</table></div>");
     web_fieldset_close(req);
 
     httpd_resp_sendstr_chunk(req, "<button type='submit'>" TR_BTN_SAVE "</button></form>");
@@ -158,13 +158,13 @@ esp_err_t page_winlink_get(httpd_req_t *req) {
     httpd_resp_sendstr_chunk(req, "<fieldset><legend>" TR_WL_FS_SESSION "</legend>");
     httpd_resp_sendstr_chunk(req, "<p class='faint'>" TR_WL_NOTE_SESSION "</p>");
 
-    httpd_resp_sendstr_chunk(req, "<table>");
+    httpd_resp_sendstr_chunk(req, "<div class='table-wrap'><table>");
     wl_row(req, TR_WL_ST_STATE, "state");
     wl_row(req, TR_WL_ST_REMAINING, "remaining");
     wl_row(req, TR_WL_ST_QUEUE, "queue");
     wl_row(req, TR_WL_ST_MAILBOX, "mailbox");
     wl_row(req, TR_WL_ST_ERROR, "error");
-    httpd_resp_sendstr_chunk(req, "</table>");
+    httpd_resp_sendstr_chunk(req, "</table></div>");
 
     httpd_resp_sendstr_chunk(req, "<p>"
                                   "<button type='button' onclick=\"wlAct('login')\">" TR_WL_BTN_LOGIN "</button> "

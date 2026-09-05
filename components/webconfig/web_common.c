@@ -267,7 +267,7 @@ bool web_check_auth(httpd_req_t *req) {
     if (req->method == HTTP_POST && !web_check_csrf_origin(req)) {
         httpd_resp_set_status(req, "403 Forbidden");
         httpd_resp_set_type(req, "text/html");
-        httpd_resp_sendstr(req, "<h1>" TR_FORBIDDEN_CSRF "</h1>");
+        web_send_standalone_page(req, "<h1>" TR_FORBIDDEN_CSRF "</h1>");
         return false;
     }
 
@@ -285,7 +285,7 @@ bool web_check_auth(httpd_req_t *req) {
         snprintf(retry_hdr, sizeof(retry_hdr), "%d", lockout_remaining_s);
         httpd_resp_set_hdr(req, "Retry-After", retry_hdr);
         httpd_resp_set_type(req, "text/html");
-        httpd_resp_sendstr(req, "<h1>" TR_UNAUTHORIZED "</h1>");
+        web_send_standalone_page(req, "<h1>" TR_UNAUTHORIZED "</h1>");
         return false;
     }
 
@@ -336,7 +336,7 @@ challenge:
     httpd_resp_set_status(req, "401 Unauthorized");
     httpd_resp_set_hdr(req, "WWW-Authenticate", "Basic realm=\"" APRS_SOFTWARE_NAME "\"");
     httpd_resp_set_type(req, "text/html");
-    httpd_resp_sendstr(req, "<h1>" TR_UNAUTHORIZED "</h1>");
+    web_send_standalone_page(req, "<h1>" TR_UNAUTHORIZED "</h1>");
     return false;
 }
 
@@ -845,11 +845,23 @@ void web_send_header(httpd_req_t *req, const char *title, const char *active_men
     // so a value that was just saved appears not to have been saved at all.
     httpd_resp_set_hdr(req, "Cache-Control", "no-store, no-cache, must-revalidate");
     httpd_resp_set_hdr(req, "Pragma", "no-cache");
+    // The nav-toggle checkbox carries the drawer's open/closed state on narrow
+    // screens and is a sibling of both the top bar and the layout, so the
+    // burger, the drawer and its backdrop are all driven from it by the
+    // stylesheet alone. On a wide screen the burger and the backdrop are not
+    // displayed and the menu renders as the fixed sidebar beside the content,
+    // so the same markup serves every viewport and the state resets by itself
+    // on each navigation.
     httpd_resp_sendstr_chunk(req, "<!DOCTYPE html><html><head><meta charset='utf-8'>"
                                   "<meta name='viewport' content='width=device-width,initial-scale=1'>"
                                   "<link rel='stylesheet' href='/style.css'>"
                                   "<title>" APRS_SOFTWARE_NAME "</title></head><body>"
-                                  "<div class='topbar'><span class='brand'><span class='brand-mark' aria-hidden='true'></span>" TR_BRAND "</span>"
+                                  "<input type='checkbox' id='navtoggle' class='nav-toggle' aria-label='" TR_NAV_MENU "'>"
+                                  "<div class='topbar'>"
+                                  "<label for='navtoggle' class='nav-burger' title='" TR_NAV_MENU "'>"
+                                  "<span></span><span></span><span></span></label>"
+                                  "<span class='brand'><span class='brand-mark' aria-hidden='true'></span>"
+                                  "<span class='brand-text'>" TR_BRAND "</span></span>"
                                   "<div class='topbar-right'><a class='logout' href='/logout'>" TR_LOGOUT "</a></div></div>"
                                   "<div class='layout'><nav class='sidebar'><ul>");
 
@@ -859,7 +871,7 @@ void web_send_header(httpd_req_t *req, const char *title, const char *active_men
         snprintf(line, sizeof(line), "<li><a href='%s'%s>%s</a></li>", MENU[i].href, is_active ? " class='active'" : "", MENU[i].label);
         httpd_resp_sendstr_chunk(req, line);
     }
-    httpd_resp_sendstr_chunk(req, "</ul></nav><main class='content'>");
+    httpd_resp_sendstr_chunk(req, "</ul></nav><label for='navtoggle' class='nav-scrim'></label><main class='content'>");
     if (title) {
         httpd_resp_sendstr_chunk(req, "<h1>");
         httpd_resp_sendstr_chunk(req, title);
@@ -874,36 +886,55 @@ void web_send_footer(httpd_req_t *req) {
     httpd_resp_sendstr_chunk(req, NULL); // end chunked response
 }
 
+void web_send_standalone_page(httpd_req_t *req, const char *body_html) {
+    // Every response that is not a full admin page still has to read on a
+    // phone. These bodies are short and are shown outside the admin chrome,
+    // so they carry their own head instead of linking /style.css: the
+    // viewport declaration is what stops a handset from laying the page out
+    // at desktop width and then scaling the result down to unreadable, and
+    // the few rules below give the text a comfortable measure and the same
+    // face as the rest of the UI. Colours are spelled out literally here
+    // because the var(--...) custom properties are defined by the stylesheet
+    // this page deliberately does not load.
+    httpd_resp_sendstr_chunk(req, "<!DOCTYPE html><html><head><meta charset='utf-8'>"
+                                  "<meta name='viewport' content='width=device-width,initial-scale=1'>"
+                                  "<style>"
+                                  "html{-webkit-text-size-adjust:100%;text-size-adjust:100%;}"
+                                  "body{font-family:'Segoe UI',system-ui,sans-serif;color:#111827;background:#f6f7f9;"
+                                  "margin:0;padding:24px 16px;max-width:640px;overflow-wrap:anywhere;line-height:1.5;}"
+                                  "h1{font-size:1.25em;margin:0 0 12px;}"
+                                  "p{margin:8px 0;}"
+                                  "a{color:#2f6fed;}"
+                                  ".err{color:#dc2626;font-weight:600;}"
+                                  "</style></head><body>");
+    httpd_resp_sendstr_chunk(req, body_html);
+    httpd_resp_sendstr_chunk(req, "</body></html>");
+    httpd_resp_sendstr_chunk(req, NULL); // end chunked response
+}
+
 void web_send_save_result(httpd_req_t *req, bool ok, const char *location) {
     // Sized for the longest translation of either body plus two copies of the
     // location, so neither branch can be truncated by snprintf().
     char buf[512];
 
+    httpd_resp_set_type(req, "text/html");
+    httpd_resp_set_hdr(req, "Cache-Control", "no-store, no-cache, must-revalidate");
+    httpd_resp_set_hdr(req, "Pragma", "no-cache");
+
     if (ok) {
-        snprintf(buf, sizeof(buf),
-                 "<!DOCTYPE html><html><head><meta charset='utf-8'>"
-                 "<meta http-equiv='refresh' content='1;url=%s'></head>"
-                 "<body>" TR_SAVED_REDIRECT "</body></html>",
-                 location);
+        // The redirect is declared in the body rather than the head because
+        // the head belongs to web_send_standalone_page(); a meta refresh is
+        // honoured wherever in the document it appears.
+        snprintf(buf, sizeof(buf), "<meta http-equiv='refresh' content='1;url=%s'><p>" TR_SAVED_REDIRECT "</p>", location);
     } else {
         // No meta refresh on this branch: the page the user came from is
         // rendered from the live settings, so bouncing straight back to it
         // would redisplay exactly what was typed and read as a success. The
         // failure stays on screen until the operator follows the link.
-        // This interstitial doesn't link /style.css, so the failure text
-        // color is spelled out literally here rather than through the
-        // var(--red) custom property the rest of the admin UI shares.
-        snprintf(buf, sizeof(buf),
-                 "<!DOCTYPE html><html><head><meta charset='utf-8'></head>"
-                 "<body><p style='color:#dc2626;font-weight:600'>" TR_SAVE_FAILED "</p>"
-                 "<p><a href='%s'>&larr; %s</a></p></body></html>",
-                 location, location);
+        snprintf(buf, sizeof(buf), "<p class='err'>" TR_SAVE_FAILED "</p><p><a href='%s'>&larr; %s</a></p>", location, location);
     }
 
-    httpd_resp_set_type(req, "text/html");
-    httpd_resp_set_hdr(req, "Cache-Control", "no-store, no-cache, must-revalidate");
-    httpd_resp_set_hdr(req, "Pragma", "no-cache");
-    httpd_resp_sendstr(req, buf);
+    web_send_standalone_page(req, buf);
 }
 
 esp_err_t web_handle_css(httpd_req_t *req) {
@@ -912,37 +943,72 @@ esp_err_t web_handle_css(httpd_req_t *req) {
         ":root{--bg:#f6f7f9;--card:#ffffff;--border:#e6e8ec;--accent:#2f6fed;"
         "--green:#1a7f37;--red:#dc2626;--text:#111827;--sub:#6b7280;"
         "--shadow:0 1px 3px rgba(0,0,0,.06),0 1px 2px rgba(0,0,0,.04);"
-        "--radius-card:14px;--radius-pill:999px;}"
+        "--radius-card:14px;--radius-pill:999px;"
+        // Height of the top bar, shared by the layout's minimum height and by
+        // the off-canvas drawer that sits under it on narrow screens, so all
+        // three stay aligned from one value.
+        "--topbar-h:56px;--gutter:28px;}"
         "*{box-sizing:border-box;margin:0;padding:0;}"
+        // text-size-adjust keeps a phone in landscape from inflating the body
+        // text on its own, which would undo the breakpoints below.
+        "html{-webkit-text-size-adjust:100%;text-size-adjust:100%;}"
         "body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text);}"
-        ".topbar{display:flex;justify-content:space-between;align-items:center;padding:14px 24px;"
+        // Long unbroken tokens are ordinary content here - callsigns with
+        // paths, APRS-IS filter strings, raw packets, file names - and a
+        // viewport narrower than one of them would otherwise be widened by it.
+        "body,td,th,p,li,label{overflow-wrap:anywhere;}"
+        "img{max-width:100%;height:auto;}"
+        ".topbar{display:flex;justify-content:space-between;align-items:center;gap:12px;"
+        "height:var(--topbar-h);padding:0 var(--gutter);"
         "background:var(--card);border-bottom:1px solid var(--border);box-shadow:0 1px 2px rgba(0,0,0,.03);}"
-        ".topbar .brand{display:flex;align-items:center;gap:10px;font-weight:700;color:var(--text);font-size:1.05em;}"
+        ".topbar .brand{display:flex;flex:1;align-items:center;gap:10px;font-weight:700;color:var(--text);font-size:1.05em;min-width:0;}"
+        ".topbar .brand-text{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}"
         ".topbar .brand-mark{width:22px;height:22px;border-radius:7px;flex:none;"
         "background:linear-gradient(135deg,var(--accent),#7fb2ff);}"
         ".topbar-right{display:flex;align-items:center;gap:10px;border:1px solid var(--border);"
-        "border-radius:var(--radius-pill);padding:6px 16px;background:var(--bg);}"
+        "border-radius:var(--radius-pill);padding:6px 16px;background:var(--bg);flex:none;}"
         ".topbar .logout{color:var(--sub);text-decoration:none;font-size:.85em;font-weight:600;}"
         ".topbar .logout:hover{color:var(--red);}"
-        ".layout{display:flex;min-height:calc(100vh - 52px);}"
-        ".sidebar{width:220px;background:var(--card);border-right:1px solid var(--border);"
-        "box-shadow:1px 0 3px rgba(0,0,0,.03);padding:16px 0;}"
+        // Navigation drawer control. The checkbox carries the open/closed
+        // state and is a sibling of both the top bar and the layout, so the
+        // burger, the drawer and the scrim are all driven from it in CSS
+        // alone - no script, and the state resets by itself on every
+        // navigation. It is moved out of sight rather than hidden with
+        // display:none so it stays reachable by keyboard.
+        ".nav-toggle{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;}"
+        ".nav-burger{display:none;flex:none;width:40px;height:40px;flex-direction:column;"
+        "align-items:center;justify-content:center;gap:4px;cursor:pointer;"
+        "border:1px solid var(--border);border-radius:9px;background:var(--bg);}"
+        ".nav-burger span{display:block;width:18px;height:2px;border-radius:2px;background:var(--text);}"
+        ".nav-toggle:focus-visible+.topbar .nav-burger{border-color:var(--accent);box-shadow:0 0 0 2px rgba(47,111,237,.35);}"
+        ".layout{display:flex;align-items:flex-start;min-height:calc(100vh - var(--topbar-h));}"
+        ".sidebar{width:220px;flex:none;align-self:stretch;background:var(--card);"
+        "border-right:1px solid var(--border);box-shadow:1px 0 3px rgba(0,0,0,.03);padding:16px 0;}"
         ".sidebar ul{list-style:none;}"
         ".sidebar li a{display:block;padding:10px 18px;color:var(--text);text-decoration:none;"
         "font-size:.85em;border-left:3px solid transparent;transition:.15s;}"
         ".sidebar li a:hover{background:var(--bg);border-left-color:var(--border);}"
         ".sidebar li a.active{background:#eaf1ff;color:var(--accent);font-weight:700;border-left-color:var(--accent);}"
-        ".content{flex:1;padding:24px 28px;max-width:900px;}"
+        // Dimmed backdrop behind the open drawer. It is a label for the same
+        // checkbox, so tapping anywhere outside the menu closes it.
+        ".nav-scrim{display:none;}"
+        // min-width:0 is what lets this column shrink below the width of its
+        // widest child. Without it a flex item refuses to go under its content
+        // width, so one wide table would push the whole page sideways instead
+        // of scrolling inside its own frame.
+        ".content{flex:1;min-width:0;padding:24px var(--gutter);max-width:1000px;}"
         "h1{color:var(--text);font-size:1.5em;font-weight:800;margin-bottom:18px;}"
         "fieldset{background:var(--card);border:1px solid var(--border);border-radius:var(--radius-card);"
-        "box-shadow:var(--shadow);margin-bottom:20px;padding:20px 22px;}"
+        "box-shadow:var(--shadow);margin-bottom:20px;padding:20px 22px;min-width:0;}"
         "legend{width:100%;color:var(--text);padding:0;margin:0 0 14px;font-size:1.05em;font-weight:700;}"
         // At-a-glance metric strip (dashboard System Info and similar live
         // stats): a row of equal cards, each with a small uppercase label and
         // a large value, matching the admin UI's stat-card look everywhere
-        // it is used.
-        ".stat-grid{display:flex;flex-wrap:wrap;gap:14px;}"
-        ".stat-card{flex:1;min-width:150px;background:var(--card);border:1px solid var(--border);"
+        // it is used. The auto-fit track keeps the cards a readable width and
+        // re-flows them into as many columns as the viewport holds, down to a
+        // single column on a phone.
+        ".stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;}"
+        ".stat-card{min-width:0;background:var(--card);border:1px solid var(--border);"
         "border-radius:var(--radius-card);padding:14px 16px;}"
         ".stat-label{color:var(--sub);font-size:.72em;font-weight:700;letter-spacing:.04em;"
         "text-transform:uppercase;margin-bottom:8px;}"
@@ -953,7 +1019,7 @@ esp_err_t web_handle_css(httpd_req_t *req) {
         "p label{display:inline;}"
         ".pwd-show{display:block;font-size:.72em;font-weight:400;margin:4px 0 0;color:var(--sub);}"
         "input[type=text],input[type=password],input[type=number],select,textarea{"
-        "width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;"
+        "width:100%;max-width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;"
         "background:#fff;color:var(--text);font-size:.9em;outline:none;transition:.2s;}"
         "input:focus,select:focus,textarea:focus{border-color:var(--accent);}"
         "input[type=checkbox]{width:16px;height:16px;cursor:pointer;accent-color:var(--accent);margin-right:6px;}"
@@ -967,10 +1033,17 @@ esp_err_t web_handle_css(httpd_req_t *req) {
         "button.secondary:hover,.btn.secondary:hover{background:#e2e6ec;}"
         "button.danger,.btn.danger{background:#fef2f2;color:var(--red);border:1px solid var(--red);}"
         "button.danger:hover,.btn.danger:hover{background:var(--red);color:#fff;}"
+        ".btnrow{flex-wrap:wrap;}"
+        // Every table on every page is emitted inside one of these frames. A
+        // table sizes itself to its own columns and cannot be made narrower
+        // without folding its cells, so the frame is what absorbs the
+        // difference: the table keeps its full width and scrolls sideways
+        // within the page instead of widening it.
+        ".table-wrap{width:100%;max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;}"
         "table{border-collapse:collapse;width:100%;font-size:.82em;}"
         "table th,table td{border:1px solid var(--border);padding:7px 9px;text-align:left;}"
         "table th{background:var(--bg);color:var(--sub);}"
-        ".login-box{max-width:340px;margin:80px auto;background:var(--card);padding:28px;"
+        ".login-box{max-width:340px;width:100%;margin:min(80px,10vh) auto;background:var(--card);padding:28px;"
         "border-radius:var(--radius-card);box-shadow:var(--shadow);border:1px solid var(--border);}"
         ".login-box h1{border:0;text-align:center;}"
         ".msg-ok{color:var(--green);} .msg-err{color:var(--red);}"
@@ -1000,9 +1073,12 @@ esp_err_t web_handle_css(httpd_req_t *req) {
         // available for any page that wants it.
         ".info-box{background:#eef4ff;border:1px solid #cfe0fb;color:#33456b;"
         "border-radius:10px;padding:10px 14px;font-size:.82em;}"
-        ".traffic-actions{display:flex;gap:8px;margin-bottom:10px;}"
+        ".traffic-actions{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px;}"
         ".traffic-actions .btn{margin-top:0;padding:6px 12px;font-size:.8em;}"
-        ".traffic-table-wrap{max-height:360px;overflow-y:auto;}"
+        // The traffic table is the one frame that scrolls on both axes: it
+        // holds more rows than fit on screen as well as more columns than fit
+        // across a phone.
+        ".traffic-table-wrap{max-height:360px;overflow:auto;-webkit-overflow-scrolling:touch;}"
         "#trafficTable td{font-family:'Consolas','Courier New',monospace;font-size:.95em;"
         "white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:340px;}"
         "#trafficTable th:nth-child(4),#trafficTable td:nth-child(4){max-width:420px;}"
@@ -1016,7 +1092,7 @@ esp_err_t web_handle_css(httpd_req_t *req) {
         ".chat-box{min-height:120px;max-height:70vh;overflow-y:auto;display:flex;flex-direction:column;"
         "gap:8px;padding:10px;background:var(--bg);border:1px solid var(--border);border-radius:8px;}"
         ".chat-empty{color:var(--sub);font-size:.85em;text-align:center;padding:20px 0;}"
-        ".chat-bubble{max-width:78%;padding:8px 12px;border-radius:12px;font-size:.85em;word-break:break-word;}"
+        ".chat-bubble{max-width:min(78%,560px);padding:8px 12px;border-radius:12px;font-size:.85em;word-break:break-word;}"
         ".chat-bubble .chat-meta{display:block;font-size:.75em;opacity:.7;margin-bottom:3px;}"
         ".chat-bubble.rx{align-self:flex-start;background:#e8e7e3;color:var(--text);border-bottom-left-radius:2px;}"
         ".chat-bubble.tx{align-self:flex-end;background:var(--accent);color:#fff;border-bottom-right-radius:2px;}"
@@ -1050,18 +1126,67 @@ esp_err_t web_handle_css(httpd_req_t *req) {
         "border:1px solid var(--border);border-radius:6px;padding:6px 8px;}"
         ".eqn-preview b{color:var(--accent);}"
         "@media (max-width:420px){.achan-head{flex-wrap:wrap;row-gap:4px;}.achan-head .achan-name{flex-basis:100%;order:3;white-space:normal;}}"
-        // Console log window (Logs page): a fixed-height terminal panel that
-        // scrolls in both directions. Vertically because it holds more rows
-        // than fit on screen, horizontally because white-space:pre keeps each
-        // console line whole - a log line wrapped at the panel's width would
-        // read as two entries and hide which one the timestamp belongs to.
+        // Console log window (Logs page): a terminal panel that scrolls in
+        // both directions. Vertically because it holds more rows than fit on
+        // screen, horizontally because white-space:pre keeps each console line
+        // whole - a log line wrapped at the panel's width would read as two
+        // entries and hide which one the timestamp belongs to. Its height
+        // tracks the viewport between a floor that still shows a useful number
+        // of lines on a phone and the desktop ceiling.
         // The light palette matches the rest of the admin UI's cards while
-        // the monospace font and pre-wrap keep a wall of log lines scannable.
-        ".log-actions{display:flex;align-items:center;gap:12px;margin-bottom:10px;}"
+        // the monospace font keeps a wall of log lines scannable.
+        ".log-actions{display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin-bottom:10px;}"
         ".log-actions button{margin-top:0;}"
-        ".log-box{height:420px;overflow:auto;margin:0;padding:10px;background:#f0f0f0;color:#111111;"
+        ".log-box{height:clamp(220px,55vh,420px);overflow:auto;margin:0;padding:10px;background:#f0f0f0;color:#111111;"
         "font-family:'Consolas','Courier New',monospace;font-size:.78em;line-height:1.35;"
-        "white-space:pre;border:1px solid var(--border);border-radius:8px;}";
+        "white-space:pre;border:1px solid var(--border);border-radius:8px;"
+        "-webkit-overflow-scrolling:touch;}"
+        // ---------------------------------------------------------------
+        // Tablet and phone: the fixed sidebar becomes an off-canvas drawer
+        // opened from the burger in the top bar, and the page gets the full
+        // width back. The top bar sticks so the drawer can always be reached
+        // without scrolling back up a long settings page.
+        "@media (max-width:900px){"
+        ":root{--gutter:16px;}"
+        ".topbar{position:sticky;top:0;z-index:40;}"
+        ".nav-burger{display:flex;}"
+        ".sidebar{position:fixed;top:0;left:0;bottom:0;z-index:30;width:250px;max-width:80vw;"
+        "overflow-y:auto;padding-top:calc(var(--topbar-h) + 12px);border-right:0;"
+        "box-shadow:0 0 24px rgba(0,0,0,.18);transform:translateX(-100%);transition:transform .2s ease;}"
+        ".nav-toggle:checked~.layout .sidebar{transform:translateX(0);}"
+        ".nav-scrim{position:fixed;inset:0;z-index:20;background:rgba(17,24,39,.45);}"
+        ".nav-toggle:checked~.layout .nav-scrim{display:block;}"
+        ".content{max-width:none;padding:20px var(--gutter);}"
+        "}"
+        // Phone: tighter cards and headings, one form column per row, and a
+        // shorter ellipsis budget for the traffic table's packet cells so a
+        // sideways scroll stays short.
+        "@media (max-width:600px){"
+        "h1{font-size:1.25em;margin-bottom:14px;}"
+        "fieldset{padding:16px 14px;margin-bottom:16px;}"
+        ".topbar .brand{font-size:.95em;}"
+        ".topbar-right{padding:6px 12px;}"
+        ".row{gap:12px;}"
+        ".row>div{flex-basis:100%;}"
+        ".chat-bubble{max-width:90%;}"
+        "#trafficTable td,#trafficTable th:nth-child(4),#trafficTable td:nth-child(4){max-width:220px;}"
+        "}"
+        // Touch input: the controls get finger-sized, and the text fields get
+        // a 16px face because a smaller one makes mobile browsers zoom the
+        // page in on focus and leave it zoomed. The toggle switch's own
+        // checkbox is re-hidden after the sizing rule above it, since it is
+        // painted by its slider rather than by the box itself.
+        "@media (pointer:coarse){"
+        "input[type=text],input[type=password],input[type=number],select,textarea{font-size:16px;padding:10px 12px;}"
+        "input[type=checkbox]{width:20px;height:20px;}"
+        ".switch input{width:0;height:0;}"
+        "button,.btn{min-height:44px;padding:12px 20px;}"
+        ".traffic-actions .btn,.wl-msg-acts button,.log-actions button{min-height:36px;}"
+        ".sidebar li a{padding:14px 18px;font-size:.95em;}"
+        "}"
+        "@media (prefers-reduced-motion:reduce){"
+        ".sidebar{transition:none;}"
+        "}";
     httpd_resp_set_type(req, "text/css");
     return httpd_resp_sendstr(req, css);
 }

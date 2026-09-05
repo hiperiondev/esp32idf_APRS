@@ -30,6 +30,8 @@
  */
 /** Spanish text for the product name shown in the page header and browser title bar. English: "esp32idf_APRS Web Admin". */
 #define TR_BRAND "Administración Web esp32idf_APRS"
+/** Spanish text for the accessible name of the button that opens the navigation menu on narrow screens. English: "Menu". */
+#define TR_NAV_MENU "Menú"
 /** Spanish text for the caption of the log-out link in the page header. English: "Logout". */
 #define TR_LOGOUT "Cerrar sesión"
 /** Spanish text for the heading of the page shown after a successful log-out. English: "Logged out". */

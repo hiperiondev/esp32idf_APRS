@@ -134,7 +134,7 @@ static void tlm_channel_options(httpd_req_t *req, sensor_local_tlm_channel_mask_
 // table cell. bit is 0-based; digital channels live at mask bits 1<<(5+bit).
 static void tlm_bit_channel_select(httpd_req_t *req, int bit, uint8_t selected) {
     char buf[80];
-    snprintf(buf, sizeof(buf), "<select name='tlmBitCh%d' style='width:150px'>", bit);
+    snprintf(buf, sizeof(buf), "<select name='tlmBitCh%d' style='min-width:150px'>", bit);
     httpd_resp_sendstr_chunk(req, buf);
     tlm_channel_options(req, (sensor_local_tlm_channel_mask_t)(1u << (5 + bit)), selected, -1);
     httpd_resp_sendstr_chunk(req, "</select>");
@@ -504,7 +504,7 @@ static void send_digital_form(httpd_req_t *req, const telemetry_config_t *cfg) {
     web_field_checkbox(req, TR_F_BEACON_VIA_INTERNET, "digInet", cfg->digital_tx2inet);
     web_field_text(req, TR_F_NAME, "projTitle", cfg->proj_title, 23);
 
-    httpd_resp_sendstr_chunk(req, "<table><tr>"
+    httpd_resp_sendstr_chunk(req, "<div class='table-wrap'><table><tr>"
                                   "<th>" TR_TLM_BIT "</th><th>" TR_F_ENABLE "</th><th>" TR_TLM_SENSE "</th>"
                                   "<th>" TR_TLM_LABEL "</th><th>" TR_TLM_ON_STATE "</th><th>" TR_TLM_SOURCE "</th>"
                                   "<th>" TR_F_IGATE "</th><th>" TR_TLM_RF "</th></tr>");
@@ -532,7 +532,7 @@ static void send_digital_form(httpd_req_t *req, const telemetry_config_t *cfg) {
                  i, cfg->tlm_bit_igate[i] ? "checked" : "", i, cfg->tlm_bit_rf[i] ? "checked" : "");
         httpd_resp_sendstr_chunk(req, row);
     }
-    httpd_resp_sendstr_chunk(req, "</table>");
+    httpd_resp_sendstr_chunk(req, "</table></div>");
     web_fieldset_close(req);
 }
 

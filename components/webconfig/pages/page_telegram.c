@@ -382,7 +382,7 @@ esp_err_t page_telegram_get(httpd_req_t *req) {
     // connection, not settings, and putting them inside would invite a Save
     // that appears to store them.
     web_fieldset_open(req, TR_TG_FS_STATUS);
-    httpd_resp_sendstr_chunk(req, "<table>");
+    httpd_resp_sendstr_chunk(req, "<div class='table-wrap'><table>");
     tg_row(req, TR_TG_ST_STATE, "state");
     tg_row(req, TR_TG_ST_REASON, "reason");
     tg_row(req, TR_TG_ST_DETAIL, "detail");
@@ -393,7 +393,7 @@ esp_err_t page_telegram_get(httpd_req_t *req) {
     tg_row(req, TR_TG_ST_SENT, "sent");
     tg_row(req, TR_TG_ST_REJECTED, "rejected");
     tg_row(req, TR_TG_ST_POLL_ERRORS, "pollErrors");
-    httpd_resp_sendstr_chunk(req, "</table>");
+    httpd_resp_sendstr_chunk(req, "</table></div>");
     web_raw(req, "<p style='color:var(--sub);font-size:12px;margin:4px 0'>" TR_TG_NOTE_STATUS "</p>");
     web_fieldset_close(req);
 

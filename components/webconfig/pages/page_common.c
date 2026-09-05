@@ -63,7 +63,7 @@ esp_err_t page_logout(httpd_req_t *req) {
     httpd_resp_set_status(req, "401 Unauthorized");
     httpd_resp_set_hdr(req, "WWW-Authenticate", "Basic realm=\"" APRS_SOFTWARE_NAME "\"");
     httpd_resp_set_type(req, "text/html");
-    httpd_resp_sendstr(req, "<h1>" TR_LOGGED_OUT_TITLE "</h1><a href='/'>" TR_LOG_IN_AGAIN "</a>");
+    web_send_standalone_page(req, "<h1>" TR_LOGGED_OUT_TITLE "</h1><p><a href='/'>" TR_LOG_IN_AGAIN "</a></p>");
     return ESP_OK;
 }
 
@@ -85,13 +85,13 @@ esp_err_t page_dashboard(httpd_req_t *req) {
 
     // -- Radio Info -----------------------------------------------------
     size_t n = 0;
-    str_append(buf, sizeof(buf), &n, "<fieldset><legend>" TR_DASH_RADIO_INFO "</legend><table>");
+    str_append(buf, sizeof(buf), &n, "<fieldset><legend>" TR_DASH_RADIO_INFO "</legend><div class='table-wrap'><table>");
     // MODEM status reflects the audio ADC/DAC AFSK modem enable state set on
     // the Radiomodem (Audio / AFSK) page - it is the only modem in the build.
     const char *modemName = g_config.audio_modem_en ? "AFSK (Audio)" : TR_F_OFF;
     str_append(buf, sizeof(buf), &n,
                "<tr><td>" TR_DASH_MODEM "</td><td>%s</td></tr>"
-               "<tr><td>" TR_DASH_FX25 "</td><td>%s</td></tr></table></fieldset>",
+               "<tr><td>" TR_DASH_FX25 "</td><td>%s</td></tr></table></div></fieldset>",
                modemName, g_config.fx25_mode ? TR_ENABLED : TR_F_OFF);
     httpd_resp_sendstr_chunk(req, buf);
 
@@ -102,9 +102,9 @@ esp_err_t page_dashboard(httpd_req_t *req) {
         igate_get_current_server(host, sizeof(host), &port);
         n = 0;
         str_append(buf, sizeof(buf), &n,
-                   "<fieldset><legend>" TR_DASH_APRS_IS_SERVER "</legend><table>"
+                   "<fieldset><legend>" TR_DASH_APRS_IS_SERVER "</legend><div class='table-wrap'><table>"
                    "<tr><td>" TR_DASH_HOST "</td><td>%s</td></tr>"
-                   "<tr><td>" TR_DASH_PORT "</td><td>%d</td></tr></table></fieldset>",
+                   "<tr><td>" TR_DASH_PORT "</td><td>%d</td></tr></table></div></fieldset>",
                    host, port);
         httpd_resp_sendstr_chunk(req, buf);
     }
@@ -126,14 +126,14 @@ esp_err_t page_dashboard(httpd_req_t *req) {
 
     n = 0;
     str_append(buf, sizeof(buf), &n,
-               "<fieldset><legend>" TR_DASH_WIFI "</legend><table>"
+               "<fieldset><legend>" TR_DASH_WIFI "</legend><div class='table-wrap'><table>"
                "<tr><td>" TR_DASH_MODE "</td><td>%s</td></tr>"
                "<tr><td>" TR_DASH_SSID "</td><td>%s</td></tr>",
                wifiModeName, ssidEsc);
     if (sta_connected)
-        str_append(buf, sizeof(buf), &n, "<tr><td>" TR_DASH_RSSI "</td><td>%d dBm</td></tr></table></fieldset>", ap_info.rssi);
+        str_append(buf, sizeof(buf), &n, "<tr><td>" TR_DASH_RSSI "</td><td>%d dBm</td></tr></table></div></fieldset>", ap_info.rssi);
     else
-        str_append(buf, sizeof(buf), &n, "<tr><td>" TR_DASH_RSSI "</td><td>" TR_DASH_DISCONNECTED "</td></tr></table></fieldset>");
+        str_append(buf, sizeof(buf), &n, "<tr><td>" TR_DASH_RSSI "</td><td>" TR_DASH_DISCONNECTED "</td></tr></table></div></fieldset>");
     httpd_resp_sendstr_chunk(req, buf);
 
     // -- IGate Traffic table: a real (not modal) table at the bottom of the
@@ -340,12 +340,12 @@ esp_err_t page_sidebar_info(httpd_req_t *req) {
     // Wrapped in the same <fieldset><legend> card used by Radio Info /
     // APRS-IS SERVER / WiFi so all dashboard boxes share one look and feel.
     str_append(buf, sizeof(buf), &n,
-               "<fieldset><legend>" TR_DASH_MODES_ENABLED "</legend><table><tr>"
+               "<fieldset><legend>" TR_DASH_MODES_ENABLED "</legend><div class='table-wrap'><table><tr>"
                "<th class='badge %s'>" TR_F_IGATE "</th>"
                "<th class='badge %s'>" TR_DASH_DIGI_SHORT "</th>"
                "<th class='badge %s'>" TR_F_TRACKER "</th>"
                "<th class='badge %s'>" TR_DASH_WX_SHORT "</th>"
-               "</tr></table></fieldset>",
+               "</tr></table></div></fieldset>",
                g_config.igate_en ? "ok" : "off", g_config.digi_en ? "ok" : "off", g_config.trk_en ? "ok" : "off", g_config.wx_en ? "ok" : "off");
 
     // -- Network Status -------------------------------------------------------
@@ -355,11 +355,11 @@ esp_err_t page_sidebar_info(httpd_req_t *req) {
     wifi_ap_record_t sidebar_ap_info;
     bool wifi_connected = (esp_wifi_sta_get_ap_info(&sidebar_ap_info) == ESP_OK);
     str_append(buf, sizeof(buf), &n,
-               "<fieldset><legend>" TR_DASH_NETWORK_STATUS "</legend><table><tr>"
+               "<fieldset><legend>" TR_DASH_NETWORK_STATUS "</legend><div class='table-wrap'><table><tr>"
                "<th class='badge %s'>" TR_DASH_WIFI "</th>"
                "<th class='badge %s'>APRS-IS</th>"
                "<th class='badge %s'>" TR_DASH_FX25 "</th>"
-               "</tr></table></fieldset>",
+               "</tr></table></div></fieldset>",
                wifi_connected ? "ok" : "off", igate_is_connected() ? "ok" : "off", (g_config.fx25_mode > 0) ? "ok" : "off");
 
     // -- STATISTICS -----------------------------------------------------
@@ -384,7 +384,7 @@ esp_err_t page_sidebar_info(httpd_req_t *req) {
     // complete, correct total.
     aprs_service_stats_t svcStats = aprs_service_get_stats();
     str_append(buf, sizeof(buf), &n,
-               "<fieldset><legend>" TR_DASH_STATISTICS "</legend><table>"
+               "<fieldset><legend>" TR_DASH_STATISTICS "</legend><div class='table-wrap'><table>"
                "<tr><td>" TR_DASH_RADIO_RX "</td><td>%lu</td></tr>"
                "<tr><td>" TR_DASH_PACKET_TX "</td><td>%lu</td></tr>"
                "<tr><td>" TR_DASH_RF2INET "</td><td>%lu</td></tr>"
@@ -414,7 +414,7 @@ esp_err_t page_sidebar_info(httpd_req_t *req) {
                // operator can see what they would be capping before turning
                // the limiter on.
                "<tr><td>" TR_DASH_TX_DUTY_CYCLE "</td><td>%lu%%/%lu%%</td></tr>"
-               "</table></fieldset>",
+               "</table></div></fieldset>",
                (unsigned long)svcStats.radio_rx, (unsigned long)svcStats.radio_tx, (unsigned long)svcStats.rf2inet, (unsigned long)svcStats.inet2rf,
                (unsigned long)igs.isRxCount, (unsigned long)igs.isTxCount, (unsigned long)svcStats.digi, (unsigned long)igate_stats_total_drop(&igs),
                (unsigned long)igate_stats_total_err(&igs), (unsigned long)svcStats.tx_queue_depth, (unsigned long)svcStats.tx_queue_limit,
@@ -429,11 +429,11 @@ esp_err_t page_sidebar_info(httpd_req_t *req) {
     // and the RX/TX service level) reports through igate_note_drop() with
     // its own drop_reason_t, so every row here is an explicit, named reason
     // - there is no generic/"other" catch-all bucket.
-    str_append(buf, sizeof(buf), &n, "<fieldset><legend>" TR_DASH_DROP_BREAKDOWN "</legend><table>");
+    str_append(buf, sizeof(buf), &n, "<fieldset><legend>" TR_DASH_DROP_BREAKDOWN "</legend><div class='table-wrap'><table>");
     for (int i = 0; i < DROP_REASON_COUNT; i++) {
         str_append(buf, sizeof(buf), &n, "<tr><td>%s</td><td>%lu</td></tr>", igate_drop_reason_name((drop_reason_t)i), (unsigned long)igs.dropByReason[i]);
     }
-    str_append(buf, sizeof(buf), &n, "</table></fieldset>");
+    str_append(buf, sizeof(buf), &n, "</table></div></fieldset>");
 
     // Running out of room is a cosmetic, self-reporting condition: the panel
     // comes back with its last rows missing and its tags unclosed, which is

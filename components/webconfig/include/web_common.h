@@ -298,6 +298,15 @@ static inline uint8_t web_form_get_ssid(const char *body, const char *key, uint8
  * The page must close @c </div></div></body></html> itself via
  * web_send_footer(), or just use a single-shot pattern.
  *
+ * The shell it writes is one markup tree for every viewport. Alongside the top
+ * bar and the sidebar it emits a hidden checkbox, a burger button and a
+ * backdrop, all inert on a desktop-width window and all displayed by
+ * web_handle_css()'s narrow-screen rules, where the sidebar renders as a drawer
+ * the burger slides in. Nothing about the arrangement is decided here or by
+ * any script: the checkbox is a sibling of both the top bar and the layout, so
+ * the stylesheet alone can reach the burger, the drawer and the backdrop from
+ * its checked state, and an ordinary page load leaves the menu closed again.
+ *
  * @param req         Incoming request.
  * @param title       Page title (shown in the browser tab and header).
  * @param active_menu Sidebar menu id to highlight as the current page.
@@ -309,6 +318,32 @@ void web_send_header(httpd_req_t *req, const char *title, const char *active_men
  * @param req Incoming request.
  */
 void web_send_footer(httpd_req_t *req);
+
+/**
+ * @brief Send a short, self-contained HTML page outside the admin chrome.
+ *
+ * Used for the responses that are not settings pages: the save interstitial,
+ * the @c 401 / @c 403 / @c 429 bodies, and any page-level refusal a handler
+ * answers with instead of re-rendering its form. The helper writes the whole
+ * document - doctype, head and body wrapper - around @p body_html and closes
+ * the chunked response, so a caller only supplies the fragment.
+ *
+ * The head it writes carries the @c viewport declaration these bodies need to
+ * lay out at the handset's own width rather than at a desktop width scaled
+ * down, plus a handful of inline rules for face, measure and link colour.
+ * They are inline, and their colours are literal, because this page
+ * deliberately does not load @c /style.css: it has to render identically when
+ * the stylesheet request cannot be served, which is exactly the situation some
+ * of these responses report. The one class it defines is @c err, for a line
+ * that states a failure.
+ *
+ * The caller sets the status code and any headers before calling; this helper
+ * only writes the body.
+ *
+ * @param req       Incoming request.
+ * @param body_html Ready-to-emit HTML fragment for the document body.
+ */
+void web_send_standalone_page(httpd_req_t *req, const char *body_html);
 
 /**
  * @brief Send the outcome of a settings save as the response to a POST
@@ -332,6 +367,17 @@ void web_send_save_result(httpd_req_t *req, bool ok, const char *location);
 
 /**
  * @brief Serve the shared stylesheet (the CSS referenced by web_send_header()).
+ *
+ * One responsive sheet covers desktop, tablet and phone. It carries the
+ * palette and the component styles for every admin page, plus the breakpoints
+ * that adapt them: at 900 px and below the sidebar becomes the off-canvas
+ * drawer web_send_header()'s markup provides for, at 600 px and below the
+ * cards, headings and form rows tighten to a single column, and on a coarse
+ * pointer the controls grow to finger size and the text fields take a 16 px
+ * face so a handset browser does not zoom in on focus. Tables are framed by
+ * the @c table-wrap class every page wraps them in, which scrolls a wide table
+ * sideways within the page instead of letting it widen the page.
+ *
  * @param req Incoming request.
  * @return ESP_OK or an esp_err_t error.
  */
