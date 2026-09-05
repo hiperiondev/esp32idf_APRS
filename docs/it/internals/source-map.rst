@@ -88,6 +88,8 @@ Disposizione del repository
    │   └── webconfig/      ← amministrazione esp_http_server
    │       ├── web_server.c            ← tabella delle route
    │       ├── web_common.c            ← auth, analisi form, shell HTML, helper di campo
+   │       ├── web_help.c              ← tabella etichetta di opzione → testo di aiuto, dietro il
+   │       │                             punto interrogativo che chiude ogni etichetta
    │       ├── logcapture.c            ← copia su richiesta della console seriale con
    │       │                             esp_log_set_vprintf() in un anello in RAM → JSON della
    │       │                             pagina Registri (interrogazione per seq), con tempo di

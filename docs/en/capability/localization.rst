@@ -22,8 +22,10 @@ How it works
 * ``translations/translations.h`` is the **only** place that decides which
   ``lang_xx.h`` gets included, via ``#if LANGUAGE == …`` branches.
 * Every user-visible string in the web admin goes through a ``TR_xxx`` macro.
-  There are 649 such macros, and each of the three ``lang_*.h`` files defines
-  all of them.
+  There are 1051 such macros, and each of the three ``lang_*.h`` files defines
+  all of them. 226 of them are the ``TR_H_xxx`` contextual-help strings behind
+  the question mark that closes every option label, so the help balloons are
+  translated exactly like the labels they explain.
 
 Selecting the language at build time
 ====================================

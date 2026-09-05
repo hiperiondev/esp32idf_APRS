@@ -71,12 +71,12 @@ In one sentence, the firmware **demodulates** AFSK/FSK audio from a radio's spea
 | Weather Report | 1 Hz sensor refresh, optional averaging |
 | Telemetry | Analog A1–A5 + digital B1–B8, `T#nnn` + metadata |
 | Sensor driver framework | Dynamic registry, BME280/BMP280 driver included |
-| Web admin | 22 pages, live dashboard, traffic + last-heard, console log viewer |
+| Web admin | 22 pages, live dashboard, traffic + last-heard, console log viewer, per-option contextual help |
 | Storage | LittleFS 512 KB, upload/download/delete/format |
 | Networking | Wi-Fi AP/STA/AP+STA, scan, TX power, SNTP (UTC clock, selectable timezone for display) |
 | CPU frequency control | 80 / 160 / 240 MHz |
 | OTA update | `ota_0`/`ota_1` slots, auto-rollback |
-| Localization | EN / ES / IT, compile-time |
+| Localization | EN / ES / IT, compile-time, labels and help balloons alike |
 
 ---
 

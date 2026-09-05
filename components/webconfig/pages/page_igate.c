@@ -34,6 +34,7 @@
 #include "str_append.h" // str_copy_utf8_safe()
 #include "translations.h"
 #include "web_common.h"
+#include "web_help.h"
 
 static const char *TAG = "page_igate";
 
@@ -440,26 +441,32 @@ esp_err_t page_igate_get(httpd_req_t *req) {
     // - main settings and filters - in one POST.
     web_raw(req, "<h2 style='margin-top:24px'>" TR_F_IGATE_FILTER "</h2>");
     {
+        // Each payload type carries its own explanation, but the same nine
+        // are rendered once per direction, so the help text travels in the
+        // table beside the label rather than being looked up twice.
         static const struct {
             const char *label;
+            const char *help;
             uint16_t bit;
             const char *name;
         } filt[] = {
-            { TR_FILT_MESSAGE, IGATE_FILT_MESSAGE, "Message" },
-            { TR_FILT_STATUS, IGATE_FILT_STATUS, "Status" },
-            { TR_FILT_TELEMETRY, IGATE_FILT_TELEMETRY, "Telemetry" },
-            { TR_FILT_WEATHER, IGATE_FILT_WEATHER, "Weather" },
-            { TR_FILT_OBJECT, IGATE_FILT_OBJECT, "Object" },
-            { TR_FILT_ITEM, IGATE_FILT_ITEM, "Item" },
-            { TR_FILT_BUOY, IGATE_FILT_BUOY, "Buoy" },
-            { TR_FILT_POSITION, IGATE_FILT_POSITION, "Position" },
-            { TR_FILT_OTHER, IGATE_FILT_OTHER, "Other" },
+            { TR_FILT_MESSAGE, TR_H_FILT_MESSAGE, IGATE_FILT_MESSAGE, "Message" },
+            { TR_FILT_STATUS, TR_H_FILT_STATUS, IGATE_FILT_STATUS, "Status" },
+            { TR_FILT_TELEMETRY, TR_H_FILT_TELEMETRY, IGATE_FILT_TELEMETRY, "Telemetry" },
+            { TR_FILT_WEATHER, TR_H_FILT_WEATHER, IGATE_FILT_WEATHER, "Weather" },
+            { TR_FILT_OBJECT, TR_H_FILT_OBJECT, IGATE_FILT_OBJECT, "Object" },
+            { TR_FILT_ITEM, TR_H_FILT_ITEM, IGATE_FILT_ITEM, "Item" },
+            { TR_FILT_BUOY, TR_H_FILT_BUOY, IGATE_FILT_BUOY, "Buoy" },
+            { TR_FILT_POSITION, TR_H_FILT_POSITION, IGATE_FILT_POSITION, "Position" },
+            { TR_FILT_OTHER, TR_H_FILT_OTHER, IGATE_FILT_OTHER, "Other" },
         };
         web_fieldset_open(req, TR_F_FILTER_RF2INET);
         for (size_t i = 0; i < sizeof(filt) / sizeof(filt[0]); i++) {
             char name[24];
             snprintf(name, sizeof(name), "rf2inetF_%s", filt[i].name);
-            web_field_checkbox_plain(req, filt[i].label, name, (g_config.rf2inetFilter & filt[i].bit) != 0);
+            char help[WEB_HELP_MARKUP_MAX];
+            web_help_markup(help, sizeof(help), filt[i].help);
+            web_field_checkbox_plain_h(req, filt[i].label, name, (g_config.rf2inetFilter & filt[i].bit) != 0, help);
         }
 
         // Local range/prefix gate: independent of, and composed with (AND
@@ -476,7 +483,9 @@ esp_err_t page_igate_get(httpd_req_t *req) {
         for (size_t i = 0; i < sizeof(filt) / sizeof(filt[0]); i++) {
             char name[24];
             snprintf(name, sizeof(name), "inet2rfF_%s", filt[i].name);
-            web_field_checkbox_plain(req, filt[i].label, name, (g_config.inet2rfFilter & filt[i].bit) != 0);
+            char help[WEB_HELP_MARKUP_MAX];
+            web_help_markup(help, sizeof(help), filt[i].help);
+            web_field_checkbox_plain_h(req, filt[i].label, name, (g_config.inet2rfFilter & filt[i].bit) != 0, help);
         }
 
         // Selective third-party ('}') unwrap: off by default, and only ever
@@ -540,12 +549,18 @@ esp_err_t page_igate_get(httpd_req_t *req) {
 
         web_raw(req, "<p style='color:var(--sub);font-size:12px;margin:4px 0'>" TR_NOTE_BUDLIST "</p>");
 
+        // Numbered row labels, so the help is resolved once from the
+        // unnumbered label and shared by every row.
+        char bud_help[WEB_HELP_MARKUP_MAX];
+        // "Callsign" is also the Telegram page's label for something else, so
+        // this one is named rather than looked up.
+        web_help_markup(bud_help, sizeof(bud_help), TR_H_F_BUDLIST_CALL);
         for (int i = 0; i < IGATE_BUDLIST_MAX; i++) {
             char name[16];
             char label[24];
             snprintf(name, sizeof(name), "budlist%d", i);
             snprintf(label, sizeof(label), "%s %d", TR_F_BUDLIST_CALL, i + 1);
-            web_field_text(req, label, name, g_config.budlist[i], 9);
+            web_field_text_h(req, label, name, g_config.budlist[i], 9, bud_help);
         }
 
         web_fieldset_close(req);
@@ -563,12 +578,14 @@ esp_err_t page_igate_get(httpd_req_t *req) {
         web_fieldset_open(req, TR_F_SATGATE);
         web_raw(req, "<p style='color:var(--sub);font-size:12px;margin:4px 0'>" TR_NOTE_SATGATE "</p>");
 
+        char sat_help[WEB_HELP_MARKUP_MAX];
+        web_help_markup(sat_help, sizeof(sat_help), web_help_for_label(TR_F_SATGATE_CALL));
         for (int i = 0; i < IGATE_SATGATE_MAX; i++) {
             char name[16];
             char label[48];
             snprintf(name, sizeof(name), "satgate%d", i);
             snprintf(label, sizeof(label), "%.40s %d", TR_F_SATGATE_CALL, i + 1);
-            web_field_text(req, label, name, g_config.satgate[i], 9);
+            web_field_text_h(req, label, name, g_config.satgate[i], 9, sat_help);
         }
 
         web_fieldset_close(req);

@@ -27,6 +27,7 @@
 #include "pages.h"
 #include "translations.h"
 #include "web_common.h"
+#include "web_help.h"
 
 static const char *TAG = "page_msg";
 
@@ -82,12 +83,16 @@ esp_err_t page_msg_get(httpd_req_t *req) {
     // them is stored and shown like any other, but - same as the built-in
     // set - is never acknowledged, retransmitted or auto-replied to.
     web_fieldset_open(req, TR_F_MESSAGE_GROUPS);
+    // Numbered row labels, so the help is resolved once from the format
+    // macro they are built from and shared by every row.
+    char grp_help[WEB_HELP_MARKUP_MAX];
+    web_help_markup(grp_help, sizeof(grp_help), web_help_for_label(TR_F_MESSAGE_GROUP_FMT));
     for (int i = 0; i < MSG_USER_GROUPS; i++) {
         char name[16];
         snprintf(name, sizeof(name), "msgGrp%d", i + 1);
         char label[24];
         snprintf(label, sizeof(label), TR_F_MESSAGE_GROUP_FMT, i + 1);
-        web_field_text(req, label, name, g_config.msg_group[i], 9);
+        web_field_text_h(req, label, name, g_config.msg_group[i], 9, grp_help);
     }
     web_fieldset_close(req);
 

@@ -32,6 +32,7 @@
 #include "pages.h"
 #include "translations.h"
 #include "web_common.h"
+#include "web_help.h"
 
 static const char *TAG = "page_bm";
 
@@ -103,11 +104,16 @@ esp_err_t page_bm_get(httpd_req_t *req) {
     // GATEWAYS ------------------------------------------------------------
     web_fieldset_open(req, TR_BM_FS_GATEWAYS);
     web_raw(req, "<p style='color:var(--sub);font-size:12px;margin:4px 0'>" TR_BM_NOTE_GATEWAYS "</p>");
+    // The row labels are numbered ("Gateway 1", "Gateway 2", ...), so they
+    // match no entry in the help table; all four share the one explanation
+    // registered for the unnumbered label, rendered once here.
+    char gw_help[WEB_HELP_MARKUP_MAX];
+    web_help_markup(gw_help, sizeof(gw_help), web_help_for_label(TR_BM_GATEWAY));
     for (int i = 0; i < APRS_BM_GATEWAYS_MAX; i++) {
         char label[40], name[16];
         snprintf(label, sizeof(label), "%s %d", TR_BM_GATEWAY, i + 1);
         snprintf(name, sizeof(name), "bmGw%d", i);
-        web_field_text(req, label, name, g_config.bm_gateways[i], (int)(sizeof(g_config.bm_gateways[i]) - 1));
+        web_field_text_h(req, label, name, g_config.bm_gateways[i], (int)(sizeof(g_config.bm_gateways[i]) - 1), gw_help);
     }
     web_fieldset_close(req);
 

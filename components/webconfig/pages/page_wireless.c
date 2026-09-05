@@ -27,6 +27,7 @@
 #include "pages.h"
 #include "translations.h"
 #include "web_common.h"
+#include "web_help.h"
 
 static const char *TAG = "page_wireless";
 
@@ -40,7 +41,11 @@ esp_err_t page_wireless_get(httpd_req_t *req) {
     // The option values are the WIFI_MODE_CFG_OFF .. WIFI_MODE_CFG_APSTA
     // selectors, in that order; the matching constants pick the selected
     // entry below.
-    web_select_open(req, TR_F_MODE, "wifiMode");
+    // "Mode" is a label the digipeater's alias rows use too, for something
+    // else entirely, so this one's help is named rather than looked up.
+    char mode_help[WEB_HELP_MARKUP_MAX];
+    web_help_markup(mode_help, sizeof(mode_help), TR_H_WIFI_MODE);
+    web_select_open_h(req, TR_F_MODE, "wifiMode", mode_help);
     web_select_option(req, 0, TR_F_OFF, g_config.wifi_mode == WIFI_MODE_CFG_OFF);
     web_select_option(req, 1, TR_WIFI_STATION, g_config.wifi_mode == WIFI_MODE_CFG_STA);
     web_select_option(req, 2, TR_WIFI_ACCESS_POINT, g_config.wifi_mode == WIFI_MODE_CFG_AP);

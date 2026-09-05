@@ -2000,4 +2000,558 @@
 
 /** @} */
 
+/**
+ * @name Contextual help (tooltips)
+ *
+ * One entry per option label rendered by the form-field emitters in
+ * web_common.c. Each string is the text of the little help balloon that opens
+ * when the pointer rests on the orange question mark at the end of that
+ * option's label, and each is bounded by ::WEB_HELP_MAX_BYTES.
+ *
+ * The macro name of a help string is its label's macro name with @c TR_H_ in
+ * place of @c TR_, which is the only thing that ties the two together for a
+ * reader; the runtime pairing lives in web_help.c's table.
+ * @{
+ */
+
+/** Contextual help for the "Enable BrandMeister interconnect" option. */
+#define TR_H_BM_ENABLE "Bridges APRS text between this station and BrandMeister users. No DMR audio link of any kind is involved."
+/** Contextual help for the "Subscribe to worldwide BrandMeister traffic" option. */
+#define TR_H_BM_MONITOR                                                                                                                                        \
+    "Subscribes to the worldwide BrandMeister feed. Refused while INET to RF gating is on and its range filter is off, so a global feed never reaches the "    \
+    "transmitter."
+/** Contextual help for the "Send messages to BrandMeister stations over the Internet only" option. */
+#define TR_H_BM_MSG_INET_ONLY                                                                                                                                  \
+    "Sends messages addressed to BrandMeister stations only over APRS-IS. Keeps DMR-bound text off the local frequency, where it would be of no use."
+/** Contextual help for the "Gateway" option. */
+#define TR_H_BM_GATEWAY "Callsign of a BrandMeister APRS gateway this station should recognise. Leave it blank to disable the slot."
+/** Contextual help for the "Relay whitelisted third-party (}) traffic" option. */
+#define TR_H_F_3RDPARTY_UNWRAP_EN                                                                                                                              \
+    "Unwraps third-party packets and relays the frame inside them. Only effective with the Internet to RF callsign filter set to whitelist."
+/** Contextual help for the "Add timestamp" option. */
+#define TR_H_F_ADD_TIMESTAMP "Adds a timestamp to each transmitted report, so receivers can tell how old it is. Without it a report is always read as current."
+/** Contextual help for the "Modulation" option. */
+#define TR_H_F_AFSK_MODULATION                                                                                                                                 \
+    "On-air modulation used by the modem. It must match the rest of the local network, otherwise nothing is decoded in either direction."
+/** Contextual help for the "Altitude (m)" option. */
+#define TR_H_F_ALTITUDE_M "Altitude above mean sea level, in metres, sent with the position. Only transmitted when the report is set to include altitude."
+/** Contextual help for the "Antenna/Direction" option. */
+#define TR_H_F_ANTENNA_DIRECTION                                                                                                                               \
+    "Main lobe direction of the antenna, encoded in the PHG extension. Choose omnidirectional when the antenna radiates equally all around."
+/** Contextual help for the "Antenna Gain" option. */
+#define TR_H_F_ANTENNA_GAIN                                                                                                                                    \
+    "Antenna gain in dB, encoded in the PHG extension. Combined with power and height so receivers can estimate this station's coverage."
+/** Contextual help for the "Audio low-pass filter" option. */
+#define TR_H_F_AUDIO_LOW_PASS_FILTER                                                                                                                           \
+    "Filters the received audio before demodulation. It helps with a noisy or hissy receiver output and can be left off on a clean one."
+/** Contextual help for the "Beacon interval (s)" option. */
+#define TR_H_F_BEACON_INTERVAL_S "Seconds between position beacons. Use a longer interval on a busy frequency; 0 leaves the service default in force."
+/** Contextual help for the "Beacon position" option. */
+#define TR_H_F_BEACON_POSITION_2                                                                                                                               \
+    "Transmits a position beacon for this service, so other stations can see where it is. Turn it off to run the service without announcing it."
+/** Contextual help for the "Beacon via Internet" option. */
+#define TR_H_F_BEACON_VIA_INTERNET                                                                                                                             \
+    "Sends this beacon to APRS-IS. It reaches the worldwide network and the usual map sites, but not stations that are only on RF."
+/** Contextual help for the "Beacon via RF" option. */
+#define TR_H_F_BEACON_VIA_RF                                                                                                                                   \
+    "Transmits this beacon on the radio. It reaches local stations and digipeaters directly, whether or not there is an Internet connection."
+/** Contextual help for the "Internet to RF Mode" option. */
+#define TR_H_F_BUDLIST_MODE_INET2RF                                                                                                                            \
+    "How the callsign list applies to traffic from the Internet: off, whitelist to pass only the listed callsigns, or blacklist to block them."
+/** Contextual help for the "RF to Internet Mode" option. */
+#define TR_H_F_BUDLIST_MODE_RF2INET                                                                                                                            \
+    "How the callsign list applies to traffic heard on RF: off, whitelist to gate only the listed callsigns, or blacklist to keep them off APRS-IS."
+/** Contextual help for the "Decay ratio (e.g. 2.0, <1 = none)" option. */
+#define TR_H_F_BULLETIN_DECAY                                                                                                                                  \
+    "Each repeat multiplies the interval by this ratio, up to the slow rate, so a new entry is seen quickly and then repeats sparingly."
+/** Contextual help for the "Expire (hours, 0 = never)" option. */
+#define TR_H_F_BULLETIN_EXPIRE                                                                                                                                 \
+    "Hours after which the bulletin stops being transmitted. Use it for notices with a limited life; 0 keeps it on the air indefinitely."
+/** Contextual help for the "Group (up to 5 chars, empty = general)" option. */
+#define TR_H_F_BULLETIN_GROUP                                                                                                                                  \
+    "Optional group name, up to 5 characters, restricting the bulletin to a named audience. Leave it empty to address the general group."
+/** Contextual help for the "Identifier (0-9 bulletin, A-Z announcement)" option. */
+#define TR_H_F_BULLETIN_ID                                                                                                                                     \
+    "One character identifying this slot. Digits 0 to 9 mark a bulletin, which may be superseded later; letters A to Z mark a standing announcement."
+/** Contextual help for the "Message (max 67 chars)" option. */
+#define TR_H_F_BULLETIN_MSG "Text of the bulletin, up to 67 characters. It is not split across packets, so anything past the limit is simply not transmitted."
+/** Contextual help for the "Slow repeat rate (s, 0 = no decay)" option. */
+#define TR_H_F_BULLETIN_SLOW_RATE "Longest interval the decay ratio may reach, in seconds. Once there the entry keeps repeating at this rate; 0 disables decay."
+/** Contextual help for the "Comment" option. */
+#define TR_H_F_COMMENT "Free text appended to the transmitted report. Keep it short: it shares the packet with the position and any data extension."
+/** Contextual help for the "Compress position" option. */
+#define TR_H_F_COMPRESS_POSITION                                                                                                                               \
+    "Sends the position in APRS compressed form: shorter on the air, slightly more precise, and it also carries course and speed when available."
+/** Contextual help for the "CSMA persistence (p, 1-255)" option. */
+#define TR_H_F_CSMA_PERSISTENCE                                                                                                                                \
+    "Probability, from 1 to 255, that the modem transmits in a free time slot. Lower values collide less on a busy channel, at the cost of delay."
+/** Contextual help for the "Data interval (s)" option. */
+#define TR_H_F_DATA_INTERVAL_S "Seconds between data transmissions of this service. 0 leaves the service default in force."
+/** Contextual help for the "Digipeat by destination SSID (legacy)" option. */
+#define TR_H_F_DIGI_DEST_SSID                                                                                                                                  \
+    "Repeats frames whose destination SSID requests digipeating, an old convention predating the n-N aliases. Off by default; it can cause unexpected "        \
+    "repeats."
+/** Contextual help for the "Fill-in digipeater (single hop only)" option. */
+#define TR_H_F_DIGI_FILLIN_ONLY                                                                                                                                \
+    "Repeats only frames still on their first hop, filling gaps in local coverage without extending the network. The right mode for a low home digipeater."
+/** Contextual help for the "Explicit routes naming this station" option. */
+#define TR_H_F_DIGI_PREEMPT                                                                                                                                    \
+    "What to do when a path names this station explicitly further along: repeat at once, skipping the earlier hops, or wait for the normal turn."
+/** Contextual help for the "Hop count above Max N" option. */
+#define TR_H_F_DIGI_TRAP_ACTION                                                                                                                                \
+    "What to do with a frame asking for more hops than Max N allows: clamp the count down to the limit and repeat it, or drop the frame."
+/** Contextual help for the "Alias" option. */
+#define TR_H_F_DIGI_ALIAS "Path alias this digipeater answers to, such as WIDE1 or a regional name. Leave it blank to disable the row."
+/** Contextual help for the "Max N" option. */
+#define TR_H_F_DIGI_MAX_N "Largest hop count accepted for this alias. A frame asking for more is clamped or dropped, as chosen above."
+/** Contextual help for the "Mode" option. */
+#define TR_H_F_DIGI_ALIAS_MODE                                                                                                                                 \
+    "How this alias is repeated: off, trace to insert this station's callsign in the path, or flood to decrement the counter without adding it."
+/** Contextual help for the "Cache Size (entries)" option. */
+#define TR_H_F_DUP_CACHE_SIZE                                                                                                                                  \
+    "How many recently seen frames are remembered for duplicate suppression. A busy site needs more entries; each one costs a little RAM."
+/** Contextual help for the "Suppression Window (ms)" option. */
+#define TR_H_F_DUP_CACHE_TIMEOUT_MS                                                                                                                            \
+    "How long, in milliseconds, an identical frame is suppressed after the first copy. Too short repeats echoes, too long may drop a real retransmission."
+/** Contextual help for the "Duty-cycle limiter" option. */
+#define TR_H_F_DUTY_CYCLE_EN                                                                                                                                   \
+    "Limits how much of the time the transmitter may be keyed. It protects the power amplifier and keeps this station from monopolising the frequency."
+/** Contextual help for the "Duty-cycle limit (%)" option. */
+#define TR_H_F_DUTY_CYCLE_PCT                                                                                                                                  \
+    "Largest share of time, as a percentage, that the transmitter may be keyed. Transmissions above the limit are deferred until the average falls back."
+/** Contextual help for the "Enable" option. */
+#define TR_H_F_ENABLE "Turns this entry on. While it is off the settings below are kept but nothing is transmitted or acted upon."
+/** Contextual help for the "Enable Digipeater" option. */
+#define TR_H_F_ENABLE_DIGIPEATER                                                                                                                               \
+    "Turns the digipeater on, so this station repeats frames whose path matches one of the aliases below. With it off nothing is repeated."
+/** Contextual help for the "Enable data extension" option. */
+#define TR_H_F_ENABLE_EXT "Adds a data extension to the position report, in the slot right after the symbol. Only one extension fits per report."
+/** Contextual help for the "Enable IGate" option. */
+#define TR_H_F_ENABLE_IGATE                                                                                                                                    \
+    "Turns the IGate on, connecting this station to APRS-IS. The direction switches below decide what actually crosses between RF and the Internet."
+/** Contextual help for the "Enable messaging" option. */
+#define TR_H_F_ENABLE_MESSAGING "Turns the messaging service on, so this station can receive, acknowledge and send APRS text messages."
+/** Contextual help for the "Enable query responder" option. */
+#define TR_H_F_ENABLE_QUERY                                                                                                                                    \
+    "Answers directed queries from other stations, such as a position or status request. With it off queries are received but never replied to."
+/** Contextual help for the "Enable Tracker" option. */
+#define TR_H_F_ENABLE_TRACKER "Turns the tracker on, so this station beacons its own position on a fixed or speed-adaptive schedule."
+/** Contextual help for the "Enable WX" option. */
+#define TR_H_F_ENABLE_WX "Turns weather reporting on, so readings from the configured sensor channels are transmitted as APRS weather reports."
+/** Contextual help for the "Signal strength (S-points, 0 = not heard)" option. */
+#define TR_H_F_EXT_DFS_STRENGTH "Received signal strength in S-points for the DFS extension, 0 to 9. Use 0 when the reported station is not being heard at all."
+/** Contextual help for the "Signal bearing (degrees)" option. */
+#define TR_H_F_EXT_DF_BEARING "Bearing to the signal being reported, in degrees true, 0 to 359. It is the direction the direction-finding equipment measured."
+/** Contextual help for the "Hits per period (N, 0 = NRQ not meaningful)" option. */
+#define TR_H_F_EXT_DF_NRQ_N "Number of hits per sampling period in the NRQ field, 0 to 8. A value of 0 tells receivers the whole NRQ triplet is meaningless."
+/** Contextual help for the "Bearing accuracy (Q, 9 = best)" option. */
+#define TR_H_F_EXT_DF_NRQ_Q "Bearing accuracy code, 0 to 9, where 9 means a degree or better and lower digits mean a progressively wider uncertainty."
+/** Contextual help for the "Range code (R, range = 2^R miles)" option. */
+#define TR_H_F_EXT_DF_NRQ_R "Range code in the NRQ field: the usable range of the bearing is 2 raised to this power, in miles."
+/** Contextual help for the "Radio range (miles)" option. */
+#define TR_H_F_EXT_RANGE_MI                                                                                                                                    \
+    "Radio coverage radius in miles, sent as the RNG extension. Use it instead of PHG when the coverage is known directly rather than computed."
+/** Contextual help for the "Extension type" option. */
+#define TR_H_F_EXT_TYPE "Which data extension the position report carries: PHG, RNG, DFS or a DF report. Only the sub-fields of the chosen type are used."
+/** Contextual help for the "Filter" option. */
+#define TR_H_F_FILTER                                                                                                                                          \
+    "APRS-IS server-side filter string. The server sends only what it matches, so a narrow filter saves bandwidth but can hide nearby traffic."
+/** Contextual help for the "Fixed Altitude (m)" option. */
+#define TR_H_F_FIXED_ALTITUDE_M "Altitude used when the position is not taken from the GNSS receiver, in metres above mean sea level."
+/** Contextual help for the "Fixed interval (s)" option. */
+#define TR_H_F_FIXED_INTERVAL_S                                                                                                                                \
+    "Seconds between transmissions when SmartBeaconing is off. With SmartBeaconing on, the speed-adaptive interval replaces this one."
+/** Contextual help for the "Fixed Latitude" option. */
+#define TR_H_F_FIXED_LATITUDE "Latitude used when the position is not taken from the GNSS receiver, in decimal degrees. North is positive."
+/** Contextual help for the "Fixed Longitude" option. */
+#define TR_H_F_FIXED_LONGITUDE "Longitude used when the position is not taken from the GNSS receiver, in decimal degrees. East is positive."
+/** Contextual help for the "FX.25 (forward-error-corrected AX.25)" option. */
+#define TR_H_F_FX_25_FORWARD_ERROR_CORRECTED_AX_25                                                                                                             \
+    "Adds FX.25 error correction to transmitted frames. Stations without FX.25 still decode them as ordinary AX.25, so it is safe to leave on."
+/** Contextual help for the "Height (m)" option. */
+#define TR_H_F_HEIGHT_M "Antenna height above average terrain, in metres, encoded in the PHG extension. It weighs more than power in the coverage estimate."
+/** Contextual help for the "Include altitude" option. */
+#define TR_H_F_INCLUDE_ALTITUDE                                                                                                                                \
+    "Adds the altitude to the transmitted report. It costs a few characters of the comment space, so leave it off if altitude is of no interest."
+/** Contextual help for the "Internet to RF" option. */
+#define TR_H_F_INTERNET_TO_RF                                                                                                                                  \
+    "Transmits on RF what is received from APRS-IS. Use it with care and always behind the range and type filters, or local traffic will be swamped."
+/** Contextual help for the "Latitude" option. */
+#define TR_H_F_LATITUDE "Latitude in decimal degrees, from -90 to 90. North is positive; south is negative."
+/** Contextual help for the "Log after filters" option. */
+#define TR_H_F_LOG_AFTER_FILTERS                                                                                                                               \
+    "Shows in the traffic table and on the serial console only what the local filters accept, instead of everything that was received."
+/** Contextual help for the "Longitude" option. */
+#define TR_H_F_LONGITUDE "Longitude in decimal degrees, from -180 to 180. East is positive; west is negative."
+/** Contextual help for the "Enable Message Alarm" option. */
+#define TR_H_F_MESSAGE_ALARM_ENABLE "Drives an output pin when a message addressed to this station arrives, so a buzzer or lamp can signal it."
+/** Contextual help for the "Message Alarm pin" option. */
+#define TR_H_F_MESSAGE_ALARM_PIN "GPIO driven by the message alarm. Pins already assigned to another feature are shown greyed out with the name of their owner."
+/** Contextual help for the "Mic-E position encoding" option. */
+#define TR_H_F_MICE_POSITION "Encodes the position in Mic-E form, which is very compact and carries course and speed. Some older receivers do not decode it."
+/** Contextual help for the "Mic-E position comment" option. */
+#define TR_H_F_MICE_POSITION_COMMENT                                                                                                                           \
+    "Standard Mic-E status shown by receivers alongside the position, such as En Route or Committed. It replaces free text in the Mic-E slot."
+/** Contextual help for the "Apply message gating criteria" option. */
+#define TR_H_F_MSG_GATE_EN                                                                                                                                     \
+    "Applies the criteria below before a message from the Internet is transmitted on RF, so only messages for stations heard locally are put on the air."
+/** Contextual help for the "Heard-locally window (s)" option. */
+#define TR_H_F_MSG_LOCAL_WINDOW_S "How recently the addressee must have been heard on RF, in seconds, for a message from the Internet to be transmitted to it."
+/** Contextual help for the "Addressee hop limit (0 = direct only)" option. */
+#define TR_H_F_MSG_MAX_HOPS "How many digipeater hops away the addressee may be and still have messages gated to it. 0 accepts only stations heard directly."
+/** Contextual help for the "My Callsign" option. */
+#define TR_H_F_MY_CALLSIGN "Callsign this service transmits under, up to 6 characters. It is combined with the SSID below to form the complete AX.25 address."
+/** Contextual help for the "Request APRS-IS not to archive my packets (!x!)" option. */
+#define TR_H_F_NO_ARCHIVE "Asks APRS-IS not to store this station's packets in the public archives. It is a request to the network, not a guarantee."
+/** Contextual help for the "Object/Item name" option. */
+#define TR_H_F_OBJECT_ITEM_NAME                                                                                                                                \
+    "Name of the object or item, up to 9 characters. Receivers use it as the identity of the marker, so it must stay stable between transmissions."
+/** Contextual help for the "Object name" option. */
+#define TR_H_F_OBJECT_NAME "Name of the transmitted object, up to 9 characters. Leave it empty to send no object at all."
+/** Contextual help for the "Active (uncheck = kill)" option. */
+#define TR_H_F_OBJITEM_ACTIVE "Keeps the object alive on receivers' maps. Unchecking it transmits a kill report instead, which removes the marker."
+/** Contextual help for the "Area color (0-15)" option. */
+#define TR_H_F_OBJITEM_AREA_COLOR "Colour and line style of the area object, 0 to 15, as defined by the APRS area object specification."
+/** Contextual help for the "Area latitude offset (deg)" option. */
+#define TR_H_F_OBJITEM_AREA_LAT_OFF                                                                                                                            \
+    "Half-height of the area, in degrees of latitude, measured from the object's position. It sets how far the shape extends north and south."
+/** Contextual help for the "Area longitude offset (deg)" option. */
+#define TR_H_F_OBJITEM_AREA_LON_OFF                                                                                                                            \
+    "Half-width of the area, in degrees of longitude, measured from the object's position. It sets how far the shape extends east and west."
+/** Contextual help for the "Area shape (\l symbol)" option. */
+#define TR_H_F_OBJITEM_AREA_SHAPE "Geometry drawn by receivers for this area object: circle, box, triangle, line and so on. It only applies to the area symbol."
+/** Contextual help for the "Line corridor width (miles, 0 = omit)" option. */
+#define TR_H_F_OBJITEM_AREA_WIDTH "Width of the corridor drawn around a line-shaped area, in miles. Use 0 to omit the corridor and draw a bare line."
+/** Contextual help for the "Course (deg, 0-359)" option. */
+#define TR_H_F_OBJITEM_COURSE "Direction of travel in degrees true, 0 to 359. It is transmitted together with the speed as the course and speed extension."
+/** Contextual help for the "DCS code (octal, 0-511)" option. */
+#define TR_H_F_OBJITEM_DCS_CODE                                                                                                                                \
+    "Digital squelch code in octal, 0 to 511, announced in the frequency block. Only used when DCS is selected instead of a CTCSS tone."
+/** Contextual help for the "Use DCS code instead of CTCSS tone" option. */
+#define TR_H_F_OBJITEM_DCS_ENABLE "Announces a DCS code instead of a CTCSS tone in the frequency block. The two are alternatives; only one is transmitted."
+/** Contextual help for the "Decay ratio (e.g. 2.0, <1 = none)" option. */
+#define TR_H_F_OBJITEM_DECAY                                                                                                                                   \
+    "Each repeat multiplies the interval by this ratio, up to the slow rate, so a new entry is seen quickly and then repeats sparingly."
+/** Contextual help for the "Duplex direction" option. */
+#define TR_H_F_OBJITEM_DUPLEX "Whether the announced repeater transmits above, below or on the monitor frequency. It sets the sign of the duplex offset."
+/** Contextual help for the "Monitor frequency (MHz, 0 = none)" option. */
+#define TR_H_F_OBJITEM_FREQ                                                                                                                                    \
+    "Voice frequency announced in the frequency block, in MHz. Use 0 to omit the block, which also makes the tone and offset fields unused."
+/** Contextual help for the "Initial repeat rate (s)" option. */
+#define TR_H_F_OBJITEM_INIT_RATE "Interval used for the first transmissions, in seconds, before the decay ratio starts stretching it towards the slow rate."
+/** Contextual help for the "Narrowband modulation" option. */
+#define TR_H_F_OBJITEM_NARROW "Announces the repeater as narrowband in the frequency block. Leave it off for a standard wideband FM repeater."
+/** Contextual help for the "Duplex offset (kHz)" option. */
+#define TR_H_F_OBJITEM_OFFSET "Distance between the repeater's transmit and receive frequencies, in kHz. The duplex direction above gives it its sign."
+/** Contextual help for the "Coverage range (0 = none)" option. */
+#define TR_H_F_OBJITEM_RANGE "Coverage radius announced with the entry, in the unit chosen below. Use 0 to announce no coverage figure at all."
+/** Contextual help for the "Range unit" option. */
+#define TR_H_F_OBJITEM_RANGE_UNIT "Unit the coverage range above is expressed in. It only changes how the figure is announced, not the coverage itself."
+/** Contextual help for the "Receive frequency (MHz, split TX/RX)" option. */
+#define TR_H_F_OBJITEM_RX_FREQ "Receive frequency in MHz for a repeater whose transmit and receive frequencies are not related by a simple offset."
+/** Contextual help for the "Independent receive frequency" option. */
+#define TR_H_F_OBJITEM_RX_FREQ_ENABLE                                                                                                                          \
+    "Announces an explicit receive frequency instead of a duplex offset. Use it for a split pair that no simple offset describes."
+/** Contextual help for the "Scope" option. */
+#define TR_H_F_OBJITEM_SCOPE "Whether the entry is transmitted locally, over the Internet, or both. It decides who can see the marker."
+/** Contextual help for the "Signpost text (\m symbol, 3 chars)" option. */
+#define TR_H_F_OBJITEM_SIGNPOST "Up to three characters shown inside the signpost symbol, such as a route or exit number. It applies only to that symbol."
+/** Contextual help for the "Slow repeat rate (s, 0 = no decay)" option. */
+#define TR_H_F_OBJITEM_SLOW_RATE "Longest interval the decay ratio may reach, in seconds. Once there the entry keeps repeating at this rate; 0 disables decay."
+/** Contextual help for the "Speed (knots, 0 = omit)" option. */
+#define TR_H_F_OBJITEM_SPEED "Speed in knots, transmitted together with the course. Use 0 to omit the course and speed extension entirely."
+/** Contextual help for the "Symbol / overlay" option. */
+#define TR_H_F_OBJITEM_SYMBOL "Icon receivers draw for this entry. The table character selects the primary or alternate set, or an overlay letter or digit."
+/** Contextual help for the "Subaudible tone CTCSS (Hz, 0 = none)" option. */
+#define TR_H_F_OBJITEM_TONE "CTCSS tone in Hz announced in the frequency block, so others know what the repeater needs. Use 0 for a repeater with no tone."
+/** Contextual help for the "Type" option. */
+#define TR_H_F_OBJITEM_TYPE "Whether this is an object or an item. Objects carry a timestamp and can be killed; items are simpler and have neither."
+/** Contextual help for the "Path %d" option. */
+#define TR_H_F_OBJITEM_PATH_FMT "Selects this shared path preset for the entry's transmissions. The four presets themselves are edited on the System page."
+/** Contextual help for the "PARM/UNIT/EQNS interval (s)" option. */
+#define TR_H_F_PARM_UNIT_EQNS_INTERVAL_S                                                                                                                       \
+    "Seconds between the PARM, UNIT and EQNS definition messages. Receivers need them to label and scale the raw telemetry values."
+/** Contextual help for the "PATH" option. */
+#define TR_H_F_PATH "Digipeater path used for these transmissions. Each box selects one of the four shared presets edited on the System page."
+/** Contextual help for the "Position ambiguity" option. */
+#define TR_H_F_POS_AMBIGUITY                                                                                                                                   \
+    "Blanks the least significant minute digits of the position, so it is reported to a coarser precision. Use it to avoid publishing an exact address."
+/** Contextual help for the "DAO precision extension in position reports" option. */
+#define TR_H_F_POS_DAO                                                                                                                                         \
+    "Adds the DAO extension, which restores the precision an ordinary position report rounds away. Receivers that ignore it still read the position."
+/** Contextual help for the "Preamble (ms)" option. */
+#define TR_H_F_PREAMBLE_MS                                                                                                                                     \
+    "How long the transmitter is keyed before data starts, in milliseconds. It must be long enough for the receiving stations' squelch to open."
+/** Contextual help for the "Allowed prefixes (comma-separated)" option. */
+#define TR_H_F_PREFIXES "Comma-separated list of callsign prefixes accepted by the prefix filter. A station whose callsign starts with any of them passes."
+/** Contextual help for the "Enable callsign-prefix filter" option. */
+#define TR_H_F_PREFIX_FILTER_EN                                                                                                                                \
+    "Filters traffic by the sender's callsign prefix, on top of the payload-type checkboxes. Both conditions must be met for a packet to pass."
+/** Contextual help for the "PTT minimum unkey time (ms)" option. */
+#define TR_H_F_PTT_MIN_UNKEY_MS                                                                                                                                \
+    "Shortest time the transmitter must stay unkeyed between transmissions, in milliseconds. It gives the radio and the channel time to settle."
+/** Contextual help for the "?APRS? - general station query" option. */
+#define TR_H_F_QUERY_APRS "Answers the general station query, in which any station asks everyone within earshot to identify itself with a position report."
+/** Contextual help for the "Send capabilities periodically" option. */
+#define TR_H_F_QUERY_CAP_ENABLE "Beacons this station's capabilities from time to time, so others learn what services it offers without having to ask."
+/** Contextual help for the "Additional capability tokens" option. */
+#define TR_H_F_QUERY_CAP_EXTRA "Extra tokens appended to the capabilities report, for services this firmware does not announce by itself."
+/** Contextual help for the "Capabilities beacon interval (s)" option. */
+#define TR_H_F_QUERY_CAP_INTERVAL "Seconds between capabilities beacons. They are informational, so a long interval is usually the neighbourly choice."
+/** Contextual help for the "Directed queries (CALL:?query?)" option. */
+#define TR_H_F_QUERY_DIRECTED "Answers queries addressed to this station by name, rather than only the general ones broadcast to everybody."
+/** Contextual help for the "Extended directed queries (?APRSD/?APRSH/?APRSM/?APRSO/?APRSP/?APRSS/?APRST)" option. */
+#define TR_H_F_QUERY_EXT "Answers the extended directed queries, which ask for heard stations, messages, objects, position, status or telemetry in detail."
+/** Contextual help for the "?IGATE? - IGate status request" option. */
+#define TR_H_F_QUERY_IGATE "Answers the IGate status query, reporting how many stations this gateway has gated recently in each direction."
+/** Contextual help for the "Answer queries heard from APRS-IS" option. */
+#define TR_H_F_QUERY_INET "Answers queries that arrived from APRS-IS. Replies go back the same way, so they do not use airtime."
+/** Contextual help for the "Minimum seconds between identical responses" option. */
+#define TR_H_F_QUERY_MIN_INTERVAL                                                                                                                              \
+    "Shortest time between two identical answers, in seconds. It stops a repeated query from turning into a stream of transmissions."
+/** Contextual help for the "Answer queries heard on RF" option. */
+#define TR_H_F_QUERY_RF "Answers queries heard on the radio. Replies are transmitted, so they use airtime and count against the duty-cycle limit."
+/** Contextual help for the "?WX? - weather report request" option. */
+#define TR_H_F_QUERY_WX "Answers the weather query with the latest readings. It only makes sense on a station that actually has weather sensors."
+/** Contextual help for the "Radio TX Power" option. */
+#define TR_H_F_RADIO_TX_POWER                                                                                                                                  \
+    "Transmitter power encoded in the PHG extension. It describes the station to others and does not change the radio's actual output."
+/** Contextual help for the "Enable range filter" option. */
+#define TR_H_F_RANGE_FILTER_EN "Passes only packets from stations within the distance set below. It is the main defence against flooding the local frequency."
+/** Contextual help for the "Max distance (km, 0 = unlimited)" option. */
+#define TR_H_F_RANGE_KM "Greatest distance from this station, in kilometres, that a packet's origin may be and still pass the range filter."
+/** Contextual help for the "Retry count" option. */
+#define TR_H_F_RETRY_COUNT "How many times an unacknowledged message is retransmitted before it is given up on. More retries cost airtime."
+/** Contextual help for the "Retry interval (s)" option. */
+#define TR_H_F_RETRY_INTERVAL_S                                                                                                                                \
+    "Seconds to wait for an acknowledgement before retransmitting. It should be longer than a digipeated round trip on this network."
+/** Contextual help for the "RF to Internet" option. */
+#define TR_H_F_RF_TO_INTERNET "Forwards to APRS-IS what is heard on the radio. This is the direction that makes local traffic visible on the worldwide network."
+/** Contextual help for the "TX buffers" option. */
+#define TR_H_F_RF_TX_BUFFERS                                                                                                                                   \
+    "How many frames may wait in the transmit queue. More buffers absorb a burst, at the cost of RAM and of a longer delay before a frame goes out."
+/** Contextual help for the "Send/receive via Internet" option. */
+#define TR_H_F_SEND_RECEIVE_VIA_INTERNET                                                                                                                       \
+    "Uses APRS-IS for this service in both directions. It works worldwide but only reaches stations that are connected to the Internet."
+/** Contextual help for the "Send/receive via RF" option. */
+#define TR_H_F_SEND_RECEIVE_VIA_RF "Uses the radio for this service in both directions. It reaches local stations without any Internet connection."
+/** Contextual help for the "Send via Internet" option. */
+#define TR_H_F_SEND_VIA_INTERNET "Sends this transmission to APRS-IS. It reaches the worldwide network but not stations that are only on RF."
+/** Contextual help for the "Send via RF" option. */
+#define TR_H_F_SEND_VIA_RF "Sends this transmission on the radio. It reaches local stations and digipeaters and uses airtime."
+/** Contextual help for the "Server Host" option. */
+#define TR_H_F_SERVER_HOST "Host name or address of the APRS-IS server. The four server slots are tried in turn, so this one can be a regional server."
+/** Contextual help for the "Server Port" option. */
+#define TR_H_F_SERVER_PORT "TCP port of the APRS-IS server. It has to match the server's filter or full-feed port; the wrong port simply refuses the login."
+/** Contextual help for the "Enable SmartBeaconing" option. */
+#define TR_H_F_SMARTBEACONING_ENABLE                                                                                                                           \
+    "Makes the beacon interval follow the speed and the turns, so a moving station reports often and a parked one rarely. It needs a live GPS fix."
+/** Contextual help for the "Fast-rate interval (s)" option. */
+#define TR_H_F_SMARTBEACONING_FAST_INTERVAL_S                                                                                                                  \
+    "Beacon interval used at or above the high speed, in seconds. It is the shortest interval SmartBeaconing will use."
+/** Contextual help for the "High speed (km/h)" option. */
+#define TR_H_F_SMARTBEACONING_HIGH_SPEED_KMH "Speed at which the fast interval takes over, in km/h. Above it the interval no longer shortens."
+/** Contextual help for the "Low speed (km/h)" option. */
+#define TR_H_F_SMARTBEACONING_LOW_SPEED_KMH "Speed below which the station is treated as stopped, in km/h. The slow interval is then used."
+/** Contextual help for the "Minimum turn time (s)" option. */
+#define TR_H_F_SMARTBEACONING_MIN_TURN_TIME_S                                                                                                                  \
+    "Shortest time between two turn-triggered beacons, in seconds. It keeps a winding road from producing a burst of transmissions."
+/** Contextual help for the "Slow-rate interval (s)" option. */
+#define TR_H_F_SMARTBEACONING_SLOW_INTERVAL_S "Beacon interval used at or below the low speed, in seconds. It is the longest interval SmartBeaconing will use."
+/** Contextual help for the "Turn angle (deg)" option. */
+#define TR_H_F_SMARTBEACONING_TURN_ANGLE                                                                                                                       \
+    "Course change, in degrees, that triggers an extra beacon at low speed. Smaller angles report corners more faithfully and transmit more."
+/** Contextual help for the "Turn slope (deg)" option. */
+#define TR_H_F_SMARTBEACONING_TURN_SLOPE                                                                                                                       \
+    "How much the turn angle is relaxed as speed rises. A higher value needs a sharper turn to trigger a beacon on a fast road."
+/** Contextual help for the "SSID" option. */
+#define TR_H_F_SSID "AX.25 substation identifier, 0 to 15, appended to the callsign. It distinguishes this service from the operator's other stations."
+/** Contextual help for the "Station Symbol" option. */
+#define TR_H_F_STATION_SYMBOL "Icon receivers draw for this station. The table character selects the primary or alternate set, or an overlay letter or digit."
+/** Contextual help for the "Beam heading in status reports (deg)" option. */
+#define TR_H_F_STATUS_BEAM "Antenna heading in degrees appended to status reports, for meteor scatter work. It tells others where the beam is pointing."
+/** Contextual help for the "ERP in status reports (W)" option. */
+#define TR_H_F_STATUS_ERP "Effective radiated power in watts appended to status reports, alongside the beam heading, for meteor scatter work."
+/** Contextual help for the "Maidenhead locator in status reports" option. */
+#define TR_H_F_STATUS_GRID "Prefixes status reports with this station's Maidenhead locator, which is how VHF and HF operators usually exchange position."
+/** Contextual help for the "Status interval (s, 0=off)" option. */
+#define TR_H_F_STATUS_INTERVAL_S_0_OFF "Seconds between status transmissions. Use 0 to send no status at all."
+/** Contextual help for the "Status text" option. */
+#define TR_H_F_STATUS_TEXT                                                                                                                                     \
+    "Free text of the status report. It is a separate transmission from the position, so it can carry a longer description of the station."
+/** Contextual help for the "Zulu timestamp in status reports" option. */
+#define TR_H_F_STATUS_TIMESTAMP "Prefixes status reports with a zulu timestamp, so receivers can tell when the status was actually issued."
+/** Contextual help for the "Time Stamp" option. */
+#define TR_H_F_TIME_STAMP "Adds a timestamp to the transmitted report, so its age is visible to receivers."
+/** Contextual help for the "Include PHG data extension" option. */
+#define TR_H_F_TRACKER_PHG "Adds the PHG extension, describing power, antenna height, gain and direction, so receivers can estimate this station's coverage."
+/** Contextual help for the "Use live GPS fix" option. */
+#define TR_H_F_TRACKER_USE_LIVE_GPS                                                                                                                            \
+    "Reads the GNSS receiver at every transmission instead of using the fixed position, which stays as the fallback when there is no fix."
+/** Contextual help for the "TX time-slot (ms)" option. */
+#define TR_H_F_TX_TIME_SLOT_MS "Length of one CSMA time slot in milliseconds. Together with the persistence it sets how the modem waits for a free channel."
+/** Contextual help for the "Username" option. */
+#define TR_H_F_USERNAME "Login name for the service. For APRS-IS it is the station callsign that the passcode was issued for."
+/** Contextual help for the "Callsign" option. */
+#define TR_H_F_BUDLIST_CALL "One callsign of the list, with or without SSID. Leave the slot blank to skip it."
+/** Contextual help for the "Satellite Callsign" option. */
+#define TR_H_F_SATGATE_CALL "Callsign of a satellite or space station digipeater. A frame routed through it is gated only if that path entry is marked as used."
+/** Contextual help for the "Group %d" option. */
+#define TR_H_F_MESSAGE_GROUP_FMT                                                                                                                               \
+    "An extra group addressee this station accepts messages for. Group messages are stored and shown but never acknowledged or replied to."
+/** Contextual help for the "Message" option. */
+#define TR_H_FILT_MESSAGE "Lets text messages, acknowledgements and rejects cross in this direction."
+/** Contextual help for the "Status" option. */
+#define TR_H_FILT_STATUS "Lets status reports cross in this direction."
+/** Contextual help for the "Telemetry" option. */
+#define TR_H_FILT_TELEMETRY "Lets telemetry reports and their PARM, UNIT, EQNS and BITS definition messages cross in this direction."
+/** Contextual help for the "Weather" option. */
+#define TR_H_FILT_WEATHER "Lets weather reports cross in this direction."
+/** Contextual help for the "Object" option. */
+#define TR_H_FILT_OBJECT "Lets object reports, including kill reports, cross in this direction."
+/** Contextual help for the "Item" option. */
+#define TR_H_FILT_ITEM "Lets item reports cross in this direction."
+/** Contextual help for the "Buoy" option. */
+#define TR_H_FILT_BUOY "Lets reports from buoys and other unattended floating stations cross in this direction."
+/** Contextual help for the "Position" option. */
+#define TR_H_FILT_POSITION "Lets position reports, compressed and uncompressed alike, cross in this direction."
+/** Contextual help for the "Other" option. */
+#define TR_H_FILT_OTHER                                                                                                                                        \
+    "Lets the remaining payload types cross: station capabilities, user-defined formats, direction finding, locator beacons and map features."
+/** Contextual help for the "Enable GPS Receiver" option. */
+#define TR_H_GPS_ENABLE "Switch the rest of the firmware tests before using anything the GNSS module reports. With it off the serial port is not even opened."
+/** Contextual help for the "Set CPU frequency" option. */
+#define TR_H_SYSINFO_CPU_FREQ_SET                                                                                                                              \
+    "Processor clock frequency. A lower frequency saves power and heat; a higher one leaves more headroom for the modem and the web admin."
+/** Contextual help for the "NTP host (primary)" option. */
+#define TR_H_SYS_NTP_HOST "First time server tried. A correct clock matters for timestamps, for message ageing and for the Winlink and Telegram connections."
+/** Contextual help for the "NTP host (fallback 2)" option. */
+#define TR_H_SYS_NTP_HOST2 "Second time server, tried when the first does not answer. Leave it blank if one server is enough."
+/** Contextual help for the "NTP host (fallback 3)" option. */
+#define TR_H_SYS_NTP_HOST3 "Third time server, tried when neither of the first two answers. Leave it blank if it is not needed."
+/** Contextual help for the "Path 1" option. */
+#define TR_H_SYS_PATH_1                                                                                                                                        \
+    "First of the four shared digipeater path presets that every transmitting service selects from. WIDE1-1 is the usual choice for a home station."
+/** Contextual help for the "Path 2" option. */
+#define TR_H_SYS_PATH_2 "Second shared digipeater path preset. Use a longer path only where the local network genuinely needs the extra hop."
+/** Contextual help for the "Path 3" option. */
+#define TR_H_SYS_PATH_3 "Third shared digipeater path preset. Leave it blank if three presets are more than the local network needs."
+/** Contextual help for the "Path 4" option. */
+#define TR_H_SYS_PATH_4 "Fourth shared digipeater path preset. It is often left empty or reserved for a special case such as a satellite path."
+/** Contextual help for the "Sync time via NTP" option. */
+#define TR_H_SYS_SYNC_NTP "Sets the clock from the network time servers listed below, whenever a connection is available."
+/** Contextual help for the "Time zone (dashboard display only)" option. */
+#define TR_H_SYS_TIMEZONE "Offset applied when times are shown on the dashboard. Everything transmitted on the air stays in UTC, as APRS requires."
+/** Contextual help for the "Administrator ID" option. */
+#define TR_H_TG_ADMIN_ID "Telegram numeric identifier of the operator who may run administrative commands on the bot. Leave it at 0 to allow none."
+/** Contextual help for the "Bulletin repeat window (s)" option. */
+#define TR_H_TG_BULLETIN_WINDOW "How long, in seconds, an identical bulletin is suppressed before being forwarded to Telegram again."
+/** Contextual help for the "Enable Telegram Bot" option. */
+#define TR_H_TG_ENABLE "Starts the Telegram bot, which needs a working Internet connection and a valid bot token."
+/** Contextual help for the "Identifier" option. */
+#define TR_H_TG_F_PEER_ID "Telegram numeric identifier of this user or group chat. An empty or zero identifier disables the slot."
+/** Contextual help for the "Name" option. */
+#define TR_H_TG_F_PEER_NAME "Label shown for this Telegram user or group in the admin pages. It is for your own reference and is never transmitted."
+/** Contextual help for the "Callsign" option. */
+#define TR_H_TG_F_USER_CALLSIGN "Callsign this Telegram user sends APRS messages under. Without it the user can read traffic but cannot originate messages."
+/** Contextual help for the "Route Bulletins" option. */
+#define TR_H_TG_ROUTE_BULLETINS "Forwards received bulletins and announcements to the authorized Telegram chats."
+/** Contextual help for the "Route Station messages" option. */
+#define TR_H_TG_ROUTE_MESSAGES "Forwards messages addressed to this station to the authorized Telegram chats, and sends replies typed there back over APRS."
+/** Contextual help for the "Analog channels sent" option. */
+#define TR_H_TLM_ANALOG_COUNT "How many of the five analog channels are transmitted, from the first onwards. Sending fewer shortens every telemetry packet."
+/** Contextual help for the "Analog field width" option. */
+#define TR_H_TLM_ANALOG_FIELD_WIDTH                                                                                                                            \
+    "How many characters each analog value occupies on the air. The classic APRS format uses three; wider fields carry more range or precision."
+/** Contextual help for the "Auto-increment sequence" option. */
+#define TR_H_TLM_AUTO_INC_SEQ "Increments the sequence number on every telemetry report, so receivers can detect a gap in the series."
+/** Contextual help for the "A (quadratic)" option. */
+#define TR_H_TLM_COEF_A "Quadratic coefficient of the equation that turns the raw value into the displayed one. Leave it at 0 for a straight line."
+/** Contextual help for the "B (linear / slope)" option. */
+#define TR_H_TLM_COEF_B                                                                                                                                        \
+    "Linear coefficient, the slope of the conversion from the raw value to the displayed one. Use 1 to pass the raw value through unchanged."
+/** Contextual help for the "C (offset)" option. */
+#define TR_H_TLM_COEF_C "Constant term of the conversion equation, added after the other two coefficients. It shifts the whole scale up or down."
+/** Contextual help for the "Also carry telemetry in position comment (APRS 1.2, |ss..|)" option. */
+#define TR_H_TLM_COMMENT_TLM                                                                                                                                   \
+    "Also embeds the telemetry in the position report's comment, as APRS 1.2 allows. Receivers then get it without a separate transmission."
+/** Contextual help for the "Displayed decimals" option. */
+#define TR_H_TLM_DECIMALS "How many decimal places the converted value is shown with. It affects the display only, not the raw value transmitted."
+/** Contextual help for the "Destination" option. */
+#define TR_H_TLM_DESTINATION                                                                                                                                   \
+    "Addressee of the telemetry definition messages. It is normally this station's own callsign, so the definitions describe its own channels."
+/** Contextual help for the "Digital bits sent" option. */
+#define TR_H_TLM_DIGITAL_COUNT "How many of the eight digital bits are transmitted, from the first onwards. Sending fewer shortens every telemetry packet."
+/** Contextual help for the "Enable Telemetry" option. */
+#define TR_H_TLM_ENABLE_TELEMETRY "Turns telemetry on, so the configured analog channels and digital bits are transmitted as APRS telemetry reports."
+/** Contextual help for the "BITS - bit sense + name" option. */
+#define TR_H_TLM_GEN_BITS "Sends the BITS definition message, which gives each digital bit its sense and a project title for the whole telemetry set."
+/** Contextual help for the "EQNS - scaling coefficients (A,B,C)" option. */
+#define TR_H_TLM_GEN_EQNS "Sends the EQNS definition message, carrying the A, B and C coefficients receivers need to convert the raw values."
+/** Contextual help for the "PARM - channel & bit names" option. */
+#define TR_H_TLM_GEN_PARM "Sends the PARM definition message, which names each analog channel and each digital bit for receivers."
+/** Contextual help for the "UNIT - units / bit-state labels" option. */
+#define TR_H_TLM_GEN_UNIT "Sends the UNIT definition message, which gives each analog channel its unit and each digital bit its state labels."
+/** Contextual help for the "Omit unused trailing channels" option. */
+#define TR_H_TLM_OMIT_TRAILING "Leaves unused channels at the end of the report out instead of padding them with zeros, which shortens the packet."
+/** Contextual help for the "Path (digipeaters)" option. */
+#define TR_H_TLM_PATH_DIGIS "Digipeater path used for the telemetry transmissions. Each box selects one of the four shared presets edited on the System page."
+/** Contextual help for the "Raw max" option. */
+#define TR_H_TLM_RAW_MAX "Raw reading that corresponds to the top of this channel's range. It is used to scale the value into the transmitted field."
+/** Contextual help for the "Raw min" option. */
+#define TR_H_TLM_RAW_MIN "Raw reading that corresponds to the bottom of this channel's range. It is used to scale the value into the transmitted field."
+/** Contextual help for the "Source" option. */
+#define TR_H_TLM_SOURCE                                                                                                                                        \
+    "Which sensor or internal quantity feeds this channel. The list is built from the sensor registry, so only available sources are offered."
+/** Contextual help for the "Trailing comment (optional, after bits)" option. */
+#define TR_H_TLM_TRAIL_COMMENT "Optional text placed after the digital bits in the telemetry report. Leave it empty to send none."
+/** Contextual help for the "Unit" option. */
+#define TR_H_TLM_UNIT "Unit shown for this channel, such as V, C or km/h. It is announced to receivers in the UNIT definition message."
+/** Contextual help for the "Use My Station Data" option. */
+#define TR_H_USE_MY_STATION_DATA                                                                                                                               \
+    "Copies the callsign and position from the Station page into this page's fields and locks them, so the two can never drift apart."
+/** Contextual help for the "Use GPS" option. */
+#define TR_H_USE_GPS_DATA                                                                                                                                      \
+    "Fills this page's position fields from the GNSS receiver once a second and locks them. It cannot be used together with Use My Station Data."
+/** Contextual help for the "AP Channel" option. */
+#define TR_H_WIFI_AP_CHANNEL "Wi-Fi channel used by this station's own access point. Pick one that is not crowded where the station is installed."
+/** Contextual help for the "AP SSID" option. */
+#define TR_H_WIFI_AP_SSID "Network name published by this station's own access point, used to reach the web admin when no other network is available."
+/** Contextual help for the "TX Power (0-20 dBm)" option. */
+#define TR_H_WIFI_TX_POWER "Wi-Fi transmit power in dBm. Lowering it saves current and reduces interference to the receiver, at the cost of range."
+/** Contextual help for the "Log in automatically when a command is sent" option. */
+#define TR_H_WL_AUTO_LOGIN "Logs in to the Winlink service by itself when a command needs a session, instead of requiring the session to be opened by hand."
+/** Contextual help for the "Announce this station as a Winlink reader in the beacon comment" option. */
+#define TR_H_WL_COMMENT_EN "Announces this station as a Winlink reader in the beacon comment, so others know they can send mail through it."
+/** Contextual help for the "Enable Winlink client" option. */
+#define TR_H_WL_ENABLE "Turns the Winlink client on, so this station can check and read radio email through the Winlink message service."
+/** Contextual help for the "Let the service's answers reach local stations on RF" option. */
+#define TR_H_WL_GATE_EXEMPT                                                                                                                                    \
+    "Exempts the service's replies from the message gating criteria, so they reach local stations on RF even when gating would block them."
+/** Contextual help for the "Keep this station's own Winlink traffic off the air" option. */
+#define TR_H_WL_INET_ONLY "Keeps this station's own Winlink traffic on APRS-IS only, so mail commands and their answers never use airtime."
+/** Contextual help for the "Winlink callsign" option. */
+#define TR_H_WL_MYCALL "Callsign the Winlink account belongs to. It must be the one registered with Winlink, or the service refuses the session."
+/** Contextual help for the "Check for mail every (min, 0 = never)" option. */
+#define TR_H_WL_POLL_MIN "How often, in minutes, the station asks the Winlink service whether there is new mail. Use 0 to never check by itself."
+/** Contextual help for the "Service callsign" option. */
+#define TR_H_WL_SERVICE_CALL                                                                                                                                   \
+    "Callsign of the Winlink message service that commands are addressed to. The default is the standard one and rarely needs changing."
+/** Contextual help for the "Session lifetime (min)" option. */
+#define TR_H_WL_SESSION_MAX_MIN "How long a Winlink session is kept open, in minutes, before it is closed and has to be opened again."
+/** Contextual help for the "Use the Message service callsign" option. */
+#define TR_H_WL_USE_MSG_CALL "Uses the Message page's callsign and SSID for Winlink instead of a separate pair, so both services share one identity."
+
+/** Contextual help for the "Mode (Wireless page)" option. */
+#define TR_H_WIFI_MODE                                                                                                                                         \
+    "Which Wi-Fi roles the station runs: its own access point, a client of an existing network, or both at once. Both is the usual choice, since it keeps "    \
+    "the admin reachable if the network is down."
+/** Contextual help for the "Name (telemetry channel or bit)" option. */
+#define TR_H_TLM_CHANNEL_NAME                                                                                                                                  \
+    "Name of this channel or bit, up to 8 characters, announced to receivers in the PARM definition message. It is what they label the value with."
+/** Contextual help for the "Name (telemetry project title)" option. */
+#define TR_H_TLM_PROJ_TITLE                                                                                                                                    \
+    "Title of the whole telemetry set, sent in the BITS definition message. It names the project the channels belong to, not any single channel."
+/** @} */
+
 #endif // LANG_EN_H

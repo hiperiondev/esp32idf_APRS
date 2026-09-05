@@ -37,6 +37,7 @@
 #include "str_append.h"        // str_is_line_break_char()
 #include "translations.h"
 #include "web_base64.h" // web_base64_decode(): local RFC 4648 decoder for the Basic auth credential pair
+#include "web_help.h"   // web_help_for_label()/web_help_markup(): the question mark that closes every option label
 
 static const char *TAG = "web_common";
 
@@ -1069,6 +1070,29 @@ esp_err_t web_handle_css(httpd_req_t *req) {
         ".switch input:checked+.slider::before{transform:translateX(18px);}"
         ".switch input:focus+.slider{box-shadow:0 0 0 2px rgba(47,111,237,.35);}"
         ".switch-label{color:var(--text);font-size:.85em;}"
+        // Contextual help marker: the small orange circled question mark that
+        // closes every option label, and the balloon it opens. The balloon is
+        // revealed from the marker's own :hover and :focus, so it needs no
+        // script and holds no state - a page load leaves every balloon closed.
+        // :focus is what makes it reachable without a mouse: the marker is
+        // focusable, so a keyboard tab and a touch-screen tap both open it the
+        // same way a pointer does.
+        ".hlp{position:relative;display:inline-flex;align-items:center;justify-content:center;"
+        "width:14px;height:14px;margin-left:5px;border-radius:50%;background:#f59e0b;color:#fff;"
+        "font-size:10px;font-weight:700;line-height:1;cursor:help;vertical-align:middle;flex:none;}"
+        ".hlp:focus{outline:2px solid var(--accent);outline-offset:1px;}"
+        ".hlp-mark{pointer-events:none;}"
+        // The balloon is taken out of the pointer's reach so that moving
+        // towards it never counts as leaving the marker, which would close it
+        // halfway through the sentence being read.
+        ".hlp-box{display:none;position:absolute;left:50%;bottom:calc(100% + 8px);transform:translateX(-50%);"
+        "z-index:60;width:max-content;max-width:260px;padding:8px 10px;border-radius:8px;"
+        "background:#1f2937;color:#f9fafb;font-size:11px;font-weight:400;line-height:1.35;"
+        "text-align:left;white-space:normal;cursor:auto;pointer-events:none;"
+        "box-shadow:0 4px 12px rgba(0,0,0,.25);}"
+        ".hlp-box::after{content:'';position:absolute;top:100%;left:50%;transform:translateX(-50%);"
+        "border:5px solid transparent;border-top-color:#1f2937;}"
+        ".hlp:hover .hlp-box,.hlp:focus .hlp-box,.hlp:focus-within .hlp-box{display:block;}"
         // Reusable light-blue callout for explanatory text under a control,
         // available for any page that wants it.
         ".info-box{background:#eef4ff;border:1px solid #cfe0fb;color:#33456b;"
@@ -1184,6 +1208,14 @@ esp_err_t web_handle_css(httpd_req_t *req) {
         ".traffic-actions .btn,.wl-msg-acts button,.log-actions button{min-height:36px;}"
         ".sidebar li a{padding:14px 18px;font-size:.95em;}"
         "}"
+        // A balloon centred on its marker overflows the viewport as soon as
+        // the marker sits near either edge, which on a phone is most of them.
+        // Anchoring it to the left of the field and capping it to the visible
+        // width keeps the whole sentence on screen wherever the marker falls.
+        "@media (max-width:600px){"
+        ".hlp-box{left:0;right:auto;transform:none;max-width:calc(100vw - 56px);}"
+        ".hlp-box::after{left:12px;transform:none;}"
+        "}"
         "@media (prefers-reduced-motion:reduce){"
         ".sidebar{transition:none;}"
         "}";
@@ -1219,6 +1251,17 @@ static void label_clamp(char dst[WEB_LABEL_MAX_BYTES + 1], const char *src) {
     dst[n] = 0;
 }
 
+// Resolves an option's help text from its label and renders the marker for
+// it. Every emitter below routes its label through this, so the question mark
+// is part of what a labelled control is rather than something a page has to
+// remember to ask for, and a label shared by several pages carries the same
+// explanation on all of them. A label with no registered help - one assembled
+// at run time, for instance - leaves `dst` empty and the option renders
+// without a marker.
+static void label_help(char dst[WEB_HELP_MARKUP_MAX], const char *label) {
+    web_help_markup(dst, WEB_HELP_MARKUP_MAX, web_help_for_label(label));
+}
+
 void web_fieldset_open(httpd_req_t *req, const char *legend) {
     char leg[WEB_LABEL_MAX_BYTES + 1];
     label_clamp(leg, legend);
@@ -1240,12 +1283,24 @@ void web_fieldset_close(httpd_req_t *req) {
 // value='...' and inject markup/script that then ran in the admin's
 // authenticated session on the next page load.
 void web_field_text(httpd_req_t *req, const char *label, const char *name, const char *value, int maxlen) {
+    char hlp[WEB_HELP_MARKUP_MAX];
+    label_help(hlp, label);
+    web_field_text_h(req, label, name, value, maxlen, hlp);
+}
+
+// The `_h()` variants below all take the help marker ready-rendered instead of
+// resolving it from the label. A page reaches for one where its label is built
+// at run time - a numbered alias or budlist row, a payload-type filter - since
+// such a label matches no entry in the help table and would otherwise render
+// with no question mark at all.
+void web_field_text_h(httpd_req_t *req, const char *label, const char *name, const char *value, int maxlen, const char *help_markup) {
     char esc[512];
     web_html_attr_escape(value ? value : "", esc, sizeof(esc));
     char lbl[WEB_LABEL_MAX_BYTES + 1];
     label_clamp(lbl, label);
-    char buf[WEB_LABEL_MAX_BYTES + 576];
-    snprintf(buf, sizeof(buf), "<label>" WEB_LABEL_FMT "</label><input type='text' name='%.30s' value='%.400s' maxlength='%d'>", lbl, name, esc, maxlen);
+    char buf[WEB_LABEL_MAX_BYTES + WEB_HELP_MARKUP_MAX + 576];
+    snprintf(buf, sizeof(buf), "<label>" WEB_LABEL_FMT WEB_HELP_FMT "</label><input type='text' name='%.30s' value='%.400s' maxlength='%d'>", lbl,
+             help_markup ? help_markup : "", name, esc, maxlen);
     httpd_resp_sendstr_chunk(req, buf);
 }
 
@@ -1275,11 +1330,17 @@ static int step_decimals(const char *step) {
 }
 
 void web_field_int(httpd_req_t *req, const char *label, const char *name, long value, long min, long max) {
+    char hlp[WEB_HELP_MARKUP_MAX];
+    label_help(hlp, label);
+    web_field_int_h(req, label, name, value, min, max, hlp);
+}
+
+void web_field_int_h(httpd_req_t *req, const char *label, const char *name, long value, long min, long max, const char *help_markup) {
     char lbl[WEB_LABEL_MAX_BYTES + 1];
     label_clamp(lbl, label);
-    char buf[WEB_LABEL_MAX_BYTES + 192];
-    snprintf(buf, sizeof(buf), "<label>" WEB_LABEL_FMT "</label><input type='number' name='%.30s' value='%ld' min='%ld' max='%ld'>", lbl, name, value, min,
-             max);
+    char buf[WEB_LABEL_MAX_BYTES + WEB_HELP_MARKUP_MAX + 192];
+    snprintf(buf, sizeof(buf), "<label>" WEB_LABEL_FMT WEB_HELP_FMT "</label><input type='number' name='%.30s' value='%ld' min='%ld' max='%ld'>", lbl,
+             help_markup ? help_markup : "", name, value, min, max);
     httpd_resp_sendstr_chunk(req, buf);
 }
 
@@ -1293,10 +1354,12 @@ void web_field_int(httpd_req_t *req, const char *label, const char *name, long v
 void web_field_float(httpd_req_t *req, const char *label, const char *name, float value, const char *step, float min, float max) {
     char lbl[WEB_LABEL_MAX_BYTES + 1];
     label_clamp(lbl, label);
+    char hlp[WEB_HELP_MARKUP_MAX];
+    label_help(hlp, label);
     int decimals = step_decimals(step);
-    char buf[WEB_LABEL_MAX_BYTES + 192];
-    snprintf(buf, sizeof(buf), "<label>" WEB_LABEL_FMT "</label><input type='number' step='%.10s' name='%.30s' value='%.*f' min='%g' max='%g'>", lbl,
-             step ? step : "0.01", name, decimals, (double)value, (double)min, (double)max);
+    char buf[WEB_LABEL_MAX_BYTES + WEB_HELP_MARKUP_MAX + 192];
+    snprintf(buf, sizeof(buf), "<label>" WEB_LABEL_FMT WEB_HELP_FMT "</label><input type='number' step='%.10s' name='%.30s' value='%.*f' min='%g' max='%g'>",
+             lbl, hlp, step ? step : "0.01", name, decimals, (double)value, (double)min, (double)max);
     httpd_resp_sendstr_chunk(req, buf);
 }
 
@@ -1310,11 +1373,13 @@ void web_field_float(httpd_req_t *req, const char *label, const char *name, floa
 void web_field_checkbox(httpd_req_t *req, const char *label, const char *name, bool checked) {
     char lbl[WEB_LABEL_MAX_BYTES + 1];
     label_clamp(lbl, label);
-    char buf[WEB_LABEL_MAX_BYTES + 224];
+    char hlp[WEB_HELP_MARKUP_MAX];
+    label_help(hlp, label);
+    char buf[WEB_LABEL_MAX_BYTES + WEB_HELP_MARKUP_MAX + 224];
     snprintf(buf, sizeof(buf),
              "<label class='switch-row'><span class='switch'><input type='checkbox' name='%.30s' %s>"
-             "<span class='slider'></span></span><span class='switch-label'>" WEB_LABEL_FMT "</span></label>",
-             name, checked ? "checked" : "", lbl);
+             "<span class='slider'></span></span><span class='switch-label'>" WEB_LABEL_FMT WEB_HELP_FMT "</span></label>",
+             name, checked ? "checked" : "", lbl, hlp);
     httpd_resp_sendstr_chunk(req, buf);
 }
 
@@ -1324,17 +1389,33 @@ void web_field_checkbox(httpd_req_t *req, const char *label, const char *name, b
 // on/off state, since a bank of switches would misrepresent that as several
 // independent settings instead of one selection among peers.
 void web_field_checkbox_plain(httpd_req_t *req, const char *label, const char *name, bool checked) {
+    char hlp[WEB_HELP_MARKUP_MAX];
+    label_help(hlp, label);
+    web_field_checkbox_plain_h(req, label, name, checked, hlp);
+}
+
+void web_field_checkbox_plain_h(httpd_req_t *req, const char *label, const char *name, bool checked, const char *help_markup) {
     char lbl[WEB_LABEL_MAX_BYTES + 1];
     label_clamp(lbl, label);
-    char buf[WEB_LABEL_MAX_BYTES + 128];
-    snprintf(buf, sizeof(buf), "<label><input type='checkbox' name='%.30s' %s> " WEB_LABEL_FMT "</label>", name, checked ? "checked" : "", lbl);
+    char buf[WEB_LABEL_MAX_BYTES + WEB_HELP_MARKUP_MAX + 128];
+    snprintf(buf, sizeof(buf), "<label><input type='checkbox' name='%.30s' %s> " WEB_LABEL_FMT WEB_HELP_FMT "</label>", name, checked ? "checked" : "", lbl,
+             help_markup ? help_markup : "");
     httpd_resp_sendstr_chunk(req, buf);
 }
 
 void web_field_path_checkboxes(httpd_req_t *req, const char *name_prefix, uint8_t mask) {
-    char buf[160];
-    snprintf(buf, sizeof(buf), "<label>%s</label>", TR_F_PATH);
+    char group_help[WEB_HELP_MARKUP_MAX];
+    web_help_markup(group_help, sizeof(group_help), web_help_for_label(TR_F_PATH));
+    char buf[WEB_HELP_MARKUP_MAX + 160];
+    snprintf(buf, sizeof(buf), "<label>%.100s" WEB_HELP_FMT "</label>", TR_F_PATH, group_help);
     httpd_resp_sendstr_chunk(req, buf);
+
+    // Each box's own label is "Path N", optionally followed by the alias that
+    // preset currently holds, so it never matches an entry in the help table.
+    // All four share one explanation, resolved once here from the group label
+    // the boxes sit under.
+    char box_help[WEB_HELP_MARKUP_MAX];
+    web_help_markup(box_help, sizeof(box_help), web_help_for_label(TR_F_OBJITEM_PATH_FMT));
 
     char aliases[4][72];
     app_config_lock();
@@ -1358,7 +1439,7 @@ void web_field_path_checkboxes(httpd_req_t *req, const char *name_prefix, uint8_
         }
         char name[48];
         snprintf(name, sizeof(name), "%.30s%d", name_prefix, k + 1);
-        web_field_checkbox_plain(req, plabel, name, (mask & (1u << k)) != 0);
+        web_field_checkbox_plain_h(req, plabel, name, (mask & (1u << k)) != 0, box_help);
     }
 }
 
@@ -1374,10 +1455,16 @@ uint8_t web_form_get_path_mask(const char *body, const char *name_prefix) {
 }
 
 void web_select_open(httpd_req_t *req, const char *label, const char *name) {
+    char hlp[WEB_HELP_MARKUP_MAX];
+    label_help(hlp, label);
+    web_select_open_h(req, label, name, hlp);
+}
+
+void web_select_open_h(httpd_req_t *req, const char *label, const char *name, const char *help_markup) {
     char lbl[WEB_LABEL_MAX_BYTES + 1];
     label_clamp(lbl, label);
-    char buf[WEB_LABEL_MAX_BYTES + 128];
-    snprintf(buf, sizeof(buf), "<label>" WEB_LABEL_FMT "</label><select name='%.30s'>", lbl, name);
+    char buf[WEB_LABEL_MAX_BYTES + WEB_HELP_MARKUP_MAX + 128];
+    snprintf(buf, sizeof(buf), "<label>" WEB_LABEL_FMT WEB_HELP_FMT "</label><select name='%.30s'>", lbl, help_markup ? help_markup : "", name);
     httpd_resp_sendstr_chunk(req, buf);
 }
 
@@ -1477,10 +1564,12 @@ void web_field_symbol(httpd_req_t *req, const char *label, const char *name_pref
 
     char lbl[WEB_LABEL_MAX_BYTES + 1];
     label_clamp(lbl, label);
+    char hlp[WEB_HELP_MARKUP_MAX];
+    label_help(hlp, label);
 
-    char buf[WEB_LABEL_MAX_BYTES + 1536];
+    char buf[WEB_LABEL_MAX_BYTES + WEB_HELP_MARKUP_MAX + 1536];
     snprintf(buf, sizeof(buf),
-             "<label>" WEB_LABEL_FMT "</label>"
+             "<label>" WEB_LABEL_FMT WEB_HELP_FMT "</label>"
              "<div style='display:flex;gap:6px;align-items:center'>"
              "<span id='%.30s_icn' style='display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;"
              "border-radius:6px;background:#dcfce7;overflow:hidden;flex:none'>"
@@ -1495,8 +1584,8 @@ void web_field_symbol(httpd_req_t *req, const char *label, const char *name_pref
              "oninput=\"aprsSymUpd('%.30s','%.30s')\">"
              "<a href='/symbol' target='_blank' title='%.60s' class='secondary' style='text-decoration:none;padding:4px 8px'>%.60s</a>"
              "</div>",
-             lbl, name_prefix, name_prefix, code_num, table_num, TR_F_SYMBOL_TABLE, ids, ids, table_ch, ids, idc, TR_F_SYMBOL_CODE, idc, idc, sym_ch, ids, idc,
-             TR_SYM_PICK_HINT, TR_BTN_PICK_SYMBOL);
+             lbl, hlp, name_prefix, name_prefix, code_num, table_num, TR_F_SYMBOL_TABLE, ids, ids, table_ch, ids, idc, TR_F_SYMBOL_CODE, idc, idc, sym_ch, ids,
+             idc, TR_SYM_PICK_HINT, TR_BTN_PICK_SYMBOL);
     httpd_resp_sendstr_chunk(req, buf);
 
     // Tiny helper script: updates the graphical icon live as the user edits
@@ -1569,9 +1658,12 @@ void web_field_use_station_data(httpd_req_t *req, const char *checkbox_name, boo
     // field's step (as a plain "%g" does once the value has 3+ integer
     // digits) leaves the field holding a value the browser's own step check
     // rejects, blocking Save until the operator retypes it by hand.
-    char buf[2200];
+    char hlp[WEB_HELP_MARKUP_MAX];
+    label_help(hlp, TR_USE_MY_STATION_DATA);
+
+    char buf[WEB_HELP_MARKUP_MAX + 2200];
     snprintf(buf, sizeof(buf),
-             "<label><input type='checkbox' name='%.30s' id='%.30s' %s> " TR_USE_MY_STATION_DATA "</label>"
+             "<label><input type='checkbox' name='%.30s' id='%.30s' %s> " TR_USE_MY_STATION_DATA WEB_HELP_FMT "</label>"
              "<script>(function(){"
              "function apply(){"
              "var cb=document.getElementById('%.30s');if(!cb)return;"
@@ -1586,7 +1678,7 @@ void web_field_use_station_data(httpd_req_t *req, const char *checkbox_name, boo
              "var cb=document.getElementById('%.30s');if(cb){cb.addEventListener('change',apply);apply();}"
              "});"
              "})();</script>",
-             checkbox_name, checkbox_name, checked ? "checked" : "", checkbox_name, qcall, qlat, qlon, qalt, g_config.my_callsign, (double)g_config.my_lat,
+             checkbox_name, checkbox_name, checked ? "checked" : "", hlp, checkbox_name, qcall, qlat, qlon, qalt, g_config.my_callsign, (double)g_config.my_lat,
              (double)g_config.my_lon, (double)g_config.my_alt, checkbox_name);
     httpd_resp_sendstr_chunk(req, buf);
 }
@@ -1613,8 +1705,9 @@ void web_field_use_gps_data(httpd_req_t *req, const char *checkbox_name, bool ch
 
     // Sized for the worst case of this format string: the static markup and
     // script text plus thirteen %s splices (each up to 79 bytes, from the
-    // qlat/qlon/qalt/qspeed/qcourse/qstation buffers) and four %.30s splices,
-    // rounded up with headroom so the compiler can prove no truncation.
+    // qlat/qlon/qalt/qspeed/qcourse/qstation buffers), four %.30s splices and
+    // the label's help marker, rounded up with headroom so the compiler can
+    // prove no truncation.
     //
     // fill() rounds each live GPS reading to the precision the destination
     // field's own step attribute accepts before writing it into that field:
@@ -1624,9 +1717,12 @@ void web_field_use_gps_data(httpd_req_t *req, const char *checkbox_name, bool ch
     // than the field's step allows (as the raw /gps/live latitude/longitude,
     // at 6 decimals, would be here) would leave the field populated but
     // silently blocking Save.
-    char buf[2700];
+    char hlp[WEB_HELP_MARKUP_MAX];
+    label_help(hlp, TR_USE_GPS_DATA);
+
+    char buf[WEB_HELP_MARKUP_MAX + 2700];
     snprintf(buf, sizeof(buf),
-             "<label><input type='checkbox' name='%.30s' id='%.30s' %s> " TR_USE_GPS_DATA "</label>"
+             "<label><input type='checkbox' name='%.30s' id='%.30s' %s> " TR_USE_GPS_DATA WEB_HELP_FMT "</label>"
              "<script>(function(){"
              "var timer=null;"
              "function setDisabled(on){"
@@ -1663,7 +1759,7 @@ void web_field_use_gps_data(httpd_req_t *req, const char *checkbox_name, bool ch
              "});"
              "window.addEventListener('beforeunload',function(){if(timer)clearInterval(timer);});"
              "})();</script>",
-             checkbox_name, checkbox_name, checked ? "checked" : "", qlat, qlon, qalt, qspeed, qcourse, qlat, qlon, qalt, qspeed, qcourse, checkbox_name,
+             checkbox_name, checkbox_name, checked ? "checked" : "", hlp, qlat, qlon, qalt, qspeed, qcourse, qlat, qlon, qalt, qspeed, qcourse, checkbox_name,
              qstation, checkbox_name, qstation);
     httpd_resp_sendstr_chunk(req, buf);
 }

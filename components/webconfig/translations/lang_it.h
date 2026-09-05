@@ -2107,4 +2107,628 @@
 
 /** @} */
 
+/**
+ * @name Contextual help (tooltips)
+ *
+ * Italian text of the little help balloon that opens beside each option label. See
+ * lang_en.h for what each entry documents; every string is bounded by
+ * ::WEB_HELP_MAX_BYTES.
+ * @{
+ */
+
+/** Italian text of the contextual help for the "Enable BrandMeister interconnect" option. */
+#define TR_H_BM_ENABLE "Collega il testo APRS tra questa stazione e gli utenti BrandMeister. Non è coinvolto alcun collegamento audio DMR."
+/** Italian text of the contextual help for the "Subscribe to worldwide BrandMeister traffic" option. */
+#define TR_H_BM_MONITOR                                                                                                                                        \
+    "Sottoscrive il flusso mondiale BrandMeister. Rifiutato se l'inoltro INET verso RF è attivo e il suo filtro di distanza è spento, così un flusso globale " \
+    "non raggiunge il trasmettitore."
+/** Italian text of the contextual help for the "Send messages to BrandMeister stations over the Internet only" option. */
+#define TR_H_BM_MSG_INET_ONLY                                                                                                                                  \
+    "Invia i messaggi diretti alle stazioni BrandMeister solo via APRS-IS. Tiene il testo destinato al DMR fuori dalla frequenza locale, dove non servirebbe."
+/** Italian text of the contextual help for the "Gateway" option. */
+#define TR_H_BM_GATEWAY "Nominativo di un gateway APRS BrandMeister che questa stazione deve riconoscere. Lasciarlo vuoto per disattivare la voce."
+/** Italian text of the contextual help for the "Relay whitelisted third-party (}) traffic" option. */
+#define TR_H_F_3RDPARTY_UNWRAP_EN                                                                                                                              \
+    "Estrae i pacchetti di terze parti e inoltra la trama che contengono. Efficace solo con il filtro nominativi Internet verso RF impostato su lista bianca."
+/** Italian text of the contextual help for the "Add timestamp" option. */
+#define TR_H_F_ADD_TIMESTAMP                                                                                                                                   \
+    "Aggiunge un timestamp a ogni rapporto trasmesso, così i riceventi ne conoscono l'età. Senza, il rapporto viene sempre letto come attuale."
+/** Italian text of the contextual help for the "Modulation" option. */
+#define TR_H_F_AFSK_MODULATION                                                                                                                                 \
+    "Modulazione in aria usata dal modem. Deve coincidere con quella del resto della rete locale, altrimenti non si decodifica nulla in nessuna direzione."
+/** Italian text of the contextual help for the "Altitude (m)" option. */
+#define TR_H_F_ALTITUDE_M "Altitudine sul livello medio del mare, in metri, inviata con la posizione. Trasmessa solo se il rapporto include l'altitudine."
+/** Italian text of the contextual help for the "Antenna/Direction" option. */
+#define TR_H_F_ANTENNA_DIRECTION                                                                                                                               \
+    "Direzione del lobo principale dell'antenna, codificata nell'estensione PHG. Scegliere omnidirezionale se l'antenna irradia allo stesso modo "             \
+    "tutt'intorno."
+/** Italian text of the contextual help for the "Antenna Gain" option. */
+#define TR_H_F_ANTENNA_GAIN                                                                                                                                    \
+    "Guadagno dell'antenna in dB, codificato nell'estensione PHG. Si combina con potenza e altezza perché i riceventi stimino la copertura."
+/** Italian text of the contextual help for the "Audio low-pass filter" option. */
+#define TR_H_F_AUDIO_LOW_PASS_FILTER                                                                                                                           \
+    "Filtra l'audio ricevuto prima della demodulazione. Aiuta con un'uscita ricevitore rumorosa o sibilante e può restare spento se è pulita."
+/** Italian text of the contextual help for the "Beacon interval (s)" option. */
+#define TR_H_F_BEACON_INTERVAL_S                                                                                                                               \
+    "Secondi tra i beacon di posizione. Usare un intervallo lungo su una frequenza affollata; 0 lascia in vigore il valore predefinito del servizio."
+/** Italian text of the contextual help for the "Beacon position" option. */
+#define TR_H_F_BEACON_POSITION_2                                                                                                                               \
+    "Trasmette un beacon di posizione per questo servizio, così le altre stazioni vedono dov'è. Disattivarlo per operare senza annunciarlo."
+/** Italian text of the contextual help for the "Beacon via Internet" option. */
+#define TR_H_F_BEACON_VIA_INTERNET                                                                                                                             \
+    "Invia questo beacon ad APRS-IS. Raggiunge la rete mondiale e i consueti siti di mappe, ma non le stazioni presenti solo in RF."
+/** Italian text of the contextual help for the "Beacon via RF" option. */
+#define TR_H_F_BEACON_VIA_RF "Trasmette questo beacon via radio. Raggiunge direttamente stazioni e digipeater locali, con o senza connessione a Internet."
+/** Italian text of the contextual help for the "Internet to RF Mode" option. */
+#define TR_H_F_BUDLIST_MODE_INET2RF                                                                                                                            \
+    "Come si applica l'elenco di nominativi al traffico da Internet: spento, lista bianca per lasciar passare solo quelli elencati, o lista nera per "         \
+    "bloccarli."
+/** Italian text of the contextual help for the "RF to Internet Mode" option. */
+#define TR_H_F_BUDLIST_MODE_RF2INET                                                                                                                            \
+    "Come si applica l'elenco di nominativi al traffico ricevuto in RF: spento, lista bianca per inoltrare solo quelli elencati, o lista nera per escluderli " \
+    "da APRS-IS."
+/** Italian text of the contextual help for the "Decay ratio (e.g. 2.0, <1 = none)" option. */
+#define TR_H_F_BULLETIN_DECAY                                                                                                                                  \
+    "Ogni ripetizione moltiplica l'intervallo per questo rapporto, fino alla cadenza lenta, così una voce nuova si vede subito e poi si ripete di rado."
+/** Italian text of the contextual help for the "Expire (hours, 0 = never)" option. */
+#define TR_H_F_BULLETIN_EXPIRE                                                                                                                                 \
+    "Ore dopo le quali il bollettino smette di essere trasmesso. Utile per avvisi a vita limitata; 0 lo mantiene in onda a tempo indeterminato."
+/** Italian text of the contextual help for the "Group (up to 5 chars, empty = general)" option. */
+#define TR_H_F_BULLETIN_GROUP                                                                                                                                  \
+    "Nome di gruppo opzionale, fino a 5 caratteri, che limita il bollettino a un pubblico determinato. Lasciarlo vuoto per rivolgersi al gruppo generale."
+/** Italian text of the contextual help for the "Identifier (0-9 bulletin, A-Z announcement)" option. */
+#define TR_H_F_BULLETIN_ID                                                                                                                                     \
+    "Un carattere che identifica questa voce. Le cifre da 0 a 9 indicano un bollettino, sostituibile in seguito; le lettere da A a Z indicano un annuncio "    \
+    "permanente."
+/** Italian text of the contextual help for the "Message (max 67 chars)" option. */
+#define TR_H_F_BULLETIN_MSG "Testo del bollettino, fino a 67 caratteri. Non viene diviso su più pacchetti, quindi ciò che supera il limite non viene trasmesso."
+/** Italian text of the contextual help for the "Slow repeat rate (s, 0 = no decay)" option. */
+#define TR_H_F_BULLETIN_SLOW_RATE                                                                                                                              \
+    "Intervallo più lungo che il decadimento può raggiungere, in secondi. Raggiunto, la voce continua a ripetersi a questa cadenza; 0 disattiva il "           \
+    "decadimento."
+/** Italian text of the contextual help for the "Comment" option. */
+#define TR_H_F_COMMENT "Testo libero aggiunto al rapporto trasmesso. Tenerlo breve: condivide il pacchetto con la posizione e le estensioni dati."
+/** Italian text of the contextual help for the "Compress position" option. */
+#define TR_H_F_COMPRESS_POSITION                                                                                                                               \
+    "Invia la posizione in formato compresso APRS: occupa meno in aria, è leggermente più precisa e trasporta anche rotta e velocità se disponibili."
+/** Italian text of the contextual help for the "CSMA persistence (p, 1-255)" option. */
+#define TR_H_F_CSMA_PERSISTENCE                                                                                                                                \
+    "Probabilità, da 1 a 255, che il modem trasmetta in uno slot libero. Valori bassi collidono meno su un canale affollato, al costo di un ritardo."
+/** Italian text of the contextual help for the "Data interval (s)" option. */
+#define TR_H_F_DATA_INTERVAL_S "Secondi tra le trasmissioni di dati di questo servizio. 0 lascia in vigore il valore predefinito del servizio."
+/** Italian text of the contextual help for the "Digipeat by destination SSID (legacy)" option. */
+#define TR_H_F_DIGI_DEST_SSID                                                                                                                                  \
+    "Ripete le trame il cui SSID di destinazione richiede la ripetizione, vecchia convenzione precedente agli alias n-N. Spento per default; può causare "     \
+    "ripetizioni inattese."
+/** Italian text of the contextual help for the "Fill-in digipeater (single hop only)" option. */
+#define TR_H_F_DIGI_FILLIN_ONLY                                                                                                                                \
+    "Ripete solo le trame ancora al primo salto, coprendo i vuoti di copertura locale senza estendere la rete. È la modalità adatta a un digipeater "          \
+    "domestico e basso."
+/** Italian text of the contextual help for the "Explicit routes naming this station" option. */
+#define TR_H_F_DIGI_PREEMPT                                                                                                                                    \
+    "Cosa fare quando un percorso nomina questa stazione più avanti: ripetere subito, saltando i salti precedenti, oppure attendere il turno normale."
+/** Italian text of the contextual help for the "Hop count above Max N" option. */
+#define TR_H_F_DIGI_TRAP_ACTION                                                                                                                                \
+    "Cosa fare con una trama che chiede più salti di quanti ne consenta il N massimo: ridurre il conteggio al limite e ripeterla, oppure scartare la trama."
+/** Italian text of the contextual help for the "Alias" option. */
+#define TR_H_F_DIGI_ALIAS "Alias di percorso a cui risponde questo digipeater, ad esempio WIDE1 o un nome regionale. Lasciarlo vuoto per disattivare la riga."
+/** Italian text of the contextual help for the "Max N" option. */
+#define TR_H_F_DIGI_MAX_N "Massimo conteggio di salti accettato per questo alias. Una trama che ne chieda di più viene ridotta o scartata, come scelto sopra."
+/** Italian text of the contextual help for the "Mode" option. */
+#define TR_H_F_DIGI_ALIAS_MODE                                                                                                                                 \
+    "Come viene ripetuto questo alias: spento, trace per inserire il nominativo di questa stazione nel percorso, o flood per decrementare il contatore senza " \
+    "aggiungerlo."
+/** Italian text of the contextual help for the "Cache Size (entries)" option. */
+#define TR_H_F_DUP_CACHE_SIZE                                                                                                                                  \
+    "Quante trame recenti vengono ricordate per la soppressione dei duplicati. Un sito trafficato richiede più voci; ognuna costa un po' di RAM."
+/** Italian text of the contextual help for the "Suppression Window (ms)" option. */
+#define TR_H_F_DUP_CACHE_TIMEOUT_MS                                                                                                                            \
+    "Per quanto tempo, in millisecondi, una trama identica viene soppressa dopo la prima copia. Troppo breve ripete gli echi, troppo lungo può scartare una "  \
+    "ritrasmissione reale."
+/** Italian text of the contextual help for the "Duty-cycle limiter" option. */
+#define TR_H_F_DUTY_CYCLE_EN                                                                                                                                   \
+    "Limita la frazione di tempo in cui il trasmettitore può restare attivo. Protegge lo stadio di potenza ed evita che la stazione monopolizzi la frequenza."
+/** Italian text of the contextual help for the "Duty-cycle limit (%)" option. */
+#define TR_H_F_DUTY_CYCLE_PCT                                                                                                                                  \
+    "Quota massima di tempo, in percentuale, in cui il trasmettitore può restare attivo. Le trasmissioni oltre il limite sono rimandate finché la media non "  \
+    "scende."
+/** Italian text of the contextual help for the "Enable" option. */
+#define TR_H_F_ENABLE "Attiva questa voce. Mentre è spenta le impostazioni sottostanti vengono conservate, ma non si trasmette nulla e non hanno effetto."
+/** Italian text of the contextual help for the "Enable Digipeater" option. */
+#define TR_H_F_ENABLE_DIGIPEATER                                                                                                                               \
+    "Attiva il digipeater, così questa stazione ripete le trame il cui percorso corrisponde a uno degli alias sottostanti. Se spento non si ripete nulla."
+/** Italian text of the contextual help for the "Enable data extension" option. */
+#define TR_H_F_ENABLE_EXT "Aggiunge un'estensione dati al rapporto di posizione, nello spazio subito dopo il simbolo. Per ogni rapporto ne entra una sola."
+/** Italian text of the contextual help for the "Enable IGate" option. */
+#define TR_H_F_ENABLE_IGATE                                                                                                                                    \
+    "Attiva l'IGate, collegando questa stazione ad APRS-IS. Gli interruttori di direzione sottostanti decidono cosa attraversa davvero tra RF e Internet."
+/** Italian text of the contextual help for the "Enable messaging" option. */
+#define TR_H_F_ENABLE_MESSAGING "Attiva il servizio di messaggistica, così questa stazione può ricevere, confermare e inviare messaggi di testo APRS."
+/** Italian text of the contextual help for the "Enable query responder" option. */
+#define TR_H_F_ENABLE_QUERY                                                                                                                                    \
+    "Risponde alle interrogazioni dirette di altre stazioni, come una richiesta di posizione o di stato. Se spento, le interrogazioni si ricevono ma non si "  \
+    "risponde."
+/** Italian text of the contextual help for the "Enable Tracker" option. */
+#define TR_H_F_ENABLE_TRACKER "Attiva il tracker, così questa stazione trasmette la propria posizione con una cadenza fissa o adattata alla velocità."
+/** Italian text of the contextual help for the "Enable WX" option. */
+#define TR_H_F_ENABLE_WX "Attiva la trasmissione meteo, così le letture dei canali sensore configurati vengono trasmesse come rapporti meteo APRS."
+/** Italian text of the contextual help for the "Signal strength (S-points, 0 = not heard)" option. */
+#define TR_H_F_EXT_DFS_STRENGTH                                                                                                                                \
+    "Intensità del segnale ricevuto in punti S per l'estensione DFS, da 0 a 9. Usare 0 se la stazione riportata non viene ricevuta affatto."
+/** Italian text of the contextual help for the "Signal bearing (degrees)" option. */
+#define TR_H_F_EXT_DF_BEARING "Rilevamento verso il segnale riportato, in gradi veri, da 0 a 359. È la direzione misurata dall'apparato di radiogoniometria."
+/** Italian text of the contextual help for the "Hits per period (N, 0 = NRQ not meaningful)" option. */
+#define TR_H_F_EXT_DF_NRQ_N                                                                                                                                    \
+    "Numero di rilevazioni per periodo di campionamento nel campo NRQ, da 0 a 8. Il valore 0 indica ai riceventi che l'intera terna NRQ è priva di senso."
+/** Italian text of the contextual help for the "Bearing accuracy (Q, 9 = best)" option. */
+#define TR_H_F_EXT_DF_NRQ_Q "Codice di precisione del rilevamento, da 0 a 9, dove 9 indica un grado o meglio e le cifre minori un'incertezza via via maggiore."
+/** Italian text of the contextual help for the "Range code (R, range = 2^R miles)" option. */
+#define TR_H_F_EXT_DF_NRQ_R "Codice di portata nel campo NRQ: la portata utile del rilevamento è 2 elevato a questa potenza, in miglia."
+/** Italian text of the contextual help for the "Radio range (miles)" option. */
+#define TR_H_F_EXT_RANGE_MI                                                                                                                                    \
+    "Raggio di copertura in miglia, inviato come estensione RNG. Usarlo al posto del PHG quando la copertura è nota direttamente anziché calcolata."
+/** Italian text of the contextual help for the "Extension type" option. */
+#define TR_H_F_EXT_TYPE "Quale estensione dati porta il rapporto di posizione: PHG, RNG, DFS o un rapporto DF. Vengono usati solo i sottocampi del tipo scelto."
+/** Italian text of the contextual help for the "Filter" option. */
+#define TR_H_F_FILTER                                                                                                                                          \
+    "Stringa di filtro lato server APRS-IS. Il server invia solo ciò che corrisponde, quindi un filtro stretto risparmia banda ma può nascondere traffico "    \
+    "vicino."
+/** Italian text of the contextual help for the "Fixed Altitude (m)" option. */
+#define TR_H_F_FIXED_ALTITUDE_M "Altitudine usata quando la posizione non è presa dal ricevitore GNSS, in metri sul livello medio del mare."
+/** Italian text of the contextual help for the "Fixed interval (s)" option. */
+#define TR_H_F_FIXED_INTERVAL_S                                                                                                                                \
+    "Secondi tra le trasmissioni con SmartBeaconing spento. Con SmartBeaconing attivo, l'intervallo adattato alla velocità sostituisce questo."
+/** Italian text of the contextual help for the "Fixed Latitude" option. */
+#define TR_H_F_FIXED_LATITUDE "Latitudine usata quando la posizione non è presa dal ricevitore GNSS, in gradi decimali. Il nord è positivo."
+/** Italian text of the contextual help for the "Fixed Longitude" option. */
+#define TR_H_F_FIXED_LONGITUDE "Longitudine usata quando la posizione non è presa dal ricevitore GNSS, in gradi decimali. L'est è positivo."
+/** Italian text of the contextual help for the "FX.25 (forward-error-corrected AX.25)" option. */
+#define TR_H_F_FX_25_FORWARD_ERROR_CORRECTED_AX_25                                                                                                             \
+    "Aggiunge la correzione d'errore FX.25 alle trame trasmesse. Le stazioni senza FX.25 le decodificano comunque come AX.25 normale, quindi si può lasciare " \
+    "attivo."
+/** Italian text of the contextual help for the "Height (m)" option. */
+#define TR_H_F_HEIGHT_M "Altezza dell'antenna sul terreno medio, in metri, codificata nell'estensione PHG. Pesa più della potenza nella stima della copertura."
+/** Italian text of the contextual help for the "Include altitude" option. */
+#define TR_H_F_INCLUDE_ALTITUDE                                                                                                                                \
+    "Aggiunge l'altitudine al rapporto trasmesso. Costa alcuni caratteri dello spazio commento, quindi lasciarlo spento se l'altitudine non interessa."
+/** Italian text of the contextual help for the "Internet to RF" option. */
+#define TR_H_F_INTERNET_TO_RF                                                                                                                                  \
+    "Trasmette in RF ciò che si riceve da APRS-IS. Usarlo con cautela e sempre dietro i filtri di distanza e di tipo, altrimenti il traffico locale viene "    \
+    "sommerso."
+/** Italian text of the contextual help for the "Latitude" option. */
+#define TR_H_F_LATITUDE "Latitudine in gradi decimali, da -90 a 90. Il nord è positivo; il sud è negativo."
+/** Italian text of the contextual help for the "Log after filters" option. */
+#define TR_H_F_LOG_AFTER_FILTERS                                                                                                                               \
+    "Mostra nella tabella del traffico e sulla console seriale solo ciò che i filtri locali accettano, invece di tutto il ricevuto."
+/** Italian text of the contextual help for the "Longitude" option. */
+#define TR_H_F_LONGITUDE "Longitudine in gradi decimali, da -180 a 180. L'est è positivo; l'ovest è negativo."
+/** Italian text of the contextual help for the "Enable Message Alarm" option. */
+#define TR_H_F_MESSAGE_ALARM_ENABLE "Attiva un pin di uscita quando arriva un messaggio diretto a questa stazione, così un cicalino o una lampada lo segnalano."
+/** Italian text of the contextual help for the "Message Alarm pin" option. */
+#define TR_H_F_MESSAGE_ALARM_PIN                                                                                                                               \
+    "GPIO pilotato dall'allarme messaggi. I pin già assegnati a un'altra funzione sono mostrati in grigio con il nome di chi li usa."
+/** Italian text of the contextual help for the "Mic-E position encoding" option. */
+#define TR_H_F_MICE_POSITION "Codifica la posizione in formato Mic-E, molto compatto e che porta rotta e velocità. Alcuni riceventi vecchi non lo decodificano."
+/** Italian text of the contextual help for the "Mic-E position comment" option. */
+#define TR_H_F_MICE_POSITION_COMMENT                                                                                                                           \
+    "Stato Mic-E standard che i riceventi mostrano accanto alla posizione, come In Viaggio o Impegnato. Sostituisce il testo libero nello spazio Mic-E."
+/** Italian text of the contextual help for the "Apply message gating criteria" option. */
+#define TR_H_F_MSG_GATE_EN                                                                                                                                     \
+    "Applica i criteri sottostanti prima di trasmettere in RF un messaggio da Internet, così vanno in onda solo quelli diretti a stazioni ricevute "           \
+    "localmente."
+/** Italian text of the contextual help for the "Heard-locally window (s)" option. */
+#define TR_H_F_MSG_LOCAL_WINDOW_S                                                                                                                              \
+    "Quanto di recente il destinatario deve essere stato ricevuto in RF, in secondi, perché gli venga trasmesso un messaggio proveniente da Internet."
+/** Italian text of the contextual help for the "Addressee hop limit (0 = direct only)" option. */
+#define TR_H_F_MSG_MAX_HOPS                                                                                                                                    \
+    "A quanti salti di digipeater può trovarsi il destinatario e ricevere comunque i messaggi. 0 accetta solo stazioni ricevute direttamente."
+/** Italian text of the contextual help for the "My Callsign" option. */
+#define TR_H_F_MY_CALLSIGN                                                                                                                                     \
+    "Nominativo con cui trasmette questo servizio, fino a 6 caratteri. Si combina con l'SSID sottostante per formare l'indirizzo AX.25 completo."
+/** Italian text of the contextual help for the "Request APRS-IS not to archive my packets (!x!)" option. */
+#define TR_H_F_NO_ARCHIVE                                                                                                                                      \
+    "Chiede ad APRS-IS di non conservare i pacchetti di questa stazione negli archivi pubblici. È una richiesta alla rete, non una garanzia."
+/** Italian text of the contextual help for the "Object/Item name" option. */
+#define TR_H_F_OBJECT_ITEM_NAME                                                                                                                                \
+    "Nome dell'oggetto o dell'elemento, fino a 9 caratteri. I riceventi lo usano come identità del marcatore, quindi deve restare stabile tra le "             \
+    "trasmissioni."
+/** Italian text of the contextual help for the "Object name" option. */
+#define TR_H_F_OBJECT_NAME "Nome dell'oggetto trasmesso, fino a 9 caratteri. Lasciarlo vuoto per non inviare alcun oggetto."
+/** Italian text of the contextual help for the "Active (uncheck = kill)" option. */
+#define TR_H_F_OBJITEM_ACTIVE                                                                                                                                  \
+    "Mantiene l'oggetto vivo sulle mappe dei riceventi. Deselezionandolo si trasmette un rapporto di rimozione, che cancella il marcatore."
+/** Italian text of the contextual help for the "Area color (0-15)" option. */
+#define TR_H_F_OBJITEM_AREA_COLOR "Colore e stile di linea dell'oggetto area, da 0 a 15, come definito dalla specifica APRS per gli oggetti area."
+/** Italian text of the contextual help for the "Area latitude offset (deg)" option. */
+#define TR_H_F_OBJITEM_AREA_LAT_OFF                                                                                                                            \
+    "Semialtezza dell'area, in gradi di latitudine, misurata dalla posizione dell'oggetto. Definisce quanto la forma si estende a nord e a sud."
+/** Italian text of the contextual help for the "Area longitude offset (deg)" option. */
+#define TR_H_F_OBJITEM_AREA_LON_OFF                                                                                                                            \
+    "Semilarghezza dell'area, in gradi di longitudine, misurata dalla posizione dell'oggetto. Definisce quanto la forma si estende a est e a ovest."
+/** Italian text of the contextual help for the "Area shape (\l symbol)" option. */
+#define TR_H_F_OBJITEM_AREA_SHAPE                                                                                                                              \
+    "Geometria disegnata dai riceventi per questo oggetto area: cerchio, riquadro, triangolo, linea e così via. Vale solo per il simbolo di area."
+/** Italian text of the contextual help for the "Line corridor width (miles, 0 = omit)" option. */
+#define TR_H_F_OBJITEM_AREA_WIDTH                                                                                                                              \
+    "Larghezza del corridoio disegnato attorno a un'area a forma di linea, in miglia. Usare 0 per omettere il corridoio e disegnare solo la linea."
+/** Italian text of the contextual help for the "Course (deg, 0-359)" option. */
+#define TR_H_F_OBJITEM_COURSE "Direzione di marcia in gradi veri, da 0 a 359. Viene trasmessa insieme alla velocità come estensione di rotta e velocità."
+/** Italian text of the contextual help for the "DCS code (octal, 0-511)" option. */
+#define TR_H_F_OBJITEM_DCS_CODE                                                                                                                                \
+    "Codice di squelch digitale in ottale, da 0 a 511, annunciato nel blocco di frequenza. Usato solo se si sceglie DCS invece del tono CTCSS."
+/** Italian text of the contextual help for the "Use DCS code instead of CTCSS tone" option. */
+#define TR_H_F_OBJITEM_DCS_ENABLE "Annuncia un codice DCS invece di un tono CTCSS nel blocco di frequenza. Sono alternativi; se ne trasmette solo uno."
+/** Italian text of the contextual help for the "Decay ratio (e.g. 2.0, <1 = none)" option. */
+#define TR_H_F_OBJITEM_DECAY                                                                                                                                   \
+    "Ogni ripetizione moltiplica l'intervallo per questo rapporto, fino alla cadenza lenta, così una voce nuova si vede subito e poi si ripete di rado."
+/** Italian text of the contextual help for the "Duplex direction" option. */
+#define TR_H_F_OBJITEM_DUPLEX "Se il ripetitore annunciato trasmette sopra, sotto o sulla frequenza di monitoraggio. Definisce il segno dell'offset duplex."
+/** Italian text of the contextual help for the "Monitor frequency (MHz, 0 = none)" option. */
+#define TR_H_F_OBJITEM_FREQ                                                                                                                                    \
+    "Frequenza voce annunciata nel blocco di frequenza, in MHz. Usare 0 per omettere il blocco, il che rende inutilizzati anche tono e offset."
+/** Italian text of the contextual help for the "Initial repeat rate (s)" option. */
+#define TR_H_F_OBJITEM_INIT_RATE "Intervallo usato per le prime trasmissioni, in secondi, prima che il decadimento inizi ad allungarlo verso la cadenza lenta."
+/** Italian text of the contextual help for the "Narrowband modulation" option. */
+#define TR_H_F_OBJITEM_NARROW                                                                                                                                  \
+    "Annuncia il ripetitore come a banda stretta nel blocco di frequenza. Lasciarlo spento per un ripetitore FM a banda larga standard."
+/** Italian text of the contextual help for the "Duplex offset (kHz)" option. */
+#define TR_H_F_OBJITEM_OFFSET "Distanza tra le frequenze di trasmissione e ricezione del ripetitore, in kHz. La direzione duplex sopra ne stabilisce il segno."
+/** Italian text of the contextual help for the "Coverage range (0 = none)" option. */
+#define TR_H_F_OBJITEM_RANGE "Raggio di copertura annunciato con la voce, nell'unità scelta sotto. Usare 0 per non annunciare alcun valore di copertura."
+/** Italian text of the contextual help for the "Range unit" option. */
+#define TR_H_F_OBJITEM_RANGE_UNIT                                                                                                                              \
+    "Unità in cui è espressa la portata di copertura sopra. Cambia solo il modo in cui il valore viene annunciato, non la copertura stessa."
+/** Italian text of the contextual help for the "Receive frequency (MHz, split TX/RX)" option. */
+#define TR_H_F_OBJITEM_RX_FREQ                                                                                                                                 \
+    "Frequenza di ricezione in MHz per un ripetitore le cui frequenze di trasmissione e ricezione non sono legate da un semplice offset."
+/** Italian text of the contextual help for the "Independent receive frequency" option. */
+#define TR_H_F_OBJITEM_RX_FREQ_ENABLE                                                                                                                          \
+    "Annuncia una frequenza di ricezione esplicita invece di un offset duplex. Usarlo per una coppia separata che nessun offset semplice descrive."
+/** Italian text of the contextual help for the "Scope" option. */
+#define TR_H_F_OBJITEM_SCOPE "Se la voce viene trasmessa localmente, via Internet o entrambi. Decide chi può vedere il marcatore."
+/** Italian text of the contextual help for the "Signpost text (\m symbol, 3 chars)" option. */
+#define TR_H_F_OBJITEM_SIGNPOST "Fino a tre caratteri mostrati dentro il simbolo del segnale, come un numero di strada o di uscita. Vale solo per quel simbolo."
+/** Italian text of the contextual help for the "Slow repeat rate (s, 0 = no decay)" option. */
+#define TR_H_F_OBJITEM_SLOW_RATE                                                                                                                               \
+    "Intervallo più lungo che il decadimento può raggiungere, in secondi. Raggiunto, la voce continua a ripetersi a questa cadenza; 0 disattiva il "           \
+    "decadimento."
+/** Italian text of the contextual help for the "Speed (knots, 0 = omit)" option. */
+#define TR_H_F_OBJITEM_SPEED "Velocità in nodi, trasmessa insieme alla rotta. Usare 0 per omettere del tutto l'estensione di rotta e velocità."
+/** Italian text of the contextual help for the "Symbol / overlay" option. */
+#define TR_H_F_OBJITEM_SYMBOL                                                                                                                                  \
+    "Icona che i riceventi disegnano per questa voce. Il carattere di tabella sceglie il set primario o alternativo, oppure una lettera o cifra di overlay."
+/** Italian text of the contextual help for the "Subaudible tone CTCSS (Hz, 0 = none)" option. */
+#define TR_H_F_OBJITEM_TONE                                                                                                                                    \
+    "Tono CTCSS in Hz annunciato nel blocco di frequenza, perché gli altri sappiano cosa richiede il ripetitore. Usare 0 se non richiede tono."
+/** Italian text of the contextual help for the "Type" option. */
+#define TR_H_F_OBJITEM_TYPE                                                                                                                                    \
+    "Se questa è un oggetto o un elemento. Gli oggetti portano un timestamp e possono essere rimossi; gli elementi sono più semplici e non hanno né l'uno né " \
+    "l'altro."
+/** Italian text of the contextual help for the "Path %d" option. */
+#define TR_H_F_OBJITEM_PATH_FMT                                                                                                                                \
+    "Seleziona questo preset di percorso condiviso per le trasmissioni della voce. I quattro preset si modificano nella pagina Sistema."
+/** Italian text of the contextual help for the "PARM/UNIT/EQNS interval (s)" option. */
+#define TR_H_F_PARM_UNIT_EQNS_INTERVAL_S                                                                                                                       \
+    "Secondi tra i messaggi di definizione PARM, UNIT ed EQNS. I riceventi ne hanno bisogno per etichettare e scalare i valori grezzi di telemetria."
+/** Italian text of the contextual help for the "PATH" option. */
+#define TR_H_F_PATH                                                                                                                                            \
+    "Percorso di digipeater usato per queste trasmissioni. Ogni casella seleziona uno dei quattro preset condivisi modificabili nella pagina Sistema."
+/** Italian text of the contextual help for the "Position ambiguity" option. */
+#define TR_H_F_POS_AMBIGUITY                                                                                                                                   \
+    "Azzera le cifre di minuto meno significative della posizione, riportandola con precisione più grossolana. Usarlo per non pubblicare un indirizzo esatto."
+/** Italian text of the contextual help for the "DAO precision extension in position reports" option. */
+#define TR_H_F_POS_DAO                                                                                                                                         \
+    "Aggiunge l'estensione DAO, che recupera la precisione che un normale rapporto di posizione arrotonda. I riceventi che la ignorano leggono comunque la "   \
+    "posizione."
+/** Italian text of the contextual help for the "Preamble (ms)" option. */
+#define TR_H_F_PREAMBLE_MS                                                                                                                                     \
+    "Per quanto tempo il trasmettitore è attivo prima dell'inizio dei dati, in millisecondi. Deve bastare perché si apra lo squelch delle stazioni riceventi."
+/** Italian text of the contextual help for the "Allowed prefixes (comma-separated)" option. */
+#define TR_H_F_PREFIXES                                                                                                                                        \
+    "Elenco di prefissi di nominativo accettati dal filtro, separati da virgole. Passa ogni stazione il cui nominativo inizi con uno di essi."
+/** Italian text of the contextual help for the "Enable callsign-prefix filter" option. */
+#define TR_H_F_PREFIX_FILTER_EN                                                                                                                                \
+    "Filtra il traffico in base al prefisso del nominativo mittente, oltre alle caselle di tipo di contenuto. Entrambe le condizioni devono essere "           \
+    "soddisfatte."
+/** Italian text of the contextual help for the "PTT minimum unkey time (ms)" option. */
+#define TR_H_F_PTT_MIN_UNKEY_MS                                                                                                                                \
+    "Tempo minimo in cui il trasmettitore deve restare disattivato tra le trasmissioni, in millisecondi. Dà modo alla radio e al canale di stabilizzarsi."
+/** Italian text of the contextual help for the "?APRS? - general station query" option. */
+#define TR_H_F_QUERY_APRS                                                                                                                                      \
+    "Risponde all'interrogazione generale di stazione, con cui una stazione chiede a tutte quelle in ascolto di identificarsi con un rapporto di posizione."
+/** Italian text of the contextual help for the "Send capabilities periodically" option. */
+#define TR_H_F_QUERY_CAP_ENABLE "Trasmette di tanto in tanto le capacità di questa stazione, così le altre sanno quali servizi offre senza doverlo chiedere."
+/** Italian text of the contextual help for the "Additional capability tokens" option. */
+#define TR_H_F_QUERY_CAP_EXTRA "Elementi aggiuntivi accodati al rapporto delle capacità, per servizi che questo firmware non annuncia da solo."
+/** Italian text of the contextual help for the "Capabilities beacon interval (s)" option. */
+#define TR_H_F_QUERY_CAP_INTERVAL "Secondi tra i beacon delle capacità. Sono informativi, quindi un intervallo lungo è di solito la scelta più rispettosa."
+/** Italian text of the contextual help for the "Directed queries (CALL:?query?)" option. */
+#define TR_H_F_QUERY_DIRECTED "Risponde alle interrogazioni indirizzate a questa stazione per nome, e non solo a quelle generali diffuse a tutti."
+/** Italian text of the contextual help for the "Extended directed queries (?APRSD/?APRSH/?APRSM/?APRSO/?APRSP/?APRSS/?APRST)" option. */
+#define TR_H_F_QUERY_EXT                                                                                                                                       \
+    "Risponde alle interrogazioni dirette estese, che chiedono in dettaglio stazioni ricevute, messaggi, oggetti, posizione, stato o telemetria."
+/** Italian text of the contextual help for the "?IGATE? - IGate status request" option. */
+#define TR_H_F_QUERY_IGATE                                                                                                                                     \
+    "Risponde all'interrogazione di stato dell'IGate, riportando quante stazioni questo gateway ha inoltrato di recente in ciascuna direzione."
+/** Italian text of the contextual help for the "Answer queries heard from APRS-IS" option. */
+#define TR_H_F_QUERY_INET "Risponde alle interrogazioni arrivate da APRS-IS. Le risposte tornano per la stessa via, quindi non consumano tempo d'antenna."
+/** Italian text of the contextual help for the "Minimum seconds between identical responses" option. */
+#define TR_H_F_QUERY_MIN_INTERVAL                                                                                                                              \
+    "Tempo minimo tra due risposte identiche, in secondi. Impedisce che un'interrogazione ripetuta si trasformi in una raffica di trasmissioni."
+/** Italian text of the contextual help for the "Answer queries heard on RF" option. */
+#define TR_H_F_QUERY_RF                                                                                                                                        \
+    "Risponde alle interrogazioni ricevute via radio. Le risposte vengono trasmesse, quindi usano tempo d'antenna e contano per il limite di duty cycle."
+/** Italian text of the contextual help for the "?WX? - weather report request" option. */
+#define TR_H_F_QUERY_WX "Risponde all'interrogazione meteo con le ultime letture. Ha senso solo su una stazione che disponga davvero di sensori meteo."
+/** Italian text of the contextual help for the "Radio TX Power" option. */
+#define TR_H_F_RADIO_TX_POWER                                                                                                                                  \
+    "Potenza del trasmettitore codificata nell'estensione PHG. Descrive la stazione agli altri e non modifica l'uscita reale della radio."
+/** Italian text of the contextual help for the "Enable range filter" option. */
+#define TR_H_F_RANGE_FILTER_EN                                                                                                                                 \
+    "Lascia passare solo i pacchetti da stazioni entro la distanza impostata sotto. È la principale difesa contro l'inondazione della frequenza locale."
+/** Italian text of the contextual help for the "Max distance (km, 0 = unlimited)" option. */
+#define TR_H_F_RANGE_KM "Distanza massima da questa stazione, in chilometri, a cui può trovarsi l'origine di un pacchetto e superare comunque il filtro."
+/** Italian text of the contextual help for the "Retry count" option. */
+#define TR_H_F_RETRY_COUNT "Quante volte un messaggio non confermato viene ritrasmesso prima di rinunciare. Più tentativi costano tempo d'antenna."
+/** Italian text of the contextual help for the "Retry interval (s)" option. */
+#define TR_H_F_RETRY_INTERVAL_S                                                                                                                                \
+    "Secondi di attesa della conferma prima di ritrasmettere. Dovrebbe superare il tempo di andata e ritorno con ripetizione su questa rete."
+/** Italian text of the contextual help for the "RF to Internet" option. */
+#define TR_H_F_RF_TO_INTERNET "Inoltra ad APRS-IS ciò che si riceve via radio. È la direzione che rende visibile il traffico locale sulla rete mondiale."
+/** Italian text of the contextual help for the "TX buffers" option. */
+#define TR_H_F_RF_TX_BUFFERS                                                                                                                                   \
+    "Quante trame possono attendere nella coda di trasmissione. Più buffer assorbono una raffica, al costo di RAM e di un ritardo maggiore prima dell'invio."
+/** Italian text of the contextual help for the "Send/receive via Internet" option. */
+#define TR_H_F_SEND_RECEIVE_VIA_INTERNET                                                                                                                       \
+    "Usa APRS-IS per questo servizio in entrambe le direzioni. Funziona in tutto il mondo, ma raggiunge solo stazioni collegate a Internet."
+/** Italian text of the contextual help for the "Send/receive via RF" option. */
+#define TR_H_F_SEND_RECEIVE_VIA_RF                                                                                                                             \
+    "Usa la radio per questo servizio in entrambe le direzioni. Raggiunge le stazioni locali senza alcuna connessione a Internet."
+/** Italian text of the contextual help for the "Send via Internet" option. */
+#define TR_H_F_SEND_VIA_INTERNET "Invia questa trasmissione ad APRS-IS. Raggiunge la rete mondiale ma non le stazioni presenti solo in RF."
+/** Italian text of the contextual help for the "Send via RF" option. */
+#define TR_H_F_SEND_VIA_RF "Invia questa trasmissione via radio. Raggiunge stazioni e digipeater locali e consuma tempo d'antenna."
+/** Italian text of the contextual help for the "Server Host" option. */
+#define TR_H_F_SERVER_HOST "Nome host o indirizzo del server APRS-IS. Le quattro voci vengono provate a turno, quindi questa può essere un server regionale."
+/** Italian text of the contextual help for the "Server Port" option. */
+#define TR_H_F_SERVER_PORT                                                                                                                                     \
+    "Porta TCP del server APRS-IS. Deve corrispondere alla porta con filtro o a flusso completo del server; una porta errata rifiuta l'accesso."
+/** Italian text of the contextual help for the "Enable SmartBeaconing" option. */
+#define TR_H_F_SMARTBEACONING_ENABLE                                                                                                                           \
+    "Fa seguire all'intervallo del beacon la velocità e le svolte, così una stazione in movimento riporta spesso e una ferma quasi mai. Richiede una "         \
+    "posizione GPS in tempo reale."
+/** Italian text of the contextual help for the "Fast-rate interval (s)" option. */
+#define TR_H_F_SMARTBEACONING_FAST_INTERVAL_S                                                                                                                  \
+    "Intervallo del beacon usato all'alta velocità o oltre, in secondi. È l'intervallo più breve che SmartBeaconing userà."
+/** Italian text of the contextual help for the "High speed (km/h)" option. */
+#define TR_H_F_SMARTBEACONING_HIGH_SPEED_KMH "Velocità alla quale subentra l'intervallo veloce, in km/h. Oltre, l'intervallo non si accorcia più."
+/** Italian text of the contextual help for the "Low speed (km/h)" option. */
+#define TR_H_F_SMARTBEACONING_LOW_SPEED_KMH "Velocità sotto la quale la stazione è considerata ferma, in km/h. Viene allora usato l'intervallo lento."
+/** Italian text of the contextual help for the "Minimum turn time (s)" option. */
+#define TR_H_F_SMARTBEACONING_MIN_TURN_TIME_S                                                                                                                  \
+    "Tempo minimo tra due beacon innescati da una svolta, in secondi. Impedisce che una strada tortuosa produca una raffica di trasmissioni."
+/** Italian text of the contextual help for the "Slow-rate interval (s)" option. */
+#define TR_H_F_SMARTBEACONING_SLOW_INTERVAL_S                                                                                                                  \
+    "Intervallo del beacon usato alla bassa velocità o sotto, in secondi. È l'intervallo più lungo che SmartBeaconing userà."
+/** Italian text of the contextual help for the "Turn angle (deg)" option. */
+#define TR_H_F_SMARTBEACONING_TURN_ANGLE                                                                                                                       \
+    "Variazione di rotta, in gradi, che innesca un beacon extra a bassa velocità. Angoli minori riproducono meglio le curve e trasmettono di più."
+/** Italian text of the contextual help for the "Turn slope (deg)" option. */
+#define TR_H_F_SMARTBEACONING_TURN_SLOPE                                                                                                                       \
+    "Di quanto l'angolo di svolta viene rilassato al crescere della velocità. Un valore più alto richiede una svolta più stretta su strada veloce."
+/** Italian text of the contextual help for the "SSID" option. */
+#define TR_H_F_SSID "Identificatore di sottostazione AX.25, da 0 a 15, aggiunto al nominativo. Distingue questo servizio dalle altre stazioni dell'operatore."
+/** Italian text of the contextual help for the "Station Symbol" option. */
+#define TR_H_F_STATION_SYMBOL                                                                                                                                  \
+    "Icona che i riceventi disegnano per questa stazione. Il carattere di tabella sceglie il set primario o alternativo, oppure una lettera o cifra di "       \
+    "overlay."
+/** Italian text of the contextual help for the "Beam heading in status reports (deg)" option. */
+#define TR_H_F_STATUS_BEAM                                                                                                                                     \
+    "Direzione dell'antenna in gradi aggiunta ai rapporti di stato, per il lavoro in meteor scatter. Indica agli altri dove punta la direttiva."
+/** Italian text of the contextual help for the "ERP in status reports (W)" option. */
+#define TR_H_F_STATUS_ERP                                                                                                                                      \
+    "Potenza irradiata efficace in watt aggiunta ai rapporti di stato, accanto alla direzione dell'antenna, per il lavoro in meteor scatter."
+/** Italian text of the contextual help for the "Maidenhead locator in status reports" option. */
+#define TR_H_F_STATUS_GRID                                                                                                                                     \
+    "Antepone ai rapporti di stato il localizzatore Maidenhead di questa stazione, il modo consueto di scambiare la posizione in VHF e HF."
+/** Italian text of the contextual help for the "Status interval (s, 0=off)" option. */
+#define TR_H_F_STATUS_INTERVAL_S_0_OFF "Secondi tra le trasmissioni di stato. Usare 0 per non inviare alcuno stato."
+/** Italian text of the contextual help for the "Status text" option. */
+#define TR_H_F_STATUS_TEXT                                                                                                                                     \
+    "Testo libero del rapporto di stato. È una trasmissione distinta da quella di posizione, quindi può portare una descrizione più lunga della stazione."
+/** Italian text of the contextual help for the "Zulu timestamp in status reports" option. */
+#define TR_H_F_STATUS_TIMESTAMP "Antepone ai rapporti di stato un timestamp zulu, perché i riceventi sappiano quando lo stato è stato effettivamente emesso."
+/** Italian text of the contextual help for the "Time Stamp" option. */
+#define TR_H_F_TIME_STAMP "Aggiunge un timestamp al rapporto trasmesso, così la sua età è visibile ai riceventi."
+/** Italian text of the contextual help for the "Include PHG data extension" option. */
+#define TR_H_F_TRACKER_PHG                                                                                                                                     \
+    "Aggiunge l'estensione PHG, che descrive potenza, altezza d'antenna, guadagno e direzione, perché i riceventi stimino la copertura della stazione."
+/** Italian text of the contextual help for the "Use live GPS fix" option. */
+#define TR_H_F_TRACKER_USE_LIVE_GPS                                                                                                                            \
+    "Legge il ricevitore GNSS a ogni trasmissione invece di usare la posizione fissa, che resta come riserva quando non c'è una soluzione."
+/** Italian text of the contextual help for the "TX time-slot (ms)" option. */
+#define TR_H_F_TX_TIME_SLOT_MS "Durata di uno slot temporale CSMA in millisecondi. Insieme alla persistenza definisce come il modem attende un canale libero."
+/** Italian text of the contextual help for the "Username" option. */
+#define TR_H_F_USERNAME "Nome di accesso al servizio. Per APRS-IS è il nominativo di stazione per cui è stato emesso il codice di accesso."
+/** Italian text of the contextual help for the "Callsign" option. */
+#define TR_H_F_BUDLIST_CALL "Un nominativo dell'elenco, con o senza SSID. Lasciare la voce vuota per saltarla."
+/** Italian text of the contextual help for the "Satellite Callsign" option. */
+#define TR_H_F_SATGATE_CALL                                                                                                                                    \
+    "Nominativo di un digipeater satellitare o di stazione spaziale. Una trama che vi transita viene inoltrata solo se quella voce di percorso è marcata "     \
+    "come usata."
+/** Italian text of the contextual help for the "Group %d" option. */
+#define TR_H_F_MESSAGE_GROUP_FMT                                                                                                                               \
+    "Un destinatario di gruppo aggiuntivo per cui questa stazione accetta messaggi. I messaggi di gruppo vengono salvati e mostrati, ma mai confermati o "     \
+    "risposti."
+/** Italian text of the contextual help for the "Message" option. */
+#define TR_H_FILT_MESSAGE "Lascia passare in questa direzione i messaggi di testo, le conferme e i rifiuti."
+/** Italian text of the contextual help for the "Status" option. */
+#define TR_H_FILT_STATUS "Lascia passare in questa direzione i rapporti di stato."
+/** Italian text of the contextual help for the "Telemetry" option. */
+#define TR_H_FILT_TELEMETRY "Lascia passare in questa direzione i rapporti di telemetria e i loro messaggi di definizione PARM, UNIT, EQNS e BITS."
+/** Italian text of the contextual help for the "Weather" option. */
+#define TR_H_FILT_WEATHER "Lascia passare in questa direzione i rapporti meteo."
+/** Italian text of the contextual help for the "Object" option. */
+#define TR_H_FILT_OBJECT "Lascia passare in questa direzione i rapporti di oggetto, compresi quelli di rimozione."
+/** Italian text of the contextual help for the "Item" option. */
+#define TR_H_FILT_ITEM "Lascia passare in questa direzione i rapporti di elemento."
+/** Italian text of the contextual help for the "Buoy" option. */
+#define TR_H_FILT_BUOY "Lascia passare in questa direzione i rapporti di boe e altre stazioni galleggianti non presidiate."
+/** Italian text of the contextual help for the "Position" option. */
+#define TR_H_FILT_POSITION "Lascia passare in questa direzione i rapporti di posizione, sia compressi sia non compressi."
+/** Italian text of the contextual help for the "Other" option. */
+#define TR_H_FILT_OTHER                                                                                                                                        \
+    "Lascia passare i restanti tipi di contenuto: capacità di stazione, formati definiti dall'utente, radiogoniometria, beacon di localizzatore ed elementi "  \
+    "di mappa."
+/** Italian text of the contextual help for the "Enable GPS Receiver" option. */
+#define TR_H_GPS_ENABLE                                                                                                                                        \
+    "Interruttore che il resto del firmware verifica prima di usare qualunque dato del modulo GNSS. Se spento, la porta seriale non viene nemmeno aperta."
+/** Italian text of the contextual help for the "Set CPU frequency" option. */
+#define TR_H_SYSINFO_CPU_FREQ_SET                                                                                                                              \
+    "Frequenza di clock del processore. Una frequenza bassa risparmia consumo e calore; una alta lascia più margine al modem e all'amministrazione web."
+/** Italian text of the contextual help for the "NTP host (primary)" option. */
+#define TR_H_SYS_NTP_HOST                                                                                                                                      \
+    "Primo server orario provato. Un orologio corretto conta per i timestamp, l'invecchiamento dei messaggi e le connessioni Winlink e Telegram."
+/** Italian text of the contextual help for the "NTP host (fallback 2)" option. */
+#define TR_H_SYS_NTP_HOST2 "Secondo server orario, provato se il primo non risponde. Lasciarlo vuoto se ne basta uno."
+/** Italian text of the contextual help for the "NTP host (fallback 3)" option. */
+#define TR_H_SYS_NTP_HOST3 "Terzo server orario, provato se nessuno dei primi due risponde. Lasciarlo vuoto se non serve."
+/** Italian text of the contextual help for the "Path 1" option. */
+#define TR_H_SYS_PATH_1                                                                                                                                        \
+    "Il primo dei quattro preset di percorso condivisi tra cui scelgono tutti i servizi trasmittenti. WIDE1-1 è la scelta abituale per una stazione fissa."
+/** Italian text of the contextual help for the "Path 2" option. */
+#define TR_H_SYS_PATH_2 "Secondo preset di percorso condiviso. Usare un percorso più lungo solo dove la rete locale abbia davvero bisogno del salto in più."
+/** Italian text of the contextual help for the "Path 3" option. */
+#define TR_H_SYS_PATH_3 "Terzo preset di percorso condiviso. Lasciarlo vuoto se tre preset sono più di quanto serva alla rete locale."
+/** Italian text of the contextual help for the "Path 4" option. */
+#define TR_H_SYS_PATH_4 "Quarto preset di percorso condiviso. Spesso viene lasciato vuoto o riservato a un caso speciale, come un percorso satellitare."
+/** Italian text of the contextual help for the "Sync time via NTP" option. */
+#define TR_H_SYS_SYNC_NTP "Imposta l'orologio dai server orari di rete elencati sotto, ogni volta che è disponibile una connessione."
+/** Italian text of the contextual help for the "Time zone (dashboard display only)" option. */
+#define TR_H_SYS_TIMEZONE                                                                                                                                      \
+    "Scostamento applicato quando gli orari sono mostrati nella dashboard. Tutto ciò che si trasmette in aria resta in UTC, come richiede APRS."
+/** Italian text of the contextual help for the "Administrator ID" option. */
+#define TR_H_TG_ADMIN_ID                                                                                                                                       \
+    "Identificativo numerico Telegram dell'operatore che può eseguire comandi amministrativi sul bot. Lasciarlo a 0 per non permetterne nessuno."
+/** Italian text of the contextual help for the "Bulletin repeat window (s)" option. */
+#define TR_H_TG_BULLETIN_WINDOW "Per quanto tempo, in secondi, un bollettino identico viene soppresso prima di essere inoltrato di nuovo a Telegram."
+/** Italian text of the contextual help for the "Enable Telegram Bot" option. */
+#define TR_H_TG_ENABLE "Avvia il bot Telegram, che richiede una connessione a Internet funzionante e un token di bot valido."
+/** Italian text of the contextual help for the "Identifier" option. */
+#define TR_H_TG_F_PEER_ID "Identificativo numerico Telegram di questo utente o chat di gruppo. Un identificativo vuoto o zero disattiva la voce."
+/** Italian text of the contextual help for the "Name" option. */
+#define TR_H_TG_F_PEER_NAME                                                                                                                                    \
+    "Etichetta mostrata per questo utente o gruppo Telegram nelle pagine di amministrazione. Serve come riferimento e non viene mai trasmessa."
+/** Italian text of the contextual help for the "Callsign" option. */
+#define TR_H_TG_F_USER_CALLSIGN                                                                                                                                \
+    "Nominativo con cui questo utente Telegram invia messaggi APRS. Senza, l'utente può leggere il traffico ma non originare messaggi."
+/** Italian text of the contextual help for the "Route Bulletins" option. */
+#define TR_H_TG_ROUTE_BULLETINS "Inoltra ai chat Telegram autorizzati i bollettini e gli annunci ricevuti."
+/** Italian text of the contextual help for the "Route Station messages" option. */
+#define TR_H_TG_ROUTE_MESSAGES "Inoltra ai chat Telegram autorizzati i messaggi diretti a questa stazione e rimanda via APRS le risposte scritte lì."
+/** Italian text of the contextual help for the "Analog channels sent" option. */
+#define TR_H_TLM_ANALOG_COUNT "Quanti dei cinque canali analogici vengono trasmessi, dal primo in poi. Inviarne meno accorcia ogni pacchetto di telemetria."
+/** Italian text of the contextual help for the "Analog field width" option. */
+#define TR_H_TLM_ANALOG_FIELD_WIDTH                                                                                                                            \
+    "Quanti caratteri occupa in aria ogni valore analogico. Il formato APRS classico ne usa tre; campi più larghi portano più portata o precisione."
+/** Italian text of the contextual help for the "Auto-increment sequence" option. */
+#define TR_H_TLM_AUTO_INC_SEQ "Incrementa il numero di sequenza a ogni rapporto di telemetria, così i riceventi rilevano un salto nella serie."
+/** Italian text of the contextual help for the "A (quadratic)" option. */
+#define TR_H_TLM_COEF_A "Coefficiente quadratico dell'equazione che converte il valore grezzo in quello mostrato. Lasciarlo a 0 per una retta."
+/** Italian text of the contextual help for the "B (linear / slope)" option. */
+#define TR_H_TLM_COEF_B                                                                                                                                        \
+    "Coefficiente lineare, la pendenza della conversione dal valore grezzo a quello mostrato. Usare 1 per passare il valore grezzo invariato."
+/** Italian text of the contextual help for the "C (offset)" option. */
+#define TR_H_TLM_COEF_C                                                                                                                                        \
+    "Termine costante dell'equazione di conversione, sommato dopo gli altri due coefficienti. Sposta l'intera scala verso l'alto o verso il basso."
+/** Italian text of the contextual help for the "Also carry telemetry in position comment (APRS 1.2, |ss..|)" option. */
+#define TR_H_TLM_COMMENT_TLM                                                                                                                                   \
+    "Incorpora la telemetria anche nel commento del rapporto di posizione, come consente APRS 1.2. I riceventi la ricevono senza una trasmissione separata."
+/** Italian text of the contextual help for the "Displayed decimals" option. */
+#define TR_H_TLM_DECIMALS "Con quante cifre decimali viene mostrato il valore convertito. Riguarda solo la visualizzazione, non il valore grezzo trasmesso."
+/** Italian text of the contextual help for the "Destination" option. */
+#define TR_H_TLM_DESTINATION                                                                                                                                   \
+    "Destinatario dei messaggi di definizione della telemetria. Di norma è il nominativo della stazione stessa, così le definizioni descrivono i suoi canali."
+/** Italian text of the contextual help for the "Digital bits sent" option. */
+#define TR_H_TLM_DIGITAL_COUNT "Quanti degli otto bit digitali vengono trasmessi, dal primo in poi. Inviarne meno accorcia ogni pacchetto di telemetria."
+/** Italian text of the contextual help for the "Enable Telemetry" option. */
+#define TR_H_TLM_ENABLE_TELEMETRY                                                                                                                              \
+    "Attiva la telemetria, così i canali analogici e i bit digitali configurati vengono trasmessi come rapporti di telemetria APRS."
+/** Italian text of the contextual help for the "BITS - bit sense + name" option. */
+#define TR_H_TLM_GEN_BITS "Invia il messaggio di definizione BITS, che assegna a ogni bit digitale il suo senso e un titolo di progetto per l'intero insieme."
+/** Italian text of the contextual help for the "EQNS - scaling coefficients (A,B,C)" option. */
+#define TR_H_TLM_GEN_EQNS "Invia il messaggio di definizione EQNS, con i coefficienti A, B e C che i riceventi usano per convertire i valori grezzi."
+/** Italian text of the contextual help for the "PARM - channel & bit names" option. */
+#define TR_H_TLM_GEN_PARM "Invia il messaggio di definizione PARM, che assegna un nome a ogni canale analogico e a ogni bit digitale per i riceventi."
+/** Italian text of the contextual help for the "UNIT - units / bit-state labels" option. */
+#define TR_H_TLM_GEN_UNIT                                                                                                                                      \
+    "Invia il messaggio di definizione UNIT, che assegna a ogni canale analogico la sua unità e a ogni bit digitale le etichette di stato."
+/** Italian text of the contextual help for the "Omit unused trailing channels" option. */
+#define TR_H_TLM_OMIT_TRAILING "Omette i canali inutilizzati alla fine del rapporto invece di riempirli di zeri, il che accorcia il pacchetto."
+/** Italian text of the contextual help for the "Path (digipeaters)" option. */
+#define TR_H_TLM_PATH_DIGIS                                                                                                                                    \
+    "Percorso di digipeater usato per le trasmissioni di telemetria. Ogni casella seleziona uno dei quattro preset condivisi della pagina Sistema."
+/** Italian text of the contextual help for the "Raw max" option. */
+#define TR_H_TLM_RAW_MAX "Lettura grezza corrispondente all'estremo superiore della portata di questo canale. Serve a scalare il valore nel campo trasmesso."
+/** Italian text of the contextual help for the "Raw min" option. */
+#define TR_H_TLM_RAW_MIN "Lettura grezza corrispondente all'estremo inferiore della portata di questo canale. Serve a scalare il valore nel campo trasmesso."
+/** Italian text of the contextual help for the "Source" option. */
+#define TR_H_TLM_SOURCE                                                                                                                                        \
+    "Quale sensore o grandezza interna alimenta questo canale. L'elenco è costruito dal registro dei sensori, quindi si offrono solo sorgenti disponibili."
+/** Italian text of the contextual help for the "Trailing comment (optional, after bits)" option. */
+#define TR_H_TLM_TRAIL_COMMENT "Testo opzionale posto dopo i bit digitali nel rapporto di telemetria. Lasciarlo vuoto per non inviarne alcuno."
+/** Italian text of the contextual help for the "Unit" option. */
+#define TR_H_TLM_UNIT "Unità mostrata per questo canale, ad esempio V, C o km/h. Viene annunciata ai riceventi nel messaggio di definizione UNIT."
+/** Italian text of the contextual help for the "Use My Station Data" option. */
+#define TR_H_USE_MY_STATION_DATA                                                                                                                               \
+    "Copia il nominativo e la posizione dalla pagina Stazione nei campi di questa pagina e li blocca, così i due non possono divergere."
+/** Italian text of the contextual help for the "Use GPS" option. */
+#define TR_H_USE_GPS_DATA                                                                                                                                      \
+    "Riempie i campi di posizione di questa pagina dal ricevitore GNSS una volta al secondo e li blocca. Non si può usare insieme a Usa i dati della mia "     \
+    "stazione."
+/** Italian text of the contextual help for the "AP Channel" option. */
+#define TR_H_WIFI_AP_CHANNEL "Canale Wi-Fi usato dal punto di accesso proprio di questa stazione. Sceglierne uno poco affollato dove la stazione è installata."
+/** Italian text of the contextual help for the "AP SSID" option. */
+#define TR_H_WIFI_AP_SSID                                                                                                                                      \
+    "Nome di rete pubblicato dal punto di accesso proprio di questa stazione, usato per raggiungere l'amministrazione web se non c'è altra rete."
+/** Italian text of the contextual help for the "TX Power (0-20 dBm)" option. */
+#define TR_H_WIFI_TX_POWER "Potenza di trasmissione Wi-Fi in dBm. Abbassarla risparmia corrente e riduce l'interferenza al ricevitore, al costo di portata."
+/** Italian text of the contextual help for the "Log in automatically when a command is sent" option. */
+#define TR_H_WL_AUTO_LOGIN "Accede da solo al servizio Winlink quando un comando richiede una sessione, invece di richiedere di aprirla a mano."
+/** Italian text of the contextual help for the "Announce this station as a Winlink reader in the beacon comment" option. */
+#define TR_H_WL_COMMENT_EN "Annuncia questa stazione come lettrice Winlink nel commento del beacon, così gli altri sanno di poter inviare posta tramite essa."
+/** Italian text of the contextual help for the "Enable Winlink client" option. */
+#define TR_H_WL_ENABLE "Attiva il client Winlink, così questa stazione può controllare e leggere la posta via radio tramite il servizio messaggi Winlink."
+/** Italian text of the contextual help for the "Let the service's answers reach local stations on RF" option. */
+#define TR_H_WL_GATE_EXEMPT                                                                                                                                    \
+    "Esenta le risposte del servizio dai criteri di filtraggio dei messaggi, così raggiungono in RF le stazioni locali anche se il filtro le bloccherebbe."
+/** Italian text of the contextual help for the "Keep this station's own Winlink traffic off the air" option. */
+#define TR_H_WL_INET_ONLY "Mantiene il traffico Winlink proprio solo su APRS-IS, così i comandi di posta e le loro risposte non consumano tempo d'antenna."
+/** Italian text of the contextual help for the "Winlink callsign" option. */
+#define TR_H_WL_MYCALL                                                                                                                                         \
+    "Nominativo a cui appartiene l'account Winlink. Deve essere quello registrato presso Winlink, altrimenti il servizio rifiuta la sessione."
+/** Italian text of the contextual help for the "Check for mail every (min, 0 = never)" option. */
+#define TR_H_WL_POLL_MIN "Ogni quanti minuti la stazione chiede al servizio Winlink se c'è posta nuova. Usare 0 per non controllare mai da sola."
+/** Italian text of the contextual help for the "Service callsign" option. */
+#define TR_H_WL_SERVICE_CALL                                                                                                                                   \
+    "Nominativo del servizio messaggi Winlink a cui sono indirizzati i comandi. Il valore predefinito è quello standard e raramente va cambiato."
+/** Italian text of the contextual help for the "Session lifetime (min)" option. */
+#define TR_H_WL_SESSION_MAX_MIN "Per quanti minuti una sessione Winlink resta aperta prima di essere chiusa e dover essere riaperta."
+/** Italian text of the contextual help for the "Use the Message service callsign" option. */
+#define TR_H_WL_USE_MSG_CALL                                                                                                                                   \
+    "Usa il nominativo e l'SSID della pagina Messaggio per Winlink invece di una coppia separata, così i due servizi condividono un'identità."
+
+/** Italian text of the contextual help for the "Mode (Wireless page)" option. */
+#define TR_H_WIFI_MODE                                                                                                                                         \
+    "Quali ruoli Wi-Fi svolge la stazione: il proprio punto di accesso, client di una rete esistente, o entrambi insieme. Entrambi è la scelta abituale, "    \
+    "perché mantiene raggiungibile l'amministrazione se la rete cade."
+/** Italian text of the contextual help for the "Name (telemetry channel or bit)" option. */
+#define TR_H_TLM_CHANNEL_NAME                                                                                                                                  \
+    "Nome di questo canale o bit, fino a 8 caratteri, annunciato ai riceventi nel messaggio di definizione PARM. È l'etichetta con cui mostrano il valore."
+/** Italian text of the contextual help for the "Name (telemetry project title)" option. */
+#define TR_H_TLM_PROJ_TITLE                                                                                                                                    \
+    "Titolo dell'intero insieme di telemetria, inviato nel messaggio di definizione BITS. Nomina il progetto a cui appartengono i canali, non un singolo "     \
+    "canale."
+/** @} */
+
 #endif // LANG_IT_H

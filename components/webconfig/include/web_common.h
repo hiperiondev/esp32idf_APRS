@@ -430,6 +430,20 @@ esp_err_t web_handle_css(httpd_req_t *req);
  * Labels and legends are bounded at ::WEB_LABEL_MAX_BYTES bytes and each
  * helper's buffer is sized to hold a label of that length plus the widest
  * markup it can emit, so no in-tree label is ever clipped.
+ *
+ * Every one of these helpers closes its option label with the contextual-help
+ * marker: the small orange circled question mark that opens a balloon of
+ * explanatory text when the pointer rests on it, when it takes keyboard focus,
+ * or when it is tapped. The text is not passed in - it is looked up from the
+ * label itself, through web_help_for_label() (see web_help.h), so a page's
+ * call sites are unchanged by it and one explanation serves every page that
+ * uses the same label. An option whose label has no entry in that table simply
+ * renders without a marker.
+ *
+ * That lookup is by exact label, so it cannot reach a label a page assembles
+ * at run time ("Alias 2", "Callsign 3", a payload-type filter). For those, the
+ * @c _h() variant of the helper takes the marker ready-rendered instead; build
+ * it once outside the loop with web_help_markup() and pass it to every row.
  * @{
  */
 
@@ -440,6 +454,21 @@ void web_fieldset_close(httpd_req_t *req);
 /** @brief Render a labelled single-line text input. @param req Request. @param label Field label. @param name Form field name. @param value Current value.
  * @param maxlen HTML maxlength. */
 void web_field_text(httpd_req_t *req, const char *label, const char *name, const char *value, int maxlen);
+/**
+ * @brief web_field_text() with the help marker supplied by the caller.
+ *
+ * For a row whose label is built at run time and so has no entry in the help
+ * table. Render @p help_markup once with web_help_markup() and reuse it for
+ * every row of the group.
+ *
+ * @param req          Request.
+ * @param label        Field label.
+ * @param name         Form field name.
+ * @param value        Current value.
+ * @param maxlen       HTML maxlength.
+ * @param help_markup  Marker rendered by web_help_markup(), or NULL/"" for none.
+ */
+void web_field_text_h(httpd_req_t *req, const char *label, const char *name, const char *value, int maxlen, const char *help_markup);
 /**
  * @brief Render a labelled integer input, bounded client-side.
  *
@@ -459,6 +488,21 @@ void web_field_text(httpd_req_t *req, const char *label, const char *name, const
  * @param max   Highest accepted value (inclusive).
  */
 void web_field_int(httpd_req_t *req, const char *label, const char *name, long value, long min, long max);
+/**
+ * @brief web_field_int() with the help marker supplied by the caller.
+ *
+ * Same @c min / @c max contract as web_field_int(); see web_field_text_h() for
+ * when a page reaches for an @c _h() variant.
+ *
+ * @param req          Request.
+ * @param label        Field label.
+ * @param name         Form field name.
+ * @param value        Current value.
+ * @param min          Lowest accepted value (inclusive).
+ * @param max          Highest accepted value (inclusive).
+ * @param help_markup  Marker rendered by web_help_markup(), or NULL/"" for none.
+ */
+void web_field_int_h(httpd_req_t *req, const char *label, const char *name, long value, long min, long max, const char *help_markup);
 /**
  * @brief Render a labelled floating-point input, bounded client-side.
  *
@@ -501,8 +545,32 @@ void web_field_checkbox(httpd_req_t *req, const char *label, const char *name, b
  * @param checked Initial checked state.
  */
 void web_field_checkbox_plain(httpd_req_t *req, const char *label, const char *name, bool checked);
+/**
+ * @brief web_field_checkbox_plain() with the help marker supplied by the
+ * caller.
+ *
+ * See web_field_text_h() for when a page reaches for an @c _h() variant.
+ *
+ * @param req          Request.
+ * @param label        Field label.
+ * @param name         Form field name.
+ * @param checked      Initial checked state.
+ * @param help_markup  Marker rendered by web_help_markup(), or NULL/"" for none.
+ */
+void web_field_checkbox_plain_h(httpd_req_t *req, const char *label, const char *name, bool checked, const char *help_markup);
 /** @brief Open a labelled @c <select>. @param req Request. @param label Field label. @param name Form field name. */
 void web_select_open(httpd_req_t *req, const char *label, const char *name);
+/**
+ * @brief web_select_open() with the help marker supplied by the caller.
+ *
+ * See web_field_text_h() for when a page reaches for an @c _h() variant.
+ *
+ * @param req          Request.
+ * @param label        Field label.
+ * @param name         Form field name.
+ * @param help_markup  Marker rendered by web_help_markup(), or NULL/"" for none.
+ */
+void web_select_open_h(httpd_req_t *req, const char *label, const char *name, const char *help_markup);
 /** @brief Emit one @c <option> inside an open @c <select>. @param req Request. @param value Option value. @param label Option text. @param selected Whether
  * this option is currently selected. */
 void web_select_option(httpd_req_t *req, int value, const char *label, bool selected);
@@ -533,6 +601,9 @@ void web_raw(httpd_req_t *req, const char *html);
  * selection as a bitmask (Digipeater, Tracker, WX, Messaging, Telemetry,
  * Objects and Items) so they all render and behave identically instead of
  * duplicating the same loop.
+ *
+ * All four boxes carry the same contextual help, since they are one selection
+ * among peers rather than four independent settings.
  *
  * @param req         Incoming request.
  * @param name_prefix Prefix used to build the checkbox names ("<prefix>1".."<prefix>4").

@@ -44,6 +44,7 @@
 #include "telegram_app.h"
 #include "translations.h"
 #include "web_common.h"
+#include "web_help.h"
 
 static const char *TAG = "page_telegram";
 
@@ -98,7 +99,11 @@ static void tg_render_peer(httpd_req_t *req, const char *id_prefix, int index, i
     web_field_text(req, TR_TG_F_PEER_ID, name, idbuf, 20);
 
     snprintf(name, sizeof(name), "%sName%d", id_prefix, index + 1);
-    web_field_text(req, TR_TG_F_PEER_NAME, name, peer ? peer->name : "", TELEGRAM_APP_NAME_MAX);
+    // "Name" and "Callsign" are labels other pages use for other things, so
+    // this page names the help for each rather than resolving it by label.
+    char peer_help[WEB_HELP_MARKUP_MAX];
+    web_help_markup(peer_help, sizeof(peer_help), TR_H_TG_F_PEER_NAME);
+    web_field_text_h(req, TR_TG_F_PEER_NAME, name, peer ? peer->name : "", TELEGRAM_APP_NAME_MAX, peer_help);
 
     httpd_resp_sendstr_chunk(req, "</div></div>");
 }
@@ -130,10 +135,14 @@ static void tg_render_user(httpd_req_t *req, const char *id_prefix, int index, i
     web_field_text(req, TR_TG_F_PEER_ID, name, idbuf, 20);
 
     snprintf(name, sizeof(name), "%sName%d", id_prefix, index + 1);
-    web_field_text(req, TR_TG_F_PEER_NAME, name, user ? user->name : "", TELEGRAM_APP_NAME_MAX);
+    char user_name_help[WEB_HELP_MARKUP_MAX];
+    web_help_markup(user_name_help, sizeof(user_name_help), TR_H_TG_F_PEER_NAME);
+    web_field_text_h(req, TR_TG_F_PEER_NAME, name, user ? user->name : "", TELEGRAM_APP_NAME_MAX, user_name_help);
 
     snprintf(name, sizeof(name), "%sCallsign%d", id_prefix, index + 1);
-    web_field_text(req, TR_TG_F_USER_CALLSIGN, name, user ? user->callsign : "", TELEGRAM_APP_CALLSIGN_MAX);
+    char call_help[WEB_HELP_MARKUP_MAX];
+    web_help_markup(call_help, sizeof(call_help), TR_H_TG_F_USER_CALLSIGN);
+    web_field_text_h(req, TR_TG_F_USER_CALLSIGN, name, user ? user->callsign : "", TELEGRAM_APP_CALLSIGN_MAX, call_help);
 
     httpd_resp_sendstr_chunk(req, "</div></div>");
 }

@@ -24,8 +24,11 @@ Come funziona
 * ``translations/translations.h`` è l'**unico** posto che decide quale
   ``lang_xx.h`` è incluso, tramite rami ``#if LANGUAGE == …``.
 * Ogni stringa visibile all'utente nell'amministrazione web passa per una macro
-  ``TR_xxx``. Ci sono 649 di queste macro, e ciascuno dei tre file ``lang_*.h``
-  le definisce tutte.
+  ``TR_xxx``. Ci sono 1051 di queste macro, e ciascuno dei tre file ``lang_*.h``
+  le definisce tutte. 226 di esse sono le stringhe di aiuto contestuale
+  ``TR_H_xxx`` dietro il punto interrogativo che chiude ogni etichetta di
+  opzione, così i fumetti di aiuto sono tradotti esattamente come le etichette
+  che spiegano.
 
 Selezionare la lingua in compilazione
 =====================================

@@ -71,12 +71,12 @@ In una frase, il firmware **demodula** l'audio AFSK/FSK dall'altoparlante o dall
 | Rapporto meteo | Refresh dei sensori a 1 Hz, media opzionale |
 | Telemetria | Analogica A1–A5 + digitale B1–B8, `T#nnn` + metadati |
 | Framework di driver per sensori | Registro dinamico, driver BME280/BMP280 incluso |
-| Pannello web | 22 pagine, dashboard live, traffico + ultimi ascoltati, visore del registro di console |
+| Pannello web | 22 pagine, dashboard live, traffico + ultimi ascoltati, visore del registro di console, aiuto contestuale per opzione |
 | Archiviazione | LittleFS 512 KB, upload/download/eliminazione/formattazione |
 | Rete | Wi-Fi AP/STA/AP+STA, scansione, potenza TX, SNTP (orologio UTC, fuso orario selezionabile per la visualizzazione) |
 | Controllo frequenza CPU | 80 / 160 / 240 MHz |
 | Aggiornamento OTA | Slot `ota_0`/`ota_1`, auto-rollback |
-| Localizzazione | EN / ES / IT, a compile-time |
+| Localizzazione | EN / ES / IT, a compile-time, etichette e fumetti di aiuto allo stesso modo |
 
 ---
 

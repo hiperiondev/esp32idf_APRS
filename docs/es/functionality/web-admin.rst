@@ -93,6 +93,49 @@ que se repiten (SSID, intervalo de transmisión, latitud, longitud, altitud)
 provienen de las constantes ``WEB_RANGE_*`` de ``web_common.h``, así un límite
 se define una sola vez para todas las páginas que lo comparten.
 
+Ayuda contextual
+================
+
+Cada opción de cada página termina su etiqueta con un pequeño signo de
+interrogación naranja dentro de un círculo. Al posar el puntero sobre él — o al
+darle foco de teclado, o al tocarlo en una pantalla táctil — se abre un globo
+con una explicación breve de lo que hace esa opción, acotada por
+``WEB_HELP_MAX_BYTES`` (253 bytes) para que se lea de un vistazo sobre el
+control que explica.
+
+El marcador es sólo marcado y hoja de estilos. ``web_help_markup()`` emite un
+``span.hlp`` enfocable con el glifo y un ``span.hlp-box`` anidado, y
+``web_handle_css()`` dibuja el círculo, lo colorea y revela el globo desde el
+``:hover`` y el ``:focus`` del propio marcador. No hay nada que inicializar,
+ningún estado sobrevive a una carga de página, y la mitad de ``:focus`` es lo
+que hace la ayuda alcanzable sin ratón. Por debajo de 600 px el globo se ancla
+a la izquierda del campo y limita su ancho al viewport, porque un globo centrado
+en un marcador cercano a cualquiera de los bordes se saldría de la pantalla. Un
+toque en el marcador no activa además la etiqueta que lo contiene, así que
+preguntar qué hace una casilla nunca la conmuta.
+
+El texto de ayuda se **busca a partir de la etiqueta, no se pasa como
+argumento**. Las páginas llaman a ``web_field_int(req, TR_F_SSID, …)`` igual que
+antes de que existiera esta función; ``web_help_for_label()`` compara esa
+etiqueta con la tabla de ``web_help.c``, que empareja cada macro de etiqueta
+``TR_xxx`` con su macro de ayuda ``TR_H_xxx``. Eso deja intactos los 359 puntos
+de llamada y hace que una etiqueta compartida por varias páginas se explique
+una sola vez y se lea igual en todas. Una opción cuya etiqueta no tiene fila en
+la tabla simplemente se representa sin marcador.
+
+Unas pocas etiquetas se construyen en tiempo de ejecución — ``Alias 2``,
+``Indicativo 3``, un filtro de tipo de contenido, un preajuste de ruta numerado
+— y por eso no coinciden con nada. Esos puntos de llamada representan el
+marcador una vez con ``web_help_markup()`` fuera de su bucle y se lo pasan a
+cada fila mediante la variante ``_h()`` del ayudante (``web_field_text_h``,
+``web_field_int_h``, ``web_field_checkbox_plain_h``, ``web_select_open_h``).
+
+Añadir una opción implica, por tanto, añadir su cadena ``TR_H_xxx`` a los tres
+archivos ``lang_*.h`` y una fila a ``web_help.c``. Omitir la fila no es un error
+de compilación — la opción se representa sin signo de interrogación —, así que
+conviene revisar la tabla siempre que una página gane un campo.
+
+
 Las páginas
 ===========
 

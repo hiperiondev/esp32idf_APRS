@@ -85,6 +85,47 @@ Recurring domains (SSID, transmit interval, latitude, longitude, altitude) come
 from the ``WEB_RANGE_*`` constants in ``web_common.h`` so a bound is defined
 once for every page that shares it.
 
+Contextual help
+===============
+
+Every option on every page ends its label with a small orange circled question
+mark. Resting the pointer on it — or giving it keyboard focus, or tapping it on
+a touch screen — opens a balloon with a short explanation of what that option
+does, bounded at ``WEB_HELP_MAX_BYTES`` (253 bytes) so it stays readable at a
+glance over the control it explains.
+
+The marker is markup and stylesheet only. ``web_help_markup()`` emits a
+focusable ``span.hlp`` holding the glyph and a nested ``span.hlp-box``, and
+``web_handle_css()`` draws the circle, colours it and reveals the balloon from
+the marker's own ``:hover`` and ``:focus``. Nothing has to be initialised, no
+state survives a page load, and the ``:focus`` half is what makes the help
+reachable without a mouse. Below 600 px the balloon anchors to the left of the
+field and caps its width to the viewport, since a balloon centred on a marker
+near either edge would otherwise run off the screen. A tap on the marker is
+stopped from also activating the label it sits inside, so asking what a
+checkbox does never toggles it.
+
+The help text is **looked up from the label, not passed in**. Pages call
+``web_field_int(req, TR_F_SSID, …)`` exactly as they did before the feature
+existed; ``web_help_for_label()`` matches that label against the table in
+``web_help.c``, which pairs each ``TR_xxx`` label macro with its ``TR_H_xxx``
+help macro. That keeps all 359 call sites untouched and means a label several
+pages share is explained once and reads identically on all of them. An option
+whose label has no row in the table simply renders without a marker.
+
+A handful of labels are assembled at run time — ``Alias 2``, ``Callsign 3``, a
+payload-type filter, a numbered path preset — and so match nothing. Those call
+sites render the marker once with ``web_help_markup()`` outside their loop and
+pass it to each row through the ``_h()`` variant of the helper
+(``web_field_text_h``, ``web_field_int_h``, ``web_field_checkbox_plain_h``,
+``web_select_open_h``).
+
+Adding an option therefore means adding its ``TR_H_xxx`` string to all three
+``lang_*.h`` files and one row to ``web_help.c``. Leaving the row out is not a
+build error — the option renders with no question mark — so the table is worth
+a glance whenever a page grows a field.
+
+
 The pages
 =========
 

@@ -89,6 +89,8 @@ Repository layout
    │   └── webconfig/      ← esp_http_server admin
    │       ├── web_server.c            ← route table
    │       ├── web_common.c            ← auth, form parsing, HTML shell, field helpers
+   │       ├── web_help.c              ← option-label → help-text table behind the question
+   │       │                             mark that closes every label
    │       ├── logcapture.c            ← on-demand esp_log_set_vprintf() mirror of the serial
    │       │                             console into an in-RAM ring → Logs page JSON (seq
    │       │                             poll), with an idle timeout

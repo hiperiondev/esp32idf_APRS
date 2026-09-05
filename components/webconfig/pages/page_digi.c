@@ -33,6 +33,7 @@
 #include "str_append.h" // str_copy_utf8_safe()
 #include "translations.h"
 #include "web_common.h"
+#include "web_help.h"
 
 static const char *TAG = "page_digi";
 
@@ -78,21 +79,31 @@ esp_err_t page_digi_get(httpd_req_t *req) {
     web_select_option(req, 1, TR_DIGI_TRAP_CLAMP, g_config.digi_trap_n_clamp);
     web_select_option(req, 0, TR_DIGI_TRAP_DROP, !g_config.digi_trap_n_clamp);
     web_select_close(req);
+    // Every label in this loop is numbered per row, so none of them matches
+    // the help table. Each of the three columns carries the one explanation
+    // registered for its unnumbered label, rendered once before the loop.
+    char alias_help[WEB_HELP_MARKUP_MAX], maxn_help[WEB_HELP_MARKUP_MAX], mode_help[WEB_HELP_MARKUP_MAX];
+    web_help_markup(alias_help, sizeof(alias_help), web_help_for_label(TR_F_DIGI_ALIAS));
+    web_help_markup(maxn_help, sizeof(maxn_help), web_help_for_label(TR_F_DIGI_MAX_N));
+    // "Mode" is also the Wireless page's label for something else, so this
+    // one is named rather than looked up.
+    web_help_markup(mode_help, sizeof(mode_help), TR_H_F_DIGI_ALIAS_MODE);
+
     for (int i = 0; i < DIGI_ALIAS_MAX; i++) {
         char name[20];
         char label[64];
 
         snprintf(label, sizeof(label), "%s %d", TR_F_DIGI_ALIAS, i + 1);
         snprintf(name, sizeof(name), "digiAlias%d", i);
-        web_field_text(req, label, name, g_config.digi_alias[i].alias, DIGI_ALIAS_LEN - 1);
+        web_field_text_h(req, label, name, g_config.digi_alias[i].alias, DIGI_ALIAS_LEN - 1, alias_help);
 
         snprintf(label, sizeof(label), "%s %d", TR_F_DIGI_MAX_N, i + 1);
         snprintf(name, sizeof(name), "digiAliasN%d", i);
-        web_field_int(req, label, name, g_config.digi_alias[i].max_n, 1, DIGI_ALIAS_MAX_N);
+        web_field_int_h(req, label, name, g_config.digi_alias[i].max_n, 1, DIGI_ALIAS_MAX_N, maxn_help);
 
         snprintf(label, sizeof(label), "%s %d", TR_F_DIGI_ALIAS_MODE, i + 1);
         snprintf(name, sizeof(name), "digiAliasM%d", i);
-        web_select_open(req, label, name);
+        web_select_open_h(req, label, name, mode_help);
         web_select_option(req, DIGI_ALIAS_OFF, TR_DIGI_MODE_OFF, g_config.digi_alias[i].mode == DIGI_ALIAS_OFF);
         web_select_option(req, DIGI_ALIAS_TRACE, TR_DIGI_MODE_TRACE, g_config.digi_alias[i].mode == DIGI_ALIAS_TRACE);
         web_select_option(req, DIGI_ALIAS_FLOOD, TR_DIGI_MODE_FLOOD, g_config.digi_alias[i].mode == DIGI_ALIAS_FLOOD);

@@ -94,6 +94,51 @@ domini ricorrenti (SSID, intervallo di trasmissione, latitudine, longitudine,
 altitudine) provengono dalle costanti ``WEB_RANGE_*`` di ``web_common.h``, così
 un limite è definito una sola volta per tutte le pagine che lo condividono.
 
+Aiuto contestuale
+=================
+
+Ogni opzione di ogni pagina chiude la propria etichetta con un piccolo punto
+interrogativo arancione dentro un cerchio. Posando il puntatore su di esso — o
+dandogli il fuoco da tastiera, o toccandolo su uno schermo tattile — si apre un
+fumetto con una breve spiegazione di ciò che quell'opzione fa, limitata da
+``WEB_HELP_MAX_BYTES`` (253 byte) perché resti leggibile a colpo d'occhio sopra
+il controllo che spiega.
+
+Il marcatore è solo markup e foglio di stile. ``web_help_markup()`` emette uno
+``span.hlp`` focalizzabile con il glifo e uno ``span.hlp-box`` annidato, e
+``web_handle_css()`` disegna il cerchio, lo colora e rivela il fumetto dal
+``:hover`` e dal ``:focus`` del marcatore stesso. Non c'è nulla da
+inizializzare, nessuno stato sopravvive al caricamento di una pagina, e la metà
+``:focus`` è ciò che rende l'aiuto raggiungibile senza mouse. Sotto i 600 px il
+fumetto si ancora a sinistra del campo e limita la propria larghezza al
+viewport, perché un fumetto centrato su un marcatore vicino a uno dei bordi
+uscirebbe dallo schermo. Un tocco sul marcatore non attiva anche l'etichetta che
+lo contiene, così chiedere cosa faccia una casella non la commuta mai.
+
+Il testo di aiuto viene **cercato a partire dall'etichetta, non passato come
+argomento**. Le pagine chiamano ``web_field_int(req, TR_F_SSID, …)`` esattamente
+come prima che questa funzione esistesse; ``web_help_for_label()`` confronta
+quell'etichetta con la tabella di ``web_help.c``, che accoppia ogni macro di
+etichetta ``TR_xxx`` con la sua macro di aiuto ``TR_H_xxx``. Questo lascia
+intatti tutti i 359 punti di chiamata e fa sì che un'etichetta condivisa da più
+pagine sia spiegata una sola volta e si legga allo stesso modo su tutte.
+Un'opzione la cui etichetta non ha una riga nella tabella si rende
+semplicemente senza marcatore.
+
+Poche etichette sono assemblate a runtime — ``Alias 2``, ``Nominativo 3``, un
+filtro di tipo di contenuto, un preset di percorso numerato — e perciò non
+corrispondono a nulla. Quei punti di chiamata rendono il marcatore una volta con
+``web_help_markup()`` fuori dal loro ciclo e lo passano a ogni riga tramite la
+variante ``_h()`` dell'helper (``web_field_text_h``, ``web_field_int_h``,
+``web_field_checkbox_plain_h``, ``web_select_open_h``).
+
+Aggiungere un'opzione significa quindi aggiungere la sua stringa ``TR_H_xxx`` a
+tutti e tre i file ``lang_*.h`` e una riga a ``web_help.c``. Omettere la riga non
+è un errore di compilazione — l'opzione si rende senza punto interrogativo —
+quindi vale la pena dare un'occhiata alla tabella ogni volta che una pagina
+guadagna un campo.
+
+
 Le pagine
 =========
 

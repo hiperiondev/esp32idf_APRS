@@ -68,6 +68,7 @@
 #include "translations.h"
 #include "weather_telemetry.h" // aprs_telemetry_report_t / APRS_TELEMETRY_ANALOG_CHANNELS - GET /tlm/values raw analog read
 #include "web_common.h"
+#include "web_help.h"
 
 static const char *TAG = "page_tlm";
 
@@ -295,7 +296,11 @@ static void send_analog_form(httpd_req_t *req, const telemetry_config_t *cfg) {
         tlm_ana_channel_select(req, i, cfg->tlm_ana_channel[i]);
 
         snprintf(name, sizeof(name), "anaName%d", i);
-        web_field_text(req, TR_F_NAME, name, cfg->PARM[i], 8);
+        // Both this and the project title below are labelled "Name", so each
+        // names its own help instead of resolving it from that shared label.
+        char name_help[WEB_HELP_MARKUP_MAX];
+        web_help_markup(name_help, sizeof(name_help), TR_H_TLM_CHANNEL_NAME);
+        web_field_text_h(req, TR_F_NAME, name, cfg->PARM[i], 8, name_help);
 
         snprintf(name, sizeof(name), "anaUnit%d", i);
         web_field_text(req, TR_TLM_UNIT, name, cfg->UNIT[i], 6);
@@ -502,7 +507,9 @@ static void send_digital_form(httpd_req_t *req, const telemetry_config_t *cfg) {
     web_fieldset_open(req, TR_TLM_DIGITAL_LEGEND);
     web_field_checkbox(req, TR_F_BEACON_VIA_RF, "digRF", cfg->digital_tx2rf);
     web_field_checkbox(req, TR_F_BEACON_VIA_INTERNET, "digInet", cfg->digital_tx2inet);
-    web_field_text(req, TR_F_NAME, "projTitle", cfg->proj_title, 23);
+    char title_help[WEB_HELP_MARKUP_MAX];
+    web_help_markup(title_help, sizeof(title_help), TR_H_TLM_PROJ_TITLE);
+    web_field_text_h(req, TR_F_NAME, "projTitle", cfg->proj_title, 23, title_help);
 
     httpd_resp_sendstr_chunk(req, "<div class='table-wrap'><table><tr>"
                                   "<th>" TR_TLM_BIT "</th><th>" TR_F_ENABLE "</th><th>" TR_TLM_SENSE "</th>"

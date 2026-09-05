@@ -25,6 +25,7 @@
 idf_component_register(
     SRCS
         "web_common.c"
+        "web_help.c"
         "web_server.c"
         "logcapture.c"
         "pages/page_common.c"
