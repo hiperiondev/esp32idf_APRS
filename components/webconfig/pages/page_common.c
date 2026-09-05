@@ -255,15 +255,26 @@ esp_err_t page_dashinfo(httpd_req_t *req) {
     int64_t uptime_min = (uptime_s % 3600) / 60;
     int64_t uptime_sec = uptime_s % 60;
 
-    char buf[900];
+    // Rendered as the same stat-card grid used for every other at-a-glance
+    // metric strip in the admin UI (see .stat-grid / .stat-card in
+    // web_handle_css()): one card per value, its label above and its unit
+    // trailing the figure, so this strip reads like the rest of the dashboard
+    // instead of like a plain settings table.
+    char buf[1400];
     snprintf(buf, sizeof(buf),
-             "<fieldset><legend>" TR_DASH_SYSINFO "</legend><table><tr>"
-             "<th>" TR_DASH_DATETIME "</th><th>" TR_DASH_UPTIME "</th><th>" TR_DASH_FREE_HEAP "</th><th>" TR_SYSINFO_MIN_FREE_HEAP "</th><th>" TR_DASH_LITTLEFS
-             "</th><th>" TR_SYSINFO_CPU_FREQ "</th><th>" TR_DASH_REBOOT_REASON "</th>"
-             "</tr><tr>"
-             "<td>%s</td><td>%lldd %lldh %lldm %llds</td><td><span id='dashFreeHeap'>%lu</span> bytes</td><td><span id='dashMinFreeHeap'>%lu</span> bytes</td>"
-             "<td>%u / %u bytes</td><td>%lu MHz</td><td>%s</td>"
-             "</tr></table></fieldset>",
+             "<fieldset><legend>" TR_DASH_SYSINFO "</legend><div class='stat-grid'>"
+             "<div class='stat-card'><div class='stat-label'>" TR_DASH_DATETIME "</div><div class='stat-value'>%s</div></div>"
+             "<div class='stat-card'><div class='stat-label'>" TR_DASH_UPTIME "</div><div class='stat-value'>%lldd %lldh %lldm %llds</div></div>"
+             "<div class='stat-card'><div class='stat-label'>" TR_DASH_FREE_HEAP
+             "</div><div class='stat-value'><span id='dashFreeHeap'>%lu</span><span class='stat-unit'> bytes</span></div></div>"
+             "<div class='stat-card'><div class='stat-label'>" TR_SYSINFO_MIN_FREE_HEAP
+             "</div><div class='stat-value'><span id='dashMinFreeHeap'>%lu</span><span class='stat-unit'> bytes</span></div></div>"
+             "<div class='stat-card'><div class='stat-label'>" TR_DASH_LITTLEFS
+             "</div><div class='stat-value'>%u<span class='stat-unit'> / %u bytes</span></div></div>"
+             "<div class='stat-card'><div class='stat-label'>" TR_SYSINFO_CPU_FREQ
+             "</div><div class='stat-value'>%lu<span class='stat-unit'> MHz</span></div></div>"
+             "<div class='stat-card'><div class='stat-label'>" TR_DASH_REBOOT_REASON "</div><div class='stat-value'>%s</div></div>"
+             "</div></fieldset>",
              localTimeEsc, uptime_days, uptime_hour, uptime_min, uptime_sec, (unsigned long)esp_get_free_heap_size(),
              (unsigned long)esp_get_minimum_free_heap_size(), (unsigned)used, (unsigned)total, (unsigned long)cpu_mhz, dash_reboot_reason_str());
 

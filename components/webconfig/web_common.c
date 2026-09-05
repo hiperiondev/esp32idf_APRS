@@ -937,6 +937,17 @@ esp_err_t web_handle_css(httpd_req_t *req) {
         "fieldset{background:var(--card);border:1px solid var(--border);border-radius:var(--radius-card);"
         "box-shadow:var(--shadow);margin-bottom:20px;padding:20px 22px;}"
         "legend{width:100%;color:var(--text);padding:0;margin:0 0 14px;font-size:1.05em;font-weight:700;}"
+        // At-a-glance metric strip (dashboard System Info and similar live
+        // stats): a row of equal cards, each with a small uppercase label and
+        // a large value, matching the admin UI's stat-card look everywhere
+        // it is used.
+        ".stat-grid{display:flex;flex-wrap:wrap;gap:14px;}"
+        ".stat-card{flex:1;min-width:150px;background:var(--card);border:1px solid var(--border);"
+        "border-radius:var(--radius-card);padding:14px 16px;}"
+        ".stat-label{color:var(--sub);font-size:.72em;font-weight:700;letter-spacing:.04em;"
+        "text-transform:uppercase;margin-bottom:8px;}"
+        ".stat-value{color:var(--text);font-size:1.4em;font-weight:800;}"
+        ".stat-unit{color:var(--sub);font-size:.55em;font-weight:600;}"
         "label{display:block;color:var(--sub);font-size:.8em;margin:12px 0 4px;}"
         "label:first-child{margin-top:0;}"
         "p label{display:inline;}"
@@ -1044,12 +1055,11 @@ esp_err_t web_handle_css(httpd_req_t *req) {
         // than fit on screen, horizontally because white-space:pre keeps each
         // console line whole - a log line wrapped at the panel's width would
         // read as two entries and hide which one the timestamp belongs to.
-        // The dark palette is deliberate: this panel shows what a serial
-        // terminal shows, and the contrast is what makes a wall of monospace
-        // scannable.
+        // The light palette matches the rest of the admin UI's cards while
+        // the monospace font and pre-wrap keep a wall of log lines scannable.
         ".log-actions{display:flex;align-items:center;gap:12px;margin-bottom:10px;}"
         ".log-actions button{margin-top:0;}"
-        ".log-box{height:420px;overflow:auto;margin:0;padding:10px;background:#1c1c1c;color:#e8e7e3;"
+        ".log-box{height:420px;overflow:auto;margin:0;padding:10px;background:#f0f0f0;color:#111111;"
         "font-family:'Consolas','Courier New',monospace;font-size:.78em;line-height:1.35;"
         "white-space:pre;border:1px solid var(--border);border-radius:8px;}";
     httpd_resp_set_type(req, "text/css");
