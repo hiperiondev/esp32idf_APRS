@@ -94,16 +94,31 @@ a touch screen — opens a balloon with a short explanation of what that option
 does, bounded at ``WEB_HELP_MAX_BYTES`` (253 bytes) so it stays readable at a
 glance over the control it explains.
 
-The marker is markup and stylesheet only. ``web_help_markup()`` emits a
-focusable ``span.hlp`` holding the glyph and a nested ``span.hlp-box``, and
-``web_handle_css()`` draws the circle, colours it and reveals the balloon from
-the marker's own ``:hover`` and ``:focus``. Nothing has to be initialised, no
+``web_help_markup()`` emits a focusable ``span.hlp`` holding the glyph and a
+nested ``span.hlp-box``, and ``web_handle_css()`` draws the circle, colours it
+and reveals the balloon from the marker's own ``:hover`` and ``:focus``. No
 state survives a page load, and the ``:focus`` half is what makes the help
-reachable without a mouse. Below 600 px the balloon anchors to the left of the
-field and caps its width to the viewport, since a balloon centred on a marker
-near either edge would otherwise run off the screen. A tap on the marker is
-stopped from also activating the label it sits inside, so asking what a
-checkbox does never toggles it.
+reachable without a mouse. A tap on the marker is stopped from also activating
+the label it sits inside, so asking what a checkbox does never toggles it.
+
+The balloon is drawn as a fixed layer over the whole page rather than as a box
+inside the field's own card. Markers sit inside cards, accordions and table
+frames, and several of those clip what leaves them — the accordion hides its
+overflow so its rounded corners stay clean, and a table frame that scrolls
+sideways clips vertically as well — so a balloon laid out inside one of them
+would be cut off at its edge whenever the text is longer than the room left
+above the field. Lifting it out of the flow is what lets every balloon be read
+in full, over every card, table and control on the page.
+
+Coordinates are the one thing the stylesheet cannot then supply, so the script
+``web_send_footer()`` emits on every page provides them: it measures the marker,
+centres the balloon over it, pulls it back inside whichever screen edge it would
+cross, flips it under the field when there is not enough room above, and slides
+the arrow along its edge so it keeps pointing at the marker after any of that.
+An open balloon is placed again on scroll and on resize, the scroll listener
+capturing so it also follows the log, chat and table frames that scroll inside
+themselves. The handlers are bound to the document rather than to each marker,
+so they equally cover rows a page's own script adds after load.
 
 The help text is **looked up from the label, not passed in**. Pages call
 ``web_field_int(req, TR_F_SSID, …)`` exactly as they did before the feature

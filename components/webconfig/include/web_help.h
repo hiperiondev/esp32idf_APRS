@@ -21,9 +21,15 @@
  * Every option the form-field emitters in web_common.h render ends with a small
  * orange circled question mark. Resting the pointer on it - or giving it focus
  * from the keyboard, or tapping it on a touch screen - opens a balloon holding
- * a short explanation of what that option does. The whole control is markup and
- * stylesheet: nothing about it needs a script, and it holds no state of its own,
- * so an ordinary page load leaves every balloon closed again.
+ * a short explanation of what that option does. The marker holds no state of its
+ * own, so an ordinary page load leaves every balloon closed again.
+ *
+ * Whether a balloon is open is decided by the stylesheet alone, from the
+ * marker's own @c :hover and @c :focus. Where an open balloon is drawn is not:
+ * it is a fixed-position layer over the whole page, so that it is painted whole
+ * above every card, accordion and table frame rather than being clipped by the
+ * one it was opened from, and the shared script emitted by web_send_footer() is
+ * what measures the marker and hands that layer its coordinates.
  *
  * The help text of an option is looked up by its label rather than passed down
  * through every page. A page therefore keeps calling web_field_int(),
@@ -119,9 +125,11 @@ const char *web_help_for_label(const char *label);
  *
  * Writes the complete markup of the question mark and the balloon it opens: a
  * focusable @c span carrying the @c hlp class, with the HTML-escaped help text
- * inside a nested @c hlp-box. The classes are styled by web_handle_css(),
- * which is what makes the marker a circle, colours it orange and reveals the
- * balloon on hover, on focus and on tap.
+ * inside a nested @c hlp-box. The classes are styled by web_handle_css(), which
+ * is what makes the marker a circle, colours it orange, reveals the balloon on
+ * hover, on focus and on tap, and lifts it out of the page flow so no card,
+ * accordion or table frame can cut it short; the footer script then places that
+ * balloon over the marker.
  *
  * A NULL or empty @p help writes an empty string, so an option with no
  * registered help simply renders without a marker rather than with an empty

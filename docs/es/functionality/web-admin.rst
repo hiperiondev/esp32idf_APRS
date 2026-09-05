@@ -103,16 +103,34 @@ con una explicación breve de lo que hace esa opción, acotada por
 ``WEB_HELP_MAX_BYTES`` (253 bytes) para que se lea de un vistazo sobre el
 control que explica.
 
-El marcador es sólo marcado y hoja de estilos. ``web_help_markup()`` emite un
-``span.hlp`` enfocable con el glifo y un ``span.hlp-box`` anidado, y
-``web_handle_css()`` dibuja el círculo, lo colorea y revela el globo desde el
-``:hover`` y el ``:focus`` del propio marcador. No hay nada que inicializar,
-ningún estado sobrevive a una carga de página, y la mitad de ``:focus`` es lo
-que hace la ayuda alcanzable sin ratón. Por debajo de 600 px el globo se ancla
-a la izquierda del campo y limita su ancho al viewport, porque un globo centrado
-en un marcador cercano a cualquiera de los bordes se saldría de la pantalla. Un
-toque en el marcador no activa además la etiqueta que lo contiene, así que
-preguntar qué hace una casilla nunca la conmuta.
+``web_help_markup()`` emite un ``span.hlp`` enfocable con el glifo y un
+``span.hlp-box`` anidado, y ``web_handle_css()`` dibuja el círculo, lo colorea y
+revela el globo desde el ``:hover`` y el ``:focus`` del propio marcador. Ningún
+estado sobrevive a una carga de página, y la mitad de ``:focus`` es lo que hace
+la ayuda alcanzable sin ratón. Un toque en el marcador no activa además la
+etiqueta que lo contiene, así que preguntar qué hace una casilla nunca la
+conmuta.
+
+El globo se dibuja como una capa fija sobre toda la página, no como una caja
+dentro de la tarjeta del propio campo. Los marcadores viven dentro de tarjetas,
+acordeones y marcos de tabla, y varios de ellos recortan lo que se sale — el
+acordeón oculta su desbordamiento para que sus esquinas redondeadas queden
+limpias, y un marco de tabla que se desplaza en horizontal también recorta en
+vertical —, así que un globo maquetado dentro de uno de ellos quedaría cortado
+en su borde en cuanto el texto fuera más largo que el espacio libre encima del
+campo. Sacarlo del flujo es lo que permite leer cada globo entero, por encima de
+cualquier tarjeta, tabla o control de la página.
+
+Las coordenadas son lo único que la hoja de estilos no puede aportar entonces, y
+las da el script que ``web_send_footer()`` emite en cada página: mide el
+marcador, centra el globo sobre él, lo devuelve dentro del borde de pantalla que
+fuera a cruzar, lo voltea bajo el campo cuando no hay sitio arriba y desliza la
+flecha por su borde para que siga apuntando al marcador después de todo eso. Un
+globo abierto se vuelve a colocar al desplazar y al redimensionar, con el
+oyente de desplazamiento en fase de captura para que también siga a los marcos
+de registro, chat y tabla que se desplazan por dentro. Los manejadores se
+enlazan al documento y no a cada marcador, de modo que cubren igualmente las
+filas que el script propio de una página añade después de la carga.
 
 El texto de ayuda se **busca a partir de la etiqueta, no se pasa como
 argumento**. Las páginas llaman a ``web_field_int(req, TR_F_SSID, …)`` igual que

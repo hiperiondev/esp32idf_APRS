@@ -883,6 +883,76 @@ void web_send_header(httpd_req_t *req, const char *title, const char *active_men
 void web_send_footer(httpd_req_t *req) {
     httpd_resp_sendstr_chunk(
         req, "<script>function togglePwd(id,cb){var el=document.getElementById(id);if(el){el.type=(cb&&cb.checked)?'text':'password';}}</script>");
+
+    // Places the contextual help balloon. The stylesheet gives it position:
+    // fixed, which is what lets it be painted over every card, accordion and
+    // table frame on the page instead of being clipped by the one it was
+    // opened from; what a stylesheet cannot then supply is where on the
+    // viewport it goes, and that is all this does.
+    //
+    // The balloon is measured before it is placed, with the measurement done
+    // on an off-screen copy of the displayed state rather than by trusting
+    // :hover to have been applied by the time the event arrives. Placement
+    // then centres it over the marker, pulls it back inside whichever screen
+    // edge it would cross, flips it under the field when there is not enough
+    // room above, and slides the arrow along its edge so it still points at
+    // the marker after any of that. Because a fixed element does not travel
+    // with the page, the open balloon is placed again on scroll and resize;
+    // the scroll listener is a capturing one so it also sees the log, chat and
+    // table frames that scroll inside themselves.
+    //
+    // Listening on the document rather than on each marker means one pair of
+    // handlers serves every option on the page, including rows a page's own
+    // script adds after load.
+    httpd_resp_sendstr_chunk(req, "<script>(function(){"
+                                  "var cur=null;"
+                                  "function place(h){"
+                                  "var b=h.querySelector('.hlp-box');"
+                                  "if(!b)return;"
+                                  "b.classList.remove('below');"
+                                  "b.style.visibility='hidden';"
+                                  "b.style.display='block';"
+                                  "b.style.left='0px';"
+                                  "b.style.top='0px';"
+                                  "var m=h.getBoundingClientRect();"
+                                  "var w=b.offsetWidth,t=b.offsetHeight,g=8;"
+                                  "var vw=document.documentElement.clientWidth;"
+                                  "var vh=document.documentElement.clientHeight;"
+                                  "var cx=m.left+m.width/2;"
+                                  "var x=cx-w/2;"
+                                  "if(x+w>vw-g)x=vw-g-w;"
+                                  "if(x<g)x=g;"
+                                  "var y=m.top-t-g;"
+                                  "if(y<g){y=m.bottom+g;b.classList.add('below');}"
+                                  "if(y+t>vh-g)y=Math.max(g,vh-g-t);"
+                                  "var a=cx-x;"
+                                  "if(a<10)a=10;"
+                                  "if(a>w-10)a=w-10;"
+                                  "b.style.left=Math.round(x)+'px';"
+                                  "b.style.top=Math.round(y)+'px';"
+                                  "b.style.setProperty('--hlp-arrow',Math.round(a)+'px');"
+                                  "b.style.display='';"
+                                  "b.style.visibility='';"
+                                  "cur=h;"
+                                  "}"
+                                  "function marker(n){"
+                                  "while(n&&n!==document){"
+                                  "if(n.classList&&n.classList.contains('hlp'))return n;"
+                                  "n=n.parentNode;"
+                                  "}"
+                                  "return null;"
+                                  "}"
+                                  "function show(e){var h=marker(e.target);if(h)place(h);}"
+                                  "function hide(e){if(cur&&marker(e.target)===cur)cur=null;}"
+                                  "function follow(){if(cur)place(cur);}"
+                                  "document.addEventListener('mouseover',show,true);"
+                                  "document.addEventListener('focusin',show,true);"
+                                  "document.addEventListener('mouseout',hide,true);"
+                                  "document.addEventListener('focusout',hide,true);"
+                                  "document.addEventListener('scroll',follow,true);"
+                                  "window.addEventListener('resize',follow);"
+                                  "})();</script>");
+
     httpd_resp_sendstr_chunk(req, "</main></div></body></html>");
     httpd_resp_sendstr_chunk(req, NULL); // end chunked response
 }
@@ -1072,26 +1142,48 @@ esp_err_t web_handle_css(httpd_req_t *req) {
         ".switch-label{color:var(--text);font-size:.85em;}"
         // Contextual help marker: the small orange circled question mark that
         // closes every option label, and the balloon it opens. The balloon is
-        // revealed from the marker's own :hover and :focus, so it needs no
-        // script and holds no state - a page load leaves every balloon closed.
-        // :focus is what makes it reachable without a mouse: the marker is
-        // focusable, so a keyboard tab and a touch-screen tap both open it the
-        // same way a pointer does.
-        ".hlp{position:relative;display:inline-flex;align-items:center;justify-content:center;"
+        // revealed from the marker's own :hover and :focus, so it holds no
+        // state - a page load leaves every balloon closed. :focus is what
+        // makes it reachable without a mouse: the marker is focusable, so a
+        // keyboard tab and a touch-screen tap both open it the same way a
+        // pointer does.
+        ".hlp{display:inline-flex;align-items:center;justify-content:center;"
         "width:14px;height:14px;margin-left:5px;border-radius:50%;background:#f59e0b;color:#fff;"
         "font-size:10px;font-weight:700;line-height:1;cursor:help;vertical-align:middle;flex:none;}"
         ".hlp:focus{outline:2px solid var(--accent);outline-offset:1px;}"
         ".hlp-mark{pointer-events:none;}"
-        // The balloon is taken out of the pointer's reach so that moving
+        // The balloon is positioned against the viewport rather than against
+        // the marker it belongs to. A marker sits inside a card, an accordion
+        // or a table frame, and several of those clip what leaves them - the
+        // accordion hides its overflow so its rounded corners stay clean, and
+        // a table frame that scrolls sideways clips vertically as well. A
+        // balloon laid out inside any of them would be cut off at the frame's
+        // edge exactly when it is longer than the space left above the field.
+        // Taking it out of the flow entirely is what lets it be drawn whole
+        // over every card, table and control on the page, whichever of them it
+        // is opened from.
+        //
+        // The coordinates are the one thing a stylesheet cannot supply for a
+        // fixed element, so web_send_footer()'s script measures the marker and
+        // writes top/left, the arrow offset in --hlp-arrow, and the .below
+        // class when the balloon has to hang under the field instead of over
+        // it. The values here are only the resting state before that runs.
+        //
+        // The balloon is kept out of the pointer's reach so that moving
         // towards it never counts as leaving the marker, which would close it
         // halfway through the sentence being read.
-        ".hlp-box{display:none;position:absolute;left:50%;bottom:calc(100% + 8px);transform:translateX(-50%);"
-        "z-index:60;width:max-content;max-width:260px;padding:8px 10px;border-radius:8px;"
+        ".hlp-box{display:none;position:fixed;top:0;left:0;z-index:1000;"
+        "width:max-content;max-width:min(300px,calc(100vw - 24px));padding:8px 10px;border-radius:8px;"
         "background:#1f2937;color:#f9fafb;font-size:11px;font-weight:400;line-height:1.35;"
         "text-align:left;white-space:normal;cursor:auto;pointer-events:none;"
         "box-shadow:0 4px 12px rgba(0,0,0,.25);}"
-        ".hlp-box::after{content:'';position:absolute;top:100%;left:50%;transform:translateX(-50%);"
+        // The arrow tracks the marker along the balloon's edge, since a
+        // balloon pushed away from a screen edge is no longer centred on the
+        // field it explains. It points down from the underside by default and
+        // up from the top when .below has flipped the balloon.
+        ".hlp-box::after{content:'';position:absolute;top:100%;left:var(--hlp-arrow,50%);transform:translateX(-50%);"
         "border:5px solid transparent;border-top-color:#1f2937;}"
+        ".hlp-box.below::after{top:auto;bottom:100%;border-top-color:transparent;border-bottom-color:#1f2937;}"
         ".hlp:hover .hlp-box,.hlp:focus .hlp-box,.hlp:focus-within .hlp-box{display:block;}"
         // Reusable light-blue callout for explanatory text under a control,
         // available for any page that wants it.
@@ -1207,14 +1299,6 @@ esp_err_t web_handle_css(httpd_req_t *req) {
         "button,.btn{min-height:44px;padding:12px 20px;}"
         ".traffic-actions .btn,.wl-msg-acts button,.log-actions button{min-height:36px;}"
         ".sidebar li a{padding:14px 18px;font-size:.95em;}"
-        "}"
-        // A balloon centred on its marker overflows the viewport as soon as
-        // the marker sits near either edge, which on a phone is most of them.
-        // Anchoring it to the left of the field and capping it to the visible
-        // width keeps the whole sentence on screen wherever the marker falls.
-        "@media (max-width:600px){"
-        ".hlp-box{left:0;right:auto;transform:none;max-width:calc(100vw - 56px);}"
-        ".hlp-box::after{left:12px;transform:none;}"
         "}"
         "@media (prefers-reduced-motion:reduce){"
         ".sidebar{transition:none;}"

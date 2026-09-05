@@ -104,16 +104,35 @@ fumetto con una breve spiegazione di ciò che quell'opzione fa, limitata da
 ``WEB_HELP_MAX_BYTES`` (253 byte) perché resti leggibile a colpo d'occhio sopra
 il controllo che spiega.
 
-Il marcatore è solo markup e foglio di stile. ``web_help_markup()`` emette uno
-``span.hlp`` focalizzabile con il glifo e uno ``span.hlp-box`` annidato, e
-``web_handle_css()`` disegna il cerchio, lo colora e rivela il fumetto dal
-``:hover`` e dal ``:focus`` del marcatore stesso. Non c'è nulla da
-inizializzare, nessuno stato sopravvive al caricamento di una pagina, e la metà
-``:focus`` è ciò che rende l'aiuto raggiungibile senza mouse. Sotto i 600 px il
-fumetto si ancora a sinistra del campo e limita la propria larghezza al
-viewport, perché un fumetto centrato su un marcatore vicino a uno dei bordi
-uscirebbe dallo schermo. Un tocco sul marcatore non attiva anche l'etichetta che
-lo contiene, così chiedere cosa faccia una casella non la commuta mai.
+``web_help_markup()`` emette uno ``span.hlp`` focalizzabile con il glifo e uno
+``span.hlp-box`` annidato, e ``web_handle_css()`` disegna il cerchio, lo colora e
+rivela il fumetto dal ``:hover`` e dal ``:focus`` del marcatore stesso. Nessuno
+stato sopravvive al caricamento di una pagina, e la metà ``:focus`` è ciò che
+rende l'aiuto raggiungibile senza mouse. Un tocco sul marcatore non attiva anche
+l'etichetta che lo contiene, così chiedere cosa faccia una casella non la commuta
+mai.
+
+Il fumetto è disegnato come uno strato fisso sopra l'intera pagina, non come un
+riquadro dentro la scheda del campo stesso. I marcatori stanno dentro schede,
+fisarmoniche e cornici di tabella, e parecchie di queste ritagliano ciò che ne
+esce — la fisarmonica nasconde il proprio traboccamento perché i suoi angoli
+arrotondati restino puliti, e una cornice di tabella che scorre in orizzontale
+ritaglia anche in verticale —, così un fumetto impaginato dentro una di esse
+verrebbe tagliato al suo bordo non appena il testo fosse più lungo dello spazio
+rimasto sopra il campo. Toglierlo dal flusso è ciò che permette di leggere ogni
+fumetto per intero, sopra qualsiasi scheda, tabella o controllo della pagina.
+
+Le coordinate sono l'unica cosa che il foglio di stile non può allora fornire, e
+le dà lo script che ``web_send_footer()`` emette su ogni pagina: misura il
+marcatore, centra il fumetto su di esso, lo riporta dentro il bordo di schermo
+che starebbe per attraversare, lo ribalta sotto il campo quando sopra non c'è
+spazio a sufficienza e fa scorrere la freccia lungo il suo bordo perché continui
+a puntare al marcatore dopo tutto questo. Un fumetto aperto viene ricollocato
+allo scorrimento e al ridimensionamento, con l'ascoltatore di scorrimento in fase
+di cattura perché segua anche le cornici di registro, chat e tabella che scorrono
+al proprio interno. I gestori sono legati al documento e non a ogni marcatore,
+così coprono allo stesso modo le righe che lo script proprio di una pagina
+aggiunge dopo il caricamento.
 
 Il testo di aiuto viene **cercato a partire dall'etichetta, non passato come
 argomento**. Le pagine chiamano ``web_field_int(req, TR_F_SSID, …)`` esattamente

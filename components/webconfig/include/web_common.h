@@ -315,6 +315,16 @@ void web_send_header(httpd_req_t *req, const char *title, const char *active_men
 
 /**
  * @brief Send the common HTML shell closing that matches web_send_header().
+ *
+ * Besides closing the containers the header opened, this carries the two
+ * scripts every admin page shares: the password field's show/hide toggle, and
+ * the one that places an open contextual help balloon. The latter is what lets
+ * the balloon be a fixed layer over the whole page - drawn whole above every
+ * card, accordion and table frame instead of being clipped by the one holding
+ * the option it explains - since only a script can measure the marker and turn
+ * that into viewport coordinates. It binds to the document rather than to
+ * individual markers, so it also covers rows a page's own script adds later.
+ *
  * @param req Incoming request.
  */
 void web_send_footer(httpd_req_t *req);
@@ -377,6 +387,13 @@ void web_send_save_result(httpd_req_t *req, bool ok, const char *location);
  * face so a handset browser does not zoom in on focus. Tables are framed by
  * the @c table-wrap class every page wraps them in, which scrolls a wide table
  * sideways within the page instead of letting it widen the page.
+ *
+ * Several of those frames clip what leaves them - the accordion hides its
+ * overflow, a sideways-scrolling table frame clips vertically as well - so the
+ * contextual help balloon is styled as a fixed layer above the page rather than
+ * as a box inside the field's own card. That is what lets it be read in full
+ * over any card, table or control it is opened from; web_send_footer()'s script
+ * supplies the coordinates the sheet cannot.
  *
  * @param req Incoming request.
  * @return ESP_OK or an esp_err_t error.
