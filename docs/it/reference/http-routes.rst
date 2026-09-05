@@ -7,12 +7,14 @@ Route HTTP
 L'amministrazione web registra le seguenti route
 (``components/webconfig/web_server.c``). Ogni gestore che serve dati di
 configurazione o di traffico chiama ``web_check_auth()`` e richiede quindi
-autenticazione HTTP Basic. Due route non lo fanno, e nessuna delle due espone
+autenticazione HTTP Basic. Tre route non lo fanno, e nessuna delle tre espone
 alcunché: ``GET /style.css`` è un foglio di stile statico che non porta dati di
 configurazione o di traffico, e il browser lo richiede mentre disegna la stessa
-richiesta di login; ``GET /logout`` risponde a ogni richiesta con il ``401`` che
-fa scartare al browser le credenziali memorizzate, quindi non c'è nulla che un
-controllo di autenticazione possa proteggere.
+richiesta di login; ``GET /logo.png`` è l'immagine di marca incorporata nel
+firmware, altrettanto priva di dati della stazione; ``GET /logout`` risponde a
+ogni richiesta con il ``401`` che fa scartare al browser le credenziali
+memorizzate, quindi non c'è nulla che un controllo di autenticazione possa
+proteggere.
 
 .. list-table::
    :header-rows: 1
@@ -190,6 +192,9 @@ controllo di autenticazione possa proteggere.
    * - GET
      - ``/style.css``
      - foglio di stile condiviso
+   * - GET
+     - ``/logo.png``
+     - logo di marca della barra superiore (PNG incorporato)
 
 Politica di blocco del login
 =============================

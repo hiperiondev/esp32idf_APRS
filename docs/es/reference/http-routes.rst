@@ -7,12 +7,14 @@ Rutas HTTP
 La administración web registra las siguientes rutas
 (``components/webconfig/web_server.c``). Cada manejador llama a
 ``web_check_auth()`` y por lo tanto requiere autenticación HTTP Basic todo
-manejador que sirva datos de configuración o de tráfico. Dos rutas no lo hacen, y
-ninguna expone nada: ``GET /style.css`` es una hoja de estilos estática que no
+manejador que sirva datos de configuración o de tráfico. Tres rutas no lo hacen,
+y ninguna expone nada: ``GET /style.css`` es una hoja de estilos estática que no
 lleva datos de configuración ni de tráfico, y el navegador la pide mientras
-dibuja el propio desafío de login; ``GET /logout`` responde a toda petición con
-el ``401`` que hace al navegador descartar sus credenciales guardadas, así que no
-hay nada que una comprobación de autenticación pueda proteger.
+dibuja el propio desafío de login; ``GET /logo.png`` es la imagen de marca
+embebida en el firmware, igualmente libre de datos de la estación; ``GET
+/logout`` responde a toda petición con el ``401`` que hace al navegador descartar
+sus credenciales guardadas, así que no hay nada que una comprobación de
+autenticación pueda proteger.
 
 .. list-table::
    :header-rows: 1
@@ -187,6 +189,9 @@ hay nada que una comprobación de autenticación pueda proteger.
    * - GET
      - ``/style.css``
      - hoja de estilos compartida
+   * - GET
+     - ``/logo.png``
+     - logo de marca de la barra superior (PNG embebido)
 
 Política de bloqueo de inicio de sesión
 ========================================

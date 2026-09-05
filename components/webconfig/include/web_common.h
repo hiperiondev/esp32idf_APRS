@@ -401,6 +401,27 @@ void web_send_save_result(httpd_req_t *req, bool ok, const char *location);
 esp_err_t web_handle_css(httpd_req_t *req);
 
 /**
+ * @brief Serve the brand logo shown in the top bar (the image referenced by
+ * web_send_header()).
+ *
+ * Answers with the PNG embedded in web_logo.h, byte for byte, as
+ * @c image/png. The image lives in the firmware rather than in the LittleFS
+ * partition, so the top bar of every admin page keeps its logo even while the
+ * Storage page is formatting or rewriting that partition.
+ *
+ * Like the stylesheet, this route is not behind the admin password: it carries
+ * nothing that is not already public in the firmware image, and requiring
+ * credentials for it would only cost an extra round trip on every page load.
+ *
+ * The response is marked cacheable for a day. Only an OTA update can change
+ * the image, and that arrives with a reboot the browser reconnects through.
+ *
+ * @param req Incoming request.
+ * @return ESP_OK or an esp_err_t error.
+ */
+esp_err_t web_handle_logo(httpd_req_t *req);
+
+/**
  * @brief Longest label or fieldset legend, in BYTES, that the form-field
  * emitters below render in full.
  *

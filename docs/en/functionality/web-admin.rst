@@ -8,9 +8,20 @@ The ``webconfig`` component (``components/webconfig/``) is an ``esp_http_server`
 admin built from one file per page (``pages/*.c``), a route table
 (``web_server.c``) and a set of shared helpers (``web_common.c``). It uses
 **HTTP Basic auth** against ``g_config.http_username`` / ``http_password`` on
-every page — the single exception being the static ``/style.css``, which carries
-no configuration or traffic data — plus wildcard URI matching, a 20 KB handler
-stack and LRU purge.
+every page — the exceptions being the static ``/style.css`` and ``/logo.png``,
+which carry no configuration or traffic data — plus wildcard URI matching, a
+20 KB handler stack and LRU purge.
+
+The logo at the left of the top bar is a PNG embedded in the firmware as a
+``const`` array (``components/webconfig/include/web_logo.h``) and served by
+``web_handle_logo()`` on ``GET /logo.png``. Keeping it in the application image
+rather than in the LittleFS partition means the chrome of every page is
+independent of a partition the Storage page can format, upload over and fill.
+The stylesheet scales it by height alone (``height:32px;width:auto``, 26 px below
+600 px), so the image's own proportions decide its width and a replacement of a
+different shape needs no stylesheet change; the tag carries the PNG's intrinsic
+size so the bar reserves the right width before the image arrives. The response
+is cacheable for a day, since only an OTA update can change it.
 
 Responsive layout
 =================

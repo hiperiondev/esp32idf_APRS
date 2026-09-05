@@ -9,9 +9,22 @@ basata su ``esp_http_server`` costruita con un file per pagina (``pages/*.c``),
 una tabella di route (``web_server.c``) e un insieme di helper condivisi
 (``web_common.c``). Usa **autenticazione HTTP Basic** contro
 ``g_config.http_username`` / ``http_password`` su ogni pagina — con l'unica
-eccezione dello ``/style.css`` statico, che non porta dati di configurazione o di
-traffico — oltre a corrispondenza URI con wildcard, uno stack di gestore da 20 KB
-e purga LRU.
+eccezione dello ``/style.css`` e del ``/logo.png`` statici, che non portano dati
+di configurazione o di traffico — oltre a corrispondenza URI con wildcard, uno
+stack di gestore da 20 KB e purga LRU.
+
+Il logo a sinistra della barra superiore è un PNG incorporato nel firmware come
+array ``const`` (``components/webconfig/include/web_logo.h``) e servito da
+``web_handle_logo()`` su ``GET /logo.png``. Tenerlo nell'immagine
+dell'applicazione e non nella partizione LittleFS fa sì che la cornice di ogni
+pagina non dipenda da una partizione che la pagina di Archiviazione può
+formattare, sovrascrivere e riempire. Il foglio di stile lo scala solo per
+altezza (``height:32px;width:auto``, 26 px sotto i 600 px), così le proporzioni
+dell'immagine stessa decidono la sua larghezza e sostituirla con una di forma
+diversa non richiede alcuna modifica al foglio di stile; il tag porta la
+dimensione intrinseca del PNG perché la barra riservi la larghezza giusta prima
+che l'immagine arrivi. La risposta è memorizzabile in cache per un giorno, dato
+che solo un aggiornamento OTA può cambiarla.
 
 Layout responsivo
 =================

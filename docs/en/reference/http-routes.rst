@@ -6,12 +6,13 @@ HTTP Routes
 
 The web admin registers the following routes (``components/webconfig/web_server.c``).
 Every handler that serves configuration or traffic data calls
-``web_check_auth()`` and therefore requires HTTP Basic auth. Two routes do not,
-and neither exposes anything: ``GET /style.css`` is a static stylesheet carrying
-no configuration or traffic data, and the browser requests it while rendering the
-login challenge itself; ``GET /logout`` answers every request with the ``401``
-that makes the browser drop its cached credentials, so there is nothing for an
-auth check to guard.
+``web_check_auth()`` and therefore requires HTTP Basic auth. Three routes do not,
+and none of them exposes anything: ``GET /style.css`` is a static stylesheet
+carrying no configuration or traffic data, and the browser requests it while
+rendering the login challenge itself; ``GET /logo.png`` is the brand image
+embedded in the firmware, equally free of station data; ``GET /logout`` answers
+every request with the ``401`` that makes the browser drop its cached
+credentials, so there is nothing for an auth check to guard.
 
 .. list-table::
    :header-rows: 1
@@ -183,6 +184,9 @@ auth check to guard.
    * - GET
      - ``/style.css``
      - shared stylesheet
+   * - GET
+     - ``/logo.png``
+     - top bar brand logo (embedded PNG)
 
 Login lockout policy
 =====================

@@ -38,6 +38,7 @@
 #include "translations.h"
 #include "web_base64.h" // web_base64_decode(): local RFC 4648 decoder for the Basic auth credential pair
 #include "web_help.h"   // web_help_for_label()/web_help_markup(): the question mark that closes every option label
+#include "web_logo.h"   // web_logo_png[]: the top bar's brand image, embedded in the firmware
 
 static const char *TAG = "web_common";
 
@@ -853,6 +854,13 @@ void web_send_header(httpd_req_t *req, const char *title, const char *active_men
     // displayed and the menu renders as the fixed sidebar beside the content,
     // so the same markup serves every viewport and the state resets by itself
     // on each navigation.
+    //
+    // The brand logo is an image request rather than an inline data URI, so the
+    // browser caches it once and the bytes stay out of every page's markup. Its
+    // intrinsic size travels with the tag, which reserves the right width in the
+    // bar before the image itself has arrived. The empty alt marks it as
+    // decorative: the station name beside it already carries the meaning, and a
+    // screen reader announcing both would only say it twice.
     httpd_resp_sendstr_chunk(req, "<!DOCTYPE html><html><head><meta charset='utf-8'>"
                                   "<meta name='viewport' content='width=device-width,initial-scale=1'>"
                                   "<link rel='stylesheet' href='/style.css'>"
@@ -861,7 +869,9 @@ void web_send_header(httpd_req_t *req, const char *title, const char *active_men
                                   "<div class='topbar'>"
                                   "<label for='navtoggle' class='nav-burger' title='" TR_NAV_MENU "'>"
                                   "<span></span><span></span><span></span></label>"
-                                  "<span class='brand'><span class='brand-mark' aria-hidden='true'></span>"
+                                  "<span class='brand'>"
+                                  "<img class='brand-mark' src='/logo.png' alt='' "
+                                  "width='" WEB_LOGO_PNG_WIDTH_STR "' height='" WEB_LOGO_PNG_HEIGHT_STR "'>"
                                   "<span class='brand-text'>" TR_BRAND "</span></span>"
                                   "<div class='topbar-right'><a class='logout' href='/logout'>" TR_LOGOUT "</a></div></div>"
                                   "<div class='layout'><nav class='sidebar'><ul>");
@@ -1034,8 +1044,16 @@ esp_err_t web_handle_css(httpd_req_t *req) {
         "background:var(--card);border-bottom:1px solid var(--border);box-shadow:0 1px 2px rgba(0,0,0,.03);}"
         ".topbar .brand{display:flex;flex:1;align-items:center;gap:10px;font-weight:700;color:var(--text);font-size:1.05em;min-width:0;}"
         ".topbar .brand-text{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}"
-        ".topbar .brand-mark{width:22px;height:22px;border-radius:7px;flex:none;"
-        "background:linear-gradient(135deg,var(--accent),#7fb2ff);}"
+        // Brand logo. Only the height is declared: with width:auto the browser
+        // derives the width from the image's own proportions, so the PNG is the
+        // single source of truth for its aspect ratio and replacing it with a
+        // differently-shaped one needs no change here. The height has to be
+        // stated explicitly all the same, because the global img rule above
+        // sets height:auto and would otherwise draw the image at its full
+        // intrinsic size. 32px inside the 56px bar leaves the logo clear of the
+        // bar's edges, and the width that follows from it stays short enough to
+        // leave the brand text its room.
+        ".topbar .brand-mark{height:32px;width:auto;flex:none;}"
         ".topbar-right{display:flex;align-items:center;gap:10px;border:1px solid var(--border);"
         "border-radius:var(--radius-pill);padding:6px 16px;background:var(--bg);flex:none;}"
         ".topbar .logout{color:var(--sub);text-decoration:none;font-size:.85em;font-weight:600;}"
@@ -1281,6 +1299,11 @@ esp_err_t web_handle_css(httpd_req_t *req) {
         "h1{font-size:1.25em;margin-bottom:14px;}"
         "fieldset{padding:16px 14px;margin-bottom:16px;}"
         ".topbar .brand{font-size:.95em;}"
+        // The bar is the same height on a phone, but the room beside the logo
+        // is not: the burger takes the left of it and the title has to fit in
+        // what is left. A shorter logo gives that back, and since the width
+        // still follows from the height the image keeps its proportions.
+        ".topbar .brand-mark{height:26px;}"
         ".topbar-right{padding:6px 12px;}"
         ".row{gap:12px;}"
         ".row>div{flex-basis:100%;}"
@@ -1305,6 +1328,22 @@ esp_err_t web_handle_css(httpd_req_t *req) {
         "}";
     httpd_resp_set_type(req, "text/css");
     return httpd_resp_sendstr(req, css);
+}
+
+esp_err_t web_handle_logo(httpd_req_t *req) {
+    httpd_resp_set_type(req, "image/png");
+    // The image is part of the firmware, so the only thing that can change it
+    // is an OTA update - and an update lands on a fresh boot with the browser
+    // reconnecting from scratch. Letting it be cached for a day therefore
+    // costs nothing and keeps the logo off the wire on every page load, which
+    // matters on a server holding three sockets: an admin page already fetches
+    // the stylesheet and three periodic JSON endpoints over the same
+    // keep-alive connections.
+    httpd_resp_set_hdr(req, "Cache-Control", "public, max-age=86400");
+    // Sent whole rather than chunked: the size is known at compile time, so a
+    // single send with an explicit length lets the browser see Content-Length
+    // and spares the connection the chunked framing.
+    return httpd_resp_send(req, (const char *)web_logo_png, WEB_LOGO_PNG_LEN);
 }
 
 // ---------------------------------------------------------------- Field helpers

@@ -30,6 +30,10 @@ static esp_err_t css_handler(httpd_req_t *req) {
     return web_handle_css(req);
 }
 
+static esp_err_t logo_handler(httpd_req_t *req) {
+    return web_handle_logo(req);
+}
+
 // Registers one route and reports any failure to the log, naming the URI
 // that did not register. httpd_register_uri_handler() fails closed - the
 // route simply never answers, with no other indication - once
@@ -48,7 +52,7 @@ void web_server_start(void) {
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
     config.uri_match_fn = httpd_uri_match_wildcard;
     // The admin UI registers every route below on a single httpd instance:
-    // 69 handlers as of this file. esp_http_server allocates exactly
+    // 70 handlers as of this file. esp_http_server allocates exactly
     // max_uri_handlers slots up front and refuses any registration past that
     // count with ESP_ERR_HTTPD_HANDLERS_FULL - silently, from reg()'s point of
     // view, until the log line above fires - so this value has to stay above
@@ -116,6 +120,7 @@ void web_server_start(void) {
     reg(server, "/dashinfo", HTTP_GET, page_dashinfo);
     reg(server, "/heapinfo", HTTP_GET, page_heapinfo);
     reg(server, "/style.css", HTTP_GET, css_handler);
+    reg(server, "/logo.png", HTTP_GET, logo_handler);
 
     reg(server, "/storage", HTTP_GET, page_storage_get);
     reg(server, "/download", HTTP_GET, page_download);

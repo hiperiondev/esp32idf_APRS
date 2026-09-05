@@ -9,9 +9,22 @@ basada en ``esp_http_server`` construida con un archivo por página
 (``pages/*.c``), una tabla de rutas (``web_server.c``) y un conjunto de ayudantes
 compartidos (``web_common.c``). Usa **autenticación HTTP Basic** contra
 ``g_config.http_username`` / ``http_password`` en cada página — con la única
-excepción del ``/style.css`` estático, que no lleva datos de configuración ni de
-tráfico —, además de coincidencia de URI con comodines, una pila de manejador de
-20 KB y purga LRU.
+excepción del ``/style.css`` y el ``/logo.png`` estáticos, que no llevan datos de
+configuración ni de tráfico —, además de coincidencia de URI con comodines, una
+pila de manejador de 20 KB y purga LRU.
+
+El logo a la izquierda de la barra superior es un PNG embebido en el firmware
+como un array ``const`` (``components/webconfig/include/web_logo.h``) y servido
+por ``web_handle_logo()`` en ``GET /logo.png``. Guardarlo en la imagen de la
+aplicación y no en la partición LittleFS hace que el marco de cada página no
+dependa de una partición que la página de Almacenamiento puede formatear,
+sobrescribir y llenar. La hoja de estilos lo escala sólo por altura
+(``height:32px;width:auto``, 26 px por debajo de 600 px), así que las
+proporciones de la propia imagen deciden su ancho y sustituirla por otra de
+forma distinta no requiere tocar la hoja de estilos; la etiqueta lleva el tamaño
+intrínseco del PNG para que la barra reserve el ancho correcto antes de que la
+imagen llegue. La respuesta se puede cachear un día, ya que sólo una
+actualización OTA puede cambiarla.
 
 Diseño adaptable
 ================
