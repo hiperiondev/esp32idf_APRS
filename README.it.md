@@ -13,7 +13,7 @@
 [![Docs](https://img.shields.io/badge/docs-readthedocs-blue)](https://esp32idf-aprs.readthedocs.io/)
 [![License](https://img.shields.io/badge/license-GPLv3-green)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-ESP32-red)](#hardware)
-[![Framework](https://img.shields.io/badge/framework-ESP--IDF%205.x-orange)](#)
+[![Framework](https://img.shields.io/badge/framework-ESP--IDF%206.1-orange)](#)
 
 **🌐 Lingue:** [English](README.md) · [Español](README.es.md) · **Italiano**
 
@@ -36,8 +36,11 @@ In una frase, il firmware **demodula** l'audio AFSK/FSK dall'altoparlante o dall
 - **Soft-modem sul chip.** AFSK 1200 Bd Bell 202 (APRS standard) con demodulatore doppio, più AFSK 1200 Bd V.23, AFSK 300 Bd e **G3RUH 9600 Bd FSK** — tutto in C puro sull'ADC/DAC dell'ESP32 stesso.
 - **Correzione d'errore FX.25.** FEC Reed–Solomon su AX.25, solo RX o RX+TX, per decodifiche affidabili in condizioni di segnale debole.
 - **IGate APRS-IS completo.** Gating bidirezionale **RF→INET** e **INET→RF** con soppressione dei duplicati, costruzione `qAR`/`qAO`, filtraggio per tipo di payload, budlist di nominativi, un range gate locale (distanza haversine) e whitelist per prefisso. Si possono elencare fino a quattro server APRS-IS, con failover automatico tra quelli abilitati.
+- **Interconnessione APRS BrandMeister.** Riconosce, filtra e instrada il traffico APRS che BrandMeister inietta, sulla stessa sessione APRS-IS che l'IGate ha già — lo identificano un tocall `APBMxx`, un alias `DMR` nel percorso o un gateway d'ingresso nominato. Pagina propria, disattivata di default. **Non è coinvolta alcuna connessione DMR.**
 - **Digipeater.** Una tabella di alias n-N di quattro righe (WIDE1-1 / WIDE2-2 / WIDE#-2 di default), ogni riga con il proprio limite di hop e modalità trace/flood, più trappola per il conteggio hop, funzionamento solo fill-in e soppressione dei duplicati.
 - **Beacon, messaggistica e chat.** Beacon a posizione fissa per tracker/igate/digi, messaggistica di testo APRS con ack/ritrasmissione (RF e/o INET) e un'interfaccia chat dei messaggi nel browser.
+- **Ricevitore GNSS e tracciamento live.** Un modulo NMEA sulla propria UART (RMC/GGA/GSA/GSV/VTG, multi-costellazione) con interruttore principale, una pagina di vista live aggiornata una volta al secondo, e un controllo *Usa GPS* che riempie i campi di posizione di qualunque pagina con il fix corrente. Il beacon Tracker può trasmettere il fix live invece di una posizione fissa, con lo SmartBeaconing che rende l'intervallo adattivo alla velocità e lo anticipa in curva.
+- **Risponditore di interrogazioni APRS.** Risponde alle interrogazioni generali `?APRS?`/`?WX?`/`?IGATE?` e all'insieme diretto (`?APRSD`/`?APRSH`/`?APRSM`/`?APRSO`/`?APRSP`/`?APRSS`/`?APRST`/`?PING?`), ciascuna con limiti di frequenza per tipo e per sorgente, più un beacon periodico opzionale delle capacità di stazione.
 - **Meteo e telemetria.** Rapporti meteo APRS in onda con refresh dei sensori a 1 Hz e media per campo, più telemetria APRS (analogica A1–A5 + digitale B1–B8) con rapporti `T#nnn` e metadati.
 - **Posta radio Winlink (APRSLink).** La stazione legge e scrive la propria posta `NOMINATIVO@winlink.org` attraverso il servizio `WLNK-1` — accesso a sfida/risposta senza che la password vada in aria, una sessione cadenzata di un comando per volta e un terminale nel browser il cui elenco della casella porta pulsanti di lettura/risposta/inoltro/eliminazione per messaggio — e, separatamente, inoltra attraverso il suo IGate la sessione Winlink propria di una stazione vicina in RF.
 - **Oggetti, item e bollettini.** Fino a cinque Oggetti/Item APRS della stazione e cinque bollettini (BLN1–BLN5), ciascuno via RF e/o INET con controllo di scadenza/decadimento.
@@ -63,11 +66,15 @@ In una frase, il firmware **demodula** l'audio AFSK/FSK dall'altoparlante o dall
 | IGate APRS-IS RF→INET e INET→RF | Filtri, dedup, budlist, unwrap third-party opzionale |
 | Failover multiserver APRS-IS | 4 slot server, ritentativo circolare sugli slot abilitati |
 | Range gate e prefix gate locali | Distanza haversine + whitelist per prefisso di nominativo |
+| Interconnessione APRS BrandMeister | Riconoscimento, gating e instradamento dei messaggi sulla sessione APRS-IS esistente; nessun collegamento DMR |
 | Digipeater | Tabella di alias n-N configurabile (trace/flood), trappola per gli hop, soppressione duplicati |
 | Oggetti / Item · Bollettini | Fino a 5 ciascuno, RF e/o INET, scadenza/decadimento |
 | Bot Telegram | Long polling, autorizzazione per utente/chat, inoltro messaggi e bollettini, pulsante Mini App |
 | Posta radio Winlink (APRSLink) | Casella propria via `WLNK-1`, più gateway per le stazioni locali |
 | Messaggistica + ack/ritrasmissione · Chat | RF e/o INET |
+| Ricevitore GNSS (NMEA, UART propria) | Interruttore principale, pagina di vista live, riempimento posizione *Usa GPS* su ogni pagina |
+| Tracciamento GPS live + SmartBeaconing | Solo beacon Tracker; intervallo adattivo alla velocità e anticipo in curva |
+| Risponditore di interrogazioni APRS | Generali `?APRS?`/`?WX?`/`?IGATE?` + insieme diretto, con limiti di frequenza; beacon delle capacità |
 | Rapporto meteo | Refresh dei sensori a 1 Hz, media opzionale |
 | Telemetria | Analogica A1–A5 + digitale B1–B8, `T#nnn` + metadati |
 | Framework di driver per sensori | Registro dinamico, driver BME280/BMP280 incluso |
@@ -86,6 +93,7 @@ In una frase, il firmware **demodula** l'audio AFSK/FSK dall'altoparlante o dall
 - **Ingresso audio (ADC):** predefinito `GPIO33` (ADC1). **Solo GPIO 32–39** — l'ADC2 è inutilizzabile con il Wi-Fi attivo.
 - **Uscita audio (DAC):** predefinito `GPIO25`. **Solo GPIO 25 o 26** — il DAC dell'ESP32 è cablato a quei pad.
 - **PTT:** predefinito `GPIO26`, polarità selezionabile a compile-time.
+- **GNSS (opzionale):** UART2, predefiniti `GPIO16` (RX, dal TX del modulo) e `GPIO17` (TX). Impostati in `main/include/gps.h`. **Inutilizzabili su un ESP32-WROVER**, dove quei pin appartengono al chip della PSRAM SPI.
 - **Nota:** ESP32-S3/C3/C6/H2 **non hanno il DAC** e non possono eseguire la catena di TX senza modifiche.
 
 Il cablaggio della scheda (pin audio, pin/polarità PTT, frequenze di campionamento) è definito come costanti a compile-time nel `CMakeLists.txt` di primo livello. È incluso uno schema KiCad dell'interfaccia radio sotto `schematics/`.
@@ -97,7 +105,7 @@ Il cablaggio della scheda (pin audio, pin/polarità PTT, frequenze di campioname
 ## Avvio rapido
 
 ```bash
-# Richiede ESP-IDF v6.x (testato e fissato a 6.0.2)
+# Richiede ESP-IDF v6.1 (testato e fissato a 6.1)
 idf.py set-target esp32
 idf.py build
 idf.py -p PORTA flash monitor

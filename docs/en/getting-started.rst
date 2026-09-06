@@ -7,7 +7,7 @@ Getting Started
 Prerequisites
 =============
 
-* **ESP-IDF v6.0 or newer** (locked/tested at **6.0.2** — see
+* **ESP-IDF v6.1 or newer** (locked/tested at **6.1** — see
   ``dependencies.lock``).
 * An ESP32 with **≥ 4 MB flash**.
 * The IDF component manager fetches ``joltwallet/littlefs``, ``espressif/cjson``
@@ -80,23 +80,36 @@ lowers the *Min free heap* figure on the dashboard.
        stay up while someone is browsing the admin pages.
    * - HTTPS server, certificate bundle, Wi-Fi Enterprise
      - disabled
-     - The web admin is plain HTTP and the APRS-IS uplink is plain TCP, so no
-       code path ever opens a TLS session: ``CONFIG_ESP_HTTPS_SERVER_ENABLE``,
+     - The web admin is plain HTTP and the APRS-IS uplink is plain TCP, and
+       nothing ever listens for TLS: ``CONFIG_ESP_HTTPS_SERVER_ENABLE``,
        ``CONFIG_MBEDTLS_CERTIFICATE_BUNDLE`` and
        ``CONFIG_ESP_WIFI_ENTERPRISE_SUPPORT`` are all off in ``sdkconfig``.
-       mbedTLS itself stays enabled — Wi-Fi crypto needs it — so
-       ``CONFIG_MBEDTLS_TLS_ENABLED`` and its nested ``_SERVER``/``_CLIENT``
-       options remain set at their defaults; what that costs at run time is
-       only the per-session record buffers
-       (``CONFIG_MBEDTLS_SSL_IN_CONTENT_LEN``/``_OUT_CONTENT_LEN``, 4096 each),
-       which are allocated per TLS session and so never allocated at all here.
-       HTTP Basic auth decodes its credential pair
-       with a small local RFC 4648 base64 decoder
-       (``components/webconfig/include/web_base64.h``) instead of
-       ``mbedtls_base64_decode()``, so no component declares an mbedTLS
-       dependency for that call either; ``esp_wifi``/``esp_netif``/``lwip``
-       still pull mbedTLS in transitively for WPA2 crypto, which is unaffected
-       by this setting.
+       One code path does open TLS, as a *client*: the Telegram bot talks to
+       ``api.telegram.org`` over HTTPS through ``esp_http_client``/``esp_tls``.
+       With the certificate bundle off it verifies the server against a PEM
+       file the operator uploads to the storage partition
+       (``CONFIG_TELEGRAM_BOT_CERT_PATH``, ``/storage/telegram_certificate.pem``
+       by default) rather than against a root store compiled into the image —
+       a few kilobytes of flash instead of the bundle's tens. A station that
+       leaves the bot switched off never allocates any of it.
+   * - ``CONFIG_MBEDTLS_SSL_IN_CONTENT_LEN`` / ``..._OUT_CONTENT_LEN``
+     - 8192 / 2048
+     - The record buffers, allocated per TLS session, so a station with the bot
+       off pays nothing for them. Inbound needs the larger figure because a
+       server chooses its own record size and the standard allows up to 16384;
+       outbound is this device's own choice and its requests are small.
+       ``CONFIG_MBEDTLS_DYNAMIC_BUFFER`` is on, so even a live session holds the
+       full buffers only while records are actually in flight.
+   * - mbedTLS itself
+     - enabled
+     - Wi-Fi crypto needs it regardless, so ``CONFIG_MBEDTLS_TLS_ENABLED`` and
+       its nested ``_SERVER``/``_CLIENT`` options stay at their defaults. HTTP
+       Basic auth still decodes its credential pair with a small local RFC 4648
+       base64 decoder (``components/webconfig/include/web_base64.h``) instead of
+       ``mbedtls_base64_decode()``, so ``webconfig`` declares no mbedTLS
+       dependency of its own; ``esp_wifi``/``esp_netif``/``lwip`` pull mbedTLS in
+       transitively for WPA2 crypto, which is unaffected by any of these
+       settings.
 
 .. note::
 
@@ -104,8 +117,9 @@ lowers the *Min free heap* figure on the dashboard.
    system startup hook, so PSA Crypto is live in every build that links
    mbedTLS, including this one, regardless of ``CONFIG_MBEDTLS_TLS_ENABLED``.
    That, together with mbedTLS 4.x's larger static footprint, is why the same
-   firmware reports a lower free heap under v6.0 than it did under v5.2 with
-   an otherwise identical configuration.
+   firmware reports a lower free heap under v6.x than it did under v5.2 with
+   an otherwise identical configuration. The behaviour was introduced in v6.0
+   and is unchanged in the v6.1 this project now builds against.
 
 First boot
 ==========

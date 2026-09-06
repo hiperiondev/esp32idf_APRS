@@ -5,8 +5,8 @@ Source Map
 ==========
 
 A tour of the repository, so you know where to look. Sizes are approximate.
-First-party C totals ~69 k lines across ``main/`` + ``components/`` (excluding
-``managed_components/``), of which ~7.1 k is the modem component and ~18.9 k is
+First-party C totals ~74 k lines across ``main/`` + ``components/`` (excluding
+``managed_components/``), of which ~7.1 k is the modem component and ~22.7 k is
 the web admin.
 
 Repository layout
@@ -18,7 +18,7 @@ Repository layout
    ├── CMakeLists.txt          ← board definition (ADC/DAC/PTT/LED pins) + project()
    ├── partitions.csv          ← nvs / otadata / phy_init / ota_0 / ota_1 / storage (LittleFS)
    ├── sdkconfig               ← target=esp32, 4MB flash, custom partitions
-   ├── dependencies.lock       ← idf 6.0.2, littlefs, esp-idf-lib bmp280/bmp180/i2cdev/helpers
+   ├── dependencies.lock       ← idf 6.1, littlefs, esp-idf-lib bmp280/bmp180/i2cdev/helpers
    ├── LICENSE                 ← GPL-3.0
    ├── schematics/             ← KiCad radio-interface schematic + PCB
    │
@@ -99,6 +99,7 @@ Repository layout
    │
    └── managed_components/                     (fetched by the component manager)
        ├── joltwallet__littlefs/
+       ├── espressif__cjson/
        ├── esp-idf-lib__bmp280/
        ├── esp-idf-lib__bmp180/
        ├── esp-idf-lib__i2cdev/

@@ -149,9 +149,9 @@ El texto de ayuda se **busca a partir de la etiqueta, no se pasa como
 argumento**. Las páginas llaman a ``web_field_int(req, TR_F_SSID, …)`` igual que
 antes de que existiera esta función; ``web_help_for_label()`` compara esa
 etiqueta con la tabla de ``web_help.c``, que empareja cada macro de etiqueta
-``TR_xxx`` con su macro de ayuda ``TR_H_xxx``. Eso deja intactos los 359 puntos
-de llamada y hace que una etiqueta compartida por varias páginas se explique
-una sola vez y se lea igual en todas. Una opción cuya etiqueta no tiene fila en
+``TR_xxx`` con su macro de ayuda ``TR_H_xxx``. Eso deja intactos todos los puntos
+de llamada existentes y hace que una etiqueta compartida por varias páginas se
+explique una sola vez y se lea igual en todas. Una opción cuya etiqueta no tiene fila en
 la tabla simplemente se representa sin marcador.
 
 Unas pocas etiquetas se construyen en tiempo de ejecución — ``Alias 2``,
@@ -210,9 +210,11 @@ Las páginas
        *Otros*, cubre capacidades de estación, formatos definidos por el
        usuario, radiogoniometría Agrelo, balizas de localizador Maidenhead y el
        elemento de mapa reservado), baliza on/off, posición, intervalo, selector de símbolo,
-       objeto, comentario, estado, PHG. *Filtrado de Mensajes* lleva el
-       interruptor de criterios de mensajes INET→RF, el límite de saltos del
-       destinatario y la ventana de escucha
+       objeto, comentario, estado, PHG, y un recuadro de frecuencia/repetidor
+       (frecuencia, dúplex, desplazamiento, tono) cuyo bloque encabeza el
+       comentario y el texto de estado de la baliza. *Filtrado de Mensajes*
+       lleva el interruptor de criterios de mensajes INET→RF, el límite de
+       saltos del destinatario y la ventana de escucha
        local. La posición puede escribirse, reflejar *Usar Datos de Mi
        Estación* o tomarse en vivo del receptor GNSS mediante *Usar GPS*; las
        tres opciones son mutuamente excluyentes.
@@ -234,7 +236,8 @@ Las páginas
        elige qué lleva la baliza de posición en la ranura posterior al código
        de símbolo — PHG, RNG, DFS o un reporte DF — con los mismos subcampos y
        el mismo espejo *Usar Datos de Mi Estación* que ofrece la página
-       *IGate*. *Alias de Ruta n-N* lleva
+       *IGate*, y un recuadro de frecuencia/repetidor como el de esa página.
+       *Alias de Ruta n-N* lleva
        las cuatro filas de {alias, N máximo, modo} con las que repite el
        digipeater, el interruptor de solo relleno, la elección de qué hacer con
        un contador de saltos atrapado y el interruptor *Digipetir por SSID de

@@ -8,7 +8,7 @@ Qué es esto
 ===========
 
 ``esp32idf_APRS`` es un proyecto ESP-IDF **v6.x** (probado y fijado en IDF
-**6.0.2**) que convierte una placa ESP32 DevKit desnuda más una interfaz de
+**6.1**) que convierte una placa ESP32 DevKit desnuda más una interfaz de
 audio económica en una estación APRS completa y autónoma. Todo se ejecuta en el
 propio ESP32 — no hay núcleo Arduino, ni ``String``, ni PlatformIO, ni
 biblioteca DSP externa. Toda la cadena de señal, desde el demodulador por
@@ -157,6 +157,21 @@ Matriz de funciones
    * - Codificación/baliza de telemetría APRS al aire
      - ✅
      - analógicos A1–A5 + digitales B1–B8, informe ``T#nnn`` + metadatos
+   * - Correo por radio Winlink (APRSLink)
+     - ✅
+     - buzón propio ``INDICATIVO@winlink.org`` sobre ``WLNK-1``, más una
+       pasarela opcional para la sesión propia de una estación vecina; página
+       propia, deshabilitado por defecto
+   * - Puente con bot de Telegram
+     - ✅
+     - opcional; long polling sobre HTTPS, autorización por usuario y por chat,
+       reenvío de mensajes de estación y boletines, respuestas ``/status`` y
+       ``/sensors``; página y archivo de ajustes propios, deshabilitado por
+       defecto
+   * - Visor de registro de consola
+     - ✅
+     - copia bajo demanda de la consola serie al navegador (página Registros),
+       sin cable y sin escribir nada en flash
 
 Filosofía de diseño
 ===================
@@ -167,11 +182,14 @@ y conviene interiorizarlas de antemano:
 **Una configuración residente, una copia viva.**
    Una única instancia ``app_config_t g_config`` es la fuente de verdad que lee
    cada subsistema. Persiste en ``/storage/config.json``. Los subsistemas nunca
-   duplican el estado de configuración; leen ``g_config`` directamente. Dos
+   duplican el estado de configuración; leen ``g_config`` directamente. Los
    subsistemas que necesitan un estado propio más grande y específico de página
    lo guardan en archivos LittleFS separados en lugar de inflar ``g_config``:
    telemetría (``/storage/telemetry.json``), boletines
-   (``/storage/bulletins.json``) y objetos/ítems (``/storage/objitems.json``).
+   (``/storage/bulletins.json``), objetos/ítems (``/storage/objitems.json``),
+   el bot de Telegram (``/storage/telegram.json``, que guarda toda la
+   configuración de esa página) y el buzón Winlink
+   (``/storage/winlink.json``, las respuestas que el servicio ha devuelto).
 
 **Cableado de placa en compilación, todo lo demás en ejecución.**
    Los tres pines de audio (ADC, DAC, PTT), la polaridad de PTT, la atenuación

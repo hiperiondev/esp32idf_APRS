@@ -116,9 +116,10 @@ Esta documentación se organiza en tres partes, cada una con su propio conjunto
 de capítulos:
 
 * **Funcionalidades** — lo que *hace* la estación desde el punto de vista del
-  operador: gateway, digipeating, balizas, mensajería, meteorología,
-  telemetría, boletines, objetos, el bot de Telegram opcional y la
-  administración web.
+  operador: gateway, la interconexión con BrandMeister, digipeating, balizas,
+  mensajería, el respondedor de consultas, meteorología, telemetría, boletines,
+  objetos, el bot de Telegram opcional, el correo por radio Winlink y la
+  administración web — que además alberga la vista en vivo del receptor GNSS.
 * **Capacidades** — las *propiedades* del firmware que son transversales a las
   funciones: los perfiles del módem, el filtrado, la localización, el
   almacenamiento, OTA, la red y el soporte de hardware.

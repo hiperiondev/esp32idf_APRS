@@ -256,6 +256,18 @@ IGate (RF <-> APRS-IS)
      - Anello di otto destinatari; il primo rapporto di posizione o di boa visto
        per uno di essi viene ritrasmesso una volta, in sostituzione della pratica
        obsoleta di ripetere le posizioni storiche
+   * - Interconnessione APRS BrandMeister
+     - ❌ (nessun pacchetto APRS la tratta come funzione a sé)
+     - ✅
+     - Non c'è alcun protocollo BrandMeister da parlare: il lato APRS di
+       BrandMeister è esso stesso un client APRS-IS, quindi il trasporto è la
+       sessione APRS-IS che l'IGate ha già e il lavoro è riconoscimento, gating
+       e instradamento. Tre test in OR classificano una riga come traffico
+       BrandMeister — un tocall ``APBMxx``, un alias ``DMR`` nel percorso prima
+       del q construct, o la stazione d'ingresso dopo ``qAS``/``qAR`` rispetto a
+       un elenco facoltativo di quattro gateway. Una trama da RF non è mai
+       classificata così. Pagina propria, disattivata di default; **non è
+       coinvolta alcuna connessione DMR**. Vedi :ref:`it-brandmeister`
 
 Digipeater
 -----------
@@ -552,6 +564,30 @@ Messaggistica
        farlo. Comporre un messaggio *verso* un gruppo non è previsto — usare i
        Bollettini per il broadcast; la messaggistica diretta in uscita è solo
        1 a 1. Vedi :ref:`it-messaging`
+   * - Posta radio Winlink (APRSLink)
+     - ⚠️ (pochi client pilotano ``WLNK-1`` a mano)
+     - ✅
+     - La stazione legge e scrive la propria posta ``NOMINATIVO@winlink.org``
+       tramite il servizio ``WLNK-1`` come pagina di prima classe: login a
+       sfida/risposta senza che la password vada mai in onda (una sfida nomina
+       tre posizioni di caratteri e solo quei caratteri tornano indietro), una
+       sessione cadenzata di un comando alla volta con una propria durata, e un
+       terminale nel browser il cui elenco della casella porta pulsanti
+       leggi/rispondi/inoltra/elimina per messaggio. Un secondo ruolo
+       indipendente ritrasmette attraverso l'IGate di questa stazione la
+       sessione Winlink di una stazione vicina in RF. Disattivato di default:
+       prima servono un account e una password. Vedi :ref:`it-winlink`
+   * - Ponte dei messaggi APRS verso una piattaforma di chat
+     - ❌
+     - ✅
+     - Un bot Telegram opzionale accanto ai servizi APRS: long polling su
+       HTTPS, autorizzazione per utente e per chat, instradamento verso Telegram
+       di messaggi di stazione e bollettini, un pulsante Mini App, e i comandi
+       ``/status`` e ``/sensors`` che rispondono con la configurazione com'è nel
+       momento in cui il comando arriva. Non raggiunge alcuna radio — un
+       messaggio instradato è consegnato a una chat, mai ritrasmesso — ed è
+       disattivato di default, con l'intera configurazione in un file proprio.
+       Vedi :ref:`it-telegram`
 
 Meteo
 ------
@@ -834,8 +870,13 @@ Gestione stazione / Operatività
      - Selezione a runtime di 80/160/240 MHz
    * - Accesso remoto/console seriale per diagnostica
      - ✅ (la maggior parte dei TNC ha una console seriale)
-     - ⚠️
-     - Nessuna console seriale per l'operatività ordinaria (per progetto); la diagnostica vive nella dashboard web e nel LOOP TEST
+     - ✅
+     - Nessuna console seriale *interattiva* per l'operatività ordinaria (per
+       progetto), ma l'output di console è leggibile senza cavo: la pagina Log
+       rispecchia ``esp_log`` nel browser su richiesta, tiene in RAM le ultime
+       50 righe e si ferma da sola quando nessuno la legge per dieci secondi.
+       Nulla viene scritto in flash. La dashboard web e il LOOP TEST portano il
+       resto della diagnostica
    * - Controllo accessi multiutente / basato su ruoli
      - ⚠️ (raro)
      - ❌

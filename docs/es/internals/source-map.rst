@@ -5,9 +5,9 @@ Mapa del código fuente
 ======================
 
 Un recorrido por el repositorio, para que sepas dónde mirar. Los tamaños son
-aproximados. El C de primera parte suma ~69 k líneas entre ``main/`` +
+aproximados. El C de primera parte suma ~74 k líneas entre ``main/`` +
 ``components/`` (excluyendo ``managed_components/``), de las cuales ~7,1 k son el
-componente del módem y ~18,9 k la administración web.
+componente del módem y ~22,7 k la administración web.
 
 Disposición del repositorio
 ===========================
@@ -18,7 +18,7 @@ Disposición del repositorio
    ├── CMakeLists.txt          ← definición de placa (pines ADC/DAC/PTT/LED) + project()
    ├── partitions.csv          ← nvs / otadata / phy_init / ota_0 / ota_1 / storage (LittleFS)
    ├── sdkconfig               ← target=esp32, flash 4MB, particiones personalizadas
-   ├── dependencies.lock       ← idf 6.0.2, littlefs, esp-idf-lib bmp280/bmp180/i2cdev/helpers
+   ├── dependencies.lock       ← idf 6.1, littlefs, esp-idf-lib bmp280/bmp180/i2cdev/helpers
    ├── LICENSE                 ← GPL-3.0
    ├── schematics/             ← esquema KiCad de interfaz de radio + PCB
    │
@@ -98,6 +98,7 @@ Disposición del repositorio
    │
    └── managed_components/                     (obtenidos por el gestor de componentes)
        ├── joltwallet__littlefs/
+       ├── espressif__cjson/
        ├── esp-idf-lib__bmp280/
        ├── esp-idf-lib__bmp180/
        ├── esp-idf-lib__i2cdev/

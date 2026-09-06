@@ -152,8 +152,8 @@ argomento**. Le pagine chiamano ``web_field_int(req, TR_F_SSID, …)`` esattamen
 come prima che questa funzione esistesse; ``web_help_for_label()`` confronta
 quell'etichetta con la tabella di ``web_help.c``, che accoppia ogni macro di
 etichetta ``TR_xxx`` con la sua macro di aiuto ``TR_H_xxx``. Questo lascia
-intatti tutti i 359 punti di chiamata e fa sì che un'etichetta condivisa da più
-pagine sia spiegata una sola volta e si legga allo stesso modo su tutte.
+intatti tutti i punti di chiamata esistenti e fa sì che un'etichetta condivisa
+da più pagine sia spiegata una sola volta e si legga allo stesso modo su tutte.
 Un'opzione la cui etichetta non ha una riga nella tabella si rende
 semplicemente senza marcatore.
 
@@ -215,7 +215,9 @@ Le pagine
        *Altri*, copre capacità di stazione, formati definiti dall'utente,
        radiogoniometria Agrelo, radiofari di locatore Maidenhead e l'elemento di
        mappa riservato), beacon on/off, posizione, intervallo, selettore di simbolo,
-       oggetto, commento, stato, PHG. *Filtraggio Messaggi* contiene
+       oggetto, commento, stato, PHG, e un riquadro di frequenza/ripetitore
+       (frequenza, duplex, shift, tono) il cui blocco apre il commento e il
+       testo di stato del beacon. *Filtraggio Messaggi* contiene
        l'interruttore dei criteri per i messaggi INET→RF, il limite di hop del
        destinatario e la finestra di ascolto locale. La posizione può essere
        digitata, rispecchiare *Usa i Dati della Mia Stazione* oppure essere
@@ -239,7 +241,8 @@ Le pagine
        sceglie cosa porta il beacon di posizione nello spazio dopo il codice di
        simbolo — PHG, RNG, DFS o un rapporto DF — con gli stessi sottocampi e
        lo stesso specchio *Usa i Dati della Mia Stazione* offerto dalla pagina
-       *IGate*. *Alias di Percorso n-N*
+       *IGate*, e un riquadro di frequenza/ripetitore come quello di quella
+       pagina. *Alias di Percorso n-N*
        contiene le quattro righe di {alias, N massimo, modalità} con cui il
        digipeater ripete, l'interruttore di solo riempimento, la scelta di cosa
        fare con un conteggio hop intrappolato e l'interruttore *Ripetizione

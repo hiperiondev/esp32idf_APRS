@@ -244,6 +244,18 @@ IGate (RF <-> APRS-IS)
      - Eight-entry ring of gated-to addressees; the next position or buoy report
        seen for one of them is gated once, replacing the deprecated practice of
        replaying historical positions
+   * - BrandMeister APRS interconnect
+     - ❌ (no APRS package treats it as a distinct feature)
+     - ✅
+     - There is no BrandMeister protocol to speak: the APRS side of BrandMeister
+       is itself an APRS-IS client, so the transport is the APRS-IS session the
+       IGate already has and the work is recognition, gating and routing. Three
+       OR'd tests classify a line as BrandMeister traffic — an ``APBMxx``
+       tocall, a ``DMR`` alias in the path ahead of the q construct, or the
+       entry station after ``qAS``/``qAR`` against an optional list of four
+       gateways. A frame off RF is never classified this way. Own page, off by
+       default; **no DMR connection of any kind is involved**. See
+       :ref:`en-brandmeister`
 
 Digipeater
 -----------
@@ -521,6 +533,28 @@ Messaging
        no single owner to ack for it. Composing a message *to* a group is not
        offered — use Bulletins for broadcast; outbound direct messaging is 1:1
        only. See :ref:`en-messaging`
+   * - Winlink radio e-mail (APRSLink)
+     - ⚠️ (a few clients drive ``WLNK-1`` by hand)
+     - ✅
+     - The station reads and writes its own ``CALLSIGN@winlink.org`` mail
+       through the ``WLNK-1`` service as a first-class page: challenge/response
+       login with the password never on the air (a challenge names three
+       character positions and only those characters go back), a paced
+       one-command-at-a-time session with its own lifetime, and a browser
+       terminal whose mailbox listing carries per-message read/reply/forward/
+       delete buttons. A second, independent role relays a neighbouring RF
+       station's own Winlink session through this station's IGate. Off by
+       default: it needs an account and a password first. See :ref:`en-winlink`
+   * - Bridging APRS messages to a chat platform
+     - ❌
+     - ✅
+     - An optional Telegram bot alongside the APRS services: long polling over
+       HTTPS, per-user and per-chat authorization, station-message and bulletin
+       routing to Telegram, a Mini App button, and ``/status`` and ``/sensors``
+       commands that answer from the configuration as it stands when the
+       command arrives. It reaches no radio — a routed message is delivered to
+       a chat, never re-transmitted — and it is off by default, with its whole
+       configuration in its own file. See :ref:`en-telegram`
 
 Weather
 --------
@@ -793,8 +827,13 @@ Station Management / Ops
      - Runtime 80/160/240 MHz selection
    * - Remote/serial console access for diagnostics
      - ✅ (most TNCs have a serial console)
-     - ⚠️
-     - No serial console for ordinary operation (by design); diagnostics live in the web dashboard and LOOP TEST instead
+     - ✅
+     - No *interactive* serial console for ordinary operation (by design), but
+       the console output itself is readable without a cable: the Logs page
+       mirrors ``esp_log`` into the browser on demand, keeping the last 50
+       lines in RAM, and stops itself once nothing has read it for ten seconds.
+       Nothing is written to flash. The web dashboard and LOOP TEST carry the
+       rest of the diagnostics
    * - Multi-user / role-based access control
      - ⚠️ (rare)
      - ❌

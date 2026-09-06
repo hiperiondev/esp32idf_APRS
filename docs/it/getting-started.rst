@@ -7,7 +7,7 @@ Primi passi
 Prerequisiti
 ============
 
-* **ESP-IDF v6.0 o successivo** (bloccato/testato su **6.0.2** — vedi
+* **ESP-IDF v6.1 o successivo** (bloccato/testato su **6.1** — vedi
   ``dependencies.lock``).
 * Un ESP32 con **≥ 4 MB di flash**.
 * Il gestore dei componenti di IDF scarica ``joltwallet/littlefs``,
@@ -82,23 +82,41 @@ alzarne uno qualsiasi abbassa la cifra *Min free heap* del pannello.
    * - Server HTTPS, bundle di certificati, Wi-Fi Enterprise
      - disattivati
      - L'amministrazione web è HTTP in chiaro e il collegamento APRS-IS è TCP
-       in chiaro, quindi nessun percorso di codice apre mai una sessione TLS:
+       in chiaro, e nulla si mette mai in ascolto di TLS:
        ``CONFIG_ESP_HTTPS_SERVER_ENABLE``,
        ``CONFIG_MBEDTLS_CERTIFICATE_BUNDLE`` e
        ``CONFIG_ESP_WIFI_ENTERPRISE_SUPPORT`` sono tutti disattivati in
-       ``sdkconfig``. mbedTLS resta invece abilitato — la crittografia Wi-Fi ne
-       ha bisogno —, quindi ``CONFIG_MBEDTLS_TLS_ENABLED`` e le sue opzioni
-       annidate ``_SERVER``/``_CLIENT`` restano ai valori predefiniti; l'unico
-       costo a run time sono i buffer di record per sessione
-       (``CONFIG_MBEDTLS_SSL_IN_CONTENT_LEN``/``_OUT_CONTENT_LEN``, 4096
-       ciascuno), allocati per sessione TLS e quindi qui mai allocati.
-       L'autenticazione HTTP Basic decodifica la
-       propria coppia di credenziali con un piccolo decodificatore locale
-       RFC 4648 (``components/webconfig/include/web_base64.h``) invece di
-       ``mbedtls_base64_decode()``, quindi nessun componente dichiara più una
-       dipendenza da mbedTLS per quella chiamata; ``esp_wifi``/``esp_netif``/
-       ``lwip`` continuano a trascinare mbedTLS in modo transitivo per la
-       crittografia WPA2, che non è influenzata da questa impostazione.
+       ``sdkconfig``. Un percorso di codice apre però TLS, come *client*: il bot
+       Telegram parla con ``api.telegram.org`` via HTTPS attraverso
+       ``esp_http_client``/``esp_tls``. Con il bundle di certificati
+       disattivato, verifica il server rispetto a un file PEM che l'operatore
+       carica sulla partizione di archiviazione
+       (``CONFIG_TELEGRAM_BOT_CERT_PATH``, ``/storage/telegram_certificate.pem``
+       di default) invece che rispetto a uno store di radici compilato
+       nell'immagine — pochi kilobyte di flash al posto delle decine del
+       bundle. Una stazione che lascia il bot spento non alloca nulla di tutto
+       questo.
+   * - ``CONFIG_MBEDTLS_SSL_IN_CONTENT_LEN`` / ``..._OUT_CONTENT_LEN``
+     - 8192 / 2048
+     - I buffer di record, allocati per sessione TLS, quindi una stazione con il
+       bot spento non paga nulla per essi. L'ingresso richiede la cifra maggiore
+       perché il server sceglie la propria dimensione di record e lo standard
+       consente fino a 16384; l'uscita è una scelta di questo dispositivo e le
+       sue richieste sono piccole. ``CONFIG_MBEDTLS_DYNAMIC_BUFFER`` è attivo,
+       quindi anche una sessione viva tiene i buffer completi solo mentre ci
+       sono record realmente in transito.
+   * - mbedTLS stesso
+     - abilitato
+     - La crittografia Wi-Fi ne ha bisogno comunque, quindi
+       ``CONFIG_MBEDTLS_TLS_ENABLED`` e le sue opzioni annidate
+       ``_SERVER``/``_CLIENT`` restano ai valori predefiniti. L'autenticazione
+       HTTP Basic continua a decodificare la propria coppia di credenziali con
+       un piccolo decodificatore locale RFC 4648
+       (``components/webconfig/include/web_base64.h``) invece di
+       ``mbedtls_base64_decode()``, quindi ``webconfig`` non dichiara alcuna
+       dipendenza propria da mbedTLS; ``esp_wifi``/``esp_netif``/``lwip``
+       trascinano mbedTLS in modo transitivo per la crittografia WPA2, che non è
+       influenzata da nessuna di queste impostazioni.
 
 .. note::
 
@@ -107,8 +125,9 @@ alzarne uno qualsiasi abbassa la cifra *Min free heap* del pannello.
    mbedTLS, questa compresa, indipendentemente da
    ``CONFIG_MBEDTLS_TLS_ENABLED``. Questo, insieme alla maggiore impronta
    statica di mbedTLS 4.x, è il motivo per cui lo stesso firmware riporta meno
-   heap libero sotto v6.0 rispetto a v5.2 con una configurazione per il resto
-   identica.
+   heap libero sotto v6.x rispetto a v5.2 con una configurazione per il resto
+   identica. Il comportamento è stato introdotto in v6.0 ed è invariato nella
+   v6.1 con cui questo progetto compila ora.
 
 Primo avvio
 ===========

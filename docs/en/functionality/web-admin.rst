@@ -135,7 +135,7 @@ The help text is **looked up from the label, not passed in**. Pages call
 ``web_field_int(req, TR_F_SSID, …)`` exactly as they did before the feature
 existed; ``web_help_for_label()`` matches that label against the table in
 ``web_help.c``, which pairs each ``TR_xxx`` label macro with its ``TR_H_xxx``
-help macro. That keeps all 359 call sites untouched and means a label several
+help macro. That keeps every existing call site untouched and means a label several
 pages share is explained once and reads identically on all of them. An option
 whose label has no row in the table simply renders without a marker.
 
@@ -193,7 +193,9 @@ The pages
        station capabilities, user-defined formats, Agrelo direction finding,
        Maidenhead locator beacons and the reserved map feature),
        beacon on/off, position, interval, symbol picker, object, comment,
-       status, PHG. *Message Gating* holds the INET→RF message criteria switch,
+       status, PHG, and a frequency/repeater fieldset (frequency, duplex,
+       offset, tone) whose block opens the beacon's comment and status text.
+       *Message Gating* holds the INET→RF message criteria switch,
        the heard-locally window and the addressee hop limit. Position can be
        typed in, mirrored from *Use My Station Data* or taken live from the
        GNSS receiver via *Use GPS*; the three are mutually exclusive.
@@ -213,7 +215,8 @@ The pages
        interval, comment, status, path). *Data Extension* selects what the
        position beacon carries in the slot after the symbol code — PHG, RNG,
        DFS or a DF report — with the same sub-fields and the same *Use My
-       Station Data* mirror the *IGate* page offers. *n-N Path Aliases* holds the four
+       Station Data* mirror the *IGate* page offers, and a frequency/repeater
+       fieldset like that page's. *n-N Path Aliases* holds the four
        {alias, max N, mode} rows the digipeater repeats by, the fill-in-only
        switch, the choice of what to do with a trapped hop count and the
        *Digipeat by destination SSID (legacy)* switch, off by default. It also

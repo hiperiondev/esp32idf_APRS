@@ -11,8 +11,8 @@ Una singola istanza ``app_config_t g_config`` (``main/app_config.c`` /
 ``app_config.h``) è la copia viva che ogni sottosistema legge. È caricata
 all'avvio e modificata campo per campo dai gestori POST del web. I suoi campi sono
 raggruppati per pagina dell'amministrazione web: sistema/ora, identità "My
-Station", Wi-Fi, IGate, Digipeater, Tracker, Weather, GPS, il modem AFSK,
-System/autenticazione HTTP, e Message e Query.
+Station", Wi-Fi, IGate, BrandMeister, Digipeater, Tracker, Weather, GPS, il
+modem AFSK, System/autenticazione HTTP, Message, Query e l'account Winlink.
 
 I nomi dei campi e le chiavi JSON sono mantenuti **1:1** con il ``config.h``/
 ``config.cpp`` del progetto di riferimento originale, così che ogni valore che
@@ -25,7 +25,13 @@ carichino senza modifiche.
    **non** vive in ``g_config``. Persiste nei propri file LittleFS
    (``/storage/telemetry.json``, ``bulletins.json``, ``objitems.json``) per
    mantenere piccola la configurazione residente — e quindi ogni salvataggio di
-   ``config.json``.
+   ``config.json``. La pagina Telegram porta la stessa idea un passo più in là:
+   la sua configurazione *intera*, interruttore di abilitazione compreso, vive
+   in ``/storage/telegram.json`` e nessuna sua parte sta in ``g_config``.
+   L'account Winlink è l'eccezione che conferma la regola — la sua manciata di
+   campi ``wl*`` è abbastanza piccola da stare in ``g_config``, e solo le
+   risposte che il servizio rimanda finiscono in un file proprio
+   (``/storage/winlink.json``).
 
 Caricamento e salvataggio
 =========================
@@ -80,9 +86,10 @@ rimuove la sua voce di barra laterale e la sua pagina dall'immagine:
 
    ENABLE_DASHBOARD    ENABLE_MSG_CHAT     ENABLE_BULLETINS    ENABLE_OBJECTS_ITEMS
    ENABLE_STATION      ENABLE_RADIO_MODEM  ENABLE_MESSAGE      ENABLE_IGATE
-   ENABLE_BRANDMEISTER ENABLE_DIGIPEATER   ENABLE_TRACKER      ENABLE_WEATHER
-   ENABLE_TELEMETRY    ENABLE_GPS          ENABLE_SYSTEM       ENABLE_WIRELESS
-   ENABLE_FILE_STORAGE ENABLE_ABOUT_FIRMWARE                   ENABLE_QUERY
+   ENABLE_BRANDMEISTER ENABLE_QUERY        ENABLE_DIGIPEATER   ENABLE_TRACKER
+   ENABLE_WEATHER      ENABLE_TELEMETRY    ENABLE_GPS          ENABLE_TELEGRAM
+   ENABLE_WINLINK      ENABLE_LOGS         ENABLE_SYSTEM       ENABLE_WIRELESS
+   ENABLE_FILE_STORAGE ENABLE_ABOUT_FIRMWARE
 
 **Non** c'è interruttore ``ENABLE_SENSORS``: il framework ``sensors_local`` non ha
 disabilitazione in compilazione ed è sempre compilato (i suoi singoli driver sono
@@ -119,4 +126,13 @@ I bit del filtro dell'IGate (condivisi da ``rf2inetFilter`` e ``inet2rfFilter``)
 .. code-block:: text
 
    MESSAGE 1<<0 · STATUS 1<<1 · TELEMETRY 1<<2 · WEATHER 1<<3 · OBJECT 1<<4
-   ITEM 1<<5 · QUERY 1<<6 · BUOY 1<<7 · POSITION 1<<8
+   ITEM 1<<5 · QUERY 1<<6 · BUOY 1<<7 · POSITION 1<<8 · OTHER 1<<9
+
+``IGATE_FILT_OTHER`` è l'unico bit che copre più tipi di payload insieme —
+capacità di stazione, formati definiti dall'utente, radiogoniometria Agrelo,
+beacon di locatore Maidenhead e la funzione mappa riservata — ed è per questo
+che i fieldset *Filter* mostrano nove caselle per dieci bit. Nemmeno
+``IGATE_FILT_QUERY`` ha una casella propria: le interrogazioni sono classificate
+perché il codice di gating possa nominarle, ma l'operatore le governa dalla
+pagina Query. Il traffico di terze parti e i dati di prova restano fuori da ogni
+bit e non sono mai ritrasmessi sulla base della maschera.

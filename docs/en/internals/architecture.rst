@@ -116,8 +116,8 @@ Task map
      - ``AFSK_init()``
      - one DAC sample every 1/38400 s
    * - ``igate_task``
-     - —
-     - —
+     - 6144 B
+     - 5
      - any
      - ``igate_start()``
      - APRS-IS socket, login, RX pump, reconnect
@@ -134,6 +134,27 @@ Task map
      - any
      - ``aprs_service_start()``
      - 1 Hz: heap sample + weather refresh + message retry + time sync
+   * - ``gps``
+     - 4096 B
+     - 4
+     - any
+     - ``gps_apply_config()``
+     - reads the GNSS UART and parses NMEA; created only while the receiver is
+       switched on, and deleted again when it is switched off
+   * - ``telegram_service``
+     - 8192 B
+     - 5
+     - any
+     - ``telegram_app_apply_config()``
+     - Telegram long polling over HTTPS and command dispatch; created only
+       while the bot is switched on
+   * - ``telegram_wk``
+     - 8192 B
+     - 4
+     - any
+     - ``telegram_app.c``
+     - transient: runs one bot bring-up, teardown or send off the caller's
+       stack, so a web POST never waits on TLS
    * - ``httpd``
      - 20480 B
      - —

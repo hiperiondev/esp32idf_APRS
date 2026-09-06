@@ -8,7 +8,7 @@ What this is
 ============
 
 ``esp32idf_APRS`` is an ESP-IDF **v6.x** project (tested and locked at IDF
-**6.0.2**) that turns a bare ESP32 DevKit plus a cheap audio interface into a
+**6.1**) that turns a bare ESP32 DevKit plus a cheap audio interface into a
 complete, self-contained APRS station. Everything runs on the ESP32 itself —
 there is no Arduino core, no ``String``, no PlatformIO, and no external DSP
 library. The whole signal chain, from the correlator demodulator through the
@@ -153,6 +153,20 @@ Feature matrix
    * - APRS Telemetry on-air encode/beacon
      - ✅
      - analog A1–A5 + digital B1–B8, ``T#nnn`` report + metadata
+   * - Winlink radio e-mail (APRSLink)
+     - ✅
+     - own ``CALLSIGN@winlink.org`` mailbox over ``WLNK-1``, plus an optional
+       gateway for a neighbouring station's own session; own page, off by
+       default
+   * - Telegram bot bridge
+     - ✅
+     - optional; long polling over HTTPS, per-user and per-chat authorization,
+       station-message and bulletin routing, ``/status`` and ``/sensors``
+       answers; own page and own settings file, off by default
+   * - Console log viewer
+     - ✅
+     - on-demand mirror of the serial console into the browser (Logs page), no
+       cable and nothing written to flash
 
 Design philosophy
 =================
@@ -163,11 +177,14 @@ are worth internalising up front:
 **One resident configuration, one live copy.**
    A single ``app_config_t g_config`` instance is the source of truth every
    subsystem reads. It persists to ``/storage/config.json``. Subsystems never
-   duplicate configuration state; they read ``g_config`` directly. Two
+   duplicate configuration state; they read ``g_config`` directly. The
    subsystems that need larger, page-specific state of their own keep it in
    separate LittleFS files instead of bloating ``g_config``: telemetry
-   (``/storage/telemetry.json``), bulletins (``/storage/bulletins.json``) and
-   objects/items (``/storage/objitems.json``).
+   (``/storage/telemetry.json``), bulletins (``/storage/bulletins.json``),
+   objects/items (``/storage/objitems.json``), the Telegram bot
+   (``/storage/telegram.json``, which holds that page's whole configuration)
+   and the Winlink mailbox (``/storage/winlink.json``, the replies the service
+   has sent back).
 
 **Compile-time board wiring, runtime everything-else.**
    The three audio pins (ADC, DAC, PTT), the PTT polarity, the ADC

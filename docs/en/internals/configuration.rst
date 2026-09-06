@@ -10,8 +10,9 @@ One resident config
 A single ``app_config_t g_config`` instance (``main/app_config.c`` /
 ``app_config.h``) is the live copy every subsystem reads. It is loaded at boot
 and edited field-by-field by the web POST handlers. Its fields are grouped by
-web-admin page: system/time, "My Station" identity, Wi-Fi, IGate, Digipeater,
-Tracker, Weather, GPS, the AFSK modem, System/HTTP auth, Message and Query.
+web-admin page: system/time, "My Station" identity, Wi-Fi, IGate, BrandMeister,
+Digipeater, Tracker, Weather, GPS, the AFSK modem, System/HTTP auth, Message,
+Query and the Winlink account.
 
 Field names and JSON keys are kept **1:1** with the original reference project's
 ``config.h``/``config.cpp``, so every value the web admin shows has a home and
@@ -22,7 +23,13 @@ old ``config.json`` files load unchanged.
    Telemetry, bulletins and objects/items configuration deliberately do **not**
    live in ``g_config``. They persist to their own LittleFS files
    (``/storage/telemetry.json``, ``bulletins.json``, ``objitems.json``) to keep
-   the resident config — and therefore every ``config.json`` save — small.
+   the resident config — and therefore every ``config.json`` save — small. The
+   Telegram page is the same idea taken one step further: its *whole*
+   configuration, enable switch included, lives in ``/storage/telegram.json``
+   and no part of it is in ``g_config``. The Winlink account is the exception
+   that proves the rule — its handful of ``wl*`` fields are small enough to sit
+   in ``g_config``, and only the replies the service sends back go to a file of
+   their own (``/storage/winlink.json``).
 
 Loading and saving
 ==================
@@ -75,9 +82,10 @@ removes its sidebar entry and its page from the image:
 
    ENABLE_DASHBOARD    ENABLE_MSG_CHAT     ENABLE_BULLETINS    ENABLE_OBJECTS_ITEMS
    ENABLE_STATION      ENABLE_RADIO_MODEM  ENABLE_MESSAGE      ENABLE_IGATE
-   ENABLE_BRANDMEISTER ENABLE_DIGIPEATER   ENABLE_TRACKER      ENABLE_WEATHER
-   ENABLE_TELEMETRY    ENABLE_GPS          ENABLE_SYSTEM       ENABLE_WIRELESS
-   ENABLE_FILE_STORAGE ENABLE_ABOUT_FIRMWARE                   ENABLE_QUERY
+   ENABLE_BRANDMEISTER ENABLE_QUERY        ENABLE_DIGIPEATER   ENABLE_TRACKER
+   ENABLE_WEATHER      ENABLE_TELEMETRY    ENABLE_GPS          ENABLE_TELEGRAM
+   ENABLE_WINLINK      ENABLE_LOGS         ENABLE_SYSTEM       ENABLE_WIRELESS
+   ENABLE_FILE_STORAGE ENABLE_ABOUT_FIRMWARE
 
 There is **no** ``ENABLE_SENSORS`` switch: the ``sensors_local`` framework has no
 compile-time disable and is always built in (its individual drivers are gated by
@@ -111,4 +119,13 @@ The IGate filter bits (shared by ``rf2inetFilter`` and ``inet2rfFilter``):
 .. code-block:: text
 
    MESSAGE 1<<0 · STATUS 1<<1 · TELEMETRY 1<<2 · WEATHER 1<<3 · OBJECT 1<<4
-   ITEM 1<<5 · QUERY 1<<6 · BUOY 1<<7 · POSITION 1<<8
+   ITEM 1<<5 · QUERY 1<<6 · BUOY 1<<7 · POSITION 1<<8 · OTHER 1<<9
+
+``IGATE_FILT_OTHER`` is the one bit that covers several payload kinds at once —
+station capabilities, user-defined formats, Agrelo direction finding, Maidenhead
+locator beacons and the reserved map feature — which is why the *Filter*
+fieldsets render nine checkboxes for ten bits. ``IGATE_FILT_QUERY`` has no
+checkbox of its own either: queries are classified so the gating code can name
+them, but the operator governs them from the Query page instead. Third-party
+traffic and test data sit outside every bit and are never relayed on the
+strength of the mask.

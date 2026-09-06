@@ -9,7 +9,7 @@ LittleFS
 
 La partizione ``storage`` da 512 KB è montata come **LittleFS** su ``/storage``
 (``main/storage.c``). Al primo avvio si auto-formatta. Contiene ogni file
-persistente che il firmware scrive:
+persistente che il firmware scrive, e uno che si limita a leggere:
 
 * ``/storage/config.json`` — la configurazione residente (vedi
   :ref:`it-configuration`).
@@ -18,6 +18,11 @@ persistente che il firmware scrive:
 * ``/storage/objitems.json`` — i cinque oggetti/item.
 * ``/storage/telegram.json`` — l'intera configurazione del bot Telegram.
 * ``/storage/winlink.json`` — le risposte inviate dal servizio Winlink.
+* ``/storage/telegram_certificate.pem`` — il certificato radice con cui il
+  client HTTPS del bot Telegram verifica ``api.telegram.org``. Questo è caricato
+  dall'operatore dalla pagina *Storage* invece di essere scritto dal firmware, e
+  serve solo con il bot acceso; il suo percorso è l'impostazione di compilazione
+  ``CONFIG_TELEGRAM_BOT_CERT_PATH``.
 
 La pagina web *Storage* è un navigatore LittleFS completo: elenca i file con le
 dimensioni, scarica (``GET /download?file=…``), elimina (``POST /delete`` con

@@ -103,8 +103,10 @@ This documentation is organised into three parts, each with its own set of
 chapters:
 
 * **Functionalities** — what the station *does* as seen by an operator:
-  gatewaying, digipeating, beacons, messaging, weather, telemetry, bulletins,
-  objects, the optional Telegram bot and the web admin.
+  gatewaying, the BrandMeister interconnect, digipeating, beacons, messaging,
+  the query responder, weather, telemetry, bulletins, objects, the optional
+  Telegram bot, Winlink radio e-mail and the web admin — which also holds the
+  GNSS receiver's live view.
 * **Capabilities** — the *properties* of the firmware that cut across
   features: the modem profiles, filtering, localization, storage, OTA,
   networking and hardware support.

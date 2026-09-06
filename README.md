@@ -13,7 +13,7 @@
 [![Docs](https://img.shields.io/badge/docs-readthedocs-blue)](https://esp32idf-aprs.readthedocs.io/)
 [![License](https://img.shields.io/badge/license-GPLv3-green)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-ESP32-red)](#hardware)
-[![Framework](https://img.shields.io/badge/framework-ESP--IDF%205.x-orange)](#)
+[![Framework](https://img.shields.io/badge/framework-ESP--IDF%206.1-orange)](#)
 
 **🌐 Languages:** **English** · [Español](README.es.md) · [Italiano](README.it.md)
 
@@ -36,8 +36,11 @@ In one sentence, the firmware **demodulates** AFSK/FSK audio from a radio's spea
 - **On-chip soft-modem.** AFSK 1200 Bd Bell 202 (standard APRS) with a dual demodulator, plus AFSK 1200 Bd V.23, AFSK 300 Bd, and **G3RUH 9600 Bd FSK** — all in pure C on the ESP32's own ADC/DAC.
 - **FX.25 forward error correction.** Reed–Solomon FEC over AX.25, RX-only or RX+TX, for reliable decodes in weak-signal conditions.
 - **Full APRS-IS IGate.** Bidirectional **RF→INET** and **INET→RF** gating with duplicate suppression, `qAR`/`qAO` construction, payload-type gating, callsign budlists, a local range gate (haversine distance) and prefix whitelist. Up to four APRS-IS servers can be listed, with automatic failover between the enabled ones.
+- **BrandMeister APRS interconnect.** Recognises, gates and routes the APRS traffic BrandMeister injects, over the APRS-IS session the IGate already has — an `APBMxx` tocall, a `DMR` path alias or a named entry gateway identifies it. Its own page, off by default. **No DMR connection of any kind is involved.**
 - **Digipeater.** A four-row n-N alias table (WIDE1-1 / WIDE2-2 / WIDE#-2 by default), each row with its own hop limit and trace/flood mode, plus hop-count trapping, fill-in-only operation and duplicate suppression.
 - **Beacons, messaging & chat.** Fixed-position beacons for tracker/igate/digi, APRS text messaging with ack/retry (RF and/or INET), and an in-browser message chat UI.
+- **GNSS receiver & live tracking.** An NMEA module on its own UART (RMC/GGA/GSA/GSV/VTG, multi-constellation) with a master switch, a live view page refreshed once a second, and a *Use GPS* control that fills any page's position fields from the current fix. The Tracker beacon can transmit the live fix instead of a fixed position, with SmartBeaconing making the interval speed-adaptive and pegging it on corners.
+- **APRS query responder.** Answers the general `?APRS?`/`?WX?`/`?IGATE?` queries and the directed set (`?APRSD`/`?APRSH`/`?APRSM`/`?APRSO`/`?APRSP`/`?APRSS`/`?APRST`/`?PING?`), each with per-type and per-source rate limits, plus an optional periodic station-capabilities beacon.
 - **Weather & telemetry.** On-air APRS Weather Reports with 1 Hz sensor refresh and per-field averaging, plus APRS Telemetry (analog A1–A5 + digital B1–B8) with `T#nnn` reports and metadata.
 - **Winlink radio e-mail (APRSLink).** The station reads and writes its own `CALLSIGN@winlink.org` mail through the `WLNK-1` service — challenge/response login with the password never on the air, a paced one-command-at-a-time session, and a browser terminal whose mailbox listing carries per-message read/reply/forward/delete buttons — and, separately, relays a neighbouring RF station's own Winlink session through its IGate.
 - **Objects, items & bulletins.** Up to five own-station APRS Objects/Items and five bulletins (BLN1–BLN5), each on RF and/or INET with expiry/decay control.
@@ -63,11 +66,15 @@ In one sentence, the firmware **demodulates** AFSK/FSK audio from a radio's spea
 | APRS-IS IGate RF→INET & INET→RF | Filters, dedup, budlist, third-party unwrap opt-in |
 | APRS-IS multiserver failover | 4 server slots, circular retry over the enabled ones |
 | Local range gate & prefix gate | Haversine distance + callsign-prefix whitelist |
+| BrandMeister APRS interconnect | Recognition, gating and message routing over the existing APRS-IS session; no DMR link |
 | Digipeater | Configurable n-N alias table (trace/flood), hop trapping, dup-suppression |
 | Objects / Items · Bulletins | Up to 5 each, RF and/or INET, expiry/decay |
 | Telegram bot | Long polling, per-user/chat authorization, message & bulletin routing, Mini App button |
 | Messaging + ack/retry · Chat UI | RF and/or INET |
 | Winlink radio e-mail (APRSLink) | Own mailbox over `WLNK-1`, plus gateway for local stations |
+| GNSS receiver (NMEA, own UART) | Master switch, live view page, *Use GPS* position fill on every page |
+| Live GPS tracking + SmartBeaconing | Tracker beacon only; speed-adaptive interval and corner-pegging |
+| APRS query responder | General `?APRS?`/`?WX?`/`?IGATE?` + directed set, rate-limited; capabilities beacon |
 | Weather Report | 1 Hz sensor refresh, optional averaging |
 | Telemetry | Analog A1–A5 + digital B1–B8, `T#nnn` + metadata |
 | Sensor driver framework | Dynamic registry, BME280/BMP280 driver included |
@@ -86,6 +93,7 @@ In one sentence, the firmware **demodulates** AFSK/FSK audio from a radio's spea
 - **Audio in (ADC):** default `GPIO33` (ADC1). **GPIO 32–39 only** — ADC2 is unusable while Wi-Fi is up.
 - **Audio out (DAC):** default `GPIO25`. **GPIO 25 or 26 only** — the ESP32 DAC is hard-wired to those pads.
 - **PTT:** default `GPIO26`, polarity selectable at compile time.
+- **GNSS (optional):** UART2, default `GPIO16` (RX, from the module's TX) and `GPIO17` (TX). Set in `main/include/gps.h`. **Unusable on an ESP32-WROVER**, where those pins belong to the SPI PSRAM die.
 - **Note:** ESP32-S3/C3/C6/H2 have **no DAC** and cannot run the TX path unmodified.
 
 Board wiring (audio pins, PTT pin/polarity, sample rates) is set as compile-time constants in the top-level `CMakeLists.txt`. A KiCad radio-interface schematic is included under `schematics/`.
@@ -97,7 +105,7 @@ Board wiring (audio pins, PTT pin/polarity, sample rates) is set as compile-time
 ## Quick start
 
 ```bash
-# Requires ESP-IDF v6.x (tested and locked at 6.0.2)
+# Requires ESP-IDF v6.1 (tested and locked at 6.1)
 idf.py set-target esp32
 idf.py build
 idf.py -p PORT flash monitor
