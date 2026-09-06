@@ -81,7 +81,7 @@ y no cuando vence la próxima baliza.
 
 El motivo es el stack. Una respuesta a ``?APRS?`` *es* una baliza: ejecuta
 ``beacon_build_igate_position_packet()``, varios ``snprintf()`` de newlib con
-soporte de punto flotante, ``lat_lon_to_aprs()``, el constructor de path y luego
+soporte de punto flotante, ``aprs_coord_format()``, el constructor de path y luego
 toda la cadena ``aprs_service_send_tnc2()`` → ``modem_send_tnc2()`` →
 ``ax25_encode()``, apilando en cada nivel su propio buffer de 300–450 bytes —
 justamente el árbol de llamadas para el que ``beacon_scheduler.c`` dimensiona su

@@ -167,6 +167,14 @@ Task map
      - any
      - ``aprs_loop_test_run()``
      - transient: latches modem diagnostics for the duration of a LOOP TEST
+   * - ``ota_reboot``
+     - 2048 B
+     - 5
+     - any
+     - the About page's OTA upload handler
+     - transient: waits 1.5 s after a successful firmware upload — so the
+       browser's XHR completes and the "rebooting..." message is actually
+       seen — then calls ``esp_restart()``
    * - ``esp_timer``
      - —
      - —

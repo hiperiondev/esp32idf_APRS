@@ -169,6 +169,14 @@ Mapa de tareas
      - cualquiera
      - ``aprs_loop_test_run()``
      - transitoria: engancha los diagnósticos del módem mientras dura un LOOP TEST
+   * - ``ota_reboot``
+     - 2048 B
+     - 5
+     - cualquiera
+     - el manejador de subida OTA de la página About
+     - transitoria: espera 1,5 s tras una actualización de firmware exitosa
+       — para que el XHR del navegador termine y el mensaje "reiniciando..."
+       llegue a verse — y luego llama a ``esp_restart()``
    * - ``esp_timer``
      - —
      - —

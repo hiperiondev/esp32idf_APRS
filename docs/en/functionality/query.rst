@@ -77,7 +77,7 @@ rather than whenever the next beacon falls due.
 
 The reason is stack. A ``?APRS?`` answer *is* a beacon: it runs
 ``beacon_build_igate_position_packet()``, several of newlib's float-capable
-``snprintf()``\ s, ``lat_lon_to_aprs()``, the path builder and then the whole
+``snprintf()``\ s, ``aprs_coord_format()``, the path builder and then the whole
 ``aprs_service_send_tnc2()`` → ``modem_send_tnc2()`` → ``ax25_encode()`` chain,
 each level stacking its own 300–450 byte buffer — precisely the call tree
 ``beacon_scheduler.c`` sizes its 14336-byte stack for. Queries, though, arrive

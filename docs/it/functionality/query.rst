@@ -82,7 +82,7 @@ scade il beacon successivo.
 
 Il motivo è lo stack. Una risposta a ``?APRS?`` *è* un beacon: esegue
 ``beacon_build_igate_position_packet()``, diversi ``snprintf()`` di newlib con
-supporto in virgola mobile, ``lat_lon_to_aprs()``, il costruttore del path e poi
+supporto in virgola mobile, ``aprs_coord_format()``, il costruttore del path e poi
 l'intera catena ``aprs_service_send_tnc2()`` → ``modem_send_tnc2()`` →
 ``ax25_encode()``, con ogni livello che impila il proprio buffer da 300–450 byte
 — esattamente l'albero di chiamate per cui ``beacon_scheduler.c`` dimensiona il

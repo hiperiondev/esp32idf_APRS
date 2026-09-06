@@ -170,6 +170,14 @@ Mappa dei task
      - qualsiasi
      - ``aprs_loop_test_run()``
      - transitorio: aggancia le diagnostiche del modem per la durata di un LOOP TEST
+   * - ``ota_reboot``
+     - 2048 B
+     - 5
+     - qualsiasi
+     - il gestore di upload OTA della pagina About
+     - transitorio: attende 1,5 s dopo un aggiornamento del firmware riuscito
+       — così l'XHR del browser si completa e il messaggio "riavvio in
+       corso..." viene effettivamente visto — poi chiama ``esp_restart()``
    * - ``esp_timer``
      - —
      - —
