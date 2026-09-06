@@ -481,11 +481,6 @@
 /** Spanish text for the form label for the "objitem permanent" field or fieldset, rendered on the configuration forms. English: "Permanent (Object only,
  * 111111z)". */
 #define TR_F_OBJITEM_PERMANENT "Permanente (solo Objeto, 111111z)"
-/** Spanish text for the form label for the "objitem permanent note" field or fieldset, rendered on the configuration forms. English: "A permanent Object is
- * sent with the fixed 111111z timestamp instead of the live time, s...". */
-#define TR_F_OBJITEM_PERMANENT_NOTE                                                                                                                            \
-    "Un Objeto permanente se envía con la marca de tiempo fija 111111z en lugar de la hora actual, de modo que nunca es reemplazado por un Objeto homónimo "   \
-    "de otra estación - solo la estación de origen puede actualizarlo o moverlo. No tiene efecto en un Ítem."
 /** Spanish text for the form label for the "objitem active" field or fieldset, rendered on the configuration forms. English: "Active (uncheck = kill)". */
 #define TR_F_OBJITEM_ACTIVE "Activo (desmarcar = eliminar)"
 /** Spanish text for the form label for the "objitem scope" field or fieldset, rendered on the configuration forms. English: "Scope". */
@@ -1404,13 +1399,6 @@
 
 /** Spanish text for the form label for the "log after filters" field or fieldset, rendered on the IGate page. English: "Log after filters". */
 #define TR_F_LOG_AFTER_FILTERS "Registrar después de los filtros"
-/** Spanish text for the explanatory note shown beside the log after filters setting, rendered on the IGate page. */
-#define TR_NOTE_LOG_AFTER_FILTERS                                                                                                                              \
-    "Desactivado, la tabla de tráfico y la consola serie informan todas las tramas decodificadas en RF y todas las líneas que envía el servidor APRS-IS. "     \
-    "Activado, informan solo lo que aceptan los filtros IGate de esta estación: la Lista de Satélites Digipetidores y el juego RF a Internet para el "         \
-    "tráfico de radio, el juego Internet a RF para el tráfico APRS-IS, y el Filtro de Indicativos para ambos. Solo acota lo que se muestra: una trama "        \
-    "omitida se repite, se pasarela y se cuenta igual que antes."
-
 /** Spanish text for the form label for the "satgate" field or fieldset, rendered on the IGate page. English: "Satellite Gate List". */
 #define TR_F_SATGATE "Lista de Satélites Digipetidores"
 /** Spanish text for the form label for the "satgate call" field or fieldset, rendered on the IGate page. English: "Satellite Callsign". */
@@ -1734,39 +1722,12 @@
 #define TR_TG_FS_SERVICE "Bot de Telegram"
 /** Label of the bot enable checkbox, rendered on the Telegram page. */
 #define TR_TG_ENABLE "Habilitar bot de Telegram"
-/** Explanatory note shown under the enable switch, rendered on the Telegram page. */
-#define TR_TG_NOTE_SERVICE                                                                                                                                     \
-    "Con esto apagado no se conecta nada a Telegram ni corre ninguna tarea de sondeo. Encenderlo o apagarlo tiene efecto inmediato, sin reiniciar. El bot "    \
-    "necesita conexion a Internet y memoria libre suficiente para una sesion TLS."
 /** Label of the route-station-messages checkbox, rendered on the Telegram page. */
 #define TR_TG_ROUTE_MESSAGES "Reenviar mensajes de la estacion"
-/** Explanatory note shown under the route-station-messages switch, rendered on the Telegram page. */
-#define TR_TG_NOTE_ROUTE_MESSAGES                                                                                                                              \
-    "Con esto encendido, un mensaje APRS recibido dirigido al Indicativo propio de uno de los usuarios autorizados de abajo se envia al chat de "              \
-    "Telegram de ese usuario como \"msg from <remitente> to <destinatario> :: <texto del mensaje>\". El destinatario se compara solo con los campos "          \
-    "Indicativo de esos usuarios, nunca con el My Callsign de esta estacion de la pagina Station, asi cada usuario recibe los mensajes dirigidos a su "        \
-    "propio indicativo y a ningun otro. La coincidencia es exacta, SSID incluido, asi varios usuarios pueden compartir un mismo indicativo base con "          \
-    "distinto SSID. Un mensaje cuyo destinatario no coincide con el Indicativo de ningun usuario no se reenvia a nadie. Las confirmaciones y los "             \
-    "mensajes dirigidos a un grupo nunca se reenvian."
 /** Label of the route-bulletins checkbox, rendered on the Telegram page. */
 #define TR_TG_ROUTE_BULLETINS "Reenviar boletines"
-/** Explanatory note shown under the route-bulletins switch, rendered on the Telegram page. */
-#define TR_TG_NOTE_ROUTE_BULLETINS                                                                                                                             \
-    "Con esto encendido, todo boletin APRS recibido en la red, por el aire o desde el flujo APRS-IS, se envia a todos los usuarios autorizados, al "           \
-    "administrador y a todos los chats de grupo permitidos de mas abajo, como \"bulletin from <remitente> to <boletin> :: <texto del boletin>\". Un "          \
-    "boletin es un destinatario \"BLN\" seguido de un digito o una letra y, opcionalmente, de un nombre de grupo; no se compara ningun indicativo, ya que "    \
-    "un boletin esta dirigido a toda la red y no a una estacion. Un boletin identico a otro ya reenviado dentro de la ventana de repeticion de mas abajo "     \
-    "no se envia de nuevo, asi un boletin que su emisor repite por temporizador, o que se escucha a traves de varios digipetidores, llega una sola vez "       \
-    "a cada chat."
 /** Label of the bulletin repeat window field, rendered on the Telegram page. */
 #define TR_TG_BULLETIN_WINDOW "Ventana de repeticion de boletines (s)"
-/** Explanatory note shown under the bulletin repeat window field, rendered on the Telegram page. */
-#define TR_TG_NOTE_BULLETIN_WINDOW                                                                                                                             \
-    "Cuanto tiempo un boletin ya reenviado impide que se reenvien tambien sus repeticiones. Un boletin cuyo remitente, destinatario y texto coinciden "        \
-    "con otro ya entregado dentro de estos segundos se descarta; cambiar el texto, o que lo envie otra estacion, lo convierte en un boletin nuevo y se "       \
-    "reenvia de inmediato. Pongala mas larga que el intervalo con que se transmiten los boletines de este canal, asi cada uno llega a los chats una vez "      \
-    "por edicion y no una vez por transmision. 0 apaga la comprobacion y reenvia todas las copias, incluidas las que vuelven por los digipetidores y "         \
-    "desde el flujo APRS-IS. Se recuerdan los ocho boletines reenviados mas recientes, sea cual sea esta ventana."
 /** Fieldset legend for the credentials block, rendered on the Telegram page. */
 #define TR_TG_FS_BOT "Credenciales"
 /** Label of the bot token field, rendered on the Telegram page. */
@@ -1925,14 +1886,6 @@
 #define TR_LOGS_BTN_START "Iniciar"
 /** Spanish text for the caption of the button while the console log is being captured, rendered on the Logs page. English: "Stop". */
 #define TR_LOGS_BTN_STOP "Detener"
-/** Spanish text for the explanatory note shown above the console log window, rendered on the Logs page. English: "Start mirrors everything the station prints
- * on its serial console...". */
-#define TR_LOGS_NOTE                                                                                                                                           \
-    "Iniciar copia en la ventana de abajo todo lo que la estación imprime en su consola serie, de modo que puede leerse sin tener un cable serie conectado. "  \
-    "La ventana guarda las últimas 50 líneas y se desplaza; una línea de más de 255 caracteres continúa en la siguiente. Detener termina la copia, y salir "   \
-    "de esta página también: al volver siempre se empieza con la ventana vacía y el botón listo para iniciar de nuevo. Capturar cuesta a la estación algo de " \
-    "memoria y no ralentiza nada más, pero no es una grabación: solo se muestra lo que llega mientras la ventana está abierta, y no se escribe nada en la "    \
-    "flash."
 
 /** @} */
 
@@ -1952,21 +1905,6 @@
 #define TR_WL_FS_GATEWAY "Pasarela para estaciones locales"
 /** Spanish text for the fieldset legend of the session terminal. English: "Session". */
 #define TR_WL_FS_SESSION "Sesión"
-/** Spanish text for the explanatory note above the account settings. */
-#define TR_WL_NOTE_ACCOUNT                                                                                                                                     \
-    "APRSLink es la pasarela entre APRS y el correo por radio Winlink. Esta estación lo alcanza con mensajes APRS normales dirigidos al indicativo del "       \
-    "servicio, y el buzón que se abre es el del indicativo base de abajo, sin su SSID. La contraseña nunca se transmite: un desafío de acceso nombra tres "    \
-    "posiciones de caracteres y solo esos caracteres se devuelven."
-/** Spanish text for the explanatory note above the gateway policy. */
-#define TR_WL_NOTE_GATEWAY                                                                                                                                     \
-    "Una estación vecina puede llevar su propia sesión Winlink a través de esta: sus órdenes se pasan a APRS-IS y las respuestas del servicio vuelven al "     \
-    "aire, sin que intervenga ninguna cuenta ni contraseña suya. El IGate normalmente no transmite un mensaje cuyo destinatario también se ve en APRS-IS, y "  \
-    "una respuesta del servicio caería en eso porque el eco de la orden que la propia estación envió la hace parecer conectada a Internet. La opción de "      \
-    "abajo levanta solo esa condición, y solo para el indicativo del servicio; los tres ajustes de IGate que la acompañan siguen decidiendo todo lo demás."
-/** Spanish text for the explanatory note above the session terminal. */
-#define TR_WL_NOTE_SESSION                                                                                                                                     \
-    "Se envía una orden por vez y la siguiente espera a que el servicio confirme la anterior, así que una sesión lleva su tiempo y no se puede apurar. Las "   \
-    "respuestas aparecen abajo a medida que llegan."
 /** Spanish text for the label of the client enable switch. English: "Enable Winlink client". */
 #define TR_WL_ENABLE "Habilitar cliente Winlink"
 /** Spanish text for the label of the service callsign field. English: "Service callsign". */
@@ -2141,6 +2079,10 @@
 /** Spanish text of the contextual help for the "Antenna Gain" option. */
 #define TR_H_F_ANTENNA_GAIN                                                                                                                                    \
     "Ganancia de la antena en dB, codificada en la extensión PHG. Se combina con potencia y altura para que los receptores estimen la cobertura."
+/** Spanish text of the contextual help for the "APRS-IS Passcode" option. */
+#define TR_H_F_APRS_PASSCODE                                                                                                                                   \
+    "Código de acceso que el servidor APRS-IS verifica contra Mi Indicativo antes de aceptar tráfico pasarela de esta estación. Auto Generar lo calcula "      \
+    "a partir de ese indicativo; un código erróneo o ausente igual conecta, pero queda registrado como no verificado."
 /** Spanish text of the contextual help for the "Audio low-pass filter" option. */
 #define TR_H_F_AUDIO_LOW_PASS_FILTER                                                                                                                           \
     "Filtra el audio recibido antes de demodular. Ayuda con una salida de receptor ruidosa o siseante y puede dejarse apagado si es limpia."
@@ -2226,6 +2168,10 @@
     "media."
 /** Spanish text of the contextual help for the "Enable" option. */
 #define TR_H_F_ENABLE "Activa esta entrada. Mientras está apagada los ajustes de abajo se conservan, pero no se transmite ni se actúa sobre ellos."
+/** Spanish text of the contextual help for the "Enable audio ADC/DAC modem" option. */
+#define TR_H_F_ENABLE_AUDIO_MODEM                                                                                                                              \
+    "Activa el módem AFSK integrado, de modo que esta estación transmite y recibe por los pines ADC/DAC de audio de la radio en lugar de un TNC externo. "     \
+    "Solo surte efecto tras reiniciar, ya que el módem se inicializa una sola vez al arrancar."
 /** Spanish text of the contextual help for the "Enable Digipeater" option. */
 #define TR_H_F_ENABLE_DIGIPEATER                                                                                                                               \
     "Activa el digipetidor, de modo que esta estación repita tramas cuya ruta coincida con alguno de los alias de abajo. Apagado, no se repite nada."
@@ -2363,6 +2309,10 @@
     "Anuncia el repetidor como de banda estrecha en el bloque de frecuencia. Déjelo apagado para un repetidor FM de banda ancha estándar."
 /** Spanish text of the contextual help for the "Duplex offset (kHz)" option. */
 #define TR_H_F_OBJITEM_OFFSET "Distancia entre las frecuencias de transmisión y recepción del repetidor, en kHz. La dirección dúplex de arriba le da el signo."
+/** Spanish text of the contextual help for the "Permanent (Object only, 111111z)" option. */
+#define TR_H_F_OBJITEM_PERMANENT                                                                                                                               \
+    "Un Objeto permanente se envía con la marca de tiempo fija 111111z en lugar de la hora actual, de modo que nunca es reemplazado por un Objeto homónimo "   \
+    "de otra estación - solo la estación de origen puede actualizarlo o moverlo. No tiene efecto en un Ítem."
 /** Spanish text of the contextual help for the "Coverage range (0 = none)" option. */
 #define TR_H_F_OBJITEM_RANGE "Radio de cobertura anunciado con la entrada, en la unidad elegida abajo. Use 0 para no anunciar ninguna cifra de cobertura."
 /** Spanish text of the contextual help for the "Range unit" option. */
@@ -2704,16 +2654,16 @@
     "Usa el indicativo y SSID de la página Mensaje para Winlink en vez de un par aparte, de modo que ambos servicios compartan una identidad."
 
 /** Spanish text of the contextual help for the "Mode (Wireless page)" option. */
-#define TR_H_WIFI_MODE                                                                                                                                          \
-    "Qué papeles Wi-Fi cumple la estación: su propio punto de acceso, cliente de una red existente, o ambos a la vez. Ambos es lo habitual, porque mantiene " \
+#define TR_H_WIFI_MODE                                                                                                                                         \
+    "Qué papeles Wi-Fi cumple la estación: su propio punto de acceso, cliente de una red existente, o ambos a la vez. Ambos es lo habitual, porque mantiene "  \
     "alcanzable la administración si la red cae."
 /** Spanish text of the contextual help for the "Name (telemetry channel or bit)" option. */
 #define TR_H_TLM_CHANNEL_NAME                                                                                                                                  \
-    "Nombre de este canal o bit, hasta 8 caracteres, anunciado a los receptores en el mensaje de definición PARM. Es la etiqueta con la que muestran el "     \
+    "Nombre de este canal o bit, hasta 8 caracteres, anunciado a los receptores en el mensaje de definición PARM. Es la etiqueta con la que muestran el "      \
     "valor."
 /** Spanish text of the contextual help for the "Name (telemetry project title)" option. */
 #define TR_H_TLM_PROJ_TITLE                                                                                                                                    \
-    "Título de todo el conjunto de telemetría, enviado en el mensaje de definición BITS. Nombra el proyecto al que pertenecen los canales, no un canal "    \
+    "Título de todo el conjunto de telemetría, enviado en el mensaje de definición BITS. Nombra el proyecto al que pertenecen los canales, no un canal "       \
     "concreto."
 /** @} */
 

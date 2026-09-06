@@ -481,11 +481,6 @@
 /** Italian text for the form label for the "objitem permanent" field or fieldset, rendered on the configuration forms. English: "Permanent (Object only,
  * 111111z)". */
 #define TR_F_OBJITEM_PERMANENT "Permanente (solo Oggetto, 111111z)"
-/** Italian text for the form label for the "objitem permanent note" field or fieldset, rendered on the configuration forms. English: "A permanent Object is
- * sent with the fixed 111111z timestamp instead of the live time, s...". */
-#define TR_F_OBJITEM_PERMANENT_NOTE                                                                                                                            \
-    "Un Oggetto permanente viene inviato con il timestamp fisso 111111z invece dell'ora corrente, cosi non viene mai sostituito da un Oggetto omonimo di "     \
-    "un'altra stazione - solo la stazione di origine puo aggiornarlo o spostarlo. Non ha effetto su un Item."
 /** Italian text for the form label for the "objitem active" field or fieldset, rendered on the configuration forms. English: "Active (uncheck = kill)". */
 #define TR_F_OBJITEM_ACTIVE "Attivo (deseleziona = elimina)"
 /** Italian text for the form label for the "objitem scope" field or fieldset, rendered on the configuration forms. English: "Scope". */
@@ -1405,13 +1400,6 @@
 
 /** Italian text for the form label for the "log after filters" field or fieldset, rendered on the IGate page. English: "Log after filters". */
 #define TR_F_LOG_AFTER_FILTERS "Registra dopo i filtri"
-/** Italian text for the explanatory note shown beside the log after filters setting, rendered on the IGate page. */
-#define TR_NOTE_LOG_AFTER_FILTERS                                                                                                                              \
-    "Disattivato, la tabella del traffico e la console seriale riportano ogni trama decodificata in RF e ogni riga inviata dal server APRS-IS. Attivato, "     \
-    "riportano solo ciò che accettano i filtri IGate di questa stazione: l'Elenco Digipeater Satellitari e il gruppo RF verso Internet per il traffico "       \
-    "radio, il gruppo Internet verso RF per il traffico APRS-IS, e il Filtro Indicativi per entrambi. Restringe solo ciò che viene mostrato: una trama "       \
-    "omessa viene comunque ripetuta, instradata e conteggiata come prima."
-
 /** Italian text for the form label for the "satgate" field or fieldset, rendered on the IGate page. English: "Satellite Gate List". */
 #define TR_F_SATGATE "Elenco Digipeater Satellitari"
 /** Italian text for the form label for the "satgate call" field or fieldset, rendered on the IGate page. English: "Satellite Callsign". */
@@ -1735,39 +1723,12 @@
 #define TR_TG_FS_SERVICE "Bot Telegram"
 /** Label of the bot enable checkbox, rendered on the Telegram page. */
 #define TR_TG_ENABLE "Abilita bot Telegram"
-/** Explanatory note shown under the enable switch, rendered on the Telegram page. */
-#define TR_TG_NOTE_SERVICE                                                                                                                                     \
-    "Con questo spento nulla si collega a Telegram e nessuna attivita di interrogazione viene eseguita. Accenderlo o spegnerlo ha effetto immediato, senza "   \
-    "riavviare. Il bot richiede una connessione a Internet e memoria libera sufficiente per una sessione TLS."
 /** Label of the route-station-messages checkbox, rendered on the Telegram page. */
 #define TR_TG_ROUTE_MESSAGES "Inoltra messaggi della stazione"
-/** Explanatory note shown under the route-station-messages switch, rendered on the Telegram page. */
-#define TR_TG_NOTE_ROUTE_MESSAGES                                                                                                                              \
-    "Con questo acceso, un messaggio APRS ricevuto indirizzato al Nominativo proprio di uno degli utenti autorizzati qui sotto viene inviato alla "            \
-    "chat Telegram di quell'utente come \"msg from <mittente> to <destinatario> :: <testo del messaggio>\". Il destinatario viene confrontato solo con "       \
-    "i campi Nominativo di quegli utenti, mai con il My Callsign di questa stazione della pagina Station, cosi ogni utente riceve i messaggi "                 \
-    "indirizzati al proprio nominativo e a nessun altro. La corrispondenza e esatta, SSID incluso, cosi piu utenti possono condividere uno stesso "            \
-    "nominativo base con SSID diversi. Un messaggio il cui destinatario non corrisponde al Nominativo di alcun utente non viene inoltrato a nessuno. "         \
-    "Le conferme e i messaggi indirizzati a un gruppo non vengono mai inoltrati."
 /** Label of the route-bulletins checkbox, rendered on the Telegram page. */
 #define TR_TG_ROUTE_BULLETINS "Inoltra bollettini"
-/** Explanatory note shown under the route-bulletins switch, rendered on the Telegram page. */
-#define TR_TG_NOTE_ROUTE_BULLETINS                                                                                                                             \
-    "Con questo acceso, ogni bollettino APRS ricevuto sulla rete, via radio o dal flusso APRS-IS, viene inviato a tutti gli utenti autorizzati, "              \
-    "all'amministratore e a tutte le chat di gruppo consentite qui sotto, come \"bulletin from <mittente> to <bollettino> :: <testo del bollettino>\". Un "    \
-    "bollettino e un destinatario \"BLN\" seguito da una cifra o da una lettera e, facoltativamente, da un nome di gruppo; non viene confrontato alcun "       \
-    "nominativo, poiche un bollettino e indirizzato a tutta la rete e non a una stazione. Un bollettino identico a uno gia inoltrato entro la finestra "       \
-    "di ripetizione qui sotto non viene inviato di nuovo, cosi un bollettino che il mittente ripete a intervalli, o sentito attraverso piu digipeater, "       \
-    "arriva una sola volta in ogni chat."
 /** Label of the bulletin repeat window field, rendered on the Telegram page. */
 #define TR_TG_BULLETIN_WINDOW "Finestra di ripetizione dei bollettini (s)"
-/** Explanatory note shown under the bulletin repeat window field, rendered on the Telegram page. */
-#define TR_TG_NOTE_BULLETIN_WINDOW                                                                                                                             \
-    "Per quanto tempo un bollettino gia inoltrato impedisce l'inoltro anche delle proprie ripetizioni. Un bollettino il cui mittente, destinatario e "         \
-    "testo coincidono con uno gia consegnato entro questi secondi viene scartato; modificare il testo, o l'invio da parte di un'altra stazione, ne fa "        \
-    "un bollettino nuovo che viene inoltrato subito. Impostala piu lunga dell'intervallo con cui vengono trasmessi i bollettini di questo canale, cosi "       \
-    "ognuno arriva nelle chat una volta per modifica e non una volta per trasmissione. 0 disattiva il controllo e inoltra ogni copia, comprese quelle "        \
-    "che tornano dai digipeater e dal flusso APRS-IS. Vengono ricordati gli otto bollettini inoltrati piu recenti, qualunque sia questa finestra."
 /** Fieldset legend for the credentials block, rendered on the Telegram page. */
 #define TR_TG_FS_BOT "Credenziali"
 /** Label of the bot token field, rendered on the Telegram page. */
@@ -1929,14 +1890,6 @@
 #define TR_LOGS_BTN_START "Avvia"
 /** Italian text for the caption of the button while the console log is being captured, rendered on the Logs page. English: "Stop". */
 #define TR_LOGS_BTN_STOP "Ferma"
-/** Italian text for the explanatory note shown above the console log window, rendered on the Logs page. English: "Start mirrors everything the station prints
- * on its serial console...". */
-#define TR_LOGS_NOTE                                                                                                                                           \
-    "Avvia copia nella finestra qui sotto tutto ciò che la stazione stampa sulla sua console seriale, così da poterlo leggere senza un cavo seriale "          \
-    "collegato. La finestra conserva le ultime 50 righe e scorre; una riga più lunga di 255 caratteri prosegue in quella successiva. Ferma termina la copia, " \
-    "e lo fa anche lasciare questa pagina: al ritorno si riparte sempre da una finestra vuota con il pulsante pronto ad avviare di nuovo. La cattura costa "   \
-    "alla stazione un po' di memoria e non rallenta nient'altro, ma non è una registrazione: viene mostrato solo ciò che arriva mentre la finestra è aperta, " \
-    "e non viene scritto nulla nella flash."
 
 /** @} */
 
@@ -1956,22 +1909,6 @@
 #define TR_WL_FS_GATEWAY "Gateway per le stazioni locali"
 /** Italian text for the fieldset legend of the session terminal. English: "Session". */
 #define TR_WL_FS_SESSION "Sessione"
-/** Italian text for the explanatory note above the account settings. */
-#define TR_WL_NOTE_ACCOUNT                                                                                                                                     \
-    "APRSLink è il gateway tra APRS e la posta radio Winlink. Questa stazione lo raggiunge con normali messaggi APRS indirizzati al nominativo del "           \
-    "servizio, e la casella che si apre è quella del nominativo base qui sotto, senza il suo SSID. La password non viene mai trasmessa: una sfida di "         \
-    "accesso indica tre posizioni di caratteri e solo quei caratteri vengono rimandati indietro."
-/** Italian text for the explanatory note above the gateway policy. */
-#define TR_WL_NOTE_GATEWAY                                                                                                                                     \
-    "Una stazione vicina può svolgere la propria sessione Winlink attraverso questa: i suoi comandi passano su APRS-IS e le risposte del servizio tornano "    \
-    "in aria, senza che sia coinvolto alcun account o password vostri. L'IGate normalmente non trasmette un messaggio il cui destinatario si vede anche su "   \
-    "APRS-IS, e una risposta del servizio ricadrebbe proprio lì perché l'eco del comando che la stazione stessa ha inviato la fa sembrare collegata a "        \
-    "Internet. L'opzione qui sotto toglie solo quella condizione, e solo per il nominativo del servizio; le tre impostazioni IGate mostrate accanto "          \
-    "decidono ancora tutto il resto."
-/** Italian text for the explanatory note above the session terminal. */
-#define TR_WL_NOTE_SESSION                                                                                                                                     \
-    "Si invia un comando per volta e il successivo attende che il servizio confermi il precedente, quindi una sessione richiede tempo e non si può "           \
-    "affrettare. Le risposte compaiono qui sotto man mano che arrivano."
 /** Italian text for the label of the client enable switch. English: "Enable Winlink client". */
 #define TR_WL_ENABLE "Abilita client Winlink"
 /** Italian text for the label of the service callsign field. English: "Service callsign". */
@@ -2145,6 +2082,10 @@
 /** Italian text of the contextual help for the "Antenna Gain" option. */
 #define TR_H_F_ANTENNA_GAIN                                                                                                                                    \
     "Guadagno dell'antenna in dB, codificato nell'estensione PHG. Si combina con potenza e altezza perché i riceventi stimino la copertura."
+/** Italian text of the contextual help for the "APRS-IS Passcode" option. */
+#define TR_H_F_APRS_PASSCODE                                                                                                                                   \
+    "Codice di accesso che il server APRS-IS verifica rispetto a Il Mio Indicativo prima di accettare traffico instradato da questa stazione. Genera "         \
+    "Automaticamente lo calcola da quell'indicativo; un codice errato o assente si connette comunque, ma viene registrato come non verificato."
 /** Italian text of the contextual help for the "Audio low-pass filter" option. */
 #define TR_H_F_AUDIO_LOW_PASS_FILTER                                                                                                                           \
     "Filtra l'audio ricevuto prima della demodulazione. Aiuta con un'uscita ricevitore rumorosa o sibilante e può restare spento se è pulita."
@@ -2234,6 +2175,10 @@
     "scende."
 /** Italian text of the contextual help for the "Enable" option. */
 #define TR_H_F_ENABLE "Attiva questa voce. Mentre è spenta le impostazioni sottostanti vengono conservate, ma non si trasmette nulla e non hanno effetto."
+/** Italian text of the contextual help for the "Enable audio ADC/DAC modem" option. */
+#define TR_H_F_ENABLE_AUDIO_MODEM                                                                                                                              \
+    "Attiva il modem AFSK integrato, cosi questa stazione trasmette e riceve attraverso i pin ADC/DAC audio della radio invece di un TNC esterno. Ha "         \
+    "effetto solo dopo un riavvio, poiche il modem viene inizializzato una sola volta all'avvio."
 /** Italian text of the contextual help for the "Enable Digipeater" option. */
 #define TR_H_F_ENABLE_DIGIPEATER                                                                                                                               \
     "Attiva il digipeater, così questa stazione ripete le trame il cui percorso corrisponde a uno degli alias sottostanti. Se spento non si ripete nulla."
@@ -2373,6 +2318,10 @@
     "Annuncia il ripetitore come a banda stretta nel blocco di frequenza. Lasciarlo spento per un ripetitore FM a banda larga standard."
 /** Italian text of the contextual help for the "Duplex offset (kHz)" option. */
 #define TR_H_F_OBJITEM_OFFSET "Distanza tra le frequenze di trasmissione e ricezione del ripetitore, in kHz. La direzione duplex sopra ne stabilisce il segno."
+/** Italian text of the contextual help for the "Permanent (Object only, 111111z)" option. */
+#define TR_H_F_OBJITEM_PERMANENT                                                                                                                               \
+    "Un Oggetto permanente viene inviato con il timestamp fisso 111111z invece dell'ora corrente, cosi non viene mai sostituito da un Oggetto omonimo di "     \
+    "un'altra stazione - solo la stazione di origine puo aggiornarlo o spostarlo. Non ha effetto su un Item."
 /** Italian text of the contextual help for the "Coverage range (0 = none)" option. */
 #define TR_H_F_OBJITEM_RANGE "Raggio di copertura annunciato con la voce, nell'unità scelta sotto. Usare 0 per non annunciare alcun valore di copertura."
 /** Italian text of the contextual help for the "Range unit" option. */
@@ -2720,7 +2669,7 @@
 
 /** Italian text of the contextual help for the "Mode (Wireless page)" option. */
 #define TR_H_WIFI_MODE                                                                                                                                         \
-    "Quali ruoli Wi-Fi svolge la stazione: il proprio punto di accesso, client di una rete esistente, o entrambi insieme. Entrambi è la scelta abituale, "    \
+    "Quali ruoli Wi-Fi svolge la stazione: il proprio punto di accesso, client di una rete esistente, o entrambi insieme. Entrambi è la scelta abituale, "     \
     "perché mantiene raggiungibile l'amministrazione se la rete cade."
 /** Italian text of the contextual help for the "Name (telemetry channel or bit)" option. */
 #define TR_H_TLM_CHANNEL_NAME                                                                                                                                  \

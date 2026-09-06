@@ -99,7 +99,6 @@ esp_err_t page_winlink_get(httpd_req_t *req) {
     httpd_resp_sendstr_chunk(req, "<form method='POST' action='/winlink'>");
 
     web_fieldset_open(req, TR_WL_FS_ACCOUNT);
-    httpd_resp_sendstr_chunk(req, "<p class='faint'>" TR_WL_NOTE_ACCOUNT "</p>");
     web_field_checkbox(req, TR_WL_ENABLE, "wlEnable", g_config.wl_enable);
     web_field_text(req, TR_WL_SERVICE_CALL, "wlServiceCall", g_config.wl_service_call, 9);
 
@@ -134,7 +133,6 @@ esp_err_t page_winlink_get(httpd_req_t *req) {
     web_fieldset_close(req);
 
     web_fieldset_open(req, TR_WL_FS_GATEWAY);
-    httpd_resp_sendstr_chunk(req, "<p class='faint'>" TR_WL_NOTE_GATEWAY "</p>");
     web_field_checkbox(req, TR_WL_GATE_EXEMPT, "wlGateExempt", g_config.wl_gate_exempt);
 
     httpd_resp_sendstr_chunk(req, "<div class='table-wrap'><table>");
@@ -156,7 +154,6 @@ esp_err_t page_winlink_get(httpd_req_t *req) {
     //    the configuration form: a command is an action, not a setting, and
     //    must not be carried by a Save. --
     httpd_resp_sendstr_chunk(req, "<fieldset><legend>" TR_WL_FS_SESSION "</legend>");
-    httpd_resp_sendstr_chunk(req, "<p class='faint'>" TR_WL_NOTE_SESSION "</p>");
 
     httpd_resp_sendstr_chunk(req, "<div class='table-wrap'><table>");
     wl_row(req, TR_WL_ST_STATE, "state");

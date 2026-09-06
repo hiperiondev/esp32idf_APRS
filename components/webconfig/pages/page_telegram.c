@@ -291,13 +291,9 @@ esp_err_t page_telegram_get(httpd_req_t *req) {
     // SERVICE -------------------------------------------------------------
     web_fieldset_open(req, TR_TG_FS_SERVICE);
     web_field_checkbox(req, TR_TG_ENABLE, "tgEn", cfg.enable);
-    web_raw(req, "<p style='color:var(--sub);font-size:12px;margin:4px 0'>" TR_TG_NOTE_SERVICE "</p>");
     web_field_checkbox(req, TR_TG_ROUTE_MESSAGES, "tgRouteMsg", cfg.route_station_messages);
-    web_raw(req, "<p style='color:var(--sub);font-size:12px;margin:4px 0'>" TR_TG_NOTE_ROUTE_MESSAGES "</p>");
     web_field_checkbox(req, TR_TG_ROUTE_BULLETINS, "tgRouteBul", cfg.route_bulletins);
-    web_raw(req, "<p style='color:var(--sub);font-size:12px;margin:4px 0'>" TR_TG_NOTE_ROUTE_BULLETINS "</p>");
     web_field_int(req, TR_TG_BULLETIN_WINDOW, "tgBulWin", (long)cfg.bulletin_window_s, TELEGRAM_APP_BULLETIN_WINDOW_MIN, TELEGRAM_APP_BULLETIN_WINDOW_MAX);
-    web_raw(req, "<p style='color:var(--sub);font-size:12px;margin:4px 0'>" TR_TG_NOTE_BULLETIN_WINDOW "</p>");
     web_fieldset_close(req);
 
     // CREDENTIALS ---------------------------------------------------------

@@ -36,6 +36,7 @@
 #include "pages.h"
 #include "translations.h"
 #include "web_common.h"
+#include "web_help.h"
 
 static const char *TAG = "page_radio";
 
@@ -62,14 +63,16 @@ esp_err_t page_radio_get(httpd_req_t *req) {
 
     web_fieldset_open(req, TR_F_AUDIO_AFSK);
     {
-        char buf[380];
+        char hlp[WEB_HELP_MARKUP_MAX];
+        web_help_markup(hlp, sizeof(hlp), web_help_for_label(TR_F_ENABLE_AUDIO_MODEM));
+        char buf[WEB_HELP_MARKUP_MAX + 380];
         snprintf(buf, sizeof(buf),
                  "<label style='display:flex;align-items:center;gap:10px;flex-wrap:wrap;'>"
-                 "<span><input type='checkbox' name='audioModemEn' %s> " TR_F_ENABLE_AUDIO_MODEM "</span>"
+                 "<span><input type='checkbox' name='audioModemEn' %s> " TR_F_ENABLE_AUDIO_MODEM "%s</span>"
                  "<button type='button' class='secondary' id='loopTestBtn' onclick='loopTest()'>" TR_BTN_LOOP_TEST "</button>"
                  "<span id='loopTestStatus'></span>"
                  "</label>",
-                 g_config.audio_modem_en ? "checked" : "");
+                 g_config.audio_modem_en ? "checked" : "", hlp);
         httpd_resp_sendstr_chunk(req, buf);
     }
     web_select_open(req, TR_F_AFSK_MODULATION, "afskModem");

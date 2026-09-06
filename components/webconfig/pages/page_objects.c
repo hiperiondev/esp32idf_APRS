@@ -36,6 +36,7 @@
 #include "str_append.h" // str_copy_utf8_safe()
 #include "translations.h"
 #include "web_common.h"
+#include "web_help.h"
 
 static const char *TAG = "page_objects";
 
@@ -302,12 +303,13 @@ esp_err_t page_objects_get(httpd_req_t *req) {
         // script can grey it out while an Item is selected, since it has no
         // effect there.
         {
-            char buf[256];
-            snprintf(buf, sizeof(buf), "<label id='oPermLbl%d'><input type='checkbox' name='oPerm%d' id='oPerm%d' %s%s> %s</label>", i + 1, i + 1, i + 1,
-                     b->permanent ? "checked " : "", b->is_item ? "disabled" : "", TR_F_OBJITEM_PERMANENT);
+            char hlp[WEB_HELP_MARKUP_MAX];
+            web_help_markup(hlp, sizeof(hlp), web_help_for_label(TR_F_OBJITEM_PERMANENT));
+            char buf[WEB_HELP_MARKUP_MAX + 256];
+            snprintf(buf, sizeof(buf), "<label id='oPermLbl%d'><input type='checkbox' name='oPerm%d' id='oPerm%d' %s%s> %s%s</label>", i + 1, i + 1, i + 1,
+                     b->permanent ? "checked " : "", b->is_item ? "disabled" : "", TR_F_OBJITEM_PERMANENT, hlp);
             web_raw(req, buf);
         }
-        web_raw(req, "<p style='color:var(--sub);font-size:11px'>" TR_F_OBJITEM_PERMANENT_NOTE "</p>");
 
         snprintf(name, sizeof(name), "oAct%d", i + 1);
         web_field_checkbox(req, TR_F_OBJITEM_ACTIVE, name, b->active);

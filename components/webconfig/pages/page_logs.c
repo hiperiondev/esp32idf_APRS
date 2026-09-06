@@ -156,7 +156,6 @@ esp_err_t page_logs_get(httpd_req_t *req) {
     web_send_header(req, TR_F_LOGS, "logs");
 
     web_fieldset_open(req, TR_LOGS_FS_CONSOLE);
-    web_raw(req, "<p style='color:var(--sub);font-size:12px;margin:4px 0'>" TR_LOGS_NOTE "</p>");
     web_raw(req, "<div class='log-actions'><button type='button' id='logBtn' "
                  "onclick='logToggle()'>" TR_LOGS_BTN_START "</button></div>");
     web_raw(req, "<pre id='logBox' class='log-box'></pre>");

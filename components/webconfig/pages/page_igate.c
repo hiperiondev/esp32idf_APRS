@@ -127,15 +127,17 @@ esp_err_t page_igate_get(httpd_req_t *req) {
     {
         char esc_pc[sizeof(g_config.aprs_passcode) * 6 + 1];
         web_html_attr_escape(g_config.aprs_passcode, esc_pc, sizeof(esc_pc));
-        char pcbuf[560];
+        char hlp[WEB_HELP_MARKUP_MAX];
+        web_help_markup(hlp, sizeof(hlp), web_help_for_label(TR_F_APRS_PASSCODE));
+        char pcbuf[WEB_HELP_MARKUP_MAX + 560];
         snprintf(pcbuf, sizeof(pcbuf),
-                 "<label>%s</label>"
+                 "<label>%s%s</label>"
                  "<div style='display:flex;gap:6px;align-items:center;flex-wrap:wrap'>"
                  "<input type='password' name='igatePasscode' id='igatePasscode' value='%s' maxlength='5' style='flex:1'>"
                  "<button type='button' class='secondary' onclick='aprsAutoGenPasscode()'>%s</button>"
                  "</div>"
                  "<label class='pwd-show'><input type='checkbox' onclick=\"togglePwd('igatePasscode',this)\"> " TR_SHOW_PASSWORD "</label>",
-                 TR_F_APRS_PASSCODE, esc_pc, TR_BTN_AUTO_GENERATE);
+                 TR_F_APRS_PASSCODE, hlp, esc_pc, TR_BTN_AUTO_GENERATE);
         web_raw(req, pcbuf);
     }
     web_field_text(req, TR_F_FILTER, "igateFilter", g_config.aprs_filter, (int)(sizeof(g_config.aprs_filter) - 1));
@@ -152,9 +154,8 @@ esp_err_t page_igate_get(httpd_req_t *req) {
     // is most easily confused with: that string decides what the server sends
     // this station, this checkbox decides how much of what arrives - and of
     // what the radio hears - the traffic table shows. It changes nothing about
-    // what is gated or transmitted, which is what the note says.
+    // what is gated or transmitted.
     web_field_checkbox(req, TR_F_LOG_AFTER_FILTERS, "igateLogAfterFilters", g_config.igate_log_after_filters);
-    web_raw(req, "<p style='color:var(--sub);font-size:12px;margin:-4px 0 8px'>" TR_NOTE_LOG_AFTER_FILTERS "</p>");
 
     web_field_text(req, TR_F_COMMENT, "igateComment", g_config.igate_comment, COMMENT_SIZE - 1);
     web_field_checkbox(req, TR_F_TIME_STAMP, "igateTime", g_config.igate_timestamp);

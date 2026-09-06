@@ -445,10 +445,6 @@
 #define TR_F_OBJITEM_TYPE_ITEM "Item (non-timestamped)"
 /** Form label for the "objitem permanent" field or fieldset, rendered on the configuration forms. */
 #define TR_F_OBJITEM_PERMANENT "Permanent (Object only, 111111z)"
-/** Form label for the "objitem permanent note" field or fieldset, rendered on the configuration forms. */
-#define TR_F_OBJITEM_PERMANENT_NOTE                                                                                                                            \
-    "A permanent Object is sent with the fixed 111111z timestamp instead of the live time, so it is never replaced by anyone else's similarly named "          \
-    "Object - only the originating station may update or move it. Has no effect on an Item."
 /** Form label for the "objitem active" field or fieldset, rendered on the configuration forms. */
 #define TR_F_OBJITEM_ACTIVE "Active (uncheck = kill)"
 /** Form label for the "objitem scope" field or fieldset, rendered on the configuration forms. */
@@ -1320,12 +1316,6 @@
 
 /** Form label for the "log after filters" field or fieldset, rendered on the IGate page. */
 #define TR_F_LOG_AFTER_FILTERS "Log after filters"
-/** Explanatory note shown beside the log after filters setting, rendered on the IGate page. */
-#define TR_NOTE_LOG_AFTER_FILTERS                                                                                                                              \
-    "While off, the traffic table and the serial console report every frame decoded on RF and every line the APRS-IS server sends. While on, they report "     \
-    "only what this station's own IGate filters accept: the Satellite Gate List and the RF to Internet set for radio traffic, the Internet to RF set for "     \
-    "APRS-IS traffic, and the Callsign Filter for both. This narrows what is shown only - a frame left out is still digipeated, gated and counted exactly "    \
-    "as before."
 
 /** Form label for the "satgate" field or fieldset, rendered on the IGate page. */
 #define TR_F_SATGATE "Satellite Gate List"
@@ -1637,37 +1627,12 @@
 #define TR_TG_FS_SERVICE "Telegram Bot"
 /** Label of the bot enable checkbox, rendered on the Telegram page. */
 #define TR_TG_ENABLE "Enable Telegram Bot"
-/** Explanatory note shown under the enable switch, rendered on the Telegram page. */
-#define TR_TG_NOTE_SERVICE                                                                                                                                     \
-    "With this off nothing connects to Telegram and no polling task runs. Turning it on or off takes effect immediately, without a reboot. The bot needs a "   \
-    "working Internet connection and enough free heap for a TLS session."
 /** Label of the route-station-messages checkbox, rendered on the Telegram page. */
 #define TR_TG_ROUTE_MESSAGES "Route Station messages"
-/** Explanatory note shown under the route-station-messages switch, rendered on the Telegram page. */
-#define TR_TG_NOTE_ROUTE_MESSAGES                                                                                                                              \
-    "With this on, an APRS message received addressed to the own Callsign of one of the authorized users below is sent to that user's own Telegram "           \
-    "chat as \"msg from <sender> to <addressee> :: <message text>\". The addressee is matched only against the Callsign fields of those users, never "         \
-    "against this station's My Callsign on the Station page, so each user receives the messages sent to their own callsign and nobody else's. The "            \
-    "match is exact, SSID included, so several users can share one base callsign under different SSIDs. A message whose addressee matches no user's "          \
-    "Callsign is not routed to anyone. Acknowledgements and messages addressed to a group are never routed."
 /** Label of the route-bulletins checkbox, rendered on the Telegram page. */
 #define TR_TG_ROUTE_BULLETINS "Route Bulletins"
-/** Explanatory note shown under the route-bulletins switch, rendered on the Telegram page. */
-#define TR_TG_NOTE_ROUTE_BULLETINS                                                                                                                             \
-    "With this on, every APRS bulletin received on the network, off the air or from the APRS-IS feed, is sent to all the authorized users, to the "            \
-    "administrator and to all the allowed group chats listed below, as \"bulletin from <sender> to <bulletin> :: <bulletin text>\". A bulletin is an "         \
-    "addressee of \"BLN\" plus a digit or a letter, optionally followed by a group name; no callsign is matched, since a bulletin is addressed to the whole "  \
-    "network rather than to any station. A bulletin identical to one already routed inside the repeat window below is not sent again, so a bulletin its "      \
-    "sender repeats on a timer, or one heard through several digipeaters, reaches each chat once."
 /** Label of the bulletin repeat window field, rendered on the Telegram page. */
 #define TR_TG_BULLETIN_WINDOW "Bulletin repeat window (s)"
-/** Explanatory note shown under the bulletin repeat window field, rendered on the Telegram page. */
-#define TR_TG_NOTE_BULLETIN_WINDOW                                                                                                                             \
-    "How long a routed bulletin keeps its own repeats from being routed as well. A bulletin whose sender, addressee and text all match one already "           \
-    "delivered within this many seconds is dropped; editing the text, or a different station sending it, makes it a new bulletin and it is routed at "         \
-    "once. Set it longer than the interval the bulletins heard on this channel are transmitted at, so each one reaches the chats once per edit rather "        \
-    "than once per transmission. 0 turns the test off and routes every copy, including the ones that come back through digipeaters and from the "              \
-    "APRS-IS feed. The eight most recently routed bulletins are remembered, whatever this window is."
 /** Fieldset legend for the credentials block, rendered on the Telegram page. */
 #define TR_TG_FS_BOT "Credentials"
 /** Label of the bot token field, rendered on the Telegram page. */
@@ -1824,12 +1789,6 @@
 #define TR_LOGS_BTN_START "Start"
 /** Caption of the button while the console log is being captured, rendered on the Logs page. */
 #define TR_LOGS_BTN_STOP "Stop"
-/** Explanatory note shown above the console log window, rendered on the Logs page. */
-#define TR_LOGS_NOTE                                                                                                                                           \
-    "Start mirrors everything the station prints on its serial console into the window below, so it can be read without a serial cable attached. The window "  \
-    "holds the last 50 lines and scrolls; a line longer than 255 characters is continued on the next one. Stop ends the copy, and so does leaving this page: " \
-    "coming back always starts from an empty window with the button ready to start again. Capturing costs the station a little memory and slows nothing else " \
-    "down, but it is not a recording - only what arrives while the window is open is shown, and nothing is written to flash."
 
 /** @} */
 
@@ -1849,21 +1808,6 @@
 #define TR_WL_FS_GATEWAY "Gateway for Local Stations"
 /** Fieldset legend for the session terminal, rendered on the Winlink page. */
 #define TR_WL_FS_SESSION "Session"
-/** Explanatory note above the account settings, rendered on the Winlink page. */
-#define TR_WL_NOTE_ACCOUNT                                                                                                                                     \
-    "APRSLink is the gateway between APRS and Winlink radio e-mail. This station reaches it with ordinary APRS messages addressed to the service callsign, "   \
-    "and the mailbox opened is the one belonging to the base callsign below, without its SSID. The password is never transmitted: a login challenge names "    \
-    "three character positions and only those characters are sent back."
-/** Explanatory note above the gateway policy, rendered on the Winlink page. */
-#define TR_WL_NOTE_GATEWAY                                                                                                                                     \
-    "A neighbouring station can run its own Winlink session through this one: its commands are gated to APRS-IS and the service's answers are put back on "    \
-    "the air, with no account or password of yours involved. The IGate normally refuses to transmit a message whose addressee is also seen on APRS-IS, which " \
-    "an answer from the service would fall foul of because the echo of the station's own gated command makes it look Internet-connected. The setting below "   \
-    "lifts that one condition, and only for the service callsign; the three IGate settings shown with it still decide everything else."
-/** Explanatory note above the session terminal, rendered on the Winlink page. */
-#define TR_WL_NOTE_SESSION                                                                                                                                     \
-    "One command is sent at a time and the next one waits for the service to acknowledge its predecessor, so a session takes a while and cannot be hurried. "  \
-    "Replies arrive below as they come in."
 /** Label of the client enable switch, rendered on the Winlink page. */
 #define TR_WL_ENABLE "Enable Winlink client"
 /** Label of the service callsign field, rendered on the Winlink page. */
@@ -2041,6 +1985,10 @@
 /** Contextual help for the "Antenna Gain" option. */
 #define TR_H_F_ANTENNA_GAIN                                                                                                                                    \
     "Antenna gain in dB, encoded in the PHG extension. Combined with power and height so receivers can estimate this station's coverage."
+/** Contextual help for the "APRS-IS Passcode" option. */
+#define TR_H_F_APRS_PASSCODE                                                                                                                                   \
+    "Login code the APRS-IS server checks against My Callsign before accepting gated traffic from this station. Auto Generate derives it from that "           \
+    "callsign; a wrong or missing passcode still connects but is logged as unverified."
 /** Contextual help for the "Audio low-pass filter" option. */
 #define TR_H_F_AUDIO_LOW_PASS_FILTER                                                                                                                           \
     "Filters the received audio before demodulation. It helps with a noisy or hissy receiver output and can be left off on a clean one."
@@ -2121,6 +2069,10 @@
     "Largest share of time, as a percentage, that the transmitter may be keyed. Transmissions above the limit are deferred until the average falls back."
 /** Contextual help for the "Enable" option. */
 #define TR_H_F_ENABLE "Turns this entry on. While it is off the settings below are kept but nothing is transmitted or acted upon."
+/** Contextual help for the "Enable audio ADC/DAC modem" option. */
+#define TR_H_F_ENABLE_AUDIO_MODEM                                                                                                                              \
+    "Turns on the built-in audio AFSK modem, so this station transmits and receives over the radio's audio ADC/DAC pins instead of an external TNC. "          \
+    "Takes effect only after a reboot, since the modem is set up once at boot."
 /** Contextual help for the "Enable Digipeater" option. */
 #define TR_H_F_ENABLE_DIGIPEATER                                                                                                                               \
     "Turns the digipeater on, so this station repeats frames whose path matches one of the aliases below. With it off nothing is repeated."
@@ -2243,6 +2195,10 @@
 #define TR_H_F_OBJITEM_NARROW "Announces the repeater as narrowband in the frequency block. Leave it off for a standard wideband FM repeater."
 /** Contextual help for the "Duplex offset (kHz)" option. */
 #define TR_H_F_OBJITEM_OFFSET "Distance between the repeater's transmit and receive frequencies, in kHz. The duplex direction above gives it its sign."
+/** Contextual help for the "Permanent (Object only, 111111z)" option. */
+#define TR_H_F_OBJITEM_PERMANENT                                                                                                                               \
+    "A permanent Object is sent with the fixed 111111z timestamp instead of the live time, so it is never replaced by anyone else's similarly named "          \
+    "Object - only the originating station may update or move it. Has no effect on an Item."
 /** Contextual help for the "Coverage range (0 = none)" option. */
 #define TR_H_F_OBJITEM_RANGE "Coverage radius announced with the entry, in the unit chosen below. Use 0 to announce no coverage figure at all."
 /** Contextual help for the "Range unit" option. */
