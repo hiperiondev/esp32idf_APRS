@@ -16,6 +16,11 @@ Mechanics
 * **Atomic save:** write ``config.json.tmp``, then rename.
 * Missing or corrupt → defaults applied and immediately saved, so the file
   always exists and is consistent.
+* Out of memory → the file is left exactly as it is and the load reports a
+  failure. A read or a parse that ran out of RAM says nothing about the file's
+  content, so it must never take the corrupt path above: the reader scans the
+  text without allocating anything to tell the two apart, and only genuinely
+  unparseable bytes are overwritten.
 * Field names / JSON keys are kept 1:1 with the reference project, so old files
   load unchanged; unknown keys are ignored.
 

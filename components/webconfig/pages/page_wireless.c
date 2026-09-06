@@ -24,6 +24,7 @@
 #include "app_config.h"
 #include "esp_log.h"
 #include "esp_wifi.h"
+#include "heap_monitor.h" // HEAP_MONITOR_BRACKET() - a scan allocates driver buffers plus the record array
 #include "pages.h"
 #include "translations.h"
 #include "web_common.h"
@@ -258,9 +259,17 @@ esp_err_t page_wifi_scan_post(httpd_req_t *req) {
         return ESP_OK;
     httpd_resp_set_type(req, "application/json");
 
+    // Bracketed around the whole handler: a scan makes the driver allocate its
+    // own per-channel result storage on top of the record array built below,
+    // and it runs while the radio is briefly in a mode the station was not
+    // configured for, so it is the one admin page whose cost is not visible
+    // from its own source.
+    HEAP_MONITOR_BRACKET("before", "wifi scan");
+
     wifi_mode_t mode;
     if (esp_wifi_get_mode(&mode) != ESP_OK) {
         httpd_resp_sendstr(req, "{\"error\":\"WiFi is off\"}");
+        HEAP_MONITOR_BRACKET("after", "wifi scan");
         return ESP_OK;
     }
 
@@ -278,12 +287,14 @@ esp_err_t page_wifi_scan_post(httpd_req_t *req) {
     if (mode == WIFI_MODE_AP) {
         if (esp_wifi_set_mode(WIFI_MODE_APSTA) != ESP_OK) {
             httpd_resp_sendstr(req, "{\"error\":\"could not enable STA for scan\"}");
+            HEAP_MONITOR_BRACKET("after", "wifi scan");
             return ESP_OK;
         }
         mode_switched = true;
     } else if (mode == WIFI_MODE_NULL) {
         if (esp_wifi_set_mode(WIFI_MODE_STA) != ESP_OK) {
             httpd_resp_sendstr(req, "{\"error\":\"could not enable STA for scan\"}");
+            HEAP_MONITOR_BRACKET("after", "wifi scan");
             return ESP_OK;
         }
         mode_switched = true;
@@ -297,6 +308,7 @@ esp_err_t page_wifi_scan_post(httpd_req_t *req) {
         if (mode_switched)
             esp_wifi_set_mode(mode); // restore original mode
         httpd_resp_sendstr(req, "{\"error\":\"scan failed\"}");
+        HEAP_MONITOR_BRACKET("after", "wifi scan");
         return ESP_OK;
     }
 
@@ -312,6 +324,7 @@ esp_err_t page_wifi_scan_post(httpd_req_t *req) {
             if (mode_switched)
                 esp_wifi_set_mode(mode);
             httpd_resp_sendstr(req, "{\"error\":\"out of memory\"}");
+            HEAP_MONITOR_BRACKET("after", "wifi scan");
             return ESP_OK;
         }
         if (esp_wifi_scan_get_ap_records(&num, records) != ESP_OK) {
@@ -319,6 +332,7 @@ esp_err_t page_wifi_scan_post(httpd_req_t *req) {
             if (mode_switched)
                 esp_wifi_set_mode(mode);
             httpd_resp_sendstr(req, "{\"error\":\"scan read failed\"}");
+            HEAP_MONITOR_BRACKET("after", "wifi scan");
             return ESP_OK;
         }
     }
@@ -350,5 +364,6 @@ esp_err_t page_wifi_scan_post(httpd_req_t *req) {
 
     if (records)
         free(records);
+    HEAP_MONITOR_BRACKET("after", "wifi scan");
     return ESP_OK;
 }

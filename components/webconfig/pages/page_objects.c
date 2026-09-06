@@ -31,6 +31,7 @@
 
 #include "app_config.h"
 #include "esp_log.h"
+#include "heap_monitor.h" // HEAP_MONITOR_BRACKET() - each form buffer below is a single multi-kilobyte block
 #include "objects_items.h"
 #include "pages.h"
 #include "str_append.h" // str_copy_utf8_safe()
@@ -541,13 +542,22 @@ esp_err_t page_objects_post(httpd_req_t *req) {
     if (!web_check_auth(req))
         return ESP_OK;
 
+    // Bracketed because this buffer is a single contiguous block of several
+    // kilobytes taken on the web server's task, and it stays held across the
+    // whole parse-and-save pass below - including the write into LittleFS -
+    // so it is one of the larger transients a station sees in normal use. The
+    // "after" line runs on the failure paths too, so a save that could not
+    // take the block is distinguishable from one that took and returned it.
+    HEAP_MONITOR_BRACKET("before", "objects form");
     char *body = malloc(WEBCONFIG_POST_BUF_OBJITEMS);
     if (!body) {
+        HEAP_MONITOR_BRACKET("after", "objects form");
         httpd_resp_send_500(req);
         return ESP_OK;
     }
     if (web_read_body(req, body, WEBCONFIG_POST_BUF_OBJITEMS) < 0) {
         free(body);
+        HEAP_MONITOR_BRACKET("after", "objects form");
         httpd_resp_send_500(req);
         return ESP_OK;
     }
@@ -856,6 +866,7 @@ esp_err_t page_objects_post(httpd_req_t *req) {
     }
 
     free(body);
+    HEAP_MONITOR_BRACKET("after", "objects form");
 
     // The page rendered next is built from the live settings, so the save
     // result is what decides whether the operator is told this reached flash.

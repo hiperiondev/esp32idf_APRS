@@ -146,6 +146,19 @@ registro, así que bajarlo por debajo de esa cifra no ahorra memoria: hace que
 el *handshake* falle de plano, en todos los intentos y con cualquier estado
 de la memoria.
 
+``CONFIG_MBEDTLS_DYNAMIC_FREE_CONFIG_DATA`` sí lo es, y no sale gratis. Con
+``CONFIG_MBEDTLS_DYNAMIC_BUFFER`` ya activo, libera las estructuras de
+certificado y clave ya parseadas en cuanto termina el *handshake*, en vez de
+retenerlas mientras dure la sesión: son unos pocos kilobytes recuperados en una
+placa cuyo pozo principal corre con un margen de un solo dígito de kilobytes.
+Además selecciona ``CONFIG_MBEDTLS_DYNAMIC_FREE_CA_CERT`` por defecto, y ahí
+está la trampa: un objeto de sesión que tenga que rehacer el *handshake*
+necesita que se le vuelva a registrar la CA antes. Este firmware construye una
+conexión TLS nueva para cada una, así que aquí nada reutiliza una sesión entre
+*handshakes*, pero el síntoma a vigilar es una primera petición que funciona
+seguida de otras que fallan en el *handshake* en vez de al azar. Si aparece,
+desactiva la opción antes de mirar en ningún otro sitio.
+
 "Esta mañana el heap libre está más bajo que anoche y el log no dice nada al respecto."
 =======================================================================================
 
@@ -160,51 +173,134 @@ La instrumentación permanente que responde a esa pregunta vive en
 ``main/heap_monitor.c``, la acciona el tick de 1 Hz del servicio APRS y se
 configura bajo ``APRS heap instrumentation`` en ``idf.py menuconfig``.
 
-**Una línea por minuto.** ``CONFIG_APRS_HEAP_REPORT`` viene activado y emite una
-línea cada ``CONFIG_APRS_HEAP_REPORT_PERIOD_S`` segundos::
+**Una línea por período.** ``CONFIG_APRS_HEAP_REPORT`` está activa por defecto
+y emite una línea cada ``CONFIG_APRS_HEAP_REPORT_PERIOD_S`` segundos::
 
-   I (3600123) heap_monitor: free=104512 largest=45056 minimum=41216
+   I (3600123) heap_monitor: free=104512 largest=45056 min_sum=41216
 
-Tres cifras, que se leen juntas. El tamaño libre es cuánta memoria existe; el
-mayor bloque libre es la mayor asignación individual todavía posible, y que
-ambas se separen es un heap fragmentándose y no consumiéndose; el mínimo es la
-marca de agua desde el arranque, así que un bajón que se recuperó antes de la
-línea siguiente igual aparece ahí. Se informan sobre memoria interna de 8 bits,
-la misma clase que imprime el transporte al fallar, de modo que los dos tipos de
-línea se pueden leer uno contra otro. La línea cuesta tres consultas al
-asignador por período y nada de memoria.
+Tres cifras que se leen juntas. El tamaño libre es cuánta memoria existe; el
+bloque libre más grande es la mayor asignación individual todavía posible, y que
+ambas cifras se separen indica un heap que se fragmenta en vez de consumirse; el
+mínimo es la marca de agua más baja desde el arranque, así que una caída que se
+recuperó antes de la línea siguiente sigue apareciendo ahí. Las tres se leen
+para memoria interna de 8 bits, la misma clase que imprime el transporte al
+fallar, de modo que ambos tipos de línea se pueden contrastar. La línea cuesta
+tres consultas al asignador por período y nada de memoria.
 
-**Corchetes alrededor de los handshakes.** ``CONFIG_TELEGRAM_BOT_HEAP_BRACKET``,
-bajo ``Telegram bot transport``, registra esas mismas dos cifras inmediatamente
-antes e inmediatamente después de cada petición del bot: cada intento de una
-llamada JSON, más la subida multipart y la descarga de archivos, que abren
-conexiones propias. Un handshake TLS pide sus búferes de registro como
-asignaciones individuales de unos pocos kilobytes, así que es el mayor evento
-individual que este firmware ejecuta contra el heap. Si las muescas de la traza
-minuto a minuto caen dentro de estos corchetes, son los handshakes los que
-mueven el heap; si caen entre ellos, lo mueve otra cosa. Desactivado por
-defecto: son dos líneas por llamada a la API y la ruta de sondeo hace una cada
-pocos segundos.
+El período vale diez segundos por defecto porque tiene que ser más corto que los
+eventos que pretende capturar, y en este firmware son cortos: un *handshake*
+TLS, una reconexión a APRS-IS o un guardado de ajustes alcanzan su pico y se
+recuperan en pocos segundos. Un muestreador más lento que eso es
+estructuralmente ciego a todos ellos — registra el heap antes y después, nunca
+durante, y cada línea que imprime es compatible con un pico que nunca ocurrió.
+El refresco a 1 Hz del panel es aún más fino, pero solo existe mientras hay un
+navegador abierto en la página, que no es cuando ocurren el arranque ni una
+reconexión desatendida.
+
+.. warning::
+
+   ``min_sum`` es una suma de mínimos, no el mínimo de la suma. El asignador
+   mantiene una marca de agua por cada heap registrado y esta cifra las suma,
+   tomando cada término en el peor instante de *ese* heap. Un ESP32 sin PSRAM no
+   tiene un único heap DRAM: las reservas de la ROM y del PHY parten la DRAM
+   interna en tres o cuatro regiones no contiguas, cada una registrada por
+   separado.
+
+   Como los términos son independientes, la suma es una *cota inferior* de lo
+   más bajo que ha llegado a estar realmente el total de heap libre, y la cota
+   se afloja a medida que crece el número de heaps. Por eso un ``min_sum``
+   diminuto admite dos lecturas que esta línea por sí sola no distingue: que
+   todas las regiones estuvieran casi vacías en un mismo momento, o que cada
+   región tocara fondo por separado en un momento propio y el total nunca
+   corriera peligro. Ambas importan — una región atascada cerca de cero es un
+   fallo real de fragmentación, porque ``heap_caps_malloc()`` la salta desde ese
+   momento y el asignador se comporta como si no existiera — pero exigen
+   trabajos distintos. Resuelve cuál de las dos tienes antes de tocar ninguna
+   asignación, con el desglose de abajo.
+
+**Qué heap se quedó realmente sin memoria.**
+``CONFIG_APRS_HEAP_REPORT_PER_HEAP`` acompaña cada línea con la tabla que
+imprime el propio componente de heap: una fila por heap registrado, con su
+dirección de inicio, tamaño, libre actual, bloque libre más grande y mínimo
+libre histórico. Esto es lo que separa las dos lecturas anteriores. Si el
+mínimo del pozo principal está en decenas de kilobytes y solo las regiones
+D/IRAM pequeñas marcan casi cero, el resumen era un artefacto de la suma de
+mínimos; si el mínimo del pozo principal también está cerca de cero, la
+estación estuvo de verdad a punto de quedarse sin memoria. Desactivada por
+defecto porque son varias líneas por período: actívala para la ejecución que
+responda la pregunta y desactívala después.
+
+**Corchetes alrededor de los caminos pesados.** ``CONFIG_APRS_HEAP_BRACKET``
+registra el heap libre y el bloque libre más grande justo antes y justo después
+de cada pasaje que se sabe que da un mordisco grande o duradero: el arranque de
+Telegram, la conexión a APRS-IS, la carga de la configuración, el anillo del
+espejo de consola, el escaneo WiFi, la subida OTA y cada búfer de formulario
+web. ``CONFIG_TELEGRAM_BOT_HEAP_BRACKET``, bajo ``Telegram bot transport``, hace
+lo mismo con cada petición del bot — cada intento de una llamada JSON, más la
+subida multiparte y la descarga de fichero, que abren conexiones propias. Ambos
+se anidan, llevan las mismas cifras en la misma clase de memoria y están
+pensados para activarse juntos.
+
+La línea periódica dice *cuándo* se movió el heap; un corchete dice *qué* lo
+movió, porque sus cifras se toman a ambos lados de un pasaje con nombre y no en
+el instante en que tocaba el período. Si las muescas de la traza periódica caen
+dentro de un corchete, ese pasaje es lo que mueve el heap; si caen entre
+corchetes, lo mueve otra cosa. Ambos están desactivados por defecto: son dos
+líneas por evento y el camino de *polling* genera uno cada pocos segundos.
 
 **Atribuir la memoria a una tarea.** Activa ``CONFIG_HEAP_TASK_TRACKING``
-(``Component config`` → ``Heap memory debugging``) y aparece
-``CONFIG_APRS_HEAP_REPORT_TASKS``, que agrega la tabla de resumen por tarea
-debajo de cada línea de heap, de modo que una fuga real nombra a su dueño en un
-solo volcado en vez de una semana de bisección. El seguimiento cuesta RAM por
-asignación viva y ralentiza cada asignación y cada liberación, así que
-corresponde a una compilación de diagnóstico: vuelve a apagarlo después.
+(``Component config`` → ``Heap memory debugging``) y aparecerá
+``CONFIG_APRS_HEAP_REPORT_TASKS``, que añade la tabla resumen por tarea bajo
+cada línea de heap, de modo que una fuga real nombra a su dueño en un solo
+volcado en vez de en una semana de bisección. El seguimiento cuesta RAM por cada
+asignación viva y ralentiza cada asignación y liberación, así que pertenece a
+una compilación de diagnóstico: desactívalo después.
 
-**Descartar corrupción.** ``CONFIG_APRS_HEAP_INTEGRITY_CHECK`` barre todos los
-heaps cada ``CONFIG_APRS_HEAP_INTEGRITY_PERIOD_S`` segundos y registra un error,
-a continuación de las direcciones que imprime el propio verificador, si algo
-está mal. Las estructuras corruptas del asignador se presentan como conducta
-inexplicable del heap y si no se persiguen como una fuga. El barrido sostiene el
-lock de cada heap mientras lo recorre, así que otras tareas se bloquean si
-asignan mientras tanto: de ahí que venga apagado y, encendido, con un
-temporizador lento. Lo que puede ver depende del nivel de detección de
-corrupción: con el valor por defecto (sin envenenamiento) solo se verifican las
-estructuras propias del asignador; elige "Light impact" o "Comprehensive" para
-verificar además los bytes canario alrededor de cada bloque asignado.
+**Margen de pila.** ``CONFIG_APRS_STACK_REPORT`` está activa por defecto y emite
+una línea por tarea cada ``CONFIG_APRS_STACK_REPORT_PERIOD_S`` segundos (una
+hora) con la marca de agua de pila de esa tarea::
+
+   I (3600130) heap_monitor: stack igate_task: 2712 bytes free at its worst
+   I (3600131) heap_monitor: stack wifi: 1544 bytes free at its worst
+
+Las pilas de tarea son el mayor bloque individual de RAM que reserva este
+firmware y el que nadie mide: cada tamaño de pila del proyecto es un
+presupuesto fijado con margen deliberado, no una cifra ajustada a lo que la
+tarea resultó necesitar. Sin esta línea, la única forma en que una pila avisa de
+que es pequeña es desbordándose, y no hay forma alguna de enterarse de que otra
+es enormemente grande. Una marca de agua solo baja, así que no se pierde nada
+entre líneas: cada una informa de lo peor que ha visto esa tarea desde que
+arrancó. Solo aparecen las tareas vivas: una que el operador haya apagado
+simplemente no tiene fila esa hora.
+
+**Descartar la corrupción.** ``CONFIG_APRS_HEAP_INTEGRITY_CHECK`` barre todos
+los heaps cada ``CONFIG_APRS_HEAP_INTEGRITY_PERIOD_S`` segundos y registra un
+error, después de las direcciones que imprime el propio verificador, si algo va
+mal. Las estructuras del asignador corrompidas se presentan como comportamiento
+inexplicable del heap y si no se persiguen como una fuga. El barrido mantiene el
+cerrojo de cada heap mientras lo recorre, así que otras tareas se bloquean si
+asignan mientras tanto: de ahí que esté desactivado por defecto y con un
+temporizador lento cuando se activa. Lo que puede ver depende del nivel de
+detección de corrupción: sin envenenamiento solo se verifican las estructuras
+propias del asignador, así que elige "Light impact" o "Comprehensive" en
+``Heap memory debugging`` para verificar además los bytes canario alrededor de
+cada bloque asignado. Sin eso, una marca de agua inverosímil no se puede
+distinguir de una corrompida.
+
+**Capturar un desbordamiento de pila donde ocurre.**
+``CONFIG_FREERTOS_WATCHPOINT_END_OF_STACK`` (``Component config`` →
+``FreeRTOS`` → ``Port``) apunta el último watchpoint de hardware a los 32 bytes
+finales de la pila de la tarea en curso, de modo que un desbordamiento produce
+un panic en la instrucción que lo causó. La comprobación de canario que viene
+por defecto solo corre en un cambio de contexto, lo que informa del daño mucho
+después de que el código responsable haya retornado; y si el desbordamiento es
+una variable local grande que salta por encima de la zona del canario, no se
+informa nunca y aparece más tarde como corrupción sin relación. Eso importa
+cuando un crash cae en un sitio imposible, como el planificador sin encontrar
+ninguna tarea ejecutable. El coste es un watchpoint menos bajo gdb y hasta 60
+bytes menos en cada pila de tarea, así que pertenece a una compilación de
+diagnóstico junto con las opciones anteriores. Solo captura escrituras que
+caigan dentro de esos últimos 32 bytes.
 
 **Serializar las dos operaciones de red más pesadas.** El mismo módulo también
 tiene un pequeño cerrojo no bloqueante, independiente del muestreo anterior y

@@ -16,6 +16,11 @@ Mecánica
 * **Guardado atómico:** escribe ``config.json.tmp``, luego renombra.
 * Faltante o corrupto → se aplican defaults y se guardan inmediatamente, de modo
   que el archivo siempre existe y es consistente.
+* Sin memoria → el archivo se deja tal cual y la carga informa el fallo. Una
+  lectura o un parseo que se quedó sin RAM no dice nada sobre el contenido del
+  archivo, así que nunca debe tomar el camino de "corrupto" anterior: el lector
+  escanea el texto sin asignar nada para distinguir ambos casos, y solo se
+  sobrescriben los bytes que de verdad no se pueden parsear.
 * Los nombres de campo / claves JSON se mantienen 1:1 con el proyecto de
   referencia, así que los archivos antiguos cargan sin cambios; las claves
   desconocidas se ignoran.

@@ -140,6 +140,19 @@ presents is around four kilobytes in one record, so lowering it under that
 figure does not save memory — it makes the handshake fail outright, on every
 attempt and in every heap condition.
 
+``CONFIG_MBEDTLS_DYNAMIC_FREE_CONFIG_DATA`` is a real one, and it is not free.
+With ``CONFIG_MBEDTLS_DYNAMIC_BUFFER`` already on, it releases the parsed
+certificate and key structures once the handshake is done instead of holding
+them for the life of the session, which is a few kilobytes back on a board
+whose main pool runs with single-digit kilobytes of margin. It also selects
+``CONFIG_MBEDTLS_DYNAMIC_FREE_CA_CERT`` by default, and that is where the
+catch is: a session object that has to handshake again must have its CA
+registered again first. This firmware builds a fresh TLS connection for each
+one, so nothing here reuses a session across handshakes, but the symptom to
+watch for is a first request that succeeds followed by later ones failing in
+the handshake rather than at random. If that appears, turn the option back off
+before looking anywhere else.
+
 "The free heap was lower this morning than it was last night, and the log says nothing about it."
 =================================================================================================
 
@@ -153,29 +166,74 @@ The standing instrumentation that answers such a question lives in
 ``main/heap_monitor.c``, driven from the APRS service's 1 Hz tick, and is
 configured under ``APRS heap instrumentation`` in ``idf.py menuconfig``.
 
-**One line per minute.** ``CONFIG_APRS_HEAP_REPORT`` is on by default and emits
+**One line per period.** ``CONFIG_APRS_HEAP_REPORT`` is on by default and emits
 one line every ``CONFIG_APRS_HEAP_REPORT_PERIOD_S`` seconds::
 
-   I (3600123) heap_monitor: free=104512 largest=45056 minimum=41216
+   I (3600123) heap_monitor: free=104512 largest=45056 min_sum=41216
 
 Three figures, read together. The free size is how much memory exists; the
 largest free block is the biggest single allocation still possible, and the two
 drifting apart is a heap breaking up rather than being consumed; the minimum is
 the low watermark since boot, so a dip that recovered before the next line
-still shows there. They are reported for internal 8-bit memory, the same class
+still shows there. All three are read for internal 8-bit memory, the same class
 the transport prints on failure, so the two kinds of line can be read against
 each other. The line costs three allocator queries per period and no memory.
 
-**Brackets around the handshakes.** ``CONFIG_TELEGRAM_BOT_HEAP_BRACKET``, under
-``Telegram bot transport``, logs the same two figures immediately before and
-immediately after every request the bot makes — each attempt of a JSON call,
-plus the multipart upload and the file download, which open connections of
-their own. A TLS handshake asks for its record buffers as single allocations of
-a few kilobytes, so it is the largest single event this firmware performs
-against the heap. If the notches in the minute-by-minute trace fall inside
-these brackets, the handshakes are what move the heap; if they fall between
-them, something else does. Off by default: it is two lines per API call and the
-polling path makes one every few seconds.
+The period defaults to ten seconds because it has to be shorter than the events
+it is meant to catch, and on this firmware those are short: a TLS handshake, an
+APRS-IS reconnect or a settings save each peak and recover within a few seconds.
+A sampler slower than that is structurally blind to them — it records the heap
+before and after, never during, and every line it prints is consistent with a
+peak that never happened. The dashboard's own 1 Hz refresh is finer still, but
+it only exists while a browser is sitting on the page, which is not when boot
+bring-up or an unattended reconnect happens.
+
+.. warning::
+
+   ``min_sum`` is a sum of minimums, not the minimum of the sum. The allocator
+   keeps a watermark per registered heap and this figure adds them up, each term
+   taken at that heap's own worst instant. An ESP32 without PSRAM does not have
+   one DRAM heap: ROM and PHY reservations split the internal DRAM into three or
+   four non-contiguous regions, each registered separately.
+
+   Because the terms are independent, the sum is a *lower bound* on the smallest
+   the total free heap has ever actually been, and the bound loosens as the
+   number of heaps grows. A tiny ``min_sum`` therefore has two readings this line
+   alone cannot tell apart: every region was near empty at one moment, or each
+   region bottomed out separately at a moment of its own and the total was never
+   in danger. Both matter — a region stuck near zero is a real fragmentation
+   fault, because ``heap_caps_malloc()`` skips it from then on and the allocator
+   behaves as though it were not there — but they call for different work.
+   Settle which one you have before changing any allocation, with the breakdown
+   below.
+
+**Which heap actually ran dry.** ``CONFIG_APRS_HEAP_REPORT_PER_HEAP`` follows
+each line with the table the heap component prints itself: one row per
+registered heap, with its start address, size, current free, largest free block
+and minimum free ever. This is what separates the two readings above. If the
+main pool's own minimum is in the tens of kilobytes and only the small D/IRAM
+regions read near zero, the summary was a sum-of-minimums artifact; if the main
+pool's minimum is also near zero, the station really did come close to running
+out. Off by default because it is several lines per period — turn it on for the
+run that answers the question, then off again.
+
+**Brackets around the heavy paths.** ``CONFIG_APRS_HEAP_BRACKET`` logs the free
+heap and the largest free block immediately before and immediately after each
+passage known to take a large or long-lived bite: the Telegram bring-up, the
+APRS-IS connect, the configuration load, the console mirror's ring, the WiFi
+scan, the OTA upload and each web form buffer.
+``CONFIG_TELEGRAM_BOT_HEAP_BRACKET``, under ``Telegram bot transport``, does the
+same for every request the bot makes — each attempt of a JSON call, plus the
+multipart upload and the file download, which open connections of their own. The
+two nest, carry the same figures in the same memory class, and are meant to be
+enabled together.
+
+The periodic line says *when* the heap moved; a bracket says *what* moved it,
+because its figures are taken on either side of one named passage rather than at
+whatever instant the period came due. If the notches in the periodic trace fall
+inside a bracket, that passage is what moves the heap; if they fall between
+brackets, something else does. Both are off by default: two lines per event, and
+the polling path makes one every few seconds.
 
 **Attributing the memory to a task.** Enable ``CONFIG_HEAP_TASK_TRACKING``
 (``Component config`` → ``Heap memory debugging``) and
@@ -185,6 +243,22 @@ a week of bisection. Tracking costs RAM per live allocation and slows every
 allocation and free, so it belongs in a diagnostic build — turn it off again
 afterwards.
 
+**Stack headroom.** ``CONFIG_APRS_STACK_REPORT`` is on by default and emits one
+line per task every ``CONFIG_APRS_STACK_REPORT_PERIOD_S`` seconds (an hour) with
+that task's stack high-water mark::
+
+   I (3600130) heap_monitor: stack igate_task: 2712 bytes free at its worst
+   I (3600131) heap_monitor: stack wifi: 1544 bytes free at its worst
+
+Task stacks are the largest single block of RAM this firmware reserves and the
+one nobody measures: every stack size in the project is a budget set with
+deliberate headroom, not a figure trimmed to what the task turned out to need.
+Without this line the only way a stack reports being too small is by
+overflowing, and there is no way at all to learn that one is far too large. A
+high-water mark only ever falls, so nothing is missed between lines — each one
+reports the worst that task has seen since it started. Only live tasks appear:
+one the operator has switched off simply has no row that hour.
+
 **Ruling out corruption.** ``CONFIG_APRS_HEAP_INTEGRITY_CHECK`` sweeps every
 heap every ``CONFIG_APRS_HEAP_INTEGRITY_PERIOD_S`` seconds and logs an error,
 after the addresses the checker itself prints, if anything is wrong. Corrupted
@@ -192,9 +266,24 @@ allocator structures present as inexplicable heap behaviour and are otherwise
 chased as a leak. The sweep holds each heap's lock while it walks it, so other
 tasks block if they allocate meanwhile — hence off by default and on a slow
 timer when on. What it can see depends on the corruption detection level: with
-the default (no poisoning) only the allocator's own structures are checked;
-select "Light impact" or "Comprehensive" to also verify the canary bytes around
-every allocated block.
+no poisoning only the allocator's own structures are checked, so select "Light
+impact" or "Comprehensive" under ``Heap memory debugging`` to also verify the
+canary bytes around every allocated block. Without that, an implausible
+watermark cannot be told apart from a corrupted one.
+
+**Catching a stack overflow where it happens.**
+``CONFIG_FREERTOS_WATCHPOINT_END_OF_STACK`` (``Component config`` →
+``FreeRTOS`` → ``Port``) points the last hardware watchpoint at the final 32
+bytes of the running task's stack, so an overflow panics at the instruction
+that caused it. The canary check that ships by default only runs at a context
+switch, which reports the damage long after the code responsible has returned —
+and if the overflow is a large local that jumps clear over the canary region,
+it is never reported at all, surfacing later as unrelated corruption. That is
+worth knowing when a crash lands somewhere impossible, such as the scheduler
+failing to find any runnable task. The cost is one watchpoint fewer under gdb
+and up to 60 bytes off every task stack, so it belongs in a diagnostic build
+alongside the options above. It still only catches writes that land within
+those last 32 bytes.
 
 **Serializing the two heaviest network operations.** The same module also
 owns a small non-blocking lock, unrelated to the sampling above and always

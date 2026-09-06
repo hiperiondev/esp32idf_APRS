@@ -36,7 +36,11 @@ Loading and saving
 
 * **Loaded** with **cJSON**. If the file is missing or corrupt, defaults are
   applied **and immediately saved**, so the file always exists and is
-  consistent.
+  consistent. If instead the load ran **out of memory**, the file is left
+  untouched and the failure is reported — ``cJSON_Parse()`` returns ``NULL``
+  for a bad file and for a failed allocation alike, so ``json_store_read()``
+  rescans the text with a non-allocating check before deciding which happened.
+  Confusing the two here would wipe a good configuration on a busy boot.
 * **Loaded in place**: ``config_from_json()`` writes the default set straight
   into the destination struct and then reads each key's fallback from the very
   field it is about to overwrite. Every field is assigned exactly once, always

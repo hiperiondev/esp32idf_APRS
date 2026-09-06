@@ -145,6 +145,19 @@ Telegram si aggira sui quattro kilobyte in un solo record, quindi abbassarlo
 sotto quella cifra non risparmia memoria: fa fallire l'handshake del tutto, a
 ogni tentativo e con qualsiasi stato dell'heap.
 
+``CONFIG_MBEDTLS_DYNAMIC_FREE_CONFIG_DATA`` lo è davvero, e non è gratuita. Con
+``CONFIG_MBEDTLS_DYNAMIC_BUFFER`` già attiva, libera le strutture di
+certificato e chiave già analizzate appena l'handshake è concluso, invece di
+tenerle per tutta la durata della sessione: sono alcuni kilobyte recuperati su
+una scheda il cui pool principale gira con un margine di poche unità di
+kilobyte. Seleziona inoltre ``CONFIG_MBEDTLS_DYNAMIC_FREE_CA_CERT`` di default,
+ed è lì che sta l'insidia: un oggetto sessione che debba rifare l'handshake
+deve prima farsi registrare di nuovo la CA. Questo firmware costruisce una
+connessione TLS nuova per ognuna, quindi qui nulla riusa una sessione tra
+handshake, ma il sintomo da sorvegliare è una prima richiesta che riesce
+seguita da altre che falliscono nell'handshake anziché in modo casuale. Se
+compare, disattiva l'opzione prima di guardare altrove.
+
 "Stamattina l'heap libero è più basso di ieri sera e il log non dice nulla."
 ============================================================================
 
@@ -159,38 +172,105 @@ La strumentazione permanente che risponde a quella domanda sta in
 ``main/heap_monitor.c``, è azionata dal tick a 1 Hz del servizio APRS e si
 configura sotto ``APRS heap instrumentation`` in ``idf.py menuconfig``.
 
-**Una riga al minuto.** ``CONFIG_APRS_HEAP_REPORT`` è attivo di default ed emette
-una riga ogni ``CONFIG_APRS_HEAP_REPORT_PERIOD_S`` secondi::
+**Una riga per periodo.** ``CONFIG_APRS_HEAP_REPORT`` è attivo di default ed
+emette una riga ogni ``CONFIG_APRS_HEAP_REPORT_PERIOD_S`` secondi::
 
-   I (3600123) heap_monitor: free=104512 largest=45056 minimum=41216
+   I (3600123) heap_monitor: free=104512 largest=45056 min_sum=41216
 
-Tre cifre, da leggere insieme. La dimensione libera è quanta memoria esiste; il
-blocco libero maggiore è la più grande allocazione singola ancora possibile, e
-le due che si allontanano sono un heap che si frammenta anziché consumarsi; il
-minimo è il valore più basso dall'avvio, quindi un calo rientrato prima della
-riga successiva compare comunque lì. Sono riportate per la memoria interna a 8
-bit, la stessa classe che il trasporto stampa in caso di guasto, così i due tipi
-di riga si possono leggere uno accanto all'altro. La riga costa tre
-interrogazioni all'allocatore per periodo e nessuna memoria.
+Tre cifre da leggere insieme. La dimensione libera è quanta memoria esiste; il
+blocco libero più grande è la maggiore allocazione singola ancora possibile, e
+le due che si allontanano indicano un heap che si frammenta anziché consumarsi;
+il minimo è il livello più basso dall'avvio, quindi un calo rientrato prima
+della riga successiva compare comunque lì. Tutte e tre sono lette per la memoria
+interna a 8 bit, la stessa classe che il trasporto stampa in caso di errore,
+così i due tipi di riga si possono confrontare. La riga costa tre interrogazioni
+all'allocatore per periodo e nessuna memoria.
 
-**Parentesi attorno agli handshake.** ``CONFIG_TELEGRAM_BOT_HEAP_BRACKET``, sotto
-``Telegram bot transport``, registra le stesse due cifre immediatamente prima e
-immediatamente dopo ogni richiesta del bot: ogni tentativo di una chiamata JSON,
-più il caricamento multipart e il download del file, che aprono connessioni
-proprie. Un handshake TLS chiede i suoi buffer di record come allocazioni singole
-di pochi kilobyte, quindi è l'evento singolo più grande che questo firmware
-esegue contro l'heap. Se le tacche della traccia minuto per minuto cadono dentro
-queste parentesi, sono gli handshake a muovere l'heap; se cadono tra di esse, lo
-muove qualcos'altro. Disattivato di default: sono due righe per chiamata API e il
-percorso di polling ne fa una ogni pochi secondi.
+Il periodo vale dieci secondi di default perché deve essere più breve degli
+eventi che intende cogliere, e su questo firmware sono brevi: un handshake TLS,
+una riconnessione ad APRS-IS o un salvataggio di impostazioni raggiungono il
+picco e rientrano in pochi secondi. Un campionatore più lento è
+strutturalmente cieco a tutti loro — registra l'heap prima e dopo, mai durante,
+e ogni riga che stampa è compatibile con un picco mai avvenuto. Il refresh a
+1 Hz del cruscotto è ancora più fine, ma esiste solo finché un browser è aperto
+sulla pagina, che non è quando avvengono l'avvio o una riconnessione non
+presidiata.
 
-**Attribuire la memoria a un task.** Abilita ``CONFIG_HEAP_TASK_TRACKING``
-(``Component config`` → ``Heap memory debugging``) e compare
-``CONFIG_APRS_HEAP_REPORT_TASKS``, che aggiunge la tabella di riepilogo per task
-sotto ogni riga di heap, così una perdita reale indica il suo proprietario in un
-solo dump invece che in una settimana di bisezione. Il tracciamento costa RAM per
-allocazione viva e rallenta ogni allocazione e liberazione, quindi appartiene a
-una build di diagnosi: rispegnilo in seguito.
+.. warning::
+
+   ``min_sum`` è una somma di minimi, non il minimo della somma. L'allocatore
+   tiene un livello minimo per ogni heap registrato e questa cifra li somma,
+   prendendo ogni termine nell'istante peggiore di quello specifico heap. Un ESP32 senza
+   PSRAM non ha un unico heap DRAM: le riserve della ROM e del PHY dividono la
+   DRAM interna in tre o quattro regioni non contigue, ciascuna registrata
+   separatamente.
+
+   Poiché i termini sono indipendenti, la somma è un *limite inferiore* del
+   minimo che il totale di heap libero ha davvero raggiunto, e il limite si
+   allenta al crescere del numero di heap. Un ``min_sum`` minuscolo ammette
+   quindi due letture che questa riga da sola non distingue: che tutte le regioni
+   fossero quasi vuote nello stesso momento, oppure che ciascuna abbia toccato il
+   fondo separatamente in un momento proprio e il totale non sia mai stato in
+   pericolo. Contano entrambe — una regione ferma vicino allo zero è un vero
+   guasto di frammentazione, perché ``heap_caps_malloc()`` da quel momento la
+   salta e l'allocatore si comporta come se non esistesse — ma richiedono lavori
+   diversi. Stabilisci quale delle due hai prima di modificare qualsiasi
+   allocazione, con il dettaglio qui sotto.
+
+**Quale heap si è davvero esaurito.** ``CONFIG_APRS_HEAP_REPORT_PER_HEAP``
+accompagna ogni riga con la tabella che stampa il componente heap stesso: una
+riga per ogni heap registrato, con indirizzo iniziale, dimensione, libero
+attuale, blocco libero più grande e minimo libero storico. È questo che separa
+le due letture precedenti. Se il minimo del pool principale è nell'ordine delle
+decine di kilobyte e solo le piccole regioni D/IRAM segnano quasi zero, il
+riepilogo era un artefatto della somma di minimi; se anche il minimo del pool
+principale è vicino allo zero, la stazione è davvero arrivata a un passo
+dall'esaurire la memoria. Disattivato di default perché sono più righe per
+periodo: attivalo per l'esecuzione che risponde alla domanda, poi disattivalo.
+
+**Parentesi attorno ai percorsi pesanti.** ``CONFIG_APRS_HEAP_BRACKET`` registra
+l'heap libero e il blocco libero più grande subito prima e subito dopo ogni
+passaggio noto per prendersi un morso grande o duraturo: l'avvio di Telegram, la
+connessione ad APRS-IS, il caricamento della configurazione, l'anello del mirror
+di console, la scansione WiFi, il caricamento OTA e ogni buffer di modulo web.
+``CONFIG_TELEGRAM_BOT_HEAP_BRACKET``, sotto ``Telegram bot transport``, fa lo
+stesso per ogni richiesta del bot — ogni tentativo di una chiamata JSON, più il
+caricamento multipart e il download del file, che aprono connessioni proprie. Le
+due si annidano, portano le stesse cifre nella stessa classe di memoria e sono
+pensate per essere attivate insieme.
+
+La riga periodica dice *quando* l'heap si è mosso; una parentesi dice *cosa* lo
+ha mosso, perché le sue cifre sono prese ai due lati di un passaggio con un nome
+e non nell'istante in cui scadeva il periodo. Se le tacche della traccia
+periodica cadono dentro una parentesi, è quel passaggio a muovere l'heap; se
+cadono tra le parentesi, lo muove altro. Entrambe sono disattivate di default:
+sono due righe per evento e il percorso di polling ne genera uno ogni pochi
+secondi.
+
+**Attribuire la memoria a un task.** Attiva ``CONFIG_HEAP_TASK_TRACKING``
+(``Component config`` → ``Heap memory debugging``) e comparirà
+``CONFIG_APRS_HEAP_REPORT_TASKS``, che aggiunge la tabella riepilogativa per
+task sotto ogni riga di heap, così una perdita reale nomina il suo proprietario
+in un solo dump invece che in una settimana di bisezione. Il tracciamento costa
+RAM per ogni allocazione viva e rallenta ogni allocazione e liberazione, quindi
+appartiene a una build diagnostica: disattivalo dopo.
+
+**Margine di stack.** ``CONFIG_APRS_STACK_REPORT`` è attivo di default ed emette
+una riga per ogni task ogni ``CONFIG_APRS_STACK_REPORT_PERIOD_S`` secondi
+(un'ora) con il livello minimo di stack di quel task::
+
+   I (3600130) heap_monitor: stack igate_task: 2712 bytes free at its worst
+   I (3600131) heap_monitor: stack wifi: 1544 bytes free at its worst
+
+Gli stack dei task sono il maggiore blocco singolo di RAM che questo firmware
+riserva e quello che nessuno misura: ogni dimensione di stack del progetto è un
+budget fissato con margine deliberato, non una cifra ritagliata su ciò di cui il
+task si è rivelato aver bisogno. Senza questa riga, l'unico modo in cui uno
+stack segnala di essere piccolo è traboccando, e non c'è alcun modo di scoprire
+che un altro è enormemente grande. Un livello minimo può solo scendere, quindi
+tra una riga e l'altra non si perde nulla: ognuna riporta il peggio che quel
+task ha visto da quando è partito. Compaiono solo i task vivi: uno che
+l'operatore ha spento semplicemente non ha una riga in quell'ora.
 
 **Escludere la corruzione.** ``CONFIG_APRS_HEAP_INTEGRITY_CHECK`` scansiona ogni
 heap ogni ``CONFIG_APRS_HEAP_INTEGRITY_PERIOD_S`` secondi e registra un errore,
@@ -200,10 +280,25 @@ inspiegabile dell'heap e altrimenti vengono inseguite come una perdita. La
 scansione mantiene il lock di ogni heap mentre lo percorre, quindi gli altri task
 si bloccano se allocano nel frattempo: per questo è disattivata di default e, se
 attiva, su un timer lento. Ciò che riesce a vedere dipende dal livello di
-rilevamento della corruzione: con il valore predefinito (senza poisoning) si
-verificano solo le strutture dell'allocatore; scegli "Light impact" o
-"Comprehensive" per verificare anche i byte canarino attorno a ogni blocco
-allocato.
+rilevamento della corruzione: senza poisoning si verificano solo le strutture
+dell'allocatore, quindi scegli "Light impact" o "Comprehensive" sotto
+``Heap memory debugging`` per verificare anche i byte canarino attorno a ogni
+blocco allocato. Senza questo, un livello minimo inverosimile non si può
+distinguere da uno corrotto.
+
+**Individuare un overflow di stack dove avviene.**
+``CONFIG_FREERTOS_WATCHPOINT_END_OF_STACK`` (``Component config`` →
+``FreeRTOS`` → ``Port``) punta l'ultimo watchpoint hardware ai 32 byte finali
+dello stack del task in esecuzione, così un overflow provoca un panic
+sull'istruzione che lo ha causato. Il controllo del canarino attivo di default
+viene eseguito solo a un cambio di contesto, quindi segnala il danno molto dopo
+che il codice responsabile è già ritornato; e se l'overflow è una variabile
+locale grande che scavalca la zona del canarino non viene segnalato affatto, e
+riemerge più tardi come corruzione senza relazione. Questo conta quando un
+crash cade in un punto impossibile, come lo scheduler che non trova alcun task
+eseguibile. Il costo è un watchpoint in meno sotto gdb e fino a 60 byte in meno
+su ogni stack di task, quindi appartiene a una build diagnostica insieme alle
+opzioni sopra. Cattura solo le scritture che ricadono in quegli ultimi 32 byte.
 
 **Serializzare le due operazioni di rete più pesanti.** Lo stesso modulo
 possiede anche un piccolo lock non bloccante, indipendente dal campionamento

@@ -35,7 +35,7 @@ Disposizione del repository
    │   ├── include/aprs_bm.h  ← classificatore BrandMeister di righe APRS-IS: tocall APBMxx, alias DMR nel percorso, stazione di ingresso
    │   ├── include/aprs_path.h ← bitmask dei preset di percorso → suffisso ",WIDE1-1,WIDE2-1"
    │   ├── include/str_append.h ← helper di append snprintf limitato, condiviso dai costruttori
-   │   ├── json_store.c + include/json_store.h / json_escape.h ← impalcatura comune degli store JSON (un solo buffer stdio) + scrittore in streaming/escaping
+   │   ├── json_store.c + include/json_store.h / json_escape.h ← impalcatura comune degli store JSON (un solo buffer stdio, scansione di validità senza allocazioni) + scrittore in streaming/escaping
    │   ├── include/must_check.h ← attributo "il chiamante deve leggere questo valore di ritorno"
    │   ├── include/app_version.h ← stringa di versione del firmware mostrata nella pagina About
    │   ├── include/reset_reason.h ← causa dell'avvio come etichetta, condivisa dalla striscia del pannello e dall'avviso di avvio di Telegram
@@ -52,7 +52,7 @@ Disposizione del repository
    │   ├── net_state.c/.h      ← flag "abbiamo davvero internet?"
    │   ├── time_sync.c/.h      ← SNTP (sempre UTC), macchina a stati non bloccante, tabella dei fusi orari (solo visualizzazione)
    │   ├── cpu_freq.c/.h       ← esp_pm_configure() dalla pagina System
-   │   └── heap_monitor.c/.h   ← riga periodica di heap libero/blocco maggiore/minimo + scansione di integrità opzionale + lock condiviso per le operazioni di rete pesanti
+   │   └── heap_monitor.c/.h   ← riga periodica di heap + dettaglio per heap + parentesi di heap + livelli minimi di stack orari + scansione di integrità opzionale + lock condiviso per le operazioni di rete pesanti
    │
    ├── components/
    │   ├── esp32idf_radioamateur_modem/    (il modem software — il cuore del progetto)

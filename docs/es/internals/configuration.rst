@@ -38,7 +38,12 @@ Carga y guardado
 
 * **Cargado** con **cJSON**. Si el archivo falta o está corrupto, se aplican los
   valores por defecto **y se guardan inmediatamente**, de modo que el archivo
-  siempre existe y es consistente.
+  siempre existe y es consistente. Si en cambio la carga se quedó **sin
+  memoria**, el archivo se deja intacto y se informa el fallo: ``cJSON_Parse()``
+  devuelve ``NULL`` tanto para un archivo malo como para una asignación
+  fallida, así que ``json_store_read()`` reescanea el texto con una
+  comprobación que no asigna nada antes de decidir cuál de los dos ocurrió.
+  Confundirlos aquí borraría una configuración buena en un arranque cargado.
 * **Cargado en el lugar**: ``config_from_json()`` escribe el conjunto de valores
   por defecto directamente en la estructura de destino y luego lee el valor de
   reserva de cada clave del mismo campo que está por sobrescribir. Cada campo se

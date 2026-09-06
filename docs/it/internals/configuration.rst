@@ -38,7 +38,12 @@ Caricamento e salvataggio
 
 * **Caricato** con **cJSON**. Se il file manca o è corrotto, si applicano i
   valori predefiniti **e si salvano immediatamente**, così che il file esista
-  sempre e sia coerente.
+  sempre e sia coerente. Se invece il caricamento è rimasto **senza memoria**,
+  il file viene lasciato intatto e l'errore viene segnalato: ``cJSON_Parse()``
+  restituisce ``NULL`` sia per un file corrotto sia per un'allocazione fallita,
+  quindi ``json_store_read()`` riesamina il testo con un controllo che non
+  alloca nulla prima di decidere quale dei due sia avvenuto. Confonderli qui
+  cancellerebbe una configurazione valida durante un avvio carico.
 * **Caricato sul posto**: ``config_from_json()`` scrive l'insieme dei valori
   predefiniti direttamente nella struttura di destinazione e poi legge il valore
   di ripiego di ogni chiave dal campo stesso che sta per sovrascrivere. Ogni

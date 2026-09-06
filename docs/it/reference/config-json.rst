@@ -16,6 +16,11 @@ Meccanica
 * **Salvataggio atomico:** scrive ``config.json.tmp``, poi rinomina.
 * Mancante o corrotto → si applicano i default e si salvano immediatamente, così
   che il file esista sempre e sia coerente.
+* Senza memoria → il file viene lasciato com'è e il caricamento segnala
+  l'errore. Una lettura o un parsing rimasti senza RAM non dicono nulla sul
+  contenuto del file, quindi non devono mai imboccare il percorso "corrotto"
+  qui sopra: il lettore riesamina il testo senza allocare nulla per distinguere
+  i due casi, e vengono sovrascritti solo i byte davvero non analizzabili.
 * I nomi dei campi / chiavi JSON sono mantenuti 1:1 con il progetto di
   riferimento, così i vecchi file si caricano senza modifiche; le chiavi
   sconosciute sono ignorate.

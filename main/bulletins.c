@@ -109,7 +109,7 @@ static bool clock_valid(void) {
 // Persistence
 // ---------------------------------------------------------------------------
 
-static bool load_locked(bulletins_t *out, bool *out_missing) {
+static bool load_locked(bulletins_t *out, bool *out_missing, bool *out_transient) {
     memset(out, 0, sizeof(*out));
     if (out_missing)
         *out_missing = false;
@@ -122,6 +122,11 @@ static bool load_locked(bulletins_t *out, bool *out_missing) {
         // operator can see it.
         if (out_missing && st == JSON_STORE_MISSING)
             *out_missing = true;
+        // A file that could not be read or parsed for want of memory says
+        // nothing about its content, so the answer this pass gives is only good
+        // for this pass. Reported separately so the caller does not cache it.
+        if (out_transient && st == JSON_STORE_OOM)
+            *out_transient = true;
         return false;
     }
 
@@ -254,26 +259,54 @@ static bool s_cache_valid = false;
 static bool s_cache_ok = false; // what load_locked() reported for the cached content
 static uint32_t s_cache_gen = 0;
 
+// Earliest monotonic second at which a load that failed for want of memory may
+// read the file again; 0 when no such failure is outstanding. See the comment
+// in bulletins_load() for why a shortage is retried on a timer rather than on
+// every pass.
+#define BULLETIN_LOAD_RETRY_S 60
+static int64_t s_load_retry_after_s = 0;
+
 bool bulletins_load(bulletins_t *out) {
     if (!out)
         return false;
     lock();
-    if (s_cache_valid && s_cache_gen == storage_generation()) {
+    // A retry deadline that has not yet passed keeps the cached answer in
+    // service, so a shortage is retried on its own timer rather than on every
+    // pass through here.
+    bool retry_due = s_load_retry_after_s != 0 && sched_mono_seconds() >= s_load_retry_after_s;
+    if (s_cache_valid && s_cache_gen == storage_generation() && !retry_due) {
         *out = s_cache;
         bool cached_ok = s_cache_ok;
         unlock();
         return cached_ok;
     }
     bool missing = false;
-    bool ok = load_locked(out, &missing);
-    // Cache the defaults substituted for a missing/corrupt file too: they are
-    // what every caller would get from a re-read anyway, and doing so keeps a
-    // subsystem that is simply not configured from re-reading the filesystem
+    bool transient = false;
+    bool ok = load_locked(out, &missing, &transient);
+    // Cache the defaults substituted for a missing or corrupt file too: they
+    // are what every caller would get from a re-read anyway, and doing so keeps
+    // a subsystem that is simply not configured from re-reading the filesystem
     // on every scheduler pass.
+    //
+    // A load that failed for want of memory is the exception, and it is the
+    // only failure here that is not a property of the file. Caching it as one
+    // would freeze a shortage lasting a second or two into the answer every
+    // later pass gets, because nothing short of a save or a storage-generation
+    // change drops this cache. Cache it anyway, and set a retry deadline
+    // instead: the substituted defaults stay in service until then, and the
+    // file is read again once the deadline passes.
+    //
+    // Both halves matter. Without the deadline a transient shortage would
+    // silence the subsystem for good; without the caching, every pass would
+    // re-read and re-parse the file, which is the exact churn this cache exists
+    // to prevent and which arrives when the heap can least afford it - a parse
+    // tree of several kilobytes rebuilt every few seconds is how a shortage
+    // that would have cleared on its own becomes a lasting one.
     s_cache = *out;
     s_cache_ok = ok;
     s_cache_gen = storage_generation();
     s_cache_valid = true;
+    s_load_retry_after_s = transient ? sched_mono_seconds() + BULLETIN_LOAD_RETRY_S : 0;
     unlock();
     if (missing) {
         // First boot / file lost: persist the empty-default set now so

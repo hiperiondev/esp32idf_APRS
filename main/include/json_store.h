@@ -59,6 +59,36 @@
 #define JSON_STORE_STDIO_BUF_SIZE 512
 
 /**
+ * @brief Report whether a NUL-terminated buffer holds one well-formed JSON
+ * document.
+ *
+ * @details Walks the buffer in place against the RFC 8259 grammar and allocates
+ * nothing at all, which is the entire point: it is asked precisely when the
+ * allocating parser has just failed, so anything it allocated itself could fail
+ * for the same reason and turn a diagnosis into a second failure.
+ *
+ * It exists to tell an out-of-memory parse apart from a genuinely corrupt file.
+ * cJSON reports both by returning NULL, and the two demand opposite responses -
+ * leave the file alone and retry, or replace it - so ::json_store_read consults
+ * this before deciding which happened.
+ *
+ * The scan is deliberately no more permissive than cJSON: everything it accepts
+ * cJSON accepts too, so text it calls well-formed can only have failed to parse
+ * for want of memory. Where the two differ, this one is the stricter, which
+ * errs toward calling a file corrupt rather than toward retrying a file that
+ * will never parse. Nesting deeper than sixteen levels is rejected, so a
+ * pathological file cannot drive the scan off the caller's stack.
+ *
+ * A leading UTF-8 byte order mark is skipped, as cJSON skips it, so a file an
+ * operator saved from a desktop editor is judged the same way by both.
+ *
+ * @param text NUL-terminated candidate JSON text; NULL reads as not well-formed.
+ * @return true if the whole buffer is exactly one well-formed JSON value, with
+ *         nothing but whitespace after it.
+ */
+bool json_store_text_is_well_formed(const char *text);
+
+/**
  * @brief Outcome of json_store_read().
  */
 typedef enum {
@@ -124,6 +154,14 @@ static inline void json_store_lock_give(SemaphoreHandle_t *lock) {
  * probably fine, so overwriting it on the strength of a failed malloc would
  * destroy a good configuration.
  *
+ * ::JSON_STORE_OOM therefore covers both places memory can run out, not just
+ * the obvious one. The read buffer is a single allocation sized from the file
+ * and fails visibly; the parse that follows makes hundreds of small ones and
+ * fails by returning NULL, which is also how cJSON reports text that is not
+ * JSON at all. ::json_store_text_is_well_formed tells those two apart without
+ * allocating anything, so a parse that ran out of memory on a good file is
+ * reported as ::JSON_STORE_OOM rather than as ::JSON_STORE_CORRUPT.
+ *
  * @param path    Full path of the file to read.
  * @param tag     Caller's log tag.
  * @param what    Human-readable name of the content, for the log lines
@@ -161,11 +199,28 @@ static inline json_store_status_t json_store_read(const char *path, const char *
     fclose(f);
 
     cJSON *doc = cJSON_Parse(buf);
-    free(buf);
     if (doc == NULL) {
+        // cJSON returns NULL for two unrelated reasons - the text is not JSON,
+        // or it ran out of memory building the tree - and reports both the same
+        // way. The two must not be confused: a store that treats a failed
+        // allocation as a corrupt file writes defaults over a configuration
+        // that was perfectly good, so a transient shortage becomes permanent
+        // data loss.
+        //
+        // The text itself is what settles it. A scan that allocates nothing
+        // decides whether these bytes are well-formed JSON; if they are, the
+        // parse can only have failed for want of memory, and the caller is told
+        // to leave the file alone and try again later.
+        bool well_formed = json_store_text_is_well_formed(buf);
+        free(buf);
+        if (well_formed) {
+            ESP_LOGW(tag, "OOM parsing %s - the file scans as valid JSON and is left untouched", what);
+            return JSON_STORE_OOM;
+        }
         ESP_LOGW(tag, "%s corrupt", path);
         return JSON_STORE_CORRUPT;
     }
+    free(buf);
 
     *out_doc = doc;
     return JSON_STORE_OK;

@@ -35,7 +35,7 @@ Repository layout
    │   ├── include/aprs_bm.h  ← BrandMeister classifier for APRS-IS lines: APBMxx tocall, DMR path alias, entry station
    │   ├── include/aprs_path.h ← path-preset bitmask → ",WIDE1-1,WIDE2-1" suffix builder
    │   ├── include/str_append.h ← bounded snprintf-append helper shared by the builders
-   │   ├── json_store.c + include/json_store.h / json_escape.h ← shared JSON-file store scaffolding (one stdio buffer) + streaming writer/escaping
+   │   ├── json_store.c + include/json_store.h / json_escape.h ← shared JSON-file store scaffolding (one stdio buffer, non-allocating well-formedness scan) + streaming writer/escaping
    │   ├── include/must_check.h ← the "caller must read this return value" attribute
    │   ├── include/app_version.h ← firmware version string shown on the About page
    │   ├── include/reset_reason.h ← boot cause as a label, shared by the dashboard strip and the Telegram start-up notice
@@ -52,7 +52,7 @@ Repository layout
    │   ├── net_state.c/.h      ← "do we actually have internet?" flag
    │   ├── time_sync.c/.h      ← SNTP (UTC always), non-blocking state machine, timezone table (display only)
    │   ├── cpu_freq.c/.h       ← esp_pm_configure() from the System page
-   │   └── heap_monitor.c/.h   ← periodic free/largest/minimum heap line + optional integrity sweep + shared heavy-network-op lock
+   │   └── heap_monitor.c/.h   ← periodic heap line + per-heap breakdown + heap brackets + hourly task stack watermarks + optional integrity sweep + shared heavy-network-op lock
    │
    ├── components/
    │   ├── esp32idf_radioamateur_modem/    (the soft-modem — the heart of the project)

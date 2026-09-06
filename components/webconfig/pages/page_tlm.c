@@ -62,6 +62,7 @@
 
 #include "app_config.h"
 #include "esp_log.h"
+#include "heap_monitor.h" // HEAP_MONITOR_BRACKET() - each form buffer below is a single multi-kilobyte block
 #include "pages.h"
 #include "sensors_local.h"
 #include "telemetry.h"
@@ -760,13 +761,22 @@ static void parse_digital(const char *body, telemetry_config_t *cfg) {
 esp_err_t page_tlm_post(httpd_req_t *req) {
     if (!web_check_auth(req))
         return ESP_OK;
+    // Bracketed because this buffer is a single contiguous block of several
+    // kilobytes taken on the web server's task, and it stays held across the
+    // whole parse-and-save pass below - including the write into LittleFS -
+    // so it is one of the larger transients a station sees in normal use. The
+    // "after" line runs on the failure paths too, so a save that could not
+    // take the block is distinguishable from one that took and returned it.
+    HEAP_MONITOR_BRACKET("before", "telemetry form");
     char *body = malloc(WEBCONFIG_POST_BUF_TLM);
     if (!body) {
+        HEAP_MONITOR_BRACKET("after", "telemetry form");
         httpd_resp_send_500(req);
         return ESP_OK;
     }
     if (web_read_body(req, body, WEBCONFIG_POST_BUF_TLM) < 0) {
         free(body);
+        HEAP_MONITOR_BRACKET("after", "telemetry form");
         httpd_resp_send_500(req);
         return ESP_OK;
     }
@@ -793,6 +803,7 @@ esp_err_t page_tlm_post(httpd_req_t *req) {
     parse_digital(body, &cfg);
 
     free(body);
+    HEAP_MONITOR_BRACKET("after", "telemetry form");
     // The page rendered next is built from the live settings, so the save
     // result is what decides whether the operator is told this reached flash.
     bool ok = telemetry_config_save(&cfg);

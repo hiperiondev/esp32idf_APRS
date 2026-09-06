@@ -164,7 +164,7 @@ static uint8_t channel_from_json(const cJSON *it, const char *what, int idx, uin
     return def;
 }
 
-static bool load_locked(telemetry_config_t *out, bool *out_missing) {
+static bool load_locked(telemetry_config_t *out, bool *out_missing, bool *out_transient) {
     telemetry_config_set_defaults(out);
     if (out_missing)
         *out_missing = false;
@@ -178,6 +178,11 @@ static bool load_locked(telemetry_config_t *out, bool *out_missing) {
         // defaults set above.
         if (out_missing && (st == JSON_STORE_MISSING || st == JSON_STORE_EMPTY))
             *out_missing = true;
+        // A file that could not be read or parsed for want of memory says
+        // nothing about its content, so the answer this pass gives is only good
+        // for this pass. Reported separately so the caller does not cache it.
+        if (out_transient && st == JSON_STORE_OOM)
+            *out_transient = true;
         return false;
     }
 
@@ -505,27 +510,55 @@ static bool s_cfg_cache_valid = false;
 static bool s_cfg_cache_ok = false; // what load_locked() reported for the cached content
 static uint32_t s_cfg_cache_gen = 0;
 
+// Earliest monotonic second at which a load that failed for want of memory may
+// read the file again; 0 when no such failure is outstanding. See the comment
+// in telemetry_config_load() for why a shortage is retried on a timer rather than on
+// every pass.
+#define TELEMETRY_LOAD_RETRY_S 60
+static int64_t s_cfg_load_retry_after_s = 0;
+
 bool telemetry_config_load(telemetry_config_t *out) {
     if (!out)
         return false;
     telemetry_lock();
-    if (s_cfg_cache_valid && s_cfg_cache_gen == storage_generation()) {
+    // A retry deadline that has not yet passed keeps the cached answer in
+    // service, so a shortage is retried on its own timer rather than on every
+    // pass through here.
+    bool retry_due = s_cfg_load_retry_after_s != 0 && sched_mono_seconds() >= s_cfg_load_retry_after_s;
+    if (s_cfg_cache_valid && s_cfg_cache_gen == storage_generation() && !retry_due) {
         *out = s_cfg_cache;
         bool cached_ok = s_cfg_cache_ok;
         telemetry_unlock();
         return cached_ok;
     }
     bool missing = false;
-    bool ok = load_locked(out, &missing);
+    bool transient = false;
+    bool ok = load_locked(out, &missing, &transient);
     update_mycall_cache_locked(out->mycall);
-    // Cache the defaults substituted for a missing/corrupt file too: they are
-    // what every caller would get from a re-read anyway, and doing so keeps a
-    // subsystem that is simply not configured from re-reading the filesystem
+    // Cache the defaults substituted for a missing or corrupt file too: they
+    // are what every caller would get from a re-read anyway, and doing so keeps
+    // a subsystem that is simply not configured from re-reading the filesystem
     // on every scheduler pass.
+    //
+    // A load that failed for want of memory is the exception, and it is the
+    // only failure here that is not a property of the file. Caching it as one
+    // would freeze a shortage lasting a second or two into the answer every
+    // later pass gets, because nothing short of a save or a storage-generation
+    // change drops this cache. Cache it anyway, and set a retry deadline
+    // instead: the substituted defaults stay in service until then, and the
+    // file is read again once the deadline passes.
+    //
+    // Both halves matter. Without the deadline a transient shortage would
+    // silence the subsystem for good; without the caching, every pass would
+    // re-read and re-parse the file, which is the exact churn this cache exists
+    // to prevent and which arrives when the heap can least afford it - a parse
+    // tree of several kilobytes rebuilt every few seconds is how a shortage
+    // that would have cleared on its own becomes a lasting one.
     s_cfg_cache = *out;
     s_cfg_cache_ok = ok;
     s_cfg_cache_gen = storage_generation();
     s_cfg_cache_valid = true;
+    s_cfg_load_retry_after_s = transient ? sched_mono_seconds() + TELEMETRY_LOAD_RETRY_S : 0;
     telemetry_unlock();
     if (missing) {
         // First boot / file lost: persist the default set now so

@@ -1521,7 +1521,7 @@ static void bannerOnLine(char *line) {
 // this check exists to avoid, not to make the uplink itself expensive.
 #define IGATE_MIN_FREE_HEAP 8192
 
-static bool connectAprsIs(void) {
+static bool connectAprsIsAttempt(void) {
     // Checked, together with the shared heap_monitor_try_heavy_op() lock,
     // before anything below is touched. The floor alone only rules out this
     // task running the heap dry by itself; the lock is what stops this
@@ -1782,6 +1782,25 @@ static bool connectAprsIs(void) {
     ESP_LOGI(TAG, "Connected to APRS-IS %s:%u as %s", cfg_host, (unsigned)cfg_port, cfg_identity);
     trafficlog_add("Connected to APRS-IS %s:%u as %s", cfg_host, (unsigned)cfg_port, cfg_identity);
     return true;
+}
+
+// Brackets one APRS-IS connect attempt with the heap on either side of it.
+//
+// Wrapped rather than bracketed inline because the attempt has nine exits and
+// the pair is only meaningful if every one of them is matched; a wrapper has
+// one.
+//
+// The window covers the whole attempt rather than the connect alone: the
+// socket and its send and receive windows are what the call leaves behind on
+// success, and they stay held for the life of the session, so the difference
+// between the two lines is the standing cost of the uplink being up rather
+// than a transient. On the failure paths the same pair says whether the
+// attempt gave everything back.
+static bool connectAprsIs(void) {
+    HEAP_MONITOR_BRACKET("before", "aprs-is connect");
+    bool connected = connectAprsIsAttempt();
+    HEAP_MONITOR_BRACKET("after", "aprs-is connect");
+    return connected;
 }
 
 // The APRS-IS TCP uplink is a single shared resource used not only by the

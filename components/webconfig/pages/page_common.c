@@ -36,6 +36,7 @@
 #include "app_config.h"
 #include "aprs_service.h"
 #include "cpu_freq.h"
+#include "heap_monitor.h" // HEAP_MONITOR_CAPS - the memory class every heap figure in this firmware describes
 #include "igate.h"
 #include "lastheard.h"
 #include "pages.h"
@@ -260,23 +261,37 @@ esp_err_t page_dashinfo(httpd_req_t *req) {
     // web_handle_css()): one card per value, its label above and its unit
     // trailing the figure, so this strip reads like the rest of the dashboard
     // instead of like a plain settings table.
+    //
+    // Both heap figures are read for HEAP_MONITOR_CAPS, the class heap_monitor.c
+    // and the Telegram transport report, so a number the operator reads here and
+    // a number they find in the log describe the same set of heaps rather than
+    // two overlapping ones.
+    //
+    // The two are still not comparable with each other, and the difference
+    // between them is not a headroom. The minimum is what the allocator keeps
+    // per registered heap, summed, with every term taken at that heap's own
+    // worst instant; an ESP32 without PSRAM registers three or four separate
+    // DRAM regions, so it is a sum of moments that never coincided and reads as
+    // a lower bound on the worst the total has ever been. heap_monitor.h sets
+    // out what follows from that, and CONFIG_APRS_HEAP_REPORT_PER_HEAP prints
+    // the per-heap terms this single figure flattens.
     char buf[1400];
-    snprintf(buf, sizeof(buf),
-             "<fieldset><legend>" TR_DASH_SYSINFO "</legend><div class='stat-grid'>"
-             "<div class='stat-card'><div class='stat-label'>" TR_DASH_DATETIME "</div><div class='stat-value'>%s</div></div>"
-             "<div class='stat-card'><div class='stat-label'>" TR_DASH_UPTIME "</div><div class='stat-value'>%lldd %lldh %lldm %llds</div></div>"
-             "<div class='stat-card'><div class='stat-label'>" TR_DASH_FREE_HEAP
-             "</div><div class='stat-value'><span id='dashFreeHeap'>%lu</span><span class='stat-unit'> bytes</span></div></div>"
-             "<div class='stat-card'><div class='stat-label'>" TR_SYSINFO_MIN_FREE_HEAP
-             "</div><div class='stat-value'><span id='dashMinFreeHeap'>%lu</span><span class='stat-unit'> bytes</span></div></div>"
-             "<div class='stat-card'><div class='stat-label'>" TR_DASH_LITTLEFS
-             "</div><div class='stat-value'>%u<span class='stat-unit'> / %u bytes</span></div></div>"
-             "<div class='stat-card'><div class='stat-label'>" TR_SYSINFO_CPU_FREQ
-             "</div><div class='stat-value'>%lu<span class='stat-unit'> MHz</span></div></div>"
-             "<div class='stat-card'><div class='stat-label'>" TR_DASH_REBOOT_REASON "</div><div class='stat-value'>%s</div></div>"
-             "</div></fieldset>",
-             localTimeEsc, uptime_days, uptime_hour, uptime_min, uptime_sec, (unsigned long)esp_get_free_heap_size(),
-             (unsigned long)esp_get_minimum_free_heap_size(), (unsigned)used, (unsigned)total, (unsigned long)cpu_mhz, dash_reboot_reason_str());
+    snprintf(
+        buf, sizeof(buf),
+        "<fieldset><legend>" TR_DASH_SYSINFO "</legend><div class='stat-grid'>"
+        "<div class='stat-card'><div class='stat-label'>" TR_DASH_DATETIME "</div><div class='stat-value'>%s</div></div>"
+        "<div class='stat-card'><div class='stat-label'>" TR_DASH_UPTIME "</div><div class='stat-value'>%lldd %lldh %lldm %llds</div></div>"
+        "<div class='stat-card'><div class='stat-label'>" TR_DASH_FREE_HEAP
+        "</div><div class='stat-value'><span id='dashFreeHeap'>%lu</span><span class='stat-unit'> bytes</span></div></div>"
+        "<div class='stat-card'><div class='stat-label'>" TR_SYSINFO_MIN_FREE_HEAP
+        "</div><div class='stat-value'><span id='dashMinFreeHeap'>%lu</span><span class='stat-unit'> bytes</span></div></div>"
+        "<div class='stat-card'><div class='stat-label'>" TR_DASH_LITTLEFS
+        "</div><div class='stat-value'>%u<span class='stat-unit'> / %u bytes</span></div></div>"
+        "<div class='stat-card'><div class='stat-label'>" TR_SYSINFO_CPU_FREQ "</div><div class='stat-value'>%lu<span class='stat-unit'> MHz</span></div></div>"
+        "<div class='stat-card'><div class='stat-label'>" TR_DASH_REBOOT_REASON "</div><div class='stat-value'>%s</div></div>"
+        "</div></fieldset>",
+        localTimeEsc, uptime_days, uptime_hour, uptime_min, uptime_sec, (unsigned long)heap_caps_get_free_size(HEAP_MONITOR_CAPS),
+        (unsigned long)heap_caps_get_minimum_free_size(HEAP_MONITOR_CAPS), (unsigned)used, (unsigned)total, (unsigned long)cpu_mhz, dash_reboot_reason_str());
 
     httpd_resp_set_type(req, "text/html");
     httpd_resp_set_hdr(req, "Cache-Control", "no-store");
@@ -287,13 +302,23 @@ esp_err_t page_dashinfo(httpd_req_t *req) {
 // GET /heapinfo -> tiny JSON {free, minFree} used to refresh just the Free
 // Heap / Min Free Heap cells on the dashboard every second, without
 // re-rendering the whole (slower-changing) #dashSysInfo fieldset.
+//
+// Both figures are read exactly as page_dashinfo() reads them, in the same
+// memory class and with the same caveat on the minimum, so a cell that has been
+// refreshed and a cell that has just been rendered never disagree.
+//
+// Sampling this route at 1 Hz is a finer trace than the periodic log line, but
+// it only exists while a browser is sitting on the dashboard, which is not when
+// boot bring-up or an unattended reconnect happens. It describes the window it
+// was watched in, never the firmware; heap_monitor.c is what covers the rest of
+// the time.
 esp_err_t page_heapinfo(httpd_req_t *req) {
     if (!web_check_auth(req))
         return ESP_OK;
 
     char json[80];
-    size_t n = snprintf(json, sizeof(json), "{\"free\":%lu,\"minFree\":%lu}", (unsigned long)esp_get_free_heap_size(),
-                        (unsigned long)esp_get_minimum_free_heap_size());
+    size_t n = snprintf(json, sizeof(json), "{\"free\":%lu,\"minFree\":%lu}", (unsigned long)heap_caps_get_free_size(HEAP_MONITOR_CAPS),
+                        (unsigned long)heap_caps_get_minimum_free_size(HEAP_MONITOR_CAPS));
 
     httpd_resp_set_type(req, "application/json");
     httpd_resp_set_hdr(req, "Cache-Control", "no-store");

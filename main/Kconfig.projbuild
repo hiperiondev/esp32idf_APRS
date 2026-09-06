@@ -5,8 +5,8 @@ menu "APRS heap instrumentation"
         default y
         help
             Emit one line per period, from the APRS service's 1 Hz tick, with
-            the free heap, the largest free block and the all-time minimum
-            free heap.
+            the free heap, the largest free block and the sum of the per-heap
+            all-time minimums.
 
             These three figures are what describe the allocator on the healthy
             path. Every other heap number this firmware logs is printed after
@@ -21,15 +21,43 @@ menu "APRS heap instrumentation"
         int "Seconds between heap lines"
         depends on APRS_HEAP_REPORT
         range 10 3600
-        default 60
+        default 10
         help
-            One line a minute is enough to place a slow drift or a sudden
-            notch on the clock, and short enough that a minute-by-minute trace
-            lines up with the individual events that caused it.
+            The period has to be shorter than the events it is meant to catch,
+            and on this firmware those are short: a TLS handshake, an APRS-IS
+            reconnect or a settings save each peak and recover within a few
+            seconds. A sampler slower than that is structurally blind to them -
+            it records the heap before and after, never during, and every line
+            it prints is consistent with a peak that never happened.
 
-            A shorter period only adds resolution up to the rate at which the
-            heap actually moves; below about ten seconds the line mostly
-            records the noise of the network stack's own buffers.
+            Ten seconds does not resolve a two-second handshake either, but it
+            brackets one to the right minute, which is what makes the line
+            correlate with the rest of the log. Going slower trades that away;
+            going faster costs only console bandwidth.
+
+    config APRS_HEAP_REPORT_PER_HEAP
+        bool "Add the per-heap breakdown to each heap line"
+        depends on APRS_HEAP_REPORT
+        default n
+        help
+            Follow each heap line with the table the heap component itself
+            prints: one row per registered heap, carrying that heap's start
+            address, size, current free, largest free block and all-time
+            minimum free.
+
+            This is the only view that separates the two things the summary
+            line cannot tell apart. An ESP32 without PSRAM has several
+            non-contiguous DRAM regions, each registered as a heap of its own,
+            and the summary's minimum figure adds up each region's own
+            watermark taken at its own worst instant. A small region driven to
+            near zero once, hours before the main pool dipped, therefore
+            produces the same summary as every region running out at the same
+            moment - and the two call for entirely different work. The
+            breakdown shows which region actually ran dry.
+
+            Off by default because it is several lines per period rather than
+            one. Turn it on for the run that answers the question, then off
+            again once the answer is on record.
 
     config APRS_HEAP_REPORT_TASKS
         bool "Add the per-task usage table to each heap line"
@@ -46,6 +74,71 @@ menu "APRS heap instrumentation"
             the default: tracking costs RAM per live allocation and slows
             every allocation and free down, so it belongs in a diagnostic
             build and should be turned off again afterwards.
+
+    config APRS_HEAP_BRACKET
+        bool "Log the heap on both sides of every heavy allocation path"
+        default n
+        help
+            Emit one line immediately before and one immediately after each
+            passage known to take a large or long-lived bite out of the heap:
+            the Telegram bring-up, the APRS-IS connect, the configuration
+            load, the console mirror's ring, the WiFi scan, the OTA upload and
+            each web form buffer.
+
+            The periodic line above says when the heap moved. A bracket says
+            what moved it, because its two figures are taken on either side of
+            one named passage rather than at whatever instant the period came
+            due. Together they turn "the largest free block drops at these
+            moments" into "the drops are these calls".
+
+            The lines carry the same two figures, in the same memory class, as
+            the ones CONFIG_TELEGRAM_BOT_HEAP_BRACKET prints around each API
+            request, so a bracket from either side can be read against the
+            other. Enabling both covers the request path and everything around
+            it.
+
+            Off by default: it is two lines per event, and the web form
+            buffers make a pair on every settings save. It is meant to be
+            turned on for a diagnostic session and off again afterwards.
+
+    config APRS_STACK_REPORT
+        bool "Log the stack headroom of every task"
+        default y
+        help
+            Emit one line per task, on a slow period, with that task's stack
+            high-water mark - the least headroom it has had since it started.
+
+            Task stacks are the largest single block of RAM this firmware
+            reserves and the one nobody measures: every stack size in the
+            project is a budget set with deliberate headroom, not a figure
+            trimmed to what the task turned out to need. Without this line the
+            only way a stack reports being too small is by overflowing, and
+            there is no way at all to learn that one is far too large.
+
+            Every task is listed, not just this firmware's own. The WiFi, lwIP
+            and event tasks the IDF runs have stacks that come out of the same
+            memory, and a budget that ignores them is not a budget.
+
+            One FreeRTOS query per period, and a fixed array of roughly a
+            kilobyte that the report fills each time. The array is static so
+            that a diagnostic about memory pressure cannot itself fail under
+            memory pressure, and so that the tick task's stack does not have to
+            be sized for something that runs once an hour.
+
+    config APRS_STACK_REPORT_PERIOD_S
+        int "Seconds between stack headroom lines"
+        depends on APRS_STACK_REPORT
+        range 60 86400
+        default 3600
+        help
+            A high-water mark only ever falls, so this is not a sampler and
+            nothing is missed between lines: each one reports the worst the
+            task has seen since it started, whenever it is printed. The period
+            decides only how soon a new worst case reaches the log.
+
+            An hour is long enough to be invisible in the console and short
+            enough that a mark set overnight is timestamped near the traffic
+            that set it.
 
     config APRS_HEAP_INTEGRITY_CHECK
         bool "Run a periodic heap integrity check"

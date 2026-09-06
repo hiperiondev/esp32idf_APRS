@@ -28,6 +28,7 @@
 #include "freertos/task.h"
 
 #include "app_version.h"
+#include "heap_monitor.h" // HEAP_MONITOR_BRACKET() - the OTA writer holds flash-driver state for the whole upload
 #include "pages.h"
 #include "translations.h"
 #include "web_common.h"
@@ -120,6 +121,8 @@ static esp_err_t ota_write_cb(void *ctx_v, const uint8_t *data, size_t len) {
     return ESP_OK;
 }
 
+static esp_err_t ota_update_receive(httpd_req_t *req);
+
 // Reboots shortly after the success response has been flushed to the
 // browser, so the user actually gets to see the "rebooting..." message
 // (and the XHR completes cleanly) instead of the connection dying mid-response.
@@ -143,10 +146,29 @@ static void ota_send_error_page(httpd_req_t *req, const char *detail) {
     web_send_footer(req);
 }
 
+// Brackets the upload with the heap on either side of it. Wrapped rather than
+// bracketed inline because the handler has six exits and the pair is only
+// meaningful if every one of them is matched; a wrapper has one.
+//
+// The successful path never reaches the second line - it schedules a restart
+// and the device is gone before the next log line would print - so this pair
+// describes the failures, which is where it is wanted: an upload that aborted
+// midway has an esp_ota_begin() handle and whatever the flash driver allocated
+// behind it, and the two figures say whether esp_ota_abort() gave that back.
 esp_err_t page_ota_update_post(httpd_req_t *req) {
     if (!web_check_auth(req))
         return ESP_OK;
 
+    HEAP_MONITOR_BRACKET("before", "ota upload");
+    esp_err_t result = ota_update_receive(req);
+    HEAP_MONITOR_BRACKET("after", "ota upload");
+    return result;
+}
+
+// Carries out the upload itself. Every exit reports through the response body
+// it has already written, so the return value is only ever ESP_OK: an OTA that
+// failed is a page the operator reads, not an HTTP error the browser handles.
+static esp_err_t ota_update_receive(httpd_req_t *req) {
     const esp_partition_t *target = esp_ota_get_next_update_partition(NULL);
     if (!target) {
         ota_send_error_page(req, TR_OTA_NO_PARTITION);

@@ -40,6 +40,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
+#include "heap_monitor.h"  // HEAP_MONITOR_BRACKET() - the parse tree here is one of the larger transients
 #include "json_escape.h"   // json_write_escaped()
 #include "json_store.h"    // shared JSON-file store scaffolding
 #include "sensors_local.h" // sensors_local_channel_name() / _from_name() - WX field mappings are stored by driver name, not registry index
@@ -1755,6 +1756,15 @@ bool app_config_save(void) {
 }
 
 bool app_config_load(void) {
+    // Bracketed because this is one of the larger single transients in the
+    // firmware and none of it is visible from outside: the file is read whole
+    // into a buffer and then parsed into a cJSON tree of a few hundred nodes,
+    // both of which are alive at once for the length of the parse. The "after"
+    // line is placed on every exit path so a load that gave the memory back
+    // and a load that failed holding it are told apart by the pair, not by
+    // which line happens to follow in the log.
+    HEAP_MONITOR_BRACKET("before", "config load");
+
     cJSON *doc = NULL;
     json_store_status_t st = json_store_read(CONFIG_PATH, TAG, "configuration", &doc);
 
@@ -1764,15 +1774,19 @@ bool app_config_load(void) {
 
         case JSON_STORE_OOM:
             // The file is very probably intact - there was simply no RAM to
-            // read it into. Leave it exactly as it is and report the failure,
-            // rather than writing defaults over a configuration that a later
-            // attempt would have loaded fine.
+            // read it in or to build its tree. Leave it exactly as it is and
+            // report the failure, rather than writing defaults over a
+            // configuration that a later attempt would have loaded fine. This
+            // is the one store whose corrupt path is destructive, so the
+            // distinction the reader draws between a bad file and a bad moment
+            // is what stands between a busy boot and a wiped configuration.
+            HEAP_MONITOR_BRACKET("after", "config load");
             return false;
 
         case JSON_STORE_MISSING:
         case JSON_STORE_EMPTY:
         case JSON_STORE_CORRUPT:
-        default:
+        default: {
             // The boot configuration is the one file the device cannot come up
             // without, so anything unusable here is replaced with the factory
             // set and written back immediately. That costs an operator a
@@ -1781,11 +1795,15 @@ bool app_config_load(void) {
             // of one that needs a serial flash to recover.
             ESP_LOGW(TAG, "%s unusable, writing defaults", CONFIG_PATH);
             app_config_set_defaults(&g_config);
-            return app_config_save();
+            bool saved = app_config_save();
+            HEAP_MONITOR_BRACKET("after", "config load");
+            return saved;
+        }
     }
 
     config_from_json(doc, &g_config);
     cJSON_Delete(doc);
+    HEAP_MONITOR_BRACKET("after", "config load");
     ESP_LOGI(TAG, "Configuration loaded");
     return true;
 }

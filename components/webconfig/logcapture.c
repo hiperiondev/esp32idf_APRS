@@ -30,7 +30,8 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
-#include "json_escape.h" // json_escape()
+#include "heap_monitor.h" // HEAP_MONITOR_BRACKET() - the ring below is a single multi-kilobyte block
+#include "json_escape.h"  // json_escape()
 
 // Working buffer the hook formats one console write into before the line
 // assembler walks it. Two full rows wide, so the common case - one log
@@ -239,7 +240,15 @@ bool logcapture_start(void) {
         return true;
     }
 
+    // Bracketed because the ring is a single contiguous block of several
+    // kilobytes - the largest allocation any web page makes - and it stays
+    // held until the idle timer or the operator stops the capture, so the
+    // difference between the two lines is the standing cost of having the Logs
+    // page open. The "after" line runs on the failure path too, so a capture
+    // that could not be started is distinguishable from one that was.
+    HEAP_MONITOR_BRACKET("before", "logcapture ring");
     logcapture_line_t *ring = calloc(LOGCAPTURE_CAPACITY, sizeof(logcapture_line_t));
+    HEAP_MONITOR_BRACKET("after", "logcapture ring");
     if (ring == NULL)
         return false;
 

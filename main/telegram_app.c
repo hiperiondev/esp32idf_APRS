@@ -46,7 +46,7 @@
 #include "app_config.h"
 #include "aprs_service.h"     // APRS_SOFTWARE_NAME, APRS_SOFTWARE_VERSION
 #include "esp_telegram_bot.h" // telegram_bot_get_me()
-#include "heap_monitor.h"     // heap_monitor_try_heavy_op()/_release_heavy_op()
+#include "heap_monitor.h"     // heap_monitor_try_heavy_op()/_release_heavy_op(), HEAP_MONITOR_BRACKET()
 #include "json_escape.h"      // json_write_escaped()
 #include "json_store.h"       // shared JSON-file store scaffolding
 #include "net_state.h"        // net_state_is_connected()
@@ -1657,9 +1657,10 @@ static telegram_app_reason_t verify_token(char *detail, size_t detail_size) {
 // Performs one full bring-up attempt, publishing the step that failed. On
 // success the service is initialized, verified and polling.
 //
-// Called only from the worker task: it runs a TLS handshake on the caller's
-// stack and must never run on the service tick.
-static telegram_app_reason_t bring_up(void) {
+// Called only through bring_up() below, and so only from the worker task: it
+// runs a TLS handshake on the caller's stack and must never run on the service
+// tick.
+static telegram_app_reason_t bring_up_attempt(void) {
     char detail[TELEGRAM_APP_DETAIL_MAX + 1] = "";
 
     // Snapshotted once, under the lock, before anything else runs. A save
@@ -1821,6 +1822,27 @@ static telegram_app_reason_t bring_up(void) {
     status_set(TELEGRAM_APP_STATE_RUNNING, TELEGRAM_APP_REASON_CONNECTED, NULL);
     ESP_LOGI(TAG, "Telegram bot running");
     return TELEGRAM_APP_REASON_CONNECTED;
+}
+
+// Brackets one bring-up attempt with the heap on either side of it.
+//
+// Wrapped rather than bracketed inline because the attempt has eleven exits
+// and the pair is only meaningful if every one of them is matched; a wrapper
+// has one.
+//
+// The window covers the whole attempt, not the handshake alone, because what
+// the call leaves behind on success is the point: the record buffers, the
+// parsed certificate and the polling task's stack stay held for as long as the
+// bot runs, so the difference between the two lines is the standing cost of
+// having Telegram enabled rather than a transient. On the failure paths the
+// same pair says whether the attempt gave everything back.
+// CONFIG_TELEGRAM_BOT_HEAP_BRACKET brackets the individual requests inside
+// this window; the two nest and are meant to be read together.
+static telegram_app_reason_t bring_up(void) {
+    HEAP_MONITOR_BRACKET("before", "telegram bring-up");
+    telegram_app_reason_t reason = bring_up_attempt();
+    HEAP_MONITOR_BRACKET("after", "telegram bring-up");
+    return reason;
 }
 
 // True for the faults that can clear without the operator touching anything,
