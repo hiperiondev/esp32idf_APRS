@@ -105,7 +105,7 @@ static void ensureSockMutex(void) {
 // DUP_CACHE_SIZE_MIN..DUP_CACHE_SIZE_MAX. Read fresh on every call rather than
 // cached, so a web-admin save takes effect on the very next check without
 // requiring a reconnect or reboot; clamped here (not just at load/save time)
-// so an out-of-range value read back from a hand-edited config.json can never
+// so an out-of-range value read back from a hand-edited igate.json can never
 // index past s_dupCache[].
 static uint8_t dupCacheSize(void) {
     uint8_t n = g_config.dup_cache_size;
@@ -1592,7 +1592,7 @@ static bool connectAprsIsAttempt(void) {
     // "user <call> pass <code> vers ... filter <spec>\r\n" line, and every one
     // of those three fields is free-form user input (web "IGate" page) that
     // lands in it verbatim. An embedded CR/LF in any of them - reachable via
-    // the form's percent-encoding, e.g. "%0D%0A", or via a config.json written
+    // the form's percent-encoding, e.g. "%0D%0A", or via an igate.json written
     // outside the web UI - would inject additional attacker-controlled lines
     // into the session right after login, a classic protocol/command-injection
     // gap. Sanitizing all three here, at the single point where the login line

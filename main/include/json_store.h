@@ -15,8 +15,8 @@
  *     please contact their authors for more information.
  *
  * @brief Scaffolding shared by every subsystem that keeps its own JSON file on
- * LittleFS (config.json, bulletins.json, objitems.json, telemetry.json,
- * telegram.json).
+ * LittleFS (the per-functionality configuration files, bulletins.json,
+ * objitems.json, telemetry.json, telegram.json, winlink_mail.json).
  *
  * What each of those files contains is entirely its owner's business, and stays
  * there. What they all have to get right in exactly the same way is the part
@@ -240,8 +240,9 @@ static inline json_store_status_t json_store_read(const char *path, const char *
  * the hundreds of token writes a save performs into a handful of block writes.
  *
  * The buffer is a single static object in main/json_store.c, shared by every
- * store: config.json, telemetry.json, bulletins.json, objitems.json and
- * telegram.json all write their temp file through the same
+ * store: every configuration file, telemetry.json, bulletins.json,
+ * objitems.json, telegram.json and winlink_mail.json all write their temp file
+ * through the same
  * ::JSON_STORE_STDIO_BUF_SIZE bytes. It is static rather than a local so it
  * does not add half a kilobyte to the stack of whichever task is saving
  * (usually the HTTP server task, whose stack this firmware sizes tightly), and

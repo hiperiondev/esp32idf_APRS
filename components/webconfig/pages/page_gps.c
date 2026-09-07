@@ -522,7 +522,7 @@ esp_err_t page_gps_post(httpd_req_t *req) {
     // for a reboot that may never confirm anything.
     gps_apply_config();
 
-    bool ok = app_config_save();
+    bool ok = app_config_save_section(APP_CONFIG_SECTION_GPS);
     if (!ok)
         ESP_LOGE(TAG, "GPS settings could not be written to flash");
     web_send_save_result(req, ok, "/gps");

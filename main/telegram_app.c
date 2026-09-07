@@ -18,7 +18,7 @@
 // web admin renders.
 //
 // See telegram_app.h for the design rationale (why the bot's settings live in
-// their own file instead of config.json, and why bring-up runs on a supervisor
+// their own file, one per functionality, and why bring-up runs on a supervisor
 // task instead of being called inline).
 
 #include <errno.h>
@@ -2096,6 +2096,15 @@ void telegram_app_apply_config(void) {
     telegram_app_config_t cfg;
     bool read_ok = telegram_app_load(&cfg);
     json_store_status_t read_status = s_last_read_status;
+
+    // Make sure /storage/telegram.json exists, the same guarantee every
+    // configuration file carries: without this the page would only create it
+    // the first time someone saves it, leaving the functionality with no file
+    // of its own until then. Only a file that is not there yet is written -
+    // a corrupt or unreadable one is left alone and reported below, since
+    // replacing it would destroy a bot token the operator can still recover.
+    if (read_status == JSON_STORE_MISSING && !telegram_app_save(&cfg))
+        ESP_LOGW(TAG, "telegram store could not be created at %s", TELEGRAM_APP_PATH);
 
     lock();
 

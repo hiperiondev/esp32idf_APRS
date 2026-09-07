@@ -15,7 +15,7 @@ Archiviazione separata
 ======================
 
 A differenza della maggior parte delle impostazioni, la configurazione di
-telemetria deliberatamente **non** vive in ``g_config``/``config.json``. Persiste
+telemetria deliberatamente **non** vive in ``g_config``. Persiste
 nel suo piccolo file LittleFS, ``/storage/telemetry.json``, allo stesso modo in
 cui bollettini e oggetti/item mantengono i propri file. Al primo avvio, o quando
 il file manca, viene creato un insieme vuoto predefinito così che

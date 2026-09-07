@@ -188,9 +188,10 @@ Risposte memorizzate
 --------------------
 
 Tutto ciò che il servizio rimanda indietro è conservato in
-``/storage/winlink.json``, dalla più vecchia alla più recente, fino alle ultime
-24 risposte. Cancellarle dalla pagina rimuove quel file e nient'altro — le
-impostazioni dell'account vivono in ``config.json`` e restano intatte.
+``/storage/winlink_mail.json``, dalla più vecchia alla più recente, fino alle
+ultime 24 risposte. Cancellarle dalla pagina rimuove quel file e nient'altro —
+le impostazioni dell'account vivono in ``/storage/winlink.json`` e restano
+intatte.
 
 Il gateway
 ==========
@@ -234,7 +235,7 @@ terzo.
 Configurazione
 ==============
 
-Ogni impostazione è una chiave ``wl*`` di ``config.json`` — vedere
+Ogni impostazione è una chiave ``wl*`` di ``/storage/winlink.json`` — vedere
 :ref:`it-config-json`. La password vi è memorizzata in chiaro, esattamente come
 già avviene per il passcode APRS-IS; chi può leggere la partizione di
 archiviazione può leggere entrambe.

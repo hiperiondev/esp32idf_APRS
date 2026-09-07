@@ -287,9 +287,9 @@ The pages
        identifiers no longer fit in 32 bits. Below that, the Mini App address
        and the fixed-size authorized-user and allowed-group-chat tables (up to
        8 users and 4 group chats, each an identifier plus a display name).
-       Everything on this page is stored in ``/storage/telegram.json``, not in
-       ``config.json``, so it can also be downloaded and uploaded from the File
-       Storage page. The status
+       Everything on this page is stored in ``/storage/telegram.json``, its own
+       file like every other page's, so it can also be downloaded and uploaded
+       from the File Storage page. The status
        table below the form reports where the connection stands and, when it
        stands still, exactly which step failed and what to do about it - the
        settings file is missing or unparseable, the token is empty or not of
@@ -395,7 +395,7 @@ The pages
 .. note::
 
    Every control on these pages drives runtime behaviour: a setting that reaches
-   ``config.json`` is read by the service that owns it. The digipeater always
+   its page's file is read by the service that owns it. The digipeater always
    handles WIDEn-N and repeats without an added delay, so neither is offered as
    an option.
 

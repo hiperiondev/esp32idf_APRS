@@ -21,7 +21,7 @@ cose che devono precedere tutto, e poi cede il controllo a un task dedicato:
     └─ xTaskCreate(app_task, 8192 B, prio 5)   ── e ritorna; FreeRTOS recupera il task principale
 
    app_task()
-    ├─ app_config_load()                  ← /storage/config.json, o scrivi+carica default di fabbrica
+    ├─ app_config_load()                  ← un file per funzionalità sotto /storage, creando quelli mancanti
     ├─ cpu_freq_apply()                   ← 80/160/240 MHz dalla pagina System
     ├─ net_state_init()                   ← "ancora nessun internet"
     ├─ wifi_init()                        ← AP / STA / AP+STA secondo g_config.wifi_mode

@@ -79,7 +79,7 @@ Bulletin text has ``|`` and ``~`` filtered out at transmission time — both
 characters are reserved for the base-91 comment telemetry group
 (:ref:`en-telemetry`) and must not appear in ordinary free text on the air.
 A CR or LF, by contrast, is stripped at storage time — as the text is
-POSTed from the Bulletins page or loaded from ``config.json`` — since the
+POSTed from the Bulletins page or loaded from ``bulletins.json`` — since the
 stored text is later written as one line of an APRS-IS/AX.25 message and
 neither format escapes an embedded line break.
 
@@ -168,7 +168,7 @@ Why separate JSON files
 
 Both subsystems, like telemetry, keep page-specific state that would
 significantly enlarge the resident ``app_config_t`` (and therefore every
-``config.json`` save, which runs against a small, fragmented heap). Keeping
+configuration save, which runs against a small, fragmented heap). Keeping
 them in their own files means the resident config stays lean and each
 subsystem's save touches only its own data. Each file is written with the same
 streaming, byte-at-a-time JSON writer the main config uses, under its own mutex,

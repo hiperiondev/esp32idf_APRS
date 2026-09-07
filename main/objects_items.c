@@ -1446,7 +1446,17 @@ uint32_t objitems_service(void) {
 void objitems_start(void) {
     // The transmitter is driven by the shared beacon scheduler
     // (beacon_scheduler_start()) via objitems_service(), so there is no task to
-    // create here - only the LittleFS lock to bring up.
+    // create here - only the LittleFS lock to bring up and the store to put in
+    // place.
     json_store_lock_ensure(&s_lock);
+
+    // Make sure /storage/objitems.json exists from the very first boot, the
+    // same guarantee every configuration file carries: the page would
+    // otherwise only create it the first time someone saves it, leaving the
+    // functionality with no file of its own until then. The load itself
+    // persists the defaults it substitutes for an absent file, so reading the
+    // set once here is all it takes.
+    objitems_t set;
+    objitems_load(&set);
     ESP_LOGI(TAG, "Objects/Items configured (per-element interval, default=%us; driven by beacon scheduler)", (unsigned)OBJITEM_DEFAULT_INTERVAL_S);
 }

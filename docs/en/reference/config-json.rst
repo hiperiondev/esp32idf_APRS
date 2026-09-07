@@ -4,25 +4,36 @@
 Configuration Storage
 =====================
 
-The resident configuration persists to ``/storage/config.json`` on LittleFS.
-This reference summarises the storage mechanics; for the field groups see
+The resident configuration persists to LittleFS as **one file per web admin
+functionality**, each named after the page that owns it. This reference
+summarises the storage mechanics; for the field groups see
 :ref:`en-configuration`.
 
 Mechanics
 =========
 
-* **Path:** ``/storage/config.json``.
-* **Loaded** with cJSON; **saved** by a streaming token-at-a-time writer.
-* **Atomic save:** write ``config.json.tmp``, then rename.
-* Missing or corrupt → defaults applied and immediately saved, so the file
-  always exists and is consistent.
-* Out of memory → the file is left exactly as it is and the load reports a
-  failure. A read or a parse that ran out of RAM says nothing about the file's
-  content, so it must never take the corrupt path above: the reader scans the
-  text without allocating anything to tell the two apart, and only genuinely
-  unparseable bytes are overwritten.
-* Field names / JSON keys are kept 1:1 with the reference project, so old files
-  load unchanged; unknown keys are ignored.
+* **One file per functionality**, under ``/storage``: ``system.json``,
+  ``station.json``, ``wireless.json``, ``radio.json``, ``igate.json``,
+  ``brandmeister.json``, ``digi.json``, ``tracker.json``, ``weather.json``,
+  ``gps.json``, ``message.json``, ``winlink.json``, ``query.json``. There is no
+  combined configuration file.
+* **Loaded** with cJSON, one file at a time; **saved** by a streaming
+  token-at-a-time writer.
+* **Atomic save:** write ``<name>.json.tmp``, then rename.
+* **A page saves only its own file.** The *My Station* page is the exception
+  that names several, because its "Use My Station Data" mirrors write into five
+  other services' fields.
+* Missing, empty or corrupt → that file is rewritten from the defaults during
+  the load, so every functionality always has a file and the device always
+  comes up on a reachable web admin.
+* Out of memory → **nothing** is written and the load reports a failure. A read
+  or a parse that ran out of RAM says nothing about the file's content, so it
+  must never take the path above: the reader scans the text without allocating
+  anything to tell the two apart, and only genuinely unparseable bytes are
+  overwritten.
+* Field names / JSON keys are kept 1:1 with the reference project, so an
+  operator moving between the two recognises them; unknown keys are ignored and
+  a key a file does not carry keeps its documented default.
 
 Other persistent files
 ======================
@@ -33,9 +44,6 @@ Other persistent files
 
    * - File
      - Contents
-   * - ``/storage/config.json``
-     - The resident ``app_config_t`` (system, station, Wi-Fi, IGate, BrandMeister, digi,
-       tracker, weather, GPS, modem, message).
    * - ``/storage/telemetry.json``
      - Telemetry channel-0 config (``telemetry_config_t``): analog A1–A5,
        digital B1–B8, report parameters, definition-message toggles.
@@ -45,28 +53,32 @@ Other persistent files
    * - ``/storage/objitems.json``
      - The five APRS objects/items (name, position, symbol, course/speed,
        comment, interval, permanent flag).
-   * - ``/storage/winlink.json``
-     - The replies the Winlink service has sent back, oldest first. The account
-       settings themselves are ``wl*`` keys in ``config.json``; only the
-       replies live here, so clearing them never touches the configuration.
    * - ``/storage/telegram.json``
      - The Telegram bot's whole configuration: the enable switch, the bot
        token, the administrator identifier, the Mini App address and the
        authorized user and group chat lists.
+   * - ``/storage/winlink_mail.json``
+     - The replies the Winlink service has sent back, oldest first. The account
+       settings themselves are the ``wl*`` keys in ``winlink.json``; only the
+       replies live here, so clearing them never touches the configuration.
 
-All six use the same streaming writer, each under its own mutex, each with an
-explicit ``setvbuf()`` to avoid a lazy large stdio-buffer allocation mid-write.
-The ``setvbuf()`` buffer is a single static object shared by all six stores,
-since the filesystem-wide writer gate keeps two saves from overlapping.
+Every store uses the same streaming writer, each under its own mutex, each with
+an explicit ``setvbuf()`` to avoid a lazy large stdio-buffer allocation
+mid-write. The ``setvbuf()`` buffer is a single static object shared by all of
+them, since the filesystem-wide writer gate keeps two saves from overlapping.
+
+Every one of these files is created from its defaults during bring-up if it
+does not exist, so a first boot leaves a complete set on flash without the
+operator visiting a single page.
 
 Factory reset
 =============
 
 ``POST /default`` (the *factory reset* button on the System page) calls
 ``app_config_factory_reset()``, which wipes the configuration back to
-``app_config_set_defaults()`` and persists it. It does not, by itself, remove the
-separate telemetry/bulletins/objitems files — those regenerate defaults on next
-access if deleted via the Storage page.
+``app_config_set_defaults()`` and rewrites **every** section file. It does not,
+by itself, remove the separate telemetry/bulletins/objitems/telegram files —
+those regenerate defaults on next access if deleted via the Storage page.
 
 BrandMeister interconnect keys
 ==============================

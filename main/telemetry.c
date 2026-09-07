@@ -20,7 +20,7 @@
 // data_interval, plus PARM/UNIT/BITS metadata at info_interval.
 //
 // Configuration is stored in its own LittleFS file (/storage/telemetry.json),
-// NOT in g_config/config.json - see the persistence section below and
+// NOT in g_config - see the persistence section below and
 // telemetry.h for the rationale (same pattern bulletins.c uses).
 
 #include <math.h>
@@ -100,7 +100,7 @@ static void telemetry_unlock(void) {
 }
 
 // -------------------------------------------------------------------------
-// Persistence: /storage/telemetry.json (own file, not g_config/config.json)
+// Persistence: /storage/telemetry.json (own file, not g_config)
 // -------------------------------------------------------------------------
 
 void telemetry_config_set_defaults(telemetry_config_t *out) {

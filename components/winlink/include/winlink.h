@@ -193,7 +193,8 @@ typedef enum {
  * and after message_init(), and before winlink_tick_1hz() is first called.
  *
  * @details Creates the two mutexes that guard the mailbox and the session
- * state, loads the mailbox from @c /storage/winlink.json, registers the
+ * state, loads the mailbox from @c /storage/winlink_mail.json - creating it
+ * from an empty mailbox when it does not exist yet - registers the
  * message observer that feeds replies to the state machine, and tells the
  * messaging engine which addressee is the Winlink service so that
  * ::app_config_t::wl_inet_only can keep the session off the air. The session

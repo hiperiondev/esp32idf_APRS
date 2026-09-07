@@ -16,51 +16,129 @@ modem AFSK, System/autenticazione HTTP, Message, Query e l'account Winlink.
 
 I nomi dei campi e le chiavi JSON sono mantenuti **1:1** con il ``config.h``/
 ``config.cpp`` del progetto di riferimento originale, così che ogni valore che
-l'amministrazione web mostra abbia una casa e i vecchi file ``config.json`` si
-carichino senza modifiche.
+l'amministrazione web mostra abbia una casa e un operatore che si sposta tra i
+due progetti riconosca le chiavi.
+
+Un file per funzionalità
+========================
+
+La struttura residente è una cosa; dove viene memorizzata è un'altra. Ogni
+pagina dell'amministrazione web con impostazioni persistenti ha **un file
+proprio** sotto ``/storage``, con il nome della pagina — il menu laterale è
+l'indice dell'elenco dei file:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 70
+
+   * - File
+     - Pagina
+   * - ``system.json``
+     - Sistema: clock della CPU, host SNTP e risincronizzazione, fuso orario,
+       credenziali dell'amministrazione web.
+   * - ``station.json``
+     - My Station: nominativo, posizione, dati d'antenna PHG, ambiguità, opzioni
+       del rapporto di stato, no-archive e DAO.
+   * - ``wireless.json``
+     - Wireless: selezione dell'interfaccia, potenza TX, canale/SSID/chiave del
+       SoftAP, i cinque profili stazione.
+   * - ``radio.json``
+     - Radiomodem: modulazione AFSK/FSK, FX.25, preambolo, buffer TX,
+       temporizzazione CSMA, tenuta del PTT, limitatore di duty cycle.
+   * - ``igate.json``
+     - IGate: entrambe le direzioni di gateway e i loro filtri, liste amici e
+       satelliti, cache dei duplicati, filtri di distanza e prefisso, gating dei
+       messaggi, i quattro slot server APRS-IS, il beacon e la sua estensione
+       dati.
+   * - ``brandmeister.json``
+     - BrandMeister: gli interruttori di interconnessione e l'elenco dei
+       nominativi gateway.
+   * - ``digi.json``
+     - Digipeater: la tabella degli alias e le regole di ripetizione, il beacon
+       **e i quattro preset di percorso condivisi**, che si modificano in questa
+       pagina.
+   * - ``tracker.json``
+     - Tracker: il beacon, le opzioni Mic-E e i parametri di SmartBeaconing.
+   * - ``weather.json``
+     - Weather: il rapporto e la mappatura dei sensori per campo.
+   * - ``gps.json``
+     - GPS: l'interruttore del ricevitore.
+   * - ``message.json``
+     - Message: il servizio di messaggistica, i tentativi, la GPIO d'allarme e i
+       gruppi di messaggi.
+   * - ``winlink.json``
+     - Winlink: le impostazioni di account e sessione (le risposte stanno in un
+       file separato, ``winlink_mail.json``).
+   * - ``query.json``
+     - Query: gli interruttori del risponditore e il beacon di capacità.
+
+Ogni riga è un valore di ``app_config_section_t``, e la tabella ``SECTIONS`` in
+``app_config.c`` nomina il file e le due metà del suo codec. Il gestore di
+salvataggio di una pagina chiama ``app_config_save_section()`` con la propria
+sezione, quindi salvare il digipeater non riscrive mai il file dell'IGate e una
+scrittura fallita non può portarsi via le impostazioni di un'altra
+funzionalità. La pagina *My Station* è l'unica che ne nomina diverse: i suoi
+specchi "Use My Station Data" toccano campi di altri cinque servizi, quindi
+passa a ``app_config_save_sections()`` ogni sezione toccata — un salvataggio
+parziale lascerebbe l'identità della stazione divisa tra file che non
+concordano più.
+
+L'ordine di lettura conta esattamente in un punto: il lettore BrandMeister
+riapplica l'interblocco del monitor mondiale contro il gating INET→RF che porta
+il file dell'IGate, quindi la sezione IGate viene letta per prima.
 
 .. note::
 
-   La configurazione di telemetria, bollettini e oggetti/item deliberatamente
-   **non** vive in ``g_config``. Persiste nei propri file LittleFS
-   (``/storage/telemetry.json``, ``bulletins.json``, ``objitems.json``) per
-   mantenere piccola la configurazione residente — e quindi ogni salvataggio di
-   ``config.json``. La pagina Telegram porta la stessa idea un passo più in là:
-   la sua configurazione *intera*, interruttore di abilitazione compreso, vive
-   in ``/storage/telegram.json`` e nessuna sua parte sta in ``g_config``.
-   L'account Winlink è l'eccezione che conferma la regola — la sua manciata di
-   campi ``wl*`` è abbastanza piccola da stare in ``g_config``, e solo le
-   risposte che il servizio rimanda finiscono in un file proprio
-   (``/storage/winlink.json``).
+   Le pagine senza impostazioni persistenti proprie — Dashboard, Snd/Rcv Msg,
+   Console Logs, File Storage, About — non hanno file. Quattro sottosistemi
+   mantengono strutture proprie invece di campi di ``app_config_t``, e
+   possiedono direttamente i loro file: ``/storage/telemetry.json``,
+   ``bulletins.json``, ``objitems.json`` e ``telegram.json``. Il motivo è la
+   dimensione — quelle tabelle ingrandirebbero significativamente la struttura
+   residente — ma il risultato è la stessa regola: una funzionalità, un file.
 
 Caricamento e salvataggio
 =========================
 
-* **Caricato** con **cJSON**. Se il file manca o è corrotto, si applicano i
-  valori predefiniti **e si salvano immediatamente**, così che il file esista
-  sempre e sia coerente. Se invece il caricamento è rimasto **senza memoria**,
-  il file viene lasciato intatto e l'errore viene segnalato: ``cJSON_Parse()``
-  restituisce ``NULL`` sia per un file corrotto sia per un'allocazione fallita,
-  quindi ``json_store_read()`` riesamina il testo con un controllo che non
-  alloca nulla prima di decidere quale dei due sia avvenuto. Confonderli qui
-  cancellerebbe una configurazione valida durante un avvio carico.
-* **Caricato sul posto**: ``config_from_json()`` scrive l'insieme dei valori
-  predefiniti direttamente nella struttura di destinazione e poi legge il valore
-  di ripiego di ogni chiave dal campo stesso che sta per sovrascrivere. Ogni
-  campo è assegnato esattamente una volta, sempre dopo quella chiamata, così un
-  valore di ripiego contiene ancora il suo predefinito nell'istante in cui viene
-  letto. Questo tiene una seconda ``app_config_t`` — la dimensione dell'intera
-  configurazione — fuori dallo stack del task che carica, che ha già accanto a sé
-  l'albero cJSON dell'intero file vivo nell'heap.
+* **Prima i predefiniti, una volta sola.** ``app_config_load()`` riempie
+  l'intera struttura da ``app_config_set_defaults()`` prima di aprire il primo
+  file, poi legge ogni sezione sopra di essa. Ogni lettore di sezione prende il
+  valore di ripiego di ogni chiave dal campo stesso che sta per sovrascrivere,
+  quindi una chiave che un file non porta — e una sezione il cui file non esiste
+  affatto — conserva il suo predefinito documentato. Questo tiene anche una
+  seconda ``app_config_t`` fuori dallo stack del task che carica, che ha già
+  accanto a sé l'albero cJSON di una sezione vivo nell'heap.
+* **Caricato** con **cJSON**, un file alla volta, quindi il picco di
+  allocazione è la sezione più grande e non l'intera configurazione.
+* **Mancante, vuoto o corrotto** → quella sezione viene riscritta dai valori
+  predefiniti prima che il caricamento ritorni. È questo a garantire che ogni
+  funzionalità abbia un file in flash dal primo avvio in poi, senza che un
+  operatore debba mai visitare la sua pagina.
+* **Senza memoria** → non viene scritto proprio nulla e l'intero caricamento
+  segnala l'errore. ``cJSON_Parse()`` restituisce ``NULL`` sia per un file
+  corrotto sia per un'allocazione fallita, quindi ``json_store_read()``
+  riesamina il testo con un controllo che non alloca nulla prima di decidere
+  quale dei due sia avvenuto; confonderli cancellerebbe una configurazione
+  valida durante un avvio carico. Riscrivere le sezioni genuinamente assenti
+  mentre un'altra è ancora non letta sarebbe anche peggio — persisterebbe una
+  configurazione assemblata metà da flash e metà dai predefiniti — quindi la
+  passata non scrive nulla e ``main.c`` riprova una volta prima di ripiegare
+  sull'insieme di fabbrica.
 * **Salvato** da un piccolo scrittore JSON token per token (``jw_t``/``jadd_*``)
   che scorre direttamente nel file, evitando la doppia allocazione di heap che
   necessiterebbero un albero cJSON completo più il suo buffer serializzato. Un
   buffer statico di ``setvbuf()`` è installato subito dopo ``fopen()`` così che
   newlib non allochi pigramente un grande buffer stdio a metà scrittura.
-* **Atomico**: scrive ``/storage/config.json.tmp``, poi rinomina.
+* **Atomico**, per file: scrive ``<nome>.json.tmp``, poi rinomina. Un
+  salvataggio di più sezioni prende una sola volta il gate di scrittura
+  dell'intero filesystem attorno all'intera tornata, e tenta ogni file
+  selezionato anche dopo che uno è fallito, così un filesystem pieno non lascia
+  gli altri con impostazioni che l'operatore ha già sostituito.
 
 API pubblica: ``app_config_set_defaults()``, ``app_config_load()``,
-``app_config_save()``, ``app_config_factory_reset()``, e l'istanza viva
+``app_config_save_section()``, ``app_config_save_sections()``,
+``app_config_save()`` (tutte le sezioni), ``app_config_section_path()``,
+``app_config_factory_reset()``, e l'istanza viva
 ``extern app_config_t g_config``.
 
 Concorrenza: il lock di configurazione

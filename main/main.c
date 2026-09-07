@@ -55,7 +55,7 @@ static const char *TAG = "main";
 #define APP_TASK_STACK_SIZE 8192
 #define APP_TASK_PRIORITY   5
 
-// Pause between the two boot attempts at reading config.json. The failure
+// Pause between the two boot attempts at reading the configuration. The failure
 // app_config_load() reports is a read that could not be completed at all
 // (typically no contiguous heap for the parse), so the retry is worth making
 // only after the allocations made during early startup have settled.
@@ -347,7 +347,7 @@ static void wifi_init(void) {
     // rather than from here. See that handler.
 
     // The units differ: the config field is dBm, esp_wifi_set_max_tx_power()
-    // takes quarter-dBm, hence the x4. Both the form and config.json paths
+    // takes quarter-dBm, hence the x4. Both the form and wireless.json paths
     // clamp the stored value to WIFI_TX_POWER_DBM_MIN..MAX, so the product
     // always lands inside the range the driver accepts and fits an int8_t.
     // Only meaningful once the radio is started.
@@ -389,7 +389,8 @@ static void web_server_start_when_heap_ready(void) {
 // All of the actual application work happens here, on a task created with
 // its own APP_TASK_STACK_SIZE stack, isolated from the system main task.
 static void app_task(void *arg) {
-    // Loads config.json, or writes+loads factory defaults if missing/corrupt.
+    // Loads every section file, creating from factory defaults any that are
+    // missing or corrupt.
     // A false return is the one case that leaves g_config untouched - the file
     // is believed intact but could not be read - so the whole station would
     // otherwise run from a zero-initialized struct: no callsign, no beacon

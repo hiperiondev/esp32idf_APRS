@@ -21,8 +21,8 @@ Please contact their authors for information about those projects:
 * **LibAPRS** — Mark Qvist — https://github.com/markqvist/LibAPRS
 
 The configuration schema, web-admin layout and dashboard semantics follow the
-reference **esp32idf_APRS / ESP32APRS** project so that existing ``config.json``
-files and user expectations carry over.
+reference **esp32idf_APRS / ESP32APRS** project so that JSON key names and user
+expectations carry over.
 
 Bundled components
 ==================

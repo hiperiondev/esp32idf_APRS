@@ -158,7 +158,7 @@ esp_err_t page_system_post(httpd_req_t *req) {
 
     // The page rendered next is built from the live settings, so the save
     // result is what decides whether the operator is told this reached flash.
-    bool ok = app_config_save();
+    bool ok = app_config_save_section(APP_CONFIG_SECTION_SYSTEM);
     if (!ok)
         ESP_LOGE(TAG, "system settings could not be written to flash");
 

@@ -184,7 +184,8 @@ y conviene interiorizarlas de antemano:
 
 **Una configuración residente, una copia viva.**
    Una única instancia ``app_config_t g_config`` es la fuente de verdad que lee
-   cada subsistema. Persiste en ``/storage/config.json``. Los subsistemas nunca
+   cada subsistema. Persiste en un archivo por funcionalidad de la
+   administración web bajo ``/storage``. Los subsistemas nunca
    duplican el estado de configuración; leen ``g_config`` directamente. Los
    subsistemas que necesitan un estado propio más grande y específico de página
    lo guardan en archivos LittleFS separados en lugar de inflar ``g_config``:
@@ -225,8 +226,8 @@ El proyecto y su componente de módem son de **Emiliano Augusto González
 anteriores: **VP-Digi** (SQ8VPS), **ESP32APRS_Audio** (nakhonthai) y
 **LibAPRS** (Mark Qvist). El esquema de configuración, la disposición de la
 administración web y la semántica del panel siguen el proyecto de referencia
-**ESP32APRS** para que los archivos ``config.json`` existentes y las
-expectativas del operador se mantengan. Véase :ref:`es-credits` para la
+**ESP32APRS** para que los nombres de clave JSON y las expectativas del
+operador se mantengan. Véase :ref:`es-credits` para la
 atribución y la licencia completas.
 
 El firmware se distribuye bajo la **Licencia Pública General GNU v3.0**.

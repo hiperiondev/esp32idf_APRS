@@ -90,7 +90,7 @@ static const char *TAG = "aprs_service";
 // comment inside that function).
 //
 // This is g_config.rf_tx_buffers, web-configurable on the Radiomodem page's
-// Audio/AFSK section as "TX buffers", and persisted to /storage/config.json.
+// Audio/AFSK section as "TX buffers", and persisted to /storage/radio.json.
 // aprs_service_send_tnc2() reads g_config.rf_tx_buffers directly on every
 // call, so a Save on that page takes effect immediately, on the very next
 // transmit, without a reboot. RF_TX_BUFFERS_MIN/MAX (aprs_service.h) bound

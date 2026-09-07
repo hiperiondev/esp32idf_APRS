@@ -25,7 +25,7 @@
  * below.
  *
  * Unlike most settings, telemetry configuration deliberately does NOT live in
- * the resident g_config struct / config.json: it persists to its own small
+ * the resident g_config struct: it persists to its own small
  * LittleFS file (/storage/telemetry.json), the same way bulletins.c keeps
  * bulletins.json separate - see bulletins.h for the full rationale. On first
  * boot, or whenever the file is missing, an empty/default set is created so

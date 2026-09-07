@@ -22,8 +22,8 @@ mostra come frase tradotta.
 Il proprio file di configurazione
 ====================================
 
-Tutto ciò di cui il bot ha bisogno risiede in ``/storage/telegram.json``, non
-in ``config.json``:
+Tutto ciò di cui il bot ha bisogno risiede in ``/storage/telegram.json``, il suo
+file come quello di ogni altra pagina:
 
 .. list-table::
    :header-rows: 1

@@ -18,22 +18,23 @@
  * ::g_config instance, plus the compile-time module (@c ENABLE_*) and UI
  * language (@c LANGUAGE) selection macros.
  *
- * Every value the web admin shows or edits has its field here, and the whole
- * structure persists to LittleFS as /storage/config.json under the JSON key
- * names this header documents field by field.
+ * Every value the web admin shows or edits has its field here. The structure
+ * persists to LittleFS as one file per web admin functionality - see
+ * ::app_config_section_t for the list - under the JSON key names this header
+ * documents field by field.
  *
  * The structure holds exactly the settings the firmware reads at runtime and
  * nothing else. That is a size decision as much as a tidiness one:
- * app_config_save() runs against a small, fragmented heap (see the streaming
- * writer there), so a key that no code consults is pure cost on every save.
+ * a save runs against a small, fragmented heap (see the streaming writer
+ * there), so a key that no code consults is pure cost on every save.
  * Settings that are compile-time board wiring rather than operator choices are
  * therefore absent by design - the PTT pin and its active level, for instance,
  * are the ::MODEM_PTT_GPIO / ::MODEM_PTT_ACTIVE_HIGH constants and have no
  * field here.
  *
- * config_from_json() ignores any key it does not recognise, so a config.json
- * carrying keys this build has no field for still loads, and every field the
- * file does not mention keeps its default.
+ * A section reader ignores any key it does not recognise, so a file carrying
+ * keys this build has no field for still loads, and every field the file does
+ * not mention keeps its default.
  *
  * Exactly one language is built into the firmware image at a time - there is no
  * runtime language switch and no other language's strings are compiled in. To
@@ -107,8 +108,8 @@
  * @name Winlink (APRSLink) accepted ranges
  *
  * Single source of truth for the bounds the Winlink page's form advertises and
- * for the clamps applied both in its POST handler and in config_from_json(),
- * so a hand-edited config.json cannot put a value on the device that the form
+ * for the clamps applied both in its POST handler and when the file is read,
+ * so a hand-edited winlink.json cannot put a value on the device that the form
  * would have refused.
  * @{
  */
@@ -159,7 +160,7 @@
  * deliberately absent here.
  *
  * New rows go immediately before ::WX_SENSOR_NUM, which keeps every existing
- * row at the position a stored @c config.json already uses. The loader reads
+ * row at the position a stored @c weather.json already uses. The loader reads
  * the persisted arrays element by element and leaves anything the stored array
  * is too short to cover at its default, so a file written by an earlier build
  * loads with the new field disabled and every other field mapped as before.
@@ -195,7 +196,7 @@ typedef enum {
  *
  * esp_wifi_set_config() rejects an AP channel outside this range with
  * ESP_ERR_INVALID_ARG, so the stored value is clamped both when a form is
- * saved and when config.json is loaded, and the AP setup in main.c never
+ * saved and when wireless.json is loaded, and the AP setup in main.c never
  * treats a driver rejection as fatal.
  * @{
  */
@@ -238,8 +239,8 @@ typedef enum {
  * previous power in force, which reads to an operator as "minimum power" while
  * being "no change". The upper end is the maximum the ESP32 radio is rated
  * for. The stored value is therefore clamped both when the form is saved and
- * when config.json is loaded, so the value main.c multiplies by four is always
- * one the driver accepts.
+ * when wireless.json is loaded, so the value main.c multiplies by four is
+ * always one the driver accepts.
  * @{
  */
 #define WIFI_TX_POWER_DBM_MIN     2  /**< Lowest power the WiFi driver accepts (8 quarter-dBm). */
@@ -255,7 +256,7 @@ typedef enum {
  * accepts the service string "0" and the following connect() then fails, so
  * the IGate would sit in a reconnect loop reporting a destination it could
  * never have reached. The value is therefore clamped both when the form is
- * saved and when config.json is loaded.
+ * saved and when igate.json is loaded.
  * @{
  */
 #define APRS_PORT_MIN     1     /**< Lowest connectable TCP port. */
@@ -271,7 +272,7 @@ typedef enum {
  * "SmartBeaconing" description). The two-layer clamp policy every other
  * bounded field in this project follows applies here too: the web form
  * bounds what the operator can enter, and app_config_load() bounds what a
- * hand-edited or older config.json can carry into the beacon builder.
+ * hand-edited tracker.json can carry into the beacon builder.
  * @{
  */
 #define TRK_SB_SLOW_INTERVAL_S_MIN 30    /**< Lowest selectable slow-rate (stationary) interval, seconds. */
@@ -483,10 +484,10 @@ typedef enum {
  * @{
  */
 #define DUP_CACHE_SIZE_MAX           40     /**< Compile-time capacity of the duplicate cache array (igate.c). */
-#define DUP_CACHE_SIZE_MIN           4      /**< Lowest g_config.dup_cache_size accepted from the web form / config.json. */
+#define DUP_CACHE_SIZE_MIN           4      /**< Lowest g_config.dup_cache_size accepted from the web form / igate.json. */
 #define DUP_CACHE_SIZE_DEFAULT       20     /**< Factory default for g_config.dup_cache_size. */
-#define DUP_CACHE_TIMEOUT_MS_MIN     1000   /**< Lowest g_config.dup_cache_timeout_ms accepted from the web form / config.json. */
-#define DUP_CACHE_TIMEOUT_MS_MAX     120000 /**< Highest g_config.dup_cache_timeout_ms accepted from the web form / config.json. */
+#define DUP_CACHE_TIMEOUT_MS_MIN     1000   /**< Lowest g_config.dup_cache_timeout_ms accepted from the web form / igate.json. */
+#define DUP_CACHE_TIMEOUT_MS_MAX     120000 /**< Highest g_config.dup_cache_timeout_ms accepted from the web form / igate.json. */
 #define DUP_CACHE_TIMEOUT_MS_DEFAULT 30000  /**< Factory default for g_config.dup_cache_timeout_ms, in milliseconds. */
 /** @} */
 
@@ -603,7 +604,8 @@ typedef struct {
  * the web POST handlers.
  *
  * @details The single ::g_config instance is the live copy every subsystem
- * reads. It persists to /storage/config.json (see app_config_save()). Fields
+ * reads. It persists to one file per web admin functionality (see
+ * ::app_config_section_t and app_config_save_sections()). Fields
  * are grouped by web admin page: system/time, "My Station" identity, WiFi,
  * IGate, Digipeater, Tracker, Weather, the AFSK/TNC modem, System/HTTP auth,
  * the audio-modem PTT timing, and Message. Access to string/array fields must
@@ -695,9 +697,10 @@ typedef enum {
  * @brief The whole runtime configuration of the station, in one structure.
  *
  * A single instance, ::g_config, is the live copy every subsystem reads. It is
- * populated at boot by app_config_load() - defaults first, then whatever
- * /storage/config.json overrides - and rewritten field by field by the web
- * admin's POST handlers, which call app_config_save() to persist it again.
+ * populated at boot by app_config_load() - defaults first, then whatever the
+ * section files override - and rewritten field by field by the web admin's
+ * POST handlers, which call app_config_save_section() to persist the file they
+ * edited.
  *
  * The fields are grouped in the order the web admin presents them: system and
  * "My Station" identity first, then one block per service (IGate, BrandMeister,
@@ -1135,23 +1138,130 @@ extern app_config_t g_config;
 void app_config_set_defaults(app_config_t *c);
 
 /**
- * @brief Load /storage/config.json into ::g_config.
+ * @brief One stored configuration section: the settings of a single web admin
+ * functionality, and the file on LittleFS that holds exactly those.
  *
- * If the file is missing/corrupt, defaults are applied and immediately saved
- * so the file always exists and is consistent.
+ * @details The sidebar of the web admin is the index of this list: every page
+ * that owns persistent settings has one entry here and one file of its own
+ * under /storage, named after the page. A page's save handler rewrites only
+ * its own file (app_config_save_section()), so a change to the digipeater
+ * never rewrites the IGate's settings and a file that fails to write cannot
+ * take another functionality's configuration down with it.
  *
- * @return true if an existing file was loaded, false if defaults were written.
+ * The values themselves stay in the one resident ::app_config_t: this
+ * enumeration partitions the persistence, not the structure, so every
+ * subsystem still reads ::g_config exactly as before.
+ *
+ * The order is the order app_config_load() reads the files in, and it matters
+ * in one place: ::APP_CONFIG_SECTION_BRANDMEISTER re-applies the worldwide
+ * monitor interlock against the INET->RF gating that
+ * ::APP_CONFIG_SECTION_IGATE carries, so the IGate file is read first.
+ *
+ * Pages with no persistent settings of their own (Dashboard, Snd/Rcv Msg,
+ * Console Logs, File Storage, About) have no entry, and the four subsystems
+ * that keep their own structures rather than fields of ::app_config_t
+ * (bulletins, objects/items, telemetry, Telegram) own their files directly -
+ * see bulletins.h, objects_items.h, telemetry.h and telegram_app.h.
+ */
+typedef enum {
+    APP_CONFIG_SECTION_SYSTEM = 0,   /**< System page -> /storage/system.json. */
+    APP_CONFIG_SECTION_STATION,      /**< My Station page -> /storage/station.json. */
+    APP_CONFIG_SECTION_WIRELESS,     /**< Wireless page -> /storage/wireless.json. */
+    APP_CONFIG_SECTION_RADIO,        /**< Radiomodem page -> /storage/radio.json. */
+    APP_CONFIG_SECTION_IGATE,        /**< IGate page -> /storage/igate.json. */
+    APP_CONFIG_SECTION_BRANDMEISTER, /**< BrandMeister page -> /storage/brandmeister.json. */
+    APP_CONFIG_SECTION_DIGIPEATER,   /**< Digipeater page -> /storage/digi.json, including the four shared path presets edited there. */
+    APP_CONFIG_SECTION_TRACKER,      /**< Tracker page -> /storage/tracker.json. */
+    APP_CONFIG_SECTION_WEATHER,      /**< Weather page -> /storage/weather.json. */
+    APP_CONFIG_SECTION_GPS,          /**< GPS page -> /storage/gps.json. */
+    APP_CONFIG_SECTION_MESSAGE,      /**< Message page -> /storage/message.json. */
+    APP_CONFIG_SECTION_WINLINK,      /**< Winlink page -> /storage/winlink.json (the account settings; the mailbox is winlink_mail.json). */
+    APP_CONFIG_SECTION_QUERY,        /**< Query page -> /storage/query.json. */
+    APP_CONFIG_SECTION_NUM           /**< Sentinel: number of stored sections. Not a section. */
+} app_config_section_t;
+
+/** @brief Select-mask bit of one ::app_config_section_t, for app_config_save_sections(). */
+#define APP_CONFIG_SECTION_BIT(section) (1u << (section))
+
+/** @brief Mask selecting every section, i.e. the whole stored configuration. */
+#define APP_CONFIG_SECTIONS_ALL ((1u << APP_CONFIG_SECTION_NUM) - 1u)
+
+/**
+ * @brief Full path of one section's file on LittleFS.
+ *
+ * @param section Section to name.
+ * @return The path, or NULL if @p section is not a valid section.
+ */
+const char *app_config_section_path(app_config_section_t section);
+
+/**
+ * @brief Load every section file into ::g_config.
+ *
+ * The factory defaults are applied to the whole structure first, then each
+ * section file is read over them, so a key a file does not carry keeps its
+ * documented default. A file that is absent, empty or unparseable is rewritten
+ * from those defaults before this returns - which is what guarantees that
+ * every functionality has a file on flash from the first boot onward, without
+ * an operator ever having to visit its page.
+ *
+ * A read that fails for want of memory is the one case that writes nothing:
+ * the file is very probably intact, so the whole load reports failure and
+ * leaves flash untouched rather than overwriting a good configuration on the
+ * strength of a failed allocation. main.c retries once before falling back to
+ * the factory set.
+ *
+ * @return true if the configuration is now consistent on flash, false if a
+ *         section could not be read this pass or a rewrite failed.
  */
 bool app_config_load(void);
 
 /**
- * @brief Serialize ::g_config to /storage/config.json (atomic: write tmp then
- * rename).
- * @return true on success.
+ * @brief Rewrite the files of the sections selected by @p mask from
+ * ::g_config.
+ *
+ * @details Every selected file is written to its own temp file and renamed
+ * over the live one, so each lands atomically. A page's save handler passes
+ * only what it edits; a handler that mirrors "My Station" data into other
+ * services' fields passes every section it touched, since a partial save would
+ * leave the station's identity split across files that no longer agree.
+ *
+ * Every selected section is attempted even after one has failed, so a single
+ * full filesystem does not leave the remaining files holding settings the
+ * operator has already replaced in RAM.
+ *
+ * @param mask Bitwise OR of ::APP_CONFIG_SECTION_BIT() values, or
+ *             ::APP_CONFIG_SECTIONS_ALL.
+ * @return true if every selected file now holds its new content.
  *
  * @note Declared ::APRS_MUST_CHECK: a call site that discards the result
  * reports success to the user for a write that may never have reached
  * flash, so ignoring it fails the build.
+ */
+bool app_config_save_sections(uint32_t mask) APRS_MUST_CHECK;
+
+/**
+ * @brief Rewrite one section's file from ::g_config.
+ *
+ * @param section Section to persist.
+ * @return true on success; false if @p section is not a valid section or the
+ *         write failed.
+ *
+ * @note Declared ::APRS_MUST_CHECK, for the reason given on
+ * app_config_save_sections().
+ */
+bool app_config_save_section(app_config_section_t section) APRS_MUST_CHECK;
+
+/**
+ * @brief Rewrite every section's file from ::g_config.
+ *
+ * Used where the whole configuration changed at once - the factory reset, and
+ * the boot fallback that puts the factory set on flash after a failed load.
+ * A page's save handler should name what it edited instead.
+ *
+ * @return true if every file now holds its new content.
+ *
+ * @note Declared ::APRS_MUST_CHECK, for the reason given on
+ * app_config_save_sections().
  */
 bool app_config_save(void) APRS_MUST_CHECK;
 
@@ -1175,7 +1285,7 @@ bool app_config_factory_reset(void);
  * serialization): this one is a strict LEAF lock, held only long enough to
  * copy the needed fields into locals - never across a blocking call, I/O,
  * transmit, or another lock. Writers hold it around the block that mutates
- * ::g_config (releasing it before app_config_save()/restarts); readers of
+ * ::g_config (releasing it before the save/restart); readers of
  * string/array fields hold it just long enough to memcpy a local snapshot.
  * Scalar (single-word) fields are word-atomic on this MCU and may be read
  * lock-free. The lock is created lazily on first use, so there is no
@@ -1254,9 +1364,8 @@ uint8_t app_config_path_mask_clamp(uint8_t pathBitmask, const char pathPreset[4]
  * list early; CR and LF would end the frame itself. Each of them is removed
  * in place, leaving the rest of the text as typed.
  *
- * Called by both clamp layers - the web POST handler and
- * ::app_config_load's JSON reader - so a hand-edited config.json is held to
- * the same rule as the form.
+ * Called by both clamp layers - the web POST handler and the Query section
+ * reader - so a hand-edited query.json is held to the same rule as the form.
  *
  * @param extra NUL-terminated buffer, edited in place. NULL is a no-op.
  */

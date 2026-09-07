@@ -163,7 +163,7 @@ Por qué archivos JSON separados
 
 Ambos subsistemas, como la telemetría, mantienen estado específico de página que
 agrandaría significativamente el ``app_config_t`` residente (y por tanto cada
-guardado de ``config.json``, que se ejecuta contra un heap pequeño y
+guardado de configuración, que se ejecuta contra un heap pequeño y
 fragmentado). Mantenerlos en sus propios archivos significa que la configuración
 residente se mantiene ligera y que el guardado de cada subsistema solo toca sus
 propios datos. Cada archivo se escribe con el mismo escritor JSON en flujo,

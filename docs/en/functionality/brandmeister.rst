@@ -92,7 +92,7 @@ been refused, is about to be, or arrived on a station where the range filter was
 turned off from the IGate page afterwards. Deriving it rather than remembering
 it also means the message reaches the browser it concerns — several operators
 can have the web admin open at once. The same rule is re-applied when the IGate
-page turns the range filter off, and again when a ``config.json`` is loaded, so
+page turns the range filter off, and again when ``brandmeister.json`` is loaded, so
 it cannot be bypassed by editing the file by hand.
 
 The page never edits the server filter string itself. The filter belongs to the

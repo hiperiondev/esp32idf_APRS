@@ -13,9 +13,18 @@
 //
 //     please contact their authors for more information.
 //
-// @brief Persistent application configuration: defaults, load/save of
-// /storage/config.json on LittleFS (via cJSON) and the global g_config instance
-// shared by every component and web admin page.
+// @brief Persistent application configuration: defaults, the per-functionality
+// JSON files on LittleFS (via cJSON) and the global g_config instance shared by
+// every component and web admin page.
+//
+// The configuration is stored as one file per web admin functionality -
+// /storage/system.json, station.json, wireless.json, radio.json, igate.json,
+// brandmeister.json, digi.json, tracker.json, weather.json, gps.json,
+// message.json, winlink.json and query.json - each described by one row of the
+// SECTIONS table below, which names the file and the two halves of its codec.
+// A page saves only the file or files it edits; app_config_load() reads them
+// all and creates from the factory defaults any that are absent, so every
+// functionality always has a file on flash.
 
 #include <float.h>
 #include <math.h>
@@ -49,12 +58,10 @@
 #include "time_sync.h"     // time_sync_tz_count() - bounds g_config.timezone_idx on load
 
 static const char *TAG = "app_config";
-#define CONFIG_PATH     "/storage/config.json"
-#define CONFIG_TMP_PATH "/storage/config.json.tmp"
 
 app_config_t g_config;
 
-// Serializes every save/load of the underlying config.json file. Without
+// Serializes every save/load of the section files. Without
 // this, two overlapping POSTs (e.g. a user clicking Save twice quickly, or a
 // page auto-refresh racing a save) could both end up inside
 // app_config_save() at once, doing redundant work and each rewriting the
@@ -546,14 +553,14 @@ void app_config_set_defaults(app_config_t *c) {
 }
 
 // ---- streaming JSON writer -----------------------------------------------
-// The configuration is serialized by writing tokens straight to the open
-// config file, one field at a time. Building a cJSON tree of the whole config
-// in RAM and printing that tree into a second full-size string buffer would
-// cost hundreds of tiny cJSON nodes (~40+ KB) plus a ~7 KB contiguous print
-// buffer, all live at once - on this device's small, fragmentable heap the
-// single largest memory event in the firmware, enough to drive the "minimum
-// free heap" watermark down to a few KB on every save. Streaming keeps the
-// extra RAM a save needs to essentially just littlefs's own write buffer.
+// Each section is serialized by writing tokens straight to its open file, one
+// field at a time. Building a cJSON tree of a section in RAM and printing that
+// tree into a second full-size string buffer would cost hundreds of tiny cJSON
+// nodes plus a contiguous print buffer, all live at once - on this device's
+// small, fragmentable heap one of the largest memory events in the firmware,
+// enough to drive the "minimum free heap" watermark down sharply on every save.
+// Streaming keeps the extra RAM a save needs to essentially just littlefs's own
+// write buffer.
 //
 // The schema has only one object level and single-level (scalar) arrays, so a
 // single "need a comma before the next item" flag for each context is enough.
@@ -607,7 +614,7 @@ static void jadd_bool(jw_t *o, const char *k, bool v) {
     fputs(v ? "true" : "false", o->f);
 }
 
-// Scalar arrays: every array written by config_write_json() holds strings,
+// Scalar arrays: every array written by the section writers below holds strings,
 // numbers or booleans, so those are the three element writers this needs.
 static void jarr_begin(jw_t *o, const char *k) {
     jw_key(o, k);
@@ -655,10 +662,40 @@ static bool jget_bool(cJSON *o, const char *k, bool def) {
     return def;
 }
 
+// Path, name and the two halves of the per-file codec for one configuration
+// section: one row of ::SECTIONS per web admin functionality that owns
+// persistent settings.
+typedef struct {
+    const char *path;     // live file on LittleFS
+    const char *tmp_path; // temp file a save writes before the rename
+    const char *what;     // human-readable name used in the log lines
+    void (*write)(jw_t *w, const app_config_t *c);
+    void (*read)(cJSON *d, app_config_t *c);
+} config_section_desc_t;
+
 // ---- serialize ------------------------------------------------------------
-static void config_write_json(jw_t *d, const app_config_t *c) {
+//
+// One writer per configuration section, each producing the whole of its own
+// file. Every writer opens and closes its object itself, so a section is
+// written by handing it a jw_t bound to a freshly opened stream - see
+// save_section_locked() below.
+
+static void section_write_system(jw_t *d, const app_config_t *c) {
     fputc('{', d->f);
     jadd_num(d, "cpuFreq", c->cpuFreq);
+    jadd_bool(d, "syncTime", c->synctime);
+    jadd_str(d, "ntpHost0", c->ntp_host[0]);
+    jadd_str(d, "ntpHost1", c->ntp_host[1]);
+    jadd_str(d, "ntpHost2", c->ntp_host[2]);
+    jadd_num(d, "ntpResync", c->ntp_resync_sec);
+    jadd_num(d, "timeZone", c->timezone_idx);
+    jadd_str(d, "httpUser", c->http_username);
+    jadd_str(d, "httpPass", c->http_password);
+    fputc('}', d->f);
+}
+
+static void section_write_station(jw_t *d, const app_config_t *c) {
+    fputc('{', d->f);
     jadd_str(d, "myCallsign", c->my_callsign);
     jadd_bool(d, "myUseGps", c->my_use_gps);
     jadd_num(d, "myLAT", c->my_lat);
@@ -675,14 +712,11 @@ static void config_write_json(jw_t *d, const app_config_t *c) {
     jadd_num(d, "myStatusERP", c->status_erp_watts);
     jadd_bool(d, "myNoArchive", c->my_no_archive);
     jadd_bool(d, "myPosDao", c->pos_dao_en);
-    jadd_num(d, "txTimeSlot", c->tx_timeslot);
-    jadd_num(d, "csmaPersist", c->csma_persist);
-    jadd_bool(d, "syncTime", c->synctime);
-    jadd_str(d, "ntpHost0", c->ntp_host[0]);
-    jadd_str(d, "ntpHost1", c->ntp_host[1]);
-    jadd_str(d, "ntpHost2", c->ntp_host[2]);
-    jadd_num(d, "ntpResync", c->ntp_resync_sec);
-    jadd_num(d, "timeZone", c->timezone_idx);
+    fputc('}', d->f);
+}
+
+static void section_write_wireless(jw_t *d, const app_config_t *c) {
+    fputc('{', d->f);
     jadd_num(d, "WiFiMode", c->wifi_mode);
     jadd_num(d, "WiFiPwr", c->wifi_power);
     jadd_num(d, "WiFiAPCH", c->wifi_ap_ch);
@@ -695,17 +729,30 @@ static void config_write_json(jw_t *d, const app_config_t *c) {
         jarr_str(d, c->wifi_sta[i].wifi_pass);
     }
     jarr_end(d);
+    fputc('}', d->f);
+}
 
-    jadd_num(d, "fx25Mode", c->fx25_mode);
-    jadd_num(d, "afskModem", c->afsk_modem_type);
-    jadd_num(d, "rfPreamble", c->preamble);
+// rfPTT (PTT GPIO) and rfPTTAct (PTT active-high) have no key here: both are
+// fixed compile-time constants (MODEM_PTT_GPIO / MODEM_PTT_ACTIVE_HIGH), not
+// stored settings.
+static void section_write_radio(jw_t *d, const app_config_t *c) {
+    fputc('{', d->f);
     jadd_bool(d, "audioModemEn", c->audio_modem_en);
     jadd_bool(d, "audioLPF", c->audio_lpf);
+    jadd_num(d, "afskModem", c->afsk_modem_type);
+    jadd_num(d, "fx25Mode", c->fx25_mode);
+    jadd_num(d, "rfPreamble", c->preamble);
     jadd_num(d, "rfTxBuffers", c->rf_tx_buffers);
+    jadd_num(d, "txTimeSlot", c->tx_timeslot);
+    jadd_num(d, "csmaPersist", c->csma_persist);
+    jadd_num(d, "pttMinUnkeyMs", c->ptt_min_unkey_ms);
     jadd_bool(d, "dutyCycleEn", c->duty_cycle_en);
     jadd_num(d, "dutyCyclePct", c->duty_cycle_pct);
-    jadd_num(d, "pttMinUnkeyMs", c->ptt_min_unkey_ms);
+    fputc('}', d->f);
+}
 
+static void section_write_igate(jw_t *d, const app_config_t *c) {
+    fputc('{', d->f);
     jadd_bool(d, "igateEn", c->igate_en);
     jadd_bool(d, "igateBcn", c->igate_bcn);
     jadd_bool(d, "rf2inet", c->rf2inet);
@@ -732,13 +779,6 @@ static void config_write_json(jw_t *d, const app_config_t *c) {
     jadd_str(d, "rf2inetPrefixes", c->rf2inet_prefixes);
     jadd_bool(d, "inet2rfRangeEn", c->inet2rf_range_en);
     jadd_num(d, "inet2rfRangeKm", c->inet2rf_range_km);
-    jadd_bool(d, "bmEn", c->bm_en);
-    jadd_bool(d, "bmMonitor", c->bm_monitor);
-    jadd_bool(d, "bmMsgInetOnly", c->bm_msg_inet_only);
-    jarr_begin(d, "bmGateways");
-    for (int i = 0; i < APRS_BM_GATEWAYS_MAX; i++)
-        jarr_str(d, c->bm_gateways[i]);
-    jarr_end(d);
     jadd_bool(d, "inet2rf3rdPartyUnwrapEn", c->inet2rf_3rdparty_unwrap_en);
     jadd_bool(d, "igateMsgGateEn", c->igate_msg_gate_en);
     jadd_num(d, "igateLocalWindowSec", c->igate_local_window_sec);
@@ -785,7 +825,25 @@ static void config_write_json(jw_t *d, const app_config_t *c) {
     jadd_num(d, "igateFreqTone", c->igate_tone_tenths);
     jadd_num(d, "igateFreqDup", c->igate_duplex);
     jadd_num(d, "igateFreqOff", c->igate_offset_khz);
+    fputc('}', d->f);
+}
 
+static void section_write_brandmeister(jw_t *d, const app_config_t *c) {
+    fputc('{', d->f);
+    jadd_bool(d, "bmEn", c->bm_en);
+    jadd_bool(d, "bmMonitor", c->bm_monitor);
+    jadd_bool(d, "bmMsgInetOnly", c->bm_msg_inet_only);
+    jarr_begin(d, "bmGateways");
+    for (int i = 0; i < APRS_BM_GATEWAYS_MAX; i++)
+        jarr_str(d, c->bm_gateways[i]);
+    jarr_end(d);
+    fputc('}', d->f);
+}
+
+// The four shared path presets are edited on the Digipeater page, so they are
+// stored with it even though every service's path bitmask selects from them.
+static void section_write_digipeater(jw_t *d, const app_config_t *c) {
+    fputc('{', d->f);
     jadd_bool(d, "digiEn", c->digi_en);
     jadd_bool(d, "digiPos2rf", c->digi_loc2rf);
     jadd_bool(d, "digiPos2inet", c->digi_loc2inet);
@@ -838,7 +896,15 @@ static void config_write_json(jw_t *d, const app_config_t *c) {
     jadd_num(d, "digiFreqTone", c->digi_tone_tenths);
     jadd_num(d, "digiFreqDup", c->digi_duplex);
     jadd_num(d, "digiFreqOff", c->digi_offset_khz);
+    jarr_begin(d, "path");
+    for (int i = 0; i < 4; i++)
+        jarr_str(d, c->path[i]);
+    jarr_end(d);
+    fputc('}', d->f);
+}
 
+static void section_write_tracker(jw_t *d, const app_config_t *c) {
+    fputc('{', d->f);
     jadd_bool(d, "trkEn", c->trk_en);
     jadd_bool(d, "trkPos2rf", c->trk_loc2rf);
     jadd_bool(d, "trkPos2inet", c->trk_loc2inet);
@@ -866,7 +932,6 @@ static void config_write_json(jw_t *d, const app_config_t *c) {
     jadd_num(d, "trkFreqTone", c->trk_tone_tenths);
     jadd_num(d, "trkFreqDup", c->trk_duplex);
     jadd_num(d, "trkFreqOff", c->trk_offset_khz);
-
     jadd_bool(d, "trkSbEn", c->trk_sb_enable);
     jadd_num(d, "trkSbSlowIntv", c->trk_sb_slow_interval);
     jadd_num(d, "trkSbFastIntv", c->trk_sb_fast_interval);
@@ -875,9 +940,11 @@ static void config_write_json(jw_t *d, const app_config_t *c) {
     jadd_num(d, "trkSbTurnAngle", c->trk_sb_turn_angle);
     jadd_num(d, "trkSbTurnSlope", c->trk_sb_turn_slope);
     jadd_num(d, "trkSbMinTurnTime", c->trk_sb_min_turn_time);
+    fputc('}', d->f);
+}
 
-    jadd_bool(d, "gpsEn", c->gps_en);
-
+static void section_write_weather(jw_t *d, const app_config_t *c) {
+    fputc('{', d->f);
     jadd_bool(d, "wxEn", c->wx_en);
     jadd_bool(d, "wxTx2rf", c->wx_2rf);
     jadd_bool(d, "wxTx2inet", c->wx_2inet);
@@ -909,21 +976,17 @@ static void config_write_json(jw_t *d, const app_config_t *c) {
     for (int i = 0; i < WX_SENSOR_NUM; i++)
         jarr_str(d, sensors_local_channel_name(c->wx_sensor_ch[i]));
     jarr_end(d);
+    fputc('}', d->f);
+}
 
-    // Telemetry configuration (channel 0/1, Binary B1-B8 mapping) is no
-    // longer part of config.json - see telemetry.h/.c and /storage/telemetry.json.
+static void section_write_gps(jw_t *d, const app_config_t *c) {
+    fputc('{', d->f);
+    jadd_bool(d, "gpsEn", c->gps_en);
+    fputc('}', d->f);
+}
 
-    jadd_str(d, "httpUser", c->http_username);
-    jadd_str(d, "httpPass", c->http_password);
-    jarr_begin(d, "path");
-    for (int i = 0; i < 4; i++)
-        jarr_str(d, c->path[i]);
-    jarr_end(d);
-
-    // rfPTT (PTT GPIO) and rfPTTAct (PTT active-high) are not serialized:
-    // both are fixed compile-time constants (MODEM_PTT_GPIO /
-    // MODEM_PTT_ACTIVE_HIGH), not stored settings.
-
+static void section_write_message(jw_t *d, const app_config_t *c) {
+    fputc('{', d->f);
     jadd_bool(d, "msgEnable", c->msg_enable);
     jadd_str(d, "msgMycall", c->msg_mycall);
     jadd_bool(d, "msgUseStation", c->msg_use_station);
@@ -938,7 +1001,11 @@ static void config_write_json(jw_t *d, const app_config_t *c) {
     for (int i = 0; i < 3; i++)
         jarr_str(d, c->msg_group[i]);
     jarr_end(d);
+    fputc('}', d->f);
+}
 
+static void section_write_winlink(jw_t *d, const app_config_t *c) {
+    fputc('{', d->f);
     jadd_bool(d, "wlEnable", c->wl_enable);
     jadd_str(d, "wlServiceCall", c->wl_service_call);
     jadd_str(d, "wlPassword", c->wl_password);
@@ -950,7 +1017,11 @@ static void config_write_json(jw_t *d, const app_config_t *c) {
     jadd_bool(d, "wlCommentEn", c->wl_comment_en);
     jadd_bool(d, "wlInetOnly", c->wl_inet_only);
     jadd_bool(d, "wlGateExempt", c->wl_gate_exempt);
+    fputc('}', d->f);
+}
 
+static void section_write_query(jw_t *d, const app_config_t *c) {
+    fputc('{', d->f);
     jadd_bool(d, "queryEn", c->query_en);
     jadd_bool(d, "queryRf", c->query_rf);
     jadd_bool(d, "queryInet", c->query_inet);
@@ -965,7 +1036,6 @@ static void config_write_json(jw_t *d, const app_config_t *c) {
     jadd_bool(d, "queryCapRf", c->query_cap_rf);
     jadd_bool(d, "queryCapInet", c->query_cap_inet);
     jadd_str(d, "queryCapExtra", c->query_cap_extra);
-
     fputc('}', d->f);
 }
 
@@ -975,7 +1045,7 @@ static void config_write_json(jw_t *d, const app_config_t *c) {
 // the same two sets the symbol form enforces. Neither byte is cosmetic: the
 // table identifier decides how a receiver reads the rest of a compressed
 // position report, and the code decides which classifier the report lands in,
-// so a byte that arrived from a hand-edited config.json is folded back to the
+// so a byte that arrived from a hand-edited file is folded back to the
 // default rather than beaconed.
 void app_config_query_cap_extra_sanitize(char *extra) {
     if (extra == NULL)
@@ -1017,7 +1087,7 @@ static uint8_t clamp_nrq_digit(double value, const char *key) {
 }
 
 // Bounds one loaded uint16_t field into [min, max], logging and clamping
-// a hand-edited or older config.json value the same way clamp_nrq_digit()
+// a hand-edited value the same way clamp_nrq_digit()
 // does for a DF digit. Shared by every SmartBeaconing field below, whose
 // bounds are all plain uint16_t ranges.
 static uint16_t clamp_u16_range(double value, uint16_t min, uint16_t max, const char *key) {
@@ -1047,25 +1117,35 @@ static float clamp_range_km(float value, const char *key) {
     return value;
 }
 
-static void config_from_json(cJSON *d, app_config_t *c) {
-    // Start from defaults so every key not present in an older config file
-    // still ends up with a sane, documented value (never zero-garbage). The
-    // defaults are written straight into the destination struct, and every
-    // read below takes its fallback from the very field it is about to
-    // overwrite: each field is assigned exactly once, always after this call,
-    // so at the instant a fallback is read that field still holds its
-    // default. Keeping the defaults only in *c is what keeps a second
-    // app_config_t - the size of the whole configuration - off the stack of
-    // whichever task is loading, on top of the cJSON tree of the whole file
-    // that is live in the heap while this runs.
-    //
-    // A string field's fallback is therefore its own buffer. Both loaders
-    // take that: set_str() filters in place, and set_str_utf8() copies
-    // through a scratch buffer before touching the field. Either way a
-    // default that is already stored gets refiltered to itself.
-    app_config_set_defaults(c);
+// One reader per configuration section. Every read takes its fallback from the
+// very field it is about to overwrite, and app_config_load() fills the whole
+// structure with defaults before the first section file is opened, so a key a
+// file does not carry leaves its field at the documented default and a section
+// whose file is absent stays entirely at defaults.
+//
+// A string field's fallback is therefore its own buffer. Both loaders take
+// that: set_str() filters in place, and set_str_utf8() copies through a scratch
+// buffer before touching the field.
 
+static void section_read_system(cJSON *d, app_config_t *c) {
     c->cpuFreq = (uint8_t)jget_num(d, "cpuFreq", c->cpuFreq);
+    c->synctime = jget_bool(d, "syncTime", c->synctime);
+    set_str(c->ntp_host[0], sizeof(c->ntp_host[0]), jget_str(d, "ntpHost0", c->ntp_host[0]));
+    set_str(c->ntp_host[1], sizeof(c->ntp_host[1]), jget_str(d, "ntpHost1", c->ntp_host[1]));
+    set_str(c->ntp_host[2], sizeof(c->ntp_host[2]), jget_str(d, "ntpHost2", c->ntp_host[2]));
+    c->ntp_resync_sec = (uint16_t)jget_num(d, "ntpResync", c->ntp_resync_sec);
+    if (c->ntp_resync_sec < NTP_RESYNC_MIN_SEC)
+        c->ntp_resync_sec = NTP_RESYNC_MIN_SEC;
+    c->timezone_idx = (uint8_t)jget_num(d, "timeZone", c->timezone_idx);
+    if (c->timezone_idx >= time_sync_tz_count()) {
+        ESP_LOGW(TAG, "timeZone %u out of range, clamped to 0 (UTC)", (unsigned)c->timezone_idx);
+        c->timezone_idx = 0;
+    }
+    set_str(c->http_username, sizeof(c->http_username), jget_str(d, "httpUser", c->http_username));
+    set_str(c->http_password, sizeof(c->http_password), jget_str(d, "httpPass", c->http_password));
+}
+
+static void section_read_station(cJSON *d, app_config_t *c) {
     set_str(c->my_callsign, sizeof(c->my_callsign), jget_str(d, "myCallsign", c->my_callsign));
     c->my_use_gps = jget_bool(d, "myUseGps", c->my_use_gps);
     c->my_lat = (float)jget_num(d, "myLAT", c->my_lat);
@@ -1084,7 +1164,7 @@ static void config_from_json(cJSON *d, app_config_t *c) {
     c->status_timestamp_en = jget_bool(d, "myStatusTS", c->status_timestamp_en);
     {
         // Same two-layer clamp the web form applies, so a hand-edited or
-        // imported config.json cannot put a heading or a power on air that the
+        // imported station.json cannot put a heading or a power on air that the
         // two code characters have no room for. A heading is quantised to the
         // step the field encodes in; anything outside the range switches the
         // block off rather than being folded into an unrelated bearing.
@@ -1109,31 +1189,9 @@ static void config_from_json(cJSON *d, app_config_t *c) {
     }
     c->my_no_archive = jget_bool(d, "myNoArchive", c->my_no_archive);
     c->pos_dao_en = jget_bool(d, "myPosDao", c->pos_dao_en);
-    // Channel-access timing: bound every value coming off flash to the same
-    // range the Radiomodem form accepts (aprs_service.h), so a hand-edited or
-    // imported config.json cannot hand aprs_service_build_modem_config() a
-    // setting the radio should never transmit with - see the note there on
-    // what an unbounded preamble does to a shared channel.
-    c->tx_timeslot = (uint16_t)jget_num(d, "txTimeSlot", c->tx_timeslot);
-    if (c->tx_timeslot > RF_TX_TIMESLOT_MS_MAX) {
-        ESP_LOGW(TAG, "txTimeSlot %u out of range, clamped to %d ms", (unsigned)c->tx_timeslot, RF_TX_TIMESLOT_MS_MAX);
-        c->tx_timeslot = RF_TX_TIMESLOT_MS_MAX;
-    }
-    c->csma_persist = (uint8_t)jget_num(d, "csmaPersist", c->csma_persist);
-    if (c->csma_persist < CSMA_PERSIST_MIN)
-        c->csma_persist = CSMA_PERSIST_MIN;
-    c->synctime = jget_bool(d, "syncTime", c->synctime);
-    set_str(c->ntp_host[0], sizeof(c->ntp_host[0]), jget_str(d, "ntpHost0", jget_str(d, "ntpHost", c->ntp_host[0])));
-    set_str(c->ntp_host[1], sizeof(c->ntp_host[1]), jget_str(d, "ntpHost1", c->ntp_host[1]));
-    set_str(c->ntp_host[2], sizeof(c->ntp_host[2]), jget_str(d, "ntpHost2", c->ntp_host[2]));
-    c->ntp_resync_sec = (uint16_t)jget_num(d, "ntpResync", c->ntp_resync_sec);
-    if (c->ntp_resync_sec < NTP_RESYNC_MIN_SEC)
-        c->ntp_resync_sec = NTP_RESYNC_MIN_SEC;
-    c->timezone_idx = (uint8_t)jget_num(d, "timeZone", c->timezone_idx);
-    if (c->timezone_idx >= time_sync_tz_count()) {
-        ESP_LOGW(TAG, "timeZone %u out of range, clamped to 0 (UTC)", (unsigned)c->timezone_idx);
-        c->timezone_idx = 0;
-    }
+}
+
+static void section_read_wireless(cJSON *d, app_config_t *c) {
     c->wifi_mode = (uint8_t)jget_num(d, "WiFiMode", c->wifi_mode);
     // Read through an int so a value the file carries far outside int8_t range
     // is bounded here rather than wrapping into a small negative on the cast:
@@ -1174,31 +1232,48 @@ static void config_from_json(cJSON *d, app_config_t *c) {
             }
         }
     }
+}
 
-    c->fx25_mode = (uint8_t)jget_num(d, "fx25Mode", c->fx25_mode);
+// Channel-access timing: every value coming off flash is bounded to the same
+// range the Radiomodem form accepts (aprs_service.h), so a hand-edited or
+// imported radio.json cannot hand aprs_service_build_modem_config() a setting
+// the radio should never transmit with - see the note there on what an
+// unbounded preamble does to a shared channel.
+static void section_read_radio(cJSON *d, app_config_t *c) {
+    c->audio_modem_en = jget_bool(d, "audioModemEn", c->audio_modem_en);
+    c->audio_lpf = jget_bool(d, "audioLPF", c->audio_lpf);
     c->afsk_modem_type = (uint8_t)jget_num(d, "afskModem", c->afsk_modem_type);
+    c->fx25_mode = (uint8_t)jget_num(d, "fx25Mode", c->fx25_mode);
     c->preamble = (uint16_t)jget_num(d, "rfPreamble", c->preamble);
     if (c->preamble < RF_PREAMBLE_MS_MIN || c->preamble > RF_PREAMBLE_MS_MAX) {
         ESP_LOGW(TAG, "rfPreamble %u out of range, clamped to %d..%d ms", (unsigned)c->preamble, RF_PREAMBLE_MS_MIN, RF_PREAMBLE_MS_MAX);
         c->preamble = (c->preamble < RF_PREAMBLE_MS_MIN) ? RF_PREAMBLE_MS_MIN : RF_PREAMBLE_MS_MAX;
     }
-    c->audio_modem_en = jget_bool(d, "audioModemEn", c->audio_modem_en);
-    c->audio_lpf = jget_bool(d, "audioLPF", c->audio_lpf);
     c->rf_tx_buffers = (uint8_t)jget_num(d, "rfTxBuffers", c->rf_tx_buffers);
     if (c->rf_tx_buffers < RF_TX_BUFFERS_MIN)
         c->rf_tx_buffers = RF_TX_BUFFERS_MIN;
     else if (c->rf_tx_buffers > RF_TX_BUFFERS_MAX)
         c->rf_tx_buffers = RF_TX_BUFFERS_MAX;
+    c->tx_timeslot = (uint16_t)jget_num(d, "txTimeSlot", c->tx_timeslot);
+    if (c->tx_timeslot > RF_TX_TIMESLOT_MS_MAX) {
+        ESP_LOGW(TAG, "txTimeSlot %u out of range, clamped to %d ms", (unsigned)c->tx_timeslot, RF_TX_TIMESLOT_MS_MAX);
+        c->tx_timeslot = RF_TX_TIMESLOT_MS_MAX;
+    }
+    c->csma_persist = (uint8_t)jget_num(d, "csmaPersist", c->csma_persist);
+    if (c->csma_persist < CSMA_PERSIST_MIN)
+        c->csma_persist = CSMA_PERSIST_MIN;
+    c->ptt_min_unkey_ms = (uint16_t)jget_num(d, "pttMinUnkeyMs", c->ptt_min_unkey_ms);
+    if (c->ptt_min_unkey_ms > PTT_MIN_UNKEY_MS_MAX)
+        c->ptt_min_unkey_ms = PTT_MIN_UNKEY_MS_MAX;
     c->duty_cycle_en = jget_bool(d, "dutyCycleEn", c->duty_cycle_en);
     c->duty_cycle_pct = (uint8_t)jget_num(d, "dutyCyclePct", c->duty_cycle_pct);
     if (c->duty_cycle_pct < DUTY_CYCLE_PCT_MIN)
         c->duty_cycle_pct = DUTY_CYCLE_PCT_MIN;
     else if (c->duty_cycle_pct > DUTY_CYCLE_PCT_MAX)
         c->duty_cycle_pct = DUTY_CYCLE_PCT_MAX;
-    c->ptt_min_unkey_ms = (uint16_t)jget_num(d, "pttMinUnkeyMs", c->ptt_min_unkey_ms);
-    if (c->ptt_min_unkey_ms > PTT_MIN_UNKEY_MS_MAX)
-        c->ptt_min_unkey_ms = PTT_MIN_UNKEY_MS_MAX;
+}
 
+static void section_read_igate(cJSON *d, app_config_t *c) {
     c->igate_en = jget_bool(d, "igateEn", c->igate_en);
     c->igate_bcn = jget_bool(d, "igateBcn", c->igate_bcn);
     c->rf2inet = jget_bool(d, "rf2inet", c->rf2inet);
@@ -1206,9 +1281,7 @@ static void config_from_json(cJSON *d, app_config_t *c) {
     c->igate_loc2rf = jget_bool(d, "igatePos2rf", c->igate_loc2rf);
     c->igate_loc2inet = jget_bool(d, "igatePos2inet", c->igate_loc2inet);
     c->rf2inetFilter = (uint16_t)jget_num(d, "rf2inetFilter", c->rf2inetFilter);
-    // "inet2rfFiltger" was a legacy misspelling of the key used when saving;
-    // fall back to it so configs written by older firmware still load correctly.
-    c->inet2rfFilter = (uint16_t)jget_num(d, "inet2rfFilter", (double)jget_num(d, "inet2rfFiltger", c->inet2rfFilter));
+    c->inet2rfFilter = (uint16_t)jget_num(d, "inet2rfFilter", c->inet2rfFilter);
     c->rf2inet_budlist_mode = (budlist_mode_t)jget_num(d, "rf2inetBudlistMode", c->rf2inet_budlist_mode);
     c->inet2rf_budlist_mode = (budlist_mode_t)jget_num(d, "inet2rfBudlistMode", c->inet2rf_budlist_mode);
     {
@@ -1236,41 +1309,15 @@ static void config_from_json(cJSON *d, app_config_t *c) {
                  DUP_CACHE_TIMEOUT_MS_MAX);
         c->dup_cache_timeout_ms = (c->dup_cache_timeout_ms < DUP_CACHE_TIMEOUT_MS_MIN) ? DUP_CACHE_TIMEOUT_MS_MIN : DUP_CACHE_TIMEOUT_MS_MAX;
     }
-    c->rf2inet_range_en = jget_bool(d, "rf2inetRangeEn", c->rf2inet_range_en);
-    c->rf2inet_range_km = (float)jget_num(d, "rf2inetRangeKm", c->rf2inet_range_km);
-    c->rf2inet_prefix_en = jget_bool(d, "rf2inetPrefixEn", c->rf2inet_prefix_en);
-    set_str(c->rf2inet_prefixes, sizeof(c->rf2inet_prefixes), jget_str(d, "rf2inetPrefixes", c->rf2inet_prefixes));
-
     // Both range gates take the same two-layer clamp the rest of the bounded
     // numerics use: the form emits min/max, and the file on flash is checked
     // again on the way in because it is not a trusted input.
-    c->rf2inet_range_km = clamp_range_km(c->rf2inet_range_km, "rf2inetRangeKm");
+    c->rf2inet_range_en = jget_bool(d, "rf2inetRangeEn", c->rf2inet_range_en);
+    c->rf2inet_range_km = clamp_range_km((float)jget_num(d, "rf2inetRangeKm", c->rf2inet_range_km), "rf2inetRangeKm");
+    c->rf2inet_prefix_en = jget_bool(d, "rf2inetPrefixEn", c->rf2inet_prefix_en);
+    set_str(c->rf2inet_prefixes, sizeof(c->rf2inet_prefixes), jget_str(d, "rf2inetPrefixes", c->rf2inet_prefixes));
     c->inet2rf_range_en = jget_bool(d, "inet2rfRangeEn", c->inet2rf_range_en);
     c->inet2rf_range_km = clamp_range_km((float)jget_num(d, "inet2rfRangeKm", c->inet2rf_range_km), "inet2rfRangeKm");
-
-    c->bm_en = jget_bool(d, "bmEn", c->bm_en);
-    c->bm_monitor = jget_bool(d, "bmMonitor", c->bm_monitor);
-    c->bm_msg_inet_only = jget_bool(d, "bmMsgInetOnly", c->bm_msg_inet_only);
-    {
-        cJSON *gw = cJSON_GetObjectItemCaseSensitive(d, "bmGateways");
-        for (int i = 0; i < APRS_BM_GATEWAYS_MAX; i++) {
-            cJSON *v = gw ? cJSON_GetArrayItem(gw, i) : NULL;
-            set_str(c->bm_gateways[i], sizeof(c->bm_gateways[i]), (v && cJSON_IsString(v)) ? v->valuestring : c->bm_gateways[i]);
-        }
-    }
-
-    // The interlock the BrandMeister page enforces on save is re-applied here,
-    // for the same reason every other bounded field is re-checked on load: a
-    // config.json edited by hand or carried over from another station can
-    // arrive with the worldwide monitor subscription on and nothing standing
-    // between that feed and the transmitter. Turning the monitor flag off
-    // rather than the gating is the conservative direction - it withdraws the
-    // subscription the operator would otherwise be told to add, and leaves
-    // every other setting as written.
-    if (c->bm_monitor && c->inet2rf && !c->inet2rf_range_en) {
-        ESP_LOGW(TAG, "bmMonitor requires the INET->RF range gate while inet2rf is on - monitor disabled");
-        c->bm_monitor = false;
-    }
     c->inet2rf_3rdparty_unwrap_en = jget_bool(d, "inet2rf3rdPartyUnwrapEn", c->inet2rf_3rdparty_unwrap_en);
     c->igate_msg_gate_en = jget_bool(d, "igateMsgGateEn", c->igate_msg_gate_en);
     // Same two-layer clamp the rest of the bounded fields use: the file on
@@ -1318,21 +1365,6 @@ static void config_from_json(cJSON *d, app_config_t *c) {
                     c->aprs_server[i].port = APRS_PORT_DEFAULT;
                 }
             }
-        } else {
-            // Pre-failover config.json: migrate the single legacy "igateHost"
-            // / "igatePort" pair into slot 0 so an upgraded device keeps
-            // connecting to the same server it already had configured. Every
-            // slot still holds the default written at the top of this
-            // function - nothing in this branch has touched the array yet -
-            // so only slot 0 needs filling in from the legacy keys.
-            set_str(c->aprs_server[0].host, sizeof(c->aprs_server[0].host), jget_str(d, "igateHost", c->aprs_server[0].host));
-            c->aprs_server[0].port = (uint16_t)jget_num(d, "igatePort", c->aprs_server[0].port);
-            if (c->aprs_server[0].port < APRS_PORT_MIN) {
-                ESP_LOGW(TAG, "stored APRS-IS port %u outside %u-%u, using %u", (unsigned)c->aprs_server[0].port, (unsigned)APRS_PORT_MIN,
-                         (unsigned)APRS_PORT_MAX, (unsigned)APRS_PORT_DEFAULT);
-                c->aprs_server[0].port = APRS_PORT_DEFAULT;
-            }
-            c->aprs_server[0].enable = true;
         }
     }
     set_str(c->aprs_mycall, sizeof(c->aprs_mycall), jget_str(d, "igateMycall", c->aprs_mycall));
@@ -1349,6 +1381,8 @@ static void config_from_json(cJSON *d, app_config_t *c) {
     clamp_symbol(c->igate_symbol, "igateSymbol");
     c->igate_path = (uint8_t)jget_num(d, "igatePath", c->igate_path);
     set_str_utf8(c->igate_comment, sizeof(c->igate_comment), jget_str(d, "igateComment", c->igate_comment));
+    c->igate_sts_interval = (uint16_t)jget_num(d, "igateSTSIntv", c->igate_sts_interval);
+    set_str_utf8(c->igate_status, sizeof(c->igate_status), jget_str(d, "igateStatus", c->igate_status));
     c->igate_timestamp = jget_bool(d, "igateTimestamp", c->igate_timestamp);
     c->igate_compress = jget_bool(d, "igateCompress", c->igate_compress);
     c->igate_phg_enable = jget_bool(d, "igatePHGEn", c->igate_phg_enable);
@@ -1391,9 +1425,37 @@ static void config_from_json(cJSON *d, app_config_t *c) {
     c->igate_tone_tenths = (uint16_t)jget_num(d, "igateFreqTone", c->igate_tone_tenths);
     c->igate_duplex = (int8_t)jget_num(d, "igateFreqDup", c->igate_duplex);
     c->igate_offset_khz = (uint16_t)jget_num(d, "igateFreqOff", c->igate_offset_khz);
-    c->igate_sts_interval = (uint16_t)jget_num(d, "igateSTSIntv", c->igate_sts_interval);
-    set_str_utf8(c->igate_status, sizeof(c->igate_status), jget_str(d, "igateStatus", c->igate_status));
+}
 
+// Read after the IGate section (see the section table), because the interlock
+// below is a decision about the gating the IGate file carries.
+static void section_read_brandmeister(cJSON *d, app_config_t *c) {
+    c->bm_en = jget_bool(d, "bmEn", c->bm_en);
+    c->bm_monitor = jget_bool(d, "bmMonitor", c->bm_monitor);
+    c->bm_msg_inet_only = jget_bool(d, "bmMsgInetOnly", c->bm_msg_inet_only);
+    {
+        cJSON *gw = cJSON_GetObjectItemCaseSensitive(d, "bmGateways");
+        for (int i = 0; i < APRS_BM_GATEWAYS_MAX; i++) {
+            cJSON *v = gw ? cJSON_GetArrayItem(gw, i) : NULL;
+            set_str(c->bm_gateways[i], sizeof(c->bm_gateways[i]), (v && cJSON_IsString(v)) ? v->valuestring : c->bm_gateways[i]);
+        }
+    }
+
+    // The interlock the BrandMeister page enforces on save is re-applied here,
+    // for the same reason every other bounded field is re-checked on load: a
+    // brandmeister.json edited by hand or carried over from another station can
+    // arrive with the worldwide monitor subscription on and nothing standing
+    // between that feed and the transmitter. Turning the monitor flag off
+    // rather than the gating is the conservative direction - it withdraws the
+    // subscription the operator would otherwise be told to add, and leaves
+    // every other setting as written.
+    if (c->bm_monitor && c->inet2rf && !c->inet2rf_range_en) {
+        ESP_LOGW(TAG, "bmMonitor requires the INET->RF range gate while inet2rf is on - monitor disabled");
+        c->bm_monitor = false;
+    }
+}
+
+static void section_read_digipeater(cJSON *d, app_config_t *c) {
     c->digi_en = jget_bool(d, "digiEn", c->digi_en);
     c->digi_loc2rf = jget_bool(d, "digiPos2rf", c->digi_loc2rf);
     c->digi_loc2inet = jget_bool(d, "digiPos2inet", c->digi_loc2inet);
@@ -1404,9 +1466,10 @@ static void config_from_json(cJSON *d, app_config_t *c) {
     c->digi_use_gps = jget_bool(d, "digiUseGps", c->digi_use_gps);
     c->digi_path = (uint8_t)jget_num(d, "digiPath", c->digi_path);
     // Alias table: three parallel arrays, one row per index, following the
-    // same shape as the budlist/satgate lists above. A row is validated on the
-    // way in rather than trusted: an out-of-range hop limit or an unknown mode
-    // would otherwise decide how this station repeats other people's traffic.
+    // same shape as the budlist/satgate lists in the IGate section. A row is
+    // validated on the way in rather than trusted: an out-of-range hop limit
+    // or an unknown mode would otherwise decide how this station repeats other
+    // people's traffic.
     {
         cJSON *al = cJSON_GetObjectItemCaseSensitive(d, "digiAlias");
         cJSON *an = cJSON_GetObjectItemCaseSensitive(d, "digiAliasMaxN");
@@ -1489,7 +1552,16 @@ static void config_from_json(cJSON *d, app_config_t *c) {
     c->digi_tone_tenths = (uint16_t)jget_num(d, "digiFreqTone", c->digi_tone_tenths);
     c->digi_duplex = (int8_t)jget_num(d, "digiFreqDup", c->digi_duplex);
     c->digi_offset_khz = (uint16_t)jget_num(d, "digiFreqOff", c->digi_offset_khz);
+    {
+        cJSON *p = cJSON_GetObjectItemCaseSensitive(d, "path");
+        for (int i = 0; i < 4; i++) {
+            cJSON *v = p ? cJSON_GetArrayItem(p, i) : NULL;
+            set_str(c->path[i], sizeof(c->path[i]), (v && cJSON_IsString(v)) ? v->valuestring : c->path[i]);
+        }
+    }
+}
 
+static void section_read_tracker(cJSON *d, app_config_t *c) {
     c->trk_en = jget_bool(d, "trkEn", c->trk_en);
     c->trk_loc2rf = jget_bool(d, "trkPos2rf", c->trk_loc2rf);
     c->trk_loc2inet = jget_bool(d, "trkPos2inet", c->trk_loc2inet);
@@ -1510,7 +1582,7 @@ static void config_from_json(cJSON *d, app_config_t *c) {
     c->trk_mice_msg = (uint8_t)jget_num(d, "trkMiceMsg", c->trk_mice_msg);
     // Same two-layer clamp every other bounded field uses: the form handler
     // bounds what the operator can send, and this bounds what a hand-edited
-    // or older config.json can carry into the beacon builder.
+    // tracker.json can carry into the beacon builder.
     if (c->trk_mice_msg > MICE_POS_COMMENT_MAX) {
         ESP_LOGW(TAG, "trkMiceMsg %u out of range (0-%d) - using %d", (unsigned)c->trk_mice_msg, MICE_POS_COMMENT_MAX, MICE_POS_COMMENT_DEFAULT);
         c->trk_mice_msg = MICE_POS_COMMENT_DEFAULT;
@@ -1542,9 +1614,9 @@ static void config_from_json(cJSON *d, app_config_t *c) {
     c->trk_sb_turn_slope = clamp_u16_range(jget_num(d, "trkSbTurnSlope", c->trk_sb_turn_slope), TRK_SB_TURN_SLOPE_MIN, TRK_SB_TURN_SLOPE_MAX, "trkSbTurnSlope");
     c->trk_sb_min_turn_time =
         clamp_u16_range(jget_num(d, "trkSbMinTurnTime", c->trk_sb_min_turn_time), TRK_SB_MIN_TURN_TIME_S_MIN, TRK_SB_MIN_TURN_TIME_S_MAX, "trkSbMinTurnTime");
+}
 
-    c->gps_en = jget_bool(d, "gpsEn", c->gps_en);
-
+static void section_read_weather(cJSON *d, app_config_t *c) {
     c->wx_en = jget_bool(d, "wxEn", c->wx_en);
     c->wx_2rf = jget_bool(d, "wxTx2rf", c->wx_2rf);
     c->wx_2inet = jget_bool(d, "wxTx2inet", c->wx_2inet);
@@ -1568,71 +1640,32 @@ static void config_from_json(cJSON *d, app_config_t *c) {
                 c->wx_sensor_enable[i] = cJSON_IsTrue(v);
             if (a2 && (v = cJSON_GetArrayItem(a2, i)))
                 c->wx_sensor_avg[i] = cJSON_IsTrue(v);
-            if (a3 && (v = cJSON_GetArrayItem(a3, i))) {
-                if (cJSON_IsString(v)) {
-                    // Driver name (see the writer above): resolve it against
-                    // the registry this image actually built. A name that is
-                    // no longer registered leaves the field unmapped and says
-                    // so, rather than aiming it at whatever sensor now sits at
-                    // that position.
-                    c->wx_sensor_ch[i] = sensors_local_channel_from_name(v->valuestring);
-                    if (c->wx_sensor_ch[i] == SENSOR_LOCAL_CH_NONE && v->valuestring != NULL && v->valuestring[0] != 0)
-                        ESP_LOGW(TAG, "WX field %d: sensor '%s' is not registered, left unmapped", i, v->valuestring);
-                } else if (cJSON_IsNumber(v)) {
-                    // A config.json that predates name-based mappings: the
-                    // number is a registry position, and it is only meaningful
-                    // if the registry still reaches that far.
-                    unsigned idx = (unsigned)v->valuedouble;
-                    if (idx != SENSOR_LOCAL_CH_NONE && idx >= sensors_local_count()) {
-                        ESP_LOGW(TAG, "WX field %d: stored sensor channel %u no longer exists, left unmapped", i, idx);
-                        idx = SENSOR_LOCAL_CH_NONE;
-                    }
-                    c->wx_sensor_ch[i] = (uint8_t)idx;
-                }
+            if (a3 && (v = cJSON_GetArrayItem(a3, i)) && cJSON_IsString(v)) {
+                // Driver name (see the writer above): resolve it against the
+                // registry this image actually built. A name that is not
+                // registered leaves the field unmapped and says so, rather
+                // than aiming it at whatever sensor now sits at that position.
+                c->wx_sensor_ch[i] = sensors_local_channel_from_name(v->valuestring);
+                if (c->wx_sensor_ch[i] == SENSOR_LOCAL_CH_NONE && v->valuestring != NULL && v->valuestring[0] != 0)
+                    ESP_LOGW(TAG, "WX field %d: sensor '%s' is not registered, left unmapped", i, v->valuestring);
             }
         }
     }
+}
 
-    // Telemetry configuration (channel 0/1, Binary B1-B8 mapping) is no
-    // longer part of config.json - loaded separately via
-    // telemetry_config_load() from /storage/telemetry.json. Any leftover
-    // tlm0*/tlm1*/tlmBit* keys in an old config.json are simply ignored here
-    // (config_from_json() already ignores unknown keys generally).
+static void section_read_gps(cJSON *d, app_config_t *c) {
+    c->gps_en = jget_bool(d, "gpsEn", c->gps_en);
+}
 
-    set_str(c->http_username, sizeof(c->http_username), jget_str(d, "httpUser", c->http_username));
-    set_str(c->http_password, sizeof(c->http_password), jget_str(d, "httpPass", c->http_password));
-    {
-        cJSON *p = cJSON_GetObjectItemCaseSensitive(d, "path");
-        for (int i = 0; i < 4; i++) {
-            cJSON *v = p ? cJSON_GetArrayItem(p, i) : NULL;
-            set_str(c->path[i], sizeof(c->path[i]), (v && cJSON_IsString(v)) ? v->valuestring : c->path[i]);
-        }
-    }
-
-    // rfPTT (PTT GPIO) and rfPTTAct (PTT active-high) are not read back:
-    // a config.json may still contain either key, but config_from_json()
-    // ignores unknown keys, so both are simply skipped - the values come
-    // from MODEM_PTT_GPIO / MODEM_PTT_ACTIVE_HIGH instead.
-
-    if (!cJSON_GetObjectItemCaseSensitive(d, "msgEnable")) {
-        // old-version file compatibility -> keep documented defaults
-        c->msg_enable = true;
-        c->msg_rf = true;
-        c->msg_inet = true;
-        c->msg_retry = 3;
-        c->msg_interval = 30;
-        c->msg_path = 9;
-        set_str(c->msg_mycall, sizeof(c->msg_mycall), "NOCALL");
-    } else {
-        c->msg_enable = jget_bool(d, "msgEnable", c->msg_enable);
-        c->msg_path = (uint8_t)jget_num(d, "msgPath", c->msg_path);
-        c->msg_rf = jget_bool(d, "msgRf", c->msg_rf);
-        c->msg_inet = jget_bool(d, "msgInet", c->msg_inet);
-        c->msg_retry = (uint8_t)jget_num(d, "msgRetry", c->msg_retry);
-        c->msg_interval = (uint16_t)jget_num(d, "msgInterval", c->msg_interval);
-        set_str(c->msg_mycall, sizeof(c->msg_mycall), jget_str(d, "msgMycall", c->msg_mycall));
-        c->msg_use_station = jget_bool(d, "msgUseStation", c->msg_use_station);
-    }
+static void section_read_message(cJSON *d, app_config_t *c) {
+    c->msg_enable = jget_bool(d, "msgEnable", c->msg_enable);
+    set_str(c->msg_mycall, sizeof(c->msg_mycall), jget_str(d, "msgMycall", c->msg_mycall));
+    c->msg_use_station = jget_bool(d, "msgUseStation", c->msg_use_station);
+    c->msg_rf = jget_bool(d, "msgRf", c->msg_rf);
+    c->msg_inet = jget_bool(d, "msgInet", c->msg_inet);
+    c->msg_path = (uint8_t)jget_num(d, "msgPath", c->msg_path);
+    c->msg_retry = (uint8_t)jget_num(d, "msgRetry", c->msg_retry);
+    c->msg_interval = (uint16_t)jget_num(d, "msgInterval", c->msg_interval);
     c->msg_alarm_enable = jget_bool(d, "msgAlarmEn", c->msg_alarm_enable);
     c->msg_alarm_gpio = (int8_t)jget_num(d, "msgAlarmGpio", c->msg_alarm_gpio);
     {
@@ -1642,7 +1675,9 @@ static void config_from_json(cJSON *d, app_config_t *c) {
             set_str(c->msg_group[i], sizeof(c->msg_group[i]), (v && cJSON_IsString(v)) ? v->valuestring : c->msg_group[i]);
         }
     }
+}
 
+static void section_read_winlink(cJSON *d, app_config_t *c) {
     c->wl_enable = jget_bool(d, "wlEnable", c->wl_enable);
     set_str(c->wl_service_call, sizeof(c->wl_service_call), jget_str(d, "wlServiceCall", c->wl_service_call));
     if (c->wl_service_call[0] == 0)
@@ -1672,7 +1707,9 @@ static void config_from_json(cJSON *d, app_config_t *c) {
     c->wl_comment_en = jget_bool(d, "wlCommentEn", c->wl_comment_en);
     c->wl_inet_only = jget_bool(d, "wlInetOnly", c->wl_inet_only);
     c->wl_gate_exempt = jget_bool(d, "wlGateExempt", c->wl_gate_exempt);
+}
 
+static void section_read_query(cJSON *d, app_config_t *c) {
     c->query_en = jget_bool(d, "queryEn", c->query_en);
     c->query_rf = jget_bool(d, "queryRf", c->query_rf);
     c->query_inet = jget_bool(d, "queryInet", c->query_inet);
@@ -1700,14 +1737,71 @@ static void config_from_json(cJSON *d, app_config_t *c) {
     app_config_query_cap_extra_sanitize(c->query_cap_extra);
 }
 
-bool app_config_save(void) {
-    // Streams the configuration straight to the file, one field at a time -
-    // see the note on the JSON writer above for why no in-RAM document is
-    // built.
+// ---- section table ---------------------------------------------------------
+
+// One row per web admin functionality that owns persistent settings, in the
+// order app_config_load() reads them. The order matters in one place: the
+// BrandMeister reader re-applies the monitor interlock against the INET->RF
+// gating the IGate section carries, so IGate is read first.
+static const config_section_desc_t SECTIONS[APP_CONFIG_SECTION_NUM] = {
+    [APP_CONFIG_SECTION_SYSTEM] = { STORAGE_BASE_PATH "/system.json", STORAGE_BASE_PATH "/system.json.tmp", "system configuration", section_write_system,
+                                    section_read_system },
+    [APP_CONFIG_SECTION_STATION] = { STORAGE_BASE_PATH "/station.json", STORAGE_BASE_PATH "/station.json.tmp", "station configuration", section_write_station,
+                                     section_read_station },
+    [APP_CONFIG_SECTION_WIRELESS] = { STORAGE_BASE_PATH "/wireless.json", STORAGE_BASE_PATH "/wireless.json.tmp", "wireless configuration",
+                                      section_write_wireless, section_read_wireless },
+    [APP_CONFIG_SECTION_RADIO] = { STORAGE_BASE_PATH "/radio.json", STORAGE_BASE_PATH "/radio.json.tmp", "radiomodem configuration", section_write_radio,
+                                   section_read_radio },
+    [APP_CONFIG_SECTION_IGATE] = { STORAGE_BASE_PATH "/igate.json", STORAGE_BASE_PATH "/igate.json.tmp", "igate configuration", section_write_igate,
+                                   section_read_igate },
+    [APP_CONFIG_SECTION_BRANDMEISTER] = { STORAGE_BASE_PATH "/brandmeister.json", STORAGE_BASE_PATH "/brandmeister.json.tmp", "brandmeister configuration",
+                                          section_write_brandmeister, section_read_brandmeister },
+    [APP_CONFIG_SECTION_DIGIPEATER] = { STORAGE_BASE_PATH "/digi.json", STORAGE_BASE_PATH "/digi.json.tmp", "digipeater configuration",
+                                        section_write_digipeater, section_read_digipeater },
+    [APP_CONFIG_SECTION_TRACKER] = { STORAGE_BASE_PATH "/tracker.json", STORAGE_BASE_PATH "/tracker.json.tmp", "tracker configuration", section_write_tracker,
+                                     section_read_tracker },
+    [APP_CONFIG_SECTION_WEATHER] = { STORAGE_BASE_PATH "/weather.json", STORAGE_BASE_PATH "/weather.json.tmp", "weather configuration", section_write_weather,
+                                     section_read_weather },
+    [APP_CONFIG_SECTION_GPS] = { STORAGE_BASE_PATH "/gps.json", STORAGE_BASE_PATH "/gps.json.tmp", "gps configuration", section_write_gps, section_read_gps },
+    [APP_CONFIG_SECTION_MESSAGE] = { STORAGE_BASE_PATH "/message.json", STORAGE_BASE_PATH "/message.json.tmp", "message configuration", section_write_message,
+                                     section_read_message },
+    [APP_CONFIG_SECTION_WINLINK] = { STORAGE_BASE_PATH "/winlink.json", STORAGE_BASE_PATH "/winlink.json.tmp", "winlink configuration", section_write_winlink,
+                                     section_read_winlink },
+    [APP_CONFIG_SECTION_QUERY] = { STORAGE_BASE_PATH "/query.json", STORAGE_BASE_PATH "/query.json.tmp", "query configuration", section_write_query,
+                                   section_read_query },
+};
+
+const char *app_config_section_path(app_config_section_t section) {
+    if (section >= APP_CONFIG_SECTION_NUM)
+        return NULL;
+    return SECTIONS[section].path;
+}
+
+// Writes one section's file. The caller must hold both the save mutex and
+// storage_write_lock(): the first is what json_store_open_tmp() checks before
+// pinning the shared stdio buffer, the second keeps the temp-file + rename
+// sequence off any other subsystem's write and off a whole-partition erase.
+static bool save_section_locked(app_config_section_t section, SemaphoreHandle_t lock) {
+    const config_section_desc_t *sec = &SECTIONS[section];
+
+    FILE *f = json_store_open_tmp(sec->tmp_path, TAG, lock);
+    if (!f)
+        return false;
+
+    jw_t w = { .f = f, .obj_comma = false, .arr_comma = false };
+    sec->write(&w, &g_config);
+
+    return json_store_commit(f, sec->tmp_path, sec->path, TAG, sec->what);
+}
+
+bool app_config_save_sections(uint32_t mask) {
+    // Streams each selected section straight to its own file, one field at a
+    // time - see the note on the JSON writer above for why no in-RAM document
+    // is built.
     //
     // Serialize the whole save against any other save/load in flight (see
-    // s_config_mutex comment above). Block indefinitely: a save must never
-    // be silently dropped, and the critical section below is short.
+    // s_config_mutex comment above). Block indefinitely: a save must never be
+    // silently dropped, and the critical section below is short.
     //
     // The handle is taken once and reused for the rest of the function, so the
     // stream handed out by json_store_open_tmp() is checked against the very
@@ -1720,92 +1814,127 @@ bool app_config_save(void) {
     xSemaphoreTake(lock, portMAX_DELAY);
 
     // Second, filesystem-wide gate (storage.h): config_mutex() only keeps two
-    // config saves apart, while the temp-file + rename sequence below must
-    // also not overlap the whole-partition erase the web Storage page can
+    // configuration saves apart, while the temp-file + rename sequence below
+    // must also not overlap the whole-partition erase the web Storage page can
     // trigger, nor a save being made by another subsystem. Module lock first,
-    // this gate second - the order storage.h's contract requires.
+    // this gate second - the order storage.h's contract requires. It is taken
+    // once around the whole run rather than per file, so a multi-section save
+    // reaches flash as one uninterrupted sequence.
     storage_write_lock();
 
-    // The save mutex is held across this whole function, which is what
-    // json_store_open_tmp() asserts before handing back a stream whose stdio
-    // buffer is already pinned.
-    FILE *f = json_store_open_tmp(CONFIG_TMP_PATH, TAG, lock);
-    if (!f) {
-        storage_write_unlock();
-        xSemaphoreGive(lock);
-        return false;
-    }
-
-    jw_t w = { .f = f, .obj_comma = false, .arr_comma = false };
-    config_write_json(&w, &g_config);
-
-    if (!json_store_commit(f, CONFIG_TMP_PATH, CONFIG_PATH, TAG, "configuration")) {
-        storage_write_unlock();
-        xSemaphoreGive(lock);
-        return false;
+    // Every selected section is attempted even after one has failed, so a
+    // single full filesystem does not leave the remaining files holding
+    // settings the operator has already replaced in RAM.
+    bool ok = true;
+    for (app_config_section_t s = 0; s < APP_CONFIG_SECTION_NUM; s++) {
+        if (!(mask & APP_CONFIG_SECTION_BIT(s)))
+            continue;
+        if (!save_section_locked(s, lock))
+            ok = false;
     }
 
     // How close the calling task (normally the httpd task) came to overflowing
     // its stack during this save, so the config.stack_size in web_server.c can
-    // be sized from real numbers instead of a guess. Remove once a safe margin
-    // is confirmed.
+    // be sized from real numbers instead of a guess.
     ESP_LOGI(TAG, "Caller stack high-water mark: %u bytes free", (unsigned)(uxTaskGetStackHighWaterMark(NULL) * sizeof(StackType_t)));
     storage_write_unlock();
     xSemaphoreGive(lock);
+    return ok;
+}
+
+bool app_config_save_section(app_config_section_t section) {
+    if (section >= APP_CONFIG_SECTION_NUM)
+        return false;
+    return app_config_save_sections(APP_CONFIG_SECTION_BIT(section));
+}
+
+bool app_config_save(void) {
+    return app_config_save_sections(APP_CONFIG_SECTIONS_ALL);
+}
+
+// Reads one section's file into g_config. The three outcomes the caller has to
+// tell apart are folded into the two-flag return: a section that was read,
+// a section whose file has to be created, and a section whose file is believed
+// intact but could not be read this pass.
+//
+// A missing, empty or unparseable file all mean the same thing here: the
+// section is left at the defaults app_config_load() has already put in place
+// and its file is rewritten from them, so every functionality always has a
+// file on flash and the device always comes up on a reachable web admin. An
+// out-of-memory read is the one case that must not write: the file is very
+// probably fine, so overwriting it on the strength of a failed malloc would
+// destroy a good configuration.
+static bool load_section(app_config_section_t section, bool *out_transient) {
+    const config_section_desc_t *sec = &SECTIONS[section];
+
+    cJSON *doc = NULL;
+    json_store_status_t st = json_store_read(sec->path, TAG, sec->what, &doc);
+
+    if (st == JSON_STORE_OOM) {
+        *out_transient = true;
+        return false;
+    }
+
+    if (st != JSON_STORE_OK) {
+        ESP_LOGW(TAG, "%s unusable, writing defaults", sec->path);
+        return false;
+    }
+
+    sec->read(doc, &g_config);
+    cJSON_Delete(doc);
     return true;
 }
 
 bool app_config_load(void) {
     // Bracketed because this is one of the larger single transients in the
-    // firmware and none of it is visible from outside: the file is read whole
-    // into a buffer and then parsed into a cJSON tree of a few hundred nodes,
-    // both of which are alive at once for the length of the parse. The "after"
-    // line is placed on every exit path so a load that gave the memory back
-    // and a load that failed holding it are told apart by the pair, not by
-    // which line happens to follow in the log.
+    // firmware and none of it is visible from outside: each file is read whole
+    // into a buffer and then parsed into a cJSON tree, both of which are alive
+    // at once for the length of that section's parse. The "after" line is
+    // placed on every exit path so a load that gave the memory back and a load
+    // that failed holding it are told apart by the pair, not by which line
+    // happens to follow in the log.
     HEAP_MONITOR_BRACKET("before", "config load");
 
-    cJSON *doc = NULL;
-    json_store_status_t st = json_store_read(CONFIG_PATH, TAG, "configuration", &doc);
+    // Defaults first, once, for the whole structure: every section reader
+    // takes each field's fallback from the field itself, so a key a file does
+    // not carry - and a section whose file does not exist at all - is left at
+    // the documented default rather than at zero-garbage.
+    app_config_set_defaults(&g_config);
 
-    switch (st) {
-        case JSON_STORE_OK:
-            break;
-
-        case JSON_STORE_OOM:
-            // The file is very probably intact - there was simply no RAM to
-            // read it in or to build its tree. Leave it exactly as it is and
-            // report the failure, rather than writing defaults over a
-            // configuration that a later attempt would have loaded fine. This
-            // is the one store whose corrupt path is destructive, so the
-            // distinction the reader draws between a bad file and a bad moment
-            // is what stands between a busy boot and a wiped configuration.
-            HEAP_MONITOR_BRACKET("after", "config load");
-            return false;
-
-        case JSON_STORE_MISSING:
-        case JSON_STORE_EMPTY:
-        case JSON_STORE_CORRUPT:
-        default: {
-            // The boot configuration is the one file the device cannot come up
-            // without, so anything unusable here is replaced with the factory
-            // set and written back immediately. That costs an operator a
-            // corrupt config.json they might have wanted to inspect, and buys
-            // a station that always boots into a reachable web admin instead
-            // of one that needs a serial flash to recover.
-            ESP_LOGW(TAG, "%s unusable, writing defaults", CONFIG_PATH);
-            app_config_set_defaults(&g_config);
-            bool saved = app_config_save();
-            HEAP_MONITOR_BRACKET("after", "config load");
-            return saved;
+    uint32_t rewrite = 0;
+    bool transient = false;
+    for (app_config_section_t s = 0; s < APP_CONFIG_SECTION_NUM; s++) {
+        bool section_transient = false;
+        if (!load_section(s, &section_transient)) {
+            if (section_transient)
+                transient = true;
+            else
+                rewrite |= APP_CONFIG_SECTION_BIT(s);
         }
     }
 
-    config_from_json(doc, &g_config);
-    cJSON_Delete(doc);
+    // A section that could not be read for want of memory says nothing about
+    // its content, so nothing is written this pass and the caller is told to
+    // try again: main.c retries once and falls back to the factory set only if
+    // the second attempt fails too. Rewriting the sections that are genuinely
+    // absent or corrupt would be safe on its own, but doing it while another
+    // section is still unread would persist a configuration assembled half
+    // from flash and half from defaults.
+    if (transient) {
+        HEAP_MONITOR_BRACKET("after", "config load");
+        return false;
+    }
+
+    // Every file that does not exist yet, or that could not be parsed, is
+    // created from the defaults now, so a first boot and a boot after a
+    // partition format both end with one file per functionality on flash.
+    bool ok = true;
+    if (rewrite != 0)
+        ok = app_config_save_sections(rewrite);
+
     HEAP_MONITOR_BRACKET("after", "config load");
     ESP_LOGI(TAG, "Configuration loaded");
-    return true;
+    return ok;
 }
 
 bool app_config_factory_reset(void) {

@@ -59,12 +59,12 @@ static const char *TAG = "page_station";
 //
 // Two of those consumers keep their data in their own LittleFS file rather
 // than in g_config (telemetry.json and objitems.json), so refreshing them is a
-// write of its own that can fail independently of the config.json write the
-// caller goes on to make.
+// write of its own that can fail independently of the section files the caller
+// goes on to write.
 //
 // @note Must be called with app_config_lock() already held (all g_config
-// fields touched here belong to that same lock), and BEFORE app_config_save()
-// so the refreshed values are part of the same config.json write.
+// fields touched here belong to that same lock), and BEFORE the save, so the
+// refreshed values are part of the same write.
 //
 // @return true if every dependent store that needed rewriting was written.
 // The g_config mirrors above cannot fail and are always applied.
@@ -406,11 +406,14 @@ esp_err_t page_station_post(httpd_req_t *req) {
 
     app_config_unlock();
 
-    // Saving this page writes three separate LittleFS files: the two dependent
-    // stores above and config.json here. Every one of them is attempted, and
-    // the page reports success only if all three landed - a partial save leaves
-    // the station's identity split across stores that no longer agree.
-    bool cfg_ok = app_config_save();
+    // The mirrors above reach into five other services' fields, so this save
+    // names every section it touched and not just the station's own: the
+    // identity would otherwise be split across files that no longer agree.
+    // Together with the two dependent stores refreshed above, every write is
+    // attempted and the page reports success only if all of them landed.
+    bool cfg_ok = app_config_save_sections(APP_CONFIG_SECTION_BIT(APP_CONFIG_SECTION_STATION) | APP_CONFIG_SECTION_BIT(APP_CONFIG_SECTION_IGATE) |
+                                           APP_CONFIG_SECTION_BIT(APP_CONFIG_SECTION_DIGIPEATER) | APP_CONFIG_SECTION_BIT(APP_CONFIG_SECTION_TRACKER) |
+                                           APP_CONFIG_SECTION_BIT(APP_CONFIG_SECTION_WEATHER) | APP_CONFIG_SECTION_BIT(APP_CONFIG_SECTION_MESSAGE));
     if (!cfg_ok)
         ESP_LOGE(TAG, "station settings could not be written to flash");
 

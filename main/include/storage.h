@@ -17,9 +17,9 @@
  * @brief LittleFS storage back end mounted at /storage.
  *
  * Mounts the "storage" partition, formatting automatically on first boot (fresh
- * partition) so config.json and defaults always end up written, and exposes file
- * existence / delete / format / usage helpers used by the configuration loader
- * and by the web admin storage page.
+ * partition) so the per-functionality configuration files and their defaults
+ * always end up written, and exposes file existence / delete / format / usage
+ * helpers used by the configuration loader and by the web admin storage page.
  */
 
 #ifndef APP_STORAGE_H
@@ -36,8 +36,8 @@
 
 /**
  * @brief Mount LittleFS at ::STORAGE_BASE_PATH, formatting automatically on
- * first boot (fresh partition) so config.json + defaults always end up
- * written.
+ * first boot (fresh partition) so the configuration files + defaults always
+ * end up written.
  * @return true on success.
  */
 bool storage_init(void);
@@ -85,7 +85,8 @@ bool storage_format(void) APRS_MUST_CHECK;
  * esp_littlefs already serializes each individual VFS call, so this gate is
  * not about metadata integrity: it exists for sequences that are only correct
  * as a whole - the "write temp file, then rename it over the live one" save
- * used by config.json, telemetry.json, bulletins.json, objitems.json and
+ * used by the per-functionality configuration files, telemetry.json,
+ * bulletins.json, objitems.json and
  * telegram.json, and the whole-partition erase done by ::storage_format.
  *
  * Ordering contract: a caller may take its own module lock first and this gate
@@ -125,7 +126,7 @@ uint32_t storage_generation(void);
  * ::storage_generation.
  *
  * Used by the web Storage page's file upload, which can drop a new
- * config.json / telemetry.json / bulletins.json / objitems.json straight onto
+ * a configuration file / telemetry.json / bulletins.json / objitems.json straight onto
  * the filesystem.
  */
 void storage_note_external_change(void);

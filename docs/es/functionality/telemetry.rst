@@ -15,7 +15,7 @@ Almacenamiento separado
 =======================
 
 A diferencia de la mayoría de los ajustes, la configuración de telemetría
-deliberadamente **no** vive en ``g_config``/``config.json``. Persiste en su
+deliberadamente **no** vive en ``g_config``. Persiste en su
 propio pequeño archivo LittleFS, ``/storage/telemetry.json``, del mismo modo que
 los boletines y objetos/ítems mantienen sus propios archivos. En el primer
 arranque, o cuando el archivo falta, se crea un conjunto vacío por defecto para

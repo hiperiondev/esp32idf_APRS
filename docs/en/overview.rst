@@ -178,7 +178,8 @@ are worth internalising up front:
 
 **One resident configuration, one live copy.**
    A single ``app_config_t g_config`` instance is the source of truth every
-   subsystem reads. It persists to ``/storage/config.json``. Subsystems never
+   subsystem reads. It persists to one file per web-admin functionality under
+   ``/storage``. Subsystems never
    duplicate configuration state; they read ``g_config`` directly. The
    subsystems that need larger, page-specific state of their own keep it in
    separate LittleFS files instead of bloating ``g_config``: telemetry
@@ -216,8 +217,8 @@ The project and its modem component are by **Emiliano Augusto González
 (LU3VEA)**. The soft-modem's DSP lineage traces to three earlier projects:
 **VP-Digi** (SQ8VPS), **ESP32APRS_Audio** (nakhonthai) and **LibAPRS**
 (Mark Qvist). The configuration schema, web-admin layout and dashboard
-semantics follow the reference **ESP32APRS** project so that existing
-``config.json`` files and operator expectations carry over. See
+semantics follow the reference **ESP32APRS** project so that JSON key names and
+operator expectations carry over. See
 :ref:`en-credits` for full attribution and licensing.
 
 The firmware is licensed under the **GNU General Public License v3.0**.

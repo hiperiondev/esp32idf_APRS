@@ -55,18 +55,18 @@ static void append_file_row(httpd_req_t *req, const char *name, long size) {
     if (!row)
         return;
 
-    // Delete is a real POST form (not a GET link): a GET request is meant to
-    // be safe/side-effect-free, so a state-changing action reachable via a
-    // plain <a href> is trivially triggerable by a third-party page (e.g.
-    // <img src="/delete?file=...">) while the admin's browser still has
-    // Basic-Auth credentials cached - i.e. CSRF. The confirm() dialog still
-    // reads the filename from data-fname (already HTML-attribute-escaped), so
-    // nothing needs JS-string escaping.
-    // 'need' is sized from the actual esc/enc lengths above, so this never
-    // truncates at runtime; GCC's format-truncation analysis just can't follow
-    // that arithmetic and assumes the worst case (each %s filled to its
-    // buffer's declared capacity of 512). Silence the false positive locally
-    // instead of disabling the check project-wide.
+        // Delete is a real POST form (not a GET link): a GET request is meant to
+        // be safe/side-effect-free, so a state-changing action reachable via a
+        // plain <a href> is trivially triggerable by a third-party page (e.g.
+        // <img src="/delete?file=...">) while the admin's browser still has
+        // Basic-Auth credentials cached - i.e. CSRF. The confirm() dialog still
+        // reads the filename from data-fname (already HTML-attribute-escaped), so
+        // nothing needs JS-string escaping.
+        // 'need' is sized from the actual esc/enc lengths above, so this never
+        // truncates at runtime; GCC's format-truncation analysis just can't follow
+        // that arithmetic and assumes the worst case (each %s filled to its
+        // buffer's declared capacity of 512). Silence the false positive locally
+        // instead of disabling the check project-wide.
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wformat-truncation"
     snprintf(row, need,
@@ -192,8 +192,9 @@ esp_err_t page_format(httpd_req_t *req) {
         return ESP_OK;
     bool ok = storage_format();
     if (ok) {
-        // The format unmounts nothing, so config.json can be regenerated with
-        // defaults right now instead of waiting for the next boot. Called
+        // The format unmounts nothing, so every configuration file can be
+        // regenerated with defaults right now instead of waiting for the next
+        // boot. Called
         // through the prototype in app_config.h so the compiler keeps this
         // call site in step with the definition.
         //
@@ -262,8 +263,9 @@ esp_err_t page_upload(httpd_req_t *req) {
 
     // Once the destination has been opened for writing, whatever was there
     // before is gone - including, potentially, a file a subsystem keeps a
-    // parsed copy of in RAM (config.json, telemetry.json, bulletins.json,
-    // objitems.json). Announce the change so those copies are dropped, whether
+    // parsed copy of in RAM (any of the per-functionality configuration files,
+    // telemetry.json, bulletins.json, objitems.json). Announce the change so
+    // those copies are dropped, whether
     // the transfer went on to succeed or not.
     if (ctx.opened)
         storage_note_external_change();

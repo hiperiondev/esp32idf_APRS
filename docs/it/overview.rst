@@ -184,7 +184,8 @@ vale la pena interiorizzarle subito:
 
 **Una configurazione residente, una copia viva.**
    Una singola istanza ``app_config_t g_config`` è la fonte di verità che ogni
-   sottosistema legge. Persiste su ``/storage/config.json``. I sottosistemi non
+   sottosistema legge. Persiste su un file per funzionalità
+   dell'amministrazione web sotto ``/storage``. I sottosistemi non
    duplicano mai lo stato di configurazione; leggono ``g_config`` direttamente.
    I sottosistemi che necessitano di uno stato più grande e specifico della
    pagina lo mantengono in file LittleFS separati invece di gonfiare
@@ -226,7 +227,7 @@ Il progetto e il suo componente modem sono di **Emiliano Augusto González
 precedenti: **VP-Digi** (SQ8VPS), **ESP32APRS_Audio** (nakhonthai) e **LibAPRS**
 (Mark Qvist). Lo schema di configurazione, la disposizione dell'amministrazione
 web e la semantica della dashboard seguono il progetto di riferimento
-**ESP32APRS** così che i file ``config.json`` esistenti e le aspettative
+**ESP32APRS** così che i nomi delle chiavi JSON e le aspettative
 dell'operatore vengano mantenuti. Vedi :ref:`it-credits` per l'attribuzione e la
 licenza complete.
 

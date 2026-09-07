@@ -11,8 +11,11 @@ La partizione ``storage`` da 512 KB è montata come **LittleFS** su ``/storage``
 (``main/storage.c``). Al primo avvio si auto-formatta. Contiene ogni file
 persistente che il firmware scrive, e uno che si limita a leggere:
 
-* ``/storage/config.json`` — la configurazione residente (vedi
-  :ref:`it-configuration`).
+* Un file di configurazione per funzionalità dell'amministrazione web —
+  ``system.json``, ``station.json``, ``wireless.json``, ``radio.json``,
+  ``igate.json``, ``brandmeister.json``, ``digi.json``, ``tracker.json``,
+  ``weather.json``, ``gps.json``, ``message.json``, ``winlink.json`` e
+  ``query.json`` (vedi :ref:`it-configuration`).
 * ``/storage/telemetry.json`` — configurazione del canale di telemetria.
 * ``/storage/bulletins.json`` — i cinque bollettini.
 * ``/storage/objitems.json`` — i cinque oggetti/item.

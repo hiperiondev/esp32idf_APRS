@@ -22,7 +22,7 @@ preghiamo di contattare i loro autori per informazioni su quei progetti:
 
 Lo schema di configurazione, la disposizione dell'amministrazione web e la
 semantica della dashboard seguono il progetto di riferimento **esp32idf_APRS /
-ESP32APRS** così che i file ``config.json`` esistenti e le aspettative
+ESP32APRS** così che i nomi delle chiavi JSON e le aspettative
 dell'utente siano mantenuti.
 
 Componenti integrati

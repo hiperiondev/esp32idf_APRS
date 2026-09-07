@@ -829,8 +829,8 @@ Gestión de estación / Operación
    * - Restauración a los valores de fábrica compilados
      - ⚠️
      - ✅
-     - Un botón en la página Sistema reescribe ``config.json`` con los valores
-       de fábrica
+     - Un botón en la página Sistema reescribe todos los archivos de
+       configuración con los valores de fábrica
    * - UI multilenguaje
      - ⚠️ (poco común; la mayoría son solo en inglés o localizados por el SO)
      - ✅

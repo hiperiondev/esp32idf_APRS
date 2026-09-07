@@ -22,8 +22,8 @@ contacta con sus autores para información sobre esos proyectos:
 
 El esquema de configuración, la disposición de la administración web y la
 semántica del panel siguen el proyecto de referencia **esp32idf_APRS /
-ESP32APRS** para que los archivos ``config.json`` existentes y las expectativas
-del usuario se mantengan.
+ESP32APRS** para que los nombres de clave JSON y las expectativas del usuario
+se mantengan.
 
 Componentes integrados
 ======================

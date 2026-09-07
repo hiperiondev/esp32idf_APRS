@@ -318,8 +318,9 @@ Las páginas
        de usuarios autorizados y chats de grupo permitidos (hasta 8 usuarios y
        4 chats de grupo, cada uno con un identificador y un nombre para
        mostrar). Todo lo de esta página se guarda en ``/storage/telegram.json``,
-       no en ``config.json``, así que también puede descargarse y subirse
-       desde la página Almacenamiento. La tabla de estado bajo el
+       su propio archivo como el de cualquier otra página, así que también
+       puede descargarse y subirse desde la página Almacenamiento. La tabla de
+       estado bajo el
        formulario informa en qué punto está la conexión y, cuando no avanza,
        exactamente qué paso falló y qué hacer: falta el archivo de
        configuración o no se puede parsear, el token está vacío o no tiene la
@@ -438,7 +439,7 @@ Las páginas
 .. note::
 
    Todos los controles de estas páginas gobiernan conducta real: un ajuste que
-   llega a ``config.json`` lo lee el servicio que lo posee. El digipeater
+   llega al archivo de su página lo lee el servicio que lo posee. El digipeater
    siempre maneja WIDEn-N y repite sin retardo añadido, así que ninguna de las
    dos cosas se ofrece como opción.
 

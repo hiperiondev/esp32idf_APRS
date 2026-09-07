@@ -838,8 +838,8 @@ Gestione stazione / Operatività
    * - Ripristino ai valori di fabbrica compilati
      - ⚠️
      - ✅
-     - Un pulsante nella pagina Sistema riscrive ``config.json`` con i valori di
-       fabbrica
+     - Un pulsante nella pagina Sistema riscrive tutti i file di configurazione
+       con i valori di fabbrica
    * - UI multilingua
      - ⚠️ (raro; la maggior parte è solo inglese o localizzata dal SO)
      - ✅

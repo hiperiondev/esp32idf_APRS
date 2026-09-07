@@ -326,8 +326,9 @@ Le pagine
        fissa di utenti autorizzati e chat di gruppo consentite (fino a 8
        utenti e 4 chat di gruppo, ciascuno con un identificativo e un nome
        visualizzato). Tutto ciò che si trova in questa pagina è memorizzato in
-       ``/storage/telegram.json``, non in ``config.json``, quindi può anche
-       essere scaricato e ricaricato dalla pagina Archivio file. La
+       ``/storage/telegram.json``, il suo file come quello di ogni altra
+       pagina, quindi può anche essere scaricato e ricaricato dalla pagina
+       Archivio file. La
        tabella di stato sotto il modulo riporta a che punto è la connessione e,
        quando non avanza, esattamente quale passo è fallito e cosa fare: manca
        il file di configurazione o non è analizzabile, il token è vuoto o non
@@ -446,7 +447,8 @@ Le pagine
 .. note::
 
    Ogni controllo di queste pagine governa comportamento reale: un'impostazione
-   che arriva in ``config.json`` viene letta dal servizio che la possiede. Il
+   che arriva nel file della sua pagina viene letta dal servizio che la
+   possiede. Il
    digipeater gestisce sempre WIDEn-N e ripete senza ritardo aggiunto, quindi
    nessuno dei due viene offerto come opzione.
 

@@ -22,8 +22,8 @@ detiene de forma supervisada, y publica un diagnóstico que la página web
 Su propio archivo de configuración
 ====================================
 
-Todo lo que el bot necesita vive en ``/storage/telegram.json``, no en
-``config.json``:
+Todo lo que el bot necesita vive en ``/storage/telegram.json``, su propio
+archivo como el de cualquier otra página:
 
 .. list-table::
    :header-rows: 1

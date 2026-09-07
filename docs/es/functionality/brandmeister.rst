@@ -100,8 +100,8 @@ rango se apagó después desde la página IGate. Deducirla en lugar de recordarl
 también hace que el mensaje llegue al navegador al que le corresponde: varios
 operadores pueden tener abierta la administración web a la vez. La misma regla
 se vuelve a aplicar cuando la página IGate apaga el filtro de rango, y otra vez
-al cargar un ``config.json``, así que no se puede evitar editando el archivo a
-mano.
+al cargar ``brandmeister.json``, así que no se puede evitar editando el archivo
+a mano.
 
 La página nunca edita por sí misma la cadena del filtro de servidor. El filtro
 es del operador, y una página que lo reescribiera en silencio haría que la

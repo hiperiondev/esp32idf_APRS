@@ -26,7 +26,7 @@
  *    project's @c config_example.json: the token issued by @@BotFather, the
  *    administrator's numeric identifier, the optional Mini App address, and
  *    the lists of authorized users and allowed group chats. None of it is in
- *    config.json, so the whole bot configuration is one file the operator can
+ *    the other pages' files, so the whole bot configuration is one file the operator can
  *    download, edit and upload again from the File Storage page. The only key
  *    this firmware adds to that shape is @c enabled, the switch the Telegram
  *    page renders; a file that does not carry it loads with the bot off, which

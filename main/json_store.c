@@ -31,8 +31,8 @@
 
 // The single stdio buffer shared by every store. Defined here, in one
 // translation unit, rather than in the header: as a static local of an inline
-// function each of the five including modules would get a private copy, five
-// times the .bss for a buffer only one saver can ever be using.
+// function every including module would get a private copy, one .bss buffer
+// per module for something only one saver can ever be using.
 //
 // Two things make one buffer enough. Every saver takes its own module mutex
 // and then storage_write_lock() (main/storage.c) around the whole temp-file +

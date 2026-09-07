@@ -128,7 +128,7 @@ First boot
 ==========
 
 #. On a fresh partition, LittleFS auto-formats and ``app_config_load()`` writes
-   ``/storage/config.json`` from factory defaults.
+   one configuration file per functionality from factory defaults.
 #. The ESP32 comes up as a **Wi-Fi AP**: SSID ``esp32idf_APRS``, password
    ``esp32idf_APRS``, channel 1, WPA2-PSK, max 4 clients.
 #. Join it and browse to the device (default ``http://192.168.4.1/``).

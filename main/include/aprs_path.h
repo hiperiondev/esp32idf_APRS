@@ -29,7 +29,7 @@
  * POST handlers already clamp the bitmask at save time
  * (app_config_path_mask_clamp()), but a configuration can also reach a
  * transmitter without ever passing through a form - a hand-edited or imported
- * config.json, or a file dropped on the device from the Storage page - so the
+ * a configuration file, or a file dropped on the device from the Storage page - so the
  * limit is checked again at the point the path is actually built. Hop counting
  * uses app_config_path_hop_count(), the same function the save-time clamp uses,
  * so the two enforcement points cannot disagree: a preset slot may itself list

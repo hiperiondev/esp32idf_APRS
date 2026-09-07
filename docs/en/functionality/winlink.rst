@@ -181,10 +181,10 @@ doing something.
 Stored replies
 --------------
 
-Everything the service sends back is kept in ``/storage/winlink.json``, oldest
-first, up to the most recent 24 replies. Clearing them from the page removes
-that file and nothing else — the account settings live in ``config.json`` and
-are untouched.
+Everything the service sends back is kept in ``/storage/winlink_mail.json``,
+oldest first, up to the most recent 24 replies. Clearing them from the page
+removes that file and nothing else — the account settings live in
+``/storage/winlink.json`` and are untouched.
 
 The gateway
 ===========
@@ -224,7 +224,7 @@ rather than the third.
 Configuration
 =============
 
-Every setting is a ``wl*`` key in ``config.json`` — see
+Every setting is a ``wl*`` key in ``/storage/winlink.json`` — see
 :ref:`en-config-json`. The password is stored there in the clear, exactly as
 the APRS-IS passcode already is; anyone who can read the storage partition can
 read both.

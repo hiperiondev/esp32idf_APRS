@@ -137,7 +137,8 @@ Primer arranque
 ===============
 
 #. En una partición nueva, LittleFS se autoformatea y ``app_config_load()``
-   escribe ``/storage/config.json`` con los valores de fábrica.
+   escribe un archivo de configuración por funcionalidad con los valores de
+   fábrica.
 #. El ESP32 arranca como **AP Wi-Fi**: SSID ``esp32idf_APRS``, contraseña
    ``esp32idf_APRS``, canal 1, WPA2-PSK, máx. 4 clientes.
 #. Únete a él y navega al dispositivo (por defecto ``http://192.168.4.1/``).

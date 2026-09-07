@@ -16,47 +16,118 @@ Query and the Winlink account.
 
 Field names and JSON keys are kept **1:1** with the original reference project's
 ``config.h``/``config.cpp``, so every value the web admin shows has a home and
-old ``config.json`` files load unchanged.
+an operator moving between the two projects recognises the keys.
+
+One file per functionality
+==========================
+
+The resident structure is one thing; where it is stored is another. Each web
+admin page that owns persistent settings has **one file of its own** under
+``/storage``, named after the page — the sidebar is the index of the file list:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 70
+
+   * - File
+     - Page
+   * - ``system.json``
+     - System: CPU clock, SNTP hosts and resync, timezone, web admin credentials.
+   * - ``station.json``
+     - My Station: callsign, position, PHG antenna data, ambiguity, status
+       report options, no-archive and DAO switches.
+   * - ``wireless.json``
+     - Wireless: interface selection, TX power, SoftAP channel/SSID/PSK, the
+       five station profiles.
+   * - ``radio.json``
+     - Radiomodem: AFSK/FSK modulation, FX.25, preamble, TX buffers, CSMA
+       timing, PTT hold, duty-cycle limiter.
+   * - ``igate.json``
+     - IGate: both gating directions and their filters, buddy and satellite
+       lists, duplicate cache, range and prefix gates, message gating, the four
+       APRS-IS server slots, the beacon and its data extension.
+   * - ``brandmeister.json``
+     - BrandMeister: the interconnect switches and the gateway callsign list.
+   * - ``digi.json``
+     - Digipeater: the alias table and repeating rules, the beacon, **and the
+       four shared path presets**, which are edited on this page.
+   * - ``tracker.json``
+     - Tracker: the beacon, Mic-E options and the SmartBeaconing parameters.
+   * - ``weather.json``
+     - Weather: the report and the per-field sensor mapping.
+   * - ``gps.json``
+     - GPS: the receiver switch.
+   * - ``message.json``
+     - Message: the messaging service, retries, alarm GPIO and message groups.
+   * - ``winlink.json``
+     - Winlink: the account and session settings (the replies are a separate
+       file, ``winlink_mail.json``).
+   * - ``query.json``
+     - Query: the responder switches and the capabilities beacon.
+
+Each row is an ``app_config_section_t`` value, and the ``SECTIONS`` table in
+``app_config.c`` names the file and the two halves of its codec. A page's save
+handler calls ``app_config_save_section()`` with its own section, so saving the
+digipeater never rewrites the IGate's file and a write that fails cannot take
+another functionality's settings with it. The *My Station* page is the one that
+names several: its "Use My Station Data" mirrors reach into five other
+services' fields, so it passes every section it touched to
+``app_config_save_sections()`` — a partial save would leave the station's
+identity split across files that no longer agree.
+
+The read order matters in exactly one place: the BrandMeister reader re-applies
+the worldwide-monitor interlock against the INET→RF gating the IGate file
+carries, so the IGate section is read first.
 
 .. note::
 
-   Telemetry, bulletins and objects/items configuration deliberately do **not**
-   live in ``g_config``. They persist to their own LittleFS files
-   (``/storage/telemetry.json``, ``bulletins.json``, ``objitems.json``) to keep
-   the resident config — and therefore every ``config.json`` save — small. The
-   Telegram page is the same idea taken one step further: its *whole*
-   configuration, enable switch included, lives in ``/storage/telegram.json``
-   and no part of it is in ``g_config``. The Winlink account is the exception
-   that proves the rule — its handful of ``wl*`` fields are small enough to sit
-   in ``g_config``, and only the replies the service sends back go to a file of
-   their own (``/storage/winlink.json``).
+   Pages with no persistent settings of their own — Dashboard, Snd/Rcv Msg,
+   Console Logs, File Storage, About — have no file. Four subsystems keep
+   structures of their own rather than fields of ``app_config_t``, and own
+   their files directly: ``/storage/telemetry.json``, ``bulletins.json``,
+   ``objitems.json`` and ``telegram.json``. The reason is size — those tables
+   would significantly enlarge the resident structure — but the result is the
+   same rule: one functionality, one file.
 
 Loading and saving
 ==================
 
-* **Loaded** with **cJSON**. If the file is missing or corrupt, defaults are
-  applied **and immediately saved**, so the file always exists and is
-  consistent. If instead the load ran **out of memory**, the file is left
-  untouched and the failure is reported — ``cJSON_Parse()`` returns ``NULL``
-  for a bad file and for a failed allocation alike, so ``json_store_read()``
-  rescans the text with a non-allocating check before deciding which happened.
-  Confusing the two here would wipe a good configuration on a busy boot.
-* **Loaded in place**: ``config_from_json()`` writes the default set straight
-  into the destination struct and then reads each key's fallback from the very
-  field it is about to overwrite. Every field is assigned exactly once, always
-  after that call, so a fallback still holds its default at the instant it is
-  read. This keeps a second ``app_config_t`` — the size of the whole
-  configuration — off the stack of the loading task, which already has the
-  cJSON tree of the entire file live in the heap beside it.
+* **Defaults first, once.** ``app_config_load()`` fills the whole structure
+  from ``app_config_set_defaults()`` before opening the first file, then reads
+  each section over it. Every section reader takes each key's fallback from the
+  very field it is about to overwrite, so a key a file does not carry — and a
+  section whose file does not exist at all — keeps its documented default. This
+  also keeps a second ``app_config_t`` off the stack of the loading task, which
+  already has one section's cJSON tree live in the heap beside it.
+* **Loaded** with **cJSON**, one file at a time, so the peak allocation is the
+  largest single section rather than the whole configuration.
+* **Missing, empty or corrupt** → that section is rewritten from the defaults
+  before the load returns. This is what guarantees every functionality has a
+  file on flash from the first boot onward, without an operator ever having to
+  visit its page.
+* **Out of memory** → nothing is written at all and the whole load reports
+  failure. ``cJSON_Parse()`` returns ``NULL`` for a bad file and for a failed
+  allocation alike, so ``json_store_read()`` rescans the text with a
+  non-allocating check before deciding which happened; confusing the two would
+  wipe a good configuration on a busy boot. Rewriting the genuinely absent
+  sections while another is still unread would be worse still — it would
+  persist a configuration assembled half from flash and half from defaults —
+  so the pass writes nothing and ``main.c`` retries once before falling back to
+  the factory set.
 * **Saved** by a small token-at-a-time JSON writer (``jw_t``/``jadd_*``) that
   streams straight to the file, avoiding the double heap allocation a full cJSON
   tree plus its serialised buffer would need. A static ``setvbuf()`` buffer is
   installed right after ``fopen()`` so newlib does not lazily allocate a large
   stdio buffer mid-write.
-* **Atomic**: write ``/storage/config.json.tmp``, then rename.
+* **Atomic**, per file: write ``<name>.json.tmp``, then rename. A multi-section
+  save takes the filesystem-wide writer gate once around the whole run, and
+  attempts every selected file even after one has failed, so a full filesystem
+  does not leave the rest holding settings the operator has already replaced.
 
 Public API: ``app_config_set_defaults()``, ``app_config_load()``,
-``app_config_save()``, ``app_config_factory_reset()``, and the live instance
+``app_config_save_section()``, ``app_config_save_sections()``,
+``app_config_save()`` (every section), ``app_config_section_path()``,
+``app_config_factory_reset()``, and the live instance
 ``extern app_config_t g_config``.
 
 Concurrency: the config lock

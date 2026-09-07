@@ -795,8 +795,8 @@ Station Management / Ops
    * - Factory reset to compiled-in defaults
      - ⚠️
      - ✅
-     - One button on the System page rewrites ``config.json`` with the factory
-       defaults
+     - One button on the System page rewrites every configuration file with the
+       factory defaults
    * - Multi-language UI
      - ⚠️ (rare; most are English-only or OS-localized)
      - ✅

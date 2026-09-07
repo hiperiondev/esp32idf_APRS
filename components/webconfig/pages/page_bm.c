@@ -47,8 +47,8 @@ static const char *TAG = "page_bm";
 // bm_monitor is the third term of the rendered result rather than of the
 // condition: the warning explains why the switch above it will not stay
 // ticked, so it is shown whenever the precondition is unmet - whether the
-// operator has just been refused, is about to be, or loaded a config.json in
-// which the monitor was set by hand.
+// operator has just been refused, is about to be, or loaded a
+// brandmeister.json in which the monitor was set by hand.
 static bool bm_monitor_blocked(void) {
     return g_config.inet2rf && !g_config.inet2rf_range_en;
 }
@@ -212,7 +212,7 @@ esp_err_t page_bm_post(httpd_req_t *req) {
 
     app_config_unlock();
 
-    bool ok = app_config_save();
+    bool ok = app_config_save_section(APP_CONFIG_SECTION_BRANDMEISTER);
     if (!ok)
         ESP_LOGE(TAG, "BrandMeister settings could not be written to flash");
     web_send_save_result(req, ok, "/bm");

@@ -36,9 +36,10 @@
 // every one of those actions is a single APRSLink command an operator could
 // also type.
 //
-// The account and gateway settings live in config.json like every other
-// g_config field; the replies live in /storage/winlink.json, written by the
-// winlink component itself. Nothing on this page keeps state of its own: the
+// The account and gateway settings live in /storage/winlink.json like every
+// other page's settings; the replies live in /storage/winlink_mail.json,
+// written by the winlink component itself. Nothing on this page keeps state of
+// its own: the
 // status and the mailbox are both polled, so two browsers watching the same
 // session always agree.
 
@@ -356,7 +357,7 @@ esp_err_t page_winlink_post(httpd_req_t *req) {
     g_config.wl_gate_exempt = web_form_get_bool(body, "wlGateExempt");
     app_config_unlock();
 
-    bool ok = app_config_save();
+    bool ok = app_config_save_section(APP_CONFIG_SECTION_WINLINK);
     if (!ok)
         ESP_LOGE(TAG, "Winlink settings could not be written to flash");
 

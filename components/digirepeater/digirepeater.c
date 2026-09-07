@@ -32,7 +32,7 @@
 
 // Bounded copy into an AX.25 callsign field (char[6 + CALL_OVERSPACE] == 7
 // bytes). AX.25 callsigns are at most 6 chars; anything longer is truncated so
-// a stale or hand-edited config.json can never overflow the 7-byte destination
+// a stale or hand-edited digi.json can never overflow the 7-byte destination
 // (which would otherwise corrupt the adjacent ssid / next rpt_list entry).
 static inline void copy_call(char dst[7], const char *src) {
     size_t i = 0;

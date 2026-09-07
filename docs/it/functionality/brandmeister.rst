@@ -103,8 +103,8 @@ seguito dalla pagina IGate. Ricavarla invece di ricordarla fa anche sì che il
 messaggio raggiunga il browser che riguarda: più operatori possono avere aperta
 l'amministrazione web nello stesso momento. La stessa regola viene riapplicata
 quando la pagina IGate disattiva il filtro di distanza, e di nuovo al
-caricamento di un ``config.json``, quindi non è aggirabile modificando il file a
-mano.
+caricamento di ``brandmeister.json``, quindi non è aggirabile modificando il
+file a mano.
 
 La pagina non modifica mai da sé la stringa del filtro server. Il filtro
 appartiene all'operatore, e una pagina che lo riscrivesse in silenzio farebbe

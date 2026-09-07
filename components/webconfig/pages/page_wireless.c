@@ -184,7 +184,7 @@ esp_err_t page_wireless_post(httpd_req_t *req) {
     // The form's min/max attributes are browser side only: a crafted POST can
     // carry any integer. esp_wifi_set_config() refuses an AP channel outside
     // the regulatory range, so anything out of bounds is folded back to the
-    // default instead of being written to config.json.
+    // default instead of being written to wireless.json.
     int apCh = web_form_get_int(body, "apCh", g_config.wifi_ap_ch);
     if (apCh < WIFI_AP_CH_MIN || apCh > WIFI_AP_CH_MAX)
         apCh = WIFI_AP_CH_DEFAULT;
@@ -206,7 +206,7 @@ esp_err_t page_wireless_post(httpd_req_t *req) {
     // result is what decides whether the operator is told this reached flash.
     // Reported before the usability check below, because a write that never
     // reached flash is the more fundamental of the two problems.
-    if (!app_config_save()) {
+    if (!app_config_save_section(APP_CONFIG_SECTION_WIRELESS)) {
         ESP_LOGE(TAG, "wireless settings could not be written to flash");
         web_send_save_result(req, false, "/wireless");
         return ESP_OK;

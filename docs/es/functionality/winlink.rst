@@ -186,7 +186,7 @@ Respuestas guardadas
 Todo lo que el servicio devuelve se guarda en ``/storage/winlink.json``, de lo
 más antiguo a lo más reciente, hasta las últimas 24 respuestas. Borrarlas desde
 la página elimina ese archivo y nada más — los ajustes de la cuenta viven en
-``config.json`` y quedan intactos.
+``/storage/winlink.json`` y quedan intactos.
 
 La pasarela
 ===========
@@ -230,7 +230,7 @@ tercero.
 Configuración
 =============
 
-Cada ajuste es una clave ``wl*`` de ``config.json`` — véase
+Cada ajuste es una clave ``wl*`` de ``/storage/winlink.json`` — véase
 :ref:`es-config-json`. La contraseña se guarda allí en claro, exactamente igual
 que ya ocurre con el passcode de APRS-IS; quien pueda leer la partición de
 almacenamiento puede leer las dos.

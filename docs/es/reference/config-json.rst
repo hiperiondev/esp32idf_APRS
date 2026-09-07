@@ -4,26 +4,37 @@
 Almacenamiento de configuración
 ===============================
 
-La configuración residente persiste en ``/storage/config.json`` sobre LittleFS.
-Esta referencia resume la mecánica de almacenamiento; para los grupos de campos
-véase :ref:`es-configuration`.
+La configuración residente persiste sobre LittleFS como **un archivo por
+funcionalidad de la administración web**, cada uno con el nombre de la página
+que lo posee. Esta referencia resume la mecánica de almacenamiento; para los
+grupos de campos véase :ref:`es-configuration`.
 
 Mecánica
 ========
 
-* **Ruta:** ``/storage/config.json``.
-* **Cargado** con cJSON; **guardado** por un escritor en flujo token a token.
-* **Guardado atómico:** escribe ``config.json.tmp``, luego renombra.
-* Faltante o corrupto → se aplican defaults y se guardan inmediatamente, de modo
-  que el archivo siempre existe y es consistente.
-* Sin memoria → el archivo se deja tal cual y la carga informa el fallo. Una
-  lectura o un parseo que se quedó sin RAM no dice nada sobre el contenido del
-  archivo, así que nunca debe tomar el camino de "corrupto" anterior: el lector
-  escanea el texto sin asignar nada para distinguir ambos casos, y solo se
-  sobrescriben los bytes que de verdad no se pueden parsear.
-* Los nombres de campo / claves JSON se mantienen 1:1 con el proyecto de
-  referencia, así que los archivos antiguos cargan sin cambios; las claves
-  desconocidas se ignoran.
+* **Un archivo por funcionalidad**, bajo ``/storage``: ``system.json``,
+  ``station.json``, ``wireless.json``, ``radio.json``, ``igate.json``,
+  ``brandmeister.json``, ``digi.json``, ``tracker.json``, ``weather.json``,
+  ``gps.json``, ``message.json``, ``winlink.json``, ``query.json``. No existe
+  un archivo de configuración combinado.
+* **Cargado** con cJSON, un archivo a la vez; **guardado** por un escritor en
+  flujo token a token.
+* **Guardado atómico:** escribe ``<nombre>.json.tmp``, luego renombra.
+* **Cada página guarda solo su propio archivo.** La página *My Station* es la
+  excepción que nombra varias, porque sus espejos de "Use My Station Data"
+  escriben en campos de otros cinco servicios.
+* Ausente, vacío o corrupto → ese archivo se reescribe desde los valores por
+  defecto durante la carga, de modo que cada funcionalidad siempre tiene un
+  archivo y el equipo siempre arranca con una administración web alcanzable.
+* Sin memoria → **no** se escribe nada y la carga informa el fallo. Una lectura
+  o un parseo que se quedó sin RAM no dice nada sobre el contenido del archivo,
+  así que nunca debe tomar el camino anterior: el lector escanea el texto sin
+  asignar nada para distinguir ambos casos, y solo los bytes genuinamente
+  imparseables se sobrescriben.
+* Los nombres de campo y las claves JSON se mantienen 1:1 con el proyecto de
+  referencia, así que un operador que se mueva entre ambos los reconoce; las
+  claves desconocidas se ignoran y una clave que un archivo no lleva conserva
+  su valor por defecto documentado.
 
 Otros archivos persistentes
 ===========================
@@ -34,44 +45,47 @@ Otros archivos persistentes
 
    * - Archivo
      - Contenido
-   * - ``/storage/config.json``
-     - El ``app_config_t`` residente (sistema, estación, Wi-Fi, IGate, BrandMeister, digi,
-       tracker, meteo, GPS, módem, mensaje).
    * - ``/storage/telemetry.json``
-     - Configuración de telemetría (``telemetry_config_t``): analógicos A1–A5,
-       digitales B1–B8, parámetros del informe, conmutadores de mensajes de
-       definición.
+     - Configuración del canal 0 de telemetría (``telemetry_config_t``):
+       analógicos A1–A5, digitales B1–B8, parámetros del informe, conmutadores
+       de los mensajes de definición.
    * - ``/storage/bulletins.json``
-     - Los cinco boletines APRS (identificador y grupo de destinatario, texto,
+     - Los cinco boletines APRS (identificador y grupo del destinatario, texto,
        RF/INET, intervalo inicial, rampa de decaimiento, caducidad).
    * - ``/storage/objitems.json``
      - Los cinco objetos/ítems APRS (nombre, posición, símbolo, rumbo/velocidad,
-       comentario, intervalo, bandera permanente).
-   * - ``/storage/winlink.json``
-     - Las respuestas que devolvió el servicio Winlink, de la más antigua a la
-       más reciente. Los ajustes de la cuenta son claves ``wl*`` de
-       ``config.json``; aquí solo viven las respuestas, así que borrarlas nunca
-       toca la configuración.
+       comentario, intervalo, indicador permanente).
    * - ``/storage/telegram.json``
      - Toda la configuración del bot de Telegram: el interruptor de
        habilitación, el token del bot, el identificador del administrador, la
        dirección de la Mini App y las listas de usuarios y chats de grupo
        autorizados.
+   * - ``/storage/winlink_mail.json``
+     - Las respuestas que ha devuelto el servicio Winlink, de la más antigua a
+       la más reciente. Los ajustes de la cuenta son las claves ``wl*`` de
+       ``winlink.json``; aquí viven solo las respuestas, así que borrarlas nunca
+       toca la configuración.
 
-Los seis usan el mismo escritor en flujo, cada uno bajo su propio mutex, cada
-uno con un ``setvbuf()`` explícito para evitar una asignación perezosa de búfer
-stdio grande a mitad de escritura. Ese búfer es un único objeto estático
-compartido por los seis almacenes, ya que la compuerta de escritura de todo el
-sistema de archivos impide que dos guardados se solapen.
+Todos los almacenes usan el mismo escritor en flujo, cada uno bajo su propio
+mutex, cada uno con un ``setvbuf()`` explícito para evitar una asignación
+perezosa de un búfer stdio grande a mitad de escritura. El búfer de
+``setvbuf()`` es un único objeto estático compartido por todos, ya que el
+cerrojo de escritura de todo el sistema de archivos impide que dos guardados se
+solapen.
+
+Cada uno de estos archivos se crea desde sus valores por defecto durante el
+arranque si no existe, así que un primer arranque deja un conjunto completo en
+flash sin que el operador visite una sola página.
 
 Reset de fábrica
 ================
 
-``POST /default`` (el botón de *factory reset* de la página System) llama a
-``app_config_factory_reset()``, que borra la configuración de vuelta a
-``app_config_set_defaults()`` y la persiste. Por sí solo no elimina los archivos
-separados de telemetría/boletines/objitems — esos regeneran valores por defecto
-en el siguiente acceso si se borran vía la página Storage.
+``POST /default`` (el botón de *reset de fábrica* de la página Sistema) llama a
+``app_config_factory_reset()``, que devuelve la configuración a
+``app_config_set_defaults()`` y reescribe **todos** los archivos de sección. Por
+sí solo no elimina los archivos separados de telemetría/boletines/objitems/
+telegram — esos regeneran sus valores por defecto en el siguiente acceso si se
+borran desde la página Almacenamiento.
 
 Claves de la interconexión BrandMeister
 =======================================

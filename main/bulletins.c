@@ -161,7 +161,7 @@ static bool load_locked(bulletins_t *out, bool *out_missing, bool *out_transient
                 // CR and LF are stripped first: the stored text is later
                 // written as one line of a ":BLNx     :text" APRS-IS/AX.25
                 // message, and neither format escapes an embedded line
-                // break, so a hand-edited config.json carrying one must not
+                // break, so a hand-edited bulletins.json carrying one must not
                 // reach that line unfiltered. The stored text is 8-bit-clean
                 // and repeated on the air verbatim on every future
                 // transmission of this bulletin, so the byte-budget cut that
@@ -669,7 +669,17 @@ uint32_t bulletins_service(void) {
 void bulletins_start(void) {
     // The bulletin transmitter is driven by the shared beacon scheduler
     // (beacon_scheduler_start()) via bulletins_service(), so there is no task
-    // to create here - only the LittleFS lock to bring up.
+    // to create here - only the LittleFS lock to bring up and the store to
+    // put in place.
     json_store_lock_ensure(&s_lock);
+
+    // Make sure /storage/bulletins.json exists from the very first boot, the
+    // same guarantee every configuration file carries: the page would
+    // otherwise only create it the first time someone saves it, leaving the
+    // functionality with no file of its own until then. The load itself
+    // persists the defaults it substitutes for an absent file, so reading the
+    // set once here is all it takes.
+    bulletins_t set;
+    bulletins_load(&set);
     ESP_LOGI(TAG, "Bulletins configured (per-bulletin interval, default=%us; driven by beacon scheduler)", (unsigned)BULLETIN_DEFAULT_INTERVAL_S);
 }

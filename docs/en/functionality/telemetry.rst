@@ -14,7 +14,7 @@ Separate storage
 ================
 
 Unlike most settings, telemetry configuration deliberately does **not** live in
-``g_config``/``config.json``. It persists to its own small LittleFS file,
+``g_config``. It persists to its own small LittleFS file,
 ``/storage/telemetry.json``, the same way bulletins and objects/items keep
 their own files. On first boot, or whenever the file is missing, an empty
 default set is created so ``/storage/telemetry.json`` always exists once the
@@ -187,7 +187,7 @@ A CR or LF is a separate concern from the telemetry delimiters above: APRS-IS
 and the internal AX.25 TNC2 text form are both line-oriented and neither
 escapes an embedded line break, so either byte is stripped from every
 operator-editable field at the point it is stored — as it is decoded from a
-web form POST, and as it is loaded from a hand-edited ``config.json`` — rather
+web form POST, and as it is loaded from a hand-edited ``telemetry.json`` — rather
 than only when the field is rendered onto the air. This keeps a line break
 out of every consumer of the stored text, not only the beacon builders this
 chapter covers.

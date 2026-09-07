@@ -21,8 +21,8 @@
 // App address, the authorized users and the allowed group chats), and a live
 // diagnosis of where the connection to api.telegram.org currently stands.
 //
-// Everything on this page is stored in /storage/telegram.json, not in
-// config.json, so the whole bot configuration is one file that can also be
+// Everything on this page is stored in /storage/telegram.json, one file per
+// functionality like every other page, so the whole bot configuration can be
 // downloaded, edited and uploaded again from the File Storage page. The
 // authorized users and allowed group chats are fixed-size tables
 // (TELEGRAM_APP_USERS_MAX / TELEGRAM_APP_CHATS_MAX entries), each rendered as

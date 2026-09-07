@@ -72,8 +72,12 @@
 
 static const char *TAG = "winlink";
 
-#define WINLINK_PATH     "/storage/winlink.json"
-#define WINLINK_TMP_PATH "/storage/winlink.json.tmp"
+// The mailbox, not the account settings: those are the Winlink page's own
+// configuration file, /storage/winlink.json, and belong to app_config.c like
+// every other page's settings. Keeping the replies in a file of their own is
+// what lets the operator clear them without touching the configuration.
+#define WINLINK_PATH     "/storage/winlink_mail.json"
+#define WINLINK_TMP_PATH "/storage/winlink_mail.json.tmp"
 
 // The command that opens a session. Any command at all makes the service start
 // a login, so the word itself carries no meaning to it; a recognisable one is
@@ -209,24 +213,35 @@ static bool mail_save_locked(void) {
     return json_store_commit(f, WINLINK_TMP_PATH, WINLINK_PATH, TAG, "winlink mailbox");
 }
 
-static bool mail_save(void) {
-    // Module lock first, filesystem-wide writer gate second (storage.h): the
-    // temp-file + rename sequence must not overlap the whole-partition format
-    // the web Storage page can start.
+// Entered with s_lock held: takes the filesystem-wide writer gate around the
+// save. Module lock first, this gate second (storage.h), so the temp-file +
+// rename sequence cannot overlap the whole-partition format the web Storage
+// page can start.
+static bool mail_save_locked_gated(void) {
     storage_write_lock();
     bool ok = mail_save_locked();
     storage_write_unlock();
     return ok;
 }
 
-// Entered with s_lock held.
-static void mail_load_locked(void) {
+// Entered with s_lock held. Reports whether the file has to be created: an
+// absent or empty one is written out from the empty mailbox by the caller, so
+// the store exists from the first boot rather than only after the service has
+// answered something.
+static void mail_load_locked(bool *out_missing) {
     memset(s_mail, 0, sizeof(s_mail));
     s_mail_seq = 0;
+    *out_missing = false;
 
     cJSON *doc = NULL;
-    if (json_store_read(WINLINK_PATH, TAG, "winlink mailbox", &doc) != JSON_STORE_OK)
+    json_store_status_t st = json_store_read(WINLINK_PATH, TAG, "winlink mailbox", &doc);
+    if (st != JSON_STORE_OK) {
+        // A corrupt or unreadable file is left alone for the operator to look
+        // at; only a file that is not there yet, or holds nothing at all, is
+        // replaced by an empty mailbox.
+        *out_missing = (st == JSON_STORE_MISSING || st == JSON_STORE_EMPTY);
         return;
+    }
 
     cJSON *seq = cJSON_GetObjectItemCaseSensitive(doc, "seq");
     if (cJSON_IsNumber(seq) && seq->valuedouble > 0)
@@ -334,7 +349,7 @@ int winlink_mail_count(void) {
 
 bool winlink_mail_clear(void) {
     // Module lock first and held across the whole sequence, filesystem-wide
-    // writer gate second (storage.h), the same order mail_save() uses. RAM and
+    // writer gate second (storage.h), the same order a save uses. RAM and
     // file are emptied as one step: a reply arriving in between would otherwise
     // be saved into a mailbox that is about to be deleted, or land in a file
     // the delete has already removed.
@@ -894,12 +909,11 @@ static void on_challenge_locked(const char *text, char *pending, size_t pending_
 // Stores one reply and persists the mailbox. Runs on the receive path rather
 // than on the 1 Hz tick, which is what keeps filesystem work off that tick.
 // Entered with the session lock released: this takes s_lock and, through
-// mail_save(), storage_write_lock(), and no lock of this module is held across
-// a filesystem write.
+// mail_save_locked_gated(), storage_write_lock().
 static void store_reply(const char *text) {
     lock();
     mail_store_locked(text);
-    bool ok = mail_save();
+    bool ok = mail_save_locked_gated();
     unlock();
     if (!ok)
         ESP_LOGW(TAG, "mailbox could not be written to %s", WINLINK_PATH);
@@ -1067,9 +1081,13 @@ void winlink_apply_config(void) {
 }
 
 void winlink_init(void) {
+    bool missing = false;
     lock();
-    mail_load_locked();
+    mail_load_locked(&missing);
+    bool created = missing ? mail_save_locked_gated() : true;
     unlock();
+    if (!created)
+        ESP_LOGW(TAG, "mailbox store could not be created at %s", WINLINK_PATH);
 
     // The session lock is created here, before the observer is registered and
     // before the tick can run, so every task that later takes it finds it

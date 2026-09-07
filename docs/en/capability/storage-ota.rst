@@ -11,13 +11,16 @@ The 512 KB ``storage`` partition is mounted as **LittleFS** at ``/storage``
 (``main/storage.c``). On first boot it auto-formats. It holds every persistent
 file the firmware writes, and one it only ever reads:
 
-* ``/storage/config.json`` — the resident configuration (see
+* One configuration file per web-admin functionality — ``system.json``,
+  ``station.json``, ``wireless.json``, ``radio.json``, ``igate.json``,
+  ``brandmeister.json``, ``digi.json``, ``tracker.json``, ``weather.json``,
+  ``gps.json``, ``message.json``, ``winlink.json`` and ``query.json`` (see
   :ref:`en-configuration`).
 * ``/storage/telemetry.json`` — telemetry channel-0 config.
 * ``/storage/bulletins.json`` — the five bulletins.
 * ``/storage/objitems.json`` — the five objects/items.
 * ``/storage/telegram.json`` — the Telegram bot's whole configuration.
-* ``/storage/winlink.json`` — the replies the Winlink service has sent back.
+* ``/storage/winlink_mail.json`` — the replies the Winlink service has sent back.
 * ``/storage/telegram_certificate.pem`` — the root certificate the Telegram
   bot's HTTPS client verifies ``api.telegram.org`` against. This one is
   uploaded by the operator from the *Storage* page rather than written by the
