@@ -33,7 +33,7 @@ cose che devono precedere tutto, e poi cede il controllo a un task dedicato:
     ├─ if (audio_modem_en) modem_init()   ← ⏳ SI BLOCCA ~5 s calibrando il clock reale dell'ADC (una volta per avvio)
     │      └─ aprs_service_notify_modem_ready()
     ├─ telegram_app_apply_config()        ← non bloccante; il suo task attende la rete
-    ├─ web_server_start_when_heap_ready() ← attende fino a 5 s per ≥10 KB di heap libero, poi
+    ├─ web_server_start_when_heap_ready() ← attende fino a 5 s per un blocco libero contiguo ≥24 KB, poi
     │      └─ web_server_start()            avvia comunque: esp_http_server, ~70 gestori di URI, stack da 20 KB
     └─ vTaskDelete(NULL)                  ← restituisce lo stack da 8 KB di app_task all'heap
 
@@ -103,9 +103,17 @@ Mappa dei task
    * - ``modem_svc``
      - 6144 B
      - 5
-     - qualsiasi
+     - **0**
      - ``modem_init()``
-     - aziona il TX, consegna i frame RX al callback
+     - aziona il TX, consegna i frame RX al callback; ancorato allo stesso core
+       del task RX DSP, di cui consuma l'anello AX.25
+   * - ``modem_init``
+     - 4096 B
+     - alta
+     - **1**
+     - ``AFSK_init()``
+     - transitorio: esegue la messa in funzione del clock di campionamento del
+       DAC sul core che deve possederne l'interrupt, poi si auto-elimina
    * - ISR DMA dell'ADC
      - —
      - —

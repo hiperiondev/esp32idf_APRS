@@ -168,19 +168,20 @@ credentials, so there is nothing for an auth check to guard.
      - APRS symbol reference/picker
    * - GET
      - ``/lastheard``
-     - LAST HEARD table (JSON)
+     - one row per heard station (JSON); a feed for external clients, not drawn
+       by any admin page
    * - GET
      - ``/igate_traffic?since=<seq>``
      - traffic log delta (JSON)
    * - GET
      - ``/dashinfo``
-     - compact live info strip (JSON)
+     - compact live info strip (HTML fragment)
    * - GET
      - ``/sidebarInfo``
      - sidebar stats fragment
    * - GET
      - ``/heapinfo``
-     - live heap usage (JSON)
+     - free and minimum-free heap as a two-field JSON object
    * - GET
      - ``/style.css``
      - shared stylesheet

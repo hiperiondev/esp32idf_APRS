@@ -18,23 +18,22 @@
  * ::g_config instance, plus the compile-time module (@c ENABLE_*) and UI
  * language (@c LANGUAGE) selection macros.
  *
- * Field names and JSON keys are kept 1:1 with the original include/config.h and
- * src/config.cpp so that every value the web admin shows/edits has a home here
- * and persists to LittleFS as /storage/config.json.
+ * Every value the web admin shows or edits has its field here, and the whole
+ * structure persists to LittleFS as /storage/config.json under the JSON key
+ * names this header documents field by field.
  *
- * EXCEPT for the settings whose subsystems this firmware does not implement.
- * Bluetooth, the OLED/display, WireGuard, GNSS, MQTT, the PPP/GSM modem, the
- * I2C/1-Wire/UART/Modbus/pulse-counter/external-TNC/power-management pin sets,
- * the AT-command routing flags, and the RF-module and audio-front-end pin
- * fields are not part of this configuration: keeping only keys the firmware
- * actually reads keeps config.json small, which matters directly because
+ * The structure holds exactly the settings the firmware reads at runtime and
+ * nothing else. That is a size decision as much as a tidiness one:
  * app_config_save() runs against a small, fragmented heap (see the streaming
- * writer there), so every key that changes nothing is pure cost. Unknown keys
- * left in an existing config.json are simply ignored by config_from_json(), so
- * older files still load. rf_ptt_gpio and rf_ptt_active are not stored either
- * (the PTT pin and its active level are fixed compile-time constants,
- * MODEM_PTT_GPIO and MODEM_PTT_ACTIVE_HIGH), and both are simply ignored if
- * present in an existing config.json.
+ * writer there), so a key that no code consults is pure cost on every save.
+ * Settings that are compile-time board wiring rather than operator choices are
+ * therefore absent by design - the PTT pin and its active level, for instance,
+ * are the ::MODEM_PTT_GPIO / ::MODEM_PTT_ACTIVE_HIGH constants and have no
+ * field here.
+ *
+ * config_from_json() ignores any key it does not recognise, so a config.json
+ * carrying keys this build has no field for still loads, and every field the
+ * file does not mention keeps its default.
  *
  * Exactly one language is built into the firmware image at a time - there is no
  * runtime language switch and no other language's strings are compiled in. To
@@ -692,6 +691,30 @@ typedef enum {
 #define STATUS_ERP_WATTS_MAX  7290 /**< Highest ERP the table can express, i.e. ::STATUS_ERP_WATTS_STEP times the square of ::STATUS_ERP_CODE_MAX. */
 /** @} */
 
+/**
+ * @brief The whole runtime configuration of the station, in one structure.
+ *
+ * A single instance, ::g_config, is the live copy every subsystem reads. It is
+ * populated at boot by app_config_load() - defaults first, then whatever
+ * /storage/config.json overrides - and rewritten field by field by the web
+ * admin's POST handlers, which call app_config_save() to persist it again.
+ *
+ * The fields are grouped in the order the web admin presents them: system and
+ * "My Station" identity first, then one block per service (IGate, BrandMeister,
+ * Digipeater, Tracker, Weather, Telemetry, GPS, Telegram, Winlink), then the
+ * radio/modem and wireless settings. Each field's own comment names the JSON
+ * key it persists under and the page it is edited on.
+ *
+ * @note Not every setting the firmware uses lives here: values that are board
+ *       wiring rather than operator choices are compile-time constants (the
+ *       modem's ADC/DAC/PTT pins, the sensor I2C bus, the GNSS UART), and the
+ *       telemetry, bulletin and object/item sets have their own files and
+ *       structures.
+ *
+ * @note Readers that need a consistent view across several fields must take
+ *       ::app_config_lock, since a web save rewrites fields in place from the
+ *       httpd task while the service tasks are reading them.
+ */
 typedef struct {
     bool synctime;        /**< Enable SNTP time sync. */
     uint8_t cpuFreq;      /**< CPU clock frequency selection (80/160/240 MHz); see cpu_freq.h. */
@@ -825,7 +848,7 @@ typedef struct {
                                                     filters - the Satellite Gate List and the RF->INET set (type mask, range, prefix) plus the Callsign Filter
                                                     for RF, the INET->RF set (type mask, range) plus the Callsign Filter for APRS-IS - instead of every frame
                                                     received. Purely a display choice: a frame left out of both views is still digipeated, gated, parsed and
-                                                    counted exactly as before. See igate_log_accepts_frame() / igate_log_accepts_line(). */
+                                                    counted exactly as it is with this option off. See igate_log_accepts_frame() / igate_log_accepts_line(). */
     bool igate_bcn;                             /**< Enable the IGate position beacon. */
     bool igate_timestamp;                       /**< Include a timestamp in the IGate beacon. */
     float igate_lat;                            /**< IGate beacon latitude. Same "not yet configured" convention as ::app_config_t::my_lat: while

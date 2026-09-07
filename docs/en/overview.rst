@@ -123,9 +123,11 @@ Feature matrix
    * - Web admin (HTTP Basic auth)
      - ✅
      - 22 sidebar pages + symbol picker, live dashboard
-   * - Live traffic log + last-heard table
+   * - Live traffic log (dashboard) + last-heard feed
      - ✅
-     - JSON long-poll (``?since=<seq>``)
+     - traffic table by JSON long-poll (``?since=<seq>``); the per-station
+       last-heard table is a JSON feed (``/lastheard``) and the source the
+       message gate and the ``?APRSD``/``?APRSH`` answers read
    * - LittleFS storage, upload/download/delete/format
      - ✅
      - 512 KB partition

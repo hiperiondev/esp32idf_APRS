@@ -40,13 +40,13 @@ In one sentence, the firmware **demodulates** AFSK/FSK audio from a radio's spea
 - **Digipeater.** A four-row n-N alias table (WIDE1-1 / WIDE2-2 / WIDE#-2 by default), each row with its own hop limit and trace/flood mode, plus hop-count trapping, fill-in-only operation and duplicate suppression.
 - **Beacons, messaging & chat.** Fixed-position beacons for tracker/igate/digi, APRS text messaging with ack/retry (RF and/or INET), and an in-browser message chat UI.
 - **GNSS receiver & live tracking.** An NMEA module on its own UART (RMC/GGA/GSA/GSV/VTG, multi-constellation) with a master switch, a live view page refreshed once a second, and a *Use GPS* control that fills any page's position fields from the current fix. The Tracker beacon can transmit the live fix instead of a fixed position, with SmartBeaconing making the interval speed-adaptive and pegging it on corners.
-- **APRS query responder.** Answers the general `?APRS?`/`?WX?`/`?IGATE?` queries and the directed set (`?APRSD`/`?APRSH`/`?APRSM`/`?APRSO`/`?APRSP`/`?APRSS`/`?APRST`/`?PING?`), each with per-type and per-source rate limits, plus an optional periodic station-capabilities beacon.
+- **APRS query responder.** Answers the general `?APRS?`/`?WX?`/`?IGATE?`/`?QRU?` queries and the directed set (`?APRSD`/`?APRSH`/`?APRSM`/`?APRSO`/`?APRSP`/`?APRSS`/`?APRST`/`?PING?`), each with per-type and per-source rate limits, plus an optional periodic station-capabilities beacon.
 - **Weather & telemetry.** On-air APRS Weather Reports with 1 Hz sensor refresh and per-field averaging, plus APRS Telemetry (analog A1–A5 + digital B1–B8) with `T#nnn` reports and metadata.
 - **Winlink radio e-mail (APRSLink).** The station reads and writes its own `CALLSIGN@winlink.org` mail through the `WLNK-1` service — challenge/response login with the password never on the air, a paced one-command-at-a-time session, and a browser terminal whose mailbox listing carries per-message read/reply/forward/delete buttons — and, separately, relays a neighbouring RF station's own Winlink session through its IGate.
 - **Objects, items & bulletins.** Up to five own-station APRS Objects/Items and five bulletins (BLN1–BLN5), each on RF and/or INET with expiry/decay control.
 - **Telegram bot.** An optional bot alongside the APRS services — long polling, per-user and per-chat authorization, station-message and bulletin routing to Telegram, and a Mini App button — so the station can be checked on and lightly controlled from a phone.
 - **Runtime sensor framework.** A dynamic, self-registering driver registry (`sensors_local`) — includes a BME280/BMP280 (I²C) driver out of the box, plus an optional BMP180 one on the same bus.
-- **Web admin, 22 pages.** HTTP Basic auth, a live dashboard, a live traffic log and last-heard table (JSON long-poll), LittleFS file management (upload/download/delete/format), Wi-Fi AP/STA/AP+STA with scan and TX-power control, CPU frequency control (80/160/240 MHz), and an on-demand console log viewer that mirrors the serial output into the browser. The whole UI is responsive from one stylesheet — on a tablet or a phone the sidebar becomes a slide-in drawer, form rows collapse to a single column, wide tables scroll within the page and the controls grow to a touch size.
+- **Web admin, 22 pages.** HTTP Basic auth, a live dashboard with a live traffic log (JSON long-poll) and a last-heard JSON feed, LittleFS file management (upload/download/delete/format), Wi-Fi AP/STA/AP+STA with scan and TX-power control, CPU frequency control (80/160/240 MHz), and an on-demand console log viewer that mirrors the serial output into the browser. The whole UI is responsive from one stylesheet — on a tablet or a phone the sidebar becomes a slide-in drawer, form rows collapse to a single column, wide tables scroll within the page and the controls grow to a touch size.
 - **OTA updates with auto-rollback.** Dual `ota_0`/`ota_1` app slots; a failed image rolls back automatically on the next boot.
 - **Trilingual UI.** English, Spanish and Italian (compile-time, one language per image).
 
@@ -74,11 +74,11 @@ In one sentence, the firmware **demodulates** AFSK/FSK audio from a radio's spea
 | Winlink radio e-mail (APRSLink) | Own mailbox over `WLNK-1`, plus gateway for local stations |
 | GNSS receiver (NMEA, own UART) | Master switch, live view page, *Use GPS* position fill on every page |
 | Live GPS tracking + SmartBeaconing | Tracker beacon only; speed-adaptive interval and corner-pegging |
-| APRS query responder | General `?APRS?`/`?WX?`/`?IGATE?` + directed set, rate-limited; capabilities beacon |
+| APRS query responder | General `?APRS?`/`?WX?`/`?IGATE?`/`?QRU?` + directed set, rate-limited; capabilities beacon |
 | Weather Report | 1 Hz sensor refresh, optional averaging |
 | Telemetry | Analog A1–A5 + digital B1–B8, `T#nnn` + metadata |
 | Sensor driver framework | Dynamic registry, BME280/BMP280 driver included |
-| Web admin | 22 pages, live dashboard, traffic + last-heard, console log viewer, per-option contextual help |
+| Web admin | 22 pages, live dashboard, live traffic log + last-heard feed, console log viewer, per-option contextual help |
 | Storage | LittleFS 512 KB, upload/download/delete/format |
 | Networking | Wi-Fi AP/STA/AP+STA, scan, TX power, SNTP (UTC clock, selectable timezone for display) |
 | CPU frequency control | 80 / 160 / 240 MHz |

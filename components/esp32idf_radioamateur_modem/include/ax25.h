@@ -457,7 +457,7 @@ void Ax25MinUnkeyTime(uint16_t ms);
 bool ax25_decode(uint8_t *buf, size_t len, uint16_t mVrms, ax25_msg_t *msg, enum Ax25DecodeReason *reason);
 
 /**
- * @brief Parse a TNC2-style monitor string into an ::ax25frame structure.
+ * @brief Parse a TNC2-style monitor string into an ::ax25_frame_t structure.
  *
  * @p txt is rewritten in place: the digipeater path is compacted to the front
  * of the buffer and tokenized there, so the caller must pass a scratch copy it
@@ -476,7 +476,7 @@ bool ax25_decode(uint8_t *buf, size_t len, uint16_t mVrms, ax25_msg_t *msg, enum
 char ax25_encode(ax25_frame_t *frame, char *txt, int size);
 
 /**
- * @brief Serialize an ::ax25frame structure into a raw AX.25 frame.
+ * @brief Serialize an ::ax25_frame_t structure into a raw AX.25 frame.
  * @param outbuf     Destination buffer for the serialized frame.
  * @param outbuf_len Size, in bytes, of @p outbuf.
  * @param ctx        AX.25 codec context to use/update while serializing.

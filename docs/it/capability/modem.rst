@@ -215,8 +215,14 @@ Lo strumento di messa in funzione più utile del progetto. Cabla
    venga mai digipetato, caricato, né registrato come traffico reale.
 #. Commuta il modem a **full duplex** — un cavo DAC→ADC significa che il nodo
    sente sempre la propria portante e CSMA non attiverebbe mai la radio.
-#. Trasmette, poi attende fino a **4000 ms** che la catena ADC → demodulatore →
-   HDLC → AX.25 restituisca lo stesso frame.
+#. Attende che il rilevamento di portante del demodulatore si liberi prima di
+   attivare il PTT, al massimo per ``LOOP_TEST_CHANNEL_WAIT_MS`` (**3000 ms**),
+   per non trasmettere il tono di autotest sopra una stazione che è in onda in
+   quel momento — la lettura è indipendente dal flag di duplex appena impostato,
+   che condiziona solo il CSMA. Un canale ancora occupato al raggiungimento del
+   limite viene registrato e il test trasmette comunque.
+#. Trasmette, poi attende fino a ``LOOP_TEST_TIMEOUT_MS`` (**4000 ms**) che la
+   catena ADC → demodulatore → HDLC → AX.25 restituisca lo stesso frame.
 #. **Ripristina sempre** l'hook reale e la modalità duplex configurata prima di
    tornare.
 

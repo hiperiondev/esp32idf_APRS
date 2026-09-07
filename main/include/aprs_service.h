@@ -327,7 +327,7 @@ aprs_service_stats_t aprs_service_get_stats(void);
  * synchronous scheduler pass, so every due beacon eventually keys up even with
  * the factory-default "TX buffers = 1", while preserving the "one packet on the
  * ring at a time" discipline. Every other caller (RX/digipeat, INET2RF, message
- * TX) keeps the original non-blocking drop-if-full behavior, so a busy RF leg
+ * TX) keeps the plain non-blocking drop-if-full behaviour, so a busy RF leg
  * never stalls the RX decode or the APRS-IS socket task.
  *
  * Called once, from inside the beacon scheduler task, on entry.

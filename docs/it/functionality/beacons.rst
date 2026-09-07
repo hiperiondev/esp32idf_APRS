@@ -10,31 +10,54 @@ che sentono; non annunciano mai la propria posizione. Esistono tre beacon logici
 — **tracker**, **igate** e **digi** — ciascuno con i propri flag di abilitazione,
 intervallo, coordinate, simbolo, commento e instradamento RF/INET, salvati dalla
 rispettiva pagina dell'amministrazione web (``g_config.trk_*``,
-``g_config.igate_*``, ``g_config.digi_*``).
+``g_config.igate_*``, ``g_config.digi_*``). A ogni beacon vengono filtrati i
+caratteri ``|`` e ``~`` dal commento e dal testo di stato al momento della
+trasmissione, prima che raggiungano il pacchetto in onda — entrambi sono
+riservati al gruppo di telemetria nel commento in base 91
+(:ref:`it-telemetry`); il testo salvato resta esattamente come l'operatore lo ha
+inserito.
 
 Il pianificatore di beacon condiviso
 ====================================
 
-Revisioni precedenti eseguivano i beacon di tracker, igate e digi, il report
-meteo e i bollettini ciascuno nel **proprio task FreeRTOS**. Ognuno di quei task
-faceva la stessa cosa — dormire, svegliarsi, costruire un pacchetto, percorrere la
-catena TX TNC2/AX.25 condivisa (carica di operazioni in virgola mobile), dormire
-di nuovo — e quindi ognuno doveva trascinare uno stack grande (10–14 KB)
-dimensionato per quell'albero di chiamate, anche se quasi mai vengono eseguiti
-contemporaneamente e il modem semi-duplex serializza comunque le loro
-trasmissioni.
+Tutte le trasmissioni periodiche della propria stazione girano su **un solo**
+task FreeRTOS, ``beacon_sched``, creato da ``beacon_scheduler_start()``
+(``main/beacon_scheduler.c``). A ogni passata il pianificatore chiama la funzione
+"service" di ogni sottosistema — ``beacon_service()`` (i beacon di tracker, igate
+e digi insieme), ``weather_beacon_service()``, ``telemetry_beacon_service()``,
+``query_capabilities_service()``, ``bulletins_service()`` e
+``objitems_service()`` —, ciascuna delle quali trasmette ciò che è dovuto e
+restituisce quanti secondi mancano prima che serva di nuovo. Il pianificatore
+dorme poi fino al più vicino di questi, limitato da
+``BEACON_SCHED_POLL_CAP_S`` (30 s), così che un'abilitazione o un intervallo
+modificati nell'amministrazione web abbiano effetto senza riavvio. I
+sottosistemi conservano i propri flag di abilitazione e intervalli; solo il task,
+e il suo stack, sono condivisi.
 
-Il componente ``beacon_scheduler`` **fonde quei cinque task in uno**. A ogni
-passata chiama la funzione "service" di ogni sottosistema (``beacon_service()``,
-``weather_beacon_service()``, ``bulletins_service()``, e i servizi di
-oggetti/item e telemetria), ciascuna delle quali trasmette ciò che è dovuto e
-riporta quanti secondi mancano prima che serva di nuovo; il pianificatore poi
-dorme fino al più vicino di questi. I sottosistemi conservano i propri flag di
-abilitazione e intervalli indipendenti — solo il task (e il suo stack) è
-condiviso.
+Condividere un unico task è ciò che mantiene il budget di stack a una sola
+allocazione. Tutti quei servizi terminano nella stessa catena TX TNC2/AX.25
+carica di virgola mobile — diversi ``snprintf()`` attraverso il formattatore di
+newlib con supporto float, poi ``lat_lon_to_aprs()`` e
+``aprs_path_build_suffix()`` verso ``aprs_service_send_tnc2()`` →
+``modem_send_tnc2()`` → ``modem_build_frame_tnc2()`` →
+``ax25_encode()``/``hdlcFrame()``, impilando diversi buffer da 300–450 byte per
+livello — e vengono eseguiti in sequenza all'interno di una passata, quindi lo
+stack viene riutilizzato tra loro e conta solo l'albero di chiamate più
+profondo. Quell'albero è quello meteo, e ``BEACON_SCHED_TASK_STACK_BYTES`` è
+dimensionato su di esso a 14336 byte con margine deliberato, non ridotto a un
+minimo misurato. Il task registra il proprio
+``uxTaskGetStackHighWaterMark()`` a ``ESP_LOGD`` a ogni passata, che è la misura
+da prendere prima di abbassare quella costante.
 
-Effetto netto: cinque stack (~61 KB in totale) diventano uno (~14 KB),
-liberando ~46 KB di heap interno in questa build senza PSRAM.
+La primissima passata è trattenuta finché il modem RF non si dichiara pronto, o
+al massimo per ``BEACON_SCHED_MODEM_WAIT_CAP_MS`` (6 s), a seconda di cosa
+avviene prima. ``modem_init()`` blocca per circa cinque secondi calibrando il
+clock reale dell'ADC ed è chiamata *dopo* che ``aprs_service_start()`` ha creato
+questo task, quindi senza quell'attesa ogni beacon abilitato scadrebbe subito e
+registrerebbe "modem not ready or busy" sulla gamba RF — e "not connected" su
+quella INET — a ogni avvio. Il limite è ciò che fa comunque partire la
+pianificazione su una scheda in cui il modem audio è disabilitato nella
+configurazione e la notifica di pronto, di conseguenza, non arriva mai.
 
 Le risposte alle query viaggiano sullo stesso task
 ==================================================
@@ -784,5 +807,9 @@ I timestamp sono UTC
 ====================
 
 I timestamp dei beacon sono zulu/UTC (``051200z``) secondo la specifica APRS —
-per cui ``time_sync.c`` imposta l'orologio di sistema su ``TZ=UTC0``. Nel
-firmware non esiste alcun offset di ora locale.
+per cui ``time_sync.c`` imposta l'orologio di sistema su ``TZ=UTC0`` e non lo riscrive
+mai. Il selettore di fuso orario della pagina System applica uno scostamento
+fisso rispetto a UTC alla data e all'ora che l'amministrazione web *mostra* e a
+nient'altro: l'orologio di sistema, ogni marca temporale APRS e ogni altra
+formattazione di orario del firmware restano in UTC qualunque sia il suo
+valore.

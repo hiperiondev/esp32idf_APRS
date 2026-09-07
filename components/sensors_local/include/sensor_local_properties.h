@@ -44,7 +44,7 @@
  *     Height m, ...) - a WEATHER sensor sets exactly the bits it can
  *     produce.
  *
- *   - ::sensor_local_tlm_mask_t: one bit per analog (A1-A5) and digital
+ *   - ::sensor_local_tlm_channel_mask_t: one bit per analog (A1-A5) and digital
  *     (B1-B8) telemetry channel plus flags for which of the four telemetry
  *     metadata message kinds (PARM/UNIT/EQNS/BITS) the driver can supply
  *     default values for - a TELEMETRY sensor sets exactly the analog/

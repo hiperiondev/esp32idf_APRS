@@ -121,6 +121,16 @@ struct's storage is what lives in the table):
    sensors_local_init_all()      // eagerly init() every driver
    sensors_local_save(data,kind) // walk the table; init() lazily, then save()
    sensors_local_save_one(i,...) // read ONE driver by index (live preview)
+   sensors_local_channel_name(ch)      // registry position -> driver name
+   sensors_local_channel_from_name(nm) // driver name -> registry position
+
+The last two exist because a channel assignment is **persisted by driver name**,
+not by registry position: the position depends on link order and on which
+drivers a build has selected, so enabling or disabling one in Kconfig would
+otherwise silently re-point every Weather and Telemetry mapping. A stored name
+the registry no longer holds resolves to ``SENSOR_LOCAL_CH_NONE`` and is
+reported in the log rather than pointing at whatever driver now sits at that
+index.
 
 ``sensors_local_register()`` can run **before the FreeRTOS scheduler exists**,
 because ``SENSORS_LOCAL_DRIVER_AUTOREGISTER`` fires from a

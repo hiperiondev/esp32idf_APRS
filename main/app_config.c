@@ -234,9 +234,9 @@ void app_config_set_defaults(app_config_t *c) {
     c->aprs_ssid = 10;
     set_str(c->aprs_mycall, sizeof(c->aprs_mycall), "NOCALL");
     set_str(c->aprs_passcode, sizeof(c->aprs_passcode), "-1");
-    // Slot 0 keeps the original single-server default; the remaining slots
-    // start disabled so an upgraded device connects exactly as before until
-    // the operator opts into the extra failover servers.
+    // Only slot 0 is enabled by default, so a station that never opens the
+    // server list behaves as a plain single-server IGate; the other three
+    // slots stay disabled until the operator opts into failover.
     c->aprs_server[0].enable = true;
     set_str(c->aprs_server[0].host, sizeof(c->aprs_server[0].host), "aprs.dprns.com");
     c->aprs_server[0].port = APRS_PORT_DEFAULT;

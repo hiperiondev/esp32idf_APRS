@@ -160,9 +160,9 @@ void ModemInit(void);
  * rates (see PLL1200_STEP / PLL9600_STEP / PLL300_STEP in modem.c), so any
  * gap between nominal and real is a steady-state error the DPLL has to
  * track for the rest of a transmission instead of being told about up
- * front. For G3RUH at 9600 Bd and only 8 ADC samples per symbol, that gap
- * is the dominant remaining source of the frame loss characterised in
- * afsk_loopback_test.c's stress test.
+ * front. For G3RUH at 9600 Bd and only 8 ADC samples per symbol, that gap is
+ * the dominant remaining source of frame loss, since a single sample of drift
+ * is an eighth of a symbol.
  *
  * This does not require live measurement of both clocks: the DAC alarm rate
  * (::afskGetDacAlarmRate()) is already known exactly from the timer's

@@ -6,8 +6,8 @@ Rete
 
 La messa in funzione del Wi-Fi (``main/main.c``) è una delle parti più
 strumentate del firmware, perché "sono passato alla modalità Station e non è
-successo niente" era un fallimento silenzioso ricorrente nelle revisioni
-precedenti. Ora ogni percorso registra ciò che ha fatto.
+successo niente" è il tipo di guasto più difficile da diagnosticare su una
+stazione headless. Ogni percorso che lo attraversa registra ciò che ha fatto.
 
 Modalità Wi-Fi
 ==============
@@ -28,13 +28,13 @@ una stazione headless senza un'amministrazione web da cui correggerlo.
 
 Sono memorizzati fino a cinque profili STA (``WIFI_STA_NUM = 5``), ciascuno con la
 propria casella Enable. La **prima voce abilitata con un SSID non vuoto** è
-spinta al driver; il failover multi-AP è annotato come "si può aggiungere più
-avanti".
+spinta al driver, ed è l'unica usata per quell'avvio: gli slot sono credenziali
+alternative fra cui scegliere, non una rotazione su cui il firmware commuta.
 
 Connessione di stazione robusta
 ===============================
 
-Diverse correzioni deliberate rendono affidabile il percorso di stazione:
+Diverse scelte di progetto deliberate rendono affidabile il percorso di stazione:
 
 * **Connettere da ``WIFI_EVENT_STA_START``, non immediatamente.**
   ``esp_wifi_connect()`` è legale solo una volta che l'interfaccia di stazione è
@@ -61,7 +61,7 @@ Diverse correzioni deliberate rendono affidabile il percorso di stazione:
   scarica ogni slot e ti dice qual è l'errore ("abilitato, ma il SSID è VUOTO" vs
   "ha un SSID, ma 'Enable' non è spuntato").
 
-I codici di ragione di disconnessione sono registrati (prima venivano scartati):
+I codici di ragione di disconnessione sono registrati anziché scartati:
 
 .. list-table::
    :header-rows: 1
@@ -107,7 +107,7 @@ viene realmente applicato è il valore memorizzato.
 Sincronizzazione oraria
 =======================
 
-``time_sync.c`` esegue SNTP contro tre host. Ora è una macchina a stati non
+``time_sync.c`` esegue SNTP contro tre host. È una macchina a stati non
 bloccante ripiegata nel tick di servizio a 1 Hz, e imposta l'orologio di
 sistema su UTC (``TZ=UTC0``) — i timestamp zulu della specifica APRS lo
 richiedono.
@@ -129,5 +129,6 @@ Frequenza CPU
 =============
 
 ``cpu_freq.c`` applica la selezione di 80/160/240 MHz della pagina System via
-``esp_pm_configure()``. Senza questo, l'impostazione veniva memorizzata e mostrata
-ma non cambiava mai il clock.
+``esp_pm_configure()``, così la selezione cambia il clock reale e non viene solo
+memorizzata e mostrata. Viene applicata all'avvio e di nuovo a ogni salvataggio,
+senza riavvio.

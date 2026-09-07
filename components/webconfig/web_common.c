@@ -763,7 +763,9 @@ done:
 }
 
 // ---------------------------------------------------------------- HTML shell
-// Sidebar menu mirrors the original firmware's route order/labels exactly.
+// Sidebar menu: one row per page, in the order the sidebar renders them.
+// Each row is compiled in only when its module's ENABLE_* macro is defined,
+// so a page left out of the build leaves no dead link behind.
 struct menu_item {
     const char *href;
     const char *label;

@@ -182,9 +182,14 @@ Le pagine
      - Cosa fa
    * - **Dashboard**
      - Pillole di Network Status (Wi-Fi, APRS-IS via ``igate_is_connected()``),
-       un pannello STATISTICS, una tabella LAST HEARD con icone di simbolo, e una
-       tabella di traffico in tempo reale (DX / PACKET / DECODIFICATO / AUDIO)
-       alimentata da long-poll basato su sequenza. DECODIFICATO riporta ciò che
+       un pannello STATISTICS, una striscia di informazioni di sistema
+       aggiornata una volta al secondo, e una tabella di traffico in tempo reale
+       (DX / PACKET / DECODIFICATO / AUDIO) alimentata da long-poll basato su
+       sequenza. La tabella di traffico è l'unico elenco di stazioni che la
+       pagina disegna; i dati LAST HEARD per stazione sono esposti come feed
+       JSON ``/lastheard`` e sono consumati dal gate dei messaggi, dalle
+       risposte ``?APRSD``/``?APRSH`` e dal conteggio di stato BrandMeister,
+       anziché essere rappresentati qui. DECODIFICATO riporta ciò che
        è stato letto dal payload stesso — la marca temporale propria del
        pacchetto, rotta, velocità, altitudine, portata radio, PHG o DFS, e il
        rilevamento e l'NRQ di un rapporto DF — e resta vuoto per un payload che
@@ -402,7 +407,9 @@ Le pagine
        conservati.
    * - **Message**
      - Configura il motore di messaggistica (abilitazione RF/INET, ritentativo,
-       percorso di digipeating, GPIO di allarme).
+       percorso di digipeating, GPIO di allarme), più il riquadro *Message
+       Groups*: tre destinatari di gruppo definiti dall'operatore, letti oltre a
+       quelli incorporati ``ALL``/``QST``/``CQ``.
    * - **Query**
      - Abilitazione del risponditore di query APRS, quale sorgente viene
        risposta (RF / APRS-IS — la risposta torna sempre sul canale da cui è
@@ -515,8 +522,11 @@ Feed in tempo reale
   ha ricevuto; un cursore davanti al ring — il dispositivo si è riavviato e la
   numerazione è ripartita da 1 — rinvia dalla voce più vecchia ancora
   memorizzata.
-* ``/dashinfo``, ``/sidebarInfo``, ``/heapinfo`` — frammenti compatti di info in
-  tempo reale.
+* ``/dashinfo`` e ``/sidebarInfo`` — frammenti compatti di informazioni in tempo
+  reale, interrogati una volta al secondo rispettivamente dalla dashboard e
+  dalla barra laterale. ``/heapinfo`` serve la stessa coppia heap libero /
+  minimo libero come oggetto JSON a due campi, per un client che voglia solo
+  quei due numeri.
 
 Vedi :ref:`it-http-routes` per la tabella completa delle route.
 
@@ -532,9 +542,9 @@ errata. Una richiesta senza intestazione ``Authorization``, o con
 un'intestazione che non è ``Basic``, è la metà senza credenziali dell'handshake
 Basic Auth che ogni browser esegue da sé, e riceve una risposta ``401`` senza
 essere addebitata sul budget; è questo che permette ai poller autenticati
-della dashboard (``/dashinfo``, ``/sidebarInfo``, ``/heapinfo``,
-``/lastheard``, ``/igate_traffic``) di trovarsi davanti a una nuova pagina di
-login senza mai far scattare da soli un blocco.
+della dashboard (``/dashinfo``, ``/sidebarInfo``, ``/igate_traffic``, e i feed
+propri di ogni pagina come ``/wx/values`` o ``/gps/live``) di trovarsi davanti a
+una nuova pagina di login senza mai far scattare da soli un blocco.
 
 Dopo 5 credenziali rifiutate consecutive dalla stessa origine, quell'origine
 viene bloccata e ogni richiesta successiva riceve ``429 Too Many Requests``

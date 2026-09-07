@@ -5,9 +5,9 @@ Mappa del codice sorgente
 =========================
 
 Un percorso attraverso il repository, così che tu sappia dove guardare. Le
-dimensioni sono approssimative. Il C di prima parte somma ~74 k righe tra
+dimensioni sono approssimative. Il C di prima parte somma ~75 k righe tra
 ``main/`` + ``components/`` (esclusi i ``managed_components/``), di cui ~7,1 k
-sono il componente del modem e ~22,7 k l'amministrazione web.
+sono il componente del modem e ~22,6 k l'amministrazione web.
 
 Disposizione del repository
 ===========================

@@ -126,6 +126,16 @@ della tua struttura ``static`` è ciò che vive nella tabella):
    sensors_local_init_all()      // init() ansiosamente ogni driver
    sensors_local_save(data,kind) // percorre la tabella; init() pigro, poi save()
    sensors_local_save_one(i,...) // legge UN driver per indice (anteprima live)
+   sensors_local_channel_name(ch)      // posizione nel registro -> nome del driver
+   sensors_local_channel_from_name(nm) // nome del driver -> posizione nel registro
+
+Le ultime due esistono perché l'assegnazione di canale è **persistita per nome
+del driver**, non per posizione nel registro: quella posizione dipende
+dall'ordine di link e da quali driver la build ha selezionato, quindi abilitarne
+o disabilitarne uno in Kconfig ripunterebbe in silenzio ogni mappatura di meteo
+e telemetria. Un nome salvato che il registro non contiene più si risolve in
+``SENSOR_LOCAL_CH_NONE`` e viene segnalato nel log, invece di puntare al driver
+che ora occupa quell'indice.
 
 ``sensors_local_register()`` può essere eseguito **prima che esista il
 pianificatore di FreeRTOS**, perché ``SENSORS_LOCAL_DRIVER_AUTOREGISTER`` scatta

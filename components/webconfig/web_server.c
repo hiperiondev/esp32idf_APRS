@@ -85,14 +85,14 @@ void web_server_start(void) {
     // send.
     //
     // What the admin UI wants is four - a page plus /style.css and the
-    // periodic /dashinfo, /sidebarInfo and /heapinfo fetches, all on
-    // keep-alive - so three means the least recently used connection is
-    // recycled while a page loads. That is a deliberate trade on a station
-    // this size: the browser sees a little more latency, and the heap keeps
-    // one connection's send and receive windows (CONFIG_LWIP_TCP_SND_BUF_DEFAULT
-    // and CONFIG_LWIP_TCP_WND_DEFAULT) free for the TLS handshake the Telegram
-    // bot performs. It is the first value to raise again if the admin UI feels
-    // sluggish and the heap has room.
+    // periodic /dashinfo, /sidebarInfo and /igate_traffic fetches the
+    // dashboard issues, all on keep-alive - so three means the least recently
+    // used connection is recycled while a page loads. That is a deliberate
+    // trade on a station this size: the browser sees a little more latency,
+    // and the heap keeps one connection's send and receive windows
+    // (CONFIG_LWIP_TCP_SND_BUF_DEFAULT and CONFIG_LWIP_TCP_WND_DEFAULT) free
+    // for the TLS handshake the Telegram bot performs. It is the first value
+    // to raise again if the admin UI feels sluggish and the heap has room.
     config.max_open_sockets = 3;
     // A fourth browser connection evicts the least recently used one instead
     // of being refused, so the cap costs latency under load, never an error

@@ -116,7 +116,7 @@ Por qué los números son los que son
    lee crudo del propio ``buf[]``. Ese es todo el motivo por el que la ruta de RX
    no guarda una segunda copia del bloque de 20 ms.
 
-**``MODEM_RX_FIFO_SIZE = 4096`` muestras.****``MODEM_RX_FIFO_SIZE = 4096`` muestras.**
+**``MODEM_RX_FIFO_SIZE = 4096`` muestras.**
    Dimensionado en *muestras*, así que encogió en *tiempo* cuando la tasa se
    duplicó (2048 eran 53 ms a 38,4 k, solo 26,7 ms a 76,8 k — apenas un bloque de
    20 ms). 4096 restaura el margen; debe contener ≥ 2 bloques, ya que
@@ -216,12 +216,16 @@ Los archivos fuente del módem
 
    * - Archivo
      - Rol
-   * - ``src/afsk.c`` (~1360 lín)
+   * - ``src/afsk.c`` (~1380 lín)
      - ingesta DMA del ADC, AGC, FIR de diezmado, ISR del DAC, PTT
-   * - ``src/modem.c`` (~870 lín)
+   * - ``src/modem.c`` (~860 lín)
      - correladores, DPLL, tablas de tonos, DCD, calibración
-   * - ``src/ax25.c`` (~1600 lín)
+   * - ``src/ax25.c`` (~1640 lín)
      - encuadrador HDLC, NRZI, bit-stuffing, códec AX.25, cola de TX
+   * - ``src/esp32idf_radioamateur_modem.c`` (~420 lín)
+     - la API pública del componente: ``modem_init()``/``modem_set_modem()``,
+       los ayudantes TNC2 y la tarea ``modem_svc`` que acciona el TX y entrega
+       las tramas decodificadas al callback de RX
    * - ``src/fx25.c``, ``lwfec/rs.c``, ``lwfec/gf.c``
      - FEC Reed–Solomon FX.25
    * - ``src/crc_ccit.c``

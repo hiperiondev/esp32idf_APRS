@@ -5,8 +5,9 @@ Networking
 ==========
 
 Wi-Fi bring-up (``main/main.c``) is one of the most heavily instrumented parts
-of the firmware, because "I switched to Station mode and nothing happened" was a
-recurring, silent failure in earlier revisions. Every path now logs what it did.
+of the firmware, because "I switched to Station mode and nothing happened" is the
+hardest kind of failure to diagnose on a headless station. Every path through it
+logs what it did.
 
 Wi-Fi modes
 ===========
@@ -27,12 +28,13 @@ without a web admin to fix it from.
 
 Up to five STA profiles (``WIFI_STA_NUM = 5``) are stored, each with its own
 Enable checkbox. The **first enabled entry with a non-empty SSID** is pushed to
-the driver; multi-AP failover is noted as "can be added later".
+the driver, and it is the only one used for that boot: the slots are alternative
+credentials to choose between, not a rotation the firmware fails over across.
 
 Robust station connection
 =========================
 
-Several deliberate fixes make the station path reliable:
+Several deliberate design choices make the station path reliable:
 
 * **Connect from ``WIFI_EVENT_STA_START``, not immediately.**
   ``esp_wifi_connect()`` is only legal once the station interface has actually
@@ -57,7 +59,7 @@ Several deliberate fixes make the station path reliable:
   dumps every slot and tells you which mistake it is ("enabled, but the SSID is
   EMPTY" vs "has an SSID, but 'Enable' is not ticked").
 
-Disconnect reason codes are logged (they used to be discarded):
+Disconnect reason codes are logged rather than discarded:
 
 .. list-table::
    :header-rows: 1
@@ -102,7 +104,7 @@ value is what is actually enforced.
 Time sync
 =========
 
-``time_sync.c`` runs SNTP against three hosts. It is now a non-blocking state
+``time_sync.c`` runs SNTP against three hosts. It is a non-blocking state
 machine folded into the 1 Hz service tick, and it pins the system clock to UTC
 (``TZ=UTC0``) — the APRS spec's zulu timestamps require it.
 
@@ -122,5 +124,6 @@ CPU frequency
 =============
 
 ``cpu_freq.c`` applies the System page's 80/160/240 MHz selection via
-``esp_pm_configure()``. Without this the setting was stored and displayed but
-never changed the clock.
+``esp_pm_configure()``, so the selection changes the actual clock rather than
+only being stored and displayed. It is applied at boot and again on every save,
+without a reboot.

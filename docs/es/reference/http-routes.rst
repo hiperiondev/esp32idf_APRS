@@ -173,19 +173,20 @@ autenticación pueda proteger.
      - referencia/selector de símbolos APRS
    * - GET
      - ``/lastheard``
-     - tabla LAST HEARD (JSON)
+     - una fila por estación oída (JSON); un feed para clientes externos, no lo
+       dibuja ninguna página de administración
    * - GET
      - ``/igate_traffic?since=<seq>``
      - delta del registro de tráfico (JSON)
    * - GET
      - ``/dashinfo``
-     - tira compacta de info en vivo (JSON)
+     - tira compacta de info en vivo (fragmento HTML)
    * - GET
      - ``/sidebarInfo``
      - fragmento de stats de barra lateral
    * - GET
      - ``/heapinfo``
-     - uso de heap en vivo (JSON)
+     - heap libre y mínimo libre como objeto JSON de dos campos
    * - GET
      - ``/style.css``
      - hoja de estilos compartida

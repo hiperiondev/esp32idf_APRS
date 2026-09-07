@@ -5,9 +5,9 @@ Red
 ===
 
 La puesta en marcha de Wi-Fi (``main/main.c``) es una de las partes más
-instrumentadas del firmware, porque "cambié a modo Station y no pasó nada" era un
-fallo silencioso recurrente en revisiones anteriores. Ahora cada ruta registra lo
-que hizo.
+instrumentadas del firmware, porque "cambié a modo Station y no pasó nada" es el
+tipo de fallo más difícil de diagnosticar en una estación sin cabeza. Cada ruta
+que lo atraviesa registra lo que hizo.
 
 Modos Wi-Fi
 ===========
@@ -29,13 +29,14 @@ corregirlo.
 
 Se almacenan hasta cinco perfiles STA (``WIFI_STA_NUM = 5``), cada uno con su
 propia casilla Enable. La **primera entrada habilitada con un SSID no vacío** se
-empuja al controlador; el failover multi-AP se anota como "se puede añadir más
-adelante".
+empuja al controlador, y es la única que se usa en ese arranque: las ranuras son
+credenciales alternativas entre las que elegir, no una rotación por la que el
+firmware conmute.
 
 Conexión de estación robusta
 ============================
 
-Varias correcciones deliberadas hacen fiable la ruta de estación:
+Varias decisiones de diseño deliberadas hacen fiable la ruta de estación:
 
 * **Conectar desde ``WIFI_EVENT_STA_START``, no de inmediato.**
   ``esp_wifi_connect()`` solo es legal una vez que la interfaz de estación ha
@@ -62,7 +63,7 @@ Varias correcciones deliberadas hacen fiable la ruta de estación:
   el firmware vuelca cada ranura y te dice cuál es el error ("habilitada, pero el
   SSID está VACÍO" vs "tiene un SSID, pero 'Enable' no está marcado").
 
-Los códigos de razón de desconexión se registran (antes se descartaban):
+Los códigos de razón de desconexión se registran en lugar de descartarse:
 
 .. list-table::
    :header-rows: 1
@@ -108,8 +109,8 @@ aplica es el valor almacenado.
 Sincronización horaria
 ======================
 
-``time_sync.c`` ejecuta SNTP contra tres hosts. Ahora es una máquina de estados
-no bloqueante plegada en el tick de servicio de 1 Hz, y fija el reloj del
+``time_sync.c`` ejecuta SNTP contra tres hosts. Es una máquina de estados no
+bloqueante plegada en el tick de servicio de 1 Hz, y fija el reloj del
 sistema a UTC (``TZ=UTC0``) — las marcas de tiempo zulú de la especificación
 APRS lo requieren.
 
@@ -131,5 +132,6 @@ Frecuencia de CPU
 =================
 
 ``cpu_freq.c`` aplica la selección de 80/160/240 MHz de la página System vía
-``esp_pm_configure()``. Sin esto, el ajuste se almacenaba y mostraba pero nunca
-cambiaba el reloj.
+``esp_pm_configure()``, de modo que la selección cambia el reloj real y no solo
+se almacena y se muestra. Se aplica en el arranque y de nuevo en cada guardado,
+sin reiniciar.

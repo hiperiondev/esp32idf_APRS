@@ -214,8 +214,14 @@ La herramienta de puesta en marcha más útil del proyecto. Cablea
    prueba nunca se digipetee, suba, ni se registre como tráfico real.
 #. Conmuta el módem a **full dúplex** — un cable DAC→ADC significa que el nodo
    siempre oye su propia portadora y CSMA nunca activaría la radio.
-#. Transmite, luego espera hasta **4000 ms** a que la cadena ADC → demodulador →
-   HDLC → AX.25 devuelva la misma trama.
+#. Espera a que se libere la detección de portadora del demodulador antes de
+   activar el PTT, como mucho ``LOOP_TEST_CHANNEL_WAIT_MS`` (**3000 ms**), para
+   no transmitir el tono de autoprueba encima de una estación que esté al aire
+   en ese momento — la lectura es independiente del indicador de dúplex recién
+   fijado, que solo condiciona el CSMA. Un canal que siga ocupado al llegar al
+   tope se registra y la prueba transmite igualmente.
+#. Transmite, luego espera hasta ``LOOP_TEST_TIMEOUT_MS`` (**4000 ms**) a que la
+   cadena ADC → demodulador → HDLC → AX.25 devuelva la misma trama.
 #. **Siempre restaura** el gancho real y el modo dúplex configurado antes de
    volver.
 

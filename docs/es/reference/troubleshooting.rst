@@ -187,8 +187,10 @@ para memoria interna de 8 bits, la misma clase que imprime el transporte al
 fallar, de modo que ambos tipos de línea se pueden contrastar. La línea cuesta
 tres consultas al asignador por período y nada de memoria.
 
-El período vale diez segundos por defecto porque tiene que ser más corto que los
-eventos que pretende capturar, y en este firmware son cortos: un *handshake*
+El valor por defecto de Kconfig es diez segundos —el ``sdkconfig`` que se
+entrega lo fija en 60, y es el valor que hay que bajar primero al perseguir un
+pico— porque el período tiene que ser más corto que los eventos que pretende
+capturar, y en este firmware son cortos: un *handshake*
 TLS, una reconexión a APRS-IS o un guardado de ajustes alcanzan su pico y se
 recuperan en pocos segundos. Un muestreador más lento que eso es
 estructuralmente ciego a todos ellos — registra el heap antes y después, nunca
@@ -326,10 +328,10 @@ ejecutar el manejador del botón, no después, así que construir y enviar un
 informe nunca retrasa la respuesta. La conexión de transmisión permanece
 abierta durante un lote de actualizaciones, así que una ráfaga de pulsaciones
 paga un *handshake* entre todas en vez de uno cada una. Y un único ciclo de
-sondeo fallido ya no añade su propia pausa de cinco segundos encima de los
-reintentos que el transporte ya gastó, porque esa pausa es tiempo que las
-consultas en cola pasan envejeciendo; la pausa vuelve en cuanto los fallos se
-repiten, que es cuando la red está realmente caída.
+sondeo fallido no añade ninguna pausa propia encima de los reintentos que el
+transporte ya gastó, porque esa pausa sería tiempo que las consultas en cola
+pasan envejeciendo; la pausa de cinco segundos se aplica en cuanto los fallos
+se repiten, que es cuando la red está realmente caída.
 
 Una consulta genuinamente vencida la rechaza Telegram con un 400 y el mensaje
 de arriba, y el lote al que pertenecía se procesa igualmente. Si esto aparece

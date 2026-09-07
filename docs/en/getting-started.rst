@@ -38,10 +38,13 @@ Build in Spanish or Italian instead of English (see :ref:`en-localization`):
 
 .. tip::
 
-   ``sdkconfig`` ships with ``CONFIG_COMPILER_OPTIMIZATION_SIZE`` (``-Os``)
+   ``sdkconfig`` ships with ``CONFIG_COMPILER_OPTIMIZATION_DEBUG`` (``-Og``)
    and assertions on, and with ``CONFIG_COMPILER_STACK_CHECK_MODE_NORM`` for
-   the stack canary. Switch to ``CONFIG_COMPILER_OPTIMIZATION_DEBUG``
-   (``-Og``) for a development build with better source-level debugging.
+   the stack canary — the configuration every task stack in the project was
+   budgeted under. Switching to ``CONFIG_COMPILER_OPTIMIZATION_SIZE`` (``-Os``)
+   makes a smaller image with shallower stack frames, but it changes the
+   frame sizes those budgets were set against, so re-check the stack
+   high-water marks (see :ref:`en-troubleshooting`) after doing so.
 
 Memory budget
 =============

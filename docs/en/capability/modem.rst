@@ -205,8 +205,13 @@ open *Radio / Modem*, hit **LOOP TEST**. ``aprs_loop_test_run()``:
    digipeated, uplinked, or logged as real traffic.
 #. Switches the modem to **full duplex** — a DAC→ADC wire means the node always
    hears its own carrier and CSMA would never key up.
-#. Transmits, then waits up to **4000 ms** for the ADC → demodulator → HDLC →
-   AX.25 chain to hand the same frame back.
+#. Waits for the demodulator's carrier detect to clear before keying up, for at
+   most ``LOOP_TEST_CHANNEL_WAIT_MS`` (**3000 ms**), so the self-test tone is not
+   transmitted on top of a station that is on the air right now — the reading is
+   independent of the duplex flag just set, which only gates CSMA. A channel
+   still busy at the cap is logged and the test transmits anyway.
+#. Transmits, then waits up to ``LOOP_TEST_TIMEOUT_MS`` (**4000 ms**) for the
+   ADC → demodulator → HDLC → AX.25 chain to hand the same frame back.
 #. **Always restores** the real hook and the configured duplex mode before
    returning.
 

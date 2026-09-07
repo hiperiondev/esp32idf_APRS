@@ -111,7 +111,7 @@ Why the numbers are what they are
    starts; the rest of the block is read raw from ``buf[]`` itself. That is the
    whole reason the RX path holds no second copy of the 20 ms block.
 
-**``MODEM_RX_FIFO_SIZE = 4096`` samples.****``MODEM_RX_FIFO_SIZE = 4096`` samples.**
+**``MODEM_RX_FIFO_SIZE = 4096`` samples.**
    Sized in *samples*, so it shrank in *time* when the rate doubled (2048 was
    53 ms at 38.4 k, only 26.7 ms at 76.8 k — barely one 20 ms block). 4096
    restores the margin; it must hold ≥ 2 blocks, since ``AFSK_Poll()`` consumes
@@ -207,12 +207,16 @@ The modem source files
 
    * - File
      - Role
-   * - ``src/afsk.c`` (~1360 ln)
+   * - ``src/afsk.c`` (~1380 ln)
      - ADC DMA ingest, AGC, decimation FIR, DAC ISR, PTT
-   * - ``src/modem.c`` (~870 ln)
+   * - ``src/modem.c`` (~860 ln)
      - correlators, DPLL, tone tables, DCD, calibration
-   * - ``src/ax25.c`` (~1600 ln)
+   * - ``src/ax25.c`` (~1640 ln)
      - HDLC framer, NRZI, bit-stuffing, AX.25 codec, TX queue
+   * - ``src/esp32idf_radioamateur_modem.c`` (~420 ln)
+     - the component's public API: ``modem_init()``/``modem_set_modem()``, the
+       TNC2 helpers, and the ``modem_svc`` task that drives TX and delivers
+       decoded frames to the RX callback
    * - ``src/fx25.c``, ``lwfec/rs.c``, ``lwfec/gf.c``
      - FX.25 Reed–Solomon FEC
    * - ``src/crc_ccit.c``

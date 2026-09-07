@@ -18,23 +18,41 @@ saved text itself is left exactly as the operator entered it.
 The shared beacon scheduler
 ===========================
 
-Earlier revisions ran the tracker, igate and digi beacons, the weather report
-and the bulletins each in **its own FreeRTOS task**. Every one of those tasks
-did the same thing — sleep, wake, build a packet, walk the shared (float-heavy)
-TNC2/AX.25 TX chain, sleep again — and therefore each had to carry a large
-stack (10–14 KB) sized for that call tree, even though they almost never run at
-the same time and the half-duplex modem serialises their transmissions anyway.
+Every periodic own-station transmission runs on **one** FreeRTOS task,
+``beacon_sched``, created by ``beacon_scheduler_start()``
+(``main/beacon_scheduler.c``). On each pass the scheduler calls every
+subsystem's "service" function — ``beacon_service()`` (the tracker, igate and
+digi beacons together), ``weather_beacon_service()``,
+``telemetry_beacon_service()``, ``query_capabilities_service()``,
+``bulletins_service()`` and ``objitems_service()`` — each of which transmits
+whatever is due and returns how many seconds remain until it next needs
+servicing. The scheduler then sleeps until the soonest of them, bounded by
+``BEACON_SCHED_POLL_CAP_S`` (30 s) so an enable or an interval edited in the
+web admin takes effect without a reboot. The subsystems keep their own enable
+flags and intervals; only the task, and its stack, are shared.
 
-The ``beacon_scheduler`` component **collapses those five tasks into one**. On
-each pass it calls every subsystem's "service" function
-(``beacon_service()``, ``weather_beacon_service()``, ``bulletins_service()``,
-and the objects/items and telemetry services), each of which transmits whatever
-is due and reports how many seconds until it next needs servicing; the scheduler
-then sleeps until the soonest of them. The subsystems keep their independent
-enable flags and intervals — only the task (and its stack) is shared.
+Sharing one task is what keeps the stack budget to a single allocation. Every
+one of those services ends in the same float-heavy TNC2/AX.25 transmit chain —
+several ``snprintf()``\ s through newlib's float-capable formatter, then
+``lat_lon_to_aprs()`` and ``aprs_path_build_suffix()`` into
+``aprs_service_send_tnc2()`` → ``modem_send_tnc2()`` →
+``modem_build_frame_tnc2()`` → ``ax25_encode()``/``hdlcFrame()``, stacking
+several 300–450 byte buffers per level — and they run sequentially within a
+pass, so the stack is reused between them and only the deepest single call tree
+matters. That tree is the weather one, and
+``BEACON_SCHED_TASK_STACK_BYTES`` is sized to it at 14336 bytes with deliberate
+headroom rather than trimmed to a measured minimum. The task logs its own
+``uxTaskGetStackHighWaterMark()`` at ``ESP_LOGD`` on every pass, which is the
+measurement to take before lowering that constant.
 
-Net effect: five stacks (~61 KB total) become one (~14 KB), freeing ~46 KB of
-internal heap on this no-PSRAM build.
+The very first pass is held until the RF modem reports ready, or for at most
+``BEACON_SCHED_MODEM_WAIT_CAP_MS`` (6 s), whichever comes first. ``modem_init()``
+blocks for about five seconds calibrating the real ADC clock and is called
+*after* ``aprs_service_start()`` creates this task, so without that wait every
+enabled beacon would fall due immediately and log "modem not ready or busy" on
+the RF leg — and "not connected" on the INET leg — on every boot. The cap is
+what still gets the schedule going on a board where the audio modem is switched
+off in the configuration and the ready notification therefore never arrives.
 
 Query answers ride the same task
 ================================
@@ -733,5 +751,8 @@ Timestamps are UTC
 ==================
 
 Beacon timestamps are zulu/UTC (``051200z``) per the APRS spec — which is why
-``time_sync.c`` pins the system clock to ``TZ=UTC0``. No local-time offset
-exists anywhere in the firmware.
+``time_sync.c`` pins the system clock to ``TZ=UTC0`` and never rewrites it. The
+System page's timezone selector applies a fixed UTC offset to the date and time
+the web admin *displays* and to nothing else: the system clock, every APRS
+timestamp and every other time-formatting call in the firmware stay UTC
+whatever it is set to.

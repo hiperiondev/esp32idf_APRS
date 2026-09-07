@@ -276,19 +276,16 @@ void weather_field_format(wx_field_id_t field, double value, char *out, size_t o
 // report. For any field with "Averaged" ticked, fold this sample into its
 // accumulator.
 //
-// @note Earlier revisions called sensors_local_save() once and let every
-//       registered WEATHER-capable driver write straight into the shared
-//       s_wx report. That ignored wx_sensor_ch[] entirely: with more than
-//       one weather driver registered (e.g. the real "bme280" driver and
-//       the "wx-example" self-test driver both enabled at once), each
-//       driver's save() overwrote the previous one's fields in registry
-//       order, so the on-air packet ended up carrying whichever driver
-//       happened to run last - not the one selected per field in the web
-//       admin - even though the Weather page's live "Value" preview
-//       (which does call sensors_local_save_one() for the exact selected
-//       channel) showed the correct reading. Fixed by resolving each
-//       field to its own selected driver here, the same way the preview
-//       does.
+// @note The per-field resolution is what makes the mapping authoritative.
+//       Several registered drivers can advertise the same weather quantity
+//       (the "bme280" driver and the "wx-example" self-test driver both
+//       report temperature, for instance), so a single pass that let every
+//       WEATHER-capable driver write into the shared report would leave each
+//       field carrying whichever driver ran last in registry order. Reading
+//       one driver per field through sensors_local_save_one() instead means
+//       the on-air packet carries exactly the channel the operator picked,
+//       and matches the Weather page's live "Value" preview, which resolves
+//       the selected channel the same way.
 // -------------------------------------------------------------------------
 static void weather_refresh_now(void) {
     weather_lock();

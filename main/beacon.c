@@ -110,8 +110,8 @@ typedef struct {
     // the same 7-byte info-field slot that moving stations use for CSE/SPD -
     // mutually exclusive with hasCourseSpeed above, since only the Tracker
     // beacon can carry either and the two describe the same bytes. IGate and
-    // Digipeater never set hasCourseSpeed, so the slot is free for their own
-    // extension exactly as before. Mic-E has no such slot, and carries the
+    // Digipeater never set hasCourseSpeed, so for those two the slot is
+    // always free for their own extension. Mic-E has no such slot, and carries the
     // token in its text field instead (see buildMicePositionPacket()).
     bool extEnable;
     uint8_t extType;     // aprs_ext_type_t: PHG, RNG, DFS or DF
@@ -705,10 +705,9 @@ static int buildPositionPacket(const beacon_params_t *p, const char *path, char 
     //     honouring the compress flag here would transmit the exact position
     //     the operator asked to obscure.
     //
-    // A fixed-position beacon - the only kind these three ever sent before
-    // live GPS was wired in - never sets hasCourseSpeed, so for one the
-    // compressed cs/T slot still carries only the radio range form or "no
-    // cs/T data" (3 spaces), exactly as before.
+    // A fixed-position beacon never sets hasCourseSpeed, so for one the
+    // compressed cs/T slot carries only the radio range form or the "no cs/T
+    // data" marker (3 spaces).
     bool useCompressed = p->compress && (!extPresent || extIsRange) && p->ambiguity == 0;
 
     // The operator selected two settings that cannot both be honoured, so the
@@ -1381,13 +1380,12 @@ static uint32_t smartBeaconingInterval(double speedKmh) {
     } else if (speedKmh >= (double)highKmh) {
         interval = fast;
     } else {
-        // Linear interpolation between the two rates over the speed range
-        // (aprs.org's SmartBeaconing description: interval is proportional to
-        // 1/speed in the reference implementation's spirit, but this project
-        // follows the same simpler linear form VP-Digi and most modern
-        // trackers use, which is close enough over the practical speed range
-        // and does not risk a near-zero interval as speed approaches zero
-        // from above).
+        // Linear interpolation between the two rates over the speed range.
+        // aprs.org's SmartBeaconing description makes the interval
+        // proportional to 1/speed; this project uses the simpler linear form
+        // VP-Digi and most modern trackers use, which is close enough over the
+        // practical speed range and does not risk a near-zero interval as
+        // speed approaches zero from above.
         double frac = (speedKmh - (double)lowKmh) / (double)(highKmh - lowKmh);
         interval = slow - (uint32_t)lround(frac * (double)(slow - fast));
     }
@@ -1582,8 +1580,8 @@ static uint32_t trackerBeaconService(void) {
         // of this block, in place of the fixed trk_interval, whenever a live
         // fix made one available this pass; 0 means SmartBeaconing did not
         // apply (live GPS off, no current fix, or SmartBeaconing itself off),
-        // so the ordinary fixed-interval schedule below is unchanged from
-        // before SmartBeaconing existed.
+        // in which case the ordinary fixed-interval schedule below runs on
+        // trk_interval alone.
         uint32_t sbIntervalSec = 0;
 
         if (useLiveGps) {

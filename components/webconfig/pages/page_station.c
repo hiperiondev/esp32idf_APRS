@@ -21,9 +21,9 @@
 // IGate/Digipeater/Tracker/Weather page. Latitude, longitude and altitude can
 // instead be taken live from the GNSS receiver via the "Use GPS" checkbox
 // (see web_field_use_gps_data() in web_common.c); a station using it still
-// feeds every dependent page's "Use My Station Data" exactly as before, since
-// the mirror below only ever reads g_config.my_lat/my_lon/my_alt, whichever
-// way they were last set.
+// feeds every dependent page's "Use My Station Data" just the same, since the
+// mirror below only ever reads g_config.my_lat/my_lon/my_alt, whichever way
+// they were last set.
 //
 // The PHG height selector is stored internally in feet (the unit the APRS
 // PHG code table is itself defined in - power^2 Watts, 10*2^n feet, dB gain,

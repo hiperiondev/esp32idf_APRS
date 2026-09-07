@@ -65,7 +65,8 @@ esp_err_t page_bulletins_post(httpd_req_t *req);
 esp_err_t page_objects_get(httpd_req_t *req);
 /** @brief POST /objects - persist the Objects/Items set. @param req Incoming request. @return ESP_OK or an esp_err_t error. */
 esp_err_t page_objects_post(httpd_req_t *req);
-/** @brief GET  /sidebarInfo - JSON summary strip shown in the sidebar. @param req Incoming request. @return ESP_OK or an esp_err_t error. */
+/** @brief GET  /sidebarInfo - HTML summary strip shown in the sidebar, polled once a second. @param req Incoming request. @return ESP_OK or an esp_err_t
+ * error. */
 esp_err_t page_sidebar_info(httpd_req_t *req);
 /** @brief GET  /igate_traffic?since=<seq> - JSON incremental traffic-log feed for the dashboard. @param req Incoming request. @return ESP_OK or an esp_err_t
  * error. */
@@ -74,7 +75,8 @@ esp_err_t page_igate_traffic(httpd_req_t *req);
 esp_err_t page_lastheard(httpd_req_t *req);
 /** @brief GET  /dashinfo - compact live sysinfo strip polled by the dashboard. @param req Incoming request. @return ESP_OK or an esp_err_t error. */
 esp_err_t page_dashinfo(httpd_req_t *req);
-/** @brief GET  /heapinfo - free/min-free heap JSON, polled every 1 s by the dashboard. @param req Incoming request. @return ESP_OK or an esp_err_t error. */
+/** @brief GET  /heapinfo - free/min-free heap as a two-field JSON object, for an external client that wants only those two numbers. @param req Incoming
+ * request. @return ESP_OK or an esp_err_t error. */
 esp_err_t page_heapinfo(httpd_req_t *req);
 /** @brief GET  /storage - LittleFS storage management page (list/download/delete/format). @param req Incoming request. @return ESP_OK or an esp_err_t error. */
 esp_err_t page_storage_get(httpd_req_t *req);

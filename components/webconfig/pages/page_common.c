@@ -228,9 +228,11 @@ static const char *dash_reboot_reason_str(void) {
 }
 
 // GET /dashinfo -> compact live system-info strip shown at the top of the
-// dashboard, mirroring the reference dashboard's AJAX-refreshed #sysInfo bar
-// (Up Time / RAM / LittleFS / CPU speed / Reboot reason). Polled every 1s
-// from the dashboard's reloadDashSysInfo() so all values stay live.
+// dashboard (Up Time / RAM / LittleFS / CPU speed / Reboot reason). Served as
+// an HTML fragment, not JSON: reloadDashSysInfo() polls it every second and
+// assigns the response straight into #dashSysInfo, so every value on the strip
+// - including the Free Heap and Min Free Heap cells - stays live without the
+// page being reloaded.
 esp_err_t page_dashinfo(httpd_req_t *req) {
     if (!web_check_auth(req))
         return ESP_OK;
@@ -299,19 +301,22 @@ esp_err_t page_dashinfo(httpd_req_t *req) {
     return ESP_OK;
 }
 
-// GET /heapinfo -> tiny JSON {free, minFree} used to refresh just the Free
-// Heap / Min Free Heap cells on the dashboard every second, without
-// re-rendering the whole (slower-changing) #dashSysInfo fieldset.
+// GET /heapinfo -> tiny JSON {free, minFree} carrying just the Free Heap and
+// Min Free Heap figures.
+//
+// This route serves external clients only: a monitoring script or a manual
+// probe that wants the two numbers without the markup around them. The
+// dashboard does not use it - its own Free Heap / Min Free Heap cells live
+// inside the #dashSysInfo fragment and are refreshed with the rest of that
+// fragment from /dashinfo.
 //
 // Both figures are read exactly as page_dashinfo() reads them, in the same
-// memory class and with the same caveat on the minimum, so a cell that has been
-// refreshed and a cell that has just been rendered never disagree.
+// memory class and with the same caveat on the minimum, so the two routes never
+// disagree about the same instant.
 //
-// Sampling this route at 1 Hz is a finer trace than the periodic log line, but
-// it only exists while a browser is sitting on the dashboard, which is not when
-// boot bring-up or an unattended reconnect happens. It describes the window it
-// was watched in, never the firmware; heap_monitor.c is what covers the rest of
-// the time.
+// Whatever polls this sees only the window it is watching, which is not when
+// boot bring-up or an unattended reconnect happens; heap_monitor.c is what
+// covers the rest of the time.
 esp_err_t page_heapinfo(httpd_req_t *req) {
     if (!web_check_auth(req))
         return ESP_OK;

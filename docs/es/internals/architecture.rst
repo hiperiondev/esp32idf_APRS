@@ -33,7 +33,7 @@ preceder a todo, y luego cede el control a una tarea dedicada:
     ├─ if (audio_modem_en) modem_init()   ← ⏳ SE BLOQUEA ~5 s calibrando el reloj real del ADC (una vez por arranque)
     │      └─ aprs_service_notify_modem_ready()
     ├─ telegram_app_apply_config()        ← no bloqueante; su propia tarea espera la red
-    ├─ web_server_start_when_heap_ready() ← espera hasta 5 s por ≥10 KB de heap libre y luego
+    ├─ web_server_start_when_heap_ready() ← espera hasta 5 s por un bloque libre contiguo ≥24 KB y luego
     │      └─ web_server_start()            arranca de todas formas: esp_http_server, ~70 manejadores de URI, pila de 20 KB
     └─ vTaskDelete(NULL)                  ← devuelve la pila de 8 KB de app_task al heap
 
@@ -102,9 +102,17 @@ Mapa de tareas
    * - ``modem_svc``
      - 6144 B
      - 5
-     - cualquiera
+     - **0**
      - ``modem_init()``
-     - acciona el TX, entrega tramas RX al callback
+     - acciona el TX, entrega tramas RX al callback; fijada al mismo núcleo que
+       la tarea RX DSP, cuyo anillo AX.25 consume
+   * - ``modem_init``
+     - 4096 B
+     - alta
+     - **1**
+     - ``AFSK_init()``
+     - transitoria: ejecuta la puesta en marcha del reloj de muestreo del DAC en
+       el núcleo que debe poseer su interrupción y luego se autoelimina
    * - ISR DMA del ADC
      - —
      - —

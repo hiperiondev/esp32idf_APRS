@@ -163,9 +163,12 @@ The pages
      - What it does
    * - **Dashboard**
      - Network Status pills (Wi-Fi, APRS-IS via ``igate_is_connected()``), a
-       STATISTICS panel, a LAST HEARD table with symbol icons, and a live
+       STATISTICS panel, a system-info strip refreshed once a second, and a live
        traffic table (DX / PACKET / DECODED / AUDIO) fed by sequence-based long
-       polling. DECODED holds what was read out of the payload itself - the
+       polling. The traffic table is the only station list the page draws; the
+       per-station LAST HEARD data is exposed as the ``/lastheard`` JSON feed
+       and is consumed by the message gate, the ``?APRSD``/``?APRSH`` answers
+       and the BrandMeister status count rather than being rendered here. DECODED holds what was read out of the payload itself - the
        packet's own timestamp, course, speed, altitude, radio range, PHG or
        DFS, and the bearing and NRQ of a DF report - and is empty for a payload
        that carries none of them. The column holds a whole summary line
@@ -359,7 +362,8 @@ The pages
        received messages, five visible at a time and ten kept.
    * - **Message**
      - Configures the messaging engine (RF/INET enable, retry, digipeat path,
-       alarm GPIO).
+       alarm GPIO), plus the *Message Groups* fieldset: three operator-defined
+       group addressees read in addition to the built-in ``ALL``/``QST``/``CQ``.
    * - **Query**
      - APRS query responder enable, which source is answered (RF / APRS-IS —
        an answer always goes back on the channel the question arrived on),
@@ -462,7 +466,10 @@ Live feeds
   advance past lines the client has received; a cursor ahead of the ring — the
   device rebooted, and numbering restarted at 1 — resends from the oldest entry
   still buffered.
-* ``/dashinfo``, ``/sidebarInfo``, ``/heapinfo`` — compact live info fragments.
+* ``/dashinfo`` and ``/sidebarInfo`` — compact live info fragments, polled once
+  a second by the dashboard and the sidebar respectively. ``/heapinfo`` serves
+  the same free/min-free heap pair as a two-field JSON object for a client that
+  wants only those two numbers.
 
 See :ref:`en-http-routes` for the full route table.
 
@@ -477,8 +484,9 @@ with no ``Authorization`` header at all, or one that isn't ``Basic``, is the
 challenge half of the HTTP Basic handshake that every browser performs on its
 own, and is answered with a ``401`` without being charged against the budget;
 this is what lets the dashboard's authenticated pollers (``/dashinfo``,
-``/sidebarInfo``, ``/heapinfo``, ``/lastheard``, ``/igate_traffic``) sit behind
-a fresh login page without ever tripping a lockout on their own.
+``/sidebarInfo``, ``/igate_traffic``, and the per-page feeds such as
+``/wx/values`` or ``/gps/live``) sit behind a fresh login page without ever
+tripping a lockout on their own.
 
 After 5 consecutive rejected credentials from the same source, that source is
 locked out and every further request gets ``429 Too Many Requests`` with a

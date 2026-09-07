@@ -38,11 +38,14 @@ Compilar en español o italiano en lugar de inglés (véase :ref:`es-localizatio
 
 .. tip::
 
-   ``sdkconfig`` viene con ``CONFIG_COMPILER_OPTIMIZATION_SIZE`` (``-Os``) y
+   ``sdkconfig`` viene con ``CONFIG_COMPILER_OPTIMIZATION_DEBUG`` (``-Og``) y
    las aserciones activadas, y con ``CONFIG_COMPILER_STACK_CHECK_MODE_NORM``
-   para el canario de pila. Cambia a ``CONFIG_COMPILER_OPTIMIZATION_DEBUG``
-   (``-Og``) para una build de desarrollo con mejor depuración a nivel de
-   fuente.
+   para el canario de pila: es la configuración bajo la que se dimensionaron
+   todas las pilas de tareas del proyecto. Cambiar a
+   ``CONFIG_COMPILER_OPTIMIZATION_SIZE`` (``-Os``) produce una imagen más
+   pequeña con marcos de pila menos profundos, pero altera los tamaños de marco
+   con los que se fijaron esos presupuestos, así que vuelve a comprobar las
+   marcas de agua de pila (ver :ref:`es-troubleshooting`) después de hacerlo.
 
 Presupuesto de memoria
 ======================

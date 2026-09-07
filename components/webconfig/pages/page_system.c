@@ -56,9 +56,9 @@ esp_err_t page_system_get(httpd_req_t *req) {
         snprintf(buf, sizeof(buf), "<p><b>" TR_SYSINFO_CPU_FREQ "</b> %lu MHz</p>", (unsigned long)cpu_mhz);
         httpd_resp_sendstr_chunk(req, buf);
     }
-    // CPU frequency selector: a fixed 3-entry table (80/160/240 MHz), so it is
-    // rendered with the shared <select> helpers rather than a hand-rolled
-    // three-way ternary chain.
+    // CPU frequency selector: a fixed 3-entry table (80/160/240 MHz), short
+    // enough to enumerate inline with the shared <select> helpers instead of
+    // being driven from a table.
     web_select_open(req, TR_SYSINFO_CPU_FREQ_SET, "cpuFreq");
     web_select_option(req, 80, "80", g_config.cpuFreq == 80);
     web_select_option(req, 160, "160", g_config.cpuFreq == 160);

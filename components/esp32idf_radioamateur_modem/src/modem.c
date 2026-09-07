@@ -102,13 +102,13 @@ static const char *TAG = "modem";
 // MODEM_ADC_SAMPLERATE / MODEM_DAC_SAMPLERATE ratio. They do not: each is
 // an independent hardware timer with its own rounding error against the rate
 // it was configured for (see the MODEM_ADC_SAMPLERATE comment in
-// modem_config.h and dac_timer_create() in afsk.c), and the gap between the
-// two is a steady-state phase error every DPLL in this file has to track for
-// the rest of a transmission. That is the residual, repeatable loss the
-// G3RUH stress test in afsk_loopback_test.c measures: real samples-per-symbol
-// is off from the nominal 8 by a small, fixed amount, and left uncorrected
-// the DPLL has to fight the same known bias, transmission after
-// transmission, instead of being told about it once.
+// esp32idf_radioamateur_modem_config.h and dac_timer_create() in afsk.c), and
+// the gap between the two is a steady-state phase error every DPLL in this
+// file has to track for the rest of a transmission. It is a residual,
+// repeatable loss rather than a random one: real samples-per-symbol is off
+// from the nominal 8 by a small, fixed amount, and left uncorrected the DPLL
+// has to fight the same known bias, transmission after transmission, instead
+// of being told about it once.
 //
 // sampleRateCorrection is that bias, expressed as (real samples-per-symbol) /
 // (nominal samples-per-symbol). Both clocks are derived from the same

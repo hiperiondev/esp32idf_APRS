@@ -460,10 +460,10 @@ esp_err_t web_handle_logo(httpd_req_t *req);
 /**
  * @name Safe small-buffer form-field emitters
  *
- * Each helper uses its own small, generously-sized internal buffer, so no page
- * needs one giant @c snprintf that risks @c -Werror=format-truncation like the
- * earlier hand-rolled pages did. Together they render one field/control per
- * call inside a fieldset.
+ * Each helper uses its own small, generously-sized internal buffer, so a page
+ * never has to assemble a whole fieldset in one giant @c snprintf, which is
+ * the shape that risks @c -Werror=format-truncation. Together they render one
+ * field/control per call inside a fieldset.
  *
  * Labels and legends are bounded at ::WEB_LABEL_MAX_BYTES bytes and each
  * helper's buffer is sized to hold a label of that length plus the widest

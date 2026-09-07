@@ -176,19 +176,20 @@ proteggere.
      - riferimento/selettore di simboli APRS
    * - GET
      - ``/lastheard``
-     - tabella LAST HEARD (JSON)
+     - una riga per stazione ascoltata (JSON); un feed per client esterni, non
+       disegnato da nessuna pagina di amministrazione
    * - GET
      - ``/igate_traffic?since=<seq>``
      - delta del log di traffico (JSON)
    * - GET
      - ``/dashinfo``
-     - striscia compatta di info in tempo reale (JSON)
+     - striscia compatta di info in tempo reale (frammento HTML)
    * - GET
      - ``/sidebarInfo``
      - frammento di stats della barra laterale
    * - GET
      - ``/heapinfo``
-     - uso dell'heap in tempo reale (JSON)
+     - heap libero e minimo libero come oggetto JSON a due campi
    * - GET
      - ``/style.css``
      - foglio di stile condiviso

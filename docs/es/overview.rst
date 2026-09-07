@@ -127,9 +127,12 @@ Matriz de funciones
    * - Administración web (autenticación HTTP Basic)
      - ✅
      - 22 páginas de la barra lateral + selector de símbolo, panel en vivo
-   * - Registro de tráfico en vivo + tabla de últimos escuchados
+   * - Registro de tráfico en vivo (panel) + feed de últimos escuchados
      - ✅
-     - long-poll JSON (``?since=<seq>``)
+     - tabla de tráfico por long-poll JSON (``?since=<seq>``); la tabla de
+       últimos escuchados por estación es un feed JSON (``/lastheard``) y la
+       fuente que leen la compuerta de mensajes y las respuestas
+       ``?APRSD``/``?APRSH``
    * - Almacenamiento LittleFS, subir/descargar/borrar/formatear
      - ✅
      - partición de 512 KB

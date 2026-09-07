@@ -150,14 +150,25 @@ static inline size_t aprs_bm_header_len(const char *line) {
 }
 
 /**
- * @brief Case-insensitive comparison of a non-terminated field against a
- * NUL-terminated literal.
+ * @brief Case-insensitive comparison of the first @p n bytes of two buffers.
  *
- * @param field  Start of the field; not NUL-terminated.
- * @param len    Field length in bytes.
- * @param want   NUL-terminated string to compare against.
+ * Compares byte by byte, folding ASCII lower case to upper case on both sides.
+ * Neither buffer has to be NUL-terminated and neither is scanned past @p n, so
+ * this is the primitive the callers below use to match a path element or an
+ * address field - which are bounded by position inside a TNC2 line rather than
+ * terminated - against a stored callsign.
  *
- * @return true when the field is exactly @p want, ignoring case.
+ * Length equality is the caller's business: this function answers only
+ * "do these @p n bytes agree", so a caller that means "is the field exactly
+ * this string" has to compare the lengths itself, the way
+ * ::aprs_bm_field_equals does.
+ *
+ * @param a First buffer; must hold at least @p n bytes.
+ * @param b Second buffer; must hold at least @p n bytes.
+ * @param n Number of bytes to compare. Zero compares nothing and succeeds.
+ *
+ * @return true when all @p n bytes agree ignoring case, false at the first
+ *         difference.
  */
 static inline bool aprs_bm_ci_equal_n(const char *a, const char *b, size_t n) {
     for (size_t i = 0; i < n; i++) {

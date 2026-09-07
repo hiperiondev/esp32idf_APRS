@@ -148,6 +148,24 @@ typedef enum {
     DROP_REASON_COUNT     /**< Number of reasons; sizes ::igate_stats_t::dropByReason, never used as a reason itself. */
 } drop_reason_t;
 
+/**
+ * @brief Cumulative IGate counters, as shown on the dashboard and answered in
+ * the "?IGATE?" Station Capabilities query.
+ *
+ * One instance is kept inside the component and is only ever read out as a
+ * whole, through igate_get_stats(), which returns a copy by value. Working from
+ * that copy is what keeps a display self-consistent: the counters are advanced
+ * from the modem RX task and the APRS-IS socket task, so a caller that re-read
+ * the live figures between uses could pair a receive count with a transmit
+ * count taken a frame later. The copy is a plain structure assignment rather
+ * than a locked read, so it is a stable working set for one pass over the
+ * numbers, not an instantaneous cut of all of them.
+ *
+ * Every counter runs from boot and is never reset while the station is up, so
+ * a display that wants a rate has to difference two snapshots itself.
+ * ::igate_stats_total_drop and ::igate_stats_total_err reduce the per-reason
+ * array to the two totals the dashboard's DROP/ERR tile shows.
+ */
 typedef struct {
     uint32_t rxCount;   /**< Frames considered for gatewaying (RF->INET direction). */
     uint32_t txCount;   /**< Frames actually sent to APRS-IS as a result of gatewaying (RF->INET). */

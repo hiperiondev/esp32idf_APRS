@@ -1564,7 +1564,8 @@ static void inet2rfHandler(const char *line) {
         // ("u/APBM*", see aprs_bm.h) carries no such term - APRS-IS filter
         // terms are OR'd, never AND'd, so it cannot be combined with one - and
         // this station's own range gate is the only geographic restriction a
-        // BrandMeister line is ever subject to (see docs/brandmeister.rst).
+        // BrandMeister line is ever subject to (see
+        // docs/en/functionality/brandmeister.rst).
         // Passing a position-less BrandMeister line through unmeasured would
         // leave the very traffic this gate exists to bound (worldwide
         // repeater status/telemetry chatter) completely ungated, flooding the

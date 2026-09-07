@@ -33,7 +33,7 @@ everything, then hands off to a dedicated task:
     ├─ if (audio_modem_en) modem_init()   ← ⏳ BLOCKS ~5 s calibrating the real ADC clock (once per boot)
     │      └─ aprs_service_notify_modem_ready()
     ├─ telegram_app_apply_config()        ← non-blocking; its own task waits for the network
-    ├─ web_server_start_when_heap_ready() ← waits up to 5 s for ≥10 KB free heap, then
+    ├─ web_server_start_when_heap_ready() ← waits up to 5 s for a ≥24 KB largest free block, then
     │      └─ web_server_start()            starts regardless: esp_http_server, ~70 URI handlers, 20 KB stack
     └─ vTaskDelete(NULL)                  ← returns app_task's 8 KB stack to the heap
 
@@ -100,9 +100,17 @@ Task map
    * - ``modem_svc``
      - 6144 B
      - 5
-     - any
+     - **0**
      - ``modem_init()``
-     - drives TX, delivers RX frames to the callback
+     - drives TX, delivers RX frames to the callback; pinned to the same core as
+       the RX DSP task, whose AX.25 ring it consumes
+   * - ``modem_init``
+     - 4096 B
+     - high
+     - **1**
+     - ``AFSK_init()``
+     - transient: runs the DAC sample-clock bring-up on the core that must own
+       its interrupt, then deletes itself
    * - ADC DMA ISR
      - —
      - —

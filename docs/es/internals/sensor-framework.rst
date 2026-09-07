@@ -126,6 +126,16 @@ almacenamiento de tu estructura ``static`` es lo que vive en la tabla):
    sensors_local_init_all()      // init() ansiosamente cada controlador
    sensors_local_save(data,kind) // recorre la tabla; init() perezoso, luego save()
    sensors_local_save_one(i,...) // lee UN controlador por índice (vista previa en vivo)
+   sensors_local_channel_name(ch)      // posición en el registro -> nombre del controlador
+   sensors_local_channel_from_name(nm) // nombre del controlador -> posición en el registro
+
+Las dos últimas existen porque la asignación de canal se **persiste por nombre
+de controlador**, no por posición en el registro: esa posición depende del orden
+de enlazado y de qué controladores seleccione la compilación, así que habilitar
+o deshabilitar uno en Kconfig reapuntaría en silencio todos los mapeos de
+meteorología y telemetría. Un nombre guardado que el registro ya no contiene se
+resuelve a ``SENSOR_LOCAL_CH_NONE`` y se informa en el log, en lugar de apuntar
+al controlador que ahora ocupe ese índice.
 
 ``sensors_local_register()`` puede ejecutarse **antes de que exista el
 planificador de FreeRTOS**, porque ``SENSORS_LOCAL_DRIVER_AUTOREGISTER`` dispara

@@ -179,8 +179,9 @@ still shows there. All three are read for internal 8-bit memory, the same class
 the transport prints on failure, so the two kinds of line can be read against
 each other. The line costs three allocator queries per period and no memory.
 
-The period defaults to ten seconds because it has to be shorter than the events
-it is meant to catch, and on this firmware those are short: a TLS handshake, an
+The Kconfig default is ten seconds — the shipped ``sdkconfig`` sets it to 60,
+which is the value to lower first when chasing a peak — because the period has
+to be shorter than the events it is meant to catch, and on this firmware those are short: a TLS handshake, an
 APRS-IS reconnect or a settings save each peak and recover within a few seconds.
 A sampler slower than that is structurally blind to them — it records the heap
 before and after, never during, and every line it prints is consistent with a
@@ -307,9 +308,9 @@ Three things keep it inside the deadline. The query is answered before the
 button handler runs, not after it, so building and sending a report never
 delays the answer. The transmit connection stays open across one batch of
 updates, so a burst of presses pays one handshake between them all instead
-of one each. And a single failed polling cycle no longer adds its own five
-second pause on top of the retries the transport already spent, because that
-pause is time the queued queries spend ageing; the pause returns as soon as
+of one each. And a single failed polling cycle adds no pause of its own on top
+of the retries the transport already spent, because that pause would be time
+the queued queries spend ageing; the five second pause is applied as soon as
 failures repeat, which is when the network really is down.
 
 A query that is genuinely too old is refused by Telegram with a 400 and the

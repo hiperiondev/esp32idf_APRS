@@ -116,7 +116,7 @@ Perché i numeri sono quelli che sono
    blocco è letto grezzo da ``buf[]`` stesso. È tutta qui la ragione per cui il
    percorso di RX non tiene una seconda copia del blocco da 20 ms.
 
-**``MODEM_RX_FIFO_SIZE = 4096`` campioni.****``MODEM_RX_FIFO_SIZE = 4096`` campioni.**
+**``MODEM_RX_FIFO_SIZE = 4096`` campioni.**
    Dimensionato in *campioni*, quindi si è ristretto nel *tempo* quando la
    frequenza è raddoppiata (2048 erano 53 ms a 38,4 k, solo 26,7 ms a 76,8 k —
    appena un blocco da 20 ms). 4096 ripristina il margine; deve contenere ≥ 2
@@ -216,12 +216,16 @@ I file sorgente del modem
 
    * - File
      - Ruolo
-   * - ``src/afsk.c`` (~1360 righe)
+   * - ``src/afsk.c`` (~1380 righe)
      - ingest DMA dell'ADC, AGC, FIR di decimazione, ISR del DAC, PTT
-   * - ``src/modem.c`` (~870 righe)
+   * - ``src/modem.c`` (~860 righe)
      - correlatori, DPLL, tabelle di toni, DCD, calibrazione
-   * - ``src/ax25.c`` (~1600 righe)
+   * - ``src/ax25.c`` (~1640 righe)
      - framer HDLC, NRZI, bit-stuffing, codec AX.25, coda TX
+   * - ``src/esp32idf_radioamateur_modem.c`` (~420 righe)
+     - l'API pubblica del componente: ``modem_init()``/``modem_set_modem()``, gli
+       helper TNC2 e il task ``modem_svc`` che aziona il TX e consegna i frame
+       decodificati al callback RX
    * - ``src/fx25.c``, ``lwfec/rs.c``, ``lwfec/gf.c``
      - FEC Reed–Solomon FX.25
    * - ``src/crc_ccit.c``

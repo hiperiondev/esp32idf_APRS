@@ -186,8 +186,9 @@ interna a 8 bit, la stessa classe che il trasporto stampa in caso di errore,
 così i due tipi di riga si possono confrontare. La riga costa tre interrogazioni
 all'allocatore per periodo e nessuna memoria.
 
-Il periodo vale dieci secondi di default perché deve essere più breve degli
-eventi che intende cogliere, e su questo firmware sono brevi: un handshake TLS,
+Il default di Kconfig è dieci secondi — l'``sdkconfig`` distribuito lo imposta a
+60, ed è il valore da abbassare per primo quando si insegue un picco — perché il
+periodo deve essere più breve degli eventi che intende cogliere, e su questo firmware sono brevi: un handshake TLS,
 una riconnessione ad APRS-IS o un salvataggio di impostazioni raggiungono il
 picco e rientrano in pochi secondi. Un campionatore più lento è
 strutturalmente cieco a tutti loro — registra l'heap prima e dopo, mai durante,
@@ -325,10 +326,10 @@ gestore del pulsante venga eseguito, non dopo, così costruire e inviare un
 rapporto non ritarda mai la risposta. La connessione di trasmissione resta
 aperta per l'intero lotto di aggiornamenti, così una raffica di pressioni
 paga un handshake per tutte invece di uno ciascuna. E un singolo ciclo di
-polling fallito non aggiunge più la propria pausa di cinque secondi sopra i
-tentativi che il trasporto ha già speso, perché quella pausa è tempo che le
-query in coda passano a invecchiare; la pausa torna non appena i fallimenti
-si ripetono, cioè quando la rete è davvero giù.
+polling fallito non aggiunge alcuna pausa propria sopra i tentativi che il
+trasporto ha già speso, perché quella pausa sarebbe tempo che le query in coda
+passano a invecchiare; la pausa di cinque secondi viene applicata non appena i
+fallimenti si ripetono, cioè quando la rete è davvero giù.
 
 Una query realmente troppo vecchia viene rifiutata da Telegram con un 400 e
 il messaggio qui sopra, e il lotto a cui apparteneva viene comunque

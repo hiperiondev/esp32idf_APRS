@@ -128,9 +128,11 @@ Matrice delle funzionalità
      - ✅
      - 22 pagine nella barra laterale + selettore di simbolo, dashboard in
        tempo reale
-   * - Log traffico in tempo reale + tabella last-heard
+   * - Log traffico in tempo reale (dashboard) + feed last-heard
      - ✅
-     - long-poll JSON (``?since=<seq>``)
+     - tabella di traffico via long-poll JSON (``?since=<seq>``); la tabella
+       last-heard per stazione è un feed JSON (``/lastheard``) e la fonte letta
+       dal gate dei messaggi e dalle risposte ``?APRSD``/``?APRSH``
    * - Archiviazione LittleFS, upload/download/elimina/formatta
      - ✅
      - partizione da 512 KB

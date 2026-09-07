@@ -37,10 +37,14 @@ Compila in spagnolo o italiano invece che in inglese (vedi :ref:`it-localization
 
 .. tip::
 
-   ``sdkconfig`` arriva con ``CONFIG_COMPILER_OPTIMIZATION_SIZE`` (``-Os``) e le
+   ``sdkconfig`` arriva con ``CONFIG_COMPILER_OPTIMIZATION_DEBUG`` (``-Og``) e le
    asserzioni attive, e con ``CONFIG_COMPILER_STACK_CHECK_MODE_NORM`` per il
-   canary dello stack. Passa a ``CONFIG_COMPILER_OPTIMIZATION_DEBUG`` (``-Og``)
-   per una build di sviluppo con un debug a livello sorgente migliore.
+   canary dello stack: è la configurazione sotto cui è stato dimensionato ogni
+   stack di task del progetto. Passare a
+   ``CONFIG_COMPILER_OPTIMIZATION_SIZE`` (``-Os``) produce un'immagine più
+   piccola con frame di stack meno profondi, ma cambia le dimensioni di frame
+   rispetto a cui quei budget sono stati fissati, quindi ricontrolla i
+   watermark degli stack (vedi :ref:`it-troubleshooting`) dopo averlo fatto.
 
 Budget di memoria
 =================
