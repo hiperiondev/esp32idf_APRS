@@ -86,22 +86,19 @@ trama; un ricevitore che non lo conosce trova comunque all'interno la semplice
 trama AX.25 e la decodifica normalmente. È un'estensione compatibile, non un
 protocollo diverso.
 
-**Che cosa fa qui la casella.** Spuntarla memorizza ``fx25Mode = 1``, che
-``Ax25Init()`` interpreta come *FX.25 in ricezione, AX.25 semplice in
-trasmissione* (``Ax25Config.fx25 = 1``, ``Ax25Config.fx25Tx = 0``). In altre
-parole, la casella procura a questa stazione una migliore decodifica delle
-stazioni FX.25 che ascolta. **Non** aggiunge ridondanza a ciò che questa
-stazione trasmette.
+**Che cosa fa qui il menu a tendina.** Un selettore a tre opzioni memorizza
+``fx25Mode = 0``, ``1`` o ``2``, che ``Ax25Init()`` interpreta direttamente:
 
-.. note::
-
-   Il campo sottostante è numerico e ammette un terzo valore: ``0`` = spento,
-   ``1`` = sola ricezione, ``2`` = ricezione e trasmissione. La casella web
-   scrive solo ``0`` o ``1``. Chi voglia deliberatamente FX.25 in trasmissione
-   può scaricare ``radio.json`` dalla pagina *Archiviazione*, impostare
-   ``"fx25Mode": 2`` e ricaricarlo: il valore viene letto così com'è. Salvare di
-   nuovo la pagina Radiomodem lo riporterà a ``1``, perché la casella invia un
-   booleano.
+* *Disattivato* (``0``, valore predefinito) — AX.25 semplice in entrambe le
+  direzioni (``Ax25Config.fx25 = 0``, ``Ax25Config.fx25Tx = 0``).
+* *Solo ricezione* (``1``) — *FX.25 in ricezione, AX.25 semplice in
+  trasmissione* (``Ax25Config.fx25 = 1``, ``Ax25Config.fx25Tx = 0``). Questo
+  procura alla stazione una migliore decodifica delle stazioni FX.25 che
+  ascolta, senza aggiungere ridondanza a ciò che trasmette.
+* *Ricezione e trasmissione* (``2``) — FX.25 in entrambe le direzioni
+  (``Ax25Config.fx25 = 1``, ``Ax25Config.fx25Tx = 1``). Questa stazione avvolge
+  anche le proprie trame in uscita nel blocco Reed–Solomon, così ogni vicino
+  che capisce FX.25 riceve da essa la stessa correzione d'errore.
 
 **Secondo effetto, facile da non notare.** Con l'ingresso audio piatto
 selezionato (più sotto), FX.25 cambia anche quale prefiltro esegue il primo
@@ -1136,8 +1133,8 @@ Riferimento dei campi
      - Predefinito
      - Applicazione
    * - FX.25
-     - sì / no
-     - no
+     - disattivato / solo ricezione / ricezione e trasmissione
+     - disattivato
      - Immediata
    * - Abilita modem audio ADC/DAC
      - sì / no

@@ -274,6 +274,10 @@
 /** Italian text for the form label for the "fx 25 forward error corrected ax 25" field or fieldset, rendered on the configuration forms. English: "FX.25
  * (forward-error-corrected AX.25)". */
 #define TR_F_FX_25_FORWARD_ERROR_CORRECTED_AX_25 "FX.25 (AX.25 con correzione d'errore)"
+/** Italian text for the FX.25 mode option "receive and transmit". English: "Receive and transmit". */
+#define TR_F_FX25_RX_TX "Ricezione e trasmissione"
+/** Italian text for the FX.25 mode option "receive only". English: "Receive only". */
+#define TR_F_FX25_RX_ONLY "Solo ricezione"
 /** Italian text for the form label for the "igate" field or fieldset, rendered on the configuration forms. English: "IGate". */
 #define TR_F_IGATE "IGate"
 /** Italian text for the form label for the "include altitude" field or fieldset, rendered on the configuration forms. English: "Include altitude". */
@@ -2273,8 +2277,10 @@
 #define TR_H_F_FIXED_LONGITUDE "Longitudine usata quando la posizione non è presa dal ricevitore GNSS, in gradi decimali. L'est è positivo."
 /** Italian text of the contextual help for the "FX.25 (forward-error-corrected AX.25)" option. */
 #define TR_H_F_FX_25_FORWARD_ERROR_CORRECTED_AX_25                                                                                                             \
-    "Decodifica le trame FX.25 oltre all'AX.25 normale, recuperando pacchetti i cui errori di bit farebbero fallire il CRC. Ciò che questa stazione "         \
-    "trasmette resta AX.25 normale, quindi nulla cambia per chi la ascolta."
+    "Disattivato lascia entrambe le direzioni in AX.25 normale. Solo ricezione decodifica le trame FX.25 oltre all'AX.25 normale, recuperando pacchetti "     \
+    "i cui errori di bit farebbero fallire il CRC, mentre questa stazione continua a trasmettere AX.25 normale. Ricezione e trasmissione fa la stessa "       \
+    "decodifica e invia anche le trame di questa stazione come FX.25, così le stazioni compatibili ricevono la stessa correzione d'errore da questa "        \
+    "stazione."
 /** Italian text of the contextual help for the "Height (m)" option. */
 #define TR_H_F_HEIGHT_M "Altezza dell'antenna sul terreno medio, in metri, codificata nell'estensione PHG. Pesa più della potenza nella stima della copertura."
 /** Italian text of the contextual help for the "Include altitude" option. */

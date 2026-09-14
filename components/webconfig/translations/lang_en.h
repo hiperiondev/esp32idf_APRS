@@ -262,6 +262,10 @@
 #define TR_F_FIXED_LONGITUDE "Fixed Longitude"
 /** Form label for the "fx 25 forward error corrected ax 25" field or fieldset, rendered on the configuration forms. */
 #define TR_F_FX_25_FORWARD_ERROR_CORRECTED_AX_25 "FX.25 (forward-error-corrected AX.25)"
+/** Option label for FX.25 mode "receive and transmit": decode others' FX.25 frames and transmit this station's own frames as FX.25. */
+#define TR_F_FX25_RX_TX "Receive and transmit"
+/** Option label for FX.25 mode "receive only": decode others' FX.25 frames while transmitting plain AX.25. */
+#define TR_F_FX25_RX_ONLY "Receive only"
 /** Form label for the "igate" field or fieldset, rendered on the configuration forms. */
 #define TR_F_IGATE "IGate"
 /** Form label for the "include altitude" field or fieldset, rendered on the configuration forms. */
@@ -2160,8 +2164,9 @@
 #define TR_H_F_FIXED_LONGITUDE "Longitude used when the position is not taken from the GNSS receiver, in decimal degrees. East is positive."
 /** Contextual help for the "FX.25 (forward-error-corrected AX.25)" option. */
 #define TR_H_F_FX_25_FORWARD_ERROR_CORRECTED_AX_25                                                                                                             \
-    "Decodes FX.25 frames in addition to plain AX.25, recovering packets whose bit errors would otherwise fail the CRC. What this station transmits stays "    \
-    "plain AX.25, so nothing changes for the stations that hear it."
+    "Off leaves both directions plain AX.25. Receive only decodes FX.25 frames in addition to plain AX.25, recovering packets whose bit errors would "         \
+    "otherwise fail the CRC, while this station keeps transmitting plain AX.25. Receive and transmit does the same decoding and also sends this station's "   \
+    "own frames as FX.25, so stations that support it get the same error correction from this station."
 /** Contextual help for the "Height (m)" option. */
 #define TR_H_F_HEIGHT_M "Antenna height above average terrain, in metres, encoded in the PHG extension. It weighs more than power in the coverage estimate."
 /** Contextual help for the "Include altitude" option. */

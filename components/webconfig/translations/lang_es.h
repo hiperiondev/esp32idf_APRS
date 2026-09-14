@@ -274,6 +274,10 @@
 /** Spanish text for the form label for the "fx 25 forward error corrected ax 25" field or fieldset, rendered on the configuration forms. English: "FX.25
  * (forward-error-corrected AX.25)". */
 #define TR_F_FX_25_FORWARD_ERROR_CORRECTED_AX_25 "FX.25 (AX.25 con corrección de errores)"
+/** Spanish text for the FX.25 mode option "receive and transmit". English: "Receive and transmit". */
+#define TR_F_FX25_RX_TX "Recepción y transmisión"
+/** Spanish text for the FX.25 mode option "receive only". English: "Receive only". */
+#define TR_F_FX25_RX_ONLY "Solo recepción"
 /** Spanish text for the form label for the "igate" field or fieldset, rendered on the configuration forms. English: "IGate". */
 #define TR_F_IGATE "IGate"
 /** Spanish text for the form label for the "include altitude" field or fieldset, rendered on the configuration forms. English: "Include altitude". */
@@ -2264,8 +2268,9 @@
 #define TR_H_F_FIXED_LONGITUDE "Longitud usada cuando la posición no se toma del receptor GNSS, en grados decimales. El este es positivo."
 /** Spanish text of the contextual help for the "FX.25 (forward-error-corrected AX.25)" option. */
 #define TR_H_F_FX_25_FORWARD_ERROR_CORRECTED_AX_25                                                                                                             \
-    "Decodifica tramas FX.25 además de AX.25 normal, recuperando paquetes cuyos errores de bit harían fallar el CRC. Lo que esta estación transmite sigue " \
-    "siendo AX.25 normal, así que nada cambia para quienes la escuchan."
+    "Desactivado deja ambos sentidos en AX.25 normal. Solo recepción decodifica tramas FX.25 además de AX.25 normal, recuperando paquetes cuyos errores "     \
+    "de bit harían fallar el CRC, mientras esta estación sigue transmitiendo AX.25 normal. Recepción y transmisión hace la misma decodificación y además "    \
+    "envía las propias tramas de esta estación como FX.25, de modo que las estaciones compatibles reciben la misma corrección de errores de esta estación."
 /** Spanish text of the contextual help for the "Height (m)" option. */
 #define TR_H_F_HEIGHT_M                                                                                                                                        \
     "Altura de la antena sobre el terreno medio, en metros, codificada en la extensión PHG. Pesa más que la potencia en la estimación de cobertura."

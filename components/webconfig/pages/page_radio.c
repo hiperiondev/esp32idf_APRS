@@ -40,6 +40,18 @@
 
 static const char *TAG = "page_radio";
 
+// Renders the FX.25 mode field as a 3-option select (Off / Receive only /
+// Receive and transmit), mirroring render_duplex_select() in page_digi.c for
+// the same tri-state-field-as-select pattern.
+static void render_fx25_mode_select(httpd_req_t *req, const char *name, uint8_t fx25_mode) {
+    int cur = fx25_mode > 2 ? 2 : fx25_mode;
+    web_select_open(req, TR_F_FX_25_FORWARD_ERROR_CORRECTED_AX_25, name);
+    web_select_option(req, 0, TR_F_OFF, cur == 0);
+    web_select_option(req, 1, TR_F_FX25_RX_ONLY, cur == 1);
+    web_select_option(req, 2, TR_F_FX25_RX_TX, cur == 2);
+    web_select_close(req);
+}
+
 // PTT GPIO is a fixed, compile-time-only board wiring choice (MODEM_PTT_GPIO,
 // an internal radiomodem feature - like the audio ADC/DAC pins above, it is
 // supplied by the top-level CMakeLists.txt) and therefore has no <select>
@@ -58,7 +70,7 @@ esp_err_t page_radio_get(httpd_req_t *req) {
     httpd_resp_sendstr_chunk(req, "<form method='POST' action='/radio' id='radioForm'>");
 
     web_fieldset_open(req, TR_F_PROTOCOL);
-    web_field_checkbox(req, TR_F_FX_25_FORWARD_ERROR_CORRECTED_AX_25, "fx25Mode", g_config.fx25_mode);
+    render_fx25_mode_select(req, "fx25Mode", g_config.fx25_mode);
     web_fieldset_close(req);
 
     web_fieldset_open(req, TR_F_AUDIO_AFSK);
@@ -409,7 +421,14 @@ esp_err_t page_radio_post(httpd_req_t *req) {
     // together with the rest of the form: every write to g_config on this page
     // happens under the lock, so the whole page lands as one update as far as
     // any concurrent reader is concerned.
-    bool fx25_mode_in = web_form_get_bool(body, "fx25Mode");
+    // fx25Mode selects 0=off, 1=RX only, 2=RX+TX - clamp defensively since
+    // Ax25Init() only defines behavior for 0-2, same reasoning as afskModem
+    // below.
+    int fx25_mode_in = web_form_get_int(body, "fx25Mode", g_config.fx25_mode);
+    if (fx25_mode_in < 0)
+        fx25_mode_in = 0;
+    else if (fx25_mode_in > 2)
+        fx25_mode_in = 2;
     bool audio_modem_en_in = web_form_get_bool(body, "audioModemEn");
 
     // afskModem selects the AFSK software modem modulation (300/1200/1200 V.23/9600 Bd)
@@ -421,7 +440,7 @@ esp_err_t page_radio_post(httpd_req_t *req) {
     else if (afsk_modem_in > 3)
         afsk_modem_in = 3;
     app_config_lock();
-    g_config.fx25_mode = fx25_mode_in ? 1 : 0;
+    g_config.fx25_mode = (uint8_t)fx25_mode_in;
     g_config.audio_modem_en = audio_modem_en_in;
     g_config.afsk_modem_type = (uint8_t)afsk_modem_in;
     // rfSql / rfVolume / adcAtten / agcMaxGain are not posted by the form

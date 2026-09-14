@@ -81,21 +81,19 @@ repair bit errors that would otherwise fail the frame's CRC; a receiver that
 does not understand it still finds the plain AX.25 frame inside and decodes it
 normally. It is a compatible extension, not a different protocol.
 
-**What the checkbox does here.** Ticking it stores ``fx25Mode = 1``, which
-``Ax25Init()`` reads as *FX.25 on receive, plain AX.25 on transmit*
-(``Ax25Config.fx25 = 1``, ``Ax25Config.fx25Tx = 0``). In other words, the
-checkbox buys this station better decoding of FX.25 stations it hears. It does
-**not** add redundancy to what this station transmits.
+**What the dropdown does here.** A three-option selector stores one of
+``fx25Mode = 0``, ``1`` or ``2``, which ``Ax25Init()`` reads directly:
 
-.. note::
-
-   The underlying field is numeric and supports a third value: ``0`` = off,
-   ``1`` = receive only, ``2`` = receive and transmit. The web checkbox only
-   ever writes ``0`` or ``1``. An operator who deliberately wants FX.25 on
-   transmit can download ``radio.json`` from the *Storage* page, set
-   ``"fx25Mode": 2``, and upload it again — the value is loaded as-is. Re-saving
-   the Radiomodem page afterwards will knock it back down to ``1``, because the
-   checkbox posts a boolean.
+* *Off* (``0``, the default) — plain AX.25 in both directions
+  (``Ax25Config.fx25 = 0``, ``Ax25Config.fx25Tx = 0``).
+* *Receive only* (``1``) — *FX.25 on receive, plain AX.25 on transmit*
+  (``Ax25Config.fx25 = 1``, ``Ax25Config.fx25Tx = 0``). This buys the station
+  better decoding of FX.25 stations it hears without adding redundancy to what
+  it transmits.
+* *Receive and transmit* (``2``) — FX.25 on both directions
+  (``Ax25Config.fx25 = 1``, ``Ax25Config.fx25Tx = 1``). This station also wraps
+  its own outgoing frames in the Reed–Solomon block, so any neighbour that
+  understands FX.25 gets the same error correction from it.
 
 **Second effect, easy to miss.** With flat audio selected (below), FX.25 also
 changes which prefilter the first 1200 Bd demodulator runs: without FX.25 it
@@ -1078,7 +1076,7 @@ Field reference
      - Default
      - Applied
    * - FX.25
-     - on / off
+     - off / receive only / receive and transmit
      - off
      - Live
    * - Enable audio ADC/DAC modem
