@@ -118,7 +118,8 @@ insieme di capitoli:
 * **Funzionalità** — ciò che la stazione *fa* dal punto di vista dell'operatore:
   gateway, l'interconnessione BrandMeister, digipeating, beacon, messaggistica,
   il risponditore di interrogazioni, meteo, telemetria, bollettini, oggetti, il
-  bot Telegram opzionale, la posta radio Winlink e l'amministrazione web — che
+  bot Telegram opzionale, la posta radio Winlink, la pagina del radiomodem e
+  l'amministrazione web — che
   ospita anche la vista live del ricevitore GNSS.
 * **Capacità** — le *proprietà* del firmware trasversali alle funzioni: i
   profili del modem, il filtraggio, la localizzazione, l'archiviazione, OTA, la
@@ -150,6 +151,7 @@ insieme di capitoli:
    functionality/bulletins-objects
    functionality/telegram
    functionality/winlink
+   functionality/radiomodem
    functionality/web-admin
 
 .. toctree::

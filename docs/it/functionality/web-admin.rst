@@ -421,13 +421,19 @@ Le pagine
        beacon periodico delle capacità di stazione: abilitazione, intervallo,
        selezione dei canali RF e APRS-IS, ed eventuali elementi di capacità
        aggiuntivi da accodare.
-   * - **Radio / Modem**
-     - Modalità FX.25 (spento / solo RX / RX+TX); abilita modem audio, modulazione
-       (300 / 1200 Bell202 / 1200 V.23 / 9600 G3RUH), LPF audio (audio piatto), ms
-       di preambolo, ms di slot temporale TX, buffer TX, ritenzione extra di
-       dis-attivazione PTT, persistenza CSMA, e il limitatore di duty cycle a
-       lungo termine (abilitazione più percentuale di tetto); e il pulsante
-       **LOOP TEST**. Salva riapplica il modem in tempo reale — nessun riavvio.
+   * - **Radiomodem**
+     - FX.25 in ricezione; abilita modem audio, modulazione (300 /
+       1200 Bell202 / 1200 V.23 / 9600 G3RUH), ingresso audio piatto / da
+       discriminatore, ms di preambolo, ms di slot temporale TX, buffer TX,
+       ritenzione extra di PTT sbloccato, persistenza CSMA e il limitatore di
+       duty cycle a lungo termine (abilitazione più percentuale di tetto);
+       inoltre un gruppo *Interfaccia audio* (polarizzazione interna
+       dell'ingresso ADC, avviso di audio fuori fondo scala, ampiezza di uscita
+       in trasmissione, frequenza di campionamento in trasmissione, tempo
+       massimo di trasmissione) e i pulsanti **TEST LOOP**, **LIVELLO RX** e
+       **TEST TX**. Salva riapplica il modem in tempo reale — nessun riavvio,
+       tranne l'abilitazione del modem audio e la frequenza di campionamento in
+       trasmissione. Documentato campo per campo in :ref:`it-radiomodem`.
    * - **Wireless**
      - Modalità (off/STA/AP/AP+STA), SSID/pass/canale dell'AP, 5 slot STA ciascuno
        con la propria casella Enable, potenza TX in dBm, più una scansione in

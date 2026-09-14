@@ -372,12 +372,17 @@ The pages
        directed query set, minimum reply interval (airtime/loop safety floor),
        and the periodic station-capabilities beacon: enable, interval, RF and
        APRS-IS channel selection, and any extra capability tokens to append.
-   * - **Radio / Modem**
-     - FX.25 mode (off / RX only / RX+TX); audio modem enable, modulation (300 /
-       1200 Bell202 / 1200 V.23 / 9600 G3RUH), audio LPF (flat audio), preamble
-       ms, TX time slot ms, TX buffers, extra PTT unkey hold, CSMA persistence,
-       and the long-term duty-cycle limiter (enable plus ceiling percentage);
-       and the **LOOP TEST** button. Save re-applies the modem live — no reboot.
+   * - **Radiomodem**
+     - FX.25 on receive; audio modem enable, modulation (300 / 1200 Bell202 /
+       1200 V.23 / 9600 G3RUH), flat/discriminator audio input, preamble ms, TX
+       time-slot ms, TX buffers, extra PTT unkey hold, CSMA persistence and the
+       long-term duty-cycle limiter (enable plus ceiling percentage); plus an
+       *Audio interface* fieldset (ADC input self-bias, receive over-range
+       warning, transmit output swing, transmit sample rate, transmitter
+       time-out) and the **LOOP TEST**, **RX LEVEL** and **TX TEST** buttons.
+       Save re-applies the modem live — no reboot, except the audio modem
+       enable and the transmit sample rate. Documented field by field in
+       :ref:`en-radiomodem`.
    * - **Wireless**
      - Mode (off/STA/AP/AP+STA), AP SSID/pass/channel, 5 STA slots each with its
        own Enable checkbox, TX power in dBm, plus a live scan.

@@ -2160,7 +2160,8 @@
 #define TR_H_F_FIXED_LONGITUDE "Longitude used when the position is not taken from the GNSS receiver, in decimal degrees. East is positive."
 /** Contextual help for the "FX.25 (forward-error-corrected AX.25)" option. */
 #define TR_H_F_FX_25_FORWARD_ERROR_CORRECTED_AX_25                                                                                                             \
-    "Adds FX.25 error correction to transmitted frames. Stations without FX.25 still decode them as ordinary AX.25, so it is safe to leave on."
+    "Decodes FX.25 frames in addition to plain AX.25, recovering packets whose bit errors would otherwise fail the CRC. What this station transmits stays "    \
+    "plain AX.25, so nothing changes for the stations that hear it."
 /** Contextual help for the "Height (m)" option. */
 #define TR_H_F_HEIGHT_M "Antenna height above average terrain, in metres, encoded in the PHG extension. It weighs more than power in the coverage estimate."
 /** Contextual help for the "Include altitude" option. */
@@ -2386,7 +2387,9 @@
 #define TR_H_F_TRACKER_USE_LIVE_GPS                                                                                                                            \
     "Reads the GNSS receiver at every transmission instead of using the fixed position, which stays as the fallback when there is no fix."
 /** Contextual help for the "TX time-slot (ms)" option. */
-#define TR_H_F_TX_TIME_SLOT_MS "Length of one CSMA time slot in milliseconds. Together with the persistence it sets how the modem waits for a free channel."
+#define TR_H_F_TX_TIME_SLOT_MS                                                                                                                                 \
+    "Quiet time the modem waits after each transmission before it may key up again, in milliseconds. It is added to the fixed 100 ms CSMA slot the "           \
+    "persistence is rolled on; 0 removes the wait entirely."
 /** Contextual help for the "Username" option. */
 #define TR_H_F_USERNAME "Login name for the service. For APRS-IS it is the station callsign that the passcode was issued for."
 /** Contextual help for the "Callsign" option. */

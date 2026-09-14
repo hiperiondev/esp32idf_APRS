@@ -2273,8 +2273,8 @@
 #define TR_H_F_FIXED_LONGITUDE "Longitudine usata quando la posizione non è presa dal ricevitore GNSS, in gradi decimali. L'est è positivo."
 /** Italian text of the contextual help for the "FX.25 (forward-error-corrected AX.25)" option. */
 #define TR_H_F_FX_25_FORWARD_ERROR_CORRECTED_AX_25                                                                                                             \
-    "Aggiunge la correzione d'errore FX.25 alle trame trasmesse. Le stazioni senza FX.25 le decodificano comunque come AX.25 normale, quindi si può lasciare " \
-    "attivo."
+    "Decodifica le trame FX.25 oltre all'AX.25 normale, recuperando pacchetti i cui errori di bit farebbero fallire il CRC. Ciò che questa stazione "         \
+    "trasmette resta AX.25 normale, quindi nulla cambia per chi la ascolta."
 /** Italian text of the contextual help for the "Height (m)" option. */
 #define TR_H_F_HEIGHT_M "Altezza dell'antenna sul terreno medio, in metri, codificata nell'estensione PHG. Pesa più della potenza nella stima della copertura."
 /** Italian text of the contextual help for the "Include altitude" option. */
@@ -2540,7 +2540,9 @@
 #define TR_H_F_TRACKER_USE_LIVE_GPS                                                                                                                            \
     "Legge il ricevitore GNSS a ogni trasmissione invece di usare la posizione fissa, che resta come riserva quando non c'è una soluzione."
 /** Italian text of the contextual help for the "TX time-slot (ms)" option. */
-#define TR_H_F_TX_TIME_SLOT_MS "Durata di uno slot temporale CSMA in millisecondi. Insieme alla persistenza definisce come il modem attende un canale libero."
+#define TR_H_F_TX_TIME_SLOT_MS                                                                                                                                 \
+    "Tempo di silenzio che il modem attende dopo ogni trasmissione prima di poter ritrasmettere, in millisecondi. Si somma allo slot CSMA fisso di 100 ms su " \
+    "cui viene tirata la persistenza; 0 elimina l'attesa."
 /** Italian text of the contextual help for the "Username" option. */
 #define TR_H_F_USERNAME "Nome di accesso al servizio. Per APRS-IS è il nominativo di stazione per cui è stato emesso il codice di accesso."
 /** Italian text of the contextual help for the "Callsign" option. */

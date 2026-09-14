@@ -413,14 +413,19 @@ Las páginas
        canal), y la baliza periódica de capacidades de estación: habilitación,
        intervalo, selección de canal RF y APRS-IS, y los elementos de capacidad
        adicionales a agregar.
-   * - **Radio / Modem**
-     - Modo FX.25 (apagado / solo RX / RX+TX); habilitar módem de audio,
-       modulación (300 / 1200 Bell202 / 1200 V.23 / 9600 G3RUH), LPF de audio
-       (audio plano), ms de preámbulo, ms de ranura de tiempo TX, buffers TX,
-       retención extra de des-activación de PTT, persistencia CSMA, y el
-       limitador de ciclo de trabajo a largo plazo (habilitación más porcentaje
-       de techo); y el botón
-       **LOOP TEST**. Guardar reaplica el módem en vivo — sin reinicio.
+   * - **Radiomódem**
+     - FX.25 en recepción; habilitar módem de audio, modulación (300 /
+       1200 Bell202 / 1200 V.23 / 9600 G3RUH), entrada de audio plana / de
+       discriminador, ms de preámbulo, ms de intervalo de tiempo TX, buffers de
+       TX, retención extra de PTT liberado, persistencia CSMA y el limitador de
+       ciclo de trabajo a largo plazo (habilitación más porcentaje de techo);
+       además de un conjunto *Interfaz de audio* (polarización interna de la
+       entrada del ADC, aviso de audio fuera de rango, amplitud de salida de
+       transmisión, frecuencia de muestreo de transmisión, tiempo máximo de
+       transmisión) y los botones **PRUEBA DE BUCLE**, **NIVEL RX** y **PRUEBA
+       TX**. Guardar reaplica el módem en vivo — sin reinicio, salvo la
+       habilitación del módem de audio y la frecuencia de muestreo de
+       transmisión. Documentado campo por campo en :ref:`es-radiomodem`.
    * - **Wireless**
      - Modo (off/STA/AP/AP+STA), SSID/pass/canal del AP, 5 ranuras STA cada una
        con su propia casilla Enable, potencia TX en dBm, más un escaneo en vivo.

@@ -105,8 +105,8 @@ chapters:
 * **Functionalities** — what the station *does* as seen by an operator:
   gatewaying, the BrandMeister interconnect, digipeating, beacons, messaging,
   the query responder, weather, telemetry, bulletins, objects, the optional
-  Telegram bot, Winlink radio e-mail and the web admin — which also holds the
-  GNSS receiver's live view.
+  Telegram bot, Winlink radio e-mail, the radiomodem page and the web admin —
+  which also holds the GNSS receiver's live view.
 * **Capabilities** — the *properties* of the firmware that cut across
   features: the modem profiles, filtering, localization, storage, OTA,
   networking and hardware support.
@@ -136,6 +136,7 @@ chapters:
    functionality/bulletins-objects
    functionality/telegram
    functionality/winlink
+   functionality/radiomodem
    functionality/web-admin
 
 .. toctree::
