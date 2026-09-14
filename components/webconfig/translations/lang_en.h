@@ -1072,8 +1072,6 @@
 #define TR_RADIO_AUDIO_HW_INFO "<br>DAC out: GPIO%d<br>ADC in: GPIO%d<br>PTT pin: %s<br>PTT active-high: %s<br>ADC attenuation: %d<br>ADC: %d Hz<br>DAC: %d Hz"
 /** Radiomodem page label for audio hw note, rendered on the Radiomodem page. */
 #define TR_RADIO_AUDIO_HW_NOTE ""
-/** Radiomodem page label for audio hw runtime, rendered on the Radiomodem page. */
-#define TR_RADIO_AUDIO_HW_RUNTIME "<br>Transmit sample rate: %d Hz<br>Transmit output swing: %d %%<br>ADC input self-bias: %s"
 
 /** @} */
 

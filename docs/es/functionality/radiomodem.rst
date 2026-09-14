@@ -58,11 +58,9 @@ Dos ajustes quedan fuera de ese camino:
   módem detenido, así que ``afskSetDacSampleRate()`` se niega a actuar sobre un
   módem vivo y el valor lo aplica el siguiente ``modem_init()``.
 
-La página lo hace visible: un bloque de sólo lectura muestra el hardware de
-audio fijado en compilación y un segundo bloque muestra lo que el conjunto
-*Interfaz de audio* ha puesto realmente en vigor. Cuando la frecuencia de
-muestreo de transmisión difiere entre ambos bloques, el valor guardado está
-esperando un reinicio.
+En ambos casos el formulario sigue mostrando el valor guardado, que es el que
+usará el próximo arranque, no aquel con el que el módem está funcionando en este
+momento.
 
 .. warning::
 
@@ -224,30 +222,17 @@ solo demodulador.
    lo destruyen. Requiere un auténtico puerto de datos plano (una conexión de
    "packet 9600" o de discriminador) tanto en transmisión como en recepción.
 
-Hardware de audio (en tiempo de compilación) y lo que está en vigor
--------------------------------------------------------------------
+Hardware de audio (en tiempo de compilación)
+--------------------------------------------
 
-Debajo del selector de modulación se muestran dos bloques de sólo lectura. No
-son ajustes: son lo que permite distinguir de un vistazo una definición de placa
-de un valor guardado.
-
-.. list-table::
-   :header-rows: 1
-   :widths: 34 66
-
-   * - Bloque
-     - Qué informa
-   * - **Hardware de audio (en tiempo de compilación)**
-     - Pin de salida del DAC (``MODEM_DAC_GPIO``, por omisión GPIO25), pin de
-       entrada del ADC (``MODEM_ADC_GPIO``, por omisión GPIO33), pin de PTT
-       (``MODEM_PTT_GPIO``, ``Desactivado`` cuando es -1), PTT activo en alto
-       (``MODEM_PTT_ACTIVE_HIGH``), atenuación del ADC (``MODEM_ADC_ATTEN``) y
-       las frecuencias de muestreo de ADC y DAC con las que se compiló el
-       firmware.
-   * - **Línea de tiempo de ejecución**
-     - La frecuencia de muestreo de transmisión, la amplitud de salida y la
-       polarización interna del ADC que el conjunto *Interfaz de audio* ha
-       puesto realmente en vigor.
+Debajo del selector de modulación se muestra un único bloque de sólo lectura. No
+es un ajuste: es la definición de placa con la que se compiló el firmware, de
+modo que una elección de cableado pueda distinguirse de un valor guardado de un
+vistazo. Informa del pin de salida del DAC (``MODEM_DAC_GPIO``, por omisión
+GPIO25), el pin de entrada del ADC (``MODEM_ADC_GPIO``, por omisión GPIO33), el
+pin de PTT (``MODEM_PTT_GPIO``, ``Desactivado`` cuando es -1), PTT activo en
+alto (``MODEM_PTT_ACTIVE_HIGH``), la atenuación del ADC (``MODEM_ADC_ATTEN``) y
+las frecuencias de muestreo de ADC y DAC con las que se compiló el firmware.
 
 Todos los valores de compilación proceden del ``CMakeLists.txt`` de nivel
 superior y sólo pueden cambiarse recompilando el firmware — por ejemplo
@@ -262,12 +247,6 @@ mismo pin.
    El pin del DAC sólo puede ser GPIO25 (DAC1) o GPIO26 (DAC2); el DAC del
    ESP32 no es enrutable a ningún otro pin, y la compilación falla con un error
    explícito si se indica otro número.
-
-.. tip::
-
-   Si la frecuencia de muestreo de transmisión de la línea de compilación y la
-   de tiempo de ejecución no coinciden, hay un cambio guardado esperando un
-   reinicio. Esa es la forma prevista de leer un bloque contra el otro.
 
 Entrada de audio plana / de discriminador
 ------------------------------------------
@@ -769,9 +748,9 @@ banda de audio del transmisor — puede eliminarlas.
 
 .. warning::
 
-   Este ajuste surte efecto **sólo tras un reinicio**. Compare los dos bloques
-   de sólo lectura de la parte superior de la página para confirmar si el valor
-   que guardó está realmente en marcha.
+   Este ajuste surte efecto **sólo tras un reinicio**. El formulario muestra el
+   valor guardado, que es el que usará el próximo arranque; hasta entonces el
+   módem sigue transmitiendo a la frecuencia con la que se inició.
 
 Tiempo máximo de transmisión (ms)
 ----------------------------------
@@ -1278,8 +1257,8 @@ Resolución de problemas
      - **Tiempo máximo de transmisión** está por debajo de la duración de una
        transmisión real. Súbalo muy por encima del peor caso.
    * - La frecuencia de muestreo de transmisión guardada no parece aplicarse
-     - Necesita un reinicio. Compare los dos bloques de sólo lectura de la
-       página.
+     - Necesita un reinicio. El formulario muestra el valor guardado, no el que
+       está en marcha.
 
 .. seealso::
 

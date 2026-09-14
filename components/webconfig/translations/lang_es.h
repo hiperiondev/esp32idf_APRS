@@ -1139,9 +1139,6 @@
     "<br>DAC salida: GPIO%d<br>ADC entrada: GPIO%d<br>Pin PTT: %s<br>PTT activo en alto: %s<br>Atenuación ADC: %d<br>ADC: %d Hz<br>DAC: %d Hz"
 /** Spanish text: Radiomodem page label for audio hw note, rendered on the Radiomodem page. */
 #define TR_RADIO_AUDIO_HW_NOTE ""
-/** Spanish text for the Radiomodem page label for audio hw runtime, rendered on the Radiomodem page. */
-#define TR_RADIO_AUDIO_HW_RUNTIME                                                                                                                              \
-    "<br>Frecuencia de muestreo de transmisión: %d Hz<br>Amplitud de salida de transmisión: %d %%<br>Polarización interna del ADC: %s"
 
 /** @} */
 

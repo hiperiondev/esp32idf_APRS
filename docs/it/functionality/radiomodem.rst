@@ -60,11 +60,9 @@ Due impostazioni sono fuori da quel percorso:
   agire su un modem vivo e il valore viene applicato dal successivo
   ``modem_init()``.
 
-La pagina lo rende visibile: un blocco di sola lettura mostra l'hardware audio
-fissato in compilazione, e un secondo blocco mostra ciò che il gruppo
-*Interfaccia audio* ha effettivamente messo in vigore. Quando la frequenza di
-campionamento in trasmissione differisce fra i due blocchi, il valore salvato sta
-aspettando un riavvio.
+In entrambi i casi il modulo continua a mostrare il valore salvato, che è quello
+con cui partirà il prossimo avvio, non quello con cui il modem sta funzionando in
+questo momento.
 
 .. warning::
 
@@ -228,30 +226,18 @@ eseguono un solo demodulatore.
    lo distruggono. Richiede una vera porta dati piatta (una connessione "packet
    9600" o da discriminatore) sia in trasmissione sia in ricezione.
 
-Hardware audio (in fase di compilazione) e ciò che è in vigore
----------------------------------------------------------------
+Hardware audio (in fase di compilazione)
+-----------------------------------------
 
-Sotto il selettore di modulazione sono mostrati due blocchi di sola lettura. Non
-sono impostazioni: sono ciò che permette di distinguere a colpo d'occhio una
-definizione di scheda da un valore salvato.
-
-.. list-table::
-   :header-rows: 1
-   :widths: 34 66
-
-   * - Blocco
-     - Che cosa riporta
-   * - **Hardware audio (in fase di compilazione)**
-     - Pin di uscita del DAC (``MODEM_DAC_GPIO``, per default GPIO25), pin di
-       ingresso dell'ADC (``MODEM_ADC_GPIO``, per default GPIO33), pin del PTT
-       (``MODEM_PTT_GPIO``, ``Disabilitato`` quando vale -1), PTT attivo alto
-       (``MODEM_PTT_ACTIVE_HIGH``), attenuazione dell'ADC (``MODEM_ADC_ATTEN``)
-       e le frequenze di campionamento di ADC e DAC con cui il firmware è stato
-       compilato.
-   * - **Riga di esecuzione**
-     - La frequenza di campionamento in trasmissione, l'ampiezza di uscita e la
-       polarizzazione interna dell'ADC che il gruppo *Interfaccia audio* ha
-       effettivamente messo in vigore.
+Sotto il selettore di modulazione è mostrato un unico blocco di sola lettura. Non
+è un'impostazione: è la definizione di scheda con cui il firmware è stato
+compilato, così che una scelta di cablaggio possa essere distinta a colpo d'occhio
+da un valore salvato. Riporta il pin di uscita del DAC (``MODEM_DAC_GPIO``, per
+default GPIO25), il pin di ingresso dell'ADC (``MODEM_ADC_GPIO``, per default
+GPIO33), il pin del PTT (``MODEM_PTT_GPIO``, ``Disabilitato`` quando vale -1),
+PTT attivo alto (``MODEM_PTT_ACTIVE_HIGH``), l'attenuazione dell'ADC
+(``MODEM_ADC_ATTEN``) e le frequenze di campionamento di ADC e DAC con cui il
+firmware è stato compilato.
 
 Tutti i valori di compilazione provengono dal ``CMakeLists.txt`` di primo
 livello e possono essere cambiati solo ricompilando il firmware — per esempio
@@ -265,12 +251,6 @@ esempio), il che impedisce che due funzioni rivendichino lo stesso pin.
    Il pin del DAC può essere solo GPIO25 (DAC1) o GPIO26 (DAC2); il DAC
    dell'ESP32 non è instradabile su altri pin, e la compilazione fallisce con un
    errore esplicito se viene indicato un altro numero.
-
-.. tip::
-
-   Se la frequenza di campionamento in trasmissione della riga di compilazione e
-   quella di esecuzione non coincidono, c'è una modifica salvata in attesa di un
-   riavvio. È così che i due blocchi vanno letti l'uno contro l'altro.
 
 Ingresso audio piatto / da discriminatore
 ------------------------------------------
@@ -776,9 +756,9 @@ del trasmettitore stesso — può eliminarle.
 
 .. warning::
 
-   Questa impostazione ha effetto **solo dopo un riavvio**. Confrontate i due
-   blocchi di sola lettura più in alto nella pagina per verificare se il valore
-   salvato è davvero in funzione.
+   Questa impostazione ha effetto **solo dopo un riavvio**. Il modulo mostra il
+   valore salvato, che è quello con cui partirà il prossimo avvio; fino ad allora
+   il modem continua a trasmettere alla frequenza con cui è stato avviato.
 
 Tempo massimo di trasmissione (ms)
 -----------------------------------
@@ -1285,8 +1265,8 @@ Risoluzione dei problemi
        reale. Alzatelo ben sopra il caso peggiore.
    * - La frequenza di campionamento in trasmissione salvata non sembra
        applicarsi
-     - Richiede un riavvio. Confrontate i due blocchi di sola lettura della
-       pagina.
+     - Richiede un riavvio. Il modulo mostra il valore salvato, non quello in
+       funzione.
 
 .. seealso::
 

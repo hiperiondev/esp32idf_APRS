@@ -125,18 +125,6 @@ esp_err_t page_radio_get(httpd_req_t *req) {
                  MODEM_DAC_SAMPLERATE);
         httpd_resp_sendstr_chunk(req, buf);
     }
-    // What the Audio interface fieldset further down has actually put in
-    // force, shown next to the compiled-in values above so a board definition
-    // and a saved setting can be told apart at a glance. The transmit sample
-    // rate is the one that can differ from what the modem is running with
-    // until the next reboot, since that one is programmed while the hardware
-    // is stopped.
-    {
-        char buf[500];
-        snprintf(buf, sizeof(buf), "<p style='opacity:.75'>" TR_RADIO_AUDIO_HW_RUNTIME "</p>", (int)g_config.dac_samplerate, (int)g_config.dac_amplitude_pct,
-                 g_config.adc_self_bias ? TR_ENABLED : TR_F_OFF);
-        httpd_resp_sendstr_chunk(req, buf);
-    }
     web_field_checkbox(req, TR_F_FLAT_AUDIO_INPUT, "audioLPF", g_config.audio_lpf);
     web_field_int(req, TR_F_PREAMBLE_MS, "rfPreamble", g_config.preamble, RF_PREAMBLE_MS_MIN, RF_PREAMBLE_MS_MAX);
     web_field_int(req, TR_F_TX_TIME_SLOT_MS, "txTimeSlot", g_config.tx_timeslot, RF_TX_TIMESLOT_MS_MIN, RF_TX_TIMESLOT_MS_MAX);

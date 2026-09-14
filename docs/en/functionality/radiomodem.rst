@@ -57,10 +57,9 @@ Two settings are outside that path:
   ``afskSetDacSampleRate()`` refuses to run on a live modem and the value is
   applied by the next ``modem_init()``.
 
-The page makes this visible: a read-only block shows the compile-time audio
-hardware, and a second block shows what the *Audio interface* fieldset has
-actually put in force. When the transmit sample rate in the two blocks differs,
-the saved value is waiting for a reboot.
+In both cases the form keeps showing the value you saved, which is the value the
+next boot will start the modem with, not the one the modem is running with right
+now.
 
 .. warning::
 
@@ -217,28 +216,17 @@ the other; 300 Bd and 9600 Bd run a single demodulator.
    it. It requires a true flat data port (a "9600 packet" or discriminator
    connection) on both the transmit and the receive side.
 
-Audio hardware (compile-time) and what is in force
---------------------------------------------------
+Audio hardware (compile-time)
+-----------------------------
 
-Below the modulation selector, two read-only blocks are shown. They are not
-settings; they are what lets you tell a board definition apart from a saved
-value at a glance.
-
-.. list-table::
-   :header-rows: 1
-   :widths: 34 66
-
-   * - Block
-     - What it reports
-   * - **Audio hardware (compile-time)**
-     - DAC output pin (``MODEM_DAC_GPIO``, default GPIO25), ADC input pin
-       (``MODEM_ADC_GPIO``, default GPIO33), PTT pin (``MODEM_PTT_GPIO``,
-       ``Disabled`` when it is -1), PTT active-high
-       (``MODEM_PTT_ACTIVE_HIGH``), ADC attenuation (``MODEM_ADC_ATTEN``), and
-       the ADC and DAC sample rates the firmware was built with.
-   * - **Runtime line**
-     - The transmit sample rate, transmit output swing and ADC self-bias that
-       the *Audio interface* fieldset has actually put in force.
+Below the modulation selector a single read-only block is shown. It is not a
+setting: it is the board definition the firmware was built with, so that a
+wiring choice can be told apart from a saved one at a glance. It reports the DAC
+output pin (``MODEM_DAC_GPIO``, default GPIO25), the ADC input pin
+(``MODEM_ADC_GPIO``, default GPIO33), the PTT pin (``MODEM_PTT_GPIO``,
+``Disabled`` when it is -1), PTT active-high (``MODEM_PTT_ACTIVE_HIGH``), the
+ADC attenuation (``MODEM_ADC_ATTEN``), and the ADC and DAC sample rates the
+firmware was built with.
 
 All of the compile-time values come from the top-level ``CMakeLists.txt`` and
 can only be changed by rebuilding the firmware — for example
@@ -252,12 +240,6 @@ two features from claiming the same pin.
    The DAC pin can only be GPIO25 (DAC1) or GPIO26 (DAC2); the ESP32's DAC is
    not routable to any other pin, and the build fails with an explicit error if
    another number is given.
-
-.. tip::
-
-   If the transmit sample rate on the compile-time line and the runtime line
-   disagree, a saved change is waiting for a reboot. That is the intended way
-   to read those two blocks against each other.
 
 Flat / discriminator audio input
 --------------------------------
@@ -735,9 +717,9 @@ gentler filter — or the transmitter's own audio bandwidth — can remove them.
 
 .. warning::
 
-   This setting takes effect **only after a reboot**. Compare the two read-only
-   blocks higher up the page to confirm whether the value you saved is actually
-   running.
+   This setting takes effect **only after a reboot**. The form shows the value
+   that was saved, which is the value the next boot will use; until then the
+   modem keeps transmitting at the rate it was started with.
 
 Transmitter time-out (ms)
 -------------------------
@@ -1222,7 +1204,7 @@ Troubleshooting
      - **Transmitter time-out** is set below the length of a real transmission.
        Raise it well above the worst case.
    * - The saved transmit sample rate does not seem to apply
-     - It needs a reboot. Compare the two read-only blocks on the page.
+     - It needs a reboot. The form shows the saved value, not the running one.
 
 .. seealso::
 
