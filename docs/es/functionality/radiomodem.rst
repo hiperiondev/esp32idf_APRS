@@ -232,7 +232,10 @@ vistazo. Informa del pin de salida del DAC (``MODEM_DAC_GPIO``, por omisión
 GPIO25), el pin de entrada del ADC (``MODEM_ADC_GPIO``, por omisión GPIO33), el
 pin de PTT (``MODEM_PTT_GPIO``, ``Desactivado`` cuando es -1), PTT activo en
 alto (``MODEM_PTT_ACTIVE_HIGH``), la atenuación del ADC (``MODEM_ADC_ATTEN``) y
-las frecuencias de muestreo de ADC y DAC con las que se compiló el firmware.
+la frecuencia de muestreo del ADC (``MODEM_ADC_SAMPLERATE``) con la que se
+compiló el firmware. La frecuencia de muestreo de transmisión no aparece: es un
+ajuste guardado, que se elige en *Frecuencia de muestreo de transmisión* más
+abajo en esta misma página.
 
 Todos los valores de compilación proceden del ``CMakeLists.txt`` de nivel
 superior y sólo pueden cambiarse recompilando el firmware — por ejemplo

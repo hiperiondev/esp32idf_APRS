@@ -111,7 +111,12 @@ esp_err_t page_radio_get(httpd_req_t *req) {
     // a selectable or checkbox field. Both are folded into the same read-only
     // compile-time info block as the ADC/DAC pins below, one item per line, so
     // the operator can see the whole audio/PTT hardware picture without digging
-    // through the build files.
+    // through the build files. The block reports the ADC sample rate, which the
+    // DSP filter design is built around and which nothing can change at run
+    // time, and not the DAC one: the transmit rate is a saved setting, chosen
+    // by the "Transmit sample rate" selector further down this page and applied
+    // from g_config at the next modem_init(), so a compile-time constant shown
+    // here would contradict the operator's own choice.
     {
         char ptt_pin_buf[16];
         if (MODEM_PTT_GPIO >= 0)
@@ -121,8 +126,7 @@ esp_err_t page_radio_get(httpd_req_t *req) {
 
         char buf[900];
         snprintf(buf, sizeof(buf), "<p style='opacity:.75'><b>" TR_RADIO_AUDIO_HW_TITLE "</b>: " TR_RADIO_AUDIO_HW_INFO TR_RADIO_AUDIO_HW_NOTE "</p>",
-                 MODEM_DAC_GPIO, MODEM_ADC_GPIO, ptt_pin_buf, MODEM_PTT_ACTIVE_HIGH ? TR_ENABLED : TR_F_OFF, (int)MODEM_ADC_ATTEN, MODEM_ADC_SAMPLERATE,
-                 MODEM_DAC_SAMPLERATE);
+                 MODEM_DAC_GPIO, MODEM_ADC_GPIO, ptt_pin_buf, MODEM_PTT_ACTIVE_HIGH ? TR_ENABLED : TR_F_OFF, (int)MODEM_ADC_ATTEN, MODEM_ADC_SAMPLERATE);
         httpd_resp_sendstr_chunk(req, buf);
     }
     web_field_checkbox(req, TR_F_FLAT_AUDIO_INPUT, "audioLPF", g_config.audio_lpf);

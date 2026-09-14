@@ -96,7 +96,7 @@ In one sentence, the firmware **demodulates** AFSK/FSK audio from a radio's spea
 - **GNSS (optional):** UART2, default `GPIO16` (RX, from the module's TX) and `GPIO17` (TX). Set in `main/include/gps.h`. **Unusable on an ESP32-WROVER**, where those pins belong to the SPI PSRAM die.
 - **Note:** ESP32-S3/C3/C6/H2 have **no DAC** and cannot run the TX path unmodified.
 
-Board wiring (audio pins, PTT pin/polarity, sample rates) is set as compile-time constants in the top-level `CMakeLists.txt`. A KiCad radio-interface schematic is included under `schematics/`.
+Board wiring (audio pins, PTT pin/polarity, ADC sample rate) is set as compile-time constants in the top-level `CMakeLists.txt`. A KiCad radio-interface schematic is included under `schematics/`.
 
 The audio interface itself can be as small as one coupling capacitor and one level trimmer per direction: the Radiomodem page carries an **Audio interface** section that biases the ADC input from the pad's own pull resistors, sets the transmit output swing and sample rate, warns on receive over-range and bounds how long the transmitter may stay keyed. Every one of those settings defaults to the behaviour an interface board with its own bias network, attenuators and reconstruction filter expects, so an existing build is unaffected. Two buttons next to LOOP TEST — **RX LEVEL** and **TX TEST** — set the two trimmers once a transceiver has replaced the loopback jumper.
 

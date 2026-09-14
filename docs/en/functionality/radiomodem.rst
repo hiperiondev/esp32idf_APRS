@@ -225,8 +225,10 @@ wiring choice can be told apart from a saved one at a glance. It reports the DAC
 output pin (``MODEM_DAC_GPIO``, default GPIO25), the ADC input pin
 (``MODEM_ADC_GPIO``, default GPIO33), the PTT pin (``MODEM_PTT_GPIO``,
 ``Disabled`` when it is -1), PTT active-high (``MODEM_PTT_ACTIVE_HIGH``), the
-ADC attenuation (``MODEM_ADC_ATTEN``), and the ADC and DAC sample rates the
-firmware was built with.
+ADC attenuation (``MODEM_ADC_ATTEN``) and the ADC sample rate
+(``MODEM_ADC_SAMPLERATE``) the firmware was built with. The transmit sample
+rate is not listed: it is a saved setting, chosen by *Transmit sample rate*
+further down this page.
 
 All of the compile-time values come from the top-level ``CMakeLists.txt`` and
 can only be changed by rebuilding the firmware — for example

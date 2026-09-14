@@ -96,7 +96,7 @@ In una frase, il firmware **demodula** l'audio AFSK/FSK dall'altoparlante o dall
 - **GNSS (opzionale):** UART2, predefiniti `GPIO16` (RX, dal TX del modulo) e `GPIO17` (TX). Impostati in `main/include/gps.h`. **Inutilizzabili su un ESP32-WROVER**, dove quei pin appartengono al chip della PSRAM SPI.
 - **Nota:** ESP32-S3/C3/C6/H2 **non hanno il DAC** e non possono eseguire la catena di TX senza modifiche.
 
-Il cablaggio della scheda (pin audio, pin/polarità PTT, frequenze di campionamento) è definito come costanti a compile-time nel `CMakeLists.txt` di primo livello. È incluso uno schema KiCad dell'interfaccia radio sotto `schematics/`.
+Il cablaggio della scheda (pin audio, pin/polarità PTT, frequenza di campionamento dell'ADC) è definito come costanti a compile-time nel `CMakeLists.txt` di primo livello. È incluso uno schema KiCad dell'interfaccia radio sotto `schematics/`.
 
 L'interfaccia audio può ridursi a un condensatore di accoppiamento e un trimmer di livello per direzione: la pagina Radiomodem porta una sezione **Interfaccia audio** che polarizza l'ingresso dell'ADC con le resistenze interne del pad stesso, imposta ampiezza e frequenza di campionamento in trasmissione, avvisa quando la ricezione esce dal fondo scala e limita per quanto tempo il trasmettitore può restare attivo. Ognuna di queste impostazioni parte dal valore che si aspetta una scheda di interfaccia con la propria rete di polarizzazione, attenuatori e filtro di ricostruzione, quindi un'installazione esistente non cambia. Due pulsanti accanto a TEST LOOP — **LIVELLO RX** e **TEST TX** — regolano i due trimmer una volta che un apparato ha sostituito il ponticello di loopback.
 

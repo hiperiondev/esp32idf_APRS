@@ -1069,7 +1069,7 @@
 /** Radiomodem page label for audio hw title, rendered on the Radiomodem page. */
 #define TR_RADIO_AUDIO_HW_TITLE "Audio hardware (compile-time)"
 /** Radiomodem page label for audio hw info, rendered on the Radiomodem page. */
-#define TR_RADIO_AUDIO_HW_INFO "<br>DAC out: GPIO%d<br>ADC in: GPIO%d<br>PTT pin: %s<br>PTT active-high: %s<br>ADC attenuation: %d<br>ADC: %d Hz<br>DAC: %d Hz"
+#define TR_RADIO_AUDIO_HW_INFO "<br>DAC out: GPIO%d<br>ADC in: GPIO%d<br>PTT pin: %s<br>PTT active-high: %s<br>ADC attenuation: %d<br>ADC: %d Hz"
 /** Radiomodem page label for audio hw note, rendered on the Radiomodem page. */
 #define TR_RADIO_AUDIO_HW_NOTE ""
 

@@ -236,8 +236,11 @@ da un valore salvato. Riporta il pin di uscita del DAC (``MODEM_DAC_GPIO``, per
 default GPIO25), il pin di ingresso dell'ADC (``MODEM_ADC_GPIO``, per default
 GPIO33), il pin del PTT (``MODEM_PTT_GPIO``, ``Disabilitato`` quando vale -1),
 PTT attivo alto (``MODEM_PTT_ACTIVE_HIGH``), l'attenuazione dell'ADC
-(``MODEM_ADC_ATTEN``) e le frequenze di campionamento di ADC e DAC con cui il
-firmware è stato compilato.
+(``MODEM_ADC_ATTEN``) e la frequenza di campionamento dell'ADC
+(``MODEM_ADC_SAMPLERATE``) con cui il firmware è stato compilato. La frequenza
+di campionamento in trasmissione non è elencata: è un'impostazione salvata,
+scelta da *Frequenza di campionamento in trasmissione* più in basso in questa
+stessa pagina.
 
 Tutti i valori di compilazione provengono dal ``CMakeLists.txt`` di primo
 livello e possono essere cambiati solo ricompilando il firmware — per esempio
