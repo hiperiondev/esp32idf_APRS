@@ -225,6 +225,13 @@ esp_err_t page_radio_post(httpd_req_t *req);
 /** @brief POST /radio/looptest - JSON result of the ADC->DAC modem loopback self-test. POST, not GET: the test keys the transmitter, so it is a
  * state-changing request and has to go through the same-origin check in web_check_auth(). @param req Incoming request. @return ESP_OK or an esp_err_t error. */
 esp_err_t page_radio_looptest_post(httpd_req_t *req);
+/** @brief POST /radio/level - JSON receive level, input bias and converter headroom, measured without transmitting. POST, not GET: the measurement claims
+ * the modem's diagnostics, so it is a state-changing request and has to go through the same-origin check in web_check_auth(). @param req Incoming request.
+ * @return ESP_OK or an esp_err_t error. */
+esp_err_t page_radio_level_post(httpd_req_t *req);
+/** @brief POST /radio/txtest - JSON result of a bounded transmit burst, for setting the transmit level against a deviation meter. POST, not GET: it keys the
+ * transmitter. @param req Incoming request. @return ESP_OK or an esp_err_t error. */
+esp_err_t page_radio_txtest_post(httpd_req_t *req);
 /** @brief GET  /msg - APRS Message service settings form. @param req Incoming request. @return ESP_OK or an esp_err_t error. */
 esp_err_t page_msg_get(httpd_req_t *req);
 /** @brief POST /msg - persist APRS Message service settings. @param req Incoming request. @return ESP_OK or an esp_err_t error. */

@@ -135,6 +135,12 @@ autenticación pueda proteger.
    * - POST
      - ``/radio/looptest``
      - ejecutar el loop test (resultado JSON)
+   * - POST
+     - ``/radio/level``
+     - medir el nivel de recepción, la polarización de entrada y el margen del conversor sin transmitir (resultado JSON)
+   * - POST
+     - ``/radio/txtest``
+     - transmitir una ráfaga de prueba acotada para ajustar el nivel de transmisión (resultado JSON)
    * - GET/POST
      - ``/wireless``
      - modo Wi-Fi, AP, 5 ranuras STA, potencia TX

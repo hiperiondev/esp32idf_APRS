@@ -108,6 +108,10 @@
 #define TR_BTN_AUTO_GENERATE "Auto Generate"
 /** Caption of the "loop test" button, rendered on any page. */
 #define TR_BTN_LOOP_TEST "LOOP TEST"
+/** Caption of the "RX LEVEL" button, rendered on any page. */
+#define TR_BTN_RX_LEVEL "RX LEVEL"
+/** Caption of the "TX TEST" button, rendered on any page. */
+#define TR_BTN_TX_TEST "TX TEST"
 /** Loopback-test status message: saving, rendered on any page. */
 #define TR_LOOPTEST_SAVING "Saving settings..."
 /** Loopback-test status message: running, rendered on any page. */
@@ -198,8 +202,20 @@
 #define TR_F_ENABLE_AUDIO_MODEM "Enable audio ADC/DAC modem"
 /** Form label for the "afsk modulation" field or fieldset, rendered on the configuration forms. */
 #define TR_F_AFSK_MODULATION "Modulation"
-/** Form label for the "audio low pass filter" field or fieldset, rendered on the configuration forms. */
-#define TR_F_AUDIO_LOW_PASS_FILTER "Audio low-pass filter"
+/** Form label for the "Flat / discriminator audio input" field or fieldset, rendered on the configuration forms. */
+#define TR_F_FLAT_AUDIO_INPUT "Flat / discriminator audio input"
+/** Form label for the "Audio interface" field or fieldset, rendered on the configuration forms. */
+#define TR_F_AUDIO_INTERFACE "Audio interface"
+/** Form label for the "ADC input self-bias" field or fieldset, rendered on the configuration forms. */
+#define TR_F_ADC_SELF_BIAS "ADC input self-bias"
+/** Form label for the "Warn on receive over-range" field or fieldset, rendered on the configuration forms. */
+#define TR_F_RX_CLIP_WARN "Warn on receive over-range"
+/** Form label for the "Transmit output swing (%)" field or fieldset, rendered on the configuration forms. */
+#define TR_F_DAC_AMPLITUDE_PCT "Transmit output swing (%)"
+/** Form label for the "Transmit sample rate" field or fieldset, rendered on the configuration forms. */
+#define TR_F_DAC_SAMPLERATE "Transmit sample rate"
+/** Form label for the "Transmitter time-out (ms)" field or fieldset, rendered on the configuration forms. */
+#define TR_F_TX_MAX_KEYED_MS "Transmitter time-out (ms)"
 /** Form label for the "beacon interval s" field or fieldset, rendered on the configuration forms. */
 #define TR_F_BEACON_INTERVAL_S "Beacon interval (s)"
 /** Form label for the "beacon position" field or fieldset, rendered on the configuration forms. */
@@ -684,7 +700,9 @@
 /** System-information row label for cpu freq set, rendered on the dashboard. */
 #define TR_SYSINFO_CPU_FREQ_SET "Set CPU frequency"
 /** System-information row label for cpu freq note, rendered on the dashboard. */
-#define TR_SYSINFO_CPU_FREQ_NOTE "Saved to flash and re-applied automatically on every boot."
+#define TR_SYSINFO_CPU_FREQ_NOTE                                                                                                                               \
+    "Saved to flash and re-applied automatically on every boot. The audio ADC/DAC modem needs 240 MHz: below it the receive chain cannot keep up with the "    \
+    "samples arriving."
 /** System-information row label for flash size, rendered on the dashboard. */
 #define TR_SYSINFO_FLASH_SIZE "Flash size:"
 /** System-information row label for min free heap, rendered on the dashboard. */
@@ -1050,6 +1068,8 @@
 #define TR_RADIO_AUDIO_HW_INFO "<br>DAC out: GPIO%d<br>ADC in: GPIO%d<br>PTT pin: %s<br>PTT active-high: %s<br>ADC attenuation: %d<br>ADC: %d Hz<br>DAC: %d Hz"
 /** Radiomodem page label for audio hw note, rendered on the Radiomodem page. */
 #define TR_RADIO_AUDIO_HW_NOTE ""
+/** Radiomodem page label for audio hw runtime, rendered on the Radiomodem page. */
+#define TR_RADIO_AUDIO_HW_RUNTIME "<br>Transmit sample rate: %d Hz<br>Transmit output swing: %d %%<br>ADC input self-bias: %s"
 
 /** @} */
 
@@ -1989,9 +2009,30 @@
 #define TR_H_F_APRS_PASSCODE                                                                                                                                   \
     "Login code the APRS-IS server checks against My Callsign before accepting gated traffic from this station. Auto Generate derives it from that "           \
     "callsign; a wrong or missing passcode still connects but is logged as unverified."
-/** Contextual help for the "Audio low-pass filter" option. */
-#define TR_H_F_AUDIO_LOW_PASS_FILTER                                                                                                                           \
-    "Filters the received audio before demodulation. It helps with a noisy or hissy receiver output and can be left off on a clean one."
+/** Contextual help for the "Flat / discriminator audio input" option. */
+#define TR_H_F_FLAT_AUDIO_INPUT                                                                                                                                \
+    "Selects how the receive audio is equalized. Turn it on when the audio comes from a data or discriminator jack, which is unfiltered and carries "          \
+    "no de-emphasis; leave it off for a speaker or headphone output, which is already de-emphasized."
+/** Contextual help for the "ADC input self-bias" option. */
+#define TR_H_F_ADC_SELF_BIAS                                                                                                                                   \
+    "Biases the receive audio pin from the ADC pad's own pull resistors, which is what an input coupled through a capacitor with no external bias "            \
+    "network needs. Leave it off when the interface board sets the bias itself, since the internal resistors would load that network."
+/** Contextual help for the "Warn on receive over-range" option. */
+#define TR_H_F_RX_CLIP_WARN                                                                                                                                    \
+    "Logs a warning when the received audio reaches the ends of the converter's range. Worth enabling on an interface without input clamp diodes, "            \
+    "where an over-range reading also means the pin is being driven beyond the supply rails."
+/** Contextual help for the "Transmit output swing (%)" option. */
+#define TR_H_F_DAC_AMPLITUDE_PCT                                                                                                                               \
+    "Peak-to-peak swing of the transmit audio output, as a percentage of the full range. The attenuation a microphone input needs belongs in an "              \
+    "external attenuator: lowering this too far leaves the 8-bit converter drawing the tone with a handful of steps."
+/** Contextual help for the "Transmit sample rate" option. */
+#define TR_H_F_DAC_SAMPLERATE                                                                                                                                  \
+    "Rate the transmit audio is generated at. The higher rate moves the converter's reconstruction images an octave further from the audio band, "             \
+    "which is worth its extra interrupt load when the interface carries no reconstruction filter. Applied at the next reboot."
+/** Contextual help for the "Transmitter time-out (ms)" option. */
+#define TR_H_F_TX_MAX_KEYED_MS                                                                                                                                 \
+    "Releases the transmitter when a single transmission lasts longer than this, so a stalled transmit path cannot hold the channel. 0 turns the "             \
+    "time-out off. Useful settings sit well above the longest frame this station sends."
 /** Contextual help for the "Beacon interval (s)" option. */
 #define TR_H_F_BEACON_INTERVAL_S "Seconds between position beacons. Use a longer interval on a busy frequency; 0 leaves the service default in force."
 /** Contextual help for the "Beacon position" option. */

@@ -167,6 +167,69 @@ oltre i ~5 kHz.
    calibrando il clock dell'ADC e i beacon trasmettono all'ingresso, quindi un
    PTT di polarità errata ti dà secondi di portante non modulata.
 
+Interfaccia ridotta: un condensatore e un trimmer per direzione
+----------------------------------------------------------------
+
+Lo schema qui sopra è la versione di riferimento. È supportata anche
+un'interfaccia ridotta, che non porta altro che un condensatore di
+accoppiamento e un trimmer di livello in ciascuna direzione audio, con il PTT
+invariato. Quello che facevano le parti rimosse viene assunto da
+un'impostazione della pagina Radiomodem oppure accettato come limite:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 70
+
+   * - Rimosso
+     - Sostituzione
+   * - R5/R6 (polarizzazione dell'ADC)
+     - **Polarizzazione interna dell'ingresso ADC**, che collega in serie il
+       pull-up e il pull-down del pad stesso
+   * - R3 (attenuatore di TX)
+     - il solo trimmer, eventualmente con l'**Ampiezza di uscita in
+       trasmissione** ridotta per distribuirne la corsa utile
+   * - R1/R2 + C2/C3 (filtro di ricostruzione)
+     - **Frequenza di campionamento in trasmissione** a 76800 Hz, che sposta
+       le immagini di un'ottava
+   * - D1/D2 (clamp di ingresso)
+     - niente: **Avvisa quando l'audio ricevuto esce dal fondo scala** segnala
+       la condizione e il trimmer di ricezione è ciò che limita la corrente di
+       guasto
+   * - R7/C5 (snubber dell'ADC)
+     - niente; è da attendersi un po' più di rumore
+
+Cablaggio, per direzione: il trimmer di trasmissione è un partitore fra GPIO25
+e massa con il cursore che alimenta il condensatore di accoppiamento, e il
+trimmer di ricezione è un partitore sull'uscita altoparlante dell'apparato con
+il cursore che alimenta l'altro condensatore. **Il condensatore va dopo il
+trimmer su entrambi i lati.** Prima di esso la gamba inferiore del trimmer
+porterebbe a massa il pin dell'ADC, vanificando la polarizzazione interna, e
+sul lato trasmissione affosserebbe la polarizzazione propria dell'ingresso
+microfonico.
+
+Entrambi i condensatori devono essere da 1 µF o più. Con 100 nF la frequenza
+di taglio inferiore finisce vicino a 700 Hz, il che attenua il tono di mark a
+1200 Hz rispetto a quello di space a 2200 Hz. Usare trimmer da 10 kΩ: sul lato
+trasmissione mantengono leggero il carico sull'uscita del DAC, e
+l'attenuazione necessaria porta il cursore intorno all'1,4 % della corsa, per
+cui è un trimmer multigiro a renderlo regolabile.
+
+Regolare i livelli con i due pulsanti accanto a TEST LOOP, che è ciò che il
+loop test non può fare una volta che un apparato ha sostituito il ponticello:
+**LIVELLO RX** misura senza trasmettere — puntare a 250-350 mV RMS con la
+gamma grezza ben lontana da 0 e 4095, e con la polarizzazione interna attiva
+aspettarsi un offset di continua fra 1200 e 2000 mV — e **TEST TX** manda in
+trasmissione per poter leggere la deviazione su altra strumentazione e
+regolarla a 2,5-3,5 kHz.
+
+.. warning::
+
+   Senza D1/D2 il trimmer di ricezione è l'unica cosa che limita la corrente
+   verso il pin dell'ADC. L'uscita altoparlante di un portatile a tutto volume
+   è ben fuori da 0-3,3 V, quindi abbassare il volume prima di collegare e non
+   portare mai l'uscita altoparlante a GPIO33 con il solo condensatore.
+
+
 Baofeng UV-5R e HT con connettore K
 -----------------------------------
 
@@ -210,8 +273,8 @@ Ordine di messa in funzione
    deviazione** (2,5–3,5 kHz). La sovra-deviazione è la causa singola più comune
    di "il mio igate sente tutti ma nessuno sente me".
 #. **9600 Bd G3RUH** richiede il percorso piatto/discriminatore a entrambe le
-   estremità: DATA IN/DATA OUT, 10 nF in C2/C3, e la casella *Audio low-pass
-   filter* impostata per audio piatto.
+   estremità: DATA IN/DATA OUT, 10 nF in C2/C3, e la casella *Ingresso audio
+   piatto / da discriminatore* spuntata.
 
 Isolamento e loop di massa
 ==========================

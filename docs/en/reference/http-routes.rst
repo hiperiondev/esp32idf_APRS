@@ -130,6 +130,12 @@ credentials, so there is nothing for an auth check to guard.
    * - POST
      - ``/radio/looptest``
      - run the loop test (JSON result)
+   * - POST
+     - ``/radio/level``
+     - measure the receive level, input bias and converter headroom without transmitting (JSON result)
+   * - POST
+     - ``/radio/txtest``
+     - transmit a bounded test burst for setting the transmit level (JSON result)
    * - GET/POST
      - ``/wireless``
      - Wi-Fi mode, AP, 5 STA slots, TX power

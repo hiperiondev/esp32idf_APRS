@@ -149,7 +149,8 @@ boot, the Radio page's Save (live re-apply, no reboot) and the loop test:
      - plain cast; page clamps 0–3
    * - ``flat_audio``
      - ``audio_lpf``
-     - despite the name, always the flat-audio-input flag
+     - flat/discriminator input: on for a data or discriminator jack, off for
+       a speaker output
    * - ``full_duplex``
      - ``false`` normally
      - LOOP TEST passes ``true`` (a DAC→ADC wire means CSMA never sees a clear
@@ -183,6 +184,31 @@ boot, the Radio page's Save (live re-apply, no reboot) and the loop test:
    * - ``min_unkey_ms``
      - ``ptt_min_unkey_ms``
      - extra minimum PTT-off hold time between transmissions
+   * - ``adc_self_bias``
+     - ``adc_self_bias`` (off)
+     - biases the ADC pad from its own pull-up and pull-down in series, for an
+       AC-coupled input with no external bias network. Applied after the
+       continuous driver has configured the pad, which disables both pulls.
+       GPIO32/33 only
+   * - ``rx_clip_warn``
+     - ``rx_clip_warn`` (off)
+     - logs a rate-limited warning when a processed block reaches the ends of
+       the conversion range
+   * - ``dac_amplitude_pct``
+     - ``dac_amplitude_pct`` (``MODEM_DAC_AMPLITUDE_PCT``)
+     - output swing, applied per sample. Floored at 20 %: the DAC is 8 bits
+       wide, so the attenuation a microphone input needs belongs in an
+       external attenuator
+   * - ``dac_samplerate``
+     - ``dac_samplerate`` (``MODEM_DAC_SAMPLERATE``)
+     - 38400 or 76800 Hz. The only field ``modem_set_modem()`` does **not**
+       apply: the sample-clock period and every phase step derived from it are
+       programmed while the hardware is stopped, so ``modem_init()`` applies it
+       and a change takes effect at the next reboot
+   * - ``tx_max_keyed_ms``
+     - ``tx_max_keyed_ms`` (0)
+     - transmitter time-out, 0 = off. The modem service task releases PTT,
+       stops the modulator and discards the transmission past this
 
 .. note::
 
@@ -192,6 +218,32 @@ boot, the Radio page's Save (live re-apply, no reboot) and the loop test:
    straight from the compile-time macro. Explicitly **not** runtime-mapped
    (no equivalent in the component): ADC/DAC pins and attenuation, hardware
    squelch, RF power switch, software squelch, RX volume and the AGC ceiling.
+
+RX LEVEL and TX TEST
+====================
+
+The loop test below needs a wire between the DAC and the ADC, so it stops
+being usable the moment a transceiver replaces that jumper: nothing echoes the
+frame back. Two buttons beside it cover the same ground for a connected
+transceiver, one direction each.
+
+**RX LEVEL** (``aprs_rx_level_sample()``, ``POST /radio/level``) watches the
+receive front-end for about a second and reports the RMS level and its peak,
+the input's DC offset, the AGC gain, the raw conversion extremes and the
+carrier-detect state. It transmits nothing and changes no modem state, so it
+can run while real traffic is being decoded. It is what the receive trimmer is
+set against — aim for 250 to 350 mV RMS with the raw range clear of 0 and 4095
+— and what tells an input biased by ``adc_self_bias`` (1200 to 2000 mV) from
+one with no bias at all.
+
+**TX TEST** (``aprs_tx_test_run()``, ``POST /radio/txtest``) keys up and
+modulates a short status frame through the ordinary non-critical transmit
+path, so half-duplex channel access and the duty-cycle ceiling both apply. It
+waits for nothing to come back: the deviation it produces is read on other
+equipment and trimmed to 2.5 to 3.5 kHz.
+
+Both share the loop test's claim flag, so only one of the three runs at a
+time.
 
 The LOOP TEST
 =============

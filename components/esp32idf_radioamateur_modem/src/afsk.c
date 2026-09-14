@@ -35,6 +35,10 @@
 // MODEM_DAC_GPIO - and is not exposed as a runtime/web-admin setting.
 #include "driver/gpio.h"
 #include "driver/gptimer.h"
+// driver/rtc_io.h for rtc_gpio_pullup_en()/rtc_gpio_pulldown_en(): the ADC pad's
+// internal bias, selectable at runtime through afskSetAdcSelfBias(), is an RTC
+// IO feature and is not reachable through the ordinary GPIO driver.
+#include "driver/rtc_io.h"
 #include "esp_adc/adc_cali.h"
 #include "esp_adc/adc_cali_scheme.h"
 #include "esp_adc/adc_continuous.h"
@@ -180,6 +184,38 @@ static int s_offset = 0; // DC offset of the input, in mV
 static int s_mVrms = 0;  // last RMS reading, in mV
 static uint8_t s_dcdCnt = 0;
 
+// Raw ADC extremes of the last completed block, before DC removal, AGC and
+// decimation. Written by AFSK_Poll() and read by afskGetRawMinMax() from
+// another task; both halves are 16 bit, so a reader can only ever observe one
+// block boundary in the middle of the pair, which is what a level display of
+// this kind is expected to tolerate.
+static int16_t s_rawMin = 0;
+static int16_t s_rawMax = 0;
+
+// Over-range reporting. s_clipWarn is the operator's selection; s_clipNextWarnMs
+// is the millisecond timestamp before which no further warning is emitted, kept
+// as a deadline rather than a countdown so the comparison stays correct across
+// the 32-bit wrap.
+static bool s_clipWarn = false;
+static uint32_t s_clipNextWarnMs = 0;
+
+// Raw conversion results this close to either end of the 12-bit range are taken
+// as over-range: the last few codes are already outside the converter's usable
+// window, and on an interface without input clamp diodes reaching them also
+// means the pin is being driven past the supply rails.
+#define CLIP_RAW_LOW      15
+#define CLIP_RAW_HIGH     4080
+#define CLIP_WARN_HOLD_MS 5000
+
+// DAC sample rate the modulator is programmed for. Fixed while the modem runs:
+// AFSK_init() turns it into the sample-clock alarm period and ModemInit() turns
+// it into the tone phase steps and the baud-rate divider, so it is only writable
+// while the hardware is stopped.
+static uint32_t s_dacRate = MODEM_DAC_SAMPLERATE;
+
+// Selection state of the ADC pad's internal input bias.
+static bool s_adcSelfBias = false;
+
 // Running DC average of the raw ADC stream, used to re-centre the samples
 // before demodulation.
 #define AVG_N 125
@@ -197,8 +233,16 @@ static uint16_t s_avg = 2048;
 // other ISR-path functions on the transmit side (dac_write_isr() here,
 // calculateCRC() in ax25.c) are IRAM_ATTR to avoid.
 #define DAC_MID 128
+
+// Peak-to-peak swing of the DAC output, in percent of the full range. Written
+// only by afskSetDacAmplitude() (task context) and read by dac_scale() in the
+// DAC timer ISR: a single-byte load, so the ISR either sees the old value or
+// the new one and never a torn intermediate. A change therefore takes effect
+// on the next sample, without stopping the modulator.
+static uint8_t s_dacAmplitudePct = MODEM_DAC_AMPLITUDE_PCT;
+
 static inline uint8_t IRAM_ATTR dac_scale(uint8_t s) {
-    int v = DAC_MID + (((int)s - DAC_MID) * MODEM_DAC_AMPLITUDE_PCT) / 100;
+    int v = DAC_MID + (((int)s - DAC_MID) * (int)s_dacAmplitudePct) / 100;
     if (v < 0)
         v = 0;
     if (v > 255)
@@ -535,6 +579,89 @@ void IRAM_ATTR setTransmit(bool val) {
 void afskSetFullDuplex(bool enable) {
     s_fullDuplex = enable;
     Ax25Config.fullDuplex = enable ? 1 : 0;
+}
+
+esp_err_t afskSetDacSampleRate(uint32_t rate) {
+    if (s_inited)
+        return ESP_ERR_INVALID_STATE;
+
+    // The modulator puts one symbol edge on a whole number of DAC samples at
+    // every supported baud rate, and ModemInit() derives the divider by integer
+    // division, so a rate that is not a multiple of 9600 desynchronizes the
+    // 9600 Bd profile and a rate that is not a multiple of 1200 desynchronizes
+    // the AFSK ones.
+    if ((rate == 0) || ((rate % 9600) != 0) || ((rate % 1200) != 0))
+        return ESP_ERR_INVALID_ARG;
+
+    s_dacRate = rate;
+    return ESP_OK;
+}
+
+uint32_t afskGetDacSampleRate(void) {
+    return s_dacRate;
+}
+
+void afskSetDacAmplitude(uint8_t pct) {
+    if (pct < 1)
+        pct = 1;
+    else if (pct > 100)
+        pct = 100;
+
+    s_dacAmplitudePct = pct;
+}
+
+uint8_t afskGetDacAmplitude(void) {
+    return s_dacAmplitudePct;
+}
+
+esp_err_t afskSetAdcSelfBias(bool enable) {
+#if (MODEM_ADC_GPIO == 32) || (MODEM_ADC_GPIO == 33)
+    esp_err_t err;
+
+    if (enable) {
+        err = rtc_gpio_pullup_en((gpio_num_t)MODEM_ADC_GPIO);
+        if (err == ESP_OK)
+            err = rtc_gpio_pulldown_en((gpio_num_t)MODEM_ADC_GPIO);
+    } else {
+        err = rtc_gpio_pullup_dis((gpio_num_t)MODEM_ADC_GPIO);
+        if (err == ESP_OK)
+            err = rtc_gpio_pulldown_dis((gpio_num_t)MODEM_ADC_GPIO);
+    }
+
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "ADC input self-bias on GPIO%d: %s", MODEM_ADC_GPIO, esp_err_to_name(err));
+        return err;
+    }
+
+    s_adcSelfBias = enable;
+    ESP_LOGI(TAG, "ADC input self-bias %s on GPIO%d", enable ? "enabled" : "disabled", MODEM_ADC_GPIO);
+    return ESP_OK;
+#else
+    // GPIO34-39 are input-only pads and carry no pull resistors at all, so an
+    // AC-coupled input on one of them can only be biased externally.
+    if (!enable) {
+        s_adcSelfBias = false;
+        return ESP_OK;
+    }
+
+    ESP_LOGE(TAG, "ADC input self-bias is not available on GPIO%d: that pad has no internal pull resistors", MODEM_ADC_GPIO);
+    return ESP_ERR_NOT_SUPPORTED;
+#endif
+}
+
+bool afskGetAdcSelfBias(void) {
+    return s_adcSelfBias;
+}
+
+void afskSetClipWarn(bool enable) {
+    s_clipWarn = enable;
+}
+
+void afskGetRawMinMax(int16_t *min, int16_t *max) {
+    if (min)
+        *min = s_rawMin;
+    if (max)
+        *max = s_rawMax;
 }
 
 uint16_t afskGetRms(void) {
@@ -945,6 +1072,9 @@ void AFSK_Poll(void) {
         mVsum = 0;
         mVsumCount = 0;
 
+        int16_t rawMin = INT16_MAX;
+        int16_t rawMax = INT16_MIN;
+
         // The RMS/level measurement only needs a fraction of the samples.
         int m = ((MODEM_RESAMPLE_RATIO > 1) || (ModemConfig.modem == MODEM_MODEM_G3RUH)) ? 4 : 1;
 
@@ -959,6 +1089,11 @@ void AFSK_Poll(void) {
                 s_avgIdx -= AVG_N;
             s_avg = (uint16_t)(s_avgSum / AVG_N);
 
+            if (adc < rawMin)
+                rawMin = adc;
+            if (adc > rawMax)
+                rawMax = adc;
+
             int adcVal = (int)adc - (int)s_avg;
 
             if (x % m == 0) {
@@ -972,6 +1107,22 @@ void AFSK_Poll(void) {
         }
 
         adc_cali_raw_to_voltage(s_cali, s_avg, &s_offset);
+
+        if (rawMin <= rawMax) {
+            s_rawMin = rawMin;
+            s_rawMax = rawMax;
+
+            if (s_clipWarn && ((rawMax >= CLIP_RAW_HIGH) || (rawMin <= CLIP_RAW_LOW))) {
+                uint32_t now = (uint32_t)(esp_timer_get_time() / 1000);
+
+                // Signed difference against a deadline, so the hold survives the
+                // wrap of the millisecond counter.
+                if ((int32_t)(s_clipNextWarnMs - now) <= 0) {
+                    s_clipNextWarnMs = now + CLIP_WARN_HOLD_MS;
+                    ESP_LOGW(TAG, "RX audio is over-range (raw %d..%d of 0..4095) - lower the receive level trimmer or the transceiver volume", rawMin, rawMax);
+                }
+            }
+        }
 
         if (mVsumCount > 0) {
             s_mVrms = (int)sqrtf((float)(mVsum / mVsumCount));
@@ -1228,7 +1379,7 @@ static esp_err_t dac_timer_create(void) {
     }
 
     gptimer_alarm_config_t alarmCfg = {
-        .alarm_count = 10000000ULL / MODEM_DAC_SAMPLERATE,
+        .alarm_count = 10000000ULL / (uint64_t)s_dacRate,
         .reload_count = 0,
         .flags.auto_reload_on_alarm = true,
     };
@@ -1246,7 +1397,7 @@ static esp_err_t dac_timer_create(void) {
     // nominal rate, so without this line a 2 % shortfall caused by missed alarms
     // is indistinguishable from a 2 % clock error. Any gap between the measured
     // ISR rate and the alarm rate below is the ISR failing to keep up.
-    ESP_LOGI(TAG, "DAC timer: %d Hz nominal -> alarm every %" PRIu64 " ticks = %.1f Hz actual, ISR prio %d on core %d", MODEM_DAC_SAMPLERATE,
+    ESP_LOGI(TAG, "DAC timer: %" PRIu32 " Hz nominal -> alarm every %" PRIu64 " ticks = %.1f Hz actual, ISR prio %d on core %d", s_dacRate,
              alarmCfg.alarm_count, 10000000.0 / (double)alarmCfg.alarm_count, MODEM_DAC_TIMER_INTR_PRIO, xPortGetCoreID());
     return ESP_OK;
 }
@@ -1274,6 +1425,16 @@ esp_err_t AFSK_init(void) {
             .pin_bit_mask = 1ULL << s_pttGpio,
             .mode = GPIO_MODE_INPUT_OUTPUT,
         };
+
+        // The idle level is published before the pad becomes an output. The
+        // output register resets to 0, which is the ACTIVE level for an
+        // active-low PTT, so a pad that takes its direction first drives the
+        // keying line active for the length of the configuration call - and
+        // modem_init() goes on to spend about five seconds measuring the ADC
+        // clock right after this. Writing the level first sends the pad
+        // straight to idle; the write after gpio_config() is what puts it
+        // there when the output register was not the path taken.
+        gpio_set_level((gpio_num_t)s_pttGpio, s_pttActiveHigh ? 0 : 1);
         gpio_config(&pttCfg);
         gpio_set_level((gpio_num_t)s_pttGpio, s_pttActiveHigh ? 0 : 1);
     }
@@ -1304,6 +1465,14 @@ esp_err_t AFSK_init(void) {
     err = run_on_core(MODEM_ADC_ISR_CORE, adc_start_continuous);
     if (err != ESP_OK)
         return err;
+
+    // After the continuous driver, never before it: bringing the ADC up puts
+    // the pad in analog mode and disconnects both of its pull resistors, so the
+    // selection is applied once the driver is done with the pin. Nothing else
+    // reconfigures the pad afterwards - afskSetModem() only rebuilds the
+    // demodulator and AX.25 state - so this holds until AFSK_deinit().
+    if (s_adcSelfBias)
+        afskSetAdcSelfBias(true);
 
     // ---- DAC sample clock ----
     // Pinned to the other core. See dac_timer_create().

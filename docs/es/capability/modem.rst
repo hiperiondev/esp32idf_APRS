@@ -155,7 +155,8 @@ sin reinicio) y el test de bucle:
      - conversión directa; la página fija 0–3
    * - ``flat_audio``
      - ``audio_lpf``
-     - pese al nombre, siempre es la bandera de entrada de audio plano
+     - entrada plana/de discriminador: activada para una toma de datos o de
+       discriminador, desactivada para una salida de altavoz
    * - ``full_duplex``
      - ``false`` normalmente
      - LOOP TEST pasa ``true`` (un cable DAC→ADC significa que CSMA nunca ve el
@@ -190,6 +191,32 @@ sin reinicio) y el test de bucle:
    * - ``min_unkey_ms``
      - ``ptt_min_unkey_ms``
      - tiempo mínimo extra de PTT-desactivado entre transmisiones
+   * - ``adc_self_bias``
+     - ``adc_self_bias`` (apagado)
+     - polariza el pad del ADC con su propio pull-up y pull-down en serie, para
+       una entrada acoplada por capacitor sin red de polarización externa. Se
+       aplica después de que el controlador continuo configura el pad, que
+       desconecta ambas resistencias. Solo GPIO32/33
+   * - ``rx_clip_warn``
+     - ``rx_clip_warn`` (apagado)
+     - registra un aviso con límite de frecuencia cuando un bloque procesado
+       llega a los extremos del rango de conversión
+   * - ``dac_amplitude_pct``
+     - ``dac_amplitude_pct`` (``MODEM_DAC_AMPLITUDE_PCT``)
+     - amplitud de salida, aplicada por muestra. Con piso en 20 %: el DAC es de
+       8 bits, así que la atenuación que necesita una entrada de micrófono
+       corresponde a un atenuador externo
+   * - ``dac_samplerate``
+     - ``dac_samplerate`` (``MODEM_DAC_SAMPLERATE``)
+     - 38400 o 76800 Hz. El único campo que ``modem_set_modem()`` **no** aplica:
+       el período del reloj de muestreo y todos los pasos de fase derivados de
+       él se programan con el hardware detenido, así que lo aplica
+       ``modem_init()`` y el cambio surte efecto en el próximo reinicio
+   * - ``tx_max_keyed_ms``
+     - ``tx_max_keyed_ms`` (0)
+     - tiempo máximo de transmisión, 0 = desactivado. Pasado ese tiempo, la
+       tarea de servicio del módem libera el PTT, detiene el modulador y
+       descarta la transmisión
 
 .. note::
 
@@ -200,6 +227,33 @@ sin reinicio) y el test de bucle:
    ejecución (sin equivalente en el componente): pines y atenuación ADC/DAC,
    squelch por hardware, conmutador de potencia RF, squelch por software,
    volumen de RX y el techo del AGC.
+
+NIVEL RX y PRUEBA TX
+====================
+
+El loop test de más abajo necesita un cable entre el DAC y el ADC, así que
+deja de ser utilizable en cuanto un equipo reemplaza ese puente: no hay nada
+que devuelva la trama. Dos botones a su lado cubren el mismo terreno con un
+equipo conectado, uno por sentido.
+
+**NIVEL RX** (``aprs_rx_level_sample()``, ``POST /radio/level``) observa la
+etapa de recepción durante alrededor de un segundo e informa el nivel RMS y su
+pico, el offset de continua de la entrada, la ganancia del AGC, los extremos
+crudos de conversión y el estado de la detección de portadora. No transmite
+nada ni cambia el estado del módem, así que puede ejecutarse mientras se
+decodifica tráfico real. Es contra lo que se ajusta el trimmer de recepción —
+apunte a 250 a 350 mV RMS con el rango crudo lejos de 0 y 4095 — y lo que
+distingue una entrada polarizada por ``adc_self_bias`` (1200 a 2000 mV) de una
+sin polarización alguna.
+
+**PRUEBA TX** (``aprs_tx_test_run()``, ``POST /radio/txtest``) activa el
+transmisor y modula una trama de estado corta por la ruta de transmisión no
+crítica habitual, de modo que se aplican tanto el acceso al canal en
+semidúplex como el techo de ciclo de trabajo. No espera nada de vuelta: la
+desviación que produce se lee en otro instrumento y se ajusta a 2,5 a 3,5 kHz.
+
+Ambos comparten la bandera de reserva del loop test, así que solo uno de los
+tres se ejecuta a la vez.
 
 El LOOP TEST
 ============

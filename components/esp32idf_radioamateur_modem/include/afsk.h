@@ -144,6 +144,116 @@ void AFSK_deinit(void);
 void afskSetModem(uint8_t val, bool flatAudio, uint16_t timeSlot, uint16_t preamble, uint8_t fx25Mode, uint16_t minUnkeyMs);
 
 /**
+ * @brief Select the DAC (transmit) sample rate used by the modulator.
+ *
+ * Only takes effect while the modem hardware is stopped: the value is read by
+ * AFSK_init() to program the DAC sample-clock alarm and by ModemInit() to
+ * derive the tone phase steps and the baud-rate divider, so it must be set
+ * before modem_init() brings the modem up.
+ *
+ * The rate must stay an exact integer multiple of every supported baud rate,
+ * which restricts it to ::MODEM_DAC_SAMPLERATE and twice that value. A higher
+ * rate moves the DAC reconstruction images further away from the audio band,
+ * which matters when the interface between the DAC pin and the transceiver
+ * has no reconstruction low-pass filter, and costs one DAC interrupt per
+ * additional sample.
+ *
+ * @param rate Requested DAC sample rate, in Hz. A value that is not an exact
+ *             multiple of every supported baud rate is rejected and the
+ *             current rate is kept.
+ * @return ESP_OK if the rate was accepted, ESP_ERR_INVALID_ARG if it was
+ *         rejected, or ESP_ERR_INVALID_STATE if the modem hardware is running.
+ */
+esp_err_t afskSetDacSampleRate(uint32_t rate);
+
+/**
+ * @brief Get the DAC (transmit) sample rate the modulator is programmed for.
+ * @return DAC sample rate, in Hz.
+ */
+uint32_t afskGetDacSampleRate(void);
+
+/**
+ * @brief Set the peak-to-peak swing of the DAC output.
+ *
+ * Expressed as a percentage of the full 0..3.3 V range, centered on the DAC's
+ * idle code. Applied to every sample from the next one onwards, so it may be
+ * changed while the modem is running.
+ *
+ * The ESP32 DAC is 8 bits wide, so the percentage also sets how many codes a
+ * sine period is drawn with: at 20 % a full period spans roughly 50 codes,
+ * and below that quantization distortion grows quickly. The transmit level a
+ * microphone input expects is reached with an external attenuator, not by
+ * lowering this value.
+ *
+ * @param pct Peak-to-peak swing, in percent of the full DAC range (1..100).
+ *            Values outside that range are clamped.
+ */
+void afskSetDacAmplitude(uint8_t pct);
+
+/**
+ * @brief Get the peak-to-peak swing currently applied to the DAC output.
+ * @return Swing, in percent of the full DAC range.
+ */
+uint8_t afskGetDacAmplitude(void);
+
+/**
+ * @brief Enable or disable the ADC pad's internal input bias.
+ *
+ * Connects the pad's internal pull-up and pull-down at the same time; in
+ * series they bias the pin to roughly mid-rail, which is what an AC-coupled
+ * input with no external bias network needs. It must stay disabled whenever
+ * the interface board provides its own bias divider, since the internal pulls
+ * would load it.
+ *
+ * The bias is only nominally half of the supply: the internal pull resistors
+ * are specified between 30 kOhm and 80 kOhm, are not matched to each other
+ * and drift with temperature, so the resting level lands anywhere between
+ * roughly 1.2 V and 2.0 V. The running DC average in AFSK_Poll() removes
+ * whatever it settles at, and afskGetDcOffset() reports it in millivolts.
+ *
+ * Only GPIO32 and GPIO33 carry RTC pull resistors; on any other ADC pin this
+ * reports ESP_ERR_NOT_SUPPORTED.
+ *
+ * @param enable true to bias the input from the internal pulls, false to
+ *               leave the pad unbiased.
+ * @return ESP_OK on success, ESP_ERR_NOT_SUPPORTED if the configured ADC pin
+ *         has no internal pull resistors, or an ESP-IDF error code from the
+ *         RTC IO driver.
+ */
+esp_err_t afskSetAdcSelfBias(bool enable);
+
+/**
+ * @brief Check whether the ADC pad's internal input bias is enabled.
+ * @return true if the internal pull-up and pull-down are both connected.
+ */
+bool afskGetAdcSelfBias(void);
+
+/**
+ * @brief Enable or disable the receive over-range warning.
+ *
+ * When enabled, a rate-limited warning is logged whenever a processed block
+ * of samples reaches the ends of the ADC's conversion range. On an interface
+ * without input clamp diodes that condition also means the pin is being
+ * driven beyond the supply rails, so it is worth reporting rather than
+ * leaving to show up as decode failures.
+ *
+ * @param enable true to log over-range blocks, false to stay silent.
+ */
+void afskSetClipWarn(bool enable);
+
+/**
+ * @brief Get the raw ADC extremes of the last processed block.
+ *
+ * Reports the minimum and maximum conversion results of the most recent
+ * complete block, before DC removal, AGC and decimation. The full-scale range
+ * is 0..4095; values at either end indicate the input is over-range.
+ *
+ * @param[out] min Minimum raw conversion result, or NULL if not needed.
+ * @param[out] max Maximum raw conversion result, or NULL if not needed.
+ */
+void afskGetRawMinMax(int16_t *min, int16_t *max);
+
+/**
  * @brief Enable or disable full-duplex operation.
  *
  * In full duplex mode the modem transmits immediately, without waiting for

@@ -27,6 +27,7 @@
 // functionality always has a file on flash.
 
 #include <float.h>
+#include <inttypes.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h> // strtod() - shortest round-tripping precision for the JSON number writer
@@ -479,6 +480,16 @@ void app_config_set_defaults(app_config_t *c) {
     c->duty_cycle_en = false; // long-term duty-cycle limiter off by default (opt-in) - see DUTY_CYCLE_PCT_MIN/MAX in aprs_service.h
     c->duty_cycle_pct = 25;   // ceiling once enabled: 25% of the rolling window aprs_service.c measures it over
     c->ptt_min_unkey_ms = 0;  // see PTT_MIN_UNKEY_MS_MIN/MAX in aprs_service.h
+
+    // Audio interface. The defaults describe an interface board that carries
+    // its own bias network, attenuators and reconstruction filter: no internal
+    // input bias, no over-range warning, the compile-time output swing and
+    // sample rate, and no transmitter time-out.
+    c->adc_self_bias = false;
+    c->rx_clip_warn = false;
+    c->dac_amplitude_pct = MODEM_DAC_AMPLITUDE_PCT;
+    c->dac_samplerate = DAC_SAMPLERATE_LOW;
+    c->tx_max_keyed_ms = 0; // see TX_MAX_KEYED_MS_MIN/MAX in aprs_service.h
     set_str(c->ntp_host[0], sizeof(c->ntp_host[0]), "pool.ntp.org");
     set_str(c->ntp_host[1], sizeof(c->ntp_host[1]), "time.google.com");
     set_str(c->ntp_host[2], sizeof(c->ntp_host[2]), "time.cloudflare.com");
@@ -748,6 +759,11 @@ static void section_write_radio(jw_t *d, const app_config_t *c) {
     jadd_num(d, "pttMinUnkeyMs", c->ptt_min_unkey_ms);
     jadd_bool(d, "dutyCycleEn", c->duty_cycle_en);
     jadd_num(d, "dutyCyclePct", c->duty_cycle_pct);
+    jadd_bool(d, "adcSelfBias", c->adc_self_bias);
+    jadd_bool(d, "rxClipWarn", c->rx_clip_warn);
+    jadd_num(d, "dacAmplPct", c->dac_amplitude_pct);
+    jadd_num(d, "dacRate", c->dac_samplerate);
+    jadd_num(d, "txMaxKeyedMs", c->tx_max_keyed_ms);
     fputc('}', d->f);
 }
 
@@ -1271,6 +1287,29 @@ static void section_read_radio(cJSON *d, app_config_t *c) {
         c->duty_cycle_pct = DUTY_CYCLE_PCT_MIN;
     else if (c->duty_cycle_pct > DUTY_CYCLE_PCT_MAX)
         c->duty_cycle_pct = DUTY_CYCLE_PCT_MAX;
+
+    // Audio interface. A key that is absent leaves the field at the default
+    // set by config_set_defaults(), which is what an interface board with its
+    // own bias network, attenuators and reconstruction filter needs, so a
+    // radio.json written before these settings existed keeps behaving exactly
+    // as it did.
+    c->adc_self_bias = jget_bool(d, "adcSelfBias", c->adc_self_bias);
+    c->rx_clip_warn = jget_bool(d, "rxClipWarn", c->rx_clip_warn);
+    c->dac_amplitude_pct = (uint8_t)jget_num(d, "dacAmplPct", c->dac_amplitude_pct);
+    if (c->dac_amplitude_pct < DAC_AMPL_PCT_MIN || c->dac_amplitude_pct > DAC_AMPL_PCT_MAX) {
+        ESP_LOGW(TAG, "dacAmplPct %u out of range, clamped to %d..%d %%", (unsigned)c->dac_amplitude_pct, DAC_AMPL_PCT_MIN, DAC_AMPL_PCT_MAX);
+        c->dac_amplitude_pct = (c->dac_amplitude_pct < DAC_AMPL_PCT_MIN) ? DAC_AMPL_PCT_MIN : DAC_AMPL_PCT_MAX;
+    }
+    c->dac_samplerate = (uint32_t)jget_num(d, "dacRate", c->dac_samplerate);
+    if (c->dac_samplerate != DAC_SAMPLERATE_LOW && c->dac_samplerate != DAC_SAMPLERATE_HIGH) {
+        ESP_LOGW(TAG, "dacRate %" PRIu32 " Hz is not a supported transmit sample rate, using %d Hz", c->dac_samplerate, DAC_SAMPLERATE_LOW);
+        c->dac_samplerate = DAC_SAMPLERATE_LOW;
+    }
+    c->tx_max_keyed_ms = (uint32_t)jget_num(d, "txMaxKeyedMs", c->tx_max_keyed_ms);
+    if (c->tx_max_keyed_ms > TX_MAX_KEYED_MS_MAX) {
+        ESP_LOGW(TAG, "txMaxKeyedMs %" PRIu32 " out of range, clamped to %d ms", c->tx_max_keyed_ms, TX_MAX_KEYED_MS_MAX);
+        c->tx_max_keyed_ms = TX_MAX_KEYED_MS_MAX;
+    }
 }
 
 static void section_read_igate(cJSON *d, app_config_t *c) {

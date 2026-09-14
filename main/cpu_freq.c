@@ -49,4 +49,13 @@ void cpu_freq_apply(void) {
     } else {
         ESP_LOGI(TAG, "CPU frequency set to %d MHz", freq);
     }
+
+    // The audio modem's receive chain - a 76.8 kHz converter feeding a
+    // decimating filter and two demodulators - is dimensioned for the full
+    // clock, and below it the samples arrive faster than they are processed.
+    // The choice is still the operator's: this reports what it costs rather
+    // than overriding it, because a node with the modem disabled has no reason
+    // to run the clock at full speed.
+    if (freq < 240 && g_config.audio_modem_en)
+        ESP_LOGW(TAG, "the audio ADC/DAC modem needs 240 MHz to keep up with its receive chain; at %d MHz reception will be unreliable", freq);
 }

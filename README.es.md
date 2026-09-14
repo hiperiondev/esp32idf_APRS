@@ -98,6 +98,8 @@ En una frase, el firmware **demodula** audio AFSK/FSK desde el altavoz o la sali
 
 El cableado de la placa (pines de audio, pin/polaridad de PTT, tasas de muestreo) se define como constantes de compilación en el `CMakeLists.txt` de nivel superior. Se incluye un esquemático KiCad de la interfaz de radio en `schematics/`.
 
+La interfaz de audio en sí puede reducirse a un capacitor de acoplamiento y un trimmer de nivel por sentido: la página Radiomodem incluye una sección **Interfaz de audio** que polariza la entrada del ADC con las resistencias internas del propio pad, fija la amplitud y la frecuencia de muestreo de salida, avisa cuando la recepción se sale de rango y limita cuánto tiempo puede quedar activado el transmisor. Todos esos ajustes vienen con el valor que espera una placa de interfaz con su propia red de polarización, atenuadores y filtro de reconstrucción, así que una instalación existente no cambia. Dos botones junto a PRUEBA DE BUCLE — **NIVEL RX** y **PRUEBA TX** — ajustan los dos trimmers una vez que un equipo reemplaza el puente de loopback.
+
 > Las tablas completas de pines y las restricciones de cableado están en el [capítulo de Hardware de la documentación](https://esp32idf-aprs.readthedocs.io/en/latest/es/hardware.html).
 
 ---

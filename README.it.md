@@ -98,6 +98,8 @@ In una frase, il firmware **demodula** l'audio AFSK/FSK dall'altoparlante o dall
 
 Il cablaggio della scheda (pin audio, pin/polarità PTT, frequenze di campionamento) è definito come costanti a compile-time nel `CMakeLists.txt` di primo livello. È incluso uno schema KiCad dell'interfaccia radio sotto `schematics/`.
 
+L'interfaccia audio può ridursi a un condensatore di accoppiamento e un trimmer di livello per direzione: la pagina Radiomodem porta una sezione **Interfaccia audio** che polarizza l'ingresso dell'ADC con le resistenze interne del pad stesso, imposta ampiezza e frequenza di campionamento in trasmissione, avvisa quando la ricezione esce dal fondo scala e limita per quanto tempo il trasmettitore può restare attivo. Ognuna di queste impostazioni parte dal valore che si aspetta una scheda di interfaccia con la propria rete di polarizzazione, attenuatori e filtro di ricostruzione, quindi un'installazione esistente non cambia. Due pulsanti accanto a TEST LOOP — **LIVELLO RX** e **TEST TX** — regolano i due trimmer una volta che un apparato ha sostituito il ponticello di loopback.
+
 > Le tabelle complete dei pin e i vincoli di cablaggio sono nel [capitolo Hardware della documentazione](https://esp32idf-aprs.readthedocs.io/en/latest/it/hardware.html).
 
 ---

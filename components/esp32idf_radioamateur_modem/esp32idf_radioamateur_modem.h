@@ -85,6 +85,22 @@ typedef struct {
     uint16_t min_unkey_ms; /**< Extra minimum PTT-off (unkeyed) time between transmissions, in milliseconds, ON TOP OF the fixed one-modem-service-tick (~10 ms)
                               release Ax25TransmitCheck() always applies. 0 = no extra hold. For radios/repeaters that need a longer guaranteed unkey gap
                               between frames. */
+    uint32_t dac_samplerate;   /**< DAC (transmit) sample rate, in Hz. Must be an exact multiple of every supported baud rate, which restricts it to
+                                  ::MODEM_DAC_SAMPLERATE and twice that value. Read while the modem hardware is stopped, so modem_init() applies it and
+                                  modem_set_modem() does not: a change takes effect at the next start. A higher rate moves the DAC reconstruction images
+                                  further from the audio band, which matters when the interface to the transceiver has no reconstruction low-pass filter. */
+    uint8_t dac_amplitude_pct; /**< Peak-to-peak swing of the DAC output, in percent of the full 0..3.3 V range. Applied per sample, so it may be changed
+                                  while the modem runs. The ESP32 DAC is 8 bits wide: below roughly 20 % a sine period is drawn with so few codes that
+                                  quantization distortion dominates, so the level a microphone input expects is reached with an external attenuator and
+                                  not by lowering this value. */
+    bool adc_self_bias;        /**< true to bias the ADC input from the pad's own pull-up and pull-down in series, for an AC-coupled input with no external
+                                  bias network. Must stay false whenever the interface board provides its own bias divider. Only GPIO32/33 carry internal
+                                  pull resistors. */
+    bool rx_clip_warn;         /**< true to log a rate-limited warning whenever a processed block of samples reaches the ends of the ADC's conversion range.
+                                  On an interface without input clamp diodes that condition also means the pin is being driven past the supply rails. */
+    uint32_t tx_max_keyed_ms;  /**< Transmitter time-out, in milliseconds, or 0 to disable it. When a key-up lasts longer than this, the modem service task
+                                  releases PTT, stops the modulator and discards the transmission, so a stalled transmit path cannot hold the channel
+                                  indefinitely. */
 } modem_config_t;
 
 /**
@@ -94,6 +110,11 @@ typedef struct {
  *        CSMA slot time, the standard AX.25/KISS Persist default (63, ~25%
  *        transmit chance per clear slot), FX.25 disabled, the PTT polarity
  *        taken from ::MODEM_PTT_ACTIVE_HIGH and no extra unkey hold.
+ *
+ * The audio interface fields take the values that suit an interface board
+ * carrying its own bias network, attenuators and reconstruction filter: the
+ * compile-time DAC sample rate and output swing, no ADC input self-bias, no
+ * over-range warning and no transmitter time-out.
  */
 #define MODEM_DEFAULT_CONFIG()                                                                                                                                 \
     {                                                                                                                                                          \
@@ -107,6 +128,11 @@ typedef struct {
         .fx25_mode = 0,                                                                                                                                        \
         .ptt_active_high = MODEM_PTT_ACTIVE_HIGH ? true : false,                                                                                               \
         .min_unkey_ms = 0,                                                                                                                                     \
+        .dac_samplerate = MODEM_DAC_SAMPLERATE,                                                                                                                \
+        .dac_amplitude_pct = MODEM_DAC_AMPLITUDE_PCT,                                                                                                          \
+        .adc_self_bias = false,                                                                                                                                \
+        .rx_clip_warn = false,                                                                                                                                 \
+        .tx_max_keyed_ms = 0,                                                                                                                                  \
     }
 
 /**

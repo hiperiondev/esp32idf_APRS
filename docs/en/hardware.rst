@@ -160,6 +160,65 @@ C2/C3 with 10 nF (fc ≈ 7.2 kHz) to keep the audio flat past ~5 kHz.
    ``modem_init()`` blocks ~5 s calibrating the ADC clock and beacons transmit
    on entry, so a wrong-polarity PTT gives you seconds of unmodulated carrier.
 
+Reduced interface: one capacitor and one trimmer per direction
+--------------------------------------------------------------
+
+The schematic above is the reference build. A reduced interface is also
+supported, carrying nothing but a coupling capacitor and a level trimmer in
+each audio direction, with PTT unchanged. What the removed parts used to do
+is either taken over by a setting on the Radiomodem page or accepted as a
+limitation:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 70
+
+   * - Removed
+     - Replacement
+   * - R5/R6 (ADC bias)
+     - **ADC input self-bias**, which connects the pad's own pull-up and
+       pull-down in series
+   * - R3 (TX pad)
+     - the trimmer alone, optionally with **Transmit output swing** lowered to
+       spread its useful range
+   * - R1/R2 + C2/C3 (reconstruction filter)
+     - **Transmit sample rate** set to 76800 Hz, which moves the images an
+       octave up
+   * - D1/D2 (input clamp)
+     - nothing: **Warn on receive over-range** reports the condition, the
+       receive trimmer is what limits the fault current
+   * - R7/C5 (ADC snubber)
+     - nothing; expect slightly more noise
+
+Wiring, per direction: the transmit trimmer is a divider between GPIO25 and
+ground with its wiper feeding the coupling capacitor, and the receive trimmer
+is a divider across the transceiver's speaker output with its wiper feeding
+the other capacitor. **The capacitor goes after the trimmer on both sides.**
+Ahead of it the trimmer's lower leg would tie the ADC pin to ground, which
+defeats the self-bias, and on the transmit side it would collapse the
+microphone input's own bias.
+
+Both capacitors should be 1 µF or larger. At 100 nF the high-pass corner lands
+near 700 Hz, which attenuates the 1200 Hz mark tone relative to the 2200 Hz
+space. Use 10 kΩ trimmers: on the transmit side that keeps the load on the DAC
+output light, and the attenuation needed there puts the wiper at roughly 1.4 %
+of travel, so a multiturn trimmer is what makes it settable at all.
+
+Set the levels with the two buttons next to LOOP TEST, which is what the loop
+test cannot do once a transceiver has replaced the jumper: **RX LEVEL**
+measures without transmitting — aim for 250 to 350 mV RMS with the raw range
+well clear of 0 and 4095, and with the self-bias on expect a DC offset between
+1200 and 2000 mV — and **TX TEST** keys up so the deviation can be read on
+other equipment and trimmed to 2.5 to 3.5 kHz.
+
+.. warning::
+
+   Without D1/D2 the receive trimmer is the only thing limiting current into
+   the ADC pin. A hand-held's speaker output at full volume is far outside
+   0 to 3.3 V, so set the volume low before plugging in and never wire the
+   speaker output to GPIO33 through the capacitor alone.
+
+
 Baofeng UV-5R and K-plug HTs
 ----------------------------
 
@@ -202,8 +261,8 @@ Bring-up order
    (2.5–3.5 kHz). Over-deviation is the single most common cause of "my igate
    hears everyone but nobody hears me".
 #. **9600 Bd G3RUH** needs the flat/discriminator path at both ends: DATA
-   IN/DATA OUT, 10 nF in C2/C3, and the *Audio low-pass filter* checkbox set
-   for flat audio.
+   IN/DATA OUT, 10 nF in C2/C3, and the *Flat / discriminator audio input*
+   checkbox ticked.
 
 Isolation and ground loops
 ==========================

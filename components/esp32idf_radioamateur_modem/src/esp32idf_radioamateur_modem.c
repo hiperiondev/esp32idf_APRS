@@ -48,6 +48,14 @@ static const char *TAG = "radiomodem";
 // worse than reporting the failure and letting the caller move on.
 #define MODEM_TX_LOCK_TIMEOUT_MS 1000
 
+// Transmitter time-out. s_txMaxKeyedMs is the operator's selection, 0 when the
+// guard is off; s_txKeyedSinceMs is the millisecond timestamp of the key-up the
+// service task is currently watching, 0 when the transmitter is idle. Both are
+// written and read from the service task and from modem_init()/
+// modem_set_modem(), all task context, and both are single machine words.
+static uint32_t s_txMaxKeyedMs = 0;
+static uint32_t s_txKeyedSinceMs = 0;
+
 static ax25_ctx_t s_ctx;
 static TaskHandle_t s_svcTask = NULL;
 static modem_rx_cb_t s_rxCb = NULL;
@@ -93,6 +101,64 @@ static void txUnlock(void) {
 // Service task
 // ------------------------------------------------------------------
 
+// @brief Milliseconds since boot, as a 32-bit counter.
+static inline uint32_t modem_millis(void) {
+    return (uint32_t)(esp_timer_get_time() / 1000);
+}
+
+// @brief Release a transmission that has outlasted the time-out.
+//
+// Runs in the service task, so it may do the whole teardown the DAC ISR cannot:
+// the modulator is stopped, the PTT line is released, the queued frame is
+// abandoned and the receive FIFO is emptied of everything the transmitter put
+// into it. The AX.25 transmit state machine is returned to idle by
+// Ax25TransmitAbort(), otherwise the frame that stalled would key up again on
+// the next poll.
+static void txTimeoutRelease(uint32_t keyedMs) {
+    ESP_LOGE(TAG, "transmitter keyed for %" PRIu32 " ms, over the %" PRIu32 " ms limit - releasing PTT and discarding the transmission", keyedMs,
+             s_txMaxKeyedMs);
+
+    setTransmit(false);
+    AFSK_ServiceTx();
+    setPtt(false);
+    Ax25TransmitAbort();
+    AFSK_FlushFifo();
+    s_txKeyedSinceMs = 0;
+}
+
+// @brief Watch the length of the current key-up.
+//
+// The timestamp is taken here rather than at ModemTransmitStart() so that the
+// guard measures what it acts on: the service task is what releases the
+// transmitter, and it sees the keyed state through getTransmit() on every poll.
+static void txTimeoutPoll(void) {
+    if (s_txMaxKeyedMs == 0) {
+        s_txKeyedSinceMs = 0;
+        return;
+    }
+
+    if (!getTransmit()) {
+        s_txKeyedSinceMs = 0;
+        return;
+    }
+
+    uint32_t now = modem_millis();
+
+    if (s_txKeyedSinceMs == 0) {
+        // A key-up starting exactly on the millisecond the counter reads 0
+        // would be indistinguishable from "not keyed", so it is credited with
+        // the following millisecond instead. The cost is one millisecond of
+        // measurement error, once every 49.7 days.
+        s_txKeyedSinceMs = (now == 0) ? 1 : now;
+        return;
+    }
+
+    uint32_t keyed = now - s_txKeyedSinceMs; // unsigned: correct across the wrap
+
+    if (keyed >= s_txMaxKeyedMs)
+        txTimeoutRelease(keyed);
+}
+
 static void modem_service_task(void *arg) {
     (void)arg;
     uint8_t *frame;
@@ -116,6 +182,7 @@ static void modem_service_task(void *arg) {
         //}
 
         Ax25TransmitCheck();
+        txTimeoutPoll();
 
         while (Ax25ReadNextRxFrame(&frame, &size, &peak, &valley, &level, &corrected, &mV)) {
             if (s_rxCb) {
@@ -158,6 +225,16 @@ void modem_set_modem(const modem_config_t *cfg) {
     Ax25Config.allowNonAprs = cfg->allow_non_aprs ? 1 : 0;
     Ax25Config.fullDuplex = cfg->full_duplex ? 1 : 0;
     Ax25Config.persist = cfg->persist;
+
+    // Audio interface settings the running hardware accepts at any time. The
+    // DAC sample rate is deliberately not among them: the sample-clock alarm
+    // period and every phase step derived from it are programmed while the
+    // modem is stopped, so modem_init() is what applies that one.
+    afskSetDacAmplitude(cfg->dac_amplitude_pct);
+    afskSetClipWarn(cfg->rx_clip_warn);
+    if (cfg->adc_self_bias != afskGetAdcSelfBias())
+        afskSetAdcSelfBias(cfg->adc_self_bias);
+    s_txMaxKeyedMs = cfg->tx_max_keyed_ms;
 }
 
 esp_err_t modem_init(const modem_config_t *cfg) {
@@ -183,6 +260,22 @@ esp_err_t modem_init(const modem_config_t *cfg) {
     // pin's GPIO direction. The pin itself (::MODEM_PTT_GPIO) is fixed at
     // compile time; only the active level is applied here.
     AFSK_setPttActiveHigh(cfg->ptt_active_high);
+
+    // Also before AFSK_init(): the sample rate becomes the DAC clock's alarm
+    // period there and the tone phase steps in ModemInit() further down, so a
+    // value the modulator cannot use is refused here, while the previous one is
+    // still in force.
+    if (afskSetDacSampleRate(cfg->dac_samplerate) != ESP_OK)
+        ESP_LOGW(TAG, "DAC sample rate %" PRIu32 " Hz is not a multiple of every supported baud rate, keeping %" PRIu32 " Hz", cfg->dac_samplerate,
+                 afskGetDacSampleRate());
+
+    // The selection is recorded before the ADC exists; AFSK_init() applies it
+    // to the pad once the continuous driver has finished configuring it.
+    afskSetAdcSelfBias(cfg->adc_self_bias);
+    afskSetDacAmplitude(cfg->dac_amplitude_pct);
+    afskSetClipWarn(cfg->rx_clip_warn);
+    s_txMaxKeyedMs = cfg->tx_max_keyed_ms;
+    s_txKeyedSinceMs = 0;
 
     esp_err_t err = AFSK_init();
     if (err != ESP_OK)

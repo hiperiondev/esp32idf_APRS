@@ -401,6 +401,20 @@ void Ax25TransmitCheck(void);
 void Ax25Init(uint8_t fx25Mode);
 
 /**
+ * @brief Abandon the transmission in progress and empty the transmit ring.
+ *
+ * Returns the transmit state machine to idle and discards every queued frame,
+ * so nothing keys up again on the next Ax25TransmitCheck() call. The unkey
+ * gates a normal key-down arms are armed as well, which means the next frame
+ * to be queued still waits for a real PTT-off interval.
+ *
+ * The modulator must already be stopped when this is called: it assumes
+ * Ax25GetTxBit() can no longer run, so that the transmit ring has a single
+ * owner while it is released.
+ */
+void Ax25TransmitAbort(void);
+
+/**
  * @brief Set the TXDelay (preamble) duration used before transmitting.
  * @param delay_ms Preamble duration, in milliseconds.
  */

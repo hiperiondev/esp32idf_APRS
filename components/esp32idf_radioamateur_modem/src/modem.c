@@ -99,7 +99,7 @@ static const char *TAG = "modem";
 //
 // PLLxxxx_STEP above assumes samples-per-symbol is exactly Nxxx, which is
 // only true if the ADC and DAC really run at the nominal
-// MODEM_ADC_SAMPLERATE / MODEM_DAC_SAMPLERATE ratio. They do not: each is
+// ADC sample rate over DAC sample rate ratio. They do not: each is
 // an independent hardware timer with its own rounding error against the rate
 // it was configured for (see the MODEM_ADC_SAMPLERATE comment in
 // esp32idf_radioamateur_modem_config.h and dac_timer_create() in afsk.c), and
@@ -151,7 +151,7 @@ void ModemCalibrateSampleRate(float measuredAdcHz, float measuredDacHz) {
     // ratio for every profile: the decimation factor (or lack of one, for
     // G3RUH) and the baud-rate divider are common to both the actual and the
     // nominal figure and cancel out. See the derivation in modem.h.
-    float ratio = (measuredAdcHz / (float)MODEM_ADC_SAMPLERATE) / (measuredDacHz / (float)MODEM_DAC_SAMPLERATE);
+    float ratio = (measuredAdcHz / (float)MODEM_ADC_SAMPLERATE) / (measuredDacHz / (float)afskGetDacSampleRate());
 
     // Sane range is a few tenths of a percent either way - both clocks are
     // quartz-derived, so anything past +/-1% is either a bad measurement
@@ -495,7 +495,7 @@ void MODEM_DECODE(int16_t sample, uint16_t mVrms) {
 }
 
 // @brief Baudrate/DAC handler. NRZI encoding happens here.
-//        Runs in the GPTimer ISR at MODEM_DAC_SAMPLERATE.
+//        Runs in the GPTimer ISR at the configured DAC sample rate.
 static uint32_t phaseAcc = 0; // Q32: the full sine cycle is 2^32
 static uint16_t sampleIndex = 0;
 
@@ -524,7 +524,7 @@ uint8_t IRAM_ATTR MODEM_BAUDRATE_TIMER_HANDLER(void) {
         // The phase accumulator is 32 bits wide and the table index is the top
         // 9 of them, with the fraction carried in the low 23 bits. Stepping the
         // TABLE INDEX by an integer instead would quantise the tone to
-        // MODEM_DAC_SAMPLERATE / SIN_LEN, i.e. 75 Hz at 38400, which would put
+        // the DAC sample rate over SIN_LEN, i.e. 75 Hz at 38400, which would put
         // Bell 202's 2200 Hz space on step 29 (2175, -1.14 %), V.23's mark at
         // 1275 (-1.92 %) and AFSK300's mark at 1575 (-1.56 %) - off frequency
         // on air as well as in the loopback. Carrying the fraction keeps every
@@ -695,9 +695,9 @@ void ModemGetStepTones(float *mark, float *space) {
     // Derived from the steps themselves, so this reports what the modulator is
     // really doing rather than what it was asked to do.
     if (mark)
-        *mark = (float)(((double)markStep * (double)MODEM_DAC_SAMPLERATE) / 4294967296.0);
+        *mark = (float)(((double)markStep * (double)afskGetDacSampleRate()) / 4294967296.0);
     if (space)
-        *space = (float)(((double)spaceStep * (double)MODEM_DAC_SAMPLERATE) / 4294967296.0);
+        *space = (float)(((double)spaceStep * (double)afskGetDacSampleRate()) / 4294967296.0);
 }
 
 void ModemInit(void) {
@@ -800,7 +800,7 @@ void ModemInit(void) {
         baudRate = 9600.f;
 
         // G3RUH is baseband NRZ, not AFSK: there are no mark and space tones,
-        // so both are reported as 0. MODEM_DAC_SAMPLERATE is what configures
+        // so both are reported as 0. The DAC sample rate is what configures
         // the timer; the tone-reporting helpers must not claim a mark or space
         // frequency for a profile that emits neither.
         markFreq = 0.f;
@@ -829,9 +829,14 @@ void ModemInit(void) {
     }
 
     // Q32 phase increment: step = f * 2^32 / Fs, rounded. Exact to ~1e-7 %.
-    markStep = (uint32_t)(((double)markFreq * 4294967296.0) / (double)MODEM_DAC_SAMPLERATE + 0.5);
-    spaceStep = (uint32_t)(((double)spaceFreq * 4294967296.0) / (double)MODEM_DAC_SAMPLERATE + 0.5);
-    baudRateStep = (uint16_t)(MODEM_DAC_SAMPLERATE / (uint32_t)baudRate);
+    // The rate is the one the DAC sample clock is programmed for, which is
+    // selectable at runtime and fixed before the modem comes up, so every
+    // derived step below is built from the same figure the timer uses.
+    uint32_t dacRate = afskGetDacSampleRate();
+
+    markStep = (uint32_t)(((double)markFreq * 4294967296.0) / (double)dacRate + 0.5);
+    spaceStep = (uint32_t)(((double)spaceFreq * 4294967296.0) / (double)dacRate + 0.5);
+    baudRateStep = (uint16_t)(dacRate / (uint32_t)baudRate);
 
     {
         float txMark = 0, txSpace = 0;

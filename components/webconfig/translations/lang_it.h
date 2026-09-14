@@ -110,6 +110,10 @@
 #define TR_BTN_AUTO_GENERATE "Genera automaticamente"
 /** Italian text for the caption of the "loop test" button, rendered on any page. English: "LOOP TEST". */
 #define TR_BTN_LOOP_TEST "TEST LOOP"
+/** Italian text for the caption of the "RX LEVEL" button, rendered on any page. */
+#define TR_BTN_RX_LEVEL "LIVELLO RX"
+/** Italian text for the caption of the "TX TEST" button, rendered on any page. */
+#define TR_BTN_TX_TEST "TEST TX"
 /** Italian text for the loopback-test status message: saving, rendered on any page. English: "Saving settings...". */
 #define TR_LOOPTEST_SAVING "Salvataggio impostazioni..."
 /** Italian text for the loopback-test status message: running, rendered on any page. English: "Testing...". */
@@ -209,8 +213,20 @@
 #define TR_F_ENABLE_AUDIO_MODEM "Abilita modem audio ADC/DAC"
 /** Italian text for the form label for the "afsk modulation" field or fieldset, rendered on the configuration forms. English: "Modulation". */
 #define TR_F_AFSK_MODULATION "Modulazione"
-/** Italian text for the form label for the "audio low pass filter" field or fieldset, rendered on the configuration forms. English: "Audio low-pass filter". */
-#define TR_F_AUDIO_LOW_PASS_FILTER "Filtro passa-basso audio"
+/** Italian text for the form label for the "Flat / discriminator audio input" field or fieldset, rendered on the configuration forms. */
+#define TR_F_FLAT_AUDIO_INPUT "Ingresso audio piatto / da discriminatore"
+/** Italian text for the form label for the "Audio interface" field or fieldset, rendered on the configuration forms. */
+#define TR_F_AUDIO_INTERFACE "Interfaccia audio"
+/** Italian text for the form label for the "ADC input self-bias" field or fieldset, rendered on the configuration forms. */
+#define TR_F_ADC_SELF_BIAS "Polarizzazione interna dell'ingresso ADC"
+/** Italian text for the form label for the "Warn on receive over-range" field or fieldset, rendered on the configuration forms. */
+#define TR_F_RX_CLIP_WARN "Avvisa quando l'audio ricevuto esce dal fondo scala"
+/** Italian text for the form label for the "Transmit output swing (%)" field or fieldset, rendered on the configuration forms. */
+#define TR_F_DAC_AMPLITUDE_PCT "Ampiezza di uscita in trasmissione (%)"
+/** Italian text for the form label for the "Transmit sample rate" field or fieldset, rendered on the configuration forms. */
+#define TR_F_DAC_SAMPLERATE "Frequenza di campionamento in trasmissione"
+/** Italian text for the form label for the "Transmitter time-out (ms)" field or fieldset, rendered on the configuration forms. */
+#define TR_F_TX_MAX_KEYED_MS "Tempo massimo di trasmissione (ms)"
 /** Italian text for the form label for the "beacon interval s" field or fieldset, rendered on the configuration forms. English: "Beacon interval (s)". */
 #define TR_F_BEACON_INTERVAL_S "Intervallo beacon (s)"
 /** Italian text for the form label for the "beacon position" field or fieldset, rendered on the configuration forms. English: "Beacon / Position". */
@@ -738,7 +754,9 @@
 #define TR_SYSINFO_CPU_FREQ_SET "Imposta frequenza CPU"
 /** Italian text for the system-information row label for cpu freq note, rendered on the dashboard. English: "Saved to flash and re-applied automatically on
  * every boot.". */
-#define TR_SYSINFO_CPU_FREQ_NOTE "Salvato in flash e riapplicato automaticamente ad ogni avvio."
+#define TR_SYSINFO_CPU_FREQ_NOTE                                                                                                                               \
+    "Salvato in flash e riapplicato automaticamente ad ogni avvio. Il modem audio ADC/DAC richiede 240 MHz: al di sotto la catena di ricezione non riesce "    \
+    "a stare dietro ai campioni in arrivo."
 /** Italian text for the system-information row label for flash size, rendered on the dashboard. English: "Flash size:". */
 #define TR_SYSINFO_FLASH_SIZE "Dimensione flash:"
 /** Italian text for the system-information row label for min free heap, rendered on the dashboard. English: "Min free heap:". */
@@ -1117,6 +1135,9 @@
     "<br>DAC uscita: GPIO%d<br>ADC ingresso: GPIO%d<br>Pin PTT: %s<br>PTT attivo-alto: %s<br>Attenuazione ADC: %d<br>ADC: %d Hz<br>DAC: %d Hz"
 /** Italian text: Radiomodem page label for audio hw note, rendered on the Radiomodem page. */
 #define TR_RADIO_AUDIO_HW_NOTE ""
+/** Italian text for the Radiomodem page label for audio hw runtime, rendered on the Radiomodem page. */
+#define TR_RADIO_AUDIO_HW_RUNTIME                                                                                                                              \
+    "<br>Frequenza di campionamento in trasmissione: %d Hz<br>Ampiezza di uscita in trasmissione: %d %%<br>Polarizzazione interna dell'ADC: %s"
 
 /** @} */
 
@@ -2086,9 +2107,32 @@
 #define TR_H_F_APRS_PASSCODE                                                                                                                                   \
     "Codice di accesso che il server APRS-IS verifica rispetto a Il Mio Indicativo prima di accettare traffico instradato da questa stazione. Genera "         \
     "Automaticamente lo calcola da quell'indicativo; un codice errato o assente si connette comunque, ma viene registrato come non verificato."
-/** Italian text of the contextual help for the "Audio low-pass filter" option. */
-#define TR_H_F_AUDIO_LOW_PASS_FILTER                                                                                                                           \
-    "Filtra l'audio ricevuto prima della demodulazione. Aiuta con un'uscita ricevitore rumorosa o sibilante e può restare spento se è pulita."
+/** Italian text of the contextual help for the "Flat / discriminator audio input" option. */
+#define TR_H_F_FLAT_AUDIO_INPUT                                                                                                                                \
+    "Sceglie come viene equalizzato l'audio ricevuto. Attivarlo quando l'audio arriva da una presa dati o dal discriminatore, che non è filtrata e "           \
+    "non porta de-enfasi; lasciarlo spento per un'uscita altoparlante o cuffia, che è già de-enfatizzata."
+/** Italian text of the contextual help for the "ADC input self-bias" option. */
+#define TR_H_F_ADC_SELF_BIAS                                                                                                                                   \
+    "Polarizza il pin dell'audio ricevuto con le resistenze interne del pad dell'ADC, che è ciò di cui ha bisogno un ingresso accoppiato tramite "             \
+    "condensatore senza rete di polarizzazione esterna. Lasciarlo spento quando la scheda di interfaccia imposta la polarizzazione, perché le resistenze "     \
+    "interne la caricherebbero."
+/** Italian text of the contextual help for the "Warn on receive over-range" option. */
+#define TR_H_F_RX_CLIP_WARN                                                                                                                                    \
+    "Registra un avviso quando l'audio ricevuto raggiunge gli estremi della gamma del convertitore. Conviene attivarlo su un'interfaccia senza diodi "         \
+    "di clamp in ingresso, dove uscire dalla gamma significa anche che il pin viene pilotato oltre le tensioni di alimentazione."
+/** Italian text of the contextual help for the "Transmit output swing (%)" option. */
+#define TR_H_F_DAC_AMPLITUDE_PCT                                                                                                                               \
+    "Ampiezza picco-picco dell'uscita audio di trasmissione, in percentuale della gamma completa. L'attenuazione richiesta da un ingresso microfonico "        \
+    "spetta a un attenuatore esterno: abbassarla troppo lascia il convertitore a 8 bit a disegnare il tono con pochi gradini."
+/** Italian text of the contextual help for the "Transmit sample rate" option. */
+#define TR_H_F_DAC_SAMPLERATE                                                                                                                                  \
+    "Frequenza con cui viene generato l'audio di trasmissione. Quella più alta allontana di un'ottava le immagini di ricostruzione del convertitore "          \
+    "dalla banda audio, il che ripaga il carico di interruzioni aggiuntivo quando l'interfaccia non porta un filtro di ricostruzione. Si applica al "          \
+    "prossimo riavvio."
+/** Italian text of the contextual help for the "Transmitter time-out (ms)" option. */
+#define TR_H_F_TX_MAX_KEYED_MS                                                                                                                                 \
+    "Rilascia il trasmettitore quando una trasmissione dura più di così, in modo che una catena di trasmissione bloccata non possa occupare il canale. "       \
+    "0 disattiva il limite. I valori utili stanno molto sopra il frame più lungo che questa stazione trasmette."
 /** Italian text of the contextual help for the "Beacon interval (s)" option. */
 #define TR_H_F_BEACON_INTERVAL_S                                                                                                                               \
     "Secondi tra i beacon di posizione. Usare un intervallo lungo su una frequenza affollata; 0 lascia in vigore il valore predefinito del servizio."

@@ -65,11 +65,16 @@ esp_err_t page_radio_get(httpd_req_t *req) {
     {
         char hlp[WEB_HELP_MARKUP_MAX];
         web_help_markup(hlp, sizeof(hlp), web_help_for_label(TR_F_ENABLE_AUDIO_MODEM));
-        char buf[WEB_HELP_MARKUP_MAX + 380];
+        // The margin over the help markup covers the fixed part of the label:
+        // the flex wrapper, the checkbox, the enable caption and the three
+        // diagnostic buttons with their captions.
+        char buf[WEB_HELP_MARKUP_MAX + 760];
         snprintf(buf, sizeof(buf),
                  "<label style='display:flex;align-items:center;gap:10px;flex-wrap:wrap;'>"
                  "<span><input type='checkbox' name='audioModemEn' %s> " TR_F_ENABLE_AUDIO_MODEM "%s</span>"
                  "<button type='button' class='secondary' id='loopTestBtn' onclick='loopTest()'>" TR_BTN_LOOP_TEST "</button>"
+                 "<button type='button' class='secondary' id='rxLevelBtn' onclick='rxLevel()'>" TR_BTN_RX_LEVEL "</button>"
+                 "<button type='button' class='secondary' id='txTestBtn' onclick='txTest()'>" TR_BTN_TX_TEST "</button>"
                  "<span id='loopTestStatus'></span>"
                  "</label>",
                  g_config.audio_modem_en ? "checked" : "", hlp);
@@ -108,7 +113,19 @@ esp_err_t page_radio_get(httpd_req_t *req) {
                  MODEM_DAC_SAMPLERATE);
         httpd_resp_sendstr_chunk(req, buf);
     }
-    web_field_checkbox(req, TR_F_AUDIO_LOW_PASS_FILTER, "audioLPF", g_config.audio_lpf);
+    // What the Audio interface fieldset further down has actually put in
+    // force, shown next to the compiled-in values above so a board definition
+    // and a saved setting can be told apart at a glance. The transmit sample
+    // rate is the one that can differ from what the modem is running with
+    // until the next reboot, since that one is programmed while the hardware
+    // is stopped.
+    {
+        char buf[500];
+        snprintf(buf, sizeof(buf), "<p style='opacity:.75'>" TR_RADIO_AUDIO_HW_RUNTIME "</p>", (int)g_config.dac_samplerate, (int)g_config.dac_amplitude_pct,
+                 g_config.adc_self_bias ? TR_ENABLED : TR_F_OFF);
+        httpd_resp_sendstr_chunk(req, buf);
+    }
+    web_field_checkbox(req, TR_F_FLAT_AUDIO_INPUT, "audioLPF", g_config.audio_lpf);
     web_field_int(req, TR_F_PREAMBLE_MS, "rfPreamble", g_config.preamble, RF_PREAMBLE_MS_MIN, RF_PREAMBLE_MS_MAX);
     web_field_int(req, TR_F_TX_TIME_SLOT_MS, "txTimeSlot", g_config.tx_timeslot, RF_TX_TIMESLOT_MS_MIN, RF_TX_TIMESLOT_MS_MAX);
     // How many frames may queue in the RF TX ring (waiting to key up or on
@@ -155,6 +172,25 @@ esp_err_t page_radio_get(httpd_req_t *req) {
     web_field_int(req, TR_F_CSMA_PERSISTENCE, "csmaPersist", g_config.csma_persist, CSMA_PERSIST_MIN, CSMA_PERSIST_MAX);
     web_fieldset_close(req);
 
+    // Everything that describes what sits between the ADC/DAC pins and the
+    // transceiver. The defaults suit an interface board carrying its own bias
+    // network, attenuators and reconstruction filter, which is what the
+    // schematics in docs/ show; the settings here are what an interface
+    // reduced to a coupling capacitor and a level trimmer per direction needs
+    // instead. All of them are applied live on Save except the transmit sample
+    // rate, which is programmed while the modem hardware is stopped and so
+    // takes effect at the next reboot.
+    web_fieldset_open(req, TR_F_AUDIO_INTERFACE);
+    web_field_checkbox(req, TR_F_ADC_SELF_BIAS, "adcSelfBias", g_config.adc_self_bias);
+    web_field_checkbox(req, TR_F_RX_CLIP_WARN, "rxClipWarn", g_config.rx_clip_warn);
+    web_field_int(req, TR_F_DAC_AMPLITUDE_PCT, "dacAmplPct", g_config.dac_amplitude_pct, DAC_AMPL_PCT_MIN, DAC_AMPL_PCT_MAX);
+    web_select_open(req, TR_F_DAC_SAMPLERATE, "dacRate");
+    web_select_option(req, DAC_SAMPLERATE_LOW, "38400 Hz", g_config.dac_samplerate == DAC_SAMPLERATE_LOW);
+    web_select_option(req, DAC_SAMPLERATE_HIGH, "76800 Hz", g_config.dac_samplerate == DAC_SAMPLERATE_HIGH);
+    web_select_close(req);
+    web_field_int(req, TR_F_TX_MAX_KEYED_MS, "txMaxKeyedMs", (int)g_config.tx_max_keyed_ms, TX_MAX_KEYED_MS_MIN, TX_MAX_KEYED_MS_MAX);
+    web_fieldset_close(req);
+
     httpd_resp_sendstr_chunk(req, "<script>"
                                   "function loopTest(){"
                                   "var btn=document.getElementById('loopTestBtn');"
@@ -170,6 +206,45 @@ esp_err_t page_radio_get(httpd_req_t *req) {
                                   // POST, not GET: this route keys the transmitter, so it is
                                   // registered POST-only and goes through the same-origin check.
                                   "return fetch('/radio/looptest',{method:'POST'});"
+                                  "}).then(function(r){return r.json();}).then(function(data){"
+                                  "btn.disabled=false;"
+                                  "status.style.color=data.ok?'green':'red';"
+                                  "status.textContent=' '+data.msg;"
+                                  "}).catch(function(){btn.disabled=false;status.style.color='red';status.textContent=' " TR_LOOPTEST_FAILED "';});"
+                                  "}"
+                                  // Receive level and bias measurement. Nothing is transmitted, so
+                                  // unlike the loop test it can be run with a transceiver connected
+                                  // and while real traffic is being decoded. The form is saved first
+                                  // for the same reason as above: what is on screen is what gets
+                                  // measured.
+                                  "function rxLevel(){"
+                                  "var btn=document.getElementById('rxLevelBtn');"
+                                  "var status=document.getElementById('loopTestStatus');"
+                                  "btn.disabled=true;status.style.color='';status.textContent=' " TR_LOOPTEST_SAVING "';"
+                                  "var form=document.getElementById('radioForm');"
+                                  "var params=new URLSearchParams(new FormData(form));"
+                                  "fetch('/radio',{method:'POST',body:params}).then(function(){"
+                                  "status.textContent=' " TR_LOOPTEST_RUNNING "';"
+                                  "return fetch('/radio/level',{method:'POST'});"
+                                  "}).then(function(r){return r.json();}).then(function(data){"
+                                  "btn.disabled=false;"
+                                  "if(!data.ok){status.style.color='red';status.textContent=' '+data.msg;return;}"
+                                  "status.style.color='green';"
+                                  "status.textContent=' '+data.mVrms+' mV RMS (peak '+data.peak_mVrms+'), DC '+data.dc_mV"
+                                  "+' mV, AGC '+data.agc+'x, raw '+data.raw_min+'..'+data.raw_max+', DCD '+(data.dcd?'yes':'no');"
+                                  "}).catch(function(){btn.disabled=false;status.style.color='red';status.textContent=' " TR_LOOPTEST_FAILED "';});"
+                                  "}"
+                                  // Bounded transmit burst. POST for the same reason as the loop
+                                  // test: it keys the transmitter.
+                                  "function txTest(){"
+                                  "var btn=document.getElementById('txTestBtn');"
+                                  "var status=document.getElementById('loopTestStatus');"
+                                  "btn.disabled=true;status.style.color='';status.textContent=' " TR_LOOPTEST_SAVING "';"
+                                  "var form=document.getElementById('radioForm');"
+                                  "var params=new URLSearchParams(new FormData(form));"
+                                  "fetch('/radio',{method:'POST',body:params}).then(function(){"
+                                  "status.textContent=' " TR_LOOPTEST_RUNNING "';"
+                                  "return fetch('/radio/txtest',{method:'POST'});"
                                   "}).then(function(r){return r.json();}).then(function(data){"
                                   "btn.disabled=false;"
                                   "status.style.color=data.ok?'green':'red';"
@@ -235,6 +310,80 @@ esp_err_t page_radio_looptest_post(httpd_req_t *req) {
             esc[o++] = 'n';
         } else if (c < 0x20) {
             continue; // drop other control chars
+        } else {
+            esc[o++] = (char)c;
+        }
+    }
+    esc[o] = 0;
+    httpd_resp_sendstr_chunk(req, esc);
+
+    httpd_resp_sendstr_chunk(req, "\"}");
+    httpd_resp_sendstr_chunk(req, NULL);
+    return ESP_OK;
+}
+
+// POST /radio/level - measures the receive level and input bias (see
+// aprs_rx_level_sample()) and returns the reading as JSON. Nothing is
+// transmitted, so this is the measurement to use once a transceiver has
+// replaced the ADC/DAC jumper the loop test needs.
+//
+// POST rather than GET: the measurement claims the modem's diagnostics for a
+// second, which makes it a state-changing request, and web_check_auth() runs
+// its same-origin check on POST only - the same reasoning as
+// page_radio_looptest_post() above.
+//
+// The response is sent as produced. Every field in it is a number or a fixed
+// keyword generated locally, so unlike the loop test's result there is no
+// received payload in it to escape.
+esp_err_t page_radio_level_post(httpd_req_t *req) {
+    if (!web_check_auth(req))
+        return ESP_OK;
+    httpd_resp_set_type(req, "application/json");
+
+    // Sized for the widest reading the object can hold - every field is a
+    // number of known width plus the fixed keys - with room for the failure
+    // form, which is shorter.
+    char result[320];
+    aprs_rx_level_sample(result, sizeof(result));
+    httpd_resp_sendstr(req, result);
+    return ESP_OK;
+}
+
+// POST /radio/txtest - transmits a bounded test burst (see aprs_tx_test_run())
+// and returns the result as JSON: {"ok":true/false,"msg":"..."}. The
+// transmit-side counterpart of /radio/level: it keys up so the deviation can
+// be measured on other equipment, and waits for nothing to come back.
+//
+// POST for the same reason as the loop test: this one puts a carrier on the
+// air.
+esp_err_t page_radio_txtest_post(httpd_req_t *req) {
+    if (!web_check_auth(req))
+        return ESP_OK;
+    httpd_resp_set_type(req, "application/json");
+
+    char result[320];
+    bool ok = aprs_tx_test_run(result, sizeof(result));
+
+    // The message is assembled from fixed prose and the station's own
+    // settings, so it carries nothing received off the air - but the quote and
+    // backslash escapes are still applied, since it is rendered straight into
+    // a JSON string.
+    httpd_resp_sendstr_chunk(req, ok ? "{\"ok\":true,\"msg\":\"" : "{\"ok\":false,\"msg\":\"");
+
+    char esc[128];
+    size_t o = 0;
+    for (size_t i = 0; result[i] != 0; i++) {
+        unsigned char c = (unsigned char)result[i];
+        if (o + 2 > sizeof(esc) - 1) {
+            esc[o] = 0;
+            httpd_resp_sendstr_chunk(req, esc);
+            o = 0;
+        }
+        if (c == '"' || c == '\\') {
+            esc[o++] = '\\';
+            esc[o++] = (char)c;
+        } else if (c < 0x20) {
+            continue;
         } else {
             esc[o++] = (char)c;
         }
@@ -367,6 +516,40 @@ esp_err_t page_radio_post(httpd_req_t *req) {
         csma_persist_in = CSMA_PERSIST_MAX;
     g_config.csma_persist = (uint8_t)csma_persist_in;
 
+    // Audio interface. Both checkboxes default to off when absent from the
+    // POST, which is what an unchecked box sends and also what an interface
+    // board with its own bias network needs.
+    g_config.adc_self_bias = web_form_get_bool(body, "adcSelfBias");
+    g_config.rx_clip_warn = web_form_get_bool(body, "rxClipWarn");
+
+    // Transmit output swing (DAC_AMPL_PCT_MIN..DAC_AMPL_PCT_MAX percent) -
+    // clamp defensively against a malformed POST, same reasoning as
+    // rf_tx_buffers above. The floor is what keeps the 8-bit converter from
+    // being asked to draw a sine with a handful of steps: the attenuation a
+    // microphone input needs belongs in an external attenuator.
+    int dac_ampl_in = web_form_get_int(body, "dacAmplPct", g_config.dac_amplitude_pct);
+    if (dac_ampl_in < DAC_AMPL_PCT_MIN)
+        dac_ampl_in = DAC_AMPL_PCT_MIN;
+    else if (dac_ampl_in > DAC_AMPL_PCT_MAX)
+        dac_ampl_in = DAC_AMPL_PCT_MAX;
+    g_config.dac_amplitude_pct = (uint8_t)dac_ampl_in;
+
+    // Transmit sample rate. Only the two rates the modulator can divide
+    // exactly at every supported baud rate are accepted; anything else falls
+    // back to the standard one rather than being stored and refused later by
+    // the modem.
+    int dac_rate_in = web_form_get_int(body, "dacRate", (int)g_config.dac_samplerate);
+    g_config.dac_samplerate = (dac_rate_in == DAC_SAMPLERATE_HIGH) ? DAC_SAMPLERATE_HIGH : DAC_SAMPLERATE_LOW;
+
+    // Transmitter time-out (TX_MAX_KEYED_MS_MIN..TX_MAX_KEYED_MS_MAX ms, 0 =
+    // disabled) - clamp defensively, same reasoning as rf_tx_buffers above.
+    int tx_max_keyed_in = web_form_get_int(body, "txMaxKeyedMs", (int)g_config.tx_max_keyed_ms);
+    if (tx_max_keyed_in < TX_MAX_KEYED_MS_MIN)
+        tx_max_keyed_in = TX_MAX_KEYED_MS_MIN;
+    else if (tx_max_keyed_in > TX_MAX_KEYED_MS_MAX)
+        tx_max_keyed_in = TX_MAX_KEYED_MS_MAX;
+    g_config.tx_max_keyed_ms = (uint32_t)tx_max_keyed_in;
+
     app_config_unlock();
 
     // The page rendered next is built from the live settings, so the save
@@ -389,7 +572,10 @@ esp_err_t page_radio_post(httpd_req_t *req) {
     // before this function is even reached.
     //
     // audioModemEn still needs a reboot: modem_init() only runs at boot, from
-    // main.c, and this no-ops until it has.
+    // main.c, and this no-ops until it has. dacRate is in the same position
+    // for a different reason: the sample-clock period and every phase step
+    // derived from it are programmed while the modem hardware is stopped, so
+    // modem_init() is what applies it.
     aprs_service_apply_modem_config();
 
     web_send_save_result(req, ok, "/radio");

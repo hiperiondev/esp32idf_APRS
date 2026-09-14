@@ -226,6 +226,19 @@ void aprs_service_build_modem_config(modem_config_t *cfg, bool full_duplex) {
     // The LOOP TEST passes true here because a DAC->ADC wire means the node
     // always hears its own carrier and would never see a clear channel.
     cfg->full_duplex = full_duplex;
+
+    // Audio interface. Everything here describes what sits between the ADC/DAC
+    // pins and the transceiver, so the defaults suit an interface board that
+    // brings its own bias network, attenuators and reconstruction filter: the
+    // input is left unbiased, over-range blocks are not reported, the output
+    // swing and sample rate are the compiled-in ones and the transmitter
+    // time-out is off. An interface reduced to a coupling capacitor and a
+    // level trimmer per direction is what the other settings are for.
+    cfg->adc_self_bias = g_config.adc_self_bias;
+    cfg->rx_clip_warn = g_config.rx_clip_warn;
+    cfg->dac_amplitude_pct = g_config.dac_amplitude_pct;
+    cfg->dac_samplerate = g_config.dac_samplerate;
+    cfg->tx_max_keyed_ms = g_config.tx_max_keyed_ms;
 }
 
 // ---------------------------------------------------------------------------
@@ -2204,6 +2217,169 @@ bool aprs_loop_test_run(char *msg, size_t msg_len) {
              s_loopTestRxInfo);
     ESP_LOGW(TAG, "Loop test: %s", msg);
     return false;
+}
+
+// ---------------------------------------------------------------------------
+// Audio interface diagnostics.
+//
+// Both of these exist because the loop test cannot be used once a transceiver
+// is connected in place of the DAC-to-ADC jumper: it transmits a frame and
+// waits to hear it back, which only a wire loop can deliver. They split that
+// job in two - measure the receive side without transmitting, and transmit a
+// bounded burst without expecting anything back - so each half of the audio
+// interface can be adjusted against the equipment it is wired to.
+//
+// They share the loop test's claim flag rather than adding a second one: all
+// three drive the same modem and the same diagnostics state, so only one may
+// run at a time.
+// ---------------------------------------------------------------------------
+
+// Length of the window aprs_rx_level_sample() watches the receiver over. Long
+// enough to span several packets' worth of channel activity at 1200 Bd, short
+// enough that a web request does not appear to hang.
+#define RX_LEVEL_WINDOW_MS 1000
+
+// Interval between samples inside that window, matching the loop test's own
+// diagnostics task.
+#define RX_LEVEL_POLL_MS 20
+
+// How long the transmit burst keys up for. Long enough to read a deviation
+// meter, short enough to stay well inside what a hand-held transmitter is
+// comfortable with on a duty cycle this test does not repeat.
+#define TX_TEST_BURST_MS 3000
+
+// @brief Claim the diagnostics, so only one of the three can be in flight.
+// @return true when the claim succeeded.
+static bool diagClaim(void) {
+    bool busy;
+
+    portENTER_CRITICAL(&s_loopTestLock);
+    busy = s_loopTestActive;
+    if (!busy)
+        s_loopTestActive = true;
+    portEXIT_CRITICAL(&s_loopTestLock);
+
+    return !busy;
+}
+
+bool aprs_rx_level_sample(char *json, size_t json_len) {
+    if (!aprs_service_modem_ready()) {
+        snprintf(json, json_len, "{\"ok\":false,\"msg\":\"The audio ADC/DAC modem is not running.\"}");
+        return false;
+    }
+
+    if (!diagClaim()) {
+        snprintf(json, json_len, "{\"ok\":false,\"msg\":\"Another audio test is already running.\"}");
+        return false;
+    }
+
+    // None of the modem's getters latch, so the peaks and the high-water marks
+    // are accumulated here, over the window, exactly as loopDiagTask() does for
+    // the loop test.
+    uint16_t rmsPeak = 0;
+    uint32_t rmsSum = 0;
+    uint32_t rmsCount = 0;
+    float agcPeak = 0.0f;
+    bool dcd = false;
+    int16_t rawMin = 0;
+    int16_t rawMax = 0;
+
+    TickType_t start = xTaskGetTickCount();
+    while ((xTaskGetTickCount() - start) < pdMS_TO_TICKS(RX_LEVEL_WINDOW_MS)) {
+        uint16_t rms = afskGetRms();
+
+        if (rms > rmsPeak)
+            rmsPeak = rms;
+        rmsSum += rms;
+        rmsCount++;
+
+        float gain = afskGetAgcGain();
+        if (gain > agcPeak)
+            agcPeak = gain;
+
+        if (ModemDcdState())
+            dcd = true;
+
+        vTaskDelay(pdMS_TO_TICKS(RX_LEVEL_POLL_MS));
+    }
+
+    afskGetRawMinMax(&rawMin, &rawMax);
+
+    unsigned mean = (rmsCount > 0) ? (unsigned)(rmsSum / rmsCount) : 0;
+
+    // The AGC gain is rendered from hundredths held in an integer rather than
+    // through a float conversion: the gain is bounded by the AGC's own limits,
+    // and an integer pair keeps the length of the rendered object bounded too,
+    // which a float field would not be.
+    if (agcPeak < 0.0f)
+        agcPeak = 0.0f;
+    else if (agcPeak > 999.0f)
+        agcPeak = 999.0f;
+    unsigned agcCenti = (unsigned)((agcPeak * 100.0f) + 0.5f);
+
+    // Every field is produced locally, so there is nothing here that could
+    // carry a byte off the air into the response.
+    snprintf(json, json_len,
+             "{\"ok\":true,\"mVrms\":%u,\"peak_mVrms\":%u,\"dc_mV\":%d,\"agc\":%u.%02u,"
+             "\"raw_min\":%d,\"raw_max\":%d,\"dcd\":%s,\"adc_samples\":%lu}",
+             mean, (unsigned)rmsPeak, afskGetDcOffset(), agcCenti / 100u, agcCenti % 100u, (int)rawMin, (int)rawMax, dcd ? "true" : "false",
+             (unsigned long)afskGetAdcSampleCount());
+
+    ESP_LOGI(TAG, "RX level: %u mV RMS (peak %u), DC offset %d mV, AGC %u.%02ux, raw %d..%d, DCD %s", mean, (unsigned)rmsPeak, afskGetDcOffset(),
+             agcCenti / 100u, agcCenti % 100u, (int)rawMin, (int)rawMax, dcd ? "yes" : "no");
+
+    s_loopTestActive = false;
+    return true;
+}
+
+bool aprs_tx_test_run(char *msg, size_t msg_len) {
+    if (!aprs_service_can_transmit()) {
+        snprintf(msg, msg_len, "The audio ADC/DAC modem is not enabled. Enable \"Enable audio ADC/DAC modem\" above, save, and reboot the device first.");
+        ESP_LOGW(TAG, "TX test: %s", msg);
+        return false;
+    }
+
+    if (!diagClaim()) {
+        snprintf(msg, msg_len, "Another audio test is already running - please wait for it to finish.");
+        ESP_LOGW(TAG, "TX test: %s", msg);
+        return false;
+    }
+
+    // Sent through the ordinary non-critical transmit path, so the normal
+    // half-duplex channel access applies and the long-term duty-cycle ceiling
+    // holds the burst back when it is enabled and already reached.
+    char tnc2[48];
+    int n = snprintf(tnc2, sizeof(tnc2), "SELFTST>APLT1T:>TXTEST");
+
+    if (!aprs_service_send_tnc2(tnc2, (size_t)n)) {
+        snprintf(msg, msg_len,
+                 "The transmit burst was not sent: the channel access path discarded it. A duty-cycle ceiling that has already been reached, or a full "
+                 "transmit queue, are the usual reasons - the event log says which.");
+        ESP_LOGW(TAG, "TX test: %s", msg);
+        s_loopTestActive = false;
+        return false;
+    }
+
+    // The frame is queued, not yet on the air: the modem service task keys up,
+    // clocks it out and unkeys on its own schedule. Waiting here for the burst
+    // to finish is what makes the result meaningful to read on the page, and
+    // the wait is bounded so a transmitter that never keys cannot hold the
+    // request open.
+    TickType_t start = xTaskGetTickCount();
+    while ((xTaskGetTickCount() - start) < pdMS_TO_TICKS(TX_TEST_BURST_MS)) {
+        if ((modem_tx_queue_depth() == 0) && !getTransmit() && ((xTaskGetTickCount() - start) > pdMS_TO_TICKS(200)))
+            break;
+        vTaskDelay(pdMS_TO_TICKS(20));
+    }
+
+    snprintf(msg, msg_len,
+             "Transmitted a test frame with %ums of preamble at %u%% output swing. Measure the deviation on other equipment and set the transmit level "
+             "trimmer for 2.5 to 3.5 kHz.",
+             (unsigned)g_config.preamble, (unsigned)g_config.dac_amplitude_pct);
+    ESP_LOGI(TAG, "TX test: %s", msg);
+
+    s_loopTestActive = false;
+    return true;
 }
 
 void aprs_service_start(void) {

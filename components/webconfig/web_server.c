@@ -171,6 +171,8 @@ void web_server_start(void) {
     reg(server, "/radio", HTTP_GET, page_radio_get);
     reg(server, "/radio", HTTP_POST, page_radio_post);
     reg(server, "/radio/looptest", HTTP_POST, page_radio_looptest_post);
+    reg(server, "/radio/level", HTTP_POST, page_radio_level_post);
+    reg(server, "/radio/txtest", HTTP_POST, page_radio_txtest_post);
     reg(server, "/msg", HTTP_GET, page_msg_get);
     reg(server, "/msg", HTTP_POST, page_msg_post);
     reg(server, "/query", HTTP_GET, page_query_get);

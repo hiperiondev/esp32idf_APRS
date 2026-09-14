@@ -1423,6 +1423,40 @@ void Ax25Init(uint8_t fx25Mode) {
     txQuiet = millis() + Ax25Config.quietTime + randomRange(10, 200);
 }
 
+void Ax25TransmitAbort(void) {
+    // The caller has already stopped the modulator, so Ax25GetTxBit() can no
+    // longer run and the transmit ring has a single owner again. Every frame
+    // still in it belongs to the transmission being abandoned: releasing the
+    // whole ring in one step is what keeps the stalled frame from keying up
+    // again on the next Ax25TransmitCheck().
+    RING_PUBLISH(txBufferTail, txBufferHead);
+    RING_PUBLISH(txFrameTail, txFrameHead);
+
+    txStage = TX_STAGE_IDLE;
+    txInitStage = TX_INIT_OFF;
+    txByte = 0;
+    txByteIdx = 0;
+    txBitIdx = 8; // force a stage evaluation on the next Ax25GetTxBit()
+    txDelayElapsed = 0;
+    txFlagsElapsed = 0;
+    txCrcByteIdx = 0;
+    txTailElapsed = 0;
+    txBitstuff = 0;
+    txCrc = 0xFFFF;
+    txRetries = 0;
+    txBusySlots = 0;
+
+    // The same gates a normal key-down arms, so the next frame to arrive waits
+    // for a real unkey gap rather than keying up microseconds after the line
+    // was released.
+    txJustKeyedDown = false;
+    txReleaseHoldoff = true;
+    txLastUnkeyMillis = millis();
+    if (Ax25Config.minUnkeyTime > 0)
+        txMinUnkeyUntil = millis() + Ax25Config.minUnkeyTime;
+    txQuiet = millis() + (Ax25Config.fullDuplex ? 0 : Ax25Config.quietTime);
+}
+
 void Ax25TxDelay(uint16_t delay_ms) {
     Ax25Config.txDelayLength = delay_ms;
     txDelay = (uint16_t)((float)Ax25Config.txDelayLength / (8.f * 1000.f / ModemGetBaudrate()));

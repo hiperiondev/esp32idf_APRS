@@ -167,6 +167,68 @@ más allá de ~5 kHz.
    transmiten al entrar, por lo que una polaridad de PTT equivocada te dará
    segundos de portadora sin modular.
 
+Interfaz reducida: un capacitor y un trimmer por sentido
+--------------------------------------------------------
+
+El esquema anterior es la versión de referencia. También se admite una
+interfaz reducida, que no lleva más que un capacitor de acoplamiento y un
+trimmer de nivel en cada sentido de audio, con el PTT sin cambios. Lo que
+hacían las piezas suprimidas lo asume un ajuste de la página Radiomodem o se
+acepta como limitación:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 70
+
+   * - Suprimido
+     - Reemplazo
+   * - R5/R6 (polarización del ADC)
+     - **Polarización interna de la entrada del ADC**, que conecta en serie el
+       pull-up y el pull-down del propio pad
+   * - R3 (atenuador de TX)
+     - solo el trimmer, opcionalmente con la **Amplitud de salida de
+       transmisión** reducida para repartir su rango útil
+   * - R1/R2 + C2/C3 (filtro de reconstrucción)
+     - **Frecuencia de muestreo de transmisión** en 76800 Hz, que sube una
+       octava las imágenes
+   * - D1/D2 (recorte de entrada)
+     - nada: **Avisar cuando el audio recibido se sale de rango** informa la
+       condición y el trimmer de recepción es lo que limita la corriente de
+       falla
+   * - R7/C5 (amortiguador del ADC)
+     - nada; espere algo más de ruido
+
+Cableado, por sentido: el trimmer de transmisión es un divisor entre GPIO25 y
+masa cuyo cursor alimenta el capacitor de acoplamiento, y el trimmer de
+recepción es un divisor sobre la salida de altavoz del equipo cuyo cursor
+alimenta el otro capacitor. **El capacitor va después del trimmer en ambos
+lados.** Delante de él, la pata inferior del trimmer dejaría el pin del ADC a
+masa, lo que anula la polarización interna, y del lado de transmisión hundiría
+la polarización propia de la entrada de micrófono.
+
+Ambos capacitores deben ser de 1 µF o más. Con 100 nF la frecuencia de corte
+inferior queda cerca de 700 Hz, lo que atenúa el tono de marca de 1200 Hz
+frente al de espacio de 2200 Hz. Use trimmers de 10 kΩ: del lado de
+transmisión mantienen liviana la carga sobre la salida del DAC, y la
+atenuación necesaria deja el cursor cerca del 1,4 % del recorrido, así que un
+trimmer multivuelta es lo que lo hace ajustable.
+
+Ajuste los niveles con los dos botones junto a PRUEBA DE BUCLE, que es lo que
+el loop test no puede hacer una vez que un equipo reemplaza el puente:
+**NIVEL RX** mide sin transmitir — apunte a 250 a 350 mV RMS con el rango
+crudo bien lejos de 0 y 4095, y con la polarización interna activada espere un
+offset de continua entre 1200 y 2000 mV — y **PRUEBA TX** activa el
+transmisor para poder leer la desviación en otro instrumento y ajustarla a
+2,5 a 3,5 kHz.
+
+.. warning::
+
+   Sin D1/D2, el trimmer de recepción es lo único que limita la corriente
+   hacia el pin del ADC. La salida de altavoz de un portátil a todo volumen
+   queda muy fuera de 0 a 3,3 V, así que baje el volumen antes de conectar y
+   nunca lleve la salida de altavoz a GPIO33 solo a través del capacitor.
+
+
 Baofeng UV-5R y HT de conector K
 --------------------------------
 
@@ -210,8 +272,8 @@ Orden de puesta en marcha
    desviación** (2,5–3,5 kHz). La sobredesviación es la causa más común de "mi
    igate escucha a todos pero nadie me escucha a mí".
 #. **9600 Bd G3RUH** necesita la ruta plana/de discriminador en ambos extremos:
-   DATA IN/DATA OUT, 10 nF en C2/C3, y la casilla *filtro paso-bajo de audio*
-   marcada para audio plano.
+   DATA IN/DATA OUT, 10 nF en C2/C3, y la casilla *Entrada de audio plana / de
+   discriminador* marcada.
 
 Aislamiento y bucles de tierra
 ==============================

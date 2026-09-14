@@ -81,6 +81,37 @@
 /** @} */
 
 /**
+ * @name Audio interface valid ranges
+ *
+ * Inclusive valid ranges for the Audio interface fields of the Radiomodem
+ * page, shared by page_radio.c (which clamps the posted form value and feeds
+ * the inputs' min/max attributes) and app_config.c (which clamps what it
+ * loads from flash), exactly like the channel-access ranges above.
+ *
+ * The output-swing floor is the one worth explaining. The ESP32 DAC is 8 bits
+ * wide, so the percentage decides how many of its 256 codes a sine period is
+ * drawn with: at 20 % a full period spans roughly 50 codes, and below that
+ * quantization turns the tone into a staircase whose harmonics land inside
+ * the audio passband. The 30 to 40 dB of attenuation a microphone input needs
+ * belongs in an external attenuator, so the floor stops the output swing from
+ * being used as one.
+ *
+ * The transmitter time-out is a failsafe, not a scheduler: the longest
+ * legitimate key-up is ::RF_PREAMBLE_MS_MAX of preamble plus a maximum-length
+ * frame at the lowest baud rate - a few seconds at 1200 Bd, longer with FX.25
+ * redundancy - so useful settings sit far above that, and a value close to
+ * ::TX_MAX_KEYED_MS_MIN cuts real transmissions short.
+ * @{
+ */
+#define DAC_AMPL_PCT_MIN    20    /**< Lowest DAC output swing, percent: below this the 8-bit DAC quantizes the tone into a staircase. */
+#define DAC_AMPL_PCT_MAX    100   /**< Highest DAC output swing, percent: the full 0..3.3 V range. */
+#define TX_MAX_KEYED_MS_MIN 0     /**< Transmitter time-out disabled. */
+#define TX_MAX_KEYED_MS_MAX 60000 /**< Longest transmitter time-out, ms. */
+#define DAC_SAMPLERATE_LOW  38400 /**< Standard DAC sample rate, Hz: 32 * 1200, an exact multiple of every supported baud rate. */
+#define DAC_SAMPLERATE_HIGH 76800 /**< Doubled DAC sample rate, Hz: moves the reconstruction images an octave further from the audio band. */
+/** @} */
+
+/**
  * @name Long-term TX duty-cycle ceiling valid range
  *
  * Inclusive valid range for g_config.duty_cycle_pct - the "Duty cycle limit"
@@ -438,5 +469,56 @@ bool aprs_service_can_gate_to_rf(void);
  *         or a test already running).
  */
 bool aprs_loop_test_run(char *msg, size_t msg_len);
+
+/**
+ * @brief Receive level and bias measurement ("RX LEVEL" button on the
+ * Radio/Modem webconfig page).
+ *
+ * Watches the modem's receive front-end for about a second and renders the
+ * result as a JSON object. Nothing is transmitted and no modem state is
+ * touched, so it can be run with a transceiver connected and while real
+ * traffic is being decoded - which is what the loop test cannot do, since
+ * that one keys up and waits to hear itself back.
+ *
+ * The measurement is what the audio interface is adjusted against: the RMS
+ * level sets the receive attenuator, the raw conversion extremes show how
+ * much headroom is left before the converter runs out of range, and the DC
+ * offset shows where the input is biased - the reading that tells an
+ * AC-coupled input with the ADC self-bias enabled from one with no bias at
+ * all.
+ *
+ * The reported object carries @c ok, @c mVrms, @c peak_mVrms, @c dc_mV,
+ * @c agc, @c raw_min, @c raw_max, @c dcd and @c adc_samples. Every value is
+ * produced locally, so nothing received off the air is ever echoed into it.
+ *
+ * @param json     Buffer that receives the JSON object.
+ * @param json_len Size of json.
+ * @return true if the measurement completed, false if the modem is not
+ *         running or the loop test holds the diagnostics (json still carries
+ *         an object explaining which).
+ */
+bool aprs_rx_level_sample(char *json, size_t json_len);
+
+/**
+ * @brief Bounded transmit burst ("TX TEST" button on the Radio/Modem
+ * webconfig page).
+ *
+ * Keys the transmitter and modulates a short APRS status packet, then
+ * unkeys - without waiting to hear anything back. It is the transmit-side
+ * counterpart of aprs_rx_level_sample(): what the transmit attenuator is set
+ * against when a transceiver, rather than a wire loop, is connected, since
+ * the deviation it produces is measured on other equipment.
+ *
+ * The normal half-duplex channel access applies, so the burst waits for a
+ * clear channel like any other frame, and the long-term duty-cycle ceiling is
+ * honored when it is enabled.
+ *
+ * @param msg     Buffer that receives a human-readable result.
+ * @param msg_len Size of msg.
+ * @return true if the burst was transmitted, false otherwise (msg explains
+ *         why: modem not running, duty cycle exhausted, or a diagnostic
+ *         already in progress).
+ */
+bool aprs_tx_test_run(char *msg, size_t msg_len);
 
 #endif // APRS_SERVICE_H

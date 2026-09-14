@@ -116,12 +116,20 @@
 #endif
 
 /**
- * @brief DAC (transmit) sample rate, in Hz.
+ * @brief Default DAC (transmit) sample rate, in Hz.
  *
  * The modulator's sine lookup table and the baud-rate divider are both
  * derived from this value. 38400 = 32 * 1200, which keeps it an exact
  * multiple of every supported baud rate; keep this property if the value is
  * ever changed.
+ *
+ * This is the rate the modem starts from. The rate actually programmed is
+ * ::modem_config_t::dac_samplerate, selectable at runtime between this value
+ * and twice it, and applied by modem_init() while the hardware is stopped.
+ * Doubling it moves the DAC reconstruction images an octave further from the
+ * audio band, which is worth the extra interrupt rate when the interface
+ * between the DAC pin and the transceiver carries no reconstruction low-pass
+ * filter.
  */
 #ifndef MODEM_DAC_SAMPLERATE
 #define MODEM_DAC_SAMPLERATE 38400
@@ -185,12 +193,19 @@
 #endif
 
 /**
- * @brief Peak-to-peak swing of the DAC output, as a percentage of the full
- *        0..3.3 V range.
+ * @brief Default peak-to-peak swing of the DAC output, as a percentage of the
+ *        full 0..3.3 V range.
  *
  * 100% would clip against the ADC full scale even at 12 dB attenuation
  * (approximately 3.1 V), so some headroom must be kept when wiring GPIO25
  * directly to GPIO33 for the loopback test.
+ *
+ * This is the swing the modem starts from. The swing actually applied is
+ * ::modem_config_t::dac_amplitude_pct, selectable at runtime and applied per
+ * sample. The DAC is 8 bits wide, so the percentage also decides how many
+ * codes a sine period is drawn with: the transmit level a microphone input
+ * expects is reached with an external attenuator, not by lowering this value
+ * until the waveform is a handful of codes tall.
  */
 #ifndef MODEM_DAC_AMPLITUDE_PCT
 #define MODEM_DAC_AMPLITUDE_PCT 60
