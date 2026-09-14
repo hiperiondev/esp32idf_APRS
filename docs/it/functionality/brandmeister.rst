@@ -199,7 +199,12 @@ menu:
 
 Il filtro di distanza da Internet a RF si trova nella pagina *IGate*, accanto al
 suo gemello da RF a Internet, perché governa ogni riga che il flusso offre al
-trasmettitore e non solo il traffico BrandMeister. La tabella di stato della
+trasmettitore e non solo il traffico BrandMeister. Una sottoscrizione mondiale
+di monitoraggio non porta alcun termine geografico proprio, quindi una riga
+BrandMeister che non porta nemmeno una posizione — una diffusione di stato di un
+ripetitore, per esempio — è rifiutata dal requisito di posizione accanto a quel
+filtro, qualunque sia il valore di quel requisito per il traffico ordinario.
+Vedi :ref:`it-igate` per l'intera sequenza INET→RF. La tabella di stato della
 pagina *BrandMeister* ne riporta la condizione.
 
 Ciò che deliberatamente non è implementato

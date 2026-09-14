@@ -207,6 +207,12 @@ const char *igate_drop_reason_name(drop_reason_t reason) {
             return "range filter";
         case DROP_INET2RF_RANGE:
             return "range filter (INET->RF)";
+        case DROP_INET2RF_NO_POSITION:
+            return "no position to place it locally (INET->RF)";
+        case DROP_INET2RF_NOT_HEARD:
+            return "source not heard on RF (INET->RF)";
+        case DROP_INET2RF_RATE:
+            return "source spacing (INET->RF)";
         case DROP_PREFIX_FILTER:
             return "prefix filter";
         case DROP_BUDLIST:
@@ -1062,12 +1068,13 @@ void igate_set_inet2rf_assoc_query(bool (*query)(const char *callsign)) {
 
 // The INET->RF filter set of the IGate page, applied to one APRS-IS line for
 // display purposes only: the associated-position follow-up exception, the
-// local range gate measured from "My Station", the payload-type whitelist
+// local range gate measured from "My Station", the position requirement that
+// governs a line carrying no position at all, the payload-type whitelist
 // g_config.inet2rfFilter (including the selective third-party unwrap
 // exception, which is the one way a line the mask refuses still reaches the
-// transmitter) and the Callsign Filter. Those are the same checks
-// aprs_service.c's inet2rfHandler() makes, in the same order, so the two reach
-// the same verdict on the same line.
+// transmitter), the Callsign Filter and the locally-heard source gate. Those
+// are the same checks aprs_service.c's inet2rfHandler() makes, in the same
+// order, so the two reach the same verdict on the same line.
 //
 // The associated-position claim is read through s_inet2rfAssocQuery, which
 // looks at the handler's ring without consuming a slot: the log runs first and
@@ -1083,15 +1090,18 @@ void igate_set_inet2rf_assoc_query(bool (*query)(const char *callsign)) {
 // query drop and the message gate. Those decide whether a line may be put on
 // the air; hiding the traffic they stop - this station's own beacons echoed
 // back by the server, above all - would answer a question the operator did not
-// ask of the log.
+// ask of the log. The per-source spacing limiter is left out on the same terms
+// as the associated-position claim: its ring is spent by the transmit
+// decision, and a log that claimed a slot would take it from the line it was
+// recorded for.
 static bool inet2rfFiltersPass(const char *line) {
     // Every configuration field this verdict rests on is read once, under one
     // hold of the config mutex, so the whole decision is made against a single
     // consistent view of the settings even if the operator saves the IGate
     // page while a line is being evaluated. Nothing below the unlock touches
     // g_config, and no filter helper is called with the lock held.
-    uint16_t filterMask;
-    bool unwrapEn, rangeEn, bmEn;
+    uint16_t filterMask, heardWindow;
+    bool unwrapEn, rangeEn, bmEn, positionRequired, heardOnly;
     budlist_mode_t budlistMode;
     float rangeKm, ownLat, ownLon;
     char gateways[APRS_BM_GATEWAYS_MAX][APRS_BM_GATEWAY_LEN];
@@ -1103,6 +1113,9 @@ static bool inet2rfFiltersPass(const char *line) {
     bmEn = g_config.bm_en;
     rangeEn = g_config.inet2rf_range_en;
     rangeKm = g_config.inet2rf_range_km;
+    positionRequired = g_config.inet2rf_position_required;
+    heardOnly = g_config.inet2rf_heard_only;
+    heardWindow = g_config.igate_local_window_sec;
     ownLat = g_config.my_lat;
     ownLon = g_config.my_lon;
     memcpy(gateways, g_config.bm_gateways, sizeof(gateways));
@@ -1126,20 +1139,18 @@ static bool inet2rfFiltersPass(const char *line) {
     // Only plain position and buoy reports qualify.
     bool assocPosition = (type & (IGATE_FILT_POSITION | IGATE_FILT_BUOY)) != 0 && s_inet2rfAssocQuery && s_inet2rfAssocQuery(budlistCall);
 
+    // The packet the position requirement below reads: the unwrapped inner
+    // packet when the third-party exception applies, the line itself
+    // otherwise, exactly as on the transmit side.
+    const char *srcLine = line;
+    const bool viaBm = bmEn && aprs_bm_classify(line, gateways, APRS_BM_GATEWAYS_MAX) != APRS_BM_MATCH_NONE;
+
     if (!assocPosition && rangeEn && rangeKm > 0.0f) {
         char destCall[12] = "";
         float plat, plon;
         aprs_tnc2_dest_call(line, destCall, sizeof(destCall));
         if (colon && aprs_filter_decode_position(colon + 1, destCall, &plat, &plon)) {
             if (aprs_filter_haversine_km(ownLat, ownLon, plat, plon) > rangeKm)
-                return false;
-        } else if (bmEn) {
-            // A BrandMeister line carries no server-side geographic term of
-            // its own (the worldwide subscription cannot be combined with
-            // one), so one without a position is refused rather than passed
-            // unmeasured - the same reasoning, and the same outcome, as the
-            // transmit side.
-            if (aprs_bm_classify(line, gateways, APRS_BM_GATEWAYS_MAX) != APRS_BM_MATCH_NONE)
                 return false;
         }
     }
@@ -1164,6 +1175,8 @@ static bool inet2rfFiltersPass(const char *line) {
                 if (innerSrc[0] && aprs_filter_budlist_pass(BUDLIST_WHITELIST, innerSrc) && aprs_filter_pass(filterMask, innerType)) {
                     strncpy(budlistCall, innerSrc, sizeof(budlistCall) - 1);
                     budlistCall[sizeof(budlistCall) - 1] = 0;
+                    srcLine = inner;
+                    type = innerType;
                     unwrapped = true;
                 }
             }
@@ -1173,7 +1186,32 @@ static bool inet2rfFiltersPass(const char *line) {
             return false;
     }
 
-    return aprs_filter_budlist_pass(budlistMode, budlistCall);
+    if (!aprs_filter_budlist_pass(budlistMode, budlistCall))
+        return false;
+
+    // A payload with no position of its own offers nothing that places it
+    // inside the local area. A BrandMeister line is held to that requirement
+    // whatever the setting says, this station's own gates being the only
+    // geographic restriction such a line is ever subject to - the same
+    // reasoning, and the same outcome, as the transmit side.
+    if (!assocPosition && (type & IGATE_FILT_MESSAGE) == 0 && (positionRequired || viaBm)) {
+        char destCall[12] = "";
+        const char *srcColon = strchr(srcLine, ':');
+        float plat, plon;
+        aprs_tnc2_dest_call(srcLine, destCall, sizeof(destCall));
+        if (!srcColon || !aprs_filter_decode_position(srcColon + 1, destCall, &plat, &plon))
+            return false;
+    }
+
+    // Ordinary traffic is gated on its source having been heard on the local
+    // channel, the counterpart of the test the message gate makes on an
+    // addressee; a message, and the position follow-up owed to a station this
+    // gateway messaged, are exempt on the transmit side and so are exempt
+    // here.
+    if (heardOnly && !assocPosition && (type & IGATE_FILT_MESSAGE) == 0)
+        return lastheard_heard_rf_within(budlistCall, heardWindow);
+
+    return true;
 }
 
 bool igate_log_accepts_line(const char *line) {

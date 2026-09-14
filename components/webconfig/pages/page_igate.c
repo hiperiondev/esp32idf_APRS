@@ -506,6 +506,19 @@ esp_err_t page_igate_get(httpd_req_t *req) {
         web_raw(req, "<p style='color:var(--sub);font-size:12px;margin:10px 0 4px'>" TR_NOTE_INET2RF_RANGE "</p>");
         web_field_checkbox(req, TR_F_RANGE_FILTER_EN, "inet2rfRangeEn", g_config.inet2rf_range_en);
         web_field_float(req, TR_F_RANGE_KM, "inet2rfRangeKm", g_config.inet2rf_range_km, "0.1", APRS_RANGE_KM_MIN, APRS_RANGE_KM_MAX);
+
+        // The three gates that bound how much of the radio channel the
+        // Internet feed may take: what a line has to carry to be placed in
+        // the local area at all, whose traffic the channel has a use for, and
+        // how often one source may key the transmitter. They sit beside the
+        // distance gate because all four answer the same question - is this
+        // line local - from different directions, and because the distance
+        // gate alone cannot reach a line that carries no position to measure.
+        web_raw(req, "<p style='color:var(--sub);font-size:12px;margin:10px 0 4px'>" TR_NOTE_INET2RF_FLOOD "</p>");
+        web_field_checkbox(req, TR_F_INET2RF_POSITION_REQ, "inet2rfPositionRequired", g_config.inet2rf_position_required);
+        web_field_checkbox(req, TR_F_INET2RF_HEARD_ONLY, "inet2rfHeardOnly", g_config.inet2rf_heard_only);
+        web_field_int(req, TR_F_INET2RF_MIN_INTERVAL, "inet2rfMinIntervalSec", g_config.inet2rf_min_interval_sec, INET2RF_MIN_INTERVAL_SEC_MIN,
+                      INET2RF_MIN_INTERVAL_SEC_MAX);
         web_fieldset_close(req);
     }
 
@@ -909,6 +922,20 @@ esp_err_t page_igate_post(httpd_req_t *req) {
     g_config.rf2inet_range_km = clampRangeKm(g_config.rf2inet_range_km);
     g_config.inet2rf_range_en = web_form_get_bool(body, "inet2rfRangeEn");
     g_config.inet2rf_range_km = clampRangeKm(web_form_get_float(body, "inet2rfRangeKm", g_config.inet2rf_range_km));
+
+    // Flood gates for the same direction. The spacing gets the same two-layer
+    // clamp as every other bounded numeric field on this page, so a crafted
+    // POST cannot widen it past what the form advertises.
+    g_config.inet2rf_position_required = web_form_get_bool(body, "inet2rfPositionRequired");
+    g_config.inet2rf_heard_only = web_form_get_bool(body, "inet2rfHeardOnly");
+    {
+        int interval = web_form_get_int(body, "inet2rfMinIntervalSec", g_config.inet2rf_min_interval_sec);
+        if (interval < INET2RF_MIN_INTERVAL_SEC_MIN)
+            interval = INET2RF_MIN_INTERVAL_SEC_MIN;
+        else if (interval > INET2RF_MIN_INTERVAL_SEC_MAX)
+            interval = INET2RF_MIN_INTERVAL_SEC_MAX;
+        g_config.inet2rf_min_interval_sec = (uint16_t)interval;
+    }
 
     // Turning the gate off withdraws the precondition the BrandMeister
     // monitor subscription was accepted under, so the subscription goes with

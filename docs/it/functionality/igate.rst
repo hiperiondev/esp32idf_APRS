@@ -311,6 +311,13 @@ messaggistica è attiva. È poi considerata per la ritrasmissione in RF solo se
    meteorologico (``NWS-xxxxx``, ``SKY…``, ``CWA…``) viene scartato
    incondizionatamente (``DROP_MSG_BROADCAST``), indipendentemente da
    ``g_config.igate_msg_gate_en`` e da ``g_config.inet2rfFilter``. Vedi sotto.
+#. **Filtro di distanza locale.** Se ``inet2rf_range_en`` è attivo, la posizione
+   della riga viene decodificata e la sua distanza di cerchio massimo
+   (haversine) dalla "Mia Stazione" è confrontata con
+   ``g_config.inet2rf_range_km``; le righe troppo lontane vengono scartate
+   (``DROP_INET2RF_RANGE``). Una riga senza posizione non ha qui alcuna distanza
+   da misurare ed è governata dal requisito di posizione più sotto, una volta
+   noto il payload che va effettivamente in onda.
 #. **Filtro per tipo di payload.** La riga è classificata da
    ``aprs_filter_classify_tnc2()`` e testata contro ``g_config.inet2rfFilter``.
 #. **Unwrap selettivo di terze parti (opzionale).** Il traffico di terze parti
@@ -323,6 +330,40 @@ messaggistica è attiva. È poi considerata per la ritrasmissione in RF solo se
    traffico di terze parti".
 #. **Budlist.** L'indicativo di origine (che qui può portare un ``-SSID``) è
    testato contro ``g_config.inet2rf_budlist_mode``.
+#. **Requisito di posizione.** Un payload che non porta una posizione propria
+   decodificabile — un report di stato, una trama di telemetria, un payload non
+   classificabile — viene scartato (``DROP_INET2RF_NO_POSITION``), perché nulla
+   in esso lo colloca all'interno dell'area locale. È governato da
+   ``inet2rf_position_required``, attivo di default, e si applica a una riga
+   classificata come BrandMeister (vedi :ref:`it-brandmeister`) qualunque cosa
+   dica quell'impostazione. La posizione è letta dal pacchetto che va in onda,
+   quindi dove l'unwrap di terze parti ha agito è la posizione del pacchetto
+   interno a doverlo collocare. I messaggi, filtrati sul loro destinatario, e il
+   report di posizione che questo gateway deve a una stazione a cui ha inviato
+   un messaggio sono esenti.
+
+   L'assunzione che giustificherebbe il rilancio di una riga simile — che il
+   termine ``r/lat/lon/raggio`` del server dell'operatore abbia già consegnato
+   solo traffico locale — vale soltanto per una sottoscrizione fatta di soli
+   termini geografici. I termini di filtro APRS-IS sono in OR, mai in AND,
+   quindi qualsiasi termine di classe di traffico accanto a uno di essi
+   (``u/APBM*``, qualsiasi termine ``t/`` o ``u/``) allarga il feed all'intera
+   rete, e il feed offre quel traffico molto più in fretta di quanto un canale a
+   1200 Bd lo smaltisca.
+#. **Origine ascoltata localmente.** Con ``inet2rf_heard_only`` attivo (il
+   default), una riga che non è un messaggio viene inoltrata solo se il suo
+   indicativo di origine è stato ascoltato in RF entro
+   ``igate_local_window_sec`` (``DROP_INET2RF_NOT_HEARD``) — la controparte, per
+   l'origine del traffico ordinario, del test che il filtraggio dei messaggi fa
+   sul destinatario. Una stazione che nessuno a portata ha mai ascoltato è una
+   stazione di cui il canale locale non ha bisogno di sapere.
+#. **Spaziatura per origine.** Un'origine inoltrata in RF da meno di
+   ``inet2rf_min_interval_sec`` viene rifiutata (``DROP_INET2RF_RATE``), così
+   nessuna singola origine può riempire da sola la coda di trasmissione RF
+   qualunque sia il filtro dei tipi. 30 s di default, 0 lo disattiva; l'anello
+   tiene ``INET2RF_RATE_RING_SIZE`` origini e lo slot è preso solo da una riga
+   che arriva alla fase di trasmissione. I messaggi e il report di posizione
+   dovuto sono esenti.
 #. **Filtraggio dei messaggi.** Si applica al solo tipo ``MESSAGE``; gli altri
    tipi sono ritrasmessi a discrezione del sysop, che è ciò che il filtro dei
    tipi e la budlist qui sopra già esprimono. Vedi sotto.

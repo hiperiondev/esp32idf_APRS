@@ -35,7 +35,7 @@ En una frase, el firmware **demodula** audio AFSK/FSK desde el altavoz o la sali
 
 - **Soft-módem en el chip.** AFSK 1200 Bd Bell 202 (APRS estándar) con demodulador dual, más AFSK 1200 Bd V.23, AFSK 300 Bd y **G3RUH 9600 Bd FSK** — todo en C puro sobre el propio ADC/DAC del ESP32.
 - **Corrección de errores FX.25.** FEC Reed–Solomon sobre AX.25, solo RX o RX+TX, para decodificaciones fiables con señal débil.
-- **IGate APRS-IS completo.** Enlace bidireccional **RF→INET** e **INET→RF** con supresión de duplicados, construcción `qAR`/`qAO`, filtrado por tipo de carga útil, budlists de indicativos, un range gate local (distancia haversine) y lista blanca por prefijo. Se pueden listar hasta cuatro servidores APRS-IS, con failover automático entre los habilitados.
+- **IGate APRS-IS completo.** Enlace bidireccional **RF→INET** e **INET→RF** con supresión de duplicados, construcción `qAR`/`qAO`, filtrado por tipo de carga útil, budlists de indicativos, un range gate local (distancia haversine), lista blanca por prefijo y, en el sentido INET→RF, un requisito de posición, una prueba de origen oído localmente y espaciado por origen que mantienen una suscripción APRS-IS amplia fuera del canal local. Se pueden listar hasta cuatro servidores APRS-IS, con failover automático entre los habilitados.
 - **Interconexión APRS con BrandMeister.** Reconoce, filtra y rutea el tráfico APRS que inyecta BrandMeister, sobre la misma sesión APRS-IS que ya tiene el IGate — lo identifican un tocall `APBMxx`, un alias `DMR` en la ruta o una pasarela de entrada nombrada. Página propia, apagada por omisión. **No interviene ninguna conexión DMR de ningún tipo.**
 - **Digipeater.** Una tabla de alias n-N de cuatro filas (WIDE1-1 / WIDE2-2 / WIDE#-2 por defecto), cada fila con su propio límite de saltos y modo trace/flood, más trampa de contador de saltos, operación de solo relleno y supresión de duplicados.
 - **Balizas, mensajería y chat.** Balizas de posición fija para tracker/igate/digi, mensajería de texto APRS con ack/reintentos (RF y/o INET) y una interfaz de chat de mensajes en el navegador.
@@ -63,7 +63,7 @@ En una frase, el firmware **demodula** audio AFSK/FSK desde el altavoz o la sali
 | Control de PTT | GPIO y polaridad en compilación, retención mínima de des-keying |
 | CSMA / time-slot de TX / preámbulo TXDelay | `preamble`, `tx_timeslot` |
 | Limitador de ciclo de trabajo de TX | Techo opcional sobre una ventana deslizante de 10 minutos |
-| IGate APRS-IS RF→INET e INET→RF | Filtros, dedup, budlist, desempaquetado third-party opcional |
+| IGate APRS-IS RF→INET e INET→RF | Filtros, dedup, budlist, desempaquetado third-party opcional, guardas antiinundación INET→RF |
 | Failover multiservidor de APRS-IS | 4 ranuras de servidor, reintento circular sobre las habilitadas |
 | Range gate y prefix gate locales | Distancia haversine + lista blanca por prefijo de indicativo |
 | Interconexión APRS con BrandMeister | Reconocimiento, filtrado y ruteo de mensajes sobre la sesión APRS-IS existente; sin enlace DMR |

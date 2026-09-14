@@ -447,6 +447,39 @@ typedef enum {
 /** @} */
 
 /**
+ * @name INET->RF per-source spacing
+ * @brief Accepted range and factory default for
+ * ::app_config_t::inet2rf_min_interval_sec.
+ *
+ * The APRS-IS feed can offer traffic far faster than a 1200 Bd channel clears
+ * it: one 120-byte frame occupies the air for about a second, while a single
+ * server-side subscription term can deliver tens of lines per second. This
+ * spacing bounds how often any one source callsign may key the transmitter
+ * through the gateway, so no single station - and no single injector behind
+ * it - can take the channel for itself however the payload-type filter is set.
+ *
+ * Message traffic is exempt: a conversation is exactly the traffic an IGate
+ * exists to carry, and it is already bounded by the message gate's own
+ * locally-heard test.
+ * @{
+ */
+#define INET2RF_MIN_INTERVAL_SEC_MIN     0    /**< Shortest accepted spacing; 0 disables the limiter. */
+#define INET2RF_MIN_INTERVAL_SEC_MAX     3600 /**< Longest accepted spacing, seconds. */
+#define INET2RF_MIN_INTERVAL_SEC_DEFAULT 30   /**< Factory default spacing, seconds. */
+/** @} */
+
+/**
+ * @brief Number of source callsigns the INET->RF spacing limiter remembers.
+ *
+ * One slot per callsign gated to RF, reused oldest-first once full. The ring
+ * only has to cover the sources active inside one
+ * ::app_config_t::inet2rf_min_interval_sec window, which on a channel shared
+ * with a gateway's own beacons is a handful of stations; a source pushed out
+ * of the ring by a busier one is simply free to transmit again.
+ */
+#define INET2RF_RATE_RING_SIZE 16
+
+/**
  * @brief Number of addressees remembered for the associated-position rule
  * (see the message gate in aprs_service.c's inet2rfHandler()).
  *
@@ -809,8 +842,22 @@ typedef struct {
                                semantics), inet2rfFilter/the budlist. Required before any worldwide subscription (such as the BrandMeister monitor term) may
                                be gated to the transmitter: APRS-IS server filter terms are OR'd, never AND'd, so a range restriction cannot be expressed
                                server-side alongside one. */
-    float inet2rf_range_km; /**< Max allowed distance from "My Station" (my_lat/my_lon), km. 0 = unlimited (gate has no effect even if enabled). Lines whose
-                               position can't be decoded are not evaluated (pass this check). Clamped to ::APRS_RANGE_KM_MIN .. ::APRS_RANGE_KM_MAX. */
+    float inet2rf_range_km; /**< Max allowed distance from "My Station" (my_lat/my_lon), km. 0 = unlimited (gate has no effect even if enabled). Clamped to
+                               ::APRS_RANGE_KM_MIN .. ::APRS_RANGE_KM_MAX. Lines whose position can't be decoded carry no distance to measure and are
+                               governed by @c inet2rf_position_required instead. */
+    bool inet2rf_position_required;    /**< On by default. Refuse any non-message INET->RF line that carries no decodable position of its own - a status report,
+                                          a telemetry frame, an unclassifiable payload. Independent of @c inet2rf_range_en, and the one gate that bounds a
+                                          server-side subscription whose terms reach past the local area: APRS-IS filter terms are OR'd, never AND'd, so a
+                                          traffic-class term such as the BrandMeister worldwide monitor (::APRS_BM_MONITOR_FILTER_TERM) delivers position-less
+                                          lines from the whole network that no geographic term ever narrowed. Message traffic is exempt - a message has no
+                                          position of its own and is gated on its addressee instead. */
+    bool inet2rf_heard_only;           /**< On by default. Gate a non-message INET->RF line only when its source callsign was itself heard on the local RF
+                                          channel inside @c igate_local_window_sec, which is the same test the message gate applies to an addressee. Traffic
+                                          from a station nobody in earshot has ever heard is traffic the local channel has no use for. Message traffic is
+                                          exempt: its own gate already tests the addressee. */
+    uint16_t inet2rf_min_interval_sec; /**< Shortest interval between two non-message INET->RF frames gated for the same source callsign, seconds; 0 disables
+                                          the limiter. Clamped to ::INET2RF_MIN_INTERVAL_SEC_MIN .. ::INET2RF_MIN_INTERVAL_SEC_MAX on save and on load.
+                                          Message traffic is exempt. */
 
     bool bm_en;            /**< BrandMeister interconnect enabled (web admin "BrandMeister" page). Master switch: with it off, no line is classified, no BM
                               marker is recorded and message routing is untouched. Purely an APRS-IS feature - nothing here opens a DMR connection. */

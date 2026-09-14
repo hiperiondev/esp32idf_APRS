@@ -297,17 +297,9 @@ after passing:
 #. **Local range gate.** If ``inet2rf_range_en`` is on, the line's position is
    decoded and its great-circle (haversine) distance from "My Station" is
    compared against ``g_config.inet2rf_range_km``; too-distant lines are
-   dropped (``DROP_INET2RF_RANGE``). A line whose position cannot be decoded
-   (a status, telemetry or message payload) passes this check — except a line
-   already recognised as BrandMeister traffic (see :ref:`en-brandmeister`),
-   which is dropped instead. An ordinary line with no position of its own is
-   already known local because the operator's own server-side
-   ``r/lat/lon/radius`` filter term never delivered anything else, but the
-   BrandMeister worldwide-monitor subscription (``u/APBM*``) carries no such
-   term, so a position-less BrandMeister line — a repeater status broadcast,
-   for instance — has no other geographic gate standing between it and the
-   transmitter and would otherwise flood the RF TX ring with traffic from
-   every corner of the network.
+   dropped (``DROP_INET2RF_RANGE``). A line carrying no position has no
+   distance to measure here and is governed by the position requirement
+   below, once the payload actually bound for the air is known.
 #. **Payload-type filter.** The line is classified by
    ``aprs_filter_classify_tnc2()`` and tested against
    ``g_config.inet2rfFilter``.
@@ -320,6 +312,37 @@ after passing:
    third-party" switch.
 #. **Budlist.** The source callsign (which may carry a ``-SSID`` here) is tested
    against ``g_config.inet2rf_budlist_mode``.
+#. **Position requirement.** A payload that carries no decodable position of
+   its own — a status report, a telemetry frame, an unclassifiable payload — is
+   dropped (``DROP_INET2RF_NO_POSITION``), because nothing about it places it
+   inside the local area. Governed by ``inet2rf_position_required``, on by
+   default, and applied to a BrandMeister-classified line (see
+   :ref:`en-brandmeister`) whatever that setting says. The position is read
+   from the packet bound for the air, so where the third-party unwrap fired it
+   is the inner packet's own position that has to place it locally. Messages,
+   which are gated on their addressee, and the position follow-up owed to a
+   station this gateway messaged are exempt.
+
+   The assumption that would justify relaying such a line — that the operator's
+   own server-side ``r/lat/lon/radius`` term already delivered nothing but
+   local traffic — holds only for a subscription made of geographic terms
+   alone. APRS-IS filter terms are OR'd, never AND'd, so any traffic-class term
+   alongside one (``u/APBM*``, any ``t/`` or ``u/`` term) widens the feed to
+   the whole network, and the feed offers that traffic far faster than a
+   1200 Bd channel clears it.
+#. **Locally-heard source.** With ``inet2rf_heard_only`` on (the default), a
+   non-message line is gated only when its source callsign was itself heard on
+   RF inside ``igate_local_window_sec`` (``DROP_INET2RF_NOT_HEARD``) — the
+   counterpart, for the source of ordinary traffic, of the test the message
+   gate below makes on an addressee. A station nobody in earshot has ever heard
+   is a station the local channel has no use for hearing about.
+#. **Per-source spacing.** A source gated to RF less than
+   ``inet2rf_min_interval_sec`` ago is refused (``DROP_INET2RF_RATE``), so no
+   single source can fill the RF TX ring on its own however the payload-type
+   mask is set. 30 s by default, 0 disables it; the ring holds
+   ``INET2RF_RATE_RING_SIZE`` sources and a slot is claimed only by a line that
+   reaches the transmit stage. Messages and the owed position follow-up are
+   exempt.
 #. **Message gating.** Applies to the ``MESSAGE`` type only; the other types
    are relayed at the sysop's discretion, which the type filter and the budlist
    above already express. See below.
@@ -470,8 +493,8 @@ selective third-party unwrap, the INET→RF range gate and the INET→RF callsig
 filter. The RF side shares its implementation with the gating path itself
 (``satGateListPass()``, ``rf2inetFiltersPass()``); the INET→RF side applies the
 same checks, in the same order, as ``inet2rfHandler()`` — associated-position
-exception, range gate, type mask with unwrap, callsign filter — so the two agree
-on every line. Both are evaluated whatever the state of the IGate enable and the
+exception, range gate, type mask with unwrap, callsign filter, position
+requirement, locally-heard source — so the two agree on every line. Both are evaluated whatever the state of the IGate enable and the
 two direction switches, so a receive-only station's log is narrowed rather than
 emptied.
 
@@ -485,7 +508,10 @@ The unconditional INET→RF rules — the own-report echo guard, the
 ``TCPXX``/``NOGATE``/``RFONLY`` header tokens, the broadcast-addressee rule, the
 generic query drop and the message gate — are deliberately left out. They are
 not filters the operator sets on the page, and applying them would hide this
-station's own reports as APRS-IS echoes them back.
+station's own reports as APRS-IS echoes them back. The per-source spacing
+limiter is left out on the same terms as the associated-position claim: its ring
+is spent by the transmit decision, and a log that claimed a slot would take it
+from the line it was recorded for.
 
 Nothing but the display changes. A frame the two views leave out is still
 digipeated, gated, parsed and counted exactly as before — ``isRxCount`` stays

@@ -1402,6 +1402,12 @@
 #define TR_F_PREFIX_FILTER_EN "Abilita filtro prefisso nominativo"
 /** Italian text for the form label for the "prefixes" field or fieldset, rendered on the IGate page. English: "Allowed prefixes (comma-separated)". */
 #define TR_F_PREFIXES "Prefissi consentiti (separati da virgola)"
+/** Form label for the "Internet to RF position requirement" checkbox, rendered on the IGate page. */
+#define TR_F_INET2RF_POSITION_REQ "Richiedi una posizione decodificabile"
+/** Form label for the "Internet to RF locally heard source" checkbox, rendered on the IGate page. */
+#define TR_F_INET2RF_HEARD_ONLY "Inoltra solo stazioni ascoltate in RF"
+/** Form label for the "Internet to RF per-source spacing" field, rendered on the IGate page. */
+#define TR_F_INET2RF_MIN_INTERVAL "Secondi minimi tra trame della stessa origine (0 = nessun limite)"
 /** Italian text for the explanatory note shown beside the range prefix setting, rendered on the IGate page. English: "Local gate applied only to RF ->
  * Internet, independent of the payload-type filter above...". */
 #define TR_NOTE_RANGE_PREFIX                                                                                                                                   \
@@ -1729,8 +1735,12 @@
 /** Explanatory note shown beside the Internet to RF range gate, rendered on the IGate page. */
 #define TR_NOTE_INET2RF_RANGE                                                                                                                                  \
     "Filtro locale applicato solo da Internet -> RF, indipendente dal filtro di tipo di payload sopra. La distanza e misurata dalla posizione della "          \
-    "Mia Stazione; le righe la cui posizione non e decodificabile non sono interessate. E requisito per inoltrare al trasmettitore qualsiasi "                 \
-    "sottoscrizione mondiale."
+    "Mia Stazione. E requisito per inoltrare al trasmettitore qualsiasi sottoscrizione mondiale."
+/** Explanatory note shown beside the Internet to RF flood gates, rendered on the IGate page. */
+#define TR_NOTE_INET2RF_FLOOD                                                                                                                                  \
+    "Queste tre opzioni limitano cio che il feed Internet puo occupare del canale radio. Una riga senza posizione propria non puo essere collocata nella "     \
+    "zona, una stazione mai ascoltata in RF non ha nessuno a portata, e la spaziatura impedisce a una sola origine di riempire la coda di trasmissione. I "    \
+    "messaggi sono esenti da tutte e tre."
 
 /** @} */
 

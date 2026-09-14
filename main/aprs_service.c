@@ -1078,6 +1078,65 @@ static bool msgAssocPending(const char *call) {
     return msgAssocFind(call) >= 0;
 }
 
+// ---------------------------------------------------------------------------
+// INET->RF per-source spacing
+//
+// One slot per source callsign gated to RF, holding the tick at which it last
+// took the transmitter. A source asking for the channel again inside
+// g_config.inet2rf_min_interval_sec is refused; one asking after the interval
+// has passed takes its slot over with the new stamp.
+//
+// Like the ring above, this one is touched only from inet2rfHandler() on the
+// single igate task and needs no lock of its own. Ticks are compared as signed
+// differences so the comparison stays correct across the tick counter's
+// wrap-around.
+// ---------------------------------------------------------------------------
+
+typedef struct {
+    char call[12];    // source callsign, SSID included; empty marks a free slot
+    TickType_t stamp; // tick at which this source was last gated to RF
+} inet2rf_rate_slot_t;
+
+static inet2rf_rate_slot_t s_inet2rfRate[INET2RF_RATE_RING_SIZE];
+
+// Ask the limiter for the channel on behalf of one source, and claim it when
+// the answer is yes. Answers yes unconditionally while the limiter is off
+// (interval 0) or the callsign is unusable, leaving the ring untouched in both
+// cases so nothing is recorded that could refuse a later line.
+static bool inet2rfRateAllow(const char *call) {
+    uint16_t interval;
+    app_config_lock();
+    interval = g_config.inet2rf_min_interval_sec;
+    app_config_unlock();
+
+    if (interval == 0 || call == NULL || call[0] == 0)
+        return true;
+
+    const TickType_t now = xTaskGetTickCount();
+    const TickType_t span = pdMS_TO_TICKS((uint32_t)interval * 1000U);
+
+    int oldest = 0;
+    for (int i = 0; i < INET2RF_RATE_RING_SIZE; i++) {
+        if (s_inet2rfRate[i].call[0] == 0) {
+            oldest = i;
+            break;
+        }
+        if (strcasecmp(s_inet2rfRate[i].call, call) == 0) {
+            if ((int32_t)(now - s_inet2rfRate[i].stamp) < (int32_t)span)
+                return false;
+            s_inet2rfRate[i].stamp = now;
+            return true;
+        }
+        if ((int32_t)(s_inet2rfRate[i].stamp - s_inet2rfRate[oldest].stamp) < 0)
+            oldest = i;
+    }
+
+    strncpy(s_inet2rfRate[oldest].call, call, sizeof(s_inet2rfRate[oldest].call) - 1);
+    s_inet2rfRate[oldest].call[sizeof(s_inet2rfRate[oldest].call) - 1] = 0;
+    s_inet2rfRate[oldest].stamp = now;
+    return true;
+}
+
 // Copy the addressee out of an APRS message payload. The information field is
 // ":ADDRESSEE:text" with the addressee fixed at nine characters, space-padded
 // on the right, so the second ':' always sits at info[10]; the padding is
@@ -1553,36 +1612,18 @@ static void inet2rfHandler(const char *line) {
         // position this gateway already owes a station it messaged is still
         // gated however far away that station turns out to be.
         //
-        // This gate is what makes a wide server-side subscription safe to put
-        // on the air. APRS-IS filter terms are OR'd, never AND'd - a packet
-        // matching any one term is passed - so a subscription such as
-        // "u/APBM* r/lat/lon/150" asks for BrandMeister traffic worldwide OR
-        // anything within 150 km, and the intersection the operator actually
-        // wants cannot be expressed to the server at all. It has to be
-        // enforced here, before the transmitter.
+        // This gate, together with the position requirement further down, is
+        // what makes a wide server-side subscription safe to put on the air.
+        // APRS-IS filter terms are OR'd, never AND'd - a packet matching any
+        // one term is passed - so a subscription such as "u/APBM*
+        // r/lat/lon/150" asks for BrandMeister traffic worldwide OR anything
+        // within 150 km, and the intersection the operator actually wants
+        // cannot be expressed to the server at all. It has to be enforced
+        // here, before the transmitter.
         //
-        // A line whose position cannot be decoded is not dropped merely for
-        // lacking one: a message, a status report or a telemetry frame has no
-        // position of its own to measure, and each of those is governed by
-        // its own gating rules further down. Guessing at a distance for them
-        // would make this gate mean something different for every payload
-        // type.
-        //
-        // BrandMeister worldwide-monitor traffic is the one exception, and it
-        // has to be: every other line reaching this handler was already
-        // range-limited server-side by the operator's own "r/lat/lon/radius"
-        // APRS-IS filter term, so a position-less line among them (a status
-        // report, say) is still known to be local because the server itself
-        // never sent anything else. The BrandMeister monitor subscription
-        // ("u/APBM*", see aprs_bm.h) carries no such term - APRS-IS filter
-        // terms are OR'd, never AND'd, so it cannot be combined with one - and
-        // this station's own range gate is the only geographic restriction a
-        // BrandMeister line is ever subject to (see
-        // docs/en/functionality/brandmeister.rst).
-        // Passing a position-less BrandMeister line through unmeasured would
-        // leave the very traffic this gate exists to bound (worldwide
-        // repeater status/telemetry chatter) completely ungated, flooding the
-        // RF TX ring with distant traffic the local channel has no use for.
+        // A line carrying no position of its own has no distance to test and
+        // is governed by the position requirement further down, once the
+        // payload actually bound for the air is known.
         if (!assocPosition && g_config.inet2rf_range_en) {
             bool rangeEn;
             float rangeKm, ownLat, ownLon;
@@ -1598,18 +1639,13 @@ static void inet2rfHandler(const char *line) {
                 const char *colon = strchr(line, ':');
                 float plat, plon;
                 aprs_tnc2_dest_call(line, destCall, sizeof(destCall));
-                bool haveFix = colon && aprs_filter_decode_position(colon + 1, destCall, &plat, &plon);
-                if (haveFix) {
+                if (colon && aprs_filter_decode_position(colon + 1, destCall, &plat, &plon)) {
                     float d = aprs_filter_haversine_km(ownLat, ownLon, plat, plon);
                     if (d > rangeKm) {
                         ESP_LOGD(TAG, "INET2RF range-filtered (%.1f km > %.1f km)%s: %s", d, rangeKm, viaBm ? " [BM]" : "", callsign);
                         igate_note_drop(DROP_INET2RF_RANGE);
                         return;
                     }
-                } else if (viaBm) {
-                    ESP_LOGD(TAG, "INET2RF range-filtered, BrandMeister line carries no position to measure: %s", callsign);
-                    igate_note_drop(DROP_INET2RF_RANGE);
-                    return;
                 }
             }
         }
@@ -1702,6 +1738,94 @@ static void inet2rfHandler(const char *line) {
         if (!aprs_filter_budlist_pass(g_config.inet2rf_budlist_mode, budlistCall)) {
             ESP_LOGD(TAG, "INET2RF budlist-filtered (mode=%d): %s", (int)g_config.inet2rf_budlist_mode, budlistCall);
             igate_note_drop(DROP_BUDLIST);
+            return;
+        }
+
+        // Position requirement. A payload that carries no position of its own
+        // - a status report, a telemetry frame, an unclassifiable payload -
+        // offers nothing that places it inside the local area, and the range
+        // gate above had no distance to measure for it. Such a line is
+        // refused rather than passed unmeasured, because the assumption that
+        // would justify passing it - that the operator's own server-side
+        // "r/lat/lon/radius" term already delivered nothing but local traffic
+        // - only holds for a subscription made of geographic terms alone. Any
+        // traffic-class term alongside one (the BrandMeister worldwide
+        // monitor "u/APBM*" of aprs_bm.h is the case this firmware names,
+        // though a "t/" or "u/" term of any kind behaves the same) widens the
+        // feed to the whole network, and a repeater status broadcast from the
+        // far side of it would otherwise reach the transmitter with no
+        // geographic gate ever having looked at it. The feed offers that
+        // traffic far faster than a 1200 Bd channel clears it, so what
+        // arrives is not one stray packet but a flood that fills the RF TX
+        // ring.
+        //
+        // Read from srcLine, which is the packet actually bound for the air:
+        // where the selective third-party unwrap above fired, it is the inner
+        // packet's own position that has to place it locally, not the
+        // wrapper's absence of one. Independent of the range gate, since it
+        // is the absence of a position rather than the size of a radius that
+        // it acts on, and skipped for the two payload families gated on
+        // something other than where they came from: a message, which is
+        // gated on its addressee, and a position follow-up this gateway
+        // already owes a station it messaged. A BrandMeister-classified line
+        // is held to the requirement whatever the setting says, this
+        // station's own gates being the only geographic restriction such a
+        // line is ever subject to (see docs/en/functionality/brandmeister.rst).
+        if (!assocPosition && (type & IGATE_FILT_MESSAGE) == 0 && (g_config.inet2rf_position_required || viaBm)) {
+            char destCall[12] = "";
+            const char *colon = strchr(srcLine, ':');
+            float plat, plon;
+            aprs_tnc2_dest_call(srcLine, destCall, sizeof(destCall));
+            if (!colon || !aprs_filter_decode_position(colon + 1, destCall, &plat, &plon)) {
+                ESP_LOGD(TAG, "INET2RF: no position to place it locally%s: %s", viaBm ? " [BM]" : "", line);
+                igate_note_drop(DROP_INET2RF_NO_POSITION);
+                return;
+            }
+        }
+
+        // Locally-heard source gate: the counterpart, for the source of
+        // ordinary traffic, of the test the message gate below makes on an
+        // addressee. A station nobody in earshot has ever heard is a station
+        // the local channel has no use for hearing about, and relaying it
+        // spends airtime the stations that ARE local have to share. Keyed on
+        // budlistCall - the unwrapped inner source where the selective
+        // third-party unwrap fired, the as-received source otherwise - and on
+        // the same igate_local_window_sec the message gate uses, so "heard
+        // locally" means one thing throughout the gateway.
+        //
+        // Message traffic is exempt: its own gate tests the addressee, which
+        // is the end of the conversation that has to be in earshot. The
+        // position follow-up owed to a station this gateway messaged is
+        // exempt for the same reason.
+        if (g_config.inet2rf_heard_only && !assocPosition && (type & IGATE_FILT_MESSAGE) == 0) {
+            uint16_t window;
+            app_config_lock();
+            window = g_config.igate_local_window_sec;
+            app_config_unlock();
+
+            if (!lastheard_heard_rf_within(budlistCall, window)) {
+                ESP_LOGD(TAG, "INET2RF: %s not heard on RF in the last %u s, not gated", budlistCall, (unsigned)window);
+                igate_note_drop(DROP_INET2RF_NOT_HEARD);
+                return;
+            }
+        }
+
+        // Per-source spacing. Every gate above answers "may this line reach
+        // RF at all"; this one answers "how much of the channel may one
+        // source take", which no payload-type mask or callsign list can
+        // express. A 1200 Bd channel carries roughly one frame per second and
+        // the feed can offer tens in that time, so without a floor on the
+        // interval a single busy source fills the RF TX ring on its own and
+        // every other station's traffic is discarded behind it.
+        //
+        // Claimed here rather than after the transmit below so that a frame
+        // the transmitter refuses does not spend the source's slot, and
+        // exempting the same two families as the gate above: message traffic
+        // is what the gateway exists to carry, and an owed position follow-up
+        // is a single frame by construction.
+        if (!assocPosition && (type & IGATE_FILT_MESSAGE) == 0 && !inet2rfRateAllow(budlistCall)) {
+            ESP_LOGD(TAG, "INET2RF: %s gated too recently, spacing limit applied", budlistCall);
+            igate_note_drop(DROP_INET2RF_RATE);
             return;
         }
 

@@ -122,6 +122,23 @@ Chiavi dell'interconnessione BrandMeister
      - numero
      - Raggio del filtro di distanza INET→RF in km, 0 = illimitato. Limitato a
        0…20038 al caricamento.
+   * - ``inet2rfPositionRequired``
+     - bool
+     - Rifiuta una riga INET→RF che non sia un messaggio e non porti una
+       posizione propria decodificabile. Attivo per impostazione predefinita;
+       una riga classificata come BrandMeister e soggetta al requisito
+       qualunque cosa dica questa chiave.
+   * - ``inet2rfHeardOnly``
+     - bool
+     - Inoltra una riga INET→RF che non sia un messaggio solo quando la sua
+       origine e stata ascoltata in RF entro ``igateLocalWindowSec``. Attivo
+       per impostazione predefinita.
+   * - ``inet2rfMinIntervalSec``
+     - numero
+     - Intervallo minimo, in secondi, tra due trame INET→RF che non siano
+       messaggi inoltrate per la stessa origine. 30 per impostazione
+       predefinita, 0 disattiva il limitatore; limitato a 0…3600 al
+       caricamento.
 
 Chiavi Winlink (APRSLink)
 =========================

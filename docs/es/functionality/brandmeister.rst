@@ -194,8 +194,13 @@ Todo está en la página *BrandMeister*, ubicada inmediatamente después de
 
 El filtro de rango Internet a RF vive en la página *IGate*, junto a su gemelo
 de RF a Internet, porque gobierna toda línea que el flujo le ofrece al
-transmisor y no solo el tráfico BrandMeister. La tabla de estado de la página
-*BrandMeister* informa su condición.
+transmisor y no solo el tráfico BrandMeister. Una suscripción mundial de
+monitorización no lleva ningún término geográfico propio, así que una línea
+BrandMeister que tampoco lleva posición — una difusión de estado de repetidor,
+por ejemplo — la rechaza el requisito de posición que está junto a ese filtro,
+sea cual sea el valor de ese requisito para el tráfico ordinario. Véase
+:ref:`es-igate` para la secuencia INET→RF completa. La tabla de estado de la
+página *BrandMeister* informa su condición.
 
 Lo que deliberadamente no se implementa
 =======================================

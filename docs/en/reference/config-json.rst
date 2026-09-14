@@ -113,6 +113,20 @@ BrandMeister interconnect keys
      - number
      - INET→RF range gate radius in km, 0 = unlimited. Clamped to
        0…20038 on load.
+   * - ``inet2rfPositionRequired``
+     - bool
+     - Refuse a non-message INET→RF line that carries no decodable position of
+       its own. On by default; a BrandMeister-classified line is held to the
+       requirement whatever this says.
+   * - ``inet2rfHeardOnly``
+     - bool
+     - Gate a non-message INET→RF line only when its source was heard on RF
+       inside ``igateLocalWindowSec``. On by default.
+   * - ``inet2rfMinIntervalSec``
+     - number
+     - Shortest interval, in seconds, between two non-message INET→RF frames
+       gated for the same source. 30 by default, 0 disables the limiter;
+       clamped to 0…3600 on load.
 
 Winlink (APRSLink) keys
 =======================

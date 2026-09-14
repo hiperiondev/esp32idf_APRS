@@ -35,7 +35,7 @@ In one sentence, the firmware **demodulates** AFSK/FSK audio from a radio's spea
 
 - **On-chip soft-modem.** AFSK 1200 Bd Bell 202 (standard APRS) with a dual demodulator, plus AFSK 1200 Bd V.23, AFSK 300 Bd, and **G3RUH 9600 Bd FSK** — all in pure C on the ESP32's own ADC/DAC.
 - **FX.25 forward error correction.** Reed–Solomon FEC over AX.25, RX-only or RX+TX, for reliable decodes in weak-signal conditions.
-- **Full APRS-IS IGate.** Bidirectional **RF→INET** and **INET→RF** gating with duplicate suppression, `qAR`/`qAO` construction, payload-type gating, callsign budlists, a local range gate (haversine distance) and prefix whitelist. Up to four APRS-IS servers can be listed, with automatic failover between the enabled ones.
+- **Full APRS-IS IGate.** Bidirectional **RF→INET** and **INET→RF** gating with duplicate suppression, `qAR`/`qAO` construction, payload-type gating, callsign budlists, a local range gate (haversine distance), a prefix whitelist and, on the INET→RF side, a position requirement, a locally-heard source test and per-source spacing that keep a wide APRS-IS subscription off the local channel. Up to four APRS-IS servers can be listed, with automatic failover between the enabled ones.
 - **BrandMeister APRS interconnect.** Recognises, gates and routes the APRS traffic BrandMeister injects, over the APRS-IS session the IGate already has — an `APBMxx` tocall, a `DMR` path alias or a named entry gateway identifies it. Its own page, off by default. **No DMR connection of any kind is involved.**
 - **Digipeater.** A four-row n-N alias table (WIDE1-1 / WIDE2-2 / WIDE#-2 by default), each row with its own hop limit and trace/flood mode, plus hop-count trapping, fill-in-only operation and duplicate suppression.
 - **Beacons, messaging & chat.** Fixed-position beacons for tracker/igate/digi, APRS text messaging with ack/retry (RF and/or INET), and an in-browser message chat UI.
@@ -63,7 +63,7 @@ In one sentence, the firmware **demodulates** AFSK/FSK audio from a radio's spea
 | PTT keying | Compile-time GPIO + polarity, minimum-unkey hold |
 | CSMA / TX time-slot / TXDelay preamble | `preamble`, `tx_timeslot` |
 | Transmit duty-cycle limiter | Optional ceiling over a rolling 10-minute window |
-| APRS-IS IGate RF→INET & INET→RF | Filters, dedup, budlist, third-party unwrap opt-in |
+| APRS-IS IGate RF→INET & INET→RF | Filters, dedup, budlist, third-party unwrap opt-in, INET→RF flood gates |
 | APRS-IS multiserver failover | 4 server slots, circular retry over the enabled ones |
 | Local range gate & prefix gate | Haversine distance + callsign-prefix whitelist |
 | BrandMeister APRS interconnect | Recognition, gating and message routing over the existing APRS-IS session; no DMR link |

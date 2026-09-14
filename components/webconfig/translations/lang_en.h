@@ -1323,6 +1323,12 @@
 #define TR_F_PREFIX_FILTER_EN "Enable callsign-prefix filter"
 /** Form label for the "prefixes" field or fieldset, rendered on the IGate page. */
 #define TR_F_PREFIXES "Allowed prefixes (comma-separated)"
+/** Form label for the "Internet to RF position requirement" checkbox, rendered on the IGate page. */
+#define TR_F_INET2RF_POSITION_REQ "Require a decodable position"
+/** Form label for the "Internet to RF locally heard source" checkbox, rendered on the IGate page. */
+#define TR_F_INET2RF_HEARD_ONLY "Only relay stations heard on RF"
+/** Form label for the "Internet to RF per-source spacing" field, rendered on the IGate page. */
+#define TR_F_INET2RF_MIN_INTERVAL "Min seconds between frames from one source (0 = off)"
 /** Explanatory note shown beside the range prefix setting, rendered on the IGate page. */
 #define TR_NOTE_RANGE_PREFIX                                                                                                                                   \
     "Local gate applied only to RF -> Internet, independent of the payload-type filter above. Range is measured from My Station's position; packets whose "    \
@@ -1634,8 +1640,12 @@
     "The last three rows are governed by the IGate page. BrandMeister stations are counted in the LAST HEARD table, where they carry a BM prefix."
 /** Explanatory note shown beside the Internet to RF range gate, rendered on the IGate page. */
 #define TR_NOTE_INET2RF_RANGE                                                                                                                                  \
-    "Local gate applied only to Internet -> RF, independent of the payload-type filter above. Range is measured from My Station's position; lines "            \
-    "whose position can't be decoded are not affected. Required before any worldwide subscription may be gated to the transmitter."
+    "Local gate applied only to Internet -> RF, independent of the payload-type filter above. Range is measured from My Station's position. Required "         \
+    "before any worldwide subscription may be gated to the transmitter."
+/** Explanatory note shown beside the Internet to RF flood gates, rendered on the IGate page. */
+#define TR_NOTE_INET2RF_FLOOD                                                                                                                                  \
+    "These three bound what the Internet feed may take of the radio channel. A line with no position of its own cannot be shown to be local, a station "       \
+    "never heard on RF has nobody in earshot, and the spacing keeps one source from filling the transmit queue. Messages are exempt from all three."
 
 /** @} */
 

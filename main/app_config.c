@@ -312,6 +312,15 @@ void app_config_set_defaults(app_config_t *c) {
     c->inet2rf_range_en = false;
     c->inet2rf_range_km = 0.0f;
 
+    // The three gates that stand between an unbounded APRS-IS feed and the
+    // transmitter start on, so a station gating INET->RF at all does so on
+    // local traffic from stations its own channel has heard, spaced far enough
+    // apart that no single source takes the air. Each is an ordinary checkbox
+    // on the IGate page for an operator who wants something wider.
+    c->inet2rf_position_required = true;
+    c->inet2rf_heard_only = true;
+    c->inet2rf_min_interval_sec = INET2RF_MIN_INTERVAL_SEC_DEFAULT;
+
     // BrandMeister interconnect: off, and with the worldwide monitor
     // subscription off inside it. Both are opt-in because the feature changes
     // what the station puts on the air, and the gateway list starts empty
@@ -795,6 +804,9 @@ static void section_write_igate(jw_t *d, const app_config_t *c) {
     jadd_str(d, "rf2inetPrefixes", c->rf2inet_prefixes);
     jadd_bool(d, "inet2rfRangeEn", c->inet2rf_range_en);
     jadd_num(d, "inet2rfRangeKm", c->inet2rf_range_km);
+    jadd_bool(d, "inet2rfPositionRequired", c->inet2rf_position_required);
+    jadd_bool(d, "inet2rfHeardOnly", c->inet2rf_heard_only);
+    jadd_num(d, "inet2rfMinIntervalSec", c->inet2rf_min_interval_sec);
     jadd_bool(d, "inet2rf3rdPartyUnwrapEn", c->inet2rf_3rdparty_unwrap_en);
     jadd_bool(d, "igateMsgGateEn", c->igate_msg_gate_en);
     jadd_num(d, "igateLocalWindowSec", c->igate_local_window_sec);
@@ -1357,6 +1369,10 @@ static void section_read_igate(cJSON *d, app_config_t *c) {
     set_str(c->rf2inet_prefixes, sizeof(c->rf2inet_prefixes), jget_str(d, "rf2inetPrefixes", c->rf2inet_prefixes));
     c->inet2rf_range_en = jget_bool(d, "inet2rfRangeEn", c->inet2rf_range_en);
     c->inet2rf_range_km = clamp_range_km((float)jget_num(d, "inet2rfRangeKm", c->inet2rf_range_km), "inet2rfRangeKm");
+    c->inet2rf_position_required = jget_bool(d, "inet2rfPositionRequired", c->inet2rf_position_required);
+    c->inet2rf_heard_only = jget_bool(d, "inet2rfHeardOnly", c->inet2rf_heard_only);
+    c->inet2rf_min_interval_sec = clamp_u16_range(jget_num(d, "inet2rfMinIntervalSec", c->inet2rf_min_interval_sec), INET2RF_MIN_INTERVAL_SEC_MIN,
+                                                  INET2RF_MIN_INTERVAL_SEC_MAX, "inet2rfMinIntervalSec");
     c->inet2rf_3rdparty_unwrap_en = jget_bool(d, "inet2rf3rdPartyUnwrapEn", c->inet2rf_3rdparty_unwrap_en);
     c->igate_msg_gate_en = jget_bool(d, "igateMsgGateEn", c->igate_msg_gate_en);
     // Same two-layer clamp the rest of the bounded fields use: the file on
