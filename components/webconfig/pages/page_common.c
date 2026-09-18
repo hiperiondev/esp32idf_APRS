@@ -1,0 +1,540 @@
+// @file page_common.c
+//
+// @author Emiliano Augusto Gonzalez ( lu3vea @ gmail . com)
+// @date 2026
+// @copyright GNU General Public License v3
+// @see https://github.com/hiperiondev/esp32idf_APRS
+//
+// @note
+// This is based on other projects:
+//     VP-Digi: https://github.com/sq8vps/vp-digi
+//     ESP32APRS: https://github.com/nakhonthai/ESP32APRS_Audio
+//     LibAPRS: https://github.com/markqvist/LibAPRS
+//
+//     please contact their authors for more information.
+//
+// @brief Web admin foundation pages and live JSON endpoints: root redirect,
+// logout, the dashboard, the sidebar/system info strips, and the lastheard and
+// traffic feeds polled by the dashboard.
+
+#include <stdio.h>
+#include <string.h>
+#include <time.h>
+
+#include "esp_chip_info.h"
+#include "esp_flash.h"
+#include "esp_log.h"
+#include "esp_rom_sys.h"
+#include "esp_system.h"
+#include "esp_timer.h"
+#include "esp_wifi.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+
+#include <stdlib.h>
+
+#include "app_config.h"
+#include "aprs_service.h"
+#include "cpu_freq.h"
+#include "heap_monitor.h" // HEAP_MONITOR_CAPS - the memory class every heap figure in this firmware describes
+#include "igate.h"
+#include "lastheard.h"
+#include "pages.h"
+#include "reset_reason.h" // reset_reason_label() - dashboard "Reboot reason" wording
+#include "storage.h"
+#include "str_append.h"
+#include "time_sync.h" // time_sync_format_local() - dashboard local date/time (System page "Time" section)
+#include "trafficlog.h"
+#include "translations.h"
+#include "web_common.h"
+
+static const char *TAG = "page_common";
+
+esp_err_t page_root(httpd_req_t *req) {
+    if (!web_check_auth(req))
+        return ESP_OK;
+    httpd_resp_set_status(req, "302 Found");
+    httpd_resp_set_hdr(req, "Location", "/dashboard");
+    httpd_resp_send(req, NULL, 0);
+    return ESP_OK;
+}
+
+esp_err_t page_logout(httpd_req_t *req) {
+    // Force the browser to drop cached Basic-Auth creds by re-issuing 401.
+    httpd_resp_set_status(req, "401 Unauthorized");
+    httpd_resp_set_hdr(req, "WWW-Authenticate", "Basic realm=\"" APRS_SOFTWARE_NAME "\"");
+    httpd_resp_set_type(req, "text/html");
+    web_send_standalone_page(req, "<h1>" TR_LOGGED_OUT_TITLE "</h1><p><a href='/'>" TR_LOG_IN_AGAIN "</a></p>");
+    return ESP_OK;
+}
+
+esp_err_t page_dashboard(httpd_req_t *req) {
+    if (!web_check_auth(req))
+        return ESP_OK;
+    web_send_header(req, NULL, "dashboard");
+    httpd_resp_sendstr_chunk(req, "<h1>" TR_F_DASHBOARD "</h1>");
+
+    // -- Compact live system-info strip. Polled every 1s so all System Info
+    //    values stay live. --
+    httpd_resp_sendstr_chunk(req, "<div id='dashSysInfo'></div>");
+
+    // -- "Modes Enabled" / "Network Status" / "STATISTICS" panel. Polled
+    //    every 1s so all STATISTICS values stay live. --
+    httpd_resp_sendstr_chunk(req, "<div id='sidebarInfo'></div>");
+
+    char buf[900];
+
+    // -- Radio Info -----------------------------------------------------
+    size_t n = 0;
+    str_append(buf, sizeof(buf), &n, "<fieldset><legend>" TR_DASH_RADIO_INFO "</legend><div class='table-wrap'><table>");
+    // MODEM status reflects the audio ADC/DAC AFSK modem enable state set on
+    // the Radiomodem (Audio / AFSK) page - it is the only modem in the build.
+    const char *modemName = g_config.audio_modem_en ? "AFSK (Audio)" : TR_F_OFF;
+    str_append(buf, sizeof(buf), &n,
+               "<tr><td>" TR_DASH_MODEM "</td><td>%s</td></tr>"
+               "<tr><td>" TR_DASH_FX25 "</td><td>%s</td></tr></table></div></fieldset>",
+               modemName, g_config.fx25_mode ? TR_ENABLED : TR_F_OFF);
+    httpd_resp_sendstr_chunk(req, buf);
+
+    // -- APRS-IS SERVER ---------------------------------------------------
+    if (g_config.igate_en) {
+        char host[20];
+        uint16_t port;
+        igate_get_current_server(host, sizeof(host), &port);
+        n = 0;
+        str_append(buf, sizeof(buf), &n,
+                   "<fieldset><legend>" TR_DASH_APRS_IS_SERVER "</legend><div class='table-wrap'><table>"
+                   "<tr><td>" TR_DASH_HOST "</td><td>%s</td></tr>"
+                   "<tr><td>" TR_DASH_PORT "</td><td>%d</td></tr></table></div></fieldset>",
+                   host, port);
+        httpd_resp_sendstr_chunk(req, buf);
+    }
+
+    // -- WiFi --------------------------------------------------------------
+    // Indexed by the WIFI_MODE_CFG_OFF .. WIFI_MODE_CFG_APSTA selectors, so
+    // the table is exactly as long as that range and a stored value outside it
+    // falls back to the same label as "off".
+    static const char *WIFI_MODE_NAME[] = { TR_F_OFF, "STA", "AP", "AP+STA" };
+    const char *wifiModeName = (g_config.wifi_mode <= WIFI_MODE_CFG_MAX) ? WIFI_MODE_NAME[g_config.wifi_mode] : TR_F_OFF;
+
+    wifi_ap_record_t ap_info;
+    bool sta_connected = (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK);
+    char ssidBuf[40] = "", ssidEsc[40 * 6 + 1] = "";
+    if (sta_connected) {
+        snprintf(ssidBuf, sizeof(ssidBuf), "%s", (const char *)ap_info.ssid);
+        web_html_attr_escape(ssidBuf, ssidEsc, sizeof(ssidEsc));
+    }
+
+    n = 0;
+    str_append(buf, sizeof(buf), &n,
+               "<fieldset><legend>" TR_DASH_WIFI "</legend><div class='table-wrap'><table>"
+               "<tr><td>" TR_DASH_MODE "</td><td>%s</td></tr>"
+               "<tr><td>" TR_DASH_SSID "</td><td>%s</td></tr>",
+               wifiModeName, ssidEsc);
+    if (sta_connected)
+        str_append(buf, sizeof(buf), &n, "<tr><td>" TR_DASH_RSSI "</td><td>%d dBm</td></tr></table></div></fieldset>", ap_info.rssi);
+    else
+        str_append(buf, sizeof(buf), &n, "<tr><td>" TR_DASH_RSSI "</td><td>" TR_DASH_DISCONNECTED "</td></tr></table></div></fieldset>");
+    httpd_resp_sendstr_chunk(req, buf);
+
+    // -- IGate Traffic table: a real (not modal) table at the bottom of the
+    //    dashboard, polled from /igate_traffic?since=<seq> and appended to,
+    //    mirroring the reference esp32idf_APRS dashboard's traffic monitor
+    //    with its TIME / TYPE / DX / PACKET / AUDIO columns. AUDIO shows the
+    //    demodulated signal level (mV RMS) for RF-received frames, or '-'
+    //    for TX/APRS-IS-only entries where no audio level applies. --
+    httpd_resp_sendstr_chunk(req, "<fieldset><legend>" TR_DASH_IGATE_TRAFFIC "</legend>"
+                                  "<div class='traffic-actions'>"
+                                  "<button id='trafficPauseBtn' class='btn secondary' onclick='trafficTogglePause()'>" TR_TRAFFIC_PAUSE "</button>"
+                                  "<button class='btn secondary' onclick='trafficClear()'>" TR_TRAFFIC_CLEAR "</button>"
+                                  "</div>"
+                                  "<div id='trafficTableWrap' class='traffic-table-wrap'>"
+                                  "<table id='trafficTable'><thead><tr>"
+                                  "<th>" TR_TRAFFIC_COL_TIME "</th>"
+                                  "<th>" TR_TRAFFIC_COL_TYPE "</th>"
+                                  "<th>" TR_DASH_LH_ICON "</th>"
+                                  "<th>" TR_TRAFFIC_COL_DX "</th>"
+                                  "<th>" TR_TRAFFIC_COL_PACKET "</th>"
+                                  "<th>" TR_TRAFFIC_COL_DECODED "</th>"
+                                  "<th>" TR_TRAFFIC_COL_AUDIO "</th>"
+                                  "</tr></thead><tbody id='trafficBody'>"
+                                  "<tr><td colspan='7'>" TR_TRAFFIC_WAITING "</td></tr>"
+                                  "</tbody></table></div></fieldset>");
+
+    httpd_resp_sendstr_chunk(
+        req, "<script>"
+             "var trafficSince=0,trafficPaused=false,trafficRows=[];"
+             "var TRAFFIC_MAX_ROWS=200;"
+             "function esc(s){return (s==null?'':String(s)).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}"
+             "function trafficTogglePause(){"
+             "trafficPaused=!trafficPaused;"
+             "document.getElementById('trafficPauseBtn').textContent=trafficPaused?'" TR_TRAFFIC_RESUME "':'" TR_TRAFFIC_PAUSE "';"
+             "}"
+             "function trafficClear(){trafficRows=[];renderTraffic();}"
+             "function fmtIcon(sym){"
+             "if(!sym||!/^\\d+-\\d+$/.test(sym))return '-';"
+             "return '<img src=\"http://aprs.dprns.com/symbols/icons/'+sym+'.png\" width=16 height=16 onerror=\"this.style.display=\\'none\\'\">';"
+             "}"
+             "function renderTraffic(){"
+             "var body=document.getElementById('trafficBody');"
+             "if(!trafficRows.length){body.innerHTML='<tr><td colspan=\"7\">" TR_TRAFFIC_WAITING "</td></tr>';return;}"
+             "var rows='';"
+             "for(var i=trafficRows.length-1;i>=0;i--){"
+             "var it=trafficRows[i];"
+             "var au=(it.au!=null&&it.au>=0)?(it.au+' mV'):'-';"
+             "rows+='<tr><td>'+(it.t/1000).toFixed(1)+'s</td><td>'+esc(it.d)+'</td><td>'+fmtIcon(it.sym)+'</td><td>'+esc(it.dx)+'</"
+             "td><td>'+esc(it.pkt||it.m)+'</td><td>'+esc(it.dec||'-')+'</td><td>'+esc(au)+'</td></tr>';"
+             "}"
+             "body.innerHTML=rows;"
+             "}"
+             "function trafficPoll(){"
+             "if(trafficPaused)return;"
+             "fetch('/igate_traffic?since='+trafficSince).then(function(r){return r.json();}).then(function(d){"
+             "trafficSince=d.seq;"
+             "if(d.items&&d.items.length){"
+             "trafficRows=trafficRows.concat(d.items);"
+             "if(trafficRows.length>TRAFFIC_MAX_ROWS)trafficRows=trafficRows.slice(trafficRows.length-TRAFFIC_MAX_ROWS);"
+             "renderTraffic();"
+             "}"
+             "}).catch(function(){}).then(function(){setTimeout(trafficPoll,1500);});"
+             "}"
+             // -- Reference-dashboard-style periodic reloads. System Info and
+             //    STATISTICS (sidebarInfo, which also holds Modes Enabled /
+             //    Network Status) are both refreshed every 1s so every value in
+             //    those two panels stays live, matching the same 1s cadence used
+             //    for Free Heap / Min Free Heap below. --
+             "function reloadDashSysInfo(){"
+             "fetch('/dashinfo').then(function(r){return r.text();}).then(function(t){"
+             "document.getElementById('dashSysInfo').innerHTML=t;"
+             "}).catch(function(){}).then(function(){setTimeout(reloadDashSysInfo,1000);});"
+             "}"
+             "function reloadSidebarInfo(){"
+             "fetch('/sidebarInfo').then(function(r){return r.text();}).then(function(t){"
+             "document.getElementById('sidebarInfo').innerHTML=t;"
+             "}).catch(function(){}).then(function(){setTimeout(reloadSidebarInfo,1000);});"
+             "}"
+             "reloadDashSysInfo();reloadSidebarInfo();trafficPoll();"
+             "</script>");
+
+    web_send_footer(req);
+    return ESP_OK;
+}
+
+// Cause of this boot for the dashboard's System Info strip, worded by the
+// shared table so the strip and the Telegram start-up notice name it the same
+// way.
+static const char *dash_reboot_reason_str(void) {
+    return reset_reason_label(esp_reset_reason());
+}
+
+// GET /dashinfo -> compact live system-info strip shown at the top of the
+// dashboard (Up Time / RAM / LittleFS / CPU speed / Reboot reason). Served as
+// an HTML fragment, not JSON: reloadDashSysInfo() polls it every second and
+// assigns the response straight into #dashSysInfo, so every value on the strip
+// - including the Free Heap and Min Free Heap cells - stays live without the
+// page being reloaded.
+esp_err_t page_dashinfo(httpd_req_t *req) {
+    if (!web_check_auth(req))
+        return ESP_OK;
+
+    size_t used = 0, total = 0;
+    storage_usage(&used, &total);
+    uint32_t cpu_mhz = esp_rom_get_cpu_ticks_per_us();
+
+    // Local civil date/time for the configured timezone (System page "Time"
+    // section select), rendered from the current UTC clock. The system clock
+    // and every APRS timestamp elsewhere in the firmware stay UTC regardless
+    // of this selection - see time_sync.h.
+    char localTime[40];
+    time_sync_format_local(time(NULL), g_config.timezone_idx, localTime, sizeof(localTime));
+    char localTimeEsc[40 * 6 + 1];
+    web_html_attr_escape(localTime, localTimeEsc, sizeof(localTimeEsc));
+
+    // Break the raw uptime seconds down into days / hours / minutes / seconds
+    // for display (e.g. "2d 3h 43m 7s") instead of a single raw seconds count.
+    int64_t uptime_s = esp_timer_get_time() / 1000000LL;
+    int64_t uptime_days = uptime_s / 86400;
+    int64_t uptime_hour = (uptime_s % 86400) / 3600;
+    int64_t uptime_min = (uptime_s % 3600) / 60;
+    int64_t uptime_sec = uptime_s % 60;
+
+    // Rendered as the same stat-card grid used for every other at-a-glance
+    // metric strip in the admin UI (see .stat-grid / .stat-card in
+    // web_handle_css()): one card per value, its label above and its unit
+    // trailing the figure, so this strip reads like the rest of the dashboard
+    // instead of like a plain settings table.
+    //
+    // Both heap figures are read for HEAP_MONITOR_CAPS, the class heap_monitor.c
+    // and the Telegram transport report, so a number the operator reads here and
+    // a number they find in the log describe the same set of heaps rather than
+    // two overlapping ones.
+    //
+    // The two are still not comparable with each other, and the difference
+    // between them is not a headroom. The minimum is what the allocator keeps
+    // per registered heap, summed, with every term taken at that heap's own
+    // worst instant; an ESP32 without PSRAM registers three or four separate
+    // DRAM regions, so it is a sum of moments that never coincided and reads as
+    // a lower bound on the worst the total has ever been. heap_monitor.h sets
+    // out what follows from that, and CONFIG_APRS_HEAP_REPORT_PER_HEAP prints
+    // the per-heap terms this single figure flattens.
+    char buf[1400];
+    snprintf(
+        buf, sizeof(buf),
+        "<fieldset><legend>" TR_DASH_SYSINFO "</legend><div class='stat-grid'>"
+        "<div class='stat-card'><div class='stat-label'>" TR_DASH_DATETIME "</div><div class='stat-value'>%s</div></div>"
+        "<div class='stat-card'><div class='stat-label'>" TR_DASH_UPTIME "</div><div class='stat-value'>%lldd %lldh %lldm %llds</div></div>"
+        "<div class='stat-card'><div class='stat-label'>" TR_DASH_FREE_HEAP
+        "</div><div class='stat-value'><span id='dashFreeHeap'>%lu</span><span class='stat-unit'> bytes</span></div></div>"
+        "<div class='stat-card'><div class='stat-label'>" TR_SYSINFO_MIN_FREE_HEAP
+        "</div><div class='stat-value'><span id='dashMinFreeHeap'>%lu</span><span class='stat-unit'> bytes</span></div></div>"
+        "<div class='stat-card'><div class='stat-label'>" TR_DASH_LITTLEFS
+        "</div><div class='stat-value'>%u<span class='stat-unit'> / %u bytes</span></div></div>"
+        "<div class='stat-card'><div class='stat-label'>" TR_SYSINFO_CPU_FREQ "</div><div class='stat-value'>%lu<span class='stat-unit'> MHz</span></div></div>"
+        "<div class='stat-card'><div class='stat-label'>" TR_DASH_REBOOT_REASON "</div><div class='stat-value'>%s</div></div>"
+        "</div></fieldset>",
+        localTimeEsc, uptime_days, uptime_hour, uptime_min, uptime_sec, (unsigned long)heap_caps_get_free_size(HEAP_MONITOR_CAPS),
+        (unsigned long)heap_caps_get_minimum_free_size(HEAP_MONITOR_CAPS), (unsigned)used, (unsigned)total, (unsigned long)cpu_mhz, dash_reboot_reason_str());
+
+    httpd_resp_set_type(req, "text/html");
+    httpd_resp_set_hdr(req, "Cache-Control", "no-store");
+    httpd_resp_sendstr(req, buf);
+    return ESP_OK;
+}
+
+// GET /heapinfo -> tiny JSON {free, minFree} carrying just the Free Heap and
+// Min Free Heap figures.
+//
+// This route serves external clients only: a monitoring script or a manual
+// probe that wants the two numbers without the markup around them. The
+// dashboard does not use it - its own Free Heap / Min Free Heap cells live
+// inside the #dashSysInfo fragment and are refreshed with the rest of that
+// fragment from /dashinfo.
+//
+// Both figures are read exactly as page_dashinfo() reads them, in the same
+// memory class and with the same caveat on the minimum, so the two routes never
+// disagree about the same instant.
+//
+// Whatever polls this sees only the window it is watching, which is not when
+// boot bring-up or an unattended reconnect happens; heap_monitor.c is what
+// covers the rest of the time.
+esp_err_t page_heapinfo(httpd_req_t *req) {
+    if (!web_check_auth(req))
+        return ESP_OK;
+
+    char json[80];
+    size_t n = snprintf(json, sizeof(json), "{\"free\":%lu,\"minFree\":%lu}", (unsigned long)heap_caps_get_free_size(HEAP_MONITOR_CAPS),
+                        (unsigned long)heap_caps_get_minimum_free_size(HEAP_MONITOR_CAPS));
+
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_set_hdr(req, "Cache-Control", "no-store");
+    httpd_resp_send(req, json, (ssize_t)n);
+    return ESP_OK;
+}
+
+// GET /lastheard -> JSON array of recently-heard stations (see
+// components/lastheard). Not rendered on the dashboard (the IGate Traffic
+// table below covers that), kept available for other UI / future use.
+esp_err_t page_lastheard(httpd_req_t *req) {
+    if (!web_check_auth(req))
+        return ESP_OK;
+
+    char json[2048];
+    size_t n = lastheard_dump_json(json, sizeof(json));
+
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_set_hdr(req, "Cache-Control", "no-store");
+    httpd_resp_send(req, json, (ssize_t)n);
+    return ESP_OK;
+}
+
+esp_err_t page_sidebar_info(httpd_req_t *req) {
+    if (!web_check_auth(req))
+        return ESP_OK;
+
+    igate_stats_t igs = igate_get_stats();
+
+    // This buffer lives on the httpd task stack and is filled by a sequence of
+    // appends whose combined length depends on the active translation, on the
+    // width of every counter (each can reach uint32 max, 10 digits) and on the
+    // number of Drop Breakdown rows (DROP_REASON_COUNT, longest reason strings
+    // ~40-45 chars). None of that is fixed by this file, so the size of the
+    // buffer is not what keeps the build safe: every append below goes through
+    // str_append(), which clamps the running offset at each step, so the
+    // buffer cannot be overrun however far the translations or the drop-reason
+    // table grow. Outgrowing it costs content off the end and nothing more,
+    // and that is reported once, after the build.
+    char buf[3600];
+    size_t n = 0;
+
+    // -- Modes Enabled ------------------------------------------------------
+    // Wrapped in the same <fieldset><legend> card used by Radio Info /
+    // APRS-IS SERVER / WiFi so all dashboard boxes share one look and feel.
+    str_append(buf, sizeof(buf), &n,
+               "<fieldset><legend>" TR_DASH_MODES_ENABLED "</legend><div class='table-wrap'><table><tr>"
+               "<th class='badge %s'>" TR_F_IGATE "</th>"
+               "<th class='badge %s'>" TR_DASH_DIGI_SHORT "</th>"
+               "<th class='badge %s'>" TR_F_TRACKER "</th>"
+               "<th class='badge %s'>" TR_DASH_WX_SHORT "</th>"
+               "</tr></table></div></fieldset>",
+               g_config.igate_en ? "ok" : "off", g_config.digi_en ? "ok" : "off", g_config.trk_en ? "ok" : "off", g_config.wx_en ? "ok" : "off");
+
+    // -- Network Status -------------------------------------------------------
+    // WIFI reflects the STA link state (connected to an AP), the same check
+    // used by the WiFi fieldset above, so this column tracks the actual
+    // radio link rather than just whether STA/AP+STA mode is configured.
+    wifi_ap_record_t sidebar_ap_info;
+    bool wifi_connected = (esp_wifi_sta_get_ap_info(&sidebar_ap_info) == ESP_OK);
+    str_append(buf, sizeof(buf), &n,
+               "<fieldset><legend>" TR_DASH_NETWORK_STATUS "</legend><div class='table-wrap'><table><tr>"
+               "<th class='badge %s'>" TR_DASH_WIFI "</th>"
+               "<th class='badge %s'>APRS-IS</th>"
+               "<th class='badge %s'>" TR_DASH_FX25 "</th>"
+               "</tr></table></div></fieldset>",
+               wifi_connected ? "ok" : "off", igate_is_connected() ? "ok" : "off", (g_config.fx25_mode > 0) ? "ok" : "off");
+
+    // -- STATISTICS -----------------------------------------------------
+    // radio_rx/radio_tx/rf2inet/inet2rf/digi come from aprs_service's own
+    // counters, tracked at the actual RX/TX/relay points regardless of
+    // whether digi_en/igate_en are on - unlike igate_get_stats(), whose
+    // internal counters only move while the IGate is enabled. This keeps the
+    // panel populated even for an RX-only/monitor setup with both features
+    // off. (digi remains an exception by nature: there is nothing to
+    // digipeat with digi_en off, so it's expected to read 0 in that case.)
+    //
+    // Drop/error counts: every drop/error site in the firmware - IGate
+    // RF->INET/INET->RF, the digipeater, and the RX/TX service level in
+    // aprs_service.c - reports through igate_note_drop() into
+    // igs.dropByReason[], regardless of whether digi_en/igate_en are on, so
+    // the RX-only/monitor setup is covered at that single point.
+    // svcStats.drop/err are the *same* events counted a second time by
+    // aprs_service's own counters, so they must not be added on top of
+    // igate_stats_total_drop(&igs) - that would double-count every
+    // service-level drop and push the DROP/ERR total ahead of the Drop
+    // Breakdown table's sum. igate_stats_total_drop(&igs) alone is the
+    // complete, correct total.
+    aprs_service_stats_t svcStats = aprs_service_get_stats();
+    str_append(buf, sizeof(buf), &n,
+               "<fieldset><legend>" TR_DASH_STATISTICS "</legend><div class='table-wrap'><table>"
+               "<tr><td>" TR_DASH_RADIO_RX "</td><td>%lu</td></tr>"
+               "<tr><td>" TR_DASH_PACKET_TX "</td><td>%lu</td></tr>"
+               "<tr><td>" TR_DASH_RF2INET "</td><td>%lu</td></tr>"
+               "<tr><td>" TR_DASH_INET2RF "</td><td>%lu</td></tr>"
+               "<tr><td>" TR_DASH_IGATE_RX "</td><td>%lu</td></tr>"
+               "<tr><td>" TR_DASH_IGATE_TX "</td><td>%lu</td></tr>"
+               "<tr><td>" TR_DASH_DIGI_STAT "</td><td>%lu</td></tr>"
+               "<tr><td>" TR_DASH_DROP_ERR "</td><td>%lu/%lu</td></tr>"
+               // Current RF TX ring backlog vs the "TX buffers" cap, so an
+               // operator can see beacons queueing up (and, read together
+               // with DROP above, being lost when the leg saturates) without
+               // a serial cable - the visible counterpart to the drain-wait
+               // that now staggers simultaneously-due beacons.
+               "<tr><td>" TR_DASH_TX_QUEUE "</td><td>%lu/%lu</td></tr>"
+               // CSMA anti-starvation key-ups, busy channel first and clear
+               // channel second. These belong here rather than in the Drop
+               // Breakdown below because the frame was transmitted in both
+               // cases: the first number describes how congested the
+               // frequency is, the second only how low the configured CSMA
+               // persistence is (with the standard 63, about a tenth of
+               // PACKET TX above).
+               "<tr><td>" TR_DASH_CSMA_FORCED "</td><td>%lu/%lu</td></tr>"
+               // Live measured transmit duty cycle vs the configured ceiling
+               // (0 = limiter disabled, no ceiling enforced) - see
+               // g_config.duty_cycle_en/duty_cycle_pct and the accumulator in
+               // aprs_service.c. Populated even while disabled, so an
+               // operator can see what they would be capping before turning
+               // the limiter on.
+               "<tr><td>" TR_DASH_TX_DUTY_CYCLE "</td><td>%lu%%/%lu%%</td></tr>"
+               "</table></div></fieldset>",
+               (unsigned long)svcStats.radio_rx, (unsigned long)svcStats.radio_tx, (unsigned long)svcStats.rf2inet, (unsigned long)svcStats.inet2rf,
+               (unsigned long)igs.isRxCount, (unsigned long)igs.isTxCount, (unsigned long)svcStats.digi, (unsigned long)igate_stats_total_drop(&igs),
+               (unsigned long)igate_stats_total_err(&igs), (unsigned long)svcStats.tx_queue_depth, (unsigned long)svcStats.tx_queue_limit,
+               (unsigned long)svcStats.csma_busy_forced, (unsigned long)svcStats.csma_persist_forced, (unsigned long)svcStats.tx_duty_cycle_pct,
+               (unsigned long)svcStats.duty_cycle_limit_pct);
+
+    // -- Drop breakdown -------------------------------------------------
+    // Per-reason detail behind the aggregate DROP/ERR tile above: lets an
+    // operator tell "N dropped because Weather was unchecked" apart from
+    // "N dropped because RFONLY", instead of one opaque total. Every drop/
+    // error site in the firmware (IGate RF->INET/INET->RF, the digipeater,
+    // and the RX/TX service level) reports through igate_note_drop() with
+    // its own drop_reason_t, so every row here is an explicit, named reason
+    // - there is no generic/"other" catch-all bucket.
+    str_append(buf, sizeof(buf), &n, "<fieldset><legend>" TR_DASH_DROP_BREAKDOWN "</legend><div class='table-wrap'><table>");
+    for (int i = 0; i < DROP_REASON_COUNT; i++) {
+        str_append(buf, sizeof(buf), &n, "<tr><td>%s</td><td>%lu</td></tr>", igate_drop_reason_name((drop_reason_t)i), (unsigned long)igs.dropByReason[i]);
+    }
+    str_append(buf, sizeof(buf), &n, "</table></div></fieldset>");
+
+    // Running out of room is a cosmetic, self-reporting condition: the panel
+    // comes back with its last rows missing and its tags unclosed, which is
+    // worth a log line but not worth failing the request over. The dashboard
+    // polls this route once a second, so the warning is rate-limited to one
+    // line per poll and appears only if a translation or an added statistics
+    // row has actually outgrown buf.
+    if (str_append_truncated(n, sizeof(buf))) {
+        ESP_LOGW(TAG, "sidebar info truncated at %u bytes - enlarge buf[] in page_sidebar_info()", (unsigned)sizeof(buf));
+    }
+
+    httpd_resp_set_type(req, "text/html");
+    httpd_resp_set_hdr(req, "Cache-Control", "no-store");
+    httpd_resp_sendstr(req, buf);
+    return ESP_OK;
+}
+
+// GET /igate_traffic?since=<seq> -> JSON feed of igate/digi/RF traffic lines,
+// polled by the "IGate Traffic" box on the dashboard. Mirrors the same lines
+// the firmware already prints on the serial console (see trafficlog.h).
+//
+// The body is streamed one ring entry per chunk, so the whole document never
+// exists in RAM at once: the peak cost is the single-entry buffer below, no
+// matter how many entries the client is behind or how long each packet is. That
+// is what lets a route polled every 1.5 s for the lifetime of the device carry
+// the full backlog without either a heap allocation on every poll or a size cap
+// that would silently discard the entries past it.
+//
+// The reported "seq" is the sequence number of the last entry actually written,
+// not the newest one buffered, so a client can only ever advance past lines it
+// has really received.
+esp_err_t page_igate_traffic(httpd_req_t *req) {
+    if (!web_check_auth(req))
+        return ESP_OK;
+
+    uint32_t since = 0;
+    char query[32];
+    if (httpd_req_get_url_query_str(req, query, sizeof(query)) == ESP_OK) {
+        char val[16];
+        if (httpd_query_key_value(query, "since", val, sizeof(val)) == ESP_OK) {
+            since = (uint32_t)strtoul(val, NULL, 10);
+        }
+    }
+
+    // A cursor ahead of the ring means the device rebooted since the client last
+    // polled (sequence numbering restarts at 1), so start again from the oldest
+    // entry still buffered instead of waiting for the counter to catch up.
+    uint32_t latest = trafficlog_latest_seq();
+    if (since > latest)
+        since = 0;
+
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_set_hdr(req, "Cache-Control", "no-store");
+    httpd_resp_sendstr_chunk(req, "{\"items\":[");
+
+    // One byte of headroom in front of the entry so the separating comma and the
+    // object it precedes travel as a single chunk.
+    char chunk[1 + TRAFFICLOG_JSON_ENTRY_MAX];
+    chunk[0] = ',';
+
+    uint32_t cursor = since;
+    bool first = true;
+    size_t n;
+    while ((n = trafficlog_next_json(cursor, latest, chunk + 1, sizeof(chunk) - 1, &cursor)) > 0) {
+        httpd_resp_send_chunk(req, first ? chunk + 1 : chunk, (ssize_t)(first ? n : n + 1));
+        first = false;
+    }
+
+    char tail[40];
+    int t = snprintf(tail, sizeof(tail), "],\"seq\":%lu}", (unsigned long)cursor);
+    httpd_resp_send_chunk(req, tail, t);
+    httpd_resp_send_chunk(req, NULL, 0);
+    return ESP_OK;
+}

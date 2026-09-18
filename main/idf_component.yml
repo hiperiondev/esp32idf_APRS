@@ -1,0 +1,6 @@
+dependencies:
+  joltwallet/littlefs: "^1.14"
+  espressif/cjson: "^1.7.19"
+  
+  idf:
+    version: ">=6.0"

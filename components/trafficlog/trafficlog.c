@@ -1,0 +1,315 @@
+// @file trafficlog.c
+//
+// @author Emiliano Augusto Gonzalez ( lu3vea @ gmail . com)
+// @date 2026
+// @copyright GNU General Public License v3
+// @see https://github.com/hiperiondev/esp32idf_APRS
+//
+// @note
+// This is based on other projects:
+//     VP-Digi: https://github.com/sq8vps/vp-digi
+//     ESP32APRS: https://github.com/nakhonthai/ESP32APRS_Audio
+//     LibAPRS: https://github.com/markqvist/LibAPRS
+//
+//     please contact their authors for more information.
+//
+// @brief In-RAM traffic ring buffer implementation: thread-safe formatted and
+// structured entry insertion, sequence numbering and per-entry JSON
+// serialization for the dashboard's live traffic feed.
+
+#include "trafficlog.h"
+
+#include <stdarg.h>
+#include <stdbool.h>
+#include <stdio.h>
+#include <string.h>
+
+#include "aprs_filter.h" // APRS_RX_DECODED_BUF_SIZE
+#include "esp_timer.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
+#include "json_escape.h" // json_escape()
+
+// Number of lines kept in RAM. The ring is a backlog, not the history the
+// operator reads: the dashboard keeps its own much longer list of rows in the
+// browser and only asks the firmware for what it has not seen yet, since
+// trafficlog_next_json() delivers strictly from after_seq upward. What has to
+// fit here is therefore one polling interval's worth of traffic, not a session's
+// worth. The panel polls /igate_traffic every 1.5 s and a 1200 baud AX.25 frame
+// occupies the channel for a good fraction of a second, so a handful of entries
+// per pass is the realistic ceiling and 32 slots leave an order of magnitude of
+// margin - enough that a client stalled for several passes still catches up
+// without a gap. Each entry costs sizeof(trafficlog_entry_t), so this constant
+// is also the single largest .bss block of the component and the one knob that
+// trades RAM for backlog depth.
+#define TRAFFICLOG_CAPACITY 32
+// Shared text buffer: an entry holds EITHER the free-form "m" line
+// (trafficlog_add) OR the raw TNC2 packet (trafficlog_add_pkt), never both, so
+// one buffer tagged by 'kind' serves both and the ring costs half of what two
+// dedicated fields would.
+#define TRAFFICLOG_TEXT_LEN 144
+#define TRAFFICLOG_DIR_LEN  12 // max chars for the direction/type tag
+#define TRAFFICLOG_DX_LEN   16 // max chars for the DX (callsign) field
+// The decoded-fields summary is produced by aprs_filter_format_report(), so
+// the ring holds exactly what that function can emit and the column shows the
+// whole line rather than its first characters. Taking the producer's own
+// buffer-size constant is what keeps the two from drifting apart.
+#define TRAFFICLOG_DEC_LEN APRS_RX_DECODED_BUF_SIZE
+
+// Worst-case length of the reconstructed "m" field for a PKT entry,
+// "<dir>: <text>": DIR_LEN + strlen(": ") + TEXT_LEN, all buffers being
+// NUL-terminated. Sized so the snprintf() in trafficlog_next_json() can
+// never truncate (keeps -Werror=format-truncation happy and guarantees the
+// full packet is always mirrored into the "m" column).
+#define TRAFFICLOG_M_LEN (TRAFFICLOG_DIR_LEN + 2 + TRAFFICLOG_TEXT_LEN)
+
+// Pieces of one serialized entry that are not one of the four escaped text
+// fields, used to check TRAFFICLOG_JSON_ENTRY_MAX against the field widths
+// above. Every escaped field is bounded by its own destination buffer in
+// trafficlog_next_json(), which json_escape() never overruns, so the four
+// widths doubled plus these four numbers bound the whole object.
+#define TRAFFICLOG_JSON_TEMPLATE_LEN 61 // punctuation and key names of the object template
+#define TRAFFICLOG_JSON_TIME_LEN     20 // widest "t" value: int64 milliseconds, sign included
+#define TRAFFICLOG_JSON_AUDIO_LEN    11 // widest "au" value: int, sign included
+#define TRAFFICLOG_JSON_SYM_LEN      7  // "sym" is at most "<code>-<table>", held in a char[8]
+
+_Static_assert(TRAFFICLOG_JSON_ENTRY_MAX >= TRAFFICLOG_JSON_TEMPLATE_LEN + TRAFFICLOG_JSON_TIME_LEN + TRAFFICLOG_JSON_AUDIO_LEN + TRAFFICLOG_JSON_SYM_LEN +
+                                                (TRAFFICLOG_M_LEN * 2 - 1) + (TRAFFICLOG_DIR_LEN * 2 - 1) + (TRAFFICLOG_DX_LEN * 2 - 1) +
+                                                (TRAFFICLOG_TEXT_LEN * 2 - 1) + (TRAFFICLOG_DEC_LEN * 2 - 1) + 1,
+               "TRAFFICLOG_JSON_ENTRY_MAX is too small for the entry field widths");
+
+// Which of the two mutually-exclusive roles the shared 'text' buffer plays for
+// a given entry. trafficlog_add() produces LINE entries (free-form message),
+// trafficlog_add_pkt() produces PKT entries (raw packet). Defaults to LINE (0)
+// so a memset-zeroed entry is well-formed.
+typedef enum {
+    TL_KIND_LINE = 0, // text is the free-form message ("m"); no raw packet ("pkt" is "")
+    TL_KIND_PKT = 1,  // text is the raw TNC2 packet ("pkt"); "m" is derived "<dir>: <text>"
+} trafficlog_kind_t;
+
+typedef struct {
+    uint32_t seq;
+    int64_t time_ms;
+    char text[TRAFFICLOG_TEXT_LEN]; // shared: free-form "m" line OR raw packet (see 'kind')
+    char dir[TRAFFICLOG_DIR_LEN];   // direction/type tag ("d"), e.g. RX/TX/DIGI
+    char dx[TRAFFICLOG_DX_LEN];     // station callsign ("dx")
+    char dec[TRAFFICLOG_DEC_LEN];   // fields decoded out of the payload ("dec"), empty when there are none
+    int audio_mv;                   // demodulated audio level, mV RMS, -1 = n/a ("au")
+    char sym_table;                 // APRS symbol table byte, 0 = unknown
+    char sym_code;                  // APRS symbol code byte, 0 = unknown
+    uint8_t kind;                   // trafficlog_kind_t: what 'text' represents
+} trafficlog_entry_t;
+
+static trafficlog_entry_t s_buf[TRAFFICLOG_CAPACITY];
+static size_t s_head = 0; // index the *next* entry will be written to
+static size_t s_count = 0;
+// Read without the lock by trafficlog_latest_seq(); see its contract in
+// trafficlog.h. Every write happens under s_lock.
+static volatile uint32_t s_next_seq = 1;
+static SemaphoreHandle_t s_lock = NULL;
+static bool s_inited = false;
+
+void trafficlog_init(void) {
+    if (s_inited)
+        return;
+    s_lock = xSemaphoreCreateMutex();
+    s_inited = true;
+}
+
+// Signature of the callback push_entry() invokes, while still holding
+// s_lock, to fill in the fields of a freshly appended entry beyond the
+// seq/time_ms/audio_mv already stamped by push_entry() itself. 'ctx' is the
+// opaque pointer push_entry() was given by its caller, cast back to whatever
+// type that caller's filler expects.
+typedef void (*trafficlog_fill_fn)(trafficlog_entry_t *e, void *ctx);
+
+// Appends a new entry to the ring buffer, stamps it with seq/time_ms/
+// audio_mv, invokes 'fill' with 'ctx' to populate the rest, then releases
+// s_lock - all inside this single function, so the lock is never held across
+// a function boundary. Does nothing if the lock couldn't be taken within the
+// timeout, which never blocks the caller (radio/network tasks) indefinitely.
+static void push_entry(trafficlog_fill_fn fill, void *ctx) {
+    if (!s_lock || xSemaphoreTake(s_lock, pdMS_TO_TICKS(50)) != pdTRUE)
+        return;
+
+    trafficlog_entry_t *e = &s_buf[s_head];
+    memset(e, 0, sizeof(*e));
+    e->seq = s_next_seq++;
+    e->time_ms = esp_timer_get_time() / 1000;
+    e->audio_mv = -1;
+
+    s_head = (s_head + 1) % TRAFFICLOG_CAPACITY;
+    if (s_count < TRAFFICLOG_CAPACITY)
+        s_count++;
+
+    fill(e, ctx);
+
+    xSemaphoreGive(s_lock);
+}
+
+// Argument bundle for fill_line(), carrying the already-formatted text of a
+// trafficlog_add() call across the push_entry() callback boundary.
+typedef struct {
+    const char *text;
+} fill_line_ctx_t;
+
+// trafficlog_fill_fn for trafficlog_add(): stores the pre-formatted line as
+// a LINE-kind entry. dx is left blank and audio_mv stays at the -1 push_entry()
+// already stamped; there is no raw packet.
+static void fill_line(trafficlog_entry_t *e, void *ctx) {
+    const fill_line_ctx_t *c = ctx;
+    e->kind = TL_KIND_LINE;
+    strncpy(e->text, c->text, sizeof(e->text) - 1);
+    strncpy(e->dir, "LOG", sizeof(e->dir) - 1);
+}
+
+// Argument bundle for fill_pkt(), carrying a trafficlog_add_pkt() call's
+// fields across the push_entry() callback boundary.
+typedef struct {
+    const char *dir;
+    const char *dx;
+    const char *packet;
+    const char *decoded;
+    int audio_mv;
+    char sym_table;
+    char sym_code;
+} fill_pkt_ctx_t;
+
+// trafficlog_fill_fn for trafficlog_add_pkt(): stores the raw packet and its
+// associated fields as a PKT-kind entry. The "m" field ("<DIR>: <packet>") is
+// not stored here - it is derived on the fly in trafficlog_next_json() from
+// dir + text, so the free-form line and the raw packet can share one buffer.
+static void fill_pkt(trafficlog_entry_t *e, void *ctx) {
+    const fill_pkt_ctx_t *c = ctx;
+    e->kind = TL_KIND_PKT;
+    strncpy(e->dir, c->dir, sizeof(e->dir) - 1);
+    strncpy(e->dx, c->dx, sizeof(e->dx) - 1);
+    strncpy(e->text, c->packet, sizeof(e->text) - 1); // raw TNC2 packet ("pkt")
+    strncpy(e->dec, c->decoded, sizeof(e->dec) - 1);
+    e->audio_mv = c->audio_mv;
+    e->sym_table = c->sym_table;
+    e->sym_code = c->sym_code;
+}
+
+void trafficlog_add(const char *fmt, ...) {
+    if (!s_inited)
+        trafficlog_init();
+
+    char tmp[TRAFFICLOG_TEXT_LEN];
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(tmp, sizeof(tmp), fmt, ap);
+    va_end(ap);
+
+    fill_line_ctx_t ctx = { .text = tmp };
+    push_entry(fill_line, &ctx);
+}
+
+void trafficlog_add_pkt(const char *dir, const char *dx, const char *packet, const char *decoded, int audio_mv, char sym_table, char sym_code) {
+    if (!s_inited)
+        trafficlog_init();
+
+    if (!dir)
+        dir = "";
+    if (!dx)
+        dx = "";
+    if (!packet)
+        packet = "";
+    if (!decoded)
+        decoded = "";
+
+    fill_pkt_ctx_t ctx = {
+        .dir = dir,
+        .dx = dx,
+        .packet = packet,
+        .decoded = decoded,
+        .audio_mv = audio_mv,
+        .sym_table = sym_table,
+        .sym_code = sym_code,
+    };
+    push_entry(fill_pkt, &ctx);
+}
+
+uint32_t trafficlog_latest_seq(void) {
+    uint32_t next = s_next_seq;
+    return (next > 1) ? next - 1 : 0;
+}
+
+size_t trafficlog_next_json(uint32_t after_seq, uint32_t max_seq, char *out, size_t out_size, uint32_t *out_seq) {
+    if (out_seq)
+        *out_seq = after_seq;
+    if (!s_inited || out == NULL || out_size < TRAFFICLOG_JSON_ENTRY_MAX)
+        return 0;
+    if (after_seq >= max_seq)
+        return 0;
+
+    if (!s_lock || xSemaphoreTake(s_lock, pdMS_TO_TICKS(200)) != pdTRUE)
+        return 0; // never block the HTTP worker task on a busy ring
+
+    // Occupied slots are always 0 .. s_count-1: entries are written from index 0
+    // upward and s_count saturates at TRAFFICLOG_CAPACITY once the ring wraps.
+    // The walk is by sequence number rather than by ring position, so it stays
+    // correct across a wrap and across evictions between calls.
+    trafficlog_entry_t e;
+    bool found = false;
+    for (size_t i = 0; i < s_count; i++) {
+        const trafficlog_entry_t *c = &s_buf[i];
+        if (c->seq <= after_seq || c->seq > max_seq)
+            continue;
+        if (!found || c->seq < e.seq) {
+            e = *c; // private copy, so the formatting below runs with the lock released
+            found = true;
+        }
+    }
+
+    xSemaphoreGive(s_lock);
+
+    if (!found)
+        return 0;
+
+    // Reconstruct the two logical text fields from the single shared buffer:
+    //   LINE kind -> "m" is the stored text, "pkt" is empty
+    //   PKT  kind -> "pkt" is the stored text, "m" is "<dir>: <packet>"
+    const char *m_src;
+    const char *pkt_src;
+    char mbuf[TRAFFICLOG_M_LEN];
+    if (e.kind == TL_KIND_PKT) {
+        snprintf(mbuf, sizeof(mbuf), "%s%s%s", e.dir, (e.dir[0] && e.text[0]) ? ": " : "", e.text);
+        m_src = mbuf;
+        pkt_src = e.text;
+    } else {
+        m_src = e.text;
+        pkt_src = "";
+    }
+
+    char escM[TRAFFICLOG_M_LEN * 2];
+    char escDir[TRAFFICLOG_DIR_LEN * 2];
+    char escDx[TRAFFICLOG_DX_LEN * 2];
+    char escPkt[TRAFFICLOG_TEXT_LEN * 2];
+    char escDec[TRAFFICLOG_DEC_LEN * 2];
+    json_escape(m_src, escM, sizeof(escM));
+    json_escape(e.dir, escDir, sizeof(escDir));
+    json_escape(e.dx, escDx, sizeof(escDx));
+    json_escape(pkt_src, escPkt, sizeof(escPkt));
+    json_escape(e.dec, escDec, sizeof(escDec));
+
+    // Matches lastheard_dump_json()'s icon naming: aprs.dprns.com serves
+    // icons as /symbols/icons/<symbol_code>-<1_or_2>.png, where 1 = the
+    // primary table ('/') and 2 = the alternate table ('\').
+    char sym[8] = "";
+    if (e.sym_table && e.sym_code) {
+        int table = (e.sym_table == '/') ? 1 : 2;
+        snprintf(sym, sizeof(sym), "%d-%d", (int)(unsigned char)e.sym_code, table);
+    }
+
+    // out_size is at least TRAFFICLOG_JSON_ENTRY_MAX, which the static
+    // assertion above ties to these field widths, so this cannot truncate.
+    int n = snprintf(out, out_size, "{\"t\":%lld,\"m\":\"%s\",\"d\":\"%s\",\"dx\":\"%s\",\"pkt\":\"%s\",\"dec\":\"%s\",\"au\":%d,\"sym\":\"%s\"}",
+                     (long long)e.time_ms, escM, escDir, escDx, escPkt, escDec, e.audio_mv, sym);
+    if (n < 0)
+        return 0;
+
+    if (out_seq)
+        *out_seq = e.seq;
+    return (size_t)n;
+}

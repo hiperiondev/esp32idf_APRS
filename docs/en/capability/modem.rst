@@ -1,0 +1,294 @@
+.. _en-modem:
+
+==============
+The Soft-Modem
+==============
+
+The ``esp32idf_radioamateur_modem`` component (vendored under ``components/``,
+GPL-3.0) is the heart of the project: a complete AFSK/FSK soft-modem that
+demodulates and modulates APRS audio entirely on the ESP32, using only the
+SAR-ADC, the DAC and a GPTimer. This chapter covers the modem as a *capability*
+— its profiles, its public API and its runtime configuration. For the DSP
+internals and the reasoning behind the sample-rate and core choices, see
+:ref:`en-dsp-signal-chain`.
+
+Modem profiles
+==============
+
+The selectable profiles (``modem_mode_t``) are numbered identically to the
+web-admin's *modulation* dropdown, which is why the application can cast the
+saved value straight to the enum:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 10 30 16 44
+
+   * - Value
+     - Profile
+     - Baud
+     - Tones
+   * - 0
+     - AFSK300
+     - 300
+     - 1600 / 1800 Hz
+   * - 1
+     - **Bell 202** (default, standard APRS)
+     - 1200
+     - 1200 / 2200 Hz
+   * - 2
+     - ITU V.23
+     - 1200
+     - 1300 / 2100 Hz
+   * - 3
+     - G3RUH FSK
+     - 9600
+     - —
+
+The 1200 Bd profile runs **two demodulators in parallel**, tuned slightly
+differently, to raise decode probability
+(``MODEM_MAX_DEMODULATOR_COUNT = 2``).
+
+FX.25 forward error correction
+==============================
+
+FX.25 wraps AX.25 in a Reed–Solomon code, letting the receiver correct bit
+errors that would otherwise fail the CRC. It is fully backward compatible: an
+FX.25 frame carries a normal AX.25 frame inside a correlation-tagged RS block,
+so plain-AX.25 receivers still decode the inner frame. The mode is selectable:
+``0`` = off, ``1`` = RX only, ``2`` = RX+TX. The codec itself is always built in
+— the component's own ``CMakeLists.txt`` defines ``ENABLE_FX25`` publicly — so
+switching modes needs no rebuild. The RS implementation lives in ``lwfec/`` (``rs.c``, ``gf.c``).
+
+The codec works in place on a whole 255-byte Reed–Solomon block for every mode,
+including those whose payload ``K`` is only 32 bytes: parity is relocated to the
+tail of the block and the gap is zero-filled. A caller's buffer must therefore
+be 255 bytes long whatever ``K`` it passes. ``Fx25Encode()``/``Fx25Decode()``
+and ``RsEncode()``/``RsDecode()`` take the buffer capacity as an explicit
+argument for that reason: it is asserted in debug builds and makes the call fail
+safely otherwise, and ``ax25.c`` backs it with a compile-time check on the two
+buffers it hands over.
+
+Public API
+==========
+
+The component's public header (``esp32idf_radioamateur_modem.h``) exposes:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 34 66
+
+   * - Function
+     - Purpose
+   * - ``modem_init(cfg)``
+     - Bring up the hardware and start the internal service tasks. Blocks ~5 s
+       once per boot calibrating the real ADC clock.
+   * - ``modem_set_modem(cfg)``
+     - Change the active profile and related settings at runtime.
+   * - ``modem_set_rx_callback(cb, ctx)``
+     - Install the callback invoked for every decoded frame.
+   * - ``modem_send_raw(frame, len)``
+     - Queue a raw AX.25 frame (no flags/stuffing/FCS — all added
+       automatically).
+   * - ``modem_build_frame_tnc2(tnc2, out, out_len)``
+     - Build a raw frame from a TNC2 monitor string.
+   * - ``modem_send_tnc2(tnc2)``
+     - Build + queue in one call.
+   * - ``modem_format_tnc2(msg, out, out_len)``
+     - Render a decoded frame back to a TNC2 string.
+   * - ``modem_tx_queue_depth()``
+     - Number of frames still queued/in flight on RF TX (0 = idle). This is the
+       TX-ring status the RF TX backlog cap reads.
+   * - ``modem_persistence_missed_count()``
+     - How many times the CSMA anti-starvation floor has forced a transmission
+       after a backoff run that found the channel clear in every slot and missed
+       the persistence roll every time. This measures the configured
+       ``persist`` alone: at the default of 63 roughly one key-up in ten ends
+       this way. Nothing is discarded, so it is a channel-access statistic and
+       not a drop.
+   * - ``modem_channel_busy_count()``
+     - How many times the same floor has forced a transmission after a backoff
+       run in which at least one slot found the carrier detect asserted. This is
+       a congestion report about the frequency: the frame goes out on top of the
+       traffic already there. Runs are charged to exactly one of the two
+       counters, so a busy channel can never inflate the persistence figure.
+   * - ``modem_measure_adc_rate(ms)``
+     - Measure the real ADC sample rate; blocks for the requested window.
+
+The header also carries ``MODEM_DEFAULT_CONFIG()`` (a ``modem_config_t``
+initialiser), the ``MODEM_DELAY_TICKS(ms)`` helper, ``modem_rx_frame_t`` and the
+``modem_rx_cb_t`` callback type. Note that there is **no** teardown entry point:
+the modem is brought up once per boot and reconfigured in place with
+``modem_set_modem()``.
+
+The three transmit entry points — ``modem_send_raw()``,
+``modem_build_frame_tnc2()`` and ``modem_send_tnc2()`` — are safe to call from
+any task. They share one internal mutex, because they share the outgoing CRC
+accumulator, the single-producer transmit ring and the state machine that keys
+up from it. ``modem_send_tnc2()`` holds that mutex across both the build and
+the queue, so a frame always reaches the ring with the checksum accumulated for
+it, even when a beacon fires at the same moment the IGate relays a line from
+APRS-IS. A caller that cannot acquire the path within one second gets
+``ESP_ERR_TIMEOUT`` (or ``0`` from the builder) rather than waiting behind it
+indefinitely.
+
+Runtime configuration (``modem_config_t``)
+==========================================
+
+Built in exactly one place — ``aprs_service_build_modem_config()`` — shared by
+boot, the Radio page's Save (live re-apply, no reboot) and the loop test:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 24 30 46
+
+   * - Field
+     - Source
+     - Notes
+   * - ``modem``
+     - ``afsk_modem_type``
+     - plain cast; page clamps 0–3
+   * - ``flat_audio``
+     - ``audio_lpf``
+     - flat/discriminator input: on for a data or discriminator jack, off for
+       a speaker output
+   * - ``full_duplex``
+     - ``false`` normally
+     - LOOP TEST passes ``true`` (a DAC→ADC wire means CSMA never sees a clear
+       channel)
+   * - ``allow_non_aprs``
+     - ``false``
+     - accept non-0x03/0xF0 Control/PID?
+   * - ``preamble_ms``
+     - ``preamble`` (300)
+     - TXDelay
+   * - ``slot_time_ms``
+     - ``tx_timeslot`` (2000)
+     - CSMA quiet time - how long a queued frame waits before channel access
+       begins at all. The interval between the persistence rolls that follow is
+       the fixed AX.25 *SlotTime* the modem keeps internally, not this value.
+       Ignored in full duplex.
+   * - ``persist``
+     - ``csma_persist`` (63)
+     - CSMA p-persistence (standard AX.25/KISS *Persist*): once the channel is
+       heard clear, the modem transmits with probability ``persist``/256 per
+       slot and otherwise waits another slot time before rolling again. 255 =
+       transmit on the first clear slot every time; lower values spread
+       contending stations apart. Eight missed rolls transmit anyway so a frame
+       is never held indefinitely. Ignored in full duplex.
+   * - ``fx25_mode``
+     - ``fx25_mode``
+     - 0=off, 1=RX only, 2=RX+TX
+   * - ``ptt_active_high``
+     - ``MODEM_PTT_ACTIVE_HIGH``
+     - compile-time board wiring, not a config field
+   * - ``min_unkey_ms``
+     - ``ptt_min_unkey_ms``
+     - extra minimum PTT-off hold time between transmissions
+   * - ``adc_self_bias``
+     - ``adc_self_bias`` (off)
+     - biases the ADC pad from its own pull-up and pull-down in series, for an
+       AC-coupled input with no external bias network. Applied after the
+       continuous driver has configured the pad, which disables both pulls.
+       GPIO32/33 only
+   * - ``rx_clip_warn``
+     - ``rx_clip_warn`` (off)
+     - logs a rate-limited warning when a processed block reaches the ends of
+       the conversion range
+   * - ``dac_amplitude_pct``
+     - ``dac_amplitude_pct`` (``MODEM_DAC_AMPLITUDE_PCT``)
+     - output swing, applied per sample. Floored at 20 %: the DAC is 8 bits
+       wide, so the attenuation a microphone input needs belongs in an
+       external attenuator
+   * - ``dac_samplerate``
+     - ``dac_samplerate`` (``MODEM_DAC_SAMPLERATE``)
+     - 38400 or 76800 Hz. The only field ``modem_set_modem()`` does **not**
+       apply: the sample-clock period and every phase step derived from it are
+       programmed while the hardware is stopped, so ``modem_init()`` applies it
+       and a change takes effect at the next reboot
+   * - ``tx_max_keyed_ms``
+     - ``tx_max_keyed_ms`` (0)
+     - transmitter time-out, 0 = off. The modem service task releases PTT,
+       stops the modulator and discards the transmission past this
+
+.. note::
+
+   The PTT GPIO is **not** a field of ``modem_config_t`` — it is a fixed
+   compile-time board wiring choice (``MODEM_PTT_GPIO``), like the ADC/DAC
+   pins. Only the active *level* is passed at runtime, and it too comes
+   straight from the compile-time macro. Explicitly **not** runtime-mapped
+   (no equivalent in the component): ADC/DAC pins and attenuation, hardware
+   squelch, RF power switch, software squelch, RX volume and the AGC ceiling.
+
+RX LEVEL and TX TEST
+====================
+
+The loop test below needs a wire between the DAC and the ADC, so it stops
+being usable the moment a transceiver replaces that jumper: nothing echoes the
+frame back. Two buttons beside it cover the same ground for a connected
+transceiver, one direction each.
+
+**RX LEVEL** (``aprs_rx_level_sample()``, ``POST /radio/level``) watches the
+receive front-end for about a second and reports the RMS level and its peak,
+the input's DC offset, the AGC gain, the raw conversion extremes and the
+carrier-detect state. It transmits nothing and changes no modem state, so it
+can run while real traffic is being decoded. It is what the receive trimmer is
+set against — aim for 250 to 350 mV RMS with the raw range clear of 0 and 4095
+— and what tells an input biased by ``adc_self_bias`` (1200 to 2000 mV) from
+one with no bias at all.
+
+**TX TEST** (``aprs_tx_test_run()``, ``POST /radio/txtest``) keys up and
+modulates a short status frame through the ordinary non-critical transmit
+path, so half-duplex channel access and the duty-cycle ceiling both apply. It
+waits for nothing to come back: the deviation it produces is read on other
+equipment and trimmed to 2.5 to 3.5 kHz.
+
+Both share the loop test's claim flag, so only one of the three runs at a
+time.
+
+The LOOP TEST
+=============
+
+The single most useful bring-up tool in the project. Wire **GPIO25 → GPIO33**,
+open *Radio / Modem*, hit **LOOP TEST**. ``aprs_loop_test_run()``:
+
+#. Builds a small APRS packet carrying a **random one-time token**
+   (``>LOOPTEST <token>``).
+#. **Diverts** decoded frames to its own hook so the test frame is never
+   digipeated, uplinked, or logged as real traffic.
+#. Switches the modem to **full duplex** — a DAC→ADC wire means the node always
+   hears its own carrier and CSMA would never key up.
+#. Waits for the demodulator's carrier detect to clear before keying up, for at
+   most ``LOOP_TEST_CHANNEL_WAIT_MS`` (**3000 ms**), so the self-test tone is not
+   transmitted on top of a station that is on the air right now — the reading is
+   independent of the duplex flag just set, which only gates CSMA. A channel
+   still busy at the cap is logged and the test transmits anyway.
+#. Transmits, then waits up to ``LOOP_TEST_TIMEOUT_MS`` (**4000 ms**) for the
+   ADC → demodulator → HDLC → AX.25 chain to hand the same frame back.
+#. **Always restores** the real hook and the configured duplex mode before
+   returning.
+
+Meanwhile a monitor task latches diagnostics the component exposes only
+instantaneously: a passive raw-ADC snapshot mid-preamble, peak RMS, peak AGC
+gain, a DCD bitmap, and the furthest HDLC RX stage reached per demodulator. The
+result message distinguishes:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 46 54
+
+   * - Symptom
+     - Diagnosis
+   * - raw ADC min ≈ max
+     - ADC dead / not wired
+   * - raw swings, RMS ~0
+     - no tone reaching the ADC
+   * - RMS fine, DCD never set
+     - PLL never locked → baud/modem-type mismatch or bad audio
+   * - DCD latched, stage < FRAME
+     - flags seen but no frame started — bit-recovery issue, not noise
+   * - DCD latched, stage = FRAME, no frame
+     - frames assembled but failed CRC — marginal level/SNR
+   * - frame back, token mismatch
+     - distortion, clipping, or wrong loopback wiring
+   * - PASS
+     - reports the RX level in mV RMS

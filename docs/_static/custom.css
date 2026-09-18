@@ -1,0 +1,16 @@
+/* esp32idf_APRS documentation — shared custom styles */
+.lang-landing { display:flex; flex-wrap:wrap; gap:1.25rem; margin:2rem 0; }
+.lang-landing a.lang-card {
+  flex:1 1 220px; display:block; padding:1.4rem 1.6rem;
+  border:1px solid var(--bz-color-border,#d0d7de); border-radius:12px;
+  text-decoration:none; transition:border-color .15s ease, transform .15s ease, box-shadow .15s ease;
+}
+.lang-landing a.lang-card:hover {
+  border-color:var(--bz-color-accent,#2f6feb); transform:translateY(-2px);
+  box-shadow:0 6px 18px rgba(0,0,0,.08);
+}
+.lang-landing .lang-flag { font-size:2.2rem; line-height:1; }
+.lang-landing .lang-name { font-size:1.25rem; font-weight:700; margin-top:.4rem; }
+.lang-landing .lang-native { opacity:.7; margin-top:.15rem; }
+.bz-article, article.bz-article { max-width:62rem; }
+pre { overflow-x:auto; }

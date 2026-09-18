@@ -1,0 +1,579 @@
+.. _en-igate:
+
+=======================
+IGate — APRS-IS gateway
+=======================
+
+The ``igate`` component (``components/igate/``) is a full bidirectional APRS-IS
+Internet gateway built on LWIP sockets. It reads all of its configuration from
+``g_config`` (the web admin's *IGate* page), so the web admin is the single
+source of truth.
+
+The APRS-IS client task
+=======================
+
+* **TCP client** with multiserver failover and auto-reconnect. It re-reads
+  ``g_config`` on every reconnect, so web-admin changes to most IGate
+  settings (enable toggles, RF/INET direction, budlist, PHG, beacon timing,
+  and the rest) land as soon as the uplink loop next checks them, without a
+  reboot.
+* **Live identity/server/filter updates.** The login identity
+  (``aprs_mycall``/``aprs_ssid``/``aprs_passcode``), the failover server list
+  (``aprs_server``) and the server-side filter (``aprs_filter``) are the one
+  exception: ``connectAprsIs()`` reads them only once, at connect time, and
+  the uplink then holds that session open indefinitely, so on their own a
+  changed passcode or a narrowed filter would otherwise sit unused until the
+  link happened to drop. The *IGate* page's save handler compares the new
+  values against what was saved before and, when identity or a server slot
+  changed, calls ``igate_request_reconnect()`` to drop and re-open the
+  session with the new values in its next login line; when only the filter
+  changed, it calls ``igate_request_filter_update()`` instead, which pushes a
+  ``#filter <spec>`` comment line on the already-open socket - the live
+  update `aprs-is.net's filter documentation
+  <https://www.aprs-is.net/javAPRSFilter.aspx>`_ describes - so the session
+  is not dropped just to change the filter. Saving an unrelated IGate field
+  triggers neither.
+* **Gated on real connectivity**, not merely on "Wi-Fi is up": it polls
+  ``net_state_is_connected()``, which becomes true only on
+  ``IP_EVENT_STA_GOT_IP`` and false again on disconnect or AP-only mode.
+* **Login identity.** The station logs in as its **callsign-SSID**
+  (``aprs_mycall`` plus ``aprs_ssid``, e.g. ``LU3VEA-10``; the bare callsign
+  when the SSID is 0 — an APRS-IS identity has no ``-0`` form). This is the
+  same string ``stationIdentity()`` writes after the ``qA*`` construct on
+  gated frames and the same one the IGate's own beacons carry as their source
+  callsign, and all three matter to the server: `aprs-is.net's IGate details
+  <https://www.aprs-is.net/IGateDetails.aspx>`_ has the server deliver a
+  message from APRS-IS only to the client whose login equals the addressee
+  byte for byte, so **a message addressed to this station must be addressed to
+  its callsign-SSID**, and a packet is recognised as originated by the client
+  — rather than tagged as relayed through a server — only when its source
+  callsign equals the login. The passcode is unaffected: it is derived from
+  the base callsign with the SSID stripped, so every SSID of one station
+  shares one passcode.
+* **Login line:** ``user <call-ssid> pass <passcode> vers esp32_APRS_igate
+  <version>``, with `` filter <filter>`` appended only when a server-side
+  filter is configured — the ``filter`` command takes one or more terms, so
+  the clause is left out entirely rather than sent as a bare keyword. The
+  name and version come from ``APRS_SOFTWARE_NAME`` /
+  ``APRS_SOFTWARE_VERSION`` in ``main/include/aprs_service.h``, the latter
+  being ``FIRMWARE_INFO``, so the ``vers`` clause identifies *this* firmware
+  to APRS-IS server operators. The line is logged exactly as sent (minus the
+  CR/LF), so a malformed filter is visible; with no filter configured a second
+  line notes that the server's own default applies. The read immediately
+  following login goes through the exact same line framer and packet handler
+  as the steady-state RX loop below, so a server that sends its banner, the
+  ``# logresp … verified/unverified`` line and the first filtered packet all
+  within one read still delivers that packet to ``inet2rf`` — nothing arriving
+  alongside the banner is ever dropped. The banner and ``# logresp`` lines are
+  additionally surfaced as their own log lines; an ``unverified`` response
+  raises a warning naming ``aprs_mycall`` / ``aprs_passcode``, and an echoed
+  identity that does not match the one sent raises a warning of its own, since
+  that is the failure mode that leaves messages addressed to this station
+  undelivered while everything else looks healthy.
+* **Server-side filter validation.** Before it is sent, ``g_config.aprs_filter``
+  is checked for structural validity by
+  ``aprs_filter_validate_server_string()`` — each space-separated term must be
+  ``<letter>/<args>`` with the right argument count for that filter letter.
+* **Shared uplink.** The task always runs, because the same socket is used by
+  the message component (``igate_send_raw()``) and by "beacon to internet". It
+  idles cheaply when nothing needs it.
+* **Dead-link detection.** ``net_state_is_connected()`` only catches the
+  station's own Wi-Fi dropping; it says nothing about the far end of an
+  already-open APRS-IS socket going quiet - an idle-TCP NAT/firewall mapping
+  getting evicted, a blackholed route, or a peer that stops sending without
+  ever closing the connection. The RX loop tracks the timestamp of the last
+  byte actually read off the socket and, if none arrives for
+  ``IGATE_RX_SILENCE_US`` (90 s), logs a warning and ends the session through
+  the failover path, so the next attempt goes to the following slot instead of
+  back to the server that went quiet. 90 s is comfortably above the ``#`` comment
+  cadence servers following `aprs-is.net's connection guidance
+  <https://www.aprs-is.net/Connecting.aspx>`_ send whenever the channel is
+  otherwise quiet - that comment line is what keeps an idle-but-healthy link
+  from ever tripping the timer - while staying short enough to recover well
+  within the eviction time of a typical NAT table entry. The socket also
+  carries ``SO_KEEPALIVE`` (30 s idle, 10 s interval, 3 probes) as an
+  independent, lower-level backstop; it complements rather than replaces the
+  RX-side timer, since a peer that keeps acknowledging TCP-level probes while
+  no longer sending application data would otherwise slip past it.
+* **Nagle disabled (``TCP_NODELAY``).** Set on the socket before ``connect()``,
+  as `aprs-is.net's connection guidance
+  <https://www.aprs-is.net/Connecting.aspx>`_ asks of any bidirectional
+  client. Every outbound line — a gated RF frame, an outbound message, a
+  beacon — is assembled together with its CR/LF terminator and written with a
+  single ``send()`` in ``sendToAprsIs()``, so with Nagle off that one write
+  reaches the wire immediately instead of waiting on an ACK or a Nagle
+  timeout.
+
+Server failover
+===============
+
+The IGate page stores ``APRS_SERVER_NUM`` (four) server slots in
+``g_config.aprs_server[]``, each with its own Enable checkbox, host and port.
+All slots share one login identity — callsign, SSID, passcode and filter string
+are single-valued — because they represent the same station connecting to
+alternative APRS-IS servers.
+
+``connectAprsIs()`` dials the currently selected slot, but only once it has
+taken a shared "heavy network op" lock and confirmed at least
+``IGATE_MIN_FREE_HEAP`` (8 KB) of free heap; this lock is also taken by the
+Telegram bot's own bring-up (:ref:`en-telegram`) around its TLS handshake, so
+the firmware's two heaviest network operations never compete for memory at
+the same instant. If the lock is already held or the floor is not met, the
+attempt is deferred and the task waits 1 second before trying the **same**
+slot again — no failover, since nothing about the chosen server was at fault.
+
+Past that point, any failure — DNS lookup, ``socket()``, ``connect()`` or
+sending the login line — calls ``advanceServer()``, which moves the selection
+to the next **enabled** slot with circular wrap-around, and the task waits 1
+second before the next attempt. The rotation never stops: it keeps cycling
+through every enabled slot until one accepts the connection.
+
+Disabled slots are skipped on the **first** selection after boot as well, not
+only after a failure: clearing a slot's checkbox takes it out of service
+immediately. If no slot at all is enabled the task falls back to slot 1, so it
+always has a concrete destination to attempt and log.
+
+An established session rotates the selection on exactly the same terms. A
+session that ends on the server side — the peer closing the link, a ``recv()``
+error, or the dead-link timer above expiring on a link that has stopped
+delivering anything — calls ``advanceServer()`` too, then closes the socket and
+waits the same 1 second before dialling the next slot. All of those endings say
+the server has stopped carrying this station, so a slot that accepts a session
+and then fails to sustain it — one in maintenance, one whose load balancer has
+no live backend — is left behind rather than dialled again.
+
+Tear-downs the station itself asks for keep the current slot: the uplink no
+longer being needed, the network route going away, and
+``igate_request_reconnect()`` after a settings change say nothing about the
+server, and rotating on them would move the station off a working slot every
+time the operator saves the IGate page.
+
+The dashboard shows the host and port of the slot in use at that moment
+(``igate_get_current_server()``), so which server a failover landed on is
+visible at a glance.
+
+Locally-originated traffic
+==========================
+
+Everything this station puts on APRS-IS itself — position and status beacons
+(Tracker, IGate, Digipeater), weather reports, telemetry data and its
+PARM/UNIT/EQNS/BITS definitions, bulletins, objects and items, outbound
+messages and query answers — goes out through ``igate_send_raw()`` with
+``TCPIP*`` as its **entire** path, and nothing else. `aprs-is.net's connection
+guidance <https://www.aprs-is.net/Connecting.aspx>`_ states the rule in those
+words: a packet originating from the client carries ``TCPIP*`` in the path,
+nothing more and nothing less.
+
+A digipeater path such as ``WIDE1-1,WIDE2-1`` names repeaters on the air. A
+packet injected straight into APRS-IS traverses none of them, so sending that
+path describes hops that never happened: a server that does not recognise the
+source callsign as its own client keeps the path and tags the packet as
+relayed (``,qAS,<login>``), and every consumer — aprs.fi included — then shows
+the station's own beacon as if it had been repeated across the air. This is
+also why the login identity above must carry the SSID: it is what tells the
+server the packet is the client's own.
+
+Every originator therefore builds **one packet per leg** rather than one packet
+sent twice. The two lines are identical except for the path suffix: the RF leg
+gets the digipeater selection from that beacon's own page
+(``aprs_path_build_suffix()``), and the APRS-IS leg gets
+``APRS_PATH_TCPIP_SUFFIX`` from ``main/include/aprs_path.h``, which is the one
+place that literal is spelled. Query answers pick between the two by the
+channel the question arrived on, since an answer goes back the way it came.
+
+RF → INET (``igateProcess()``)
+==============================
+
+Every RF-decoded frame that the application dispatches (with ``igate_en`` and
+``rf2inet`` on) runs through this pipeline, in order. A frame that fails any
+stage is dropped, and the *reason* is recorded against a per-reason counter so
+the dashboard can show "N dropped because X" rather than one opaque aggregate.
+
+#. **Duplicate suppression.** The frame is checked against the shared
+   duplicate cache (``isDuplicatePacket()``). Both its depth
+   (``g_config.dup_cache_size``, ``DUP_CACHE_SIZE_MIN``..``DUP_CACHE_SIZE_MAX``
+   = 4..40, default 20) and its window (``g_config.dup_cache_timeout_ms``,
+   1000..120000 ms, default 30000) are editable on the *IGate* page and are
+   re-read on every lookup, so a change applies without a reboot. The array is
+   always allocated at the compile-time capacity ``DUP_CACHE_SIZE_MAX``;
+   ``dup_cache_size`` only selects how much of it is used. Duplicates are
+   counted separately in ``dupCount``.
+#. **Too-short guard.** Frames whose info field is below the minimum usable
+   length are dropped (``DROP_TOO_SHORT``).
+#. **Path-token filter.** Frames whose path carries ``RFONLY``, ``TCPIP``,
+   ``qA*`` or ``NOGATE`` are never gated (``DROP_PATH_TOKEN``).
+#. **Satellite-gate rule.** A frame repeated via a known satellite gate whose
+   call is not marked used (``*``) is dropped (``DROP_SAT_NOT_USED``).
+#. **Third-party (``}``) unwrap.** A frame whose information field starts
+   with ``}`` carries a complete inner ``SRC>DST,PATH:payload`` line of its
+   own. If that inner path already carries ``TCPIP`` or ``TCPXX``, the frame
+   already reached APRS-IS once and is dropped as a loop
+   (``DROP_3RDPARTY_LOOP``). Otherwise the outer RF header is discarded and
+   every remaining stage — payload-type filter onward — runs against the
+   inner packet: its own source, destination, path and payload, exactly as
+   if that station had been heard directly. This is what lets a cross-band or
+   HF gateway relay a station that has no other route to the Internet.
+#. **Generic query gate.** A payload whose first byte is ``?`` (``?APRS?``,
+   ``?WX?``, ``?IGATE?``, …) is dropped unconditionally
+   (``DROP_GENERIC_QUERY``), regardless of ``g_config.rf2inetFilter`` or any
+   other checkbox. See :ref:`en-filtering`.
+#. **Payload-type filter.** The (possibly unwrapped) payload is classified by
+   ``aprs_filter_classify_info()`` and tested against
+   ``g_config.rf2inetFilter`` (``DROP_TYPE_FILTER``). See :ref:`en-filtering`.
+#. **Local range gate.** If enabled, the packet's position is decoded and its
+   great-circle (haversine) distance from "My Station" is compared against
+   ``g_config.rf2inet_range_km``; too-distant packets are dropped
+   (``DROP_RANGE_FILTER``). Packets whose position cannot be decoded pass this
+   check.
+#. **Local prefix gate.** If enabled, the source callsign must start with one
+   of the comma-separated prefixes in ``g_config.rf2inet_prefixes`` (e.g.
+   ``EA,EB,EC``), else it is dropped (``DROP_PREFIX_FILTER``).
+#. **Budlist.** The source callsign is tested against the local
+   whitelist/blacklist in ``g_config.rf2inet_budlist_mode`` (``DROP_BUDLIST``).
+#. **APRS-IS line-length limit.** Once the ``qAR``/``qAO`` header is built, its
+   length plus the CR/LF-stripped info field is checked against the 512-byte
+   APRS-IS line limit (``aprs-is.net/Connecting.aspx``, expressed as
+   ``APRS_IS_LINE_MAX`` = 510 usable bytes). A frame that would not fit is
+   dropped whole, with a warning naming its length, rather than sent as a
+   truncated fragment (``DROP_IS_LINE_TOO_LONG``).
+
+A frame that survives all stages gets a ``,qAR,<mycall>-<ssid>`` or
+``,qAO,<mycall>-<ssid>`` header and is written to APRS-IS. Per QCON the
+construct describes the **station being gated**, not the gateway: ``qAO``
+marks a station this IGate would not deliver a message to, and downstream
+consumers (message routers, the "messageable" indication on APRS-IS map
+sites) read it that way. ``qConstructFor()`` therefore chooses ``qAR`` only
+when both hold:
+
+* this station can gate messages to RF at all
+  (``aprs_service_can_gate_to_rf()``: transmit available, ``igate_en`` on,
+  ``inet2rf`` on), and
+* the gated station has **not** been seen on APRS-IS within
+  ``igate_local_window_sec`` — the same condition ``messageGatePass()``
+  applies to an addressee in the INET → RF direction, since an
+  Internet-connected station already has anything addressed to it.
+
+Everything else gets ``qAO``, so a receive-only IGate sends ``qAO`` for every
+packet. The callsign-SSID following the q construct is always this station's
+own login identity.
+
+INET → RF (``inet2rfHandler()``)
+================================
+
+Every line read off the socket is first checked against the 512-byte APRS-IS
+line limit as it is accumulated. A line that exceeds it is discarded in full —
+every further byte up to the next terminator is consumed without being stored,
+so the framer resynchronises cleanly on the following line instead of handing
+a truncated fragment downstream — and counted under
+``DROP_IS_RX_LINE_TOO_LONG``.
+
+Every non-``#`` line within the limit increments ``isRxCount`` and is handed
+to the message engine (``handleIncomingAPRS()``) when messaging is on. It is
+then considered for re-transmission on RF only if ``inet2rf`` is set, and only
+after passing:
+
+#. **Generic query gate.** A line whose payload starts with ``?`` is dropped
+   unconditionally (``DROP_GENERIC_QUERY``), regardless of
+   ``g_config.inet2rfFilter`` or any other checkbox — the mirror image of the
+   RF→INET generic query gate above, and checked before every other stage
+   below. See :ref:`en-filtering`.
+#. **Own-report echo suppression.** Every report this station uploads with its
+   ``*_2inet`` flag is echoed straight back by the APRS-IS server.
+   ``inet_line_is_own_report()`` recognises those echoes (by matching the source
+   base callsign against every own-station report callsign) and never re-gates
+   them back to RF. Own reports reach RF exclusively through their own "Send via
+   RF" (``*_2rf``) flags.
+#. **Header-token gate.** A line whose header (everything before the first
+   ``:``) carries ``TCPXX``, ``NOGATE``, ``RFONLY``, ``qAX`` or ``qAZ`` is
+   dropped unconditionally (``DROP_HEADER_FORBIDS_RF``) — these are the path
+   tokens and q constructs whose whole purpose is to forbid a packet reaching
+   RF, checked for every line this handler considers, not only messages.
+#. **Bulletin and weather service broadcast gate.** A message addressed to a
+   bulletin or announcement addressee (``BLNn``, ``BLNa``, with or without a
+   group name) or to one of the weather service families (``NWS-xxxxx``,
+   ``SKY…``, ``CWA…``) is dropped unconditionally (``DROP_MSG_BROADCAST``),
+   independently of ``g_config.igate_msg_gate_en`` and
+   ``g_config.inet2rfFilter``. See below.
+#. **Local range gate.** If ``inet2rf_range_en`` is on, the line's position is
+   decoded and its great-circle (haversine) distance from "My Station" is
+   compared against ``g_config.inet2rf_range_km``; too-distant lines are
+   dropped (``DROP_INET2RF_RANGE``). A line carrying no position has no
+   distance to measure here and is governed by the position requirement
+   below, once the payload actually bound for the air is known.
+#. **Payload-type filter.** The line is classified by
+   ``aprs_filter_classify_tnc2()`` and tested against
+   ``g_config.inet2rfFilter``.
+#. **Selective third-party unwrap (opt-in).** Third-party (``}``) traffic — the
+   classic IGate-loop source — classifies as 0 and is never relayed by default.
+   With ``inet2rf_3rdparty_unwrap_en`` on **and** ``inet2rf_budlist_mode ==
+   BUDLIST_WHITELIST``, one level of ``}`` wrapping may be unwrapped and the
+   inner packet re-classified and relayed, but *only* when the inner packet's
+   source is itself on the whitelist. This is never a general "relay all
+   third-party" switch.
+#. **Budlist.** The source callsign (which may carry a ``-SSID`` here) is tested
+   against ``g_config.inet2rf_budlist_mode``.
+#. **Position requirement.** A payload that carries no decodable position of
+   its own — a status report, a telemetry frame, an unclassifiable payload — is
+   dropped (``DROP_INET2RF_NO_POSITION``), because nothing about it places it
+   inside the local area. Governed by ``inet2rf_position_required``, on by
+   default, and applied to a BrandMeister-classified line (see
+   :ref:`en-brandmeister`) whatever that setting says. The position is read
+   from the packet bound for the air, so where the third-party unwrap fired it
+   is the inner packet's own position that has to place it locally. Messages,
+   which are gated on their addressee, and the position follow-up owed to a
+   station this gateway messaged are exempt.
+
+   The assumption that would justify relaying such a line — that the operator's
+   own server-side ``r/lat/lon/radius`` term already delivered nothing but
+   local traffic — holds only for a subscription made of geographic terms
+   alone. APRS-IS filter terms are OR'd, never AND'd, so any traffic-class term
+   alongside one (``u/APBM*``, any ``t/`` or ``u/`` term) widens the feed to
+   the whole network, and the feed offers that traffic far faster than a
+   1200 Bd channel clears it.
+#. **Locally-heard source.** With ``inet2rf_heard_only`` on (the default), a
+   non-message line is gated only when its source callsign was itself heard on
+   RF inside ``igate_local_window_sec`` (``DROP_INET2RF_NOT_HEARD``) — the
+   counterpart, for the source of ordinary traffic, of the test the message
+   gate below makes on an addressee. A station nobody in earshot has ever heard
+   is a station the local channel has no use for hearing about.
+#. **Per-source spacing.** A source gated to RF less than
+   ``inet2rf_min_interval_sec`` ago is refused (``DROP_INET2RF_RATE``), so no
+   single source can fill the RF TX ring on its own however the payload-type
+   mask is set. 30 s by default, 0 disables it; the ring holds
+   ``INET2RF_RATE_RING_SIZE`` sources and a slot is claimed only by a line that
+   reaches the transmit stage. Messages and the owed position follow-up are
+   exempt.
+#. **Message gating.** Applies to the ``MESSAGE`` type only; the other types
+   are relayed at the sysop's discretion, which the type filter and the budlist
+   above already express. See below.
+
+A line that survives all stages is never keyed onto RF with its APRS-IS
+header intact. ``build_thirdparty_frame()`` discards that header entirely and
+wraps the original ``SRC>DST`` and information field, unmodified, behind a
+``}`` as the payload of this station's own header (``MYCALL[-SSID]>APE32I,
+<igate path>:}SRC>DST,TCPIP,MYCALL[-SSID]*:info``) - the third-party form the
+APRS spec requires for gatewayed traffic. This keeps ``qA`` constructs and a
+bare ``TCPIP`` off the air, and lets every other IGate that hears the frame
+recognise it as already gated instead of gating it back.
+
+The two calls kept from the original header are read out of an unauthenticated
+feed and are checked before the frame is built: each has to be one to nine
+upper-case letters or digits, optionally followed by ``-`` and an SSID of 0 to
+15. A line whose source or destination carries anything else — a space, a
+comma, a ``>`` or a ``:`` — is dropped instead of gated, because those
+characters would re-punctuate the header for whoever receives it. Nothing is
+shortened to fit: a truncated call would name a different station, so an
+oversized token is a rejection too.
+
+.. warning::
+
+   Re-gating third-party traffic without restriction is the number-one cause of
+   IGate loops. The third-party unwrap is deliberately gated behind an explicit
+   opt-in *and* a whitelist for exactly this reason.
+
+Message gating
+==============
+
+An IGate sits on a very large data stream and must not gate indiscriminately.
+With ``igate_msg_gate_en`` on (the factory default), an APRS message read from
+APRS-IS is put on the air only when **all five** conditions hold at once:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 46 54
+
+   * - Condition
+     - Drop reason when it fails
+   * - The sender's header carries none of ``TCPXX``, ``NOGATE``, ``RFONLY``
+     - ``DROP_HEADER_FORBIDS_RF``
+   * - The addressee was heard on RF inside ``igate_local_window_sec``
+     - ``DROP_MSG_NOT_LOCAL``
+   * - That reception took no more than ``igate_msg_max_hops`` digipeater hops
+     - ``DROP_MSG_ADDRESSEE_HOPS``
+   * - The addressee is not itself Internet-connected
+     - ``DROP_MSG_ADDRESSEE_INET``
+   * - The sender was **not** heard on RF inside the same window
+     - ``DROP_MSG_SENDER_LOCAL``
+
+Each failure has its own reason so the dashboard's *Drop Breakdown* says which
+condition stopped a message — the single most-asked IGate support question.
+Only the header is searched for the ``TCPXX``/``NOGATE``/``RFONLY`` tokens, so
+a message whose *text* mentions one is not mistaken for one routed with it.
+
+The locality tests read ``lastheard_heard_rf_within()``,
+``lastheard_heard_rf_within_hops()`` and ``lastheard_heard_inet_within()``,
+which keep a separate stamp per channel: a station can be both locally audible
+and Internet-connected, and each condition tests its own. A frame heard off the
+air also counts as an Internet sighting when its path carries ``TCPIP`` or
+``TCPXX`` — the on-air signature of a packet that has already passed through a
+gateway.
+
+*Heard-locally window (s)* is ``igate_local_window_sec``, 60–3600 s, one hour by
+default, which is the upper bound the APRS-IS IGate design notes recommend.
+
+Bulletins and weather service broadcasts
+----------------------------------------
+
+The five conditions above govern messages addressed to a station. A message
+addressed to *everybody* is not gated at all: bulletins and announcements
+(``BLNn``, ``BLNa``, with or without a group name) and the weather service
+addressee families (``NWS-xxxxx``, ``SKY…``, ``CWA…``) are dropped before the
+type filter runs, under ``DROP_MSG_BROADCAST``.
+
+The drop is unconditional, on the same terms as the generic query gate: it is
+not defeated by clearing *Gate messages to RF*, nor by any combination of type
+bits in the INET → RF filter. The reason is the volume, not the content. A
+bulletin is repeated for as long as it stands, is never acknowledged, runs to
+67 characters of text, and APRS-IS carries every bulletin on the network; a
+station that relayed that stream would be a bulletin repeater for the world on
+a shared local channel, which is the failure mode the IGate design notes
+single out. Weather service notices are the same shape and arrive in bursts.
+
+The rule holds for a packet that comes out of the selective third-party
+unwrap as well: whitelisting a station's third-party traffic is permission to
+relay *that station*, not permission to carry the bulletin stream behind it.
+Nothing here affects this station's **own** bulletins, which are configured on
+the *Bulletins* page and transmitted by their own scheduler, nor the RF → INET
+direction, where a bulletin heard off the air is gated to APRS-IS like any
+other frame.
+
+Coverage in hops
+----------------
+
+Being audible and being reachable are different things. The IGate design notes
+measure a gateway's coverage area in digipeater hops rather than in time, and
+ask that an IGate be set to the minimum number of hops it needs, because a
+station whose frames only arrive after two or three digipeats is very likely
+out of range of a transmission from here — keying up for it spends airtime on a
+message nobody in earshot will collect.
+
+*Addressee hop limit* is ``igate_msg_max_hops``, 0–8 used digipeater addresses.
+0 gates only to stations heard direct, which is the strictest reading of the
+guideline; 8 is the longest path AX.25 can carry. The factory default is not a
+fixed number: ``app_config_set_defaults()`` derives it from the hop count of the
+IGate transmit path, so out of the box the gateway offers to reach exactly as
+far as it transmits (two hops with the stock ``WIDE1-1,WIDE2-1`` preset).
+
+The hop count tested is the one carried by the addressee's most recent **RF**
+frame. An APRS-IS sighting of the same station refreshes its Internet stamp but
+leaves that count alone, so a station last seen on the feed is never mistaken
+for one heard direct.
+
+Turning message gating off transmits **every** message the type filter allows,
+to addressees anywhere in the world, whether or not anything on the local
+channel can hear them.
+
+Associated position
+===================
+
+Rather than replaying a station's historical position reports, the gateway
+notes the stations it has gated a message **to** — an eight-entry ring — and
+forwards the next plain position or buoy report it sees for each of them,
+whatever the type filter says, so the local operator has something to plot for
+the far end of the conversation. The slot is released by that one report, which
+is what makes it a follow-up rather than a subscription; a weather or object
+report is gated under its own type bit, on its own merits.
+
+Traffic log display gate
+========================
+
+*Log after filters* on the IGate page (``igate_log_after_filters``, off by
+default) narrows both views of received traffic — the web traffic table and the
+``RX``/``APRS-IS RX`` lines on the serial console — to the traffic this
+station's own filters accept. It changes nothing about what is gated,
+digipeated or transmitted.
+
+While it is on, an ``RX`` entry and its console line are emitted only for a
+frame that passes
+``igate_log_accepts_frame()`` — the Satellite Gate List, the ``rf2inetFilter``
+payload-type mask, the RF→INET range and prefix gates and the RF→INET callsign
+filter — and an ``RX-IS`` entry only for a line that passes
+``igate_log_accepts_line()`` — the ``inet2rfFilter`` mask including the
+selective third-party unwrap, the INET→RF range gate and the INET→RF callsign
+filter. The RF side shares its implementation with the gating path itself
+(``satGateListPass()``, ``rf2inetFiltersPass()``); the INET→RF side applies the
+same checks, in the same order, as ``inet2rfHandler()`` — associated-position
+exception, range gate, type mask with unwrap, callsign filter, position
+requirement, locally-heard source — so the two agree on every line. Both are evaluated whatever the state of the IGate enable and the
+two direction switches, so a receive-only station's log is narrowed rather than
+emptied.
+
+A position report claimed under the *Associated position* rule above is exempt
+from the range gate and the type mask in the log exactly as it is on the
+transmit side, so the follow-up a station is owed is shown rather than reported
+as filtered out. The log only inspects the claim; the transmit decision is what
+spends it.
+
+The unconditional INET→RF rules — the own-report echo guard, the
+``TCPXX``/``NOGATE``/``RFONLY`` header tokens, the broadcast-addressee rule, the
+generic query drop and the message gate — are deliberately left out. They are
+not filters the operator sets on the page, and applying them would hide this
+station's own reports as APRS-IS echoes them back. The per-source spacing
+limiter is left out on the same terms as the associated-position claim: its ring
+is spent by the transmit decision, and a log that claimed a slot would take it
+from the line it was recorded for.
+
+Nothing but the display changes. A frame the two views leave out is still
+digipeated, gated, parsed and counted exactly as before — ``isRxCount`` stays
+the total of every line read off the socket, and no drop counter moves, because
+a hidden line was not dropped, only not shown. Turning the switch off restores
+both views in full, which is how to check what it is holding back.
+
+Counters and drop reasons
+=========================
+
+The ``igate_stats_t`` snapshot (``igate_get_stats()``) carries:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 24 76
+
+   * - Counter
+     - Meaning
+   * - ``rxCount``
+     - Frames considered for gatewaying (RF→INET).
+   * - ``txCount``
+     - Frames actually sent to APRS-IS as a result of gatewaying.
+   * - ``msgCount``
+     - APRS message packets (``:`` data type identifier) gated in either
+       direction — RF→INET by ``igateProcess()``, INET→RF by
+       ``igate_note_message_gated()`` from ``aprs_service.c``. This is the
+       ``MSG_CNT`` figure the ``?IGATE?`` answer reports, so it counts messages
+       only and not the rest of the gated traffic.
+   * - ``dupCount``
+     - Duplicate frames suppressed.
+   * - ``isRxCount``
+     - **All** lines read off the socket (superset of what reaches the INET→RF
+       handler).
+   * - ``isTxCount``
+     - **All** socket writes: gatewayed frames, outbound messages, and digi
+       "beacon to internet" sends alike.
+   * - ``dropByReason[]``
+     - Per-reason drop counters, indexed by ``drop_reason_t``. The RF→INET
+       stages above cover ``DROP_TOO_SHORT``, ``DROP_PATH_TOKEN``,
+       ``DROP_SAT_NOT_USED``, ``DROP_3RDPARTY_LOOP``, ``DROP_GENERIC_QUERY``,
+       ``DROP_TYPE_FILTER``, ``DROP_RANGE_FILTER``, ``DROP_PREFIX_FILTER``,
+       ``DROP_BUDLIST``, ``DROP_IS_LINE_TOO_LONG`` and ``DROP_TX_FAIL``; the
+       RX line reader above covers ``DROP_IS_RX_LINE_TOO_LONG``. The
+       array also carries reasons bumped elsewhere in the firmware (RF TX
+       path, digipeater, AX.25 decode) — see ``drop_reason_t`` in
+       ``components/igate/include/igate.h`` for the complete, authoritative
+       list. There is no generic/opaque catch-all reason: every drop is
+       attributed to a specific named cause. ``igate_stats_total_drop()`` sums
+       the non-error reasons; ``igate_stats_total_err()`` sums the two
+       decode/send error reasons separately.
+
+``igate_note_drop()`` is exposed so other components sharing the same filtering
+concepts — currently ``aprs_service.c``'s INET→RF handler, for its type-filter
+and budlist checks — contribute to the same per-reason breakdown.
+
+Connectivity indicator
+======================
+
+``igate_is_connected()`` is true while the APRS-IS TCP socket is open, logged
+in and pumping the RX line reader. The web dashboard's *Network Status* panel
+(the APRS-IS pill) reads it. Because the RX loop closes the socket as soon as
+dead-link detection trips (see above), this also reports false for the whole
+interval between a silently dropped link and the next successful re-login,
+rather than continuing to show "connected" against a socket that has stopped
+delivering anything.

@@ -1,0 +1,685 @@
+// @file bulletins.c
+//
+// @author Emiliano Augusto Gonzalez ( lu3vea @ gmail . com)
+// @date 2026
+// @copyright GNU General Public License v3
+// @see https://github.com/hiperiondev/esp32idf_APRS
+//
+// @note
+// This is based on other projects:
+//     VP-Digi: https://github.com/sq8vps/vp-digi
+//     ESP32APRS: https://github.com/nakhonthai/ESP32APRS_Audio
+//     LibAPRS: https://github.com/markqvist/LibAPRS
+//
+//     please contact their authors for more information.
+//
+// @brief APRS bulletin store (LittleFS-backed) and periodic transmitter.
+//
+// See bulletins.h for the design rationale (why bulletins live in their own
+// /storage/bulletins.json file instead of g_config, and how expiry works).
+
+#include <stdio.h>
+#include <string.h>
+#include <time.h>
+
+#include "cJSON.h"
+#include "esp_log.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
+#include "freertos/task.h"
+
+#include "app_config.h"
+#include "aprs_free_text.h" // aprs_free_text_build(), APRS_NO_ARCHIVE_PREFIX_LEN
+#include "aprs_path.h"      // APRS_PATH_TCPIP_SUFFIX
+#include "aprs_service.h"
+#include "bulletins.h"
+#include "igate.h"
+#include "json_escape.h"  // json_write_escaped()
+#include "json_store.h"   // shared JSON-file store scaffolding
+#include "sched_time.h"   // sched_mono_seconds() / sched_clamp_interval()
+#include "storage.h"      // storage_write_lock() / storage_generation()
+#include "str_append.h"   // str_copy_strip_line_breaks(), str_copy_utf8_safe()
+#include "telegram_app.h" // telegram_app_notify_bulletin(): optional Telegram routing of this station's own bulletins
+
+static const char *TAG = "bulletins";
+
+// A bulletin slot with no identifier configured falls back to the digit of its
+// own slot number ('1' + index), which bulletins_build_addressee() emits as a
+// single character. Keep the count within a single decimal digit so that
+// fallback stays one character wide.
+_Static_assert(BULLETIN_COUNT <= 9, "BULLETIN_COUNT must stay a single digit for the default BLNn addressee");
+
+#define BULLETINS_PATH     "/storage/bulletins.json"
+#define BULLETINS_TMP_PATH "/storage/bulletins.json.tmp"
+
+// Same software-identifier destination call used by the beacon and message
+// components, for consistency across the firmware.
+#define BULLETIN_DEST APRS_TOCALL
+
+// Per-bulletin transmit interval. Each bulletin carries its own initial
+// "Beacon interval (s)" (bulletin_t.interval_s); these are the bounds
+// sched_clamp_interval() applies to it, so a 0 (or unset) interval falls back
+// to the default and anything below the floor is raised to it, and bulletins
+// cannot be configured to hammer RF/APRS-IS.
+//
+// That initial rate is the head of the taper APRS101 ch.14 describes: a
+// bulletin repeated a few times in its first hour and then less often over the
+// following hours, an announcement far more slowly over days. The tail is the
+// slot's own slow interval, reached by multiplying the live interval by the
+// slot's decay ratio after every transmission (see bulletin_decay_step()). The
+// shape of the curve is therefore the operator's - initial rate, final rate
+// and how fast one becomes the other are all set per slot - and leaving the
+// ramp unset keeps the flat interval.
+#define BULLETIN_MIN_INTERVAL_S     30   // sanity floor
+#define BULLETIN_DEFAULT_INTERVAL_S 1800 // 30 min, used when interval_s == 0
+
+// Upper bound on how long the scheduler waits between passes. Even when every
+// bulletin's interval is long, the config is re-read at least this often so web
+// edits (interval/enable/text) and expiry are picked up promptly.
+#define BULLETIN_POLL_CAP_S 60
+
+// One-time settle delay after boot before the first transmit pass, so WiFi/
+// APRS-IS association and the modem have a chance to come up first.
+#define BULLETIN_START_DELAY_S 60
+
+// Small gap between consecutive bulletin transmissions, so a burst of enabled
+// bulletins that come due together don't hit the modem/APRS-IS all at once.
+#define BULLETIN_INTER_TX_MS 1500
+
+// Wall-clock sanity floor (2020-09-13). time() below this means NTP hasn't
+// synced yet, so absolute expiry deadlines can't be trusted/armed.
+#define BULLETIN_TIME_VALID_THRESHOLD 1600000000LL
+
+// Serializes LittleFS load/save between the web save handler and the TX task.
+static SemaphoreHandle_t s_lock;
+
+static void lock(void) {
+    json_store_lock_take(&s_lock);
+}
+
+static void unlock(void) {
+    json_store_lock_give(&s_lock);
+}
+
+static bool clock_valid(void) {
+    return (int64_t)time(NULL) >= BULLETIN_TIME_VALID_THRESHOLD;
+}
+
+// ---------------------------------------------------------------------------
+// Persistence
+// ---------------------------------------------------------------------------
+
+static bool load_locked(bulletins_t *out, bool *out_missing, bool *out_transient) {
+    memset(out, 0, sizeof(*out));
+    if (out_missing)
+        *out_missing = false;
+
+    cJSON *doc = NULL;
+    json_store_status_t st = json_store_read(BULLETINS_PATH, TAG, "bulletins", &doc);
+    if (st != JSON_STORE_OK) {
+        // Only an absent file tells the caller to write the defaults out; an
+        // empty or unparseable one leaves the existing file alone so the
+        // operator can see it.
+        if (out_missing && st == JSON_STORE_MISSING)
+            *out_missing = true;
+        // A file that could not be read or parsed for want of memory says
+        // nothing about its content, so the answer this pass gives is only good
+        // for this pass. Reported separately so the caller does not cache it.
+        if (out_transient && st == JSON_STORE_OOM)
+            *out_transient = true;
+        return false;
+    }
+
+    cJSON *arr = cJSON_GetObjectItem(doc, "bulletins");
+    if (cJSON_IsArray(arr)) {
+        int n = cJSON_GetArraySize(arr);
+        if (n > BULLETIN_COUNT)
+            n = BULLETIN_COUNT;
+        for (int i = 0; i < n; i++) {
+            cJSON *o = cJSON_GetArrayItem(arr, i);
+            if (!cJSON_IsObject(o))
+                continue;
+            bulletin_t *b = &out->item[i];
+
+            cJSON *v;
+            v = cJSON_GetObjectItem(o, "en");
+            b->enable = cJSON_IsTrue(v);
+            v = cJSON_GetObjectItem(o, "rf");
+            b->send_rf = cJSON_IsTrue(v);
+            v = cJSON_GetObjectItem(o, "inet");
+            b->send_inet = cJSON_IsTrue(v);
+            v = cJSON_GetObjectItem(o, "id");
+            if (cJSON_IsString(v) && v->valuestring && v->valuestring[0])
+                b->ident = v->valuestring[0];
+            v = cJSON_GetObjectItem(o, "grp");
+            if (cJSON_IsString(v) && v->valuestring) {
+                strncpy(b->group, v->valuestring, BULLETIN_GROUP_MAX);
+                b->group[BULLETIN_GROUP_MAX] = 0;
+            }
+            v = cJSON_GetObjectItem(o, "text");
+            if (cJSON_IsString(v) && v->valuestring) {
+                // CR and LF are stripped first: the stored text is later
+                // written as one line of a ":BLNx     :text" APRS-IS/AX.25
+                // message, and neither format escapes an embedded line
+                // break, so a hand-edited bulletins.json carrying one must not
+                // reach that line unfiltered. The stored text is 8-bit-clean
+                // and repeated on the air verbatim on every future
+                // transmission of this bulletin, so the byte-budget cut that
+                // follows is walked back to a whole UTF-8 character instead
+                // of a plain byte count.
+                char stripped[BULLETIN_TEXT_MAX + 1];
+                str_copy_strip_line_breaks(v->valuestring, stripped, sizeof(stripped));
+                str_copy_utf8_safe(stripped, b->text, sizeof(b->text));
+            }
+            v = cJSON_GetObjectItem(o, "int_s");
+            if (cJSON_IsNumber(v) && v->valuedouble > 0)
+                b->interval_s = (uint32_t)v->valuedouble;
+            // Decay ramp. Absent keys leave both at 0, which is the flat
+            // interval a bulletin file written without them describes.
+            v = cJSON_GetObjectItem(o, "slow_s");
+            if (cJSON_IsNumber(v) && v->valuedouble > 0)
+                b->slow_interval_s = (uint32_t)v->valuedouble;
+            v = cJSON_GetObjectItem(o, "decay");
+            if (cJSON_IsNumber(v) && v->valuedouble > 0 && v->valuedouble <= 65535.0)
+                b->decay_x10 = (uint16_t)v->valuedouble;
+            v = cJSON_GetObjectItem(o, "exp_h");
+            if (cJSON_IsNumber(v) && v->valuedouble > 0)
+                b->expire_hours = (uint32_t)v->valuedouble;
+            v = cJSON_GetObjectItem(o, "exp_at");
+            if (cJSON_IsNumber(v) && v->valuedouble > 0)
+                b->expire_at = (int64_t)v->valuedouble;
+        }
+    }
+
+    cJSON_Delete(doc);
+    return true;
+}
+
+static bool save_locked(const bulletins_t *in) {
+    // Entered with s_lock held (see bulletins_save() below), which is what
+    // json_store_open_tmp() asserts before handing back a stream whose stdio
+    // buffer is already pinned.
+    FILE *f = json_store_open_tmp(BULLETINS_TMP_PATH, TAG, s_lock);
+    if (!f)
+        return false;
+
+    // Written token-by-token straight to the file: no cJSON tree and no second
+    // serialized buffer ever exist, so a save costs essentially only littlefs's
+    // own write buffer on top of the stream buffer above.
+    fputs("{\"bulletins\":[", f);
+    for (int i = 0; i < BULLETIN_COUNT; i++) {
+        const bulletin_t *b = &in->item[i];
+        char text[BULLETIN_TEXT_MAX + 1];
+        strncpy(text, b->text, BULLETIN_TEXT_MAX);
+        text[BULLETIN_TEXT_MAX] = 0;
+
+        fputs(i ? ",{" : "{", f);
+        fprintf(f, "\"en\":%s,", b->enable ? "true" : "false");
+        fprintf(f, "\"rf\":%s,", b->send_rf ? "true" : "false");
+        fprintf(f, "\"inet\":%s,", b->send_inet ? "true" : "false");
+        char ident[2] = { b->ident, 0 };
+        char group[BULLETIN_GROUP_MAX + 1];
+        strncpy(group, b->group, BULLETIN_GROUP_MAX);
+        group[BULLETIN_GROUP_MAX] = 0;
+        fputs("\"id\":", f);
+        json_write_escaped(f, ident);
+        fputs(",\"grp\":", f);
+        json_write_escaped(f, group);
+        fputc(',', f);
+        fputs("\"text\":", f);
+        json_write_escaped(f, text);
+        fprintf(f, ",\"int_s\":%u", (unsigned)b->interval_s);
+        fprintf(f, ",\"slow_s\":%u", (unsigned)b->slow_interval_s);
+        fprintf(f, ",\"decay\":%u", (unsigned)b->decay_x10);
+        fprintf(f, ",\"exp_h\":%u,", (unsigned)b->expire_hours);
+        fprintf(f, "\"exp_at\":%lld", (long long)b->expire_at);
+        fputc('}', f);
+    }
+    fputs("]}", f);
+
+    return json_store_commit(f, BULLETINS_TMP_PATH, BULLETINS_PATH, TAG, "bulletins");
+}
+
+// Parsed copy of bulletins.json, kept in RAM so a scheduler pass costs nothing
+// on the filesystem. bulletins_service() runs on every pass of the shared
+// beacon scheduler - as often as every 5 s while the other services are idle -
+// and each pass called bulletins_load(), i.e. an fopen + fread + a full
+// cJSON_Parse of this file, on the order of ten thousand times a day. That
+// parse builds and tears down a tree of small heap nodes, the exact allocation
+// pattern the streaming writers exist to avoid; holding the result
+// costs ~sizeof(bulletins_t) of static RAM once and removes the churn.
+//
+// The cache is only allowed to answer when nothing can have changed underneath
+// it: bulletins_save() drops it (every web edit and every expiry-driven
+// rewrite goes through there), and s_cache_gen catches the changes made from
+// outside this module - a whole-partition format, a delete, or a file uploaded
+// over this one from the web Storage page (see storage_generation()).
+static bulletins_t s_cache;
+static bool s_cache_valid = false;
+static bool s_cache_ok = false; // what load_locked() reported for the cached content
+static uint32_t s_cache_gen = 0;
+
+// Earliest monotonic second at which a load that failed for want of memory may
+// read the file again; 0 when no such failure is outstanding. See the comment
+// in bulletins_load() for why a shortage is retried on a timer rather than on
+// every pass.
+#define BULLETIN_LOAD_RETRY_S 60
+static int64_t s_load_retry_after_s = 0;
+
+bool bulletins_load(bulletins_t *out) {
+    if (!out)
+        return false;
+    lock();
+    // A retry deadline that has not yet passed keeps the cached answer in
+    // service, so a shortage is retried on its own timer rather than on every
+    // pass through here.
+    bool retry_due = s_load_retry_after_s != 0 && sched_mono_seconds() >= s_load_retry_after_s;
+    if (s_cache_valid && s_cache_gen == storage_generation() && !retry_due) {
+        *out = s_cache;
+        bool cached_ok = s_cache_ok;
+        unlock();
+        return cached_ok;
+    }
+    bool missing = false;
+    bool transient = false;
+    bool ok = load_locked(out, &missing, &transient);
+    // Cache the defaults substituted for a missing or corrupt file too: they
+    // are what every caller would get from a re-read anyway, and doing so keeps
+    // a subsystem that is simply not configured from re-reading the filesystem
+    // on every scheduler pass.
+    //
+    // A load that failed for want of memory is the exception, and it is the
+    // only failure here that is not a property of the file. Caching it as one
+    // would freeze a shortage lasting a second or two into the answer every
+    // later pass gets, because nothing short of a save or a storage-generation
+    // change drops this cache. Cache it anyway, and set a retry deadline
+    // instead: the substituted defaults stay in service until then, and the
+    // file is read again once the deadline passes.
+    //
+    // Both halves matter. Without the deadline a transient shortage would
+    // silence the subsystem for good; without the caching, every pass would
+    // re-read and re-parse the file, which is the exact churn this cache exists
+    // to prevent and which arrives when the heap can least afford it - a parse
+    // tree of several kilobytes rebuilt every few seconds is how a shortage
+    // that would have cleared on its own becomes a lasting one.
+    s_cache = *out;
+    s_cache_ok = ok;
+    s_cache_gen = storage_generation();
+    s_cache_valid = true;
+    s_load_retry_after_s = transient ? sched_mono_seconds() + BULLETIN_LOAD_RETRY_S : 0;
+    unlock();
+    if (missing) {
+        // First boot / file lost: persist the empty-default set now so
+        // /storage/bulletins.json exists on disk instead of only living
+        // in RAM until something else happens to trigger a save.
+        if (!bulletins_save(out))
+            ESP_LOGW(TAG, "Failed to write default %s", BULLETINS_PATH);
+    }
+    return ok;
+}
+
+bool bulletins_save(const bulletins_t *in) {
+    if (!in)
+        return false;
+    lock();
+    // Module lock first, filesystem-wide writer gate second (storage.h): the
+    // temp-file + rename sequence inside save_locked() must not overlap the
+    // whole-partition format the web Storage page can start.
+    storage_write_lock();
+    bool ok = save_locked(in);
+    storage_write_unlock();
+    // Drop the cache rather than filling it from *in: what lands on disk is
+    // what a later load will parse back, and save_locked() bounds the text it
+    // writes, so the next reader re-reads the file once and caches exactly
+    // what the file says.
+    s_cache_valid = false;
+    unlock();
+    return ok;
+}
+
+void bulletins_arm_expiry(bulletins_t *b) {
+    if (!b)
+        return;
+    int64_t now = (int64_t)time(NULL);
+    bool valid = now >= BULLETIN_TIME_VALID_THRESHOLD;
+    for (int i = 0; i < BULLETIN_COUNT; i++) {
+        bulletin_t *it = &b->item[i];
+        if (it->enable && it->expire_hours > 0 && valid) {
+            it->expire_at = now + (int64_t)it->expire_hours * 3600;
+        } else {
+            it->expire_at = 0; // never / can't arm (disabled, no window, or no clock)
+            if (it->enable && it->expire_hours > 0 && !valid)
+                ESP_LOGW(TAG, "bulletin %d: clock not synced, expiry not armed", i + 1);
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Transmission
+// ---------------------------------------------------------------------------
+
+// Resolves the station callsign used as the bulletin source. Prefers the
+// shared "My Station" callsign; falls back to the IGate APRS callsign+SSID.
+static void resolve_source_call(char *out, size_t out_size) {
+    out[0] = 0;
+    if (g_config.my_callsign[0]) {
+        strncpy(out, g_config.my_callsign, out_size - 1);
+        out[out_size - 1] = 0;
+    } else if (g_config.aprs_mycall[0]) {
+        if (g_config.aprs_ssid > 0)
+            snprintf(out, out_size, "%s-%d", g_config.aprs_mycall, (int)g_config.aprs_ssid);
+        else
+            snprintf(out, out_size, "%s", g_config.aprs_mycall);
+    }
+    // Uppercase (callsigns are case-insensitive on-air; keep it canonical).
+    for (char *p = out; *p; p++)
+        if (*p >= 'a' && *p <= 'z')
+            *p -= 32;
+}
+
+void bulletins_build_addressee(const bulletin_t *b, int idx, char *out, size_t out_size) {
+    if (out == NULL || out_size == 0)
+        return;
+
+    // APRS message addressee is exactly 9 chars, space-padded. Built
+    // char-by-char rather than through a format string so the identifier
+    // stays a single character whatever is stored, and the compiler's
+    // -Werror=format-truncation has no worst-case width to complain about.
+    char addr[10];
+    addr[0] = 'B';
+    addr[1] = 'L';
+    addr[2] = 'N';
+
+    char id = b->ident;
+    if (id >= 'a' && id <= 'z')
+        id = (char)(id - 32);
+    bool announcement = (id >= 'A' && id <= 'Z');
+    bool bulletin = (id >= '0' && id <= '9');
+    if (!announcement && !bulletin) {
+        id = (char)('0' + (idx + 1)); // idx 0..8 -> '1'..'9'
+        bulletin = true;
+    }
+    addr[3] = id;
+
+    size_t n = 4;
+    // Only numbered bulletins carry a group name: an announcement's identifier
+    // letter already occupies the whole discriminator field in APRS101.
+    if (bulletin) {
+        for (size_t i = 0; i < BULLETIN_GROUP_MAX && b->group[i] && n < 9; i++) {
+            char c = b->group[i];
+            if (c >= 'a' && c <= 'z')
+                c = (char)(c - 32);
+            if ((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9'))
+                addr[n++] = c;
+        }
+    }
+    while (n < 9)
+        addr[n++] = ' ';
+    addr[9] = 0;
+
+    snprintf(out, out_size, "%s", addr);
+}
+
+// Builds the ":BLNx     :text" APRS message info field from an addressee
+// already rendered by bulletins_build_addressee() and the on-air text. The
+// addressee is passed in rather than derived here because the caller needs it
+// for the Telegram routing as well, and one bulletin must carry one spelling
+// of it wherever it appears.
+static void build_info_field(const char *addr, const char *text, char *out, size_t out_size) {
+    // No message number/ack is appended: bulletins never carry one.
+    snprintf(out, out_size, ":%s:%s", addr, text);
+}
+
+static void tx_one(int idx, const bulletin_t *b, const char *src) {
+    // On-air form of the bulletin text: '|' and '~' are reserved for the
+    // base-91 comment telemetry group (APRS101 ch.13) and are filtered out
+    // here, and the station-wide no-archive marker is prefixed when the
+    // operator asked for it. The stored text is left exactly as it was
+    // entered. The flag is snapshotted because this runs on the scheduler
+    // task, async to a web save; the buffer carries room for the marker so
+    // enabling it never costs four characters of bulletin text.
+    app_config_lock();
+    bool no_archive = g_config.my_no_archive;
+    app_config_unlock();
+    char text[BULLETIN_TEXT_MAX + APRS_NO_ARCHIVE_PREFIX_LEN + 1];
+    aprs_free_text_build(b->text, no_archive, text, sizeof(text));
+
+    char addr[10];
+    bulletins_build_addressee(b, idx, addr, sizeof(addr));
+
+    char info[128];
+    build_info_field(addr, text, info, sizeof(info));
+
+    if (b->send_rf) {
+        // Sent direct (no digipeater path). Bulletins here intentionally carry
+        // no unproto path - the page exposes only enable/RF/Internet/text/
+        // expire, matching the requested field set.
+        //
+        // The buffer is the one aprs_service.h publishes for every builder, and
+        // the length test is the contract that goes with it: snprintf() reports
+        // the length it would have written, so a line past APRS_TNC2_MAX_LEN is
+        // discarded with a warning here instead of handing an out-of-range
+        // length to the transmit path.
+        char packet[APRS_TNC2_BUF_SIZE];
+        int len = snprintf(packet, sizeof(packet), "%s>%s:%s", src, BULLETIN_DEST, info);
+        if (len > 0 && len <= APRS_TNC2_MAX_LEN) {
+            if (aprs_service_send_tnc2(packet, (size_t)len))
+                ESP_LOGI(TAG, "Bulletin %d TX (RF): %s", idx + 1, packet);
+            else
+                ESP_LOGW(TAG, "Bulletin %d NOT sent over RF - modem not ready or busy", idx + 1);
+        } else if (len > APRS_TNC2_MAX_LEN) {
+            ESP_LOGW(TAG, "Bulletin %d NOT sent over RF - line too long (%d bytes, max %d)", idx + 1, len, APRS_TNC2_MAX_LEN);
+        }
+    }
+    if (b->send_inet) {
+        // Locally-originated APRS-IS traffic carries the TCPIP* q-construct,
+        // never an RF unproto path (see the same note in message.c). Same
+        // buffer size and same APRS_TNC2_MAX_LEN test as the RF copy above, so
+        // a bulletin too long to reach the air is not quietly relayed to
+        // APRS-IS either.
+        char packet[APRS_TNC2_BUF_SIZE];
+        int len = snprintf(packet, sizeof(packet), "%s>%s" APRS_PATH_TCPIP_SUFFIX ":%s", src, BULLETIN_DEST, info);
+        if (len > 0 && len <= APRS_TNC2_MAX_LEN) {
+            if (igate_send_raw(packet, (size_t)len))
+                ESP_LOGI(TAG, "Bulletin %d TX (INET): %s", idx + 1, packet);
+            else
+                ESP_LOGW(TAG, "Bulletin %d NOT sent over INET - APRS-IS not connected yet", idx + 1);
+        } else if (len > APRS_TNC2_MAX_LEN) {
+            ESP_LOGW(TAG, "Bulletin %d NOT sent over INET - line too long (%d bytes, max %d)", idx + 1, len, APRS_TNC2_MAX_LEN);
+        }
+    }
+
+    // A bulletin this station originates reaches the operators reading the bot
+    // exactly as one from any other station does, so it is handed to the same
+    // routing entry point with the same three fields. What travels is the
+    // on-air text, marker included, which is the announcement as the network
+    // sees it rather than the stored draft. The call is made once per pass
+    // rather than once per channel: a bulletin sent over both RF and the
+    // internet is still one bulletin, and it is made regardless of whether
+    // either transmission succeeded, since the routing carries the
+    // announcement rather than a report on the radio. Telegram routing has its
+    // own switch on the Telegram page, so this is a no-op unless the operator
+    // turned it on for a bot that is running.
+    telegram_app_notify_bulletin(src, addr, text);
+}
+
+// Applies expiry to a freshly-loaded set: any enabled bulletin whose deadline
+// has passed is disabled. Returns true if anything changed (caller persists).
+bool bulletins_apply_expiry(bulletins_t *b) {
+    if (!b || !clock_valid())
+        return false; // don't expire against an unsynced clock
+    int64_t now = (int64_t)time(NULL);
+    bool changed = false;
+    for (int i = 0; i < BULLETIN_COUNT; i++) {
+        bulletin_t *it = &b->item[i];
+        if (it->enable && it->expire_at > 0 && now >= it->expire_at) {
+            it->enable = false;
+            it->expire_at = 0;
+            changed = true;
+            ESP_LOGI(TAG, "Bulletin %d expired - disabled", i + 1);
+        }
+    }
+    return changed;
+}
+
+// One decay step: multiply the current interval by the slot's decay ratio,
+// bounded by its slow interval. No-op unless a ratio >= 1.0 and a slow
+// interval above the initial one are both configured, so a bulletin left
+// without a ramp keeps the flat cadence it had.
+static uint32_t bulletin_decay_step(uint32_t cur, const bulletin_t *b) {
+    if (b->decay_x10 < 10 || b->slow_interval_s == 0)
+        return cur;
+    uint32_t initial = sched_clamp_interval(b->interval_s, BULLETIN_MIN_INTERVAL_S, BULLETIN_DEFAULT_INTERVAL_S);
+    if (b->slow_interval_s <= initial)
+        return cur;
+    uint64_t next = (uint64_t)cur * (uint64_t)b->decay_x10 / 10u;
+    if (next <= cur)
+        next = (uint64_t)cur + 1; // guarantee forward progress
+    if (next > b->slow_interval_s)
+        next = b->slow_interval_s;
+    return (uint32_t)next;
+}
+
+// A change token over a bulletin's stored fields. Any edit changes it, which
+// the scheduler uses to restart the decay ramp at the initial interval and
+// transmit promptly, so a reworded or re-timed bulletin is heard at the head
+// of its curve again rather than at whatever spacing the previous text had
+// decayed to. The struct is fully zeroed on load (memset in load_locked), so
+// padding bytes are stable and don't cause spurious resets.
+static uint32_t bulletin_signature(const bulletin_t *b) {
+    const uint8_t *p = (const uint8_t *)b;
+    uint32_t h = 2166136261u; // FNV-1a
+    for (size_t i = 0; i < sizeof(*b); i++) {
+        h ^= p[i];
+        h *= 16777619u;
+    }
+    return h;
+}
+
+// Per-bulletin next-due timestamps (monotonic seconds). 0 = due now, so every
+// enabled bulletin transmits once on the first pass after start. These live at
+// file scope because the transmitter is a serviced pass (bulletins_service)
+// driven by the shared beacon scheduler rather than a task loop of its own, so
+// the deadlines must survive between calls.
+static int64_t s_bln_next_due[BULLETIN_COUNT] = { 0 };
+
+// Per-bulletin runtime decay state, at file scope for the same reason and
+// transient in the same way as the objects/items ramp - it is deliberately not
+// persisted, so a reboot restarts every bulletin at its initial interval:
+//   s_bln_cur_interval - the live (possibly decayed) interval; 0 => re-seed
+//                        from the bulletin's initial interval on next use.
+//   s_bln_sig          - last-seen change token (see bulletin_signature); a
+//                        change means the slot was edited and its schedule and
+//                        ramp are reset.
+static uint32_t s_bln_cur_interval[BULLETIN_COUNT] = { 0 };
+static uint32_t s_bln_sig[BULLETIN_COUNT] = { 0 };
+
+// One serviced pass of the bulletin transmitter. Called by the shared beacon
+// scheduler (beacon_scheduler.c); returns the number of seconds until the
+// transmitter next wants servicing (>= 1). The per-bulletin timers live at file
+// scope and the one-time boot settle delay is returned from the first call
+// rather than slept through, so a pass never blocks the shared scheduler.
+uint32_t bulletins_service(void) {
+    // One-time settle delay after boot before the first transmit pass, so
+    // WiFi/APRS-IS association and the modem have a chance to come up first.
+    static bool started = false;
+    if (!started) {
+        started = true;
+        return BULLETIN_START_DELAY_S;
+    }
+
+    // A false load means the file was missing or unusable and empty defaults
+    // were substituted; the pass runs on those either way. The result is
+    // cached until the next write, so the report is made on the transition
+    // rather than on every pass, which at this cadence would be a log flood.
+    static bool warned_load = false;
+    bulletins_t set;
+    bool loaded = bulletins_load(&set);
+    if (!loaded && !warned_load)
+        ESP_LOGW(TAG, "%s unusable, transmitting from substituted defaults", BULLETINS_PATH);
+    warned_load = !loaded;
+
+    // Enforce expiry first, and persist the disable so the web UI reflects
+    // it even if nothing is transmitted this pass.
+    if (bulletins_apply_expiry(&set)) {
+        if (!bulletins_save(&set))
+            ESP_LOGE(TAG, "expired bulletins could not be written to %s", BULLETINS_PATH);
+    }
+
+    char src[16];
+    resolve_source_call(src, sizeof(src));
+
+    int64_t now = sched_mono_seconds();
+    int64_t soonest = now + BULLETIN_POLL_CAP_S;
+
+    for (int i = 0; i < BULLETIN_COUNT; i++) {
+        const bulletin_t *b = &set.item[i];
+        bool sendable = b->enable && b->text[0] && (b->send_rf || b->send_inet);
+
+        // Restart the schedule (and the decay ramp) if the slot was edited
+        // since the last pass, so an edited bulletin transmits promptly and at
+        // its initial interval.
+        uint32_t sig = bulletin_signature(b);
+        if (sig != s_bln_sig[i]) {
+            s_bln_sig[i] = sig;
+            s_bln_cur_interval[i] = 0; // re-seed from the initial interval below
+            s_bln_next_due[i] = 0;     // transmit on this pass
+        }
+
+        if (!sendable || !src[0]) {
+            // Reset so that (re-)enabling or setting a callsign fires an
+            // immediate transmit on the next pass instead of waiting out a
+            // stale timer, and so the decay ramp starts fresh.
+            s_bln_next_due[i] = 0;
+            s_bln_cur_interval[i] = 0;
+            continue;
+        }
+
+        // Seed the live interval from the bulletin's initial interval.
+        if (s_bln_cur_interval[i] == 0)
+            s_bln_cur_interval[i] = sched_clamp_interval(b->interval_s, BULLETIN_MIN_INTERVAL_S, BULLETIN_DEFAULT_INTERVAL_S);
+
+        if (now >= s_bln_next_due[i]) {
+            tx_one(i, b, src);
+            // The gap that follows this transmission is the one that widens:
+            // the ramp advances after the bulletin has gone out, so the first
+            // repetition is always spaced at the initial interval.
+            s_bln_next_due[i] = now + (int64_t)s_bln_cur_interval[i];
+            s_bln_cur_interval[i] = bulletin_decay_step(s_bln_cur_interval[i], b);
+            vTaskDelay(pdMS_TO_TICKS(BULLETIN_INTER_TX_MS));
+            now = sched_mono_seconds(); // account for the inter-TX gap
+        }
+
+        if (s_bln_next_due[i] < soonest)
+            soonest = s_bln_next_due[i];
+    }
+
+    ESP_LOGD(TAG, "bulletins_service stack free: %u bytes", (unsigned)(uxTaskGetStackHighWaterMark(NULL) * sizeof(StackType_t)));
+
+    // Sleep until the soonest bulletin is due, capped so config edits and
+    // expiry are still picked up promptly.
+    int64_t sleep_s = soonest - sched_mono_seconds();
+    if (sleep_s < 1)
+        sleep_s = 1;
+    if (sleep_s > BULLETIN_POLL_CAP_S)
+        sleep_s = BULLETIN_POLL_CAP_S;
+    return (uint32_t)sleep_s;
+}
+
+void bulletins_start(void) {
+    // The bulletin transmitter is driven by the shared beacon scheduler
+    // (beacon_scheduler_start()) via bulletins_service(), so there is no task
+    // to create here - only the LittleFS lock to bring up and the store to
+    // put in place.
+    json_store_lock_ensure(&s_lock);
+
+    // Make sure /storage/bulletins.json exists from the very first boot, the
+    // same guarantee every configuration file carries: the page would
+    // otherwise only create it the first time someone saves it, leaving the
+    // functionality with no file of its own until then. The load itself
+    // persists the defaults it substitutes for an absent file, so reading the
+    // set once here is all it takes.
+    bulletins_t set;
+    bulletins_load(&set);
+    ESP_LOGI(TAG, "Bulletins configured (per-bulletin interval, default=%us; driven by beacon scheduler)", (unsigned)BULLETIN_DEFAULT_INTERVAL_S);
+}

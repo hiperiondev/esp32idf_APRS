@@ -1,0 +1,216 @@
+.. _es-http-routes:
+
+==========
+Rutas HTTP
+==========
+
+La administración web registra las siguientes rutas
+(``components/webconfig/web_server.c``). Cada manejador llama a
+``web_check_auth()`` y por lo tanto requiere autenticación HTTP Basic todo
+manejador que sirva datos de configuración o de tráfico. Tres rutas no lo hacen,
+y ninguna expone nada: ``GET /style.css`` es una hoja de estilos estática que no
+lleva datos de configuración ni de tráfico, y el navegador la pide mientras
+dibuja el propio desafío de login; ``GET /logo.png`` es la imagen de marca
+embebida en el firmware, igualmente libre de datos de la estación; ``GET
+/logout`` responde a toda petición con el ``401`` que hace al navegador descartar
+sus credenciales guardadas, así que no hay nada que una comprobación de
+autenticación pueda proteger.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 16 34 50
+
+   * - Método
+     - Ruta
+     - Propósito
+   * - GET
+     - ``/``
+     - raíz / landing de login
+   * - GET
+     - ``/logout``
+     - descartar auth Basic
+   * - GET
+     - ``/dashboard``
+     - panel en vivo
+   * - GET/POST
+     - ``/station``
+     - identidad de la propia estación: indicativo, lat/lon/alt
+   * - GET/POST
+     - ``/igate``
+     - ajustes del IGate
+   * - GET/POST
+     - ``/bm``
+     - ajustes de la interconexión BrandMeister
+   * - GET/POST
+     - ``/digi``
+     - ajustes del digipeater
+   * - GET/POST
+     - ``/tracker``
+     - ajustes del tracker
+   * - GET/POST
+     - ``/wx``
+     - ajustes del informe meteorológico
+   * - GET
+     - ``/wx/values``
+     - valores WX de sensor por canal en vivo (JSON); cada canal distinto se
+       lee una sola vez por request, apunten las filas que apunten
+   * - GET/POST
+     - ``/tlm``
+     - ajustes de telemetría + selectores de sensor por canal
+   * - GET
+     - ``/tlm/values``
+     - valores de telemetría por canal en vivo (JSON); cada canal distinto se
+       lee una sola vez por request, apunten las filas que apunten
+   * - GET/POST
+     - ``/gps``
+     - conmutador de habilitación del receptor GNSS y vista en vivo
+   * - GET
+     - ``/gps/values``
+     - todos los valores que informa el receptor GNSS (JSON)
+   * - GET
+     - ``/gps/live``
+     - latitud/longitud/altitud/velocidad/rumbo como números simples (JSON),
+       consultado por la casilla *Usar GPS* de cada página
+   * - GET/POST
+     - ``/telegram``
+     - interruptor del bot de Telegram, credenciales y diagnóstico en vivo de
+       la conexión
+   * - GET
+     - ``/telegram/status``
+     - estado del bot, su causa y sus contadores (JSON), consultado cada 2 s
+   * - GET/POST
+     - ``/winlink``
+     - cuenta Winlink, la política de pase de mensajes del servicio y la
+       terminal de sesión
+   * - POST
+     - ``/winlink/cmd``
+     - ejecuta una acción de sesión: acceder, salir, una orden, un paso de
+       redacción, una acción sobre un mensaje listado (``n`` lleva su número) o
+       borrar las respuestas guardadas (JSON ``{"ok":…,"error":…}``)
+   * - GET
+     - ``/winlink/status``
+     - estado de la sesión, tiempo restante, órdenes en espera, tamaño del
+       buzón y último fallo (JSON), consultado cada 3 s
+   * - GET
+     - ``/winlink/list``
+     - las respuestas que envió el servicio, de la más antigua a la más
+       reciente (JSON)
+   * - GET
+     - ``/logs``
+     - visor del registro de consola; mostrarla no toca la copia: el script de
+       la página envía ``/logs/stop`` al cargar
+   * - POST
+     - ``/logs/start``
+     - activa la copia de la consola (JSON ``{"ok":…,"seq":…}``)
+   * - POST
+     - ``/logs/stop``
+     - desactiva la copia de la consola y libera su anillo (JSON)
+   * - POST
+     - ``/logs/read?since=<seq>``
+     - líneas de consola capturadas desde ``seq`` (JSON), consultado cada 1 s;
+       la consulta también rearma el tiempo de inactividad de la copia, y por
+       eso es POST
+   * - GET/POST
+     - ``/bulletins``
+     - boletines APRS BLN1..BLN5
+   * - GET/POST
+     - ``/objects``
+     - Objetos / Ítems APRS
+   * - GET/POST
+     - ``/msg``
+     - config del motor de mensajería (RF/INET, reintento, GPIO de alarma)
+   * - GET/POST
+     - ``/query``
+     - respondedor de consultas APRS (``?APRS?``/``?WX?``/``?IGATE?``,
+       consultas dirigidas), intervalo de limitación de tasa
+   * - GET/POST
+     - ``/msgchat``
+     - interfaz de bandeja/redacción estilo chat
+   * - GET
+     - ``/msgchat/list``
+     - fragmento de lista de mensajes (JSON)
+   * - GET/POST
+     - ``/radio``
+     - módem AFSK de audio (FX.25, modulación, retención PTT, loop test)
+   * - POST
+     - ``/radio/looptest``
+     - ejecutar el loop test (resultado JSON)
+   * - POST
+     - ``/radio/level``
+     - medir el nivel de recepción, la polarización de entrada y el margen del conversor sin transmitir (resultado JSON)
+   * - POST
+     - ``/radio/txtest``
+     - transmitir una ráfaga de prueba acotada para ajustar el nivel de transmisión (resultado JSON)
+   * - GET/POST
+     - ``/wireless``
+     - modo Wi-Fi, AP, 5 ranuras STA, potencia TX
+   * - POST
+     - ``/wifiscan``
+     - resultados del escaneo de AP (JSON)
+   * - GET/POST
+     - ``/system``
+     - login, frec. CPU, hosts/resincronización NTP, selección de zona horaria
+   * - POST
+     - ``/default``
+     - reset de fábrica
+   * - GET
+     - ``/storage``
+     - navegador de archivos
+   * - GET
+     - ``/download?file=…``
+     - descargar de LittleFS
+   * - POST
+     - ``/delete``
+     - borrar un archivo
+   * - POST
+     - ``/upload``
+     - subida multipart
+   * - POST
+     - ``/format``
+     - reformatear LittleFS
+   * - GET
+     - ``/about``
+     - versión firmware/IDF, partición, formulario de OTA
+   * - POST
+     - ``/ota_update``
+     - subida multipart de firmware → grabar ranura OTA inactiva → reiniciar
+   * - GET
+     - ``/symbol``
+     - referencia/selector de símbolos APRS
+   * - GET
+     - ``/lastheard``
+     - una fila por estación oída (JSON); un feed para clientes externos, no lo
+       dibuja ninguna página de administración
+   * - GET
+     - ``/igate_traffic?since=<seq>``
+     - delta del registro de tráfico (JSON)
+   * - GET
+     - ``/dashinfo``
+     - tira compacta de info en vivo (fragmento HTML)
+   * - GET
+     - ``/sidebarInfo``
+     - fragmento de stats de barra lateral
+   * - GET
+     - ``/heapinfo``
+     - heap libre y mínimo libre como objeto JSON de dos campos
+   * - GET
+     - ``/style.css``
+     - hoja de estilos compartida
+   * - GET
+     - ``/logo.png``
+     - logo de marca de la barra superior (PNG embebido)
+
+Política de bloqueo de inicio de sesión
+========================================
+
+Las peticiones sin cabecera ``Authorization``, o con una que no sea
+``Basic``, reciben el desafío ``401`` sin contarse como fallo de login — es la
+mitad sin credenciales del handshake de Basic Auth que todo navegador realiza
+por sí solo. Solo cuenta una petición que presentó credenciales y fue
+rechazada. Tras 5 rechazos así desde el mismo origen IPv4, las peticiones
+siguientes reciben ``429 Too Many Requests`` (con ``Retry-After``) durante una
+ventana que empieza en 5 s y se duplica con cada rechazo mientras sigue
+bloqueado, con tope de 300 s; una ventana que expira sin login exitoso se
+rearma un fallo por debajo del umbral, de modo que credenciales caducadas
+repetidas solo disparan el bloqueo base de 5 s cada vez en lugar de escalar
+hasta el tope. Véase :ref:`es-web-admin` para más detalles.

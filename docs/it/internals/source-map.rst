@@ -1,0 +1,144 @@
+.. _it-source-map:
+
+=========================
+Mappa del codice sorgente
+=========================
+
+Un percorso attraverso il repository, così che tu sappia dove guardare. Le
+dimensioni sono approssimative. Il C di prima parte somma ~75 k righe tra
+``main/`` + ``components/`` (esclusi i ``managed_components/``), di cui ~7,1 k
+sono il componente del modem e ~22,6 k l'amministrazione web.
+
+Disposizione del repository
+===========================
+
+.. code-block:: text
+
+   workspace-APRS/esp32_APRS_igate/
+   ├── CMakeLists.txt          ← definizione scheda (pin ADC/DAC/PTT/LED) + project()
+   ├── partitions.csv          ← nvs / otadata / phy_init / ota_0 / ota_1 / storage (LittleFS)
+   ├── sdkconfig               ← target=esp32, flash 4MB, partizioni personalizzate
+   ├── dependencies.lock       ← idf 6.1, littlefs, esp-idf-lib bmp280/bmp180/i2cdev/helpers
+   ├── LICENSE                 ← GPL-3.0
+   ├── schematics/             ← schema KiCad interfaccia radio + PCB
+   │
+   ├── main/                                   (l'applicazione)
+   │   ├── main.c              ← app_main, avvio/riconnessione Wi-Fi, ordine di boot
+   │   ├── app_config.c/.h     ← app_config_t, default di fabbrica, load/save JSON
+   │   ├── storage.c           ← montaggio/formato/uso LittleFS
+   │   ├── aprs_service.c/.h   ← la colla: smistamento RX, helper TX, cfg modem, stats, loop test
+   │   ├── aprs_filter.c/.h    ← classificatore payload + filtri portata/prefisso/budlist/terze-parti
+   │   ├── aprs_coord.c/.h     ← lat/lon ↔ testo APRS, ambiguità, estrazione simbolo
+   │   ├── include/aprs_minutes.h ← l'unica quantizzazione gradi/minuti: la leggono il campo base di posizione, i byte Mic-E e la cifra "!DAO!"
+   │   ├── include/aprs_free_text.h ← builder dei campi di testo libero propri: rimozione riservati + marcatore "!x!" di non archiviazione
+   │   ├── include/aprs_df.h  ← codificatore del rapporto DF "CSE/SPD/BRG/NRQ" condiviso da beacon.c e objects_items.c
+   │   ├── include/aprs_bm.h  ← classificatore BrandMeister di righe APRS-IS: tocall APBMxx, alias DMR nel percorso, stazione di ingresso
+   │   ├── include/aprs_path.h ← bitmask dei preset di percorso → suffisso ",WIDE1-1,WIDE2-1"
+   │   ├── include/str_append.h ← helper di append snprintf limitato, condiviso dai costruttori
+   │   ├── json_store.c + include/json_store.h / json_escape.h ← impalcatura comune degli store JSON (un solo buffer stdio, scansione di validità senza allocazioni) + scrittore in streaming/escaping
+   │   ├── include/must_check.h ← attributo "il chiamante deve leggere questo valore di ritorno"
+   │   ├── include/app_version.h ← stringa di versione del firmware mostrata nella pagina About
+   │   ├── include/reset_reason.h ← causa dell'avvio come etichetta, condivisa dalla striscia del pannello e dall'avviso di avvio di Telegram
+   │   ├── include/sched_time.h ← secondi monotonici usati da ogni scheduler
+   │   ├── beacon.c/.h         ← beacon posizione propria (trk / igate / digi)
+   │   ├── aprs_dao.c/.h       ← estensione di precisione/datum "!DAO!" (aprs12/datum.txt), usata da beacon.c
+   │   ├── weather.c/.h        ← report WX proprio: refresh sensors_local + beacon WX
+   │   ├── telemetry.c/.h      ← telemetria propria: A1–A5 + B1–B8, beacon T#nnn + metadati
+   │   ├── gps.c/.h            ← ricevitore GNSS NMEA sulla propria UART: parser di frasi + snapshot
+   │   ├── telegram_app.c/.h  ← archivio del bot Telegram (telegram.json proprio) + avvio supervisionato + diagnosi + risposte /status e /sensors
+   │   ├── beacon_scheduler.c/.h ← UN task condiviso che aziona TUTTO il TX periodico + risposte alle query
+   │   ├── bulletins.c/.h      ← bollettini APRS BLN1..BLN5 (bulletins.json proprio)
+   │   ├── objects_items.c/.h  ← Oggetti/Item APRS (objitems.json proprio)
+   │   ├── net_state.c/.h      ← flag "abbiamo davvero internet?"
+   │   ├── time_sync.c/.h      ← SNTP (sempre UTC), macchina a stati non bloccante, tabella dei fusi orari (solo visualizzazione)
+   │   ├── cpu_freq.c/.h       ← esp_pm_configure() dalla pagina System
+   │   └── heap_monitor.c/.h   ← riga periodica di heap + dettaglio per heap + parentesi di heap + livelli minimi di stack orari + scansione di integrità opzionale + lock condiviso per le operazioni di rete pesanti
+   │
+   ├── components/
+   │   ├── esp32idf_radioamateur_modem/    (il modem software — il cuore del progetto)
+   │   │   ├── esp32idf_radioamateur_modem.h  ← API pubblica (config, callback RX, helper TX)
+   │   │   ├── include/…_config.h             ← TUTTE le costanti di scheda/DSP in compilazione
+   │   │   ├── src/afsk.c                      ← ingest DMA ADC, AGC, FIR decimazione, ISR DAC, PTT
+   │   │   ├── src/modem.c                     ← correlatori, DPLL, tabelle toni, DCD, calibrazione
+   │   │   ├── src/ax25.c                      ← framer HDLC, NRZI, bit-stuffing, codec AX.25, coda TX
+   │   │   ├── src/fx25.c, lwfec/rs.c, gf.c    ← FEC Reed–Solomon FX.25
+   │   │   └── src/crc_ccit.c                  ← FCS
+   │   │
+   │   ├── igate/          ← client TCP APRS-IS, login, filtri, dedup, RF→INET / INET→RF
+   │   ├── digirepeater/   ← logica di percorso n-N guidata dalla tabella alias dell'operatore, più l'instradamento legacy tramite SSID di destinazione, opzionale
+   │   ├── message/        ← messaggistica APRS, ack/ritentativo, la coda di conversazione RX/TX condivisa
+   │   ├── query/          ← risponditore di query APRS (?APRS?/?WX?/?IGATE? + dirette), risposte dal task dello scheduler
+   │   ├── esp_telegram_bot/   ← trasporto HTTPS del bot Telegram: token, URL, client TLS, caricamento multipart
+   │   ├── telegram_service/  ← interrogazione lunga, invio comandi, autorizzazione, avvisi, parametri remoti
+   │   ├── winlink/        ← posta radio Winlink su APRSLink: macchina a stati della sessione, coda dei comandi, casella (winlink.json proprio)
+   │   ├── lastheard/      ← tabella in RAM di stazioni sentite, una per nominativo → JSON dashboard
+   │   ├── trafficlog/     ← anello in RAM di righe di traffico → JSON dashboard (long-poll per seq)
+   │   ├── weather_telemetry/  ← strutture di protocollo APRS101 WX + Telemetria, più mice.c: il
+   │   │                          codificatore/decodificatore Mic-E completo (aprs_mice_encode()/_decode()),
+   │   │                          usato da main/beacon.c (TX) e main/aprs_filter.c (RX)
+   │   ├── sensors_local/      ← IL framework di driver sensori
+   │   │   ├── sensors_local.c              ← il registro dinamico
+   │   │   ├── include/sensors_local.h      ← API pubblica
+   │   │   ├── include/sensor_local_properties.h ← descrittore di capacità per driver
+   │   │   └── drivers/<name>/              ← una cartella per driver (auto-registrato)
+   │   │       ├── example/…_weather_example.c    ← scheletro WEATHER a dati casuali
+   │   │       ├── example/…_telemetry_example.c  ← scheletro TELEMETRY a dati casuali
+   │   │       ├── bme280/bme280.c                ← driver I2C reale BME280/BMP280 (predefinito)
+   │   │       └── bmp180/bmp180.c                ← idem, BMP180 più vecchio (disattivo per default)
+   │   └── webconfig/      ← amministrazione esp_http_server
+   │       ├── web_server.c            ← tabella delle route
+   │       ├── web_common.c            ← auth, analisi form, shell HTML, helper di campo
+   │       ├── web_help.c              ← tabella etichetta di opzione → testo di aiuto, dietro il
+   │       │                             punto interrogativo che chiude ogni etichetta
+   │       ├── logcapture.c            ← copia su richiesta della console seriale con
+   │       │                             esp_log_set_vprintf() in un anello in RAM → JSON della
+   │       │                             pagina Registri (interrogazione per seq), con tempo di
+   │       │                             inattività
+   │       ├── pages/*.c               ← un file per pagina di amministrazione
+   │       └── translations/           ← translations.h + lang_en/es/it.h
+   │
+   └── managed_components/                     (ottenuti dal gestore dei componenti)
+       ├── joltwallet__littlefs/
+       ├── espressif__cjson/
+       ├── esp-idf-lib__bmp280/
+       ├── esp-idf-lib__bmp180/
+       ├── esp-idf-lib__i2cdev/
+       └── esp-idf-lib__esp_idf_lib_helpers/
+
+Da dove iniziare a leggere
+==========================
+
+.. list-table::
+   :header-rows: 1
+   :widths: 40 60
+
+   * - Se vuoi capire…
+     - Inizia da…
+   * - L'ordine di avvio e la disposizione dei task
+     - ``main/main.c``, poi ``main/aprs_service.c``
+   * - Come viene smistato un frame ricevuto
+     - ``aprs_msg_callback()`` in ``main/aprs_service.c``
+   * - Il DSP / perché si scelgono le frequenze di campionamento
+     - ``…_modem_config.h``, poi ``src/modem.c`` / ``src/afsk.c``
+   * - Gatewaying e filtraggio
+     - ``components/igate/igate.c`` + ``main/aprs_filter.c``
+   * - Collegare un sensore
+     - ``components/sensors_local/`` e :ref:`it-sensor-framework`
+   * - Lo schema di configurazione
+     - ``main/include/app_config.h``
+   * - Una pagina web specifica
+     - il ``components/webconfig/pages/page_*.c`` corrispondente
+
+Ambiguità di posizione e il filtro di portata
+===============================================
+
+``main/aprs_filter.c`` decodifica la posizione di un pacchetto in arrivo per
+il filtro di portata locale RF→INET in modo indipendente da
+``main/aprs_coord.c``, poiché richiede solo una coppia latitudine/longitudine,
+non l'intero codificatore/decodificatore di testo APRS. Quando la posizione
+presenta ambiguità (APRS101 capitolo 6: le cifre dei minuti meno
+significative sostituite da spazi), il decodificatore risolve le cifre
+vuote al centro del riquadro di ambiguità risultante anziché al suo angolo
+inferiore, poiché il centro è la migliore stima disponibile della vera
+posizione della stazione ed è ciò che alimenta il controllo della distanza
+per grande cerchio in ``components/igate/igate.c``.

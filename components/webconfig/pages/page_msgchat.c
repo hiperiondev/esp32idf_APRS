@@ -1,0 +1,279 @@
+// @file page_msgchat.c
+//
+// @author Emiliano Augusto Gonzalez ( lu3vea @ gmail . com)
+// @date 2026
+// @copyright GNU General Public License v3
+// @see https://github.com/hiperiondev/esp32idf_APRS
+//
+// @note
+// This is based on other projects:
+//     VP-Digi: https://github.com/sq8vps/vp-digi
+//     ESP32APRS: https://github.com/nakhonthai/ESP32APRS_Audio
+//     LibAPRS: https://github.com/markqvist/LibAPRS
+//
+//     please contact their authors for more information.
+//
+// @brief Web admin "Snd/Rcv Msg" page: a chat-style APRS messaging UI - a
+// scrolling panel of received/sent messages for this station (as configured
+// on the Station / Message pages), a destination-callsign field, a
+// message-text field capped at the standard APRS message length, and a Send
+// button. Distinct from page_msg.c, which only configures the messaging
+// feature (RF/INET enable, retry) - this page is the actual
+// inbox/compose UI built on top of that configuration. Gated from the
+// sidebar by ENABLE_MSG_CHAT in app_config.h's MODULES section.
+//
+// The panel reads as one conversation: messages sent and messages received
+// share a single thread in the order they happened, the newest at the bottom.
+// It is as tall as MSGCHAT_VISIBLE_MESSAGES message bubbles and scrolls back
+// through the rest of what the messaging engine keeps, which is the last
+// MSG_QUEUE_SIZE messages of the conversation.
+
+#include <stdio.h>
+#include <string.h>
+
+#include "app_config.h"
+#include "json_escape.h"
+#include "message.h"
+#include "pages.h"
+#include "translations.h"
+#include "web_common.h"
+
+// How many message bubbles the chat panel shows at once. The panel is sized to
+// this many of the newest messages and everything older is one scroll away, up
+// to the MSG_QUEUE_SIZE messages the engine keeps. Purely presentational: it
+// changes the height of one <div> and nothing about what is stored or sent.
+#define MSGCHAT_VISIBLE_MESSAGES 5
+
+// GET /msgchat -> renders the chat page shell; the message list itself is
+// filled in by JS polling GET /msgchat/list, same live-refresh pattern as
+// the dashboard's IGate Traffic table.
+esp_err_t page_msgchat_get(httpd_req_t *req) {
+    if (!web_check_auth(req))
+        return ESP_OK;
+    web_send_header(req, TR_F_SND_RCV_MSG, "msgchat");
+
+    httpd_resp_sendstr_chunk(req, "<fieldset><legend>" TR_F_SND_RCV_MSG "</legend>");
+
+    // "My Station" identity: this mirrors g_config.msg_mycall, which is
+    // itself copied from the Station page's callsign whenever "Use My
+    // Station Data" is checked on the Message config page (g_config.
+    // msg_use_station) - see page_msg.c/page_station.c. This is the address
+    // handleIncomingAPRS() actually matches inbound messages against, so
+    // it's the identity that matters here rather than g_config.my_callsign
+    // directly.
+    char myStationLine[220];
+    snprintf(myStationLine, sizeof(myStationLine), "<p><label style='display:inline;margin:0;'>" TR_MSGCHAT_MY_STATION "</label> <b>%s</b></p>",
+             g_config.msg_mycall[0] ? g_config.msg_mycall : "-");
+    httpd_resp_sendstr_chunk(req, myStationLine);
+
+    if (!g_config.msg_enable || !g_config.msg_mycall[0]) {
+        httpd_resp_sendstr_chunk(req, "<p class='msg-err'>" TR_MSGCHAT_DISABLED_NOTE "</p>");
+    }
+
+    // -- Chat panel: big scrolling list of received/sent messages, polled
+    //    from /msgchat/list. --
+    httpd_resp_sendstr_chunk(req, "<div id='msgChatBox' class='chat-box'><div class='chat-empty'>" TR_MSGCHAT_LOADING "</div></div>");
+
+    // -- Compose row: destination callsign, message text (max length is the
+    //    standard APRS message text length, APRS_MSG_TEXT_STD_MAX), Send. --
+    char composeMax[16];
+    snprintf(composeMax, sizeof(composeMax), "%d", APRS_MSG_TEXT_STD_MAX);
+
+    httpd_resp_sendstr_chunk(req, "<div class='chat-compose'>"
+                                  "<div class='row'>"
+                                  "<div>"
+                                  "<label>" TR_MSGCHAT_TO "</label>"
+                                  "<input type='text' id='msgToInput' maxlength='9' placeholder='" TR_MSGCHAT_TO_PLACEHOLDER
+                                  "' oninput=\"this.value=this.value.toUpperCase()\">"
+                                  "</div>"
+                                  "<div style='flex:3 1 220px;'>"
+                                  "<label>" TR_MSGCHAT_TEXT "</label>"
+                                  "<input type='text' id='msgTextInput' maxlength='");
+    httpd_resp_sendstr_chunk(req, composeMax);
+    httpd_resp_sendstr_chunk(req, "' placeholder='" TR_MSGCHAT_TEXT_PLACEHOLDER "' oninput='msgChatUpdateCounter()' "
+                                  "onkeydown='if(event.key===\"Enter\"){event.preventDefault();msgChatSend();}'>"
+                                  "<div class='chat-counter' id='msgChatCounter'>0/");
+    httpd_resp_sendstr_chunk(req, composeMax);
+    httpd_resp_sendstr_chunk(req, "</div>"
+                                  "</div>"
+                                  "</div>"
+                                  "<button type='button' onclick='msgChatSend()'>" TR_MSGCHAT_SEND "</button>"
+                                  "<span id='msgChatStatus'></span>"
+                                  "</div>");
+
+    // -- Inline JS: poll the history, send on click/Enter. Mirrors the
+    //    dashboard's trafficPoll()/esc() pattern (short-poll + reschedule in
+    //    a .catch().then() so a fetch error doesn't kill the loop). --
+    char chatConsts[80];
+    snprintf(chatConsts, sizeof(chatConsts), "<script>var MSG_MAX=%d;var MSG_VISIBLE=%d;", APRS_MSG_TEXT_STD_MAX, MSGCHAT_VISIBLE_MESSAGES);
+    httpd_resp_sendstr_chunk(req, chatConsts);
+    httpd_resp_sendstr_chunk(
+        req, "function msgEsc(s){return (s==null?'':String(s)).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}"
+             "function msgChatUpdateCounter(){"
+             "var t=document.getElementById('msgTextInput').value;"
+             "document.getElementById('msgChatCounter').textContent=t.length+'/'+MSG_MAX;"
+             "}"
+             "function msgChatFmtTime(ts){"
+             "var d=new Date(ts*1000);"
+             "function p(n){return (n<10?'0':'')+n;}"
+             "return p(d.getHours())+':'+p(d.getMinutes())+':'+p(d.getSeconds());"
+             "}"
+             "function msgChatFit(box){"
+             "var b=box.getElementsByClassName('chat-bubble');"
+             "if(!b.length){box.style.height='';return;}"
+             "var n=b.length<MSG_VISIBLE?b.length:MSG_VISIBLE;"
+             "var first=b[b.length-n],last=b[b.length-1];"
+             "var cs=getComputedStyle(box);"
+             "var frame=parseFloat(cs.paddingTop)+parseFloat(cs.paddingBottom)+parseFloat(cs.borderTopWidth)+parseFloat(cs.borderBottomWidth);"
+             "box.style.height=Math.ceil(last.offsetTop+last.offsetHeight-first.offsetTop+frame)+'px';"
+             "}"
+             "function msgChatRender(list){"
+             "var box=document.getElementById('msgChatBox');"
+             "if(!list||!list.length){box.innerHTML=\"<div class='chat-empty'>" TR_MSGCHAT_EMPTY "</div>\";msgChatFit(box);return;}"
+             "var nearBottom=(box.scrollTop+box.clientHeight)>=(box.scrollHeight-40);"
+             "var html='';"
+             "for(var i=0;i<list.length;i++){"
+             "var m=list[i];"
+             "var cls='chat-bubble '+(m.dir==='rx'?'rx':'tx')+(m.status==='pending'?' pending':'');"
+             "var who=m.dir==='rx'?msgEsc(m.call):('" TR_MSGCHAT_YOU " \\u2192 '+msgEsc(m.call));"
+             "html+=\"<div class='\"+cls+\"'><span class='chat-meta'>\"+who+' &middot; '+msgChatFmtTime(m.time)+\"</span>\"+msgEsc(m.text)+'</div>';"
+             "}"
+             "box.innerHTML=html;"
+             // Measure after the bubbles are in the document: their height
+             // depends on how the text wraps at the current window width.
+             "msgChatFit(box);"
+             // Follow the conversation only when the operator is already at the
+             // bottom of it, so a new message doesn't yank the panel away from
+             // older lines being read.
+             "if(nearBottom)box.scrollTop=box.scrollHeight;"
+             "}"
+             "function msgChatPoll(){"
+             "fetch('/msgchat/list').then(function(r){return r.json();}).then(function(d){"
+             "msgChatRender(d);"
+             "}).catch(function(){}).then(function(){setTimeout(msgChatPoll,3000);});"
+             "}"
+             "function msgChatSend(){"
+             "var to=document.getElementById('msgToInput').value.trim();"
+             "var text=document.getElementById('msgTextInput').value.trim();"
+             "var status=document.getElementById('msgChatStatus');"
+             "if(!to||!text){status.className='msg-err';status.textContent='" TR_MSGCHAT_ERR_EMPTY "';return;}"
+             "status.className='';status.textContent='';"
+             "fetch('/msgchat',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},"
+             "body:'msgTo='+encodeURIComponent(to)+'&msgText='+encodeURIComponent(text)})"
+             ".then(function(r){return r.json();}).then(function(d){"
+             "if(d&&d.ok){"
+             "document.getElementById('msgTextInput').value='';"
+             "msgChatUpdateCounter();"
+             "status.className='msg-ok';status.textContent='" TR_MSGCHAT_SENT_OK "';"
+             "msgChatPollOnce();"
+             "}else{"
+             "status.className='msg-err';status.textContent=(d&&d.error)?d.error:'" TR_MSGCHAT_SENT_FAIL "';"
+             "}"
+             "}).catch(function(){status.className='msg-err';status.textContent='" TR_MSGCHAT_SENT_FAIL "';});"
+             "}"
+             "function msgChatPollOnce(){"
+             "fetch('/msgchat/list').then(function(r){return r.json();}).then(msgChatRender).catch(function(){});"
+             "}"
+             // A narrower window wraps message text over more lines, which
+             // makes the bubbles taller: measure them again so the panel keeps
+             // showing the same number of messages.
+             "window.addEventListener('resize',function(){msgChatFit(document.getElementById('msgChatBox'));});"
+             "msgChatUpdateCounter();msgChatPoll();"
+             "</script>");
+
+    web_send_footer(req);
+    return ESP_OK;
+}
+
+// POST /msgchat -> send one APRS message (msgTo, msgText) and append it to
+// the queue as an outbound entry. Responds with a small JSON status object
+// instead of the usual "saved, redirecting" page, since this is polled/
+// driven from JS rather than a normal form submit.
+//
+// Channel selection: sendAPRSMessage() already transmits over every channel
+// enabled on the Message config page (g_config.msg_rf / g_config.msg_inet -
+// "Send/Receive via RF" / "...via Internet"), i.e. every channel the
+// operator has made available to messaging. This handler does not add a
+// separate per-message channel choice on top of that - sending "via all
+// available channels" is exactly what the existing Message-page
+// configuration already does.
+esp_err_t page_msgchat_post(httpd_req_t *req) {
+    if (!web_check_auth(req))
+        return ESP_OK;
+
+    char body[400];
+    if (web_read_body(req, body, sizeof(body)) < 0) {
+        httpd_resp_send_500(req);
+        return ESP_OK;
+    }
+
+    char dest[16] = { 0 };
+    char text[APRS_MSG_TEXT_STD_MAX + 1] = { 0 };
+    web_form_get(body, "msgTo", dest, sizeof(dest));
+    web_form_get(body, "msgText", text, sizeof(text));
+    // Defensive clamp: the client's <input maxlength> already caps this, but
+    // a hand-crafted POST could send more - text[] is sized exactly to
+    // APRS_MSG_TEXT_STD_MAX+1 so web_form_get() itself cannot overflow it,
+    // this just documents the intent.
+    text[APRS_MSG_TEXT_STD_MAX] = 0;
+
+    const char *error = NULL;
+    if (!g_config.msg_enable)
+        error = TR_MSGCHAT_ERR_DISABLED;
+    else if (!g_config.msg_mycall[0])
+        error = TR_MSGCHAT_ERR_NO_MYCALL;
+    else if (!dest[0] || !text[0])
+        error = TR_MSGCHAT_ERR_EMPTY;
+
+    char resp[300];
+    if (error) {
+        // Translated text, so it is escaped the same way every other
+        // operator/off-air string that ends up in a JSON literal is: a quote,
+        // backslash or newline a translator puts in lang_*.h must not be able
+        // to break out of the string it sits in.
+        char error_esc[160];
+        json_escape(error, error_esc, sizeof(error_esc));
+        snprintf(resp, sizeof(resp), "{\"ok\":false,\"error\":\"%s\"}", error_esc);
+    } else {
+        sendAPRSMessage(dest, text);
+        snprintf(resp, sizeof(resp), "{\"ok\":true}");
+    }
+
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_set_hdr(req, "Cache-Control", "no-store");
+    httpd_resp_sendstr(req, resp);
+    return ESP_OK;
+}
+
+// GET /msgchat/list -> JSON array of the in-memory message queue (RX + TX,
+// oldest first), polled by the chat panel above.
+//
+// The array is streamed one message per chunk, so the whole thread never exists
+// in RAM at once: the peak cost is the single-entry buffer below, whatever the
+// queue holds. That keeps a route polled every few seconds free of any heap
+// allocation.
+esp_err_t page_msgchat_list(httpd_req_t *req) {
+    if (!web_check_auth(req))
+        return ESP_OK;
+
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_set_hdr(req, "Cache-Control", "no-store");
+    httpd_resp_sendstr_chunk(req, "[");
+
+    // One byte of headroom in front of the entry so the separating comma and the
+    // object it precedes travel as a single chunk.
+    char chunk[1 + MSG_JSON_ENTRY_MAX];
+    chunk[0] = ',';
+
+    uint32_t cursor = 0;
+    bool first = true;
+    size_t n;
+    while ((n = message_next_json(cursor, chunk + 1, sizeof(chunk) - 1, &cursor)) > 0) {
+        httpd_resp_send_chunk(req, first ? chunk + 1 : chunk, (ssize_t)(first ? n : n + 1));
+        first = false;
+    }
+
+    httpd_resp_sendstr_chunk(req, "]");
+    httpd_resp_send_chunk(req, NULL, 0);
+    return ESP_OK;
+}

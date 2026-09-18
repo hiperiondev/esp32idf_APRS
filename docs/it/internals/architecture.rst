@@ -1,0 +1,245 @@
+.. _it-architecture:
+
+============
+Architettura
+============
+
+Sequenza di avvio
+=================
+
+``app_main()`` viene eseguita nel task principale del sistema, il cui stack è
+impostato da ``CONFIG_ESP_MAIN_TASK_STACK_SIZE`` e non è pensato per ospitare
+lavoro pesante — ``esp_netif`` + ``esp_wifi`` + ``esp_http_server`` + cJSON
+possono usare diversi KB di stack tra loro. Quindi ``app_main()`` fa solo le due
+cose che devono precedere tutto, e poi cede il controllo a un task dedicato:
+
+.. code-block:: text
+
+   app_main()
+    ├─ nvs_flash_init()          (cancella+ritenta su NO_FREE_PAGES / NEW_VERSION_FOUND)
+    ├─ storage_init()            (monta LittleFS su /storage, auto-formatta al primo avvio)
+    └─ xTaskCreate(app_task, 8192 B, prio 5)   ── e ritorna; FreeRTOS recupera il task principale
+
+   app_task()
+    ├─ app_config_load()                  ← un file per funzionalità sotto /storage, creando quelli mancanti
+    ├─ cpu_freq_apply()                   ← 80/160/240 MHz dalla pagina System
+    ├─ net_state_init()                   ← "ancora nessun internet"
+    ├─ wifi_init()                        ← AP / STA / AP+STA secondo g_config.wifi_mode
+    ├─ vTaskDelay(10 ms)                  ← cedi così IDLE gira; evita un falso scatto del TWDT
+    ├─ time_sync_start()                  ← arma la macchina a stati SNTP (non bloccante)
+    ├─ gps_apply_config()                 ← avvia il task lettore GNSS se abilitato in config
+    ├─ (conferma immagine OTA valida se in-attesa-di-verifica)
+    ├─ aprs_service_start()               ← ⚠ DEVE precedere modem_init(): installa il callback RX
+    ├─ if (audio_modem_en) modem_init()   ← ⏳ SI BLOCCA ~5 s calibrando il clock reale dell'ADC (una volta per avvio)
+    │      └─ aprs_service_notify_modem_ready()
+    ├─ telegram_app_apply_config()        ← non bloccante; il suo task attende la rete
+    ├─ web_server_start_when_heap_ready() ← attende fino a 5 s per un blocco libero contiguo ≥24 KB, poi
+    │      └─ web_server_start()            avvia comunque: esp_http_server, ~70 gestori di URI, stack da 20 KB
+    └─ vTaskDelete(NULL)                  ← restituisce lo stack da 8 KB di app_task all'heap
+
+Tre regole di ordine sono critiche e sono commentate come tali nel codice
+sorgente:
+
+#. **``aprs_service_start()`` prima di ``modem_init()``** — il modem inizia a
+   consegnare frame *dall'interno di* ``modem_init()``; il callback RX deve essere
+   già installato.
+#. **I beacon partono prima che il modem sia pronto** — trasmettono
+   immediatamente all'ingresso, quindi ``aprs_service_send_tnc2()`` scarta frame
+   con un log di debug finché ``s_modemReady`` non è attivo, invece di raggiungere
+   lo scrittore AX.25 prima che il livello AX.25 sia inizializzato.
+#. **Il server web di amministrazione parte per ultimo** — tutti gli altri
+   servizi hanno già effettuato le proprie allocazioni quando questo viene
+   eseguito, così il suo controllo del blocco libero contiguo più grande
+   (``WEB_SERVER_MIN_LARGEST_FREE_BLOCK``, 24 KB: lo stack da 20 KB del task
+   httpd più margine) vede l'heap nello stato in cui la stazione funzionerà
+   realmente. Un heap libero totale elevato non garantisce che questa singola
+   allocazione possa essere soddisfatta se l'heap è frammentato, perciò viene
+   controllata la dimensione del blocco anziché il totale. Attende fino a
+   ``WEB_SERVER_HEAP_WAIT_MAX_MS`` (5 s) che un blocco di quella dimensione sia
+   libero, controllando ogni ``WEB_SERVER_HEAP_POLL_INTERVAL_MS`` (100 ms), poi
+   avvia comunque il server indipendentemente dal fatto che la soglia sia stata
+   raggiunta: un'interfaccia di amministrazione raggiungibile sotto pressione
+   di memoria è più utile di nessuna interfaccia.
+
+Dentro ``aprs_service_start()``
+===============================
+
+.. code-block:: text
+
+   aprs_service_start()
+    ├─ trafficlog_init / lastheard_init / message_init
+    ├─ message_set_tx_handler / igate_set_inet2rf_handler / igate_set_inet2rf_assoc_query
+    ├─ modem_set_rx_callback(on_rx_frame)
+    ├─ igate_start()                 ← sempre avviato; resta inattivo quando niente richiede APRS-IS
+    ├─ beacon_start() / weather_start() / bulletins_start() / objitems_start() / telemetry_start()
+    ├─ beacon_scheduler_start()      ← UN task condiviso aziona tutto il TX periodico e le risposte alle query
+    └─ xTaskCreate(serviceTickTask)  ← 1 Hz: campionamento heap + refresh meteo + ritentativo messaggi + MaS sincro oraria
+
+Mappa dei task
+==============
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 12 8 10 22 28
+
+   * - Task
+     - Stack
+     - Prio
+     - Core
+     - Creato da
+     - Ruolo
+   * - ``app_task``
+     - 8192 B
+     - 5
+     - qualsiasi
+     - ``app_main``
+     - avvio, poi si auto-elimina
+   * - RX DSP del modem
+     - 4096 B
+     - 10
+     - **0**
+     - ``AFSK_init()``
+     - drena l'anello dell'ADC, esegue i demodulatori
+   * - ``modem_svc``
+     - 6144 B
+     - 5
+     - **0**
+     - ``modem_init()``
+     - aziona il TX, consegna i frame RX al callback; ancorato allo stesso core
+       del task RX DSP, di cui consuma l'anello AX.25
+   * - ``modem_init``
+     - 4096 B
+     - alta
+     - **1**
+     - ``AFSK_init()``
+     - transitorio: esegue la messa in funzione del clock di campionamento del
+       DAC sul core che deve possederne l'interrupt, poi si auto-elimina
+   * - ISR DMA dell'ADC
+     - —
+     - —
+     - **0**
+     - driver
+     - frame di conversione → ring buffer
+   * - Clock di campionamento del DAC (GPTimer, livello 3)
+     - —
+     - —
+     - **1**
+     - ``AFSK_init()``
+     - un campione del DAC ogni 1/38400 s
+   * - ``igate_task``
+     - 6144 B
+     - 5
+     - qualsiasi
+     - ``igate_start()``
+     - socket APRS-IS, login, pompaggio RX, riconnessione
+   * - ``beacon_sched``
+     - 14336 B
+     - 4
+     - qualsiasi
+     - ``beacon_scheduler_start()``
+     - UN task condiviso: tutto il TX periodico della propria stazione, più le
+       risposte alle query APRS che gli vengono differite
+   * - ``aprs_svc_tick``
+     - 10240 B
+     - 4
+     - qualsiasi
+     - ``aprs_service_start()``
+     - 1 Hz: campionamento heap + refresh meteo + ritentativo messaggi + sincro oraria
+   * - ``gps``
+     - 4096 B
+     - 4
+     - qualsiasi
+     - ``gps_apply_config()``
+     - legge la UART del GNSS e analizza le sentenze NMEA; creato solo mentre
+       il ricevitore è acceso, ed eliminato quando viene spento
+   * - ``telegram_service``
+     - 8192 B
+     - 5
+     - qualsiasi
+     - ``telegram_app_apply_config()``
+     - long polling di Telegram su HTTPS e smistamento dei comandi; creato solo
+       mentre il bot è acceso
+   * - ``telegram_wk``
+     - 8192 B
+     - 4
+     - qualsiasi
+     - ``telegram_app.c``
+     - transitorio: esegue un avvio, un arresto o un invio del bot fuori dallo
+       stack del chiamante, così un POST web non attende mai il TLS
+   * - ``httpd``
+     - 20480 B
+     - —
+     - qualsiasi
+     - ``web_server_start()``
+     - amministrazione web
+   * - ``loop_diag``
+     - 3072 B
+     - 7
+     - qualsiasi
+     - ``aprs_loop_test_run()``
+     - transitorio: aggancia le diagnostiche del modem per la durata di un LOOP TEST
+   * - ``ota_reboot``
+     - 2048 B
+     - 5
+     - qualsiasi
+     - il gestore di upload OTA della pagina About
+     - transitorio: attende 1,5 s dopo un aggiornamento del firmware riuscito
+       — così l'XHR del browser si completa e il messaggio "riavvio in
+       corso..." viene effettivamente visto — poi chiama ``esp_restart()``
+   * - ``esp_timer``
+     - —
+     - —
+     - —
+     - IDF
+     - back-off di riconnessione Wi-Fi
+
+``beacon_sched`` e ``aprs_svc_tick`` vengono entrambi creati incondizionatamente
+dentro ``aprs_service_start()``, cioè prima di ``modem_init()``, del bot
+Telegram e di ``httpd`` — quindi i loro 24576 B combinati vengono impegnati
+all'avvio indipendentemente dal fatto che l'operatore abbia il modem o Telegram
+abilitati per quell'avvio. Entrambi sono servizi centrali, sempre necessari,
+quindi avviarli incondizionatamente è corretto; solo le loro *dimensioni* sono
+dimensionate con margine anziché ridotte a un minimo misurato, allo stesso modo
+di ``GPS_TASK_STACK_BYTES`` e del ``config.stack_size`` di ``httpd`` (vedi
+``BEACON_SCHED_TASK_STACK_BYTES`` in ``beacon_scheduler.c`` e
+``APRS_SVC_TICK_TASK_STACK_BYTES`` in ``aprs_service.c``). Entrambi i task
+registrano il loro ``uxTaskGetStackHighWaterMark()`` a livello ``ESP_LOGD`` a
+ogni passata, che è lo strumento per dimensionare correttamente entrambe le
+costanti rispetto al traffico reale in aria prima di ridurle.
+
+Flusso dei dati
+===============
+
+.. image:: /_static/dataflow/dataflow_it.png
+   :alt: Diagramma dell'architettura del flusso dei dati dell'ESP32 APRS iGate
+   :align: center
+   :width: 100%
+
+Il tetto di arretrato TX RF
+===========================
+
+``aprs_service_send_tnc2()`` permette un piccolo arretrato invece di scartare
+appena un frame è in volo: fino a ``g_config.rf_tx_buffers`` frame possono stare
+nell'anello prima che un nuovo pacchetto venga scartato. Il valore è letto fresco
+a ogni chiamata (così l'impostazione *TX buffers* si applica al prossimo
+pacchetto, senza riavvio), ed è limitato a ``RF_TX_BUFFERS_MIN..RF_TX_BUFFERS_MAX``
+— con il massimo derivato da ``AX25_TX_FRAME_RING_MAX``, la profondità utilizzabile
+reale dell'anello, così che il livello di configurazione non possa mai accettare
+un valore che l'anello non potrebbe sostenere. Solo al task del pianificatore di
+beacon è permesso *attendere* che l'anello si drena (vedi :ref:`it-beacons`);
+tutti gli altri chiamanti scartano immediatamente, così che un ramo RF occupato
+non fermi mai la decodifica RX né il socket APRS-IS.
+
+Costruzione delle righe TNC2
+==============================
+
+Ogni modulo che assembla una riga di testo TNC2 — ``beacon.c``, ``weather.c``,
+``objects_items.c``, ``bulletins.c``, ``query.c`` e ``telemetry.c`` — segue la
+stessa convenzione: la riga viene costruita in un buffer di dimensione
+``APRS_TNC2_BUF_SIZE`` (``main/include/aprs_service.h``), e un risultato pari
+o superiore a quella dimensione, oppure superiore a ``APRS_TNC2_MAX_LEN``,
+viene rifiutato con un avviso nel log invece di essere trasmesso troncato. Una
+riga scritta a metà è indistinguibile via etere da una ben formata, quindi
+rifiutarla del tutto è l'unico esito che non consegna mai a una stazione
+ricevente un rapporto plausibile ma errato. Un nuovo modulo che costruisce
+righe TNC2 deve seguire la stessa convenzione.

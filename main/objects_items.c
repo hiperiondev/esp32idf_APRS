@@ -1,0 +1,1462 @@
+// @file objects_items.c
+//
+// @author Emiliano Augusto Gonzalez ( lu3vea @ gmail . com)
+// @date 2026
+// @copyright GNU General Public License v3
+// @see https://github.com/hiperiondev/esp32idf_APRS
+//
+// @note
+// This is based on other projects:
+//     VP-Digi: https://github.com/sq8vps/vp-digi
+//     ESP32APRS: https://github.com/nakhonthai/ESP32APRS_Audio
+//     LibAPRS: https://github.com/markqvist/LibAPRS
+//
+//     please contact their authors for more information.
+//
+// @brief APRS Object/Item store (LittleFS-backed) and periodic transmitter.
+//
+// See objects_items.h for the design rationale (why these live in their own
+// /storage/objitems.json file instead of g_config, the on-air wire format, and
+// how kill reports work). The persistence and scheduling structure deliberately
+// mirrors bulletins.c so the two subsystems stay easy to reason about together.
+
+#include <math.h>
+#include <stddef.h>
+#include <stdio.h>
+#include <string.h>
+#include <time.h>
+
+#include "cJSON.h"
+#include "esp_log.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
+#include "freertos/task.h"
+
+#include "app_config.h"
+#include "aprs_coord.h"
+#include "aprs_df.h"        // aprs_df_build_extension(), aprs_df_symbol_matches(), APRS_DF_EXT_BUF_SIZE
+#include "aprs_free_text.h" // aprs_free_text_build(), APRS_NO_ARCHIVE_PREFIX_LEN
+#include "aprs_path.h"      // APRS_PATH_TCPIP_SUFFIX
+#include "aprs_service.h"
+#include "igate.h"
+#include "json_escape.h" // json_write_escaped()
+#include "json_store.h"  // shared JSON-file store scaffolding
+#include "objects_items.h"
+#include "sched_time.h" // sched_mono_seconds() / sched_clamp_interval()
+#include "storage.h"    // storage_write_lock() / storage_generation()
+#include "str_append.h" // str_copy_strip_line_breaks(), str_copy_strip_reserved(), str_copy_utf8_safe()
+
+static const char *TAG = "objitems";
+
+#define OBJITEMS_PATH     "/storage/objitems.json"
+#define OBJITEMS_TMP_PATH "/storage/objitems.json.tmp"
+
+// Same software-identifier destination call used by the beacon, message and
+// bulletin components, for consistency across the firmware.
+#define OBJITEM_DEST APRS_TOCALL
+
+// Per-element transmit interval bounds. Each element carries its own interval;
+// 0 (or unset) falls back to the default, and anything below the floor is
+// raised to it - mirroring beacon.c/bulletins.c so an Object/Item can't be
+// configured to hammer RF/APRS-IS.
+#define OBJITEM_MIN_INTERVAL_S     30  // sanity floor
+#define OBJITEM_DEFAULT_INTERVAL_S 600 // 10 min, used when interval_s == 0
+
+// Upper bound on how long the transmitter asks to sleep between passes. Even
+// when every element's interval is long, config is re-loaded at least this
+// often so web edits (position/interval/enable/kill) are picked up promptly.
+#define OBJITEM_POLL_CAP_S 60
+
+// One-time settle delay after boot before the first transmit pass, so WiFi/
+// APRS-IS association and the modem have a chance to come up first.
+#define OBJITEM_START_DELAY_S 60
+
+// Small gap between consecutive element transmissions, so a burst of enabled
+// elements that come due together don't hit the modem/APRS-IS all at once.
+#define OBJITEM_INTER_TX_MS 1500
+
+// Serializes LittleFS load/save between the web save handler and the TX pass.
+static SemaphoreHandle_t s_lock;
+
+static void lock(void) {
+    json_store_lock_take(&s_lock);
+}
+
+static void unlock(void) {
+    json_store_lock_give(&s_lock);
+}
+
+// ---------------------------------------------------------------------------
+// Persistence
+// ---------------------------------------------------------------------------
+
+// Clamps a short coded sub-field (object/item name, signpost token, QRU code)
+// to at most max_chars bytes, dropping any embedded CR, LF or NUL along the
+// way: every one of these fields is written unescaped into the outgoing
+// object/item line (the name as the packet's own addressee, signpost and QRU
+// inside the free-text body), so a line break stored in any of them would
+// inject a second, arbitrary line into that traffic on every future beacon.
+static void clamp_str(char *dst, const char *src, size_t max_chars) {
+    str_copy_strip_line_breaks(src, dst, max_chars + 1);
+}
+
+// Clamps the free-text comment field the same way clamp_str() clamps every
+// other stored field, except that the cut is walked back to a whole
+// character instead of a whole byte. The comment is 8-bit-clean and passed
+// through to the air unchanged (aprs.org/aprs12/utf-8.txt), so unlike name,
+// signpost or qru - short, effectively ASCII coded sub-fields where a byte
+// cut and a character cut always land in the same place - a UTF-8 comment
+// truncated here on a plain byte count could leave an incomplete multi-byte
+// sequence permanently stored, to go out on the air that way on every future
+// beacon until the operator happens to retype it.
+//
+// CR and LF are stripped first, into a scratch buffer sized to the largest
+// comment this firmware stores (COMMENT_SIZE, shared with the station/IGate/
+// digipeater/tracker/WX comment fields): both are single-byte ASCII, never a
+// lead or continuation byte of a multi-byte UTF-8 sequence, so removing them
+// ahead of the UTF-8-safe cut cannot itself split a character.
+static void clamp_comment(char *dst, const char *src, size_t dst_size) {
+    char stripped[COMMENT_SIZE];
+    str_copy_strip_line_breaks(src, stripped, sizeof(stripped) < dst_size ? sizeof(stripped) : dst_size);
+    str_copy_utf8_safe(stripped, dst, dst_size);
+}
+
+static bool load_locked(objitems_t *out, bool *out_missing, bool *out_transient) {
+    memset(out, 0, sizeof(*out));
+    if (out_missing)
+        *out_missing = false;
+    // Sane symbol default for any element the file doesn't fully specify.
+    for (int i = 0; i < OBJITEM_COUNT; i++) {
+        out->item[i].sym[0] = '/';
+        out->item[i].sym[1] = '-';
+        out->item[i].active = true;
+        // PHG height defaults to the smallest code-table value (10 ft) so the
+        // Station-page height <select> always has a matching selected option.
+        out->item[i].phg_height = 10;
+    }
+
+    cJSON *doc = NULL;
+    json_store_status_t st = json_store_read(OBJITEMS_PATH, TAG, "objects/items", &doc);
+    if (st != JSON_STORE_OK) {
+        // Only an absent file tells the caller to write the defaults out; an
+        // empty or unparseable one leaves the existing file alone so the
+        // operator can see it.
+        if (out_missing && st == JSON_STORE_MISSING)
+            *out_missing = true;
+        // A file that could not be read or parsed for want of memory says
+        // nothing about its content, so the answer this pass gives is only good
+        // for this pass. Reported separately so the caller does not cache it.
+        if (out_transient && st == JSON_STORE_OOM)
+            *out_transient = true;
+        return false;
+    }
+
+    cJSON *arr = cJSON_GetObjectItem(doc, "objitems");
+    if (cJSON_IsArray(arr)) {
+        int n = cJSON_GetArraySize(arr);
+        if (n > OBJITEM_COUNT)
+            n = OBJITEM_COUNT;
+        for (int i = 0; i < n; i++) {
+            cJSON *o = cJSON_GetArrayItem(arr, i);
+            if (!cJSON_IsObject(o))
+                continue;
+            objitem_t *b = &out->item[i];
+
+            cJSON *v;
+            v = cJSON_GetObjectItem(o, "en");
+            b->enable = cJSON_IsTrue(v);
+            v = cJSON_GetObjectItem(o, "rf");
+            b->send_rf = cJSON_IsTrue(v);
+            v = cJSON_GetObjectItem(o, "inet");
+            b->send_inet = cJSON_IsTrue(v);
+            v = cJSON_GetObjectItem(o, "item");
+            b->is_item = cJSON_IsTrue(v);
+            v = cJSON_GetObjectItem(o, "perm");
+            b->permanent = cJSON_IsTrue(v);
+            v = cJSON_GetObjectItem(o, "act");
+            // Default to active(=live) when the key is absent.
+            b->active = v ? cJSON_IsTrue(v) : true;
+
+            v = cJSON_GetObjectItem(o, "name");
+            if (cJSON_IsString(v) && v->valuestring)
+                clamp_str(b->name, v->valuestring, OBJITEM_NAME_MAX);
+
+            v = cJSON_GetObjectItem(o, "lat");
+            if (cJSON_IsNumber(v))
+                b->lat = (float)v->valuedouble;
+            v = cJSON_GetObjectItem(o, "lon");
+            if (cJSON_IsNumber(v))
+                b->lon = (float)v->valuedouble;
+
+            v = cJSON_GetObjectItem(o, "sym");
+            if (cJSON_IsString(v) && v->valuestring && v->valuestring[0]) {
+                b->sym[0] = v->valuestring[0];
+                b->sym[1] = v->valuestring[1] ? v->valuestring[1] : '-';
+            }
+
+            v = cJSON_GetObjectItem(o, "crs");
+            if (cJSON_IsNumber(v) && v->valuedouble >= 0)
+                b->course = (uint16_t)((int)v->valuedouble % 360);
+            v = cJSON_GetObjectItem(o, "spd");
+            if (cJSON_IsNumber(v) && v->valuedouble > 0)
+                b->speed = (uint16_t)v->valuedouble;
+
+            v = cJSON_GetObjectItem(o, "scope");
+            if (cJSON_IsNumber(v)) {
+                int s = (int)v->valuedouble;
+                if (s < OBJITEM_SCOPE_PRIVATE)
+                    s = OBJITEM_SCOPE_PRIVATE;
+                if (s > OBJITEM_SCOPE_GLOBAL)
+                    s = OBJITEM_SCOPE_GLOBAL;
+                b->scope = (objitem_scope_t)s;
+            } else {
+                b->scope = OBJITEM_SCOPE_GLOBAL;
+            }
+
+            v = cJSON_GetObjectItem(o, "cmt");
+            if (cJSON_IsString(v) && v->valuestring)
+                clamp_comment(b->comment, v->valuestring, sizeof(b->comment));
+
+            // -- Area object (YAAC "Area type, color, and offset"). --
+            v = cJSON_GetObjectItem(o, "atype");
+            if (cJSON_IsNumber(v)) {
+                int t = (int)v->valuedouble;
+                if (t < 0)
+                    t = 0;
+                if (t > 9)
+                    t = 9;
+                b->area_type = (uint8_t)t;
+            }
+            v = cJSON_GetObjectItem(o, "acol");
+            if (cJSON_IsNumber(v)) {
+                int c = (int)v->valuedouble;
+                if (c < 0)
+                    c = 0;
+                if (c > 15)
+                    c = 15;
+                b->area_color = (uint8_t)c;
+            }
+            v = cJSON_GetObjectItem(o, "alat");
+            if (cJSON_IsNumber(v) && v->valuedouble >= 0)
+                b->area_lat_off = (float)v->valuedouble;
+            v = cJSON_GetObjectItem(o, "alon");
+            if (cJSON_IsNumber(v) && v->valuedouble >= 0)
+                b->area_lon_off = (float)v->valuedouble;
+            v = cJSON_GetObjectItem(o, "awid");
+            if (cJSON_IsNumber(v)) {
+                int w = (int)v->valuedouble;
+                if (w < 0)
+                    w = 0;
+                if (w > OBJITEM_AREA_WIDTH_MAX)
+                    w = OBJITEM_AREA_WIDTH_MAX;
+                b->area_line_width = (uint16_t)w;
+            }
+
+            // -- Signpost (YAAC "Signpost"). --
+            v = cJSON_GetObjectItem(o, "sign");
+            if (cJSON_IsString(v) && v->valuestring)
+                clamp_str(b->signpost, v->valuestring, OBJITEM_SIGNPOST_MAX);
+
+            // -- DF report (APRS101 ch.8 "/BRG/NRQ" extension). --
+            v = cJSON_GetObjectItem(o, "dfEn");
+            b->df_enable = cJSON_IsTrue(v);
+            v = cJSON_GetObjectItem(o, "dfBrg");
+            if (cJSON_IsNumber(v) && v->valuedouble >= 0)
+                b->df_bearing = (uint16_t)((int)v->valuedouble % 360);
+            v = cJSON_GetObjectItem(o, "dfN");
+            if (cJSON_IsNumber(v)) {
+                int dfN = (int)v->valuedouble;
+                if (dfN < 0)
+                    dfN = 0;
+                if (dfN > 9)
+                    dfN = 9;
+                b->df_nrq_n = (uint8_t)dfN;
+            }
+            v = cJSON_GetObjectItem(o, "dfR");
+            if (cJSON_IsNumber(v)) {
+                int r = (int)v->valuedouble;
+                if (r < 0)
+                    r = 0;
+                if (r > 9)
+                    r = 9;
+                b->df_nrq_r = (uint8_t)r;
+            }
+            v = cJSON_GetObjectItem(o, "dfQ");
+            if (cJSON_IsNumber(v)) {
+                int q = (int)v->valuedouble;
+                if (q < 0)
+                    q = 0;
+                if (q > 9)
+                    q = 9;
+                b->df_nrq_q = (uint8_t)q;
+            }
+
+            // -- Repeater radio parameters (YAAC "Monitor frequency, duplex
+            //    direction, subaudible tone, and coverage range"). --
+            v = cJSON_GetObjectItem(o, "freq");
+            if (cJSON_IsNumber(v) && v->valuedouble > 0)
+                b->freq_mhz = (float)v->valuedouble;
+            v = cJSON_GetObjectItem(o, "ofs");
+            if (cJSON_IsNumber(v) && v->valuedouble >= 0)
+                b->offset_khz = (uint16_t)v->valuedouble;
+            v = cJSON_GetObjectItem(o, "dup");
+            if (cJSON_IsNumber(v)) {
+                int d = (int)v->valuedouble;
+                b->duplex = (int8_t)(d > 0 ? 1 : (d < 0 ? -1 : 0));
+            }
+            v = cJSON_GetObjectItem(o, "tone");
+            if (cJSON_IsNumber(v) && v->valuedouble >= 0)
+                b->tone_tenths = (uint16_t)v->valuedouble;
+            v = cJSON_GetObjectItem(o, "rng");
+            if (cJSON_IsNumber(v) && v->valuedouble >= 0) {
+                int r = (int)v->valuedouble;
+                if (r > 99)
+                    r = 99;
+                b->range = (uint16_t)r;
+            }
+            v = cJSON_GetObjectItem(o, "rngKm");
+            b->range_km = cJSON_IsTrue(v);
+
+            // -- DCS code, narrowband flag and split RX frequency
+            //    (freqspec.txt "Dnnn", "tnnn"/"dnnn", "FFF.FFFrx"). --
+            v = cJSON_GetObjectItem(o, "dcsEn");
+            b->dcs_enable = cJSON_IsTrue(v);
+            v = cJSON_GetObjectItem(o, "dcs");
+            if (cJSON_IsNumber(v) && v->valuedouble >= 0) {
+                int c = (int)v->valuedouble;
+                if (c > 511)
+                    c = 511;
+                b->dcs_code = (uint16_t)c;
+            }
+            v = cJSON_GetObjectItem(o, "narrow");
+            b->narrow = cJSON_IsTrue(v);
+            v = cJSON_GetObjectItem(o, "rxEn");
+            b->rx_freq_enable = cJSON_IsTrue(v);
+            v = cJSON_GetObjectItem(o, "rxFreq");
+            if (cJSON_IsNumber(v) && v->valuedouble > 0)
+                b->rx_freq_mhz = (float)v->valuedouble;
+
+            // -- Digipeat paths (YAAC "Digipeat paths"). --
+            v = cJSON_GetObjectItem(o, "pmask");
+            if (cJSON_IsNumber(v)) {
+                int m = (int)v->valuedouble;
+                b->path_mask = (uint8_t)(m & ((1 << OBJITEM_PATH_PRESETS) - 1));
+            }
+
+            // -- QRU group membership (YAAC "QRU group membership"). --
+            v = cJSON_GetObjectItem(o, "qru");
+            if (cJSON_IsString(v) && v->valuestring)
+                clamp_str(b->qru, v->valuestring, OBJITEM_QRU_MAX);
+
+            v = cJSON_GetObjectItem(o, "int_s");
+            if (cJSON_IsNumber(v) && v->valuedouble > 0)
+                b->interval_s = (uint32_t)v->valuedouble;
+
+            // -- Decay ratio + slow repeat rate (YAAC). --
+            v = cJSON_GetObjectItem(o, "slow_s");
+            if (cJSON_IsNumber(v) && v->valuedouble > 0)
+                b->slow_interval_s = (uint32_t)v->valuedouble;
+            v = cJSON_GetObjectItem(o, "decay");
+            if (cJSON_IsNumber(v) && v->valuedouble > 0)
+                b->decay_x10 = (uint16_t)v->valuedouble;
+
+            // -- PHG block (mirrors the Station page's "My Station" PHG). --
+            v = cJSON_GetObjectItem(o, "phgEn");
+            b->phg_enable = cJSON_IsTrue(v);
+            v = cJSON_GetObjectItem(o, "phgUS");
+            b->phg_use_station = cJSON_IsTrue(v);
+            v = cJSON_GetObjectItem(o, "phgP");
+            if (cJSON_IsNumber(v) && v->valuedouble >= 0)
+                b->phg_power = (uint16_t)v->valuedouble;
+            v = cJSON_GetObjectItem(o, "phgG");
+            if (cJSON_IsNumber(v) && v->valuedouble >= 0)
+                b->phg_gain = (float)v->valuedouble;
+            v = cJSON_GetObjectItem(o, "phgH");
+            if (cJSON_IsNumber(v) && v->valuedouble > 0)
+                b->phg_height = (uint16_t)v->valuedouble;
+            v = cJSON_GetObjectItem(o, "phgD");
+            if (cJSON_IsNumber(v) && v->valuedouble >= 0)
+                b->phg_dir = (uint8_t)v->valuedouble;
+
+            v = cJSON_GetObjectItem(o, "compress");
+            b->compress = cJSON_IsTrue(v);
+
+            v = cJSON_GetObjectItem(o, "kill_left");
+            if (cJSON_IsNumber(v) && v->valuedouble > 0)
+                b->kill_left = (uint8_t)v->valuedouble;
+        }
+    }
+
+    cJSON_Delete(doc);
+    return true;
+}
+
+static bool save_locked(const objitems_t *in) {
+    // Entered with s_lock held (see objitems_save() below), which is what
+    // json_store_open_tmp() asserts before handing back a stream whose stdio
+    // buffer is already pinned.
+    FILE *f = json_store_open_tmp(OBJITEMS_TMP_PATH, TAG, s_lock);
+    if (!f)
+        return false;
+
+    // Written token-by-token straight to the file: no cJSON tree and no second
+    // serialized buffer ever exist, so a save costs essentially only littlefs's
+    // own write buffer on top of the stream buffer above.
+    fputs("{\"objitems\":[", f);
+    for (int i = 0; i < OBJITEM_COUNT; i++) {
+        const objitem_t *b = &in->item[i];
+        char name[OBJITEM_NAME_MAX + 1];
+        char cmt[OBJITEM_COMMENT_MAX + 1];
+        char sign[OBJITEM_SIGNPOST_MAX + 1];
+        char qru[OBJITEM_QRU_MAX + 1];
+        char sym[3];
+        clamp_str(name, b->name, OBJITEM_NAME_MAX);
+        clamp_str(cmt, b->comment, OBJITEM_COMMENT_MAX);
+        clamp_str(sign, b->signpost, OBJITEM_SIGNPOST_MAX);
+        clamp_str(qru, b->qru, OBJITEM_QRU_MAX);
+        sym[0] = b->sym[0] ? b->sym[0] : '/';
+        sym[1] = b->sym[1] ? b->sym[1] : '-';
+        sym[2] = 0;
+
+        fputs(i ? ",{" : "{", f);
+        fprintf(f, "\"en\":%s,", b->enable ? "true" : "false");
+        fprintf(f, "\"rf\":%s,", b->send_rf ? "true" : "false");
+        fprintf(f, "\"inet\":%s,", b->send_inet ? "true" : "false");
+        fprintf(f, "\"item\":%s,", b->is_item ? "true" : "false");
+        fprintf(f, "\"perm\":%s,", b->permanent ? "true" : "false");
+        fprintf(f, "\"act\":%s,", b->active ? "true" : "false");
+        fputs("\"name\":", f);
+        json_write_escaped(f, name);
+        fprintf(f, ",\"lat\":%.6f", (double)b->lat);
+        fprintf(f, ",\"lon\":%.6f", (double)b->lon);
+        fputs(",\"sym\":", f);
+        json_write_escaped(f, sym);
+        fprintf(f, ",\"crs\":%u", (unsigned)b->course);
+        fprintf(f, ",\"spd\":%u", (unsigned)b->speed);
+        fprintf(f, ",\"scope\":%d", (int)b->scope);
+        fputs(",\"cmt\":", f);
+        json_write_escaped(f, cmt);
+        fprintf(f, ",\"atype\":%u", (unsigned)b->area_type);
+        fprintf(f, ",\"acol\":%u", (unsigned)b->area_color);
+        fprintf(f, ",\"alat\":%.4f", (double)b->area_lat_off);
+        fprintf(f, ",\"alon\":%.4f", (double)b->area_lon_off);
+        fprintf(f, ",\"awid\":%u", (unsigned)b->area_line_width);
+        fputs(",\"sign\":", f);
+        json_write_escaped(f, sign);
+        fprintf(f, ",\"dfEn\":%s", b->df_enable ? "true" : "false");
+        fprintf(f, ",\"dfBrg\":%u", (unsigned)b->df_bearing);
+        fprintf(f, ",\"dfN\":%u", (unsigned)b->df_nrq_n);
+        fprintf(f, ",\"dfR\":%u", (unsigned)b->df_nrq_r);
+        fprintf(f, ",\"dfQ\":%u", (unsigned)b->df_nrq_q);
+        fprintf(f, ",\"freq\":%.4f", (double)b->freq_mhz);
+        fprintf(f, ",\"ofs\":%u", (unsigned)b->offset_khz);
+        fprintf(f, ",\"dup\":%d", (int)b->duplex);
+        fprintf(f, ",\"tone\":%u", (unsigned)b->tone_tenths);
+        fprintf(f, ",\"rng\":%u", (unsigned)b->range);
+        fprintf(f, ",\"rngKm\":%s", b->range_km ? "true" : "false");
+        fprintf(f, ",\"dcsEn\":%s", b->dcs_enable ? "true" : "false");
+        fprintf(f, ",\"dcs\":%u", (unsigned)b->dcs_code);
+        fprintf(f, ",\"narrow\":%s", b->narrow ? "true" : "false");
+        fprintf(f, ",\"rxEn\":%s", b->rx_freq_enable ? "true" : "false");
+        fprintf(f, ",\"rxFreq\":%.4f", (double)b->rx_freq_mhz);
+        fprintf(f, ",\"pmask\":%u", (unsigned)b->path_mask);
+        fputs(",\"qru\":", f);
+        json_write_escaped(f, qru);
+        fprintf(f, ",\"int_s\":%u", (unsigned)b->interval_s);
+        fprintf(f, ",\"slow_s\":%u", (unsigned)b->slow_interval_s);
+        fprintf(f, ",\"decay\":%u", (unsigned)b->decay_x10);
+        fprintf(f, ",\"phgEn\":%s", b->phg_enable ? "true" : "false");
+        fprintf(f, ",\"phgUS\":%s", b->phg_use_station ? "true" : "false");
+        fprintf(f, ",\"phgP\":%u", (unsigned)b->phg_power);
+        fprintf(f, ",\"phgG\":%.1f", (double)b->phg_gain);
+        fprintf(f, ",\"phgH\":%u", (unsigned)b->phg_height);
+        fprintf(f, ",\"phgD\":%u", (unsigned)b->phg_dir);
+        fprintf(f, ",\"compress\":%s", b->compress ? "true" : "false");
+        fprintf(f, ",\"kill_left\":%u", (unsigned)b->kill_left);
+        fputc('}', f);
+    }
+    fputs("]}", f);
+
+    return json_store_commit(f, OBJITEMS_TMP_PATH, OBJITEMS_PATH, TAG, "objects/items");
+}
+
+// Parsed copy of objitems.json, kept in RAM so a scheduler pass costs nothing
+// on the filesystem. objitems_service() runs on every pass of the shared beacon
+// scheduler - as often as every 5 s while the other services are idle - and
+// each pass called objitems_load(), i.e. an fopen + fread + a full
+// cJSON_Parse of this file, on the order of ten thousand times a day. That
+// parse builds and tears down a tree of small heap nodes, the exact allocation
+// pattern the streaming writers exist to avoid; holding the result
+// costs ~sizeof(objitems_t) of static RAM once and removes the churn.
+//
+// The cache is only allowed to answer when nothing can have changed underneath
+// it: objitems_save() drops it (every web edit and every kill-sequence rewrite
+// goes through there), and s_cache_gen catches the changes made from outside
+// this module - a whole-partition format, a delete, or a file uploaded over
+// this one from the web Storage page (see storage_generation()).
+static objitems_t s_cache;
+static bool s_cache_valid = false;
+static bool s_cache_ok = false; // what load_locked() reported for the cached content
+static uint32_t s_cache_gen = 0;
+
+// Earliest monotonic second at which a load that failed for want of memory may
+// read the file again; 0 when no such failure is outstanding. See the comment
+// in objitems_load() for why a shortage is retried on a timer rather than on
+// every pass.
+#define OBJITEM_LOAD_RETRY_S 60
+static int64_t s_load_retry_after_s = 0;
+
+bool objitems_load(objitems_t *out) {
+    if (!out)
+        return false;
+    lock();
+    // A retry deadline that has not yet passed keeps the cached answer in
+    // service, so a shortage is retried on its own timer rather than on every
+    // pass through here.
+    bool retry_due = s_load_retry_after_s != 0 && sched_mono_seconds() >= s_load_retry_after_s;
+    if (s_cache_valid && s_cache_gen == storage_generation() && !retry_due) {
+        *out = s_cache;
+        bool cached_ok = s_cache_ok;
+        unlock();
+        return cached_ok;
+    }
+    bool missing = false;
+    bool transient = false;
+    bool ok = load_locked(out, &missing, &transient);
+    // Cache the defaults substituted for a missing or corrupt file too: they
+    // are what every caller would get from a re-read anyway, and doing so keeps
+    // a subsystem that is simply not configured from re-reading the filesystem
+    // on every scheduler pass.
+    //
+    // A load that failed for want of memory is the exception, and it is the
+    // only failure here that is not a property of the file. Caching it as one
+    // would freeze a shortage lasting a second or two into the answer every
+    // later pass gets, because nothing short of a save or a storage-generation
+    // change drops this cache. Cache it anyway, and set a retry deadline
+    // instead: the substituted defaults stay in service until then, and the
+    // file is read again once the deadline passes.
+    //
+    // Both halves matter. Without the deadline a transient shortage would
+    // silence the subsystem for good; without the caching, every pass would
+    // re-read and re-parse the file, which is the exact churn this cache exists
+    // to prevent and which arrives when the heap can least afford it - a parse
+    // tree of several kilobytes rebuilt every few seconds is how a shortage
+    // that would have cleared on its own becomes a lasting one.
+    s_cache = *out;
+    s_cache_ok = ok;
+    s_cache_gen = storage_generation();
+    s_cache_valid = true;
+    s_load_retry_after_s = transient ? sched_mono_seconds() + OBJITEM_LOAD_RETRY_S : 0;
+    unlock();
+    if (missing) {
+        // First boot / file lost: persist the empty-default set now so
+        // /storage/objitems.json exists on disk instead of only living
+        // in RAM until something else happens to trigger a save.
+        if (!objitems_save(out))
+            ESP_LOGW(TAG, "Failed to write default %s", OBJITEMS_PATH);
+    }
+    return ok;
+}
+
+bool objitems_save(const objitems_t *in) {
+    if (!in)
+        return false;
+    lock();
+    // Module lock first, filesystem-wide writer gate second (storage.h): the
+    // temp-file + rename sequence inside save_locked() must not overlap the
+    // whole-partition format the web Storage page can start.
+    storage_write_lock();
+    bool ok = save_locked(in);
+    storage_write_unlock();
+    // Drop the cache rather than filling it from *in: save_locked() clamps the
+    // name and comment it writes, so the file can legitimately differ from the
+    // caller's struct. The next reader re-reads once and caches exactly what
+    // the file says.
+    s_cache_valid = false;
+    unlock();
+    return ok;
+}
+
+// ---------------------------------------------------------------------------
+// Wire format
+// ---------------------------------------------------------------------------
+
+// True when the element's symbol is the APRS Area symbol ('\l') or Signpost
+// symbol ('\m'). Both use the 7-byte data-extension slot (normally CSE/SPD)
+// for their own descriptor, so course/speed is suppressed for them.
+static bool objitem_is_area(const objitem_t *b) {
+    return b->sym[0] == '\\' && b->sym[1] == 'l';
+}
+
+static bool objitem_is_signpost(const objitem_t *b) {
+    return b->sym[0] == '\\' && b->sym[1] == 'm';
+}
+
+// Encode an Area corner offset (degrees, >= 0) into the APRS 2-digit "yy"/"xx"
+// code. The code is the square root of the offset expressed in
+// OBJITEM_AREA_OFFSET_SCALE-ths of a degree, so a receiver recovers the offset
+// as (code * code) / 1500 degrees - the scale areaobjects.txt settled on and
+// the one every current application decodes with. Clamped to 00..99, which
+// caps the shape at OBJITEM_AREA_OFFSET_DEG_MAX degrees per axis.
+static unsigned area_offset_code(float deg) {
+    if (deg <= 0.0f)
+        return 0;
+    double code = sqrt((double)deg * OBJITEM_AREA_OFFSET_SCALE);
+    if (code < 0.0)
+        code = 0.0;
+    if (code > (double)OBJITEM_AREA_OFFSET_CODE_MAX)
+        code = (double)OBJITEM_AREA_OFFSET_CODE_MAX;
+    return (unsigned)(code + 0.5);
+}
+
+// True for the two Area shapes that are drawn as a line rather than a closed
+// figure. Only these carry the "{www}" corridor token, which states the width
+// in miles of the band either side of the line.
+static bool objitem_area_is_line(uint8_t type) {
+    return type == OBJITEM_AREA_TYPE_LINE_DOWN_RIGHT || type == OBJITEM_AREA_TYPE_LINE_DOWN_LEFT;
+}
+
+// Width, in bytes, of the frequency field itself. freqspec.txt defines it as
+// a fixed 10-byte field so that it lands in a known column on the 10x10
+// character displays of the radios that auto-tune from it, which is why every
+// form below is padded or letter-coded to exactly this many bytes.
+#define FREQ_FIELD_BYTES 10
+
+// Microwave letter designations (freqspec.txt): the plain "FFF.FFFMHz" form
+// only reaches 999.999 MHz, so above that the three MHz digits are replaced
+// by one letter standing for a fixed 100 MHz block plus the two low MHz
+// digits - "A96.000MHz" is 1296.000 MHz. This is the table the spec
+// enumerates, one entry per band it names; the ranges between entries have no
+// designation at all.
+static const struct {
+    char letter;
+    uint16_t base_mhz;
+} k_freq_letters[] = {
+    { 'A', 1200 },  { 'B', 2300 },  { 'C', 2400 },  { 'D', 3400 },  { 'E', 5600 },  { 'F', 5700 },  { 'G', 5800 },  { 'H', 10100 },
+    { 'I', 10200 }, { 'J', 10300 }, { 'K', 10400 }, { 'L', 10500 }, { 'M', 24000 }, { 'N', 24100 }, { 'O', 24200 },
+};
+
+// Format the fixed 10-byte frequency field for `khz` into `out`, which must
+// hold FREQ_FIELD_BYTES + 1 bytes. Returns false, leaving `out` empty, for a
+// frequency that has no 10-byte representation - above 999.999 MHz that is
+// any frequency outside the letter table's blocks. Emitting such a frequency
+// in one of the two decimal forms would produce an 11-byte field and shift
+// every byte a receiver reads after it, so no block at all is the safer
+// answer and the caller's comment simply starts with its own text.
+static bool freq_field_format(long khz, char *out) {
+    int n;
+    if (khz < 100000L) {
+        // Below 100 MHz the three MHz digits do not fill their width, so the
+        // 10 kHz form "FFF.FF MHz" is used: it is one of the two widths the
+        // spec names and it keeps the field ten bytes with the number
+        // right-justified against the separating space.
+        long centi = (khz + 5) / 10;
+        n = snprintf(out, FREQ_FIELD_BYTES + 1, "%3ld.%02ld MHz", centi / 100, centi % 100);
+    } else if (khz <= 999999L) {
+        // 100.000 to 999.999 MHz: the 1 kHz form, the field every VHF/UHF
+        // repeater block uses.
+        n = snprintf(out, FREQ_FIELD_BYTES + 1, "%3ld.%03ldMHz", khz / 1000, khz % 1000);
+    } else {
+        long mhz = khz / 1000;
+        char letter = 0;
+        for (size_t i = 0; i < sizeof(k_freq_letters) / sizeof(k_freq_letters[0]); i++) {
+            long base = (long)k_freq_letters[i].base_mhz;
+            if (mhz >= base && mhz < base + 100) {
+                letter = k_freq_letters[i].letter;
+                mhz -= base;
+                break;
+            }
+        }
+        if (letter == 0) {
+            ESP_LOGW(TAG, "%ld.%03ld MHz has no frequency-block designation - block omitted", khz / 1000, khz % 1000);
+            out[0] = 0;
+            return false;
+        }
+        n = snprintf(out, FREQ_FIELD_BYTES + 1, "%c%02ld.%03ldMHz", letter, mhz, khz % 1000);
+    }
+    // Every branch is built to fill the field exactly; anything else would put
+    // a misaligned block on the air, so it is refused rather than shipped.
+    if (n != FREQ_FIELD_BYTES) {
+        out[0] = 0;
+        return false;
+    }
+    return true;
+}
+
+// Width, in bytes, of the split-receive-frequency sub-field's own text
+// ("FFF.FFFrx", nine bytes - one shorter than the primary field, since "rx"
+// is two bytes where the primary field's "MHz" is three).
+#define RX_FIELD_BYTES 9
+
+// Format the split-receive-frequency sub-field ("FFF.FFFrx") for `khz` into
+// `out`, which must hold RX_FIELD_BYTES + 1 bytes. Returns false, leaving
+// `out` empty, for a frequency outside the 100.000-999.999 MHz range:
+// freqspec.txt shows this sub-field only in the 1 kHz decimal form, so a
+// receive frequency below 100 MHz or above 999.999 MHz has no representation
+// for it and is skipped rather than shipped in a mismatched width.
+static bool freq_field_format_rx(long khz, char *out) {
+    if (khz < 100000L || khz > 999999L) {
+        out[0] = 0;
+        return false;
+    }
+    int n = snprintf(out, RX_FIELD_BYTES + 1, "%3ld.%03ldrx", khz / 1000, khz % 1000);
+    if (n != RX_FIELD_BYTES) {
+        out[0] = 0;
+        return false;
+    }
+    return true;
+}
+
+void objitem_build_freq_block(float freq_mhz, uint16_t tone_tenths, int8_t duplex, uint16_t offset_khz, uint16_t range, bool range_km, bool dcs_enable,
+                              uint16_t dcs_code, bool narrow, bool rx_freq_enable, float rx_freq_mhz, char *out, size_t out_size) {
+    if (out_size == 0)
+        return;
+    out[0] = 0;
+    if (freq_mhz <= 0.0f)
+        return;
+
+    // Whole kHz is the finest resolution any of the field's forms carries, so
+    // the value is rounded to it once here and every digit below is derived
+    // with integer arithmetic - the float can neither round a digit away nor
+    // leak an extra one into the fixed width.
+    long khz = lroundf(freq_mhz * 1000.0f);
+    if (khz <= 0)
+        return;
+
+    char field[FREQ_FIELD_BYTES + 1];
+    if (!freq_field_format(khz, field))
+        return;
+
+    int n = snprintf(out, out_size, "%s", field);
+    if (n < 0 || (size_t)n >= out_size) {
+        out[0] = 0;
+        return;
+    }
+    size_t used = (size_t)n;
+
+    // Split transmit/receive frequency: "FFF.FFFrx", right after the primary
+    // frequency field and before every other sub-field, when the receive
+    // frequency is not the standard duplex offset from freq_mhz.
+    if (rx_freq_enable && rx_freq_mhz > 0.0f && used < out_size) {
+        long rx_khz = lroundf(rx_freq_mhz * 1000.0f);
+        char rx_field[RX_FIELD_BYTES + 1];
+        if (rx_khz > 0 && freq_field_format_rx(rx_khz, rx_field)) {
+            n = snprintf(out + used, out_size - used, " %s", rx_field);
+            if (n > 0 && (size_t)n < out_size - used)
+                used += (size_t)n;
+        }
+    }
+
+    // Tone/DCS slot: CTCSS tone "Tnnn" (integer Hz) or "Toff" when unset, or
+    // the DCS code "Dnnn" (three octal digits) when dcs_enable is set - the
+    // two share one slot, per freqspec.txt. Either way, a set narrow flag
+    // lower-cases the slot's leading letter, the spec's narrowband-modulation
+    // marker.
+    if (used < out_size) {
+        char letter;
+        if (dcs_enable)
+            letter = narrow ? 'd' : 'D';
+        else
+            letter = narrow ? 't' : 'T';
+        if (dcs_enable) {
+            unsigned code = dcs_code > 511u ? 511u : dcs_code;
+            n = snprintf(out + used, out_size - used, " %c%03o", letter, code);
+        } else if (tone_tenths > 0) {
+            n = snprintf(out + used, out_size - used, " %c%03u", letter, (unsigned)(tone_tenths / 10u));
+        } else {
+            n = snprintf(out + used, out_size - used, " %coff", letter);
+        }
+        if (n > 0 && (size_t)n < out_size - used)
+            used += (size_t)n;
+    }
+
+    // Duplex direction + shift: "+/-nnn" in units of 10 kHz (e.g. 600 kHz => 060).
+    if (duplex != 0 && used < out_size) {
+        unsigned nnn = (unsigned)(offset_khz / 10u);
+        if (nnn > 999)
+            nnn = 999;
+        n = snprintf(out + used, out_size - used, " %c%03u", duplex > 0 ? '+' : '-', nnn);
+        if (n > 0 && (size_t)n < out_size - used)
+            used += (size_t)n;
+    }
+
+    // Coverage range: "Rxxm" (miles) or "Rxxkm" (kilometers), the two-digit
+    // form freqspec.txt defines. Omitted entirely when no range is
+    // configured, the same way the duplex shift is omitted for simplex.
+    if (range > 0 && used < out_size) {
+        unsigned rr = range > 99 ? 99 : range;
+        n = snprintf(out + used, out_size - used, " R%02u%s", rr, range_km ? "km" : "m");
+        if (n > 0 && (size_t)n < out_size - used)
+            used += (size_t)n;
+    }
+}
+
+// Build the standard APRS frequency block (the fixed ten-byte frequency
+// field, the optional split-receive-frequency sub-field, the tone/DCS slot,
+// the duplex shift and the coverage range) into `out`, or the empty string
+// when no monitor frequency is configured. This is what carries YAAC's
+// monitor frequency, subaudible tone or DCS code, narrowband flag, duplex
+// direction, split receive frequency and range; by convention it must be the
+// first thing in the comment text so other stations' radios can auto-tune
+// from it. Thin wrapper over objitem_build_freq_block() so the element's own
+// stored sub-fields feed the shared builder.
+static void build_freq_block(const objitem_t *b, char *out, size_t out_size) {
+    objitem_build_freq_block(b->freq_mhz, b->tone_tenths, b->duplex, b->offset_khz, b->range, b->range_km, b->dcs_enable, b->dcs_code, b->narrow,
+                             b->rx_freq_enable, b->rx_freq_mhz, out, out_size);
+}
+
+// Build the 7-character APRS "PHGphgd" Data Extension from the element's stored
+// PHG sub-fields, using the standard APRS code tables:
+//   P = SQR(power)      -> digit = round(sqrt(Watts))          (0..9)
+//   H = LOG2(height/10) -> digit = round(log2(feet/10))        (0..; feet=10*2^H)
+//   G = gain in dB      -> digit = gain                        (0..9)
+//   D = directivity     -> digit (0=omni, 1..8 = 45*D degrees) (0..8)
+// Each field is a single character '0'+digit. Per APRS101/APRSdos the Height
+// character may extend past '9' for very tall sites (balloons/aircraft), so it
+// is not capped at 9 (only kept in a sane range). This is the same formula the
+// Station/Objects web pages use for their read-only PHG display. `out` must be
+// at least 8 bytes.
+static void objitem_build_phg(const objitem_t *b, char *out, size_t out_size) {
+    int P = (int)lroundf(sqrtf((float)b->phg_power));
+    if (P < 0)
+        P = 0;
+    if (P > 9)
+        P = 9;
+
+    float hf = (b->phg_height >= 10) ? (float)b->phg_height : 10.0f;
+    int H = (int)lroundf(log2f(hf / 10.0f));
+    if (H < 0)
+        H = 0;
+    if (H > 13) // 10*2^13 ft; keeps the height character a single printable ASCII byte
+        H = 13;
+
+    int G = (int)lroundf(b->phg_gain);
+    if (G < 0)
+        G = 0;
+    if (G > 9)
+        G = 9;
+
+    int D = (int)b->phg_dir;
+    if (D > 8)
+        D = 8;
+
+    snprintf(out, out_size, "PHG%c%c%c%c", '0' + P, '0' + H, '0' + G, '0' + D);
+}
+
+// Builds the APRS Object or Item info field for one element into `out`.
+//
+// `live` overrides b->active for the transmit-time live/kill decision (so the
+// kill sequence can force a kill report even while the stored element is still
+// nominally "active" pending the user's next edit). `out` should be >= 160 to
+// hold the frequency block, a full comment and the no-archive marker.
+static void objitem_build_info_field(const objitem_t *b, bool live, char *out, size_t out_size) {
+    char sym_table = b->sym[0] ? b->sym[0] : '/';
+    char sym_code = b->sym[1] ? b->sym[1] : '-';
+
+    // The 7-byte data-extension slot right after the symbol code. Which
+    // descriptor goes here depends on the symbol:
+    //   Area symbol   ("\l") -> "Tyy/Cxx" area descriptor (YAAC Area).
+    //   Signpost      ("\m") -> "{TEXT}"  signpost text (YAAC Signpost).
+    //   anything else        -> CSE/SPD, only when speed > 0 (YAAC:
+    //                           "if the speed is set to zero, speed and course
+    //                           will not be included"), optionally extended
+    //                           to CSE/SPD/BRG/NRQ when df_enable is set and
+    //                           the symbol is the DF symbol (APRS101 ch.8 DF
+    //                           report).
+    // Sized for the longest of these, which is the DF report: its own buffer
+    // size constant covers the "NNN/NNN/NNN/NNN" token plus NUL, and is wider
+    // than every other descriptor that shares the slot.
+    char ext[APRS_DF_EXT_BUF_SIZE];
+    ext[0] = 0;
+    bool isArea = objitem_is_area(b);
+    bool isSignpost = objitem_is_signpost(b);
+
+    // A DF report is only meaningful on the DF symbol (APRS101 ch.8), and its
+    // token is 15 bytes where the slot is 7: on any other symbol a receiver
+    // reads the trailing "/BRG/NRQ" as the first eight characters of the
+    // comment field. So the element's df_enable only takes effect on that
+    // symbol pair; on any other one the slot falls back to whatever it would
+    // hold without it. The Area and Signpost symbols own the slot outright,
+    // so they are left out of the warning that names the symbol which
+    // suppressed the report.
+    bool dfActive = b->df_enable && aprs_df_symbol_matches(sym_table, sym_code);
+    if (b->df_enable && !dfActive && !isArea && !isSignpost) {
+        static bool df_symbol_warned = false;
+        if (!df_symbol_warned) {
+            df_symbol_warned = true;
+            ESP_LOGW(TAG, "DF report not transmitted for \"%s\": it needs the DF symbol \"%c%c\", this element uses \"%c%c\"", b->name, APRS_DF_SYMBOL_TABLE,
+                     APRS_DF_SYMBOL_CODE, sym_table, sym_code);
+        }
+    }
+
+    if (isArea) {
+        unsigned t = b->area_type > OBJITEM_AREA_TYPE_MAX ? OBJITEM_AREA_TYPE_MAX : b->area_type;
+        unsigned color = b->area_color > OBJITEM_AREA_COLOR_MAX ? OBJITEM_AREA_COLOR_MAX : b->area_color;
+        // Colours 0..9 use "/C"; 10..15 replace the '/' with '1' and C = C-10.
+        char sep = color <= 9 ? '/' : '1';
+        unsigned cdig = color <= 9 ? color : color - 10;
+        snprintf(ext, sizeof(ext), "%u%02u%c%u%02u", t, area_offset_code(b->area_lat_off), sep, cdig, area_offset_code(b->area_lon_off));
+    } else if (isSignpost) {
+        char sp[OBJITEM_SIGNPOST_MAX + 1];
+        clamp_str(sp, b->signpost, OBJITEM_SIGNPOST_MAX);
+        snprintf(ext, sizeof(ext), "{%s}", sp);
+    } else if (b->speed > 0) {
+        unsigned crs = (unsigned)(b->course % 360);      // 0..359
+        unsigned spd = b->speed > 999 ? 999u : b->speed; // APRS speed field is 3 digits
+        if (dfActive) {
+            // DF report (APRS101 ch.8): CSE/SPD extended with /BRG/NRQ. BRG
+            // is the 3-digit signal bearing; NRQ packs the antenna-type digit
+            // (N), signal-strength digit (R) and bearing-accuracy digit (Q)
+            // into one 3-digit field. Built by the shared encoder the
+            // own-station position beacon uses too (aprs_df.h).
+            aprs_bearing_nrq_t nrq = { .bearing_deg = b->df_bearing, .number = b->df_nrq_n, .range_code = b->df_nrq_r, .quality = b->df_nrq_q };
+            aprs_df_build_extension((uint16_t)crs, (uint16_t)spd, &nrq, ext, sizeof(ext));
+        } else {
+            snprintf(ext, sizeof(ext), "%03u/%03u", crs, spd);
+        }
+    } else if (dfActive) {
+        // DF report with no course/speed data: CSE/SPD is still required by
+        // the spec to carry the BRG/NRQ extension, so it is emitted as
+        // "000/000" (APRS101 ch.8: course/speed of 000/000 with a DF
+        // extension is valid and means "no course/speed data").
+        aprs_bearing_nrq_t nrq = { .bearing_deg = b->df_bearing, .number = b->df_nrq_n, .range_code = b->df_nrq_r, .quality = b->df_nrq_q };
+        aprs_df_build_extension(0, 0, &nrq, ext, sizeof(ext));
+    } else if (b->phg_enable) {
+        // PHG shares the 7-byte data-extension slot with CSE/SPD (they are
+        // mutually exclusive), so it is emitted only for a normal symbol that
+        // is not moving (speed == 0) and is not an Area/Signpost object - i.e.
+        // a fixed transmitter whose coverage PHG describes. It must sit
+        // immediately after the symbol and before any free-text comment, which
+        // this slot is. Transmitted only when the element is enabled (this
+        // per-element phg_enable flag); the element itself is only ever sent
+        // when its own enable/scope/RF/INET gating already allows it.
+        objitem_build_phg(b, ext, sizeof(ext));
+    }
+
+    // Compressed position format is used only when requested and the 7-byte
+    // ext[] slot above isn't already carrying an Area/Signpost descriptor -
+    // both of those repurpose that slot for their own encoding, which has no
+    // compressed-format equivalent in the spec, so compression is silently
+    // ignored for them (falls back to uncompressed) rather than dropping the
+    // descriptor. It is likewise ignored whenever ext[] carries a PHG token,
+    // since the compressed format has no PHG equivalent either (APRS101
+    // ch.9: "this format does not support PHG"), and whenever a DF report is
+    // transmitted, since the compressed format's cs/T slot has no /BRG/NRQ
+    // equivalent either (APRS101 ch.8 defines DF reports only for the
+    // uncompressed CSE/SPD layout). Course/speed on its own - and a DF report
+    // the symbol does not allow, which puts no bytes in the slot - has a
+    // compressed equivalent and is folded into the compressed field's own
+    // cs/T slot below instead of the uncompressed ext[] one.
+    bool useCompressed = b->compress && !isArea && !isSignpost && !b->phg_enable && !dfActive;
+
+    // Sized for the larger of the two layouts: uncompressed is up to 21
+    // bytes (9-char latStr content + symTable + 10-char lonStr content +
+    // symCode), compressed is a fixed 13 bytes (symTable + 4 lat + 4 lon +
+    // symCode + 3 cs/T), plus NUL either way.
+    char posField[22];
+    if (useCompressed) {
+        char csT[3] = { ' ', ' ', ' ' };
+        if (b->speed > 0) {
+            aprs_compressed_cs_from_course_speed(b->course, b->speed, csT);
+            ext[0] = 0; // folded into the compressed field's own cs/T slot instead
+        }
+        aprs_coord_format_compressed(b->lat, b->lon, sym_table, sym_code, csT, posField, sizeof(posField));
+    } else {
+        char latStr[10], lonStr[11];
+        aprs_coord_format(b->lat, b->lon, latStr, sizeof(latStr), lonStr, sizeof(lonStr));
+        snprintf(posField, sizeof(posField), "%s%c%s%c", latStr, sym_table, lonStr, sym_code);
+    }
+
+    // Comment text: the APRS frequency block (repeater objects) comes first, so
+    // it is the leading token other stations parse; then the free-text comment,
+    // with '|' and '~' filtered out since both are reserved for the base-91
+    // comment telemetry group (APRS101 ch.13) and this comment sits right next
+    // to whatever telemetry group the caller appends after it.
+    //
+    // An Area line shape puts its corridor width first, as "{www}" (miles
+    // either side of the line, APRS101 ch.11), so it sits where the example in
+    // the specification shows it: directly after the "Tyy/Cxx" descriptor and
+    // ahead of anything the operator typed.
+    char corridor[6];
+    corridor[0] = 0;
+    if (isArea && objitem_area_is_line(b->area_type) && b->area_line_width > 0) {
+        unsigned w = b->area_line_width > OBJITEM_AREA_WIDTH_MAX ? OBJITEM_AREA_WIDTH_MAX : b->area_line_width;
+        snprintf(corridor, sizeof(corridor), "{%u}", w);
+    }
+
+    char freq[OBJITEM_FREQ_BLOCK_BUF_SIZE];
+    build_freq_block(b, freq, sizeof(freq));
+    char comment[OBJITEM_COMMENT_MAX + 1];
+    str_copy_strip_reserved(b->comment, comment, sizeof(comment));
+    char body[OBJITEM_COMMENT_MAX + sizeof(freq) + sizeof(corridor) + 2];
+    size_t used = 0;
+    body[0] = 0;
+    if (corridor[0])
+        str_append(body, sizeof(body), &used, "%s", corridor);
+    if (freq[0])
+        str_append(body, sizeof(body), &used, "%s%s", used ? " " : "", freq);
+    if (comment[0])
+        str_append(body, sizeof(body), &used, "%s%s", used ? " " : "", comment);
+
+    // The station-wide no-archive marker leads the whole free-text field, so a
+    // repeater object announces "!x! 146.520MHz ..." rather than burying the
+    // marker behind the frequency block. It is read anywhere in the packet
+    // either way, but keeping it in front matches every other own-station
+    // field this firmware builds. The flag is snapshotted here because this
+    // builder runs on the scheduler task, async to a web save.
+    app_config_lock();
+    bool no_archive = g_config.my_no_archive;
+    app_config_unlock();
+    char text[sizeof(body) + APRS_NO_ARCHIVE_PREFIX_LEN];
+    aprs_free_text_build(body, no_archive, text, sizeof(text));
+
+    if (b->is_item) {
+        // Item: ) NAME (3..9, variable) then '!'(live)/'_'(kill) then position.
+        char name[OBJITEM_NAME_MAX + 1];
+        clamp_str(name, b->name, OBJITEM_NAME_MAX);
+        snprintf(out, out_size, ")%s%c%s%s%s", name, live ? '!' : '_', posField, ext, text);
+    } else {
+        // Object: ; NAME (exactly 9, space-padded) then '*'(live)/'_'(kill)
+        // then DDHHMMz timestamp then position.
+        char name9[OBJITEM_NAME_MAX + 1];
+        // Space-pad the name to exactly 9 characters.
+        size_t nl = 0;
+        while (nl < OBJITEM_NAME_MAX && b->name[nl])
+            nl++;
+        memset(name9, ' ', OBJITEM_NAME_MAX);
+        memcpy(name9, b->name, nl);
+        name9[OBJITEM_NAME_MAX] = 0;
+
+        // A permanent Object carries the fixed "111111z" pseudo-timestamp
+        // (freqspec.txt) instead of the live UTC day/hour/minute, marking it
+        // as replaceable only by another Object from the same originating
+        // station.
+        char ts[8];
+        if (b->permanent) {
+            snprintf(ts, sizeof(ts), "111111z");
+        } else {
+            time_t now = time(NULL);
+            struct tm tmv;
+            gmtime_r(&now, &tmv);
+            snprintf(ts, sizeof(ts), "%02d%02d%02dz", tmv.tm_mday, tmv.tm_hour, tmv.tm_min);
+        }
+
+        snprintf(out, out_size, ";%s%c%s%s%s%s", name9, live ? '*' : '_', ts, posField, ext, text);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Transmission
+// ---------------------------------------------------------------------------
+
+// Resolves the station callsign used as the report source. Prefers the shared
+// "My Station" callsign; falls back to the IGate APRS callsign+SSID. Same
+// policy as bulletins.c's resolve_source_call(), but written as an explicit
+// bounded copy (no strncpy / no "%s-%d" snprintf) so the ESP-IDF build - which
+// treats -Wstringop-truncation and -Wformat-truncation as errors - can prove
+// the destination never overflows regardless of the source lengths.
+static void append_bounded(char *out, size_t out_size, size_t *used, const char *src) {
+    if (!src)
+        return;
+    while (*src && *used + 1 < out_size)
+        out[(*used)++] = *src++;
+    out[*used] = 0;
+}
+
+static void resolve_source_call(char *out, size_t out_size) {
+    out[0] = 0;
+    if (out_size == 0)
+        return;
+    size_t used = 0;
+    if (g_config.my_callsign[0]) {
+        append_bounded(out, out_size, &used, g_config.my_callsign);
+    } else if (g_config.aprs_mycall[0]) {
+        append_bounded(out, out_size, &used, g_config.aprs_mycall);
+        if (g_config.aprs_ssid > 0) {
+            int ssid = (int)g_config.aprs_ssid;
+            if (ssid > 15)
+                ssid = 15; // AX.25 SSID is 0..15
+            char suf[4];   // "-15\0" max
+            suf[0] = '-';
+            if (ssid >= 10) {
+                suf[1] = (char)('0' + ssid / 10);
+                suf[2] = (char)('0' + ssid % 10);
+                suf[3] = 0;
+            } else {
+                suf[1] = (char)('0' + ssid);
+                suf[2] = 0;
+            }
+            append_bounded(out, out_size, &used, suf);
+        }
+    }
+    for (char *p = out; *p; p++)
+        if (*p >= 'a' && *p <= 'z')
+            *p -= 32;
+}
+
+// Effective RF / INET flags: the AND of the per-element checkbox and the
+// element's scope (PRIVATE never transmits; LOCAL is RF-only; GLOBAL allows
+// both). This lets the two checkboxes act as the fine control the task asked
+// for while scope sets an upper bound (YAAC semantics).
+static bool objitem_effective_rf(const objitem_t *b) {
+    if (b->scope == OBJITEM_SCOPE_PRIVATE)
+        return false;
+    return b->send_rf; // LOCAL and GLOBAL both allow RF
+}
+
+static bool objitem_effective_inet(const objitem_t *b) {
+    if (b->scope != OBJITEM_SCOPE_GLOBAL)
+        return false; // PRIVATE and LOCAL never reach APRS-IS
+    return b->send_inet;
+}
+
+// `path` is the RF digipeat path to insert (e.g. "WIDE1-1,WIDE2-1"), or NULL/
+// empty to send direct. It applies to the RF copy only; APRS-IS traffic always
+// carries TCPIP* instead of an RF path.
+//
+// `allow` is an OBJITEM_TX_* bitmask bounding which legs this call may use. It
+// is intersected with the element's own "send via" flags, so it can withhold a
+// leg the element selects but never add one it does not; the periodic pass
+// passes OBJITEM_TX_ALL, which leaves the element's configuration in sole
+// control.
+static void tx_one(int idx, const objitem_t *b, const char *src, bool live, const char *path, uint8_t allow) {
+    char info[200];
+    objitem_build_info_field(b, live, info, sizeof(info));
+
+    const char *kind = b->is_item ? "Item" : "Object";
+    const char *state = live ? "live" : "KILL";
+
+    if ((allow & OBJITEM_TX_RF) && objitem_effective_rf(b)) {
+        // Digipeat path (YAAC "Digipeat paths"): inserted when the element
+        // selects one or more of the shared path presets; otherwise direct.
+        // Sized by the RF leg's own limit, so the length test below is the
+        // same one aprs_service_send_tnc2() applies: a line that does not fit
+        // an AX.25 frame is refused here, with a reason, instead of being
+        // assembled and then dropped further down the transmit path.
+        char packet[APRS_TNC2_BUF_SIZE];
+        int len;
+        if (path && path[0])
+            len = snprintf(packet, sizeof(packet), "%s>%s,%s:%s", src, OBJITEM_DEST, path, info);
+        else
+            len = snprintf(packet, sizeof(packet), "%s>%s:%s", src, OBJITEM_DEST, info);
+        if (len > 0 && len <= APRS_TNC2_MAX_LEN) {
+            if (aprs_service_send_tnc2(packet, (size_t)len))
+                ESP_LOGI(TAG, "%s %d TX (RF, %s): %s", kind, idx + 1, state, packet);
+            else
+                ESP_LOGW(TAG, "%s %d NOT sent over RF - modem not ready or busy", kind, idx + 1);
+        } else if (len > APRS_TNC2_MAX_LEN) {
+            ESP_LOGW(TAG, "%s %d NOT sent over RF - line too long (%d bytes, max %d)", kind, idx + 1, len, APRS_TNC2_MAX_LEN);
+        }
+    }
+    if ((allow & OBJITEM_TX_INET) && objitem_effective_inet(b)) {
+        // Locally-originated APRS-IS traffic carries the TCPIP* q-construct,
+        // never an RF unproto path (same note as message.c / bulletins.c).
+        // Same buffer size as the RF copy above, and the same length test, so
+        // an element that is too long to reach the air is not quietly relayed
+        // to APRS-IS either - the two legs either both carry the element or
+        // both report why they did not.
+        char packet[APRS_TNC2_BUF_SIZE];
+        int len = snprintf(packet, sizeof(packet), "%s>%s" APRS_PATH_TCPIP_SUFFIX ":%s", src, OBJITEM_DEST, info);
+        if (len > 0 && len <= APRS_TNC2_MAX_LEN) {
+            if (igate_send_raw(packet, (size_t)len))
+                ESP_LOGI(TAG, "%s %d TX (INET, %s): %s", kind, idx + 1, state, packet);
+            else
+                ESP_LOGW(TAG, "%s %d NOT sent over INET - APRS-IS not connected yet", kind, idx + 1);
+        } else if (len > APRS_TNC2_MAX_LEN) {
+            ESP_LOGW(TAG, "%s %d NOT sent over INET - line too long (%d bytes, max %d)", kind, idx + 1, len, APRS_TNC2_MAX_LEN);
+        }
+    }
+}
+
+// Resolves the element's selected digipeat-path presets (the g_config.path[0..3]
+// slots whose bit is set in path_mask) into `out` in ascending bit order,
+// returning the count. Empty presets are skipped. Snapshotted under the config
+// lock so a concurrent web save can't tear a preset string mid-copy.
+static int objitem_paths(const objitem_t *b, char out[OBJITEM_PATH_PRESETS][72]) {
+    int n = 0;
+    app_config_lock();
+    for (int i = 0; i < OBJITEM_PATH_PRESETS; i++) {
+        if (!(b->path_mask & (1u << i)) || !g_config.path[i][0])
+            continue;
+        size_t k = 0;
+        while (g_config.path[i][k] && k < 71) {
+            out[n][k] = g_config.path[i][k];
+            k++;
+        }
+        out[n][k] = 0;
+        n++;
+    }
+    app_config_unlock();
+    return n;
+}
+
+// One decay step: multiply the current interval by the decay ratio, bounded by
+// the slow repeat rate. No-op unless a ratio >= 1.0 and a slow rate above the
+// initial rate are both configured (YAAC "Decay ratio" + "Slow repeat rate").
+static uint32_t objitem_decay_step(uint32_t cur, const objitem_t *b) {
+    if (b->decay_x10 < 10 || b->slow_interval_s == 0)
+        return cur;
+    uint32_t initial = sched_clamp_interval(b->interval_s, OBJITEM_MIN_INTERVAL_S, OBJITEM_DEFAULT_INTERVAL_S);
+    if (b->slow_interval_s <= initial)
+        return cur;
+    uint64_t next = (uint64_t)cur * (uint64_t)b->decay_x10 / 10u;
+    if (next <= cur)
+        next = (uint64_t)cur + 1; // guarantee forward progress
+    if (next > b->slow_interval_s)
+        next = b->slow_interval_s;
+    return (uint32_t)next;
+}
+
+// A change token over an element's user-editable fields (everything up to the
+// runtime kill_left counter). Any edit changes it, which the scheduler uses to
+// restart the decay ramp at the initial rate and transmit promptly - matching
+// YAAC's "edits cause transmission to begin again at the initial rate". The
+// struct is fully zeroed on load (memset in load_locked), so padding bytes are
+// stable and don't cause spurious resets.
+static uint32_t objitem_signature(const objitem_t *b) {
+    const uint8_t *p = (const uint8_t *)b;
+    size_t n = offsetof(objitem_t, kill_left);
+    uint32_t h = 2166136261u; // FNV-1a
+    for (size_t i = 0; i < n; i++) {
+        h ^= p[i];
+        h *= 16777619u;
+    }
+    return h;
+}
+
+// Per-element next-due timestamps (monotonic seconds). 0 = due now, so every
+// enabled element transmits once on the first pass after start.
+static int64_t s_next_due[OBJITEM_COUNT] = { 0 };
+
+// Per-element runtime decay/path state (transient; not persisted - a reboot or
+// any edit restarts the decay ramp at the initial rate, like YAAC):
+//   s_cur_interval - the live (possibly decayed) interval; 0 => re-seed from
+//                    the element's initial repeat rate on next use.
+//   s_path_rot     - proportional-pathing rotation index into the element's
+//                    selected path presets.
+//   s_sig          - last-seen change token (see objitem_signature); a change
+//                    means the element was edited and its schedule is reset.
+static uint32_t s_cur_interval[OBJITEM_COUNT] = { 0 };
+static uint8_t s_path_rot[OBJITEM_COUNT] = { 0 };
+static uint32_t s_sig[OBJITEM_COUNT] = { 0 };
+
+// Legs requested by objitems_request_transmit_all() from whichever task handled
+// the query, consumed by the scheduler task below. An OBJITEM_TX_* bitmask
+// rather than a plain flag, so a re-announcement asked for over APRS-IS cannot
+// reach the RF leg. Requests accumulate by OR, and both the accumulation and
+// the scheduler's claim run under s_txAllLock: producers are the RF and APRS-IS
+// receive tasks, the consumer is the scheduler, and a request arriving between
+// a plain read and a plain clear would otherwise be dropped - one round fewer,
+// which is the round the querying station asked for.
+static volatile uint8_t s_tx_all_channels = 0;
+
+// Guards s_tx_all_channels. A portMUX (not a mutex) because both sides are a
+// handful of instructions and can then run with no allocation and no init-order
+// dependency - the same reasoning as s_loopTestLock in aprs_service.c.
+static portMUX_TYPE s_txAllLock = portMUX_INITIALIZER_UNLOCKED;
+
+void objitems_request_transmit_all(uint8_t channels) {
+    channels &= (uint8_t)OBJITEM_TX_ALL;
+    if (channels == 0)
+        return;
+    portENTER_CRITICAL(&s_txAllLock);
+    s_tx_all_channels |= channels;
+    portEXIT_CRITICAL(&s_txAllLock);
+}
+
+// One on-demand re-announcement round: report every transmittable element once
+// on the legs `allow` permits.
+//
+// This is a read of the elements, not a step of the transmitter. It leaves
+// s_next_due, s_cur_interval and s_path_rot untouched and never advances a kill
+// sequence, so the periodic schedule is exactly where it was when the round
+// started. That separation is what bounds the round's reach: the caller is
+// "?APRSO", which is answerable from the APRS-IS feed, and an unauthenticated
+// peer must not be able to move when this station's own periodic reports go
+// out, only to spend the airtime of the round its rate limiter allowed.
+//
+// The path is this cycle's entry of the element's proportional-path set, read
+// without rotating it, so the round follows the same path the next periodic
+// report will use.
+static void tx_all_now(const objitems_t *set, const char *src, uint8_t allow) {
+    if (!src[0])
+        return;
+
+    for (int i = 0; i < OBJITEM_COUNT; i++) {
+        const objitem_t *b = &set->item[i];
+
+        bool has_dest = objitem_effective_rf(b) || objitem_effective_inet(b);
+        if (!b->enable || !b->name[0] || !has_dest)
+            continue;
+
+        char paths[OBJITEM_PATH_PRESETS][72];
+        int np = objitem_paths(b, paths);
+        const char *path = (np > 0) ? paths[s_path_rot[i] % np] : NULL;
+
+        // An element already in its kill sequence, or retired outright, is
+        // reported as the kill report it currently is: what the round announces
+        // is the element's present state, which for those is that they are gone.
+        bool live = b->active && b->kill_left == 0;
+        tx_one(i, b, src, live, path, allow);
+        vTaskDelay(pdMS_TO_TICKS(OBJITEM_INTER_TX_MS));
+    }
+}
+
+uint32_t objitems_service(void) {
+    // One-time settle delay after boot before the first transmit pass.
+    static bool started = false;
+    if (!started) {
+        started = true;
+        return OBJITEM_START_DELAY_S;
+    }
+
+    // Claim any on-demand re-announcement request before the periodic pass
+    // reads the store, so the two work from the same snapshot. Reading the
+    // bitmask and clearing it are one indivisible step: bits set by a receive
+    // task in between belong to a request that has not been served yet, and
+    // clearing them outside the critical section would discard it.
+    uint8_t txAllChannels;
+    portENTER_CRITICAL(&s_txAllLock);
+    txAllChannels = s_tx_all_channels;
+    s_tx_all_channels = 0;
+    portEXIT_CRITICAL(&s_txAllLock);
+    if (txAllChannels) {
+        ESP_LOGI(TAG, "On-demand transmission of all Objects/Items requested (channels: %s%s)", (txAllChannels & OBJITEM_TX_RF) ? "RF " : "",
+                 (txAllChannels & OBJITEM_TX_INET) ? "INET" : "");
+    }
+
+    // A false load means the file was missing or unusable and empty defaults
+    // were substituted; the pass runs on those either way. The result is
+    // cached until the next write, so the report is made on the transition
+    // rather than on every pass, which at this cadence would be a log flood.
+    static bool warned_load = false;
+    objitems_t set;
+    bool loaded = objitems_load(&set);
+    if (!loaded && !warned_load)
+        ESP_LOGW(TAG, "%s unusable, transmitting from substituted defaults", OBJITEMS_PATH);
+    warned_load = !loaded;
+
+    char src[16];
+    resolve_source_call(src, sizeof(src));
+
+    // The on-demand round runs first and on its own, before `now` is taken, so
+    // the airtime it spends is already behind the periodic pass when that pass
+    // decides what is due.
+    if (txAllChannels)
+        tx_all_now(&set, src, txAllChannels);
+
+    int64_t now = sched_mono_seconds();
+    int64_t soonest = now + OBJITEM_POLL_CAP_S;
+    bool dirty = false; // set true if any kill sequence advanced -> persist once
+
+    for (int i = 0; i < OBJITEM_COUNT; i++) {
+        objitem_t *b = &set.item[i];
+
+        // Restart the schedule (and decay ramp) if the element was edited since
+        // the last pass, so an edit transmits promptly at the initial rate.
+        uint32_t sig = objitem_signature(b);
+        if (sig != s_sig[i]) {
+            s_sig[i] = sig;
+            s_cur_interval[i] = 0; // re-seed from the initial rate below
+            s_path_rot[i] = 0;
+            s_next_due[i] = 0; // transmit on this pass
+        }
+
+        // An element is transmittable if enabled, named, has some destination,
+        // and its scope isn't PRIVATE.
+        bool has_dest = objitem_effective_rf(b) || objitem_effective_inet(b);
+        bool sendable = b->enable && b->name[0] && has_dest;
+
+        if (!sendable || !src[0]) {
+            // Reset so re-enabling / naming / setting a callsign fires an
+            // immediate transmit on the next pass instead of waiting a stale
+            // timer, and so the decay ramp starts fresh.
+            s_next_due[i] = 0;
+            s_cur_interval[i] = 0;
+            s_path_rot[i] = 0;
+            continue;
+        }
+
+        // Seed the live interval from the element's initial repeat rate.
+        if (s_cur_interval[i] == 0)
+            s_cur_interval[i] = sched_clamp_interval(b->interval_s, OBJITEM_MIN_INTERVAL_S, OBJITEM_DEFAULT_INTERVAL_S);
+
+        if (now >= s_next_due[i]) {
+            // Resolve the proportional-path set and pick this cycle's path.
+            char paths[OBJITEM_PATH_PRESETS][72];
+            int np = objitem_paths(b, paths);
+            const char *path = (np > 0) ? paths[s_path_rot[i] % np] : NULL;
+
+            if (!b->active || b->kill_left > 0) {
+                // Kill path: element is being retired. Force a kill report and
+                // count it down. When the last kill report goes out, clear the
+                // element's enable flag so it leaves the air and shows disabled
+                // in the UI (mirrors bulletins' expiry auto-disable).
+                if (b->kill_left == 0)
+                    b->kill_left = OBJITEM_KILL_REPEATS; // first kill pass arms the repeat count
+                // A kill report is a normal element report with the "_" timestamp, so
+                // the builder is called with is_status = false.
+                tx_one(i, b, src, false, path, OBJITEM_TX_ALL);
+                b->kill_left--;
+                if (b->kill_left == 0) {
+                    b->enable = false;
+                    ESP_LOGI(TAG, "%s %d kill complete - disabled", b->is_item ? "Item" : "Object", i + 1);
+                }
+                dirty = true;
+            } else {
+                // Normal live report.
+                tx_one(i, b, src, true, path, OBJITEM_TX_ALL);
+            }
+
+            // Advance proportional pathing; apply one decay step after each
+            // full cycle through the selected paths (YAAC semantics). With one
+            // or no path, every transmission is itself a full cycle.
+            if (np > 1) {
+                s_path_rot[i] = (uint8_t)((s_path_rot[i] + 1) % np);
+                if (s_path_rot[i] == 0)
+                    s_cur_interval[i] = objitem_decay_step(s_cur_interval[i], b);
+            } else {
+                s_cur_interval[i] = objitem_decay_step(s_cur_interval[i], b);
+            }
+
+            s_next_due[i] = now + (int64_t)s_cur_interval[i];
+            vTaskDelay(pdMS_TO_TICKS(OBJITEM_INTER_TX_MS));
+            now = sched_mono_seconds(); // account for the inter-TX gap
+        }
+
+        if (s_next_due[i] < soonest)
+            soonest = s_next_due[i];
+    }
+
+    if (dirty) {
+        if (!objitems_save(&set))
+            ESP_LOGE(TAG, "kill sequence state could not be written to %s", OBJITEMS_PATH);
+    }
+
+    ESP_LOGD(TAG, "objitems_service stack free: %u bytes", (unsigned)(uxTaskGetStackHighWaterMark(NULL) * sizeof(StackType_t)));
+
+    int64_t sleep_s = soonest - sched_mono_seconds();
+    if (sleep_s < 1)
+        sleep_s = 1;
+    if (sleep_s > OBJITEM_POLL_CAP_S)
+        sleep_s = OBJITEM_POLL_CAP_S;
+    return (uint32_t)sleep_s;
+}
+
+void objitems_start(void) {
+    // The transmitter is driven by the shared beacon scheduler
+    // (beacon_scheduler_start()) via objitems_service(), so there is no task to
+    // create here - only the LittleFS lock to bring up and the store to put in
+    // place.
+    json_store_lock_ensure(&s_lock);
+
+    // Make sure /storage/objitems.json exists from the very first boot, the
+    // same guarantee every configuration file carries: the page would
+    // otherwise only create it the first time someone saves it, leaving the
+    // functionality with no file of its own until then. The load itself
+    // persists the defaults it substitutes for an absent file, so reading the
+    // set once here is all it takes.
+    objitems_t set;
+    objitems_load(&set);
+    ESP_LOGI(TAG, "Objects/Items configured (per-element interval, default=%us; driven by beacon scheduler)", (unsigned)OBJITEM_DEFAULT_INTERVAL_S);
+}

@@ -1,0 +1,883 @@
+// @file weather.c
+//
+// @author Emiliano Augusto Gonzalez ( lu3vea @ gmail . com)
+// @date 2026
+// @copyright GNU General Public License v3
+// @see https://github.com/hiperiondev/esp32idf_APRS
+//
+// @note
+// This is based on other projects:
+//     VP-Digi: https://github.com/sq8vps/vp-digi
+//     ESP32APRS: https://github.com/nakhonthai/ESP32APRS_Audio
+//     LibAPRS: https://github.com/markqvist/LibAPRS
+//
+//     please contact their authors for more information.
+//
+// @brief Own-station APRS Weather Report subsystem: owns the shared
+// ::weather_telemetry_data container, refreshes it from the sensors_local
+// registry once per second (with optional per-field averaging), and encodes
+// and transmits a standard APRS Weather Report at g_config.wx_interval.
+
+#include <math.h>
+#include <stdio.h>
+#include <string.h>
+#include <time.h>
+
+#include "esp_log.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
+#include "freertos/task.h"
+
+#include "app_config.h"
+#include "aprs_coord.h"
+#include "aprs_free_text.h" // aprs_free_text_build(), APRS_NO_ARCHIVE_PREFIX_LEN
+#include "aprs_path.h"      // aprs_path_build_suffix_from_config(), APRS_PATH_TCPIP_SUFFIX
+#include "aprs_service.h"
+#include "beacon_scheduler.h" // beacon_scheduler_jitter()
+#include "igate.h"
+#include "sched_time.h" // sched_mono_seconds() / sched_clamp_interval()
+#include "sensors_local.h"
+#include "weather.h"
+#include "weather_telemetry.h"
+
+static const char *TAG = "weather";
+
+// Same software-identifier destination call used by beacon.c / the message
+// component, for consistency across the firmware.
+#define WX_DEST APRS_TOCALL
+
+// APRS101 ch.12 software-type / weather-unit suffix: one software-type letter
+// followed by a 2-4 byte instrument/family string. 'x' is a locally-chosen
+// letter pending an official allocation alongside APRS_TOCALL; "ESP"
+// identifies this firmware's ESP32-based sensor family.
+//
+// The spec defines this as the token that terminates the weather data, and it
+// is the last thing every report this firmware transmits carries - after the
+// operator's comment, not before it. A free-text comment is not an element
+// the weather format defines at all, so the two cannot both be in their
+// nominal place; putting the identifier last keeps a decoder that reads the
+// unit string to end-of-line from swallowing the comment into it, and a
+// decoder scanning back from the end still finds the identifier where it
+// expects. This is why build_wx_tokens() does not emit it: it belongs to the
+// information field as a whole, not to the weather data block.
+//
+// Placing the comment before the identifier does mean a comment that opens
+// with a weather field letter ('c', 's', 'h', 'g', 't', 'r', 'p', 'P', 'L',
+// 'l', 'b', 'F', 'f' or '#') immediately followed by a digit reads, to a
+// strict APRS101 ch.12 parser, as one more weather token appended to the
+// block - a second, contradictory reading of that field rather than free
+// text. wx_comment is transmitted exactly as the operator entered it on the
+// Weather web-admin page, so avoiding that leading letter-plus-digit shape
+// is the operator's responsibility when choosing the comment text.
+#define WX_SW_SUFFIX "xESP"
+
+#define WX_MIN_INTERVAL_S     30  // sanity floor for wx_interval
+#define WX_DEFAULT_INTERVAL_S 600 // used when wx_interval == 0
+
+// -------------------------------------------------------------------------
+// The one shared container and its backing storage.
+//
+// weather[0] receives the decoded weather fields; telemetry_report[0] is kept
+// allocated so telemetry-capable local drivers can also write without special
+// casing, and so a future telemetry sender can read the same snapshot.
+// -------------------------------------------------------------------------
+weather_telemetry_data_t weather_telemetry_data;
+
+static aprs_weather_report_t s_wx;    // backs weather_telemetry_data.weather[0]
+static aprs_telemetry_report_t s_tlm; // backs weather_telemetry_data.telemetry_report[0]
+static bool s_tlm_analog_en[APRS_TELEMETRY_ANALOG_CHANNELS];
+static double s_tlm_analog[APRS_TELEMETRY_ANALOG_CHANNELS];
+static bool s_tlm_digital_en[APRS_TELEMETRY_DIGITAL_CHANNELS];
+static bool s_tlm_digital[APRS_TELEMETRY_DIGITAL_CHANNELS];
+
+static SemaphoreHandle_t s_lock;
+
+// Per-field averaging accumulators, reset after every beacon. Only used for
+// fields whose "Averaged" box is ticked on the Weather page.
+static double s_avg_sum[WX_SENSOR_NUM];
+static uint32_t s_avg_cnt[WX_SENSOR_NUM];
+
+void weather_lock(void) {
+    if (s_lock)
+        xSemaphoreTake(s_lock, portMAX_DELAY);
+}
+void weather_unlock(void) {
+    if (s_lock)
+        xSemaphoreGive(s_lock);
+}
+
+// -------------------------------------------------------------------------
+// Field accessors: map one wx_field_id_t to (is it present in this report?)
+// and (its engineering-unit value). Wind is the one enum slot that carries
+// three physical values, so it is spread over three rows here.
+// -------------------------------------------------------------------------
+static bool wx_field_present(const aprs_weather_report_t *wx, wx_field_id_t f) {
+    switch (f) {
+        case WX_FIELD_WIND_DIRECTION:
+        case WX_FIELD_WIND_SPEED:
+            return wx->enabled[APRS_WX_SENSOR_WIND] && !wx->wind.direction_unknown;
+        case WX_FIELD_WIND_GUST:
+            return wx->enabled[APRS_WX_SENSOR_WIND] && wx->wind.has_gust;
+        case WX_FIELD_TEMPERATURE:
+            return wx->enabled[APRS_WX_SENSOR_TEMPERATURE];
+        case WX_FIELD_RAIN_1H:
+            return wx->enabled[APRS_WX_SENSOR_RAIN_LAST_HOUR];
+        case WX_FIELD_RAIN_24H:
+            return wx->enabled[APRS_WX_SENSOR_RAIN_LAST_24H];
+        case WX_FIELD_RAIN_MIDNIGHT:
+            return wx->enabled[APRS_WX_SENSOR_RAIN_SINCE_MIDNIGHT];
+        case WX_FIELD_SNOW_24H:
+            return wx->enabled[APRS_WX_SENSOR_SNOW_LAST_24H];
+        case WX_FIELD_HUMIDITY:
+            return wx->enabled[APRS_WX_SENSOR_HUMIDITY];
+        case WX_FIELD_PRESSURE:
+            return wx->enabled[APRS_WX_SENSOR_BAROMETRIC_PRESSURE];
+        case WX_FIELD_LUMINOSITY:
+            return wx->enabled[APRS_WX_SENSOR_LUMINOSITY];
+        case WX_FIELD_FLOOD_HEIGHT_FT:
+            return wx->enabled[APRS_WX_SENSOR_FLOOD_HEIGHT_FT];
+        case WX_FIELD_FLOOD_HEIGHT_M:
+            return wx->enabled[APRS_WX_SENSOR_FLOOD_HEIGHT_M];
+        case WX_FIELD_RAIN_RAW:
+            return wx->enabled[APRS_WX_SENSOR_RAW_RAIN_COUNTER];
+        default:
+            return false;
+    }
+}
+
+static double wx_field_value(const aprs_weather_report_t *wx, wx_field_id_t f) {
+    switch (f) {
+        case WX_FIELD_WIND_DIRECTION:
+            return (double)wx->wind.direction_deg;
+        case WX_FIELD_WIND_SPEED:
+            return (double)wx->wind.sustained_mph;
+        case WX_FIELD_WIND_GUST:
+            return (double)wx->wind.gust_mph;
+        case WX_FIELD_TEMPERATURE:
+            return (double)wx->temperature_f;
+        case WX_FIELD_RAIN_1H:
+            return (double)wx->rain_last_hour_hundredths_in;
+        case WX_FIELD_RAIN_24H:
+            return (double)wx->rain_last_24h_hundredths_in;
+        case WX_FIELD_RAIN_MIDNIGHT:
+            return (double)wx->rain_since_midnight_hundredths_in;
+        case WX_FIELD_SNOW_24H:
+            return (double)wx->snow_last_24h_tenths_in;
+        case WX_FIELD_HUMIDITY:
+            return (double)wx->humidity_percent;
+        case WX_FIELD_PRESSURE:
+            return (double)wx->barometric_pressure_tenths_mb;
+        case WX_FIELD_LUMINOSITY:
+            return (double)wx->luminosity_wm2;
+        case WX_FIELD_FLOOD_HEIGHT_FT:
+            return (double)wx->flood_height_ft;
+        case WX_FIELD_FLOOD_HEIGHT_M:
+            return (double)wx->flood_height_m;
+        case WX_FIELD_RAIN_RAW:
+            return (double)wx->raw_rain_counter;
+        default:
+            return 0.0;
+    }
+}
+
+// -------------------------------------------------------------------------
+// Single-field read-out (weather.h): the name of a field, its current value,
+// and that value rendered in International System units for display.
+// -------------------------------------------------------------------------
+
+// Fixed English names, indexed by wx_field_id_t. The web admin renders its own
+// translated table; this is what a caller with no locale reports.
+static const char *const WX_FIELD_LABEL[WX_SENSOR_NUM] = {
+    [WX_FIELD_WIND_DIRECTION] = "Wind direction",     [WX_FIELD_WIND_SPEED] = "Wind speed",     [WX_FIELD_WIND_GUST] = "Wind gust",
+    [WX_FIELD_TEMPERATURE] = "Temperature",           [WX_FIELD_RAIN_1H] = "Rain last hour",    [WX_FIELD_RAIN_24H] = "Rain last 24 h",
+    [WX_FIELD_RAIN_MIDNIGHT] = "Rain since midnight", [WX_FIELD_SNOW_24H] = "Snow last 24 h",   [WX_FIELD_HUMIDITY] = "Humidity",
+    [WX_FIELD_PRESSURE] = "Barometric pressure",      [WX_FIELD_LUMINOSITY] = "Luminosity",     [WX_FIELD_FLOOD_HEIGHT_FT] = "Flood height",
+    [WX_FIELD_FLOOD_HEIGHT_M] = "Flood height",       [WX_FIELD_RAIN_RAW] = "Raw rain counter",
+};
+
+const char *weather_field_label(wx_field_id_t field) {
+    if ((unsigned)field >= (unsigned)WX_SENSOR_NUM || WX_FIELD_LABEL[field] == NULL)
+        return "";
+    return WX_FIELD_LABEL[field];
+}
+
+bool weather_field_snapshot(wx_field_id_t field, double *out_value) {
+    if ((unsigned)field >= (unsigned)WX_SENSOR_NUM || out_value == NULL)
+        return false;
+
+    weather_lock();
+    bool present = wx_field_present(&s_wx, field);
+    if (present)
+        *out_value = wx_field_value(&s_wx, field);
+    weather_unlock();
+
+    return present;
+}
+
+void weather_field_format(wx_field_id_t field, double value, char *out, size_t out_max) {
+    if (out == NULL || out_max == 0)
+        return;
+
+    switch (field) {
+        case WX_FIELD_WIND_DIRECTION:
+            snprintf(out, out_max, "%.0f deg", value);
+            break;
+        case WX_FIELD_WIND_SPEED:
+        case WX_FIELD_WIND_GUST:
+            // mph -> km/h
+            snprintf(out, out_max, "%.1f km/h", value * 1.609344);
+            break;
+        case WX_FIELD_TEMPERATURE:
+            // deg F -> deg C
+            snprintf(out, out_max, "%.1f C", (value - 32.0) * 5.0 / 9.0);
+            break;
+        case WX_FIELD_RAIN_1H:
+        case WX_FIELD_RAIN_24H:
+        case WX_FIELD_RAIN_MIDNIGHT:
+            // 1/100 in -> mm
+            snprintf(out, out_max, "%.1f mm", (value / 100.0) * 25.4);
+            break;
+        case WX_FIELD_SNOW_24H:
+            // 1/10 in -> mm
+            snprintf(out, out_max, "%.1f mm", (value / 10.0) * 25.4);
+            break;
+        case WX_FIELD_HUMIDITY:
+            snprintf(out, out_max, "%.0f %%", value);
+            break;
+        case WX_FIELD_PRESSURE:
+            // Already SI: tenths of a millibar are tenths of a hectopascal
+            snprintf(out, out_max, "%.1f hPa", value / 10.0);
+            break;
+        case WX_FIELD_LUMINOSITY:
+            // Already SI
+            snprintf(out, out_max, "%.0f W/m2", value);
+            break;
+        case WX_FIELD_FLOOD_HEIGHT_FT:
+            // ft -> m
+            snprintf(out, out_max, "%.1f m", value * 0.3048);
+            break;
+        case WX_FIELD_FLOOD_HEIGHT_M:
+            snprintf(out, out_max, "%.1f m", value);
+            break;
+        case WX_FIELD_RAIN_RAW:
+            // A bucket count, not a length: it has no unit to convert to
+            snprintf(out, out_max, "%.0f", value);
+            break;
+        default:
+            snprintf(out, out_max, "%.1f", value);
+            break;
+    }
+}
+
+// -------------------------------------------------------------------------
+// 1 Hz refresh: for EACH weather field independently, read the one local
+// driver the operator picked in g_config.wx_sensor_ch[field] (Weather page
+// "Channel" column) and copy only that field's value into the shared
+// report. For any field with "Averaged" ticked, fold this sample into its
+// accumulator.
+//
+// @note The per-field resolution is what makes the mapping authoritative.
+//       Several registered drivers can advertise the same weather quantity
+//       (the "bme280" driver and the "wx-example" self-test driver both
+//       report temperature, for instance), so a single pass that let every
+//       WEATHER-capable driver write into the shared report would leave each
+//       field carrying whichever driver ran last in registry order. Reading
+//       one driver per field through sensors_local_save_one() instead means
+//       the on-air packet carries exactly the channel the operator picked,
+//       and matches the Weather page's live "Value" preview, which resolves
+//       the selected channel the same way.
+// -------------------------------------------------------------------------
+static void weather_refresh_now(void) {
+    weather_lock();
+
+    // Clear the enabled flags so only fields whose selected driver actually
+    // reports *this* cycle count; values are overwritten field-by-field below.
+    memset(s_wx.enabled, 0, sizeof(s_wx.enabled));
+    memset(s_tlm_analog_en, 0, sizeof(s_tlm_analog_en));
+    memset(s_tlm_digital_en, 0, sizeof(s_tlm_digital_en));
+
+    // Telemetry channels are not (yet) per-field selectable, so keep the
+    // aggregate call for that family only.
+    sensors_local_save(&weather_telemetry_data, SENSOR_LOCAL_DATA_TELEMETRY);
+
+    // Resolve each weather field independently against its selected driver.
+    // A field is sampled ONLY if it is both (a) enabled by the operator on
+    // the Weather page ("Enabled" checkbox, wx_sensor_enable[f]) and (b) has
+    // an actual source channel picked (wx_sensor_ch[f] != SENSOR_LOCAL_CH_NONE/"(none)").
+    // Either condition failing must leave s_wx.enabled[...] cleared (it was
+    // just memset above) so the field is never folded into the averaging
+    // accumulator and never appears in the on-air packet - a disabled field
+    // or a "(none)" channel must not transmit stale/simulated data.
+    for (int f = 0; f < WX_SENSOR_NUM; f++) {
+        if (!g_config.wx_sensor_enable[f])
+            continue; // disabled on the Weather page - do not sample or send
+
+        uint8_t ch = g_config.wx_sensor_ch[f];
+        if (ch == SENSOR_LOCAL_CH_NONE) // "(none)" - no source channel picked
+            continue;
+
+        // Scratch container so one driver's save() can't clobber fields
+        // already resolved from a *different* driver earlier in this loop.
+        aprs_weather_report_t scratch = { 0 };
+        weather_telemetry_data_t scratch_data = { 0 };
+        scratch_data.weather = &scratch;
+        scratch_data.weather_qty = 1;
+
+        if (sensors_local_save_one((size_t)ch, &scratch_data, SENSOR_LOCAL_DATA_WEATHER) != ESP_OK)
+            continue;
+
+        if (!wx_field_present(&scratch, (wx_field_id_t)f))
+            continue;
+
+        // Copy just this one field's value (and, for wind, its siblings'
+        // shared enable bit) into the live report - never the whole struct.
+        switch ((wx_field_id_t)f) {
+            case WX_FIELD_WIND_DIRECTION:
+                s_wx.wind.direction_deg = scratch.wind.direction_deg;
+                s_wx.wind.direction_unknown = scratch.wind.direction_unknown;
+                s_wx.enabled[APRS_WX_SENSOR_WIND] = true;
+                break;
+            case WX_FIELD_WIND_SPEED:
+                s_wx.wind.sustained_mph = scratch.wind.sustained_mph;
+                s_wx.enabled[APRS_WX_SENSOR_WIND] = true;
+                break;
+            case WX_FIELD_WIND_GUST:
+                s_wx.wind.gust_mph = scratch.wind.gust_mph;
+                s_wx.wind.has_gust = scratch.wind.has_gust;
+                s_wx.enabled[APRS_WX_SENSOR_WIND] = true;
+                break;
+            case WX_FIELD_TEMPERATURE:
+                s_wx.temperature_f = scratch.temperature_f;
+                s_wx.enabled[APRS_WX_SENSOR_TEMPERATURE] = true;
+                break;
+            case WX_FIELD_RAIN_1H:
+                s_wx.rain_last_hour_hundredths_in = scratch.rain_last_hour_hundredths_in;
+                s_wx.enabled[APRS_WX_SENSOR_RAIN_LAST_HOUR] = true;
+                break;
+            case WX_FIELD_RAIN_24H:
+                s_wx.rain_last_24h_hundredths_in = scratch.rain_last_24h_hundredths_in;
+                s_wx.enabled[APRS_WX_SENSOR_RAIN_LAST_24H] = true;
+                break;
+            case WX_FIELD_RAIN_MIDNIGHT:
+                s_wx.rain_since_midnight_hundredths_in = scratch.rain_since_midnight_hundredths_in;
+                s_wx.enabled[APRS_WX_SENSOR_RAIN_SINCE_MIDNIGHT] = true;
+                break;
+            case WX_FIELD_SNOW_24H:
+                s_wx.snow_last_24h_tenths_in = scratch.snow_last_24h_tenths_in;
+                s_wx.enabled[APRS_WX_SENSOR_SNOW_LAST_24H] = true;
+                break;
+            case WX_FIELD_HUMIDITY:
+                s_wx.humidity_percent = scratch.humidity_percent;
+                s_wx.enabled[APRS_WX_SENSOR_HUMIDITY] = true;
+                break;
+            case WX_FIELD_PRESSURE:
+                s_wx.barometric_pressure_tenths_mb = scratch.barometric_pressure_tenths_mb;
+                s_wx.enabled[APRS_WX_SENSOR_BAROMETRIC_PRESSURE] = true;
+                break;
+            case WX_FIELD_LUMINOSITY:
+                s_wx.luminosity_wm2 = scratch.luminosity_wm2;
+                s_wx.enabled[APRS_WX_SENSOR_LUMINOSITY] = true;
+                break;
+            case WX_FIELD_FLOOD_HEIGHT_FT:
+                s_wx.flood_height_ft = scratch.flood_height_ft;
+                s_wx.enabled[APRS_WX_SENSOR_FLOOD_HEIGHT_FT] = true;
+                break;
+            case WX_FIELD_FLOOD_HEIGHT_M:
+                s_wx.flood_height_m = scratch.flood_height_m;
+                s_wx.enabled[APRS_WX_SENSOR_FLOOD_HEIGHT_M] = true;
+                break;
+            default:
+                break;
+        }
+    }
+
+    // Fold this fresh sample into the running averages where requested.
+    for (int f = 0; f < WX_SENSOR_NUM; f++) {
+        if (!g_config.wx_sensor_avg[f])
+            continue;
+        if (!wx_field_present(&s_wx, (wx_field_id_t)f))
+            continue;
+        s_avg_sum[f] += wx_field_value(&s_wx, (wx_field_id_t)f);
+        s_avg_cnt[f]++;
+    }
+
+    weather_unlock();
+}
+
+// -------------------------------------------------------------------------
+// Encoding helpers
+// -------------------------------------------------------------------------
+
+// Resolved (post-averaging) view of one field for the encoder.
+typedef struct {
+    bool present;
+    double value;
+} wx_resolved_t;
+
+// Snapshot + resolve all fields under the lock: apply the operator's enable
+// mask, use the averaged value where averaging is on (and had samples), and
+// reset the accumulators for the next interval. Also copies the position and
+// timestamp bits the encoder needs, so the lock is released quickly.
+static void resolve_fields(wx_resolved_t out[WX_SENSOR_NUM]) {
+    weather_lock();
+    for (int f = 0; f < WX_SENSOR_NUM; f++) {
+        bool en = g_config.wx_sensor_enable[f] && wx_field_present(&s_wx, (wx_field_id_t)f);
+        double v = wx_field_value(&s_wx, (wx_field_id_t)f);
+        if (en && g_config.wx_sensor_avg[f] && s_avg_cnt[f] > 0)
+            v = s_avg_sum[f] / (double)s_avg_cnt[f];
+        out[f].present = en;
+        out[f].value = v;
+        s_avg_sum[f] = 0.0;
+        s_avg_cnt[f] = 0;
+    }
+    weather_unlock();
+}
+
+// Appends the weather data tokens (wind + gust + temp always, the rest only
+// when present) to `out`. `positionless` selects the "cddd sSSS" wind prefix
+// used by positionless reports instead of the "ddd/sss" used by positioned
+// reports, and also suppresses the snow token, which has no encoding in that
+// format. The software-type / weather-unit indicator that closes the report
+// is not part of this block - each layout in build_wx_packet() appends
+// WX_SW_SUFFIX itself, as the last token of the whole information field.
+// Returns bytes written.
+static int build_wx_tokens(const wx_resolved_t r[WX_SENSOR_NUM], bool positionless, char *out, size_t outMax) {
+    if (outMax == 0)
+        return 0;
+
+    size_t u = 0;
+#define WX_APP(...)                                                                                                                                            \
+    do {                                                                                                                                                       \
+        int _n = snprintf(out + u, outMax - u, __VA_ARGS__);                                                                                                   \
+        if (_n < 0)                                                                                                                                            \
+            return (int)u;                                                                                                                                     \
+        if ((size_t)_n >= outMax - u) {                                                                                                                        \
+            return (int)(outMax - 1);                                                                                                                          \
+        }                                                                                                                                                      \
+        u += (size_t)_n;                                                                                                                                       \
+    } while (0)
+
+    // Wind direction + sustained speed. Always emitted (placeholders if absent)
+    // so the report stays a spec-valid WX frame.
+    if (r[WX_FIELD_WIND_DIRECTION].present && r[WX_FIELD_WIND_SPEED].present) {
+        int dir = (int)lround(r[WX_FIELD_WIND_DIRECTION].value);
+        if (dir <= 0)
+            dir = 360; // APRS uses 001-360; 000 means "unknown"
+        else if (dir > 360)
+            dir = ((dir - 1) % 360) + 1; // wrap into 001-360, never 000
+        int spd = (int)lround(r[WX_FIELD_WIND_SPEED].value);
+        if (spd < 0)
+            spd = 0;
+        if (spd > 999)
+            spd = 999;
+        if (positionless)
+            WX_APP("c%03ds%03d", dir, spd);
+        else
+            WX_APP("%03d/%03d", dir, spd);
+    } else {
+        WX_APP(positionless ? "c...s..." : ".../...");
+    }
+
+    // Gust.
+    if (r[WX_FIELD_WIND_GUST].present) {
+        int g = (int)lround(r[WX_FIELD_WIND_GUST].value);
+        if (g < 0)
+            g = 0;
+        if (g > 999)
+            g = 999;
+        WX_APP("g%03d", g);
+    } else {
+        WX_APP("g...");
+    }
+
+    // Temperature (deg F, may be negative). Always emitted.
+    if (r[WX_FIELD_TEMPERATURE].present) {
+        int t = (int)lround(r[WX_FIELD_TEMPERATURE].value);
+        if (t > 999)
+            t = 999;
+        if (t < -99)
+            t = -99;
+        if (t < 0)
+            WX_APP("t-%02d", -t);
+        else
+            WX_APP("t%03d", t);
+    } else {
+        WX_APP("t...");
+    }
+
+    // Optional tokens - emitted only when actually present. Rain fields
+    // clamp to the 3-digit field width instead of wrapping, matching every
+    // other field in this function: a wrapped value would read back as
+    // *less* rain than actually fell, which is worse than a saturated
+    // "999" that at least reads as "very heavy".
+    if (r[WX_FIELD_RAIN_1H].present) {
+        long rr = lround(r[WX_FIELD_RAIN_1H].value);
+        if (rr < 0)
+            rr = 0;
+        if (rr > 999)
+            rr = 999;
+        WX_APP("r%03ld", rr);
+    }
+    if (r[WX_FIELD_RAIN_24H].present) {
+        long rp = lround(r[WX_FIELD_RAIN_24H].value);
+        if (rp < 0)
+            rp = 0;
+        if (rp > 999)
+            rp = 999;
+        WX_APP("p%03ld", rp);
+    }
+    if (r[WX_FIELD_RAIN_MIDNIGHT].present) {
+        long rP = lround(r[WX_FIELD_RAIN_MIDNIGHT].value);
+        if (rP < 0)
+            rP = 0;
+        if (rP > 999)
+            rP = 999;
+        WX_APP("P%03ld", rP);
+    }
+    if (r[WX_FIELD_HUMIDITY].present) {
+        int h = (int)lround(r[WX_FIELD_HUMIDITY].value);
+        if (h >= 100)
+            h = 0; // on-air "00" encodes 100 %RH
+        else if (h < 1)
+            h = 1; // avoid "00", which would read back as 100 %RH
+        WX_APP("h%02d", h % 100);
+    }
+    if (r[WX_FIELD_PRESSURE].present) {
+        long b = lround(r[WX_FIELD_PRESSURE].value);
+        if (b < 0)
+            b = 0;
+        if (b > 99999)
+            b = 99999;
+        WX_APP("b%05ld", b);
+    }
+    if (r[WX_FIELD_LUMINOSITY].present) {
+        int l = (int)lround(r[WX_FIELD_LUMINOSITY].value);
+        if (l < 0)
+            l = 0;
+        if (l > 1999)
+            l = 1999; // clamp instead of wrapping past the 'l' token's range
+        if (l < 1000)
+            WX_APP("L%03d", l);
+        else
+            WX_APP("l%03d", l - 1000);
+    }
+    // Snow has no positionless encoding: the WinAPRS verbose format assigns
+    // 's' to wind speed instead, so a snow token there would read back as a
+    // second wind reading. The field is skipped for that format; the caller
+    // logs when this drops a configured reading.
+    if (r[WX_FIELD_SNOW_24H].present && !positionless) {
+        // On-air unit is whole/fractional inches, three bytes: the fractional
+        // form ("s1.5") below 10 inches keeps the nearest-tenth resolution the
+        // struct stores in that width, the zero-padded integer form ("s012")
+        // above it, matching the field's defined range.
+        double snowIn = r[WX_FIELD_SNOW_24H].value / 10.0;
+        if (snowIn < 0)
+            snowIn = 0;
+        if (snowIn > 999)
+            snowIn = 999;
+        if (snowIn < 10.0)
+            WX_APP("s%.1f", snowIn);
+        else
+            WX_APP("s%03d", (int)lround(snowIn));
+    }
+    // Flood/water-gauge height, tenth-foot (or tenth-metre) resolution,
+    // unpadded per the aprs12/watergage.txt "Fxxxx" example ("F20.1"), not
+    // the zero-padded six-character width used by the other numeric fields.
+    if (r[WX_FIELD_FLOOD_HEIGHT_FT].present) {
+        double ft = r[WX_FIELD_FLOOD_HEIGHT_FT].value;
+        if (ft < 0)
+            ft = 0;
+        if (ft > 999.9)
+            ft = 999.9;
+        WX_APP("F%.1f", ft);
+    }
+    if (r[WX_FIELD_FLOOD_HEIGHT_M].present) {
+        double m = r[WX_FIELD_FLOOD_HEIGHT_M].value;
+        if (m < 0)
+            m = 0;
+        if (m > 999.9)
+            m = 999.9;
+        WX_APP("f%.1f", m);
+    }
+    // Raw tip-bucket counter: the gauge's own running count, transmitted
+    // unscaled so a receiver can difference two reports. It is a count, not a
+    // measurement in hundredths of an inch, and it is never reset by the
+    // station. Four digits, zero-padded, wrapping at the field width the way
+    // the counter itself wraps.
+    if (r[WX_FIELD_RAIN_RAW].present) {
+        long raw = lround(r[WX_FIELD_RAIN_RAW].value);
+        if (raw < 0)
+            raw = 0;
+        WX_APP("#%04ld", raw % 10000);
+    }
+
+#undef WX_APP
+    return (int)u;
+}
+
+// Builds the full TNC2 line for the weather beacon. `path` is the path suffix
+// that goes between the destination address and the ':', leading comma
+// included: the caller picks it per leg, so an RF transmission carries the
+// operator's digipeater selection and an APRS-IS transmission carries
+// APRS_PATH_TCPIP_SUFFIX. Returns length or 0.
+static int build_wx_packet(const wx_resolved_t r[WX_SENSOR_NUM], const char *path, char *out, size_t outMax) {
+    // Snapshot every g_config field this builder needs up front, under the
+    // config lock, so the web task rewriting them during a save can't tear a
+    // string mid-build (this runs on the 1 Hz weather task, async to saves).
+    char cfg_call[10];
+    char cfg_object[sizeof(g_config.wx_object)];
+    char cfg_comment[COMMENT_SIZE];
+    uint8_t cfg_ssid;
+    float cfg_lat, cfg_lon;
+    bool cfg_timestamp;
+    bool cfg_msg_capable;
+    bool cfg_no_archive;
+    app_config_lock();
+    {
+        bool useWx = g_config.wx_mycall[0] != 0;
+        memcpy(cfg_call, useWx ? g_config.wx_mycall : g_config.aprs_mycall, sizeof(cfg_call));
+        cfg_ssid = useWx ? g_config.wx_ssid : g_config.aprs_ssid;
+        memcpy(cfg_object, g_config.wx_object, sizeof(cfg_object));
+        memcpy(cfg_comment, g_config.wx_comment, sizeof(cfg_comment));
+        cfg_lat = g_config.wx_lat;
+        cfg_lon = g_config.wx_lon;
+        cfg_timestamp = g_config.wx_timestamp;
+        cfg_msg_capable = g_config.msg_enable;
+        cfg_no_archive = g_config.my_no_archive;
+    }
+    app_config_unlock();
+    // The three memcpy() calls above take the full field width, so
+    // termination depends on what the config loader stored. Force it for all
+    // of them: everything downstream treats these as C strings, and a field
+    // filled edge to edge would send it reading past the end of the local
+    // buffer.
+    cfg_call[sizeof(cfg_call) - 1] = 0;
+    cfg_object[sizeof(cfg_object) - 1] = 0;
+    cfg_comment[sizeof(cfg_comment) - 1] = 0;
+
+    // On-air form of the operator's comment, built once and used by every
+    // report form below: reserved characters removed and the station-wide
+    // no-archive marker applied. Sized with room for the marker so enabling
+    // it never costs the operator four characters of their own text.
+    char comment[COMMENT_SIZE + APRS_NO_ARCHIVE_PREFIX_LEN];
+    aprs_free_text_build(cfg_comment, cfg_no_archive, comment, sizeof(comment));
+
+    const char *call = cfg_call;
+    uint8_t ssid = cfg_ssid;
+    if (!call[0])
+        return 0;
+
+    char callField[16];
+    if (ssid > 0)
+        snprintf(callField, sizeof(callField), "%s-%d", call, (int)ssid);
+    else
+        snprintf(callField, sizeof(callField), "%s", call);
+
+    // Timestamp (DHM zulu for positioned/object, MDHM for positionless).
+    // Reduce each field modulo its cycle so the formatter can prove a 2-digit
+    // width (and so a bad clock can never emit an over-long field on-air).
+    time_t now = time(NULL);
+    struct tm tmv;
+    gmtime_r(&now, &tmv);
+    unsigned t_mon = ((unsigned)tmv.tm_mon + 1u) % 13u; // 1..12
+    unsigned t_day = (unsigned)tmv.tm_mday % 32u;       // 0..31
+    unsigned t_hour = (unsigned)tmv.tm_hour % 24u;      // 0..23
+    unsigned t_min = (unsigned)tmv.tm_min % 60u;        // 0..59
+
+    bool have_pos = !(cfg_lat == 0.0f && cfg_lon == 0.0f);
+    bool is_object = cfg_object[0] != 0;
+
+    char wxTokens[160];
+    char info[420]; // DTI(1)+name(9)+ts(8)+lat(9)+lon(10)+wxTokens(up to 160)+comment(up to 132)+WX_SW_SUFFIX(4)+NUL
+
+    if (is_object) {
+        // Object report carrying weather: ";NAME     *DDHHMMz{lat}/{lon}_{wx}{comment}"
+        char latStr[10], lonStr[11], ts[8], name[10];
+        aprs_coord_format(cfg_lat, cfg_lon, latStr, sizeof(latStr), lonStr, sizeof(lonStr));
+        snprintf(ts, sizeof(ts), "%02u%02u%02uz", t_day, t_hour, t_min);
+        snprintf(name, sizeof(name), "%-9.9s", cfg_object); // fixed 9 chars, space padded
+        build_wx_tokens(r, false, wxTokens, sizeof(wxTokens));
+        snprintf(info, sizeof(info), ";%s*%s%s/%s_%s%s%s", name, ts, latStr, lonStr, wxTokens, comment, WX_SW_SUFFIX);
+    } else if (have_pos) {
+        // Positioned weather report, with or without a timestamp.
+        char latStr[10], lonStr[11];
+        aprs_coord_format(cfg_lat, cfg_lon, latStr, sizeof(latStr), lonStr, sizeof(lonStr));
+        build_wx_tokens(r, false, wxTokens, sizeof(wxTokens));
+        // Same message-capable/not-capable DTI choice buildPositionPacket()
+        // makes in beacon.c, rather than always tying it to the timestamp.
+        if (cfg_timestamp) {
+            char ts[8];
+            snprintf(ts, sizeof(ts), "%02u%02u%02uz", t_day, t_hour, t_min);
+            snprintf(info, sizeof(info), "%c%s%s/%s_%s%s%s", cfg_msg_capable ? '@' : '/', ts, latStr, lonStr, wxTokens, comment, WX_SW_SUFFIX);
+        } else {
+            snprintf(info, sizeof(info), "%c%s/%s_%s%s%s", cfg_msg_capable ? '=' : '!', latStr, lonStr, wxTokens, comment, WX_SW_SUFFIX);
+        }
+    } else {
+        // Positionless weather report: "_MMDDHHMM" + c/s wind prefix.
+        // The positionless format has no free letter for snow ('s' is
+        // already wind speed there), so a station with no position
+        // configured cannot put a snow reading on the air; log once per
+        // report so the operator can see why the field is missing rather
+        // than a silently truncated packet.
+        if (r[WX_FIELD_SNOW_24H].present)
+            ESP_LOGW(TAG, "snow field enabled but station has no position - omitted from positionless WX report");
+        char ts8[9];
+        snprintf(ts8, sizeof(ts8), "%02u%02u%02u%02u", t_mon, t_day, t_hour, t_min);
+        build_wx_tokens(r, true, wxTokens, sizeof(wxTokens));
+        snprintf(info, sizeof(info), "_%s%s%s%s", ts8, wxTokens, comment, WX_SW_SUFFIX);
+    }
+
+    int n = snprintf(out, outMax, "%s>%s%s:%s", callField, WX_DEST, path, info);
+    // snprintf() returns the length it *would* have written, so a result at or
+    // past outMax means the line did not fit. Refuse it instead of returning a
+    // clamped length: the RF leg cannot encode more than APRS_TNC2_MAX_LEN
+    // bytes into an AX.25 frame, so a clamped length would only put a truncated
+    // report on the air (or none at all, while the same over-long line still
+    // went out over APRS-IS). Returning 0 makes the caller skip both legs.
+    if (n < 0)
+        return 0;
+    if ((size_t)n >= outMax || n > APRS_TNC2_MAX_LEN) {
+        ESP_LOGW(TAG, "WX packet too long (%d bytes, max %d) - shorten the comment or the path", n, APRS_TNC2_MAX_LEN);
+        return 0;
+    }
+    return n;
+}
+
+// Same resolution rule as resolve_fields() (operator enable mask, averaged
+// value where averaging is on and has samples) but read-only: does NOT reset
+// s_avg_sum/s_avg_cnt. Used by weather_build_report_packet() so an on-demand
+// reply never steals samples from the periodic beacon's running average -
+// only the beacon's own interval close (resolve_fields()) may consume them.
+static void peek_fields(wx_resolved_t out[WX_SENSOR_NUM]) {
+    weather_lock();
+    for (int f = 0; f < WX_SENSOR_NUM; f++) {
+        bool en = g_config.wx_sensor_enable[f] && wx_field_present(&s_wx, (wx_field_id_t)f);
+        double v = wx_field_value(&s_wx, (wx_field_id_t)f);
+        if (en && g_config.wx_sensor_avg[f] && s_avg_cnt[f] > 0)
+            v = s_avg_sum[f] / (double)s_avg_cnt[f];
+        out[f].present = en;
+        out[f].value = v;
+    }
+    weather_unlock();
+}
+
+// Builds a WX report from the latest cached reading, without touching
+// s_wx_next_due or the running averages, so an on-demand caller (the query
+// responder) never disturbs the periodic beacon's own cadence or its next
+// average window. Shares build_wx_packet() with weather_beacon_service() so
+// the two encodings can never disagree.
+int weather_build_report_packet(const char *path, char *out, size_t out_max) {
+    wx_resolved_t r[WX_SENSOR_NUM];
+    peek_fields(r);
+    return build_wx_packet(r, path, out, out_max);
+}
+
+// -------------------------------------------------------------------------
+// Tasks
+// -------------------------------------------------------------------------
+
+// Refreshes the shared weather container from the sensors_local registry.
+// Called once per second from the APRS service's existing 1 Hz tick
+// (serviceTickTask in aprs_service.c) via weather_service_1hz(), rather than
+// from a dedicated task, so the WX subsystem does not need its own 4 KB-stack
+// sensor task.
+void weather_service_1hz(void) {
+    weather_refresh_now();
+}
+
+// Monotonic "next due" timestamp (seconds); 0 = due now, so an enabled WX
+// beacon transmits once on the first pass and only then starts counting out
+// its interval.
+static int64_t s_wx_next_due = 0;
+
+// One serviced pass of the WX beacon. Called by the shared beacon scheduler
+// (beacon_scheduler.c) under the same contract as beacon_service(): transmit if
+// due, return seconds until next due.
+uint32_t weather_beacon_service(void) {
+    if (!g_config.wx_en || (!g_config.wx_2rf && !g_config.wx_2inet)) {
+        s_wx_next_due = 0; // reset so (re-)enabling the beacon fires an immediate TX
+        return 5;          // idle re-check cadence while the beacon is off
+    }
+
+    int64_t now = sched_mono_seconds();
+    if (now >= s_wx_next_due) {
+        wx_resolved_t r[WX_SENSOR_NUM];
+        resolve_fields(r);
+
+        // One packet per leg: the two differ in their path, since a report
+        // injected straight into APRS-IS never traverses the digipeaters the
+        // RF leg names and carries APRS_PATH_TCPIP_SUFFIX instead
+        // (aprs-is.net/Connecting.aspx). Everything else comes from the same
+        // builder and the same reading snapshot.
+        char packet[APRS_TNC2_BUF_SIZE]; // sized by the RF leg's own limit, so a line that does not fit is refused at build time
+        if (g_config.wx_2rf) {
+            char path[80];
+            aprs_path_build_suffix_from_config(g_config.wx_path, path, sizeof(path));
+            int len = build_wx_packet(r, path, packet, sizeof(packet));
+            if (len > 0) {
+                if (aprs_service_send_tnc2(packet, (size_t)len))
+                    ESP_LOGI(TAG, "WX beacon TX (RF): %s", packet);
+                else
+                    ESP_LOGW(TAG, "WX beacon NOT sent over RF - modem not ready or busy: %s", packet);
+            } else {
+                ESP_LOGW(TAG, "WX packet not built - no callsign configured (set Weather or APRS callsign), or the line did not fit; skipping");
+            }
+        }
+        if (g_config.wx_2inet) {
+            int len = build_wx_packet(r, APRS_PATH_TCPIP_SUFFIX, packet, sizeof(packet));
+            if (len > 0) {
+                if (igate_send_raw(packet, (size_t)len))
+                    ESP_LOGI(TAG, "WX beacon TX (INET): %s", packet);
+                else
+                    ESP_LOGW(TAG, "WX beacon NOT sent over INET - APRS-IS not connected yet: %s", packet);
+            } else {
+                ESP_LOGW(TAG, "WX packet not built - no callsign configured (set Weather or APRS callsign), or the line did not fit; skipping");
+            }
+        }
+
+        // Same watermark log the other beacon builders emit: a tight scheduler
+        // stack shows up here instead of as a truncated or silently dropped RF
+        // packet.
+        ESP_LOGD(TAG, "wx_beacon stack free: %u bytes", (unsigned)(uxTaskGetStackHighWaterMark(NULL) * sizeof(StackType_t)));
+
+        s_wx_next_due = now + (int64_t)beacon_scheduler_jitter(sched_clamp_interval(g_config.wx_interval, WX_MIN_INTERVAL_S, WX_DEFAULT_INTERVAL_S));
+    }
+
+    int64_t rem = s_wx_next_due - sched_mono_seconds();
+    if (rem < 1)
+        rem = 1;
+    return (uint32_t)rem;
+}
+
+void weather_start(void) {
+    // Wire the backing storage into the shared container.
+    memset(&s_wx, 0, sizeof(s_wx));
+    memset(&s_tlm, 0, sizeof(s_tlm));
+    s_tlm.analog_count = APRS_TELEMETRY_ANALOG_CHANNELS;
+    s_tlm.analog_enabled = s_tlm_analog_en;
+    s_tlm.analog = s_tlm_analog;
+    s_tlm.digital_count = APRS_TELEMETRY_DIGITAL_CHANNELS;
+    s_tlm.digital_enabled = s_tlm_digital_en;
+    s_tlm.digital = s_tlm_digital;
+    snprintf(s_tlm.sequence, sizeof(s_tlm.sequence), "000");
+
+    memset(&weather_telemetry_data, 0, sizeof(weather_telemetry_data));
+    weather_telemetry_data.weather = &s_wx;
+    weather_telemetry_data.weather_qty = 1;
+    weather_telemetry_data.telemetry_report = &s_tlm;
+    weather_telemetry_data.telemetry_report_qty = 1;
+
+    s_lock = xSemaphoreCreateMutex();
+
+    // Arm the registry's own lock before any other task can reach it, then
+    // eagerly bring up the auto-registered drivers so the first sample and the
+    // Weather page's channel list are populated.
+    sensors_local_init();
+    sensors_local_init_all();
+
+    // The weather subsystem creates no task of its own: the WX beacon runs in
+    // the shared beacon scheduler (via weather_beacon_service()) and the 1 Hz
+    // sensor refresh runs in the APRS service tick (via weather_service_1hz()).
+    ESP_LOGI(TAG, "Weather subsystem started (en=%d rf=%d inet=%d interval=%us, %u local sensor driver(s))", g_config.wx_en, g_config.wx_2rf, g_config.wx_2inet,
+             (unsigned)g_config.wx_interval, (unsigned)sensors_local_count());
+}

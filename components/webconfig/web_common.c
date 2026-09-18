@@ -1,0 +1,1890 @@
+// @file web_common.c
+//
+// @author Emiliano Augusto Gonzalez ( lu3vea @ gmail . com)
+// @date 2026
+// @copyright GNU General Public License v3
+// @see https://github.com/hiperiondev/esp32idf_APRS
+//
+// @note
+// This is based on other projects:
+//     VP-Digi: https://github.com/sq8vps/vp-digi
+//     ESP32APRS: https://github.com/nakhonthai/ESP32APRS_Audio
+//     LibAPRS: https://github.com/markqvist/LibAPRS
+//
+//     please contact their authors for more information.
+//
+// @brief Shared web admin helpers: HTTP Basic authentication, request body
+// reading, URL-decoded form field extraction, and the common HTML chrome (page
+// header/footer, fieldsets, form controls) and stylesheet used by every admin
+// page.
+
+#include "web_common.h"
+#include <ctype.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <strings.h> // strncasecmp (multipart header parsing)
+
+#include "app_config.h"
+#include "aprs_coord.h"                         // aprs_symbol_table_is_valid()/aprs_symbol_code_is_valid(): the symbol pair accepted on air
+#include "aprs_service.h"                       // APRS_SOFTWARE_NAME: the firmware name shown as the HTTP auth realm and page title
+#include "esp32idf_radioamateur_modem_config.h" // MODEM_ADC_GPIO/MODEM_DAC_GPIO/MODEM_PTT_GPIO: fixed audio front-end + PTT pins for the GPIO registry
+#include "esp_log.h"
+#include "esp_timer.h"         // esp_timer_get_time(): monotonic clock for the login lockout window
+#include "gps.h"               // GPS_UART_RX_GPIO/TX_GPIO: fixed pins for the GPIO registry
+#include "lwip/sockets.h"      // getpeername(): client IP for the per-source login lockout
+#include "sensors_local_i2c.h" // SENSORS_LOCAL_I2C_SDA_GPIO/SCL_GPIO: fixed pins for the GPIO registry
+#include "str_append.h"        // str_is_line_break_char()
+#include "translations.h"
+#include "web_base64.h" // web_base64_decode(): local RFC 4648 decoder for the Basic auth credential pair
+#include "web_help.h"   // web_help_for_label()/web_help_markup(): the question mark that closes every option label
+#include "web_logo.h"   // web_logo_png[]: the top bar's brand image, embedded in the firmware
+
+static const char *TAG = "web_common";
+
+// Compares two NUL-terminated strings in time that depends only on the
+// longer string's length, not on where the first mismatch occurs. Still
+// compares content byte-for-byte (including each string's own terminator),
+// so behaves like strcmp()==0 for correctness purposes.
+static bool web_const_time_streq(const char *a, const char *b) {
+    size_t la = strlen(a), lb = strlen(b);
+    unsigned char diff = (la != lb) ? 1 : 0;
+    size_t n = la > lb ? la : lb;
+    for (size_t i = 0; i < n; i++) {
+        unsigned char ca = (i < la) ? (unsigned char)a[i] : 0;
+        unsigned char cb = (i < lb) ? (unsigned char)b[i] : 0;
+        diff |= (unsigned char)(ca ^ cb);
+    }
+    return diff == 0;
+}
+
+// ------------------------------------------------------- Login rate limiting
+//
+// Tracks failed Basic-Auth attempts per client IP so an attacker on the
+// network can't brute-force the admin password at full HTTP round-trip
+// speed. After WEB_AUTH_MAX_ATTEMPTS consecutive failures from the same
+// source, that source is locked out for a backoff window that doubles with
+// every further failure while locked out (capped at WEB_AUTH_LOCKOUT_MAX_S),
+// and resets on a successful login. This is intentionally a small fixed-size
+// in-RAM table (no persistent storage / no dynamic allocation) sized for a
+// handful of concurrent offenders, which is appropriate for a single-board
+// admin UI.
+#define WEB_AUTH_MAX_ATTEMPTS   5   // failures allowed before the first lockout
+#define WEB_AUTH_LOCKOUT_BASE_S 5   // initial lockout duration
+#define WEB_AUTH_LOCKOUT_MAX_S  300 // cap on the backoff (5 minutes)
+#define WEB_AUTH_TRACK_SLOTS    16  // distinct source IPs tracked at once
+
+typedef struct {
+    uint32_t ip;          // source IPv4 address in network byte order; 0 = free slot
+    uint16_t fail_count;  // consecutive failures since the last success/reset
+    int64_t locked_until; // esp_timer_get_time() microseconds; 0 = not locked
+} web_auth_track_t;
+
+static web_auth_track_t s_auth_track[WEB_AUTH_TRACK_SLOTS];
+
+// Best-effort client IPv4 lookup for the connection behind req. Returns 0
+// (never a valid unicast source) if it can't be determined, in which case the
+// caller tracks that request under the shared "unknown" bucket instead of
+// skipping rate limiting altogether. IPv4-only: this project builds with
+// CONFIG_LWIP_IPV6 disabled (see sdkconfig), so the httpd socket is always
+// plain AF_INET.
+static uint32_t web_client_ipv4(httpd_req_t *req) {
+    int sockfd = httpd_req_to_sockfd(req);
+    if (sockfd < 0)
+        return 0;
+
+    struct sockaddr_in addr;
+    socklen_t addr_len = sizeof(addr);
+    if (getpeername(sockfd, (struct sockaddr *)&addr, &addr_len) != 0)
+        return 0;
+    if (addr.sin_family != AF_INET)
+        return 0;
+
+    return addr.sin_addr.s_addr;
+}
+
+// Finds this source's tracking slot, evicting the least-recently-failed
+// entry if the table is full and the source isn't already present. Never
+// returns NULL: worst case every source beyond WEB_AUTH_TRACK_SLOTS shares
+// slot 0's counter, which only makes lockouts trigger sooner, never later.
+static web_auth_track_t *web_auth_track_find(uint32_t ip) {
+    web_auth_track_t *free_slot = NULL;
+    web_auth_track_t *oldest = &s_auth_track[0];
+    for (int i = 0; i < WEB_AUTH_TRACK_SLOTS; i++) {
+        if (s_auth_track[i].ip == ip && s_auth_track[i].fail_count > 0)
+            return &s_auth_track[i];
+        if (!free_slot && s_auth_track[i].ip == 0)
+            free_slot = &s_auth_track[i];
+        if (s_auth_track[i].locked_until < oldest->locked_until)
+            oldest = &s_auth_track[i];
+    }
+    if (free_slot) {
+        free_slot->ip = ip;
+        return free_slot;
+    }
+    oldest->ip = ip;
+    oldest->fail_count = 0;
+    oldest->locked_until = 0;
+    return oldest;
+}
+
+// Returns the seconds remaining in this source's lockout (0 if not locked).
+// A lockout whose window has just elapsed is rearmed here at one failure
+// below the threshold rather than left at its accumulated fail_count: a
+// source that keeps presenting the same stale credentials after every
+// window expires this way re-triggers only the base lockout duration each
+// time, instead of resuming the exponential backoff from wherever it left
+// off and ratcheting straight to the cap.
+static int web_auth_lockout_remaining_s(uint32_t ip) {
+    for (int i = 0; i < WEB_AUTH_TRACK_SLOTS; i++) {
+        if (s_auth_track[i].ip == ip && s_auth_track[i].locked_until > 0) {
+            int64_t remaining_us = s_auth_track[i].locked_until - esp_timer_get_time();
+            if (remaining_us > 0)
+                return (int)(remaining_us / 1000000) + 1;
+            s_auth_track[i].locked_until = 0;
+            s_auth_track[i].fail_count = WEB_AUTH_MAX_ATTEMPTS - 1;
+            return 0;
+        }
+    }
+    return 0;
+}
+
+static void web_auth_note_failure(uint32_t ip) {
+    web_auth_track_t *t = web_auth_track_find(ip);
+    if (t->fail_count < UINT16_MAX)
+        t->fail_count++;
+
+    if (t->fail_count >= WEB_AUTH_MAX_ATTEMPTS) {
+        // Every failure beyond the threshold doubles the lockout, so a
+        // client that keeps hammering the lockout window (rather than
+        // waiting it out) backs off exponentially instead of retrying at a
+        // fixed cadence.
+        uint32_t over = t->fail_count - WEB_AUTH_MAX_ATTEMPTS;
+        uint32_t shift = over > 8 ? 8 : over; // cap the shift so it can't overflow
+        uint32_t lockout_s = WEB_AUTH_LOCKOUT_BASE_S << shift;
+        if (lockout_s > WEB_AUTH_LOCKOUT_MAX_S)
+            lockout_s = WEB_AUTH_LOCKOUT_MAX_S;
+        t->locked_until = esp_timer_get_time() + (int64_t)lockout_s * 1000000;
+        ESP_LOGW(TAG, "Web admin login: %u consecutive failures, locked out for %u s", (unsigned)t->fail_count, (unsigned)lockout_s);
+    }
+}
+
+static void web_auth_note_success(uint32_t ip) {
+    for (int i = 0; i < WEB_AUTH_TRACK_SLOTS; i++) {
+        if (s_auth_track[i].ip == ip) {
+            s_auth_track[i].ip = 0;
+            s_auth_track[i].fail_count = 0;
+            s_auth_track[i].locked_until = 0;
+            return;
+        }
+    }
+}
+
+// ------------------------------------------------------------- CSRF (Origin/Referer)
+//
+// Every admin route is gated only by HTTP Basic Auth, and browsers attach
+// cached Basic credentials to *any* request sent to this device's origin -
+// regardless of which page's script or hidden auto-submitting form actually
+// triggered it. Without a same-origin check, a page on a completely
+// different site, opened by an already-authenticated admin in another tab,
+// could silently POST to e.g. /system or /format and have it succeed.
+// There's no per-session token to check instead (this server has no
+// cookies/sessions at all - only stateless Basic Auth), so the mitigation
+// here is a same-origin check on state-changing (POST) requests: compare
+// the browser-supplied Origin (or, failing that, Referer) header's host
+// against this request's own Host header. Modern browsers always attach an
+// Origin header to POST requests, same-origin or not, so a legitimate
+// same-site form submission always has one to check; a request with
+// neither header, or one whose host doesn't match, cannot be trusted to be
+// same-origin and is rejected.
+//
+// This only ever needs to run for state-changing requests, and that rests
+// on one invariant the route table has to keep: no registered GET route may
+// have a side effect. It cannot be enforced by extending the check to GETs
+// instead - a browser sends neither Origin nor Referer when a URL is typed
+// into the address bar or opened from a bookmark, so a same-origin check on
+// GET would fail closed on ordinary navigation and lock the admin UI out
+// entirely. The obligation therefore sits on whoever adds a route: anything
+// that changes state, keys the radio, reconfigures an interface or writes
+// flash is registered HTTP_POST, which both brings it under this check and
+// puts it out of reach of the ways a browser fetches a URL by itself
+// (<img src>, script/stylesheet loads, prefetch, link prerender). See
+// page_radio.c's /radio/looptest and page_wireless.c's /wifiscan for two
+// endpoints that read like queries but are POST for exactly this reason,
+// page_logs.c for a page whose own script posts /logs/stop as it loads
+// rather than letting the GET that renders it stop a running capture, and
+// page_storage.c for why /delete etc. are POST-only forms.
+
+// Compares the host[:port] authority component of a "<scheme>://host[:port]/..."
+// header value (Origin or Referer) against this request's own Host header
+// value. Only the authority component of hdr_value is considered, so a
+// Referer's path/query can't cause a false match or mismatch.
+static bool web_origin_host_matches(const char *hdr_value, const char *expected_host) {
+    const char *authority = strstr(hdr_value, "://");
+    if (!authority)
+        return false;
+    authority += 3;
+
+    size_t host_len = strlen(expected_host);
+    if (host_len == 0)
+        return false;
+    if (strncasecmp(authority, expected_host, host_len) != 0)
+        return false;
+
+    // The matched prefix must be the *whole* authority component, not just a
+    // prefix of a longer host (e.g. expected "example.com" must not match
+    // "example.com.evil.tld"): what follows has to end the authority, i.e.
+    // be the path/query/fragment separator or the end of the string.
+    char term = authority[host_len];
+    return term == 0 || term == '/' || term == '?' || term == '#';
+}
+
+// Returns true only if this state-changing request can be confirmed
+// same-origin via Origin (preferred) or Referer (fallback). Fails closed:
+// a missing Host header, or a request with neither Origin nor Referer, is
+// treated as not-same-origin rather than silently allowed through.
+static bool web_check_csrf_origin(httpd_req_t *req) {
+    char host[128];
+    if (httpd_req_get_hdr_value_str(req, "Host", host, sizeof(host)) != ESP_OK || host[0] == 0)
+        return false;
+
+    char origin[256];
+    if (httpd_req_get_hdr_value_str(req, "Origin", origin, sizeof(origin)) == ESP_OK && origin[0] != 0)
+        return web_origin_host_matches(origin, host);
+
+    char referer[256];
+    if (httpd_req_get_hdr_value_str(req, "Referer", referer, sizeof(referer)) == ESP_OK && referer[0] != 0)
+        return web_origin_host_matches(referer, host);
+
+    return false; // neither header present: can't confirm same-origin
+}
+
+// ---------------------------------------------------------------- Basic Auth
+bool web_check_auth(httpd_req_t *req) {
+    // Same-origin check first, before Basic Auth is even evaluated and before
+    // the "no password configured" bypass below: a cross-site request has no
+    // business reaching this handler regardless of whether it happens to
+    // carry valid cached credentials, and CSRF is the attack that matters
+    // most precisely when there is no password to leak in the first place.
+    if (req->method == HTTP_POST && !web_check_csrf_origin(req)) {
+        httpd_resp_set_status(req, "403 Forbidden");
+        httpd_resp_set_type(req, "text/html");
+        web_send_standalone_page(req, "<h1>" TR_FORBIDDEN_CSRF "</h1>");
+        return false;
+    }
+
+    if (g_config.http_username[0] == 0)
+        return true; // auth disabled if no user set; same-origin check above still applies
+
+    uint32_t client_ip = web_client_ipv4(req);
+    int lockout_remaining_s = web_auth_lockout_remaining_s(client_ip);
+    if (lockout_remaining_s > 0) {
+        // Reject before even looking at the Authorization header: a locked
+        // source doesn't get another guess to spend, and doesn't get any
+        // extra timing signal either.
+        httpd_resp_set_status(req, "429 Too Many Requests");
+        char retry_hdr[16];
+        snprintf(retry_hdr, sizeof(retry_hdr), "%d", lockout_remaining_s);
+        httpd_resp_set_hdr(req, "Retry-After", retry_hdr);
+        httpd_resp_set_type(req, "text/html");
+        web_send_standalone_page(req, "<h1>" TR_UNAUTHORIZED "</h1>");
+        return false;
+    }
+
+    char hdr[160];
+    if (httpd_req_get_hdr_value_str(req, "Authorization", hdr, sizeof(hdr)) != ESP_OK) {
+        goto challenge; // no Authorization header: first half of the Basic handshake, not a guess
+    }
+    if (strncmp(hdr, "Basic ", 6) != 0)
+        goto challenge; // not a Basic credential: same as no header for counting purposes
+
+    {
+        unsigned char decoded[128];
+        size_t outlen = 0;
+        int rc = web_base64_decode(decoded, sizeof(decoded) - 1, &outlen, (const unsigned char *)(hdr + 6), strlen(hdr + 6));
+        if (rc != 0)
+            goto need_auth;
+        decoded[outlen] = 0;
+
+        char *sep = strchr((char *)decoded, ':');
+        if (!sep)
+            goto need_auth;
+        *sep = 0;
+        const char *user = (char *)decoded;
+        const char *pass = sep + 1;
+
+        // Constant-time compare: strcmp() short-circuits on the first
+        // mismatching byte, which leaks (via response timing) how many
+        // leading characters of a guess were correct. Both fields are
+        // fixed-size buffers in g_config, so comparing the full field width
+        // costs nothing here.
+        if (web_const_time_streq(user, g_config.http_username) && web_const_time_streq(pass, g_config.http_password)) {
+            web_auth_note_success(client_ip);
+            return true;
+        }
+    }
+
+need_auth:
+    // Reached only when credentials were actually presented and rejected:
+    // a malformed Basic payload, or a user/password mismatch. This is the
+    // one case that counts as a guess against the lockout budget.
+    web_auth_note_failure(client_ip);
+
+challenge:
+    // Sends the 401 challenge without touching the lockout counter: every
+    // browser reaches this on the first, credential-less half of the Basic
+    // Auth handshake, so it must never be charged against the budget that
+    // protects the real guesses handled above.
+    httpd_resp_set_status(req, "401 Unauthorized");
+    httpd_resp_set_hdr(req, "WWW-Authenticate", "Basic realm=\"" APRS_SOFTWARE_NAME "\"");
+    httpd_resp_set_type(req, "text/html");
+    web_send_standalone_page(req, "<h1>" TR_UNAUTHORIZED "</h1>");
+    return false;
+}
+
+// ---------------------------------------------------------------- Body read
+int web_read_body(httpd_req_t *req, char *buf, size_t buf_size) {
+    if (req->content_len >= buf_size) {
+        ESP_LOGW(TAG, "body too large: %d >= %d", (int)req->content_len, (int)buf_size);
+        return -1;
+    }
+    int total = 0;
+    while (total < req->content_len) {
+        int r = httpd_req_recv(req, buf + total, req->content_len - total);
+        if (r <= 0) {
+            if (r == HTTPD_SOCK_ERR_TIMEOUT)
+                continue;
+            return -1;
+        }
+        total += r;
+    }
+    buf[total] = 0;
+    return total;
+}
+
+// ---------------------------------------------------------------- URL decode
+// CR, LF and NUL are dropped as they are decoded rather than passed through:
+// every caller of web_form_get() eventually writes the decoded value into a
+// line-oriented output (an APRS-IS line, the AX.25 TNC2 text form, a JSON
+// config value), and %0D/%0A let an operator smuggle either byte past a
+// plain-text form field. Filtering here, at the one place every POSTed form
+// value in this firmware is decoded, closes that path for every field
+// without relying on each page's own POST handler to do it separately.
+void web_urldecode(const char *src, char *dst, size_t dst_size) {
+    size_t di = 0;
+    while (*src && di + 1 < dst_size) {
+        char c;
+        if (*src == '%' && isxdigit((unsigned char)src[1]) && isxdigit((unsigned char)src[2])) {
+            char hex[3] = { src[1], src[2], 0 };
+            c = (char)strtol(hex, NULL, 16);
+            src += 3;
+        } else if (*src == '+') {
+            c = ' ';
+            src++;
+        } else {
+            c = *src++;
+        }
+        if (!str_is_line_break_char(c))
+            dst[di++] = c;
+    }
+    dst[di] = 0;
+}
+
+bool web_form_get(const char *body, const char *key, char *out, size_t out_size) {
+    if (!body)
+        return false;
+    size_t keylen = strlen(key);
+    const char *p = body;
+    while (p && *p) {
+        const char *amp = strchr(p, '&');
+        size_t seg_len = amp ? (size_t)(amp - p) : strlen(p);
+        if (seg_len > keylen && p[keylen] == '=' && strncmp(p, key, keylen) == 0) {
+            const char *valstart = p + keylen + 1;
+            size_t vallen = seg_len - keylen - 1;
+            char tmp[512];
+            if (vallen >= sizeof(tmp))
+                vallen = sizeof(tmp) - 1;
+            memcpy(tmp, valstart, vallen);
+            tmp[vallen] = 0;
+            web_urldecode(tmp, out, out_size);
+            return true;
+        }
+        // exact match with no '=' (rare) - checkbox absent case handled by caller default
+        p = amp ? amp + 1 : NULL;
+    }
+    return false;
+}
+
+bool web_form_get_bool(const char *body, const char *key) {
+    char v[16];
+    if (!web_form_get(body, key, v, sizeof(v)))
+        return false;
+    return (strcmp(v, "on") == 0 || strcmp(v, "1") == 0 || strcasecmp(v, "true") == 0);
+}
+
+int web_form_get_int(const char *body, const char *key, int def) {
+    char v[32];
+    if (!web_form_get(body, key, v, sizeof(v)) || v[0] == 0)
+        return def;
+    return atoi(v);
+}
+
+float web_form_get_float(const char *body, const char *key, float def) {
+    char v[32];
+    if (!web_form_get(body, key, v, sizeof(v)) || v[0] == 0)
+        return def;
+    return strtof(v, NULL);
+}
+
+// ---------------------------------------------------------------- Output-side escaping
+// (web_urldecode above handles the *input* direction, for query strings
+// esp_httpd hands us; these three handle the *output* direction, for
+// user-supplied strings - chiefly filenames - that get echoed back into
+// hrefs/HTML/JS. Skipping this is what let a filename with a space or a
+// quote character in it silently break the Storage page's delete/download
+// links and onclick handlers.)
+
+void web_urlencode(const char *src, char *dst, size_t dst_size) {
+    if (!dst || dst_size == 0)
+        return;
+    static const char hex[] = "0123456789ABCDEF";
+    size_t di = 0;
+    for (const unsigned char *p = (const unsigned char *)src; src && *p && di + 1 < dst_size; p++) {
+        unsigned char c = *p;
+        if (isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~') {
+            dst[di++] = (char)c;
+        } else {
+            if (di + 3 >= dst_size)
+                break;
+            dst[di++] = '%';
+            dst[di++] = hex[(c >> 4) & 0xF];
+            dst[di++] = hex[c & 0xF];
+        }
+    }
+    dst[di] = 0;
+}
+
+void web_html_attr_escape(const char *src, char *dst, size_t dst_size) {
+    if (!dst || dst_size == 0)
+        return;
+    size_t di = 0;
+    for (const char *p = src; src && *p && di + 1 < dst_size; p++) {
+        const char *ent = NULL;
+        switch (*p) {
+            case '&':
+                ent = "&amp;";
+                break;
+            case '<':
+                ent = "&lt;";
+                break;
+            case '>':
+                ent = "&gt;";
+                break;
+            case '"':
+                ent = "&quot;";
+                break;
+            case '\'':
+                ent = "&#39;";
+                break;
+            default:
+                break;
+        }
+        if (ent) {
+            size_t elen = strlen(ent);
+            if (di + elen >= dst_size)
+                break;
+            memcpy(dst + di, ent, elen);
+            di += elen;
+        } else {
+            dst[di++] = *p;
+        }
+    }
+    dst[di] = 0;
+}
+
+void web_sanitize_filename(const char *src, char *dst, size_t dst_size) {
+    if (!dst || dst_size == 0)
+        return;
+    dst[0] = 0;
+    if (!src)
+        return;
+
+    // Some browsers send the full local path for <input type=file>; keep
+    // only whatever follows the last separator.
+    const char *base = src;
+    for (const char *p = src; *p; p++) {
+        if (*p == '/' || *p == '\\')
+            base = p + 1;
+    }
+
+    size_t di = 0;
+    for (const char *p = base; *p && di + 1 < dst_size; p++) {
+        unsigned char c = (unsigned char)*p;
+        dst[di++] = (isalnum(c) || c == '.' || c == '-' || c == '_' || c == ' ') ? (char)c : '_';
+    }
+    dst[di] = 0;
+
+    // Strip leading dots so "..", ".htaccess"-style, or empty-after-dots
+    // names can't happen.
+    size_t lead = 0;
+    while (dst[lead] == '.')
+        lead++;
+    if (lead > 0)
+        memmove(dst, dst + lead, di - lead + 1);
+
+    if (dst[0] == 0)
+        snprintf(dst, dst_size, "upload.bin");
+}
+
+// ---------------------------------------------------------------- Multipart upload (streaming)
+// See web_common.h for the contract. Implementation notes:
+//
+// The parser keeps one heap scratch buffer (MP_BUF_CAP bytes) and never
+// holds more than that much of the request in RAM at once, regardless of
+// how large the uploaded file is - it feeds completed chunks of the file
+// part to `cb` as soon as it's sure they aren't a prefix of the closing
+// boundary marker, then discards them. This is what lets a multi-hundred-KB
+// firmware image stream straight into esp_ota_write() on a device with a
+// few hundred KB of free heap.
+#define MP_BUF_CAP    4096
+#define MP_MAX_HEADER 512
+#define MP_MAX_PARTS  32 // sanity cap against a pathological/adversarial body
+
+static const uint8_t *mp_mem_find(const uint8_t *hay, size_t haylen, const char *needle, size_t needlelen) {
+    if (needlelen == 0 || haylen < needlelen)
+        return NULL;
+    for (size_t i = 0; i + needlelen <= haylen; i++) {
+        if (memcmp(hay + i, needle, needlelen) == 0)
+            return hay + i;
+    }
+    return NULL;
+}
+
+// Case-insensitive substring search (header names/values are case-insensitive).
+static const char *mp_ci_strstr(const char *hay, const char *needle) {
+    size_t nlen = strlen(needle);
+    for (const char *p = hay; *p; p++) {
+        if (strncasecmp(p, needle, nlen) == 0)
+            return p;
+    }
+    return NULL;
+}
+
+esp_err_t web_multipart_receive_file(httpd_req_t *req, web_multipart_data_cb_t cb, void *cb_ctx, char *filename_out, size_t filename_out_size) {
+    if (filename_out && filename_out_size)
+        filename_out[0] = 0;
+
+    char ctype[256];
+    if (httpd_req_get_hdr_value_str(req, "Content-Type", ctype, sizeof(ctype)) != ESP_OK)
+        return ESP_ERR_INVALID_ARG;
+    const char *bmark = mp_ci_strstr(ctype, "boundary=");
+    if (!bmark)
+        return ESP_ERR_INVALID_ARG;
+    bmark += 9;
+
+    char boundary[128];
+    size_t bi = 0;
+    if (*bmark == '"') {
+        bmark++;
+        while (*bmark && *bmark != '"' && bi + 1 < sizeof(boundary))
+            boundary[bi++] = *bmark++;
+    } else {
+        while (*bmark && *bmark != ';' && *bmark != ' ' && *bmark != '\r' && *bmark != '\n' && bi + 1 < sizeof(boundary))
+            boundary[bi++] = *bmark++;
+    }
+    boundary[bi] = 0;
+    if (bi == 0)
+        return ESP_ERR_INVALID_ARG;
+
+    char delim[132];
+    int delim_len = snprintf(delim, sizeof(delim), "--%s", boundary);
+    if (delim_len <= 0 || (size_t)delim_len >= sizeof(delim))
+        return ESP_ERR_INVALID_ARG;
+
+    char close_marker[134];
+    int close_len = snprintf(close_marker, sizeof(close_marker), "\r\n%s", delim);
+    if (close_len <= 0 || (size_t)close_len >= sizeof(close_marker)) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    uint8_t *buf = malloc(MP_BUF_CAP);
+    if (!buf)
+        return ESP_ERR_NO_MEM;
+    size_t buf_len = 0;
+    // Bytes of the body still to be read, in the same type esp_http_server
+    // reports and consumes them, so no length ever passes through a narrower
+    // one on the way.
+    size_t remaining = req->content_len;
+    esp_err_t result = ESP_FAIL;
+    bool found_file_part = false;
+
+#define MP_FILL()                                                                                                                                              \
+    do {                                                                                                                                                       \
+        while (buf_len < MP_BUF_CAP && remaining > 0) {                                                                                                        \
+            size_t want = MP_BUF_CAP - buf_len;                                                                                                                \
+            if (want > remaining)                                                                                                                              \
+                want = remaining;                                                                                                                              \
+            int r = httpd_req_recv(req, (char *)buf + buf_len, want);                                                                                          \
+            if (r > 0) {                                                                                                                                       \
+                buf_len += (size_t)r;                                                                                                                          \
+                remaining -= (size_t)r;                                                                                                                        \
+            } else if (r == HTTPD_SOCK_ERR_TIMEOUT) {                                                                                                          \
+                continue;                                                                                                                                      \
+            } else {                                                                                                                                           \
+                goto done;                                                                                                                                     \
+            }                                                                                                                                                  \
+        }                                                                                                                                                      \
+    } while (0)
+
+    MP_FILL();
+
+    // ---- skip preamble up to and including the first boundary delimiter ----
+    {
+        const uint8_t *p = mp_mem_find(buf, buf_len, delim, (size_t)delim_len);
+        if (!p)
+            goto done; // no boundary at all: not a well-formed multipart body
+        size_t skip = (size_t)(p - buf) + (size_t)delim_len;
+        memmove(buf, buf + skip, buf_len - skip);
+        buf_len -= skip;
+    }
+
+    for (int part_idx = 0; part_idx < MP_MAX_PARTS; part_idx++) {
+        // Right after a delimiter: either "--" (terminating boundary, no more
+        // parts) or "\r\n" (a part follows).
+        if (buf_len < 2)
+            MP_FILL();
+        if (buf_len < 2) {
+            // Body ended right at/after the last part's own closing boundary
+            // (no distinguishable final "--" epilogue left to read). If we
+            // already streamed a file part, that's a completed upload, not
+            // an error - only a genuinely empty/truncated body is malformed.
+            result = found_file_part ? ESP_OK : ESP_FAIL;
+            goto done;
+        }
+        if (buf[0] == '-' && buf[1] == '-') {
+            result = found_file_part ? ESP_OK : ESP_ERR_NOT_FOUND;
+            goto done;
+        }
+        if (buf[0] != '\r' || buf[1] != '\n')
+            goto done; // malformed
+        memmove(buf, buf + 2, buf_len - 2);
+        buf_len -= 2;
+
+        // ---- part headers, up to the blank line ----
+        char headers[MP_MAX_HEADER];
+        const uint8_t *hp;
+        for (;;) {
+            hp = mp_mem_find(buf, buf_len, "\r\n\r\n", 4);
+            if (hp)
+                break;
+            if (buf_len >= MP_BUF_CAP || remaining == 0)
+                goto done; // headers too large or body ended mid-header: malformed
+            MP_FILL();
+        }
+        size_t hdrblock_len = (size_t)(hp - buf);
+        if (hdrblock_len >= sizeof(headers)) {
+            // Don't silently truncate: a truncated copy could miss the
+            // Content-Disposition/filename entirely (has_filename would come
+            // back false even though the part is really a file part),
+            // producing a confusing partial/failed upload instead of a clear
+            // error. A legitimate browser upload's per-part headers are a
+            // few dozen bytes; anything this large is malformed or hostile.
+            goto done;
+        }
+        memcpy(headers, buf, hdrblock_len);
+        headers[hdrblock_len] = 0;
+        size_t consumed = hdrblock_len + 4;
+        memmove(buf, buf + consumed, buf_len - consumed);
+        buf_len -= consumed;
+
+        // ---- does this part carry filename="..."? ----
+        bool has_filename = false;
+        {
+            const char *cdisp = mp_ci_strstr(headers, "Content-Disposition");
+            if (cdisp) {
+                const char *fn = mp_ci_strstr(cdisp, "filename=\"");
+                if (fn) {
+                    fn += 10;
+                    const char *end = strchr(fn, '"');
+                    if (end && end > fn) {
+                        has_filename = true;
+                        if (filename_out && filename_out_size) {
+                            size_t flen = (size_t)(end - fn);
+                            if (flen >= filename_out_size)
+                                flen = filename_out_size - 1;
+                            memcpy(filename_out, fn, flen);
+                            filename_out[flen] = 0;
+                        }
+                    }
+                }
+            }
+        }
+        bool stream_this = has_filename && !found_file_part;
+
+        // ---- part data, up to the next "\r\n--boundary" ----
+        for (;;) {
+            const uint8_t *cm = mp_mem_find(buf, buf_len, close_marker, (size_t)close_len);
+            if (cm) {
+                size_t data_len = (size_t)(cm - buf);
+                if (stream_this && data_len > 0 && cb(cb_ctx, buf, data_len) != ESP_OK)
+                    goto done;
+                size_t used = data_len + (size_t)close_len;
+                memmove(buf, buf + used, buf_len - used);
+                buf_len -= used;
+                break;
+            }
+            // No full marker in the buffer yet: flush everything except the
+            // tail that could still be a prefix of the marker, then refill.
+            size_t keep = (size_t)close_len - 1;
+            if (buf_len > keep) {
+                size_t flush = buf_len - keep;
+                if (stream_this && cb(cb_ctx, buf, flush) != ESP_OK)
+                    goto done;
+                memmove(buf, buf + flush, buf_len - flush);
+                buf_len -= flush;
+            }
+            if (remaining == 0)
+                goto done; // ran out of body before finding the closing boundary: truncated/malformed
+            MP_FILL();
+        }
+
+        if (has_filename)
+            found_file_part = true;
+        // loop back: buffer now starts right after this part's boundary
+        // delimiter, exactly the state the top of the loop expects.
+    }
+    // MP_MAX_PARTS exceeded without reaching a terminating boundary.
+    result = ESP_FAIL;
+
+done:
+    free(buf);
+#undef MP_FILL
+    return result;
+}
+
+// ---------------------------------------------------------------- HTML shell
+// Sidebar menu: one row per page, in the order the sidebar renders them.
+// Each row is compiled in only when its module's ENABLE_* macro is defined,
+// so a page left out of the build leaves no dead link behind.
+struct menu_item {
+    const char *href;
+    const char *label;
+    const char *key;
+};
+static const struct menu_item MENU[] = {
+#ifdef ENABLE_DASHBOARD
+    { "/dashboard", TR_MENU_DASHBOARD, "dashboard" },
+#endif
+#ifdef ENABLE_STATION
+    { "/station", TR_MENU_STATION, "station" },
+#endif
+#ifdef ENABLE_MSG_CHAT
+    { "/msgchat", TR_MENU_MSGCHAT, "msgchat" },
+#endif
+#ifdef ENABLE_BULLETINS
+    { "/bulletins", TR_MENU_BULLETINS, "bulletins" },
+#endif
+#ifdef ENABLE_OBJECTS_ITEMS
+    { "/objects", TR_MENU_OBJITEMS, "objects" },
+#endif
+#ifdef ENABLE_RADIO_MODEM
+    { "/radio", TR_MENU_RADIO, "radio" },
+#endif
+#ifdef ENABLE_MESSAGE
+    { "/msg", TR_MENU_MSG, "msg" },
+#endif
+#ifdef ENABLE_QUERY
+    { "/query", TR_MENU_QUERY, "query" },
+#endif
+#ifdef ENABLE_IGATE
+    { "/igate", TR_MENU_IGATE, "igate" },
+#endif
+#ifdef ENABLE_BRANDMEISTER
+    { "/bm", TR_MENU_BM, "bm" },
+#endif
+#ifdef ENABLE_DIGIPEATER
+    { "/digi", TR_MENU_DIGI, "digi" },
+#endif
+#ifdef ENABLE_TRACKER
+    { "/tracker", TR_MENU_TRACKER, "tracker" },
+#endif
+#ifdef ENABLE_WEATHER
+    { "/wx", TR_MENU_WX, "wx" },
+#endif
+#ifdef ENABLE_TELEMETRY
+    { "/tlm", TR_MENU_TLM, "tlm" },
+#endif
+#ifdef ENABLE_GPS
+    { "/gps", TR_MENU_GPS, "gps" },
+#endif
+#ifdef ENABLE_TELEGRAM
+    { "/telegram", TR_MENU_TELEGRAM, "telegram" },
+#endif
+#ifdef ENABLE_WINLINK
+    { "/winlink", TR_MENU_WINLINK, "winlink" },
+#endif
+#ifdef ENABLE_LOGS
+    { "/logs", TR_MENU_LOGS, "logs" },
+#endif
+#ifdef ENABLE_SYSTEM
+    { "/system", TR_MENU_SYSTEM, "system" },
+#endif
+#ifdef ENABLE_WIRELESS
+    { "/wireless", TR_MENU_WIRELESS, "wireless" },
+#endif
+#ifdef ENABLE_FILE_STORAGE
+    { "/storage", TR_MENU_STORAGE, "storage" },
+#endif
+#ifdef ENABLE_ABOUT_FIRMWARE
+    { "/about", TR_MENU_ABOUT, "about" },
+#endif
+};
+#define MENU_COUNT (sizeof(MENU) / sizeof(MENU[0]))
+
+void web_send_header(httpd_req_t *req, const char *title, const char *active_menu) {
+    httpd_resp_set_type(req, "text/html");
+    // Config pages render live g_config values into the form on every GET.
+    // Without this header, browsers (especially after a POST->redirect->GET
+    // save flow) may serve a cached copy of the page instead of re-fetching,
+    // so a value that was just saved appears not to have been saved at all.
+    httpd_resp_set_hdr(req, "Cache-Control", "no-store, no-cache, must-revalidate");
+    httpd_resp_set_hdr(req, "Pragma", "no-cache");
+    // The nav-toggle checkbox carries the drawer's open/closed state on narrow
+    // screens and is a sibling of both the top bar and the layout, so the
+    // burger, the drawer and its backdrop are all driven from it by the
+    // stylesheet alone. On a wide screen the burger and the backdrop are not
+    // displayed and the menu renders as the fixed sidebar beside the content,
+    // so the same markup serves every viewport and the state resets by itself
+    // on each navigation.
+    //
+    // The brand logo is an image request rather than an inline data URI, so the
+    // browser caches it once and the bytes stay out of every page's markup. Its
+    // intrinsic size travels with the tag, which reserves the right width in the
+    // bar before the image itself has arrived. The empty alt marks it as
+    // decorative: the station name beside it already carries the meaning, and a
+    // screen reader announcing both would only say it twice.
+    httpd_resp_sendstr_chunk(req, "<!DOCTYPE html><html><head><meta charset='utf-8'>"
+                                  "<meta name='viewport' content='width=device-width,initial-scale=1'>"
+                                  "<link rel='stylesheet' href='/style.css'>"
+                                  "<title>" APRS_SOFTWARE_NAME "</title></head><body>"
+                                  "<input type='checkbox' id='navtoggle' class='nav-toggle' aria-label='" TR_NAV_MENU "'>"
+                                  "<div class='topbar'>"
+                                  "<label for='navtoggle' class='nav-burger' title='" TR_NAV_MENU "'>"
+                                  "<span></span><span></span><span></span></label>"
+                                  "<span class='brand'>"
+                                  "<img class='brand-mark' src='/logo.png' alt='' "
+                                  "width='" WEB_LOGO_PNG_WIDTH_STR "' height='" WEB_LOGO_PNG_HEIGHT_STR "'>"
+                                  "<span class='brand-text'>" TR_BRAND "</span></span>"
+                                  "<div class='topbar-right'><a class='logout' href='/logout'>" TR_LOGOUT "</a></div></div>"
+                                  "<div class='layout'><nav class='sidebar'><ul>");
+
+    for (size_t i = 0; i < MENU_COUNT; i++) {
+        char line[160];
+        bool is_active = active_menu && strcmp(active_menu, MENU[i].key) == 0;
+        snprintf(line, sizeof(line), "<li><a href='%s'%s>%s</a></li>", MENU[i].href, is_active ? " class='active'" : "", MENU[i].label);
+        httpd_resp_sendstr_chunk(req, line);
+    }
+    httpd_resp_sendstr_chunk(req, "</ul></nav><label for='navtoggle' class='nav-scrim'></label><main class='content'>");
+    if (title) {
+        httpd_resp_sendstr_chunk(req, "<h1>");
+        httpd_resp_sendstr_chunk(req, title);
+        httpd_resp_sendstr_chunk(req, "</h1>");
+    }
+}
+
+void web_send_footer(httpd_req_t *req) {
+    httpd_resp_sendstr_chunk(
+        req, "<script>function togglePwd(id,cb){var el=document.getElementById(id);if(el){el.type=(cb&&cb.checked)?'text':'password';}}</script>");
+
+    // Places the contextual help balloon. The stylesheet gives it position:
+    // fixed, which is what lets it be painted over every card, accordion and
+    // table frame on the page instead of being clipped by the one it was
+    // opened from; what a stylesheet cannot then supply is where on the
+    // viewport it goes, and that is all this does.
+    //
+    // The balloon is measured before it is placed, with the measurement done
+    // on an off-screen copy of the displayed state rather than by trusting
+    // :hover to have been applied by the time the event arrives. Placement
+    // then centres it over the marker, pulls it back inside whichever screen
+    // edge it would cross, flips it under the field when there is not enough
+    // room above, and slides the arrow along its edge so it still points at
+    // the marker after any of that. Because a fixed element does not travel
+    // with the page, the open balloon is placed again on scroll and resize;
+    // the scroll listener is a capturing one so it also sees the log, chat and
+    // table frames that scroll inside themselves.
+    //
+    // Listening on the document rather than on each marker means one pair of
+    // handlers serves every option on the page, including rows a page's own
+    // script adds after load.
+    httpd_resp_sendstr_chunk(req, "<script>(function(){"
+                                  "var cur=null;"
+                                  "function place(h){"
+                                  "var b=h.querySelector('.hlp-box');"
+                                  "if(!b)return;"
+                                  "b.classList.remove('below');"
+                                  "b.style.visibility='hidden';"
+                                  "b.style.display='block';"
+                                  "b.style.left='0px';"
+                                  "b.style.top='0px';"
+                                  "var m=h.getBoundingClientRect();"
+                                  "var w=b.offsetWidth,t=b.offsetHeight,g=8;"
+                                  "var vw=document.documentElement.clientWidth;"
+                                  "var vh=document.documentElement.clientHeight;"
+                                  "var cx=m.left+m.width/2;"
+                                  "var x=cx-w/2;"
+                                  "if(x+w>vw-g)x=vw-g-w;"
+                                  "if(x<g)x=g;"
+                                  "var y=m.top-t-g;"
+                                  "if(y<g){y=m.bottom+g;b.classList.add('below');}"
+                                  "if(y+t>vh-g)y=Math.max(g,vh-g-t);"
+                                  "var a=cx-x;"
+                                  "if(a<10)a=10;"
+                                  "if(a>w-10)a=w-10;"
+                                  "b.style.left=Math.round(x)+'px';"
+                                  "b.style.top=Math.round(y)+'px';"
+                                  "b.style.setProperty('--hlp-arrow',Math.round(a)+'px');"
+                                  "b.style.display='';"
+                                  "b.style.visibility='';"
+                                  "cur=h;"
+                                  "}"
+                                  "function marker(n){"
+                                  "while(n&&n!==document){"
+                                  "if(n.classList&&n.classList.contains('hlp'))return n;"
+                                  "n=n.parentNode;"
+                                  "}"
+                                  "return null;"
+                                  "}"
+                                  "function show(e){var h=marker(e.target);if(h)place(h);}"
+                                  "function hide(e){if(cur&&marker(e.target)===cur)cur=null;}"
+                                  "function follow(){if(cur)place(cur);}"
+                                  "document.addEventListener('mouseover',show,true);"
+                                  "document.addEventListener('focusin',show,true);"
+                                  "document.addEventListener('mouseout',hide,true);"
+                                  "document.addEventListener('focusout',hide,true);"
+                                  "document.addEventListener('scroll',follow,true);"
+                                  "window.addEventListener('resize',follow);"
+                                  "})();</script>");
+
+    httpd_resp_sendstr_chunk(req, "</main></div></body></html>");
+    httpd_resp_sendstr_chunk(req, NULL); // end chunked response
+}
+
+void web_send_standalone_page(httpd_req_t *req, const char *body_html) {
+    // Every response that is not a full admin page still has to read on a
+    // phone. These bodies are short and are shown outside the admin chrome,
+    // so they carry their own head instead of linking /style.css: the
+    // viewport declaration is what stops a handset from laying the page out
+    // at desktop width and then scaling the result down to unreadable, and
+    // the few rules below give the text a comfortable measure and the same
+    // face as the rest of the UI. Colours are spelled out literally here
+    // because the var(--...) custom properties are defined by the stylesheet
+    // this page deliberately does not load.
+    httpd_resp_sendstr_chunk(req, "<!DOCTYPE html><html><head><meta charset='utf-8'>"
+                                  "<meta name='viewport' content='width=device-width,initial-scale=1'>"
+                                  "<style>"
+                                  "html{-webkit-text-size-adjust:100%;text-size-adjust:100%;}"
+                                  "body{font-family:'Segoe UI',system-ui,sans-serif;color:#111827;background:#f6f7f9;"
+                                  "margin:0;padding:24px 16px;max-width:640px;overflow-wrap:anywhere;line-height:1.5;}"
+                                  "h1{font-size:1.25em;margin:0 0 12px;}"
+                                  "p{margin:8px 0;}"
+                                  "a{color:#2f6fed;}"
+                                  ".err{color:#dc2626;font-weight:600;}"
+                                  "</style></head><body>");
+    httpd_resp_sendstr_chunk(req, body_html);
+    httpd_resp_sendstr_chunk(req, "</body></html>");
+    httpd_resp_sendstr_chunk(req, NULL); // end chunked response
+}
+
+void web_send_save_result(httpd_req_t *req, bool ok, const char *location) {
+    // Sized for the longest translation of either body plus two copies of the
+    // location, so neither branch can be truncated by snprintf().
+    char buf[512];
+
+    httpd_resp_set_type(req, "text/html");
+    httpd_resp_set_hdr(req, "Cache-Control", "no-store, no-cache, must-revalidate");
+    httpd_resp_set_hdr(req, "Pragma", "no-cache");
+
+    if (ok) {
+        // The redirect is declared in the body rather than the head because
+        // the head belongs to web_send_standalone_page(); a meta refresh is
+        // honoured wherever in the document it appears.
+        snprintf(buf, sizeof(buf), "<meta http-equiv='refresh' content='1;url=%s'><p>" TR_SAVED_REDIRECT "</p>", location);
+    } else {
+        // No meta refresh on this branch: the page the user came from is
+        // rendered from the live settings, so bouncing straight back to it
+        // would redisplay exactly what was typed and read as a success. The
+        // failure stays on screen until the operator follows the link.
+        snprintf(buf, sizeof(buf), "<p class='err'>" TR_SAVE_FAILED "</p><p><a href='%s'>&larr; %s</a></p>", location, location);
+    }
+
+    web_send_standalone_page(req, buf);
+}
+
+esp_err_t web_handle_css(httpd_req_t *req) {
+    static const char *css =
+        // Palette/typography matched to hiperiondev/ESP32_WSPR's embedded web admin
+        ":root{--bg:#f6f7f9;--card:#ffffff;--border:#e6e8ec;--accent:#2f6fed;"
+        "--green:#1a7f37;--red:#dc2626;--text:#111827;--sub:#6b7280;"
+        "--shadow:0 1px 3px rgba(0,0,0,.06),0 1px 2px rgba(0,0,0,.04);"
+        "--radius-card:14px;--radius-pill:999px;"
+        // Height of the top bar, shared by the layout's minimum height and by
+        // the off-canvas drawer that sits under it on narrow screens, so all
+        // three stay aligned from one value.
+        "--topbar-h:56px;--gutter:28px;}"
+        "*{box-sizing:border-box;margin:0;padding:0;}"
+        // text-size-adjust keeps a phone in landscape from inflating the body
+        // text on its own, which would undo the breakpoints below.
+        "html{-webkit-text-size-adjust:100%;text-size-adjust:100%;}"
+        "body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text);}"
+        // Long unbroken tokens are ordinary content here - callsigns with
+        // paths, APRS-IS filter strings, raw packets, file names - and a
+        // viewport narrower than one of them would otherwise be widened by it.
+        "body,td,th,p,li,label{overflow-wrap:anywhere;}"
+        "img{max-width:100%;height:auto;}"
+        ".topbar{display:flex;justify-content:space-between;align-items:center;gap:12px;"
+        "height:var(--topbar-h);padding:0 var(--gutter);"
+        "background:var(--card);border-bottom:1px solid var(--border);box-shadow:0 1px 2px rgba(0,0,0,.03);}"
+        ".topbar .brand{display:flex;flex:1;align-items:center;gap:10px;font-weight:700;color:var(--text);font-size:1.05em;min-width:0;}"
+        ".topbar .brand-text{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}"
+        // Brand logo. Only the height is declared: with width:auto the browser
+        // derives the width from the image's own proportions, so the PNG is the
+        // single source of truth for its aspect ratio and replacing it with a
+        // differently-shaped one needs no change here. The height has to be
+        // stated explicitly all the same, because the global img rule above
+        // sets height:auto and would otherwise draw the image at its full
+        // intrinsic size. 32px inside the 56px bar leaves the logo clear of the
+        // bar's edges, and the width that follows from it stays short enough to
+        // leave the brand text its room.
+        ".topbar .brand-mark{height:32px;width:auto;flex:none;}"
+        ".topbar-right{display:flex;align-items:center;gap:10px;border:1px solid var(--border);"
+        "border-radius:var(--radius-pill);padding:6px 16px;background:var(--bg);flex:none;}"
+        ".topbar .logout{color:var(--sub);text-decoration:none;font-size:.85em;font-weight:600;}"
+        ".topbar .logout:hover{color:var(--red);}"
+        // Navigation drawer control. The checkbox carries the open/closed
+        // state and is a sibling of both the top bar and the layout, so the
+        // burger, the drawer and the scrim are all driven from it in CSS
+        // alone - no script, and the state resets by itself on every
+        // navigation. It is moved out of sight rather than hidden with
+        // display:none so it stays reachable by keyboard.
+        ".nav-toggle{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;}"
+        ".nav-burger{display:none;flex:none;width:40px;height:40px;flex-direction:column;"
+        "align-items:center;justify-content:center;gap:4px;cursor:pointer;"
+        "border:1px solid var(--border);border-radius:9px;background:var(--bg);}"
+        ".nav-burger span{display:block;width:18px;height:2px;border-radius:2px;background:var(--text);}"
+        ".nav-toggle:focus-visible+.topbar .nav-burger{border-color:var(--accent);box-shadow:0 0 0 2px rgba(47,111,237,.35);}"
+        ".layout{display:flex;align-items:flex-start;min-height:calc(100vh - var(--topbar-h));}"
+        ".sidebar{width:220px;flex:none;align-self:stretch;background:var(--card);"
+        "border-right:1px solid var(--border);box-shadow:1px 0 3px rgba(0,0,0,.03);padding:16px 0;}"
+        ".sidebar ul{list-style:none;}"
+        ".sidebar li a{display:block;padding:10px 18px;color:var(--text);text-decoration:none;"
+        "font-size:.85em;border-left:3px solid transparent;transition:.15s;}"
+        ".sidebar li a:hover{background:var(--bg);border-left-color:var(--border);}"
+        ".sidebar li a.active{background:#eaf1ff;color:var(--accent);font-weight:700;border-left-color:var(--accent);}"
+        // Dimmed backdrop behind the open drawer. It is a label for the same
+        // checkbox, so tapping anywhere outside the menu closes it.
+        ".nav-scrim{display:none;}"
+        // min-width:0 is what lets this column shrink below the width of its
+        // widest child. Without it a flex item refuses to go under its content
+        // width, so one wide table would push the whole page sideways instead
+        // of scrolling inside its own frame.
+        ".content{flex:1;min-width:0;padding:24px var(--gutter);max-width:1000px;}"
+        "h1{color:var(--text);font-size:1.5em;font-weight:800;margin-bottom:18px;}"
+        "fieldset{background:var(--card);border:1px solid var(--border);border-radius:var(--radius-card);"
+        "box-shadow:var(--shadow);margin-bottom:20px;padding:20px 22px;min-width:0;}"
+        "legend{width:100%;color:var(--text);padding:0;margin:0 0 14px;font-size:1.05em;font-weight:700;}"
+        // At-a-glance metric strip (dashboard System Info and similar live
+        // stats): a row of equal cards, each with a small uppercase label and
+        // a large value, matching the admin UI's stat-card look everywhere
+        // it is used. The auto-fit track keeps the cards a readable width and
+        // re-flows them into as many columns as the viewport holds, down to a
+        // single column on a phone.
+        ".stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;}"
+        ".stat-card{min-width:0;background:var(--card);border:1px solid var(--border);"
+        "border-radius:var(--radius-card);padding:14px 16px;}"
+        ".stat-label{color:var(--sub);font-size:.72em;font-weight:700;letter-spacing:.04em;"
+        "text-transform:uppercase;margin-bottom:8px;}"
+        ".stat-value{color:var(--text);font-size:1.4em;font-weight:800;}"
+        ".stat-unit{color:var(--sub);font-size:.55em;font-weight:600;}"
+        "label{display:block;color:var(--sub);font-size:.8em;margin:12px 0 4px;}"
+        "label:first-child{margin-top:0;}"
+        "p label{display:inline;}"
+        ".pwd-show{display:block;font-size:.72em;font-weight:400;margin:4px 0 0;color:var(--sub);}"
+        "input[type=text],input[type=password],input[type=number],select,textarea{"
+        "width:100%;max-width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;"
+        "background:#fff;color:var(--text);font-size:.9em;outline:none;transition:.2s;}"
+        "input:focus,select:focus,textarea:focus{border-color:var(--accent);}"
+        "input[type=checkbox]{width:16px;height:16px;cursor:pointer;accent-color:var(--accent);margin-right:6px;}"
+        ".row{display:flex;gap:16px;flex-wrap:wrap;}"
+        ".row>div{flex:1;min-width:160px;}"
+        "button,.btn{background:var(--accent);color:#fff;border:0;border-radius:8px;"
+        "padding:10px 20px;font-weight:700;cursor:pointer;font-size:.9em;text-decoration:none;"
+        "display:inline-block;margin-top:10px;transition:.2s;}"
+        "button:hover,.btn:hover{background:#245bc4;}"
+        "button.secondary,.btn.secondary{background:#eef1f5;color:var(--sub);}"
+        "button.secondary:hover,.btn.secondary:hover{background:#e2e6ec;}"
+        "button.danger,.btn.danger{background:#fef2f2;color:var(--red);border:1px solid var(--red);}"
+        "button.danger:hover,.btn.danger:hover{background:var(--red);color:#fff;}"
+        ".btnrow{flex-wrap:wrap;}"
+        // Every table on every page is emitted inside one of these frames. A
+        // table sizes itself to its own columns and cannot be made narrower
+        // without folding its cells, so the frame is what absorbs the
+        // difference: the table keeps its full width and scrolls sideways
+        // within the page instead of widening it.
+        ".table-wrap{width:100%;max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;}"
+        "table{border-collapse:collapse;width:100%;font-size:.82em;}"
+        "table th,table td{border:1px solid var(--border);padding:7px 9px;text-align:left;}"
+        "table th{background:var(--bg);color:var(--sub);}"
+        ".login-box{max-width:340px;width:100%;margin:min(80px,10vh) auto;background:var(--card);padding:28px;"
+        "border-radius:var(--radius-card);box-shadow:var(--shadow);border:1px solid var(--border);}"
+        ".login-box h1{border:0;text-align:center;}"
+        ".msg-ok{color:var(--green);} .msg-err{color:var(--red);}"
+        ".badge{display:inline-block;padding:3px 10px;border-radius:var(--radius-pill);"
+        "font-size:.72em;font-weight:700;letter-spacing:.02em;text-transform:uppercase;}"
+        ".badge.ok{background:#d1fae5;color:var(--green);}"
+        ".badge.warn{background:#fef3c7;color:#92400e;}"
+        ".badge.err{background:#fee2e2;color:var(--red);}"
+        ".badge.off{background:#e5e7eb;color:#4b5563;}"
+        // CSS-only toggle switch: wraps the checkbox in a track+knob pair
+        // driven purely by :checked, so it needs no script and keeps the
+        // checkbox's own name/id/checked semantics untouched. Used only where
+        // a checkbox represents a single on/off feature enable, never for a
+        // multi-select checkbox list (see web_field_checkbox_plain()).
+        "label.switch-row{display:flex;align-items:center;gap:10px;cursor:pointer;margin:12px 0 4px;}"
+        "label.switch-row:first-child{margin-top:0;}"
+        ".switch{position:relative;display:inline-block;width:40px;height:22px;flex:none;}"
+        ".switch input{position:absolute;opacity:0;width:0;height:0;}"
+        ".switch .slider{position:absolute;inset:0;background:#cbd5e1;border-radius:var(--radius-pill);transition:.2s;}"
+        ".switch .slider::before{content:'';position:absolute;height:16px;width:16px;left:3px;top:3px;"
+        "background:#fff;border-radius:50%;box-shadow:0 1px 2px rgba(0,0,0,.25);transition:.2s;}"
+        ".switch input:checked+.slider{background:var(--green);}"
+        ".switch input:checked+.slider::before{transform:translateX(18px);}"
+        ".switch input:focus+.slider{box-shadow:0 0 0 2px rgba(47,111,237,.35);}"
+        ".switch-label{color:var(--text);font-size:.85em;}"
+        // Contextual help marker: the small orange circled question mark that
+        // closes every option label, and the balloon it opens. The balloon is
+        // revealed from the marker's own :hover and :focus, so it holds no
+        // state - a page load leaves every balloon closed. :focus is what
+        // makes it reachable without a mouse: the marker is focusable, so a
+        // keyboard tab and a touch-screen tap both open it the same way a
+        // pointer does.
+        ".hlp{display:inline-flex;align-items:center;justify-content:center;"
+        "width:14px;height:14px;margin-left:5px;border-radius:50%;background:#f59e0b;color:#fff;"
+        "font-size:10px;font-weight:700;line-height:1;cursor:help;vertical-align:middle;flex:none;}"
+        ".hlp:focus{outline:2px solid var(--accent);outline-offset:1px;}"
+        ".hlp-mark{pointer-events:none;}"
+        // The balloon is positioned against the viewport rather than against
+        // the marker it belongs to. A marker sits inside a card, an accordion
+        // or a table frame, and several of those clip what leaves them - the
+        // accordion hides its overflow so its rounded corners stay clean, and
+        // a table frame that scrolls sideways clips vertically as well. A
+        // balloon laid out inside any of them would be cut off at the frame's
+        // edge exactly when it is longer than the space left above the field.
+        // Taking it out of the flow entirely is what lets it be drawn whole
+        // over every card, table and control on the page, whichever of them it
+        // is opened from.
+        //
+        // The coordinates are the one thing a stylesheet cannot supply for a
+        // fixed element, so web_send_footer()'s script measures the marker and
+        // writes top/left, the arrow offset in --hlp-arrow, and the .below
+        // class when the balloon has to hang under the field instead of over
+        // it. The values here are only the resting state before that runs.
+        //
+        // The balloon is kept out of the pointer's reach so that moving
+        // towards it never counts as leaving the marker, which would close it
+        // halfway through the sentence being read.
+        ".hlp-box{display:none;position:fixed;top:0;left:0;z-index:1000;"
+        "width:max-content;max-width:min(300px,calc(100vw - 24px));padding:8px 10px;border-radius:8px;"
+        "background:#1f2937;color:#f9fafb;font-size:11px;font-weight:400;line-height:1.35;"
+        "text-align:left;white-space:normal;cursor:auto;pointer-events:none;"
+        "box-shadow:0 4px 12px rgba(0,0,0,.25);}"
+        // The arrow tracks the marker along the balloon's edge, since a
+        // balloon pushed away from a screen edge is no longer centred on the
+        // field it explains. It points down from the underside by default and
+        // up from the top when .below has flipped the balloon.
+        ".hlp-box::after{content:'';position:absolute;top:100%;left:var(--hlp-arrow,50%);transform:translateX(-50%);"
+        "border:5px solid transparent;border-top-color:#1f2937;}"
+        ".hlp-box.below::after{top:auto;bottom:100%;border-top-color:transparent;border-bottom-color:#1f2937;}"
+        ".hlp:hover .hlp-box,.hlp:focus .hlp-box,.hlp:focus-within .hlp-box{display:block;}"
+        // Reusable light-blue callout for explanatory text under a control,
+        // available for any page that wants it.
+        ".info-box{background:#eef4ff;border:1px solid #cfe0fb;color:#33456b;"
+        "border-radius:10px;padding:10px 14px;font-size:.82em;}"
+        ".traffic-actions{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px;}"
+        ".traffic-actions .btn{margin-top:0;padding:6px 12px;font-size:.8em;}"
+        // The traffic table is the one frame that scrolls on both axes: it
+        // holds more rows than fit on screen as well as more columns than fit
+        // across a phone.
+        ".traffic-table-wrap{max-height:360px;overflow:auto;-webkit-overflow-scrolling:touch;}"
+        "#trafficTable td{font-family:'Consolas','Courier New',monospace;font-size:.95em;"
+        "white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:340px;}"
+        "#trafficTable th:nth-child(4),#trafficTable td:nth-child(4){max-width:420px;}"
+        // Chat panel (Snd/Rcv Msg page): its height is set from the page's own
+        // script, to the exact height of the last few message bubbles, so the
+        // panel shows that many messages and scrolls through the rest of the
+        // stored conversation. The bounds here only frame that: min-height
+        // keeps the panel a readable size while the conversation is empty or
+        // one line long, max-height keeps tall messages from pushing the
+        // compose row off a short screen.
+        ".chat-box{min-height:120px;max-height:70vh;overflow-y:auto;display:flex;flex-direction:column;"
+        "gap:8px;padding:10px;background:var(--bg);border:1px solid var(--border);border-radius:8px;}"
+        ".chat-empty{color:var(--sub);font-size:.85em;text-align:center;padding:20px 0;}"
+        ".chat-bubble{max-width:min(78%,560px);padding:8px 12px;border-radius:12px;font-size:.85em;word-break:break-word;}"
+        ".chat-bubble .chat-meta{display:block;font-size:.75em;opacity:.7;margin-bottom:3px;}"
+        ".chat-bubble.rx{align-self:flex-start;background:#e8e7e3;color:var(--text);border-bottom-left-radius:2px;}"
+        ".chat-bubble.tx{align-self:flex-end;background:var(--accent);color:#fff;border-bottom-right-radius:2px;}"
+        ".chat-bubble.tx.pending{background:#7d9be8;}"
+        ".chat-compose{margin-top:14px;}"
+        ".chat-compose .row{align-items:flex-start;}"
+        ".chat-counter{font-size:.72em;color:var(--sub);text-align:right;margin-top:2px;}"
+        "#msgChatStatus{font-size:.8em;margin-top:8px;display:block;}"
+        // Per-message action row of the Winlink mailbox: the commands that act
+        // on one listed message, rendered under the bubble holding that line.
+        // Left-aligned like the bubble it belongs to and set in smaller
+        // buttons, so a listing of several messages still reads as a listing
+        // rather than as a wall of controls.
+        ".wl-msg-acts{align-self:flex-start;display:flex;flex-wrap:wrap;gap:6px;margin:-4px 0 2px 4px;}"
+        ".wl-msg-acts button{margin-top:0;padding:4px 10px;font-size:.75em;}"
+        // Collapsible analog-channel accordion (Telemetry page): one card per
+        // channel, header always visible (tag + name + live value + caret),
+        // body only rendered for the currently-open channel.
+        ".faint{color:var(--sub);opacity:.8;}"
+        ".achan{border:1px solid var(--border);border-radius:8px;margin-bottom:10px;overflow:hidden;background:var(--bg);}"
+        ".achan:last-child{margin-bottom:0;}"
+        ".achan-head{display:flex;align-items:center;gap:10px;padding:11px 12px;cursor:pointer;user-select:none;min-height:40px;}"
+        ".achan-head .achan-tag{font-weight:700;color:var(--accent);font-size:.9em;width:28px;flex:none;}"
+        ".achan-head .achan-name{flex:1;color:var(--text);font-size:.9em;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}"
+        ".achan-head .achan-val{font-variant-numeric:tabular-nums;color:#92400e;font-size:.9em;min-width:70px;text-align:right;flex:none;}"
+        ".achan-head .achan-caret{color:var(--sub);font-size:10px;transition:transform .15s;flex:none;}"
+        ".achan.open .achan-caret{transform:rotate(90deg);}"
+        ".achan-body{display:none;padding:14px;border-top:1px solid var(--border);background:var(--card);}"
+        ".achan.open .achan-body{display:block;}"
+        ".eqn-preview{margin-top:6px;font-size:.85em;color:var(--sub);background:var(--bg);"
+        "border:1px solid var(--border);border-radius:6px;padding:6px 8px;}"
+        ".eqn-preview b{color:var(--accent);}"
+        "@media (max-width:420px){.achan-head{flex-wrap:wrap;row-gap:4px;}.achan-head .achan-name{flex-basis:100%;order:3;white-space:normal;}}"
+        // Console log window (Logs page): a terminal panel that scrolls in
+        // both directions. Vertically because it holds more rows than fit on
+        // screen, horizontally because white-space:pre keeps each console line
+        // whole - a log line wrapped at the panel's width would read as two
+        // entries and hide which one the timestamp belongs to. Its height
+        // tracks the viewport between a floor that still shows a useful number
+        // of lines on a phone and the desktop ceiling.
+        // The light palette matches the rest of the admin UI's cards while
+        // the monospace font keeps a wall of log lines scannable.
+        ".log-actions{display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin-bottom:10px;}"
+        ".log-actions button{margin-top:0;}"
+        ".log-box{height:clamp(220px,55vh,420px);overflow:auto;margin:0;padding:10px;background:#f0f0f0;color:#111111;"
+        "font-family:'Consolas','Courier New',monospace;font-size:.78em;line-height:1.35;"
+        "white-space:pre;border:1px solid var(--border);border-radius:8px;"
+        "-webkit-overflow-scrolling:touch;}"
+        // ---------------------------------------------------------------
+        // Tablet and phone: the fixed sidebar becomes an off-canvas drawer
+        // opened from the burger in the top bar, and the page gets the full
+        // width back. The top bar sticks so the drawer can always be reached
+        // without scrolling back up a long settings page.
+        "@media (max-width:900px){"
+        ":root{--gutter:16px;}"
+        ".topbar{position:sticky;top:0;z-index:40;}"
+        ".nav-burger{display:flex;}"
+        ".sidebar{position:fixed;top:0;left:0;bottom:0;z-index:30;width:250px;max-width:80vw;"
+        "overflow-y:auto;padding-top:calc(var(--topbar-h) + 12px);border-right:0;"
+        "box-shadow:0 0 24px rgba(0,0,0,.18);transform:translateX(-100%);transition:transform .2s ease;}"
+        ".nav-toggle:checked~.layout .sidebar{transform:translateX(0);}"
+        ".nav-scrim{position:fixed;inset:0;z-index:20;background:rgba(17,24,39,.45);}"
+        ".nav-toggle:checked~.layout .nav-scrim{display:block;}"
+        ".content{max-width:none;padding:20px var(--gutter);}"
+        "}"
+        // Phone: tighter cards and headings, one form column per row, and a
+        // shorter ellipsis budget for the traffic table's packet cells so a
+        // sideways scroll stays short.
+        "@media (max-width:600px){"
+        "h1{font-size:1.25em;margin-bottom:14px;}"
+        "fieldset{padding:16px 14px;margin-bottom:16px;}"
+        ".topbar .brand{font-size:.95em;}"
+        // The bar is the same height on a phone, but the room beside the logo
+        // is not: the burger takes the left of it and the title has to fit in
+        // what is left. A shorter logo gives that back, and since the width
+        // still follows from the height the image keeps its proportions.
+        ".topbar .brand-mark{height:26px;}"
+        ".topbar-right{padding:6px 12px;}"
+        ".row{gap:12px;}"
+        ".row>div{flex-basis:100%;}"
+        ".chat-bubble{max-width:90%;}"
+        "#trafficTable td,#trafficTable th:nth-child(4),#trafficTable td:nth-child(4){max-width:220px;}"
+        "}"
+        // Touch input: the controls get finger-sized, and the text fields get
+        // a 16px face because a smaller one makes mobile browsers zoom the
+        // page in on focus and leave it zoomed. The toggle switch's own
+        // checkbox is re-hidden after the sizing rule above it, since it is
+        // painted by its slider rather than by the box itself.
+        "@media (pointer:coarse){"
+        "input[type=text],input[type=password],input[type=number],select,textarea{font-size:16px;padding:10px 12px;}"
+        "input[type=checkbox]{width:20px;height:20px;}"
+        ".switch input{width:0;height:0;}"
+        "button,.btn{min-height:44px;padding:12px 20px;}"
+        ".traffic-actions .btn,.wl-msg-acts button,.log-actions button{min-height:36px;}"
+        ".sidebar li a{padding:14px 18px;font-size:.95em;}"
+        "}"
+        "@media (prefers-reduced-motion:reduce){"
+        ".sidebar{transition:none;}"
+        "}";
+    httpd_resp_set_type(req, "text/css");
+    return httpd_resp_sendstr(req, css);
+}
+
+esp_err_t web_handle_logo(httpd_req_t *req) {
+    httpd_resp_set_type(req, "image/png");
+    // The image is part of the firmware, so the only thing that can change it
+    // is an OTA update - and an update lands on a fresh boot with the browser
+    // reconnecting from scratch. Letting it be cached for a day therefore
+    // costs nothing and keeps the logo off the wire on every page load, which
+    // matters on a server holding three sockets: an admin page already fetches
+    // the stylesheet and three periodic JSON endpoints over the same
+    // keep-alive connections.
+    httpd_resp_set_hdr(req, "Cache-Control", "public, max-age=86400");
+    // Sent whole rather than chunked: the size is known at compile time, so a
+    // single send with an explicit length lets the browser see Content-Length
+    // and spares the connection the chunked framing.
+    return httpd_resp_send(req, (const char *)web_logo_png, WEB_LOGO_PNG_LEN);
+}
+
+// ---------------------------------------------------------------- Field helpers
+void web_raw(httpd_req_t *req, const char *html) {
+    httpd_resp_sendstr_chunk(req, html);
+}
+
+// Copy a label or legend into `dst` for rendering, keeping at most
+// WEB_LABEL_MAX_BYTES bytes of it. The translation tables are UTF-8, so an
+// accented Spanish or Italian character spends two bytes; cutting at a fixed
+// byte count could leave a dangling lead or continuation byte that renders as
+// a replacement glyph. Backing up over any trailing continuation bytes
+// (0b10xxxxxx) and then over their lead byte keeps the copy valid text.
+// Every emitter below routes its label through this, so one over-long label
+// cannot render differently depending on which control it lands in.
+static void label_clamp(char dst[WEB_LABEL_MAX_BYTES + 1], const char *src) {
+    if (!src) {
+        dst[0] = 0;
+        return;
+    }
+    size_t n = strlen(src);
+    if (n > WEB_LABEL_MAX_BYTES) {
+        n = WEB_LABEL_MAX_BYTES;
+        while (n > 0 && ((unsigned char)src[n] & 0xC0) == 0x80)
+            n--;
+    }
+    memcpy(dst, src, n);
+    dst[n] = 0;
+}
+
+// Resolves an option's help text from its label and renders the marker for
+// it. Every emitter below routes its label through this, so the question mark
+// is part of what a labelled control is rather than something a page has to
+// remember to ask for, and a label shared by several pages carries the same
+// explanation on all of them. A label with no registered help - one assembled
+// at run time, for instance - leaves `dst` empty and the option renders
+// without a marker.
+static void label_help(char dst[WEB_HELP_MARKUP_MAX], const char *label) {
+    web_help_markup(dst, WEB_HELP_MARKUP_MAX, web_help_for_label(label));
+}
+
+void web_fieldset_open(httpd_req_t *req, const char *legend) {
+    char leg[WEB_LABEL_MAX_BYTES + 1];
+    label_clamp(leg, legend);
+    char buf[WEB_LABEL_MAX_BYTES + 64];
+    snprintf(buf, sizeof(buf), "<fieldset><legend>" WEB_LABEL_FMT "</legend>", leg);
+    httpd_resp_sendstr_chunk(req, buf);
+}
+
+void web_fieldset_close(httpd_req_t *req) {
+    httpd_resp_sendstr_chunk(req, "</fieldset>");
+}
+
+// Both helpers below render arbitrary, saved user/attacker text (e.g.
+// free-text comments, or a WiFi SSID copied from an over-the-air scan
+// result) back into an HTML attribute on every GET of the owning page. That
+// text is HTML-escaped here, once, so no caller has to remember to do it:
+// escaping at only some call sites would let a quote/angle-bracket character
+// in a comment, status, filter, hostname or WiFi SSID field break out of
+// value='...' and inject markup/script that then ran in the admin's
+// authenticated session on the next page load.
+void web_field_text(httpd_req_t *req, const char *label, const char *name, const char *value, int maxlen) {
+    char hlp[WEB_HELP_MARKUP_MAX];
+    label_help(hlp, label);
+    web_field_text_h(req, label, name, value, maxlen, hlp);
+}
+
+// The `_h()` variants below all take the help marker ready-rendered instead of
+// resolving it from the label. A page reaches for one where its label is built
+// at run time - a numbered alias or budlist row, a payload-type filter - since
+// such a label matches no entry in the help table and would otherwise render
+// with no question mark at all.
+void web_field_text_h(httpd_req_t *req, const char *label, const char *name, const char *value, int maxlen, const char *help_markup) {
+    char esc[512];
+    web_html_attr_escape(value ? value : "", esc, sizeof(esc));
+    char lbl[WEB_LABEL_MAX_BYTES + 1];
+    label_clamp(lbl, label);
+    char buf[WEB_LABEL_MAX_BYTES + WEB_HELP_MARKUP_MAX + 576];
+    snprintf(buf, sizeof(buf), "<label>" WEB_LABEL_FMT WEB_HELP_FMT "</label><input type='text' name='%.30s' value='%.400s' maxlength='%d'>", lbl,
+             help_markup ? help_markup : "", name, esc, maxlen);
+    httpd_resp_sendstr_chunk(req, buf);
+}
+
+// Both numeric emitters below always render the field's accepted range as HTML
+// min/max attributes, so every numeric input on every page is validated by the
+// browser before the form is submitted. The bounds are supplied by the caller
+// because they belong to the field's own value domain, and the caller is what
+// also clamps the posted value server-side: the browser check is the first
+// line of defence against a typo, the handler's clamp is the one that holds
+// against a crafted POST.
+
+// Number of digits after the decimal point in a step string such as "0.0001"
+// or "1" (0 digits). Returns 6 for "any" (the HTML5 sentinel meaning
+// unrestricted precision) or for a value with a decimal point but no digits
+// after it, since those are the only two callers that want full float
+// precision rather than a fixed decimal count.
+static int step_decimals(const char *step) {
+    if (!step || strcmp(step, "any") == 0)
+        return 6;
+    const char *dot = strchr(step, '.');
+    if (!dot)
+        return 0;
+    int n = 0;
+    for (const char *p = dot + 1; *p >= '0' && *p <= '9'; p++)
+        n++;
+    return n > 0 ? n : 6;
+}
+
+void web_field_int(httpd_req_t *req, const char *label, const char *name, long value, long min, long max) {
+    char hlp[WEB_HELP_MARKUP_MAX];
+    label_help(hlp, label);
+    web_field_int_h(req, label, name, value, min, max, hlp);
+}
+
+void web_field_int_h(httpd_req_t *req, const char *label, const char *name, long value, long min, long max, const char *help_markup) {
+    char lbl[WEB_LABEL_MAX_BYTES + 1];
+    label_clamp(lbl, label);
+    char buf[WEB_LABEL_MAX_BYTES + WEB_HELP_MARKUP_MAX + 192];
+    snprintf(buf, sizeof(buf), "<label>" WEB_LABEL_FMT WEB_HELP_FMT "</label><input type='number' name='%.30s' value='%ld' min='%ld' max='%ld'>", lbl,
+             help_markup ? help_markup : "", name, value, min, max);
+    httpd_resp_sendstr_chunk(req, buf);
+}
+
+// Renders the value with exactly as many decimal digits as the step
+// attribute itself specifies (e.g. step="0.0001" -> 4 decimals, step="1" ->
+// 0 decimals). A field pre-filled with fewer significant digits than that -
+// the failure mode of a plain "%g", which drops to 3 decimals past 100 - or
+// with more decimals than the step allows leaves a value the browser's own
+// step check rejects, blocking every subsequent Save until the field is
+// retyped by hand.
+void web_field_float(httpd_req_t *req, const char *label, const char *name, float value, const char *step, float min, float max) {
+    char lbl[WEB_LABEL_MAX_BYTES + 1];
+    label_clamp(lbl, label);
+    char hlp[WEB_HELP_MARKUP_MAX];
+    label_help(hlp, label);
+    int decimals = step_decimals(step);
+    char buf[WEB_LABEL_MAX_BYTES + WEB_HELP_MARKUP_MAX + 192];
+    snprintf(buf, sizeof(buf), "<label>" WEB_LABEL_FMT WEB_HELP_FMT "</label><input type='number' step='%.10s' name='%.30s' value='%.*f' min='%g' max='%g'>",
+             lbl, hlp, step ? step : "0.01", name, decimals, (double)value, (double)min, (double)max);
+    httpd_resp_sendstr_chunk(req, buf);
+}
+
+// Renders as an iOS-style toggle switch (track+knob) driven purely by
+// :checked in CSS: the extra <span> wrappers around the input are decorative
+// only, and the field's name/checked semantics are exactly what a bare
+// checkbox would post. Reserved for a checkbox that represents a single on/off
+// feature enable; a checkbox that is one of several options in a multi-select
+// list uses web_field_checkbox_plain() instead, so it still reads as a list
+// rather than a bank of independent switches.
+void web_field_checkbox(httpd_req_t *req, const char *label, const char *name, bool checked) {
+    char lbl[WEB_LABEL_MAX_BYTES + 1];
+    label_clamp(lbl, label);
+    char hlp[WEB_HELP_MARKUP_MAX];
+    label_help(hlp, label);
+    char buf[WEB_LABEL_MAX_BYTES + WEB_HELP_MARKUP_MAX + 224];
+    snprintf(buf, sizeof(buf),
+             "<label class='switch-row'><span class='switch'><input type='checkbox' name='%.30s' %s>"
+             "<span class='slider'></span></span><span class='switch-label'>" WEB_LABEL_FMT WEB_HELP_FMT "</span></label>",
+             name, checked ? "checked" : "", lbl, hlp);
+    httpd_resp_sendstr_chunk(req, buf);
+}
+
+// Same field as web_field_checkbox(), rendered as a bare checkbox instead of a
+// toggle switch. Used for a checkbox that is one entry in a multi-select list
+// (e.g. a payload-type filter or a path alias) rather than a single feature's
+// on/off state, since a bank of switches would misrepresent that as several
+// independent settings instead of one selection among peers.
+void web_field_checkbox_plain(httpd_req_t *req, const char *label, const char *name, bool checked) {
+    char hlp[WEB_HELP_MARKUP_MAX];
+    label_help(hlp, label);
+    web_field_checkbox_plain_h(req, label, name, checked, hlp);
+}
+
+void web_field_checkbox_plain_h(httpd_req_t *req, const char *label, const char *name, bool checked, const char *help_markup) {
+    char lbl[WEB_LABEL_MAX_BYTES + 1];
+    label_clamp(lbl, label);
+    char buf[WEB_LABEL_MAX_BYTES + WEB_HELP_MARKUP_MAX + 128];
+    snprintf(buf, sizeof(buf), "<label><input type='checkbox' name='%.30s' %s> " WEB_LABEL_FMT WEB_HELP_FMT "</label>", name, checked ? "checked" : "", lbl,
+             help_markup ? help_markup : "");
+    httpd_resp_sendstr_chunk(req, buf);
+}
+
+void web_field_path_checkboxes(httpd_req_t *req, const char *name_prefix, uint8_t mask) {
+    char group_help[WEB_HELP_MARKUP_MAX];
+    web_help_markup(group_help, sizeof(group_help), web_help_for_label(TR_F_PATH));
+    char buf[WEB_HELP_MARKUP_MAX + 160];
+    snprintf(buf, sizeof(buf), "<label>%.100s" WEB_HELP_FMT "</label>", TR_F_PATH, group_help);
+    httpd_resp_sendstr_chunk(req, buf);
+
+    // Each box's own label is "Path N", optionally followed by the alias that
+    // preset currently holds, so it never matches an entry in the help table.
+    // All four share one explanation, resolved once here from the group label
+    // the boxes sit under.
+    char box_help[WEB_HELP_MARKUP_MAX];
+    web_help_markup(box_help, sizeof(box_help), web_help_for_label(TR_F_OBJITEM_PATH_FMT));
+
+    char aliases[4][72];
+    app_config_lock();
+    for (int i = 0; i < 4; i++) {
+        strncpy(aliases[i], g_config.path[i], sizeof(aliases[i]) - 1);
+        aliases[i][sizeof(aliases[i]) - 1] = 0;
+    }
+    app_config_unlock();
+
+    for (int k = 0; k < 4; k++) {
+        // Sized to hold the escaped alias plus the "Path N (...)" wrapper so
+        // the ESP-IDF -Wformat-truncation error cannot fire; the checkbox
+        // helper caps the displayed label length itself.
+        char plabel[72 * 6 + 32];
+        if (aliases[k][0]) {
+            char pesc[72 * 6 + 1];
+            web_html_attr_escape(aliases[k], pesc, sizeof(pesc));
+            snprintf(plabel, sizeof(plabel), TR_F_OBJITEM_PATH_FMT " (%s)", k + 1, pesc);
+        } else {
+            snprintf(plabel, sizeof(plabel), TR_F_OBJITEM_PATH_FMT, k + 1);
+        }
+        char name[48];
+        snprintf(name, sizeof(name), "%.30s%d", name_prefix, k + 1);
+        web_field_checkbox_plain_h(req, plabel, name, (mask & (1u << k)) != 0, box_help);
+    }
+}
+
+uint8_t web_form_get_path_mask(const char *body, const char *name_prefix) {
+    uint8_t mask = 0;
+    for (int k = 0; k < 4; k++) {
+        char name[48];
+        snprintf(name, sizeof(name), "%.30s%d", name_prefix, k + 1);
+        if (web_form_get_bool(body, name))
+            mask |= (uint8_t)(1u << k);
+    }
+    return mask;
+}
+
+void web_select_open(httpd_req_t *req, const char *label, const char *name) {
+    char hlp[WEB_HELP_MARKUP_MAX];
+    label_help(hlp, label);
+    web_select_open_h(req, label, name, hlp);
+}
+
+void web_select_open_h(httpd_req_t *req, const char *label, const char *name, const char *help_markup) {
+    char lbl[WEB_LABEL_MAX_BYTES + 1];
+    label_clamp(lbl, label);
+    char buf[WEB_LABEL_MAX_BYTES + WEB_HELP_MARKUP_MAX + 128];
+    snprintf(buf, sizeof(buf), "<label>" WEB_LABEL_FMT WEB_HELP_FMT "</label><select name='%.30s'>", lbl, help_markup ? help_markup : "", name);
+    httpd_resp_sendstr_chunk(req, buf);
+}
+
+void web_select_option(httpd_req_t *req, int value, const char *label, bool selected) {
+    web_select_option_state(req, value, label, selected, false);
+}
+
+void web_select_option_state(httpd_req_t *req, int value, const char *label, bool selected, bool disabled) {
+    char buf[400];
+    snprintf(buf, sizeof(buf), "<option value='%d' %s %s>%.300s</option>", value, selected ? "selected" : "", disabled ? "disabled" : "", label);
+    httpd_resp_sendstr_chunk(req, buf);
+}
+
+void web_select_close(httpd_req_t *req) {
+    httpd_resp_sendstr_chunk(req, "</select>");
+}
+
+// ---------------------------------------------------------------- GPIO registry
+// Every GPIO field g_config currently has, grouped by the feature that owns
+// it. This is the ONLY place that mapping lives - a page's GPIO <select>
+// never has to know about another page's fields directly, it just asks this
+// registry (via web_gpio_owner_tag()) whether a given pin is free.
+//
+// Entries whose feature has an on/off toggle are only reported while that
+// toggle is enabled (a disabled feature doesn't really "hold" its pin); the
+// always-on RF module / audio path / message alarm pins, and the sensor
+// bus's compile-time-fixed I2C pins, are reported unconditionally.
+int web_gpio_collect_used(const char *skip_tag, web_gpio_owner_t *out, int max) {
+    int n = 0;
+
+#define WEB_GPIO_ADD(gpio_value, owner_tag)                                                                                                                    \
+    do {                                                                                                                                                       \
+        int8_t _g = (int8_t)(gpio_value);                                                                                                                      \
+        if (n < max && _g >= 0 && (!skip_tag || strcmp((owner_tag), skip_tag) != 0)) {                                                                         \
+            out[n].gpio = _g;                                                                                                                                  \
+            out[n].tag = (owner_tag);                                                                                                                          \
+            n++;                                                                                                                                               \
+        }                                                                                                                                                      \
+    } while (0)
+
+    // msg_alarm_gpio can hold a real pin number even while the Message Alarm
+    // "Enable" checkbox is off (Save doesn't clear it, so re-enabling later
+    // keeps the same pin) - only count it as reserved while actually enabled.
+    if (g_config.msg_alarm_enable)
+        WEB_GPIO_ADD(g_config.msg_alarm_gpio, "Message Alarm");
+
+    // Audio front-end and PTT: all fixed at compile time
+    // (esp32idf_radioamateur_modem_config.h / the top-level CMakeLists.txt),
+    // always reserved - the modem's ADC/DAC/PTT trio is hardwired on the
+    // board. PTT is a compile-time constant like its ADC/DAC siblings and is
+    // reported the same way they are - always shown as "used" here so it
+    // correctly greys out in every other GPIO picker (e.g. Message Alarm)
+    // even though it has no web-admin field of its own.
+    WEB_GPIO_ADD(MODEM_ADC_GPIO, "Radio Modem");
+    WEB_GPIO_ADD(MODEM_DAC_GPIO, "Radio Modem");
+    WEB_GPIO_ADD(MODEM_PTT_GPIO, "PTT");
+
+    // Local sensor I2C bus: fixed at compile time (sensors_local_i2c.h),
+    // always reserved regardless of any run-time enable flag and of which
+    // sensor drivers are compiled in - the bus belongs to the board's wiring,
+    // not to any one chip on it.
+    WEB_GPIO_ADD(SENSORS_LOCAL_I2C_SDA_GPIO, "Sensor I2C");
+    WEB_GPIO_ADD(SENSORS_LOCAL_I2C_SCL_GPIO, "Sensor I2C");
+
+    // GNSS receiver serial port: fixed at compile time (gps.h), always
+    // reserved. Both pins are listed, not just the one carrying sentences:
+    // the transmit pin is physically wired to the module's input on this
+    // board, so handing it to another peripheral would drive that input.
+    WEB_GPIO_ADD(GPS_UART_RX_GPIO, "GPS");
+    WEB_GPIO_ADD(GPS_UART_TX_GPIO, "GPS");
+
+#undef WEB_GPIO_ADD
+    return n;
+}
+
+const char *web_gpio_owner_tag(int gpio, const char *skip_tag) {
+    web_gpio_owner_t used[WEB_GPIO_MAX_OWNERS];
+    int n = web_gpio_collect_used(skip_tag, used, WEB_GPIO_MAX_OWNERS);
+    for (int i = 0; i < n; i++) {
+        if (used[i].gpio == gpio)
+            return used[i].tag;
+    }
+    return NULL;
+}
+
+// ---------------------------------------------------------------- Symbol picker
+void web_field_symbol(httpd_req_t *req, const char *label, const char *name_prefix, const char *sym2) {
+    char table_ch[2] = { (sym2 && sym2[0]) ? sym2[0] : '/', 0 };
+    char sym_ch[2] = { (sym2 && sym2[1]) ? sym2[1] : '&', 0 };
+    int table_num = (table_ch[0] == '\\') ? 2 : 1;
+    int code_num = (int)(unsigned char)sym_ch[0];
+
+    char ids[64];
+    snprintf(ids, sizeof(ids), "%.30sTable", name_prefix);
+    char idc[64];
+    snprintf(idc, sizeof(idc), "%.30sCode", name_prefix);
+
+    char lbl[WEB_LABEL_MAX_BYTES + 1];
+    label_clamp(lbl, label);
+    char hlp[WEB_HELP_MARKUP_MAX];
+    label_help(hlp, label);
+
+    char buf[WEB_LABEL_MAX_BYTES + WEB_HELP_MARKUP_MAX + 1536];
+    snprintf(buf, sizeof(buf),
+             "<label>" WEB_LABEL_FMT WEB_HELP_FMT "</label>"
+             "<div style='display:flex;gap:6px;align-items:center'>"
+             "<span id='%.30s_icn' style='display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;"
+             "border-radius:6px;background:#dcfce7;overflow:hidden;flex:none'>"
+             "<img id='%.30s_img' src='http://aprs.dprns.com/symbols/icons/%d-%d.png' width=32 height=32 style='display:block' "
+             "onerror=\"this.style.display='none'\">"
+             "</span>"
+             "<span style='font-size:12px;color:var(--sub)'>%.60s:</span>"
+             "<input type='text' id='%.30s' name='%.30s' value='%.4s' maxlength='1' style='width:3em;text-align:center' "
+             "oninput=\"aprsSymUpd('%.30s','%.30s')\">"
+             "<span style='font-size:12px;color:var(--sub)'>%.60s:</span>"
+             "<input type='text' id='%.30s' name='%.30s' value='%.4s' maxlength='1' style='width:3em;text-align:center' "
+             "oninput=\"aprsSymUpd('%.30s','%.30s')\">"
+             "<a href='/symbol' target='_blank' title='%.60s' class='secondary' style='text-decoration:none;padding:4px 8px'>%.60s</a>"
+             "</div>",
+             lbl, hlp, name_prefix, name_prefix, code_num, table_num, TR_F_SYMBOL_TABLE, ids, ids, table_ch, ids, idc, TR_F_SYMBOL_CODE, idc, idc, sym_ch, ids,
+             idc, TR_SYM_PICK_HINT, TR_BTN_PICK_SYMBOL);
+    httpd_resp_sendstr_chunk(req, buf);
+
+    // Tiny helper script: updates the graphical icon live as the user edits
+    // the Table/Code inputs, without waiting for a page reload. Safe to emit
+    // once per field; browsers just redefine the same function identically.
+    static const char *script = "<script>function aprsSymUpd(t,c){"
+                                "var tv=(document.getElementById(t).value||'/').charAt(0)||'/';"
+                                "var cv=(document.getElementById(c).value||' ').charAt(0)||' ';"
+                                "var tn=(tv=='\\\\')?2:1;var cn=cv.charCodeAt(0);"
+                                "var pfx=t.slice(0,-5);"
+                                "var img=document.getElementById(pfx+'_img');"
+                                "if(img){img.style.display='block';img.src='http://aprs.dprns.com/symbols/icons/'+cn+'-'+tn+'.png';}"
+                                "}</script>";
+    httpd_resp_sendstr_chunk(req, script);
+}
+
+void web_form_get_symbol(const char *body, const char *name_prefix, const char *legacy_name, char *out, size_t out_size) {
+    if (!out || out_size < 3)
+        return;
+
+    char name_t[40], name_c[40];
+    snprintf(name_t, sizeof(name_t), "%.30sTable", name_prefix);
+    snprintf(name_c, sizeof(name_c), "%.30sCode", name_prefix);
+
+    char t[4] = { 0 }, s[4] = { 0 };
+    bool got_t = web_form_get(body, name_t, t, sizeof(t));
+    bool got_s = web_form_get(body, name_c, s, sizeof(s));
+    if (!got_t && !got_s) {
+        char legacy[4] = { 0 };
+        if (!legacy_name || !web_form_get(body, legacy_name, legacy, sizeof(legacy)))
+            return;
+        t[0] = legacy[0];
+        s[0] = legacy[1];
+    }
+
+    // Both bytes are free text in the form, so they are bounded here as well
+    // as in the configuration loader: the table identifier is one of the four
+    // forms chapter 21 defines and the code is a printable character the
+    // symbol tables are actually indexed by. A byte outside those sets is not
+    // cosmetic - a digit in the table position of a compressed report makes
+    // every receiver read the report as uncompressed, and a '_' in the code
+    // position makes every classifier read the report as weather.
+    out[0] = aprs_symbol_table_is_valid(t[0]) ? t[0] : APRS_SYMBOL_TABLE_DEFAULT;
+    out[1] = aprs_symbol_code_is_valid(s[0]) ? s[0] : APRS_SYMBOL_CODE_DEFAULT;
+    out[2] = 0;
+}
+
+void web_field_use_station_data(httpd_req_t *req, const char *checkbox_name, bool checked, const char *call_name, const char *lat_name, const char *lon_name,
+                                const char *alt_name) {
+    // Build each field's `document.querySelector(...)` expression (or the
+    // literal "null" if the page doesn't have that field), then splice all
+    // four into the script below in one go.
+    char qcall[80] = "null", qlat[80] = "null", qlon[80] = "null", qalt[80] = "null";
+    if (call_name)
+        snprintf(qcall, sizeof(qcall), "document.querySelector(\"[name='%.30s']\")", call_name);
+    if (lat_name)
+        snprintf(qlat, sizeof(qlat), "document.querySelector(\"[name='%.30s']\")", lat_name);
+    if (lon_name)
+        snprintf(qlon, sizeof(qlon), "document.querySelector(\"[name='%.30s']\")", lon_name);
+    if (alt_name)
+        snprintf(qalt, sizeof(qalt), "document.querySelector(\"[name='%.30s']\")", alt_name);
+
+    // Callsigns only ever contain [A-Z0-9-], so a plain copy into a JS
+    // single-quoted string literal is safe here (no escaping needed), unlike
+    // arbitrary free-text user input.
+    //
+    // Latitude/longitude are spliced in with a fixed 4 decimals and altitude
+    // with a fixed 1 decimal, matching the step web_field_float() renders for
+    // those fields on every page. Formatting with fewer decimals than the
+    // field's step (as a plain "%g" does once the value has 3+ integer
+    // digits) leaves the field holding a value the browser's own step check
+    // rejects, blocking Save until the operator retypes it by hand.
+    char hlp[WEB_HELP_MARKUP_MAX];
+    label_help(hlp, TR_USE_MY_STATION_DATA);
+
+    char buf[WEB_HELP_MARKUP_MAX + 2200];
+    snprintf(buf, sizeof(buf),
+             "<label><input type='checkbox' name='%.30s' id='%.30s' %s> " TR_USE_MY_STATION_DATA WEB_HELP_FMT "</label>"
+             "<script>(function(){"
+             "function apply(){"
+             "var cb=document.getElementById('%.30s');if(!cb)return;"
+             "var on=cb.checked;"
+             "var call=%s,lat=%s,lon=%s,alt=%s;"
+             "if(call){if(on)call.value='%.9s';call.disabled=on;}"
+             "if(lat){if(on)lat.value='%.4f';lat.disabled=on;}"
+             "if(lon){if(on)lon.value='%.4f';lon.disabled=on;}"
+             "if(alt){if(on)alt.value='%.1f';alt.disabled=on;}"
+             "}"
+             "document.addEventListener('DOMContentLoaded',function(){"
+             "var cb=document.getElementById('%.30s');if(cb){cb.addEventListener('change',apply);apply();}"
+             "});"
+             "})();</script>",
+             checkbox_name, checkbox_name, checked ? "checked" : "", hlp, checkbox_name, qcall, qlat, qlon, qalt, g_config.my_callsign, (double)g_config.my_lat,
+             (double)g_config.my_lon, (double)g_config.my_alt, checkbox_name);
+    httpd_resp_sendstr_chunk(req, buf);
+}
+
+void web_field_use_gps_data(httpd_req_t *req, const char *checkbox_name, bool checked, const char *station_checkbox_name, const char *lat_name,
+                            const char *lon_name, const char *alt_name, const char *speed_name, const char *course_name) {
+    // Same "querySelector or literal null" splice web_field_use_station_data()
+    // uses, extended with the two motion fields that only some pages have.
+    char qlat[80] = "null", qlon[80] = "null", qalt[80] = "null", qspeed[80] = "null", qcourse[80] = "null";
+    if (lat_name)
+        snprintf(qlat, sizeof(qlat), "document.querySelector(\"[name='%.30s']\")", lat_name);
+    if (lon_name)
+        snprintf(qlon, sizeof(qlon), "document.querySelector(\"[name='%.30s']\")", lon_name);
+    if (alt_name)
+        snprintf(qalt, sizeof(qalt), "document.querySelector(\"[name='%.30s']\")", alt_name);
+    if (speed_name)
+        snprintf(qspeed, sizeof(qspeed), "document.querySelector(\"[name='%.30s']\")", speed_name);
+    if (course_name)
+        snprintf(qcourse, sizeof(qcourse), "document.querySelector(\"[name='%.30s']\")", course_name);
+
+    char qstation[80] = "null";
+    if (station_checkbox_name)
+        snprintf(qstation, sizeof(qstation), "document.getElementById('%.30s')", station_checkbox_name);
+
+    // Sized for the worst case of this format string: the static markup and
+    // script text plus thirteen %s splices (each up to 79 bytes, from the
+    // qlat/qlon/qalt/qspeed/qcourse/qstation buffers), four %.30s splices and
+    // the label's help marker, rounded up with headroom so the compiler can
+    // prove no truncation.
+    //
+    // fill() rounds each live GPS reading to the precision the destination
+    // field's own step attribute accepts before writing it into that field:
+    // latitude/longitude to 4 decimals and altitude to 1 decimal. The
+    // browser only lets a form submit when every filled value already
+    // conforms to its field's step, so writing a value with more decimals
+    // than the field's step allows (as the raw /gps/live latitude/longitude,
+    // at 6 decimals, would be here) would leave the field populated but
+    // silently blocking Save.
+    char hlp[WEB_HELP_MARKUP_MAX];
+    label_help(hlp, TR_USE_GPS_DATA);
+
+    char buf[WEB_HELP_MARKUP_MAX + 2700];
+    snprintf(buf, sizeof(buf),
+             "<label><input type='checkbox' name='%.30s' id='%.30s' %s> " TR_USE_GPS_DATA WEB_HELP_FMT "</label>"
+             "<script>(function(){"
+             "var timer=null;"
+             "function setDisabled(on){"
+             "var lat=%s,lon=%s,alt=%s,speed=%s,course=%s;"
+             "if(lat)lat.disabled=on;if(lon)lon.disabled=on;if(alt)alt.disabled=on;if(speed)speed.disabled=on;if(course)course.disabled=on;"
+             "}"
+             "function fill(v){"
+             "var lat=%s,lon=%s,alt=%s,speed=%s,course=%s;"
+             "if(lat&&v.lat!==null&&v.lat!==undefined)lat.value=Number(v.lat).toFixed(4);"
+             "if(lon&&v.lon!==null&&v.lon!==undefined)lon.value=Number(v.lon).toFixed(4);"
+             "if(alt&&v.alt!==null&&v.alt!==undefined)alt.value=Number(v.alt).toFixed(1);"
+             "if(speed&&v.speed!==null&&v.speed!==undefined)speed.value=v.speed;"
+             "if(course&&v.course!==null&&v.course!==undefined)course.value=v.course;"
+             "}"
+             "function poll(){"
+             "fetch('/gps/live').then(function(r){return r.json();}).then(fill).catch(function(){});"
+             "}"
+             "function apply(){"
+             "var cb=document.getElementById('%.30s');if(!cb)return;"
+             "var on=cb.checked;"
+             "setDisabled(on);"
+             "if(timer){clearInterval(timer);timer=null;}"
+             "if(on){"
+             "var station=%s;if(station&&station.checked){station.checked=false;station.dispatchEvent(new Event('change'));}"
+             "poll();timer=setInterval(poll,1000);"
+             "}"
+             "}"
+             "document.addEventListener('DOMContentLoaded',function(){"
+             "var cb=document.getElementById('%.30s');if(!cb)return;"
+             "cb.addEventListener('change',apply);"
+             "var station=%s;"
+             "if(station)station.addEventListener('change',function(){if(station.checked&&cb.checked){cb.checked=false;apply();}});"
+             "apply();"
+             "});"
+             "window.addEventListener('beforeunload',function(){if(timer)clearInterval(timer);});"
+             "})();</script>",
+             checkbox_name, checkbox_name, checked ? "checked" : "", hlp, qlat, qlon, qalt, qspeed, qcourse, qlat, qlon, qalt, qspeed, qcourse, checkbox_name,
+             qstation, checkbox_name, qstation);
+    httpd_resp_sendstr_chunk(req, buf);
+}

@@ -1,0 +1,308 @@
+.. _it-modem:
+
+=================
+Il modem software
+=================
+
+Il componente ``esp32idf_radioamateur_modem`` (integrato sotto ``components/``,
+GPL-3.0) è il cuore del progetto: un modem software AFSK/FSK completo che demodula
+e modula audio APRS interamente sull'ESP32, usando solo il SAR-ADC, il DAC e un
+GPTimer. Questo capitolo copre il modem come *capacità* — i suoi profili, la sua
+API pubblica e la sua configurazione a runtime. Per gli interni del DSP e il
+ragionamento dietro le scelte di frequenza di campionamento e core, vedi
+:ref:`it-dsp-signal-chain`.
+
+Profili del modem
+=================
+
+I profili selezionabili (``modem_mode_t``) sono numerati in modo identico al menu
+a tendina di *modulazione* dell'amministrazione web, così che l'applicazione
+possa convertire il valore salvato direttamente nell'enum:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 10 30 16 44
+
+   * - Valore
+     - Profilo
+     - Baud
+     - Toni
+   * - 0
+     - AFSK300
+     - 300
+     - 1600 / 1800 Hz
+   * - 1
+     - **Bell 202** (predefinito, APRS standard)
+     - 1200
+     - 1200 / 2200 Hz
+   * - 2
+     - ITU V.23
+     - 1200
+     - 1300 / 2100 Hz
+   * - 3
+     - G3RUH FSK
+     - 9600
+     - —
+
+Il profilo a 1200 Bd esegue **due demodulatori in parallelo**, sintonizzati
+leggermente diversi, per elevare la probabilità di decodifica
+(``MODEM_MAX_DEMODULATOR_COUNT = 2``).
+
+Correzione d'errore in avanti FX.25
+===================================
+
+FX.25 incapsula AX.25 in un codice Reed–Solomon, permettendo al ricevitore di
+correggere errori di bit che altrimenti fallirebbero il CRC. È totalmente
+retrocompatibile: un frame FX.25 porta un normale frame AX.25 dentro un blocco RS
+con tag di correlazione, quindi i ricevitori di puro AX.25 decodificano comunque
+il frame interno. La modalità è selezionabile: ``0`` = disattivato, ``1`` =
+solo RX, ``2`` = RX+TX. Il codec viene sempre compilato — il ``CMakeLists.txt``
+del componente stesso definisce ``ENABLE_FX25`` pubblicamente — quindi cambiare
+modalità non richiede una ricompilazione. L'implementazione RS vive in
+``lwfec/`` (``rs.c``, ``gf.c``).
+
+Il codec lavora sul posto su un intero blocco Reed–Solomon di 255 byte in ogni
+modalità, comprese quelle il cui payload ``K`` è di soli 32 byte: la parità
+viene spostata in coda al blocco e lo spazio intermedio viene azzerato. Il
+buffer del chiamante deve quindi essere lungo 255 byte qualunque sia la ``K``
+passata. Per questo ``Fx25Encode()``/``Fx25Decode()`` e
+``RsEncode()``/``RsDecode()`` ricevono la capacità del buffer come argomento
+esplicito: viene verificata con ``assert`` nelle build di debug e fa fallire la
+chiamata in modo sicuro altrimenti, e ``ax25.c`` la sostiene con un controllo a
+tempo di compilazione sui due buffer che consegna.
+
+API pubblica
+============
+
+L'header pubblico del componente (``esp32idf_radioamateur_modem.h``) espone:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 34 66
+
+   * - Funzione
+     - Scopo
+   * - ``modem_init(cfg)``
+     - Avvia l'hardware e i task di servizio interni. Si blocca ~5 s una volta
+       per avvio calibrando il clock reale dell'ADC.
+   * - ``modem_set_modem(cfg)``
+     - Cambiare il profilo attivo e impostazioni correlate a runtime.
+   * - ``modem_set_rx_callback(cb, ctx)``
+     - Installare il callback invocato per ogni frame decodificato.
+   * - ``modem_send_raw(frame, len)``
+     - Accodare un frame AX.25 grezzo (senza flag/stuffing/FCS — tutto aggiunto
+       automaticamente).
+   * - ``modem_build_frame_tnc2(tnc2, out, out_len)``
+     - Costruire un frame grezzo da una stringa monitor TNC2.
+   * - ``modem_send_tnc2(tnc2)``
+     - Costruire + accodare in una singola chiamata.
+   * - ``modem_format_tnc2(msg, out, out_len)``
+     - Rendere un frame decodificato di nuovo in una stringa TNC2.
+   * - ``modem_tx_queue_depth()``
+     - Numero di frame ancora in coda/in volo su TX RF (0 = inattivo). È lo stato
+       dell'anello TX che legge il tetto di arretrato TX RF.
+   * - ``modem_persistence_missed_count()``
+     - Quante volte il pavimento anti-starvation di CSMA ha forzato una
+       trasmissione dopo una tornata di attesa che ha trovato il canale libero
+       in ogni slot e ha mancato il sorteggio di persistenza ogni volta. Misura
+       soltanto il ``persist`` configurato: con il valore predefinito di 63
+       circa una portante su dieci finisce così. Nulla viene scartato, quindi è
+       una statistica di accesso al canale e non uno scarto.
+   * - ``modem_channel_busy_count()``
+     - Quante volte lo stesso pavimento ha forzato una trasmissione dopo una
+       tornata in cui almeno uno slot ha trovato il rilevamento di portante
+       attivo. È un rapporto di congestione sulla frequenza: il frame esce sopra
+       al traffico già presente. Ogni tornata viene addebitata a esattamente uno
+       dei due contatori, quindi un canale occupato non può mai gonfiare la
+       cifra di persistenza.
+   * - ``modem_measure_adc_rate(ms)``
+     - Misurare la frequenza reale di campionamento dell'ADC; si blocca per la
+       finestra richiesta.
+
+L'header porta inoltre ``MODEM_DEFAULT_CONFIG()`` (un inizializzatore di
+``modem_config_t``), l'helper ``MODEM_DELAY_TICKS(ms)``, ``modem_rx_frame_t`` e il
+tipo di callback ``modem_rx_cb_t``. Si noti che **non** esiste un punto di
+ingresso di smontaggio: il modem viene avviato una volta per boot e
+riconfigurato sul posto con ``modem_set_modem()``.
+
+I tre punti di ingresso di trasmissione — ``modem_send_raw()``,
+``modem_build_frame_tnc2()`` e ``modem_send_tnc2()`` — si possono chiamare da
+qualsiasi task. Condividono un mutex interno, perché condividono l'accumulatore
+di CRC in uscita, l'anello di trasmissione a produttore singolo e la macchina a
+stati che va in trasmissione a partire da esso. ``modem_send_tnc2()`` mantiene
+quel mutex per tutta la costruzione e l'accodamento, quindi una trama arriva
+sempre all'anello con la somma di controllo accumulata per essa, anche quando
+un beacon parte nello stesso istante in cui l'IGate rilancia una riga da
+APRS-IS. Un chiamante che non ottiene il percorso entro un secondo riceve
+``ESP_ERR_TIMEOUT`` (o ``0`` dal costruttore) invece di restare in attesa
+dietro di esso a tempo indeterminato.
+
+Configurazione a runtime (``modem_config_t``)
+=============================================
+
+Costruita in esattamente un posto — ``aprs_service_build_modem_config()`` —
+condivisa dall'avvio, dal Salva della pagina Radio (riapplicazione in tempo
+reale, nessun riavvio) e dal test di loop:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 24 30 46
+
+   * - Campo
+     - Origine
+     - Note
+   * - ``modem``
+     - ``afsk_modem_type``
+     - conversione diretta; la pagina fissa 0–3
+   * - ``flat_audio``
+     - ``audio_lpf``
+     - ingresso piatto/da discriminatore: attivo per una presa dati o dal
+       discriminatore, spento per un'uscita altoparlante
+   * - ``full_duplex``
+     - ``false`` normalmente
+     - LOOP TEST passa ``true`` (un cavo DAC→ADC significa che CSMA non vede mai
+       il canale libero)
+   * - ``allow_non_aprs``
+     - ``false``
+     - accettare Control/PID diversi da 0x03/0xF0?
+   * - ``preamble_ms``
+     - ``preamble`` (300)
+     - TXDelay
+   * - ``slot_time_ms``
+     - ``tx_timeslot`` (2000)
+     - tempo di silenzio CSMA: quanto attende un frame accodato prima che
+       l'accesso al canale cominci del tutto. L'intervallo fra i sorteggi di
+       persistenza che seguono è lo *SlotTime* fisso di AX.25 che il modem
+       mantiene internamente, non questo valore. Ignorato in full duplex.
+   * - ``persist``
+     - ``csma_persist`` (63)
+     - p-persistenza CSMA (il *Persist* standard AX.25/KISS): una volta che il
+       canale è sentito libero, il modem trasmette con probabilità
+       ``persist``/256 per slot e altrimenti attende un altro slot prima di
+       rilanciare. 255 = trasmette sempre al primo slot libero; valori più bassi
+       distanziano le stazioni in contesa. Otto sorteggi mancati trasmettono
+       comunque, così un frame non resta mai trattenuto indefinitamente.
+       Ignorato in full duplex.
+   * - ``fx25_mode``
+     - ``fx25_mode``
+     - 0=off, 1=solo RX, 2=RX+TX
+   * - ``ptt_active_high``
+     - ``MODEM_PTT_ACTIVE_HIGH``
+     - cablaggio di scheda in compilazione, non un campo di configurazione
+   * - ``min_unkey_ms``
+     - ``ptt_min_unkey_ms``
+     - tempo minimo extra di PTT-disattivato tra le trasmissioni
+   * - ``adc_self_bias``
+     - ``adc_self_bias`` (spento)
+     - polarizza il pad dell'ADC con il proprio pull-up e pull-down in serie,
+       per un ingresso accoppiato tramite condensatore senza rete di
+       polarizzazione esterna. Applicato dopo che il driver continuo ha
+       configurato il pad, cosa che scollega entrambe le resistenze. Solo
+       GPIO32/33
+   * - ``rx_clip_warn``
+     - ``rx_clip_warn`` (spento)
+     - registra un avviso a frequenza limitata quando un blocco elaborato
+       raggiunge gli estremi della gamma di conversione
+   * - ``dac_amplitude_pct``
+     - ``dac_amplitude_pct`` (``MODEM_DAC_AMPLITUDE_PCT``)
+     - ampiezza di uscita, applicata per campione. Con un minimo del 20 %: il
+       DAC è a 8 bit, quindi l'attenuazione richiesta da un ingresso
+       microfonico spetta a un attenuatore esterno
+   * - ``dac_samplerate``
+     - ``dac_samplerate`` (``MODEM_DAC_SAMPLERATE``)
+     - 38400 o 76800 Hz. L'unico campo che ``modem_set_modem()`` **non**
+       applica: il periodo del clock di campionamento e ogni passo di fase da
+       esso derivato sono programmati a hardware fermo, quindi lo applica
+       ``modem_init()`` e la modifica ha effetto al riavvio successivo
+   * - ``tx_max_keyed_ms``
+     - ``tx_max_keyed_ms`` (0)
+     - tempo massimo di trasmissione, 0 = disattivato. Oltre tale durata il
+       task di servizio del modem rilascia il PTT, ferma il modulatore e
+       scarta la trasmissione
+
+.. note::
+
+   Il GPIO del PTT **non** è un campo di ``modem_config_t`` — è una scelta di
+   cablaggio di scheda fissata in compilazione (``MODEM_PTT_GPIO``), come i pin
+   ADC/DAC. Solo il *livello* attivo è passato a runtime, e viene anch'esso
+   direttamente dalla macro di compilazione. Esplicitamente **non** mappati a
+   runtime (senza equivalente nel componente): pin e attenuazione ADC/DAC, squelch
+   hardware, interruttore di potenza RF, squelch software, volume RX e il tetto
+   dell'AGC.
+
+LIVELLO RX e TEST TX
+====================
+
+Il loop test più sotto richiede un cavo fra DAC e ADC, quindi smette di essere
+utilizzabile non appena un apparato sostituisce quel ponticello: non c'è nulla
+che restituisca il frame. Due pulsanti accanto coprono lo stesso terreno con
+un apparato collegato, uno per direzione.
+
+**LIVELLO RX** (``aprs_rx_level_sample()``, ``POST /radio/level``) osserva lo
+stadio di ricezione per circa un secondo e riporta il livello RMS e il suo
+picco, l'offset di continua dell'ingresso, il guadagno dell'AGC, gli estremi
+grezzi di conversione e lo stato del rilevamento di portante. Non trasmette
+nulla e non cambia lo stato del modem, quindi può girare mentre viene
+decodificato traffico reale. È ciò contro cui si regola il trimmer di
+ricezione — puntare a 250-350 mV RMS con la gamma grezza lontana da 0 e 4095 —
+ed è ciò che distingue un ingresso polarizzato da ``adc_self_bias`` (1200-2000
+mV) da uno senza alcuna polarizzazione.
+
+**TEST TX** (``aprs_tx_test_run()``, ``POST /radio/txtest``) manda in
+trasmissione e modula un breve frame di stato attraverso il consueto percorso
+di trasmissione non critico, per cui valgono sia l'accesso al canale in
+semiduplex sia il tetto di duty cycle. Non aspetta nulla di ritorno: la
+deviazione prodotta si legge su altra strumentazione e si regola a 2,5-3,5 kHz.
+
+Entrambi condividono il flag di prenotazione del loop test, quindi ne gira uno
+solo dei tre alla volta.
+
+Il LOOP TEST
+============
+
+Lo strumento di messa in funzione più utile del progetto. Cabla
+**GPIO25 → GPIO33**, apri *Radio / Modem*, premi **LOOP TEST**.
+``aprs_loop_test_run()``:
+
+#. Costruisce un piccolo pacchetto APRS che porta un **token casuale monouso**
+   (``>LOOPTEST <token>``).
+#. **Devia** i frame decodificati al proprio hook così che il frame di test non
+   venga mai digipetato, caricato, né registrato come traffico reale.
+#. Commuta il modem a **full duplex** — un cavo DAC→ADC significa che il nodo
+   sente sempre la propria portante e CSMA non attiverebbe mai la radio.
+#. Attende che il rilevamento di portante del demodulatore si liberi prima di
+   attivare il PTT, al massimo per ``LOOP_TEST_CHANNEL_WAIT_MS`` (**3000 ms**),
+   per non trasmettere il tono di autotest sopra una stazione che è in onda in
+   quel momento — la lettura è indipendente dal flag di duplex appena impostato,
+   che condiziona solo il CSMA. Un canale ancora occupato al raggiungimento del
+   limite viene registrato e il test trasmette comunque.
+#. Trasmette, poi attende fino a ``LOOP_TEST_TIMEOUT_MS`` (**4000 ms**) che la
+   catena ADC → demodulatore → HDLC → AX.25 restituisca lo stesso frame.
+#. **Ripristina sempre** l'hook reale e la modalità duplex configurata prima di
+   tornare.
+
+Nel frattempo un task di monitor cattura diagnostici che il componente espone
+solo istantaneamente: uno snapshot dell'ADC grezzo passivo a metà preambolo, RMS
+di picco, guadagno AGC di picco, una mappa di bit di DCD, e la fase RX HDLC più
+lontana raggiunta per demodulatore. Il messaggio di risultato distingue:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 46 54
+
+   * - Sintomo
+     - Diagnosi
+   * - ADC grezzo min ≈ max
+     - ADC morto / non cablato
+   * - il grezzo oscilla, RMS ~0
+     - nessun tono raggiunge l'ADC
+   * - RMS ok, DCD mai attivo
+     - il PLL non ha mai agganciato → mismatch baud/tipo modem o audio cattivo
+   * - DCD attivo, fase < FRAME
+     - flag visti ma nessun frame iniziato — problema di recupero bit, non rumore
+   * - DCD attivo, fase = FRAME, nessun frame
+     - frame assemblati ma falliti al CRC — livello/SNR marginale
+   * - frame di ritorno, token non corrisponde
+     - distorsione, clipping, o cablaggio di loop sbagliato
+   * - PASS
+     - riporta il livello RX in mV RMS

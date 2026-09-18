@@ -1,0 +1,599 @@
+.. _it-web-admin:
+
+===================
+Amministrazione web
+===================
+
+Il componente ``webconfig`` (``components/webconfig/``) è un'amministrazione
+basata su ``esp_http_server`` costruita con un file per pagina (``pages/*.c``),
+una tabella di route (``web_server.c``) e un insieme di helper condivisi
+(``web_common.c``). Usa **autenticazione HTTP Basic** contro
+``g_config.http_username`` / ``http_password`` su ogni pagina — con l'unica
+eccezione dello ``/style.css`` e del ``/logo.png`` statici, che non portano dati
+di configurazione o di traffico — oltre a corrispondenza URI con wildcard, uno
+stack di gestore da 20 KB e purga LRU.
+
+Il logo a sinistra della barra superiore è un PNG incorporato nel firmware come
+array ``const`` (``components/webconfig/include/web_logo.h``) e servito da
+``web_handle_logo()`` su ``GET /logo.png``. Tenerlo nell'immagine
+dell'applicazione e non nella partizione LittleFS fa sì che la cornice di ogni
+pagina non dipenda da una partizione che la pagina di Archiviazione può
+formattare, sovrascrivere e riempire. Il foglio di stile lo scala solo per
+altezza (``height:32px;width:auto``, 26 px sotto i 600 px), così le proporzioni
+dell'immagine stessa decidono la sua larghezza e sostituirla con una di forma
+diversa non richiede alcuna modifica al foglio di stile; il tag porta la
+dimensione intrinseca del PNG perché la barra riservi la larghezza giusta prima
+che l'immagine arrivi. La risposta è memorizzabile in cache per un giorno, dato
+che solo un aggiornamento OTA può cambiarla.
+
+Layout responsivo
+=================
+
+Un solo albero di marcatura e un solo foglio di stile servono desktop, tablet e
+telefono. Non c'è una pagina mobile separata, né rilevamento dello user-agent,
+né script di disposizione: ogni pagina porta una dichiarazione di viewport
+``width=device-width``, e ``web_handle_css()`` adatta gli stessi componenti su
+tre punti di rottura.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 26 74
+
+   * - Punto di rottura
+     - Che cosa cambia
+   * - **Oltre 900 px**
+     - Una barra laterale fissa da 220 px accanto a una colonna di contenuto
+       limitata a 1000 px.
+   * - **900 px e meno**
+     - La barra laterale diventa un cassetto laterale aperto da un pulsante di
+       menu nella barra superiore, e la colonna di contenuto prende tutta la
+       larghezza. La barra superiore resta fissa in alto, così si può
+       raggiungere il menu da qualunque punto di una lunga pagina di
+       impostazioni senza risalire.
+   * - **600 px e meno**
+     - Schede, titoli e margini si stringono, e ogni ``.row`` di campi del
+       modulo si riduce a una sola colonna.
+   * - **Puntatore grossolano**
+     - Indipendentemente dalla larghezza: pulsanti e voci di menu crescono fino
+       a un bersaglio tattile di 44 px, le caselle fino a 20 px, e i campi di
+       testo prendono un corpo da 16 px — al di sotto, un browser mobile
+       ingrandisce la pagina quando un campo riceve il fuoco e la lascia
+       ingrandita.
+
+Il cassetto è solo CSS. ``web_send_header()`` emette una casella nascosta come
+fratello sia della barra superiore sia della disposizione, più il pulsante di
+menu e uno sfondo attenuato che sono entrambi etichette di quella casella, così
+il foglio di stile raggiunge tutti e tre dallo stato ``:checked`` della casella.
+Non c'è nulla da inizializzare, nulla si rompe se uno script non viene caricato,
+e un caricamento di pagina ordinario lascia di nuovo il menu chiuso.
+
+Due dettagli reggono quasi tutto il comportamento orizzontale:
+
+* La colonna di contenuto è un elemento flex con ``min-width: 0``. Senza,
+  un elemento flex si rifiuta di restringersi sotto la larghezza del figlio più
+  largo, quindi una sola tabella larga allargherebbe l'intera pagina invece di
+  scorrere dentro sé stessa.
+* Ogni tabella di ogni pagina viene emessa dentro una cornice ``table-wrap``.
+  Una tabella si dimensiona sulle proprie colonne e non può essere ristretta
+  senza piegare le celle, così la cornice assorbe la differenza: le tabelle di
+  telemetria e meteo, a otto colonne, mantengono la loro larghezza piena e
+  scorrono lateralmente dentro la pagina. La tabella del traffico della
+  dashboard scorre su entrambi gli assi, dato che contiene anche più righe di
+  quante ne stiano sullo schermo.
+
+Le risposte mostrate fuori dalla cornice di amministrazione — l'interstiziale di
+salvataggio, i corpi ``401`` / ``403`` / ``429`` e il rifiuto a livello di
+pagina di un gestore — passano per ``web_send_standalone_page()``, che avvolge un
+frammento in un documento minimo proprio. Quel documento porta la propria
+dichiarazione di viewport e le proprie regole inline invece di collegare
+``/style.css``: deve rendersi allo stesso modo quando il foglio di stile non può
+essere servito, che è esattamente ciò che alcune di queste risposte segnalano.
+
+Perché helper per campo
+=======================
+
+L'HTML è emesso tramite piccoli helper per campo (``web_field_text``,
+``web_field_int``, ``web_field_checkbox``, ``web_select_*``, ``web_field_symbol``,
+…) invece di un singolo ``snprintf`` gigante — deliberatamente, per evitare
+``-Werror=format-truncation`` e mantenere leggibile ogni pagina.
+
+Gli helper numerici (``web_field_int``, ``web_field_float``) ricevono
+l'intervallo accettato dal campo e lo emettono sempre come attributi HTML
+``min``/``max`` dell'input, così ogni campo numerico di ogni pagina viene
+validato dal browser prima dell'invio del modulo. Questa è la prima linea di
+difesa contro un errore di battitura; il gestore POST continua a limitare ciò
+che memorizza, ed è quello che regge davanti a una richiesta manipolata. I
+domini ricorrenti (SSID, intervallo di trasmissione, latitudine, longitudine,
+altitudine) provengono dalle costanti ``WEB_RANGE_*`` di ``web_common.h``, così
+un limite è definito una sola volta per tutte le pagine che lo condividono.
+
+Aiuto contestuale
+=================
+
+Ogni opzione di ogni pagina chiude la propria etichetta con un piccolo punto
+interrogativo arancione dentro un cerchio. Posando il puntatore su di esso — o
+dandogli il fuoco da tastiera, o toccandolo su uno schermo tattile — si apre un
+fumetto con una breve spiegazione di ciò che quell'opzione fa, limitata da
+``WEB_HELP_MAX_BYTES`` (253 byte) perché resti leggibile a colpo d'occhio sopra
+il controllo che spiega.
+
+``web_help_markup()`` emette uno ``span.hlp`` focalizzabile con il glifo e uno
+``span.hlp-box`` annidato, e ``web_handle_css()`` disegna il cerchio, lo colora e
+rivela il fumetto dal ``:hover`` e dal ``:focus`` del marcatore stesso. Nessuno
+stato sopravvive al caricamento di una pagina, e la metà ``:focus`` è ciò che
+rende l'aiuto raggiungibile senza mouse. Un tocco sul marcatore non attiva anche
+l'etichetta che lo contiene, così chiedere cosa faccia una casella non la commuta
+mai.
+
+Il fumetto è disegnato come uno strato fisso sopra l'intera pagina, non come un
+riquadro dentro la scheda del campo stesso. I marcatori stanno dentro schede,
+fisarmoniche e cornici di tabella, e parecchie di queste ritagliano ciò che ne
+esce — la fisarmonica nasconde il proprio traboccamento perché i suoi angoli
+arrotondati restino puliti, e una cornice di tabella che scorre in orizzontale
+ritaglia anche in verticale —, così un fumetto impaginato dentro una di esse
+verrebbe tagliato al suo bordo non appena il testo fosse più lungo dello spazio
+rimasto sopra il campo. Toglierlo dal flusso è ciò che permette di leggere ogni
+fumetto per intero, sopra qualsiasi scheda, tabella o controllo della pagina.
+
+Le coordinate sono l'unica cosa che il foglio di stile non può allora fornire, e
+le dà lo script che ``web_send_footer()`` emette su ogni pagina: misura il
+marcatore, centra il fumetto su di esso, lo riporta dentro il bordo di schermo
+che starebbe per attraversare, lo ribalta sotto il campo quando sopra non c'è
+spazio a sufficienza e fa scorrere la freccia lungo il suo bordo perché continui
+a puntare al marcatore dopo tutto questo. Un fumetto aperto viene ricollocato
+allo scorrimento e al ridimensionamento, con l'ascoltatore di scorrimento in fase
+di cattura perché segua anche le cornici di registro, chat e tabella che scorrono
+al proprio interno. I gestori sono legati al documento e non a ogni marcatore,
+così coprono allo stesso modo le righe che lo script proprio di una pagina
+aggiunge dopo il caricamento.
+
+Il testo di aiuto viene **cercato a partire dall'etichetta, non passato come
+argomento**. Le pagine chiamano ``web_field_int(req, TR_F_SSID, …)`` esattamente
+come prima che questa funzione esistesse; ``web_help_for_label()`` confronta
+quell'etichetta con la tabella di ``web_help.c``, che accoppia ogni macro di
+etichetta ``TR_xxx`` con la sua macro di aiuto ``TR_H_xxx``. Questo lascia
+intatti tutti i punti di chiamata esistenti e fa sì che un'etichetta condivisa
+da più pagine sia spiegata una sola volta e si legga allo stesso modo su tutte.
+Un'opzione la cui etichetta non ha una riga nella tabella si rende
+semplicemente senza marcatore.
+
+Poche etichette sono assemblate a runtime — ``Alias 2``, ``Nominativo 3``, un
+filtro di tipo di contenuto, un preset di percorso numerato — e perciò non
+corrispondono a nulla. Quei punti di chiamata rendono il marcatore una volta con
+``web_help_markup()`` fuori dal loro ciclo e lo passano a ogni riga tramite la
+variante ``_h()`` dell'helper (``web_field_text_h``, ``web_field_int_h``,
+``web_field_checkbox_plain_h``, ``web_select_open_h``).
+
+Aggiungere un'opzione significa quindi aggiungere la sua stringa ``TR_H_xxx`` a
+tutti e tre i file ``lang_*.h`` e una riga a ``web_help.c``. Omettere la riga non
+è un errore di compilazione — l'opzione si rende senza punto interrogativo —
+quindi vale la pena dare un'occhiata alla tabella ogni volta che una pagina
+guadagna un campo.
+
+
+Le pagine
+=========
+
+.. list-table::
+   :header-rows: 1
+   :widths: 22 78
+
+   * - Pagina
+     - Cosa fa
+   * - **Dashboard**
+     - Pillole di Network Status (Wi-Fi, APRS-IS via ``igate_is_connected()``),
+       un pannello STATISTICS, una striscia di informazioni di sistema
+       aggiornata una volta al secondo, e una tabella di traffico in tempo reale
+       (DX / PACKET / DECODIFICATO / AUDIO) alimentata da long-poll basato su
+       sequenza. La tabella di traffico è l'unico elenco di stazioni che la
+       pagina disegna; i dati LAST HEARD per stazione sono esposti come feed
+       JSON ``/lastheard`` e sono consumati dal gate dei messaggi, dalle
+       risposte ``?APRSD``/``?APRSH`` e dal conteggio di stato BrandMeister,
+       anziché essere rappresentati qui. DECODIFICATO riporta ciò che
+       è stato letto dal payload stesso — la marca temporale propria del
+       pacchetto, rotta, velocità, altitudine, portata radio, PHG o DFS, e il
+       rilevamento e l'NRQ di un rapporto DF — e resta vuoto per un payload che
+       non ne porta nessuno. La colonna conserva l'intera riga di riepilogo
+       qualunque sia il payload: l'anello dimensiona il proprio campo con la
+       stessa costante in cui scrive il formattatore, così un rapporto che
+       riempie ogni campo viene mostrato per intero e non troncato.
+   * - **Station**
+     - L'identità condivisa della propria stazione che ogni beacon, oggetto e
+       messaggio legge: indicativo, latitudine, longitudine, altitudine
+       (``g_config.my_*``), più le opzioni in onda valide per tutta la
+       stazione: ambiguità di posizione, prefisso del localizzatore Maidenhead
+       nei rapporti di stato, e la direzione d'antenna e l'ERP di meteor scatter
+       che li chiudono. La posizione può essere digitata oppure presa in tempo
+       reale dal ricevitore GNSS tramite *Usa GPS*, che disabilita i tre campi
+       e li riempie da ``GET /gps/live`` una volta al secondo mentre è
+       selezionata, arrotondando latitudine e longitudine a 4 decimali e
+       l'altitudine a 1 decimale, così i valori inseriti superano sempre la
+       validazione dei campi.
+   * - **IGate**
+     - Abilita, RF→INET / INET→RF, entrambe le maschere di filtro, budlist e gate
+       di portata/prefisso, indicativo/SSID/passcode, quattro riquadri *APRS-IS
+       Server* (ciascuno con casella Abilita più host e porta, usati come
+       rotazione di failover), stringa di
+       filtro server, l'interruttore *Registra dopo i filtri* che restringe la
+       tabella del traffico e la console seriale a ciò che i filtri locali
+       accettano, nove caselle di tipo di payload per direzione (la nona,
+       *Altri*, copre capacità di stazione, formati definiti dall'utente,
+       radiogoniometria Agrelo, radiofari di locatore Maidenhead e l'elemento di
+       mappa riservato), beacon on/off, posizione, intervallo, selettore di simbolo,
+       oggetto, commento, stato, PHG, e un riquadro di frequenza/ripetitore
+       (frequenza, duplex, shift, tono) il cui blocco apre il commento e il
+       testo di stato del beacon. *Filtraggio Messaggi* contiene
+       l'interruttore dei criteri per i messaggi INET→RF, il limite di hop del
+       destinatario e la finestra di ascolto locale. La posizione può essere
+       digitata, rispecchiare *Usa i Dati della Mia Stazione* oppure essere
+       presa in tempo reale dal ricevitore GNSS tramite *Usa GPS*; le tre
+       opzioni si escludono a vicenda.
+   * - **BrandMeister**
+     - Interruttore dell'interconnessione, la sottoscrizione del monitor
+       mondiale, l'interruttore di instradamento dei messaggi solo via Internet
+       per i destinatari BrandMeister e quattro nominativi di gateway
+       facoltativi. L'interruttore del monitor viene rifiutato mentre l'inoltro
+       INET→RF è attivo e il filtro di distanza INET→RF nella pagina *IGate* è
+       disattivato, poiché i termini del filtro APRS-IS sono in OR e nulla
+       resterebbe tra un flusso mondiale e il trasmettitore. Una tabella di
+       stato in sola lettura riporta lo stato dell'interconnessione, se
+       ``u/APBM*`` è presente nel filtro server, l'impostazione del filtro di
+       distanza e quante stazioni BrandMeister sono in LAST HEARD. Non è
+       coinvolta alcuna connessione DMR; vedere :ref:`it-brandmeister`.
+   * - **Digi**
+     - Abilita digipeater, indicativo/SSID e impostazioni beacon (posizione,
+       simbolo, intervallo, commento, stato, percorso). *Estensione Dati*
+       sceglie cosa porta il beacon di posizione nello spazio dopo il codice di
+       simbolo — PHG, RNG, DFS o un rapporto DF — con gli stessi sottocampi e
+       lo stesso specchio *Usa i Dati della Mia Stazione* offerto dalla pagina
+       *IGate*, e un riquadro di frequenza/ripetitore come quello di quella
+       pagina. *Alias di Percorso n-N*
+       contiene le quattro righe di {alias, N massimo, modalità} con cui il
+       digipeater ripete, l'interruttore di solo riempimento, la scelta di cosa
+       fare con un conteggio hop intrappolato e l'interruttore *Ripetizione
+       tramite SSID di destinazione (legacy)*, disattivato per impostazione
+       predefinita. Contiene anche i quattro preset
+       di percorso condivisi ``path[0..3]`` tra cui sceglie ogni servizio che
+       trasmette. La finestra di soppressione dei duplicati è un unico
+       controllo, sulla pagina *IGate*. La posizione può anche essere presa in
+       tempo reale dal ricevitore GNSS tramite *Usa GPS*, mutuamente esclusiva
+       con *Usa i Dati della Mia Stazione*.
+   * - **Tracker**
+     - Abilita tracker, indicativo/SSID, intervallo fisso, posizione, simbolo di
+       stazione, commento, opzioni di posizione compressa, posizione Mic-E (con
+       il suo selettore di commento di posizione), PHG e altitudine. La
+       posizione fissa può essere digitata, rispecchiare *Usa i Dati della Mia
+       Stazione* oppure essere presa in tempo reale dal ricevitore GNSS tramite
+       *Usa GPS*; le tre opzioni si escludono a vicenda. *Usa posizione GPS in
+       tempo reale* è indipendente da tutte e tre: lascia la posizione fissa
+       come ripiego e fa leggere il ricevitore a ogni trasmissione. Il fieldset
+       *SmartBeaconing* (intervallo lento/veloce, velocità bassa/alta, angolo
+       di virata, pendenza di virata, tempo minimo di virata) rende quell'
+       intervallo adattivo alla velocità; ha bisogno della posizione in tempo
+       reale per avere qualcosa da leggere. Chiudono la pagina un fieldset di
+       beacon di stato (intervallo e testo) e uno di frequenza/ripetitore
+       (frequenza, duplex, offset, tono).
+   * - **Weather**
+     - Abilita, invia-in-RF/-INET, timestamp, indicativo/SSID/percorso WX,
+       posizione, nome oggetto, commento, caselle *Averaged* per campo, e — per
+       ogni campo WX in onda — un **menu a tendina di canale** riempito in tempo
+       reale dal registro ``sensors_local`` e filtrato per le capacità pubblicate
+       di ogni driver. Valori in tempo reale via ``/wx/values``. La posizione
+       può essere digitata, rispecchiare *Usa i Dati della Mia Stazione* oppure
+       essere presa in tempo reale dal ricevitore GNSS tramite *Usa GPS*; le
+       tre opzioni si escludono a vicenda.
+   * - **Telemetry**
+     - Parametri di beacon/report, interruttori dei messaggi di definizione,
+       analogici A1–A5 con selettori di origine e calibrazione, digitali B1–B8 con
+       selettori di origine e senso. Valori in tempo reale via ``/tlm/values``.
+   * - **GPS**
+     - *Abilita Ricevitore GPS* è l'unico interruttore che il resto del
+       firmware consulta prima di usare qualsiasi cosa riportata dal modulo;
+       con esso spento la UART non viene nemmeno installata e la task di
+       lettura non gira. Spostarlo ha effetto immediato, senza riavvio. Sotto,
+       una vista in tempo reale di sola lettura del ricevitore, guidata da un
+       badge *Stato del Modulo* a colori che trasforma una pagina di numeri
+       in un'unica diagnosi: rosso *Disabilitato* quando l'interruttore è
+       spento o la UART non è riuscita ad avviarsi, rosso *Nessun dato
+       (controllare il cablaggio)* quando il modulo è abilitato ma non è
+       arrivato nulla sul pin di ricezione entro il timeout di collegamento,
+       ambra *Ricerca in corso (nessuna posizione)* quando le frasi arrivano
+       ma non è stata ancora riportata una soluzione di navigazione valida, e
+       verde *Posizione OK* una volta ottenuta. Sotto il badge, stato
+       del collegamento, stato di navigazione, qualità del fix e modo 2D/3D,
+       posizione, altitudine e separazione del geoide, velocità al suolo,
+       rotta e variazione magnetica, data e ora UTC, satelliti usati e in
+       vista, HDOP/PDOP/VDOP, i contatori delle frasi accettate e scartate e
+       l'età dell'ultima frase e dell'ultimo fix. La porta seriale e i suoi
+       pin sono cablaggio di scheda fissato in compilazione e sono mostrati
+       come testo. Valori in tempo reale via ``/gps/values``, interrogato
+       ogni secondo. La sua controparte numerica, ``/gps/live``, è quella
+       interrogata dalla casella *Usa GPS* di ogni altra pagina per
+       autocompilare i propri campi di posizione/moto (Station, IGate, Digi,
+       Tracker, Weather); lo script di ogni pagina arrotonda la latitudine, la
+       longitudine e l'altitudine ricevute alla precisione accettata dai
+       propri campi (4 decimali per la posizione, 1 decimale per
+       l'altitudine) prima di scriverle.
+   * - **Telegram**
+     - *Abilita bot Telegram* governa l'intero sottosistema; con esso spento
+       nulla si collega a Telegram e nessuna attività di interrogazione viene
+       eseguita, e spostarlo ha effetto immediato senza riavviare. Sotto, il
+       token del bot (come campo password, con lo stesso controllo
+       mostra/nascondi usato dal passcode dell'IGate) e l'identificativo
+       numerico dell'amministratore, portato come valore a 64 bit e inviato
+       come testo perché gli identificativi utente di Telegram non stanno più
+       in 32 bit. Sotto, l'indirizzo della Mini App e le tabelle a dimensione
+       fissa di utenti autorizzati e chat di gruppo consentite (fino a 8
+       utenti e 4 chat di gruppo, ciascuno con un identificativo e un nome
+       visualizzato). Tutto ciò che si trova in questa pagina è memorizzato in
+       ``/storage/telegram.json``, il suo file come quello di ogni altra
+       pagina, quindi può anche essere scaricato e ricaricato dalla pagina
+       Archivio file. La
+       tabella di stato sotto il modulo riporta a che punto è la connessione e,
+       quando non avanza, esattamente quale passo è fallito e cosa fare: manca
+       il file di configurazione o non è analizzabile, il token è vuoto o non
+       ha la forma ``<numeri>:<segreto>``, il certificato radice non è nella
+       partizione di archiviazione, non c'è ancora una rotta verso Internet, la
+       memoria non è bastata per una sessione TLS, oppure Telegram stesso ha
+       risposto e ha rifiutato, nel qual caso si mostrano il suo codice di
+       errore e il suo testo non tradotti. Valori live via
+       ``/telegram/status``, ogni due secondi. Il bot che questa pagina avvia
+       risponde a ``/status`` con l'interruttore di ogni servizio - igate,
+       digipeater, tracker, meteo, telemetria, messaggistica, risponditore di
+       interrogazioni, BrandMeister, ricevitore GNSS, modem AFSK, limitatore
+       del ciclo di lavoro in TX e sincronizzazione SNTP - e a ``/sensors`` con
+       ogni campo meteo e ogni canale di telemetria abilitato nelle pagine
+       Weather e Telemetry, con il driver di sensore a cui è mappato e la sua
+       lettura attuale. Entrambe le risposte sono costruite sulla
+       configurazione in vigore quando il comando arriva, quindi un Save ha
+       effetto al comando successivo senza riavviare.
+   * - **Winlink**
+     - I due ruoli Winlink della stazione, in una sola pagina. *Account
+       Winlink* contiene ciò che serve a una sessione propria: il nominativo
+       del servizio APRSLink, l'identità con cui si apre la casella (il
+       nominativo base, senza il suo SSID), la password con cui si risponde a
+       una sfida di accesso, e gli interruttori che decidono se una sessione si
+       apre da sé, quanto può durare, se il suo traffico resta fuori dall'aria
+       e se il commento del beacon annuncia questa stazione come lettrice
+       Winlink. La password è resa come campo password con lo stesso comando
+       mostra/nascondi usato dal passcode dell'IGate, e non viene mai
+       trasmessa: una sfida indica tre posizioni di caratteri e solo quei
+       caratteri vengono rimandati indietro. *Gateway per le stazioni locali*
+       contiene l'unica impostazione dell'altro ruolo, inoltrare la sessione
+       propria di un vicino, insieme a una vista in sola lettura delle tre
+       impostazioni dell'IGate che decidono la stessa questione, così da vedere
+       in un colpo d'occhio i quattro ingressi dell'inoltro dei messaggi. Sotto
+       il modulo, il terminale di sessione: a che punto è la sessione e quanto
+       le resta, pulsanti per accedere, uscire ed elencare la posta, un campo di
+       comando libero che accetta l'intero insieme di comandi APRSLink, un
+       assistente in tre passi per scrivere un messaggio, e le risposte inviate
+       dal servizio. Ogni risposta memorizzata che inizia con un numero di
+       messaggio è una riga di un elenco della casella e porta una fila
+       *Leggi* / *Rispondi* / *Inoltra* / *Elimina* per quel messaggio; un
+       campo *Numero del messaggio* sotto la casella porta gli stessi quattro
+       per un numero scritto a mano. Valori
+       live via ``/winlink/status`` e ``/winlink/list``,
+       interrogati ogni tre secondi; le azioni sono inviate a
+       ``/winlink/cmd``, che è POST perché aziona il trasmettitore.
+   * - **Logs**
+     - Un visore della console seriale, per poter leggere ciò che la stazione
+       stampa senza un cavo collegato. Non c'è nulla da configurare: un
+       pulsante, che dice *Avvia* mentre non si cattura nulla e *Ferma* mentre
+       si cattura, e una finestra sotto di esso che conserva le ultime 50
+       righe. Una riga di console più lunga di 255 caratteri prosegue nella
+       riga successiva invece di essere troncata, e la finestra scorre in
+       entrambe le direzioni: verticalmente perché conserva più righe di
+       quante ne stiano sullo schermo, orizzontalmente perché ogni riga viene
+       mantenuta intera. *Avvia* installa una copia sullo scrittore del
+       registro; l'uscita seriale in sé resta invariata in ogni caso, e
+       l'anello che la copia riempie viene allocato solo mentre una cattura è
+       in corso. La cattura non sopravvive mai alla pagina: al caricamento la
+       pagina chiede alla stazione di fermare tutto ciò che fosse rimasto
+       attivo, così il pulsante si presenta sempre nel suo stato *Avvia*; lasciarla ferma la cattura dal
+       browser; e una scheda chiusa, addormentata o interrotta a metà sessione
+       non dice nulla, ed è per questo che la copia si ferma anche da sola
+       quando nessuno la legge per dieci secondi. Non viene scritto nulla nella
+       flash e non viene registrato nulla: viene mostrato solo ciò che arriva
+       mentre la finestra è aperta. Righe live tramite ``/logs/read``,
+       interrogato ogni secondo.
+   * - **Bulletins**
+     - Fino a cinque bollettini (identificatore e gruppo del destinatario,
+       testo, RF/INET, intervallo iniziale, rampa di decadimento, scadenza).
+   * - **Objects and Items**
+     - Fino a cinque oggetti/item (nome, posizione, simbolo, rotta/velocità,
+       commento, RF/INET, intervallo, flag permanente, kill).
+   * - **Snd/Rcv Msg**
+     - L'interfaccia di casella/composizione APRS (``/msgchat``): un unico filo
+       di messaggi inviati e ricevuti, cinque visibili per volta e dieci
+       conservati.
+   * - **Message**
+     - Configura il motore di messaggistica (abilitazione RF/INET, ritentativo,
+       percorso di digipeating, GPIO di allarme), più il riquadro *Message
+       Groups*: tre destinatari di gruppo definiti dall'operatore, letti oltre a
+       quelli incorporati ``ALL``/``QST``/``CQ``.
+   * - **Query**
+     - Abilitazione del risponditore di query APRS, quale sorgente viene
+       risposta (RF / APRS-IS — la risposta torna sempre sul canale da cui è
+       arrivata la domanda), tipi di query generali (``?APRS?``, e dove
+       compilati, ``?WX?``/``?IGATE?``),
+       abilitazione query dirette, insieme esteso di query dirette, intervallo
+       minimo di risposta (soglia di sicurezza contro loop/uso del canale), e il
+       beacon periodico delle capacità di stazione: abilitazione, intervallo,
+       selezione dei canali RF e APRS-IS, ed eventuali elementi di capacità
+       aggiuntivi da accodare.
+   * - **Radiomodem**
+     - FX.25 in ricezione; abilita modem audio, modulazione (300 /
+       1200 Bell202 / 1200 V.23 / 9600 G3RUH), ingresso audio piatto / da
+       discriminatore, ms di preambolo, ms di slot temporale TX, buffer TX,
+       ritenzione extra di PTT sbloccato, persistenza CSMA e il limitatore di
+       duty cycle a lungo termine (abilitazione più percentuale di tetto);
+       inoltre un gruppo *Interfaccia audio* (polarizzazione interna
+       dell'ingresso ADC, avviso di audio fuori fondo scala, ampiezza di uscita
+       in trasmissione, frequenza di campionamento in trasmissione, tempo
+       massimo di trasmissione) e i pulsanti **TEST LOOP**, **LIVELLO RX** e
+       **TEST TX**. Salva riapplica il modem in tempo reale — nessun riavvio,
+       tranne l'abilitazione del modem audio e la frequenza di campionamento in
+       trasmissione. Documentato campo per campo in :ref:`it-radiomodem`.
+   * - **Wireless**
+     - Modalità (off/STA/AP/AP+STA), SSID/pass/canale dell'AP, 5 slot STA ciascuno
+       con la propria casella Enable, potenza TX in dBm, più una scansione in
+       tempo reale.
+   * - **System**
+     - Login web, frequenza CPU (applicata in tempo reale) e una sezione
+       *Time*: abilitazione NTP, host NTP ×3, intervallo di risincronizzazione,
+       e un selettore di fuso orario che imposta la data/ora locale mostrata
+       nella dashboard (l'orologio stesso resta UTC). Inoltre il pulsante di
+       reset di fabbrica.
+   * - **Storage**
+     - Navigatore LittleFS: scarica, elimina, upload multipart, uso, formatta.
+   * - **About / Firmware**
+     - Nome del progetto, versione, data/ora di compilazione, versione di IDF,
+       partizione in esecuzione, e il pannello di **OTA Update**.
+
+.. note::
+
+   Ogni controllo di queste pagine governa comportamento reale: un'impostazione
+   che arriva nel file della sua pagina viene letta dal servizio che la
+   possiede. Il
+   digipeater gestisce sempre WIDEn-N e ripete senza ritardo aggiunto, quindi
+   nessuno dei due viene offerto come opzione.
+
+   La soppressione dei duplicati ha esattamente una coppia di controlli, *Dup
+   cache size* (``dupCacheSize``) e *Dup cache timeout* (``dupCacheTimeoutMs``)
+   sulla pagina *IGate*, e governano tanto il digipeater quanto l'IGate:
+   entrambi i servizi condividono l'unica cache di ``components/igate``,
+   ciascuno con il proprio ambito.
+
+Le statistiche della dashboard
+==============================
+
+Le statistiche vengono da ``aprs_service_get_stats()``, tracciate in modo
+**indipendente** da ``igate_en``/``digi_en``:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 24 76
+
+   * - Contatore
+     - Significato
+   * - ``radio_rx``
+     - Ogni frame che il modem ha decodificato da RF.
+   * - ``radio_tx``
+     - Ogni frame trasmesso con successo in RF.
+   * - ``rf2inet``
+     - Frame che l'IGate ha effettivamente caricato.
+   * - ``inet2rf``
+     - Righe da APRS-IS effettivamente trasmesse in RF.
+   * - ``digi``
+     - Frame digipetati (percorso riscritto + ritrasmesso).
+   * - ``drop`` / ``err``
+     - Frame scartati / che hanno fallito la decodifica, a livello di
+       RX/servizio.
+   * - ``tx_queue_depth`` / ``tx_queue_limit``
+     - L'arretrato attuale dell'anello TX RF e il tetto effettivo di *TX buffers*,
+       così che la dashboard si legga come la riga "n/n in attesa" della console.
+   * - ``csma_busy_forced`` / ``csma_persist_forced``
+     - Quante volte il limite anti-starvation di otto slot ha forzato una
+       trasmissione, distinguendo se qualche slot ha visto il canale occupato o
+       se tutti lo hanno trovato libero. Mostrato come *CSMA FORZATO
+       (OCCUP./PERSIST.)*. Sono trasmissioni, non scarti.
+   * - ``tx_duty_cycle_pct`` / ``duty_cycle_limit_pct``
+     - Duty cycle di trasmissione misurato sulla finestra scorrevole di 10
+       minuti rispetto al tetto configurato, come *CICLO DI LAVORO TX*. Il
+       limite vale ``0`` quando il limitatore è spento, mentre la misura è
+       popolata in ogni caso.
+
+Questo è deliberato. Con entrambe le funzioni disattivate (una configurazione
+comune di solo-RX/monitor) la dashboard resterebbe inchiodata a zero per quanto
+traffico venisse decodificato.
+
+Feed in tempo reale
+===================
+
+* ``/lastheard`` — la tabella LAST HEARD (JSON), alimentata sia da RF sia da
+  APRS-IS. Una stazione ascoltata per l'ultima volta prima che NTP
+  sincronizzasse porta il campo ``time`` vuoto: quando la trama è arrivata
+  l'orologio contava ancora dall'epoca, quindi non c'è alcuna ora del giorno da
+  indicare e nessuna viene inventata.
+* ``/igate_traffic?since=<seq>`` — il delta del log di traffico (JSON). Ogni voce
+  porta un'etichetta di direzione (``RX``/``TX``/``DIGI``/``INET2RF``/``RX-IS``),
+  l'indicativo DX, il pacchetto grezzo, il riepilogo dei campi decodificati
+  (``dec``, vuoto quando il payload non ne porta nessuno), e il livello audio in
+  mV RMS (o −1). Con *Registra dopo i filtri* attivo nella pagina IGate, le voci
+  ``RX`` e ``RX-IS`` coprono solo il traffico che i filtri di questa stazione
+  accettano — vedi :ref:`it-igate`. Il
+  corpo viene trasmesso una voce per chunk HTTP, così un client molto arretrato
+  riceve comunque tutte le righe memorizzate: la risposta non ha un tetto di
+  dimensione e il firmware non assembla mai l'intero documento in RAM. Il
+  ``seq`` restituito è il numero di sequenza dell'ultima voce effettivamente
+  consegnata, quindi il cursore può avanzare solo oltre le righe che il client
+  ha ricevuto; un cursore davanti al ring — il dispositivo si è riavviato e la
+  numerazione è ripartita da 1 — rinvia dalla voce più vecchia ancora
+  memorizzata.
+* ``/dashinfo`` e ``/sidebarInfo`` — frammenti compatti di informazioni in tempo
+  reale, interrogati una volta al secondo rispettivamente dalla dashboard e
+  dalla barra laterale. ``/heapinfo`` serve la stessa coppia heap libero /
+  minimo libero come oggetto JSON a due campi, per un client che voglia solo
+  quei due numeri.
+
+Vedi :ref:`it-http-routes` per la tabella completa delle route.
+
+Politica di blocco del login
+=============================
+
+``web_check_auth()`` tiene traccia dei tentativi di Basic Auth falliti per
+indirizzo IPv4 di origine in una piccola tabella di dimensione fissa
+(``components/webconfig/web_common.c``). Conta come fallimento solo una
+richiesta che ha effettivamente presentato credenziali e che è stata
+rifiutata — un payload Basic malformato, oppure una coppia utente/password
+errata. Una richiesta senza intestazione ``Authorization``, o con
+un'intestazione che non è ``Basic``, è la metà senza credenziali dell'handshake
+Basic Auth che ogni browser esegue da sé, e riceve una risposta ``401`` senza
+essere addebitata sul budget; è questo che permette ai poller autenticati
+della dashboard (``/dashinfo``, ``/sidebarInfo``, ``/igate_traffic``, e i feed
+propri di ogni pagina come ``/wx/values`` o ``/gps/live``) di trovarsi davanti a
+una nuova pagina di login senza mai far scattare da soli un blocco.
+
+Dopo 5 credenziali rifiutate consecutive dalla stessa origine, quell'origine
+viene bloccata e ogni richiesta successiva riceve ``429 Too Many Requests``
+con un'intestazione ``Retry-After`` invece di un ``401``, per una finestra che
+parte da 5 s e raddoppia a ogni ulteriore tentativo rifiutato mentre il blocco
+è ancora attivo, con un tetto di 300 s. Una finestra che scade senza un login
+riuscito viene riarmata un fallimento sotto la soglia invece di riprendere dal
+conteggio accumulato, così un client che continua a riprovare le stesse
+credenziali scadute dopo ogni scadenza fa scattare di nuovo solo il blocco
+base di 5 s ogni volta, invece di risalire direttamente al tetto di 300 s. Un
+login riuscito azzera completamente la voce di quell'origine.
+
+Protezione same-origin (CSRF)
+==============================
+
+``web_check_auth()`` applica anche un controllo di stessa origine su ogni
+richiesta ``HTTP_POST``, indipendentemente dal fatto che
+``g_config.http_username`` sia impostato o meno. Il controllo verifica che
+l'intestazione ``Origin`` della richiesta (con fallback su ``Referer``)
+indichi l'``Host`` di questo stesso dispositivo prima che venga eseguito
+qualsiasi altro codice, e fallisce in modo chiuso: una richiesta priva di
+entrambe le intestazioni, o con una che non corrisponde, viene rifiutata con
+``403 Forbidden`` indipendentemente dalle credenziali che porta.
+
+Questo è deliberatamente indipendente da Basic Auth. Lasciare vuoto il nome
+utente nella pagina System è un modo supportato per eseguire il pannello di
+amministrazione senza password, ma disattiva solo la richiesta di login —
+non allenta il requisito di stessa origine, perché una richiesta cross-site
+originata dal browser è una minaccia con o senza password configurata:
+senza password non c'è alcuna credenziale da rubare, ma la pagina
+dell'attaccante può comunque far inviare al browser dell'operatore una
+richiesta che modifica lo stato del dispositivo per suo conto. Ogni route
+che modifica lo stato (``/ota_update``, ``/format``, ``/upload``,
+``/delete``, ``/msgchat``, e il gestore di salvataggio di ogni pagina di
+configurazione) è registrata come ``HTTP_POST`` esattamente per questo
+motivo; nessuna route ``GET`` registrata ha effetti collaterali, quindi
+questo controllo non deve mai intervenire su una normale navigazione, un
+segnalibro o un URL digitato a mano.
+
+.. seealso::
+
+   :ref:`it-telegram` — il sottosistema del bot Telegram dietro la pagina
+   *Telegram*: il proprio file di configurazione, l'avvio supervisionato e
+   il set di comandi integrati.

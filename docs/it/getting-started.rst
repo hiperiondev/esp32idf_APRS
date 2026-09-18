@@ -1,0 +1,236 @@
+.. _it-getting-started:
+
+===========
+Primi passi
+===========
+
+Prerequisiti
+============
+
+* **ESP-IDF v6.1 o successivo** (bloccato/testato su **6.1** — vedi
+  ``dependencies.lock``).
+* Un ESP32 con **≥ 4 MB di flash**.
+* Il gestore dei componenti di IDF scarica ``joltwallet/littlefs``,
+  ``espressif/cjson`` e, tramite il
+  componente ``sensors_local``, ``esp-idf-lib/bmp280`` e ``esp-idf-lib/bmp180``
+  (che trascinano ``i2cdev`` + ``esp_idf_lib_helpers``) automaticamente.
+
+Compilazione e scrittura
+========================
+
+.. code-block:: bash
+
+   . $IDF_PATH/export.sh
+
+   cd workspace-APRS/esp32_APRS_igate
+
+   idf.py set-target esp32          # sdkconfig arriva già con target=esp32
+   idf.py build
+   idf.py -p /dev/ttyUSB0 flash monitor
+
+Compila in spagnolo o italiano invece che in inglese (vedi :ref:`it-localization`):
+
+.. code-block:: bash
+
+   idf.py build -DLANGUAGE=LANG_ES
+   idf.py build -DLANGUAGE=LANG_IT
+
+.. tip::
+
+   ``sdkconfig`` arriva con ``CONFIG_COMPILER_OPTIMIZATION_DEBUG`` (``-Og``) e le
+   asserzioni attive, e con ``CONFIG_COMPILER_STACK_CHECK_MODE_NORM`` per il
+   canary dello stack: è la configurazione sotto cui è stato dimensionato ogni
+   stack di task del progetto. Passare a
+   ``CONFIG_COMPILER_OPTIMIZATION_SIZE`` (``-Os``) produce un'immagine più
+   piccola con frame di stack meno profondi, ma cambia le dimensioni di frame
+   rispetto a cui quei budget sono stati fissati, quindi ricontrolla i
+   watermark degli stack (vedi :ref:`it-troubleshooting`) dopo averlo fatto.
+
+Budget di memoria
+=================
+
+L'ESP32 di questo progetto non ha PSRAM, quindi ogni byte di DRAM interna che
+la build riserva staticamente è un byte che l'heap non riceve mai.
+``sdkconfig`` è tarato per questo, e i valori qui sotto sono deliberati:
+alzarne uno qualsiasi abbassa la cifra *Min free heap* del pannello.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 44 10 46
+
+   * - Opzione
+     - Valore
+     - Perché
+   * - ``CONFIG_ESP_WIFI_STATIC_RX_BUFFER_NUM``
+     - 6
+     - ~1,6 KB ciascuno, allocati in ``esp_wifi_init()`` e trattenuti finché il
+       Wi-Fi non viene de-inizializzato. Sei coincide con
+       ``CONFIG_ESP_WIFI_RX_BA_WIN``, che è il minimo richiesto da AMPDU RX.
+   * - ``CONFIG_ESP_WIFI_DYNAMIC_RX_BUFFER_NUM`` / ``..._TX_...``
+     - 12 / 24
+     - Limita il picco di heap richiesto dal driver Wi-Fi. Il traffico APRS è
+       di qualche centinaio di byte al minuto; la banda che questi buffer
+       comprano non viene mai usata.
+   * - ``CONFIG_LWIP_TCP_SND_BUF_DEFAULT`` / ``CONFIG_LWIP_TCP_WND_DEFAULT``
+     - 5760
+     - Quattro MSS (``CONFIG_LWIP_TCP_MSS`` è 1440) per direzione e per
+       connessione. L'unico trasferimento prolungato è il caricamento di
+       un'immagine OTA, che con questa finestra satura comunque una LAN.
+   * - ``max_open_sockets`` in ``web_server_start()``
+     - 3
+     - httpd prende questo numero più 3 socket propri dal pool di
+       ``CONFIG_LWIP_MAX_SOCKETS`` (16). Il resto della quota serve al
+       collegamento APRS-IS, al DNS, a SNTP e al client HTTPS del bot
+       Telegram per restare attivi mentre qualcuno naviga le pagine di
+       amministrazione.
+   * - Server HTTPS, bundle di certificati, Wi-Fi Enterprise
+     - disattivati
+     - L'amministrazione web è HTTP in chiaro e il collegamento APRS-IS è TCP
+       in chiaro, e nulla si mette mai in ascolto di TLS:
+       ``CONFIG_ESP_HTTPS_SERVER_ENABLE``,
+       ``CONFIG_MBEDTLS_CERTIFICATE_BUNDLE`` e
+       ``CONFIG_ESP_WIFI_ENTERPRISE_SUPPORT`` sono tutti disattivati in
+       ``sdkconfig``. Un percorso di codice apre però TLS, come *client*: il bot
+       Telegram parla con ``api.telegram.org`` via HTTPS attraverso
+       ``esp_http_client``/``esp_tls``. Con il bundle di certificati
+       disattivato, verifica il server rispetto a un file PEM che l'operatore
+       carica sulla partizione di archiviazione
+       (``CONFIG_TELEGRAM_BOT_CERT_PATH``, ``/storage/telegram_certificate.pem``
+       di default) invece che rispetto a uno store di radici compilato
+       nell'immagine — pochi kilobyte di flash al posto delle decine del
+       bundle. Una stazione che lascia il bot spento non alloca nulla di tutto
+       questo.
+   * - ``CONFIG_MBEDTLS_SSL_IN_CONTENT_LEN`` / ``..._OUT_CONTENT_LEN``
+     - 8192 / 2048
+     - I buffer di record, allocati per sessione TLS, quindi una stazione con il
+       bot spento non paga nulla per essi. L'ingresso richiede la cifra maggiore
+       perché il server sceglie la propria dimensione di record e lo standard
+       consente fino a 16384; l'uscita è una scelta di questo dispositivo e le
+       sue richieste sono piccole. ``CONFIG_MBEDTLS_DYNAMIC_BUFFER`` è attivo,
+       quindi anche una sessione viva tiene i buffer completi solo mentre ci
+       sono record realmente in transito.
+   * - mbedTLS stesso
+     - abilitato
+     - La crittografia Wi-Fi ne ha bisogno comunque, quindi
+       ``CONFIG_MBEDTLS_TLS_ENABLED`` e le sue opzioni annidate
+       ``_SERVER``/``_CLIENT`` restano ai valori predefiniti. L'autenticazione
+       HTTP Basic continua a decodificare la propria coppia di credenziali con
+       un piccolo decodificatore locale RFC 4648
+       (``components/webconfig/include/web_base64.h``) invece di
+       ``mbedtls_base64_decode()``, quindi ``webconfig`` non dichiara alcuna
+       dipendenza propria da mbedTLS; ``esp_wifi``/``esp_netif``/``lwip``
+       trascinano mbedTLS in modo transitivo per la crittografia WPA2, che non è
+       influenzata da nessuna di queste impostazioni.
+
+.. note::
+
+   Da ESP-IDF v6.0 il port di mbedTLS chiama ``psa_crypto_init()`` da un hook
+   di avvio di sistema, quindi PSA Crypto è attivo in ogni build che collega
+   mbedTLS, questa compresa, indipendentemente da
+   ``CONFIG_MBEDTLS_TLS_ENABLED``. Questo, insieme alla maggiore impronta
+   statica di mbedTLS 4.x, è il motivo per cui lo stesso firmware riporta meno
+   heap libero sotto v6.x rispetto a v5.2 con una configurazione per il resto
+   identica. Il comportamento è stato introdotto in v6.0 ed è invariato nella
+   v6.1 con cui questo progetto compila ora.
+
+Primo avvio
+===========
+
+#. Su una partizione nuova, LittleFS si auto-formatta e ``app_config_load()``
+   scrive un file di configurazione per funzionalità con i valori di fabbrica.
+#. L'ESP32 si avvia come **AP Wi-Fi**: SSID ``esp32idf_APRS``, password
+   ``esp32idf_APRS``, canale 1, WPA2-PSK, max 4 client.
+#. Uniscici e naviga al dispositivo (predefinito ``http://192.168.4.1/``).
+#. **Accedi:** ``admin`` / ``admin`` — cambialo nella pagina *System*.
+#. In *Wireless*: scegli **Station** o **AP+STA**, spunta **Enable** in un blocco
+   Client Wi-Fi, inserisci SSID/password, Salva.
+#. In *IGate*: imposta il tuo **indicativo**, **SSID**, **passcode**,
+   **host**/**porta** APRS-IS, filtro, coordinate, simbolo, commento.
+#. In *Radio / Modem*: abilita il modem audio, scegli la modulazione, il
+   preambolo, lo slot temporale TX; usa **LOOP TEST** per verificare il percorso
+   audio.
+#. Riavvia (o Salva — la maggior parte delle impostazioni si riapplica in tempo
+   reale).
+
+Valori di fabbrica notevoli
+===========================
+
+.. list-table::
+   :header-rows: 1
+   :widths: 45 55
+
+   * - Impostazione
+     - Predefinito
+   * - Modalità Wi-Fi
+     - AP (sempre raggiungibile)
+   * - SSID / password AP
+     - ``esp32idf_APRS`` / ``esp32idf_APRS``
+   * - Login web
+     - ``admin`` / ``admin``
+   * - Frequenza CPU
+     - 240 MHz
+   * - Orologio di sistema
+     - sempre UTC (TZ=UTC0). Il selettore di fuso orario della pagina System
+       (default ``UTC``) cambia solo la data/ora locale mostrata nella
+       dashboard; i timestamp in onda restano zulu
+   * - Host NTP
+     - ``pool.ntp.org``, ``time.google.com``, ``time.cloudflare.com``
+   * - IGate
+     - abilitato, ``rf2inet`` attivo, ``inet2rf`` inattivo
+   * - Indicativo / SSID
+     - ``NOCALL`` / 10, passcode ``-1``
+   * - Coordinate della stazione
+     - ``0.000`` / ``0.000``; ogni beacon di posizione e il locator Maidenhead
+       dei report di stato vengono omessi finché le coordinate di un ruolo
+       restano su questo valore predefinito
+   * - Server APRS-IS
+     - quattro slot di failover, tutti preimpostati a ``aprs.dprns.com`` :
+       14580, con il solo slot 1 abilitato
+   * - Elenco digipeater satellitari
+     - ``RS0ISS``, ``YBOX``, ``YBSAT``, ``PSAT``, ``W3ADO``, ``BJ1SI`` (fino a 8, configurabile dal web)
+   * - Cache / finestra soppressione duplicati
+     - 20 voci / 30000 ms (configurabile dal web)
+   * - Limitatore di duty cycle di trasmissione
+     - disabilitato; tetto del 25 % di una finestra scorrevole di 10 minuti
+       quando abilitato
+   * - Preset di percorso 0
+     - ``WIDE1-1,WIDE2-1``
+   * - Selezione del percorso
+     - preset 0, uguale per i beacon IGate, digipeater, tracker e meteo
+   * - Digipeater
+     - disabilitato, SSID 1
+   * - Tracker
+     - disabilitato, SSID 9
+   * - Modem audio
+     - abilitato, 1200 Bd Bell 202
+   * - Preambolo / slot TX
+     - 300 ms / 2000 ms
+   * - Persistenza CSMA
+     - 63 (~25 % di probabilità di trasmettere per slot libero)
+   * - Buffer di TX RF
+     - 1
+   * - Risponditore di query
+     - disabilitato; RF attivo, Internet spento, intervallo minimo di
+       risposta 30 s
+   * - FX.25
+     - disattivato
+   * - PTT
+     - GPIO26 (la polarità è di compilazione)
+   * - Messaggistica
+     - abilitata, RF + INET, GPIO di allarme disabilitato
+
+.. danger::
+
+   **Cambia** ``NOCALL`` **e imposta un passcode reale prima di trasmettere.**
+   Verifica di essere autorizzato per la frequenza e il ciclo di lavoro che stai
+   per attivare.
+
+   **Imposta anche le coordinate della stazione.** APRS non ha una coordinata
+   di "posizione sconosciuta", perciò questo firmware tratta la coppia
+   predefinita ``0.000`` / ``0.000`` — Null Island, non la sede reale di
+   alcuna stazione radioamatoriale — come "non ancora configurata" e omette i
+   beacon di posizione di Tracker, IGate e Digipeater (e il locator
+   Maidenhead dei loro report di stato) invece di mettere in aria una
+   posizione falsa nel golfo di Guinea. Un beacon le cui coordinate non sono
+   ancora impostate resta silenzioso invece di trasmettere; controlla il log
+   se sembra non inviare nulla.

@@ -1,0 +1,890 @@
+.. _it-limitations:
+
+========================
+Stato e limitazioni note
+========================
+
+Il firmware è **work in progress**. Il percorso di trasmissione RF, l'IGate, il
+digipeater, i beacon, il meteo, la telemetria, la messaggistica e
+l'amministrazione web sono tutti funzionanti.
+
+Questa pagina confronta il progetto con *altri software APRS*. Per la vista
+complementare — quanta parte della *specifica APRS stessa* la stazione mette in
+onda, capitolo per capitolo — vedere :ref:`it-aprs-coverage`.
+
+Tabella comparativa delle funzionalità
+=========================================
+
+La tabella seguente confronta le funzionalità implementate in questo progetto
+con l'unione delle funzioni presenti nei software APRS più diffusi (client
+desktop/di mappatura come Xastir, APRSIS32 e YAAC; TNC software come Direwolf
+e UZ7HO Soundmodem; e stack iGate/digipeater headless come aprx e VP-Digi).
+Nessun singolo pacchetto di quell'ecosistema implementa tutte le righe — è
+normale e atteso. La legenda è:
+
+* ✅ — Implementato e funzionante
+* ⚠️ — Implementazione parziale / limitata
+* ❌ — Non implementato
+
+Modem / Livello 2
+--------------------
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 24 10 36
+
+   * - Capacità specifica
+     - Tipico nei software APRS diffusi
+     - Qui
+     - Note sull'implementazione di questo progetto
+   * - AFSK 1200 Bd Bell 202 (APRS VHF standard)
+     - ✅ (Direwolf, UZ7HO, VP-Digi, TNC hardware)
+     - ✅
+     - Profilo predefinito; doppio demodulatore in parallelo per aumentare la probabilità di decodifica
+   * - AFSK 1200 Bd V.23
+     - ⚠️ (Direwolf lo supporta; molti client no)
+     - ✅
+     - Profilo modem selezionabile n. 2; come Bell 202 esegue due demodulatori
+       in parallelo
+   * - AFSK 300 Bd (APRS HF)
+     - ✅ (Direwolf, UZ7HO)
+     - ✅
+     - Profilo modem selezionabile n. 0
+   * - FSK G3RUH 9600 Bd
+     - ✅ (Direwolf, TNC pacchetto dedicati)
+     - ✅
+     - Profilo modem selezionabile n. 3
+   * - Framing HDLC / codifica-decodifica AX.25 UI
+     - ✅ (universale)
+     - ✅
+     - Percorso TX/RX completo via software, su ADC/DAC. ``ax25_decode()`` legge
+       solo i byte della trama che riceve: il campo indirizzi viene percorso un
+       indirizzo alla volta rispetto alla lunghezza della trama, quindi
+       un'intestazione i cui bit di estensione dichiarano più ripetitori di
+       quanti la trama ne porti viene respinta invece di decodificare ciò che la
+       segue in memoria
+   * - FEC Reed-Solomon FX.25
+     - ⚠️ (Direwolf sì; la maggior parte dei TNC hardware no)
+     - ✅
+     - Tre modalità nella pagina Radiomodem: spento, solo RX (decodifica FX.25 e
+       trasmette AX.25 semplice) e RX+TX. I blocchi trasmessi restano
+       retrocompatibili — un ricevitore AX.25 semplice ignora il tag di
+       correlazione e i byte di parità e decodifica il frame contenuto
+   * - IL2P (alternativa a FX.25)
+     - ⚠️ (solo Direwolf)
+     - ❌
+     - Non implementato
+   * - Protocollo KISS (seriale o TCP) per fungere da TNC per software client esterno
+     - ✅ (Direwolf, UZ7HO, praticamente tutti i soundmodem)
+     - ❌
+     - Non implementato. Nessun server KISS/AGWPE seriale o di rete — questo progetto non può fungere da "back end" TNC per Xastir/APRSIS32/YAAC ecc.
+   * - Protocollo AGWPE
+     - ⚠️ (TNC orientati a Windows)
+     - ❌
+     - Non implementato
+   * - CSMA / rilevamento canale occupato prima della TX
+     - ✅
+     - ✅
+     - Accesso p-persistente condizionato dal DCD: persistenza configurabile
+       (``csma_persist``, 1-255), tempo di silenzio prima dell'accesso
+       (``tx_timeslot``) e preambolo/TXDelay, più un limite anti-starvation di
+       otto slot perché un canale che non si libera mai non trattenga per sempre
+       un frame in coda. La dashboard riporta quante volte è intervenuto quel
+       limite, distinguendo canale occupato da canale libero, come *CSMA FORZATO
+       (OCCUP./PERSIST.)*
+   * - Tetto di duty cycle di trasmissione a lungo termine
+     - ⚠️ (raro al di fuori di apparati commerciali/regolamentati)
+     - ✅
+     - Tetto opzionale (``duty_cycle_en``, disattivato di default) di
+       ``duty_cycle_pct`` per cento (1-100, default 25) misurato su una
+       finestra scorrevole di 10 minuti, accumulato dal tempo in onda stimato
+       di ogni frame effettivamente trasmesso alla velocità configurata. Viene
+       trattenuto solo il traffico non critico: i messaggi e le ripetizioni del
+       digipeater partono sempre. Un beacon trattenuto viene differito, non
+       perso - il task periodico che lo genera lo ripropone al suo intervallo
+       successivo -, anche se viene conteggiato come ``DROP_TX_DUTY_CYCLE`` per
+       renderlo visibile. La dashboard mostra la percentuale misurata rispetto
+       a quella configurata come *CICLO DI LAVORO TX*, ed è popolata anche con
+       il limitatore spento per poter valutare il tetto prima di attivarlo
+   * - Attivazione PTT (senza VOX, GPIO hardware)
+     - ✅
+     - ✅
+     - GPIO e polarità a tempo di compilazione; tempo minimo di mantenimento dis-attivazione regolabile a runtime
+   * - Strumento integrato di loopback RF/autotest
+     - ⚠️ (raro)
+     - ✅
+     - "LOOP TEST" — trasmette un pacchetto con token e verifica che l'intera catena RX lo decodifichi correttamente, con diagnostica dettagliata per fase
+   * - Ingresso audio piatto/discriminatore rispetto ad audio de-enfatizzato
+     - ✅ (Direwolf, UZ7HO)
+     - ✅
+     - Indica al demodulatore se riceve audio da altoparlante o audio non
+       filtrato dal discriminatore; applicato in tempo reale al salvataggio
+   * - Controllo della profondità della coda di TX
+     - ⚠️ (di solito una coda interna fissa)
+     - ✅
+     - ``rf_tx_buffers``: quanti frame possono attendere nell'anello di TX RF
+       prima che i nuovi pacchetti vengano scartati anziché accodati; letto a
+       ogni trasmissione, quindi ha effetto senza riavvio
+   * - Tempo minimo di PTT rilasciato tra i frame
+     - ⚠️ (TXTAIL su alcuni TNC)
+     - ✅
+     - ``ptt_min_unkey_ms``, 0-5000 ms oltre al rilascio fisso di un tick che il
+       modem applica sempre — per radio o ripetitori che richiedono un
+       intervallo garantito più lungo tra le trasmissioni
+
+IGate (RF <-> APRS-IS)
+------------------------
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 24 10 36
+
+   * - Capacità specifica
+     - Tipico nei software APRS diffusi
+     - Qui
+     - Note sull'implementazione di questo progetto
+   * - Inoltro RF -> APRS-IS
+     - ✅ (universale)
+     - ✅
+     - Pipeline completa: dedup -> controllo lunghezza minima -> filtro token di percorso -> regola sat-gate -> filtro per tipo di payload -> gate di raggio -> gate di prefisso -> budlist
+   * - Inoltro APRS-IS -> RF (IGate bidirezionale)
+     - ✅ (modalità igate di Direwolf, aprx, VP-Digi)
+     - ✅
+     - Soppressione dell'eco dei report propri, filtro per tipo di payload, unwrap di terze parti ristretto, budlist
+   * - Soppressione dei pacchetti duplicati
+     - ✅
+     - ✅
+     - Cache condivisa; profondità e finestra configurabili via web nella
+       pagina IGate (4-40 voci, predefinito 20; finestra 1-120 s, predefinito
+       30 s)
+   * - Inserimento Q-construct ``qAR``/``qAO``
+     - ✅
+     - ✅
+     - Deciso per singola stazione inoltrata, secondo QCON: ``qAR`` solo
+       quando questo IGate può inoltrare messaggi verso RF **e** quella
+       stazione non è stata vista su APRS-IS entro
+       ``igate_local_window_sec``; ``qAO`` altrimenti (IGate a sola ricezione,
+       IGate bidirezionale con l'inoltro INET→RF disattivato, e qualsiasi
+       stazione connessa a Internet)
+   * - Stringa di filtro APRS-IS lato server (``r/``, ``p/``, ``t/``, ``b/``...)
+     - ✅
+     - ✅
+     - Inviata testualmente nella riga di login, con validazione locale della grammatica prima dell'invio
+   * - Gate di raggio locale (distanza ortodromica)
+     - ⚠️ (alcuni, es. ``filter`` di aprx)
+     - ✅
+     - Distanza haversine rispetto a "La mia stazione"; supporta posizioni compresse e non compresse
+   * - Whitelist locale sui prefissi del nominativo
+     - ⚠️ (poco comune come funzione di prima classe)
+     - ✅
+     - Elenco di prefissi separati da virgola (es. ``EA,EB,EC``)
+   * - Budlist di nominativi (whitelist/blacklist)
+     - ✅
+     - ✅
+     - Modalità per direzione: disattivato / whitelist / blacklist
+   * - Filtro per tipo di payload (msg/status/tlm/wx/obj/item/query/buoy/position/other)
+     - ✅ (principalmente tramite filtri APRS-IS)
+     - ✅
+     - Locale, basato su bitmask, applicato in entrambe le direzioni indipendentemente dal filtro del server. La casella "Altri" copre i tipi di payload che non hanno un bit proprio — capacità di stazione, formati definiti dall'utente, radiogoniometria Agrelo, radiofari di locatore Maidenhead e l'elemento di mappa riservato — così sono instradabili invece di essere scartati in silenzio. Il traffico di terze parti e i dati di test restano fuori da ogni bit e non vengono mai ritrasmessi
+   * - Decodifica in ricezione dei campi attorno a una posizione
+     - ⚠️ (Xastir e aprs.fi li decodificano; la maggior parte dei firmware di sola gateway no)
+     - ✅
+     - La marca temporale propria del rapporto, i byte compressi di rotta/velocità, portata radio e altitudine, l'estensione dati da 7 byte (PHG, la forma PHGR da nove byte, RNG, DFS, CSE/SPD o vento), il token ``/A=`` e il raffinamento ``!DAO!`` sono letti in un'unica passata e mostrati nella colonna DECODIFICATO della tabella del traffico. ``!DAO!`` raffina inoltre la coordinata misurata dal filtro di distanza. La tabella LAST HEARD continua di proposito a marcare le sue voci con l'ora locale di ricezione: risponde a quando questa stazione ha sentito un nominativo, che è anche ciò da cui dipende il gate dei messaggi INET→RF
+   * - Gestione pacchetti di terze parti (``}``) / protezione anti-loop
+     - ✅ (critico, spesso manuale)
+     - ✅
+     - Disattivato di default; l'unwrap opzionale è vincolato alla sola modalità whitelist proprio per prevenire i loop di IGate
+   * - Riconnessione automatica ad APRS-IS con backoff
+     - ✅
+     - ⚠️
+     - Riconnessione TCP automatica, rilegge la configurazione a ogni
+       riconnessione, ma con un intervallo di ritentativo fisso di 1 s (anche
+       1 s finché il dispositivo non ha una rotta verso internet) e non con un
+       backoff esponenziale. Ogni tentativo fallito passa al server configurato
+       successivo invece di ripetere lo stesso
+   * - Login ad APRS-IS basato su passcode
+     - ✅
+     - ✅
+     - Riga di login standard ``user/pass/vers/filter``; la risposta verified/unverified del server viene mostrata
+   * - Server APRS-IS multipli / failover
+     - ⚠️ (alcuni supportano elenchi di server)
+     - ✅
+     - Quattro slot server (``APRS_SERVER_NUM``), ognuno con la propria casella
+       Abilita, host e porta. Un fallimento di DNS, connessione o login passa
+       allo slot abilitato successivo e riparte circolarmente, ritentando ogni
+       secondo finché uno accetta, e lo stesso fa una sessione che termina dal
+       lato del server — il peer che la chiude, un errore di ricezione, o il
+       timer di collegamento morto che scade — quindi uno slot che accetta e poi
+       smette di alimentare viene lasciato indietro invece di essere ritentato;
+       gli slot disabilitati vengono saltati, anche al primo tentativo dopo
+       l'avvio. Tutti gli slot condividono la stessa
+       identità di login (nominativo/SSID/passcode/filtro). Il pannello indica
+       lo slot in uso
+   * - Statistiche per motivo di scarto
+     - ⚠️ (poco comune, di solito solo totali)
+     - ✅
+     - Contatori nominati (``DROP_TOO_SHORT``, ``DROP_PATH_TOKEN``, ``DROP_RANGE_FILTER``, ecc.)
+   * - Elenco dei nominativi dei gate satellitari/ISS
+     - ⚠️ (aprx e alcuni satgate dedicati)
+     - ✅
+     - Fino a 8 nominativi di digipeater satellitari; un frame ripetuto da uno
+       di essi senza il flag di ripetuto (``*``) impostato viene scartato
+       prima di raggiungere APRS-IS
+
+   * - Criteri di filtraggio messaggi (località di destinatario/mittente)
+     - ✅ (richiesto a un IGate conforme)
+     - ✅
+     - Tutte e cinque le condizioni sono applicate prima che un messaggio letto
+       da APRS-IS raggiunga la RF: destinatario ascoltato localmente entro la
+       finestra, quell'ascolto entro il limite di hop, mittente non ascoltato in
+       RF, nessun ``TCPXX``/``NOGATE``/``RFONLY`` nell'intestazione del
+       mittente, destinatario non connesso a Internet. Ogni fallimento ha il
+       proprio motivo di scarto
+   * - Finestra di ascolto locale configurabile
+     - ⚠️ (spesso fissa)
+     - ✅
+     - ``igate_local_window_sec``, 60-3600 s, un'ora per impostazione predefinita
+   * - Copertura misurata in hop di digipeater
+     - ⚠️ (Dire Wolf e javAPRSSrvr richiedono ascolto diretto o limitato in hop)
+     - ✅
+     - ``igate_msg_max_hops``, 0-8 indirizzi di digipeater usati, con 0 = solo
+       diretto; per impostazione predefinita il conteggio di hop del percorso di
+       trasmissione dell'IGate
+   * - Posizione associata dopo un messaggio ritrasmesso
+     - ⚠️ (poco comune)
+     - ✅
+     - Anello di otto destinatari; il primo rapporto di posizione o di boa visto
+       per uno di essi viene ritrasmesso una volta, in sostituzione della pratica
+       obsoleta di ripetere le posizioni storiche
+   * - Interconnessione APRS BrandMeister
+     - ❌ (nessun pacchetto APRS la tratta come funzione a sé)
+     - ✅
+     - Non c'è alcun protocollo BrandMeister da parlare: il lato APRS di
+       BrandMeister è esso stesso un client APRS-IS, quindi il trasporto è la
+       sessione APRS-IS che l'IGate ha già e il lavoro è riconoscimento, gating
+       e instradamento. Tre test in OR classificano una riga come traffico
+       BrandMeister — un tocall ``APBMxx``, un alias ``DMR`` nel percorso prima
+       del q construct, o la stazione d'ingresso dopo ``qAS``/``qAR`` rispetto a
+       un elenco facoltativo di quattro gateway. Una trama da RF non è mai
+       classificata così. Pagina propria, disattivata di default; **non è
+       coinvolta alcuna connessione DMR**. Vedi :ref:`it-brandmeister`
+
+Digipeater
+-----------
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 24 10 36
+
+   * - Capacità specifica
+     - Tipico nei software APRS diffusi
+     - Qui
+     - Note sull'implementazione di questo progetto
+   * - Digipeating WIDEn-N, Nuovo Paradigma n-N (tracciato)
+     - ✅ (universale)
+     - ✅
+     - Decremento del conteggio hop **e** inserimento del proprio nominativo
+       marcato come usato, così ogni hop di un percorso ripetuto è
+       identificabile
+   * - Tabella di alias configurabile
+     - ⚠️ (variabile; spesso un elenco fisso)
+     - ✅
+     - Quattro righe di {alias, N massimo, modalità} nella pagina Digi; ``#`` in
+       un alias corrisponde a una cifra, quindi una riga copre un'intera
+       famiglia (``WIDE#``). Tabella di fabbrica: ``WIDE1`` 1 hop, ``WIDE2``
+       2 hop, ``WIDE#`` 2 hop, tutte tracciate
+   * - Intrappolamento di N grande
+     - ✅ (atteso da ogni digipeater moderno)
+     - ✅
+     - ``N massimo`` per alias; un conteggio hop maggiore viene limitato al tetto
+       (predefinito) o scartato (``DROP_DIGI_N_TRAPPED``), a scelta
+       dell'operatore
+   * - Ruolo di digipeater di riempimento (solo ``WIDE1-1``)
+     - ✅
+     - ✅
+     - Una sola casella; limita la stazione alle righe di alias a un solo hop
+   * - Instradamento regionale ``SSn-N``
+     - ⚠️ (convenzione regionale)
+     - ✅
+     - Una normale riga di alias, tipicamente in modalità Inondazione con il
+       limite di hop della regione
+   * - Inondazione ``WIDEn-N`` non rintracciabile (NOID)
+     - ⚠️ (comportamento datato)
+     - ❌
+     - Non prodotta per ``WIDEn-N``: il paradigma l'ha spostato sul meccanismo di
+       tracciamento. La modalità Inondazione esiste, ma solo per una riga di
+       alias che l'operatore decida di usare senza traccia
+   * - Alias datati ``TRACEn-N`` / ``RELAY`` / ``ECHO`` / ``GATE``
+     - ⚠️ (obsoleti)
+     - ❌
+     - Abbandonati come percorsi e non incorporati. Un operatore che ne abbia
+       ancora bisogno per un vicino datato lo aggiunge come una normale riga di
+       alias
+   * - Conteggio hop codificato nel SSID di destinazione (legacy)
+     - ⚠️ (TNC più datati)
+     - ✅
+     - Disattivato per impostazione predefinita (*Ripetizione tramite SSID di
+       destinazione*). Instrada prima della tabella degli alias e in base a quel
+       solo SSID, quindi un percorso esplicito non verrebbe mai letto;
+       disattivato, l'SSID di destinazione resta intatto e decide la tabella
+       degli alias
+   * - Soppressione duplicati/ping-pong nel digipeating
+     - ✅
+     - ✅
+     - Finestra propria di 30 s nella cache di deduplica condivisa
+       (``DUP_SCOPE_DIGI``), con chiave di sola origine e payload, verificata
+       prima di qualsiasi lavoro sul percorso
+   * - Filtro di digipeating per nominativo (ripetere solo certe fonti)
+     - ⚠️ (alcuni, es. VP-Digi)
+     - ❌
+     - Non esposto come filtro specifico del digipeater (la budlist dell'IGate non equivale a un filtro del digi)
+   * - Digipeating preventivo
+     - ⚠️ (raro, TNC avanzati)
+     - ✅
+     - Spento per impostazione predefinita; due modalità indicatrici (mantenere
+       gli indirizzi saltati marcati come usati, oppure scartarli), con
+       scansione dal primo indirizzo inutilizzato fino alla fine del percorso e
+       senza reclamare mai un alias ``n-N`` generico
+   * - Digipeating viscoso (attendere e ripetere solo se nessun altro lo ha fatto)
+     - ⚠️ (raro, TNC avanzati)
+     - ❌
+     - Non implementato
+
+Tracciamento / Beaconing
+----------------------------
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 24 10 36
+
+   * - Capacità specifica
+     - Tipico nei software APRS diffusi
+     - Qui
+     - Note sull'implementazione di questo progetto
+   * - Ingresso posizione GPS in tempo reale (NMEA)
+     - ✅ (universale per tracker mobili)
+     - ✅
+     - Il ricevitore GNSS (``main/gps.c``, ``gps_snapshot()``) analizza
+       RMC/GGA/GSA in una posizione in tempo reale; l'interruttore *Usa
+       posizione GPS in tempo reale* della pagina beacon Tracker fa sì che
+       ``trackerBeaconService()`` (``main/beacon.c``) legga quella posizione a
+       ogni trasmissione e la usi al posto della latitudine/longitudine/
+       altitudine fissa della pagina, ricadendo su quei valori fissi ogni
+       volta che il ricevitore è spento o non ha una posizione valida. I
+       beacon di IGate e Digipeater restano solo a posizione fissa
+   * - Beaconing a posizione fissa (stazione base)
+     - ✅
+     - ✅
+     - Posizione/intervallo/simbolo/commento separati per ruolo (tracker,
+       IGate, digi); la modalità predefinita e di ripiego per tutti e tre, e
+       l'unica offerta dai beacon di IGate e Digipeater
+   * - Convenzione "posizione sconosciuta"
+     - ⚠️ (APRS non ne definisce una)
+     - ✅
+     - APRS non ha una coordinata in onda per "posizione sconosciuta", quindi
+       questo progetto tratta la coppia esatta (0.0, 0.0) - Null Island - come
+       "non ancora configurata" per la posizione di un ruolo.
+       ``buildPositionPacket()`` (``main/beacon.c``) omette del tutto il
+       beacon di posizione di Tracker/IGate/Digipeater finché la posizione di
+       quel ruolo, fix GPS live incluso, resta su quel valore predefinito, e
+       ``buildStatusPacket()`` omette allo stesso modo il locator Maidenhead
+       del report di stato corrispondente, invece di trasmettere una
+       posizione falsa nel golfo di Guinea. Il report meteo ha un formato
+       senza posizione a cui ricorrere invece (``build_wx_packet()`` in
+       ``main/weather.c``), quindi non ne è interessato
+   * - Smart Beaconing (intervallo adattivo su velocità/direzione)
+     - ✅ (client mobili, OpenTracker)
+     - ✅
+     - L'algoritmo standard, nel suo fieldset della pagina Tracker
+       (``trk_sb_*``): l'intervallo è interpolato linearmente fra un valore a
+       ritmo lento alla soglia di bassa velocità o sotto (predefinito 600 s a
+       4 km/h) e uno a ritmo veloce alla soglia di alta velocità o sopra
+       (predefinito 60 s a 100 km/h), e il corner-pegging anticipa la
+       trasmissione successiva su un cambio di direzione oltre
+       ``angolo di virata + pendenza di virata / velocità`` (predefiniti 25° e
+       255), con un tempo minimo di virata (predefinito 15 s) come guardia di
+       riarmo. Ha effetto solo insieme a *Usa posizione GPS in tempo reale*,
+       perché altrimenti non c'è velocità né rotta da leggere; senza una
+       posizione corrente il beacon torna alla cadenza fissa
+       ``trk_interval``. Disattivato per impostazione predefinita. Vedi
+       :ref:`it-beacons`
+   * - Rotta/velocità nei report di posizione
+     - ✅
+     - ✅
+     - Supportato in Oggetti/Item, e nel beacon Tracker ogni volta che
+       trasmette una posizione GPS in tempo reale — come estensione dati
+       standard ``CSE/SPD`` (formato non compresso), ripiegata nello slot a
+       due byte ``cs/T`` proprio del campo compresso (formato compresso),
+       oppure come coppia rotta/velocità reale (Mic-E). Una posizione in
+       tempo reale senza rotta/velocità riportate in quel ciclo, e ogni beacon
+       a posizione fissa, indicano "sconosciuto" (``000/000``)
+   * - Codifica posizione compressa (Base-91)
+     - ✅
+     - ✅
+     - Opzione per servizio nelle pagine Tracker, IGate, Digipeater e
+       Oggetti/Item; anche il decoder la comprende. Viene saltata
+       automaticamente quando l'ambiguità di posizione non è zero o è in uso
+       un'estensione PHG/DFS, perché il formato compresso non ha spazio per
+       nessuna delle due; una portata radio precalcolata viene invece ripiegata
+       nello slot a due byte proprio del campo compresso
+   * - Codifica posizione Mic-E (TX)
+     - ⚠️ (soprattutto firmware per tracker mobili)
+     - ✅
+     - La pagina beacon Tracker offre un'opzione Mic-E
+       (``aprs_mice_encode()``); porta la rotta/velocità reale mentre
+       trasmette una posizione GPS in tempo reale, e "sconosciuto"
+       (``000/000``) in ogni altro momento, con lo stesso interruttore
+       fisso/in tempo reale di ogni altro formato. Il commento di posizione si
+       sceglie nella stessa pagina, fra i sette valori standard e i sette
+       personalizzati; Emergency non è offerto, perché trasmetterlo chiede una
+       risposta del mondo reale. Il campo informativo segue l'ordine canonico di
+       ``mic-e-examples.txt``: byte TYPE, altitudine, blocco di frequenza,
+       estensione dati, commento, ``!DAO!`` e la coppia Produttore/Versione che
+       identifica il firmware (l'indirizzo di destinazione porta dati di
+       posizione, quindi il TOCALL ``APxxxx`` non può)
+   * - PHG / potenza-altezza-guadagno-direttività
+     - ✅
+     - ✅
+     - Esposto nella pagina beacon dell'IGate, con i propri sottocampi, e come
+       un unico interruttore nella pagina Tracker che riusa i dati d'antenna
+       della stazione. Nel formato Mic-E il token viaggia nel campo di testo,
+       che è dove APRS 1.2 colloca un normale campo di commento di posizione
+   * - RNG / portata radio precalcolata
+     - ⚠️
+     - ✅
+     - Selezionabile come estensione dati del beacon dell'IGate (``RNGrrrr``),
+       oppure come la forma di portata a due byte propria del campo compresso
+       quando si richiede anche la compressione
+   * - DFS / intensità del segnale omni-DF
+     - ⚠️ (software specifico per DF)
+     - ✅
+     - Selezionabile come estensione dati del beacon dell'IGate (``DFSshgd``)
+   * - Ambiguità di posizione nei rapporti trasmessi
+     - ⚠️
+     - ✅
+     - Livello 0-4 a livello di stazione nella pagina Stazione; si applica ai
+       formati non compresso e Mic-E, e forza il formato non compresso quando è
+       diverso da zero
+   * - Estensione di precisione/datum ``!DAO!``
+     - ⚠️ (pochi client/tracker)
+     - ✅
+     - Opzione a livello di stazione nella pagina Stazione; aggiunge la forma
+       leggibile WGS-84 ai formati non compresso e Mic-E, solo quando
+       l'ambiguità è 0 e il formato non è quello compresso
+   * - Localizzatore Maidenhead nei rapporti di stato
+     - ⚠️
+     - ✅
+     - Opzione a livello di stazione; emette la forma ``>IO91SX/G`` di APRS101
+       cap.16
+   * - Direzione d'antenna ed ERP nei rapporti di stato
+     - ⚠️ (operatività meteor scatter)
+     - ✅
+     - Direzione e potenza a livello di stazione nella pagina Stazione, emesse
+       come la coppia ``^HP`` che chiude il testo di stato; servono entrambe le
+       metà e la coppia non viene mai scartata per rientrare nel budget di
+       lunghezza
+   * - Localizzatore Maidenhead nella destinazione AX.25 (``[IO91SX]``,
+       obsoleto)
+     - ⚠️ (software legacy)
+     - ❌
+     - Contrassegnato come obsoleto dalla specifica stessa; non prodotto
+   * - Altitudine nei beacon
+     - ✅
+     - ✅
+     - Altitudine per ruolo (tracker, IGate, digipeater), ciascuna copiata dal
+       valore di "La mia stazione" quando è spuntato *Usa i dati de La mia
+       stazione*. Inviata come token ``/A=`` nel commento, oppure gratis dentro
+       lo slot a due byte proprio del campo compresso quando il beacon è
+       compresso e quello slot non porta già una portata radio. I report meteo
+       non contengono alcun campo di altitudine
+   * - Percorso di digipeating configurabile per servizio
+     - ✅
+     - ✅
+     - Quattro preset di percorso condivisi; ogni servizio che trasmette
+       (tracker, IGate, digipeater, meteo, telemetria, messaggi, oggetti,
+       bollettini) sceglie tra questi con la propria maschera di bit
+
+   * - Identificatore di tipo dati con capacità di messaggistica (``=`` / ``@``)
+     - ✅ (universale)
+     - ✅
+     - Scelto in base ad *Abilita messaggistica*: ``!``/``/`` con la
+       messaggistica spenta, ``=``/``@`` con essa accesa, così i client riceventi
+       offrono una via di risposta. Al formato Mic-E non avanza un
+       identificatore e dichiara la stessa cosa con il suo byte TYPE
+       (`` ` `` / ``'``), letto dalla stessa spunta
+
+Messaggistica
+--------------
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 24 10 36
+
+   * - Capacità specifica
+     - Tipico nei software APRS diffusi
+     - Qui
+     - Note sull'implementazione di questo progetto
+   * - Messaggistica APRS indirizzata
+     - ✅ (universale)
+     - ✅
+     - Instradamento RF e/o APRS-IS per messaggio
+   * - Conferma di ricezione messaggio (``ackNNN``)
+     - ✅
+     - ✅
+     - Auto-ack alla ricezione, auto-riprova fino a conferma
+   * - Reply-ACK (APRS 1.1, ``{MM}AA``)
+     - ⚠️ (APRSdos, APRS+SA, Xastir, APRSIS32)
+     - ✅
+     - In entrambe le direzioni. I numeri in uscita sono ``{MM}`` o ``{MM}AA``,
+       con la conferma gratuita aggiunta nell'istante della trasmissione, così
+       una riprova porta l'ultima dovuta; un ``AA`` in arrivo chiude il
+       messaggio in uscita che nomina, e l'``MM`` del mittente diventa ciò che
+       si deve a quella stazione. La numerazione è limitata a due cifre perché
+       l'identificatore completo resti nei cinque caratteri ammessi da APRS101
+   * - Riprova messaggi con numero/intervallo configurabili
+     - ✅
+     - ✅
+     - ``msg_retry`` / ``msg_interval``, valutato a 1 Hz
+   * - UI di chat/inbox integrata
+     - ✅ (Xastir, YAAC, APRSIS32)
+     - ✅
+     - Pagina ``/msgchat`` nel browser, con polling JSON; un unico filo di messaggi inviati e ricevuti, 5 visibili, ultimi 10 conservati
+   * - Avviso messaggio ricevuto (suono/visivo/GPIO)
+     - ⚠️ (client desktop: suono/popup)
+     - ✅
+     - Avviso via GPIO (LED/cicalino) invece di un popup desktop, adatto a un dispositivo headless
+   * - Messaggistica broadcast/di gruppo
+     - ⚠️ (alcuni tramite bollettini)
+     - ⚠️
+     - Solo in ricezione: la stazione legge ogni messaggio indirizzato
+       all'insieme integrato ``ALL``/``QST``/``CQ`` e fino a
+       ``MSG_USER_GROUPS`` (3) nomi di gruppo definiti dall'operatore nella
+       pagina Message, li conserva in slot di cronologia propri e non li
+       riscontra mai, perché un gruppo non ha un proprietario unico che possa
+       farlo. Comporre un messaggio *verso* un gruppo non è previsto — usare i
+       Bollettini per il broadcast; la messaggistica diretta in uscita è solo
+       1 a 1. Vedi :ref:`it-messaging`
+   * - Posta radio Winlink (APRSLink)
+     - ⚠️ (pochi client pilotano ``WLNK-1`` a mano)
+     - ✅
+     - La stazione legge e scrive la propria posta ``NOMINATIVO@winlink.org``
+       tramite il servizio ``WLNK-1`` come pagina di prima classe: login a
+       sfida/risposta senza che la password vada mai in onda (una sfida nomina
+       tre posizioni di caratteri e solo quei caratteri tornano indietro), una
+       sessione cadenzata di un comando alla volta con una propria durata, e un
+       terminale nel browser il cui elenco della casella porta pulsanti
+       leggi/rispondi/inoltra/elimina per messaggio. Un secondo ruolo
+       indipendente ritrasmette attraverso l'IGate di questa stazione la
+       sessione Winlink di una stazione vicina in RF. Disattivato di default:
+       prima servono un account e una password. Vedi :ref:`it-winlink`
+   * - Ponte dei messaggi APRS verso una piattaforma di chat
+     - ❌
+     - ✅
+     - Un bot Telegram opzionale accanto ai servizi APRS: long polling su
+       HTTPS, autorizzazione per utente e per chat, instradamento verso Telegram
+       di messaggi di stazione e bollettini, un pulsante Mini App, e i comandi
+       ``/status`` e ``/sensors`` che rispondono con la configurazione com'è nel
+       momento in cui il comando arriva. Non raggiunge alcuna radio — un
+       messaggio instradato è consegnato a una chat, mai ritrasmesso — ed è
+       disattivato di default, con l'intera configurazione in un file proprio.
+       Vedi :ref:`it-telegram`
+
+Meteo
+------
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 24 10 36
+
+   * - Capacità specifica
+     - Tipico nei software APRS diffusi
+     - Qui
+     - Note sull'implementazione di questo progetto
+   * - Generazione report meteo APRS proprio
+     - ✅ (Xastir, aprx, molti firmware TNC con kit WX)
+     - ✅
+     - Set completo del cap. 12 + aggiunte APRS 1.2 (neve, luminosità, alluvione)
+   * - Framework di polling sensori live (driver collegabili)
+     - ⚠️ (poco comune come framework generico; di solito fissato a una singola scheda WX)
+     - ✅
+     - Registro dinamico e autoregistrante ``sensors_local``; include driver BME280/BMP280 e BMP180, estensibile
+   * - Media per campo sull'intervallo di report
+     - ⚠️
+     - ✅
+     - Casella opzionale "Media" per campo
+   * - Ricezione/registrazione dei report WX di altre stazioni
+     - ✅ (overlay mappa Xastir, aprs.fi)
+     - ⚠️
+     - Viene classificato, instradato e digipeated come qualsiasi pacchetto, e ritrasmesso byte per byte, ma i valori non vengono decodificati di proposito: né il rapporto meteo completo, né la forma senza posizione, né i formati grezzi Peet Bros e Ultimeter vengono trasformati in letture, quindi non c'è una vista WX delle altre stazioni nell'amministrazione web. Una stazione che invia meteo grezzo o senza posizione deve inoltre inviare la propria posizione separatamente, quindi il filtro di distanza non ha una coordinata per essa e la lascia passare solo per il filtro di tipo
+
+Telemetria
+-----------
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 24 10 36
+
+   * - Capacità specifica
+     - Tipico nei software APRS diffusi
+     - Qui
+     - Note sull'implementazione di questo progetto
+   * - Generazione telemetria propria (``T#nnn``)
+     - ✅ (alcuni TNC/client)
+     - ✅
+     - 5 canali analogici + 8 digitali
+   * - Messaggi di metadati PARM/UNIT/EQNS/BITS
+     - ⚠️ (spesso configurati manualmente)
+     - ✅
+     - Generazione attivabile individualmente
+   * - Calibrazione quadratica (EQNS) per canale analogico
+     - ⚠️
+     - ✅
+     - Coefficienti a/b/c per canale trasmessi nel messaggio ``EQNS.``. Il
+       report dati porta la lettura grezza del sensore ed è il ricevitore ad
+       applicare la conversione — la divisione standard di APRS101 tra report e
+       metadati. L'intervallo grezzo per canale limita il valore che va in onda,
+       così una sonda che legge oltre la propria scala riporta l'estremo
+       dell'intervallo dichiarato invece di una cifra che nessun ricevitore può
+       tracciare; un intervallo invertito o vuoto non dichiara nulla e viene
+       ignorato
+   * - Mappatura dei sensori in tempo reale per canale di telemetria
+     - ⚠️ (di solito fissa nel codice, o alimentata da uno script esterno)
+     - ✅
+     - Ogni canale analogico A1-A5 e digitale B1-B8 sceglie la sorgente dal
+       registro ``sensors_local``, salvata per nome del driver, così abilitare o
+       disabilitare un driver non ripunta mai silenziosamente un canale su un
+       altro sensore
+   * - Telemetria nel commento base-91 APRS 1.2 (``|ss..|``)
+     - ⚠️ (una manciata di client/tracker)
+     - ✅
+     - Opzionale, accanto al report ``T#nnn``; viaggia nel commento di
+       posizione della baliza (Tracker/IGate/Digipeater) che sta trasmettendo
+       con il nominativo/SSID configurato nella pagina Telemetry, condividendo
+       il contatore di sequenza di quel report. Porta i canali analogici e,
+       dietro un insieme completo di cinque, il banco digitale a otto bit come
+       una coppia in più
+   * - Ricezione/grafico della telemetria altrui
+     - ✅ (grafici Xastir, aprs.fi)
+     - ❌
+     - Non implementato — nessuna vista di grafico/storico per la telemetria ricevuta. I rapporti ``T#`` e le definizioni ``PARM./UNIT./EQNS./BITS.`` in arrivo vengono classificati per l'instradamento e ritrasmessi byte per byte, che è quanto un IGate deve loro, ma i loro valori non vengono mai analizzati, di proposito
+
+Oggetti, Item, Bollettini, Stato
+------------------------------------
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 24 10 36
+
+   * - Capacità specifica
+     - Tipico nei software APRS diffusi
+     - Qui
+     - Note sull'implementazione di questo progetto
+   * - Oggetti propri (con timestamp)
+     - ✅
+     - ✅
+     - Fino a 5, RF e/o INET, con intervallo/decadimento
+   * - Item propri (senza timestamp)
+     - ✅
+     - ✅
+     - Stesso pool di 5 slot; un controllo di Tipo sceglie tra Oggetto e Item
+   * - Oggetti permanenti (``111111z``)
+     - ✅
+     - ✅
+     - Casella esclusiva dell'Oggetto; emette il timestamp fittizio fisso
+       ``111111z`` di freqspec.txt invece di quello in tempo reale
+   * - "Uccidere" un oggetto/item
+     - ✅
+     - ✅
+     - Trasmette la rimozione qualche volta in più, poi si autodisattiva
+   * - Bollettini (``BLN1``-``BLNn``)
+     - ✅
+     - ✅
+     - 5 slot, testo/intervallo/rampa di decadimento/scadenza propri, ``BLN1``-``BLN5``
+   * - Report di stato (testo libero della stazione)
+     - ✅
+     - ✅
+     - Beacon di stato in testo libero per ruolo (DTI ``>``, APRS101 cap.16)
+       per tracker, IGate e digi, ciascuno con il proprio intervallo
+       (``*_sts_interval``) e testo (``*_status``); vedere ``main/beacon.c``. Il
+       campo informativo resta entro il tetto di 63 byte del cap.16 (``>`` +
+       fino a 55 caratteri di testo con timestamp da 7 byte, oppure fino a 62
+       caratteri di testo senza timestamp): quando i blocchi opzionali
+       non entrano, viene scartato prima il localizzatore Maidenhead e poi il
+       blocco di frequenza, e né il testo dell'operatore né la coppia
+       direzione/ERP finale vengono mai accorciati
+   * - Risposta a query (``?APRS?``, ``?WX?``, ecc.)
+     - ⚠️
+     - ✅
+     - Query generali (``?APRS?``/``?WX?``/``?IGATE?``) e dirette, ciascuna con
+       il proprio limitatore di frequenza. Ricevute sui task RF/APRS-IS, servite
+       dal task dello scheduler dei beacon. Ogni sorgente ha il proprio
+       interruttore e le sue risposte tornano sul canale da cui è arrivata la
+       domanda, con la sorgente APRS-IS spenta per impostazione predefinita così
+       il traffico di dorsale non può attivare il trasmettitore; vedi
+       :ref:`it-query`
+   * - Insieme di query dirette (``?APRSD``/``?APRSH``/``?APRSM``/``?APRSO``/
+       ``?APRSP``/``?APRSS``/``?APRST``/``?PING?``)
+     - ⚠️ (APRSISCE/32, YAAC)
+     - ✅
+     - Risposte fornite quando *Interrogazioni dirette estese* è abilitato. Le
+       risposte in forma di elenco tornano come messaggi APRS alla stazione
+       richiedente; ``?APRSO`` riannuncia gli Oggetti/Item più avanti nella stessa
+       passata dello scheduler, sulla gamba da cui è arrivata la query e senza
+       toccare la pianificazione propria degli elementi, e ``?APRSM`` ritrasmette
+       al massimo ``MSG_QUERY_BURST_MAX`` (3) messaggi trattenuti per query,
+       lasciando il resto alla pianificazione dei ritentativi di messaggistica.
+       Si applicano due limiti in serie: ``QUERY_DIRECTED_MIN_INTERVAL_SEC``
+       (5 s) per nominativo che interroga e
+       ``QUERY_DIRECTED_GLOBAL_MIN_INTERVAL_SEC`` (10 s) per sorgente,
+       quest'ultimo indicizzato su qualcosa che chi interroga non sceglie, così
+       che ruotare i nominativi non compri tempo in onda extra
+   * - Grafico della cronologia di ascolto di ``?APRSH``
+     - ⚠️
+     - ✅
+     - La stazione tiene un istogramma di ascolto di 18 ore per nominativo
+       (vedi ``components/lastheard``), quindi la risposta è il grafico
+       ``Hrd: h0 h1 ... h17`` definito da APRS101 cap.15, sei conteggi per
+       periodo separati da ``.``, con l'ora 0 pari all'ora corrente.
+       L'istogramma appartiene alla riga della stazione e viaggia con essa quando
+       la riga passa in testa alla tabella, e solo una trama ricevuta viene
+       conteggiata al suo interno — rispondere alla query porta avanti il grafico
+       fino all'ora corrente ma lascia intatti i conteggi memorizzati, quindi si
+       può chiedere di una stazione quante volte si vuole. Nominare un'ora
+       richiede un orologio impostato, perciò finché NTP non ha sincronizzato il
+       grafico porta nell'ora 0 tutto ciò che è stato ascoltato dalla stazione
+       dall'avvio e 0 altrove; quei conteggi vengono mantenuti quando l'orologio
+       viene impostato, e l'ora 0 diventa allora l'ora della prima trama
+       successiva alla sincronizzazione
+   * - Capacità di stazione (DTI ``<``)
+     - ✅
+     - ✅
+     - Emesse come risposta a ``?IGATE?``
+       (``<IGATE,MSG_CNT=n,LOC_CNT=n>``), dove ``MSG_CNT`` è il conteggio
+       cumulativo dei pacchetti di messaggio APRS inoltrati in entrambe le
+       direzioni e ``LOC_CNT`` il numero vivo di stazioni presenti nell'elenco
+       delle ascoltate locali (in RF). La stessa riga può anche essere
+       trasmessa con un timer proprio — *Invia capacità periodicamente*
+       (``query_cap_beacon_en``, disattivato per impostazione predefinita), con
+       intervallo e selezione di canale RF/APRS-IS propri, più un campo
+       opzionale per ulteriori token di capacità — così i vicini sanno che
+       esiste un gateway senza doverlo chiedere; vedi :ref:`it-query`
+
+Mappatura / Visualizzazione
+-------------------------------
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 24 10 36
+
+   * - Capacità specifica
+     - Tipico nei software APRS diffusi
+     - Qui
+     - Note sull'implementazione di questo progetto
+   * - Mappa live delle stazioni ricevute
+     - ✅ (Xastir, APRSIS32, YAAC, aprs.fi — centrale nella maggior parte dei client)
+     - ❌
+     - Non implementato. L'amministrazione web ha una tabella Last-Heard, non una mappa
+   * - Rendering di simboli/icone secondo la tabella dei simboli APRS
+     - ✅
+     - ✅
+     - Esiste un selettore di simbolo per configurare beacon/oggetti propri; Last-Heard e il Traffic Log mostrano le icone dei simboli sia per i report di posizione non compressi (``!``/``=`` e, con timestamp, ``/``/``@``) sia per il formato compresso Base-91, per i report Object (``;``) e Item (``)``) con entrambi i formati di posizione, e per i report Mic-E (``` ` ```, ``'`` e gli identificatori Rev 0 beta ``0x1c``/``0x1d``), la cui coppia di simbolo si trova a un offset fisso del campo informativo (vedere ``aprs_extract_symbol()`` in ``main/aprs_coord.c``). Un payload privo di simbolo proprio ricade sull'indirizzo di destinazione (``GPSxyz``/``SPCxyz``/``SYMxyz``, ``GPSCnn``/``GPSEnn``) e poi, solo per NMEA grezzo, sull'SSID di origine
+   * - Riproduzione dello storico delle tracce
+     - ✅ (client desktop)
+     - ❌
+     - Non implementato
+   * - Grafico di meteo/telemetria nel tempo
+     - ✅ (aprs.fi, plugin Xastir)
+     - ❌
+     - Non implementato
+
+Gestione stazione / Operatività
+-----------------------------------
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 24 10 36
+
+   * - Capacità specifica
+     - Tipico nei software APRS diffusi
+     - Qui
+     - Note sull'implementazione di questo progetto
+   * - UI di configurazione via web
+     - ⚠️ (VP-Digi e alcuni progetti ESP32 ce l'hanno; la maggior parte dei client desktop usa GUI native)
+     - ✅
+     - 22 pagine nella barra laterale + selettore di simbolo, autenticazione HTTP Basic, riapplicazione live della maggior parte delle impostazioni senza riavvio
+   * - Dashboard live (stato, contatori)
+     - ⚠️
+     - ✅
+     - Indicatori di stato rete, pannello statistiche, log di traffico live, tabella last-heard (long-poll JSON)
+   * - Log di traffico/pacchetti con vista del frame grezzo
+     - ✅
+     - ✅
+     - Etichettato per direzione (RX/TX/DIGI/INET2RF/RX-IS), include livello audio RMS
+   * - Tabella delle ultime stazioni ascoltate
+     - ✅
+     - ✅
+     - Una riga per stazione anziché per pacchetto, la più recente per prima e
+       con sfratto LRU, più l'istogramma orario di 18 ore che risponde a
+       ``?APRSH``. Gli indicativi sono memorizzati in maiuscolo e confrontati
+       senza distinzione tra maiuscole e minuscole, così le due sorgenti che
+       riempiono la tabella — indirizzi AX.25 grezzi dall'aria e testo TNC2
+       grezzo da APRS-IS — non possono dare due righe alla stessa stazione. La
+       tabella è di ``LASTHEARD_CAPACITY`` (30) righe fisse da 136 byte, 4080
+       byte di RAM in totale, e le due sorgenti competono per le stesse righe:
+       un filtro lato server APRS-IS ampio rinnova più indicativi distinti
+       all'ora del canale locale, e una stazione RF sfrattata da quel traffico
+       smette di rispondere al gate dei messaggi INET→RF e smette di contare
+       per ``LOC_CNT``
+   * - Ripristino ai valori di fabbrica compilati
+     - ⚠️
+     - ✅
+     - Un pulsante nella pagina Sistema riscrive tutti i file di configurazione
+       con i valori di fabbrica
+   * - UI multilingua
+     - ⚠️ (raro; la maggior parte è solo inglese o localizzata dal SO)
+     - ✅
+     - EN/ES/IT, solo a tempo di compilazione — nessun cambio a runtime
+   * - Aggiornamento firmware OTA/remoto
+     - ⚠️ (raro nei TNC embedded; comune nell'IoT consumer)
+     - ✅
+     - Doppia partizione (``ota_0``/``ota_1``) con rollback automatico su immagine difettosa
+   * - Archiviazione configurazione locale persistente e versionata
+     - ✅
+     - ✅
+     - LittleFS, scritture atomiche (``.tmp`` + rinomina), tollerante a chiavi sconosciute/mancanti
+   * - Gestione file (upload/download/esplorazione)
+     - ❌ (non applicabile alla maggior parte del software APRS; rilevante qui trattandosi di un FS embedded)
+     - ✅
+     - Browser LittleFS completo (elenco/download/eliminazione/upload/formattazione)
+   * - Gestione Wi-Fi AP/STA con scansione, potenza TX
+     - N/D (il software desktop non ne ha bisogno)
+     - ✅
+     - AP/STA/AP+STA, 5 profili STA, scansione live, controllo potenza TX
+   * - Sincronizzazione NTP/orario
+     - ⚠️ (il SO desktop se ne occupa; rilevante in ambito embedded)
+     - ✅
+     - 3 host NTP configurabili, fissato a UTC per timestamp zulu corretti
+   * - Regolazione prestazioni/CPU
+     - N/D per software desktop
+     - ✅
+     - Selezione a runtime di 80/160/240 MHz
+   * - Accesso remoto/console seriale per diagnostica
+     - ✅ (la maggior parte dei TNC ha una console seriale)
+     - ✅
+     - Nessuna console seriale *interattiva* per l'operatività ordinaria (per
+       progetto), ma l'output di console è leggibile senza cavo: la pagina Log
+       rispecchia ``esp_log`` nel browser su richiesta, tiene in RAM le ultime
+       50 righe e si ferma da sola quando nessuno la legge per dieci secondi.
+       Nulla viene scritto in flash. La dashboard web e il LOOP TEST portano il
+       resto della diagnostica
+   * - Controllo accessi multiutente / basato su ruoli
+     - ⚠️ (raro)
+     - ❌
+     - Singolo utente/password HTTP Basic, senza ruoli
+   * - Limitazione dei tentativi di accesso / blocco dopo fallimenti ripetuti
+     - ⚠️ (raro nei pannelli web embedded)
+     - ✅
+     - Backoff per IP sorgente, a partire da 5 s e raddoppiato a ogni ulteriore
+       fallimento durante il blocco (tetto di 300 s) dopo 5 credenziali
+       rifiutate; ``429 Too Many Requests`` con ``Retry-After`` invece di
+       ``401`` durante il blocco. Solo in RAM, quindi si azzera al riavvio

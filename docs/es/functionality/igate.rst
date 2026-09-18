@@ -1,0 +1,611 @@
+.. _es-igate:
+
+========================
+IGate — pasarela APRS-IS
+========================
+
+El componente ``igate`` (``components/igate/``) es una pasarela de Internet
+APRS-IS bidireccional completa, construida sobre sockets LWIP. Lee toda su
+configuración de ``g_config`` (la página *IGate* de la administración web), de
+modo que la administración web es la única fuente de verdad.
+
+La tarea cliente de APRS-IS
+===========================
+
+* **Cliente TCP** con failover multiservidor y reconexión automática. Relee
+  ``g_config`` en cada reconexión, así que los cambios web a la mayoría de los
+  ajustes de IGate (interruptores de activación, dirección RF/INET, lista de
+  contactos, PHG, temporización de baliza y el resto) surten efecto en cuanto
+  el bucle de enlace ascendente los comprueba de nuevo, sin reiniciar.
+* **Actualizaciones en vivo de identidad/servidor/filtro.** La identidad de
+  inicio de sesión (``aprs_mycall``/``aprs_ssid``/``aprs_passcode``), la lista
+  de servidores de failover (``aprs_server``) y el filtro del lado del
+  servidor (``aprs_filter``) son la excepción: ``connectAprsIs()`` los lee una
+  sola vez, al conectar, y el enlace ascendente mantiene esa sesión abierta
+  indefinidamente, así que por sí solos una contraseña corregida o un filtro
+  reducido quedarían sin usarse hasta que el enlace se cayera por su cuenta.
+  El manejador de guardado de la página *IGate* compara los valores nuevos
+  con los guardados antes y, cuando cambió la identidad o un servidor, llama
+  a ``igate_request_reconnect()`` para cerrar y reabrir la sesión con los
+  valores nuevos en su próxima línea de inicio de sesión; cuando solo cambió
+  el filtro, llama en su lugar a ``igate_request_filter_update()``, que envía
+  una línea de comentario ``#filter <spec>`` por el socket ya abierto - la
+  actualización en vivo que describe `la documentación de filtros de
+  aprs-is.net <https://www.aprs-is.net/javAPRSFilter.aspx>`_ - de modo que la
+  sesión no se cierra solo para cambiar el filtro. Guardar un campo de IGate
+  sin relación no dispara ninguna de las dos.
+* **Condicionado a conectividad real**, no simplemente a que "el Wi-Fi está
+  arriba": sondea ``net_state_is_connected()``, que solo se vuelve verdadero con
+  ``IP_EVENT_STA_GOT_IP`` y falso de nuevo al desconectarse o en modo solo-AP.
+* **Identidad de login.** La estación se conecta con su **indicativo-SSID**
+  (``aprs_mycall`` más ``aprs_ssid``, p. ej. ``LU3VEA-10``; el indicativo
+  pelado cuando el SSID es 0 — una identidad APRS-IS no tiene forma ``-0``).
+  Es la misma cadena que ``stationIdentity()`` escribe detrás del constructo
+  ``qA*`` en las tramas pasarela y la misma que llevan como indicativo de
+  origen las balizas del IGate, y las tres le importan al servidor: según
+  `los detalles de IGate de aprs-is.net
+  <https://www.aprs-is.net/IGateDetails.aspx>`_ el servidor entrega un mensaje
+  de APRS-IS solo al cliente cuyo login coincide byte a byte con el
+  destinatario, de modo que **un mensaje dirigido a esta estación debe
+  dirigirse a su indicativo-SSID**, y un paquete se reconoce como originado
+  por el cliente —en vez de marcarse como retransmitido por un servidor— solo
+  cuando su indicativo de origen coincide con el login. El passcode no cambia:
+  se deriva del indicativo base sin el SSID, así que todos los SSID de una
+  misma estación comparten un passcode.
+* **Línea de login:** ``user <indicativo-SSID> pass <passcode> vers esp32_APRS_igate
+  <versión>``, con `` filter <filter>`` añadido solo cuando hay un filtro de
+  servidor configurado — el comando ``filter`` lleva uno o más términos, así
+  que la cláusula se omite por completo en vez de enviarse como palabra clave
+  suelta. El nombre y la versión salen de ``APRS_SOFTWARE_NAME`` /
+  ``APRS_SOFTWARE_VERSION`` en ``main/include/aprs_service.h`` (la segunda es
+  ``FIRMWARE_INFO``), de modo que la cláusula ``vers`` identifica a *este*
+  firmware ante los operadores de servidores APRS-IS. La línea se registra
+  exactamente como se envía (sin el CR/LF), para que un filtro mal formado sea
+  visible; si no hay filtro configurado, una segunda línea indica que rige el
+  valor por defecto del servidor. La lectura inmediatamente posterior al login
+  pasa por el mismo ensamblador de líneas y el mismo manejador de paquetes que
+  el bucle de recepción en régimen estable descrito más abajo, de modo que un
+  servidor que envía su banner, la línea ``# logresp … verified/unverified`` y
+  el primer paquete filtrado dentro de una sola lectura igual entrega ese
+  paquete a ``inet2rf`` — nada de lo que llega junto al banner se descarta. El
+  banner y la línea ``# logresp`` se muestran además como líneas de log
+  propias; una respuesta ``unverified`` genera una advertencia que nombra
+  ``aprs_mycall`` / ``aprs_passcode``, y una identidad devuelta por el
+  servidor que no coincide con la enviada genera su propia advertencia, ya que
+  ese es el fallo que deja sin entregar los mensajes dirigidos a esta estación
+  mientras todo lo demás parece funcionar con normalidad.
+* **Validación del filtro de servidor.** Antes de enviarse, ``g_config.aprs_filter``
+  se comprueba estructuralmente con ``aprs_filter_validate_server_string()`` —
+  cada término separado por espacios debe ser ``<letra>/<args>`` con el número de
+  argumentos correcto para esa letra de filtro.
+* **Enlace de subida compartido.** La tarea siempre se ejecuta, porque el mismo
+  socket lo usan el componente de mensajería (``igate_send_raw()``) y la "baliza
+  a internet". Queda en reposo de forma barata cuando nada lo necesita.
+* **Detección de enlace muerto.** ``net_state_is_connected()`` solo detecta que
+  el propio Wi-Fi de la estación se cayó; no dice nada de que el otro extremo
+  de un socket APRS-IS ya abierto se quede callado — una entrada NAT/firewall
+  de un TCP inactivo que se expulsa, una ruta agujereada, o un peer que deja
+  de enviar sin llegar a cerrar la conexión. El bucle de recepción registra la
+  marca de tiempo del último byte realmente leído del socket y, si no llega
+  nada durante ``IGATE_RX_SILENCE_US`` (90 s), registra una advertencia y
+  termina la sesión por la ruta de conmutación, así que el siguiente intento va
+  a la ranura siguiente y no de vuelta al servidor que se quedó callado. 90 s queda
+  cómodamente por encima de la cadencia de líneas ``#`` que envían los
+  servidores que siguen la `guía de conexión de aprs-is.net
+  <https://www.aprs-is.net/Connecting.aspx>`_ cuando el canal está por lo
+  demás en silencio — esa línea de comentario es lo que evita que un enlace
+  sano pero inactivo dispare el temporizador — a la vez que se mantiene lo
+  bastante corto como para recuperarse bien dentro del tiempo de expulsión de
+  una entrada NAT típica. El socket también lleva ``SO_KEEPALIVE`` (30 s de
+  inactividad, 10 s de intervalo, 3 sondeos) como respaldo independiente de
+  nivel más bajo; complementa al temporizador del lado de recepción sin
+  sustituirlo, ya que un peer que sigue confirmando los sondeos a nivel TCP
+  pero deja de enviar datos de aplicación se le escaparía de otro modo.
+* **Algoritmo de Nagle desactivado (``TCP_NODELAY``).** Se activa en el socket
+  antes de ``connect()``, tal como pide la `guía de conexión de aprs-is.net
+  <https://www.aprs-is.net/Connecting.aspx>`_ para cualquier cliente
+  bidireccional. Cada línea saliente — una trama gateada desde RF, un mensaje
+  saliente, un beacon — se ensambla junto con su terminador CR/LF y se escribe
+  con un único ``send()`` en ``sendToAprsIs()``, de modo que con Nagle
+  desactivado esa única escritura sale de inmediato en vez de esperar un ACK o
+  el temporizador de Nagle.
+
+Failover de servidores
+======================
+
+La página IGate almacena ``APRS_SERVER_NUM`` (cuatro) ranuras de servidor en
+``g_config.aprs_server[]``, cada una con su propia casilla Habilitar, host y
+puerto. Todas las ranuras comparten una única identidad de login — indicativo,
+SSID, passcode y cadena de filtro son un solo valor — porque representan la
+misma estación conectándose a servidores APRS-IS alternativos.
+
+``connectAprsIs()`` marca la ranura seleccionada en ese momento, pero solo
+después de haber tomado un cerrojo compartido de "operación de red pesada" y
+de confirmar al menos ``IGATE_MIN_FREE_HEAP`` (8 KB) de heap libre; este mismo
+cerrojo también lo toma el arranque del bot de Telegram (:ref:`es-telegram`)
+alrededor de su handshake TLS, de modo que las dos operaciones de red más
+pesadas del firmware nunca compiten por la misma memoria a la vez. Si el
+cerrojo ya está tomado o no se alcanza el mínimo, el intento se posterga y la
+tarea espera 1 segundo antes de volver a intentar la **misma** ranura — sin
+failover, ya que el servidor elegido no tuvo ninguna culpa.
+
+Superado ese punto, cualquier fallo — resolución DNS, ``socket()``,
+``connect()`` o el envío de la línea de login — llama a ``advanceServer()``,
+que mueve la selección a la siguiente ranura **habilitada** con vuelta
+circular, y la tarea espera 1 segundo antes del siguiente intento. La rotación
+no se detiene nunca: sigue recorriendo todas las ranuras habilitadas hasta que
+una acepte la conexión.
+
+Las ranuras deshabilitadas se saltan también en la **primera** selección tras el
+arranque, no solo después de un fallo: desmarcar la casilla de una ranura la
+retira del servicio de inmediato. Si no hay ninguna ranura habilitada, la tarea
+recae en la ranura 1, de modo que siempre tiene un destino concreto que intentar
+y registrar.
+
+Una sesión ya establecida hace rotar la selección con los mismos criterios. Una
+sesión que termina del lado del servidor —el par cerrando el enlace, un error de
+``recv()``, o el temporizador de enlace muerto de más arriba venciendo sobre un
+enlace que dejó de entregar nada— también llama a ``advanceServer()``, después
+cierra el socket y espera el mismo 1 segundo antes de marcar la ranura
+siguiente. Todos esos finales dicen que el servidor dejó de sostener a esta
+estación, así que una ranura que acepta una sesión y luego no la sostiene —una
+en mantenimiento, una cuyo balanceador de carga no tiene backend vivo— queda
+atrás en vez de volver a marcarse.
+
+Los cierres que pide la propia estación conservan la ranura actual: que el
+enlace de subida ya no haga falta, que se caiga la ruta de red, y
+``igate_request_reconnect()`` tras un cambio de configuración no dicen nada
+sobre el servidor, y rotar por ellos movería a la estación fuera de una ranura
+que funciona cada vez que el operador guarda la página IGate.
+
+El panel muestra el host y el puerto de la ranura en uso en ese momento
+(``igate_get_current_server()``), así que se ve de un vistazo en qué servidor se
+acabó tras un failover.
+
+Tráfico originado localmente
+============================
+
+Todo lo que esta estación pone por sí misma en APRS-IS —balizas de posición y
+de estado (Tracker, IGate, Digipeater), reportes meteorológicos, datos de
+telemetría y sus definiciones PARM/UNIT/EQNS/BITS, boletines, objetos e ítems,
+mensajes salientes y respuestas a consultas— sale por ``igate_send_raw()`` con
+``TCPIP*`` como ruta **completa**, y nada más. `La guía de conexión de
+aprs-is.net <https://www.aprs-is.net/Connecting.aspx>`_ enuncia la regla con
+esas palabras: un paquete originado en el cliente lleva ``TCPIP*`` en la ruta,
+ni más ni menos.
+
+Una ruta de digipetidores como ``WIDE1-1,WIDE2-1`` nombra repetidores en el
+aire. Un paquete inyectado directamente en APRS-IS no atraviesa ninguno, así
+que enviar esa ruta describe saltos que nunca ocurrieron: un servidor que no
+reconoce el indicativo de origen como el de su propio cliente conserva la ruta
+y marca el paquete como retransmitido (``,qAS,<login>``), y todo consumidor
+—aprs.fi incluido— muestra entonces la baliza propia de la estación como si
+hubiera sido repetida por el aire. Por eso también la identidad de login de más
+arriba tiene que llevar el SSID: es lo que le dice al servidor que el paquete
+es del propio cliente.
+
+Por eso cada originador arma **un paquete por pata** en vez de un paquete
+enviado dos veces. Las dos líneas son idénticas salvo por el sufijo de ruta: la
+pata de RF lleva la selección de digipetidores de la página de esa baliza
+(``aprs_path_build_suffix()``) y la pata de APRS-IS lleva
+``APRS_PATH_TCPIP_SUFFIX``, de ``main/include/aprs_path.h``, que es el único
+lugar donde se escribe ese literal. Las respuestas a consultas eligen entre las
+dos según el canal por el que llegó la pregunta, ya que la respuesta vuelve por
+donde vino.
+
+RF → INET (``igateProcess()``)
+==============================
+
+Cada trama decodificada por RF que la aplicación despacha (con ``igate_en`` y
+``rf2inet`` activos) atraviesa esta tubería, en orden. Una trama que falla
+cualquier etapa se descarta, y la *razón* se registra en un contador por-razón,
+para que el panel pueda mostrar "N descartadas por X" en lugar de un único
+agregado opaco.
+
+#. **Supresión de duplicados.** La trama se comprueba contra la caché de
+   duplicados compartida (``isDuplicatePacket()``). Tanto su profundidad
+   (``g_config.dup_cache_size``, ``DUP_CACHE_SIZE_MIN``..``DUP_CACHE_SIZE_MAX``
+   = 4..40, por defecto 20) como su ventana (``g_config.dup_cache_timeout_ms``,
+   1000..120000 ms, por defecto 30000) se editan en la página *IGate* y se
+   releen en cada consulta, así que un cambio se aplica sin reiniciar. El
+   arreglo siempre se reserva con la capacidad de compilación
+   ``DUP_CACHE_SIZE_MAX``; ``dup_cache_size`` solo elige cuánto de ella se usa.
+   Los duplicados se cuentan aparte en ``dupCount``.
+#. **Guarda de trama demasiado corta.** Las tramas cuyo campo de información está
+   por debajo de la longitud mínima utilizable se descartan (``DROP_TOO_SHORT``).
+#. **Filtro de token de ruta.** Las tramas cuya ruta lleva ``RFONLY``, ``TCPIP``,
+   ``qA*`` o ``NOGATE`` nunca se enrutan (``DROP_PATH_TOKEN``).
+#. **Regla de gate por satélite.** Una trama repetida vía una pasarela satelital
+   conocida cuyo indicativo no está marcado como usado (``*``) se descarta
+   (``DROP_SAT_NOT_USED``).
+#. **Desempaquetado de terceros (``}``).** Una trama cuyo campo de información
+   empieza por ``}`` lleva su propia línea interior completa
+   ``SRC>DST,PATH:carga``. Si esa ruta interior ya lleva ``TCPIP`` o
+   ``TCPXX``, la trama ya llegó a APRS-IS una vez y se descarta como bucle
+   (``DROP_3RDPARTY_LOOP``). En caso contrario se descarta por completo la
+   cabecera RF exterior y el resto de las etapas — desde el filtro por tipo de
+   carga útil en adelante — se ejecutan contra el paquete interior: su propio
+   origen, destino, ruta y carga útil, exactamente como si esa estación se
+   hubiera escuchado directamente. Esto es lo que permite que una pasarela
+   cruzada de banda o HF reenrute una estación que no tiene otra ruta a
+   Internet.
+#. **Guarda de consulta genérica.** Una carga útil cuyo primer byte es ``?``
+   (``?APRS?``, ``?WX?``, ``?IGATE?``, …) se descarta incondicionalmente
+   (``DROP_GENERIC_QUERY``), sin importar ``g_config.rf2inetFilter`` ni
+   ninguna otra casilla. Véase :ref:`es-filtering`.
+#. **Filtro por tipo de carga útil.** La carga útil (posiblemente
+   desempaquetada) se clasifica con ``aprs_filter_classify_info()`` y se
+   prueba contra ``g_config.rf2inetFilter`` (``DROP_TYPE_FILTER``). Véase
+   :ref:`es-filtering`.
+#. **Guarda de rango local.** Si está habilitada, se decodifica la posición del
+   paquete y su distancia de círculo máximo (haversine) desde "My Station" se
+   compara con ``g_config.rf2inet_range_km``; los paquetes demasiado lejanos se
+   descartan (``DROP_RANGE_FILTER``). Los paquetes cuya posición no se puede
+   decodificar pasan esta comprobación.
+#. **Guarda de prefijo local.** Si está habilitada, el indicativo de origen debe
+   empezar por uno de los prefijos separados por comas de
+   ``g_config.rf2inet_prefixes`` (p. ej. ``EA,EB,EC``), o se descarta
+   (``DROP_PREFIX_FILTER``).
+#. **Budlist.** El indicativo de origen se prueba contra la lista
+   blanca/negra local en ``g_config.rf2inet_budlist_mode`` (``DROP_BUDLIST``).
+#. **Límite de longitud de línea APRS-IS.** Una vez construida la cabecera
+   ``qAR``/``qAO``, su longitud más el campo de información (sin CR/LF) se
+   comprueba contra el límite de 512 bytes de APRS-IS
+   (``aprs-is.net/Connecting.aspx``, expresado como ``APRS_IS_LINE_MAX`` = 510
+   bytes utilizables). Una trama que no cabe se descarta entera, con una
+   advertencia que indica su longitud, en lugar de enviarse truncada
+   (``DROP_IS_LINE_TOO_LONG``).
+
+Una trama que sobrevive a todas las etapas recibe una cabecera
+``,qAR,<mycall>-<ssid>`` o ``,qAO,<mycall>-<ssid>`` y se escribe en APRS-IS.
+Según QCON el constructo describe a la **estación que se está pasando**, no a
+la pasarela: ``qAO`` marca una estación a la que esta IGate no le entregaría
+un mensaje, y así lo leen los consumidores aguas abajo (enrutadores de
+mensajes, el indicador "messageable" de los sitios de mapas APRS-IS). Por eso
+``qConstructFor()`` elige ``qAR`` solo cuando se cumplen ambas condiciones:
+
+* esta estación puede pasar mensajes a RF en absoluto
+  (``aprs_service_can_gate_to_rf()``: transmisión disponible, ``igate_en``
+  activado, ``inet2rf`` activado), y
+* la estación pasada **no** se ha visto en APRS-IS dentro de
+  ``igate_local_window_sec`` — la misma condición que ``messageGatePass()``
+  aplica al destinatario en el sentido INET → RF, ya que una estación
+  conectada a Internet ya tiene todo lo dirigido a ella.
+
+Todo lo demás recibe ``qAO``, así que una IGate de solo recepción envía
+``qAO`` en cada paquete. El indicativo-SSID que sigue al q construct es
+siempre la propia identidad de login de esta estación.
+
+INET → RF (``inet2rfHandler()``)
+================================
+
+Cada línea leída del socket se comprueba primero contra el límite de 512
+bytes de APRS-IS a medida que se acumula. Una línea que lo supera se descarta
+por completo — cada byte adicional hasta el siguiente terminador se consume
+sin almacenarse, de modo que el framer se resincroniza limpiamente en la
+siguiente línea en lugar de entregar un fragmento truncado aguas abajo — y se
+cuenta bajo ``DROP_IS_RX_LINE_TOO_LONG``.
+
+Cada línea distinta de ``#`` dentro del límite incrementa ``isRxCount`` y se
+entrega al motor de mensajería (``handleIncomingAPRS()``) cuando la mensajería
+está activa. Luego se considera para retransmisión por RF solo si ``inet2rf``
+está activo, y solo tras pasar:
+
+#. **Guarda de consulta genérica.** Una línea cuya carga útil empieza por
+   ``?`` se descarta incondicionalmente (``DROP_GENERIC_QUERY``), sin
+   importar ``g_config.inet2rfFilter`` ni ninguna otra casilla — la imagen
+   especular de la guarda de consulta genérica RF→INET de arriba, y se
+   comprueba antes que cualquier otra etapa siguiente. Véase
+   :ref:`es-filtering`.
+#. **Supresión de eco de informes propios.** Cada informe que esta estación sube
+   con su bandera ``*_2inet`` es devuelto como eco directamente por el servidor
+   APRS-IS. ``inet_line_is_own_report()`` reconoce esos ecos (comparando el
+   indicativo base de origen contra cada indicativo de informe de la propia
+   estación) y nunca los reenruta de vuelta a RF. Los informes propios llegan a
+   RF exclusivamente a través de sus propias banderas "Send via RF" (``*_2rf``).
+#. **Guarda de boletines y difusiones del servicio meteorológico.** Un mensaje
+   dirigido a un destinatario de boletín o anuncio (``BLNn``, ``BLNa``, con o
+   sin nombre de grupo) o a una de las familias del servicio meteorológico
+   (``NWS-xxxxx``, ``SKY…``, ``CWA…``) se descarta incondicionalmente
+   (``DROP_MSG_BROADCAST``), con independencia de
+   ``g_config.igate_msg_gate_en`` y de ``g_config.inet2rfFilter``. Ver abajo.
+#. **Filtro de distancia local.** Si ``inet2rf_range_en`` está activo, se
+   decodifica la posición de la línea y su distancia de círculo máximo
+   (haversine) desde "Mi Estación" se compara con
+   ``g_config.inet2rf_range_km``; las líneas demasiado lejanas se descartan
+   (``DROP_INET2RF_RANGE``). Una línea sin posición no tiene aquí distancia que
+   medir y la gobierna el requisito de posición de más abajo, una vez que se
+   conoce la carga útil que realmente va al aire.
+#. **Filtro por tipo de carga útil.** La línea se clasifica con
+   ``aprs_filter_classify_tnc2()`` y se prueba contra ``g_config.inet2rfFilter``.
+#. **Desempaquetado selectivo de terceros (opcional).** El tráfico de terceros
+   (``}``) — el clásico origen de bucles de IGate — clasifica como 0 y nunca se
+   reenvía por defecto. Con ``inet2rf_3rdparty_unwrap_en`` activo **y**
+   ``inet2rf_budlist_mode == BUDLIST_WHITELIST``, se puede desenvolver un nivel
+   del empaquetado ``}`` y el paquete interior se reclasifica y reenvía, pero
+   *solo* cuando el origen del paquete interior está a su vez en la lista blanca.
+   Nunca es un interruptor general de "reenviar todo lo de terceros".
+#. **Budlist.** El indicativo de origen (que aquí puede llevar un ``-SSID``) se
+   prueba contra ``g_config.inet2rf_budlist_mode``.
+#. **Requisito de posición.** Una carga útil que no lleva una posición propia
+   decodificable — un informe de estado, una trama de telemetría, una carga
+   útil no clasificable — se descarta (``DROP_INET2RF_NO_POSITION``), porque
+   nada en ella la sitúa dentro de la zona local. Lo gobierna
+   ``inet2rf_position_required``, activo por defecto, y se aplica a una línea
+   clasificada como BrandMeister (véase :ref:`es-brandmeister`) diga lo que
+   diga ese ajuste. La posición se lee del paquete que va al aire, así que
+   cuando ha actuado el desempaquetado de terceros es la posición del paquete
+   interior la que tiene que situarlo. Los mensajes, que se filtran por su
+   destinatario, y el informe de posición que esta pasarela le debe a una
+   estación a la que envió un mensaje quedan exentos.
+
+   La suposición que justificaría reenviar una línea así — que el propio
+   término ``r/lat/lon/radio`` del servidor ya no entregó nada que no fuera
+   local — solo se sostiene en una suscripción hecha solo de términos
+   geográficos. Los términos de filtro de APRS-IS se combinan con OR, nunca con
+   AND, así que cualquier término de clase de tráfico junto a uno de ellos
+   (``u/APBM*``, cualquier término ``t/`` o ``u/``) abre el feed a toda la red,
+   y el feed ofrece ese tráfico mucho más rápido de lo que un canal de 1200 Bd
+   lo despacha.
+#. **Origen oído localmente.** Con ``inet2rf_heard_only`` activo (por defecto),
+   una línea que no es un mensaje se reenvía solo si su indicativo de origen se
+   ha oído por RF dentro de ``igate_local_window_sec``
+   (``DROP_INET2RF_NOT_HEARD``) — el equivalente, para el origen del tráfico
+   ordinario, de la prueba que el filtrado de mensajes hace sobre el
+   destinatario. Una estación que nadie al alcance ha oído nunca es una
+   estación de la que el canal local no necesita saber.
+#. **Espaciado por origen.** Un origen reenviado a RF hace menos de
+   ``inet2rf_min_interval_sec`` se rechaza (``DROP_INET2RF_RATE``), de modo que
+   ningún origen puede llenar por sí solo la cola de transmisión de RF sea cual
+   sea el filtro de tipos. 30 s por defecto, 0 lo desactiva; el anillo guarda
+   ``INET2RF_RATE_RING_SIZE`` orígenes y la ranura solo la reclama una línea que
+   llega a la etapa de transmisión. Los mensajes y el informe de posición debido
+   quedan exentos.
+#. **Filtrado de mensajes.** Se aplica solo al tipo ``MESSAGE``; los demás tipos
+   se retransmiten a criterio del sysop, que es lo que ya expresan el filtro de
+   tipos y la budlist de arriba. Ver abajo.
+
+Una línea que supera todas las etapas nunca se transmite por RF con su
+cabecera de APRS-IS intacta. ``build_thirdparty_frame()`` descarta esa
+cabecera por completo y envuelve el ``SRC>DST`` original y el campo de
+información, sin modificar, tras un ``}`` como carga útil de la cabecera
+propia de esta estación (``MYCALL[-SSID]>APE32I,<ruta igate>:}SRC>DST,TCPIP,
+MYCALL[-SSID]*:info``) — la forma de terceros que exige la especificación
+APRS para el tráfico reenrutado. Esto mantiene los constructos ``qA`` y un
+``TCPIP`` sin envolver fuera del aire, y permite que cualquier otro IGate que
+escuche el paquete lo reconozca como ya reenrutado en lugar de reenviarlo de
+vuelta.
+
+Los dos indicativos que se conservan de la cabecera original vienen de un feed
+sin autenticar y se validan antes de armar la trama: cada uno tiene que ser de
+una a nueve letras mayúsculas o dígitos, seguidos opcionalmente de ``-`` y un
+SSID de 0 a 15. Una línea cuyo origen o destino lleve cualquier otra cosa — un
+espacio, una coma, un ``>`` o un ``:`` — se descarta en lugar de reenrutarse,
+porque esos caracteres volverían a puntuar la cabecera para quien la reciba.
+Nada se recorta para que entre: un indicativo recortado nombraría a otra
+estación, así que un token sobredimensionado también es un rechazo.
+
+.. warning::
+
+   Reenrutar tráfico de terceros sin restricción es la causa número uno de
+   bucles de IGate. El desempaquetado de terceros está deliberadamente
+   condicionado a una opción explícita *y* a una lista blanca por exactamente
+   esta razón.
+
+Filtrado de mensajes
+====================
+
+Un IGate está sentado sobre un flujo de datos enorme y no debe retransmitir de
+forma indiscriminada. Con ``igate_msg_gate_en`` activo (el valor de fábrica), un
+mensaje APRS leído de APRS-IS sale al aire solo si se cumplen **las cinco**
+condiciones a la vez:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 46 54
+
+   * - Condición
+     - Motivo de descarte cuando falla
+   * - La cabecera del remitente no lleva ``TCPXX``, ``NOGATE`` ni ``RFONLY``
+     - ``DROP_HEADER_FORBIDS_RF``
+   * - El destinatario fue escuchado por RF dentro de ``igate_local_window_sec``
+     - ``DROP_MSG_NOT_LOCAL``
+   * - Esa escucha no llevó más de ``igate_msg_max_hops`` saltos de digipetidor
+     - ``DROP_MSG_ADDRESSEE_HOPS``
+   * - El destinatario no está a su vez conectado a Internet
+     - ``DROP_MSG_ADDRESSEE_INET``
+   * - El remitente **no** fue escuchado por RF dentro de la misma ventana
+     - ``DROP_MSG_SENDER_LOCAL``
+
+Cada fallo tiene su propio motivo, así el *Drop Breakdown* del panel dice qué
+condición detuvo un mensaje — la pregunta de soporte más frecuente sobre un
+IGate. Solo se busca en la cabecera los tokens ``TCPXX``/``NOGATE``/``RFONLY``,
+de modo que un mensaje cuyo *texto* mencione alguno no se confunde con uno
+ruteado con él.
+
+Las pruebas de localidad leen ``lastheard_heard_rf_within()``,
+``lastheard_heard_rf_within_hops()`` y ``lastheard_heard_inet_within()``, que
+guardan una marca de tiempo por canal: una estación puede ser audible localmente
+y estar conectada a Internet a la vez, y cada condición prueba la suya. Una
+trama escuchada al aire también cuenta como avistamiento por Internet cuando su
+ruta lleva ``TCPIP`` o ``TCPXX`` — la firma al aire de un paquete que ya pasó
+por una pasarela.
+
+*Ventana de escucha local (s)* es ``igate_local_window_sec``, 60–3600 s, una hora
+por omisión, que es la cota superior que recomiendan las notas de diseño de
+IGate de APRS-IS.
+
+Boletines y difusiones del servicio meteorológico
+-------------------------------------------------
+
+Las cinco condiciones de arriba gobiernan los mensajes dirigidos a una
+estación. Un mensaje dirigido a *todos* no se retransmite en absoluto: los
+boletines y anuncios (``BLNn``, ``BLNa``, con o sin nombre de grupo) y las
+familias de destinatarios del servicio meteorológico (``NWS-xxxxx``, ``SKY…``,
+``CWA…``) se descartan antes de que corra el filtro de tipos, bajo
+``DROP_MSG_BROADCAST``.
+
+El descarte es incondicional, en los mismos términos que la guarda de consultas
+genéricas: no lo desarma destildar *Gate messages to RF* ni ninguna combinación
+de bits de tipo del filtro INET → RF. La razón es el volumen, no el contenido.
+Un boletín se repite mientras siga vigente, nunca se acusa, llega a 67
+caracteres de texto, y APRS-IS transporta todos los boletines de la red; una
+estación que retransmitiera ese caudal sería un repetidor de boletines para el
+mundo entero sobre un canal local compartido, que es justo el modo de falla que
+señalan las notas de diseño de IGate. Los avisos del servicio meteorológico
+tienen la misma forma y llegan en ráfagas.
+
+La regla vale también para un paquete que sale del desempaquetado selectivo de
+terceros: poner en lista blanca el tráfico de terceros de una estación es
+permiso para retransmitir *esa estación*, no permiso para cargar detrás el
+caudal de boletines. Nada de esto afecta los boletines **propios** de esta
+estación, que se configuran en la página *Bulletins* y los transmite su propio
+planificador, ni al sentido RF → INET, donde un boletín oído al aire se
+retransmite a APRS-IS como cualquier otra trama.
+
+Cobertura en saltos
+-------------------
+
+Ser audible y ser alcanzable son cosas distintas. Las notas de diseño de IGate
+miden el área de cobertura de una pasarela en saltos de digipetidor y no en
+tiempo, y piden que un IGate se configure con la mínima cantidad de saltos que
+necesite, porque una estación cuyas tramas solo llegan tras dos o tres
+digipeticiones está muy probablemente fuera del alcance de una transmisión desde
+aquí — sacarla al aire gasta tiempo de canal en un mensaje que nadie a la
+escucha va a recoger.
+
+*Límite de saltos del destinatario* es ``igate_msg_max_hops``, 0–8 direcciones
+de digipetidor usadas. 0 retransmite solo a estaciones escuchadas en directo, la
+lectura más estricta de la recomendación; 8 es la ruta más larga que puede
+llevar AX.25. El valor de fábrica no es un número fijo:
+``app_config_set_defaults()`` lo deriva de la cantidad de saltos de la ruta de
+transmisión del IGate, así que de fábrica la pasarela ofrece llegar exactamente
+tan lejos como transmite (dos saltos con el preajuste ``WIDE1-1,WIDE2-1``).
+
+La cantidad de saltos que se prueba es la de la trama de **RF** más reciente del
+destinatario. Un avistamiento por APRS-IS de la misma estación refresca su marca
+de Internet pero deja esa cuenta intacta, de modo que una estación vista por
+última vez en el flujo nunca se confunde con una escuchada en directo.
+
+Desactivar el filtrado de mensajes transmite **todo** mensaje que permita el
+filtro de tipos, a destinatarios de cualquier parte del mundo, haya o no en el
+canal local alguien capaz de escucharlos.
+
+Posición asociada
+=================
+
+En vez de repetir los reportes de posición históricos de una estación, la
+pasarela anota las estaciones a las que **le** retransmitió un mensaje — un
+anillo de ocho entradas — y reenvía el siguiente reporte de posición simple o de
+boya que ve para cada una, diga lo que diga el filtro de tipos, para que el
+operador local tenga algo que ubicar del otro extremo de la conversación. Ese
+único reporte libera la ranura, que es lo que lo hace un seguimiento y no una
+suscripción; un reporte de clima u objeto se retransmite bajo su propio bit de
+tipo, por sus propios méritos.
+
+Filtrado del registro de tráfico
+================================
+
+*Registrar después de los filtros* en la página IGate
+(``igate_log_after_filters``, desactivado por defecto) acota las dos vistas del tráfico
+recibido — la tabla de tráfico web y las líneas ``RX``/``APRS-IS RX`` de la
+consola serie — al tráfico que aceptan los filtros de esta estación. No cambia
+nada de lo que se pasarela, repite o transmite.
+
+Con la opción activa, solo se emiten una entrada ``RX`` y su línea de consola
+para una trama que pasa
+``igate_log_accepts_frame()`` — la Lista de Satélites Digipetidores, la máscara
+de tipos ``rf2inetFilter``, los filtros de rango y de prefijo RF→INET y el
+filtro de indicativos RF→INET — y una entrada ``RX-IS`` solo para una línea que
+pasa ``igate_log_accepts_line()`` — la máscara ``inet2rfFilter`` incluido el
+desempaquetado selectivo de terceros, el filtro de rango INET→RF y el filtro de
+indicativos INET→RF. El lado RF comparte implementación con la propia ruta de
+pasarela (``satGateListPass()``, ``rf2inetFiltersPass()``); el lado INET→RF
+aplica las mismas comprobaciones, en el mismo orden, que ``inet2rfHandler()`` —
+excepción de posición asociada, filtro de rango, máscara de tipos con
+desempaquetado y filtro de indicativos —, así que ambos coinciden en cada línea.
+Las dos se evalúan sea cual sea el estado del interruptor de IGate y de los dos
+sentidos, de modo que el registro de una estación de solo recepción se acota en
+lugar de vaciarse.
+
+Un reporte de posición reclamado bajo la regla de *Posición asociada* anterior
+queda exento del filtro de rango y de la máscara de tipos en el registro
+exactamente igual que en el lado de transmisión, de modo que el seguimiento que
+se le debe a una estación se muestra en vez de aparecer como filtrado. El
+registro solo consulta la reserva; es la decisión de transmisión la que la
+consume.
+
+Las reglas incondicionales de INET→RF — la guarda del eco de los reportes
+propios, los tokens ``TCPXX``/``NOGATE``/``RFONLY`` de la cabecera, la regla de
+destinatarios de difusión, el descarte de consultas generales y el filtrado de
+mensajes — quedan fuera a propósito. No son filtros que fije el operador en la
+página, y aplicarlos ocultaría los reportes propios de esta estación cuando
+APRS-IS los devuelve.
+
+No cambia nada más que la visualización. Una trama que las dos vistas omiten se
+repite, se pasarela, se analiza y se cuenta igual que antes — ``isRxCount``
+sigue siendo el total de todas las líneas leídas del socket, y ningún contador
+de descartes se mueve, porque una línea oculta no fue descartada, solo no
+mostrada. Apagar el interruptor restituye las dos vistas completas, que es la
+manera de ver qué está reteniendo.
+
+Contadores y razones de descarte
+================================
+
+La instantánea ``igate_stats_t`` (``igate_get_stats()``) lleva:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 24 76
+
+   * - Contador
+     - Significado
+   * - ``rxCount``
+     - Tramas consideradas para enrutamiento (RF→INET).
+   * - ``txCount``
+     - Tramas realmente enviadas a APRS-IS como resultado del enrutamiento.
+   * - ``msgCount``
+     - Paquetes de mensaje APRS (identificador de tipo de dato ``:``) enrutados
+       en cualquiera de los dos sentidos — RF→INET por ``igateProcess()``,
+       INET→RF por ``igate_note_message_gated()`` desde ``aprs_service.c``. Es la
+       cifra ``MSG_CNT`` que informa la respuesta a ``?IGATE?``, así que cuenta
+       solo mensajes y no el resto del tráfico enrutado.
+   * - ``dupCount``
+     - Tramas duplicadas suprimidas.
+   * - ``isRxCount``
+     - **Todas** las líneas leídas del socket (superconjunto de lo que llega al
+       manejador INET→RF).
+   * - ``isTxCount``
+     - **Todas** las escrituras al socket: tramas enrutadas, mensajes salientes y
+       envíos de "baliza a internet" del digi por igual.
+   * - ``dropByReason[]``
+     - Contadores de descarte por-razón, indexados por ``drop_reason_t``. Las
+       etapas RF→INET anteriores cubren ``DROP_TOO_SHORT``, ``DROP_PATH_TOKEN``,
+       ``DROP_SAT_NOT_USED``, ``DROP_3RDPARTY_LOOP``, ``DROP_GENERIC_QUERY``,
+       ``DROP_TYPE_FILTER``, ``DROP_RANGE_FILTER``, ``DROP_PREFIX_FILTER``,
+       ``DROP_BUDLIST``, ``DROP_IS_LINE_TOO_LONG`` y ``DROP_TX_FAIL``; el
+       lector de línea RX cubre ``DROP_IS_RX_LINE_TOO_LONG``. El arreglo
+       también lleva razones incrementadas en otras partes del firmware (ruta
+       de TX de RF, digipeater, decodificación AX.25) — ver ``drop_reason_t``
+       en ``components/igate/include/igate.h`` para la lista completa y
+       autorizada. No existe una razón genérica/opaca de "otros": cada
+       descarte se atribuye a una causa específica y nombrada.
+       ``igate_stats_total_drop()`` suma las razones que no son de error;
+       ``igate_stats_total_err()`` suma las dos razones de error de
+       decodificación/envío por separado.
+
+``igate_note_drop()`` se expone para que otros componentes que comparten los
+mismos conceptos de filtrado — actualmente el manejador INET→RF de
+``aprs_service.c``, para sus comprobaciones de filtro por tipo y budlist —
+contribuyan al mismo desglose por-razón.
+
+Indicador de conectividad
+=========================
+
+``igate_is_connected()`` es verdadero mientras el socket TCP de APRS-IS está
+abierto, con sesión iniciada y bombeando el lector de líneas RX. El panel
+*Network Status* del panel web (la píldora de APRS-IS) lo lee. Como el bucle
+de recepción cierra el socket en cuanto salta la detección de enlace muerto
+(ver más arriba), esto también da falso durante todo el intervalo entre un
+enlace caído en silencio y el siguiente re-login exitoso, en vez de seguir
+mostrando "conectado" sobre un socket que ya dejó de entregar nada.

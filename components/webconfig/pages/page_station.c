@@ -1,0 +1,422 @@
+// @file page_station.c
+//
+// @author Emiliano Augusto Gonzalez ( lu3vea @ gmail . com)
+// @date 2026
+// @copyright GNU General Public License v3
+// @see https://github.com/hiperiondev/esp32idf_APRS
+//
+// @note
+// This is based on other projects:
+//     VP-Digi: https://github.com/sq8vps/vp-digi
+//     ESP32APRS: https://github.com/nakhonthai/ESP32APRS_Audio
+//     LibAPRS: https://github.com/markqvist/LibAPRS
+//
+//     please contact their authors for more information.
+//
+// @brief Web admin "Station" page: renders and saves the single shared "My
+// Station" identity (callsign, latitude, longitude, altitude) and its PHG
+// (Power-Height-Gain-Directivity) radio-coverage parameters in g_config.
+// This is the data every other page's "Use My Station Data" checkbox pulls
+// from instead of having the same callsign/position retyped on every
+// IGate/Digipeater/Tracker/Weather page. Latitude, longitude and altitude can
+// instead be taken live from the GNSS receiver via the "Use GPS" checkbox
+// (see web_field_use_gps_data() in web_common.c); a station using it still
+// feeds every dependent page's "Use My Station Data" just the same, since the
+// mirror below only ever reads g_config.my_lat/my_lon/my_alt, whichever way
+// they were last set.
+//
+// The PHG height selector is stored internally in feet (the unit the APRS
+// PHG code table is itself defined in - power^2 Watts, 10*2^n feet, dB gain,
+// 45 degrees-per-step directivity) but is displayed/edited on this page in
+// meters, the SI unit, converting to/from feet only for the underlying code.
+
+#include <math.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <string.h>
+
+#include "app_config.h"
+#include "esp_log.h"
+#include "gps.h"
+#include "objects_items.h"
+#include "pages.h"
+#include "telemetry.h"
+#include "translations.h"
+#include "web_common.h"
+
+static const char *TAG = "page_station";
+
+// @brief Re-mirror the just-saved "My Station" identity/position/PHG into
+// every other page's fields whose "Use My Station Data" (or "Use My Station
+// Data" PHG variant) is currently enabled.
+//
+// Every consumer page (IGate/Digipeater/Tracker/WX/Message/Telemetry/Objects)
+// only takes its snapshot of g_config.my_* at the moment *that* page itself is
+// saved, since the fields are disabled client-side and never POST while
+// "Use My Station Data" is checked. Calling this right after the Station page
+// updates g_config.my_* refreshes every dependent snapshot in the same action,
+// so none of them is left holding a superseded callsign or position.
+//
+// Two of those consumers keep their data in their own LittleFS file rather
+// than in g_config (telemetry.json and objitems.json), so refreshing them is a
+// write of its own that can fail independently of the section files the caller
+// goes on to write.
+//
+// @note Must be called with app_config_lock() already held (all g_config
+// fields touched here belong to that same lock), and BEFORE the save, so the
+// refreshed values are part of the same write.
+//
+// @return true if every dependent store that needed rewriting was written.
+// The g_config mirrors above cannot fail and are always applied.
+static bool station_resync_dependents(void) {
+    // -- IGate ---------------------------------------------------------------
+    if (g_config.igate_use_station) {
+        strncpy(g_config.aprs_mycall, g_config.my_callsign, sizeof(g_config.aprs_mycall) - 1);
+        g_config.aprs_mycall[sizeof(g_config.aprs_mycall) - 1] = 0;
+        g_config.igate_lat = g_config.my_lat;
+        g_config.igate_lon = g_config.my_lon;
+        g_config.igate_alt = g_config.my_alt;
+    }
+    if (g_config.igate_phg_use_station) {
+        g_config.igate_phg_power = g_config.my_phg_power;
+        g_config.igate_phg_gain = g_config.my_phg_gain;
+        g_config.igate_phg_height = g_config.my_phg_height;
+        g_config.igate_phg_dir = g_config.my_phg_dir;
+    }
+
+    // -- Digipeater ------------------------------------------------------------
+    if (g_config.digi_use_station) {
+        strncpy(g_config.digi_mycall, g_config.my_callsign, sizeof(g_config.digi_mycall) - 1);
+        g_config.digi_mycall[sizeof(g_config.digi_mycall) - 1] = 0;
+        g_config.digi_lat = g_config.my_lat;
+        g_config.digi_lon = g_config.my_lon;
+        g_config.digi_alt = g_config.my_alt;
+    }
+
+    // -- Tracker ---------------------------------------------------------------
+    if (g_config.trk_use_station) {
+        strncpy(g_config.trk_mycall, g_config.my_callsign, sizeof(g_config.trk_mycall) - 1);
+        g_config.trk_mycall[sizeof(g_config.trk_mycall) - 1] = 0;
+        g_config.trk_lat = g_config.my_lat;
+        g_config.trk_lon = g_config.my_lon;
+        g_config.trk_alt = g_config.my_alt;
+    }
+
+    // -- Weather -----------------------------------------------------------
+    if (g_config.wx_use_station) {
+        strncpy(g_config.wx_mycall, g_config.my_callsign, sizeof(g_config.wx_mycall) - 1);
+        g_config.wx_mycall[sizeof(g_config.wx_mycall) - 1] = 0;
+        g_config.wx_lat = g_config.my_lat;
+        g_config.wx_lon = g_config.my_lon;
+    }
+
+    // -- Messaging -----------------------------------------------------------
+    if (g_config.msg_use_station) {
+        strncpy(g_config.msg_mycall, g_config.my_callsign, sizeof(g_config.msg_mycall) - 1);
+        g_config.msg_mycall[sizeof(g_config.msg_mycall) - 1] = 0;
+    }
+
+    // Tracks the two dependent stores below. The g_config mirrors above are
+    // in-memory field copies and have nothing that can fail.
+    bool ok = true;
+
+    // -- Telemetry (own JSON store, /storage/telemetry.json) -----------------
+    // Loaded/saved independently of g_config, so it needs its own
+    // read-modify-write here rather than a direct g_config field touch.
+    {
+        telemetry_config_t tcfg;
+        if (telemetry_config_load(&tcfg)) {
+            if (tcfg.use_station) {
+                strncpy(tcfg.mycall, g_config.my_callsign, sizeof(tcfg.mycall) - 1);
+                tcfg.mycall[sizeof(tcfg.mycall) - 1] = 0;
+                if (!telemetry_config_save(&tcfg)) {
+                    ESP_LOGE(TAG, "telemetry callsign mirror could not be written to flash");
+                    ok = false;
+                }
+            }
+        }
+    }
+
+    // -- Objects/Items PHG (own JSON store, /storage/objitems.json) ----------
+    {
+        objitems_t set;
+        if (objitems_load(&set)) {
+            bool changed = false;
+            for (int i = 0; i < OBJITEM_COUNT; i++) {
+                objitem_t *b = &set.item[i];
+                if (b->phg_use_station) {
+                    b->phg_power = g_config.my_phg_power;
+                    b->phg_gain = g_config.my_phg_gain;
+                    b->phg_height = g_config.my_phg_height;
+                    b->phg_dir = g_config.my_phg_dir;
+                    changed = true;
+                }
+            }
+            if (changed && !objitems_save(&set)) {
+                ESP_LOGE(TAG, "objects/items PHG mirror could not be written to flash");
+                ok = false;
+            }
+        }
+    }
+
+    return ok;
+}
+
+esp_err_t page_station_get(httpd_req_t *req) {
+    if (!web_check_auth(req))
+        return ESP_OK;
+    web_send_header(req, TR_F_STATION, "station");
+    httpd_resp_sendstr_chunk(req, "<form method='POST' action='/station'>");
+
+    web_fieldset_open(req, TR_F_STATION);
+    web_field_text(req, TR_F_MY_CALLSIGN, "myCallsign", g_config.my_callsign, 9);
+    web_field_use_gps_data(req, "myUseGps", g_config.my_use_gps, NULL, "myLAT", "myLON", "myALT", NULL, NULL);
+    web_field_float(req, TR_F_LATITUDE, "myLAT", g_config.my_lat, "0.0001", WEB_RANGE_LAT_MIN, WEB_RANGE_LAT_MAX);
+    web_field_float(req, TR_F_LONGITUDE, "myLON", g_config.my_lon, "0.0001", WEB_RANGE_LON_MIN, WEB_RANGE_LON_MAX);
+    web_field_float(req, TR_F_ALTITUDE_M, "myALT", g_config.my_alt, "0.1", WEB_RANGE_ALT_M_MIN, WEB_RANGE_ALT_M_MAX);
+
+    // Position ambiguity, the Maidenhead status prefix and the no-archive
+    // marker are station-wide: each describes how visible this station wants
+    // to be, which is a property of the station rather than of any one
+    // beacon, so all three position beacons (Tracker / IGate / Digipeater)
+    // and all three status reports pick them up from here.
+    //
+    // Ambiguity blanks the least significant minute digits on air (APRS101
+    // ch.6). It is what a fixed station uses to publish an approximate
+    // location instead of its exact address. Because the compressed position
+    // format has no digits to blank, enabling ambiguity makes those beacons
+    // fall back to the uncompressed format even if "compressed" is ticked on
+    // their own page - the alternative would be silently transmitting the
+    // exact position the operator asked to hide.
+    web_select_open(req, TR_F_POS_AMBIGUITY, "myAmbiguity");
+    {
+        static const char *levels[] = { TR_AMB_NONE, TR_AMB_TENTH, TR_AMB_MINUTE, TR_AMB_TEN_MINUTES, TR_AMB_DEGREE };
+        for (int i = 0; i <= POS_AMBIGUITY_MAX; i++)
+            web_select_option(req, i, levels[i], g_config.pos_ambiguity == (uint8_t)i);
+    }
+    web_select_close(req);
+    web_field_checkbox(req, TR_F_STATUS_GRID, "myStatusGrid", g_config.status_grid_en);
+    web_field_checkbox(req, TR_F_STATUS_TIMESTAMP, "myStatusTS", g_config.status_timestamp_en);
+    web_field_checkbox(req, TR_F_POS_DAO, "myPosDao", g_config.pos_dao_en);
+    web_field_checkbox(req, TR_F_NO_ARCHIVE, "myNoArchive", g_config.my_no_archive);
+
+    // Meteor-scatter beam heading and ERP (APRS101 ch.16), carried as two
+    // characters at the very end of every status report. Both are pick lists
+    // because both are code tables on air, not free values: the heading steps
+    // in STATUS_BEAM_DEG_STEP degrees, and the power is the fixed table of
+    // STATUS_ERP_WATTS_STEP times the square of the code. Either one left off
+    // suppresses the block, so a station that does not work meteor scatter
+    // sends exactly what it sent before.
+    web_select_open(req, TR_F_STATUS_BEAM, "myStatusBeam");
+    {
+        web_select_option(req, STATUS_BEAM_DEG_OFF, TR_F_OFF, g_config.status_beam_deg < 0);
+        for (int deg = 0; deg <= STATUS_BEAM_DEG_MAX; deg += STATUS_BEAM_DEG_STEP) {
+            char lbl[16];
+            snprintf(lbl, sizeof(lbl), "%d", deg);
+            web_select_option(req, deg, lbl, g_config.status_beam_deg == (int16_t)deg);
+        }
+    }
+    web_select_close(req);
+    web_select_open(req, TR_F_STATUS_ERP, "myStatusERP");
+    {
+        web_select_option(req, 0, TR_F_OFF, g_config.status_erp_watts == 0);
+        for (int code = STATUS_ERP_CODE_MIN; code <= STATUS_ERP_CODE_MAX; code++) {
+            int watts = STATUS_ERP_WATTS_STEP * code * code;
+            char lbl[16];
+            snprintf(lbl, sizeof(lbl), "%d", watts);
+            web_select_option(req, watts, lbl, g_config.status_erp_watts == (uint16_t)watts);
+        }
+    }
+    web_select_close(req);
+    web_fieldset_close(req);
+
+    // PHG (Power-Height-Gain-Directivity) ------------------------------------
+    // Power (Watts), Gain (dB) and Directivity are already SI/unit-agnostic
+    // APRS code values. Height is the one sub-field the APRS PHG spec only
+    // defines in feet (10*2^n), so the <select> keeps feet as its underlying
+    // value (what the PHG calculation below needs) but every visible label is
+    // converted to and shown in meters instead.
+    web_fieldset_open(req, TR_F_PHG_SECTION);
+    web_select_open(req, TR_F_RADIO_TX_POWER, "myPHGPower");
+    {
+        // APRS PHG power code table (P digit 0-9), rounded to these fixed
+        // Watt values only - not a free-edit field.
+        static const int watts[] = { 0, 1, 5, 10, 15, 25, 35, 50, 65, 80 };
+        for (size_t i = 0; i < sizeof(watts) / sizeof(watts[0]); i++) {
+            char lbl[16];
+            snprintf(lbl, sizeof(lbl), "%d", watts[i]);
+            web_select_option(req, watts[i], lbl, g_config.my_phg_power == (uint16_t)watts[i]);
+        }
+    }
+    web_select_close(req);
+    web_select_open(req, TR_F_ANTENNA_GAIN, "myPHGGain");
+    {
+        // APRS PHG gain code table (G digit 0-9), in dB - not a free-edit field.
+        for (int i = 0; i <= 9; i++) {
+            char lbl[16];
+            snprintf(lbl, sizeof(lbl), "%d", i);
+            web_select_option(req, i, lbl, (int)lroundf(g_config.my_phg_gain) == i);
+        }
+    }
+    web_select_close(req);
+    web_select_open(req, TR_F_HEIGHT_M, "myPHGHeight");
+    {
+        // APRS PHG height code table (H digit), 10*2^n feet, extended beyond
+        // the standard 0-9 digits to also allow the requested larger values.
+        static const int feet[] = { 10, 20, 40, 80, 160, 320, 640, 1280, 2560, 5120, 10240, 20480, 40960, 81920 };
+        for (size_t i = 0; i < sizeof(feet) / sizeof(feet[0]); i++) {
+            char lbl[16];
+            snprintf(lbl, sizeof(lbl), "%d", (int)lroundf(feet[i] * 0.3048f));
+            // Option value stays in feet (the APRS code table's own unit);
+            // only the label shown to the user is converted to meters.
+            web_select_option(req, feet[i], lbl, g_config.my_phg_height == (uint16_t)feet[i]);
+        }
+    }
+    web_select_close(req);
+    web_select_open(req, TR_F_ANTENNA_DIRECTION, "myPHGDir");
+    {
+        static const char *dirs[] = { TR_DIR_OMNI, TR_DIR_N, TR_DIR_NE, TR_DIR_E, TR_DIR_SE, TR_DIR_S, TR_DIR_SW, TR_DIR_W, TR_DIR_NW };
+        for (int i = 0; i < 9; i++)
+            web_select_option(req, i, dirs[i], g_config.my_phg_dir == (uint8_t)i);
+    }
+    web_select_close(req);
+
+    // Computed PHG value --------------------------------------------------
+    // Read-only and display-only: it carries no name attribute, so it is never
+    // submitted and never stored. The script below fills it on load and on
+    // every change of the four PHG sub-fields, which are the values the beacon
+    // encoder reads. Kept inside the PHG fieldset since it is derived directly
+    // from the fields above it.
+    {
+        char buf[550];
+        snprintf(buf, sizeof(buf), "<label>%s</label><input type='text' id='myPHG' maxlength='7' readonly>", TR_F_PHG_TEXT);
+        web_raw(req, buf);
+    }
+    web_fieldset_close(req);
+
+    web_raw(req, "<script>"
+                 "function calcStationPHG(){"
+                 "var p=parseInt(document.querySelector(\"select[name='myPHGPower']\").value)||0;"
+                 "var g=parseInt(document.querySelector(\"select[name='myPHGGain']\").value)||0;"
+                 "var h=parseInt(document.querySelector(\"select[name='myPHGHeight']\").value)||10;"
+                 "var d=parseInt(document.querySelector(\"select[name='myPHGDir']\").value)||0;"
+                 "var P=Math.min(9,Math.max(0,Math.round(Math.sqrt(p))));"
+                 "var H=Math.min(13,Math.max(0,Math.round(Math.log(h/10)/Math.log(2))));"
+                 "var G=Math.min(9,Math.max(0,g));"
+                 "var D=Math.min(8,Math.max(0,d));"
+                 // Per the APRS spec, each PHG digit is a single ASCII character.
+                 // H=0-9 uses '0'-'9'; since DOS 8.0, H>=10 uses the following
+                 // ASCII characters ':' ';' '<' '=' ... (ASCII(Hchar)-51=H) so
+                 // the field stays exactly one character wide.
+                 "var Hc=String.fromCharCode(48+H);"
+                 "document.getElementById('myPHG').value='PHG'+P+Hc+G+D;"
+                 "}"
+                 "document.addEventListener('DOMContentLoaded',function(){"
+                 "['myPHGPower','myPHGGain','myPHGHeight','myPHGDir'].forEach(function(n){"
+                 "var el=document.querySelector(\"select[name='\"+n+\"']\");"
+                 "if(el)el.addEventListener('change',calcStationPHG);"
+                 "});"
+                 "calcStationPHG();"
+                 "});"
+                 "</script>");
+
+    httpd_resp_sendstr_chunk(req, "<button type='submit'>" TR_BTN_SAVE "</button></form>");
+    web_send_footer(req);
+    return ESP_OK;
+}
+
+esp_err_t page_station_post(httpd_req_t *req) {
+    if (!web_check_auth(req))
+        return ESP_OK;
+    char body[480];
+    if (web_read_body(req, body, sizeof(body)) < 0) {
+        httpd_resp_send_500(req);
+        return ESP_OK;
+    }
+
+    app_config_lock();
+    web_form_get_call(body, "myCallsign", g_config.my_callsign, sizeof(g_config.my_callsign));
+    g_config.my_use_gps = web_form_get_bool(body, "myUseGps");
+    if (g_config.my_use_gps) {
+        // Snapshot whatever the receiver currently reports rather than
+        // trusting the submitted fields: they are disabled client-side while
+        // this checkbox is on, but a crafted POST could still carry stale or
+        // fabricated numbers, and the whole point of the checkbox is that
+        // these three fields always come from the receiver, not from the
+        // form.
+        gps_data_t g;
+        if (gps_snapshot(&g)) {
+            if (g.has_position) {
+                g_config.my_lat = (float)g.latitude;
+                g_config.my_lon = (float)g.longitude;
+            }
+            if (g.has_altitude)
+                g_config.my_alt = (float)g.altitude_m;
+        }
+    } else {
+        g_config.my_lat = web_form_get_float(body, "myLAT", g_config.my_lat);
+        g_config.my_lon = web_form_get_float(body, "myLON", g_config.my_lon);
+        g_config.my_alt = web_form_get_float(body, "myALT", g_config.my_alt);
+    }
+    {
+        int amb = web_form_get_int(body, "myAmbiguity", (int)g_config.pos_ambiguity);
+        if (amb < 0)
+            amb = 0;
+        if (amb > POS_AMBIGUITY_MAX)
+            amb = POS_AMBIGUITY_MAX;
+        g_config.pos_ambiguity = (uint8_t)amb;
+    }
+    g_config.status_grid_en = web_form_get_bool(body, "myStatusGrid");
+    g_config.status_timestamp_en = web_form_get_bool(body, "myStatusTS");
+    g_config.pos_dao_en = web_form_get_bool(body, "myPosDao");
+    g_config.my_no_archive = web_form_get_bool(body, "myNoArchive");
+    {
+        // Both values arrive from a pick list built out of the code tables, so
+        // the only inputs that can reach here are table entries or the "off"
+        // choice. Clamped anyway, on the same two-layer terms config_from_json()
+        // applies to the stored file: a POST is not required to come from the
+        // form that was served.
+        int beam = web_form_get_int(body, "myStatusBeam", g_config.status_beam_deg);
+        if (beam < 0 || beam > STATUS_BEAM_DEG_MAX)
+            beam = STATUS_BEAM_DEG_OFF;
+        else
+            beam -= beam % STATUS_BEAM_DEG_STEP;
+        g_config.status_beam_deg = (int16_t)beam;
+
+        int erp = web_form_get_int(body, "myStatusERP", g_config.status_erp_watts);
+        if (erp < 0)
+            erp = 0;
+        if (erp > STATUS_ERP_WATTS_MAX)
+            erp = STATUS_ERP_WATTS_MAX;
+        g_config.status_erp_watts = (uint16_t)erp;
+    }
+    g_config.my_phg_power = (uint16_t)web_form_get_int(body, "myPHGPower", g_config.my_phg_power);
+    g_config.my_phg_gain = (float)web_form_get_int(body, "myPHGGain", (int)lroundf(g_config.my_phg_gain));
+    // Select value is the underlying feet code (see the GET handler); saved
+    // as-is, only its displayed label is converted to meters.
+    g_config.my_phg_height = (uint16_t)web_form_get_int(body, "myPHGHeight", g_config.my_phg_height);
+    g_config.my_phg_dir = (uint8_t)web_form_get_int(body, "myPHGDir", g_config.my_phg_dir);
+
+    // Every other page's "Use My Station Data" checkbox only re-snapshots
+    // these values when that OTHER page itself is saved (its fields are
+    // disabled client-side and never POST while the checkbox is on). Refresh
+    // all of those stored snapshots now, in the same action, so they don't go
+    // stale until the user happens to revisit and re-save each page.
+    bool deps_ok = station_resync_dependents();
+
+    app_config_unlock();
+
+    // The mirrors above reach into five other services' fields, so this save
+    // names every section it touched and not just the station's own: the
+    // identity would otherwise be split across files that no longer agree.
+    // Together with the two dependent stores refreshed above, every write is
+    // attempted and the page reports success only if all of them landed.
+    bool cfg_ok = app_config_save_sections(APP_CONFIG_SECTION_BIT(APP_CONFIG_SECTION_STATION) | APP_CONFIG_SECTION_BIT(APP_CONFIG_SECTION_IGATE) |
+                                           APP_CONFIG_SECTION_BIT(APP_CONFIG_SECTION_DIGIPEATER) | APP_CONFIG_SECTION_BIT(APP_CONFIG_SECTION_TRACKER) |
+                                           APP_CONFIG_SECTION_BIT(APP_CONFIG_SECTION_WEATHER) | APP_CONFIG_SECTION_BIT(APP_CONFIG_SECTION_MESSAGE));
+    if (!cfg_ok)
+        ESP_LOGE(TAG, "station settings could not be written to flash");
+
+    web_send_save_result(req, deps_ok && cfg_ok, "/station");
+    return ESP_OK;
+}
