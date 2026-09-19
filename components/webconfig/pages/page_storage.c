@@ -47,6 +47,23 @@ static void append_file_row(httpd_req_t *req, const char *name, long size) {
     web_html_attr_escape(name, esc, sizeof(esc));
     web_urlencode(name, enc, sizeof(enc));
 
+    // A read-only session gets the name and the size and nothing to press.
+    // Neither of the two actions is available to it - /download and /delete
+    // both begin with web_check_auth_admin() - and the Download link is the
+    // reason this is decided here rather than left to the read-only pass in
+    // web_send_footer(): an anchor carries no disabled state for a script to
+    // set, so the only way to take it away is not to write it.
+    if (web_is_readonly(req)) {
+        size_t ro_need = strlen(esc) + 128;
+        char *ro_row = malloc(ro_need);
+        if (!ro_row)
+            return;
+        snprintf(ro_row, ro_need, "<tr><td>%s</td><td>%ld</td><td>-</td></tr>", esc, size);
+        httpd_resp_sendstr_chunk(req, ro_row);
+        free(ro_row);
+        return;
+    }
+
     // esc appears twice below (data-fname + the hidden field's value) and
     // enc appears once (the Download href), so size the buffer from their
     // actual lengths rather than guessing a fixed cap.
@@ -55,18 +72,18 @@ static void append_file_row(httpd_req_t *req, const char *name, long size) {
     if (!row)
         return;
 
-        // Delete is a real POST form (not a GET link): a GET request is meant to
-        // be safe/side-effect-free, so a state-changing action reachable via a
-        // plain <a href> is trivially triggerable by a third-party page (e.g.
-        // <img src="/delete?file=...">) while the admin's browser still has
-        // Basic-Auth credentials cached - i.e. CSRF. The confirm() dialog still
-        // reads the filename from data-fname (already HTML-attribute-escaped), so
-        // nothing needs JS-string escaping.
-        // 'need' is sized from the actual esc/enc lengths above, so this never
-        // truncates at runtime; GCC's format-truncation analysis just can't follow
-        // that arithmetic and assumes the worst case (each %s filled to its
-        // buffer's declared capacity of 512). Silence the false positive locally
-        // instead of disabling the check project-wide.
+    // Delete is a real POST form (not a GET link): a GET request is meant to
+    // be safe/side-effect-free, so a state-changing action reachable via a
+    // plain <a href> is trivially triggerable by a third-party page (e.g.
+    // <img src="/delete?file=...">) while the admin's browser still has
+    // Basic-Auth credentials cached - i.e. CSRF. The confirm() dialog still
+    // reads the filename from data-fname (already HTML-attribute-escaped), so
+    // nothing needs JS-string escaping.
+    // 'need' is sized from the actual esc/enc lengths above, so this never
+    // truncates at runtime; GCC's format-truncation analysis just can't follow
+    // that arithmetic and assumes the worst case (each %s filled to its
+    // buffer's declared capacity of 512). Silence the false positive locally
+    // instead of disabling the check project-wide.
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wformat-truncation"
     snprintf(row, need,
@@ -94,12 +111,18 @@ esp_err_t page_storage_get(httpd_req_t *req) {
     snprintf(hdr, sizeof(hdr), "<p><b>" TR_STORAGE_USAGE "</b> %u / %u bytes</p>", (unsigned)used, (unsigned)total);
     httpd_resp_sendstr_chunk(req, hdr);
 
+    // Upload and format are left out of a read-only page entirely rather than
+    // rendered and disabled: a file input and a format button that cannot be
+    // used are two invitations to press something that would only come back
+    // 403, and the banner above the page has already said why.
+    if (!web_is_readonly(req))
+        httpd_resp_sendstr_chunk(req, "<form method='POST' action='/upload' enctype='multipart/form-data'>"
+                                      "<label>" TR_STORAGE_UPLOAD_FILE "</label><input type='file' name='file'>"
+                                      "<button type='submit'>" TR_F_UPLOAD "</button></form>"
+                                      "<form method='POST' action='/format' onsubmit=\"return confirm('" TR_STORAGE_CONFIRM_FORMAT "');\">"
+                                      "<button class='danger' type='submit'>" TR_STORAGE_FORMAT_BTN "</button></form>");
+
     httpd_resp_sendstr_chunk(req,
-                             "<form method='POST' action='/upload' enctype='multipart/form-data'>"
-                             "<label>" TR_STORAGE_UPLOAD_FILE "</label><input type='file' name='file'>"
-                             "<button type='submit'>" TR_F_UPLOAD "</button></form>"
-                             "<form method='POST' action='/format' onsubmit=\"return confirm('" TR_STORAGE_CONFIRM_FORMAT "');\">"
-                             "<button class='danger' type='submit'>" TR_STORAGE_FORMAT_BTN "</button></form>"
                              "<div class='table-wrap'><table><tr><th>" TR_F_NAME "</th><th>" TR_STORAGE_SIZE_BYTES "</th><th>" TR_STORAGE_ACTIONS "</th></tr>");
 
     DIR *dir = opendir(STORAGE_BASE_PATH);
@@ -138,7 +161,7 @@ static bool safe_flat_filename(const char *fname) {
 }
 
 esp_err_t page_download(httpd_req_t *req) {
-    if (!web_check_auth(req))
+    if (!web_check_auth_admin(req))
         return ESP_OK;
     char query[128], fname[100];
     if (httpd_req_get_url_query_str(req, query, sizeof(query)) != ESP_OK || !web_form_get(query, "file", fname, sizeof(fname)) || !safe_flat_filename(fname)) {
@@ -170,7 +193,7 @@ esp_err_t page_download(httpd_req_t *req) {
 }
 
 esp_err_t page_delete(httpd_req_t *req) {
-    if (!web_check_auth(req))
+    if (!web_check_auth_admin(req))
         return ESP_OK;
     char body[160], fname[100];
     if (web_read_body(req, body, sizeof(body)) >= 0 && web_form_get(body, "file", fname, sizeof(fname)) && safe_flat_filename(fname)) {
@@ -188,7 +211,7 @@ esp_err_t page_delete(httpd_req_t *req) {
 }
 
 esp_err_t page_format(httpd_req_t *req) {
-    if (!web_check_auth(req))
+    if (!web_check_auth_admin(req))
         return ESP_OK;
     bool ok = storage_format();
     if (ok) {
@@ -251,7 +274,7 @@ static esp_err_t upload_write_cb(void *ctx_v, const uint8_t *data, size_t len) {
 }
 
 esp_err_t page_upload(httpd_req_t *req) {
-    if (!web_check_auth(req))
+    if (!web_check_auth_admin(req))
         return ESP_OK;
 
     char raw_name[100] = { 0 };

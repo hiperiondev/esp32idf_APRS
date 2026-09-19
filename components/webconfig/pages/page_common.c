@@ -145,8 +145,8 @@ esp_err_t page_dashboard(httpd_req_t *req) {
     //    for TX/APRS-IS-only entries where no audio level applies. --
     httpd_resp_sendstr_chunk(req, "<fieldset><legend>" TR_DASH_IGATE_TRAFFIC "</legend>"
                                   "<div class='traffic-actions'>"
-                                  "<button id='trafficPauseBtn' class='btn secondary' onclick='trafficTogglePause()'>" TR_TRAFFIC_PAUSE "</button>"
-                                  "<button class='btn secondary' onclick='trafficClear()'>" TR_TRAFFIC_CLEAR "</button>"
+                                  "<button id='trafficPauseBtn' class='btn secondary ro-ok' onclick='trafficTogglePause()'>" TR_TRAFFIC_PAUSE "</button>"
+                                  "<button class='btn secondary ro-ok' onclick='trafficClear()'>" TR_TRAFFIC_CLEAR "</button>"
                                   "</div>"
                                   "<div id='trafficTableWrap' class='traffic-table-wrap'>"
                                   "<table id='trafficTable'><thead><tr>"

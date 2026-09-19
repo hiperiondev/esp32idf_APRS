@@ -326,7 +326,7 @@ esp_err_t page_station_get(httpd_req_t *req) {
 }
 
 esp_err_t page_station_post(httpd_req_t *req) {
-    if (!web_check_auth(req))
+    if (!web_check_auth_admin(req))
         return ESP_OK;
     char body[480];
     if (web_read_body(req, body, sizeof(body)) < 0) {

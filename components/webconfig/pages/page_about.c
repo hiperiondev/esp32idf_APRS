@@ -156,7 +156,7 @@ static void ota_send_error_page(httpd_req_t *req, const char *detail) {
 // midway has an esp_ota_begin() handle and whatever the flash driver allocated
 // behind it, and the two figures say whether esp_ota_abort() gave that back.
 esp_err_t page_ota_update_post(httpd_req_t *req) {
-    if (!web_check_auth(req))
+    if (!web_check_auth_admin(req))
         return ESP_OK;
 
     HEAP_MONITOR_BRACKET("before", "ota upload");

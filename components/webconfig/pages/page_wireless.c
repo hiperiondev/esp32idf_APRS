@@ -68,7 +68,7 @@ esp_err_t page_wireless_get(httpd_req_t *req) {
     {
         char buf[600];
         char esc_ap_pass[64 * 6 + 1];
-        web_password_value(g_config.wifi_ap_pass, esc_ap_pass, sizeof(esc_ap_pass));
+        web_password_value(req, g_config.wifi_ap_pass, esc_ap_pass, sizeof(esc_ap_pass));
         snprintf(buf, sizeof(buf),
                  "<label>" TR_WIFI_AP_PASSWORD "</label><input type='password' name='apPass' id='pwd_apPass' value='%s' maxlength='63' minlength='8'>",
                  esc_ap_pass);
@@ -115,7 +115,7 @@ esp_err_t page_wireless_get(httpd_req_t *req) {
         {
             char buf[600];
             char esc_sta_pass[64 * 6 + 1];
-            web_password_value(g_config.wifi_sta[i].wifi_pass, esc_sta_pass, sizeof(esc_sta_pass));
+            web_password_value(req, g_config.wifi_sta[i].wifi_pass, esc_sta_pass, sizeof(esc_sta_pass));
             snprintf(buf, sizeof(buf),
                      "<label>" TR_F_PASSWORD "</label><input type='password' name='staPass%d' id='pwd_staPass%d' value='%s' maxlength='63' minlength='8'>", i,
                      i, esc_sta_pass);
@@ -164,7 +164,7 @@ esp_err_t page_wireless_get(httpd_req_t *req) {
 }
 
 esp_err_t page_wireless_post(httpd_req_t *req) {
-    if (!web_check_auth(req))
+    if (!web_check_auth_admin(req))
         return ESP_OK;
     char body[3072]; // enlarged: worst-case fully percent-encoded 5x(32+63 char) STA fields + AP fields
     if (web_read_body(req, body, sizeof(body)) < 0) {
@@ -259,7 +259,7 @@ esp_err_t page_wireless_post(httpd_req_t *req) {
 // (script/stylesheet loads, prefetch, link prerender, address-bar
 // navigation).
 esp_err_t page_wifi_scan_post(httpd_req_t *req) {
-    if (!web_check_auth(req))
+    if (!web_check_auth_admin(req))
         return ESP_OK;
     httpd_resp_set_type(req, "application/json");
 

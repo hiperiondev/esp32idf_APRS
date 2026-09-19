@@ -5,14 +5,25 @@ HTTP Routes
 ===========
 
 The web admin registers the following routes (``components/webconfig/web_server.c``).
-Every handler that serves configuration or traffic data calls
-``web_check_auth()`` and therefore requires HTTP Basic auth. Three routes do not,
+Every handler that serves configuration or traffic data requires HTTP Basic
+auth: a handler that only reads calls ``web_check_auth()``, which admits both
+configured accounts, and a handler that writes calls
+``web_check_auth_admin()``, which admits the administrator alone and answers a
+read-only session ``403 Forbidden``. Three routes do not,
 and none of them exposes anything: ``GET /style.css`` is a static stylesheet
 carrying no configuration or traffic data, and the browser requests it while
 rendering the login challenge itself; ``GET /logo.png`` is the brand image
 embedded in the firmware, equally free of station data; ``GET /logout`` answers
 every request with the ``401`` that makes the browser drop its cached
 credentials, so there is nothing for an auth check to guard.
+
+The two accounts are described under *Accounts and roles* in
+:ref:`en-web-admin`. In the table below, every ``POST`` route requires the
+administrator account, as do ``GET /download`` and the file actions on the
+Storage page. The three exceptions are ``/logs/start``, ``/logs/stop`` and
+``/logs/read``: they are ``POST`` routes a read-only session may use, because
+what they switch is a mirror of the station's own console output and nothing on
+the station changes with it.
 
 .. list-table::
    :header-rows: 1

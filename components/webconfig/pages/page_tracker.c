@@ -181,7 +181,7 @@ static long web_form_get_clamped_int(const char *body, const char *key, long def
 }
 
 esp_err_t page_tracker_post(httpd_req_t *req) {
-    if (!web_check_auth(req))
+    if (!web_check_auth_admin(req))
         return ESP_OK;
     // Sized for the whole page in one POST: the main settings, station,
     // SmartBeaconing, options and status beacon fieldsets, plus the repeater

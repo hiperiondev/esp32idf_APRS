@@ -1133,9 +1133,12 @@ typedef struct {
     char ntp_host[NTP_HOST_NUM][20]; /**< Up to ::NTP_HOST_NUM NTP server hostnames. */
     uint16_t ntp_resync_sec;         /**< NTP resync interval, seconds (floored at ::NTP_RESYNC_MIN_SEC). */
 
-    char http_username[32]; /**< Web admin HTTP Basic auth username. */
-    char http_password[64]; /**< Web admin HTTP Basic auth password. */
-    char path[4][72];       /**< The four shared digipeat-path presets selected by the per-service path bitmasks. */
+    char http_username[32];    /**< Web admin HTTP Basic auth username. Grants the administrator role: every page, every form and every file operation. */
+    char http_password[64];    /**< Web admin HTTP Basic auth password, paired with ::app_config_t::http_username. */
+    char http_ro_username[32]; /**< Web read-only HTTP Basic auth username, or the empty string when no read-only account exists. Grants the read-only role:
+                                  every page renders, no form saves, no file is uploaded or downloaded, and only the log console can be started and stopped. */
+    char http_ro_password[64]; /**< Web read-only HTTP Basic auth password, paired with ::app_config_t::http_ro_username. */
+    char path[4][72];          /**< The four shared digipeat-path presets selected by the per-service path bitmasks. */
 
     uint16_t ptt_min_unkey_ms; /**< Extra minimum PTT-off (unkeyed) hold time between transmissions, ms, on top of the fixed one-service-tick (~10 ms) release
                                   the modem always applies. 0 disables the extra hold. Web-configurable and applied live via aprs_service_apply_modem_config().

@@ -29,9 +29,66 @@
 #include "esp_http_server.h"
 
 /**
- * @brief HTTP Basic Auth check against g_config.http_username /
- * g_config.http_password, combined with the same-origin (CSRF) check for
- * state-changing requests.
+ * @brief Privilege a request carries, decided by which credential pair it
+ * presented.
+ *
+ * The admin UI knows two accounts, both stored in g_config and both presented
+ * over the same HTTP Basic realm: the administrator pair
+ * (@c http_username / @c http_password) and the read-only pair
+ * (@c http_ro_username / @c http_ro_password). What separates them is what a
+ * handler is allowed to do, never what it is allowed to render: every page and
+ * every live JSON feed answers both roles alike, so a read-only operator sees
+ * the whole station, while everything that writes - a settings form, a file
+ * upload or download, a factory reset, an OTA image, anything that keys the
+ * transmitter - answers the administrator alone. The one exception is the log
+ * console: ::WEB_ROLE_READONLY may start and stop it, because the mirror it
+ * switches is a view of the station's own output and nothing on the station
+ * changes with it.
+ */
+typedef enum {
+    WEB_ROLE_NONE = 0, /**< Not authenticated. */
+    WEB_ROLE_READONLY, /**< Read-only account: may read every page, may not change anything. */
+    WEB_ROLE_ADMIN     /**< Administrator account: full access. */
+} web_role_t;
+
+/**
+ * @brief Privilege the credentials on @p req carry, without sending anything.
+ *
+ * Re-reads and re-matches the @c Authorization header, so it is safe to call
+ * at any point of a handler that has already passed web_check_auth(), and it
+ * touches none of the login lockout state. With no administrator username
+ * configured the password prompt is disabled altogether and every request is
+ * ::WEB_ROLE_ADMIN, which is what keeps a station whose operator cleared the
+ * username usable exactly as before.
+ *
+ * @param req Incoming request.
+ * @return The role the request authenticated as, or ::WEB_ROLE_NONE if its
+ *         credentials match neither account.
+ */
+web_role_t web_request_role(httpd_req_t *req);
+
+/**
+ * @brief Whether @p req is authenticated as the read-only account.
+ *
+ * What a page uses to leave out the controls a read-only operator cannot
+ * operate anyway - a save button, an upload form, a download link - so the
+ * page reads as what it is instead of offering actions that would come back
+ * 403.
+ *
+ * @param req Incoming request.
+ * @return true if the request carries read-only credentials.
+ */
+bool web_is_readonly(httpd_req_t *req);
+
+/**
+ * @brief HTTP Basic Auth check against either configured account, combined
+ * with the same-origin (CSRF) check for state-changing requests.
+ *
+ * Admits both the administrator pair (@c g_config.http_username /
+ * @c http_password) and the read-only pair (@c g_config.http_ro_username /
+ * @c http_ro_password); web_request_role() tells the two apart afterwards.
+ * This is the check for a handler that only reads: anything that changes the
+ * station calls web_check_auth_admin() instead.
  *
  * The same-origin check and the Basic Auth check are independent controls:
  * the same-origin check runs first and unconditionally for every POST
@@ -48,6 +105,26 @@
  *         or 403 already sent).
  */
 bool web_check_auth(httpd_req_t *req);
+
+/**
+ * @brief web_check_auth() plus the requirement that the request carry
+ * administrator credentials.
+ *
+ * The check every handler that writes begins with: a settings save, a file
+ * upload, download, delete or format, a factory reset, an OTA image, a
+ * transmitter test, an outgoing APRS message. A read-only session is answered
+ * @c 403 here and the handler never runs, so the privilege boundary lives in
+ * the handler itself and does not depend on the page having hidden the
+ * control.
+ *
+ * On failure this sends the 401, 403 or 429 response itself, exactly as
+ * web_check_auth() does.
+ *
+ * @param req Incoming request.
+ * @return true if the request is authorized as the administrator; false if it
+ *         was rejected (response already sent).
+ */
+bool web_check_auth_admin(httpd_req_t *req);
 
 /**
  * @brief Read the whole request body (application/x-www-form-urlencoded) into
@@ -126,14 +203,21 @@ bool web_form_get(const char *body, const char *key, char *out, size_t out_size)
  * @p stored is empty - so an unset secret still reads as unset rather than as
  * a masked value that is not there.
  *
+ * A ::WEB_ROLE_READONLY request is masked under either setting of the flag:
+ * the pages carrying a secret render for both roles, and a read-only account
+ * is one that may look at the configuration, not one that may read the keys
+ * out of it.
+ *
  * The result is always attribute-safe, so callers keep sizing @p out for the
  * escaped form of @p stored (six bytes per source byte plus the terminator).
  *
+ * @param req      Incoming request, which decides whether the secret may be
+ *                 pre-filled at all.
  * @param stored   The stored secret.
  * @param out      Destination buffer for the attribute text.
  * @param out_size Size of @p out, in bytes.
  */
-void web_password_value(const char *stored, char *out, size_t out_size);
+void web_password_value(httpd_req_t *req, const char *stored, char *out, size_t out_size);
 
 /**
  * @brief Read back a secret field written by web_password_value().
@@ -160,7 +244,9 @@ bool web_form_get_password(const char *body, const char *key, char *out, size_t 
  *
  * Writes nothing at all when @c ALLOW_SHOW_PASSWORD is @c 0: with no secret in
  * the markup there is nothing for the control to reveal, and web_send_footer()
- * leaves out the matching script for the same reason.
+ * leaves out the matching script for the same reason. A ::WEB_ROLE_READONLY
+ * request is written nothing either, since web_password_value() masked the
+ * field this control would act on.
  *
  * @param req    Incoming request.
  * @param dom_id DOM id of the input the checkbox toggles.

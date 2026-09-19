@@ -507,6 +507,11 @@ void app_config_set_defaults(app_config_t *c) {
     // System / HTTP auth  (README documented default: admin/admin)
     set_str(c->http_username, sizeof(c->http_username), "admin");
     set_str(c->http_password, sizeof(c->http_password), "admin");
+    // No read-only account out of the box: an empty username means the second
+    // credential pair matches nothing, so a station only ever answers to the
+    // one account until the operator names a read-only user on the System page.
+    set_str(c->http_ro_username, sizeof(c->http_ro_username), "");
+    set_str(c->http_ro_password, sizeof(c->http_ro_password), "");
     // Shared path presets. Slot 0 carries the generic New n-N Paradigm path and
     // is the slot every beacon selects out of the box (PATH_PRESET_MASK_DEFAULT);
     // the other three are free for the operator's regional aliases.
@@ -711,6 +716,8 @@ static void section_write_system(jw_t *d, const app_config_t *c) {
     jadd_num(d, "timeZone", c->timezone_idx);
     jadd_str(d, "httpUser", c->http_username);
     jadd_str(d, "httpPass", c->http_password);
+    jadd_str(d, "httpRoUser", c->http_ro_username);
+    jadd_str(d, "httpRoPass", c->http_ro_password);
     fputc('}', d->f);
 }
 
@@ -1171,6 +1178,8 @@ static void section_read_system(cJSON *d, app_config_t *c) {
     }
     set_str(c->http_username, sizeof(c->http_username), jget_str(d, "httpUser", c->http_username));
     set_str(c->http_password, sizeof(c->http_password), jget_str(d, "httpPass", c->http_password));
+    set_str(c->http_ro_username, sizeof(c->http_ro_username), jget_str(d, "httpRoUser", c->http_ro_username));
+    set_str(c->http_ro_password, sizeof(c->http_ro_password), jget_str(d, "httpRoPass", c->http_ro_password));
 }
 
 static void section_read_station(cJSON *d, app_config_t *c) {

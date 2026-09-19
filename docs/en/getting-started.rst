@@ -132,7 +132,10 @@ First boot
 #. The ESP32 comes up as a **Wi-Fi AP**: SSID ``esp32idf_APRS``, password
    ``esp32idf_APRS``, channel 1, WPA2-PSK, max 4 clients.
 #. Join it and browse to the device (default ``http://192.168.4.1/``).
-#. **Log in:** ``admin`` / ``admin`` — change this on the *System* page.
+#. **Log in:** ``admin`` / ``admin`` — change this on the *System* page. The
+   same page carries an optional second account, *Web Read-Only Login*: it sees
+   every page but saves nothing, moves no files and transmits nothing, and may
+   only start and stop the console log viewer. It is unset out of the box.
 #. On *Wireless*: pick **Station** or **AP+STA**, tick **Enable** in a Wi-Fi
    Client block, enter SSID/password, Save.
 #. On *IGate*: set your **callsign**, **SSID**, **passcode**, APRS-IS
@@ -156,6 +159,8 @@ Notable factory defaults
      - ``esp32idf_APRS`` / ``esp32idf_APRS``
    * - Web login
      - ``admin`` / ``admin``
+   * - Web read-only login
+     - unset (no read-only account)
    * - CPU frequency
      - 240 MHz
    * - System clock

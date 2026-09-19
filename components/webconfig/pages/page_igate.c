@@ -126,7 +126,7 @@ esp_err_t page_igate_get(httpd_req_t *req) {
     web_fieldset_open(req, TR_F_APRS_IS_SERVER);
     {
         char esc_pc[sizeof(g_config.aprs_passcode) * 6 + 1];
-        web_password_value(g_config.aprs_passcode, esc_pc, sizeof(esc_pc));
+        web_password_value(req, g_config.aprs_passcode, esc_pc, sizeof(esc_pc));
         char hlp[WEB_HELP_MARKUP_MAX];
         web_help_markup(hlp, sizeof(hlp), web_help_for_label(TR_F_APRS_PASSCODE));
         char pcbuf[WEB_HELP_MARKUP_MAX + 560];
@@ -627,7 +627,7 @@ esp_err_t page_igate_get(httpd_req_t *req) {
 }
 
 esp_err_t page_igate_post(httpd_req_t *req) {
-    if (!web_check_auth(req))
+    if (!web_check_auth_admin(req))
         return ESP_OK;
     // Sized for the whole page's form data in one POST now that Filters
     // share the same <form> as the rest of the page (main settings + up to

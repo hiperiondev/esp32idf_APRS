@@ -769,7 +769,7 @@ Station Management / Ops
    * - Web-based configuration UI
      - ⚠️ (VP-Digi and some ESP32 projects have one; most desktop clients use native GUIs instead)
      - ✅
-     - 22 sidebar pages + symbol picker, HTTP Basic auth, live re-apply for most settings without reboot
+     - 22 sidebar pages + symbol picker, HTTP Basic auth with administrator and optional read-only accounts, live re-apply for most settings without reboot
    * - Live dashboard (status, counters)
      - ⚠️
      - ✅

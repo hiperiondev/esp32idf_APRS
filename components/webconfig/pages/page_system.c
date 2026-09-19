@@ -18,6 +18,7 @@
 // information and control, and the reset-to-defaults action.
 
 #include <stdio.h>
+#include <string.h>
 
 #include "esp_chip_info.h"
 #include "esp_flash.h"
@@ -84,13 +85,33 @@ esp_err_t page_system_get(httpd_req_t *req) {
     {
         char buf[600];
         char esc_pass[64 * 6 + 1];
-        web_password_value(g_config.http_password, esc_pass, sizeof(esc_pass));
+        web_password_value(req, g_config.http_password, esc_pass, sizeof(esc_pass));
         snprintf(buf, sizeof(buf), "<label>" TR_F_PASSWORD "</label><input type='password' name='httpPass' id='pwd_httpPass' value='%s' maxlength='63'>",
                  esc_pass);
         httpd_resp_sendstr_chunk(req, buf);
     }
     web_password_toggle(req, "pwd_httpPass");
     httpd_resp_sendstr_chunk(req, "<p><small>" TR_SYS_WEB_ADMIN_LOGIN_NOTE "</small></p>");
+    web_fieldset_close(req);
+
+    // WEB READ-ONLY LOGIN ----------------------------------------------------
+    // The second account, rendered exactly like the first: a username that
+    // switches it on by being non-empty, and a secret written by hand for the
+    // same reason as above. What separates the two accounts is not on this
+    // page but in the handlers - web_check_auth_admin() is what every writing
+    // route begins with - so the form here only names the credentials.
+    web_fieldset_open(req, TR_SYS_WEB_RO_LOGIN);
+    web_field_text(req, TR_SYS_RO_USERNAME, "httpRoUser", g_config.http_ro_username, 31);
+    {
+        char buf[600];
+        char esc_pass[64 * 6 + 1];
+        web_password_value(req, g_config.http_ro_password, esc_pass, sizeof(esc_pass));
+        snprintf(buf, sizeof(buf),
+                 "<label>" TR_SYS_RO_PASSWORD "</label><input type='password' name='httpRoPass' id='pwd_httpRoPass' value='%s' maxlength='63'>", esc_pass);
+        httpd_resp_sendstr_chunk(req, buf);
+    }
+    web_password_toggle(req, "pwd_httpRoPass");
+    httpd_resp_sendstr_chunk(req, "<p><small>" TR_SYS_WEB_RO_LOGIN_NOTE "</small></p>");
     web_fieldset_close(req);
 
     // TIME -------------------------------------------------------------------
@@ -128,9 +149,12 @@ esp_err_t page_system_get(httpd_req_t *req) {
 }
 
 esp_err_t page_system_post(httpd_req_t *req) {
-    if (!web_check_auth(req))
+    if (!web_check_auth_admin(req))
         return ESP_OK;
-    char body[1200];
+    // Holds this page's whole form: the two credential pairs (each up to 32 +
+    // 64 characters, percent-encoded), three NTP hosts, the resync interval,
+    // the timezone and the CPU frequency, with headroom above the worst case.
+    char body[1600];
     if (web_read_body(req, body, sizeof(body)) < 0) {
         httpd_resp_send_500(req);
         return ESP_OK;
@@ -139,6 +163,18 @@ esp_err_t page_system_post(httpd_req_t *req) {
     app_config_lock();
     web_form_get(body, "httpUser", g_config.http_username, sizeof(g_config.http_username));
     web_form_get_password(body, "httpPass", g_config.http_password, sizeof(g_config.http_password));
+    web_form_get(body, "httpRoUser", g_config.http_ro_username, sizeof(g_config.http_ro_username));
+    web_form_get_password(body, "httpRoPass", g_config.http_ro_password, sizeof(g_config.http_ro_password));
+    // An operator who types the administrator name into the read-only field
+    // would otherwise be left with a second account that can never match
+    // anything, since web_match_role() tests the administrator pair first.
+    // Dropping it here says so on the page instead of letting the credentials
+    // sit there looking configured.
+    if (g_config.http_ro_username[0] != 0 && strcmp(g_config.http_ro_username, g_config.http_username) == 0) {
+        ESP_LOGW(TAG, "read-only username matches the administrator name, read-only account left unset");
+        g_config.http_ro_username[0] = 0;
+        g_config.http_ro_password[0] = 0;
+    }
     g_config.synctime = web_form_get_bool(body, "syncTime");
     web_form_get(body, "ntpHost0", g_config.ntp_host[0], sizeof(g_config.ntp_host[0]));
     web_form_get(body, "ntpHost1", g_config.ntp_host[1], sizeof(g_config.ntp_host[1]));
@@ -173,7 +209,7 @@ esp_err_t page_system_post(httpd_req_t *req) {
 }
 
 esp_err_t page_default_reset(httpd_req_t *req) {
-    if (!web_check_auth(req))
+    if (!web_check_auth_admin(req))
         return ESP_OK;
     // Same reasoning as the save handler: the defaults are live in RAM the
     // moment this returns, so only the result tells the two cases apart.

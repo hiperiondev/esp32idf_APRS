@@ -277,7 +277,7 @@ esp_err_t page_radio_get(httpd_req_t *req) {
 // other ways a browser fetches a URL on its own (script/stylesheet loads,
 // prefetch, link prerender, address-bar navigation).
 esp_err_t page_radio_looptest_post(httpd_req_t *req) {
-    if (!web_check_auth(req))
+    if (!web_check_auth_admin(req))
         return ESP_OK;
     httpd_resp_set_type(req, "application/json");
 
@@ -340,7 +340,7 @@ esp_err_t page_radio_looptest_post(httpd_req_t *req) {
 // keyword generated locally, so unlike the loop test's result there is no
 // received payload in it to escape.
 esp_err_t page_radio_level_post(httpd_req_t *req) {
-    if (!web_check_auth(req))
+    if (!web_check_auth_admin(req))
         return ESP_OK;
     httpd_resp_set_type(req, "application/json");
 
@@ -361,7 +361,7 @@ esp_err_t page_radio_level_post(httpd_req_t *req) {
 // POST for the same reason as the loop test: this one puts a carrier on the
 // air.
 esp_err_t page_radio_txtest_post(httpd_req_t *req) {
-    if (!web_check_auth(req))
+    if (!web_check_auth_admin(req))
         return ESP_OK;
     httpd_resp_set_type(req, "application/json");
 
@@ -401,7 +401,7 @@ esp_err_t page_radio_txtest_post(httpd_req_t *req) {
 }
 
 esp_err_t page_radio_post(httpd_req_t *req) {
-    if (!web_check_auth(req))
+    if (!web_check_auth_admin(req))
         return ESP_OK;
     char body[1200];
     if (web_read_body(req, body, sizeof(body)) < 0) {

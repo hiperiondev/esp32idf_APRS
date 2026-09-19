@@ -149,7 +149,7 @@ esp_err_t page_bulletins_get(httpd_req_t *req) {
 }
 
 esp_err_t page_bulletins_post(httpd_req_t *req) {
-    if (!web_check_auth(req))
+    if (!web_check_auth_admin(req))
         return ESP_OK;
 
     // Bracketed because this buffer is a single contiguous block of several

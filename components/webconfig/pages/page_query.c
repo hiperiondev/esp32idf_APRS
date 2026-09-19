@@ -78,7 +78,7 @@ esp_err_t page_query_get(httpd_req_t *req) {
 }
 
 esp_err_t page_query_post(httpd_req_t *req) {
-    if (!web_check_auth(req))
+    if (!web_check_auth_admin(req))
         return ESP_OK;
     // Wide enough for every control this page renders, including the
     // percent-encoded capability-token text field.

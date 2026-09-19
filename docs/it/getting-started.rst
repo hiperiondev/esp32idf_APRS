@@ -141,7 +141,11 @@ Primo avvio
 #. L'ESP32 si avvia come **AP Wi-Fi**: SSID ``esp32idf_APRS``, password
    ``esp32idf_APRS``, canale 1, WPA2-PSK, max 4 client.
 #. Uniscici e naviga al dispositivo (predefinito ``http://192.168.4.1/``).
-#. **Accedi:** ``admin`` / ``admin`` — cambialo nella pagina *System*.
+#. **Accedi:** ``admin`` / ``admin`` — cambialo nella pagina *System*. La
+   stessa pagina porta un secondo account facoltativo, *Accesso web in sola
+   lettura*: vede ogni pagina ma non salva nulla, non sposta file e non
+   trasmette nulla, e può solo avviare e fermare il visore del registro di
+   console. Di fabbrica non è impostato.
 #. In *Wireless*: scegli **Station** o **AP+STA**, spunta **Enable** in un blocco
    Client Wi-Fi, inserisci SSID/password, Salva.
 #. In *IGate*: imposta il tuo **indicativo**, **SSID**, **passcode**,
@@ -167,6 +171,8 @@ Valori di fabbrica notevoli
      - ``esp32idf_APRS`` / ``esp32idf_APRS``
    * - Login web
      - ``admin`` / ``admin``
+   * - Login web in sola lettura
+     - non impostato (nessun account di sola lettura)
    * - Frequenza CPU
      - 240 MHz
    * - Orologio di sistema

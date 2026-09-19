@@ -260,6 +260,101 @@ static bool web_check_csrf_origin(httpd_req_t *req) {
 }
 
 // ---------------------------------------------------------------- Basic Auth
+//
+// Two accounts share one Basic realm. The administrator pair is the one the
+// station has always had; the read-only pair is optional and inert until the
+// operator gives it a username, since an empty username is compared against
+// nothing and can therefore never match a credential a browser sends. The two
+// are matched in that order, so an operator who types the same username into
+// both fields keeps the administrator account rather than silently demoting
+// themselves.
+//
+// Both comparisons are made in constant time and both are made on every
+// attempt, including the losing one: matching the administrator pair first and
+// returning early would make a wrong administrator password measurably cheaper
+// than a right one.
+
+// Decodes the "Basic <base64>" credential in hdr into user/pass buffers.
+// Returns false for anything that is not a well-formed Basic credential pair,
+// which the caller treats exactly as it treats a wrong password.
+static bool web_basic_credentials(const char *hdr, char *user, size_t user_size, char *pass, size_t pass_size) {
+    if (strncmp(hdr, "Basic ", 6) != 0)
+        return false;
+
+    unsigned char decoded[128];
+    size_t outlen = 0;
+    if (web_base64_decode(decoded, sizeof(decoded) - 1, &outlen, (const unsigned char *)(hdr + 6), strlen(hdr + 6)) != 0)
+        return false;
+    decoded[outlen] = 0;
+
+    char *sep = strchr((char *)decoded, ':');
+    if (!sep)
+        return false;
+    *sep = 0;
+
+    if (strlen((char *)decoded) >= user_size || strlen(sep + 1) >= pass_size)
+        return false;
+    strcpy(user, (char *)decoded);
+    strcpy(pass, sep + 1);
+    return true;
+}
+
+// Matches one credential pair against both configured accounts. The read-only
+// account is skipped entirely while its username is empty, so an unconfigured
+// second account cannot be reached by presenting an empty username.
+static web_role_t web_match_role(const char *user, const char *pass) {
+    bool admin = web_const_time_streq(user, g_config.http_username) && web_const_time_streq(pass, g_config.http_password);
+    bool readonly =
+        g_config.http_ro_username[0] != 0 && web_const_time_streq(user, g_config.http_ro_username) && web_const_time_streq(pass, g_config.http_ro_password);
+
+    if (admin)
+        return WEB_ROLE_ADMIN;
+    if (readonly)
+        return WEB_ROLE_READONLY;
+    return WEB_ROLE_NONE;
+}
+
+web_role_t web_request_role(httpd_req_t *req) {
+    // With no administrator username configured there is no password prompt at
+    // all, so there is nothing to tell the two accounts apart by and the
+    // session is the administrator one - the same bypass web_check_auth()
+    // applies.
+    if (g_config.http_username[0] == 0)
+        return WEB_ROLE_ADMIN;
+
+    char hdr[160];
+    if (httpd_req_get_hdr_value_str(req, "Authorization", hdr, sizeof(hdr)) != ESP_OK)
+        return WEB_ROLE_NONE;
+
+    char user[64], pass[96];
+    if (!web_basic_credentials(hdr, user, sizeof(user), pass, sizeof(pass)))
+        return WEB_ROLE_NONE;
+
+    return web_match_role(user, pass);
+}
+
+bool web_is_readonly(httpd_req_t *req) {
+    return web_request_role(req) == WEB_ROLE_READONLY;
+}
+
+bool web_check_auth_admin(httpd_req_t *req) {
+    if (!web_check_auth(req))
+        return false;
+    if (web_request_role(req) == WEB_ROLE_ADMIN)
+        return true;
+
+    // A read-only session that reached a writing handler either typed the URL
+    // or posted a form the page did not offer it. Either way the answer is the
+    // same one it would get with no page at all, and it is deliberately not a
+    // 401: re-prompting for credentials would invite the operator to retry an
+    // account that is working exactly as configured.
+    ESP_LOGW(TAG, "read-only session rejected on %s", req->uri);
+    httpd_resp_set_status(req, "403 Forbidden");
+    httpd_resp_set_type(req, "text/html");
+    web_send_standalone_page(req, "<h1>" TR_FORBIDDEN_READONLY "</h1>");
+    return false;
+}
+
 bool web_check_auth(httpd_req_t *req) {
     // Same-origin check first, before Basic Auth is even evaluated and before
     // the "no password configured" bypass below: a cross-site request has no
@@ -299,26 +394,16 @@ bool web_check_auth(httpd_req_t *req) {
         goto challenge; // not a Basic credential: same as no header for counting purposes
 
     {
-        unsigned char decoded[128];
-        size_t outlen = 0;
-        int rc = web_base64_decode(decoded, sizeof(decoded) - 1, &outlen, (const unsigned char *)(hdr + 6), strlen(hdr + 6));
-        if (rc != 0)
+        char user[64], pass[96];
+        if (!web_basic_credentials(hdr, user, sizeof(user), pass, sizeof(pass)))
             goto need_auth;
-        decoded[outlen] = 0;
-
-        char *sep = strchr((char *)decoded, ':');
-        if (!sep)
-            goto need_auth;
-        *sep = 0;
-        const char *user = (char *)decoded;
-        const char *pass = sep + 1;
 
         // Constant-time compare: strcmp() short-circuits on the first
         // mismatching byte, which leaks (via response timing) how many
         // leading characters of a guess were correct. Both fields are
         // fixed-size buffers in g_config, so comparing the full field width
         // costs nothing here.
-        if (web_const_time_streq(user, g_config.http_username) && web_const_time_streq(pass, g_config.http_password)) {
+        if (web_match_role(user, pass) != WEB_ROLE_NONE) {
             web_auth_note_success(client_ip);
             return true;
         }
@@ -415,10 +500,20 @@ bool web_form_get(const char *body, const char *key, char *out, size_t out_size)
     return false;
 }
 
-void web_password_value(const char *stored, char *out, size_t out_size) {
+void web_password_value(httpd_req_t *req, const char *stored, char *out, size_t out_size) {
 #if ALLOW_SHOW_PASSWORD
-    web_html_attr_escape(stored, out, out_size);
+    // A read-only session is masked whatever this flag says. The pages that
+    // render a secret are readable by both roles, so pre-filling the field
+    // with the stored value would hand the Wi-Fi key, the APRS-IS passcode,
+    // the bot token and the administrator password itself to an account whose
+    // whole point is that it cannot change them.
+    if (!web_is_readonly(req)) {
+        web_html_attr_escape(stored, out, out_size);
+        return;
+    }
 #else
+    (void)req;
+#endif
     // The mask holds no character an attribute needs escaping for, so it is
     // copied straight in. An empty secret stays empty: a field that shows the
     // mask means "something is set here", and one that never was should not
@@ -428,7 +523,6 @@ void web_password_value(const char *stored, char *out, size_t out_size) {
         return;
     strncpy(out, src, out_size - 1);
     out[out_size - 1] = 0;
-#endif
 }
 
 bool web_form_get_password(const char *body, const char *key, char *out, size_t out_size) {
@@ -449,6 +543,12 @@ bool web_form_get_password(const char *body, const char *key, char *out, size_t 
 
 void web_password_toggle(httpd_req_t *req, const char *dom_id) {
 #if ALLOW_SHOW_PASSWORD
+    // Nothing to reveal in a read-only session: web_password_value() masked
+    // the field it would act on, so the control is left out for the same
+    // reason it is left out when the flag is 0.
+    if (web_is_readonly(req))
+        return;
+
     // The id lands inside a JavaScript string literal that itself sits inside
     // an HTML attribute, where entity escaping would not help: the parser
     // hands the decoded text to the script engine. Every id the pages pass is
@@ -942,6 +1042,15 @@ void web_send_header(httpd_req_t *req, const char *title, const char *active_men
         httpd_resp_sendstr_chunk(req, line);
     }
     httpd_resp_sendstr_chunk(req, "</ul></nav><label for='navtoggle' class='nav-scrim'></label><main class='content'>");
+
+    // A read-only session is told so once per page, above everything else on
+    // it. The forms below are rendered exactly as the administrator sees them
+    // and then disabled by the script web_send_footer() appends, so without
+    // this line the page would look like an editor that has stopped
+    // responding rather than like the viewer it is.
+    if (web_is_readonly(req))
+        httpd_resp_sendstr_chunk(req, "<p class='ro-banner'>" TR_RO_BANNER "</p>");
+
     if (title) {
         httpd_resp_sendstr_chunk(req, "<h1>");
         httpd_resp_sendstr_chunk(req, title);
@@ -1026,6 +1135,42 @@ void web_send_footer(httpd_req_t *req) {
                                   "document.addEventListener('scroll',follow,true);"
                                   "window.addEventListener('resize',follow);"
                                   "})();</script>");
+
+    // Read-only chrome. This is the cosmetic half of the role boundary and
+    // nothing rests on it: every handler that writes begins with
+    // web_check_auth_admin(), so a control re-enabled from a browser console
+    // buys a 403 and nothing else. What it buys the operator is a page that
+    // says what it can do - a greyed-out form reads as "not yours to change",
+    // where a live one that silently refuses reads as a broken station.
+    //
+    // Two kinds of control stay live. The navigation checkbox carries the
+    // drawer's open/closed state on a narrow screen and is not a form field at
+    // all, and anything a page marks .ro-ok is a view control rather than a
+    // station control: the log console's Start/Stop and the dashboard's
+    // traffic pause and clear, none of which change anything outside the
+    // browser window they are pressed in.
+    //
+    // The pass is re-run on every DOM change because several pages build rows
+    // from their own script after load - the Winlink message list, the chat
+    // history - and a control that appears a second later has to arrive
+    // disabled too. Only childList mutations are watched, so the disabling
+    // this does cannot trigger itself.
+    if (web_is_readonly(req))
+        httpd_resp_sendstr_chunk(req, "<script>(function(){"
+                                      "function lock(){"
+                                      "var e=document.querySelectorAll('input,select,textarea,button');"
+                                      "for(var i=0;i<e.length;i++){"
+                                      "if(e[i].id==='navtoggle')continue;"
+                                      "if(e[i].classList&&e[i].classList.contains('ro-ok'))continue;"
+                                      "e[i].disabled=true;"
+                                      "}"
+                                      "var f=document.querySelectorAll('form');"
+                                      "for(var j=0;j<f.length;j++)f[j].onsubmit=function(){return false;};"
+                                      "}"
+                                      "lock();"
+                                      "if(window.MutationObserver)"
+                                      "new MutationObserver(lock).observe(document.body,{childList:true,subtree:true});"
+                                      "})();</script>");
 
     httpd_resp_sendstr_chunk(req, "</main></div></body></html>");
     httpd_resp_sendstr_chunk(req, NULL); // end chunked response
@@ -1207,6 +1352,17 @@ esp_err_t web_handle_css(httpd_req_t *req) {
         "border-radius:var(--radius-card);box-shadow:var(--shadow);border:1px solid var(--border);}"
         ".login-box h1{border:0;text-align:center;}"
         ".msg-ok{color:var(--green);} .msg-err{color:var(--red);}"
+        // Read-only session banner: the same amber the warning badge uses, as
+        // a full-width strip above the page so it is read before the form it
+        // describes rather than found afterwards.
+        ".ro-banner{margin:0 0 16px;padding:10px 14px;border-radius:var(--radius-card);"
+        "background:#fef3c7;color:#92400e;border:1px solid #fcd34d;font-size:.82em;font-weight:600;}"
+        // A control the read-only pass switched off still has to be legible:
+        // the browser's own disabled rendering washes the text out to the
+        // point of being unreadable on some engines, so the text colour is
+        // kept and the state is carried by the muted surface and the cursor.
+        "input:disabled,select:disabled,textarea:disabled{background:var(--bg);color:var(--sub);cursor:not-allowed;}"
+        "button:disabled,.btn:disabled{opacity:.55;cursor:not-allowed;}"
         ".badge{display:inline-block;padding:3px 10px;border-radius:var(--radius-pill);"
         "font-size:.72em;font-weight:700;letter-spacing:.02em;text-transform:uppercase;}"
         ".badge.ok{background:#d1fae5;color:var(--green);}"

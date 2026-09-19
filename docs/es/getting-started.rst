@@ -143,6 +143,10 @@ Primer arranque
    ``esp32idf_APRS``, canal 1, WPA2-PSK, máx. 4 clientes.
 #. Únete a él y navega al dispositivo (por defecto ``http://192.168.4.1/``).
 #. **Inicia sesión:** ``admin`` / ``admin`` — cámbialo en la página *System*.
+   Esa misma página lleva una segunda cuenta opcional, *Acceso web de solo
+   lectura*: ve todas las páginas pero no guarda nada, no mueve archivos y no
+   transmite nada, y solo puede iniciar y detener el visor de registro de
+   consola. Viene sin configurar de fábrica.
 #. En *Wireless*: elige **Station** o **AP+STA**, marca **Enable** en un bloque
    de Cliente Wi-Fi, introduce SSID/contraseña, Guarda.
 #. En *IGate*: pon tu **indicativo**, **SSID**, **passcode**, **host**/**puerto**
@@ -167,6 +171,8 @@ Valores de fábrica destacados
      - ``esp32idf_APRS`` / ``esp32idf_APRS``
    * - Login web
      - ``admin`` / ``admin``
+   * - Login web de solo lectura
+     - sin configurar (sin cuenta de solo lectura)
    * - Frecuencia de CPU
      - 240 MHz
    * - Reloj del sistema

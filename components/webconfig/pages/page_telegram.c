@@ -305,7 +305,7 @@ esp_err_t page_telegram_get(httpd_req_t *req) {
     web_fieldset_open(req, TR_TG_FS_BOT);
     {
         char esc[sizeof(cfg.bot_token) * 6 + 1];
-        web_password_value(cfg.bot_token, esc, sizeof(esc));
+        web_password_value(req, cfg.bot_token, esc, sizeof(esc));
         char buf[sizeof(esc) + 600];
         snprintf(buf, sizeof(buf),
                  "<label>%s</label>"
@@ -530,7 +530,7 @@ static uint8_t tg_parse_user_table(const char *body, const char *id_prefix, int 
 }
 
 esp_err_t page_telegram_post(httpd_req_t *req) {
-    if (!web_check_auth(req))
+    if (!web_check_auth_admin(req))
         return ESP_OK;
 
     // Bracketed because this buffer is a single contiguous block of several

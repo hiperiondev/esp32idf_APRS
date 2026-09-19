@@ -519,10 +519,12 @@ static void app_task(void *arg) {
     // than the radio or the APRS-IS uplink.
     web_server_start_when_heap_ready();
 
-    // Do not log the admin password: this line reaches serial console captures
-    // and any future remote-logging feature. Only the username is logged; the
-    // operator already has the configured password.
+    // Do not log either password: this line reaches serial console captures
+    // and any future remote-logging feature. Only the usernames are logged;
+    // the operator already has the configured passwords.
     ESP_LOGI(TAG, APRS_SOFTWARE_NAME " web admin ready. Login user: %s", g_config.http_username);
+    if (g_config.http_ro_username[0])
+        ESP_LOGI(TAG, "Read-only login user: %s", g_config.http_ro_username);
 
     // Initialisation is done and everything above runs in its own tasks now
     // (WiFi, web server, APRS service + its tick, the beacon scheduler, the

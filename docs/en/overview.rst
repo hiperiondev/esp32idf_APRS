@@ -122,7 +122,8 @@ Feature matrix
      - RF and/or INET
    * - Web admin (HTTP Basic auth)
      - ✅
-     - 22 sidebar pages + symbol picker, live dashboard
+     - 22 sidebar pages + symbol picker, live dashboard; administrator and
+       optional read-only accounts
    * - Live traffic log (dashboard) + last-heard feed
      - ✅
      - traffic table by JSON long-poll (``?since=<seq>``); the per-station

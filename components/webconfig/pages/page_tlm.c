@@ -759,7 +759,7 @@ static void parse_digital(const char *body, telemetry_config_t *cfg) {
 }
 
 esp_err_t page_tlm_post(httpd_req_t *req) {
-    if (!web_check_auth(req))
+    if (!web_check_auth_admin(req))
         return ESP_OK;
     // Bracketed because this buffer is a single contiguous block of several
     // kilobytes taken on the web server's task, and it stays held across the

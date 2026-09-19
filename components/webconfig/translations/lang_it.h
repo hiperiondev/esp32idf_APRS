@@ -43,6 +43,12 @@
 /** Italian text for the body of the HTTP 403 response sent when a POST fails the cross-site request check. English: "403 Forbidden: request origin could not be
  * verified". */
 #define TR_FORBIDDEN_CSRF "403 Vietato: impossibile verificare l'origine della richiesta"
+/** Italian text for the body of the HTTP 403 response sent when a read-only account requests something that would change the station. English: "403 Forbidden:
+ * this account is read-only". */
+#define TR_FORBIDDEN_READONLY "403 Vietato: questo account è di sola lettura"
+/** Italian text for the banner shown at the top of every page while the session is signed in with the read-only account. English: "Read-only session:
+ * everything on this page is shown, nothing on it can be changed.". */
+#define TR_RO_BANNER "Sessione di sola lettura: tutto in questa pagina viene mostrato, nulla può essere modificato."
 /** Italian text for the interstitial shown after a successful save, while the browser is redirected back to the form. English: "Saved. Redirecting...". */
 #define TR_SAVED_REDIRECT "Salvato. Reindirizzamento in corso..."
 /** Italian text for the warning shown when settings were accepted but could not be committed to flash. English: "Save failed: the settings could not be written
@@ -999,6 +1005,16 @@
 #define TR_SYS_WEB_ADMIN_LOGIN_NOTE                                                                                                                            \
     "Lasciare il nome utente vuoto disabilita solo la richiesta della password. Le richieste devono comunque provenire dalla stessa origine per "              \
     "qualsiasi modifica effettuata tramite questo pannello di amministrazione."
+/** Italian text for the system page legend for the read-only account credentials, rendered on the System page. English: "Web Read-Only Login". */
+#define TR_SYS_WEB_RO_LOGIN "Accesso web in sola lettura"
+/** System page note describing what the read-only account may and may not do, rendered on the System page. */
+#define TR_SYS_WEB_RO_LOGIN_NOTE                                                                                                                               \
+    "Un secondo account che vede ogni pagina ma non cambia nulla: non salva alcuna impostazione, non carica, scarica, elimina né formatta alcun file e non "   \
+    "trasmette nulla. Può solo avviare e fermare la console dei log. Lasciare vuoto il nome utente per non avere alcun account in sola lettura."
+/** Italian text for the system page label for the read-only account username, rendered on the System page. English: "Read-only username". */
+#define TR_SYS_RO_USERNAME "Nome utente di sola lettura"
+/** Italian text for the system page label for the read-only account password, rendered on the System page. English: "Read-only password". */
+#define TR_SYS_RO_PASSWORD "Password di sola lettura"
 /** Italian text for the system page label for time, rendered on the System page. English: "Time". */
 #define TR_SYS_TIME "Ora"
 /** Italian text for the system page label for sync ntp, rendered on the System page. English: "Sync time via NTP". */
@@ -2283,9 +2299,9 @@
 #define TR_H_F_FIXED_LONGITUDE "Longitudine usata quando la posizione non è presa dal ricevitore GNSS, in gradi decimali. L'est è positivo."
 /** Italian text of the contextual help for the "FX.25 (forward-error-corrected AX.25)" option. */
 #define TR_H_F_FX_25_FORWARD_ERROR_CORRECTED_AX_25                                                                                                             \
-    "Disattivato lascia entrambe le direzioni in AX.25 normale. Solo ricezione decodifica le trame FX.25 oltre all'AX.25 normale, recuperando pacchetti "     \
-    "i cui errori di bit farebbero fallire il CRC, mentre questa stazione continua a trasmettere AX.25 normale. Ricezione e trasmissione fa la stessa "       \
-    "decodifica e invia anche le trame di questa stazione come FX.25, così le stazioni compatibili ricevono la stessa correzione d'errore da questa "        \
+    "Disattivato lascia entrambe le direzioni in AX.25 normale. Solo ricezione decodifica le trame FX.25 oltre all'AX.25 normale, recuperando pacchetti "      \
+    "i cui errori di bit farebbero fallire il CRC, mentre questa stazione continua a trasmettere AX.25 normale. Ricezione e trasmissione fa la stessa "        \
+    "decodifica e invia anche le trame di questa stazione come FX.25, così le stazioni compatibili ricevono la stessa correzione d'errore da questa "          \
     "stazione."
 /** Italian text of the contextual help for the "Height (m)" option. */
 #define TR_H_F_HEIGHT_M "Altezza dell'antenna sul terreno medio, in metri, codificata nell'estensione PHG. Pesa più della potenza nella stima della copertura."
@@ -2555,6 +2571,10 @@
 #define TR_H_F_TX_TIME_SLOT_MS                                                                                                                                 \
     "Tempo di silenzio che il modem attende dopo ogni trasmissione prima di poter ritrasmettere, in millisecondi. Si somma allo slot CSMA fisso di 100 ms su " \
     "cui viene tirata la persistenza; 0 elimina l'attesa."
+/** Italian text of the contextual help for the "Read-only username" option. */
+#define TR_H_SYS_RO_USERNAME                                                                                                                                   \
+    "Nome di accesso dell'account che può guardare la stazione ma non modificarla. Lasciarlo vuoto e l'account non esiste; non può mai essere il nome "        \
+    "dell'amministratore, che ha sempre la precedenza."
 /** Italian text of the contextual help for the "Username" option. */
 #define TR_H_F_USERNAME "Nome di accesso al servizio. Per APRS-IS è il nominativo di stazione per cui è stato emesso il codice di accesso."
 /** Italian text of the contextual help for the "Callsign" option. */

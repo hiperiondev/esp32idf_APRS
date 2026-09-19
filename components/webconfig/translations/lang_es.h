@@ -43,6 +43,12 @@
 /** Spanish text for the body of the HTTP 403 response sent when a POST fails the cross-site request check. English: "403 Forbidden: request origin could not be
  * verified". */
 #define TR_FORBIDDEN_CSRF "403 Prohibido: no se pudo verificar el origen de la solicitud"
+/** Spanish text for the body of the HTTP 403 response sent when a read-only account requests something that would change the station. English: "403 Forbidden:
+ * this account is read-only". */
+#define TR_FORBIDDEN_READONLY "403 Prohibido: esta cuenta es de solo lectura"
+/** Spanish text for the banner shown at the top of every page while the session is signed in with the read-only account. English: "Read-only session:
+ * everything on this page is shown, nothing on it can be changed.". */
+#define TR_RO_BANNER "Sesión de solo lectura: todo lo de esta página se muestra, nada de ella se puede cambiar."
 /** Spanish text for the interstitial shown after a successful save, while the browser is redirected back to the form. English: "Saved. Redirecting...". */
 #define TR_SAVED_REDIRECT "Guardado. Redirigiendo..."
 /** Spanish text for the warning shown when settings were accepted but could not be committed to flash. English: "Save failed: the settings could not be written
@@ -999,6 +1005,16 @@
 #define TR_SYS_WEB_ADMIN_LOGIN_NOTE                                                                                                                            \
     "Dejar el usuario en blanco desactiva solo el aviso de contraseña. Las solicitudes deben seguir siendo del mismo origen para cualquier cambio "            \
     "realizado a través de este panel de administración."
+/** Spanish text for the system page legend for the read-only account credentials, rendered on the System page. English: "Web Read-Only Login". */
+#define TR_SYS_WEB_RO_LOGIN "Acceso web de solo lectura"
+/** System page note describing what the read-only account may and may not do, rendered on the System page. */
+#define TR_SYS_WEB_RO_LOGIN_NOTE                                                                                                                               \
+    "Una segunda cuenta que ve todas las páginas pero no cambia nada: no guarda ningún ajuste, no sube, descarga, borra ni formatea ningún archivo y no "      \
+    "transmite nada. Solo puede iniciar y detener la consola de registro. Deje el usuario en blanco para no tener cuenta de solo lectura."
+/** Spanish text for the system page label for the read-only account username, rendered on the System page. English: "Read-only username". */
+#define TR_SYS_RO_USERNAME "Usuario de solo lectura"
+/** Spanish text for the system page label for the read-only account password, rendered on the System page. English: "Read-only password". */
+#define TR_SYS_RO_PASSWORD "Contraseña de solo lectura"
 /** Spanish text for the system page label for time, rendered on the System page. English: "Time". */
 #define TR_SYS_TIME "Hora"
 /** Spanish text for the system page label for sync ntp, rendered on the System page. English: "Sync time via NTP". */
@@ -2121,7 +2137,7 @@
 /** Spanish text of the contextual help for the "ADC input self-bias" option. */
 #define TR_H_F_ADC_SELF_BIAS                                                                                                                                   \
     "Polariza el pin de audio recibido con las resistencias internas del propio pad del ADC, que es lo que necesita una entrada acoplada por "                 \
-    "capacitor sin red de polarización externa. Déjelo apagado cuando la placa de interfaz fija la polarización, porque las resistencias internas la "      \
+    "capacitor sin red de polarización externa. Déjelo apagado cuando la placa de interfaz fija la polarización, porque las resistencias internas la "         \
     "cargarían."
 /** Spanish text of the contextual help for the "Warn on receive over-range" option. */
 #define TR_H_F_RX_CLIP_WARN                                                                                                                                    \
@@ -2274,8 +2290,8 @@
 #define TR_H_F_FIXED_LONGITUDE "Longitud usada cuando la posición no se toma del receptor GNSS, en grados decimales. El este es positivo."
 /** Spanish text of the contextual help for the "FX.25 (forward-error-corrected AX.25)" option. */
 #define TR_H_F_FX_25_FORWARD_ERROR_CORRECTED_AX_25                                                                                                             \
-    "Desactivado deja ambos sentidos en AX.25 normal. Solo recepción decodifica tramas FX.25 además de AX.25 normal, recuperando paquetes cuyos errores "     \
-    "de bit harían fallar el CRC, mientras esta estación sigue transmitiendo AX.25 normal. Recepción y transmisión hace la misma decodificación y además "    \
+    "Desactivado deja ambos sentidos en AX.25 normal. Solo recepción decodifica tramas FX.25 además de AX.25 normal, recuperando paquetes cuyos errores "      \
+    "de bit harían fallar el CRC, mientras esta estación sigue transmitiendo AX.25 normal. Recepción y transmisión hace la misma decodificación y además "     \
     "envía las propias tramas de esta estación como FX.25, de modo que las estaciones compatibles reciben la misma corrección de errores de esta estación."
 /** Spanish text of the contextual help for the "Height (m)" option. */
 #define TR_H_F_HEIGHT_M                                                                                                                                        \
@@ -2535,9 +2551,13 @@
 /** Spanish text of the contextual help for the "Use live GPS fix" option. */
 #define TR_H_F_TRACKER_USE_LIVE_GPS "Lee el receptor GNSS en cada transmisión en vez de usar la posición fija, que queda como reserva cuando no hay solución."
 /** Spanish text of the contextual help for the "TX time-slot (ms)" option. */
-#define TR_H_F_TX_TIME_SLOT_MS                                                                                                                                  \
-    "Tiempo de silencio que el módem espera tras cada transmisión antes de poder volver a transmitir, en milisegundos. Se suma a la ranura CSMA fija de 100 " \
+#define TR_H_F_TX_TIME_SLOT_MS                                                                                                                                 \
+    "Tiempo de silencio que el módem espera tras cada transmisión antes de poder volver a transmitir, en milisegundos. Se suma a la ranura CSMA fija de 100 "  \
     "ms en la que se tira la persistencia; 0 elimina la espera."
+/** Spanish text of the contextual help for the "Read-only username" option. */
+#define TR_H_SYS_RO_USERNAME                                                                                                                                   \
+    "Nombre de acceso de la cuenta que puede mirar la estación pero no cambiarla. Déjelo en blanco y esa cuenta no existe; nunca puede ser el nombre del "     \
+    "administrador, que siempre prevalece."
 /** Spanish text of the contextual help for the "Username" option. */
 #define TR_H_F_USERNAME "Nombre de acceso al servicio. Para APRS-IS es el indicativo de estación para el que se emitió el código de acceso."
 /** Spanish text of the contextual help for the "Callsign" option. */

@@ -198,7 +198,7 @@ esp_err_t page_msgchat_get(httpd_req_t *req) {
 // available channels" is exactly what the existing Message-page
 // configuration already does.
 esp_err_t page_msgchat_post(httpd_req_t *req) {
-    if (!web_check_auth(req))
+    if (!web_check_auth_admin(req))
         return ESP_OK;
 
     char body[400];

@@ -42,6 +42,12 @@
 // the capture the operator is watching in another window, without any script
 // of this page ever running.
 //
+// The page is the one part of the admin UI a read-only account can operate.
+// Starting and stopping the mirror switches a copy of the station's own output
+// on and off and changes nothing else on it - no setting is written, nothing
+// is transmitted - so all three endpoints below stay on web_check_auth(),
+// where the rest of the POST routes take web_check_auth_admin().
+//
 // All three endpoints behind the page - /logs/start, /logs/stop and
 // /logs/read - are POST, not GET, for the reason set out in web_common.c:
 // each of them changes state, so each has to come under the same-origin check
@@ -156,7 +162,11 @@ esp_err_t page_logs_get(httpd_req_t *req) {
     web_send_header(req, TR_F_LOGS, "logs");
 
     web_fieldset_open(req, TR_LOGS_FS_CONSOLE);
-    web_raw(req, "<div class='log-actions'><button type='button' id='logBtn' "
+    // Marked .ro-ok so the read-only pass in web_send_footer() leaves it
+    // alone: starting and stopping the mirror is a view control, and this page
+    // is nothing but a view. Its three endpoints admit the read-only role for
+    // the same reason.
+    web_raw(req, "<div class='log-actions'><button type='button' id='logBtn' class='ro-ok' "
                  "onclick='logToggle()'>" TR_LOGS_BTN_START "</button></div>");
     web_raw(req, "<pre id='logBox' class='log-box'></pre>");
     web_fieldset_close(req);

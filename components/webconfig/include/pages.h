@@ -29,9 +29,31 @@
  *   - JSON endpoints (dashboard pollers, live previews, scans, loop test)
  *     that return @c application/json for the browser to consume with fetch().
  *
- * All of them require the caller to have already passed HTTP Basic auth
- * (web_check_auth()); web_server_start() wires that in when it registers the
- * routes. Each prototype documents the HTTP method and URI it is bound to.
+ * All of them require the caller to have already passed HTTP Basic auth;
+ * web_server_start() wires that in when it registers the routes. Each
+ * prototype documents the HTTP method and URI it is bound to.
+ *
+ * Two accounts reach these handlers (see ::web_role_t), and which check a
+ * handler opens with is what separates them:
+ *   - web_check_auth() admits both the administrator and the read-only
+ *     account. Every @c page_*_get and every live JSON feed uses it, so a
+ *     read-only operator sees the whole station.
+ *   - web_check_auth_admin() admits the administrator alone and answers a
+ *     read-only session @c 403. Every @c page_*_post uses it, and so do
+ *     page_download() and page_upload(), page_delete(), page_format(),
+ *     page_default_reset() and page_ota_update_post(): a settings save, a file
+ *     that moves in either direction, a factory reset, a firmware image, a
+ *     transmitter test and an outgoing APRS frame are all the administrator's
+ *     to make.
+ *
+ * The exception is the log console. page_logs_start_post(),
+ * page_logs_stop_post() and page_logs_read_post() are POST routes that stay on
+ * web_check_auth(), because what they switch is a mirror of the station's own
+ * output and nothing on the station changes with it.
+ *
+ * The boundary lives in these handlers and nowhere else. The pages do hide or
+ * disable what a read-only session cannot use, but that is presentation: a
+ * request that arrives anyway is refused here.
  */
 
 #ifndef PAGES_H

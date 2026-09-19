@@ -7,11 +7,12 @@ Amministrazione web
 Il componente ``webconfig`` (``components/webconfig/``) è un'amministrazione
 basata su ``esp_http_server`` costruita con un file per pagina (``pages/*.c``),
 una tabella di route (``web_server.c``) e un insieme di helper condivisi
-(``web_common.c``). Usa **autenticazione HTTP Basic** contro
-``g_config.http_username`` / ``http_password`` su ogni pagina — con l'unica
+(``web_common.c``). Usa **autenticazione HTTP Basic** su ogni pagina — con l'unica
 eccezione dello ``/style.css`` e del ``/logo.png`` statici, che non portano dati
-di configurazione o di traffico — oltre a corrispondenza URI con wildcard, uno
-stack di gestore da 20 KB e purga LRU.
+di configurazione o di traffico — contro uno di due account, uno di
+amministratore e uno facoltativo di sola lettura (vedi *Account e ruoli* più
+avanti), oltre a corrispondenza URI con wildcard, uno stack di gestore da 20 KB
+e purga LRU.
 
 Il logo a sinistra della barra superiore è un PNG incorporato nel firmware come
 array ``const`` (``components/webconfig/include/web_logo.h``) e servito da
@@ -537,6 +538,64 @@ Feed in tempo reale
   quei due numeri.
 
 Vedi :ref:`it-http-routes` per la tabella completa delle route.
+
+Account e ruoli
+===============
+
+L'amministrazione web conosce due account, entrambi configurati nella pagina
+*Sistema* ed entrambi presentati sullo stesso realm HTTP Basic:
+
+* **Amministratore** — ``g_config.http_username`` / ``http_password``, l'account
+  che la stazione ha sempre avuto (``admin`` / ``admin`` di fabbrica). Accesso
+  completo.
+* **Sola lettura** — ``g_config.http_ro_username`` / ``http_ro_password``,
+  opzionale e non impostato di fabbrica. Esiste solo finché il suo nome utente
+  non è vuoto, e non può mai essere il nome dell'amministratore: le due coppie
+  sono confrontate partendo dall'amministratore, quindi un nome di sola lettura
+  uguale a quello dell'amministratore viene scartato al salvataggio invece di
+  restare con l'aria di essere configurato.
+
+Ciò che separa i due è quello che una richiesta può *fare*, mai quello che può
+vedere. Ogni pagina e ogni flusso JSON dal vivo si disegnano identici per
+entrambi, quindi un operatore in sola lettura ha davanti l'intera stazione:
+cruscotto, registro del traffico, ogni pagina di impostazioni, il flusso delle
+ultime stazioni ascoltate, l'elenco dell'archiviazione. Ciò che una sessione in
+sola lettura non può fare è cambiare qualcosa: nessun modulo di impostazioni
+salva, nessun file viene caricato, scaricato, eliminato o formattato, nessuna
+immagine di firmware viene accettata, nessun ripristino di fabbrica viene
+eseguito, nulla viene trasmesso e nessuna prova di trasmissione attiva la radio.
+L'unica cosa che può azionare è la console dei log, il cui *Avvia* e *Ferma*
+commutano uno specchio dell'output della stazione stessa e non cambiano nulla su
+di essa.
+
+Il confine è imposto nei gestori, in ``web_common.c``:
+
+* ``web_check_auth()`` ammette entrambi gli account ed è ciò con cui inizia ogni
+  pagina ``GET`` e ogni flusso dal vivo.
+* ``web_check_auth_admin()`` ammette il solo amministratore, risponde
+  ``403 Forbidden`` a una sessione in sola lettura ed è ciò con cui inizia ogni
+  gestore che scrive: ogni salvataggio ``POST``, ``/upload``, ``/download``,
+  ``/delete``, ``/format``, ``/default``, ``/ota_update``, le prove radio e le
+  route dei messaggi in uscita. ``/logs/start``, ``/logs/stop`` e
+  ``/logs/read`` sono le eccezioni volute e restano su ``web_check_auth()``.
+
+Le pagine inoltre *sembrano* di sola lettura per quel ruolo, ma nulla si regge
+su questo. Sopra ogni pagina viene disegnato un avviso; ``web_send_footer()``
+aggiunge un piccolo script che disabilita ogni controllo di modulo tranne il
+cassetto di navigazione e quelli che una pagina marca ``.ro-ok`` (il pulsante
+della console dei log, la pausa e la pulizia del traffico nel cruscotto, tutti
+controlli di vista lato browser); e la pagina di archiviazione omette del tutto
+il modulo di caricamento, il pulsante di formattazione e le azioni di download
+ed eliminazione per file, dato che un ``<a href>`` non porta uno stato
+disabilitato che uno script possa impostare. Un controllo riabilitato dalla
+console del browser compra un ``403`` e nient'altro.
+
+I segreti sono mascherati per una sessione in sola lettura indipendentemente dal
+flag di compilazione ``ALLOW_SHOW_PASSWORD`` (``main/include/app_config.h``): le
+pagine che portano la chiave Wi-Fi, il codice APRS-IS, il token del bot e la
+password dell'amministratore stessa sono leggibili da entrambi i ruoli, e un
+account in sola lettura è quello che può guardare la configurazione, non quello
+che può leggerne le chiavi.
 
 Politica di blocco del login
 =============================

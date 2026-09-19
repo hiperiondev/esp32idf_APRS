@@ -117,7 +117,7 @@ esp_err_t page_winlink_get(httpd_req_t *req) {
     // quoted back.
     {
         char esc[sizeof(g_config.wl_password) * 6 + 1];
-        web_password_value(g_config.wl_password, esc, sizeof(esc));
+        web_password_value(req, g_config.wl_password, esc, sizeof(esc));
         char field[520];
         snprintf(field, sizeof(field),
                  "<label>" TR_WL_PASSWORD "</label>"
@@ -313,7 +313,7 @@ esp_err_t page_winlink_get(httpd_req_t *req) {
 }
 
 esp_err_t page_winlink_post(httpd_req_t *req) {
-    if (!web_check_auth(req))
+    if (!web_check_auth_admin(req))
         return ESP_OK;
 
     char body[700];
@@ -371,7 +371,7 @@ esp_err_t page_winlink_post(httpd_req_t *req) {
 }
 
 esp_err_t page_winlink_cmd_post(httpd_req_t *req) {
-    if (!web_check_auth(req))
+    if (!web_check_auth_admin(req))
         return ESP_OK;
 
     char body[400];

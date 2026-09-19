@@ -5,9 +5,11 @@ Rutas HTTP
 ==========
 
 La administración web registra las siguientes rutas
-(``components/webconfig/web_server.c``). Cada manejador llama a
-``web_check_auth()`` y por lo tanto requiere autenticación HTTP Basic todo
-manejador que sirva datos de configuración o de tráfico. Tres rutas no lo hacen,
+(``components/webconfig/web_server.c``). Todo manejador que sirva datos de configuración o de tráfico requiere
+autenticación HTTP Basic: el que solo lee llama a ``web_check_auth()``, que
+admite las dos cuentas configuradas, y el que escribe llama a
+``web_check_auth_admin()``, que admite únicamente al administrador y responde
+``403 Forbidden`` a una sesión de solo lectura. Tres rutas no lo hacen,
 y ninguna expone nada: ``GET /style.css`` es una hoja de estilos estática que no
 lleva datos de configuración ni de tráfico, y el navegador la pide mientras
 dibuja el propio desafío de login; ``GET /logo.png`` es la imagen de marca
@@ -15,6 +17,14 @@ embebida en el firmware, igualmente libre de datos de la estación; ``GET
 /logout`` responde a toda petición con el ``401`` que hace al navegador descartar
 sus credenciales guardadas, así que no hay nada que una comprobación de
 autenticación pueda proteger.
+
+Las dos cuentas se describen en *Cuentas y roles*, en :ref:`es-web-admin`. En la
+tabla siguiente, toda ruta ``POST`` requiere la cuenta de administrador, igual
+que ``GET /download`` y las acciones sobre archivos de la página de
+almacenamiento. Las tres excepciones son ``/logs/start``, ``/logs/stop`` y
+``/logs/read``: son rutas ``POST`` que una sesión de solo lectura sí puede usar,
+porque lo que conmutan es un espejo de la salida de consola de la propia
+estación y nada de la estación cambia con ello.
 
 .. list-table::
    :header-rows: 1

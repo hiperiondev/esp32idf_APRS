@@ -42,6 +42,10 @@
 #define TR_UNAUTHORIZED "401 Unauthorized"
 /** Body of the HTTP 403 response sent when a POST fails the cross-site request check. */
 #define TR_FORBIDDEN_CSRF "403 Forbidden: request origin could not be verified"
+/** Body of the HTTP 403 response sent when a read-only account requests something that would change the station. */
+#define TR_FORBIDDEN_READONLY "403 Forbidden: this account is read-only"
+/** Banner shown at the top of every page while the session is signed in with the read-only account. */
+#define TR_RO_BANNER "Read-only session: everything on this page is shown, nothing on it can be changed."
 /** Interstitial shown after a successful save, while the browser is redirected back to the form. */
 #define TR_SAVED_REDIRECT "Saved. Redirecting..."
 /** Warning shown when settings were accepted but could not be committed to flash. */
@@ -936,6 +940,16 @@
 #define TR_SYS_WEB_ADMIN_LOGIN_NOTE                                                                                                                            \
     "Leaving the username blank disables the password prompt only. Same-origin requests are still required for every change made through this admin "          \
     "interface."
+/** System page legend for the read-only account credentials, rendered on the System page. */
+#define TR_SYS_WEB_RO_LOGIN "Web Read-Only Login"
+/** System page note describing what the read-only account may and may not do, rendered on the System page. */
+#define TR_SYS_WEB_RO_LOGIN_NOTE                                                                                                                               \
+    "A second account that sees every page but changes nothing: no setting is saved, no file is uploaded, downloaded, deleted or formatted, and nothing is "   \
+    "transmitted. Only the log console can be started and stopped. Leave the username blank to have no read-only account at all."
+/** System page label for the read-only account username, rendered on the System page. */
+#define TR_SYS_RO_USERNAME "Read-only username"
+/** System page label for the read-only account password, rendered on the System page. */
+#define TR_SYS_RO_PASSWORD "Read-only password"
 /** System page label for time, rendered on the System page. */
 #define TR_SYS_TIME "Time"
 /** System page label for sync ntp, rendered on the System page. */
@@ -2173,7 +2187,7 @@
 /** Contextual help for the "FX.25 (forward-error-corrected AX.25)" option. */
 #define TR_H_F_FX_25_FORWARD_ERROR_CORRECTED_AX_25                                                                                                             \
     "Off leaves both directions plain AX.25. Receive only decodes FX.25 frames in addition to plain AX.25, recovering packets whose bit errors would "         \
-    "otherwise fail the CRC, while this station keeps transmitting plain AX.25. Receive and transmit does the same decoding and also sends this station's "   \
+    "otherwise fail the CRC, while this station keeps transmitting plain AX.25. Receive and transmit does the same decoding and also sends this station's "    \
     "own frames as FX.25, so stations that support it get the same error correction from this station."
 /** Contextual help for the "Height (m)" option. */
 #define TR_H_F_HEIGHT_M "Antenna height above average terrain, in metres, encoded in the PHG extension. It weighs more than power in the coverage estimate."
@@ -2403,6 +2417,10 @@
 #define TR_H_F_TX_TIME_SLOT_MS                                                                                                                                 \
     "Quiet time the modem waits after each transmission before it may key up again, in milliseconds. It is added to the fixed 100 ms CSMA slot the "           \
     "persistence is rolled on; 0 removes the wait entirely."
+/** Contextual help for the "Read-only username" option. */
+#define TR_H_SYS_RO_USERNAME                                                                                                                                   \
+    "Login name of the account that may look at the station but not change it. Leave it blank and no such account exists; it can never be the administrator "  \
+    "name, which always wins."
 /** Contextual help for the "Username" option. */
 #define TR_H_F_USERNAME "Login name for the service. For APRS-IS it is the station callsign that the passcode was issued for."
 /** Contextual help for the "Callsign" option. */

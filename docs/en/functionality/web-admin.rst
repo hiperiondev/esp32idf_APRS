@@ -7,9 +7,10 @@ Web Admin
 The ``webconfig`` component (``components/webconfig/``) is an ``esp_http_server``
 admin built from one file per page (``pages/*.c``), a route table
 (``web_server.c``) and a set of shared helpers (``web_common.c``). It uses
-**HTTP Basic auth** against ``g_config.http_username`` / ``http_password`` on
-every page — the exceptions being the static ``/style.css`` and ``/logo.png``,
-which carry no configuration or traffic data — plus wildcard URI matching, a
+**HTTP Basic auth** on every page — the exceptions being the static
+``/style.css`` and ``/logo.png``, which carry no configuration or traffic
+data — against either of two accounts, an administrator one and an optional
+read-only one (see *Accounts and roles* below), plus wildcard URI matching, a
 20 KB handler stack and LRU purge.
 
 The logo at the left of the top bar is a PNG embedded in the firmware as a
@@ -479,6 +480,60 @@ Live feeds
   wants only those two numbers.
 
 See :ref:`en-http-routes` for the full route table.
+
+Accounts and roles
+==================
+
+The admin UI knows two accounts, both configured on the *System* page and both
+presented over the same HTTP Basic realm:
+
+* **Administrator** — ``g_config.http_username`` / ``http_password``, the
+  account the station has always had (``admin`` / ``admin`` out of the box).
+  Full access.
+* **Read-only** — ``g_config.http_ro_username`` / ``http_ro_password``,
+  optional and unset out of the box. It exists only while its username is
+  non-empty, and it can never be the administrator name: the two pairs are
+  matched administrator-first, so a read-only username equal to the
+  administrator one is dropped on save rather than left looking configured.
+
+What separates the two is what a request may *do*, never what it may see. Every
+page and every live JSON feed renders identically for both, so a read-only
+operator has the whole station in front of them — dashboard, traffic log,
+every settings page, the last-heard feed, the storage listing. What a read-only
+session cannot do is change anything: no settings form saves, no file is
+uploaded, downloaded, deleted or formatted, no firmware image is accepted, no
+factory reset runs, nothing is transmitted and no transmitter test keys the
+radio. The one thing it may operate is the log console, whose *Start* and
+*Stop* switch a mirror of the station's own output and change nothing on the
+station itself.
+
+The boundary is enforced in the handlers, in ``web_common.c``:
+
+* ``web_check_auth()`` admits either account and is what every ``GET`` page and
+  live feed opens with.
+* ``web_check_auth_admin()`` admits the administrator alone, answering a
+  read-only session ``403 Forbidden``, and is what every writing handler opens
+  with — every ``POST`` save, ``/upload``, ``/download``, ``/delete``,
+  ``/format``, ``/default``, ``/ota_update``, the radio tests and the outgoing
+  message routes. ``/logs/start``, ``/logs/stop`` and ``/logs/read`` are the
+  deliberate exceptions and stay on ``web_check_auth()``.
+
+The pages also *look* read-only for that role, but nothing rests on it. A
+banner is rendered above every page; ``web_send_footer()`` appends a small
+script that disables every form control except the navigation drawer and the
+controls a page marks ``.ro-ok`` (the log console button, the dashboard's
+traffic pause and clear — all browser-side view controls); and the Storage page
+leaves out the upload form, the format button and the per-file download and
+delete actions entirely, since an ``<a href>`` carries no disabled state for a
+script to set. A control re-enabled from a browser console buys a ``403`` and
+nothing else.
+
+Secrets are masked for a read-only session regardless of the
+``ALLOW_SHOW_PASSWORD`` build flag (``main/include/app_config.h``): the pages
+carrying the Wi-Fi key, the APRS-IS passcode, the bot token and the
+administrator password itself are readable by both roles, and a read-only
+account is one that may look at the configuration, not one that may read the
+keys out of it.
 
 Login lockout policy
 =====================
