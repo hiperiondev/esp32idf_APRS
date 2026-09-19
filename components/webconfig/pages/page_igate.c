@@ -126,7 +126,7 @@ esp_err_t page_igate_get(httpd_req_t *req) {
     web_fieldset_open(req, TR_F_APRS_IS_SERVER);
     {
         char esc_pc[sizeof(g_config.aprs_passcode) * 6 + 1];
-        web_html_attr_escape(g_config.aprs_passcode, esc_pc, sizeof(esc_pc));
+        web_password_value(g_config.aprs_passcode, esc_pc, sizeof(esc_pc));
         char hlp[WEB_HELP_MARKUP_MAX];
         web_help_markup(hlp, sizeof(hlp), web_help_for_label(TR_F_APRS_PASSCODE));
         char pcbuf[WEB_HELP_MARKUP_MAX + 560];
@@ -135,10 +135,10 @@ esp_err_t page_igate_get(httpd_req_t *req) {
                  "<div style='display:flex;gap:6px;align-items:center;flex-wrap:wrap'>"
                  "<input type='password' name='igatePasscode' id='igatePasscode' value='%s' maxlength='5' style='flex:1'>"
                  "<button type='button' class='secondary' onclick='aprsAutoGenPasscode()'>%s</button>"
-                 "</div>"
-                 "<label class='pwd-show'><input type='checkbox' onclick=\"togglePwd('igatePasscode',this)\"> " TR_SHOW_PASSWORD "</label>",
+                 "</div>",
                  TR_F_APRS_PASSCODE, hlp, esc_pc, TR_BTN_AUTO_GENERATE);
         web_raw(req, pcbuf);
+        web_password_toggle(req, "igatePasscode");
     }
     web_field_text(req, TR_F_FILTER, "igateFilter", g_config.aprs_filter, (int)(sizeof(g_config.aprs_filter) - 1));
     if (s_filterWarning[0]) {
@@ -680,7 +680,7 @@ esp_err_t page_igate_post(httpd_req_t *req) {
         web_form_get_call(body, "igateMycall", g_config.aprs_mycall, sizeof(g_config.aprs_mycall));
     }
     g_config.aprs_ssid = web_form_get_ssid(body, "igateSSID", g_config.aprs_ssid);
-    web_form_get(body, "igatePasscode", g_config.aprs_passcode, sizeof(g_config.aprs_passcode));
+    web_form_get_password(body, "igatePasscode", g_config.aprs_passcode, sizeof(g_config.aprs_passcode));
     // APRS-IS failover server slots - clamp each port defensively against a
     // malformed POST. Port 0 fits in the uint16_t field but is not
     // connectable: getaddrinfo() accepts the service string "0" and

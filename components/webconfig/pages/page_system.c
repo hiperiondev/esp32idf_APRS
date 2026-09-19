@@ -76,19 +76,21 @@ esp_err_t page_system_get(httpd_req_t *req) {
 
     // WEB ADMIN LOGIN --------------------------------------------------------
     // web_field_text() escapes and bounds the value in its own small internal
-    // buffer, so neither field needs a caller-side escape buffer here.
+    // buffer, so the username needs no caller-side escape buffer here. The
+    // password is written by hand because it is a secret: web_password_value()
+    // decides whether the field carries it or only a placeholder.
     web_fieldset_open(req, TR_SYS_WEB_ADMIN_LOGIN);
     web_field_text(req, TR_F_USERNAME, "httpUser", g_config.http_username, 31);
     {
         char buf[600];
         char esc_pass[64 * 6 + 1];
-        web_html_attr_escape(g_config.http_password, esc_pass, sizeof(esc_pass));
+        web_password_value(g_config.http_password, esc_pass, sizeof(esc_pass));
         snprintf(buf, sizeof(buf), "<label>" TR_F_PASSWORD "</label><input type='password' name='httpPass' id='pwd_httpPass' value='%s' maxlength='63'>",
                  esc_pass);
         httpd_resp_sendstr_chunk(req, buf);
     }
-    httpd_resp_sendstr_chunk(req, "<label class='pwd-show'><input type='checkbox' onclick=\"togglePwd('pwd_httpPass',this)\"> " TR_SHOW_PASSWORD "</label>"
-                                  "<p><small>" TR_SYS_WEB_ADMIN_LOGIN_NOTE "</small></p>");
+    web_password_toggle(req, "pwd_httpPass");
+    httpd_resp_sendstr_chunk(req, "<p><small>" TR_SYS_WEB_ADMIN_LOGIN_NOTE "</small></p>");
     web_fieldset_close(req);
 
     // TIME -------------------------------------------------------------------
@@ -136,7 +138,7 @@ esp_err_t page_system_post(httpd_req_t *req) {
 
     app_config_lock();
     web_form_get(body, "httpUser", g_config.http_username, sizeof(g_config.http_username));
-    web_form_get(body, "httpPass", g_config.http_password, sizeof(g_config.http_password));
+    web_form_get_password(body, "httpPass", g_config.http_password, sizeof(g_config.http_password));
     g_config.synctime = web_form_get_bool(body, "syncTime");
     web_form_get(body, "ntpHost0", g_config.ntp_host[0], sizeof(g_config.ntp_host[0]));
     web_form_get(body, "ntpHost1", g_config.ntp_host[1], sizeof(g_config.ntp_host[1]));

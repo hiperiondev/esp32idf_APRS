@@ -281,8 +281,9 @@ The pages
      - *Enable Telegram Bot* switches the whole subsystem; with it off nothing
        connects to Telegram and no polling task runs, and moving it takes
        effect immediately without a reboot. Below it the bot token (rendered as
-       a password field, with the same show/hide control the IGate passcode
-       uses) and the administrator's numeric identifier, which is carried as a
+       a masked field, handled like every other stored secret - see
+       :ref:`en-config-allow-show-password`) and the administrator's numeric
+       identifier, which is carried as a
        64-bit value and posted as text because today's Telegram user
        identifiers no longer fit in 32 bits. Below that, the Mini App address
        and the fixed-size authorized-user and allowed-group-chat tables (up to
@@ -313,10 +314,11 @@ The pages
        the password a login challenge is answered from, and the switches that
        decide whether a session opens by itself, how long it may live, whether
        its traffic is kept off the air and whether the beacon comment announces
-       this station as a Winlink reader. The password is rendered as a password
-       field with the same show/hide control the IGate passcode uses, and is
-       never transmitted: a challenge names three character positions and only
-       those characters are sent back. *Gateway for Local Stations* holds the
+       this station as a Winlink reader. The password is rendered as a masked
+       field, handled like every other stored secret (see
+       :ref:`en-config-allow-show-password`), and is never transmitted: a
+       challenge names three character positions and only those characters are
+       sent back. *Gateway for Local Stations* holds the
        single setting of the other role, relaying a neighbour's own session,
        together with a read-only view of the three IGate settings that decide
        the same question, so all four inputs to the message gate can be seen at

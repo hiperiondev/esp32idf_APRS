@@ -310,8 +310,8 @@ Las páginas
      - *Habilitar bot de Telegram* gobierna todo el subsistema; con él apagado
        no se conecta nada a Telegram ni corre ninguna tarea de sondeo, y
        moverlo tiene efecto inmediato, sin reiniciar. Debajo, el token del bot
-       (como campo de contraseña, con el mismo control de mostrar/ocultar que
-       usa el passcode del IGate) y el identificador numérico del
+       (como campo enmascarado, tratado como todo secreto almacenado; véase
+       :ref:`es-config-allow-show-password`) y el identificador numérico del
        administrador, que se lleva como valor de 64 bits y se envía como texto
        porque los identificadores de usuario de Telegram ya no entran en 32
        bits. Debajo, la dirección de la Mini App y las tablas de tamaño fijo
@@ -346,10 +346,10 @@ Las páginas
        desafío de acceso, y los interruptores que deciden si una sesión se abre
        sola, cuánto puede durar, si su tráfico se mantiene fuera del aire y si
        el comentario de la baliza anuncia a esta estación como lectora de
-       Winlink. La contraseña se muestra como campo de contraseña con el mismo
-       control de mostrar/ocultar que usa el passcode del IGate, y nunca se
-       transmite: un desafío nombra tres posiciones de caracteres y solo esos
-       caracteres se devuelven. *Pasarela para estaciones locales* contiene el
+       Winlink. La contraseña se muestra como campo enmascarado, tratada como
+       todo secreto almacenado (véase :ref:`es-config-allow-show-password`), y
+       nunca se transmite: un desafío nombra tres posiciones de caracteres y
+       solo esos caracteres se devuelven. *Pasarela para estaciones locales* contiene el
        único ajuste del otro rol, retransmitir la sesión propia de un vecino,
        junto con una vista de solo lectura de los tres ajustes del IGate que
        deciden la misma cuestión, para poder ver de un vistazo las cuatro

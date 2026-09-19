@@ -298,21 +298,21 @@ esp_err_t page_telegram_get(httpd_req_t *req) {
     web_fieldset_close(req);
 
     // CREDENTIALS ---------------------------------------------------------
-    // The token is rendered as a password field with the same show/hide
-    // control the IGate passcode and the admin password use: it is a bearer
-    // credential, and anyone who reads it off a screen can send messages as
-    // this bot until it is revoked.
+    // The token is rendered as a password field, and is handled by the same
+    // secret helpers the IGate passcode and the admin password use: it is a
+    // bearer credential, and anyone who reads it off a screen can send
+    // messages as this bot until it is revoked.
     web_fieldset_open(req, TR_TG_FS_BOT);
     {
         char esc[sizeof(cfg.bot_token) * 6 + 1];
-        web_html_attr_escape(cfg.bot_token, esc, sizeof(esc));
+        web_password_value(cfg.bot_token, esc, sizeof(esc));
         char buf[sizeof(esc) + 600];
         snprintf(buf, sizeof(buf),
                  "<label>%s</label>"
-                 "<input type='password' name='tgToken' id='tgToken' value='%s' maxlength='%d'>"
-                 "<label class='pwd-show'><input type='checkbox' onclick=\"togglePwd('tgToken',this)\"> " TR_SHOW_PASSWORD "</label>",
+                 "<input type='password' name='tgToken' id='tgToken' value='%s' maxlength='%d'>",
                  TR_TG_TOKEN, esc, (int)(sizeof(cfg.bot_token) - 1));
         web_raw(req, buf);
+        web_password_toggle(req, "tgToken");
     }
     // Rendered as text, not as a number field: Telegram identifiers are 64-bit
     // and today's user identifiers already exceed the range of the long this
@@ -577,7 +577,7 @@ esp_err_t page_telegram_post(httpd_req_t *req) {
         cfg.bulletin_window_s = (uint32_t)window;
     }
 
-    web_form_get(body, "tgToken", cfg.bot_token, sizeof(cfg.bot_token));
+    web_form_get_password(body, "tgToken", cfg.bot_token, sizeof(cfg.bot_token));
 
     // strtoll, not the int helper: a Telegram user identifier does not fit in
     // the long that helper returns on this target. A field left empty or

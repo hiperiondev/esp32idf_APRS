@@ -102,6 +102,33 @@
 #define ENABLE_WIRELESS       /**< Wireless page. */
 #define ENABLE_FILE_STORAGE   /**< File Storage page. */
 #define ENABLE_ABOUT_FIRMWARE /**< About / Firmware page. */
+
+/**
+ * @brief Whether the web admin may hand a stored secret back to the browser in
+ * clear text.
+ *
+ * Unlike the @c ENABLE_* switches above this one is a policy flag and is
+ * spelled as a value, so it is set by editing the number rather than by
+ * commenting the line out. It is @c 0 by default, which is the private
+ * setting:
+ *
+ * - @c 0 - no secret ever leaves the device through an admin page. Every
+ *   password, passcode and bearer token field is rendered holding the fixed
+ *   @c WEB_PASSWORD_MASK placeholder when one is stored (and empty when none
+ *   is), and the "Show password" checkbox is not emitted at all, neither on
+ *   the pages nor as the script behind it. A field posted back still carrying
+ *   the placeholder means "leave this secret alone"; any other value - the
+ *   empty string included - replaces it, so a secret is changed and cleared
+ *   exactly as it always was.
+ * - @c 1 - the historical behaviour: fields are pre-filled with the stored
+ *   secret and each carries a "Show password" checkbox that turns the masked
+ *   input into a plain-text one.
+ *
+ * The one value this costs at @c 0 is the literal @c WEB_PASSWORD_MASK string
+ * itself, which cannot be stored as a secret because it is indistinguishable
+ * from an untouched field.
+ */
+#define ALLOW_SHOW_PASSWORD 0
 /** @} */
 
 /**

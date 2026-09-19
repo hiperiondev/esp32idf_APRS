@@ -166,6 +166,50 @@ There is **no** ``ENABLE_SENSORS`` switch: the ``sensors_local`` framework has n
 compile-time disable and is always built in (its individual drivers are gated by
 their own ``CONFIG_SENSORS_LOCAL_*_DRIVER`` Kconfig options).
 
+.. _en-config-allow-show-password:
+
+Revealing stored secrets: ``ALLOW_SHOW_PASSWORD``
+=================================================
+
+The last entry of the same block is not a page selector but a policy flag, and
+so is spelled as a value rather than set by commenting the line out:
+
+.. code-block:: c
+
+   #define ALLOW_SHOW_PASSWORD 0
+
+It governs every secret the admin UI edits — the web admin password, the AP and
+client Wi-Fi passphrases, the APRS-IS passcode, the Winlink password and the
+Telegram bot token — through the three helpers in ``web_common``:
+``web_password_value()`` writes the field, ``web_form_get_password()`` reads it
+back, and ``web_password_toggle()`` writes the *Show password* checkbox.
+
+At ``1`` the pages behave as they always have: each field arrives pre-filled
+with the stored secret and carries a *Show password* checkbox that turns the
+masked input into a plain-text one.
+
+At ``0`` — the default — no secret ever leaves the device through an admin
+page. A field that has a secret behind it is rendered holding the fixed
+``WEB_PASSWORD_MASK`` placeholder (``*****``); one that does not is rendered
+empty, so an unset secret still reads as unset. The checkbox is not emitted at
+all, and neither is the ``togglePwd()`` script in ``web_send_footer()`` nor the
+``.pwd-show`` rule in the stylesheet, so a build compiled this way ships none of
+the three.
+
+Editing is unchanged. On ``POST`` a field still carrying the placeholder means
+"leave this secret alone" and the stored value is kept untouched while the rest
+of the page saves normally; any other value replaces it, the empty string
+included, so a secret is changed and cleared exactly as before. The one thing
+this costs is the literal ``*****``, which cannot be stored as a secret while
+the flag is ``0`` because it is indistinguishable from an untouched field.
+
+A detail worth knowing when reading the Wireless page: its passphrase fields
+carry ``minlength='8'``, which is shorter than neither placeholder nor a real
+passphrase by accident — ``minlength`` binds only once the field has been
+edited by hand, so an untouched form submits its five-character placeholder
+without complaint while a passphrase actually typed in is still held to the
+full WPA2 length.
+
 Path presets and bitmasks
 =========================
 

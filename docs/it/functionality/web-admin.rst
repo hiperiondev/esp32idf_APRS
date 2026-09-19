@@ -318,8 +318,8 @@ Le pagine
      - *Abilita bot Telegram* governa l'intero sottosistema; con esso spento
        nulla si collega a Telegram e nessuna attività di interrogazione viene
        eseguita, e spostarlo ha effetto immediato senza riavviare. Sotto, il
-       token del bot (come campo password, con lo stesso controllo
-       mostra/nascondi usato dal passcode dell'IGate) e l'identificativo
+       token del bot (come campo mascherato, trattato come ogni altro segreto
+       memorizzato; si veda :ref:`it-config-allow-show-password`) e l'identificativo
        numerico dell'amministratore, portato come valore a 64 bit e inviato
        come testo perché gli identificativi utente di Telegram non stanno più
        in 32 bit. Sotto, l'indirizzo della Mini App e le tabelle a dimensione
@@ -355,10 +355,10 @@ Le pagine
        una sfida di accesso, e gli interruttori che decidono se una sessione si
        apre da sé, quanto può durare, se il suo traffico resta fuori dall'aria
        e se il commento del beacon annuncia questa stazione come lettrice
-       Winlink. La password è resa come campo password con lo stesso comando
-       mostra/nascondi usato dal passcode dell'IGate, e non viene mai
-       trasmessa: una sfida indica tre posizioni di caratteri e solo quei
-       caratteri vengono rimandati indietro. *Gateway per le stazioni locali*
+       Winlink. La password è resa come campo mascherato, trattata come ogni
+       altro segreto memorizzato (si veda :ref:`it-config-allow-show-password`),
+       e non viene mai trasmessa: una sfida indica tre posizioni di caratteri e
+       solo quei caratteri vengono rimandati indietro. *Gateway per le stazioni locali*
        contiene l'unica impostazione dell'altro ruolo, inoltrare la sessione
        propria di un vicino, insieme a una vista in sola lettura delle tre
        impostazioni dell'IGate che decidono la stessa questione, così da vedere

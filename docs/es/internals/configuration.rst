@@ -179,6 +179,52 @@ deshabilitación en compilación y siempre se compila (sus controladores
 individuales están condicionados por sus propias opciones Kconfig
 ``CONFIG_SENSORS_LOCAL_*_DRIVER``).
 
+.. _es-config-allow-show-password:
+
+Revelar secretos almacenados: ``ALLOW_SHOW_PASSWORD``
+=====================================================
+
+La última entrada del mismo bloque no es un selector de página sino una bandera
+de política, y por eso se escribe como un valor en lugar de ajustarse comentando
+la línea:
+
+.. code-block:: c
+
+   #define ALLOW_SHOW_PASSWORD 0
+
+Gobierna todos los secretos que edita la interfaz de administración — la
+contraseña del admin web, las contraseñas WiFi del AP y de los clientes, el
+passcode APRS-IS, la contraseña de Winlink y el token del bot de Telegram — a
+través de los tres ayudantes de ``web_common``: ``web_password_value()`` escribe
+el campo, ``web_form_get_password()`` lo lee de vuelta y
+``web_password_toggle()`` escribe la casilla *Mostrar contraseña*.
+
+En ``1`` las páginas se comportan como siempre: cada campo llega precargado con
+el secreto almacenado y lleva una casilla *Mostrar contraseña* que convierte la
+entrada enmascarada en una de texto plano.
+
+En ``0`` — el valor por omisión — ningún secreto sale nunca del dispositivo por
+una página de administración. Un campo que tiene un secreto detrás se muestra
+con el marcador fijo ``WEB_PASSWORD_MASK`` (``*****``); uno que no lo tiene se
+muestra vacío, de modo que un secreto sin definir sigue leyéndose como tal. La
+casilla no se emite en absoluto, y tampoco el script ``togglePwd()`` de
+``web_send_footer()`` ni la regla ``.pwd-show`` de la hoja de estilos, así que
+una compilación hecha de esta manera no lleva ninguna de las tres.
+
+La edición no cambia. En el ``POST``, un campo que todavía lleva el marcador
+significa «deja este secreto en paz» y el valor almacenado se conserva intacto
+mientras el resto de la página se guarda con normalidad; cualquier otro valor lo
+reemplaza, incluida la cadena vacía, así que un secreto se cambia y se borra
+exactamente como antes. Lo único que esto cuesta es el literal ``*****``, que no
+puede almacenarse como secreto mientras la bandera esté en ``0`` porque es
+indistinguible de un campo sin tocar.
+
+Un detalle útil al leer la página Wireless: sus campos de contraseña llevan
+``minlength='8'``, más largo que el marcador, y no por descuido — ``minlength``
+solo rige una vez que el campo se editó a mano, así que un formulario sin tocar
+envía su marcador de cinco caracteres sin protestar mientras que una contraseña
+realmente escrita sigue sujeta a la longitud WPA2 completa.
+
 Presets de ruta y máscaras de bits
 ==================================
 

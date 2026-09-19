@@ -178,6 +178,52 @@ rimuove la sua voce di barra laterale e la sua pagina dall'immagine:
 disabilitazione in compilazione ed è sempre compilato (i suoi singoli driver sono
 condizionati dalle proprie opzioni Kconfig ``CONFIG_SENSORS_LOCAL_*_DRIVER``).
 
+.. _it-config-allow-show-password:
+
+Rivelare i segreti memorizzati: ``ALLOW_SHOW_PASSWORD``
+=======================================================
+
+L'ultima voce dello stesso blocco non è un selettore di pagina ma un flag di
+politica, e per questo è scritta come valore invece che impostata commentando la
+riga:
+
+.. code-block:: c
+
+   #define ALLOW_SHOW_PASSWORD 0
+
+Governa ogni segreto che l'interfaccia di amministrazione modifica — la password
+dell'admin web, le passphrase WiFi dell'AP e dei client, il passcode APRS-IS, la
+password Winlink e il token del bot Telegram — attraverso i tre helper di
+``web_common``: ``web_password_value()`` scrive il campo,
+``web_form_get_password()`` lo rilegge e ``web_password_toggle()`` scrive la
+casella *Mostra password*.
+
+A ``1`` le pagine si comportano come hanno sempre fatto: ogni campo arriva
+precompilato con il segreto memorizzato e porta una casella *Mostra password*
+che trasforma l'input mascherato in uno a testo semplice.
+
+A ``0`` — il valore predefinito — nessun segreto lascia mai il dispositivo
+attraverso una pagina di amministrazione. Un campo che ha un segreto dietro di
+sé è reso con il segnaposto fisso ``WEB_PASSWORD_MASK`` (``*****``); uno che non
+ce l'ha è reso vuoto, così un segreto non impostato si legge ancora come tale.
+La casella non viene emessa affatto, e nemmeno lo script ``togglePwd()`` di
+``web_send_footer()`` né la regola ``.pwd-show`` del foglio di stile, quindi una
+build compilata in questo modo non porta nessuna delle tre.
+
+La modifica non cambia. Nel ``POST`` un campo che porta ancora il segnaposto
+significa «lascia stare questo segreto» e il valore memorizzato è conservato
+intatto mentre il resto della pagina si salva normalmente; qualsiasi altro
+valore lo sostituisce, stringa vuota compresa, così un segreto si cambia e si
+cancella esattamente come prima. L'unica cosa che questo costa è il letterale
+``*****``, che non può essere memorizzato come segreto finché il flag è ``0``
+perché è indistinguibile da un campo non toccato.
+
+Un dettaglio utile leggendo la pagina Wireless: i suoi campi passphrase portano
+``minlength='8'``, più lungo del segnaposto, e non per distrazione —
+``minlength`` vale solo una volta che il campo è stato modificato a mano, così un
+modulo non toccato invia il suo segnaposto di cinque caratteri senza protestare
+mentre una passphrase davvero digitata resta soggetta all'intera lunghezza WPA2.
+
 Preset di percorso e maschere di bit
 ====================================
 

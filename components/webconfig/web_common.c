@@ -415,6 +415,63 @@ bool web_form_get(const char *body, const char *key, char *out, size_t out_size)
     return false;
 }
 
+void web_password_value(const char *stored, char *out, size_t out_size) {
+#if ALLOW_SHOW_PASSWORD
+    web_html_attr_escape(stored, out, out_size);
+#else
+    // The mask holds no character an attribute needs escaping for, so it is
+    // copied straight in. An empty secret stays empty: a field that shows the
+    // mask means "something is set here", and one that never was should not
+    // claim otherwise.
+    const char *src = (stored && stored[0]) ? WEB_PASSWORD_MASK : "";
+    if (out_size == 0)
+        return;
+    strncpy(out, src, out_size - 1);
+    out[out_size - 1] = 0;
+#endif
+}
+
+bool web_form_get_password(const char *body, const char *key, char *out, size_t out_size) {
+#if ALLOW_SHOW_PASSWORD
+    return web_form_get(body, key, out, out_size);
+#else
+    // Read into a probe just wide enough to tell the mask apart from anything
+    // else: a longer value is truncated here and so can never compare equal,
+    // and a shorter one differs on its own. Only when it is not the mask is
+    // the field read again into the caller's buffer, which leaves an
+    // untouched form saving every other field without disturbing the secret.
+    char probe[sizeof(WEB_PASSWORD_MASK) + 1];
+    if (web_form_get(body, key, probe, sizeof(probe)) && strcmp(probe, WEB_PASSWORD_MASK) == 0)
+        return true;
+    return web_form_get(body, key, out, out_size);
+#endif
+}
+
+void web_password_toggle(httpd_req_t *req, const char *dom_id) {
+#if ALLOW_SHOW_PASSWORD
+    // The id lands inside a JavaScript string literal that itself sits inside
+    // an HTML attribute, where entity escaping would not help: the parser
+    // hands the decoded text to the script engine. Every id the pages pass is
+    // a plain identifier, so the safe move is to keep only the characters an
+    // identifier is made of and drop anything else rather than try to quote
+    // it.
+    char id[40];
+    size_t n = 0;
+    for (const char *p = dom_id; *p && n < sizeof(id) - 1; p++) {
+        if (isalnum((unsigned char)*p) || *p == '_' || *p == '-')
+            id[n++] = *p;
+    }
+    id[n] = 0;
+
+    char buf[sizeof(id) + sizeof(TR_SHOW_PASSWORD) + 96];
+    snprintf(buf, sizeof(buf), "<label class='pwd-show'><input type='checkbox' onclick=\"togglePwd('%s',this)\"> " TR_SHOW_PASSWORD "</label>", id);
+    httpd_resp_sendstr_chunk(req, buf);
+#else
+    (void)req;
+    (void)dom_id;
+#endif
+}
+
 bool web_form_get_bool(const char *body, const char *key) {
     char v[16];
     if (!web_form_get(body, key, v, sizeof(v)))
@@ -893,8 +950,13 @@ void web_send_header(httpd_req_t *req, const char *title, const char *active_men
 }
 
 void web_send_footer(httpd_req_t *req) {
+#if ALLOW_SHOW_PASSWORD
+    // Only reaches the browser while secrets do. With ALLOW_SHOW_PASSWORD at 0
+    // the fields carry a placeholder and no page emits the checkbox that would
+    // call this, so the script would have nothing to act on.
     httpd_resp_sendstr_chunk(
         req, "<script>function togglePwd(id,cb){var el=document.getElementById(id);if(el){el.type=(cb&&cb.checked)?'text':'password';}}</script>");
+#endif
 
     // Places the contextual help balloon. The stylesheet gives it position:
     // fixed, which is what lets it be painted over every card, accordion and
@@ -1020,6 +1082,12 @@ void web_send_save_result(httpd_req_t *req, bool ok, const char *location) {
     web_send_standalone_page(req, buf);
 }
 
+#if ALLOW_SHOW_PASSWORD
+#define WEB_CSS_PWD_SHOW ".pwd-show{display:block;font-size:.72em;font-weight:400;margin:4px 0 0;color:var(--sub);}"
+#else
+#define WEB_CSS_PWD_SHOW ""
+#endif
+
 esp_err_t web_handle_css(httpd_req_t *req) {
     static const char *css =
         // Palette/typography matched to hiperiondev/ESP32_WSPR's embedded web admin
@@ -1108,8 +1176,9 @@ esp_err_t web_handle_css(httpd_req_t *req) {
         "label{display:block;color:var(--sub);font-size:.8em;margin:12px 0 4px;}"
         "label:first-child{margin-top:0;}"
         "p label{display:inline;}"
-        ".pwd-show{display:block;font-size:.72em;font-weight:400;margin:4px 0 0;color:var(--sub);}"
-        "input[type=text],input[type=password],input[type=number],select,textarea{"
+        // Styles the "Show password" checkbox web_password_toggle() writes, so
+        // it is carried only in the builds that emit it.
+        WEB_CSS_PWD_SHOW "input[type=text],input[type=password],input[type=number],select,textarea{"
         "width:100%;max-width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;"
         "background:#fff;color:var(--text);font-size:.9em;outline:none;transition:.2s;}"
         "input:focus,select:focus,textarea:focus{border-color:var(--accent);}"

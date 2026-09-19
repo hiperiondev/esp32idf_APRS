@@ -524,8 +524,9 @@ The Telegram page
 ==================
 
 ``GET``/``POST /telegram`` (:ref:`en-http-routes`) exposes every field of
-``telegram.json``: the enable switch, the bot token (masked, with a *show
-password* toggle), the administrator identifier, the Mini App address, and
+``telegram.json``: the enable switch, the bot token (masked, and handled like
+every other stored secret - see :ref:`en-config-allow-show-password`), the
+administrator identifier, the Mini App address, and
 the authorized-user and allowed-group-chat tables. Below the save form, a
 live status table (``GET /telegram/status``, JSON, polled every 2 seconds)
 shows the coarse state, the precise reason, any untranslated detail Telegram

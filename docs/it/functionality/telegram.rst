@@ -567,7 +567,8 @@ La pagina Telegram
 
 ``GET``/``POST /telegram`` (:ref:`it-http-routes`) espone tutti i campi di
 ``telegram.json``: l'interruttore di abilitazione, il token del bot
-(mascherato, con un controllo *mostra password*), l'identificativo
+(mascherato, e trattato come ogni altro segreto memorizzato; si veda
+:ref:`it-config-allow-show-password`), l'identificativo
 dell'amministratore, l'indirizzo della Mini App e le tabelle degli utenti
 autorizzati e delle chat di gruppo consentite. Sotto il modulo di
 salvataggio, una tabella di stato live (``GET /telegram/status``, JSON,

@@ -60,16 +60,21 @@ esp_err_t page_wireless_get(httpd_req_t *req) {
 
     web_fieldset_open(req, TR_WIFI_ACCESS_POINT);
     web_field_text(req, TR_WIFI_AP_SSID, "apSsid", g_config.wifi_ap_ssid, 32);
+    // minlength is the WPA2 floor and binds only once the operator types in
+    // the field, which is what lets this and the client passwords below be
+    // pre-filled with a placeholder shorter than eight characters: a form
+    // submitted untouched carries the placeholder through unvalidated, and any
+    // passphrase actually entered is held to the full length.
     {
         char buf[600];
         char esc_ap_pass[64 * 6 + 1];
-        web_html_attr_escape(g_config.wifi_ap_pass, esc_ap_pass, sizeof(esc_ap_pass));
+        web_password_value(g_config.wifi_ap_pass, esc_ap_pass, sizeof(esc_ap_pass));
         snprintf(buf, sizeof(buf),
                  "<label>" TR_WIFI_AP_PASSWORD "</label><input type='password' name='apPass' id='pwd_apPass' value='%s' maxlength='63' minlength='8'>",
                  esc_ap_pass);
         httpd_resp_sendstr_chunk(req, buf);
     }
-    httpd_resp_sendstr_chunk(req, "<label class='pwd-show'><input type='checkbox' onclick=\"togglePwd('pwd_apPass',this)\"> " TR_SHOW_PASSWORD "</label>");
+    web_password_toggle(req, "pwd_apPass");
     // min/max here only stop the browser from submitting an out of range
     // channel; the value is clamped again in the POST handler, which is what
     // actually protects the stored configuration.
@@ -110,17 +115,16 @@ esp_err_t page_wireless_get(httpd_req_t *req) {
         {
             char buf[600];
             char esc_sta_pass[64 * 6 + 1];
-            web_html_attr_escape(g_config.wifi_sta[i].wifi_pass, esc_sta_pass, sizeof(esc_sta_pass));
+            web_password_value(g_config.wifi_sta[i].wifi_pass, esc_sta_pass, sizeof(esc_sta_pass));
             snprintf(buf, sizeof(buf),
                      "<label>" TR_F_PASSWORD "</label><input type='password' name='staPass%d' id='pwd_staPass%d' value='%s' maxlength='63' minlength='8'>", i,
                      i, esc_sta_pass);
             httpd_resp_sendstr_chunk(req, buf);
         }
         {
-            char buf[120];
-            snprintf(buf, sizeof(buf),
-                     "<label class='pwd-show'><input type='checkbox' onclick=\"togglePwd('pwd_staPass%d',this)\"> " TR_SHOW_PASSWORD "</label>", i);
-            httpd_resp_sendstr_chunk(req, buf);
+            char pwd_id[20];
+            snprintf(pwd_id, sizeof(pwd_id), "pwd_staPass%d", i);
+            web_password_toggle(req, pwd_id);
         }
         web_fieldset_close(req);
     }
@@ -180,7 +184,7 @@ esp_err_t page_wireless_post(httpd_req_t *req) {
         wifiPwr = WIFI_TX_POWER_DBM_MAX;
     g_config.wifi_power = (int8_t)wifiPwr;
     web_form_get(body, "apSsid", g_config.wifi_ap_ssid, sizeof(g_config.wifi_ap_ssid));
-    web_form_get(body, "apPass", g_config.wifi_ap_pass, sizeof(g_config.wifi_ap_pass));
+    web_form_get_password(body, "apPass", g_config.wifi_ap_pass, sizeof(g_config.wifi_ap_pass));
     // The form's min/max attributes are browser side only: a crafted POST can
     // carry any integer. esp_wifi_set_config() refuses an AP channel outside
     // the regulatory range, so anything out of bounds is folded back to the
@@ -197,7 +201,7 @@ esp_err_t page_wireless_post(httpd_req_t *req) {
         snprintf(key, sizeof(key), "staSsid%d", i);
         web_form_get(body, key, g_config.wifi_sta[i].wifi_ssid, sizeof(g_config.wifi_sta[i].wifi_ssid));
         snprintf(key, sizeof(key), "staPass%d", i);
-        web_form_get(body, key, g_config.wifi_sta[i].wifi_pass, sizeof(g_config.wifi_sta[i].wifi_pass));
+        web_form_get_password(body, key, g_config.wifi_sta[i].wifi_pass, sizeof(g_config.wifi_sta[i].wifi_pass));
     }
 
     app_config_unlock();

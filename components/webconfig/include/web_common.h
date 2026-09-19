@@ -106,6 +106,68 @@ int web_read_body(httpd_req_t *req, char *buf, size_t buf_size);
 bool web_form_get(const char *body, const char *key, char *out, size_t out_size);
 
 /**
+ * @brief Placeholder a secret input carries instead of the stored secret when
+ * @c ALLOW_SHOW_PASSWORD is @c 0.
+ *
+ * It is written into the form by web_password_value() and recognised on the
+ * way back by web_form_get_password(), which is what makes an untouched field
+ * mean "keep the stored secret". Being the sentinel, it is also the one string
+ * that cannot itself be stored as a secret while the flag is @c 0.
+ */
+#define WEB_PASSWORD_MASK "*****"
+
+/**
+ * @brief Build the @c value attribute text for a secret input.
+ *
+ * With @c ALLOW_SHOW_PASSWORD set to @c 1 this is web_html_attr_escape() on
+ * @p stored: the field is pre-filled with the real secret, as it has always
+ * been. With the flag at @c 0 the secret stays on the device and @p out
+ * receives @c WEB_PASSWORD_MASK when one is stored, or the empty string when
+ * @p stored is empty - so an unset secret still reads as unset rather than as
+ * a masked value that is not there.
+ *
+ * The result is always attribute-safe, so callers keep sizing @p out for the
+ * escaped form of @p stored (six bytes per source byte plus the terminator).
+ *
+ * @param stored   The stored secret.
+ * @param out      Destination buffer for the attribute text.
+ * @param out_size Size of @p out, in bytes.
+ */
+void web_password_value(const char *stored, char *out, size_t out_size);
+
+/**
+ * @brief Read back a secret field written by web_password_value().
+ *
+ * With @c ALLOW_SHOW_PASSWORD set to @c 1 this is plain web_form_get(). With
+ * the flag at @c 0 a posted value equal to @c WEB_PASSWORD_MASK is the form
+ * coming back untouched: @p out is left exactly as it was, which is how a page
+ * saves its other fields without disturbing a secret the operator never
+ * retyped. Any other value is stored, the empty string included, so clearing
+ * the field still clears the secret.
+ *
+ * @param body     Form/query blob.
+ * @param key      Field name.
+ * @param out      Buffer holding the current secret; overwritten only when the
+ *                 posted value is a new one.
+ * @param out_size Size of @p out, in bytes.
+ * @return true if @p key was present in @p body, false otherwise.
+ */
+bool web_form_get_password(const char *body, const char *key, char *out, size_t out_size);
+
+/**
+ * @brief Emit the "Show password" checkbox that reveals the secret input whose
+ * DOM id is @p dom_id.
+ *
+ * Writes nothing at all when @c ALLOW_SHOW_PASSWORD is @c 0: with no secret in
+ * the markup there is nothing for the control to reveal, and web_send_footer()
+ * leaves out the matching script for the same reason.
+ *
+ * @param req    Incoming request.
+ * @param dom_id DOM id of the input the checkbox toggles.
+ */
+void web_password_toggle(httpd_req_t *req, const char *dom_id);
+
+/**
  * @brief Percent-encode @p src for safe use as one query-string value (e.g.
  * inside @c href='/delete?file=...').
  *
@@ -316,14 +378,16 @@ void web_send_header(httpd_req_t *req, const char *title, const char *active_men
 /**
  * @brief Send the common HTML shell closing that matches web_send_header().
  *
- * Besides closing the containers the header opened, this carries the two
- * scripts every admin page shares: the password field's show/hide toggle, and
- * the one that places an open contextual help balloon. The latter is what lets
- * the balloon be a fixed layer over the whole page - drawn whole above every
- * card, accordion and table frame instead of being clipped by the one holding
- * the option it explains - since only a script can measure the marker and turn
- * that into viewport coordinates. It binds to the document rather than to
- * individual markers, so it also covers rows a page's own script adds later.
+ * Besides closing the containers the header opened, this carries the scripts
+ * every admin page shares: the secret field's show/hide toggle, present only
+ * while @c ALLOW_SHOW_PASSWORD is @c 1 since nothing on the page can reveal a
+ * secret otherwise, and the one that places an open contextual help balloon.
+ * The latter is what lets the balloon be a fixed layer over the whole page -
+ * drawn whole above every card, accordion and table frame instead of being
+ * clipped by the one holding the option it explains - since only a script can
+ * measure the marker and turn that into viewport coordinates. It binds to the
+ * document rather than to individual markers, so it also covers rows a page's
+ * own script adds later.
  *
  * @param req Incoming request.
  */

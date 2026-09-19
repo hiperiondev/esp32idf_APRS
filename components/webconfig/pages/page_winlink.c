@@ -111,19 +111,20 @@ esp_err_t page_winlink_get(httpd_req_t *req) {
     web_field_checkbox(req, TR_WL_USE_MSG_CALL, "wlUseMsgCall", g_config.wl_use_msg_call);
     web_field_text(req, TR_WL_MYCALL, "wlMyCall", g_config.wl_mycall, 9);
 
-    // Rendered as a password input with the same show/hide control the IGate
-    // passcode uses. The value never travels on the air: a login challenge
-    // names character positions and only those characters are quoted back.
+    // Rendered as a password input, through the same secret helpers the IGate
+    // passcode uses. The value never travels on the air either: a login
+    // challenge names character positions and only those characters are
+    // quoted back.
     {
         char esc[sizeof(g_config.wl_password) * 6 + 1];
-        web_html_attr_escape(g_config.wl_password, esc, sizeof(esc));
+        web_password_value(g_config.wl_password, esc, sizeof(esc));
         char field[520];
         snprintf(field, sizeof(field),
                  "<label>" TR_WL_PASSWORD "</label>"
-                 "<input type='password' name='wlPassword' id='wlPassword' value='%s' maxlength='%u'>"
-                 "<label class='pwd-show'><input type='checkbox' onclick=\"togglePwd('wlPassword',this)\"> " TR_SHOW_PASSWORD "</label>",
+                 "<input type='password' name='wlPassword' id='wlPassword' value='%s' maxlength='%u'>",
                  esc, (unsigned)(sizeof(g_config.wl_password) - 1));
         web_raw(req, field);
+        web_password_toggle(req, "wlPassword");
     }
 
     web_field_checkbox(req, TR_WL_AUTO_LOGIN, "wlAutoLogin", g_config.wl_auto_login);
@@ -328,7 +329,7 @@ esp_err_t page_winlink_post(httpd_req_t *req) {
         strncpy(g_config.wl_service_call, WL_SERVICE_CALL_DEFAULT, sizeof(g_config.wl_service_call) - 1);
         g_config.wl_service_call[sizeof(g_config.wl_service_call) - 1] = 0;
     }
-    web_form_get(body, "wlPassword", g_config.wl_password, sizeof(g_config.wl_password));
+    web_form_get_password(body, "wlPassword", g_config.wl_password, sizeof(g_config.wl_password));
     g_config.wl_use_msg_call = web_form_get_bool(body, "wlUseMsgCall");
     web_form_get_call(body, "wlMyCall", g_config.wl_mycall, sizeof(g_config.wl_mycall));
     g_config.wl_auto_login = web_form_get_bool(body, "wlAutoLogin");
