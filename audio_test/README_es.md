@@ -200,7 +200,7 @@ mostrarse en varios idiomas; abajo se dan las etiquetas en español.
 
 ### 4.1 Ajustes de audio — página *Radiomódem*
 
-| Etiqueta en español | Ajustar a |
+| Etiqueta | Ajustar a |
 |---|---|
 | Activar módem ADC/DAC de audio | **ON** (activado) |
 | Interfaz de audio → Polarización interna de la entrada del ADC | **ON** (esto es lo que hace funcionar el circuito acoplado con condensador) |
@@ -217,7 +217,7 @@ dónde estuvo hace décadas. Su ESP32 tiene un firmware de **IGate/digirepetidor
 así que asegúrese de que nada de lo decodificado a partir de una grabación pueda
 salir del ESP32:
 
-| Página del menú | Etiqueta en español | Ajustar a |
+| Página del menú | Etiqueta | Ajustar a |
 |---|---|---|
 | IGate | **Habilitar IGate** | **OFF** (desactivado) |
 | IGate | **RF a Internet** | **OFF** |
@@ -239,9 +239,9 @@ líneas `RX:` con el IGate desactivado, consulte la
 
 ### 4.3 Ajustes del log
 
-| Etiqueta en español | Etiqueta en inglés | Ajustar a | Por qué |
+| Etiqueta | Ajustar a | Por qué |
 |---|---|---|---|
-| Página IGate → **Registrar después de los filtros** | IGate page → **Log after filters** | **OFF** (el valor predeterminado) | Si está en ON, la consola solo imprime los paquetes que pasan los filtros del IGate, y todo paquete filtrado se contaría como *NOT DECODED*. |
+| Página IGate → **Registrar después de los filtros** | **OFF** (el valor predeterminado) | Si está en ON, la consola solo imprime los paquetes que pasan los filtros del IGate, y todo paquete filtrado se contaría como *NOT DECODED*. |
 
 El nivel de log de la consola debe ser **INFO** (el predeterminado del firmware),
 que es el nivel que imprime las líneas `RX:`.

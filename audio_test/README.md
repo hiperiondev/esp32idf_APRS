@@ -192,7 +192,7 @@ several languages; English labels are given below.
 
 ### 4.1 Audio settings — *Radiomodem* page
 
-| English label | Set to |
+| Label | Set to |
 |---|---|
 | Enable audio ADC/DAC modem | **ON** |
 | Audio interface → **ADC input self-bias** | **ON** (this is what makes the capacitor-coupled circuit work) |
@@ -208,7 +208,7 @@ explicitly warns that if they are igated they create false reports of where he
 was decades ago. Your ESP32 is an **IGate/digipeater** firmware, so make sure
 that nothing decoded from a recording can leave the ESP32:
 
-| Page | English label | Set to |
+| Page | Label | Set to |
 |---|---|---|
 | IGate | **Enable IGate** | **OFF** |
 | IGate | **RF to Internet** | **OFF** |
@@ -228,9 +228,9 @@ IGate off, see [Troubleshooting](#15-troubleshooting).
 
 ### 4.3 Log settings
 
-| English label | Spanish label | Set to | Why |
-|---|---|---|---|
-| IGate page → **Log after filters** | Registrar después de los filtros | **OFF** (the default) | If ON, the console only prints packets that pass your IGate filters, and every filtered packet would be counted as *NOT DECODED*. |
+| Label | Set to | Why |
+|---|---|---|
+| IGate page → **Log after filters** | **OFF** (the default) | If ON, the console only prints packets that pass your IGate filters, and every filtered packet would be counted as *NOT DECODED*. |
 
 The console log level must be **INFO** (the firmware default), which is the level
 that prints the `RX:` lines.
