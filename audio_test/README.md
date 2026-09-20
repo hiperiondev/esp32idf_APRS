@@ -16,7 +16,7 @@ ESP32 decodes compared with a reference decoder (**multimon-ng**).
 4. [Prepare the ESP32 (firmware settings)](#4-prepare-the-esp32-firmware-settings)
 5. [Prepare the PC](#5-prepare-the-pc)
 6. [Get audio files with real APRS traffic](#6-get-audio-files-with-real-aprs-traffic)
-7. [Set the audio level](#7-set-the-audio-level)
+7. [Set the audio level](#7-set-the-audio-level) ([auto-volume calibration](#71-automatic-volume-calibration))
 8. [First run: check the whole chain with synthetic packets](#8-first-run-check-the-whole-chain-with-synthetic-packets)
 9. [Run the real test](#9-run-the-real-test)
 10. [Command-line reference](#10-command-line-reference)
@@ -83,7 +83,7 @@ connected from the ESP32 back to the PC.
 | ESP32 board running the esp32idf_APRS firmware | Powered and connected to the PC by USB (this USB link is also the serial console). |
 | PC with a sound card output | Headphone or line-out. A cheap dedicated USB sound card is a good idea (see section 5). |
 | Audio cable, 3.5 mm plug | Tip = left channel, sleeve = ground. Either channel works: the program sends the same audio to both. |
-| RV1: 2 kΩ multi-turn trimmer | Sets the level. Multi-turn allows fine adjustment. |
+| RV1: 2 kΩ multi-turn trimmer | Sets the level. Multi-turn allows fine adjustment. **Optional** — section 3.1 gives a fixed-resistor alternative if you don't have a trimmer. |
 | C1: capacitor, 1 µF or larger | Electrolytic is fine (mind the polarity!), rated 10 V or more. |
 | Jumper wires | |
 
@@ -180,6 +180,43 @@ add noise. A ceramic or film 1 µF has no polarity, if you have one.
 * Only **GPIO32 and GPIO33** can use the built-in self-bias. The default input of
   the firmware is GPIO33; if you changed the ADC pin in your build, use that pin
   (it must be GPIO32 or GPIO33 for this circuit).
+
+### 3.1 Alternative: fixed resistors instead of the trimmer
+
+If you don't have a 2 kΩ trimmer, RV1 can be replaced with **two fixed
+resistors** wired as a permanent voltage divider. You lose the ability to turn a
+knob, but section 7.1 shows how the program's own **auto-volume calibration**
+makes up for that in software.
+
+![Fixed-resistor alternative to RV1](esp32_audio_input_fixed.png)
+
+*The image is `esp32_audio_input_fixed.png` in this directory: the same circuit
+as in section 3, with the trimmer replaced by the fixed pair R1/R2.*
+
+More plainly: **R1** goes from the jack **tip** to a middle node; **R2** goes
+from that same middle node to the jack **sleeve** (ground, tied to ESP32 GND).
+The middle node — where R1 and R2 meet — replaces the trimmer's wiper and goes
+to **C1's minus (−) side**, exactly as in the wiring steps above. Everything
+else (C1, the connection to GPIO33, the shared ground) stays the same.
+
+* **Suggested starting values: R1 = 4.7 kΩ, R2 = 1 kΩ.** This divides the PC
+  output by about 5.7×, presenting a light ≈5.7 kΩ load. It is only a starting
+  point: line-out levels vary a lot between sound cards, so the actual voltage
+  reaching GPIO33 still depends on the PC's own volume setting.
+* **This divider is fixed — it cannot be nudged like a trimmer.** Use the PC's
+  volume control for the coarse setting (as in section 7), and let the
+  program's `--volume` software gain (applied automatically by the auto-volume
+  calibration described in section 7.1, unless you pass `--no_auto_volume`)
+  take care of fine-tuning. That is precisely the situation the calibration
+  feature is meant for.
+* If, even at low PC volume, the level is always too high (over-range) or
+  always too low (raw values glued to 0 or 4095, `--volume` alone can't fix
+  it), swap in a divider with more or less attenuation — for example R1 = 10 kΩ
+  / R2 = 1 kΩ (more attenuation) or R1 = 2.2 kΩ / R2 = 1 kΩ (less) — and
+  re-check with RX LEVEL (section 7) or another auto-volume run.
+* A trimmer is still the more convenient choice if you expect to reuse the
+  bench with different sound cards or recordings: it lets you fix the analog
+  level once, in hardware, rather than depending on software gain every time.
 
 ---
 
@@ -317,12 +354,12 @@ Rules:
 * If the WAV is **stereo**, only its **left channel** is sent to the ESP32 (the
   reference decoder receives the mix of both). Convert stereo recordings whose two
   channels differ to mono first: `sox in.wav -c 1 mono.wav`.
-* The extension must be `.wav`. The program looks only at `*.wav` files **directly
-  inside** the directory you give it (it does not search subdirectories). FLAC,
-  MP3 etc. must be converted first (section 6.3).
+* The extension must be `.wav` (`.WAV` and `.Wav` are accepted too). The program
+  looks only at those files **directly inside** the directory you give it (it does
+  not search subdirectories). FLAC, MP3 etc. must be converted first (section 6.3).
 * The audio must be **lossless** and have **no clipping**.
 * The file can be of any length. Files are processed **one after another, in
-  alphabetical order**, and each is played in **real time** (a 25-minute file takes
+  alphabetical order** (upper- and lower-case names sort together), and each is played in **real time** (a 25-minute file takes
   25 minutes).
 * Best audio: taken straight from a receiver's **discriminator / "data" output**.
   Audio taken from the **speaker** is de-emphasized; it also works, but decoding
@@ -383,9 +420,9 @@ sudo mount -o loop,ro TNC_Test_2.iso TNC_Test_2
 find TNC_Test_2 -iname '*.flac'
 ```
 
-Your first track is called `01_40-Mins-Traffic-on-144.39.flac.wav`, so the FLAC
-names in the ISO presumably start with the track number too; the `find` command
-shows the real names. Then convert them all to WAV:
+The FLAC files in the ISO are named after the tracks and start with the track
+number, so the `find` command above shows their real names (the first one is the
+25-minute Los Angeles traffic track). Then convert them all to WAV:
 
 ```bash
 mkdir -p Audio-Tracks
@@ -487,6 +524,61 @@ The program also has `--volume`, a software gain for the ESP32 leg only
 (default 1.0). Prefer RV1 for the main adjustment and use `--volume` for small
 corrections (for example `--volume 0.8`); values above 1.0 can clip.
 
+### 7.1 Automatic volume calibration
+
+`--volume` is not just a fixed number you set once: unless you pass
+`--no_auto_volume`, **every real test run starts with an automatic search for
+the best software gain**, before the packets that end up in your report are
+even played. This is on by default, so it happens whether or not you asked for
+it — worth knowing, because it adds time before the run you actually wanted to
+see:
+
+* It plays through the WAV set (looping back to the first file if needed) in
+  short batches of `--auto_volume_batch` packets (default 50, counting both
+  multimon-ng packets and ESP32-only "extra" ones), starting at `--volume`
+  (default 1.0).
+* After each batch it checks the ESP32's own **over-range** warning (the same
+  one described in section 4.1) and the percentage decoded — packets the ESP32
+  answered, counting **OK** and **DIFFERENT** ones alike, out of multimon-ng's
+  total for that try:
+  * **Over-range at all** → the level was too high for that try; the volume is
+    lowered by 15% for the next try, and that try is not eligible to be
+    remembered as the best one.
+  * **No over-range** → the decoded percentage is compared with the previous
+    try's; the volume is raised by 15% for the next try, and this try becomes
+    the new best if it beat every earlier one.
+* It keeps spending its full budget of tries — up to `--auto_volume_max_rounds`
+  (default 10) — even after reaching 100% or after the percentage stops
+  moving between two tries, so a still-better volume later in the search is
+  never missed just because an earlier one already looked good.
+* Whichever volume scored the highest decoded percentage **among tries that did
+  not clip** is the one used for the real test that follows, which then always
+  restarts from the first file.
+* The volume is kept inside **0.05 – 8.0**, and it changes only between tries:
+  a try always plays at one fixed gain.
+* If **every** try showed over-range, none of them is eligible, and the run falls
+  back to the starting `--volume`. Turn RV1 (or the PC volume) down and run again.
+* If a try decodes nothing at all with multimon-ng, the search stops there and
+  says so: that is an audio-routing or file problem, not a level problem.
+* Interrupting the calibration with **Ctrl-C** does not stop the program: it goes
+  on to the real test with the volume of the try that was running when you
+  interrupted — which is not necessarily the best-scoring one, so read the value
+  printed in the final summary before quoting the result.
+
+The chosen volume is printed as each try completes, and again at the end of
+the final summary as `Playback volume used for this test`. Keep that number in
+your log alongside the level you set on RV1: if you are comparing runs over
+time (section 13) and want the audio chain to be identical between them, pass
+the same value back in with `--volume X --no_auto_volume` instead of
+recalibrating every time.
+
+`--no_play` (the dry run) skips the calibration as well: it never touches the
+sound card.
+
+This is also what makes the fixed-resistor alternative of section 3.1
+practical: with no trimmer to turn, the calibration's software gain is what
+absorbs the difference between sound cards and PC volume settings.
+
 ---
 
 ## 8. First run: check the whole chain with synthetic packets
@@ -510,7 +602,14 @@ This uses only multimon-ng and confirms that the software side works:
 
 Expected: multimon-ng lists the 3 packets and the program finishes with
 `DRY RUN finished: multimon-ng decoded 3 packet(s) in 1 file(s).` In this mode
-the serial port and the sound card are **not** used.
+the serial port and the sound card are **not** used, and the auto-volume
+calibration is skipped. The packets are listed as `000001 [multimon …]` lines
+with no verdict, since there is no ESP32 answer to compare them with. The exit
+code is 0 if any packet was decoded, 2 if none was.
+
+pyserial, multimon-ng, sox and `play` must still be installed: the program
+imports pyserial and checks for the three programs before it looks at
+`--no_play`.
 
 ### 8.2 Full run with the ESP32
 
@@ -524,15 +623,12 @@ A working chain shows the three packets each tagged **OK**:
 
 ```
 [1/1] sample.wav  (5.5 s)
-  [multimon #001 00:01.1] N0CALL-9>APRS-0,WIDE1-1,WIDE2-1:!4903.50N/07201.75W-Test one
-  [esp32    #001 00:01.3] N0CALL-9>APRS-0,WIDE1-1,WIDE2-1:!4903.50N/07201.75W-Test one
-      OK
-  [multimon #002 00:02.8] LU1ABC-0>APDW17-0,WIDE1-1:=3450.12S/05812.34W>Movil en ruta
-  [esp32    #002 00:03.0] LU1ABC-0>APDW17-0,WIDE1-1:=3450.12S/05812.34W>Movil en ruta
-      OK
-  [multimon #003 00:04.4] EA4XYZ-7>APRS-0::LU1ABC   :Hola que tal{12
-  [esp32    #003 00:04.6] EA4XYZ-7>APRS-0::LU1ABC   :Hola que tal{12
-      OK
+000001 [multimon 00:01.1] N0CALL-9>APRS-0,WIDE1-1,WIDE2-1:!4903.50N/07201.75W-Test one
+    OK [esp32    00:01.3] N0CALL-9>APRS,WIDE1-1,WIDE2-1:!4903.50N/07201.75W-Test one
+000002 [multimon 00:02.8] LU1ABC-0>APDW17-0,WIDE1-1:=3450.12S/05812.34W>Movil en ruta
+    OK [esp32    00:03.0] LU1ABC>APDW17,WIDE1-1*:=3450.12S/05812.34W>Movil en ruta
+000003 [multimon 00:04.4] EA4XYZ-7>APRS-0::LU1ABC   :Hola que tal{12
+    OK [esp32    00:04.6] EA4XYZ-7>APRS::LU1ABC   :Hola que tal{12
   multimon-ng decoded 3 packet(s)
   ESP32 decoded 3 packet(s)
   -> OK: 3   DIFFERENT: 0   NOT DECODED: 0   EXTRA(esp only): 0
@@ -540,6 +636,11 @@ A working chain shows the three packets each tagged **OK**:
 
 and a final summary with `Decoded correctly : 3 (100.00%)`. (The times may differ
 by a few tenths of a second on your system.)
+
+The two lines of a pair are not expected to read identically: multimon-ng writes
+`-0` for a missing SSID and never writes the digipeated `*`, while the firmware
+does the opposite. Section 12.1 lists exactly which differences are normalised
+away before the comparison.
 
 If they are **NOT DECODED**, the problem is in the chain, not in the decoder: go to
 section 15 (troubleshooting). **Do not continue with real traffic until this
@@ -580,22 +681,29 @@ cd Audio-Tracks
    (115200 8N1).
 2. **Opening the port normally resets the ESP32** (the USB serial chip toggles
    DTR/RTS). The program waits `--settle` seconds (default 4) for it to boot.
-3. For each file, at the same instant it:
+3. Unless `--no_auto_volume` was given, it then runs the **auto-volume
+   calibration** of section 7.1: several short passes through the WAV set to
+   find the best software gain, printed as they happen. This adds time before
+   the reported test starts; skip it with `--no_auto_volume` if you already
+   know the volume you want.
+4. For each file, at the same instant it:
    * **plays** the WAV to the sound card → ESP32 (real time), and
    * feeds the same audio to **multimon-ng**, also paced at real time so both
      decoders' packets appear side by side, and
    * **reads the ESP32 console** for `RX:` lines.
-4. Each multimon-ng packet is printed with its verdict as soon as it is known
+5. Each multimon-ng packet is printed with its verdict as soon as it is known
    (section 11).
-5. Every 30 seconds a **progress line** is printed, so long files never look
+6. Every 30 seconds a **progress line** is printed, so long files never look
    frozen.
-6. After the audio ends the program waits a few seconds so the last packets get
+7. After the audio ends the program waits a few seconds so the last packets get
    the same chance as the rest, prints the file's counts, pauses, and continues
    with the next file.
-7. At the end it prints the **summary** for all files.
+8. At the end it prints the **summary** for all files.
 
-Total time ≈ the sum of the file lengths + about 6 s per file (+ 4 s at the start). For tracks 1–4 of
-the WA8LMF set that is about **one hour**.
+Total time ≈ the auto-volume calibration pass (skip it with `--no_auto_volume`
+to avoid this) + the sum of the file lengths + about 6 s per file (+ 4 s at the
+start). For tracks 1–4 of the WA8LMF set, without calibration, that is about
+**one hour**.
 
 **Ctrl-C** stops the test safely: everything that already has a verdict is kept
 and the summary is printed. Packets still waiting for their verdict (the ESP32
@@ -616,13 +724,16 @@ not printed, not counted either way.
 | `--serial_port PORT` | `/dev/ttyUSB0` | Serial port of the ESP32 console. |
 | `--baud N` | `115200` | Serial speed (8N1 is fixed). |
 | `--audio_device DEV` | system default | ALSA device wired to the ESP32, e.g. `hw:1,0` (see `--list_audio`). |
-| `--volume X` | `1.0` | Software gain applied only to the audio sent to the ESP32. |
+| `--volume X` | `1.0` | Software gain applied only to the audio sent to the ESP32. Also the starting point for auto-volume calibration (see below), unless `--no_auto_volume` is given. During calibration it is kept inside 0.05 – 8.0. |
+| `--no_auto_volume` | off | Skip the auto-volume calibration pass (section 7.1) and use `--volume` as-is for the whole run. |
+| `--auto_volume_batch N` | `50` | Packets per try during auto-volume calibration (counts multimon-ng packets and ESP32-only "extra" ones together). |
+| `--auto_volume_max_rounds N` | `10` | Number of tries used to search for the best volume before the real test run. |
 | `--match_window S` | `5` | An ESP32 packet answers a multimon-ng packet only if it arrives within ±S seconds of it. A packet the ESP32 has not reported after S seconds is **NOT DECODED**. See sections 12 and 13. |
 | `--tail S` | `3` | Seconds to keep listening after the audio ends. The program always waits at least `--match_window` seconds. |
 | `--settle S` | `4` | Seconds to wait after opening the serial port (ESP32 reset/boot). Increase it if the ESP32 boots slowly. |
 | `--pause S` | `1` | Pause between files. |
-| `--no_play` | off | **Dry run:** no sound, no serial port; only multimon-ng runs. |
-| `--mm_args "…"` | none | Extra arguments for multimon-ng (rarely needed). |
+| `--no_play` | off | **Dry run:** no sound, no serial port; only multimon-ng runs. Auto-volume calibration is skipped as well. Packets are listed as `000001 [multimon …]` lines with no verdict. |
+| `--mm_args "…"` | none | Extra arguments for multimon-ng, quoted, e.g. `--mm_args "-A"` (rarely needed). |
 | `--list_audio` | — | Print the ALSA playback devices (`aplay -l`) and exit. |
 | `-h`, `--help` | — | Show the built-in help. |
 
@@ -653,6 +764,12 @@ mkdir one && cp Audio-Tracks/03_*.wav one/
 # software check only, no hardware
 ./test_aprs_wavs.py --wav_dir Audio-Tracks --no_play
 
+# reuse a volume you already trust, skip the calibration pass
+./test_aprs_wavs.py --wav_dir Audio-Tracks --audio_device hw:1,0 --volume 0.85 --no_auto_volume
+
+# let calibration search harder (more tries, bigger batches) on a large set
+./test_aprs_wavs.py --wav_dir Audio-Tracks --audio_device hw:1,0 --auto_volume_max_rounds 15 --auto_volume_batch 80
+
 # save the result, then list only the problems
 ./test_aprs_wavs.py --wav_dir Audio-Tracks --audio_device hw:1,0 2>&1 | tee run.log
 grep -E "NOT DECODED|DIFFERENT" run.log
@@ -668,26 +785,34 @@ Every **multimon-ng** packet is printed, in the order it was heard, immediately
 followed by the ESP32's own line for it (if any) and a verdict:
 
 ```
-[multimon #012 03:41.2] LU1ABC-0>APDW17-0,WIDE1-1:=3450.12S/05812.34W>Movil
-[esp32    #012 03:41.4] LU1ABC-0>APDW17-0,WIDE1-1:=3450.12S/05812.34W>Movil
-    OK
-[multimon #013 03:52.0] LU2XYZ-0>APRS-0:>some status
-[esp32    #013  --:--.-] NOT DECODED
-[multimon #014 04:10.5] LU3AAA-0>APRS-0:>hello
-[esp32    #014 04:11.0] LU3AAA-0>APRS-0:>hellX
-    ! DECODED BUT DIFFERENT
-[esp32 only      04:20.1] LU9ZZZ>APRS:>heard only by the ESP32
-    + EXTRA: decoded by the ESP32 but not by multimon-ng
+000012 [multimon 03:41.2] LU1ABC-0>APDW17-0,WIDE1-1:=3450.12S/05812.34W>Movil
+    OK [esp32    03:41.4] LU1ABC>APDW17,WIDE1-1:=3450.12S/05812.34W>Movil
+000013 [multimon 03:52.0] LU2XYZ-0>APRS-0:>some status
+       [esp32     --:--.-] NOT DECODED
+000014 [multimon 04:10.5] LU3AAA-0>APRS-0:>hello
+       [esp32    04:11.0] LU3AAA>APRS:>hellX
+      ! DECODED BUT DIFFERENT
+000015 [multimon  --:--.-] NOT DECODED
+       [esp32 only      04:20.1] LU9ZZZ>APRS:>heard only by the ESP32
 ```
 
-* `#012` — the packet number within the file (order of multimon-ng's decodes).
+* `000012` — a six-digit **print counter**. It advances by one for every packet
+  printed, in the order the verdicts become known, and it numbers EXTRA packets
+  too, so it is not multimon-ng's own packet count. It restarts at `000001` for
+  each file.
 * `03:41.2` — minutes:seconds into the file when multimon-ng decoded it.
 * The text is the packet in **TNC2 format**: `SOURCE>DESTINATION,PATH:payload`.
-  multimon-ng writes `-0` after callsigns that have no SSID (`LU1ABC-0`); that is
-  only its style.
-* A packet **only the ESP32** decoded (no matching multimon-ng packet) is printed
-  as `[esp32 only ...]` and marked **EXTRA**; it is not one of multimon-ng's
-  numbered packets.
+  multimon-ng writes `-0` after callsigns that have no SSID (`LU1ABC-0`) and never
+  writes the digipeated `*`; the firmware does the opposite. Those differences are
+  normalised before comparing (section 12.1), so the two lines of an **OK** pair
+  often look slightly different.
+* **OK** is printed at the *start of the ESP32 line*; the other two verdicts are
+  printed on a line of their own below the pair.
+* A packet **only the ESP32** decoded is printed as a pair too, the other way
+  round: a `[multimon  --:--.-] NOT DECODED` line first (multimon-ng is the one
+  that missed it), then the ESP32's line as `[esp32 only ...]`. The word EXTRA
+  does not appear on these live lines — those packets are counted as
+  `EXTRA(esp only)` in the per-file and final counts.
 
 | Verdict | Meaning |
 |---|---|
@@ -706,7 +831,7 @@ needed to see them.
 ### 11.2 Progress line
 
 ```
-... 04:00.0 / 25:49.3   multimon=13  ok=12  not-decoded=1  different=0  (serial lines seen: 240)
+       [progress 04:00.0 / 25:49.3] multimon=13  ok=12  not-decoded=1  different=0  (serial lines seen: 240)
 ```
 
 Time played / file length, and the running counts. **`serial lines seen`** should
@@ -719,7 +844,15 @@ stays at 0 and `not-decoded` grows, the ESP32 is not hearing the audio (section 
   multimon-ng decoded 14 packet(s)
   ESP32 decoded 13 packet(s)
   -> OK: 12   DIFFERENT: 1   NOT DECODED: 1   EXTRA(esp only): 0
+    ! DIFFERENT
+        multimon: LU3AAA-0>APRS-0:>hello
+        esp32   : LU3AAA>APRS:>hellX
+    ! NOT DECODED by ESP32: LU2XYZ-0>APRS-0:>some status
 ```
+
+After the counts, every DIFFERENT and NOT DECODED packet of that file is listed
+again, so the problems of a long recording can be read in one place instead of
+being hunted for among the live lines.
 
 ### 11.4 Final summary
 
@@ -731,6 +864,7 @@ SUMMARY
   01_40-Mins-Traffic-on-144.39.wav    412    371      2     39      6
   03_D700-Mic-E-100-bursts.wav        100     97      0      3      0
   ----------------------------------------------------------------------
+  Playback volume used for this test : 1.150
   Files tested                      : 2
   Total packets (multimon-ng)       : 512
   Packets seen by ESP32             : 476
@@ -753,6 +887,11 @@ How each figure is defined:
 | **Extra** | packets only the ESP32 decoded. **Not** part of the percentages. |
 
 The three percentages add up to 100 %.
+
+`Playback volume used for this test` is the software gain (section 7.1) that was
+actually used to play every file in this run: either the value auto-volume
+calibration settled on, or `--volume` unchanged if `--no_auto_volume` was given.
+Note it down with the rest of the run's details if you plan to compare logs later.
 
 ### 11.5 How to interpret it
 
@@ -791,8 +930,8 @@ You can trust the numbers only if you know how the comparison is done.
 ### 12.1 What counts as "the same packet"
 
 Both decoders describe the packet in different styles, so the program first
-normalizes them. Four differences were observed between multimon-ng and the
-firmware and are handled:
+normalizes them. Five differences between multimon-ng and the firmware are
+handled:
 
 | Difference | multimon-ng | ESP32 firmware | Treatment |
 |---|---|---|---|
@@ -800,6 +939,7 @@ firmware and are handled:
 | Digipeated marker | never prints `*` | prints `WIDE1-1*` after a digi repeated it | the `*` is ignored |
 | Non-printable bytes (Mic-E packets contain control and 8-bit bytes) | shows them as `.` | writes the raw bytes | the ESP32 payload is converted the same way before comparing |
 | Trailing carriage return | dropped | written raw | a trailing CR/LF/NUL is ignored |
+| Letter case of the addresses | as heard | as heard | source, destination and path are upper-cased before comparing, so case alone never makes a DIFFERENT |
 
 What is **not** ignored: trailing **spaces and dots** are real payload, so a
 truncated payload (`>hello.` versus `>hello`) is correctly reported as DIFFERENT.
@@ -833,8 +973,8 @@ case for the matching, so here is exactly what to expect (verified by simulation
 * If the window is *smaller* than the real delay, packets that the ESP32 decoded
   correctly are counted wrongly. So **measure the delay first**: run track 3 and
   compare the two time stamps printed for the first OK packets (the `[multimon
-  #NNN ...]` and `[esp32 #NNN ...]` lines). If they differ by more than about 1 s,
-  keep a wider window (and remember only the totals are exact).
+  ...]` line and the `[esp32 ...]` line printed just under it). If they differ by
+  more than about 1 s, keep a wider window (and remember only the totals are exact).
 
 For all the other tracks (no identical packets closer than 10 s) the default
 window of 5 s is fine.
@@ -876,7 +1016,10 @@ A small generator of **perfect synthetic APRS audio**, used to verify the setup 
 to make reproducible test files. It builds real AX.25 frames (CRC-16, bit stuffing,
 NRZI) modulated as Bell 202 AFSK 1200 baud at 22050 Hz, mono, 16 bit, with
 40 flag bytes of preamble (≈ 0.27 s), 8 flags of tail and 1 s of silence between
-packets.
+packets. The file also opens with 0.5 s of silence, and the same 1 s gap follows
+the last packet, so nothing is cut off at either end. The tones are written at
+about 60 % of full scale, which leaves headroom and keeps the file free of
+clipping.
 
 ### Use as a program
 
@@ -884,7 +1027,9 @@ packets.
 python3 gen_test_wav.py output.wav
 ```
 
-writes a file with three packets:
+writes a file with three packets and prints `ok`. With no file name it writes
+`sample1.wav` in the current directory. It does not create directories, so make
+the target directory first (`mkdir -p Synthetic`). The packets are:
 
 | Source | Destination | Path | Payload |
 |---|---|---|---|
@@ -937,12 +1082,16 @@ and produce a known number of packets for a quick regression run.
 | RX level very low (< 100 mV) | Turn RV1 up, or raise the PC volume a little. |
 | DC offset near 0 mV or 3300 mV | Self-bias is off, or C1 is missing or wired backwards, or RV1 is between C1 and the pin. |
 | Many NOT DECODED on one file but not on others | Level differs between recordings (especially de-emphasized ones); re-check with RX LEVEL for that file. |
-| Results change between runs | Normal to a small degree (automatic gain, sound-card clock). Repeat 3 times and compare. If the change is large, look at USB sound-card stability and system sounds. |
+| Results change between runs | Normal to a small degree (automatic gain, sound-card clock). Repeat 3 times and compare. If the change is large, look at USB sound-card stability and system sounds; also consider whether auto-volume calibration (section 7.1) picked a different volume each time — pin it down with `--volume X --no_auto_volume` for a fair comparison. |
+| Run takes noticeably longer than the file lengths suggest | Normal: by default every run starts with the auto-volume calibration pass (section 7.1), which plays through the WAV set several times before the reported test begins. Use `--no_auto_volume` to skip it once you know a good `--volume`. |
+| Auto-volume calibration reports "no packets decoded by multimon-ng at all" and stops | multimon-ng itself found nothing at any volume — this is a file/audio-routing problem, not a level problem (see the "multimon-ng decoded 0 packets" row above). |
 | ESP32 reboots when the test starts | Opening the port resets the board through DTR/RTS. Normal; `--settle` waits for the boot. |
 | The program seems stuck | Long files are played in real time; look at the progress line every 30 s. Ctrl-C stops safely. |
 | multimon-ng decoded 0 packets in a file | The file has no packets (tracks 5–7 are tones only), is too quiet, or is not AFSK 1200. The program exits with code 2 if *no* file yields packets. |
 | Tracks 5–7 in the directory | They contain tones, not packets: they waste time and give nothing. Move them out. |
-| DIFFERENT packets | Compare the multimon-ng and ESP32 lines printed for that packet; the payload differs (see section 11.5). |
+| DIFFERENT packets | Compare the multimon-ng and ESP32 lines printed for that packet; the payload differs (see section 11.5). The same packets are listed again under the file's counts. |
+| Line pairs reading `[multimon  --:--.-] NOT DECODED` followed by `[esp32 only …]` | Not a failure: that is how an EXTRA packet — decoded by the ESP32, missed by multimon-ng — is printed live. It is counted under `EXTRA(esp only)`. |
+| The six-digit numbers do not match multimon-ng's packet count | They are a print counter that also numbers EXTRA packets and restarts per file (section 11.1). |
 | Track 3: the flagged packet numbers look off by one | Window/timing effect described in section 12.3. Use `--match_window 1.5`; the totals are right anyway. |
 
 ---
@@ -958,6 +1107,10 @@ and produce a known number of packets for a quick regression run.
 * **The PC sound path is part of the test.** Its filtering, clock accuracy and noise
   add to the result (see the sound-card advice in section 5.3).
 * **Receive only.** The transmit chain of the ESP32 is not tested.
+* **Auto-volume calibration (section 7.1) is on by default** and can pick a
+  slightly different volume from one run to the next when two levels decode
+  almost equally well. For strict before/after comparisons, fix the volume with
+  `--volume X --no_auto_volume` instead of letting it recalibrate each time.
 * **Linux with ALSA** is assumed by the audio options.
 * The program was developed and checked against a **simulated ESP32 console** with
   the real multimon-ng, sox and pyserial. On real hardware, expect to adjust the
@@ -988,16 +1141,17 @@ sudo usermod -aG dialout $USER            # then log out / in
 mkdir -p Synthetic && python3 gen_test_wav.py Synthetic/sample.wav
 ./test_aprs_wavs.py --wav_dir Synthetic --audio_device hw:1,0
 
-# ── the real test ─────────────────────────────────────────────────
+# ── the real test (starts with an auto-volume calibration pass by default,
+#    see 7.1; add --no_auto_volume --volume X to skip it and pin a known value) ─
 ./test_aprs_wavs.py --wav_dir Audio-Tracks --audio_device hw:1,0 2>&1 | tee run.log
 grep -E "NOT DECODED|DIFFERENT" run.log
 ```
 
 | Wiring | |
 |---|---|
-| Jack tip | → RV1 top |
-| Jack sleeve | → RV1 bottom **and** ESP32 GND |
-| RV1 wiper | → C1 **−** (stripe side) |
+| Jack tip | → RV1 top (or R1, section 3.1) |
+| Jack sleeve | → RV1 bottom **and** ESP32 GND (or R2's far end, section 3.1) |
+| RV1 wiper | → C1 **−** (stripe side) (or the R1/R2 junction, section 3.1) |
 | C1 **+** | → ESP32 GPIO33 |
 
 ---
@@ -1019,3 +1173,4 @@ grep -E "NOT DECODED|DIFFERENT" run.log
 | **RMS** | Root-mean-square: the effective size of an AC signal; the ESP32 reports the RX level in mV RMS. |
 | **DC offset** | The average DC voltage the ADC pin rests at; with self-bias it should be around 1650 mV. |
 | **SSID** | The number after a callsign (`-9`) that distinguishes several stations of one operator. |
+| **Auto-volume calibration** | The program's default pass, before the reported test, that searches for the software playback gain (`--volume`) giving the best decoded percentage without over-range. See section 7.1. |
