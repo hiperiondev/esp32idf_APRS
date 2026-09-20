@@ -21,6 +21,7 @@ Packets the ESP32 decoded that multimon-ng did not are reported as "extra"
 
 Requirements
 ------------
+  Python 3.7+ (uses dataclasses)
   pip install pyserial
   multimon-ng   (reference decoder)
   sox           (audio playback / resampling; provides the `sox` and `play` tools)
@@ -60,7 +61,7 @@ import sys
 import threading
 import time
 from dataclasses import dataclass, field
-from typing import List, Optional, Tuple
+from typing import Callable, List, Optional, Tuple
 
 try:
     import serial  # pyserial
@@ -134,6 +135,65 @@ MM_HDR_RE = re.compile(
 # --------------------------------------------------------------------------
 
 _print_lock = threading.Lock()
+
+# --------------------------------------------------------------------------
+# Cooperative stop (used by the GUI's Stop button)
+# --------------------------------------------------------------------------
+#
+# On the command line Ctrl-C raises KeyboardInterrupt in the main thread. The
+# GUI runs the test in a worker thread, where nothing can raise that exception
+# from outside *while the thread is blocked in a C-level wait*: a pending
+# asynchronous exception is only delivered when the interpreter next executes
+# Python bytecode, so `player.wait()` or a long `time.sleep()` would swallow it
+# until they returned - a whole WAV file, or the --tail / --pause interval,
+# later. Instead, Stop sets this event and kills the child processes; every
+# blocking site below polls it (sleep_or_stop) or is woken by the kill, and
+# raises KeyboardInterrupt ITSELF, so the existing Ctrl-C clean-up and the
+# "Interrupted - reporting what has been tested so far" summary run unchanged.
+
+_STOP = threading.Event()
+_LIVE_PROCS = []            # type: List[subprocess.Popen]
+_LIVE_LOCK = threading.Lock()
+
+
+def track_proc(p: "subprocess.Popen") -> "subprocess.Popen":
+    """Register a child process so request_stop() can kill it."""
+    with _LIVE_LOCK:
+        _LIVE_PROCS[:] = [q for q in _LIVE_PROCS if q.poll() is None]
+        _LIVE_PROCS.append(p)
+    if _STOP.is_set():                 # stop requested while it was starting
+        try:
+            p.kill()
+        except Exception:
+            pass
+    return p
+
+
+def check_cancel() -> None:
+    """Raise KeyboardInterrupt if a stop was requested."""
+    if _STOP.is_set():
+        raise KeyboardInterrupt()
+
+
+def sleep_or_stop(seconds: float) -> None:
+    """time.sleep() that returns at once - by raising KeyboardInterrupt - when
+    a stop is requested, instead of finishing the whole interval."""
+    if _STOP.wait(max(0.0, seconds)):
+        raise KeyboardInterrupt()
+
+
+def request_stop() -> None:
+    """Ask the running test to stop NOW: flag it and kill every child process
+    (player, sox, multimon-ng) so anything blocked waiting on them wakes up."""
+    _STOP.set()
+    with _LIVE_LOCK:
+        procs = list(_LIVE_PROCS)
+    for p in procs:
+        if p.poll() is None:
+            try:
+                p.kill()
+            except Exception:
+                pass
 
 
 def say(msg: str) -> None:
@@ -327,7 +387,7 @@ class MultimonParser:
         self._hdr = None  # type: Optional[re.Match]
 
     def feed_line(self, line: str) -> Optional[Packet]:
-        line = line.rstrip("\\r\\n")
+        line = line.rstrip("\r\n")
         m = MM_HDR_RE.match(line)
         if m:
             self._hdr = m
@@ -352,6 +412,11 @@ class MultimonParser:
 # --------------------------------------------------------------------------
 # Serial reader (runs in a thread for the whole test)
 # --------------------------------------------------------------------------
+
+
+# Set by the GUI before a run; every SerialCollector created afterwards
+# forwards each raw chunk it reads to this callable (bytes -> None).
+_RAW_SERIAL_SINK = None  # type: Optional[Callable[[bytes], None]]
 
 
 class SerialCollector(threading.Thread):
@@ -403,17 +468,36 @@ class SerialCollector(threading.Thread):
         # one (ADC clipping, reported by the firmware itself).
         self.overrange_count = 0
         self.last_overrange_time = 0.0
+        # Optional callback fed with EVERY chunk read from the port, exactly as
+        # received (no line splitting, no ANSI stripping, no parsing, no
+        # filtering). Used by the GUI's right-hand "serial" pane.
+        self.raw_sink = _RAW_SERIAL_SINK
 
     def run(self) -> None:
         while not self._halt.is_set():
             try:
                 chunk = self.ser.read(4096)
             except (serial.SerialException, OSError) as exc:
-                sys.stderr.write("\n[serial] read error: %s\n" % exc)
+                if not self._halt.is_set():
+                    sys.stderr.write("\n[serial] read error: %s\n" % exc)
                 break
+            except (TypeError, ValueError):
+                # stop() closed the port under a read() that was already in
+                # flight: pyserial then fails with TypeError (fd is None).
+                # That is a normal shutdown, not an error - but if we were NOT
+                # asked to halt it is a genuine fault and must not be hidden.
+                if self._halt.is_set():
+                    break
+                raise
             if not chunk:
                 continue
             self.alive.set()
+            sink = self.raw_sink
+            if sink is not None:
+                try:
+                    sink(chunk)
+                except Exception:
+                    pass          # a broken viewer must never kill the reader
             self._buf.extend(chunk)
             while True:
                 nl = self._buf.find(b"\n")
@@ -577,7 +661,7 @@ def clip_warning(wav: str, volume: float, normalise: bool) -> Optional[str]:
 def run_one_wav(res: FileResult, wav: str, audio_device: Optional[str],
                 volume: float, tail: float, window: float,
                 collector: SerialCollector, mm_extra: List[str],
-                mute_local: bool,
+                dry_run: bool,
                 stop_at_mm_packets: Optional[int] = None,
                 normalise: bool = False,
                 offset_auto: bool = True,
@@ -631,7 +715,7 @@ def run_one_wav(res: FileResult, wav: str, audio_device: Optional[str],
         env["AUDIODEV"] = audio_device
     play_cmd = build_play_cmd(wav, volume, normalise)
     warn = clip_warning(wav, volume, normalise)
-    if warn and not mute_local:
+    if warn and not dry_run:
         say("  ! " + warn)
 
     sox_raw = ["sox", "-q", "-V0", wav, "-t", "raw", "-r", str(MM_RATE),
@@ -690,9 +774,11 @@ def run_one_wav(res: FileResult, wav: str, audio_device: Optional[str],
         from the ticker thread, not from read_mm)."""
         with res_lock:
             reached = len(res.mm_packets) + len(res.extra)
-        if (stop_at_mm_packets is not None and not target_hit[0] and
-                reached >= stop_at_mm_packets):
-            target_hit[0] = True
+            should_stop = (stop_at_mm_packets is not None and not target_hit[0] and
+                           reached >= stop_at_mm_packets)
+            if should_stop:
+                target_hit[0] = True
+        if should_stop:
             kill_pipeline()
 
     def show(ev: tuple) -> None:
@@ -753,15 +839,16 @@ def run_one_wav(res: FileResult, wav: str, audio_device: Optional[str],
             show(ev)
 
     try:
-        mm_p = subprocess.Popen(mm_cmd, stdin=subprocess.PIPE,
-                                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
-        sox_p = subprocess.Popen(sox_raw, stdout=subprocess.PIPE,
-                                 stderr=subprocess.DEVNULL)
+        check_cancel()
+        mm_p = track_proc(subprocess.Popen(mm_cmd, stdin=subprocess.PIPE,
+                                           stdout=subprocess.PIPE, stderr=subprocess.DEVNULL))
+        sox_p = track_proc(subprocess.Popen(sox_raw, stdout=subprocess.PIPE,
+                                            stderr=subprocess.DEVNULL))
 
         # Feed multimon-ng from sox in REAL TIME (unless dry-running). This
         # keeps its decodes in step with what the ESP32 is hearing, so the
         # two decoders' packets are printed side by side.
-        realtime = not mute_local
+        realtime = not dry_run
 
         def pump() -> None:
             assert sox_p is not None and sox_p.stdout is not None
@@ -780,7 +867,8 @@ def run_one_wav(res: FileResult, wav: str, audio_device: Optional[str],
                     if realtime:
                         ahead = sent / float(bytes_per_s) - (time.monotonic() - start_t)
                         if ahead > 0:
-                            time.sleep(ahead)
+                            if _STOP.wait(ahead):     # stop requested: quit feeding
+                                break
             except (BrokenPipeError, OSError):
                 pass
             finally:
@@ -809,7 +897,7 @@ def run_one_wav(res: FileResult, wav: str, audio_device: Optional[str],
                 with res_lock:
                     res.mm_packets.append(pkt)
                 now = time.monotonic()
-                if mute_local:      # dry run: no ESP32, just list the packet
+                if dry_run:      # dry run: no ESP32, just list the packet
                     say("%06d [multimon %s] %s" %
                         (len(res.mm_packets), mmss(now - t0), pkt.raw))
                 else:               # printed with the ESP32's answer
@@ -827,7 +915,7 @@ def run_one_wav(res: FileResult, wav: str, audio_device: Optional[str],
             last_progress = time.monotonic()
             while not done.wait(0.25):
                 now = time.monotonic()
-                if not mute_local:
+                if not dry_run:
                     feed_and_step(now)
                 if now - last_progress >= PROGRESS_SECONDS:
                     last_progress = now
@@ -859,10 +947,10 @@ def run_one_wav(res: FileResult, wav: str, audio_device: Optional[str],
             except Exception:
                 pass
 
-        if not mute_local:
-            player = subprocess.Popen(play_cmd, env=env,
-                                      stdout=subprocess.DEVNULL,
-                                      stderr=subprocess.PIPE)
+        if not dry_run:
+            player = track_proc(subprocess.Popen(play_cmd, env=env,
+                                                 stdout=subprocess.DEVNULL,
+                                                 stderr=subprocess.PIPE))
             et = threading.Thread(target=drain_player_err, daemon=True)
             et.start()
         pt.start()
@@ -870,6 +958,7 @@ def run_one_wav(res: FileResult, wav: str, audio_device: Optional[str],
         if player is not None:
             player.wait()
             et.join(timeout=2)
+            check_cancel()              # Stop killed the player: unwind now
             if player.returncode not in (0, None) and not target_hit[0]:
                 err = b"".join(player_err).decode("latin-1", "replace")
                 sys.stderr.write("\n[audio] player failed (rc=%s): %s\n" %
@@ -899,7 +988,7 @@ def run_one_wav(res: FileResult, wav: str, audio_device: Optional[str],
         # Let the ESP32 finish the last frame and flush its console. At least
         # `window` seconds, so the last packets get the same chance to be
         # matched as every other one.
-        time.sleep(max(tail, window))
+        sleep_or_stop(max(tail, window))
     except KeyboardInterrupt:
         interrupted = True
         raise
@@ -913,7 +1002,7 @@ def run_one_wav(res: FileResult, wav: str, audio_device: Optional[str],
                     pass
         if gt is not None:
             gt.join(timeout=2)
-        if not mute_local:
+        if not dry_run:
             if interrupted:
                 # Packets still waiting for their verdict are not counted:
                 # the ESP32 has not had its full chance to answer them.
@@ -1191,9 +1280,10 @@ def print_summary(results: List[FileResult], volume: Optional[float] = None) -> 
 _HAVE_STDBUF = False
 
 
-def check_tools() -> None:
+def check_tools(need_play: bool = True) -> None:
     global _HAVE_STDBUF
-    missing = [t for t in ("multimon-ng", "sox", "play") if shutil.which(t) is None]
+    required = ("multimon-ng", "sox") + (("play",) if need_play else ())
+    missing = [t for t in required if shutil.which(t) is None]
     if missing:
         sys.stderr.write("Missing required program(s): %s\n" % ", ".join(missing))
         sys.stderr.write("  Debian/Ubuntu: sudo apt install multimon-ng sox libsox-fmt-all\n")
@@ -1209,8 +1299,9 @@ def check_tools() -> None:
 def find_wavs(directory: str) -> List[str]:
     """Every .wav in the directory, whatever the case of the extension.
 
-    glob() is case-sensitive on Linux and case-insensitive on macOS, so
-    matching on the lower-cased name is both complete and duplicate-free."""
+    Matching on the lower-cased name (rather than a case-sensitive suffix
+    check) picks up ".WAV", ".Wav", etc. os.listdir() entries are already
+    unique, so no de-duplication is needed."""
     try:
         entries = os.listdir(directory)
     except OSError:
@@ -1218,7 +1309,7 @@ def find_wavs(directory: str) -> List[str]:
     files = [os.path.join(directory, e) for e in entries
              if e.lower().endswith(".wav") and
              os.path.isfile(os.path.join(directory, e))]
-    return sorted(set(files), key=lambda s: s.lower())
+    return sorted(files, key=lambda s: s.lower())
 
 
 class VolumeSearch:
@@ -1340,7 +1431,7 @@ class VolumeSearch:
             res = FileResult(name=os.path.basename(wav))
             run_one_wav(res, wav, self.audio_device, volume, self.tail,
                         self.window, self.collector, self.mm_extra,
-                        mute_local=False, stop_at_mm_packets=remaining,
+                        dry_run=False, stop_at_mm_packets=remaining,
                         normalise=self.normalise, offset_auto=self.offset_auto,
                         offset_seed=self.offset)
             if res.offset:
@@ -1544,7 +1635,7 @@ def wait_ready(col: SerialCollector, settle: float) -> None:
     say("Waiting %.1f s for the ESP32 to be ready ..." % settle)
     end = time.monotonic() + settle
     while time.monotonic() < end:
-        time.sleep(0.2)
+        sleep_or_stop(0.2)
     if not col.alive.is_set():
         say("  WARNING: no data received from the serial port yet. The firmware "
             "may be quiet until it hears/sends something; continuing.")
@@ -1737,7 +1828,465 @@ def selftest() -> int:
     return 0
 
 
-def main() -> int:
+# --------------------------------------------------------------------------
+# Graphical front-end (--gui)
+# --------------------------------------------------------------------------
+#
+# Layout:
+#   +--------------------------------------------------------------+
+#   |  every command-line flag, as a form  (built from the parser) |
+#   |  [ Start ] [ Stop ] [ Clear ] [ Reset defaults ]            |
+#   +------------------------------+-------------------------------+
+#   |  CONSOLE (left)              |  SERIAL (right)               |
+#   |  everything the program      |  every byte read from the     |
+#   |  prints (stdout + stderr)    |  ESP32 port, unfiltered       |
+#   +------------------------------+-------------------------------+
+#
+# The form is generated from build_parser(), so it can never disagree with the
+# command line. tkinter is in the Python standard library: no new dependency.
+# Worker threads never touch a widget - they only put items on a queue that
+# the Tk main loop drains, because tkinter is not thread-safe.
+
+class _QueueWriter:
+    """File-like object that forwards everything written to it to a queue."""
+
+    def __init__(self, q, tag: str) -> None:
+        self.q = q
+        self.tag = tag
+        self.encoding = "utf-8"
+
+    def write(self, text) -> int:
+        if isinstance(text, bytes):
+            text = text.decode("utf-8", "replace")
+        if text:
+            self.q.put(("console", self.tag, text))
+        return len(text)
+
+    def flush(self) -> None:
+        pass
+
+    def isatty(self) -> bool:
+        return False
+
+
+def _visible_serial_text(chunk: bytes) -> str:
+    """Render raw serial bytes losslessly for the right-hand pane.
+
+    Nothing is dropped or reinterpreted: bytes are mapped 1:1 through latin-1
+    (so 8-bit Mic-E / binary payloads are still shown, one glyph per byte), CR
+    and LF are kept as they arrive, and the remaining control characters -
+    including the ESC of ANSI colour codes - are made visible as ^X / \\xNN
+    instead of being swallowed or interpreted by the widget."""
+    out = []
+    for b in chunk:
+        if b == 0x0A or b == 0x09:
+            out.append(chr(b))
+        elif b == 0x0D:
+            # A bare CR would be drawn by Tk as a tiny "CR" glyph box. Show it
+            # explicitly instead so nothing is hidden and nothing is ambiguous.
+            out.append("\\r")
+        elif b < 0x20:
+            out.append("^" + chr(b + 0x40))
+        elif b == 0x7F:
+            out.append("^?")
+        else:
+            out.append(chr(b))
+    return "".join(out)
+
+
+def run_gui(ap: argparse.ArgumentParser) -> int:
+    global _RAW_SERIAL_SINK
+    try:
+        import tkinter as tk
+        from tkinter import ttk, filedialog, messagebox
+        import tkinter.font as tkfont
+    except ImportError:
+        sys.stderr.write("--gui needs tkinter.  Debian/Ubuntu: sudo apt install python3-tk\n")
+        return 2
+    import queue
+    import shlex
+
+    try:
+        root = tk.Tk()
+    except tk.TclError as exc:
+        sys.stderr.write("Cannot open a display for --gui: %s\n" % exc)
+        return 2
+    root.title("test_aprs_wavs - esp32idf_APRS regression bench")
+    root.geometry("1280x820")
+    root.minsize(900, 560)
+
+    # ---- UI scale (the + / - buttons, top right) ----------------------
+    # Every widget takes its size from a named Tk font, so changing those
+    # fonts rescales the whole window - labels, entries, buttons, tooltips and
+    # both consoles - without touching each widget. Padding in ttk follows the
+    # font, and the window is resized by the same factor.
+    SCALE_STEPS = (0.75, 0.9, 1.0, 1.15, 1.3, 1.5, 1.75, 2.0, 2.5, 3.0)
+    base_fonts = {}
+    for fname in ("TkDefaultFont", "TkTextFont", "TkFixedFont", "TkMenuFont",
+                  "TkHeadingFont", "TkCaptionFont"):
+        try:
+            f = tkfont.nametofont(fname)
+        except tk.TclError:
+            continue
+        size = f.cget("size")
+        # Negative sizes are pixels, positive are points: keep the sign.
+        base_fonts[fname] = (f, size if size != 0 else 10)
+    scale_idx = [SCALE_STEPS.index(1.0)]
+    scale_var = tk.StringVar(value="100%")
+    scale_widgets = {}
+
+    def apply_scale(idx: int) -> None:
+        idx = max(0, min(len(SCALE_STEPS) - 1, idx))
+        scale_idx[0] = idx
+        factor = SCALE_STEPS[idx]
+        for f, size in base_fonts.values():
+            f.configure(size=(-1 if size < 0 else 1) * max(6, int(round(abs(size) * factor))))
+        # Check indicators and scrollbars are drawn at a fixed pixel size by
+        # the theme, not from a font, so they need scaling explicitly. On
+        # themes that ignore a given option this is a harmless no-op.
+        st = ttk.Style(root)
+        st.configure("TCheckbutton", indicatorsize=int(round(12 * factor)))
+        st.configure("TScrollbar", arrowsize=int(round(14 * factor)),
+                     width=int(round(14 * factor)))
+        st.configure("TPanedwindow", sashthickness=int(round(6 * factor)))
+        # Window size is derived from the ORIGINAL size, not from the current
+        # one, so + then - (or Ctrl-0) lands exactly where it started instead
+        # of drifting. It is capped to the screen, and so is minsize: at 300 %
+        # an uncapped minimum would force a window bigger than the monitor.
+        max_w = root.winfo_screenwidth() - 40
+        max_h = root.winfo_screenheight() - 80
+        root.minsize(min(int(900 * factor), max_w), min(int(560 * factor), max_h))
+        if root.winfo_width() > 1:          # not before the first layout
+            if idx == SCALE_STEPS.index(1.0):
+                w, h = 1280, 820
+            else:
+                w, h = int(1280 * factor), int(820 * factor)
+            root.geometry("%dx%d" % (min(w, max_w), min(h, max_h)))
+        scale_var.set("%d%%" % round(factor * 100))
+        if "minus" in scale_widgets:
+            scale_widgets["minus"].configure(state="normal" if idx > 0 else "disabled")
+            scale_widgets["plus"].configure(
+                state="normal" if idx < len(SCALE_STEPS) - 1 else "disabled")
+
+    q = queue.Queue()
+
+    # ---- collect the options from the parser --------------------------
+    fields = []   # (action, kind, tk variable)
+    for act in ap._actions:
+        if not act.option_strings or act.dest in ("help", "gui"):
+            continue
+        if isinstance(act, argparse._StoreTrueAction):
+            kind = "flag"
+        elif act.type is int:
+            kind = "int"
+        elif act.type is float:
+            kind = "float"
+        else:
+            kind = "str"
+        fields.append((act, kind))
+
+    # ---- top: the form ------------------------------------------------
+    top = ttk.LabelFrame(root, text="Options (same flags as the command line)")
+    top.pack(side="top", fill="x", padx=6, pady=(6, 3))
+
+    vars_ = {}          # dest -> tk variable
+    defaults = {}       # dest -> default (for Reset)
+    COLS = 3            # option groups per row
+
+    def flag_name(act) -> str:
+        longs = [o for o in act.option_strings if o.startswith("--")]
+        return (longs or act.option_strings)[0]
+
+    tips = {}
+
+    def attach_tip(widget, text: str) -> None:
+        """Hover tooltip with the flag's --help text."""
+        tip = {"w": None}
+
+        def show(_e):
+            if tip["w"] or not text:
+                return
+            w = tk.Toplevel(widget)
+            w.wm_overrideredirect(True)
+            w.wm_geometry("+%d+%d" % (widget.winfo_rootx() + 12, widget.winfo_rooty() + widget.winfo_height() + 4))
+            ttk.Label(w, text=text, justify="left", wraplength=int(460 * SCALE_STEPS[scale_idx[0]]), relief="solid",
+                      borderwidth=1, padding=4, background="#ffffe0").pack()
+            tip["w"] = w
+
+        def hide(_e):
+            if tip["w"]:
+                tip["w"].destroy()
+                tip["w"] = None
+        widget.bind("<Enter>", show)
+        widget.bind("<Leave>", hide)
+
+    grid = ttk.Frame(top)
+    grid.pack(fill="x", padx=6, pady=4)
+    for c in range(COLS):
+        grid.columnconfigure(c, weight=1, uniform="col")
+
+    for i, (act, kind) in enumerate(fields):
+        cell = ttk.Frame(grid)
+        cell.grid(row=i // COLS, column=i % COLS, sticky="ew", padx=4, pady=2)
+        helptxt = (act.help or "").replace("%%", "%")
+        if kind == "flag":
+            var = tk.BooleanVar(value=bool(act.default))
+            defaults[act.dest] = bool(act.default)
+            w = ttk.Checkbutton(cell, text=flag_name(act), variable=var)
+            w.pack(anchor="w")
+        else:
+            default = "" if act.default is None else str(act.default)
+            var = tk.StringVar(value=default)
+            defaults[act.dest] = default
+            ttk.Label(cell, text=flag_name(act)).pack(side="left")
+            w = ttk.Entry(cell, textvariable=var, width=18)
+            w.pack(side="right", fill="x", expand=True, padx=(6, 0))
+            if act.dest == "wav_dir":
+                def browse(v=var):
+                    d = filedialog.askdirectory(initialdir=v.get() or ".")
+                    if d:
+                        v.set(d)
+                ttk.Button(cell, text="...", width=3, command=browse).pack(side="right", padx=(4, 0))
+        vars_[act.dest] = var
+        attach_tip(w, flag_name(act) + ": " + helptxt)
+
+    # ---- buttons ------------------------------------------------------
+    bar = ttk.Frame(top)
+    bar.pack(fill="x", padx=6, pady=(0, 6))
+    btn_start = ttk.Button(bar, text="Start")
+    btn_stop = ttk.Button(bar, text="Stop", state="disabled")
+    btn_clear = ttk.Button(bar, text="Clear consoles")
+    btn_reset = ttk.Button(bar, text="Reset defaults")
+    for b in (btn_start, btn_stop, btn_clear, btn_reset):
+        b.pack(side="left", padx=(0, 6))
+    # Top-right zoom controls. Packed right-to-left: "+", percentage, "-".
+    btn_plus = ttk.Button(bar, text="+", width=3, command=lambda: apply_scale(scale_idx[0] + 1))
+    btn_plus.pack(side="right")
+    ttk.Label(bar, textvariable=scale_var, width=5, anchor="center").pack(side="right", padx=2)
+    btn_minus = ttk.Button(bar, text="\u2212", width=3, command=lambda: apply_scale(scale_idx[0] - 1))
+    btn_minus.pack(side="right")
+    scale_widgets["plus"], scale_widgets["minus"] = btn_plus, btn_minus
+    status = tk.StringVar(value="Idle")
+    ttk.Label(bar, textvariable=status).pack(side="right", padx=(0, 12))
+
+    # ---- bottom: split console ---------------------------------------
+    paned = ttk.PanedWindow(root, orient="horizontal")
+    paned.pack(side="top", fill="both", expand=True, padx=6, pady=(3, 6))
+
+    def make_pane(title: str):
+        frame = ttk.LabelFrame(paned, text=title)
+        txt = tk.Text(frame, wrap="none", undo=False, state="disabled",
+                      background="#101418", foreground="#d8dee9",
+                      insertbackground="#d8dee9", font="TkFixedFont")
+        ys = ttk.Scrollbar(frame, orient="vertical", command=txt.yview)
+        xs = ttk.Scrollbar(frame, orient="horizontal", command=txt.xview)
+        txt.configure(yscrollcommand=ys.set, xscrollcommand=xs.set)
+        xs.pack(side="bottom", fill="x")
+        ys.pack(side="right", fill="y")
+        txt.pack(side="left", fill="both", expand=True)
+        txt.tag_configure("stderr", foreground="#ff8080")
+        paned.add(frame, weight=1)
+        return txt
+
+    console = make_pane("Console  (program output)")
+    serial_txt = make_pane("Serial  (raw data from the ESP32, unfiltered)")
+
+    MAX_LINES = 20000       # keep the widgets bounded on very long runs
+
+    def append(widget, text: str, tag=None) -> None:
+        # Follow the tail only if the user has not scrolled up to read.
+        at_end = widget.yview()[1] >= 0.999
+        widget.configure(state="normal")
+        widget.insert("end", text, tag) if tag else widget.insert("end", text)
+        lines = int(widget.index("end-1c").split(".")[0])
+        if lines > MAX_LINES:
+            widget.delete("1.0", "%d.0" % (lines - MAX_LINES))
+        widget.configure(state="disabled")
+        if at_end:
+            widget.see("end")
+
+    # ---- worker -------------------------------------------------------
+    state = {"thread": None, "saved_out": None, "saved_err": None}
+
+    def build_args():
+        """Turn the form into an argparse.Namespace, validating types."""
+        ns = ap.parse_args([])                    # start from the true defaults
+        for act, kind in fields:
+            raw = vars_[act.dest].get()
+            if kind == "flag":
+                setattr(ns, act.dest, bool(raw))
+                continue
+            raw = raw.strip()
+            if raw == "":
+                setattr(ns, act.dest, act.default)     # blank = default / None
+                continue
+            try:
+                val = int(raw) if kind == "int" else float(raw) if kind == "float" else raw
+            except ValueError:
+                raise ValueError("%s: %r is not a valid %s" %
+                                 (flag_name(act), raw, "integer" if kind == "int" else "number"))
+            setattr(ns, act.dest, val)
+        return ns
+
+    def worker(ns):
+        rc = 1
+        try:
+            rc = run_with_args(ns)
+        except KeyboardInterrupt:
+            q.put(("console", "stdout", "\n[gui] stopped by user\n"))
+            rc = 130
+        except SystemExit as exc:
+            rc = exc.code if isinstance(exc.code, int) else 1
+        except BaseException as exc:                 # never die silently
+            import traceback
+            q.put(("console", "stderr", "\n[gui] unexpected error:\n" + traceback.format_exc()))
+            rc = 1
+        finally:
+            q.put(("done", rc))
+
+    def start() -> None:
+        global _RAW_SERIAL_SINK
+        if state["thread"] and state["thread"].is_alive():
+            return
+        try:
+            ns = build_args()
+        except ValueError as exc:
+            messagebox.showerror("Invalid option", str(exc))
+            return
+        _STOP.clear()
+        with _LIVE_LOCK:
+            _LIVE_PROCS[:] = []
+        state["saved_out"], state["saved_err"] = sys.stdout, sys.stderr
+        sys.stdout = _QueueWriter(q, "stdout")
+        sys.stderr = _QueueWriter(q, "stderr")
+        _RAW_SERIAL_SINK = lambda chunk: q.put(("serial", chunk))
+        argv = " ".join(shlex.quote(a) for a in _namespace_to_argv(ap, ns))
+        q.put(("console", "stdout", "$ test_aprs_wavs.py %s\n" % argv))
+        t = threading.Thread(target=worker, args=(ns,), daemon=True)
+        state["thread"] = t
+        btn_start.configure(state="disabled")
+        btn_stop.configure(state="normal")
+        status.set("Running ...")
+        t.start()
+
+    def stop() -> None:
+        """Ask the worker to stop right now. This does NOT use an asynchronous
+        exception (those are not delivered while the worker is blocked waiting
+        on the audio player or in a sleep - see request_stop). It sets the
+        stop flag and kills the child processes; the worker then raises
+        KeyboardInterrupt itself, so the script's own Ctrl-C clean-up and the
+        "reporting what has been tested so far" summary run unchanged."""
+        t = state["thread"]
+        if t is None or not t.is_alive():
+            return
+        btn_stop.configure(state="disabled")      # one click is enough
+        status.set("Stopping ...")
+        request_stop()
+
+    def finish(rc) -> None:
+        global _RAW_SERIAL_SINK
+        _RAW_SERIAL_SINK = None
+        if state["saved_out"] is not None:
+            sys.stdout, sys.stderr = state["saved_out"], state["saved_err"]
+            state["saved_out"] = state["saved_err"] = None
+        btn_start.configure(state="normal")
+        btn_stop.configure(state="disabled")
+        status.set("Finished (exit code %s)" % rc)
+        append(console, "\n[gui] finished, exit code %s\n" % rc)
+
+    def clear() -> None:
+        for w in (console, serial_txt):
+            w.configure(state="normal")
+            w.delete("1.0", "end")
+            w.configure(state="disabled")
+
+    def reset() -> None:
+        for dest, var in vars_.items():
+            var.set(defaults[dest])
+
+    def pump() -> None:
+        """Drain the queue in bounded batches so a flood of serial data cannot
+        freeze the window, and coalesce consecutive items per pane so each
+        batch costs one widget update instead of thousands."""
+        con_parts, ser_parts = [], []          # (tag, text) / text
+        done_rc = None
+        for _ in range(4000):
+            try:
+                item = q.get_nowait()
+            except queue.Empty:
+                break
+            if item[0] == "console":
+                con_parts.append((item[1], item[2]))
+            elif item[0] == "serial":
+                ser_parts.append(_visible_serial_text(item[1]))
+            elif item[0] == "done":
+                done_rc = item[1]
+        if con_parts:
+            run_tag, buf = None, []
+            for tag, text in con_parts:
+                if tag != run_tag and buf:
+                    append(console, "".join(buf), "stderr" if run_tag == "stderr" else None)
+                    buf = []
+                run_tag = tag
+                buf.append(text)
+            if buf:
+                append(console, "".join(buf), "stderr" if run_tag == "stderr" else None)
+        if ser_parts:
+            append(serial_txt, "".join(ser_parts))
+        if done_rc is not None:
+            finish(done_rc)
+        root.after(50, pump)
+
+    for seq in ("<Control-plus>", "<Control-equal>", "<Control-KP_Add>"):
+        root.bind(seq, lambda _e: apply_scale(scale_idx[0] + 1))
+    for seq in ("<Control-minus>", "<Control-KP_Subtract>"):
+        root.bind(seq, lambda _e: apply_scale(scale_idx[0] - 1))
+    root.bind("<Control-0>", lambda _e: apply_scale(SCALE_STEPS.index(1.0)))
+    apply_scale(scale_idx[0])
+
+    btn_start.configure(command=start)
+    btn_stop.configure(command=stop)
+    btn_clear.configure(command=clear)
+    btn_reset.configure(command=reset)
+
+    def on_close() -> None:
+        t = state["thread"]
+        if t is not None and t.is_alive():
+            if not messagebox.askyesno("Quit", "A test is still running. Stop it and quit?"):
+                return
+            stop()
+            t.join(timeout=8)
+        root.destroy()
+    root.protocol("WM_DELETE_WINDOW", on_close)
+
+    pump()
+    root.mainloop()
+    return 0
+
+
+def _namespace_to_argv(ap: argparse.ArgumentParser, ns: argparse.Namespace) -> List[str]:
+    """Reconstruct the equivalent command line for the log (values that differ
+    from the default only), so a GUI run can be repeated from a shell."""
+    argv = []  # type: List[str]
+    for act in ap._actions:
+        if not act.option_strings or act.dest in ("help", "gui"):
+            continue
+        val = getattr(ns, act.dest, act.default)
+        if val == act.default:
+            continue
+        name = [o for o in act.option_strings if o.startswith("--")][0]
+        if isinstance(act, argparse._StoreTrueAction):
+            if val:
+                argv.append(name)
+        else:
+            argv += [name, str(val)]
+    return argv
+
+
+
+def build_parser() -> argparse.ArgumentParser:
+    """The one and only definition of the command-line flags. The GUI builds
+    its form from this parser, so a flag added here shows up there by itself."""
     ap = argparse.ArgumentParser(
         description="Test esp32idf_APRS with a battery of real-APRS WAV files, "
                     "using multimon-ng as the reference decoder.")
@@ -1808,8 +2357,24 @@ def main() -> int:
                     help="extra multimon-ng arguments, e.g. '-A' (quoted)")
     ap.add_argument("--list_audio", action="store_true",
                     help="list ALSA playback devices and exit")
-    args = ap.parse_args()
+    ap.add_argument("--gui", action="store_true",
+                    help="open a graphical front-end: every flag in a form at the "
+                         "top, and below it a split console (left: program output, "
+                         "right: raw unfiltered serial data from the ESP32)")
+    return ap
 
+
+def main() -> int:
+    ap = build_parser()
+    args = ap.parse_args()
+    if args.gui:
+        return run_gui(ap)
+    return run_with_args(args)
+
+
+def run_with_args(args: argparse.Namespace) -> int:
+    """Everything main() used to do after parsing. Shared by the CLI and the
+    GUI worker thread."""
     if args.selftest:
         return selftest()
 
@@ -1845,7 +2410,7 @@ def main() -> int:
         sys.stderr.write("--match_window must be > 0 (got %g)\n" % args.match_window)
         return 2
 
-    check_tools()
+    check_tools(need_play=not args.no_play)
 
     if not os.path.isdir(args.wav_dir):
         sys.stderr.write("wav_dir not found: %s\n" % args.wav_dir)
@@ -1940,7 +2505,7 @@ def main() -> int:
                         normalise=args.normalise, offset_auto=offset_auto,
                         offset_seed=offset_seed)
             print_file_report(res, dry_run=args.no_play)
-            time.sleep(args.pause)
+            sleep_or_stop(args.pause)
     except KeyboardInterrupt:
         print("\nInterrupted - reporting what has been tested so far.")
     finally:
