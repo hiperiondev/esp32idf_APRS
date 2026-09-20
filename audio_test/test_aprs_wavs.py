@@ -36,10 +36,22 @@ Firmware side: the console log must be at INFO level (the default), which is
 what prints "I (t) aprs_service: RX: SRC>DST,PATH:payload" for each frame.
 The IGate page option "Log after filters" must be OFF, otherwise frames that
 the IGate filters reject are not printed and would be counted as missing.
+
+IMPORTANT firmware requirement: the firmware MUST escape non-printable bytes
+(and especially LF, 0x0A) before logging the "RX:" line. The console stream is
+split on LF only - splitting on CR would truncate payloads that legitimately
+contain CR - so a raw LF inside an information field cuts the console line in
+two and the frame is scored as a content mismatch even though the demodulator
+was right. Mic-E, telemetry and binary-ish payloads are the ones that hit this.
+
+Recommended companion tool: `stdbuf` (coreutils). Without it multimon-ng's
+stdout is block-buffered on the pipe, its packets arrive in bursts, and the
+arrival timestamps this bench uses drift out of the match window - producing
+NOT DECODED verdicts that are bench artefacts, not firmware faults.
 """
 
 import argparse
-import glob
+import math
 import os
 import re
 import shutil
@@ -85,14 +97,32 @@ ESP_OVERRANGE_RE = re.compile(rb"afsk: RX audio is over-range")
 # Auto-volume calibration
 # --------------------------------------------------------------------------
 
-AUTO_VOLUME_BATCH = 50        # re-evaluate the playback volume every N multimon-ng packets
-AUTO_VOLUME_MAX_ROUNDS = 10   # default number of tries to search for the optimal volume
-AUTO_VOLUME_STEP = 0.15       # relative gain step applied per adjustment (+/- 15%)
-AUTO_VOLUME_MIN = 0.05
-AUTO_VOLUME_MAX = 8.0
-# If the decoded-percentage does not move by at least this much between two
-# consecutive evaluations, the volume is considered to have converged.
-AUTO_VOLUME_STABLE_DELTA_PCT = 1.0
+AUTO_VOLUME_BATCH = 50        # packets scored per plateau probe
+AUTO_VOLUME_MAX_ROUNDS = 10   # budget of probes for the whole search
+AUTO_VOLUME_MIN = 0.02
+AUTO_VOLUME_MAX = 4.0         # >1.0 only makes sense with --normalise (see build_play_cmd)
+
+# Clipping is a binary, fast signal: the firmware itself reports it. Probing
+# for it needs far fewer packets than scoring a decode rate does, which is what
+# makes the two-phase search cheap.
+CLIP_PROBE_PACKETS = 8
+# A single transient over-range on one loud packet is not "the level is wrong".
+# A level counts as clipping only above this many warnings per packet.
+CLIP_RATE_THRESHOLD = 0.10
+COARSE_STEP_DB = 6.0          # bracketing step while hunting for the clip threshold
+BISECT_ITERS = 3              # 6 dB / 2^3 => +/-0.75 dB on the threshold
+# Where to score the plateau, relative to the clipping threshold.
+PLATEAU_OFFSETS_DB = (-3.0, -6.0, -9.0, -12.0, -18.0)
+HEADROOM_DB = 6.0             # fallback margin below the threshold when scoring fails
+MIN_CLIP_MARGIN_DB = 3.0      # never return a volume closer than this to clipping
+KNEE_DROP_PCT = 15.0          # a score this far below the best means the lower knee is past
+MAX_WAV_PASSES = 3            # passes over the wav set before giving up on a batch
+
+# Number of confirmed matches before the ESP<->multimon latency offset is
+# estimated, and the cap applied to it (a larger apparent offset is a symptom
+# of something else, not of sound-card latency).
+OFFSET_MIN_SAMPLES = 10
+OFFSET_MAX_SECONDS = 3.0
 
 # multimon-ng header:  "AFSK1200: fm SRC to DST [via P1,P2] UI  pid=F0"
 MM_HDR_RE = re.compile(
@@ -117,6 +147,46 @@ def say(msg: str) -> None:
 def mmss(seconds: float) -> str:
     seconds = max(0.0, seconds)
     return "%02d:%02d.%d" % (int(seconds // 60), int(seconds % 60), int((seconds * 10) % 10))
+
+
+# --------------------------------------------------------------------------
+# Level maths
+# --------------------------------------------------------------------------
+
+
+def to_db(v: float) -> float:
+    """Linear gain -> dB. Levels are searched multiplicatively, so every step
+    of the search is a constant number of dB, not a constant linear amount."""
+    return 20.0 * math.log10(max(v, 1e-9))
+
+
+def to_lin(db: float) -> float:
+    return 10.0 ** (db / 20.0)
+
+
+def wilson(k: int, n: int, z: float = 1.96) -> Tuple[float, float]:
+    """95% confidence interval for a proportion.
+
+    Used to decide whether two volumes really decoded differently or whether
+    the difference is just sampling noise: at n=50 packets the half-width near
+    90% is about 8 percentage points, so anything smaller than that must not be
+    treated as a signal.
+    """
+    if n <= 0:
+        return (0.0, 1.0)
+    p = k / float(n)
+    d = 1.0 + z * z / n
+    centre = (p + z * z / (2.0 * n)) / d
+    half = (z * math.sqrt(p * (1.0 - p) / n + z * z / (4.0 * n * n))) / d
+    return (max(0.0, centre - half), min(1.0, centre + half))
+
+
+def median(values: List[float]) -> float:
+    if not values:
+        return 0.0
+    s = sorted(values)
+    n = len(s)
+    return s[n // 2] if n % 2 else 0.5 * (s[n // 2 - 1] + s[n // 2])
 
 
 # --------------------------------------------------------------------------
@@ -146,7 +216,12 @@ class FileResult:
     mismatch: List[Tuple[Packet, Optional[Packet]]] = field(default_factory=list)
     missing: List[Packet] = field(default_factory=list)
     extra: List[Packet] = field(default_factory=list)
+    # Frames whose payload the ESP32 got right but whose header came out
+    # corrupted. Kept apart from `mismatch` for reporting, but counted with it
+    # in the totals: both mean "decoded, but not correctly".
+    corrupt: List[Tuple[Packet, Packet]] = field(default_factory=list)
     duration: float = 0.0
+    offset: float = 0.0        # measured ESP32 - multimon-ng latency skew, seconds
 
 
 # --------------------------------------------------------------------------
@@ -238,17 +313,32 @@ def parse_esp_line(raw: bytes) -> Optional[Packet]:
 class MultimonParser:
     """Stateful parser for multimon-ng's two-line records (header + payload)."""
 
+    # Lines other multimon-ng decoders/options emit, which must never be
+    # mistaken for the payload line that follows an AFSK1200 header. With
+    # `--mm_args -A` multimon-ng also prints a parsed "APRS: ..." line; it
+    # normally comes after the payload, but this makes the parser independent
+    # of that ordering.
+    OTHER_DECODER_RE = re.compile(
+        r"^(APRS|AFSK[0-9]+|AX25|POCSAG[0-9]*|FLEX|EAS|MORSE|DTMF|ZVEI[0-9]*|"
+        r"UFSK[0-9]*|CLIPFSK|FMSFSK|SCOPE|DUMPCSV|X10|EOT)\b\s*:",
+        re.IGNORECASE)
+
     def __init__(self) -> None:
         self._hdr = None  # type: Optional[re.Match]
 
     def feed_line(self, line: str) -> Optional[Packet]:
-        line = line.rstrip("\r\n")
+        line = line.rstrip("\\r\\n")
         m = MM_HDR_RE.match(line)
         if m:
             self._hdr = m
             return None
         if self._hdr is None:
             return None  # banner or noise
+        if self.OTHER_DECODER_RE.match(line):
+            # Another decoder spoke before the payload arrived: drop the
+            # pending header rather than storing this line as its payload.
+            self._hdr = None
+            return None
         h = self._hdr
         self._hdr = None
         path = h.group("via").split(",") if h.group("via") else []
@@ -276,14 +366,29 @@ class SerialCollector(threading.Thread):
 
     def __init__(self, port: str, baud: int = SERIAL_BAUD) -> None:
         super().__init__(daemon=True)
-        self.ser = serial.Serial(
-            port=port, baudrate=baud,
-            bytesize=serial.EIGHTBITS, parity=serial.PARITY_NONE,
-            stopbits=serial.STOPBITS_ONE, timeout=0.2,
-        )
         # Opening the port toggles DTR/RTS on most ESP32 dev boards, which
-        # resets the chip. Keep both de-asserted, then give the firmware time
-        # to come up (done by the caller via wait_ready()).
+        # resets the chip (they are wired to EN/IO0). Both lines are therefore
+        # de-asserted BEFORE the port is opened and again right after, because
+        # some drivers assert them as part of open(). The firmware then gets
+        # time to come up via the caller's wait_ready().
+        self.ser = serial.Serial()
+        self.ser.port = port
+        self.ser.baudrate = baud
+        self.ser.bytesize = serial.EIGHTBITS
+        self.ser.parity = serial.PARITY_NONE
+        self.ser.stopbits = serial.STOPBITS_ONE
+        self.ser.timeout = 0.2
+        try:
+            self.ser.dtr = False
+            self.ser.rts = False
+        except (OSError, ValueError, AttributeError):
+            pass          # not all platforms allow setting the lines before open()
+        self.ser.open()
+        try:
+            self.ser.dtr = False
+            self.ser.rts = False
+        except (OSError, ValueError, AttributeError):
+            pass
         self.lock = threading.Lock()
         self.packets: List[Tuple[float, Packet]] = []
         self.lines_seen = 0
@@ -358,6 +463,18 @@ class SerialCollector(threading.Thread):
         with self.lock:
             return [(t, p) for t, p in self.packets if t_start <= t < t_end]
 
+    def items_from(self, index: int, t_start: float) -> Tuple[List[Tuple[float, Packet]], int]:
+        """Packets stored at or after `index` whose arrival is >= t_start, plus
+        the new index to resume from.
+
+        The ticker asks for this every 0.25 s, so scanning the whole run each
+        time made a long session quadratic in the number of packets. Packets
+        are appended in arrival order, so resuming from an index is both
+        cheaper and equivalent."""
+        with self.lock:
+            tail = self.packets[index:]
+            return [(t, p) for t, p in tail if t >= t_start], len(self.packets)
+
     def between(self, t_start: float, t_end: float) -> List[Packet]:
         """Packets whose console line was received in [t_start, t_end)."""
         with self.lock:
@@ -369,6 +486,8 @@ class SerialCollector(threading.Thread):
             self.ser.close()
         except Exception:
             pass
+        if self.is_alive():
+            self.join(timeout=2)
 
 
 # --------------------------------------------------------------------------
@@ -382,14 +501,87 @@ def wav_duration(path: str) -> float:
         with wave.open(path, "rb") as w:
             return w.getnframes() / float(w.getframerate())
     except Exception:
+        pass
+    # Not a PCM wave the stdlib understands (24 bit, ADPCM, ...). Ask sox,
+    # which understands everything libsox was built for, so the progress line
+    # does not end up showing "/ 00:00.0".
+    try:
+        p = subprocess.run(["soxi", "-D", path], capture_output=True, timeout=20)
+        return float(p.stdout.decode("latin-1", "replace").strip())
+    except Exception:
         return 0.0
+
+
+_PEAK_CACHE = {}  # type: dict
+
+
+def wav_peak(path: str) -> float:
+    """Peak amplitude (0..1) of a file, from `sox <wav> -n stat`.
+
+    Needed because digital gain above 1.0 on a file that already peaks near
+    full scale clips INSIDE sox, before the sound card ever sees it - and
+    `-V0` hides sox's own clip warning. Knowing the peak is what lets the
+    bench tell "the analog level is too hot" apart from "I am asking sox to
+    produce samples it cannot represent".
+    """
+    if path in _PEAK_CACHE:
+        return _PEAK_CACHE[path]
+    peak = 1.0
+    try:
+        p = subprocess.run(["sox", path, "-n", "stat"], capture_output=True, timeout=60)
+        for line in p.stderr.decode("latin-1", "replace").splitlines():
+            if "Maximum amplitude" in line:
+                peak = abs(float(line.split(":", 1)[1].strip()))
+                break
+    except Exception:
+        pass
+    peak = max(peak, 1e-6)
+    _PEAK_CACHE[path] = peak
+    return peak
+
+
+def build_play_cmd(wav: str, volume: float, normalise: bool) -> List[str]:
+    """Build the `play` command for the ESP32 leg.
+
+    Differences from the earlier version:
+      * no "-c 2": `remix 1 1` already produces two output channels, and a
+        format option placed after the input file is parsed differently by
+        different sox builds;
+      * the level is applied with `gain <dB>` instead of the linear `vol`,
+        so the amount of gain is explicit in the unit the problem is actually
+        posed in, and sox's headroom handling applies;
+      * with `normalise`, every file is brought to -1 dBFS first, so one
+        volume is valid across a set of recordings made at different levels.
+    """
+    cmd = ["play", "-q", "-V0", wav, "remix", "1", "1"]
+    if normalise:
+        cmd += ["gain", "-n", "-1"]
+    cmd += ["gain", "%.2f" % to_db(volume)]
+    return cmd
+
+
+def clip_warning(wav: str, volume: float, normalise: bool) -> Optional[str]:
+    """Return a warning when `volume` would clip this file inside sox."""
+    if normalise:
+        headroom = to_lin(-1.0)            # every file leaves the chain at -1 dBFS
+    else:
+        headroom = wav_peak(wav)
+    if volume * headroom > 1.0:
+        return ("%s: gain %.3f (%+.1f dB) on a file peaking at %.3f would clip "
+                "inside sox (max usable gain %.3f). Use --normalise, or lower the "
+                "gain and raise the hardware level instead." %
+                (os.path.basename(wav), volume, to_db(volume), headroom, 1.0 / headroom))
+    return None
 
 
 def run_one_wav(res: FileResult, wav: str, audio_device: Optional[str],
                 volume: float, tail: float, window: float,
                 collector: SerialCollector, mm_extra: List[str],
                 mute_local: bool,
-                stop_at_mm_packets: Optional[int] = None) -> bool:
+                stop_at_mm_packets: Optional[int] = None,
+                normalise: bool = False,
+                offset_auto: bool = True,
+                offset_seed: float = 0.0) -> bool:
     """Play `wav` once while decoding it with multimon-ng and reading the
     ESP32 console. Every multimon-ng packet is printed together with the
     ESP32's answer to it (or NOT DECODED) as soon as that is known, and `res`
@@ -408,9 +600,13 @@ def run_one_wav(res: FileResult, wav: str, audio_device: Optional[str],
     at exactly N packets even when a single WAV holds far more than N.
     Returns True if that cutoff was hit, False if the file simply played to
     its natural end (or was interrupted by Ctrl-C)."""
-    # ESP32 lines are attributed to this file by the moment they arrive: the
-    # window opens right now, before playback starts, so a late frame from
-    # the previous file (its window already closed) cannot leak in here.
+    # ESP32 lines are attributed to this file by the moment they arrive. The
+    # window opens right now, before playback starts, so nothing the previous
+    # file already resolved is re-counted - but a frame the previous file was
+    # still demodulating when it ended CAN arrive after this t0 and will be
+    # ingested here, normally as an "extra". That is why the inter-file
+    # `--pause` and `--tail` matter: they drain the ESP32 before the next file
+    # opens its window.
     t0 = time.monotonic()
     t_window_start = t0
 
@@ -433,12 +629,21 @@ def run_one_wav(res: FileResult, wav: str, audio_device: Optional[str],
     if audio_device:
         env["AUDIODRIVER"] = "alsa"
         env["AUDIODEV"] = audio_device
-    play_cmd = ["play", "-q", "-V0", wav, "-c", "2", "remix", "1", "1",
-                "vol", str(volume)]
+    play_cmd = build_play_cmd(wav, volume, normalise)
+    warn = clip_warning(wav, volume, normalise)
+    if warn and not mute_local:
+        say("  ! " + warn)
 
     sox_raw = ["sox", "-q", "-V0", wav, "-t", "raw", "-r", str(MM_RATE),
                "-e", "signed", "-b", "16", "-c", "1", "-"]
+    # Line-buffer multimon-ng's stdout. On a pipe libc block-buffers it (4 KiB),
+    # so dozens of packets can sit in the buffer and then arrive in one burst;
+    # they would be timestamped at read time, drift outside the match window and
+    # be reported as NOT DECODED even though the ESP32 and multimon-ng both got
+    # them right.
     mm_cmd = ["multimon-ng", "-t", "raw", "-a", "AFSK1200", "-q"] + mm_extra + ["-"]
+    if _HAVE_STDBUF:
+        mm_cmd = ["stdbuf", "-oL"] + mm_cmd
 
     player = None  # type: Optional[subprocess.Popen]
     sox_p = None   # type: Optional[subprocess.Popen]
@@ -446,11 +651,17 @@ def run_one_wav(res: FileResult, wav: str, audio_device: Optional[str],
     gt = None      # type: Optional[threading.Thread]
     done = threading.Event()
     duration = wav_duration(wav)
-    matcher = LiveMatcher(window)
+    matcher = LiveMatcher(window, offset_auto=offset_auto, offset=offset_seed)
     interrupted = False
-    ingested = [0]   # how many ESP32 items of this file the matcher has seen
+    # Resume point in the collector's packet list (not a count of this file's
+    # packets): everything already stored belongs to an earlier file.
+    ingested = [collector.snapshot_index()]
     collector.file_t0 = t0
 
+    # `res` is written from two threads: read_mm appends multimon packets as
+    # they are decoded, while emit records verdicts from the ticker. The lock
+    # keeps the tallies and the list appends consistent with each other.
+    res_lock = threading.Lock()
     resolved = {}        # type: dict   # idx -> event, waiting for its turn
     next_idx = [1]       # next multimon-ng packet number to print
     print_idx = [0]       # single sequence number shared by every printed line
@@ -477,8 +688,10 @@ def run_one_wav(res: FileResult, wav: str, audio_device: Optional[str],
         new multimon-ng packet) and from emit (every resolved "extra" - those
         are only known once the match window has elapsed, so they trickle in
         from the ticker thread, not from read_mm)."""
+        with res_lock:
+            reached = len(res.mm_packets) + len(res.extra)
         if (stop_at_mm_packets is not None and not target_hit[0] and
-                len(res.mm_packets) + len(res.extra) >= stop_at_mm_packets):
+                reached >= stop_at_mm_packets):
             target_hit[0] = True
             kill_pipeline()
 
@@ -506,28 +719,36 @@ def run_one_wav(res: FileResult, wav: str, audio_device: Optional[str],
         print_idx[0] += 1
         n = print_idx[0]
         if kind == "extra":
-            res.extra.append(ep)
+            with res_lock:
+                res.extra.append(ep)
             say("%06d [multimon  --:--.-] NOT DECODED" % n)
             say("       [esp32 only      %s] %s" % (mmss(t_esp - t0), ep.raw))
             check_stop()
             return
         say("%06d [multimon %s] %s" % (n, mmss(t_mm - t0), mp.raw))
         if kind == "ok":
-            res.ok += 1
+            with res_lock:
+                res.ok += 1
             say("    OK [esp32    %s] %s" % (mmss(t_esp - t0), ep.raw))
         elif kind == "mismatch":
-            res.mismatch.append((mp, ep))
+            with res_lock:
+                res.mismatch.append((mp, ep))
             say("       [esp32    %s] %s" % (mmss(t_esp - t0), ep.raw))
             say("      ! DECODED BUT DIFFERENT")
+        elif kind == "corrupt":
+            with res_lock:
+                res.corrupt.append((mp, ep))
+            say("       [esp32    %s] %s" % (mmss(t_esp - t0), ep.raw))
+            say("      ! PAYLOAD OK BUT HEADER CORRUPT")
         else:
-            res.missing.append(mp)
+            with res_lock:
+                res.missing.append(mp)
             say("       [esp32     --:--.-] NOT DECODED")
 
     def feed_and_step(now: float, final: bool = False) -> None:
-        items = collector.items_between(t_window_start, float("inf"))
-        for t, p in items[ingested[0]:]:
+        items, ingested[0] = collector.items_from(ingested[0], t_window_start)
+        for t, p in items:
             matcher.add_esp(t, p)
-        ingested[0] = len(items)
         for ev in matcher.step(now, final):
             show(ev)
 
@@ -567,6 +788,14 @@ def run_one_wav(res: FileResult, wav: str, audio_device: Optional[str],
                     mm_p.stdin.close()
                 except Exception:
                     pass
+                # Also close the read end of sox's pipe. Without this, a
+                # multimon-ng that died (or was killed by the packet-count
+                # cutoff) leaves sox blocked writing into a pipe nobody
+                # drains, and sox_p.wait() below would never return.
+                try:
+                    sox_p.stdout.close()
+                except Exception:
+                    pass
 
         # Reader thread: takes every multimon-ng packet as it appears.
         parser = MultimonParser()
@@ -577,7 +806,8 @@ def run_one_wav(res: FileResult, wav: str, audio_device: Optional[str],
                 pkt = parser.feed_line(raw.decode("latin-1"))
                 if pkt is None:
                     continue
-                res.mm_packets.append(pkt)
+                with res_lock:
+                    res.mm_packets.append(pkt)
                 now = time.monotonic()
                 if mute_local:      # dry run: no ESP32, just list the packet
                     say("%06d [multimon %s] %s" %
@@ -615,21 +845,55 @@ def run_one_wav(res: FileResult, wav: str, audio_device: Optional[str],
 
         # Start the real-time playback to the ESP32 and the multimon-ng feed
         # at the same moment.
+        player_err = []  # type: List[bytes]
+
+        def drain_player_err() -> None:
+            """Read the player's stderr continuously. Reading it only after
+            wait() would deadlock the moment sox writes more than one pipe
+            buffer of warnings."""
+            if player is None or player.stderr is None:
+                return
+            try:
+                for chunk in iter(lambda: player.stderr.read(4096), b""):
+                    player_err.append(chunk)
+            except Exception:
+                pass
+
         if not mute_local:
             player = subprocess.Popen(play_cmd, env=env,
                                       stdout=subprocess.DEVNULL,
                                       stderr=subprocess.PIPE)
+            et = threading.Thread(target=drain_player_err, daemon=True)
+            et.start()
         pt.start()
 
         if player is not None:
             player.wait()
+            et.join(timeout=2)
             if player.returncode not in (0, None) and not target_hit[0]:
-                err = (player.stderr.read() if player.stderr else b"").decode("latin-1", "replace")
+                err = b"".join(player_err).decode("latin-1", "replace")
                 sys.stderr.write("\n[audio] player failed (rc=%s): %s\n" %
                                  (player.returncode, err.strip()))
-        pt.join()
-        sox_p.wait()
-        mm_p.wait(timeout=60)
+        pt.join(timeout=30)
+        try:
+            sox_p.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            sox_p.kill()
+            try:
+                sox_p.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                pass
+        try:
+            mm_p.wait(timeout=60)
+        except subprocess.TimeoutExpired:
+            # Never let this escape: it used to propagate out of run_one_wav
+            # and abort the whole test run (and the calibration with it).
+            sys.stderr.write("\n[mm] multimon-ng did not exit within 60 s - killing it\n")
+            mm_p.kill()
+            try:
+                mm_p.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                pass
         rt.join(timeout=5)
 
         # Let the ESP32 finish the last frame and flush its console. At least
@@ -654,12 +918,14 @@ def run_one_wav(res: FileResult, wav: str, audio_device: Optional[str],
                 # Packets still waiting for their verdict are not counted:
                 # the ESP32 has not had its full chance to answer them.
                 dropped = matcher.drop_pending()
+                dropped_ids = set(id(d) for d in dropped)
                 res.mm_packets = [p for p in res.mm_packets
-                                  if not any(p is d for d in dropped)]
+                                  if id(p) not in dropped_ids]
             else:
                 feed_and_step(time.monotonic(), final=True)
             flush_resolved()
             res.esp_packets = list(matcher.esp_seen)
+            res.offset = matcher.offset
         res.duration = time.monotonic() - t0
     return target_hit[0]
 
@@ -697,13 +963,24 @@ class LiveMatcher:
     logic can be tested without any hardware or real waiting.
     """
 
-    def __init__(self, window: float) -> None:
+    def __init__(self, window: float, offset_auto: bool = True,
+                 offset: float = 0.0) -> None:
         self.window = window
         self._lock = threading.Lock()
         self._mm = []       # type: list   # [idx, t, Packet], unresolved
         self._esp = []      # type: list   # [t, Packet, used], unclaimed
         self._n_mm = 0
         self.esp_seen = []  # type: List[Packet]
+        # Latency skew. The multimon-ng leg is paced tight to real time, while
+        # the ESP32 leg goes through ALSA output buffering, the ADC, the demod
+        # and the UART console - commonly a few hundred ms, sometimes over a
+        # second. Left uncorrected it eats the match window and manufactures
+        # NOT DECODED verdicts. It is estimated from confirmed matches and then
+        # applied to every later comparison.
+        self.offset_auto = offset_auto
+        self.offset = offset
+        self._offset_samples = []  # type: List[float]
+        self.offset_locked = not offset_auto
 
     def add_mm(self, t: float, pkt: Packet) -> int:
         with self._lock:
@@ -738,16 +1015,22 @@ class LiveMatcher:
         w = self.window
         events = []  # type: List[tuple]
         with self._lock:
+            off = self.offset
+
+            def skew(te: float, tm: float) -> float:
+                """Time distance, with the measured latency skew removed."""
+                return abs(te - tm - off)
+
             # Pass 1 - exact content matches, closest in time first, so that
             # when the same packet was sent twice in a row the ESP32 packet
             # goes to the transmission it is nearest to.
             cands = []
             for mi, (idx, tm, mp) in enumerate(self._mm):
                 for ei, (te, ep, used) in enumerate(self._esp):
-                    if used or abs(te - tm) > w:
+                    if used or skew(te, tm) > w:
                         continue
                     if ep.key_header() == mp.key_header() and ep.info == mp.info:
-                        cands.append((abs(te - tm), mi, ei))
+                        cands.append((skew(te, tm), mi, ei))
             cands.sort()
             mm_done = set()
             for _, mi, ei in cands:
@@ -757,29 +1040,45 @@ class LiveMatcher:
                 te, ep, _u = self._esp[ei]
                 self._esp[ei][2] = True
                 mm_done.add(mi)
+                self._note_offset(te - tm)
                 events.append(("ok", idx, tm, mp, te, ep))
 
-            # Pass 2 - packets whose deadline passed: same-header/different
-            # payload is a mismatch, otherwise the packet is missing.
+            # Pass 2 - packets whose deadline passed. Exactly ONE verdict is
+            # produced per multimon-ng packet, and any ESP32 packet used to
+            # reach that verdict is marked used so it cannot ALSO be reported
+            # as an "extra" afterwards:
+            #   same header, different payload -> mismatch
+            #   same payload, different header -> corrupt (header damaged)
+            #   nothing at all                 -> missing
             for mi, (idx, tm, mp) in enumerate(self._mm):
                 if mi in mm_done:
                     continue
-                if not final and now < tm + w:
+                if not final and now < tm + w + abs(off):
                     continue
-                best = None
+                best_hdr = None
+                best_info = None
                 for ei, (te, ep, used) in enumerate(self._esp):
-                    if used or abs(te - tm) > w:
+                    if used or skew(te, tm) > w:
                         continue
                     if ep.key_header() == mp.key_header():
-                        if best is None or abs(te - tm) < abs(self._esp[best][0] - tm):
-                            best = ei
+                        if (best_hdr is None or
+                                skew(te, tm) < skew(self._esp[best_hdr][0], tm)):
+                            best_hdr = ei
+                    elif ep.info == mp.info:
+                        if (best_info is None or
+                                skew(te, tm) < skew(self._esp[best_info][0], tm)):
+                            best_info = ei
                 mm_done.add(mi)
-                if best is None:
-                    events.append(("missing", idx, tm, mp, None, None))
-                else:
-                    te, ep, _u = self._esp[best]
-                    self._esp[best][2] = True
+                if best_hdr is not None:
+                    te, ep, _u = self._esp[best_hdr]
+                    self._esp[best_hdr][2] = True
                     events.append(("mismatch", idx, tm, mp, te, ep))
+                elif best_info is not None:
+                    te, ep, _u = self._esp[best_info]
+                    self._esp[best_info][2] = True
+                    events.append(("corrupt", idx, tm, mp, te, ep))
+                else:
+                    events.append(("missing", idx, tm, mp, None, None))
 
             self._mm = [m for mi, m in enumerate(self._mm) if mi not in mm_done]
 
@@ -789,12 +1088,26 @@ class LiveMatcher:
             for te, ep, used in self._esp:
                 if used:
                     continue
-                if final or now > te + w:
+                if final or now > te + w + abs(off):
                     events.append(("extra", None, None, None, te, ep))
                 else:
                     keep.append([te, ep, used])
             self._esp = keep
         return events
+
+    def _note_offset(self, delta: float) -> None:
+        """Feed one confirmed (ESP32 - multimon-ng) time difference into the
+        latency estimate. Called with the lock held. Once enough samples are
+        in, the median is adopted as the offset: the median, not the mean, so
+        one late console line cannot drag the whole estimate."""
+        if self.offset_locked or not self.offset_auto:
+            return
+        if abs(delta) > OFFSET_MAX_SECONDS:
+            return          # not sound-card latency; do not let it skew the estimate
+        self._offset_samples.append(delta)
+        if len(self._offset_samples) >= OFFSET_MIN_SAMPLES:
+            self.offset = median(self._offset_samples)
+            self.offset_locked = True
 
 
 # --------------------------------------------------------------------------
@@ -811,10 +1124,17 @@ def print_file_report(res: FileResult, dry_run: bool = False) -> None:
     if dry_run:
         return
     say("  ESP32 decoded %d packet(s)" % len(res.esp_packets))
-    say("  -> OK: %d   DIFFERENT: %d   NOT DECODED: %d   EXTRA(esp only): %d" %
-        (res.ok, len(res.mismatch), len(res.missing), len(res.extra)))
+    say("  -> OK: %d   DIFFERENT: %d   HDR-CORRUPT: %d   NOT DECODED: %d   "
+        "EXTRA(esp only): %d" %
+        (res.ok, len(res.mismatch), len(res.corrupt), len(res.missing), len(res.extra)))
+    if res.offset:
+        say("  -> measured esp32 latency vs multimon-ng: %+.2f s" % res.offset)
     for mp, ep in res.mismatch:
         say("    ! DIFFERENT")
+        say("        multimon: %s" % mp.raw)
+        say("        esp32   : %s" % ep.raw)
+    for mp, ep in res.corrupt:
+        say("    ! HEADER CORRUPT (payload matched)")
         say("        multimon: %s" % mp.raw)
         say("        esp32   : %s" % ep.raw)
     for mp in res.missing:
@@ -825,34 +1145,42 @@ def print_summary(results: List[FileResult], volume: Optional[float] = None) -> 
     total = sum(len(r.mm_packets) for r in results)
     ok = sum(r.ok for r in results)
     mism = sum(len(r.mismatch) for r in results)
+    corr = sum(len(r.corrupt) for r in results)
     miss = sum(len(r.missing) for r in results)
     extra = sum(len(r.extra) for r in results)
     esp_total = sum(len(r.esp_packets) for r in results)
+    offsets = [r.offset for r in results if r.offset]
 
     bar = "=" * 72
     print("\n" + bar)
     print("SUMMARY")
     print(bar)
-    print("  %-34s %6s %6s %6s %6s %6s" % ("file", "mm", "ok", "diff", "n/dec", "extra"))
+    print("  %-30s %6s %6s %6s %6s %6s %6s" %
+          ("file", "mm", "ok", "diff", "hdr", "n/dec", "extra"))
     for r in results:
-        print("  %-34s %6d %6d %6d %6d %6d" %
-              (r.name[:34], len(r.mm_packets), r.ok, len(r.mismatch),
-               len(r.missing), len(r.extra)))
+        print("  %-30s %6d %6d %6d %6d %6d %6d" %
+              (r.name[:30], len(r.mm_packets), r.ok, len(r.mismatch),
+               len(r.corrupt), len(r.missing), len(r.extra)))
     print("  " + "-" * 70)
     if volume is not None:
-        print("  Playback volume used for this test : %.3f" % volume)
+        print("  Playback gain used for this test  : %.3f  (%+.1f dB)" %
+              (volume, to_db(volume)))
+    if offsets:
+        print("  ESP32 latency vs multimon-ng      : %+.2f s (median of %d file(s))" %
+              (median(offsets), len(offsets)))
     print("  Files tested                      : %d" % len(results))
     print("  Total packets (multimon-ng)       : %d" % total)
     print("  Packets seen by ESP32             : %d" % esp_total)
     print("  Decoded correctly                 : %d  (%.2f%%)" % (ok, pct(ok, total)))
     print("  Decoded with different content    : %d  (%.2f%%)" % (mism, pct(mism, total)))
+    print("  Decoded with corrupt header       : %d  (%.2f%%)" % (corr, pct(corr, total)))
     print("  Missing (not decoded)             : %d  (%.2f%%)" % (miss, pct(miss, total)))
     print("  Extra (ESP32 only, not an error)  : %d" % extra)
     print(bar)
     if total == 0:
         print("RESULT: no packets were decoded by multimon-ng - nothing to compare.")
         return 2
-    return 0 if (mism == 0 and miss == 0) else 1
+    return 0 if (mism == 0 and corr == 0 and miss == 0) else 1
 
 
 # --------------------------------------------------------------------------
@@ -860,65 +1188,96 @@ def print_summary(results: List[FileResult], volume: Optional[float] = None) -> 
 # --------------------------------------------------------------------------
 
 
+_HAVE_STDBUF = False
+
+
 def check_tools() -> None:
+    global _HAVE_STDBUF
     missing = [t for t in ("multimon-ng", "sox", "play") if shutil.which(t) is None]
     if missing:
         sys.stderr.write("Missing required program(s): %s\n" % ", ".join(missing))
         sys.stderr.write("  Debian/Ubuntu: sudo apt install multimon-ng sox libsox-fmt-all\n")
         sys.exit(2)
+    _HAVE_STDBUF = shutil.which("stdbuf") is not None
+    if not _HAVE_STDBUF:
+        sys.stderr.write(
+            "WARNING: `stdbuf` not found (package coreutils). multimon-ng's output will be\n"
+            "  block-buffered on the pipe, so its packets may arrive in bursts and be\n"
+            "  timestamped late, which shows up as spurious NOT DECODED verdicts.\n")
 
 
 def find_wavs(directory: str) -> List[str]:
-    files = []
-    for pattern in ("*.wav", "*.WAV", "*.Wav"):
-        files.extend(glob.glob(os.path.join(directory, pattern)))
+    """Every .wav in the directory, whatever the case of the extension.
+
+    glob() is case-sensitive on Linux and case-insensitive on macOS, so
+    matching on the lower-cased name is both complete and duplicate-free."""
+    try:
+        entries = os.listdir(directory)
+    except OSError:
+        return []
+    files = [os.path.join(directory, e) for e in entries
+             if e.lower().endswith(".wav") and
+             os.path.isfile(os.path.join(directory, e))]
     return sorted(set(files), key=lambda s: s.lower())
 
 
-class AutoVolumeCalibrator:
-    """Searches for the optimal `play` volume before the real, reported test
-    run, trying up to `max_rounds` (10 by default, configurable with
-    --auto_volume_max_rounds) different volumes.
+class VolumeSearch:
+    """Searches for the best playback level before the real, reported test run.
 
-    Algorithm:
+    Why this is not a hill climb
+    ----------------------------
+    Decode rate against input level is not a peak, it is a plateau: too quiet
+    and the demodulator is fighting the noise floor and the ADC's own
+    quantisation; too loud and the ADC clips and the firmware says so; and
+    between those two knees the rate is flat. Taking the argmax of a flat,
+    noisy curve just picks noise - at 50 packets the 95% interval around 90%
+    is about +/-8 percentage points, so a "2% better" volume is half a packet
+    of luck. What is worth finding is the CENTRE of the plateau, because that
+    is the level with the most margin on both sides.
 
-      * Each try replays the WAV set FROM THE FIRST FILE (looping over the
-        set again within the same try if it runs out before the batch
-        target is reached), and counts every multimon-ng packet, until it
-        has seen AUTO_VOLUME_BATCH (50, configurable with
-        --auto_volume_batch) of them. A try is never a continuation of the
-        previous one's playback position - every try starts over.
-      * Once a try reaches its packet target it is evaluated, and the
-        previous volume together with the new volume chosen for the next
-        try (which will again start from the first wav file) is printed:
-          - if the firmware logged "afsk: RX audio is over-range" during the
-            try, the level is too HIGH: the volume is lowered for the next
-            try;
-          - otherwise the try's decoded percentage (ESP32 packets that
-            matched a multimon-ng one, out of multimon-ng's total) is used:
-            a low percentage means the volume is probably too LOW, so it is
-            raised for the next try.
-      * The best-performing volume (highest decoded percentage among tries
-        that did not clip) is remembered across the whole search.
-      * The search stops nudging the volume - without necessarily stopping
-        before `max_rounds` tries - either once decoding reaches 100%, or
-        once the decoded percentage stops changing between two consecutive
-        tries (moves by less than AUTO_VOLUME_STABLE_DELTA_PCT): at that
-        point trying further volumes is not expected to improve things, so
-        the remaining budget is not spent.
-      * Whichever volume scored the best decoded percentage across every try
-        actually run is the one used for the real test, which is then
-        started fresh from the first file.
+    The search therefore works like this:
 
-    Runs with its own throwaway FileResult objects; nothing here is counted
-    in the final report other than the resulting volume.
+      Phase 1  bracket the clipping threshold, stepping +/-6 dB. Clipping is a
+               binary signal the firmware reports itself ("RX audio is
+               over-range"), so it can be probed with tiny 8-packet batches
+               instead of full ones.
+      Phase 2  bisect that bracket 3 times: +/-0.75 dB on the threshold.
+      Phase 3  score full batches at 3, 6, 9, 12 and 18 dB below the
+               threshold, stopping as soon as the lower knee is clearly past.
+      Phase 4  return the geometric centre of the plateau - every point whose
+               Wilson interval still overlaps the best point's - clamped to at
+               least MIN_CLIP_MARGIN_DB below the clipping threshold.
+
+    Scoring:  success = ok + extra,  trials = multimon packets + extra.
+      * `mismatch` and `corrupt` are FAILURES, not successes. The whole point
+        of the bench is content equality, so a volume that yields corrupted
+        payloads must not score like one that yields correct ones.
+      * `extra` (the ESP32 decoded a frame multimon-ng missed entirely) is a
+        SUCCESS. It is the strongest evidence a level can give: the firmware
+        beat the reference decoder on that frame.
+
+    Everything measured is cached by rounded dB, so no volume is ever probed
+    twice, and probes advance through the wav set round-robin instead of
+    always restarting at the first file - otherwise a set whose first file
+    holds more than one batch would have the level tuned on a single
+    recording.
+
+    Runs with its own throwaway FileResult objects; nothing here is counted in
+    the final report other than the resulting volume.
     """
 
     def __init__(self, wavs: List[str], audio_device: Optional[str],
                  tail: float, window: float, collector: SerialCollector,
                  mm_extra: List[str], start_volume: float,
                  batch_size: int = AUTO_VOLUME_BATCH,
-                 max_rounds: int = AUTO_VOLUME_MAX_ROUNDS) -> None:
+                 max_rounds: int = AUTO_VOLUME_MAX_ROUNDS,
+                 headroom_db: float = HEADROOM_DB,
+                 clip_rate: float = CLIP_RATE_THRESHOLD,
+                 vol_min: float = AUTO_VOLUME_MIN,
+                 vol_max: float = AUTO_VOLUME_MAX,
+                 max_passes: int = MAX_WAV_PASSES,
+                 normalise: bool = False,
+                 offset_auto: bool = True) -> None:
         self.wavs = wavs
         self.audio_device = audio_device
         self.tail = tail
@@ -928,168 +1287,454 @@ class AutoVolumeCalibrator:
         self.volume = start_volume
         self.batch_size = batch_size
         self.max_rounds = max_rounds
+        self.headroom_db = headroom_db
+        self.clip_rate = clip_rate
+        self.vol_min = vol_min
+        self.vol_max = vol_max
+        self.max_passes = max_passes
+        self.normalise = normalise
+        self.offset_auto = offset_auto
+        self.cache = {}        # type: dict   # rounded dB -> measurement
+        self.probes_used = 0
+        # Budget is counted in BATCHES OF PACKETS, not in calls: an 8-packet
+        # clip probe costs 8/batch_size of a round, not a whole one. Charging
+        # every probe as a full round would let the cheap threshold hunt
+        # starve the expensive plateau sweep that actually picks the level.
+        self.budget_used = 0.0
+        self._cursor = 0       # round-robin position in the wav set
+        self.offset = 0.0      # latency skew learned during calibration
+        self.clip_db = None    # type: Optional[float]
 
-    def _run_batch_until(self, wav_iter, current: FileResult,
-                          target: int, volume: float) -> Tuple[FileResult, object]:
-        """Keep playing files (advancing `wav_iter`) into `current` until it
-        holds at least `target` packets - counting BOTH multimon-ng packets
-        AND "extra" ones (packets the ESP32 decoded that multimon-ng missed
-        entirely) - or the calibration set runs dry. If the WAV set is
-        exhausted before the target is reached, it loops back to the first
-        file so the current try can still gather the full batch. The caller
-        starts a NEW `wav_iter` (from the first file) at the beginning of
-        every try - this method does not decide when a try starts. `volume`
-        is fixed for the whole call: every wav played within this
-        round/batch uses this exact value, never `self.volume`, so a volume
-        change is never applied mid-round - it can only take effect on the
-        next round. Returns the possibly-replaced FileResult and the
-        iterator to resume from within this try."""
-        while len(current.mm_packets) + len(current.extra) < target:
-            try:
-                wav = next(wav_iter)
-            except StopIteration:
-                if not self.wavs:
+    # ---------------------------------------------------------------- probe
+    def _clamp(self, volume: float) -> float:
+        return max(self.vol_min, min(self.vol_max, volume))
+
+    def _measure(self, volume: float, target: int) -> dict:
+        """Play `target` packets at `volume` and return the measurement.
+
+        Overridable: --selftest replaces this with a simulated device so the
+        search logic can be tested without any hardware."""
+        key = round(to_db(volume), 2)
+        cached = self.cache.get(key)
+        if cached is not None and cached["trials"] >= target:
+            return cached
+
+        batch = FileResult(name="<probe %+.1f dB>" % key)
+        overrange_before, _ = self.collector.snapshot_overrange()
+        passes = 0
+        while len(batch.mm_packets) + len(batch.extra) < target:
+            if self._cursor >= len(self.wavs):
+                self._cursor = 0
+                passes += 1
+                if passes >= self.max_passes:
+                    # Without this the loop restarts the wav set for ever when
+                    # nothing decodes at all (silent files, muted card, wrong
+                    # ALSA device) and only Ctrl-C can end the run.
+                    say("      probe incomplete: %d/%d packet(s) after %d pass(es) "
+                        "over the wav set - check the audio routing and the files" %
+                        (len(batch.mm_packets) + len(batch.extra), target, passes))
                     break
-                wav_iter = iter(self.wavs)
-                try:
-                    wav = next(wav_iter)
-                except StopIteration:
-                    break
+            wav = self.wavs[self._cursor]
+            self._cursor += 1
+            remaining = target - (len(batch.mm_packets) + len(batch.extra))
             res = FileResult(name=os.path.basename(wav))
-            # Only ask for as many packets as still missing from this batch,
-            # so a single WAV that by itself holds more than that (e.g. one
-            # long multi-packet recording) gets cut short mid-file the
-            # instant the batch target is reached, instead of playing all
-            # the way to its own end and blowing past `target`.
-            remaining = target - (len(current.mm_packets) + len(current.extra))
             run_one_wav(res, wav, self.audio_device, volume, self.tail,
                         self.window, self.collector, self.mm_extra,
-                        mute_local=False, stop_at_mm_packets=remaining)
-            # Merge into the running batch instead of replacing it, so a
-            # batch can span more than one file.
-            current.mm_packets.extend(res.mm_packets)
-            current.esp_packets.extend(res.esp_packets)
-            current.ok += res.ok
-            current.mismatch.extend(res.mismatch)
-            current.missing.extend(res.missing)
-            current.extra.extend(res.extra)
-        return current, wav_iter
+                        mute_local=False, stop_at_mm_packets=remaining,
+                        normalise=self.normalise, offset_auto=self.offset_auto,
+                        offset_seed=self.offset)
+            if res.offset:
+                self.offset = res.offset
+            batch.mm_packets.extend(res.mm_packets)
+            batch.esp_packets.extend(res.esp_packets)
+            batch.ok += res.ok
+            batch.mismatch.extend(res.mismatch)
+            batch.corrupt.extend(res.corrupt)
+            batch.missing.extend(res.missing)
+            batch.extra.extend(res.extra)
 
+        n_mm = len(batch.mm_packets)
+        n_extra = len(batch.extra)
+        warns = self.collector.overrange_since(overrange_before)
+        seen = max(1, n_mm + n_extra)
+        m = {
+            "volume": volume,
+            "db": key,
+            "ok": batch.ok,
+            "mismatch": len(batch.mismatch),
+            "corrupt": len(batch.corrupt),
+            "missing": len(batch.missing),
+            "extra": n_extra,
+            "mm": n_mm,
+            "success": batch.ok + n_extra,
+            "trials": n_mm + n_extra,
+            "clip_rate": warns / float(seen),
+        }
+        m["score"] = 100.0 * m["success"] / max(1, m["trials"])
+        self.cache[key] = m
+        self.probes_used += 1
+        self.budget_used += target / float(max(1, self.batch_size))
+        say("  [probe %2d, budget %.1f/%d] gain=%.3f (%+5.1f dB)  mm=%d ok=%d diff=%d hdr=%d "
+            "miss=%d extra=%d  score=%.1f%%  clip=%.2f/pkt" %
+            (self.probes_used, self.budget_used, self.max_rounds, volume, key, n_mm, batch.ok,
+             len(batch.mismatch), len(batch.corrupt), len(batch.missing),
+             n_extra, m["score"], m["clip_rate"]))
+        return m
+
+    def _clips(self, volume: float) -> bool:
+        return self._measure(volume, CLIP_PROBE_PACKETS)["clip_rate"] > self.clip_rate
+
+    def _budget_left(self, cost: float = 0.0) -> bool:
+        """Is there budget for one more probe costing `cost` batches?"""
+        return (self.budget_used + cost) < self.max_rounds
+
+    # ---------------------------------------------------------- phases 1+2
+    def _find_clip_threshold(self, start_db: float) -> Tuple[float, bool]:
+        """Bracket, then bisect, the level at which the ADC starts clipping.
+
+        Returns (threshold in dB, True if it was actually observed). Unlike
+        the previous algorithm this moves in BOTH directions: it goes down
+        when it clips and up when it does not, so a starting volume that is
+        already far too high is not a dead end."""
+        lo_db = None   # highest level known to be clean
+        hi_db = None   # lowest level known to clip
+        db = start_db
+        floor_db, ceil_db = to_db(self.vol_min), to_db(self.vol_max)
+
+        # Reserve most of the budget for the scoring sweep: the threshold
+        # hunt is cheap, but it must not be allowed to eat the rounds that
+        # actually decide the level.
+        clip_cost = CLIP_PROBE_PACKETS / float(max(1, self.batch_size))
+        hunt_cap = max(clip_cost, 0.25 * self.max_rounds)
+        while self.budget_used + clip_cost < hunt_cap:
+            if self._clips(to_lin(db)):
+                hi_db = db if hi_db is None else min(hi_db, db)
+                if lo_db is not None:
+                    break
+                db -= COARSE_STEP_DB
+                if db < floor_db:
+                    return floor_db, True
+            else:
+                lo_db = db if lo_db is None else max(lo_db, db)
+                if hi_db is not None:
+                    break
+                db += COARSE_STEP_DB
+                if db > ceil_db:
+                    return ceil_db, False
+
+        if hi_db is None:
+            return ceil_db, False           # never clipped anywhere we looked
+        if lo_db is None:
+            return floor_db, True           # clipped all the way down
+
+        while (self.budget_used + clip_cost < hunt_cap and
+               (hi_db - lo_db) > (COARSE_STEP_DB / 2 ** BISECT_ITERS)):
+            mid = 0.5 * (lo_db + hi_db)
+            if self._clips(to_lin(mid)):
+                hi_db = mid
+            else:
+                lo_db = mid
+        return lo_db, True
+
+    # ------------------------------------------------------------- phase 3+4
     def run(self) -> float:
         if not self.wavs:
             return self.volume
 
         say("\n" + "=" * 72)
-        say("AUTO-VOLUME CALIBRATION")
+        say("AUTO-VOLUME CALIBRATION (clip threshold + plateau centre)")
         say("=" * 72)
-        say("  Starting volume: %.3f  (batches of %d packets [multimon-ng + "
-              "ESP32-only], up to %d tries)" %
-              (self.volume, self.batch_size, self.max_rounds))
+        say("  Start gain %.3f (%+.1f dB), range %.3f..%.3f, budget %d probe(s), "
+            "%d packet(s) per scoring probe" %
+            (self.volume, to_db(self.volume), self.vol_min, self.vol_max,
+             self.max_rounds, self.batch_size))
 
-        prev_pct = None  # type: Optional[float]
+        clip_db, observed = self._find_clip_threshold(to_db(self._clamp(self.volume)))
+        self.clip_db = clip_db
+        if observed:
+            say("  Clipping threshold: %+.1f dB (gain %.3f)" % (clip_db, to_lin(clip_db)))
+        else:
+            say("  No clipping seen up to %+.1f dB (gain %.3f) - the hardware level "
+                "into the ADC may be too low; check the RX trimmer." %
+                (clip_db, to_lin(clip_db)))
 
-        # Best volume seen so far (highest decoded%% among rounds that did
-        # NOT clip). This is what gets used for the real test at the end,
-        # even if the last round tried was worse - the search always spends
-        # its full budget of `max_rounds` tries looking for the optimum,
-        # it does not just stop at the first working volume.
-        best_volume = self.volume
-        best_pct = -1.0
+        # Sanity check: with no packets at all there is nothing to calibrate.
+        probed = [m for m in self.cache.values() if m["mm"] > 0 or m["extra"] > 0]
+        if not probed:
+            self.volume = self._clamp(to_lin(clip_db - self.headroom_db))
+            say("  No packets decoded during calibration at any level - falling back "
+                "to %.3f (%+.1f dB, threshold - %.0f dB)." %
+                (self.volume, to_db(self.volume), self.headroom_db))
+            say("=" * 72)
+            return self.volume
 
-        for round_no in range(1, self.max_rounds + 1):
-            # Every try re-plays the WAV set from the very first file, so
-            # each volume is judged on exactly the same material as every
-            # other try - never a continuation of where the previous try's
-            # playback happened to stop.
-            wav_iter = iter(self.wavs)
-            batch = FileResult(name="<calibration batch %d>" % round_no)
-            overrange_before, _ = self.collector.snapshot_overrange()
-            volume_used = self.volume
-
-            batch, wav_iter = self._run_batch_until(wav_iter, batch, self.batch_size, volume_used)
-
-            mm_total = len(batch.mm_packets)
-            if mm_total == 0:
-                say("  [try %2d/%d] no packets decoded by multimon-ng at all "
-                      "(check the WAV files / audio routing) - stopping search "
-                      "at volume %.3f" % (round_no, self.max_rounds, self.volume))
+        points = []  # type: List[Tuple[float, dict]]
+        best = None  # type: Optional[Tuple[float, dict]]
+        for off in PLATEAU_OFFSETS_DB:
+            if not self._budget_left(1.0):
+                say("  Probe budget spent; stopping the plateau sweep "
+                    "(raise it with --auto_volume_max_rounds).")
+                break
+            db = clip_db + off
+            if db < to_db(self.vol_min):
+                break
+            m = self._measure(self._clamp(to_lin(db)), self.batch_size)
+            if m["trials"] == 0:
+                continue
+            points.append((db, m))
+            if best is None or m["score"] > best[1]["score"]:
+                best = (db, m)
+            elif m["score"] < best[1]["score"] - KNEE_DROP_PCT:
+                say("      score fell %.0f points below the best - the lower knee is "
+                    "past, no need to go quieter" % (best[1]["score"] - m["score"]))
                 break
 
-            decoded_pct = pct(batch.ok + len(batch.mismatch), mm_total)
-            overrange_hits = self.collector.overrange_since(overrange_before)
+        if not points or best is None:
+            self.volume = self._clamp(to_lin(clip_db - self.headroom_db))
+            say("  No usable score data - using threshold - %.0f dB = %.3f (%+.1f dB)." %
+                (self.headroom_db, self.volume, to_db(self.volume)))
+            say("=" * 72)
+            return self.volume
 
-            say("  [try %2d/%d] volume=%.3f  multimon=%d  extra=%d  esp_ok=%d  "
-                  "decoded=%.1f%%  over-range warnings=%d" %
-                  (round_no, self.max_rounds, volume_used, mm_total, len(batch.extra),
-                   batch.ok, decoded_pct, overrange_hits))
+        # Phase 4: every point statistically tied with the best one forms the
+        # plateau; its geometric centre (arithmetic centre in dB) is the level
+        # with the most margin on both sides.
+        best_lo, _ = wilson(best[1]["success"], max(1, best[1]["trials"]))
+        tied = [db for db, m in points
+                if wilson(m["success"], max(1, m["trials"]))[1] >= best_lo]
+        if not tied:
+            tied = [best[0]]
+        centre_db = 0.5 * (min(tied) + max(tied))
+        centre_db = min(centre_db, clip_db - MIN_CLIP_MARGIN_DB)
+        self.volume = self._clamp(to_lin(centre_db))
 
-            if overrange_hits == 0 and decoded_pct > best_pct:
-                best_pct = decoded_pct
-                best_volume = volume_used
-                say("      new best so far: volume=%.3f (%.1f%% decoded)" %
-                      (best_volume, best_pct))
-
-            if overrange_hits > 0:
-                # Too loud: the ADC is clipping. This round can't be the
-                # optimum (clipped audio, unreliable percentage) - turn it
-                # down and keep trying with the remaining budget.
-                new_volume = max(AUTO_VOLUME_MIN, self.volume * (1.0 - AUTO_VOLUME_STEP))
-                say("      over-range detected: volume %.3f -> %.3f for the "
-                      "next try (batch %d/%d, restarting from the first wav)" %
-                      (volume_used, new_volume, round_no + 1, self.max_rounds))
-                self.volume = new_volume
-                prev_pct = decoded_pct
-                continue
-
-            # Unlike before, reaching 100% or the percentage barely moving
-            # between two tries no longer stops the search early: the full
-            # `max_rounds` budget is always spent trying volumes, so a
-            # volume further along (more margin, or one that only shows its
-            # advantage after this one) is never missed. The best volume
-            # seen across every try (tracked above via best_pct/best_volume)
-            # is what is kept for the real test at the end.
-            if decoded_pct >= 99.5:
-                say("      decoded=100%% and no over-range - still trying "
-                      "further volumes with the remaining budget")
-            elif (prev_pct is not None and
-                  abs(decoded_pct - prev_pct) < AUTO_VOLUME_STABLE_DELTA_PCT):
-                say("      decoded%% stable (%.1f%% -> %.1f%%, < %.1f%% change) - "
-                      "still trying further volumes with the remaining budget" %
-                      (prev_pct, decoded_pct, AUTO_VOLUME_STABLE_DELTA_PCT))
-
-            # Not over-range: raise the volume for the next try so the
-            # remaining budget keeps searching for an even better volume.
-            new_volume = min(AUTO_VOLUME_MAX, self.volume * (1.0 + AUTO_VOLUME_STEP))
-            say("      decoded=%.1f%%: volume %.3f -> %.3f for the "
-                  "next try (batch %d/%d, restarting from the first wav)" %
-                  (decoded_pct, volume_used, new_volume, round_no + 1, self.max_rounds))
-            self.volume = new_volume
-            prev_pct = decoded_pct
-        else:
-            say("  Reached the %d-try limit." % self.max_rounds)
-
-        self.volume = best_volume
-        say("  Calibration finished after up to %d tries: using volume %.3f "
-              "(best decoded rate seen: %.1f%%) for the full test run." %
-              (self.max_rounds, self.volume, best_pct if best_pct >= 0 else 0.0))
+        say("  Plateau: %+.1f .. %+.1f dB (%d tied point(s) of %d probed); "
+            "best raw score %.1f%%" %
+            (min(tied), max(tied), len(tied), len(points), best[1]["score"]))
+        say("  Chosen gain: %.3f (%+.1f dB), %.1f dB below the clipping threshold" %
+            (self.volume, to_db(self.volume), clip_db - centre_db))
+        self._advise()
         say("=" * 72)
         return self.volume
+
+    def _advise(self) -> None:
+        """The firmware's over-range message names the real remedy: the RX
+        trimmer or the transceiver volume. A calibrated gain far from unity in
+        EITHER direction is a statement about the interface hardware, not just
+        a number to hand to `play`."""
+        db = to_db(self.volume)
+        if db < -6.0:
+            say("  NOTE: more than 6 dB of attenuation was needed. The hardware level "
+                "into the ESP32 ADC is too hot - turn the RX trimmer (or the radio's "
+                "volume) down and re-run, so the bench can work near 0 dB.")
+        elif db > 6.0:
+            say("  NOTE: more than 6 dB of boost was needed. The hardware level into "
+                "the ESP32 ADC is too low - turn the RX trimmer up and re-run. "
+                "Boosting digitally also amplifies the sound card's own noise floor.")
+
+
+# Backwards-compatible alias: older invocations and notes refer to the class
+# by its previous name.
+AutoVolumeCalibrator = VolumeSearch
 
 
 def wait_ready(col: SerialCollector, settle: float) -> None:
     """Opening the port usually resets an ESP32 (DTR/RTS wired to EN/IO0).
     Wait for console traffic and for the boot to complete."""
-    print("Waiting %.1f s for the ESP32 to be ready ..." % settle)
-    sys.stdout.flush()
+    say("Waiting %.1f s for the ESP32 to be ready ..." % settle)
     end = time.monotonic() + settle
     while time.monotonic() < end:
         time.sleep(0.2)
     if not col.alive.is_set():
-        print("  WARNING: no data received from the serial port yet. The firmware "
-              "may be quiet until it hears/sends something; continuing.")
+        say("  WARNING: no data received from the serial port yet. The firmware "
+            "may be quiet until it hears/sends something; continuing.")
     else:
-        print("  serial is alive (%d console line(s) so far)." % col.lines_seen)
-    sys.stdout.flush()
+        say("  serial is alive (%d console line(s) so far)." % col.lines_seen)
+
+
+class _SimulatedVolumeSearch(VolumeSearch):
+    """VolumeSearch driven by a simulated device instead of real hardware.
+
+    The model is the plateau the real system exhibits: nothing decodes below
+    -20 dB, everything decodes from -18 dB to -3 dB, and above 0 dB the ADC
+    clips. A correct search must land near the centre of that plateau
+    (about -10.5 dB) no matter where it starts."""
+
+    def __init__(self, *a, **kw):
+        self.knee_low_db = kw.pop("knee_low_db", -18.0)
+        self.knee_high_db = kw.pop("knee_high_db", -3.0)
+        self.clip_at_db = kw.pop("clip_at_db", 0.0)
+        super().__init__(*a, **kw)
+
+    def _measure(self, volume: float, target: int) -> dict:
+        key = round(to_db(volume), 2)
+        cached = self.cache.get(key)
+        if cached is not None and cached["trials"] >= target:
+            return cached
+        db = key
+        if db >= self.clip_at_db:
+            rate, clip = 0.55, 1.0
+        elif db >= self.knee_low_db:
+            rate, clip = 1.0, 0.0
+        elif db >= self.knee_low_db - 8.0:
+            span = (db - (self.knee_low_db - 8.0)) / 8.0
+            rate, clip = max(0.0, span), 0.0
+        else:
+            rate, clip = 0.0, 0.0
+        success = int(round(rate * target))
+        m = {"volume": volume, "db": key, "ok": success, "mismatch": 0, "corrupt": 0,
+             "missing": target - success, "extra": 0, "mm": target,
+             "success": success, "trials": target, "clip_rate": clip}
+        m["score"] = 100.0 * success / max(1, target)
+        self.cache[key] = m
+        self.probes_used += 1
+        self.budget_used += target / float(max(1, self.batch_size))
+        return m
+
+
+def selftest() -> int:
+    """Unit tests that need no hardware, no audio and no waiting."""
+    failures = []
+
+    def check(name: str, cond: bool, detail: str = "") -> None:
+        if cond:
+            print("  PASS  %s" % name)
+        else:
+            failures.append(name)
+            print("  FAIL  %s  %s" % (name, detail))
+
+    print("Normalisation and parsing")
+    p_mm = make_packet("LU1ABC-0", "APRS", ["WIDE1-1"], b"hello\r", "mm")
+    p_esp = make_packet("LU1ABC", "APRS", ["WIDE1-1*"], b"hello", "esp")
+    check("SSID -0, digipeated * and trailing CR all normalise away",
+          p_mm.key_header() == p_esp.key_header() and p_mm.info == p_esp.info)
+    check("trailing dot is kept (truncation must not pass as equal)",
+          make_packet("A", "B", [], b"hi.", "").info !=
+          make_packet("A", "B", [], b"hi", "").info)
+    check("payload LF becomes '.' like multimon-ng prints it",
+          make_packet("A", "B", [], b"a\nb", "").info == b"a.b")
+    check("colon inside the payload does not break the header split",
+          parse_tnc2(b"LU1ABC>APRS::LU2DEF   :hi{01") is not None)
+    check("ESP console line with a log prefix parses",
+          parse_esp_line(b"I (12345) aprs_service: RX: LU1ABC>APRS,WIDE1-1:test") is not None)
+
+    print("LiveMatcher verdicts")
+    lm = LiveMatcher(5.0, offset_auto=False)
+    lm.add_mm(10.0, p_mm)
+    lm.add_esp(11.0, p_esp)
+    check("match inside the window is ok",
+          [e[0] for e in lm.step(20.0, final=True)] == ["ok"])
+
+    lm = LiveMatcher(5.0, offset_auto=False)
+    lm.add_mm(10.0, p_mm)
+    lm.add_esp(16.0, p_esp)
+    check("match outside the window is missing + extra",
+          sorted(e[0] for e in lm.step(30.0, final=True)) == ["extra", "missing"])
+
+    lm = LiveMatcher(5.0, offset_auto=False)
+    bad_hdr = make_packet("LU1XYZ", "APRS", ["WIDE1-1"], b"hello", "esp-bad-hdr")
+    lm.add_mm(10.0, p_mm)
+    lm.add_esp(10.2, bad_hdr)
+    verdicts = [e[0] for e in lm.step(20.0, final=True)]
+    check("header-corrupt frame gives ONE verdict, not missing+extra",
+          verdicts == ["corrupt"], "got %r" % (verdicts,))
+
+    lm = LiveMatcher(5.0, offset_auto=False)
+    bad_pl = make_packet("LU1ABC", "APRS", ["WIDE1-1"], b"hellX", "esp-bad-payload")
+    lm.add_mm(10.0, p_mm)
+    lm.add_esp(10.2, bad_pl)
+    check("payload-corrupt frame is a mismatch only",
+          [e[0] for e in lm.step(20.0, final=True)] == ["mismatch"])
+
+    lm = LiveMatcher(5.0, offset_auto=False)
+    lm.add_mm(10.0, p_mm)
+    lm.add_mm(11.0, p_mm)
+    lm.add_esp(11.05, p_esp)
+    lm.add_esp(10.05, p_esp)
+    ev = [e for e in lm.step(30.0, final=True) if e[0] == "ok"]
+    check("two identical beacons pair with the nearest transmission",
+          len(ev) == 2 and all(abs(e[4] - e[2]) < 0.2 for e in ev))
+
+    lm = LiveMatcher(1.0, offset_auto=True)
+    for i in range(OFFSET_MIN_SAMPLES):
+        pk = make_packet("LU1ABC", "APRS", [], ("beacon %d" % i).encode(), "")
+        lm.add_mm(float(i), pk)
+        lm.add_esp(float(i) + 0.8, pk)
+        lm.step(float(i) + 0.9)
+    check("latency skew is learned from confirmed matches",
+          lm.offset_locked and abs(lm.offset - 0.8) < 0.05,
+          "offset=%.3f" % lm.offset)
+
+    print("Statistics")
+    lo, hi = wilson(45, 50)
+    check("Wilson interval at 45/50 is wide enough to swallow 1-packet noise",
+          (hi - lo) > 0.10, "width=%.3f" % (hi - lo))
+    check("dB round-trip", abs(to_lin(to_db(0.37)) - 0.37) < 1e-9)
+
+    print("VolumeSearch convergence (simulated plateau, centre = -10.5 dB)")
+    for start in (0.05, 1.0, 4.0):
+        vs = _SimulatedVolumeSearch(
+            ["a.wav", "b.wav"], None, 0.0, 5.0, None, [], start,
+            batch_size=50, max_rounds=12)
+        chosen = to_db(vs.run())
+        # Cost is measured in batches of packets (what the run actually pays
+        # in wall-clock time), not in probe calls: the threshold hunt makes
+        # many cheap 8-packet probes on purpose.
+        check("start %.2f converges to the plateau centre within budget "
+              "(%.1f/%d batches, %d probes)" %
+              (start, vs.budget_used, vs.max_rounds, vs.probes_used),
+              abs(chosen - (-10.5)) <= 1.5 and vs.budget_used <= vs.max_rounds,
+              "chose %+.1f dB at cost %.1f" % (chosen, vs.budget_used))
+
+    vs = _SimulatedVolumeSearch(["a.wav"], None, 0.0, 5.0, None, [], 1.0,
+                                batch_size=50, max_rounds=12)
+    vs.run()
+    check("chosen level keeps margin below the clipping threshold",
+          to_db(vs.volume) <= vs.clip_db - MIN_CLIP_MARGIN_DB + 1e-6)
+
+    print("Termination with a wav set that decodes nothing")
+    # The old _run_batch_until restarted the wav iterator unconditionally, so
+    # a silent or misrouted set looped for ever and only Ctrl-C ended the run.
+    global run_one_wav
+    real_run_one_wav = run_one_wav
+    calls = [0]
+
+    def _decodes_nothing(res, wav, *a, **kw):
+        calls[0] += 1
+        if calls[0] > 200:                      # the guard failed; stop the test
+            raise AssertionError("run_one_wav called %d times - no pass limit" % calls[0])
+        return False
+
+    class _NoSerial:
+        lines_seen = 0
+        file_t0 = 0.0
+        def snapshot_overrange(self): return (0, 0.0)
+        def overrange_since(self, n): return 0
+
+    try:
+        run_one_wav = _decodes_nothing
+        vs = VolumeSearch(["a.wav", "b.wav"], None, 0.0, 5.0, _NoSerial(), [], 1.0,
+                          batch_size=50, max_rounds=4, max_passes=MAX_WAV_PASSES)
+        m = vs._measure(1.0, 50)
+        check("a probe over a silent wav set terminates instead of looping",
+              m["trials"] == 0 and calls[0] <= len(["a.wav", "b.wav"]) * MAX_WAV_PASSES,
+              "%d playback call(s)" % calls[0])
+        vs2 = VolumeSearch(["a.wav"], None, 0.0, 5.0, _NoSerial(), [], 1.0,
+                           batch_size=50, max_rounds=4)
+        check("the whole search terminates on a silent wav set",
+              vs2.run() > 0.0)
+    except AssertionError as exc:
+        check("a probe over a silent wav set terminates instead of looping",
+              False, str(exc))
+    finally:
+        run_one_wav = real_run_one_wav
+
+    print("")
+    if failures:
+        print("SELFTEST FAILED: %d of the checks above did not pass" % len(failures))
+        return 1
+    print("SELFTEST OK")
+    return 0
 
 
 def main() -> int:
@@ -1109,6 +1754,29 @@ def main() -> int:
                     help="playback gain applied to the ESP32 leg only (default 1.0). "
                          "Used as the starting point for auto-volume calibration "
                          "unless --no_auto_volume is given.")
+    ap.add_argument("--normalise", "--normalize", dest="normalise", action="store_true",
+                    help="bring every wav to -1 dBFS in the play chain (sox 'gain -n -1') "
+                         "so one gain is valid across recordings made at different levels, "
+                         "and gains above 1.0 stop meaning 'clip inside sox'")
+    ap.add_argument("--headroom_db", type=float, default=HEADROOM_DB,
+                    help="dB below the clipping threshold to fall back to when no "
+                         "plateau could be scored (default %.0f)" % HEADROOM_DB)
+    ap.add_argument("--clip_rate", type=float, default=CLIP_RATE_THRESHOLD,
+                    help="over-range warnings per packet above which a level counts "
+                         "as clipping (default %.2f); a single transient warning is "
+                         "not enough" % CLIP_RATE_THRESHOLD)
+    ap.add_argument("--volume_min", type=float, default=AUTO_VOLUME_MIN,
+                    help="lowest gain the search may use (default %.2f)" % AUTO_VOLUME_MIN)
+    ap.add_argument("--volume_max", type=float, default=AUTO_VOLUME_MAX,
+                    help="highest gain the search may use (default %.2f)" % AUTO_VOLUME_MAX)
+    ap.add_argument("--max_passes", type=int, default=MAX_WAV_PASSES,
+                    help="passes over the wav set before a calibration probe gives up "
+                         "(default %d)" % MAX_WAV_PASSES)
+    ap.add_argument("--no_offset_auto", action="store_true",
+                    help="do not estimate the ESP32-vs-multimon-ng latency skew; "
+                         "compare raw timestamps instead")
+    ap.add_argument("--selftest", action="store_true",
+                    help="run the built-in unit tests (no hardware, no audio) and exit")
     ap.add_argument("--no_auto_volume", action="store_true",
                     help="skip the auto-volume calibration pass and use --volume as-is "
                          "for the whole run")
@@ -1118,9 +1786,10 @@ def main() -> int:
                          "packets and ESP32-only ones multimon-ng missed "
                          "(default %d)" % AUTO_VOLUME_BATCH)
     ap.add_argument("--auto_volume_max_rounds", type=int, default=AUTO_VOLUME_MAX_ROUNDS,
-                    help="number of tries used to search for the optimal playback "
-                         "volume before the real test run (default %d)" %
-                         AUTO_VOLUME_MAX_ROUNDS)
+                    help="search budget for the auto-volume pass, in batches of "
+                         "--auto_volume_batch packets (default %d). Cheap 8-packet "
+                         "clipping probes cost a fraction of a batch, full scoring "
+                         "probes cost one each." % AUTO_VOLUME_MAX_ROUNDS)
     ap.add_argument("--tail", type=float, default=DEFAULT_TAIL_SECONDS,
                     help="seconds to keep listening after each file (default %.1f)" % DEFAULT_TAIL_SECONDS)
     ap.add_argument("--settle", type=float, default=4.0,
@@ -1141,9 +1810,15 @@ def main() -> int:
                     help="list ALSA playback devices and exit")
     args = ap.parse_args()
 
+    if args.selftest:
+        return selftest()
+
     if args.list_audio:
-        subprocess.call(["aplay", "-l"])
-        return 0
+        if shutil.which("aplay") is None:
+            sys.stderr.write("aplay not found - install alsa-utils "
+                             "(Debian/Ubuntu: sudo apt install alsa-utils)\n")
+            return 2
+        return subprocess.call(["aplay", "-l"])
 
     if args.auto_volume_batch < 1:
         sys.stderr.write("--auto_volume_batch must be >= 1 (got %d)\n" % args.auto_volume_batch)
@@ -1151,6 +1826,23 @@ def main() -> int:
     if args.auto_volume_max_rounds < 1:
         sys.stderr.write("--auto_volume_max_rounds must be >= 1 (got %d)\n" %
                           args.auto_volume_max_rounds)
+        return 2
+    if args.max_passes < 1:
+        sys.stderr.write("--max_passes must be >= 1 (got %d)\n" % args.max_passes)
+        return 2
+    if not (0.0 < args.volume_min < args.volume_max):
+        sys.stderr.write("--volume_min must be > 0 and < --volume_max (got %g and %g)\n" %
+                         (args.volume_min, args.volume_max))
+        return 2
+    if not (args.volume_min <= args.volume <= args.volume_max):
+        sys.stderr.write("--volume must be within [%g, %g] (got %g)\n" %
+                         (args.volume_min, args.volume_max, args.volume))
+        return 2
+    if not (0.0 < args.clip_rate <= 1.0):
+        sys.stderr.write("--clip_rate must be in (0, 1] (got %g)\n" % args.clip_rate)
+        return 2
+    if args.match_window <= 0:
+        sys.stderr.write("--match_window must be > 0 (got %g)\n" % args.match_window)
         return 2
 
     check_tools()
@@ -1184,10 +1876,14 @@ def main() -> int:
         class _Dummy:
             alive = threading.Event()
             lines_seen = 0
+            file_t0 = 0.0
             def snapshot_index(self): return 0
             def since(self, i): return []
             def between(self, a, b): return []
             def items_between(self, a, b): return []
+            def items_from(self, i, t): return ([], 0)
+            def snapshot_overrange(self): return (0, 0.0)
+            def overrange_since(self, n): return 0
             def start(self): pass
             def stop(self): pass
         col = _Dummy()  # type: ignore
@@ -1208,18 +1904,29 @@ def main() -> int:
     # That best volume is then used for the complete run below, which starts
     # over from the first file.
     final_volume = args.volume
+    offset_seed = 0.0
+    offset_auto = not args.no_offset_auto
     if not args.no_play and not args.no_auto_volume:
-        calibrator = AutoVolumeCalibrator(
+        calibrator = VolumeSearch(
             wavs, args.audio_device, args.tail, args.match_window, col,
             mm_extra, args.volume,
             batch_size=args.auto_volume_batch,
-            max_rounds=args.auto_volume_max_rounds)
+            max_rounds=args.auto_volume_max_rounds,
+            headroom_db=args.headroom_db,
+            clip_rate=args.clip_rate,
+            vol_min=args.volume_min,
+            vol_max=args.volume_max,
+            max_passes=args.max_passes,
+            normalise=args.normalise,
+            offset_auto=offset_auto)
         try:
             final_volume = calibrator.run()
+            offset_seed = calibrator.offset
         except KeyboardInterrupt:
             print("\nAuto-volume calibration interrupted - "
                   "proceeding with the volume found so far.")
             final_volume = calibrator.volume
+            offset_seed = calibrator.offset
 
     results = []  # type: List[FileResult]
     try:
@@ -1229,7 +1936,9 @@ def main() -> int:
             res = FileResult(name=os.path.basename(wav))
             results.append(res)     # appended first: an interrupted file still counts
             run_one_wav(res, wav, args.audio_device, final_volume, args.tail,
-                        args.match_window, col, mm_extra, args.no_play)
+                        args.match_window, col, mm_extra, args.no_play,
+                        normalise=args.normalise, offset_auto=offset_auto,
+                        offset_seed=offset_seed)
             print_file_report(res, dry_run=args.no_play)
             time.sleep(args.pause)
     except KeyboardInterrupt:
