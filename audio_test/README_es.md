@@ -552,9 +552,15 @@ Una cadena que funciona muestra los tres paquetes, cada uno con la etiqueta **OK
 
 ```
 [1/1] sample.wav  (5.5 s)
-  [multimon #001 00:01.1 | OK         ] N0CALL-9>APRS-0,WIDE1-1,WIDE2-1:!4903.50N/07201.75W-Test one
-  [multimon #002 00:02.8 | OK         ] LU1ABC-0>APDW17-0,WIDE1-1:=3450.12S/05812.34W>Movil en ruta
-  [multimon #003 00:04.4 | OK         ] EA4XYZ-7>APRS-0::LU1ABC   :Hola que tal{12
+  [multimon #001 00:01.1] N0CALL-9>APRS-0,WIDE1-1,WIDE2-1:!4903.50N/07201.75W-Test one
+  [esp32    #001 00:01.3] N0CALL-9>APRS-0,WIDE1-1,WIDE2-1:!4903.50N/07201.75W-Test one
+      OK
+  [multimon #002 00:02.8] LU1ABC-0>APDW17-0,WIDE1-1:=3450.12S/05812.34W>Movil en ruta
+  [esp32    #002 00:03.0] LU1ABC-0>APDW17-0,WIDE1-1:=3450.12S/05812.34W>Movil en ruta
+      OK
+  [multimon #003 00:04.4] EA4XYZ-7>APRS-0::LU1ABC   :Hola que tal{12
+  [esp32    #003 00:04.6] EA4XYZ-7>APRS-0::LU1ABC   :Hola que tal{12
+      OK
   multimon-ng decoded 3 packet(s)
   ESP32 decoded 3 packet(s)
   -> OK: 3   DIFFERENT: 0   NOT DECODED: 0   EXTRA(esp only): 0
@@ -621,7 +627,8 @@ Tiempo total ≈ la suma de las duraciones de los archivos + unos 6 s por archiv
 
 **Ctrl-C** detiene la prueba de forma segura: se conserva todo lo que ya tiene un
 veredicto y se imprime el resumen. Los paquetes que todavía esperaban su veredicto
-se listan como `NO VERDICT` y no se cuentan.
+(el ESP32 no tuvo su chance completo de `--match_window` para responder) se
+descartan en silencio: no se imprimen ni se cuentan de ninguna forma.
 
 ---
 
@@ -642,7 +649,6 @@ se listan como `NO VERDICT` y no se cuentan.
 | `--tail S` | `3` | Segundos que se sigue escuchando después de que termina el audio. El programa siempre espera al menos `--match_window` segundos. |
 | `--settle S` | `4` | Segundos de espera tras abrir el puerto serie (reinicio/arranque del ESP32). Aumente el valor si el ESP32 arranca lento. |
 | `--pause S` | `1` | Pausa entre archivos. |
-| `--show_esp` | desactivado | Imprime también el texto propio del ESP32 bajo cada paquete, y los paquetes que solo decodificó el ESP32 (EXTRA). |
 | `--no_play` | desactivado | **Prueba en seco:** sin sonido y sin puerto serie; solo se ejecuta multimon-ng. |
 | `--mm_args "…"` | ninguno | Argumentos adicionales para multimon-ng (rara vez necesarios). |
 | `--list_audio` | — | Imprime los dispositivos de reproducción ALSA (`aplay -l`) y sale. |
@@ -669,8 +675,8 @@ Ejemplos:
 mkdir one && cp Audio-Tracks/03_*.wav one/
 ./test_aprs_wavs.py --wav_dir one --audio_device hw:1,0
 
-# pista 3 (paquetes idénticos cada 3 s): ventana más angosta, ver el texto del ESP32
-./test_aprs_wavs.py --wav_dir one --audio_device hw:1,0 --match_window 1.5 --show_esp
+# pista 3 (paquetes idénticos cada 3 s): ventana más angosta
+./test_aprs_wavs.py --wav_dir one --audio_device hw:1,0 --match_window 1.5
 
 # solo verificación del software, sin hardware
 ./test_aprs_wavs.py --wav_dir Audio-Tracks --no_play
@@ -686,14 +692,21 @@ grep -E "NOT DECODED|DIFFERENT" run.log
 
 ### 11.1 Líneas de paquetes
 
-Solo se imprimen los paquetes de **multimon-ng**, una línea cada uno, en el orden en
-que se oyeron. La etiqueta que sigue a la hora es el **veredicto del ESP32** sobre
-ese paquete:
+Cada paquete de **multimon-ng** se imprime, en el orden en que se oyó, seguido
+inmediatamente por la línea propia del ESP32 para ese paquete (si existe) y un
+veredicto:
 
 ```
-[multimon #012 03:41.2 | OK         ] LU1ABC-0>APDW17-0,WIDE1-1:=3450.12S/05812.34W>Movil
-[multimon #013 03:52.0 | NOT DECODED] LU2XYZ-0>APRS-0:>some status
-[multimon #014 04:10.5 | DIFFERENT  ] LU3AAA-0>APRS-0:>hello
+[multimon #012 03:41.2] LU1ABC-0>APDW17-0,WIDE1-1:=3450.12S/05812.34W>Movil
+[esp32    #012 03:41.4] LU1ABC-0>APDW17-0,WIDE1-1:=3450.12S/05812.34W>Movil
+    OK
+[multimon #013 03:52.0] LU2XYZ-0>APRS-0:>some status
+[esp32    #013  --:--.-] NOT DECODED
+[multimon #014 04:10.5] LU3AAA-0>APRS-0:>hello
+[esp32    #014 04:11.0] LU3AAA-0>APRS-0:>hellX
+    ! DECODED BUT DIFFERENT
+[esp32 only      04:20.1] LU9ZZZ>APRS:>heard only by the ESP32
+    + EXTRA: decoded by the ESP32 but not by multimon-ng
 ```
 
 * `#012` — el número del paquete dentro del archivo (orden de las decodificaciones
@@ -702,27 +715,23 @@ ese paquete:
 * El texto es el paquete en **formato TNC2**: `ORIGEN>DESTINO,RUTA:contenido`.
   multimon-ng escribe `-0` después de los indicativos sin SSID (`LU1ABC-0`); es solo
   su estilo.
+* Un paquete que **solo el ESP32** decodificó (sin paquete de multimon-ng
+  correspondiente) se imprime como `[esp32 only ...]` y se marca **EXTRA**; no es
+  uno de los paquetes numerados de multimon-ng.
 
 | Veredicto | Significado |
 |---|---|
 | **OK** | El ESP32 decodificó el mismo paquete (mismo origen, destino, ruta y contenido), cercano en el tiempo. |
 | **NOT DECODED** | El ESP32 no lo informó. Es el caso de "faltante". |
-| **DIFFERENT** | El ESP32 decodificó un paquete con el mismo origen/destino/ruta pero con un **contenido distinto**: decodificado, pero no correctamente. |
-| **NO VERDICT** | Solo después de Ctrl-C: el paquete todavía esperaba su respuesta; no se cuenta. |
+| **! DECODED BUT DIFFERENT** | El ESP32 decodificó un paquete con el mismo origen/destino/ruta pero con un **contenido distinto**: decodificado, pero no correctamente. |
 
 Tiempos: un **OK** aparece enseguida (normalmente en uno o dos segundos). **NOT
-DECODED** y **DIFFERENT** aparecen unos `--match_window` segundos (5 s por defecto)
-después del paquete, porque el ESP32 podría estar a punto de informarlo.
+DECODED** y **! DECODED BUT DIFFERENT** aparecen unos `--match_window` segundos
+(5 s por defecto) después del paquete, porque el ESP32 podría estar a punto de
+informarlo.
 
-Con `--show_esp`, cada paquete va seguido de la línea propia del ESP32, y los
-paquetes que **solo el ESP32** decodificó se listan como **EXTRA**:
-
-```
-[multimon #014 04:10.5 | DIFFERENT  ] LU3AAA-0>APRS-0:>hello
-[esp32    #014 04:11.0] LU3AAA>APRS:>hellX
-[esp32 only      04:20.1] LU9ZZZ>APRS:>heard only by the ESP32
-    + EXTRA: decoded by the ESP32 but not by multimon-ng
-```
+La línea propia del ESP32 y los paquetes EXTRA siempre se muestran — no hace
+falta ninguna opción para verlos.
 
 ### 11.2 Línea de progreso
 
@@ -791,9 +800,9 @@ paquetes los decodifica uno y el otro no. Por lo tanto:
   de esperar grupos de faltantes alrededor de las colisiones.
 * **EXTRA** = el ESP32 encontró algo que multimon-ng no vio. Un decodificador mejor
   que la referencia muestra extras; es una buena señal, no un error.
-* **DIFFERENT** debería ser raro (las tramas AX.25 llevan CRC). Ejecute de nuevo
-  con `--show_esp` para ver exactamente qué imprimió el ESP32; la causa suele ser un
-  texto de contenido truncado o alterado en el log del ESP32.
+* **DIFFERENT** debería ser raro (las tramas AX.25 llevan CRC). Mire la línea propia
+  del ESP32 impresa bajo el paquete para ver exactamente qué decodificó; la causa
+  suele ser un texto de contenido truncado o alterado en el log del ESP32.
 
 Patrones típicos:
 
@@ -857,9 +866,10 @@ esperar (verificado por simulación):
   idénticos. Para la pista 3: **1,5 s** (`--match_window 1.5`).
 * Si la ventana es *menor* que el retardo real, los paquetes que el ESP32
   decodificó correctamente se cuentan mal. Por eso conviene **medir primero el
-  retardo**: ejecute la pista 3 con `--show_esp` y compare las dos marcas de tiempo
-  de los primeros paquetes OK. Si difieren en más de aproximadamente 1 s, mantenga
-  una ventana más ancha (y recuerde que solo los totales son exactos).
+  retardo**: ejecute la pista 3 y compare las dos marcas de tiempo impresas en los
+  primeros paquetes OK (las líneas `[multimon #NNN ...]` y `[esp32 #NNN ...]`). Si
+  difieren en más de aproximadamente 1 s, mantenga una ventana más ancha (y
+  recuerde que solo los totales son exactos).
 
 Para todas las demás pistas (sin paquetes idénticos más cercanos que 10 s) la
 ventana predeterminada de 5 s está bien.
@@ -873,7 +883,7 @@ Haga los pasos en orden; cada uno da confianza para el siguiente.
 | Paso | Archivo | Comando (agregue `--audio_device hw:X,0`) | Propósito / qué mirar |
 |---|---|---|---|
 | 0 | `sample.wav` sintético | `--wav_dir Synthetic` | Verificación de la cadena: los 3 paquetes deben ser **OK**. |
-| 1 | Pista 3 (100 ráfagas Mic-E) | `--wav_dir one3 --match_window 1.5 --show_esp` | **Porcentaje exacto**: el ESP32 debería decodificar cerca de 100 de 100. También ejercita contenidos Mic-E con caracteres de control. Mida aquí el desfase de tiempo entre decodificadores. |
+| 1 | Pista 3 (100 ráfagas Mic-E) | `--wav_dir one3 --match_window 1.5` | **Porcentaje exacto**: el ESP32 debería decodificar cerca de 100 de 100. También ejercita contenidos Mic-E con caracteres de control. Mida aquí el desfase de tiempo entre decodificadores. |
 | 2 | Pista 2 (los mismos 100, con desénfasis) | `--wav_dir one2 --match_window 1.5` | Los mismos 100 paquetes con la curva tipo parlante: compare con el paso 1. Ajuste el nivel con NIVEL RX si hace falta (la señal es distinta). |
 | 3 | Pista 4 (móvil, débil) | `--wav_dir one4` | Señal débil, flutter y multitrayecto. Compare los faltantes con lo que logra multimon-ng. |
 | 4 | Pista 1 (25 min saturada) | `--wav_dir one1` | La prueba de esfuerzo: colisiones, paquetes consecutivos. Espere un porcentaje menor que en las pistas 3/4 y algunos EXTRA. |
@@ -971,7 +981,7 @@ rápida de regresión.
 | El programa parece trabado | Los archivos largos se reproducen en tiempo real; mire la línea de progreso cada 30 s. Ctrl-C detiene de forma segura. |
 | multimon-ng decodificó 0 paquetes en un archivo | El archivo no tiene paquetes (las pistas 5–7 son solo tonos), está demasiado bajo o no es AFSK 1200. El programa sale con código 2 si *ningún* archivo produce paquetes. |
 | Pistas 5–7 en el directorio | Contienen tonos, no paquetes: hacen perder tiempo y no aportan nada. Sáquelas. |
-| Paquetes DIFFERENT | Ejecute con `--show_esp` y compare los dos textos; el contenido difiere (ver sección 11.5). |
+| Paquetes DIFFERENT | Compare las líneas de multimon-ng y del ESP32 impresas para ese paquete; el contenido difiere (ver sección 11.5). |
 | Pista 3: los números de los paquetes marcados parecen desplazados en uno | Efecto de ventana/temporización descrito en la sección 12.3. Use `--match_window 1.5`; los totales son correctos de todos modos. |
 
 ---

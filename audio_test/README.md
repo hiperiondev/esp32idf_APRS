@@ -524,9 +524,15 @@ A working chain shows the three packets each tagged **OK**:
 
 ```
 [1/1] sample.wav  (5.5 s)
-  [multimon #001 00:01.1 | OK         ] N0CALL-9>APRS-0,WIDE1-1,WIDE2-1:!4903.50N/07201.75W-Test one
-  [multimon #002 00:02.8 | OK         ] LU1ABC-0>APDW17-0,WIDE1-1:=3450.12S/05812.34W>Movil en ruta
-  [multimon #003 00:04.4 | OK         ] EA4XYZ-7>APRS-0::LU1ABC   :Hola que tal{12
+  [multimon #001 00:01.1] N0CALL-9>APRS-0,WIDE1-1,WIDE2-1:!4903.50N/07201.75W-Test one
+  [esp32    #001 00:01.3] N0CALL-9>APRS-0,WIDE1-1,WIDE2-1:!4903.50N/07201.75W-Test one
+      OK
+  [multimon #002 00:02.8] LU1ABC-0>APDW17-0,WIDE1-1:=3450.12S/05812.34W>Movil en ruta
+  [esp32    #002 00:03.0] LU1ABC-0>APDW17-0,WIDE1-1:=3450.12S/05812.34W>Movil en ruta
+      OK
+  [multimon #003 00:04.4] EA4XYZ-7>APRS-0::LU1ABC   :Hola que tal{12
+  [esp32    #003 00:04.6] EA4XYZ-7>APRS-0::LU1ABC   :Hola que tal{12
+      OK
   multimon-ng decoded 3 packet(s)
   ESP32 decoded 3 packet(s)
   -> OK: 3   DIFFERENT: 0   NOT DECODED: 0   EXTRA(esp only): 0
@@ -592,8 +598,9 @@ Total time ≈ the sum of the file lengths + about 6 s per file (+ 4 s at the st
 the WA8LMF set that is about **one hour**.
 
 **Ctrl-C** stops the test safely: everything that already has a verdict is kept
-and the summary is printed. Packets still waiting for their verdict are listed as
-`NO VERDICT` and not counted.
+and the summary is printed. Packets still waiting for their verdict (the ESP32
+had not had its full `--match_window` chance to answer) are silently dropped —
+not printed, not counted either way.
 
 ---
 
@@ -614,7 +621,6 @@ and the summary is printed. Packets still waiting for their verdict are listed a
 | `--tail S` | `3` | Seconds to keep listening after the audio ends. The program always waits at least `--match_window` seconds. |
 | `--settle S` | `4` | Seconds to wait after opening the serial port (ESP32 reset/boot). Increase it if the ESP32 boots slowly. |
 | `--pause S` | `1` | Pause between files. |
-| `--show_esp` | off | Also print the ESP32's own text under each packet, and packets only the ESP32 decoded (EXTRA). |
 | `--no_play` | off | **Dry run:** no sound, no serial port; only multimon-ng runs. |
 | `--mm_args "…"` | none | Extra arguments for multimon-ng (rarely needed). |
 | `--list_audio` | — | Print the ALSA playback devices (`aplay -l`) and exit. |
@@ -641,8 +647,8 @@ Examples:
 mkdir one && cp Audio-Tracks/03_*.wav one/
 ./test_aprs_wavs.py --wav_dir one --audio_device hw:1,0
 
-# track 3 (identical packets 3 s apart): narrower window, see the ESP32 text
-./test_aprs_wavs.py --wav_dir one --audio_device hw:1,0 --match_window 1.5 --show_esp
+# track 3 (identical packets 3 s apart): narrower window
+./test_aprs_wavs.py --wav_dir one --audio_device hw:1,0 --match_window 1.5
 
 # software check only, no hardware
 ./test_aprs_wavs.py --wav_dir Audio-Tracks --no_play
@@ -658,13 +664,20 @@ grep -E "NOT DECODED|DIFFERENT" run.log
 
 ### 11.1 Packet lines
 
-Only the **multimon-ng** packets are printed, one line each, in the order they
-were heard. The tag after the time is the **ESP32's verdict** on that packet:
+Every **multimon-ng** packet is printed, in the order it was heard, immediately
+followed by the ESP32's own line for it (if any) and a verdict:
 
 ```
-[multimon #012 03:41.2 | OK         ] LU1ABC-0>APDW17-0,WIDE1-1:=3450.12S/05812.34W>Movil
-[multimon #013 03:52.0 | NOT DECODED] LU2XYZ-0>APRS-0:>some status
-[multimon #014 04:10.5 | DIFFERENT  ] LU3AAA-0>APRS-0:>hello
+[multimon #012 03:41.2] LU1ABC-0>APDW17-0,WIDE1-1:=3450.12S/05812.34W>Movil
+[esp32    #012 03:41.4] LU1ABC-0>APDW17-0,WIDE1-1:=3450.12S/05812.34W>Movil
+    OK
+[multimon #013 03:52.0] LU2XYZ-0>APRS-0:>some status
+[esp32    #013  --:--.-] NOT DECODED
+[multimon #014 04:10.5] LU3AAA-0>APRS-0:>hello
+[esp32    #014 04:11.0] LU3AAA-0>APRS-0:>hellX
+    ! DECODED BUT DIFFERENT
+[esp32 only      04:20.1] LU9ZZZ>APRS:>heard only by the ESP32
+    + EXTRA: decoded by the ESP32 but not by multimon-ng
 ```
 
 * `#012` — the packet number within the file (order of multimon-ng's decodes).
@@ -672,27 +685,23 @@ were heard. The tag after the time is the **ESP32's verdict** on that packet:
 * The text is the packet in **TNC2 format**: `SOURCE>DESTINATION,PATH:payload`.
   multimon-ng writes `-0` after callsigns that have no SSID (`LU1ABC-0`); that is
   only its style.
+* A packet **only the ESP32** decoded (no matching multimon-ng packet) is printed
+  as `[esp32 only ...]` and marked **EXTRA**; it is not one of multimon-ng's
+  numbered packets.
 
 | Verdict | Meaning |
 |---|---|
 | **OK** | The ESP32 decoded the same packet (same source, destination, path and payload), close in time. |
 | **NOT DECODED** | The ESP32 did not report it. This is the "missing" case. |
-| **DIFFERENT** | The ESP32 decoded a packet with the same source/destination/path but a **different payload**: decoded, but not correctly. |
-| **NO VERDICT** | Only after Ctrl-C: the packet was still waiting for its answer; it is not counted. |
+| **! DECODED BUT DIFFERENT** | The ESP32 decoded a packet with the same source/destination/path but a **different payload**: decoded, but not correctly. |
 
 Timing: an **OK** appears right away (usually within a second or two). **NOT
-DECODED** and **DIFFERENT** appear about `--match_window` seconds (5 s by default)
-after the packet, because the ESP32 might still be about to report it.
+DECODED** and **! DECODED BUT DIFFERENT** appear about `--match_window` seconds
+(5 s by default) after the packet, because the ESP32 might still be about to
+report it.
 
-With `--show_esp` each packet is followed by the ESP32's own line, and packets that
-**only the ESP32** decoded are listed as **EXTRA**:
-
-```
-[multimon #014 04:10.5 | DIFFERENT  ] LU3AAA-0>APRS-0:>hello
-[esp32    #014 04:11.0] LU3AAA>APRS:>hellX
-[esp32 only      04:20.1] LU9ZZZ>APRS:>heard only by the ESP32
-    + EXTRA: decoded by the ESP32 but not by multimon-ng
-```
+The ESP32's own line and any EXTRA packets are always shown — there is no option
+needed to see them.
 
 ### 11.2 Progress line
 
@@ -759,9 +768,9 @@ not the other. So:
   channel, clusters of misses around collisions are expected.
 * **EXTRA** = the ESP32 found something multimon-ng missed. A decoder that is better
   than the reference shows extras; that is a good sign, not an error.
-* **DIFFERENT** should be rare (AX.25 frames carry a CRC). Run again with `--show_esp`
-  to see exactly what the ESP32 printed; the cause is often a truncated or altered
-  payload text in the ESP32 log.
+* **DIFFERENT** should be rare (AX.25 frames carry a CRC). Look at the ESP32's own
+  line printed under the packet to see exactly what it decoded; the cause is often
+  a truncated or altered payload text in the ESP32 log.
 
 Typical patterns:
 
@@ -822,10 +831,10 @@ case for the matching, so here is exactly what to expect (verified by simulation
   and **smaller than half the spacing** between identical packets. For track 3:
   **1.5 s** (`--match_window 1.5`).
 * If the window is *smaller* than the real delay, packets that the ESP32 decoded
-  correctly are counted wrongly. So **measure the delay first**: run track 3 with
-  `--show_esp` and compare the two time stamps of the first OK packets. If they
-  differ by more than about 1 s, keep a wider window (and remember only the totals
-  are exact).
+  correctly are counted wrongly. So **measure the delay first**: run track 3 and
+  compare the two time stamps printed for the first OK packets (the `[multimon
+  #NNN ...]` and `[esp32 #NNN ...]` lines). If they differ by more than about 1 s,
+  keep a wider window (and remember only the totals are exact).
 
 For all the other tracks (no identical packets closer than 10 s) the default
 window of 5 s is fine.
@@ -839,7 +848,7 @@ Do the steps in order; each one builds confidence for the next.
 | Step | File | Command (add `--audio_device hw:X,0`) | Purpose / what to look at |
 |---|---|---|---|
 | 0 | synthetic `sample.wav` | `--wav_dir Synthetic` | Chain check: all 3 packets must be **OK**. |
-| 1 | Track 3 (100 Mic-E bursts) | `--wav_dir one3 --match_window 1.5 --show_esp` | **Exact percentage**: the ESP32 should decode close to 100 of 100. Also exercises Mic-E payloads with control characters. Measure the time offset between decoders here. |
+| 1 | Track 3 (100 Mic-E bursts) | `--wav_dir one3 --match_window 1.5` | **Exact percentage**: the ESP32 should decode close to 100 of 100. Also exercises Mic-E payloads with control characters. Measure the time offset between decoders here. |
 | 2 | Track 2 (same 100, de-emphasized) | `--wav_dir one2 --match_window 1.5` | Same 100 packets through the speaker-style curve: compare with step 1. Adjust the level with RX LEVEL if needed (the signal is different). |
 | 3 | Track 4 (mobile, weak) | `--wav_dir one4` | Weak-signal, flutter and multipath. Compare misses with what multimon-ng manages. |
 | 4 | Track 1 (25 min saturated) | `--wav_dir one1` | The stress test: collisions, back-to-back packets. Expect a lower percentage than tracks 3/4, and a few EXTRA. |
@@ -933,7 +942,7 @@ and produce a known number of packets for a quick regression run.
 | The program seems stuck | Long files are played in real time; look at the progress line every 30 s. Ctrl-C stops safely. |
 | multimon-ng decoded 0 packets in a file | The file has no packets (tracks 5–7 are tones only), is too quiet, or is not AFSK 1200. The program exits with code 2 if *no* file yields packets. |
 | Tracks 5–7 in the directory | They contain tones, not packets: they waste time and give nothing. Move them out. |
-| DIFFERENT packets | Run with `--show_esp` and compare the two texts; the payload differs (see section 11.5). |
+| DIFFERENT packets | Compare the multimon-ng and ESP32 lines printed for that packet; the payload differs (see section 11.5). |
 | Track 3: the flagged packet numbers look off by one | Window/timing effect described in section 12.3. Use `--match_window 1.5`; the totals are right anyway. |
 
 ---
