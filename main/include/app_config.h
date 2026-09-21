@@ -534,6 +534,9 @@ typedef enum {
  * @brief Duplicate-suppression cache bounds shared by the IGate and
  * digipeater ::dup_scope_t windows (see igate.h).
  *
+ * These bounds only matter while @c app_config_t.dup_cache_en is set; with it
+ * cleared no frame is ever suppressed and neither value is consulted.
+ *
  * @c DUP_CACHE_SIZE_MIN/MAX bound @c app_config_t.dup_cache_size (the number
  * of recent frames kept) and @c DUP_CACHE_TIMEOUT_MS_MIN/MAX bound
  * @c app_config_t.dup_cache_timeout_ms (the window, in milliseconds, after
@@ -853,6 +856,9 @@ typedef struct {
     char satgate[IGATE_SATGATE_MAX][10]; /**< Satellite/ISS digipeater gate-call list (base call, no SSID) checked against the repeater path in igateProcess();
                                             an empty slot is simply skipped. Web-configurable (IGate page, parallel to budlist); the factory default fills
                                             the first six slots with the common amateur satellite digipeater calls. */
+    bool dup_cache_en;                   /**< Duplicate suppression enabled (IGate RF->INET and digipeater RF->RF alike). When false,
+                                            isDuplicatePacketScoped() never reports a duplicate, never records a frame, and dup_cache_size /
+                                            dup_cache_timeout_ms are ignored. Factory default true. */
     uint8_t dup_cache_size;              /**< Number of recent frames kept for duplicate suppression (shared by every ::dup_scope_t). Clamped to
                                             DUP_CACHE_SIZE_MIN..DUP_CACHE_SIZE_MAX; see igate.c. */
     uint32_t dup_cache_timeout_ms;       /**< Duplicate-suppression window, in milliseconds. Clamped to DUP_CACHE_TIMEOUT_MS_MIN..DUP_CACHE_TIMEOUT_MS_MAX;

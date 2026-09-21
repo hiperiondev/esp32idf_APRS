@@ -61,7 +61,9 @@
  * whose source address and information field match a frame repeated inside the
  * duplicate-suppression window (g_config.dup_cache_timeout_ms, see
  * isDuplicatePacketScoped()) - the two together are what stop digipeaters
- * within earshot of each other from re-repeating the same transmission.
+ * within earshot of each other from re-repeating the same transmission. The
+ * duplicate test applies only while g_config.dup_cache_en is set; with it
+ * cleared, only the own-callsign test remains.
  *
  * @param packet Decoded frame (as produced by ax25_decode()). Modified in place
  *               when the path needs to be rewritten (hop-count decrement,

@@ -237,6 +237,14 @@ consumatori vedono gli stessi frame dallo stesso dispatch RX, e il digipeater
 gira per primo, quindi un'unica finestra condivisa gli farebbe consumare tutti i
 frame e l'IGate li tratterebbe tutti come duplicati.
 
+L'interruttore *Abilita soppressione duplicati* nella pagina *IGate*
+(``g_config.dup_cache_en``, attivo di default) disattiva questo controllo per
+il digipeater e l'IGate insieme. Disattivato, nessun frame viene mai scartato
+come ``DROP_DIGI_DUPLICATE``; il test del nominativo proprio e la tabella degli
+alias restano l'unica protezione contro due digipeater che si ripetono a
+vicenda le copie, quindi conviene lasciarlo attivo ovunque ci sia un altro
+digipeater in portata.
+
 Contatori
 =========
 

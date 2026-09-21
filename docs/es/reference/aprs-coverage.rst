@@ -560,7 +560,7 @@ Digipeteo y el paradigma New-N
      - Un conteo de saltos por encima del máximo de la fila que coincidió se acota y se repite, o se descarta, a elección del operador, con el descarte contado bajo su propio motivo en el panel.
    * - Supresión de duplicados
      - ✅
-     - Una caché compartida con profundidad y ventana de tiempo configurables, usada tanto por el digipetidor como por la pasarela, así una trama no puede repetirse por un camino después de que el otro ya la vio.
+     - Una caché compartida con profundidad y ventana de tiempo configurables, usada tanto por el digipetidor como por la pasarela, así una trama no puede repetirse por un camino después de que el otro ya la vio. Un único interruptor en la página IGate la desactiva para ambos.
    * - Digipeteo preventivo
      - ✅
      - Apagado por omisión y seleccionable en dos modos indicadores: las direcciones salteadas se conservan marcadas como usadas, o se descartan para que salga solo lo que queda por hacer. El escaneo va desde la primera dirección sin usar hasta el final de la ruta y solo reclama una identidad fija, así que las dos exclusiones que enuncia la propuesta -los alias n-N genéricos y un alias escrito con contador de saltos- quedan garantizadas por construcción.

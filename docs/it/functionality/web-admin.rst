@@ -255,8 +255,8 @@ Le pagine
        tramite SSID di destinazione (legacy)*, disattivato per impostazione
        predefinita. Contiene anche i quattro preset
        di percorso condivisi ``path[0..3]`` tra cui sceglie ogni servizio che
-       trasmette. La finestra di soppressione dei duplicati è un unico
-       controllo, sulla pagina *IGate*. La posizione può anche essere presa in
+       trasmette. La soppressione dei duplicati (interruttore, dimensione
+       della cache e finestra) si configura solo nella pagina *IGate*. La posizione può anche essere presa in
        tempo reale dal ricevitore GNSS tramite *Usa GPS*, mutuamente esclusiva
        con *Usa i Dati della Mia Stazione*.
    * - **Tracker**
@@ -459,11 +459,14 @@ Le pagine
    digipeater gestisce sempre WIDEn-N e ripete senza ritardo aggiunto, quindi
    nessuno dei due viene offerto come opzione.
 
-   La soppressione dei duplicati ha esattamente una coppia di controlli, *Dup
-   cache size* (``dupCacheSize``) e *Dup cache timeout* (``dupCacheTimeoutMs``)
-   sulla pagina *IGate*, e governano tanto il digipeater quanto l'IGate:
-   entrambi i servizi condividono l'unica cache di ``components/igate``,
-   ciascuno con il proprio ambito.
+   La soppressione dei duplicati ha esattamente un insieme di controlli, sulla
+   pagina *IGate*: l'interruttore *Abilita soppressione duplicati*
+   (``dupCacheEn``) e, sotto, *Dup cache size* (``dupCacheSize``) e *Dup cache
+   timeout* (``dupCacheTimeoutMs``). Governano tanto il digipeater quanto
+   l'IGate: entrambi i servizi condividono l'unica cache di
+   ``components/igate``, ciascuno con il proprio ambito. Con l'interruttore
+   spento, nessuno dei due servizi tratta mai un frame come duplicato, e i due
+   campi numerici diventano grigi e mantengono i valori salvati.
 
 Le statistiche della dashboard
 ==============================

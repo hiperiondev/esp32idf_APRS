@@ -225,8 +225,8 @@ The pages
        switch, the choice of what to do with a trapped hop count and the
        *Digipeat by destination SSID (legacy)* switch, off by default. It also
        carries the four shared path presets ``path[0..3]`` that every
-       transmitting service selects from. The duplicate-suppression window is a
-       single control, on the *IGate* page. Position can also be taken live
+       transmitting service selects from. Duplicate suppression (switch, cache size
+       and window) is set only on the *IGate* page. Position can also be taken live
        from the GNSS receiver via *Use GPS*, mutually exclusive with *Use My
        Station Data*.
    * - **Tracker**
@@ -407,11 +407,14 @@ The pages
    handles WIDEn-N and repeats without an added delay, so neither is offered as
    an option.
 
-   Duplicate suppression has exactly one pair of controls, *Dup cache size*
-   (``dupCacheSize``) and *Dup cache timeout* (``dupCacheTimeoutMs``) on the
-   *IGate* page, and they govern the digipeater as well as the IGate: both
-   services share the one cache in ``components/igate``, each with its own
-   scope.
+   Duplicate suppression has exactly one set of controls, on the *IGate*
+   page: the *Enable duplicate suppression* switch (``dupCacheEn``) and, below
+   it, *Dup cache size* (``dupCacheSize``) and *Dup cache timeout*
+   (``dupCacheTimeoutMs``). They govern the digipeater as well as the IGate:
+   both services share the one cache in ``components/igate``, each with its
+   own scope. With the switch off, no frame is ever treated as a duplicate by
+   either service, and the two numeric fields are greyed out and keep their
+   stored values.
 
 The dashboard statistics
 ========================

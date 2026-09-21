@@ -150,7 +150,8 @@ IGate (RF <-> APRS-IS)
      - ✅
      - ✅
      - Shared cache, depth and window both web-configurable on the IGate page
-       (4-40 entries, default 20; 1-120 s window, default 30 s)
+       (4-40 entries, default 20; 1-120 s window, default 30 s); can be
+       switched off entirely with *Enable duplicate suppression*
    * - ``qAR``/``qAO`` Q-construct insertion
      - ✅
      - ✅
@@ -316,7 +317,8 @@ Digipeater
      - ✅
      - Own window in the shared dedup cache (``DUP_SCOPE_DIGI``), keyed on
        source and payload only, tested before any path work; the window is
-       ``g_config.dup_cache_timeout_ms`` (default 30 s)
+       ``g_config.dup_cache_timeout_ms`` (default 30 s); inactive while
+       ``g_config.dup_cache_en`` is off
    * - Callsign-based digipeat filtering (only digipeat certain sources)
      - ⚠️ (some, e.g. VP-Digi)
      - ❌

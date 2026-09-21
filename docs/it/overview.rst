@@ -89,7 +89,7 @@ Matrice delle funzionalità
    * - Elenco digipeater satellitari (ISS)
      - ✅
      - fino a 8 voci, configurabile dal web (pagina IGate), senza ricompilare
-   * - Dimensione e finestra della cache soppressione duplicati
+   * - Interruttore, dimensione e finestra della cache soppressione duplicati
      - ✅
      - configurabile dal web (pagina IGate), condiviso da IGate e Digipeater
    * - Digipeater

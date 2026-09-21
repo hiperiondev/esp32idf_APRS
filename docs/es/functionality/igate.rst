@@ -210,7 +210,10 @@ agregado opaco.
    releen en cada consulta, así que un cambio se aplica sin reiniciar. El
    arreglo siempre se reserva con la capacidad de compilación
    ``DUP_CACHE_SIZE_MAX``; ``dup_cache_size`` solo elige cuánto de ella se usa.
-   Los duplicados se cuentan aparte en ``dupCount``.
+   Los duplicados se cuentan aparte en ``dupCount``. Todo el paso depende del
+   interruptor *Habilitar supresión de duplicados* (``g_config.dup_cache_en``,
+   activado por defecto): desactivado, ``isDuplicatePacket()`` siempre devuelve
+   false, no se registra nada en la caché y ``dupCount`` deja de crecer.
 #. **Guarda de trama demasiado corta.** Las tramas cuyo campo de información está
    por debajo de la longitud mínima utilizable se descartan (``DROP_TOO_SHORT``).
 #. **Filtro de token de ruta.** Las tramas cuya ruta lleva ``RFONLY``, ``TCPIP``,

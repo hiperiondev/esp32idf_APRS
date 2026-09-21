@@ -1217,7 +1217,8 @@ guardarían en flash sin cambiar nada.
        registrado en la tabla de propiedad de GPIO para que ninguna otra función
        pueda reclamarlo.
    * - Supresión de duplicados
-     - Un único par de controles para todo el firmware, en la página *IGate*.
+     - Un único interruptor y un único par de controles para todo el firmware,
+       en la página *IGate*.
    * - Intervalo de ranura CSMA
      - Fijado en 100 ms dentro del módem. *Intervalo de tiempo TX* en esta
        página es el tiempo de silencio, que es el parámetro que merece ajustarse.

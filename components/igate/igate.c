@@ -326,6 +326,13 @@ bool isDuplicatePacketScoped(ax25_msg_t *packet, dup_scope_t scope) {
     if ((unsigned)scope >= DUP_SCOPE_COUNT)
         return false;
 
+    // Duplicate suppression switched off in the web admin: every frame is
+    // treated as new for every scope, and nothing is recorded, so the cache
+    // neither grows nor matches while the switch stays off. Read on every
+    // call, like the size and window, so a save takes effect immediately.
+    if (!g_config.dup_cache_en)
+        return false;
+
     char hash[16] = { 0 };
     packetHash(packet, hash);
 

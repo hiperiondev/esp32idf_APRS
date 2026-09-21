@@ -1454,6 +1454,8 @@
 
 /** Spanish text for the form label for the "dup cache" field or fieldset, rendered on the IGate page. English: "Duplicate Suppression". */
 #define TR_F_DUP_CACHE "Supresión de Duplicados"
+/** Spanish text for the form label for the "dup cache en" field or fieldset, rendered on the IGate page. English: "Enable duplicate suppression". */
+#define TR_F_DUP_CACHE_EN "Habilitar supresión de duplicados"
 /** Spanish text for the form label for the "dup cache size" field or fieldset, rendered on the IGate page. English: "Cache Size (entries)". */
 #define TR_F_DUP_CACHE_SIZE "Tamaño de Caché (entradas)"
 /** Spanish text for the form label for the "dup cache timeout ms" field or fieldset, rendered on the IGate page. English: "Suppression Window (ms)". */
@@ -2221,6 +2223,10 @@
 /** Spanish text of the contextual help for the "Mode" option. */
 #define TR_H_F_DIGI_ALIAS_MODE                                                                                                                                 \
     "Cómo se repite este alias: apagado, trace para insertar el indicativo de esta estación en la ruta, o flood para decrementar el contador sin añadirlo."
+/** Spanish text of the contextual help for the "Enable duplicate suppression" option. */
+#define TR_H_F_DUP_CACHE_EN                                                                                                                                    \
+    "Activado, el IGate y el Digipetidor descartan las copias repetidas de una trama vista dentro de la ventana de abajo. Desactivado, ninguna trama se "      \
+    "trata nunca como duplicada."
 /** Spanish text of the contextual help for the "Cache Size (entries)" option. */
 #define TR_H_F_DUP_CACHE_SIZE                                                                                                                                  \
     "Cuántas tramas recientes se recuerdan para suprimir duplicados. Un sitio cargado necesita más entradas; cada una consume algo de RAM."

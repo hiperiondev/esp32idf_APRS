@@ -194,8 +194,8 @@ Valori di fabbrica notevoli
        14580, con il solo slot 1 abilitato
    * - Elenco digipeater satellitari
      - ``RS0ISS``, ``YBOX``, ``YBSAT``, ``PSAT``, ``W3ADO``, ``BJ1SI`` (fino a 8, configurabile dal web)
-   * - Cache / finestra soppressione duplicati
-     - 20 voci / 30000 ms (configurabile dal web)
+   * - Soppressione duplicati / cache / finestra
+     - abilitata / 20 voci / 30000 ms (configurabile dal web)
    * - Limitatore di duty cycle di trasmissione
      - disabilitato; tetto del 25 % di una finestra scorrevole di 10 minuti
        quando abilitato

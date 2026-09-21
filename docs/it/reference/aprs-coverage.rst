@@ -561,7 +561,7 @@ Digipeating e il paradigma New-N
      - Un conteggio di salti superiore al massimo della riga corrispondente viene limitato e ripetuto oppure scartato, a scelta dell'operatore, con lo scarto contato sotto la sua motivazione nel pannello.
    * - Soppressione dei duplicati
      - ✅
-     - Una cache condivisa con profondità e finestra temporale configurabili, usata sia dal digipeater sia dal gateway, così una trama non può essere ripetuta da un percorso dopo che l'altro l'ha già vista.
+     - Una cache condivisa con profondità e finestra temporale configurabili, usata sia dal digipeater sia dal gateway, così una trama non può essere ripetuta da un percorso dopo che l'altro l'ha già vista. Un unico interruttore nella pagina IGate la disattiva per entrambi.
    * - Digipeating preventivo
      - ✅
      - Spento per impostazione predefinita e selezionabile in due modalità indicatrici: gli indirizzi saltati vengono mantenuti e marcati come usati, oppure scartati così che esca solo ciò che resta da fare. La scansione va dal primo indirizzo inutilizzato fino alla fine del percorso e reclama solo un'identità fissa, quindi entrambe le esclusioni enunciate dalla proposta - gli alias n-N generici e un alias scritto con un conteggio di salti - sono garantite per costruzione.

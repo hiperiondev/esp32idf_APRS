@@ -302,6 +302,7 @@ void app_config_set_defaults(app_config_t *c) {
         for (int i = 0; i < IGATE_SATGATE_MAX; i++)
             set_str(c->satgate[i], sizeof(c->satgate[i]), (i < (int)(sizeof(satGateDefaults) / sizeof(satGateDefaults[0]))) ? satGateDefaults[i] : "");
     }
+    c->dup_cache_en = true;
     c->dup_cache_size = DUP_CACHE_SIZE_DEFAULT;
     c->dup_cache_timeout_ms = DUP_CACHE_TIMEOUT_MS_DEFAULT;
 
@@ -803,6 +804,7 @@ static void section_write_igate(jw_t *d, const app_config_t *c) {
     for (int i = 0; i < IGATE_SATGATE_MAX; i++)
         jarr_str(d, c->satgate[i]);
     jarr_end(d);
+    jadd_bool(d, "dupCacheEn", c->dup_cache_en);
     jadd_num(d, "dupCacheSize", c->dup_cache_size);
     jadd_num(d, "dupCacheTimeoutMs", c->dup_cache_timeout_ms);
     jadd_bool(d, "rf2inetRangeEn", c->rf2inet_range_en);
@@ -1358,10 +1360,16 @@ static void section_read_igate(cJSON *d, app_config_t *c) {
             set_str(c->satgate[i], sizeof(c->satgate[i]), (v && cJSON_IsString(v)) ? v->valuestring : c->satgate[i]);
         }
     }
-    c->dup_cache_size = (uint8_t)jget_num(d, "dupCacheSize", c->dup_cache_size);
-    if (c->dup_cache_size < DUP_CACHE_SIZE_MIN || c->dup_cache_size > DUP_CACHE_SIZE_MAX) {
-        ESP_LOGW(TAG, "dupCacheSize %u out of range, clamped to %d..%d", (unsigned)c->dup_cache_size, DUP_CACHE_SIZE_MIN, DUP_CACHE_SIZE_MAX);
-        c->dup_cache_size = (c->dup_cache_size < DUP_CACHE_SIZE_MIN) ? DUP_CACHE_SIZE_MIN : DUP_CACHE_SIZE_MAX;
+    c->dup_cache_en = jget_bool(d, "dupCacheEn", c->dup_cache_en);
+    // Range-checked before narrowing to uint8_t, so a stored value above 255
+    // is clamped to the maximum instead of wrapping into the valid range.
+    {
+        double cacheSize = jget_num(d, "dupCacheSize", c->dup_cache_size);
+        if (cacheSize < DUP_CACHE_SIZE_MIN || cacheSize > DUP_CACHE_SIZE_MAX) {
+            ESP_LOGW(TAG, "dupCacheSize %.0f out of range, clamped to %d..%d", cacheSize, DUP_CACHE_SIZE_MIN, DUP_CACHE_SIZE_MAX);
+            cacheSize = (cacheSize < DUP_CACHE_SIZE_MIN) ? DUP_CACHE_SIZE_MIN : DUP_CACHE_SIZE_MAX;
+        }
+        c->dup_cache_size = (uint8_t)cacheSize;
     }
     c->dup_cache_timeout_ms = (uint32_t)jget_num(d, "dupCacheTimeoutMs", c->dup_cache_timeout_ms);
     if (c->dup_cache_timeout_ms < DUP_CACHE_TIMEOUT_MS_MIN || c->dup_cache_timeout_ms > DUP_CACHE_TIMEOUT_MS_MAX) {

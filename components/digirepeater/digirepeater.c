@@ -363,7 +363,9 @@ int digiProcess(ax25_msg_t *packet) {
     // The test runs before any path work so that a duplicate costs nothing and
     // leaves the caller's frame untouched. DUP_SCOPE_DIGI keeps this window
     // separate from the IGate's own RF->INET window, which sees the very same
-    // frames from the same RX dispatch.
+    // frames from the same RX dispatch. With duplicate suppression switched
+    // off (g_config.dup_cache_en) the check never matches and every frame
+    // goes on to the path rules below.
     if (isDuplicatePacketScoped(packet, DUP_SCOPE_DIGI)) {
         igate_note_drop(DROP_DIGI_DUPLICATE);
         return 0;

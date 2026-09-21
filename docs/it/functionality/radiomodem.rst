@@ -1223,7 +1223,8 @@ controlli che salverebbero in flash senza cambiare nulla.
        nella tabella di proprietà dei GPIO così che nessun'altra funzione possa
        rivendicarlo.
    * - Soppressione dei duplicati
-     - Un'unica coppia di controlli per tutto il firmware, nella pagina *IGate*.
+     - Un unico interruttore e un'unica coppia di controlli per tutto il
+       firmware, nella pagina *IGate*.
    * - Intervallo di slot CSMA
      - Fissato a 100 ms dentro il modem. *Slot temporale TX* in questa pagina è
        il tempo di silenzio, che è il parametro che vale la pena regolare.

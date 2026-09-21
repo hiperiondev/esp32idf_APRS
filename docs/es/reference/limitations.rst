@@ -156,7 +156,8 @@ IGate (RF <-> APRS-IS)
      - ✅
      - Caché compartida; profundidad y ventana configurables por web en la
        página IGate (4-40 entradas, por defecto 20; ventana 1-120 s, por
-       defecto 30 s)
+       defecto 30 s); puede desactivarse por completo con *Habilitar
+       supresión de duplicados*
    * - Inserción de Q-construct ``qAR``/``qAO``
      - ✅
      - ✅
@@ -329,7 +330,8 @@ Digipeater
      - ✅
      - Ventana propia de 30 s en la caché de duplicados compartida
        (``DUP_SCOPE_DIGI``), con clave de origen y payload solamente, probada
-       antes de cualquier trabajo sobre la ruta
+       antes de cualquier trabajo sobre la ruta; inactiva mientras
+       ``g_config.dup_cache_en`` está desactivado
    * - Filtrado de digipeating por indicativo (solo repetir ciertas fuentes)
      - ⚠️ (algunos, p. ej. VP-Digi)
      - ❌

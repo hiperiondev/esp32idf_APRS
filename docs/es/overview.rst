@@ -89,7 +89,7 @@ Matriz de funciones
    * - Lista de satélites digipetidores (ISS)
      - ✅
      - hasta 8 entradas, configurable desde la web (página IGate), sin recompilar
-   * - Tamaño y ventana de la caché de supresión de duplicados
+   * - Interruptor, tamaño y ventana de la caché de supresión de duplicados
      - ✅
      - configurable desde la web (página IGate), compartido por IGate y Digipeater
    * - Digipeater

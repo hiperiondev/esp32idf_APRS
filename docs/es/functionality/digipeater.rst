@@ -230,6 +230,14 @@ consumidores ven las mismas tramas desde el mismo despacho de RX, y el
 digipeater corre primero, así que una única ventana compartida haría que
 consumiera todas las tramas y el IGate las tratara a todas como duplicadas.
 
+El interruptor *Habilitar supresión de duplicados* de la página *IGate*
+(``g_config.dup_cache_en``, activado por defecto) desactiva esta comprobación
+para el digipeater y el IGate a la vez. Desactivado, ninguna trama se descarta
+nunca como ``DROP_DIGI_DUPLICATE``; la prueba del indicativo propio y la tabla
+de alias pasan a ser la única protección contra dos digipeaters que se
+repitan mutuamente las copias, así que conviene dejarlo activado siempre que
+haya otro digipeater al alcance.
+
 Contadores
 ==========
 

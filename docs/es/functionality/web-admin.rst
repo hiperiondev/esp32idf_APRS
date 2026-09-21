@@ -249,8 +249,8 @@ Las páginas
        un contador de saltos atrapado y el interruptor *Digipetir por SSID de
        destino (heredado)*, apagado por omisión. Lleva también los cuatro presets de ruta
        compartidos ``path[0..3]`` entre los que elige cada servicio que
-       transmite. La ventana de supresión de duplicados es un único control, en
-       la página *IGate*. La posición también puede tomarse en vivo del
+       transmite. La supresión de duplicados (interruptor, tamaño de caché y
+       ventana) se configura solo en la página *IGate*. La posición también puede tomarse en vivo del
        receptor GNSS mediante *Usar GPS*, mutuamente excluyente con *Usar
        Datos de Mi Estación*.
    * - **Tracker**
@@ -449,11 +449,14 @@ Las páginas
    siempre maneja WIDEn-N y repite sin retardo añadido, así que ninguna de las
    dos cosas se ofrece como opción.
 
-   La supresión de duplicados tiene exactamente un par de controles, *Dup cache
-   size* (``dupCacheSize``) y *Dup cache timeout* (``dupCacheTimeoutMs``) en la
-   página *IGate*, y gobiernan tanto al digipeater como al IGate: ambos
-   servicios comparten la única caché de ``components/igate``, cada uno con su
-   propio ámbito.
+   La supresión de duplicados tiene exactamente un conjunto de controles, en la
+   página *IGate*: el interruptor *Habilitar supresión de duplicados*
+   (``dupCacheEn``) y, debajo, *Dup cache size* (``dupCacheSize``) y *Dup cache
+   timeout* (``dupCacheTimeoutMs``). Gobiernan tanto al digipeater como al
+   IGate: ambos servicios comparten la única caché de ``components/igate``,
+   cada uno con su propio ámbito. Con el interruptor apagado, ningún servicio
+   trata nunca una trama como duplicada, y los dos campos numéricos quedan en
+   gris y conservan sus valores guardados.
 
 Las estadísticas del panel
 ==========================

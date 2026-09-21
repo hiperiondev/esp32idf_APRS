@@ -1370,6 +1370,8 @@
 
 /** Form label for the "dup cache" field or fieldset, rendered on the IGate page. */
 #define TR_F_DUP_CACHE "Duplicate Suppression"
+/** Form label for the "dup cache en" field or fieldset, rendered on the IGate page. */
+#define TR_F_DUP_CACHE_EN "Enable duplicate suppression"
 /** Form label for the "dup cache size" field or fieldset, rendered on the IGate page. */
 #define TR_F_DUP_CACHE_SIZE "Cache Size (entries)"
 /** Form label for the "dup cache timeout ms" field or fieldset, rendered on the IGate page. */
@@ -2122,6 +2124,9 @@
 /** Contextual help for the "Mode" option. */
 #define TR_H_F_DIGI_ALIAS_MODE                                                                                                                                 \
     "How this alias is repeated: off, trace to insert this station's callsign in the path, or flood to decrement the counter without adding it."
+/** Contextual help for the "Enable duplicate suppression" option. */
+#define TR_H_F_DUP_CACHE_EN                                                                                                                                    \
+    "When on, the IGate and the Digipeater drop repeated copies of a frame seen inside the window below. When off, no frame is ever treated as a duplicate."
 /** Contextual help for the "Cache Size (entries)" option. */
 #define TR_H_F_DUP_CACHE_SIZE                                                                                                                                  \
     "How many recently seen frames are remembered for duplicate suppression. A busy site needs more entries; each one costs a little RAM."

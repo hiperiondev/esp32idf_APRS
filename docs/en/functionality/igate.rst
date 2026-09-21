@@ -197,7 +197,10 @@ the dashboard can show "N dropped because X" rather than one opaque aggregate.
    re-read on every lookup, so a change applies without a reboot. The array is
    always allocated at the compile-time capacity ``DUP_CACHE_SIZE_MAX``;
    ``dup_cache_size`` only selects how much of it is used. Duplicates are
-   counted separately in ``dupCount``.
+   counted separately in ``dupCount``. The whole step is governed by the
+   *Enable duplicate suppression* switch (``g_config.dup_cache_en``, default
+   on): switched off, ``isDuplicatePacket()`` always returns false, nothing is
+   recorded in the cache and ``dupCount`` stops growing.
 #. **Too-short guard.** Frames whose info field is below the minimum usable
    length are dropped (``DROP_TOO_SHORT``).
 #. **Path-token filter.** Frames whose path carries ``RFONLY``, ``TCPIP``,

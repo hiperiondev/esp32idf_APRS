@@ -213,7 +213,10 @@ singolo aggregato opaco.
    una modifica si applica senza riavvio. L'array è sempre allocato alla
    capacità di compilazione ``DUP_CACHE_SIZE_MAX``; ``dup_cache_size`` sceglie
    solo quanta parte usarne. I duplicati sono contati a parte in
-   ``dupCount``.
+   ``dupCount``. L'intero passo dipende dall'interruttore *Abilita
+   soppressione duplicati* (``g_config.dup_cache_en``, attivo di default):
+   disattivato, ``isDuplicatePacket()`` restituisce sempre false, nella cache
+   non viene registrato nulla e ``dupCount`` smette di crescere.
 #. **Guardia di frame troppo corto.** I frame il cui campo info è sotto la
    lunghezza minima utilizzabile vengono scartati (``DROP_TOO_SHORT``).
 #. **Filtro di token di percorso.** I frame il cui percorso porta ``RFONLY``,

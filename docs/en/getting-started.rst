@@ -182,8 +182,8 @@ Notable factory defaults
        slot 1 enabled
    * - Satellite gate-call list
      - ``RS0ISS``, ``YBOX``, ``YBSAT``, ``PSAT``, ``W3ADO``, ``BJ1SI`` (up to 8, web-configurable)
-   * - Duplicate-suppression cache / window
-     - 20 entries / 30000 ms (web-configurable)
+   * - Duplicate suppression / cache / window
+     - enabled / 20 entries / 30000 ms (web-configurable)
    * - Transmit duty-cycle limiter
      - disabled; ceiling 25 % of a rolling 10-minute window when enabled
    * - Path preset 0

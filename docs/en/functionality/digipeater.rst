@@ -220,6 +220,13 @@ consumers see the same frames from the same RX dispatch, and the digipeater
 runs first, so a single shared window would let it consume every frame and make
 the IGate treat all of them as duplicates.
 
+The *Enable duplicate suppression* switch on the *IGate* page
+(``g_config.dup_cache_en``, default on) turns this check off for the
+digipeater and the IGate together. Switched off, no frame is ever dropped as
+``DROP_DIGI_DUPLICATE``; the own-callsign test and the alias table are then the
+only protection against two digipeaters re-repeating each other's copies, so
+the switch is best left on wherever another digipeater is within range.
+
 Counters
 ========
 

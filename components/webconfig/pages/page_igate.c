@@ -607,18 +607,30 @@ esp_err_t page_igate_get(httpd_req_t *req) {
 
     // Duplicate Suppression ---------------------------------------------------
     // Shared by the IGate RF->INET gate and the digipeater RF->RF repeat
-    // window (see ::dup_scope_t). A busy digipeater on a congested frequency
-    // or a very sparse rural IGate are different regimes, so both the cache
-    // size and the window are web-configurable rather than fixed at compile
-    // time.
+    // window (see ::dup_scope_t). The switch turns suppression on or off for
+    // both services at once. A busy digipeater on a congested frequency or a
+    // very sparse rural IGate are different regimes, so both the cache size
+    // and the window are web-configurable rather than fixed at compile time.
     web_raw(req, "<h2 style='margin-top:24px'>" TR_F_DUP_CACHE "</h2>");
     {
         web_fieldset_open(req, TR_F_DUP_CACHE);
         web_raw(req, "<p style='color:var(--sub);font-size:12px;margin:4px 0'>" TR_NOTE_DUP_CACHE "</p>");
+        web_field_checkbox(req, TR_F_DUP_CACHE_EN, "dupCacheEn", g_config.dup_cache_en);
         web_field_int(req, TR_F_DUP_CACHE_SIZE, "dupCacheSize", g_config.dup_cache_size, DUP_CACHE_SIZE_MIN, DUP_CACHE_SIZE_MAX);
         web_field_int(req, TR_F_DUP_CACHE_TIMEOUT_MS, "dupCacheTimeoutMs", g_config.dup_cache_timeout_ms, DUP_CACHE_TIMEOUT_MS_MIN, DUP_CACHE_TIMEOUT_MS_MAX);
         web_fieldset_close(req);
     }
+
+    // The cache size and window only matter while the switch is on, so they
+    // are greyed out when it is off. A disabled control does not POST, and
+    // the save handler then keeps the stored values for both.
+    web_raw(req, "<script>(function(){"
+                 "function q(n){return document.querySelector(\"[name='\"+n+\"']\");}"
+                 "function apply(){var en=q('dupCacheEn');if(!en)return;"
+                 "['dupCacheSize','dupCacheTimeoutMs'].forEach(function(nm){var el=q(nm);if(el)el.disabled=!en.checked;});}"
+                 "document.addEventListener('DOMContentLoaded',function(){"
+                 "var en=q('dupCacheEn');if(en)en.addEventListener('change',apply);apply();});"
+                 "})();</script>");
 
     web_raw(req, "<button type='submit'>" TR_BTN_SAVE "</button></form>");
 
@@ -635,8 +647,8 @@ esp_err_t page_igate_post(httpd_req_t *req) {
     // and 8 callsign inputs, plus the range/prefix gate and third-party
     // unwrap fields, plus the Satellite Gate List's 8 callsign inputs, the
     // Message Gating fieldset's switch and window, and the Duplicate
-    // Suppression fieldset's 2 numeric fields), not just the main settings on
-    // their own.
+    // Suppression fieldset's switch and 2 numeric fields), not just the main
+    // settings on their own.
     char body[4000];
     if (web_read_body(req, body, sizeof(body)) < 0) {
         httpd_resp_send_500(req);
@@ -994,11 +1006,15 @@ esp_err_t page_igate_post(httpd_req_t *req) {
         web_form_get_call(body, name, g_config.satgate[i], sizeof(g_config.satgate[i]));
     }
 
-    // Duplicate Suppression: cache size and window, clamped to the same
-    // DUP_CACHE_SIZE_*/DUP_CACHE_TIMEOUT_MS_* bounds the web form itself
-    // advertises, so a malformed POST can never push either value out of
-    // range.
+    // Duplicate Suppression: the on/off switch, then the cache size and
+    // window, clamped to the same DUP_CACHE_SIZE_*/DUP_CACHE_TIMEOUT_MS_*
+    // bounds the web form itself advertises, so a malformed POST can never
+    // push either value out of range. While the switch is off the two
+    // numeric inputs are disabled and absent from the POST, so each falls
+    // back to its stored value.
     {
+        g_config.dup_cache_en = web_form_get_bool(body, "dupCacheEn");
+
         int cacheSize = web_form_get_int(body, "dupCacheSize", g_config.dup_cache_size);
         if (cacheSize < DUP_CACHE_SIZE_MIN)
             cacheSize = DUP_CACHE_SIZE_MIN;
@@ -1011,7 +1027,7 @@ esp_err_t page_igate_post(httpd_req_t *req) {
             cacheTimeoutMs = DUP_CACHE_TIMEOUT_MS_MIN;
         else if (cacheTimeoutMs > DUP_CACHE_TIMEOUT_MS_MAX)
             cacheTimeoutMs = DUP_CACHE_TIMEOUT_MS_MAX;
-        g_config.dup_cache_timeout_ms = (uint16_t)cacheTimeoutMs;
+        g_config.dup_cache_timeout_ms = (uint32_t)cacheTimeoutMs;
     }
 
     app_config_unlock();

@@ -86,7 +86,7 @@ Feature matrix
    * - Satellite/ISS digipeater gate-call list
      - ✅
      - up to 8 entries, web-configurable (IGate page), no rebuild needed
-   * - Duplicate-suppression cache size & window
+   * - Duplicate-suppression switch, cache size & window
      - ✅
      - web-configurable (IGate page), shared by IGate and Digipeater
    * - Digipeater

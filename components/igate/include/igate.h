@@ -29,7 +29,8 @@
 
 #include "ax25.h"
 
-// Duplicate-suppression cache size and timeout are runtime-configurable, see
+// Duplicate suppression as a whole is switched by g_config.dup_cache_en; the
+// cache size and timeout are runtime-configurable, see
 // g_config.dup_cache_size / g_config.dup_cache_timeout_ms and the
 // DUP_CACHE_SIZE_*/DUP_CACHE_TIMEOUT_MS_* bounds in app_config.h. The cache
 // array itself is still allocated at the fixed compile-time capacity
@@ -346,14 +347,23 @@ bool igate_log_accepts_line(const char *line);
  * are untouched by digipeat path rewriting, so a frame stays recognizable as
  * the same frame no matter which route the copies took to get here.
  *
+ * When g_config.dup_cache_en is false, duplicate suppression is disabled for
+ * every scope: the function returns false immediately, without hashing the
+ * frame or inserting anything into the cache.
+ *
  * @param packet Decoded frame to test.
  * @param scope  Which consumer's window to test and insert into.
- * @return true if @p packet matches a frame that scope has recently seen.
+ * @return true if @p packet matches a frame that scope has recently seen and
+ *         duplicate suppression is enabled; false otherwise.
  */
 bool isDuplicatePacketScoped(ax25_msg_t *packet, dup_scope_t scope);
 
 /**
  * @brief Duplicate-packet check in the ::DUP_SCOPE_IGATE window.
+ *
+ * Equivalent to isDuplicatePacketScoped(@p packet, ::DUP_SCOPE_IGATE), so it
+ * always returns false while g_config.dup_cache_en is false.
+ *
  * @param packet Decoded frame to test.
  * @return true if @p packet matches a recently seen frame (a duplicate).
  */

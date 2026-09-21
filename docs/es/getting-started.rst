@@ -194,8 +194,8 @@ Valores de fábrica destacados
        14580, con solo la ranura 1 habilitada
    * - Lista de satélites digipetidores
      - ``RS0ISS``, ``YBOX``, ``YBSAT``, ``PSAT``, ``W3ADO``, ``BJ1SI`` (hasta 8, configurable desde la web)
-   * - Caché / ventana de supresión de duplicados
-     - 20 entradas / 30000 ms (configurable desde la web)
+   * - Supresión de duplicados / caché / ventana
+     - habilitada / 20 entradas / 30000 ms (configurable desde la web)
    * - Limitador de ciclo de trabajo de transmisión
      - deshabilitado; techo del 25 % de una ventana deslizante de 10 minutos
        cuando se habilita

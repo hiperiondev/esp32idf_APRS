@@ -557,7 +557,7 @@ Digipeating and the New-N paradigm
      - A hop count above the matched row's maximum is either clamped down and repeated or dropped, at the operator's choice, with the drop counted under its own reason on the dashboard.
    * - Duplicate suppression
      - ✅
-     - A shared cache with a configurable depth and time window, used by both the digipeater and the gateway so a frame cannot be repeated by one path after the other has already seen it.
+     - A shared cache with a configurable depth and time window, used by both the digipeater and the gateway so a frame cannot be repeated by one path after the other has already seen it. A single switch on the IGate page turns it off for both.
    * - Preemptive digipeating
      - ✅
      - Off by default and selectable in two indicator modes: the addresses jumped over are either kept and marked used, or discarded so that only what is still to be done goes out. The scan runs from the first unused address to the end of the path and claims only a fixed identity, so both exclusions the proposal states - generic n-N aliases, and an alias written with a hop count - are enforced by construction.

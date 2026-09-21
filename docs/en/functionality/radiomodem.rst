@@ -1163,7 +1163,8 @@ nothing.
        ``MODEM_PTT_ACTIVE_HIGH``). Shown read-only; the pin is registered in
        the GPIO ownership table so no other feature can claim it.
    * - Duplicate suppression
-     - One pair of controls for the whole firmware, on the *IGate* page.
+     - One switch and one pair of controls for the whole firmware, on the
+       *IGate* page.
    * - CSMA slot interval
      - Fixed at 100 ms inside the modem. *TX time-slot* on this page is the
        quiet time, which is the parameter worth adjusting.
