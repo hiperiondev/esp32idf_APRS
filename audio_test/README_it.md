@@ -593,14 +593,24 @@ al 90 % è di circa ±8 punti percentuali, quindi un volume "migliore del 2 %" �
 pacchetto di fortuna. Ciò che vale la pena trovare è il **centro del plateau**,
 perché è il livello con più margine da entrambi i lati.
 
-La ricerca procede in quattro fasi:
+La ricerca procede in quattro fasi, governate da una regola rigida:
+
+> **Il fuori scala è un tetto.** Non appena il firmware stampa `afsk: RX audio is
+> over-range` durante un sondaggio — **basta un solo avviso** per impostazione
+> predefinita — quel guadagno diventa un tetto: **nessun sondaggio viene più
+> riprodotto a quel livello o sopra**, e la ricerca si muove solo **verso il basso**,
+> a piccoli passi di `--clip_step_db` (0,5 dB predefinito). Inoltre la riproduzione
+> del sondaggio sovrapilotato viene interrotta entro circa un quarto di secondo
+> dall'avviso, così l'ADC — che non ha diodi di protezione — non resta sovrapilotato
+> per il resto del file.
+
 
 | Fase | Cosa fa |
 |---|---|
-| **1 — delimitare** | Trova il livello al quale l'ADC inizia a saturare, con passi di ±6 dB. La saturazione è un segnale *binario* che il firmware stesso riporta (`RX audio is over-range`), quindi può essere sondata con lotti minuscoli di **8 pacchetti** invece che completi. La ricerca si muove in **entrambe** le direzioni, così un `--volume` iniziale già troppo alto non è un vicolo cieco. Un livello conta come saturo solo oltre `--clip_rate` avvisi per pacchetto (0,10 predefinito): un avviso transitorio su un pacchetto forte non è "il livello è sbagliato". |
-| **2 — bisecare** | Biseca quell'intervallo 3 volte, fissando la soglia a circa ±0,75 dB. |
-| **3 — punteggio** | Assegna un punteggio a lotti completi di `--auto_volume_batch` pacchetti (50 predefinito) a **3, 6, 9, 12 e 18 dB sotto la soglia**, fermandosi non appena un punteggio scende oltre 15 punti sotto il migliore (il ginocchio inferiore è superato, inutile scendere ancora). |
-| **4 — centrare** | Tutti i punti statisticamente pari al migliore — il loro intervallo di [Wilson](#18-glossario) si sovrappone ancora — formano il plateau. Il **centro geometrico** del plateau (il centro aritmetico in dB) è il guadagno usato per l'esecuzione, limitato ad almeno **3 dB sotto la soglia di saturazione**. |
+| **1 — salire** | Solo finché il firmware **non ha mai** segnalato fuori scala: alza il guadagno a passi di 6 dB, con sondaggi economici da **8 pacchetti** (la saturazione è un segnale binario che il firmware stesso riporta, quindi non serve un lotto completo). Anche un sondaggio che non decodifica nulla ferma la salita: non c'è alcuna prova che un livello più alto sia sicuro. |
+| **2 — scendere a passi** | Dal primo fuori scala in poi: mai più verso l'alto. Scende di `--clip_step_db` (0,5 dB) a ogni sondaggio finché uno torna pulito. Quel livello — il *livello più alto senza fuori scala* — è il riferimento per le due fasi successive. Se si parte già in fuori scala (un `--volume` troppo alto), la ricerca passa direttamente a questa fase. |
+| **3 — punteggio** | Assegna un punteggio a lotti completi di `--auto_volume_batch` pacchetti (50 predefinito) a **3, 6, 9, 12 e 18 dB sotto quel livello**, fermandosi non appena un punteggio scende oltre 15 punti sotto il migliore (il ginocchio inferiore è superato, inutile scendere ancora). Un sondaggio di punteggio che segnala fuori scala — avvisi troppo rari per comparire in 8 pacchetti possono comparire in 50 — abbassa di nuovo il tetto e viene scartato dal plateau. |
+| **4 — centrare** | Tutti i punti statisticamente pari al migliore — il loro intervallo di [Wilson](#18-glossario) si sovrappone ancora — formano il plateau. Il **centro geometrico** del plateau (il centro aritmetico in dB) è il guadagno usato per l'esecuzione, limitato ad almeno **3 dB sotto il tetto di fuori scala**. |
 
 **Come viene valutato un sondaggio:** successi = **OK + EXTRA**, tentativi =
 pacchetti di multimon-ng + pacchetti EXTRA.
@@ -618,8 +628,15 @@ Altre cose da sapere:
   `--auto_volume_max_rounds` (10 predefinito) è quanti lotti della dimensione di
   `--auto_volume_batch` può spendere l'intera ricerca; un sondaggio di saturazione da
   8 pacchetti costa 8/50 di round, un sondaggio di punteggio completo ne costa uno. Al
-  massimo un quarto del budget va alla caccia della soglia, così i sondaggi economici
+  massimo **metà** del budget va alla salita e alla discesa, così i sondaggi economici
   non possono mai togliere risorse alla scansione che sceglie davvero il livello.
+  Passi molto piccoli partendo da un livello molto alto possono esaurire il budget di
+  discesa: la ricerca lo dice e ripiega su tetto − `--headroom_db`, comunque sotto
+  ogni livello che ha segnalato fuori scala.
+* `--clip_rate` (**0** predefinito) è quanti avvisi per pacchetto un livello può
+  produrre restando pulito. Alzalo solo se il tuo firmware emette avvisi spuri
+  isolati; con qualsiasi valore sopra 0 l'interruzione a metà file è disattivata,
+  perché il tasso va allora misurato sull'intero sondaggio.
 * I guadagni sono gestiti **in dB** (il livello si applica con il `gain` di sox) e
   tenuti entro `--volume_min` … `--volume_max` (**0,02 – 4,0** predefinito). Guadagni
   superiori a 1,0 hanno senso solo insieme a `--normalise` (sezione 7.2).
@@ -639,9 +656,10 @@ Altre cose da sapere:
   (o alza) RV1 e rilancia, così il banco può lavorare vicino a 0 dB — amplificare
   digitalmente amplifica anche il rumore di fondo della scheda audio.
 * Interrompere la calibrazione con **Ctrl-C** non ferma il programma: passa al test
-  reale con il volume del sondaggio in corso in quel momento — non necessariamente il
-  migliore — quindi leggi il valore stampato nel riepilogo finale prima di citare il
-  risultato.
+  reale con il **miglior livello già noto senza fuori scala** (mai il `--volume`
+  iniziale se quello saturava) — non necessariamente quello che sceglierebbe una
+  ricerca completa — quindi leggi il valore stampato nel riepilogo finale prima di
+  citare il risultato.
 * Il test reale che segue **riparte sempre dal primo file**.
 * `--no_play` (la prova a vuoto) salta anche la calibrazione: non tocca mai la scheda
   audio.
@@ -650,22 +668,29 @@ Una passata di calibrazione si presenta così:
 
 ```
 ========================================================================
-AUTO-VOLUME CALIBRATION (clip threshold + plateau centre)
+AUTO-VOLUME CALIBRATION (over-range ceiling + plateau centre)
 ========================================================================
-  Start gain 1.000 (+0.0 dB), range 0.020..4.000, budget 10 probe(s), 50 packet(s) per scoring probe
-  [probe  1, budget 0.2/10] gain=1.000 ( +0.0 dB)  mm=8 ok=4 diff=0 hdr=0 miss=4 extra=0  score=50.0%  clip=0.50/pkt
-  [probe  2, budget 0.3/10] gain=0.501 ( -6.0 dB)  mm=8 ok=8 diff=0 hdr=0 miss=0 extra=0  score=100.0%  clip=0.00/pkt
-  [probe  3, budget 0.5/10] gain=0.708 ( -3.0 dB)  mm=8 ok=7 diff=0 hdr=0 miss=1 extra=0  score=87.5%  clip=0.25/pkt
-  Clipping threshold: -4.5 dB (gain 0.596)
-  [probe  5, budget 1.6/10] gain=0.422 ( -7.5 dB)  mm=49 ok=48 diff=0 hdr=0 miss=1 extra=1  score=98.0%  clip=0.00/pkt
-  [probe  6, budget 2.6/10] gain=0.299 (-10.5 dB)  mm=50 ok=49 diff=0 hdr=0 miss=1 extra=0  score=98.0%  clip=0.00/pkt
-  [probe  7, budget 3.6/10] gain=0.211 (-13.5 dB)  mm=50 ok=48 diff=1 hdr=0 miss=1 extra=0  score=96.0%  clip=0.00/pkt
-  [probe  8, budget 4.6/10] gain=0.150 (-16.5 dB)  mm=50 ok=39 diff=0 hdr=0 miss=11 extra=0  score=78.0%  clip=0.00/pkt
-      score fell 20 points below the best - the lower knee is past, no need to go quieter
-  Plateau: -13.5 .. -7.5 dB (3 tied point(s) of 4 probed); best raw score 98.0%
-  Chosen gain: 0.299 (-10.5 dB), 6.0 dB below the clipping threshold
+  Start gain 1.000 (+0.0 dB), range 0.020..4.000, budget 10 probe(s), 50 packet(s) per scoring probe, 0.50 dB steps below over-range
+  [probe  1, budget 0.2/10] gain=1.000 ( +0.0 dB)  mm=3 ok=2 diff=0 hdr=0 miss=1 extra=0  score=66.7%  clip=0.33/pkt  <- OVER-RANGE
+  Over-range at +0.0 dB (gain 1.000): no probe will go that high again; stepping down in 0.50 dB steps
+  [probe  2, budget 0.3/10] gain=0.944 ( -0.5 dB)  mm=2 ok=2 diff=0 hdr=0 miss=0 extra=0  score=100.0%  clip=0.50/pkt  <- OVER-RANGE
+  [probe  3, budget 0.5/10] gain=0.891 ( -1.0 dB)  mm=8 ok=8 diff=0 hdr=0 miss=0 extra=0  score=100.0%  clip=0.00/pkt
+  Highest level without over-range: -1.0 dB (gain 0.891)
+  [probe  4, budget 1.5/10] gain=0.631 ( -4.0 dB)  mm=50 ok=49 diff=0 hdr=0 miss=1 extra=0  score=98.0%  clip=0.00/pkt
+  [probe  5, budget 2.5/10] gain=0.447 ( -7.0 dB)  mm=49 ok=48 diff=0 hdr=0 miss=1 extra=1  score=98.0%  clip=0.00/pkt
+  [probe  6, budget 3.5/10] gain=0.316 (-10.0 dB)  mm=50 ok=48 diff=1 hdr=0 miss=1 extra=0  score=96.0%  clip=0.00/pkt
+  [probe  7, budget 4.5/10] gain=0.224 (-13.0 dB)  mm=50 ok=47 diff=0 hdr=0 miss=3 extra=0  score=94.0%  clip=0.00/pkt
+  [probe  8, budget 5.5/10] gain=0.112 (-19.0 dB)  mm=50 ok=30 diff=0 hdr=0 miss=20 extra=0  score=60.0%  clip=0.00/pkt
+      score fell 38 points below the best - the lower knee is past, no need to go quieter
+  Plateau: -13.0 .. -4.0 dB (4 tied point(s) of 5 probed); best raw score 98.0%
+  Chosen gain: 0.376 (-8.5 dB), 7.5 dB below the highest level without over-range
+  NOTE: more than 6 dB of attenuation was needed. The hardware level into the ESP32 ADC is too hot - turn the RX trimmer (or the radio's volume) down and re-run, so the bench can work near 0 dB.
 ========================================================================
 ```
+
+I sondaggi 1 e 2 si fermano dopo pochi pacchetti: la riproduzione viene interrotta non
+appena il firmware si lamenta. Dopo il sondaggio 1 nulla viene più riprodotto a 0 dB o
+sopra, e dopo il sondaggio 2 nulla a −0,5 dB o sopra.
 
 Il guadagno scelto viene ristampato alla fine del riepilogo come
 `Playback gain used for this test`. Annota quel numero insieme al livello fissato su
@@ -875,8 +900,9 @@ alcun modo.
 | `--auto_volume_max_rounds N` | `10` | Budget di ricerca, **in lotti di `--auto_volume_batch` pacchetti**, non in chiamate di sondaggio. Un sondaggio di saturazione da 8 pacchetti costa una frazione di round, un sondaggio di punteggio completo ne costa uno. Deve essere ≥ 1. |
 | `--volume_min X` | `0.02` | Guadagno più basso utilizzabile dalla ricerca. Deve essere > 0 e < `--volume_max`. |
 | `--volume_max X` | `4.0` | Guadagno più alto utilizzabile dalla ricerca. Sopra 1,0 ha senso solo insieme a `--normalise`. |
-| `--clip_rate X` | `0.10` | Avvisi di fuori scala per pacchetto oltre i quali un livello conta come saturo; un singolo avviso transitorio non basta. Deve essere in (0, 1]. |
-| `--headroom_db X` | `6` | dB sotto la soglia di saturazione a cui ripiegare quando non è stato possibile valutare alcun plateau. |
+| `--clip_rate X` | `0` | Avvisi di fuori scala per pacchetto che un livello può produrre restando pulito. Lo 0 predefinito significa che **un solo avviso marca il livello come saturo** e nulla viene più riprodotto a quel livello o sopra. Deve essere in [0, 1). |
+| `--clip_step_db X` | `0.5` | Una volta segnalato il fuori scala, la ricerca non alza più il guadagno e **scende** di questi dB a ogni sondaggio finché gli avvisi cessano. Deve essere > 0 e ≤ 6. |
+| `--headroom_db X` | `6` | dB sotto il tetto di fuori scala (o il livello pulito più alto) a cui ripiegare quando non è stato possibile valutare alcun plateau o la discesa ha esaurito il budget. |
 | `--max_passes N` | `3` | Passate sull'insieme dei WAV prima che un sondaggio di calibrazione si arrenda. Deve essere ≥ 1. |
 
 ### Tempi e abbinamento
@@ -1029,8 +1055,13 @@ senza attese** (circa un secondo). Verifica
 * che la ricerca del volume converga al centro di un plateau **simulato** partendo da
   tre guadagni iniziali diversi, entro il budget, e mantenga il suo margine sotto la
   soglia di saturazione;
+* il **tetto di fuori scala**: nessun sondaggio viene riprodotto a un livello che ha
+  segnalato fuori scala o sopra; la discesa procede esattamente a passi di
+  `--clip_step_db`; un solo avviso in un lotto di punteggio abbassa il tetto e scarta
+  quel livello; una discesa che esaurisce il budget finisce comunque sotto il tetto;
+  e una ricerca interrotta ripiega sotto il tetto, non sul guadagno iniziale;
 * che un sondaggio su un insieme di WAV che non decodifica nulla termini invece di
-  restare in ciclo per sempre.
+  restare in ciclo per sempre, e non alzi mai il guadagno.
 
 Ogni verifica stampa `PASS` o `FAIL`; il codice di uscita è 0 quando tutto è passato e
 1 altrimenti. Vale la pena eseguirlo dopo aver modificato lo script, ed è la prima
@@ -1437,6 +1468,9 @@ di regressione.
 | `Cannot open a display for --gui` | Nessun display X/Wayland: si è su una console di testo o in una sessione SSH senza inoltro di X. Usare la riga di comando, oppure `ssh -X`. |
 | `! …would clip inside sox (max usable gain …)` | Il guadagno di riproduzione per il picco proprio del file supera il fondo scala, quindi sox saturerebbe prima della scheda audio. Aggiungere `--normalise`, oppure abbassare il guadagno e alzare il livello su RV1 (sezione 7.2). |
 | `probe incomplete: n/N packet(s) after 3 pass(es) over the wav set` | La calibrazione non è riuscita a raccogliere un lotto completo: l'audio non viene decodificato affatto. È l'instradamento dell'audio o i file stessi, non il livello. Controllare `--audio_device`, il mixer e che i WAV contengano davvero pacchetti AFSK 1200. |
+| `Still over-range at the lowest gain allowed` | Anche `--volume_min` sovrapilota l'ADC. Il livello analogico è troppo alto: abbassare RV1 (o il volume del PC) prima di rilanciare. |
+| `Descent budget spent while still over-range at … dB` | La ricerca è partita così alta che i piccoli passi di discesa hanno esaurito il budget. Ha ripiegato su tetto − `--headroom_db`. Meglio: abbassare RV1, o partire più in basso (`--volume 0.3`); in alternativa aumentare `--auto_volume_max_rounds` o `--clip_step_db`. |
+| `<- OVER-RANGE` su una riga di sondaggio | Quel sondaggio ha fatto segnalare il fuori scala al firmware; da lì in poi nessun sondaggio sale fin lì. È normale mentre si individua il tetto. |
 | `No clipping seen up to +12.0 dB` durante la calibrazione | Nemmeno il guadagno più alto consentito ha fatto lamentare il firmware: il livello hardware verso l'ADC è troppo basso. Alzare RV1 (o il volume del PC) e rilanciare. |
 | `NOTE: more than 6 dB of attenuation/boost was needed` | Il livello analogico è sbagliato e il guadagno software lo sta solo mascherando. Abbassare RV1 (attenuazione) o alzarlo (amplificazione) perché il banco possa lavorare vicino a 0 dB. Amplificare digitalmente amplifica anche il rumore di fondo della scheda audio. |
 | `multimon-ng did not exit within 60 s - killing it` | Innocuo: il decodificatore teneva ancora la pipe dopo la fine della riproduzione. I risultati del file sono conservati e l'esecuzione continua. |
@@ -1548,9 +1582,9 @@ grep -E "NOT DECODED|DIFFERENT|HEADER CORRUPT" run.log
 | **RMS** | Valore efficace (root-mean-square): la grandezza effettiva di un segnale alternato; l'ESP32 riporta il livello RX in mV RMS. |
 | **Livello continuo (DC offset)** | La tensione continua media a cui riposa il pin dell'ADC; con l'autopolarizzazione dovrebbe aggirarsi intorno a 1650 mV. |
 | **SSID** | Il numero dopo un nominativo (`-9`) che distingue più stazioni di uno stesso operatore. |
-| **Calibrazione automatica del volume** | La passata predefinita del programma, prima del test che viene riportato, che trova la soglia di saturazione e poi il centro del plateau che sta sotto, e usa quel guadagno per tutta l'esecuzione. Vedere la sezione 7.1. |
+| **Calibrazione automatica del volume** | La passata predefinita del programma, prima del test che viene riportato, che trova il livello più alto senza fuori scala (senza mai risalire una volta che il firmware si è lamentato) e poi il centro del plateau che sta sotto, e usa quel guadagno per tutta l'esecuzione. Vedere la sezione 7.1. |
 | **Fuori scala (over-range)** | L'avviso del firmware stesso che l'audio che arriva all'ADC eccede il suo intervallo d'ingresso (satura). La calibrazione lo usa come segnale di saturazione. |
-| **Soglia di saturazione** | Il guadagno di riproduzione al quale il firmware inizia a segnalare il fuori scala. La calibrazione la delimita e la biseca, e poi resta almeno 3 dB sotto. |
+| **Tetto di fuori scala** | Il guadagno di riproduzione più basso che ha fatto segnalare il fuori scala al firmware. Nulla viene più riprodotto a quel livello o sopra; la calibrazione scende da lì a passi di `--clip_step_db` e alla fine resta almeno 3 dB sotto. |
 | **Plateau** | L'intervallo di livelli in cui il tasso di decodifica è piatto, fra il rumore di fondo sotto e la saturazione sopra. Il suo centro è il livello con più margine da entrambi i lati. |
 | **Intervallo di Wilson** | Un intervallo di confidenza per una proporzione che si comporta bene su campioni piccoli. Due sondaggi i cui intervalli si sovrappongono sono trattati come pari, non come migliore e peggiore. |
 | **Normalizzazione** | `--normalise`: portare ogni WAV a −1 dBFS prima del guadagno di riproduzione, così un solo guadagno va bene per registrazioni fatte a livelli diversi (sezione 7.2). |

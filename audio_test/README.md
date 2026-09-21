@@ -552,14 +552,23 @@ is about ±8 percentage points, so a "2 % better" volume is half a packet of
 luck. What is worth finding is the **centre of the plateau**, because that is
 the level with the most margin on both sides.
 
-The search runs in four phases:
+The search runs in four phases, governed by one hard rule:
+
+> **Over-range is a ceiling.** The moment the firmware prints `afsk: RX audio is
+> over-range` during a probe — **a single warning is enough** by default — that
+> gain becomes a ceiling: **no probe is ever played at or above it again**, and the
+> search only moves **down**, in small `--clip_step_db` steps (0.5 dB by default).
+> Playback of the over-driven probe is also cut off within about a quarter of a
+> second of the warning, so the ADC — which has no clamp diodes — is not kept
+> over-driven for the rest of the file.
+
 
 | Phase | What it does |
 |---|---|
-| **1 — bracket** | Finds the level at which the ADC starts clipping, stepping ±6 dB. Clipping is a *binary* signal the firmware reports itself (`RX audio is over-range`), so it can be probed with tiny **8-packet** batches instead of full ones. The hunt moves in **both** directions, so a starting `--volume` that is already far too high is not a dead end. A level counts as clipping only above `--clip_rate` warnings per packet (default 0.10): one transient warning on a loud packet is not "the level is wrong". |
-| **2 — bisect** | Bisects that bracket 3 times, pinning the threshold to about ±0.75 dB. |
-| **3 — score** | Scores full batches of `--auto_volume_batch` packets (default 50) at **3, 6, 9, 12 and 18 dB below the threshold**, stopping early as soon as a score falls more than 15 points below the best one (the lower knee is past, no need to go quieter). |
-| **4 — centre** | Every point statistically tied with the best one — its [Wilson](#18-glossary) interval still overlaps — forms the plateau. The **geometric centre** of the plateau (the arithmetic centre in dB) is the gain used for the run, clamped to at least **3 dB below the clipping threshold**. |
+| **1 — climb** | Only while the firmware has **never** reported over-range: raise the gain in 6 dB steps, using cheap **8-packet** probes (clipping is a binary signal the firmware reports itself, so it needs no full batch). A probe that decodes nothing at all stops the climb too — there is no evidence that a louder level would be safe. |
+| **2 — step down** | From the first over-range on: never up again. Step **down** by `--clip_step_db` (0.5 dB) per probe until one comes back clean. That level — the *highest level without over-range* — is the reference for the next two phases. If you start already over-range (a `--volume` that is too hot), the search goes straight to this phase. |
+| **3 — score** | Scores full batches of `--auto_volume_batch` packets (default 50) at **3, 6, 9, 12 and 18 dB below that level**, stopping early as soon as a score falls more than 15 points below the best one (the lower knee is past, no need to go quieter). A scoring probe that reports over-range — warnings too rare to show in 8 packets can show in 50 — lowers the ceiling again and is dropped from the plateau. |
+| **4 — centre** | Every point statistically tied with the best one — its [Wilson](#18-glossary) interval still overlaps — forms the plateau. The **geometric centre** of the plateau (the arithmetic centre in dB) is the gain used for the run, clamped to at least **3 dB below the over-range ceiling**. |
 
 **How a probe is scored:** success = **OK + EXTRA**, trials = multimon-ng
 packets + EXTRA packets.
@@ -576,9 +585,15 @@ Other things worth knowing:
 * **The budget is counted in batches of packets, not in probe calls.**
   `--auto_volume_max_rounds` (default 10) is how many `--auto_volume_batch`-sized
   batches the whole search may spend; an 8-packet clipping probe costs 8/50 of a
-  round, a full scoring probe costs one. At most a quarter of the budget goes to
-  the threshold hunt, so the cheap probes can never starve the scoring sweep that
-  actually picks the level.
+  round, a full scoring probe costs one. At most **half** of the budget goes to
+  the climb and the descent, so the cheap probes can never starve the scoring sweep
+  that actually picks the level. Very small steps from a very hot start can run out
+  of descent budget: the search then says so and falls back to
+  ceiling − `--headroom_db`, still below every level that reported over-range.
+* `--clip_rate` (default **0**) is how many warnings per packet a level may
+  produce and still count as clean. Raise it only if your firmware emits isolated
+  spurious warnings; with any value above 0 the mid-file cut-off is disabled,
+  because the rate then has to be measured over the whole probe.
 * Gains are handled **in dB** (the level is applied with sox's `gain`), and kept
   inside `--volume_min` … `--volume_max` (default **0.02 – 4.0**). Gains above
   1.0 only make sense together with `--normalise` (section 7.2).
@@ -597,8 +612,9 @@ Other things worth knowing:
   down (or up) and run again, so the bench can work near 0 dB — digital boost also
   amplifies the sound card's own noise floor.
 * Interrupting the calibration with **Ctrl-C** does not stop the program: it goes
-  on to the real test with the volume of the probe that was running when you
-  interrupted — not necessarily the best one, so read the value printed in the
+  on to the real test with the **best level already known to be free of
+  over-range** (never the starting `--volume` if that one clipped) — not
+  necessarily the level a full search would pick, so read the value printed in the
   final summary before quoting the result.
 * The real test that follows always **restarts from the first file**.
 * `--no_play` (the dry run) skips the calibration as well: it never touches the
@@ -608,22 +624,29 @@ A calibration pass looks like this:
 
 ```
 ========================================================================
-AUTO-VOLUME CALIBRATION (clip threshold + plateau centre)
+AUTO-VOLUME CALIBRATION (over-range ceiling + plateau centre)
 ========================================================================
-  Start gain 1.000 (+0.0 dB), range 0.020..4.000, budget 10 probe(s), 50 packet(s) per scoring probe
-  [probe  1, budget 0.2/10] gain=1.000 ( +0.0 dB)  mm=8 ok=4 diff=0 hdr=0 miss=4 extra=0  score=50.0%  clip=0.50/pkt
-  [probe  2, budget 0.3/10] gain=0.501 ( -6.0 dB)  mm=8 ok=8 diff=0 hdr=0 miss=0 extra=0  score=100.0%  clip=0.00/pkt
-  [probe  3, budget 0.5/10] gain=0.708 ( -3.0 dB)  mm=8 ok=7 diff=0 hdr=0 miss=1 extra=0  score=87.5%  clip=0.25/pkt
-  Clipping threshold: -4.5 dB (gain 0.596)
-  [probe  5, budget 1.6/10] gain=0.422 ( -7.5 dB)  mm=49 ok=48 diff=0 hdr=0 miss=1 extra=1  score=98.0%  clip=0.00/pkt
-  [probe  6, budget 2.6/10] gain=0.299 (-10.5 dB)  mm=50 ok=49 diff=0 hdr=0 miss=1 extra=0  score=98.0%  clip=0.00/pkt
-  [probe  7, budget 3.6/10] gain=0.211 (-13.5 dB)  mm=50 ok=48 diff=1 hdr=0 miss=1 extra=0  score=96.0%  clip=0.00/pkt
-  [probe  8, budget 4.6/10] gain=0.150 (-16.5 dB)  mm=50 ok=39 diff=0 hdr=0 miss=11 extra=0  score=78.0%  clip=0.00/pkt
-      score fell 20 points below the best - the lower knee is past, no need to go quieter
-  Plateau: -13.5 .. -7.5 dB (3 tied point(s) of 4 probed); best raw score 98.0%
-  Chosen gain: 0.299 (-10.5 dB), 6.0 dB below the clipping threshold
+  Start gain 1.000 (+0.0 dB), range 0.020..4.000, budget 10 probe(s), 50 packet(s) per scoring probe, 0.50 dB steps below over-range
+  [probe  1, budget 0.2/10] gain=1.000 ( +0.0 dB)  mm=3 ok=2 diff=0 hdr=0 miss=1 extra=0  score=66.7%  clip=0.33/pkt  <- OVER-RANGE
+  Over-range at +0.0 dB (gain 1.000): no probe will go that high again; stepping down in 0.50 dB steps
+  [probe  2, budget 0.3/10] gain=0.944 ( -0.5 dB)  mm=2 ok=2 diff=0 hdr=0 miss=0 extra=0  score=100.0%  clip=0.50/pkt  <- OVER-RANGE
+  [probe  3, budget 0.5/10] gain=0.891 ( -1.0 dB)  mm=8 ok=8 diff=0 hdr=0 miss=0 extra=0  score=100.0%  clip=0.00/pkt
+  Highest level without over-range: -1.0 dB (gain 0.891)
+  [probe  4, budget 1.5/10] gain=0.631 ( -4.0 dB)  mm=50 ok=49 diff=0 hdr=0 miss=1 extra=0  score=98.0%  clip=0.00/pkt
+  [probe  5, budget 2.5/10] gain=0.447 ( -7.0 dB)  mm=49 ok=48 diff=0 hdr=0 miss=1 extra=1  score=98.0%  clip=0.00/pkt
+  [probe  6, budget 3.5/10] gain=0.316 (-10.0 dB)  mm=50 ok=48 diff=1 hdr=0 miss=1 extra=0  score=96.0%  clip=0.00/pkt
+  [probe  7, budget 4.5/10] gain=0.224 (-13.0 dB)  mm=50 ok=47 diff=0 hdr=0 miss=3 extra=0  score=94.0%  clip=0.00/pkt
+  [probe  8, budget 5.5/10] gain=0.112 (-19.0 dB)  mm=50 ok=30 diff=0 hdr=0 miss=20 extra=0  score=60.0%  clip=0.00/pkt
+      score fell 38 points below the best - the lower knee is past, no need to go quieter
+  Plateau: -13.0 .. -4.0 dB (4 tied point(s) of 5 probed); best raw score 98.0%
+  Chosen gain: 0.376 (-8.5 dB), 7.5 dB below the highest level without over-range
+  NOTE: more than 6 dB of attenuation was needed. The hardware level into the ESP32 ADC is too hot - turn the RX trimmer (or the radio's volume) down and re-run, so the bench can work near 0 dB.
 ========================================================================
 ```
+
+Probes 1 and 2 stop after a handful of packets: playback is cut the moment the
+firmware complains. Nothing after probe 1 is ever played at 0 dB or above, and
+nothing after probe 2 at −0.5 dB or above.
 
 The chosen gain is printed again at the end of the final summary as
 `Playback gain used for this test`. Keep that number in your log alongside the
@@ -828,8 +851,9 @@ not printed, not counted either way.
 | `--auto_volume_max_rounds N` | `10` | Search budget, **in batches of `--auto_volume_batch` packets** — not in probe calls. A cheap 8-packet clipping probe costs a fraction of a round, a full scoring probe costs one. Must be ≥ 1. |
 | `--volume_min X` | `0.02` | Lowest gain the search may use. Must be > 0 and < `--volume_max`. |
 | `--volume_max X` | `4.0` | Highest gain the search may use. Above 1.0 only makes sense together with `--normalise`. |
-| `--clip_rate X` | `0.10` | Over-range warnings per packet above which a level counts as clipping; a single transient warning is not enough. Must be in (0, 1]. |
-| `--headroom_db X` | `6` | dB below the clipping threshold to fall back to when no plateau could be scored. |
+| `--clip_rate X` | `0` | Over-range warnings per packet a level may produce and still count as clean. The default 0 means **one warning marks the level as clipping** and nothing at or above it is played again. Must be in [0, 1). |
+| `--clip_step_db X` | `0.5` | Once over-range has been reported, the search never raises the gain again and steps **down** by this many dB per probe until the warnings stop. Must be > 0 and ≤ 6. |
+| `--headroom_db X` | `6` | dB below the over-range ceiling (or the highest clean level) to fall back to when no plateau could be scored or the descent ran out of budget. |
 | `--max_passes N` | `3` | Passes over the WAV set before a calibration probe gives up. Must be ≥ 1. |
 
 ### Timing and matching
@@ -980,8 +1004,13 @@ waiting** (about a second). It checks
 * that the volume search converges to the centre of a **simulated** plateau from
   three different starting gains, within budget, and keeps its margin below the
   clipping threshold;
+* the **over-range ceiling**: no probe is ever played at or above a level that
+  reported over-range; the descent moves in exactly `--clip_step_db` steps; a single
+  warning in a scoring batch lowers the ceiling and drops that level; a descent
+  that runs out of budget still ends below the ceiling; and an interrupted search
+  falls back below the ceiling rather than to the starting gain;
 * that a probe over a WAV set that decodes nothing terminates instead of looping
-  for ever.
+  for ever, and never raises the gain.
 
 Each check prints `PASS` or `FAIL`; the exit code is 0 when everything passed and
 1 otherwise. Worth running after editing the script, and the first thing to run
@@ -1374,6 +1403,9 @@ and produce a known number of packets for a quick regression run.
 | `Cannot open a display for --gui` | No X/Wayland display: you are on a text console or in an SSH session without X forwarding. Use the command line, or `ssh -X`. |
 | `! …would clip inside sox (max usable gain …)` | The playback gain times the file's own peak exceeds full scale, so sox would clip before the sound card. Add `--normalise`, or lower the gain and raise the level at RV1 (section 7.2). |
 | `probe incomplete: n/N packet(s) after 3 pass(es) over the wav set` | Calibration could not collect a full batch: the audio is not being decoded at all. Audio routing or the files themselves — not the level. Check `--audio_device`, the mixer, and that the WAVs really contain AFSK 1200 packets. |
+| `Still over-range at the lowest gain allowed` | Even `--volume_min` over-drives the ADC. The analog level is far too hot: turn RV1 (or the PC volume) down before running again. |
+| `Descent budget spent while still over-range at … dB` | The search started so hot that the small downward steps ran out of budget. It fell back to ceiling − `--headroom_db`. Better: turn RV1 down, or start lower (`--volume 0.3`); alternatively raise `--auto_volume_max_rounds` or `--clip_step_db`. |
+| `<- OVER-RANGE` on a probe line | That probe made the firmware report over-range; from then on no probe goes that high. Normal while the ceiling is being located. |
 | `No clipping seen up to +12.0 dB` during calibration | Even the highest gain allowed never made the firmware complain: the hardware level into the ADC is too low. Turn RV1 up (or raise the PC volume) and run again. |
 | `NOTE: more than 6 dB of attenuation/boost was needed` | The analog level is wrong, and software gain is only papering over it. Turn RV1 down (attenuation) or up (boost) so the bench can work near 0 dB. Digital boost also amplifies the sound card's noise floor. |
 | `multimon-ng did not exit within 60 s - killing it` | Harmless: the decoder was still holding the pipe after playback ended. The file's results are kept and the run continues. |
@@ -1483,9 +1515,9 @@ grep -E "NOT DECODED|DIFFERENT|HEADER CORRUPT" run.log
 | **RMS** | Root-mean-square: the effective size of an AC signal; the ESP32 reports the RX level in mV RMS. |
 | **DC offset** | The average DC voltage the ADC pin rests at; with self-bias it should be around 1650 mV. |
 | **SSID** | The number after a callsign (`-9`) that distinguishes several stations of one operator. |
-| **Auto-volume calibration** | The program's default pass, before the reported test, that finds the clipping threshold and then the centre of the plateau below it, and uses that gain for the whole run. See section 7.1. |
+| **Auto-volume calibration** | The program's default pass, before the reported test, that finds the highest level without over-range (never climbing again once the firmware has complained) and then the centre of the plateau below it, and uses that gain for the whole run. See section 7.1. |
 | **Over-range** | The firmware's own warning that the audio reaching the ADC exceeds its input range (it clips). The calibration uses it as its clipping signal. |
-| **Clipping threshold** | The playback gain at which the firmware starts reporting over-range. The calibration brackets and bisects it, then stays at least 3 dB below it. |
+| **Over-range ceiling** | The lowest playback gain that has made the firmware report over-range. Nothing is played at or above it again; the calibration steps down from it in `--clip_step_db` steps and finally stays at least 3 dB below it. |
 | **Plateau** | The range of levels over which the decode rate is flat, between the noise floor below and clipping above. Its centre is the level with the most margin on both sides. |
 | **Wilson interval** | A confidence interval for a proportion that behaves sensibly on small samples. Two probes whose intervals overlap are treated as tied rather than as better and worse. |
 | **Normalisation** | `--normalise`: bringing every WAV to −1 dBFS before the playback gain, so one gain fits recordings made at different levels (section 7.2). |

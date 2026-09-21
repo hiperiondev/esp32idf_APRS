@@ -5,8 +5,10 @@ test_aprs_wavs.py - Regression test bench for esp32idf_APRS using real APRS WAVs
 
 For every .wav file in a directory the program:
 
-  1. plays the WAV to the sound card that is wired to the ESP32 audio input
-     (ADC, GPIO33 by default) - the ESP32 demodulates it on its own;
+  1. plays the WAV, through PipeWire, to the output that is wired to the ESP32
+     audio input (ADC, GPIO33 by default) - the ESP32 demodulates it on its
+     own - and, optionally, the same audio to a second output (--monitor_device)
+     so the test can be listened to;
   2. AT THE SAME TIME feeds the very same audio to multimon-ng (AFSK1200),
      which acts as the reference decoder;
   3. AT THE SAME TIME reads the ESP32 console log over the serial port
@@ -24,14 +26,17 @@ Requirements
   Python 3.7+ (uses dataclasses)
   pip install pyserial
   multimon-ng   (reference decoder)
-  sox           (audio playback / resampling; provides the `sox` and `play` tools)
+  sox           (audio conversion / resampling / gain)
+  PipeWire      running, plus its command-line tools pw-cat and pw-dump
+                (Debian/Ubuntu: sudo apt install pipewire-bin)
 
 Usage
 -----
   ./test_aprs_wavs.py                          # wavs in cwd, /dev/ttyUSB0
   ./test_aprs_wavs.py --wav_dir ./captures --serial_port /dev/ttyUSB1
-  ./test_aprs_wavs.py --audio_device "hw:1,0"  # ALSA device wired to the ESP32
-  ./test_aprs_wavs.py --list_audio             # help finding the device
+  ./test_aprs_wavs.py --list_audio             # PipeWire outputs, * = default
+  ./test_aprs_wavs.py --audio_device alsa_output.usb-C-Media_USB_Audio-00.analog-stereo \
+                      --monitor_device "Headphones"   # ESP32 card + listen on headphones
   ./test_aprs_wavs.py --lang es                # everything in Spanish
 
 Languages
@@ -63,6 +68,7 @@ NOT DECODED verdicts that are bench artefacts, not firmware faults.
 """
 
 import argparse
+import json
 import math
 import os
 import re
@@ -271,8 +277,6 @@ _CATALOG = {
             "RESULTADO: multimon-ng no decodificó ningún paquete; no hay nada que comparar.",
         "WARNING: `stdbuf` not found (package coreutils). multimon-ng's output will be\n  block-buffered on the pipe, so its packets may arrive in bursts and be\n  timestamped late, which shows up as spurious NOT DECODED verdicts.\n":
             "ATENCIÓN: no se encontró `stdbuf` (paquete coreutils). La salida de multimon-ng\n  quedará con buffer por bloques en la tubería, así que sus paquetes pueden llegar\n  en ráfagas y con marca de tiempo tardía, lo que aparece como veredictos\n  NO DECODIFICADO espurios.\n",
-        "AUTO-VOLUME CALIBRATION (clip threshold + plateau centre)":
-            "CALIBRACIÓN AUTOMÁTICA DE VOLUMEN (umbral de recorte + centro de la meseta)",
         "Waiting %.1f s for the ESP32 to be ready ...":
             "Esperando %.1f s a que el ESP32 esté listo ...",
         "  WARNING: no data received from the serial port yet. The firmware may be quiet until it hears/sends something; continuing.":
@@ -300,8 +304,6 @@ _CATALOG = {
             "idioma de los mensajes, de la ayuda y de la interfaz gráfica: en (inglés), es (español), it (italiano). Por omisión: el idioma del sistema, o inglés si el idioma del sistema no es ninguno de estos tres.",
         "directory with the .wav files (default: current directory)":
             "directorio con los archivos .wav (por omisión: el directorio actual)",
-        "ALSA device wired to the ESP32 audio input, e.g. hw:1,0 (default: system default output)":
-            "dispositivo ALSA conectado a la entrada de audio del ESP32, por ej. hw:1,0 (por omisión: la salida por defecto del sistema)",
         "playback gain applied to the ESP32 leg only (default 1.0). Used as the starting point for auto-volume calibration unless --no_auto_volume is given.":
             "ganancia de reproducción aplicada sólo a la rama del ESP32 (por omisión 1.0). Se usa como punto de partida de la calibración automática de volumen salvo que se indique --no_auto_volume.",
         "bring every wav to -1 dBFS in the play chain (sox 'gain -n -1') so one gain is valid across recordings made at different levels, and gains above 1.0 stop meaning 'clip inside sox'":
@@ -322,8 +324,6 @@ _CATALOG = {
             "no reproducir audio por la placa de sonido (sólo ejecutar multimon-ng; útil para probar el parser en seco)",
         "extra multimon-ng arguments, e.g. '-A' (quoted)":
             "argumentos extra para multimon-ng, por ej. '-A' (entre comillas)",
-        "list ALSA playback devices and exit":
-            "listar los dispositivos de reproducción ALSA y salir",
         "open a graphical front-end: every flag in a form at the top, and below it a split console (left: program output, right: raw unfiltered serial data from the ESP32)":
             "abrir la interfaz gráfica: todas las opciones en un formulario arriba y, debajo, una consola dividida (izquierda: salida del programa; derecha: datos crudos del puerto serie del ESP32)",
         "Found %d wav file(s) in %s": "Se encontraron %d archivo(s) wav en %s",
@@ -344,12 +344,8 @@ _CATALOG = {
         "Missing required program(s): %s\n": "Falta(n) el/los programa(s) requerido(s): %s\n",
         "  [probe %2d, budget %.1f/%d] gain=%.3f (%+5.1f dB)  mm=%d ok=%d diff=%d hdr=%d miss=%d extra=%d  score=%.1f%%  clip=%.2f/pkt":
             "  [sondeo %2d, presup. %.1f/%d] ganancia=%.3f (%+5.1f dB)  mm=%d ok=%d dist=%d enc=%d falt=%d extra=%d  puntaje=%.1f%%  recorte=%.2f/pqt",
-        "  Start gain %.3f (%+.1f dB), range %.3f..%.3f, budget %d probe(s), %d packet(s) per scoring probe":
-            "  Ganancia inicial %.3f (%+.1f dB), rango %.3f..%.3f, presupuesto %d sondeo(s), %d paquete(s) por sondeo de puntaje",
         "  Plateau: %+.1f .. %+.1f dB (%d tied point(s) of %d probed); best raw score %.1f%%":
             "  Meseta: %+.1f .. %+.1f dB (%d punto(s) empatado(s) de %d sondeados); mejor puntaje bruto %.1f%%",
-        "  Chosen gain: %.3f (%+.1f dB), %.1f dB below the clipping threshold":
-            "  Ganancia elegida: %.3f (%+.1f dB), %.1f dB por debajo del umbral de recorte",
         "  NOTE: more than 6 dB of attenuation was needed. The hardware level into the ESP32 ADC is too hot - turn the RX trimmer (or the radio's volume) down and re-run, so the bench can work near 0 dB.":
             "  NOTA: hizo falta más de 6 dB de atenuación. El nivel de hardware que entra al ADC del ESP32 es demasiado alto: bajá el preset de RX (o el volumen de la radio) y repetí la prueba, para que el banco trabaje cerca de 0 dB.",
         "  serial is alive (%d console line(s) so far).":
@@ -372,8 +368,6 @@ _CATALOG = {
         "serial speed, 8N1 (default: %d)": "velocidad del puerto serie, 8N1 (por omisión: %d)",
         "dB below the clipping threshold to fall back to when no plateau could be scored (default %.0f)":
             "dB por debajo del umbral de recorte a los que recurrir cuando no se pudo puntuar ninguna meseta (por omisión %.0f)",
-        "over-range warnings per packet above which a level counts as clipping (default %.2f); a single transient warning is not enough":
-            "advertencias de sobre-rango por paquete por encima de las cuales un nivel cuenta como recorte (por omisión %.2f); una sola advertencia pasajera no alcanza",
         "lowest gain the search may use (default %.2f)":
             "ganancia mínima que puede usar la búsqueda (por omisión %.2f)",
         "highest gain the search may use (default %.2f)":
@@ -386,8 +380,6 @@ _CATALOG = {
             "presupuesto de búsqueda de la pasada de volumen automático, en lotes de --auto_volume_batch paquetes (por omisión %d). Los sondeos baratos de recorte, de 8 paquetes, cuestan una fracción de lote; los sondeos completos de puntaje, uno cada uno.",
         "seconds to keep listening after each file (default %.1f)":
             "segundos que se sigue escuchando después de cada archivo (por omisión %.1f)",
-        "aplay not found - install alsa-utils (Debian/Ubuntu: sudo apt install alsa-utils)\n":
-            "no se encontró aplay: instalá alsa-utils (Debian/Ubuntu: sudo apt install alsa-utils)\n",
         "--auto_volume_batch must be >= 1 (got %d)\n":
             "--auto_volume_batch debe ser >= 1 (se recibió %d)\n",
         "--auto_volume_max_rounds must be >= 1 (got %d)\n":
@@ -397,8 +389,6 @@ _CATALOG = {
             "--volume_min debe ser > 0 y < --volume_max (se recibieron %g y %g)\n",
         "--volume must be within [%g, %g] (got %g)\n":
             "--volume debe estar dentro de [%g, %g] (se recibió %g)\n",
-        "--clip_rate must be in (0, 1] (got %g)\n":
-            "--clip_rate debe estar en (0, 1] (se recibió %g)\n",
         "--match_window must be > 0 (got %g)\n":
             "--match_window debe ser > 0 (se recibió %g)\n",
         "wav_dir not found: %s\n": "no se encontró wav_dir: %s\n",
@@ -414,8 +404,6 @@ _CATALOG = {
         "\n[mm] multimon-ng did not exit within 60 s - killing it\n":
             "\n[mm] multimon-ng no terminó en 60 s: se lo mata\n",
         "<probe %+.1f dB>": "<sondeo %+.1f dB>",
-        "  Clipping threshold: %+.1f dB (gain %.3f)":
-            "  Umbral de recorte: %+.1f dB (ganancia %.3f)",
         "  No clipping seen up to %+.1f dB (gain %.3f) - the hardware level into the ADC may be too low; check the RX trimmer.":
             "  No se observó recorte hasta %+.1f dB (ganancia %.3f): el nivel de hardware que entra al ADC puede ser demasiado bajo; revisá el preset de RX.",
         "  No packets decoded during calibration at any level - falling back to %.3f (%+.1f dB, threshold - %.0f dB).":
@@ -436,14 +424,11 @@ _CATALOG = {
         "Quit": "Salir",
         "A test is still running. Stop it and quit?":
             "Todavía hay una prueba en curso. ¿Detenerla y salir?",
-        "\nAuto-volume calibration interrupted - proceeding with the volume found so far.":
-            "\nCalibración automática de volumen interrumpida: se continúa con el volumen encontrado hasta ahora.",
         "      ! PAYLOAD OK BUT HEADER CORRUPT":
             "      ! PAYLOAD CORRECTO PERO ENCABEZADO CORRUPTO",
         "       [esp32     --:--.-] NOT DECODED": "       [esp32     --:--.-] NO DECODIFICADO",
         "\n[audio] player failed (rc=%s): %s\n": "\n[audio] falló el reproductor (rc=%s): %s\n",
         "\n[gui] stopped by user\n": "\n[gui] detenido por el usuario\n",
-        "system default": "salida por defecto del sistema",
         "Cannot open serial port %s: %s\n": "No se puede abrir el puerto serie %s: %s\n",
         "       [progress %s / %s] multimon=%d  ok=%d  not-decoded=%d  different=%d  (serial lines seen: %d)":
             "       [avance %s / %s] multimon=%d  ok=%d  no-decodificados=%d  distintos=%d  (líneas de serie vistas: %d)",
@@ -454,8 +439,125 @@ _CATALOG = {
         "%s: %r is not a valid %s": "%s: %r no es un %s válido",
         "\n[gui] unexpected error:\n": "\n[gui] error inesperado:\n",
         "\n[serial] read error: %s\n": "\n[serie] error de lectura: %s\n",
+        "  <- OVER-RANGE":
+            "  <- SOBRE-RANGO",
+        "  Over-range at %+.1f dB (gain %.3f): no probe will go that high again; stepping down in %.2f dB steps":
+            "  Sobre-rango en %+.1f dB (ganancia %.3f): ningún sondeo volverá a subir hasta ahí; se baja en pasos de %.2f dB",
+        "  Still over-range at the lowest gain allowed, %.3f (%+.1f dB): the hardware level into the ADC is far too hot - turn the RX trimmer (or the PC volume) down and run again.":
+            "  Sigue el sobre-rango con la ganancia más baja permitida, %.3f (%+.1f dB): el nivel de hardware que entra al ADC es demasiado alto; bajá el preset de RX (o el volumen de la PC) y volvé a ejecutar.",
+        "  Descent budget spent while still over-range at %+.1f dB - using %+.1f dB (%.0f dB below it). Turn the RX trimmer down, or raise --auto_volume_max_rounds / --clip_step_db.":
+            "  Se agotó el presupuesto de descenso con sobre-rango todavía en %+.1f dB: se usa %+.1f dB (%.0f dB por debajo). Bajá el preset de RX, o aumentá --auto_volume_max_rounds / --clip_step_db.",
+        "AUTO-VOLUME CALIBRATION (over-range ceiling + plateau centre)":
+            "CALIBRACIÓN AUTOMÁTICA DE VOLUMEN (techo de sobre-rango + centro de la meseta)",
+        "  Start gain %.3f (%+.1f dB), range %.3f..%.3f, budget %d probe(s), %d packet(s) per scoring probe, %.2f dB steps below over-range":
+            "  Ganancia inicial %.3f (%+.1f dB), rango %.3f..%.3f, presupuesto %d sondeo(s), %d paquete(s) por sondeo de puntaje, pasos de %.2f dB por debajo del sobre-rango",
+        "  Highest level without over-range: %+.1f dB (gain %.3f)":
+            "  Nivel más alto sin sobre-rango: %+.1f dB (ganancia %.3f)",
+        "      over-range during a scoring probe at %+.1f dB - this level is dropped and nothing at or above it is played again":
+            "      sobre-rango durante un sondeo de puntaje en %+.1f dB: se descarta ese nivel y no se vuelve a reproducir nada en él ni por encima",
+        "  Chosen gain: %.3f (%+.1f dB), %.1f dB below the highest level without over-range":
+            "  Ganancia elegida: %.3f (%+.1f dB), %.1f dB por debajo del nivel más alto sin sobre-rango",
+        "over-range warnings per packet a level may produce and still count as clean (default %.2f: a single warning marks the level as clipping, and no probe goes that high again)":
+            "advertencias de sobre-rango por paquete que un nivel puede producir y seguir contando como limpio (por omisión %.2f: una sola advertencia marca el nivel como recorte, y ningún sondeo vuelve a subir hasta ahí)",
+        "once over-range has been reported, the search never raises the gain again and steps DOWN by this many dB per probe until the warnings stop (default %.2f)":
+            "una vez informado un sobre-rango, la búsqueda no vuelve a subir la ganancia y BAJA esta cantidad de dB por sondeo hasta que cesan las advertencias (por omisión %.2f)",
+        "--clip_rate must be in [0, 1) (got %g)\n":
+            "--clip_rate debe estar en [0, 1) (se recibió %g)\n",
+        "--clip_step_db must be > 0 and <= %g (got %g)\n":
+            "--clip_step_db debe ser > 0 y <= %g (se recibió %g)\n",
+        "\nAuto-volume calibration interrupted - proceeding with the best level known to be free of over-range so far: %.3f (%+.1f dB).":
+            "\nCalibración automática de volumen interrumpida: se continúa con el mejor nivel conocido sin sobre-rango hasta ahora: %.3f (%+.1f dB).",
+        "Over-range ceiling":
+            "Techo de sobre-rango",
+        "start %.2f: no probe is played at or above a level that reported over-range":
+            "inicio %.2f: ningún sondeo se reproduce en un nivel que informó sobre-rango ni por encima",
+        "history %s":
+            "historial %s",
+        "below an over-range level the gain steps down by --clip_step_db (%.2f dB)":
+            "por debajo de un nivel con sobre-rango la ganancia baja de a --clip_step_db (%.2f dB)",
+        "steps %r":
+            "pasos %r",
+        "one over-range warning in a scoring batch lowers the ceiling and drops that level":
+            "una sola advertencia de sobre-rango en un lote de puntaje baja el techo y descarta ese nivel",
+        "ceiling %s, chose %+.1f dB":
+            "techo %s, eligió %+.1f dB",
+        "an interrupted search falls back below the over-range ceiling, not to the start gain":
+            "una búsqueda interrumpida vuelve por debajo del techo de sobre-rango, no a la ganancia inicial",
+        "safe %+.1f dB, ceiling %+.1f dB":
+            "seguro %+.1f dB, techo %+.1f dB",
+        "a silent wav set never raises the gain":
+            "un conjunto de wav silencioso nunca sube la ganancia",
+        "probed %s":
+            "sondeado %s",
+        "a descent that runs out of budget still ends below the over-range ceiling":
+            "un descenso que agota el presupuesto igual termina por debajo del techo de sobre-rango",
         "integer": "entero",
         "number": "número",
+        "Every volume probe restarts the wav list":
+            "Cada sondeo de volumen reinicia la lista de wav",
+        "a new volume replays the list from the first file, in order":
+            "un volumen nuevo vuelve a reproducir la lista desde el primer archivo, en orden",
+        # PipeWire routing
+        "\n[audio] monitor player failed (rc=%s): %s\n":
+            "\n[audio] falló el reproductor del monitor (rc=%s): %s\n",
+        "\n[audio] the player was still running %.0f s after the end of the file - killed it (was the output unplugged?)\n":
+            "\n[audio] el reproductor seguía corriendo %.0f s después del final del archivo: se lo terminó (¿se desconectó la salida?)\n",
+        "%r matches more than one PipeWire output: %s":
+            "%r coincide con más de una salida de PipeWire: %s",
+        "--monitor_device and --audio_device are the same PipeWire output (%s): the monitor stream would be mixed into the ESP32 signal\n":
+            "--monitor_device y --audio_device son la misma salida de PipeWire (%s): el flujo del monitor se mezclaría con la señal del ESP32\n",
+        "--monitor_volume must be in [0, 1] (got %g)\n":
+            "--monitor_volume debe estar en [0, 1] (se recibió %g)\n",
+        "Give --audio_device / --monitor_device the node name (it does not change between reboots), the serial, or a unique part of the description.":
+            "Pasale a --audio_device / --monitor_device el nombre del nodo (no cambia entre reinicios), el número de serie o una parte única de la descripción.",
+        "Monitor: %s   (stream volume %.2f)":
+            "Monitor: %s   (volumen del flujo %.2f)",
+        "Monitor: none":
+            "Monitor: ninguno",
+        "PipeWire has no audio output (sink)":
+            "PipeWire no tiene ninguna salida de audio (sink)",
+        "PipeWire has no default output set - name the output explicitly":
+            "PipeWire no tiene salida por defecto: indicá la salida explícitamente",
+        "PipeWire output (sink) to listen on while the test runs, e.g. headphones; it plays exactly what the ESP32 gets. Same forms as --audio_device, 'default' for the PipeWire default output (default: no monitor)":
+            "salida de PipeWire (sink) para escuchar mientras corre la prueba, por ej. los auriculares; reproduce exactamente lo que recibe el ESP32. Mismas formas que --audio_device, 'default' para la salida por defecto de PipeWire (por omisión: sin monitor)",
+        "PipeWire output (sink) wired to the ESP32 audio input: its node name, serial, or a unique part of its description (default: the PipeWire default output). See --list_audio.":
+            "salida de PipeWire (sink) conectada a la entrada de audio del ESP32: su nombre de nodo, su número de serie o una parte única de su descripción (por omisión: la salida por defecto de PipeWire). Ver --list_audio.",
+        "PipeWire outputs (sinks) - * marks the default:":
+            "Salidas de PipeWire (sinks) - * marca la salida por defecto:",
+        "PipeWire routing":
+            "Ruteo de PipeWire",
+        "PipeWire stream volume of the monitor, 0..1 (default 0.5). Only the monitor: the ESP32 level is set by --volume alone.":
+            "volumen del flujo de PipeWire del monitor, 0..1 (por omisión 0.5). Sólo el monitor: el nivel del ESP32 lo fija únicamente --volume.",
+        "an ambiguous or unknown output is rejected, never guessed":
+            "una salida ambigua o desconocida se rechaza, nunca se adivina",
+        "an empty device and 'default' both give the PipeWire default output":
+            "un dispositivo vacío y 'default' dan ambos la salida por defecto de PipeWire",
+        "an output is found by node name, serial, id, GUI label and description":
+            "una salida se encuentra por nombre de nodo, número de serie, id, etiqueta de la GUI y descripción",
+        "description":
+            "descripción",
+        "list the PipeWire outputs (sinks) and exit":
+            "listar las salidas de PipeWire (sinks) y salir",
+        "no PipeWire output matches %r":
+            "ninguna salida de PipeWire coincide con %r",
+        "node name":
+            "nombre del nodo",
+        "play chain: sox renders a file, pw-cat plays it pinned to the sink, no fallback":
+            "cadena de reproducción: sox genera un archivo y pw-cat lo reproduce fijado al sink, sin salida alternativa",
+        "pw-dump did not answer - is PipeWire running?":
+            "pw-dump no respondió: ¿está corriendo PipeWire?",
+        "pw-dump failed (rc=%s): %s":
+            "falló pw-dump (rc=%s): %s",
+        "pw-dump not found - install the PipeWire tools (Debian/Ubuntu: sudo apt install pipewire-bin)":
+            "no se encontró pw-dump: instalá las herramientas de PipeWire (Debian/Ubuntu: sudo apt install pipewire-bin)",
+        "pw-dump printed something that is not JSON: %s":
+            "pw-dump imprimió algo que no es JSON: %s",
+        "pw-dump: only sinks are listed, and the default output is found":
+            "pw-dump: sólo se listan los sinks y se encuentra la salida por defecto",
+        "serial":
+            "serie",
+        "sox could not render %s (rc=%s): %s":
+            "sox no pudo generar %s (rc=%s): %s",
     },
     "it": {
         "SUMMARY": "RIEPILOGO",
@@ -525,8 +627,6 @@ _CATALOG = {
             "RISULTATO: multimon-ng non ha decodificato alcun pacchetto; non c'è nulla da confrontare.",
         "WARNING: `stdbuf` not found (package coreutils). multimon-ng's output will be\n  block-buffered on the pipe, so its packets may arrive in bursts and be\n  timestamped late, which shows up as spurious NOT DECODED verdicts.\n":
             "ATTENZIONE: `stdbuf` non trovato (pacchetto coreutils). L'output di multimon-ng\n  sarà bufferizzato a blocchi sulla pipe, quindi i pacchetti possono arrivare a\n  raffiche e con marca temporale tardiva, il che appare come verdetti\n  NON DECODIFICATO spuri.\n",
-        "AUTO-VOLUME CALIBRATION (clip threshold + plateau centre)":
-            "CALIBRAZIONE AUTOMATICA DEL VOLUME (soglia di clipping + centro del plateau)",
         "Waiting %.1f s for the ESP32 to be ready ...":
             "Attesa di %.1f s perché l'ESP32 sia pronto ...",
         "  WARNING: no data received from the serial port yet. The firmware may be quiet until it hears/sends something; continuing.":
@@ -554,8 +654,6 @@ _CATALOG = {
             "lingua dei messaggi, dell'aiuto e dell'interfaccia grafica: en (inglese), es (spagnolo), it (italiano). Predefinito: la lingua di sistema, o inglese se la lingua di sistema non è una di queste tre.",
         "directory with the .wav files (default: current directory)":
             "directory con i file .wav (predefinito: la directory corrente)",
-        "ALSA device wired to the ESP32 audio input, e.g. hw:1,0 (default: system default output)":
-            "dispositivo ALSA collegato all'ingresso audio dell'ESP32, ad es. hw:1,0 (predefinito: l'uscita predefinita del sistema)",
         "playback gain applied to the ESP32 leg only (default 1.0). Used as the starting point for auto-volume calibration unless --no_auto_volume is given.":
             "guadagno di riproduzione applicato solo al ramo dell'ESP32 (predefinito 1.0). Usato come punto di partenza della calibrazione automatica del volume, salvo che sia indicato --no_auto_volume.",
         "bring every wav to -1 dBFS in the play chain (sox 'gain -n -1') so one gain is valid across recordings made at different levels, and gains above 1.0 stop meaning 'clip inside sox'":
@@ -576,8 +674,6 @@ _CATALOG = {
             "non riprodurre audio sulla scheda audio (esegue solo multimon-ng; utile per provare il parser a vuoto)",
         "extra multimon-ng arguments, e.g. '-A' (quoted)":
             "argomenti extra per multimon-ng, ad es. '-A' (tra virgolette)",
-        "list ALSA playback devices and exit":
-            "elenca i dispositivi di riproduzione ALSA ed esce",
         "open a graphical front-end: every flag in a form at the top, and below it a split console (left: program output, right: raw unfiltered serial data from the ESP32)":
             "apre l'interfaccia grafica: tutti i flag in un modulo in alto e sotto una console divisa (sinistra: output del programma; destra: dati grezzi dalla seriale dell'ESP32)",
         "Found %d wav file(s) in %s": "Trovati %d file wav in %s",
@@ -598,12 +694,8 @@ _CATALOG = {
         "Missing required program(s): %s\n": "Programma/i richiesto/i mancante/i: %s\n",
         "  [probe %2d, budget %.1f/%d] gain=%.3f (%+5.1f dB)  mm=%d ok=%d diff=%d hdr=%d miss=%d extra=%d  score=%.1f%%  clip=%.2f/pkt":
             "  [sondaggio %2d, budget %.1f/%d] guadagno=%.3f (%+5.1f dB)  mm=%d ok=%d div=%d int=%d mancanti=%d extra=%d  punteggio=%.1f%%  clip=%.2f/pacch",
-        "  Start gain %.3f (%+.1f dB), range %.3f..%.3f, budget %d probe(s), %d packet(s) per scoring probe":
-            "  Guadagno iniziale %.3f (%+.1f dB), intervallo %.3f..%.3f, budget %d sondaggio/i, %d pacchetto/i per sondaggio di punteggio",
         "  Plateau: %+.1f .. %+.1f dB (%d tied point(s) of %d probed); best raw score %.1f%%":
             "  Plateau: %+.1f .. %+.1f dB (%d punto/i a pari merito su %d sondati); miglior punteggio grezzo %.1f%%",
-        "  Chosen gain: %.3f (%+.1f dB), %.1f dB below the clipping threshold":
-            "  Guadagno scelto: %.3f (%+.1f dB), %.1f dB sotto la soglia di clipping",
         "  NOTE: more than 6 dB of attenuation was needed. The hardware level into the ESP32 ADC is too hot - turn the RX trimmer (or the radio's volume) down and re-run, so the bench can work near 0 dB.":
             "  NOTA: sono serviti più di 6 dB di attenuazione. Il livello hardware che entra nell'ADC dell'ESP32 è troppo alto: abbassa il trimmer RX (o il volume della radio) e ripeti la prova, così il banco lavora vicino a 0 dB.",
         "  serial is alive (%d console line(s) so far).":
@@ -626,8 +718,6 @@ _CATALOG = {
         "serial speed, 8N1 (default: %d)": "velocità della seriale, 8N1 (predefinito: %d)",
         "dB below the clipping threshold to fall back to when no plateau could be scored (default %.0f)":
             "dB sotto la soglia di clipping a cui ripiegare quando nessun plateau ha potuto essere valutato (predefinito %.0f)",
-        "over-range warnings per packet above which a level counts as clipping (default %.2f); a single transient warning is not enough":
-            "avvisi di fuori scala per pacchetto oltre i quali un livello conta come clipping (predefinito %.2f); un singolo avviso transitorio non basta",
         "lowest gain the search may use (default %.2f)":
             "guadagno minimo che la ricerca può usare (predefinito %.2f)",
         "highest gain the search may use (default %.2f)":
@@ -640,8 +730,6 @@ _CATALOG = {
             "budget di ricerca della fase di volume automatico, in lotti di --auto_volume_batch pacchetti (predefinito %d). I sondaggi economici di clipping da 8 pacchetti costano una frazione di lotto, quelli completi di punteggio uno ciascuno.",
         "seconds to keep listening after each file (default %.1f)":
             "secondi di ascolto dopo ogni file (predefinito %.1f)",
-        "aplay not found - install alsa-utils (Debian/Ubuntu: sudo apt install alsa-utils)\n":
-            "aplay non trovato: installa alsa-utils (Debian/Ubuntu: sudo apt install alsa-utils)\n",
         "--auto_volume_batch must be >= 1 (got %d)\n":
             "--auto_volume_batch deve essere >= 1 (ricevuto %d)\n",
         "--auto_volume_max_rounds must be >= 1 (got %d)\n":
@@ -651,8 +739,6 @@ _CATALOG = {
             "--volume_min deve essere > 0 e < --volume_max (ricevuti %g e %g)\n",
         "--volume must be within [%g, %g] (got %g)\n":
             "--volume deve essere compreso in [%g, %g] (ricevuto %g)\n",
-        "--clip_rate must be in (0, 1] (got %g)\n":
-            "--clip_rate deve essere in (0, 1] (ricevuto %g)\n",
         "--match_window must be > 0 (got %g)\n":
             "--match_window deve essere > 0 (ricevuto %g)\n",
         "wav_dir not found: %s\n": "wav_dir non trovata: %s\n",
@@ -668,8 +754,6 @@ _CATALOG = {
         "\n[mm] multimon-ng did not exit within 60 s - killing it\n":
             "\n[mm] multimon-ng non è uscito entro 60 s: viene terminato\n",
         "<probe %+.1f dB>": "<sondaggio %+.1f dB>",
-        "  Clipping threshold: %+.1f dB (gain %.3f)":
-            "  Soglia di clipping: %+.1f dB (guadagno %.3f)",
         "  No clipping seen up to %+.1f dB (gain %.3f) - the hardware level into the ADC may be too low; check the RX trimmer.":
             "  Nessun clipping osservato fino a %+.1f dB (guadagno %.3f): il livello hardware verso l'ADC potrebbe essere troppo basso; controlla il trimmer RX.",
         "  No packets decoded during calibration at any level - falling back to %.3f (%+.1f dB, threshold - %.0f dB).":
@@ -690,13 +774,10 @@ _CATALOG = {
         "Quit": "Esci",
         "A test is still running. Stop it and quit?":
             "Un test è ancora in corso. Fermarlo e uscire?",
-        "\nAuto-volume calibration interrupted - proceeding with the volume found so far.":
-            "\nCalibrazione automatica del volume interrotta: si prosegue con il volume trovato finora.",
         "      ! PAYLOAD OK BUT HEADER CORRUPT": "      ! PAYLOAD OK MA INTESTAZIONE CORROTTA",
         "       [esp32     --:--.-] NOT DECODED": "       [esp32     --:--.-] NON DECODIFICATO",
         "\n[audio] player failed (rc=%s): %s\n": "\n[audio] il player è fallito (rc=%s): %s\n",
         "\n[gui] stopped by user\n": "\n[gui] fermato dall'utente\n",
-        "system default": "uscita predefinita del sistema",
         "Cannot open serial port %s: %s\n": "Impossibile aprire la porta seriale %s: %s\n",
         "       [progress %s / %s] multimon=%d  ok=%d  not-decoded=%d  different=%d  (serial lines seen: %d)":
             "       [avanzamento %s / %s] multimon=%d  ok=%d  non-decodificati=%d  diversi=%d  (righe seriali viste: %d)",
@@ -707,8 +788,125 @@ _CATALOG = {
         "%s: %r is not a valid %s": "%s: %r non è un %s valido",
         "\n[gui] unexpected error:\n": "\n[gui] errore imprevisto:\n",
         "\n[serial] read error: %s\n": "\n[seriale] errore di lettura: %s\n",
+        "  <- OVER-RANGE":
+            "  <- FUORI SCALA",
+        "  Over-range at %+.1f dB (gain %.3f): no probe will go that high again; stepping down in %.2f dB steps":
+            "  Fuori scala a %+.1f dB (guadagno %.3f): nessun sondaggio risalirà fin lì; si scende a passi di %.2f dB",
+        "  Still over-range at the lowest gain allowed, %.3f (%+.1f dB): the hardware level into the ADC is far too hot - turn the RX trimmer (or the PC volume) down and run again.":
+            "  Ancora fuori scala al guadagno minimo consentito, %.3f (%+.1f dB): il livello hardware in ingresso all'ADC è troppo alto; abbassa il trimmer RX (o il volume del PC) e rilancia.",
+        "  Descent budget spent while still over-range at %+.1f dB - using %+.1f dB (%.0f dB below it). Turn the RX trimmer down, or raise --auto_volume_max_rounds / --clip_step_db.":
+            "  Budget di discesa esaurito con fuori scala ancora a %+.1f dB: si usa %+.1f dB (%.0f dB sotto). Abbassa il trimmer RX, o aumenta --auto_volume_max_rounds / --clip_step_db.",
+        "AUTO-VOLUME CALIBRATION (over-range ceiling + plateau centre)":
+            "CALIBRAZIONE AUTOMATICA DEL VOLUME (tetto di fuori scala + centro del plateau)",
+        "  Start gain %.3f (%+.1f dB), range %.3f..%.3f, budget %d probe(s), %d packet(s) per scoring probe, %.2f dB steps below over-range":
+            "  Guadagno iniziale %.3f (%+.1f dB), intervallo %.3f..%.3f, budget %d sondaggio/i, %d pacchetto/i per sondaggio di punteggio, passi di %.2f dB sotto il fuori scala",
+        "  Highest level without over-range: %+.1f dB (gain %.3f)":
+            "  Livello più alto senza fuori scala: %+.1f dB (guadagno %.3f)",
+        "      over-range during a scoring probe at %+.1f dB - this level is dropped and nothing at or above it is played again":
+            "      fuori scala durante un sondaggio di punteggio a %+.1f dB: il livello viene scartato e nulla viene più riprodotto a quel livello o sopra",
+        "  Chosen gain: %.3f (%+.1f dB), %.1f dB below the highest level without over-range":
+            "  Guadagno scelto: %.3f (%+.1f dB), %.1f dB sotto il livello più alto senza fuori scala",
+        "over-range warnings per packet a level may produce and still count as clean (default %.2f: a single warning marks the level as clipping, and no probe goes that high again)":
+            "avvisi di fuori scala per pacchetto che un livello può produrre restando pulito (predefinito %.2f: un solo avviso marca il livello come clipping, e nessun sondaggio risale fin lì)",
+        "once over-range has been reported, the search never raises the gain again and steps DOWN by this many dB per probe until the warnings stop (default %.2f)":
+            "una volta segnalato il fuori scala, la ricerca non alza più il guadagno e SCENDE di questi dB a ogni sondaggio finché gli avvisi cessano (predefinito %.2f)",
+        "--clip_rate must be in [0, 1) (got %g)\n":
+            "--clip_rate deve essere in [0, 1) (ricevuto %g)\n",
+        "--clip_step_db must be > 0 and <= %g (got %g)\n":
+            "--clip_step_db deve essere > 0 e <= %g (ricevuto %g)\n",
+        "\nAuto-volume calibration interrupted - proceeding with the best level known to be free of over-range so far: %.3f (%+.1f dB).":
+            "\nCalibrazione automatica del volume interrotta: si prosegue con il miglior livello finora noto senza fuori scala: %.3f (%+.1f dB).",
+        "Over-range ceiling":
+            "Tetto di fuori scala",
+        "start %.2f: no probe is played at or above a level that reported over-range":
+            "partenza %.2f: nessun sondaggio viene riprodotto a un livello che ha segnalato fuori scala o sopra",
+        "history %s":
+            "storico %s",
+        "below an over-range level the gain steps down by --clip_step_db (%.2f dB)":
+            "sotto un livello in fuori scala il guadagno scende a passi di --clip_step_db (%.2f dB)",
+        "steps %r":
+            "passi %r",
+        "one over-range warning in a scoring batch lowers the ceiling and drops that level":
+            "un solo avviso di fuori scala in un lotto di punteggio abbassa il tetto e scarta quel livello",
+        "ceiling %s, chose %+.1f dB":
+            "tetto %s, scelto %+.1f dB",
+        "an interrupted search falls back below the over-range ceiling, not to the start gain":
+            "una ricerca interrotta ripiega sotto il tetto di fuori scala, non sul guadagno iniziale",
+        "safe %+.1f dB, ceiling %+.1f dB":
+            "sicuro %+.1f dB, tetto %+.1f dB",
+        "a silent wav set never raises the gain":
+            "un insieme di wav silenzioso non alza mai il guadagno",
+        "probed %s":
+            "sondato %s",
+        "a descent that runs out of budget still ends below the over-range ceiling":
+            "una discesa che esaurisce il budget finisce comunque sotto il tetto di fuori scala",
         "integer": "intero",
         "number": "numero",
+        "Every volume probe restarts the wav list":
+            "Ogni sondaggio di volume riparte dall'inizio della lista dei wav",
+        "a new volume replays the list from the first file, in order":
+            "un nuovo volume riproduce la lista dal primo file, in ordine",
+        # PipeWire routing
+        "\n[audio] monitor player failed (rc=%s): %s\n":
+            "\n[audio] il riproduttore del monitor è fallito (rc=%s): %s\n",
+        "\n[audio] the player was still running %.0f s after the end of the file - killed it (was the output unplugged?)\n":
+            "\n[audio] il riproduttore era ancora attivo %.0f s dopo la fine del file: terminato (l'uscita è stata scollegata?)\n",
+        "%r matches more than one PipeWire output: %s":
+            "%r corrisponde a più di un'uscita PipeWire: %s",
+        "--monitor_device and --audio_device are the same PipeWire output (%s): the monitor stream would be mixed into the ESP32 signal\n":
+            "--monitor_device e --audio_device sono la stessa uscita PipeWire (%s): il flusso del monitor verrebbe mixato nel segnale dell'ESP32\n",
+        "--monitor_volume must be in [0, 1] (got %g)\n":
+            "--monitor_volume deve essere in [0, 1] (ricevuto %g)\n",
+        "Give --audio_device / --monitor_device the node name (it does not change between reboots), the serial, or a unique part of the description.":
+            "Passa a --audio_device / --monitor_device il nome del nodo (non cambia tra un riavvio e l'altro), il numero di serie o una parte univoca della descrizione.",
+        "Monitor: %s   (stream volume %.2f)":
+            "Monitor: %s   (volume del flusso %.2f)",
+        "Monitor: none":
+            "Monitor: nessuno",
+        "PipeWire has no audio output (sink)":
+            "PipeWire non ha nessuna uscita audio (sink)",
+        "PipeWire has no default output set - name the output explicitly":
+            "PipeWire non ha un'uscita predefinita: indica l'uscita esplicitamente",
+        "PipeWire output (sink) to listen on while the test runs, e.g. headphones; it plays exactly what the ESP32 gets. Same forms as --audio_device, 'default' for the PipeWire default output (default: no monitor)":
+            "uscita PipeWire (sink) su cui ascoltare durante il test, ad es. le cuffie; riproduce esattamente ciò che riceve l'ESP32. Stesse forme di --audio_device, 'default' per l'uscita predefinita di PipeWire (predefinito: nessun monitor)",
+        "PipeWire output (sink) wired to the ESP32 audio input: its node name, serial, or a unique part of its description (default: the PipeWire default output). See --list_audio.":
+            "uscita PipeWire (sink) collegata all'ingresso audio dell'ESP32: il suo nome di nodo, il numero di serie o una parte univoca della descrizione (predefinito: l'uscita predefinita di PipeWire). Vedi --list_audio.",
+        "PipeWire outputs (sinks) - * marks the default:":
+            "Uscite PipeWire (sink) - * indica quella predefinita:",
+        "PipeWire routing":
+            "Instradamento PipeWire",
+        "PipeWire stream volume of the monitor, 0..1 (default 0.5). Only the monitor: the ESP32 level is set by --volume alone.":
+            "volume del flusso PipeWire del monitor, 0..1 (predefinito 0.5). Solo il monitor: il livello dell'ESP32 è fissato unicamente da --volume.",
+        "an ambiguous or unknown output is rejected, never guessed":
+            "un'uscita ambigua o sconosciuta viene rifiutata, mai indovinata",
+        "an empty device and 'default' both give the PipeWire default output":
+            "un dispositivo vuoto e 'default' danno entrambi l'uscita predefinita di PipeWire",
+        "an output is found by node name, serial, id, GUI label and description":
+            "un'uscita si trova per nome del nodo, numero di serie, id, etichetta della GUI e descrizione",
+        "description":
+            "descrizione",
+        "list the PipeWire outputs (sinks) and exit":
+            "elenca le uscite PipeWire (sink) ed esce",
+        "no PipeWire output matches %r":
+            "nessuna uscita PipeWire corrisponde a %r",
+        "node name":
+            "nome del nodo",
+        "play chain: sox renders a file, pw-cat plays it pinned to the sink, no fallback":
+            "catena di riproduzione: sox genera un file e pw-cat lo riproduce vincolato al sink, senza ripiego",
+        "pw-dump did not answer - is PipeWire running?":
+            "pw-dump non ha risposto: PipeWire è in esecuzione?",
+        "pw-dump failed (rc=%s): %s":
+            "pw-dump è fallito (rc=%s): %s",
+        "pw-dump not found - install the PipeWire tools (Debian/Ubuntu: sudo apt install pipewire-bin)":
+            "pw-dump non trovato: installa gli strumenti di PipeWire (Debian/Ubuntu: sudo apt install pipewire-bin)",
+        "pw-dump printed something that is not JSON: %s":
+            "pw-dump ha stampato qualcosa che non è JSON: %s",
+        "pw-dump: only sinks are listed, and the default output is found":
+            "pw-dump: vengono elencati solo i sink e si trova l'uscita predefinita",
+        "serial":
+            "seriale",
+        "sox could not render %s (rc=%s): %s":
+            "sox non è riuscito a generare %s (rc=%s): %s",
     },
 }
 
@@ -756,11 +954,14 @@ AUTO_VOLUME_MAX = 4.0         # >1.0 only makes sense with --normalise (see buil
 # for it needs far fewer packets than scoring a decode rate does, which is what
 # makes the two-phase search cheap.
 CLIP_PROBE_PACKETS = 8
-# A single transient over-range on one loud packet is not "the level is wrong".
-# A level counts as clipping only above this many warnings per packet.
-CLIP_RATE_THRESHOLD = 0.10
-COARSE_STEP_DB = 6.0          # bracketing step while hunting for the clip threshold
-BISECT_ITERS = 3              # 6 dB / 2^3 => +/-0.75 dB on the threshold
+# The ADC input has no clamp diodes and "RX audio is over-range" is the
+# firmware saying the level is wrong, so by default ONE warning is enough to
+# mark a level as clipping. --clip_rate can relax that (warnings per packet
+# tolerated), but 0 is the safe default.
+CLIP_RATE_THRESHOLD = 0.0
+COARSE_STEP_DB = 6.0          # upward step, used ONLY while no over-range has been seen
+CLIP_STEP_DB = 0.5            # downward step once over-range has been seen
+HUNT_BUDGET_SHARE = 0.5       # at most this share of the budget goes to the threshold hunt
 # Where to score the plateau, relative to the clipping threshold.
 PLATEAU_OFFSETS_DB = (-3.0, -6.0, -9.0, -12.0, -18.0)
 HEADROOM_DB = 6.0             # fallback margin below the threshold when scoring fails
@@ -1273,24 +1474,248 @@ def wav_peak(path: str) -> float:
     return peak
 
 
-def build_play_cmd(wav: str, volume: float, normalise: bool) -> List[str]:
-    """Build the `play` command for the ESP32 leg.
+# --------------------------------------------------------------------------
+# PipeWire output routing
+# --------------------------------------------------------------------------
+#
+# Audio goes to PipeWire directly, with pw-cat (package pipewire-bin), one
+# stream per output:
+#
+#   sox <wav> remix/normalise/gain -> temporary WAV
+#       pw-cat --target <ESP32 sink>   <temporary WAV>      (test leg)
+#       pw-cat --target <monitor sink> <temporary WAV>      (monitor leg, optional)
+#
+# Both legs play the SAME rendered file, so the monitor hears exactly what the
+# ESP32 hears; only the monitor's PipeWire stream volume (--monitor_volume)
+# differs. The ESP32 leg always runs at stream volume 1.0: its level is set
+# only by the sox gain, which the calibration controls. Each leg is its own
+# pw-cat, so a monitor that stalls or dies never holds up the ESP32 leg.
+#
+# Why a file and not a pipe: pw-cat reads its input through libsndfile, and on
+# a pipe (PipeWire 1.0) it plays part of the container header as audio - a
+# near full-scale click at the start of every file, which the firmware reports
+# as over-range and which would corrupt the auto-volume calibration. pw-cat
+# 1.0 has no raw mode either. Rendering costs about half a second per 10 min
+# of audio and ~5 MB per minute in the temp directory, deleted after each play.
+#
+# Outputs are found with pw-dump (the whole graph as JSON) and ALWAYS resolved
+# to a concrete node before anything plays. pw-cat is told not to fall back:
+# without node.dont-fallback PipeWire would silently send the audio to the
+# default output when the target is missing - which, for a test bench, would
+# mean feeding the monitor device instead of the ESP32 without any error.
 
-    Differences from the earlier version:
-      * no "-c 2": `remix 1 1` already produces two output channels, and a
-        format option placed after the input file is parsed differently by
-        different sox builds;
+PLAYER_GRACE_SECONDS = 20.0   # pw-cat still running this long after the file: stuck
+
+_PW_STREAM_PROPS = (
+    "{ node.dont-fallback = true node.dont-reconnect = true node.dont-move = true "
+    "state.restore-props = false state.restore-target = false "
+    "application.name = \"test_aprs_wavs\" media.name = \"%s\" }")
+
+
+@dataclass
+class PwSink:
+    """One PipeWire audio output (media.class Audio/Sink)."""
+    id: int
+    serial: int
+    name: str                 # node.name: the stable identifier
+    description: str          # node.description: what mixers show
+    nick: str = ""
+
+    def label(self) -> str:
+        """How the GUI lists it; resolve_sink() accepts this text back."""
+        return "%s [%s]" % (self.description or self.name, self.name)
+
+
+def parse_pw_dump(objs: list) -> Tuple[List[PwSink], Optional[str]]:
+    """Pick the audio sinks and the default sink name out of pw-dump's JSON.
+
+    Pure function (no PipeWire needed), so --selftest can check it."""
+    sinks = []                # type: List[PwSink]
+    default_name = None       # type: Optional[str]
+    for o in objs if isinstance(objs, list) else []:
+        if not isinstance(o, dict):
+            continue
+        typ = o.get("type", "")
+        if typ == "PipeWire:Interface:Node":
+            props = (o.get("info") or {}).get("props") or {}
+            if props.get("media.class") != "Audio/Sink":
+                continue
+            try:
+                serial = int(props.get("object.serial", -1))
+            except (TypeError, ValueError):
+                serial = -1
+            sinks.append(PwSink(id=int(o.get("id", -1)), serial=serial,
+                                name=str(props.get("node.name", "")),
+                                description=str(props.get("node.description", "") or ""),
+                                nick=str(props.get("node.nick", "") or "")))
+        elif typ == "PipeWire:Interface:Metadata":
+            if (o.get("props") or {}).get("metadata.name") != "default":
+                continue
+            # The configured default wins over the one currently in use.
+            found = {}
+            for m in o.get("metadata") or []:
+                if m.get("key") in ("default.audio.sink", "default.configured.audio.sink"):
+                    val = m.get("value")
+                    if isinstance(val, str):
+                        try:
+                            val = json.loads(val)
+                        except ValueError:
+                            val = {"name": val}
+                    if isinstance(val, dict) and val.get("name"):
+                        found[m["key"]] = str(val["name"])
+            default_name = (found.get("default.audio.sink") or
+                            found.get("default.configured.audio.sink") or default_name)
+    sinks.sort(key=lambda k: k.serial)
+    return sinks, default_name
+
+
+def pw_list_sinks() -> Tuple[List[PwSink], Optional[str]]:
+    """Ask the running PipeWire for its outputs. Raises RuntimeError."""
+    if shutil.which("pw-dump") is None:
+        raise RuntimeError(T("pw-dump not found - install the PipeWire tools "
+                             "(Debian/Ubuntu: sudo apt install pipewire-bin)"))
+    try:
+        p = subprocess.run(["pw-dump", "-N"], capture_output=True, timeout=15)
+    except subprocess.TimeoutExpired:
+        raise RuntimeError(T("pw-dump did not answer - is PipeWire running?"))
+    if p.returncode != 0:
+        raise RuntimeError(T("pw-dump failed (rc=%s): %s") %
+                           (p.returncode, p.stderr.decode("latin-1", "replace").strip()))
+    try:
+        objs = json.loads(p.stdout.decode("utf-8", "replace") or "[]")
+    except ValueError as exc:
+        raise RuntimeError(T("pw-dump printed something that is not JSON: %s") % exc)
+    return parse_pw_dump(objs)
+
+
+def resolve_sink(spec: Optional[str], sinks: List[PwSink],
+                 default_name: Optional[str]) -> PwSink:
+    """Turn what the user typed into one sink. Raises ValueError.
+
+    Accepted, in this order: "default" / "auto" / "" (the PipeWire default
+    output); the exact node.name; a serial or object id; the GUI's
+    "description [node.name]" label; the exact description or nick (any
+    case); and finally any UNIQUE case-insensitive fragment of the name,
+    description or nick. An ambiguous fragment is an error, never a guess."""
+    spec = (spec or "").strip()
+    if not sinks:
+        raise ValueError(T("PipeWire has no audio output (sink)"))
+    if spec.lower() in ("", "default", "auto", "@default_sink@"):
+        for k in sinks:
+            if k.name == default_name:
+                return k
+        raise ValueError(T("PipeWire has no default output set - name the output explicitly"))
+    for k in sinks:
+        if k.name == spec:
+            return k
+    if spec.isdigit():
+        n = int(spec)
+        hits = [k for k in sinks if k.serial == n] or [k for k in sinks if k.id == n]
+        if hits:
+            return hits[0]
+    m = re.match(r"^.*\[([^\[\]]+)\]\s*$", spec)
+    if m:
+        for k in sinks:
+            if k.name == m.group(1):
+                return k
+    low = spec.lower()
+    hits = [k for k in sinks if low in (k.description.lower(), k.nick.lower())]
+    if len(hits) == 1:
+        return hits[0]
+    hits = [k for k in sinks
+            if low in k.name.lower() or low in k.description.lower() or low in k.nick.lower()]
+    if len(hits) == 1:
+        return hits[0]
+    if not hits:
+        raise ValueError(T("no PipeWire output matches %r") % spec)
+    raise ValueError(T("%r matches more than one PipeWire output: %s") %
+                     (spec, ", ".join(k.name for k in hits)))
+
+
+@dataclass
+class AudioRoute:
+    """Where the audio goes: the ESP32 sink and, optionally, a monitor sink."""
+    test: PwSink
+    monitor: Optional[PwSink] = None
+    monitor_volume: float = 0.5
+
+
+def build_play_cmd(wav: str, volume: float, normalise: bool, out: str) -> List[str]:
+    """Build the sox command that renders what the ESP32 (and the monitor)
+    will hear into the stereo s16 WAV `out`, for pw-cat to play.
+
+      * `remix 1 1` puts the signal on both channels, so a left-only or
+        right-only cable to the ESP32 hears the same thing;
       * the level is applied with `gain <dB>` instead of the linear `vol`,
         so the amount of gain is explicit in the unit the problem is actually
         posed in, and sox's headroom handling applies;
       * with `normalise`, every file is brought to -1 dBFS first, so one
-        volume is valid across a set of recordings made at different levels.
+        volume is valid across a set of recordings made at different levels;
+      * the sample rate is left as it is: PipeWire resamples to the output.
     """
-    cmd = ["play", "-q", "-V0", wav, "remix", "1", "1"]
+    cmd = ["sox", "-q", "-V0", wav,
+           "-t", "wav", "-e", "signed", "-b", "16", "-c", "2", out,
+           "remix", "1", "1"]
     if normalise:
         cmd += ["gain", "-n", "-1"]
     cmd += ["gain", "%.2f" % to_db(volume)]
     return cmd
+
+
+def build_pwcat_cmd(sink: PwSink, stream_volume: float, media_name: str,
+                    path: str) -> List[str]:
+    """pw-cat playing one file, pinned to one sink."""
+    return ["pw-cat", "--playback", "--target", sink.name,
+            "--media-role", "Production",
+            "--volume", "%.3f" % stream_volume,
+            "-P", _PW_STREAM_PROPS % media_name,
+            path]
+
+
+_RENDER_DIR = None  # type: Optional[str]
+
+
+def render_for_play(wav: str, volume: float, normalise: bool) -> str:
+    """Render the play chain into a temporary WAV and return its path. The
+    caller deletes it. Raises RuntimeError when sox fails."""
+    global _RENDER_DIR
+    import tempfile
+    import atexit
+    if _RENDER_DIR is None or not os.path.isdir(_RENDER_DIR):
+        _RENDER_DIR = tempfile.mkdtemp(prefix="test_aprs_wavs-")
+        atexit.register(shutil.rmtree, _RENDER_DIR, True)
+    fd, out = tempfile.mkstemp(suffix=".wav", dir=_RENDER_DIR)
+    os.close(fd)
+    p = track_proc(subprocess.Popen(build_play_cmd(wav, volume, normalise, out),
+                                    stdout=subprocess.DEVNULL, stderr=subprocess.PIPE))
+    _o, err = p.communicate()
+    if p.returncode != 0:
+        try:
+            os.unlink(out)
+        except OSError:
+            pass
+        check_cancel()                  # killed by Stop, not a sox failure
+        raise RuntimeError(T("sox could not render %s (rc=%s): %s") %
+                           (os.path.basename(wav), p.returncode,
+                            err.decode("latin-1", "replace").strip()))
+    return out
+
+
+def start_player(path: str, sink: PwSink, stream_volume: float,
+                 media_name: str) -> "subprocess.Popen":
+    return track_proc(subprocess.Popen(build_pwcat_cmd(sink, stream_volume, media_name, path),
+                                       stdout=subprocess.DEVNULL,
+                                       stderr=subprocess.PIPE))
+
+
+def print_sink_list(sinks: List[PwSink], default_name: Optional[str]) -> None:
+    print(T("PipeWire outputs (sinks) - * marks the default:"))
+    print("    %6s  %-44s %s" % (T("serial"), T("node name"), T("description")))
+    for k in sinks:
+        print("  %s %6d  %-44s %s" % ("*" if k.name == default_name else " ",
+                                      k.serial, k.name, k.description))
+    print(T("Give --audio_device / --monitor_device the node name (it does not change "
+            "between reboots), the serial, or a unique part of the description."))
 
 
 def clip_warning(wav: str, volume: float, normalise: bool) -> Optional[str]:
@@ -1307,14 +1732,15 @@ def clip_warning(wav: str, volume: float, normalise: bool) -> Optional[str]:
     return None
 
 
-def run_one_wav(res: FileResult, wav: str, audio_device: Optional[str],
+def run_one_wav(res: FileResult, wav: str, route: Optional[AudioRoute],
                 volume: float, tail: float, window: float,
                 collector: SerialCollector, mm_extra: List[str],
                 dry_run: bool,
                 stop_at_mm_packets: Optional[int] = None,
                 normalise: bool = False,
                 offset_auto: bool = True,
-                offset_seed: float = 0.0) -> bool:
+                offset_seed: float = 0.0,
+                abort_on_overrange: bool = False) -> bool:
     """Play `wav` once while decoding it with multimon-ng and reading the
     ESP32 console. Every multimon-ng packet is printed together with the
     ESP32's answer to it (or NOT DECODED) as soon as that is known, and `res`
@@ -1331,8 +1757,25 @@ def run_one_wav(res: FileResult, wav: str, audio_device: Optional[str],
     after the count would otherwise have been reached from multimon-ng
     packets alone. This is what lets auto-volume calibration actually stop
     at exactly N packets even when a single WAV holds far more than N.
-    Returns True if that cutoff was hit, False if the file simply played to
+    If `abort_on_overrange` is set, playback is also cut short within about
+    a quarter of a second of the firmware reporting "RX audio is over-range":
+    the calibration uses it so a level that is already known to be too hot
+    does not keep over-driving the ADC for the rest of the file.
+
+    Returns True if a cutoff was hit, False if the file simply played to
     its natural end (or was interrupted by Ctrl-C)."""
+    # Render what the ESP32 will hear BEFORE the timing window opens, so the
+    # few hundred ms sox needs are not charged to this file.
+    rendered = None  # type: Optional[str]
+    if not dry_run:
+        if route is None:
+            raise ValueError("run_one_wav: no audio route")
+        try:
+            rendered = render_for_play(wav, volume, normalise)
+        except RuntimeError as exc:
+            sys.stderr.write("\n[audio] %s\n" % exc)
+            res.duration = 0.0
+            return False
     # ESP32 lines are attributed to this file by the moment they arrive. The
     # window opens right now, before playback starts, so nothing the previous
     # file already resolved is re-counted - but a frame the previous file was
@@ -1343,26 +1786,17 @@ def run_one_wav(res: FileResult, wav: str, audio_device: Optional[str],
     t0 = time.monotonic()
     t_window_start = t0
 
-    # Both legs are produced from the same source file by sox so that the two
+    # Every leg is produced from the same source file by sox so that the
     # decoders receive identical audio, whatever the WAV's own format is
     # (stereo, 8/16/24 bit, 44.1/48 kHz ...).
     #
-    #   leg A: play <wav>  -> sound card (ESP32 ADC)      [real time]
+    #   leg A: rendered WAV -> pw-cat --target <ESP32 sink>   [real time]
+    #   leg M: rendered WAV -> pw-cat --target <monitor sink> [real time, optional]
     #   leg B: sox <wav> -> raw 22050 Hz s16 mono -> multimon-ng
     #                                                     [paced to real time]
     #
-    # `play` is sox's playback front-end. Without --audio_device it uses the
-    # system default output. With one, sox is told to use ALSA on that device
-    # through the AUDIODRIVER / AUDIODEV environment variables (the documented
-    # way to select an output for `play`).
-    #
-    # The audio is sent to both channels of the sound card ("remix 1 1"), so
-    # a left-only or right-only cable to the ESP32 hears the same signal.
-    env = dict(os.environ)
-    if audio_device:
-        env["AUDIODRIVER"] = "alsa"
-        env["AUDIODEV"] = audio_device
-    play_cmd = build_play_cmd(wav, volume, normalise)
+    # Legs A and M are independent players (see "PipeWire output routing"):
+    # the monitor can lag, stall or fail without touching the ESP32 leg.
     warn = clip_warning(wav, volume, normalise)
     if warn and not dry_run:
         say("  ! " + warn)
@@ -1378,7 +1812,9 @@ def run_one_wav(res: FileResult, wav: str, audio_device: Optional[str],
     if _HAVE_STDBUF:
         mm_cmd = ["stdbuf", "-oL"] + mm_cmd
 
-    player = None  # type: Optional[subprocess.Popen]
+    player = None  # type: Optional[subprocess.Popen]   # pw-cat, ESP32 leg
+    monitor = None  # type: Optional[subprocess.Popen]  # pw-cat, monitor leg
+    play_procs = []  # type: List[subprocess.Popen]    # the pw-cat of A and M
     sox_p = None   # type: Optional[subprocess.Popen]
     mm_p = None    # type: Optional[subprocess.Popen]
     gt = None      # type: Optional[threading.Thread]
@@ -1390,6 +1826,7 @@ def run_one_wav(res: FileResult, wav: str, audio_device: Optional[str],
     # packets): everything already stored belongs to an earlier file.
     ingested = [collector.snapshot_index()]
     collector.file_t0 = t0
+    overrange_base = collector.snapshot_overrange()[0] if abort_on_overrange else 0
 
     # `res` is written from two threads: read_mm appends multimon packets as
     # they are decoded, while emit records verdicts from the ticker. The lock
@@ -1405,7 +1842,7 @@ def run_one_wav(res: FileResult, wav: str, audio_device: Optional[str],
         letting them run to the natural end of the file. Used the instant
         stop_at_mm_packets is reached, so a long WAV does not keep playing
         past the packet count the caller asked for."""
-        for p in (player, sox_p, mm_p):
+        for p in play_procs + [sox_p, mm_p]:
             if p is not None and p.poll() is None:
                 try:
                     p.kill()
@@ -1566,6 +2003,10 @@ def run_one_wav(res: FileResult, wav: str, audio_device: Optional[str],
                 now = time.monotonic()
                 if not dry_run:
                     feed_and_step(now)
+                if (abort_on_overrange and not target_hit[0] and
+                        collector.overrange_since(overrange_base) > 0):
+                    target_hit[0] = True
+                    kill_pipeline()
                 if now - last_progress >= PROGRESS_SECONDS:
                     last_progress = now
                     say(T("       [progress %s / %s] multimon=%d  ok=%d  "
@@ -1580,38 +2021,77 @@ def run_one_wav(res: FileResult, wav: str, audio_device: Optional[str],
         rt.start()
         gt.start()
 
-        # Start the real-time playback to the ESP32 and the multimon-ng feed
-        # at the same moment.
-        player_err = []  # type: List[bytes]
+        # Start the real-time playback to the ESP32 (and the monitor) and the
+        # multimon-ng feed at the same moment.
+        player_err = []   # type: List[bytes]
+        monitor_err = []  # type: List[bytes]
 
-        def drain_player_err() -> None:
-            """Read the player's stderr continuously. Reading it only after
-            wait() would deadlock the moment sox writes more than one pipe
+        def drain(proc: "subprocess.Popen", sink: List[bytes]) -> None:
+            """Read a player's stderr continuously. Reading it only after
+            wait() would deadlock the moment it writes more than one pipe
             buffer of warnings."""
-            if player is None or player.stderr is None:
+            if proc is None or proc.stderr is None:
                 return
             try:
-                for chunk in iter(lambda: player.stderr.read(4096), b""):
-                    player_err.append(chunk)
+                for chunk in iter(lambda: proc.stderr.read(4096), b""):
+                    sink.append(chunk)
             except Exception:
                 pass
 
+        drainers = []  # type: List[threading.Thread]
         if not dry_run:
-            player = track_proc(subprocess.Popen(play_cmd, env=env,
-                                                 stdout=subprocess.DEVNULL,
-                                                 stderr=subprocess.PIPE))
-            et = threading.Thread(target=drain_player_err, daemon=True)
-            et.start()
+            assert route is not None
+            player = start_player(rendered, route.test, 1.0, "ESP32 test leg")
+            play_procs.append(player)
+            drainers.append(threading.Thread(target=drain, args=(player, player_err),
+                                             daemon=True))
+            if route.monitor is not None:
+                try:
+                    monitor = start_player(rendered, route.monitor,
+                                           route.monitor_volume, "monitor")
+                    play_procs.append(monitor)
+                    drainers.append(threading.Thread(target=drain,
+                                                     args=(monitor, monitor_err),
+                                                     daemon=True))
+                except OSError as exc:        # never let the monitor stop the test
+                    sys.stderr.write(T("\n[audio] monitor player failed (rc=%s): %s\n") %
+                                     ("-", exc))
+            for d in drainers:
+                d.start()
         pt.start()
 
         if player is not None:
-            player.wait()
-            et.join(timeout=2)
+            # Watchdog: pw-cat must end with the file. An output unplugged in
+            # mid-run leaves its stream unlinked (node.dont-reconnect), and
+            # without this limit the bench would wait for it for ever.
+            limit = (duration + PLAYER_GRACE_SECONDS) if duration > 0 else None
+            try:
+                player.wait(timeout=limit)
+            except subprocess.TimeoutExpired:
+                sys.stderr.write(T("\n[audio] the player was still running %.0f s after "
+                                   "the end of the file - killed it (was the output "
+                                   "unplugged?)\n") % PLAYER_GRACE_SECONDS)
+                kill_pipeline()
+                player.wait()
             check_cancel()              # Stop killed the player: unwind now
+            if monitor is not None:
+                # Let the monitor finish the last few hundred ms by itself.
+                try:
+                    monitor.wait(timeout=2)
+                except subprocess.TimeoutExpired:
+                    monitor.kill()
+                    monitor.wait()
+            for d in drainers:
+                d.join(timeout=2)
             if player.returncode not in (0, None) and not target_hit[0]:
                 err = b"".join(player_err).decode("latin-1", "replace")
                 sys.stderr.write(T("\n[audio] player failed (rc=%s): %s\n") %
                                  (player.returncode, err.strip()))
+            if (monitor is not None and monitor.returncode not in (0, None, -9)
+                    and not target_hit[0]):
+                err = b"".join(monitor_err).decode("latin-1", "replace")
+                sys.stderr.write(T("\n[audio] monitor player failed (rc=%s): %s\n") %
+                                 (monitor.returncode, err.strip()))
         pt.join(timeout=30)
         try:
             sox_p.wait(timeout=10)
@@ -1643,7 +2123,7 @@ def run_one_wav(res: FileResult, wav: str, audio_device: Optional[str],
         raise
     finally:
         done.set()
-        for p in (player, sox_p, mm_p):
+        for p in play_procs + [sox_p, mm_p]:
             if p is not None and p.poll() is None:
                 try:
                     p.kill()
@@ -1651,6 +2131,11 @@ def run_one_wav(res: FileResult, wav: str, audio_device: Optional[str],
                     pass
         if gt is not None:
             gt.join(timeout=2)
+        if rendered is not None:
+            try:
+                os.unlink(rendered)
+            except OSError:
+                pass
         if not dry_run:
             if interrupted:
                 # Packets still waiting for their verdict are not counted:
@@ -1710,7 +2195,7 @@ class LiveMatcher:
         self._n_mm = 0
         self.esp_seen = []  # type: List[Packet]
         # Latency skew. The multimon-ng leg is paced tight to real time, while
-        # the ESP32 leg goes through ALSA output buffering, the ADC, the demod
+        # the ESP32 leg goes through PipeWire output buffering, the ADC, the demod
         # and the UART console - commonly a few hundred ms, sometimes over a
         # second. Left uncorrected it eats the match window and manufactures
         # NOT DECODED verdicts. It is estimated from confirmed matches and then
@@ -1931,11 +2416,12 @@ _HAVE_STDBUF = False
 
 def check_tools(need_play: bool = True) -> None:
     global _HAVE_STDBUF
-    required = ("multimon-ng", "sox") + (("play",) if need_play else ())
+    required = ("multimon-ng", "sox") + (("pw-cat", "pw-dump") if need_play else ())
     missing = [t for t in required if shutil.which(t) is None]
     if missing:
         sys.stderr.write(T("Missing required program(s): %s\n") % ", ".join(missing))
-        sys.stderr.write(T("  Debian/Ubuntu: sudo apt install multimon-ng sox libsox-fmt-all\n"))
+        sys.stderr.write(T("  Debian/Ubuntu: sudo apt install multimon-ng sox libsox-fmt-all "
+                           "pipewire-bin\n"))
         sys.exit(2)
     _HAVE_STDBUF = shutil.which("stdbuf") is not None
     if not _HAVE_STDBUF:
@@ -1975,18 +2461,34 @@ class VolumeSearch:
     of luck. What is worth finding is the CENTRE of the plateau, because that
     is the level with the most margin on both sides.
 
+    The over-range rule
+    -------------------
+    The ADC input of the bench has no clamp diodes, and "RX audio is
+    over-range" is the firmware itself saying the level is wrong. So the
+    moment ANY probe reports it (by default a single warning is enough, see
+    --clip_rate), that level becomes a hard CEILING:
+
+      * no probe is ever played again at or above the ceiling - _measure()
+        refuses to, whatever phase asks for it;
+      * the search only moves DOWN from there, in small --clip_step_db steps
+        (0.5 dB by default), until a probe comes back clean;
+      * a scoring probe that reports over-range later lowers the ceiling again
+        and is dropped from the plateau.
+
     The search therefore works like this:
 
-      Phase 1  bracket the clipping threshold, stepping +/-6 dB. Clipping is a
-               binary signal the firmware reports itself ("RX audio is
-               over-range"), so it can be probed with tiny 8-packet batches
-               instead of full ones.
-      Phase 2  bisect that bracket 3 times: +/-0.75 dB on the threshold.
-      Phase 3  score full batches at 3, 6, 9, 12 and 18 dB below the
-               threshold, stopping as soon as the lower knee is clearly past.
+      Phase 1  while nothing has clipped yet, climb in coarse 6 dB steps with
+               cheap 8-packet probes (clipping is a binary signal the firmware
+               reports itself). A probe that decodes nothing at all stops the
+               climb: there is no evidence that the level is safe to raise.
+      Phase 2  as soon as over-range appears: never go up again, walk down in
+               --clip_step_db steps until a probe is clean. That level is the
+               highest clean level (the "threshold" below).
+      Phase 3  score full batches at 3, 6, 9, 12 and 18 dB below it, stopping
+               as soon as the lower knee is clearly past.
       Phase 4  return the geometric centre of the plateau - every point whose
                Wilson interval still overlaps the best point's - clamped to at
-               least MIN_CLIP_MARGIN_DB below the clipping threshold.
+               least MIN_CLIP_MARGIN_DB below the threshold and the ceiling.
 
     Scoring:  success = ok + extra,  trials = multimon packets + extra.
       * `mismatch` and `corrupt` are FAILURES, not successes. The whole point
@@ -1997,16 +2499,17 @@ class VolumeSearch:
         beat the reference decoder on that frame.
 
     Everything measured is cached by rounded dB, so no volume is ever probed
-    twice, and probes advance through the wav set round-robin instead of
-    always restarting at the first file - otherwise a set whose first file
-    holds more than one batch would have the level tuned on a single
-    recording.
+    twice. Every probe - every new volume - restarts the wav list from the
+    FIRST file, in order, so all levels are compared on the same audio: a
+    difference in score is then the level's doing, not the recording's. (If
+    the first file alone holds more than one batch, every level is judged on
+    that file only; put a varied file first if that matters.)
 
     Runs with its own throwaway FileResult objects; nothing here is counted in
     the final report other than the resulting volume.
     """
 
-    def __init__(self, wavs: List[str], audio_device: Optional[str],
+    def __init__(self, wavs: List[str], route: Optional[AudioRoute],
                  tail: float, window: float, collector: SerialCollector,
                  mm_extra: List[str], start_volume: float,
                  batch_size: int = AUTO_VOLUME_BATCH,
@@ -2017,14 +2520,17 @@ class VolumeSearch:
                  vol_max: float = AUTO_VOLUME_MAX,
                  max_passes: int = MAX_WAV_PASSES,
                  normalise: bool = False,
-                 offset_auto: bool = True) -> None:
+                 offset_auto: bool = True,
+                 clip_step_db: float = CLIP_STEP_DB,
+                 quiet: bool = False) -> None:
         self.wavs = wavs
-        self.audio_device = audio_device
+        self.route = route
         self.tail = tail
         self.window = window
         self.collector = collector
         self.mm_extra = mm_extra
         self.volume = start_volume
+        self.start_volume = start_volume
         self.batch_size = batch_size
         self.max_rounds = max_rounds
         self.headroom_db = headroom_db
@@ -2034,6 +2540,8 @@ class VolumeSearch:
         self.max_passes = max_passes
         self.normalise = normalise
         self.offset_auto = offset_auto
+        self.clip_step_db = clip_step_db
+        self.quiet = quiet
         self.cache = {}        # type: dict   # rounded dB -> measurement
         self.probes_used = 0
         # Budget is counted in BATCHES OF PACKETS, not in calls: an 8-packet
@@ -2041,27 +2549,43 @@ class VolumeSearch:
         # every probe as a full round would let the cheap threshold hunt
         # starve the expensive plateau sweep that actually picks the level.
         self.budget_used = 0.0
-        self._cursor = 0       # round-robin position in the wav set
+        self._cursor = 0       # position in the wav set; reset by every probe
         self.offset = 0.0      # latency skew learned during calibration
-        self.clip_db = None    # type: Optional[float]
+        self.clip_db = None    # type: Optional[float]   # highest clean level found
+        # Lowest level that has EVER reported over-range. Nothing is played at
+        # or above it again. None until the firmware first complains.
+        self.ceiling_db = None  # type: Optional[float]
+        # Every probe actually played, in order: (dB, clipped). Kept for the
+        # self-test, which checks the ceiling rule on it.
+        self.history = []      # type: List[Tuple[float, bool]]
 
     # ---------------------------------------------------------------- probe
+    def _say(self, msg: str) -> None:
+        if not self.quiet:
+            say(msg)
+
     def _clamp(self, volume: float) -> float:
         return max(self.vol_min, min(self.vol_max, volume))
 
-    def _measure(self, volume: float, target: int) -> dict:
-        """Play `target` packets at `volume` and return the measurement.
+    def _cap_db(self, db: float) -> float:
+        """Keep a level MIN_CLIP_MARGIN_DB below the over-range ceiling."""
+        if self.ceiling_db is not None:
+            db = min(db, self.ceiling_db - MIN_CLIP_MARGIN_DB)
+        return db
+
+    def _probe(self, volume: float, key: float, target: int) -> dict:
+        """Play `target` packets at `volume` and return the raw measurement.
 
         Overridable: --selftest replaces this with a simulated device so the
         search logic can be tested without any hardware."""
-        key = round(to_db(volume), 2)
-        cached = self.cache.get(key)
-        if cached is not None and cached["trials"] >= target:
-            return cached
-
         batch = FileResult(name=T("<probe %+.1f dB>") % key)
         overrange_before, _ = self.collector.snapshot_overrange()
         passes = 0
+        # Stop at the first warning only when one warning is decisive anyway;
+        # with a tolerant --clip_rate the rate has to be measured in full.
+        strict = self.clip_rate <= 0.0
+        # Every probe starts over from the first file of the list.
+        self._cursor = 0
         while len(batch.mm_packets) + len(batch.extra) < target:
             if self._cursor >= len(self.wavs):
                 self._cursor = 0
@@ -2069,20 +2593,21 @@ class VolumeSearch:
                 if passes >= self.max_passes:
                     # Without this the loop restarts the wav set for ever when
                     # nothing decodes at all (silent files, muted card, wrong
-                    # ALSA device) and only Ctrl-C can end the run.
-                    say(T("      probe incomplete: %d/%d packet(s) after %d pass(es) "
-                          "over the wav set - check the audio routing and the files") %
-                        (len(batch.mm_packets) + len(batch.extra), target, passes))
+                    # PipeWire output) and only Ctrl-C can end the run.
+                    self._say(T("      probe incomplete: %d/%d packet(s) after %d pass(es) "
+                                "over the wav set - check the audio routing and the files") %
+                              (len(batch.mm_packets) + len(batch.extra), target, passes))
                     break
             wav = self.wavs[self._cursor]
             self._cursor += 1
             remaining = target - (len(batch.mm_packets) + len(batch.extra))
             res = FileResult(name=os.path.basename(wav))
-            run_one_wav(res, wav, self.audio_device, volume, self.tail,
+            run_one_wav(res, wav, self.route, volume, self.tail,
                         self.window, self.collector, self.mm_extra,
                         dry_run=False, stop_at_mm_packets=remaining,
                         normalise=self.normalise, offset_auto=self.offset_auto,
-                        offset_seed=self.offset)
+                        offset_seed=self.offset,
+                        abort_on_overrange=strict)
             if res.offset:
                 self.offset = res.offset
             batch.mm_packets.extend(res.mm_packets)
@@ -2092,148 +2617,205 @@ class VolumeSearch:
             batch.corrupt.extend(res.corrupt)
             batch.missing.extend(res.missing)
             batch.extra.extend(res.extra)
+            if strict and self.collector.overrange_since(overrange_before) > 0:
+                # With the strict default one warning already settles it: this
+                # level clips. Playing on would only keep the ADC over-driven.
+                break
 
         n_mm = len(batch.mm_packets)
         n_extra = len(batch.extra)
         warns = self.collector.overrange_since(overrange_before)
         seen = max(1, n_mm + n_extra)
-        m = {
-            "volume": volume,
-            "db": key,
-            "ok": batch.ok,
-            "mismatch": len(batch.mismatch),
-            "corrupt": len(batch.corrupt),
-            "missing": len(batch.missing),
-            "extra": n_extra,
-            "mm": n_mm,
-            "success": batch.ok + n_extra,
-            "trials": n_mm + n_extra,
-            "clip_rate": warns / float(seen),
+        return {
+            "volume": volume, "db": key, "ok": batch.ok,
+            "mismatch": len(batch.mismatch), "corrupt": len(batch.corrupt),
+            "missing": len(batch.missing), "extra": n_extra, "mm": n_mm,
+            "success": batch.ok + n_extra, "trials": n_mm + n_extra,
+            "warns": warns, "clip_rate": warns / float(seen),
         }
+
+    def _measure(self, volume: float, target: int) -> dict:
+        """Measure a level, enforcing the over-range ceiling and the cache."""
+        key = round(to_db(volume), 2)
+        if self.ceiling_db is not None and key >= self.ceiling_db - 1e-6:
+            # The hard rule: never play at or above a level that has already
+            # made the firmware report over-range. Answer from what is known.
+            cached = self.cache.get(key)
+            if cached is not None:
+                return cached
+            return {"volume": volume, "db": key, "ok": 0, "mismatch": 0, "corrupt": 0,
+                    "missing": 0, "extra": 0, "mm": 0, "success": 0, "trials": 0,
+                    "warns": 1, "clip_rate": 1.0, "score": 0.0, "clipped": True}
+        cached = self.cache.get(key)
+        if cached is not None and cached["trials"] >= target:
+            return cached
+
+        m = self._probe(volume, key, target)
         m["score"] = 100.0 * m["success"] / max(1, m["trials"])
+        # With the default --clip_rate of 0 a single warning is enough.
+        m["clipped"] = m.get("warns", 0) > 0 and m["clip_rate"] > self.clip_rate
         self.cache[key] = m
         self.probes_used += 1
         self.budget_used += target / float(max(1, self.batch_size))
-        say(T("  [probe %2d, budget %.1f/%d] gain=%.3f (%+5.1f dB)  mm=%d ok=%d diff=%d hdr=%d "
-              "miss=%d extra=%d  score=%.1f%%  clip=%.2f/pkt") %
-            (self.probes_used, self.budget_used, self.max_rounds, volume, key, n_mm, batch.ok,
-             len(batch.mismatch), len(batch.corrupt), len(batch.missing),
-             n_extra, m["score"], m["clip_rate"]))
+        self.history.append((key, m["clipped"]))
+        if m["clipped"]:
+            self.ceiling_db = key if self.ceiling_db is None else min(self.ceiling_db, key)
+        self._say(T("  [probe %2d, budget %.1f/%d] gain=%.3f (%+5.1f dB)  mm=%d ok=%d diff=%d hdr=%d "
+                    "miss=%d extra=%d  score=%.1f%%  clip=%.2f/pkt") %
+                  (self.probes_used, self.budget_used, self.max_rounds, volume, key, m["mm"],
+                   m["ok"], m["mismatch"], m["corrupt"], m["missing"], m["extra"],
+                   m["score"], m["clip_rate"]) +
+                  (T("  <- OVER-RANGE") if m["clipped"] else ""))
         return m
 
     def _clips(self, volume: float) -> bool:
-        return self._measure(volume, CLIP_PROBE_PACKETS)["clip_rate"] > self.clip_rate
+        return self._measure(volume, CLIP_PROBE_PACKETS)["clipped"]
 
     def _budget_left(self, cost: float = 0.0) -> bool:
         """Is there budget for one more probe costing `cost` batches?"""
         return (self.budget_used + cost) < self.max_rounds
 
+    def safe_volume(self) -> float:
+        """The best level known to be safe right now. Used when the search is
+        interrupted: it must never hand back a level that reported over-range
+        (the starting volume, for instance, may well be one)."""
+        if self.ceiling_db is None:
+            return self._clamp(self.volume)
+        clean = [db for db, m in self.cache.items()
+                 if not m.get("clipped") and db < self.ceiling_db]
+        db = max(clean) if clean else self.ceiling_db - self.headroom_db
+        return self._clamp(to_lin(self._cap_db(db)))
+
     # ---------------------------------------------------------- phases 1+2
     def _find_clip_threshold(self, start_db: float) -> Tuple[float, bool]:
-        """Bracket, then bisect, the level at which the ADC starts clipping.
+        """Find the highest level that does NOT report over-range.
 
-        Returns (threshold in dB, True if it was actually observed). Unlike
-        the previous algorithm this moves in BOTH directions: it goes down
-        when it clips and up when it does not, so a starting volume that is
-        already far too high is not a dead end."""
-        lo_db = None   # highest level known to be clean
-        hi_db = None   # lowest level known to clip
-        db = start_db
+        Returns (that level in dB, True if over-range was actually observed).
+        Climbs in coarse steps only while the firmware has never complained;
+        from the first over-range on it never goes up again and walks down
+        in --clip_step_db steps until a probe comes back clean."""
         floor_db, ceil_db = to_db(self.vol_min), to_db(self.vol_max)
-
-        # Reserve most of the budget for the scoring sweep: the threshold
-        # hunt is cheap, but it must not be allowed to eat the rounds that
-        # actually decide the level.
         clip_cost = CLIP_PROBE_PACKETS / float(max(1, self.batch_size))
-        hunt_cap = max(clip_cost, 0.25 * self.max_rounds)
-        while self.budget_used + clip_cost < hunt_cap:
-            if self._clips(to_lin(db)):
-                hi_db = db if hi_db is None else min(hi_db, db)
-                if lo_db is not None:
-                    break
-                db -= COARSE_STEP_DB
-                if db < floor_db:
-                    return floor_db, True
-            else:
-                lo_db = db if lo_db is None else max(lo_db, db)
-                if hi_db is not None:
-                    break
-                db += COARSE_STEP_DB
-                if db > ceil_db:
-                    return ceil_db, False
+        # The descent may use up to half of the budget; the rest is kept for
+        # the plateau sweep that actually decides the level.
+        hunt_cap = max(clip_cost, HUNT_BUDGET_SHARE * self.max_rounds)
 
-        if hi_db is None:
-            return ceil_db, False           # never clipped anywhere we looked
-        if lo_db is None:
-            return floor_db, True           # clipped all the way down
+        # Phase 1: climb only while nothing has clipped.
+        db = start_db
+        lo_db = None   # highest level known to be clean
+        while self.ceiling_db is None and self.budget_used + clip_cost <= hunt_cap:
+            m = self._measure(to_lin(db), CLIP_PROBE_PACKETS)
+            if m["clipped"]:
+                break
+            lo_db = db if lo_db is None else max(lo_db, db)
+            if m["trials"] == 0:
+                # Nothing decoded: no evidence the level is safe to raise, and
+                # a muted or misrouted chain would otherwise be driven to the
+                # maximum gain before anything is plugged back in.
+                return lo_db, False
+            if db >= ceil_db - 1e-6:
+                return ceil_db, False
+            db = min(db + COARSE_STEP_DB, ceil_db)
+        if self.ceiling_db is None:
+            return (lo_db if lo_db is not None else start_db), False
 
-        while (self.budget_used + clip_cost < hunt_cap and
-               (hi_db - lo_db) > (COARSE_STEP_DB / 2 ** BISECT_ITERS)):
-            mid = 0.5 * (lo_db + hi_db)
-            if self._clips(to_lin(mid)):
-                hi_db = mid
-            else:
-                lo_db = mid
-        return lo_db, True
+        # Phase 2: over-range seen. Never up again; small steps down.
+        self._say(T("  Over-range at %+.1f dB (gain %.3f): no probe will go that high again; "
+                    "stepping down in %.2f dB steps") %
+                  (self.ceiling_db, to_lin(self.ceiling_db), self.clip_step_db))
+        db = self.ceiling_db - self.clip_step_db
+        while True:
+            if lo_db is not None and db <= lo_db + 1e-6:
+                return lo_db, True          # already known to be clean
+            if db < floor_db - 1e-6:
+                self._say(T("  Still over-range at the lowest gain allowed, %.3f (%+.1f dB): the "
+                            "hardware level into the ADC is far too hot - turn the RX trimmer "
+                            "(or the PC volume) down and run again.") %
+                          (self.vol_min, floor_db))
+                return floor_db, True
+            if self.budget_used + clip_cost > hunt_cap:
+                fallback = max(floor_db, self.ceiling_db - self.headroom_db)
+                self._say(T("  Descent budget spent while still over-range at %+.1f dB - using "
+                            "%+.1f dB (%.0f dB below it). Turn the RX trimmer down, or raise "
+                            "--auto_volume_max_rounds / --clip_step_db.") %
+                          (self.ceiling_db, fallback, self.headroom_db))
+                return fallback, True
+            if not self._clips(to_lin(db)):
+                return db, True
+            db = self.ceiling_db - self.clip_step_db
 
     # ------------------------------------------------------------- phase 3+4
     def run(self) -> float:
         if not self.wavs:
             return self.volume
 
-        say("\n" + "=" * 72)
-        say(T("AUTO-VOLUME CALIBRATION (clip threshold + plateau centre)"))
-        say("=" * 72)
-        say(T("  Start gain %.3f (%+.1f dB), range %.3f..%.3f, budget %d probe(s), "
-              "%d packet(s) per scoring probe") %
-            (self.volume, to_db(self.volume), self.vol_min, self.vol_max,
-             self.max_rounds, self.batch_size))
+        self._say("\n" + "=" * 72)
+        self._say(T("AUTO-VOLUME CALIBRATION (over-range ceiling + plateau centre)"))
+        self._say("=" * 72)
+        self._say(T("  Start gain %.3f (%+.1f dB), range %.3f..%.3f, budget %d probe(s), "
+                    "%d packet(s) per scoring probe, %.2f dB steps below over-range") %
+                  (self.volume, to_db(self.volume), self.vol_min, self.vol_max,
+                   self.max_rounds, self.batch_size, self.clip_step_db))
 
         clip_db, observed = self._find_clip_threshold(to_db(self._clamp(self.volume)))
         self.clip_db = clip_db
         if observed:
-            say(T("  Clipping threshold: %+.1f dB (gain %.3f)") % (clip_db, to_lin(clip_db)))
+            self._say(T("  Highest level without over-range: %+.1f dB (gain %.3f)") %
+                      (clip_db, to_lin(clip_db)))
         else:
-            say(T("  No clipping seen up to %+.1f dB (gain %.3f) - the hardware level "
-                  "into the ADC may be too low; check the RX trimmer.") %
-                (clip_db, to_lin(clip_db)))
+            self._say(T("  No clipping seen up to %+.1f dB (gain %.3f) - the hardware level "
+                        "into the ADC may be too low; check the RX trimmer.") %
+                      (clip_db, to_lin(clip_db)))
 
         # Sanity check: with no packets at all there is nothing to calibrate.
         probed = [m for m in self.cache.values() if m["mm"] > 0 or m["extra"] > 0]
         if not probed:
-            self.volume = self._clamp(to_lin(clip_db - self.headroom_db))
-            say(T("  No packets decoded during calibration at any level - falling back "
-                  "to %.3f (%+.1f dB, threshold - %.0f dB).") %
-                (self.volume, to_db(self.volume), self.headroom_db))
-            say("=" * 72)
+            self.volume = self._clamp(to_lin(self._cap_db(clip_db - self.headroom_db)))
+            self._say(T("  No packets decoded during calibration at any level - falling back "
+                        "to %.3f (%+.1f dB, threshold - %.0f dB).") %
+                      (self.volume, to_db(self.volume), self.headroom_db))
+            self._say("=" * 72)
             return self.volume
 
         points = []  # type: List[Tuple[float, dict]]
         best = None  # type: Optional[Tuple[float, dict]]
         for off in PLATEAU_OFFSETS_DB:
             if not self._budget_left(1.0):
-                say(T("  Probe budget spent; stopping the plateau sweep "
-                      "(raise it with --auto_volume_max_rounds)."))
+                self._say(T("  Probe budget spent; stopping the plateau sweep "
+                            "(raise it with --auto_volume_max_rounds)."))
                 break
             db = clip_db + off
             if db < to_db(self.vol_min):
                 break
+            if self.ceiling_db is not None and db >= self.ceiling_db - 1e-6:
+                continue            # a later over-range already ruled this level out
             m = self._measure(self._clamp(to_lin(db)), self.batch_size)
+            if m["clipped"]:
+                self._say(T("      over-range during a scoring probe at %+.1f dB - this level "
+                            "is dropped and nothing at or above it is played again") % db)
+                continue
             if m["trials"] == 0:
                 continue
             points.append((db, m))
             if best is None or m["score"] > best[1]["score"]:
                 best = (db, m)
             elif m["score"] < best[1]["score"] - KNEE_DROP_PCT:
-                say(T("      score fell %.0f points below the best - the lower knee is "
-                      "past, no need to go quieter") % (best[1]["score"] - m["score"]))
+                self._say(T("      score fell %.0f points below the best - the lower knee is "
+                            "past, no need to go quieter") % (best[1]["score"] - m["score"]))
                 break
 
+        # A point measured before a later over-range lowered the ceiling is no
+        # longer eligible.
+        if self.ceiling_db is not None:
+            points = [(db, m) for db, m in points if db < self.ceiling_db - 1e-6]
+            if best is not None and best[0] >= self.ceiling_db - 1e-6:
+                best = max(points, key=lambda p: p[1]["score"]) if points else None
+
         if not points or best is None:
-            self.volume = self._clamp(to_lin(clip_db - self.headroom_db))
-            say(T("  No usable score data - using threshold - %.0f dB = %.3f (%+.1f dB).") %
-                (self.headroom_db, self.volume, to_db(self.volume)))
-            say("=" * 72)
+            self.volume = self._clamp(to_lin(self._cap_db(clip_db - self.headroom_db)))
+            self._say(T("  No usable score data - using threshold - %.0f dB = %.3f (%+.1f dB).") %
+                      (self.headroom_db, self.volume, to_db(self.volume)))
+            self._say("=" * 72)
             return self.volume
 
         # Phase 4: every point statistically tied with the best one forms the
@@ -2245,16 +2827,17 @@ class VolumeSearch:
         if not tied:
             tied = [best[0]]
         centre_db = 0.5 * (min(tied) + max(tied))
-        centre_db = min(centre_db, clip_db - MIN_CLIP_MARGIN_DB)
+        centre_db = self._cap_db(min(centre_db, clip_db - MIN_CLIP_MARGIN_DB))
         self.volume = self._clamp(to_lin(centre_db))
 
-        say(T("  Plateau: %+.1f .. %+.1f dB (%d tied point(s) of %d probed); "
-              "best raw score %.1f%%") %
-            (min(tied), max(tied), len(tied), len(points), best[1]["score"]))
-        say(T("  Chosen gain: %.3f (%+.1f dB), %.1f dB below the clipping threshold") %
-            (self.volume, to_db(self.volume), clip_db - centre_db))
+        self._say(T("  Plateau: %+.1f .. %+.1f dB (%d tied point(s) of %d probed); "
+                    "best raw score %.1f%%") %
+                  (min(tied), max(tied), len(tied), len(points), best[1]["score"]))
+        self._say(T("  Chosen gain: %.3f (%+.1f dB), %.1f dB below the highest level "
+                    "without over-range") %
+                  (self.volume, to_db(self.volume), clip_db - to_db(self.volume)))
         self._advise()
-        say("=" * 72)
+        self._say("=" * 72)
         return self.volume
 
     def _advise(self) -> None:
@@ -2264,13 +2847,13 @@ class VolumeSearch:
         a number to hand to `play`."""
         db = to_db(self.volume)
         if db < -6.0:
-            say(T("  NOTE: more than 6 dB of attenuation was needed. The hardware level "
-                  "into the ESP32 ADC is too hot - turn the RX trimmer (or the radio's "
-                  "volume) down and re-run, so the bench can work near 0 dB."))
+            self._say(T("  NOTE: more than 6 dB of attenuation was needed. The hardware level "
+                        "into the ESP32 ADC is too hot - turn the RX trimmer (or the radio's "
+                        "volume) down and re-run, so the bench can work near 0 dB."))
         elif db > 6.0:
-            say(T("  NOTE: more than 6 dB of boost was needed. The hardware level into "
-                  "the ESP32 ADC is too low - turn the RX trimmer up and re-run. "
-                  "Boosting digitally also amplifies the sound card's own noise floor."))
+            self._say(T("  NOTE: more than 6 dB of boost was needed. The hardware level into "
+                        "the ESP32 ADC is too low - turn the RX trimmer up and re-run. "
+                        "Boosting digitally also amplifies the sound card's own noise floor."))
 
 
 # Backwards-compatible alias: older invocations and notes refer to the class
@@ -2296,40 +2879,47 @@ class _SimulatedVolumeSearch(VolumeSearch):
     """VolumeSearch driven by a simulated device instead of real hardware.
 
     The model is the plateau the real system exhibits: nothing decodes below
-    -20 dB, everything decodes from -18 dB to -3 dB, and above 0 dB the ADC
-    clips. A correct search must land near the centre of that plateau
-    (about -10.5 dB) no matter where it starts."""
+    -26 dB, the rate ramps up to 100% at -18 dB, stays there up to the
+    clipping point (0 dB by default) and the firmware reports over-range at
+    and above it. A correct search must land near the centre of that plateau
+    (about -10.5 dB) no matter where it starts.
+
+    Two optional knobs model the awkward cases:
+      * `clip_warn_rate` - over-range warnings per packet at and above the
+        clipping point (1.0 = on every packet; 0.02 = one in fifty);
+      * `soft_zone_db` / `soft_warn_rate` - a band just below the clipping
+        point where warnings are too rare to show in an 8-packet probe but do
+        show in a full scoring batch.
+    """
 
     def __init__(self, *a, **kw):
         self.knee_low_db = kw.pop("knee_low_db", -18.0)
-        self.knee_high_db = kw.pop("knee_high_db", -3.0)
         self.clip_at_db = kw.pop("clip_at_db", 0.0)
+        self.clip_warn_rate = kw.pop("clip_warn_rate", 1.0)
+        self.soft_zone_db = kw.pop("soft_zone_db", 0.0)
+        self.soft_warn_rate = kw.pop("soft_warn_rate", 0.0)
+        kw.setdefault("quiet", True)
         super().__init__(*a, **kw)
 
-    def _measure(self, volume: float, target: int) -> dict:
-        key = round(to_db(volume), 2)
-        cached = self.cache.get(key)
-        if cached is not None and cached["trials"] >= target:
-            return cached
+    def _probe(self, volume: float, key: float, target: int) -> dict:
         db = key
+        warn_rate = 0.0
         if db >= self.clip_at_db:
-            rate, clip = 0.55, 1.0
+            rate, warn_rate = 0.55, self.clip_warn_rate
         elif db >= self.knee_low_db:
-            rate, clip = 1.0, 0.0
+            rate = 1.0
+            if db >= self.clip_at_db - self.soft_zone_db:
+                warn_rate = self.soft_warn_rate
         elif db >= self.knee_low_db - 8.0:
-            span = (db - (self.knee_low_db - 8.0)) / 8.0
-            rate, clip = max(0.0, span), 0.0
+            rate = max(0.0, (db - (self.knee_low_db - 8.0)) / 8.0)
         else:
-            rate, clip = 0.0, 0.0
+            rate = 0.0
         success = int(round(rate * target))
-        m = {"volume": volume, "db": key, "ok": success, "mismatch": 0, "corrupt": 0,
-             "missing": target - success, "extra": 0, "mm": target,
-             "success": success, "trials": target, "clip_rate": clip}
-        m["score"] = 100.0 * success / max(1, target)
-        self.cache[key] = m
-        self.probes_used += 1
-        self.budget_used += target / float(max(1, self.batch_size))
-        return m
+        warns = int(math.floor(warn_rate * target + 1e-9))
+        return {"volume": volume, "db": key, "ok": success, "mismatch": 0, "corrupt": 0,
+                "missing": target - success, "extra": 0, "mm": target,
+                "success": success, "trials": target,
+                "warns": warns, "clip_rate": warns / float(max(1, target))}
 
 
 def selftest() -> int:
@@ -2432,6 +3022,119 @@ def selftest() -> int:
     check(T("chosen level keeps margin below the clipping threshold"),
           to_db(vs.volume) <= vs.clip_db - MIN_CLIP_MARGIN_DB + 1e-6)
 
+    print(T("Over-range ceiling"))
+
+    def ceiling_respected(history) -> bool:
+        ceiling = None
+        for db, clipped in history:
+            if ceiling is not None and db >= ceiling - 1e-6:
+                return False
+            if clipped:
+                ceiling = db if ceiling is None else min(ceiling, db)
+        return True
+
+    for start in (0.05, 1.0, 4.0):
+        vs = _SimulatedVolumeSearch([], None, 0.0, 5.0, None, [], start,
+                                    batch_size=50, max_rounds=12)
+        vs.wavs = ["a.wav"]
+        vs.run()
+        check(T("start %.2f: no probe is played at or above a level that reported over-range") % start,
+              ceiling_respected(vs.history), T("history %s") % (vs.history,))
+
+    for start, step in ((4.0, CLIP_STEP_DB), (1.0, 0.25)):
+        vs = _SimulatedVolumeSearch(["a.wav"], None, 0.0, 5.0, None, [], start,
+                                    batch_size=50, max_rounds=12, clip_step_db=step)
+        vs.run()
+        first = next((i for i, (_db, c) in enumerate(vs.history) if c), None)
+        desc = []
+        for db, c in (vs.history[first:] if first is not None else []):
+            desc.append(db)
+            if not c:
+                break
+        steps = [round(a - b, 2) for a, b in zip(desc, desc[1:])]
+        check(T("below an over-range level the gain steps down by --clip_step_db (%.2f dB)") % step,
+              bool(steps) and all(abs(s - step) < 0.02 for s in steps),
+              T("steps %r") % (steps,))
+
+    # Very small steps from a very hot start run out of descent budget. The
+    # fallback must still land below the ceiling and never probe above it.
+    vs = _SimulatedVolumeSearch(["a.wav"], None, 0.0, 5.0, None, [], 4.0,
+                                batch_size=50, max_rounds=12, clip_step_db=0.25)
+    chosen = to_db(vs.run())
+    check(T("a descent that runs out of budget still ends below the over-range ceiling"),
+          ceiling_respected(vs.history) and
+          chosen <= vs.ceiling_db - MIN_CLIP_MARGIN_DB + 1e-6,
+          T("ceiling %s, chose %+.1f dB") % (vs.ceiling_db, chosen))
+
+    # Warnings too rare to show in an 8-packet probe (1 in 50) but present
+    # just below the hard clipping point: the first scoring batch sees ONE.
+    vs = _SimulatedVolumeSearch(["a.wav"], None, 0.0, 5.0, None, [], 1.0,
+                                batch_size=50, max_rounds=12,
+                                soft_zone_db=4.0, soft_warn_rate=0.02)
+    chosen = to_db(vs.run())
+    check(T("one over-range warning in a scoring batch lowers the ceiling and drops that level"),
+          vs.ceiling_db is not None and vs.ceiling_db <= -3.0 and
+          chosen <= vs.ceiling_db - MIN_CLIP_MARGIN_DB + 1e-6 and
+          ceiling_respected(vs.history),
+          T("ceiling %s, chose %+.1f dB") % (vs.ceiling_db, chosen))
+
+    vs = _SimulatedVolumeSearch(["a.wav"], None, 0.0, 5.0, None, [], 4.0,
+                                batch_size=50, max_rounds=12)
+    vs._find_clip_threshold(to_db(4.0))       # interrupted right after phase 2
+    safe = to_db(vs.safe_volume())
+    check(T("an interrupted search falls back below the over-range ceiling, not to the start gain"),
+          vs.ceiling_db is not None and safe <= vs.ceiling_db - MIN_CLIP_MARGIN_DB + 1e-6,
+          T("safe %+.1f dB, ceiling %+.1f dB") % (safe, vs.ceiling_db or 0.0))
+
+    print(T("PipeWire routing"))
+    dump = [
+        {"id": 30, "type": "PipeWire:Interface:Node", "info": {"props": {
+            "media.class": "Audio/Sink", "object.serial": 35,
+            "node.name": "alsa_output.usb-C-Media_USB_Audio-00.analog-stereo",
+            "node.description": "USB Audio Analog Stereo", "node.nick": "USB Audio"}}},
+        {"id": 32, "type": "PipeWire:Interface:Node", "info": {"props": {
+            "media.class": "Audio/Sink", "object.serial": 37,
+            "node.name": "alsa_output.pci-0000_00_1f.3.analog-stereo",
+            "node.description": "Built-in Audio Analog Stereo"}}},
+        {"id": 33, "type": "PipeWire:Interface:Node", "info": {"props": {
+            "media.class": "Audio/Source", "object.serial": 38,
+            "node.name": "alsa_input.usb-C-Media_USB_Audio-00.mono-fallback",
+            "node.description": "USB Audio Mono"}}},
+        {"id": 34, "type": "PipeWire:Interface:Metadata",
+         "props": {"metadata.name": "default"},
+         "metadata": [{"subject": 0, "key": "default.audio.sink", "type": "Spa:String:JSON",
+                       "value": {"name": "alsa_output.pci-0000_00_1f.3.analog-stereo"}}]},
+    ]
+    sinks, dflt = parse_pw_dump(dump)
+    check(T("pw-dump: only sinks are listed, and the default output is found"),
+          [k.serial for k in sinks] == [35, 37] and
+          dflt == "alsa_output.pci-0000_00_1f.3.analog-stereo")
+    usb = sinks[0]
+    try:
+        forms = [resolve_sink(x, sinks, dflt).name for x in (
+            usb.name, "35", "30", usb.label(), "* " + usb.label(), "usb audio", "C-Media")]
+        ok_forms = forms == [usb.name] * len(forms)
+    except ValueError as exc:
+        ok_forms, forms = False, str(exc)
+    check(T("an output is found by node name, serial, id, GUI label and description"),
+          ok_forms, str(forms))
+    check(T("an empty device and 'default' both give the PipeWire default output"),
+          resolve_sink("", sinks, dflt).serial == 37 and
+          resolve_sink("default", sinks, dflt).serial == 37)
+    rejected = 0
+    for bad in ("analog-stereo", "nosuchcard", "38"):   # ambiguous, unknown, a source
+        try:
+            resolve_sink(bad, sinks, dflt)
+        except ValueError:
+            rejected += 1
+    check(T("an ambiguous or unknown output is rejected, never guessed"), rejected == 3)
+    pc = build_pwcat_cmd(usb, 0.5, "monitor", "/tmp/r.wav")
+    sc = build_play_cmd("x.wav", 1.0, True, "/tmp/r.wav")
+    check(T("play chain: sox renders a file, pw-cat plays it pinned to the sink, no fallback"),
+          sc[sc.index("-t") + 1] == "wav" and sc[sc.index("-c") + 2] == "/tmp/r.wav" and
+          pc[pc.index("--target") + 1] == usb.name and pc[-1] == "/tmp/r.wav" and
+          "node.dont-fallback = true" in pc[pc.index("-P") + 1])
+
     print(T("Termination with a wav set that decodes nothing"))
     # The old _run_batch_until restarted the wav iterator unconditionally, so
     # a silent or misrouted set looped for ever and only Ctrl-C ended the run.
@@ -2463,9 +3166,35 @@ def selftest() -> int:
                            batch_size=50, max_rounds=4)
         check(T("the whole search terminates on a silent wav set"),
               vs2.run() > 0.0)
+        check(T("a silent wav set never raises the gain"),
+              all(db <= to_db(1.0) + 1e-6 for db, _c in vs2.history),
+              T("probed %s") % (vs2.history,))
     except AssertionError as exc:
         check(T("a probe over a silent wav set terminates instead of looping"),
               False, str(exc))
+    finally:
+        run_one_wav = real_run_one_wav
+
+    print(T("Every volume probe restarts the wav list"))
+    played = []
+
+    def _one_packet_per_file(res, wav, *a, **kw):
+        played.append(wav)
+        res.mm_packets.append(make_packet("A", "B", [], wav.encode(), ""))
+        res.ok += 1
+        return False
+
+    try:
+        run_one_wav = _one_packet_per_file
+        vs = VolumeSearch(["a.wav", "b.wav", "c.wav"], None, 0.0, 5.0, _NoSerial(), [],
+                          1.0, batch_size=2, max_rounds=4)
+        vs._measure(1.0, 2)
+        first = list(played)
+        del played[:]
+        vs._measure(0.5, 2)
+        check(T("a new volume replays the list from the first file, in order"),
+              first == ["a.wav", "b.wav"] and played == ["a.wav", "b.wav"],
+              "%s / %s" % (first, played))
     finally:
         run_one_wav = real_run_one_wav
 
@@ -2672,6 +3401,23 @@ def run_gui(ap: argparse.ArgumentParser, initial_values: Optional[dict] = None,
         widget.bind("<Enter>", show)
         widget.bind("<Leave>", hide)
 
+    # PipeWire outputs for the --audio_device / --monitor_device pickers. The
+    # boxes stay editable: anything typed is resolved exactly like on the
+    # command line, and an empty box means the flag's default.
+    sink_boxes = []
+
+    def sink_labels() -> List[str]:
+        try:
+            sinks, default_name = pw_list_sinks()
+        except RuntimeError:
+            return []
+        return [("* " if k.name == default_name else "") + k.label() for k in sinks]
+
+    def refresh_sinks() -> None:
+        labels = sink_labels()
+        for box in sink_boxes:
+            box.configure(values=[""] + labels)
+
     grid = ttk.Frame(top)
     grid.pack(fill="x", padx=6, pady=4)
     for c in range(COLS):
@@ -2691,7 +3437,13 @@ def run_gui(ap: argparse.ArgumentParser, initial_values: Optional[dict] = None,
             var = tk.StringVar(value=default)
             defaults[act.dest] = default
             ttk.Label(cell, text=flag_name(act)).pack(side="left")
-            w = ttk.Entry(cell, textvariable=var, width=18)
+            if act.dest in ("audio_device", "monitor_device"):
+                ttk.Button(cell, text="\u21bb", width=3,
+                           command=refresh_sinks).pack(side="right", padx=(4, 0))
+                w = ttk.Combobox(cell, textvariable=var, width=18)
+                sink_boxes.append(w)
+            else:
+                w = ttk.Entry(cell, textvariable=var, width=18)
             w.pack(side="right", fill="x", expand=True, padx=(6, 0))
             if act.dest == "wav_dir":
                 def browse(v=var):
@@ -2701,6 +3453,8 @@ def run_gui(ap: argparse.ArgumentParser, initial_values: Optional[dict] = None,
                 ttk.Button(cell, text="...", width=3, command=browse).pack(side="right", padx=(4, 0))
         vars_[act.dest] = var
         attach_tip(w, flag_name(act) + ": " + helptxt)
+
+    refresh_sinks()
 
     # Coming back from a language change: put every field back as it was.
     if initial_values:
@@ -3028,8 +3782,17 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--baud", type=int, default=SERIAL_BAUD,
                     help=T("serial speed, 8N1 (default: %d)") % SERIAL_BAUD)
     ap.add_argument("--audio_device", default=None,
-                    help=T("ALSA device wired to the ESP32 audio input, e.g. hw:1,0 "
-                           "(default: system default output)"))
+                    help=T("PipeWire output (sink) wired to the ESP32 audio input: its "
+                           "node name, serial, or a unique part of its description "
+                           "(default: the PipeWire default output). See --list_audio."))
+    ap.add_argument("--monitor_device", default=None,
+                    help=T("PipeWire output (sink) to listen on while the test runs, "
+                           "e.g. headphones; it plays exactly what the ESP32 gets. Same "
+                           "forms as --audio_device, 'default' for the PipeWire default "
+                           "output (default: no monitor)"))
+    ap.add_argument("--monitor_volume", type=float, default=0.5,
+                    help=T("PipeWire stream volume of the monitor, 0..1 (default 0.5). "
+                           "Only the monitor: the ESP32 level is set by --volume alone."))
     ap.add_argument("--volume", type=float, default=1.0,
                     help=T("playback gain applied to the ESP32 leg only (default 1.0). "
                            "Used as the starting point for auto-volume calibration "
@@ -3042,9 +3805,13 @@ def build_parser() -> argparse.ArgumentParser:
                     help=T("dB below the clipping threshold to fall back to when no "
                            "plateau could be scored (default %.0f)") % HEADROOM_DB)
     ap.add_argument("--clip_rate", type=float, default=CLIP_RATE_THRESHOLD,
-                    help=T("over-range warnings per packet above which a level counts "
-                           "as clipping (default %.2f); a single transient warning is "
-                           "not enough") % CLIP_RATE_THRESHOLD)
+                    help=T("over-range warnings per packet a level may produce and still "
+                           "count as clean (default %.2f: a single warning marks the level "
+                           "as clipping, and no probe goes that high again)") % CLIP_RATE_THRESHOLD)
+    ap.add_argument("--clip_step_db", type=float, default=CLIP_STEP_DB,
+                    help=T("once over-range has been reported, the search never raises the "
+                           "gain again and steps DOWN by this many dB per probe until the "
+                           "warnings stop (default %.2f)") % CLIP_STEP_DB)
     ap.add_argument("--volume_min", type=float, default=AUTO_VOLUME_MIN,
                     help=T("lowest gain the search may use (default %.2f)") % AUTO_VOLUME_MIN)
     ap.add_argument("--volume_max", type=float, default=AUTO_VOLUME_MAX,
@@ -3087,7 +3854,7 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--mm_args", default="",
                     help=T("extra multimon-ng arguments, e.g. '-A' (quoted)"))
     ap.add_argument("--list_audio", action="store_true",
-                    help=T("list ALSA playback devices and exit"))
+                    help=T("list the PipeWire outputs (sinks) and exit"))
     ap.add_argument("--gui", action="store_true",
                     help=T("open a graphical front-end: every flag in a form at the "
                            "top, and below it a split console (left: program output, "
@@ -3131,11 +3898,13 @@ def run_with_args(args: argparse.Namespace) -> int:
         return selftest()
 
     if args.list_audio:
-        if shutil.which("aplay") is None:
-            sys.stderr.write(T("aplay not found - install alsa-utils "
-                               "(Debian/Ubuntu: sudo apt install alsa-utils)\n"))
+        try:
+            sinks, default_name = pw_list_sinks()
+        except RuntimeError as exc:
+            sys.stderr.write("%s\n" % exc)
             return 2
-        return subprocess.call(["aplay", "-l"])
+        print_sink_list(sinks, default_name)
+        return 0
 
     if args.auto_volume_batch < 1:
         sys.stderr.write(T("--auto_volume_batch must be >= 1 (got %d)\n") % args.auto_volume_batch)
@@ -3155,14 +3924,47 @@ def run_with_args(args: argparse.Namespace) -> int:
         sys.stderr.write(T("--volume must be within [%g, %g] (got %g)\n") %
                          (args.volume_min, args.volume_max, args.volume))
         return 2
-    if not (0.0 < args.clip_rate <= 1.0):
-        sys.stderr.write(T("--clip_rate must be in (0, 1] (got %g)\n") % args.clip_rate)
+    if not (0.0 <= args.clip_rate < 1.0):
+        sys.stderr.write(T("--clip_rate must be in [0, 1) (got %g)\n") % args.clip_rate)
+        return 2
+    if not (0.0 < args.clip_step_db <= COARSE_STEP_DB):
+        sys.stderr.write(T("--clip_step_db must be > 0 and <= %g (got %g)\n") %
+                         (COARSE_STEP_DB, args.clip_step_db))
         return 2
     if args.match_window <= 0:
         sys.stderr.write(T("--match_window must be > 0 (got %g)\n") % args.match_window)
         return 2
+    if not (0.0 <= args.monitor_volume <= 1.0):
+        sys.stderr.write(T("--monitor_volume must be in [0, 1] (got %g)\n") %
+                         args.monitor_volume)
+        return 2
 
     check_tools(need_play=not args.no_play)
+
+    # Resolve both outputs to concrete PipeWire nodes BEFORE anything plays,
+    # so a typo is an error here and not audio sent to the wrong device.
+    route = None  # type: Optional[AudioRoute]
+    if not args.no_play:
+        try:
+            sinks, default_name = pw_list_sinks()
+            test_sink = resolve_sink(args.audio_device, sinks, default_name)
+            mon_sink = None
+            if args.monitor_device and args.monitor_device.strip():
+                mon_sink = resolve_sink(args.monitor_device, sinks, default_name)
+        except RuntimeError as exc:
+            sys.stderr.write("%s\n" % exc)
+            return 2
+        except ValueError as exc:
+            sys.stderr.write("%s\n\n" % exc)
+            print_sink_list(sinks, default_name)
+            return 2
+        if mon_sink is not None and mon_sink.name == test_sink.name:
+            sys.stderr.write(T("--monitor_device and --audio_device are the same PipeWire "
+                               "output (%s): the monitor stream would be mixed into the "
+                               "ESP32 signal\n") % test_sink.name)
+            return 2
+        route = AudioRoute(test=test_sink, monitor=mon_sink,
+                           monitor_volume=args.monitor_volume)
 
     if not os.path.isdir(args.wav_dir):
         sys.stderr.write(T("wav_dir not found: %s\n") % args.wav_dir)
@@ -3177,8 +3979,14 @@ def run_with_args(args: argparse.Namespace) -> int:
         print(T("DRY RUN (--no_play): only multimon-ng runs; serial port and sound "
                 "card are NOT used, so ESP32 results below are not meaningful."))
     else:
+        assert route is not None
         print(T("Serial: %s @ %d 8N1   Audio: %s") %
-              (args.serial_port, args.baud, args.audio_device or T("system default")))
+              (args.serial_port, args.baud, route.test.label()))
+        if route.monitor is not None:
+            print(T("Monitor: %s   (stream volume %.2f)") %
+                  (route.monitor.label(), route.monitor_volume))
+        else:
+            print(T("Monitor: none"))
     sys.stdout.flush()
 
     col = None  # type: Optional[SerialCollector]
@@ -3225,7 +4033,7 @@ def run_with_args(args: argparse.Namespace) -> int:
     offset_auto = not args.no_offset_auto
     if not args.no_play and not args.no_auto_volume:
         calibrator = VolumeSearch(
-            wavs, args.audio_device, args.tail, args.match_window, col,
+            wavs, route, args.tail, args.match_window, col,
             mm_extra, args.volume,
             batch_size=args.auto_volume_batch,
             max_rounds=args.auto_volume_max_rounds,
@@ -3235,14 +4043,16 @@ def run_with_args(args: argparse.Namespace) -> int:
             vol_max=args.volume_max,
             max_passes=args.max_passes,
             normalise=args.normalise,
-            offset_auto=offset_auto)
+            offset_auto=offset_auto,
+            clip_step_db=args.clip_step_db)
         try:
             final_volume = calibrator.run()
             offset_seed = calibrator.offset
         except KeyboardInterrupt:
-            print(T("\nAuto-volume calibration interrupted - "
-                    "proceeding with the volume found so far."))
-            final_volume = calibrator.volume
+            final_volume = calibrator.safe_volume()
+            print(T("\nAuto-volume calibration interrupted - proceeding with the best "
+                    "level known to be free of over-range so far: %.3f (%+.1f dB).") %
+                  (final_volume, to_db(final_volume)))
             offset_seed = calibrator.offset
 
     results = []  # type: List[FileResult]
@@ -3252,7 +4062,7 @@ def run_with_args(args: argparse.Namespace) -> int:
             sys.stdout.flush()
             res = FileResult(name=os.path.basename(wav))
             results.append(res)     # appended first: an interrupted file still counts
-            run_one_wav(res, wav, args.audio_device, final_volume, args.tail,
+            run_one_wav(res, wav, route, final_volume, args.tail,
                         args.match_window, col, mm_extra, args.no_play,
                         normalise=args.normalise, offset_auto=offset_auto,
                         offset_seed=offset_seed)
