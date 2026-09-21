@@ -3479,6 +3479,14 @@ def run_gui(ap: argparse.ArgumentParser, initial_values: Optional[dict] = None,
         st.configure("TScrollbar", arrowsize=int(round(14 * factor)),
                      width=int(round(14 * factor)))
         st.configure("TPanedwindow", sashthickness=int(round(6 * factor)))
+        # Entry/Combobox boxes (option values, --lang selector) default to
+        # asymmetric top/bottom padding on several ttk themes, which draws
+        # the text a few pixels above centre instead of centred in the box.
+        # An explicit, symmetric vertical padding fixes that at every zoom
+        # level; the horizontal padding matches the theme's usual look.
+        vpad = max(1, int(round(3 * factor)))
+        st.configure("TEntry", padding=(4, vpad, 4, vpad))
+        st.configure("TCombobox", padding=(4, vpad, 4, vpad))
         # Window size is derived from the ORIGINAL size, not from the current
         # one, so + then - (or Ctrl-0) lands exactly where it started instead
         # of drifting. It is capped to the screen, and so is minsize: at 300 %
@@ -3591,21 +3599,21 @@ def run_gui(ap: argparse.ArgumentParser, initial_values: Optional[dict] = None,
             default = "" if act.default is None else str(act.default)
             var = tk.StringVar(value=default)
             defaults[act.dest] = default
-            ttk.Label(cell, text=field_label(act)).pack(side="left")
+            ttk.Label(cell, text=field_label(act)).pack(side="left", anchor="center")
             if act.dest in ("audio_device", "monitor_device"):
                 ttk.Button(cell, text="\u21bb", width=3,
-                           command=refresh_sinks).pack(side="right", padx=(4, 0))
+                           command=refresh_sinks).pack(side="right", anchor="center", padx=(4, 0))
                 w = ttk.Combobox(cell, textvariable=var, width=18)
                 sink_boxes.append(w)
             else:
                 w = ttk.Entry(cell, textvariable=var, width=18)
-            w.pack(side="right", fill="x", expand=True, padx=(6, 0))
+            w.pack(side="right", fill="x", expand=True, anchor="center", padx=(6, 0))
             if act.dest == "wav_dir":
                 def browse(v=var):
                     d = filedialog.askdirectory(initialdir=v.get() or ".")
                     if d:
                         v.set(d)
-                ttk.Button(cell, text="...", width=3, command=browse).pack(side="right", padx=(4, 0))
+                ttk.Button(cell, text="...", width=3, command=browse).pack(side="right", anchor="center", padx=(4, 0))
         vars_[act.dest] = var
         attach_tip(w, flag_name(act) + ": " + helptxt)
 
@@ -3730,10 +3738,10 @@ def run_gui(ap: argparse.ArgumentParser, initial_values: Optional[dict] = None,
     lang_code = dict((v, k) for k, v in lang_show.items())
     lang_var = tk.StringVar(value=lang_show[current_language()])
     lbl_lang = ttk.Label(bar, text=T("Language:"))
-    lbl_lang.pack(side="left", padx=(14, 4))
+    lbl_lang.pack(side="left", anchor="center", padx=(14, 4))
     lang_box = ttk.Combobox(bar, textvariable=lang_var, state="readonly",
                             width=14, values=[lang_show[c] for c in LANGS])
-    lang_box.pack(side="left")
+    lang_box.pack(side="left", anchor="center")
     attach_tip(lang_box, T("Language of the messages, the help texts and this "
                            "window. The default is the system language, or "
                            "English when it is not one of the three."))
