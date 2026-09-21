@@ -12,7 +12,9 @@ For every .wav file in a directory the program:
   2. AT THE SAME TIME feeds the very same audio to multimon-ng (AFSK1200),
      which acts as the reference decoder;
   3. AT THE SAME TIME reads the ESP32 console log over the serial port
-     (8N1, 115200) and collects every "RX: <tnc2>" line it prints.
+     (8N1, 115200) and collects every "RX: <tnc2>" line it prints;
+  4. when Direwolf is installed, AT THE SAME TIME feeds the same audio to
+     Direwolf as well - a second, CRC-strict reference decoder (see below).
 
 At the end of each file (and globally) it cross-checks the two sources:
 every packet decoded by multimon-ng must have been decoded by the ESP32, with
@@ -21,11 +23,40 @@ correctly, percent decoded but with different content, and percent missing.
 Packets the ESP32 decoded that multimon-ng did not are reported as "extra"
 (not counted as errors: the ESP32 demodulator may simply be better).
 
+Direwolf, the second reference
+------------------------------
+multimon-ng stays exactly as it always was, so every number the bench
+reported before (the SUMMARY block, the per-file table, the exit code) is
+still computed the same way and old runs remain comparable. Direwolf is added
+NEXT TO it:
+
+  * it gets its own sox leg at --dw_rate (48 kHz by default), paced to real
+    time like the multimon-ng leg, and a generated receive-only config
+    (audio from stdin, no AGW, no PTT, KISS on one TCP port only);
+  * its frames are read from its KISS port, i.e. as exact AX.25 bytes, and
+    with FIX_BITS 0 (the default) it only reports frames whose FCS was valid;
+    the bench recomputes that FCS (CRC-16/X.25) and prints it as fcs=XXXX,
+    a stable identity for the frame across runs;
+  * every transmission is printed as ONE row with three cells,
+    multimon-ng / Direwolf / ESP32:  '=' same as the reference content,
+    'D' different payload, 'H' header corrupt, '-' not decoded, '?' only the
+    ESP32 saw it (unconfirmed by any CRC-checked reference - a possible false
+    positive, checked for APRS plausibility);
+  * a REFERENCE CONFLICT (multimon-ng and Direwolf disagree at the same
+    moment) is reported loudly: it points at the bench, not at the firmware;
+  * a REFERENCE COMPARISON block follows the usual summary: ESP32 decode rate
+    against multimon-ng, Direwolf and their union, with 95% intervals.
+
+--direwolf auto|on|off chooses whether it runs; --reference multimon (the
+default) | direwolf | union chooses which reference decides the exit code and
+the auto-volume score; --report_csv writes every row to a CSV file.
+
 Requirements
 ------------
   Python 3.7+ (uses dataclasses)
   pip install pyserial
   multimon-ng   (reference decoder)
+  direwolf      (optional second reference; sudo apt install direwolf)
   sox           (audio conversion / resampling / gain)
   PipeWire      running, plus its command-line tools pw-cat and pw-dump
                 (Debian/Ubuntu: sudo apt install pipewire-bin)
@@ -38,6 +69,8 @@ Usage
   ./test_aprs_wavs.py --audio_device alsa_output.usb-C-Media_USB_Audio-00.analog-stereo \
                       --monitor_device "Headphones"   # ESP32 card + listen on headphones
   ./test_aprs_wavs.py --lang es                # everything in Spanish
+  ./test_aprs_wavs.py --no_play --direwolf on  # compare the two references, no hardware
+  ./test_aprs_wavs.py --reference direwolf --report_csv run.csv
 
 Languages
 ---------
@@ -68,11 +101,14 @@ NOT DECODED verdicts that are bench artefacts, not firmware faults.
 """
 
 import argparse
+import collections
+import csv
 import json
 import math
 import os
 import re
 import shutil
+import socket
 import subprocess
 import sys
 import threading
@@ -571,6 +607,169 @@ _CATALOG = {
             "serie",
         "sox could not render %s (rc=%s): %s":
             "sox no pudo generar %s (rc=%s): %s",
+        # Direwolf (second reference decoder)
+        "no free TCP port found for Direwolf's KISS server":
+            'no se encontró un puerto TCP libre para el servidor KISS de Direwolf',
+        '%s: %d of %d  (%.2f%%, 95%% CI %.1f..%.1f%%)':
+            '%s: %d de %d  (%.2f%%, IC 95%% %.1f..%.1f%%)',
+        'REFERENCE COMPARISON (Direwolf)':
+            'COMPARACIÓN DE REFERENCIAS (Direwolf)',
+        'Direwolf: KISS, AX.25 and FCS':
+            'Direwolf: KISS, AX.25 y FCS',
+        "CRC-16/X.25 check value of '123456789' is 0x906E":
+            "el valor de verificación CRC-16/X.25 de '123456789' es 0x906E",
+        'a frame followed by its FCS leaves the X.25 residue 0x0F47':
+            'una trama seguida de su FCS deja el residuo X.25 0x0F47',
+        "AX.25 address field: SSID, path and the H bit ('*') decode":
+            "campo de direcciones AX.25: se decodifican el SSID, la ruta y el bit H ('*')",
+        'KISS: escapes, split reads, garbage and empty frames':
+            'KISS: escapes, lecturas partidas, basura y tramas vacías',
+        'malformed address field and non-APRS frames are rejected':
+            'se rechazan los campos de dirección mal formados y las tramas que no son APRS',
+        'the same frame from Direwolf, multimon-ng and the ESP32 compares equal':
+            'la misma trama de Direwolf, multimon-ng y el ESP32 se compara como igual',
+        'APRS plausibility: a real position passes, noise fails':
+            'verosimilitud APRS: una posición real pasa, el ruido no',
+        'an automatic KISS port is inside the range Direwolf accepts':
+            'un puerto KISS automático está dentro del rango que acepta Direwolf',
+        'Direwolf config: receive only, CRC-strict, KISS on one port only':
+            'configuración de Direwolf: sólo recepción, CRC estricto, KISS en un único puerto',
+        'ClusterMatcher (three columns)':
+            'ClusterMatcher (tres columnas)',
+        'Direwolf and ESP32 latency skews are learned independently':
+            'los desfasajes de latencia de Direwolf y del ESP32 se aprenden por separado',
+        'ClusterMatcher agrees with LiveMatcher on multimon-ng vs ESP32':
+            'ClusterMatcher coincide con LiveMatcher en multimon-ng vs ESP32',
+        'statistics: conflicts are not scored, ESP32-only frames are never successes':
+            'estadística: los conflictos no se puntúan y las tramas sólo del ESP32 nunca son aciertos',
+        'the multimon-ng reference counts packets exactly as before':
+            'la referencia multimon-ng cuenta los paquetes exactamente como antes',
+        '  References: both %d   mm-only %d   dw-only %d   conflicts %d':
+            '  Referencias: ambas %d   sólo mm %d   sólo dw %d   conflictos %d',
+        '  Direwolf %s, %d Hz, modem profile %s, FIX_BITS %d':
+            '  Direwolf %s, %d Hz, perfil de módem %s, FIX_BITS %d',
+        '  Reference for the exit code       : %s':
+            '  Referencia del código de salida   : %s',
+        '  Packets multimon-ng / Direwolf    : %d / %d':
+            '  Paquetes multimon-ng / Direwolf   : %d / %d',
+        '  Union / both references           : %d / %d':
+            '  Unión / ambas referencias         : %d / %d',
+        '  multimon-ng only / Direwolf only  : %d / %d':
+            '  Sólo multimon-ng / sólo Direwolf  : %d / %d',
+        '  Reference conflicts               : %d':
+            '  Conflictos entre referencias      : %d',
+        'RESULT: the selected reference decoded no packets - nothing to compare.':
+            'RESULTADO: la referencia elegida no decodificó ningún paquete; no hay nada que comparar.',
+        'Direwolf as a second reference decoder: auto (use it when it is installed), on (required), off (legacy two-column bench). Default: auto':
+            'Direwolf como segundo decodificador de referencia: auto (se usa si está instalado), on (obligatorio), off (banco clásico de dos columnas). Por omisión: auto',
+        'reference that decides the exit code and the auto-volume score: multimon (legacy, default), direwolf, or union (a packet either reference decoded)':
+            'referencia que decide el código de salida y el puntaje del volumen automático: multimon (clásica, por omisión), direwolf o union (un paquete que decodificó cualquiera de las dos)',
+        "Direwolf modem profile appended to 'MODEM 1200', e.g. 'A+' or 'E+' (default: Direwolf's own default)":
+            "perfil de módem de Direwolf que se agrega a 'MODEM 1200', por ej. 'A+' o 'E+' (por omisión: el propio de Direwolf)",
+        "TCP port of Direwolf's KISS server, 1024..49151 (default 0: pick a free port for every file)":
+            'puerto TCP del servidor KISS de Direwolf, 1024..49151 (por omisión 0: se elige un puerto libre para cada archivo)',
+        "extra Direwolf arguments, e.g. '-P E+' (quoted)":
+            "argumentos extra para Direwolf, por ej. '-P E+' (entre comillas)",
+        'write every multimon-ng / Direwolf / ESP32 row to this CSV file (needs Direwolf)':
+            'escribir cada fila multimon-ng / Direwolf / ESP32 en este archivo CSV (necesita Direwolf)',
+        'NOTE: --report_csv needs Direwolf; no CSV will be written\n':
+            'NOTA: --report_csv necesita Direwolf; no se va a escribir ningún CSV\n',
+        '! REFERENCE CONFLICT - multimon-ng and Direwolf disagree; check normalisation':
+            '! CONFLICTO DE REFERENCIAS - multimon-ng y Direwolf no coinciden; revisá la normalización',
+        '! only multimon-ng decoded it (Direwolf did not)':
+            '! sólo lo decodificó multimon-ng (Direwolf no)',
+        '! ESP32 NOT DECODED':
+            '! NO DECODIFICADO por el ESP32',
+        '  Direwolf decoded %d packet(s)   (CRC-strict, FIX_BITS=0)':
+            '  Direwolf decodificó %d paquete(s)   (CRC estricto, FIX_BITS=0)',
+        '  Direwolf decoded %d packet(s)   (NOT CRC-strict, FIX_BITS=%d)':
+            '  Direwolf decodificó %d paquete(s)   (CRC NO estricto, FIX_BITS=%d)',
+        '  ESP32 vs Direwolf : OK %d  DIFFERENT %d  HDR-CORRUPT %d  NOT DECODED %d':
+            '  ESP32 vs Direwolf : OK %d  DISTINTOS %d  ENC-CORRUPTO %d  NO DECODIFICADOS %d',
+        '  ESP32-only (unconfirmed): %d   of which implausible: %d':
+            '  Sólo ESP32 (sin confirmar): %d   de ellos inverosímiles: %d',
+        '  -> measured Direwolf latency vs multimon-ng: %+.2f s':
+            '  -> latencia medida de Direwolf respecto de multimon-ng: %+.2f s',
+        '  WARNING: Direwolf is NOT a strict CRC reference: FIX_BITS=%d':
+            '  ATENCIÓN: Direwolf NO es una referencia de CRC estricta: FIX_BITS=%d',
+        'union':
+            'unión',
+        '  ESP32 correct vs multimon-ng      ':
+            '  ESP32 correcto vs multimon-ng     ',
+        '  ESP32 correct vs Direwolf         ':
+            '  ESP32 correcto vs Direwolf        ',
+        '  ESP32 correct vs union            ':
+            '  ESP32 correcto vs unión           ',
+        '  ESP32-only, unconfirmed           : %d  (implausible: %d)':
+            '  Sólo ESP32, sin confirmar         : %d  (inverosímiles: %d)',
+        '  Direwolf latency vs multimon-ng   : %+.2f s (median of %d file(s))':
+            '  Latencia de Direwolf vs multimon-ng: %+.2f s (mediana de %d archivo(s))',
+        'row: %s':
+            'fila: %s',
+        'Direwolf, when installed, runs as a second, CRC-strict reference and the report shows multimon-ng / Direwolf / ESP32 for every packet.':
+            'Direwolf, si está instalado, funciona como segunda referencia con CRC estricto y el informe muestra multimon-ng / Direwolf / ESP32 para cada paquete.',
+        'sample rate of the audio fed to Direwolf (default %d)':
+            'frecuencia de muestreo del audio que recibe Direwolf (por omisión %d)',
+        'Direwolf FIX_BITS (default %d). Anything above 0 lets Direwolf repair frames with a bad CRC, so it stops being a strict reference.':
+            'FIX_BITS de Direwolf (por omisión %d). Cualquier valor mayor que 0 le permite reparar tramas con CRC incorrecto, así que deja de ser una referencia estricta.',
+        "seconds to wait for Direwolf's KISS port to open (default %.1f)":
+            'segundos de espera hasta que se abra el puerto KISS de Direwolf (por omisión %.1f)',
+        '--dw_rate must be >= 8000 (got %d)\n':
+            '--dw_rate debe ser >= 8000 (se recibió %d)\n',
+        '--dw_fix_bits must be in [0, %d] (got %d)\n':
+            '--dw_fix_bits debe estar en [0, %d] (se recibió %d)\n',
+        '--dw_kiss_port must be 0 or in [%d, %d] (got %d)\n':
+            '--dw_kiss_port debe ser 0 o estar en [%d, %d] (se recibió %d)\n',
+        '--dw_start_timeout must be > 0 (got %g)\n':
+            '--dw_start_timeout debe ser > 0 (se recibió %g)\n',
+        '--reference %s needs Direwolf, but --direwolf is off\n':
+            '--reference %s necesita Direwolf, pero --direwolf está en off\n',
+        '--reference %s needs Direwolf, which is not available\n':
+            '--reference %s necesita Direwolf, que no está disponible\n',
+        'Direwolf: %d Hz, modem profile %s, FIX_BITS %d, KISS port %s, reference for the exit code: %s':
+            'Direwolf: %d Hz, perfil de módem %s, FIX_BITS %d, puerto KISS %s, referencia del código de salida: %s',
+        '\nDirewolf failed - reporting what has been tested so far.':
+            '\nFalló Direwolf: se informa lo probado hasta ahora.',
+        '! ESP32 ONLY - unconfirmed by any CRC-checked reference (plausible: %s)':
+            '! SÓLO ESP32 - no lo confirmó ninguna referencia con CRC verificado (verosímil: %s)',
+        '! multimon-ng did not decode it (Direwolf did)':
+            '! multimon-ng no lo decodificó (Direwolf sí)',
+        '(default)':
+            '(por omisión)',
+        'Total packets: %d   |   multimon-ng: %d   |   Direwolf: %d   |   ESP32 decoded: %d   |   ESP32 missed: %d of %d (%s)   |   conflicts: %d   |   ESP32-only: %d':
+            'Paquetes totales: %d   |   multimon-ng: %d   |   Direwolf: %d   |   ESP32 decodificados: %d   |   ESP32 perdidos: %d de %d (%s)   |   conflictos: %d   |   sólo ESP32: %d',
+        '--direwolf on, but the direwolf program was not found.  Debian/Ubuntu: sudo apt install direwolf\n':
+            '--direwolf on, pero no se encontró el programa direwolf.  Debian/Ubuntu: sudo apt install direwolf\n',
+        'NOTE: direwolf not found - running with multimon-ng as the only reference (install it for the three-column report: sudo apt install direwolf)\n':
+            'NOTA: no se encontró direwolf; se corre con multimon-ng como única referencia (instalalo para el informe de tres columnas: sudo apt install direwolf)\n',
+        '  Direwolf runs too: the two references are compared, both fed at %.0fx real time.':
+            '  También corre Direwolf: se comparan las dos referencias, ambas alimentadas a %.0fx tiempo real.',
+        'CSV report: %d row(s) written to %s':
+            'Informe CSV: %d fila(s) escrita(s) en %s',
+        'DRY RUN: Direwolf decoded %d packet(s).':
+            'PASADA EN SECO: Direwolf decodificó %d paquete(s).',
+        'Cannot start Direwolf: %s':
+            'No se puede iniciar Direwolf: %s',
+        'Direwolf exited during start-up (rc=%s): %s':
+            'Direwolf terminó durante el arranque (rc=%s): %s',
+        "Direwolf's KISS port %d did not open within %.1f s (raise --dw_start_timeout): %s":
+            'el puerto KISS %d de Direwolf no se abrió en %.1f s (aumentá --dw_start_timeout): %s',
+        'yes':
+            'sí',
+        'NO':
+            'NO',
+        '! ESP32 DECODED BUT DIFFERENT':
+            '! DECODIFICADO POR EL ESP32 PERO DISTINTO',
+        '! ESP32 PAYLOAD OK BUT HEADER CORRUPT':
+            '! PAYLOAD DEL ESP32 CORRECTO PERO ENCABEZADO CORRUPTO',
+        'auto':
+            'auto',
+        'Cannot write the CSV report %s: %s\n':
+            'No se puede escribir el informe CSV %s: %s\n',
+        '\n[dw] Direwolf did not exit within %.0f s after the end of the audio - killing it\n':
+            '\n[dw] Direwolf no terminó %.0f s después del final del audio: se lo mata\n',
+        '       [progress %s / %s] multimon=%d  direwolf=%d  ok=%d  not-decoded=%d  different=%d  (serial lines seen: %d)':
+            '       [avance %s / %s] multimon=%d  direwolf=%d  ok=%d  no-decodificados=%d  distintos=%d  (líneas de serie vistas: %d)',
     },
     "it": {
         "SUMMARY": "RIEPILOGO",
@@ -935,6 +1134,169 @@ _CATALOG = {
             "seriale",
         "sox could not render %s (rc=%s): %s":
             "sox non è riuscito a generare %s (rc=%s): %s",
+        # Direwolf (second reference decoder)
+        "no free TCP port found for Direwolf's KISS server":
+            'nessuna porta TCP libera trovata per il server KISS di Direwolf',
+        '%s: %d of %d  (%.2f%%, 95%% CI %.1f..%.1f%%)':
+            '%s: %d su %d  (%.2f%%, IC 95%% %.1f..%.1f%%)',
+        'REFERENCE COMPARISON (Direwolf)':
+            'CONFRONTO DEI RIFERIMENTI (Direwolf)',
+        'Direwolf: KISS, AX.25 and FCS':
+            'Direwolf: KISS, AX.25 e FCS',
+        "CRC-16/X.25 check value of '123456789' is 0x906E":
+            "il valore di verifica CRC-16/X.25 di '123456789' è 0x906E",
+        'a frame followed by its FCS leaves the X.25 residue 0x0F47':
+            'una trama seguita dal suo FCS lascia il residuo X.25 0x0F47',
+        "AX.25 address field: SSID, path and the H bit ('*') decode":
+            "campo indirizzi AX.25: vengono decodificati SSID, percorso e bit H ('*')",
+        'KISS: escapes, split reads, garbage and empty frames':
+            'KISS: escape, letture spezzate, dati spuri e trame vuote',
+        'malformed address field and non-APRS frames are rejected':
+            'i campi indirizzo malformati e le trame non APRS vengono scartati',
+        'the same frame from Direwolf, multimon-ng and the ESP32 compares equal':
+            "la stessa trama da Direwolf, multimon-ng e l'ESP32 risulta uguale",
+        'APRS plausibility: a real position passes, noise fails':
+            'plausibilità APRS: una posizione reale passa, il rumore no',
+        'an automatic KISS port is inside the range Direwolf accepts':
+            "una porta KISS automatica è nell'intervallo accettato da Direwolf",
+        'Direwolf config: receive only, CRC-strict, KISS on one port only':
+            'configurazione di Direwolf: solo ricezione, CRC rigoroso, KISS su una sola porta',
+        'ClusterMatcher (three columns)':
+            'ClusterMatcher (tre colonne)',
+        'Direwolf and ESP32 latency skews are learned independently':
+            "gli scarti di latenza di Direwolf e dell'ESP32 vengono appresi separatamente",
+        'ClusterMatcher agrees with LiveMatcher on multimon-ng vs ESP32':
+            'ClusterMatcher concorda con LiveMatcher su multimon-ng vs ESP32',
+        'statistics: conflicts are not scored, ESP32-only frames are never successes':
+            "statistica: i conflitti non vengono valutati e le trame solo dell'ESP32 non sono mai successi",
+        'the multimon-ng reference counts packets exactly as before':
+            'il riferimento multimon-ng conta i pacchetti esattamente come prima',
+        '  References: both %d   mm-only %d   dw-only %d   conflicts %d':
+            '  Riferimenti: entrambi %d   solo mm %d   solo dw %d   conflitti %d',
+        '  Direwolf %s, %d Hz, modem profile %s, FIX_BITS %d':
+            '  Direwolf %s, %d Hz, profilo modem %s, FIX_BITS %d',
+        '  Reference for the exit code       : %s':
+            "  Riferimento del codice d'uscita   : %s",
+        '  Packets multimon-ng / Direwolf    : %d / %d':
+            '  Pacchetti multimon-ng / Direwolf  : %d / %d',
+        '  Union / both references           : %d / %d':
+            '  Unione / entrambi i riferimenti   : %d / %d',
+        '  multimon-ng only / Direwolf only  : %d / %d':
+            '  Solo multimon-ng / solo Direwolf  : %d / %d',
+        '  Reference conflicts               : %d':
+            '  Conflitti tra riferimenti         : %d',
+        'RESULT: the selected reference decoded no packets - nothing to compare.':
+            "RISULTATO: il riferimento scelto non ha decodificato alcun pacchetto; non c'è nulla da confrontare.",
+        'Direwolf as a second reference decoder: auto (use it when it is installed), on (required), off (legacy two-column bench). Default: auto':
+            'Direwolf come secondo decodificatore di riferimento: auto (usato se installato), on (obbligatorio), off (banco classico a due colonne). Predefinito: auto',
+        'reference that decides the exit code and the auto-volume score: multimon (legacy, default), direwolf, or union (a packet either reference decoded)':
+            "riferimento che decide il codice d'uscita e il punteggio del volume automatico: multimon (classico, predefinito), direwolf o union (un pacchetto decodificato da uno qualsiasi dei due)",
+        "Direwolf modem profile appended to 'MODEM 1200', e.g. 'A+' or 'E+' (default: Direwolf's own default)":
+            "profilo modem di Direwolf aggiunto a 'MODEM 1200', ad es. 'A+' o 'E+' (predefinito: quello di Direwolf)",
+        "TCP port of Direwolf's KISS server, 1024..49151 (default 0: pick a free port for every file)":
+            'porta TCP del server KISS di Direwolf, 1024..49151 (predefinito 0: viene scelta una porta libera per ogni file)',
+        "extra Direwolf arguments, e.g. '-P E+' (quoted)":
+            "argomenti extra per Direwolf, ad es. '-P E+' (tra virgolette)",
+        'write every multimon-ng / Direwolf / ESP32 row to this CSV file (needs Direwolf)':
+            'scrive ogni riga multimon-ng / Direwolf / ESP32 in questo file CSV (richiede Direwolf)',
+        'NOTE: --report_csv needs Direwolf; no CSV will be written\n':
+            'NOTA: --report_csv richiede Direwolf; non verrà scritto alcun CSV\n',
+        '! REFERENCE CONFLICT - multimon-ng and Direwolf disagree; check normalisation':
+            '! CONFLITTO DI RIFERIMENTI - multimon-ng e Direwolf non concordano; controlla la normalizzazione',
+        '! only multimon-ng decoded it (Direwolf did not)':
+            '! lo ha decodificato solo multimon-ng (Direwolf no)',
+        '! ESP32 NOT DECODED':
+            "! NON DECODIFICATO dall'ESP32",
+        '  Direwolf decoded %d packet(s)   (CRC-strict, FIX_BITS=0)':
+            '  Direwolf ha decodificato %d pacchetto/i   (CRC rigoroso, FIX_BITS=0)',
+        '  Direwolf decoded %d packet(s)   (NOT CRC-strict, FIX_BITS=%d)':
+            '  Direwolf ha decodificato %d pacchetto/i   (CRC NON rigoroso, FIX_BITS=%d)',
+        '  ESP32 vs Direwolf : OK %d  DIFFERENT %d  HDR-CORRUPT %d  NOT DECODED %d':
+            '  ESP32 vs Direwolf : OK %d  DIVERSI %d  INTEST-CORROTTA %d  NON DECODIFICATI %d',
+        '  ESP32-only (unconfirmed): %d   of which implausible: %d':
+            '  Solo ESP32 (non confermati): %d   di cui non plausibili: %d',
+        '  -> measured Direwolf latency vs multimon-ng: %+.2f s':
+            '  -> latenza misurata di Direwolf rispetto a multimon-ng: %+.2f s',
+        '  WARNING: Direwolf is NOT a strict CRC reference: FIX_BITS=%d':
+            '  ATTENZIONE: Direwolf NON è un riferimento CRC rigoroso: FIX_BITS=%d',
+        'union':
+            'unione',
+        '  ESP32 correct vs multimon-ng      ':
+            '  ESP32 corretto vs multimon-ng     ',
+        '  ESP32 correct vs Direwolf         ':
+            '  ESP32 corretto vs Direwolf        ',
+        '  ESP32 correct vs union            ':
+            '  ESP32 corretto vs unione          ',
+        '  ESP32-only, unconfirmed           : %d  (implausible: %d)':
+            '  Solo ESP32, non confermati        : %d  (non plausibili: %d)',
+        '  Direwolf latency vs multimon-ng   : %+.2f s (median of %d file(s))':
+            '  Latenza Direwolf vs multimon-ng   : %+.2f s (mediana di %d file)',
+        'row: %s':
+            'riga: %s',
+        'Direwolf, when installed, runs as a second, CRC-strict reference and the report shows multimon-ng / Direwolf / ESP32 for every packet.':
+            'Direwolf, se installato, funge da secondo riferimento con CRC rigoroso e il rapporto mostra multimon-ng / Direwolf / ESP32 per ogni pacchetto.',
+        'sample rate of the audio fed to Direwolf (default %d)':
+            "frequenza di campionamento dell'audio inviato a Direwolf (predefinito %d)",
+        'Direwolf FIX_BITS (default %d). Anything above 0 lets Direwolf repair frames with a bad CRC, so it stops being a strict reference.':
+            'FIX_BITS di Direwolf (predefinito %d). Qualsiasi valore sopra 0 gli permette di riparare trame con CRC errato, quindi smette di essere un riferimento rigoroso.',
+        "seconds to wait for Direwolf's KISS port to open (default %.1f)":
+            "secondi di attesa per l'apertura della porta KISS di Direwolf (predefinito %.1f)",
+        '--dw_rate must be >= 8000 (got %d)\n':
+            '--dw_rate deve essere >= 8000 (ricevuto %d)\n',
+        '--dw_fix_bits must be in [0, %d] (got %d)\n':
+            '--dw_fix_bits deve essere in [0, %d] (ricevuto %d)\n',
+        '--dw_kiss_port must be 0 or in [%d, %d] (got %d)\n':
+            '--dw_kiss_port deve essere 0 o in [%d, %d] (ricevuto %d)\n',
+        '--dw_start_timeout must be > 0 (got %g)\n':
+            '--dw_start_timeout deve essere > 0 (ricevuto %g)\n',
+        '--reference %s needs Direwolf, but --direwolf is off\n':
+            '--reference %s richiede Direwolf, ma --direwolf è off\n',
+        '--reference %s needs Direwolf, which is not available\n':
+            '--reference %s richiede Direwolf, che non è disponibile\n',
+        'Direwolf: %d Hz, modem profile %s, FIX_BITS %d, KISS port %s, reference for the exit code: %s':
+            "Direwolf: %d Hz, profilo modem %s, FIX_BITS %d, porta KISS %s, riferimento per il codice d'uscita: %s",
+        '\nDirewolf failed - reporting what has been tested so far.':
+            '\nDirewolf ha fallito: viene riportato quanto testato finora.',
+        '! ESP32 ONLY - unconfirmed by any CRC-checked reference (plausible: %s)':
+            '! SOLO ESP32 - non confermato da alcun riferimento con CRC verificato (plausibile: %s)',
+        '! multimon-ng did not decode it (Direwolf did)':
+            "! multimon-ng non l'ha decodificato (Direwolf sì)",
+        '(default)':
+            '(predefinito)',
+        'Total packets: %d   |   multimon-ng: %d   |   Direwolf: %d   |   ESP32 decoded: %d   |   ESP32 missed: %d of %d (%s)   |   conflicts: %d   |   ESP32-only: %d':
+            'Pacchetti totali: %d   |   multimon-ng: %d   |   Direwolf: %d   |   ESP32 decodificati: %d   |   ESP32 persi: %d su %d (%s)   |   conflitti: %d   |   solo ESP32: %d',
+        '--direwolf on, but the direwolf program was not found.  Debian/Ubuntu: sudo apt install direwolf\n':
+            '--direwolf on, ma il programma direwolf non è stato trovato.  Debian/Ubuntu: sudo apt install direwolf\n',
+        'NOTE: direwolf not found - running with multimon-ng as the only reference (install it for the three-column report: sudo apt install direwolf)\n':
+            'NOTA: direwolf non trovato; si esegue con multimon-ng come unico riferimento (installalo per il rapporto a tre colonne: sudo apt install direwolf)\n',
+        '  Direwolf runs too: the two references are compared, both fed at %.0fx real time.':
+            '  Gira anche Direwolf: i due riferimenti vengono confrontati, entrambi alimentati a %.0fx il tempo reale.',
+        'CSV report: %d row(s) written to %s':
+            'Rapporto CSV: %d riga/righe scritte in %s',
+        'DRY RUN: Direwolf decoded %d packet(s).':
+            'PROVA A VUOTO: Direwolf ha decodificato %d pacchetto/i.',
+        'Cannot start Direwolf: %s':
+            'Impossibile avviare Direwolf: %s',
+        'Direwolf exited during start-up (rc=%s): %s':
+            "Direwolf è uscito durante l'avvio (rc=%s): %s",
+        "Direwolf's KISS port %d did not open within %.1f s (raise --dw_start_timeout): %s":
+            'la porta KISS %d di Direwolf non si è aperta entro %.1f s (aumenta --dw_start_timeout): %s',
+        'yes':
+            'sì',
+        'NO':
+            'NO',
+        '! ESP32 DECODED BUT DIFFERENT':
+            "! DECODIFICATO DALL'ESP32 MA DIVERSO",
+        '! ESP32 PAYLOAD OK BUT HEADER CORRUPT':
+            "! PAYLOAD DELL'ESP32 OK MA INTESTAZIONE CORROTTA",
+        'auto':
+            'auto',
+        'Cannot write the CSV report %s: %s\n':
+            'Impossibile scrivere il rapporto CSV %s: %s\n',
+        '\n[dw] Direwolf did not exit within %.0f s after the end of the audio - killing it\n':
+            "\n[dw] Direwolf non è uscito entro %.0f s dalla fine dell'audio: viene terminato\n",
+        '       [progress %s / %s] multimon=%d  direwolf=%d  ok=%d  not-decoded=%d  different=%d  (serial lines seen: %d)':
+            '       [avanzamento %s / %s] multimon=%d  direwolf=%d  ok=%d  non-decodificati=%d  diversi=%d  (righe seriali viste: %d)',
     },
 }
 
@@ -1007,6 +1369,36 @@ OFFSET_MAX_SECONDS = 3.0
 MM_HDR_RE = re.compile(
     r"^AFSK1200: fm (?P<src>\S+) to (?P<dst>\S+)(?: via (?P<via>\S+))?\s+(?P<ctl>UI\S*)\s+pid=(?P<pid>[0-9A-Fa-f]{2})"
 )
+
+# --------------------------------------------------------------------------
+# Direwolf (second, CRC-strict reference decoder)
+# --------------------------------------------------------------------------
+
+DW_RATE = 48000               # Direwolf's demodulators are tuned for 44.1/48 kHz
+DW_FIX_BITS = 0               # 0 = only frames with a valid FCS are reported
+DW_FIX_BITS_MAX = 5           # highest FIX_BITS value accepted by --dw_fix_bits
+DW_START_TIMEOUT = 5.0        # seconds to wait for Direwolf's KISS port
+DW_EXIT_TIMEOUT = 10.0        # seconds Direwolf may take to exit after stdin EOF
+DW_LOG_LINES = 200            # Direwolf console lines kept for error messages
+# In a --no_play dry run with Direwolf the two reference legs are paced to
+# this many times real time on a common clock: fed flat out, each decoder
+# would print at its own speed and the timestamps could not be compared.
+DRY_RUN_SPEED = 4.0
+
+REFERENCES = ("multimon", "direwolf", "union")
+DW_MODES = ("auto", "on", "off")
+
+# Cell symbols of the three-column report.
+CELL_OK, CELL_DIFF, CELL_HDR, CELL_NONE, CELL_UNCONF = "=", "D", "H", "-", "?"
+# Row classes of the three-column report.
+ROW_ALL = "ALL"
+ROW_ESP_MISS = "ESP_MISS"
+ROW_ESP_DIFF = "ESP_DIFF"
+ROW_ESP_HDR = "ESP_HDR"
+ROW_MM_ONLY = "MM_ONLY_REF"
+ROW_DW_ONLY = "DW_ONLY_REF"
+ROW_CONFLICT = "REF_CONFLICT"
+ROW_ESP_ONLY = "ESP_ONLY"
 
 # --------------------------------------------------------------------------
 # Live output
@@ -1089,6 +1481,10 @@ def request_stop() -> None:
 #   esp       = ok + different + hdr-corrupt + extra (ESP32 produced a frame)
 #   missed    = multimon packets the ESP32 did NOT decode
 #   missed %  = missed / total, i.e. over every packet either decoder heard.
+# With Direwolf also running:
+#   dw        = packets Direwolf decoded
+#   conflict  = rows where multimon-ng and Direwolf disagree (REF_CONFLICT)
+#   esp_only  = rows only the ESP32 decoded (unconfirmed)
 
 class LiveStats:
     def __init__(self) -> None:
@@ -1099,19 +1495,30 @@ class LiveStats:
         with self._lock:
             self.phase = phase
             self.mm = self.ok = self.diff = self.missing = self.extra = 0
+            self.dw = self.conflict = self.esp_only = 0
+            self.dw_active = getattr(self, "dw_active", False)
             self.file_n = self.file_total = 0
             self.file_name = ""
             self.file_duration = self.file_elapsed = 0.0
             self.gen = getattr(self, "gen", 0) + 1
 
     def add(self, mm: int = 0, ok: int = 0, diff: int = 0,
-            missing: int = 0, extra: int = 0) -> None:
+            missing: int = 0, extra: int = 0, dw: int = 0,
+            conflict: int = 0, esp_only: int = 0) -> None:
         with self._lock:
+            self.dw += dw
+            self.conflict += conflict
+            self.esp_only += esp_only
             self.mm = max(0, self.mm + mm)
             self.ok += ok
             self.diff += diff
             self.missing += missing
             self.extra += extra
+            self.gen += 1
+
+    def set_dw_active(self, active: bool) -> None:
+        with self._lock:
+            self.dw_active = active
             self.gen += 1
 
     def set_file(self, n: int, total: int, name: str) -> None:
@@ -1152,7 +1559,9 @@ class LiveStats:
                     "file_n": self.file_n, "file_total": self.file_total,
                     "file_name": self.file_name,
                     "file_duration": self.file_duration,
-                    "file_elapsed": self.file_elapsed}
+                    "file_elapsed": self.file_elapsed,
+                    "dw_active": self.dw_active, "dw": self.dw,
+                    "conflict": self.conflict, "esp_only": self.esp_only}
 
 
 _LIVE_STATS = LiveStats()
@@ -1224,9 +1633,28 @@ class Packet:
     path: Tuple[str, ...]
     info: bytes
     raw: str = ""          # original text, for printing
+    # FCS of the frame as it was on the air (CRC-16/X.25), when the source
+    # gives exact bytes (Direwolf over KISS). Never part of comparisons.
+    fcs: Optional[int] = field(default=None, compare=False)
 
     def key_header(self) -> str:
         return "%s>%s,%s" % (self.src, self.dst, ",".join(self.path))
+
+    def same_content(self, other: "Packet") -> bool:
+        return self.key_header() == other.key_header() and self.info == other.info
+
+
+@dataclass
+class Row:
+    """One physical transmission as seen by the three decoders: the unit of
+    the three-column (multimon-ng / Direwolf / ESP32) report."""
+    idx: int
+    t: float                       # anchor time (multimon-ng clock), monotonic s
+    members: dict                  # source -> (arrival time, Packet)
+    cells: dict                    # source -> CELL_* symbol
+    cls: str                       # ROW_* class
+    consensus: Packet              # the content the row is judged against
+    fcs: Optional[int] = None      # on-air FCS, when Direwolf has the frame
 
 
 @dataclass
@@ -1244,6 +1672,11 @@ class FileResult:
     corrupt: List[Tuple[Packet, Packet]] = field(default_factory=list)
     duration: float = 0.0
     offset: float = 0.0        # measured ESP32 - multimon-ng latency skew, seconds
+    # Direwolf (three-column mode only; empty / zero otherwise).
+    dw_packets: List[Packet] = field(default_factory=list)
+    rows: List[Row] = field(default_factory=list)
+    dw_offset: float = 0.0     # measured Direwolf - multimon-ng latency skew, seconds
+    t0: float = 0.0            # monotonic start of this file's timing window
 
 
 # --------------------------------------------------------------------------
@@ -1369,6 +1802,260 @@ class MultimonParser:
             h.group("src"), h.group("dst"),
             ("," + ",".join(path)) if path else "", line)
         return make_packet(h.group("src"), h.group("dst"), path, info, raw)
+
+
+# --------------------------------------------------------------------------
+# Direwolf: KISS, AX.25, FCS and plausibility (pure functions)
+# --------------------------------------------------------------------------
+#
+# Direwolf is the second reference decoder. It hears the same audio as
+# multimon-ng, but its frames are taken from its KISS TCP port, which gives
+# the exact AX.25 bytes: no pretty-printing to undo, no escaped characters,
+# and - with FIX_BITS 0 - only frames whose FCS was valid on the air.
+
+KISS_FEND, KISS_FESC, KISS_TFEND, KISS_TFESC = 0xC0, 0xDB, 0xDC, 0xDD
+KISS_MAX_FRAME = 4096          # runaway guard: longer than any AX.25 frame
+
+
+class KissDeframer:
+    """Turns a KISS byte stream (as read from TCP, in arbitrary pieces) into
+    complete frames: (port, command, payload). Handles FESC escapes, frames
+    split across reads, back-to-back FENDs and garbage before the first FEND."""
+
+    def __init__(self) -> None:
+        self._buf = bytearray()
+        self._in = False
+        self._esc = False
+
+    def feed(self, data: bytes) -> List[Tuple[int, int, bytes]]:
+        out = []  # type: List[Tuple[int, int, bytes]]
+        for b in bytearray(data):
+            if b == KISS_FEND:
+                if self._in and self._buf:
+                    first = self._buf[0]
+                    out.append((first >> 4, first & 0x0F, bytes(self._buf[1:])))
+                self._buf = bytearray()
+                self._in = True
+                self._esc = False
+                continue
+            if not self._in:
+                continue                      # garbage before the first FEND
+            if self._esc:
+                self._esc = False
+                if b == KISS_TFEND:
+                    b = KISS_FEND
+                elif b == KISS_TFESC:
+                    b = KISS_FESC
+                self._buf.append(b)           # (a bad escape keeps the byte as is)
+            elif b == KISS_FESC:
+                self._esc = True
+            else:
+                self._buf.append(b)
+            if len(self._buf) > KISS_MAX_FRAME:
+                self._buf = bytearray()
+                self._in = False
+        return out
+
+
+def kiss_encode(payload: bytes, port: int = 0, cmd: int = 0) -> bytes:
+    """KISS-frame one payload (used by --selftest)."""
+    body = bytearray([((port & 0x0F) << 4) | (cmd & 0x0F)])
+    for b in bytearray(payload):
+        if b == KISS_FEND:
+            body += bytes([KISS_FESC, KISS_TFEND])
+        elif b == KISS_FESC:
+            body += bytes([KISS_FESC, KISS_TFESC])
+        else:
+            body.append(b)
+    return bytes([KISS_FEND]) + bytes(body) + bytes([KISS_FEND])
+
+
+def _fcs_table() -> List[int]:
+    table = []
+    for i in range(256):
+        crc = i
+        for _ in range(8):
+            crc = (crc >> 1) ^ 0x8408 if crc & 1 else crc >> 1
+        table.append(crc)
+    return table
+
+
+_FCS_TABLE = _fcs_table()
+
+
+def fcs16_x25(data: bytes) -> int:
+    """CRC-16/X.25, the AX.25 frame check sequence (poly 0x1021 reflected,
+    init 0xFFFF, xorout 0xFFFF). fcs16_x25(b"123456789") == 0x906E."""
+    crc = 0xFFFF
+    for b in bytearray(data):
+        crc = (crc >> 8) ^ _FCS_TABLE[(crc ^ b) & 0xFF]
+    return crc ^ 0xFFFF
+
+
+def ax25_decode(frame: bytes) -> Optional[Tuple[str, str, List[str], int, int, bytes]]:
+    """(src, dst, path, control, pid, info) from an AX.25 frame WITHOUT its
+    FCS (which is what KISS carries), or None when the address field is
+    malformed. A path entry whose H bit is set gets a trailing '*'. pid is -1
+    for frames that have none."""
+    frame = bytes(frame)
+    addrs = []  # type: List[Tuple[str, int, bool]]
+    i = 0
+    while True:
+        if i + 7 > len(frame):
+            return None
+        a = bytearray(frame[i:i + 7])
+        i += 7
+        chars = [c >> 1 for c in a[:6]]
+        if any(c < 0x20 or c >= 0x7F for c in chars):
+            return None
+        call = "".join(chr(c) for c in chars).rstrip(" ")
+        if not call or " " in call:
+            return None
+        addrs.append((call, (a[6] >> 1) & 0x0F, bool(a[6] & 0x80)))
+        if a[6] & 0x01:
+            break
+        if len(addrs) >= 10:                 # dst + src + 8 digipeaters
+            return None
+    if len(addrs) < 2 or i >= len(frame):
+        return None
+    control = frame[i]
+    if (control & 0xEF) == 0x03:            # UI frame: control, PID, info
+        if i + 1 >= len(frame):
+            return None
+        pid, info = frame[i + 1], frame[i + 2:]
+    else:
+        pid, info = -1, frame[i + 1:]
+
+    def name(call: str, ssid: int) -> str:
+        return "%s-%d" % (call, ssid) if ssid else call
+
+    dst = name(addrs[0][0], addrs[0][1])
+    src = name(addrs[1][0], addrs[1][1])
+    path = [name(c, s) + ("*" if h else "") for c, s, h in addrs[2:]]
+    return src, dst, path, control, pid, info
+
+
+def ax25_encode(src: str, dst: str, path: List[str], info: bytes,
+                control: int = 0x03, pid: int = 0xF0) -> bytes:
+    """Build an AX.25 UI frame without FCS (used by --selftest)."""
+    calls = [dst, src] + list(path)
+    out = bytearray()
+    for n, c in enumerate(calls):
+        h = c.endswith("*")
+        c = c.rstrip("*")
+        call, _sep, ssid = c.partition("-")
+        field6 = (call.upper() + "      ")[:6]
+        out += bytes(ord(ch) << 1 for ch in field6)
+        last = 0x01 if n == len(calls) - 1 else 0x00
+        out.append(0x60 | ((int(ssid or 0) & 0x0F) << 1) | (0x80 if h else 0x00) | last)
+    out.append(control)
+    out.append(pid)
+    return bytes(out) + bytes(info)
+
+
+def kiss_to_packet(frame: bytes) -> Optional[Packet]:
+    """A Packet from one AX.25 frame received over KISS, or None if it is not
+    an APRS-style UI frame with PID 0xF0 (the same scope multimon-ng's parser
+    has). The on-air FCS is recomputed and stored in Packet.fcs."""
+    dec = ax25_decode(frame)
+    if dec is None:
+        return None
+    src, dst, path, control, pid, info = dec
+    if (control & 0xEF) != 0x03 or pid != 0xF0:
+        return None
+    raw = "%s>%s%s:%s" % (src, dst, ("," + ",".join(path)) if path else "",
+                          info_to_mm_view(info.rstrip(b"\r\n\x00")).decode("latin-1"))
+    pkt = make_packet(src, dst, path, info, raw)
+    pkt.fcs = fcs16_x25(frame)
+    return pkt
+
+
+# APRS data type identifiers (APRS 1.0.1 ch. 5, plus ',' = test data).
+APRS_DTI = frozenset(b"!\"#$%'()*+,./:;<=>?@T[\\]_`{}")
+CALL_RE = re.compile(r"^[A-Z0-9]{1,6}(-([0-9]|1[0-5]))?$")
+
+
+def aprs_plausible(pkt: Packet) -> bool:
+    """Cheap sanity check for frames only the ESP32 decoded. A frame that
+    fails it is almost certainly a CRC-16 collision on noise: about 1 in
+    65 536 random bit strings passes the FCS, and a multi-slicer demodulator
+    offers the check many candidates."""
+    calls = [pkt.src, pkt.dst] + list(pkt.path)
+    if not all(CALL_RE.match(c) for c in calls):
+        return False
+    if len(pkt.path) > 8 or not pkt.info:
+        return False
+    return pkt.info[0] in APRS_DTI
+
+
+def fmt_fcs(fcs: Optional[int]) -> str:
+    return "----" if fcs is None else "%04X" % fcs
+
+
+@dataclass
+class DwSetup:
+    """How Direwolf is run (from the command line), plus what it reported."""
+    rate: int = DW_RATE
+    profile: str = ""
+    fix_bits: int = DW_FIX_BITS
+    kiss_port: int = 0             # 0 = pick a free port for every file
+    start_timeout: float = DW_START_TIMEOUT
+    extra: List[str] = field(default_factory=list)
+    version: str = ""              # read from Direwolf's banner
+
+
+def build_dw_conf(setup: DwSetup, port: int) -> str:
+    """Direwolf configuration: receive only, audio from stdin, no AGW, KISS
+    on one TCP port only. 'KISSPORT 0' first removes the built-in 8001, which
+    would otherwise clash with a Direwolf already running on the machine."""
+    return "\n".join([
+        "# test_aprs_wavs - generated, receive only",
+        "ADEVICE stdin null",
+        "ACHANNELS 1",
+        "ARATE %d" % setup.rate,
+        "CHANNEL 0",
+        ("MODEM 1200 %s" % setup.profile).strip(),
+        "FIX_BITS %d" % setup.fix_bits,
+        "AGWPORT 0",
+        "KISSPORT 0",
+        "KISSPORT %d" % port,
+        ""])
+
+
+def build_dw_cmd(conf_path: str, setup: DwSetup) -> List[str]:
+    """Direwolf reading raw s16 mono audio from stdin ('-' last)."""
+    return (["direwolf", "-c", conf_path, "-r", str(setup.rate), "-n", "1", "-b", "16",
+             "-t", "0", "-q", "hd"] + list(setup.extra) + ["-"])
+
+
+def build_dw_sox_cmd(wav: str, rate: int) -> List[str]:
+    """Leg D: the source wav as raw s16 mono at Direwolf's rate."""
+    return ["sox", "-q", "-V0", wav, "-t", "raw", "-r", str(rate),
+            "-e", "signed", "-b", "16", "-c", "1", "-"]
+
+
+# Direwolf only accepts KISS ports in the registered range; the kernel's
+# ephemeral ports (usually 32768..60999) are partly outside it, so "bind to
+# port 0" cannot be used to find one.
+DW_PORT_MIN, DW_PORT_MAX = 1024, 49151
+
+
+def pick_free_port() -> int:
+    """A TCP port in Direwolf's accepted range that was free a moment ago
+    (there is a tiny race between this check and Direwolf binding it)."""
+    import random
+    rng = random.Random()
+    for _ in range(200):
+        port = rng.randint(20000, DW_PORT_MAX)
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            s.bind(("0.0.0.0", port))
+            return port
+        except OSError:
+            continue
+        finally:
+            s.close()
+    raise DirewolfError(T("no free TCP port found for Direwolf's KISS server"))
 
 
 # --------------------------------------------------------------------------
@@ -1787,16 +2474,23 @@ def build_pwcat_cmd(sink: PwSink, stream_volume: float, media_name: str,
 _RENDER_DIR = None  # type: Optional[str]
 
 
-def render_for_play(wav: str, volume: float, normalise: bool) -> str:
-    """Render the play chain into a temporary WAV and return its path. The
-    caller deletes it. Raises RuntimeError when sox fails."""
+def render_dir() -> str:
+    """The run's private temp directory (rendered wavs, Direwolf configs);
+    removed at exit."""
     global _RENDER_DIR
     import tempfile
     import atexit
     if _RENDER_DIR is None or not os.path.isdir(_RENDER_DIR):
         _RENDER_DIR = tempfile.mkdtemp(prefix="test_aprs_wavs-")
         atexit.register(shutil.rmtree, _RENDER_DIR, True)
-    fd, out = tempfile.mkstemp(suffix=".wav", dir=_RENDER_DIR)
+    return _RENDER_DIR
+
+
+def render_for_play(wav: str, volume: float, normalise: bool) -> str:
+    """Render the play chain into a temporary WAV and return its path. The
+    caller deletes it. Raises RuntimeError when sox fails."""
+    import tempfile
+    fd, out = tempfile.mkstemp(suffix=".wav", dir=render_dir())
     os.close(fd)
     p = track_proc(subprocess.Popen(build_play_cmd(wav, volume, normalise, out),
                                     stdout=subprocess.DEVNULL, stderr=subprocess.PIPE))
@@ -1818,6 +2512,184 @@ def start_player(path: str, sink: PwSink, stream_volume: float,
     return track_proc(subprocess.Popen(build_pwcat_cmd(sink, stream_volume, media_name, path),
                                        stdout=subprocess.DEVNULL,
                                        stderr=subprocess.PIPE))
+
+
+# --------------------------------------------------------------------------
+# Direwolf process and KISS reader (one of each per file)
+# --------------------------------------------------------------------------
+
+DW_VERSION_RE = re.compile(r"Dire ?Wolf\b.*?\bversion\s+(\S+)", re.IGNORECASE)
+
+
+class DirewolfError(RuntimeError):
+    """Direwolf could not be started (or its KISS port never opened)."""
+
+
+class DirewolfCollector(threading.Thread):
+    """Reads Direwolf's KISS TCP port and stores every APRS UI frame with the
+    monotonic time it arrived at - the Direwolf counterpart of
+    SerialCollector."""
+
+    def __init__(self, sock: "socket.socket") -> None:
+        super().__init__(daemon=True)
+        self.sock = sock
+        self.sock.settimeout(0.2)
+        self.lock = threading.Lock()
+        self.packets = []   # type: List[Tuple[float, Packet]]
+        self.frames_seen = 0
+        self._halt = threading.Event()
+        self._deframer = KissDeframer()
+
+    def run(self) -> None:
+        while not self._halt.is_set():
+            try:
+                data = self.sock.recv(4096)
+            except socket.timeout:
+                continue
+            except OSError:
+                break
+            if not data:
+                break                        # Direwolf closed the connection
+            now = time.monotonic()
+            for port, cmd, payload in self._deframer.feed(data):
+                if cmd != 0 or port != 0:
+                    continue                 # not a data frame of radio channel 0
+                self.frames_seen += 1
+                pkt = kiss_to_packet(payload)
+                if pkt is not None:
+                    with self.lock:
+                        self.packets.append((now, pkt))
+
+    def items_from(self, index: int) -> Tuple[List[Tuple[float, Packet]], int]:
+        with self.lock:
+            return list(self.packets[index:]), len(self.packets)
+
+    def stop(self, drain: float = 0.0) -> None:
+        """Stop reading. With `drain` > 0, first give the reader that long to
+        see the end of the connection by itself (frames still in flight)."""
+        if drain > 0 and self.is_alive():
+            self.join(timeout=drain)
+        self._halt.set()
+        try:
+            self.sock.close()
+        except Exception:
+            pass
+        if self.is_alive():
+            self.join(timeout=2)
+
+
+class DirewolfRun:
+    """One Direwolf process for one file: generated config, the process
+    itself (audio on stdin), a thread that keeps its console output drained
+    (the last lines are kept for error messages, and the banner gives the
+    version) and the KISS reader.
+
+    start() returns only once the KISS port accepts connections, so the
+    first audio sample is never fed to a decoder that is not listening yet."""
+
+    def __init__(self, setup: DwSetup) -> None:
+        self.setup = setup
+        self.proc = None       # type: Optional[subprocess.Popen]
+        self.col = None        # type: Optional[DirewolfCollector]
+        self.port = 0
+        self.log = collections.deque(maxlen=DW_LOG_LINES)
+        self._drainer = None   # type: Optional[threading.Thread]
+
+    def tail(self, n: int = 6) -> str:
+        lines = [l for l in list(self.log) if l.strip()]
+        return " | ".join(lines[-n:]) if lines else "-"
+
+    def _drain(self) -> None:
+        proc = self.proc
+        if proc is None or proc.stdout is None:
+            return
+        try:
+            for raw in iter(proc.stdout.readline, b""):
+                line = ANSI_RE.sub(b"", raw).decode("latin-1", "replace").rstrip()
+                if not line:
+                    continue
+                self.log.append(line)
+                if not self.setup.version:
+                    m = DW_VERSION_RE.search(line)
+                    if m:
+                        self.setup.version = m.group(1)
+        except Exception:
+            pass
+
+    def start(self) -> None:
+        try:
+            self._start()
+        except BaseException:
+            self.kill()
+            raise
+
+    def _start(self) -> None:
+        self.port = self.setup.kiss_port or pick_free_port()
+        conf = os.path.join(render_dir(), "direwolf-%d.conf" % self.port)
+        with open(conf, "w") as f:
+            f.write(build_dw_conf(self.setup, self.port))
+        try:
+            self.proc = track_proc(subprocess.Popen(
+                build_dw_cmd(conf, self.setup), stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE, stderr=subprocess.STDOUT))
+        except OSError as exc:
+            raise DirewolfError(T("Cannot start Direwolf: %s") % exc)
+        self._drainer = threading.Thread(target=self._drain, daemon=True)
+        self._drainer.start()
+        deadline = time.monotonic() + self.setup.start_timeout
+        while True:
+            check_cancel()
+            if self.proc.poll() is not None:
+                self._drainer.join(timeout=1)
+                raise DirewolfError(T("Direwolf exited during start-up (rc=%s): %s") %
+                                    (self.proc.returncode, self.tail()))
+            try:
+                sock = socket.create_connection(("127.0.0.1", self.port), timeout=0.2)
+                break
+            except OSError:
+                pass
+            if time.monotonic() > deadline:
+                raise DirewolfError(T("Direwolf's KISS port %d did not open within %.1f s "
+                                      "(raise --dw_start_timeout): %s") %
+                                    (self.port, self.setup.start_timeout, self.tail()))
+            sleep_or_stop(0.05)
+        self.col = DirewolfCollector(sock)
+        self.col.start()
+
+    def finish(self) -> None:
+        """Normal end of file: stdin has been closed by the feeder, so wait
+        for Direwolf to decode what is left and exit, then let the KISS reader
+        see the end of the connection. Never raises for a stuck process."""
+        if self.proc is not None:
+            try:
+                self.proc.wait(timeout=DW_EXIT_TIMEOUT)
+            except subprocess.TimeoutExpired:
+                sys.stderr.write(T("\n[dw] Direwolf did not exit within %.0f s after the "
+                                   "end of the audio - killing it\n") % DW_EXIT_TIMEOUT)
+                self.proc.kill()
+                try:
+                    self.proc.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    pass
+        if self.col is not None:
+            self.col.stop(drain=2.0)
+        if self._drainer is not None:
+            self._drainer.join(timeout=2)
+
+    def kill(self) -> None:
+        """Abnormal end (Stop, Ctrl-C, packet-count cut-off): kill everything.
+        Idempotent; packets already collected stay available."""
+        if self.proc is not None and self.proc.poll() is None:
+            try:
+                self.proc.kill()
+            except Exception:
+                pass
+            try:
+                self.proc.wait(timeout=5)
+            except Exception:
+                pass
+        if self.col is not None:
+            self.col.stop()
 
 
 def print_sink_list(sinks: List[PwSink], default_name: Optional[str]) -> None:
@@ -1844,6 +2716,52 @@ def clip_warning(wav: str, volume: float, normalise: bool) -> Optional[str]:
     return None
 
 
+def make_pump(src: "subprocess.Popen", dst: "subprocess.Popen", bytes_per_s: int,
+              speed: Optional[float],
+              common_start: Optional[List[Optional[float]]] = None) -> Callable[[], None]:
+    """A thread body that copies raw audio from `src` (sox) into `dst` (a
+    decoder's stdin), 0.1 s at a time.
+
+    speed None  : as fast as the decoder takes it (legacy dry run);
+    speed 1.0   : real time, so the decoder's output lines up with what the
+                  ESP32 hears;
+    speed N     : N x real time.
+    Pacing uses its own start time unless `common_start[0]` holds a shared
+    one, which is how two legs are kept on one clock. Both pipe ends are
+    closed at the end: a decoder that died (or was killed by the packet-count
+    cut-off) must not leave sox blocked writing into a pipe nobody drains."""
+    def pump() -> None:
+        assert src.stdout is not None and dst.stdin is not None
+        sent = 0
+        start_t = (common_start[0] if common_start and common_start[0] is not None
+                   else time.monotonic())
+        try:
+            while True:
+                chunk = src.stdout.read(bytes_per_s // 10)   # 0.1 s of audio
+                if not chunk:
+                    break
+                dst.stdin.write(chunk)
+                dst.stdin.flush()
+                sent += len(chunk)
+                if speed:
+                    ahead = (sent / float(bytes_per_s)) / speed - (time.monotonic() - start_t)
+                    if ahead > 0:
+                        if _STOP.wait(ahead):     # stop requested: quit feeding
+                            break
+        except (BrokenPipeError, OSError, ValueError):
+            pass
+        finally:
+            try:
+                dst.stdin.close()
+            except Exception:
+                pass
+            try:
+                src.stdout.close()
+            except Exception:
+                pass
+    return pump
+
+
 def run_one_wav(res: FileResult, wav: str, route: Optional[AudioRoute],
                 volume: float, tail: float, window: float,
                 collector: SerialCollector, mm_extra: List[str],
@@ -1852,9 +2770,12 @@ def run_one_wav(res: FileResult, wav: str, route: Optional[AudioRoute],
                 normalise: bool = False,
                 offset_auto: bool = True,
                 offset_seed: float = 0.0,
-                abort_on_overrange: bool = False) -> bool:
-    """Play `wav` once while decoding it with multimon-ng and reading the
-    ESP32 console. Every multimon-ng packet is printed together with the
+                abort_on_overrange: bool = False,
+                dw: Optional[DwSetup] = None,
+                reference: str = "multimon",
+                dw_offset_seed: float = 0.0) -> bool:
+    """Play `wav` once while decoding it with multimon-ng (and, when `dw` is
+    given, with Direwolf too) and reading the ESP32 console. Every multimon-ng packet is printed together with the
     ESP32's answer to it (or NOT DECODED) as soon as that is known, and `res`
     is filled in as the verdicts come.
 
@@ -1874,8 +2795,16 @@ def run_one_wav(res: FileResult, wav: str, route: Optional[AudioRoute],
     the calibration uses it so a level that is already known to be too hot
     does not keep over-driving the ADC for the rest of the file.
 
+    With `dw`, Direwolf decodes the same source audio on its own leg, a
+    ClusterMatcher groups the three decoders' frames into rows, and the live
+    output shows one three-column row per transmission instead of the
+    two-column lines. LiveMatcher still runs and still fills every legacy
+    field of `res`, silently. `reference` selects which packets count
+    towards `stop_at_mm_packets` (see ref_packet_count()).
+
     Returns True if a cutoff was hit, False if the file simply played to
-    its natural end (or was interrupted by Ctrl-C)."""
+    its natural end (or was interrupted by Ctrl-C).
+    Raises DirewolfError when Direwolf cannot be started."""
     # Render what the ESP32 will hear BEFORE the timing window opens, so the
     # few hundred ms sox needs are not charged to this file.
     rendered = None  # type: Optional[str]
@@ -1888,6 +2817,20 @@ def run_one_wav(res: FileResult, wav: str, route: Optional[AudioRoute],
             sys.stderr.write("\n[audio] %s\n" % exc)
             res.duration = 0.0
             return False
+    # Direwolf is started - and its KISS port confirmed open - BEFORE the
+    # timing window opens, so its start-up time is not charged to this file.
+    dw_run = None  # type: Optional[DirewolfRun]
+    if dw is not None:
+        dw_run = DirewolfRun(dw)
+        try:
+            dw_run.start()
+        except BaseException:
+            if rendered is not None:
+                try:
+                    os.unlink(rendered)
+                except OSError:
+                    pass
+            raise
     # ESP32 lines are attributed to this file by the moment they arrive. The
     # window opens right now, before playback starts, so nothing the previous
     # file already resolved is re-counted - but a frame the previous file was
@@ -1897,6 +2840,7 @@ def run_one_wav(res: FileResult, wav: str, route: Optional[AudioRoute],
     # opens its window.
     t0 = time.monotonic()
     t_window_start = t0
+    res.t0 = t0
 
     # Every leg is produced from the same source file by sox so that the
     # decoders receive identical audio, whatever the WAV's own format is
@@ -1906,6 +2850,8 @@ def run_one_wav(res: FileResult, wav: str, route: Optional[AudioRoute],
     #   leg M: rendered WAV -> pw-cat --target <monitor sink> [real time, optional]
     #   leg B: sox <wav> -> raw 22050 Hz s16 mono -> multimon-ng
     #                                                     [paced to real time]
+    #   leg D: sox <wav> -> raw --dw_rate s16 mono -> Direwolf stdin
+    #          Direwolf -> KISS over TCP -> DirewolfCollector   [optional]
     #
     # Legs A and M are independent players (see "PipeWire output routing"):
     # the monitor can lag, stall or fail without touching the ESP32 leg.
@@ -1929,11 +2875,23 @@ def run_one_wav(res: FileResult, wav: str, route: Optional[AudioRoute],
     play_procs = []  # type: List[subprocess.Popen]    # the pw-cat of A and M
     sox_p = None   # type: Optional[subprocess.Popen]
     mm_p = None    # type: Optional[subprocess.Popen]
+    sox_dw = None  # type: Optional[subprocess.Popen]   # leg D feeder
     gt = None      # type: Optional[threading.Thread]
     done = threading.Event()
     duration = wav_duration(wav)
     _LIVE_STATS.set_duration(duration)
     matcher = LiveMatcher(window, offset_auto=offset_auto, offset=offset_seed)
+    # Three-column matcher, only when Direwolf runs. In a dry run there is no
+    # ESP32, so it compares the two references only.
+    cluster = None  # type: Optional[ClusterMatcher]
+    if dw_run is not None:
+        cluster = ClusterMatcher(window, offset_auto=offset_auto, esp_offset=offset_seed,
+                                 dw_offset=dw_offset_seed,
+                                 sources=("mm", "dw") if dry_run else ("mm", "dw", "esp"))
+    # Legacy two-column lines are printed only without Direwolf; with it the
+    # same verdicts are still recorded, but the rows below are what is shown.
+    lsay = say if cluster is None else (lambda _m: None)
+    dw_ingested = [0]
     interrupted = False
     # Resume point in the collector's packet list (not a count of this file's
     # packets): everything already stored belongs to an earlier file.
@@ -1955,7 +2913,8 @@ def run_one_wav(res: FileResult, wav: str, route: Optional[AudioRoute],
         letting them run to the natural end of the file. Used the instant
         stop_at_mm_packets is reached, so a long WAV does not keep playing
         past the packet count the caller asked for."""
-        for p in play_procs + [sox_p, mm_p]:
+        for p in play_procs + [sox_p, mm_p, sox_dw,
+                               dw_run.proc if dw_run is not None else None]:
             if p is not None and p.poll() is None:
                 try:
                     p.kill()
@@ -1972,7 +2931,7 @@ def run_one_wav(res: FileResult, wav: str, route: Optional[AudioRoute],
         are only known once the match window has elapsed, so they trickle in
         from the ticker thread, not from read_mm)."""
         with res_lock:
-            reached = len(res.mm_packets) + len(res.extra)
+            reached = ref_packet_count(res, reference)
             should_stop = (stop_at_mm_packets is not None and not target_hit[0] and
                            reached >= stop_at_mm_packets)
             if should_stop:
@@ -2007,40 +2966,62 @@ def run_one_wav(res: FileResult, wav: str, route: Optional[AudioRoute],
             with res_lock:
                 res.extra.append(ep)
             _LIVE_STATS.add(extra=1)
-            say(T("%06d [multimon  --:--.-] NOT DECODED") % n)
-            say(T("       [esp32 only      %s] %s") % (mmss(t_esp - t0), ep.raw))
+            lsay(T("%06d [multimon  --:--.-] NOT DECODED") % n)
+            lsay(T("       [esp32 only      %s] %s") % (mmss(t_esp - t0), ep.raw))
             check_stop()
             return
-        say(T("%06d [multimon %s] %s") % (n, mmss(t_mm - t0), mp.raw))
+        lsay(T("%06d [multimon %s] %s") % (n, mmss(t_mm - t0), mp.raw))
         if kind == "ok":
             with res_lock:
                 res.ok += 1
             _LIVE_STATS.add(ok=1)
-            say(T("    OK [esp32    %s] %s") % (mmss(t_esp - t0), ep.raw))
+            lsay(T("    OK [esp32    %s] %s") % (mmss(t_esp - t0), ep.raw))
         elif kind == "mismatch":
             with res_lock:
                 res.mismatch.append((mp, ep))
             _LIVE_STATS.add(diff=1)
-            say(T("       [esp32    %s] %s") % (mmss(t_esp - t0), ep.raw))
-            say(T("      ! DECODED BUT DIFFERENT"))
+            lsay(T("       [esp32    %s] %s") % (mmss(t_esp - t0), ep.raw))
+            lsay(T("      ! DECODED BUT DIFFERENT"))
         elif kind == "corrupt":
             with res_lock:
                 res.corrupt.append((mp, ep))
             _LIVE_STATS.add(diff=1)
-            say(T("       [esp32    %s] %s") % (mmss(t_esp - t0), ep.raw))
-            say(T("      ! PAYLOAD OK BUT HEADER CORRUPT"))
+            lsay(T("       [esp32    %s] %s") % (mmss(t_esp - t0), ep.raw))
+            lsay(T("      ! PAYLOAD OK BUT HEADER CORRUPT"))
         else:
             with res_lock:
                 res.missing.append(mp)
             _LIVE_STATS.add(missing=1)
-            say(T("       [esp32     --:--.-] NOT DECODED"))
+            lsay(T("       [esp32     --:--.-] NOT DECODED"))
+
+    def emit_row(row: Row) -> None:
+        """Print one three-column row and record it in `res`."""
+        with res_lock:
+            res.rows.append(row)
+        _LIVE_STATS.add(conflict=int(row.cls == ROW_CONFLICT),
+                        esp_only=int(row.cls == ROW_ESP_ONLY))
+        print_row(row, t0, esp_used=not dry_run)
 
     def feed_and_step(now: float, final: bool = False) -> None:
-        items, ingested[0] = collector.items_from(ingested[0], t_window_start)
-        for t, p in items:
-            matcher.add_esp(t, p)
-        for ev in matcher.step(now, final):
-            show(ev)
+        if not dry_run:
+            items, ingested[0] = collector.items_from(ingested[0], t_window_start)
+            for t, p in items:
+                matcher.add_esp(t, p)
+                if cluster is not None:
+                    cluster.add("esp", t, p)
+            for ev in matcher.step(now, final):
+                show(ev)
+        if cluster is not None and dw_run is not None and dw_run.col is not None:
+            items, dw_ingested[0] = dw_run.col.items_from(dw_ingested[0])
+            for t, p in items:
+                with res_lock:
+                    res.dw_packets.append(p)
+                _LIVE_STATS.add(dw=1)
+                cluster.add("dw", t, p)
+            if items:
+                check_stop()
+            for row in cluster.step(now, final):
+                emit_row(row)
 
     try:
         check_cancel()
@@ -2051,43 +3032,26 @@ def run_one_wav(res: FileResult, wav: str, route: Optional[AudioRoute],
 
         # Feed multimon-ng from sox in REAL TIME (unless dry-running). This
         # keeps its decodes in step with what the ESP32 is hearing, so the
-        # two decoders' packets are printed side by side.
-        realtime = not dry_run
-
-        def pump() -> None:
-            assert sox_p is not None and sox_p.stdout is not None
-            assert mm_p is not None and mm_p.stdin is not None
-            bytes_per_s = MM_RATE * 2
-            sent = 0
-            start_t = time.monotonic()
-            try:
-                while True:
-                    chunk = sox_p.stdout.read(bytes_per_s // 10)   # 0.1 s of audio
-                    if not chunk:
-                        break
-                    mm_p.stdin.write(chunk)
-                    mm_p.stdin.flush()
-                    sent += len(chunk)
-                    if realtime:
-                        ahead = sent / float(bytes_per_s) - (time.monotonic() - start_t)
-                        if ahead > 0:
-                            if _STOP.wait(ahead):     # stop requested: quit feeding
-                                break
-            except (BrokenPipeError, OSError):
-                pass
-            finally:
-                try:
-                    mm_p.stdin.close()
-                except Exception:
-                    pass
-                # Also close the read end of sox's pipe. Without this, a
-                # multimon-ng that died (or was killed by the packet-count
-                # cutoff) leaves sox blocked writing into a pipe nobody
-                # drains, and sox_p.wait() below would never return.
-                try:
-                    sox_p.stdout.close()
-                except Exception:
-                    pass
+        # two decoders' packets are printed side by side. In a dry run with
+        # Direwolf both reference legs are paced to DRY_RUN_SPEED on one
+        # common clock, so their timestamps stay comparable.
+        if not dry_run:
+            speed = 1.0          # type: Optional[float]
+        elif cluster is not None:
+            speed = DRY_RUN_SPEED
+        else:
+            speed = None
+        common_start = [None]    # type: List[Optional[float]]
+        pump = make_pump(sox_p, mm_p, MM_RATE * 2, speed,
+                         common_start if dry_run else None)
+        pump_dw = None  # type: Optional[Callable[[], None]]
+        if dw_run is not None:
+            assert dw is not None
+            sox_dw = track_proc(subprocess.Popen(build_dw_sox_cmd(wav, dw.rate),
+                                                 stdout=subprocess.PIPE,
+                                                 stderr=subprocess.DEVNULL))
+            pump_dw = make_pump(sox_dw, dw_run.proc, dw.rate * 2, speed,
+                                common_start if dry_run else None)
 
         # Reader thread: takes every multimon-ng packet as it appears.
         parser = MultimonParser()
@@ -2102,11 +3066,13 @@ def run_one_wav(res: FileResult, wav: str, route: Optional[AudioRoute],
                     res.mm_packets.append(pkt)
                 _LIVE_STATS.add(mm=1)
                 now = time.monotonic()
-                if dry_run:      # dry run: no ESP32, just list the packet
+                if not dry_run:     # printed with the ESP32's answer
+                    matcher.add_mm(now, pkt)
+                elif cluster is None:   # dry run: no ESP32, just list the packet
                     say(T("%06d [multimon %s] %s") %
                         (len(res.mm_packets), mmss(now - t0), pkt.raw))
-                else:               # printed with the ESP32's answer
-                    matcher.add_mm(now, pkt)
+                if cluster is not None:
+                    cluster.add("mm", now, pkt)
                 check_stop()
                 if target_hit[0]:
                     # Stop right here, mid-file, instead of playing the rest
@@ -2121,7 +3087,7 @@ def run_one_wav(res: FileResult, wav: str, route: Optional[AudioRoute],
             while not done.wait(0.25):
                 now = time.monotonic()
                 _LIVE_STATS.set_elapsed(now - t0)
-                if not dry_run:
+                if not dry_run or cluster is not None:
                     feed_and_step(now)
                 if (abort_on_overrange and not target_hit[0] and
                         collector.overrange_since(overrange_base) > 0):
@@ -2129,14 +3095,23 @@ def run_one_wav(res: FileResult, wav: str, route: Optional[AudioRoute],
                     kill_pipeline()
                 if now - last_progress >= PROGRESS_SECONDS:
                     last_progress = now
-                    say(T("       [progress %s / %s] multimon=%d  ok=%d  "
-                          "not-decoded=%d  different=%d  (serial lines seen: %d)") %
-                        (mmss(now - t0), mmss(duration), len(res.mm_packets),
-                         res.ok, len(res.missing), len(res.mismatch),
-                         collector.lines_seen))
+                    if cluster is None:
+                        say(T("       [progress %s / %s] multimon=%d  ok=%d  "
+                              "not-decoded=%d  different=%d  (serial lines seen: %d)") %
+                            (mmss(now - t0), mmss(duration), len(res.mm_packets),
+                             res.ok, len(res.missing), len(res.mismatch),
+                             collector.lines_seen))
+                    else:
+                        say(T("       [progress %s / %s] multimon=%d  direwolf=%d  ok=%d  "
+                              "not-decoded=%d  different=%d  (serial lines seen: %d)") %
+                            (mmss(now - t0), mmss(duration), len(res.mm_packets),
+                             len(res.dw_packets), res.ok, len(res.missing),
+                             len(res.mismatch), collector.lines_seen))
 
         rt = threading.Thread(target=read_mm, daemon=True)
         pt = threading.Thread(target=pump, daemon=True)
+        pdt = (threading.Thread(target=pump_dw, daemon=True)
+               if pump_dw is not None else None)
         gt = threading.Thread(target=ticker, daemon=True)
         rt.start()
         gt.start()
@@ -2178,7 +3153,10 @@ def run_one_wav(res: FileResult, wav: str, route: Optional[AudioRoute],
                                      ("-", exc))
             for d in drainers:
                 d.start()
+        common_start[0] = time.monotonic()
         pt.start()
+        if pdt is not None:
+            pdt.start()
 
         if player is not None:
             # Watchdog: pw-cat must end with the file. An output unplugged in
@@ -2212,7 +3190,10 @@ def run_one_wav(res: FileResult, wav: str, route: Optional[AudioRoute],
                 err = b"".join(monitor_err).decode("latin-1", "replace")
                 sys.stderr.write(T("\n[audio] monitor player failed (rc=%s): %s\n") %
                                  (monitor.returncode, err.strip()))
-        pt.join(timeout=30)
+        # A paced dry run lasts as long as the audio / DRY_RUN_SPEED, so no
+        # fixed limit there; the pump itself quits on Stop.
+        pump_limit = None if (dry_run and speed) else 30   # type: Optional[float]
+        pt.join(timeout=pump_limit)
         try:
             sox_p.wait(timeout=10)
         except subprocess.TimeoutExpired:
@@ -2233,6 +3214,14 @@ def run_one_wav(res: FileResult, wav: str, route: Optional[AudioRoute],
             except subprocess.TimeoutExpired:
                 pass
         rt.join(timeout=5)
+        if pdt is not None and dw_run is not None:
+            pdt.join(timeout=pump_limit)
+            if sox_dw is not None:
+                try:
+                    sox_dw.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    sox_dw.kill()
+            dw_run.finish()             # waits for Direwolf to drain and exit
 
         # Let the ESP32 finish the last frame and flush its console. At least
         # `window` seconds, so the last packets get the same chance to be
@@ -2243,12 +3232,14 @@ def run_one_wav(res: FileResult, wav: str, route: Optional[AudioRoute],
         raise
     finally:
         done.set()
-        for p in play_procs + [sox_p, mm_p]:
+        for p in play_procs + [sox_p, mm_p, sox_dw]:
             if p is not None and p.poll() is None:
                 try:
                     p.kill()
                 except Exception:
                     pass
+        if dw_run is not None:
+            dw_run.kill()               # no-op after a normal finish()
         if gt is not None:
             gt.join(timeout=2)
         if rendered is not None:
@@ -2271,6 +3262,14 @@ def run_one_wav(res: FileResult, wav: str, route: Optional[AudioRoute],
             flush_resolved()
             res.esp_packets = list(matcher.esp_seen)
             res.offset = matcher.offset
+        elif cluster is not None and not interrupted:
+            feed_and_step(time.monotonic(), final=True)
+        if cluster is not None:
+            if interrupted:
+                # Same rule as the legacy matcher: rows whose window had not
+                # closed yet are not counted.
+                cluster.drop_pending()
+            res.dw_offset = cluster.offset["dw"]
         res.duration = time.monotonic() - t0
         _LIVE_STATS.set_elapsed(min(res.duration, duration) if duration else res.duration)
     return target_hit[0]
@@ -2456,6 +3455,287 @@ class LiveMatcher:
             self.offset_locked = True
 
 
+class ClusterMatcher:
+    """Groups what the three decoders reported into one Row per physical
+    transmission, for the three-column (multimon-ng / Direwolf / ESP32)
+    report.
+
+    It runs NEXT TO LiveMatcher, never instead of it: LiveMatcher still
+    decides every legacy (ESP32 vs multimon-ng) verdict and number, so runs
+    with Direwolf stay comparable with historical ones.
+
+      * add(): a frame joins the open cluster with IDENTICAL content that has
+        no frame from that source yet and whose time is within +/- window
+        (closest first); otherwise it opens a cluster of its own. Times are
+        compared on the multimon-ng clock: each source's latency skew
+        (offset) is learned from exact matches against multimon-ng, like
+        LiveMatcher does for the ESP32.
+      * step(): a cluster closes once its window has passed. Before closing,
+        a source it still lacks may be taken from a lone frame of that source
+        nearby that is the same frame damaged - same header with another
+        payload (cell D) or same payload with another header (cell H) - just
+        like LiveMatcher's mismatch / corrupt rules.
+      * The row is judged against Direwolf's content when Direwolf has it
+        (exact bytes, CRC-strict), else multimon-ng's, else the ESP32's alone
+        (unconfirmed).
+    """
+
+    def __init__(self, window: float, offset_auto: bool = True,
+                 esp_offset: float = 0.0, dw_offset: float = 0.0,
+                 sources: Tuple[str, ...] = ("mm", "dw", "esp")) -> None:
+        self.window = window
+        self.sources = tuple(sources)
+        self._lock = threading.Lock()
+        self.offset = {"mm": 0.0, "dw": dw_offset, "esp": esp_offset}
+        self.offset_auto = offset_auto
+        self._samples = {"dw": [], "esp": []}   # type: dict
+        self.locked = {"dw": not offset_auto, "esp": not offset_auto}
+        self._open = []      # type: list   # clusters: {"t", "members", "gone"}
+        self._n = 0
+
+    # ------------------------------------------------------------ helpers
+    def _note(self, src: str, delta: float) -> None:
+        if src == "mm" or self.locked.get(src, True):
+            return
+        if abs(delta) > OFFSET_MAX_SECONDS:
+            return
+        self._samples[src].append(delta)
+        if len(self._samples[src]) >= OFFSET_MIN_SAMPLES:
+            self.offset[src] = median(self._samples[src])
+            self.locked[src] = True
+
+    @staticmethod
+    def _content(c: dict) -> Packet:
+        return next(iter(c["members"].values()))[1]
+
+    def _anchor(self, members: dict) -> float:
+        for s in ("mm", "dw", "esp"):
+            if s in members:
+                return members[s][0] - self.offset[s]
+        return 0.0
+
+    # --------------------------------------------------------------- input
+    def add(self, src: str, t: float, pkt: Packet) -> None:
+        with self._lock:
+            ta = t - self.offset[src]
+            best, bd = None, None
+            for c in self._open:
+                if src in c["members"]:
+                    continue
+                if not self._content(c).same_content(pkt):
+                    continue
+                d = abs(ta - c["t"])
+                if d > self.window:
+                    continue
+                if bd is None or d < bd:
+                    best, bd = c, d
+            if best is None:
+                self._open.append({"t": ta, "members": {src: (t, pkt)}, "gone": False})
+                return
+            m = best["members"]
+            if src == "mm":
+                for s, (ts, _p) in m.items():
+                    self._note(s, ts - t)
+            elif "mm" in m:
+                self._note(src, t - m["mm"][0])
+            m[src] = (t, pkt)
+            best["t"] = self._anchor(m)
+
+    def pending(self) -> int:
+        with self._lock:
+            return len(self._open)
+
+    def drop_pending(self) -> int:
+        """Forget every cluster not closed yet (used when interrupted)."""
+        with self._lock:
+            n = len(self._open)
+            self._open = []
+            return n
+
+    # ------------------------------------------------------------- closing
+    def _absorb_near(self, c: dict) -> None:
+        cons = self._consensus(c["members"])
+        for s in self.sources:
+            if s in c["members"]:
+                continue
+            best_hdr, best_info = None, None
+            for d in self._open:
+                if d is c or d["gone"] or list(d["members"]) != [s]:
+                    continue
+                dist = abs(d["t"] - c["t"])
+                if dist > self.window:
+                    continue
+                p = d["members"][s][1]
+                if p.key_header() == cons.key_header():
+                    if best_hdr is None or dist < abs(best_hdr["t"] - c["t"]):
+                        best_hdr = d
+                elif p.info == cons.info:
+                    if best_info is None or dist < abs(best_info["t"] - c["t"]):
+                        best_info = d
+            d = best_hdr if best_hdr is not None else best_info
+            if d is not None:
+                c["members"][s] = d["members"][s]
+                d["gone"] = True
+                cons = self._consensus(c["members"])
+
+    @staticmethod
+    def _consensus(members: dict) -> Packet:
+        for s in ("dw", "mm", "esp"):
+            if s in members:
+                return members[s][1]
+        raise ValueError("empty cluster")
+
+    def _finalise(self, c: dict) -> Row:
+        m = c["members"]
+        cons = self._consensus(m)
+        cells = {}
+        for s in self.sources:
+            if s not in m:
+                cells[s] = CELL_NONE
+                continue
+            p = m[s][1]
+            if p.same_content(cons):
+                cells[s] = CELL_OK
+            elif p.key_header() == cons.key_header():
+                cells[s] = CELL_DIFF
+            else:
+                cells[s] = CELL_HDR
+        has_mm, has_dw = "mm" in m, "dw" in m
+        dw_used = "dw" in self.sources
+        esp_cell = cells.get("esp", CELL_NONE)
+        if not has_mm and not has_dw:
+            cls = ROW_ESP_ONLY
+            cells["esp"] = CELL_UNCONF
+        elif has_mm and has_dw and cells["mm"] != CELL_OK:
+            cls = ROW_CONFLICT
+        elif dw_used and has_mm and not has_dw:
+            cls = ROW_MM_ONLY
+        elif has_dw and not has_mm:
+            cls = ROW_DW_ONLY
+        elif "esp" not in self.sources or esp_cell == CELL_OK:
+            cls = ROW_ALL
+        else:
+            cls = {CELL_NONE: ROW_ESP_MISS, CELL_DIFF: ROW_ESP_DIFF,
+                   CELL_HDR: ROW_ESP_HDR}[esp_cell]
+        return Row(idx=0, t=self._anchor(m), members=dict(m), cells=cells, cls=cls,
+                   consensus=cons, fcs=m["dw"][1].fcs if has_dw else None)
+
+    def step(self, now: float, final: bool = False) -> List[Row]:
+        """Close every cluster whose window has passed (all of them when
+        `final`) and return their rows in time order."""
+        with self._lock:
+            w = self.window
+            slack = max(abs(v) for v in self.offset.values())
+            due = [c for c in self._open if final or now >= c["t"] + w + slack]
+            due.sort(key=lambda c: c["t"])
+            for c in due:
+                if not c["gone"]:
+                    self._absorb_near(c)
+            closed = [c for c in due if not c["gone"]]
+            self._open = [c for c in self._open
+                          if not c["gone"] and all(c is not d for d in closed)]
+            rows = [self._finalise(c) for c in closed]
+            rows.sort(key=lambda r: r.t)
+            for r in rows:
+                self._n += 1
+                r.idx = self._n
+            return rows
+
+
+def row_legacy_verdict(row: Row) -> str:
+    """Map a two-source (mm + esp) row onto LiveMatcher's verdict names."""
+    return {ROW_ALL: "ok", ROW_ESP_MISS: "missing", ROW_ESP_DIFF: "mismatch",
+            ROW_ESP_HDR: "corrupt", ROW_ESP_ONLY: "extra"}.get(row.cls, row.cls)
+
+
+def row_stats(rows: List[Row]) -> dict:
+    """Totals of the three-column report. ESP32 scores are [ok, different,
+    header-corrupt, not-decoded] against Direwolf (`vs_dw`) and against the
+    union of both references (`vs_union`); reference conflicts are excluded
+    from both, and ESP32-only frames are never successes here."""
+    st = {"mm": 0, "dw": 0, "union": 0, "both": 0, "mm_only": 0, "dw_only": 0,
+          "conflict": 0, "esp_only": 0, "implausible": 0,
+          "vs_dw": [0, 0, 0, 0], "vs_union": [0, 0, 0, 0]}
+    slot = {CELL_OK: 0, CELL_DIFF: 1, CELL_HDR: 2, CELL_NONE: 3}
+    for r in rows:
+        has_mm, has_dw = "mm" in r.members, "dw" in r.members
+        if r.cls == ROW_ESP_ONLY:
+            st["esp_only"] += 1
+            if not aprs_plausible(r.members["esp"][1]):
+                st["implausible"] += 1
+            continue
+        st["union"] += 1
+        st["mm"] += has_mm
+        st["dw"] += has_dw
+        st["both"] += has_mm and has_dw
+        st["mm_only"] += has_mm and not has_dw
+        st["dw_only"] += has_dw and not has_mm
+        if r.cls == ROW_CONFLICT:
+            st["conflict"] += 1
+            continue
+        k = slot.get(r.cells.get("esp", CELL_NONE), 3)
+        st["vs_union"][k] += 1
+        if has_dw:
+            st["vs_dw"][k] += 1
+    return st
+
+
+def ref_packet_count(res: FileResult, reference: str) -> int:
+    """How many packets of the selected reference a (partial) result holds.
+    'multimon' is exactly the legacy count (multimon-ng packets + ESP32
+    extras). The union cannot be known before the rows close, so while a
+    file plays it is approximated by the larger of the two references."""
+    if reference == "direwolf":
+        return len(res.dw_packets)
+    if reference == "union":
+        return max(len(res.mm_packets), len(res.dw_packets))
+    return len(res.mm_packets) + len(res.extra)
+
+
+def _tcell(row: Row, src: str, t0: float) -> str:
+    if src not in row.members:
+        return "--:--.-"
+    return mmss(row.members[src][0] - t0)
+
+
+def print_row(row: Row, t0: float, esp_used: bool = True) -> None:
+    """One transmission in the three-column report, with the notes it needs."""
+    order = ("mm", "dw", "esp") if esp_used else ("mm", "dw")
+    cells = " ".join(row.cells.get(s, CELL_NONE) for s in order)
+    times = "  ".join("%s %s" % (s, _tcell(row, s, t0)) for s in order)
+    say("%06d  %s  [%s]  fcs=%s  %s" % (row.idx, times, cells, fmt_fcs(row.fcs),
+                                        row.consensus.raw))
+    ind = "        "
+
+    def show_pair(label_a: str, pa: Packet, label_b: str, pb: Packet) -> None:
+        say("%s%s: %s" % (ind, label_a, pa.raw))
+        say("%s%s: %s" % (ind, label_b, pb.raw))
+
+    if row.cls == ROW_CONFLICT:
+        show_pair("mm ", row.members["mm"][1], "dw ", row.members["dw"][1])
+        say(ind + T("! REFERENCE CONFLICT - multimon-ng and Direwolf disagree; "
+                    "check normalisation"))
+        return
+    if row.cls == ROW_ESP_ONLY:
+        ok = aprs_plausible(row.members["esp"][1])
+        say(ind + T("! ESP32 ONLY - unconfirmed by any CRC-checked reference "
+                    "(plausible: %s)") % (T("yes") if ok else T("NO")))
+        return
+    if row.cls == ROW_MM_ONLY:
+        say(ind + T("! only multimon-ng decoded it (Direwolf did not)"))
+    elif row.cls == ROW_DW_ONLY:
+        say(ind + T("! multimon-ng did not decode it (Direwolf did)"))
+    if not esp_used:
+        return
+    esp = row.cells.get("esp", CELL_NONE)
+    if esp == CELL_NONE:
+        say(ind + T("! ESP32 NOT DECODED"))
+    elif esp in (CELL_DIFF, CELL_HDR):
+        show_pair("ref", row.consensus, "esp", row.members["esp"][1])
+        say(ind + (T("! ESP32 DECODED BUT DIFFERENT") if esp == CELL_DIFF else
+                   T("! ESP32 PAYLOAD OK BUT HEADER CORRUPT")))
+
+
 # --------------------------------------------------------------------------
 # Reporting
 # --------------------------------------------------------------------------
@@ -2554,16 +3834,125 @@ def print_summary(results: List[FileResult], volume: Optional[float] = None) -> 
     return 0 if (mism == 0 and corr == 0 and miss == 0) else 1
 
 
+def print_dw_file_report(res: FileResult, setup: DwSetup, dry_run: bool = False) -> None:
+    """Direwolf part of the per-file report, printed after the legacy lines."""
+    st = row_stats(res.rows)
+    if setup.fix_bits == 0:
+        say(T("  Direwolf decoded %d packet(s)   (CRC-strict, FIX_BITS=0)") % st["dw"])
+    else:
+        say(T("  Direwolf decoded %d packet(s)   (NOT CRC-strict, FIX_BITS=%d)") %
+            (st["dw"], setup.fix_bits))
+    say(T("  References: both %d   mm-only %d   dw-only %d   conflicts %d") %
+        (st["both"], st["mm_only"], st["dw_only"], st["conflict"]))
+    if not dry_run:
+        say(T("  ESP32 vs Direwolf : OK %d  DIFFERENT %d  HDR-CORRUPT %d  NOT DECODED %d") %
+            tuple(st["vs_dw"]))
+        say(T("  ESP32-only (unconfirmed): %d   of which implausible: %d") %
+            (st["esp_only"], st["implausible"]))
+    if res.dw_offset:
+        say(T("  -> measured Direwolf latency vs multimon-ng: %+.2f s") % res.dw_offset)
+
+
+def _rate_line(label: str, k: int, n: int) -> str:
+    lo, hi = wilson(k, n)
+    return (T("%s: %d of %d  (%.2f%%, 95%% CI %.1f..%.1f%%)") %
+            (label, k, n, pct(k, n), 100.0 * lo, 100.0 * hi))
+
+
+def print_dw_summary(results: List[FileResult], setup: DwSetup, reference: str,
+                     dry_run: bool = False) -> int:
+    """The REFERENCE COMPARISON block printed after the legacy summary.
+    Returns the exit code the Direwolf / union reference would give:
+    0 all correct, 1 any ESP32 miss / difference / reference conflict,
+    2 nothing to compare."""
+    rows = [r for res in results for r in res.rows]
+    st = row_stats(rows)
+    bar = "=" * 72
+    print("\n" + bar)
+    print(T("REFERENCE COMPARISON (Direwolf)"))
+    print(bar)
+    print(T("  Direwolf %s, %d Hz, modem profile %s, FIX_BITS %d") %
+          (setup.version or "?", setup.rate, setup.profile or T("(default)"), setup.fix_bits))
+    if setup.fix_bits > 0:
+        print(T("  WARNING: Direwolf is NOT a strict CRC reference: FIX_BITS=%d") %
+              setup.fix_bits)
+    print(T("  Reference for the exit code       : %s") % reference)
+    print("  %-30s %6s %6s %6s %6s %6s %6s" %
+          (T("file"), T("mm"), T("dw"), T("union"), T("esp=dw"), T("esp1"), T("confl")))
+    for r in results:
+        fs = row_stats(r.rows)
+        print("  %-30s %6d %6d %6d %6d %6d %6d" %
+              (r.name[:30], fs["mm"], fs["dw"], fs["union"], fs["vs_dw"][0],
+               fs["esp_only"], fs["conflict"]))
+    print("  " + "-" * 70)
+    print(T("  Packets multimon-ng / Direwolf    : %d / %d") % (st["mm"], st["dw"]))
+    print(T("  Union / both references           : %d / %d") % (st["union"], st["both"]))
+    print(T("  multimon-ng only / Direwolf only  : %d / %d") % (st["mm_only"], st["dw_only"]))
+    print(T("  Reference conflicts               : %d") % st["conflict"])
+    if not dry_run:
+        mm_total = sum(len(r.mm_packets) for r in results)
+        mm_ok = sum(r.ok for r in results)
+        print(_rate_line(T("  ESP32 correct vs multimon-ng      "), mm_ok, mm_total))
+        print(_rate_line(T("  ESP32 correct vs Direwolf         "), st["vs_dw"][0],
+                         sum(st["vs_dw"])))
+        print(_rate_line(T("  ESP32 correct vs union            "), st["vs_union"][0],
+                         sum(st["vs_union"])))
+        print(T("  ESP32-only, unconfirmed           : %d  (implausible: %d)") %
+              (st["esp_only"], st["implausible"]))
+    offsets = [r.dw_offset for r in results if r.dw_offset]
+    if offsets:
+        print(T("  Direwolf latency vs multimon-ng   : %+.2f s (median of %d file(s))") %
+              (median(offsets), len(offsets)))
+    print(bar)
+    if dry_run:
+        return 0 if st["union"] else 2
+    key = "vs_dw" if reference == "direwolf" else "vs_union"
+    total = sum(st[key])
+    if total == 0:
+        print(T("RESULT: the selected reference decoded no packets - nothing to compare."))
+        return 2
+    bad = st[key][1] + st[key][2] + st[key][3] + st["conflict"]
+    return 1 if bad else 0
+
+
+CSV_COLUMNS = ("file", "row", "t_mm", "t_dw", "t_esp", "cell_mm", "cell_dw", "cell_esp",
+               "class", "fcs", "consensus", "esp")
+
+
+def write_rows_csv(path: str, results: List[FileResult]) -> int:
+    """One CSV line per three-column row, so runs can be diffed over time
+    (the FCS is the stable key of a frame). Returns the number of rows."""
+    n = 0
+    with open(path, "w", newline="", encoding="utf-8") as f:
+        w = csv.writer(f)
+        w.writerow(CSV_COLUMNS)
+        for res in results:
+            for r in res.rows:
+                def tt(src: str) -> str:
+                    if src not in r.members:
+                        return ""
+                    return "%.3f" % (r.members[src][0] - res.t0)
+                esp = r.members["esp"][1].raw if "esp" in r.members else ""
+                w.writerow([res.name, r.idx, tt("mm"), tt("dw"), tt("esp"),
+                            r.cells.get("mm", ""), r.cells.get("dw", ""),
+                            r.cells.get("esp", ""), r.cls,
+                            "" if r.fcs is None else "%04X" % r.fcs,
+                            r.consensus.raw, esp])
+                n += 1
+    return n
+
+
 # --------------------------------------------------------------------------
 # Startup helpers
 # --------------------------------------------------------------------------
 
 
 _HAVE_STDBUF = False
+_HAVE_DIREWOLF = False
 
 
 def check_tools(need_play: bool = True) -> None:
-    global _HAVE_STDBUF
+    global _HAVE_STDBUF, _HAVE_DIREWOLF
     required = ("multimon-ng", "sox") + (("pw-cat", "pw-dump") if need_play else ())
     missing = [t for t in required if shutil.which(t) is None]
     if missing:
@@ -2571,6 +3960,7 @@ def check_tools(need_play: bool = True) -> None:
         sys.stderr.write(T("  Debian/Ubuntu: sudo apt install multimon-ng sox libsox-fmt-all "
                            "pipewire-bin\n"))
         sys.exit(2)
+    _HAVE_DIREWOLF = shutil.which("direwolf") is not None
     _HAVE_STDBUF = shutil.which("stdbuf") is not None
     if not _HAVE_STDBUF:
         sys.stderr.write(T(
@@ -2670,8 +4060,17 @@ class VolumeSearch:
                  normalise: bool = False,
                  offset_auto: bool = True,
                  clip_step_db: float = CLIP_STEP_DB,
-                 quiet: bool = False) -> None:
+                 quiet: bool = False,
+                 dw: Optional[DwSetup] = None,
+                 reference: str = "multimon") -> None:
         self.wavs = wavs
+        # Direwolf: when given it runs during calibration too, and with
+        # reference 'direwolf' / 'union' the score is taken from the
+        # three-column rows (ESP32 frames no CRC-checked reference confirmed
+        # are then never counted as successes).
+        self.dw = dw
+        self.reference = reference
+        self.dw_offset = 0.0
         self.route = route
         self.tail = tail
         self.window = window
@@ -2734,7 +4133,7 @@ class VolumeSearch:
         strict = self.clip_rate <= 0.0
         # Every probe starts over from the first file of the list.
         self._cursor = 0
-        while len(batch.mm_packets) + len(batch.extra) < target:
+        while ref_packet_count(batch, self.reference) < target:
             if self._cursor >= len(self.wavs):
                 self._cursor = 0
                 passes += 1
@@ -2744,11 +4143,11 @@ class VolumeSearch:
                     # PipeWire output) and only Ctrl-C can end the run.
                     self._say(T("      probe incomplete: %d/%d packet(s) after %d pass(es) "
                                 "over the wav set - check the audio routing and the files") %
-                              (len(batch.mm_packets) + len(batch.extra), target, passes))
+                              (ref_packet_count(batch, self.reference), target, passes))
                     break
             wav = self.wavs[self._cursor]
             self._cursor += 1
-            remaining = target - (len(batch.mm_packets) + len(batch.extra))
+            remaining = target - ref_packet_count(batch, self.reference)
             res = FileResult(name=os.path.basename(wav))
             _LIVE_STATS.set_file(0, 0, os.path.basename(wav))
             run_one_wav(res, wav, self.route, volume, self.tail,
@@ -2756,9 +4155,13 @@ class VolumeSearch:
                         dry_run=False, stop_at_mm_packets=remaining,
                         normalise=self.normalise, offset_auto=self.offset_auto,
                         offset_seed=self.offset,
-                        abort_on_overrange=strict)
+                        abort_on_overrange=strict,
+                        dw=self.dw, reference=self.reference,
+                        dw_offset_seed=self.dw_offset)
             if res.offset:
                 self.offset = res.offset
+            if res.dw_offset:
+                self.dw_offset = res.dw_offset
             batch.mm_packets.extend(res.mm_packets)
             batch.esp_packets.extend(res.esp_packets)
             batch.ok += res.ok
@@ -2766,6 +4169,8 @@ class VolumeSearch:
             batch.corrupt.extend(res.corrupt)
             batch.missing.extend(res.missing)
             batch.extra.extend(res.extra)
+            batch.dw_packets.extend(res.dw_packets)
+            batch.rows.extend(res.rows)
             if strict and self.collector.overrange_since(overrange_before) > 0:
                 # With the strict default one warning already settles it: this
                 # level clips. Playing on would only keep the ADC over-driven.
@@ -2774,6 +4179,17 @@ class VolumeSearch:
         n_mm = len(batch.mm_packets)
         n_extra = len(batch.extra)
         warns = self.collector.overrange_since(overrange_before)
+        if self.reference != "multimon":
+            st = row_stats(batch.rows)
+            ok, diff, hdr, miss = st["vs_dw" if self.reference == "direwolf" else "vs_union"]
+            trials = ok + diff + hdr + miss
+            seen = max(1, trials)
+            return {
+                "volume": volume, "db": key, "ok": ok, "mismatch": diff, "corrupt": hdr,
+                "missing": miss, "extra": st["esp_only"], "mm": n_mm,
+                "success": ok, "trials": trials,
+                "warns": warns, "clip_rate": warns / float(seen),
+            }
         seen = max(1, n_mm + n_extra)
         return {
             "volume": volume, "db": key, "ok": batch.ok,
@@ -2917,7 +4333,8 @@ class VolumeSearch:
                       (clip_db, to_lin(clip_db)))
 
         # Sanity check: with no packets at all there is nothing to calibrate.
-        probed = [m for m in self.cache.values() if m["mm"] > 0 or m["extra"] > 0]
+        probed = [m for m in self.cache.values()
+                  if m["mm"] > 0 or m["extra"] > 0 or m["trials"] > 0]
         if not probed:
             self.volume = self._clamp(to_lin(self._cap_db(clip_db - self.headroom_db)))
             self._say(T("  No packets decoded during calibration at any level - falling back "
@@ -3347,6 +4764,141 @@ def selftest() -> int:
     finally:
         run_one_wav = real_run_one_wav
 
+    print(T("Direwolf: KISS, AX.25 and FCS"))
+    check(T("CRC-16/X.25 check value of '123456789' is 0x906E"),
+          fcs16_x25(b"123456789") == 0x906E, "%04X" % fcs16_x25(b"123456789"))
+    frame = ax25_encode("LU1ABC-9", "APRS", ["WIDE1-1*", "WIDE2-1"],
+                        b"`abc\x1cdef\xc0\xdb")
+    f = fcs16_x25(frame)
+    check(T("a frame followed by its FCS leaves the X.25 residue 0x0F47"),
+          fcs16_x25(frame + bytes([f & 0xFF, f >> 8])) == 0x0F47)
+    dec = ax25_decode(frame)
+    check(T("AX.25 address field: SSID, path and the H bit ('*') decode"),
+          dec is not None and dec[0] == "LU1ABC-9" and dec[1] == "APRS" and
+          dec[2] == ["WIDE1-1*", "WIDE2-1"] and dec[3] == 0x03 and dec[4] == 0xF0,
+          T("got %r") % (dec,))
+    stream = b"junk" + kiss_encode(frame) + kiss_encode(b"\x00\x01") + b"\xc0\xc0"
+    got = []
+    dfr = KissDeframer()
+    for i in range(0, len(stream), 3):              # split across "TCP reads"
+        got.extend(dfr.feed(stream[i:i + 3]))
+    check(T("KISS: escapes, split reads, garbage and empty frames"),
+          len(got) == 2 and got[0] == (0, 0, frame) and got[1] == (0, 0, b"\x00\x01"),
+          T("got %r") % (got,))
+    check(T("malformed address field and non-APRS frames are rejected"),
+          ax25_decode(b"\x82\xa0") is None and
+          kiss_to_packet(ax25_encode("A", "B", [], b"x", control=0x00)) is None and
+          kiss_to_packet(ax25_encode("A", "B", [], b"x", pid=0xCF)) is None)
+    p_dw = kiss_to_packet(frame)
+    mp = MultimonParser()
+    mp.feed_line("AFSK1200: fm LU1ABC-9 to APRS-0 via WIDE1-1,WIDE2-1 UI  pid=F0")
+    p_mm2 = mp.feed_line("`abc.def..")
+    p_esp2 = parse_esp_line(b"I (5) aprs_service: RX: LU1ABC-9>APRS,WIDE1-1*,WIDE2-1:"
+                            b"`abc\x1cdef\xc0\xdb")
+    check(T("the same frame from Direwolf, multimon-ng and the ESP32 compares equal"),
+          p_dw is not None and p_mm2 is not None and p_esp2 is not None and
+          p_dw.same_content(p_mm2) and p_dw.same_content(p_esp2) and p_dw.fcs == f)
+    ok_p = make_packet("LU1ABC-9", "APRS", ["WIDE1-1"], b"!3854.00S/06801.00W-", "")
+    bad_p = make_packet("L%U1", "AP?S", [], b"\x07\x01zz", "")
+    check(T("APRS plausibility: a real position passes, noise fails"),
+          aprs_plausible(ok_p) and not aprs_plausible(bad_p))
+    ds = DwSetup(rate=44100, fix_bits=0)
+    conf = build_dw_conf(ds, 12345)
+    cmd = build_dw_cmd("/tmp/dw.conf", ds)
+    fp = pick_free_port()
+    check(T("an automatic KISS port is inside the range Direwolf accepts"),
+          DW_PORT_MIN <= fp <= DW_PORT_MAX, str(fp))
+    check(T("Direwolf config: receive only, CRC-strict, KISS on one port only"),
+          "FIX_BITS 0" in conf and "ADEVICE stdin null" in conf and
+          conf.index("KISSPORT 0") < conf.index("KISSPORT 12345") and
+          "AGWPORT 0" in conf and "PTT" not in conf and
+          cmd[-1] == "-" and cmd[cmd.index("-r") + 1] == "44100")
+
+    print(T("ClusterMatcher (three columns)"))
+
+    def pk(src: str, info: bytes, path=("WIDE1-1",)) -> Packet:
+        return make_packet(src, "APRS", list(path), info, "%s:%s" % (src, info))
+
+    X = pk("LU1ABC", b">hello")
+    X_bad = pk("LU1ABC", b">hellX")
+    X_hdr = pk("LU1XYZ", b">hello")
+
+    def rows_of(feed, sources=("mm", "dw", "esp")) -> List[Row]:
+        cm = ClusterMatcher(5.0, offset_auto=False, sources=sources)
+        for src, t, p in feed:
+            cm.add(src, t, p)
+        return cm.step(100.0, final=True)
+
+    cases = [
+        ("all three agree", [("mm", 10.0, X), ("dw", 10.0, X), ("esp", 10.5, X)],
+         [(ROW_ALL, "===")]),
+        ("ESP32 missed it", [("mm", 10.0, X), ("dw", 10.0, X)], [(ROW_ESP_MISS, "==-")]),
+        ("ESP32 payload differs", [("mm", 10.0, X), ("dw", 10.0, X), ("esp", 10.4, X_bad)],
+         [(ROW_ESP_DIFF, "==D")]),
+        ("ESP32 header corrupt", [("mm", 10.0, X), ("dw", 10.0, X), ("esp", 10.4, X_hdr)],
+         [(ROW_ESP_HDR, "==H")]),
+        ("only multimon-ng", [("mm", 10.0, X), ("esp", 10.4, X)], [(ROW_MM_ONLY, "=-=")]),
+        ("only Direwolf", [("dw", 10.0, X), ("esp", 10.4, X)], [(ROW_DW_ONLY, "-==")]),
+        ("ESP32 only", [("esp", 10.0, X)], [(ROW_ESP_ONLY, "--?")]),
+        ("references disagree", [("mm", 10.0, X_bad), ("dw", 10.0, X), ("esp", 10.3, X)],
+         [(ROW_CONFLICT, "D==")]),
+    ]
+    for name, feed, want in cases:
+        rows = rows_of(feed)
+        got_rows = [(r.cls, "".join(r.cells[s] for s in ("mm", "dw", "esp"))) for r in rows]
+        check(T("row: %s") % name, got_rows == want, T("got %r") % (got_rows,))
+
+    rows = rows_of([("mm", 10.0, X), ("mm", 11.0, X), ("dw", 10.0, X), ("dw", 11.0, X),
+                    ("esp", 11.05, X), ("esp", 10.05, X)])
+    check(T("two identical beacons pair with the nearest transmission"),
+          len(rows) == 2 and all(r.cls == ROW_ALL and
+                                 abs(r.members["esp"][0] - r.members["mm"][0]) < 0.2
+                                 for r in rows))
+    cm = ClusterMatcher(1.0, offset_auto=True)
+    for i in range(OFFSET_MIN_SAMPLES):
+        pki = pk("LU1ABC", ("beacon %d" % i).encode())
+        cm.add("mm", float(i), pki)
+        cm.add("dw", float(i) + 0.1, pki)
+        cm.add("esp", float(i) + 0.8, pki)
+    check(T("Direwolf and ESP32 latency skews are learned independently"),
+          cm.locked["dw"] and cm.locked["esp"] and abs(cm.offset["dw"] - 0.1) < 0.02 and
+          abs(cm.offset["esp"] - 0.8) < 0.02,
+          T("offset=%.3f") % cm.offset["esp"])
+
+    # Cross-check: on the two sources LiveMatcher sees, ClusterMatcher must
+    # reach the same verdicts, or the three-column rows would contradict the
+    # legacy numbers printed under them.
+    scenarios = [
+        [("mm", 10.0, p_mm), ("esp", 11.0, p_esp)],
+        [("mm", 10.0, p_mm), ("esp", 16.0, p_esp)],
+        [("mm", 10.0, p_mm), ("esp", 10.2, bad_hdr)],
+        [("mm", 10.0, p_mm), ("esp", 10.2, bad_pl)],
+        [("mm", 10.0, p_mm), ("mm", 11.0, p_mm), ("esp", 11.05, p_esp), ("esp", 10.05, p_esp)],
+        [("esp", 3.0, p_esp), ("mm", 20.0, X), ("esp", 20.5, X), ("mm", 30.0, X_bad)],
+    ]
+    same = True
+    for sc in scenarios:
+        lm = LiveMatcher(5.0, offset_auto=False)
+        for src, t, p in sc:
+            (lm.add_mm if src == "mm" else lm.add_esp)(t, p)
+        legacy = sorted(e[0] for e in lm.step(100.0, final=True))
+        new = sorted(row_legacy_verdict(r) for r in rows_of(sc, sources=("mm", "esp")))
+        if legacy != new:
+            same = False
+            print("      %r != %r" % (legacy, new))
+    check(T("ClusterMatcher agrees with LiveMatcher on multimon-ng vs ESP32"), same)
+
+    st = row_stats(rows_of([("mm", 10.0, X_bad), ("dw", 10.0, X), ("esp", 10.3, X)]) +
+                   rows_of([("esp", 10.0, bad_p)]) +
+                   rows_of([("dw", 10.0, X), ("esp", 10.3, X)]))
+    check(T("statistics: conflicts are not scored, ESP32-only frames are never successes"),
+          st["conflict"] == 1 and st["vs_dw"] == [1, 0, 0, 0] and
+          st["esp_only"] == 1 and st["implausible"] == 1 and st["union"] == 2,
+          T("got %r") % (st,))
+    fr = FileResult(name="x", mm_packets=[p_mm, p_mm], extra=[p_esp])
+    check(T("the multimon-ng reference counts packets exactly as before"),
+          ref_packet_count(fr, "multimon") == 3)
+
     print("")
     if failures:
         print(T("SELFTEST FAILED: %d of the checks above did not pass") % len(failures))
@@ -3515,6 +5067,8 @@ def run_gui(ap: argparse.ArgumentParser, initial_values: Optional[dict] = None,
             continue                # --lang has its own selector in the button bar
         if isinstance(act, argparse._StoreTrueAction):
             kind = "flag"
+        elif act.choices:
+            kind = "choice"
         elif act.type is int:
             kind = "int"
         elif act.type is float:
@@ -3605,6 +5159,9 @@ def run_gui(ap: argparse.ArgumentParser, initial_values: Optional[dict] = None,
                            command=refresh_sinks).pack(side="right", anchor="center", padx=(4, 0))
                 w = ttk.Combobox(cell, textvariable=var, width=18)
                 sink_boxes.append(w)
+            elif kind == "choice":
+                w = ttk.Combobox(cell, textvariable=var, width=18, state="readonly",
+                                 values=[str(c) for c in act.choices])
             else:
                 w = ttk.Entry(cell, textvariable=var, width=18)
             w.pack(side="right", fill="x", expand=True, anchor="center", padx=(6, 0))
@@ -3662,11 +5219,20 @@ def run_gui(ap: argparse.ArgumentParser, initial_values: Optional[dict] = None,
         stats_gen[0] = snap["gen"]
         pct_txt = ("%.2f%%" % pct(snap["missed"], snap["total"])
                    if snap["total"] else "--")
-        line = ("[%s]  " % (snap["phase"] or T("Live")) +
-                T("Total packets: %d   |   multimon-ng: %d   |   ESP32 decoded: %d"
-                  "   |   ESP32 missed: %d of %d (%s)") %
-                (snap["total"], snap["mm"], snap["esp"],
-                 snap["missed"], snap["total"], pct_txt))
+        if snap["dw_active"]:
+            line = ("[%s]  " % (snap["phase"] or T("Live")) +
+                    T("Total packets: %d   |   multimon-ng: %d   |   Direwolf: %d   |   "
+                      "ESP32 decoded: %d   |   ESP32 missed: %d of %d (%s)   |   "
+                      "conflicts: %d   |   ESP32-only: %d") %
+                    (snap["total"], snap["mm"], snap["dw"], snap["esp"],
+                     snap["missed"], snap["total"], pct_txt,
+                     snap["conflict"], snap["esp_only"]))
+        else:
+            line = ("[%s]  " % (snap["phase"] or T("Live")) +
+                    T("Total packets: %d   |   multimon-ng: %d   |   ESP32 decoded: %d"
+                      "   |   ESP32 missed: %d of %d (%s)") %
+                    (snap["total"], snap["mm"], snap["esp"],
+                     snap["missed"], snap["total"], pct_txt))
         if snap["file_name"]:
             dur = snap["file_duration"]
             elapsed = min(snap["file_elapsed"], dur) if dur else snap["file_elapsed"]
@@ -3970,7 +5536,9 @@ def build_parser() -> argparse.ArgumentParser:
     its form from this parser, so a flag added here shows up there by itself."""
     ap = argparse.ArgumentParser(
         description=T("Test esp32idf_APRS with a battery of real-APRS WAV files, "
-                      "using multimon-ng as the reference decoder."))
+                      "using multimon-ng as the reference decoder.") + " " +
+        T("Direwolf, when installed, runs as a second, CRC-strict reference and "
+          "the report shows multimon-ng / Direwolf / ESP32 for every packet."))
     ap.add_argument("--lang", choices=LANGS, default=None,
                     help=T("language of the messages, the help and the GUI: "
                            "en (English), es (Spanish), it (Italian). Default: "
@@ -4054,6 +5622,34 @@ def build_parser() -> argparse.ArgumentParser:
                            "useful to dry-run the parser)"))
     ap.add_argument("--mm_args", default="",
                     help=T("extra multimon-ng arguments, e.g. '-A' (quoted)"))
+    ap.add_argument("--direwolf", choices=DW_MODES, default="auto",
+                    help=T("Direwolf as a second reference decoder: auto (use it when it "
+                           "is installed), on (required), off (legacy two-column bench). "
+                           "Default: auto"))
+    ap.add_argument("--reference", choices=REFERENCES, default="multimon",
+                    help=T("reference that decides the exit code and the auto-volume "
+                           "score: multimon (legacy, default), direwolf, or union (a "
+                           "packet either reference decoded)"))
+    ap.add_argument("--dw_rate", type=int, default=DW_RATE,
+                    help=T("sample rate of the audio fed to Direwolf (default %d)") % DW_RATE)
+    ap.add_argument("--dw_profile", default="",
+                    help=T("Direwolf modem profile appended to 'MODEM 1200', e.g. 'A+' or "
+                           "'E+' (default: Direwolf's own default)"))
+    ap.add_argument("--dw_fix_bits", type=int, default=DW_FIX_BITS,
+                    help=T("Direwolf FIX_BITS (default %d). Anything above 0 lets Direwolf "
+                           "repair frames with a bad CRC, so it stops being a strict "
+                           "reference.") % DW_FIX_BITS)
+    ap.add_argument("--dw_kiss_port", type=int, default=0,
+                    help=T("TCP port of Direwolf's KISS server, 1024..49151 (default 0: "
+                           "pick a free port for every file)"))
+    ap.add_argument("--dw_start_timeout", type=float, default=DW_START_TIMEOUT,
+                    help=T("seconds to wait for Direwolf's KISS port to open (default %.1f)") %
+                    DW_START_TIMEOUT)
+    ap.add_argument("--dw_args", default="",
+                    help=T("extra Direwolf arguments, e.g. '-P E+' (quoted)"))
+    ap.add_argument("--report_csv", default=None,
+                    help=T("write every multimon-ng / Direwolf / ESP32 row to this CSV "
+                           "file (needs Direwolf)"))
     ap.add_argument("--list_audio", action="store_true",
                     help=T("list the PipeWire outputs (sinks) and exit"))
     ap.add_argument("--gui", action="store_true",
@@ -4139,8 +5735,52 @@ def run_with_args(args: argparse.Namespace) -> int:
         sys.stderr.write(T("--monitor_volume must be in [0, 1] (got %g)\n") %
                          args.monitor_volume)
         return 2
+    if args.dw_rate < 8000:
+        sys.stderr.write(T("--dw_rate must be >= 8000 (got %d)\n") % args.dw_rate)
+        return 2
+    if not (0 <= args.dw_fix_bits <= DW_FIX_BITS_MAX):
+        sys.stderr.write(T("--dw_fix_bits must be in [0, %d] (got %d)\n") %
+                         (DW_FIX_BITS_MAX, args.dw_fix_bits))
+        return 2
+    if args.dw_kiss_port != 0 and not (DW_PORT_MIN <= args.dw_kiss_port <= DW_PORT_MAX):
+        sys.stderr.write(T("--dw_kiss_port must be 0 or in [%d, %d] (got %d)\n") %
+                         (DW_PORT_MIN, DW_PORT_MAX, args.dw_kiss_port))
+        return 2
+    if args.dw_start_timeout <= 0:
+        sys.stderr.write(T("--dw_start_timeout must be > 0 (got %g)\n") %
+                         args.dw_start_timeout)
+        return 2
+    if args.reference != "multimon" and args.direwolf == "off":
+        sys.stderr.write(T("--reference %s needs Direwolf, but --direwolf is off\n") %
+                         args.reference)
+        return 2
 
     check_tools(need_play=not args.no_play)
+
+    # Direwolf: second, CRC-strict reference. Optional unless asked for.
+    dw_setup = None  # type: Optional[DwSetup]
+    if args.direwolf != "off":
+        if _HAVE_DIREWOLF:
+            import shlex
+            dw_setup = DwSetup(rate=args.dw_rate, profile=(args.dw_profile or "").strip(),
+                               fix_bits=args.dw_fix_bits, kiss_port=args.dw_kiss_port,
+                               start_timeout=args.dw_start_timeout,
+                               extra=shlex.split(args.dw_args) if args.dw_args else [])
+        elif args.direwolf == "on":
+            sys.stderr.write(T("--direwolf on, but the direwolf program was not found.  "
+                               "Debian/Ubuntu: sudo apt install direwolf\n"))
+            return 2
+        else:
+            sys.stderr.write(T("NOTE: direwolf not found - running with multimon-ng as the "
+                               "only reference (install it for the three-column report: "
+                               "sudo apt install direwolf)\n"))
+    if args.reference != "multimon" and dw_setup is None:
+        sys.stderr.write(T("--reference %s needs Direwolf, which is not available\n") %
+                         args.reference)
+        return 2
+    if args.report_csv and dw_setup is None:
+        sys.stderr.write(T("NOTE: --report_csv needs Direwolf; no CSV will be written\n"))
+    _LIVE_STATS.set_dw_active(dw_setup is not None)
 
     # Resolve both outputs to concrete PipeWire nodes BEFORE anything plays,
     # so a typo is an error here and not audio sent to the wrong device.
@@ -4179,6 +5819,9 @@ def run_with_args(args: argparse.Namespace) -> int:
     if args.no_play:
         print(T("DRY RUN (--no_play): only multimon-ng runs; serial port and sound "
                 "card are NOT used, so ESP32 results below are not meaningful."))
+        if dw_setup is not None:
+            print(T("  Direwolf runs too: the two references are compared, both fed at "
+                    "%.0fx real time.") % DRY_RUN_SPEED)
     else:
         assert route is not None
         print(T("Serial: %s @ %d 8N1   Audio: %s") %
@@ -4188,6 +5831,14 @@ def run_with_args(args: argparse.Namespace) -> int:
                   (route.monitor.label(), route.monitor_volume))
         else:
             print(T("Monitor: none"))
+    if dw_setup is not None:
+        print(T("Direwolf: %d Hz, modem profile %s, FIX_BITS %d, KISS port %s, "
+                "reference for the exit code: %s") %
+              (dw_setup.rate, dw_setup.profile or T("(default)"), dw_setup.fix_bits,
+               dw_setup.kiss_port or T("auto"), args.reference))
+        if dw_setup.fix_bits > 0:
+            print(T("  WARNING: Direwolf is NOT a strict CRC reference: FIX_BITS=%d") %
+                  dw_setup.fix_bits)
     sys.stdout.flush()
 
     col = None  # type: Optional[SerialCollector]
@@ -4231,6 +5882,7 @@ def run_with_args(args: argparse.Namespace) -> int:
     # over from the first file.
     final_volume = args.volume
     offset_seed = 0.0
+    dw_offset_seed = 0.0
     offset_auto = not args.no_offset_auto
     if not args.no_play and not args.no_auto_volume:
         _LIVE_STATS.reset(T("Calibration"))
@@ -4246,18 +5898,26 @@ def run_with_args(args: argparse.Namespace) -> int:
             max_passes=args.max_passes,
             normalise=args.normalise,
             offset_auto=offset_auto,
-            clip_step_db=args.clip_step_db)
+            clip_step_db=args.clip_step_db,
+            dw=dw_setup, reference=args.reference)
         try:
             final_volume = calibrator.run()
             offset_seed = calibrator.offset
+            dw_offset_seed = calibrator.dw_offset
         except KeyboardInterrupt:
             final_volume = calibrator.safe_volume()
             print(T("\nAuto-volume calibration interrupted - proceeding with the best "
                     "level known to be free of over-range so far: %.3f (%+.1f dB).") %
                   (final_volume, to_db(final_volume)))
             offset_seed = calibrator.offset
+            dw_offset_seed = calibrator.dw_offset
+        except DirewolfError as exc:
+            sys.stderr.write("\n[dw] %s\n" % exc)
+            col.stop()
+            return 2
 
     results = []  # type: List[FileResult]
+    dw_failed = False
     _LIVE_STATS.reset(T("Test"))
     try:
         for n, wav in enumerate(wavs, 1):
@@ -4269,21 +5929,51 @@ def run_with_args(args: argparse.Namespace) -> int:
             run_one_wav(res, wav, route, final_volume, args.tail,
                         args.match_window, col, mm_extra, args.no_play,
                         normalise=args.normalise, offset_auto=offset_auto,
-                        offset_seed=offset_seed)
+                        offset_seed=offset_seed, dw=dw_setup,
+                        reference=args.reference, dw_offset_seed=dw_offset_seed)
+            if res.dw_offset:
+                dw_offset_seed = res.dw_offset
             print_file_report(res, dry_run=args.no_play)
+            if dw_setup is not None:
+                print_dw_file_report(res, dw_setup, dry_run=args.no_play)
             if not args.no_play:
                 print_loss_resume(res, results)
             sleep_or_stop(args.pause)
     except KeyboardInterrupt:
         print(T("\nInterrupted - reporting what has been tested so far."))
+    except DirewolfError as exc:
+        dw_failed = True
+        sys.stderr.write("\n[dw] %s\n" % exc)
+        print(T("\nDirewolf failed - reporting what has been tested so far."))
     finally:
         col.stop()
+
+    if args.report_csv and dw_setup is not None and results:
+        try:
+            n_rows = write_rows_csv(args.report_csv, results)
+            print(T("CSV report: %d row(s) written to %s") % (n_rows, args.report_csv))
+        except OSError as exc:
+            sys.stderr.write(T("Cannot write the CSV report %s: %s\n") % (args.report_csv, exc))
 
     if args.no_play:
         n = sum(len(r.mm_packets) for r in results)
         print(T("\nDRY RUN finished: multimon-ng decoded %d packet(s) in %d file(s).") % (n, len(results)))
-        return 0 if n else 2
-    return print_summary(results, final_volume) if results else 2
+        rc = 0 if n else 2
+        if dw_setup is not None and results:
+            print(T("DRY RUN: Direwolf decoded %d packet(s).") %
+                  sum(row_stats(r.rows)["dw"] for r in results))
+            dw_rc = print_dw_summary(results, dw_setup, args.reference, dry_run=True)
+            if args.reference != "multimon":
+                rc = dw_rc
+        return 2 if dw_failed else rc
+    if not results:
+        return 2
+    rc = print_summary(results, final_volume)
+    if dw_setup is not None:
+        dw_rc = print_dw_summary(results, dw_setup, args.reference)
+        if args.reference != "multimon":
+            rc = dw_rc
+    return 2 if dw_failed else rc
 
 
 if __name__ == "__main__":
