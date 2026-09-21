@@ -165,7 +165,13 @@ oltre i ~5 kHz.
    linea PTT sia *aperta* durante il reset, per tutto l'avvio di ~5 s, e mentre è
    in riposo **prima di connettere la radio** — ``modem_init()`` si blocca ~5 s
    calibrando il clock dell'ADC e i beacon trasmettono all'ingresso, quindi un
-   PTT di polarità errata ti dà secondi di portante non modulata.
+   PTT di polarità errata ti dà secondi di portante non modulata. Il firmware
+   porta il pin PTT al livello di riposo come primo passo di ``app_main()``.
+   Prima di allora — durante la ROM e il bootloader di secondo stadio, circa
+   0,3–0,5 s dopo ogni reset (pin EN, brownout, OTA o riavvio remoto) — il pin è
+   un ingresso non configurato e senza pull, e solo la polarizzazione propria
+   dello stadio di commutazione sul suo ingresso di controllo tiene la radio non
+   in trasmissione.
 
 Interfaccia ridotta: un condensatore e un trimmer per direzione
 ----------------------------------------------------------------

@@ -844,9 +844,24 @@ cd Audio-Tracks
 ### Cosa succede durante un'esecuzione
 
 1. Il programma elenca i file WAV trovati e apre la porta seriale (115200 8N1).
-2. **L'apertura della porta di norma riavvia l'ESP32** (il chip USB-seriale
-   attiva DTR/RTS). Il programma attende `--settle` secondi (4 per impostazione
-   predefinita) che si avvii.
+2. **La porta viene aperta senza resettare l'ESP32.** Sulle schede di sviluppo
+   le linee DTR/RTS del chip USB-seriale pilotano EN/IO0 tramite il circuito di
+   auto-reset, ed EN va basso solo mentre RTS è attiva e DTR no. Su Linux il
+   kernel attiva entrambe le linee dentro `open()` e pyserial applica poi DTR
+   prima di RTS, quindi il programma richiede DTR=1/RTS=0 e subito dopo rilascia
+   DTR: le linee passano per (1,1) → (1,0) → (0,0) ed EN non viene mai portato
+   basso. Per 1,5 s osserva poi la console in cerca del messaggio di avvio della
+   ROM (`rst:0x… (…)`):
+   * **nessun messaggio**: il firmware era già in esecuzione e il test parte
+     subito;
+   * **messaggio presente** (è stato passato `--reset`, oppure il driver
+     USB-seriale ha resettato comunque il chip): il modem si sta ancora
+     avviando; `modem_init()` impiega 5 s a calibrare il clock dell'ADC, quindi
+     la decodifica inizia circa 6–8 s dopo il reset. Il programma attende la
+     riga `radiomodem: started:`, al massimo `--ready_timeout` secondi (20 per
+     impostazione predefinita), poi altri `--settle` secondi (1 per
+     impostazione predefinita). Stampa quale caso ha trovato e la causa del
+     reset.
 3. A meno che sia stato passato `--no_auto_volume`, esegue quindi la
    **calibrazione automatica del volume** della sezione 7.1: sondaggi economici
    da 8 pacchetti per trovare la soglia di saturazione e poi lotti completi per
@@ -895,6 +910,7 @@ alcun modo.
 | `--wav_dir DIR` | directory corrente | Directory con i file `.wav` (non ricorsiva). |
 | `--serial_port PORT` | `/dev/ttyUSB0` | Porta seriale della console dell'ESP32. |
 | `--baud N` | `115200` | Velocità seriale (l'8N1 è fisso). |
+| `--reset` | disattivato | Resetta l'ESP32 tramite DTR/RTS subito dopo l'apertura della porta (EN basso per 0,1 s con IO0 alto, così si avvia dalla flash), per le esecuzioni che devono partire da un avvio pulito. Senza questa opzione la porta si apre senza resettare il chip. |
 | `--audio_device DEV` | predefinito del sistema | Dispositivo ALSA collegato all'ESP32, ad es. `hw:1,0` (vedere `--list_audio`). |
 | `--list_audio` | — | Stampa i dispositivi di riproduzione ALSA (`aplay -l`) ed esce. Richiede `alsa-utils`. |
 | `--no_play` | disattivato | **Prova a vuoto:** niente suono e niente porta seriale; gira solo multimon-ng. Salta anche la calibrazione automatica del volume. I pacchetti sono elencati come righe `000001 [multimon …]`, senza verdetto. |
@@ -923,7 +939,8 @@ alcun modo.
 | `--match_window S` | `5` | Un pacchetto dell'ESP32 risponde a un pacchetto di multimon-ng solo se arriva entro ±S secondi da esso, **dopo aver sottratto la latenza misurata**. Un pacchetto che l'ESP32 non ha riportato entro quel momento è **NOT DECODED**. Vedere le sezioni 12 e 13. Deve essere > 0. |
 | `--no_offset_auto` | disattivato | Non stima lo scarto di latenza ESP32 vs multimon-ng; confronta le marche temporali grezze (sezione 12.4). |
 | `--tail S` | `3` | Secondi di ascolto dopo la fine dell'audio. Il programma attende sempre almeno `--match_window` secondi. |
-| `--settle S` | `4` | Secondi di attesa dopo l'apertura della porta seriale (riavvio/avvio dell'ESP32). Aumentare se l'ESP32 si avvia lentamente. |
+| `--ready_timeout S` | `20` | Dopo un avvio dell'ESP32, l'attesa massima della riga `radiomodem: started:` del modem. Usato solo se si vede un messaggio di avvio o si passa `--reset`. |
+| `--settle S` | `1` | Secondi di attesa aggiuntivi dopo che il modem si è dichiarato pronto a seguito di un avvio. Non usato se il firmware era già in esecuzione. |
 | `--pause S` | `1` | Pausa tra i file. |
 
 ### Interfaccia e manutenzione
@@ -1058,6 +1075,11 @@ senza attese** (circa un secondo). Verifica
 * la normalizzazione e l'analisi: SSID `-0`, l'`*` di ripetizione, il CR finale, un LF
   del payload reso come `.`, i due punti dentro il payload e un prefisso di log
   ESP-IDF;
+* l'avvio della porta seriale: rispetto a un modello della sequenza di `open()`
+  di Linux e del circuito di auto-reset dell'ESP32, l'apertura della porta non
+  porta mai EN basso (mentre l'apertura ingenua con DTR=0/RTS=0 sì), `--reset`
+  dà un solo impulso su EN e avvia dalla flash, e vengono riconosciuti il
+  messaggio di avvio della ROM e la riga `started` del modem;
 * i quattro verdetti di `LiveMatcher`, compreso che una trama con intestazione corrotta
   dia **un** verdetto invece di un perso più un extra, e che due beacon identici si
   abbinino alla trasmissione più vicina;
@@ -1453,7 +1475,8 @@ di regressione.
 | `Cannot open serial port … Permission denied` | L'utente non è nel gruppo `dialout` (sezione 5.1). |
 | `Cannot open serial port … No such file or directory` | Porta sbagliata. `ls /dev/ttyUSB* /dev/ttyACM*`, controllare `dmesg \| tail`, usare `--serial_port`. |
 | `Cannot open serial port … busy` | Un altro programma (idf.py monitor, minicom, screen…) ha la porta. Chiuderlo. |
-| `WARNING: no data received from the serial port yet` | Porta o velocità sbagliate; l'ESP32 si sta ancora avviando (aumentare `--settle 8`); il cavo USB è solo di alimentazione. |
+| `WARNING: no data received from the serial port yet` | Porta o velocità sbagliate; il cavo USB è solo di alimentazione. Anche un firmware già in esecuzione che non ha ancora nulla da registrare resta silenzioso, e ciò è innocuo. |
+| `WARNING: the modem did not report ready within … s` | L'ESP32 si è avviato ma `radiomodem: started:` non è mai arrivato: **Enable audio ADC/DAC modem** è su OFF, il livello di log della console nasconde INFO, oppure l'avvio è più lento del solito (aumentare `--ready_timeout`). |
 | `Missing required program(s): …` | Installare i pacchetti della sezione 2. |
 | `No .wav files in …` | `--wav_dir` sbagliato, oppure i file sono FLAC/MP3 (convertirli, sezione 6.3). |
 | `[audio] player failed` | `play` non riesce ad aprire il dispositivo audio: `--audio_device` sbagliato, la scheda è occupata (PulseAudio/PipeWire potrebbe tenerla) o manca `libsox-fmt-alsa`. Provare senza `--audio_device`, oppure eseguire `aplay -l`. |
@@ -1466,7 +1489,7 @@ di regressione.
 | I risultati cambiano tra un'esecuzione e l'altra | Normale in piccola misura (controllo automatico di guadagno, clock della scheda audio). Ripetere 3 volte e confrontare. Se la variazione è grande, controllare la stabilità della scheda audio USB e i suoni di sistema; considerare anche se la calibrazione automatica del volume (sezione 7.1) ha scelto un volume diverso ogni volta — fissarlo con `--volume X --no_auto_volume` per un confronto equo. |
 | L'esecuzione richiede molto più tempo di quanto suggerisca la durata dei file | Normale: per impostazione predefinita ogni esecuzione inizia con la passata di calibrazione automatica del volume (sezione 7.1), che riproduce l'insieme dei WAV più volte prima che inizi il test riportato. Usare `--no_auto_volume` per saltarla una volta noto un buon `--volume`. |
 | La calibrazione automatica del volume riporta "no packets decoded by multimon-ng at all" e si ferma | multimon-ng non ha trovato nulla a nessun volume — è un problema di file/instradamento audio, non di livello (vedere la riga "multimon-ng ha decodificato 0 pacchetti" più sopra). |
-| L'ESP32 si riavvia quando il test parte | L'apertura della porta riavvia la scheda tramite DTR/RTS. È normale; `--settle` attende l'avvio. |
+| L'ESP32 si riavvia quando il test parte | La porta viene aperta senza portare EN basso, quindi un riavvio è atteso solo con `--reset`. La causa del reset viene stampata dal messaggio della ROM: `0x1 POWERON_RESET` è anche ciò che riporta un reset dal pin EN sull'ESP32 classico, quindi se compare ancora a ogni avvio, il driver USB-seriale attiva RTS prima di DTR dentro l'`open()` del kernel, cosa che nessun programma può impedire. L'esecuzione resta valida: il programma rileva l'avvio e attende il modem. Qualsiasi altra causa (`BROWNOUT_RST`, `SW_CPU_RESET`, un watchdog) viene dalla scheda o dal firmware, non dalla porta. |
 | Il programma sembra bloccato | I file lunghi vengono riprodotti in tempo reale; guardare la riga di avanzamento ogni 30 s. Ctrl-C ferma in sicurezza. |
 | multimon-ng ha decodificato 0 pacchetti in un file | Il file non ha pacchetti (le tracce 5–7 sono solo toni), è troppo basso o non è AFSK 1200. Il programma esce con codice 2 se *nessun* file produce pacchetti. |
 | Tracce 5–7 nella directory | Contengono toni, non pacchetti: fanno perdere tempo e non danno nulla. Spostarle fuori. |

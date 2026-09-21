@@ -10,12 +10,13 @@ Sequenza di avvio
 ``app_main()`` viene eseguita nel task principale del sistema, il cui stack è
 impostato da ``CONFIG_ESP_MAIN_TASK_STACK_SIZE`` e non è pensato per ospitare
 lavoro pesante — ``esp_netif`` + ``esp_wifi`` + ``esp_http_server`` + cJSON
-possono usare diversi KB di stack tra loro. Quindi ``app_main()`` fa solo le due
+possono usare diversi KB di stack tra loro. Quindi ``app_main()`` fa solo le tre
 cose che devono precedere tutto, e poi cede il controllo a un task dedicato:
 
 .. code-block:: text
 
    app_main()
+    ├─ ptt_force_idle()          (pin PTT portato al livello di riposo; non configurato dal reset fino a qui)
     ├─ nvs_flash_init()          (cancella+ritenta su NO_FREE_PAGES / NEW_VERSION_FOUND)
     ├─ storage_init()            (monta LittleFS su /storage, auto-formatta al primo avvio)
     └─ xTaskCreate(app_task, 8192 B, prio 5)   ── e ritorna; FreeRTOS recupera il task principale

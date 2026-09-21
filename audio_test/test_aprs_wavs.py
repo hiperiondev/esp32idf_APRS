@@ -311,8 +311,32 @@ _CATALOG = {
             "RESULTADO: multimon-ng no decodificó ningún paquete; no hay nada que comparar.",
         "WARNING: `stdbuf` not found (package coreutils). multimon-ng's output will be\n  block-buffered on the pipe, so its packets may arrive in bursts and be\n  timestamped late, which shows up as spurious NOT DECODED verdicts.\n":
             "ATENCIÓN: no se encontró `stdbuf` (paquete coreutils). La salida de multimon-ng\n  quedará con buffer por bloques en la tubería, así que sus paquetes pueden llegar\n  en ráfagas y con marca de tiempo tardía, lo que aparece como veredictos\n  NO DECODIFICADO espurios.\n",
-        "Waiting %.1f s for the ESP32 to be ready ...":
-            "Esperando %.1f s a que el ESP32 esté listo ...",
+        "Checking whether the ESP32 is booting ...":
+            "Comprobando si el ESP32 está arrancando ...",
+        "  no boot banner: the firmware is already running, starting now.":
+            "  sin mensaje de arranque: el firmware ya está en marcha, se empieza ahora.",
+        "  ESP32 booted (reset cause %s); waiting up to %.0f s for the modem ...":
+            "  el ESP32 arrancó (causa de reinicio %s); esperando hasta %.0f s al módem ...",
+        "  reset requested but no boot banner seen; waiting up to %.0f s for the modem ...":
+            "  se pidió un reinicio pero no se vio el mensaje de arranque; esperando hasta %.0f s al módem ...",
+        "  modem ready %.1f s after boot.":
+            "  módem listo %.1f s después del arranque.",
+        "  WARNING: the modem did not report ready within %.0f s (audio modem disabled in the configuration, or a slow boot); continuing.":
+            "  ATENCIÓN: el módem no informó que estaba listo en %.0f s (módem de audio deshabilitado en la configuración, o un arranque lento); se continúa.",
+        "  settling %.1f s ...":
+            "  estabilizando %.1f s ...",
+        "Serial port start-up":
+            "Arranque del puerto serie",
+        "the port model reproduces the reset of a DTR=0/RTS=0 open":
+            "el modelo del puerto reproduce el reinicio de una apertura con DTR=0/RTS=0",
+        "opening the port leaves EN high and both lines released":
+            "abrir el puerto deja EN en alto y las dos líneas liberadas",
+        "--reset pulses EN once and boots from flash":
+            "--reset da un solo pulso en EN y arranca desde la flash",
+        "a ROM boot banner is counted with its reset cause and clears modem ready":
+            "un mensaje de arranque de la ROM se cuenta con su causa de reinicio y anula el módem listo",
+        "the modem 'started' line sets modem ready":
+            "la línea 'started' del módem lo marca como listo",
         "  WARNING: no data received from the serial port yet. The firmware may be quiet until it hears/sends something; continuing.":
             "  ATENCIÓN: todavía no llegaron datos del puerto serie. El firmware puede estar callado hasta que escuche o transmita algo; se continúa.",
         "got %r": "se obtuvo %r",
@@ -355,8 +379,12 @@ _CATALOG = {
             "ejecutar las pruebas unitarias internas (sin hardware ni audio) y salir",
         "skip the auto-volume calibration pass and use --volume as-is for the whole run":
             "saltear la pasada de calibración automática de volumen y usar --volume tal cual durante toda la corrida",
-        "seconds to wait after opening the serial port (default 4)":
-            "segundos de espera tras abrir el puerto serie (por omisión 4)",
+        "reset the ESP32 through DTR/RTS right after opening the serial port, so the run starts from a clean boot (by default the port is opened without resetting the chip)":
+            "reiniciar el ESP32 mediante DTR/RTS justo después de abrir el puerto serie, para que la corrida empiece desde un arranque limpio (por omisión el puerto se abre sin reiniciar el chip)",
+        "longest wait, in seconds, for the modem's 'started' line after the ESP32 boots (default 20)":
+            "espera máxima, en segundos, a la línea 'started' del módem después de que arranca el ESP32 (por omisión 20)",
+        "extra seconds to wait once the modem reports ready after a boot (default 1)":
+            "segundos extra de espera una vez que el módem informa que está listo tras un arranque (por omisión 1)",
         "pause between files in seconds (default 1)":
             "pausa entre archivos, en segundos (por omisión 1)",
         "an ESP32 packet answers a multimon-ng packet only if it arrives within this many seconds of it; a packet the ESP32 has not reported after this time is shown as NOT DECODED (default 5)":
@@ -861,8 +889,32 @@ _CATALOG = {
             "RISULTATO: multimon-ng non ha decodificato alcun pacchetto; non c'è nulla da confrontare.",
         "WARNING: `stdbuf` not found (package coreutils). multimon-ng's output will be\n  block-buffered on the pipe, so its packets may arrive in bursts and be\n  timestamped late, which shows up as spurious NOT DECODED verdicts.\n":
             "ATTENZIONE: `stdbuf` non trovato (pacchetto coreutils). L'output di multimon-ng\n  sarà bufferizzato a blocchi sulla pipe, quindi i pacchetti possono arrivare a\n  raffiche e con marca temporale tardiva, il che appare come verdetti\n  NON DECODIFICATO spuri.\n",
-        "Waiting %.1f s for the ESP32 to be ready ...":
-            "Attesa di %.1f s perché l'ESP32 sia pronto ...",
+        "Checking whether the ESP32 is booting ...":
+            "Controllo se l'ESP32 si sta avviando ...",
+        "  no boot banner: the firmware is already running, starting now.":
+            "  nessun messaggio di avvio: il firmware è già in esecuzione, si parte subito.",
+        "  ESP32 booted (reset cause %s); waiting up to %.0f s for the modem ...":
+            "  l'ESP32 si è avviato (causa del reset %s); attesa fino a %.0f s per il modem ...",
+        "  reset requested but no boot banner seen; waiting up to %.0f s for the modem ...":
+            "  reset richiesto ma nessun messaggio di avvio visto; attesa fino a %.0f s per il modem ...",
+        "  modem ready %.1f s after boot.":
+            "  modem pronto %.1f s dopo l'avvio.",
+        "  WARNING: the modem did not report ready within %.0f s (audio modem disabled in the configuration, or a slow boot); continuing.":
+            "  ATTENZIONE: il modem non si è dichiarato pronto entro %.0f s (modem audio disabilitato nella configurazione, o avvio lento); si continua.",
+        "  settling %.1f s ...":
+            "  assestamento di %.1f s ...",
+        "Serial port start-up":
+            "Avvio della porta seriale",
+        "the port model reproduces the reset of a DTR=0/RTS=0 open":
+            "il modello della porta riproduce il reset di un'apertura con DTR=0/RTS=0",
+        "opening the port leaves EN high and both lines released":
+            "l'apertura della porta lascia EN alto e entrambe le linee rilasciate",
+        "--reset pulses EN once and boots from flash":
+            "--reset dà un solo impulso su EN e avvia dalla flash",
+        "a ROM boot banner is counted with its reset cause and clears modem ready":
+            "un messaggio di avvio della ROM viene contato con la sua causa di reset e annulla il modem pronto",
+        "the modem 'started' line sets modem ready":
+            "la riga 'started' del modem lo segna come pronto",
         "  WARNING: no data received from the serial port yet. The firmware may be quiet until it hears/sends something; continuing.":
             "  ATTENZIONE: nessun dato ricevuto finora dalla porta seriale. Il firmware può restare silenzioso finché non sente o trasmette qualcosa; si continua.",
         "got %r": "ottenuto %r",
@@ -905,8 +957,12 @@ _CATALOG = {
             "esegue i test unitari interni (senza hardware né audio) ed esce",
         "skip the auto-volume calibration pass and use --volume as-is for the whole run":
             "salta la fase di calibrazione automatica del volume e usa --volume così com'è per tutta l'esecuzione",
-        "seconds to wait after opening the serial port (default 4)":
-            "secondi di attesa dopo l'apertura della porta seriale (predefinito 4)",
+        "reset the ESP32 through DTR/RTS right after opening the serial port, so the run starts from a clean boot (by default the port is opened without resetting the chip)":
+            "resettare l'ESP32 tramite DTR/RTS subito dopo l'apertura della porta seriale, così l'esecuzione parte da un avvio pulito (per impostazione predefinita la porta si apre senza resettare il chip)",
+        "longest wait, in seconds, for the modem's 'started' line after the ESP32 boots (default 20)":
+            "attesa massima, in secondi, della riga 'started' del modem dopo l'avvio dell'ESP32 (predefinito 20)",
+        "extra seconds to wait once the modem reports ready after a boot (default 1)":
+            "secondi di attesa aggiuntivi dopo che il modem si dichiara pronto a seguito di un avvio (predefinito 1)",
         "pause between files in seconds (default 1)":
             "pausa tra i file, in secondi (predefinito 1)",
         "an ESP32 packet answers a multimon-ng packet only if it arrives within this many seconds of it; a packet the ESP32 has not reported after this time is shown as NOT DECODED (default 5)":
@@ -1357,6 +1413,15 @@ except ImportError:  # pragma: no cover
 MM_RATE = 22050          # multimon-ng native sample rate (AFSK1200 demod)
 SERIAL_BAUD = 115200     # 8N1 as required by the firmware console
 DEFAULT_SERIAL = "/dev/ttyUSB0"
+
+# Start-up handshake with the firmware (see wait_ready()). After the ROM boot
+# banner the modem needs bootloader + init + Wi-Fi + a 5 s ADC clock
+# calibration in modem_init() before it decodes anything, so the run waits for
+# its "started" log line instead of a fixed delay.
+BOOT_BANNER_WAIT = 1.5         # how long to look for a boot banner after opening
+DEFAULT_READY_TIMEOUT = 20.0   # longest wait for the modem after a boot
+DEFAULT_SETTLE_SECONDS = 1.0   # extra margin once the modem reports ready
+HARD_RESET_PULSE = 0.1         # EN low time used by --reset
 PROGRESS_SECONDS = 30    # progress line interval while a file plays
 
 # Time to keep listening after playback ends: the ESP32 may still be
@@ -1374,6 +1439,16 @@ ESP_RX_RE = re.compile(rb"[IWED] \(\d+\) aprs_service: RX: (.*)$", re.DOTALL)
 #    the receive level trimmer or the transceiver volume"
 # Used by the auto-volume calibration to detect that the level is too HIGH.
 ESP_OVERRANGE_RE = re.compile(rb"afsk: RX audio is over-range")
+
+# First line the ESP32 ROM prints after any reset, e.g.
+#   "rst:0x1 (POWERON_RESET),boot:0x13 (SPI_FAST_FLASH_BOOT)"
+# An EN-pin reset reports POWERON_RESET on the classic ESP32 as well.
+BOOT_BANNER_RE = re.compile(rb"rst:0x([0-9a-fA-F]+) \(([A-Z0-9_]+)\)")
+
+# Logged by modem_init() once the demodulators are configured, i.e. from this
+# line on the firmware decodes the audio it is fed:
+#   "I (7412) radiomodem: started: modem=0 half duplex, DAC=GPIO25 ADC=GPIO33"
+MODEM_READY_RE = re.compile(rb"radiomodem: started:")
 
 # --------------------------------------------------------------------------
 # Auto-volume calibration
@@ -2147,13 +2222,8 @@ class SerialCollector(threading.Thread):
     truncate those frames.
     """
 
-    def __init__(self, port: str, baud: int = SERIAL_BAUD) -> None:
+    def __init__(self, port: str, baud: int = SERIAL_BAUD, reset: bool = False) -> None:
         super().__init__(daemon=True)
-        # Opening the port toggles DTR/RTS on most ESP32 dev boards, which
-        # resets the chip (they are wired to EN/IO0). Both lines are therefore
-        # de-asserted BEFORE the port is opened and again right after, because
-        # some drivers assert them as part of open(). The firmware then gets
-        # time to come up via the caller's wait_ready().
         self.ser = serial.Serial()
         self.ser.port = port
         self.ser.baudrate = baud
@@ -2161,17 +2231,14 @@ class SerialCollector(threading.Thread):
         self.ser.parity = serial.PARITY_NONE
         self.ser.stopbits = serial.STOPBITS_ONE
         self.ser.timeout = 0.2
-        try:
-            self.ser.dtr = False
-            self.ser.rts = False
-        except (OSError, ValueError, AttributeError):
-            pass          # not all platforms allow setting the lines before open()
-        self.ser.open()
-        try:
-            self.ser.dtr = False
-            self.ser.rts = False
-        except (OSError, ValueError, AttributeError):
-            pass
+        self._init_state()
+        self._open_without_reset()
+        if reset:
+            self.hard_reset()
+
+    def _init_state(self) -> None:
+        """Everything the reader thread and the line parser share, apart from
+        the port itself."""
         self.lock = threading.Lock()
         self.packets: List[Tuple[float, Packet]] = []
         self.lines_seen = 0
@@ -2186,10 +2253,61 @@ class SerialCollector(threading.Thread):
         # one (ADC clipping, reported by the firmware itself).
         self.overrange_count = 0
         self.last_overrange_time = 0.0
+        # ROM boot banners seen (one per chip reset), the reset cause of the
+        # last one as printed by the ROM, and when it arrived. modem_ready is
+        # set by the modem's "started" line and cleared by every boot banner,
+        # so it always describes the boot currently running.
+        self.boot_count = 0
+        self.last_boot_cause = ""
+        self.last_boot_time = 0.0
+        self.modem_ready = threading.Event()
         # Optional callback fed with EVERY chunk read from the port, exactly as
         # received (no line splitting, no ANSI stripping, no parsing, no
         # filtering). Used by the GUI's right-hand "serial" pane.
         self.raw_sink = _RAW_SERIAL_SINK
+
+    def _open_without_reset(self) -> None:
+        """Open the port without resetting the ESP32.
+
+        On ESP32 dev boards DTR and RTS drive EN and IO0 through two
+        cross-coupled transistors: EN is pulled low (chip held in reset) only
+        while RTS is asserted and DTR is not; IO0 is pulled low only while DTR
+        is asserted and RTS is not; both asserted or both released leave the
+        chip running.
+
+        On Linux the kernel asserts DTR and RTS together inside open(2), and
+        pyserial then applies the requested DTR state first and the RTS state
+        second. Requesting DTR=1/RTS=0 therefore takes the lines through
+        (1,1) -> (1,0) -> (0,0) once DTR is released below: EN is never
+        pulled down, and IO0 is low for a few milliseconds while the chip is
+        running, which has no effect outside a reset. Requesting DTR=0/RTS=0
+        instead would pass through (0,1) and reset the chip.
+
+        On Windows both lines are written in one SetCommState() call, so the
+        port opens straight into (1,0) and the same sequence applies.
+
+        A USB-serial driver that raises RTS and DTR in two separate requests,
+        RTS first, can still reset the chip inside open(2) itself; wait_ready()
+        detects that from the ROM boot banner."""
+        try:
+            self.ser.dtr = True
+            self.ser.rts = False
+        except (OSError, ValueError, AttributeError):
+            pass          # not all platforms allow setting the lines before open()
+        self.ser.open()
+        try:
+            self.ser.dtr = False
+        except (OSError, ValueError):
+            pass
+
+    def hard_reset(self) -> None:
+        """Reset the ESP32 on purpose through the auto-reset circuit: EN is
+        held low for HARD_RESET_PULSE seconds with IO0 high, so the chip then
+        boots normally from flash rather than into the serial download mode."""
+        self.ser.dtr = False      # IO0 high
+        self.ser.rts = True       # EN low
+        time.sleep(HARD_RESET_PULSE)
+        self.ser.rts = False      # EN high -> boot
 
     def run(self) -> None:
         while not self._halt.is_set():
@@ -2230,6 +2348,17 @@ class SerialCollector(threading.Thread):
     def _handle_line(self, line: bytes) -> None:
         self.lines_seen += 1
         clean = ANSI_RE.sub(b"", line)
+        boot = BOOT_BANNER_RE.search(clean)
+        if boot is not None:
+            now = time.monotonic()
+            with self.lock:
+                self.boot_count += 1
+                self.last_boot_cause = "0x%s %s" % (boot.group(1).decode("ascii"),
+                                                    boot.group(2).decode("ascii"))
+                self.last_boot_time = now
+            self.modem_ready.clear()
+        if MODEM_READY_RE.search(clean):
+            self.modem_ready.set()
         if ESP_OVERRANGE_RE.search(clean):
             now = time.monotonic()
             with self.lock:
@@ -2241,6 +2370,11 @@ class SerialCollector(threading.Thread):
             with self.lock:
                 self.packets.append((now, pkt))
                 self.last_rx_time = now
+
+    def snapshot_boot(self) -> Tuple[int, str, float]:
+        """(count, cause of the last one, its time) of ROM boot banners so far."""
+        with self.lock:
+            return self.boot_count, self.last_boot_cause, self.last_boot_time
 
     def snapshot_overrange(self) -> Tuple[int, float]:
         """(count, time of last occurrence) of over-range warnings so far."""
@@ -4509,13 +4643,43 @@ class VolumeSearch:
 AutoVolumeCalibrator = VolumeSearch
 
 
-def wait_ready(col: SerialCollector, settle: float) -> None:
-    """Opening the port usually resets an ESP32 (DTR/RTS wired to EN/IO0).
-    Wait for console traffic and for the boot to complete."""
-    say(T("Waiting %.1f s for the ESP32 to be ready ...") % settle)
-    end = time.monotonic() + settle
-    while time.monotonic() < end:
-        sleep_or_stop(0.2)
+def wait_ready(col: SerialCollector, settle: float,
+               ready_timeout: float = DEFAULT_READY_TIMEOUT, reset: bool = False) -> None:
+    """Hold the run until the ESP32 decodes the audio it is fed.
+
+    The port is opened without resetting the chip, so normally the firmware is
+    already running and the run starts at once. If a ROM boot banner arrives
+    within BOOT_BANNER_WAIT seconds, or `reset` says a reset was requested,
+    the modem is still coming up: wait for its "started" line (at most
+    `ready_timeout` seconds), then `settle` more seconds."""
+    say(T("Checking whether the ESP32 is booting ..."))
+    end = time.monotonic() + BOOT_BANNER_WAIT
+    while time.monotonic() < end and col.snapshot_boot()[0] == 0:
+        sleep_or_stop(0.1)
+    count, cause, boot_time = col.snapshot_boot()
+    if count == 0 and not reset:
+        say(T("  no boot banner: the firmware is already running, starting now."))
+    else:
+        if count > 0:
+            say(T("  ESP32 booted (reset cause %s); waiting up to %.0f s for the modem ...") %
+                (cause, ready_timeout))
+        else:
+            say(T("  reset requested but no boot banner seen; waiting up to %.0f s for the modem ...") %
+                ready_timeout)
+        t0 = boot_time if count > 0 else time.monotonic()
+        deadline = time.monotonic() + ready_timeout
+        while not col.modem_ready.is_set() and time.monotonic() < deadline:
+            sleep_or_stop(0.1)
+        if col.modem_ready.is_set():
+            say(T("  modem ready %.1f s after boot.") % (time.monotonic() - t0))
+        else:
+            say(T("  WARNING: the modem did not report ready within %.0f s (audio modem "
+                  "disabled in the configuration, or a slow boot); continuing.") % ready_timeout)
+        if settle > 0:
+            say(T("  settling %.1f s ...") % settle)
+            end = time.monotonic() + settle
+            while time.monotonic() < end:
+                sleep_or_stop(0.1)
     if not col.alive.is_set():
         say(T("  WARNING: no data received from the serial port yet. The firmware "
               "may be quiet until it hears/sends something; continuing."))
@@ -4595,6 +4759,88 @@ def selftest() -> int:
           parse_tnc2(b"LU1ABC>APRS::LU2DEF   :hi{01") is not None)
     check(T("ESP console line with a log prefix parses"),
           parse_esp_line(b"I (12345) aprs_service: RX: LU1ABC>APRS,WIDE1-1:test") is not None)
+
+    print(T("Serial port start-up"))
+
+    class _AutoResetPort:
+        """Model of a Linux USB-serial port wired to the ESP32 auto-reset
+        circuit: open(2) asserts DTR and RTS together, then pyserial applies
+        DTR and RTS in that order. Counts the EN resets it causes and whether
+        IO0 was low when EN was released (download mode)."""
+
+        def __init__(self) -> None:
+            self.want_dtr = True
+            self.want_rts = True
+            self.lines = (False, False)
+            self.is_open = False
+            self.resets = 0
+            self.download_boots = 0
+
+        def _drive(self, dtr: bool, rts: bool) -> None:
+            en_low_before = (not self.lines[0]) and self.lines[1]
+            en_low_after = (not dtr) and rts
+            if en_low_after and not en_low_before:
+                self.resets += 1
+            if en_low_before and not en_low_after and dtr and not rts:
+                self.download_boots += 1
+            self.lines = (dtr, rts)
+
+        @property
+        def dtr(self) -> bool:
+            return self.want_dtr
+
+        @dtr.setter
+        def dtr(self, value: bool) -> None:
+            self.want_dtr = bool(value)
+            if self.is_open:
+                self._drive(self.want_dtr, self.lines[1])
+
+        @property
+        def rts(self) -> bool:
+            return self.want_rts
+
+        @rts.setter
+        def rts(self, value: bool) -> None:
+            self.want_rts = bool(value)
+            if self.is_open:
+                self._drive(self.lines[0], self.want_rts)
+
+        def open(self) -> None:
+            self._drive(True, True)
+            self.is_open = True
+            self._drive(self.want_dtr, self.lines[1])
+            self._drive(self.lines[0], self.want_rts)
+
+    naive = _AutoResetPort()
+    naive.dtr = False
+    naive.rts = False
+    naive.open()
+    check(T("the port model reproduces the reset of a DTR=0/RTS=0 open"),
+          naive.resets == 1, T("got %r") % (naive.resets,))
+
+    stub = SerialCollector.__new__(SerialCollector)
+    stub._init_state()
+    stub.ser = _AutoResetPort()
+    stub._open_without_reset()
+    check(T("opening the port leaves EN high and both lines released"),
+          stub.ser.resets == 0 and stub.ser.lines == (False, False),
+          T("got %r") % ((stub.ser.resets, stub.ser.lines),))
+    stub.hard_reset()
+    check(T("--reset pulses EN once and boots from flash"),
+          stub.ser.resets == 1 and stub.ser.download_boots == 0 and stub.ser.lines == (False, False),
+          T("got %r") % ((stub.ser.resets, stub.ser.download_boots, stub.ser.lines),))
+
+    stub._handle_line(b"I (900) main: running")
+    stub._handle_line(b"I (7412) radiomodem: started: modem=0 half duplex, DAC=GPIO25 ADC=GPIO33")
+    ready_before_boot = stub.modem_ready.is_set()
+    stub._handle_line(b"ets Jun  8 2016 00:22:57\r")
+    stub._handle_line(b"rst:0x1 (POWERON_RESET),boot:0x13 (SPI_FAST_FLASH_BOOT)\r")
+    boot = stub.snapshot_boot()
+    check(T("a ROM boot banner is counted with its reset cause and clears modem ready"),
+          ready_before_boot and not stub.modem_ready.is_set() and
+          boot[0] == 1 and boot[1] == "0x1 POWERON_RESET", T("got %r") % (boot,))
+    stub._handle_line(b"\x1b[0;32mI (7412) radiomodem: started: modem=0 half duplex\x1b[0m")
+    check(T("the modem 'started' line sets modem ready"), stub.modem_ready.is_set())
 
     print(T("LiveMatcher verdicts"))
     lm = LiveMatcher(5.0, offset_auto=False)
@@ -5824,8 +6070,16 @@ def build_parser() -> argparse.ArgumentParser:
                            "probes cost one each.") % AUTO_VOLUME_MAX_ROUNDS)
     ap.add_argument("--tail", type=float, default=DEFAULT_TAIL_SECONDS,
                     help=T("seconds to keep listening after each file (default %.1f)") % DEFAULT_TAIL_SECONDS)
-    ap.add_argument("--settle", type=float, default=4.0,
-                    help=T("seconds to wait after opening the serial port (default 4)"))
+    ap.add_argument("--reset", action="store_true",
+                    help=T("reset the ESP32 through DTR/RTS right after opening the serial "
+                           "port, so the run starts from a clean boot (by default the port "
+                           "is opened without resetting the chip)"))
+    ap.add_argument("--ready_timeout", type=float, default=DEFAULT_READY_TIMEOUT,
+                    help=T("longest wait, in seconds, for the modem's 'started' line after "
+                           "the ESP32 boots (default 20)"))
+    ap.add_argument("--settle", type=float, default=DEFAULT_SETTLE_SECONDS,
+                    help=T("extra seconds to wait once the modem reports ready after a "
+                           "boot (default 1)"))
     ap.add_argument("--pause", type=float, default=1.0,
                     help=T("pause between files in seconds (default 1)"))
     ap.add_argument("--match_window", type=float, default=5.0,
@@ -6065,7 +6319,7 @@ def run_with_args(args: argparse.Namespace) -> int:
     col = None  # type: Optional[SerialCollector]
     if not args.no_play:
         try:
-            col = SerialCollector(args.serial_port, args.baud)
+            col = SerialCollector(args.serial_port, args.baud, reset=args.reset)
         except (serial.SerialException, OSError) as exc:
             sys.stderr.write(T("Cannot open serial port %s: %s\n") % (args.serial_port, exc))
             return 2
@@ -6087,7 +6341,7 @@ def run_with_args(args: argparse.Namespace) -> int:
         col = _Dummy()  # type: ignore
     col.start()
     if not args.no_play:
-        wait_ready(col, args.settle)
+        wait_ready(col, args.settle, args.ready_timeout, args.reset)
 
     mm_extra = args.mm_args.split() if args.mm_args else []
 

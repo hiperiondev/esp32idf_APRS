@@ -159,6 +159,11 @@ C2/C3 with 10 nF (fc ≈ 7.2 kHz) to keep the audio flat past ~5 kHz.
    whole ~5 s boot, and while idle **before connecting the radio** —
    ``modem_init()`` blocks ~5 s calibrating the ADC clock and beacons transmit
    on entry, so a wrong-polarity PTT gives you seconds of unmodulated carrier.
+   The firmware drives the PTT pin to its idle level as the first step of
+   ``app_main()``. Before that — through the ROM and the second-stage
+   bootloader, about 0.3–0.5 s after every reset (EN pin, brownout, OTA or
+   remote reboot) — the pin is an unconfigured input with no pull, and only the
+   keying stage's own bias on its control input keeps the radio unkeyed.
 
 Reduced interface: one capacitor and one trimmer per direction
 --------------------------------------------------------------

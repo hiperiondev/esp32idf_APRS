@@ -797,8 +797,21 @@ cd Audio-Tracks
 
 1. The program lists the WAV files it found and opens the serial port
    (115200 8N1).
-2. **Opening the port normally resets the ESP32** (the USB serial chip toggles
-   DTR/RTS). The program waits `--settle` seconds (default 4) for it to boot.
+2. **The port is opened without resetting the ESP32.** On dev boards the USB
+   serial chip's DTR/RTS lines drive EN/IO0 through the auto-reset circuit, and
+   EN goes low only while RTS is asserted and DTR is not. On Linux the kernel
+   asserts both lines inside `open()` and pyserial then applies DTR before RTS,
+   so the program requests DTR=1/RTS=0 and releases DTR afterwards: the lines
+   go (1,1) → (1,0) → (0,0) and EN is never pulled down. For 1.5 s it then
+   watches the console for the ROM boot banner (`rst:0x… (…)`):
+   * **no banner** — the firmware was already running, and the test starts at
+     once;
+   * **banner** (`--reset` was given, or the USB serial driver reset the chip
+     anyway) — the modem is still coming up: `modem_init()` spends 5 s
+     calibrating the ADC clock, so decoding starts some 6–8 s after the reset.
+     The program waits for the `radiomodem: started:` line, at most
+     `--ready_timeout` seconds (default 20), then `--settle` more seconds
+     (default 1). It prints which case it found and the reset cause.
 3. Unless `--no_auto_volume` was given, it then runs the **auto-volume
    calibration** of section 7.1: cheap 8-packet probes to find the clipping
    threshold, then full batches to find the centre of the plateau below it,
@@ -845,6 +858,7 @@ not printed, not counted either way.
 | `--wav_dir DIR` | current directory | Directory with the `.wav` files (not recursive). |
 | `--serial_port PORT` | `/dev/ttyUSB0` | Serial port of the ESP32 console. |
 | `--baud N` | `115200` | Serial speed (8N1 is fixed). |
+| `--reset` | off | Reset the ESP32 through DTR/RTS right after opening the port (EN low for 0.1 s with IO0 high, so it boots from flash), for runs that must start from a clean boot. Without it the port is opened without resetting the chip. |
 | `--audio_device DEV` | system default | ALSA device wired to the ESP32, e.g. `hw:1,0` (see `--list_audio`). |
 | `--list_audio` | — | Print the ALSA playback devices (`aplay -l`) and exit. Needs `alsa-utils`. |
 | `--no_play` | off | **Dry run:** no sound, no serial port; only multimon-ng runs. Auto-volume calibration is skipped as well. Packets are listed as `000001 [multimon …]` lines with no verdict. |
@@ -873,7 +887,8 @@ not printed, not counted either way.
 | `--match_window S` | `5` | An ESP32 packet answers a multimon-ng packet only if it arrives within ±S seconds of it, **after the measured latency has been removed**. A packet the ESP32 has not reported by then is **NOT DECODED**. See sections 12 and 13. Must be > 0. |
 | `--no_offset_auto` | off | Do not estimate the ESP32-vs-multimon-ng latency skew; compare raw timestamps instead (section 12.4). |
 | `--tail S` | `3` | Seconds to keep listening after the audio ends. The program always waits at least `--match_window` seconds. |
-| `--settle S` | `4` | Seconds to wait after opening the serial port (ESP32 reset/boot). Increase it if the ESP32 boots slowly. |
+| `--ready_timeout S` | `20` | After an ESP32 boot, the longest wait for the modem's `radiomodem: started:` line. Only used when a boot banner is seen or `--reset` is given. |
+| `--settle S` | `1` | Extra seconds to wait once the modem has reported ready after a boot. Not used when the firmware was already running. |
 | `--pause S` | `1` | Pause between files. |
 
 ### Interface and maintenance
@@ -1006,6 +1021,10 @@ waiting** (about a second). It checks
 
 * normalisation and parsing — SSID `-0`, the digipeated `*`, trailing CR, a
   payload LF rendered as `.`, a colon inside the payload, an ESP-IDF log prefix;
+* the serial start-up: against a model of the Linux `open()` sequence and the
+  ESP32 auto-reset circuit, opening the port never pulls EN low (while the naive
+  DTR=0/RTS=0 open does), `--reset` pulses EN once and boots from flash, and the
+  ROM boot banner and the modem's `started` line are recognised;
 * the four `LiveMatcher` verdicts, including that a header-corrupt frame gives
   **one** verdict rather than a missing + an extra, and that two identical
   beacons pair with the nearest transmission;
@@ -1387,7 +1406,8 @@ and produce a known number of packets for a quick regression run.
 | `Cannot open serial port … Permission denied` | Your user is not in the `dialout` group (section 5.1). |
 | `Cannot open serial port … No such file or directory` | Wrong port. `ls /dev/ttyUSB* /dev/ttyACM*`, check `dmesg \| tail`, use `--serial_port`. |
 | `Cannot open serial port … busy` | Another program (idf.py monitor, minicom, screen…) has the port. Close it. |
-| `WARNING: no data received from the serial port yet` | Wrong port or speed; ESP32 still booting (raise `--settle 8`); USB cable is power-only. |
+| `WARNING: no data received from the serial port yet` | Wrong port or speed; USB cable is power-only. A firmware that was already running and has nothing to log yet is also silent, which is harmless. |
+| `WARNING: the modem did not report ready within … s` | The ESP32 booted but `radiomodem: started:` never arrived: **Enable audio ADC/DAC modem** is OFF, the console log level hides INFO, or the boot is slower than usual (raise `--ready_timeout`). |
 | `Missing required program(s): …` | Install the packages of section 2. |
 | `No .wav files in …` | Wrong `--wav_dir`, or the files are FLAC/MP3 (convert them, section 6.3). |
 | `[audio] player failed` | `play` cannot open the sound device: wrong `--audio_device`, the card is busy (PulseAudio/PipeWire may hold it), or `libsox-fmt-alsa` is missing. Try without `--audio_device`, or run `aplay -l`. |
@@ -1400,7 +1420,7 @@ and produce a known number of packets for a quick regression run.
 | Results change between runs | Normal to a small degree (automatic gain, sound-card clock). Repeat 3 times and compare. If the change is large, look at USB sound-card stability and system sounds; also consider whether auto-volume calibration (section 7.1) picked a different volume each time — pin it down with `--volume X --no_auto_volume` for a fair comparison. |
 | Run takes noticeably longer than the file lengths suggest | Normal: by default every run starts with the auto-volume calibration pass (section 7.1), which plays through the WAV set several times before the reported test begins. Use `--no_auto_volume` to skip it once you know a good `--volume`. |
 | Auto-volume calibration reports "no packets decoded by multimon-ng at all" and stops | multimon-ng itself found nothing at any volume — this is a file/audio-routing problem, not a level problem (see the "multimon-ng decoded 0 packets" row above). |
-| ESP32 reboots when the test starts | Opening the port resets the board through DTR/RTS. Normal; `--settle` waits for the boot. |
+| ESP32 reboots when the test starts | The port is opened without pulling EN low, so a reboot is expected only with `--reset`. The reset cause is printed from the ROM banner: `0x1 POWERON_RESET` is also what an EN-pin reset reports on the classic ESP32, so if it still appears on every start, the USB serial driver raises RTS before DTR inside the kernel's `open()`, which no program can prevent. The run is still valid — the program detects the boot and waits for the modem. Any other cause (`BROWNOUT_RST`, `SW_CPU_RESET`, a watchdog) comes from the board or the firmware, not from the port. |
 | The program seems stuck | Long files are played in real time; look at the progress line every 30 s. Ctrl-C stops safely. |
 | multimon-ng decoded 0 packets in a file | The file has no packets (tracks 5–7 are tones only), is too quiet, or is not AFSK 1200. The program exits with code 2 if *no* file yields packets. |
 | Tracks 5–7 in the directory | They contain tones, not packets: they waste time and give nothing. Move them out. |

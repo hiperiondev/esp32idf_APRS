@@ -10,12 +10,13 @@ Boot sequence
 ``app_main()`` runs on the system main task, whose stack is set by
 ``CONFIG_ESP_MAIN_TASK_STACK_SIZE`` and is not meant to host heavy work —
 ``esp_netif`` + ``esp_wifi`` + ``esp_http_server`` + cJSON can use several KB of
-stack between them. So ``app_main()`` does only the two things that must precede
-everything, then hands off to a dedicated task:
+stack between them. So ``app_main()`` does only the three things that must
+precede everything, then hands off to a dedicated task:
 
 .. code-block:: text
 
    app_main()
+    ├─ ptt_force_idle()          (PTT pad driven to its idle level; unconfigured from reset until here)
     ├─ nvs_flash_init()          (erase+retry on NO_FREE_PAGES / NEW_VERSION_FOUND)
     ├─ storage_init()            (mount LittleFS at /storage, auto-format on first boot)
     └─ xTaskCreate(app_task, 8192 B, prio 5)   ── and returns; FreeRTOS reclaims the main task

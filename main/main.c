@@ -13,13 +13,15 @@
 //
 //     please contact their authors for more information.
 //
-// @brief Firmware entry point: NVS/LittleFS bring-up, configuration load, WiFi
-// station/AP setup and event handling, and creation of the application task that
-// starts the CPU frequency policy, SNTP client, APRS services and the radio
-// modem, bringing up the web admin server last once free heap allows it.
+// @brief Firmware entry point: PTT idle level, NVS/LittleFS bring-up,
+// configuration load, WiFi station/AP setup and event handling, and creation of
+// the application task that starts the CPU frequency policy, SNTP client, APRS
+// services and the radio modem, bringing up the web admin server last once free
+// heap allows it.
 
 #include <string.h>
 
+#include "driver/gpio.h"
 #include "esp_event.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
@@ -534,7 +536,42 @@ static void app_task(void *arg) {
     vTaskDelete(NULL);
 }
 
+// Puts the PTT pad at its idle level as early as the application can. From any
+// reset (EN pin, brownout, software restart after OTA or a remote command) the
+// pad is an unconfigured input with no pull, and AFSK_init() only configures it
+// from modem_init(), after the configuration load, Wi-Fi, SNTP, GPS and the
+// APRS service have started - and never when the audio modem is disabled in the
+// configuration. An active-high keying stage whose control input has no bias
+// resistor of its own would see that floating line the whole time.
+// Calling this first in app_main() limits the floating window to the ROM and
+// the second-stage bootloader (roughly 0.3-0.5 s), which only a pull resistor
+// on the keying stage can cover.
+//
+// The sequence matches AFSK_init(): the idle level is written before the pad
+// becomes an output, so it never drives the active level, and again after
+// gpio_config() for the case where the output register was not the path
+// taken. GPIO_MODE_INPUT_OUTPUT is the mode AFSK_init() uses as well, so its
+// later configuration leaves the pad unchanged.
+static void ptt_force_idle(void) {
+#if MODEM_PTT_GPIO >= 0
+    const uint32_t idle_level = MODEM_PTT_ACTIVE_HIGH ? 0 : 1;
+    gpio_config_t ptt_cfg = {
+        .pin_bit_mask = 1ULL << MODEM_PTT_GPIO,
+        .mode = GPIO_MODE_INPUT_OUTPUT,
+        .pull_up_en = GPIO_PULLUP_DISABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE,
+    };
+
+    gpio_set_level((gpio_num_t)MODEM_PTT_GPIO, idle_level);
+    gpio_config(&ptt_cfg);
+    gpio_set_level((gpio_num_t)MODEM_PTT_GPIO, idle_level);
+#endif
+}
+
 void app_main(void) {
+    ptt_force_idle();
+
     esp_err_t ret = nvs_flash_init();
     if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
         ESP_ERROR_CHECK(nvs_flash_erase());

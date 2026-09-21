@@ -165,7 +165,12 @@ más allá de ~5 kHz.
    durante todo el arranque de ~5 s, y en reposo **antes de conectar la radio**
    — ``modem_init()`` se bloquea ~5 s calibrando el reloj del ADC y las balizas
    transmiten al entrar, por lo que una polaridad de PTT equivocada te dará
-   segundos de portadora sin modular.
+   segundos de portadora sin modular. El firmware lleva el pin de PTT a su
+   nivel de reposo como primer paso de ``app_main()``. Antes de eso — durante la
+   ROM y el bootloader de segunda etapa, unos 0,3–0,5 s después de cada reset
+   (pin EN, brownout, OTA o reinicio remoto) — el pin es una entrada sin
+   configurar y sin pull, y solo la polarización propia de la etapa de
+   conmutación en su entrada de control mantiene la radio sin transmitir.
 
 Interfaz reducida: un capacitor y un trimmer por sentido
 --------------------------------------------------------

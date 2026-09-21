@@ -10,12 +10,13 @@ Secuencia de arranque
 ``app_main()`` se ejecuta en la tarea principal del sistema, cuya pila la fija
 ``CONFIG_ESP_MAIN_TASK_STACK_SIZE`` y no está pensada para alojar trabajo pesado
 — ``esp_netif`` + ``esp_wifi`` + ``esp_http_server`` + cJSON pueden usar varios
-KB de pila entre ellos. Así que ``app_main()`` hace solo las dos cosas que deben
-preceder a todo, y luego cede el control a una tarea dedicada:
+KB de pila entre ellos. Así que ``app_main()`` hace solo las tres cosas que
+deben preceder a todo, y luego cede el control a una tarea dedicada:
 
 .. code-block:: text
 
    app_main()
+    ├─ ptt_force_idle()          (pin de PTT llevado a su nivel de reposo; sin configurar desde el reset hasta aquí)
     ├─ nvs_flash_init()          (borrar+reintentar en NO_FREE_PAGES / NEW_VERSION_FOUND)
     ├─ storage_init()            (montar LittleFS en /storage, autoformato en primer arranque)
     └─ xTaskCreate(app_task, 8192 B, prio 5)   ── y retorna; FreeRTOS recupera la tarea principal

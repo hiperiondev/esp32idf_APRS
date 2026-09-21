@@ -34,6 +34,7 @@ idf_component_register(
         esp_timer
         esp_pm
         esp_driver_uart
+        esp_driver_gpio
         lwip
         webconfig
         telegram_service
