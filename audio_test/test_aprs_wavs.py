@@ -32,6 +32,17 @@ Usage
   ./test_aprs_wavs.py --wav_dir ./captures --serial_port /dev/ttyUSB1
   ./test_aprs_wavs.py --audio_device "hw:1,0"  # ALSA device wired to the ESP32
   ./test_aprs_wavs.py --list_audio             # help finding the device
+  ./test_aprs_wavs.py --lang es                # everything in Spanish
+
+Languages
+---------
+Every message, --help text and GUI label exists in English, Spanish and
+Italian. The language is taken from --lang (en / es / it) or, when that is not
+given, from the system language (LANGUAGE / LC_ALL / LC_MESSAGES / LANG, the
+`locale` module, or the Windows UI language); any other system language falls
+back to English. In the GUI the language is picked from the selector in the
+button bar, which rebuilds the window in the chosen language without losing
+what is typed in the form or shown in the consoles.
 
 Firmware side: the console log must be at INFO level (the default), which is
 what prints "I (t) aprs_service: RX: SRC>DST,PATH:payload" for each frame.
@@ -63,10 +74,648 @@ import time
 from dataclasses import dataclass, field
 from typing import Callable, List, Optional, Tuple
 
+# --------------------------------------------------------------------------
+# Internationalisation (English / Spanish / Italian)
+# --------------------------------------------------------------------------
+#
+# Every message the program shows - console output, warnings, --help texts and
+# the whole GUI - goes through T(). The English text IS the catalogue key, so
+# any string without a translation falls back to English instead of showing a
+# missing-key placeholder, and adding a language is just adding a column.
+#
+# Format placeholders (%s, %d, %.1f ...) appear inside the translated text, so
+# every translation MUST keep the same placeholders, in an order that matches
+# the arguments it is given.
+#
+# The language is chosen in this order:
+#   1. --lang en|es|it   (or the GUI's Language selector)
+#   2. the system language: LANGUAGE / LC_ALL / LC_MESSAGES / LANG, the
+#      `locale` module, or the Windows UI language
+#   3. English, whenever the system language is none of the three supported
+
+LANGS = ("en", "es", "it")
+LANG_NAMES = {"en": "English", "es": "Espa\u00f1ol", "it": "Italiano"}
+LANG_FLAGS = {"en": "\U0001F1EC\U0001F1E7", "es": "\U0001F1EA\U0001F1F8",
+              "it": "\U0001F1EE\U0001F1F9"}
+DEFAULT_LANG = "en"
+
+LANG = DEFAULT_LANG          # current language; set by set_language()
+
+
+def detect_system_language() -> str:
+    """The system language, if it is one of the supported ones, else English.
+
+    The environment variables are looked at first because they are what a user
+    actually changes to run a program in another language; the `locale` module
+    and (on Windows) the UI language are the fallbacks.
+    """
+    candidates = []  # type: List[str]
+    for name in ("LANGUAGE", "LC_ALL", "LC_MESSAGES", "LANG"):
+        value = os.environ.get(name, "")
+        if value:
+            candidates.extend(value.split(":"))
+    try:
+        import locale
+        loc = None
+        try:
+            loc = locale.getlocale()[0]
+        except (TypeError, ValueError):
+            loc = None
+        if not loc:
+            try:
+                loc = locale.getdefaultlocale()[0]   # deprecated but still useful
+            except (AttributeError, TypeError, ValueError):
+                loc = None
+        if loc:
+            candidates.append(loc)
+        if os.name == "nt":
+            try:
+                import ctypes
+                lcid = ctypes.windll.kernel32.GetUserDefaultUILanguage()
+                win = locale.windows_locale.get(lcid)
+                if win:
+                    candidates.append(win)
+            except Exception:
+                pass
+    except Exception:
+        pass
+    for cand in candidates:
+        code = cand.strip().replace("-", "_").split(".")[0].split("_")[0].lower()
+        if code in LANGS:
+            return code
+    return DEFAULT_LANG
+
+
+def normalise_lang(code: Optional[str]) -> str:
+    """Map anything the user may type ('es', 'es_AR', 'Spanish', 'it-IT') to a
+    supported code, falling back to English."""
+    if not code:
+        return DEFAULT_LANG
+    code = str(code).strip().replace("-", "_").split(".")[0].lower()
+    if code in LANGS:
+        return code
+    short = code.split("_")[0]
+    if short in LANGS:
+        return short
+    for key, name in LANG_NAMES.items():
+        if code == name.lower():
+            return key
+    aliases = {"english": "en", "ingles": "en", "inglese": "en",
+               "spanish": "es", "espanol": "es", "castellano": "es",
+               "spagnolo": "es", "italian": "it", "italiano": "it",
+               "italien": "it"}
+    return aliases.get(code, DEFAULT_LANG)
+
+
+def set_language(code: Optional[str]) -> str:
+    """Select the language used by every later T() call. Returns the code
+    actually adopted."""
+    global LANG
+    LANG = normalise_lang(code) if code else detect_system_language()
+    return LANG
+
+
+def current_language() -> str:
+    return LANG
+
+
+def lang_from_argv(argv: List[str]) -> Optional[str]:
+    """Read --lang from a raw argument list.
+
+    Needed before argparse runs: the parser's own --help texts are translated
+    when they are built, so the language has to be known first.
+    """
+    for i, arg in enumerate(argv):
+        if arg == "--lang" and i + 1 < len(argv):
+            return argv[i + 1]
+        if arg.startswith("--lang="):
+            return arg.split("=", 1)[1]
+    return None
+
+
+def T(text: str) -> str:
+    """Translate `text` into the current language (identity for English, and
+    for anything not in the catalogue)."""
+    if LANG == "en":
+        return text
+    return _CATALOG.get(LANG, {}).get(text, text)
+
+
+# Message catalogue: English source text -> {language code: translation}.
+_CATALOG = {
+    "es": {
+        "SUMMARY": "RESUMEN",
+        "Normalisation and parsing": "Normalización y análisis",
+        "SSID -0, digipeated * and trailing CR all normalise away":
+            "el SSID -0, el * de digipeteado y el CR final se normalizan",
+        "trailing dot is kept (truncation must not pass as equal)":
+            "el punto final se conserva (un truncamiento no debe pasar como igual)",
+        "payload LF becomes '.' like multimon-ng prints it":
+            "el LF del payload pasa a '.' como lo imprime multimon-ng",
+        "colon inside the payload does not break the header split":
+            "los dos puntos dentro del payload no rompen la separación del encabezado",
+        "ESP console line with a log prefix parses":
+            "una línea de consola del ESP con prefijo de log se analiza bien",
+        "LiveMatcher verdicts": "Veredictos de LiveMatcher",
+        "match inside the window is ok": "una coincidencia dentro de la ventana da ok",
+        "match outside the window is missing + extra":
+            "una coincidencia fuera de la ventana da missing + extra",
+        "header-corrupt frame gives ONE verdict, not missing+extra":
+            "una trama con encabezado corrupto da UN veredicto, no missing+extra",
+        "payload-corrupt frame is a mismatch only":
+            "una trama con payload corrupto es sólo un mismatch",
+        "two identical beacons pair with the nearest transmission":
+            "dos balizas idénticas se emparejan con la transmisión más cercana",
+        "latency skew is learned from confirmed matches":
+            "el desfasaje de latencia se aprende de las coincidencias confirmadas",
+        "Statistics": "Estadística",
+        "Wilson interval at 45/50 is wide enough to swallow 1-packet noise":
+            "el intervalo de Wilson en 45/50 es lo bastante ancho para absorber el ruido de 1 paquete",
+        "dB round-trip": "ida y vuelta en dB",
+        "VolumeSearch convergence (simulated plateau, centre = -10.5 dB)":
+            "Convergencia de VolumeSearch (meseta simulada, centro = -10,5 dB)",
+        "chosen level keeps margin below the clipping threshold":
+            "el nivel elegido mantiene margen por debajo del umbral de recorte",
+        "Termination with a wav set that decodes nothing":
+            "Terminación con un conjunto de wav que no decodifica nada",
+        "SELFTEST OK": "AUTOTEST OK",
+        "test_aprs_wavs - esp32idf_APRS regression bench":
+            "test_aprs_wavs - banco de pruebas de regresión de esp32idf_APRS",
+        "Console  (program output)": "Consola  (salida del programa)",
+        "Serial  (raw data from the ESP32, unfiltered)":
+            "Serie  (datos crudos del ESP32, sin filtrar)",
+        "Language of the messages, the help texts and this window. The default is the system language, or English when it is not one of the three.":
+            "Idioma de los mensajes, de los textos de ayuda y de esta ventana. Por omisión, el idioma del sistema, o inglés si no es ninguno de los tres.",
+        "%s: gain %.3f (%+.1f dB) on a file peaking at %.3f would clip inside sox (max usable gain %.3f). Use --normalise, or lower the gain and raise the hardware level instead.":
+            "%s: una ganancia de %.3f (%+.1f dB) sobre un archivo con pico %.3f recortaría dentro de sox (ganancia máxima utilizable %.3f). Usá --normalise, o bajá la ganancia y subí el nivel de hardware.",
+        "  multimon-ng decoded %d packet(s)": "  multimon-ng decodificó %d paquete(s)",
+        "  ESP32 decoded %d packet(s)": "  el ESP32 decodificó %d paquete(s)",
+        "  -> OK: %d   DIFFERENT: %d   HDR-CORRUPT: %d   NOT DECODED: %d   EXTRA(esp only): %d":
+            "  -> OK: %d   DISTINTOS: %d   ENC-CORRUPTO: %d   NO DECODIFICADOS: %d   EXTRA(sólo esp): %d",
+        "    ! DIFFERENT": "    ! DISTINTO",
+        "    ! HEADER CORRUPT (payload matched)":
+            "    ! ENCABEZADO CORRUPTO (el payload coincide)",
+        "  Files tested                      : %d": "  Archivos probados                 : %d",
+        "  Total packets (multimon-ng)       : %d": "  Paquetes totales (multimon-ng)    : %d",
+        "  Packets seen by ESP32             : %d": "  Paquetes vistos por el ESP32      : %d",
+        "  Decoded correctly                 : %d  (%.2f%%)":
+            "  Decodificados correctamente       : %d  (%.2f%%)",
+        "  Decoded with different content    : %d  (%.2f%%)":
+            "  Decodificados con otro contenido  : %d  (%.2f%%)",
+        "  Decoded with corrupt header       : %d  (%.2f%%)":
+            "  Decod. con encabezado corrupto    : %d  (%.2f%%)",
+        "  Missing (not decoded)             : %d  (%.2f%%)":
+            "  Faltantes (no decodificados)      : %d  (%.2f%%)",
+        "  Extra (ESP32 only, not an error)  : %d": "  Extra (sólo ESP32, no es error)   : %d",
+        "RESULT: no packets were decoded by multimon-ng - nothing to compare.":
+            "RESULTADO: multimon-ng no decodificó ningún paquete; no hay nada que comparar.",
+        "WARNING: `stdbuf` not found (package coreutils). multimon-ng's output will be\n  block-buffered on the pipe, so its packets may arrive in bursts and be\n  timestamped late, which shows up as spurious NOT DECODED verdicts.\n":
+            "ATENCIÓN: no se encontró `stdbuf` (paquete coreutils). La salida de multimon-ng\n  quedará con buffer por bloques en la tubería, así que sus paquetes pueden llegar\n  en ráfagas y con marca de tiempo tardía, lo que aparece como veredictos\n  NO DECODIFICADO espurios.\n",
+        "AUTO-VOLUME CALIBRATION (clip threshold + plateau centre)":
+            "CALIBRACIÓN AUTOMÁTICA DE VOLUMEN (umbral de recorte + centro de la meseta)",
+        "Waiting %.1f s for the ESP32 to be ready ...":
+            "Esperando %.1f s a que el ESP32 esté listo ...",
+        "  WARNING: no data received from the serial port yet. The firmware may be quiet until it hears/sends something; continuing.":
+            "  ATENCIÓN: todavía no llegaron datos del puerto serie. El firmware puede estar callado hasta que escuche o transmita algo; se continúa.",
+        "got %r": "se obtuvo %r",
+        "offset=%.3f": "desfasaje=%.3f",
+        "width=%.3f": "ancho=%.3f",
+        "a probe over a silent wav set terminates instead of looping":
+            "un sondeo sobre un conjunto de wav mudo termina en vez de quedar en bucle",
+        "the whole search terminates on a silent wav set":
+            "la búsqueda completa termina con un conjunto de wav mudo",
+        "Options (same flags as the command line)":
+            "Opciones (las mismas que en la línea de comandos)",
+        "Start": "Iniciar",
+        "Stop": "Detener",
+        "Clear consoles": "Limpiar consolas",
+        "Reset defaults": "Restablecer valores",
+        "Idle": "En espera",
+        "Language:": "Idioma:",
+        "Running ...": "Ejecutando ...",
+        "Stopping ...": "Deteniendo ...",
+        "Test esp32idf_APRS with a battery of real-APRS WAV files, using multimon-ng as the reference decoder.":
+            "Prueba esp32idf_APRS con una batería de archivos WAV de APRS real, usando multimon-ng como decodificador de referencia.",
+        "language of the messages, the help and the GUI: en (English), es (Spanish), it (Italian). Default: the system language, or English when the system language is none of these three.":
+            "idioma de los mensajes, de la ayuda y de la interfaz gráfica: en (inglés), es (español), it (italiano). Por omisión: el idioma del sistema, o inglés si el idioma del sistema no es ninguno de estos tres.",
+        "directory with the .wav files (default: current directory)":
+            "directorio con los archivos .wav (por omisión: el directorio actual)",
+        "ALSA device wired to the ESP32 audio input, e.g. hw:1,0 (default: system default output)":
+            "dispositivo ALSA conectado a la entrada de audio del ESP32, por ej. hw:1,0 (por omisión: la salida por defecto del sistema)",
+        "playback gain applied to the ESP32 leg only (default 1.0). Used as the starting point for auto-volume calibration unless --no_auto_volume is given.":
+            "ganancia de reproducción aplicada sólo a la rama del ESP32 (por omisión 1.0). Se usa como punto de partida de la calibración automática de volumen salvo que se indique --no_auto_volume.",
+        "bring every wav to -1 dBFS in the play chain (sox 'gain -n -1') so one gain is valid across recordings made at different levels, and gains above 1.0 stop meaning 'clip inside sox'":
+            "lleva cada wav a -1 dBFS en la cadena de reproducción (sox 'gain -n -1'), de modo que una sola ganancia sirva para grabaciones hechas a distintos niveles y las ganancias mayores que 1.0 dejen de significar 'recorte dentro de sox'",
+        "do not estimate the ESP32-vs-multimon-ng latency skew; compare raw timestamps instead":
+            "no estimar el desfasaje de latencia entre el ESP32 y multimon-ng; comparar las marcas de tiempo crudas",
+        "run the built-in unit tests (no hardware, no audio) and exit":
+            "ejecutar las pruebas unitarias internas (sin hardware ni audio) y salir",
+        "skip the auto-volume calibration pass and use --volume as-is for the whole run":
+            "saltear la pasada de calibración automática de volumen y usar --volume tal cual durante toda la corrida",
+        "seconds to wait after opening the serial port (default 4)":
+            "segundos de espera tras abrir el puerto serie (por omisión 4)",
+        "pause between files in seconds (default 1)":
+            "pausa entre archivos, en segundos (por omisión 1)",
+        "an ESP32 packet answers a multimon-ng packet only if it arrives within this many seconds of it; a packet the ESP32 has not reported after this time is shown as NOT DECODED (default 5)":
+            "un paquete del ESP32 responde a uno de multimon-ng sólo si llega dentro de esta cantidad de segundos; un paquete que el ESP32 no informó pasado ese tiempo se muestra como NO DECODIFICADO (por omisión 5)",
+        "do not play audio to the sound card (only run multimon-ng; useful to dry-run the parser)":
+            "no reproducir audio por la placa de sonido (sólo ejecutar multimon-ng; útil para probar el parser en seco)",
+        "extra multimon-ng arguments, e.g. '-A' (quoted)":
+            "argumentos extra para multimon-ng, por ej. '-A' (entre comillas)",
+        "list ALSA playback devices and exit":
+            "listar los dispositivos de reproducción ALSA y salir",
+        "open a graphical front-end: every flag in a form at the top, and below it a split console (left: program output, right: raw unfiltered serial data from the ESP32)":
+            "abrir la interfaz gráfica: todas las opciones en un formulario arriba y, debajo, una consola dividida (izquierda: salida del programa; derecha: datos crudos del puerto serie del ESP32)",
+        "Found %d wav file(s) in %s": "Se encontraron %d archivo(s) wav en %s",
+        "DRY RUN (--no_play): only multimon-ng runs; serial port and sound card are NOT used, so ESP32 results below are not meaningful.":
+            "PASADA EN SECO (--no_play): sólo se ejecuta multimon-ng; no se usan el puerto serie ni la placa de sonido, así que los resultados del ESP32 que siguen no son significativos.",
+        "pyserial is required:  pip install pyserial":
+            "se necesita pyserial:  pip install pyserial",
+        "  -> measured esp32 latency vs multimon-ng: %+.2f s":
+            "  -> latencia medida del esp32 respecto de multimon-ng: %+.2f s",
+        "    ! NOT DECODED by ESP32: %s": "    ! NO DECODIFICADO por el ESP32: %s",
+        "file": "arch.",
+        "diff": "dist",
+        "hdr": "enc",
+        "  Playback gain used for this test  : %.3f  (%+.1f dB)":
+            "  Ganancia de reproducción usada    : %.3f  (%+.1f dB)",
+        "  ESP32 latency vs multimon-ng      : %+.2f s (median of %d file(s))":
+            "  Latencia del ESP32 vs multimon-ng : %+.2f s (mediana de %d archivo(s))",
+        "Missing required program(s): %s\n": "Falta(n) el/los programa(s) requerido(s): %s\n",
+        "  [probe %2d, budget %.1f/%d] gain=%.3f (%+5.1f dB)  mm=%d ok=%d diff=%d hdr=%d miss=%d extra=%d  score=%.1f%%  clip=%.2f/pkt":
+            "  [sondeo %2d, presup. %.1f/%d] ganancia=%.3f (%+5.1f dB)  mm=%d ok=%d dist=%d enc=%d falt=%d extra=%d  puntaje=%.1f%%  recorte=%.2f/pqt",
+        "  Start gain %.3f (%+.1f dB), range %.3f..%.3f, budget %d probe(s), %d packet(s) per scoring probe":
+            "  Ganancia inicial %.3f (%+.1f dB), rango %.3f..%.3f, presupuesto %d sondeo(s), %d paquete(s) por sondeo de puntaje",
+        "  Plateau: %+.1f .. %+.1f dB (%d tied point(s) of %d probed); best raw score %.1f%%":
+            "  Meseta: %+.1f .. %+.1f dB (%d punto(s) empatado(s) de %d sondeados); mejor puntaje bruto %.1f%%",
+        "  Chosen gain: %.3f (%+.1f dB), %.1f dB below the clipping threshold":
+            "  Ganancia elegida: %.3f (%+.1f dB), %.1f dB por debajo del umbral de recorte",
+        "  NOTE: more than 6 dB of attenuation was needed. The hardware level into the ESP32 ADC is too hot - turn the RX trimmer (or the radio's volume) down and re-run, so the bench can work near 0 dB.":
+            "  NOTA: hizo falta más de 6 dB de atenuación. El nivel de hardware que entra al ADC del ESP32 es demasiado alto: bajá el preset de RX (o el volumen de la radio) y repetí la prueba, para que el banco trabaje cerca de 0 dB.",
+        "  serial is alive (%d console line(s) so far).":
+            "  el puerto serie responde (%d línea(s) de consola hasta ahora).",
+        "start %.2f converges to the plateau centre within budget (%.1f/%d batches, %d probes)":
+            "desde %.2f converge al centro de la meseta dentro del presupuesto (%.1f/%d lotes, %d sondeos)",
+        "chose %+.1f dB at cost %.1f": "eligió %+.1f dB con un costo de %.1f",
+        "%d playback call(s)": "%d llamada(s) de reproducción",
+        "SELFTEST FAILED: %d of the checks above did not pass":
+            "AUTOTEST FALLIDO: %d de las comprobaciones anteriores no pasaron",
+        "--gui needs tkinter.  Debian/Ubuntu: sudo apt install python3-tk\n":
+            "--gui necesita tkinter.  Debian/Ubuntu: sudo apt install python3-tk\n",
+        "Language": "Idioma",
+        "Stop the running test before changing the language.":
+            "Detené la prueba en curso antes de cambiar el idioma.",
+        "Finished (exit code %s)": "Terminado (código de salida %s)",
+        "\n[gui] finished, exit code %s\n": "\n[gui] terminado, código de salida %s\n",
+        "ESP32 console serial port (default: %s)":
+            "puerto serie de la consola del ESP32 (por omisión: %s)",
+        "serial speed, 8N1 (default: %d)": "velocidad del puerto serie, 8N1 (por omisión: %d)",
+        "dB below the clipping threshold to fall back to when no plateau could be scored (default %.0f)":
+            "dB por debajo del umbral de recorte a los que recurrir cuando no se pudo puntuar ninguna meseta (por omisión %.0f)",
+        "over-range warnings per packet above which a level counts as clipping (default %.2f); a single transient warning is not enough":
+            "advertencias de sobre-rango por paquete por encima de las cuales un nivel cuenta como recorte (por omisión %.2f); una sola advertencia pasajera no alcanza",
+        "lowest gain the search may use (default %.2f)":
+            "ganancia mínima que puede usar la búsqueda (por omisión %.2f)",
+        "highest gain the search may use (default %.2f)":
+            "ganancia máxima que puede usar la búsqueda (por omisión %.2f)",
+        "passes over the wav set before a calibration probe gives up (default %d)":
+            "pasadas sobre el conjunto de wav antes de que un sondeo de calibración se dé por vencido (por omisión %d)",
+        "number of packets to test per volume try during auto-volume calibration - counts both multimon-ng packets and ESP32-only ones multimon-ng missed (default %d)":
+            "cantidad de paquetes a probar por cada volumen durante la calibración automática: cuenta tanto los paquetes de multimon-ng como los que sólo vio el ESP32 y multimon-ng perdió (por omisión %d)",
+        "search budget for the auto-volume pass, in batches of --auto_volume_batch packets (default %d). Cheap 8-packet clipping probes cost a fraction of a batch, full scoring probes cost one each.":
+            "presupuesto de búsqueda de la pasada de volumen automático, en lotes de --auto_volume_batch paquetes (por omisión %d). Los sondeos baratos de recorte, de 8 paquetes, cuestan una fracción de lote; los sondeos completos de puntaje, uno cada uno.",
+        "seconds to keep listening after each file (default %.1f)":
+            "segundos que se sigue escuchando después de cada archivo (por omisión %.1f)",
+        "aplay not found - install alsa-utils (Debian/Ubuntu: sudo apt install alsa-utils)\n":
+            "no se encontró aplay: instalá alsa-utils (Debian/Ubuntu: sudo apt install alsa-utils)\n",
+        "--auto_volume_batch must be >= 1 (got %d)\n":
+            "--auto_volume_batch debe ser >= 1 (se recibió %d)\n",
+        "--auto_volume_max_rounds must be >= 1 (got %d)\n":
+            "--auto_volume_max_rounds debe ser >= 1 (se recibió %d)\n",
+        "--max_passes must be >= 1 (got %d)\n": "--max_passes debe ser >= 1 (se recibió %d)\n",
+        "--volume_min must be > 0 and < --volume_max (got %g and %g)\n":
+            "--volume_min debe ser > 0 y < --volume_max (se recibieron %g y %g)\n",
+        "--volume must be within [%g, %g] (got %g)\n":
+            "--volume debe estar dentro de [%g, %g] (se recibió %g)\n",
+        "--clip_rate must be in (0, 1] (got %g)\n":
+            "--clip_rate debe estar en (0, 1] (se recibió %g)\n",
+        "--match_window must be > 0 (got %g)\n":
+            "--match_window debe ser > 0 (se recibió %g)\n",
+        "wav_dir not found: %s\n": "no se encontró wav_dir: %s\n",
+        "No .wav files in %s\n": "No hay archivos .wav en %s\n",
+        "Serial: %s @ %d 8N1   Audio: %s": "Serie: %s @ %d 8N1   Audio: %s",
+        "\nInterrupted - reporting what has been tested so far.":
+            "\nInterrumpido: se informa lo probado hasta ahora.",
+        "\nDRY RUN finished: multimon-ng decoded %d packet(s) in %d file(s).":
+            "\nPASADA EN SECO terminada: multimon-ng decodificó %d paquete(s) en %d archivo(s).",
+        "%06d [multimon  --:--.-] NOT DECODED": "%06d [multimon  --:--.-] NO DECODIFICADO",
+        "       [esp32 only      %s] %s": "       [sólo esp32      %s] %s",
+        "      ! DECODED BUT DIFFERENT": "      ! DECODIFICADO PERO DISTINTO",
+        "\n[mm] multimon-ng did not exit within 60 s - killing it\n":
+            "\n[mm] multimon-ng no terminó en 60 s: se lo mata\n",
+        "<probe %+.1f dB>": "<sondeo %+.1f dB>",
+        "  Clipping threshold: %+.1f dB (gain %.3f)":
+            "  Umbral de recorte: %+.1f dB (ganancia %.3f)",
+        "  No clipping seen up to %+.1f dB (gain %.3f) - the hardware level into the ADC may be too low; check the RX trimmer.":
+            "  No se observó recorte hasta %+.1f dB (ganancia %.3f): el nivel de hardware que entra al ADC puede ser demasiado bajo; revisá el preset de RX.",
+        "  No packets decoded during calibration at any level - falling back to %.3f (%+.1f dB, threshold - %.0f dB).":
+            "  No se decodificó ningún paquete durante la calibración en ningún nivel: se recurre a %.3f (%+.1f dB, umbral - %.0f dB).",
+        "  Probe budget spent; stopping the plateau sweep (raise it with --auto_volume_max_rounds).":
+            "  Se agotó el presupuesto de sondeos; se detiene el barrido de la meseta (ampliálo con --auto_volume_max_rounds).",
+        "  No usable score data - using threshold - %.0f dB = %.3f (%+.1f dB).":
+            "  No hay datos de puntaje utilizables: se usa umbral - %.0f dB = %.3f (%+.1f dB).",
+        "  NOTE: more than 6 dB of boost was needed. The hardware level into the ESP32 ADC is too low - turn the RX trimmer up and re-run. Boosting digitally also amplifies the sound card's own noise floor.":
+            "  NOTA: hizo falta más de 6 dB de refuerzo. El nivel de hardware que entra al ADC del ESP32 es demasiado bajo: subí el preset de RX y repetí la prueba. Amplificar en digital también amplifica el ruido propio de la placa de sonido.",
+        "  PASS  %s": "  BIEN  %s",
+        "  FAIL  %s  %s": "  MAL   %s  %s",
+        "run_one_wav called %d times - no pass limit":
+            "run_one_wav se llamó %d veces: no hay límite de pasadas",
+        "Cannot open a display for --gui: %s\n":
+            "No se puede abrir un display para --gui: %s\n",
+        "Invalid option": "Opción inválida",
+        "Quit": "Salir",
+        "A test is still running. Stop it and quit?":
+            "Todavía hay una prueba en curso. ¿Detenerla y salir?",
+        "\nAuto-volume calibration interrupted - proceeding with the volume found so far.":
+            "\nCalibración automática de volumen interrumpida: se continúa con el volumen encontrado hasta ahora.",
+        "      ! PAYLOAD OK BUT HEADER CORRUPT":
+            "      ! PAYLOAD CORRECTO PERO ENCABEZADO CORRUPTO",
+        "       [esp32     --:--.-] NOT DECODED": "       [esp32     --:--.-] NO DECODIFICADO",
+        "\n[audio] player failed (rc=%s): %s\n": "\n[audio] falló el reproductor (rc=%s): %s\n",
+        "\n[gui] stopped by user\n": "\n[gui] detenido por el usuario\n",
+        "system default": "salida por defecto del sistema",
+        "Cannot open serial port %s: %s\n": "No se puede abrir el puerto serie %s: %s\n",
+        "       [progress %s / %s] multimon=%d  ok=%d  not-decoded=%d  different=%d  (serial lines seen: %d)":
+            "       [avance %s / %s] multimon=%d  ok=%d  no-decodificados=%d  distintos=%d  (líneas de serie vistas: %d)",
+        "      probe incomplete: %d/%d packet(s) after %d pass(es) over the wav set - check the audio routing and the files":
+            "      sondeo incompleto: %d/%d paquete(s) tras %d pasada(s) sobre el conjunto de wav; revisá el ruteo de audio y los archivos",
+        "      score fell %.0f points below the best - the lower knee is past, no need to go quieter":
+            "      el puntaje cayó %.0f puntos por debajo del mejor: ya se pasó el codo inferior, no hace falta bajar más",
+        "%s: %r is not a valid %s": "%s: %r no es un %s válido",
+        "\n[gui] unexpected error:\n": "\n[gui] error inesperado:\n",
+        "\n[serial] read error: %s\n": "\n[serie] error de lectura: %s\n",
+        "integer": "entero",
+        "number": "número",
+    },
+    "it": {
+        "SUMMARY": "RIEPILOGO",
+        "Normalisation and parsing": "Normalizzazione e parsing",
+        "SSID -0, digipeated * and trailing CR all normalise away":
+            "l'SSID -0, l'* di digipeating e il CR finale vengono normalizzati",
+        "trailing dot is kept (truncation must not pass as equal)":
+            "il punto finale viene conservato (un troncamento non deve risultare uguale)",
+        "payload LF becomes '.' like multimon-ng prints it":
+            "l'LF del payload diventa '.' come lo stampa multimon-ng",
+        "colon inside the payload does not break the header split":
+            "i due punti dentro il payload non rompono la divisione dell'intestazione",
+        "ESP console line with a log prefix parses":
+            "una riga di console ESP con prefisso di log viene analizzata",
+        "LiveMatcher verdicts": "Verdetti di LiveMatcher",
+        "match inside the window is ok": "una corrispondenza dentro la finestra dà ok",
+        "match outside the window is missing + extra":
+            "una corrispondenza fuori dalla finestra dà missing + extra",
+        "header-corrupt frame gives ONE verdict, not missing+extra":
+            "una trama con intestazione corrotta dà UN verdetto, non missing+extra",
+        "payload-corrupt frame is a mismatch only":
+            "una trama con payload corrotto è solo un mismatch",
+        "two identical beacons pair with the nearest transmission":
+            "due beacon identici si accoppiano con la trasmissione più vicina",
+        "latency skew is learned from confirmed matches":
+            "lo scarto di latenza viene appreso dalle corrispondenze confermate",
+        "Statistics": "Statistica",
+        "Wilson interval at 45/50 is wide enough to swallow 1-packet noise":
+            "l'intervallo di Wilson a 45/50 è abbastanza ampio da assorbire il rumore di 1 pacchetto",
+        "dB round-trip": "andata e ritorno in dB",
+        "VolumeSearch convergence (simulated plateau, centre = -10.5 dB)":
+            "Convergenza di VolumeSearch (plateau simulato, centro = -10,5 dB)",
+        "chosen level keeps margin below the clipping threshold":
+            "il livello scelto mantiene margine sotto la soglia di clipping",
+        "Termination with a wav set that decodes nothing":
+            "Terminazione con un insieme di wav che non decodifica nulla",
+        "SELFTEST OK": "AUTOTEST OK",
+        "test_aprs_wavs - esp32idf_APRS regression bench":
+            "test_aprs_wavs - banco di prova di regressione di esp32idf_APRS",
+        "Console  (program output)": "Console  (output del programma)",
+        "Serial  (raw data from the ESP32, unfiltered)":
+            "Seriale  (dati grezzi dall'ESP32, non filtrati)",
+        "Language of the messages, the help texts and this window. The default is the system language, or English when it is not one of the three.":
+            "Lingua dei messaggi, dei testi di aiuto e di questa finestra. Per impostazione predefinita, la lingua di sistema, o inglese se non è una delle tre.",
+        "%s: gain %.3f (%+.1f dB) on a file peaking at %.3f would clip inside sox (max usable gain %.3f). Use --normalise, or lower the gain and raise the hardware level instead.":
+            "%s: un guadagno di %.3f (%+.1f dB) su un file con picco %.3f causerebbe clipping dentro sox (guadagno massimo utilizzabile %.3f). Usa --normalise, oppure abbassa il guadagno e alza il livello hardware.",
+        "  multimon-ng decoded %d packet(s)": "  multimon-ng ha decodificato %d pacchetto/i",
+        "  ESP32 decoded %d packet(s)": "  l'ESP32 ha decodificato %d pacchetto/i",
+        "  -> OK: %d   DIFFERENT: %d   HDR-CORRUPT: %d   NOT DECODED: %d   EXTRA(esp only): %d":
+            "  -> OK: %d   DIVERSI: %d   INTEST-CORROTTA: %d   NON DECODIFICATI: %d   EXTRA(solo esp): %d",
+        "    ! DIFFERENT": "    ! DIVERSO",
+        "    ! HEADER CORRUPT (payload matched)":
+            "    ! INTESTAZIONE CORROTTA (il payload coincide)",
+        "  Files tested                      : %d": "  File testati                      : %d",
+        "  Total packets (multimon-ng)       : %d": "  Pacchetti totali (multimon-ng)    : %d",
+        "  Packets seen by ESP32             : %d": "  Pacchetti visti dall'ESP32        : %d",
+        "  Decoded correctly                 : %d  (%.2f%%)":
+            "  Decodificati correttamente        : %d  (%.2f%%)",
+        "  Decoded with different content    : %d  (%.2f%%)":
+            "  Decodificati con altro contenuto  : %d  (%.2f%%)",
+        "  Decoded with corrupt header       : %d  (%.2f%%)":
+            "  Decod. con intestazione corrotta  : %d  (%.2f%%)",
+        "  Missing (not decoded)             : %d  (%.2f%%)":
+            "  Mancanti (non decodificati)       : %d  (%.2f%%)",
+        "  Extra (ESP32 only, not an error)  : %d": "  Extra (solo ESP32, non è errore)  : %d",
+        "RESULT: no packets were decoded by multimon-ng - nothing to compare.":
+            "RISULTATO: multimon-ng non ha decodificato alcun pacchetto; non c'è nulla da confrontare.",
+        "WARNING: `stdbuf` not found (package coreutils). multimon-ng's output will be\n  block-buffered on the pipe, so its packets may arrive in bursts and be\n  timestamped late, which shows up as spurious NOT DECODED verdicts.\n":
+            "ATTENZIONE: `stdbuf` non trovato (pacchetto coreutils). L'output di multimon-ng\n  sarà bufferizzato a blocchi sulla pipe, quindi i pacchetti possono arrivare a\n  raffiche e con marca temporale tardiva, il che appare come verdetti\n  NON DECODIFICATO spuri.\n",
+        "AUTO-VOLUME CALIBRATION (clip threshold + plateau centre)":
+            "CALIBRAZIONE AUTOMATICA DEL VOLUME (soglia di clipping + centro del plateau)",
+        "Waiting %.1f s for the ESP32 to be ready ...":
+            "Attesa di %.1f s perché l'ESP32 sia pronto ...",
+        "  WARNING: no data received from the serial port yet. The firmware may be quiet until it hears/sends something; continuing.":
+            "  ATTENZIONE: nessun dato ricevuto finora dalla porta seriale. Il firmware può restare silenzioso finché non sente o trasmette qualcosa; si continua.",
+        "got %r": "ottenuto %r",
+        "offset=%.3f": "scarto=%.3f",
+        "width=%.3f": "larghezza=%.3f",
+        "a probe over a silent wav set terminates instead of looping":
+            "un sondaggio su un insieme di wav muto termina invece di ciclare",
+        "the whole search terminates on a silent wav set":
+            "la ricerca completa termina con un insieme di wav muto",
+        "Options (same flags as the command line)":
+            "Opzioni (gli stessi flag della riga di comando)",
+        "Start": "Avvia",
+        "Stop": "Ferma",
+        "Clear consoles": "Pulisci console",
+        "Reset defaults": "Ripristina predefiniti",
+        "Idle": "Inattivo",
+        "Language:": "Lingua:",
+        "Running ...": "In esecuzione ...",
+        "Stopping ...": "Arresto in corso ...",
+        "Test esp32idf_APRS with a battery of real-APRS WAV files, using multimon-ng as the reference decoder.":
+            "Testa esp32idf_APRS con una batteria di file WAV di APRS reale, usando multimon-ng come decodificatore di riferimento.",
+        "language of the messages, the help and the GUI: en (English), es (Spanish), it (Italian). Default: the system language, or English when the system language is none of these three.":
+            "lingua dei messaggi, dell'aiuto e dell'interfaccia grafica: en (inglese), es (spagnolo), it (italiano). Predefinito: la lingua di sistema, o inglese se la lingua di sistema non è una di queste tre.",
+        "directory with the .wav files (default: current directory)":
+            "directory con i file .wav (predefinito: la directory corrente)",
+        "ALSA device wired to the ESP32 audio input, e.g. hw:1,0 (default: system default output)":
+            "dispositivo ALSA collegato all'ingresso audio dell'ESP32, ad es. hw:1,0 (predefinito: l'uscita predefinita del sistema)",
+        "playback gain applied to the ESP32 leg only (default 1.0). Used as the starting point for auto-volume calibration unless --no_auto_volume is given.":
+            "guadagno di riproduzione applicato solo al ramo dell'ESP32 (predefinito 1.0). Usato come punto di partenza della calibrazione automatica del volume, salvo che sia indicato --no_auto_volume.",
+        "bring every wav to -1 dBFS in the play chain (sox 'gain -n -1') so one gain is valid across recordings made at different levels, and gains above 1.0 stop meaning 'clip inside sox'":
+            "porta ogni wav a -1 dBFS nella catena di riproduzione (sox 'gain -n -1'), così un solo guadagno vale per registrazioni fatte a livelli diversi e i guadagni sopra 1.0 non significano più 'clipping dentro sox'",
+        "do not estimate the ESP32-vs-multimon-ng latency skew; compare raw timestamps instead":
+            "non stimare lo scarto di latenza tra ESP32 e multimon-ng; confronta invece le marche temporali grezze",
+        "run the built-in unit tests (no hardware, no audio) and exit":
+            "esegue i test unitari interni (senza hardware né audio) ed esce",
+        "skip the auto-volume calibration pass and use --volume as-is for the whole run":
+            "salta la fase di calibrazione automatica del volume e usa --volume così com'è per tutta l'esecuzione",
+        "seconds to wait after opening the serial port (default 4)":
+            "secondi di attesa dopo l'apertura della porta seriale (predefinito 4)",
+        "pause between files in seconds (default 1)":
+            "pausa tra i file, in secondi (predefinito 1)",
+        "an ESP32 packet answers a multimon-ng packet only if it arrives within this many seconds of it; a packet the ESP32 has not reported after this time is shown as NOT DECODED (default 5)":
+            "un pacchetto dell'ESP32 risponde a uno di multimon-ng solo se arriva entro questi secondi; un pacchetto che l'ESP32 non ha riportato dopo tale tempo viene mostrato come NON DECODIFICATO (predefinito 5)",
+        "do not play audio to the sound card (only run multimon-ng; useful to dry-run the parser)":
+            "non riprodurre audio sulla scheda audio (esegue solo multimon-ng; utile per provare il parser a vuoto)",
+        "extra multimon-ng arguments, e.g. '-A' (quoted)":
+            "argomenti extra per multimon-ng, ad es. '-A' (tra virgolette)",
+        "list ALSA playback devices and exit":
+            "elenca i dispositivi di riproduzione ALSA ed esce",
+        "open a graphical front-end: every flag in a form at the top, and below it a split console (left: program output, right: raw unfiltered serial data from the ESP32)":
+            "apre l'interfaccia grafica: tutti i flag in un modulo in alto e sotto una console divisa (sinistra: output del programma; destra: dati grezzi dalla seriale dell'ESP32)",
+        "Found %d wav file(s) in %s": "Trovati %d file wav in %s",
+        "DRY RUN (--no_play): only multimon-ng runs; serial port and sound card are NOT used, so ESP32 results below are not meaningful.":
+            "PROVA A VUOTO (--no_play): viene eseguito solo multimon-ng; la porta seriale e la scheda audio non sono usate, quindi i risultati dell'ESP32 qui sotto non sono significativi.",
+        "pyserial is required:  pip install pyserial":
+            "è necessario pyserial:  pip install pyserial",
+        "  -> measured esp32 latency vs multimon-ng: %+.2f s":
+            "  -> latenza misurata dell'esp32 rispetto a multimon-ng: %+.2f s",
+        "    ! NOT DECODED by ESP32: %s": "    ! NON DECODIFICATO dall'ESP32: %s",
+        "file": "file",
+        "diff": "div",
+        "hdr": "int",
+        "  Playback gain used for this test  : %.3f  (%+.1f dB)":
+            "  Guadagno di riproduzione usato    : %.3f  (%+.1f dB)",
+        "  ESP32 latency vs multimon-ng      : %+.2f s (median of %d file(s))":
+            "  Latenza ESP32 vs multimon-ng      : %+.2f s (mediana di %d file)",
+        "Missing required program(s): %s\n": "Programma/i richiesto/i mancante/i: %s\n",
+        "  [probe %2d, budget %.1f/%d] gain=%.3f (%+5.1f dB)  mm=%d ok=%d diff=%d hdr=%d miss=%d extra=%d  score=%.1f%%  clip=%.2f/pkt":
+            "  [sondaggio %2d, budget %.1f/%d] guadagno=%.3f (%+5.1f dB)  mm=%d ok=%d div=%d int=%d mancanti=%d extra=%d  punteggio=%.1f%%  clip=%.2f/pacch",
+        "  Start gain %.3f (%+.1f dB), range %.3f..%.3f, budget %d probe(s), %d packet(s) per scoring probe":
+            "  Guadagno iniziale %.3f (%+.1f dB), intervallo %.3f..%.3f, budget %d sondaggio/i, %d pacchetto/i per sondaggio di punteggio",
+        "  Plateau: %+.1f .. %+.1f dB (%d tied point(s) of %d probed); best raw score %.1f%%":
+            "  Plateau: %+.1f .. %+.1f dB (%d punto/i a pari merito su %d sondati); miglior punteggio grezzo %.1f%%",
+        "  Chosen gain: %.3f (%+.1f dB), %.1f dB below the clipping threshold":
+            "  Guadagno scelto: %.3f (%+.1f dB), %.1f dB sotto la soglia di clipping",
+        "  NOTE: more than 6 dB of attenuation was needed. The hardware level into the ESP32 ADC is too hot - turn the RX trimmer (or the radio's volume) down and re-run, so the bench can work near 0 dB.":
+            "  NOTA: sono serviti più di 6 dB di attenuazione. Il livello hardware che entra nell'ADC dell'ESP32 è troppo alto: abbassa il trimmer RX (o il volume della radio) e ripeti la prova, così il banco lavora vicino a 0 dB.",
+        "  serial is alive (%d console line(s) so far).":
+            "  la seriale è attiva (%d riga/righe di console finora).",
+        "start %.2f converges to the plateau centre within budget (%.1f/%d batches, %d probes)":
+            "da %.2f converge al centro del plateau entro il budget (%.1f/%d lotti, %d sondaggi)",
+        "chose %+.1f dB at cost %.1f": "ha scelto %+.1f dB a un costo di %.1f",
+        "%d playback call(s)": "%d chiamata/e di riproduzione",
+        "SELFTEST FAILED: %d of the checks above did not pass":
+            "AUTOTEST FALLITO: %d dei controlli sopra non sono passati",
+        "--gui needs tkinter.  Debian/Ubuntu: sudo apt install python3-tk\n":
+            "--gui richiede tkinter.  Debian/Ubuntu: sudo apt install python3-tk\n",
+        "Language": "Lingua",
+        "Stop the running test before changing the language.":
+            "Ferma il test in corso prima di cambiare lingua.",
+        "Finished (exit code %s)": "Terminato (codice di uscita %s)",
+        "\n[gui] finished, exit code %s\n": "\n[gui] terminato, codice di uscita %s\n",
+        "ESP32 console serial port (default: %s)":
+            "porta seriale della console dell'ESP32 (predefinito: %s)",
+        "serial speed, 8N1 (default: %d)": "velocità della seriale, 8N1 (predefinito: %d)",
+        "dB below the clipping threshold to fall back to when no plateau could be scored (default %.0f)":
+            "dB sotto la soglia di clipping a cui ripiegare quando nessun plateau ha potuto essere valutato (predefinito %.0f)",
+        "over-range warnings per packet above which a level counts as clipping (default %.2f); a single transient warning is not enough":
+            "avvisi di fuori scala per pacchetto oltre i quali un livello conta come clipping (predefinito %.2f); un singolo avviso transitorio non basta",
+        "lowest gain the search may use (default %.2f)":
+            "guadagno minimo che la ricerca può usare (predefinito %.2f)",
+        "highest gain the search may use (default %.2f)":
+            "guadagno massimo che la ricerca può usare (predefinito %.2f)",
+        "passes over the wav set before a calibration probe gives up (default %d)":
+            "passaggi sull'insieme di wav prima che un sondaggio di calibrazione si arrenda (predefinito %d)",
+        "number of packets to test per volume try during auto-volume calibration - counts both multimon-ng packets and ESP32-only ones multimon-ng missed (default %d)":
+            "numero di pacchetti da testare per ogni volume durante la calibrazione automatica: conta sia i pacchetti di multimon-ng sia quelli visti solo dall'ESP32 che multimon-ng ha perso (predefinito %d)",
+        "search budget for the auto-volume pass, in batches of --auto_volume_batch packets (default %d). Cheap 8-packet clipping probes cost a fraction of a batch, full scoring probes cost one each.":
+            "budget di ricerca della fase di volume automatico, in lotti di --auto_volume_batch pacchetti (predefinito %d). I sondaggi economici di clipping da 8 pacchetti costano una frazione di lotto, quelli completi di punteggio uno ciascuno.",
+        "seconds to keep listening after each file (default %.1f)":
+            "secondi di ascolto dopo ogni file (predefinito %.1f)",
+        "aplay not found - install alsa-utils (Debian/Ubuntu: sudo apt install alsa-utils)\n":
+            "aplay non trovato: installa alsa-utils (Debian/Ubuntu: sudo apt install alsa-utils)\n",
+        "--auto_volume_batch must be >= 1 (got %d)\n":
+            "--auto_volume_batch deve essere >= 1 (ricevuto %d)\n",
+        "--auto_volume_max_rounds must be >= 1 (got %d)\n":
+            "--auto_volume_max_rounds deve essere >= 1 (ricevuto %d)\n",
+        "--max_passes must be >= 1 (got %d)\n": "--max_passes deve essere >= 1 (ricevuto %d)\n",
+        "--volume_min must be > 0 and < --volume_max (got %g and %g)\n":
+            "--volume_min deve essere > 0 e < --volume_max (ricevuti %g e %g)\n",
+        "--volume must be within [%g, %g] (got %g)\n":
+            "--volume deve essere compreso in [%g, %g] (ricevuto %g)\n",
+        "--clip_rate must be in (0, 1] (got %g)\n":
+            "--clip_rate deve essere in (0, 1] (ricevuto %g)\n",
+        "--match_window must be > 0 (got %g)\n":
+            "--match_window deve essere > 0 (ricevuto %g)\n",
+        "wav_dir not found: %s\n": "wav_dir non trovata: %s\n",
+        "No .wav files in %s\n": "Nessun file .wav in %s\n",
+        "Serial: %s @ %d 8N1   Audio: %s": "Seriale: %s @ %d 8N1   Audio: %s",
+        "\nInterrupted - reporting what has been tested so far.":
+            "\nInterrotto: viene riportato quanto testato finora.",
+        "\nDRY RUN finished: multimon-ng decoded %d packet(s) in %d file(s).":
+            "\nPROVA A VUOTO terminata: multimon-ng ha decodificato %d pacchetto/i in %d file.",
+        "%06d [multimon  --:--.-] NOT DECODED": "%06d [multimon  --:--.-] NON DECODIFICATO",
+        "       [esp32 only      %s] %s": "       [solo esp32      %s] %s",
+        "      ! DECODED BUT DIFFERENT": "      ! DECODIFICATO MA DIVERSO",
+        "\n[mm] multimon-ng did not exit within 60 s - killing it\n":
+            "\n[mm] multimon-ng non è uscito entro 60 s: viene terminato\n",
+        "<probe %+.1f dB>": "<sondaggio %+.1f dB>",
+        "  Clipping threshold: %+.1f dB (gain %.3f)":
+            "  Soglia di clipping: %+.1f dB (guadagno %.3f)",
+        "  No clipping seen up to %+.1f dB (gain %.3f) - the hardware level into the ADC may be too low; check the RX trimmer.":
+            "  Nessun clipping osservato fino a %+.1f dB (guadagno %.3f): il livello hardware verso l'ADC potrebbe essere troppo basso; controlla il trimmer RX.",
+        "  No packets decoded during calibration at any level - falling back to %.3f (%+.1f dB, threshold - %.0f dB).":
+            "  Nessun pacchetto decodificato durante la calibrazione a nessun livello: si ripiega su %.3f (%+.1f dB, soglia - %.0f dB).",
+        "  Probe budget spent; stopping the plateau sweep (raise it with --auto_volume_max_rounds).":
+            "  Budget dei sondaggi esaurito; la scansione del plateau si ferma (aumentalo con --auto_volume_max_rounds).",
+        "  No usable score data - using threshold - %.0f dB = %.3f (%+.1f dB).":
+            "  Nessun dato di punteggio utilizzabile: si usa soglia - %.0f dB = %.3f (%+.1f dB).",
+        "  NOTE: more than 6 dB of boost was needed. The hardware level into the ESP32 ADC is too low - turn the RX trimmer up and re-run. Boosting digitally also amplifies the sound card's own noise floor.":
+            "  NOTA: sono serviti più di 6 dB di guadagno. Il livello hardware verso l'ADC dell'ESP32 è troppo basso: alza il trimmer RX e ripeti la prova. Amplificare in digitale amplifica anche il rumore della scheda audio.",
+        "  PASS  %s": "  OK    %s",
+        "  FAIL  %s  %s": "  FALL  %s  %s",
+        "run_one_wav called %d times - no pass limit":
+            "run_one_wav chiamata %d volte: nessun limite di passaggi",
+        "Cannot open a display for --gui: %s\n":
+            "Impossibile aprire un display per --gui: %s\n",
+        "Invalid option": "Opzione non valida",
+        "Quit": "Esci",
+        "A test is still running. Stop it and quit?":
+            "Un test è ancora in corso. Fermarlo e uscire?",
+        "\nAuto-volume calibration interrupted - proceeding with the volume found so far.":
+            "\nCalibrazione automatica del volume interrotta: si prosegue con il volume trovato finora.",
+        "      ! PAYLOAD OK BUT HEADER CORRUPT": "      ! PAYLOAD OK MA INTESTAZIONE CORROTTA",
+        "       [esp32     --:--.-] NOT DECODED": "       [esp32     --:--.-] NON DECODIFICATO",
+        "\n[audio] player failed (rc=%s): %s\n": "\n[audio] il player è fallito (rc=%s): %s\n",
+        "\n[gui] stopped by user\n": "\n[gui] fermato dall'utente\n",
+        "system default": "uscita predefinita del sistema",
+        "Cannot open serial port %s: %s\n": "Impossibile aprire la porta seriale %s: %s\n",
+        "       [progress %s / %s] multimon=%d  ok=%d  not-decoded=%d  different=%d  (serial lines seen: %d)":
+            "       [avanzamento %s / %s] multimon=%d  ok=%d  non-decodificati=%d  diversi=%d  (righe seriali viste: %d)",
+        "      probe incomplete: %d/%d packet(s) after %d pass(es) over the wav set - check the audio routing and the files":
+            "      sondaggio incompleto: %d/%d pacchetto/i dopo %d passaggio/i sull'insieme di wav; controlla il routing audio e i file",
+        "      score fell %.0f points below the best - the lower knee is past, no need to go quieter":
+            "      il punteggio è sceso di %.0f punti sotto il migliore: il ginocchio inferiore è superato, inutile scendere ancora",
+        "%s: %r is not a valid %s": "%s: %r non è un %s valido",
+        "\n[gui] unexpected error:\n": "\n[gui] errore imprevisto:\n",
+        "\n[serial] read error: %s\n": "\n[seriale] errore di lettura: %s\n",
+        "integer": "intero",
+        "number": "numero",
+    },
+}
+
 try:
     import serial  # pyserial
 except ImportError:  # pragma: no cover
-    sys.stderr.write("pyserial is required:  pip install pyserial\n")
+    sys.stderr.write(T("pyserial is required:  pip install pyserial") + "\n")
     sys.exit(2)
 
 # --------------------------------------------------------------------------
@@ -479,7 +1128,7 @@ class SerialCollector(threading.Thread):
                 chunk = self.ser.read(4096)
             except (serial.SerialException, OSError) as exc:
                 if not self._halt.is_set():
-                    sys.stderr.write("\n[serial] read error: %s\n" % exc)
+                    sys.stderr.write(T("\n[serial] read error: %s\n") % exc)
                 break
             except (TypeError, ValueError):
                 # stop() closed the port under a read() that was already in
@@ -651,9 +1300,9 @@ def clip_warning(wav: str, volume: float, normalise: bool) -> Optional[str]:
     else:
         headroom = wav_peak(wav)
     if volume * headroom > 1.0:
-        return ("%s: gain %.3f (%+.1f dB) on a file peaking at %.3f would clip "
-                "inside sox (max usable gain %.3f). Use --normalise, or lower the "
-                "gain and raise the hardware level instead." %
+        return (T("%s: gain %.3f (%+.1f dB) on a file peaking at %.3f would clip "
+                  "inside sox (max usable gain %.3f). Use --normalise, or lower the "
+                  "gain and raise the hardware level instead.") %
                 (os.path.basename(wav), volume, to_db(volume), headroom, 1.0 / headroom))
     return None
 
@@ -807,29 +1456,29 @@ def run_one_wav(res: FileResult, wav: str, audio_device: Optional[str],
         if kind == "extra":
             with res_lock:
                 res.extra.append(ep)
-            say("%06d [multimon  --:--.-] NOT DECODED" % n)
-            say("       [esp32 only      %s] %s" % (mmss(t_esp - t0), ep.raw))
+            say(T("%06d [multimon  --:--.-] NOT DECODED") % n)
+            say(T("       [esp32 only      %s] %s") % (mmss(t_esp - t0), ep.raw))
             check_stop()
             return
-        say("%06d [multimon %s] %s" % (n, mmss(t_mm - t0), mp.raw))
+        say(T("%06d [multimon %s] %s") % (n, mmss(t_mm - t0), mp.raw))
         if kind == "ok":
             with res_lock:
                 res.ok += 1
-            say("    OK [esp32    %s] %s" % (mmss(t_esp - t0), ep.raw))
+            say(T("    OK [esp32    %s] %s") % (mmss(t_esp - t0), ep.raw))
         elif kind == "mismatch":
             with res_lock:
                 res.mismatch.append((mp, ep))
-            say("       [esp32    %s] %s" % (mmss(t_esp - t0), ep.raw))
-            say("      ! DECODED BUT DIFFERENT")
+            say(T("       [esp32    %s] %s") % (mmss(t_esp - t0), ep.raw))
+            say(T("      ! DECODED BUT DIFFERENT"))
         elif kind == "corrupt":
             with res_lock:
                 res.corrupt.append((mp, ep))
-            say("       [esp32    %s] %s" % (mmss(t_esp - t0), ep.raw))
-            say("      ! PAYLOAD OK BUT HEADER CORRUPT")
+            say(T("       [esp32    %s] %s") % (mmss(t_esp - t0), ep.raw))
+            say(T("      ! PAYLOAD OK BUT HEADER CORRUPT"))
         else:
             with res_lock:
                 res.missing.append(mp)
-            say("       [esp32     --:--.-] NOT DECODED")
+            say(T("       [esp32     --:--.-] NOT DECODED"))
 
     def feed_and_step(now: float, final: bool = False) -> None:
         items, ingested[0] = collector.items_from(ingested[0], t_window_start)
@@ -898,7 +1547,7 @@ def run_one_wav(res: FileResult, wav: str, audio_device: Optional[str],
                     res.mm_packets.append(pkt)
                 now = time.monotonic()
                 if dry_run:      # dry run: no ESP32, just list the packet
-                    say("%06d [multimon %s] %s" %
+                    say(T("%06d [multimon %s] %s") %
                         (len(res.mm_packets), mmss(now - t0), pkt.raw))
                 else:               # printed with the ESP32's answer
                     matcher.add_mm(now, pkt)
@@ -919,8 +1568,8 @@ def run_one_wav(res: FileResult, wav: str, audio_device: Optional[str],
                     feed_and_step(now)
                 if now - last_progress >= PROGRESS_SECONDS:
                     last_progress = now
-                    say("       [progress %s / %s] multimon=%d  ok=%d  "
-                        "not-decoded=%d  different=%d  (serial lines seen: %d)" %
+                    say(T("       [progress %s / %s] multimon=%d  ok=%d  "
+                          "not-decoded=%d  different=%d  (serial lines seen: %d)") %
                         (mmss(now - t0), mmss(duration), len(res.mm_packets),
                          res.ok, len(res.missing), len(res.mismatch),
                          collector.lines_seen))
@@ -961,7 +1610,7 @@ def run_one_wav(res: FileResult, wav: str, audio_device: Optional[str],
             check_cancel()              # Stop killed the player: unwind now
             if player.returncode not in (0, None) and not target_hit[0]:
                 err = b"".join(player_err).decode("latin-1", "replace")
-                sys.stderr.write("\n[audio] player failed (rc=%s): %s\n" %
+                sys.stderr.write(T("\n[audio] player failed (rc=%s): %s\n") %
                                  (player.returncode, err.strip()))
         pt.join(timeout=30)
         try:
@@ -977,7 +1626,7 @@ def run_one_wav(res: FileResult, wav: str, audio_device: Optional[str],
         except subprocess.TimeoutExpired:
             # Never let this escape: it used to propagate out of run_one_wav
             # and abort the whole test run (and the calibration with it).
-            sys.stderr.write("\n[mm] multimon-ng did not exit within 60 s - killing it\n")
+            sys.stderr.write(T("\n[mm] multimon-ng did not exit within 60 s - killing it\n"))
             mm_p.kill()
             try:
                 mm_p.wait(timeout=5)
@@ -1209,25 +1858,25 @@ def pct(n: int, total: int) -> float:
 
 
 def print_file_report(res: FileResult, dry_run: bool = False) -> None:
-    say("  multimon-ng decoded %d packet(s)" % len(res.mm_packets))
+    say(T("  multimon-ng decoded %d packet(s)") % len(res.mm_packets))
     if dry_run:
         return
-    say("  ESP32 decoded %d packet(s)" % len(res.esp_packets))
-    say("  -> OK: %d   DIFFERENT: %d   HDR-CORRUPT: %d   NOT DECODED: %d   "
-        "EXTRA(esp only): %d" %
+    say(T("  ESP32 decoded %d packet(s)") % len(res.esp_packets))
+    say(T("  -> OK: %d   DIFFERENT: %d   HDR-CORRUPT: %d   NOT DECODED: %d   "
+          "EXTRA(esp only): %d") %
         (res.ok, len(res.mismatch), len(res.corrupt), len(res.missing), len(res.extra)))
     if res.offset:
-        say("  -> measured esp32 latency vs multimon-ng: %+.2f s" % res.offset)
+        say(T("  -> measured esp32 latency vs multimon-ng: %+.2f s") % res.offset)
     for mp, ep in res.mismatch:
-        say("    ! DIFFERENT")
-        say("        multimon: %s" % mp.raw)
-        say("        esp32   : %s" % ep.raw)
+        say(T("    ! DIFFERENT"))
+        say(T("        multimon: %s") % mp.raw)
+        say(T("        esp32   : %s") % ep.raw)
     for mp, ep in res.corrupt:
-        say("    ! HEADER CORRUPT (payload matched)")
-        say("        multimon: %s" % mp.raw)
-        say("        esp32   : %s" % ep.raw)
+        say(T("    ! HEADER CORRUPT (payload matched)"))
+        say(T("        multimon: %s") % mp.raw)
+        say(T("        esp32   : %s") % ep.raw)
     for mp in res.missing:
-        say("    ! NOT DECODED by ESP32: %s" % mp.raw)
+        say(T("    ! NOT DECODED by ESP32: %s") % mp.raw)
 
 
 def print_summary(results: List[FileResult], volume: Optional[float] = None) -> int:
@@ -1242,32 +1891,32 @@ def print_summary(results: List[FileResult], volume: Optional[float] = None) -> 
 
     bar = "=" * 72
     print("\n" + bar)
-    print("SUMMARY")
+    print(T("SUMMARY"))
     print(bar)
     print("  %-30s %6s %6s %6s %6s %6s %6s" %
-          ("file", "mm", "ok", "diff", "hdr", "n/dec", "extra"))
+          (T("file"), T("mm"), T("ok"), T("diff"), T("hdr"), T("n/dec"), T("extra")))
     for r in results:
         print("  %-30s %6d %6d %6d %6d %6d %6d" %
               (r.name[:30], len(r.mm_packets), r.ok, len(r.mismatch),
                len(r.corrupt), len(r.missing), len(r.extra)))
     print("  " + "-" * 70)
     if volume is not None:
-        print("  Playback gain used for this test  : %.3f  (%+.1f dB)" %
+        print(T("  Playback gain used for this test  : %.3f  (%+.1f dB)") %
               (volume, to_db(volume)))
     if offsets:
-        print("  ESP32 latency vs multimon-ng      : %+.2f s (median of %d file(s))" %
+        print(T("  ESP32 latency vs multimon-ng      : %+.2f s (median of %d file(s))") %
               (median(offsets), len(offsets)))
-    print("  Files tested                      : %d" % len(results))
-    print("  Total packets (multimon-ng)       : %d" % total)
-    print("  Packets seen by ESP32             : %d" % esp_total)
-    print("  Decoded correctly                 : %d  (%.2f%%)" % (ok, pct(ok, total)))
-    print("  Decoded with different content    : %d  (%.2f%%)" % (mism, pct(mism, total)))
-    print("  Decoded with corrupt header       : %d  (%.2f%%)" % (corr, pct(corr, total)))
-    print("  Missing (not decoded)             : %d  (%.2f%%)" % (miss, pct(miss, total)))
-    print("  Extra (ESP32 only, not an error)  : %d" % extra)
+    print(T("  Files tested                      : %d") % len(results))
+    print(T("  Total packets (multimon-ng)       : %d") % total)
+    print(T("  Packets seen by ESP32             : %d") % esp_total)
+    print(T("  Decoded correctly                 : %d  (%.2f%%)") % (ok, pct(ok, total)))
+    print(T("  Decoded with different content    : %d  (%.2f%%)") % (mism, pct(mism, total)))
+    print(T("  Decoded with corrupt header       : %d  (%.2f%%)") % (corr, pct(corr, total)))
+    print(T("  Missing (not decoded)             : %d  (%.2f%%)") % (miss, pct(miss, total)))
+    print(T("  Extra (ESP32 only, not an error)  : %d") % extra)
     print(bar)
     if total == 0:
-        print("RESULT: no packets were decoded by multimon-ng - nothing to compare.")
+        print(T("RESULT: no packets were decoded by multimon-ng - nothing to compare."))
         return 2
     return 0 if (mism == 0 and corr == 0 and miss == 0) else 1
 
@@ -1285,15 +1934,15 @@ def check_tools(need_play: bool = True) -> None:
     required = ("multimon-ng", "sox") + (("play",) if need_play else ())
     missing = [t for t in required if shutil.which(t) is None]
     if missing:
-        sys.stderr.write("Missing required program(s): %s\n" % ", ".join(missing))
-        sys.stderr.write("  Debian/Ubuntu: sudo apt install multimon-ng sox libsox-fmt-all\n")
+        sys.stderr.write(T("Missing required program(s): %s\n") % ", ".join(missing))
+        sys.stderr.write(T("  Debian/Ubuntu: sudo apt install multimon-ng sox libsox-fmt-all\n"))
         sys.exit(2)
     _HAVE_STDBUF = shutil.which("stdbuf") is not None
     if not _HAVE_STDBUF:
-        sys.stderr.write(
+        sys.stderr.write(T(
             "WARNING: `stdbuf` not found (package coreutils). multimon-ng's output will be\n"
             "  block-buffered on the pipe, so its packets may arrive in bursts and be\n"
-            "  timestamped late, which shows up as spurious NOT DECODED verdicts.\n")
+            "  timestamped late, which shows up as spurious NOT DECODED verdicts.\n"))
 
 
 def find_wavs(directory: str) -> List[str]:
@@ -1410,7 +2059,7 @@ class VolumeSearch:
         if cached is not None and cached["trials"] >= target:
             return cached
 
-        batch = FileResult(name="<probe %+.1f dB>" % key)
+        batch = FileResult(name=T("<probe %+.1f dB>") % key)
         overrange_before, _ = self.collector.snapshot_overrange()
         passes = 0
         while len(batch.mm_packets) + len(batch.extra) < target:
@@ -1421,8 +2070,8 @@ class VolumeSearch:
                     # Without this the loop restarts the wav set for ever when
                     # nothing decodes at all (silent files, muted card, wrong
                     # ALSA device) and only Ctrl-C can end the run.
-                    say("      probe incomplete: %d/%d packet(s) after %d pass(es) "
-                        "over the wav set - check the audio routing and the files" %
+                    say(T("      probe incomplete: %d/%d packet(s) after %d pass(es) "
+                          "over the wav set - check the audio routing and the files") %
                         (len(batch.mm_packets) + len(batch.extra), target, passes))
                     break
             wav = self.wavs[self._cursor]
@@ -1465,8 +2114,8 @@ class VolumeSearch:
         self.cache[key] = m
         self.probes_used += 1
         self.budget_used += target / float(max(1, self.batch_size))
-        say("  [probe %2d, budget %.1f/%d] gain=%.3f (%+5.1f dB)  mm=%d ok=%d diff=%d hdr=%d "
-            "miss=%d extra=%d  score=%.1f%%  clip=%.2f/pkt" %
+        say(T("  [probe %2d, budget %.1f/%d] gain=%.3f (%+5.1f dB)  mm=%d ok=%d diff=%d hdr=%d "
+              "miss=%d extra=%d  score=%.1f%%  clip=%.2f/pkt") %
             (self.probes_used, self.budget_used, self.max_rounds, volume, key, n_mm, batch.ok,
              len(batch.mismatch), len(batch.corrupt), len(batch.missing),
              n_extra, m["score"], m["clip_rate"]))
@@ -1533,28 +2182,28 @@ class VolumeSearch:
             return self.volume
 
         say("\n" + "=" * 72)
-        say("AUTO-VOLUME CALIBRATION (clip threshold + plateau centre)")
+        say(T("AUTO-VOLUME CALIBRATION (clip threshold + plateau centre)"))
         say("=" * 72)
-        say("  Start gain %.3f (%+.1f dB), range %.3f..%.3f, budget %d probe(s), "
-            "%d packet(s) per scoring probe" %
+        say(T("  Start gain %.3f (%+.1f dB), range %.3f..%.3f, budget %d probe(s), "
+              "%d packet(s) per scoring probe") %
             (self.volume, to_db(self.volume), self.vol_min, self.vol_max,
              self.max_rounds, self.batch_size))
 
         clip_db, observed = self._find_clip_threshold(to_db(self._clamp(self.volume)))
         self.clip_db = clip_db
         if observed:
-            say("  Clipping threshold: %+.1f dB (gain %.3f)" % (clip_db, to_lin(clip_db)))
+            say(T("  Clipping threshold: %+.1f dB (gain %.3f)") % (clip_db, to_lin(clip_db)))
         else:
-            say("  No clipping seen up to %+.1f dB (gain %.3f) - the hardware level "
-                "into the ADC may be too low; check the RX trimmer." %
+            say(T("  No clipping seen up to %+.1f dB (gain %.3f) - the hardware level "
+                  "into the ADC may be too low; check the RX trimmer.") %
                 (clip_db, to_lin(clip_db)))
 
         # Sanity check: with no packets at all there is nothing to calibrate.
         probed = [m for m in self.cache.values() if m["mm"] > 0 or m["extra"] > 0]
         if not probed:
             self.volume = self._clamp(to_lin(clip_db - self.headroom_db))
-            say("  No packets decoded during calibration at any level - falling back "
-                "to %.3f (%+.1f dB, threshold - %.0f dB)." %
+            say(T("  No packets decoded during calibration at any level - falling back "
+                  "to %.3f (%+.1f dB, threshold - %.0f dB).") %
                 (self.volume, to_db(self.volume), self.headroom_db))
             say("=" * 72)
             return self.volume
@@ -1563,8 +2212,8 @@ class VolumeSearch:
         best = None  # type: Optional[Tuple[float, dict]]
         for off in PLATEAU_OFFSETS_DB:
             if not self._budget_left(1.0):
-                say("  Probe budget spent; stopping the plateau sweep "
-                    "(raise it with --auto_volume_max_rounds).")
+                say(T("  Probe budget spent; stopping the plateau sweep "
+                      "(raise it with --auto_volume_max_rounds)."))
                 break
             db = clip_db + off
             if db < to_db(self.vol_min):
@@ -1576,13 +2225,13 @@ class VolumeSearch:
             if best is None or m["score"] > best[1]["score"]:
                 best = (db, m)
             elif m["score"] < best[1]["score"] - KNEE_DROP_PCT:
-                say("      score fell %.0f points below the best - the lower knee is "
-                    "past, no need to go quieter" % (best[1]["score"] - m["score"]))
+                say(T("      score fell %.0f points below the best - the lower knee is "
+                      "past, no need to go quieter") % (best[1]["score"] - m["score"]))
                 break
 
         if not points or best is None:
             self.volume = self._clamp(to_lin(clip_db - self.headroom_db))
-            say("  No usable score data - using threshold - %.0f dB = %.3f (%+.1f dB)." %
+            say(T("  No usable score data - using threshold - %.0f dB = %.3f (%+.1f dB).") %
                 (self.headroom_db, self.volume, to_db(self.volume)))
             say("=" * 72)
             return self.volume
@@ -1599,10 +2248,10 @@ class VolumeSearch:
         centre_db = min(centre_db, clip_db - MIN_CLIP_MARGIN_DB)
         self.volume = self._clamp(to_lin(centre_db))
 
-        say("  Plateau: %+.1f .. %+.1f dB (%d tied point(s) of %d probed); "
-            "best raw score %.1f%%" %
+        say(T("  Plateau: %+.1f .. %+.1f dB (%d tied point(s) of %d probed); "
+              "best raw score %.1f%%") %
             (min(tied), max(tied), len(tied), len(points), best[1]["score"]))
-        say("  Chosen gain: %.3f (%+.1f dB), %.1f dB below the clipping threshold" %
+        say(T("  Chosen gain: %.3f (%+.1f dB), %.1f dB below the clipping threshold") %
             (self.volume, to_db(self.volume), clip_db - centre_db))
         self._advise()
         say("=" * 72)
@@ -1615,13 +2264,13 @@ class VolumeSearch:
         a number to hand to `play`."""
         db = to_db(self.volume)
         if db < -6.0:
-            say("  NOTE: more than 6 dB of attenuation was needed. The hardware level "
-                "into the ESP32 ADC is too hot - turn the RX trimmer (or the radio's "
-                "volume) down and re-run, so the bench can work near 0 dB.")
+            say(T("  NOTE: more than 6 dB of attenuation was needed. The hardware level "
+                  "into the ESP32 ADC is too hot - turn the RX trimmer (or the radio's "
+                  "volume) down and re-run, so the bench can work near 0 dB."))
         elif db > 6.0:
-            say("  NOTE: more than 6 dB of boost was needed. The hardware level into "
-                "the ESP32 ADC is too low - turn the RX trimmer up and re-run. "
-                "Boosting digitally also amplifies the sound card's own noise floor.")
+            say(T("  NOTE: more than 6 dB of boost was needed. The hardware level into "
+                  "the ESP32 ADC is too low - turn the RX trimmer up and re-run. "
+                  "Boosting digitally also amplifies the sound card's own noise floor."))
 
 
 # Backwards-compatible alias: older invocations and notes refer to the class
@@ -1632,15 +2281,15 @@ AutoVolumeCalibrator = VolumeSearch
 def wait_ready(col: SerialCollector, settle: float) -> None:
     """Opening the port usually resets an ESP32 (DTR/RTS wired to EN/IO0).
     Wait for console traffic and for the boot to complete."""
-    say("Waiting %.1f s for the ESP32 to be ready ..." % settle)
+    say(T("Waiting %.1f s for the ESP32 to be ready ...") % settle)
     end = time.monotonic() + settle
     while time.monotonic() < end:
         sleep_or_stop(0.2)
     if not col.alive.is_set():
-        say("  WARNING: no data received from the serial port yet. The firmware "
-            "may be quiet until it hears/sends something; continuing.")
+        say(T("  WARNING: no data received from the serial port yet. The firmware "
+              "may be quiet until it hears/sends something; continuing."))
     else:
-        say("  serial is alive (%d console line(s) so far)." % col.lines_seen)
+        say(T("  serial is alive (%d console line(s) so far).") % col.lines_seen)
 
 
 class _SimulatedVolumeSearch(VolumeSearch):
@@ -1689,37 +2338,37 @@ def selftest() -> int:
 
     def check(name: str, cond: bool, detail: str = "") -> None:
         if cond:
-            print("  PASS  %s" % name)
+            print(T("  PASS  %s") % name)
         else:
             failures.append(name)
-            print("  FAIL  %s  %s" % (name, detail))
+            print(T("  FAIL  %s  %s") % (name, detail))
 
-    print("Normalisation and parsing")
+    print(T("Normalisation and parsing"))
     p_mm = make_packet("LU1ABC-0", "APRS", ["WIDE1-1"], b"hello\r", "mm")
     p_esp = make_packet("LU1ABC", "APRS", ["WIDE1-1*"], b"hello", "esp")
-    check("SSID -0, digipeated * and trailing CR all normalise away",
+    check(T("SSID -0, digipeated * and trailing CR all normalise away"),
           p_mm.key_header() == p_esp.key_header() and p_mm.info == p_esp.info)
-    check("trailing dot is kept (truncation must not pass as equal)",
+    check(T("trailing dot is kept (truncation must not pass as equal)"),
           make_packet("A", "B", [], b"hi.", "").info !=
           make_packet("A", "B", [], b"hi", "").info)
-    check("payload LF becomes '.' like multimon-ng prints it",
+    check(T("payload LF becomes '.' like multimon-ng prints it"),
           make_packet("A", "B", [], b"a\nb", "").info == b"a.b")
-    check("colon inside the payload does not break the header split",
+    check(T("colon inside the payload does not break the header split"),
           parse_tnc2(b"LU1ABC>APRS::LU2DEF   :hi{01") is not None)
-    check("ESP console line with a log prefix parses",
+    check(T("ESP console line with a log prefix parses"),
           parse_esp_line(b"I (12345) aprs_service: RX: LU1ABC>APRS,WIDE1-1:test") is not None)
 
-    print("LiveMatcher verdicts")
+    print(T("LiveMatcher verdicts"))
     lm = LiveMatcher(5.0, offset_auto=False)
     lm.add_mm(10.0, p_mm)
     lm.add_esp(11.0, p_esp)
-    check("match inside the window is ok",
+    check(T("match inside the window is ok"),
           [e[0] for e in lm.step(20.0, final=True)] == ["ok"])
 
     lm = LiveMatcher(5.0, offset_auto=False)
     lm.add_mm(10.0, p_mm)
     lm.add_esp(16.0, p_esp)
-    check("match outside the window is missing + extra",
+    check(T("match outside the window is missing + extra"),
           sorted(e[0] for e in lm.step(30.0, final=True)) == ["extra", "missing"])
 
     lm = LiveMatcher(5.0, offset_auto=False)
@@ -1727,14 +2376,14 @@ def selftest() -> int:
     lm.add_mm(10.0, p_mm)
     lm.add_esp(10.2, bad_hdr)
     verdicts = [e[0] for e in lm.step(20.0, final=True)]
-    check("header-corrupt frame gives ONE verdict, not missing+extra",
-          verdicts == ["corrupt"], "got %r" % (verdicts,))
+    check(T("header-corrupt frame gives ONE verdict, not missing+extra"),
+          verdicts == ["corrupt"], T("got %r") % (verdicts,))
 
     lm = LiveMatcher(5.0, offset_auto=False)
     bad_pl = make_packet("LU1ABC", "APRS", ["WIDE1-1"], b"hellX", "esp-bad-payload")
     lm.add_mm(10.0, p_mm)
     lm.add_esp(10.2, bad_pl)
-    check("payload-corrupt frame is a mismatch only",
+    check(T("payload-corrupt frame is a mismatch only"),
           [e[0] for e in lm.step(20.0, final=True)] == ["mismatch"])
 
     lm = LiveMatcher(5.0, offset_auto=False)
@@ -1743,7 +2392,7 @@ def selftest() -> int:
     lm.add_esp(11.05, p_esp)
     lm.add_esp(10.05, p_esp)
     ev = [e for e in lm.step(30.0, final=True) if e[0] == "ok"]
-    check("two identical beacons pair with the nearest transmission",
+    check(T("two identical beacons pair with the nearest transmission"),
           len(ev) == 2 and all(abs(e[4] - e[2]) < 0.2 for e in ev))
 
     lm = LiveMatcher(1.0, offset_auto=True)
@@ -1752,17 +2401,17 @@ def selftest() -> int:
         lm.add_mm(float(i), pk)
         lm.add_esp(float(i) + 0.8, pk)
         lm.step(float(i) + 0.9)
-    check("latency skew is learned from confirmed matches",
+    check(T("latency skew is learned from confirmed matches"),
           lm.offset_locked and abs(lm.offset - 0.8) < 0.05,
-          "offset=%.3f" % lm.offset)
+          T("offset=%.3f") % lm.offset)
 
-    print("Statistics")
+    print(T("Statistics"))
     lo, hi = wilson(45, 50)
-    check("Wilson interval at 45/50 is wide enough to swallow 1-packet noise",
-          (hi - lo) > 0.10, "width=%.3f" % (hi - lo))
-    check("dB round-trip", abs(to_lin(to_db(0.37)) - 0.37) < 1e-9)
+    check(T("Wilson interval at 45/50 is wide enough to swallow 1-packet noise"),
+          (hi - lo) > 0.10, T("width=%.3f") % (hi - lo))
+    check(T("dB round-trip"), abs(to_lin(to_db(0.37)) - 0.37) < 1e-9)
 
-    print("VolumeSearch convergence (simulated plateau, centre = -10.5 dB)")
+    print(T("VolumeSearch convergence (simulated plateau, centre = -10.5 dB)"))
     for start in (0.05, 1.0, 4.0):
         vs = _SimulatedVolumeSearch(
             ["a.wav", "b.wav"], None, 0.0, 5.0, None, [], start,
@@ -1771,19 +2420,19 @@ def selftest() -> int:
         # Cost is measured in batches of packets (what the run actually pays
         # in wall-clock time), not in probe calls: the threshold hunt makes
         # many cheap 8-packet probes on purpose.
-        check("start %.2f converges to the plateau centre within budget "
-              "(%.1f/%d batches, %d probes)" %
+        check(T("start %.2f converges to the plateau centre within budget "
+                "(%.1f/%d batches, %d probes)") %
               (start, vs.budget_used, vs.max_rounds, vs.probes_used),
               abs(chosen - (-10.5)) <= 1.5 and vs.budget_used <= vs.max_rounds,
-              "chose %+.1f dB at cost %.1f" % (chosen, vs.budget_used))
+              T("chose %+.1f dB at cost %.1f") % (chosen, vs.budget_used))
 
     vs = _SimulatedVolumeSearch(["a.wav"], None, 0.0, 5.0, None, [], 1.0,
                                 batch_size=50, max_rounds=12)
     vs.run()
-    check("chosen level keeps margin below the clipping threshold",
+    check(T("chosen level keeps margin below the clipping threshold"),
           to_db(vs.volume) <= vs.clip_db - MIN_CLIP_MARGIN_DB + 1e-6)
 
-    print("Termination with a wav set that decodes nothing")
+    print(T("Termination with a wav set that decodes nothing"))
     # The old _run_batch_until restarted the wav iterator unconditionally, so
     # a silent or misrouted set looped for ever and only Ctrl-C ended the run.
     global run_one_wav
@@ -1793,7 +2442,7 @@ def selftest() -> int:
     def _decodes_nothing(res, wav, *a, **kw):
         calls[0] += 1
         if calls[0] > 200:                      # the guard failed; stop the test
-            raise AssertionError("run_one_wav called %d times - no pass limit" % calls[0])
+            raise AssertionError(T("run_one_wav called %d times - no pass limit") % calls[0])
         return False
 
     class _NoSerial:
@@ -1807,24 +2456,24 @@ def selftest() -> int:
         vs = VolumeSearch(["a.wav", "b.wav"], None, 0.0, 5.0, _NoSerial(), [], 1.0,
                           batch_size=50, max_rounds=4, max_passes=MAX_WAV_PASSES)
         m = vs._measure(1.0, 50)
-        check("a probe over a silent wav set terminates instead of looping",
+        check(T("a probe over a silent wav set terminates instead of looping"),
               m["trials"] == 0 and calls[0] <= len(["a.wav", "b.wav"]) * MAX_WAV_PASSES,
-              "%d playback call(s)" % calls[0])
+              T("%d playback call(s)") % calls[0])
         vs2 = VolumeSearch(["a.wav"], None, 0.0, 5.0, _NoSerial(), [], 1.0,
                            batch_size=50, max_rounds=4)
-        check("the whole search terminates on a silent wav set",
+        check(T("the whole search terminates on a silent wav set"),
               vs2.run() > 0.0)
     except AssertionError as exc:
-        check("a probe over a silent wav set terminates instead of looping",
+        check(T("a probe over a silent wav set terminates instead of looping"),
               False, str(exc))
     finally:
         run_one_wav = real_run_one_wav
 
     print("")
     if failures:
-        print("SELFTEST FAILED: %d of the checks above did not pass" % len(failures))
+        print(T("SELFTEST FAILED: %d of the checks above did not pass") % len(failures))
         return 1
-    print("SELFTEST OK")
+    print(T("SELFTEST OK"))
     return 0
 
 
@@ -1835,7 +2484,7 @@ def selftest() -> int:
 # Layout:
 #   +--------------------------------------------------------------+
 #   |  every command-line flag, as a form  (built from the parser) |
-#   |  [ Start ] [ Stop ] [ Clear ] [ Reset defaults ]            |
+#   |  [ Start ] [ Stop ] [ Clear ] [ Reset ]  [ Language v ]     |
 #   +------------------------------+-------------------------------+
 #   |  CONSOLE (left)              |  SERIAL (right)               |
 #   |  everything the program      |  every byte read from the     |
@@ -1894,14 +2543,17 @@ def _visible_serial_text(chunk: bytes) -> str:
     return "".join(out)
 
 
-def run_gui(ap: argparse.ArgumentParser) -> int:
+def run_gui(ap: argparse.ArgumentParser, initial_values: Optional[dict] = None,
+            initial_logs: Optional[dict] = None):
+    """Open the window. Returns an exit code, or ("restart", values, logs) when
+    the language was changed and run_gui_loop() must rebuild the window."""
     global _RAW_SERIAL_SINK
     try:
         import tkinter as tk
         from tkinter import ttk, filedialog, messagebox
         import tkinter.font as tkfont
     except ImportError:
-        sys.stderr.write("--gui needs tkinter.  Debian/Ubuntu: sudo apt install python3-tk\n")
+        sys.stderr.write(T("--gui needs tkinter.  Debian/Ubuntu: sudo apt install python3-tk\n"))
         return 2
     import queue
     import shlex
@@ -1909,9 +2561,9 @@ def run_gui(ap: argparse.ArgumentParser) -> int:
     try:
         root = tk.Tk()
     except tk.TclError as exc:
-        sys.stderr.write("Cannot open a display for --gui: %s\n" % exc)
+        sys.stderr.write(T("Cannot open a display for --gui: %s\n") % exc)
         return 2
-    root.title("test_aprs_wavs - esp32idf_APRS regression bench")
+    root.title(T("test_aprs_wavs - esp32idf_APRS regression bench"))
     root.geometry("1280x820")
     root.minsize(900, 560)
 
@@ -1973,8 +2625,8 @@ def run_gui(ap: argparse.ArgumentParser) -> int:
     # ---- collect the options from the parser --------------------------
     fields = []   # (action, kind, tk variable)
     for act in ap._actions:
-        if not act.option_strings or act.dest in ("help", "gui"):
-            continue
+        if not act.option_strings or act.dest in ("help", "gui", "lang"):
+            continue                # --lang has its own selector in the button bar
         if isinstance(act, argparse._StoreTrueAction):
             kind = "flag"
         elif act.type is int:
@@ -1986,7 +2638,7 @@ def run_gui(ap: argparse.ArgumentParser) -> int:
         fields.append((act, kind))
 
     # ---- top: the form ------------------------------------------------
-    top = ttk.LabelFrame(root, text="Options (same flags as the command line)")
+    top = ttk.LabelFrame(root, text=T("Options (same flags as the command line)"))
     top.pack(side="top", fill="x", padx=6, pady=(6, 3))
 
     vars_ = {}          # dest -> tk variable
@@ -2050,13 +2702,22 @@ def run_gui(ap: argparse.ArgumentParser) -> int:
         vars_[act.dest] = var
         attach_tip(w, flag_name(act) + ": " + helptxt)
 
+    # Coming back from a language change: put every field back as it was.
+    if initial_values:
+        for dest, val in initial_values.items():
+            if dest in vars_:
+                try:
+                    vars_[dest].set(val)
+                except Exception:
+                    pass
+
     # ---- buttons ------------------------------------------------------
     bar = ttk.Frame(top)
     bar.pack(fill="x", padx=6, pady=(0, 6))
-    btn_start = ttk.Button(bar, text="Start")
-    btn_stop = ttk.Button(bar, text="Stop", state="disabled")
-    btn_clear = ttk.Button(bar, text="Clear consoles")
-    btn_reset = ttk.Button(bar, text="Reset defaults")
+    btn_start = ttk.Button(bar, text=T("Start"))
+    btn_stop = ttk.Button(bar, text=T("Stop"), state="disabled")
+    btn_clear = ttk.Button(bar, text=T("Clear consoles"))
+    btn_reset = ttk.Button(bar, text=T("Reset defaults"))
     for b in (btn_start, btn_stop, btn_clear, btn_reset):
         b.pack(side="left", padx=(0, 6))
     # Top-right zoom controls. Packed right-to-left: "+", percentage, "-".
@@ -2066,7 +2727,7 @@ def run_gui(ap: argparse.ArgumentParser) -> int:
     btn_minus = ttk.Button(bar, text="\u2212", width=3, command=lambda: apply_scale(scale_idx[0] - 1))
     btn_minus.pack(side="right")
     scale_widgets["plus"], scale_widgets["minus"] = btn_plus, btn_minus
-    status = tk.StringVar(value="Idle")
+    status = tk.StringVar(value=T("Idle"))
     ttk.Label(bar, textvariable=status).pack(side="right", padx=(0, 12))
 
     # ---- bottom: split console ---------------------------------------
@@ -2088,8 +2749,8 @@ def run_gui(ap: argparse.ArgumentParser) -> int:
         paned.add(frame, weight=1)
         return txt
 
-    console = make_pane("Console  (program output)")
-    serial_txt = make_pane("Serial  (raw data from the ESP32, unfiltered)")
+    console = make_pane(T("Console  (program output)"))
+    serial_txt = make_pane(T("Serial  (raw data from the ESP32, unfiltered)"))
 
     MAX_LINES = 20000       # keep the widgets bounded on very long runs
 
@@ -2106,7 +2767,62 @@ def run_gui(ap: argparse.ArgumentParser) -> int:
             widget.see("end")
 
     # ---- worker -------------------------------------------------------
-    state = {"thread": None, "saved_out": None, "saved_err": None}
+    state = {"thread": None, "saved_out": None, "saved_err": None,
+             "restart": None, "after": None}
+
+    # Coming back from a language change: put both consoles back as well, so
+    # the log of a run already finished is not lost by switching language.
+    if initial_logs:
+        if initial_logs.get("console"):
+            append(console, initial_logs["console"])
+        if initial_logs.get("serial"):
+            append(serial_txt, initial_logs["serial"])
+
+    # ---- language selector (flag + name), in the button bar -----------
+    # Widgets cannot be re-translated in place, so picking another language
+    # closes this window and run_gui_loop() builds it again, with the values
+    # of the form carried over.
+    lang_show = dict((c, "%s  %s" % (LANG_FLAGS[c], LANG_NAMES[c])) for c in LANGS)
+    lang_code = dict((v, k) for k, v in lang_show.items())
+    lang_var = tk.StringVar(value=lang_show[current_language()])
+    lbl_lang = ttk.Label(bar, text=T("Language:"))
+    lbl_lang.pack(side="left", padx=(14, 4))
+    lang_box = ttk.Combobox(bar, textvariable=lang_var, state="readonly",
+                            width=14, values=[lang_show[c] for c in LANGS])
+    lang_box.pack(side="left")
+    attach_tip(lang_box, T("Language of the messages, the help texts and this "
+                           "window. The default is the system language, or "
+                           "English when it is not one of the three."))
+
+    def cancel_pump() -> None:
+        """Drop the pending pump() callback before the window goes away, or Tk
+        prints an 'invalid command name' error when it fires into nothing."""
+        if state["after"] is not None:
+            try:
+                root.after_cancel(state["after"])
+            except Exception:
+                pass
+            state["after"] = None
+
+    def on_lang(_e=None) -> None:
+        code = lang_code.get(lang_var.get(), current_language())
+        if code == current_language():
+            return
+        t = state["thread"]
+        if t is not None and t.is_alive():
+            messagebox.showinfo(T("Language"),
+                                T("Stop the running test before changing the language."))
+            lang_var.set(lang_show[current_language()])
+            return
+        set_language(code)
+        state["restart"] = (
+            dict((dest, var.get()) for dest, var in vars_.items()),
+            {"console": console.get("1.0", "end-1c"),
+             "serial": serial_txt.get("1.0", "end-1c")})
+        cancel_pump()
+        root.destroy()
+
+    lang_box.bind("<<ComboboxSelected>>", on_lang)
 
     def build_args():
         """Turn the form into an argparse.Namespace, validating types."""
@@ -2123,9 +2839,11 @@ def run_gui(ap: argparse.ArgumentParser) -> int:
             try:
                 val = int(raw) if kind == "int" else float(raw) if kind == "float" else raw
             except ValueError:
-                raise ValueError("%s: %r is not a valid %s" %
-                                 (flag_name(act), raw, "integer" if kind == "int" else "number"))
+                raise ValueError(T("%s: %r is not a valid %s") %
+                                 (flag_name(act), raw,
+                                  T("integer") if kind == "int" else T("number")))
             setattr(ns, act.dest, val)
+        ns.lang = current_language()      # so the echoed command line repeats it
         return ns
 
     def worker(ns):
@@ -2133,13 +2851,13 @@ def run_gui(ap: argparse.ArgumentParser) -> int:
         try:
             rc = run_with_args(ns)
         except KeyboardInterrupt:
-            q.put(("console", "stdout", "\n[gui] stopped by user\n"))
+            q.put(("console", "stdout", T("\n[gui] stopped by user\n")))
             rc = 130
         except SystemExit as exc:
             rc = exc.code if isinstance(exc.code, int) else 1
         except BaseException as exc:                 # never die silently
             import traceback
-            q.put(("console", "stderr", "\n[gui] unexpected error:\n" + traceback.format_exc()))
+            q.put(("console", "stderr", T("\n[gui] unexpected error:\n") + traceback.format_exc()))
             rc = 1
         finally:
             q.put(("done", rc))
@@ -2151,7 +2869,7 @@ def run_gui(ap: argparse.ArgumentParser) -> int:
         try:
             ns = build_args()
         except ValueError as exc:
-            messagebox.showerror("Invalid option", str(exc))
+            messagebox.showerror(T("Invalid option"), str(exc))
             return
         _STOP.clear()
         with _LIVE_LOCK:
@@ -2166,7 +2884,7 @@ def run_gui(ap: argparse.ArgumentParser) -> int:
         state["thread"] = t
         btn_start.configure(state="disabled")
         btn_stop.configure(state="normal")
-        status.set("Running ...")
+        status.set(T("Running ..."))
         t.start()
 
     def stop() -> None:
@@ -2180,7 +2898,7 @@ def run_gui(ap: argparse.ArgumentParser) -> int:
         if t is None or not t.is_alive():
             return
         btn_stop.configure(state="disabled")      # one click is enough
-        status.set("Stopping ...")
+        status.set(T("Stopping ..."))
         request_stop()
 
     def finish(rc) -> None:
@@ -2191,8 +2909,8 @@ def run_gui(ap: argparse.ArgumentParser) -> int:
             state["saved_out"] = state["saved_err"] = None
         btn_start.configure(state="normal")
         btn_stop.configure(state="disabled")
-        status.set("Finished (exit code %s)" % rc)
-        append(console, "\n[gui] finished, exit code %s\n" % rc)
+        status.set(T("Finished (exit code %s)") % rc)
+        append(console, T("\n[gui] finished, exit code %s\n") % rc)
 
     def clear() -> None:
         for w in (console, serial_txt):
@@ -2235,7 +2953,10 @@ def run_gui(ap: argparse.ArgumentParser) -> int:
             append(serial_txt, "".join(ser_parts))
         if done_rc is not None:
             finish(done_rc)
-        root.after(50, pump)
+        try:
+            state["after"] = root.after(50, pump)
+        except tk.TclError:
+            state["after"] = None          # the window is being destroyed
 
     for seq in ("<Control-plus>", "<Control-equal>", "<Control-KP_Add>"):
         root.bind(seq, lambda _e: apply_scale(scale_idx[0] + 1))
@@ -2252,15 +2973,20 @@ def run_gui(ap: argparse.ArgumentParser) -> int:
     def on_close() -> None:
         t = state["thread"]
         if t is not None and t.is_alive():
-            if not messagebox.askyesno("Quit", "A test is still running. Stop it and quit?"):
+            if not messagebox.askyesno(T("Quit"),
+                                       T("A test is still running. Stop it and quit?")):
                 return
             stop()
             t.join(timeout=8)
+        cancel_pump()
         root.destroy()
     root.protocol("WM_DELETE_WINDOW", on_close)
 
     pump()
     root.mainloop()
+    if state["restart"] is not None:
+        values, logs = state["restart"]
+        return ("restart", values, logs)
     return 0
 
 
@@ -2288,88 +3014,114 @@ def build_parser() -> argparse.ArgumentParser:
     """The one and only definition of the command-line flags. The GUI builds
     its form from this parser, so a flag added here shows up there by itself."""
     ap = argparse.ArgumentParser(
-        description="Test esp32idf_APRS with a battery of real-APRS WAV files, "
-                    "using multimon-ng as the reference decoder.")
+        description=T("Test esp32idf_APRS with a battery of real-APRS WAV files, "
+                      "using multimon-ng as the reference decoder."))
+    ap.add_argument("--lang", choices=LANGS, default=None,
+                    help=T("language of the messages, the help and the GUI: "
+                           "en (English), es (Spanish), it (Italian). Default: "
+                           "the system language, or English when the system "
+                           "language is none of these three."))
     ap.add_argument("--wav_dir", default=".",
-                    help="directory with the .wav files (default: current directory)")
+                    help=T("directory with the .wav files (default: current directory)"))
     ap.add_argument("--serial_port", default=DEFAULT_SERIAL,
-                    help="ESP32 console serial port (default: %s)" % DEFAULT_SERIAL)
+                    help=T("ESP32 console serial port (default: %s)") % DEFAULT_SERIAL)
     ap.add_argument("--baud", type=int, default=SERIAL_BAUD,
-                    help="serial speed, 8N1 (default: %d)" % SERIAL_BAUD)
+                    help=T("serial speed, 8N1 (default: %d)") % SERIAL_BAUD)
     ap.add_argument("--audio_device", default=None,
-                    help="ALSA device wired to the ESP32 audio input, e.g. hw:1,0 "
-                         "(default: system default output)")
+                    help=T("ALSA device wired to the ESP32 audio input, e.g. hw:1,0 "
+                           "(default: system default output)"))
     ap.add_argument("--volume", type=float, default=1.0,
-                    help="playback gain applied to the ESP32 leg only (default 1.0). "
-                         "Used as the starting point for auto-volume calibration "
-                         "unless --no_auto_volume is given.")
+                    help=T("playback gain applied to the ESP32 leg only (default 1.0). "
+                           "Used as the starting point for auto-volume calibration "
+                           "unless --no_auto_volume is given."))
     ap.add_argument("--normalise", "--normalize", dest="normalise", action="store_true",
-                    help="bring every wav to -1 dBFS in the play chain (sox 'gain -n -1') "
-                         "so one gain is valid across recordings made at different levels, "
-                         "and gains above 1.0 stop meaning 'clip inside sox'")
+                    help=T("bring every wav to -1 dBFS in the play chain (sox 'gain -n -1') "
+                           "so one gain is valid across recordings made at different levels, "
+                           "and gains above 1.0 stop meaning 'clip inside sox'"))
     ap.add_argument("--headroom_db", type=float, default=HEADROOM_DB,
-                    help="dB below the clipping threshold to fall back to when no "
-                         "plateau could be scored (default %.0f)" % HEADROOM_DB)
+                    help=T("dB below the clipping threshold to fall back to when no "
+                           "plateau could be scored (default %.0f)") % HEADROOM_DB)
     ap.add_argument("--clip_rate", type=float, default=CLIP_RATE_THRESHOLD,
-                    help="over-range warnings per packet above which a level counts "
-                         "as clipping (default %.2f); a single transient warning is "
-                         "not enough" % CLIP_RATE_THRESHOLD)
+                    help=T("over-range warnings per packet above which a level counts "
+                           "as clipping (default %.2f); a single transient warning is "
+                           "not enough") % CLIP_RATE_THRESHOLD)
     ap.add_argument("--volume_min", type=float, default=AUTO_VOLUME_MIN,
-                    help="lowest gain the search may use (default %.2f)" % AUTO_VOLUME_MIN)
+                    help=T("lowest gain the search may use (default %.2f)") % AUTO_VOLUME_MIN)
     ap.add_argument("--volume_max", type=float, default=AUTO_VOLUME_MAX,
-                    help="highest gain the search may use (default %.2f)" % AUTO_VOLUME_MAX)
+                    help=T("highest gain the search may use (default %.2f)") % AUTO_VOLUME_MAX)
     ap.add_argument("--max_passes", type=int, default=MAX_WAV_PASSES,
-                    help="passes over the wav set before a calibration probe gives up "
-                         "(default %d)" % MAX_WAV_PASSES)
+                    help=T("passes over the wav set before a calibration probe gives up "
+                           "(default %d)") % MAX_WAV_PASSES)
     ap.add_argument("--no_offset_auto", action="store_true",
-                    help="do not estimate the ESP32-vs-multimon-ng latency skew; "
-                         "compare raw timestamps instead")
+                    help=T("do not estimate the ESP32-vs-multimon-ng latency skew; "
+                           "compare raw timestamps instead"))
     ap.add_argument("--selftest", action="store_true",
-                    help="run the built-in unit tests (no hardware, no audio) and exit")
+                    help=T("run the built-in unit tests (no hardware, no audio) and exit"))
     ap.add_argument("--no_auto_volume", action="store_true",
-                    help="skip the auto-volume calibration pass and use --volume as-is "
-                         "for the whole run")
+                    help=T("skip the auto-volume calibration pass and use --volume as-is "
+                           "for the whole run"))
     ap.add_argument("--auto_volume_batch", type=int, default=AUTO_VOLUME_BATCH,
-                    help="number of packets to test per volume try during "
-                         "auto-volume calibration - counts both multimon-ng "
-                         "packets and ESP32-only ones multimon-ng missed "
-                         "(default %d)" % AUTO_VOLUME_BATCH)
+                    help=T("number of packets to test per volume try during "
+                           "auto-volume calibration - counts both multimon-ng "
+                           "packets and ESP32-only ones multimon-ng missed "
+                           "(default %d)") % AUTO_VOLUME_BATCH)
     ap.add_argument("--auto_volume_max_rounds", type=int, default=AUTO_VOLUME_MAX_ROUNDS,
-                    help="search budget for the auto-volume pass, in batches of "
-                         "--auto_volume_batch packets (default %d). Cheap 8-packet "
-                         "clipping probes cost a fraction of a batch, full scoring "
-                         "probes cost one each." % AUTO_VOLUME_MAX_ROUNDS)
+                    help=T("search budget for the auto-volume pass, in batches of "
+                           "--auto_volume_batch packets (default %d). Cheap 8-packet "
+                           "clipping probes cost a fraction of a batch, full scoring "
+                           "probes cost one each.") % AUTO_VOLUME_MAX_ROUNDS)
     ap.add_argument("--tail", type=float, default=DEFAULT_TAIL_SECONDS,
-                    help="seconds to keep listening after each file (default %.1f)" % DEFAULT_TAIL_SECONDS)
+                    help=T("seconds to keep listening after each file (default %.1f)") % DEFAULT_TAIL_SECONDS)
     ap.add_argument("--settle", type=float, default=4.0,
-                    help="seconds to wait after opening the serial port (default 4)")
+                    help=T("seconds to wait after opening the serial port (default 4)"))
     ap.add_argument("--pause", type=float, default=1.0,
-                    help="pause between files in seconds (default 1)")
+                    help=T("pause between files in seconds (default 1)"))
     ap.add_argument("--match_window", type=float, default=5.0,
-                    help="an ESP32 packet answers a multimon-ng packet only if it "
-                         "arrives within this many seconds of it; a packet the ESP32 "
-                         "has not reported after this time is shown as NOT DECODED "
-                         "(default 5)")
+                    help=T("an ESP32 packet answers a multimon-ng packet only if it "
+                           "arrives within this many seconds of it; a packet the ESP32 "
+                           "has not reported after this time is shown as NOT DECODED "
+                           "(default 5)"))
     ap.add_argument("--no_play", action="store_true",
-                    help="do not play audio to the sound card (only run multimon-ng; "
-                         "useful to dry-run the parser)")
+                    help=T("do not play audio to the sound card (only run multimon-ng; "
+                           "useful to dry-run the parser)"))
     ap.add_argument("--mm_args", default="",
-                    help="extra multimon-ng arguments, e.g. '-A' (quoted)")
+                    help=T("extra multimon-ng arguments, e.g. '-A' (quoted)"))
     ap.add_argument("--list_audio", action="store_true",
-                    help="list ALSA playback devices and exit")
+                    help=T("list ALSA playback devices and exit"))
     ap.add_argument("--gui", action="store_true",
-                    help="open a graphical front-end: every flag in a form at the "
-                         "top, and below it a split console (left: program output, "
-                         "right: raw unfiltered serial data from the ESP32)")
+                    help=T("open a graphical front-end: every flag in a form at the "
+                           "top, and below it a split console (left: program output, "
+                           "right: raw unfiltered serial data from the ESP32)"))
     return ap
 
 
 def main() -> int:
+    # The language has to be known BEFORE the parser is built, because every
+    # --help text is translated while it is being built.
+    set_language(lang_from_argv(sys.argv[1:]))
     ap = build_parser()
     args = ap.parse_args()
+    set_language(args.lang)        # None here means "use the system language"
     if args.gui:
-        return run_gui(ap)
+        return run_gui_loop()
     return run_with_args(args)
+
+
+def run_gui_loop() -> int:
+    """Open the GUI and, whenever the Language selector changes, rebuild it in
+    the new language while keeping whatever is typed in the form.
+
+    Tk has no way to re-translate widgets that already exist, so the window is
+    recreated: run_gui() returns ("restart", values) instead of an exit code,
+    and the form values are handed back to the new window."""
+    values, logs = None, None
+    while True:
+        ap = build_parser()        # help texts in the current language
+        rc = run_gui(ap, values, logs)
+        if isinstance(rc, tuple) and rc and rc[0] == "restart":
+            values, logs = rc[1], rc[2]
+            continue
+        return rc
 
 
 def run_with_args(args: argparse.Namespace) -> int:
@@ -2380,53 +3132,53 @@ def run_with_args(args: argparse.Namespace) -> int:
 
     if args.list_audio:
         if shutil.which("aplay") is None:
-            sys.stderr.write("aplay not found - install alsa-utils "
-                             "(Debian/Ubuntu: sudo apt install alsa-utils)\n")
+            sys.stderr.write(T("aplay not found - install alsa-utils "
+                               "(Debian/Ubuntu: sudo apt install alsa-utils)\n"))
             return 2
         return subprocess.call(["aplay", "-l"])
 
     if args.auto_volume_batch < 1:
-        sys.stderr.write("--auto_volume_batch must be >= 1 (got %d)\n" % args.auto_volume_batch)
+        sys.stderr.write(T("--auto_volume_batch must be >= 1 (got %d)\n") % args.auto_volume_batch)
         return 2
     if args.auto_volume_max_rounds < 1:
-        sys.stderr.write("--auto_volume_max_rounds must be >= 1 (got %d)\n" %
+        sys.stderr.write(T("--auto_volume_max_rounds must be >= 1 (got %d)\n") %
                           args.auto_volume_max_rounds)
         return 2
     if args.max_passes < 1:
-        sys.stderr.write("--max_passes must be >= 1 (got %d)\n" % args.max_passes)
+        sys.stderr.write(T("--max_passes must be >= 1 (got %d)\n") % args.max_passes)
         return 2
     if not (0.0 < args.volume_min < args.volume_max):
-        sys.stderr.write("--volume_min must be > 0 and < --volume_max (got %g and %g)\n" %
+        sys.stderr.write(T("--volume_min must be > 0 and < --volume_max (got %g and %g)\n") %
                          (args.volume_min, args.volume_max))
         return 2
     if not (args.volume_min <= args.volume <= args.volume_max):
-        sys.stderr.write("--volume must be within [%g, %g] (got %g)\n" %
+        sys.stderr.write(T("--volume must be within [%g, %g] (got %g)\n") %
                          (args.volume_min, args.volume_max, args.volume))
         return 2
     if not (0.0 < args.clip_rate <= 1.0):
-        sys.stderr.write("--clip_rate must be in (0, 1] (got %g)\n" % args.clip_rate)
+        sys.stderr.write(T("--clip_rate must be in (0, 1] (got %g)\n") % args.clip_rate)
         return 2
     if args.match_window <= 0:
-        sys.stderr.write("--match_window must be > 0 (got %g)\n" % args.match_window)
+        sys.stderr.write(T("--match_window must be > 0 (got %g)\n") % args.match_window)
         return 2
 
     check_tools(need_play=not args.no_play)
 
     if not os.path.isdir(args.wav_dir):
-        sys.stderr.write("wav_dir not found: %s\n" % args.wav_dir)
+        sys.stderr.write(T("wav_dir not found: %s\n") % args.wav_dir)
         return 2
     wavs = find_wavs(args.wav_dir)
     if not wavs:
-        sys.stderr.write("No .wav files in %s\n" % os.path.abspath(args.wav_dir))
+        sys.stderr.write(T("No .wav files in %s\n") % os.path.abspath(args.wav_dir))
         return 2
 
-    print("Found %d wav file(s) in %s" % (len(wavs), os.path.abspath(args.wav_dir)))
+    print(T("Found %d wav file(s) in %s") % (len(wavs), os.path.abspath(args.wav_dir)))
     if args.no_play:
-        print("DRY RUN (--no_play): only multimon-ng runs; serial port and sound "
-              "card are NOT used, so ESP32 results below are not meaningful.")
+        print(T("DRY RUN (--no_play): only multimon-ng runs; serial port and sound "
+                "card are NOT used, so ESP32 results below are not meaningful."))
     else:
-        print("Serial: %s @ %d 8N1   Audio: %s" %
-              (args.serial_port, args.baud, args.audio_device or "system default"))
+        print(T("Serial: %s @ %d 8N1   Audio: %s") %
+              (args.serial_port, args.baud, args.audio_device or T("system default")))
     sys.stdout.flush()
 
     col = None  # type: Optional[SerialCollector]
@@ -2434,7 +3186,7 @@ def run_with_args(args: argparse.Namespace) -> int:
         try:
             col = SerialCollector(args.serial_port, args.baud)
         except (serial.SerialException, OSError) as exc:
-            sys.stderr.write("Cannot open serial port %s: %s\n" % (args.serial_port, exc))
+            sys.stderr.write(T("Cannot open serial port %s: %s\n") % (args.serial_port, exc))
             return 2
     else:
         # dry-run: a dummy collector object that never sees any ESP32 output
@@ -2488,8 +3240,8 @@ def run_with_args(args: argparse.Namespace) -> int:
             final_volume = calibrator.run()
             offset_seed = calibrator.offset
         except KeyboardInterrupt:
-            print("\nAuto-volume calibration interrupted - "
-                  "proceeding with the volume found so far.")
+            print(T("\nAuto-volume calibration interrupted - "
+                    "proceeding with the volume found so far."))
             final_volume = calibrator.volume
             offset_seed = calibrator.offset
 
@@ -2507,13 +3259,13 @@ def run_with_args(args: argparse.Namespace) -> int:
             print_file_report(res, dry_run=args.no_play)
             sleep_or_stop(args.pause)
     except KeyboardInterrupt:
-        print("\nInterrupted - reporting what has been tested so far.")
+        print(T("\nInterrupted - reporting what has been tested so far."))
     finally:
         col.stop()
 
     if args.no_play:
         n = sum(len(r.mm_packets) for r in results)
-        print("\nDRY RUN finished: multimon-ng decoded %d packet(s) in %d file(s)." % (n, len(results)))
+        print(T("\nDRY RUN finished: multimon-ng decoded %d packet(s) in %d file(s).") % (n, len(results)))
         return 0 if n else 2
     return print_summary(results, final_volume) if results else 2
 
