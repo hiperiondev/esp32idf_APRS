@@ -442,6 +442,28 @@ _CATALOG = {
             "--match_window debe ser > 0 (se recibió %g)\n",
         "wav_dir not found: %s\n": "no se encontró wav_dir: %s\n",
         "No .wav files in %s\n": "No hay archivos .wav en %s\n",
+        "None of the selected --wav_files were found as .wav files in %s\n":
+            "Ninguno de los --wav_files seleccionados se encontró como "
+            "archivo .wav en %s\n",
+        "directory with the .wav files (default: current directory)":
+            "directorio con los archivos .wav (por defecto: directorio actual)",
+        "comma-separated list of .wav file names (relative to "
+        "--wav_dir) to test; empty means every .wav file found in "
+        "--wav_dir (default: empty). In the GUI this is the file "
+        "selector next to --wav_dir.":
+            "lista de nombres de archivos .wav separados por comas (relativos "
+            "a --wav_dir) a probar; vacío significa todos los archivos .wav "
+            "encontrados en --wav_dir (por defecto: vacío). En la GUI esto es "
+            "el selector de archivos junto a --wav_dir.",
+        "--wav_files": "--wav_files",
+        "wav files found in wav_dir (select one or more to test; none = all)":
+            "archivos wav encontrados en wav_dir (selecciona uno o más para "
+            "probar; ninguno = todos)",
+        "%d selected of %d": "%d seleccionado(s) de %d",
+        "no .wav files found": "no se encontraron archivos .wav",
+        "Refresh": "Actualizar",
+        "Select all": "Seleccionar todo",
+        "Select none": "No seleccionar nada",
         "Serial: %s @ %d 8N1   Audio: %s": "Serie: %s @ %d 8N1   Audio: %s",
         "\nInterrupted - reporting what has been tested so far.":
             "\nInterrumpido: se informa lo probado hasta ahora.",
@@ -970,6 +992,28 @@ _CATALOG = {
             "--match_window deve essere > 0 (ricevuto %g)\n",
         "wav_dir not found: %s\n": "wav_dir non trovata: %s\n",
         "No .wav files in %s\n": "Nessun file .wav in %s\n",
+        "None of the selected --wav_files were found as .wav files in %s\n":
+            "Nessuno dei --wav_files selezionati è stato trovato come file "
+            ".wav in %s\n",
+        "directory with the .wav files (default: current directory)":
+            "cartella con i file .wav (predefinito: cartella corrente)",
+        "comma-separated list of .wav file names (relative to "
+        "--wav_dir) to test; empty means every .wav file found in "
+        "--wav_dir (default: empty). In the GUI this is the file "
+        "selector next to --wav_dir.":
+            "elenco di nomi di file .wav separati da virgole (relativi a "
+            "--wav_dir) da testare; vuoto significa tutti i file .wav "
+            "trovati in --wav_dir (predefinito: vuoto). Nella GUI è il "
+            "selettore file accanto a --wav_dir.",
+        "--wav_files": "--wav_files",
+        "wav files found in wav_dir (select one or more to test; none = all)":
+            "file wav trovati in wav_dir (selezionane uno o più da testare; "
+            "nessuno = tutti)",
+        "%d selected of %d": "%d selezionato/i su %d",
+        "no .wav files found": "nessun file .wav trovato",
+        "Refresh": "Aggiorna",
+        "Select all": "Seleziona tutto",
+        "Select none": "Deseleziona tutto",
         "Serial: %s @ %d 8N1   Audio: %s": "Seriale: %s @ %d 8N1   Audio: %s",
         "\nInterrupted - reporting what has been tested so far.":
             "\nInterrotto: viene riportato quanto testato finora.",
@@ -3969,12 +4013,20 @@ def check_tools(need_play: bool = True) -> None:
             "  timestamped late, which shows up as spurious NOT DECODED verdicts.\n"))
 
 
-def find_wavs(directory: str) -> List[str]:
+def find_wavs(directory: str, select: Optional[List[str]] = None) -> List[str]:
     """Every .wav in the directory, whatever the case of the extension.
 
     Matching on the lower-cased name (rather than a case-sensitive suffix
     check) picks up ".WAV", ".Wav", etc. os.listdir() entries are already
-    unique, so no de-duplication is needed."""
+    unique, so no de-duplication is needed.
+
+    `select`, when given, is a list of file names (as returned by this same
+    function's basenames, i.e. relative to `directory`); only those are kept,
+    in the order requested. Names in `select` that are not .wav files present
+    in `directory` are silently ignored - the GUI's listbox and the
+    --wav_files parser both build `select` from a listing of the same
+    directory, so a mismatch only happens if the directory changed on disk
+    between the two, and skipping is safer than aborting the whole run."""
     try:
         entries = os.listdir(directory)
     except OSError:
@@ -3982,7 +4034,16 @@ def find_wavs(directory: str) -> List[str]:
     files = [os.path.join(directory, e) for e in entries
              if e.lower().endswith(".wav") and
              os.path.isfile(os.path.join(directory, e))]
-    return sorted(files, key=lambda s: s.lower())
+    files.sort(key=lambda s: s.lower())
+    if select:
+        wanted = set(select)
+        files = [f for f in files if os.path.basename(f) in wanted]
+    return files
+
+
+def parse_wav_files_option(raw: str) -> List[str]:
+    """--wav_files "a.wav, b.wav" -> ["a.wav", "b.wav"]; "" -> []."""
+    return [s.strip() for s in raw.split(",") if s.strip()]
 
 
 class VolumeSearch:
@@ -5140,7 +5201,20 @@ def run_gui(ap: argparse.ArgumentParser, initial_values: Optional[dict] = None,
     for c in range(COLS):
         grid.columnconfigure(c, weight=1, uniform="col")
 
+    wav_dir_var_holder = {}   # filled in below, read by the file-selector panel
+    wav_files_var_holder = {}
+
     for i, (act, kind) in enumerate(fields):
+        if act.dest == "wav_files":
+            # Driven entirely by the file-selector listbox built below, not
+            # by a form entry: still register a StringVar (build_args() and
+            # the language-change carry-over both go through vars_ generically)
+            # but do not give it a grid cell or a widget of its own.
+            var = tk.StringVar(value="" if act.default is None else str(act.default))
+            defaults[act.dest] = "" if act.default is None else str(act.default)
+            vars_[act.dest] = var
+            wav_files_var_holder["var"] = var
+            continue
         cell = ttk.Frame(grid)
         cell.grid(row=i // COLS, column=i % COLS, sticky="ew", padx=4, pady=2)
         helptxt = (act.help or "").replace("%%", "%")
@@ -5170,11 +5244,95 @@ def run_gui(ap: argparse.ArgumentParser, initial_values: Optional[dict] = None,
                     d = filedialog.askdirectory(initialdir=v.get() or ".")
                     if d:
                         v.set(d)
+                        refresh_wav_files(reset_selection=True)
                 ttk.Button(cell, text="...", width=3, command=browse).pack(side="right", anchor="center", padx=(4, 0))
+                w.bind("<KeyRelease>", lambda _e: refresh_wav_files())
+                w.bind("<FocusOut>", lambda _e: refresh_wav_files())
+                w.bind("<Return>", lambda _e: refresh_wav_files())
+                wav_dir_var_holder["var"] = var
         vars_[act.dest] = var
         attach_tip(w, flag_name(act) + ": " + helptxt)
 
     refresh_sinks()
+
+    # ---- .wav file selector --------------------------------------------
+    # Shows every .wav file found in --wav_dir and lets the user pick which
+    # ones to test (multiple selection). No selection = every file found,
+    # exactly like the command line default (--wav_files empty). The list is
+    # kept in sync with --wav_dir: on typing/Return/focus-out in that box, on
+    # "Browse ...", and via the refresh button here (e.g. after dropping new
+    # files into the folder without changing the path).
+    wav_panel = ttk.LabelFrame(top, text=T("wav files found in wav_dir "
+                                           "(select one or more to test; none = all)"))
+    wav_panel.pack(fill="x", padx=6, pady=(0, 4))
+    wav_inner = ttk.Frame(wav_panel)
+    wav_inner.pack(fill="x", padx=6, pady=4)
+
+    wav_list_var = tk.StringVar(value=[])
+    wav_listbox = tk.Listbox(wav_inner, listvariable=wav_list_var, selectmode="extended",
+                             height=6, exportselection=False, activestyle="dotbox")
+    wav_scroll = ttk.Scrollbar(wav_inner, orient="vertical", command=wav_listbox.yview)
+    wav_listbox.configure(yscrollcommand=wav_scroll.set)
+    wav_listbox.pack(side="left", fill="both", expand=True)
+    wav_scroll.pack(side="left", fill="y")
+    attach_tip(wav_listbox, T("--wav_files") + ": " +
+               T("comma-separated list of .wav file names (relative to "
+                 "--wav_dir) to test; empty means every .wav file found in "
+                 "--wav_dir (default: empty). In the GUI this is the file "
+                 "selector next to --wav_dir."))
+
+    wav_side = ttk.Frame(wav_inner)
+    wav_side.pack(side="left", fill="y", padx=(8, 0))
+    wav_count_var = tk.StringVar(value="")
+    ttk.Label(wav_side, textvariable=wav_count_var, anchor="w").pack(anchor="w", pady=(0, 4))
+
+    def on_wav_select(_e=None) -> None:
+        names = [wav_listbox.get(i) for i in wav_listbox.curselection()]
+        if "var" in wav_files_var_holder:
+            wav_files_var_holder["var"].set(", ".join(names))
+        n = wav_listbox.size()
+        wav_count_var.set(T("%d selected of %d") % (len(names), n) if n
+                          else T("no .wav files found"))
+
+    def refresh_wav_files(reset_selection: bool = False) -> None:
+        """Re-list wav_dir's .wav files. Keeps the current selection (by
+        file name) unless reset_selection, which is used after Browse picks
+        a brand new folder - an old selection from a different directory
+        would otherwise silently carry over and could match nothing, or
+        worse, a same-named but different file."""
+        d = wav_dir_var_holder.get("var")
+        d = d.get().strip() if d else ""
+        prev_selected = set(wav_listbox.get(i) for i in wav_listbox.curselection())
+        names = [os.path.basename(p) for p in find_wavs(d)] if d and os.path.isdir(d) else []
+        wav_list_var.set(names)
+        if not reset_selection and prev_selected:
+            for idx, name in enumerate(names):
+                if name in prev_selected:
+                    wav_listbox.selection_set(idx)
+        on_wav_select()
+
+    ttk.Button(wav_side, text=T("Refresh"), command=lambda: refresh_wav_files()).pack(anchor="w")
+    ttk.Button(wav_side, text=T("Select all"),
+              command=lambda: (wav_listbox.selection_set(0, "end"), on_wav_select())).pack(anchor="w", pady=(4, 0))
+    ttk.Button(wav_side, text=T("Select none"),
+              command=lambda: (wav_listbox.selection_clear(0, "end"), on_wav_select())).pack(anchor="w", pady=(4, 0))
+    wav_listbox.bind("<<ListboxSelect>>", on_wav_select)
+
+    # Coming back from a language change (or on first build, from --wav_files
+    # given on the command line): pre-select whatever --wav_files names, once
+    # the directory listing is in.
+    def preselect_from_var() -> None:
+        var = wav_files_var_holder.get("var")
+        wanted = set(parse_wav_files_option(var.get())) if var else set()
+        if not wanted:
+            return
+        for idx in range(wav_listbox.size()):
+            if wav_listbox.get(idx) in wanted:
+                wav_listbox.selection_set(idx)
+        on_wav_select()
+
+    refresh_wav_files(reset_selection=True)
+    preselect_from_var()
 
     # Coming back from a language change: put every field back as it was.
     if initial_values:
@@ -5184,6 +5342,10 @@ def run_gui(ap: argparse.ArgumentParser, initial_values: Optional[dict] = None,
                     vars_[dest].set(val)
                 except Exception:
                     pass
+        # wav_dir may have just changed above; re-list it, then re-apply the
+        # carried-over --wav_files selection against the fresh listing.
+        refresh_wav_files(reset_selection=True)
+        preselect_from_var()
 
     # ---- buttons ------------------------------------------------------
     bar = ttk.Frame(top)
@@ -5546,6 +5708,11 @@ def build_parser() -> argparse.ArgumentParser:
                            "language is none of these three."))
     ap.add_argument("--wav_dir", default=".",
                     help=T("directory with the .wav files (default: current directory)"))
+    ap.add_argument("--wav_files", default="",
+                    help=T("comma-separated list of .wav file names (relative to "
+                           "--wav_dir) to test; empty means every .wav file found in "
+                           "--wav_dir (default: empty). In the GUI this is the file "
+                           "selector next to --wav_dir."))
     ap.add_argument("--serial_port", default=DEFAULT_SERIAL,
                     help=T("ESP32 console serial port (default: %s)") % DEFAULT_SERIAL)
     ap.add_argument("--baud", type=int, default=SERIAL_BAUD,
@@ -5810,9 +5977,14 @@ def run_with_args(args: argparse.Namespace) -> int:
     if not os.path.isdir(args.wav_dir):
         sys.stderr.write(T("wav_dir not found: %s\n") % args.wav_dir)
         return 2
-    wavs = find_wavs(args.wav_dir)
+    selected = parse_wav_files_option(getattr(args, "wav_files", "") or "")
+    wavs = find_wavs(args.wav_dir, select=selected or None)
     if not wavs:
-        sys.stderr.write(T("No .wav files in %s\n") % os.path.abspath(args.wav_dir))
+        if selected:
+            sys.stderr.write(T("None of the selected --wav_files were found as .wav "
+                               "files in %s\n") % os.path.abspath(args.wav_dir))
+        else:
+            sys.stderr.write(T("No .wav files in %s\n") % os.path.abspath(args.wav_dir))
         return 2
 
     print(T("Found %d wav file(s) in %s") % (len(wavs), os.path.abspath(args.wav_dir)))
