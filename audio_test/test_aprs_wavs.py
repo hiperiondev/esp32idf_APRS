@@ -1444,6 +1444,31 @@ ROW_DW_ONLY = "DW_ONLY_REF"
 ROW_CONFLICT = "REF_CONFLICT"
 ROW_ESP_ONLY = "ESP_ONLY"
 
+# ANSI colors for the per-row decode-status line (light variants).
+COLOR_GREEN = "\033[92m"   # mm, dw and esp all decoded it correctly
+COLOR_YELLOW = "\033[93m"  # esp decoded it but mm or dw did not
+COLOR_RED = "\033[91m"     # esp did not decode it
+COLOR_RESET = "\033[0m"
+
+
+def row_color(row: "Row") -> Optional[str]:
+    """Color for a row's decode-status line, based on esp vs. mm/dw.
+
+    light green  - mm, dw and esp all decoded it correctly
+    light yellow - esp decoded it but mm or dw did not
+    light red    - esp did not decode it
+    None         - no clear verdict (e.g. ESP32-only / unconfirmed rows)
+    """
+    if row.cls == ROW_ESP_ONLY:
+        return None
+    esp_cell = row.cells.get("esp", CELL_NONE)
+    if esp_cell == CELL_NONE:
+        return COLOR_RED
+    others_ok = all(row.cells.get(s) == CELL_OK for s in ("mm", "dw") if s in row.cells)
+    if esp_cell == CELL_OK and others_ok:
+        return COLOR_GREEN
+    return COLOR_YELLOW
+
 # --------------------------------------------------------------------------
 # Live output
 # --------------------------------------------------------------------------
@@ -3747,8 +3772,10 @@ def print_row(row: Row, t0: float, esp_used: bool = True) -> None:
     order = ("mm", "dw", "esp") if esp_used else ("mm", "dw")
     cells = " ".join(row.cells.get(s, CELL_NONE) for s in order)
     times = "  ".join("%s %s" % (s, _tcell(row, s, t0)) for s in order)
-    say("%06d  %s  [%s]  fcs=%s  %s" % (row.idx, times, cells, fmt_fcs(row.fcs),
-                                        row.consensus.raw))
+    line = "%06d  %s  [%s]  fcs=%s  %s" % (row.idx, times, cells, fmt_fcs(row.fcs),
+                                           row.consensus.raw)
+    color = row_color(row) if esp_used else None
+    say("%s%s%s" % (color, line, COLOR_RESET) if color else line)
     ind = "        "
 
     def show_pair(label_a: str, pa: Packet, label_b: str, pb: Packet) -> None:
@@ -3765,16 +3792,10 @@ def print_row(row: Row, t0: float, esp_used: bool = True) -> None:
         say(ind + T("! ESP32 ONLY - unconfirmed by any CRC-checked reference "
                     "(plausible: %s)") % (T("yes") if ok else T("NO")))
         return
-    if row.cls == ROW_MM_ONLY:
-        say(ind + T("! only multimon-ng decoded it (Direwolf did not)"))
-    elif row.cls == ROW_DW_ONLY:
-        say(ind + T("! multimon-ng did not decode it (Direwolf did)"))
     if not esp_used:
         return
     esp = row.cells.get("esp", CELL_NONE)
-    if esp == CELL_NONE:
-        say(ind + T("! ESP32 NOT DECODED"))
-    elif esp in (CELL_DIFF, CELL_HDR):
+    if esp in (CELL_DIFF, CELL_HDR):
         show_pair("ref", row.consensus, "esp", row.members["esp"][1])
         say(ind + (T("! ESP32 DECODED BUT DIFFERENT") if esp == CELL_DIFF else
                    T("! ESP32 PAYLOAD OK BUT HEADER CORRUPT")))
@@ -5424,6 +5445,13 @@ def run_gui(ap: argparse.ArgumentParser, initial_values: Optional[dict] = None,
         ys.pack(side="right", fill="y")
         txt.pack(side="left", fill="both", expand=True)
         txt.tag_configure("stderr", foreground="#ff8080")
+        # Same light-red/green/yellow family used for the [92m/[93m/[91m
+        # SGR codes print_row() emits; the Text widget never interprets
+        # ANSI escapes on its own, so append() below strips them and maps
+        # them to these tags instead.
+        txt.tag_configure("ansi_green", foreground="#7CFC90")
+        txt.tag_configure("ansi_yellow", foreground="#f5e050")
+        txt.tag_configure("ansi_red", foreground="#ff8080")
         paned.add(frame, weight=1)
         return txt
 
@@ -5432,11 +5460,32 @@ def run_gui(ap: argparse.ArgumentParser, initial_values: Optional[dict] = None,
 
     MAX_LINES = 20000       # keep the widgets bounded on very long runs
 
+    # Matches the SGR escapes print_row() writes (\033[92m ... \033[0m) so
+    # they can be stripped from the visible text and turned into Text tags
+    # instead of showing up as literal "[92m" garbage in the console pane.
+    _ANSI_SGR_RE = re.compile(r"\x1b\[([0-9;]*)m")
+    _ANSI_COLOR_TAGS = {"91": "ansi_red", "92": "ansi_green", "93": "ansi_yellow"}
+
+    def _split_ansi(text: str):
+        """Yield (chunk, color_tag_or_None) pairs with the escapes removed."""
+        pos, color = 0, None
+        for m in _ANSI_SGR_RE.finditer(text):
+            if m.start() > pos:
+                yield text[pos:m.start()], color
+            color = _ANSI_COLOR_TAGS.get(m.group(1))  # None resets (e.g. "0" or "")
+            pos = m.end()
+        if pos < len(text):
+            yield text[pos:], color
+
     def append(widget, text: str, tag=None) -> None:
         # Follow the tail only if the user has not scrolled up to read.
         at_end = widget.yview()[1] >= 0.999
         widget.configure(state="normal")
-        widget.insert("end", text, tag) if tag else widget.insert("end", text)
+        for chunk, color_tag in _split_ansi(text):
+            if not chunk:
+                continue
+            tags = tuple(t for t in (tag, color_tag) if t)
+            widget.insert("end", chunk, tags if tags else None)
         lines = int(widget.index("end-1c").split(".")[0])
         if lines > MAX_LINES:
             widget.delete("1.0", "%d.0" % (lines - MAX_LINES))
