@@ -295,6 +295,11 @@ _CATALOG = {
         "Idle": "En espera",
         "Language:": "Idioma:",
         "Running ...": "Ejecutando ...",
+        "Calibration": "Calibración",
+        "Test": "Prueba",
+        "Live": "En vivo",
+        "Total packets: %d   |   multimon-ng: %d   |   ESP32 decoded: %d   |   ESP32 missed: %d of %d (%s)":
+            "Paquetes totales: %d   |   multimon-ng: %d   |   ESP32 decodificados: %d   |   ESP32 perdidos: %d de %d (%s)",
         "Stopping ...": "Deteniendo ...",
         "Test esp32idf_APRS with a battery of real-APRS WAV files, using multimon-ng as the reference decoder.":
             "Prueba esp32idf_APRS con una batería de archivos WAV de APRS real, usando multimon-ng como decodificador de referencia.",
@@ -653,6 +658,11 @@ _CATALOG = {
         "Idle": "Inattivo",
         "Language:": "Lingua:",
         "Running ...": "In esecuzione ...",
+        "Calibration": "Calibrazione",
+        "Test": "Test",
+        "Live": "In tempo reale",
+        "Total packets: %d   |   multimon-ng: %d   |   ESP32 decoded: %d   |   ESP32 missed: %d of %d (%s)":
+            "Pacchetti totali: %d   |   multimon-ng: %d   |   ESP32 decodificati: %d   |   ESP32 persi: %d su %d (%s)",
         "Stopping ...": "Arresto in corso ...",
         "Test esp32idf_APRS with a battery of real-APRS WAV files, using multimon-ng as the reference decoder.":
             "Testa esp32idf_APRS con una batteria di file WAV di APRS reale, usando multimon-ng come decodificatore di riferimento.",
@@ -1058,6 +1068,57 @@ def request_stop() -> None:
                 p.kill()
             except Exception:
                 pass
+
+
+# --------------------------------------------------------------------------
+# Live packet counters (read by the GUI status line)
+# --------------------------------------------------------------------------
+#
+# run_one_wav() bumps these the moment each packet / verdict is known, so the
+# GUI can show running totals without parsing the console text. They are
+# reset at the start of each phase (auto-volume calibration, then the real
+# test), so the numbers shown always belong to the phase that is running.
+# Definitions, consistent with print_summary() / print_loss_resume():
+#   multimon  = packets multimon-ng decoded (the reference)
+#   extra     = packets only the ESP32 decoded
+#   total     = multimon + extra (every distinct packet either decoder heard)
+#   esp       = ok + different + hdr-corrupt + extra (ESP32 produced a frame)
+#   missed    = multimon packets the ESP32 did NOT decode
+#   resolved  = multimon packets whose verdict is already known; the missed
+#               percentage is taken over these, so packets still inside the
+#               match window do not make the ESP32 look better than it is.
+
+class LiveStats:
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self.reset("")
+
+    def reset(self, phase: str) -> None:
+        with self._lock:
+            self.phase = phase
+            self.mm = self.ok = self.diff = self.missing = self.extra = 0
+            self.gen = getattr(self, "gen", 0) + 1
+
+    def add(self, mm: int = 0, ok: int = 0, diff: int = 0,
+            missing: int = 0, extra: int = 0) -> None:
+        with self._lock:
+            self.mm = max(0, self.mm + mm)
+            self.ok += ok
+            self.diff += diff
+            self.missing += missing
+            self.extra += extra
+            self.gen += 1
+
+    def snapshot(self) -> dict:
+        with self._lock:
+            resolved = self.ok + self.diff + self.missing
+            return {"gen": self.gen, "phase": self.phase,
+                    "total": self.mm + self.extra, "mm": self.mm,
+                    "esp": self.ok + self.diff + self.extra,
+                    "missed": self.missing, "resolved": resolved}
+
+
+_LIVE_STATS = LiveStats()
 
 
 def say(msg: str) -> None:
@@ -1907,6 +1968,7 @@ def run_one_wav(res: FileResult, wav: str, route: Optional[AudioRoute],
         if kind == "extra":
             with res_lock:
                 res.extra.append(ep)
+            _LIVE_STATS.add(extra=1)
             say(T("%06d [multimon  --:--.-] NOT DECODED") % n)
             say(T("       [esp32 only      %s] %s") % (mmss(t_esp - t0), ep.raw))
             check_stop()
@@ -1915,20 +1977,24 @@ def run_one_wav(res: FileResult, wav: str, route: Optional[AudioRoute],
         if kind == "ok":
             with res_lock:
                 res.ok += 1
+            _LIVE_STATS.add(ok=1)
             say(T("    OK [esp32    %s] %s") % (mmss(t_esp - t0), ep.raw))
         elif kind == "mismatch":
             with res_lock:
                 res.mismatch.append((mp, ep))
+            _LIVE_STATS.add(diff=1)
             say(T("       [esp32    %s] %s") % (mmss(t_esp - t0), ep.raw))
             say(T("      ! DECODED BUT DIFFERENT"))
         elif kind == "corrupt":
             with res_lock:
                 res.corrupt.append((mp, ep))
+            _LIVE_STATS.add(diff=1)
             say(T("       [esp32    %s] %s") % (mmss(t_esp - t0), ep.raw))
             say(T("      ! PAYLOAD OK BUT HEADER CORRUPT"))
         else:
             with res_lock:
                 res.missing.append(mp)
+            _LIVE_STATS.add(missing=1)
             say(T("       [esp32     --:--.-] NOT DECODED"))
 
     def feed_and_step(now: float, final: bool = False) -> None:
@@ -1996,6 +2062,7 @@ def run_one_wav(res: FileResult, wav: str, route: Optional[AudioRoute],
                     continue
                 with res_lock:
                     res.mm_packets.append(pkt)
+                _LIVE_STATS.add(mm=1)
                 now = time.monotonic()
                 if dry_run:      # dry run: no ESP32, just list the packet
                     say(T("%06d [multimon %s] %s") %
@@ -2158,6 +2225,8 @@ def run_one_wav(res: FileResult, wav: str, route: Optional[AudioRoute],
                 dropped_ids = set(id(d) for d in dropped)
                 res.mm_packets = [p for p in res.mm_packets
                                   if id(p) not in dropped_ids]
+                # Keep the live counters in step with what the report counts.
+                _LIVE_STATS.add(mm=-len(dropped))
             else:
                 feed_and_step(time.monotonic(), final=True)
             flush_resolved()
@@ -3529,6 +3598,29 @@ def run_gui(ap: argparse.ArgumentParser, initial_values: Optional[dict] = None,
     status = tk.StringVar(value=T("Idle"))
     ttk.Label(bar, textvariable=status).pack(side="right", padx=(0, 12))
 
+    # ---- very bottom: live packet counters -----------------------------
+    stats_var = tk.StringVar()
+    stats_bar = ttk.Frame(root, relief="sunken", borderwidth=1)
+    stats_bar.pack(side="bottom", fill="x", padx=6, pady=(0, 6))
+    ttk.Label(stats_bar, textvariable=stats_var, font="TkFixedFont",
+              anchor="w").pack(side="left", fill="x", expand=True, padx=6, pady=2)
+    stats_gen = [None]
+
+    def refresh_stats(force: bool = False) -> None:
+        snap = _LIVE_STATS.snapshot()
+        if not force and snap["gen"] == stats_gen[0]:
+            return                              # nothing changed: no redraw
+        stats_gen[0] = snap["gen"]
+        pct_txt = ("%.2f%%" % pct(snap["missed"], snap["resolved"])
+                   if snap["resolved"] else "--")
+        stats_var.set("[%s]  " % (snap["phase"] or T("Live")) +
+                      T("Total packets: %d   |   multimon-ng: %d   |   ESP32 decoded: %d"
+                        "   |   ESP32 missed: %d of %d (%s)") %
+                      (snap["total"], snap["mm"], snap["esp"],
+                       snap["missed"], snap["resolved"], pct_txt))
+
+    refresh_stats(force=True)
+
     # ---- bottom: split console ---------------------------------------
     paned = ttk.PanedWindow(root, orient="horizontal")
     paned.pack(side="top", fill="both", expand=True, padx=6, pady=(3, 6))
@@ -3675,6 +3767,8 @@ def run_gui(ap: argparse.ArgumentParser, initial_values: Optional[dict] = None,
         _STOP.clear()
         with _LIVE_LOCK:
             _LIVE_PROCS[:] = []
+        _LIVE_STATS.reset("")
+        refresh_stats(force=True)
         state["saved_out"], state["saved_err"] = sys.stdout, sys.stderr
         sys.stdout = _QueueWriter(q, "stdout")
         sys.stderr = _QueueWriter(q, "stderr")
@@ -3752,6 +3846,7 @@ def run_gui(ap: argparse.ArgumentParser, initial_values: Optional[dict] = None,
                 append(console, "".join(buf), "stderr" if run_tag == "stderr" else None)
         if ser_parts:
             append(serial_txt, "".join(ser_parts))
+        refresh_stats()
         if done_rc is not None:
             finish(done_rc)
         try:
@@ -4079,6 +4174,7 @@ def run_with_args(args: argparse.Namespace) -> int:
     offset_seed = 0.0
     offset_auto = not args.no_offset_auto
     if not args.no_play and not args.no_auto_volume:
+        _LIVE_STATS.reset(T("Calibration"))
         calibrator = VolumeSearch(
             wavs, route, args.tail, args.match_window, col,
             mm_extra, args.volume,
@@ -4103,6 +4199,7 @@ def run_with_args(args: argparse.Namespace) -> int:
             offset_seed = calibrator.offset
 
     results = []  # type: List[FileResult]
+    _LIVE_STATS.reset(T("Test"))
     try:
         for n, wav in enumerate(wavs, 1):
             print("\n[%d/%d] %s  (%.1f s)" % (n, len(wavs), os.path.basename(wav), wav_duration(wav)))
