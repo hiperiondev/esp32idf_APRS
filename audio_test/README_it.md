@@ -16,10 +16,10 @@ l'ESP32 rispetto a un decodificatore di riferimento (**multimon-ng**).
 4. [Preparare l'ESP32 (impostazioni del firmware)](#4-preparare-lesp32-impostazioni-del-firmware)
 5. [Preparare il PC](#5-preparare-il-pc)
 6. [Ottenere file audio con traffico APRS reale](#6-ottenere-file-audio-con-traffico-aprs-reale)
-7. [Regolare il livello audio](#7-regolare-il-livello-audio) ([calibrazione automatica del volume](#71-calibrazione-automatica-del-volume))
+7. [Regolare il livello audio](#7-regolare-il-livello-audio) ([calibrazione automatica del volume](#71-calibrazione-automatica-del-volume), [normalizzazione](#72-normalizzazione-e-guadagni-superiori-a-10))
 8. [Prima esecuzione: verificare l'intera catena con pacchetti sintetici](#8-prima-esecuzione-verificare-lintera-catena-con-pacchetti-sintetici)
 9. [Eseguire il test reale](#9-eseguire-il-test-reale)
-10. [Riferimento della riga di comando](#10-riferimento-della-riga-di-comando)
+10. [Riferimento della riga di comando](#10-riferimento-della-riga-di-comando) ([lingua](#101-lingua), [interfaccia grafica](#102-interfaccia-grafica---gui), [autotest](#103-autotest---selftest))
 11. [Leggere i risultati](#11-leggere-i-risultati)
 12. [Come vengono confrontati i pacchetti](#12-come-vengono-confrontati-i-pacchetti)
 13. [Piano di test suggerito con le tracce di WA8LMF](#13-piano-di-test-suggerito-con-le-tracce-di-wa8lmf)
@@ -102,11 +102,13 @@ Il programma è scritto per **Linux con ALSA** e richiede:
 | multimon-ng | decodificatore di riferimento | `sudo apt install multimon-ng` |
 | sox (con `play`) | riproduce il WAV e converte l'audio | `sudo apt install sox libsox-fmt-all` |
 | alsa-utils | `aplay -l` per trovare la scheda audio | `sudo apt install alsa-utils` |
+| coreutils (`stdbuf`) | **fortemente consigliato.** Senza, l'uscita di multimon-ng resta bufferizzata a blocchi sulla pipe, i suoi pacchetti arrivano a raffiche e vengono marcati in ritardo, il che produce falsi verdetti *NOT DECODED*. Il programma avvisa all'avvio se manca. | di solito è già installato |
+| python3-tk | solo per l'interfaccia grafica (`--gui`, sezione 10.2) | `sudo apt install python3-tk` |
 
 Installare tutto in una volta:
 
 ```bash
-sudo apt install python3-serial multimon-ng sox libsox-fmt-all alsa-utils
+sudo apt install python3-serial multimon-ng sox libsox-fmt-all alsa-utils coreutils python3-tk
 ```
 
 (Se si preferisce pip: `pip install pyserial`, all'interno di un ambiente virtuale
@@ -293,6 +295,14 @@ non si vedono mai righe `RX:`, consultare la
 
 Il livello di log della console deve essere **INFO** (il predefinito del firmware),
 che è il livello che stampa le righe `RX:`.
+
+> **Requisito del firmware:** il firmware deve **fare l'escape dei byte non
+> stampabili — soprattutto LF (0x0A) — prima di registrare la riga `RX:`**. Il
+> banco divide il flusso della console solo sul LF (dividere sul CR troncherebbe
+> i payload che legittimamente contengono CR), quindi un LF grezzo dentro un campo
+> informativo taglia in due la riga di console e la trama viene giudicata come
+> differenza di contenuto anche se il demodulatore aveva ragione. I payload Mic-E,
+> di telemetria e quasi binari sono quelli che incappano in questo.
 
 ### 4.4 La console
 
@@ -566,62 +576,135 @@ l'ESP32 (predefinito 1.0). Preferire RV1 per la regolazione principale e usare
 
 ### 7.1 Calibrazione automatica del volume
 
-`--volume` non è solo un numero fisso da impostare una volta: a meno di passare
+`--volume` non è solo un numero fisso da impostare una volta: a meno che si passi
 `--no_auto_volume`, **ogni esecuzione reale del test inizia con una ricerca
-automatica del miglior guadagno via software**, prima ancora di riprodurre i
-pacchetti che finiranno nel report. Questo è attivo per impostazione
-predefinita, quindi avviene che lo si sia chiesto o no — è bene saperlo, perché
-aggiunge tempo prima del test che si voleva davvero vedere:
+automatica del miglior guadagno via software**, prima ancora che vengano riprodotti
+i pacchetti che finiranno nel rapporto. È attiva per impostazione predefinita,
+quindi avviene che la si sia chiesta o no — vale la pena saperlo, perché aggiunge
+tempo prima del test che si voleva davvero vedere.
 
-* Riproduce l'insieme dei WAV (tornando al primo file se necessario) in lotti
-  brevi di `--auto_volume_batch` pacchetti (predefinito 50, contando sia i
-  pacchetti di multimon-ng sia quelli "extra" decodificati solo dall'ESP32),
-  partendo da `--volume` (predefinito 1.0).
-* Dopo ogni lotto controlla l'avviso di **fuori scala** dell'ESP32 (lo stesso
-  descritto nella sezione 4.1) e la percentuale decodificata — i pacchetti a cui
-  l'ESP32 ha risposto, contando allo stesso modo gli **OK** e i **DIFFERENT**, sul
-  totale di multimon-ng di quel tentativo:
-  * **Fuori scala in qualche momento** → il livello era troppo alto in quel
-    tentativo; il volume viene abbassato del 15% per il tentativo successivo, e
-    quel tentativo non può essere ricordato come il migliore.
-  * **Nessun fuori scala** → la percentuale decodificata viene confrontata con
-    quella del tentativo precedente; il volume viene alzato del 15% per il
-    tentativo successivo, e questo diventa il nuovo migliore se ha superato
-    tutti i precedenti.
-* Continua a spendere l'intero budget di tentativi — fino a
-  `--auto_volume_max_rounds` (predefinito 10) — anche dopo aver raggiunto il
-  100% o dopo che la percentuale smette di muoversi tra due tentativi, così un
-  volume ancora migliore più avanti nella ricerca non viene mai perso solo
-  perché uno precedente sembrava già buono.
-* Il volume che ha ottenuto la percentuale decodificata più alta **tra i
-  tentativi che non sono andati in clipping** è quello usato per il test reale
-  che segue, il quale riparte sempre dal primo file.
-* Il volume resta entro **0,05 – 8,0** e cambia solo tra un tentativo e l'altro:
-  ogni tentativo viene riprodotto sempre con un guadagno fisso.
-* Se **tutti** i tentativi hanno segnalato fuori scala, nessuno è idoneo e
-  l'esecuzione ricade sul `--volume` iniziale. Abbassare RV1 (o il volume del PC)
-  ed eseguire di nuovo.
-* Se un tentativo non decodifica nulla con multimon-ng, la ricerca si ferma lì e
-  lo segnala: è un problema di file o di instradamento dell'audio, non di livello.
-* Interrompere la calibrazione con **Ctrl-C** non ferma il programma: si passa al
-  test reale con il volume del tentativo in corso in quel momento — che non è
-  necessariamente quello col punteggio migliore, quindi leggere il valore stampato
-  nel riepilogo finale prima di citare il risultato.
+**Non è una salita di collina e non cerca la "migliore" percentuale.** Il tasso di
+decodifica rispetto al livello d'ingresso non è un picco, è un **plateau**: troppo
+basso e il demodulatore combatte contro il rumore di fondo e la quantizzazione
+dell'ADC; troppo alto e l'ADC satura (e il firmware stesso lo segnala); fra questi
+due ginocchi il tasso è piatto. Prendere il punteggio più alto di una curva piatta e
+rumorosa significa prendere il rumore: con 50 pacchetti l'intervallo al 95 % attorno
+al 90 % è di circa ±8 punti percentuali, quindi un volume "migliore del 2 %" è mezzo
+pacchetto di fortuna. Ciò che vale la pena trovare è il **centro del plateau**,
+perché è il livello con più margine da entrambi i lati.
 
-Il volume scelto viene stampato al termine di ogni tentativo, e di nuovo alla
-fine del riepilogo finale come `Playback volume used for this test`. Annotare
-quel numero insieme al livello impostato su RV1: se si stanno confrontando
-esecuzioni nel tempo (sezione 13) e si vuole che la catena audio sia identica
-tra loro, passare lo stesso valore con `--volume X --no_auto_volume` invece di
-ricalibrare ogni volta.
+La ricerca procede in quattro fasi:
 
-Anche `--no_play` (la prova a vuoto) salta la calibrazione: non tocca mai la
-scheda audio.
+| Fase | Cosa fa |
+|---|---|
+| **1 — delimitare** | Trova il livello al quale l'ADC inizia a saturare, con passi di ±6 dB. La saturazione è un segnale *binario* che il firmware stesso riporta (`RX audio is over-range`), quindi può essere sondata con lotti minuscoli di **8 pacchetti** invece che completi. La ricerca si muove in **entrambe** le direzioni, così un `--volume` iniziale già troppo alto non è un vicolo cieco. Un livello conta come saturo solo oltre `--clip_rate` avvisi per pacchetto (0,10 predefinito): un avviso transitorio su un pacchetto forte non è "il livello è sbagliato". |
+| **2 — bisecare** | Biseca quell'intervallo 3 volte, fissando la soglia a circa ±0,75 dB. |
+| **3 — punteggio** | Assegna un punteggio a lotti completi di `--auto_volume_batch` pacchetti (50 predefinito) a **3, 6, 9, 12 e 18 dB sotto la soglia**, fermandosi non appena un punteggio scende oltre 15 punti sotto il migliore (il ginocchio inferiore è superato, inutile scendere ancora). |
+| **4 — centrare** | Tutti i punti statisticamente pari al migliore — il loro intervallo di [Wilson](#18-glossario) si sovrappone ancora — formano il plateau. Il **centro geometrico** del plateau (il centro aritmetico in dB) è il guadagno usato per l'esecuzione, limitato ad almeno **3 dB sotto la soglia di saturazione**. |
 
-Questo è anche ciò che rende praticabile l'alternativa con resistenze fisse
-della sezione 3.1: senza un trimmer da girare, il guadagno via software della
-calibrazione è ciò che assorbe la differenza tra schede audio e impostazioni di
-volume del PC.
+**Come viene valutato un sondaggio:** successi = **OK + EXTRA**, tentativi =
+pacchetti di multimon-ng + pacchetti EXTRA.
+
+* **EXTRA conta come successo.** Una trama che l'ESP32 ha decodificato e che
+  multimon-ng ha perso del tutto è la prova più forte che un livello possa dare: il
+  firmware ha battuto il decodificatore di riferimento su quella trama.
+* **DIFFERENT e HDR-CORRUPT contano come fallimenti**, non come successi. Lo scopo
+  del banco è l'uguaglianza del contenuto, quindi un livello che produce payload
+  corrotti non deve avere lo stesso punteggio di uno che li produce corretti.
+
+Altre cose da sapere:
+
+* **Il budget si conta in lotti di pacchetti, non in chiamate di sondaggio.**
+  `--auto_volume_max_rounds` (10 predefinito) è quanti lotti della dimensione di
+  `--auto_volume_batch` può spendere l'intera ricerca; un sondaggio di saturazione da
+  8 pacchetti costa 8/50 di round, un sondaggio di punteggio completo ne costa uno. Al
+  massimo un quarto del budget va alla caccia della soglia, così i sondaggi economici
+  non possono mai togliere risorse alla scansione che sceglie davvero il livello.
+* I guadagni sono gestiti **in dB** (il livello si applica con il `gain` di sox) e
+  tenuti entro `--volume_min` … `--volume_max` (**0,02 – 4,0** predefinito). Guadagni
+  superiori a 1,0 hanno senso solo insieme a `--normalise` (sezione 7.2).
+* Ogni misura è **memorizzata in cache per dB arrotondati**, quindi nessun livello
+  viene mai sondato due volte.
+* I sondaggi avanzano nell'insieme dei WAV **a turno**, invece di ripartire sempre
+  dal primo file, così un insieme il cui primo file contiene più di un lotto non
+  finisce con il livello tarato su una sola registrazione. Un sondaggio si arrende
+  dopo `--max_passes` passate (3 predefinito) sull'insieme e riporta
+  `probe incomplete: n/N packet(s) after 3 pass(es)`: è un problema di instradamento
+  dell'audio o dei file, non di livello.
+* Se **non si decodifica nulla a nessun livello**, l'esecuzione ripiega su
+  soglia − `--headroom_db` (6 dB predefinito). Se non è stato possibile nemmeno
+  *assegnare un punteggio*, si usa lo stesso ripiego.
+* Se è servita più di 6 dB di attenuazione **o** di amplificazione, un `NOTE:` lo
+  dice: è un'affermazione sull'hardware dell'interfaccia, non solo un numero. Abbassa
+  (o alza) RV1 e rilancia, così il banco può lavorare vicino a 0 dB — amplificare
+  digitalmente amplifica anche il rumore di fondo della scheda audio.
+* Interrompere la calibrazione con **Ctrl-C** non ferma il programma: passa al test
+  reale con il volume del sondaggio in corso in quel momento — non necessariamente il
+  migliore — quindi leggi il valore stampato nel riepilogo finale prima di citare il
+  risultato.
+* Il test reale che segue **riparte sempre dal primo file**.
+* `--no_play` (la prova a vuoto) salta anche la calibrazione: non tocca mai la scheda
+  audio.
+
+Una passata di calibrazione si presenta così:
+
+```
+========================================================================
+AUTO-VOLUME CALIBRATION (clip threshold + plateau centre)
+========================================================================
+  Start gain 1.000 (+0.0 dB), range 0.020..4.000, budget 10 probe(s), 50 packet(s) per scoring probe
+  [probe  1, budget 0.2/10] gain=1.000 ( +0.0 dB)  mm=8 ok=4 diff=0 hdr=0 miss=4 extra=0  score=50.0%  clip=0.50/pkt
+  [probe  2, budget 0.3/10] gain=0.501 ( -6.0 dB)  mm=8 ok=8 diff=0 hdr=0 miss=0 extra=0  score=100.0%  clip=0.00/pkt
+  [probe  3, budget 0.5/10] gain=0.708 ( -3.0 dB)  mm=8 ok=7 diff=0 hdr=0 miss=1 extra=0  score=87.5%  clip=0.25/pkt
+  Clipping threshold: -4.5 dB (gain 0.596)
+  [probe  5, budget 1.6/10] gain=0.422 ( -7.5 dB)  mm=49 ok=48 diff=0 hdr=0 miss=1 extra=1  score=98.0%  clip=0.00/pkt
+  [probe  6, budget 2.6/10] gain=0.299 (-10.5 dB)  mm=50 ok=49 diff=0 hdr=0 miss=1 extra=0  score=98.0%  clip=0.00/pkt
+  [probe  7, budget 3.6/10] gain=0.211 (-13.5 dB)  mm=50 ok=48 diff=1 hdr=0 miss=1 extra=0  score=96.0%  clip=0.00/pkt
+  [probe  8, budget 4.6/10] gain=0.150 (-16.5 dB)  mm=50 ok=39 diff=0 hdr=0 miss=11 extra=0  score=78.0%  clip=0.00/pkt
+      score fell 20 points below the best - the lower knee is past, no need to go quieter
+  Plateau: -13.5 .. -7.5 dB (3 tied point(s) of 4 probed); best raw score 98.0%
+  Chosen gain: 0.299 (-10.5 dB), 6.0 dB below the clipping threshold
+========================================================================
+```
+
+Il guadagno scelto viene ristampato alla fine del riepilogo come
+`Playback gain used for this test`. Annota quel numero insieme al livello fissato su
+RV1: se stai confrontando esecuzioni nel tempo (sezione 13) e vuoi che la catena
+audio sia identica fra loro, ripassa lo stesso valore con
+`--volume X --no_auto_volume` invece di ricalibrare ogni volta.
+
+È anche ciò che rende praticabile l'alternativa con resistenze fisse della
+sezione 3.1: senza un trimmer da girare, il guadagno software della calibrazione è
+ciò che assorbe la differenza fra schede audio e impostazioni di volume del PC.
+
+### 7.2 Normalizzazione e guadagni superiori a 1,0
+
+Il guadagno è applicato **dentro sox**, dopo `remix 1 1`, come `gain <dB>`. Questo
+conta quando il guadagno supera 1,0: se `guadagno × il picco proprio del file`
+eccede il fondo scala, sox satura *prima ancora che la scheda audio veda l'audio*, e
+`-V0` nasconde l'avviso di saturazione di sox. Per questo il programma misura il
+picco di ogni file (`sox <wav> -n stat`) e avvisa:
+
+```
+  ! 01_40-Mins-Traffic-on-144.39.wav: gain 2.000 (+6.0 dB) on a file peaking at 0.800 would clip inside sox (max usable gain 1.250). Use --normalise, or lower the gain and raise the hardware level instead.
+```
+
+`--normalise` (si accetta anche `--normalize`) inserisce prima `gain -n -1`, così
+**ogni file esce dalla catena a −1 dBFS** prima che venga applicato il guadagno di
+riproduzione. Ne conseguono due cose:
+
+* **Un solo guadagno vale per registrazioni fatte a livelli diversi.** È l'opzione da
+  usare quando l'insieme di WAV mescola livelli — per esempio le tracce di WA8LMF,
+  dove la traccia 2 deenfatizzata è molto più debole della 1.
+* **I guadagni superiori a 1,0 smettono di significare "saturare dentro sox"**, ed è
+  ciò che rende utilizzabile la metà superiore dell'intervallo di `--volume_max`
+  (4,0 predefinito).
+
+Due avvertenze: normalizzare cambia il livello assoluto di ogni file, quindi una
+lettura di LIVELLO RX fatta nella sezione 7 è stata fatta su un segnale diverso —
+ricontrollala una volta dopo averlo attivato. E il guadagno digitale non sostituisce
+mai un livello analogico corretto: amplifica il rumore di fondo della scheda audio
+insieme al segnale. Il vero rimedio per "troppo basso" è RV1.
 
 ---
 
@@ -653,9 +736,10 @@ righe `000001 [multimon …]`, senza verdetto, perché non c'è una risposta
 dell'ESP32 con cui confrontarli. Il codice di uscita è 0 se è stato decodificato
 almeno un pacchetto, 2 se nessuno.
 
-pyserial, multimon-ng, sox e `play` devono comunque essere installati: il
-programma importa pyserial e controlla i tre programmi prima di guardare
-`--no_play`.
+pyserial, multimon-ng e sox devono comunque essere installati: pyserial viene
+importato all'avvio del programma, e multimon-ng e sox sono controllati prima di
+ogni altra cosa. `play` **non** serve in una prova a vuoto: il programma lo cerca
+solo quando sta per riprodurre davvero dell'audio.
 
 ### 8.2 Esecuzione completa con l'ESP32
 
@@ -728,18 +812,20 @@ cd Audio-Tracks
    attiva DTR/RTS). Il programma attende `--settle` secondi (4 per impostazione
    predefinita) che si avvii.
 3. A meno che sia stato passato `--no_auto_volume`, esegue quindi la
-   **calibrazione automatica del volume** della sezione 7.1: diverse brevi
-   passate sull'insieme dei WAV per trovare il miglior guadagno via software,
-   stampate man mano che avvengono. Questo aggiunge tempo prima che inizi il
-   test che viene riportato; saltarla con `--no_auto_volume` se si conosce già
-   il volume desiderato.
+   **calibrazione automatica del volume** della sezione 7.1: sondaggi economici
+   da 8 pacchetti per trovare la soglia di saturazione e poi lotti completi per
+   trovare il centro del plateau che sta sotto, stampati man mano che avvengono.
+   Questo aggiunge tempo prima che inizi il test che viene riportato; saltarla
+   con `--no_auto_volume` se si conosce già il volume desiderato.
 4. Per ogni file, nello stesso istante:
    * **riproduce** il WAV verso la scheda audio → ESP32 (in tempo reale), e
    * invia lo stesso audio a **multimon-ng**, anch'esso al ritmo del tempo reale,
      in modo che i pacchetti dei due decodificatori compaiano affiancati, e
    * **legge la console dell'ESP32** cercando righe `RX:`.
 5. Ogni pacchetto di multimon-ng viene stampato con il suo verdetto non appena è
-   noto (sezione 11).
+   noto (sezione 11). Dopo le prime 10 corrispondenze confermate il programma
+   fissa la **latenza** misurata fra i due decodificatori e la compensa in ogni
+   confronto successivo (sezione 12.4).
 6. Ogni 30 secondi viene stampata una **riga di avanzamento**, così i file lunghi
    non sembrano mai bloccati.
 7. Terminato l'audio, il programma attende alcuni secondi in modo che gli ultimi
@@ -766,32 +852,59 @@ alcun modo.
 ./test_aprs_wavs.py [opzioni]
 ```
 
+### File, porte e audio
+
 | Opzione | Predefinito | Significato |
 |---|---|---|
 | `--wav_dir DIR` | directory corrente | Directory con i file `.wav` (non ricorsiva). |
 | `--serial_port PORT` | `/dev/ttyUSB0` | Porta seriale della console dell'ESP32. |
 | `--baud N` | `115200` | Velocità seriale (l'8N1 è fisso). |
 | `--audio_device DEV` | predefinito del sistema | Dispositivo ALSA collegato all'ESP32, ad es. `hw:1,0` (vedere `--list_audio`). |
-| `--volume X` | `1.0` | Guadagno software applicato solo all'audio inviato all'ESP32. È anche il punto di partenza della calibrazione automatica del volume (vedi sotto), a meno che sia passato `--no_auto_volume`. Durante la calibrazione resta entro 0,05 – 8,0. |
+| `--list_audio` | — | Stampa i dispositivi di riproduzione ALSA (`aplay -l`) ed esce. Richiede `alsa-utils`. |
+| `--no_play` | disattivato | **Prova a vuoto:** niente suono e niente porta seriale; gira solo multimon-ng. Salta anche la calibrazione automatica del volume. I pacchetti sono elencati come righe `000001 [multimon …]`, senza verdetto. |
+| `--mm_args "…"` | nessuno | Argomenti aggiuntivi per multimon-ng, tra virgolette, ad es. `--mm_args "-A"` (raramente necessari). |
+
+### Livello
+
+| Opzione | Predefinito | Significato |
+|---|---|---|
+| `--volume X` | `1.0` | Guadagno software applicato solo all'audio inviato all'ESP32, come `gain` di sox in dB. È anche il punto di partenza della calibrazione automatica del volume, a meno che sia passato `--no_auto_volume`. Deve stare entro `--volume_min` … `--volume_max`. |
+| `--normalise`, `--normalize` | disattivato | Porta prima ogni WAV a −1 dBFS nella catena di riproduzione (`sox gain -n -1`), così un solo guadagno vale per registrazioni fatte a livelli diversi e i guadagni sopra 1,0 smettono di significare "saturare dentro sox" (sezione 7.2). |
 | `--no_auto_volume` | disattivato | Salta la passata di calibrazione automatica del volume (sezione 7.1) e usa `--volume` così com'è per l'intera esecuzione. |
-| `--auto_volume_batch N` | `50` | Pacchetti per tentativo durante la calibrazione automatica del volume (conta insieme i pacchetti di multimon-ng e quelli "extra" solo dell'ESP32). |
-| `--auto_volume_max_rounds N` | `10` | Numero di tentativi usati per cercare il miglior volume prima del test reale. |
-| `--match_window S` | `5` | Un pacchetto dell'ESP32 risponde a un pacchetto di multimon-ng solo se arriva entro ±S secondi da esso. Un pacchetto che l'ESP32 non ha riportato dopo S secondi è **NOT DECODED**. Vedere le sezioni 12 e 13. |
+| `--auto_volume_batch N` | `50` | Pacchetti valutati per sondaggio di plateau (conta insieme i pacchetti di multimon-ng e quelli EXTRA solo dell'ESP32). Deve essere ≥ 1. |
+| `--auto_volume_max_rounds N` | `10` | Budget di ricerca, **in lotti di `--auto_volume_batch` pacchetti**, non in chiamate di sondaggio. Un sondaggio di saturazione da 8 pacchetti costa una frazione di round, un sondaggio di punteggio completo ne costa uno. Deve essere ≥ 1. |
+| `--volume_min X` | `0.02` | Guadagno più basso utilizzabile dalla ricerca. Deve essere > 0 e < `--volume_max`. |
+| `--volume_max X` | `4.0` | Guadagno più alto utilizzabile dalla ricerca. Sopra 1,0 ha senso solo insieme a `--normalise`. |
+| `--clip_rate X` | `0.10` | Avvisi di fuori scala per pacchetto oltre i quali un livello conta come saturo; un singolo avviso transitorio non basta. Deve essere in (0, 1]. |
+| `--headroom_db X` | `6` | dB sotto la soglia di saturazione a cui ripiegare quando non è stato possibile valutare alcun plateau. |
+| `--max_passes N` | `3` | Passate sull'insieme dei WAV prima che un sondaggio di calibrazione si arrenda. Deve essere ≥ 1. |
+
+### Tempi e abbinamento
+
+| Opzione | Predefinito | Significato |
+|---|---|---|
+| `--match_window S` | `5` | Un pacchetto dell'ESP32 risponde a un pacchetto di multimon-ng solo se arriva entro ±S secondi da esso, **dopo aver sottratto la latenza misurata**. Un pacchetto che l'ESP32 non ha riportato entro quel momento è **NOT DECODED**. Vedere le sezioni 12 e 13. Deve essere > 0. |
+| `--no_offset_auto` | disattivato | Non stima lo scarto di latenza ESP32 vs multimon-ng; confronta le marche temporali grezze (sezione 12.4). |
 | `--tail S` | `3` | Secondi di ascolto dopo la fine dell'audio. Il programma attende sempre almeno `--match_window` secondi. |
 | `--settle S` | `4` | Secondi di attesa dopo l'apertura della porta seriale (riavvio/avvio dell'ESP32). Aumentare se l'ESP32 si avvia lentamente. |
 | `--pause S` | `1` | Pausa tra i file. |
-| `--no_play` | disattivato | **Prova a vuoto:** niente suono e niente porta seriale; gira solo multimon-ng. Salta anche la calibrazione automatica del volume. I pacchetti sono elencati come righe `000001 [multimon …]`, senza verdetto. |
-| `--mm_args "…"` | nessuno | Argomenti aggiuntivi per multimon-ng, tra virgolette, ad es. `--mm_args "-A"` (raramente necessari). |
-| `--list_audio` | — | Stampa i dispositivi di riproduzione ALSA (`aplay -l`) ed esce. |
-| `-h`, `--help` | — | Mostra la guida integrata. |
+
+### Interfaccia e manutenzione
+
+| Opzione | Predefinito | Significato |
+|---|---|---|
+| `--lang en\|es\|it` | lingua di sistema | Lingua dei messaggi, dei testi di `--help` e dell'interfaccia grafica (sezione 10.1). |
+| `--gui` | — | Apre l'interfaccia grafica (sezione 10.2). Richiede `python3-tk`. |
+| `--selftest` | — | Esegue i test unitari integrati — senza hardware né audio — ed esce (sezione 10.3). |
+| `-h`, `--help` | — | Mostra la guida integrata, nella lingua corrente. |
 
 **Codice di uscita** (utile negli script):
 
 | Codice | Significato |
 |---|---|
-| `0` | Ogni pacchetto di multimon-ng è stato decodificato correttamente dall'ESP32. |
-| `1` | Almeno un pacchetto era DIFFERENT o NOT DECODED. (Con traffico reale e affollato è il risultato normale; leggere le percentuali.) |
-| `2` | Problema di configurazione (manca un programma, nessun file WAV, la porta non si apre) o multimon-ng non ha decodificato alcun pacchetto. |
+| `0` | L'ESP32 ha decodificato correttamente tutti i pacchetti di multimon-ng (nessun DIFFERENT, nessun HDR-CORRUPT, nessun NOT DECODED). È anche il codice di un `--selftest` riuscito e di un'uscita normale dall'interfaccia grafica. |
+| `1` | Almeno un pacchetto è risultato DIFFERENT, HDR-CORRUPT o NOT DECODED. (Con traffico reale e affollato questo è l'esito normale; guardare le percentuali.) È anche il codice di un `--selftest` fallito. |
+| `2` | Problema di configurazione (manca un programma, nessun file WAV, la porta non si apre, un'opzione fuori intervallo, nessun display o nessun tkinter per `--gui`) oppure multimon-ng non ha decodificato alcun pacchetto. |
 
 Esempi:
 
@@ -802,26 +915,126 @@ Esempi:
 # una directory, un'altra porta seriale e una scheda audio USB
 ./test_aprs_wavs.py --wav_dir ./Audio-Tracks --serial_port /dev/ttyUSB1 --audio_device hw:1,0
 
-# un solo file: metterlo in una directory a parte
+# un solo file: metterlo in una directory a sé
 mkdir one && cp Audio-Tracks/03_*.wav one/
 ./test_aprs_wavs.py --wav_dir one --audio_device hw:1,0
 
 # traccia 3 (pacchetti identici ogni 3 s): finestra più stretta
 ./test_aprs_wavs.py --wav_dir one --audio_device hw:1,0 --match_window 1.5
 
-# solo verifica del software, senza hardware
+# solo verifica software, senza hardware
 ./test_aprs_wavs.py --wav_dir Audio-Tracks --no_play
 
-# riutilizzare un volume già noto, senza passata di calibrazione
+# test unitari, senza hardware né audio
+./test_aprs_wavs.py --selftest
+
+# interfaccia grafica
+./test_aprs_wavs.py --gui
+
+# riusare un volume già affidabile, saltando la calibrazione
 ./test_aprs_wavs.py --wav_dir Audio-Tracks --audio_device hw:1,0 --volume 0.85 --no_auto_volume
 
-# far cercare più a fondo la calibrazione (più tentativi, lotti più grandi) su un set ampio
+# un insieme di registrazioni a livelli diversi: normalizzarle prima
+./test_aprs_wavs.py --wav_dir Audio-Tracks --audio_device hw:1,0 --normalise
+
+# lasciare che la calibrazione cerchi di più (più budget, lotti più grandi)
 ./test_aprs_wavs.py --wav_dir Audio-Tracks --audio_device hw:1,0 --auto_volume_max_rounds 15 --auto_volume_batch 80
 
-# salvare il risultato, poi elencare solo i problemi
+# salvare il risultato e poi elencare solo i problemi
 ./test_aprs_wavs.py --wav_dir Audio-Tracks --audio_device hw:1,0 2>&1 | tee run.log
-grep -E "NOT DECODED|DIFFERENT" run.log
+grep -E "NOT DECODED|DIFFERENT|HEADER CORRUPT" run.log
 ```
+
+### 10.1 Lingua
+
+Ogni messaggio, testo di `--help` ed etichetta dell'interfaccia grafica esiste in
+**inglese, spagnolo e italiano**. La lingua è scelta in quest'ordine:
+
+1. `--lang en|es|it` (o il selettore **Language** dell'interfaccia grafica);
+2. la lingua di sistema: `LANGUAGE`, `LC_ALL`, `LC_MESSAGES`, `LANG`, il modulo
+   `locale` di Python o la lingua dell'interfaccia di Windows;
+3. l'inglese, quando la lingua di sistema non è nessuna delle tre.
+
+```bash
+./test_aprs_wavs.py --lang it --wav_dir Audio-Tracks   # tutto in italiano
+LANGUAGE=es ./test_aprs_wavs.py --help                 # guida in spagnolo
+```
+
+La lingua è risolta *prima* che venga costruito l'analizzatore degli argomenti, ed è
+per questo che anche `--help` esce tradotto.
+
+### 10.2 Interfaccia grafica (`--gui`)
+
+```bash
+./test_aprs_wavs.py --gui        # Debian/Ubuntu: sudo apt install python3-tk
+```
+
+Una finestra con tutto il modulo in alto e due console sotto:
+
+```
++----------------------------------------------------------------+
+|  tutte le opzioni della riga di comando, come modulo            |
+|  [Start] [Stop] [Clear consoles] [Reset defaults]  [Language v] |
++-------------------------------+--------------------------------+
+|  CONSOLE (sinistra)           |  SERIALE (destra)              |
+|  tutto ciò che il programma   |  ogni byte letto dalla porta   |
+|  stampa (stdout + stderr)     |  dell'ESP32, non filtrato      |
++-------------------------------+--------------------------------+
+```
+
+* **Il modulo è generato dallo stesso analizzatore della riga di comando**, quindi non
+  può mai mancargli un'opzione. Passando il puntatore su un campo compare il testo di
+  `--help` di quell'opzione, e `--wav_dir` ha inoltre un pulsante `…` che apre un
+  selettore di directory. Un campo vuoto significa "usa il valore predefinito".
+* **Start** stampa nella console la riga di comando equivalente
+  (`$ test_aprs_wavs.py --wav_dir … --audio_device …`), così un'esecuzione fatta
+  dall'interfaccia può essere ripetuta da una shell.
+* **Stop** equivale a Ctrl-C: uccide subito i processi audio e dei decodificatori, e
+  il riepilogo parziale viene comunque stampato. Chiudere la finestra con un test in
+  corso chiede conferma.
+* **Clear consoles** svuota entrambi i pannelli; **Reset defaults** riporta ogni campo
+  al suo valore predefinito.
+* La **console di sinistra** porta tutto ciò che il programma stampa, con stderr in
+  rosso; quella di **destra** porta il flusso seriale grezzo e non filtrato
+  dell'ESP32 — messaggi di avvio compresi — che è il modo più rapido per vedere se la
+  scheda parla. Entrambe conservano le ultime 20 000 righe e seguono la coda
+  automaticamente solo finché sei già in fondo, così scorrere verso l'alto per leggere
+  non combatte contro l'output.
+* I pulsanti di **zoom** (`−` / `+`, in alto a destra, o Ctrl+`+` / Ctrl+`−` /
+  Ctrl-0) scalano l'intera finestra fra il 75 % e il 300 %.
+* Il selettore **Language** ricostruisce la finestra nella lingua scelta senza perdere
+  ciò che è scritto nel modulo né ciò che mostrano le console. Si rifiuta mentre un
+  test è in corso: fermalo prima.
+
+Se tkinter manca il programma lo dice ed esce con il codice 2; lo stesso accade
+quando non c'è un display (una sessione SSH senza inoltro di X).
+
+### 10.3 Autotest (`--selftest`)
+
+```bash
+./test_aprs_wavs.py --selftest
+```
+
+Esegue i test unitari integrati: **senza hardware, senza audio, senza porta seriale e
+senza attese** (circa un secondo). Verifica
+
+* la normalizzazione e l'analisi: SSID `-0`, l'`*` di ripetizione, il CR finale, un LF
+  del payload reso come `.`, i due punti dentro il payload e un prefisso di log
+  ESP-IDF;
+* i quattro verdetti di `LiveMatcher`, compreso che una trama con intestazione corrotta
+  dia **un** verdetto invece di un perso più un extra, e che due beacon identici si
+  abbinino alla trasmissione più vicina;
+* che lo scarto di latenza venga appreso dalle corrispondenze confermate;
+* l'intervallo di Wilson e l'andata e ritorno in dB;
+* che la ricerca del volume converga al centro di un plateau **simulato** partendo da
+  tre guadagni iniziali diversi, entro il budget, e mantenga il suo margine sotto la
+  soglia di saturazione;
+* che un sondaggio su un insieme di WAV che non decodifica nulla termini invece di
+  restare in ciclo per sempre.
+
+Ogni verifica stampa `PASS` o `FAIL`; il codice di uscita è 0 quando tutto è passato e
+1 altrimenti. Vale la pena eseguirlo dopo aver modificato lo script, ed è la prima
+cosa da eseguire se il banco si comporta in modo strano.
 
 ---
 
@@ -829,9 +1042,9 @@ grep -E "NOT DECODED|DIFFERENT" run.log
 
 ### 11.1 Righe dei pacchetti
 
-Ogni pacchetto di **multimon-ng** viene stampato, nell'ordine in cui è stato udito,
-seguito immediatamente dalla riga propria dell'ESP32 per quel pacchetto (se
-esiste) e da un verdetto:
+Ogni pacchetto di **multimon-ng** viene stampato, nell'ordine in cui è stato
+ascoltato, seguito subito dalla riga propria dell'ESP32 per quel pacchetto (se c'è) e
+da un verdetto:
 
 ```
 000012 [multimon 03:41.2] LU1ABC-0>APDW17-0,WIDE1-1:=3450.12S/05812.34W>Movil
@@ -843,39 +1056,48 @@ esiste) e da un verdetto:
       ! DECODED BUT DIFFERENT
 000015 [multimon  --:--.-] NOT DECODED
        [esp32 only      04:20.1] LU9ZZZ>APRS:>heard only by the ESP32
+000016 [multimon 04:31.7] LU3AAA-0>APRS-0,WIDE1-1:>hello
+       [esp32    04:31.9] LU3AAB>APRS,WIDE1-1:>hello
+      ! PAYLOAD OK BUT HEADER CORRUPT
 ```
 
-* `000012` — un **contatore di stampa** a sei cifre. Avanza di uno per ogni
-  pacchetto stampato, nell'ordine in cui i verdetti diventano noti, e numera anche
-  i pacchetti EXTRA, quindi non è il conteggio dei pacchetti di multimon-ng.
-  Riparte da `000001` a ogni file.
-* `03:41.2` — minuti:secondi nel file in cui multimon-ng lo ha decodificato.
-* Il testo è il pacchetto in **formato TNC2**: `ORIGINE>DESTINAZIONE,PERCORSO:contenuto`.
+* `000012` — un **contatore di stampa** a sei cifre. Avanza di uno per ogni pacchetto
+  stampato, nell'ordine in cui i verdetti diventano noti, e numera anche i pacchetti
+  EXTRA, quindi non è il conteggio dei pacchetti di multimon-ng. Riparte da `000001` a
+  ogni file.
+* `03:41.2` — minuti:secondi dall'inizio del file quando multimon-ng lo ha
+  decodificato.
+* Il testo è il pacchetto in **formato TNC2**: `SORGENTE>DESTINAZIONE,PERCORSO:payload`.
   multimon-ng scrive `-0` dopo i nominativi senza SSID (`LU1ABC-0`) e non scrive mai
-  il `*` di digipetizione; il firmware fa l'opposto. Quelle differenze vengono
-  normalizzate prima del confronto (sezione 12.1), perciò le due righe di una
-  coppia **OK** spesso appaiono leggermente diverse.
-* L'**OK** viene stampato *all'inizio della riga dell'ESP32*; gli altri due
-  verdetti sono stampati su una riga propria sotto la coppia.
-* Anche un pacchetto decodificato **solo dall'ESP32** viene stampato come coppia,
-  ma al contrario: prima una riga `[multimon  --:--.-] NOT DECODED` (è multimon-ng
-  ad averlo perso), poi la riga dell'ESP32 come `[esp32 only ...]`. La parola EXTRA
-  non compare in queste righe dal vivo — quei pacchetti sono contati come
-  `EXTRA(esp only)` nei conteggi per file e nel riepilogo finale.
+  l'`*` di ripetizione; il firmware fa l'opposto. Quelle differenze vengono
+  normalizzate prima del confronto (sezione 12.1), quindi le due righe di una coppia
+  **OK** spesso appaiono leggermente diverse.
+* **OK** è stampato all'*inizio della riga dell'ESP32*; gli altri verdetti sono
+  stampati su una riga propria sotto la coppia.
+* Un pacchetto decodificato **solo dall'ESP32** viene stampato come coppia anch'esso,
+  al contrario: prima una riga `[multimon  --:--.-] NOT DECODED` (è multimon-ng ad
+  averlo perso), poi la riga dell'ESP32 come `[esp32 only ...]`. La parola EXTRA non
+  compare in queste righe dal vivo: quei pacchetti sono contati come
+  `EXTRA(esp only)` nei conteggi per file e finali.
 
 | Verdetto | Significato |
 |---|---|
-| **OK** | L'ESP32 ha decodificato lo stesso pacchetto (stessi origine, destinazione, percorso e contenuto), vicino nel tempo. |
-| **NOT DECODED** | L'ESP32 non lo ha riportato. È il caso "mancante". |
-| **! DECODED BUT DIFFERENT** | L'ESP32 ha decodificato un pacchetto con la stessa origine/destinazione/percorso ma un **contenuto diverso**: decodificato, ma non correttamente. |
+| **OK** | L'ESP32 ha decodificato lo stesso pacchetto (stessa sorgente, destinazione, percorso e payload), vicino nel tempo. |
+| **NOT DECODED** | L'ESP32 non lo ha riportato. È il caso "perso". |
+| **! DECODED BUT DIFFERENT** | L'ESP32 ha decodificato un pacchetto con la stessa intestazione (sorgente, destinazione, percorso) ma con un **payload diverso**: decodificato, ma non correttamente. Contato come DIFFERENT. |
+| **! PAYLOAD OK BUT HEADER CORRUPT** | Il contrario: il **payload ha coinciso esattamente** ma l'intestazione no — un nominativo o un elemento del percorso è uscito danneggiato. Contato come HDR-CORRUPT e, come DIFFERENT, come "decodificato, ma non correttamente". |
 
-Tempi: un **OK** compare subito (di solito entro uno o due secondi). **NOT DECODED**
-e **! DECODED BUT DIFFERENT** compaiono circa `--match_window` secondi (5 s per
-impostazione predefinita) dopo il pacchetto, perché l'ESP32 potrebbe essere sul
-punto di riportarlo.
+Ogni pacchetto di multimon-ng riceve **esattamente un** verdetto, e la riga dell'ESP32
+usata per arrivare a un verdetto negativo viene consumata da esso: non può mai essere
+riportata anche come EXTRA (sezione 12.4).
 
-La riga propria dell'ESP32 e i pacchetti EXTRA sono sempre mostrati — non serve
-alcuna opzione per vederli.
+Tempi: un **OK** compare subito (di solito entro un secondo o due). I verdetti
+negativi compaiono circa `--match_window` secondi dopo il pacchetto (5 s per
+impostazione predefinita, più la latenza misurata), perché l'ESP32 potrebbe essere
+ancora sul punto di riportarlo.
+
+La riga propria dell'ESP32 e i pacchetti EXTRA sono sempre mostrati: non serve alcuna
+opzione per vederli.
 
 ### 11.2 Riga di avanzamento
 
@@ -893,16 +1115,21 @@ ascoltando l'audio (sezione 15).
 ```
   multimon-ng decoded 14 packet(s)
   ESP32 decoded 13 packet(s)
-  -> OK: 12   DIFFERENT: 1   NOT DECODED: 1   EXTRA(esp only): 0
+  -> OK: 11   DIFFERENT: 1   HDR-CORRUPT: 1   NOT DECODED: 1   EXTRA(esp only): 0
+  -> measured esp32 latency vs multimon-ng: +0.42 s
     ! DIFFERENT
         multimon: LU3AAA-0>APRS-0:>hello
         esp32   : LU3AAA>APRS:>hellX
+    ! HEADER CORRUPT (payload matched)
+        multimon: LU3AAA-0>APRS-0,WIDE1-1:>hello
+        esp32   : LU3AAB>APRS,WIDE1-1:>hello
     ! NOT DECODED by ESP32: LU2XYZ-0>APRS-0:>some status
 ```
 
-Dopo i conteggi, ogni pacchetto DIFFERENT e NOT DECODED di quel file viene
-elencato di nuovo, così i problemi di una registrazione lunga si leggono tutti
-insieme invece di doverli cercare tra le righe dal vivo.
+Dopo i conteggi, ogni pacchetto DIFFERENT, HDR-CORRUPT e NOT DECODED di quel file
+viene rielencato, così i problemi di una registrazione lunga si leggono in un solo
+posto invece di doverli cercare fra le righe dal vivo. La riga di latenza compare solo
+quando uno scarto è stato effettivamente misurato (sezione 12.4).
 
 ### 11.4 Riepilogo finale
 
@@ -910,70 +1137,78 @@ insieme invece di doverli cercare tra le righe dal vivo.
 ========================================================================
 SUMMARY
 ========================================================================
-  file                                 mm     ok   diff  n/dec  extra
-  01_40-Mins-Traffic-on-144.39.wav    412    371      2     39      6
-  03_D700-Mic-E-100-bursts.wav        100     97      0      3      0
+  file                                 mm     ok   diff    hdr  n/dec  extra
+  01_40-Mins-Traffic-on-144.39.wav    412    371      2      1     38      6
+  03_D700-Mic-E-100-bursts.wav        100     97      0      0      3      0
   ----------------------------------------------------------------------
-  Playback volume used for this test : 1.150
+  Playback gain used for this test  : 0.299  (-10.5 dB)
+  ESP32 latency vs multimon-ng      : +0.42 s (median of 2 file(s))
   Files tested                      : 2
   Total packets (multimon-ng)       : 512
   Packets seen by ESP32             : 476
   Decoded correctly                 : 468  (91.41%)
   Decoded with different content    : 2  (0.39%)
-  Missing (not decoded)             : 42  (8.20%)
+  Decoded with corrupt header       : 1  (0.20%)
+  Missing (not decoded)             : 41  (8.01%)
   Extra (ESP32 only, not an error)  : 6
+========================================================================
 ```
 
 *(i numeri qui sopra sono solo un'illustrazione del formato)*
 
-Come si definisce ciascun valore:
+Come è definita ogni cifra:
 
-| Valore | Definizione |
+| Cifra | Definizione |
 |---|---|
 | **Total packets** | pacchetti decodificati da multimon-ng (il riferimento) |
-| **Decoded correctly** | numero di OK e la sua percentuale sul totale |
-| **Decoded with different content** | numero di DIFFERENT e la sua percentuale |
-| **Missing (not decoded)** | numero di NOT DECODED e la sua percentuale |
-| **Extra** | pacchetti decodificati solo dall'ESP32. **Non** rientrano nelle percentuali. |
+| **Decoded correctly** | conteggio degli OK e la sua percentuale sul totale |
+| **Decoded with different content** | conteggio dei DIFFERENT (intestazione giusta, payload sbagliato) e la sua percentuale |
+| **Decoded with corrupt header** | conteggio degli HDR-CORRUPT (payload giusto, intestazione sbagliata) e la sua percentuale |
+| **Missing (not decoded)** | conteggio dei NOT DECODED e la sua percentuale |
+| **Extra** | pacchetti decodificati solo dall'ESP32. **Non** fanno parte delle percentuali. |
 
-Le tre percentuali sommano 100 %.
+Le quattro percentuali sommano 100 % (a meno degli arrotondamenti).
 
-`Playback volume used for this test` è il guadagno via software (sezione 7.1)
-usato realmente per riprodurre tutti i file di questa esecuzione: il valore
-deciso dalla calibrazione automatica del volume, oppure `--volume` invariato se
-è stato passato `--no_auto_volume`. Annotarlo insieme agli altri dettagli
-dell'esecuzione se si prevede di confrontare i log più avanti.
+`Playback gain used for this test` è il guadagno software (sezione 7.1) realmente
+usato per riprodurre ogni file di questa esecuzione — il valore a cui è arrivata la
+calibrazione automatica, oppure `--volume` immutato se è stato passato
+`--no_auto_volume` — stampato sia come fattore lineare sia in dB.
+`ESP32 latency vs multimon-ng` è lo scarto misurato fra i due decodificatori
+(sezione 12.4); compare solo quando ne è stato misurato uno. Annota entrambi insieme
+al resto dei dettagli dell'esecuzione se pensi di confrontare i log più avanti.
 
 ### 11.5 Come interpretarli
 
 **Importante:** multimon-ng è un *riferimento*, non la verità. Nessuno dei due
 decodificatori è perfetto. Su un canale affollato (traccia 1 di WA8LMF) alcuni
-pacchetti vengono decodificati da uno e non dall'altro. Quindi:
+pacchetti li decodifica uno e non l'altro. Quindi:
 
-* Una percentuale alta di **OK** è buona. Non esiste un valore di superamento
-  ufficiale: ciò che conta è **confrontare le esecuzioni** — gli stessi file prima
-  e dopo una modifica del firmware, o prima e dopo aver toccato il livello.
-  Conservare i file `.log` e annotare data, versione del firmware, livello RX e
-  scheda audio.
-* **NOT DECODED** = multimon-ng lo ha trovato e l'ESP32 no. Su un canale saturo ci
-  si aspettano gruppi di mancanti attorno alle collisioni.
-* **EXTRA** = l'ESP32 ha trovato qualcosa che multimon-ng non ha visto. Un
-  decodificatore migliore del riferimento mostra degli extra; è un buon segno, non
-  un errore.
-* **DIFFERENT** dovrebbe essere raro (i frame AX.25 portano un CRC). Guardare la
-  riga propria dell'ESP32 stampata sotto il pacchetto per vedere esattamente cosa
-  ha decodificato; la causa è spesso un testo di contenuto troncato o alterato nel
-  log dell'ESP32.
+* Una percentuale alta di **OK** è buona. Non esiste una soglia ufficiale di
+  promozione: ciò che conta è **confrontare le esecuzioni** — gli stessi file prima e
+  dopo una modifica del firmware, o prima e dopo aver toccato il livello. Conserva i
+  file `.log` e annota la data, la versione del firmware, il livello RX, il guadagno di
+  riproduzione e la scheda audio.
+* **NOT DECODED** = multimon-ng l'ha trovato e l'ESP32 no. Su un canale saturo sono
+  attesi gruppi di perdite attorno alle collisioni.
+* **EXTRA** = l'ESP32 ha trovato qualcosa che multimon-ng ha perso. Un decodificatore
+  migliore del riferimento produce extra; è un buon segno, non un errore.
+* **DIFFERENT** e **HDR-CORRUPT** dovrebbero essere entrambi rari (le trame AX.25
+  hanno un CRC). Guarda la riga propria dell'ESP32 stampata sotto il pacchetto per
+  vedere esattamente che cosa ha decodificato. Un DIFFERENT il cui payload è
+  semplicemente troncato spesso non è colpa del demodulatore, ma di un **LF grezzo nel
+  payload che spezza la riga della console**: vedi il requisito del firmware nella
+  sezione 4.3.
 
 Schemi tipici:
 
-| Cosa si vede | Causa probabile |
+| Che cosa si vede | Causa probabile |
 |---|---|
-| `ok=0` fin dall'inizio, tutto NOT DECODED | L'audio non arriva all'ESP32 (cavo, scheda audio, livello, modem disattivato). |
-| Un intero file quasi tutto NOT DECODED, ma quello sintetico dava OK | Livello troppo basso/alto per quella registrazione, oppure una registrazione de-enfatizzata (traccia 2) che richiede un livello diverso. |
-| Mancanti solo nei tratti densi | Normale con traffico saturo (collisioni, pacchetti consecutivi). |
-| Improvvisa raffica di NOT DECODED in mezzo a un file | Qualcosa ha disturbato l'audio (un suono di sistema, un cambio di volume) o la scheda audio ha avuto un problema. |
+| `ok=0` dall'inizio, tutto NOT DECODED | L'audio non arriva all'ESP32 (cavo, scheda audio, livello, modem disattivato). |
+| Un intero file quasi tutto NOT DECODED, ma il file sintetico era OK | Livello troppo basso o troppo alto per quella registrazione, o una registrazione deenfatizzata (traccia 2) che richiede un livello diverso. Prova `--normalise` (sezione 7.2). |
+| Perdite solo nei tratti densi | Normale con traffico saturo (collisioni, pacchetti attaccati). |
+| Raffica improvvisa di NOT DECODED a metà file | Qualcosa ha disturbato l'audio (un suono di sistema, un cambio di volume) o la scheda audio ha avuto un problema. |
 | Molti EXTRA | L'ESP32 è più sensibile di multimon-ng su questo materiale. |
+| Qualche HDR-CORRUPT fra pacchetti deboli o in collisione | Un byte danneggiato in un campo di indirizzo. In piccole quantità è atteso sulle tracce 1 e 4. |
 
 ---
 
@@ -1005,37 +1240,80 @@ percorso e tutto il contenuto**.
 ### 12.2 La finestra temporale
 
 Una registrazione può contenere lo stesso pacchetto molte volte (una stazione che
-emette un beacon ogni 30 s). Per non attribuire all'ESP32 la trasmissione
+trasmette un beacon ogni 30 s). Per non accreditare all'ESP32 la trasmissione
 sbagliata, una coppia si forma solo se la riga dell'ESP32 è arrivata entro
-**±`--match_window` secondi (5 per impostazione predefinita)** dal pacchetto di
-multimon-ng. Ogni pacchetto dell'ESP32 viene usato **una sola volta**: un
-pacchetto inviato tre volte deve essere decodificato tre volte per fare tre OK.
-Quando esistono due candidati, vince quello **più vicino nel tempo**.
+**±`--match_window` secondi (5 predefinito)** dal pacchetto di multimon-ng, **dopo
+aver sottratto la latenza misurata** (sezione 12.4). Ogni pacchetto dell'ESP32 è usato
+**una sola volta**: un pacchetto inviato tre volte deve essere decodificato tre volte
+per valere tre OK. Quando ci sono due candidati, vince quello **più vicino nel
+tempo**.
+
+Un verdetto negativo viene emesso solo una volta trascorsi `--match_window` secondi
+*più* la latenza misurata, così la compensazione non accorcia mai l'occasione data
+all'ESP32 di rispondere.
 
 ### 12.3 Cosa significa la finestra temporale per i pacchetti identici (traccia 3 di WA8LMF)
 
-La traccia 3 ha 100 pacchetti **identici** distanziati di soli **3 secondi**. È il
-caso più difficile per l'abbinamento, quindi ecco esattamente cosa aspettarsi
-(verificato per simulazione):
+La traccia 3 ha 100 pacchetti **identici** distanti solo **3 secondi**. È il caso più
+difficile per l'abbinamento, quindi ecco esattamente cosa aspettarsi (verificato per
+simulazione):
 
 * I **totali sono corretti con qualsiasi finestra ragionevole** (per esempio 97 OK
-  quando l'ESP32 ha perso 3 su 100).
-* Con la finestra predefinita di 5 s, *quali numeri di pacchetto* vengono segnati
-  come NOT DECODED può risultare spostato di uno quando la riga dell'ESP32 arriva
-  leggermente **prima** di quella di multimon-ng. Il conteggio è giusto; la
-  numerazione dei pacchetti segnalati può slittare.
-* Regola: scegliere una finestra **maggiore del ritardo reale** tra i due
-  decodificatori e **minore della metà della distanza** tra pacchetti identici. Per
-  la traccia 3: **1,5 s** (`--match_window 1.5`).
-* Se la finestra è *minore* del ritardo reale, i pacchetti che l'ESP32 ha
-  decodificato correttamente vengono contati male. Quindi **misurare prima il
-  ritardo**: eseguire la traccia 3 e confrontare i due orari stampati per i primi
-  pacchetti OK (la riga `[multimon ...]` e la riga `[esp32 ...]` stampata subito
-  sotto). Se differiscono di più di circa 1 s, mantenere una finestra più ampia
-  (e ricordare che solo i totali sono esatti).
+  quando l'ESP32 ne ha persi 3 su 100).
+* Con la finestra predefinita di 5 s, *quali numeri di pacchetto* vengono segnalati
+  come NOT DECODED può spostarsi di uno quando la riga dell'ESP32 arriva poco **prima**
+  di quella di multimon-ng. Il conteggio è giusto; la numerazione dei pacchetti
+  segnalati può slittare.
+* Regola: scegliere una finestra **più grande del ritardo residuo** fra i due
+  decodificatori e **più piccola della metà della distanza** fra pacchetti identici.
+  Per la traccia 3: **1,5 s** (`--match_window 1.5`). La compensazione automatica della
+  latenza della sezione 12.4 elimina gran parte di quel ritardo, ed è ciò che rende
+  utilizzabile una finestra così stretta.
+* Se la finestra è *più piccola* del ritardo residuo, pacchetti che l'ESP32 ha
+  decodificato correttamente vengono contati male. Quindi **verifica prima il ritardo**:
+  esegui la traccia 3 e leggi la riga `ESP32 latency vs multimon-ng` del riepilogo,
+  oppure confronta le due marche temporali stampate per i primi pacchetti OK. Con
+  `--no_offset_auto` è l'intero ritardo a dover stare dentro la finestra.
 
-Per tutte le altre tracce (nessun pacchetto identico più vicino di 10 s) la
-finestra predefinita di 5 s va bene.
+Per tutte le altre tracce (nessun pacchetto identico a meno di 10 s) la finestra
+predefinita di 5 s va bene.
+
+### 12.4 Latenza fra i due decodificatori, e un verdetto per pacchetto
+
+I due rami **non** sono ugualmente veloci. Quello di multimon-ng è cadenzato stretto
+sul tempo reale, mentre quello dell'ESP32 passa dal buffer di uscita di ALSA, dall'ADC,
+dal demodulatore e dalla console UART: comunemente qualche centinaio di millisecondi, a
+volte più di un secondo. Non corretto, quello scarto si mangia la finestra di
+abbinamento e fabbrica verdetti NOT DECODED che sono artefatti del banco, non guasti
+del firmware.
+
+Perciò il programma lo misura:
+
+* si raccoglie la differenza di tempo (ESP32 − multimon-ng) di ogni corrispondenza
+  **confermata**; le differenze oltre ±3 s vengono ignorate, perché non sono latenza
+  della scheda audio;
+* dopo **10** campioni la loro **mediana** (non la media, così una riga di console in
+  ritardo non trascina la stima) viene adottata come scarto e **bloccata** per il resto
+  dell'esecuzione;
+* lo scarto appreso durante la calibrazione automatica del volume viene portato nel
+  test reale, così l'esecuzione riportata parte già compensata;
+* viene riportato per file (`measured esp32 latency vs multimon-ng`) e nel riepilogo,
+  come mediana sui file;
+* `--no_offset_auto` disattiva tutto questo e confronta le marche temporali grezze:
+  allora è l'intero ritardo a dover stare dentro `--match_window`.
+
+Ogni pacchetto di multimon-ng riceve **esattamente un** verdetto, deciso in
+quest'ordine una volta scaduto il suo termine: un pacchetto dell'ESP32 con la stessa
+intestazione ma payload diverso → **DIFFERENT**; altrimenti uno con lo stesso payload
+ma intestazione diversa → **HDR-CORRUPT**; altrimenti **NOT DECODED**. Il pacchetto
+dell'ESP32 usato per arrivare a un verdetto DIFFERENT o HDR-CORRUPT è marcato come
+consumato, così una singola trama danneggiata non può mai essere contata due volte (una
+come fallimento e una come EXTRA). I pacchetti dell'ESP32 che nessun pacchetto di
+multimon-ng rivendica diventano **EXTRA**.
+
+Una conseguenza di **Ctrl-C**: i pacchetti di multimon-ng il cui termine non era ancora
+scaduto vengono scartati del tutto — non stampati e non contati in alcun modo — perché
+l'ESP32 non ha avuto la sua intera occasione di rispondere.
 
 ---
 
@@ -1154,33 +1432,55 @@ di regressione.
 | Coppie di righe `[multimon  --:--.-] NOT DECODED` seguite da `[esp32 only …]` | Non è un guasto: è così che viene stampato dal vivo un pacchetto EXTRA — decodificato dall'ESP32 e perso da multimon-ng. Viene contato in `EXTRA(esp only)`. |
 | I numeri a sei cifre non corrispondono al conteggio dei pacchetti di multimon-ng | Sono un contatore di stampa che numera anche i pacchetti EXTRA e riparte a ogni file (sezione 11.1). |
 | Traccia 3: i numeri dei pacchetti segnalati sembrano spostati di uno | Effetto finestra/temporizzazione descritto nella sezione 12.3. Usare `--match_window 1.5`; i totali sono comunque corretti. |
+| `WARNING: \`stdbuf\` not found (package coreutils)` | L'uscita di multimon-ng resta bufferizzata a blocchi sulla pipe, i suoi pacchetti arrivano a raffiche e vengono marcati in ritardo: falsi verdetti NOT DECODED. `sudo apt install coreutils`. |
+| `--gui needs tkinter` | `sudo apt install python3-tk`. |
+| `Cannot open a display for --gui` | Nessun display X/Wayland: si è su una console di testo o in una sessione SSH senza inoltro di X. Usare la riga di comando, oppure `ssh -X`. |
+| `! …would clip inside sox (max usable gain …)` | Il guadagno di riproduzione per il picco proprio del file supera il fondo scala, quindi sox saturerebbe prima della scheda audio. Aggiungere `--normalise`, oppure abbassare il guadagno e alzare il livello su RV1 (sezione 7.2). |
+| `probe incomplete: n/N packet(s) after 3 pass(es) over the wav set` | La calibrazione non è riuscita a raccogliere un lotto completo: l'audio non viene decodificato affatto. È l'instradamento dell'audio o i file stessi, non il livello. Controllare `--audio_device`, il mixer e che i WAV contengano davvero pacchetti AFSK 1200. |
+| `No clipping seen up to +12.0 dB` durante la calibrazione | Nemmeno il guadagno più alto consentito ha fatto lamentare il firmware: il livello hardware verso l'ADC è troppo basso. Alzare RV1 (o il volume del PC) e rilanciare. |
+| `NOTE: more than 6 dB of attenuation/boost was needed` | Il livello analogico è sbagliato e il guadagno software lo sta solo mascherando. Abbassare RV1 (attenuazione) o alzarlo (amplificazione) perché il banco possa lavorare vicino a 0 dB. Amplificare digitalmente amplifica anche il rumore di fondo della scheda audio. |
+| `multimon-ng did not exit within 60 s - killing it` | Innocuo: il decodificatore teneva ancora la pipe dopo la fine della riproduzione. I risultati del file sono conservati e l'esecuzione continua. |
+| Pacchetti HDR-CORRUPT (`! PAYLOAD OK BUT HEADER CORRUPT`) | Il payload ha coinciso ma un campo di indirizzo no. Qualcuno con traffico debole o in collisione è atteso; molti indicano il livello (ricontrollare con LIVELLO RX) o un problema del demodulatore. |
+| Pacchetti DIFFERENT il cui payload è semplicemente troncato | Spesso non è il demodulatore: un LF grezzo dentro il payload spezza in due la riga della console. Il firmware deve fare l'escape dei byte non stampabili prima di registrare la riga `RX:` (sezione 4.3). |
+| Ogni esecuzione dà un volume diverso | Il plateau è piatto per natura, quindi due livelli possono pareggiare. Fissarlo con `--volume X --no_auto_volume` per i confronti prima/dopo (sezioni 7.1 e 16). |
+| Qualcosa sembra sbagliato nel programma stesso | Eseguire `./test_aprs_wavs.py --selftest` (sezione 10.3): esercita l'analisi, l'abbinamento, la stima della latenza e la ricerca del volume senza alcun hardware. |
 
 ---
 
 ## 16. Limitazioni
 
-* **Il riferimento non è la verità.** multimon-ng perde alcuni pacchetti e l'ESP32
-  può decodificarli (riportati come EXTRA); e viceversa. Le percentuali misurano
-  l'accordo con multimon-ng, non le prestazioni assolute.
-* **L'accordo è per testo.** Un pacchetto è OK se il testo di origine,
-  destinazione, percorso e contenuto è uguale; il programma non guarda i bit
-  grezzi.
-* **Solo AFSK 1200 baud** (l'`AFSK1200` di multimon-ng). Altre modalità non sono
-  provate.
-* **Il percorso audio del PC fa parte del test.** Il suo filtraggio, la precisione
-  del suo clock e il suo rumore si sommano al risultato (vedere i consigli sulla
-  scheda audio nella sezione 5.3).
-* **Solo ricezione.** La catena di trasmissione dell'ESP32 non viene provata.
-* **La calibrazione automatica del volume (sezione 7.1) è attiva per
-  impostazione predefinita** e può scegliere un volume leggermente diverso da
-  un'esecuzione all'altra quando due livelli decodificano quasi altrettanto
-  bene. Per confronti rigorosi prima/dopo, fissare il volume con
-  `--volume X --no_auto_volume` invece di lasciare che si ricalibri ogni volta.
-* Le opzioni audio presuppongono **Linux con ALSA**.
-* Il programma è stato sviluppato e verificato con una **console ESP32 simulata**,
-  con i veri multimon-ng, sox e pyserial. Con hardware reale, mettere in conto di
-  regolare il livello e forse `--match_window`; la sezione 15 copre i problemi
-  abituali.
+* **Il riferimento non è la verità.** multimon-ng perde alcuni pacchetti e l'ESP32 può
+  decodificarli (riportati come EXTRA), e viceversa. Le percentuali misurano l'accordo
+  con multimon-ng, non le prestazioni assolute.
+* **L'accordo è per testo.** Un pacchetto è OK se sorgente, destinazione, percorso e
+  testo del payload sono uguali; il programma non guarda i bit grezzi.
+* **Solo AFSK 1200 baud** (l'`AFSK1200` di multimon-ng). Altri modi non sono testati.
+* **La catena audio del PC fa parte del test.** Il suo filtraggio, la precisione del
+  suo clock e il suo rumore si sommano al risultato (vedere i consigli della
+  sezione 5.3).
+* **Solo ricezione.** La catena di trasmissione dell'ESP32 non viene testata.
+* **La calibrazione automatica del volume (sezione 7.1) è attiva per impostazione
+  predefinita** ed è statistica: punta al centro del plateau, e due esecuzioni possono
+  fermarsi a un passo l'una dall'altra quando più livelli decodificano ugualmente bene.
+  Per confronti rigorosi prima/dopo, fissa il guadagno con
+  `--volume X --no_auto_volume` invece di lasciarla ricalibrare ogni volta.
+* **La calibrazione misura ciò che riproduce.** Usa l'insieme di WAV che le è stato
+  dato; un insieme i cui file differiscono molto di livello conviene eseguirlo con
+  `--normalise` (sezione 7.2), altrimenti il guadagno scelto si adatta alle
+  registrazioni su cui sono capitati i sondaggi.
+* **La compensazione della latenza presuppone uno scarto pressoché costante**
+  (sezione 12.4): viene misurato una volta, da 10 corrispondenze confermate, e poi
+  bloccato. Una catena audio il cui ritardo varia molto durante un'esecuzione non è
+  modellata; `--no_offset_auto` torna alle marche temporali grezze.
+* **Il firmware deve fare l'escape dei byte non stampabili nella riga di log `RX:`**
+  (sezione 4.3). Un LF grezzo in un payload spezza la riga della console e viene
+  giudicato come errore di contenuto anche se il demodulatore aveva ragione.
+* Le opzioni audio presuppongono **Linux con ALSA**; `--gui` richiede inoltre tkinter e
+  un display, e l'interfaccia esiste solo in tre lingue.
+* Il programma è stato sviluppato e verificato contro una **console ESP32 simulata**,
+  con multimon-ng, sox e pyserial reali, più l'autotest integrato `--selftest`. Su
+  hardware reale, aspettati di dover regolare il livello e forse `--match_window`; la
+  sezione 15 copre i problemi abituali.
 
 ---
 
@@ -1188,7 +1488,7 @@ di regressione.
 
 ```bash
 # ── configurazione una tantum ─────────────────────────────────────
-sudo apt install python3-serial multimon-ng sox libsox-fmt-all alsa-utils
+sudo apt install python3-serial multimon-ng sox libsox-fmt-all alsa-utils coreutils python3-tk
 sudo usermod -aG dialout $USER            # poi uscire / rientrare dalla sessione
 ./test_aprs_wavs.py --list_audio          # trovare la scheda audio → hw:X,0
 
@@ -1211,7 +1511,15 @@ mkdir -p Synthetic && python3 gen_test_wav.py Synthetic/sample.wav
 #    volume per impostazione predefinita, vedi 7.1; aggiungere
 #    --no_auto_volume --volume X per saltarla e fissare un valore noto) ──
 ./test_aprs_wavs.py --wav_dir Audio-Tracks --audio_device hw:1,0 2>&1 | tee run.log
-grep -E "NOT DECODED|DIFFERENT" run.log
+grep -E "NOT DECODED|DIFFERENT|HEADER CORRUPT" run.log
+
+# ── registrazioni fatte a livelli diversi ────────────────────────
+./test_aprs_wavs.py --wav_dir Audio-Tracks --audio_device hw:1,0 --normalise
+
+# ── altri punti di ingresso ──────────────────────────────────────
+./test_aprs_wavs.py --selftest            # test unitari: senza hardware né audio
+./test_aprs_wavs.py --gui                 # interfaccia grafica (richiede python3-tk)
+./test_aprs_wavs.py --lang en --help      # guida e messaggi in inglese
 ```
 
 | Collegamento | |
@@ -1240,4 +1548,11 @@ grep -E "NOT DECODED|DIFFERENT" run.log
 | **RMS** | Valore efficace (root-mean-square): la grandezza effettiva di un segnale alternato; l'ESP32 riporta il livello RX in mV RMS. |
 | **Livello continuo (DC offset)** | La tensione continua media a cui riposa il pin dell'ADC; con l'autopolarizzazione dovrebbe aggirarsi intorno a 1650 mV. |
 | **SSID** | Il numero dopo un nominativo (`-9`) che distingue più stazioni di uno stesso operatore. |
-| **Calibrazione automatica del volume** | La passata predefinita del programma, prima del test che viene riportato, che cerca il guadagno di riproduzione via software (`--volume`) che dà la migliore percentuale decodificata senza fuori scala. Vedere la sezione 7.1. |
+| **Calibrazione automatica del volume** | La passata predefinita del programma, prima del test che viene riportato, che trova la soglia di saturazione e poi il centro del plateau che sta sotto, e usa quel guadagno per tutta l'esecuzione. Vedere la sezione 7.1. |
+| **Fuori scala (over-range)** | L'avviso del firmware stesso che l'audio che arriva all'ADC eccede il suo intervallo d'ingresso (satura). La calibrazione lo usa come segnale di saturazione. |
+| **Soglia di saturazione** | Il guadagno di riproduzione al quale il firmware inizia a segnalare il fuori scala. La calibrazione la delimita e la biseca, e poi resta almeno 3 dB sotto. |
+| **Plateau** | L'intervallo di livelli in cui il tasso di decodifica è piatto, fra il rumore di fondo sotto e la saturazione sopra. Il suo centro è il livello con più margine da entrambi i lati. |
+| **Intervallo di Wilson** | Un intervallo di confidenza per una proporzione che si comporta bene su campioni piccoli. Due sondaggi i cui intervalli si sovrappongono sono trattati come pari, non come migliore e peggiore. |
+| **Normalizzazione** | `--normalise`: portare ogni WAV a −1 dBFS prima del guadagno di riproduzione, così un solo guadagno va bene per registrazioni fatte a livelli diversi (sezione 7.2). |
+| **Scarto di latenza** | Il ritardo del ramo dell'ESP32 (scheda audio → ADC → demodulatore → console) rispetto a quello di multimon-ng, misurato e compensato automaticamente (sezione 12.4). |
+| **HDR-CORRUPT** | Un verdetto: il payload dell'ESP32 ha coinciso esattamente ma la sua intestazione (sorgente, destinazione o percorso) no. Contato insieme a DIFFERENT come "decodificato, ma non correttamente". |
