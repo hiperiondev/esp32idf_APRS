@@ -1084,9 +1084,7 @@ def request_stop() -> None:
 #   total     = multimon + extra (every distinct packet either decoder heard)
 #   esp       = ok + different + hdr-corrupt + extra (ESP32 produced a frame)
 #   missed    = multimon packets the ESP32 did NOT decode
-#   resolved  = multimon packets whose verdict is already known; the missed
-#               percentage is taken over these, so packets still inside the
-#               match window do not make the ESP32 look better than it is.
+#   missed %  = missed / total, i.e. over every packet either decoder heard.
 
 class LiveStats:
     def __init__(self) -> None:
@@ -3611,13 +3609,13 @@ def run_gui(ap: argparse.ArgumentParser, initial_values: Optional[dict] = None,
         if not force and snap["gen"] == stats_gen[0]:
             return                              # nothing changed: no redraw
         stats_gen[0] = snap["gen"]
-        pct_txt = ("%.2f%%" % pct(snap["missed"], snap["resolved"])
-                   if snap["resolved"] else "--")
+        pct_txt = ("%.2f%%" % pct(snap["missed"], snap["total"])
+                   if snap["total"] else "--")
         stats_var.set("[%s]  " % (snap["phase"] or T("Live")) +
                       T("Total packets: %d   |   multimon-ng: %d   |   ESP32 decoded: %d"
                         "   |   ESP32 missed: %d of %d (%s)") %
                       (snap["total"], snap["mm"], snap["esp"],
-                       snap["missed"], snap["resolved"], pct_txt))
+                       snap["missed"], snap["total"], pct_txt))
 
     refresh_stats(force=True)
 
