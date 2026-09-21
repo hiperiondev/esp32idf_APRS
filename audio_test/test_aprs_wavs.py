@@ -101,8 +101,6 @@ from typing import Callable, List, Optional, Tuple
 
 LANGS = ("en", "es", "it")
 LANG_NAMES = {"en": "English", "es": "Espa\u00f1ol", "it": "Italiano"}
-LANG_FLAGS = {"en": "\U0001F1EC\U0001F1E7", "es": "\U0001F1EA\U0001F1F8",
-              "it": "\U0001F1EE\U0001F1F9"}
 DEFAULT_LANG = "en"
 
 LANG = DEFAULT_LANG          # current language; set by set_language()
@@ -334,6 +332,14 @@ _CATALOG = {
         "  -> measured esp32 latency vs multimon-ng: %+.2f s":
             "  -> latencia medida del esp32 respecto de multimon-ng: %+.2f s",
         "    ! NOT DECODED by ESP32: %s": "    ! NO DECODIFICADO por el ESP32: %s",
+        "  -- Packet loss ------------------------------------------------":
+            "  -- Pérdida de paquetes ----------------------------------------",
+        "  This file  : lost %d of %d (%.2f%%)   not correct %d of %d (%.2f%%)":
+            "  Este archivo: perdidos %d de %d (%.2f%%)   incorrectos %d de %d (%.2f%%)",
+        "  Cumulative : lost %d of %d (%.2f%%)   not correct %d of %d (%.2f%%)   [%d file(s)]":
+            "  Acumulado   : perdidos %d de %d (%.2f%%)   incorrectos %d de %d (%.2f%%)   [%d archivo(s)]",
+        "  This file  : multimon-ng decoded no packets - nothing to measure":
+            "  Este archivo: multimon-ng no decodificó ningún paquete - nada que medir",
         "file": "arch.",
         "diff": "dist",
         "hdr": "enc",
@@ -684,6 +690,14 @@ _CATALOG = {
         "  -> measured esp32 latency vs multimon-ng: %+.2f s":
             "  -> latenza misurata dell'esp32 rispetto a multimon-ng: %+.2f s",
         "    ! NOT DECODED by ESP32: %s": "    ! NON DECODIFICATO dall'ESP32: %s",
+        "  -- Packet loss ------------------------------------------------":
+            "  -- Perdita di pacchetti ---------------------------------------",
+        "  This file  : lost %d of %d (%.2f%%)   not correct %d of %d (%.2f%%)":
+            "  Questo file: persi %d su %d (%.2f%%)   non corretti %d su %d (%.2f%%)",
+        "  Cumulative : lost %d of %d (%.2f%%)   not correct %d of %d (%.2f%%)   [%d file(s)]":
+            "  Cumulativo : persi %d su %d (%.2f%%)   non corretti %d su %d (%.2f%%)   [%d file]",
+        "  This file  : multimon-ng decoded no packets - nothing to measure":
+            "  Questo file: multimon-ng non ha decodificato pacchetti - niente da misurare",
         "file": "file",
         "diff": "div",
         "hdr": "int",
@@ -2364,6 +2378,31 @@ def print_file_report(res: FileResult, dry_run: bool = False) -> None:
         say(T("    ! NOT DECODED by ESP32: %s") % mp.raw)
 
 
+def print_loss_resume(res: FileResult, results: List[FileResult]) -> None:
+    """Short packet-loss recap printed as soon as one WAV is finished, before
+    the next one starts: this file alone, then the running total of every
+    file tested so far. The reference is what multimon-ng decoded.
+      lost        = NOT DECODED by the ESP32 (res.missing)
+      not correct = lost + DIFFERENT + HDR-CORRUPT, i.e. every multimon-ng
+                    packet the ESP32 did not deliver exactly right."""
+    def counts(rs: List[FileResult]) -> Tuple[int, int, int]:
+        total = sum(len(r.mm_packets) for r in rs)
+        lost = sum(len(r.missing) for r in rs)
+        bad = lost + sum(len(r.mismatch) + len(r.corrupt) for r in rs)
+        return total, lost, bad
+
+    say(T("  -- Packet loss ------------------------------------------------"))
+    total, lost, bad = counts([res])
+    if total:
+        say(T("  This file  : lost %d of %d (%.2f%%)   not correct %d of %d (%.2f%%)") %
+            (lost, total, pct(lost, total), bad, total, pct(bad, total)))
+    else:
+        say(T("  This file  : multimon-ng decoded no packets - nothing to measure"))
+    total, lost, bad = counts(results)
+    say(T("  Cumulative : lost %d of %d (%.2f%%)   not correct %d of %d (%.2f%%)   [%d file(s)]") %
+        (lost, total, pct(lost, total), bad, total, pct(bad, total), len(results)))
+
+
 def print_summary(results: List[FileResult], volume: Optional[float] = None) -> int:
     total = sum(len(r.mm_packets) for r in results)
     ok = sum(r.ok for r in results)
@@ -3378,6 +3417,12 @@ def run_gui(ap: argparse.ArgumentParser, initial_values: Optional[dict] = None,
         longs = [o for o in act.option_strings if o.startswith("--")]
         return (longs or act.option_strings)[0]
 
+    def field_label(act) -> str:
+        """Text shown on the form: the option name without its leading
+        dashes ('--wav_dir' -> 'wav_dir'). The tooltip and the error
+        messages keep the real command-line spelling via flag_name()."""
+        return flag_name(act).lstrip("-")
+
     tips = {}
 
     def attach_tip(widget, text: str) -> None:
@@ -3430,13 +3475,13 @@ def run_gui(ap: argparse.ArgumentParser, initial_values: Optional[dict] = None,
         if kind == "flag":
             var = tk.BooleanVar(value=bool(act.default))
             defaults[act.dest] = bool(act.default)
-            w = ttk.Checkbutton(cell, text=flag_name(act), variable=var)
+            w = ttk.Checkbutton(cell, text=field_label(act), variable=var)
             w.pack(anchor="w")
         else:
             default = "" if act.default is None else str(act.default)
             var = tk.StringVar(value=default)
             defaults[act.dest] = default
-            ttk.Label(cell, text=flag_name(act)).pack(side="left")
+            ttk.Label(cell, text=field_label(act)).pack(side="left")
             if act.dest in ("audio_device", "monitor_device"):
                 ttk.Button(cell, text="\u21bb", width=3,
                            command=refresh_sinks).pack(side="right", padx=(4, 0))
@@ -3532,11 +3577,13 @@ def run_gui(ap: argparse.ArgumentParser, initial_values: Optional[dict] = None,
         if initial_logs.get("serial"):
             append(serial_txt, initial_logs["serial"])
 
-    # ---- language selector (flag + name), in the button bar -----------
+    # ---- language selector (plain language name), in the button bar ----
+    # Only the name is shown: Tk cannot draw the regional-indicator emoji
+    # used for flags, so they turned into empty boxes / garbage glyphs.
     # Widgets cannot be re-translated in place, so picking another language
     # closes this window and run_gui_loop() builds it again, with the values
     # of the form carried over.
-    lang_show = dict((c, "%s  %s" % (LANG_FLAGS[c], LANG_NAMES[c])) for c in LANGS)
+    lang_show = dict((c, LANG_NAMES[c]) for c in LANGS)
     lang_code = dict((v, k) for k, v in lang_show.items())
     lang_var = tk.StringVar(value=lang_show[current_language()])
     lbl_lang = ttk.Label(bar, text=T("Language:"))
@@ -4067,6 +4114,8 @@ def run_with_args(args: argparse.Namespace) -> int:
                         normalise=args.normalise, offset_auto=offset_auto,
                         offset_seed=offset_seed)
             print_file_report(res, dry_run=args.no_play)
+            if not args.no_play:
+                print_loss_resume(res, results)
             sleep_or_stop(args.pause)
     except KeyboardInterrupt:
         print(T("\nInterrupted - reporting what has been tested so far."))
