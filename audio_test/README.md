@@ -116,8 +116,6 @@ recent distributions.)
 
 ![Minimal audio input circuit](esp32_audio_input.png)
 
-*The image is `esp32_audio_input.png` in this directory.*
-
 ### What the circuit does
 
 * The PC sound card output is a signal that swings **both above and below 0 V**
@@ -192,9 +190,6 @@ makes up for that in software.
 
 ![Fixed-resistor alternative to RV1](esp32_audio_input_fixed.png)
 
-*The image is `esp32_audio_input_fixed.png` in this directory: the same circuit
-as in section 3, with the trimmer replaced by the fixed pair R1/R2.*
-
 More plainly: **R1** goes from the jack **tip** to a middle node; **R2** goes
 from that same middle node to the jack **sleeve** (ground, tied to ESP32 GND).
 The middle node — where R1 and R2 meet — replaces the trimmer's wiper and goes
@@ -251,8 +246,21 @@ that nothing decoded from a recording can leave the ESP32:
 |---|---|---|
 | IGate | **Enable IGate** | **OFF** |
 | IGate | **RF to Internet** | **OFF** |
+| IGate | **Duplicate Suppression** | **OFF** |
 | Digipeater | **Enable Digipeater** | **OFF** |
 | Beacon pages | beacon / tracker / weather / telemetry enables | **OFF** |
+
+> **⚠ IGate Duplicate Suppression must be disabled.** This firmware feature
+> recognises a packet with the same source/destination/payload seen again
+> within a short interval and suppresses the repeat so it is not gated (and,
+> depending on firmware version, not logged) twice. Several of the test WAVs —
+> most importantly **WA8LMF track 3 (section 6.2), 100 identical Mic-E bursts
+> only 3 seconds apart** — consist of the *same* packet repeated many times on
+> purpose, precisely to measure the ESP32's raw decode rate. With duplicate
+> suppression ON, the repeats after the first would never print a fresh `RX:`
+> line, and the bench would score every one of them as **NOT DECODED** even
+> though the demodulator decoded it correctly. Turn it OFF before running any
+> test in this bench.
 
 Extra safety, recommended:
 
@@ -761,6 +769,8 @@ works.**
 Preflight checklist:
 
 - [ ] IGate, RF to Internet, Digipeater and beacons are **OFF** (section 4.2)
+- [ ] IGate **Duplicate Suppression** is **OFF** (section 4.2) — otherwise repeated
+      packets such as WA8LMF track 3 are undercounted
 - [ ] Log after filters is **OFF**; audio modem, self-bias and over-range warning are **ON**
 - [ ] No other program is using the serial port
 - [ ] No system sounds can play on the sound card
@@ -1398,6 +1408,7 @@ and produce a known number of packets for a quick regression run.
 | Line pairs reading `[multimon  --:--.-] NOT DECODED` followed by `[esp32 only …]` | Not a failure: that is how an EXTRA packet — decoded by the ESP32, missed by multimon-ng — is printed live. It is counted under `EXTRA(esp only)`. |
 | The six-digit numbers do not match multimon-ng's packet count | They are a print counter that also numbers EXTRA packets and restarts per file (section 11.1). |
 | Track 3: the flagged packet numbers look off by one | Window/timing effect described in section 12.3. Use `--match_window 1.5`; the totals are right anyway. |
+| Track 3 (or any repeated-packet file) scores far more NOT DECODED than expected, well beyond a level problem | **IGate Duplicate Suppression is ON.** The firmware is silently dropping repeats of a packet it already saw, so only the first of each run of identical packets ever reaches the console. Turn **Duplicate Suppression** OFF on the IGate page (section 4.2) and run again. |
 | `WARNING: \`stdbuf\` not found (package coreutils)` | multimon-ng's output is block-buffered on the pipe, so its packets arrive in bursts and are timestamped late — spurious NOT DECODED verdicts. `sudo apt install coreutils`. |
 | `--gui needs tkinter` | `sudo apt install python3-tk`. |
 | `Cannot open a display for --gui` | No X/Wayland display: you are on a text console or in an SSH session without X forwarding. Use the command line, or `ssh -X`. |
@@ -1463,7 +1474,8 @@ sudo usermod -aG dialout $USER            # then log out / in
 # ── ESP32 web UI ──────────────────────────────────────────────────
 #   Radiomodem  : Enable audio ADC/DAC modem = ON, ADC input self-bias = ON,
 #                 Warn on receive over-range = ON
-#   IGate       : Enable IGate = OFF, RF to Internet = OFF, Log after filters = OFF
+#   IGate       : Enable IGate = OFF, RF to Internet = OFF, Log after filters = OFF,
+#                 Duplicate Suppression = OFF   (must be OFF or repeats are undercounted)
 #   Digi        : Enable Digipeater = OFF          (beacons OFF, Wi-Fi AP only)
 
 # ── set the level: play a busy recording (WA8LMF track 1), press RX LEVEL on
@@ -1510,6 +1522,7 @@ grep -E "NOT DECODED|DIFFERENT|HEADER CORRUPT" run.log
 | **Discriminator output** | The FM receiver's raw demodulated audio, before de-emphasis: the best source for data. |
 | **De-emphasis** | The receiver's high-frequency roll-off applied to the speaker audio; data taken from the speaker is de-emphasized. |
 | **IGate** | Gateway that forwards packets heard on radio to the internet APRS-IS network (and back). |
+| **Duplicate Suppression** | An IGate feature that recognises a repeat of a packet already seen and suppresses it instead of gating (and, on some firmware versions, logging) it again. **Must be OFF for this bench** (section 4.2): several test files, notably WA8LMF track 3, are the same packet repeated on purpose, and duplicate suppression would make the repeats vanish from the console before they can be counted. |
 | **Digipeater** | A station that repeats packets on radio to extend range. |
 | **APRS-IS** | The internet network that collects APRS packets. |
 | **RMS** | Root-mean-square: the effective size of an AC signal; the ESP32 reports the RX level in mV RMS. |

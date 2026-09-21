@@ -118,9 +118,6 @@ distribuciones recientes.)
 
 ![Circuito mínimo de entrada de audio](esp32_audio_input.png)
 
-*La imagen es `esp32_audio_input.png`, en este mismo directorio. Sus rótulos están
-en inglés: Tip = punta, Sleeve = manga, wiper = cursor, Ground = masa.*
-
 ### Qué hace el circuito
 
 * La salida de la placa de sonido de la PC es una señal que oscila **tanto por
@@ -201,10 +198,6 @@ software.
 
 ![Alternativa con resistencias fijas a RV1](esp32_audio_input_fixed.png)
 
-*La imagen es `esp32_audio_input_fixed.png`, en este mismo directorio: el mismo
-circuito de la sección 3, con el trimmer reemplazado por el par fijo R1/R2. Sus
-rótulos están en inglés.*
-
 Dicho de forma más simple: **R1** va desde la **punta** del jack hasta un nodo
 intermedio; **R2** va desde ese mismo nodo intermedio hasta la **manga** del
 jack (masa, unida a GND del ESP32). El nodo intermedio —donde se juntan R1 y
@@ -266,8 +259,23 @@ salir del ESP32:
 |---|---|---|
 | IGate | **Habilitar IGate** | **OFF** (desactivado) |
 | IGate | **RF a Internet** | **OFF** |
+| IGate | **Duplicate Suppression** (supresión de duplicados) | **OFF** |
 | Digirepetidor (*Digipeater*) | **Habilitar Digipeater** | **OFF** |
 | Páginas de balizas | habilitación de baliza / tracker / clima / telemetría | **OFF** |
+
+> **⚠ La supresión de duplicados del IGate (Duplicate Suppression) debe estar
+> desactivada.** Esta función del firmware reconoce un paquete con el mismo
+> origen/destino/payload ya visto poco antes y suprime la repetición para no
+> enviarla dos veces al gateway (y, según la versión del firmware, tampoco
+> registrarla dos veces). Varios de los WAV de prueba —sobre todo la **pista 3
+> de WA8LMF (sección 6.2), 100 ráfagas Mic-E idénticas separadas por solo 3
+> segundos**— consisten a propósito en el *mismo* paquete repetido muchas
+> veces, justamente para medir la tasa de decodificación real del ESP32. Con
+> la supresión de duplicados en ON, las repeticiones posteriores a la primera
+> nunca imprimirían una línea `RX:` nueva, y el banco de pruebas calificaría
+> cada una de ellas como **NO DECODIFICADO** aunque el demodulador la haya
+> decodificado correctamente. Desactívela antes de correr cualquier prueba en
+> este banco.
 
 Seguridad adicional, recomendada:
 
@@ -805,6 +813,9 @@ tráfico real hasta que esto funcione.**
 Lista de verificación previa:
 
 - [ ] IGate, RF a Internet, Digipeater y balizas están en **OFF** (sección 4.2)
+- [ ] La **supresión de duplicados** (Duplicate Suppression) del IGate está en
+      **OFF** (sección 4.2) — de lo contrario, paquetes repetidos como los de
+      la pista 3 de WA8LMF se subcontarán
 - [ ] Registrar después de los filtros está en **OFF**; el módem de audio, la autopolarización y el aviso de sobrerrango están en **ON**
 - [ ] Ningún otro programa usa el puerto serie
 - [ ] No pueden sonar sonidos del sistema en la placa de sonido
@@ -1458,6 +1469,7 @@ rápida de regresión.
 | Pares de líneas `[multimon  --:--.-] NOT DECODED` seguidos de `[esp32 only …]` | No es un fallo: así se imprime en vivo un paquete EXTRA —decodificado por el ESP32 y perdido por multimon-ng—. Se cuenta en `EXTRA(esp only)`. |
 | Los números de seis dígitos no coinciden con la cuenta de paquetes de multimon-ng | Son un contador de impresión que también numera los paquetes EXTRA y se reinicia en cada archivo (sección 11.1). |
 | Pista 3: los números de los paquetes marcados parecen desplazados en uno | Efecto de ventana/temporización descrito en la sección 12.3. Use `--match_window 1.5`; los totales son correctos de todos modos. |
+| La pista 3 (o cualquier archivo con paquetes repetidos) da muchos más NO DECODIFICADO de lo esperado, muy por encima de lo que explicaría el nivel de señal | **La supresión de duplicados del IGate (Duplicate Suppression) está en ON.** El firmware está descartando en silencio las repeticiones de un paquete que ya vio, así que solo la primera de cada serie de paquetes idénticos llega a la consola. Ponga **Duplicate Suppression** en OFF en la página del IGate (sección 4.2) y vuelva a correr la prueba. |
 | `WARNING: \`stdbuf\` not found (package coreutils)` | La salida de multimon-ng queda con búfer de bloque en la tubería, sus paquetes llegan a ráfagas y se marcan con una hora tardía: veredictos NOT DECODED falsos. `sudo apt install coreutils`. |
 | `--gui needs tkinter` | `sudo apt install python3-tk`. |
 | `Cannot open a display for --gui` | No hay pantalla X/Wayland: está en una consola de texto o en una sesión SSH sin reenvío de X. Use la línea de comandos, o `ssh -X`. |
@@ -1525,7 +1537,8 @@ sudo usermod -aG dialout $USER            # luego cierre sesión / vuelva a entr
 # ── interfaz web del ESP32 ────────────────────────────────────────
 #   Radiomódem  : Activar módem ADC/DAC de audio = ON, Polarización interna de la
 #                 entrada del ADC = ON, Avisar cuando el audio recibido se sale de rango = ON
-#   IGate       : Habilitar IGate = OFF, RF a Internet = OFF, Registrar después de los filtros = OFF
+#   IGate       : Habilitar IGate = OFF, RF a Internet = OFF, Registrar después de los filtros = OFF,
+#                 Duplicate Suppression = OFF   (debe estar OFF o se subcuentan las repeticiones)
 #   Digirepetidor: Habilitar Digipeater = OFF     (balizas OFF, Wi-Fi solo como punto de acceso)
 
 # ── ajustar el nivel: reproducir una grabación con mucha actividad (pista 1 de
@@ -1573,6 +1586,7 @@ grep -E "NOT DECODED|DIFFERENT|HEADER CORRUPT" run.log
 | **Salida del discriminador** | El audio demodulado en crudo de un receptor de FM, antes del desénfasis: la mejor fuente para datos. |
 | **Desénfasis** | La atenuación de agudos que aplica el receptor al audio del parlante; los datos tomados del parlante están desenfatizados. |
 | **IGate** | Pasarela que reenvía a la red APRS-IS de Internet los paquetes oídos por radio (y viceversa). |
+| **Duplicate Suppression** | Función del IGate que reconoce un paquete ya visto poco antes y suprime la repetición en lugar de enviarla al gateway (y, según la versión del firmware, también en lugar de registrarla) otra vez. **Debe estar en OFF para este banco de pruebas** (sección 4.2): varios archivos de prueba, en especial la pista 3 de WA8LMF, son el mismo paquete repetido a propósito, y la supresión de duplicados haría que las repeticiones desaparezcan de la consola antes de poder contarlas. |
 | **Digirepetidor (digipeater)** | Una estación que repite paquetes por radio para ampliar el alcance. |
 | **APRS-IS** | La red de Internet que reúne los paquetes APRS. |
 | **RMS** | Valor eficaz (root-mean-square): el tamaño efectivo de una señal alterna; el ESP32 informa el nivel de RX en mV RMS. |
