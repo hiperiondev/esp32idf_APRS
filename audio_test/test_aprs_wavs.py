@@ -300,6 +300,8 @@ _CATALOG = {
         "Live": "En vivo",
         "Total packets: %d   |   multimon-ng: %d   |   ESP32 decoded: %d   |   ESP32 missed: %d of %d (%s)":
             "Paquetes totales: %d   |   multimon-ng: %d   |   ESP32 decodificados: %d   |   ESP32 perdidos: %d de %d (%s)",
+        "wav %d/%d [%s]: %s": "wav %d/%d [%s]: %s",
+        "wav [%s]: %s": "wav [%s]: %s",
         "Stopping ...": "Deteniendo ...",
         "Test esp32idf_APRS with a battery of real-APRS WAV files, using multimon-ng as the reference decoder.":
             "Prueba esp32idf_APRS con una batería de archivos WAV de APRS real, usando multimon-ng como decodificador de referencia.",
@@ -663,6 +665,8 @@ _CATALOG = {
         "Live": "In tempo reale",
         "Total packets: %d   |   multimon-ng: %d   |   ESP32 decoded: %d   |   ESP32 missed: %d of %d (%s)":
             "Pacchetti totali: %d   |   multimon-ng: %d   |   ESP32 decodificati: %d   |   ESP32 persi: %d su %d (%s)",
+        "wav %d/%d [%s]: %s": "wav %d/%d [%s]: %s",
+        "wav [%s]: %s": "wav [%s]: %s",
         "Stopping ...": "Arresto in corso ...",
         "Test esp32idf_APRS with a battery of real-APRS WAV files, using multimon-ng as the reference decoder.":
             "Testa esp32idf_APRS con una batteria di file WAV di APRS reale, usando multimon-ng come decodificatore di riferimento.",
@@ -1095,6 +1099,9 @@ class LiveStats:
         with self._lock:
             self.phase = phase
             self.mm = self.ok = self.diff = self.missing = self.extra = 0
+            self.file_n = self.file_total = 0
+            self.file_name = ""
+            self.file_duration = self.file_elapsed = 0.0
             self.gen = getattr(self, "gen", 0) + 1
 
     def add(self, mm: int = 0, ok: int = 0, diff: int = 0,
@@ -1107,13 +1114,45 @@ class LiveStats:
             self.extra += extra
             self.gen += 1
 
+    def set_file(self, n: int, total: int, name: str) -> None:
+        """Records which wav is currently playing, so the GUI status bar can
+        show it. During the real test pass n/total is the 1-based position in
+        the wav set (progress through the list); during auto-volume
+        calibration there is no such position - probes revisit files in any
+        order and possibly several times - so n and total are both passed as
+        0 and only the filename is shown. Resets the elapsed/duration clock
+        for the new file; run_one_wav fills those in as it plays."""
+        with self._lock:
+            self.file_n = n
+            self.file_total = total
+            self.file_name = name
+            self.file_duration = self.file_elapsed = 0.0
+            self.gen += 1
+
+    def set_duration(self, duration: float) -> None:
+        """The total length of the wav now playing, in seconds."""
+        with self._lock:
+            self.file_duration = duration
+            self.gen += 1
+
+    def set_elapsed(self, elapsed: float) -> None:
+        """How far into the current wav playback is, in seconds. Called
+        repeatedly (from run_one_wav's ticker) while the file plays."""
+        with self._lock:
+            self.file_elapsed = elapsed
+            self.gen += 1
+
     def snapshot(self) -> dict:
         with self._lock:
             resolved = self.ok + self.diff + self.missing
             return {"gen": self.gen, "phase": self.phase,
                     "total": self.mm + self.extra, "mm": self.mm,
                     "esp": self.ok + self.diff + self.extra,
-                    "missed": self.missing, "resolved": resolved}
+                    "missed": self.missing, "resolved": resolved,
+                    "file_n": self.file_n, "file_total": self.file_total,
+                    "file_name": self.file_name,
+                    "file_duration": self.file_duration,
+                    "file_elapsed": self.file_elapsed}
 
 
 _LIVE_STATS = LiveStats()
@@ -1893,6 +1932,7 @@ def run_one_wav(res: FileResult, wav: str, route: Optional[AudioRoute],
     gt = None      # type: Optional[threading.Thread]
     done = threading.Event()
     duration = wav_duration(wav)
+    _LIVE_STATS.set_duration(duration)
     matcher = LiveMatcher(window, offset_auto=offset_auto, offset=offset_seed)
     interrupted = False
     # Resume point in the collector's packet list (not a count of this file's
@@ -2080,6 +2120,7 @@ def run_one_wav(res: FileResult, wav: str, route: Optional[AudioRoute],
             last_progress = time.monotonic()
             while not done.wait(0.25):
                 now = time.monotonic()
+                _LIVE_STATS.set_elapsed(now - t0)
                 if not dry_run:
                     feed_and_step(now)
                 if (abort_on_overrange and not target_hit[0] and
@@ -2231,6 +2272,7 @@ def run_one_wav(res: FileResult, wav: str, route: Optional[AudioRoute],
             res.esp_packets = list(matcher.esp_seen)
             res.offset = matcher.offset
         res.duration = time.monotonic() - t0
+        _LIVE_STATS.set_elapsed(min(res.duration, duration) if duration else res.duration)
     return target_hit[0]
 
 
@@ -2708,6 +2750,7 @@ class VolumeSearch:
             self._cursor += 1
             remaining = target - (len(batch.mm_packets) + len(batch.extra))
             res = FileResult(name=os.path.basename(wav))
+            _LIVE_STATS.set_file(0, 0, os.path.basename(wav))
             run_one_wav(res, wav, self.route, volume, self.tail,
                         self.window, self.collector, self.mm_extra,
                         dry_run=False, stop_at_mm_packets=remaining,
@@ -3611,11 +3654,21 @@ def run_gui(ap: argparse.ArgumentParser, initial_values: Optional[dict] = None,
         stats_gen[0] = snap["gen"]
         pct_txt = ("%.2f%%" % pct(snap["missed"], snap["total"])
                    if snap["total"] else "--")
-        stats_var.set("[%s]  " % (snap["phase"] or T("Live")) +
-                      T("Total packets: %d   |   multimon-ng: %d   |   ESP32 decoded: %d"
-                        "   |   ESP32 missed: %d of %d (%s)") %
-                      (snap["total"], snap["mm"], snap["esp"],
-                       snap["missed"], snap["total"], pct_txt))
+        line = ("[%s]  " % (snap["phase"] or T("Live")) +
+                T("Total packets: %d   |   multimon-ng: %d   |   ESP32 decoded: %d"
+                  "   |   ESP32 missed: %d of %d (%s)") %
+                (snap["total"], snap["mm"], snap["esp"],
+                 snap["missed"], snap["total"], pct_txt))
+        if snap["file_name"]:
+            dur = snap["file_duration"]
+            elapsed = min(snap["file_elapsed"], dur) if dur else snap["file_elapsed"]
+            time_txt = "%s/%s" % (mmss(elapsed), mmss(dur))
+            if snap["file_total"]:
+                line += "   |   " + T("wav %d/%d [%s]: %s") % (
+                    snap["file_n"], snap["file_total"], time_txt, snap["file_name"])
+            else:
+                line += "   |   " + T("wav [%s]: %s") % (time_txt, snap["file_name"])
+        stats_var.set(line)
 
     refresh_stats(force=True)
 
@@ -4204,6 +4257,7 @@ def run_with_args(args: argparse.Namespace) -> int:
             sys.stdout.flush()
             res = FileResult(name=os.path.basename(wav))
             results.append(res)     # appended first: an interrupted file still counts
+            _LIVE_STATS.set_file(n, len(wavs), os.path.basename(wav))
             run_one_wav(res, wav, route, final_volume, args.tail,
                         args.match_window, col, mm_extra, args.no_play,
                         normalise=args.normalise, offset_auto=offset_auto,
