@@ -96,6 +96,27 @@ stadio di pilotaggio inverte (un optoisolatore sì; un semplice NPN low-side no)
 porta la macro all'altro valore e fai una ricompilazione pulita completa — il
 valore è incorporato in ``afsk.c``, quindi una compilazione incrementale non lo
 recepirà.
+"Il log di avvio dice ``gpio: conflict found for GPIO[26]``."
+=============================================================
+
+Una chiamata a ``gpio_config()`` rivendica ogni pad che configura e avvisa
+quando ne trova uno già rivendicato da un'altra chiamata; il pad viene
+comunque configurato, quindi la riga è informativa.
+
+GPIO26 è il pad del PTT nella definizione di scheda distribuita, ed è
+configurato due volte di proposito: ``ptt_force_idle()`` in ``main.c`` lo porta
+al livello di riposo come prima azione di ``app_main()``, perché la linea di
+manipolazione non resti flottante dopo il reset, e ``AFSK_init()`` lo
+riconfigura all'avvio del modem, circa un secondo e mezzo dopo. La seconda
+chiamata restituisce prima la rivendicazione, quindi la riga non dovrebbe
+comparire. Se compare, è stato usato un ESP-IDF senza l'header interno
+``esp_gpio_reserve.h``, e l'avviso è innocuo.
+
+Un conflitto su **qualsiasi altro** pin è invece reale: due funzioni puntano
+allo stesso pad. Controllate il pin di allarme messaggi nella pagina Message,
+l'unico che la configurazione memorizza, e i pin fissi del ``CMakeLists.txt``
+radice (ADC, DAC, PTT, LED di stato).
+
 "Telegram smette di rispondere dopo un po' di funzionamento, con 'mbedtls_ssl_fetch_input' o 'Socket is not connected' nel log."
 ==================================================================================================================================
 

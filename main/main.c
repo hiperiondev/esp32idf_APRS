@@ -551,7 +551,9 @@ static void app_task(void *arg) {
 // becomes an output, so it never drives the active level, and again after
 // gpio_config() for the case where the output register was not the path
 // taken. GPIO_MODE_INPUT_OUTPUT is the mode AFSK_init() uses as well, so its
-// later configuration leaves the pad unchanged.
+// later configuration leaves the pad unchanged; that call releases the pad
+// claim this one takes before configuring the pin again, so the GPIO driver
+// sees a reconfiguration by the same owner rather than two owners.
 static void ptt_force_idle(void) {
 #if MODEM_PTT_GPIO >= 0
     const uint32_t idle_level = MODEM_PTT_ACTIVE_HIGH ? 0 : 1;

@@ -43,6 +43,17 @@
 #include "esp_adc/adc_cali_scheme.h"
 #include "esp_adc/adc_continuous.h"
 #include "esp_attr.h"
+// esp_private/esp_gpio_reserve.h for esp_gpio_revoke(). gpio_config() claims
+// every pin it configures, and warns when it finds one already claimed. The
+// PTT pad is deliberately configured twice - once by the application as early
+// as it can, to keep the keying line from floating out of reset, and once here
+// when the modem starts - so this file hands the claim back before taking it
+// again. The header is an internal one, so its absence is tolerated: without
+// it the second configuration still applies, it merely logs a conflict.
+#if __has_include("esp_private/esp_gpio_reserve.h")
+#include "esp_private/esp_gpio_reserve.h"
+#define AFSK_HAVE_GPIO_RESERVE 1
+#endif
 #include "esp_idf_version.h"
 #include "esp_log.h"
 #include "esp_timer.h"
@@ -1620,6 +1631,11 @@ esp_err_t AFSK_init(void) {
         // straight to idle; the write after gpio_config() is what puts it
         // there when the output register was not the path taken.
         gpio_set_level((gpio_num_t)s_pttGpio, s_pttActiveHigh ? 0 : 1);
+#ifdef AFSK_HAVE_GPIO_RESERVE
+        // Same owner, same pad, same mode: releasing the claim the earlier
+        // configuration took is what makes this one a plain reconfiguration.
+        esp_gpio_revoke(1ULL << s_pttGpio);
+#endif
         gpio_config(&pttCfg);
         gpio_set_level((gpio_num_t)s_pttGpio, s_pttActiveHigh ? 0 : 1);
     }
@@ -1732,6 +1748,20 @@ void AFSK_deinit(void) {
         dac_oneshot_del_channel(s_dac);
         s_dac = NULL;
     }
+#ifdef AFSK_HAVE_GPIO_RESERVE
+    // Hand the pads back, so whoever configures them next - a later
+    // AFSK_init(), or the application - starts from an unclaimed pin. The
+    // levels are left as they are: the PTT pad stays at its idle level, which
+    // is the whole point of driving it.
+    if (s_pttGpio >= 0)
+        esp_gpio_revoke(1ULL << s_pttGpio);
+#if MODEM_LED_TX_GPIO >= 0
+    esp_gpio_revoke(1ULL << MODEM_LED_TX_GPIO);
+#endif
+#if MODEM_LED_RX_GPIO >= 0
+    esp_gpio_revoke(1ULL << MODEM_LED_RX_GPIO);
+#endif
+#endif
     s_inited = false;
     ESP_LOGI(TAG, "AFSK hardware released");
 }

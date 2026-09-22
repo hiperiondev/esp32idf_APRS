@@ -96,6 +96,27 @@ etapa de excitación invierte (un optoacoplador sí; un simple NPN de lado bajo
 no): cambia la macro al otro valor y haz una recompilación limpia completa — el
 valor queda horneado en ``afsk.c``, así que una compilación incremental no lo
 tomará.
+"El registro de arranque dice ``gpio: conflict found for GPIO[26]``."
+====================================================================
+
+Una llamada a ``gpio_config()`` reclama cada pad que configura y avisa cuando
+encuentra uno que otra llamada ya había reclamado; el pad queda configurado de
+todos modos, así que la línea es informativa.
+
+GPIO26 es el pad del PTT en la definición de placa que se distribuye, y se
+configura dos veces a propósito: ``ptt_force_idle()`` en ``main.c`` lo pone en
+su nivel de reposo como primera acción de ``app_main()``, para que la línea de
+manipulación no quede flotando tras el reset, y ``AFSK_init()`` lo vuelve a
+configurar cuando arranca el módem, algo más de un segundo después. La segunda
+llamada devuelve antes el reclamo, así que la línea no debería aparecer. Si
+aparece, se compiló con un ESP-IDF sin la cabecera interna
+``esp_gpio_reserve.h``, y el aviso es inofensivo.
+
+Un conflicto sobre **cualquier otro** pin sí es real: dos funciones apuntan al
+mismo pad. Revise el pin de alarma de mensajes en la página Message, que es el
+único que guarda la configuración, y los pines fijos del ``CMakeLists.txt``
+raíz (ADC, DAC, PTT, LEDs de estado).
+
 "Telegram deja de responder tras un rato funcionando, con 'mbedtls_ssl_fetch_input' o 'Socket is not connected' en el log."
 =============================================================================================================================
 

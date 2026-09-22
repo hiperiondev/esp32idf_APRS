@@ -93,6 +93,26 @@ what you expect, your driver stage inverts (an optocoupler does; a plain NPN
 low-side switch does not): flip the macro to the other value and do a full clean
 rebuild — the value is baked into ``afsk.c``, so an incremental build will not
 pick it up.
+"The boot log says ``gpio: conflict found for GPIO[26]``."
+=========================================================
+
+A ``gpio_config()`` call claims every pad it configures, and warns when it
+finds one another call already claimed; the pad is configured either way, so
+the line is informational.
+
+GPIO26 is the PTT pad on the shipped board definition, and it is configured
+twice on purpose: ``ptt_force_idle()`` in ``main.c`` puts it at its idle level
+as the first thing ``app_main()`` does, so the keying line does not float out
+of reset, and ``AFSK_init()`` configures it again when the modem starts about
+a second and a half later. The second call hands the claim back first, so the
+line should not appear. If it does, an ESP-IDF without the internal
+``esp_gpio_reserve.h`` header was used, and the warning is harmless.
+
+A conflict on any **other** pin is a real one: two features are pointing at
+the same pad. Check the Message Alarm pin on the Message page, which is the
+only pin the configuration stores, and the fixed pins in the top-level
+``CMakeLists.txt`` (ADC, DAC, PTT, status LEDs).
+
 "Telegram stops answering after running for a while, with 'mbedtls_ssl_fetch_input' or 'Socket is not connected' in the log."
 ===============================================================================================================================
 
