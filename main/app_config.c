@@ -501,8 +501,9 @@ void app_config_set_defaults(app_config_t *c) {
     c->dac_samplerate = DAC_SAMPLERATE_LOW;
     c->tx_max_keyed_ms = 0; // see TX_MAX_KEYED_MS_MIN/MAX in aprs_service.h
 
-    // Receive chain: three tilted prefilters, a 10 mV receive gate, automatic
-    // gain, no high-pass and no bit repair (see MODEM_RX_TUNING_DEFAULT()).
+    // Receive chain: the multi-slicer demodulator set, a 10 mV receive gate,
+    // automatic gain, no high-pass and no bit repair (see
+    // MODEM_RX_TUNING_DEFAULT()).
     modem_rx_tuning_t rx_default = MODEM_RX_TUNING_DEFAULT();
     c->rx_tuning = rx_default;
     set_str(c->ntp_host[0], sizeof(c->ntp_host[0]), "pool.ntp.org");

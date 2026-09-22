@@ -364,7 +364,7 @@ static bool s_rxStatsFlat;
 static modem_rx_tuning_t s_rxStatsTuning;
 
 static bool rx_tuning_equal(const modem_rx_tuning_t *a, const modem_rx_tuning_t *b) {
-    for (int i = 0; i < MODEM_RX_MAX_DEMODULATORS; i++) {
+    for (int i = 0; i < MODEM_RX_MAX_PREFILTERS; i++) {
         if (a->custom_tilt_db[i] != b->custom_tilt_db[i])
             return false;
     }
@@ -1995,6 +1995,11 @@ static void serviceTickTask(void *arg) {
 
 #define LOOP_TEST_TIMEOUT_MS 4000
 
+// Room for the loop test's per-demodulator "tilt:weight" list: up to
+// MODEM_RX_MAX_DEMODULATORS pairs of a signed one-decimal tilt and a signed
+// whole-number weight, with a separator between them and the terminating NUL.
+#define LOOP_TEST_TILT_BUF_SIZE (MODEM_RX_MAX_DEMODULATORS * 12 + 1)
+
 // Minimum raw ADC swing (out of the 0-4095 12-bit range) that counts as "an
 // audio tone actually reached the ADC" rather than a flat/near-DC line. Used
 // both to diagnose a FAIL (see the adcSwing < LOOP_TEST_MIN_ADC_SWING branch
@@ -2288,22 +2293,22 @@ bool aprs_loop_test_run(char *msg, size_t msg_len) {
             uint8_t level0 = 0;
             ModemGetSignalLevel(0, &peak0, &valley0, &level0);
 
-            char tilts[48] = "";
+            // One "tilt:weight" pair per demodulator: the tilt its prefilter
+            // realizes and the weight its slicer gives the space tone, which
+            // together are what that demodulator compensates of the received
+            // tone twist. Demodulators sharing a prefilter repeat the tilt.
+            char tilts[LOOP_TEST_TILT_BUF_SIZE] = "";
             size_t tl = 0;
             uint8_t demods = ModemGetDemodulatorCount();
             if (demods > MODEM_MAX_DEMODULATOR_COUNT)
                 demods = MODEM_MAX_DEMODULATOR_COUNT;
-            for (uint8_t i = 0; i < demods && tl < sizeof(tilts); i++) {
-                int n = snprintf(tilts + tl, sizeof(tilts) - tl, "%s%+.1f", i ? "/" : "", (double)ModemGetFilterTiltDb(i));
-                if (n < 0)
-                    break;
-                tl += (size_t)n;
-            }
+            for (uint8_t i = 0; i < demods; i++)
+                str_append(tilts, sizeof(tilts), &tl, "%s%+.1f:%+.0f", i ? "/" : "", (double)ModemGetFilterTiltDb(i), (double)ModemGetSlicerWeightDb(i));
 
             snprintf(msg, msg_len,
                      "FAIL: no packet was received back within %d ms. The ADC saw a real signal (raw code swung "
                      "%d-%d, a %d-count range; RMS peaked at %u mV), so the demodulator did receive samples, but no "
-                     "demodulator's correlator/PLL ever locked onto the tones. %u demodulator(s), prefilter tilt %s dB, "
+                     "demodulator's correlator/PLL ever locked onto the tones. %u demodulator(s), prefilter tilt:slicer weight %s dB, "
                      "flat audio input %s, input level=%u%% (AGC peak gain %.2fx). %s",
                      LOOP_TEST_TIMEOUT_MS, s_diag.rawMin, s_diag.rawMax, adcSwing, (unsigned)s_diag.mVrmsPeak, (unsigned)demods, tilts,
                      g_config.audio_lpf ? "on" : "off", (unsigned)level0, (double)s_diag.agcGainPeak,
@@ -2417,6 +2422,11 @@ bool aprs_loop_test_run(char *msg, size_t msg_len) {
 // diagnostics task.
 #define RX_LEVEL_POLL_MS 20
 
+// Room for one comma-separated list of per-demodulator counters: up to
+// MODEM_RX_MAX_DEMODULATORS unsigned 32-bit values, each at most ten digits,
+// with a separator between them and the terminating NUL.
+#define RX_STATS_LIST_BUF_SIZE (MODEM_RX_MAX_DEMODULATORS * 11 + 1)
+
 // How long the transmit burst keys up for. Long enough to read a deviation
 // meter, short enough to stay well inside what a hand-held transmitter is
 // comfortable with on a duty cycle this test does not repeat.
@@ -2497,23 +2507,38 @@ bool aprs_rx_level_sample(char *json, size_t json_len) {
     modem_rx_stats_t st;
     modem_get_rx_stats(&st);
 
+    // Per-demodulator counters, rendered as two arrays of demod_count entries
+    // each: the demodulator set decides how many there are, so the arrays and
+    // the "demods" field are built from the same number the browser loops
+    // over.
+    uint8_t demods = st.demod_count;
+    if (demods > MODEM_RX_MAX_DEMODULATORS)
+        demods = MODEM_RX_MAX_DEMODULATORS;
+
+    char decodedList[RX_STATS_LIST_BUF_SIZE] = "";
+    char uniqueList[RX_STATS_LIST_BUF_SIZE] = "";
+    size_t decodedUsed = 0, uniqueUsed = 0;
+
+    for (uint8_t i = 0; i < demods; i++) {
+        str_append(decodedList, sizeof(decodedList), &decodedUsed, "%s%lu", i ? "," : "", (unsigned long)st.decoded[i]);
+        str_append(uniqueList, sizeof(uniqueList), &uniqueUsed, "%s%lu", i ? "," : "", (unsigned long)st.unique[i]);
+    }
+
     // Every field is produced locally, so there is nothing here that could
     // carry a byte off the air into the response.
     snprintf(json, json_len,
              "{\"ok\":true,\"mVrms\":%u,\"peak_mVrms\":%u,\"dc_mV\":%d,\"agc\":%u.%02u,"
              "\"raw_min\":%d,\"raw_max\":%d,\"dcd\":%s,\"adc_samples\":%lu,"
-             "\"demods\":%u,\"decoded\":[%lu,%lu,%lu],\"unique\":[%lu,%lu,%lu],\"delivered\":%lu,\"repaired\":%lu,"
+             "\"demods\":%u,\"decoded\":[%s],\"unique\":[%s],\"delivered\":%lu,\"repaired\":%lu,"
              "\"fifo_drops\":%lu,\"pool_ovf\":%lu}",
              mean, (unsigned)rmsPeak, afskGetDcOffset(), agcCenti / 100u, agcCenti % 100u, (int)rawMin, (int)rawMax, dcd ? "true" : "false",
-             (unsigned long)afskGetAdcSampleCount(), (unsigned)st.demod_count, (unsigned long)st.decoded[0], (unsigned long)st.decoded[1],
-             (unsigned long)st.decoded[2], (unsigned long)st.unique[0], (unsigned long)st.unique[1], (unsigned long)st.unique[2], (unsigned long)st.delivered,
-             (unsigned long)st.repaired, (unsigned long)st.fifo_drops, (unsigned long)st.adc_pool_overflows);
+             (unsigned long)afskGetAdcSampleCount(), (unsigned)demods, decodedList, uniqueList, (unsigned long)st.delivered, (unsigned long)st.repaired,
+             (unsigned long)st.fifo_drops, (unsigned long)st.adc_pool_overflows);
 
     ESP_LOGI(TAG, "RX level: %u mV RMS (peak %u), DC offset %d mV, AGC %u.%02ux, raw %d..%d, DCD %s", mean, (unsigned)rmsPeak, afskGetDcOffset(),
              agcCenti / 100u, agcCenti % 100u, (int)rawMin, (int)rawMax, dcd ? "yes" : "no");
-    ESP_LOGI(TAG, "RX stats: %u demod(s), decoded %lu/%lu/%lu, unique %lu/%lu/%lu, delivered %lu, repaired %lu, FIFO drops %lu, pool overflows %lu",
-             (unsigned)st.demod_count, (unsigned long)st.decoded[0], (unsigned long)st.decoded[1], (unsigned long)st.decoded[2], (unsigned long)st.unique[0],
-             (unsigned long)st.unique[1], (unsigned long)st.unique[2], (unsigned long)st.delivered, (unsigned long)st.repaired, (unsigned long)st.fifo_drops,
+    ESP_LOGI(TAG, "RX stats: %u demod(s), decoded %s, unique %s, delivered %lu, repaired %lu, FIFO drops %lu, pool overflows %lu", (unsigned)demods,
+             decodedList, uniqueList, (unsigned long)st.delivered, (unsigned long)st.repaired, (unsigned long)st.fifo_drops,
              (unsigned long)st.adc_pool_overflows);
 
     s_loopTestActive = false;

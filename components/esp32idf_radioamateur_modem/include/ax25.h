@@ -34,12 +34,24 @@
 #define AX25_NOT_FX25 255
 
 /**
- * @brief Theoretical maximum size, in bytes, of an AX.25 frame.
+ * @brief Theoretical maximum size, in bytes, of an AX.25 frame, FCS excluded.
  *
  * Computed assuming a 2-byte Control field, a 1-byte PID field, a 256-byte
  * Information field and up to 8 digipeater address fields.
  */
 #define AX25_FRAME_MAX_SIZE (329)
+
+/**
+ * @brief Size, in bytes, of the Frame Check Sequence that closes a frame on
+ *        the air.
+ */
+#define AX25_FCS_LEN (2)
+
+/**
+ * @brief Buffer size a receiver needs while a frame is being assembled: a
+ *        whole frame plus the FCS it is still carrying.
+ */
+#define AX25_RX_FRAME_BUF_SIZE (AX25_FRAME_MAX_SIZE + AX25_FCS_LEN)
 
 /**
  * @brief Usable depth of the internal TX frame ring used by
@@ -61,6 +73,22 @@
  * @brief AX.25 Control field value for an Unnumbered Information (UI) frame.
  */
 #define AX25_CTRL_UI 0x03
+
+/**
+ * @brief Poll/Final bit of an AX.25 Control field.
+ *
+ * A UI frame carries it or not depending on the sender, and it says nothing
+ * about the payload, so a receiver identifying UI frames must mask it out
+ * (see ::AX25_CTRL_IS_UI).
+ */
+#define AX25_CTRL_PF 0x10
+
+/**
+ * @brief Test a Control field for an Unnumbered Information frame,
+ *        disregarding the Poll/Final bit.
+ * @param c Control field byte as received.
+ */
+#define AX25_CTRL_IS_UI(c) (((c) & (uint8_t)~AX25_CTRL_PF) == AX25_CTRL_UI)
 
 /**
  * @brief AX.25 Protocol Identifier value meaning "no layer 3 protocol",

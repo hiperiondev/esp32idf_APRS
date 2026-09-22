@@ -25,12 +25,16 @@ The chain, stage by stage
    * - ingest: pair un-swap, DC-offset removal, RMS metering, receive gate decision
      - 76 800 Hz
      - ``afsk.c``
-   * - decimation FIR (ratio **8:1**), optional CTCSS high-pass, AGC or fixed
-       gain, gate hold ring
+   * - decimation FIR (48 taps, ratio **8:1**), optional CTCSS high-pass, AGC
+       or fixed gain, gate hold ring
      - → **9 600 Hz**
      - ``afsk.c``
-   * - per demodulator (up to three): band-pass prefilter, correlator
-       (mark/space), low-pass, DPLL, NRZI decode, tone-twist tracking
+   * - per correlator (up to three): band-pass prefilter, mark/space
+       correlators, tone magnitudes, low-pass, tone-twist tracking
+     - 9 600 Hz
+     - ``modem.c``
+   * - per demodulator (up to six): slicer on a correlator's magnitudes, DCD,
+       DPLL, NRZI decode
      - 9 600 Hz
      - ``modem.c``
    * - HDLC de-framing, bit de-stuffing, FCS check (optional bit repair),
@@ -64,20 +68,33 @@ Everything below is set at run time through ``modem_config_t.rx`` (the
 ``afskSetModem()`` with the receive task held, so no block is ever processed
 by a half-built chain.
 
-**Several demodulators, each with a tilted prefilter.**
-   The correlator's decision is ``(|LoI|+|LoQ|) − (|HiI|+|HiQ|)``: a tone
-   imbalance biases it. On the air that imbalance ranges from none (a flat
-   data-port transmitter on a discriminator output) to 5–12 dB in favour of
-   the space tone (a pre-emphasizing transmitter on a discriminator output),
-   and a speaker output shifts both by the receiver's de-emphasis. A single
-   correlator fails once the total twist — signal twist plus prefilter tilt —
-   passes roughly ±12 dB, so the 1200 Bd profiles run up to three
-   demodulators whose band-pass prefilters have different tilts. The
-   prefilters are designed in ``ModemInit()`` (frequency sampling, Hamming
-   window, linear phase, passband peak scaled to unity so the int16 and int32
-   paths stay in range) from the band edges, the length and the tilt; the tilt
-   they actually reach, measured on the coefficients, is logged and used by
-   the twist estimate. The legacy set keeps the fixed 8-tap tables.
+**Correlators and slicers.**
+   Each correlator measures the true magnitude ``sqrt(I² + Q²)`` of the mark
+   and of the space tone; ``|I| + |Q|`` would swing between 1 and 1.41 times
+   it with the phase of the tone, which is 3 dB of noise on the decision. A
+   slicer then compares the mark magnitude against the space magnitude scaled
+   by its own weight. On the air the imbalance between the tones ranges from
+   none (a flat data-port transmitter on a discriminator output) to 5–12 dB in
+   favour of the space tone (a pre-emphasizing transmitter on a discriminator
+   output), and a speaker output shifts both by the receiver's de-emphasis, so
+   a single unweighted decision fails past roughly ±12 dB of twist.
+
+   Both halves compensate it. The prefilters are designed in ``ModemInit()``
+   (frequency sampling, Hamming window, linear phase, passband peak scaled to
+   unity so the int16 and int32 paths stay in range) from the band edges, the
+   length and a *tilt*; the tilt they actually reach, measured on the
+   coefficients, is logged and used by the twist estimate. The slicer weight
+   is exact and nearly free, since the post-detection low-pass is linear and
+   can therefore run on the two magnitudes before they are weighted — several
+   slicers share one correlator for a multiply and a subtract each. What a
+   slicer cannot do is keep a loud space tone out of the mark correlator: the
+   correlator is one symbol long, so its response is broad enough for the
+   other tone to leak in, and only a filter ahead of it removes that. The
+   default ``MODEM_RX_EQ_MULTISLICE`` set therefore pairs two prefilters
+   (tilts 0 and −5 dB on flat audio) with three slicers each, covering roughly
+   +3 to −12 dB of compensation; the filter-set presets give every demodulator
+   its own prefilter and an unweighted slicer, and the legacy set keeps the
+   fixed 8-tap tables.
 
 **Duplicate suppression and statistics.**
    A frame with a valid FCS opens a window of 32 bit periods × the active
@@ -179,7 +196,7 @@ Why the numbers are what they are
    ending at ``buf[i × MODEM_RESAMPLE_RATIO]``, so for any ratio ≥ 2 the write
    pointer stays behind the read window except for the first
    ``FILTER_TAPS − 1`` slots. Those few leading samples, together with the
-   previous block's tail, are staged in a short stack array before the loop
+   previous block's tail, are staged in a short static array before the loop
    starts; the rest of the block is read raw from ``buf[]`` itself. That is the
    whole reason the RX path holds no second copy of the 20 ms block.
 
@@ -261,8 +278,8 @@ every macro ``#ifndef``-guarded so the build system can override it.
      - 3
      - 1..3
    * - ``MODEM_RX_MAX_DEMODULATORS``
-     - 3
-     - parallel 1200 Bd demodulators, 3..8
+     - 6
+     - parallel 1200 Bd demodulators (slicers), ``MODEM_RX_SLICER_COUNT``..8
    * - *(derived)* ``MODEM_DEMOD_SAMPLERATE``
      - 9600
      - fixed

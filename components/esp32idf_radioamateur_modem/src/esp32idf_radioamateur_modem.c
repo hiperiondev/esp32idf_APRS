@@ -220,13 +220,13 @@ void modem_rx_tuning_sanitize(modem_rx_tuning_t *t) {
     if (t == NULL)
         return;
 
-    if ((unsigned)t->eq_preset > (unsigned)MODEM_RX_EQ_CUSTOM)
-        t->eq_preset = MODEM_RX_EQ_DIVERSITY3;
+    if ((unsigned)t->eq_preset > (unsigned)MODEM_RX_EQ_MULTISLICE)
+        t->eq_preset = MODEM_RX_EQ_MULTISLICE;
     if (t->custom_count < 1)
         t->custom_count = 1;
-    else if (t->custom_count > MODEM_RX_MAX_DEMODULATORS)
-        t->custom_count = MODEM_RX_MAX_DEMODULATORS;
-    for (int i = 0; i < MODEM_RX_MAX_DEMODULATORS; i++) {
+    else if (t->custom_count > MODEM_RX_MAX_PREFILTERS)
+        t->custom_count = MODEM_RX_MAX_PREFILTERS;
+    for (int i = 0; i < MODEM_RX_MAX_PREFILTERS; i++) {
         if (t->custom_tilt_db[i] < MODEM_RX_TILT_DB_MIN)
             t->custom_tilt_db[i] = MODEM_RX_TILT_DB_MIN;
         else if (t->custom_tilt_db[i] > MODEM_RX_TILT_DB_MAX)

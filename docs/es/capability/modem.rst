@@ -44,12 +44,15 @@ puede convertir el valor guardado directamente al enum:
      - 9600
      - —
 
-Los perfiles de 1200 Bd ejecutan **hasta tres demoduladores en paralelo**
-(``MODEM_RX_MAX_DEMODULATORS = 3``), cada uno tras un prefiltro pasabanda con
-distinta inclinación entre los tonos de marca y espacio, de modo que el juego
-cubre un rango de desbalance de tonos mayor que cualquiera por separado; entrega
-la trama el primero que la completa y las copias se descartan comparando el
-FCS. El juego de demoduladores, la banda del prefiltro, el umbral de recepción,
+Los perfiles de 1200 Bd ejecutan **hasta seis demoduladores en paralelo**
+(``MODEM_RX_MAX_DEMODULATORS = 6``). Un demodulador es un comparador sobre la
+salida de un correlador (un prefiltro pasabanda y los correladores de marca y
+espacio que lo siguen): o bien cada uno tiene su propio prefiltro, con distinta
+inclinación entre los tonos, o bien varios comparadores comparten un prefiltro y
+se diferencian en el peso que dan al tono de espacio. En ambos casos el juego
+cubre un rango de desbalance de tonos mayor que cualquier demodulador por
+separado; entrega la trama el primero que la completa y las copias se descartan
+comparando el FCS. El juego de demoduladores, la banda del prefiltro, el umbral de recepción,
 un pasa-altos para CTCSS, el control de ganancia y una reparación opcional de
 bits del FCS son ajustes de ejecución (``modem_config_t.rx``, ver
 :ref:`es-radiomodem`).

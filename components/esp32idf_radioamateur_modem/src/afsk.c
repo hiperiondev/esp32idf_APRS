@@ -408,32 +408,54 @@ static void hold_flush(int len) {
 
 // Anti-alias FIR for the MODEM_ADC_SAMPLERATE -> 9600 Hz decimation.
 //
-// The cutoff is fixed by the job: 4800 Hz, the 9600 Hz Nyquist. The LENGTH is
-// not - it is set by the ratio, because the cutoff is what matters in NORMALISED
-// terms and that halves when the input rate doubles. The 8-tap set below was cut
-// for 38400 -> 9600 (4:1, normalised cutoff 0.125). Reusing it at 76800 -> 9600
-// (8:1, normalised 0.0625) does not filter, it just picks every eighth output of
-// a filter that is now twice too wide, and the AFSK profiles alias into
-// unintelligibility - verified on the host, 48 % BER.
+// What sets the requirement is where the out-of-band noise lands after the
+// decimation, not the 4800 Hz Nyquist frequency. At 9600 Hz everything
+// between 7000 and 12200 Hz folds straight onto the 900-2600 Hz band the
+// demodulators work in - 7400 Hz onto the 2200 Hz space tone, 8400 Hz onto the
+// 1200 Hz mark tone - and the demodulators' own band-pass runs after the
+// decimation, so it cannot tell the folded noise from signal. A discriminator
+// output makes this the dominant noise term: FM noise density rises with the
+// square of the frequency, so the 7-12 kHz region carries far more noise than
+// the tone band does.
 //
-// So the taps follow the ratio. Both sets are Hamming-windowed sincs at 4800 Hz
-// and both are host-verified to give 0 bit errors on Bell202, V.23 and AFSK300.
+// The filter is therefore a Blackman-windowed sinc with its cutoff at 3500 Hz,
+// normalized to unity gain at DC: -0.5 dB at 1200 Hz, -1.8 dB at 2200 Hz,
+// -2.7 dB at 2600 Hz, and at least 44 dB of rejection from 7000 Hz upwards
+// (54 dB at 7400 Hz). A band-pass after the decimation removes what remains
+// between 2600 and 4800 Hz; the 1.4 dB of tilt between the two tones is well
+// inside what the demodulator set absorbs.
+//
+// The rejection depends on the length of the filter in samples, which is why
+// every ratio has its own set: at 76800 Hz it takes 48 taps, at 38400 Hz the
+// same response needs 24. Host simulation of the whole receive chain with
+// discriminator noise puts the decoder within the frame-count scatter of
+// Direwolf's multi-slicer demodulator down to 6 dB of in-band SNR with the
+// 48-tap set, where an 8:1 filter with 10 dB of rejection at 7400 Hz already
+// fails at 9 dB.
+//
+// Only every MODEM_RESAMPLE_RATIO-th output is computed, so the cost is
+// FILTER_TAPS multiplies per 9600 Hz output sample.
 #if MODEM_RESAMPLE_RATIO == 8
-#define FILTER_TAPS 16
+#define FILTER_TAPS 48
 static const float resample_coeffs[FILTER_TAPS] = {
-    0.000813f, 0.004002f, 0.013722f, 0.033895f, 0.064417f, 0.100105f, 0.132060f, 0.150986f,
-    0.150986f, 0.132060f, 0.100105f, 0.064417f, 0.033895f, 0.013722f, 0.004002f, 0.000813f,
+    0.000000000f,  0.000003683f,  -0.000012507f, -0.000096507f, -0.000300537f, -0.000670188f, -0.001227254f, -0.001947246f, -0.002735303f, -0.003406689f,
+    -0.003679415f, -0.003185913f, -0.001507891f, 0.001766157f,  0.006966981f,  0.014265589f,  0.023604266f,  0.034653204f,  0.046805534f,  0.059217534f,
+    0.070892558f,  0.080798540f,  0.088001577f,  0.091793827f,  0.091793827f,  0.088001577f,  0.080798540f,  0.070892558f,  0.059217534f,  0.046805534f,
+    0.034653204f,  0.023604266f,  0.014265589f,  0.006966981f,  0.001766157f,  -0.001507891f, -0.003185913f, -0.003679415f, -0.003406689f, -0.002735303f,
+    -0.001947246f, -0.001227254f, -0.000670188f, -0.000300537f, -0.000096507f, -0.000012507f, 0.000003683f,  0.000000000f,
 };
 #elif MODEM_RESAMPLE_RATIO == 4
-#define FILTER_TAPS 8
+#define FILTER_TAPS 24
 static const float resample_coeffs[FILTER_TAPS] = {
-    0.003560f, 0.038084f, 0.161032f, 0.297324f, 0.297324f, 0.161032f, 0.038084f, 0.003560f,
+    0.000000000f, -0.000056586f, -0.000751303f, -0.002751272f, -0.005664650f, -0.006679907f, -0.000180160f, 0.020181109f,
+    0.057093324f, 0.105480602f,  0.152206614f,  0.181122228f,  0.181122228f,  0.152206614f,  0.105480602f,  0.057093324f,
+    0.020181109f, -0.000180160f, -0.006679907f, -0.005664650f, -0.002751272f, -0.000751303f, -0.000056586f, 0.000000000f,
 };
 #elif MODEM_RESAMPLE_RATIO == 1
 #define FILTER_TAPS 1
 static const float resample_coeffs[FILTER_TAPS] = { 1.0f };
 #else
-#error "No decimation FIR for this MODEM_RESAMPLE_RATIO. Cut one at 4800 Hz for the new ratio; do not reuse a filter designed for a different one."
+#error "No decimation FIR for this MODEM_RESAMPLE_RATIO. Design one with at least 40 dB of rejection from 7000 Hz upwards at the new input rate."
 #endif
 
 #if FILTER_TAPS > 1
@@ -442,6 +464,11 @@ static const float resample_coeffs[FILTER_TAPS] = { 1.0f };
 // zeros at the join. A decimator fed block-by-block must carry this
 // history between calls.
 static float s_resampleTail[FILTER_TAPS - 1];
+
+// Staging area for the two history runs resample_audio() reads (see below).
+// Static rather than automatic: at 48 taps it is 376 bytes, which the receive
+// task's stack does not need to carry.
+static float s_resampleHist[2 * (FILTER_TAPS - 1)];
 #endif
 
 // The decimator filters buf[] into the front of buf[] itself: output i lands in
@@ -457,23 +484,23 @@ static float s_resampleTail[FILTER_TAPS - 1];
 // 2i > 2r, so r > 2r - (FILTER_TAPS - 1), i.e. r < FILTER_TAPS - 1 - which
 // contradicts the assumption. So every read that CAN land on an already-written
 // slot lies below index FILTER_TAPS - 1, and there are at most FILTER_TAPS - 1
-// of them: at ratio 8 they are the reads of buf[0] and buf[1] taken while
-// computing outputs 1 and 2.
+// of them, whatever the filter length.
 //
 // The filter therefore needs two short runs of history and no full-block copy:
 // the previous block's tail (s_resampleTail) and this block's own leading
-// FILTER_TAPS - 1 samples. They are staged together in hist[] so that the tap
-// index k walks the conceptual [ previous tail ][ this block ] sequence with a
-// single bound test; everything from index FILTER_TAPS - 1 upwards is read
-// straight out of buf[], still raw.
+// FILTER_TAPS - 1 samples. They are staged together in s_resampleHist[] so that
+// the tap index k walks the conceptual [ previous tail ][ this block ] sequence
+// with a single bound test; everything from index FILTER_TAPS - 1 upwards is
+// read straight out of buf[], still raw.
 _Static_assert(MODEM_RESAMPLE_RATIO >= 2 || FILTER_TAPS == 1,
                "In-place decimation needs MODEM_RESAMPLE_RATIO >= 2: at ratio 1 a multi-tap filter reads its own output.");
 _Static_assert(MODEM_BLOCK_SIZE >= 2 * (FILTER_TAPS - 1), "MODEM_BLOCK_SIZE must hold the leading and trailing history runs without them overlapping.");
+_Static_assert((MODEM_BLOCK_SIZE % MODEM_RESAMPLE_RATIO) == 0, "MODEM_BLOCK_SIZE must be a whole number of decimated samples.");
 
 static void resample_audio(float *buf) {
 #if FILTER_TAPS > 1
     // [ previous block's tail ][ this block's first FILTER_TAPS - 1 samples ]
-    float hist[2 * (FILTER_TAPS - 1)];
+    float *hist = s_resampleHist;
     memcpy(hist, s_resampleTail, sizeof(s_resampleTail));
     memcpy(hist + (FILTER_TAPS - 1), buf, (FILTER_TAPS - 1) * sizeof(float));
 
@@ -487,17 +514,19 @@ static void resample_audio(float *buf) {
 
     for (int i = 0; i < MODEM_BLOCK_SIZE / MODEM_RESAMPLE_RATIO; i++) {
         float sum = 0;
-        for (int j = 0; j < FILTER_TAPS; j++) {
 #if FILTER_TAPS > 1
-            // k indexes the conceptual [ tail ][ block ] sequence; hist[] holds
-            // its first 2 * (FILTER_TAPS - 1) entries.
-            int k = i * MODEM_RESAMPLE_RATIO + j;
-            float in = (k < 2 * (FILTER_TAPS - 1)) ? hist[k] : buf[k - (FILTER_TAPS - 1)];
+        // k indexes the conceptual [ tail ][ block ] sequence; hist[] holds
+        // its first 2 * (FILTER_TAPS - 1) entries.
+        const int k0 = i * MODEM_RESAMPLE_RATIO;
+        int j = 0;
+        for (; (j < FILTER_TAPS) && (k0 + j < 2 * (FILTER_TAPS - 1)); j++)
+            sum += hist[k0 + j] * resample_coeffs[j];
+        const float *in = &buf[k0 - (FILTER_TAPS - 1)];
+        for (; j < FILTER_TAPS; j++)
+            sum += in[j] * resample_coeffs[j];
 #else
-            float in = buf[i * MODEM_RESAMPLE_RATIO + j]; // MODEM_RESAMPLE_RATIO == 1, reads and writes the same slot
+        sum = buf[i] * resample_coeffs[0]; // MODEM_RESAMPLE_RATIO == 1, reads and writes the same slot
 #endif
-            sum += in * resample_coeffs[j];
-        }
         buf[i] = sum;
     }
 }
@@ -1294,8 +1323,9 @@ void AFSK_Poll(void) {
         // what N9600 and the lpf9600 coefficients in modem.c are cut for.
         //
         // The anti-alias filter and the high-pass are skipped with it,
-        // deliberately: the decimator's 4800 Hz cutoff is G3RUH's own
-        // bandwidth, and a baseband NRZ signal carries energy down to DC.
+        // deliberately: the decimator's 3500 Hz cutoff sits well inside
+        // G3RUH's own bandwidth, and a baseband NRZ signal carries energy
+        // down to DC.
         //
         // The decimator and the high-pass run on every block, gate open or
         // not, so their history is current whenever the gate opens.

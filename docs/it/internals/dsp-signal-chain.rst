@@ -26,13 +26,18 @@ La catena, fase per fase
        della soglia di ricezione
      - 76 800 Hz
      - ``afsk.c``
-   * - FIR di decimazione (rapporto **8:1**), passa-alto CTCSS opzionale, AGC o
+   * - FIR di decimazione (48 coefficienti, rapporto **8:1**), passa-alto
+       CTCSS opzionale, AGC o
        guadagno fisso, anello di trattenuta della soglia
      - → **9 600 Hz**
      - ``afsk.c``
-   * - per demodulatore (fino a tre): prefiltro passa-banda, correlatore
-       (mark/space), passa-basso, DPLL, decodifica NRZI, stima dello
+   * - per correlatore (fino a tre): prefiltro passa-banda, correlatori
+       mark/space, magnitudini dei toni, passa-basso, stima dello
        sbilanciamento dei toni
+     - 9 600 Hz
+     - ``modem.c``
+   * - per demodulatore (fino a sei): comparatore sulle magnitudini di un
+       correlatore, DCD, DPLL, decodifica NRZI
      - 9 600 Hz
      - ``modem.c``
    * - de-framing HDLC, de-stuffing di bit, controllo FCS (riparazione dei bit
@@ -68,23 +73,36 @@ gruppo *Demodulatore di ricezione* di :ref:`it-radiomodem`) ed è applicato da
 ``afskSetModem()`` con il task di ricezione fermo, quindi nessun blocco viene
 mai elaborato da una catena costruita a metà.
 
-**Più demodulatori, ognuno con un prefiltro inclinato.**
-   La decisione del correlatore è ``(|LoI|+|LoQ|) − (|HiI|+|HiQ|)``: uno
-   sbilanciamento dei toni la distorce. In aria tale sbilanciamento va da nulla
-   (un trasmettitore con porta dati piatta su un'uscita discriminatore) a
-   5–12 dB a favore del tono di spazio (un trasmettitore con preenfasi su
-   un'uscita discriminatore), e un'uscita altoparlante sposta entrambi della
-   deenfasi del ricevitore. Un singolo correlatore fallisce quando lo
-   sbilanciamento totale — quello del segnale più l'inclinazione del prefiltro —
-   supera circa ±12 dB, quindi i profili a 1200 Bd eseguono fino a tre
-   demodulatori i cui prefiltri passa-banda hanno inclinazioni diverse. I
-   prefiltri vengono progettati in ``ModemInit()`` (campionamento in frequenza,
-   finestra di Hamming, fase lineare, picco della banda passante scalato
-   all'unità perché i percorsi int16 e int32 restino nei limiti) a partire dai
-   bordi di banda, dalla lunghezza e dall'inclinazione; l'inclinazione che
-   raggiungono davvero, misurata sui coefficienti, viene scritta nel log e usata
-   dalla stima dello sbilanciamento. Il set classico conserva le tabelle fisse a
-   8 coefficienti.
+**Correlatori e comparatori.**
+   Ogni correlatore misura la magnitudine vera ``sqrt(I² + Q²)`` del tono mark
+   e di quello space; ``|I| + |Q|`` oscillerebbe tra 1 e 1,41 volte quel valore
+   secondo la fase del tono, cioè 3 dB di rumore sulla decisione. Un
+   comparatore confronta poi la magnitudine del mark con quella dello space
+   moltiplicata per il proprio peso. In aria lo sbilanciamento tra i toni va da
+   nullo (trasmettitore piatto su porta dati verso un'uscita discriminatore) a
+   5-12 dB a favore del tono space (trasmettitore con pre-enfasi verso
+   un'uscita discriminatore), e un'uscita altoparlante sposta entrambi per la
+   deenfasi del ricevitore: una singola decisione senza peso fallisce oltre
+   circa ±12 dB di sbilanciamento.
+
+   Le due metà lo compensano. I prefiltri vengono progettati in ``ModemInit()``
+   (campionamento in frequenza, finestra di Hamming, fase lineare, picco della
+   banda passante scalato all'unità perché i percorsi int16 e int32 restino nei
+   limiti) a partire dai bordi di banda, dalla lunghezza e da una
+   *inclinazione*; l'inclinazione che raggiungono davvero, misurata sui
+   coefficienti, viene scritta nel log e usata dalla stima dello
+   sbilanciamento. Il peso del comparatore è esatto e quasi gratuito, perché il
+   passa-basso dopo la rivelazione è lineare e può quindi lavorare sulle due
+   magnitudini prima di pesarle: più comparatori condividono un correlatore al
+   prezzo di una moltiplicazione e una sottrazione ciascuno. Quello che un
+   comparatore non può fare è tenere un tono space forte fuori dal correlatore
+   del mark: il correlatore dura un simbolo, quindi la sua risposta è
+   abbastanza larga perché l'altro tono entri, e solo un filtro a monte lo
+   toglie. Per questo il set predefinito ``MODEM_RX_EQ_MULTISLICE`` unisce due
+   prefiltri (inclinazioni 0 e −5 dB con audio piatto) a tre comparatori
+   ciascuno e copre da +3 a −12 dB di compensazione; i set di filtri danno a
+   ogni demodulatore il proprio prefiltro e un comparatore senza peso, e il set
+   classico conserva le tabelle fisse a 8 coefficienti.
 
 **Soppressione dei duplicati e statistiche.**
    Una trama con FCS valido apre una finestra di 32 periodi di bit × il numero
@@ -192,7 +210,7 @@ Perché i numeri sono quelli che sono
    con qualunque rapporto ≥ 2 il puntatore di scrittura resta dietro alla
    finestra di lettura tranne che nelle prime ``FILTER_TAPS − 1`` posizioni.
    Quei pochi campioni iniziali, insieme alla coda del blocco precedente, sono
-   preparati in un breve array di stack prima che il ciclo inizi; il resto del
+   preparati in un breve array statico prima che il ciclo inizi; il resto del
    blocco è letto grezzo da ``buf[]`` stesso. È tutta qui la ragione per cui il
    percorso di RX non tiene una seconda copia del blocco da 20 ms.
 
@@ -278,8 +296,9 @@ sovrascriverla.
      - 3
      - 1..3
    * - ``MODEM_RX_MAX_DEMODULATORS``
-     - 3
-     - demodulatori a 1200 Bd in parallelo, 3..8
+     - 6
+     - demodulatori (comparatori) a 1200 Bd in parallelo,
+       ``MODEM_RX_SLICER_COUNT``..8
    * - *(derivato)* ``MODEM_DEMOD_SAMPLERATE``
      - 9600
      - fisso

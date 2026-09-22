@@ -65,6 +65,14 @@ Otros archivos persistentes
        la más reciente. Los ajustes de la cuenta son las claves ``wl*`` de
        ``winlink.json``; aquí viven solo las respuestas, así que borrarlas nunca
        toca la configuración.
+   * - ``/storage/telegram_certificate.pem``
+     - El certificado raíz (PEM, hasta 8 KB) contra el que el transporte de
+       Telegram verifica el servidor de la API cuando no se compila con el
+       paquete de certificados de ESP-IDF. La ruta es el valor por defecto de
+       ``CONFIG_TELEGRAM_BOT_CERT_PATH``. A diferencia de los archivos
+       anteriores **no** se crea desde valores por defecto: el operador lo sube
+       desde la página Almacenamiento, y un archivo ausente o inválido lo
+       informa el diagnóstico de arranque del bot.
 
 Todos los almacenes usan el mismo escritor en flujo, cada uno bajo su propio
 mutex, cada uno con un ``setvbuf()`` explícito para evitar una asignación
@@ -73,8 +81,8 @@ perezosa de un búfer stdio grande a mitad de escritura. El búfer de
 cerrojo de escritura de todo el sistema de archivos impide que dos guardados se
 solapen.
 
-Cada uno de estos archivos se crea desde sus valores por defecto durante el
-arranque si no existe, así que un primer arranque deja un conjunto completo en
+Cada uno de estos archivos, salvo el certificado, se crea desde sus valores por
+defecto durante el arranque si no existe, así que un primer arranque deja un conjunto completo en
 flash sin que el operador visite una sola página.
 
 Reset de fábrica
@@ -84,7 +92,7 @@ Reset de fábrica
 ``app_config_factory_reset()``, que devuelve la configuración a
 ``app_config_set_defaults()`` y reescribe **todos** los archivos de sección. Por
 sí solo no elimina los archivos separados de telemetría/boletines/objitems/
-telegram — esos regeneran sus valores por defecto en el siguiente acceso si se
+telegram/winlink_mail — esos regeneran sus valores por defecto en el siguiente acceso si se
 borran desde la página Almacenamiento.
 
 Claves de la interconexión BrandMeister

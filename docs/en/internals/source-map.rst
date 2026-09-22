@@ -5,9 +5,9 @@ Source Map
 ==========
 
 A tour of the repository, so you know where to look. Sizes are approximate.
-First-party C totals ~75 k lines across ``main/`` + ``components/`` (excluding
-``managed_components/``), of which ~7.1 k is the modem component and ~22.6 k is
-the web admin.
+First-party C totals ~79 k lines across ``main/`` + ``components/`` (excluding
+``managed_components/``), of which ~8.6 k is the modem component and ~24 k is
+the web admin (~8.4 k of it the three translation tables).
 
 Repository layout
 =================
@@ -22,8 +22,13 @@ Repository layout
    ├── LICENSE                 ← GPL-3.0
    ├── schematics/             ← KiCad radio-interface schematic + PCB
    │
+   ├── audio_test/             ← host-side AFSK1200 receiver test bench (test_aprs_wavs.py, gen_test_wav.py) + trilingual README
+   ├── docs/                   ← this documentation (Sphinx, en/es/it trees + shared images)
+   ├── images/                 ← README and web-admin logos
+   │
    ├── main/                                   (the application)
    │   ├── main.c              ← app_main, Wi-Fi bring-up/reconnect, boot order
+   │   ├── Kconfig.projbuild   ← menuconfig "APRS heap instrumentation": heap/stack report period, per-heap breakdown, brackets, integrity sweep
    │   ├── app_config.c/.h     ← app_config_t, factory defaults, JSON load/save
    │   ├── storage.c           ← LittleFS mount/format/usage
    │   ├── aprs_service.c/.h   ← the glue: RX dispatch, TX helper, modem cfg, stats, loop test
@@ -58,10 +63,11 @@ Repository layout
    │   ├── esp32idf_radioamateur_modem/    (the soft-modem — the heart of the project)
    │   │   ├── esp32idf_radioamateur_modem.h  ← public API (config, RX callback, TX helpers)
    │   │   ├── include/…_config.h             ← ALL compile-time board/DSP constants
+   │   │   ├── src/esp32idf_radioamateur_modem.c ← public API implementation: lifecycle, live reconfigure, TNC2 TX path, RX callback, service task, transmitter time-out
    │   │   ├── src/afsk.c                      ← ADC DMA ingest, AGC, decimation FIR, DAC ISR, PTT
    │   │   ├── src/modem.c                     ← correlators, DPLL, tone tables, DCD, calibration
    │   │   ├── src/ax25.c                      ← HDLC framer, NRZI, bit-stuffing, AX.25 codec, TX queue
-   │   │   ├── src/fx25.c, lwfec/rs.c, gf.c    ← FX.25 Reed–Solomon FEC
+   │   │   ├── src/fx25.c, lwfec/rs.c/.h, lwfec/gf.c/.h ← FX.25 Reed–Solomon FEC
    │   │   └── src/crc_ccit.c                  ← FCS
    │   │
    │   ├── igate/          ← APRS-IS TCP client, login, filters, dedup, RF→INET / INET→RF
@@ -94,6 +100,9 @@ Repository layout
    │       ├── logcapture.c            ← on-demand esp_log_set_vprintf() mirror of the serial
    │       │                             console into an in-RAM ring → Logs page JSON (seq
    │       │                             poll), with an idle timeout
+   │       ├── include/                ← web_common.h, web_help.h, pages.h, logcapture.h,
+   │       │                             web_server.h, web_base64.h (Basic-auth decoder),
+   │       │                             web_logo.h (embedded PNG)
    │       ├── pages/*.c               ← one file per admin page
    │       └── translations/           ← translations.h + lang_en/es/it.h
    │

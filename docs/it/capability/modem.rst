@@ -44,11 +44,15 @@ possa convertire il valore salvato direttamente nell'enum:
      - 9600
      - —
 
-I profili a 1200 Bd eseguono **fino a tre demodulatori in parallelo**
-(``MODEM_RX_MAX_DEMODULATORS = 3``), ognuno dopo un prefiltro passa-banda con
-inclinazione diversa tra i toni di marca e di spazio, così il set copre uno
-sbilanciamento dei toni più ampio di ciascuno da solo; la trama la consegna il
-primo che la completa e le copie vengono scartate confrontando l'FCS. Il set di
+I profili a 1200 Bd eseguono **fino a sei demodulatori in parallelo**
+(``MODEM_RX_MAX_DEMODULATORS = 6``). Un demodulatore è un comparatore
+sull'uscita di un correlatore (un prefiltro passa-banda e i correlatori di marca
+e spazio che lo seguono): o ognuno ha il proprio prefiltro, con inclinazione
+diversa tra i toni, oppure più comparatori condividono un prefiltro e si
+distinguono per il peso dato al tono di spazio. In entrambi i casi il set copre
+uno sbilanciamento dei toni più ampio di qualsiasi demodulatore da solo; la
+trama la consegna il primo che la completa e le copie vengono scartate
+confrontando l'FCS. Il set di
 demodulatori, la banda del prefiltro, la soglia di ricezione, un passa-alto per
 il CTCSS, il controllo del guadagno e una riparazione opzionale dei bit dell'FCS
 sono impostazioni a runtime (``modem_config_t.rx``, vedi

@@ -30,11 +30,20 @@
  * @brief Maximum number of demodulators that can run in parallel.
  *
  * Each demodulator instance is configured in ModemInit(). Only the 1200 Bd
- * profiles run more than one: every instance gets its own band-pass
- * prefilter, with a different tilt between the mark and space tones, so the
- * set covers a wider range of received tone twist than any single one.
+ * profiles run more than one. A demodulator is a slicer on the output of a
+ * correlator (prefilter plus mark/space correlators): either every
+ * demodulator has its own correlator, whose prefilters differ in tilt between
+ * the mark and space tones, or several slicers share one correlator and differ
+ * in the weight they give the space tone. Either way the set covers a wider
+ * range of received tone twist than any single demodulator.
  */
 #define MODEM_MAX_DEMODULATOR_COUNT MODEM_RX_MAX_DEMODULATORS
+
+/**
+ * @brief Maximum number of correlators (prefilter plus mark/space
+ *        correlators) that can run in parallel.
+ */
+#define MODEM_MAX_CORRELATOR_COUNT MODEM_RX_MAX_PREFILTERS
 
 /**
  * @brief Runtime configuration of the demodulator.
@@ -80,7 +89,7 @@ float ModemGetBaudrate(void);
 /**
  * @brief Get how many demodulators are active for the current modem
  *        profile.
- * @return Number of active demodulators (1 or ::MODEM_MAX_DEMODULATOR_COUNT).
+ * @return Number of active demodulators, 1 .. ::MODEM_MAX_DEMODULATOR_COUNT.
  */
 uint8_t ModemGetDemodulatorCount(void);
 
@@ -110,10 +119,11 @@ float ModemGetFilterTiltDb(uint8_t modem);
 /**
  * @brief Estimate the tone twist of the signal a demodulator is receiving.
  *
- * Each demodulator tracks the correlator level of the mark tone while it
- * decides "mark" and of the space tone while it decides "space", averaged
- * over roughly the last eight symbols. Their ratio, with the demodulator's
- * own prefilter tilt removed, is the twist at the modem input. Called by the
+ * The correlator a demodulator reads tracks the magnitude of the mark tone
+ * while it is the stronger one and of the space tone while that one is,
+ * averaged over roughly the last eight symbols. Their ratio, with the
+ * correlator's prefilter tilt removed, is the twist at the modem input. The
+ * slicer weight does not enter the figure. Called by the
  * AX.25 layer when a frame completes, so the figure describes that frame.
  *
  * @param modem Index of the demodulator to query, 0 ..
@@ -122,6 +132,35 @@ float ModemGetFilterTiltDb(uint8_t modem);
  *         -30..+30; 0 when no estimate is available.
  */
 int8_t ModemGetTwistDb(uint8_t modem);
+
+/**
+ * @brief Get the weight a demodulator's slicer gives the space tone.
+ *
+ * The slicer decides "mark" while the mark tone magnitude exceeds the space
+ * tone magnitude multiplied by this weight. 0 dB is a plain comparison;
+ * a negative weight favours the mark tone and suits a signal whose space tone
+ * arrives louder, which is the same compensation a prefilter tilt of the same
+ * value gives.
+ *
+ * @param modem Index of the demodulator to query, 0 ..
+ *              ::MODEM_MAX_DEMODULATOR_COUNT - 1.
+ * @return Weight, in dB; 0 for an index outside the valid range and for the
+ *         G3RUH profile.
+ */
+float ModemGetSlicerWeightDb(uint8_t modem);
+
+/**
+ * @brief Get the correlator a demodulator reads.
+ *
+ * Demodulators with the same index share one prefilter and one pair of
+ * mark/space correlators, so they report the same prefilter tilt and twist.
+ *
+ * @param modem Index of the demodulator to query, 0 ..
+ *              ::MODEM_MAX_DEMODULATOR_COUNT - 1.
+ * @return Correlator index, 0 .. ::MODEM_MAX_CORRELATOR_COUNT - 1; 0 for an
+ *         index outside the valid range.
+ */
+uint8_t ModemGetCorrelatorIndex(uint8_t modem);
 
 /**
  * @brief Store the receive tuning the next ModemInit() builds the

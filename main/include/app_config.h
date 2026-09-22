@@ -1111,8 +1111,8 @@ typedef struct {
     bool audio_modem_en;     /**< Enable the audio ADC/DAC AFSK modem. */
     bool audio_lpf;          /**< Flat (discriminator) audio input. Set when the receive audio comes from a data/discriminator jack, which is unfiltered and
                                 carries no de-emphasis, and cleared when it comes from a speaker or headphone output, which is already de-emphasized. Selects
-                                the prefilter tilt table of the demodulator presets (see modem_rx_eq_preset_t) and, for the legacy set, which fixed
-                                prefilter demodulator 0 runs. Stored under the JSON key "audioLPF". */
+                                the prefilter tilt and slicer weight tables of the demodulator presets (see modem_rx_eq_preset_t) and, for the legacy
+                                set, which fixed prefilter demodulator 0 runs. Stored under the JSON key "audioLPF". */
     uint16_t preamble;       /**< TXDelay (preamble) length, ms. */
     uint8_t afsk_modem_type; /**< Audio AFSK modulation (::modem_mode_t: 0=AFSK300, 1=Bell202, 2=V.23, 3=G3RUH); used for both RX and TX. */
     uint8_t fx25_mode;       /**< FX.25 mode: 0=off, 1=RX only, 2=RX+TX. */

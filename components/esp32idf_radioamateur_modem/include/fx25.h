@@ -57,6 +57,11 @@ struct Fx25Mode {
 extern const struct Fx25Mode Fx25ModeList[11];
 
 /**
+ * @brief Length, in bytes, of an FX.25 correlation tag.
+ */
+#define FX25_TAG_LEN 8
+
+/**
  * @brief Look up an FX.25 mode by its correlation tag.
  * @param tag Correlation tag read from the air.
  * @return Pointer to the matching mode, or NULL if no mode matches.

@@ -189,9 +189,10 @@ esp_err_t page_radio_get(httpd_req_t *req) {
         web_select_option(req, MODEM_RX_EQ_SINGLE, TR_F_RX_EQ_SINGLE, t->eq_preset == MODEM_RX_EQ_SINGLE);
         web_select_option(req, MODEM_RX_EQ_DIVERSITY2, TR_F_RX_EQ_DIV2, t->eq_preset == MODEM_RX_EQ_DIVERSITY2);
         web_select_option(req, MODEM_RX_EQ_DIVERSITY3, TR_F_RX_EQ_DIV3, t->eq_preset == MODEM_RX_EQ_DIVERSITY3);
+        web_select_option(req, MODEM_RX_EQ_MULTISLICE, TR_F_RX_EQ_MULTI, t->eq_preset == MODEM_RX_EQ_MULTISLICE);
         web_select_option(req, MODEM_RX_EQ_CUSTOM, TR_F_RX_EQ_CUSTOM, t->eq_preset == MODEM_RX_EQ_CUSTOM);
         web_select_close(req);
-        web_field_int(req, TR_F_RX_EQ_COUNT, "rxEqCount", t->custom_count, 1, MODEM_RX_MAX_DEMODULATORS);
+        web_field_int(req, TR_F_RX_EQ_COUNT, "rxEqCount", t->custom_count, 1, MODEM_RX_MAX_PREFILTERS);
         web_field_int(req, TR_F_RX_TILT_1, "rxTilt0", t->custom_tilt_db[0], MODEM_RX_TILT_DB_MIN, MODEM_RX_TILT_DB_MAX);
         web_field_int(req, TR_F_RX_TILT_2, "rxTilt1", t->custom_tilt_db[1], MODEM_RX_TILT_DB_MIN, MODEM_RX_TILT_DB_MAX);
         web_field_int(req, TR_F_RX_TILT_3, "rxTilt2", t->custom_tilt_db[2], MODEM_RX_TILT_DB_MIN, MODEM_RX_TILT_DB_MAX);
@@ -393,9 +394,9 @@ esp_err_t page_radio_level_post(httpd_req_t *req) {
 
     // Sized for the widest reading the object can hold - every field is a
     // number of known width plus the fixed keys, the receive statistics being
-    // up to eleven 10-digit counters - with room for the failure form, which
-    // is shorter.
-    char result[640];
+    // five fixed counters plus two arrays of up to MODEM_RX_MAX_DEMODULATORS
+    // 10-digit entries - with room for the failure form, which is shorter.
+    char result[768];
     aprs_rx_level_sample(result, sizeof(result));
     httpd_resp_sendstr(req, result);
     return ESP_OK;
@@ -495,7 +496,7 @@ esp_err_t page_radio_post(httpd_req_t *req) {
         modem_rx_tuning_t t = g_config.rx_tuning;
         t.eq_preset = (modem_rx_eq_preset_t)web_form_get_int(body, "rxEqPreset", t.eq_preset);
         t.custom_count = (uint8_t)web_form_get_int(body, "rxEqCount", t.custom_count);
-        for (int i = 0; i < 3; i++) { // the form carries three tilt fields
+        for (int i = 0; i < MODEM_RX_MAX_PREFILTERS; i++) { // one tilt field per prefilter the Custom set can design
             char key[8];
             snprintf(key, sizeof(key), "rxTilt%d", i);
             int v = web_form_get_int(body, key, t.custom_tilt_db[i]);

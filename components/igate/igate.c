@@ -819,7 +819,7 @@ int igateProcess(ax25_msg_t *packet) {
     // modem's own allowNonAprs RX setting let through to get here: that
     // setting only controls local RX/monitor handling and must never leak
     // non-APRS traffic onto APRS-IS.
-    if (packet->ctrl != AX25_CTRL_UI || packet->pid != AX25_PID_NOLAYER3) {
+    if (!AX25_CTRL_IS_UI(packet->ctrl) || packet->pid != AX25_PID_NOLAYER3) {
         s_stats.dropByReason[DROP_NOT_APRS]++;
         return 0;
     }

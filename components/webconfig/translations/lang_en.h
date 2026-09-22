@@ -232,6 +232,8 @@
 #define TR_F_RX_EQ_DIV2 "2 filters"
 /** Form label for the "3 filters" field or fieldset, rendered on the configuration forms. */
 #define TR_F_RX_EQ_DIV3 "3 filters"
+/** Form label for the "Multi-slicer (recommended)" field or fieldset, rendered on the configuration forms. */
+#define TR_F_RX_EQ_MULTI "Multi-slicer (recommended)"
 /** Form label for the "Custom" field or fieldset, rendered on the configuration forms. */
 #define TR_F_RX_EQ_CUSTOM "Custom"
 /** Form label for the "Custom: demodulators" field or fieldset, rendered on the configuration forms. */
@@ -2115,8 +2117,8 @@
     "time-out off. Useful settings sit well above the longest frame this station sends."
 /** Contextual help for the "Demodulator set" option. */
 #define TR_H_F_RX_EQ_PRESET                                                                                                                                    \
-    "Demodulators run on the same audio, each behind a band-pass tilted differently between the 1200 and 2200 Hz tones, to cover the tone twist "              \
-    "of different stations. More filters decode more; Legacy runs a fixed pair of filters."
+    "Demodulators run on the same audio and differ in how they compensate the tone twist of each station. Multi-slicer pairs two band-passes with "            \
+    "six decision thresholds and covers the widest range; the filter sets run one band-pass per demodulator; Legacy runs a fixed pair of filters."
 /** Contextual help for the "Custom: demodulators" option. */
 #define TR_H_F_RX_EQ_COUNT "Number of demodulators the Custom set runs, 1 to 3. Each uses the tilt entered below for it."
 /** Contextual help for the "Custom: tilt" option. */

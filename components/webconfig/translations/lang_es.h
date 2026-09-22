@@ -245,6 +245,8 @@
 #define TR_F_RX_EQ_DIV2 "2 filtros"
 /** Spanish text for the form label for the "3 filters" field or fieldset, rendered on the configuration forms. */
 #define TR_F_RX_EQ_DIV3 "3 filtros"
+/** Spanish text for the form label for the "Multi-slicer (recommended)" field or fieldset, rendered on the configuration forms. */
+#define TR_F_RX_EQ_MULTI "Multicomparador (recomendado)"
 /** Spanish text for the form label for the "Custom" field or fieldset, rendered on the configuration forms. */
 #define TR_F_RX_EQ_CUSTOM "Personalizado"
 /** Spanish text for the form label for the "Custom: demodulators" field or fieldset, rendered on the configuration forms. */
@@ -2211,8 +2213,8 @@
     "el límite. Los valores útiles quedan muy por encima de la trama más larga que envía esta estación."
 /** Spanish text of the contextual help for the "Demodulator set" option. */
 #define TR_H_F_RX_EQ_PRESET                                                                                                                                    \
-    "Los demoduladores trabajan sobre el mismo audio, cada uno tras un pasabanda con distinta inclinación entre 1200 y 2200 Hz, para cubrir el "               \
-    "desbalance de tonos de cada estación. Más filtros decodifican más."
+    "Los demoduladores trabajan sobre el mismo audio y se diferencian en cómo compensan el desbalance de tonos de cada estación. El multicomparador "          \
+    "combina dos pasabanda con seis umbrales de decisión y cubre el rango más amplio; los juegos de filtros usan un pasabanda por demodulador."
 /** Spanish text of the contextual help for the "Custom: demodulators" option. */
 #define TR_H_F_RX_EQ_COUNT "Cantidad de demoduladores del juego Personalizado, de 1 a 3. Cada uno usa la inclinación indicada abajo."
 /** Spanish text of the contextual help for the "Custom: tilt" option. */

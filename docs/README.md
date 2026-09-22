@@ -16,14 +16,21 @@ esp32_APRS_igate/
     ├── en/                  English source tree (conf.py + .rst + _static/)
     ├── es/                  Spanish source tree (conf.py + .rst + _static/)
     ├── it/                  Italian source tree (conf.py + .rst + _static/)
+    ├── schematics/          radio-interface schematics (TX, RX, PTT) shared by the
+    │                        three hardware.rst pages through ../schematics/
+    ├── dataflow/, tuning/   master copies of the per-language data-flow and tuning
+    │                        figures (each tree embeds its own copy from _static/)
+    ├── _static/             master copies of custom.css and logo.png (not read by Sphinx)
     ├── requirements.txt     Sphinx + Breeze theme pins
     └── build_all.py         builds all three trees into ./_site
 ```
-
 Each language tree carries its own `_static/` (identical copies of `custom.css`,
-`logo.png` and `welcome_logo.png`) since each is an independent Sphinx project
-and Sphinx only looks up `html_static_path` inside its own source tree — there
-is no shared top-level `_static/` folder. `logo.png` is the small top-bar brand
+`logo.png` and `welcome_logo.png`, plus that language's `dataflow/` and `tuning/`
+figures) since each is an independent Sphinx project and Sphinx only looks up
+`html_static_path` inside its own source tree. The top-level `docs/_static/`,
+`docs/dataflow/` and `docs/tuning/` folders are only the master copies those
+trees are refreshed from; no build reads them, so an edited image or stylesheet
+must be copied into each language's `_static/` to take effect. `logo.png` is the small top-bar brand
 logo (set via `light_logo`/`dark_logo` in `_shared/conf_base.py`);
 `welcome_logo.png` is the larger centered image at the top of each language's
 Welcome page (`index.rst`). The two are independent by design.
@@ -55,10 +62,17 @@ cd en && python -m sphinx -b html . _build   # then open _build/index.html
 
 ## Publish on Read the Docs
 
-The included `.readthedocs.yaml` builds the English tree as the primary Sphinx
-project, then adds the Spanish and Italian trees and the landing page in a
-`post_build` job — reproducing the sibling layout the switcher needs. No
-dashboard configuration is required beyond importing the repository.
+The included `.readthedocs.yaml` points its `sphinx:` block at the English tree
+only to satisfy Read the Docs. Its `post_build` job then wipes that output and
+rebuilds all three trees into sibling `en/`, `es/` and `it/` folders, placing
+the landing page at the root — reproducing the sibling layout the switcher
+needs, exactly like `build_all.py`. No dashboard configuration is required
+beyond importing the repository.
+
+Both `build_all.py` and the Read the Docs job run Sphinx with `-W`, so any
+warning (a broken cross-reference, a missing image, a malformed table) fails
+the build. Run `python build_all.py` locally before pushing a documentation
+change.
 
 ## Requirements
 

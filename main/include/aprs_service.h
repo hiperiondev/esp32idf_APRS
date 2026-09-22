@@ -495,8 +495,8 @@ bool aprs_loop_test_run(char *msg, size_t msg_len);
  * The reported object carries @c ok, @c mVrms, @c peak_mVrms, @c dc_mV,
  * @c agc, @c raw_min, @c raw_max, @c dcd and @c adc_samples, followed by the
  * receive statistics of modem_get_rx_stats(): @c demods (active
- * demodulators), @c decoded and @c unique (three-element arrays, one entry per
- * demodulator), @c delivered, @c repaired, @c fifo_drops and @c pool_ovf.
+ * demodulators), @c decoded and @c unique (arrays of @c demods entries, one
+ * per demodulator), @c delivered, @c repaired, @c fifo_drops and @c pool_ovf.
  * Every value is produced locally, so nothing received off the air is ever
  * echoed into it.
  *

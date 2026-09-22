@@ -647,20 +647,26 @@ parte. Un set di prefiltri con inclinazioni diverse lo copre nel complesso.
      - 2
      - 0, −5 dB
      - 0, +5 dB
-   * - 3 filtri (predefinito)
+   * - 3 filtri
      - 3
      - +4, 0, −5 dB
      - 0, +3, +6 dB
+   * - Multicomparatore (predefinito)
+     - 6
+     - prefiltri 0, −5 dB; pesi +3 … −12 dB
+     - prefiltri +5, 0 dB; pesi +6 … −6 dB
    * - Personalizzato
      - *Personalizzato: demodulatori*
      - campi *Personalizzato: inclinazione*
      - campi *Personalizzato: inclinazione*
 
-**Come scegliere.** Tenete **3 filtri** a meno che la CPU serva altrove. In
-una simulazione di un canale FM rumoroso il set a tre filtri ha decodificato
-circa 12 punti percentuali di trame in più della coppia classica in media su
-sbilanciamenti dei toni da −9 a +12 dB, e diverse volte di più a +12 dB, dove
-la coppia classica fallisce. Le statistiche di *LIVELLO RX* mostrano ciò che
+**Come scegliere.** Tenete **Multicomparatore**. Unisce due prefiltri a tre
+soglie di decisione ciascuno, quindi copre tutto l'intervallo di
+sbilanciamento senza progettare un prefiltro per demodulatore, e costa meno CPU
+del set a tre filtri pur eseguendo sei decodificatori HDLC. In una simulazione
+di un canale FM rumoroso ha pareggiato il set a tre filtri a sbilanciamenti
+moderati e ha decodificato circa un quarto di trame in più a +12 dB, dove
+la coppia classica fallisce del tutto. Le statistiche di *LIVELLO RX* mostrano ciò che
 ogni demodulatore apporta sul vostro canale: un demodulatore che non decodifica
 mai nulla che gli altri perdano può essere tolto, o ricevere un'altra
 inclinazione con *Personalizzato*.
@@ -800,9 +806,10 @@ Avvisa quando l'audio ricevuto esce dal fondo scala
 
 **Che cos'è.** Una diagnostica. Con essa attiva, il firmware registra un avviso
 ogni volta che i risultati di conversione grezzi raggiungono uno degli estremi
-del campo del convertitore (sotto il codice 15 o sopra il 4080, su 0–4095), al
+del campo del convertitore in un blocco elaborato (campione minimo pari o
+inferiore al codice 15, o massimo pari o superiore al 4080, su 0–4095), al
 massimo una volta ogni cinque secondi perché un problema persistente non inondi
-la console.
+la console. L'avviso riporta il minimo e il massimo grezzi del blocco.
 
 **Spenta per default**, perché su un'interfaccia costruita correttamente non
 dovrebbe mai scattare e il controllo non costa nulla quando è disabilitato.
@@ -1027,7 +1034,7 @@ punta a una parte diversa della catena:
    * - È arrivato un segnale reale, ma nessun demodulatore si è agganciato
      - Il tono arriva all'ADC ma il correlatore/PLL non riesce a interpretarlo.
        Verificate che *Modulazione* corrisponda a ciò che è stato trasmesso, e
-       provate il set di demodulatori a **3 filtri** — un loop diretto DAC-ADC
+       provate il set di demodulatori **Multicomparatore** — un loop diretto DAC-ADC
        non passa mai per la rete di deenfasi di una radio vera, quindi i suoi
        toni arrivano senza sbilanciamento. Il rapporto indica il numero di
        demodulatori e l'inclinazione di ogni prefiltro. Se il guadagno dell'AGC
@@ -1351,8 +1358,8 @@ Riferimento dei campi
      - 0 (disattivato)
      - Immediata
    * - Set di demodulatori
-     - Classico / 1 / 2 / 3 filtri / Personalizzato
-     - 3 filtri
+     - Classico / 1 / 2 / 3 filtri / Multicomparatore / Personalizzato
+     - Multicomparatore
      - Dal vivo
    * - Personalizzato: demodulatori
      - 1–3
@@ -1462,7 +1469,7 @@ Risoluzione dei problemi
        discriminatore** impostato al contrario. Eseguite **LIVELLO RX**.
    * - Alcune stazioni decodificano sempre, altre con segnale simile mai
      - Il loro sbilanciamento dei toni è fuori da ciò che copre il set di
-       demodulatori. Usate il set a **3 filtri**, o uno *Personalizzato* con
+       demodulatori. Usate il set **Multicomparatore**, o uno *Personalizzato* con
        inclinazioni più distanziate, e confrontate i valori per demodulatore in
        **LIVELLO RX**.
    * - Il primo pacchetto dopo un periodo di silenzio va spesso perso

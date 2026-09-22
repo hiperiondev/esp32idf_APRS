@@ -643,20 +643,26 @@ entre todos.
      - 2
      - 0, −5 dB
      - 0, +5 dB
-   * - 3 filtros (por omisión)
+   * - 3 filtros
      - 3
      - +4, 0, −5 dB
      - 0, +3, +6 dB
+   * - Multicomparador (por omisión)
+     - 6
+     - prefiltros 0, −5 dB; pesos +3 … −12 dB
+     - prefiltros +5, 0 dB; pesos +6 … −6 dB
    * - Personalizado
      - *Personalizado: demoduladores*
      - campos *Personalizado: inclinación*
      - campos *Personalizado: inclinación*
 
-**Cómo elegir.** Mantenga **3 filtros** salvo que la CPU haga falta para otra
-cosa. En una simulación de un canal FM ruidoso, el juego de tres filtros
-decodificó unos 12 puntos porcentuales más de tramas que la pareja clásica en
-promedio sobre desbalances de tono de −9 a +12 dB, y varias veces más a
-+12 dB, donde la pareja clásica falla. Las estadísticas de *NIVEL RX* muestran
+**Cómo elegir.** Mantenga **Multicomparador**. Combina dos prefiltros con tres
+umbrales de decisión cada uno, así cubre todo el rango de desbalance sin
+diseñar un prefiltro por demodulador, y cuesta menos CPU que el juego de tres
+filtros aunque corra seis decodificadores HDLC. En una simulación de un canal
+FM ruidoso igualó al juego de tres filtros con desbalances moderados y
+decodificó alrededor de un cuarto más de tramas a +12 dB, donde la pareja
+clásica falla del todo. Las estadísticas de *NIVEL RX* muestran
 lo que aporta cada demodulador en su propio canal: un demodulador que nunca
 decodifica nada que los otros pierdan puede quitarse, o recibir otra
 inclinación con *Personalizado*.
@@ -792,10 +798,11 @@ Avisar cuando el audio recibido se sale de rango
 -------------------------------------------------
 
 **Qué es.** Un diagnóstico. Con él activo, el firmware registra un aviso siempre
-que los resultados de conversión en bruto alcanzan alguno de los extremos del
-rango del conversor (por debajo del código 15 o por encima del 4080, sobre
-0–4095), como mucho una vez cada cinco segundos para que un problema sostenido
-no inunde la consola.
+que los resultados de conversión en bruto de un bloque procesado alcanzan
+alguno de los extremos del rango del conversor (muestra mínima en o por debajo
+del código 15, o máxima en o por encima del 4080, sobre 0–4095), como mucho una
+vez cada cinco segundos para que un problema sostenido no inunde la consola. El
+aviso cita el mínimo y el máximo en bruto del bloque.
 
 **Apagado por omisión**, porque en una interfaz bien construida no debería
 dispararse nunca y la comprobación no cuesta nada cuando está deshabilitada.
@@ -1021,7 +1028,7 @@ una parte distinta de la cadena:
    * - Llegó una señal real, pero ningún demodulador se enganchó
      - El tono llega al ADC pero el correlador/PLL no logra interpretarlo.
        Compruebe que *Modulación* coincide con lo transmitido y pruebe el juego
-       de demoduladores de **3 filtros** — un bucle directo DAC-a-ADC nunca pasa
+       de demoduladores **Multicomparador** — un bucle directo DAC-a-ADC nunca pasa
        por la red de deénfasis de una radio real, así que sus tonos llegan sin
        desbalance. El informe indica el número de demoduladores y la
        inclinación de cada prefiltro. Si la ganancia del AGC nunca subió por
@@ -1346,8 +1353,8 @@ Referencia de campos
      - 0 (desactivado)
      - En vivo
    * - Juego de demoduladores
-     - Clásico / 1 / 2 / 3 filtros / Personalizado
-     - 3 filtros
+     - Clásico / 1 / 2 / 3 filtros / Multicomparador / Personalizado
+     - Multicomparador
      - En vivo
    * - Personalizado: demoduladores
      - 1–3
@@ -1457,7 +1464,7 @@ Resolución de problemas
        discriminador** puesta al revés. Ejecute **NIVEL RX**.
    * - Algunas estaciones decodifican siempre y otras con señal parecida nunca
      - Su desbalance de tonos queda fuera de lo que cubre el juego de
-       demoduladores. Use el juego de **3 filtros**, o uno *Personalizado* con
+       demoduladores. Use el juego **Multicomparador**, o uno *Personalizado* con
        inclinaciones más separadas, y compare las cifras por demodulador en
        **NIVEL RX**.
    * - A menudo se pierde el primer paquete tras un rato de silencio

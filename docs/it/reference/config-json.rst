@@ -64,6 +64,14 @@ Altri file persistenti
        più recente. Le impostazioni dell'account sono le chiavi ``wl*`` di
        ``winlink.json``; qui vivono solo le risposte, quindi cancellarle non
        tocca mai la configurazione.
+   * - ``/storage/telegram_certificate.pem``
+     - Il certificato radice (PEM, fino a 8 KB) con cui il trasporto Telegram
+       verifica il server dell'API quando non è compilato con il bundle di
+       certificati di ESP-IDF. Il percorso è il valore predefinito di
+       ``CONFIG_TELEGRAM_BOT_CERT_PATH``. A differenza dei file precedenti
+       **non** viene creato dai predefiniti: l'operatore lo carica dalla pagina
+       Archivio, e un file mancante o non valido viene segnalato dalla diagnosi
+       di avvio del bot.
 
 Tutti gli archivi usano lo stesso scrittore in streaming, ciascuno sotto il
 proprio mutex, ciascuno con un ``setvbuf()`` esplicito per evitare
@@ -71,9 +79,9 @@ un'allocazione pigra di un grande buffer stdio a metà scrittura. Il buffer di
 ``setvbuf()`` è un unico oggetto statico condiviso da tutti, dato che il gate di
 scrittura dell'intero filesystem impedisce a due salvataggi di sovrapporsi.
 
-Ognuno di questi file viene creato dai suoi valori predefiniti durante l'avvio
-se non esiste, così un primo avvio lascia un insieme completo in flash senza che
-l'operatore visiti una sola pagina.
+Ognuno di questi file, tranne il certificato, viene creato dai suoi valori
+predefiniti durante l'avvio se non esiste, così un primo avvio lascia un insieme
+completo in flash senza che l'operatore visiti una sola pagina.
 
 Reset di fabbrica
 =================
@@ -81,7 +89,7 @@ Reset di fabbrica
 ``POST /default`` (il pulsante di *reset di fabbrica* nella pagina Sistema)
 chiama ``app_config_factory_reset()``, che riporta la configurazione a
 ``app_config_set_defaults()`` e riscrive **tutti** i file di sezione. Di per sé
-non rimuove i file separati di telemetria/bollettini/objitems/telegram — quelli
+non rimuove i file separati di telemetria/bollettini/objitems/telegram/winlink_mail — quelli
 rigenerano i predefiniti al prossimo accesso se cancellati dalla pagina
 Archivio.
 

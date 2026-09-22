@@ -44,11 +44,14 @@ saved value straight to the enum:
      - 9600
      - —
 
-The 1200 Bd profiles run **up to three demodulators in parallel**
-(``MODEM_RX_MAX_DEMODULATORS = 3``), each behind a band-pass prefilter with a
-different tilt between the mark and space tones, so the set covers a wider
-range of received tone twist than any single one; a frame is delivered by
-whichever completes it first and the copies are dropped by FCS comparison. The
+The 1200 Bd profiles run **up to six demodulators in parallel**
+(``MODEM_RX_MAX_DEMODULATORS = 6``). A demodulator is a slicer on the output of
+a correlator (a band-pass prefilter and the mark/space correlators behind it):
+either each one has its own prefilter, tilted differently between the mark and
+space tones, or several slicers share a prefilter and differ in the weight they
+give the space tone. Either way the set covers a wider range of received tone
+twist than any single demodulator; a frame is delivered by whichever completes
+it first and the copies are dropped by FCS comparison. The
 demodulator set, the prefilter band, the receive gate, a CTCSS high-pass, the
 gain control and an optional FCS bit repair are runtime settings
 (``modem_config_t.rx``, see :ref:`en-radiomodem`).

@@ -615,20 +615,25 @@ prefilters with different tilts covers it together.
      - 2
      - 0, −5 dB
      - 0, +5 dB
-   * - 3 filters (default)
+   * - 3 filters
      - 3
      - +4, 0, −5 dB
      - 0, +3, +6 dB
+   * - Multi-slicer (default)
+     - 6
+     - prefilters 0, −5 dB; slicer weights +3 … −12 dB
+     - prefilters +5, 0 dB; slicer weights +6 … −6 dB
    * - Custom
      - *Custom: demodulators*
      - *Custom: tilt* fields
      - *Custom: tilt* fields
 
-**How to choose.** Keep **3 filters** unless the CPU is needed elsewhere. In a
-host simulation of a noisy FM channel the three-filter set decoded about 12
-percentage points more frames than the legacy pair on average over tone twists
-from −9 to +12 dB, and several times more at +12 dB, where the legacy pair
-fails. The
+**How to choose.** Keep **Multi-slicer**. It pairs two prefilters with three
+decision thresholds each, so it covers the whole twist range without designing
+a prefilter per demodulator, and it costs less CPU than the three-filter set
+while running six HDLC decoders. In a host simulation of a noisy FM channel it
+matched the three-filter set at moderate twist and decoded about a quarter more
+frames at +12 dB, where the legacy pair fails altogether. The
 *RX LEVEL* statistics show what each demodulator contributes on your own
 channel: a demodulator that never decodes anything the others miss can be
 dropped, or given a different tilt with *Custom*.
@@ -754,9 +759,11 @@ Warn on receive over-range
 --------------------------
 
 **What it is.** A diagnostic. With it on, the firmware logs a warning whenever
-raw conversion results reach either end of the converter's range (below code 15
-or above code 4080 out of 0–4095), at most once every five seconds so a
-sustained problem cannot flood the console.
+the raw conversion results of a processed block reach either end of the
+converter's range (lowest sample at or below code 15, or highest at or above
+code 4080, out of 0–4095), at most once every five seconds so a sustained
+problem cannot flood the console. The warning quotes the block's raw minimum
+and maximum.
 
 **Off by default**, because on a correctly built interface it should never fire
 and the check costs nothing when disabled.
@@ -969,7 +976,7 @@ different part of the chain:
    * - A real signal arrived, but no demodulator ever locked
      - The tone is reaching the ADC but the correlator/PLL cannot make sense of
        it. Check that *Modulation* matches what was transmitted, and try the
-       **3 filters** demodulator set — a direct DAC-to-ADC loop never passes
+       **Multi-slicer** demodulator set — a direct DAC-to-ADC loop never passes
        through a real radio's de-emphasis network, so its tones arrive with no
        twist. The report lists the number of demodulators and the tilt of each
        prefilter. If the AGC gain never rose above unity, the problem is in the
@@ -1284,8 +1291,8 @@ Field reference
      - 0 (off)
      - Live
    * - Demodulator set
-     - Legacy / 1 / 2 / 3 filters / Custom
-     - 3 filters
+     - Legacy / 1 / 2 / 3 filters / Multi-slicer / Custom
+     - Multi-slicer
      - Live
    * - Custom: demodulators
      - 1–3
@@ -1392,7 +1399,7 @@ Troubleshooting
        backwards. Run **RX LEVEL**.
    * - Some stations always decode, others with a similar signal never do
      - Their tone twist is outside what the demodulator set covers. Use the
-       **3 filters** set, or a *Custom* set with a wider spread of tilts, and
+       **Multi-slicer** set, or a *Custom* set with a wider spread of tilts, and
        compare the per-demodulator figures in **RX LEVEL**.
    * - The first packet after a quiet period is often lost
      - The receive gate. Set **Receive gate** to 0 when the audio comes from a

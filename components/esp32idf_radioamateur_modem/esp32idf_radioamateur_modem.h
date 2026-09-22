@@ -97,13 +97,22 @@ typedef enum {
  * | SINGLE        | 0 dB                       | +3 dB                         |
  * | DIVERSITY2    | 0, -5 dB                   | 0, +5 dB                      |
  * | DIVERSITY3    | +4, 0, -5 dB               | 0, +3, +6 dB                  |
+ * | MULTISLICE    | 0 dB, weights +3 .. -12 dB | 0 dB, weights +9 .. -6 dB     |
  *
  * Tone twist on the air ranges well beyond what one prefilter can absorb:
  * a transmitter that pre-emphasizes its audio arrives on a discriminator
  * output with the space tone 5 to 12 dB louder than the mark tone, a flat
  * data-port transmitter arrives with no twist at all, and a speaker output
- * shifts both by the receiver's de-emphasis. Several prefilters with
- * different tilts cover that range together, which one prefilter cannot.
+ * shifts both by the receiver's de-emphasis. The SINGLE to CUSTOM presets
+ * cover that range with several prefilters of different tilt, each with its
+ * own correlator and demodulator. ::MODEM_RX_EQ_MULTISLICE covers it with one
+ * prefilter and one correlator read by ::MODEM_RX_SLICER_COUNT slicers, which
+ * compare the mark tone magnitude against the space tone magnitude weighted
+ * from +3 to -12 dB in 3 dB steps (flat input; 6 dB higher on speaker input).
+ * The weighting has the same effect on the decision as a prefilter tilt, but
+ * reaches the whole range, where a short prefilter realizes only part of the
+ * tilt it is asked for, and costs a fraction of the CPU time of separate
+ * correlators.
  */
 typedef enum {
     MODEM_RX_EQ_LEGACY = 0, /**< Two demodulators with the fixed 8-tap tables: a tilted or flat band-pass, depending on flat_audio, and an unfiltered one. */
@@ -111,6 +120,7 @@ typedef enum {
     MODEM_RX_EQ_DIVERSITY2 = 2, /**< Two demodulators with different prefilter tilts. */
     MODEM_RX_EQ_DIVERSITY3 = 3, /**< Three demodulators with different prefilter tilts. */
     MODEM_RX_EQ_CUSTOM = 4,     /**< custom_count demodulators with the tilts in custom_tilt_db[]. */
+    MODEM_RX_EQ_MULTISLICE = 5, /**< One prefilter and ::MODEM_RX_SLICER_COUNT slicers with space weights spread over the tone twist range. */
 } modem_rx_eq_preset_t;
 
 /**
@@ -128,11 +138,11 @@ typedef enum {
  * hardware: the demodulators are rebuilt while the receive task is held.
  */
 typedef struct {
-    modem_rx_eq_preset_t eq_preset;                   /**< Demodulator set for the 1200 Bd profiles. */
-    uint8_t custom_count;                             /**< Number of demodulators used by ::MODEM_RX_EQ_CUSTOM, 1..::MODEM_RX_MAX_DEMODULATORS. */
-    int8_t custom_tilt_db[MODEM_RX_MAX_DEMODULATORS]; /**< Prefilter tilt of each ::MODEM_RX_EQ_CUSTOM demodulator, dB (space gain minus mark gain). */
-    uint16_t bpf_lo_hz;                               /**< Lower band edge of the designed prefilters, Hz. */
-    uint16_t bpf_hi_hz;                               /**< Upper band edge of the designed prefilters, Hz. */
+    modem_rx_eq_preset_t eq_preset;                 /**< Demodulator set for the 1200 Bd profiles. */
+    uint8_t custom_count;                           /**< Number of demodulators used by ::MODEM_RX_EQ_CUSTOM, 1..::MODEM_RX_MAX_PREFILTERS. */
+    int8_t custom_tilt_db[MODEM_RX_MAX_PREFILTERS]; /**< Prefilter tilt of each ::MODEM_RX_EQ_CUSTOM demodulator, dB (space gain minus mark gain). */
+    uint16_t bpf_lo_hz;                             /**< Lower band edge of the designed prefilters, Hz. */
+    uint16_t bpf_hi_hz;                             /**< Upper band edge of the designed prefilters, Hz. */
     uint8_t bpf_taps; /**< Length of the designed prefilters, taps; forced odd so the filters stay linear phase. Short filters reach only part of the
                            requested tilt; ModemInit() logs the tilt each prefilter actually has. */
     uint16_t gate_mv; /**< Receive gate, mV RMS: the demodulators are fed only while the input exceeds this level (it closes again below half of it).
@@ -150,13 +160,13 @@ typedef struct {
 
 /**
  * @brief Build a ::modem_rx_tuning_t initializer with the default receive
- *        tuning: three demodulators, a 900-2600 Hz band, 21-tap prefilters,
- *        a 10 mV receive gate, no high-pass, automatic gain and no bit
- *        repair.
+ *        tuning: the multi-slicer demodulator set, a 900-2600 Hz band,
+ *        21-tap prefilters, a 10 mV receive gate, no high-pass, automatic
+ *        gain and no bit repair.
  */
 #define MODEM_RX_TUNING_DEFAULT()                                                                                                                              \
     {                                                                                                                                                          \
-        .eq_preset = MODEM_RX_EQ_DIVERSITY3,                                                                                                                   \
+        .eq_preset = MODEM_RX_EQ_MULTISLICE,                                                                                                                   \
         .custom_count = 3,                                                                                                                                     \
         .custom_tilt_db = { 4, 0, -5 },                                                                                                                        \
         .bpf_lo_hz = 900,                                                                                                                                      \

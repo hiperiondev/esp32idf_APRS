@@ -249,7 +249,10 @@ static uint32_t txLastUnkeyMillis = 0;
 
 struct RxState {
     uint16_t crc;
-    uint8_t frame[AX25_FRAME_MAX_SIZE];
+    // A frame is assembled here with its FCS still attached; the two FCS
+    // bytes are dropped once they have been checked, so the buffer is one
+    // whole frame plus the FCS long.
+    uint8_t frame[AX25_RX_FRAME_BUF_SIZE];
     uint16_t frameIdx;
     uint8_t receivedByte;
     uint8_t receivedBitIdx;
@@ -391,8 +394,11 @@ bool ax25_decode(uint8_t *buf, size_t len, uint16_t mVrms, ax25_msg_t *msg, enum
     if ((size_t)(end - buf) < AX25_CTRL_PID_LEN)
         return false; // address field consumed the frame, leaving no control and PID fields
 
+    // The Poll/Final bit is the sender's business and carries no meaning for
+    // the payload, so a UI frame is a UI frame with or without it. ctrl keeps
+    // the byte as received.
     msg->ctrl = *buf++;
-    if (msg->ctrl != AX25_CTRL_UI) {
+    if (!AX25_CTRL_IS_UI(msg->ctrl)) {
         if (reason)
             *reason = AX25_DECODE_NOT_UI; // well-formed frame, just not UI: legacy connected-mode AX.25 traffic on the channel
         return false;
@@ -618,9 +624,10 @@ endParseFx25Frame:
         // a frame with no path-end bit before the CRC has no valid
         // control/PID field to inspect and is treated as invalid
         //
-        // if non-APRS frames are not allowed, require control=0x03 and PID=0xF0
-        if (pathEndFound &&
-            (Ax25Config.allowNonAprs || ((rxBuffer[(pathEnd + 1) % FRAME_BUFFER_SIZE] == 0x03) && (rxBuffer[(pathEnd + 2) % FRAME_BUFFER_SIZE] == 0xF0)))) {
+        // if non-APRS frames are not allowed, require a UI control field
+        // (Poll/Final bit ignored) and the no-layer-3 PID
+        if (pathEndFound && (Ax25Config.allowNonAprs || (AX25_CTRL_IS_UI(rxBuffer[(pathEnd + 1) % FRAME_BUFFER_SIZE]) &&
+                                                         (rxBuffer[(pathEnd + 2) % FRAME_BUFFER_SIZE] == AX25_PID_NOLAYER3)))) {
             // The payload is already in rxBuffer at this point. Fill the handle,
             // and only then make it visible - the release store below is what
             // orders both against the consumer on the other core. The caller
@@ -891,7 +898,7 @@ static bool framePlausible(const uint8_t *f, uint16_t len) {
 
     if (addresses < 2 || (uint16_t)(idx + 2) > len)
         return false;
-    if (f[idx] != AX25_CTRL_UI || f[idx + 1] != AX25_PID_NOLAYER3)
+    if (!AX25_CTRL_IS_UI(f[idx]) || f[idx + 1] != AX25_PID_NOLAYER3)
         return false;
 
     for (uint16_t i = idx + 2; i < len; i++) {
@@ -1004,10 +1011,11 @@ static void rxFrameEnd(struct RxState *rx, uint8_t modem, uint16_t mV) {
     // a frame with no path-end bit before the CRC has no valid control/PID
     // field to inspect and is treated as invalid
     //
-    // if non-APRS frames are not allowed, require control=0x03 and PID=0xF0
+    // if non-APRS frames are not allowed, require a UI control field
+    // (Poll/Final bit ignored) and the no-layer-3 PID
     if (!pathEndFound || (uint16_t)(i + 2) >= rx->frameIdx)
         return;
-    if (!Ax25Config.allowNonAprs && ((rx->frame[i + 1] != 0x03) || (rx->frame[i + 2] != 0xF0)))
+    if (!Ax25Config.allowNonAprs && (!AX25_CTRL_IS_UI(rx->frame[i + 1]) || (rx->frame[i + 2] != AX25_PID_NOLAYER3)))
         return;
 
     rx->frameIdx -= 2; // remove CRC
@@ -1076,7 +1084,13 @@ void Ax25BitParse(uint8_t bit, uint8_t modem, uint16_t mV) {
     if (bit)
         rx->tag |= 0x8000000000000000ULL;
 
-    if (Ax25Config.fx25 && (rx->rx != RX_STAGE_FX25_FRAME) && (NULL != (rx->fx25Mode = (struct Fx25Mode *)Fx25GetModeForTag(rx->tag)))) {
+    // The correlation tag is sent right after the preamble flags, so a whole
+    // tag can only be in the shift register while at most its own eight bytes
+    // have been collected since the last flag. Further into a frame a match is
+    // payload that happens to sit within the tag's tolerance, and following it
+    // would abandon a frame that is being received correctly.
+    if (Ax25Config.fx25 && (rx->rx != RX_STAGE_FX25_FRAME) && (rx->frameIdx <= (FX25_TAG_LEN)) &&
+        (NULL != (rx->fx25Mode = (struct Fx25Mode *)Fx25GetModeForTag(rx->tag)))) {
         rx->rx = RX_STAGE_FX25_FRAME;
         rx->receivedByte = 0;
         rx->receivedBitIdx = 0;
@@ -1169,7 +1183,7 @@ void Ax25BitParse(uint8_t bit, uint8_t modem, uint16_t mV) {
 #else
         rx->rx = RX_STAGE_FRAME;
 #endif
-        if (rx->frameIdx >= AX25_FRAME_MAX_SIZE) { // frame too long
+        if (rx->frameIdx >= (uint16_t)sizeof(rx->frame)) { // frame too long
             rx->rx = RX_STAGE_IDLE;
             rx->receivedByte = 0;
             rx->receivedBitIdx = 0;
@@ -1889,7 +1903,7 @@ int hdlcFrame(uint8_t *outbuf, size_t outbuf_len, ax25_ctx_t *ctx, ax25_frame_t 
             break;
     }
 
-    ax25_putRaw(&info[idx++], ctx, AX25_CTRL_UI);      // 0x03 - APRS UI frame
+    ax25_putRaw(&info[idx++], ctx, AX25_CTRL_UI);      // APRS UI frame, Poll/Final bit clear
     ax25_putRaw(&info[idx++], ctx, AX25_PID_NOLAYER3); // 0xF0 - no layer 3
 
     for (i = 0; i < (int)strlen(pkg->data); i++) {

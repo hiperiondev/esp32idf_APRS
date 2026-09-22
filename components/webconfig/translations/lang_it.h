@@ -245,6 +245,8 @@
 #define TR_F_RX_EQ_DIV2 "2 filtri"
 /** Italian text for the form label for the "3 filters" field or fieldset, rendered on the configuration forms. */
 #define TR_F_RX_EQ_DIV3 "3 filtri"
+/** Italian text for the form label for the "Multi-slicer (recommended)" field or fieldset, rendered on the configuration forms. */
+#define TR_F_RX_EQ_MULTI "Multicomparatore (consigliato)"
 /** Italian text for the form label for the "Custom" field or fieldset, rendered on the configuration forms. */
 #define TR_F_RX_EQ_CUSTOM "Personalizzato"
 /** Italian text for the form label for the "Custom: demodulators" field or fieldset, rendered on the configuration forms. */
@@ -2215,8 +2217,8 @@
     "0 disattiva il limite. I valori utili stanno molto sopra il frame più lungo che questa stazione trasmette."
 /** Italian text of the contextual help for the "Demodulator set" option. */
 #define TR_H_F_RX_EQ_PRESET                                                                                                                                    \
-    "I demodulatori lavorano sullo stesso audio, ognuno dopo un passa-banda con inclinazione diversa tra 1200 e 2200 Hz, per coprire lo "                      \
-    "sbilanciamento dei toni delle stazioni. Più filtri decodificano di più."
+    "I demodulatori lavorano sullo stesso audio e si distinguono per come compensano lo sbilanciamento dei toni delle stazioni. Il multicomparatore "          \
+    "unisce due passa-banda e sei soglie di decisione e copre l'intervallo più ampio; i set di filtri usano un passa-banda per demodulatore."
 /** Italian text of the contextual help for the "Custom: demodulators" option. */
 #define TR_H_F_RX_EQ_COUNT "Numero di demodulatori del set Personalizzato, da 1 a 3. Ognuno usa l'inclinazione indicata sotto."
 /** Italian text of the contextual help for the "Custom: tilt" option. */

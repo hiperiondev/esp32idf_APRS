@@ -26,13 +26,18 @@ La cadena, etapa por etapa
        decisión del umbral de recepción
      - 76 800 Hz
      - ``afsk.c``
-   * - FIR de diezmado (ratio **8:1**), pasa-altos opcional de CTCSS, AGC o
+   * - FIR de diezmado (48 coeficientes, ratio **8:1**), pasa-altos opcional
+       de CTCSS, AGC o
        ganancia fija, anillo de retención del umbral
      - → **9 600 Hz**
      - ``afsk.c``
-   * - por demodulador (hasta tres): prefiltro pasabanda, correlador
-       (mark/space), paso-bajo, DPLL, decodificación NRZI, seguimiento del
+   * - por correlador (hasta tres): prefiltro pasabanda, correladores de
+       mark/space, magnitudes de los tonos, paso-bajo, seguimiento del
        desbalance de tonos
+     - 9 600 Hz
+     - ``modem.c``
+   * - por demodulador (hasta seis): comparador sobre las magnitudes de un
+       correlador, DCD, DPLL, decodificación NRZI
      - 9 600 Hz
      - ``modem.c``
    * - des-encuadre HDLC, des-stuffing de bits, comprobación FCS (reparación de
@@ -68,22 +73,36 @@ Todo lo siguiente se fija en ejecución mediante ``modem_config_t.rx`` (el grupo
 ``afskSetModem()`` con la tarea de recepción detenida, así que ningún bloque se
 procesa con una cadena a medio construir.
 
-**Varios demoduladores, cada uno con un prefiltro inclinado.**
-   La decisión del correlador es ``(|LoI|+|LoQ|) − (|HiI|+|HiQ|)``: un
-   desbalance de tonos la sesga. En el aire ese desbalance va de nada (un
-   transmisor de puerto de datos plano en una salida de discriminador) a 5–12 dB
-   a favor del tono de espacio (un transmisor con preénfasis en una salida de
-   discriminador), y una salida de altavoz desplaza ambos por el deénfasis del
-   receptor. Un único correlador falla cuando el desbalance total — el de la
-   señal más la inclinación del prefiltro — supera unos ±12 dB, así que los
-   perfiles de 1200 Bd ejecutan hasta tres demoduladores cuyos prefiltros
-   pasabanda tienen inclinaciones distintas. Los prefiltros se diseñan en
-   ``ModemInit()`` (muestreo en frecuencia, ventana de Hamming, fase lineal,
-   pico de la banda de paso escalado a la unidad para que los caminos int16 e
-   int32 no se desborden) a partir de los bordes de banda, la longitud y la
-   inclinación; la inclinación que alcanzan de verdad, medida sobre los
+**Correladores y comparadores.**
+   Cada correlador mide la magnitud verdadera ``sqrt(I² + Q²)`` del tono de
+   marca y del de espacio; ``|I| + |Q|`` oscilaría entre 1 y 1,41 veces ese
+   valor según la fase del tono, lo que equivale a 3 dB de ruido sobre la
+   decisión. Luego un comparador enfrenta la magnitud de marca con la de
+   espacio multiplicada por su propio peso. En el aire el desbalance entre
+   tonos va de nulo (transmisor plano por puerto de datos sobre una salida de
+   discriminador) a 5-12 dB a favor del tono de espacio (transmisor con
+   preénfasis sobre una salida de discriminador), y una salida de altavoz
+   desplaza ambos por el deénfasis del receptor, así que una única decisión sin
+   peso falla más allá de unos ±12 dB de desbalance.
+
+   Las dos mitades lo compensan. Los prefiltros se diseñan en ``ModemInit()``
+   (muestreo en frecuencia, ventana de Hamming, fase lineal, pico de la banda
+   de paso escalado a la unidad para que los caminos int16 e int32 no se
+   desborden) a partir de los bordes de banda, la longitud y una
+   *inclinación*; la inclinación que alcanzan de verdad, medida sobre los
    coeficientes, se escribe en el registro y la usa la estimación del
-   desbalance. El juego clásico conserva las tablas fijas de 8 coeficientes.
+   desbalance. El peso del comparador es exacto y casi gratuito, porque el
+   paso-bajo posterior a la detección es lineal y puede correr sobre las dos
+   magnitudes antes de ponderarlas: varios comparadores comparten un
+   correlador a cambio de una multiplicación y una resta cada uno. Lo que un
+   comparador no puede hacer es mantener un tono de espacio fuerte fuera del
+   correlador de marca: el correlador dura un símbolo, así que su respuesta es
+   lo bastante ancha como para que el otro tono se cuele, y sólo un filtro
+   previo lo quita. Por eso el juego por omisión ``MODEM_RX_EQ_MULTISLICE``
+   combina dos prefiltros (inclinaciones 0 y −5 dB con audio plano) con tres
+   comparadores cada uno, y cubre de +3 a −12 dB de compensación; los juegos
+   de filtros dan a cada demodulador su propio prefiltro y un comparador sin
+   peso, y el juego clásico conserva las tablas fijas de 8 coeficientes.
 
 **Supresión de duplicados y estadísticas.**
    Una trama con FCS válido abre una ventana de 32 periodos de bit × el número
@@ -191,7 +210,7 @@ Por qué los números son los que son
    cualquier ratio ≥ 2 el puntero de escritura queda por detrás de la ventana de
    lectura salvo en las primeras ``FILTER_TAPS − 1`` posiciones. Esas pocas
    muestras iniciales, junto con la cola del bloque anterior, se preparan en un
-   arreglo corto de pila antes de que empiece el bucle; el resto del bloque se
+   arreglo corto estático antes de que empiece el bucle; el resto del bloque se
    lee crudo del propio ``buf[]``. Ese es todo el motivo por el que la ruta de RX
    no guarda una segunda copia del bloque de 20 ms.
 
@@ -277,8 +296,9 @@ sobreescribir.
      - 3
      - 1..3
    * - ``MODEM_RX_MAX_DEMODULATORS``
-     - 3
-     - demoduladores de 1200 Bd en paralelo, 3..8
+     - 6
+     - demoduladores (comparadores) de 1200 Bd en paralelo,
+       ``MODEM_RX_SLICER_COUNT``..8
    * - *(derivado)* ``MODEM_DEMOD_SAMPLERATE``
      - 9600
      - fijo

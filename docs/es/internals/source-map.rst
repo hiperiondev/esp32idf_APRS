@@ -5,9 +5,10 @@ Mapa del código fuente
 ======================
 
 Un recorrido por el repositorio, para que sepas dónde mirar. Los tamaños son
-aproximados. El C de primera parte suma ~75 k líneas entre ``main/`` +
-``components/`` (excluyendo ``managed_components/``), de las cuales ~7,1 k son el
-componente del módem y ~22,6 k la administración web.
+aproximados. El C de primera parte suma ~79 k líneas entre ``main/`` +
+``components/`` (excluyendo ``managed_components/``), de las cuales ~8,6 k son el
+componente del módem y ~24 k la administración web (~8,4 k de ellas, las tres
+tablas de traducción).
 
 Disposición del repositorio
 ===========================
@@ -22,8 +23,13 @@ Disposición del repositorio
    ├── LICENSE                 ← GPL-3.0
    ├── schematics/             ← esquema KiCad de interfaz de radio + PCB
    │
+   ├── audio_test/             ← banco de pruebas del receptor AFSK1200 en el host (test_aprs_wavs.py, gen_test_wav.py) + README trilingüe
+   ├── docs/                   ← esta documentación (Sphinx, árboles en/es/it + imágenes compartidas)
+   ├── images/                 ← logos del README y de la administración web
+   │
    ├── main/                                   (la aplicación)
    │   ├── main.c              ← app_main, puesta en marcha/reconexión Wi-Fi, orden de arranque
+   │   ├── Kconfig.projbuild   ← menuconfig "APRS heap instrumentation": período de informes de heap/pila, desglose por heap, corchetes, barrido de integridad
    │   ├── app_config.c/.h     ← app_config_t, defaults de fábrica, carga/guardado JSON
    │   ├── storage.c           ← montaje/formato/uso LittleFS
    │   ├── aprs_service.c/.h   ← el pegamento: despacho RX, ayudante TX, cfg módem, stats, loop test
@@ -58,10 +64,11 @@ Disposición del repositorio
    │   ├── esp32idf_radioamateur_modem/    (el módem por software — el corazón del proyecto)
    │   │   ├── esp32idf_radioamateur_modem.h  ← API pública (config, callback RX, ayudantes TX)
    │   │   ├── include/…_config.h             ← TODAS las constantes de placa/DSP en compilación
+   │   │   ├── src/esp32idf_radioamateur_modem.c ← implementación de la API pública: ciclo de vida, reconfiguración en vivo, camino TX TNC2, callback RX, tarea de servicio, time-out del transmisor
    │   │   ├── src/afsk.c                      ← ingesta DMA ADC, AGC, FIR diezmado, ISR DAC, PTT
    │   │   ├── src/modem.c                     ← correladores, DPLL, tablas de tonos, DCD, calibración
    │   │   ├── src/ax25.c                      ← encuadrador HDLC, NRZI, bit-stuffing, códec AX.25, cola TX
-   │   │   ├── src/fx25.c, lwfec/rs.c, gf.c    ← FEC Reed–Solomon FX.25
+   │   │   ├── src/fx25.c, lwfec/rs.c/.h, lwfec/gf.c/.h ← FEC Reed–Solomon FX.25
    │   │   └── src/crc_ccit.c                  ← FCS
    │   │
    │   ├── igate/          ← cliente TCP APRS-IS, login, filtros, dedup, RF→INET / INET→RF
@@ -93,6 +100,9 @@ Disposición del repositorio
    │       ├── logcapture.c            ← copia bajo demanda de la consola serie con
    │       │                             esp_log_set_vprintf() en un anillo en RAM → JSON de la
    │       │                             página Registros (sondeo por seq), con tiempo de inactividad
+   │       ├── include/                ← web_common.h, web_help.h, pages.h, logcapture.h,
+   │       │                             web_server.h, web_base64.h (decodificador Basic-auth),
+   │       │                             web_logo.h (PNG embebido)
    │       ├── pages/*.c               ← un archivo por página de administración
    │       └── translations/           ← translations.h + lang_en/es/it.h
    │

@@ -293,22 +293,44 @@
 #endif
 
 /**
+ * @brief Number of band-pass prefilters (correlators) a 1200 Bd demodulator
+ *        set can design.
+ *
+ * A prefilter and the mark/space correlators behind it form one correlator.
+ * The fixed presets use up to three, and ::modem_rx_tuning_t::custom_tilt_db
+ * holds one tilt per correlator of the Custom set, so this also sizes that
+ * array and bounds ::modem_rx_tuning_t::custom_count.
+ */
+#define MODEM_RX_MAX_PREFILTERS 3
+
+/**
+ * @brief Number of slicers run by the ::MODEM_RX_EQ_MULTISLICE preset.
+ *
+ * All of them read the same correlator and differ only in the weight given to
+ * the space tone, spaced 3 dB apart; see modem.c for the weight tables.
+ */
+#define MODEM_RX_SLICER_COUNT 6
+
+/**
  * @brief Maximum number of 1200 Bd demodulators that can run in parallel on
  *        the same audio.
  *
- * Every demodulator receives the same samples through its own band-pass
- * prefilter; a frame is delivered by whichever demodulator completes it first
- * and the copies the others produce are dropped by FCS comparison. Each one
- * costs in the order of 1 % of a 240 MHz core and a few hundred bytes of
- * state. The demodulator presets use up to three and the carrier-detect bitmap
- * is 8 bits wide, which bounds the value to 3..8.
+ * A demodulator is a slicer with its own carrier detect, clock recovery and
+ * HDLC decoder, reading one of up to ::MODEM_RX_MAX_PREFILTERS correlators; a
+ * frame is delivered by whichever demodulator completes it first and the
+ * copies the others produce are dropped by FCS comparison. A slicer that
+ * shares its correlator costs a few multiplies per sample, and every
+ * demodulator carries a frame buffer of ::AX25_FRAME_MAX_SIZE plus FCS bytes.
+ * The ::MODEM_RX_EQ_MULTISLICE preset runs ::MODEM_RX_SLICER_COUNT of them and
+ * the carrier-detect bitmap is 8 bits wide, which bounds the value to
+ * ::MODEM_RX_SLICER_COUNT..8.
  */
 #ifndef MODEM_RX_MAX_DEMODULATORS
-#define MODEM_RX_MAX_DEMODULATORS 3
+#define MODEM_RX_MAX_DEMODULATORS 6
 #endif
 
-#if (MODEM_RX_MAX_DEMODULATORS < 3) || (MODEM_RX_MAX_DEMODULATORS > 8)
-#error "MODEM_RX_MAX_DEMODULATORS must be 3..8: the presets run up to three demodulators and the DCD bitmap is 8 bits wide."
+#if (MODEM_RX_MAX_DEMODULATORS < MODEM_RX_SLICER_COUNT) || (MODEM_RX_MAX_DEMODULATORS > 8) || (MODEM_RX_MAX_DEMODULATORS < MODEM_RX_MAX_PREFILTERS)
+#error "MODEM_RX_MAX_DEMODULATORS must be MODEM_RX_SLICER_COUNT..8: the multi-slicer preset runs that many demodulators and the DCD bitmap is 8 bits wide."
 #endif
 
 /**

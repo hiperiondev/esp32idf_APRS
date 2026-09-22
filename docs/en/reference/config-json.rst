@@ -61,13 +61,20 @@ Other persistent files
      - The replies the Winlink service has sent back, oldest first. The account
        settings themselves are the ``wl*`` keys in ``winlink.json``; only the
        replies live here, so clearing them never touches the configuration.
+   * - ``/storage/telegram_certificate.pem``
+     - The root certificate (PEM, up to 8 KB) the Telegram transport verifies
+       the API server against when it is not built with the ESP-IDF
+       certificate bundle. The path is ``CONFIG_TELEGRAM_BOT_CERT_PATH``'s
+       default. Unlike the files above it is **not** created from defaults:
+       the operator uploads it from the Storage page, and a missing or invalid
+       file is reported by the bot's bring-up diagnosis.
 
 Every store uses the same streaming writer, each under its own mutex, each with
 an explicit ``setvbuf()`` to avoid a lazy large stdio-buffer allocation
 mid-write. The ``setvbuf()`` buffer is a single static object shared by all of
 them, since the filesystem-wide writer gate keeps two saves from overlapping.
 
-Every one of these files is created from its defaults during bring-up if it
+Every one of these files except the certificate is created from its defaults during bring-up if it
 does not exist, so a first boot leaves a complete set on flash without the
 operator visiting a single page.
 
@@ -77,7 +84,7 @@ Factory reset
 ``POST /default`` (the *factory reset* button on the System page) calls
 ``app_config_factory_reset()``, which wipes the configuration back to
 ``app_config_set_defaults()`` and rewrites **every** section file. It does not,
-by itself, remove the separate telemetry/bulletins/objitems/telegram files —
+by itself, remove the separate telemetry/bulletins/objitems/telegram/winlink_mail files —
 those regenerate defaults on next access if deleted via the Storage page.
 
 BrandMeister interconnect keys

@@ -158,5 +158,5 @@ def apply_base(ns, *, language, project_suffix):
     ns.setdefault("html_context", {})
     ns["html_context"]["github_user"] = "hiperiondev"
     ns["html_context"]["github_repo"] = "esp32idf_APRS"
-    ns["html_context"]["github_version"] = "master"
+    ns["html_context"]["github_version"] = "main"
     ns["html_context"]["doc_path"] = "docs"

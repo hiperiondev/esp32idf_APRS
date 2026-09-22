@@ -356,25 +356,58 @@ struct Filter {
     uint8_t gainShift;
 };
 
-struct DemodState {
-    uint8_t rawSymbols;  // raw, unsynchronized symbols
-    uint8_t syncSymbols; // synchronized symbols
-
+// Front half of a demodulator: prefilter, mark and space quadrature
+// correlators, and a post-detection low-pass on the magnitude of each tone.
+//
+// Everything here is linear up to the magnitudes, and the post-detection
+// low-pass is linear too, so low-pass filtering the two magnitudes separately
+// and weighting them afterwards is the same as low-pass filtering the weighted
+// difference. That is what lets several slicers (struct DemodState) share one
+// correlator: each of them only adds a multiply and a subtract per sample.
+//
+// G3RUH has no tones. Its correlator is a pass-through: the input sample is
+// the "mark" magnitude, "space" stays 0, and markLpf is the 9600 Bd receive
+// filter, so its single slicer sees exactly the baseband signal.
+struct Correlator {
     enum ModemPrefilter prefilter;
     struct Filter bpf;
     int16_t bpfTable[BPF_MAX_TAPS]; // storage for a prefilter designed by ModemInit()
     float bpfTiltDb;                // prefilter gain at the space tone minus gain at the mark tone
 
-    // Correlator level of the mark tone while the demodulator decides "mark",
-    // and of the space tone while it decides "space": first-order averages
-    // with a time constant of 64 samples (eight symbols at 1200 Bd), read by
-    // ModemGetTwistDb().
+    int16_t samples[NMAX]; // prefiltered input, one symbol long, circular
+    uint8_t samplesIdx;
+
+    struct Filter markLpf;
+    struct Filter spaceLpf;
+
+    // Tone magnitudes of the current sample, before and after the
+    // post-detection low-pass.
+    int32_t mark;
+    int32_t space;
+    int32_t markFiltered;
+    int32_t spaceFiltered;
+
+    // Magnitude of the mark tone while it is the stronger one, and of the
+    // space tone while that one is: first-order averages with a time constant
+    // of 64 samples (eight symbols at 1200 Bd), read by ModemGetTwistDb().
     int32_t markLevel;
     int32_t spaceLevel;
+};
 
-    int16_t correlatorSamples[NMAX];
-    uint8_t correlatorSamplesIdx;
-    struct Filter lpf;
+// Back half of a demodulator: one slicer on one correlator's output, with its
+// own carrier detect, clock recovery and, in ax25.c, its own HDLC decoder.
+//
+// The slicer compares the mark magnitude against the space magnitude scaled
+// by spaceWeight. A weight below unity favours the mark tone and so suits a
+// signal whose space tone arrives louder than its mark tone, and the other way
+// round; a set of slicers with weights spread over the expected range of tone
+// twist covers that range from a single correlator.
+struct DemodState {
+    uint8_t corr;        // index into correlators[]
+    int32_t spaceWeight; // weight of the space magnitude, Q(SLICER_WEIGHT_BITS)
+    float spaceWeightDb; // the same weight in dB, for the diagnostics
+    uint8_t rawSymbols;  // raw, unsynchronized symbols
+    uint8_t syncSymbols; // synchronized symbols
 
     uint8_t dcd;
 
@@ -391,15 +424,25 @@ struct DemodState {
     uint16_t dcdInc;
     uint16_t dcdDec;
     int32_t dcdTune;
-
-    int16_t peak;
-    int16_t valley;
 };
 
+// Fixed-point position of DemodState::spaceWeight. With the weights bounded to
+// +-MODEM_RX_TILT_DB_MAX and the magnitudes and their low-passed values well
+// inside 2^16, the product stays far inside int32.
+#define SLICER_WEIGHT_BITS 12
+
+static struct Correlator correlators[MODEM_MAX_CORRELATOR_COUNT];
 static struct DemodState demodState[MODEM_MAX_DEMODULATOR_COUNT];
+static uint8_t corrCount; // correlators in use, 1..MODEM_MAX_CORRELATOR_COUNT
+
+// Amplitude of the demodulator input, common to every demodulator because
+// they all receive the same samples.
+static int16_t inputPeak;
+static int16_t inputValley;
 
 static void decode(uint8_t symbol, uint8_t demod, uint16_t mV);
-static int32_t demodulate(int16_t sample, struct DemodState *dem);
+static void correlate(int16_t sample, struct Correlator *c);
+static int32_t slice(struct DemodState *dem, const struct Correlator *c);
 
 static int32_t filterRun(struct Filter *f, int32_t input) {
     // An unconfigured filter (taps == 0) has no coefficients to run against.
@@ -449,9 +492,10 @@ void ModemGetSignalLevel(uint8_t modem, int8_t *peak, int8_t *valley, uint8_t *l
         return;
     }
 
-    *peak = (int8_t)((100 * (int32_t)demodState[modem].peak) >> 12);
-    *valley = (int8_t)((100 * (int32_t)demodState[modem].valley) >> 12);
-    *level = (uint8_t)((100 * (int32_t)(demodState[modem].peak - demodState[modem].valley)) >> 13);
+    // Every demodulator sees the same input, so the figures are shared.
+    *peak = (int8_t)((100 * (int32_t)inputPeak) >> 12);
+    *valley = (int8_t)((100 * (int32_t)inputValley) >> 12);
+    *level = (uint8_t)((100 * (int32_t)(inputPeak - inputValley)) >> 13);
 }
 
 enum ModemPrefilter ModemGetFilterType(uint8_t modem) {
@@ -460,22 +504,38 @@ enum ModemPrefilter ModemGetFilterType(uint8_t modem) {
     if (modem >= MODEM_MAX_DEMODULATOR_COUNT)
         return PREFILTER_NONE;
 
-    return demodState[modem].prefilter;
+    return correlators[demodState[modem].corr].prefilter;
 }
 
 float ModemGetFilterTiltDb(uint8_t modem) {
-    if (modem >= MODEM_MAX_DEMODULATOR_COUNT || demodState[modem].prefilter == PREFILTER_NONE)
+    if (modem >= MODEM_MAX_DEMODULATOR_COUNT)
         return 0.0f;
 
-    return demodState[modem].bpfTiltDb;
+    const struct Correlator *c = &correlators[demodState[modem].corr];
+    return (c->prefilter == PREFILTER_NONE) ? 0.0f : c->bpfTiltDb;
+}
+
+float ModemGetSlicerWeightDb(uint8_t modem) {
+    if (modem >= MODEM_MAX_DEMODULATOR_COUNT || ModemConfig.modem == MODEM_MODEM_G3RUH)
+        return 0.0f;
+
+    return demodState[modem].spaceWeightDb;
+}
+
+uint8_t ModemGetCorrelatorIndex(uint8_t modem) {
+    if (modem >= MODEM_MAX_DEMODULATOR_COUNT)
+        return 0;
+
+    return demodState[modem].corr;
 }
 
 int8_t ModemGetTwistDb(uint8_t modem) {
     if (modem >= MODEM_MAX_DEMODULATOR_COUNT || ModemConfig.modem == MODEM_MODEM_G3RUH)
         return 0;
 
-    int32_t mark = demodState[modem].markLevel;
-    int32_t space = demodState[modem].spaceLevel;
+    const struct Correlator *c = &correlators[demodState[modem].corr];
+    int32_t mark = c->markLevel;
+    int32_t space = c->spaceLevel;
     if (mark <= 0 || space <= 0)
         return 0;
 
@@ -533,8 +593,22 @@ static inline uint8_t IRAM_ATTR scramble(uint8_t in) {
 void MODEM_DECODE(int16_t sample, uint16_t mVrms) {
     uint8_t dcdBits = 0;
 
+    // input signal amplitude tracking
+    if (sample >= inputPeak)
+        inputPeak += (int16_t)(((int32_t)(AMP_TRACKING_ATTACK * 32768.f) * (int32_t)(sample - inputPeak)) >> 15);
+    else
+        inputPeak += (int16_t)(((int32_t)(AMP_TRACKING_DECAY * 32768.f) * (int32_t)(sample - inputPeak)) >> 15);
+
+    if (sample <= inputValley)
+        inputValley -= (int16_t)(((int32_t)(AMP_TRACKING_ATTACK * 32768.f) * (int32_t)(inputValley - sample)) >> 15);
+    else
+        inputValley -= (int16_t)(((int32_t)(AMP_TRACKING_DECAY * 32768.f) * (int32_t)(inputValley - sample)) >> 15);
+
+    for (uint8_t c = 0; c < corrCount; c++)
+        correlate(sample, &correlators[c]);
+
     for (uint8_t i = 0; i < demodCount; i++) {
-        uint8_t symbol = (demodulate(sample, &demodState[i]) > 0);
+        uint8_t symbol = (slice(&demodState[i], &correlators[demodState[i].corr]) > 0);
 
         decode(symbol, i, mVrms);
         if (demodState[i].dcd)
@@ -623,65 +697,72 @@ uint8_t IRAM_ATTR MODEM_BAUDRATE_TIMER_HANDLER(void) {
     return sinwave;
 }
 
-// @brief Demodulate a received sample.
-// @param sample Received sample, no more than 13 bits
-// @return Current tone (0 or 1)
-static int32_t demodulate(int16_t sample, struct DemodState *dem) {
-    // input signal amplitude tracking
-    if (sample >= dem->peak)
-        dem->peak += (int16_t)(((int32_t)(AMP_TRACKING_ATTACK * 32768.f) * (int32_t)(sample - dem->peak)) >> 15);
-    else
-        dem->peak += (int16_t)(((int32_t)(AMP_TRACKING_DECAY * 32768.f) * (int32_t)(sample - dem->peak)) >> 15);
-
-    if (sample <= dem->valley)
-        dem->valley -= (int16_t)(((int32_t)(AMP_TRACKING_ATTACK * 32768.f) * (int32_t)(dem->valley - sample)) >> 15);
-    else
-        dem->valley -= (int16_t)(((int32_t)(AMP_TRACKING_DECAY * 32768.f) * (int32_t)(dem->valley - sample)) >> 15);
-
-    if (ModemConfig.modem != MODEM_MODEM_G3RUH) {
-        if (dem->prefilter != PREFILTER_NONE)
-            dem->correlatorSamples[dem->correlatorSamplesIdx] = (int16_t)filterRun(&dem->bpf, sample);
-        else
-            dem->correlatorSamples[dem->correlatorSamplesIdx] = sample;
-
-        // N is a runtime value (N1200 / N300 / N9600), so "% N" cannot be
-        // strength-reduced to a mask by the compiler and would otherwise
-        // become a real integer division on every tap. Wrap on compare
-        // instead.
-        if (++dem->correlatorSamplesIdx == N)
-            dem->correlatorSamplesIdx = 0;
-
-        int32_t outLoI = 0, outLoQ = 0, outHiI = 0, outHiQ = 0;
-        uint8_t idx = dem->correlatorSamplesIdx;
-
-        for (uint8_t i = 0; i < N; i++) {
-            int16_t t = dem->correlatorSamples[idx];
-            outLoI += t * coeffLoI[i];
-            outLoQ += t * coeffLoQ[i];
-            outHiI += t * coeffHiI[i];
-            outHiQ += t * coeffHiQ[i];
-
-            if (++idx == N)
-                idx = 0;
-        }
-
-        outHiI >>= 14;
-        outHiQ >>= 14;
-        outLoI >>= 14;
-        outLoQ >>= 14;
-
-        int32_t lo = abs(outLoI) + abs(outLoQ);
-        int32_t hi = abs(outHiI) + abs(outHiQ);
-
-        // Tone levels for the twist estimate: each tone is averaged only while
-        // it is the one being received.
-        if (lo > hi)
-            dem->markLevel += (lo - dem->markLevel) >> 6;
-        else
-            dem->spaceLevel += (hi - dem->spaceLevel) >> 6;
-
-        sample = (int16_t)(lo - hi);
+// @brief Run one input sample through a correlator.
+//
+// Updates the tone magnitudes of c, before and after the post-detection
+// low-pass. The magnitude of each tone is the true (L2) magnitude of its I/Q
+// correlator pair: |I| + |Q| would swing between 1 and 1.41 times it with the
+// phase of the tone against the correlator, which is 3 dB of noise on the
+// mark/space decision.
+//
+// @param sample Received sample, no more than 13 bits.
+static void correlate(int16_t sample, struct Correlator *c) {
+    if (ModemConfig.modem == MODEM_MODEM_G3RUH) {
+        c->mark = sample;
+        c->markFiltered = filterRun(&c->markLpf, sample);
+        return;
     }
+
+    if (c->prefilter != PREFILTER_NONE)
+        c->samples[c->samplesIdx] = (int16_t)filterRun(&c->bpf, sample);
+    else
+        c->samples[c->samplesIdx] = sample;
+
+    // N is a runtime value (N1200 / N300 / N9600), so "% N" cannot be
+    // strength-reduced to a mask by the compiler and would otherwise become a
+    // real integer division on every tap. Wrap on compare instead.
+    if (++c->samplesIdx == N)
+        c->samplesIdx = 0;
+
+    int32_t outLoI = 0, outLoQ = 0, outHiI = 0, outHiQ = 0;
+    uint8_t idx = c->samplesIdx;
+
+    for (uint8_t i = 0; i < N; i++) {
+        int16_t t = c->samples[idx];
+        outLoI += t * coeffLoI[i];
+        outLoQ += t * coeffLoQ[i];
+        outHiI += t * coeffHiI[i];
+        outHiQ += t * coeffHiQ[i];
+
+        if (++idx == N)
+            idx = 0;
+    }
+
+    // The coefficients are Q12 and a symbol holds up to 32 samples, so the
+    // sums fit int32 and their squares fit a float; the 2^-14 scale keeps the
+    // magnitudes in the same range as the input samples.
+    const float scale = 1.0f / 16384.0f;
+    int32_t lo = (int32_t)(sqrtf((float)outLoI * (float)outLoI + (float)outLoQ * (float)outLoQ) * scale);
+    int32_t hi = (int32_t)(sqrtf((float)outHiI * (float)outHiI + (float)outHiQ * (float)outHiQ) * scale);
+
+    // Tone levels for the twist estimate: each tone is averaged only while
+    // it is the stronger one.
+    if (lo > hi)
+        c->markLevel += (lo - c->markLevel) >> 6;
+    else
+        c->spaceLevel += (hi - c->spaceLevel) >> 6;
+
+    c->mark = lo;
+    c->space = hi;
+    c->markFiltered = filterRun(&c->markLpf, lo);
+    c->spaceFiltered = filterRun(&c->spaceLpf, hi);
+}
+
+// @brief Slice one correlator output and run the demodulator's carrier detect.
+// @return Low-passed decision variable: > 0 for mark, <= 0 for space (for
+//         G3RUH, the filtered baseband sample).
+static int32_t slice(struct DemodState *dem, const struct Correlator *c) {
+    int32_t sample = c->mark - ((c->space * dem->spaceWeight) >> SLICER_WEIGHT_BITS);
 
     // DCD using a "PLL". The PLL runs nominally at the baudrate; its counter
     // counts up and overflows to a minimal negative value, so it crosses zero
@@ -710,9 +791,7 @@ static int32_t demodulate(int16_t sample, struct DemodState *dem) {
 
     dem->dcd = (dem->dcdCounter > dem->dcdThres) ? 1 : 0;
 
-    // Return the raw value, not just its sign: callers compare against 0
-    // anyway, and the magnitude is what the diagnostics need.
-    return filterRun(&dem->lpf, sample);
+    return c->markFiltered - ((c->spaceFiltered * dem->spaceWeight) >> SLICER_WEIGHT_BITS);
 }
 
 // @brief Bit/clock recovery, NRZI decoding, and hand-off to the protocol layer.
@@ -794,6 +873,42 @@ static const int8_t tiltDiv2Speaker[2] = { 0, 5 };
 static const int8_t tiltDiv3Flat[3] = { 4, 0, -5 };
 static const int8_t tiltDiv3Speaker[3] = { 0, 3, 6 };
 
+// MODEM_RX_EQ_MULTISLICE: MODEM_RX_SLICE_PREFILTERS prefilters, each feeding
+// MODEM_RX_SLICE_WEIGHTS slicers. The prefilter tables hold tilts and the
+// weight tables hold the weight every slicer gives the space magnitude, both
+// in dB and with the same sign convention (negative favours the mark tone).
+//
+// Twist compensation is split between the two on purpose. A slicer is nearly
+// free and reaches any weight exactly, where a 21-tap prefilter realizes only
+// part of a large tilt, so the slicers carry most of the range. What they
+// cannot do is keep a loud space tone out of the mark correlator: the
+// correlator is one symbol long, so its response is broad enough for the space
+// tone to leak into the mark arm, and with the space tone 10 dB up that
+// leakage buries a weak mark tone no matter how the two magnitudes are
+// weighted afterwards. Only a filter ahead of the correlators removes it,
+// which is what the tilted second prefilter is for.
+//
+// Flat (discriminator) audio carries no twist from a flat transmitter and up
+// to about +12 dB from a pre-emphasizing one, so the set runs from +3 to
+// -12 dB. De-emphasized (speaker) audio shifts the whole range up by the
+// receiver's de-emphasis, about 6 dB.
+#define MODEM_RX_SLICE_PREFILTERS 2
+#define MODEM_RX_SLICE_WEIGHTS    (MODEM_RX_SLICER_COUNT / MODEM_RX_SLICE_PREFILTERS)
+_Static_assert(MODEM_RX_SLICER_COUNT == MODEM_RX_SLICE_PREFILTERS * MODEM_RX_SLICE_WEIGHTS,
+               "MODEM_RX_SLICER_COUNT must be a whole number of slicers per prefilter");
+_Static_assert(MODEM_RX_SLICE_PREFILTERS <= MODEM_MAX_CORRELATOR_COUNT, "the multi-slicer preset needs one correlator per prefilter");
+
+static const int8_t sliceTiltFlat[MODEM_RX_SLICE_PREFILTERS] = { 0, -5 };
+static const int8_t sliceTiltSpeaker[MODEM_RX_SLICE_PREFILTERS] = { 5, 0 };
+static const int8_t sliceWeightFlat[MODEM_RX_SLICE_PREFILTERS][MODEM_RX_SLICE_WEIGHTS] = {
+    { 3, 0, -3 },
+    { -3, -6, -9 },
+};
+static const int8_t sliceWeightSpeaker[MODEM_RX_SLICE_PREFILTERS][MODEM_RX_SLICE_WEIGHTS] = {
+    { 6, 3, 0 },
+    { 0, -3, -6 },
+};
+
 // Frequency grid of the prefilter designer, points from 0 Hz to fs/2.
 #define BPF_DESIGN_GRID 128
 
@@ -866,8 +981,12 @@ static void designPrefilter(int16_t *out, uint8_t taps, float fs, float lo, floa
         out[n] = (int16_t)lrintf(h[n] / peak * 32767.0f);
 }
 
-// @brief Common clock-recovery and DCD settings of the 1200 Bd demodulators.
-static void setup1200Demod(struct DemodState *dem) {
+// @brief Clock-recovery and DCD settings of a 1200 Bd demodulator, reading
+//        correlator corr through a slicer of the given space weight.
+static void setup1200Demod(struct DemodState *dem, uint8_t corr, float weightDb) {
+    dem->corr = corr;
+    dem->spaceWeightDb = weightDb;
+    dem->spaceWeight = (int32_t)lrintf(powf(10.0f, weightDb / 20.0f) * (float)(1 << SLICER_WEIGHT_BITS));
     dem->pllStep = calibratedPllStep(PLL1200_STEP);
     dem->pllLockedTune = (int32_t)(PLL1200_LOCKED_TUNE * (float)((uint32_t)1 << PLL_TUNE_BITS));
     dem->pllNotLockedTune = (int32_t)(PLL1200_NOT_LOCKED_TUNE * (float)((uint32_t)1 << PLL_TUNE_BITS));
@@ -876,22 +995,40 @@ static void setup1200Demod(struct DemodState *dem) {
     dem->dcdInc = DCD1200_INC;
     dem->dcdDec = DCD1200_DEC;
     dem->dcdTune = (int32_t)(DCD1200_TUNE * (float)((uint32_t)1 << PLL_TUNE_BITS));
-    dem->lpf.coeffs = lpf1200;
-    dem->lpf.taps = sizeof(lpf1200) / sizeof(*lpf1200);
-    dem->lpf.gainShift = 15;
-    dem->prefilter = PREFILTER_NONE;
 }
 
-// @brief Attach a prefilter to a demodulator and record its tilt.
-static void setPrefilter(struct DemodState *dem, const int16_t *coeffs, uint8_t taps, uint8_t gainShift) {
-    dem->prefilter = PREFILTER_BANDPASS;
-    dem->bpf.coeffs = coeffs;
-    dem->bpf.taps = taps;
-    dem->bpf.gainShift = gainShift;
+// @brief Give a correlator its post-detection low-pass filters, no prefilter.
+static void setupCorrelator(struct Correlator *c, const int16_t *lpf, uint8_t taps, uint8_t gainShift) {
+    c->prefilter = PREFILTER_NONE;
+    c->markLpf.coeffs = lpf;
+    c->markLpf.taps = taps;
+    c->markLpf.gainShift = gainShift;
+    c->spaceLpf.coeffs = lpf;
+    c->spaceLpf.taps = taps;
+    c->spaceLpf.gainShift = gainShift;
+}
+
+// @brief Attach a prefilter to a correlator and record its tilt.
+static void setPrefilter(struct Correlator *c, const int16_t *coeffs, uint8_t taps, uint8_t gainShift) {
+    c->prefilter = PREFILTER_BANDPASS;
+    c->bpf.coeffs = coeffs;
+    c->bpf.taps = taps;
+    c->bpf.gainShift = gainShift;
 
     float gMark = firGain(coeffs, taps, markFreq, (float)MODEM_DEMOD_SAMPLERATE);
     float gSpace = firGain(coeffs, taps, spaceFreq, (float)MODEM_DEMOD_SAMPLERATE);
-    dem->bpfTiltDb = (gMark > 0.0f && gSpace > 0.0f) ? 20.0f * log10f(gSpace / gMark) : 0.0f;
+    c->bpfTiltDb = (gMark > 0.0f && gSpace > 0.0f) ? 20.0f * log10f(gSpace / gMark) : 0.0f;
+}
+
+// @brief Design a band-pass prefilter from rxTuning into a correlator.
+static void designCorrelatorPrefilter(uint8_t index, int8_t tiltDb) {
+    struct Correlator *c = &correlators[index];
+
+    designPrefilter(c->bpfTable, rxTuning.bpf_taps, (float)MODEM_DEMOD_SAMPLERATE, (float)rxTuning.bpf_lo_hz, (float)rxTuning.bpf_hi_hz, markFreq, spaceFreq,
+                    (float)tiltDb);
+    setPrefilter(c, c->bpfTable, rxTuning.bpf_taps, 15);
+    ESP_LOGI(TAG, "prefilter %u: band-pass %u-%u Hz, %u taps, tilt %+d dB requested, %+.1f dB realized", (unsigned)index, (unsigned)rxTuning.bpf_lo_hz,
+             (unsigned)rxTuning.bpf_hi_hz, (unsigned)rxTuning.bpf_taps, (int)tiltDb, (double)c->bpfTiltDb);
 }
 
 // @brief Build the 1200 Bd demodulator set selected by rxTuning.
@@ -900,53 +1037,70 @@ static void setup1200DemodSet(void) {
 
     switch (rxTuning.eq_preset) {
         case MODEM_RX_EQ_LEGACY:
-            demodCount = 2;
+            corrCount = 2;
             break;
         case MODEM_RX_EQ_SINGLE:
-            demodCount = 1;
+            corrCount = 1;
             tilts = ModemConfig.flatAudioIn ? tiltSingleFlat : tiltSingleSpeaker;
             break;
         case MODEM_RX_EQ_DIVERSITY2:
-            demodCount = 2;
+            corrCount = 2;
             tilts = ModemConfig.flatAudioIn ? tiltDiv2Flat : tiltDiv2Speaker;
             break;
-        case MODEM_RX_EQ_CUSTOM:
-            demodCount = rxTuning.custom_count;
-            tilts = rxTuning.custom_tilt_db;
-            break;
         case MODEM_RX_EQ_DIVERSITY3:
-        default:
-            demodCount = 3;
+            corrCount = 3;
             tilts = ModemConfig.flatAudioIn ? tiltDiv3Flat : tiltDiv3Speaker;
             break;
+        case MODEM_RX_EQ_CUSTOM:
+            corrCount = rxTuning.custom_count;
+            tilts = rxTuning.custom_tilt_db;
+            break;
+        case MODEM_RX_EQ_MULTISLICE:
+        default: {
+            const int8_t *tilts = ModemConfig.flatAudioIn ? sliceTiltFlat : sliceTiltSpeaker;
+            const int8_t (*weights)[MODEM_RX_SLICE_WEIGHTS] = ModemConfig.flatAudioIn ? sliceWeightFlat : sliceWeightSpeaker;
+
+            corrCount = MODEM_RX_SLICE_PREFILTERS;
+            demodCount = MODEM_RX_SLICER_COUNT;
+            for (uint8_t c = 0; c < corrCount; c++) {
+                setupCorrelator(&correlators[c], lpf1200, sizeof(lpf1200) / sizeof(*lpf1200), 15);
+                designCorrelatorPrefilter(c, tilts[c]);
+                for (uint8_t k = 0; k < MODEM_RX_SLICE_WEIGHTS; k++) {
+                    uint8_t i = (uint8_t)(c * MODEM_RX_SLICE_WEIGHTS + k);
+                    setup1200Demod(&demodState[i], c, (float)weights[c][k]);
+                    ESP_LOGI(TAG, "demod %u: prefilter %u, space weight %+d dB", (unsigned)i, (unsigned)c, (int)weights[c][k]);
+                }
+            }
+            return;
+        }
     }
 
-    for (uint8_t i = 0; i < demodCount; i++)
-        setup1200Demod(&demodState[i]);
+    // Every other set: one slicer, at unit weight, per correlator.
+    demodCount = corrCount;
+    for (uint8_t i = 0; i < corrCount; i++) {
+        setupCorrelator(&correlators[i], lpf1200, sizeof(lpf1200) / sizeof(*lpf1200), 15);
+        setup1200Demod(&demodState[i], i, 0.0f);
+    }
 
     if (tilts == NULL) {
-        // Legacy set: demodulator 0 runs a fixed band-pass matched to the kind
-        // of input, demodulator 1 sees the input unfiltered.
+        // Legacy set: correlator 0 runs a fixed band-pass matched to the kind
+        // of input, correlator 1 sees the input unfiltered.
         if (ModemConfig.flatAudioIn)
-            setPrefilter(&demodState[0], bpf1200Level, sizeof(bpf1200Level) / sizeof(*bpf1200Level), 15);
+            setPrefilter(&correlators[0], bpf1200Level, sizeof(bpf1200Level) / sizeof(*bpf1200Level), 15);
         else
-            setPrefilter(&demodState[0], bpf1200Tilted, sizeof(bpf1200Tilted) / sizeof(*bpf1200Tilted), 15);
+            setPrefilter(&correlators[0], bpf1200Tilted, sizeof(bpf1200Tilted) / sizeof(*bpf1200Tilted), 15);
         return;
     }
 
-    for (uint8_t i = 0; i < demodCount; i++) {
-        struct DemodState *dem = &demodState[i];
-
-        designPrefilter(dem->bpfTable, rxTuning.bpf_taps, (float)MODEM_DEMOD_SAMPLERATE, (float)rxTuning.bpf_lo_hz, (float)rxTuning.bpf_hi_hz, markFreq,
-                        spaceFreq, (float)tilts[i]);
-        setPrefilter(dem, dem->bpfTable, rxTuning.bpf_taps, 15);
-        ESP_LOGI(TAG, "demod %u: band-pass %u-%u Hz, %u taps, tilt %+d dB requested, %+.1f dB realized", (unsigned)i, (unsigned)rxTuning.bpf_lo_hz,
-                 (unsigned)rxTuning.bpf_hi_hz, (unsigned)rxTuning.bpf_taps, (int)tilts[i], (double)dem->bpfTiltDb);
-    }
+    for (uint8_t i = 0; i < corrCount; i++)
+        designCorrelatorPrefilter(i, tilts[i]);
 }
 
 void ModemInit(void) {
+    memset(correlators, 0, sizeof(correlators));
     memset(demodState, 0, sizeof(demodState));
+    inputPeak = 0;
+    inputValley = 0;
 
     if (ModemConfig.modem > MODEM_MODEM_G3RUH)
         ModemConfig.modem = MODEM_MODEM_BELL202;
@@ -972,6 +1126,7 @@ void ModemInit(void) {
 
         setup1200DemodSet();
     } else if (ModemConfig.modem == MODEM_MODEM_AFSK300) {
+        corrCount = 1;
         demodCount = 1;
         N = N300;
         baudRate = 300.f;
@@ -986,12 +1141,12 @@ void ModemInit(void) {
         demodState[0].dcdInc = DCD300_INC;
         demodState[0].dcdDec = DCD300_DEC;
         demodState[0].dcdTune = (int32_t)(DCD300_TUNE * (float)((uint32_t)1 << PLL_TUNE_BITS));
+        demodState[0].spaceWeight = 1 << SLICER_WEIGHT_BITS;
 
-        setPrefilter(&demodState[0], bpf300, sizeof(bpf300) / sizeof(*bpf300), 16);
-        demodState[0].lpf.coeffs = lpf300;
-        demodState[0].lpf.taps = sizeof(lpf300) / sizeof(*lpf300);
-        demodState[0].lpf.gainShift = 15;
+        setupCorrelator(&correlators[0], lpf300, sizeof(lpf300) / sizeof(*lpf300), 15);
+        setPrefilter(&correlators[0], bpf300, sizeof(bpf300) / sizeof(*bpf300), 16);
     } else if (ModemConfig.modem == MODEM_MODEM_G3RUH) {
+        corrCount = 1;
         demodCount = 1;
         N = N9600;
         baudRate = 9600.f;
@@ -1010,8 +1165,8 @@ void ModemInit(void) {
         demodState[0].dcdInc = DCD9600_INC;
         demodState[0].dcdDec = DCD9600_DEC;
         demodState[0].dcdTune = (int32_t)(DCD9600_TUNE * (float)((uint32_t)1 << PLL_TUNE_BITS));
+        demodState[0].spaceWeight = 1 << SLICER_WEIGHT_BITS;
 
-        demodState[0].prefilter = PREFILTER_NONE;
         // Receive only. Nothing on the TX path runs it -
         // MODEM_BAUDRATE_TIMER_HANDLER() emits a raw 240/20 square - and it
         // should stay that way: shaping the transmitter with this same filter
@@ -1019,9 +1174,10 @@ void ModemInit(void) {
         // cascade closes the eye. If transmit shaping is ever wanted it needs
         // its own, wider filter and its own state (the receiver is using this
         // instance concurrently in full duplex).
-        demodState[0].lpf.coeffs = lpf9600;
-        demodState[0].lpf.taps = sizeof(lpf9600) / sizeof(*lpf9600);
-        demodState[0].lpf.gainShift = 16;
+        correlators[0].prefilter = PREFILTER_NONE;
+        correlators[0].markLpf.coeffs = lpf9600;
+        correlators[0].markLpf.taps = sizeof(lpf9600) / sizeof(*lpf9600);
+        correlators[0].markLpf.gainShift = 16;
     }
 
     // Transmit steps. The tones and the AFSK symbol phase are built from the
