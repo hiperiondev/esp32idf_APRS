@@ -296,6 +296,7 @@ _CATALOG = {
         "    ! HEADER CORRUPT (payload matched)":
             "    ! ENCABEZADO CORRUPTO (el payload coincide)",
         "  Files tested                      : %d": "  Archivos probados                 : %d",
+        "  Total packets (any decoder)       : %d": "  Paquetes totales (cualquier deco.): %d",
         "  Total packets (multimon-ng)       : %d": "  Paquetes totales (multimon-ng)    : %d",
         "  Packets seen by ESP32             : %d": "  Paquetes vistos por el ESP32      : %d",
         "  Decoded correctly                 : %d  (%.2f%%)":
@@ -694,6 +695,8 @@ _CATALOG = {
             'estadística: los conflictos no se puntúan y las tramas sólo del ESP32 nunca son aciertos',
         'the multimon-ng reference counts packets exactly as before':
             'la referencia multimon-ng cuenta los paquetes exactamente como antes',
+        'total packets counts every packet any decoder decoded, once':
+            'el total de paquetes cuenta una vez cada paquete que decodificó cualquier decodificador',
         '  References: both %d   mm-only %d   dw-only %d   conflicts %d':
             '  Referencias: ambas %d   sólo mm %d   sólo dw %d   conflictos %d',
         '  Direwolf %s, %d Hz, modem profile %s, FIX_BITS %d':
@@ -874,6 +877,7 @@ _CATALOG = {
         "    ! HEADER CORRUPT (payload matched)":
             "    ! INTESTAZIONE CORROTTA (il payload coincide)",
         "  Files tested                      : %d": "  File testati                      : %d",
+        "  Total packets (any decoder)       : %d": "  Pacchetti totali (qualsiasi dec.) : %d",
         "  Total packets (multimon-ng)       : %d": "  Pacchetti totali (multimon-ng)    : %d",
         "  Packets seen by ESP32             : %d": "  Pacchetti visti dall'ESP32        : %d",
         "  Decoded correctly                 : %d  (%.2f%%)":
@@ -1271,6 +1275,8 @@ _CATALOG = {
             "statistica: i conflitti non vengono valutati e le trame solo dell'ESP32 non sono mai successi",
         'the multimon-ng reference counts packets exactly as before':
             'il riferimento multimon-ng conta i pacchetti esattamente come prima',
+        'total packets counts every packet any decoder decoded, once':
+            'il totale dei pacchetti conta una volta ogni pacchetto decodificato da un qualsiasi decodificatore',
         '  References: both %d   mm-only %d   dw-only %d   conflicts %d':
             '  Riferimenti: entrambi %d   solo mm %d   solo dw %d   conflitti %d',
         '  Direwolf %s, %d Hz, modem profile %s, FIX_BITS %d':
@@ -1620,11 +1626,16 @@ def request_stop() -> None:
 # test), so the numbers shown always belong to the phase that is running.
 # Definitions, consistent with print_summary() / print_loss_resume():
 #   multimon  = packets multimon-ng decoded (the reference)
-#   extra     = packets only the ESP32 decoded
-#   total     = multimon + extra (every distinct packet either decoder heard)
+#   extra     = packets multimon-ng missed but the ESP32 decoded
+#   dw_miss   = packets only Direwolf decoded (multimon-ng and the ESP32
+#               both missed them); always 0 without Direwolf
+#   total     = multimon + extra + dw_miss: every distinct packet that AT
+#               LEAST ONE decoder (multimon-ng, Direwolf or ESP32) decoded
+#               with a valid CRC, each transmission counted once
 #   esp       = ok + different + hdr-corrupt + extra (ESP32 produced a frame)
-#   missed    = multimon packets the ESP32 did NOT decode
-#   missed %  = missed / total, i.e. over every packet either decoder heard.
+#   missed    = packets in `total` the ESP32 did NOT decode
+#               (multimon packets it missed + dw_miss)
+#   missed %  = missed / total, i.e. over every packet any decoder heard.
 # With Direwolf also running:
 #   dw        = packets Direwolf decoded
 #   conflict  = rows where multimon-ng and Direwolf disagree (REF_CONFLICT)
@@ -1639,7 +1650,7 @@ class LiveStats:
         with self._lock:
             self.phase = phase
             self.mm = self.ok = self.diff = self.missing = self.extra = 0
-            self.dw = self.conflict = self.esp_only = 0
+            self.dw = self.conflict = self.esp_only = self.dw_miss = 0
             self.dw_active = getattr(self, "dw_active", False)
             self.file_n = self.file_total = 0
             self.file_name = ""
@@ -1648,9 +1659,10 @@ class LiveStats:
 
     def add(self, mm: int = 0, ok: int = 0, diff: int = 0,
             missing: int = 0, extra: int = 0, dw: int = 0,
-            conflict: int = 0, esp_only: int = 0) -> None:
+            conflict: int = 0, esp_only: int = 0, dw_miss: int = 0) -> None:
         with self._lock:
             self.dw += dw
+            self.dw_miss += dw_miss
             self.conflict += conflict
             self.esp_only += esp_only
             self.mm = max(0, self.mm + mm)
@@ -1695,11 +1707,11 @@ class LiveStats:
 
     def snapshot(self) -> dict:
         with self._lock:
-            resolved = self.ok + self.diff + self.missing
+            resolved = self.ok + self.diff + self.missing + self.dw_miss
             return {"gen": self.gen, "phase": self.phase,
-                    "total": self.mm + self.extra, "mm": self.mm,
+                    "total": self.mm + self.extra + self.dw_miss, "mm": self.mm,
                     "esp": self.ok + self.diff + self.extra,
-                    "missed": self.missing, "resolved": resolved,
+                    "missed": self.missing + self.dw_miss, "resolved": resolved,
                     "file_n": self.file_n, "file_total": self.file_total,
                     "file_name": self.file_name,
                     "file_duration": self.file_duration,
@@ -3202,7 +3214,8 @@ def run_one_wav(res: FileResult, wav: str, route: Optional[AudioRoute],
         with res_lock:
             res.rows.append(row)
         _LIVE_STATS.add(conflict=int(row.cls == ROW_CONFLICT),
-                        esp_only=int(row.cls == ROW_ESP_ONLY))
+                        esp_only=int(row.cls == ROW_ESP_ONLY),
+                        dw_miss=int(row_is_dw_miss(row)))
         print_row(row, t0, esp_used=not dry_run)
 
     def feed_and_step(now: float, final: bool = False) -> None:
@@ -3883,6 +3896,24 @@ def row_stats(rows: List[Row]) -> dict:
     return st
 
 
+def row_is_dw_miss(row: Row) -> bool:
+    """A transmission only Direwolf decoded: multimon-ng and the ESP32 both
+    missed it. It is the one kind of correctly decoded packet the legacy
+    counters (multimon-ng packets + ESP32 extras) cannot see, so it is added
+    on top of them to get the total of packets decoded by ANY decoder."""
+    return ("dw" in row.members and "mm" not in row.members
+            and "esp" not in row.members)
+
+
+def total_any_decoder(res: FileResult) -> int:
+    """Distinct packets of one file decoded correctly (valid CRC) by at
+    least one of multimon-ng, Direwolf or the ESP32, each counted once:
+    multimon-ng packets + ESP32 extras (multimon-ng missed them) + rows
+    only Direwolf decoded. Same definition as the live 'Total packets'."""
+    return (len(res.mm_packets) + len(res.extra)
+            + sum(1 for r in res.rows if row_is_dw_miss(r)))
+
+
 def ref_packet_count(res: FileResult, reference: str) -> int:
     """How many packets of the selected reference a (partial) result holds.
     'multimon' is exactly the legacy count (multimon-ng packets + ESP32
@@ -3993,6 +4024,7 @@ def print_loss_resume(res: FileResult, results: List[FileResult]) -> None:
 
 def print_summary(results: List[FileResult], volume: Optional[float] = None) -> int:
     total = sum(len(r.mm_packets) for r in results)
+    total_any = sum(total_any_decoder(r) for r in results)
     ok = sum(r.ok for r in results)
     mism = sum(len(r.mismatch) for r in results)
     corr = sum(len(r.corrupt) for r in results)
@@ -4019,6 +4051,7 @@ def print_summary(results: List[FileResult], volume: Optional[float] = None) -> 
         print(T("  ESP32 latency vs multimon-ng      : %+.2f s (median of %d file(s))") %
               (median(offsets), len(offsets)))
     print(T("  Files tested                      : %d") % len(results))
+    print(T("  Total packets (any decoder)       : %d") % total_any)
     print(T("  Total packets (multimon-ng)       : %d") % total)
     print(T("  Packets seen by ESP32             : %d") % esp_total)
     print(T("  Decoded correctly                 : %d  (%.2f%%)") % (ok, pct(ok, total)))
@@ -5226,6 +5259,18 @@ def selftest() -> int:
     fr = FileResult(name="x", mm_packets=[p_mm, p_mm], extra=[p_esp])
     check(T("the multimon-ng reference counts packets exactly as before"),
           ref_packet_count(fr, "multimon") == 3)
+    # Total = packets ANY decoder got right, each transmission once: mm+dw+esp
+    # (1), mm only (1), dw+esp with mm missing (ESP32 extra, 1), dw only (1).
+    # The mm+dw+esp row and the mm-only row are the two multimon-ng packets.
+    dw_rows = (rows_of([("mm", 10.0, X), ("dw", 10.0, X), ("esp", 10.3, X)]) +
+               rows_of([("mm", 10.0, X)]) +
+               rows_of([("dw", 10.0, X), ("esp", 10.3, X)]) +
+               rows_of([("dw", 10.0, X)]))
+    fr = FileResult(name="x", mm_packets=[X, X], extra=[X], rows=dw_rows)
+    check(T("total packets counts every packet any decoder decoded, once"),
+          total_any_decoder(fr) == 4 and
+          total_any_decoder(FileResult(name="y", mm_packets=[p_mm], extra=[p_esp])) == 2,
+          T("got %r") % (total_any_decoder(fr),))
 
     print("")
     if failures:
