@@ -293,6 +293,25 @@
 #endif
 
 /**
+ * @brief Maximum number of 1200 Bd demodulators that can run in parallel on
+ *        the same audio.
+ *
+ * Every demodulator receives the same samples through its own band-pass
+ * prefilter; a frame is delivered by whichever demodulator completes it first
+ * and the copies the others produce are dropped by FCS comparison. Each one
+ * costs in the order of 1 % of a 240 MHz core and a few hundred bytes of
+ * state. The demodulator presets use up to three and the carrier-detect bitmap
+ * is 8 bits wide, which bounds the value to 3..8.
+ */
+#ifndef MODEM_RX_MAX_DEMODULATORS
+#define MODEM_RX_MAX_DEMODULATORS 3
+#endif
+
+#if (MODEM_RX_MAX_DEMODULATORS < 3) || (MODEM_RX_MAX_DEMODULATORS > 8)
+#error "MODEM_RX_MAX_DEMODULATORS must be 3..8: the presets run up to three demodulators and the DCD bitmap is 8 bits wide."
+#endif
+
+/**
  * @brief FreeRTOS priority of the internal RX DSP task.
  */
 #ifndef MODEM_RX_TASK_PRIO

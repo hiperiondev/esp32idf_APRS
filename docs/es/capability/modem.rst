@@ -44,9 +44,15 @@ puede convertir el valor guardado directamente al enum:
      - 9600
      - —
 
-El perfil de 1200 Bd ejecuta **dos demoduladores en paralelo**, sintonizados
-ligeramente distinto, para elevar la probabilidad de decodificación
-(``MODEM_MAX_DEMODULATOR_COUNT = 2``).
+Los perfiles de 1200 Bd ejecutan **hasta tres demoduladores en paralelo**
+(``MODEM_RX_MAX_DEMODULATORS = 3``), cada uno tras un prefiltro pasabanda con
+distinta inclinación entre los tonos de marca y espacio, de modo que el juego
+cubre un rango de desbalance de tonos mayor que cualquiera por separado; entrega
+la trama el primero que la completa y las copias se descartan comparando el
+FCS. El juego de demoduladores, la banda del prefiltro, el umbral de recepción,
+un pasa-altos para CTCSS, el control de ganancia y una reparación opcional de
+bits del FCS son ajustes de ejecución (``modem_config_t.rx``, ver
+:ref:`es-radiomodem`).
 
 Corrección de errores hacia adelante FX.25
 ==========================================
@@ -156,7 +162,8 @@ sin reinicio) y el test de bucle:
    * - ``flat_audio``
      - ``audio_lpf``
      - entrada plana/de discriminador: activada para una toma de datos o de
-       discriminador, desactivada para una salida de altavoz
+       discriminador, desactivada para una salida de altavoz; elige la tabla
+       de inclinaciones de prefiltro de los preajustes
    * - ``full_duplex``
      - ``false`` normalmente
      - LOOP TEST pasa ``true`` (un cable DAC→ADC significa que CSMA nunca ve el
@@ -217,6 +224,12 @@ sin reinicio) y el test de bucle:
      - tiempo máximo de transmisión, 0 = desactivado. Pasado ese tiempo, la
        tarea de servicio del módem libera el PTT, detiene el modulador y
        descarta la transmisión
+   * - ``rx``
+     - ``rx_tuning`` (``MODEM_RX_TUNING_DEFAULT()``)
+     - cadena de recepción: preajuste de demoduladores e inclinaciones
+       personalizadas, banda y longitud del prefiltro, umbral de recepción,
+       pasa-altos de CTCSS, ganancia automática o fija, reparación de bits;
+       acotada por ``modem_rx_tuning_sanitize()``
 
 .. note::
 
@@ -225,8 +238,9 @@ sin reinicio) y el test de bucle:
    ADC/DAC. Solo el *nivel* activo se pasa en ejecución, y también viene
    directamente de la macro de compilación. Explícitamente **no** mapeados en
    ejecución (sin equivalente en el componente): pines y atenuación ADC/DAC,
-   squelch por hardware, conmutador de potencia RF, squelch por software,
-   volumen de RX y el techo del AGC.
+   squelch por hardware, conmutador de potencia RF, volumen de RX y el techo
+   del AGC. El umbral de recepción por software y una ganancia fija de
+   recepción forman parte de ``rx``.
 
 NIVEL RX y PRUEBA TX
 ====================
@@ -239,7 +253,10 @@ equipo conectado, uno por sentido.
 **NIVEL RX** (``aprs_rx_level_sample()``, ``POST /radio/level``) observa la
 etapa de recepción durante alrededor de un segundo e informa el nivel RMS y su
 pico, el offset de continua de la entrada, la ganancia del AGC, los extremos
-crudos de conversión y el estado de la detección de portadora. No transmite
+crudos de conversión y el estado de la detección de portadora, seguidos de las
+estadísticas de recepción de ``modem_get_rx_stats()`` (tramas decodificadas y
+exclusivas de cada demodulador, tramas entregadas y reparadas, muestras
+perdidas). No transmite
 nada ni cambia el estado del módem, así que puede ejecutarse mientras se
 decodifica tráfico real. Es contra lo que se ajusta el trimmer de recepción —
 apunte a 250 a 350 mV RMS con el rango crudo lejos de 0 y 4095 — y lo que

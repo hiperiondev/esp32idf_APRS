@@ -45,7 +45,7 @@ Matriz de funciones
      - Notas
    * - AFSK 1200 Bd Bell 202 (APRS estándar)
      - ✅
-     - demodulador dual, perfil por defecto
+     - hasta tres demoduladores en paralelo, perfil por defecto
    * - AFSK 1200 Bd ITU V.23 (1300/2100 Hz)
      - ✅
      -

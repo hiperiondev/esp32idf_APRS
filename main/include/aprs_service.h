@@ -375,9 +375,10 @@ void aprs_service_set_beacon_context(void);
  * Note that the audio pins (ADC, DAC, and PTT), PTT active level, ADC
  * attenuation and sample rates are NOT part of this: the modem component
  * takes them as compile-time constants (see the idf_build_set_property()
- * block in the top-level CMakeLists.txt). Software squelch, RX volume and the
- * AGC ceiling have no equivalent at all in the modem component, so there are
- * no g_config fields (sql_level / volume / agc_max_gain) for them.
+ * block in the top-level CMakeLists.txt). RX volume and an AGC ceiling have no
+ * equivalent in the modem component, so there are no g_config fields for
+ * them; the receive gate, a fixed receive gain and the rest of the receive
+ * chain come from g_config.rx_tuning.
  *
  * @param cfg         Destination configuration, filled completely.
  * @param full_duplex true to transmit without waiting for a clear channel.
@@ -391,7 +392,11 @@ void aprs_service_build_modem_config(modem_config_t *cfg, bool full_duplex);
  * @brief Re-apply the current g_config modem settings to the running modem.
  *
  * Called from the Radio page's Save handler so a changed modulation, preamble,
- * time slot, flat-audio flag or FX.25 mode takes effect without a reboot.
+ * time slot, flat-audio flag, FX.25 mode or receive tuning takes effect
+ * without a reboot. The receive statistics (modem_get_rx_stats()) are cleared
+ * whenever the modulation, the flat-audio flag or the receive tuning differs
+ * from the last applied one, since they describe one demodulator set; a Save
+ * that leaves those unchanged keeps them counting.
  * No-op when the modem was never brought up (see aprs_service_modem_ready()).
  */
 void aprs_service_apply_modem_config(void);
@@ -488,8 +493,12 @@ bool aprs_loop_test_run(char *msg, size_t msg_len);
  * all.
  *
  * The reported object carries @c ok, @c mVrms, @c peak_mVrms, @c dc_mV,
- * @c agc, @c raw_min, @c raw_max, @c dcd and @c adc_samples. Every value is
- * produced locally, so nothing received off the air is ever echoed into it.
+ * @c agc, @c raw_min, @c raw_max, @c dcd and @c adc_samples, followed by the
+ * receive statistics of modem_get_rx_stats(): @c demods (active
+ * demodulators), @c decoded and @c unique (three-element arrays, one entry per
+ * demodulator), @c delivered, @c repaired, @c fifo_drops and @c pool_ovf.
+ * Every value is produced locally, so nothing received off the air is ever
+ * echoed into it.
  *
  * @param json     Buffer that receives the JSON object.
  * @param json_len Size of json.

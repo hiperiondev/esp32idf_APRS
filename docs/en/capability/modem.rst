@@ -44,9 +44,14 @@ saved value straight to the enum:
      - 9600
      - —
 
-The 1200 Bd profile runs **two demodulators in parallel**, tuned slightly
-differently, to raise decode probability
-(``MODEM_MAX_DEMODULATOR_COUNT = 2``).
+The 1200 Bd profiles run **up to three demodulators in parallel**
+(``MODEM_RX_MAX_DEMODULATORS = 3``), each behind a band-pass prefilter with a
+different tilt between the mark and space tones, so the set covers a wider
+range of received tone twist than any single one; a frame is delivered by
+whichever completes it first and the copies are dropped by FCS comparison. The
+demodulator set, the prefilter band, the receive gate, a CTCSS high-pass, the
+gain control and an optional FCS bit repair are runtime settings
+(``modem_config_t.rx``, see :ref:`en-radiomodem`).
 
 FX.25 forward error correction
 ==============================
@@ -150,7 +155,7 @@ boot, the Radio page's Save (live re-apply, no reboot) and the loop test:
    * - ``flat_audio``
      - ``audio_lpf``
      - flat/discriminator input: on for a data or discriminator jack, off for
-       a speaker output
+       a speaker output; selects the prefilter tilt table of the presets
    * - ``full_duplex``
      - ``false`` normally
      - LOOP TEST passes ``true`` (a DAC→ADC wire means CSMA never sees a clear
@@ -209,6 +214,11 @@ boot, the Radio page's Save (live re-apply, no reboot) and the loop test:
      - ``tx_max_keyed_ms`` (0)
      - transmitter time-out, 0 = off. The modem service task releases PTT,
        stops the modulator and discards the transmission past this
+   * - ``rx``
+     - ``rx_tuning`` (``MODEM_RX_TUNING_DEFAULT()``)
+     - receive chain: demodulator preset and custom tilts, prefilter band and
+       length, receive gate, CTCSS high-pass, automatic or fixed gain, bit
+       repair; clamped by ``modem_rx_tuning_sanitize()``
 
 .. note::
 
@@ -217,7 +227,8 @@ boot, the Radio page's Save (live re-apply, no reboot) and the loop test:
    pins. Only the active *level* is passed at runtime, and it too comes
    straight from the compile-time macro. Explicitly **not** runtime-mapped
    (no equivalent in the component): ADC/DAC pins and attenuation, hardware
-   squelch, RF power switch, software squelch, RX volume and the AGC ceiling.
+   squelch, RF power switch, RX volume and the AGC ceiling. The software
+   receive gate and a fixed receive gain are part of ``rx``.
 
 RX LEVEL and TX TEST
 ====================
@@ -230,7 +241,9 @@ transceiver, one direction each.
 **RX LEVEL** (``aprs_rx_level_sample()``, ``POST /radio/level``) watches the
 receive front-end for about a second and reports the RMS level and its peak,
 the input's DC offset, the AGC gain, the raw conversion extremes and the
-carrier-detect state. It transmits nothing and changes no modem state, so it
+carrier-detect state, followed by the receive statistics of
+``modem_get_rx_stats()`` (frames decoded and decoded only by each demodulator,
+frames delivered and repaired, samples lost). It transmits nothing and changes no modem state, so it
 can run while real traffic is being decoded. It is what the receive trimmer is
 set against — aim for 250 to 350 mV RMS with the raw range clear of 0 and 4095
 — and what tells an input biased by ``adc_self_bias`` (1200 to 2000 mV) from

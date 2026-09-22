@@ -69,20 +69,24 @@ struct Ax25ProtoConfig Ax25Config;
 
 #define RING_NEXT(i) (((i) + 1u) % FRAME_MAX_COUNT)
 
-// How long a just-accepted frame's CRC is remembered so that the second
-// demodulator's copy of the SAME frame is recognised as a duplicate and
+// How long a just-accepted frame's CRC is remembered so that the other
+// demodulators' copies of the SAME frame are recognised as duplicates and
 // dropped.
 //
 // The counter is bumped once per Ax25BitParse() call, and there is one call
-// per demodulator per bit, so the hold is measured in bit periods scaled by
-// the demodulator count (RX_DEDUP_HOLD_CALLS below).
+// per active demodulator per bit, so the hold is measured in bit periods
+// scaled by ModemGetDemodulatorCount().
 //
-// The window has to exceed the worst-case inter-demodulator skew and stay
-// below the shortest interval at which a station could legitimately repeat a
+// The window has to exceed the worst-case inter-demodulator skew - the group
+// delay of the longest prefilter is under two bits - and stay below the
+// shortest interval at which a station could legitimately repeat a
 // byte-identical frame. 32 bit periods is ~27 ms at 1200 Bd and ~107 ms at
 // 300 Bd; both sit comfortably in that gap.
-#define RX_DEDUP_HOLD_BITS  32
-#define RX_DEDUP_HOLD_CALLS (RX_DEDUP_HOLD_BITS * MODEM_MAX_DEMODULATOR_COUNT)
+#define RX_DEDUP_HOLD_BITS 32
+
+// Residue of the CRC register after running over a frame and its own FCS
+// (CRC-16/X.25, reflected, initial value 0xFFFF, no final inversion applied).
+#define AX25_CRC_GOOD_RESIDUE 0xF0B8
 
 #define STATIC_HEADER_FLAG_COUNT 4 // flags sent before each frame
 #define STATIC_FOOTER_FLAG_COUNT 1 // flags sent after each frame
@@ -107,6 +111,9 @@ struct FrameHandle {
     uint8_t level;
     uint8_t corrected;
     uint16_t mVrms;
+    uint8_t demod;
+    int8_t twistDb;
+    uint8_t repaired;
 #ifdef ENABLE_FX25
     struct Fx25Mode *fx25Mode;
 #endif
@@ -256,8 +263,21 @@ struct RxState {
 
 static struct RxState rxState[MODEM_MAX_DEMODULATOR_COUNT];
 
-static uint16_t lastCrc = 0;          // CRC of the last received frame
-static uint16_t rxMultiplexDelay = 0; // avoids receiving the same frame twice
+// Duplicate suppression across demodulators. While dedupOpen is set, a frame
+// whose CRC equals lastCrc is another demodulator's copy of the frame just
+// delivered; lastCrcMask records which demodulators produced it, so the
+// window's closing can tell whether one of them got it alone.
+static bool dedupOpen = false;
+static uint16_t lastCrc = 0;
+static uint8_t lastCrcMask = 0;
+static uint16_t rxMultiplexDelay = 0;
+
+// Receive counters (see Ax25GetRxStats()), written by the receive task only.
+static struct Ax25RxStats rxStats;
+
+// Bit-repair level (see Ax25SetFixBits()). Kept outside Ax25Config because
+// Ax25Init() clears that structure on every profile switch.
+static uint8_t rxFixBits = 0;
 
 static uint16_t txDelay;
 static uint16_t txTail;
@@ -726,7 +746,7 @@ uint32_t Ax25GetChannelBusyCount(void) {
     return txChannelBusyCount;
 }
 
-bool Ax25ReadNextRxFrame(uint8_t **dst, uint16_t *size, int8_t *peak, int8_t *valley, uint8_t *level, uint8_t *corrected, uint16_t *mV) {
+bool Ax25ReadNextRxFrame(uint8_t **dst, uint16_t *size, struct Ax25RxMeta *meta) {
     uint8_t tail = rxFrameTail; // we own this one
 
     // Acquire: everything the producer wrote before its release store - the
@@ -745,12 +765,15 @@ bool Ax25ReadNextRxFrame(uint8_t **dst, uint16_t *size, int8_t *peak, int8_t *va
     for (uint16_t i = 0; i < len; i++)
         (*dst)[i] = rxBuffer[(start + i) % FRAME_BUFFER_SIZE];
 
-    *peak = h->peak;
-    *valley = h->valley;
-    *level = h->level;
     *size = len;
-    *corrected = h->corrected;
-    *mV = h->mVrms;
+    meta->peak = h->peak;
+    meta->valley = h->valley;
+    meta->level = h->level;
+    meta->corrected = h->corrected;
+    meta->mVrms = h->mVrms;
+    meta->demod = h->demod;
+    meta->twistDb = h->twistDb;
+    meta->repaired = h->repaired;
 
     // Release the bytes first, then the slot: the producer must never conclude
     // the payload is reusable before we have finished copying it out.
@@ -770,13 +793,276 @@ enum Ax25RxStage Ax25GetRxStage(uint8_t modemNo) {
     return rxState[modemNo].rx;
 }
 
+void Ax25GetRxStats(struct Ax25RxStats *out) {
+    if (out)
+        *out = rxStats;
+}
+
+void Ax25ResetRxStats(void) {
+    memset(&rxStats, 0, sizeof(rxStats));
+}
+
+void Ax25SetFixBits(uint8_t level) {
+    rxFixBits = (level > 2) ? 2 : level;
+}
+
+// @brief Close the duplicate window: credit a frame that only one
+//        demodulator produced to that demodulator.
+static void dedupClose(void) {
+    if (dedupOpen && (lastCrcMask != 0) && ((lastCrcMask & (lastCrcMask - 1)) == 0)) {
+        for (uint8_t i = 0; i < MODEM_RX_MAX_DEMODULATORS; i++) {
+            if (lastCrcMask == (uint8_t)(1u << i))
+                rxStats.unique[i]++;
+        }
+    }
+    dedupOpen = false;
+    lastCrcMask = 0;
+    rxMultiplexDelay = 0;
+}
+
+// @brief Record a frame with a valid FCS from one demodulator.
+// @return true if the frame is new and must be delivered, false if it is
+//         another demodulator's copy of the frame just delivered.
+static bool dedupAccept(uint16_t crc, uint8_t modem) {
+    if (modem < MODEM_RX_MAX_DEMODULATORS)
+        rxStats.decoded[modem]++;
+
+    if (dedupOpen && (crc == lastCrc)) {
+        lastCrcMask |= (uint8_t)(1u << modem);
+        return false;
+    }
+
+    dedupClose();
+    dedupOpen = true;
+    lastCrc = crc;
+    lastCrcMask = (uint8_t)(1u << modem);
+    rxMultiplexDelay = 0;
+    return true;
+}
+
+// @brief CRC-16/X.25 of len bytes, final inversion applied, as carried in the
+//        FCS.
+static uint16_t frameCrc(const uint8_t *data, uint16_t len) {
+    uint16_t crc = 0xFFFF;
+    for (uint16_t i = 0; i < len; i++) {
+        for (uint8_t k = 0; k < 8; k++)
+            calculateCRC((data[i] >> k) & 1, &crc);
+    }
+    return crc ^ 0xFFFF;
+}
+
+// @brief Strict APRS plausibility test, applied to repaired frames only.
+//
+// A repair that matches the FCS but lands on the wrong bits leaves a frame
+// with two errors; the checks below reject most of those. len excludes the
+// FCS.
+static bool framePlausible(const uint8_t *f, uint16_t len) {
+    uint16_t idx = 0;
+    uint8_t addresses = 0;
+
+    for (;;) {
+        if ((uint16_t)(idx + 7) > len)
+            return false;
+
+        bool spaceSeen = false;
+        for (uint8_t j = 0; j < 6; j++) {
+            uint8_t c = f[idx + j];
+            if (c & 1)
+                return false; // address characters never carry the extension bit
+            char ch = (char)(c >> 1);
+            bool alnum = (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9');
+            if (ch == ' ') {
+                if (j == 0)
+                    return false; // a callsign never starts with padding
+                spaceSeen = true;
+            } else if (!alnum || spaceSeen) {
+                return false; // invalid character, or a character after the padding
+            }
+        }
+
+        bool last = (f[idx + 6] & 1) != 0;
+        idx += 7;
+        addresses++;
+        if (last)
+            break;
+        if (addresses >= 2 + AX25_MAX_RPT)
+            return false;
+    }
+
+    if (addresses < 2 || (uint16_t)(idx + 2) > len)
+        return false;
+    if (f[idx] != AX25_CTRL_UI || f[idx + 1] != AX25_PID_NOLAYER3)
+        return false;
+
+    for (uint16_t i = idx + 2; i < len; i++) {
+        uint8_t b = f[i];
+        if (b < 0x1C && b != 0x0D && b != 0x0A)
+            return false;
+    }
+    return true;
+}
+
+// @brief Try to make a frame's FCS match by flipping one symbol's worth of
+//        bits.
+//
+// The CRC is affine over GF(2): the register after running over a corrupted
+// frame and its FCS equals AX25_CRC_GOOD_RESIDUE XOR a syndrome that depends
+// only on the error pattern. The syndrome of one wrong bit at position p
+// (bits counted in transmission order, len * 8 in total) is the register
+// state a lone 1 at p leaves after the zeros that follow it; walking p from
+// the last bit backwards, each step is one zero-input CRC step of the
+// previous syndrome. Every candidate - an adjacent pair, and at level 2 also a
+// single bit - is compared against the measured syndrome in one pass.
+//
+// @param frame Frame bytes including the two FCS bytes; corrected in place
+//              when the repair is accepted.
+// @param len   Length of frame, FCS included.
+// @param level Repair level, 1 or 2 (see Ax25SetFixBits()).
+// @return Number of bits flipped, or 0 if the frame was left unchanged.
+static uint8_t repairFrame(uint8_t *frame, uint16_t len, uint8_t level) {
+    uint16_t reg = 0xFFFF;
+    for (uint16_t i = 0; i < len; i++) {
+        for (uint8_t k = 0; k < 8; k++)
+            calculateCRC((frame[i] >> k) & 1, &reg);
+    }
+
+    const uint16_t syndrome = reg ^ AX25_CRC_GOOD_RESIDUE;
+    if (syndrome == 0)
+        return 0;
+
+    const int32_t bits = (int32_t)len * 8;
+    uint16_t s = 0x8408; // syndrome of an error in the last bit
+    uint16_t next = 0;   // syndrome of an error in the bit after the current one
+    int32_t found = -1;
+    uint8_t width = 0;
+    uint8_t matches = 0;
+
+    for (int32_t p = bits - 1; p >= 0; p--) {
+        if ((p < bits - 1) && ((uint16_t)(s ^ next) == syndrome)) {
+            matches++;
+            found = p;
+            width = 2;
+        }
+        if ((level >= 2) && (s == syndrome)) {
+            matches++;
+            found = p;
+            width = 1;
+        }
+
+        next = s;
+        calculateCRC(0, &s);
+    }
+
+    // Two candidates explaining the same syndrome are indistinguishable, so
+    // neither is trusted.
+    if (matches != 1)
+        return 0;
+
+    for (uint8_t b = 0; b < width; b++) {
+        int32_t q = found + b;
+        frame[q >> 3] ^= (uint8_t)(1u << (q & 7));
+    }
+
+    if (framePlausible(frame, (uint16_t)(len - 2)))
+        return width;
+
+    for (uint8_t b = 0; b < width; b++) {
+        int32_t q = found + b;
+        frame[q >> 3] ^= (uint8_t)(1u << (q & 7));
+    }
+    return 0;
+}
+
+// @brief Handle a plain AX.25 frame closed by a flag: check (and optionally
+//        repair) the FCS, drop duplicates and publish the frame.
+static void rxFrameEnd(struct RxState *rx, uint8_t modem, uint16_t mV) {
+    uint8_t repaired = 0;
+
+    rx->crc ^= 0xFFFF;
+    bool fcsOk = (rx->frame[rx->frameIdx - 2] == (rx->crc & 0xFF)) && (rx->frame[rx->frameIdx - 1] == ((rx->crc >> 8) & 0xFF));
+
+    if (!fcsOk) {
+        // A repair is only worth trying when no other demodulator has just
+        // delivered this frame intact.
+        if ((rxFixBits == 0) || dedupOpen)
+            return;
+        repaired = repairFrame(rx->frame, rx->frameIdx, rxFixBits);
+        if (repaired == 0)
+            return;
+        rx->crc = frameCrc(rx->frame, (uint16_t)(rx->frameIdx - 2));
+    }
+
+    uint16_t i = 13; // start at the SSID of the source
+    bool pathEndFound = false;
+    for (; i < (rx->frameIdx - 2); i++) {
+        if (rx->frame[i] & 1) { // path end bit
+            pathEndFound = true;
+            break;
+        }
+    }
+
+    // a frame with no path-end bit before the CRC has no valid control/PID
+    // field to inspect and is treated as invalid
+    //
+    // if non-APRS frames are not allowed, require control=0x03 and PID=0xF0
+    if (!pathEndFound || (uint16_t)(i + 2) >= rx->frameIdx)
+        return;
+    if (!Ax25Config.allowNonAprs && ((rx->frame[i + 1] != 0x03) || (rx->frame[i + 2] != 0xF0)))
+        return;
+
+    rx->frameIdx -= 2; // remove CRC
+
+    if (!dedupAccept(rx->crc, modem))
+        return;
+
+    if (!rxRingHasRoom(rx->frameIdx)) {
+        ESP_LOGW(TAG, "RX frame buffer full, frame dropped");
+        return;
+    }
+
+    // Order matters. The service task consumes this slot from a different
+    // task, on a different core, with no lock and no barrier other than the
+    // release/acquire pair below, so the payload must be fully in rxBuffer
+    // before the slot is made visible. Otherwise the consumer could copy the
+    // frame out before, or while, it was written and hand up a mix of the new
+    // frame and whatever the ring still held.
+    //
+    // Payload first, then the handle, then one release store to publish the
+    // slot. Nothing before the release can be reordered past it, and the
+    // consumer's matching acquire load guarantees it sees all of it.
+    uint8_t slot = rxFrameHead;
+    uint16_t start = rxBufferHead;
+
+    for (uint16_t j = 0; j < rx->frameIdx; j++) {
+        rxBuffer[rxBufferHead++] = rx->frame[j];
+        rxBufferHead %= FRAME_BUFFER_SIZE;
+    }
+
+    rxFrame[slot].start = start;
+    rxFrame[slot].size = rx->frameIdx;
+    rxFrame[slot].mVrms = mV;
+    rxFrame[slot].demod = modem;
+    rxFrame[slot].twistDb = ModemGetTwistDb(modem);
+    rxFrame[slot].repaired = repaired;
+    ModemGetSignalLevel(modem, &rxFrame[slot].peak, &rxFrame[slot].valley, &rxFrame[slot].level);
+#ifdef ENABLE_FX25
+    rxFrame[slot].fx25Mode = NULL;
+#endif
+    rxFrame[slot].corrected = AX25_NOT_FX25;
+
+    RING_PUBLISH(rxFrameHead, RING_NEXT(slot));
+
+    rxStats.delivered++;
+    if (repaired)
+        rxStats.repaired++;
+}
+
 void Ax25BitParse(uint8_t bit, uint8_t modem, uint16_t mV) {
-    if (lastCrc != 0) { // a frame was received
+    if (dedupOpen) { // a frame was received
         rxMultiplexDelay++;
-        if (rxMultiplexDelay > RX_DEDUP_HOLD_CALLS) {
+        if (rxMultiplexDelay > (uint16_t)(RX_DEDUP_HOLD_BITS * ModemGetDemodulatorCount())) {
             // hold it for a while and wait for the other decoders to receive it
-            lastCrc = 0;
-            rxMultiplexDelay = 0;
+            dedupClose();
         }
     }
 
@@ -802,71 +1088,9 @@ void Ax25BitParse(uint8_t bit, uint8_t modem, uint16_t mV) {
 #endif
 
         if (rx->rawData == 0x7E) { // HDLC flag received
-            if (rx->rx == RX_STAGE_FRAME) {
-                // a correct frame is at least 17 bytes (source+destination+control+CRC)
-                if (rx->frameIdx >= 17) {
-                    rx->crc ^= 0xFFFF;
-                    if ((rx->frame[rx->frameIdx - 2] == (rx->crc & 0xFF)) && (rx->frame[rx->frameIdx - 1] == ((rx->crc >> 8) & 0xFF))) {
-                        uint16_t i = 13; // start at the SSID of the source
-                        bool pathEndFound = false;
-                        for (; i < (rx->frameIdx - 2); i++) {
-                            if (rx->frame[i] & 1) { // path end bit
-                                pathEndFound = true;
-                                break;
-                            }
-                        }
-
-                        // a frame with no path-end bit before the CRC has no valid
-                        // control/PID field to inspect and is treated as invalid
-                        //
-                        // if non-APRS frames are not allowed, require control=0x03 and PID=0xF0
-                        if (pathEndFound && (uint16_t)(i + 2) < rx->frameIdx &&
-                            (Ax25Config.allowNonAprs || ((rx->frame[i + 1] == 0x03) && (rx->frame[i + 2] == 0xF0)))) {
-                            rx->frameIdx -= 2; // remove CRC
-                            if (rx->crc != lastCrc) {
-                                // the other decoder has not received this frame yet
-                                lastCrc = rx->crc;
-                                rxMultiplexDelay = 0; // restart the dedup hold for THIS frame
-
-                                if (rxRingHasRoom(rx->frameIdx)) {
-                                    // Order matters. The service task consumes this slot from
-                                    // a different task, on a different core, with no lock and
-                                    // no barrier other than the release/acquire pair below, so
-                                    // the payload must be fully in rxBuffer before the slot is
-                                    // made visible. Otherwise the consumer could copy the frame
-                                    // out before, or while, it was written and hand up a mix of
-                                    // the new frame and whatever the ring still held.
-                                    //
-                                    // Payload first, then the handle, then one release store
-                                    // to publish the slot. Nothing before the release can be
-                                    // reordered past it, and the consumer's matching acquire
-                                    // load guarantees it sees all of it.
-                                    uint8_t slot = rxFrameHead;
-                                    uint16_t start = rxBufferHead;
-
-                                    for (uint16_t j = 0; j < rx->frameIdx; j++) {
-                                        rxBuffer[rxBufferHead++] = rx->frame[j];
-                                        rxBufferHead %= FRAME_BUFFER_SIZE;
-                                    }
-
-                                    rxFrame[slot].start = start;
-                                    rxFrame[slot].size = rx->frameIdx;
-                                    rxFrame[slot].mVrms = mV;
-                                    ModemGetSignalLevel(modem, &rxFrame[slot].peak, &rxFrame[slot].valley, &rxFrame[slot].level);
-#ifdef ENABLE_FX25
-                                    rxFrame[slot].fx25Mode = NULL;
-#endif
-                                    rxFrame[slot].corrected = AX25_NOT_FX25;
-
-                                    RING_PUBLISH(rxFrameHead, RING_NEXT(slot));
-                                } else {
-                                    ESP_LOGW(TAG, "RX frame buffer full, frame dropped");
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+            // a correct frame is at least 17 bytes (source+destination+control+CRC)
+            if ((rx->rx == RX_STAGE_FRAME) && (rx->frameIdx >= 17))
+                rxFrameEnd(rx, modem, mV);
             rx->rx = RX_STAGE_FLAG;
             rx->receivedByte = 0;
             rx->receivedBitIdx = 0;
@@ -910,17 +1134,24 @@ void Ax25BitParse(uint8_t bit, uint8_t modem, uint16_t mV) {
             uint16_t crc;
             struct FrameHandle *h = parseFx25Frame(rx->frame, rx->frameIdx, &crc);
             if (h != NULL) {
-                ModemGetSignalLevel(modem, &h->peak, &h->valley, &h->level);
-                if (fecSuccess) {
-                    h->corrected = fixed;
-                    h->fx25Mode = rx->fx25Mode;
+                if (!dedupAccept(crc, modem)) {
+                    // another demodulator's copy of a frame already delivered
+                    removeLastFrameFromRxBuffer(h->start);
                 } else {
-                    h->corrected = AX25_NOT_FX25;
+                    ModemGetSignalLevel(modem, &h->peak, &h->valley, &h->level);
+                    if (fecSuccess) {
+                        h->corrected = fixed;
+                        h->fx25Mode = rx->fx25Mode;
+                    } else {
+                        h->corrected = AX25_NOT_FX25;
+                    }
+                    h->mVrms = mV; // input level the service task reports for this frame
+                    h->demod = modem;
+                    h->twistDb = ModemGetTwistDb(modem);
+                    h->repaired = 0;
+                    publishRxFrame(); // handle complete - now make the slot visible
+                    rxStats.delivered++;
                 }
-                h->mVrms = mV; // input level the service task reports for this frame
-                lastCrc = crc;
-                rxMultiplexDelay = 0;
-                publishRxFrame(); // handle complete - now make the slot visible
             }
             // on failure parseFx25Frame() already cleaned up the buffer state
             rx->rx = RX_STAGE_FLAG;
@@ -1405,6 +1636,8 @@ void Ax25Init(uint8_t fx25Mode) {
     rxBufferTail = 0;
     rxFrameHead = 0;
     rxFrameTail = 0;
+    dedupOpen = false;
+    lastCrcMask = 0;
     rxMultiplexDelay = 0;
     txBufferHead = 0;
     txBufferTail = 0;

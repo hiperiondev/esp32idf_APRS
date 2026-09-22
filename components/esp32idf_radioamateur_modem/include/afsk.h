@@ -140,6 +140,11 @@ void AFSK_deinit(void);
  *                  one-service-tick release holdoff that always applies.
  *                  0 disables the extra hold. Forwarded to
  *                  Ax25MinUnkeyTime().
+ *
+ * The receive front-end settings stored by afskSetRxFrontEnd() and the
+ * prefilter tuning stored by ModemSetRxTuning() are applied here as well:
+ * the receive task is held for the whole rebuild, so the demodulators never
+ * see a half-built configuration.
  */
 void afskSetModem(uint8_t val, bool flatAudio, uint16_t timeSlot, uint16_t preamble, uint8_t fx25Mode, uint16_t minUnkeyMs);
 
@@ -254,6 +259,29 @@ void afskSetClipWarn(bool enable);
 void afskGetRawMinMax(int16_t *min, int16_t *max);
 
 /**
+ * @brief Store the receive front-end settings applied by the next
+ *        afskSetModem().
+ *
+ * The values are only recorded here; afskSetModem() applies them while the
+ * receive task is held, so no block is ever processed with a partly updated
+ * front end.
+ *
+ * @param gateMv      Receive gate threshold, mV RMS. Blocks are handed to the
+ *                    demodulators while the input RMS has been above this
+ *                    level for a few blocks, and until it has fallen below
+ *                    half of it. The blocks received while the gate was
+ *                    closed are held and demodulated first when it opens.
+ *                    0 disables the gate: every block is demodulated.
+ * @param hpfHz       Corner of the second-order Butterworth high-pass
+ *                    applied to the decimated signal of the AFSK profiles,
+ *                    Hz, or 0 for none.
+ * @param agcFixed    true for a fixed receive gain, false for automatic gain
+ *                    control.
+ * @param fixedGainDb Receive gain used when @p agcFixed is true, dB.
+ */
+void afskSetRxFrontEnd(uint16_t gateMv, uint16_t hpfHz, bool agcFixed, int8_t fixedGainDb);
+
+/**
  * @brief Enable or disable full-duplex operation.
  *
  * In full duplex mode the modem transmits immediately, without waiting for
@@ -265,6 +293,36 @@ void afskGetRawMinMax(int16_t *min, int16_t *max);
  *               half-duplex CSMA behavior.
  */
 void afskSetFullDuplex(bool enable);
+
+/**
+ * @brief Check whether full-duplex operation is enabled.
+ * @return true in full duplex, false in half duplex.
+ */
+bool afskGetFullDuplex(void);
+
+/**
+ * @brief Get the number of samples dropped because the receive FIFO was
+ *        full.
+ * @return Dropped samples since boot or since afskResetRxCounters().
+ */
+uint32_t afskGetFifoDrops(void);
+
+/**
+ * @brief Get the number of times the ADC driver's conversion pool
+ *        overflowed.
+ *
+ * Each overflow means the receive task did not read conversion frames fast
+ * enough and the driver discarded samples.
+ *
+ * @return Overflow events since boot or since afskResetRxCounters().
+ */
+uint32_t afskGetPoolOverflows(void);
+
+/**
+ * @brief Clear the counters reported by afskGetFifoDrops() and
+ *        afskGetPoolOverflows().
+ */
+void afskResetRxCounters(void);
 
 /**
  * @brief Drain the RX FIFO and run the demodulator on the buffered samples.
@@ -360,9 +418,12 @@ uint32_t afskGetAdcSampleCount(void);
 int afskGetDcOffset(void);
 
 /**
- * @brief Get the current AGC (automatic gain control) gain applied to the
- *        receiver input.
- * @return Current AGC gain, as a linear multiplier.
+ * @brief Get the receive gain currently applied ahead of the demodulators.
+ *
+ * With automatic gain control this is the AGC gain; with a fixed gain it is
+ * that gain.
+ *
+ * @return Current receive gain, as a linear multiplier.
  */
 float afskGetAgcGain(void);
 

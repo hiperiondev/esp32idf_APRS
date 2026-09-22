@@ -51,7 +51,7 @@ void cpu_freq_apply(void) {
     }
 
     // The audio modem's receive chain - a 76.8 kHz converter feeding a
-    // decimating filter and two demodulators - is dimensioned for the full
+    // decimating filter and up to three demodulators - is dimensioned for the full
     // clock, and below it the samples arrive faster than they are processed.
     // The choice is still the operator's: this reports what it costs rather
     // than overriding it, because a node with the modem disabled has no reason

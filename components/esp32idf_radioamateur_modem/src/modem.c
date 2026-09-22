@@ -95,42 +95,45 @@ static const char *TAG = "modem";
 #define PLL9600_STEP ((int32_t)(uint32_t)(((uint64_t)1 << 32) / N9600))
 #define PLL300_STEP  ((int32_t)(uint32_t)(((uint64_t)1 << 32) / N300))
 
-// ADC/DAC clock-ratio calibration.
+// ADC clock calibration.
 //
-// PLLxxxx_STEP above assumes samples-per-symbol is exactly Nxxx, which is
-// only true if the ADC and DAC really run at the nominal
-// ADC sample rate over DAC sample rate ratio. They do not: each is
-// an independent hardware timer with its own rounding error against the rate
-// it was configured for (see the MODEM_ADC_SAMPLERATE comment in
-// esp32idf_radioamateur_modem_config.h and dac_timer_create() in afsk.c), and
-// the gap between the two is a steady-state phase error every DPLL in this
-// file has to track for the rest of a transmission. It is a residual,
-// repeatable loss rather than a random one: real samples-per-symbol is off
-// from the nominal 8 by a small, fixed amount, and left uncorrected the DPLL
-// has to fight the same known bias, transmission after transmission, instead
-// of being told about it once.
+// PLLxxxx_STEP above assumes samples-per-symbol is exactly Nxxx, which holds
+// only if the ADC really runs at MODEM_ADC_SAMPLERATE. It does not: the ADC
+// clock is a hardware divider with its own rounding error (see the
+// MODEM_ADC_SAMPLERATE comment in esp32idf_radioamateur_modem_config.h), and
+// left uncorrected the gap is a steady phase error every DPLL in this file has
+// to track for every frame instead of being told about it once.
 //
-// sampleRateCorrection is that bias, expressed as (real samples-per-symbol) /
-// (nominal samples-per-symbol). Both clocks are derived from the same
-// crystal, so this ratio is a fixed board property - see
-// ModemCalibrateSampleRate() for the derivation and how it is measured.
-// Default 1.0 (no correction) until ModemCalibrateSampleRate() has been
-// called at least once.
-static float sampleRateCorrection = 1.0f;
+// adcRateRatio is real / nominal ADC rate, which is also (real samples per
+// symbol) / (nominal samples per symbol) for a transmitter at its nominal baud
+// rate - every station on the air. dacRateRatio is real / nominal DAC alarm
+// rate. It matters only to a receiver that hears this node's own G3RUH
+// transmitter (full duplex, the wire loopback self-test), because that
+// transmitter holds every symbol for a whole number of DAC samples and so
+// runs at the DAC error; the AFSK transmitter derives its symbol and tone
+// timing from the real alarm rate and is exact. Both ratios are fixed board
+// properties (both clocks come from the same crystal) and stay 1.0 until
+// ModemCalibrateSampleRate() has run.
+static float adcRateRatio = 1.0f;
+static float dacRateRatio = 1.0f;
 
-// @brief Apply the calibrated ADC/DAC clock ratio to a nominal PLL step.
+// Real samples-per-symbol over nominal samples-per-symbol for the profile
+// ModemInit() is building, derived from the two ratios above.
+static float rxRateCorrection = 1.0f;
+
+// @brief Apply the calibrated clock ratio to a nominal PLL step.
 //
 // nominalStep = 2^32 / N assumes exactly N samples per symbol. The real
-// count is N * sampleRateCorrection, so the real step is the nominal one
-// divided by the same factor.
+// count is N * rxRateCorrection, so the real step is the nominal one divided
+// by the same factor.
 static int32_t calibratedPllStep(int32_t nominalStep) {
-    double step = (double)(uint32_t)nominalStep / (double)sampleRateCorrection;
+    double step = (double)(uint32_t)nominalStep / (double)rxRateCorrection;
 
     // Guard the extremes: a step of 0 would never overflow the PLL counter, so
     // decode() would never sample a symbol, and a step above 2^32-1 cannot be
-    // represented at all. Both would require sampleRateCorrection to be
-    // wildly out of range, which ModemCalibrateSampleRate() rejects,
-    // but this keeps the arithmetic itself well-defined regardless.
+    // represented at all. Both would require the correction to be wildly out
+    // of range, which ModemCalibrateSampleRate() rejects, but this keeps the
+    // arithmetic itself well-defined regardless.
     if (step < 1.0)
         step = 1.0;
     if (step > 4294967295.0)
@@ -139,45 +142,40 @@ static int32_t calibratedPllStep(int32_t nominalStep) {
     return (int32_t)(uint32_t)(step + 0.5);
 }
 
-void ModemCalibrateSampleRate(float measuredAdcHz, float measuredDacHz) {
-    if (!(measuredAdcHz > 0.0f) || !(measuredDacHz > 0.0f)) {
-        ESP_LOGW(TAG, "ModemCalibrateSampleRate: no usable measurement (adc=%.1f Hz, dac=%.1f Hz), keeping nominal rates", (double)measuredAdcHz,
-                 (double)measuredDacHz);
-        sampleRateCorrection = 1.0f;
-        return;
+// @brief Accept a measured/nominal clock ratio only if it is plausible.
+//
+// Both clocks are quartz derived, so a real error is a few tenths of a
+// percent at most; anything past 1 % is a bad measurement (ADC not yet
+// running, wrong pin, too short a window - see the quantization note in
+// modem_init()). Applying a bogus ratio does more harm than none: a
+// miscalibration of well under 1 % is enough to multiply the G3RUH frame loss.
+static float plausibleRatio(const char *what, float measured, float nominal) {
+    if (!(measured > 0.0f) || !(nominal > 0.0f)) {
+        ESP_LOGW(TAG, "ModemCalibrateSampleRate: no usable %s measurement (%.1f Hz), keeping the nominal rate", what, (double)measured);
+        return 1.0f;
     }
 
-    // actual samples-per-symbol / nominal samples-per-symbol reduces to this
-    // ratio for every profile: the decimation factor (or lack of one, for
-    // G3RUH) and the baud-rate divider are common to both the actual and the
-    // nominal figure and cancel out. See the derivation in modem.h.
-    float ratio = (measuredAdcHz / (float)MODEM_ADC_SAMPLERATE) / (measuredDacHz / (float)afskGetDacSampleRate());
-
-    // Sane range is a few tenths of a percent either way - both clocks are
-    // quartz-derived, so anything past +/-1% is either a bad measurement
-    // (ADC not yet running, wrong pin, too short a window - see the
-    // quantization-error note in modem_init()) or a board that is broken
-    // in some other way this correction cannot help with. Applying a bogus
-    // ratio does more harm than the uncorrected nominal rate ever did - a
-    // miscalibration of well under 1% was enough to take G3RUH from 10%
-    // loss to 85% - so fall back to nominal rather than trust it.
+    float ratio = measured / nominal;
     if (ratio < 0.99f || ratio > 1.01f) {
-        ESP_LOGW(TAG, "ModemCalibrateSampleRate: ratio %.4f (adc=%.1f Hz, dac=%.1f Hz) out of sane range, ignoring", (double)ratio, (double)measuredAdcHz,
-                 (double)measuredDacHz);
-        sampleRateCorrection = 1.0f;
-        return;
+        ESP_LOGW(TAG, "ModemCalibrateSampleRate: %s ratio %.4f (%.1f Hz for %.1f Hz nominal) out of sane range, ignoring", what, (double)ratio,
+                 (double)measured, (double)nominal);
+        return 1.0f;
     }
+    return ratio;
+}
 
-    sampleRateCorrection = ratio;
-    ESP_LOGI(TAG, "ModemCalibrateSampleRate: ADC %.1f Hz / DAC %.1f Hz -> correction %.5f (%+.3f%%)", (double)measuredAdcHz, (double)measuredDacHz,
-             (double)sampleRateCorrection, (double)((sampleRateCorrection - 1.0f) * 100.0f));
+void ModemCalibrateSampleRate(float measuredAdcHz, float measuredDacHz) {
+    adcRateRatio = plausibleRatio("ADC", measuredAdcHz, (float)MODEM_ADC_SAMPLERATE);
+    dacRateRatio = plausibleRatio("DAC", measuredDacHz, (float)afskGetDacSampleRate());
+
+    ESP_LOGI(TAG, "ModemCalibrateSampleRate: ADC %.1f Hz (%+.3f%%), DAC %.1f Hz (%+.3f%%)", (double)measuredAdcHz, (double)((adcRateRatio - 1.0f) * 100.0f),
+             (double)measuredDacHz, (double)((dacRateRatio - 1.0f) * 100.0f));
 
     // Takes effect from the next ModemInit() (i.e. the next afskSetModem()),
-    // which is why modem_init() calls this before the first one. Reaching
-    // into demodState[] here to patch an already-running profile in place
-    // would race afsk_rx_task the same way ModemInit() itself has to guard
-    // against - see the note above afskSetModem() in afsk.c - for a case
-    // (mid-run recalibration) nothing in this component actually does.
+    // which is why modem_init() calls this before the first one. Patching an
+    // already-running profile in place would race afsk_rx_task the same way
+    // ModemInit() itself has to guard against - see the note above
+    // afskSetModem() in afsk.c.
 }
 
 #define PLL1200_LOCKED_TUNE     0.74f
@@ -272,6 +270,10 @@ float baudRate;
 static uint32_t markStep;  // Q32 phase increment per DAC sample
 static uint32_t spaceStep; // Q32 phase increment per DAC sample
 static uint16_t baudRateStep;
+static float txRateHz; // real DAC alarm rate every transmit step is built from
+
+// Receive tuning stored by ModemSetRxTuning() and read by ModemInit().
+static modem_rx_tuning_t rxTuning = MODEM_RX_TUNING_DEFAULT();
 static int16_t coeffHiI[NMAX], coeffLoI[NMAX], coeffHiQ[NMAX], coeffLoQ[NMAX];
 // Data Carrier Detect, as a bitmap: bit i is set while demodulator i has its
 // PLL locked. Consumers that only need "is the channel busy" test it for
@@ -292,18 +294,27 @@ static uint8_t dcd = 0;
 static uint32_t txLfsr = 0x1FFFF;
 static uint32_t rxLfsr = 0x1FFFF;
 
-// BPF with 2200 Hz tone 6 dB preemphasis (it attenuates the 1200 Hz tone by 6 dB)
-static const int16_t bpf1200[8] = { 728, -13418, -554, 19493, -554, -13418, 728, 2104 };
+// Fixed 8-tap prefilters of the MODEM_RX_EQ_LEGACY demodulator set, fs=9600,
+// gain 32768. Both carry an asymmetric last tap and are not linear phase.
+//
+// bpf1200Tilted: -6.5 dB at 1200 Hz, +3.0 dB at 2200 Hz - the space tone gains
+// 9.5 dB on the mark tone. Used on de-emphasized (speaker) audio.
+static const int16_t bpf1200Tilted[8] = { 728, -13418, -554, 19493, -554, -13418, 728, 2104 };
 
-// BPF with 2200 Hz tone 6 dB deemphasis
-static const int16_t bpf1200Inv[8] = { -10513, -10854, 9589, 23884, 9589, -10854, -10513, -879 };
+// bpf1200Level: +4.2 dB at 1200 Hz, +4.4 dB at 2200 Hz, peak +6.1 dB at
+// 1700 Hz, -17 dB at 300 Hz and -22 dB at 3500 Hz - a band-pass with equal
+// gain at both tones. Used on flat (discriminator) audio.
+static const int16_t bpf1200Level[8] = { -10513, -10854, 9589, 23884, 9589, -10854, -10513, -879 };
 
 // fs=9600, rectangular, fc1=1500, fc2=1900, 0 dB @ 1600/1800 Hz, N=15, gain 65536
 static const int16_t bpf300[15] = {
     186, 8887, 8184, -1662, -10171, -8509, 386, 5394, 386, -8509, -10171, -1662, 8184, 8887, 186,
 };
 
-#define BPF_MAX_TAPS 15
+// Longest prefilter a demodulator can hold: the runtime-designed ones are
+// bounded by MODEM_RX_BPF_TAPS_MAX, bpf300 is 15 taps.
+#define BPF_MAX_TAPS MODEM_RX_BPF_TAPS_MAX
+_Static_assert(BPF_MAX_TAPS >= 15, "BPF_MAX_TAPS must hold bpf300");
 
 // fs=9600 Hz, raised cosine, fc=300 Hz (BR=600 Bd), beta=0.8, N=14, gain=65536
 static const int16_t lpf300[14] = {
@@ -351,6 +362,16 @@ struct DemodState {
 
     enum ModemPrefilter prefilter;
     struct Filter bpf;
+    int16_t bpfTable[BPF_MAX_TAPS]; // storage for a prefilter designed by ModemInit()
+    float bpfTiltDb;                // prefilter gain at the space tone minus gain at the mark tone
+
+    // Correlator level of the mark tone while the demodulator decides "mark",
+    // and of the space tone while it decides "space": first-order averages
+    // with a time constant of 64 samples (eight symbols at 1200 Bd), read by
+    // ModemGetTwistDb().
+    int32_t markLevel;
+    int32_t spaceLevel;
+
     int16_t correlatorSamples[NMAX];
     uint8_t correlatorSamplesIdx;
     struct Filter lpf;
@@ -442,6 +463,38 @@ enum ModemPrefilter ModemGetFilterType(uint8_t modem) {
     return demodState[modem].prefilter;
 }
 
+float ModemGetFilterTiltDb(uint8_t modem) {
+    if (modem >= MODEM_MAX_DEMODULATOR_COUNT || demodState[modem].prefilter == PREFILTER_NONE)
+        return 0.0f;
+
+    return demodState[modem].bpfTiltDb;
+}
+
+int8_t ModemGetTwistDb(uint8_t modem) {
+    if (modem >= MODEM_MAX_DEMODULATOR_COUNT || ModemConfig.modem == MODEM_MODEM_G3RUH)
+        return 0;
+
+    int32_t mark = demodState[modem].markLevel;
+    int32_t space = demodState[modem].spaceLevel;
+    if (mark <= 0 || space <= 0)
+        return 0;
+
+    float db = 20.0f * log10f((float)space / (float)mark) - ModemGetFilterTiltDb(modem);
+    if (db > 30.0f)
+        db = 30.0f;
+    else if (db < -30.0f)
+        db = -30.0f;
+    return (int8_t)lrintf(db);
+}
+
+void ModemSetRxTuning(const modem_rx_tuning_t *t) {
+    if (t == NULL)
+        return;
+
+    rxTuning = *t;
+    modem_rx_tuning_sanitize(&rxTuning);
+}
+
 static void setDcd(bool state) {
     if (state)
         LED_Status2(0, 255, 0);
@@ -494,57 +547,78 @@ void MODEM_DECODE(int16_t sample, uint16_t mVrms) {
     dcd = dcdBits;
 }
 
-// @brief Baudrate/DAC handler. NRZI encoding happens here.
-//        Runs in the GPTimer ISR at the configured DAC sample rate.
-static uint32_t phaseAcc = 0; // Q32: the full sine cycle is 2^32
-static uint16_t sampleIndex = 0;
+// Modulator state. Runs in the GPTimer ISR at the configured DAC sample rate.
+//
+// Symbol timing differs between the two kinds of profile.
+//
+// The AFSK profiles advance a Q32 symbol-phase accumulator by
+// baud * 2^32 / (real DAC alarm rate) per DAC sample and start a new symbol
+// each time it wraps, so the symbol rate is exact whatever the alarm period
+// rounds to. A symbol edge lands on the nearest DAC sample - at 1200 Bd that
+// is at most 3 % of a symbol, and the tone keeps a continuous phase across
+// it, so the receiver never sees it.
+//
+// G3RUH holds every symbol for exactly baudRateStep DAC samples instead. At
+// four samples per symbol a fractional accumulator would move one edge in
+// every few hundred by a quarter of a symbol, which is the kind of edge
+// jitter this profile cannot absorb. Whole-sample symbols keep every edge on
+// the same grid and turn the alarm rounding into a small, uniform rate offset
+// the receiving DPLL tracks.
+static uint32_t phaseAcc = 0;      // Q32: the full sine cycle is 2^32
+static uint32_t baudPhase = 0;     // Q32 symbol phase, AFSK profiles
+static uint32_t baudPhaseStep = 0; // Q32 symbol phase increment per DAC sample
+static uint16_t sampleIndex = 0;   // DAC samples left in the current symbol, G3RUH
+static bool symbolDue = true;      // the next DAC sample starts a new symbol
 
 uint8_t IRAM_ATTR MODEM_BAUDRATE_TIMER_HANDLER(void) {
     uint8_t sinwave = 0;
 
-    if (sampleIndex == 0) {
+    if (symbolDue) {
+        symbolDue = false;
         if (Ax25GetTxBit() == 0) // next bit is 0 -> change symbol (NRZI)
             currentSymbol ^= 1;
-        sampleIndex = baudRateStep;
 
         // Scramble exactly once per symbol, here, and hold the result for the
-        // whole symbol below. Scrambling must run once per symbol, not once per
-        // DAC sample: at 38400 Hz and 9600 Bd, clocking the scrambler on every
-        // sample would run it four times per symbol, so the transmitted
-        // sequence would not be the G3RUH sequence and the receiver's
-        // descrambler - clocked once per symbol - could never match it. The
-        // other profiles are unaffected: they are not scrambled.
+        // whole symbol below. The receiver's descrambler is clocked once per
+        // symbol, so a scrambler clocked on every DAC sample would produce a
+        // sequence it could never match. The other profiles are not
+        // scrambled.
         if (ModemConfig.modem == MODEM_MODEM_G3RUH)
             scrambledSymbol = scramble(currentSymbol);
     }
 
     if (ModemConfig.modem == MODEM_MODEM_G3RUH) {
         sinwave = scrambledSymbol ? 240 : 20;
+
+        if (sampleIndex > 1) {
+            sampleIndex--;
+        } else {
+            sampleIndex = baudRateStep;
+            symbolDue = true;
+        }
     } else {
         // The phase accumulator is 32 bits wide and the table index is the top
         // 9 of them, with the fraction carried in the low 23 bits. Stepping the
-        // TABLE INDEX by an integer instead would quantise the tone to
-        // the DAC sample rate over SIN_LEN, i.e. 75 Hz at 38400, which would put
-        // Bell 202's 2200 Hz space on step 29 (2175, -1.14 %), V.23's mark at
-        // 1275 (-1.92 %) and AFSK300's mark at 1575 (-1.56 %) - off frequency
-        // on air as well as in the loopback. Carrying the fraction keeps every
-        // tone exact to seven decimal places, and the only residual is the
-        // timer's own +0.16 %.
+        // table index by an integer instead would quantise the tone to the DAC
+        // sample rate over SIN_LEN, i.e. 75 Hz at 38400 - more than 1 % off
+        // frequency for every profile. Carrying the fraction, with the step
+        // built from the real alarm rate, keeps every tone exact.
         //
         // The index is still 9 bit, so the table lookup truncates the phase -
         // that is amplitude distortion around -54 dBc, already well under the
-        // 8-bit DAC's own noise floor. Frequency is what matters here, and it
-        // is exact.
+        // 8-bit DAC's own noise floor.
         if (currentSymbol)
             phaseAcc += spaceStep;
         else
             phaseAcc += markStep;
 
         sinwave = sinSample((uint16_t)((phaseAcc >> 23) & (SIN_LEN - 1)));
-    }
 
-    if (sampleIndex > 0)
-        sampleIndex--;
+        uint32_t previous = baudPhase;
+        baudPhase += baudPhaseStep;
+        if (baudPhase < previous)
+            symbolDue = true;
+    }
 
     return sinwave;
 }
@@ -596,7 +670,17 @@ static int32_t demodulate(int16_t sample, struct DemodState *dem) {
         outLoI >>= 14;
         outLoQ >>= 14;
 
-        sample = (int16_t)((abs(outLoI) + abs(outLoQ)) - (abs(outHiI) + abs(outHiQ)));
+        int32_t lo = abs(outLoI) + abs(outLoQ);
+        int32_t hi = abs(outHiI) + abs(outHiQ);
+
+        // Tone levels for the twist estimate: each tone is averaged only while
+        // it is the one being received.
+        if (lo > hi)
+            dem->markLevel += (lo - dem->markLevel) >> 6;
+        else
+            dem->spaceLevel += (hi - dem->spaceLevel) >> 6;
+
+        sample = (int16_t)(lo - hi);
     }
 
     // DCD using a "PLL". The PLL runs nominally at the baudrate; its counter
@@ -695,9 +779,170 @@ void ModemGetStepTones(float *mark, float *space) {
     // Derived from the steps themselves, so this reports what the modulator is
     // really doing rather than what it was asked to do.
     if (mark)
-        *mark = (float)(((double)markStep * (double)afskGetDacSampleRate()) / 4294967296.0);
+        *mark = (float)(((double)markStep * (double)txRateHz) / 4294967296.0);
     if (space)
-        *space = (float)(((double)spaceStep * (double)afskGetDacSampleRate()) / 4294967296.0);
+        *space = (float)(((double)spaceStep * (double)txRateHz) / 4294967296.0);
+}
+
+// Prefilter tilt tables of the designed presets, dB (space gain minus mark
+// gain), for flat (discriminator) and de-emphasized (speaker) input. See
+// modem_rx_eq_preset_t in esp32idf_radioamateur_modem.h.
+static const int8_t tiltSingleFlat[1] = { 0 };
+static const int8_t tiltSingleSpeaker[1] = { 3 };
+static const int8_t tiltDiv2Flat[2] = { 0, -5 };
+static const int8_t tiltDiv2Speaker[2] = { 0, 5 };
+static const int8_t tiltDiv3Flat[3] = { 4, 0, -5 };
+static const int8_t tiltDiv3Speaker[3] = { 0, 3, 6 };
+
+// Frequency grid of the prefilter designer, points from 0 Hz to fs/2.
+#define BPF_DESIGN_GRID 128
+
+// @brief Gain of an FIR, Q15 coefficients, at one frequency.
+static float firGain(const int16_t *c, uint8_t taps, float f, float fs) {
+    float re = 0.0f, im = 0.0f;
+    for (uint8_t n = 0; n < taps; n++) {
+        float w = 2.0f * (float)M_PI * f * (float)n / fs;
+        re += (float)c[n] * cosf(w);
+        im -= (float)c[n] * sinf(w);
+    }
+    return sqrtf(re * re + im * im) / 32768.0f;
+}
+
+// @brief Design a linear-phase band-pass prefilter with a tilt.
+//
+// Frequency-sampling design on a grid of BPF_DESIGN_GRID + 1 points with a
+// Hamming window. The target gain is zero outside [lo, hi] and, inside it,
+// varies linearly in dB: 0 dB at markHz, tiltDb at spaceHz. The result is
+// scaled so the passband maximum is at most unity, which keeps the int16 cast
+// after filterRun() and the post-detection filter's int32 accumulator within
+// range for the +-2047 input demodulate() is fed. Runs only from ModemInit(),
+// with the receive task held, so the float work here costs nothing in the
+// signal path.
+static void designPrefilter(int16_t *out, uint8_t taps, float fs, float lo, float hi, float markHz, float spaceHz, float tiltDb) {
+    static float target[BPF_DESIGN_GRID + 1];
+    float h[BPF_MAX_TAPS];
+    const int m = (taps - 1) / 2;
+
+    // Target gain on the grid, trapezoid-rule weights folded in.
+    for (int k = 0; k <= BPF_DESIGN_GRID; k++) {
+        float f = (fs * 0.5f) * (float)k / (float)BPF_DESIGN_GRID;
+        target[k] = 0.0f;
+        if (f >= lo && f <= hi) {
+            target[k] = powf(10.0f, (tiltDb * (f - markHz) / (spaceHz - markHz)) / 20.0f);
+            if (k == 0 || k == BPF_DESIGN_GRID)
+                target[k] *= 0.5f;
+        }
+    }
+
+    for (int n = 0; n < taps; n++) {
+        float acc = 0.0f;
+        for (int k = 0; k <= BPF_DESIGN_GRID; k++) {
+            if (target[k] == 0.0f)
+                continue;
+            float f = (fs * 0.5f) * (float)k / (float)BPF_DESIGN_GRID;
+            acc += target[k] * cosf(2.0f * (float)M_PI * f * (float)(n - m) / fs);
+        }
+        float window = 0.54f - 0.46f * cosf(2.0f * (float)M_PI * (float)n / (float)(taps - 1));
+        h[n] = acc / (float)BPF_DESIGN_GRID * window;
+    }
+
+    float peak = 0.0f;
+    for (int k = 0; k <= BPF_DESIGN_GRID; k++) {
+        float f = (fs * 0.5f) * (float)k / (float)BPF_DESIGN_GRID;
+        float re = 0.0f, im = 0.0f;
+        for (int n = 0; n < taps; n++) {
+            float w = 2.0f * (float)M_PI * f * (float)n / fs;
+            re += h[n] * cosf(w);
+            im -= h[n] * sinf(w);
+        }
+        float g = sqrtf(re * re + im * im);
+        if (g > peak)
+            peak = g;
+    }
+    if (!(peak > 0.0f))
+        peak = 1.0f;
+
+    for (int n = 0; n < taps; n++)
+        out[n] = (int16_t)lrintf(h[n] / peak * 32767.0f);
+}
+
+// @brief Common clock-recovery and DCD settings of the 1200 Bd demodulators.
+static void setup1200Demod(struct DemodState *dem) {
+    dem->pllStep = calibratedPllStep(PLL1200_STEP);
+    dem->pllLockedTune = (int32_t)(PLL1200_LOCKED_TUNE * (float)((uint32_t)1 << PLL_TUNE_BITS));
+    dem->pllNotLockedTune = (int32_t)(PLL1200_NOT_LOCKED_TUNE * (float)((uint32_t)1 << PLL_TUNE_BITS));
+    dem->dcdMax = DCD1200_MAXPULSE;
+    dem->dcdThres = DCD1200_THRES;
+    dem->dcdInc = DCD1200_INC;
+    dem->dcdDec = DCD1200_DEC;
+    dem->dcdTune = (int32_t)(DCD1200_TUNE * (float)((uint32_t)1 << PLL_TUNE_BITS));
+    dem->lpf.coeffs = lpf1200;
+    dem->lpf.taps = sizeof(lpf1200) / sizeof(*lpf1200);
+    dem->lpf.gainShift = 15;
+    dem->prefilter = PREFILTER_NONE;
+}
+
+// @brief Attach a prefilter to a demodulator and record its tilt.
+static void setPrefilter(struct DemodState *dem, const int16_t *coeffs, uint8_t taps, uint8_t gainShift) {
+    dem->prefilter = PREFILTER_BANDPASS;
+    dem->bpf.coeffs = coeffs;
+    dem->bpf.taps = taps;
+    dem->bpf.gainShift = gainShift;
+
+    float gMark = firGain(coeffs, taps, markFreq, (float)MODEM_DEMOD_SAMPLERATE);
+    float gSpace = firGain(coeffs, taps, spaceFreq, (float)MODEM_DEMOD_SAMPLERATE);
+    dem->bpfTiltDb = (gMark > 0.0f && gSpace > 0.0f) ? 20.0f * log10f(gSpace / gMark) : 0.0f;
+}
+
+// @brief Build the 1200 Bd demodulator set selected by rxTuning.
+static void setup1200DemodSet(void) {
+    const int8_t *tilts = NULL;
+
+    switch (rxTuning.eq_preset) {
+        case MODEM_RX_EQ_LEGACY:
+            demodCount = 2;
+            break;
+        case MODEM_RX_EQ_SINGLE:
+            demodCount = 1;
+            tilts = ModemConfig.flatAudioIn ? tiltSingleFlat : tiltSingleSpeaker;
+            break;
+        case MODEM_RX_EQ_DIVERSITY2:
+            demodCount = 2;
+            tilts = ModemConfig.flatAudioIn ? tiltDiv2Flat : tiltDiv2Speaker;
+            break;
+        case MODEM_RX_EQ_CUSTOM:
+            demodCount = rxTuning.custom_count;
+            tilts = rxTuning.custom_tilt_db;
+            break;
+        case MODEM_RX_EQ_DIVERSITY3:
+        default:
+            demodCount = 3;
+            tilts = ModemConfig.flatAudioIn ? tiltDiv3Flat : tiltDiv3Speaker;
+            break;
+    }
+
+    for (uint8_t i = 0; i < demodCount; i++)
+        setup1200Demod(&demodState[i]);
+
+    if (tilts == NULL) {
+        // Legacy set: demodulator 0 runs a fixed band-pass matched to the kind
+        // of input, demodulator 1 sees the input unfiltered.
+        if (ModemConfig.flatAudioIn)
+            setPrefilter(&demodState[0], bpf1200Level, sizeof(bpf1200Level) / sizeof(*bpf1200Level), 15);
+        else
+            setPrefilter(&demodState[0], bpf1200Tilted, sizeof(bpf1200Tilted) / sizeof(*bpf1200Tilted), 15);
+        return;
+    }
+
+    for (uint8_t i = 0; i < demodCount; i++) {
+        struct DemodState *dem = &demodState[i];
+
+        designPrefilter(dem->bpfTable, rxTuning.bpf_taps, (float)MODEM_DEMOD_SAMPLERATE, (float)rxTuning.bpf_lo_hz, (float)rxTuning.bpf_hi_hz, markFreq,
+                        spaceFreq, (float)tilts[i]);
+        setPrefilter(dem, dem->bpfTable, rxTuning.bpf_taps, 15);
+        ESP_LOGI(TAG, "demod %u: band-pass %u-%u Hz, %u taps, tilt %+d dB requested, %+.1f dB realized", (unsigned)i, (unsigned)rxTuning.bpf_lo_hz,
+                 (unsigned)rxTuning.bpf_hi_hz, (unsigned)rxTuning.bpf_taps, (int)tilts[i], (double)dem->bpfTiltDb);
+    }
 }
 
 void ModemInit(void) {
@@ -706,63 +951,16 @@ void ModemInit(void) {
     if (ModemConfig.modem > MODEM_MODEM_G3RUH)
         ModemConfig.modem = MODEM_MODEM_BELL202;
 
+    // Receive clock correction for this profile: the ADC error for every
+    // station on the air, plus the DAC error when the receiver hears this
+    // node's own G3RUH transmitter (see ModemCalibrateSampleRate()).
+    rxRateCorrection = adcRateRatio;
+    if ((ModemConfig.modem == MODEM_MODEM_G3RUH) && afskGetFullDuplex())
+        rxRateCorrection = adcRateRatio / dacRateRatio;
+
     if ((ModemConfig.modem == MODEM_MODEM_BELL202) || (ModemConfig.modem == MODEM_MODEM_V23)) {
-        demodCount = 2;
         N = N1200;
         baudRate = 1200.f;
-
-        demodState[0].pllStep = calibratedPllStep(PLL1200_STEP);
-        demodState[0].pllLockedTune = (int32_t)(PLL1200_LOCKED_TUNE * (float)((uint32_t)1 << PLL_TUNE_BITS));
-        demodState[0].pllNotLockedTune = (int32_t)(PLL1200_NOT_LOCKED_TUNE * (float)((uint32_t)1 << PLL_TUNE_BITS));
-        demodState[0].dcdMax = DCD1200_MAXPULSE;
-        demodState[0].dcdThres = DCD1200_THRES;
-        demodState[0].dcdInc = DCD1200_INC;
-        demodState[0].dcdDec = DCD1200_DEC;
-        demodState[0].dcdTune = (int32_t)(DCD1200_TUNE * (float)((uint32_t)1 << PLL_TUNE_BITS));
-
-        demodState[1].pllStep = calibratedPllStep(PLL1200_STEP);
-        demodState[1].pllLockedTune = (int32_t)(PLL1200_LOCKED_TUNE * (float)((uint32_t)1 << PLL_TUNE_BITS));
-        demodState[1].pllNotLockedTune = (int32_t)(PLL1200_NOT_LOCKED_TUNE * (float)((uint32_t)1 << PLL_TUNE_BITS));
-        demodState[1].dcdMax = DCD1200_MAXPULSE;
-        demodState[1].dcdThres = DCD1200_THRES;
-        demodState[1].dcdInc = DCD1200_INC;
-        demodState[1].dcdDec = DCD1200_DEC;
-        demodState[1].dcdTune = (int32_t)(DCD1200_TUNE * (float)((uint32_t)1 << PLL_TUNE_BITS));
-
-        demodState[1].prefilter = PREFILTER_NONE;
-        demodState[1].lpf.coeffs = lpf1200;
-        demodState[1].lpf.taps = sizeof(lpf1200) / sizeof(*lpf1200);
-        demodState[1].lpf.gainShift = 15;
-
-        demodState[0].lpf.coeffs = lpf1200;
-        demodState[0].lpf.taps = sizeof(lpf1200) / sizeof(*lpf1200);
-        demodState[0].lpf.gainShift = 15;
-        demodState[0].prefilter = PREFILTER_NONE;
-
-        if (ModemConfig.flatAudioIn) {
-            // flat audio input: demodState[0] runs the inverse bandpass, demodState[1]
-            // stays on the raw samples set above, so the pair keeps two distinct
-            // signal paths regardless of FX.25. Without FX.25's extra FEC margin,
-            // demodState[0] also applies de-emphasis to correct the transmitter's
-            // pre-emphasis; with FX.25, that correction is skipped and demodState[0]
-            // only runs the bandpass, since FX.25's redundancy already covers the
-            // resulting SNR loss.
-#ifdef ENABLE_FX25
-            if (Ax25Config.fx25)
-                demodState[0].prefilter = PREFILTER_FLAT;
-            else
-#endif
-                demodState[0].prefilter = PREFILTER_DEEMPHASIS;
-            demodState[0].bpf.coeffs = bpf1200Inv;
-            demodState[0].bpf.taps = sizeof(bpf1200Inv) / sizeof(*bpf1200Inv);
-            demodState[0].bpf.gainShift = 15;
-        } else {
-            // normal (filtered) audio input: use flat + preemphasis modems
-            demodState[0].prefilter = PREFILTER_PREEMPHASIS;
-            demodState[0].bpf.coeffs = bpf1200;
-            demodState[0].bpf.taps = sizeof(bpf1200) / sizeof(*bpf1200);
-            demodState[0].bpf.gainShift = 15;
-        }
 
         if (ModemConfig.modem == MODEM_MODEM_BELL202) { // Bell 202
             markFreq = 1200.f;
@@ -771,6 +969,8 @@ void ModemInit(void) {
             markFreq = 1300.f;
             spaceFreq = 2100.f;
         }
+
+        setup1200DemodSet();
     } else if (ModemConfig.modem == MODEM_MODEM_AFSK300) {
         demodCount = 1;
         N = N300;
@@ -787,10 +987,7 @@ void ModemInit(void) {
         demodState[0].dcdDec = DCD300_DEC;
         demodState[0].dcdTune = (int32_t)(DCD300_TUNE * (float)((uint32_t)1 << PLL_TUNE_BITS));
 
-        demodState[0].prefilter = PREFILTER_FLAT;
-        demodState[0].bpf.coeffs = bpf300;
-        demodState[0].bpf.taps = sizeof(bpf300) / sizeof(*bpf300);
-        demodState[0].bpf.gainShift = 16;
+        setPrefilter(&demodState[0], bpf300, sizeof(bpf300) / sizeof(*bpf300), 16);
         demodState[0].lpf.coeffs = lpf300;
         demodState[0].lpf.taps = sizeof(lpf300) / sizeof(*lpf300);
         demodState[0].lpf.gainShift = 15;
@@ -800,9 +997,8 @@ void ModemInit(void) {
         baudRate = 9600.f;
 
         // G3RUH is baseband NRZ, not AFSK: there are no mark and space tones,
-        // so both are reported as 0. The DAC sample rate is what configures
-        // the timer; the tone-reporting helpers must not claim a mark or space
-        // frequency for a profile that emits neither.
+        // so both are reported as 0. The tone-reporting helpers must not
+        // claim a mark or space frequency for a profile that emits neither.
         markFreq = 0.f;
         spaceFreq = 0.f;
 
@@ -828,33 +1024,40 @@ void ModemInit(void) {
         demodState[0].lpf.gainShift = 16;
     }
 
-    // Q32 phase increment: step = f * 2^32 / Fs, rounded. Exact to ~1e-7 %.
-    // The rate is the one the DAC sample clock is programmed for, which is
-    // selectable at runtime and fixed before the modem comes up, so every
-    // derived step below is built from the same figure the timer uses.
+    // Transmit steps. The tones and the AFSK symbol phase are built from the
+    // real DAC alarm rate, so what goes on the air is exact; before the DAC
+    // timer exists the nominal rate stands in. G3RUH's whole-sample symbol
+    // length comes from the nominal rate, which is an exact multiple of its
+    // baud rate.
     uint32_t dacRate = afskGetDacSampleRate();
+    txRateHz = afskGetDacAlarmRate();
+    if (!(txRateHz > 0.0f))
+        txRateHz = (float)dacRate;
 
-    markStep = (uint32_t)(((double)markFreq * 4294967296.0) / (double)dacRate + 0.5);
-    spaceStep = (uint32_t)(((double)spaceFreq * 4294967296.0) / (double)dacRate + 0.5);
+    markStep = (uint32_t)(((double)markFreq * 4294967296.0) / (double)txRateHz + 0.5);
+    spaceStep = (uint32_t)(((double)spaceFreq * 4294967296.0) / (double)txRateHz + 0.5);
+    baudPhaseStep = (uint32_t)(((double)baudRate * 4294967296.0) / (double)txRateHz + 0.5);
     baudRateStep = (uint16_t)(dacRate / (uint32_t)baudRate);
 
     {
         float txMark = 0, txSpace = 0;
         ModemGetStepTones(&txMark, &txSpace);
-        ESP_LOGI(TAG, "mark %.1f Hz -> emits %.2f, space %.1f Hz -> emits %.2f, baudRateStep %u, rate correction %+.3f%%", markFreq, txMark, spaceFreq, txSpace,
-                 baudRateStep, (double)((sampleRateCorrection - 1.0f) * 100.0f));
+        ESP_LOGI(TAG, "mark %.1f Hz -> emits %.2f, space %.1f Hz -> emits %.2f, DAC %.1f Hz, %u demodulator(s), RX clock correction %+.3f%%", markFreq, txMark,
+                 spaceFreq, txSpace, (double)txRateHz, (unsigned)demodCount, (double)((rxRateCorrection - 1.0f) * 100.0f));
     }
 
     for (uint8_t i = 0; i < N; i++) { // correlator coefficients
-        coeffLoI[i] = (int16_t)(4095.f * cosf(2.f * 3.1416f * (float)i / (float)N * markFreq / baudRate));
-        coeffLoQ[i] = (int16_t)(4095.f * sinf(2.f * 3.1416f * (float)i / (float)N * markFreq / baudRate));
-        coeffHiI[i] = (int16_t)(4095.f * cosf(2.f * 3.1416f * (float)i / (float)N * spaceFreq / baudRate));
-        coeffHiQ[i] = (int16_t)(4095.f * sinf(2.f * 3.1416f * (float)i / (float)N * spaceFreq / baudRate));
+        coeffLoI[i] = (int16_t)(4095.f * cosf(2.f * (float)M_PI * (float)i / (float)N * markFreq / baudRate));
+        coeffLoQ[i] = (int16_t)(4095.f * sinf(2.f * (float)M_PI * (float)i / (float)N * markFreq / baudRate));
+        coeffHiI[i] = (int16_t)(4095.f * cosf(2.f * (float)M_PI * (float)i / (float)N * spaceFreq / baudRate));
+        coeffHiQ[i] = (int16_t)(4095.f * sinf(2.f * (float)M_PI * (float)i / (float)N * spaceFreq / baudRate));
     }
 
     // reset the modulator state
     phaseAcc = 0;
-    sampleIndex = 0;
+    baudPhase = 0;
+    sampleIndex = baudRateStep;
+    symbolDue = true;
     currentSymbol = 0;
     scrambledSymbol = 0;
     txLfsr = 0x1FFFF;

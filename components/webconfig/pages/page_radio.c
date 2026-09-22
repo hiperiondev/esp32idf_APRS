@@ -98,13 +98,11 @@ esp_err_t page_radio_get(httpd_req_t *req) {
     web_select_option(req, 2, "1200 Bd (AFSK/V.23)", g_config.afsk_modem_type == 2);
     web_select_option(req, 3, "9600 Bd (G3RUH/FSK)", g_config.afsk_modem_type == 3);
     web_select_close(req);
-    // Squelch level / Volume / ADC attenuation / AGC max gain are shown
-    // read-only: esp32idf_radioamateur_modem has no runtime equivalent for
-    // any of them. It has no software squelch (the AX.25 decoder gates on the
-    // demodulator's own DCD), no RX gain trim, a self-limiting AGC, and it
-    // takes the ADC attenuation and both audio pins as compile-time constants,
-    // so editable inputs would save to flash and change nothing. The values
-    // shown are the ones actually compiled in.
+    // The ADC attenuation is shown read-only: esp32idf_radioamateur_modem
+    // takes it and both audio pins as compile-time constants, so an editable
+    // input would save to flash and change nothing. The values shown are the
+    // ones actually compiled in. The receive gate and gain are runtime
+    // settings of the Receive demodulator section below.
     // PTT's GPIO (MODEM_PTT_GPIO) and its active level (MODEM_PTT_ACTIVE_HIGH)
     // are both fixed, compile-time-only board wiring choices - like the
     // ADC/DAC pins - supplied by the top-level CMakeLists.txt, so neither is
@@ -176,6 +174,50 @@ esp_err_t page_radio_get(httpd_req_t *req) {
     web_field_int(req, TR_F_CSMA_PERSISTENCE, "csmaPersist", g_config.csma_persist, CSMA_PERSIST_MIN, CSMA_PERSIST_MAX);
     web_fieldset_close(req);
 
+    // Receive chain of the modem: which demodulators run and with which
+    // prefilters (1200 Bd profiles), plus the receive gate, high-pass, gain
+    // control and bit repair every profile uses. All of it is applied live on
+    // Save through modem_set_modem(); the ranges come from the modem
+    // component's MODEM_RX_* limits, the same ones
+    // modem_rx_tuning_sanitize() enforces on the posted and the stored values.
+    {
+        const modem_rx_tuning_t *t = &g_config.rx_tuning;
+
+        web_fieldset_open(req, TR_F_RX_DEMODULATOR);
+        web_select_open(req, TR_F_RX_EQ_PRESET, "rxEqPreset");
+        web_select_option(req, MODEM_RX_EQ_LEGACY, TR_F_RX_EQ_LEGACY, t->eq_preset == MODEM_RX_EQ_LEGACY);
+        web_select_option(req, MODEM_RX_EQ_SINGLE, TR_F_RX_EQ_SINGLE, t->eq_preset == MODEM_RX_EQ_SINGLE);
+        web_select_option(req, MODEM_RX_EQ_DIVERSITY2, TR_F_RX_EQ_DIV2, t->eq_preset == MODEM_RX_EQ_DIVERSITY2);
+        web_select_option(req, MODEM_RX_EQ_DIVERSITY3, TR_F_RX_EQ_DIV3, t->eq_preset == MODEM_RX_EQ_DIVERSITY3);
+        web_select_option(req, MODEM_RX_EQ_CUSTOM, TR_F_RX_EQ_CUSTOM, t->eq_preset == MODEM_RX_EQ_CUSTOM);
+        web_select_close(req);
+        web_field_int(req, TR_F_RX_EQ_COUNT, "rxEqCount", t->custom_count, 1, MODEM_RX_MAX_DEMODULATORS);
+        web_field_int(req, TR_F_RX_TILT_1, "rxTilt0", t->custom_tilt_db[0], MODEM_RX_TILT_DB_MIN, MODEM_RX_TILT_DB_MAX);
+        web_field_int(req, TR_F_RX_TILT_2, "rxTilt1", t->custom_tilt_db[1], MODEM_RX_TILT_DB_MIN, MODEM_RX_TILT_DB_MAX);
+        web_field_int(req, TR_F_RX_TILT_3, "rxTilt2", t->custom_tilt_db[2], MODEM_RX_TILT_DB_MIN, MODEM_RX_TILT_DB_MAX);
+        web_field_int(req, TR_F_RX_BPF_LO_HZ, "rxBpfLoHz", t->bpf_lo_hz, MODEM_RX_BPF_LO_HZ_MIN, MODEM_RX_BPF_LO_HZ_MAX);
+        web_field_int(req, TR_F_RX_BPF_HI_HZ, "rxBpfHiHz", t->bpf_hi_hz, MODEM_RX_BPF_HI_HZ_MIN, MODEM_RX_BPF_HI_HZ_MAX);
+        web_field_int(req, TR_F_RX_BPF_TAPS, "rxBpfTaps", t->bpf_taps, MODEM_RX_BPF_TAPS_MIN, MODEM_RX_BPF_TAPS_MAX);
+        web_field_int(req, TR_F_RX_GATE_MV, "rxGateMv", t->gate_mv, 0, MODEM_RX_GATE_MV_MAX);
+        web_select_open(req, TR_F_RX_HPF_HZ, "rxHpfHz");
+        web_select_option(req, 0, TR_F_OFF, t->hpf_hz == 0);
+        web_select_option(req, 150, "150 Hz", t->hpf_hz == 150);
+        web_select_option(req, 300, "300 Hz", t->hpf_hz == 300);
+        web_select_option(req, 400, "400 Hz", t->hpf_hz == 400);
+        web_select_close(req);
+        web_select_open(req, TR_F_RX_AGC_MODE, "rxAgcMode");
+        web_select_option(req, MODEM_RX_AGC_AUTO, TR_F_RX_AGC_AUTO, t->agc_mode == MODEM_RX_AGC_AUTO);
+        web_select_option(req, MODEM_RX_AGC_FIXED, TR_F_RX_AGC_FIXED, t->agc_mode == MODEM_RX_AGC_FIXED);
+        web_select_close(req);
+        web_field_int(req, TR_F_RX_AGC_GAIN_DB, "rxAgcGainDb", t->agc_fixed_gain_db, MODEM_RX_AGC_GAIN_DB_MIN, MODEM_RX_AGC_GAIN_DB_MAX);
+        web_select_open(req, TR_F_RX_FIX_BITS, "rxFixBits");
+        web_select_option(req, 0, TR_F_OFF, t->fix_bits == 0);
+        web_select_option(req, 1, TR_F_RX_FIX_SYMBOL, t->fix_bits == 1);
+        web_select_option(req, 2, TR_F_RX_FIX_SYMBOL_BIT, t->fix_bits == 2);
+        web_select_close(req);
+        web_fieldset_close(req);
+    }
+
     // Everything that describes what sits between the ADC/DAC pins and the
     // transceiver. The defaults suit an interface board carrying its own bias
     // network, attenuators and reconstruction filter, which is what the
@@ -234,8 +276,13 @@ esp_err_t page_radio_get(httpd_req_t *req) {
                                   "btn.disabled=false;"
                                   "if(!data.ok){status.style.color='red';status.textContent=' '+data.msg;return;}"
                                   "status.style.color='green';"
+                                  "var n=data.demods||0,dec=[],uni=[];"
+                                  "for(var i=0;i<n;i++){dec.push(data.decoded[i]);uni.push(data.unique[i]);}"
                                   "status.textContent=' '+data.mVrms+' mV RMS (peak '+data.peak_mVrms+'), DC '+data.dc_mV"
-                                  "+' mV, AGC '+data.agc+'x, raw '+data.raw_min+'..'+data.raw_max+', DCD '+(data.dcd?'yes':'no');"
+                                  "+' mV, AGC '+data.agc+'x, raw '+data.raw_min+'..'+data.raw_max+', DCD '+(data.dcd?'yes':'no')"
+                                  "+'; " TR_RADIO_RX_STATS_DECODED " '+dec.join('/')+', " TR_RADIO_RX_STATS_UNIQUE " '+uni.join('/')"
+                                  "+', " TR_RADIO_RX_STATS_DELIVERED " '+data.delivered+', " TR_RADIO_RX_STATS_REPAIRED " '+data.repaired"
+                                  "+', " TR_RADIO_RX_STATS_LOST " '+data.fifo_drops+'/'+data.pool_ovf;"
                                   "}).catch(function(){btn.disabled=false;status.style.color='red';status.textContent=' " TR_LOOPTEST_FAILED "';});"
                                   "}"
                                   // Bounded transmit burst. POST for the same reason as the loop
@@ -345,9 +392,10 @@ esp_err_t page_radio_level_post(httpd_req_t *req) {
     httpd_resp_set_type(req, "application/json");
 
     // Sized for the widest reading the object can hold - every field is a
-    // number of known width plus the fixed keys - with room for the failure
-    // form, which is shorter.
-    char result[320];
+    // number of known width plus the fixed keys, the receive statistics being
+    // up to eleven 10-digit counters - with room for the failure form, which
+    // is shorter.
+    char result[640];
     aprs_rx_level_sample(result, sizeof(result));
     httpd_resp_sendstr(req, result);
     return ESP_OK;
@@ -403,7 +451,7 @@ esp_err_t page_radio_txtest_post(httpd_req_t *req) {
 esp_err_t page_radio_post(httpd_req_t *req) {
     if (!web_check_auth_admin(req))
         return ESP_OK;
-    char body[1200];
+    char body[1600];
     if (web_read_body(req, body, sizeof(body)) < 0) {
         httpd_resp_send_500(req);
         return ESP_OK;
@@ -435,10 +483,42 @@ esp_err_t page_radio_post(httpd_req_t *req) {
     g_config.fx25_mode = (uint8_t)fx25_mode_in;
     g_config.audio_modem_en = audio_modem_en_in;
     g_config.afsk_modem_type = (uint8_t)afsk_modem_in;
-    // rfSql / rfVolume / adcAtten / agcMaxGain are not posted by the form
-    // (see the read-only note in page_radio_get()); there are no g_config
-    // fields behind them. The compiled-in values are displayed read-only.
+    // adcAtten is not posted by the form (see the read-only note in
+    // page_radio_get()); the compiled-in value is displayed read-only.
     g_config.audio_lpf = web_form_get_bool(body, "audioLPF");
+
+    // Receive demodulator. A field missing from the POST keeps its stored
+    // value; modem_rx_tuning_sanitize() clamps whatever was posted into the
+    // ranges the modem accepts, so a malformed POST can never store a value
+    // the demodulator would be built from unchecked.
+    {
+        modem_rx_tuning_t t = g_config.rx_tuning;
+        t.eq_preset = (modem_rx_eq_preset_t)web_form_get_int(body, "rxEqPreset", t.eq_preset);
+        t.custom_count = (uint8_t)web_form_get_int(body, "rxEqCount", t.custom_count);
+        for (int i = 0; i < 3; i++) { // the form carries three tilt fields
+            char key[8];
+            snprintf(key, sizeof(key), "rxTilt%d", i);
+            int v = web_form_get_int(body, key, t.custom_tilt_db[i]);
+            t.custom_tilt_db[i] = (int8_t)((v < -128) ? -128 : (v > 127) ? 127 : v);
+        }
+        int lo = web_form_get_int(body, "rxBpfLoHz", t.bpf_lo_hz);
+        int hi = web_form_get_int(body, "rxBpfHiHz", t.bpf_hi_hz);
+        int taps = web_form_get_int(body, "rxBpfTaps", t.bpf_taps);
+        int gate = web_form_get_int(body, "rxGateMv", t.gate_mv);
+        int hpf = web_form_get_int(body, "rxHpfHz", t.hpf_hz);
+        int gain = web_form_get_int(body, "rxAgcGainDb", t.agc_fixed_gain_db);
+        int fix = web_form_get_int(body, "rxFixBits", t.fix_bits);
+        t.bpf_lo_hz = (uint16_t)((lo < 0) ? 0 : (lo > 65535) ? 65535 : lo);
+        t.bpf_hi_hz = (uint16_t)((hi < 0) ? 0 : (hi > 65535) ? 65535 : hi);
+        t.bpf_taps = (uint8_t)((taps < 0) ? 0 : (taps > 255) ? 255 : taps);
+        t.gate_mv = (uint16_t)((gate < 0) ? 0 : (gate > 65535) ? 65535 : gate);
+        t.hpf_hz = (uint16_t)((hpf < 0) ? 0 : (hpf > 65535) ? 65535 : hpf);
+        t.agc_mode = (modem_rx_agc_mode_t)web_form_get_int(body, "rxAgcMode", t.agc_mode);
+        t.agc_fixed_gain_db = (int8_t)((gain < -128) ? -128 : (gain > 127) ? 127 : gain);
+        t.fix_bits = (uint8_t)((fix < 0) ? 0 : (fix > 255) ? 255 : fix);
+        modem_rx_tuning_sanitize(&t);
+        g_config.rx_tuning = t;
+    }
     // rfPTT (PTT GPIO) and rfPTTAct (PTT active-high) are not posted by the
     // form: both are fixed at compile time (MODEM_PTT_GPIO and
     // MODEM_PTT_ACTIVE_HIGH) and can't be changed from here.
@@ -572,8 +652,9 @@ esp_err_t page_radio_post(httpd_req_t *req) {
     // Push every setting the modem accepts at runtime into the running modem,
     // so Save (and the loop test's auto-save, which POSTs this form before
     // running) takes effect without a reboot: modulation, preamble, time slot,
-    // CSMA persistence, flat-audio flag, FX.25 mode and the PTT minimum unkey
-    // time all go through modem_set_modem().
+    // CSMA persistence, flat-audio flag, FX.25 mode, the PTT minimum unkey
+    // time and the receive demodulator settings all go through
+    // modem_set_modem().
     //
     // rfTxBuffers and the duty-cycle settings need no propagation into the
     // modem component at all: aprs_service_send_tnc2()/send_tnc2_impl()

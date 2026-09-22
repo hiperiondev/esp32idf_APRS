@@ -168,13 +168,12 @@ static const char *TAG = "aprs_service";
 //                        the top-level CMakeLists.txt. Changing the audio
 //                        front-end pins requires a rebuild.
 //   ADC attenuation   -> compile-time MODEM_ADC_ATTEN (ADC_ATTEN_DB_12).
-//   hardware squelch  -> none. The component gates RX on the demodulator's own
-//                        DCD rather than on a squelch line, and it has no RF
-//                        power-switch output either.
-//   software squelch,
+//   hardware squelch  -> none. The component reads no squelch line and has no
+//                        RF power-switch output either; its receive gate is
+//                        a software level threshold (rx_tuning.gate_mv).
 //   RX volume, AGC
-//   gain ceiling      -> none. The component's AGC is self-limiting and there
-//                        is no RX gain trim.
+//   gain ceiling      -> none. The component's AGC is self-limiting; a fixed
+//                        receive gain is part of rx_tuning instead.
 //
 // PTT's active level (MODEM_PTT_ACTIVE_HIGH) is mapped at runtime (below)
 // straight from the compile-time macro, exactly like the PTT GPIO itself
@@ -239,6 +238,11 @@ void aprs_service_build_modem_config(modem_config_t *cfg, bool full_duplex) {
     cfg->dac_amplitude_pct = g_config.dac_amplitude_pct;
     cfg->dac_samplerate = g_config.dac_samplerate;
     cfg->tx_max_keyed_ms = g_config.tx_max_keyed_ms;
+
+    // Receive chain: demodulator set, prefilter band, receive gate,
+    // high-pass, gain control and bit repair, taken as stored (already
+    // sanitized on load and on Save; modem_set_modem() sanitizes again).
+    cfg->rx = g_config.rx_tuning;
 }
 
 // ---------------------------------------------------------------------------
@@ -349,12 +353,40 @@ aprs_service_stats_t aprs_service_get_stats(void) {
     return s;
 }
 
+// Receive configuration the statistics were collected under. The counters
+// describe a particular demodulator set, so they restart whenever the modem
+// profile, the input type or the receive tuning changes - and only then, so
+// the RX LEVEL and LOOP TEST buttons, which save the form before measuring,
+// leave them running.
+static bool s_rxStatsCfgValid = false;
+static modem_mode_t s_rxStatsModem;
+static bool s_rxStatsFlat;
+static modem_rx_tuning_t s_rxStatsTuning;
+
+static bool rx_tuning_equal(const modem_rx_tuning_t *a, const modem_rx_tuning_t *b) {
+    for (int i = 0; i < MODEM_RX_MAX_DEMODULATORS; i++) {
+        if (a->custom_tilt_db[i] != b->custom_tilt_db[i])
+            return false;
+    }
+    return (a->eq_preset == b->eq_preset) && (a->custom_count == b->custom_count) && (a->bpf_lo_hz == b->bpf_lo_hz) && (a->bpf_hi_hz == b->bpf_hi_hz) &&
+           (a->bpf_taps == b->bpf_taps) && (a->gate_mv == b->gate_mv) && (a->hpf_hz == b->hpf_hz) && (a->agc_mode == b->agc_mode) &&
+           (a->agc_fixed_gain_db == b->agc_fixed_gain_db) && (a->fix_bits == b->fix_bits);
+}
+
 void aprs_service_apply_modem_config(void) {
     if (!aprs_service_modem_ready())
         return;
     modem_config_t cfg;
     aprs_service_build_modem_config(&cfg, false);
     modem_set_modem(&cfg);
+
+    if (!s_rxStatsCfgValid || (s_rxStatsModem != cfg.modem) || (s_rxStatsFlat != cfg.flat_audio) || !rx_tuning_equal(&s_rxStatsTuning, &cfg.rx)) {
+        modem_reset_rx_stats();
+        s_rxStatsCfgValid = true;
+        s_rxStatsModem = cfg.modem;
+        s_rxStatsFlat = cfg.flat_audio;
+        s_rxStatsTuning = cfg.rx;
+    }
     ESP_LOGI(TAG, "modem re-applied: modem=%u flatAudio=%d preamble=%ums slot=%ums persist=%u fx25=%u minUnkey=%ums", (unsigned)cfg.modem, (int)cfg.flat_audio,
              (unsigned)cfg.preamble_ms, (unsigned)cfg.slot_time_ms, (unsigned)cfg.persist, (unsigned)cfg.fx25_mode, (unsigned)cfg.min_unkey_ms);
 }
@@ -911,6 +943,11 @@ static void on_rx_frame(const modem_rx_frame_t *f, void *ctx) {
         }
         return;
     }
+
+    // Which demodulator produced the frame and what it measured, for tuning
+    // the receive chain against real traffic.
+    ESP_LOGD(TAG, "RX frame from demod %u: twist %+d dB, %u mVrms, %u bit(s) repaired", (unsigned)f->demod, (int)f->twist_db, (unsigned)f->mVrms,
+             (unsigned)f->repaired);
 
     aprs_rx_hook_t hook = s_rxHook;
     if (hook)
@@ -2020,7 +2057,9 @@ bool aprs_service_can_gate_to_rf(void) {
 // high-water marks the failure messages are built from. That is enough to tell
 // the four failure classes apart (ADC dead vs. no tone vs. tone but no lock vs.
 // lock but no frame), with two limits noted where they are reported:
-//   - there is no software squelch, so there is no "squelch never opened" case;
+//   - the receive gate is not reported separately: a signal strong enough to
+//     swing the ADC opens it, and the blocks it held are demodulated when it
+//     does, so "no lock" already covers a gate that never opened;
 //   - there are no CRC-failure counters, so the furthest HDLC RX stage reached
 //     is what distinguishes "frames were attempted" from "nothing started".
 // ---------------------------------------------------------------------------
@@ -2239,29 +2278,40 @@ bool aprs_loop_test_run(char *msg, size_t msg_len) {
         } else if (s_diag.dcdLatch == 0) {
             // A real signal swing reached the ADC but no demodulator's PLL
             // ever asserted DCD, i.e. none of them locked onto the tones.
+            // The receive gate cannot be the cause on its own: a signal that
+            // swings the ADC this far opens it, and DCD is the lock
+            // indicator for everything past it.
             //
-            // There is no separate "software squelch never opened" case: the
-            // modem has no squelch gate ahead of MODEM_DECODE(), so every
-            // sample reaches the demodulator and DCD is the only lock
-            // indicator.
-            int8_t peak0 = 0, valley0 = 0, peak1 = 0, valley1 = 0;
-            uint8_t level0 = 0, level1 = 0;
+            // The input level is common to every demodulator, so it is
+            // reported once; what differs between them is the prefilter tilt.
+            int8_t peak0 = 0, valley0 = 0;
+            uint8_t level0 = 0;
             ModemGetSignalLevel(0, &peak0, &valley0, &level0);
-            if (ModemGetDemodulatorCount() > 1)
-                ModemGetSignalLevel(1, &peak1, &valley1, &level1);
+
+            char tilts[48] = "";
+            size_t tl = 0;
+            uint8_t demods = ModemGetDemodulatorCount();
+            if (demods > MODEM_MAX_DEMODULATOR_COUNT)
+                demods = MODEM_MAX_DEMODULATOR_COUNT;
+            for (uint8_t i = 0; i < demods && tl < sizeof(tilts); i++) {
+                int n = snprintf(tilts + tl, sizeof(tilts) - tl, "%s%+.1f", i ? "/" : "", (double)ModemGetFilterTiltDb(i));
+                if (n < 0)
+                    break;
+                tl += (size_t)n;
+            }
 
             snprintf(msg, msg_len,
                      "FAIL: no packet was received back within %d ms. The ADC saw a real signal (raw code swung "
                      "%d-%d, a %d-count range; RMS peaked at %u mV), so the demodulator did receive samples, but no "
-                     "demodulator's correlator/PLL ever locked onto the tones. Per-demodulator: demod0 "
-                     "(prefilter=%d, audioLPF/flatAudio=%s) level=%u%%, demod1 level=%u%% (AGC peak gain %.2fx). %s",
-                     LOOP_TEST_TIMEOUT_MS, s_diag.rawMin, s_diag.rawMax, adcSwing, (unsigned)s_diag.mVrmsPeak, (int)ModemGetFilterType(0),
-                     g_config.audio_lpf ? "on" : "off", (unsigned)level0, (unsigned)level1, (double)s_diag.agcGainPeak,
+                     "demodulator's correlator/PLL ever locked onto the tones. %u demodulator(s), prefilter tilt %s dB, "
+                     "flat audio input %s, input level=%u%% (AGC peak gain %.2fx). %s",
+                     LOOP_TEST_TIMEOUT_MS, s_diag.rawMin, s_diag.rawMax, adcSwing, (unsigned)s_diag.mVrmsPeak, (unsigned)demods, tilts,
+                     g_config.audio_lpf ? "on" : "off", (unsigned)level0, (double)s_diag.agcGainPeak,
                      (s_diag.agcGainPeak <= 1.05f) ? "The AGC gain never rose above unity, so the correlator saw the same tiny raw signal as "
                                                      "the ADC - check the AGC path rather than the baud rate."
                                                    : "Check that the AFSK modulation/baud rate on this page matches what was transmitted, and "
-                                                     "try toggling the audio low-pass filter (a direct DAC->ADC loop never passes through a "
-                                                     "real radio's deemphasis network).");
+                                                     "try the three-filter demodulator preset (a direct DAC->ADC loop never passes through a "
+                                                     "real radio's de-emphasis network, so its tones arrive with no twist).");
         } else {
             // A demodulator locked, but no valid AX.25 frame with the expected
             // token came back within the timeout. "Locked" only means enough
@@ -2278,7 +2328,7 @@ bool aprs_loop_test_run(char *msg, size_t msg_len) {
 
             snprintf(msg, msg_len,
                      "FAIL: no packet was received back within %d ms, even though the demodulator's PLL locked onto "
-                     "the tones (DCD bitmap 0x%02X - bit 0 is demod0, bit 1 is demod1 - RMS peaked at %u mV, AGC peak "
+                     "the tones (DCD bitmap 0x%02X - bit N is demodulator N - RMS peaked at %u mV, AGC peak "
                      "gain %.2fx). Furthest HDLC receive "
                      "stage reached: %u (0=idle, 1=flag seen, 2=assembling a frame). %s",
                      LOOP_TEST_TIMEOUT_MS, (unsigned)s_diag.dcdLatch, (unsigned)s_diag.mVrmsPeak, (double)s_diag.agcGainPeak, (unsigned)stageMax,
@@ -2441,16 +2491,30 @@ bool aprs_rx_level_sample(char *json, size_t json_len) {
         agcPeak = 999.0f;
     unsigned agcCenti = (unsigned)((agcPeak * 100.0f) + 0.5f);
 
+    // Receive statistics since the demodulator set was last changed: what
+    // each demodulator decoded, what only it decoded, and whether any
+    // samples were lost before reaching them.
+    modem_rx_stats_t st;
+    modem_get_rx_stats(&st);
+
     // Every field is produced locally, so there is nothing here that could
     // carry a byte off the air into the response.
     snprintf(json, json_len,
              "{\"ok\":true,\"mVrms\":%u,\"peak_mVrms\":%u,\"dc_mV\":%d,\"agc\":%u.%02u,"
-             "\"raw_min\":%d,\"raw_max\":%d,\"dcd\":%s,\"adc_samples\":%lu}",
+             "\"raw_min\":%d,\"raw_max\":%d,\"dcd\":%s,\"adc_samples\":%lu,"
+             "\"demods\":%u,\"decoded\":[%lu,%lu,%lu],\"unique\":[%lu,%lu,%lu],\"delivered\":%lu,\"repaired\":%lu,"
+             "\"fifo_drops\":%lu,\"pool_ovf\":%lu}",
              mean, (unsigned)rmsPeak, afskGetDcOffset(), agcCenti / 100u, agcCenti % 100u, (int)rawMin, (int)rawMax, dcd ? "true" : "false",
-             (unsigned long)afskGetAdcSampleCount());
+             (unsigned long)afskGetAdcSampleCount(), (unsigned)st.demod_count, (unsigned long)st.decoded[0], (unsigned long)st.decoded[1],
+             (unsigned long)st.decoded[2], (unsigned long)st.unique[0], (unsigned long)st.unique[1], (unsigned long)st.unique[2], (unsigned long)st.delivered,
+             (unsigned long)st.repaired, (unsigned long)st.fifo_drops, (unsigned long)st.adc_pool_overflows);
 
     ESP_LOGI(TAG, "RX level: %u mV RMS (peak %u), DC offset %d mV, AGC %u.%02ux, raw %d..%d, DCD %s", mean, (unsigned)rmsPeak, afskGetDcOffset(),
              agcCenti / 100u, agcCenti % 100u, (int)rawMin, (int)rawMax, dcd ? "yes" : "no");
+    ESP_LOGI(TAG, "RX stats: %u demod(s), decoded %lu/%lu/%lu, unique %lu/%lu/%lu, delivered %lu, repaired %lu, FIFO drops %lu, pool overflows %lu",
+             (unsigned)st.demod_count, (unsigned long)st.decoded[0], (unsigned long)st.decoded[1], (unsigned long)st.decoded[2], (unsigned long)st.unique[0],
+             (unsigned long)st.unique[1], (unsigned long)st.unique[2], (unsigned long)st.delivered, (unsigned long)st.repaired, (unsigned long)st.fifo_drops,
+             (unsigned long)st.adc_pool_overflows);
 
     s_loopTestActive = false;
     return true;

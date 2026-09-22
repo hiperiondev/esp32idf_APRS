@@ -94,13 +94,6 @@ normally. It is a compatible extension, not a different protocol.
   its own outgoing frames in the Reed–Solomon block, so any neighbour that
   understands FX.25 gets the same error correction from it.
 
-**Second effect, easy to miss.** With flat audio selected (below), FX.25 also
-changes which prefilter the first 1200 Bd demodulator runs: without FX.25 it
-applies de-emphasis to undo the transmitting station's pre-emphasis; with FX.25
-it runs the plain inverse bandpass instead, on the reasoning that the code's
-redundancy already covers the small SNR loss. Toggling FX.25 therefore alters
-receive behaviour even on a channel where nobody transmits FX.25.
-
 **When to enable it.**
 
 * *Almost always, on a normal APRS channel.* The cost is CPU time in the
@@ -108,15 +101,14 @@ receive behaviour even on a channel where nobody transmits FX.25.
 * *Definitely*, on a weak or noisy path where you are hearing partial packets,
   if any neighbour transmits FX.25.
 * *Leave it off* while you are chasing a receive problem and want the simplest
-  possible signal chain, or when you are A/B-testing de-emphasis behaviour with
-  flat audio.
+  possible signal chain.
 
-.. warning::
+.. note::
 
-   Enabling FX.25 while a marginal receive path is being tuned makes the two
-   demodulators behave differently than they did a moment ago. Tune the audio
-   first with FX.25 off, then turn it on and confirm the decode rate improved
-   rather than the reverse.
+   FX.25 only changes how received bits are assembled into frames and whether
+   outgoing frames are wrapped. It has no effect on the demodulators or their
+   prefilters, so turning it on or off never changes how the audio itself is
+   received.
 
 Audio / AFSK
 ============
@@ -188,9 +180,10 @@ transmit.
 
 **What it changes internally.** ``ModemInit()`` rebuilds the whole demodulator
 chain: filter coefficients, PLL step, DCD thresholds, and the number of
-demodulators. Both 1200 Bd profiles run **two demodulators in parallel** with
-different prefilters, so a frame that one path misses may still be recovered by
-the other; 300 Bd and 9600 Bd run a single demodulator.
+demodulators. The 1200 Bd profiles run the demodulator set chosen under
+*Receive demodulator* — three in parallel by default, each behind a band-pass
+prefilter with a different tilt, so a frame that one path misses may still be
+recovered by another; 300 Bd and 9600 Bd run a single demodulator.
 
 **Examples.**
 
@@ -247,19 +240,25 @@ Flat / discriminator audio input
 --------------------------------
 
 **What it is.** A statement about where the receive audio comes from, not a
-filter you switch on for taste. It tells the demodulator whether the audio it
-is given has already been de-emphasized.
+filter you switch on for taste. It tells the demodulators whether the audio
+they are given has already been de-emphasized, and so which set of prefilter
+tilts the presets under *Receive demodulator* use.
 
-* **Off** (default) — the audio comes from a **speaker or headphone jack**. A
-  voice receiver's audio output is already de-emphasized and band-limited. The
-  first demodulator therefore applies pre-emphasis and a normal bandpass.
-* **On** — the audio comes from a **data port or the discriminator directly**.
-  That signal is flat and unfiltered, and still carries the transmitting
-  station's pre-emphasis. The first demodulator runs an inverse bandpass and
-  (unless FX.25 is enabled) de-emphasis to undo it.
+* **On** (default) — the audio comes from a **data port or the discriminator
+  directly**. That signal is flat and unfiltered, and still carries whatever
+  pre-emphasis the transmitting station applied: a station feeding its
+  microphone input arrives with the 2200 Hz tone 5 to 12 dB louder than the
+  1200 Hz tone, a station feeding a flat data input arrives with the two
+  equal. The presets therefore combine a flat prefilter with prefilters that
+  attenuate the 2200 Hz tone (and, with three filters, one that lifts it).
+* **Off** — the audio comes from a **speaker or headphone jack**. A voice
+  receiver's audio output is already de-emphasized and band-limited, so a
+  flat-input transmitter arrives with the 2200 Hz tone attenuated. The presets
+  combine a flat prefilter with prefilters that lift the 2200 Hz tone.
 
-In both cases the second 1200 Bd demodulator stays on a different path, so the
-pair always covers two distinct equalizations.
+The *Legacy* preset runs a fixed pair instead: one 8-tap band-pass
+(flat for **On**, tilted towards 2200 Hz for **Off**) and one demodulator
+without prefilter.
 
 **Examples.**
 
@@ -572,6 +571,140 @@ worst-case delay rather than an unbounded one.
    answer is more preamble, better audio levels or a better antenna — not a
    higher ``p``.
 
+Receive demodulator
+===================
+
+This fieldset sets up the receive chain: which demodulators run on the audio,
+how their input is filtered, when they are fed and how the gain is set. Every
+field is applied live on *Save*: the demodulators are rebuilt while the receive
+task is held, and the receive statistics shown by **RX LEVEL** restart whenever
+anything here, the modulation or *Flat / discriminator audio input* changes.
+
+Demodulator set
+---------------
+
+**What it is.** How many 1200 Bd demodulators run in parallel and which
+band-pass prefilter each one gets. All of them see the same samples; a frame is
+delivered by whichever completes it first and the copies the others produce are
+discarded by comparing their FCS.
+
+Each designed prefilter has a *tilt*: its gain at the space tone (2200 Hz for
+Bell 202) minus its gain at the mark tone (1200 Hz). Stations on the air differ
+widely in how loud one tone is compared with the other — pre-emphasis in the
+transmitter, a de-emphasized receiver output, audio chains with their own
+slope — and one prefilter can absorb only part of that range. A set of
+prefilters with different tilts covers it together.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 22 26 26 26
+
+   * - Preset
+     - Demodulators
+     - Tilts, flat input
+     - Tilts, speaker input
+   * - Legacy (2, fixed filters)
+     - 2
+     - fixed 8-tap flat band-pass + unfiltered
+     - fixed 8-tap band-pass (+9.5 dB) + unfiltered
+   * - 1 filter
+     - 1
+     - 0 dB
+     - +3 dB
+   * - 2 filters
+     - 2
+     - 0, −5 dB
+     - 0, +5 dB
+   * - 3 filters (default)
+     - 3
+     - +4, 0, −5 dB
+     - 0, +3, +6 dB
+   * - Custom
+     - *Custom: demodulators*
+     - *Custom: tilt* fields
+     - *Custom: tilt* fields
+
+**How to choose.** Keep **3 filters** unless the CPU is needed elsewhere. In a
+host simulation of a noisy FM channel the three-filter set decoded about 12
+percentage points more frames than the legacy pair on average over tone twists
+from −9 to +12 dB, and several times more at +12 dB, where the legacy pair
+fails. The
+*RX LEVEL* statistics show what each demodulator contributes on your own
+channel: a demodulator that never decodes anything the others miss can be
+dropped, or given a different tilt with *Custom*.
+
+**Custom: demodulators** and **Custom: tilt, demodulator 1–3 (dB)** apply only
+to the *Custom* preset: the number of demodulators (1–3) and the tilt of each
+one, from −9 to +9 dB.
+
+Band-pass lower edge, upper edge and length
+-------------------------------------------
+
+The designed prefilters pass the band between **Band-pass lower edge** (600–
+1100 Hz, default 900 Hz) and **Band-pass upper edge** (2300–3000 Hz, default
+2600 Hz). A lower low edge lets in more CTCSS and hum; a higher high edge lets
+in more of the noise a discriminator output carries above the tones.
+
+**Band-pass length** (9–31 taps, default 21, always odd) sets how sharp the
+edges are and how much of the requested tilt is actually reached: 21 taps give
+about three quarters of it, 31 taps nearly all of it. The tilt each prefilter
+really has is written to the log whenever the demodulators are rebuilt.
+
+Receive gate (mV RMS, 0 = off)
+------------------------------
+
+**What it is.** A level threshold ahead of the demodulators. They are fed while
+the input has stayed above the threshold for a few 20 ms blocks and until it
+falls below half of it. The blocks received while the gate was deciding to open
+are kept and demodulated first, so the start of a transmission still reaches
+the demodulators. Range 0–50 mV, default 10 mV.
+
+**How to choose.** With a squelch-independent data or discriminator port the
+input never falls silent, so the gate only costs a decision; set **0** to feed
+the demodulators continuously. With the radio's squelch closing the audio
+between transmissions, keep the default.
+
+High-pass (CTCSS rejection)
+---------------------------
+
+A second-order high-pass at 150, 300 or 400 Hz in front of the demodulators of
+the AFSK profiles, off by default. A discriminator output carries the CTCSS
+tone at full level; a speaker output usually has it filtered already. The
+designed band-pass prefilters reject CTCSS as well, so this matters mostly for
+the *Legacy* preset, whose second demodulator has no prefilter.
+
+Receive gain and Fixed receive gain (dB)
+----------------------------------------
+
+**Automatic** (default) tracks the level of each transmission on the in-band
+signal, lowering the gain quickly on a loud one and raising it slowly on a
+quiet one. **Fixed** applies **Fixed receive gain** (−12 to +18 dB) instead.
+
+A data or discriminator port delivers a level set by the transmitter's
+deviation, not by the received signal strength, so a fixed gain suits it: set
+the receive trimmer with **RX LEVEL** first, then choose the gain that keeps the
+AGC figure near what the automatic mode settles on.
+
+Bit repair
+----------
+
+**What it is.** A second chance for a frame whose FCS does not match. **One
+symbol** corrects one corrupted symbol — two adjacent data bits after NRZI
+decoding, which is what a single bad symbol decision produces; **One symbol or
+one bit** also corrects an isolated bit. The correction works on the CRC
+syndrome, costs one pass over the frame, and is accepted only when exactly one
+candidate explains the error and the repaired frame passes a strict APRS check:
+valid callsign characters in every address, UI control field, no-layer-3 PID,
+and no control characters other than CR and LF in the information field. No
+repair is attempted while another demodulator has just delivered the same frame
+intact.
+
+**How to choose.** Off by default. Every repair scheme accepts a small share of
+wrongly corrected frames, and a wrongly corrected frame is still delivered —
+an IGate forwards it to APRS-IS and a digipeater retransmits it. Enable it on
+a receive-only monitor, or to measure what it would add; the *RX LEVEL*
+statistics count repaired frames separately.
+
 Audio interface
 ===============
 
@@ -835,11 +968,12 @@ different part of the chain:
        more: a line pinned near the supply rail points at a short or a miswire.
    * - A real signal arrived, but no demodulator ever locked
      - The tone is reaching the ADC but the correlator/PLL cannot make sense of
-       it. Check that *Modulation* matches what was transmitted, and try
-       toggling *Flat / discriminator audio input* — a direct DAC-to-ADC loop
-       never passes through a real radio's de-emphasis network. If the AGC gain
-       never rose above unity, the problem is in the AGC path rather than the
-       baud rate.
+       it. Check that *Modulation* matches what was transmitted, and try the
+       **3 filters** demodulator set — a direct DAC-to-ADC loop never passes
+       through a real radio's de-emphasis network, so its tones arrive with no
+       twist. The report lists the number of demodulators and the tilt of each
+       prefilter. If the AGC gain never rose above unity, the problem is in the
+       AGC path rather than the baud rate.
    * - The PLL locked, but no valid frame came back
      - The message reports how far the HDLC state machine got: never starting a
        frame points at bit recovery; starting frames that fail CRC points at a
@@ -885,6 +1019,32 @@ against.
      - Whether a demodulator was locked during the window. ``yes`` while a
        packet is arriving is exactly right; ``yes`` on a silent channel points
        at a noisy input or a false lock.
+
+The reading also carries the **receive statistics**, collected since the
+demodulator set was last changed:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 22 78
+
+   * - Field
+     - How to read it
+   * - ``decoded``
+     - Frames with a valid FCS produced by each demodulator, duplicates
+       included. Similar figures mean the demodulators agree.
+   * - ``only``
+     - Frames that one demodulator alone produced. This is what each prefilter
+       adds to the set; a demodulator that stays at 0 over a long run of real
+       traffic contributes nothing on this channel.
+   * - ``delivered``
+     - Frames handed on after duplicate suppression.
+   * - ``repaired``
+     - Delivered frames that needed *Bit repair*.
+   * - ``samples lost``
+     - Samples dropped because the receive FIFO was full, and ADC driver
+       buffer overflows. Both should stay at 0; anything else means the
+       receive task is not keeping up (CPU clock below 240 MHz, or another
+       task starving it).
 
 **Typical procedure.** Unsquelch the radio, press **RX LEVEL**, and adjust the
 receive trimmer until the raw extremes use a good share of the range without
@@ -1123,9 +1283,51 @@ Field reference
      - 0–60000 ms
      - 0 (off)
      - Live
+   * - Demodulator set
+     - Legacy / 1 / 2 / 3 filters / Custom
+     - 3 filters
+     - Live
+   * - Custom: demodulators
+     - 1–3
+     - 3
+     - Live
+   * - Custom: tilt, demodulator 1–3
+     - −9 to +9 dB
+     - +4 / 0 / −5 dB
+     - Live
+   * - Band-pass lower / upper edge
+     - 600–1100 / 2300–3000 Hz
+     - 900 / 2600 Hz
+     - Live
+   * - Band-pass length
+     - 9–31 taps (odd)
+     - 21
+     - Live
+   * - Receive gate
+     - 0–50 mV (0 = off)
+     - 10 mV
+     - Live
+   * - High-pass (CTCSS rejection)
+     - off / 150 / 300 / 400 Hz
+     - off
+     - Live
+   * - Receive gain
+     - automatic / fixed
+     - automatic
+     - Live
+   * - Fixed receive gain
+     - −12 to +18 dB
+     - 0 dB
+     - Live
+   * - Bit repair
+     - off / one symbol / one symbol or one bit
+     - off
+     - Live
 
 Every numeric field is clamped in three places against the same constants in
-``main/include/aprs_service.h``: the input's own ``min``/``max`` attributes, the
+``main/include/aprs_service.h`` (the *Receive demodulator* fields against the
+``MODEM_RX_*`` limits of the modem component, through
+``modem_rx_tuning_sanitize()``): the input's own ``min``/``max`` attributes, the
 handler that parses the posted form, and the loader that reads ``radio.json``
 from flash. A hand-edited configuration file or a malformed POST therefore
 cannot put an out-of-range value into service.
@@ -1144,13 +1346,14 @@ nothing.
 
    * - Absent setting
      - Why
-   * - Squelch level
-     - There is no software squelch. Every sample reaches the demodulator, and
-       the AX.25 decoder gates on the demodulator's own DCD instead. Use the
-       radio's own squelch — or leave it open, which often decodes better.
-   * - Receive volume / gain trim
-     - There is no RX gain stage to trim. The AGC is self-limiting. Set the
-       level with the interface's trimmer, guided by **RX LEVEL**.
+   * - Squelch line
+     - The firmware reads no squelch line. Its receive gate is a software level
+       threshold, set under *Receive demodulator*; the radio's own squelch can
+       be used as well, or left open, which suits the gate set to 0.
+   * - Receive volume trim
+     - There is no volume control. Set the level with the interface's trimmer,
+       guided by **RX LEVEL**; a fixed receive gain is available under
+       *Receive demodulator*.
    * - AGC maximum gain
      - The AGC bounds itself; there is nothing to configure.
    * - ADC attenuation
@@ -1187,6 +1390,13 @@ Troubleshooting
    * - Strong local stations decode, weak ones never do
      - Receive level too low, or **Flat / discriminator audio input** set
        backwards. Run **RX LEVEL**.
+   * - Some stations always decode, others with a similar signal never do
+     - Their tone twist is outside what the demodulator set covers. Use the
+       **3 filters** set, or a *Custom* set with a wider spread of tilts, and
+       compare the per-demodulator figures in **RX LEVEL**.
+   * - The first packet after a quiet period is often lost
+     - The receive gate. Set **Receive gate** to 0 when the audio comes from a
+       squelch-independent port.
    * - Weak stations decode, strong ones do not
      - Clipping. Enable **Warn on receive over-range**, run **RX LEVEL**, and
        reduce the receive trimmer.

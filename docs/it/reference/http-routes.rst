@@ -150,7 +150,7 @@ stazione cambia con esso.
      - esegui il loop test (risultato JSON)
    * - POST
      - ``/radio/level``
-     - misura il livello di ricezione, la polarizzazione di ingresso e il margine del convertitore senza trasmettere (risultato JSON)
+     - misura il livello di ricezione, la polarizzazione di ingresso e il margine del convertitore e riporta le statistiche di ricezione, senza trasmettere (risultato JSON)
    * - POST
      - ``/radio/txtest``
      - trasmette una raffica di prova limitata per regolare il livello di trasmissione (risultato JSON)

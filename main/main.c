@@ -470,10 +470,10 @@ static void app_task(void *arg) {
     // What is deliberately NOT in that struct: the ADC, DAC and PTT pins and
     // the ADC attenuation are compile-time constants (see the
     // idf_build_set_property() block in the top-level CMakeLists.txt), and the
-    // AGC gain ceiling and squelch threshold do not exist as settings at all -
-    // the modem's AGC needs no ceiling and there is no software squelch, since
-    // the AX.25 decoder gates on real DCD instead. None of them have g_config
-    // fields, and none are selectable on the Radio/Modem page.
+    // AGC gain ceiling does not exist as a setting at all - the modem's AGC
+    // needs no ceiling. None of them have g_config fields, and none are
+    // selectable on the Radio/Modem page. The receive gate threshold, a fixed
+    // receive gain and the demodulator set are in g_config.rx_tuning.
     //
     // aprs_service_start() must run before modem_init(): it installs the RX
     // callback, and the component starts delivering frames from inside

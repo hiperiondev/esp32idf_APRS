@@ -25,6 +25,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "esp32idf_radioamateur_modem_config.h"
+
 /**
  * @brief Sentinel value used in place of an FX.25 correction count to mean
  *        "this frame was not received as FX.25" (i.e. a plain AX.25 frame).
@@ -331,23 +333,75 @@ uint32_t Ax25GetPersistenceMissedCount(void);
 uint32_t Ax25GetChannelBusyCount(void);
 
 /**
+ * @brief Reception details attached to every received frame.
+ */
+struct Ax25RxMeta {
+    int8_t peak;       /**< Peak signal level measured during reception. */
+    int8_t valley;     /**< Valley (minimum) signal level measured during reception. */
+    uint8_t level;     /**< Overall signal level indicator. */
+    uint8_t corrected; /**< Bytes corrected by FX.25 FEC, or ::AX25_NOT_FX25 if the frame was plain AX.25. */
+    uint16_t mVrms;    /**< RMS input level measured during reception, in millivolts. */
+    uint8_t demod;     /**< Index of the demodulator that produced the frame. */
+    int8_t twistDb;    /**< Tone twist estimated by that demodulator (see ModemGetTwistDb()), dB. */
+    uint8_t repaired;  /**< Bits flipped by bit repair to make the FCS match; 0 for a frame received intact. */
+};
+
+/**
+ * @brief Receive counters of the AX.25 layer.
+ */
+struct Ax25RxStats {
+    uint32_t decoded[MODEM_RX_MAX_DEMODULATORS]; /**< Frames with a valid FCS per demodulator, duplicates of the same frame included. */
+    uint32_t unique[MODEM_RX_MAX_DEMODULATORS];  /**< Frames no other demodulator produced within the duplicate window. */
+    uint32_t delivered;                          /**< Frames placed in the receive ring after duplicate suppression. */
+    uint32_t repaired;                           /**< Delivered frames that needed bit repair. */
+};
+
+/**
  * @brief Retrieve the next pending received frame, if any is available.
  *
- * @param dst       Set to point at the internal buffer holding the raw
- *                   frame bytes.
- * @param size      Set to the length, in bytes, of the received frame.
- * @param peak      Set to the peak signal level measured during reception.
- * @param valley    Set to the valley (minimum) signal level measured during
- *                   reception.
- * @param level     Set to the overall signal level indicator.
- * @param corrected Set to the number of bytes corrected by FX.25 FEC, or
- *                   ::AX25_NOT_FX25 if the frame was plain AX.25.
- * @param mV        Set to the RMS input level measured during reception, in
- *                   millivolts.
+ * @param dst  Set to point at the internal buffer holding the raw frame
+ *             bytes.
+ * @param size Set to the length, in bytes, of the received frame.
+ * @param meta Filled with the reception details of the frame.
  * @return true if a frame was available and has been read, false if no
  *         frame was pending.
  */
-bool Ax25ReadNextRxFrame(uint8_t **dst, uint16_t *size, int8_t *peak, int8_t *valley, uint8_t *level, uint8_t *corrected, uint16_t *mV);
+bool Ax25ReadNextRxFrame(uint8_t **dst, uint16_t *size, struct Ax25RxMeta *meta);
+
+/**
+ * @brief Read the receive counters.
+ *
+ * The counters are written by the receive task and read here without a lock;
+ * each is a single 32-bit word, so a reader sees either the old or the new
+ * value of every counter.
+ *
+ * @param out Destination structure. Ignored if NULL.
+ */
+void Ax25GetRxStats(struct Ax25RxStats *out);
+
+/**
+ * @brief Clear every receive counter.
+ */
+void Ax25ResetRxStats(void);
+
+/**
+ * @brief Select the bit-repair level used on frames whose FCS does not match.
+ *
+ * Repair works on the CRC syndrome, so trying every candidate position costs
+ * one pass over the frame. With NRZI coding a single corrupted symbol flips
+ * two adjacent data bits, which is what level 1 corrects; level 2 also
+ * corrects one isolated bit, the pattern left when one of the pair was a
+ * stuffed bit. A correction is accepted only when exactly one candidate
+ * matches the syndrome and the repaired frame passes a strict APRS sanity
+ * check (valid callsign characters in every address, UI control field,
+ * no-layer-3 PID, no control characters other than CR and LF in the
+ * information field). No repair is attempted while another demodulator's copy
+ * of a frame is still inside the duplicate window.
+ *
+ * @param level 0 = off, 1 = one symbol (two adjacent bits), 2 = one symbol or
+ *              one single bit. Larger values are treated as 2.
+ */
+void Ax25SetFixBits(uint8_t level);
 
 /**
  * @brief Get the current HDLC receive state for a given demodulator.

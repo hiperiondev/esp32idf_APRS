@@ -39,11 +39,11 @@ Modem / Layer-2
    * - AFSK 1200 Bd Bell 202 (standard VHF APRS)
      - ✅ (Direwolf, UZ7HO, VP-Digi, hardware TNCs)
      - ✅
-     - Default profile; dual demodulator running in parallel for better decode probability
+     - Default profile; up to three demodulators with differently tilted prefilters running in parallel for better decode probability
    * - AFSK 1200 Bd V.23
      - ⚠️ (Direwolf supports it; many clients don't)
      - ✅
-     - Selectable modem profile #2; like Bell 202 it runs two demodulators in parallel
+     - Selectable modem profile #2; like Bell 202 it runs up to three demodulators in parallel
    * - AFSK 300 Bd (HF APRS)
      - ✅ (Direwolf, UZ7HO)
      - ✅

@@ -29,3 +29,8 @@ idf_component_register(
 
 # Enable FX.25
 target_compile_definitions(${COMPONENT_LIB} PUBLIC -DENABLE_FX25)
+
+# The receive DSP (decimator, prefilters, correlators) runs on every sample of
+# every demodulator, so this component is built optimized for speed whatever
+# optimization level the rest of the project uses.
+target_compile_options(${COMPONENT_LIB} PRIVATE -O2)

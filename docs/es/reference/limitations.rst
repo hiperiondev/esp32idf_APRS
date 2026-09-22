@@ -40,12 +40,12 @@ Módem / Capa 2
    * - AFSK 1200 Bd Bell 202 (APRS VHF estándar)
      - ✅ (Direwolf, UZ7HO, VP-Digi, TNC de hardware)
      - ✅
-     - Perfil predeterminado; doble demodulador ejecutándose en paralelo para mejorar la probabilidad de decodificación
+     - Perfil predeterminado; hasta tres demoduladores con prefiltros de distinta inclinación ejecutándose en paralelo para mejorar la probabilidad de decodificación
    * - AFSK 1200 Bd V.23
      - ⚠️ (Direwolf lo soporta; muchos clientes no)
      - ✅
-     - Perfil de módem seleccionable n.º 2; como Bell 202, ejecuta dos
-       demoduladores en paralelo
+     - Perfil de módem seleccionable n.º 2; como Bell 202, ejecuta hasta
+       tres demoduladores en paralelo
    * - AFSK 300 Bd (APRS HF)
      - ✅ (Direwolf, UZ7HO)
      - ✅

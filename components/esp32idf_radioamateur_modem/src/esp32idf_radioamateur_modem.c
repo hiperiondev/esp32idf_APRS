@@ -163,9 +163,7 @@ static void modem_service_task(void *arg) {
     (void)arg;
     uint8_t *frame;
     uint16_t size;
-    int8_t peak, valley;
-    uint8_t level, corrected;
-    uint16_t mV;
+    struct Ax25RxMeta meta;
 
     // uint32_t lastHeartbeat = 0;
 
@@ -184,16 +182,19 @@ static void modem_service_task(void *arg) {
         Ax25TransmitCheck();
         txTimeoutPoll();
 
-        while (Ax25ReadNextRxFrame(&frame, &size, &peak, &valley, &level, &corrected, &mV)) {
+        while (Ax25ReadNextRxFrame(&frame, &size, &meta)) {
             if (s_rxCb) {
                 modem_rx_frame_t f = {
                     .frame = frame,
                     .len = size,
-                    .peak = peak,
-                    .valley = valley,
-                    .level = level,
-                    .corrected = corrected,
-                    .mVrms = mV,
+                    .peak = meta.peak,
+                    .valley = meta.valley,
+                    .level = meta.level,
+                    .corrected = meta.corrected,
+                    .mVrms = meta.mVrms,
+                    .demod = meta.demod,
+                    .twist_db = meta.twistDb,
+                    .repaired = meta.repaired,
                 };
                 s_rxCb(&f, s_rxCbCtx);
             }
@@ -215,13 +216,70 @@ void modem_set_rx_callback(modem_rx_cb_t cb, void *ctx) {
     s_rxCbCtx = ctx;
 }
 
+void modem_rx_tuning_sanitize(modem_rx_tuning_t *t) {
+    if (t == NULL)
+        return;
+
+    if ((unsigned)t->eq_preset > (unsigned)MODEM_RX_EQ_CUSTOM)
+        t->eq_preset = MODEM_RX_EQ_DIVERSITY3;
+    if (t->custom_count < 1)
+        t->custom_count = 1;
+    else if (t->custom_count > MODEM_RX_MAX_DEMODULATORS)
+        t->custom_count = MODEM_RX_MAX_DEMODULATORS;
+    for (int i = 0; i < MODEM_RX_MAX_DEMODULATORS; i++) {
+        if (t->custom_tilt_db[i] < MODEM_RX_TILT_DB_MIN)
+            t->custom_tilt_db[i] = MODEM_RX_TILT_DB_MIN;
+        else if (t->custom_tilt_db[i] > MODEM_RX_TILT_DB_MAX)
+            t->custom_tilt_db[i] = MODEM_RX_TILT_DB_MAX;
+    }
+
+    if (t->bpf_lo_hz < MODEM_RX_BPF_LO_HZ_MIN)
+        t->bpf_lo_hz = MODEM_RX_BPF_LO_HZ_MIN;
+    else if (t->bpf_lo_hz > MODEM_RX_BPF_LO_HZ_MAX)
+        t->bpf_lo_hz = MODEM_RX_BPF_LO_HZ_MAX;
+    if (t->bpf_hi_hz < MODEM_RX_BPF_HI_HZ_MIN)
+        t->bpf_hi_hz = MODEM_RX_BPF_HI_HZ_MIN;
+    else if (t->bpf_hi_hz > MODEM_RX_BPF_HI_HZ_MAX)
+        t->bpf_hi_hz = MODEM_RX_BPF_HI_HZ_MAX;
+
+    if (t->bpf_taps < MODEM_RX_BPF_TAPS_MIN)
+        t->bpf_taps = MODEM_RX_BPF_TAPS_MIN;
+    else if (t->bpf_taps > MODEM_RX_BPF_TAPS_MAX)
+        t->bpf_taps = MODEM_RX_BPF_TAPS_MAX;
+    if ((t->bpf_taps & 1) == 0)
+        t->bpf_taps++; // odd length keeps the designed filters linear phase
+
+    if (t->gate_mv > MODEM_RX_GATE_MV_MAX)
+        t->gate_mv = MODEM_RX_GATE_MV_MAX;
+    if (t->hpf_hz > MODEM_RX_HPF_HZ_MAX)
+        t->hpf_hz = MODEM_RX_HPF_HZ_MAX;
+
+    if ((unsigned)t->agc_mode > (unsigned)MODEM_RX_AGC_FIXED)
+        t->agc_mode = MODEM_RX_AGC_AUTO;
+    if (t->agc_fixed_gain_db < MODEM_RX_AGC_GAIN_DB_MIN)
+        t->agc_fixed_gain_db = MODEM_RX_AGC_GAIN_DB_MIN;
+    else if (t->agc_fixed_gain_db > MODEM_RX_AGC_GAIN_DB_MAX)
+        t->agc_fixed_gain_db = MODEM_RX_AGC_GAIN_DB_MAX;
+
+    if (t->fix_bits > MODEM_RX_FIX_BITS_MAX)
+        t->fix_bits = MODEM_RX_FIX_BITS_MAX;
+}
+
 void modem_set_modem(const modem_config_t *cfg) {
     // PTT pin is fixed at compile time (::MODEM_PTT_GPIO); only its active
     // level is applied here.
     AFSK_setPttActiveHigh(cfg->ptt_active_high);
 
+    // The receive tuning is only stored by these two calls; afskSetModem()
+    // applies it while the receive task is held.
+    modem_rx_tuning_t rx = cfg->rx;
+    modem_rx_tuning_sanitize(&rx);
+    ModemSetRxTuning(&rx);
+    afskSetRxFrontEnd(rx.gate_mv, rx.hpf_hz, rx.agc_mode == MODEM_RX_AGC_FIXED, rx.agc_fixed_gain_db);
+
     afskSetFullDuplex(cfg->full_duplex);
     afskSetModem((uint8_t)cfg->modem, cfg->flat_audio, cfg->slot_time_ms, cfg->preamble_ms, cfg->fx25_mode, cfg->min_unkey_ms);
+    Ax25SetFixBits(rx.fix_bits);
     Ax25Config.allowNonAprs = cfg->allow_non_aprs ? 1 : 0;
     Ax25Config.fullDuplex = cfg->full_duplex ? 1 : 0;
     Ax25Config.persist = cfg->persist;
@@ -281,15 +339,13 @@ esp_err_t modem_init(const modem_config_t *cfg) {
     if (err != ESP_OK)
         return err;
 
-    // Calibrate every profile's DPLL against this board's real ADC/DAC clock
-    // ratio before the first ModemInit() runs (modem_set_modem() below is
-    // what triggers it). See ModemCalibrateSampleRate() for why: nominal
-    // MODEM_ADC_SAMPLERATE/MODEM_DAC_SAMPLERATE assumes both clocks hit
-    // their configured rates exactly, and they don't - the gap is a steady,
-    // repeatable bias, not thermal noise, so one measurement here is enough
-    // for the whole run. This is what turns the "residual DAC/ADC clock
-    // drift" the G3RUH stress test flags into a solved, calibrated-out
-    // quantity instead of something the DPLL has to fight indefinitely.
+    // Calibrate every profile's DPLL against this board's real ADC rate
+    // before the first ModemInit() runs (modem_set_modem() below is what
+    // triggers it). See ModemCalibrateSampleRate() for why: the nominal
+    // MODEM_ADC_SAMPLERATE assumes the ADC hits its configured rate exactly,
+    // and it doesn't - the gap is a steady, repeatable bias, not thermal
+    // noise, so one measurement here is enough for the whole run. The real
+    // DAC rate is recorded at the same time for the G3RUH self-test.
     //
     // The DAC side needs no live measurement - afskGetDacAlarmRate() already
     // reports the timer's real rate, computed exactly from its configuration.
@@ -304,12 +360,11 @@ esp_err_t modem_init(const modem_config_t *cfg) {
     //      128 samples / (76800 Hz * window_s) = 0.001667 / window_s
     //
     // A 200 ms window gives ~0.83% of error, which is *larger* than the
-    // ~0.3-0.4% real ADC/DAC clock gap this exists to correct for. Applying
-    // that as a correction is not "slightly off," it is as likely to have the
-    // wrong sign as the right one, and PLL9600_LOCKED_TUNE=0.97 has just enough
-    // margin for the real ~0.38% bias and none to spare for an extra,
-    // wrong-signed one - a short window can push the G3RUH loss rate well
-    // above the uncorrected baseline. 5000 ms brings the quantization error
+    // few-tenths-of-a-percent real clock error this exists to correct for.
+    // Applying that as a correction is not "slightly off," it is as likely to
+    // have the wrong sign as the right one, and PLL9600_LOCKED_TUNE=0.97 has
+    // little margin for a wrong-signed bias - a short window can push the
+    // G3RUH loss rate well above the uncorrected baseline. 5000 ms brings the quantization error
     // down to ~0.033%, an order of magnitude below the signal being measured,
     // at the cost of 5 extra seconds of boot time paid exactly once.
     ModemCalibrateSampleRate((float)modem_measure_adc_rate(5000), afskGetDacAlarmRate());
@@ -346,6 +401,30 @@ uint32_t modem_persistence_missed_count(void) {
 
 uint32_t modem_channel_busy_count(void) {
     return Ax25GetChannelBusyCount();
+}
+
+void modem_get_rx_stats(modem_rx_stats_t *out) {
+    if (out == NULL)
+        return;
+
+    struct Ax25RxStats ax;
+    Ax25GetRxStats(&ax);
+
+    memset(out, 0, sizeof(*out));
+    for (int i = 0; i < MODEM_RX_MAX_DEMODULATORS; i++) {
+        out->decoded[i] = ax.decoded[i];
+        out->unique[i] = ax.unique[i];
+    }
+    out->delivered = ax.delivered;
+    out->repaired = ax.repaired;
+    out->fifo_drops = afskGetFifoDrops();
+    out->adc_pool_overflows = afskGetPoolOverflows();
+    out->demod_count = ModemGetDemodulatorCount();
+}
+
+void modem_reset_rx_stats(void) {
+    Ax25ResetRxStats();
+    afskResetRxCounters();
 }
 
 uint32_t modem_measure_adc_rate(uint32_t ms) {

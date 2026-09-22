@@ -98,14 +98,6 @@ protocollo diverso.
   anche le proprie trame in uscita nel blocco Reed–Solomon, così ogni vicino
   che capisce FX.25 riceve da essa la stessa correzione d'errore.
 
-**Secondo effetto, facile da non notare.** Con l'ingresso audio piatto
-selezionato (più sotto), FX.25 cambia anche quale prefiltro esegue il primo
-demodulatore a 1200 Bd: senza FX.25 applica la deenfasi per annullare la
-preenfasi della stazione trasmittente; con FX.25 esegue invece il solo passa
-banda inverso, sul presupposto che la ridondanza del codice copra già la piccola
-perdita di SNR. Commutare FX.25 altera quindi il comportamento in ricezione
-anche su un canale dove nessuno trasmette FX.25.
-
 **Quando abilitarlo.**
 
 * *Quasi sempre, su un canale APRS normale.* Il costo è tempo di CPU nel
@@ -113,15 +105,14 @@ anche su un canale dove nessuno trasmette FX.25.
 * *Senz'altro*, su un percorso debole o rumoroso dove si sentono pacchetti
   parziali, se qualche vicino trasmette in FX.25.
 * *Lasciatelo spento* mentre state inseguendo un problema di ricezione e volete
-  la catena di segnale più semplice possibile, o quando state confrontando il
-  comportamento della deenfasi con audio piatto.
+  la catena di segnale più semplice possibile.
 
-.. warning::
+.. note::
 
-   Abilitare FX.25 mentre si regola un percorso di ricezione marginale fa sì che
-   i due demodulatori si comportino diversamente da un momento prima. Regolate
-   prima l'audio con FX.25 spento, poi accendetelo e verificate che il tasso di
-   decodifica sia migliorato e non il contrario.
+   FX.25 cambia solo il modo in cui i bit ricevuti vengono assemblati in trame e
+   se le trame in uscita vengono incapsulate. Non ha effetto sui demodulatori né
+   sui loro prefiltri, quindi accenderlo o spegnerlo non cambia mai il modo in
+   cui viene ricevuto l'audio stesso.
 
 Audio / AFSK
 ============
@@ -196,10 +187,11 @@ ricezione sia in trasmissione.
 
 **Che cosa cambia internamente.** ``ModemInit()`` ricostruisce l'intera catena
 di demodulazione: coefficienti dei filtri, passo del PLL, soglie del DCD e
-numero di demodulatori. Entrambi i profili a 1200 Bd eseguono **due
-demodulatori in parallelo** con prefiltri diversi, così una trama che un
-percorso perde può essere recuperata dall'altro; quelli a 300 Bd e 9600 Bd
-eseguono un solo demodulatore.
+numero di demodulatori. I profili a 1200 Bd eseguono il set di demodulatori
+scelto in *Demodulatore di ricezione* — tre in parallelo per impostazione
+predefinita, ognuno dopo un prefiltro passa-banda con inclinazione diversa,
+così una trama che un percorso perde può essere recuperata da un altro; quelli
+a 300 Bd e 9600 Bd eseguono un solo demodulatore.
 
 **Esempi.**
 
@@ -259,20 +251,26 @@ Ingresso audio piatto / da discriminatore
 ------------------------------------------
 
 **Che cos'è.** Una dichiarazione su da dove proviene l'audio di ricezione, non
-un filtro da attivare a piacere. Dice al demodulatore se l'audio che riceve è
-già stato deenfatizzato.
+un filtro da attivare a piacere. Dice ai demodulatori se l'audio che ricevono è
+già stato deenfatizzato e, quindi, quale set di inclinazioni dei prefiltri
+usano i preset di *Demodulatore di ricezione*.
 
-* **Spento** (predefinito) — l'audio proviene da una **presa di altoparlante o
-  cuffia**. L'uscita audio di un ricevitore vocale è già deenfatizzata e
-  limitata in banda. Il primo demodulatore applica quindi preenfasi e un passa
-  banda normale.
-* **Attivo** — l'audio proviene da una **porta dati o direttamente dal
-  discriminatore**. Quel segnale è piatto e non filtrato, e porta ancora la
-  preenfasi della stazione trasmittente. Il primo demodulatore esegue un passa
-  banda inverso e (a meno che FX.25 sia attivo) la deenfasi per annullarla.
+* **Attivo** (predefinito) — l'audio proviene da una **porta dati o
+  direttamente dal discriminatore**. Quel segnale è piatto e non filtrato, e
+  porta ancora la preenfasi applicata dalla stazione trasmittente: una stazione
+  che entra dal microfono arriva con il tono a 2200 Hz da 5 a 12 dB più forte
+  di quello a 1200 Hz, una che entra da un ingresso dati piatto arriva con i due
+  uguali. I preset combinano quindi un prefiltro piatto con prefiltri che
+  attenuano il tono a 2200 Hz (e, con tre filtri, uno che lo esalta).
+* **Spento** — l'audio proviene da una **presa di altoparlante o cuffia**.
+  L'uscita audio di un ricevitore vocale è già deenfatizzata e limitata in
+  banda, quindi un trasmettitore con ingresso piatto arriva con il tono a
+  2200 Hz attenuato. I preset combinano un prefiltro piatto con prefiltri che
+  esaltano il tono a 2200 Hz.
 
-In entrambi i casi il secondo demodulatore a 1200 Bd resta su un percorso
-diverso, quindi la coppia copre sempre due equalizzazioni distinte.
+Il preset *Classico* esegue invece una coppia fissa: un passa-banda
+a 8 coefficienti (piatto per **Attivo**, inclinato verso 2200 Hz per
+**Spento**) e un demodulatore senza prefiltro.
 
 **Esempi.**
 
@@ -603,6 +601,151 @@ ha un ritardo di caso peggiore limitato invece che illimitato.
    risposta è più preambolo, livelli audio migliori o un'antenna migliore, non una
    ``p`` più alta.
 
+Demodulatore di ricezione
+=========================
+
+Questo gruppo di campi configura la catena di ricezione: quali demodulatori
+lavorano sull'audio, come viene filtrato il loro ingresso, quando vengono
+alimentati e come si imposta il guadagno. Tutti i campi si applicano dal vivo
+al *Salva*: i demodulatori vengono ricostruiti con il task di ricezione
+fermo, e le statistiche di ricezione mostrate da **LIVELLO RX** ripartono da
+zero ogni volta che cambia qualcosa qui, la modulazione o l'*Ingresso audio
+piatto / da discriminatore*.
+
+Set di demodulatori
+-------------------
+
+**Che cos'è.** Quanti demodulatori a 1200 Bd lavorano in parallelo e quale
+prefiltro passa-banda riceve ciascuno. Tutti vedono gli stessi campioni; la
+trama la consegna il primo che la completa, e le copie degli altri vengono
+scartate confrontandone l'FCS.
+
+Ogni prefiltro progettato ha un'*inclinazione*: il suo guadagno sul tono di
+spazio (2200 Hz in Bell 202) meno il suo guadagno sul tono di marca (1200 Hz).
+Le stazioni in aria differiscono molto per quanto un tono arriva più forte
+dell'altro — preenfasi nel trasmettitore, uscita deenfatizzata del ricevitore,
+catene audio con una propria pendenza — e un solo prefiltro ne assorbe solo una
+parte. Un set di prefiltri con inclinazioni diverse lo copre nel complesso.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 22 26 26 26
+
+   * - Preset
+     - Demodulatori
+     - Inclinazioni, ingresso piatto
+     - Inclinazioni, ingresso altoparlante
+   * - Classico (2, filtri fissi)
+     - 2
+     - passa-banda fisso piatto a 8 coefficienti + senza filtro
+     - passa-banda fisso a 8 coefficienti (+9,5 dB) + senza filtro
+   * - 1 filtro
+     - 1
+     - 0 dB
+     - +3 dB
+   * - 2 filtri
+     - 2
+     - 0, −5 dB
+     - 0, +5 dB
+   * - 3 filtri (predefinito)
+     - 3
+     - +4, 0, −5 dB
+     - 0, +3, +6 dB
+   * - Personalizzato
+     - *Personalizzato: demodulatori*
+     - campi *Personalizzato: inclinazione*
+     - campi *Personalizzato: inclinazione*
+
+**Come scegliere.** Tenete **3 filtri** a meno che la CPU serva altrove. In
+una simulazione di un canale FM rumoroso il set a tre filtri ha decodificato
+circa 12 punti percentuali di trame in più della coppia classica in media su
+sbilanciamenti dei toni da −9 a +12 dB, e diverse volte di più a +12 dB, dove
+la coppia classica fallisce. Le statistiche di *LIVELLO RX* mostrano ciò che
+ogni demodulatore apporta sul vostro canale: un demodulatore che non decodifica
+mai nulla che gli altri perdano può essere tolto, o ricevere un'altra
+inclinazione con *Personalizzato*.
+
+**Personalizzato: demodulatori** e **Personalizzato: inclinazione,
+demodulatore 1–3 (dB)** si applicano solo al preset *Personalizzato*: il numero
+di demodulatori (1–3) e l'inclinazione di ciascuno, da −9 a +9 dB.
+
+Bordo inferiore, bordo superiore e lunghezza del passa-banda
+------------------------------------------------------------
+
+I prefiltri progettati lasciano passare la banda tra il **Bordo inferiore del
+passa-banda** (600–1100 Hz, predefinito 900 Hz) e il **Bordo superiore del
+passa-banda** (2300–3000 Hz, predefinito 2600 Hz). Un bordo inferiore più
+basso lascia passare più CTCSS e ronzio; un bordo superiore più alto lascia
+passare più del rumore che un'uscita discriminatore porta sopra i toni.
+
+La **Lunghezza del passa-banda** (9–31 coefficienti, predefinito 21, sempre
+dispari) stabilisce quanto sono netti i bordi e quanta dell'inclinazione
+richiesta si raggiunge davvero: 21 coefficienti ne danno circa tre quarti, 31
+quasi tutta. L'inclinazione reale di ogni prefiltro viene scritta nel log ogni
+volta che i demodulatori vengono ricostruiti.
+
+Soglia di ricezione (mV RMS, 0 = spenta)
+----------------------------------------
+
+**Che cos'è.** Una soglia di livello davanti ai demodulatori. Vengono
+alimentati mentre l'ingresso è rimasto sopra la soglia per alcuni blocchi da
+20 ms e finché non scende sotto la metà. I blocchi ricevuti mentre la soglia
+decideva di aprirsi vengono conservati e demodulati per primi, così l'inizio di
+una trasmissione arriva comunque ai demodulatori. Intervallo 0–50 mV,
+predefinito 10 mV.
+
+**Come scegliere.** Con una porta dati o discriminatore indipendente dallo
+squelch l'ingresso non resta mai in silenzio, quindi la soglia costa solo una
+decisione; impostate **0** per alimentare sempre i demodulatori. Se lo squelch
+della radio interrompe l'audio tra le trasmissioni, tenete il valore
+predefinito.
+
+Passa-alto (reiezione CTCSS)
+----------------------------
+
+Un passa-alto del secondo ordine a 150, 300 o 400 Hz davanti ai demodulatori
+dei profili AFSK, spento per impostazione predefinita. Un'uscita discriminatore
+porta il tono CTCSS a pieno livello; quella altoparlante di solito lo ha già
+filtrato. Anche i prefiltri passa-banda progettati respingono il CTCSS, quindi
+questo conta soprattutto per il preset *Classico*, il cui secondo demodulatore
+non ha prefiltro.
+
+Guadagno di ricezione e Guadagno fisso di ricezione (dB)
+--------------------------------------------------------
+
+**Automatico** (predefinito) segue il livello di ogni trasmissione sul segnale
+in banda, abbassando in fretta il guadagno su una forte e alzandolo lentamente
+su una debole. **Fisso** applica invece il **Guadagno fisso di ricezione**
+(da −12 a +18 dB).
+
+Una porta dati o discriminatore fornisce un livello fissato dalla deviazione
+del trasmettitore, non dall'intensità del segnale ricevuto, quindi le si addice
+un guadagno fisso: regolate prima il trimmer di ricezione con **LIVELLO RX**,
+poi scegliete il guadagno che mantiene il valore dell'AGC vicino a quello su
+cui si assesta il modo automatico.
+
+Riparazione dei bit
+-------------------
+
+**Che cos'è.** Una seconda possibilità per una trama il cui FCS non
+corrisponde. **Un simbolo** corregge un simbolo danneggiato — due bit di dati
+adiacenti dopo la decodifica NRZI, ciò che produce una singola decisione di
+simbolo errata; **Un simbolo o un bit** corregge anche un bit isolato. La
+correzione lavora sulla sindrome del CRC, costa una passata sulla trama e viene
+accettata solo quando esattamente un candidato spiega l'errore e la trama
+riparata supera un controllo APRS rigoroso: caratteri di nominativo validi in
+ogni indirizzo, campo di controllo UI, PID senza livello 3 e nessun carattere
+di controllo diverso da CR e LF nel campo informazioni. Non si tenta alcuna
+riparazione mentre un altro demodulatore ha appena consegnato la stessa trama
+intatta.
+
+**Come scegliere.** Spenta per impostazione predefinita. Ogni metodo di
+riparazione accetta una piccola quota di trame corrette male, e una trama
+corretta male viene consegnata comunque: un IGate la inoltra ad APRS-IS e un
+digipeater la ritrasmette. Attivatela su un monitor di sola ricezione, o per
+misurare ciò che aggiungerebbe; le statistiche di *LIVELLO RX* contano a parte
+le trame riparate.
+
 Interfaccia audio
 =================
 
@@ -884,10 +1027,12 @@ punta a una parte diversa della catena:
    * - È arrivato un segnale reale, ma nessun demodulatore si è agganciato
      - Il tono arriva all'ADC ma il correlatore/PLL non riesce a interpretarlo.
        Verificate che *Modulazione* corrisponda a ciò che è stato trasmesso, e
-       provate a commutare *Ingresso audio piatto / da discriminatore* — un loop
-       diretto DAC-ADC non passa mai per la rete di deenfasi di una radio vera. Se
-       il guadagno dell'AGC non è mai salito sopra l'unità, il problema è nel
-       percorso dell'AGC e non nella velocità in baud.
+       provate il set di demodulatori a **3 filtri** — un loop diretto DAC-ADC
+       non passa mai per la rete di deenfasi di una radio vera, quindi i suoi
+       toni arrivano senza sbilanciamento. Il rapporto indica il numero di
+       demodulatori e l'inclinazione di ogni prefiltro. Se il guadagno dell'AGC
+       non è mai salito sopra l'unità, il problema è nel percorso dell'AGC e non
+       nella velocità in baud.
    * - Il PLL si è agganciato, ma non è tornata alcuna trama valida
      - Il messaggio riporta fin dove è arrivata la macchina a stati HDLC: non
        iniziare mai una trama indica il recupero dei bit; iniziare trame che
@@ -935,6 +1080,32 @@ ricetrasmettitore collegato, l'antenna su e traffico reale in decodifica.
      - Se un demodulatore è stato agganciato durante la finestra. ``sì`` mentre
        arriva un pacchetto è esattamente giusto; ``sì`` su un canale silenzioso
        indica un ingresso rumoroso o un aggancio falso.
+
+La lettura riporta anche le **statistiche di ricezione**, raccolte
+dall'ultima modifica del set di demodulatori:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 22 78
+
+   * - Campo
+     - Come leggerlo
+   * - ``decodificati``
+     - Trame con FCS valido prodotte da ogni demodulatore, duplicati compresi.
+       Valori simili indicano che i demodulatori concordano.
+   * - ``esclusivi``
+     - Trame prodotte da un solo demodulatore. È ciò che ogni prefiltro
+       aggiunge al set; un demodulatore che resta a 0 su molto traffico reale
+       non aggiunge nulla su questo canale.
+   * - ``consegnati``
+     - Trame consegnate dopo la soppressione dei duplicati.
+   * - ``riparati``
+     - Trame consegnate che hanno richiesto la *Riparazione dei bit*.
+   * - ``campioni persi``
+     - Campioni scartati perché la FIFO di ricezione era piena, e overflow del
+       buffer del driver dell'ADC. Entrambi devono restare a 0; qualunque altro
+       valore indica che il task di ricezione non tiene il passo (clock della
+       CPU sotto i 240 MHz, o un altro task che lo affama).
 
 **Procedura tipica.** Togliete lo squelch alla radio, premete **LIVELLO RX** e
 regolate il trimmer di ricezione finché gli estremi grezzi usano una buona parte
@@ -1179,9 +1350,51 @@ Riferimento dei campi
      - 0–60000 ms
      - 0 (disattivato)
      - Immediata
+   * - Set di demodulatori
+     - Classico / 1 / 2 / 3 filtri / Personalizzato
+     - 3 filtri
+     - Dal vivo
+   * - Personalizzato: demodulatori
+     - 1–3
+     - 3
+     - Dal vivo
+   * - Personalizzato: inclinazione, demodulatore 1–3
+     - da −9 a +9 dB
+     - +4 / 0 / −5 dB
+     - Dal vivo
+   * - Bordo inferiore / superiore del passa-banda
+     - 600–1100 / 2300–3000 Hz
+     - 900 / 2600 Hz
+     - Dal vivo
+   * - Lunghezza del passa-banda
+     - 9–31 coefficienti (dispari)
+     - 21
+     - Dal vivo
+   * - Soglia di ricezione
+     - 0–50 mV (0 = spenta)
+     - 10 mV
+     - Dal vivo
+   * - Passa-alto (reiezione CTCSS)
+     - spento / 150 / 300 / 400 Hz
+     - spento
+     - Dal vivo
+   * - Guadagno di ricezione
+     - automatico / fisso
+     - automatico
+     - Dal vivo
+   * - Guadagno fisso di ricezione
+     - da −12 a +18 dB
+     - 0 dB
+     - Dal vivo
+   * - Riparazione dei bit
+     - spenta / un simbolo / un simbolo o un bit
+     - spenta
+     - Dal vivo
 
 Ogni campo numerico è limitato in tre punti contro le stesse costanti di
-``main/include/aprs_service.h``: gli attributi ``min``/``max`` del campo stesso,
+``main/include/aprs_service.h`` (i campi di *Demodulatore di ricezione* contro
+i limiti ``MODEM_RX_*`` del componente modem, tramite
+``modem_rx_tuning_sanitize()``): gli attributi ``min``/``max`` del campo stesso,
 il gestore che analizza il modulo inviato e il caricatore che legge
 ``radio.json`` dalla flash. Un file di configurazione modificato a mano o un POST
 malformato non possono quindi mettere in servizio un valore fuori intervallo.
@@ -1200,15 +1413,15 @@ controlli che salverebbero in flash senza cambiare nulla.
 
    * - Impostazione assente
      - Perché
-   * - Livello di squelch
-     - Non c'è squelch software. Tutti i campioni raggiungono il demodulatore, e
-       il decodificatore AX.25 si appoggia al DCD del demodulatore stesso. Usate
-       lo squelch della radio, oppure lasciatelo aperto, il che spesso decodifica
-       meglio.
-   * - Volume / guadagno di ricezione
-     - Non c'è uno stadio di guadagno RX da regolare. L'AGC si autolimita.
-       Impostate il livello con il trimmer dell'interfaccia, guidati da
-       **LIVELLO RX**.
+   * - Linea di squelch
+     - Il firmware non legge alcuna linea di squelch. La sua soglia di
+       ricezione è una soglia di livello software, impostata in *Demodulatore
+       di ricezione*; si può usare anche lo squelch della radio, oppure
+       lasciarlo aperto, il che si adatta alla soglia a 0.
+   * - Regolazione del volume di ricezione
+     - Non c'è un controllo di volume. Impostate il livello con il trimmer
+       dell'interfaccia, guidati da **LIVELLO RX**; un guadagno fisso di
+       ricezione è disponibile in *Demodulatore di ricezione*.
    * - Guadagno massimo dell'AGC
      - L'AGC si limita da sé; non c'è nulla da configurare.
    * - Attenuazione dell'ADC
@@ -1247,6 +1460,14 @@ Risoluzione dei problemi
    * - Le stazioni locali forti decodificano, quelle deboli mai
      - Livello di ricezione troppo basso, o **Ingresso audio piatto / da
        discriminatore** impostato al contrario. Eseguite **LIVELLO RX**.
+   * - Alcune stazioni decodificano sempre, altre con segnale simile mai
+     - Il loro sbilanciamento dei toni è fuori da ciò che copre il set di
+       demodulatori. Usate il set a **3 filtri**, o uno *Personalizzato* con
+       inclinazioni più distanziate, e confrontate i valori per demodulatore in
+       **LIVELLO RX**.
+   * - Il primo pacchetto dopo un periodo di silenzio va spesso perso
+     - La soglia di ricezione. Impostate **Soglia di ricezione** a 0 quando
+       l'audio arriva da una porta indipendente dallo squelch.
    * - Le stazioni deboli decodificano, quelle forti no
      - Saturazione. Abilitate **Avvisa quando l'audio ricevuto esce dal fondo
        scala**, eseguite **LIVELLO RX** e abbassate il trimmer di ricezione.

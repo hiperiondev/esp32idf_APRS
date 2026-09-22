@@ -220,6 +220,52 @@
 #define TR_F_DAC_SAMPLERATE "Transmit sample rate"
 /** Form label for the "Transmitter time-out (ms)" field or fieldset, rendered on the configuration forms. */
 #define TR_F_TX_MAX_KEYED_MS "Transmitter time-out (ms)"
+/** Form label for the "Receive demodulator" field or fieldset, rendered on the configuration forms. */
+#define TR_F_RX_DEMODULATOR "Receive demodulator"
+/** Form label for the "Demodulator set" field or fieldset, rendered on the configuration forms. */
+#define TR_F_RX_EQ_PRESET "Demodulator set"
+/** Form label for the "Legacy (2, fixed filters)" field or fieldset, rendered on the configuration forms. */
+#define TR_F_RX_EQ_LEGACY "Legacy (2, fixed filters)"
+/** Form label for the "1 filter" field or fieldset, rendered on the configuration forms. */
+#define TR_F_RX_EQ_SINGLE "1 filter"
+/** Form label for the "2 filters" field or fieldset, rendered on the configuration forms. */
+#define TR_F_RX_EQ_DIV2 "2 filters"
+/** Form label for the "3 filters" field or fieldset, rendered on the configuration forms. */
+#define TR_F_RX_EQ_DIV3 "3 filters"
+/** Form label for the "Custom" field or fieldset, rendered on the configuration forms. */
+#define TR_F_RX_EQ_CUSTOM "Custom"
+/** Form label for the "Custom: demodulators" field or fieldset, rendered on the configuration forms. */
+#define TR_F_RX_EQ_COUNT "Custom: demodulators"
+/** Form label for the "Custom: tilt, demodulator 1 (dB)" field or fieldset, rendered on the configuration forms. */
+#define TR_F_RX_TILT_1 "Custom: tilt, demodulator 1 (dB)"
+/** Form label for the "Custom: tilt, demodulator 2 (dB)" field or fieldset, rendered on the configuration forms. */
+#define TR_F_RX_TILT_2 "Custom: tilt, demodulator 2 (dB)"
+/** Form label for the "Custom: tilt, demodulator 3 (dB)" field or fieldset, rendered on the configuration forms. */
+#define TR_F_RX_TILT_3 "Custom: tilt, demodulator 3 (dB)"
+/** Form label for the "Band-pass lower edge (Hz)" field or fieldset, rendered on the configuration forms. */
+#define TR_F_RX_BPF_LO_HZ "Band-pass lower edge (Hz)"
+/** Form label for the "Band-pass upper edge (Hz)" field or fieldset, rendered on the configuration forms. */
+#define TR_F_RX_BPF_HI_HZ "Band-pass upper edge (Hz)"
+/** Form label for the "Band-pass length (taps)" field or fieldset, rendered on the configuration forms. */
+#define TR_F_RX_BPF_TAPS "Band-pass length (taps)"
+/** Form label for the "Receive gate (mV RMS, 0 = off)" field or fieldset, rendered on the configuration forms. */
+#define TR_F_RX_GATE_MV "Receive gate (mV RMS, 0 = off)"
+/** Form label for the "High-pass (CTCSS rejection)" field or fieldset, rendered on the configuration forms. */
+#define TR_F_RX_HPF_HZ "High-pass (CTCSS rejection)"
+/** Form label for the "Receive gain" field or fieldset, rendered on the configuration forms. */
+#define TR_F_RX_AGC_MODE "Receive gain"
+/** Form label for the "Automatic" field or fieldset, rendered on the configuration forms. */
+#define TR_F_RX_AGC_AUTO "Automatic"
+/** Form label for the "Fixed" field or fieldset, rendered on the configuration forms. */
+#define TR_F_RX_AGC_FIXED "Fixed"
+/** Form label for the "Fixed receive gain (dB)" field or fieldset, rendered on the configuration forms. */
+#define TR_F_RX_AGC_GAIN_DB "Fixed receive gain (dB)"
+/** Form label for the "Bit repair" field or fieldset, rendered on the configuration forms. */
+#define TR_F_RX_FIX_BITS "Bit repair"
+/** Form label for the "One symbol" field or fieldset, rendered on the configuration forms. */
+#define TR_F_RX_FIX_SYMBOL "One symbol"
+/** Form label for the "One symbol or one bit" field or fieldset, rendered on the configuration forms. */
+#define TR_F_RX_FIX_SYMBOL_BIT "One symbol or one bit"
 /** Form label for the "beacon interval s" field or fieldset, rendered on the configuration forms. */
 #define TR_F_BEACON_INTERVAL_S "Beacon interval (s)"
 /** Form label for the "beacon position" field or fieldset, rendered on the configuration forms. */
@@ -1086,6 +1132,16 @@
 #define TR_RADIO_AUDIO_HW_INFO "<br>DAC out: GPIO%d<br>ADC in: GPIO%d<br>PTT pin: %s<br>PTT active-high: %s<br>ADC attenuation: %d<br>ADC: %d Hz"
 /** Radiomodem page label for audio hw note, rendered on the Radiomodem page. */
 #define TR_RADIO_AUDIO_HW_NOTE ""
+/** RX statistics label: frames decoded per demodulator. */
+#define TR_RADIO_RX_STATS_DECODED "decoded"
+/** RX statistics label: frames only that demodulator decoded. */
+#define TR_RADIO_RX_STATS_UNIQUE "only"
+/** RX statistics label: frames delivered after duplicate suppression. */
+#define TR_RADIO_RX_STATS_DELIVERED "delivered"
+/** RX statistics label: frames delivered after bit repair. */
+#define TR_RADIO_RX_STATS_REPAIRED "repaired"
+/** RX statistics label: FIFO drops / ADC pool overflows. */
+#define TR_RADIO_RX_STATS_LOST "samples lost"
 
 /** @} */
 
@@ -2037,10 +2093,6 @@
 #define TR_H_F_APRS_PASSCODE                                                                                                                                   \
     "Login code the APRS-IS server checks against My Callsign before accepting gated traffic from this station. Auto Generate derives it from that "           \
     "callsign; a wrong or missing passcode still connects but is logged as unverified."
-/** Contextual help for the "Flat / discriminator audio input" option. */
-#define TR_H_F_FLAT_AUDIO_INPUT                                                                                                                                \
-    "Selects how the receive audio is equalized. Turn it on when the audio comes from a data or discriminator jack, which is unfiltered and carries "          \
-    "no de-emphasis; leave it off for a speaker or headphone output, which is already de-emphasized."
 /** Contextual help for the "ADC input self-bias" option. */
 #define TR_H_F_ADC_SELF_BIAS                                                                                                                                   \
     "Biases the receive audio pin from the ADC pad's own pull resistors, which is what an input coupled through a capacitor with no external bias "            \
@@ -2061,6 +2113,50 @@
 #define TR_H_F_TX_MAX_KEYED_MS                                                                                                                                 \
     "Releases the transmitter when a single transmission lasts longer than this, so a stalled transmit path cannot hold the channel. 0 turns the "             \
     "time-out off. Useful settings sit well above the longest frame this station sends."
+/** Contextual help for the "Demodulator set" option. */
+#define TR_H_F_RX_EQ_PRESET                                                                                                                                    \
+    "Demodulators run on the same audio, each behind a band-pass tilted differently between the 1200 and 2200 Hz tones, to cover the tone twist "              \
+    "of different stations. More filters decode more; Legacy runs a fixed pair of filters."
+/** Contextual help for the "Custom: demodulators" option. */
+#define TR_H_F_RX_EQ_COUNT "Number of demodulators the Custom set runs, 1 to 3. Each uses the tilt entered below for it."
+/** Contextual help for the "Custom: tilt" option. */
+#define TR_H_F_RX_TILT                                                                                                                                         \
+    "Gain of this demodulator's band-pass at the space tone minus its gain at the mark tone, dB. Negative undoes a transmitter's pre-emphasis on "             \
+    "a discriminator output; short filters realize only part of it."
+/** Contextual help for the "Band-pass lower edge (Hz)" option. */
+#define TR_H_F_RX_BPF_LO_HZ "Lower edge of the designed band-pass filters. Lower lets in more CTCSS and hum; higher starts to cut the 1200 Hz tone."
+/** Contextual help for the "Band-pass upper edge (Hz)" option. */
+#define TR_H_F_RX_BPF_HI_HZ                                                                                                                                    \
+    "Upper edge of the designed band-pass filters. Higher lets in more of the noise a discriminator output carries above the tones; lower starts "             \
+    "to cut the 2200 Hz tone."
+/** Contextual help for the "Band-pass length (taps)" option. */
+#define TR_H_F_RX_BPF_TAPS                                                                                                                                     \
+    "Length of the designed band-pass filters. Longer filters have sharper edges and reach more of the requested tilt; even values are rounded up "            \
+    "to odd."
+/** Contextual help for the "Receive gate (mV RMS, 0 = off)" option. */
+#define TR_H_F_RX_GATE_MV                                                                                                                                      \
+    "The demodulators are fed only while the input stays above this level; the blocks received while it opens are kept and decoded. 0 feeds them "             \
+    "continuously, the best choice for a data or discriminator port."
+/** Contextual help for the "High-pass (CTCSS rejection)" option. */
+#define TR_H_F_RX_HPF_HZ                                                                                                                                       \
+    "Removes CTCSS tones and hum below the chosen frequency before the demodulators. A discriminator output carries CTCSS at full level; a "                   \
+    "speaker output usually has it filtered already."
+/** Contextual help for the "Receive gain" option. */
+#define TR_H_F_RX_AGC_MODE                                                                                                                                     \
+    "Automatic tracks the level of each transmission. Fixed suits a data or discriminator port, whose level is set by the transmitter's deviation "            \
+    "and does not need tracking."
+/** Contextual help for the "Fixed receive gain (dB)" option. */
+#define TR_H_F_RX_AGC_GAIN_DB                                                                                                                                  \
+    "Gain applied ahead of the demodulators when Receive gain is Fixed. Use RX LEVEL: aim for about 0.2 of full scale at the demodulator, well "               \
+    "away from the converter limits."
+/** Contextual help for the "Bit repair" option. */
+#define TR_H_F_RX_FIX_BITS                                                                                                                                     \
+    "Repairs frames with one corrupted symbol (or bit) when that is the only explanation and the result looks like valid APRS. It adds decodes "               \
+    "but also a small share of wrong ones; keep it off on an IGate."
+/** Contextual help for the "Flat / discriminator audio input" option. */
+#define TR_H_F_FLAT_AUDIO_INPUT                                                                                                                                \
+    "On for a data or discriminator jack (unfiltered, no de-emphasis), off for a speaker or headphone output (already de-emphasized). Selects the "            \
+    "filter tilts of the demodulator set."
 /** Contextual help for the "Beacon interval (s)" option. */
 #define TR_H_F_BEACON_INTERVAL_S "Seconds between position beacons. Use a longer interval on a busy frequency; 0 leaves the service default in force."
 /** Contextual help for the "Beacon position" option. */

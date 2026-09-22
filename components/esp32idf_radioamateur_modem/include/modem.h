@@ -29,11 +29,12 @@
 /**
  * @brief Maximum number of demodulators that can run in parallel.
  *
- * Each demodulator instance must be explicitly configured in ModemInit();
- * currently this is only used by the 1200 Bd modem, which runs two
- * demodulators tuned slightly differently to improve decode probability.
+ * Each demodulator instance is configured in ModemInit(). Only the 1200 Bd
+ * profiles run more than one: every instance gets its own band-pass
+ * prefilter, with a different tilt between the mark and space tones, so the
+ * set covers a wider range of received tone twist than any single one.
  */
-#define MODEM_MAX_DEMODULATOR_COUNT 2
+#define MODEM_MAX_DEMODULATOR_COUNT MODEM_RX_MAX_DEMODULATORS
 
 /**
  * @brief Runtime configuration of the demodulator.
@@ -51,14 +52,11 @@ struct ModemDemodConfig {
 extern struct ModemDemodConfig ModemConfig;
 
 /**
- * @brief Audio pre-filtering applied ahead of the demodulator, depending on
- *        the modem profile and the nature of the input signal.
+ * @brief Audio pre-filtering applied ahead of a demodulator's correlators.
  */
 enum ModemPrefilter {
-    PREFILTER_NONE = 0,    /**< No pre-filtering applied. */
-    PREFILTER_PREEMPHASIS, /**< Pre-emphasis filter applied. */
-    PREFILTER_DEEMPHASIS,  /**< De-emphasis filter applied. */
-    PREFILTER_FLAT,        /**< Input treated as already flat/unfiltered. */
+    PREFILTER_NONE = 0, /**< No prefilter: the correlators see the demodulator input directly. */
+    PREFILTER_BANDPASS, /**< Band-pass prefilter; its tilt between the mark and space tones is reported by ModemGetFilterTiltDb(). */
 };
 
 /**
@@ -95,6 +93,48 @@ uint8_t ModemGetDemodulatorCount(void);
  *         the index is outside the valid range.
  */
 enum ModemPrefilter ModemGetFilterType(uint8_t modem);
+
+/**
+ * @brief Get the tilt of a demodulator's prefilter.
+ *
+ * Measured on the coefficients actually in use: the prefilter gain at the
+ * space tone minus its gain at the mark tone.
+ *
+ * @param modem Index of the demodulator to query, 0 ..
+ *              ::MODEM_MAX_DEMODULATOR_COUNT - 1.
+ * @return Tilt, in dB; 0 for a demodulator without prefilter, for an index
+ *         outside the valid range and for the G3RUH profile.
+ */
+float ModemGetFilterTiltDb(uint8_t modem);
+
+/**
+ * @brief Estimate the tone twist of the signal a demodulator is receiving.
+ *
+ * Each demodulator tracks the correlator level of the mark tone while it
+ * decides "mark" and of the space tone while it decides "space", averaged
+ * over roughly the last eight symbols. Their ratio, with the demodulator's
+ * own prefilter tilt removed, is the twist at the modem input. Called by the
+ * AX.25 layer when a frame completes, so the figure describes that frame.
+ *
+ * @param modem Index of the demodulator to query, 0 ..
+ *              ::MODEM_MAX_DEMODULATOR_COUNT - 1.
+ * @return Space tone level relative to mark tone level, in dB, clamped to
+ *         -30..+30; 0 when no estimate is available.
+ */
+int8_t ModemGetTwistDb(uint8_t modem);
+
+/**
+ * @brief Store the receive tuning the next ModemInit() builds the
+ *        demodulators from.
+ *
+ * Only the prefilter fields of @p t are used here (preset, custom set, band
+ * edges and length); the front-end fields are applied by afsk.c. The values
+ * are copied and take effect at the next ModemInit(), which afskSetModem()
+ * runs with the receive task held.
+ *
+ * @param t Tuning to store. Ignored if NULL.
+ */
+void ModemSetRxTuning(const modem_rx_tuning_t *t);
 
 /**
  * @brief Get the current Data Carrier Detect (DCD) state.
@@ -149,31 +189,29 @@ bool ModemTxTeardownPending(void);
 void ModemInit(void);
 
 /**
- * @brief Calibrate every demodulator's DPLL against the real ADC/DAC clock
- *        ratio, rather than the nominal ::MODEM_ADC_SAMPLERATE /
- *        ::MODEM_DAC_SAMPLERATE this component is compiled for.
+ * @brief Calibrate every demodulator's DPLL against the real ADC sample
+ *        rate, and record the real DAC rate for the G3RUH self-test.
  *
- * The DAC (transmit) and ADC (receive) sample clocks are two independent
- * timers, each with its own rounding error against the rate it was asked
- * for - see the ::MODEM_ADC_SAMPLERATE and dac_timer_create() comments.
- * Every profile's PLL step is computed from the *nominal* ratio of those two
- * rates (see PLL1200_STEP / PLL9600_STEP / PLL300_STEP in modem.c), so any
- * gap between nominal and real is a steady-state error the DPLL has to
- * track for the rest of a transmission instead of being told about up
- * front. For G3RUH at 9600 Bd and only 8 ADC samples per symbol, that gap is
- * the dominant remaining source of frame loss, since a single sample of drift
- * is an eighth of a symbol.
+ * Every profile's PLL step assumes the ADC runs exactly at
+ * ::MODEM_ADC_SAMPLERATE. The ADC clock is a hardware divider with its own
+ * rounding error, so the real number of samples per symbol differs from the
+ * nominal one by a small, fixed ratio - a steady phase error the DPLL would
+ * otherwise have to track for every frame. The ratio is a board property
+ * (both clocks come from the same crystal), so one measurement per boot is
+ * enough; it is reapplied on every profile switch.
  *
- * This does not require live measurement of both clocks: the DAC alarm rate
- * (::afskGetDacAlarmRate()) is already known exactly from the timer's
- * configuration, and only the ADC side needs to be measured (see
- * ::modem_measure_adc_rate()). Call this once, after both the ADC and the
- * DAC timer are running but before the first ::ModemInit() (i.e. before the
- * first ::afskSetModem()) - modem_init() does this automatically. The
- * result is stored and reapplied on every subsequent profile switch, so it
- * only needs to be measured once per boot: both clocks are derived from the
- * same crystal, so their ratio is a fixed board property, not something
- * that drifts run to run.
+ * Stations on the air transmit at their own nominal baud rate, so the
+ * receive calibration uses the ADC error alone. The node's own AFSK
+ * transmitter is exact as well: its tone and symbol phase accumulators are
+ * built from the real DAC alarm rate. The G3RUH transmitter is the one
+ * exception - it holds every symbol for a whole number of DAC samples, so
+ * it runs at the DAC error - and only a receiver that hears the node's own
+ * transmitter needs to know about that: in full duplex (the wire loopback
+ * self-test) the G3RUH DPLL step also includes the DAC ratio.
+ *
+ * Call once, after both the ADC and the DAC timer are running and before the
+ * first ModemInit() - modem_init() does this. A ratio further than 1 % from
+ * unity is treated as a bad measurement and ignored.
  *
  * @param measuredAdcHz Real ADC sample rate, in Hz, e.g. from
  *                       ::modem_measure_adc_rate().
@@ -185,12 +223,11 @@ void ModemCalibrateSampleRate(float measuredAdcHz, float measuredDacHz);
  * @brief Get the mark and space tone frequencies the modulator can
  *        actually emit, in Hz.
  *
- * Deliberately derived from the modulator's own phase-accumulator steps
- * rather than from the nominal markFreq/spaceFreq constants the profile was
- * configured with, so that any future change to the modulator cannot
- * silently drift away from the tone values it claims to implement. Anything
- * measuring the transmitter should compare its readings against this
- * function.
+ * Derived from the modulator's own phase-accumulator steps and the real DAC
+ * alarm rate (::afskGetDacAlarmRate()) rather than from the nominal
+ * markFreq/spaceFreq constants the profile was configured with, so the
+ * figures describe what is on the air. Anything measuring the transmitter
+ * should compare its readings against this function.
  *
  * @param mark  Set to the actual mark tone frequency the modulator emits,
  *              in Hz.

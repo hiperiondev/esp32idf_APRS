@@ -51,8 +51,9 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "aprs_bm.h"    // APRS_BM_GATEWAYS_MAX / APRS_BM_GATEWAY_LEN: dimensions of the stored BrandMeister gateway list
-#include "must_check.h" // APRS_MUST_CHECK: the persistence entry points below may not have their result discarded
+#include "aprs_bm.h"                     // APRS_BM_GATEWAYS_MAX / APRS_BM_GATEWAY_LEN: dimensions of the stored BrandMeister gateway list
+#include "esp32idf_radioamateur_modem.h" // modem_rx_tuning_t: the stored receive-chain tuning
+#include "must_check.h"                  // APRS_MUST_CHECK: the persistence entry points below may not have their result discarded
 
 /**
  * @name Firmware UI language selection
@@ -1109,8 +1110,9 @@ typedef struct {
 
     bool audio_modem_en;     /**< Enable the audio ADC/DAC AFSK modem. */
     bool audio_lpf;          /**< Flat (discriminator) audio input. Set when the receive audio comes from a data/discriminator jack, which is unfiltered and
-                                carries no de-emphasis, and cleared when it comes from a speaker or headphone output, which is already de-emphasized. The
-                                demodulator pair is equalized for whichever of the two is selected. */
+                                carries no de-emphasis, and cleared when it comes from a speaker or headphone output, which is already de-emphasized. Selects
+                                the prefilter tilt table of the demodulator presets (see modem_rx_eq_preset_t) and, for the legacy set, which fixed
+                                prefilter demodulator 0 runs. Stored under the JSON key "audioLPF". */
     uint16_t preamble;       /**< TXDelay (preamble) length, ms. */
     uint8_t afsk_modem_type; /**< Audio AFSK modulation (::modem_mode_t: 0=AFSK300, 1=Bell202, 2=V.23, 3=G3RUH); used for both RX and TX. */
     uint8_t fx25_mode;       /**< FX.25 mode: 0=off, 1=RX only, 2=RX+TX. */
@@ -1150,24 +1152,28 @@ typedef struct {
                                   the modem always applies. 0 disables the extra hold. Web-configurable and applied live via aprs_service_apply_modem_config().
                                   Range 0..5000 ms. */
 
-    bool adc_self_bias;        /**< Bias the receive audio pin from the ADC pad's own pull-up and pull-down in series, for an AC-coupled input whose interface
-                                  carries no bias network. Off by default, which is what an interface board with its own bias divider needs - the internal
-                                  pulls would load it. Only GPIO32/33 carry internal pull resistors. Web-configurable (Radiomodem page, Audio interface
-                                  section), applied live via aprs_service_apply_modem_config(). */
-    bool rx_clip_warn;         /**< Log a rate-limited warning whenever a processed block of receive samples reaches the ends of the ADC's conversion range.
-                                  Off by default. Worth enabling on an interface without input clamp diodes, where an over-range block also means the pin is
-                                  being driven past the supply rails. Web-configurable and applied live. */
-    uint8_t dac_amplitude_pct; /**< Peak-to-peak swing of the transmit audio output, as a percentage of the full 0..3.3 V range. Web-configurable and applied
-                                  live. Range DAC_AMPL_PCT_MIN..DAC_AMPL_PCT_MAX (aprs_service.h), default MODEM_DAC_AMPLITUDE_PCT. The 30 to 40 dB of
-                                  attenuation a microphone input needs belongs in an external attenuator: the 8-bit DAC draws a sine period with fewer and
-                                  fewer codes as this is lowered. */
-    uint32_t dac_samplerate;   /**< Transmit sample rate, Hz: DAC_SAMPLERATE_LOW or DAC_SAMPLERATE_HIGH (aprs_service.h). The higher rate moves the DAC
-                                  reconstruction images an octave further from the audio band, which is worth its extra interrupt rate when the interface
-                                  carries no reconstruction low-pass filter. Web-configurable, applied at the next reboot: the sample-clock period and every
-                                  phase step derived from it are programmed while the modem is stopped. */
-    uint32_t tx_max_keyed_ms;  /**< Transmitter time-out, ms, or 0 to disable it. When a key-up lasts longer than this the modem releases PTT, stops the
-                                  modulator and discards the transmission, so a stalled transmit path cannot hold the channel. Off by default.
-                                  Web-configurable and applied live. Range TX_MAX_KEYED_MS_MIN..TX_MAX_KEYED_MS_MAX (aprs_service.h). */
+    bool adc_self_bias;          /**< Bias the receive audio pin from the ADC pad's own pull-up and pull-down in series, for an AC-coupled input whose interface
+                                    carries no bias network. Off by default, which is what an interface board with its own bias divider needs - the internal
+                                    pulls would load it. Only GPIO32/33 carry internal pull resistors. Web-configurable (Radiomodem page, Audio interface
+                                    section), applied live via aprs_service_apply_modem_config(). */
+    bool rx_clip_warn;           /**< Log a rate-limited warning whenever a processed block of receive samples reaches the ends of the ADC's conversion range.
+                                    Off by default. Worth enabling on an interface without input clamp diodes, where an over-range block also means the pin is
+                                    being driven past the supply rails. Web-configurable and applied live. */
+    uint8_t dac_amplitude_pct;   /**< Peak-to-peak swing of the transmit audio output, as a percentage of the full 0..3.3 V range. Web-configurable and applied
+                                    live. Range DAC_AMPL_PCT_MIN..DAC_AMPL_PCT_MAX (aprs_service.h), default MODEM_DAC_AMPLITUDE_PCT. The 30 to 40 dB of
+                                    attenuation a microphone input needs belongs in an external attenuator: the 8-bit DAC draws a sine period with fewer and
+                                    fewer codes as this is lowered. */
+    uint32_t dac_samplerate;     /**< Transmit sample rate, Hz: DAC_SAMPLERATE_LOW or DAC_SAMPLERATE_HIGH (aprs_service.h). The higher rate moves the DAC
+                                    reconstruction images an octave further from the audio band, which is worth its extra interrupt rate when the interface
+                                    carries no reconstruction low-pass filter. Web-configurable, applied at the next reboot: the sample-clock period and every
+                                    phase step derived from it are programmed while the modem is stopped. */
+    uint32_t tx_max_keyed_ms;    /**< Transmitter time-out, ms, or 0 to disable it. When a key-up lasts longer than this the modem releases PTT, stops the
+                                    modulator and discards the transmission, so a stalled transmit path cannot hold the channel. Off by default.
+                                    Web-configurable and applied live. Range TX_MAX_KEYED_MS_MIN..TX_MAX_KEYED_MS_MAX (aprs_service.h). */
+    modem_rx_tuning_t rx_tuning; /**< Receive-chain tuning: demodulator preset and custom tilts, prefilter band and length, receive gate, high-pass, gain
+                                    control and bit repair. Web-configurable (Radiomodem page, Receive demodulator section) and applied live via
+                                    aprs_service_apply_modem_config(). Stored in radio.json under the rx* keys and clamped with
+                                    modem_rx_tuning_sanitize() on load and on Save; default MODEM_RX_TUNING_DEFAULT(). */
 
     bool msg_enable;       /**< APRS Message service enabled. */
     char msg_mycall[10];   /**< Message service callsign. */

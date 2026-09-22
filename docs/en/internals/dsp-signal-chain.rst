@@ -22,16 +22,19 @@ The chain, stage by stage
    * - SAR-ADC1 continuous/DMA, 128-sample conversion frames
      - **76 800 Hz**
      - driver ISR on core 0
-   * - ingest: pair un-swap, DC-offset removal, AGC, RMS metering
+   * - ingest: pair un-swap, DC-offset removal, RMS metering, receive gate decision
      - 76 800 Hz
      - ``afsk.c``
-   * - decimation FIR (ratio **8:1**)
+   * - decimation FIR (ratio **8:1**), optional CTCSS high-pass, AGC or fixed
+       gain, gate hold ring
      - → **9 600 Hz**
      - ``afsk.c``
-   * - correlator (mark/space), low-pass, DPLL, NRZI decode
+   * - per demodulator (up to three): band-pass prefilter, correlator
+       (mark/space), low-pass, DPLL, NRZI decode, tone-twist tracking
      - 9 600 Hz
      - ``modem.c``
-   * - HDLC de-framing, bit de-stuffing, FCS check, FX.25 RS decode
+   * - HDLC de-framing, bit de-stuffing, FCS check (optional bit repair),
+       FX.25 RS decode, cross-demodulator duplicate suppression
      - —
      - ``ax25.c`` / ``fx25.c``
    * - ⟵ TX ⟶ AX.25 encode, FCS, bit stuff, NRZI, 32-bit phase accumulator,
@@ -53,6 +56,67 @@ than decoding bytes that lie past the frame — in the RX path those bytes are t
 tail of the previously received frame, which would otherwise turn into
 plausible-looking repeater callsigns in an otherwise valid decode.
 
+The receive tuning
+==================
+
+Everything below is set at run time through ``modem_config_t.rx`` (the
+*Receive demodulator* fieldset of :ref:`en-radiomodem`) and applied by
+``afskSetModem()`` with the receive task held, so no block is ever processed
+by a half-built chain.
+
+**Several demodulators, each with a tilted prefilter.**
+   The correlator's decision is ``(|LoI|+|LoQ|) − (|HiI|+|HiQ|)``: a tone
+   imbalance biases it. On the air that imbalance ranges from none (a flat
+   data-port transmitter on a discriminator output) to 5–12 dB in favour of
+   the space tone (a pre-emphasizing transmitter on a discriminator output),
+   and a speaker output shifts both by the receiver's de-emphasis. A single
+   correlator fails once the total twist — signal twist plus prefilter tilt —
+   passes roughly ±12 dB, so the 1200 Bd profiles run up to three
+   demodulators whose band-pass prefilters have different tilts. The
+   prefilters are designed in ``ModemInit()`` (frequency sampling, Hamming
+   window, linear phase, passband peak scaled to unity so the int16 and int32
+   paths stay in range) from the band edges, the length and the tilt; the tilt
+   they actually reach, measured on the coefficients, is logged and used by
+   the twist estimate. The legacy set keeps the fixed 8-tap tables.
+
+**Duplicate suppression and statistics.**
+   A frame with a valid FCS opens a window of 32 bit periods × the active
+   demodulator count; copies with the same CRC from the other demodulators
+   inside it are dropped (plain and FX.25 frames alike). The window records
+   which demodulators produced the frame, so its closing credits a frame that
+   only one of them got to that demodulator — the ``unique`` counter that
+   tells what each prefilter adds.
+
+**The receive gate holds what it gates.**
+   A block reaches the demodulators while its RMS has exceeded
+   ``rx.gate_mv`` for more than three blocks, and until it falls below half of
+   it. The decimator and the high-pass run on every block regardless, and the
+   last three gated blocks are kept (decimated, 3 × 192 floats); when the gate
+   opens they are demodulated first, so the preamble spent deciding to open is
+   not lost. ``gate_mv = 0`` feeds every block.
+
+**Gain control on the in-band signal.**
+   The AGC measures the decimated block rather than the 76.8 kHz stream, so
+   discriminator noise above 5 kHz does not set the gain, and the new gain is
+   applied to the block it was measured on. Attack 0.25 and release 0.002 per
+   20 ms block, the step per block bounded to ×2 / ÷2. A fixed gain replaces
+   it when ``rx.agc_mode`` asks for one.
+
+**Bit repair by CRC syndrome.**
+   CRC-16/X.25 is affine over GF(2): the register after a frame and its FCS is
+   ``0xF0B8`` XOR a syndrome that depends only on the error pattern. The
+   syndrome of a single wrong bit at position *p* is one zero-input CRC step of
+   the syndrome at *p* + 1, so every single bit and every adjacent pair (the
+   pattern of one wrong symbol after NRZI) is checked in one pass. A correction
+   is accepted only when exactly one candidate matches and the frame passes a
+   strict APRS plausibility test, and never while another demodulator's intact
+   copy is inside the duplicate window.
+
+**The modem component is built at ``-O2``.**
+   The receive DSP runs on every sample of every demodulator; the component's
+   ``CMakeLists.txt`` compiles it optimized for speed whatever level the rest
+   of the project uses.
+
 Why the numbers are what they are
 =================================
 
@@ -72,8 +136,14 @@ Why the numbers are what they are
    does not anti-alias 8:1.
 
 **DAC stays at 38 400 Hz** (= 32 × 1200, an exact multiple of every supported
-   baud rate). The transmitter puts symbol edges exactly on DAC samples whatever
-   the rate; it was the *receiver* that needed resolution.
+   baud rate). The AFSK profiles build their tone steps and a Q32 symbol-phase
+   accumulator from the *real* DAC alarm rate, so tones and baud rate are exact
+   even though the alarm period rounds to whole timer ticks; a symbol edge
+   lands on the nearest DAC sample, at most 3 % of a symbol at 1200 Bd and
+   hidden by the continuous-phase tone. G3RUH holds every symbol for a whole
+   number of DAC samples instead, keeping every edge on the same grid: a
+   fractional accumulator at four samples per symbol would move an occasional
+   edge by a quarter of a symbol. It was the *receiver* that needed resolution.
 
 **``MODEM_ADC_CONV_FRAME = 128``, not the block size.**
    The IDF's own ADC ISR calls ``xRingbufferSendFromISR()``, which does the
@@ -94,13 +164,15 @@ Why the numbers are what they are
 
 **``ModemCalibrateSampleRate()``.**
    ``modem_init()`` blocks ~5 s at boot measuring the *real* ADC rate
-   (``modem_measure_adc_rate()``), because every profile's PLL step is computed
-   from the *nominal* ADC/DAC ratio and the gap is otherwise a steady-state
-   error the DPLL must track for a whole transmission. The DAC alarm rate is
-   already known exactly from the timer config, so only the ADC side needs
-   measuring. Both clocks derive from the same crystal, so the ratio is a fixed
-   board property: measured **once per boot**, reapplied on every profile
-   switch.
+   (``modem_measure_adc_rate()``), because every profile's PLL step assumes the
+   *nominal* ADC rate and the gap is otherwise a steady-state error the DPLL
+   must track for a whole transmission. Stations on the air transmit at their
+   own nominal baud rate, so the receive correction is the ADC error alone. The
+   real DAC alarm rate, known exactly from the timer configuration, is recorded
+   too but used only when a G3RUH receiver hears this node's own transmitter
+   (full duplex, the wire loopback self-test). Both clocks derive from the same
+   crystal, so the ratios are fixed board properties: measured **once per
+   boot**, reapplied on every profile switch.
 
 **The decimation FIR filters in place.**
    Output sample *i* is written to ``buf[i]`` while the taps read the window
@@ -188,6 +260,9 @@ every macro ``#ifndef``-guarded so the build system can override it.
    * - ``MODEM_DAC_TIMER_INTR_PRIO``
      - 3
      - 1..3
+   * - ``MODEM_RX_MAX_DEMODULATORS``
+     - 3
+     - parallel 1200 Bd demodulators, 3..8
    * - *(derived)* ``MODEM_DEMOD_SAMPLERATE``
      - 9600
      - fixed
@@ -207,13 +282,16 @@ The modem source files
 
    * - File
      - Role
-   * - ``src/afsk.c`` (~1380 ln)
-     - ADC DMA ingest, AGC, decimation FIR, DAC ISR, PTT
-   * - ``src/modem.c`` (~860 ln)
-     - correlators, DPLL, tone tables, DCD, calibration
-   * - ``src/ax25.c`` (~1640 ln)
-     - HDLC framer, NRZI, bit-stuffing, AX.25 codec, TX queue
-   * - ``src/esp32idf_radioamateur_modem.c`` (~420 ln)
+   * - ``src/afsk.c`` (~1710 ln)
+     - ADC DMA ingest, receive gate and hold ring, decimation FIR, high-pass,
+       AGC, DAC ISR, PTT
+   * - ``src/modem.c`` (~1070 ln)
+     - prefilter design and demodulator sets, correlators, DPLL, tone tables,
+       DCD, twist estimate, calibration
+   * - ``src/ax25.c`` (~1910 ln)
+     - HDLC framer, NRZI, bit-stuffing, duplicate suppression, bit repair,
+       AX.25 codec, TX queue
+   * - ``src/esp32idf_radioamateur_modem.c`` (~590 ln)
      - the component's public API: ``modem_init()``/``modem_set_modem()``, the
        TNC2 helpers, and the ``modem_svc`` task that drives TX and delivers
        decoded frames to the RX callback

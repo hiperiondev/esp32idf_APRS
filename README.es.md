@@ -33,7 +33,7 @@ En una frase, el firmware **demodula** audio AFSK/FSK desde el altavoz o la sali
 
 ## Lo más destacado
 
-- **Soft-módem en el chip.** AFSK 1200 Bd Bell 202 (APRS estándar) con demodulador dual, más AFSK 1200 Bd V.23, AFSK 300 Bd y **G3RUH 9600 Bd FSK** — todo en C puro sobre el propio ADC/DAC del ESP32.
+- **Soft-módem en el chip.** AFSK 1200 Bd Bell 202 (APRS estándar) con hasta tres demoduladores en paralelo (prefiltros con diversidad de inclinación, ajustables desde la administración web), más AFSK 1200 Bd V.23, AFSK 300 Bd y **G3RUH 9600 Bd FSK** — todo en C puro sobre el propio ADC/DAC del ESP32.
 - **Corrección de errores FX.25.** FEC Reed–Solomon sobre AX.25, solo RX o RX+TX, para decodificaciones fiables con señal débil.
 - **IGate APRS-IS completo.** Enlace bidireccional **RF→INET** e **INET→RF** con supresión de duplicados, construcción `qAR`/`qAO`, filtrado por tipo de carga útil, budlists de indicativos, un range gate local (distancia haversine), lista blanca por prefijo y, en el sentido INET→RF, un requisito de posición, una prueba de origen oído localmente y espaciado por origen que mantienen una suscripción APRS-IS amplia fuera del canal local. Se pueden listar hasta cuatro servidores APRS-IS, con failover automático entre los habilitados.
 - **Interconexión APRS con BrandMeister.** Reconoce, filtra y rutea el tráfico APRS que inyecta BrandMeister, sobre la misma sesión APRS-IS que ya tiene el IGate — lo identifican un tocall `APBMxx`, un alias `DMR` en la ruta o una pasarela de entrada nombrada. Página propia, apagada por omisión. **No interviene ninguna conexión DMR de ningún tipo.**
@@ -56,7 +56,7 @@ En una frase, el firmware **demodula** audio AFSK/FSK desde el altavoz o la sali
 
 | Área | Notas |
 |---|---|
-| AFSK 1200 Bd Bell 202 | Demodulador dual, perfil por defecto |
+| AFSK 1200 Bd Bell 202 | Hasta tres demoduladores en paralelo, perfil por defecto |
 | AFSK 1200 Bd V.23 · AFSK 300 Bd · G3RUH 9600 Bd FSK | Varios perfiles de módem seleccionables |
 | Tramas UI HDLC / AX.25 RX + TX | Cadena TX/RX completa del soft-módem |
 | FX.25 (FEC Reed–Solomon sobre AX.25) | Modos solo RX / RX+TX |

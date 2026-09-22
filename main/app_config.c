@@ -500,6 +500,11 @@ void app_config_set_defaults(app_config_t *c) {
     c->dac_amplitude_pct = MODEM_DAC_AMPLITUDE_PCT;
     c->dac_samplerate = DAC_SAMPLERATE_LOW;
     c->tx_max_keyed_ms = 0; // see TX_MAX_KEYED_MS_MIN/MAX in aprs_service.h
+
+    // Receive chain: three tilted prefilters, a 10 mV receive gate, automatic
+    // gain, no high-pass and no bit repair (see MODEM_RX_TUNING_DEFAULT()).
+    modem_rx_tuning_t rx_default = MODEM_RX_TUNING_DEFAULT();
+    c->rx_tuning = rx_default;
     set_str(c->ntp_host[0], sizeof(c->ntp_host[0]), "pool.ntp.org");
     set_str(c->ntp_host[1], sizeof(c->ntp_host[1]), "time.google.com");
     set_str(c->ntp_host[2], sizeof(c->ntp_host[2]), "time.cloudflare.com");
@@ -681,6 +686,18 @@ static double jget_num(cJSON *o, const char *k, double def) {
         return v->valuedouble;
     return def;
 }
+// Numeric key bounded to [lo, hi] before the caller narrows it to a small
+// integer field, so an out-of-range value in a hand-edited file saturates
+// instead of wrapping.
+static double jget_clamped(cJSON *o, const char *k, double def, double lo, double hi) {
+    double v = jget_num(o, k, def);
+    if (v < lo)
+        return lo;
+    if (v > hi)
+        return hi;
+    return v;
+}
+
 static bool jget_bool(cJSON *o, const char *k, bool def) {
     cJSON *v = cJSON_GetObjectItemCaseSensitive(o, k);
     if (v && cJSON_IsBool(v))
@@ -781,6 +798,19 @@ static void section_write_radio(jw_t *d, const app_config_t *c) {
     jadd_num(d, "dacAmplPct", c->dac_amplitude_pct);
     jadd_num(d, "dacRate", c->dac_samplerate);
     jadd_num(d, "txMaxKeyedMs", c->tx_max_keyed_ms);
+    jadd_num(d, "rxEqPreset", c->rx_tuning.eq_preset);
+    jadd_num(d, "rxEqCount", c->rx_tuning.custom_count);
+    jadd_num(d, "rxTilt0", c->rx_tuning.custom_tilt_db[0]);
+    jadd_num(d, "rxTilt1", c->rx_tuning.custom_tilt_db[1]);
+    jadd_num(d, "rxTilt2", c->rx_tuning.custom_tilt_db[2]);
+    jadd_num(d, "rxBpfLoHz", c->rx_tuning.bpf_lo_hz);
+    jadd_num(d, "rxBpfHiHz", c->rx_tuning.bpf_hi_hz);
+    jadd_num(d, "rxBpfTaps", c->rx_tuning.bpf_taps);
+    jadd_num(d, "rxGateMv", c->rx_tuning.gate_mv);
+    jadd_num(d, "rxHpfHz", c->rx_tuning.hpf_hz);
+    jadd_num(d, "rxAgcMode", c->rx_tuning.agc_mode);
+    jadd_num(d, "rxAgcGainDb", c->rx_tuning.agc_fixed_gain_db);
+    jadd_num(d, "rxFixBits", c->rx_tuning.fix_bits);
     fputc('}', d->f);
 }
 
@@ -1333,6 +1363,26 @@ static void section_read_radio(cJSON *d, app_config_t *c) {
         ESP_LOGW(TAG, "txMaxKeyedMs %" PRIu32 " out of range, clamped to %d ms", c->tx_max_keyed_ms, TX_MAX_KEYED_MS_MAX);
         c->tx_max_keyed_ms = TX_MAX_KEYED_MS_MAX;
     }
+
+    // Receive chain. Every value is read as a double and bounded to its
+    // field's storage range before the cast, then modem_rx_tuning_sanitize()
+    // brings it into the range the modem accepts; an absent key keeps the
+    // default.
+    modem_rx_tuning_t *t = &c->rx_tuning;
+    t->eq_preset = (modem_rx_eq_preset_t)jget_clamped(d, "rxEqPreset", t->eq_preset, 0, 255);
+    t->custom_count = (uint8_t)jget_clamped(d, "rxEqCount", t->custom_count, 0, 255);
+    t->custom_tilt_db[0] = (int8_t)jget_clamped(d, "rxTilt0", t->custom_tilt_db[0], -128, 127);
+    t->custom_tilt_db[1] = (int8_t)jget_clamped(d, "rxTilt1", t->custom_tilt_db[1], -128, 127);
+    t->custom_tilt_db[2] = (int8_t)jget_clamped(d, "rxTilt2", t->custom_tilt_db[2], -128, 127);
+    t->bpf_lo_hz = (uint16_t)jget_clamped(d, "rxBpfLoHz", t->bpf_lo_hz, 0, 65535);
+    t->bpf_hi_hz = (uint16_t)jget_clamped(d, "rxBpfHiHz", t->bpf_hi_hz, 0, 65535);
+    t->bpf_taps = (uint8_t)jget_clamped(d, "rxBpfTaps", t->bpf_taps, 0, 255);
+    t->gate_mv = (uint16_t)jget_clamped(d, "rxGateMv", t->gate_mv, 0, 65535);
+    t->hpf_hz = (uint16_t)jget_clamped(d, "rxHpfHz", t->hpf_hz, 0, 65535);
+    t->agc_mode = (modem_rx_agc_mode_t)jget_clamped(d, "rxAgcMode", t->agc_mode, 0, 255);
+    t->agc_fixed_gain_db = (int8_t)jget_clamped(d, "rxAgcGainDb", t->agc_fixed_gain_db, -128, 127);
+    t->fix_bits = (uint8_t)jget_clamped(d, "rxFixBits", t->fix_bits, 0, 255);
+    modem_rx_tuning_sanitize(t);
 }
 
 static void section_read_igate(cJSON *d, app_config_t *c) {

@@ -153,6 +153,8 @@ static bool s_dacTimerRunning = false;
 static bool s_inited = false;
 
 static volatile uint32_t s_adcSamples = 0; // total samples produced by the ADC
+static volatile uint32_t s_fifoDrops = 0;  // samples dropped on a full RX FIFO
+static volatile uint32_t s_poolOvf = 0;    // ADC driver pool overflow events
 static float s_dacAlarmRateHz = 0.0f;      // rate the alarm really fires at
 
 // Diagnostic capture tap (raw ADC samples, still used by main/aprs_service.c).
@@ -251,20 +253,23 @@ static inline uint8_t IRAM_ATTR dac_scale(uint8_t s) {
 }
 
 // ------------------------------------------------------------------
-// AGC / resampler
+// Receive front end: gate, gain control, high-pass, resampler
 // ------------------------------------------------------------------
 
 #define AGC_TARGET_RMS 0.2f // target RMS level (-10 dBFS)
 
 // Attack = gain coming DOWN because the signal is too loud. It must be fast:
-// an overdriven demodulator decodes nothing. Release = gain going UP on a quiet
-// signal, and must be slow so noise between frames does not pump the gain.
-#define AGC_ATTACK   0.05f
+// an overdriven demodulator input is clamped to +-2047 and hard-limited.
+// With AGC_MAX_STEP bounding the error to 0.5 per block, 0.25 lowers the gain
+// by an eighth per 20 ms block, halving it in about 100 ms. Release = gain
+// going UP on a quiet signal, and must be slow so noise between frames does
+// not pump the gain.
+#define AGC_ATTACK   0.25f
 #define AGC_RELEASE  0.002f
 #define AGC_MAX_GAIN 8.0f
 #define AGC_MIN_GAIN 0.1f
 
-// Below this block RMS there is nothing but ADC noise, so there is no
+// Below this in-band RMS there is nothing but converter noise, so there is no
 // meaningful level to track.
 #define AGC_SQUELCH_RMS 0.01f
 
@@ -273,26 +278,56 @@ static inline uint8_t IRAM_ATTR dac_scale(uint8_t s) {
 // rail in one step.
 #define AGC_MAX_STEP 2.0f
 
-// @brief Track the input level.
+// Receive gate. s_gateOnMv is the opening threshold (0 = no gate), the gate
+// closes below half of it; s_dcdCnt counts blocks above the threshold. The
+// pending values are written by afskSetRxFrontEnd() and copied into the live
+// ones by afskSetModem() while the receive task is held.
+static uint16_t s_gateOnMv = 10;
+static uint16_t s_gateOffMv = 5;
+static uint16_t s_pendGateMv = 10;
+
+// Receive gain: automatic, or fixed at s_fixedGain.
+static bool s_agcFixed = false;
+static float s_fixedGain = 1.0f;
+static bool s_pendAgcFixed = false;
+static int8_t s_pendFixedGainDb = 0;
+
+// Second-order Butterworth high-pass on the decimated AFSK signal, direct
+// form I, disabled while s_hpfOn is false.
+static uint16_t s_pendHpfHz = 0;
+static bool s_hpfOn = false;
+static float s_hpfB0, s_hpfB1, s_hpfB2, s_hpfA1, s_hpfA2;
+static float s_hpfX1, s_hpfX2, s_hpfY1, s_hpfY2;
+
+// Decimated blocks received while the gate was closed, oldest first once the
+// ring has wrapped. When the gate opens these are demodulated ahead of the
+// block that opened it, so the start of a transmission - the blocks that
+// were needed to decide the gate should open - still reaches the
+// demodulators. RX_HOLD_BLOCKS matches the number of blocks the gate needs.
+#define RX_HOLD_BLOCKS   3
+#define RX_DECIM_SAMPLES (MODEM_BLOCK_SIZE / MODEM_RESAMPLE_RATIO)
+static float s_hold[RX_HOLD_BLOCKS][RX_DECIM_SAMPLES];
+static uint8_t s_holdHead = 0;  // slot the next closed block is written to
+static uint8_t s_holdCount = 0; // valid slots
+
+// @brief Track the input level on the block about to be demodulated.
 //
-// Only call this when a signal is actually present. Between frames the DAC is
-// parked at mid-scale and the DC tracker removes it, so the block RMS is
-// essentially zero; adapting on that would compute AGC_TARGET_RMS/~0, peg the
-// gain at AGC_MAX_GAIN, and hand the next transmission to the demodulator
-// roughly 10x overdriven - well past the 13 bits demodulate() accepts, which
-// overflows the int32 accumulator in filterRun() (the 15-tap AFSK300 BPF is the
-// first to go) and wraps the int16 cast on the correlator output, inverting the
-// symbol decision, so every profile would decode zero frames.
-static float update_agc(const float *buf, size_t len) {
+// Measures the in-band (decimated, for the AFSK profiles) signal rather than
+// the raw ADC stream, so out-of-band noise - the bulk of a discriminator
+// output's energy above 5 kHz - does not set the gain. Only called while the
+// gate is open. A near-silent block holds the gain where it is: adapting on
+// it would compute AGC_TARGET_RMS/~0, peg the gain at AGC_MAX_GAIN and hand
+// the next transmission to the demodulators overdriven.
+static void update_agc(const float *buf, size_t len) {
     float sum_sq = 0;
     for (size_t i = 0; i < len; i++)
         sum_sq += buf[i] * buf[i];
 
-    float rms = sqrtf(sum_sq / (float)len);
-    if (rms < AGC_SQUELCH_RMS)
-        return s_agcGain; // noise only - hold the gain where it is
+    float level = sqrtf(sum_sq / (float)len) * s_agcGain;
+    if (level < AGC_SQUELCH_RMS)
+        return;
 
-    float error = AGC_TARGET_RMS / rms;
+    float error = AGC_TARGET_RMS / level;
     if (error > AGC_MAX_STEP)
         error = AGC_MAX_STEP;
     else if (error < 1.0f / AGC_MAX_STEP)
@@ -302,7 +337,73 @@ static float update_agc(const float *buf, size_t len) {
 
     s_agcGain += (s_agcGain * error - s_agcGain) * rate;
     s_agcGain = fmaxf(fminf(s_agcGain, AGC_MAX_GAIN), AGC_MIN_GAIN);
-    return s_agcGain;
+}
+
+// @brief Build the high-pass coefficients for a corner at hz, or disable it.
+static void hpf_setup(uint16_t hz) {
+    s_hpfX1 = s_hpfX2 = s_hpfY1 = s_hpfY2 = 0.0f;
+    s_hpfOn = (hz > 0);
+    if (!s_hpfOn)
+        return;
+
+    // Bilinear transform of a second-order Butterworth high-pass.
+    const float k = tanf((float)M_PI * (float)hz / (float)MODEM_DEMOD_SAMPLERATE);
+    const float q = 1.41421356f; // 1 / Q, Q = 1/sqrt(2)
+    const float norm = 1.0f / (1.0f + q * k + k * k);
+    s_hpfB0 = norm;
+    s_hpfB1 = -2.0f * norm;
+    s_hpfB2 = norm;
+    s_hpfA1 = 2.0f * (k * k - 1.0f) * norm;
+    s_hpfA2 = (1.0f - q * k + k * k) * norm;
+}
+
+static void hpf_run(float *buf, int len) {
+    for (int i = 0; i < len; i++) {
+        float x = buf[i];
+        float y = s_hpfB0 * x + s_hpfB1 * s_hpfX1 + s_hpfB2 * s_hpfX2 - s_hpfA1 * s_hpfY1 - s_hpfA2 * s_hpfY2;
+        s_hpfX2 = s_hpfX1;
+        s_hpfX1 = x;
+        s_hpfY2 = s_hpfY1;
+        s_hpfY1 = y;
+        buf[i] = y;
+    }
+}
+
+// @brief Hand one block to the demodulators at the current gain.
+//
+// demodulate() is documented for <= 13 bit input, and filterRun() accumulates
+// coeff*sample in an int32 across up to MODEM_RX_BPF_TAPS_MAX taps. Clamping
+// here keeps both safe no matter what the gain or a hot input does.
+static void demod_feed(const float *buf, int len) {
+    const float scale = s_agcGain * 2048.0f;
+
+    for (int i = 0; i < len; i++) {
+        float v = buf[i] * scale;
+        if (v > 2047.0f)
+            v = 2047.0f;
+        else if (v < -2047.0f)
+            v = -2047.0f;
+        MODEM_DECODE((int16_t)v, (uint16_t)s_mVrms);
+    }
+}
+
+// @brief Keep a decimated block received while the gate was closed.
+static void hold_push(const float *buf, int len) {
+    memcpy(s_hold[s_holdHead], buf, (size_t)len * sizeof(float));
+    s_holdHead = (uint8_t)((s_holdHead + 1) % RX_HOLD_BLOCKS);
+    if (s_holdCount < RX_HOLD_BLOCKS)
+        s_holdCount++;
+}
+
+// @brief Demodulate the held blocks, oldest first, and empty the ring.
+static void hold_flush(int len) {
+    uint8_t slot = (uint8_t)((s_holdHead + RX_HOLD_BLOCKS - s_holdCount) % RX_HOLD_BLOCKS);
+
+    for (uint8_t n = 0; n < s_holdCount; n++) {
+        demod_feed(s_hold[slot], len);
+        slot = (uint8_t)((slot + 1) % RX_HOLD_BLOCKS);
+    }
+    s_holdCount = 0;
 }
 
 // Anti-alias FIR for the MODEM_ADC_SAMPLERATE -> 9600 Hz decimation.
@@ -581,6 +682,30 @@ void afskSetFullDuplex(bool enable) {
     Ax25Config.fullDuplex = enable ? 1 : 0;
 }
 
+bool afskGetFullDuplex(void) {
+    return s_fullDuplex;
+}
+
+void afskSetRxFrontEnd(uint16_t gateMv, uint16_t hpfHz, bool agcFixed, int8_t fixedGainDb) {
+    s_pendGateMv = gateMv;
+    s_pendHpfHz = hpfHz;
+    s_pendAgcFixed = agcFixed;
+    s_pendFixedGainDb = fixedGainDb;
+}
+
+uint32_t afskGetFifoDrops(void) {
+    return s_fifoDrops;
+}
+
+uint32_t afskGetPoolOverflows(void) {
+    return s_poolOvf;
+}
+
+void afskResetRxCounters(void) {
+    s_fifoDrops = 0;
+    s_poolOvf = 0;
+}
+
 esp_err_t afskSetDacSampleRate(uint32_t rate) {
     if (s_inited)
         return ESP_ERR_INVALID_STATE;
@@ -817,6 +942,16 @@ static bool IRAM_ATTR adc_conv_done_cb(adc_continuous_handle_t handle, const adc
     return false;
 }
 
+// @brief ADC pool-overflow callback: the driver discarded conversion frames
+//        because afsk_rx_task did not read them in time. Counted only.
+static bool IRAM_ATTR adc_pool_ovf_cb(adc_continuous_handle_t handle, const adc_continuous_evt_data_t *edata, void *user_data) {
+    (void)handle;
+    (void)edata;
+    (void)user_data;
+    s_poolOvf++;
+    return false;
+}
+
 // The ESP32 hands back the two results in each 32-bit DMA word in the wrong
 // order, and the FIFO must undo it.
 //
@@ -856,7 +991,7 @@ static bool IRAM_ATTR adc_conv_done_cb(adc_continuous_handle_t handle, const adc
 // One burst of bad bits is enough to fail the FCS, so without the un-swap the
 // G3RUH profile decodes nothing while the AFSK profiles are unaffected.
 //
-// Un-swap here, at ingest, so everything downstream - both demodulators, the
+// Un-swap here, at ingest, so everything downstream - every demodulator, the
 // AGC, the DC tracker and afskDiagCaptureRaw() - sees samples in true time
 // order. Doing it here rather than in the G3RUH branch keeps stage 3 of the
 // diagnostics honest: it measures this FIFO's output, so if the un-swap is ever
@@ -915,17 +1050,25 @@ static void adc_ingest(const uint8_t *buf, uint32_t size) {
         if (entries > 0) {
             adc_digi_output_data_t *earlier = (adc_digi_output_data_t *)&buf[0];
 
-            if (earlier->type1.channel == MODEM_ADC_CHANNEL && (head - s_fifo.tail) < MODEM_RX_FIFO_SIZE) {
-                int16_t raw = (int16_t)earlier->type1.data;
-                s_fifo.buffer[head & RB_MASK] = raw;
-                s_fifo.head = ++head;
-                diag_capture_push(raw);
+            if (earlier->type1.channel == MODEM_ADC_CHANNEL) {
+                if ((head - s_fifo.tail) < MODEM_RX_FIFO_SIZE) {
+                    int16_t raw = (int16_t)earlier->type1.data;
+                    s_fifo.buffer[head & RB_MASK] = raw;
+                    s_fifo.head = ++head;
+                    diag_capture_push(raw);
+                } else {
+                    s_fifoDrops++;
+                }
             }
-            if (s_pendingSwap.type1.channel == MODEM_ADC_CHANNEL && (head - s_fifo.tail) < MODEM_RX_FIFO_SIZE) {
-                int16_t raw = (int16_t)s_pendingSwap.type1.data;
-                s_fifo.buffer[head & RB_MASK] = raw;
-                s_fifo.head = ++head;
-                diag_capture_push(raw);
+            if (s_pendingSwap.type1.channel == MODEM_ADC_CHANNEL) {
+                if ((head - s_fifo.tail) < MODEM_RX_FIFO_SIZE) {
+                    int16_t raw = (int16_t)s_pendingSwap.type1.data;
+                    s_fifo.buffer[head & RB_MASK] = raw;
+                    s_fifo.head = ++head;
+                    diag_capture_push(raw);
+                } else {
+                    s_fifoDrops++;
+                }
             }
             start = 1; // buf[0] already consumed above
         }
@@ -964,8 +1107,10 @@ static void adc_ingest(const uint8_t *buf, uint32_t size) {
         if (p->type1.channel != MODEM_ADC_CHANNEL)
             continue;
 
-        if ((head - s_fifo.tail) >= MODEM_RX_FIFO_SIZE)
-            continue; // overrun: drop rather than corrupt
+        if ((head - s_fifo.tail) >= MODEM_RX_FIFO_SIZE) {
+            s_fifoDrops++; // overrun: drop rather than corrupt
+            continue;
+        }
 
         int16_t raw = (int16_t)p->type1.data;
         s_fifo.buffer[head & RB_MASK] = raw;
@@ -1027,7 +1172,7 @@ static esp_err_t adc_start_continuous(void) {
              1000.0 * MODEM_ADC_CONV_FRAME / (double)MODEM_ADC_SAMPLERATE, MODEM_ADC_POOL_FRAMES,
              1000.0 * MODEM_ADC_CONV_FRAME * MODEM_ADC_POOL_FRAMES / (double)MODEM_ADC_SAMPLERATE, MODEM_ADC_ISR_CORE);
 
-    adc_continuous_evt_cbs_t cbs = { .on_conv_done = adc_conv_done_cb };
+    adc_continuous_evt_cbs_t cbs = { .on_conv_done = adc_conv_done_cb, .on_pool_ovf = adc_pool_ovf_cb };
     err = adc_continuous_register_event_callbacks(s_adc, &cbs, NULL);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "adc_continuous_register_event_callbacks: %s", esp_err_to_name(err));
@@ -1103,7 +1248,7 @@ void AFSK_Poll(void) {
                 mVsumCount++;
             }
 
-            s_audio[x] = (float)adcVal / 2048.0f * s_agcGain;
+            s_audio[x] = (float)adcVal / 2048.0f;
         }
 
         adc_cali_raw_to_voltage(s_cali, s_avg, &s_offset);
@@ -1126,58 +1271,57 @@ void AFSK_Poll(void) {
 
         if (mVsumCount > 0) {
             s_mVrms = (int)sqrtf((float)(mVsum / mVsumCount));
-            if (s_mVrms > 10) { // > -40 dBm
-                if (s_dcdCnt < 100)
-                    s_dcdCnt++;
-            } else if (s_mVrms < 5) { // < -46 dBm
-                if (s_dcdCnt > 0)
-                    s_dcdCnt--;
+            if (s_gateOnMv > 0) {
+                if (s_mVrms > (int)s_gateOnMv) {
+                    if (s_dcdCnt < 100)
+                        s_dcdCnt++;
+                } else if (s_mVrms < (int)s_gateOffMv) {
+                    if (s_dcdCnt > 0)
+                        s_dcdCnt--;
+                }
             }
         }
 
-        bool signalPresent = (s_dcdCnt > 3) || (ModemConfig.modem == MODEM_MODEM_G3RUH);
+        // G3RUH is the one profile that is NOT decimated.
+        //
+        // The AFSK profiles are demodulated at MODEM_DEMOD_SAMPLERATE (9600 Hz),
+        // so the MODEM_ADC_SAMPLERATE stream is low-pass filtered and decimated
+        // by MODEM_RESAMPLE_RATIO first. G3RUH runs at 9600 Bd: decimating to
+        // 9600 Hz would leave exactly one sample per symbol, which gives the
+        // DPLL nothing to recover a clock from and puts the symbol rate at
+        // Nyquist. Its demodulator is built for the raw MODEM_ADC_SAMPLERATE
+        // stream instead - MODEM_RESAMPLE_RATIO samples per symbol, which is
+        // what N9600 and the lpf9600 coefficients in modem.c are cut for.
+        //
+        // The anti-alias filter and the high-pass are skipped with it,
+        // deliberately: the decimator's 4800 Hz cutoff is G3RUH's own
+        // bandwidth, and a baseband NRZ signal carries energy down to DC.
+        //
+        // The decimator and the high-pass run on every block, gate open or
+        // not, so their history is current whenever the gate opens.
+        const bool decimate = (ModemConfig.modem != MODEM_MODEM_G3RUH) && (MODEM_RESAMPLE_RATIO > 1);
+        const int count = decimate ? RX_DECIM_SAMPLES : MODEM_BLOCK_SIZE;
 
-        // Track the level only while there is something to track. Adapting on
-        // an idle channel would pin the gain at maximum and overdrive every
-        // incoming frame.
-        if (signalPresent)
-            update_agc(s_audio, MODEM_BLOCK_SIZE);
+        if (decimate) {
+            resample_audio(s_audio);
+            if (s_hpfOn)
+                hpf_run(s_audio, count);
+        }
+
+        bool signalPresent = (s_gateOnMv == 0) || (s_dcdCnt > 3) || (ModemConfig.modem == MODEM_MODEM_G3RUH);
 
         if (signalPresent) {
-            // G3RUH is the one profile that is NOT decimated.
-            //
-            // The AFSK profiles are demodulated at MODEM_DEMOD_SAMPLERATE
-            // (9600 Hz), so the MODEM_ADC_SAMPLERATE stream is low-pass
-            // filtered and decimated by MODEM_RESAMPLE_RATIO first. G3RUH runs
-            // at 9600 Bd: decimating to 9600 Hz would leave exactly one sample
-            // per symbol, which gives the DPLL nothing to recover a clock from
-            // and puts the symbol rate at Nyquist. Its demodulator is built for
-            // the raw MODEM_ADC_SAMPLERATE stream instead - MODEM_RESAMPLE_RATIO
-            // samples per symbol, which is what N9600 and the lpf9600
-            // coefficients in modem.c are cut for. Feed it the undecimated
-            // block.
-            //
-            // The anti-alias filter is skipped with it, deliberately: its 4800
-            // Hz cutoff is G3RUH's own bandwidth, so it would take the signal
-            // with it. lpf9600 does the receive filtering for this profile.
-            const bool decimate = (ModemConfig.modem != MODEM_MODEM_G3RUH) && (MODEM_RESAMPLE_RATIO > 1);
-            const int count = decimate ? (MODEM_BLOCK_SIZE / MODEM_RESAMPLE_RATIO) : MODEM_BLOCK_SIZE;
+            // Track the level only while there is something to track, and
+            // before feeding, so the block that opened the gate is already
+            // demodulated at the new gain.
+            if (!s_agcFixed)
+                update_agc(s_audio, (size_t)count);
 
-            if (decimate)
-                resample_audio(s_audio);
-
-            for (int i = 0; i < count; i++) {
-                // demodulate() is documented for <= 13 bit input, and
-                // filterRun() accumulates coeff*sample in an int32 across up to
-                // 15 taps. Clamping here keeps both safe no matter what the AGC
-                // or a hot input does.
-                float v = s_audio[i] * 2048.0f;
-                if (v > 2047.0f)
-                    v = 2047.0f;
-                else if (v < -2047.0f)
-                    v = -2047.0f;
-                MODEM_DECODE((int16_t)v, (uint16_t)s_mVrms);
-            }
+            if (decimate && (s_holdCount > 0))
+                hold_flush(count);
+            demod_feed(s_audio, count);
+        } else if (decimate) {
+            hold_push(s_audio, count);
         }
     }
 }
@@ -1258,13 +1402,24 @@ void afskSetModem(uint8_t val, bool flatAudio, uint16_t timeSlot, uint16_t pream
     Ax25TxDelay(preamble);
     Ax25MinUnkeyTime(minUnkeyMs);
 
-    // Reset the RX front-end so a profile change cannot leak old state.
+    // Reset the RX front-end so a profile change cannot leak old state, and
+    // apply the front-end settings stored by afskSetRxFrontEnd().
     memset(s_avgBuf, 0, sizeof(s_avgBuf));
     s_avgIdx = 0;
     s_avgSum = 0;
     s_avg = 2048;
-    s_agcGain = 1.0f;
     s_dcdCnt = 0;
+    s_holdHead = 0;
+    s_holdCount = 0;
+
+    s_gateOnMv = s_pendGateMv;
+    s_gateOffMv = (uint16_t)(s_pendGateMv / 2);
+    hpf_setup(s_pendHpfHz);
+    s_agcFixed = s_pendAgcFixed;
+    s_fixedGain = powf(10.0f, (float)s_pendFixedGainDb / 20.0f);
+    s_agcGain = s_agcFixed ? s_fixedGain : 1.0f;
+    ESP_LOGI(TAG, "RX front end: gate %s%u mV, high-pass %s%u Hz, gain %s %.2fx", s_gateOnMv ? "" : "off/", (unsigned)s_gateOnMv, s_hpfOn ? "" : "off/",
+             (unsigned)s_pendHpfHz, s_agcFixed ? "fixed" : "auto, start", (double)s_agcGain);
     AFSK_FlushFifo();
 
     if (s_rxTask)

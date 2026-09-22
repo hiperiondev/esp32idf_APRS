@@ -233,6 +233,52 @@
 #define TR_F_DAC_SAMPLERATE "Frecuencia de muestreo de transmisión"
 /** Spanish text for the form label for the "Transmitter time-out (ms)" field or fieldset, rendered on the configuration forms. */
 #define TR_F_TX_MAX_KEYED_MS "Tiempo máximo de transmisión (ms)"
+/** Spanish text for the form label for the "Receive demodulator" field or fieldset, rendered on the configuration forms. */
+#define TR_F_RX_DEMODULATOR "Demodulador de recepción"
+/** Spanish text for the form label for the "Demodulator set" field or fieldset, rendered on the configuration forms. */
+#define TR_F_RX_EQ_PRESET "Juego de demoduladores"
+/** Spanish text for the form label for the "Legacy (2, fixed filters)" field or fieldset, rendered on the configuration forms. */
+#define TR_F_RX_EQ_LEGACY "Clásico (2, filtros fijos)"
+/** Spanish text for the form label for the "1 filter" field or fieldset, rendered on the configuration forms. */
+#define TR_F_RX_EQ_SINGLE "1 filtro"
+/** Spanish text for the form label for the "2 filters" field or fieldset, rendered on the configuration forms. */
+#define TR_F_RX_EQ_DIV2 "2 filtros"
+/** Spanish text for the form label for the "3 filters" field or fieldset, rendered on the configuration forms. */
+#define TR_F_RX_EQ_DIV3 "3 filtros"
+/** Spanish text for the form label for the "Custom" field or fieldset, rendered on the configuration forms. */
+#define TR_F_RX_EQ_CUSTOM "Personalizado"
+/** Spanish text for the form label for the "Custom: demodulators" field or fieldset, rendered on the configuration forms. */
+#define TR_F_RX_EQ_COUNT "Personalizado: demoduladores"
+/** Spanish text for the form label for the "Custom: tilt, demodulator 1 (dB)" field or fieldset, rendered on the configuration forms. */
+#define TR_F_RX_TILT_1 "Personalizado: inclinación, demodulador 1 (dB)"
+/** Spanish text for the form label for the "Custom: tilt, demodulator 2 (dB)" field or fieldset, rendered on the configuration forms. */
+#define TR_F_RX_TILT_2 "Personalizado: inclinación, demodulador 2 (dB)"
+/** Spanish text for the form label for the "Custom: tilt, demodulator 3 (dB)" field or fieldset, rendered on the configuration forms. */
+#define TR_F_RX_TILT_3 "Personalizado: inclinación, demodulador 3 (dB)"
+/** Spanish text for the form label for the "Band-pass lower edge (Hz)" field or fieldset, rendered on the configuration forms. */
+#define TR_F_RX_BPF_LO_HZ "Borde inferior del pasabanda (Hz)"
+/** Spanish text for the form label for the "Band-pass upper edge (Hz)" field or fieldset, rendered on the configuration forms. */
+#define TR_F_RX_BPF_HI_HZ "Borde superior del pasabanda (Hz)"
+/** Spanish text for the form label for the "Band-pass length (taps)" field or fieldset, rendered on the configuration forms. */
+#define TR_F_RX_BPF_TAPS "Longitud del pasabanda (coeficientes)"
+/** Spanish text for the form label for the "Receive gate (mV RMS, 0 = off)" field or fieldset, rendered on the configuration forms. */
+#define TR_F_RX_GATE_MV "Umbral de recepción (mV RMS, 0 = apagado)"
+/** Spanish text for the form label for the "High-pass (CTCSS rejection)" field or fieldset, rendered on the configuration forms. */
+#define TR_F_RX_HPF_HZ "Pasa-altos (rechazo de CTCSS)"
+/** Spanish text for the form label for the "Receive gain" field or fieldset, rendered on the configuration forms. */
+#define TR_F_RX_AGC_MODE "Ganancia de recepción"
+/** Spanish text for the form label for the "Automatic" field or fieldset, rendered on the configuration forms. */
+#define TR_F_RX_AGC_AUTO "Automática"
+/** Spanish text for the form label for the "Fixed" field or fieldset, rendered on the configuration forms. */
+#define TR_F_RX_AGC_FIXED "Fija"
+/** Spanish text for the form label for the "Fixed receive gain (dB)" field or fieldset, rendered on the configuration forms. */
+#define TR_F_RX_AGC_GAIN_DB "Ganancia fija de recepción (dB)"
+/** Spanish text for the form label for the "Bit repair" field or fieldset, rendered on the configuration forms. */
+#define TR_F_RX_FIX_BITS "Reparación de bits"
+/** Spanish text for the form label for the "One symbol" field or fieldset, rendered on the configuration forms. */
+#define TR_F_RX_FIX_SYMBOL "Un símbolo"
+/** Spanish text for the form label for the "One symbol or one bit" field or fieldset, rendered on the configuration forms. */
+#define TR_F_RX_FIX_SYMBOL_BIT "Un símbolo o un bit"
 /** Spanish text for the form label for the "beacon interval s" field or fieldset, rendered on the configuration forms. English: "Beacon interval (s)". */
 #define TR_F_BEACON_INTERVAL_S "Intervalo de baliza (s)"
 /** Spanish text for the form label for the "beacon position" field or fieldset, rendered on the configuration forms. English: "Beacon / Position". */
@@ -1154,6 +1200,16 @@
 #define TR_RADIO_AUDIO_HW_INFO "<br>DAC salida: GPIO%d<br>ADC entrada: GPIO%d<br>Pin PTT: %s<br>PTT activo en alto: %s<br>Atenuación ADC: %d<br>ADC: %d Hz"
 /** Spanish text: Radiomodem page label for audio hw note, rendered on the Radiomodem page. */
 #define TR_RADIO_AUDIO_HW_NOTE ""
+/** Spanish text: RX statistics label: frames decoded per demodulator. */
+#define TR_RADIO_RX_STATS_DECODED "decodificados"
+/** Spanish text: RX statistics label: frames only that demodulator decoded. */
+#define TR_RADIO_RX_STATS_UNIQUE "exclusivos"
+/** Spanish text: RX statistics label: frames delivered after duplicate suppression. */
+#define TR_RADIO_RX_STATS_DELIVERED "entregados"
+/** Spanish text: RX statistics label: frames delivered after bit repair. */
+#define TR_RADIO_RX_STATS_REPAIRED "reparados"
+/** Spanish text: RX statistics label: FIFO drops / ADC pool overflows. */
+#define TR_RADIO_RX_STATS_LOST "muestras perdidas"
 
 /** @} */
 
@@ -2132,10 +2188,6 @@
 #define TR_H_F_APRS_PASSCODE                                                                                                                                   \
     "Código de acceso que el servidor APRS-IS verifica contra Mi Indicativo antes de aceptar tráfico pasarela de esta estación. Auto Generar lo calcula "      \
     "a partir de ese indicativo; un código erróneo o ausente igual conecta, pero queda registrado como no verificado."
-/** Spanish text of the contextual help for the "Flat / discriminator audio input" option. */
-#define TR_H_F_FLAT_AUDIO_INPUT                                                                                                                                \
-    "Selecciona cómo se ecualiza el audio recibido. Actívelo cuando el audio viene de una toma de datos o de discriminador, que no está filtrada ni "          \
-    "lleva deénfasis; déjelo apagado para una salida de altavoz o auriculares, que ya está deenfatizada."
 /** Spanish text of the contextual help for the "ADC input self-bias" option. */
 #define TR_H_F_ADC_SELF_BIAS                                                                                                                                   \
     "Polariza el pin de audio recibido con las resistencias internas del propio pad del ADC, que es lo que necesita una entrada acoplada por "                 \
@@ -2157,6 +2209,51 @@
 #define TR_H_F_TX_MAX_KEYED_MS                                                                                                                                 \
     "Libera el transmisor cuando una transmisión dura más que esto, para que una cadena de transmisión detenida no pueda ocupar el canal. 0 desactiva "        \
     "el límite. Los valores útiles quedan muy por encima de la trama más larga que envía esta estación."
+/** Spanish text of the contextual help for the "Demodulator set" option. */
+#define TR_H_F_RX_EQ_PRESET                                                                                                                                    \
+    "Los demoduladores trabajan sobre el mismo audio, cada uno tras un pasabanda con distinta inclinación entre 1200 y 2200 Hz, para cubrir el "               \
+    "desbalance de tonos de cada estación. Más filtros decodifican más."
+/** Spanish text of the contextual help for the "Custom: demodulators" option. */
+#define TR_H_F_RX_EQ_COUNT "Cantidad de demoduladores del juego Personalizado, de 1 a 3. Cada uno usa la inclinación indicada abajo."
+/** Spanish text of the contextual help for the "Custom: tilt" option. */
+#define TR_H_F_RX_TILT                                                                                                                                         \
+    "Ganancia del pasabanda en el tono de espacio menos la del tono de marca, en dB. Negativa compensa el preénfasis del transmisor en una salida "            \
+    "de discriminador; los filtros cortos logran solo parte."
+/** Spanish text of the contextual help for the "Band-pass lower edge (Hz)" option. */
+#define TR_H_F_RX_BPF_LO_HZ                                                                                                                                    \
+    "Borde inferior de los pasabanda diseñados. Más bajo deja pasar más CTCSS y zumbido; más alto empieza a recortar el tono de 1200 Hz."
+/** Spanish text of the contextual help for the "Band-pass upper edge (Hz)" option. */
+#define TR_H_F_RX_BPF_HI_HZ                                                                                                                                    \
+    "Borde superior de los pasabanda diseñados. Más alto deja pasar más ruido de discriminador por encima de los tonos; más bajo empieza a "                   \
+    "recortar el tono de 2200 Hz."
+/** Spanish text of the contextual help for the "Band-pass length (taps)" option. */
+#define TR_H_F_RX_BPF_TAPS                                                                                                                                     \
+    "Longitud de los pasabanda diseñados. Los filtros más largos tienen bordes más nítidos y logran más de la inclinación pedida; los valores "                \
+    "pares se redondean al impar siguiente."
+/** Spanish text of the contextual help for the "Receive gate (mV RMS, 0 = off)" option. */
+#define TR_H_F_RX_GATE_MV                                                                                                                                      \
+    "Los demoduladores reciben audio solo mientras la entrada supera este nivel; los bloques recibidos mientras se abre se guardan y decodifican. "            \
+    "0 los alimenta siempre, lo mejor para una salida de datos."
+/** Spanish text of the contextual help for the "High-pass (CTCSS rejection)" option. */
+#define TR_H_F_RX_HPF_HZ                                                                                                                                       \
+    "Elimina tonos CTCSS y zumbido por debajo de la frecuencia elegida antes de los demoduladores. Una salida de discriminador lleva el CTCSS "                \
+    "completo; la de altavoz suele tenerlo filtrado."
+/** Spanish text of the contextual help for the "Receive gain" option. */
+#define TR_H_F_RX_AGC_MODE                                                                                                                                     \
+    "Automática sigue el nivel de cada transmisión. Fija conviene a una salida de datos o discriminador, cuyo nivel depende de la desviación del "             \
+    "transmisor y no necesita seguimiento."
+/** Spanish text of the contextual help for the "Fixed receive gain (dB)" option. */
+#define TR_H_F_RX_AGC_GAIN_DB                                                                                                                                  \
+    "Ganancia aplicada antes de los demoduladores con ganancia Fija. Use RX LEVEL: apunte a cerca de 0,2 de la escala completa, lejos de los "                 \
+    "límites del conversor."
+/** Spanish text of the contextual help for the "Bit repair" option. */
+#define TR_H_F_RX_FIX_BITS                                                                                                                                     \
+    "Repara tramas con un símbolo (o bit) dañado cuando es la única explicación y el resultado parece APRS válido. Suma decodificaciones pero "                \
+    "también algunas erróneas; manténgalo apagado en un IGate."
+/** Spanish text of the contextual help for the "Flat / discriminator audio input" option. */
+#define TR_H_F_FLAT_AUDIO_INPUT                                                                                                                                \
+    "Actívelo para una toma de datos o de discriminador (sin filtrar, sin deénfasis) y apáguelo para una salida de altavoz o auriculares (ya "                 \
+    "deenfatizada). Elige las inclinaciones del juego de demoduladores."
 /** Spanish text of the contextual help for the "Beacon interval (s)" option. */
 #define TR_H_F_BEACON_INTERVAL_S                                                                                                                               \
     "Segundos entre balizas de posición. Use un intervalo largo en una frecuencia cargada; 0 deja vigente el valor por defecto del servicio."

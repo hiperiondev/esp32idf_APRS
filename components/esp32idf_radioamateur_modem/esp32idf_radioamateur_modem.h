@@ -61,12 +61,148 @@ typedef enum {
 } modem_mode_t;
 
 /**
+ * @name Receive tuning valid ranges
+ *
+ * Inclusive limits of every ::modem_rx_tuning_t field. modem_rx_tuning_sanitize()
+ * clamps a structure into these ranges; the web admin and the configuration
+ * loader use the same limits for their input fields and stored values.
+ * @{
+ */
+#define MODEM_RX_TILT_DB_MIN     (-9)  /**< Most negative prefilter tilt, dB (space tone attenuated relative to mark). */
+#define MODEM_RX_TILT_DB_MAX     9     /**< Most positive prefilter tilt, dB (space tone boosted relative to mark). */
+#define MODEM_RX_BPF_LO_HZ_MIN   600   /**< Lowest band-pass lower edge, Hz. */
+#define MODEM_RX_BPF_LO_HZ_MAX   1100  /**< Highest band-pass lower edge, Hz. */
+#define MODEM_RX_BPF_HI_HZ_MIN   2300  /**< Lowest band-pass upper edge, Hz. */
+#define MODEM_RX_BPF_HI_HZ_MAX   3000  /**< Highest band-pass upper edge, Hz. */
+#define MODEM_RX_BPF_TAPS_MIN    9     /**< Shortest band-pass prefilter, taps (always odd). */
+#define MODEM_RX_BPF_TAPS_MAX    31    /**< Longest band-pass prefilter, taps (always odd). */
+#define MODEM_RX_GATE_MV_MAX     50    /**< Highest receive gate threshold, mV RMS (0 disables the gate). */
+#define MODEM_RX_HPF_HZ_MAX      400   /**< Highest high-pass corner, Hz (0 disables the high-pass). */
+#define MODEM_RX_AGC_GAIN_DB_MIN (-12) /**< Lowest fixed receive gain, dB. */
+#define MODEM_RX_AGC_GAIN_DB_MAX 18    /**< Highest fixed receive gain, dB. */
+#define MODEM_RX_FIX_BITS_MAX    2     /**< Highest bit-repair level (see ::modem_rx_tuning_t::fix_bits). */
+/** @} */
+
+/**
+ * @brief Demodulator set used by the 1200 Bd profiles (Bell 202 and V.23).
+ *
+ * Every entry except ::MODEM_RX_EQ_LEGACY designs its band-pass prefilters at
+ * run time from ::modem_rx_tuning_t::bpf_lo_hz, ::modem_rx_tuning_t::bpf_hi_hz
+ * and ::modem_rx_tuning_t::bpf_taps. The tilt of each prefilter is the gain
+ * difference between the space and the mark tone, and the preset tilt tables
+ * depend on ::modem_config_t::flat_audio:
+ *
+ * | Preset        | Flat / discriminator input | De-emphasized (speaker) input |
+ * |---------------|----------------------------|-------------------------------|
+ * | SINGLE        | 0 dB                       | +3 dB                         |
+ * | DIVERSITY2    | 0, -5 dB                   | 0, +5 dB                      |
+ * | DIVERSITY3    | +4, 0, -5 dB               | 0, +3, +6 dB                  |
+ *
+ * Tone twist on the air ranges well beyond what one prefilter can absorb:
+ * a transmitter that pre-emphasizes its audio arrives on a discriminator
+ * output with the space tone 5 to 12 dB louder than the mark tone, a flat
+ * data-port transmitter arrives with no twist at all, and a speaker output
+ * shifts both by the receiver's de-emphasis. Several prefilters with
+ * different tilts cover that range together, which one prefilter cannot.
+ */
+typedef enum {
+    MODEM_RX_EQ_LEGACY = 0, /**< Two demodulators with the fixed 8-tap tables: a tilted or flat band-pass, depending on flat_audio, and an unfiltered one. */
+    MODEM_RX_EQ_SINGLE = 1, /**< One demodulator, one band-pass prefilter. */
+    MODEM_RX_EQ_DIVERSITY2 = 2, /**< Two demodulators with different prefilter tilts. */
+    MODEM_RX_EQ_DIVERSITY3 = 3, /**< Three demodulators with different prefilter tilts. */
+    MODEM_RX_EQ_CUSTOM = 4,     /**< custom_count demodulators with the tilts in custom_tilt_db[]. */
+} modem_rx_eq_preset_t;
+
+/**
+ * @brief Receive gain control mode.
+ */
+typedef enum {
+    MODEM_RX_AGC_AUTO = 0,  /**< Automatic gain control on the in-band (decimated) signal. */
+    MODEM_RX_AGC_FIXED = 1, /**< Fixed gain of ::modem_rx_tuning_t::agc_fixed_gain_db. Suits a data or discriminator port, whose level is set by deviation. */
+} modem_rx_agc_mode_t;
+
+/**
+ * @brief Receive-chain tuning, part of ::modem_config_t.
+ *
+ * Every field is applied by modem_set_modem() without restarting the modem
+ * hardware: the demodulators are rebuilt while the receive task is held.
+ */
+typedef struct {
+    modem_rx_eq_preset_t eq_preset;                   /**< Demodulator set for the 1200 Bd profiles. */
+    uint8_t custom_count;                             /**< Number of demodulators used by ::MODEM_RX_EQ_CUSTOM, 1..::MODEM_RX_MAX_DEMODULATORS. */
+    int8_t custom_tilt_db[MODEM_RX_MAX_DEMODULATORS]; /**< Prefilter tilt of each ::MODEM_RX_EQ_CUSTOM demodulator, dB (space gain minus mark gain). */
+    uint16_t bpf_lo_hz;                               /**< Lower band edge of the designed prefilters, Hz. */
+    uint16_t bpf_hi_hz;                               /**< Upper band edge of the designed prefilters, Hz. */
+    uint8_t bpf_taps; /**< Length of the designed prefilters, taps; forced odd so the filters stay linear phase. Short filters reach only part of the
+                           requested tilt; ModemInit() logs the tilt each prefilter actually has. */
+    uint16_t gate_mv; /**< Receive gate, mV RMS: the demodulators are fed only while the input exceeds this level (it closes again below half of it).
+                         The blocks received while the gate is closed are held and demodulated when it opens, so the start of a transmission is
+                         not lost. 0 feeds the demodulators continuously, which suits a squelch-independent data or discriminator port. */
+    uint16_t hpf_hz;  /**< Corner of a second-order high-pass applied to the demodulator input of the AFSK profiles, Hz, or 0 for none. Removes
+                         CTCSS tones and hum that a discriminator output carries at full level. */
+    modem_rx_agc_mode_t agc_mode; /**< Automatic or fixed receive gain. */
+    int8_t agc_fixed_gain_db;     /**< Receive gain used by ::MODEM_RX_AGC_FIXED, dB. */
+    uint8_t fix_bits;             /**< Repair of frames whose FCS does not match: 0 = off, 1 = one corrupted symbol (two adjacent bits after NRZI decoding),
+                                     2 = one corrupted symbol or one single bit. A repaired frame is delivered only when it also passes a strict APRS sanity
+                                     check (valid callsign characters, UI control field, no-layer-3 PID, no control characters in the information field).
+                                     Every repair accepts a small share of wrongly corrected frames, so this stays off unless the extra decodes are wanted. */
+} modem_rx_tuning_t;
+
+/**
+ * @brief Build a ::modem_rx_tuning_t initializer with the default receive
+ *        tuning: three demodulators, a 900-2600 Hz band, 21-tap prefilters,
+ *        a 10 mV receive gate, no high-pass, automatic gain and no bit
+ *        repair.
+ */
+#define MODEM_RX_TUNING_DEFAULT()                                                                                                                              \
+    {                                                                                                                                                          \
+        .eq_preset = MODEM_RX_EQ_DIVERSITY3,                                                                                                                   \
+        .custom_count = 3,                                                                                                                                     \
+        .custom_tilt_db = { 4, 0, -5 },                                                                                                                        \
+        .bpf_lo_hz = 900,                                                                                                                                      \
+        .bpf_hi_hz = 2600,                                                                                                                                     \
+        .bpf_taps = 21,                                                                                                                                        \
+        .gate_mv = 10,                                                                                                                                         \
+        .hpf_hz = 0,                                                                                                                                           \
+        .agc_mode = MODEM_RX_AGC_AUTO,                                                                                                                         \
+        .agc_fixed_gain_db = 0,                                                                                                                                \
+        .fix_bits = 0,                                                                                                                                         \
+    }
+
+/**
+ * @brief Clamp every field of a ::modem_rx_tuning_t into its valid range.
+ *
+ * Out-of-range values are moved to the nearest limit, an unknown preset or
+ * gain mode falls back to the default one, and an even tap count is rounded
+ * up to the next odd one. Safe to call on any structure, including one read
+ * from an untrusted source.
+ *
+ * @param t Structure to sanitize in place. Ignored if NULL.
+ */
+void modem_rx_tuning_sanitize(modem_rx_tuning_t *t);
+
+/**
+ * @brief Receive statistics accumulated since boot or since the last
+ *        modem_reset_rx_stats().
+ */
+typedef struct {
+    uint32_t decoded[MODEM_RX_MAX_DEMODULATORS]; /**< Frames with a valid FCS produced by each demodulator, duplicates of the same frame included. */
+    uint32_t unique[MODEM_RX_MAX_DEMODULATORS];  /**< Frames that only this demodulator produced: the measure of what each prefilter adds to the set. */
+    uint32_t delivered;                          /**< Frames handed to the RX callback after duplicate suppression. */
+    uint32_t repaired;                           /**< Delivered frames that needed bit repair (see ::modem_rx_tuning_t::fix_bits). */
+    uint32_t fifo_drops;                         /**< Samples dropped because the receive FIFO was full. */
+    uint32_t adc_pool_overflows;                 /**< Times the ADC driver's conversion pool overflowed and discarded samples. */
+    uint8_t demod_count;                         /**< Number of demodulators active for the current profile. */
+} modem_rx_stats_t;
+
+/**
  * @brief Runtime configuration passed to modem_init() and
  *        modem_set_modem().
  */
 typedef struct {
     modem_mode_t modem;    /**< Modem profile to use. */
-    bool flat_audio;       /**< true when the audio input is flat/discriminator output, false for de-emphasized audio. */
+    bool flat_audio;       /**< true when the audio input is flat/discriminator output, false for de-emphasized (speaker) audio. Selects the prefilter
+                              tilt table of the ::modem_rx_eq_preset_t presets. */
     bool full_duplex;      /**< true: key up immediately and keep receiving while transmitting. */
     bool allow_non_aprs;   /**< true: accept frames whose Control/PID fields are not 0x03/0xF0. */
     uint16_t preamble_ms;  /**< TXDelay (preamble) duration, in milliseconds. */
@@ -101,6 +237,7 @@ typedef struct {
     uint32_t tx_max_keyed_ms;  /**< Transmitter time-out, in milliseconds, or 0 to disable it. When a key-up lasts longer than this, the modem service task
                                   releases PTT, stops the modulator and discards the transmission, so a stalled transmit path cannot hold the channel
                                   indefinitely. */
+    modem_rx_tuning_t rx;      /**< Receive-chain tuning: demodulator set, prefilter band, receive gate, high-pass, gain control and bit repair. */
 } modem_config_t;
 
 /**
@@ -114,7 +251,8 @@ typedef struct {
  * The audio interface fields take the values that suit an interface board
  * carrying its own bias network, attenuators and reconstruction filter: the
  * compile-time DAC sample rate and output swing, no ADC input self-bias, no
- * over-range warning and no transmitter time-out.
+ * over-range warning and no transmitter time-out. The receive chain takes
+ * ::MODEM_RX_TUNING_DEFAULT.
  */
 #define MODEM_DEFAULT_CONFIG()                                                                                                                                 \
     {                                                                                                                                                          \
@@ -133,6 +271,7 @@ typedef struct {
         .adc_self_bias = false,                                                                                                                                \
         .rx_clip_warn = false,                                                                                                                                 \
         .tx_max_keyed_ms = 0,                                                                                                                                  \
+        .rx = MODEM_RX_TUNING_DEFAULT(),                                                                                                                       \
     }
 
 /**
@@ -146,6 +285,10 @@ typedef struct {
     uint8_t level;        /**< Overall signal level indicator. */
     uint8_t corrected;    /**< Bytes corrected by FX.25 FEC, or ::AX25_NOT_FX25 if not FX.25. */
     uint16_t mVrms;       /**< RMS input level measured during reception, in millivolts. */
+    uint8_t demod;        /**< Index of the demodulator that produced the frame, 0 .. ::MODEM_RX_MAX_DEMODULATORS - 1. */
+    int8_t twist_db;      /**< Estimated tone twist of the received signal at the modem input, dB: level of the space tone relative to the mark
+                             tone, with the demodulator's own prefilter tilt removed. 0 for the G3RUH profile, which has no tones. */
+    uint8_t repaired;     /**< Number of bits flipped by bit repair to make the FCS match, 0 for a frame received intact. */
 } modem_rx_frame_t;
 
 /**
@@ -286,5 +429,16 @@ uint32_t modem_channel_busy_count(void);
  * @return Measured ADC sample rate, in samples per second.
  */
 uint32_t modem_measure_adc_rate(uint32_t ms);
+
+/**
+ * @brief Read the receive statistics.
+ * @param out Destination structure. Ignored if NULL.
+ */
+void modem_get_rx_stats(modem_rx_stats_t *out);
+
+/**
+ * @brief Clear every counter reported by modem_get_rx_stats().
+ */
+void modem_reset_rx_stats(void);
 
 #endif /* ESP32IDF_RADIOAMATEUR_MODEM_H_ */

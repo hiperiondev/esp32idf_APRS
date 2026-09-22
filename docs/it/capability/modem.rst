@@ -44,9 +44,15 @@ possa convertire il valore salvato direttamente nell'enum:
      - 9600
      - —
 
-Il profilo a 1200 Bd esegue **due demodulatori in parallelo**, sintonizzati
-leggermente diversi, per elevare la probabilità di decodifica
-(``MODEM_MAX_DEMODULATOR_COUNT = 2``).
+I profili a 1200 Bd eseguono **fino a tre demodulatori in parallelo**
+(``MODEM_RX_MAX_DEMODULATORS = 3``), ognuno dopo un prefiltro passa-banda con
+inclinazione diversa tra i toni di marca e di spazio, così il set copre uno
+sbilanciamento dei toni più ampio di ciascuno da solo; la trama la consegna il
+primo che la completa e le copie vengono scartate confrontando l'FCS. Il set di
+demodulatori, la banda del prefiltro, la soglia di ricezione, un passa-alto per
+il CTCSS, il controllo del guadagno e una riparazione opzionale dei bit dell'FCS
+sono impostazioni a runtime (``modem_config_t.rx``, vedi
+:ref:`it-radiomodem`).
 
 Correzione d'errore in avanti FX.25
 ===================================
@@ -157,7 +163,8 @@ reale, nessun riavvio) e dal test di loop:
    * - ``flat_audio``
      - ``audio_lpf``
      - ingresso piatto/da discriminatore: attivo per una presa dati o dal
-       discriminatore, spento per un'uscita altoparlante
+       discriminatore, spento per un'uscita altoparlante; sceglie la tabella
+       delle inclinazioni dei prefiltri dei preset
    * - ``full_duplex``
      - ``false`` normalmente
      - LOOP TEST passa ``true`` (un cavo DAC→ADC significa che CSMA non vede mai
@@ -219,6 +226,12 @@ reale, nessun riavvio) e dal test di loop:
      - tempo massimo di trasmissione, 0 = disattivato. Oltre tale durata il
        task di servizio del modem rilascia il PTT, ferma il modulatore e
        scarta la trasmissione
+   * - ``rx``
+     - ``rx_tuning`` (``MODEM_RX_TUNING_DEFAULT()``)
+     - catena di ricezione: preset dei demodulatori e inclinazioni
+       personalizzate, banda e lunghezza del prefiltro, soglia di ricezione,
+       passa-alto CTCSS, guadagno automatico o fisso, riparazione dei bit;
+       limitata da ``modem_rx_tuning_sanitize()``
 
 .. note::
 
@@ -227,8 +240,9 @@ reale, nessun riavvio) e dal test di loop:
    ADC/DAC. Solo il *livello* attivo è passato a runtime, e viene anch'esso
    direttamente dalla macro di compilazione. Esplicitamente **non** mappati a
    runtime (senza equivalente nel componente): pin e attenuazione ADC/DAC, squelch
-   hardware, interruttore di potenza RF, squelch software, volume RX e il tetto
-   dell'AGC.
+   hardware, interruttore di potenza RF, volume RX e il tetto dell'AGC. La
+   soglia di ricezione software e un guadagno fisso di ricezione fanno parte di
+   ``rx``.
 
 LIVELLO RX e TEST TX
 ====================
@@ -241,7 +255,10 @@ un apparato collegato, uno per direzione.
 **LIVELLO RX** (``aprs_rx_level_sample()``, ``POST /radio/level``) osserva lo
 stadio di ricezione per circa un secondo e riporta il livello RMS e il suo
 picco, l'offset di continua dell'ingresso, il guadagno dell'AGC, gli estremi
-grezzi di conversione e lo stato del rilevamento di portante. Non trasmette
+grezzi di conversione e lo stato del rilevamento di portante, seguiti dalle
+statistiche di ricezione di ``modem_get_rx_stats()`` (trame decodificate ed
+esclusive di ogni demodulatore, trame consegnate e riparate, campioni persi).
+Non trasmette
 nulla e non cambia lo stato del modem, quindi può girare mentre viene
 decodificato traffico reale. È ciò contro cui si regola il trimmer di
 ricezione — puntare a 250-350 mV RMS con la gamma grezza lontana da 0 e 4095 —

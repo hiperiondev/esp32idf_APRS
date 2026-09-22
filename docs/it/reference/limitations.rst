@@ -40,12 +40,12 @@ Modem / Livello 2
    * - AFSK 1200 Bd Bell 202 (APRS VHF standard)
      - ✅ (Direwolf, UZ7HO, VP-Digi, TNC hardware)
      - ✅
-     - Profilo predefinito; doppio demodulatore in parallelo per aumentare la probabilità di decodifica
+     - Profilo predefinito; fino a tre demodulatori con prefiltri di inclinazione diversa in parallelo per aumentare la probabilità di decodifica
    * - AFSK 1200 Bd V.23
      - ⚠️ (Direwolf lo supporta; molti client no)
      - ✅
-     - Profilo modem selezionabile n. 2; come Bell 202 esegue due demodulatori
-       in parallelo
+     - Profilo modem selezionabile n. 2; come Bell 202 esegue fino a tre
+       demodulatori in parallelo
    * - AFSK 300 Bd (APRS HF)
      - ✅ (Direwolf, UZ7HO)
      - ✅

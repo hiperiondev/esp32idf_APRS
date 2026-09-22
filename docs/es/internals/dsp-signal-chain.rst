@@ -22,16 +22,22 @@ La cadena, etapa por etapa
    * - SAR-ADC1 continuo/DMA, tramas de conversión de 128 muestras
      - **76 800 Hz**
      - ISR del controlador en núcleo 0
-   * - ingesta: des-intercambio de pares, eliminación de offset DC, AGC, medición RMS
+   * - ingesta: des-intercambio de pares, eliminación de offset DC, medición RMS,
+       decisión del umbral de recepción
      - 76 800 Hz
      - ``afsk.c``
-   * - FIR de diezmado (ratio **8:1**)
+   * - FIR de diezmado (ratio **8:1**), pasa-altos opcional de CTCSS, AGC o
+       ganancia fija, anillo de retención del umbral
      - → **9 600 Hz**
      - ``afsk.c``
-   * - correlador (mark/space), paso-bajo, DPLL, decodificación NRZI
+   * - por demodulador (hasta tres): prefiltro pasabanda, correlador
+       (mark/space), paso-bajo, DPLL, decodificación NRZI, seguimiento del
+       desbalance de tonos
      - 9 600 Hz
      - ``modem.c``
-   * - des-encuadre HDLC, des-stuffing de bits, comprobación FCS, decodificación RS FX.25
+   * - des-encuadre HDLC, des-stuffing de bits, comprobación FCS (reparación de
+       bits opcional), decodificación RS FX.25, supresión de duplicados entre
+       demoduladores
      - —
      - ``ax25.c`` / ``fx25.c``
    * - ⟵ TX ⟶ codificación AX.25, FCS, bit stuff, NRZI, acumulador de fase de 32 bits,
@@ -54,6 +60,69 @@ esos bytes son la cola de la trama recibida anteriormente, que si no se
 convertirían en indicativos de repetidora verosímiles dentro de una
 decodificación por lo demás válida.
 
+El ajuste de recepción
+======================
+
+Todo lo siguiente se fija en ejecución mediante ``modem_config_t.rx`` (el grupo
+*Demodulador de recepción* de :ref:`es-radiomodem`) y lo aplica
+``afskSetModem()`` con la tarea de recepción detenida, así que ningún bloque se
+procesa con una cadena a medio construir.
+
+**Varios demoduladores, cada uno con un prefiltro inclinado.**
+   La decisión del correlador es ``(|LoI|+|LoQ|) − (|HiI|+|HiQ|)``: un
+   desbalance de tonos la sesga. En el aire ese desbalance va de nada (un
+   transmisor de puerto de datos plano en una salida de discriminador) a 5–12 dB
+   a favor del tono de espacio (un transmisor con preénfasis en una salida de
+   discriminador), y una salida de altavoz desplaza ambos por el deénfasis del
+   receptor. Un único correlador falla cuando el desbalance total — el de la
+   señal más la inclinación del prefiltro — supera unos ±12 dB, así que los
+   perfiles de 1200 Bd ejecutan hasta tres demoduladores cuyos prefiltros
+   pasabanda tienen inclinaciones distintas. Los prefiltros se diseñan en
+   ``ModemInit()`` (muestreo en frecuencia, ventana de Hamming, fase lineal,
+   pico de la banda de paso escalado a la unidad para que los caminos int16 e
+   int32 no se desborden) a partir de los bordes de banda, la longitud y la
+   inclinación; la inclinación que alcanzan de verdad, medida sobre los
+   coeficientes, se escribe en el registro y la usa la estimación del
+   desbalance. El juego clásico conserva las tablas fijas de 8 coeficientes.
+
+**Supresión de duplicados y estadísticas.**
+   Una trama con FCS válido abre una ventana de 32 periodos de bit × el número
+   de demoduladores activos; las copias con el mismo CRC de los demás
+   demoduladores dentro de ella se descartan (tramas simples y FX.25 por
+   igual). La ventana anota qué demoduladores produjeron la trama, así que al
+   cerrarse atribuye una trama que sólo uno obtuvo a ese demodulador — el
+   contador ``exclusivos`` que indica lo que aporta cada prefiltro.
+
+**El umbral de recepción guarda lo que retiene.**
+   Un bloque llega a los demoduladores mientras su RMS ha superado
+   ``rx.gate_mv`` durante más de tres bloques, y hasta que cae por debajo de la
+   mitad. El diezmador y el pasa-altos se ejecutan en todos los bloques, y los
+   tres últimos bloques retenidos se guardan (diezmados, 3 × 192 floats); al
+   abrirse el umbral se demodulan primero, así que el preámbulo gastado en
+   decidir la apertura no se pierde. ``gate_mv = 0`` alimenta todos los bloques.
+
+**Control de ganancia sobre la señal dentro de banda.**
+   El AGC mide el bloque diezmado y no el flujo de 76,8 kHz, así que el ruido de
+   discriminador por encima de 5 kHz no fija la ganancia, y la nueva ganancia se
+   aplica al mismo bloque sobre el que se midió. Ataque 0,25 y liberación 0,002
+   por bloque de 20 ms, con el paso por bloque acotado a ×2 / ÷2. Una ganancia
+   fija lo reemplaza cuando ``rx.agc_mode`` lo pide.
+
+**Reparación de bits por síndrome del CRC.**
+   CRC-16/X.25 es afín sobre GF(2): el registro tras una trama y su FCS es
+   ``0xF0B8`` XOR un síndrome que sólo depende del patrón de error. El síndrome
+   de un único bit erróneo en la posición *p* es un paso de CRC con entrada cero
+   del síndrome en *p* + 1, así que cada bit suelto y cada pareja contigua (el
+   patrón de un símbolo erróneo tras NRZI) se comprueban en una sola pasada. Una
+   corrección sólo se acepta cuando exactamente un candidato coincide y la trama
+   supera una prueba estricta de plausibilidad APRS, y nunca mientras la copia
+   intacta de otro demodulador está dentro de la ventana de duplicados.
+
+**El componente del módem se compila con ``-O2``.**
+   El DSP de recepción se ejecuta en cada muestra de cada demodulador; el
+   ``CMakeLists.txt`` del componente lo compila optimizado para velocidad sea
+   cual sea el nivel que use el resto del proyecto.
+
 Por qué los números son los que son
 ===================================
 
@@ -74,9 +143,16 @@ Por qué los números son los que son
    no hace antialias de 8:1.
 
 **El DAC se queda a 38 400 Hz** (= 32 × 1200, un múltiplo exacto de cada tasa de
-   baudios soportada). El transmisor pone los flancos de símbolo exactamente en
-   muestras del DAC sea cual sea la tasa; era el *receptor* el que necesitaba
-   resolución.
+   baudios soportada). Los perfiles AFSK construyen sus pasos de tono y un
+   acumulador de fase de símbolo Q32 a partir de la tasa *real* de alarma del
+   DAC, así que tonos y velocidad son exactos aunque el periodo de alarma se
+   redondee a ticks enteros del temporizador; un flanco de símbolo cae en la
+   muestra del DAC más cercana, como mucho un 3 % de símbolo a 1200 Bd y oculto
+   por el tono de fase continua. G3RUH mantiene en cambio cada símbolo durante
+   un número entero de muestras del DAC, con todos los flancos en la misma
+   rejilla: un acumulador fraccionario a cuatro muestras por símbolo movería de
+   vez en cuando un flanco un cuarto de símbolo. Era el *receptor* el que
+   necesitaba resolución.
 
 **``MODEM_ADC_CONV_FRAME = 128``, no el tamaño de bloque.**
    La propia ISR del ADC del IDF llama a ``xRingbufferSendFromISR()``, que hace
@@ -97,13 +173,16 @@ Por qué los números son los que son
 
 **``ModemCalibrateSampleRate()``.**
    ``modem_init()`` se bloquea ~5 s al arrancar midiendo la tasa *real* del ADC
-   (``modem_measure_adc_rate()``), porque el paso del PLL de cada perfil se
-   calcula a partir del ratio ADC/DAC *nominal* y la diferencia es de otro modo un
-   error de estado estacionario que el DPLL debe seguir durante toda una
-   transmisión. La tasa de alarma del DAC ya se conoce exactamente de la
-   configuración del temporizador, así que solo el lado del ADC necesita
-   medición. Ambos relojes derivan del mismo cristal, así que el ratio es una
-   propiedad fija de la placa: medida **una vez por arranque**, reaplicada en cada
+   (``modem_measure_adc_rate()``), porque el paso del PLL de cada perfil supone
+   la tasa *nominal* del ADC y la diferencia es de otro modo un error de estado
+   estacionario que el DPLL debe seguir durante toda una transmisión. Las
+   estaciones en el aire transmiten a su propia velocidad nominal, así que la
+   corrección de recepción es sólo el error del ADC. La tasa real de alarma del
+   DAC, conocida exactamente de la configuración del temporizador, también se
+   registra, pero sólo se usa cuando un receptor G3RUH oye el propio
+   transmisor del nodo (dúplex completo, la autoprueba con bucle de cable).
+   Ambos relojes derivan del mismo cristal, así que los ratios son propiedades
+   fijas de la placa: medidos **una vez por arranque**, reaplicados en cada
    cambio de perfil.
 
 **El FIR de diezmado filtra en el mismo arreglo.**
@@ -197,6 +276,9 @@ sobreescribir.
    * - ``MODEM_DAC_TIMER_INTR_PRIO``
      - 3
      - 1..3
+   * - ``MODEM_RX_MAX_DEMODULATORS``
+     - 3
+     - demoduladores de 1200 Bd en paralelo, 3..8
    * - *(derivado)* ``MODEM_DEMOD_SAMPLERATE``
      - 9600
      - fijo
@@ -216,13 +298,16 @@ Los archivos fuente del módem
 
    * - Archivo
      - Rol
-   * - ``src/afsk.c`` (~1380 lín)
-     - ingesta DMA del ADC, AGC, FIR de diezmado, ISR del DAC, PTT
-   * - ``src/modem.c`` (~860 lín)
-     - correladores, DPLL, tablas de tonos, DCD, calibración
-   * - ``src/ax25.c`` (~1640 lín)
-     - encuadrador HDLC, NRZI, bit-stuffing, códec AX.25, cola de TX
-   * - ``src/esp32idf_radioamateur_modem.c`` (~420 lín)
+   * - ``src/afsk.c`` (~1710 lín)
+     - ingesta DMA del ADC, umbral de recepción y anillo de retención, FIR de
+       diezmado, pasa-altos, AGC, ISR del DAC, PTT
+   * - ``src/modem.c`` (~1070 lín)
+     - diseño de prefiltros y juegos de demoduladores, correladores, DPLL,
+       tablas de tonos, DCD, estimación del desbalance, calibración
+   * - ``src/ax25.c`` (~1910 lín)
+     - encuadrador HDLC, NRZI, bit-stuffing, supresión de duplicados,
+       reparación de bits, códec AX.25, cola de TX
+   * - ``src/esp32idf_radioamateur_modem.c`` (~590 lín)
      - la API pública del componente: ``modem_init()``/``modem_set_modem()``,
        los ayudantes TNC2 y la tarea ``modem_svc`` que acciona el TX y entrega
        las tramas decodificadas al callback de RX
